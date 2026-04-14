@@ -1,0 +1,58 @@
+{
+  "name": "@tagma/middleware-lightrag",
+  "version": "0.1.0",
+  "description": "LightRAG knowledge-graph retrieval middleware for tagma-sdk pipelines",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GoTagma/tagma-mono.git",
+    "directory": "packages/middleware-lightrag"
+  },
+  "bugs": "https://github.com/GoTagma/tagma-mono/issues",
+  "homepage": "https://github.com/GoTagma/tagma-mono/tree/main/packages/middleware-lightrag#readme",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "tagma-plugin",
+    "tagma",
+    "middleware",
+    "lightrag",
+    "graphrag",
+    "rag"
+  ],
+  "engines": {
+    "bun": ">=1.3"
+  },
+  "tagmaPlugin": {
+    "category": "middlewares",
+    "type": "lightrag"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "bun run build"
+  },
+  "peerDependencies": {
+    "@tagma/types": "workspace:*"
+  },
+  "devDependencies": {
+    "bun-types": "^1.3.11",
+    "typescript": "^5.8.3"
+  }
+}
