@@ -89,7 +89,27 @@ bun install            # Reinstall
 
 ### 1. Bump version
 
-Edit the `version` field in the package's `package.json`.
+```bash
+# Patch (+0.0.1)
+bun run version:types:patch
+bun run version:codex:patch
+bun run version:opencode:patch
+bun run version:sdk:patch
+
+# Minor (+0.1.0)
+bun run version:types:minor
+bun run version:codex:minor
+bun run version:opencode:minor
+bun run version:sdk:minor
+
+# Major (+1.0.0)
+bun run version:types:major
+bun run version:codex:major
+bun run version:opencode:major
+bun run version:sdk:major
+```
+
+This runs `npm version` which updates the `version` field in the package's `package.json` and creates a git commit + tag.
 
 Publish order must follow the dependency chain:
 
