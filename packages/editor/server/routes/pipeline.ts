@@ -21,7 +21,7 @@ import {
   S,
   getState,
   getRegistrySnapshot,
-  ensureDriverPlugins,
+  reconcilePipelinePlugins,
   reconcileContinueFrom,
   stripEmptyFields,
   TASK_REQUIRED_KEYS,
@@ -102,7 +102,7 @@ export function registerPipelineRoutes(app: express.Express): void {
       }),
     };
     S.config = setPipelineField(S.config, patch);
-    S.config = ensureDriverPlugins(S.config);
+    S.config = reconcilePipelinePlugins(S.config);
     res.json(getState());
   });
 
@@ -118,7 +118,7 @@ export function registerPipelineRoutes(app: express.Express): void {
     const { trackId } = req.params;
     const fields = stripEmptyFields({ ...req.body }, TRACK_REQUIRED_KEYS);
     S.config = updateTrack(S.config, trackId, fields);
-    S.config = ensureDriverPlugins(S.config);
+    S.config = reconcilePipelinePlugins(S.config);
     res.json(getState());
   });
 
@@ -126,6 +126,7 @@ export function registerPipelineRoutes(app: express.Express): void {
     const prev = S.config;
     S.config = removeTrack(S.config, _req.params.trackId);
     if (S.config === prev) return res.status(404).json({ error: 'Track not found' });
+    S.config = reconcilePipelinePlugins(S.config);
     res.json(getState());
   });
 
@@ -139,6 +140,7 @@ export function registerPipelineRoutes(app: express.Express): void {
   app.post('/api/tasks', (req, res) => {
     const { trackId, task } = req.body;
     S.config = upsertTask(S.config, trackId, task as RawTaskConfig);
+    S.config = reconcilePipelinePlugins(S.config);
     res.json(getState());
   });
 
@@ -163,7 +165,7 @@ export function registerPipelineRoutes(app: express.Express): void {
     // Strip empty optional fields so they don't appear as '' in YAML
     const updated = stripEmptyFields(merged, TASK_REQUIRED_KEYS) as unknown as RawTaskConfig;
     S.config = upsertTask(S.config, trackId, updated);
-    S.config = ensureDriverPlugins(S.config);
+    S.config = reconcilePipelinePlugins(S.config);
     res.json(getState());
   });
 
@@ -184,6 +186,7 @@ export function registerPipelineRoutes(app: express.Express): void {
     if (hostTrack && hostTrack.tasks.length === 0 && S.config.tracks.length > 1) {
       S.config = removeTrack(S.config, trackId);
     }
+    S.config = reconcilePipelinePlugins(S.config);
     res.json(getState());
   });
 
@@ -196,6 +199,7 @@ export function registerPipelineRoutes(app: express.Express): void {
     const prev = S.config;
     S.config = transferTask(S.config, fromTrackId, taskId, toTrackId);
     if (S.config === prev) return res.status(404).json({ error: 'Task or track not found' });
+    S.config = reconcilePipelinePlugins(S.config);
     res.json(getState());
   });
 
@@ -249,7 +253,7 @@ export function registerPipelineRoutes(app: express.Express): void {
   app.post('/api/import', (req, res) => {
     try {
       const { yaml } = req.body;
-      S.config = parseYaml(yaml);
+      S.config = reconcilePipelinePlugins(parseYaml(yaml));
       res.json(getState());
     } catch (e: any) {
       res.status(400).json({ error: e.message ?? 'Invalid YAML' });
@@ -265,7 +269,7 @@ export function registerPipelineRoutes(app: express.Express): void {
    *
    * Server-side hardening (P0):
    *   1. Deep structural check — every track needs id+tasks; every task needs id.
-   *   2. Run `ensureDriverPlugins` + `reconcileContinueFrom` so the restored
+   *   2. Run `reconcilePipelinePlugins` + `reconcileContinueFrom` so the restored
    *      state passes the same normalizations every other write path runs.
    *   3. Validate via `validateRaw` and SURFACE errors in the response (matches
    *      other write paths — non-fatal warnings, not rejections).
@@ -300,7 +304,7 @@ export function registerPipelineRoutes(app: express.Express): void {
       }
 
       // 3. Apply same normalizations every other write path runs.
-      let normalized = ensureDriverPlugins(incoming);
+      let normalized = reconcilePipelinePlugins(incoming);
       normalized = reconcileContinueFrom(normalized);
 
       S.config = normalized;

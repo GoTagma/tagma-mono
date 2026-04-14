@@ -643,7 +643,7 @@ export const api = {
   /**
    * Replace the in-memory pipeline config wholesale, optionally with a layout
    * snapshot in the same atomic call. The server runs the same normalizations
-   * (ensureDriverPlugins, reconcileContinueFrom) every other write path runs
+   * (reconcilePipelinePlugins, reconcileContinueFrom) every other write path runs
    * and rejects payloads that fail deep structural checks. Used by undo/redo.
    */
   replaceConfig: (config: RawPipelineConfig, positions?: Record<string, { x: number }>) =>

@@ -36,7 +36,7 @@ import {
   startWatching as startFileWatching,
   markSynced as markWatcherSynced,
 } from './file-watcher.js';
-import { readPluginBlocklist } from './plugins/loader.js';
+import { readPluginBlocklist, resolvePluginCategoryType } from './plugins/loader.js';
 
 /** Editor layout data stored alongside the YAML file as .layout.json */
 export interface EditorLayout {
@@ -311,6 +311,93 @@ export function ensureDriverPlugins(cfg: RawPipelineConfig): RawPipelineConfig {
 
   const newPlugins = [...existing, ...additions];
   return { ...cfg, plugins: newPlugins };
+}
+
+/**
+ * Collect every `(category, type)` pair actually referenced by the pipeline:
+ * top-level driver, per-track driver+middlewares, per-task
+ * driver+trigger+completion+middlewares. Values are encoded as
+ * `"<category>:<type>"` so plugin resolutions can be compared cheaply.
+ */
+function collectUsedPluginRefs(cfg: RawPipelineConfig): Set<string> {
+  const used = new Set<string>();
+  const addRef = (category: string, type: string | undefined | null): void => {
+    if (typeof type === 'string' && type.length > 0) {
+      used.add(`${category}:${type}`);
+    }
+  };
+  const addMiddlewares = (
+    mws: readonly { type?: string }[] | undefined,
+  ): void => {
+    if (!mws) return;
+    for (const m of mws) addRef('middlewares', m?.type);
+  };
+
+  addRef('drivers', cfg.driver);
+  for (const track of cfg.tracks) {
+    addRef('drivers', track.driver);
+    addMiddlewares(track.middlewares);
+    for (const task of track.tasks) {
+      addRef('drivers', task.driver);
+      addRef('triggers', task.trigger?.type);
+      addRef('completions', task.completion?.type);
+      addMiddlewares(task.middlewares);
+    }
+  }
+  return used;
+}
+
+/**
+ * Keep `cfg.plugins[]` in lockstep with what the pipeline actually
+ * references. If no task/track mentions a plugin's `(category, type)`
+ * anywhere in the config, the plugin declaration is dropped.
+ *
+ * Pairs with `ensureDriverPlugins` (which only appends): together they
+ * enforce the invariant "declared iff used". Plugins that can't be
+ * resolved to a (category, type) — unknown packages, typos — are kept
+ * as-is so we never silently destroy user data over a failed lookup.
+ *
+ * Tradeoff: a plugin installed via the marketplace but not yet
+ * referenced by any task will be pruned on the next config mutation.
+ * This matches the user-stated invariant ("no usage → not declared").
+ * Users should install the plugin *and* wire it up in the same session;
+ * the marketplace UI still surfaces it under "installed but unused".
+ */
+export function reconcilePluginsFromUsage(
+  cfg: RawPipelineConfig,
+): RawPipelineConfig {
+  const existing = cfg.plugins ?? [];
+  if (existing.length === 0) return cfg;
+
+  const used = collectUsedPluginRefs(cfg);
+  const filtered = existing.filter((name) => {
+    const resolved = resolvePluginCategoryType(name);
+    // Unresolvable names stay — we don't know what they provide, so
+    // pruning would be guesswork. validateRaw will still flag them.
+    if (!resolved) return true;
+    return used.has(`${resolved.category}:${resolved.type}`);
+  });
+
+  if (filtered.length === existing.length) return cfg;
+  if (filtered.length === 0) {
+    // Drop the field entirely so the YAML doesn't serialize an empty
+    // `plugins: []` line.
+    const { plugins: _unused, ...rest } = cfg;
+    return rest as RawPipelineConfig;
+  }
+  return { ...cfg, plugins: filtered };
+}
+
+/**
+ * Full two-way sync: append any missing driver plugins for referenced
+ * drivers, then drop any plugin declarations whose (category, type) is
+ * no longer referenced anywhere. Use this after any mutation that can
+ * change which plugin types the pipeline references.
+ */
+export function reconcilePipelinePlugins(
+  cfg: RawPipelineConfig,
+): RawPipelineConfig {
+  return reconcilePluginsFromUsage(ensureDriverPlugins(cfg));
 }
 
 export function getState() {
