@@ -316,9 +316,13 @@ export function PluginsPage({
     try {
       const result = await api.uninstallPlugin(name);
       onRegistryUpdate(result.registry);
-      if (declaredPlugins.includes(name)) {
-        onPluginsChange(declaredPlugins.filter((p) => p !== name));
-      }
+      // Intentionally do NOT strip `name` from pipeline.plugins[]. Tasks may
+      // still reference the plugin's driver/type; removing the declaration
+      // here would leave an inconsistent YAML (driver: codex but no
+      // @tagma/driver-codex in plugins). Keeping the declaration means
+      // validateRaw surfaces a soft warning immediately and Run fails fast
+      // with a clear "Plugin load error" instead of silently drifting.
+      // Re-installing the plugin restores the working state in one click.
       try {
         onRegistryUpdate(await api.getRegistry());
       } catch { /* next refetch will reconcile */ }
@@ -342,7 +346,7 @@ export function PluginsPage({
         kind: classifyError(e, message),
       });
     }
-  }, [declaredPlugins, onRegistryUpdate, onPluginsChange, refreshInstalled, onRefreshServerState]);
+  }, [onRegistryUpdate, refreshInstalled, onRefreshServerState]);
 
   /**
    * Top-level uninstall entry point. Runs a pre-flight impact scan against
