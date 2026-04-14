@@ -11,7 +11,7 @@ A local AI task orchestration SDK. Consumers (editor extensions, CLI tools, scri
 | `@tagma/driver-codex` | `@tagma/driver-codex` | Codex CLI driver plugin |
 | `@tagma/driver-opencode` | `@tagma/driver-opencode` | OpenCode CLI driver plugin |
 
-> **Note**: In the monorepo, these packages live under `packages/types`, `packages/sdk`, `packages/driver-codex`, and `packages/driver-opencode`. They are no longer nested inside this SDK package.
+All packages live in the monorepo under `packages/`.
 
 ## Tech Stack
 
@@ -50,7 +50,7 @@ src/
 ## Key Conventions
 
 - All public exports live in `src/sdk.ts` — never import from internal modules directly
-- All type definitions live in `@tagma/types` (packages/types); `src/types.ts` is a re-export layer only
+- All type definitions live in `@tagma/types`; `src/types.ts` is a re-export layer only
 - External drivers are separate packages (packages/driver-codex, packages/driver-opencode)
 - All file path handling must use `validatePath` — no `..` traversal, no absolute paths
 - `prompt` and `command` are mutually exclusive on a Task
@@ -59,20 +59,19 @@ src/
 
 ## Publishing
 
+From monorepo root:
+
 ```bash
-# From monorepo root:
-cd packages/types && bun run build && npm publish
-cd packages/driver-codex && bun run build && npm publish
-cd packages/driver-opencode && bun run build && npm publish
-cd packages/sdk && bun run build && npm publish
+bun run publish:all
 ```
 
-Or use the SDK's interactive release script:
+Or individually:
 
 ```bash
-cd packages/sdk
-bun run release          # interactive version bump (commit first)
-bun run release:publish  # interactive version bump + publish
+bun run publish:types
+bun run publish:driver-codex
+bun run publish:driver-opencode
+bun run publish:sdk
 ```
 
 Publish order: `@tagma/types` → drivers → `@tagma/sdk`.

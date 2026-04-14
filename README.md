@@ -2,95 +2,134 @@
 
 Tagma monorepo — local AI task orchestration SDK and visual editor.
 
-## Packages
+## Repository Structure
 
-| Package | Directory | NPM | Role |
-|---|---|---|---|
-| `@tagma/types` | `packages/types` | `@tagma/types` | Shared type surface — no runtime code |
-| `@tagma/sdk` | `packages/sdk` | `@tagma/sdk` | Core engine |
-| `@tagma/driver-codex` | `packages/driver-codex` | `@tagma/driver-codex` | Codex CLI driver plugin |
-| `@tagma/driver-opencode` | `packages/driver-opencode` | `@tagma/driver-opencode` | OpenCode CLI driver plugin |
-| `tagma-editor` | `packages/editor` | (private) | Visual pipeline editor |
+```
+tagma-mono/
+├── packages/
+│   ├── types/           @tagma/types       Type-only package, no runtime code
+│   ├── sdk/             @tagma/sdk         Core engine
+│   ├── driver-codex/    @tagma/driver-codex Codex CLI driver plugin
+│   ├── driver-opencode/ @tagma/driver-opencode OpenCode CLI driver plugin
+│   └── editor/          tagma-editor (private) Visual pipeline editor
+├── package.json         monorepo root (bun workspaces)
+└── .gitignore
+```
 
 ## Quick Start
 
 ```bash
-# Install all workspace dependencies
 bun install
-
-# Build types first (other packages depend on this)
 bun run build
-
-# Start the editor in dev mode
 bun run dev:editor
 ```
 
+Workspace packages are symlinked. Edit SDK code → restart server. No reinstall needed.
+
+---
+
 ## Common Commands
 
-| Command | Description |
-|---|---|
-| `bun install` | Install all workspace dependencies |
-| `bun run build` | Build types + SDK (publishable packages) |
-| `bun run build:types` | Build only `@tagma/types` |
-| `bun run build:sdk` | Build only `@tagma/sdk` |
-| `bun run build:editor` | Build editor client (Vite) |
-| `bun run dev:editor` | Start editor (server + client, concurrently) |
-| `bun run dev:server` | Start editor server only (watch mode) |
-| `bun run dev:client` | Start editor client only (Vite dev) |
-| `bun run check` | Run all type checks (types + sdk + server) |
-| `bun run check:types` | Type check `@tagma/types` |
-| `bun run check:sdk` | Type check `@tagma/sdk` |
-| `bun run check:server` | Type check editor server |
-| `bun run test` | Run all tests |
-| `bun run clean` | Remove all node_modules, dist, lock files |
-
-## Per-Package Commands
+### Install Dependencies
 
 ```bash
-# From repo root, use --filter:
-bun run --filter @tagma/types build
-bun run --filter @tagma/sdk build
-bun run --filter @tagma/sdk test
-bun run --filter tagma-editor test
+bun install
+# If proxy is blocking:
+$env:HTTP_PROXY=''; $env:HTTPS_PROXY=''; bun install --no-cache
 ```
+
+### Local Development
+
+```bash
+bun run dev:editor     # Start editor (server + client concurrently)
+bun run dev:server     # Start server only (watch mode)
+bun run dev:client     # Start Vite client only
+```
+
+### Build
+
+```bash
+bun run build          # Build types + sdk (required before publishing)
+bun run build:all      # Build types + sdk + drivers
+bun run build:types    # Build @tagma/types only
+bun run build:sdk      # Build @tagma/sdk only
+bun run build:drivers  # Build both driver plugins
+bun run build:editor   # Build editor client (Vite bundle)
+```
+
+Build order: **types → sdk → drivers** (sdk depends on types dist).
+
+### Type Checking
+
+```bash
+bun run check          # Run all type checks
+bun run check:types    # Check @tagma/types only
+bun run check:sdk      # Check @tagma/sdk only
+bun run check:server   # Check editor server only
+```
+
+### Testing
+
+```bash
+bun run test                              # Run all tests
+bun run --filter @tagma/sdk test          # SDK only
+bun run --filter tagma-editor test        # Editor only
+```
+
+### Clean
+
+```bash
+bun run clean          # Remove all node_modules, dist, lock files
+bun install            # Reinstall
+```
+
+---
 
 ## Publishing
 
-Build order matters because of dependencies:
+### 1. Bump version
+
+Edit the `version` field in the package's `package.json`.
+
+Publish order must follow the dependency chain:
+
+1. `@tagma/types` (all other packages depend on it)
+2. `@tagma/driver-codex` + `@tagma/driver-opencode`
+3. `@tagma/sdk`
+
+### 2. Publish
 
 ```bash
-# 1. Build and publish types first
-cd packages/types && bun run build && npm publish
+# Publish individual packages (auto-builds before publish)
+bun run publish:types
+bun run publish:driver-codex
+bun run publish:driver-opencode
+bun run publish:sdk
 
-# 2. Build and publish drivers
-cd packages/driver-codex && bun run build && npm publish
-cd packages/driver-opencode && bun run build && npm publish
-
-# 3. Build and publish SDK
-cd packages/sdk && bun run build && npm publish
+# Publish all public packages in order
+bun run publish:all
 ```
 
-Or use the SDK's interactive release script:
+Each `publish:*` script runs `bun run build` then `npm publish`.
+
+### 3. Dry run
 
 ```bash
-cd packages/sdk
-bun run release          # interactive version bump
-bun run release:publish  # bump + publish
+bun run publish:dry
 ```
+
+`tagma-editor` is a private package and is not published to npm.
+
+---
 
 ## Dependency Principles
 
-1. **No internal path imports** — packages only import from public `@tagma/*` package names
-2. **No `latest`** — workspace packages use `workspace:*`, all other deps are pinned ranges
-3. **Build artifacts for publishing** — `@tagma/types` and `@tagma/sdk` build to `dist/` and ship build artifacts, not raw `.ts`
-4. **Editor uses public API only** — `tagma-editor` imports `@tagma/sdk` and `@tagma/types` via workspace link, never touches internal `src/` paths
+1. **No internal path imports** — packages only import from `@tagma/types`, `@tagma/sdk` public package names
+2. **No `latest`** — workspace packages use `workspace:*`, third-party deps use pinned ranges
+3. **Publish artifacts, not source** — types/sdk publish `.js` + `.d.ts` from `dist/`, not raw `.ts`
+4. **Editor uses public API only** — consumes sdk/types via workspace link, never reaches into `src/`
 
-## Clean Install (no proxy)
-
-```bash
-bun run clean
-bun install
-```
+---
 
 ## Tech Stack
 
