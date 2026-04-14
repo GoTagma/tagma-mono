@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import {
   ArrowLeft, FolderOpen, Package, RefreshCw, Store,
 } from 'lucide-react';
@@ -8,6 +9,7 @@ import type {
   PluginCategory,
   PluginInfo,
   PluginRegistry,
+  PluginUninstallImpact,
 } from '../../api/client';
 import {
   classifyError,
@@ -19,6 +21,10 @@ import { MarketplacePanel } from './MarketplacePanel';
 
 type Tab = 'local' | 'marketplace';
 type CategoryFilter = 'all' | PluginCategory;
+
+const KNOWN_CATEGORIES: ReadonlySet<PluginCategory> = new Set([
+  'drivers', 'triggers', 'completions', 'middlewares',
+]);
 
 /**
  * Shared action state for install / uninstall / load / import operations
@@ -42,6 +48,13 @@ interface PluginsPageProps {
   onRegistryUpdate: (registry: PluginRegistry) => void;
   onPluginsChange: (plugins: string[]) => void;
   onRequestBrowseLocal: () => void;
+  /**
+   * Refetch /api/state after an install / uninstall / load so the Task
+   * panel's plugin-type validation warnings reflect the new registry.
+   * Without this, the user would keep seeing stale "unknown type" warnings
+   * (or miss new ones) until they touched a Task field.
+   */
+  onRefreshServerState: () => void | Promise<void>;
 }
 
 const CATEGORY_TABS: ReadonlyArray<{ key: CategoryFilter; label: string }> = [
@@ -79,6 +92,7 @@ export function PluginsPage({
   onRegistryUpdate,
   onPluginsChange,
   onRequestBrowseLocal,
+  onRefreshServerState,
 }: PluginsPageProps) {
   const [tab, setTab] = useState<Tab>('local');
   const [category, setCategory] = useState<CategoryFilter>('all');
@@ -190,6 +204,37 @@ export function PluginsPage({
   );
   const declaredSet = useMemo(() => new Set(declaredPlugins), [declaredPlugins]);
 
+  // Per-category counts for the sidebar rail. Computed against whichever
+  // data source the active tab is viewing so the numbers in the sidebar
+  // match the cards the user is about to see. Unknown category strings
+  // from PluginInfo.categories are ignored — we only report the four
+  // SDK-known categories plus the "all" aggregate.
+  const categoryCounts = useMemo<Record<CategoryFilter, number>>(() => {
+    const counts: Record<CategoryFilter, number> = {
+      all: 0,
+      drivers: 0,
+      triggers: 0,
+      completions: 0,
+      middlewares: 0,
+    };
+    if (tab === 'local') {
+      counts.all = plugins.length;
+      for (const p of plugins) {
+        for (const cat of p.categories) {
+          if (KNOWN_CATEGORIES.has(cat as PluginCategory)) {
+            counts[cat as PluginCategory] += 1;
+          }
+        }
+      }
+    } else {
+      counts.all = allMarketplaceEntries.length;
+      for (const e of allMarketplaceEntries) {
+        counts[e.category] += 1;
+      }
+    }
+    return counts;
+  }, [tab, plugins, allMarketplaceEntries]);
+
   // Client-side filter over the cached "All" list. Runs on every category
   // or query change; since the list is small and `useMemo` is cheap, this
   // feels instant even for hundreds of cached entries.
@@ -222,6 +267,10 @@ export function PluginsPage({
   // The YAML `pipeline.plugins[]` update is done client-side because the
   // server install endpoint only touches node_modules + .tagma/plugins.json.
 
+  // Pending uninstall awaiting user confirmation. Holds the impact payload
+  // so the dialog can list affected YAML locations. `null` means no dialog.
+  const [uninstallConfirm, setUninstallConfirm] = useState<PluginUninstallImpact | null>(null);
+
   const handleInstall = useCallback(async (name: string) => {
     setActionState({ type: 'loading', name, action: 'install' });
     try {
@@ -230,7 +279,19 @@ export function PluginsPage({
       if (!declaredPlugins.includes(name)) {
         onPluginsChange([...declaredPlugins, name]);
       }
+      // Re-fetch the authoritative registry after the declared-plugins write.
+      // `updatePipelineFields` fires an async /api/pipeline PATCH whose
+      // applyState() does not touch `registry`, but the refetch here gives us
+      // the same hydration path Apply Now / workspace-open uses so the Task
+      // panel's trigger/completion/middleware dropdowns pick up the new type
+      // immediately instead of waiting for a reload.
+      try {
+        onRegistryUpdate(await api.getRegistry());
+      } catch { /* install already recorded; dropdowns will refresh on next fetch */ }
       await refreshInstalled();
+      // Re-fetch server state so validateRaw re-runs with the new known-types
+      // snapshot and any pre-existing "unknown type" warnings clear out.
+      await onRefreshServerState();
       setActionState({
         type: 'success',
         name,
@@ -248,9 +309,9 @@ export function PluginsPage({
         kind: classifyError(e, message),
       });
     }
-  }, [declaredPlugins, onRegistryUpdate, onPluginsChange, refreshInstalled]);
+  }, [declaredPlugins, onRegistryUpdate, onPluginsChange, refreshInstalled, onRefreshServerState]);
 
-  const handleUninstall = useCallback(async (name: string) => {
+  const performUninstall = useCallback(async (name: string) => {
     setActionState({ type: 'loading', name, action: 'uninstall' });
     try {
       const result = await api.uninstallPlugin(name);
@@ -258,7 +319,13 @@ export function PluginsPage({
       if (declaredPlugins.includes(name)) {
         onPluginsChange(declaredPlugins.filter((p) => p !== name));
       }
+      try {
+        onRegistryUpdate(await api.getRegistry());
+      } catch { /* next refetch will reconcile */ }
       await refreshInstalled();
+      // Re-run server-side validation so newly-orphaned task references
+      // surface as warnings immediately, without having to touch the Task.
+      await onRefreshServerState();
       setActionState({
         type: 'success',
         name,
@@ -275,14 +342,49 @@ export function PluginsPage({
         kind: classifyError(e, message),
       });
     }
-  }, [declaredPlugins, onRegistryUpdate, onPluginsChange, refreshInstalled]);
+  }, [declaredPlugins, onRegistryUpdate, onPluginsChange, refreshInstalled, onRefreshServerState]);
+
+  /**
+   * Top-level uninstall entry point. Runs a pre-flight impact scan against
+   * the workspace YAMLs; if any tasks reference this plugin's type the
+   * dialog is shown and the real uninstall waits for user confirmation.
+   * Otherwise it proceeds straight through — no nag dialogs for truly
+   * unused plugins.
+   */
+  const handleUninstall = useCallback(async (name: string) => {
+    // Probe first with a loading banner so the user sees *something* even
+    // if the scan takes a beat. The dialog (if shown) will replace it.
+    setActionState({ type: 'loading', name, action: 'uninstall' });
+    let impact: PluginUninstallImpact;
+    try {
+      impact = await api.uninstallImpact(name);
+    } catch (e: unknown) {
+      // Impact scan is best-effort — if it fails, fall through to the
+      // real uninstall rather than blocking the user.
+      console.warn('[plugins] uninstall-impact scan failed:', e);
+      await performUninstall(name);
+      return;
+    }
+    if (impact.impacts.length === 0) {
+      await performUninstall(name);
+      return;
+    }
+    setUninstallConfirm(impact);
+    // Reset the action state so the confirm dialog owns the UI; the loading
+    // spinner will reappear when the user clicks "Uninstall anyway".
+    setActionState({ type: 'idle' });
+  }, [performUninstall]);
 
   const handleLoad = useCallback(async (name: string) => {
     setActionState({ type: 'loading', name, action: 'load' });
     try {
       const result = await api.loadPlugin(name);
       onRegistryUpdate(result.registry);
+      try {
+        onRegistryUpdate(await api.getRegistry());
+      } catch { /* next refetch will reconcile */ }
       await refreshInstalled();
+      await onRefreshServerState();
       setActionState({
         type: 'success',
         name,
@@ -299,7 +401,7 @@ export function PluginsPage({
         kind: classifyError(e, message),
       });
     }
-  }, [onRegistryUpdate, refreshInstalled]);
+  }, [onRegistryUpdate, refreshInstalled, onRefreshServerState]);
 
   // Explicit user-triggered refresh is the only way to re-hit npm once
   // we've cached a result. Clicking it always re-fetches; the flag is
@@ -318,13 +420,14 @@ export function PluginsPage({
           onBack={onBack}
           onRefresh={handleRefresh}
           refreshing={pluginsLoading || marketplaceLoading}
+          onImportLocal={onRequestBrowseLocal}
         />
         <div className="flex-1 flex flex-col items-center justify-center text-tagma-muted gap-3">
           <Package size={48} className="opacity-30" />
-          <p className="text-sm">Open a workspace to manage plugins.</p>
+          <p className="text-[12px] tracking-wide">Open a workspace to manage plugins.</p>
           <button
             onClick={onBack}
-            className="px-3 py-1.5 text-xs bg-tagma-bg border border-tagma-border hover:border-tagma-accent transition-colors"
+            className="px-4 py-2 text-[11px] tracking-wide uppercase text-tagma-muted hover:text-tagma-accent border border-tagma-border hover:border-tagma-accent transition-colors"
           >
             Back to Editor
           </button>
@@ -341,42 +444,15 @@ export function PluginsPage({
         onBack={onBack}
         onRefresh={handleRefresh}
         refreshing={pluginsLoading || marketplaceLoading}
+        onImportLocal={onRequestBrowseLocal}
       />
 
       <div className="flex-1 min-h-0 flex">
-        <aside className="w-44 shrink-0 border-r border-tagma-border bg-tagma-surface/40 py-3 px-2">
-          <div className="text-[10px] uppercase tracking-wide text-tagma-muted mb-2 px-2">
-            Categories
-          </div>
-          <nav className="flex flex-col gap-0.5">
-            {CATEGORY_TABS.map((c) => (
-              <button
-                key={c.key}
-                onClick={() => setCategory(c.key)}
-                className={`text-left px-2 py-1 text-[11px] transition-colors ${
-                  category === c.key
-                    ? 'bg-blue-500/15 text-blue-300 border-l-2 border-blue-400'
-                    : 'text-tagma-muted hover:text-tagma-text hover:bg-tagma-bg border-l-2 border-transparent'
-                }`}
-              >
-                {c.label}
-              </button>
-            ))}
-          </nav>
-
-          {tab === 'local' && (
-            <div className="mt-4 px-2">
-              <button
-                onClick={onRequestBrowseLocal}
-                className="w-full flex items-center gap-1.5 px-2 py-1 text-[10px] bg-orange-500/10 border border-orange-500/25 text-orange-300 hover:bg-orange-500/20 transition-colors"
-                title="Import a plugin from a local directory"
-              >
-                <FolderOpen size={11} />
-                <span>Import local…</span>
-              </button>
-            </div>
-          )}
-        </aside>
+        <CategorySidebar
+          active={category}
+          counts={categoryCounts}
+          onSelect={setCategory}
+        />
 
         <section className="flex-1 min-h-0 overflow-hidden">
           {tab === 'local' ? (
@@ -412,67 +488,305 @@ export function PluginsPage({
           )}
         </section>
       </div>
+
+      {uninstallConfirm && (
+        <UninstallConfirmDialog
+          impact={uninstallConfirm}
+          onCancel={() => setUninstallConfirm(null)}
+          onConfirm={() => {
+            const name = uninstallConfirm.name;
+            setUninstallConfirm(null);
+            performUninstall(name);
+          }}
+        />
+      )}
     </div>
   );
 }
 
+// ─── Uninstall confirm dialog ──────────────────────────────────────────
+//
+// Shown only when the pre-flight scan found at least one workspace YAML
+// that still references the plugin's trigger/completion/middleware type.
+// The list lets users see *which* tasks would break before clicking
+// through, and grouping by file keeps the dialog readable even when the
+// same plugin is used across multiple pipelines.
+function UninstallConfirmDialog({
+  impact,
+  onCancel,
+  onConfirm,
+}: {
+  impact: PluginUninstallImpact;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const byFile = useMemo(() => {
+    const map = new Map<string, typeof impact.impacts>();
+    for (const entry of impact.impacts) {
+      const bucket = map.get(entry.file);
+      if (bucket) {
+        (bucket as unknown as typeof impact.impacts[number][]).push(entry);
+      } else {
+        map.set(entry.file, [entry] as unknown as typeof impact.impacts);
+      }
+    }
+    return [...map.entries()];
+  }, [impact]);
+
+  const total = impact.impacts.length;
+  const fileCount = byFile.length;
+
+  return (
+    <div
+      className="fixed inset-0 z-[240] flex items-center justify-center bg-black/60"
+      onClick={onCancel}
+    >
+      <div
+        className="bg-tagma-surface border border-tagma-border shadow-panel w-[520px] max-h-[80vh] flex flex-col animate-fade-in"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="panel-header">
+          <h2 className="panel-title">Uninstall plugin?</h2>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+          <div className="text-[11px] text-tagma-text">
+            <span className="font-mono text-tagma-accent">{impact.name}</span>
+            {impact.category && impact.type && (
+              <span className="text-tagma-muted">
+                {' '}({impact.category.replace(/s$/, '')}.<span className="font-mono">{impact.type}</span>)
+              </span>
+            )}
+          </div>
+          <div className="text-[11px] text-tagma-warning">
+            {total} reference{total === 1 ? '' : 's'} in {fileCount} file{fileCount === 1 ? '' : 's'} will be left dangling.
+            The tasks will still save but fail at run time until the plugin is
+            reinstalled or the reference is removed.
+          </div>
+          <div className="border border-tagma-border bg-tagma-bg">
+            {byFile.map(([file, entries]) => (
+              <div key={file} className="border-b border-tagma-border last:border-b-0">
+                <div className="px-3 py-1.5 bg-tagma-surface/40 text-[10px] font-mono text-tagma-text">
+                  {file}
+                </div>
+                <ul className="px-3 py-1.5 space-y-0.5">
+                  {entries.map((entry) => (
+                    <li
+                      key={`${entry.file}:${entry.location}`}
+                      className="text-[10px] font-mono text-tagma-muted"
+                    >
+                      <span className="text-tagma-accent">{entry.trackId}</span>
+                      {entry.taskId && (
+                        <>
+                          <span className="text-tagma-muted-dim">.</span>
+                          <span className="text-tagma-text">{entry.taskId}</span>
+                        </>
+                      )}
+                      <span className="text-tagma-muted-dim"> — {entry.location}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-tagma-border">
+          <button
+            onClick={onCancel}
+            className="text-[11px] px-3 py-1 border border-tagma-border text-tagma-muted hover:text-tagma-text hover:border-tagma-accent transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="text-[11px] px-3 py-1 border border-tagma-error/60 text-tagma-error hover:bg-tagma-error/10 transition-colors"
+          >
+            Uninstall anyway
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Sidebar ───────────────────────────────────────────────────────────
+//
+// Editorial category rail: each row is a numbered index (01..05) with
+// a per-tab count pinned to the right. The active row lights up with
+// a copper left-rule and a subtly raised surface, treating the index
+// like a table-of-contents column in a print catalog rather than a
+// stack of tiny toggleable chips.
+function CategorySidebar({
+  active,
+  counts,
+  onSelect,
+}: {
+  active: CategoryFilter;
+  counts: Record<CategoryFilter, number>;
+  onSelect: (category: CategoryFilter) => void;
+}) {
+  return (
+    <aside className="w-48 shrink-0 border-r border-tagma-border bg-tagma-surface/25 py-5">
+      <div className="px-5 pb-3 text-[9px] tracking-[0.22em] uppercase text-tagma-muted-dim">
+        Categories
+      </div>
+      <nav className="flex flex-col">
+        {CATEGORY_TABS.map((c, i) => {
+          const isActive = active === c.key;
+          const count = counts[c.key];
+          return (
+            <button
+              key={c.key}
+              onClick={() => onSelect(c.key)}
+              className={`group relative flex items-baseline gap-3 py-2 pl-5 pr-4 text-left transition-colors ${
+                isActive
+                  ? 'text-tagma-text bg-tagma-surface/80'
+                  : 'text-tagma-muted hover:text-tagma-text hover:bg-tagma-surface/40'
+              }`}
+            >
+              {isActive && (
+                <span
+                  className="absolute left-0 top-1 bottom-1 w-[2px] bg-tagma-accent"
+                  aria-hidden="true"
+                />
+              )}
+              <span
+                className={`w-5 text-[9px] font-mono tabular-nums leading-none ${
+                  isActive ? 'text-tagma-accent' : 'text-tagma-muted-dim'
+                }`}
+              >
+                {String(i + 1).padStart(2, '0')}
+              </span>
+              <span className="flex-1 text-[12px] tracking-wide leading-tight">
+                {c.label}
+              </span>
+              <span
+                className={`text-[10px] font-mono tabular-nums leading-none ${
+                  isActive ? 'text-tagma-accent' : 'text-tagma-muted-dim'
+                }`}
+              >
+                {count}
+              </span>
+            </button>
+          );
+        })}
+      </nav>
+    </aside>
+  );
+}
+
+// ─── Header ────────────────────────────────────────────────────────────
+//
+// Three-row editorial block, replacing the previous 44px toolbar:
+//
+//   1. Utility row — back button on the left; refresh + (Local-only)
+//      import-local on the right. Uses uppercase micro-labels so the
+//      controls read as secondary to the wordmark.
+//   2. Wordmark row — "Plugins." display with copper terminal, paired
+//      inline with a single-line subtitle. Tight vertical padding keeps
+//      the header compact so the card viewport gets more room.
+//   3. Tab row — underline-style tabs. The active tab's copper border
+//      aligns flush with the header's bottom border, so switching tabs
+//      feels like moving between sections of a masthead.
 function PluginsHeader({
   tab,
   onTab,
   onBack,
   onRefresh,
   refreshing,
+  onImportLocal,
 }: {
   tab: Tab;
   onTab: (t: Tab) => void;
   onBack: () => void;
   onRefresh: () => void;
   refreshing: boolean;
+  onImportLocal?: () => void;
 }) {
   return (
-    <header className="h-11 bg-tagma-surface border-b border-tagma-border flex items-center px-2 gap-2 shrink-0">
-      <button
-        onClick={onBack}
-        className="flex items-center gap-1.5 text-xs text-tagma-muted hover:text-tagma-text transition-colors px-2 py-1"
-      >
-        <ArrowLeft size={12} />
-        <span>Back to Editor</span>
-      </button>
-      <div className="w-px h-5 bg-tagma-border" />
-      <div className="flex items-center gap-1.5 px-2">
-        <Package size={13} className="text-tagma-accent" />
-        <span className="text-xs font-medium text-tagma-text">Plugins</span>
-      </div>
-      <div className="w-px h-5 bg-tagma-border" />
-      <div className="flex items-center gap-1">
-        <TabButton
-          active={tab === 'local'}
-          onClick={() => onTab('local')}
-          icon={<Package size={12} />}
-          label="Local"
-        />
-        <TabButton
-          active={tab === 'marketplace'}
-          onClick={() => onTab('marketplace')}
-          icon={<Store size={12} />}
-          label="Marketplace"
+    <header className="shrink-0 bg-tagma-surface/60 border-b border-tagma-border">
+      <div className="h-11 flex items-center px-2 gap-2 border-b border-tagma-border/60">
+        <UtilityLink onClick={onBack} icon={<ArrowLeft size={12} />} label="Back to Editor" />
+        <div className="flex-1" />
+        {tab === 'local' && onImportLocal && (
+          <UtilityLink
+            onClick={onImportLocal}
+            icon={<FolderOpen size={12} />}
+            label="Import Local"
+            title="Import a plugin from a local directory"
+          />
+        )}
+        <UtilityLink
+          onClick={onRefresh}
+          icon={<RefreshCw size={11} className={refreshing ? 'animate-spin' : ''} />}
+          label="Refresh"
+          title="Refresh plugin list"
+          disabled={refreshing}
         />
       </div>
-      <div className="flex-1" />
-      <button
-        onClick={onRefresh}
-        disabled={refreshing}
-        className="flex items-center gap-1 px-2 py-1 text-[11px] text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-accent/60 transition-colors disabled:opacity-50"
-        title="Refresh plugin list"
-      >
-        <RefreshCw size={11} className={refreshing ? 'animate-spin' : ''} />
-        <span>Refresh</span>
-      </button>
+
+      <div className="px-6 pt-3 pb-1">
+        <div className="flex items-baseline gap-3 flex-wrap">
+          <h1 className="text-[22px] font-semibold text-tagma-text leading-none tracking-tight">
+            Plugins<span className="text-tagma-accent">.</span>
+          </h1>
+          <p className="text-[11px] text-tagma-muted-dim leading-snug">
+            Install and manage the drivers, triggers, completions, and middlewares that power your pipeline.
+          </p>
+        </div>
+      </div>
+
+      <div className="px-6 pt-2">
+        <div className="flex items-end gap-7 -mb-px">
+          <HeaderTab
+            active={tab === 'local'}
+            onClick={() => onTab('local')}
+            icon={<Package size={13} />}
+            label="Local"
+          />
+          <HeaderTab
+            active={tab === 'marketplace'}
+            onClick={() => onTab('marketplace')}
+            icon={<Store size={13} />}
+            label="Marketplace"
+          />
+        </div>
+      </div>
     </header>
   );
 }
 
-function TabButton({
+// Matches the button style used by the Back to Editor / toolbar controls in
+// RunView and RunHistoryBrowser: plain `text-xs` in `tagma-muted`, hover to
+// `tagma-text`, with `px-2 py-1 gap-1.5` padding. Keeping the three pages
+// visually unified so switching between Editor / Run / History / Plugins
+// feels like a single toolbar shifting contents, not four redesigns.
+function UtilityLink({
+  onClick,
+  icon,
+  label,
+  title,
+  disabled,
+}: {
+  onClick: () => void;
+  icon: ReactNode;
+  label: string;
+  title?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className="flex items-center gap-1.5 text-xs text-tagma-muted hover:text-tagma-text transition-colors px-2 py-1 disabled:opacity-40 disabled:cursor-not-allowed"
+    >
+      {icon}
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function HeaderTab({
   active,
   onClick,
   icon,
@@ -480,19 +794,19 @@ function TabButton({
 }: {
   active: boolean;
   onClick: () => void;
-  icon: React.ReactNode;
+  icon: ReactNode;
   label: string;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium border transition-colors ${
+      className={`flex items-center gap-2 px-0.5 pb-2.5 text-[12px] font-medium tracking-wide transition-colors border-b-2 ${
         active
-          ? 'bg-blue-500/15 text-blue-300 border-blue-500/30'
-          : 'bg-transparent text-tagma-muted border-transparent hover:text-tagma-text hover:bg-tagma-bg'
+          ? 'text-tagma-text border-tagma-accent'
+          : 'text-tagma-muted border-transparent hover:text-tagma-text hover:border-tagma-border'
       }`}
     >
-      {icon}
+      <span className={active ? 'text-tagma-accent' : ''}>{icon}</span>
       <span>{label}</span>
     </button>
   );
