@@ -480,14 +480,12 @@ function RunListItem({
 
 function EmptyRunList({
   outcome,
-  period,
   totalRuns,
 }: {
   outcome: OutcomeFilter;
-  period: PeriodFilter;
   totalRuns: number;
 }) {
-  const hasFilter = outcome !== 'all' || period !== 'all';
+  const hasFilter = outcome !== 'all';
   if (totalRuns === 0) {
     return (
       <div className="px-5 py-6 text-[10px] text-tagma-muted-dim leading-relaxed">
@@ -499,7 +497,7 @@ function EmptyRunList({
   return (
     <div className="px-5 py-6 text-[10px] text-tagma-muted-dim leading-relaxed">
       {hasFilter ? (
-        <>No runs match the current filter. Try widening the outcome tab or the time range.</>
+        <>No runs match the current filter. Try widening the outcome tab.</>
       ) : (
         <>No runs available.</>
       )}
