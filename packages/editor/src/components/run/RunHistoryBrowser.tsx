@@ -132,10 +132,10 @@ interface RunHistoryBrowserProps {
  * task results; the raw pipeline.log is still available via a toggle.
  *
  * Layout mirrors PluginsPage: an editorial masthead (wordmark + subtitle
- * + underline tabs for outcome filter), a numbered period rail on the
- * left, a run list column, and a detail pane. Every class choice is
- * deliberately aligned with PluginsPage so navigating between Plugins
- * and History feels like one document with different contents.
+ * + underline tabs for outcome filter), a run list column, and a detail
+ * pane. Every class choice is deliberately aligned with PluginsPage so
+ * navigating between Plugins and History feels like one document with
+ * different contents.
  *
  * Refresh is owned by the parent (RunView) which places the button in
  * its own h-11 toolbar — the history browser exposes a refreshToken /
@@ -248,12 +248,6 @@ export function RunHistoryBrowser({
       />
 
       <div className="flex-1 min-h-0 flex">
-        <PeriodRail
-          active={period}
-          counts={periodCounts}
-          onSelect={setPeriod}
-        />
-
         <div className="w-72 shrink-0 border-r border-tagma-border flex flex-col bg-tagma-surface/25 overflow-hidden">
           <div className="shrink-0 px-5 pt-5 pb-2 flex items-baseline justify-between">
             <span className="text-[9px] tracking-[0.22em] uppercase text-tagma-muted-dim">
@@ -269,7 +263,7 @@ export function RunHistoryBrowser({
               <div className="px-5 py-3 text-[10px] text-tagma-error font-mono">{error}</div>
             )}
             {!loading && !error && visibleRuns.length === 0 && (
-              <EmptyRunList outcome={outcome} period={period} totalRuns={runs.length} />
+              <EmptyRunList outcome={outcome} totalRuns={runs.length} />
             )}
             {visibleRuns.map((run) => (
               <RunListItem
@@ -382,72 +376,6 @@ function HeaderTab({
       <span className={active ? 'text-tagma-accent' : ''}>{icon}</span>
       <span>{label}</span>
     </button>
-  );
-}
-
-// ─── Period sidebar ────────────────────────────────────────────────────
-//
-// Numbered editorial rail — 01..05 — with a per-period count pinned to
-// the right, the copper left-rule marking the active row, and the same
-// surface treatment as PluginsPage's CategorySidebar. Counts are non-
-// disjoint on purpose (Today and Yesterday nest inside This Week), so
-// wider buckets report ≥ narrower ones.
-function PeriodRail({
-  active,
-  counts,
-  onSelect,
-}: {
-  active: PeriodFilter;
-  counts: Record<PeriodFilter, number>;
-  onSelect: (p: PeriodFilter) => void;
-}) {
-  return (
-    <aside className="w-48 shrink-0 border-r border-tagma-border bg-tagma-surface/25 py-5">
-      <div className="px-5 pb-3 text-[9px] tracking-[0.22em] uppercase text-tagma-muted-dim">
-        Time Range
-      </div>
-      <nav className="flex flex-col">
-        {PERIOD_RAIL.map((p, i) => {
-          const isActive = active === p.key;
-          const count = counts[p.key];
-          return (
-            <button
-              key={p.key}
-              onClick={() => onSelect(p.key)}
-              className={`group relative flex items-baseline gap-3 py-2 pl-5 pr-4 text-left transition-colors ${
-                isActive
-                  ? 'text-tagma-text bg-tagma-surface/80'
-                  : 'text-tagma-muted hover:text-tagma-text hover:bg-tagma-surface/40'
-              }`}
-            >
-              {isActive && (
-                <span
-                  className="absolute left-0 top-1 bottom-1 w-[2px] bg-tagma-accent"
-                  aria-hidden="true"
-                />
-              )}
-              <span
-                className={`w-5 text-[9px] font-mono tabular-nums leading-none ${
-                  isActive ? 'text-tagma-accent' : 'text-tagma-muted-dim'
-                }`}
-              >
-                {String(i + 1).padStart(2, '0')}
-              </span>
-              <span className="flex-1 text-[12px] tracking-wide leading-tight">
-                {p.label}
-              </span>
-              <span
-                className={`text-[10px] font-mono tabular-nums leading-none ${
-                  isActive ? 'text-tagma-accent' : 'text-tagma-muted-dim'
-                }`}
-              >
-                {count}
-              </span>
-            </button>
-          );
-        })}
-      </nav>
-    </aside>
   );
 }
 
