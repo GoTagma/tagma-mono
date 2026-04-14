@@ -109,7 +109,7 @@ bun run version:opencode:major
 bun run version:sdk:major
 ```
 
-This runs `npm version` which updates the `version` field in the package's `package.json` and creates a git commit + tag.
+This runs `bun pm version` which updates the `version` field in the package's `package.json`. Commit and tag manually afterwards (`bun pm version` does not auto-create git commits/tags).
 
 Publish order must follow the dependency chain:
 
