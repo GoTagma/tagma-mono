@@ -1,10 +1,17 @@
 #!/usr/bin/env bun
 /**
- * Interactive release script — auto-scans all packages under plugins/*
+ * Interactive release script — scans packages/* in the monorepo.
  *
  * Usage:
  *   bun scripts/release.ts              # interactive mode, choose per package
  *   bun scripts/release.ts --publish    # choose versions then publish immediately
+ *
+ * Private packages (e.g. tagma-editor) are skipped automatically. Publish
+ * order is fixed so dependency chains resolve correctly: @tagma/types → drivers
+ * → @tagma/sdk. `bun publish` is used so `workspace:*` gets rewritten.
+ *
+ * Platform-agnostic: uses execSync with `cwd` instead of shell-inline `cd`, so
+ * the script runs the same way under bash, PowerShell, and cmd.exe.
  */
 
 import { readFileSync, writeFileSync, readdirSync, existsSync } from "fs";
@@ -12,9 +19,9 @@ import { resolve } from "path";
 import { execSync } from "child_process";
 import * as readline from "readline";
 
-// ── Utilities ─────────────────────────────────────────────────────────────────
-
-const ROOT = resolve(import.meta.dir, "..");
+// Monorepo root is two levels up from this file: packages/sdk/scripts → mono
+const MONO_ROOT = resolve(import.meta.dir, "..", "..", "..");
+const PACKAGES_DIR = resolve(MONO_ROOT, "packages");
 
 function readJson(path: string): Record<string, any> {
   return JSON.parse(readFileSync(path, "utf-8"));
@@ -33,53 +40,44 @@ function bumpVersion(current: string, bump: string): string {
   throw new Error(`Invalid bump type: ${bump}`);
 }
 
-// ── Package scanning ──────────────────────────────────────────────────────────
-
 interface Package {
   name: string;
   version: string;
   dir: string;
   pkgPath: string;
-  isRoot: boolean;
   /** Publish order weight (lower = earlier) */
   order: number;
 }
 
+// Publish order respects the dependency chain: types first, drivers next, sdk last.
+const ORDER: Record<string, number> = {
+  "@tagma/types": 0,
+  "@tagma/driver-codex": 10,
+  "@tagma/driver-opencode": 10,
+  "@tagma/sdk": 100,
+};
+
 function scanPackages(): Package[] {
   const pkgs: Package[] = [];
 
-  // Scan plugins/*
-  const pluginsDir = resolve(ROOT, "plugins");
-  const pluginDirs = readdirSync(pluginsDir, { withFileTypes: true })
-    .filter((d) => d.isDirectory())
-    .map((d) => resolve(pluginsDir, d.name));
-
-  for (const [i, dir] of pluginDirs.entries()) {
+  for (const entry of readdirSync(PACKAGES_DIR, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const dir = resolve(PACKAGES_DIR, entry.name);
     const pkgPath = resolve(dir, "package.json");
     if (!existsSync(pkgPath)) continue;
+
     const pkg = readJson(pkgPath);
+    if (pkg.private) continue;
+    if (!pkg.name || !pkg.version) continue;
+
     pkgs.push({
       name: pkg.name,
       version: pkg.version,
       dir,
       pkgPath,
-      isRoot: false,
-      // types first, then other plugins, root SDK last
-      order: pkg.name === "@tagma/types" ? 0 : i + 1,
+      order: ORDER[pkg.name] ?? 50,
     });
   }
-
-  // Root SDK published last
-  const rootPkgPath = resolve(ROOT, "package.json");
-  const rootPkg = readJson(rootPkgPath);
-  pkgs.push({
-    name: rootPkg.name,
-    version: rootPkg.version,
-    dir: ROOT,
-    pkgPath: rootPkgPath,
-    isRoot: true,
-    order: 999,
-  });
 
   return pkgs.sort((a, b) => a.order - b.order);
 }
@@ -108,7 +106,6 @@ async function promptBump(pkg: Package): Promise<string | null> {
     return bumpVersion(pkg.version, choice);
   }
 
-  // Also accept direct input: patch/minor/major/x.y.z
   if (input === "" || input === "s" || input === "skip") return null;
   try {
     return bumpVersion(pkg.version, input);
@@ -124,9 +121,9 @@ const shouldPublish = process.argv.includes("--publish");
 const packages = scanPackages();
 
 console.log("\n═══════════════════════════════════════");
-console.log("  tagma-sdk release tool");
+console.log("  tagma-mono release tool");
 console.log("═══════════════════════════════════════");
-console.log(`\nFound ${packages.length} packages:`);
+console.log(`\nFound ${packages.length} publishable packages:`);
 for (const p of packages) {
   console.log(`  ${p.name.padEnd(32)} v${p.version}`);
 }
@@ -149,7 +146,6 @@ if (updates.length === 0) {
   process.exit(0);
 }
 
-// Confirm
 console.log("\n--- Pending updates ---");
 for (const { pkg, newVersion } of updates) {
   console.log(`  ${pkg.name}: ${pkg.version} → ${newVersion}`);
@@ -171,22 +167,22 @@ if (!shouldPublish) {
   process.exit(0);
 }
 
-// Regenerate lockfile after version bumps to avoid duplicate-key errors
+// Regenerate lockfile after version bumps so workspace resolution stays consistent
 console.log("\nRegenerating lockfile...");
-execSync("bun install", { cwd: ROOT, stdio: "inherit" });
+execSync("bun install", { cwd: MONO_ROOT, stdio: "inherit" });
 
-// Publish
+// Publish. We use `cwd` instead of a shell `cd &&` chain so this works the
+// same under cmd.exe / PowerShell / bash without quoting or chaining pitfalls.
 console.log("\n--- Publishing ---");
 const published: string[] = [];
 for (const { pkg, newVersion } of updates) {
   console.log(`\nPublishing ${pkg.name}@${newVersion}...`);
   try {
-    execSync(`cd "${pkg.dir}" && bun publish --access public`, { stdio: "inherit" });
+    execSync("bun publish --access public", { cwd: pkg.dir, stdio: "inherit" });
     console.log(`✓ ${pkg.name}@${newVersion} published`);
     published.push(pkg.pkgPath);
   } catch (err) {
     console.error(`\n✗ Failed to publish ${pkg.name}@${newVersion}`);
-    // Roll back versions for packages that were NOT successfully published
     const unpublished = updates.filter(({ pkg: p }) => !published.includes(p.pkgPath));
     if (unpublished.length > 0) {
       console.error("\nRolling back version bumps for unpublished packages:");
@@ -209,4 +205,4 @@ for (const { pkg, newVersion } of updates) {
   }
 }
 
-console.log("\nAll done 🎉");
+console.log("\nAll done.");
