@@ -15,7 +15,7 @@
     "preview": "vite preview",
     "test": "bun test",
     "check:server": "tsc -p tsconfig.server.json --noEmit",
-    "install:clean": "rm -rf node_modules bun.lock && bun pm cache rm && HTTP_PROXY= HTTPS_PROXY= http_proxy= https_proxy= bun install"
+    "install:clean": "rimraf node_modules bun.lock && bun pm cache rm && bun install"
   },
   "dependencies": {
     "@tagma/sdk": "workspace:*",

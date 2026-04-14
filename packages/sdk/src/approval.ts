@@ -5,16 +5,18 @@ import { nowISO } from './utils';
 // ApprovalEvent, ApprovalListener, ApprovalGateway) live in the shared
 // @tagma/types package so trigger plugins can import them without
 // depending on the engine's runtime implementation. This module keeps
-// only the in-memory implementation.
+// only the in-memory implementation. Internal SDK imports go through
+// ./types (the engine-side re-export) for consistency with the rest of
+// the SDK source.
 import type {
   ApprovalRequest, ApprovalDecision, ApprovalEvent, ApprovalListener, ApprovalGateway,
-} from '@tagma/types';
+} from './types';
 
 // Re-export for existing engine-side consumers that import from this file.
 export type {
   ApprovalRequest, ApprovalDecision, ApprovalOutcome, ApprovalEvent,
   ApprovalListener, ApprovalGateway,
-} from '@tagma/types';
+} from './types';
 
 // ═══ Default In-Memory Implementation ═══
 

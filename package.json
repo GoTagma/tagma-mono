@@ -1,34 +1,35 @@
 {
   "name": "tagma-mono",
   "private": true,
+  "packageManager": "bun@1.3.7",
   "workspaces": [
-    "packages/types",
-    "packages/sdk",
-    "packages/driver-codex",
-    "packages/driver-opencode",
-    "packages/editor"
+    "packages/*"
   ],
   "scripts": {
-    "build": "bun run build:types && bun run build:sdk",
+    "postinstall": "bun run build:types && bun run build:sdk",
+    "build": "bun run build:types && bun run build:sdk && bun run build:drivers",
     "build:types": "bun run --filter @tagma/types build",
     "build:sdk": "bun run --filter @tagma/sdk build",
     "build:drivers": "bun run --filter @tagma/driver-codex build && bun run --filter @tagma/driver-opencode build",
     "build:editor": "bun run --filter tagma-editor build",
-    "build:all": "bun run build:types && bun run build:sdk && bun run build:drivers",
-    "check": "bun run check:types && bun run check:sdk && bun run check:server",
+    "check": "bun run check:types && bun run check:sdk && bun run check:driver-codex && bun run check:driver-opencode && bun run check:server && bun run check:client && bun run check:tests",
     "check:types": "tsc -p packages/types/tsconfig.json --noEmit",
     "check:sdk": "tsc -p packages/sdk/tsconfig.json --noEmit",
+    "check:driver-codex": "tsc -p packages/driver-codex/tsconfig.json --noEmit",
+    "check:driver-opencode": "tsc -p packages/driver-opencode/tsconfig.json --noEmit",
     "check:server": "tsc -p packages/editor/tsconfig.server.json --noEmit",
+    "check:client": "tsc -p packages/editor/tsconfig.json --noEmit",
+    "check:tests": "tsc -p packages/editor/tsconfig.test.json --noEmit",
     "test": "bun run --filter '*' test",
     "dev:editor": "bun run --filter tagma-editor dev",
     "dev:server": "bun run --filter tagma-editor dev:server",
     "dev:client": "bun run --filter tagma-editor dev:client",
-    "publish:types": "cd packages/types && bun run build && npm publish",
-    "publish:driver-codex": "cd packages/driver-codex && bun run build && npm publish",
-    "publish:driver-opencode": "cd packages/driver-opencode && bun run build && npm publish",
-    "publish:sdk": "cd packages/sdk && bun run build && npm publish",
+    "publish:types": "cd packages/types && bun run build && bun publish",
+    "publish:driver-codex": "cd packages/driver-codex && bun run build && bun publish",
+    "publish:driver-opencode": "cd packages/driver-opencode && bun run build && bun publish",
+    "publish:sdk": "cd packages/sdk && bun run build && bun publish",
     "publish:all": "bun run publish:types && bun run publish:driver-codex && bun run publish:driver-opencode && bun run publish:sdk",
-    "publish:dry": "cd packages/types && npm publish --dry-run && cd ../driver-codex && npm publish --dry-run && cd ../driver-opencode && npm publish --dry-run && cd ../sdk && npm publish --dry-run",
+    "publish:dry": "cd packages/types && bun publish --dry-run && cd ../driver-codex && bun publish --dry-run && cd ../driver-opencode && bun publish --dry-run && cd ../sdk && bun publish --dry-run",
     "version:types:patch": "cd packages/types && npm version patch",
     "version:types:minor": "cd packages/types && npm version minor",
     "version:types:major": "cd packages/types && npm version major",
@@ -41,6 +42,9 @@
     "version:sdk:patch": "cd packages/sdk && npm version patch",
     "version:sdk:minor": "cd packages/sdk && npm version minor",
     "version:sdk:major": "cd packages/sdk && npm version major",
-    "clean": "rm -rf packages/*/node_modules packages/*/dist node_modules bun.lock"
+    "clean": "rimraf packages/*/node_modules packages/*/dist node_modules bun.lock"
+  },
+  "devDependencies": {
+    "rimraf": "^6.0.1"
   }
 }
