@@ -1,3 +1,83 @@
+// ═══ Pipeline types — direct re-export from @tagma/types ═══
+//
+// Prior to 2026-04 this file hand-wrote a local copy of every pipeline
+// shape (RawPipelineConfig, RawTaskConfig, Permissions, ...) and guarded
+// against drift with a block of `_drift*` assertions at the bottom. With
+// the monorepo in place, we consume `@tagma/types` directly so drift is
+// impossible. The only adjustment we still make is stripping `readonly`
+// — the Zustand-backed editor store uses spread-based updates and some
+// call sites assign to entire slots, which doesn't compose with SDK's
+// fully-readonly interfaces. Everything else flows through unchanged.
+import type {
+  Permissions as SdkPermissions,
+  HookCommand as SdkHookCommand,
+  HooksConfig as SdkHooksConfig,
+  MiddlewareConfig as SdkMiddlewareConfig,
+  TriggerConfig as SdkTriggerConfig,
+  CompletionConfig as SdkCompletionConfig,
+  RawPipelineConfig as SdkRawPipelineConfig,
+  RawTrackConfig as SdkRawTrackConfig,
+  RawTaskConfig as SdkRawTaskConfig,
+  TaskStatus as SdkTaskStatus,
+  ApprovalOutcome as SdkApprovalOutcome,
+  ApprovalRequest as SdkApprovalRequest,
+  DriverCapabilities as SdkDriverCapabilities,
+  PluginCategory as SdkPluginCategory,
+  TemplateParamDef as SdkTemplateParamDef,
+} from '@tagma/types';
+
+// Recursively strip `readonly` from object fields and array element
+// wrappers. Primitives, unions of primitives, and untyped index
+// signatures pass through unchanged.
+type Mutable<T> =
+  T extends readonly (infer U)[]
+    ? Mutable<U>[]
+    : T extends object
+      ? { -readonly [K in keyof T]: Mutable<T[K]> }
+      : T;
+
+export type Permissions = Mutable<SdkPermissions>;
+export type HookCommand = Mutable<SdkHookCommand>;
+export type HooksConfig = Mutable<SdkHooksConfig>;
+export type RawPipelineConfig = Mutable<SdkRawPipelineConfig>;
+export type RawTrackConfig = Mutable<SdkRawTrackConfig>;
+export type RawTaskConfig = Mutable<SdkRawTaskConfig>;
+export type DriverCapabilities = Mutable<SdkDriverCapabilities>;
+export type TemplateParamDef = Mutable<SdkTemplateParamDef>;
+export type TaskStatus = SdkTaskStatus;
+export type ApprovalOutcome = SdkApprovalOutcome;
+export type PluginCategory = SdkPluginCategory;
+
+// The SDK's MiddlewareConfig / TriggerConfig / CompletionConfig are all
+// `{ type: string; [key: string]: unknown }`. The named fields below are
+// editor-side hints: they give us autocomplete in the form panels while
+// still satisfying the SDK base's open index signature at the protocol
+// level.
+export type MiddlewareConfig = Mutable<SdkMiddlewareConfig> & {
+  file?: string;
+  label?: string;
+};
+
+export type TriggerConfig = Mutable<SdkTriggerConfig> & {
+  message?: string;
+  timeout?: string;
+  path?: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type CompletionConfig = Mutable<SdkCompletionConfig> & {
+  expect?: number | number[];
+  path?: string;
+  kind?: 'file' | 'dir' | 'any';
+  min_size?: number;
+  check?: string;
+  timeout?: string;
+};
+
+// Historical alias — the editor UI surface names it `ApprovalRequestInfo`
+// while the SDK calls it `ApprovalRequest`. Shape is identical.
+export type ApprovalRequestInfo = Mutable<SdkApprovalRequest>;
+
 const BASE = '/api';
 
 /**
@@ -176,101 +256,10 @@ export interface ServerState {
 }
 
 /**
- * Driver capability flags (F2) mirrored from @tagma/types DriverCapabilities.
- * Kept as a local mirror so this file stays free of SDK imports.
+ * H8: non-blocking style hints vs fatal errors. `ValidationError` lives in
+ * `@tagma/sdk` (not `@tagma/types`) so we keep the local shape for now; the
+ * editor only ever reads these three fields off the payload.
  */
-export interface DriverCapabilities {
-  sessionResume: boolean;
-  systemPrompt: boolean;
-  outputFormat: boolean;
-}
-
-export type HookCommand = string | string[];
-
-export interface HooksConfig {
-  pipeline_start?: HookCommand;
-  task_start?: HookCommand;
-  task_success?: HookCommand;
-  task_failure?: HookCommand;
-  pipeline_complete?: HookCommand;
-  pipeline_error?: HookCommand;
-}
-
-export interface Permissions {
-  read: boolean;
-  write: boolean;
-  execute: boolean;
-}
-
-export interface MiddlewareConfig {
-  type: string;
-  file?: string;
-  label?: string;
-  [key: string]: unknown;
-}
-
-export interface TriggerConfig {
-  type: string;
-  message?: string;
-  timeout?: string;
-  path?: string;
-  metadata?: Record<string, unknown>;
-}
-
-export interface CompletionConfig {
-  type: string;
-  expect?: number | number[];
-  path?: string;
-  kind?: 'file' | 'dir' | 'any';
-  min_size?: number;
-  check?: string;
-  timeout?: string;
-}
-
-export interface RawPipelineConfig {
-  name: string;
-  driver?: string;
-  timeout?: string;
-  plugins?: string[];
-  hooks?: HooksConfig;
-  tracks: RawTrackConfig[];
-}
-
-export interface RawTrackConfig {
-  id: string;
-  name: string;
-  color?: string;
-  driver?: string;
-  model_tier?: string;
-  agent_profile?: string;
-  cwd?: string;
-  permissions?: Permissions;
-  on_failure?: 'skip_downstream' | 'stop_all' | 'ignore';
-  middlewares?: MiddlewareConfig[];
-  tasks: RawTaskConfig[];
-}
-
-export interface RawTaskConfig {
-  id: string;
-  name?: string;
-  prompt?: string;
-  command?: string;
-  depends_on?: string[];
-  continue_from?: string;
-  output?: string;
-  driver?: string;
-  model_tier?: string;
-  agent_profile?: string;
-  cwd?: string;
-  timeout?: string;
-  permissions?: Permissions;
-  middlewares?: MiddlewareConfig[];
-  trigger?: TriggerConfig;
-  completion?: CompletionConfig;
-  use?: string;
-  with?: Record<string, unknown>;
-}
-
 export interface ValidationError {
   path: string;
   message: string;
@@ -282,48 +271,6 @@ export interface DagEdge {
   from: string;
   to: string;
 }
-
-// ─────────────────────────────────────────────────────────────────
-// SDK type-drift detection (§2.3)
-//
-// The interfaces above are deliberately hand-written with mutable,
-// optional fields so zustand state updates and spread-based edits stay
-// ergonomic. @tagma/types is the source of truth, so the assertions
-// below fail to compile whenever the SDK grows a new field that hasn't
-// been mirrored here. When that happens, add the field to the matching
-// client interface.
-// ─────────────────────────────────────────────────────────────────
-import type {
-  Permissions as SdkPermissions,
-  HooksConfig as SdkHooksConfig,
-  RawPipelineConfig as SdkRawPipelineConfig,
-  RawTrackConfig as SdkRawTrackConfig,
-  RawTaskConfig as SdkRawTaskConfig,
-  TaskStatus as SdkTaskStatus,
-  ApprovalOutcome as SdkApprovalOutcome,
-  DriverCapabilities as SdkDriverCapabilities,
-  ApprovalRequest as SdkApprovalRequest,
-} from '@tagma/types';
-
-// Object drift: every key added to the SDK must be mirrored in the client.
-type _KeysMirrored<Client, Sdk> =
-  Exclude<keyof Sdk, keyof Client> extends never ? true : never;
-
-// Union drift: every variant in the SDK must be accepted by the client.
-type _UnionMirrored<ClientUnion, SdkUnion> =
-  SdkUnion extends ClientUnion ? true : never;
-
-/* eslint-disable @typescript-eslint/no-unused-vars */
-const _driftPermissions: _KeysMirrored<Permissions, SdkPermissions> = true;
-const _driftHooks: _KeysMirrored<HooksConfig, SdkHooksConfig> = true;
-const _driftRawPipeline: _KeysMirrored<RawPipelineConfig, SdkRawPipelineConfig> = true;
-const _driftRawTrack: _KeysMirrored<RawTrackConfig, SdkRawTrackConfig> = true;
-const _driftRawTask: _KeysMirrored<RawTaskConfig, SdkRawTaskConfig> = true;
-const _driftApprovalRequest: _KeysMirrored<ApprovalRequestInfo, SdkApprovalRequest> = true;
-const _driftDriverCaps: _KeysMirrored<DriverCapabilities, SdkDriverCapabilities> = true;
-const _driftTaskStatus: _UnionMirrored<TaskStatus, SdkTaskStatus> = true;
-const _driftApprovalOutcome: _UnionMirrored<ApprovalOutcome, SdkApprovalOutcome> = true;
-/* eslint-enable @typescript-eslint/no-unused-vars */
 
 /**
  * F10: Plugin schema metadata. Optional on the registry — the SDK's built-in
@@ -350,21 +297,11 @@ export interface PluginSchemaDescriptor {
 }
 
 /**
- * F1: Template parameter definition (mirrors SDK's TemplateParamDef).
- */
-export interface TemplateParamDef {
-  readonly type?: 'string' | 'path' | 'enum' | 'number';
-  readonly default?: unknown;
-  readonly description?: string;
-  readonly enum?: readonly string[];
-  readonly min?: number;
-  readonly max?: number;
-}
-
-/**
  * F1: A template manifest discovered from `@tagma/template-*` packages in the
  * current workspace's node_modules. `ref` is the value users drop into
- * `task.use`; `params` drives the generated parameter form.
+ * `task.use`; `params` drives the generated parameter form. `tasks` is kept
+ * as `unknown[]` because the editor only cares about the count for display;
+ * the server already validates the real shape against the SDK.
  */
 export interface TemplateManifest {
   readonly ref: string;
@@ -431,7 +368,6 @@ export interface PluginListResult {
 // The SDK defines exactly four plugin categories (see tagma-sdk/src/registry.ts
 // VALID_CATEGORIES). Anything else returned from an upstream source is
 // considered invalid and is filtered out server-side.
-export type PluginCategory = 'drivers' | 'triggers' | 'completions' | 'middlewares';
 
 export interface MarketplaceEntry {
   name: string;
@@ -493,8 +429,6 @@ export interface FsListResult {
 
 // ── Run types ──
 
-export type TaskStatus = 'idle' | 'waiting' | 'running' | 'success' | 'failed' | 'timeout' | 'skipped' | 'blocked';
-
 export type TaskLogLevel = 'info' | 'warn' | 'error' | 'debug' | 'section' | 'quiet';
 
 export interface TaskLogLine {
@@ -543,20 +477,6 @@ export interface RunState {
   tasks: RunTaskState[];
   error: string | null;
 }
-
-// Approval request mirrored from SDK ApprovalRequest — kept as a local
-// mirror to avoid coupling this client to the SDK package directly.
-export interface ApprovalRequestInfo {
-  id: string;
-  taskId: string;
-  trackId?: string;
-  message: string;
-  createdAt: string;
-  timeoutMs: number;
-  metadata?: Record<string, unknown>;
-}
-
-export type ApprovalOutcome = 'approved' | 'rejected' | 'timeout' | 'aborted';
 
 export type RunEvent =
   | { type: 'run_start'; runId: string; tasks: RunTaskState[]; seq?: number }
