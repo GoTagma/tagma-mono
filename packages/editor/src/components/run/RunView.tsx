@@ -4,7 +4,7 @@
 // consistent with the editor.
 
 import { useMemo, useCallback, useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Square, Loader2, Check, X, LayoutGrid, Settings, Search, Package, ChevronDown, ChevronRight, Clock, SkipForward, Ban, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Square, Loader2, Check, X, LayoutGrid, Settings, Search, Package, ChevronDown, ChevronRight, Clock, SkipForward, Ban, AlertCircle, RefreshCw } from 'lucide-react';
 import { useRunStore } from '../../store/run-store';
 import { TaskCard } from '../board/TaskCard';
 import { TrackLane } from '../board/TrackLane';
@@ -274,9 +274,23 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
   }, [selectedTaskId, tasks, config]);
 
   const counts = countByStatus(tasks);
-  // History browser is shown when the user explicitly opened it via the
-  // History button, OR as a fallback when the engine is idle.
-  const showHistory = viewMode === 'history' || !isActive;
+  // History browser is shown only when the user explicitly opened it via
+  // the History button. We intentionally do NOT fall back to the history
+  // view when `status === 'idle'`: during a Back-from-live-run transition
+  // the store atomically resets status to 'idle', and AnimatePresence
+  // keeps the RunView mounted for its exit animation — with a fallback
+  // here, the live canvas would flip to the history browser for a frame
+  // before the exit completes, producing a visible flash.
+  const showHistory = viewMode === 'history';
+
+  // Refresh-button state for the history browser: the button lives in
+  // the RunView toolbar (next to Back + pipeline name) so the h-11 bar
+  // stays the same between live and history modes. Bumping
+  // `historyRefreshToken` tells RunHistoryBrowser to reload; it reports
+  // its loading state back via `onLoadingChange` so the spinner stays
+  // in sync.
+  const [historyRefreshToken, setHistoryRefreshToken] = useState(0);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   // Keyboard: Ctrl+F opens search, Escape clears selection or closes search.
   // In history mode the search target (the run canvas) isn't rendered, so
@@ -374,9 +388,26 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
           <span className="text-xs font-medium text-tagma-text truncate max-w-[160px]">{config.name}</span>
         </div>
 
-        {/* In history mode the header collapses to Back + pipeline name —
-            none of the live-run controls (status, counts, approvals, plugins,
-            settings, search, abort) make sense when browsing past runs. */}
+        {/* In history mode the header collapses to Back + pipeline name
+            plus a Refresh button pinned on the right — none of the live-
+            run controls (status, counts, approvals, plugins, settings,
+            search, abort) make sense when browsing past runs. */}
+        {showHistory && (
+          <>
+            <div className="flex-1" />
+            <button
+              type="button"
+              onClick={() => setHistoryRefreshToken((t) => t + 1)}
+              disabled={historyLoading}
+              title="Reload run history"
+              className="flex items-center gap-1.5 text-xs text-tagma-muted hover:text-tagma-text transition-colors px-2 py-1 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <RefreshCw size={11} className={historyLoading ? 'animate-spin' : ''} />
+              <span>Refresh</span>
+            </button>
+          </>
+        )}
+
         {!showHistory && (
         <>
         <div className="w-px h-5 bg-tagma-border" />
@@ -555,7 +586,10 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
       <div className="flex-1 flex overflow-hidden">
         {showHistory ? (
           <div className="flex-1 overflow-hidden">
-            <RunHistoryBrowser />
+            <RunHistoryBrowser
+              refreshToken={historyRefreshToken}
+              onLoadingChange={setHistoryLoading}
+            />
           </div>
         ) : (
           <>
