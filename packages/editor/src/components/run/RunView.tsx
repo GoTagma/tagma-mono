@@ -195,10 +195,10 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
     for (const [, pos] of taskPositions) {
       if (pos.x + TASK_W > maxX) maxX = pos.x + TASK_W;
     }
-    return maxX + CANVAS_PAD_RIGHT;
+    return Math.max(maxX + CANVAS_PAD_RIGHT, 2000);
   }, [taskPositions]);
 
-  const canvasHeight = config.tracks.length * TRACK_H;
+  const canvasHeight = Math.max(config.tracks.length * TRACK_H, 200);
 
   // Per-track parallel warning flag. Editor BoardCanvas computes this
   // from dagEdges; we do the same so the Run view's TrackLane shows the
@@ -602,11 +602,11 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
               <div
                 ref={contentRef}
                 id={RUN_SCROLL_ID}
-                className="flex-1 overflow-auto timeline-grid hide-scrollbar"
+                className="flex-1 min-w-0 overflow-auto timeline-grid hide-scrollbar"
                 onScroll={syncScroll}
                 onMouseDown={handlePanMouseDown}
               >
-                <div className="relative cursor-grab active:cursor-grabbing" style={{ width: canvasWidth, height: canvasHeight }}
+                <div className="relative w-full cursor-grab active:cursor-grabbing" style={{ minWidth: canvasWidth, minHeight: canvasHeight }}
                   onClick={() => { if (!panDidDragRef.current) selectTask(null); }}>
                   {/* Track row backgrounds — even/odd classes match the
                       editor so the zebra striping is identical. */}
@@ -621,7 +621,7 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
                   ))}
 
                   {/* Edges */}
-                  <svg className="absolute inset-0 pointer-events-none" style={{ width: canvasWidth, height: canvasHeight }}>
+                  <svg className="absolute inset-0 pointer-events-none" width={canvasWidth} height={canvasHeight} style={{ overflow: 'visible' }}>
                     {edges.map((e) => (
                       <path key={e.key} d={e.d} fill="none" stroke="rgba(107,114,128,0.25)" strokeWidth={1.5} />
                     ))}
