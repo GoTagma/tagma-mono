@@ -29,6 +29,18 @@
     "publish:sdk": "cd packages/sdk && bun run build && npm publish",
     "publish:all": "bun run publish:types && bun run publish:driver-codex && bun run publish:driver-opencode && bun run publish:sdk",
     "publish:dry": "cd packages/types && npm publish --dry-run && cd ../driver-codex && npm publish --dry-run && cd ../driver-opencode && npm publish --dry-run && cd ../sdk && npm publish --dry-run",
+    "version:types:patch": "cd packages/types && npm version patch",
+    "version:types:minor": "cd packages/types && npm version minor",
+    "version:types:major": "cd packages/types && npm version major",
+    "version:codex:patch": "cd packages/driver-codex && npm version patch",
+    "version:codex:minor": "cd packages/driver-codex && npm version minor",
+    "version:codex:major": "cd packages/driver-codex && npm version major",
+    "version:opencode:patch": "cd packages/driver-opencode && npm version patch",
+    "version:opencode:minor": "cd packages/driver-opencode && npm version minor",
+    "version:opencode:major": "cd packages/driver-opencode && npm version major",
+    "version:sdk:patch": "cd packages/sdk && npm version patch",
+    "version:sdk:minor": "cd packages/sdk && npm version minor",
+    "version:sdk:major": "cd packages/sdk && npm version major",
     "clean": "rm -rf packages/*/node_modules packages/*/dist node_modules bun.lock"
   }
 }
