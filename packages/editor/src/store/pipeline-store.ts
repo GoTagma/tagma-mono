@@ -145,6 +145,12 @@ interface PipelineState {
   addDependency: (fromTrackId: string, fromTaskId: string, toTrackId: string, toTaskId: string) => void;
   removeDependency: (trackId: string, taskId: string, depRef: string) => void;
   setRegistry: (registry: PluginRegistry) => void;
+  /**
+   * Re-fetch /api/state without touching layout or undo history.
+   * Used after plugin install/uninstall so validationErrors (which depend
+   * on the server's live SDK registry) reflect the new known-types set.
+   */
+  refreshServerState: () => Promise<void>;
   selectTask: (qualifiedId: string | null) => void;
   toggleTaskSelection: (qualifiedId: string) => void;
   selectTrack: (trackId: string | null) => void;
@@ -828,6 +834,15 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
       ),
 
     setRegistry: (registry) => set({ registry }),
+
+    refreshServerState: async () => {
+      try {
+        const state = await api.getState();
+        applyState(state);
+      } catch (e) {
+        set({ errorMessage: 'Failed to refresh state: ' + errorToMessage(e) });
+      }
+    },
 
     selectTask: (qualifiedId) => set({
       selectedTaskId: qualifiedId,

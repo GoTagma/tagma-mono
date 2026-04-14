@@ -16,6 +16,31 @@ function isValidDuration(input: string): boolean {
 const VALID_ON_FAILURE = new Set(['skip_downstream', 'stop_all', 'ignore']);
 const VALID_MODEL_TIERS = new Set(['low', 'medium', 'high']);
 
+// Built-in plugin types always known to the SDK core, regardless of which
+// external plugin packages are installed. These MUST stay in sync with the
+// types that `bootstrapBuiltins()` registers, otherwise the editor will
+// emit false-positive "unknown type" warnings for stock pipelines.
+const BUILTIN_TRIGGER_TYPES: ReadonlySet<string> = new Set(['manual', 'file']);
+const BUILTIN_COMPLETION_TYPES: ReadonlySet<string> = new Set([
+  'exit_code', 'file_exists', 'output_check',
+]);
+const BUILTIN_MIDDLEWARE_TYPES: ReadonlySet<string> = new Set(['static_context']);
+
+/**
+ * Optional second argument to `validateRaw`: the set of plugin types currently
+ * registered in the SDK runtime, keyed by category. Hosts (e.g. the editor
+ * server) pass this so `validateRaw` can emit a soft warning when a task
+ * references a type that isn't loaded — otherwise the Task panel would show
+ * no hint and the pipeline would only blow up at run time. Callers that
+ * legitimately validate a config offline (before plugins are loaded) can omit
+ * this argument and no plugin warnings will be produced.
+ */
+export interface KnownPluginTypes {
+  readonly triggers?: readonly string[];
+  readonly completions?: readonly string[];
+  readonly middlewares?: readonly string[];
+}
+
 export type ValidationSeverity = 'error' | 'warning';
 
 export interface ValidationError {
@@ -38,11 +63,28 @@ export interface ValidationError {
  * Checks structure, required fields, prompt/command exclusivity,
  * depends_on reference integrity, and circular dependencies.
  *
- * Does NOT check plugin registration — plugins may not be loaded yet
- * when the frontend is editing a config offline.
+ * Plugin type checks: when `knownTypes` is provided, task/track references to
+ * trigger/completion/middleware types that are neither built-in nor in the
+ * supplied set produce a soft warning (severity: 'warning') — these don't
+ * block save/run but light up the Task panel so users discover the broken
+ * reference in the editor instead of at run time. Omit `knownTypes` to skip
+ * plugin checks entirely (offline/pre-load validation).
  */
-export function validateRaw(config: RawPipelineConfig): ValidationError[] {
+export function validateRaw(
+  config: RawPipelineConfig,
+  knownTypes?: KnownPluginTypes,
+): ValidationError[] {
   const errors: ValidationError[] = [];
+
+  const knownTriggers = knownTypes
+    ? new Set<string>([...BUILTIN_TRIGGER_TYPES, ...(knownTypes.triggers ?? [])])
+    : null;
+  const knownCompletions = knownTypes
+    ? new Set<string>([...BUILTIN_COMPLETION_TYPES, ...(knownTypes.completions ?? [])])
+    : null;
+  const knownMiddlewares = knownTypes
+    ? new Set<string>([...BUILTIN_MIDDLEWARE_TYPES, ...(knownTypes.middlewares ?? [])])
+    : null;
 
   // ── Top level ──
   if (!config.name?.trim()) {
@@ -96,6 +138,22 @@ export function validateRaw(config: RawPipelineConfig): ValidationError[] {
     }
     if (track.model_tier && !VALID_MODEL_TIERS.has(track.model_tier)) {
       errors.push({ path: `${trackPath}.model_tier`, message: `Invalid model_tier "${track.model_tier}". Expected "low", "medium", or "high".` });
+    }
+
+    // Track-level middlewares can reference a plugin that was uninstalled
+    // after the YAML was written — surface a warning so the user notices
+    // before hitting Run.
+    if (knownMiddlewares && track.middlewares) {
+      for (let mi = 0; mi < track.middlewares.length; mi++) {
+        const mw = track.middlewares[mi];
+        if (mw?.type && !knownMiddlewares.has(mw.type)) {
+          errors.push({
+            path: `${trackPath}.middlewares[${mi}].type`,
+            message: `Middleware type "${mw.type}" is not registered. Install the plugin (e.g. @tagma/middleware-${mw.type}) or remove the reference — the pipeline will fail at run time.`,
+            severity: 'warning',
+          });
+        }
+      }
     }
 
     if (!track.tasks || track.tasks.length === 0) {
@@ -155,6 +213,37 @@ export function validateRaw(config: RawPipelineConfig): ValidationError[] {
       }
       if (task.model_tier && !VALID_MODEL_TIERS.has(task.model_tier)) {
         errors.push({ path: `${taskPath}.model_tier`, message: `Invalid model_tier "${task.model_tier}". Expected "low", "medium", or "high".` });
+      }
+
+      // ── Plugin type warnings (trigger / completion / middlewares) ──
+      // Only fire when the host supplied a `knownTypes` snapshot, so offline
+      // validation stays quiet. The messages deliberately name the npm
+      // scope so users can copy-paste the install command.
+      if (knownTriggers && task.trigger?.type && !knownTriggers.has(task.trigger.type)) {
+        errors.push({
+          path: `${taskPath}.trigger.type`,
+          message: `Trigger type "${task.trigger.type}" is not registered. Install the plugin (e.g. @tagma/trigger-${task.trigger.type}) or the task will fail at run time.`,
+          severity: 'warning',
+        });
+      }
+      if (knownCompletions && task.completion?.type && !knownCompletions.has(task.completion.type)) {
+        errors.push({
+          path: `${taskPath}.completion.type`,
+          message: `Completion type "${task.completion.type}" is not registered. Install the plugin (e.g. @tagma/completion-${task.completion.type}) or the task will fail at run time.`,
+          severity: 'warning',
+        });
+      }
+      if (knownMiddlewares && task.middlewares) {
+        for (let mi = 0; mi < task.middlewares.length; mi++) {
+          const mw = task.middlewares[mi];
+          if (mw?.type && !knownMiddlewares.has(mw.type)) {
+            errors.push({
+              path: `${taskPath}.middlewares[${mi}].type`,
+              message: `Middleware type "${mw.type}" is not registered. Install the plugin (e.g. @tagma/middleware-${mw.type}) or remove the reference — the pipeline will fail at run time.`,
+              severity: 'warning',
+            });
+          }
+        }
       }
 
       // ── depends_on reference checks ──

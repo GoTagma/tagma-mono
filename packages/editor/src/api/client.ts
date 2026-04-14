@@ -363,6 +363,23 @@ export interface PluginListResult {
   autoLoadErrors?: ReadonlyArray<{ name: string; message: string }>;
 }
 
+export interface PluginUninstallImpactEntry {
+  /** Workspace-relative YAML path, e.g. ".tagma/build.yaml". */
+  file: string;
+  /** Human-readable location within the file. */
+  location: string;
+  trackId: string;
+  taskId: string | null;
+}
+
+export interface PluginUninstallImpact {
+  name: string;
+  /** Null when the plugin couldn't be classified; `impacts` is empty in that case. */
+  category: PluginCategory | null;
+  type: string | null;
+  impacts: readonly PluginUninstallImpactEntry[];
+}
+
 // ── Marketplace types ──
 //
 // The SDK defines exactly four plugin categories (see tagma-sdk/src/registry.ts
@@ -744,6 +761,15 @@ export const api = {
 
   uninstallPlugin: (name: string) =>
     request<PluginActionResult>('/plugins/uninstall', { method: 'POST', body: jsonBody({ name }) }),
+
+  /**
+   * Pre-flight check for uninstall: returns the YAML locations that
+   * reference the plugin's (category, type) so the UI can show a confirm
+   * dialog before orphaning tasks. Safe to ignore for plugins that can't
+   * be classified — `category` is null in that case.
+   */
+  uninstallImpact: (name: string) =>
+    request<PluginUninstallImpact>(`/plugins/uninstall-impact?name=${encodeURIComponent(name)}`),
 
   loadPlugin: (name: string) =>
     request<PluginActionResult>('/plugins/load', { method: 'POST', body: jsonBody({ name }) }),

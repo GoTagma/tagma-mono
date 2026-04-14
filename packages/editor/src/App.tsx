@@ -43,7 +43,7 @@ export function App() {
     setPipelineName, updatePipelineFields, addTrack, renameTrack, updateTrackFields, deleteTrack, moveTrackTo,
     addTask, updateTask, deleteTask, transferTaskToTrack,
     addDependency, removeDependency,
-    selectTask, toggleTaskSelection, selectTrack, pinTask, unpinTask, pinTrack, unpinTrack, setTaskPosition, setRegistry,
+    selectTask, toggleTaskSelection, selectTrack, pinTask, unpinTask, pinTrack, unpinTrack, setTaskPosition, setRegistry, refreshServerState,
     setWorkDir, saveFile, saveFileAs, newPipeline, importFile, exportFile, openFile,
     exportYaml, importYaml, init, restoreDraft,
   } = usePipelineStore();
@@ -747,6 +747,7 @@ export function App() {
             updatePipelineFields({ plugins: plugins.length > 0 ? plugins : undefined })
           }
           onRequestBrowseLocal={() => setExplorer({ mode: 'directory', purpose: 'plugin-import' })}
+          onRefreshServerState={refreshServerState}
         />
         <ErrorToast />
       </motion.div>
