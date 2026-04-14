@@ -34,7 +34,10 @@ import type {
 - `PipelineConfig` / `RawPipelineConfig` -- top-level pipeline definition
 - `TrackConfig` / `RawTrackConfig` -- parallel execution track
 - `TaskConfig` / `RawTaskConfig` -- individual task (AI prompt or shell command)
-- `HooksConfig` -- lifecycle hook commands
+- `HooksConfig` / `HookCommand` -- lifecycle hook commands
+- `OnFailure` -- track failure strategy: `'ignore' | 'skip_downstream' | 'stop_all'`
+- `Permissions` -- `{ read, write, execute }` capability flags
+- `TemplateConfig` / `TemplateParamDef` -- reusable task template definition
 
 ### Plugin Interfaces
 
@@ -42,14 +45,22 @@ import type {
 - `TriggerPlugin` -- watches for an event before a task starts (`watch`)
 - `CompletionPlugin` -- validates task output (`check`)
 - `MiddlewarePlugin` -- enriches prompts before execution (`enhance`)
+- `PluginManifest` -- shape of the `tagmaPlugin` field a plugin package declares in its `package.json` (`{ category, type }`). Hosts use this for auto-discovery without importing the module
+- `PluginSchema` / `PluginParamDef` / `PluginParamType` -- optional declarative form metadata so visual editors can render typed config forms for a plugin
+- `PluginCategory` -- `'drivers' | 'triggers' | 'completions' | 'middlewares'`
+- `PluginModule` -- runtime plugin entry shape (`pluginCategory`, `pluginType`, `default`)
 
 ### Runtime Types
 
-- `TaskResult` -- exit code, stdout, stderr, output path, session ID
-- `TaskState` -- mutable engine state for a running task
+- `TaskStatus` -- `'idle' | 'waiting' | 'running' | 'success' | 'failed' | 'timeout' | 'skipped' | 'blocked'`
+- `TaskResult` -- exit code, stdout/stderr, output path, duration, session ID, normalized output, failure kind
+- `TaskFailureKind` -- distinguishes *why* a task didn't return exit 0: `'timeout' | 'spawn_error' | 'exit_nonzero' | null`
+- `TaskState` -- mutable engine state for a running task (config, status, result, timestamps)
 - `SpawnSpec` -- args, stdin, cwd, env returned by a driver
 - `DriverCapabilities` -- declares session resume, system prompt, output format support
-- `ApprovalGateway` / `ApprovalRequest` / `ApprovalDecision` -- approval flow types
+- `DriverContext` / `DriverResultMeta` -- inputs and result metadata exchanged between driver and engine. `DriverResultMeta.forceFailure` lets a driver mark a task failed even when the CLI exited 0 (e.g. an error-JSON payload)
+- `ApprovalGateway` / `ApprovalRequest` / `ApprovalDecision` / `ApprovalEvent` / `ApprovalListener` / `ApprovalOutcome` -- approval flow types
+- `TriggerContext` / `CompletionContext` / `MiddlewareContext` -- contexts passed to plugin methods
 
 ## License
 

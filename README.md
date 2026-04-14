@@ -49,8 +49,7 @@ bun run dev:client     # Start Vite client only
 ### Build
 
 ```bash
-bun run build          # Build types + sdk (required before publishing)
-bun run build:all      # Build types + sdk + drivers
+bun run build          # Build types + sdk + drivers (required before publishing)
 bun run build:types    # Build @tagma/types only
 bun run build:sdk      # Build @tagma/sdk only
 bun run build:drivers  # Build both driver plugins
@@ -146,7 +145,7 @@ bun run publish:dry
 
 1. **No internal path imports** — packages only import from `@tagma/types`, `@tagma/sdk` public package names
 2. **No `latest`** — workspace packages use `workspace:*`, third-party deps use pinned ranges
-3. **Publish artifacts, not source** — types/sdk publish `.js` + `.d.ts` from `dist/`, not raw `.ts`
+3. **Published tarballs include both `dist/` and `src/`** — `dist/` is the runtime entry (`main` / `exports`); `src/` ships alongside so `declarationMap` / `sourceMap` can jump to the original TypeScript in IDEs
 4. **Editor uses public API only** — consumes sdk/types via workspace link, never reaches into `src/`
 
 ---

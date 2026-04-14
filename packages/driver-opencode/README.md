@@ -45,6 +45,7 @@ await loadPlugins(['@tagma/driver-opencode']);
 
 - **Model**: all tiers
 - **Output format**: `--format json` -- `parseResult` extracts session ID and normalized text from JSON output
+- **Error JSON handling**: opencode sometimes emits `{type: "error"}` JSON with exit code 0 for transient API failures. The driver detects this pattern in `parseResult` and returns `forceFailure: true` with the error message, so the engine marks the task as failed instead of silently succeeding with bogus output that downstream tasks would then consume
 - **Session resume**: supported via `--session` flag when `continue_from` references a task with a known session ID
 - **System prompt**: not supported -- `agent_profile` is prepended to the prompt
 - **Fallback**: when no session ID is available for `continue_from`, previous output is injected into the prompt text
