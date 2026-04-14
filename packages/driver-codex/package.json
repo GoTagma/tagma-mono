@@ -1,0 +1,44 @@
+{
+  "name": "@tagma/driver-codex",
+  "version": "0.1.9",
+  "description": "Codex CLI driver for tagma-sdk pipelines",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "tagma-plugin",
+    "tagma",
+    "driver",
+    "codex"
+  ],
+  "engines": {
+    "bun": ">=1.3"
+  },
+  "tagmaPlugin": {
+    "category": "drivers",
+    "type": "codex"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "bun run build"
+  },
+  "peerDependencies": {
+    "@tagma/types": "workspace:*",
+    "bun-types": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

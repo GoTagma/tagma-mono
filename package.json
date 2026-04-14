@@ -1,0 +1,34 @@
+{
+  "name": "tagma-mono",
+  "private": true,
+  "workspaces": [
+    "packages/types",
+    "packages/sdk",
+    "packages/driver-codex",
+    "packages/driver-opencode",
+    "packages/editor"
+  ],
+  "scripts": {
+    "build": "bun run build:types && bun run build:sdk",
+    "build:types": "bun run --filter @tagma/types build",
+    "build:sdk": "bun run --filter @tagma/sdk build",
+    "build:drivers": "bun run --filter @tagma/driver-codex build && bun run --filter @tagma/driver-opencode build",
+    "build:editor": "bun run --filter tagma-editor build",
+    "build:all": "bun run build:types && bun run build:sdk && bun run build:drivers",
+    "check": "bun run check:types && bun run check:sdk && bun run check:server",
+    "check:types": "tsc -p packages/types/tsconfig.json --noEmit",
+    "check:sdk": "tsc -p packages/sdk/tsconfig.json --noEmit",
+    "check:server": "tsc -p packages/editor/tsconfig.server.json --noEmit",
+    "test": "bun run --filter '*' test",
+    "dev:editor": "bun run --filter tagma-editor dev",
+    "dev:server": "bun run --filter tagma-editor dev:server",
+    "dev:client": "bun run --filter tagma-editor dev:client",
+    "publish:types": "cd packages/types && bun run build && npm publish",
+    "publish:driver-codex": "cd packages/driver-codex && bun run build && npm publish",
+    "publish:driver-opencode": "cd packages/driver-opencode && bun run build && npm publish",
+    "publish:sdk": "cd packages/sdk && bun run build && npm publish",
+    "publish:all": "bun run publish:types && bun run publish:driver-codex && bun run publish:driver-opencode && bun run publish:sdk",
+    "publish:dry": "cd packages/types && npm publish --dry-run && cd ../driver-codex && npm publish --dry-run && cd ../driver-opencode && npm publish --dry-run && cd ../sdk && npm publish --dry-run",
+    "clean": "rm -rf packages/*/node_modules packages/*/dist node_modules bun.lock"
+  }
+}

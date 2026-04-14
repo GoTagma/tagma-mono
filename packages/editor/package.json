@@ -1,0 +1,49 @@
+{
+  "name": "tagma-editor",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "engines": {
+    "bun": ">=1.3"
+  },
+  "scripts": {
+    "dev": "concurrently \"bun run dev:server\" \"bun run dev:client\"",
+    "dev:server": "bun --watch server/index.ts",
+    "dev:client": "vite",
+    "build": "vite build",
+    "start": "bun server/index.ts",
+    "preview": "vite preview",
+    "test": "bun test",
+    "check:server": "tsc -p tsconfig.server.json --noEmit",
+    "install:clean": "rm -rf node_modules bun.lock && bun pm cache rm && HTTP_PROXY= HTTPS_PROXY= http_proxy= https_proxy= bun install"
+  },
+  "dependencies": {
+    "@tagma/sdk": "workspace:*",
+    "@tagma/types": "workspace:*",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "js-yaml": "^4.1.0",
+    "lucide-react": "^0.468.0",
+    "motion": "^12.38.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tar": "^7.5.13",
+    "zustand": "^5.0.5"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.2",
+    "@types/js-yaml": "^4.0.9",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.2",
+    "@types/tar": "^7.0.87",
+    "@vitejs/plugin-react": "^4.4.1",
+    "autoprefixer": "^10.4.21",
+    "bun-types": "^1.3.11",
+    "concurrently": "^9.2.1",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.1"
+  }
+}
