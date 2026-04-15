@@ -113,11 +113,15 @@ export function TrackInfoPanel({ track, config, onClose }: TrackInfoPanelProps) 
               <Layers size={9} /> Middlewares ({middlewares.length})
             </label>
             <div className="border border-tagma-border/60 bg-tagma-bg/40 px-2.5 py-1.5 space-y-0.5">
-              {middlewares.map((mw, i) => (
-                <ConfigRow key={`${mw.type}-${i}`} label={mw.type}>
-                  {mw.label ?? mw.file ?? '—'}
-                </ConfigRow>
-              ))}
+              {middlewares.map((mw, i) => {
+                const label = typeof mw.label === 'string' ? mw.label : undefined;
+                const file = typeof mw.file === 'string' ? mw.file : undefined;
+                return (
+                  <ConfigRow key={`${mw.type}-${i}`} label={mw.type}>
+                    {label ?? file ?? '—'}
+                  </ConfigRow>
+                );
+              })}
             </div>
           </div>
         )}

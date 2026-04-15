@@ -163,8 +163,11 @@ describe('isPathWithin', () => {
     expect(isPathWithin(join(FAKE_WORKDIR, 'a', 'b'), FAKE_WORKDIR)).toBe(true);
   });
 
-  test('rejects equal paths (must be strictly inside)', () => {
-    expect(isPathWithin(FAKE_WORKDIR, FAKE_WORKDIR)).toBe(false);
+  test('accepts equal paths (root is within itself)', () => {
+    // path-utils.ts deliberately treats `child === root` as contained.
+    // Callers that need strict containment must check `relative === ''`
+    // themselves — see the contract comment in path-utils.ts.
+    expect(isPathWithin(FAKE_WORKDIR, FAKE_WORKDIR)).toBe(true);
   });
 
   test('rejects sibling paths', () => {

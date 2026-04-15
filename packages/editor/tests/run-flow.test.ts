@@ -27,7 +27,7 @@ function initialTasks(): RunTaskState[] {
     sessionId: null,
     normalizedOutput: null,
     resolvedDriver: null,
-    resolvedModelTier: null,
+    resolvedModel: null,
     resolvedPermissions: null,
   };
   return [
@@ -63,7 +63,7 @@ test('full run flow: start → task transitions → approval → stdout visible 
       status: 'running',
       startedAt: '2026-04-11T10:00:00.000Z',
       resolvedDriver: 'claude-code',
-      resolvedModelTier: 'medium',
+      resolvedModel: 'sonnet',
       seq: 2,
     },
     {
@@ -152,7 +152,7 @@ test('full run flow: start → task transitions → approval → stdout visible 
   expect(t1.outputPath).toBe('/logs/run_1/task_1.out.txt');
   expect(t1.sessionId).toBe('sess_plan_1');
   expect(t1.resolvedDriver).toBe('claude-code');
-  expect(t1.resolvedModelTier).toBe('medium');
+  expect(t1.resolvedModel).toBe('sonnet');
 
   const t2 = state.tasks.get('track_a.task_2')!;
   expect(t2.status).toBe('success');
@@ -163,7 +163,7 @@ test('full run flow: start → task transitions → approval → stdout visible 
   expect(t3.stdout).toBe('deployed!');
 });
 
-test('run flow: failure path with stderr visible and status=aborted', () => {
+test('run flow: failure path with stderr visible and status=failed', () => {
   const events: RunEvent[] = [
     { type: 'run_start', runId: 'run_fail', tasks: initialTasks(), seq: 1 },
     {
@@ -204,7 +204,9 @@ test('run flow: failure path with stderr visible and status=aborted', () => {
   ];
 
   const state = replay(events);
-  expect(state.status).toBe('aborted');
+  // A natural pipeline failure (run_end with success:false, no prior abort)
+  // maps to status='failed'. 'aborted' is reserved for user-initiated stops.
+  expect(state.status).toBe('failed');
   const t1 = state.tasks.get('track_a.task_1')!;
   expect(t1.status).toBe('failed');
   expect(t1.exitCode).toBe(1);

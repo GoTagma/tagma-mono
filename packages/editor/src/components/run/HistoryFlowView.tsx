@@ -114,7 +114,9 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
     for (const [, pos] of taskPositions) {
       if (pos.x + TASK_W > maxX) maxX = pos.x + TASK_W;
     }
-    return Math.max(maxX + CANVAS_PAD_RIGHT, 800);
+    // Match the live RunView canvas minimum so the history view has the
+    // same "always scroll, never snap-back" feel when side panels toggle.
+    return Math.max(maxX + CANVAS_PAD_RIGHT, 2000);
   }, [taskPositions]);
 
   const canvasHeight = Math.max(trackGroups.length * TRACK_H, 200);
@@ -125,7 +127,44 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
     }
   }, []);
 
-  const handleBackgroundClick = useCallback(() => {
+  // Drag-to-pan (matches BoardCanvas / RunView). Document-level listeners
+  // keep the drag alive even when the cursor leaves the canvas element,
+  // and `panDidDragRef` lets the subsequent click skip deselection when
+  // the gesture was actually a pan.
+  const panDidDragRef = useRef(false);
+  const handlePanMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const el = contentRef.current;
+    if (!el) return;
+    const startX = e.clientX, startY = e.clientY;
+    const startSL = el.scrollLeft, startST = el.scrollTop;
+    let started = false;
+    panDidDragRef.current = false;
+    const onMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - startX, dy = ev.clientY - startY;
+      if (!started) {
+        if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+        started = true;
+        panDidDragRef.current = true;
+      }
+      el.scrollLeft = startSL - dx;
+      el.scrollTop = startST - dy;
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    document.body.style.cursor = 'grabbing';
+    document.body.style.userSelect = 'none';
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    if (panDidDragRef.current) return;
     setSelectedTaskId(null);
     setSelectedTrackId(null);
   }, []);
@@ -140,150 +179,179 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
     return trackGroups.find((g) => g.id === selectedTrackId) ?? null;
   }, [selectedTrackId, trackGroups]);
 
+  // Highlight the track row when either a track was explicitly clicked OR
+  // a task inside that track is currently selected. The two selections are
+  // otherwise fully independent — clicking a task does NOT set the track
+  // selection, so closing the task panel cannot accidentally reveal the
+  // track panel.
+  const highlightTrackId = selectedTrackId ?? selectedTask?.trackId ?? null;
+
   return (
-    <div className="flex-1 flex overflow-hidden">
-      <div className="flex-1 flex overflow-hidden relative">
+    // The side panels are positioned `absolute` inside this relative wrapper
+    // so that opening/closing them does NOT reflow the canvas — matching the
+    // live RunView's feel and eliminating the "jerk" the user sees when the
+    // canvas is resized mid-scroll. `flex-1 h-full` ensures the canvas fills
+    // the detail-pane body both when that body is flex (flow view) and when
+    // it's a plain block fallback.
+    <div className="flex-1 h-full flex overflow-hidden relative">
+      <div
+        ref={headerRef}
+        className="shrink-0 border-r border-tagma-border overflow-hidden bg-tagma-surface/50"
+        style={{ width: HEADER_W }}
+      >
+        {trackGroups.map((tg, i) => {
+          const isSelected = highlightTrackId === tg.id;
+          const successCount = tg.tasks.filter((t) => t.status === 'success').length;
+          const failedCount = tg.tasks.filter((t) => t.status === 'failed').length;
+          return (
+            <div
+              key={tg.id}
+              className={`relative border-b border-tagma-border/60 overflow-hidden cursor-pointer transition-colors ${
+                isSelected ? 'bg-tagma-accent/6' : ''
+              } ${i % 2 === 0 ? 'track-row-even' : 'track-row-odd'}`}
+              style={{ height: TRACK_H, width: HEADER_W, boxSizing: 'border-box' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedTaskId(null);
+                setSelectedTrackId(tg.id);
+              }}
+            >
+              <div className="h-full flex items-center px-3 gap-2">
+                {tg.color && (
+                  <span className="w-2 h-2 shrink-0 rounded-sm" style={{ backgroundColor: tg.color }} />
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="text-[10px] font-medium text-tagma-text truncate">{tg.name}</div>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="text-[8px] font-mono text-tagma-muted-dim">{tg.tasks.length} tasks</span>
+                    {successCount > 0 && (
+                      <span className="text-[8px] font-mono text-tagma-success">{successCount} ok</span>
+                    )}
+                    {failedCount > 0 && (
+                      <span className="text-[8px] font-mono text-tagma-error">{failedCount} fail</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div
+        ref={contentRef}
+        className="flex-1 min-w-0 overflow-auto timeline-grid hide-scrollbar cursor-grab active:cursor-grabbing"
+        onScroll={syncScroll}
+        onMouseDown={handlePanMouseDown}
+      >
         <div
-          ref={headerRef}
-          className="shrink-0 border-r border-tagma-border overflow-hidden bg-tagma-surface/50"
-          style={{ width: HEADER_W }}
+          className="relative w-full"
+          style={{ minWidth: canvasWidth, minHeight: Math.max(canvasHeight, 0) }}
+          onClick={clearSelection}
         >
-          {trackGroups.map((tg, i) => {
-            const isSelected = selectedTrackId === tg.id && !selectedTaskId;
-            const successCount = tg.tasks.filter((t) => t.status === 'success').length;
-            const failedCount = tg.tasks.filter((t) => t.status === 'failed').length;
+          {trackGroups.map((tg, i) => (
+            <div
+              key={tg.id}
+              className={`absolute left-0 right-0 border-b border-tagma-border/40 cursor-grab active:cursor-grabbing ${i % 2 === 0 ? 'track-row-even' : 'track-row-odd'}`}
+              style={{ top: i * TRACK_H, height: TRACK_H }}
+              onMouseDown={handlePanMouseDown}
+              onClick={clearSelection}
+            />
+          ))}
+
+          <svg className="absolute left-0 top-0 pointer-events-none" width={canvasWidth} height={canvasHeight} style={{ overflow: 'visible' }}>
+            {edges.map((e) => (
+              <path key={e.key} d={e.d} fill="none" stroke="rgba(107,114,128,0.25)" strokeWidth={1.5} />
+            ))}
+          </svg>
+
+          {summary.tasks.map((task) => {
+            const pos = taskPositions.get(task.taskId);
+            if (!pos) return null;
+            const cfg = STATUS_CFG[task.status];
+            const Icon = cfg.icon;
+            const isSelected = selectedTaskId === task.taskId;
             return (
               <div
-                key={tg.id}
-                className={`relative border-b border-tagma-border/60 overflow-hidden cursor-pointer transition-colors ${
-                  isSelected ? 'bg-tagma-accent/6' : ''
-                } ${i % 2 === 0 ? 'track-row-even' : 'track-row-odd'}`}
-                style={{ height: TRACK_H, width: HEADER_W, boxSizing: 'border-box' }}
+                key={task.taskId}
+                data-task-id={task.taskId}
+                className={`absolute border select-none flex flex-col justify-center px-2.5 cursor-pointer transition-colors ${
+                  isSelected ? 'border-tagma-accent bg-tagma-accent/6' : 'border-tagma-border/70 bg-tagma-elevated hover:bg-tagma-elevated/80'
+                } ${cfg.bg && !isSelected ? cfg.bg : ''}`}
+                style={{ left: pos.x, top: pos.y, width: TASK_W, height: TASK_H }}
+                // Intentionally NOT stopping mousedown propagation: the pan
+                // handler on the parent resets `panDidDragRef` at the start
+                // of every gesture. If we swallow mousedown here, a prior
+                // drag's `true` value stays stuck and blocks all future task
+                // clicks. Letting mousedown bubble means the pan handler
+                // runs, resets the ref, and — because the user isn't moving
+                // while clicking — the flag stays `false` so the click
+                // handler below can select the task.
                 onClick={(e) => {
                   e.stopPropagation();
-                  setSelectedTrackId(tg.id);
-                  setSelectedTaskId(null);
+                  if (panDidDragRef.current) return;
+                  setSelectedTrackId(null);
+                  setSelectedTaskId(task.taskId);
                 }}
               >
-                <div className="h-full flex items-center px-3 gap-2">
-                  {tg.color && (
-                    <span className="w-2 h-2 shrink-0 rounded-sm" style={{ backgroundColor: tg.color }} />
+                {cfg.bar && (
+                  <div className={`absolute left-0 top-0 bottom-0 w-[2px] ${cfg.bar}`} />
+                )}
+                <div className="flex items-center h-[24px] gap-[6px] pointer-events-none min-w-0 overflow-hidden">
+                  <span className="text-[10px] font-medium truncate flex-1 leading-[24px] text-tagma-text">
+                    {task.taskName}
+                  </span>
+                  <span className="flex items-center gap-[3px] shrink-0">
+                    <Icon size={9} className={cfg.iconColor} />
+                    {task.durationMs != null && (
+                      <span className={`text-[8px] font-mono tabular-nums ${cfg.iconColor}`}>
+                        {formatDuration(task.durationMs)}
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <div className="flex items-center h-[16px] gap-[4px] pointer-events-none min-w-0 overflow-hidden bg-black/20 px-[3px]">
+                  {task.driver && (
+                    <span className="inline-flex items-center justify-center h-[14px] px-[4px] text-[7.5px] font-mono leading-[14px] shrink-0 bg-tagma-accent/12 text-tagma-accent/80">
+                      {task.driver}
+                    </span>
                   )}
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[10px] font-medium text-tagma-text truncate">{tg.name}</div>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-[8px] font-mono text-tagma-muted-dim">{tg.tasks.length} tasks</span>
-                      {successCount > 0 && (
-                        <span className="text-[8px] font-mono text-tagma-success">{successCount} ok</span>
-                      )}
-                      {failedCount > 0 && (
-                        <span className="text-[8px] font-mono text-tagma-error">{failedCount} fail</span>
-                      )}
-                    </div>
-                  </div>
+                  {task.model && (
+                    <span className="inline-flex items-center justify-center h-[14px] px-[4px] text-[7.5px] font-mono leading-[14px] shrink-0 bg-tagma-muted/12 text-tagma-muted/80 font-bold">
+                      {task.model}
+                    </span>
+                  )}
+                  {task.exitCode != null && (
+                    <span className={`ml-auto text-[7.5px] font-mono ${task.exitCode === 0 ? 'text-tagma-success' : 'text-tagma-error'}`}>
+                      exit {task.exitCode}
+                    </span>
+                  )}
                 </div>
               </div>
             );
           })}
         </div>
-
-        <div
-          ref={contentRef}
-          className="flex-1 min-w-0 overflow-auto timeline-grid hide-scrollbar"
-          onScroll={syncScroll}
-        >
-          <div
-            className="relative w-full"
-            style={{ minWidth: canvasWidth, minHeight: canvasHeight }}
-            onClick={handleBackgroundClick}
-          >
-            {trackGroups.map((tg, i) => (
-              <div
-                key={tg.id}
-                className={`absolute left-0 right-0 border-b border-tagma-border/40 ${i % 2 === 0 ? 'track-row-even' : 'track-row-odd'}`}
-                style={{ top: i * TRACK_H, height: TRACK_H }}
-                onClick={handleBackgroundClick}
-              />
-            ))}
-
-            <svg className="absolute inset-0 pointer-events-none" width={canvasWidth} height={canvasHeight} style={{ overflow: 'visible' }}>
-              {edges.map((e) => (
-                <path key={e.key} d={e.d} fill="none" stroke="rgba(107,114,128,0.25)" strokeWidth={1.5} />
-              ))}
-            </svg>
-
-            {summary.tasks.map((task) => {
-              const pos = taskPositions.get(task.taskId);
-              if (!pos) return null;
-              const cfg = STATUS_CFG[task.status];
-              const Icon = cfg.icon;
-              const isSelected = selectedTaskId === task.taskId;
-              return (
-                <div
-                  key={task.taskId}
-                  data-task-id={task.taskId}
-                  className={`absolute border select-none flex flex-col justify-center px-2.5 cursor-pointer transition-colors ${
-                    isSelected ? 'border-tagma-accent bg-tagma-accent/6' : 'border-tagma-border/70 bg-tagma-elevated hover:bg-tagma-elevated/80'
-                  } ${cfg.bg && !isSelected ? cfg.bg : ''}`}
-                  style={{ left: pos.x, top: pos.y, width: TASK_W, height: TASK_H }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedTaskId(task.taskId);
-                    setSelectedTrackId(task.trackId);
-                  }}
-                >
-                  {cfg.bar && (
-                    <div className={`absolute left-0 top-0 bottom-0 w-[2px] ${cfg.bar}`} />
-                  )}
-                  <div className="flex items-center h-[24px] gap-[6px] pointer-events-none min-w-0 overflow-hidden">
-                    <span className="text-[10px] font-medium truncate flex-1 leading-[24px] text-tagma-text">
-                      {task.taskName}
-                    </span>
-                    <span className="flex items-center gap-[3px] shrink-0">
-                      <Icon size={9} className={cfg.iconColor} />
-                      {task.durationMs != null && (
-                        <span className={`text-[8px] font-mono tabular-nums ${cfg.iconColor}`}>
-                          {formatDuration(task.durationMs)}
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                  <div className="flex items-center h-[16px] gap-[4px] pointer-events-none min-w-0 overflow-hidden bg-black/20 px-[3px]">
-                    {task.driver && (
-                      <span className="inline-flex items-center justify-center h-[14px] px-[4px] text-[7.5px] font-mono leading-[14px] shrink-0 bg-tagma-accent/12 text-tagma-accent/80">
-                        {task.driver}
-                      </span>
-                    )}
-                    {task.modelTier && (
-                      <span className="inline-flex items-center justify-center h-[14px] px-[4px] text-[7.5px] font-mono leading-[14px] shrink-0 bg-tagma-muted/12 text-tagma-muted/80 font-bold">
-                        {task.modelTier}
-                      </span>
-                    )}
-                    {task.exitCode != null && (
-                      <span className={`ml-auto text-[7.5px] font-mono ${task.exitCode === 0 ? 'text-tagma-success' : 'text-tagma-error'}`}>
-                        exit {task.exitCode}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
       </div>
 
+      {/* Side panels as absolute overlays — canvas dimensions never change
+          when they open/close, so scrollLeft/Top stay valid and the view
+          doesn't jerk. */}
       {selectedTask && (
-        <HistoryTaskPanel
-          task={selectedTask}
-          onClose={() => { setSelectedTaskId(null); }}
-        />
+        <div className="absolute right-0 top-0 bottom-0 z-20">
+          <HistoryTaskPanel
+            task={selectedTask}
+            onClose={() => { setSelectedTaskId(null); }}
+          />
+        </div>
       )}
 
       {!selectedTask && selectedTrack && (
-        <HistoryTrackPanel
-          track={selectedTrack}
-          onClose={() => { setSelectedTrackId(null); }}
-        />
+        <div className="absolute right-0 top-0 bottom-0 z-20">
+          <HistoryTrackPanel
+            track={selectedTrack}
+            onClose={() => { setSelectedTrackId(null); }}
+          />
+        </div>
       )}
     </div>
   );
@@ -350,10 +418,10 @@ function HistoryTaskPanel({ task, onClose }: { task: RunSummaryTask; onClose: ()
                 <div className="text-[11px] font-mono text-tagma-muted">{task.driver}</div>
               </div>
             )}
-            {task.modelTier && (
+            {task.model && (
               <div>
                 <label className="field-label">Model</label>
-                <div className="text-[11px] font-mono text-tagma-muted">{task.modelTier}</div>
+                <div className="text-[11px] font-mono text-tagma-muted">{task.model}</div>
               </div>
             )}
           </div>

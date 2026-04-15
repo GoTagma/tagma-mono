@@ -157,7 +157,7 @@ export function RunHistoryBrowser({
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [logContent, setLogContent] = useState<string>('');
   const [logLoading, setLogLoading] = useState(false);
-  const [viewMode, setViewMode] = useState<'summary' | 'flow' | 'log'>('summary');
+  const [viewMode, setViewMode] = useState<'summary' | 'flow' | 'log'>('flow');
   const [outcome, setOutcome] = useState<OutcomeFilter>('all');
 
   const loadHistory = useCallback(async () => {
@@ -194,7 +194,7 @@ export function RunHistoryBrowser({
     setSummary(null);
     setLogContent('');
     setSummaryError(null);
-    setViewMode('summary');
+    setViewMode('flow');
     setSummaryLoading(true);
     try {
       const s = await api.getRunSummary(runId);
@@ -250,7 +250,7 @@ export function RunHistoryBrowser({
 
       <div className="flex-1 min-h-0 flex">
         <div className="w-72 shrink-0 border-r border-tagma-border flex flex-col bg-tagma-surface/25 overflow-hidden">
-          <div className="shrink-0 px-5 pt-5 pb-2 flex items-baseline justify-between">
+          <div className="shrink-0 h-11 px-5 flex items-center justify-between border-b border-tagma-border/60">
             <span className="text-[9px] tracking-[0.22em] uppercase text-tagma-muted-dim">
               Runs
             </span>
@@ -521,7 +521,7 @@ function DetailPane({
 }) {
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-tagma-bg">
-      <div className="shrink-0 flex items-center gap-2 px-5 pt-5 pb-3 border-b border-tagma-border/60">
+      <div className="shrink-0 h-11 flex items-center gap-2 px-5 border-b border-tagma-border/60">
         <div className="text-[9px] tracking-[0.22em] uppercase text-tagma-muted-dim">
           Run Detail
         </div>
@@ -536,17 +536,6 @@ function DetailPane({
               <button
                 type="button"
                 className={`px-2.5 py-0.5 text-[9px] font-mono uppercase tracking-wider ${
-                  viewMode === 'summary'
-                    ? 'bg-tagma-accent/10 text-tagma-accent'
-                    : 'text-tagma-muted hover:text-tagma-text'
-                }`}
-                onClick={() => onViewMode('summary')}
-              >
-                Summary
-              </button>
-              <button
-                type="button"
-                className={`px-2.5 py-0.5 text-[9px] font-mono uppercase tracking-wider border-l border-tagma-border ${
                   viewMode === 'flow'
                     ? 'bg-tagma-accent/10 text-tagma-accent'
                     : 'text-tagma-muted hover:text-tagma-text'
@@ -555,6 +544,17 @@ function DetailPane({
                 title="Pipeline flow chart"
               >
                 <GitBranch size={10} />
+              </button>
+              <button
+                type="button"
+                className={`px-2.5 py-0.5 text-[9px] font-mono uppercase tracking-wider border-l border-tagma-border ${
+                  viewMode === 'summary'
+                    ? 'bg-tagma-accent/10 text-tagma-accent'
+                    : 'text-tagma-muted hover:text-tagma-text'
+                }`}
+                onClick={() => onViewMode('summary')}
+              >
+                Summary
               </button>
               <button
                 type="button"
@@ -585,7 +585,7 @@ function DetailPane({
         )}
       </div>
 
-      <div className={`flex-1 ${viewMode === 'flow' ? 'overflow-hidden' : 'overflow-auto'}`}>
+      <div className={`flex-1 min-h-0 ${viewMode === 'flow' ? 'overflow-hidden flex' : 'overflow-auto'}`}>
         {!selectedRunId && (
           <div className="px-6 py-10 text-[11px] text-tagma-muted-dim leading-relaxed max-w-md">
             Select a run from the list to see its per-task timeline. Each run
@@ -657,9 +657,9 @@ function DetailPane({
                               {task.driver}
                             </span>
                           )}
-                          {task.modelTier && (
+                          {task.model && (
                             <span className="shrink-0 text-tagma-muted text-[9px]">
-                              {task.modelTier}
+                              {task.model}
                             </span>
                           )}
                           {task.exitCode != null && (
