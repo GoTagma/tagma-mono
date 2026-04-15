@@ -17,9 +17,10 @@
 // The helpers are pure functions of (name, workDir) so they can be unit
 // tested without spinning up an Express server or touching the filesystem.
 
-import { resolve, relative, sep } from 'node:path';
+import { resolve } from 'node:path';
 import { isValidPluginName } from '@tagma/sdk';
 import type { PluginCategory } from '@tagma/sdk';
+import { isPathWithin as sharedIsPathWithin } from './path-utils.js';
 
 export class PluginSafetyError extends Error {
   constructor(message: string) {
@@ -29,13 +30,12 @@ export class PluginSafetyError extends Error {
 }
 
 /**
- * Return true when `child` resolves to a path inside `root`. Mirrors the
- * editor's existing isPathWithin helper so both filesystem fences agree.
+ * Return true when `child` resolves to a path inside `root`. Re-exported
+ * from `./path-utils` so state.ts and plugin-safety.ts share one canonical
+ * implementation — the previous local copy diverged by additionally
+ * rejecting `child === root`, which created a silent maintenance hazard.
  */
-export function isPathWithin(child: string, root: string): boolean {
-  const rel = relative(root, child);
-  return rel !== '' && !rel.startsWith('..') && !resolve(root, rel).includes('..' + sep);
-}
+export const isPathWithin = sharedIsPathWithin;
 
 export function assertSafePluginName(name: unknown): asserts name is string {
   if (typeof name !== 'string' || name.length === 0) {

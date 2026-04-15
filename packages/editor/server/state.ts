@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
-import { resolve, relative, sep } from 'node:path';
+import { resolve } from 'node:path';
 import yaml from 'js-yaml';
+import { isPathWithin as sharedIsPathWithin } from './path-utils.js';
 import {
   createEmptyPipeline,
   validateRaw,
@@ -71,12 +72,12 @@ export const MAX_LOG_RUNS = 20;
 /**
  * B1: Validate that a resolved path is within a given root directory.
  * Prevents path traversal attacks (e.g. /api/fs/list?path=/etc).
- * Returns the resolved absolute path if safe, or null if it escapes.
+ *
+ * Re-exported from `./path-utils` so the plugin fence and workspace fence
+ * share a single implementation. Kept as a named export here for backwards
+ * compatibility with existing imports from this module.
  */
-export function isPathWithin(child: string, root: string): boolean {
-  const rel = relative(root, child);
-  return !rel.startsWith('..') && !resolve(root, rel).includes('..' + sep);
-}
+export const isPathWithin = sharedIsPathWithin;
 
 /**
  * C3: Hard fence used by every endpoint that touches the local filesystem.
@@ -172,8 +173,9 @@ export function reconcileContinueFrom(cfg: RawPipelineConfig): RawPipelineConfig
     }
   }
 
-  let changed = false;
+  let configChanged = false;
   const newTracks = cfg.tracks.map((track) => {
+    let trackChanged = false;
     const newTasks = track.tasks.map((task) => {
       const isPromptTask = !!task.prompt && !task.command && !task.use;
       const deps = task.depends_on ?? [];
@@ -181,7 +183,7 @@ export function reconcileContinueFrom(cfg: RawPipelineConfig): RawPipelineConfig
       if (!isPromptTask) {
         // Non-prompt tasks (command / template) cannot use continue_from.
         if (task.continue_from) {
-          changed = true;
+          trackChanged = true;
           const { continue_from: _drop, ...rest } = task;
           return rest as RawTaskConfig;
         }
@@ -202,7 +204,7 @@ export function reconcileContinueFrom(cfg: RawPipelineConfig): RawPipelineConfig
       if (promptDeps.length === 0) {
         // No prompt upstreams — continue_from can't reference anything valid.
         if (task.continue_from) {
-          changed = true;
+          trackChanged = true;
           const { continue_from: _drop, ...rest } = task;
           return rest as RawTaskConfig;
         }
@@ -219,7 +221,7 @@ export function reconcileContinueFrom(cfg: RawPipelineConfig): RawPipelineConfig
       // is empty. Multi-source case: leave unset and let the user pick from
       // the TaskConfigPanel dropdown explicitly.
       if (!task.continue_from && promptDeps.length === 1) {
-        changed = true;
+        trackChanged = true;
         return { ...task, continue_from: promptDeps[0] };
       }
 
@@ -227,17 +229,25 @@ export function reconcileContinueFrom(cfg: RawPipelineConfig): RawPipelineConfig
       // prompt dep (e.g. the dep was removed). Clear it so the next save
       // doesn't carry a dangling reference.
       if (task.continue_from && !promptDeps.includes(task.continue_from)) {
-        changed = true;
+        trackChanged = true;
         const { continue_from: _drop, ...rest } = task;
         return rest as RawTaskConfig;
       }
 
       return task;
     });
-    return newTasks !== track.tasks ? { ...track, tasks: newTasks } : track;
+    // Array.map always produces a new array, so `newTasks !== track.tasks`
+    // is always true. Gate on the explicit trackChanged flag instead so
+    // untouched tracks keep their original reference (cheaper GC + lets
+    // downstream memoization skip them).
+    if (trackChanged) {
+      configChanged = true;
+      return { ...track, tasks: newTasks };
+    }
+    return track;
   });
 
-  return changed ? { ...cfg, tracks: newTracks } : cfg;
+  return configChanged ? { ...cfg, tracks: newTracks } : cfg;
 }
 
 // Keys that must not be stripped even when empty
@@ -519,6 +529,35 @@ export function getRegistrySnapshot() {
   };
 }
 
+// Whitelist of known-safe fields to preserve when sanitizing lenient-parsed
+// YAML. Everything else — including prototype-pollution vectors like
+// `__proto__` / `constructor` / `prototype` — is dropped before the value
+// is spread into a new object and handed to the rest of the pipeline.
+//
+// Keep these aligned with RawTaskConfig / RawTrackConfig in @tagma/types.
+const TASK_KNOWN_KEYS = new Set<string>([
+  'id', 'name', 'prompt', 'command', 'depends_on', 'trigger',
+  'continue_from', 'output', 'model_tier', 'permissions', 'driver',
+  'timeout', 'middlewares', 'completion', 'agent_profile', 'cwd',
+  'use', 'with',
+]);
+
+const TRACK_KNOWN_KEYS = new Set<string>([
+  'id', 'name', 'color', 'agent_profile', 'model_tier', 'permissions',
+  'driver', 'cwd', 'middlewares', 'on_failure', 'tasks',
+]);
+
+function pickKnownKeys(
+  obj: Record<string, unknown>,
+  allowed: Set<string>,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (allowed.has(key)) result[key] = value;
+  }
+  return result;
+}
+
 /**
  * Lenient YAML → RawPipelineConfig fallback used when `parseYaml` (the strict
  * SDK parser) rejects the input. We keep accepting weird shapes so users
@@ -526,6 +565,10 @@ export function getRegistrySnapshot() {
  * structure — without this, the file-watcher reload path will happily ingest
  * `tracks: [null, 1, "foo"]` from a malicious YAML and crash on the next
  * config.tracks.flatMap() call.
+ *
+ * Security: `yaml.load` accepts keys like `__proto__` / `constructor`, so we
+ * whitelist known task/track fields before spreading into a new object.
+ * This blocks prototype-pollution vectors on the external-file-change path.
  */
 export function lenientParseYaml(content: string, fallbackName: string): RawPipelineConfig {
   const doc = yaml.load(content) as any;
@@ -541,11 +584,13 @@ export function lenientParseYaml(content: string, fallbackName: string): RawPipe
         .filter((tk: unknown): tk is Record<string, unknown> => !!tk && typeof tk === 'object' && !Array.isArray(tk))
         .map((tk: Record<string, unknown>): RawTaskConfig => {
           const tid = typeof tk.id === 'string' && tk.id ? tk.id : Math.random().toString(36).slice(2, 10);
-          // Keep the task's other fields verbatim — lenient mode is best-effort,
-          // and the editor's validateRaw will surface any structural issues.
-          return { ...tk, id: tid } as unknown as RawTaskConfig;
+          // Strip unknown / dangerous keys before spreading.
+          return { ...pickKnownKeys(tk, TASK_KNOWN_KEYS), id: tid } as unknown as RawTaskConfig;
         });
-      return { ...(t as Partial<RawTrackConfig>), id, name, tasks } as RawTrackConfig;
+      // Strip unknown / dangerous keys on the track level too, then override
+      // id/name/tasks with the sanitized values computed above.
+      const safeTrack = pickKnownKeys(t, TRACK_KNOWN_KEYS);
+      return { ...safeTrack, id, name, tasks } as RawTrackConfig;
     });
   return {
     name: typeof p.name === 'string' && p.name ? p.name : fallbackName,

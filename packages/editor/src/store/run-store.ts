@@ -143,7 +143,16 @@ export const useRunStore = create<RunStoreState>((set, get) => {
       }
     },
 
-    minimizeView: () => set({ active: false, viewMode: 'live' }),
+    // NOTE: deliberately do NOT reset `viewMode` here. While the RunView's
+    // exit animation is playing (AnimatePresence mode="wait"), the component
+    // is still mounted — flipping viewMode from 'history' → 'live' mid-exit
+    // causes RunView to re-render with `showHistory=false`, briefly painting
+    // the live track canvas (whose track-lane layout is visually identical
+    // to the editor), which looks like an "editor flash" right before the
+    // transition animation kicks in. `viewMode` is dead state while
+    // `active: false`; every re-entry point (startRun / showView /
+    // showHistoryView) sets it explicitly.
+    minimizeView: () => set({ active: false }),
 
     showView: () => set({ active: true, viewMode: 'live' }),
 
@@ -188,9 +197,11 @@ export const useRunStore = create<RunStoreState>((set, get) => {
       if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
       pendingEvents = [];
       if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+      // See minimizeView: leaving viewMode alone keeps RunView's exit
+      // animation painting the same content it was showing when Back
+      // was clicked (history browser stays visible until exit completes).
       set({
         active: false,
-        viewMode: 'live',
         runId: null,
         status: 'idle',
         tasks: new Map(),

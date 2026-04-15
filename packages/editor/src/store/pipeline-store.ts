@@ -546,23 +546,23 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
         applyState(state);
       },
       (e) => {
-        // Still honor epoch ordering for error reporting — if a later request
-        // was dispatched after ours, it will apply its own result and we
-        // should not clobber that with a stale rollback. The same guard
-        // applies to revision-conflict reconciliation below: a newer in-flight
-        // request's response (success or conflict) should win over ours.
-        if (myEpoch !== fireEpoch) return;
-
-        // P1-C1: roll back the optimistic history push. Coalesced pushes
-        // didn't add a new entry — the existing entry remains valid as
-        // a snapshot for the previous successful mutation in the streak.
-        if (pushHandle && !pushHandle.coalesced) {
-          removeHistoryByPushId(pushHandle.pushId);
-        }
-
+        // RevisionConflictError is handled UNCONDITIONALLY — it signals that
+        // our cached revision is stale, and the server's `currentState` is
+        // the authoritative baseline. Even if a newer fire() has superseded
+        // us, that newer request also used the stale revision, so it will
+        // either also conflict or has already been rejected; either way,
+        // reconciling to the server's state is always safe. Swallowing
+        // conflicts via the epoch guard silently loses the server's
+        // reconciliation signal and can strand the client on a stale
+        // revision across a burst of edits.
         if (e instanceof RevisionConflictError) {
-          // C6: server rejected our mutation because our cached revision was
-          // stale. Adopt the authoritative `currentState` returned in the
+          // P1-C1: roll back the optimistic history push. Coalesced pushes
+          // didn't add a new entry — the existing entry remains valid as
+          // a snapshot for the previous successful mutation in the streak.
+          if (pushHandle && !pushHandle.coalesced) {
+            removeHistoryByPushId(pushHandle.pushId);
+          }
+          // C6: adopt the authoritative `currentState` returned in the
           // payload — do NOT restore the pre-mutation snapshot, because the
           // server's state is NEWER than our snapshot and is the correct
           // baseline to continue from. A brief UI flicker (optimistic state
@@ -574,7 +574,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
           // is deliberately aggressive — undo history is per-session UX, not
           // a source of truth, so dropping it on reconciliation is safer
           // than letting a stale stack silently corrupt future edits.
-          applyState(e.currentState);
+          applyStateWithLayout(e.currentState);
           set({
             isDirty: false,
             layoutDirty: false,
@@ -583,6 +583,18 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
             errorMessage: REVISION_CONFLICT_MESSAGE,
           });
           return;
+        }
+
+        // Non-conflict errors still honor epoch ordering — if a later request
+        // was dispatched after ours, it will apply its own result and we
+        // should not clobber that with a stale rollback.
+        if (myEpoch !== fireEpoch) return;
+
+        // P1-C1: roll back the optimistic history push. Coalesced pushes
+        // didn't add a new entry — the existing entry remains valid as
+        // a snapshot for the previous successful mutation in the streak.
+        if (pushHandle && !pushHandle.coalesced) {
+          removeHistoryByPushId(pushHandle.pushId);
         }
 
         if (opts?.snapshot) restoreSnapshot(opts.snapshot);

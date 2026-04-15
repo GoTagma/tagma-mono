@@ -414,6 +414,12 @@ export function registerRunRoutes(app: express.Express): void {
       return res.status(400).json({ error: configErrors.join('; ') });
     }
 
+    // B4: From here on, wrap all setup in try/catch so any unexpected synchronous
+    // throw (e.g. from flatMap / broadcast / gateway constructor under future
+    // refactors) still releases `runStarting` and clears partially-set globals.
+    // Without this, a mid-setup exception would leave the lock stuck at `true`
+    // and block every subsequent /api/run/start until server restart.
+    try {
     // Build initial task list from the raw (editor-side) config. This keeps
     // the qualified taskIds aligned with the pipeline DAG that the SDK
     // produces internally (`{trackId}.{taskId}`).
@@ -695,6 +701,19 @@ export function registerRunRoutes(app: express.Express): void {
     });
 
     res.json({ ok: true, runId });
+    } catch (err: unknown) {
+      // Release the lock and clear any globals we may have set before the throw
+      // so a subsequent /api/run/start can proceed. Without this, a synchronous
+      // failure between `runStarting = true` and the runPipeline() call would
+      // wedge the server into a permanent 409 state.
+      runStarting = false;
+      activeRunAbort = null;
+      activeRunGateway = null;
+      activeRunId = null;
+      activeRunTasksSnapshot = new Map();
+      const message = err instanceof Error ? err.message : String(err);
+      return res.status(500).json({ error: `Run setup failed: ${message}` });
+    }
   });
 
   app.post('/api/run/abort', (_req, res) => {
