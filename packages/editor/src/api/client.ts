@@ -695,8 +695,10 @@ export const api = {
   listRoots: () =>
     request<{ roots: string[] }>('/fs/roots'),
 
-  mkdir: (path: string) =>
-    request<{ path: string }>('/fs/mkdir', { method: 'POST', body: jsonBody({ path }) }),
+  mkdir: (path: string, opts?: { picker?: boolean }) => {
+    const qs = opts?.picker ? '?picker=1' : '';
+    return request<{ path: string }>(`/fs/mkdir${qs}`, { method: 'POST', body: jsonBody({ path }) });
+  },
 
   reveal: (path: string) =>
     request<{ ok: boolean }>('/fs/reveal', { method: 'POST', body: jsonBody({ path }) }),

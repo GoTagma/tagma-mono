@@ -105,13 +105,13 @@ export function FileExplorer({ mode, title, initialPath, fileFilter, picker, onC
     const sep = currentPath.includes('/') ? '/' : '\\';
     const fullPath = currentPath + sep + newFolderName.trim();
     try {
-      await api.mkdir(fullPath);
+      await api.mkdir(fullPath, { picker });
       setNewFolderName(null);
       loadDir(currentPath);
     } catch (e: any) {
       setError(e.message ?? 'Failed to create folder');
     }
-  }, [newFolderName, currentPath, loadDir]);
+  }, [newFolderName, currentPath, loadDir, picker]);
 
   const handleEntryDblClick = useCallback((entry: FsEntry) => {
     if (entry.type === 'directory') {

@@ -181,8 +181,11 @@ export function registerWorkspaceRoutes(app: express.Express): void {
     const { path: dirPath } = req.body;
     if (!dirPath) return res.status(400).json({ error: 'path is required' });
     const absPath = resolve(dirPath);
-    // B1: mkdir must stay within workDir to prevent creating directories anywhere on the filesystem.
-    if (S.workDir && !isPathWithin(absPath, S.workDir)) {
+    // C3: mkdir opts out of the workspace fence when invoked from a picker
+    // (workspace-root / import / export) UI that is explicitly allowed to
+    // walk the host filesystem. Otherwise B1: mkdir must stay within workDir.
+    const isPicker = req.query.picker === '1' || req.query.picker === 'true';
+    if (!isPicker && S.workDir && !isPathWithin(absPath, S.workDir)) {
       return res.status(403).json({ error: 'Path is outside the workspace directory' });
     }
     try {
