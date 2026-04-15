@@ -1158,9 +1158,14 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
           applyState(state);
         },
         (e) => {
-          if (myEpoch !== fireEpoch) return;
+          // RevisionConflictError is handled UNCONDITIONALLY — it signals that
+          // our cached revision is stale, and the server's `currentState` is
+          // the authoritative baseline. Even if a newer fire() has superseded
+          // us, that newer request also used the stale revision, so it will
+          // either also conflict or has already been rejected; either way,
+          // reconciling to the server's state is always safe.
           if (e instanceof RevisionConflictError) {
-            applyState(e.currentState);
+            applyStateWithLayout(e.currentState);
             set({
               isDirty: false,
               layoutDirty: false,
@@ -1170,6 +1175,8 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
             });
             return;
           }
+
+          if (myEpoch !== fireEpoch) return;
           // Scoped rollback — restore only the slices we actually changed.
           set(() => {
             const rb: Partial<PipelineState> = {
@@ -1240,9 +1247,14 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
           applyState(state);
         },
         (e) => {
-          if (myEpoch !== fireEpoch) return;
+          // RevisionConflictError is handled UNCONDITIONALLY — it signals that
+          // our cached revision is stale, and the server's `currentState` is
+          // the authoritative baseline. Even if a newer fire() has superseded
+          // us, that newer request also used the stale revision, so it will
+          // either also conflict or has already been rejected; either way,
+          // reconciling to the server's state is always safe.
           if (e instanceof RevisionConflictError) {
-            applyState(e.currentState);
+            applyStateWithLayout(e.currentState);
             set({
               isDirty: false,
               layoutDirty: false,
@@ -1252,6 +1264,8 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
             });
             return;
           }
+
+          if (myEpoch !== fireEpoch) return;
           set(() => {
             const rb: Partial<PipelineState> = {
               past: preRedoPast,
@@ -1361,13 +1375,21 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
             }
           })
           .catch((e) => {
-            if (myEpoch !== fireEpoch) return;
-            if (!pushHandle.coalesced) removeHistoryByPushId(pushHandle.pushId);
+            // RevisionConflictError is handled UNCONDITIONALLY — it signals that
+            // our cached revision is stale, and the server's `currentState` is
+            // the authoritative baseline. Even if a newer fire() has superseded
+            // us, that newer request also used the stale revision, so it will
+            // either also conflict or has already been rejected; either way,
+            // reconciling to the server's state is always safe.
             if (e instanceof RevisionConflictError) {
-              applyState(e.currentState);
+              if (!pushHandle.coalesced) removeHistoryByPushId(pushHandle.pushId);
+              applyStateWithLayout(e.currentState);
               set({ isDirty: false, layoutDirty: false, past: [], future: [], errorMessage: REVISION_CONFLICT_MESSAGE });
               return;
             }
+
+            if (myEpoch !== fireEpoch) return;
+            if (!pushHandle.coalesced) removeHistoryByPushId(pushHandle.pushId);
             restoreSnapshot(preSnapshot);
             set({ errorMessage: 'Failed to paste track: ' + errorToMessage(e) });
           });
