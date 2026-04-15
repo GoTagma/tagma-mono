@@ -9,6 +9,11 @@ import type {
 
 const DEFAULT_MODEL = 'sonnet';
 
+// Claude Code CLI accepts --effort low|medium|high|max. tagma's vocabulary
+// is low|medium|high, so low/medium/high pass through unchanged; users who
+// want the claude-specific "max" tier can also set it explicitly.
+const VALID_EFFORT = new Set(['low', 'medium', 'high', 'max']);
+
 function resolveModel(): string {
   return DEFAULT_MODEL;
 }
@@ -146,6 +151,11 @@ export const ClaudeCodeDriver: DriverPlugin = {
   ): Promise<SpawnSpec> {
     const permissions = task.permissions ?? track.permissions!;
     const model = task.model ?? track.model ?? DEFAULT_MODEL;
+    // SDK schema layer already resolved task → track → pipeline inheritance.
+    // Drop unknown effort values so a typo can't break `claude -p` startup;
+    // validateRaw / the UI should prevent this from reaching us in practice.
+    const rawEffort = task.reasoning_effort ?? track.reasoning_effort;
+    const effort = rawEffort && VALID_EFFORT.has(rawEffort) ? rawEffort : null;
     const tools = resolveTools(permissions);
     const permissionMode = resolvePermissionMode(permissions);
 
@@ -170,6 +180,10 @@ export const ClaudeCodeDriver: DriverPlugin = {
       // config (hooks, MCP servers, etc.) into pipeline automation.
       '--setting-sources', 'project,local',
     ];
+
+    if (effort) {
+      args.push('--effort', effort);
+    }
 
     // If the task runs in a subdirectory of the project, grant read/edit
     // access to the project root via --add-dir so Claude can still see

@@ -5,6 +5,20 @@ import type {
 
 const DEFAULT_MODEL = 'opencode/big-pickle';
 
+// tagma uses a provider-neutral reasoning_effort vocabulary (low|medium|high)
+// but opencode's `--variant` is provider-specific (e.g. high|max|minimal).
+// Map the tagma values to the closest opencode variant:
+//   low    → minimal  (least thinking)
+//   medium → <no flag, provider default>
+//   high   → high     (most thinking)
+// Unknown values pass through unchanged so users who target a specific
+// opencode variant (e.g. "max") still work.
+const EFFORT_TO_VARIANT: Record<string, string | null> = {
+  low: 'minimal',
+  medium: null,
+  high: 'high',
+};
+
 const OpenCodeDriver: DriverPlugin = {
   name: 'opencode',
 
@@ -22,6 +36,13 @@ const OpenCodeDriver: DriverPlugin = {
     task: TaskConfig, track: TrackConfig, ctx: DriverContext,
   ): Promise<SpawnSpec> {
     const model = task.model ?? track.model ?? DEFAULT_MODEL;
+    // Resolve reasoning_effort → opencode --variant. SDK schema layer already
+    // resolved task → track → pipeline inheritance, so we only need to read
+    // task.reasoning_effort here.
+    const rawEffort = task.reasoning_effort ?? track.reasoning_effort;
+    const variant = rawEffort
+      ? (rawEffort in EFFORT_TO_VARIANT ? EFFORT_TO_VARIANT[rawEffort] : rawEffort)
+      : null;
 
     let prompt = task.prompt!;
 
@@ -60,6 +81,12 @@ const OpenCodeDriver: DriverPlugin = {
       '--model', model,
       '--format', 'json',       // JSON output for parseResult
     ];
+
+    // `--variant` must precede `--` like every other flag. opencode rejects
+    // unknown variant names with a clear error, so we don't pre-validate.
+    if (variant) {
+      args.push('--variant', variant);
+    }
 
     // session resume (must appear before --)
     if (sessionId) {
