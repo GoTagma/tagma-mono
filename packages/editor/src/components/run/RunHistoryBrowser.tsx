@@ -625,7 +625,7 @@ function DetailPane({
 
       <div className={`flex-1 min-h-0 ${viewMode === 'flow' ? 'overflow-hidden flex' : 'overflow-auto'}`}>
         {!selectedRunId && (
-          <div className="px-6 py-10 text-[11px] text-tagma-muted-dim leading-relaxed max-w-md">
+          <div className="px-5 py-6 text-[11px] text-tagma-muted-dim leading-relaxed max-w-md">
             Select a run from the list to see its per-task timeline. Each run
             stores a <span className="font-mono text-tagma-muted">summary.json</span>
             {' '}alongside its raw <span className="font-mono text-tagma-muted">pipeline.log</span>.

@@ -827,7 +827,7 @@ export function App() {
             />
           </div>
           {showYamlPreview && (
-            <div className="w-[380px] shrink-0 overflow-hidden border-l border-tagma-border">
+            <div className="w-80 shrink-0 overflow-hidden border-l border-tagma-border">
               <YamlPreview config={config} onClose={() => setShowYamlPreview(false)} />
             </div>
           )}
