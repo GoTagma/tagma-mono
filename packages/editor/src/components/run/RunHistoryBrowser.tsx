@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import {
   FileText, Loader2, Check, X, Clock, SkipForward, Ban, Download,
-  History as HistoryIcon, GitBranch,
+  History as HistoryIcon, GitBranch, Code2,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import type { RunHistoryEntry, RunSummary, RunSummaryTask, TaskStatus } from '../../api/client';
@@ -157,7 +157,9 @@ export function RunHistoryBrowser({
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [logContent, setLogContent] = useState<string>('');
   const [logLoading, setLogLoading] = useState(false);
-  const [viewMode, setViewMode] = useState<'summary' | 'flow' | 'log'>('flow');
+  const [yamlContent, setYamlContent] = useState<string | null>(null);
+  const [yamlLoading, setYamlLoading] = useState(false);
+  const [viewMode, setViewMode] = useState<'summary' | 'flow' | 'log' | 'yaml'>('flow');
   const [outcome, setOutcome] = useState<OutcomeFilter>('all');
 
   const loadHistory = useCallback(async () => {
@@ -193,6 +195,7 @@ export function RunHistoryBrowser({
     setSelectedRunId(runId);
     setSummary(null);
     setLogContent('');
+    setYamlContent(null);
     setSummaryError(null);
     setViewMode('flow');
     setSummaryLoading(true);
@@ -216,6 +219,19 @@ export function RunHistoryBrowser({
       setLogContent(`Error: ${e instanceof Error ? e.message : 'Failed to load log'}`);
     } finally {
       setLogLoading(false);
+    }
+  }, []);
+
+  const loadYaml = useCallback(async (runId: string) => {
+    setYamlLoading(true);
+    setYamlContent(null);
+    try {
+      const text = await api.getRunYamlSnapshot(runId);
+      setYamlContent(text ?? '');
+    } catch (e: unknown) {
+      setYamlContent(`# Error: ${e instanceof Error ? e.message : 'Failed to load yaml snapshot'}`);
+    } finally {
+      setYamlLoading(false);
     }
   }, []);
 
@@ -285,11 +301,16 @@ export function RunHistoryBrowser({
             summaryError={summaryError}
             logContent={logContent}
             logLoading={logLoading}
+            yamlContent={yamlContent}
+            yamlLoading={yamlLoading}
             viewMode={viewMode}
             onViewMode={(mode) => {
               setViewMode(mode);
               if (mode === 'log' && selectedRunId && !logContent && !logLoading) {
                 loadLog(selectedRunId);
+              }
+              if (mode === 'yaml' && selectedRunId && yamlContent === null && !yamlLoading) {
+                loadYaml(selectedRunId);
               }
             }}
             onDownload={() => summary && downloadSummary(summary)}
@@ -503,6 +524,8 @@ function DetailPane({
   summaryError,
   logContent,
   logLoading,
+  yamlContent,
+  yamlLoading,
   viewMode,
   onViewMode,
   onDownload,
@@ -514,8 +537,10 @@ function DetailPane({
   summaryError: string | null;
   logContent: string;
   logLoading: boolean;
-  viewMode: 'summary' | 'flow' | 'log';
-  onViewMode: (mode: 'summary' | 'flow' | 'log') => void;
+  yamlContent: string | null;
+  yamlLoading: boolean;
+  viewMode: 'summary' | 'flow' | 'log' | 'yaml';
+  onViewMode: (mode: 'summary' | 'flow' | 'log' | 'yaml') => void;
   onDownload: () => void;
   tasksByTrack: Map<string, RunSummaryTask[]>;
 }) {
@@ -566,6 +591,19 @@ function DetailPane({
                 onClick={() => onViewMode('log')}
               >
                 Log
+              </button>
+              <button
+                type="button"
+                className={`px-2.5 py-0.5 text-[9px] font-mono uppercase tracking-wider border-l border-tagma-border flex items-center gap-1 ${
+                  viewMode === 'yaml'
+                    ? 'bg-tagma-accent/10 text-tagma-accent'
+                    : 'text-tagma-muted hover:text-tagma-text'
+                }`}
+                onClick={() => onViewMode('yaml')}
+                title="Pipeline yaml snapshot"
+              >
+                <Code2 size={10} />
+                Yaml
               </button>
             </div>
             {summary && (
@@ -708,6 +746,25 @@ function DetailPane({
           <pre className="text-[10px] font-mono text-tagma-text whitespace-pre-wrap break-words px-5 py-4">
             {logContent || '(empty)'}
           </pre>
+        )}
+
+        {viewMode === 'yaml' && selectedRunId && (
+          yamlLoading ? (
+            <div className="px-6 py-10 text-[11px] text-tagma-muted-dim">
+              <Loader2 size={12} className="animate-spin inline mr-2" />
+              Loading yaml snapshot...
+            </div>
+          ) : yamlContent === null ? null : yamlContent === '' ? (
+            <div className="px-6 py-10 text-[11px] text-tagma-muted-dim leading-relaxed max-w-md">
+              No yaml snapshot for this run. Older runs (before snapshotting was
+              added) only have a <span className="font-mono text-tagma-muted">summary.json</span>
+              {' '}and <span className="font-mono text-tagma-muted">pipeline.log</span>.
+            </div>
+          ) : (
+            <pre className="text-[10px] font-mono text-tagma-text whitespace-pre-wrap break-words px-5 py-4">
+              {yamlContent}
+            </pre>
+          )
         )}
       </div>
     </div>
