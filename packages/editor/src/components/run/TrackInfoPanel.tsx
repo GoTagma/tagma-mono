@@ -50,7 +50,7 @@ export function TrackInfoPanel({ track, config, onClose }: TrackInfoPanelProps) 
   // the track actually contributes vs what came from above.
   const driver = track.driver ?? config.driver ?? 'claude-code';
   const driverSource = track.driver ? 'track' : (config.driver ? 'pipeline' : 'default');
-  const modelTier = track.model_tier ?? null;
+  const model = track.model ?? config.model ?? null;
   const cwd = track.cwd ?? null;
   const agentProfile = track.agent_profile ?? null;
   const onFailure = track.on_failure ?? 'skip_downstream';
@@ -90,7 +90,7 @@ export function TrackInfoPanel({ track, config, onClose }: TrackInfoPanelProps) 
                 <span className="text-tagma-muted/50 ml-1.5">(from {driverSource})</span>
               )}
             </ConfigRow>
-            {modelTier && <ConfigRow label="Model tier">{modelTier}</ConfigRow>}
+            {model && <ConfigRow label="Model">{model}</ConfigRow>}
             {permsLabel(perms) && <ConfigRow label="Permissions">{permsLabel(perms)}</ConfigRow>}
             {cwd && <ConfigRow label="CWD">{cwd}</ConfigRow>}
             {agentProfile && <ConfigRow label="Profile">{agentProfile}</ConfigRow>}

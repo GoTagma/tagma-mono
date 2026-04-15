@@ -18,7 +18,7 @@ interface ResolvedTaskContext {
   trackName: string;
   taskName: string;
   driver?: string;
-  modelTier?: string;
+  model?: string;
   prompt?: string;
   command?: string;
   isCommand: boolean;
@@ -32,12 +32,12 @@ function resolveTaskContext(qualifiedId: string, config: RawPipelineConfig): Res
   const task = track.tasks.find((t) => t.id === taskId);
   if (!task) return null;
   const driver = task.driver ?? track.driver ?? config.driver;
-  const modelTier = task.model_tier ?? track.model_tier;
+  const model = task.model ?? track.model;
   return {
     trackName: track.name,
     taskName: task.name || task.id,
     driver,
-    modelTier,
+    model,
     prompt: task.prompt,
     command: task.command,
     isCommand: !!task.command,
@@ -91,13 +91,13 @@ export function ApprovalDialog({ request, onApprove, onReject, config }: Approva
                 {taskContext.trackName}
               </span>
             </div>
-            {(taskContext.driver || taskContext.modelTier) && !taskContext.isCommand && (
+            {(taskContext.driver || taskContext.model) && !taskContext.isCommand && (
               <div className="flex items-center gap-2 mt-1 text-[9px] font-mono">
                 {taskContext.driver && (
                   <span className="text-tagma-accent/80">driver: {taskContext.driver}</span>
                 )}
-                {taskContext.modelTier && (
-                  <span className="text-tagma-muted">tier: {taskContext.modelTier}</span>
+                {taskContext.model && (
+                  <span className="text-tagma-muted">model: {taskContext.model}</span>
                 )}
               </div>
             )}

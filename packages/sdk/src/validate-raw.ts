@@ -14,7 +14,6 @@ function isValidDuration(input: string): boolean {
 }
 
 const VALID_ON_FAILURE = new Set(['skip_downstream', 'stop_all', 'ignore']);
-const VALID_MODEL_TIERS = new Set(['low', 'medium', 'high']);
 
 // Built-in plugin types always known to the SDK core, regardless of which
 // external plugin packages are installed. These MUST stay in sync with the
@@ -136,9 +135,6 @@ export function validateRaw(
     if (track.on_failure && !VALID_ON_FAILURE.has(track.on_failure)) {
       errors.push({ path: `${trackPath}.on_failure`, message: `Invalid on_failure value "${track.on_failure}". Expected "skip_downstream", "stop_all", or "ignore".` });
     }
-    if (track.model_tier && !VALID_MODEL_TIERS.has(track.model_tier)) {
-      errors.push({ path: `${trackPath}.model_tier`, message: `Invalid model_tier "${track.model_tier}". Expected "low", "medium", or "high".` });
-    }
 
     // Track-level middlewares can reference a plugin that was uninstalled
     // after the YAML was written — surface a warning so the user notices
@@ -210,9 +206,6 @@ export function validateRaw(
       // ── Field-level validations ──
       if (task.timeout && !isValidDuration(task.timeout)) {
         errors.push({ path: `${taskPath}.timeout`, message: `Invalid duration format "${task.timeout}". Expected e.g. "30s", "5m", "1h".` });
-      }
-      if (task.model_tier && !VALID_MODEL_TIERS.has(task.model_tier)) {
-        errors.push({ path: `${taskPath}.model_tier`, message: `Invalid model_tier "${task.model_tier}". Expected "low", "medium", or "high".` });
       }
 
       // ── Plugin type warnings (trigger / completion / middlewares) ──

@@ -108,9 +108,9 @@ export function TaskConfigPanel({
     () => resolveScalar(task.driver, track?.driver, pipelineConfig.driver, 'claude-code'),
     [task.driver, track?.driver, pipelineConfig.driver],
   );
-  const resolvedModelTier = useMemo(
-    () => resolveScalar(task.model_tier, track?.model_tier, undefined, 'medium'),
-    [task.model_tier, track?.model_tier],
+  const resolvedModel = useMemo(
+    () => resolveScalar(task.model, track?.model, pipelineConfig.model, undefined),
+    [task.model, track?.model, pipelineConfig.model],
   );
   const resolvedAgentProfile = useMemo(
     () => resolveScalar(task.agent_profile, track?.agent_profile, undefined),
@@ -170,11 +170,8 @@ export function TaskConfigPanel({
   const [output, setOutput, blurOutput] = useLocalField(task.output ?? '', (v) => commitField({ output: v || undefined }));
   const [agentProfile, setAgentProfile, blurAgentProfile] = useLocalField(task.agent_profile ?? '', (v) => commitField({ agent_profile: v || undefined }));
   const [cwd, setCwd, blurCwd] = useLocalField(task.cwd ?? '', (v) => commitField({ cwd: v || undefined }));
+  const [model, setModel, blurModel] = useLocalField(task.model ?? '', (v) => commitField({ model: v || undefined }));
   const [useTemplate, setUseTemplate, blurUseTemplate] = useLocalField(task.use ?? '', (v) => commitField({ use: v || undefined }));
-
-  const handleModelTierChange = useCallback((model_tier: string) => {
-    onUpdateTask(trackId, task.id, { model_tier: model_tier || undefined });
-  }, [trackId, task.id, onUpdateTask]);
 
   const handlePermToggle = useCallback((key: 'read' | 'write' | 'execute') => {
     const current = task.permissions ?? { read: false, write: false, execute: false };
@@ -328,19 +325,14 @@ export function TaskConfigPanel({
               <InheritedValue isOverridden={!!task.driver} resolved={resolvedDriver} trackName={trackName} pipelineName={pipelineConfig.name} />
             </div>
 
-            {/* Model Tier */}
+            {/* Model */}
             <div>
               <div className="flex items-center justify-between">
-                <label className="field-label">Model Tier</label>
-                <ResetButton visible={!!task.model_tier} onReset={() => commitField({ model_tier: undefined })} />
+                <label className="field-label">Model</label>
+                <ResetButton visible={!!task.model} onReset={() => commitField({ model: undefined })} />
               </div>
-              <select className="field-input" value={task.model_tier ?? ''} onChange={(e) => handleModelTierChange(e.target.value)}>
-                <option value="">(inherited)</option>
-                <option value="low">low</option>
-                <option value="medium">medium</option>
-                <option value="high">high</option>
-              </select>
-              <InheritedValue isOverridden={!!task.model_tier} resolved={resolvedModelTier} trackName={trackName} pipelineName={pipelineConfig.name} />
+              <input type="text" className="field-input font-mono text-[11px]" value={model} onChange={(e) => setModel(e.target.value)} onBlur={blurModel} placeholder="e.g. claude-sonnet-4-6" />
+              <InheritedValue isOverridden={!!task.model} resolved={resolvedModel} trackName={trackName} pipelineName={pipelineConfig.name} />
             </div>
 
             {/* Agent Profile */}

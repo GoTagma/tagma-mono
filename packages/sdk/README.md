@@ -103,7 +103,7 @@ pipeline:
       name: Track One
       color: "#3b82f6"
       driver: claude-code
-      model_tier: high
+      model: claude-sonnet-4-6
       agent_profile: senior
       cwd: ./services/backend
       permissions:
@@ -122,7 +122,7 @@ pipeline:
           output: ./output/task-a.txt
           timeout: 10m
           driver: claude-code
-          model_tier: high
+          model: claude-sonnet-4-6
           agent_profile: senior
           cwd: ./src
           permissions:
@@ -157,6 +157,7 @@ pipeline:
 |---|---|---|---|
 | `name` | `string` | Yes | Pipeline name, used in logs and run IDs |
 | `driver` | `string` | No | Default driver for all tracks/tasks (inherited). Built-in: `claude-code` |
+| `model` | `string` | No | Default model for all tracks/tasks (inherited). Exact model name, e.g. `claude-sonnet-4-6` |
 | `timeout` | `string` | No | Pipeline-level timeout. Format: `"30s"`, `"5m"`, `"2h"` |
 | `plugins` | `string[]` | No | External plugin packages to load, e.g. `["@tagma/driver-codex"]` |
 | `hooks` | `HooksConfig` | No | Shell commands to run at lifecycle events (see Hooks below) |
@@ -183,7 +184,7 @@ Each hook value can be a single command string or an array of commands.
 | `name` | `string` | Yes | — | Display name |
 | `color` | `string` | No | — | Color hint for UI rendering (e.g. `"#3b82f6"`) |
 | `driver` | `string` | No | Inherited from pipeline | Driver for all tasks in this track |
-| `model_tier` | `string` | No | Inherited from pipeline | AI model tier: `high`, `medium`, `low` |
+| `model` | `string` | No | Inherited from pipeline | Exact model name passed to the driver CLI (e.g. `claude-sonnet-4-6`) |
 | `agent_profile` | `string` | No | — | Named agent configuration profile |
 | `cwd` | `string` | No | Pipeline workDir | Working directory for tasks in this track (relative path) |
 | `permissions` | `Permissions` | No | Inherited from pipeline | Default permissions for tasks (see Permissions) |
@@ -203,7 +204,7 @@ Each hook value can be a single command string or an array of commands.
 | `continue_from` | `string` | No | — | Task ID whose output/session to continue from (session handoff). Cross-track refs use `trackId.taskId` |
 | `output` | `string` | No | — | File path to write task stdout to (relative to workDir) |
 | `driver` | `string` | No | Inherited from track | Driver override for this task |
-| `model_tier` | `string` | No | Inherited from track | Model tier override for this task |
+| `model` | `string` | No | Inherited from track | Model name override for this task |
 | `agent_profile` | `string` | No | Inherited from track | Agent profile override |
 | `cwd` | `string` | No | Inherited from track | Working directory override (relative path) |
 | `timeout` | `string` | No | — | Task-level timeout. Format: `"30s"`, `"5m"`, `"2h"` |
@@ -226,7 +227,7 @@ Each hook value can be a single command string or an array of commands.
 
 Fields are inherited top-down: **pipeline → track → task**. A value set at a lower level overrides the inherited value.
 
-Inherited fields: `driver`, `model_tier`, `permissions`, `cwd`, `middlewares`.
+Inherited fields: `driver`, `model`, `permissions`, `cwd`, `middlewares`.
 
 Track-level `middlewares` apply to all tasks in the track. Setting task-level `middlewares` **replaces** (not appends) the track-level list. Use `middlewares: []` to disable all inherited middlewares for a task.
 
@@ -400,7 +401,7 @@ Lists all registered handler type names for a plugin category (`'drivers'`, `'tr
 
 ### `resolveConfig(raw: RawPipelineConfig, workDir: string): PipelineConfig`
 
-Resolves a raw pipeline config into a fully resolved `PipelineConfig` — applies inheritance (pipeline → track → task) for driver, model_tier, permissions, and cwd. Validates and resolves all file paths against `workDir`.
+Resolves a raw pipeline config into a fully resolved `PipelineConfig` — applies inheritance (pipeline → track → task) for driver, model, permissions, and cwd. Validates and resolves all file paths against `workDir`.
 
 Use `loadPipeline` for the common parse-and-resolve flow. Use `resolveConfig` directly when you need to manipulate the raw config between parsing and resolution.
 

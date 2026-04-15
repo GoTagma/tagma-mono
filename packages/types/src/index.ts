@@ -115,7 +115,7 @@ export interface TaskConfig {
   readonly trigger?: TriggerConfig;
   readonly continue_from?: string;
   readonly output?: string;
-  readonly model_tier?: string;
+  readonly model?: string;
   readonly permissions?: Permissions;
   readonly driver?: string;
   readonly timeout?: string;
@@ -136,7 +136,7 @@ export interface RawTaskConfig {
   readonly trigger?: TriggerConfig;
   readonly continue_from?: string;
   readonly output?: string;
-  readonly model_tier?: string;
+  readonly model?: string;
   readonly permissions?: Permissions;
   readonly driver?: string;
   readonly timeout?: string;
@@ -156,7 +156,7 @@ export interface TrackConfig {
   readonly name: string;
   readonly color?: string;
   readonly agent_profile?: string;
-  readonly model_tier?: string;
+  readonly model?: string;
   readonly permissions?: Permissions;
   readonly driver?: string;
   readonly cwd?: string;
@@ -172,7 +172,7 @@ export interface RawTrackConfig {
   readonly name: string;
   readonly color?: string;
   readonly agent_profile?: string;
-  readonly model_tier?: string;
+  readonly model?: string;
   readonly permissions?: Permissions;
   readonly driver?: string;
   readonly cwd?: string;
@@ -199,6 +199,7 @@ export interface HooksConfig {
 export interface PipelineConfig {
   readonly name: string;
   readonly driver?: string;
+  readonly model?: string;
   readonly timeout?: string;
   readonly plugins?: readonly string[];
   readonly hooks?: HooksConfig;
@@ -210,6 +211,7 @@ export interface PipelineConfig {
 export interface RawPipelineConfig {
   readonly name: string;
   readonly driver?: string;
+  readonly model?: string;
   readonly timeout?: string;
   readonly plugins?: readonly string[];
   readonly hooks?: HooksConfig;
@@ -268,7 +270,7 @@ export interface DriverPlugin {
   readonly capabilities: DriverCapabilities;
   buildCommand(task: TaskConfig, track: TrackConfig, ctx: DriverContext): Promise<SpawnSpec>;
   parseResult?(stdout: string, stderr?: string): DriverResultMeta;
-  resolveModel?(tier: string): string;
+  resolveModel?(): string;
   resolveTools?(permissions: Permissions): string;
 }
 

@@ -551,11 +551,11 @@ export async function runPipeline(
 
     // File-only: resolved config for this task
     const resolvedDriver = task.driver ?? track.driver ?? config.driver ?? 'claude-code';
-    const resolvedTier = task.model_tier ?? track.model_tier ?? '(default)';
+    const resolvedModel = task.model ?? track.model ?? config.model ?? '(default)';
     const resolvedPerms = task.permissions ?? track.permissions ?? '(default)';
     const resolvedCwd = task.cwd ?? track.cwd ?? workDir;
     log.debug(`[task:${taskId}]`,
-      `resolved: driver=${resolvedDriver} tier=${resolvedTier} cwd=${resolvedCwd}`);
+      `resolved: driver=${resolvedDriver} model=${resolvedModel} cwd=${resolvedCwd}`);
     log.debug(`[task:${taskId}]`, `permissions: ${JSON.stringify(resolvedPerms)}`);
     if (task.continue_from) {
       log.debug(`[task:${taskId}]`, `continue_from: "${task.continue_from}"`);

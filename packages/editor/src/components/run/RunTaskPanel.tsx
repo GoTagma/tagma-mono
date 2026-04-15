@@ -111,9 +111,9 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
     ?? track?.driver
     ?? config.driver
     ?? null;
-  const modelTier = task.resolvedModelTier
-    ?? taskConfig?.model_tier
-    ?? track?.model_tier
+  const model = taskConfig?.model
+    ?? track?.model
+    ?? config.model
     ?? null;
   const permissions = task.resolvedPermissions
     ?? taskConfig?.permissions
@@ -365,7 +365,7 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
                   </ConfigRow>
                 )}
                 {driver && <ConfigRow label="Driver">{driver}</ConfigRow>}
-                {modelTier && <ConfigRow label="Model">{modelTier}</ConfigRow>}
+                {model && <ConfigRow label="Model">{model}</ConfigRow>}
                 {permsLabel(permissions) && <ConfigRow label="Perms">{permsLabel(permissions)}</ConfigRow>}
                 {timeout && <ConfigRow label="Timeout">{timeout}</ConfigRow>}
                 {cwd && <ConfigRow label="CWD">{cwd}</ConfigRow>}

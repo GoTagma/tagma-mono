@@ -7,12 +7,10 @@ import type {
 
 // Claude Code CLI reference: https://code.claude.com/docs/en/cli-reference
 
-const MODEL_MAP: Record<string, string> = {
-  high: 'opus', medium: 'sonnet', low: 'haiku',
-};
+const DEFAULT_MODEL = 'sonnet';
 
-function resolveModel(tier: string): string {
-  return MODEL_MAP[tier] ?? 'sonnet';
+function resolveModel(): string {
+  return DEFAULT_MODEL;
 }
 
 function resolveTools(permissions: Permissions): string {
@@ -147,7 +145,7 @@ export const ClaudeCodeDriver: DriverPlugin = {
     task: TaskConfig, track: TrackConfig, ctx: DriverContext,
   ): Promise<SpawnSpec> {
     const permissions = task.permissions ?? track.permissions!;
-    const model = resolveModel(task.model_tier ?? track.model_tier ?? 'medium');
+    const model = task.model ?? track.model ?? DEFAULT_MODEL;
     const tools = resolveTools(permissions);
     const permissionMode = resolvePermissionMode(permissions);
 

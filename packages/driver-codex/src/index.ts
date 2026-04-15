@@ -19,25 +19,12 @@ import type {
   DriverContext, SpawnSpec, Permissions,
 } from '@tagma/types';
 
-// L5 / M2: Codex currently exposes a single public coding model
-// (`gpt-5-codex`) that supports `model_reasoning_effort` for tier control.
-// Older revisions of this file pinned an unreleased `gpt-5.3-codex`
-// placeholder which produced a 404 the moment the user actually ran a task.
-// Until the upstream CLI exposes per-tier model variants, all tiers map to
-// the same model name and tier control happens via reasoning effort below.
-const MODEL_MAP: Record<string, string> = {
-  high: 'gpt-5-codex', medium: 'gpt-5-codex', low: 'gpt-5-codex',
-};
+const DEFAULT_MODEL = 'gpt-5.3-codex';
 
-// Codex model reasoning effort — only 'low' | 'medium' | 'high' are supported
-// by the underlying model. We map our model_tier directly.
+// Codex model reasoning effort — defaults to 'medium'.
 const REASONING_EFFORT_MAP: Record<string, string> = {
   high: 'high', medium: 'medium', low: 'low',
 };
-
-function resolveModel(tier: string): string {
-  return MODEL_MAP[tier] ?? 'gpt-5-codex';
-}
 
 function resolveReasoningEffort(tier: string): string {
   return REASONING_EFFORT_MAP[tier] ?? 'medium';
@@ -84,16 +71,17 @@ const CodexDriver: DriverPlugin = {
     outputFormat: false,
   } satisfies DriverCapabilities,
 
-  resolveModel,
+  resolveModel(): string {
+    return DEFAULT_MODEL;
+  },
 
   async buildCommand(
     task: TaskConfig, track: TrackConfig, ctx: DriverContext,
   ): Promise<SpawnSpec> {
     // M1: cached preflight (see ensureCodexAvailable above).
     ensureCodexAvailable();
-    const tier = task.model_tier ?? track.model_tier ?? 'medium';
-    const model = resolveModel(tier);
-    const reasoningEffort = resolveReasoningEffort(tier);
+    const model = task.model ?? track.model ?? DEFAULT_MODEL;
+    const reasoningEffort = resolveReasoningEffort('medium');
     const sandbox = resolveSandbox(task.permissions ?? track.permissions!);
 
     let prompt = task.prompt!;

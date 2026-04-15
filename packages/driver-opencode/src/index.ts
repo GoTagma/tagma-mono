@@ -3,13 +3,7 @@ import type {
   TaskConfig, TrackConfig, DriverContext, SpawnSpec, Permissions,
 } from '@tagma/types';
 
-const MODEL_MAP: Record<string, string> = {
-  high: 'opencode/big-pickle', medium: 'opencode/big-pickle', low: 'opencode/big-pickle',
-};
-
-function resolveModel(tier: string): string {
-  return MODEL_MAP[tier] ?? 'opencode/big-pickle';
-}
+const DEFAULT_MODEL = 'opencode/big-pickle';
 
 const OpenCodeDriver: DriverPlugin = {
   name: 'opencode',
@@ -20,12 +14,14 @@ const OpenCodeDriver: DriverPlugin = {
     outputFormat: true,       // supports --format json
   } satisfies DriverCapabilities,
 
-  resolveModel,
+  resolveModel(): string {
+    return DEFAULT_MODEL;
+  },
 
   async buildCommand(
     task: TaskConfig, track: TrackConfig, ctx: DriverContext,
   ): Promise<SpawnSpec> {
-    const model = resolveModel(task.model_tier ?? track.model_tier ?? 'medium');
+    const model = task.model ?? track.model ?? DEFAULT_MODEL;
 
     let prompt = task.prompt!;
 

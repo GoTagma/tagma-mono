@@ -22,6 +22,7 @@ const GATE_HOOKS: ReadonlySet<string> = new Set(['pipeline_start', 'task_start']
 
 export function PipelineConfigPanel({ config, drivers, errors, onUpdate, onClose, readOnly = false }: PipelineConfigPanelProps) {
   const [timeout, setTimeout_, blurTimeout] = useLocalField(config.timeout ?? '', (v) => onUpdate({ timeout: v || undefined }));
+  const [model, setModel, blurModel] = useLocalField(config.model ?? '', (v) => onUpdate({ model: v || undefined }));
 
   const hooks = config.hooks ?? {};
 
@@ -74,6 +75,13 @@ export function PipelineConfigPanel({ config, drivers, errors, onUpdate, onClose
               <label className="field-label">Default Timeout</label>
               <input type="text" className="field-input" value={timeout} onChange={(e) => setTimeout_(e.target.value)} onBlur={blurTimeout} placeholder="e.g. 10m, 60s" />
             </div>
+          </div>
+
+          {/* Default Model */}
+          <div>
+            <label className="field-label">Default Model</label>
+            <input type="text" className="field-input font-mono text-[11px]" value={model} onChange={(e) => setModel(e.target.value)} onBlur={blurModel} placeholder="e.g. claude-sonnet-4-6, gpt-5-codex" />
+            <p className="text-[10px] text-tagma-muted mt-1">Exact model name passed to the driver CLI. Inherited by tracks and tasks.</p>
           </div>
 
           {/* Hooks */}

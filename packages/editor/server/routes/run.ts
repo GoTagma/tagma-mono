@@ -61,7 +61,7 @@ interface RunTaskWire {
   sessionId: string | null;
   normalizedOutput: string | null;
   resolvedDriver: string | null;
-  resolvedModelTier: string | null;
+  resolvedModel: string | null;
   resolvedPermissions: Permissions | null;
   logs: RunTaskLogLine[];
   totalLogCount: number;
@@ -86,7 +86,7 @@ type RunEvent =
       sessionId?: string | null;
       normalizedOutput?: string | null;
       resolvedDriver?: string | null;
-      resolvedModelTier?: string | null;
+      resolvedModel?: string | null;
       resolvedPermissions?: Permissions | null;
     }
   | { type: 'run_end'; runId: string; success: boolean }
@@ -156,7 +156,7 @@ interface RunSummaryTask {
   durationMs: number | null;
   exitCode: number | null;
   driver: string | null;
-  modelTier: string | null;
+  model: string | null;
 }
 
 interface RunSummary {
@@ -237,7 +237,7 @@ function taskStateChangeToWire(
     sessionId: result?.sessionId ?? null,
     normalizedOutput: result?.normalizedOutput ?? null,
     resolvedDriver: cfg.driver ?? null,
-    resolvedModelTier: cfg.model_tier ?? null,
+    resolvedModel: cfg.model ?? null,
     resolvedPermissions: cfg.permissions ?? null,
   };
 }
@@ -440,7 +440,7 @@ export function registerRunRoutes(app: express.Express): void {
         sessionId: null,
         normalizedOutput: null,
         resolvedDriver: null,
-        resolvedModelTier: null,
+        resolvedModel: null,
         resolvedPermissions: null,
         logs: [],
         totalLogCount: 0,
@@ -481,7 +481,7 @@ export function registerRunRoutes(app: express.Express): void {
         durationMs: null,
         exitCode: null,
         driver: null,
-        modelTier: null,
+        model: null,
       });
     }
 
@@ -550,7 +550,7 @@ export function registerRunRoutes(app: express.Express): void {
               durationMs: result?.durationMs ?? existing.durationMs,
               exitCode: result?.exitCode ?? existing.exitCode,
               driver: state.config.driver ?? existing.driver,
-              modelTier: state.config.model_tier ?? existing.modelTier,
+              model: state.config.model ?? existing.model,
             });
           }
           const wireEvent = taskStateChangeToWire(runId, event.taskId, event.status, event.state);
@@ -574,7 +574,7 @@ export function registerRunRoutes(app: express.Express): void {
             sessionId: null,
             normalizedOutput: null,
             resolvedDriver: null,
-            resolvedModelTier: null,
+            resolvedModel: null,
             resolvedPermissions: null,
             logs: [],
             totalLogCount: 0,
@@ -593,7 +593,7 @@ export function registerRunRoutes(app: express.Express): void {
             sessionId: wireEvent.sessionId ?? baseTask.sessionId,
             normalizedOutput: wireEvent.normalizedOutput ?? baseTask.normalizedOutput,
             resolvedDriver: wireEvent.resolvedDriver ?? baseTask.resolvedDriver,
-            resolvedModelTier: wireEvent.resolvedModelTier ?? baseTask.resolvedModelTier,
+            resolvedModel: wireEvent.resolvedModel ?? baseTask.resolvedModel,
             resolvedPermissions: wireEvent.resolvedPermissions ?? baseTask.resolvedPermissions,
             logs: baseTask.logs,
             totalLogCount: baseTask.totalLogCount,
@@ -630,7 +630,7 @@ export function registerRunRoutes(app: express.Express): void {
               sessionId: null,
               normalizedOutput: null,
               resolvedDriver: null,
-              resolvedModelTier: null,
+              resolvedModel: null,
               resolvedPermissions: null,
               logs: [],
               totalLogCount: 0,

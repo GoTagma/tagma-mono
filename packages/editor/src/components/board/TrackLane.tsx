@@ -11,13 +11,6 @@ interface TrackLaneProps {
   errorMessages?: string[];
 }
 
-const TIER_TEXT: Record<string, string> = { high: 'HIGH', medium: 'MED', low: 'LOW' };
-const TIER_CLS: Record<string, string> = {
-  high: 'bg-blue-500/10 text-blue-400/80',
-  medium: 'bg-tagma-muted/8 text-tagma-muted/70',
-  low: 'bg-emerald-500/10 text-emerald-400/80',
-};
-
 const FAIL_CFG: Record<string, { icon: React.ReactNode; cls: string; tip: string }> = {
   skip_downstream: { icon: <SkipForward size={8} />, cls: 'text-tagma-muted/40', tip: 'Skip downstream on failure' },
   stop_all: { icon: <ShieldAlert size={8} />, cls: 'text-tagma-error/60', tip: 'Stop all on failure' },
@@ -37,7 +30,7 @@ function TrackTooltip({ track, anchorRect }: { track: RawTrackConfig; anchorRect
   const perms = track.permissions;
   const rows: [string, string][] = [];
   if (track.driver) rows.push(['Driver', track.driver]);
-  if (track.model_tier) rows.push(['Model', track.model_tier]);
+  if (track.model) rows.push(['Model', track.model]);
   if (perms) {
     const parts = [perms.read && 'Read', perms.write && 'Write', perms.execute && 'Execute'].filter(Boolean);
     if (parts.length) rows.push(['Permissions', parts.join(', ')]);
@@ -193,10 +186,8 @@ export const TrackLane = memo(function TrackLane({ track, taskCount, hasParallel
           {track.driver && (
             <Chip className="bg-tagma-accent/12 text-tagma-accent/70">{track.driver}</Chip>
           )}
-          {track.model_tier && (
-            <Chip className={`font-bold ${TIER_CLS[track.model_tier] ?? 'bg-tagma-muted/12 text-tagma-muted/80'}`}>
-              {TIER_TEXT[track.model_tier] ?? track.model_tier}
-            </Chip>
+          {track.model && (
+            <Chip className="bg-tagma-muted/12 text-tagma-muted/80 font-bold">{track.model}</Chip>
           )}
           {perms && (
             <span className="inline-flex items-center h-[14px] gap-[1px]">

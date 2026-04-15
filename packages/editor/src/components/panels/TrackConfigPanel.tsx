@@ -39,9 +39,9 @@ export function TrackConfigPanel({ track, drivers, errors, onUpdateTrack, onDele
     () => resolveScalar(track.driver, undefined, pipelineConfig.driver, 'claude-code'),
     [track.driver, pipelineConfig.driver],
   );
-  const resolvedModelTier = useMemo(
-    () => resolveScalar(track.model_tier, undefined, undefined, 'medium'),
-    [track.model_tier],
+  const resolvedModel = useMemo(
+    () => resolveScalar(track.model, undefined, pipelineConfig.model, undefined),
+    [track.model, pipelineConfig.model],
   );
   const resolvedAgentProfile = useMemo(
     () => resolveScalar(track.agent_profile, undefined, undefined),
@@ -57,10 +57,7 @@ export function TrackConfigPanel({ track, drivers, errors, onUpdateTrack, onDele
   const [color, setColor, blurColor] = useLocalField(track.color ?? '', (v) => commit({ color: v || undefined }));
   const [agentProfile, setAgentProfile, blurAgentProfile] = useLocalField(track.agent_profile ?? '', (v) => commit({ agent_profile: v || undefined }));
   const [cwd, setCwd, blurCwd] = useLocalField(track.cwd ?? '', (v) => commit({ cwd: v || undefined }));
-
-  const handleModelTierChange = useCallback((model_tier: string) => {
-    commit({ model_tier: model_tier || undefined });
-  }, [commit]);
+  const [model, setModel, blurModel] = useLocalField(track.model ?? '', (v) => commit({ model: v || undefined }));
 
   const handleOnFailureChange = useCallback((on_failure: string) => {
     commit({ on_failure: on_failure || undefined });
@@ -139,19 +136,14 @@ export function TrackConfigPanel({ track, drivers, errors, onUpdateTrack, onDele
           <InheritedValue isOverridden={!!track.driver} resolved={resolvedDriver} pipelineName={pipelineConfig.name} />
         </div>
 
-        {/* Model Tier */}
+        {/* Model */}
         <div>
           <div className="flex items-center justify-between">
-            <label className="field-label">Model Tier</label>
-            <ResetButton visible={!!track.model_tier} onReset={() => commit({ model_tier: undefined })} />
+            <label className="field-label">Model</label>
+            <ResetButton visible={!!track.model} onReset={() => commit({ model: undefined })} />
           </div>
-          <select className="field-input" value={track.model_tier ?? ''} onChange={(e) => handleModelTierChange(e.target.value)}>
-            <option value="">(inherited)</option>
-            <option value="low">low</option>
-            <option value="medium">medium</option>
-            <option value="high">high</option>
-          </select>
-          <InheritedValue isOverridden={!!track.model_tier} resolved={resolvedModelTier} pipelineName={pipelineConfig.name} />
+          <input type="text" className="field-input font-mono text-[11px]" value={model} onChange={(e) => setModel(e.target.value)} onBlur={blurModel} placeholder="e.g. claude-sonnet-4-6" />
+          <InheritedValue isOverridden={!!track.model} resolved={resolvedModel} pipelineName={pipelineConfig.name} />
         </div>
 
         {/* Agent Profile */}

@@ -11,7 +11,7 @@ export interface ResolvedValue {
   source: 'task' | 'track' | 'pipeline' | 'default';
 }
 
-/** Resolve a simple scalar field (driver/model_tier/agent_profile/cwd/timeout). */
+/** Resolve a simple scalar field (driver/model/agent_profile/cwd/timeout). */
 export function resolveScalar(
   taskValue: string | undefined,
   trackValue: string | undefined,

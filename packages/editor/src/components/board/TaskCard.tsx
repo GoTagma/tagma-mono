@@ -63,7 +63,7 @@ function formatRuntimeDuration(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
-function resolveField<K extends 'driver' | 'model_tier'>(
+function resolveField<K extends 'driver' | 'model'>(
   task: RawTaskConfig, trackId: string, config: RawPipelineConfig, field: K,
 ): string | undefined {
   if (task[field]) return task[field];
@@ -149,7 +149,7 @@ function TaskTooltip({ task, trackId, config, anchorRect }: {
   task: RawTaskConfig; trackId: string; config: RawPipelineConfig; anchorRect: DOMRect;
 }) {
   const driver = resolveField(task, trackId, config, 'driver');
-  const tier = resolveField(task, trackId, config, 'model_tier');
+  const model = resolveField(task, trackId, config, 'model');
   const track = config.tracks.find((t) => t.id === trackId);
   const perms = task.permissions ?? track?.permissions;
 
@@ -157,7 +157,7 @@ function TaskTooltip({ task, trackId, config, anchorRect }: {
   const rows: [string, string][] = [];
   // AI-specific fields only for prompt/template tasks
   if (!isCmd && driver) rows.push(['Driver', driver]);
-  if (!isCmd && tier) rows.push(['Model', tier]);
+  if (!isCmd && model) rows.push(['Model', model]);
   if (!isCmd && perms) {
     const parts = [perms.read && 'Read', perms.write && 'Write', perms.execute && 'Execute'].filter(Boolean);
     if (parts.length) rows.push(['Permissions', parts.join(', ')]);
@@ -237,7 +237,7 @@ export const TaskCard = memo(function TaskCard({
   const isTemplate = !!task.use;
 
   const driver = resolveField(task, trackId, pipelineConfig, 'driver');
-  const tier = resolveField(task, trackId, pipelineConfig, 'model_tier');
+  const model = resolveField(task, trackId, pipelineConfig, 'model');
   const track = pipelineConfig.tracks.find((t) => t.id === trackId);
   const perms = task.permissions ?? track?.permissions;
 
@@ -408,14 +408,8 @@ export const TaskCard = memo(function TaskCard({
           {driver && (
             <Chip className="bg-tagma-accent/12 text-tagma-accent/80">{driver}</Chip>
           )}
-          {tier && (
-            <Chip className={`font-bold ${
-              tier === 'high' ? 'bg-blue-500/15 text-blue-400/90'
-              : tier === 'low' ? 'bg-emerald-500/15 text-emerald-400/90'
-              : 'bg-tagma-muted/12 text-tagma-muted/80'
-            }`}>
-              {tier === 'high' ? 'HIGH' : tier === 'medium' ? 'MED' : tier === 'low' ? 'LOW' : tier}
-            </Chip>
+          {model && (
+            <Chip className="bg-tagma-muted/12 text-tagma-muted/80 font-bold">{model}</Chip>
           )}
           {perms && (
             <span className="flex items-center h-[14px] gap-[1px] ml-auto">
