@@ -2,7 +2,6 @@ import type express from 'express';
 import {
   upsertTrack,
   removeTrack,
-  updateTrack,
   upsertTask,
   removeTask,
   transferTask,
@@ -87,12 +86,13 @@ export function registerPipelineRoutes(app: express.Express): void {
 
   // ── Pipeline name ──
   app.patch('/api/pipeline', (req, res) => {
-    const { name, driver, timeout, plugins, hooks } = req.body;
+    const { name, driver, model, timeout, plugins, hooks } = req.body;
     // `RawPipelineConfig` fields are declared readonly, so we build the patch
     // as an object literal instead of mutating field-by-field.
     const patch: Partial<RawPipelineConfig> = {
       ...(name !== undefined && { name }),
       ...(driver !== undefined && { driver: driver || undefined }),
+      ...(model !== undefined && { model: model || undefined }),
       ...(timeout !== undefined && { timeout: timeout || undefined }),
       ...(plugins !== undefined && {
         plugins: Array.isArray(plugins) && plugins.length > 0 ? plugins : undefined,
@@ -116,8 +116,19 @@ export function registerPipelineRoutes(app: express.Express): void {
 
   app.patch('/api/tracks/:trackId', (req, res) => {
     const { trackId } = req.params;
-    const fields = stripEmptyFields({ ...req.body }, TRACK_REQUIRED_KEYS);
-    S.config = updateTrack(S.config, trackId, fields);
+    // Merge patch with existing track, then strip empty optional fields so
+    // that clearing a field (e.g. model → '') actually removes it from YAML.
+    // We must NOT merge again via updateTrack({ ...t, ...fields }) because
+    // that would resurrect the old value for any key stripped by
+    // stripEmptyFields.
+    const existing = S.config.tracks.find((t) => t.id === trackId);
+    if (!existing) return res.status(404).json({ error: 'Track not found' });
+    const merged: Record<string, unknown> = { ...existing, ...req.body };
+    const updated = stripEmptyFields(merged, TRACK_REQUIRED_KEYS) as unknown as RawTrackConfig;
+    S.config = {
+      ...S.config,
+      tracks: S.config.tracks.map(t => t.id === trackId ? updated : t),
+    };
     S.config = reconcilePipelinePlugins(S.config);
     res.json(getState());
   });

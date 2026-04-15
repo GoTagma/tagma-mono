@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import {
   FileText, Loader2, Check, X, Clock, SkipForward, Ban, Download,
-  History as HistoryIcon,
+  History as HistoryIcon, GitBranch,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import type { RunHistoryEntry, RunSummary, RunSummaryTask, TaskStatus } from '../../api/client';
+import { HistoryFlowView } from './HistoryFlowView';
 
 const STATUS_ICON: Record<TaskStatus, React.ReactNode> = {
   idle: <Clock size={9} className="text-tagma-muted/50" />,
@@ -156,7 +157,7 @@ export function RunHistoryBrowser({
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [logContent, setLogContent] = useState<string>('');
   const [logLoading, setLogLoading] = useState(false);
-  const [viewMode, setViewMode] = useState<'summary' | 'log'>('summary');
+  const [viewMode, setViewMode] = useState<'summary' | 'flow' | 'log'>('summary');
   const [outcome, setOutcome] = useState<OutcomeFilter>('all');
 
   const loadHistory = useCallback(async () => {
@@ -513,8 +514,8 @@ function DetailPane({
   summaryError: string | null;
   logContent: string;
   logLoading: boolean;
-  viewMode: 'summary' | 'log';
-  onViewMode: (mode: 'summary' | 'log') => void;
+  viewMode: 'summary' | 'flow' | 'log';
+  onViewMode: (mode: 'summary' | 'flow' | 'log') => void;
   onDownload: () => void;
   tasksByTrack: Map<string, RunSummaryTask[]>;
 }) {
@@ -546,6 +547,18 @@ function DetailPane({
               <button
                 type="button"
                 className={`px-2.5 py-0.5 text-[9px] font-mono uppercase tracking-wider border-l border-tagma-border ${
+                  viewMode === 'flow'
+                    ? 'bg-tagma-accent/10 text-tagma-accent'
+                    : 'text-tagma-muted hover:text-tagma-text'
+                }`}
+                onClick={() => onViewMode('flow')}
+                title="Pipeline flow chart"
+              >
+                <GitBranch size={10} />
+              </button>
+              <button
+                type="button"
+                className={`px-2.5 py-0.5 text-[9px] font-mono uppercase tracking-wider border-l border-tagma-border ${
                   viewMode === 'log'
                     ? 'bg-tagma-accent/10 text-tagma-accent'
                     : 'text-tagma-muted hover:text-tagma-text'
@@ -572,7 +585,7 @@ function DetailPane({
         )}
       </div>
 
-      <div className="flex-1 overflow-auto">
+      <div className={`flex-1 ${viewMode === 'flow' ? 'overflow-hidden' : 'overflow-auto'}`}>
         {!selectedRunId && (
           <div className="px-6 py-10 text-[11px] text-tagma-muted-dim leading-relaxed max-w-md">
             Select a run from the list to see its per-task timeline. Each run
@@ -674,6 +687,21 @@ function DetailPane({
               </div>
             )}
           </div>
+        )}
+
+        {viewMode === 'flow' && selectedRunId && (
+          summary ? (
+            <HistoryFlowView summary={summary} />
+          ) : summaryLoading ? (
+            <div className="px-6 py-10 text-[11px] text-tagma-muted-dim">
+              <Loader2 size={12} className="animate-spin inline mr-2" />
+              Loading flow...
+            </div>
+          ) : (
+            <div className="px-6 py-10 text-[11px] text-tagma-muted-dim">
+              No summary data available for flow view.
+            </div>
+          )
         )}
 
         {viewMode === 'log' && selectedRunId && !logLoading && (

@@ -157,6 +157,13 @@ interface RunSummaryTask {
   exitCode: number | null;
   driver: string | null;
   model: string | null;
+  depends_on: string[];
+}
+
+interface RunSummaryTrack {
+  id: string;
+  name: string;
+  color?: string;
 }
 
 interface RunSummary {
@@ -167,6 +174,7 @@ interface RunSummary {
   success: boolean;
   error: string | null;
   tasks: RunSummaryTask[];
+  tracks: RunSummaryTrack[];
 }
 
 function persistRunSummary(cwd: string, runId: string, summary: RunSummary): void {
@@ -470,10 +478,15 @@ export function registerRunRoutes(app: express.Express): void {
     // timeline instead of a plaintext log (§3.12).
     const taskSnapshots = new Map<string, RunSummaryTask>();
     for (const t of initialTasks) {
+      const track = S.config.tracks.find((tr) => tr.id === t.trackId);
+      const taskConfig = track?.tasks.find((tc) => `${track!.id}.${tc.id}` === t.taskId);
+      const deps = (taskConfig?.depends_on ?? []).map((dep) =>
+        dep.includes('.') ? dep : `${t.trackId}.${dep}`,
+      );
       taskSnapshots.set(t.taskId, {
         taskId: t.taskId,
         trackId: t.trackId,
-        trackName: S.config.tracks.find((tr) => tr.id === t.trackId)?.name ?? t.trackId,
+        trackName: track?.name ?? t.trackId,
         taskName: t.taskName,
         status: t.status,
         startedAt: null,
@@ -482,6 +495,7 @@ export function registerRunRoutes(app: express.Express): void {
         exitCode: null,
         driver: null,
         model: null,
+        depends_on: deps,
       });
     }
 
@@ -687,6 +701,11 @@ export function registerRunRoutes(app: express.Express): void {
           success: runSuccess ?? false,
           error: runErrorMessage,
           tasks: Array.from(taskSnapshots.values()),
+          tracks: S.config.tracks.map((tr) => ({
+            id: tr.id,
+            name: tr.name,
+            color: tr.color,
+          })),
         });
       } catch (persistErr) {
         console.error('[run] failed to persist summary.json:', persistErr);

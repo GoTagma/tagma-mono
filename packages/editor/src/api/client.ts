@@ -477,7 +477,7 @@ export interface RunTaskState {
   // pipeline → default) once a task starts, and the authoritative values are
   // captured here so the Run-side panel can display what actually ran.
   resolvedDriver: string | null;
-  resolvedModelTier: string | null;
+  resolvedModel: string | null;
   resolvedPermissions: Permissions | null;
   // Streamed process log lines sourced from the SDK Logger (same content as
   // pipeline.log). Capped by the reducer so an excessively chatty task does
@@ -573,6 +573,13 @@ export interface RunSummaryTask {
   exitCode: number | null;
   driver: string | null;
   modelTier: string | null;
+  depends_on?: string[];
+}
+
+export interface RunSummaryTrack {
+  id: string;
+  name: string;
+  color?: string;
 }
 
 export interface RunSummary {
@@ -583,6 +590,7 @@ export interface RunSummary {
   success: boolean;
   error: string | null;
   tasks: RunSummaryTask[];
+  tracks?: RunSummaryTrack[];
 }
 
 // ── External state events (C5) ──
