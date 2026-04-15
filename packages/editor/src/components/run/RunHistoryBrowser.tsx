@@ -302,16 +302,10 @@ export function RunHistoryBrowser({
 
 // ─── Header ────────────────────────────────────────────────────────────
 //
-// Two-row editorial masthead mirroring PluginsPage below its utility row:
-//
-//   1. Wordmark row — "History." with copper terminal + inline subtitle.
-//   2. Tab row — underline-style outcome tabs that flush with the
-//      header's bottom border.
-//
-// Refresh is NOT rendered here — RunView owns the h-11 toolbar above
-// this component (the Back + pipeline name bar) and places Refresh there
-// so the history page shares exactly the same chrome height as live-run
-// mode, and the user's eye doesn't have to re-locate the button.
+// Slim outcome-tab strip. RunView owns the h-11 toolbar above this
+// component (Back + pipeline name + Refresh) so the history page shares
+// the same chrome height as live-run mode; the tabs sit directly
+// beneath it as a single compact row, without a second wordmark.
 function HistoryHeader({
   outcome,
   onOutcome,
@@ -321,17 +315,6 @@ function HistoryHeader({
 }) {
   return (
     <header className="shrink-0 bg-tagma-surface/60 border-b border-tagma-border">
-      <div className="px-6 pt-4 pb-1">
-        <div className="flex items-baseline gap-3 flex-wrap">
-          <h1 className="text-[22px] font-semibold text-tagma-text leading-none tracking-tight">
-            History<span className="text-tagma-accent">.</span>
-          </h1>
-          <p className="text-[11px] text-tagma-muted-dim leading-snug">
-            Inspect past runs, review per-task timelines, and export summaries as JSON.
-          </p>
-        </div>
-      </div>
-
       <div className="px-6 pt-2">
         <div className="flex items-end gap-7 -mb-px">
           {OUTCOME_TABS.map((t) => (

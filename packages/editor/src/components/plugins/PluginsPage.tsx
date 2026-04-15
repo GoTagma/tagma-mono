@@ -680,17 +680,14 @@ function CategorySidebar({
 
 // ─── Header ────────────────────────────────────────────────────────────
 //
-// Three-row editorial block, replacing the previous 44px toolbar:
+// Two-row header aligned with the editor / run toolbars:
 //
-//   1. Utility row — back button on the left; refresh + (Local-only)
-//      import-local on the right. Uses uppercase micro-labels so the
-//      controls read as secondary to the wordmark.
-//   2. Wordmark row — "Plugins." display with copper terminal, paired
-//      inline with a single-line subtitle. Tight vertical padding keeps
-//      the header compact so the card viewport gets more room.
-//   3. Tab row — underline-style tabs. The active tab's copper border
-//      aligns flush with the header's bottom border, so switching tabs
-//      feels like moving between sections of a masthead.
+//   1. Utility row — h-11 strip with back button on the left, refresh +
+//      (Local-only) import-local on the right. Matches the h-11 Toolbar
+//      used by Editor and RunView so switching pages doesn't shift the
+//      canvas vertically.
+//   2. Tab row — underline-style tabs. The active tab's copper border
+//      aligns flush with the header's bottom border.
 function PluginsHeader({
   tab,
   onTab,
@@ -710,6 +707,11 @@ function PluginsHeader({
     <header className="shrink-0 bg-tagma-surface/60 border-b border-tagma-border">
       <div className="h-11 flex items-center px-2 gap-2 border-b border-tagma-border/60">
         <UtilityLink onClick={onBack} icon={<ArrowLeft size={12} />} label="Back to Editor" />
+        <div className="w-px h-5 bg-tagma-border" />
+        <div className="flex items-center gap-1.5 px-2">
+          <Package size={13} className="text-tagma-accent" />
+          <span className="text-xs font-medium text-tagma-text truncate max-w-[160px]">Plugins</span>
+        </div>
         <div className="flex-1" />
         {tab === 'local' && onImportLocal && (
           <UtilityLink
@@ -726,17 +728,6 @@ function PluginsHeader({
           title="Refresh plugin list"
           disabled={refreshing}
         />
-      </div>
-
-      <div className="px-6 pt-3 pb-1">
-        <div className="flex items-baseline gap-3 flex-wrap">
-          <h1 className="text-[22px] font-semibold text-tagma-text leading-none tracking-tight">
-            Plugins<span className="text-tagma-accent">.</span>
-          </h1>
-          <p className="text-[11px] text-tagma-muted-dim leading-snug">
-            Install and manage the drivers, triggers, completions, and middlewares that power your pipeline.
-          </p>
-        </div>
       </div>
 
       <div className="px-6 pt-2">
