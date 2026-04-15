@@ -60,6 +60,65 @@ app.use(
     credentials: false,
   }),
 );
+
+// ── C7: Host + Origin strict gate (DNS rebinding + CSRF defense) ──
+//
+// The server binds to loopback by default (C1) and CORS already restricts
+// which Origins may READ responses, but CORS does not prevent the *request*
+// from executing — a state-changing POST from evil.com still runs its side
+// effects before the CORS response filter kicks in. And a DNS-rebinding
+// attack can make a browser send requests to 127.0.0.1:3001 with a
+// `Host: attacker.com` header, bypassing any Origin-only check.
+//
+// This middleware enforces two invariants whenever the server is bound to
+// loopback (i.e. the user has not explicitly opted out by setting HOST to a
+// non-loopback address):
+//   1. The `Host` request header MUST resolve to a loopback name. This
+//      blocks DNS rebinding even when the browser has cached a malicious
+//      DNS answer pointing at 127.0.0.1.
+//   2. On mutations, if `Origin` is present it MUST be in ALLOWED_ORIGINS.
+//      Browser-originated requests always include Origin on cross-site
+//      POSTs, so this is a free CSRF block.
+//
+// Non-browser tooling (curl, HTTP clients in other processes) with no
+// Origin header still passes the Host check because we only fail-close on
+// an Origin mismatch, not on its absence — keeping local dev ergonomics
+// (e.g. `curl http://127.0.0.1:3001/api/...`) intact.
+const BOUND_LOOPBACK =
+  HOST === '127.0.0.1' || HOST === 'localhost' || HOST === '::1' || HOST === '::';
+const LOOPBACK_HOSTNAMES = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
+
+function extractHostname(hostHeader: string): string {
+  // Strip IPv6 brackets first so the port-stripping regex doesn't eat the
+  // `::1` colons. Input examples:
+  //   "127.0.0.1:3001" → "127.0.0.1"
+  //   "localhost"      → "localhost"
+  //   "[::1]:3001"     → "::1"
+  const bracketMatch = hostHeader.match(/^\[([^\]]+)\](?::\d+)?$/);
+  if (bracketMatch) return bracketMatch[1]!.toLowerCase();
+  return hostHeader.replace(/:\d+$/, '').toLowerCase();
+}
+
+app.use((req, res, next) => {
+  if (!BOUND_LOOPBACK) return next();
+  const hostHeader = req.headers.host;
+  if (!hostHeader) {
+    return res.status(403).json({ error: 'missing Host header' });
+  }
+  const hostname = extractHostname(hostHeader);
+  if (!LOOPBACK_HOSTNAMES.has(hostname)) {
+    return res.status(403).json({ error: `Host header not allowed: ${hostHeader}` });
+  }
+  const method = req.method.toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
+    const origin = req.headers.origin;
+    if (origin && !ALLOWED_ORIGINS.has(origin)) {
+      return res.status(403).json({ error: `Origin not allowed: ${origin}` });
+    }
+  }
+  return next();
+});
+
 app.use(express.json({ limit: '5mb' }));
 
 // ── Revision / ETag (C6) ──

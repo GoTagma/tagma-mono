@@ -37,6 +37,31 @@ const VALID_MODES: ReadonlySet<QueryMode> = new Set([
   'local', 'global', 'hybrid', 'naive', 'mix',
 ]);
 
+// Hardened URL parser: rejects anything that isn't http/https so malicious
+// pipeline config cannot coerce the middleware into fetching `file://`,
+// `ftp://`, `data:` or similar SSRF-adjacent schemes. We intentionally do
+// NOT block private-IP targets — loopback and RFC1918 are the *primary*
+// LightRAG deployment topologies (default placeholder is
+// http://localhost:9621), so a private-IP block would break the feature's
+// happy path. Command-exec and arbitrary-path schemes are the only ones
+// that aren't dual-use, so those are what we deny.
+function validateEndpointUrl(endpoint: string): URL {
+  let url: URL;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    throw new Error(
+      `lightrag middleware: "endpoint" is not a valid URL: ${endpoint}`,
+    );
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error(
+      `lightrag middleware: "endpoint" protocol must be http or https, got "${url.protocol}"`,
+    );
+  }
+  return url;
+}
+
 // Inlined to avoid importing from @tagma/sdk internals — plugins must only
 // depend on @tagma/types so they stay decoupled from the engine.
 function parseDurationSafe(raw: unknown, fallback: number): number {
@@ -170,6 +195,7 @@ const LightRAGMiddleware: MiddlewarePlugin = {
   ): Promise<string> {
     const endpoint = config.endpoint as string | undefined;
     if (!endpoint) throw new Error('lightrag middleware: "endpoint" is required');
+    validateEndpointUrl(endpoint);
 
     const rawMode = (config.mode as string | undefined) ?? DEFAULT_MODE;
     if (!VALID_MODES.has(rawMode as QueryMode)) {

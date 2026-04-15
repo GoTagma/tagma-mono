@@ -39,9 +39,11 @@ interface WebhookServerState {
 // required — not just an optimization.
 const servers = new Map<string, WebhookServerState>();
 
-function serverKey(port: number, path: string): string {
-  return `${port}::${path}`;
+function serverKey(port: number, path: string, hostname: string): string {
+  return `${hostname}::${port}::${path}`;
 }
+
+const DEFAULT_WEBHOOK_HOST = '127.0.0.1';
 
 function parseDurationSafe(raw: unknown, fallback: number): number {
   if (raw == null) return fallback;
@@ -70,8 +72,9 @@ function ensureServer(
   port: number,
   path: string,
   secretEnv: string | undefined,
+  hostname: string,
 ): WebhookServerState {
-  const key = serverKey(port, path);
+  const key = serverKey(port, path, hostname);
   const existing = servers.get(key);
   if (existing) return existing;
 
@@ -84,6 +87,12 @@ function ensureServer(
 
   Bun.serve({
     port,
+    // Default to loopback so the webhook endpoint is not reachable from the
+    // LAN unless the user explicitly sets `host` in their YAML (e.g. for
+    // container/WSL scenarios). Without this, Bun.serve listens on all
+    // interfaces and a secret-less webhook would accept traffic from any
+    // network-adjacent caller.
+    hostname,
     async fetch(req) {
       const url = new URL(req.url);
       if (url.pathname !== path) {
@@ -167,6 +176,13 @@ const WebhookTrigger: TriggerPlugin = {
           'Env var containing the HMAC-SHA256 secret. When set, POSTs must include an x-tagma-signature: sha256=<hex> header computed over the raw body.',
         placeholder: 'TAGMA_WEBHOOK_SECRET',
       },
+      host: {
+        type: 'string',
+        default: DEFAULT_WEBHOOK_HOST,
+        description:
+          'Interface to bind on. Defaults to 127.0.0.1 so the webhook is only reachable from the local machine. Set to 0.0.0.0 to accept LAN traffic (only do this when secret_env is also set).',
+        placeholder: DEFAULT_WEBHOOK_HOST,
+      },
       timeout: {
         type: 'duration',
         description: 'Maximum wait time (e.g. 10m). Omit or 0 to wait indefinitely.',
@@ -188,11 +204,25 @@ const WebhookTrigger: TriggerPlugin = {
     }
 
     const secretEnv = config.secret_env as string | undefined;
+    const rawHost = config.host;
+    const hostname =
+      typeof rawHost === 'string' && rawHost.trim().length > 0
+        ? rawHost.trim()
+        : DEFAULT_WEBHOOK_HOST;
     const timeoutMs = config.timeout != null
       ? parseDurationSafe(config.timeout, 0)
       : 0;
 
-    const state = ensureServer(port, path, secretEnv);
+    if (hostname !== DEFAULT_WEBHOOK_HOST && hostname !== 'localhost' && !secretEnv) {
+      // Loud warning — the user has opted into a non-loopback bind without
+      // HMAC. Refuse by default rather than silently expose the endpoint to
+      // the network.
+      throw new Error(
+        `webhook trigger: binding to "${hostname}" without secret_env is refused — set secret_env to enable HMAC authentication before exposing to non-loopback interfaces`,
+      );
+    }
+
+    const state = ensureServer(port, path, secretEnv, hostname);
 
     return new Promise<unknown>((resolvePromise, rejectPromise) => {
       if (ctx.signal.aborted) {
