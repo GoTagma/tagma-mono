@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
-  ArrowLeft, FolderOpen, Package, RefreshCw, Store,
+  ArrowLeft, FolderOpen, Package, RefreshCw, Search, Store,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import type {
@@ -101,6 +101,7 @@ export function PluginsPage({
   const [autoLoadErrors, setAutoLoadErrors] = useState<ReadonlyArray<{ name: string; message: string }>>([]);
   const [pluginsLoading, setPluginsLoading] = useState(false);
 
+  const [localQuery, setLocalQuery] = useState('');
   const [marketplaceQuery, setMarketplaceQuery] = useState('');
   // Cached "All" result from the last upstream fetch. Category and search
   // filtering run purely client-side against this list — clicking a
@@ -494,6 +495,9 @@ export function PluginsPage({
         onRefresh={handleRefresh}
         refreshing={pluginsLoading || marketplaceLoading}
         onImportLocal={onRequestBrowseLocal}
+        searchQuery={tab === 'local' ? localQuery : marketplaceQuery}
+        onSearchQueryChange={tab === 'local' ? setLocalQuery : setMarketplaceQuery}
+        searchPlaceholder={tab === 'local' ? 'Search installed plugins…' : 'Search the npm marketplace…'}
       />
 
       <div className="flex-1 min-h-0 flex">
@@ -510,6 +514,7 @@ export function PluginsPage({
               autoLoadErrors={autoLoadErrors}
               declaredSet={declaredSet}
               category={category}
+              query={localQuery}
               loading={pluginsLoading}
               actionState={actionState}
               onInstall={handleInstall}
@@ -524,7 +529,6 @@ export function PluginsPage({
               loadError={marketplaceError}
               upstreamWarning={marketplaceWarning}
               query={marketplaceQuery}
-              onQueryChange={setMarketplaceQuery}
               category={category}
               installedNames={installedNames}
               installedVersions={installedVersions}
@@ -742,6 +746,9 @@ function PluginsHeader({
   onRefresh,
   refreshing,
   onImportLocal,
+  searchQuery,
+  onSearchQueryChange,
+  searchPlaceholder,
 }: {
   tab: Tab;
   onTab: (t: Tab) => void;
@@ -749,6 +756,9 @@ function PluginsHeader({
   onRefresh: () => void;
   refreshing: boolean;
   onImportLocal?: () => void;
+  searchQuery?: string;
+  onSearchQueryChange?: (q: string) => void;
+  searchPlaceholder?: string;
 }) {
   return (
     <header className="shrink-0 bg-tagma-surface/60 border-b border-tagma-border">
@@ -791,6 +801,24 @@ function PluginsHeader({
             icon={<Store size={13} />}
             label="Marketplace"
           />
+          <div className="flex-1" />
+          {onSearchQueryChange && (
+            <div className="pb-2 w-64">
+              <div className="relative">
+                <Search
+                  size={12}
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-tagma-muted-dim pointer-events-none"
+                />
+                <input
+                  type="text"
+                  value={searchQuery ?? ''}
+                  onChange={(e) => onSearchQueryChange(e.target.value)}
+                  placeholder={searchPlaceholder}
+                  className="w-full pl-7 pr-2 py-1 text-[11px] bg-tagma-bg border border-tagma-border text-tagma-text placeholder:text-tagma-muted-dim focus:border-tagma-accent focus:outline-none transition-colors"
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </header>

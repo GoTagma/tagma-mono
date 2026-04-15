@@ -1,5 +1,5 @@
 import {
-  AlertCircle, AlertTriangle, ArrowUpCircle, Calendar, Check, Download, Loader2, Package, Search, Store, Trash2, TrendingUp,
+  AlertCircle, AlertTriangle, ArrowUpCircle, Calendar, Check, Download, Loader2, Package, Trash2, TrendingUp,
 } from 'lucide-react';
 import type { MarketplaceEntry, PluginCategory } from '../../api/client';
 import { errorHint, formatDownloads } from './plugin-errors';
@@ -20,7 +20,6 @@ interface MarketplacePanelProps {
   loadError: string | null;
   upstreamWarning: string | null;
   query: string;
-  onQueryChange: (query: string) => void;
   category: 'all' | PluginCategory;
   installedNames: ReadonlySet<string>;
   installedVersions: ReadonlyMap<string, string | null>;
@@ -52,7 +51,6 @@ export function MarketplacePanel({
   loadError,
   upstreamWarning,
   query,
-  onQueryChange,
   category,
   installedNames,
   installedVersions,
@@ -69,25 +67,6 @@ export function MarketplacePanel({
 
   return (
     <div className="h-full flex flex-col min-h-0">
-      <div className="shrink-0 px-6 pt-3 pb-3 border-b border-tagma-border bg-tagma-surface/20">
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-tagma-muted-dim pointer-events-none" />
-            <input
-              type="text"
-              className="w-full pl-10 pr-3 py-2 text-[12px] bg-tagma-bg border border-tagma-border text-tagma-text placeholder:text-tagma-muted-dim focus:border-tagma-accent focus:outline-none transition-colors"
-              value={query}
-              onChange={(e) => onQueryChange(e.target.value)}
-              placeholder="Search the npm marketplace…"
-            />
-          </div>
-          <div className="flex items-center gap-1.5 text-[10px] text-tagma-muted-dim tracking-[0.14em] uppercase">
-            <Store size={11} />
-            <span>npm · tagma-plugin</span>
-          </div>
-        </div>
-      </div>
-
       {upstreamWarning && (
         <div className="shrink-0 mx-6 mt-4 relative flex items-start gap-3 px-4 py-3 bg-tagma-warning/5 border border-tagma-warning/30">
           <span className="absolute left-0 top-0 bottom-0 w-[2px] bg-tagma-warning" aria-hidden="true" />

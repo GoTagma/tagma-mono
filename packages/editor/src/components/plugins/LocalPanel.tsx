@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { AlertCircle, Check, Download, Loader2, Package, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { useMemo } from 'react';
+import { AlertCircle, Check, Download, Loader2, Package, RefreshCw, Trash2 } from 'lucide-react';
 import type { PluginCategory, PluginInfo } from '../../api/client';
 import { errorHint } from './plugin-errors';
 import type { PluginActionState } from './PluginsPage';
@@ -16,6 +16,7 @@ interface LocalPanelProps {
   autoLoadErrors: ReadonlyArray<{ name: string; message: string }>;
   declaredSet: ReadonlySet<string>;
   category: 'all' | PluginCategory;
+  query: string;
   loading: boolean;
   actionState: PluginActionState;
   onInstall: (name: string) => void;
@@ -44,6 +45,7 @@ export function LocalPanel({
   autoLoadErrors,
   declaredSet,
   category,
+  query,
   loading,
   actionState,
   onInstall,
@@ -51,42 +53,21 @@ export function LocalPanel({
   onLoad,
   onDismissAction,
 }: LocalPanelProps) {
-  const [search, setSearch] = useState('');
-
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = query.trim().toLowerCase();
     return plugins.filter((p) => {
       if (category !== 'all' && !p.categories.includes(category)) return false;
       if (!q) return true;
       const haystack = `${p.name} ${p.description ?? ''} ${p.categories.join(' ')}`.toLowerCase();
       return haystack.includes(q);
     });
-  }, [plugins, search, category]);
+  }, [plugins, query, category]);
 
   const actionBannerVisible =
     actionState.type === 'error' || actionState.type === 'success';
 
   return (
     <div className="h-full flex flex-col min-h-0">
-      <div className="shrink-0 px-6 pt-3 pb-3 border-b border-tagma-border bg-tagma-surface/20">
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-tagma-muted-dim pointer-events-none" />
-            <input
-              type="text"
-              className="w-full pl-10 pr-3 py-2 text-[12px] bg-tagma-bg border border-tagma-border text-tagma-text placeholder:text-tagma-muted-dim focus:border-tagma-accent focus:outline-none transition-colors"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search installed plugins…"
-            />
-          </div>
-          <div className="flex items-center gap-1.5 text-[10px] text-tagma-muted-dim tracking-[0.14em] uppercase">
-            <Package size={11} />
-            <span>Workspace</span>
-          </div>
-        </div>
-      </div>
-
       {autoLoadErrors.length > 0 && (
         <div className="shrink-0 mx-6 mt-4 relative flex items-start gap-3 px-4 py-3 bg-tagma-error/5 border border-tagma-error/30">
           <span className="absolute left-0 top-0 bottom-0 w-[2px] bg-tagma-error" aria-hidden="true" />
@@ -132,7 +113,7 @@ export function LocalPanel({
           <div className="h-full flex flex-col items-center justify-center text-tagma-muted-dim gap-3">
             <Package size={36} className="opacity-30" />
             <p className="text-[11px] tracking-wide text-tagma-muted">
-              {search
+              {query
                 ? 'No plugins match your search.'
                 : category !== 'all'
                   ? `No ${category} plugins installed.`
