@@ -312,17 +312,17 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
                 </div>
                 <div className="flex items-center h-[16px] gap-[4px] pointer-events-none min-w-0 overflow-hidden bg-black/20 px-[3px]">
                   {task.driver && (
-                    <span className="inline-flex items-center justify-center h-[14px] px-[4px] text-[7.5px] font-mono leading-[14px] shrink-0 bg-tagma-accent/12 text-tagma-accent/80">
-                      {task.driver}
+                    <span className="inline-flex items-center h-[14px] px-[4px] min-w-0 overflow-hidden bg-tagma-accent/12 text-tagma-accent/80">
+                      <span className="truncate text-[7.5px] font-mono leading-[14px]">{task.driver}</span>
                     </span>
                   )}
                   {task.model && (
-                    <span className="inline-flex items-center justify-center h-[14px] px-[4px] text-[7.5px] font-mono leading-[14px] shrink-0 bg-tagma-muted/12 text-tagma-muted/80 font-bold">
-                      {task.model}
+                    <span className="inline-flex items-center h-[14px] px-[4px] min-w-0 overflow-hidden bg-tagma-muted/12 text-tagma-muted/80">
+                      <span className="truncate text-[7.5px] font-mono font-bold leading-[14px]">{task.model}</span>
                     </span>
                   )}
                   {task.exitCode != null && (
-                    <span className={`ml-auto text-[7.5px] font-mono ${task.exitCode === 0 ? 'text-tagma-success' : 'text-tagma-error'}`}>
+                    <span className={`ml-auto shrink-0 whitespace-nowrap text-[7.5px] font-mono ${task.exitCode === 0 ? 'text-tagma-success' : 'text-tagma-error'}`}>
                       exit {task.exitCode}
                     </span>
                   )}
@@ -362,10 +362,10 @@ function HistoryTaskPanel({ task, onClose }: { task: RunSummaryTask; onClose: ()
   const Icon = cfg.icon;
   return (
     <div className="w-72 h-full bg-tagma-surface border-l border-tagma-border flex flex-col animate-slide-in-right">
-      <div className="panel-header">
-        <h2 className="panel-title truncate">{task.taskName}</h2>
-        <button onClick={onClose} className="p-1 text-tagma-muted hover:text-tagma-text transition-colors">
-          <XIcon size={14} />
+      <div className="panel-header-sm">
+        <h2 className="panel-title-sm truncate">{task.taskName}</h2>
+        <button onClick={onClose} className="p-0.5 text-tagma-muted hover:text-tagma-text transition-colors">
+          <XIcon size={12} />
         </button>
       </div>
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
@@ -438,10 +438,10 @@ function HistoryTrackPanel({ track, onClose }: { track: TrackGroup; onClose: () 
   const totalMs = track.tasks.reduce((sum, t) => sum + (t.durationMs ?? 0), 0);
   return (
     <div className="w-72 h-full bg-tagma-surface border-l border-tagma-border flex flex-col animate-slide-in-right">
-      <div className="panel-header">
-        <h2 className="panel-title truncate">{track.name}</h2>
-        <button onClick={onClose} className="p-1 text-tagma-muted hover:text-tagma-text transition-colors">
-          <XIcon size={14} />
+      <div className="panel-header-sm">
+        <h2 className="panel-title-sm truncate">{track.name}</h2>
+        <button onClick={onClose} className="p-0.5 text-tagma-muted hover:text-tagma-text transition-colors">
+          <XIcon size={12} />
         </button>
       </div>
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">

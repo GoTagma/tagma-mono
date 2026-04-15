@@ -19,8 +19,8 @@ const FAIL_CFG: Record<string, { icon: React.ReactNode; cls: string; tip: string
 
 function Chip({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
-    <span className={`inline-flex items-center justify-center h-[14px] px-[4px] text-[7.5px] font-mono leading-[14px] shrink-0 ${className}`}>
-      {children}
+    <span className={`inline-flex items-center h-[14px] px-[4px] min-w-0 overflow-hidden ${className}`}>
+      <span className="truncate text-[7.5px] font-mono leading-[14px]">{children}</span>
     </span>
   );
 }
@@ -190,7 +190,7 @@ export const TrackLane = memo(function TrackLane({ track, taskCount, hasParallel
             <Chip className="bg-tagma-muted/12 text-tagma-muted/80 font-bold">{track.model}</Chip>
           )}
           {perms && (
-            <span className="inline-flex items-center h-[14px] gap-[1px]">
+            <span className="inline-flex items-center h-[14px] gap-[1px] shrink-0">
               {(['read', 'write', 'execute'] as const).map((k) => (
                 <span key={k} className={`text-[7px] font-mono font-bold w-[10px] text-center leading-[14px]
                   ${k === 'read' && perms.read ? 'text-emerald-400' : ''}
@@ -209,10 +209,10 @@ export const TrackLane = memo(function TrackLane({ track, taskCount, hasParallel
             </span>
           )}
           {track.middlewares && track.middlewares.length > 0 && (
-            <Chip className="bg-purple-500/12 text-purple-400/60">mw:{track.middlewares.length}</Chip>
+            <Chip className="bg-purple-500/12 text-purple-400/60 shrink-0">mw:{track.middlewares.length}</Chip>
           )}
           {track.agent_profile && (
-            <span className="inline-flex items-center h-[14px] text-[7.5px] font-mono text-tagma-muted/50 truncate max-w-[44px] leading-[14px]" title={`Profile: ${track.agent_profile}`}>
+            <span className="inline-flex items-center h-[14px] text-[7.5px] font-mono text-tagma-muted/50 truncate max-w-[44px] leading-[14px] shrink-0" title={`Profile: ${track.agent_profile}`}>
               {track.agent_profile}
             </span>
           )}

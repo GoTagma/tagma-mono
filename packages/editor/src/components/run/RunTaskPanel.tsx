@@ -140,10 +140,10 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
 
   return (
     <div className="w-80 h-full bg-tagma-surface border-l border-tagma-border flex flex-col animate-slide-in-right">
-      <div className="panel-header">
-        <h2 className="panel-title truncate">{task.taskName}</h2>
-        <button onClick={onClose} className="p-1 text-tagma-muted hover:text-tagma-text transition-colors">
-          <X size={14} />
+      <div className="panel-header-sm">
+        <h2 className="panel-title-sm truncate">{task.taskName}</h2>
+        <button onClick={onClose} className="p-0.5 text-tagma-muted hover:text-tagma-text transition-colors">
+          <X size={12} />
         </button>
       </div>
 

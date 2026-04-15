@@ -73,11 +73,15 @@ function resolveField<K extends 'driver' | 'model'>(
   return undefined;
 }
 
-/* ── Tiny pill chip for meta items ── */
+/* ── Tiny pill chip for meta items ──
+ * Shrinkable by default so long driver/model names truncate with an
+ * ellipsis instead of hard-clipping against the parent's overflow box.
+ * Call sites that must stay a fixed width should pass `shrink-0` via
+ * className. */
 function Chip({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
-    <span className={`inline-flex items-center justify-center h-[14px] px-[4px] text-[7.5px] font-mono leading-[14px] shrink-0 ${className}`}>
-      {children}
+    <span className={`inline-flex items-center h-[14px] px-[4px] min-w-0 overflow-hidden ${className}`}>
+      <span className="truncate text-[7.5px] font-mono leading-[14px]">{children}</span>
     </span>
   );
 }
@@ -412,7 +416,7 @@ export const TaskCard = memo(function TaskCard({
             <Chip className="bg-tagma-muted/12 text-tagma-muted/80 font-bold">{model}</Chip>
           )}
           {perms && (
-            <span className="flex items-center h-[14px] gap-[1px] ml-auto">
+            <span className="flex items-center h-[14px] gap-[1px] ml-auto shrink-0">
               {(['read', 'write', 'execute'] as const).map((k) => (
                 <span key={k} className={`text-[7px] font-mono font-bold w-[10px] text-center leading-[14px]
                   ${k === 'read' && perms.read ? 'text-emerald-400' : ''}

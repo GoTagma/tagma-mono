@@ -60,13 +60,13 @@ export function TrackInfoPanel({ track, config, onClose }: TrackInfoPanelProps) 
 
   return (
     <div className="w-80 h-full bg-tagma-surface border-l border-tagma-border flex flex-col animate-slide-in-right">
-      <div className="panel-header">
+      <div className="panel-header-sm">
         <div className="flex items-center gap-2 min-w-0">
           {track.color && <span className="w-2 h-2 shrink-0" style={{ backgroundColor: track.color }} />}
-          <h2 className="panel-title truncate">{track.name}</h2>
+          <h2 className="panel-title-sm truncate">{track.name}</h2>
         </div>
-        <button onClick={onClose} className="p-1 text-tagma-muted hover:text-tagma-text transition-colors">
-          <X size={14} />
+        <button onClick={onClose} className="p-0.5 text-tagma-muted hover:text-tagma-text transition-colors">
+          <X size={12} />
         </button>
       </div>
 
