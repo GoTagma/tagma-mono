@@ -158,6 +158,15 @@ interface RunSummaryTask {
   driver: string | null;
   model: string | null;
   depends_on: string[];
+  // Resolved task config + result references captured at run time so the
+  // history view can show "what did this task actually do" without us
+  // having to re-derive anything from the live yaml.
+  prompt?: string | null;
+  command?: string | null;
+  outputPath?: string | null;
+  stderrPath?: string | null;
+  normalizedOutput?: string | null;
+  sessionId?: string | null;
 }
 
 interface RunSummaryTrack {
@@ -175,6 +184,15 @@ interface RunSummary {
   error: string | null;
   tasks: RunSummaryTask[];
   tracks: RunSummaryTrack[];
+  // Editor layout snapshot — qualified task id → { x } — so HistoryFlowView
+  // can rebuild the exact left-to-right layout the user designed, instead
+  // of falling back to a sequential per-track packing that tangles
+  // cross-track dependency edges.
+  positions?: Record<string, { x: number }>;
+  // True when a sibling pipeline.yaml was written next to summary.json so
+  // the history view can offer a "view yaml" toggle without us having to
+  // probe the filesystem.
+  hasYamlSnapshot?: boolean;
 }
 
 function persistRunSummary(cwd: string, runId: string, summary: RunSummary): void {
@@ -182,7 +200,55 @@ function persistRunSummary(cwd: string, runId: string, summary: RunSummary): voi
   if (!existsSync(logsDir)) {
     mkdirSync(logsDir, { recursive: true });
   }
-  writeFileSync(join(logsDir, 'summary.json'), JSON.stringify(summary, null, 2), 'utf-8');
+  // Snapshot the live yaml next to summary.json so the history view can
+  // show the exact pipeline definition this run executed against, even
+  // after the user has since edited or renamed the file. We copy from
+  // S.yamlPath (rather than re-serializing S.config) so any comments and
+  // formatting the user wrote by hand are preserved verbatim.
+  let hasYamlSnapshot = false;
+  if (S.yamlPath && existsSync(S.yamlPath)) {
+    try {
+      const yamlText = readFileSync(S.yamlPath, 'utf-8');
+      writeFileSync(join(logsDir, 'pipeline.yaml'), yamlText, 'utf-8');
+      hasYamlSnapshot = true;
+    } catch (e) {
+      console.warn('[run] failed to snapshot pipeline.yaml:', e);
+    }
+  }
+  writeFileSync(
+    join(logsDir, 'summary.json'),
+    JSON.stringify({ ...summary, hasYamlSnapshot }, null, 2),
+    'utf-8',
+  );
+}
+
+// Summaries persisted before depends_on was tracked (pre-9555457) have no
+// deps field, so HistoryFlowView renders a flowchart with no edges. When the
+// summary's pipeline still matches the currently loaded yaml, we can recover
+// the DAG from S.config without snapshotting any editor state — the yaml is
+// already the source of truth for structure.
+function backfillSummaryDeps(summary: RunSummary): RunSummary {
+  const needsDeps = summary.tasks.some((t) => !Array.isArray(t.depends_on));
+  const needsPositions = !summary.positions || Object.keys(summary.positions).length === 0;
+  if (!needsDeps && !needsPositions) return summary;
+  if (summary.pipelineName !== S.config.name) return summary;
+  const depMap = new Map<string, string[]>();
+  for (const track of S.config.tracks) {
+    for (const tc of track.tasks) {
+      const qid = `${track.id}.${tc.id}`;
+      const deps = (tc.depends_on ?? []).map((d) => (d.includes('.') ? d : `${track.id}.${d}`));
+      depMap.set(qid, deps);
+    }
+  }
+  return {
+    ...summary,
+    tasks: needsDeps
+      ? summary.tasks.map((t) =>
+          Array.isArray(t.depends_on) ? t : { ...t, depends_on: depMap.get(t.taskId) ?? [] },
+        )
+      : summary.tasks,
+    positions: needsPositions ? { ...S.layout.positions } : summary.positions,
+  };
 }
 
 function readRunSummary(cwd: string, runId: string): RunSummary | null {
@@ -565,6 +631,12 @@ export function registerRunRoutes(app: express.Express): void {
               exitCode: result?.exitCode ?? existing.exitCode,
               driver: state.config.driver ?? existing.driver,
               model: state.config.model ?? existing.model,
+              prompt: state.config.prompt ?? existing.prompt ?? null,
+              command: state.config.command ?? existing.command ?? null,
+              outputPath: result?.outputPath ?? existing.outputPath ?? null,
+              stderrPath: result?.stderrPath ?? existing.stderrPath ?? null,
+              normalizedOutput: result?.normalizedOutput ?? existing.normalizedOutput ?? null,
+              sessionId: result?.sessionId ?? existing.sessionId ?? null,
             });
           }
           const wireEvent = taskStateChangeToWire(runId, event.taskId, event.status, event.state);
@@ -706,6 +778,7 @@ export function registerRunRoutes(app: express.Express): void {
             name: tr.name,
             color: tr.color,
           })),
+          positions: { ...S.layout.positions },
         });
       } catch (persistErr) {
         console.error('[run] failed to persist summary.json:', persistErr);
@@ -853,6 +926,23 @@ export function registerRunRoutes(app: express.Express): void {
     if (!summary) {
       return res.status(404).json({ error: 'summary not found' });
     }
-    res.json(summary);
+    res.json(backfillSummaryDeps(summary));
+  });
+
+  // Return the per-run yaml snapshot as text/yaml so the history view can
+  // render or download the exact pipeline definition that ran. Returns 404
+  // for old runs that predate the snapshot feature — the client should
+  // fall back to "no snapshot available" rather than guess.
+  app.get('/api/run/history/:runId/yaml', (req, res) => {
+    const { runId } = req.params;
+    if (!/^run_[A-Za-z0-9_-]+$/.test(runId)) {
+      return res.status(400).json({ error: 'invalid runId' });
+    }
+    const cwd = S.workDir || process.cwd();
+    const yamlPath = join(cwd, '.tagma', 'logs', runId, 'pipeline.yaml');
+    if (!existsSync(yamlPath)) {
+      return res.status(404).json({ error: 'yaml snapshot not found' });
+    }
+    res.type('text/yaml').send(readFileSync(yamlPath, 'utf-8'));
   });
 }

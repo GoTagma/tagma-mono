@@ -76,14 +76,24 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
 
   const { taskPositions, edges } = useMemo(() => {
     const positions = new Map<string, TaskPos>();
+    // Prefer the snapshotted editor layout so the history flowchart rebuilds
+    // the exact left-to-right arrangement the user designed — otherwise
+    // cross-track dependency edges tangle in a sequentially packed layout.
+    const snapshot = summary.positions;
     const taskCountPerTrack = new Map<string, number>();
     for (const tg of trackGroups) {
       for (const t of tg.tasks) {
-        const count = taskCountPerTrack.get(tg.id) ?? 0;
-        const x = PAD_LEFT + count * (TASK_W + TASK_GAP);
         const y = tg.index * TRACK_H + (TRACK_H - TASK_H) / 2;
+        const snapX = snapshot?.[t.taskId]?.x;
+        let x: number;
+        if (typeof snapX === 'number') {
+          x = snapX;
+        } else {
+          const count = taskCountPerTrack.get(tg.id) ?? 0;
+          x = PAD_LEFT + count * (TASK_W + TASK_GAP);
+          taskCountPerTrack.set(tg.id, count + 1);
+        }
         positions.set(t.taskId, { x, y });
-        taskCountPerTrack.set(tg.id, count + 1);
       }
     }
 
@@ -107,7 +117,7 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
     }
 
     return { taskPositions: positions, edges: edgeList };
-  }, [trackGroups, summary.tasks]);
+  }, [trackGroups, summary.tasks, summary.positions]);
 
   const canvasWidth = useMemo(() => {
     let maxX = 0;
@@ -424,8 +434,53 @@ function HistoryTaskPanel({ task, onClose }: { task: RunSummaryTask; onClose: ()
                 <div className="text-[11px] font-mono text-tagma-muted">{task.model}</div>
               </div>
             )}
+            {task.sessionId && (
+              <div>
+                <label className="field-label">Session</label>
+                <div className="text-[11px] font-mono text-tagma-muted truncate" title={task.sessionId}>{task.sessionId}</div>
+              </div>
+            )}
           </div>
         </section>
+
+        {(task.prompt || task.command) && (
+          <section>
+            <div className="text-[9px] font-mono uppercase tracking-wider text-tagma-muted/60 pb-1.5 border-b border-tagma-border/40">
+              {task.command ? 'Command' : 'Prompt'}
+            </div>
+            <pre className="pt-2.5 text-[10px] font-mono text-tagma-muted whitespace-pre-wrap break-words max-h-64 overflow-y-auto">
+              {task.command ?? task.prompt}
+            </pre>
+          </section>
+        )}
+
+        {(task.outputPath || task.stderrPath || task.normalizedOutput) && (
+          <section>
+            <div className="text-[9px] font-mono uppercase tracking-wider text-tagma-muted/60 pb-1.5 border-b border-tagma-border/40">
+              Outputs
+            </div>
+            <div className="pt-2.5 space-y-3">
+              {task.outputPath && (
+                <div>
+                  <label className="field-label">stdout</label>
+                  <div className="text-[10px] font-mono text-tagma-muted break-all">{task.outputPath}</div>
+                </div>
+              )}
+              {task.stderrPath && (
+                <div>
+                  <label className="field-label">stderr</label>
+                  <div className="text-[10px] font-mono text-tagma-muted break-all">{task.stderrPath}</div>
+                </div>
+              )}
+              {task.normalizedOutput && (
+                <div>
+                  <label className="field-label">normalized</label>
+                  <div className="text-[10px] font-mono text-tagma-muted break-all">{task.normalizedOutput}</div>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
       </div>
     </div>
   );

@@ -580,6 +580,12 @@ export interface RunSummaryTask {
   driver: string | null;
   model: string | null;
   depends_on?: string[];
+  prompt?: string | null;
+  command?: string | null;
+  outputPath?: string | null;
+  stderrPath?: string | null;
+  normalizedOutput?: string | null;
+  sessionId?: string | null;
 }
 
 export interface RunSummaryTrack {
@@ -597,6 +603,8 @@ export interface RunSummary {
   error: string | null;
   tasks: RunSummaryTask[];
   tracks: RunSummaryTrack[];
+  positions?: Record<string, { x: number }>;
+  hasYamlSnapshot?: boolean;
 }
 
 // ── External state events (C5) ──
@@ -832,6 +840,13 @@ export const api = {
 
   getRunSummary: (runId: string) =>
     request<RunSummary>(`/run/history/${encodeURIComponent(runId)}/summary`),
+
+  getRunYamlSnapshot: async (runId: string): Promise<string | null> => {
+    const res = await fetch(`${BASE}/run/history/${encodeURIComponent(runId)}/yaml`);
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`Failed to load yaml snapshot: ${res.status}`);
+    return res.text();
+  },
 
   // ── Approvals (F3) ──
   resolveApproval: (requestId: string, outcome: 'approved' | 'rejected') =>
