@@ -19,16 +19,14 @@ import type {
   DriverContext, SpawnSpec, Permissions,
 } from '@tagma/types';
 
-const DEFAULT_MODEL = 'gpt-5.3-codex';
-
-// Codex model reasoning effort — defaults to 'medium'.
-const REASONING_EFFORT_MAP: Record<string, string> = {
-  high: 'high', medium: 'medium', low: 'low',
-};
-
-function resolveReasoningEffort(tier: string): string {
-  return REASONING_EFFORT_MAP[tier] ?? 'medium';
-}
+// gpt-5-codex is the current publicly available Codex coding model. An
+// earlier revision of this file pinned an unreleased `gpt-5.3-codex`
+// placeholder which produced a 404 the moment the user actually ran a task.
+const DEFAULT_MODEL = 'gpt-5-codex';
+// Reasoning effort is inherited pipeline → track → task (resolved by the SDK
+// schema layer). Defaults to 'medium' when not set anywhere in the chain.
+const DEFAULT_REASONING_EFFORT = 'medium';
+const VALID_REASONING_EFFORT = new Set(['low', 'medium', 'high']);
 
 // M1: cache the `codex --version` probe at module level so a pipeline with
 // 10 codex tasks doesn't pay the spawnSync tax 10 times. spawnSync blocks
@@ -81,7 +79,12 @@ const CodexDriver: DriverPlugin = {
     // M1: cached preflight (see ensureCodexAvailable above).
     ensureCodexAvailable();
     const model = task.model ?? track.model ?? DEFAULT_MODEL;
-    const reasoningEffort = resolveReasoningEffort('medium');
+    // The SDK already resolves task → track → pipeline inheritance, so by the
+    // time we get here task.reasoning_effort holds the effective value (or
+    // undefined if it was never set). Guard against unexpected values coming
+    // from user config that the editor might not have validated yet.
+    const rawEffort = task.reasoning_effort ?? track.reasoning_effort ?? DEFAULT_REASONING_EFFORT;
+    const reasoningEffort = VALID_REASONING_EFFORT.has(rawEffort) ? rawEffort : DEFAULT_REASONING_EFFORT;
     const sandbox = resolveSandbox(task.permissions ?? track.permissions!);
 
     let prompt = task.prompt!;

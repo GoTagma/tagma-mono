@@ -86,13 +86,14 @@ export function registerPipelineRoutes(app: express.Express): void {
 
   // ── Pipeline name ──
   app.patch('/api/pipeline', (req, res) => {
-    const { name, driver, model, timeout, plugins, hooks } = req.body;
+    const { name, driver, model, reasoning_effort, timeout, plugins, hooks } = req.body;
     // `RawPipelineConfig` fields are declared readonly, so we build the patch
     // as an object literal instead of mutating field-by-field.
     const patch: Partial<RawPipelineConfig> = {
       ...(name !== undefined && { name }),
       ...(driver !== undefined && { driver: driver || undefined }),
       ...(model !== undefined && { model: model || undefined }),
+      ...(reasoning_effort !== undefined && { reasoning_effort: reasoning_effort || undefined }),
       ...(timeout !== undefined && { timeout: timeout || undefined }),
       ...(plugins !== undefined && {
         plugins: Array.isArray(plugins) && plugins.length > 0 ? plugins : undefined,

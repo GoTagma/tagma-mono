@@ -14,6 +14,7 @@ function isValidDuration(input: string): boolean {
 }
 
 const VALID_ON_FAILURE = new Set(['skip_downstream', 'stop_all', 'ignore']);
+const VALID_REASONING_EFFORT = new Set(['low', 'medium', 'high']);
 
 // Built-in plugin types always known to the SDK core, regardless of which
 // external plugin packages are installed. These MUST stay in sync with the
@@ -89,6 +90,9 @@ export function validateRaw(
   if (!config.name?.trim()) {
     errors.push({ path: 'name', message: 'Pipeline name is required' });
   }
+  if (config.reasoning_effort && !VALID_REASONING_EFFORT.has(config.reasoning_effort)) {
+    errors.push({ path: 'reasoning_effort', message: `Invalid reasoning_effort "${config.reasoning_effort}". Expected "low", "medium", or "high".` });
+  }
 
   if (!config.tracks || config.tracks.length === 0) {
     errors.push({ path: 'tracks', message: 'At least one track is required' });
@@ -134,6 +138,9 @@ export function validateRaw(
     }
     if (track.on_failure && !VALID_ON_FAILURE.has(track.on_failure)) {
       errors.push({ path: `${trackPath}.on_failure`, message: `Invalid on_failure value "${track.on_failure}". Expected "skip_downstream", "stop_all", or "ignore".` });
+    }
+    if (track.reasoning_effort && !VALID_REASONING_EFFORT.has(track.reasoning_effort)) {
+      errors.push({ path: `${trackPath}.reasoning_effort`, message: `Invalid reasoning_effort "${track.reasoning_effort}". Expected "low", "medium", or "high".` });
     }
 
     // Track-level middlewares can reference a plugin that was uninstalled
@@ -206,6 +213,9 @@ export function validateRaw(
       // ── Field-level validations ──
       if (task.timeout && !isValidDuration(task.timeout)) {
         errors.push({ path: `${taskPath}.timeout`, message: `Invalid duration format "${task.timeout}". Expected e.g. "30s", "5m", "1h".` });
+      }
+      if (task.reasoning_effort && !VALID_REASONING_EFFORT.has(task.reasoning_effort)) {
+        errors.push({ path: `${taskPath}.reasoning_effort`, message: `Invalid reasoning_effort "${task.reasoning_effort}". Expected "low", "medium", or "high".` });
       }
 
       // ── Plugin type warnings (trigger / completion / middlewares) ──

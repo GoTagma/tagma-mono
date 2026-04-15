@@ -116,6 +116,7 @@ export interface TaskConfig {
   readonly continue_from?: string;
   readonly output?: string;
   readonly model?: string;
+  readonly reasoning_effort?: string;
   readonly permissions?: Permissions;
   readonly driver?: string;
   readonly timeout?: string;
@@ -137,6 +138,7 @@ export interface RawTaskConfig {
   readonly continue_from?: string;
   readonly output?: string;
   readonly model?: string;
+  readonly reasoning_effort?: string;
   readonly permissions?: Permissions;
   readonly driver?: string;
   readonly timeout?: string;
@@ -157,6 +159,7 @@ export interface TrackConfig {
   readonly color?: string;
   readonly agent_profile?: string;
   readonly model?: string;
+  readonly reasoning_effort?: string;
   readonly permissions?: Permissions;
   readonly driver?: string;
   readonly cwd?: string;
@@ -173,6 +176,7 @@ export interface RawTrackConfig {
   readonly color?: string;
   readonly agent_profile?: string;
   readonly model?: string;
+  readonly reasoning_effort?: string;
   readonly permissions?: Permissions;
   readonly driver?: string;
   readonly cwd?: string;
@@ -200,6 +204,7 @@ export interface PipelineConfig {
   readonly name: string;
   readonly driver?: string;
   readonly model?: string;
+  readonly reasoning_effort?: string;
   readonly timeout?: string;
   readonly plugins?: readonly string[];
   readonly hooks?: HooksConfig;
@@ -212,6 +217,7 @@ export interface RawPipelineConfig {
   readonly name: string;
   readonly driver?: string;
   readonly model?: string;
+  readonly reasoning_effort?: string;
   readonly timeout?: string;
   readonly plugins?: readonly string[];
   readonly hooks?: HooksConfig;

@@ -111,7 +111,8 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
     ?? track?.driver
     ?? config.driver
     ?? null;
-  const model = taskConfig?.model
+  const model = task.resolvedModel
+    ?? taskConfig?.model
     ?? track?.model
     ?? config.model
     ?? null;
@@ -376,41 +377,53 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
               </div>
 
               {/* Trigger */}
-              {taskConfig.trigger && (
-                <div>
-                  <label className="field-label flex items-center gap-1">
-                    {taskConfig.trigger.type === 'file' ? <FileSearch size={9} /> : <Lock size={9} />}
-                    Trigger
-                  </label>
-                  <div className="border border-tagma-border/60 bg-tagma-bg/40 px-2.5 py-1.5">
-                    <ConfigRow label="Type">{taskConfig.trigger.type}</ConfigRow>
-                    {taskConfig.trigger.message && <ConfigRow label="Message" mono={false}>{taskConfig.trigger.message}</ConfigRow>}
-                    {taskConfig.trigger.path && <ConfigRow label="Path">{taskConfig.trigger.path}</ConfigRow>}
-                    {taskConfig.trigger.timeout && <ConfigRow label="Timeout">{taskConfig.trigger.timeout}</ConfigRow>}
+              {taskConfig.trigger && (() => {
+                const tr = taskConfig.trigger;
+                const message = typeof tr.message === 'string' ? tr.message : undefined;
+                const path = typeof tr.path === 'string' ? tr.path : undefined;
+                const timeout = typeof tr.timeout === 'string' ? tr.timeout : undefined;
+                return (
+                  <div>
+                    <label className="field-label flex items-center gap-1">
+                      {tr.type === 'file' ? <FileSearch size={9} /> : <Lock size={9} />}
+                      Trigger
+                    </label>
+                    <div className="border border-tagma-border/60 bg-tagma-bg/40 px-2.5 py-1.5">
+                      <ConfigRow label="Type">{tr.type}</ConfigRow>
+                      {message && <ConfigRow label="Message" mono={false}>{message}</ConfigRow>}
+                      {path && <ConfigRow label="Path">{path}</ConfigRow>}
+                      {timeout && <ConfigRow label="Timeout">{timeout}</ConfigRow>}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Completion */}
-              {taskConfig.completion && (
-                <div>
-                  <label className="field-label flex items-center gap-1">
-                    <CheckCircle2 size={9} /> Completion
-                  </label>
-                  <div className="border border-tagma-border/60 bg-tagma-bg/40 px-2.5 py-1.5">
-                    <ConfigRow label="Type">{taskConfig.completion.type}</ConfigRow>
-                    {taskConfig.completion.expect != null && (
-                      <ConfigRow label="Expect">{JSON.stringify(taskConfig.completion.expect)}</ConfigRow>
-                    )}
-                    {taskConfig.completion.path && <ConfigRow label="Path">{taskConfig.completion.path}</ConfigRow>}
-                    {taskConfig.completion.kind && <ConfigRow label="Kind">{taskConfig.completion.kind}</ConfigRow>}
-                    {taskConfig.completion.min_size != null && (
-                      <ConfigRow label="Min size">{String(taskConfig.completion.min_size)}</ConfigRow>
-                    )}
-                    {taskConfig.completion.check && <ConfigRow label="Check">{taskConfig.completion.check}</ConfigRow>}
+              {taskConfig.completion && (() => {
+                const cp = taskConfig.completion;
+                const path = typeof cp.path === 'string' ? cp.path : undefined;
+                const kind = typeof cp.kind === 'string' ? cp.kind : undefined;
+                const check = typeof cp.check === 'string' ? cp.check : undefined;
+                return (
+                  <div>
+                    <label className="field-label flex items-center gap-1">
+                      <CheckCircle2 size={9} /> Completion
+                    </label>
+                    <div className="border border-tagma-border/60 bg-tagma-bg/40 px-2.5 py-1.5">
+                      <ConfigRow label="Type">{cp.type}</ConfigRow>
+                      {cp.expect != null && (
+                        <ConfigRow label="Expect">{JSON.stringify(cp.expect)}</ConfigRow>
+                      )}
+                      {path && <ConfigRow label="Path">{path}</ConfigRow>}
+                      {kind && <ConfigRow label="Kind">{kind}</ConfigRow>}
+                      {cp.min_size != null && (
+                        <ConfigRow label="Min size">{String(cp.min_size)}</ConfigRow>
+                      )}
+                      {check && <ConfigRow label="Check">{check}</ConfigRow>}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Middlewares */}
               {taskConfig.middlewares && taskConfig.middlewares.length > 0 && (
@@ -419,11 +432,15 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
                     <Layers size={9} /> Middlewares ({taskConfig.middlewares.length})
                   </label>
                   <div className="border border-tagma-border/60 bg-tagma-bg/40 px-2.5 py-1.5 space-y-0.5">
-                    {taskConfig.middlewares.map((mw, i) => (
-                      <ConfigRow key={`${mw.type}-${i}`} label={mw.type}>
-                        {mw.label ?? mw.file ?? '—'}
-                      </ConfigRow>
-                    ))}
+                    {taskConfig.middlewares.map((mw, i) => {
+                      const label = typeof mw.label === 'string' ? mw.label : undefined;
+                      const file = typeof mw.file === 'string' ? mw.file : undefined;
+                      return (
+                        <ConfigRow key={`${mw.type}-${i}`} label={mw.type}>
+                          {label ?? file ?? '—'}
+                        </ConfigRow>
+                      );
+                    })}
                   </div>
                 </div>
               )}

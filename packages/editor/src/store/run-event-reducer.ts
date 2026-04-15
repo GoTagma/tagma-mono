@@ -128,7 +128,7 @@ export function foldRunEvent(state: RunFoldState, event: RunEvent): RunFoldState
           sessionId: pick(event.sessionId, existing.sessionId),
           normalizedOutput: pick(event.normalizedOutput, existing.normalizedOutput),
           resolvedDriver: pick(event.resolvedDriver, existing.resolvedDriver),
-          resolvedModelTier: pick(event.resolvedModelTier, existing.resolvedModelTier),
+          resolvedModel: pick(event.resolvedModel, existing.resolvedModel),
           resolvedPermissions: pick(event.resolvedPermissions, existing.resolvedPermissions),
           // logs are owned by the task_log case; task_update never touches them.
           logs: existing.logs,
@@ -155,7 +155,7 @@ export function foldRunEvent(state: RunFoldState, event: RunEvent): RunFoldState
           sessionId: event.sessionId ?? null,
           normalizedOutput: event.normalizedOutput ?? null,
           resolvedDriver: event.resolvedDriver ?? null,
-          resolvedModelTier: event.resolvedModelTier ?? null,
+          resolvedModel: event.resolvedModel ?? null,
           resolvedPermissions: event.resolvedPermissions ?? null,
           logs: [],
           totalLogCount: 0,

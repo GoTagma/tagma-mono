@@ -43,6 +43,10 @@ export function TrackConfigPanel({ track, drivers, errors, onUpdateTrack, onDele
     () => resolveScalar(track.model, undefined, pipelineConfig.model, undefined),
     [track.model, pipelineConfig.model],
   );
+  const resolvedReasoning = useMemo(
+    () => resolveScalar(track.reasoning_effort, undefined, pipelineConfig.reasoning_effort, undefined),
+    [track.reasoning_effort, pipelineConfig.reasoning_effort],
+  );
   const resolvedAgentProfile = useMemo(
     () => resolveScalar(track.agent_profile, undefined, undefined),
     [track.agent_profile],
@@ -144,6 +148,21 @@ export function TrackConfigPanel({ track, drivers, errors, onUpdateTrack, onDele
           </div>
           <input type="text" className="field-input font-mono text-[11px]" value={model} onChange={(e) => setModel(e.target.value)} onBlur={blurModel} placeholder="e.g. claude-sonnet-4-6" />
           <InheritedValue isOverridden={!!track.model} resolved={resolvedModel} pipelineName={pipelineConfig.name} />
+        </div>
+
+        {/* Reasoning Effort */}
+        <div>
+          <div className="flex items-center justify-between">
+            <label className="field-label">Reasoning Effort</label>
+            <ResetButton visible={!!track.reasoning_effort} onReset={() => commit({ reasoning_effort: undefined })} />
+          </div>
+          <select className="field-input" value={track.reasoning_effort ?? ''} onChange={(e) => commit({ reasoning_effort: e.target.value || undefined })}>
+            <option value="">(inherited)</option>
+            <option value="low">low</option>
+            <option value="medium">medium</option>
+            <option value="high">high</option>
+          </select>
+          <InheritedValue isOverridden={!!track.reasoning_effort} resolved={resolvedReasoning} pipelineName={pipelineConfig.name} />
         </div>
 
         {/* Agent Profile */}

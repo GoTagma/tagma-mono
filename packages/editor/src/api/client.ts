@@ -520,7 +520,7 @@ export type RunEvent =
       sessionId?: string | null;
       normalizedOutput?: string | null;
       resolvedDriver?: string | null;
-      resolvedModelTier?: string | null;
+      resolvedModel?: string | null;
       resolvedPermissions?: Permissions | null;
       seq?: number;
     }
@@ -572,7 +572,7 @@ export interface RunSummaryTask {
   durationMs: number | null;
   exitCode: number | null;
   driver: string | null;
-  modelTier: string | null;
+  model: string | null;
   depends_on?: string[];
 }
 
@@ -590,7 +590,7 @@ export interface RunSummary {
   success: boolean;
   error: string | null;
   tasks: RunSummaryTask[];
-  tracks?: RunSummaryTrack[];
+  tracks: RunSummaryTrack[];
 }
 
 // ── External state events (C5) ──

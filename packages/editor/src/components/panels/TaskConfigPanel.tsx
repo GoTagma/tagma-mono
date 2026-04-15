@@ -15,6 +15,16 @@ import type { FileExplorerMode } from '../FileExplorer';
 const KNOWN_TRIGGER_TYPES = new Set(['manual', 'file']);
 const KNOWN_COMPLETION_TYPES = new Set(['exit_code', 'file_exists', 'output_check']);
 
+// TriggerConfig / CompletionConfig carry `[key: string]: unknown` so any
+// indexed lookup on them returns `unknown`. These tiny narrowing helpers
+// let the JSX stay readable without a cast at every call site.
+function asStr(v: unknown): string | undefined {
+  return typeof v === 'string' ? v : undefined;
+}
+function asRecord(v: unknown): Record<string, unknown> {
+  return v && typeof v === 'object' ? (v as Record<string, unknown>) : {};
+}
+
 /**
  * H7: Inline conflict banner shown when an external file change brought a
  * new server value for a field while the user had uncommitted edits. Lets
@@ -111,6 +121,10 @@ export function TaskConfigPanel({
   const resolvedModel = useMemo(
     () => resolveScalar(task.model, track?.model, pipelineConfig.model, undefined),
     [task.model, track?.model, pipelineConfig.model],
+  );
+  const resolvedReasoning = useMemo(
+    () => resolveScalar(task.reasoning_effort, track?.reasoning_effort, pipelineConfig.reasoning_effort, undefined),
+    [task.reasoning_effort, track?.reasoning_effort, pipelineConfig.reasoning_effort],
   );
   const resolvedAgentProfile = useMemo(
     () => resolveScalar(task.agent_profile, track?.agent_profile, undefined),
@@ -335,6 +349,21 @@ export function TaskConfigPanel({
               <InheritedValue isOverridden={!!task.model} resolved={resolvedModel} trackName={trackName} pipelineName={pipelineConfig.name} />
             </div>
 
+            {/* Reasoning Effort */}
+            <div>
+              <div className="flex items-center justify-between">
+                <label className="field-label">Reasoning Effort</label>
+                <ResetButton visible={!!task.reasoning_effort} onReset={() => commitField({ reasoning_effort: undefined })} />
+              </div>
+              <select className="field-input" value={task.reasoning_effort ?? ''} onChange={(e) => commitField({ reasoning_effort: e.target.value || undefined })}>
+                <option value="">(inherited)</option>
+                <option value="low">low</option>
+                <option value="medium">medium</option>
+                <option value="high">high</option>
+              </select>
+              <InheritedValue isOverridden={!!task.reasoning_effort} resolved={resolvedReasoning} trackName={trackName} pipelineName={pipelineConfig.name} />
+            </div>
+
             {/* Agent Profile */}
             <div>
               <div className="flex items-center justify-between">
@@ -520,11 +549,11 @@ export function TaskConfigPanel({
 
             {task.trigger?.type === 'manual' && (
               <div className="pl-3 border-l-2 border-tagma-border space-y-2">
-                <TriggerField label="Message" value={task.trigger.message} onChange={(v) => handleTriggerField('message', v)} placeholder="Approval message..." />
-                <TriggerField label="Timeout" value={task.trigger.timeout} onChange={(v) => handleTriggerField('timeout', v)} placeholder="e.g. 5m" />
+                <TriggerField label="Message" value={asStr(task.trigger.message)} onChange={(v) => handleTriggerField('message', v)} placeholder="Approval message..." />
+                <TriggerField label="Timeout" value={asStr(task.trigger.timeout)} onChange={(v) => handleTriggerField('timeout', v)} placeholder="e.g. 5m" />
                 <div>
                   <label className="text-[10px] text-tagma-muted">Metadata</label>
-                  <KeyValueEditor value={task.trigger.metadata ?? {}} onChange={(meta) => {
+                  <KeyValueEditor value={asRecord(task.trigger.metadata)} onChange={(meta) => {
                     const current = task.trigger ?? { type: 'manual' };
                     commitField({ trigger: { ...current, metadata: Object.keys(meta).length > 0 ? meta : undefined } });
                   }} />
@@ -534,9 +563,9 @@ export function TaskConfigPanel({
 
             {task.trigger?.type === 'file' && (
               <div className="pl-3 border-l-2 border-tagma-border space-y-2">
-                <TriggerField label="Path *" value={task.trigger.path} onChange={(v) => handleTriggerField('path', v)} placeholder="./path/to/watch"
+                <TriggerField label="Path *" value={asStr(task.trigger.path)} onChange={(v) => handleTriggerField('path', v)} placeholder="./path/to/watch"
                   onBrowse={(currentVal, setVal) => openFileBrowser('open', currentVal, setVal)} />
-                <TriggerField label="Timeout" value={task.trigger.timeout} onChange={(v) => handleTriggerField('timeout', v)} placeholder="e.g. 5m" />
+                <TriggerField label="Timeout" value={asStr(task.trigger.timeout)} onChange={(v) => handleTriggerField('timeout', v)} placeholder="e.g. 5m" />
               </div>
             )}
 
@@ -605,11 +634,11 @@ export function TaskConfigPanel({
 
             {task.completion?.type === 'file_exists' && (
               <div className="pl-3 border-l-2 border-tagma-border space-y-2">
-                <TriggerField label="Path *" value={task.completion.path} onChange={(v) => handleCompletionField('path', v)} placeholder="./path/to/check"
+                <TriggerField label="Path *" value={asStr(task.completion.path)} onChange={(v) => handleCompletionField('path', v)} placeholder="./path/to/check"
                   onBrowse={(currentVal, setVal) => openFileBrowser(task.completion?.kind === 'dir' ? 'directory' : 'open', currentVal, setVal)} />
                 <div>
                   <label className="text-[10px] text-tagma-muted">Kind</label>
-                  <select className="field-input" value={task.completion.kind ?? ''} onChange={(e) => handleCompletionField('kind', e.target.value || undefined)}>
+                  <select className="field-input" value={asStr(task.completion.kind) ?? ''} onChange={(e) => handleCompletionField('kind', e.target.value || undefined)}>
                     <option value="">any (default)</option>
                     <option value="file">file</option>
                     <option value="dir">dir</option>
@@ -619,7 +648,7 @@ export function TaskConfigPanel({
                 <div>
                   <label className="text-[10px] text-tagma-muted">Min Size (bytes)</label>
                   <input type="number" className="field-input font-mono text-[11px]"
-                    value={task.completion.min_size ?? ''}
+                    value={typeof task.completion.min_size === 'number' ? task.completion.min_size : ''}
                     onChange={(e) => handleCompletionField('min_size', e.target.value ? Number(e.target.value) : undefined)}
                     placeholder="optional" />
                 </div>
@@ -628,8 +657,8 @@ export function TaskConfigPanel({
 
             {task.completion?.type === 'output_check' && (
               <div className="pl-3 border-l-2 border-tagma-border space-y-2">
-                <TriggerField label="Check Command *" value={task.completion.check} onChange={(v) => handleCompletionField('check', v)} placeholder="shell command (exit 0 = pass)" />
-                <TriggerField label="Timeout" value={task.completion.timeout} onChange={(v) => handleCompletionField('timeout', v)} placeholder="30s (default)" />
+                <TriggerField label="Check Command *" value={asStr(task.completion.check)} onChange={(v) => handleCompletionField('check', v)} placeholder="shell command (exit 0 = pass)" />
+                <TriggerField label="Timeout" value={asStr(task.completion.timeout)} onChange={(v) => handleCompletionField('timeout', v)} placeholder="30s (default)" />
               </div>
             )}
 

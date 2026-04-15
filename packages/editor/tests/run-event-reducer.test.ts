@@ -40,7 +40,7 @@ function makeTask(overrides: Partial<RunTaskState> = {}): RunTaskState {
     sessionId: null,
     normalizedOutput: null,
     resolvedDriver: null,
-    resolvedModelTier: null,
+    resolvedModel: null,
     resolvedPermissions: null,
     logs: [],
     totalLogCount: 0,
@@ -96,7 +96,7 @@ test('task_update merges partial fields and preserves untouched values', () => {
     outputPath: '/tmp/out.txt',
     sessionId: 'sess_abc',
     resolvedDriver: 'claude-code',
-    resolvedModelTier: 'high',
+    resolvedModel: 'opus',
     resolvedPermissions: { read: true, write: true, execute: false },
     seq: 3,
   });
@@ -113,7 +113,7 @@ test('task_update merges partial fields and preserves untouched values', () => {
   expect(t2!.outputPath).toBe('/tmp/out.txt');
   expect(t2!.sessionId).toBe('sess_abc');
   expect(t2!.resolvedDriver).toBe('claude-code');
-  expect(t2!.resolvedModelTier).toBe('high');
+  expect(t2!.resolvedModel).toBe('opus');
   expect(t2!.resolvedPermissions).toEqual({ read: true, write: true, execute: false });
   expect(state.lastEventSeq).toBe(3);
 });

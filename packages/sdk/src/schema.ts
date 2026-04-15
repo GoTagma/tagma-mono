@@ -264,8 +264,9 @@ export function resolveConfig(raw: RawPipelineConfig, workDir: string): Pipeline
           ? qualifyContinueFrom(rawTask.continue_from, rawTrack.id)
           : undefined,
         output: rawTask.output,
-        // Inheritance: Task > Track
+        // Inheritance: Task > Track > Pipeline
         model: rawTask.model ?? rawTrack.model ?? raw.model,
+        reasoning_effort: rawTask.reasoning_effort ?? rawTrack.reasoning_effort ?? raw.reasoning_effort,
         permissions: rawTask.permissions ?? rawTrack.permissions ?? DEFAULT_PERMISSIONS,
         driver: rawTask.driver ?? trackDriver ?? 'claude-code',
         timeout: rawTask.timeout,
@@ -283,6 +284,7 @@ export function resolveConfig(raw: RawPipelineConfig, workDir: string): Pipeline
       color: rawTrack.color,
       agent_profile: rawTrack.agent_profile,
       model: rawTrack.model ?? raw.model,
+      reasoning_effort: rawTrack.reasoning_effort ?? raw.reasoning_effort,
       permissions: rawTrack.permissions ?? DEFAULT_PERMISSIONS,
       driver: trackDriver ?? 'claude-code',
       cwd: trackCwd,
@@ -296,6 +298,7 @@ export function resolveConfig(raw: RawPipelineConfig, workDir: string): Pipeline
     name: raw.name,
     driver: raw.driver,
     model: raw.model,
+    reasoning_effort: raw.reasoning_effort,
     timeout: raw.timeout,
     plugins: raw.plugins,
     hooks: raw.hooks,
@@ -336,6 +339,7 @@ export function deresolvePipeline(config: PipelineConfig, workDir: string): RawP
       : undefined;
     const effectiveTrackDriver = track.driver ?? config.driver ?? 'claude-code';
     const effectiveTrackModel = track.model ?? config.model;
+    const effectiveTrackReasoning = track.reasoning_effort ?? config.reasoning_effort;
 
     const tasks: RawTaskConfig[] = track.tasks.map(task => {
       const taskCwdRel = task.cwd && task.cwd !== track.cwd
@@ -353,6 +357,9 @@ export function deresolvePipeline(config: PipelineConfig, workDir: string): RawP
         ...(task.output ? { output: task.output } : {}),
         ...(taskCwdRel ? { cwd: taskCwdRel } : {}),
         ...(task.model && task.model !== effectiveTrackModel ? { model: task.model } : {}),
+        ...(task.reasoning_effort && task.reasoning_effort !== effectiveTrackReasoning
+          ? { reasoning_effort: task.reasoning_effort }
+          : {}),
         ...(task.driver && task.driver !== effectiveTrackDriver ? { driver: task.driver } : {}),
         ...(task.timeout ? { timeout: task.timeout } : {}),
         ...(task.middlewares !== undefined ? { middlewares: task.middlewares } : {}),
@@ -370,6 +377,9 @@ export function deresolvePipeline(config: PipelineConfig, workDir: string): RawP
       ...(track.color ? { color: track.color } : {}),
       ...(track.agent_profile ? { agent_profile: track.agent_profile } : {}),
       ...(track.model && track.model !== config.model ? { model: track.model } : {}),
+      ...(track.reasoning_effort && track.reasoning_effort !== config.reasoning_effort
+        ? { reasoning_effort: track.reasoning_effort }
+        : {}),
       ...(track.driver && track.driver !== (config.driver ?? 'claude-code') ? { driver: track.driver } : {}),
       ...(trackCwdRel ? { cwd: trackCwdRel } : {}),
       ...(track.middlewares?.length ? { middlewares: track.middlewares } : {}),
@@ -385,6 +395,7 @@ export function deresolvePipeline(config: PipelineConfig, workDir: string): RawP
     name: config.name,
     ...(config.driver ? { driver: config.driver } : {}),
     ...(config.model ? { model: config.model } : {}),
+    ...(config.reasoning_effort ? { reasoning_effort: config.reasoning_effort } : {}),
     ...(config.timeout ? { timeout: config.timeout } : {}),
     ...(config.plugins?.length ? { plugins: config.plugins } : {}),
     ...(config.hooks ? { hooks: config.hooks } : {}),

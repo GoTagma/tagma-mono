@@ -77,11 +77,22 @@ export function PipelineConfigPanel({ config, drivers, errors, onUpdate, onClose
             </div>
           </div>
 
-          {/* Default Model */}
-          <div>
-            <label className="field-label">Default Model</label>
-            <input type="text" className="field-input font-mono text-[11px]" value={model} onChange={(e) => setModel(e.target.value)} onBlur={blurModel} placeholder="e.g. claude-sonnet-4-6, gpt-5-codex" />
-            <p className="text-[10px] text-tagma-muted mt-1">Exact model name passed to the driver CLI. Inherited by tracks and tasks.</p>
+          {/* Default Model & Reasoning Effort */}
+          <div className="flex gap-4">
+            <div className="flex-1">
+              <label className="field-label">Default Model</label>
+              <input type="text" className="field-input font-mono text-[11px]" value={model} onChange={(e) => setModel(e.target.value)} onBlur={blurModel} placeholder="e.g. claude-sonnet-4-6, gpt-5-codex" />
+              <p className="text-[10px] text-tagma-muted mt-1">Exact model name passed to the driver CLI. Inherited by tracks and tasks.</p>
+            </div>
+            <div className="w-[140px]">
+              <label className="field-label">Reasoning Effort</label>
+              <select className="field-input" value={config.reasoning_effort ?? ''} onChange={(e) => onUpdate({ reasoning_effort: e.target.value || undefined })}>
+                <option value="">(unset)</option>
+                <option value="low">low</option>
+                <option value="medium">medium</option>
+                <option value="high">high</option>
+              </select>
+            </div>
           </div>
 
           {/* Hooks */}

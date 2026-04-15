@@ -266,7 +266,7 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
       sessionId: null,
       normalizedOutput: null,
       resolvedDriver: null,
-      resolvedModelTier: null,
+      resolvedModel: null,
       resolvedPermissions: null,
       logs: [],
       totalLogCount: 0,
