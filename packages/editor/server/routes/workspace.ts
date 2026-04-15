@@ -30,14 +30,37 @@ import {
 import {
   stopWatching as stopFileWatching,
 } from '../file-watcher.js';
+import { unregisterPlugin } from '@tagma/sdk';
 import {
   autoLoadInstalledPlugins,
+  loadedPluginMeta,
   readEditorSettings,
   writeEditorSettings,
   DEFAULT_EDITOR_SETTINGS,
   invalidatePluginCache,
   type EditorSettings,
 } from '../plugins/loader.js';
+
+/**
+ * Plugins are workspace-scoped (installed under `workDir/node_modules`), but
+ * the SDK registry and `loadedPluginMeta` are process-level globals. Without
+ * this sweep, handlers loaded by a previous workspace would linger in the
+ * registry, causing the driver dropdown to offer plugins that aren't present
+ * in the new workspace and the Plugins page to show them as `loaded:true` /
+ * `installed:false` ("missing").
+ *
+ * Note: ESM module cache still holds the old code — reopening the prior
+ * workspace will re-register the same handler via the SDK's "replaced"
+ * branch rather than hot-reloading a new version. Same caveat as uninstall.
+ */
+function unloadAllPluginsForWorkspaceSwitch(): void {
+  for (const meta of loadedPluginMeta.values()) {
+    try {
+      unregisterPlugin(meta.category, meta.type);
+    } catch { /* best-effort */ }
+  }
+  loadedPluginMeta.clear();
+}
 import { recordWorkspaceOpen } from './recent.js';
 
 /** Given a YAML path, return the companion layout.json path. */
@@ -52,6 +75,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
   app.patch('/api/workspace', async (req, res) => {
     const { workDir: wd } = req.body;
     if (wd !== undefined) {
+      unloadAllPluginsForWorkspaceSwitch();
       S.workDir = resolve(wd);
       invalidatePluginCache();
       mkdirSync(join(S.workDir, '.tagma'), { recursive: true });
