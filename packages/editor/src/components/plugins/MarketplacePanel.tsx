@@ -1,5 +1,5 @@
 import {
-  AlertCircle, AlertTriangle, Calendar, Check, Download, Loader2, Package, Search, Store, Trash2, TrendingUp,
+  AlertCircle, AlertTriangle, ArrowUpCircle, Calendar, Check, Download, Loader2, Package, Search, Store, Trash2, TrendingUp,
 } from 'lucide-react';
 import type { MarketplaceEntry, PluginCategory } from '../../api/client';
 import { errorHint, formatDownloads } from './plugin-errors';
@@ -23,9 +23,11 @@ interface MarketplacePanelProps {
   onQueryChange: (query: string) => void;
   category: 'all' | PluginCategory;
   installedNames: ReadonlySet<string>;
+  installedVersions: ReadonlyMap<string, string | null>;
   declaredSet: ReadonlySet<string>;
   actionState: PluginActionState;
   onInstall: (name: string) => void;
+  onUpgrade: (name: string) => void;
   onUninstall: (name: string) => void;
   onDismissAction: () => void;
   onRetry: () => void;
@@ -53,9 +55,11 @@ export function MarketplacePanel({
   onQueryChange,
   category,
   installedNames,
+  installedVersions,
   declaredSet,
   actionState,
   onInstall,
+  onUpgrade,
   onUninstall,
   onDismissAction,
   onRetry,
@@ -151,9 +155,11 @@ export function MarketplacePanel({
                 key={entry.name}
                 entry={entry}
                 installed={installedNames.has(entry.name)}
+                installedVersion={installedVersions.get(entry.name) ?? null}
                 declared={declaredSet.has(entry.name)}
                 actionState={actionState}
                 onInstall={() => onInstall(entry.name)}
+                onUpgrade={() => onUpgrade(entry.name)}
                 onUninstall={() => onUninstall(entry.name)}
               />
             ))}
@@ -173,16 +179,20 @@ export function MarketplacePanel({
 function MarketplaceCard({
   entry,
   installed,
+  installedVersion,
   declared,
   actionState,
   onInstall,
+  onUpgrade,
   onUninstall,
 }: {
   entry: MarketplaceEntry;
   installed: boolean;
+  installedVersion: string | null;
   declared: boolean;
   actionState: PluginActionState;
   onInstall: () => void;
+  onUpgrade: () => void;
   onUninstall: () => void;
 }) {
   const isBusy = actionState.type === 'loading' && actionState.name === entry.name;
@@ -190,8 +200,15 @@ function MarketplaceCard({
   const disabled = actionState.type === 'loading';
   const publishDate = formatPublishDate(entry.date);
   const downloads = entry.weeklyDownloads !== null ? formatDownloads(entry.weeklyDownloads) : null;
+  // Only surface Upgrade when the installed version is strictly older than
+  // the marketplace's latest; a matching or newer local version gets the
+  // plain Uninstall treatment so we don't nag users who are on `@next` or
+  // a linked dev build.
+  const upgradeAvailable = installed && isUpgrade(installedVersion, entry.version);
 
-  // Three-state badge:
+  // Status column:
+  //   • installed + upgrade → amber "Update" (takes precedence so the
+  //                            user's eye goes to the actionable state)
   //   • installed              → green "Installed"
   //   • declared but missing   → red "Missing" (YAML references the plugin
   //                              but it isn't on disk — same signal Local
@@ -199,11 +216,13 @@ function MarketplaceCard({
   //   • neither                → no badge (fresh marketplace entry)
   // The `declared` flag no longer masquerades as "installed"; it only
   // influences the card accent and the Missing-vs-nothing branch here.
-  const statuses = installed
-    ? <StatusBadge variant="installed" />
-    : declared
-      ? <StatusBadge variant="missing" />
-      : null;
+  const statuses = upgradeAvailable
+    ? <StatusBadge variant="update" />
+    : installed
+      ? <StatusBadge variant="installed" />
+      : declared
+        ? <StatusBadge variant="missing" />
+        : null;
 
   // Inline meta ticker: downloads · date · author, separated by small
   // bullets. The `compactItems` helper skips missing values and keeps
@@ -249,6 +268,26 @@ function MarketplaceCard({
 
   const actions = isBusy ? (
     <BusyLabel label={busyActionLabel(busyAction)} />
+  ) : upgradeAvailable ? (
+    // Paired buttons: Upgrade is the primary CTA, Uninstall stays
+    // available so users can opt out without first hitting Upgrade.
+    <div className="flex items-center gap-2">
+      <ActionButton
+        variant="primary"
+        icon={<ArrowUpCircle size={12} />}
+        label={`Upgrade to v${entry.version}`}
+        title={installedVersion ? `Installed: v${installedVersion} → v${entry.version}` : undefined}
+        onClick={onUpgrade}
+        disabled={disabled}
+      />
+      <ActionButton
+        variant="danger"
+        icon={<Trash2 size={12} />}
+        label="Uninstall"
+        onClick={onUninstall}
+        disabled={disabled}
+      />
+    </div>
   ) : installed ? (
     <ActionButton
       variant="danger"
@@ -285,9 +324,34 @@ function MarketplaceCard({
 function busyActionLabel(action: string | null): string {
   switch (action) {
     case 'install': return 'Installing…';
+    case 'upgrade': return 'Upgrading…';
     case 'uninstall': return 'Uninstalling…';
     default: return 'Working…';
   }
+}
+
+/**
+ * Strict-greater-than comparison over the leading `major.minor.patch` of two
+ * version strings. Returns `true` only when `latest` is parseably newer than
+ * `installed`. Anything that fails to parse (git URL, `next` dist-tag, missing
+ * value) short-circuits to `false` so we never promote an Upgrade button the
+ * backend can't actually honor.
+ */
+function isUpgrade(installed: string | null, latest: string): boolean {
+  if (!installed || !latest) return false;
+  if (installed === latest) return false;
+  const parse = (v: string): readonly [number, number, number] | null => {
+    const m = /^(\d+)\.(\d+)\.(\d+)/.exec(v.trim().replace(/^[=v^~]+/, ''));
+    return m ? [Number(m[1]), Number(m[2]), Number(m[3])] as const : null;
+  };
+  const a = parse(installed);
+  const b = parse(latest);
+  if (!a || !b) return false;
+  for (let i = 0; i < 3; i++) {
+    if (b[i]! > a[i]!) return true;
+    if (b[i]! < a[i]!) return false;
+  }
+  return false;
 }
 
 function ActionBanner({

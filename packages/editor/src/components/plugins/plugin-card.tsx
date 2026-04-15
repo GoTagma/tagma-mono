@@ -88,13 +88,14 @@ export function CategoryGlyph({ category }: { category: PluginCategory | null })
 // four flat badges. Each uses a single colored square dot + uppercase
 // micro-label so a stack of 2–3 badges reads as a glyphic "status column"
 // at the card's top-right rather than a noisy pill garden.
-type StatusVariant = 'installed' | 'missing' | 'loaded' | 'declared';
+type StatusVariant = 'installed' | 'missing' | 'loaded' | 'declared' | 'update';
 
 const STATUS_STYLES: Record<StatusVariant, { dot: string; text: string; label: string }> = {
   installed: { dot: 'bg-tagma-success', text: 'text-tagma-success', label: 'Installed' },
   missing:   { dot: 'bg-tagma-error',   text: 'text-tagma-error',   label: 'Missing' },
   loaded:    { dot: 'bg-tagma-ready',   text: 'text-tagma-ready',   label: 'Loaded' },
   declared:  { dot: 'bg-tagma-accent',  text: 'text-tagma-accent',  label: 'Declared' },
+  update:    { dot: 'bg-tagma-warning', text: 'text-tagma-warning', label: 'Update' },
 };
 
 export function StatusBadge({ variant }: { variant: StatusVariant }) {

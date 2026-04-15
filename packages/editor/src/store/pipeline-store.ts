@@ -638,7 +638,24 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
           api.getRegistry().catch(() => ({ drivers: [], triggers: [], completions: [], middlewares: [] })),
         ]);
         applyStateWithLayout(state);
-        set({ isDirty: false, layoutDirty: false, registry, past: [], future: [] });
+        // Fresh page load always starts at the welcome page. The editor server
+        // keeps `S.workDir` in process memory, so reopening a tab would
+        // otherwise silently resume the previous workspace. Drop the server-
+        // hydrated workDir/yamlPath on the client so the welcome gate in
+        // App.tsx (`!workDir`) always fires on a new session. The user picks
+        // a workspace via the welcome page, which calls setWorkDir and
+        // re-syncs both sides. (Future desktop-app multi-window: pass the
+        // target workspace as a launch arg and call setWorkDir in init.)
+        set({
+          workDir: '',
+          yamlPath: null,
+          yamlMtimeMs: null,
+          isDirty: false,
+          layoutDirty: false,
+          registry,
+          past: [],
+          future: [],
+        });
       } catch (e) {
         set({ loading: false, errorMessage: 'Failed to initialize: ' + errorToMessage(e) });
       }

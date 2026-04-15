@@ -39,7 +39,7 @@ export type PluginActionState =
   | { type: 'success'; name: string; action: PluginAction; message: string }
   | { type: 'error'; name: string; action: PluginAction; message: string; kind: ErrorKind };
 
-export type PluginAction = 'install' | 'uninstall' | 'load' | 'import';
+export type PluginAction = 'install' | 'uninstall' | 'load' | 'import' | 'upgrade';
 
 interface PluginsPageProps {
   workDir: string;
@@ -202,6 +202,16 @@ export function PluginsPage({
     () => new Set(plugins.filter((p) => p.installed).map((p) => p.name)),
     [plugins],
   );
+  // Installed-version lookup for the Marketplace tab. The Marketplace card
+  // compares this against the latest version reported by npm to decide
+  // whether to offer Upgrade next to Uninstall. Values may be `null` when
+  // the plugin is installed but its manifest version could not be parsed —
+  // in that case we simply don't offer an upgrade (better than a false
+  // positive that would always claim "update available").
+  const installedVersions = useMemo(
+    () => new Map(plugins.filter((p) => p.installed).map((p) => [p.name, p.version])),
+    [plugins],
+  );
   const declaredSet = useMemo(() => new Set(declaredPlugins), [declaredPlugins]);
 
   // Per-category counts for the sidebar rail. Computed against whichever
@@ -310,6 +320,41 @@ export function PluginsPage({
       });
     }
   }, [declaredPlugins, onRegistryUpdate, onPluginsChange, refreshInstalled, onRefreshServerState]);
+
+  // Upgrade is a re-install against the latest registry version. The
+  // install endpoint always wipes node_modules/<name> before extracting the
+  // freshly-downloaded tarball, so re-hitting it on an already-installed
+  // plugin is the supported upgrade path. A separate action label keeps the
+  // busy spinner, success banner, and error classification distinct from a
+  // fresh install so the user sees accurate feedback.
+  const handleUpgrade = useCallback(async (name: string) => {
+    setActionState({ type: 'loading', name, action: 'upgrade' });
+    try {
+      const result = await api.installPlugin(name);
+      onRegistryUpdate(result.registry);
+      try {
+        onRegistryUpdate(await api.getRegistry());
+      } catch { /* next refetch will reconcile */ }
+      await refreshInstalled();
+      await onRefreshServerState();
+      setActionState({
+        type: 'success',
+        name,
+        action: 'upgrade',
+        message: result.warning
+          ?? (result.plugin.version ? `Upgraded to v${result.plugin.version}` : 'Upgraded'),
+      });
+    } catch (e: unknown) {
+      const message = extractErrorMessage(e);
+      setActionState({
+        type: 'error',
+        name,
+        action: 'upgrade',
+        message,
+        kind: classifyError(e, message),
+      });
+    }
+  }, [onRegistryUpdate, refreshInstalled, onRefreshServerState]);
 
   const performUninstall = useCallback(async (name: string) => {
     setActionState({ type: 'loading', name, action: 'uninstall' });
@@ -482,9 +527,11 @@ export function PluginsPage({
               onQueryChange={setMarketplaceQuery}
               category={category}
               installedNames={installedNames}
+              installedVersions={installedVersions}
               declaredSet={declaredSet}
               actionState={actionState}
               onInstall={handleInstall}
+              onUpgrade={handleUpgrade}
               onUninstall={handleUninstall}
               onDismissAction={() => setActionState({ type: 'idle' })}
               onRetry={fetchMarketplace}
