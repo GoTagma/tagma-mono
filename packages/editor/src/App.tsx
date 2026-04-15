@@ -533,10 +533,10 @@ export function App() {
           // working directory, unlike the save/import actions below.
           { label: 'Open Workspace...', onAction: () => setExplorer({ mode: 'directory', purpose: 'workdir' }) },
           { separator: true as const },
-          { label: 'New YAML', onAction: handleNewPipeline },
+          { label: 'New Pipeline', onAction: handleNewPipeline },
           { separator: true as const },
-          { label: 'Import YAML...', shortcut: 'Ctrl+O', onAction: handleImport },
-          { label: 'Export YAML...', disabled: !yamlPath, onAction: handleExport },
+          { label: 'Import Pipeline...', shortcut: 'Ctrl+O', onAction: handleImport },
+          { label: 'Export Pipeline...', disabled: !yamlPath, onAction: handleExport },
           { separator: true as const },
           { label: 'Save', shortcut: 'Ctrl+S', onAction: handleSave },
           { label: 'Save As...', onAction: handleSaveAs },
