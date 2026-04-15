@@ -19,7 +19,7 @@ import { join, resolve } from 'node:path';
  */
 const GLOBAL_TAGMA_DIR = join(homedir(), '.tagma');
 const RECENT_FILE = join(GLOBAL_TAGMA_DIR, 'recent-workspaces.json');
-const MAX_RECENT = 8;
+const MAX_RECENT = 3;
 
 interface RecentEntry {
   path: string;
