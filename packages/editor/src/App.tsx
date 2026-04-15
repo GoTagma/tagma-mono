@@ -9,6 +9,7 @@ import { PipelineConfigPanel } from './components/panels/PipelineConfigPanel';
 import { EditorSettingsPanel } from './components/panels/EditorSettingsPanel';
 import { PluginsPage } from './components/plugins/PluginsPage';
 import { FileExplorer, type FileExplorerMode } from './components/FileExplorer';
+import { WelcomePage } from './components/WelcomePage';
 import { api, type ServerStateEvent } from './api/client';
 import {
   Loader2, AlertCircle, CheckCircle2, X as XIcon,
@@ -384,40 +385,62 @@ export function App() {
     }
   }, [pendingRun, yamlPath, handleRun]);
 
+  // Post-workspace bootstrap shared between the file-explorer "Select Workspace"
+  // flow and the welcome page's "Open Recent" shortcut. Honors any pending
+  // afterWorkspaceRef intent the user queued up before picking a workspace.
+  const bootstrapAfterWorkspace = useCallback(async (): Promise<void> => {
+    const pending = afterWorkspaceRef.current;
+    afterWorkspaceRef.current = null;
+    if (pending === 'import') {
+      setExplorer({ mode: 'open', purpose: 'import' });
+      return;
+    }
+    setExplorer(null);
+    if (pending === 'new') {
+      await newPipeline();
+      return;
+    }
+    if (pending === 'save') {
+      await saveFile();
+      return;
+    }
+    if (pending === 'run') {
+      setPendingRun(true);
+      await saveFile();
+      return;
+    }
+    // Default: open the first existing YAML in .tagma, or create a new one.
+    try {
+      const result = await api.listWorkspaceYamls();
+      if (result.entries.length > 0) {
+        await openFile(result.entries[0].path);
+      } else {
+        await newPipeline();
+      }
+    } catch {
+      await newPipeline();
+    }
+  }, [newPipeline, saveFile, openFile]);
+
+  const handleOpenRecentWorkspace = useCallback(async (path: string) => {
+    try {
+      await setWorkDir(path);
+    } catch (e: any) {
+      setDialog({
+        type: 'error',
+        title: 'Failed to open workspace',
+        details: [e?.message ?? 'Unknown error'],
+      });
+      return;
+    }
+    await bootstrapAfterWorkspace();
+  }, [setWorkDir, bootstrapAfterWorkspace]);
+
   const handleExplorerConfirm = useCallback(async (path: string) => {
     if (!explorer) return;
     if (explorer.purpose === 'workdir') {
       await setWorkDir(path);
-      const pending = afterWorkspaceRef.current;
-      afterWorkspaceRef.current = null;
-      if (pending === 'import') {
-        setExplorer({ mode: 'open', purpose: 'import' });
-        return;
-      }
-      setExplorer(null);
-      if (pending === 'new') {
-        await newPipeline();
-      } else if (pending === 'save') {
-        await saveFile();
-      } else if (pending === 'run') {
-        setPendingRun(true);
-        await saveFile();
-      } else {
-        // Default: if the workspace already has pipelines under .tagma,
-        // open the first one; otherwise create a default pipeline so the
-        // user has something to edit. Avoids spawning a fresh
-        // pipeline-*.yaml on every workspace open.
-        try {
-          const result = await api.listWorkspaceYamls();
-          if (result.entries.length > 0) {
-            await openFile(result.entries[0].path);
-          } else {
-            await newPipeline();
-          }
-        } catch {
-          await newPipeline();
-        }
-      }
+      await bootstrapAfterWorkspace();
     } else if (explorer.purpose === 'import') {
       await importFile(path);
       setExplorer(null);
@@ -445,7 +468,7 @@ export function App() {
         setDialog({ type: 'error', title: 'Import Failed', details: [e.message ?? 'Unknown error'] });
       }
     }
-  }, [explorer, setWorkDir, importFile, exportFile, newPipeline, openFile, saveFile, config.plugins, setRegistry, updatePipelineFields]);
+  }, [explorer, setWorkDir, importFile, exportFile, bootstrapAfterWorkspace, config.plugins, setRegistry, updatePipelineFields]);
 
   const handleNewPipeline = useCallback(() => {
     if (!requireWorkspace('new')) return;
@@ -712,7 +735,22 @@ export function App() {
   return (
     <>
     <AnimatePresence mode="wait">
-    {runActive ? (
+    {!workDir && !runActive && !pluginsActive ? (
+      <motion.div
+        key="welcome"
+        className="h-full"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={VIEW_TRANSITION}
+      >
+        <WelcomePage
+          onOpenWorkspace={() => setExplorer({ mode: 'directory', purpose: 'workdir' })}
+          onSelectRecent={handleOpenRecentWorkspace}
+        />
+        <ErrorToast />
+      </motion.div>
+    ) : runActive ? (
       <motion.div
         key="run"
         className="h-full"

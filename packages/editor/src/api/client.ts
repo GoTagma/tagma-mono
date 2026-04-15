@@ -239,6 +239,12 @@ export interface PluginRefreshResult {
   registry: PluginRegistry;
 }
 
+export interface RecentWorkspaceEntry {
+  path: string;
+  openedAt: number;
+  exists: boolean;
+}
+
 export interface ServerState {
   config: RawPipelineConfig;
   validationErrors: ValidationError[];
@@ -689,6 +695,21 @@ export const api = {
 
   setWorkDir: (workDir: string) =>
     request<ServerState>('/workspace', { method: 'PATCH', body: jsonBody({ workDir }) }),
+
+  listRecentWorkspaces: () =>
+    request<{ recent: RecentWorkspaceEntry[] }>('/recent-workspaces'),
+
+  addRecentWorkspace: (path: string) =>
+    request<{ recent: RecentWorkspaceEntry[] }>('/recent-workspaces', {
+      method: 'POST',
+      body: jsonBody({ path }),
+    }),
+
+  removeRecentWorkspace: (path: string) =>
+    request<{ recent: RecentWorkspaceEntry[] }>('/recent-workspaces', {
+      method: 'DELETE',
+      body: jsonBody({ path }),
+    }),
 
   getEditorSettings: () =>
     request<EditorSettings>('/editor-settings'),

@@ -38,6 +38,7 @@ import {
   invalidatePluginCache,
   type EditorSettings,
 } from '../plugins/loader.js';
+import { recordWorkspaceOpen } from './recent.js';
 
 /** Given a YAML path, return the companion layout.json path. */
 function companionLayoutPath(yamlFilePath: string): string {
@@ -55,6 +56,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       invalidatePluginCache();
       mkdirSync(join(S.workDir, '.tagma'), { recursive: true });
       await autoLoadInstalledPlugins();
+      recordWorkspaceOpen(S.workDir);
     }
     res.json(getState());
   });
