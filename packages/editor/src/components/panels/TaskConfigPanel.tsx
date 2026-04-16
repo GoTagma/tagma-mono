@@ -9,6 +9,11 @@ import { MiddlewareEditor } from './MiddlewareEditor';
 import { InheritedValue, ResetButton, resolveScalar, resolvePermissions, permsToString } from './InheritedValue';
 import { ConfirmDialog } from './ConfirmDialog';
 import { SchemaForm, getBuiltinSchema } from './SchemaForm';
+import {
+  DEFAULT_COMPLETION_TYPE,
+  getEffectiveCompletionType,
+  normalizeCompletionForEditor,
+} from './completion-defaults';
 import { FileExplorer } from '../FileExplorer';
 import type { FileExplorerMode } from '../FileExplorer';
 
@@ -146,6 +151,7 @@ export function TaskConfigPanel({
   const registry = usePipelineStore((s) => s.registry);
   const triggerOptions = mergeTypeOptions(['manual', 'file'], registry.triggers);
   const completionOptions = mergeTypeOptions(['exit_code', 'file_exists', 'output_check'], registry.completions);
+  const effectiveCompletionType = getEffectiveCompletionType(task.completion);
 
   // F2/G5: look up the resolved driver's capabilities for the current task.
   // Used below to surface inline warnings next to `agent_profile` and
@@ -212,16 +218,13 @@ export function TaskConfigPanel({
   }, [task.trigger, commitField]);
 
   const handleCompletionTypeChange = useCallback((type: string) => {
-    if (!type) {
-      commitField({ completion: undefined });
-    } else {
-      commitField({ completion: { type } as CompletionConfig });
-    }
+    const next = normalizeCompletionForEditor({ type } as CompletionConfig);
+    commitField({ completion: next });
   }, [commitField]);
 
   const handleCompletionField = useCallback((field: string, value: unknown) => {
-    const current = task.completion ?? { type: 'exit_code' };
-    const next = { ...current, [field]: value };
+    const current = task.completion ?? { type: DEFAULT_COMPLETION_TYPE };
+    const next = normalizeCompletionForEditor({ ...current, [field]: value } as CompletionConfig);
     commitField({ completion: next });
   }, [task.completion, commitField]);
 
@@ -609,20 +612,20 @@ export function TaskConfigPanel({
                 Completion Check
                 <span className="text-[10px] text-tagma-muted font-normal ml-1">(from plugin registry)</span>
               </label>
-              <select className="field-input" value={task.completion?.type ?? ''} onChange={(e) => handleCompletionTypeChange(e.target.value)}>
-                <option value="">none</option>
-                {completionOptions.map((t) => (
+              <select className="field-input" value={effectiveCompletionType} onChange={(e) => handleCompletionTypeChange(e.target.value)}>
+                <option value={DEFAULT_COMPLETION_TYPE}>{DEFAULT_COMPLETION_TYPE} (default)</option>
+                {completionOptions.filter((t) => t !== DEFAULT_COMPLETION_TYPE).map((t) => (
                   <option key={t} value={t}>{t}</option>
                 ))}
               </select>
             </div>
 
-            {task.completion?.type === 'exit_code' && (
+            {effectiveCompletionType === 'exit_code' && (
               <div className="pl-3 border-l-2 border-tagma-border space-y-2">
                 <div>
                   <label className="text-[10px] text-tagma-muted">Expected Code</label>
                   <input type="text" className="field-input font-mono text-[11px]"
-                    value={task.completion.expect !== undefined ? String(task.completion.expect) : ''}
+                    value={task.completion?.expect !== undefined ? String(task.completion.expect) : ''}
                     onChange={(e) => {
                       const v = e.target.value.trim();
                       handleCompletionField('expect', v ? (v.includes(',') ? v.split(',').map(Number) : Number(v)) : undefined);
@@ -632,7 +635,7 @@ export function TaskConfigPanel({
               </div>
             )}
 
-            {task.completion?.type === 'file_exists' && (
+            {task.completion && effectiveCompletionType === 'file_exists' && (
               <div className="pl-3 border-l-2 border-tagma-border space-y-2">
                 <TriggerField label="Path *" value={asStr(task.completion.path)} onChange={(v) => handleCompletionField('path', v)} placeholder="./path/to/check"
                   onBrowse={(currentVal, setVal) => openFileBrowser(task.completion?.kind === 'dir' ? 'directory' : 'open', currentVal, setVal)} />
@@ -655,7 +658,7 @@ export function TaskConfigPanel({
               </div>
             )}
 
-            {task.completion?.type === 'output_check' && (
+            {task.completion && effectiveCompletionType === 'output_check' && (
               <div className="pl-3 border-l-2 border-tagma-border space-y-2">
                 <TriggerField label="Check Command *" value={asStr(task.completion.check)} onChange={(v) => handleCompletionField('check', v)} placeholder="shell command (exit 0 = pass)" />
                 <TriggerField label="Timeout" value={asStr(task.completion.timeout)} onChange={(v) => handleCompletionField('timeout', v)} placeholder="30s (default)" />

@@ -2,7 +2,7 @@ import yaml from 'js-yaml';
 import { resolve, relative } from 'path';
 import type {
   PipelineConfig, RawPipelineConfig, RawTrackConfig, RawTaskConfig,
-  TrackConfig, TaskConfig, Permissions, MiddlewareConfig,
+  TrackConfig, TaskConfig, Permissions, MiddlewareConfig, CompletionConfig,
   TemplateConfig, TemplateParamDef,
 } from './types';
 import { truncateForName, validatePathParam, validatePath } from './utils';
@@ -313,6 +313,37 @@ function permissionsEqual(a: Permissions | undefined, b: Permissions | undefined
   return a.read === b.read && a.write === b.write && a.execute === b.execute;
 }
 
+function isDefaultExitCodeCompletion(
+  completion: CompletionConfig | undefined,
+): boolean {
+  if (!completion || completion.type !== 'exit_code') return false;
+  const { type: _type, expect, ...rest } = completion as CompletionConfig & {
+    expect?: unknown;
+  };
+  if (Object.keys(rest).length > 0) return false;
+  return expect === undefined || expect === 0;
+}
+
+function stripDefaultTaskCompletion<T extends { completion?: CompletionConfig }>(
+  task: T,
+): T {
+  if (!isDefaultExitCodeCompletion(task.completion)) return task;
+  const { completion: _completion, ...rest } = task;
+  return rest as T;
+}
+
+function stripDefaultCompletionsForSerialization<
+  T extends PipelineConfig | RawPipelineConfig,
+>(config: T): T {
+  return {
+    ...config,
+    tracks: config.tracks.map((track) => ({
+      ...track,
+      tasks: track.tasks.map((task) => stripDefaultTaskCompletion(task)),
+    })),
+  } as T;
+}
+
 // ═══ YAML Serialization ═══
 
 /**
@@ -320,7 +351,10 @@ function permissionsEqual(a: Permissions | undefined, b: Permissions | undefined
  * Wraps the config under the top-level `pipeline` key as expected by parseYaml.
  */
 export function serializePipeline(config: PipelineConfig | RawPipelineConfig): string {
-  return yaml.dump({ pipeline: config }, { lineWidth: 120, indent: 2 });
+  return yaml.dump(
+    { pipeline: stripDefaultCompletionsForSerialization(config) },
+    { lineWidth: 120, indent: 2 },
+  );
 }
 
 /**
@@ -363,7 +397,9 @@ export function deresolvePipeline(config: PipelineConfig, workDir: string): RawP
         ...(task.driver && task.driver !== effectiveTrackDriver ? { driver: task.driver } : {}),
         ...(task.timeout ? { timeout: task.timeout } : {}),
         ...(task.middlewares !== undefined ? { middlewares: task.middlewares } : {}),
-        ...(task.completion ? { completion: task.completion } : {}),
+        ...(task.completion && !isDefaultExitCodeCompletion(task.completion)
+          ? { completion: task.completion }
+          : {}),
         ...(task.agent_profile ? { agent_profile: task.agent_profile } : {}),
         ...(task.permissions && !permissionsEqual(task.permissions, track.permissions)
           ? { permissions: task.permissions }
