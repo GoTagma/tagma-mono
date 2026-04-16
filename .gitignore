@@ -22,3 +22,4 @@ Thumbs.db
 !.env.example
 
 .claude/settings.local.json
+.omx
