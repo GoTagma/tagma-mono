@@ -121,7 +121,7 @@ export function EditorSettingsPanel({
       >
         <div className="panel-header">
           <h2 className="panel-title">Editor Settings</h2>
-          <button onClick={onClose} className="p-1 text-tagma-muted hover:text-tagma-text transition-colors">
+          <button onClick={onClose} className="p-1 text-tagma-muted hover:text-tagma-text transition-colors" aria-label="Close">
             <X size={14} />
           </button>
         </div>

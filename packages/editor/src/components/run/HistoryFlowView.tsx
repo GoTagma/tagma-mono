@@ -374,7 +374,7 @@ function HistoryTaskPanel({ task, onClose }: { task: RunSummaryTask; onClose: ()
     <div className="w-72 h-full bg-tagma-surface border-l border-tagma-border flex flex-col animate-slide-in-right">
       <div className="panel-header-sm">
         <h2 className="panel-title-sm truncate">{task.taskName}</h2>
-        <button onClick={onClose} className="p-0.5 text-tagma-muted hover:text-tagma-text transition-colors">
+        <button onClick={onClose} className="p-0.5 text-tagma-muted hover:text-tagma-text transition-colors" aria-label="Close">
           <XIcon size={12} />
         </button>
       </div>
@@ -489,7 +489,7 @@ function HistoryTrackPanel({ track, onClose }: { track: TrackGroup; onClose: () 
     <div className="w-72 h-full bg-tagma-surface border-l border-tagma-border flex flex-col animate-slide-in-right">
       <div className="panel-header-sm">
         <h2 className="panel-title-sm truncate">{track.name}</h2>
-        <button onClick={onClose} className="p-0.5 text-tagma-muted hover:text-tagma-text transition-colors">
+        <button onClick={onClose} className="p-0.5 text-tagma-muted hover:text-tagma-text transition-colors" aria-label="Close">
           <XIcon size={12} />
         </button>
       </div>

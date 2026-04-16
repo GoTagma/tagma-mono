@@ -59,6 +59,7 @@ export function ZoomControls() {
         disabled={zoom <= MIN_ZOOM + 0.001}
         className="flex items-center justify-center w-5 h-full text-tagma-muted hover:text-tagma-text disabled:opacity-30 disabled:cursor-not-allowed border-r border-tagma-border/60"
         title="Zoom out"
+        aria-label="Zoom out"
       >
         <Minus size={10} />
       </button>
@@ -77,6 +78,7 @@ export function ZoomControls() {
         disabled={zoom >= MAX_ZOOM - 0.001}
         className="flex items-center justify-center w-5 h-full text-tagma-muted hover:text-tagma-text disabled:opacity-30 disabled:cursor-not-allowed border-l border-tagma-border/60"
         title="Zoom in"
+        aria-label="Zoom in"
       >
         <Plus size={10} />
       </button>

@@ -109,6 +109,7 @@ export function ResetButton({ onReset, visible, title = 'Reset to inherited valu
       onClick={onReset}
       title={title}
       className="text-tagma-muted hover:text-tagma-accent transition-colors p-0.5"
+      aria-label="Reset to inherited value"
     >
       <RotateCcw size={11} />
     </button>

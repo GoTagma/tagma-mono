@@ -35,7 +35,7 @@ export function YamlPreview({ config, onClose }: YamlPreviewProps) {
             {copied ? <Check size={10} className="text-tagma-success" /> : <Copy size={10} />}
             <span>{copied ? 'Copied' : 'Copy'}</span>
           </button>
-          <button onClick={onClose} className="text-tagma-muted hover:text-tagma-text transition-colors p-1" title="Close preview">
+          <button onClick={onClose} className="text-tagma-muted hover:text-tagma-text transition-colors p-1" title="Close preview" aria-label="Close preview">
             <X size={12} />
           </button>
         </div>

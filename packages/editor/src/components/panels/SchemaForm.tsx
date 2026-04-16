@@ -333,6 +333,7 @@ function SchemaFieldInput({ field, value, onChange, defaultStr, onBrowsePath }: 
               onClick={() => onBrowsePath(localStr, (path) => setLocalStr(path))}
               className="shrink-0 p-1.5 border border-tagma-border text-tagma-muted hover:text-tagma-accent hover:border-tagma-accent/40 transition-colors"
               title="Browse..."
+              aria-label="Browse for file"
             >
               <FolderOpen size={13} />
             </button>

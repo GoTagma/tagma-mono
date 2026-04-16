@@ -265,6 +265,7 @@ export function TaskConfigPanel({
           onClick={onTogglePin}
           className={`p-1 transition-colors ${isPinned ? 'text-tagma-accent bg-tagma-accent/10' : 'text-tagma-muted hover:text-tagma-text'}`}
           title={isPinned ? 'Unpin panel (allow switching)' : 'Pin panel (lock to this task)'}
+          aria-label={isPinned ? 'Unpin panel' : 'Pin panel'}
         >
           <Pin size={12} />
         </button>
@@ -458,7 +459,7 @@ export function TaskConfigPanel({
           <div className="flex gap-1">
             <input type="text" className="field-input font-mono text-[11px] flex-1 min-w-0" value={cwd} onChange={(e) => setCwd(e.target.value)} onBlur={blurCwd} placeholder="./path (relative, inherited)" />
             <button type="button" onClick={() => openFileBrowser('directory', cwd, (path) => setCwd(path))}
-              className="shrink-0 p-1.5 border border-tagma-border text-tagma-muted hover:text-tagma-accent hover:border-tagma-accent/40 transition-colors" title="Browse...">
+              className="shrink-0 p-1.5 border border-tagma-border text-tagma-muted hover:text-tagma-accent hover:border-tagma-accent/40 transition-colors" title="Browse..." aria-label="Browse for working directory">
               <FolderOpen size={13} />
             </button>
           </div>
@@ -473,7 +474,7 @@ export function TaskConfigPanel({
               {dependencies.map((dep) => (
                 <div key={dep} className="flex items-center gap-1.5 bg-tagma-bg border border-tagma-border px-2 py-1">
                   <span className="text-[11px] font-mono text-tagma-text flex-1 truncate">{dep}</span>
-                  <button onClick={() => onRemoveDependency(trackId, task.id, dep)} className="text-tagma-muted hover:text-tagma-error transition-colors">
+                  <button onClick={() => onRemoveDependency(trackId, task.id, dep)} className="text-tagma-muted hover:text-tagma-error transition-colors" aria-label="Remove dependency">
                     <X size={10} />
                   </button>
                 </div>
@@ -764,7 +765,7 @@ function TriggerField({ label, value, onChange, placeholder, onBrowse }: {
         <div className="flex gap-1">
           <input type="text" className="field-input font-mono text-[11px] flex-1 min-w-0" value={val} onChange={(e) => setVal(e.target.value)} onBlur={blurVal} placeholder={placeholder} />
           <button type="button" onClick={() => onBrowse(val, setVal)}
-            className="shrink-0 p-1.5 border border-tagma-border text-tagma-muted hover:text-tagma-accent hover:border-tagma-accent/40 transition-colors" title="Browse...">
+            className="shrink-0 p-1.5 border border-tagma-border text-tagma-muted hover:text-tagma-accent hover:border-tagma-accent/40 transition-colors" title="Browse..." aria-label="Browse for file">
             <FolderOpen size={13} />
           </button>
         </div>
@@ -813,7 +814,7 @@ function KeyValueEditor({ value, onChange }: {
             onChange={(e) => handleKeyChange(k, e.target.value)} placeholder="key" />
           <input type="text" className="field-input font-mono text-[11px] flex-1" value={String(v ?? '')}
             onChange={(e) => handleValueChange(k, e.target.value)} placeholder="value" />
-          <button onClick={() => handleRemove(k)} className="text-tagma-muted hover:text-tagma-error transition-colors shrink-0">
+          <button onClick={() => handleRemove(k)} className="text-tagma-muted hover:text-tagma-error transition-colors shrink-0" aria-label="Remove entry">
             <X size={10} />
           </button>
         </div>

@@ -12,7 +12,7 @@ import { FileExplorer, type FileExplorerMode } from './components/FileExplorer';
 import { WelcomePage } from './components/WelcomePage';
 import { api, type ServerStateEvent } from './api/client';
 import {
-  Loader2, AlertCircle, CheckCircle2, X as XIcon,
+  Loader2, X as XIcon,
   Check, Square, ShieldCheck,
 } from 'lucide-react';
 
@@ -22,19 +22,12 @@ import { useRunStore } from './store/run-store';
 import { ErrorToast } from './components/ErrorToast';
 import { useShortcuts } from './hooks/use-shortcuts';
 import { useAutosave, loadDraft, clearDraft } from './hooks/use-autosave';
+import { SearchOverlay } from './components/SearchOverlay';
+import { SaveAsDialog } from './components/SaveAsDialog';
+import { DialogModal, type DialogInfo } from './components/DialogModal';
+import { ConfirmModal, type ConfirmInfo } from './components/ConfirmModal';
 
 type ExplorerIntent = { mode: FileExplorerMode; purpose: 'import' | 'export' | 'workdir' | 'plugin-import' };
-type DialogInfo = { type: 'error' | 'success'; title: string; details: string[] };
-type ConfirmInfo = {
-  title: string;
-  details: string[];
-  confirmLabel: string;
-  cancelLabel?: string;
-  danger?: boolean;
-  onConfirm: () => void;
-  /** Optional cancel callback (for dialogs like draft restore where Discard ≠ no-op). */
-  onCancel?: () => void;
-};
 
 export function App() {
   const {
@@ -71,7 +64,6 @@ export function App() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [searchVisible, setSearchVisible] = useState(false);
   const [showYamlPreview, setShowYamlPreview] = useState(false);
-  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   // Pending action to execute after workspace is set
   const afterWorkspaceRef = useRef<'new' | 'import' | 'save' | 'run' | null>(null);
@@ -577,10 +569,7 @@ export function App() {
 
   // Global undo/redo/copy/paste/duplicate/search/escape shortcuts (U1).
   const shortcutHandlers = useMemo(() => ({
-    onFocusSearch: () => {
-      setSearchVisible(true);
-      requestAnimationFrame(() => searchInputRef.current?.focus());
-    },
+    onFocusSearch: () => setSearchVisible(true),
   }), []);
   useShortcuts(shortcutHandlers);
 
@@ -882,119 +871,22 @@ export function App() {
         />
       )}
 
-      {/* Save As prompt (U10) */}
       {saveAsInput !== null && (
-        <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60" onClick={() => setSaveAsInput(null)}>
-          <div
-            className="bg-tagma-surface border border-tagma-border shadow-panel w-[440px] flex flex-col animate-fade-in"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="panel-header">
-              <h2 className="panel-title">Save As</h2>
-              <button onClick={() => setSaveAsInput(null)} className="p-1 text-tagma-muted hover:text-tagma-text">
-                <XIcon size={14} />
-              </button>
-            </div>
-            <div className="px-4 py-4 flex flex-col gap-2">
-              <label className="text-[10px] font-mono text-tagma-muted uppercase tracking-wider">File name (saved under .tagma/)</label>
-              <input
-                type="text"
-                autoFocus
-                value={saveAsInput}
-                onChange={(e) => setSaveAsInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') commitSaveAs(saveAsInput);
-                  if (e.key === 'Escape') setSaveAsInput(null);
-                }}
-                className="text-[11px] font-mono bg-tagma-bg border border-tagma-border focus:border-tagma-accent px-2 py-1 text-tagma-text outline-none"
-                placeholder="my-pipeline.yaml"
-              />
-            </div>
-            <div className="px-4 py-3 border-t border-tagma-border flex justify-end gap-2">
-              <button
-                onClick={() => setSaveAsInput(null)}
-                className="px-3 py-1 text-[11px] text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 transition-colors"
-              >
-                Cancel
-              </button>
-              <button onClick={() => commitSaveAs(saveAsInput)} className="btn-primary">Save</button>
-            </div>
-          </div>
-        </div>
+        <SaveAsDialog
+          defaultValue={saveAsInput}
+          onConfirm={commitSaveAs}
+          onCancel={() => setSaveAsInput(null)}
+        />
       )}
 
-      {/* Search overlay (U1 — Ctrl+F) */}
       {searchVisible && (
-        <div className="fixed top-14 right-4 z-[150] w-[340px] bg-tagma-surface border border-tagma-border shadow-panel animate-fade-in">
-          <div className="flex items-center gap-2 px-3 py-2 border-b border-tagma-border">
-            <input
-              ref={searchInputRef}
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') { setSearchVisible(false); setSearchQuery(''); }
-              }}
-              placeholder="Search tasks by name or prompt..."
-              className="flex-1 text-[11px] font-mono bg-tagma-bg border border-tagma-border focus:border-tagma-accent px-2 py-1 text-tagma-text outline-none"
-            />
-            <button
-              onClick={() => { setSearchVisible(false); setSearchQuery(''); }}
-              className="p-1 text-tagma-muted hover:text-tagma-text"
-            >
-              <XIcon size={12} />
-            </button>
-          </div>
-          <div className="max-h-[240px] overflow-y-auto">
-            {(() => {
-              const q = searchQuery.trim().toLowerCase();
-              if (!q) {
-                return <div className="px-3 py-2 text-[10px] font-mono text-tagma-muted/60">Type to search tasks</div>;
-              }
-              const matches: { trackId: string; taskId: string; label: string; snippet: string }[] = [];
-              for (const t of config.tracks) {
-                for (const task of t.tasks) {
-                  const name = (task.name ?? '').toLowerCase();
-                  const prompt = (task.prompt ?? '').toLowerCase();
-                  if (name.includes(q) || prompt.includes(q)) {
-                    matches.push({
-                      trackId: t.id,
-                      taskId: task.id,
-                      label: task.name ?? task.id,
-                      snippet: (task.prompt ?? '').slice(0, 80),
-                    });
-                  }
-                }
-              }
-              if (matches.length === 0) {
-                return <div className="px-3 py-2 text-[10px] font-mono text-tagma-muted/60">No matches</div>;
-              }
-              return matches.map((m) => (
-                <button
-                  key={`${m.trackId}.${m.taskId}`}
-                  className="w-full text-left px-3 py-2 border-b border-tagma-border/30 last:border-b-0 hover:bg-tagma-bg/60"
-                  onClick={() => {
-                    const qid = `${m.trackId}.${m.taskId}`;
-                    selectTask(qid);
-                    setSearchVisible(false);
-                    setSearchQuery('');
-                    // Defer one frame so any layout shift from opening the
-                    // task panel settles before BoardCanvas reads the scroll
-                    // container's clientWidth/clientHeight.
-                    requestAnimationFrame(() => {
-                      window.dispatchEvent(new CustomEvent('tagma:focus-task', { detail: qid }));
-                    });
-                  }}
-                >
-                  <div className="text-[11px] font-mono text-tagma-text truncate">{m.label}</div>
-                  {m.snippet && (
-                    <div className="text-[10px] font-mono text-tagma-muted/60 truncate">{m.snippet}</div>
-                  )}
-                </button>
-              ));
-            })()}
-          </div>
-        </div>
+        <SearchOverlay
+          searchQuery={searchQuery}
+          onSearchQueryChange={setSearchQuery}
+          onClose={() => setSearchVisible(false)}
+          onSelectTask={selectTask}
+          config={config}
+        />
       )}
 
       <ErrorToast />
@@ -1042,96 +934,12 @@ export function App() {
 
     {/* Info / error dialog */}
     {dialog && (
-      <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60" onClick={() => setDialog(null)}>
-        <div className="bg-tagma-surface border border-tagma-border shadow-panel w-[480px] max-h-[60vh] flex flex-col animate-fade-in"
-          onClick={(e) => e.stopPropagation()}>
-          <div className="panel-header">
-            <div className="flex items-center gap-2 min-w-0">
-              {dialog.type === 'error'
-                ? <AlertCircle size={14} className="text-tagma-error shrink-0" />
-                : <CheckCircle2 size={14} className="text-tagma-success shrink-0" />}
-              <h2 className={`panel-title truncate ${dialog.type === 'error' ? 'text-tagma-error' : 'text-tagma-success'}`}>{dialog.title}</h2>
-            </div>
-            <button onClick={() => setDialog(null)} className="p-1 text-tagma-muted hover:text-tagma-text">
-              <XIcon size={14} />
-            </button>
-          </div>
-          <div className="flex-1 overflow-y-auto">
-            {dialog.details.map((detail, i) => (
-              <div key={i} className="flex items-start gap-2.5 px-4 py-2.5 border-b border-tagma-border/30 last:border-b-0">
-                {dialog.type === 'error'
-                  ? <AlertCircle size={11} className="text-tagma-error shrink-0 mt-0.5" />
-                  : <CheckCircle2 size={11} className="text-tagma-success shrink-0 mt-0.5" />}
-                <div className="text-[11px] text-tagma-text font-mono min-w-0 break-words">{detail}</div>
-              </div>
-            ))}
-          </div>
-          <div className="px-4 py-3 border-t border-tagma-border flex justify-end">
-            <button onClick={() => setDialog(null)} className="btn-primary">OK</button>
-          </div>
-        </div>
-      </div>
+      <DialogModal info={dialog} onClose={() => setDialog(null)} />
     )}
 
     {/* Confirm dialog */}
     {confirmInfo && (
-      <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/60" onClick={() => {
-        // Honor the dialog's onCancel side-effect even when dismissed by the
-        // overlay click (M4: draft-restore needs to run clearDraft on cancel).
-        const info = confirmInfo;
-        setConfirmInfo(null);
-        info.onCancel?.();
-      }}>
-        <div
-          className="bg-tagma-surface border border-tagma-border shadow-panel w-[440px] max-h-[60vh] flex flex-col animate-fade-in"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="panel-header">
-            <div className="flex items-center gap-2 min-w-0">
-              <AlertCircle size={14} className={`shrink-0 ${confirmInfo.danger ? 'text-tagma-error' : 'text-tagma-accent'}`} />
-              <h2 className={`panel-title truncate ${confirmInfo.danger ? 'text-tagma-error' : 'text-tagma-text'}`}>
-                {confirmInfo.title}
-              </h2>
-            </div>
-            <button onClick={() => {
-              const info = confirmInfo;
-              setConfirmInfo(null);
-              info.onCancel?.();
-            }} className="p-1 text-tagma-muted hover:text-tagma-text">
-              <XIcon size={14} />
-            </button>
-          </div>
-          <div className="flex-1 overflow-y-auto">
-            {confirmInfo.details.map((detail, i) => (
-              <div key={i} className="px-4 py-2.5 border-b border-tagma-border/30 last:border-b-0 text-[11px] text-tagma-text font-mono break-words">
-                {detail}
-              </div>
-            ))}
-          </div>
-          <div className="px-4 py-3 border-t border-tagma-border flex justify-end gap-2">
-            <button
-              onClick={() => {
-                const info = confirmInfo;
-                setConfirmInfo(null);
-                info.onCancel?.();
-              }}
-              className="px-3 py-1 text-[11px] text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 transition-colors"
-            >
-              {confirmInfo.cancelLabel ?? 'Cancel'}
-            </button>
-            <button
-              onClick={() => {
-                const info = confirmInfo;
-                setConfirmInfo(null);
-                info.onConfirm();
-              }}
-              className={confirmInfo.danger ? 'btn-danger' : 'btn-primary'}
-            >
-              {confirmInfo.confirmLabel}
-            </button>
-          </div>
-        </div>
-      </div>
+      <ConfirmModal info={confirmInfo} onClose={() => setConfirmInfo(null)} />
     )}
     </>
   );

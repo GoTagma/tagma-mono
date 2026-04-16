@@ -44,7 +44,7 @@ export function PipelineConfigPanel({ config, drivers, errors, onUpdate, onClose
       <div className="bg-tagma-surface border border-tagma-border shadow-panel w-[480px] flex flex-col animate-fade-in" style={{ maxHeight: maxH }} onClick={(e) => e.stopPropagation()}>
         <div className="panel-header">
           <h2 className="panel-title">Pipeline Settings{readOnly ? ' (read-only)' : ''}</h2>
-          <button onClick={onClose} className="p-1 text-tagma-muted hover:text-tagma-text transition-colors">
+          <button onClick={onClose} className="p-1 text-tagma-muted hover:text-tagma-text transition-colors" aria-label="Close">
             <X size={14} />
           </button>
         </div>

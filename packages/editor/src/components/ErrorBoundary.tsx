@@ -9,10 +9,6 @@ interface State {
   error: Error | null;
 }
 
-/**
- * C5: Global error boundary so a single render error doesn't white-screen
- * the entire application.
- */
 export class ErrorBoundary extends Component<Props, State> {
   state: State = { hasError: false, error: null };
 
@@ -27,61 +23,26 @@ export class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          height: '100vh',
-          gap: '16px',
-          padding: '24px',
-          fontFamily: 'system-ui, sans-serif',
-          background: '#18181b',
-          color: '#e4e4e7',
-        }}>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 600, margin: 0 }}>Something went wrong</h1>
-          <p style={{ color: '#a1a1aa', maxWidth: '480px', textAlign: 'center', margin: 0 }}>
+        <div className="h-screen flex flex-col items-center justify-center gap-4 p-6 font-sans bg-tagma-elevated text-tagma-text">
+          <h1 className="text-2xl font-semibold m-0">Something went wrong</h1>
+          <p className="text-tagma-muted max-w-[480px] text-center m-0">
             An unexpected error occurred in the editor. You can try reloading, or click the button below to recover.
           </p>
           {this.state.error && (
-            <pre style={{
-              background: '#27272a',
-              padding: '12px 16px',
-              borderRadius: '8px',
-              fontSize: '0.8rem',
-              maxWidth: '600px',
-              overflow: 'auto',
-              color: '#f87171',
-            }}>
+            <pre className="bg-tagma-bg p-3 px-4 text-sm max-w-[600px] overflow-auto text-tagma-error border border-tagma-border">
               {this.state.error.message}
             </pre>
           )}
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div className="flex gap-2">
             <button
               onClick={this.handleReset}
-              style={{
-                padding: '8px 20px',
-                borderRadius: '6px',
-                border: 'none',
-                background: '#3b82f6',
-                color: 'white',
-                cursor: 'pointer',
-                fontSize: '0.9rem',
-              }}
+              className="px-5 py-2 border-0 bg-tagma-accent text-white cursor-pointer text-sm hover:bg-tagma-accent/85 transition-colors"
             >
               Try again
             </button>
             <button
               onClick={() => window.location.reload()}
-              style={{
-                padding: '8px 20px',
-                borderRadius: '6px',
-                border: '1px solid #3f3f46',
-                background: 'transparent',
-                color: '#e4e4e7',
-                cursor: 'pointer',
-                fontSize: '0.9rem',
-              }}
+              className="px-5 py-2 border border-tagma-border bg-transparent text-tagma-text cursor-pointer text-sm hover:border-tagma-muted/60 transition-colors"
             >
               Reload page
             </button>

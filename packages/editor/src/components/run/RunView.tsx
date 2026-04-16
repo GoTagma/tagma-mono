@@ -764,6 +764,7 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
             <button
               onClick={() => { setSearchVisible(false); setSearchQuery(''); }}
               className="p-1 text-tagma-muted hover:text-tagma-text"
+              aria-label="Close search"
             >
               <X size={12} />
             </button>

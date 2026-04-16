@@ -65,7 +65,7 @@ export function TrackInfoPanel({ track, config, onClose }: TrackInfoPanelProps) 
           {track.color && <span className="w-2 h-2 shrink-0" style={{ backgroundColor: track.color }} />}
           <h2 className="panel-title-sm truncate">{track.name}</h2>
         </div>
-        <button onClick={onClose} className="p-0.5 text-tagma-muted hover:text-tagma-text transition-colors">
+        <button onClick={onClose} className="p-0.5 text-tagma-muted hover:text-tagma-text transition-colors" aria-label="Close">
           <X size={12} />
         </button>
       </div>

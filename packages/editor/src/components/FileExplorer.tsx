@@ -133,7 +133,7 @@ export function FileExplorer({ mode, title, initialPath, fileFilter, picker, onC
         {/* Header */}
         <div className="panel-header">
           <h2 className="panel-title">{title ?? defaultTitle}</h2>
-          <button onClick={onCancel} className="p-1 text-tagma-muted hover:text-tagma-text">
+          <button onClick={onCancel} className="p-1 text-tagma-muted hover:text-tagma-text" aria-label="Close">
             <X size={14} />
           </button>
         </div>
@@ -141,7 +141,7 @@ export function FileExplorer({ mode, title, initialPath, fileFilter, picker, onC
         {/* Path bar */}
         <div className="flex items-center gap-1.5 px-3 py-2 border-b border-tagma-border">
           {parentPath && (
-            <button onClick={() => loadDir(parentPath)} className="p-1 text-tagma-muted hover:text-tagma-text shrink-0" title="Go up">
+            <button onClick={() => loadDir(parentPath)} className="p-1 text-tagma-muted hover:text-tagma-text shrink-0" title="Go up" aria-label="Go to parent directory">
               <ChevronUp size={14} />
             </button>
           )}
@@ -152,7 +152,7 @@ export function FileExplorer({ mode, title, initialPath, fileFilter, picker, onC
             className="flex-1 text-[11px] font-mono bg-tagma-bg border border-tagma-border px-2 py-1 text-tagma-text"
           />
           <button onClick={() => { setNewFolderName(''); setTimeout(() => newFolderRef.current?.focus(), 0); }}
-            className="p-1 text-tagma-muted hover:text-tagma-text shrink-0" title="New Folder">
+            className="p-1 text-tagma-muted hover:text-tagma-text shrink-0" title="New Folder" aria-label="New folder">
             <FolderPlus size={14} />
           </button>
         </div>

@@ -89,8 +89,8 @@ export function Toolbar({
               className="text-[11px] font-semibold tracking-wide bg-tagma-bg border border-tagma-accent/40 px-2 py-0.5 text-tagma-text focus:border-tagma-accent w-full max-w-[12rem]"
               autoFocus
             />
-            <button onClick={handleSaveName} className="p-0.5 text-tagma-success hover:text-tagma-success/80"><Check size={12} /></button>
-            <button onClick={handleCancel} className="p-0.5 text-tagma-muted hover:text-tagma-error"><X size={12} /></button>
+            <button onClick={handleSaveName} className="p-0.5 text-tagma-success hover:text-tagma-success/80" aria-label="Save name"><Check size={12} /></button>
+            <button onClick={handleCancel} className="p-0.5 text-tagma-muted hover:text-tagma-error" aria-label="Cancel editing"><X size={12} /></button>
           </div>
         ) : (
           <button

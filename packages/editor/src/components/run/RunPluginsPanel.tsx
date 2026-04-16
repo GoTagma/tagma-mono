@@ -68,7 +68,7 @@ export function RunPluginsPanel({ config, onClose }: RunPluginsPanelProps) {
             <Package size={14} className="text-tagma-accent" />
             <h2 className="panel-title">Plugins (read-only)</h2>
           </div>
-          <button onClick={onClose} className="p-1 text-tagma-muted hover:text-tagma-text transition-colors">
+          <button onClick={onClose} className="p-1 text-tagma-muted hover:text-tagma-text transition-colors" aria-label="Close">
             <X size={14} />
           </button>
         </div>

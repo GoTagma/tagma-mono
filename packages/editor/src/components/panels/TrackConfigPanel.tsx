@@ -87,6 +87,7 @@ export function TrackConfigPanel({ track, drivers, errors, onUpdateTrack, onDele
           onClick={onTogglePin}
           className={`p-1 transition-colors ${isPinned ? 'text-tagma-accent bg-tagma-accent/10' : 'text-tagma-muted hover:text-tagma-text'}`}
           title={isPinned ? 'Unpin panel (allow switching)' : 'Pin panel (lock to this track)'}
+          aria-label={isPinned ? 'Unpin panel' : 'Pin panel'}
         >
           <Pin size={12} />
         </button>

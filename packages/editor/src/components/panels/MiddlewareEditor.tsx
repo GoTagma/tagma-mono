@@ -99,7 +99,7 @@ function MiddlewareItem({ middleware, typeOptions, onUpdate, onRemove, onBrowseP
 
   return (
     <div className="bg-tagma-bg border border-tagma-border p-2 space-y-1.5 relative">
-      <button onClick={onRemove} className="absolute top-1.5 right-1.5 text-tagma-muted hover:text-tagma-error transition-colors">
+      <button onClick={onRemove} className="absolute top-1.5 right-1.5 text-tagma-muted hover:text-tagma-error transition-colors" aria-label="Remove middleware">
         <X size={10} />
       </button>
       <div>
@@ -148,7 +148,7 @@ function CustomFieldsEditor({ entries, onChange }: {
             onChange={(e) => updateKey(i, e.target.value)} placeholder="key" />
           <input type="text" className="field-input font-mono text-[11px] flex-1" value={String(v ?? '')}
             onChange={(e) => updateValue(i, e.target.value)} placeholder="value" />
-          <button onClick={() => remove(i)} className="text-tagma-muted hover:text-tagma-error transition-colors shrink-0">
+          <button onClick={() => remove(i)} className="text-tagma-muted hover:text-tagma-error transition-colors shrink-0" aria-label="Remove field">
             <X size={10} />
           </button>
         </div>
