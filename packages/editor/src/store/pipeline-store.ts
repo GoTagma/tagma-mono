@@ -3,6 +3,13 @@ import { api, RevisionConflictError } from '../api/client';
 import type { ServerState, RawPipelineConfig, RawTrackConfig, RawTaskConfig, ValidationError, DagEdge, PluginRegistry } from '../api/client';
 import { flushAllLocalFields } from '../hooks/use-local-field';
 
+const EMPTY_REGISTRY: PluginRegistry = {
+  drivers: [],
+  triggers: [],
+  completions: [],
+  middlewares: [],
+};
+
 /**
  * User-facing toast shown when a mutation is rejected with HTTP 409 because
  * the client's observed revision is stale. The store reconciles by adopting
@@ -333,6 +340,19 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     });
   };
 
+  /**
+   * Workspace/file open flows can load or unload plugins on the server.
+   * The editor's dropdowns read from the client-side registry snapshot, so
+   * those flows must explicitly re-sync `/api/registry` afterwards.
+   */
+  const fetchRegistrySnapshot = async (): Promise<PluginRegistry> => {
+    try {
+      return await api.getRegistry();
+    } catch {
+      return EMPTY_REGISTRY;
+    }
+  };
+
   // Monotonic request counter used to reject out-of-order responses from
   // `fire()`. Rapid edits (rename, drag) can race: if request A is dispatched
   // first but its response arrives *after* request B's, A's stale ServerState
@@ -620,7 +640,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     layoutDirty: false,
     loading: true,
     errorMessage: null,
-    registry: { drivers: [], triggers: [], completions: [], middlewares: [] },
+    registry: EMPTY_REGISTRY,
     past: [],
     future: [],
     clipboard: null,
@@ -635,7 +655,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
       try {
         const [state, registry] = await Promise.all([
           api.getState(),
-          api.getRegistry().catch(() => ({ drivers: [], triggers: [], completions: [], middlewares: [] })),
+          fetchRegistrySnapshot(),
         ]);
         applyStateWithLayout(state);
         // Fresh page load always starts at the welcome page. The editor server
@@ -954,8 +974,9 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
         // caller will overwrite by opening an existing file or creating a
         // new pipeline).
         const state = await api.setWorkDir(wd);
+        const registry = await fetchRegistrySnapshot();
         applyStateWithLayout(state);
-        set({ isDirty: false, layoutDirty: false });
+        set({ isDirty: false, layoutDirty: false, registry });
       } catch (e) {
         set({ errorMessage: 'Failed to set workspace: ' + errorToMessage(e) });
       }
@@ -964,9 +985,10 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     openFile: async (path) => {
       try {
         const state = await api.openFile(path);
+        const registry = await fetchRegistrySnapshot();
         set({ selectedTaskId: null, selectedTaskIds: [], selectedTrackId: null, pinnedTaskId: null, pinnedTrackId: null });
         applyStateWithLayout(state);
-        set({ isDirty: false, layoutDirty: false, past: [], future: [] });
+        set({ isDirty: false, layoutDirty: false, past: [], future: [], registry });
       } catch (e) {
         set({ errorMessage: 'Failed to open file: ' + errorToMessage(e) });
       }
@@ -1049,9 +1071,10 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     importFile: async (sourcePath) => {
       try {
         const state = await api.importFile(sourcePath);
+        const registry = await fetchRegistrySnapshot();
         set({ selectedTaskId: null, selectedTaskIds: [], selectedTrackId: null, pinnedTaskId: null, pinnedTrackId: null });
         applyStateWithLayout(state);
-        set({ isDirty: false, layoutDirty: false, past: [], future: [] });
+        set({ isDirty: false, layoutDirty: false, past: [], future: [], registry });
       } catch (e) {
         set({ errorMessage: 'Failed to import file: ' + errorToMessage(e) });
       }
