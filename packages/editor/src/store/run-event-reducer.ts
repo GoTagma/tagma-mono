@@ -134,8 +134,8 @@ export function foldRunEvent(state: RunFoldState, event: RunEvent): RunFoldState
           logs: existing.logs,
         });
       } else {
-        // Task not in the initial run_start snapshot (e.g. template expansion
-        // added tasks, or a task_update arrived before run_start on reconnect).
+        // Task not in the initial run_start snapshot, or a task_update arrived
+        // before run_start on reconnect.
         // Create an entry with sensible defaults so the update isn't lost.
         const dotIdx = event.taskId.indexOf('.');
         const trackId = dotIdx >= 0 ? event.taskId.slice(0, dotIdx) : '';

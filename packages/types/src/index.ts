@@ -86,24 +86,6 @@ export interface MiddlewareConfig {
   readonly [key: string]: unknown;
 }
 
-// ═══ Template Config ═══
-
-export interface TemplateParamDef {
-  readonly type?: 'string' | 'path' | 'enum' | 'number';
-  readonly default?: unknown;
-  readonly description?: string;
-  readonly enum?: readonly string[];
-  readonly min?: number;
-  readonly max?: number;
-}
-
-export interface TemplateConfig {
-  readonly name: string;
-  readonly description?: string;
-  readonly params?: Record<string, TemplateParamDef>;
-  readonly tasks: readonly RawTaskConfig[];
-}
-
 // ═══ Task Config (after inheritance resolution) ═══
 
 export interface TaskConfig {
@@ -146,9 +128,6 @@ export interface RawTaskConfig {
   readonly completion?: CompletionConfig;
   readonly agent_profile?: string;
   readonly cwd?: string;
-  // Template usage
-  readonly use?: string;
-  readonly with?: Record<string, unknown>;
 }
 
 // ═══ Track Config ═══
@@ -423,7 +402,7 @@ export interface PluginModule {
 /**
  * Manifest a plugin package MUST declare under the `tagmaPlugin` field of
  * its `package.json`. The presence of this field is the canonical signal
- * that a package is a tagma pipeline plugin (not a library, template, or
+ * that a package is a tagma pipeline plugin (not a library or
  * unrelated helper sharing the same npm scope). Auto-discovery in hosts
  * reads only `package.json` and trusts this field — no module import
  * required, which is both faster and safer (no top-level side effects).

@@ -292,7 +292,7 @@ function taskStateChangeToWire(
   taskId: string,
   status: TaskStatus,
   state: TaskState,
-): RunEvent {
+): Extract<RunEvent, { type: 'task_update' }> {
   const result = state.result;
   const cfg = state.config;
   return {
@@ -416,8 +416,8 @@ export function registerRunRoutes(app: express.Express): void {
 
     // Serialize the in-memory editor config to YAML and hand it to the SDK.
     // The round-trip is intentional: it exercises the same load path the CLI
-    // uses (parse + template expansion + inheritance resolution) so the run
-    // sees exactly what YAML-driven consumers would see.
+    // uses (parse + resolution) so the run sees exactly what YAML-driven
+    // consumers would see.
     const content = serializePipeline(S.config);
     const cwd = S.workDir || process.cwd();
 
@@ -480,8 +480,7 @@ export function registerRunRoutes(app: express.Express): void {
     // engine will see skipPluginLoading: true and won't re-resolve them via
     // Node's cwd-based default import.
 
-    // Validate the resolved config (catches DAG errors introduced by template
-    // expansion, e.g. duplicate qualified IDs, broken cross-template references).
+    // Validate the resolved config before execution.
     const configErrors = validateConfig(pipelineConfig);
     if (configErrors.length > 0) {
       runStarting = false; // B4: release lock on error
@@ -639,7 +638,8 @@ export function registerRunRoutes(app: express.Express): void {
               sessionId: result?.sessionId ?? existing.sessionId ?? null,
             });
           }
-          const wireEvent = taskStateChangeToWire(runId, event.taskId, event.status, event.state);
+          const wireEvent: Extract<RunEvent, { type: 'task_update' }> =
+            taskStateChangeToWire(runId, event.taskId, event.status, event.state);
           broadcast(wireEvent);
           const prevTask = activeRunTasksSnapshot.get(event.taskId);
           const dotIdx = event.taskId.indexOf('.');

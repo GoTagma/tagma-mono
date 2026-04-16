@@ -455,7 +455,8 @@ export function writeEditorSettings(patch: Partial<EditorSettings>): EditorSetti
  * field (parsed via `parsePluginManifestField` from @tagma/sdk). That field
  * is the single source of truth — no name regex, no `@tagma/types` dep
  * sniffing. SDK-adjacent libraries like `@tagma/sdk`, `@tagma/types`, or
- * `@tagma/template-*` simply don't declare it, so they're never picked up.
+ * non-plugin packages under the `@tagma/*` scope simply don't declare it, so
+ * they're never picked up.
  *
  * Reading only `package.json` (no `import()`) keeps discovery fast and avoids
  * executing top-level side effects of unverified packages.

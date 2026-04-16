@@ -2,7 +2,7 @@ import { useState, useRef, useLayoutEffect, memo } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlertTriangle, Terminal, MessageSquare, Lock, FileSearch,
-  Clock, CheckCircle2, Layers, FileOutput, Package,
+  Clock, CheckCircle2, Layers, FileOutput,
   Loader2, Check, X as XIcon, SkipForward, Ban,
 } from 'lucide-react';
 import type { RawTaskConfig, RawPipelineConfig, TaskStatus } from '../../api/client';
@@ -159,7 +159,7 @@ function TaskTooltip({ task, trackId, config, anchorRect }: {
 
   const isCmd = task.command !== undefined;
   const rows: [string, string][] = [];
-  // AI-specific fields only for prompt/template tasks
+  // AI-specific fields only for prompt tasks
   if (!isCmd && driver) rows.push(['Driver', driver]);
   if (!isCmd && model) rows.push(['Model', model]);
   if (!isCmd && perms) {
@@ -174,7 +174,6 @@ function TaskTooltip({ task, trackId, config, anchorRect }: {
   if (task.continue_from) rows.push(['Continue', task.continue_from]);
   if (task.cwd) rows.push(['CWD', task.cwd]);
   if (!isCmd && task.agent_profile) rows.push(['Profile', task.agent_profile]);
-  if (task.use) rows.push(['Template', task.use]);
   if (task.prompt) rows.push(['Prompt', task.prompt.length > 60 ? task.prompt.slice(0, 60) + '…' : task.prompt]);
   if (task.command) rows.push(['Command', task.command.length > 60 ? task.command.slice(0, 60) + '…' : task.command]);
 
@@ -238,7 +237,6 @@ export const TaskCard = memo(function TaskCard({
   const [hovered, setHovered] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
   const isCommand = task.command !== undefined;
-  const isTemplate = !!task.use;
 
   const driver = resolveField(task, trackId, pipelineConfig, 'driver');
   const model = resolveField(task, trackId, pipelineConfig, 'model');
@@ -353,12 +351,10 @@ export const TaskCard = memo(function TaskCard({
       {/* ─── Row 1: Type icon · Name · Status badges · Runtime status ─── */}
       <div className="flex items-center h-[24px] gap-[6px] pointer-events-none min-w-0 overflow-hidden">
         <span className={`inline-flex items-center justify-center w-[16px] h-[16px] shrink-0
-          ${isTemplate ? 'bg-purple-500/10' : isCommand ? 'bg-sky-500/10' : 'bg-tagma-muted/8'}`}>
-          {isTemplate
-            ? <Package size={9} className="text-purple-400" />
-            : isCommand
-              ? <Terminal size={9} className="text-sky-400" />
-              : <MessageSquare size={9} className="text-tagma-muted/60" />}
+          ${isCommand ? 'bg-sky-500/10' : 'bg-tagma-muted/8'}`}>
+          {isCommand
+            ? <Terminal size={9} className="text-sky-400" />
+            : <MessageSquare size={9} className="text-tagma-muted/60" />}
         </span>
 
         <span className={`text-[10px] font-medium truncate flex-1 leading-[24px] ${isSkipped ? 'text-tagma-muted/50 line-through' : 'text-tagma-text'}`}>
@@ -406,7 +402,7 @@ export const TaskCard = memo(function TaskCard({
         </span>
       </div>
 
-      {/* ─── Row 2: Driver chip · Tier chip · Permissions (prompt/template only) ─── */}
+      {/* ─── Row 2: Driver chip · Tier chip · Permissions (prompt only) ─── */}
       {!isCommand && (
         <div className="flex items-center h-[16px] gap-[4px] pointer-events-none min-w-0 overflow-hidden bg-black/20 px-[3px]">
           {driver && (

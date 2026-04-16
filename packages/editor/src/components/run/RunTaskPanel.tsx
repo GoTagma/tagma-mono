@@ -1,8 +1,8 @@
 import { useMemo, useRef, useEffect } from 'react';
 import {
   X, Clock, Check, AlertCircle, Loader2, SkipForward, Ban,
-  FileText, ExternalLink, Hash, Link2, FileOutput, Lock, FileSearch,
-  CheckCircle2, Layers, Terminal, MessageSquare, Package, Activity,
+  FileText, ExternalLink, Hash, Link2, Lock, FileSearch,
+  CheckCircle2, Layers, Terminal, MessageSquare, Activity,
 } from 'lucide-react';
 import type { RunTaskState, TaskStatus, RawPipelineConfig, RawTaskConfig, RawTrackConfig, Permissions, TaskLogLevel } from '../../api/client';
 import { TASK_LOG_CAP } from '../../store/run-event-reducer';
@@ -100,7 +100,6 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
   };
 
   const isCommand = !!taskConfig?.command;
-  const isTemplate = !!taskConfig?.use;
 
   // Fallback-aware resolution for runtime-relevant fields: prefer the
   // authoritative values emitted by the SDK (when present on RunTaskState),
@@ -330,11 +329,9 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
             <div className="pt-2.5 space-y-3">
               {/* Type banner */}
               <div className="flex items-center gap-2 text-[10px] text-tagma-muted">
-                {isTemplate
-                  ? <><Package size={11} className="text-purple-400" /> Template task</>
-                  : isCommand
-                    ? <><Terminal size={11} className="text-sky-400" /> Shell command</>
-                    : <><MessageSquare size={11} className="text-tagma-muted/70" /> AI prompt</>}
+                {isCommand
+                  ? <><Terminal size={11} className="text-sky-400" /> Shell command</>
+                  : <><MessageSquare size={11} className="text-tagma-muted/70" /> AI prompt</>}
               </div>
 
               {/* Prompt or Command body */}
@@ -372,7 +369,6 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
                 {cwd && <ConfigRow label="CWD">{cwd}</ConfigRow>}
                 {agentProfile && <ConfigRow label="Profile">{agentProfile}</ConfigRow>}
                 {taskConfig.output && <ConfigRow label="Output var">{taskConfig.output}</ConfigRow>}
-                {taskConfig.use && <ConfigRow label="Template">{taskConfig.use}</ConfigRow>}
                 {taskConfig.continue_from && <ConfigRow label="Continue">{taskConfig.continue_from}</ConfigRow>}
               </div>
 
@@ -459,19 +455,6 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
                 </div>
               )}
 
-              {/* Template params */}
-              {taskConfig.use && taskConfig.with && Object.keys(taskConfig.with).length > 0 && (
-                <div>
-                  <label className="field-label flex items-center gap-1">
-                    <FileOutput size={9} /> Template params
-                  </label>
-                  <div className="border border-tagma-border/60 bg-tagma-bg/40 px-2.5 py-1.5 space-y-0.5">
-                    {Object.entries(taskConfig.with).map(([k, v]) => (
-                      <ConfigRow key={k} label={k}>{typeof v === 'string' ? v : JSON.stringify(v)}</ConfigRow>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           </section>
         )}

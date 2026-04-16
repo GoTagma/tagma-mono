@@ -23,7 +23,6 @@ import type {
   ApprovalRequest as SdkApprovalRequest,
   DriverCapabilities as SdkDriverCapabilities,
   PluginCategory as SdkPluginCategory,
-  TemplateParamDef as SdkTemplateParamDef,
 } from '@tagma/types';
 
 // Recursively strip `readonly` from object fields and array element
@@ -43,7 +42,6 @@ export type RawPipelineConfig = Mutable<SdkRawPipelineConfig>;
 export type RawTrackConfig = Mutable<SdkRawTrackConfig>;
 export type RawTaskConfig = Mutable<SdkRawTaskConfig>;
 export type DriverCapabilities = Mutable<SdkDriverCapabilities>;
-export type TemplateParamDef = Mutable<SdkTemplateParamDef>;
 export type TaskStatus = SdkTaskStatus;
 export type ApprovalOutcome = SdkApprovalOutcome;
 export type PluginCategory = SdkPluginCategory;
@@ -302,21 +300,6 @@ export interface PluginSchemaDescriptor {
   readonly [key: string]: unknown;
 }
 
-/**
- * F1: A template manifest discovered from `@tagma/template-*` packages in the
- * current workspace's node_modules. `ref` is the value users drop into
- * `task.use`; `params` drives the generated parameter form. `tasks` is kept
- * as `unknown[]` because the editor only cares about the count for display;
- * the server already validates the real shape against the SDK.
- */
-export interface TemplateManifest {
-  readonly ref: string;
-  readonly name: string;
-  readonly description?: string;
-  readonly params?: Record<string, TemplateParamDef>;
-  readonly tasks?: readonly unknown[];
-}
-
 export interface PluginRegistry {
   drivers: string[];
   triggers: string[];
@@ -336,10 +319,6 @@ export interface PluginRegistry {
   triggerSchemas?: Record<string, PluginSchemaDescriptor>;
   completionSchemas?: Record<string, PluginSchemaDescriptor>;
   middlewareSchemas?: Record<string, PluginSchemaDescriptor>;
-  /**
-   * F1: installed template manifests discovered from the current workspace.
-   */
-  templates?: TemplateManifest[];
 }
 
 export interface PluginInfo {

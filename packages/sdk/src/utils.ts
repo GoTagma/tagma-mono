@@ -33,20 +33,6 @@ export function validatePath(filePath: string, projectRoot: string): string {
   return resolved;
 }
 
-const SHELL_META_CHARS = /[;&|$`\\!><()\[\]{}*?#~]/;
-
-export function validatePathParam(filePath: string): void {
-  if (filePath.includes('..')) {
-    throw new Error(`Template param type=path: ".." traversal not allowed in "${filePath}"`);
-  }
-  if (resolve(filePath) === filePath) {
-    throw new Error(`Template param type=path: absolute path not allowed: "${filePath}"`);
-  }
-  if (SHELL_META_CHARS.test(filePath)) {
-    throw new Error(`Template param type=path: shell metacharacters not allowed in "${filePath}"`);
-  }
-}
-
 let runCounter = 0;
 
 export function generateRunId(): string {

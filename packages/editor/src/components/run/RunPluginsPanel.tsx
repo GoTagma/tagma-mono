@@ -4,10 +4,9 @@
 //  - Registered handlers grouped by category (drivers / triggers /
 //    completions / middlewares), which tells the user what the SDK
 //    actually loaded for this run
-//  - Installed templates discovered in the workspace
 
 import { useMemo } from 'react';
-import { X, Package, Cpu, Zap, CheckCircle2, Layers, FileText } from 'lucide-react';
+import { X, Package, Cpu, Zap, CheckCircle2, Layers } from 'lucide-react';
 import { usePipelineStore } from '../../store/pipeline-store';
 import type { RawPipelineConfig } from '../../api/client';
 import { viewportH } from '../../utils/zoom';
@@ -55,7 +54,6 @@ export function RunPluginsPanel({ config, onClose }: RunPluginsPanelProps) {
   const registry = usePipelineStore((s) => s.registry);
 
   const declaredPlugins = useMemo(() => config.plugins ?? [], [config.plugins]);
-  const templates = registry.templates ?? [];
   const maxH = useMemo(() => Math.floor(viewportH() * 0.8), []);
 
   return (
@@ -129,35 +127,6 @@ export function RunPluginsPanel({ config, onClose }: RunPluginsPanelProps) {
               items={registry.middlewares}
             />
           </div>
-
-          {templates.length > 0 && (
-            <>
-              <div className="border-t border-tagma-border/40" />
-              <div>
-                <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-tagma-muted/70 mb-1.5">
-                  <FileText size={9} />
-                  <span>Templates</span>
-                  <span className="text-tagma-muted/40">({templates.length})</span>
-                </div>
-                <div className="pl-5 space-y-1.5">
-                  {templates.map((t) => (
-                    <div
-                      key={t.ref}
-                      className="text-[10px] font-mono text-tagma-text bg-tagma-bg border border-tagma-border px-2.5 py-1.5"
-                    >
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-tagma-accent truncate">{t.ref}</span>
-                        <span className="text-tagma-muted/60 truncate">— {t.name}</span>
-                      </div>
-                      {t.description && (
-                        <div className="text-tagma-muted/60 mt-0.5 text-[9px] truncate">{t.description}</div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
         </div>
       </div>
     </div>

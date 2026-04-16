@@ -37,7 +37,6 @@ import type {
 - `HooksConfig` / `HookCommand` -- lifecycle hook commands
 - `OnFailure` -- track failure strategy: `'ignore' | 'skip_downstream' | 'stop_all'`
 - `Permissions` -- `{ read, write, execute }` capability flags
-- `TemplateConfig` / `TemplateParamDef` -- reusable task template definition
 
 ### Plugin Interfaces
 

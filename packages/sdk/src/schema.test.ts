@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import yaml from 'js-yaml';
 import type { PipelineConfig, RawPipelineConfig } from './types';
-import { deresolvePipeline, serializePipeline } from './schema';
+import { parseYaml, deresolvePipeline, serializePipeline } from './schema';
 
 function parsePipelineYaml(content: string): RawPipelineConfig {
   const doc = yaml.load(content) as { pipeline: RawPipelineConfig };

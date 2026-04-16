@@ -180,9 +180,6 @@ export function validateRaw(
       }
       seenTaskIds.add(task.id);
 
-      // Template-based tasks: skip prompt/command checks (params validated at runtime)
-      if (task.use) continue;
-
       const hasPromptKey = typeof task.prompt === 'string';
       const hasCommandKey = typeof task.command === 'string';
       const promptEmpty = hasPromptKey && task.prompt!.trim().length === 0;
@@ -333,7 +330,7 @@ function detectCycles(
   for (const track of config.tracks) {
     if (!track.id) continue;
     for (const task of track.tasks ?? []) {
-      if (!task.id || task.use) continue;
+      if (!task.id) continue;
       const qid = `${track.id}.${task.id}`;
       const deps: string[] = [];
       for (const dep of task.depends_on ?? []) {

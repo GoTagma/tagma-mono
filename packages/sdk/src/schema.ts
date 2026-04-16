@@ -3,9 +3,8 @@ import { resolve, relative } from 'path';
 import type {
   PipelineConfig, RawPipelineConfig, RawTrackConfig, RawTaskConfig,
   TrackConfig, TaskConfig, Permissions, MiddlewareConfig, CompletionConfig,
-  TemplateConfig, TemplateParamDef,
 } from './types';
-import { truncateForName, validatePathParam, validatePath } from './utils';
+import { truncateForName, validatePath } from './utils';
 import { DEFAULT_PERMISSIONS } from './types';
 import { buildDag } from './dag';
 
@@ -39,7 +38,6 @@ function validateRawTrack(track: RawTrackConfig): void {
 
 function validateRawTask(task: RawTaskConfig, trackId: string): void {
   if (!task.id) throw new Error(`track "${trackId}": task.id is required`);
-  if (task.use) return; // template usage, validated later
 
   const hasPromptKey = typeof task.prompt === 'string';
   const hasCommandKey = typeof task.command === 'string';
@@ -51,168 +49,6 @@ function validateRawTask(task: RawTaskConfig, trackId: string): void {
   }
   // Empty-content tasks (e.g. `prompt: ''`) are allowed at parse time and
   // flagged as non-fatal validation errors by validate-raw.ts.
-}
-
-// ═══ Template Expansion ═══
-
-export async function expandTemplates(
-  tasks: readonly RawTaskConfig[],
-  instancePrefix: string,
-): Promise<RawTaskConfig[]> {
-  const result: RawTaskConfig[] = [];
-
-  for (const task of tasks) {
-    if (!task.use) {
-      result.push(task);
-      continue;
-    }
-
-    const template = await loadTemplate(task.use);
-    const params = resolveTemplateParams(template, task.with ?? {}, task.id);
-    const expanded = expandTemplateTask(template, params, task.id, instancePrefix);
-    result.push(...expanded);
-  }
-
-  return result;
-}
-
-function validateTemplateRef(ref: string): void {
-  const stripped = ref.replace(/@v\d+$/, '');
-  // Reject path traversal and absolute paths before they reach import().
-  if (stripped.includes('..') || stripped.startsWith('/') || /^[a-zA-Z]:/.test(stripped)) {
-    throw new Error(
-      `Invalid template ref "${ref}": path traversal and absolute paths are not allowed. ` +
-      `Use a scoped package name, e.g. "@tagma/template-review".`
-    );
-  }
-  // Whitelist: only @tagma/template-* packages are allowed.
-  if (!stripped.startsWith('@tagma/template-')) {
-    throw new Error(
-      `Invalid template ref "${ref}": only "@tagma/template-*" packages are allowed as templates. ` +
-      `Example: "@tagma/template-review".`
-    );
-  }
-}
-
-async function loadTemplate(ref: string): Promise<TemplateConfig> {
-  validateTemplateRef(ref);
-  // Strip version suffix for import
-  const moduleName = ref.replace(/@v\d+$/, '');
-  try {
-    const mod = await import(moduleName);
-    // Expect the module to export a template.yaml content or parsed object
-    if (mod.template) return mod.template as TemplateConfig;
-
-    // Try loading template.yaml from the package.
-    // NOTE: require.resolve is a CommonJS API. Bun supports it natively, but
-    // this would need import.meta.resolve() for pure ESM runtimes (e.g. Deno).
-    const pkgPath = require.resolve(`${moduleName}/template.yaml`);
-    const content = await Bun.file(pkgPath).text();
-    const doc = yaml.load(content) as { template: TemplateConfig };
-    return doc.template;
-  } catch (err) {
-    if (err instanceof Error && err.message.startsWith('Invalid template ref')) throw err;
-    throw new Error(`Failed to load template: "${ref}". Is the package installed?`);
-  }
-}
-
-function resolveTemplateParams(
-  template: TemplateConfig,
-  provided: Record<string, unknown>,
-  instanceId: string,
-): Record<string, unknown> {
-  const params: Record<string, unknown> = {};
-  const defs = template.params ?? {};
-
-  for (const [key, def] of Object.entries(defs)) {
-    const value = provided[key] ?? def.default;
-    if (value === undefined) {
-      throw new Error(`Template "${template.name}" instance "${instanceId}": missing required param "${key}"`);
-    }
-    validateParamType(key, value, def, template.name, instanceId);
-    params[key] = value;
-  }
-
-  // Warn about unknown params
-  for (const key of Object.keys(provided)) {
-    if (!(key in defs)) {
-      console.warn(`Template "${template.name}" instance "${instanceId}": unknown param "${key}"`);
-    }
-  }
-
-  return params;
-}
-
-function validateParamType(
-  key: string, value: unknown, def: TemplateParamDef,
-  templateName: string, instanceId: string,
-): void {
-  const ctx = `Template "${templateName}" instance "${instanceId}" param "${key}"`;
-  const ptype = def.type ?? 'string';
-
-  switch (ptype) {
-    case 'string':
-      if (typeof value !== 'string') throw new Error(`${ctx}: expected string, got ${typeof value}`);
-      break;
-    case 'path':
-      if (typeof value !== 'string') throw new Error(`${ctx}: expected path string, got ${typeof value}`);
-      validatePathParam(value);
-      break;
-    case 'enum':
-      if (!def.enum?.includes(value as string)) {
-        throw new Error(`${ctx}: value "${value}" not in allowed values [${def.enum?.join(', ')}]`);
-      }
-      break;
-    case 'number':
-      if (typeof value !== 'number') throw new Error(`${ctx}: expected number, got ${typeof value}`);
-      if (def.min !== undefined && value < def.min) throw new Error(`${ctx}: ${value} < min ${def.min}`);
-      if (def.max !== undefined && value > def.max) throw new Error(`${ctx}: ${value} > max ${def.max}`);
-      break;
-  }
-}
-
-function expandTemplateTask(
-  template: TemplateConfig,
-  params: Record<string, unknown>,
-  instanceId: string,
-  instancePrefix: string,
-): RawTaskConfig[] {
-  return template.tasks.map(task => {
-    const prefixedId = `${instanceId}.${task.id}`;
-
-    // Replace ${{ params.xxx }} in string fields
-    const interpolate = (s: string): string =>
-      s.replace(/\$\{\{\s*params\.(\w+)\s*\}\}/g, (_, key) => String(params[key] ?? ''));
-
-    const newTask: Record<string, unknown> = { ...task, id: prefixedId };
-
-    // Interpolate string fields
-    if (task.prompt) newTask.prompt = interpolate(task.prompt);
-    if (task.command) newTask.command = interpolate(task.command);
-
-    // Namespace depends_on
-    if (task.depends_on) {
-      newTask.depends_on = task.depends_on.map(dep => `${instanceId}.${dep}`);
-    }
-
-    // Namespace continue_from
-    if (task.continue_from) {
-      newTask.continue_from = `${instanceId}.${task.continue_from}`;
-    }
-
-    // Rewrite output path to instance namespace so parallel template
-    // instances don't collide on the same file. Handles any relative path
-    // (e.g. ./tmp/foo, ./output/bar, ./build/result.json) by injecting
-    // the instanceId as the first directory component after `./`.
-    if (task.output) {
-      const original = interpolate(task.output);
-      newTask.output = original.startsWith('./')
-        ? `./${instanceId}/${original.slice(2)}`
-        : `${instanceId}/${original}`;
-    }
-
-    return newTask as unknown as RawTaskConfig;
-  });
 }
 
 // ═══ Config Inheritance Resolution ═══
@@ -460,14 +296,5 @@ export function validateConfig(config: PipelineConfig): string[] {
 
 export async function loadPipeline(yamlContent: string, workDir: string): Promise<PipelineConfig> {
   const raw = parseYaml(yamlContent);
-
-  // Expand templates in each track
-  const expandedTracks: RawTrackConfig[] = [];
-  for (const track of raw.tracks) {
-    const expandedTasks = await expandTemplates(track.tasks, track.id);
-    expandedTracks.push({ ...track, tasks: expandedTasks });
-  }
-
-  const expandedRaw: RawPipelineConfig = { ...raw, tracks: expandedTracks };
-  return resolveConfig(expandedRaw, workDir);
+  return resolveConfig(raw, workDir);
 }

@@ -10,7 +10,6 @@ import {
   listRegistered,
   getHandler,
   isValidPluginName,
-  discoverTemplates,
 } from '@tagma/sdk';
 import type {
   RawPipelineConfig,
@@ -18,7 +17,6 @@ import type {
   RawTaskConfig,
   ValidationError,
   RawDag,
-  TemplateManifest,
 } from '@tagma/sdk';
 import type {
   DriverPlugin,
@@ -177,11 +175,11 @@ export function reconcileContinueFrom(cfg: RawPipelineConfig): RawPipelineConfig
   const newTracks = cfg.tracks.map((track) => {
     let trackChanged = false;
     const newTasks = track.tasks.map((task) => {
-      const isPromptTask = !!task.prompt && !task.command && !task.use;
+      const isPromptTask = !!task.prompt && !task.command;
       const deps = task.depends_on ?? [];
 
       if (!isPromptTask) {
-        // Non-prompt tasks (command / template) cannot use continue_from.
+        // Non-prompt tasks cannot use continue_from.
         if (task.continue_from) {
           trackChanged = true;
           const { continue_from: _drop, ...rest } = task;
@@ -196,7 +194,7 @@ export function reconcileContinueFrom(cfg: RawPipelineConfig): RawPipelineConfig
       for (const dep of deps) {
         const qid = dep.includes('.') ? dep : `${track.id}.${dep}`;
         const depTask = taskMap.get(qid);
-        if (depTask && !!depTask.prompt && !depTask.command && !depTask.use) {
+        if (depTask && !!depTask.prompt && !depTask.command) {
           promptDeps.push(dep);
         }
       }
@@ -501,20 +499,6 @@ export function getPluginSchemas(
   return out;
 }
 
-/**
- * Discover installed `@tagma/template-*` packages under the current workDir
- * and return their manifests. Returns an empty array when no workDir is set
- * or no template packages are installed.
- */
-export function getTemplatesSnapshot(): TemplateManifest[] {
-  if (!S.workDir) return [];
-  try {
-    return discoverTemplates(S.workDir);
-  } catch {
-    return [];
-  }
-}
-
 export function getRegistrySnapshot() {
   return {
     drivers: listRegistered('drivers'),
@@ -525,7 +509,6 @@ export function getRegistrySnapshot() {
     triggerSchemas: getPluginSchemas('triggers'),
     completionSchemas: getPluginSchemas('completions'),
     middlewareSchemas: getPluginSchemas('middlewares'),
-    templates: getTemplatesSnapshot(),
   };
 }
 
@@ -539,7 +522,6 @@ const TASK_KNOWN_KEYS = new Set<string>([
   'id', 'name', 'prompt', 'command', 'depends_on', 'trigger',
   'continue_from', 'output', 'model', 'reasoning_effort', 'permissions', 'driver',
   'timeout', 'middlewares', 'completion', 'agent_profile', 'cwd',
-  'use', 'with',
 ]);
 
 const TRACK_KNOWN_KEYS = new Set<string>([

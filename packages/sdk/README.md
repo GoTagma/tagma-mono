@@ -77,7 +77,6 @@ console.log(result.success ? 'Done' : 'Failed');
 - **Lifecycle hooks** -- `pipeline_start`, `task_start`, `task_success`, `task_failure`, `pipeline_complete`, `pipeline_error`
 - **Middleware** -- enrich prompts before execution (e.g. inject static context)
 - **Completion checks** -- validate task output with `exit_code`, `file_exists`, or `output_check` plugins
-- **Template expansion** -- reusable task templates with parameterized `use` / `with`; `discoverTemplates()` enumerates installed `@tagma/template-*` packages for editor integrations
 - **Plugin schemas** -- triggers/completions/middlewares can declare a `PluginSchema` so visual editors render typed forms for their config
 
 ## Pipeline YAML Reference
@@ -144,11 +143,6 @@ pipeline:
           prompt: "Continue the work"
           continue_from: task-a
           depends_on: [task-a]
-        - id: task-c
-          name: Templated task
-          use: "@tagma/template-lint"
-          with:
-            src: ./src
 ```
 
 ### Pipeline Fields
@@ -212,8 +206,6 @@ Each hook value can be a single command string or an array of commands.
 | `middlewares` | `MiddlewareConfig[]` | No | Inherited from track | Middleware override. Set `[]` to disable inherited middlewares |
 | `trigger` | `TriggerConfig` | No | — | Gate that must resolve before the task runs (see Triggers) |
 | `completion` | `CompletionConfig` | No | — | Post-execution check to validate task output (see Completions) |
-| `use` | `string` | No | — | Template package to expand (e.g. `"@tagma/template-lint"`). Mutually exclusive with `prompt`/`command` |
-| `with` | `Record<string, unknown>` | No | — | Parameters passed to the template referenced by `use` |
 
 ### Permissions
 
@@ -300,7 +292,7 @@ Registers all built-in plugins (claude-code driver, file/manual triggers, comple
 
 ### `loadPipeline(yaml: string, workDir: string): Promise<PipelineConfig>`
 
-Parses YAML, resolves inheritance, expands templates, and validates the configuration.
+Parses YAML, resolves inheritance, and validates the configuration.
 
 ### `runPipeline(config, workDir, options?): Promise<EngineResult>`
 
@@ -405,29 +397,6 @@ Resolves a raw pipeline config into a fully resolved `PipelineConfig` — applie
 
 Use `loadPipeline` for the common parse-and-resolve flow. Use `resolveConfig` directly when you need to manipulate the raw config between parsing and resolution.
 
-### `expandTemplates(tasks, instancePrefix): Promise<RawTaskConfig[]>`
-
-Expands `use:` template references in a task list. Loads template packages (`@tagma/template-*`), resolves parameters, and namespaces task IDs and dependencies. Called internally by `loadPipeline`.
-
-### `discoverTemplates(workDir: string): TemplateManifest[]`
-
-Scans `<workDir>/node_modules/@tagma/` for installed `template-*` packages and returns their manifests (name, description, params, ref). Intended for editors/UIs that want to render a "pick a template" browser without actually expanding any templates. Silently skips packages whose `template.yaml` is missing or invalid.
-
-```ts
-import { discoverTemplates } from '@tagma/sdk';
-
-const templates = discoverTemplates(process.cwd());
-// [{ ref: '@tagma/template-review', name: 'Code Review', description: '...', params: {...}, tasks: [...] }, ...]
-```
-
-Each `TemplateManifest` is a `TemplateConfig` with an extra `ref` field — the value users drop into `task.use`.
-
-### `loadTemplateManifest(ref: string, workDir: string): TemplateManifest | null`
-
-Loads a single template's manifest by ref (e.g. `@tagma/template-review`). Returns `null` when the package isn't installed or its manifest fails to parse. Complements `discoverTemplates` when the caller only needs one template.
-
-Both functions use Node's `fs` APIs and are safe to call from Node runtimes (unlike the legacy Bun-only `loadTemplate` used internally by `expandTemplates`).
-
 ### `attachStdinApprovalAdapter(gateway): StdinApprovalAdapter`
 
 Attaches an interactive stdin-based approval handler.
@@ -517,7 +486,7 @@ if (errors.length > 0) {
 
 Extracts the topology of a raw (unresolved) pipeline config as a graph — no `workDir` or plugin registration required. Intended for the visual editor to render the flow graph during editing.
 
-Returns `{ nodes: ReadonlyMap<taskId, RawDagNode>, edges: { from, to }[] }` where each edge represents a dependency (from must complete before to). Template-expansion tasks (`use:` field) and unresolvable refs are silently skipped.
+Returns `{ nodes: ReadonlyMap<taskId, RawDagNode>, edges: { from, to }[] }` where each edge represents a dependency (from must complete before to). Unresolvable refs are silently skipped.
 
 ```ts
 const { nodes, edges } = buildRawDag(draftConfig);

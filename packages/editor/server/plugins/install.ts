@@ -53,7 +53,9 @@ export interface PackageMeta {
   shasum: string | null;
 }
 
-type PackageJson = Record<string, unknown>;
+type PackageJson = Record<string, unknown> & {
+  dependencies?: Record<string, string>;
+};
 
 /** Fetch package metadata from the npm registry (uses Bun's built-in fetch) */
 export async function registryMeta(name: string): Promise<PackageMeta> {
@@ -212,6 +214,13 @@ function readPackageJson(pkgPath: string): PackageJson {
   return JSON.parse(readFileSync(pkgPath, 'utf-8')) as PackageJson;
 }
 
+function ensureDependencyMap(pkg: PackageJson): Record<string, string> {
+  if (!pkg.dependencies || typeof pkg.dependencies !== 'object' || Array.isArray(pkg.dependencies)) {
+    pkg.dependencies = {};
+  }
+  return pkg.dependencies;
+}
+
 function assertTagmaPluginPackage(pkgJson: PackageJson, name: string): void {
   const manifest = parsePluginManifestField(pkgJson);
   if (!manifest) {
@@ -275,8 +284,8 @@ export async function directRegistryInstall(
     ensureWorkDirPackageJson();
     const pkgPath = resolve(S.workDir, 'package.json');
     const pkg = readPackageJson(pkgPath);
-    pkg.dependencies = pkg.dependencies ?? {};
-    pkg.dependencies[name] = `^${meta.version}`;
+    const dependencies = ensureDependencyMap(pkg);
+    dependencies[name] = `^${meta.version}`;
     writeFileSync(pkgPath, JSON.stringify(pkg, null, 2), 'utf-8');
     return { meta, packageJson: installedPkg };
   } finally {
@@ -331,8 +340,8 @@ export async function installFromLocalPath(absPath: string): Promise<string> {
     // Record the dependency in the workspace package.json using a file: spec.
     const pkgPath = resolve(S.workDir, 'package.json');
     const pkg = readPackageJson(pkgPath);
-    pkg.dependencies = pkg.dependencies ?? {};
-    pkg.dependencies[pkgName] = `file:${absPath}`;
+    const dependencies = ensureDependencyMap(pkg);
+    dependencies[pkgName] = `file:${absPath}`;
     writeFileSync(pkgPath, JSON.stringify(pkg, null, 2), 'utf-8');
     await syncWorkspaceDependencies();
 

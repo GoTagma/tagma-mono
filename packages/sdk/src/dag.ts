@@ -182,7 +182,6 @@ export interface RawDag {
  * Unlike buildDag, this function:
  *   - Does not require a workDir or resolved PipelineConfig
  *   - Is lenient: missing or ambiguous refs are silently skipped
- *   - Skips template-expansion tasks (those with a `use` field)
  *
  * Intended for the visual editor to render the flow graph before a pipeline is run.
  */
@@ -193,7 +192,6 @@ export function buildRawDag(config: RawPipelineConfig): RawDag {
   // 1. Register all concrete tasks
   for (const track of config.tracks) {
     for (const task of track.tasks) {
-      if (task.use) continue; // template-expansion tasks are not yet materialized
       const qid = `${track.id}.${task.id}`;
       if (nodes.has(qid)) continue; // skip duplicates silently
 
@@ -220,7 +218,6 @@ export function buildRawDag(config: RawPipelineConfig): RawDag {
 
   for (const track of config.tracks) {
     for (const task of track.tasks) {
-      if (task.use) continue;
       const qid = `${track.id}.${task.id}`;
       const deps: string[] = [];
 

@@ -9,7 +9,6 @@ import {
   parseYaml,
   serializePipeline,
   setPipelineField,
-  loadTemplateManifest,
 } from '@tagma/sdk';
 import type {
   RawPipelineConfig,
@@ -42,24 +41,6 @@ export function registerPipelineRoutes(app: express.Express): void {
   // backward compatibility.
   app.get('/api/registry', (_req, res) => {
     res.json(getRegistrySnapshot());
-  });
-
-  // ── F1: Templates ──
-  // NOTE: GET /api/templates list endpoint removed — same data is included in
-  // GET /api/registry (registry.templates). Kept single-template lookup below.
-
-  // Single-template lookup for deeper form generation (one task at a time).
-  app.get('/api/templates/*ref', (req, res) => {
-    if (!S.workDir) return res.status(400).json({ error: 'no workspace opened' });
-    try {
-      const refParam = req.params.ref;
-      const ref = Array.isArray(refParam) ? refParam.join('/') : String(refParam ?? '');
-      const manifest = loadTemplateManifest(ref, S.workDir);
-      if (!manifest) return res.status(404).json({ error: 'template not found' });
-      res.json({ template: manifest });
-    } catch (e: unknown) {
-      res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
-    }
   });
 
   app.get('/api/state/events', (req, res) => {
@@ -254,7 +235,7 @@ export function registerPipelineRoutes(app: express.Express): void {
 
   // ── YAML Import/Export ──
   // INVARIANT: The editor's in-memory `config` is always a *raw* (unresolved)
-  // pipeline config. Resolution and template expansion happen only at run time
+  // pipeline config. Resolution happens only at run time
   // via `loadPipeline()`. Exporting the raw config directly is therefore correct.
   // If a future feature stores a *resolved* config, use `deresolvePipeline()`
   // from the SDK to strip inherited/expanded values before serializing.

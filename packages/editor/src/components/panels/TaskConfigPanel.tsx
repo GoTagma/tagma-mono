@@ -191,7 +191,6 @@ export function TaskConfigPanel({
   const [agentProfile, setAgentProfile, blurAgentProfile] = useLocalField(task.agent_profile ?? '', (v) => commitField({ agent_profile: v || undefined }));
   const [cwd, setCwd, blurCwd] = useLocalField(task.cwd ?? '', (v) => commitField({ cwd: v || undefined }));
   const [model, setModel, blurModel] = useLocalField(task.model ?? '', (v) => commitField({ model: v || undefined }));
-  const [useTemplate, setUseTemplate, blurUseTemplate] = useLocalField(task.use ?? '', (v) => commitField({ use: v || undefined }));
 
   const handlePermToggle = useCallback((key: 'read' | 'write' | 'execute') => {
     const current = task.permissions ?? { read: false, write: false, execute: false };
@@ -697,24 +696,6 @@ export function TaskConfigPanel({
               );
             })()}
 
-            {/* F1: Template browser + param form.
-                - `use` is a select populated from the registry's discovered
-                  `@tagma/template-*` packages. Plain-text input fallback when
-                  the referenced package isn't discovered (e.g. about to install).
-                - `with` is generated from the selected template's
-                  TemplateParamDef metadata: string/path/enum/number inputs
-                  with defaults, descriptions, and range/enum validation. */}
-            <TemplateSection
-              task={task}
-              useTemplate={useTemplate}
-              setUseTemplate={setUseTemplate}
-              blurUseTemplate={blurUseTemplate}
-              commitField={commitField}
-              onBrowsePath={(currentValue, onSelect) => openFileBrowser('open', currentValue, onSelect)}
-            />
-            {/* Legacy fallback when the chosen template isn't discoverable — */}
-            {/* rendered inside TemplateSection. */}
-
             {/* Middlewares */}
             <MiddlewareEditor middlewares={task.middlewares ?? []}
               onChange={(mws) => commitField({ middlewares: mws })}
@@ -780,211 +761,6 @@ export function TaskConfigPanel({
   );
 }
 
-/**
- * F1: Template browser + generated parameter form.
- * When the task's `use` refers to a template discovered in the registry,
- * render a dropdown (so the user can swap templates) plus a typed form
- * built from the template's `params` metadata. Otherwise fall back to a
- * plain text input + raw KV editor.
- */
-function TemplateSection({
-  task,
-  useTemplate,
-  setUseTemplate,
-  blurUseTemplate,
-  commitField,
-  onBrowsePath,
-}: {
-  task: RawTaskConfig;
-  useTemplate: string;
-  setUseTemplate: (v: string) => void;
-  blurUseTemplate: () => void;
-  commitField: (patch: Partial<RawTaskConfig>) => void;
-  onBrowsePath?: (currentValue: string, onSelect: (path: string) => void) => void;
-}) {
-  const templates = usePipelineStore((s) => s.registry.templates ?? []);
-  const selectedTemplate = useMemo(
-    () => templates.find((t) => t.ref === task.use) ?? null,
-    [templates, task.use],
-  );
-
-  return (
-    <>
-      <div>
-        <label className="field-label">
-          Template <span className="text-[10px] text-tagma-muted font-normal">(use)</span>
-        </label>
-        {templates.length > 0 ? (
-          <select
-            className="field-input font-mono text-[11px]"
-            value={task.use ?? ''}
-            onChange={(e) => commitField({ use: e.target.value || undefined })}
-          >
-            <option value="">(none)</option>
-            {templates.map((t) => (
-              <option key={t.ref} value={t.ref}>
-                {t.name} — {t.ref}
-              </option>
-            ))}
-            {task.use && !selectedTemplate && (
-              <option value={task.use}>{task.use} (not installed)</option>
-            )}
-          </select>
-        ) : (
-          <input
-            type="text"
-            className="field-input font-mono text-[11px]"
-            value={useTemplate}
-            onChange={(e) => setUseTemplate(e.target.value)}
-            onBlur={blurUseTemplate}
-            placeholder="e.g. @tagma/template-lint"
-          />
-        )}
-        {selectedTemplate?.description && (
-          <p className="text-[10px] text-tagma-muted mt-1">{selectedTemplate.description}</p>
-        )}
-        <p className="text-[10px] text-tagma-muted mt-1">
-          Reference a <code>@tagma/template-*</code> package. Mutually exclusive with prompt/command.
-        </p>
-      </div>
-
-      {task.use && selectedTemplate && selectedTemplate.params && Object.keys(selectedTemplate.params).length > 0 && (
-        <div>
-          <label className="field-label">Parameters</label>
-          <TemplateParamsForm
-            params={selectedTemplate.params}
-            value={(task.with ?? {}) as Record<string, unknown>}
-            onChange={(next) => {
-              commitField({ with: Object.keys(next).length > 0 ? next : undefined });
-            }}
-            onBrowsePath={onBrowsePath}
-          />
-        </div>
-      )}
-
-      {/* Unknown template (or template with no params metadata) → KV fallback */}
-      {task.use && (!selectedTemplate || !selectedTemplate.params || Object.keys(selectedTemplate.params).length === 0) && (
-        <div>
-          <label className="field-label">
-            Parameters <span className="text-[10px] text-tagma-muted font-normal">(with: key &rarr; value)</span>
-          </label>
-          <KeyValueEditor
-            value={(task.with ?? {}) as Record<string, unknown>}
-            onChange={(params) => {
-              commitField({ with: Object.keys(params).length > 0 ? params : undefined });
-            }}
-          />
-          <p className="text-[10px] text-tagma-muted mt-1">
-            {selectedTemplate
-              ? 'Template declares no parameter schema — using raw KV editor.'
-              : 'Template not discovered in workspace; install the package to see a typed form.'}
-          </p>
-        </div>
-      )}
-    </>
-  );
-}
-
-/**
- * F1: Typed form generator for template parameters. Maps
- * TemplateParamDef.type → appropriate input.
- */
-function TemplateParamsForm({
-  params,
-  value,
-  onChange,
-  onBrowsePath,
-}: {
-  params: Record<string, import('../../api/client').TemplateParamDef>;
-  value: Record<string, unknown>;
-  onChange: (next: Record<string, unknown>) => void;
-  onBrowsePath?: (currentValue: string, onSelect: (path: string) => void) => void;
-}) {
-  const commit = useCallback((key: string, next: unknown) => {
-    const updated = { ...value };
-    if (next === undefined || next === '' || next === null) delete updated[key];
-    else updated[key] = next;
-    onChange(updated);
-  }, [value, onChange]);
-
-  return (
-    <div className="space-y-2">
-      {Object.entries(params).map(([key, def]) => {
-        const current = value[key] ?? def.default;
-        const type = def.type ?? 'string';
-        const isRequired = def.default === undefined;
-        return (
-          <div key={key}>
-            <label className="text-[10px] text-tagma-muted flex items-center gap-1">
-              <span className="font-mono">{key}</span>
-              {isRequired && <span className="text-tagma-error">*</span>}
-              {def.default !== undefined && (
-                <span className="text-tagma-muted/70">(default: {String(def.default)})</span>
-              )}
-            </label>
-            {type === 'enum' && def.enum ? (
-              <select
-                className="field-input font-mono text-[11px]"
-                value={String(current ?? '')}
-                onChange={(e) => commit(key, e.target.value || undefined)}
-              >
-                <option value="">(default)</option>
-                {def.enum.map((opt) => (
-                  <option key={opt} value={opt}>{opt}</option>
-                ))}
-              </select>
-            ) : type === 'number' ? (
-              <input
-                type="number"
-                min={def.min}
-                max={def.max}
-                className="field-input font-mono text-[11px]"
-                value={current === undefined ? '' : String(current)}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  commit(key, v === '' ? undefined : Number(v));
-                }}
-              />
-            ) : type === 'path' && onBrowsePath ? (
-              <div className="flex gap-1">
-                <input
-                  type="text"
-                  className="field-input font-mono text-[11px] flex-1 min-w-0"
-                  value={current === undefined ? '' : String(current)}
-                  onChange={(e) => commit(key, e.target.value || undefined)}
-                  placeholder="./path/..."
-                />
-                <button
-                  type="button"
-                  onClick={() => onBrowsePath(
-                    current === undefined ? '' : String(current),
-                    (path) => commit(key, path || undefined),
-                  )}
-                  className="shrink-0 p-1.5 border border-tagma-border text-tagma-muted hover:text-tagma-accent hover:border-tagma-accent/40 transition-colors"
-                  title="Browse..."
-                >
-                  <FolderOpen size={13} />
-                </button>
-              </div>
-            ) : (
-              <input
-                type="text"
-                className="field-input font-mono text-[11px]"
-                value={current === undefined ? '' : String(current)}
-                onChange={(e) => commit(key, e.target.value || undefined)}
-                placeholder={type === 'path' ? './path/...' : undefined}
-              />
-            )}
-            {def.description && (
-              <p className="text-[10px] text-tagma-muted mt-0.5">{def.description}</p>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 /** Reusable small text field for trigger/completion sub-fields */
 function TriggerField({ label, value, onChange, placeholder, onBrowse }: {
   label: string;
@@ -1012,7 +788,7 @@ function TriggerField({ label, value, onChange, placeholder, onBrowse }: {
   );
 }
 
-/** Key-value pair editor for metadata / template with params */
+/** Key-value pair editor for metadata and custom plugin fields */
 function KeyValueEditor({ value, onChange }: {
   value: Record<string, unknown>;
   onChange: (kv: Record<string, unknown>) => void;
