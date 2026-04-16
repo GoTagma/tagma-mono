@@ -454,7 +454,6 @@ export interface RunTaskState {
   // These mirror @tagma/sdk TaskResult and are populated by the server when
   // it observes a task_status_change event with a finished TaskState. They
   // stay null until the task actually completes.
-  outputPath: string | null;
   stderrPath: string | null;
   sessionId: string | null;
   normalizedOutput: string | null;
@@ -500,7 +499,6 @@ export type RunEvent =
       exitCode?: number;
       stdout?: string;
       stderr?: string;
-      outputPath?: string | null;
       stderrPath?: string | null;
       sessionId?: string | null;
       normalizedOutput?: string | null;
@@ -561,7 +559,6 @@ export interface RunSummaryTask {
   depends_on?: string[];
   prompt?: string | null;
   command?: string | null;
-  outputPath?: string | null;
   stderrPath?: string | null;
   normalizedOutput?: string | null;
   sessionId?: string | null;

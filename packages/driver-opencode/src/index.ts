@@ -61,8 +61,6 @@ const OpenCodeDriver: DriverPlugin = {
         let prev: string | null = null;
         if (ctx.normalizedMap.has(task.continue_from)) {
           prev = ctx.normalizedMap.get(task.continue_from)!;
-        } else if (ctx.outputMap.has(task.continue_from)) {
-          prev = await Bun.file(ctx.outputMap.get(task.continue_from)!).text();
         }
         if (prev !== null) {
           prompt = `[Previous Output]\n${prev}\n\n[Current Task]\n${prompt}`;

@@ -225,21 +225,6 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
             )}
 
             {/* Log file paths */}
-            {task.outputPath && (
-              <div>
-                <label className="field-label flex items-center gap-1">
-                  <FileText size={9} /> Output file
-                </label>
-                <button
-                  type="button"
-                  onClick={() => handleOpenPath(task.outputPath)}
-                  className="w-full flex items-center gap-1.5 text-[11px] font-mono text-tagma-muted hover:text-tagma-text bg-tagma-bg border border-tagma-border hover:border-tagma-accent px-2.5 py-1.5 truncate transition-colors"
-                >
-                  <ExternalLink size={9} className="shrink-0" />
-                  <span className="truncate">{task.outputPath}</span>
-                </button>
-              </div>
-            )}
             {task.stderrPath && (
               <div>
                 <label className="field-label flex items-center gap-1">
@@ -368,7 +353,6 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
                 {timeout && <ConfigRow label="Timeout">{timeout}</ConfigRow>}
                 {cwd && <ConfigRow label="CWD">{cwd}</ConfigRow>}
                 {agentProfile && <ConfigRow label="Profile">{agentProfile}</ConfigRow>}
-                {taskConfig.output && <ConfigRow label="Output var">{taskConfig.output}</ConfigRow>}
                 {taskConfig.continue_from && <ConfigRow label="Continue">{taskConfig.continue_from}</ConfigRow>}
               </div>
 

@@ -520,7 +520,7 @@ export function getRegistrySnapshot() {
 // Keep these aligned with RawTaskConfig / RawTrackConfig in @tagma/types.
 const TASK_KNOWN_KEYS = new Set<string>([
   'id', 'name', 'prompt', 'command', 'depends_on', 'trigger',
-  'continue_from', 'output', 'model', 'reasoning_effort', 'permissions', 'driver',
+  'continue_from', 'model', 'reasoning_effort', 'permissions', 'driver',
   'timeout', 'middlewares', 'completion', 'agent_profile', 'cwd',
 ]);
 

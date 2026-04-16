@@ -56,7 +56,6 @@ interface RunTaskWire {
   exitCode: number | null;
   stdout: string;
   stderr: string;
-  outputPath: string | null;
   stderrPath: string | null;
   sessionId: string | null;
   normalizedOutput: string | null;
@@ -81,7 +80,6 @@ type RunEvent =
       exitCode?: number;
       stdout?: string;
       stderr?: string;
-      outputPath?: string | null;
       stderrPath?: string | null;
       sessionId?: string | null;
       normalizedOutput?: string | null;
@@ -107,7 +105,7 @@ type RunEvent =
 // We embed the SDK directly instead of spawning `tagma-cli` as a subprocess
 // and regex-parsing its stdout. The server becomes the authoritative host
 // for the pipeline so the full TaskState (including TaskResult with stdout,
-// stderr, outputPath, sessionId, etc.) is available on every event.
+// stderr, sessionId, etc.) is available on every event.
 let activeRunAbort: AbortController | null = null;
 let activeRunGateway: InMemoryApprovalGateway | null = null;
 let activeRunId: string | null = null;
@@ -163,7 +161,6 @@ interface RunSummaryTask {
   // having to re-derive anything from the live yaml.
   prompt?: string | null;
   command?: string | null;
-  outputPath?: string | null;
   stderrPath?: string | null;
   normalizedOutput?: string | null;
   sessionId?: string | null;
@@ -306,7 +303,6 @@ function taskStateChangeToWire(
     exitCode: result?.exitCode,
     stdout: result?.stdout,
     stderr: result?.stderr,
-    outputPath: result?.outputPath ?? null,
     stderrPath: result?.stderrPath ?? null,
     sessionId: result?.sessionId ?? null,
     normalizedOutput: result?.normalizedOutput ?? null,
@@ -508,7 +504,6 @@ export function registerRunRoutes(app: express.Express): void {
         exitCode: null,
         stdout: '',
         stderr: '',
-        outputPath: null,
         stderrPath: null,
         sessionId: null,
         normalizedOutput: null,
@@ -632,7 +627,6 @@ export function registerRunRoutes(app: express.Express): void {
               model: state.config.model ?? existing.model,
               prompt: state.config.prompt ?? existing.prompt ?? null,
               command: state.config.command ?? existing.command ?? null,
-              outputPath: result?.outputPath ?? existing.outputPath ?? null,
               stderrPath: result?.stderrPath ?? existing.stderrPath ?? null,
               normalizedOutput: result?.normalizedOutput ?? existing.normalizedOutput ?? null,
               sessionId: result?.sessionId ?? existing.sessionId ?? null,
@@ -655,7 +649,6 @@ export function registerRunRoutes(app: express.Express): void {
             exitCode: null,
             stdout: '',
             stderr: '',
-            outputPath: null,
             stderrPath: null,
             sessionId: null,
             normalizedOutput: null,
@@ -674,7 +667,6 @@ export function registerRunRoutes(app: express.Express): void {
             exitCode: wireEvent.exitCode ?? baseTask.exitCode,
             stdout: wireEvent.stdout ?? baseTask.stdout,
             stderr: wireEvent.stderr ?? baseTask.stderr,
-            outputPath: wireEvent.outputPath ?? baseTask.outputPath,
             stderrPath: wireEvent.stderrPath ?? baseTask.stderrPath,
             sessionId: wireEvent.sessionId ?? baseTask.sessionId,
             normalizedOutput: wireEvent.normalizedOutput ?? baseTask.normalizedOutput,
@@ -711,7 +703,6 @@ export function registerRunRoutes(app: express.Express): void {
               exitCode: null,
               stdout: '',
               stderr: '',
-              outputPath: null,
               stderrPath: null,
               sessionId: null,
               normalizedOutput: null,

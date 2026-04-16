@@ -454,18 +454,12 @@ function HistoryTaskPanel({ task, onClose }: { task: RunSummaryTask; onClose: ()
           </section>
         )}
 
-        {(task.outputPath || task.stderrPath || task.normalizedOutput) && (
+        {(task.stderrPath || task.normalizedOutput) && (
           <section>
             <div className="text-[9px] font-mono uppercase tracking-wider text-tagma-muted/60 pb-1.5 border-b border-tagma-border/40">
               Outputs
             </div>
             <div className="pt-2.5 space-y-3">
-              {task.outputPath && (
-                <div>
-                  <label className="field-label">stdout</label>
-                  <div className="text-[10px] font-mono text-tagma-muted break-all">{task.outputPath}</div>
-                </div>
-              )}
               {task.stderrPath && (
                 <div>
                   <label className="field-label">stderr</label>

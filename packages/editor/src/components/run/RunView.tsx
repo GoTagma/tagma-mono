@@ -261,7 +261,6 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
       exitCode: null,
       stdout: '',
       stderr: '',
-      outputPath: null,
       stderrPath: null,
       sessionId: null,
       normalizedOutput: null,

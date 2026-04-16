@@ -141,7 +141,6 @@ export interface TaskInfo {
   readonly status: string;
   readonly exit_code: number | null;
   readonly duration_ms: number | null;
-  readonly output_path: string | null;
   readonly stderr_path: string | null;
   readonly session_id: string | null;
   readonly started_at: string | null;

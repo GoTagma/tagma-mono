@@ -52,7 +52,7 @@ import type {
 ### Runtime Types
 
 - `TaskStatus` -- `'idle' | 'waiting' | 'running' | 'success' | 'failed' | 'timeout' | 'skipped' | 'blocked'`
-- `TaskResult` -- exit code, stdout/stderr, output path, duration, session ID, normalized output, failure kind
+- `TaskResult` -- exit code, stdout/stderr, duration, session ID, normalized output, failure kind
 - `TaskFailureKind` -- distinguishes *why* a task didn't return exit 0: `'timeout' | 'spawn_error' | 'exit_nonzero' | null`
 - `TaskState` -- mutable engine state for a running task (config, status, result, timestamps)
 - `SpawnSpec` -- args, stdin, cwd, env returned by a driver

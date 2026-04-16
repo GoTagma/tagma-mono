@@ -95,15 +95,11 @@ const CodexDriver: DriverPlugin = {
       prompt = `[Role]\n${profile}\n\n[Task]\n${prompt}`;
     }
 
-    // No session resume — text-context fallback.
-    // Prefer in-memory normalized text (driver-extracted); fall back to
-    // raw output file content if no normalized version is available.
+    // No session resume — text-context fallback via in-memory normalized text.
     if (task.continue_from) {
       let prev: string | null = null;
       if (ctx.normalizedMap.has(task.continue_from)) {
         prev = ctx.normalizedMap.get(task.continue_from)!;
-      } else if (ctx.outputMap.has(task.continue_from)) {
-        prev = await Bun.file(ctx.outputMap.get(task.continue_from)!).text();
       }
       if (prev !== null) {
         prompt = `[Previous Output]\n${prev}\n\n[Current Task]\n${prompt}`;

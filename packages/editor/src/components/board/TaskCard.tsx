@@ -2,7 +2,7 @@ import { useState, useRef, useLayoutEffect, memo } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlertTriangle, Terminal, MessageSquare, Lock, FileSearch,
-  Clock, CheckCircle2, Layers, FileOutput,
+  Clock, CheckCircle2, Layers,
   Loader2, Check, X as XIcon, SkipForward, Ban,
 } from 'lucide-react';
 import type { RawTaskConfig, RawPipelineConfig, TaskStatus } from '../../api/client';
@@ -170,7 +170,6 @@ function TaskTooltip({ task, trackId, config, anchorRect }: {
   if (task.trigger) rows.push(['Trigger', `${task.trigger.type}${task.trigger.message ? ` — ${task.trigger.message}` : ''}`]);
   if (task.completion) rows.push(['Completion', task.completion.type]);
   if (task.middlewares?.length) rows.push(['Middleware', task.middlewares.map((m) => m.type).join(', ')]);
-  if (task.output) rows.push(['Output', task.output]);
   if (task.continue_from) rows.push(['Continue', task.continue_from]);
   if (task.cwd) rows.push(['CWD', task.cwd]);
   if (!isCmd && task.agent_profile) rows.push(['Profile', task.agent_profile]);
@@ -279,7 +278,6 @@ export const TaskCard = memo(function TaskCard({
   if (task.timeout) badges.push(<BadgeSlot key="to"><Clock size={7} className="text-sky-400/70" /></BadgeSlot>);
   if (task.completion) badges.push(<BadgeSlot key="ck"><CheckCircle2 size={7} className="text-emerald-400/70" /></BadgeSlot>);
   if (task.middlewares?.length) badges.push(<BadgeSlot key="mw"><Layers size={7} className="text-purple-400/70" /></BadgeSlot>);
-  if (task.output) badges.push(<BadgeSlot key="out"><FileOutput size={7} className="text-tagma-muted/50" /></BadgeSlot>);
 
   const cursorClass = readOnly
     ? 'cursor-pointer'

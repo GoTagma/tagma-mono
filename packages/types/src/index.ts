@@ -96,7 +96,6 @@ export interface TaskConfig {
   readonly depends_on?: readonly string[];
   readonly trigger?: TriggerConfig;
   readonly continue_from?: string;
-  readonly output?: string;
   readonly model?: string;
   readonly reasoning_effort?: string;
   readonly permissions?: Permissions;
@@ -118,7 +117,6 @@ export interface RawTaskConfig {
   readonly depends_on?: readonly string[];
   readonly trigger?: TriggerConfig;
   readonly continue_from?: string;
-  readonly output?: string;
   readonly model?: string;
   readonly reasoning_effort?: string;
   readonly permissions?: Permissions;
@@ -241,9 +239,7 @@ export interface DriverResultMeta {
 
 export interface DriverContext {
   readonly sessionMap: Map<string, string>;
-  readonly outputMap: Map<string, string>;
   // Canonical text for continue_from handoff (driver-normalized).
-  // Falls back to output file content when a task doesn't provide a normalized form.
   readonly normalizedMap: Map<string, string>;
   readonly workDir: string;
 }
@@ -334,7 +330,6 @@ export interface CompletionPlugin {
 export interface MiddlewareContext {
   readonly task: TaskConfig;
   readonly track: TrackConfig;
-  readonly outputMap: Map<string, string>;
   readonly workDir: string;
 }
 
@@ -365,7 +360,6 @@ export interface TaskResult {
   readonly exitCode: number;
   readonly stdout: string;
   readonly stderr: string;
-  readonly outputPath: string | null;
   readonly stderrPath: string | null;
   readonly durationMs: number;
   readonly sessionId: string | null;

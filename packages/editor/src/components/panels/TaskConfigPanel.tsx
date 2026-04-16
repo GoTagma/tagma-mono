@@ -187,7 +187,6 @@ export function TaskConfigPanel({
     onUpdateTask(trackId, task.id, { driver: value || undefined });
   }, [trackId, task.id, onUpdateTask]);
   const [timeout, setTimeout_, blurTimeout] = useLocalField(task.timeout ?? '', (v) => commitField({ timeout: v || undefined }));
-  const [output, setOutput, blurOutput] = useLocalField(task.output ?? '', (v) => commitField({ output: v || undefined }));
   const [agentProfile, setAgentProfile, blurAgentProfile] = useLocalField(task.agent_profile ?? '', (v) => commitField({ agent_profile: v || undefined }));
   const [cwd, setCwd, blurCwd] = useLocalField(task.cwd ?? '', (v) => commitField({ cwd: v || undefined }));
   const [model, setModel, blurModel] = useLocalField(task.model ?? '', (v) => commitField({ model: v || undefined }));
@@ -450,18 +449,6 @@ export function TaskConfigPanel({
           <InheritedValue isOverridden={!!task.timeout} resolved={resolvedTimeout} trackName={trackName} pipelineName={pipelineConfig.name} />
         </div>
 
-        {/* Output path */}
-        <div>
-          <label className="field-label">Output Path</label>
-          <div className="flex gap-1">
-            <input type="text" className="field-input font-mono text-[11px] flex-1 min-w-0" value={output} onChange={(e) => setOutput(e.target.value)} onBlur={blurOutput} placeholder="./tmp/output.md" />
-            <button type="button" onClick={() => openFileBrowser('open', output, (path) => setOutput(path))}
-              className="shrink-0 p-1.5 border border-tagma-border text-tagma-muted hover:text-tagma-accent hover:border-tagma-accent/40 transition-colors" title="Browse...">
-              <FolderOpen size={13} />
-            </button>
-          </div>
-        </div>
-
         {/* CWD */}
         <div>
           <div className="flex items-center justify-between">
@@ -509,7 +496,7 @@ export function TaskConfigPanel({
               ))}
             </select>
             <p className="text-[10px] text-tagma-muted mt-1">
-              Uses session resume when both drivers support it; otherwise falls back to reading the upstream output.
+              Uses session resume when both drivers support it; otherwise falls back to injecting the upstream normalized output.
               Server validation will flag unsupported combinations.
             </p>
             {sessionResumeUnsupported && (
@@ -517,7 +504,7 @@ export function TaskConfigPanel({
                 <AlertTriangle size={10} className="mt-0.5 shrink-0" />
                 <span>
                   Driver "{resolvedDriver.value ?? 'unknown'}" does not support session resume —
-                  <code>continue_from</code> will fall back to injecting the upstream output as text.
+                  <code>continue_from</code> will fall back to injecting the upstream normalized output as text.
                 </span>
               </p>
             )}

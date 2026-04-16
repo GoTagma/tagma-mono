@@ -22,7 +22,6 @@ function initialTasks(): RunTaskState[] {
     exitCode: null,
     stdout: '',
     stderr: '',
-    outputPath: null,
     stderrPath: null,
     sessionId: null,
     normalizedOutput: null,
@@ -75,7 +74,6 @@ test('full run flow: start → task transitions → approval → stdout visible 
       durationMs: 20000,
       exitCode: 0,
       stdout: 'planning complete\n- step A\n- step B',
-      outputPath: '/logs/run_1/task_1.out.txt',
       sessionId: 'sess_plan_1',
       seq: 3,
     },
@@ -149,7 +147,6 @@ test('full run flow: start → task transitions → approval → stdout visible 
   expect(t1.stdout).toBe('planning complete\n- step A\n- step B');
   // The P0 bug fix: stdout must be visible after completion (§1.1).
   expect(t1.stdout.length).toBeGreaterThan(0);
-  expect(t1.outputPath).toBe('/logs/run_1/task_1.out.txt');
   expect(t1.sessionId).toBe('sess_plan_1');
   expect(t1.resolvedDriver).toBe('claude-code');
   expect(t1.resolvedModel).toBe('sonnet');

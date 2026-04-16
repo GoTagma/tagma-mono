@@ -99,7 +99,6 @@ export function resolveConfig(raw: RawPipelineConfig, workDir: string): Pipeline
         continue_from: rawTask.continue_from
           ? qualifyContinueFrom(rawTask.continue_from, rawTrack.id)
           : undefined,
-        output: rawTask.output,
         // Inheritance: Task > Track > Pipeline
         model: rawTask.model ?? rawTrack.model ?? raw.model,
         reasoning_effort: rawTask.reasoning_effort ?? rawTrack.reasoning_effort ?? raw.reasoning_effort,
@@ -224,7 +223,6 @@ export function deresolvePipeline(config: PipelineConfig, workDir: string): RawP
         ...(task.depends_on?.length ? { depends_on: task.depends_on } : {}),
         ...(task.trigger ? { trigger: task.trigger } : {}),
         ...(task.continue_from ? { continue_from: task.continue_from } : {}),
-        ...(task.output ? { output: task.output } : {}),
         ...(taskCwdRel ? { cwd: taskCwdRel } : {}),
         ...(task.model && task.model !== effectiveTrackModel ? { model: task.model } : {}),
         ...(task.reasoning_effort && task.reasoning_effort !== effectiveTrackReasoning

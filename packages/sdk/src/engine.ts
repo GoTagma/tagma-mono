@@ -1,5 +1,5 @@
-import { resolve, dirname } from 'path';
-import { mkdir, readdir, rm } from 'fs/promises';
+import { resolve } from 'path';
+import { readdir, rm } from 'fs/promises';
 import type {
   PipelineConfig, TaskConfig, TrackConfig, TaskState, TaskStatus,
   TaskResult, DriverPlugin, TriggerPlugin, CompletionPlugin,
@@ -9,7 +9,7 @@ import type {
 import { buildDag, type Dag, type DagNode } from './dag';
 import { getHandler, hasHandler, loadPlugins } from './registry';
 import { runSpawn, runCommand } from './runner';
-import { parseDuration, nowISO, generateRunId, validatePath } from './utils';
+import { parseDuration, nowISO, generateRunId } from './utils';
 import {
   executeHook,
   buildPipelineStartContext, buildTaskContext,
@@ -79,7 +79,7 @@ function preflight(config: PipelineConfig, dag: Dag): void {
           const upstream = dag.nodes.get(upstreamId);
           if (upstream) {
             // A handoff is possible via session resume (already ruled out above),
-            // an output file, OR in-memory text injection through normalizedMap
+            // OR in-memory text injection through normalizedMap
             // (when the upstream driver implements parseResult and returns normalizedOutput).
             const upstreamDriverName = upstream.task.driver ?? upstream.track.driver
               ?? config.driver ?? 'claude-code';
@@ -88,12 +88,12 @@ function preflight(config: PipelineConfig, dag: Dag): void {
               : null;
             const canNormalize = typeof upstreamDriver?.parseResult === 'function';
 
-            if (!upstream.task.output && !canNormalize) {
+            if (!canNormalize) {
               errors.push(
                 `Task "${node.taskId}" uses continue_from: "${task.continue_from}", ` +
-                `but upstream task "${upstreamId}" has no "output" field and its driver ` +
+                `but upstream task "${upstreamId}" its driver ` +
                 `does not implement parseResult for text-injection handoff. ` +
-                `Add output to the upstream task, use a driver with parseResult, or remove continue_from.`
+                `Use a driver with parseResult, or remove continue_from.`
               );
             }
           }
@@ -297,7 +297,6 @@ export async function runPipeline(
   options.onEvent?.({ type: 'pipeline_start', runId, states: statesSnapshot });
 
   const sessionMap = new Map<string, string>();
-  const outputMap = new Map<string, string>();
   const normalizedMap = new Map<string, string>();
 
   // Pipeline timeout
@@ -407,7 +406,6 @@ export async function runPipeline(
       status: state.status,
       exit_code: state.result?.exitCode ?? null,
       duration_ms: state.result?.durationMs ?? null,
-      output_path: state.result?.outputPath ?? null,
       stderr_path: state.result?.stderrPath ?? null,
       session_id: state.result?.sessionId ?? null,
       started_at: state.startedAt,
@@ -585,7 +583,7 @@ export async function runPipeline(
           log.debug(`[task:${taskId}]`,
             `middleware chain: ${mws.map(m => m.type).join(' → ')}`);
           const mwCtx: MiddlewareContext = {
-            task, track, outputMap, workDir: task.cwd ?? workDir,
+            task, track, workDir: task.cwd ?? workDir,
           };
           for (const mwConfig of mws) {
             const before = prompt.length;
@@ -611,7 +609,7 @@ export async function runPipeline(
 
         // H1: hand the driver a continue_from that has already been
         // qualified by dag.ts. Without this, drivers like codex/opencode/
-        // claude-code do `outputMap.get(task.continue_from)` directly with
+        // claude-code look up maps directly with
         // the user's raw (possibly bare) string, which races whenever two
         // tracks share a task name. dag.ts has the only authoritative
         // resolver, so we use its precomputed answer here.
@@ -621,7 +619,7 @@ export async function runPipeline(
           continue_from: node.resolvedContinueFrom ?? task.continue_from,
         };
         const driverCtx: DriverContext = {
-          sessionMap, outputMap, normalizedMap, workDir: task.cwd ?? workDir,
+          sessionMap, normalizedMap, workDir: task.cwd ?? workDir,
         };
         const spec = await driver.buildCommand(enrichedTask, track, driverCtx);
         log.debug(`[task:${taskId}]`, `driver=${driverName}`);
@@ -633,27 +631,6 @@ export async function runPipeline(
         if (spec.stdin) log.debug(`[task:${taskId}]`,
           `spawn stdin: ${spec.stdin.length} chars`);
         result = await runSpawn(spec, driver, runOpts);
-      }
-
-      // 5. Write output file with RAW stdout (preserves driver output format).
-      // Done BEFORE the completion check so a `file_exists` completion pointing
-      // at `task.output` observes the AI-generated artefact. Writes happen
-      // regardless of exit code so failed/timed-out tasks still leave a
-      // debuggable artefact on disk.
-      if (task.output) {
-        // validatePath enforces no .. traversal and no absolute paths escaping workDir.
-        const outPath = validatePath(task.output, workDir);
-        await mkdir(dirname(outPath), { recursive: true });
-        await Bun.write(outPath, result.stdout);
-        result = { ...result, outputPath: outPath };
-        // H1: only write the fully-qualified taskId. The previous "also store
-        // bare id when not yet present" trick produced non-deterministic
-        // continue_from lookups when two tracks shared a task name —
-        // whichever finished first won the bare key. dag.ts now resolves
-        // continue_from to a qualified id (DagNode.resolvedContinueFrom),
-        // and the enrichedTask handed to drivers carries that qualified
-        // version, so bare keys are no longer needed.
-        outputMap.set(taskId, outPath);
       }
 
       // 6. Determine terminal status (without emitting yet — result must be complete first)
@@ -697,7 +674,6 @@ export async function runPipeline(
           ? result.normalizedOutput.slice(0, MAX_NORMALIZED_BYTES) +
             `\n[…clipped at ${MAX_NORMALIZED_BYTES} bytes]`
           : result.normalizedOutput;
-        // H1: qualified-only key (see comment near outputMap above).
         normalizedMap.set(taskId, clipped);
       }
 
@@ -708,7 +684,7 @@ export async function runPipeline(
       }
 
       if (result.sessionId) {
-        // H1: qualified-only key (see comment near outputMap above).
+        // H1: qualified-only key.
         sessionMap.set(taskId, result.sessionId);
       }
 
@@ -736,9 +712,6 @@ export async function runPipeline(
       if (result.sessionId) {
         log.debug(`[task:${taskId}]`, `sessionId: ${result.sessionId}`);
       }
-      if (result.outputPath) {
-        log.debug(`[task:${taskId}]`, `wrote output: ${result.outputPath}`);
-      }
       if (result.stderrPath) {
         log.debug(`[task:${taskId}]`, `wrote stderr: ${result.stderrPath}`);
       }
@@ -760,7 +733,7 @@ export async function runPipeline(
         exitCode: -1,
         stdout: '',
         stderr: errMsg,
-        outputPath: null, stderrPath: null, durationMs: 0,
+        stderrPath: null, durationMs: 0,
         sessionId: null, normalizedOutput: null,
         // H2: Engine-level pre-execution errors (driver throw, middleware
         // throw, getHandler 404) classify as spawn_error — the process never

@@ -3,7 +3,7 @@
 //
 //   §1.3 / §4.5  SSE seq dedupe on reconnect
 //   §5.5         approval_resolved timeout / aborted surfacing
-//   §1.1 / §2.2  task_update carries stdout/stderr/outputPath/etc
+//   §1.1 / §2.2  task_update carries stdout/stderr/stderrPath/etc
 //   C7           runId mismatch dropped
 //
 // Run with:
@@ -35,7 +35,6 @@ function makeTask(overrides: Partial<RunTaskState> = {}): RunTaskState {
     exitCode: null,
     stdout: '',
     stderr: '',
-    outputPath: null,
     stderrPath: null,
     sessionId: null,
     normalizedOutput: null,
@@ -93,7 +92,6 @@ test('task_update merges partial fields and preserves untouched values', () => {
     durationMs: 5000,
     exitCode: 0,
     stdout: 'hello world',
-    outputPath: '/tmp/out.txt',
     sessionId: 'sess_abc',
     resolvedDriver: 'claude-code',
     resolvedModel: 'opus',
@@ -110,7 +108,6 @@ test('task_update merges partial fields and preserves untouched values', () => {
   expect(t2!.durationMs).toBe(5000);
   expect(t2!.exitCode).toBe(0);
   expect(t2!.stdout).toBe('hello world');
-  expect(t2!.outputPath).toBe('/tmp/out.txt');
   expect(t2!.sessionId).toBe('sess_abc');
   expect(t2!.resolvedDriver).toBe('claude-code');
   expect(t2!.resolvedModel).toBe('opus');
