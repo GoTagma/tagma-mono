@@ -7,7 +7,6 @@ import {
   mkdirSync,
   mkdtempSync,
   rmSync,
-  cpSync,
 } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -22,10 +21,11 @@ import {
   pluginDirFor,
   fenceWithinNodeModules,
 } from '../state.js';
+import { readPluginManifest as parsePluginManifestField } from '@tagma/sdk';
 
 export const NPM_REGISTRY = 'https://registry.npmjs.org';
 
-// ── Built-in npm registry installer (tarball download, no CLI needed) ──
+// ── Registry preflight + Bun-backed workspace install ──
 
 /** Encode a package name for the npm registry URL */
 export function registryUrl(name: string): string {
@@ -52,6 +52,8 @@ export interface PackageMeta {
   /** Legacy SHA-1 from `dist.shasum`, used as a fallback when integrity is missing. */
   shasum: string | null;
 }
+
+type PackageJson = Record<string, unknown>;
 
 /** Fetch package metadata from the npm registry (uses Bun's built-in fetch) */
 export async function registryMeta(name: string): Promise<PackageMeta> {
@@ -206,16 +208,51 @@ export function ensureWorkDirPackageJson(): void {
   }
 }
 
+function readPackageJson(pkgPath: string): PackageJson {
+  return JSON.parse(readFileSync(pkgPath, 'utf-8')) as PackageJson;
+}
+
+function assertTagmaPluginPackage(pkgJson: PackageJson, name: string): void {
+  const manifest = parsePluginManifestField(pkgJson);
+  if (!manifest) {
+    throw new Error(
+      `Package "${name}" is not a tagma plugin (missing tagmaPlugin manifest in package.json)`
+    );
+  }
+}
+
+async function syncWorkspaceDependencies(): Promise<void> {
+  if (!S.workDir) {
+    throw new Error('Cannot install plugin dependencies before setting a working directory');
+  }
+  const proc = Bun.spawn([process.execPath, 'install'], {
+    cwd: S.workDir,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  const [exitCode, stdout, stderr] = await Promise.all([
+    proc.exited,
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  if (exitCode !== 0) {
+    const detail = stderr.trim() || stdout.trim() || 'unknown error';
+    throw new Error(`bun install failed while resolving plugin dependencies: ${detail}`);
+  }
+}
+
 /**
- * Install a package from the npm registry without npm CLI.
- * Downloads tarball → verifies integrity → extracts via pure-JS tar.
+ * Preflight a registry package by downloading its tarball, verifying
+ * integrity, and validating its package.json before we mutate the workspace.
+ * The actual install is delegated to `bun install` afterward so the full
+ * dependency tree is resolved by the package manager.
  */
-export async function directRegistryInstall(name: string): Promise<void> {
+export async function directRegistryInstall(
+  name: string,
+): Promise<{ meta: PackageMeta; packageJson: PackageJson }> {
   // Caller (route handler) MUST have already validated `name` via
   // assertSafePluginName. We still fence against escape for defense in depth.
   assertSafePluginName(name);
-  const destDir = pluginDirFor(name);
-  fenceWithinNodeModules(destDir);
 
   const meta = await registryMeta(name);
   const tarBuffer = await downloadTarball(meta.tarball);
@@ -226,48 +263,40 @@ export async function directRegistryInstall(name: string): Promise<void> {
   writeFileSync(tgzPath, tarBuffer);
 
   try {
-    // Wipe any stale state from a previous failed install (e.g. a half-
-    // extracted tree from the pre-fix Bun + tar.x bug) so reinstall produces
-    // a clean package directory.
-    if (existsSync(destDir)) {
-      rmSync(destDir, { recursive: true, force: true });
-    }
-    mkdirSync(destDir, { recursive: true });
+    extractTarballStrip1(tgzPath, tmpDir);
 
-    extractTarballStrip1(tgzPath, destDir);
+    const installedPkgPath = resolve(tmpDir, 'package.json');
+    if (!existsSync(installedPkgPath)) {
+      throw new Error(`Installed package "${name}" did not contain a package.json`);
+    }
+    const installedPkg = readPackageJson(installedPkgPath);
+    assertTagmaPluginPackage(installedPkg, name);
+
+    ensureWorkDirPackageJson();
+    const pkgPath = resolve(S.workDir, 'package.json');
+    const pkg = readPackageJson(pkgPath);
+    pkg.dependencies = pkg.dependencies ?? {};
+    pkg.dependencies[name] = `^${meta.version}`;
+    writeFileSync(pkgPath, JSON.stringify(pkg, null, 2), 'utf-8');
+    return { meta, packageJson: installedPkg };
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
   }
-
-  // Record in workspace package.json
-  ensureWorkDirPackageJson();
-  const pkgPath = resolve(S.workDir, 'package.json');
-  const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
-  pkg.dependencies = pkg.dependencies ?? {};
-  pkg.dependencies[name] = `^${meta.version}`;
-  writeFileSync(pkgPath, JSON.stringify(pkg, null, 2), 'utf-8');
 }
 
 /**
- * Install a package from the npm registry. Fully self-contained: downloads the
- * tarball with Bun's built-in fetch and extracts it with the bundled `tar`
- * package. No external CLI — registry installs work in any environment where
- * the editor runs, including compiled standalone binaries.
+ * Install a registry plugin after tarball-level preflight.
  */
 export async function installPackage(name: string): Promise<void> {
   ensureWorkDirPackageJson();
   await directRegistryInstall(name);
+  await syncWorkspaceDependencies();
 }
 
 /**
- * Install a plugin from a local path (directory or .tgz file) via pure
- * filesystem ops — no package manager CLI required. Returns the package name
- * that was installed.
- *
- * The source `package.json`'s `name` field is validated against the plugin
- * name regex before being turned into a destination path. Without this an
- * attacker could plant a malicious `package.json` with `name: "../etc"` and
- * trigger an arbitrary directory wipe at line `rmSync(destDir, ...)` below.
+ * Install a plugin from a local directory or `.tgz`. We validate the source
+ * package metadata locally first, then hand the actual dependency graph
+ * materialization to `bun install`.
  */
 export async function installFromLocalPath(absPath: string): Promise<string> {
   ensureWorkDirPackageJson();
@@ -291,29 +320,21 @@ export async function installFromLocalPath(absPath: string): Promise<string> {
     if (!existsSync(srcPkgPath)) {
       throw new Error('Source does not contain a package.json');
     }
-    const srcPkg = JSON.parse(readFileSync(srcPkgPath, 'utf-8'));
+    const srcPkg = readPackageJson(srcPkgPath);
     const pkgName: unknown = srcPkg.name;
     if (typeof pkgName !== 'string' || !pkgName) {
       throw new Error('Source package.json has no "name" field');
     }
-    // L3: refuse pkg names that would resolve outside workDir/node_modules.
     assertSafePluginName(pkgName);
-    const destDir = pluginDirFor(pkgName);
-    fenceWithinNodeModules(destDir);
-
-    // Remove any previous copy so we get a clean overwrite.
-    if (existsSync(destDir)) {
-      rmSync(destDir, { recursive: true, force: true });
-    }
-    mkdirSync(destDir, { recursive: true });
-    cpSync(sourceDir, destDir, { recursive: true });
+    assertTagmaPluginPackage(srcPkg, pkgName);
 
     // Record the dependency in the workspace package.json using a file: spec.
     const pkgPath = resolve(S.workDir, 'package.json');
-    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
+    const pkg = readPackageJson(pkgPath);
     pkg.dependencies = pkg.dependencies ?? {};
     pkg.dependencies[pkgName] = `file:${absPath}`;
     writeFileSync(pkgPath, JSON.stringify(pkg, null, 2), 'utf-8');
+    await syncWorkspaceDependencies();
 
     return pkgName;
   } finally {

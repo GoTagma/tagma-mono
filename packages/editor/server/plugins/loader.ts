@@ -4,8 +4,11 @@ import {
   existsSync,
   readdirSync,
   mkdirSync,
+  rmSync,
+  cpSync,
 } from 'node:fs';
 import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import yaml from 'js-yaml';
 import {
   registerPlugin,
@@ -186,6 +189,22 @@ function pickExportTarget(target: unknown): string | null {
   return null;
 }
 
+function stagePluginForImport(name: string, pluginDir: string): string {
+  if (!S.workDir) {
+    throw new PluginSafetyError('Cannot stage plugin: workspace directory is not set');
+  }
+  const safeName = name.replace(/[\\/]/g, '__');
+  const packageStageRoot = resolve(S.workDir, '.tagma', 'plugin-runtime', safeName);
+  rmSync(packageStageRoot, { recursive: true, force: true });
+  const stageDir = resolve(
+    packageStageRoot,
+    `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  );
+  mkdirSync(stageDir, { recursive: true });
+  cpSync(pluginDir, stageDir, { recursive: true, dereference: true });
+  return stageDir;
+}
+
 export async function loadPluginFromWorkDir(name: string): Promise<{ result: RegisterResult; meta: LoadedPluginMeta }> {
   assertSafePluginName(name);
   if (!S.workDir) {
@@ -216,8 +235,14 @@ export async function loadPluginFromWorkDir(name: string): Promise<{ result: Reg
     );
   }
 
-  // Use file:// URL for Windows compatibility with dynamic import
-  const fileUrl = `file:///${modulePath.replace(/\\/g, '/')}`;
+  const stagedPluginDir = stagePluginForImport(name, pluginDir);
+  const stagedModulePath = resolve(stagedPluginDir, entryPoint);
+  if (!isPathWithin(stagedModulePath, stagedPluginDir)) {
+    throw new Error(
+      `Plugin "${name}" entry point "${entryPoint}" resolves outside its staged package directory. Refusing to load.`
+    );
+  }
+  const fileUrl = pathToFileURL(stagedModulePath).href;
 
   // R11: race the dynamic import against a hard timeout so a plugin with a
   // top-level infinite loop / pending fetch can't wedge the loader. The
