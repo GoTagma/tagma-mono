@@ -10,6 +10,7 @@ import {
 } from 'node:fs';
 import { resolve, dirname, basename, join } from 'node:path';
 import yaml from 'js-yaml';
+import { generateConfigId } from '../../shared/config-id.js';
 import {
   createEmptyPipeline,
   upsertTrack,
@@ -385,9 +386,9 @@ export function registerWorkspaceRoutes(app: express.Express): void {
     const fileName = `pipeline-${randomId}.yaml`;
     S.config = createEmptyPipeline(name || 'Untitled Pipeline');
     // Seed a default track + task so new pipelines start without validation errors
-    const trackId = Math.random().toString(36).slice(2, 10);
+    const trackId = generateConfigId();
     S.config = upsertTrack(S.config, { id: trackId, name: 'Track 1', color: '#3b82f6', tasks: [] });
-    const taskId = Math.random().toString(36).slice(2, 10);
+    const taskId = generateConfigId();
     S.config = upsertTask(S.config, trackId, {
       id: taskId,
       name: 'Task 1',

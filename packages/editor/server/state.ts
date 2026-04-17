@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import yaml from 'js-yaml';
 import { isPathWithin as sharedIsPathWithin } from './path-utils.js';
+import { generateConfigId } from '../shared/config-id.js';
 import {
   createEmptyPipeline,
   validateRaw,
@@ -595,7 +596,7 @@ export function lenientParseYaml(content: string, fallbackName: string): RawPipe
         !!t && typeof t === 'object' && !Array.isArray(t),
     )
     .map((t: Record<string, unknown>): RawTrackConfig => {
-      const id = typeof t.id === 'string' && t.id ? t.id : Math.random().toString(36).slice(2, 10);
+      const id = typeof t.id === 'string' && t.id ? t.id : generateConfigId();
       const name = typeof t.name === 'string' && t.name ? t.name : id;
       const rawTasks = Array.isArray(t.tasks) ? t.tasks : [];
       const tasks = rawTasks
@@ -604,8 +605,7 @@ export function lenientParseYaml(content: string, fallbackName: string): RawPipe
             !!tk && typeof tk === 'object' && !Array.isArray(tk),
         )
         .map((tk: Record<string, unknown>): RawTaskConfig => {
-          const tid =
-            typeof tk.id === 'string' && tk.id ? tk.id : Math.random().toString(36).slice(2, 10);
+          const tid = typeof tk.id === 'string' && tk.id ? tk.id : generateConfigId();
           // Strip unknown / dangerous keys before spreading.
           return { ...pickKnownKeys(tk, TASK_KNOWN_KEYS), id: tid } as unknown as RawTaskConfig;
         });

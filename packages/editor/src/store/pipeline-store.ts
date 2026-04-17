@@ -10,6 +10,7 @@ import type {
   PluginRegistry,
 } from '../api/client';
 import { flushAllLocalFields } from '../hooks/use-local-field';
+import { generateConfigId } from '../../shared/config-id.js';
 
 const EMPTY_REGISTRY: PluginRegistry = {
   drivers: [],
@@ -214,17 +215,6 @@ interface PipelineState {
   // Plugins page top-level view toggle — parallel to runStore.active.
   showPluginsPage: () => void;
   hidePluginsPage: () => void;
-}
-
-function generateId(): string {
-  const chars = 'abcdefghijklmnopqrstuvwxyz';
-  const alphanumeric = 'abcdefghijklmnopqrstuvwxyz0123456789';
-  // First character must be a letter (to satisfy /^[A-Za-z_][A-Za-z0-9_-]*$/)
-  let id = chars[Math.floor(Math.random() * chars.length)];
-  for (let i = 0; i < 7; i++) {
-    id += alphanumeric[Math.floor(Math.random() * alphanumeric.length)];
-  }
-  return id;
 }
 
 /**
@@ -730,7 +720,9 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     addTrack: (name) => {
       const trackCount = _get().config.tracks.length;
       const color = TRACK_COLORS[trackCount % TRACK_COLORS.length];
-      fire(() => api.addTrack(generateId(), name, color), { errorPrefix: 'Failed to add track' });
+      fire(() => api.addTrack(generateConfigId(), name, color), {
+        errorPrefix: 'Failed to add track',
+      });
     },
     renameTrack: (trackId, name) =>
       fire(() => api.updateTrack(trackId, { name }), {
@@ -792,7 +784,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     },
 
     addTask: (trackId, name, options) => {
-      const id = generateId();
+      const id = generateConfigId();
       const kind = options?.kind ?? 'prompt';
       const positionX = options?.positionX;
       // L2: Use empty string instead of 'TODO' so validation surfaces a
@@ -1448,7 +1440,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
         if (!targetTrackId) return false;
         const cloned: RawTaskConfig = {
           ...clip.task,
-          id: generateId(),
+          id: generateConfigId(),
           name: clip.task.name ? `${clip.task.name} (copy)` : undefined,
           // Strip dependencies: referenced ids may not resolve in the new
           // location and would fail server-side validation.
@@ -1461,11 +1453,11 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
         // Server exposes addTrack(id, name, color) + per-task addTask, so
         // clone the track and replay tasks sequentially. History records
         // the initial addTrack entry; subsequent task adds extend it.
-        const newTrackId = generateId();
+        const newTrackId = generateConfigId();
         const newName = `${clip.track.name} (copy)`;
         const tasksToClone: RawTaskConfig[] = clip.track.tasks.map((t) => ({
           ...t,
-          id: generateId(),
+          id: generateConfigId(),
           depends_on: undefined,
         }));
         const myEpoch = ++fireEpoch;
@@ -1535,7 +1527,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
         if (!task) return false;
         const cloned: RawTaskConfig = {
           ...task,
-          id: generateId(),
+          id: generateConfigId(),
           name: task.name ? `${task.name} (copy)` : undefined,
           depends_on: undefined,
         };
