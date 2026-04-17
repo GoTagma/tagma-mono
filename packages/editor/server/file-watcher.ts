@@ -22,6 +22,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { watch, type FSWatcher, readFileSync, statSync, existsSync } from 'node:fs';
+import { dirname, basename } from 'node:path';
 import { createHash } from 'node:crypto';
 
 export type ExternalChangeEvent =
@@ -94,6 +95,13 @@ export function stopWatching(): void {
  * Start watching `filePath`. If already watching a different path, the old
  * watcher is closed first. `getSerializedConfig` lets the watcher compute
  * server-dirty without importing SDK state here.
+ *
+ * D12: We watch the *parent directory* instead of the file itself.
+ * Most editors (VSCode, Vim, JetBrains) save via "write tmp + rename",
+ * which changes the inode of the watched file. `fs.watch(file)` stops
+ * receiving events after the first such rename because it is bound to the
+ * original inode. Watching the directory survives inode churn — we filter
+ * events by filename before doing any work.
  */
 export function startWatching(
   filePath: string,
@@ -102,11 +110,14 @@ export function startWatching(
   stopWatching();
   if (!existsSync(filePath)) return;
 
+  const watchDir = dirname(filePath);
+  const watchFile = basename(filePath);
+
   let watcher: FSWatcher;
   try {
-    watcher = watch(filePath, { persistent: false });
+    watcher = watch(watchDir, { persistent: false });
   } catch (err) {
-    console.error(`[file-watcher] failed to watch ${filePath}:`, err);
+    console.error(`[file-watcher] failed to watch directory ${watchDir}:`, err);
     return;
   }
 
@@ -144,14 +155,19 @@ export function startWatching(
     }
   };
 
-  watcher.on('change', () => {
+  watcher.on('change', (_eventType: string, changedFile: string | Buffer | null) => {
+    // Filter: only react to events for our specific file. Directory watches
+    // fire for any file in the directory; we don't want unrelated changes to
+    // trigger a YAML reload.
+    const changed = changedFile instanceof Buffer ? changedFile.toString() : changedFile;
+    if (changed && changed !== watchFile) return;
     if (handle.debounce) clearTimeout(handle.debounce);
     // Debounce — editors often emit multiple change events per save.
     handle.debounce = setTimeout(check, 120);
   });
 
   watcher.on('error', (err) => {
-    console.error(`[file-watcher] watcher error on ${filePath}:`, err);
+    console.error(`[file-watcher] watcher error on ${watchDir}:`, err);
   });
 
   // Seed the baseline hash if not yet set.

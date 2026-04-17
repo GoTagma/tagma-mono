@@ -19,14 +19,43 @@ export function parseYaml(content: string): RawPipelineConfig {
   if (!p.name) throw new Error('pipeline.name is required');
   if (!p.tracks || p.tracks.length === 0) throw new Error('pipeline.tracks must be non-empty');
 
+  // D14: Detect duplicate track IDs before per-track validation so the error
+  // message is clear ("Duplicate track id") rather than a confusing DAG error
+  // ("Duplicate task ID: track.task_x") that only surfaces at runPipeline time.
+  const seenTrackIds = new Set<string>();
+  for (const track of p.tracks) {
+    if (track.id) {
+      if (seenTrackIds.has(track.id)) {
+        throw new Error(`Duplicate track id "${track.id}": each track must have a unique id.`);
+      }
+      seenTrackIds.add(track.id);
+    }
+  }
+
   for (const track of p.tracks) {
     validateRawTrack(track);
   }
   return p;
 }
 
+// D8: IDs must start with a letter or underscore and contain only
+// alphanumerics, underscores, and hyphens. Dots are forbidden because
+// the engine uses "trackId.taskId" as the qualified separator — a dot in
+// either part creates an ambiguous qualified ID and breaks resolveRef.
+const ID_RE = /^[A-Za-z_][A-Za-z0-9_-]*$/;
+
+function assertValidId(id: string, label: string): void {
+  if (!ID_RE.test(id)) {
+    throw new Error(
+      `${label}: id "${id}" is invalid. IDs must match /^[A-Za-z_][A-Za-z0-9_-]*$/ ` +
+      `(letters, digits, underscores, hyphens; no dots or spaces; must start with letter/underscore).`
+    );
+  }
+}
+
 function validateRawTrack(track: RawTrackConfig): void {
   if (!track.id) throw new Error('track.id is required');
+  assertValidId(track.id, `track "${track.id}"`);
   if (!track.name) throw new Error(`track "${track.id}": name is required`);
   if (!track.tasks || track.tasks.length === 0) {
     throw new Error(`track "${track.id}": tasks must be non-empty`);
@@ -38,6 +67,7 @@ function validateRawTrack(track: RawTrackConfig): void {
 
 function validateRawTask(task: RawTaskConfig, trackId: string): void {
   if (!task.id) throw new Error(`track "${trackId}": task.id is required`);
+  assertValidId(task.id, `task "${task.id}" in track "${trackId}"`);
 
   const hasPromptKey = typeof task.prompt === 'string';
   const hasCommandKey = typeof task.command === 'string';

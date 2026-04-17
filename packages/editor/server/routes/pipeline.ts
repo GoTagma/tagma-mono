@@ -25,9 +25,21 @@ import {
   TASK_REQUIRED_KEYS,
   TRACK_REQUIRED_KEYS,
   stateEventClients,
+  broadcastStateEvent,
   type StateEventClient,
 } from '../state.js';
 import { errorMessage } from '../path-utils.js';
+
+/**
+ * D6: Reply with the current state and push a state_sync event to all other
+ * SSE subscribers so concurrent clients see the mutation immediately without
+ * waiting for a file-watcher tick or their own next request.
+ */
+function replyWithState(res: import('express').Response): void {
+  const newState = getState();
+  res.json(newState);
+  broadcastStateEvent({ type: 'state_sync', newState });
+}
 
 export function registerPipelineRoutes(app: express.Express): void {
   // ── GET state ──
@@ -86,7 +98,7 @@ export function registerPipelineRoutes(app: express.Express): void {
     };
     S.config = setPipelineField(S.config, patch);
     S.config = reconcilePipelinePlugins(S.config);
-    res.json(getState());
+    replyWithState(res);
   });
 
   // ── Tracks ──
@@ -94,7 +106,7 @@ export function registerPipelineRoutes(app: express.Express): void {
     const { id, name, color } = req.body;
     const track: RawTrackConfig = { id, name, color, tasks: [] };
     S.config = upsertTrack(S.config, track);
-    res.json(getState());
+    replyWithState(res);
   });
 
   app.patch('/api/tracks/:trackId', (req, res) => {
@@ -113,7 +125,7 @@ export function registerPipelineRoutes(app: express.Express): void {
       tracks: S.config.tracks.map(t => t.id === trackId ? updated : t),
     };
     S.config = reconcilePipelinePlugins(S.config);
-    res.json(getState());
+    replyWithState(res);
   });
 
   app.delete('/api/tracks/:trackId', (_req, res) => {
@@ -121,13 +133,13 @@ export function registerPipelineRoutes(app: express.Express): void {
     S.config = removeTrack(S.config, _req.params.trackId);
     if (S.config === prev) return res.status(404).json({ error: 'Track not found' });
     S.config = reconcilePipelinePlugins(S.config);
-    res.json(getState());
+    replyWithState(res);
   });
 
   app.post('/api/tracks/reorder', (req, res) => {
     const { trackId, toIndex } = req.body;
     S.config = moveTrack(S.config, trackId, toIndex);
-    res.json(getState());
+    replyWithState(res);
   });
 
   // ── Tasks ──
@@ -135,7 +147,7 @@ export function registerPipelineRoutes(app: express.Express): void {
     const { trackId, task } = req.body;
     S.config = upsertTask(S.config, trackId, task as RawTaskConfig);
     S.config = reconcilePipelinePlugins(S.config);
-    res.json(getState());
+    replyWithState(res);
   });
 
   app.patch('/api/tasks/:trackId/:taskId', (req, res) => {
@@ -160,7 +172,7 @@ export function registerPipelineRoutes(app: express.Express): void {
     const updated = stripEmptyFields(merged, TASK_REQUIRED_KEYS) as unknown as RawTaskConfig;
     S.config = upsertTask(S.config, trackId, updated);
     S.config = reconcilePipelinePlugins(S.config);
-    res.json(getState());
+    replyWithState(res);
   });
 
   app.delete('/api/tasks/:trackId/:taskId', (req, res) => {
@@ -181,7 +193,7 @@ export function registerPipelineRoutes(app: express.Express): void {
       S.config = removeTrack(S.config, trackId);
     }
     S.config = reconcilePipelinePlugins(S.config);
-    res.json(getState());
+    replyWithState(res);
   });
 
   // NOTE: /api/tasks/move removed — no client caller; task reorder within a
@@ -194,7 +206,7 @@ export function registerPipelineRoutes(app: express.Express): void {
     S.config = transferTask(S.config, fromTrackId, taskId, toTrackId);
     if (S.config === prev) return res.status(404).json({ error: 'Task or track not found' });
     S.config = reconcilePipelinePlugins(S.config);
-    res.json(getState());
+    replyWithState(res);
   });
 
   // ── Dependencies ──
@@ -213,7 +225,7 @@ export function registerPipelineRoutes(app: express.Express): void {
       // Users can still override the field in the config panel afterwards.
       S.config = reconcileContinueFrom(S.config);
     }
-    res.json(getState());
+    replyWithState(res);
   });
 
   app.delete('/api/dependencies', (req, res) => {
@@ -231,7 +243,7 @@ export function registerPipelineRoutes(app: express.Express): void {
       updated = noCf as RawTaskConfig;
     }
     S.config = upsertTask(S.config, trackId, updated);
-    res.json(getState());
+    replyWithState(res);
   });
 
   // ── YAML Import/Export ──
@@ -248,7 +260,7 @@ export function registerPipelineRoutes(app: express.Express): void {
     try {
       const { yaml } = req.body;
       S.config = reconcilePipelinePlugins(parseYaml(yaml));
-      res.json(getState());
+      replyWithState(res);
     } catch (err: unknown) {
       res.status(400).json({ error: errorMessage(err) || 'Invalid YAML' });
     }
@@ -319,7 +331,7 @@ export function registerPipelineRoutes(app: express.Express): void {
         S.layout.positions = sanitized;
       }
 
-      res.json(getState());
+      replyWithState(res);
     } catch (err: unknown) {
       res.status(400).json({ error: errorMessage(err) || 'Failed to replace config' });
     }

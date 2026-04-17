@@ -1,4 +1,5 @@
-import { resolve, relative } from 'path';
+import { resolve, relative, parse as parsePath } from 'path';
+import { realpathSync, lstatSync, existsSync } from 'fs';
 import { randomBytes } from 'crypto';
 
 const DURATION_RE = /^(\d*\.?\d+)\s*(s|m|h|d)$/;
@@ -21,13 +22,63 @@ export function parseDuration(input: string): number {
 
 export function validatePath(filePath: string, projectRoot: string): string {
   const resolved = resolve(projectRoot, filePath);
-  const rel = relative(projectRoot, resolved);
 
-  if (rel.startsWith('..') || rel.startsWith('/') || /^[a-zA-Z]:/.test(rel)) {
+  // D2: Cross-drive check (Windows) — path.relative('C:\\root', 'D:\\x') returns
+  // 'D:\\x' which does NOT start with '..', so a pure relative check would wrongly
+  // allow cross-drive paths. Reject them explicitly before any further comparison.
+  if (parsePath(projectRoot).root !== parsePath(resolved).root) {
+    throw new Error(
+      `Security: path "${filePath}" is on a different drive than the project root "${projectRoot}".`
+    );
+  }
+
+  const rel = relative(projectRoot, resolved);
+  if (rel.startsWith('..') || rel.startsWith('/')) {
     throw new Error(
       `Security: path "${filePath}" escapes project root. ` +
       `All file references must be within "${projectRoot}".`
     );
+  }
+
+  // D1: Resolve symlinks and re-validate so a symlink whose string path is
+  // inside the project root but whose target lies outside is rejected.
+  // Only resolve if the path exists on disk; at parse time the file may not
+  // yet exist (e.g. a future output path), so we skip realpath for absent paths.
+  if (existsSync(resolved)) {
+    // Reject the entry outright if it is itself a symlink — callers that want
+    // to allow symlinks within the tree can pass pre-resolved paths.
+    try {
+      const stat = lstatSync(resolved);
+      if (stat.isSymbolicLink()) {
+        throw new Error(
+          `Security: path "${filePath}" is a symbolic link. Symbolic links are not allowed within the project root.`
+        );
+      }
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    }
+
+    // Also verify the real (fully resolved) path stays within the project root.
+    let real: string;
+    try {
+      real = realpathSync.native(resolved);
+    } catch {
+      real = resolved; // path vanished between existsSync and realpathSync — skip
+    }
+    const realRoot = (() => {
+      try { return realpathSync.native(projectRoot); } catch { return projectRoot; }
+    })();
+    if (parsePath(realRoot).root !== parsePath(real).root) {
+      throw new Error(
+        `Security: resolved path "${real}" is on a different drive than the project root "${realRoot}".`
+      );
+    }
+    const realRel = relative(realRoot, real);
+    if (realRel.startsWith('..') || realRel.startsWith('/')) {
+      throw new Error(
+        `Security: path "${filePath}" resolves via symlink to "${real}" which escapes project root "${realRoot}".`
+      );
+    }
   }
 
   return resolved;

@@ -878,12 +878,17 @@ export async function runPipeline(
 }
 
 /**
- * Delete the oldest subdirectories under `logsDir`, keeping only the most recent `keep`.
+ * Delete the oldest subdirectories under `logsDir`, keeping only the most recent `keep`
+ * total runs (including the currently-live run identified by `excludeRunId`).
  * Directories are sorted lexicographically; because runIds are prefixed with a base-36
  * timestamp, lexicographic order equals chronological order.
  *
  * `excludeRunId` is always skipped from deletion even if it would otherwise be pruned —
  * this prevents a concurrent run from removing a live log directory that is still in use.
+ *
+ * D10: The live run occupies one slot out of `keep`, so the maximum number of
+ * *historical* dirs to retain is `keep - 1`. Without this adjustment the function
+ * kept `keep` historical dirs plus 1 live dir = `keep + 1` total on disk.
  */
 async function pruneLogDirs(logsDir: string, keep: number, excludeRunId: string): Promise<void> {
   let entries: string[];
@@ -895,7 +900,9 @@ async function pruneLogDirs(logsDir: string, keep: number, excludeRunId: string)
 
   // Only consider directories that look like run IDs (run_<...>), excluding the live run.
   const runDirs = entries.filter(e => e.startsWith('run_') && e !== excludeRunId).sort();
-  const toDelete = runDirs.slice(0, Math.max(0, runDirs.length - keep));
+  // keep - 1 historical slots (1 slot is reserved for the live excludeRunId).
+  const historyKeep = Math.max(0, keep - 1);
+  const toDelete = runDirs.slice(0, Math.max(0, runDirs.length - historyKeep));
 
   await Promise.all(
     toDelete.map(dir =>

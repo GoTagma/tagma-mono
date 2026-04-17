@@ -6,8 +6,9 @@ import {
   mkdirSync,
   rmSync,
   cpSync,
+  lstatSync,
 } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolve, join as joinPath } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import yaml from 'js-yaml';
 import {
@@ -50,6 +51,8 @@ import { installPackage } from './install.js';
 export interface LoadedPluginMeta {
   category: PluginCategory;
   type: string;
+  /** D13: Staging directory created by stagePluginForImport. Cleaned up on rollback. */
+  stageDir?: string;
 }
 export const loadedPluginMeta = new Map<string, LoadedPluginMeta>();
 
@@ -189,19 +192,59 @@ function pickExportTarget(target: unknown): string | null {
   return null;
 }
 
+/**
+ * Reject symlink entries in `dir` (non-recursive, top-level only).
+ * This prevents a malicious plugin's package from embedding a symlink like
+ * `index.js -> /proc/self/environ` that would be silently dereferenced by
+ * cpSync and copied into the staging area, leaking sensitive data.
+ */
+function assertNoSymlinksInDir(dir: string, label: string): void {
+  let entries: string[];
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return; // dir doesn't exist or can't be read — let cpSync handle the error
+  }
+  for (const entry of entries) {
+    const fullPath = joinPath(dir, entry);
+    try {
+      if (lstatSync(fullPath).isSymbolicLink()) {
+        throw new PluginSafetyError(
+          `${label}: entry "${entry}" is a symbolic link. Symbolic links in plugin packages are not allowed.`
+        );
+      }
+    } catch (err) {
+      if (err instanceof PluginSafetyError) throw err;
+      // ENOENT or other stat error — skip (race condition on fast delete)
+    }
+  }
+}
+
 function stagePluginForImport(name: string, pluginDir: string): string {
   if (!S.workDir) {
     throw new PluginSafetyError('Cannot stage plugin: workspace directory is not set');
   }
   const safeName = name.replace(/[\\/]/g, '__');
   const packageStageRoot = resolve(S.workDir, '.tagma', 'plugin-runtime', safeName);
-  rmSync(packageStageRoot, { recursive: true, force: true });
+
+  // D3 (TOCTOU fix): Do NOT rmSync the whole packageStageRoot before creating
+  // the new timestamped sub-directory. A concurrent second load of the same
+  // plugin might be mid-import() of a sibling staging dir; blowing up the root
+  // deletes the files it still needs, producing ENOENT during ESM lazy reads.
+  // Instead, each staging call gets its own unique sub-directory; old ones are
+  // cleaned up lazily by unregisterPlugin / rollback paths.
   const stageDir = resolve(
     packageStageRoot,
     `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   );
   mkdirSync(stageDir, { recursive: true });
-  cpSync(pluginDir, stageDir, { recursive: true, dereference: true });
+
+  // D3 (symlink fix): reject any top-level symlink in the source plugin
+  // directory before copying. dereference:false ensures we copy symlink nodes
+  // as-is rather than following them, but that would leave dangling links in
+  // the staging dir; rejecting upfront is cleaner and safer.
+  assertNoSymlinksInDir(pluginDir, `Plugin "${name}"`);
+  cpSync(pluginDir, stageDir, { recursive: true, dereference: false });
   return stageDir;
 }
 
@@ -263,7 +306,7 @@ export async function loadPluginFromWorkDir(name: string): Promise<{ result: Reg
   const type = String(mod.pluginType);
   const handler = mod.default as DriverPlugin | TriggerPlugin | CompletionPlugin | MiddlewarePlugin;
   const result = registerPlugin(category, type, handler);
-  const meta: LoadedPluginMeta = { category, type };
+  const meta: LoadedPluginMeta = { category, type, stageDir: stagedPluginDir };
   loadedPluginMeta.set(name, meta);
   return { result, meta };
 }

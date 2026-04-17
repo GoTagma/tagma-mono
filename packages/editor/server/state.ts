@@ -125,6 +125,10 @@ export function bumpRevision(): number {
 
 export function layoutPath(): string | null {
   if (!S.yamlPath) return null;
+  // D11: If yamlPath has no .yaml/.yml extension (e.g. no extension at all),
+  // .replace() would return the original path unchanged, causing saveLayout()
+  // to overwrite the pipeline YAML with layout JSON. Guard explicitly.
+  if (!/\.ya?ml$/i.test(S.yamlPath)) return null;
   return S.yamlPath.replace(/\.ya?ml$/i, '.layout.json');
 }
 

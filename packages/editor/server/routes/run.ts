@@ -6,6 +6,10 @@ import {
   readdirSync,
   statSync,
   mkdirSync,
+  openSync,
+  readSync,
+  closeSync,
+  rmSync,
 } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -134,7 +138,14 @@ function broadcast(event: RunEvent) {
   }
   const data = JSON.stringify(stamped);
   for (const client of sseClients) {
-    client.write(`id: ${currentRunSeq}\nevent: run_event\ndata: ${data}\n\n`);
+    // D4: Wrap each write individually so a single broken/ended client
+    // (ERR_STREAM_WRITE_AFTER_END) cannot abort the loop and starve the
+    // remaining clients. Failed clients are removed from the set.
+    try {
+      client.write(`id: ${currentRunSeq}\nevent: run_event\ndata: ${data}\n\n`);
+    } catch {
+      sseClients.delete(client);
+    }
   }
 }
 
@@ -456,6 +467,11 @@ export function registerRunRoutes(app: express.Express): void {
           const meta = loadedPluginMeta.get(name);
           if (meta) {
             try { unregisterPlugin(meta.category, meta.type); } catch { /* best-effort */ }
+            // D13: Also clean up the staging directory left by stagePluginForImport
+            // so failed plugin loads don't accumulate orphan dirs in plugin-runtime/.
+            if (meta.stageDir) {
+              try { rmSync(meta.stageDir, { recursive: true, force: true }); } catch { /* best-effort */ }
+            }
             loadedPluginMeta.delete(name);
           }
         }
@@ -898,8 +914,28 @@ export function registerRunRoutes(app: express.Express): void {
     try {
       const MAX_LOG_BYTES = 1024 * 1024; // 1 MB cap
       const stat = statSync(logFile);
-      const raw = readFileSync(logFile, 'utf-8');
-      const content = stat.size > MAX_LOG_BYTES ? clip(raw, MAX_LOG_BYTES) : raw;
+      let content: string;
+      if (stat.size <= MAX_LOG_BYTES) {
+        // Small file: read normally.
+        content = readFileSync(logFile, 'utf-8');
+      } else {
+        // D5: Large file — read only the tail MAX_LOG_BYTES to avoid loading
+        // hundreds of MB into the heap before clipping. Using openSync/readSync
+        // so we never materialise the full file in memory.
+        const readLen = MAX_LOG_BYTES;
+        const offset = stat.size - readLen;
+        const buf = Buffer.allocUnsafe(readLen);
+        const fd = openSync(logFile, 'r');
+        try {
+          readSync(fd, buf, 0, readLen, offset);
+        } finally {
+          closeSync(fd);
+        }
+        // Drop the first (potentially incomplete) line so we don't start mid-UTF8.
+        const raw = buf.toString('utf-8');
+        const newline = raw.indexOf('\n');
+        content = newline !== -1 ? raw.slice(newline + 1) : raw;
+      }
       res.json({ runId, content });
     } catch (err: unknown) {
       res.status(500).json({ error: errorMessage(err) });

@@ -13,6 +13,15 @@ function isValidDuration(input: string): boolean {
   return DURATION_RE.test(input.trim());
 }
 
+// D8: IDs may only contain letters, digits, underscores, and hyphens, and must
+// start with a letter or underscore. Dots are explicitly forbidden because the
+// engine uses "trackId.taskId" as the qualified separator — a dot in either
+// part creates an ambiguous qualified ID and breaks resolveRef.
+const ID_RE = /^[A-Za-z_][A-Za-z0-9_-]*$/;
+function isValidId(id: string): boolean {
+  return ID_RE.test(id);
+}
+
 const VALID_ON_FAILURE = new Set(['skip_downstream', 'stop_all', 'ignore']);
 const VALID_REASONING_EFFORT = new Set(['low', 'medium', 'high']);
 
@@ -128,6 +137,11 @@ export function validateRaw(
 
     if (!track.id?.trim()) {
       errors.push({ path: `${trackPath}.id`, message: 'Track id is required' });
+    } else if (!isValidId(track.id)) {
+      errors.push({
+        path: `${trackPath}.id`,
+        message: `Track id "${track.id}" contains invalid characters. IDs must match /^[A-Za-z_][A-Za-z0-9_-]*$/ (no dots, spaces, or special chars).`,
+      });
     } else if (seenTrackIds.has(track.id)) {
       errors.push({ path: `${trackPath}.id`, message: `Duplicate track id "${track.id}"` });
     } else {
@@ -175,6 +189,12 @@ export function validateRaw(
         continue; // Can't check further without an id
       }
 
+      if (!isValidId(task.id)) {
+        errors.push({
+          path: `${taskPath}.id`,
+          message: `Task id "${task.id}" contains invalid characters. IDs must match /^[A-Za-z_][A-Za-z0-9_-]*$/ (no dots, spaces, or special chars).`,
+        });
+      }
       if (seenTaskIds.has(task.id)) {
         errors.push({ path: taskPath, message: `Duplicate task id "${task.id}" in track "${track.id}"` });
       }
