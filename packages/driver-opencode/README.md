@@ -29,7 +29,6 @@ pipeline:
         - id: implement
           name: Implement feature
           prompt: 'Refactor the database layer to use connection pooling'
-          output: ./output/implement.txt
 ```
 
 Or load it programmatically:

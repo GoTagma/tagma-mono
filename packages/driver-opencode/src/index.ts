@@ -105,33 +105,87 @@ const OpenCodeDriver: DriverPlugin = {
   },
 
   parseResult(stdout: string): DriverResultMeta {
-    try {
-      const json = JSON.parse(stdout);
+    // opencode --format json emits NDJSON — one JSON object per line
+    // (step_start / text / step_finish / …). The previous single
+    // `JSON.parse(stdout)` always threw on this shape and fell through to
+    // the catch, returning sessionId:null and losing session resume.
+    // Walk line-by-line, pick up the first sessionID we see, concatenate
+    // any text-type parts into normalizedOutput, and bail early on error
+    // payloads.
+    const lines = stdout.split(/\r?\n/);
+    let sessionId: string | undefined;
+    const textParts: string[] = [];
+    let sawAnyJson = false;
+    let errorReason: string | null = null;
 
-      if (json.type === 'error') {
-        // M12: opencode emits {type:"error", error:{...}} JSON payloads with
-        // exit code 0 for transient API failures. Without this branch the
-        // engine treated those as success and downstream tasks ran on top
-        // of the bogus output. Force a failure so the user sees a useful
-        // error in the UI and skip_downstream / stop_all kick in.
-        const reason =
-          typeof json.error?.message === 'string'
-            ? `opencode reported error: ${json.error.message}`
-            : typeof json.error === 'string'
-              ? `opencode reported error: ${json.error}`
-              : 'opencode emitted an error JSON payload';
-        return {
-          forceFailure: true,
-          forceFailureReason: reason,
-        };
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line) continue;
+      let json: Record<string, unknown>;
+      try {
+        json = JSON.parse(line) as Record<string, unknown>;
+      } catch {
+        continue; // tolerate interleaved non-JSON noise
       }
-      return {
-        sessionId: json.session_id ?? json.sessionId ?? null,
-        normalizedOutput: json.result ?? json.text ?? json.content ?? stdout,
-      };
-    } catch {
-      return { normalizedOutput: stdout };
+      sawAnyJson = true;
+
+      // M12: opencode sometimes emits {type:"error", error:{...}} with
+      // exit 0 for transient API failures. Force-fail so downstream
+      // skip_downstream / stop_all kicks in.
+      if (json.type === 'error') {
+        const err = json.error as { message?: unknown } | string | undefined;
+        const msg =
+          typeof err === 'object' && err !== null && typeof err.message === 'string'
+            ? err.message
+            : typeof err === 'string'
+              ? err
+              : null;
+        errorReason = msg
+          ? `opencode reported error: ${msg}`
+          : 'opencode emitted an error JSON payload';
+        continue;
+      }
+
+      // Session id — opencode uses `sessionID` (camelCase with capital D).
+      // Keep `session_id` / `sessionId` as fallbacks for forward/backward
+      // compatibility with other shapes.
+      if (!sessionId) {
+        const sid =
+          (json.sessionID as string | undefined) ??
+          (json.session_id as string | undefined) ??
+          (json.sessionId as string | undefined) ??
+          null;
+        if (typeof sid === 'string' && sid.length > 0) sessionId = sid;
+      }
+
+      // Extract human-readable text from text-type parts.
+      if (json.type === 'text') {
+        const part = json.part as { text?: unknown } | undefined;
+        if (part && typeof part.text === 'string') {
+          textParts.push(part.text);
+        }
+      } else if (typeof json.result === 'string') {
+        textParts.push(json.result);
+      } else if (typeof json.content === 'string') {
+        textParts.push(json.content);
+      }
     }
+
+    if (errorReason) {
+      return { forceFailure: true, forceFailureReason: errorReason };
+    }
+
+    // If nothing parsed as JSON, treat stdout as plain text.
+    const normalizedOutput = !sawAnyJson
+      ? stdout
+      : textParts.length > 0
+        ? textParts.join('\n')
+        : stdout;
+
+    return {
+      sessionId,
+      normalizedOutput,
+    };
   },
 };
 

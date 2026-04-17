@@ -305,11 +305,11 @@ export function TaskConfigPanel({
   );
 
   // F7: continue_from candidates — widen to any upstream dependency. The SDK
-  // accepts continue_from when upstream has an `output` file, upstream driver
-  // supports parseResult, or downstream driver supports session resume. The
-  // client can't perfectly know driver capabilities yet (TODO: expose
-  // DriverCapabilities via /api/registry) so we let server-side validation
-  // report incompatibility and offer every upstream dep as a candidate.
+  // accepts continue_from when upstream driver supports parseResult, or
+  // downstream driver supports session resume. The client can't perfectly
+  // know driver capabilities yet (TODO: expose DriverCapabilities via
+  // /api/registry) so we let server-side validation report incompatibility
+  // and offer every upstream dep as a candidate.
   const continueFromCandidates = dependencies;
   const downstreamTasksThatDependOnMe = useMemo(() => {
     const out: { trackId: string; taskId: string; qualified: string }[] = [];

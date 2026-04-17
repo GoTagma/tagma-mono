@@ -30,7 +30,6 @@ pipeline:
         - id: implement
           name: Implement feature
           prompt: 'Add input validation to the signup form'
-          output: ./output/implement.txt
 ```
 
 Or load it programmatically:

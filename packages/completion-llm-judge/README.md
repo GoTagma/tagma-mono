@@ -34,7 +34,6 @@ pipeline:
         - id: find-bugs
           name: Find failing tests
           prompt: 'List all failing tests in the current workspace with their file paths.'
-          output: ./output/find-bugs.md
           completion:
             type: llm_judge
             rubric: |

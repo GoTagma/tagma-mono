@@ -36,7 +36,6 @@ pipeline:
         - id: draft
           name: Draft migration guide
           prompt: 'Draft a migration guide for the new event bus API'
-          output: ./output/draft.md
 ```
 
 Or load it programmatically:

@@ -41,7 +41,6 @@ pipeline:
         - id: implement
           name: Implement feature
           prompt: 'Add a /health endpoint to src/server.ts'
-          output: ./output/implement.txt
         - id: test
           name: Run tests
           command: 'bun test'
@@ -113,7 +112,6 @@ pipeline:
         - id: task-a
           name: Do something
           prompt: 'Your prompt here'
-          output: ./output/task-a.txt
           timeout: 10m
           driver: claude-code
           model: claude-sonnet-4-6
@@ -191,7 +189,6 @@ Each hook value can be a single command string or an array of commands.
 | `command`       | `string`             | No\*     | —                    | Shell command to execute directly. \*Mutually exclusive with `prompt`                                  |
 | `depends_on`    | `string[]`           | No       | —                    | Task IDs that must complete before this task runs. Cross-track refs use `trackId.taskId`               |
 | `continue_from` | `string`             | No       | —                    | Task ID whose output/session to continue from (session handoff). Cross-track refs use `trackId.taskId` |
-| `output`        | `string`             | No       | —                    | File path to write task stdout to (relative to workDir)                                                |
 | `driver`        | `string`             | No       | Inherited from track | Driver override for this task                                                                          |
 | `model`         | `string`             | No       | Inherited from track | Model name override for this task                                                                      |
 | `agent_profile` | `string`             | No       | Inherited from track | Agent profile override                                                                                 |
