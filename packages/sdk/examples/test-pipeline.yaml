@@ -1,15 +1,16 @@
-# 基础功能全覆盖测试 pipeline
-# 外部插件只加载 @tagma/driver-opencode
-# trigger / completion / middleware 全部使用 SDK 内置（bootstrapBuiltins 注册）
+# End-to-end smoke-test pipeline covering the full plugin surface.
+# Only @tagma/driver-opencode is loaded as an external plugin.
+# trigger / completion / middleware plugins are all SDK built-ins
+# (registered by bootstrapBuiltins).
 pipeline:
   name: full-feature-smoke-test
-  driver: opencode                # pipeline 级默认 driver（会被 track/task 继承）
-  model: opencode/big-pickle       # pipeline 级默认 model（必须是 provider/model 两段式）
-  timeout: 30m                    # pipeline 级超时
+  driver: opencode                # pipeline-level default driver (inherited by track/task)
+  model: opencode/big-pickle       # pipeline-level default model (must be provider/model)
+  timeout: 30m                    # pipeline-level timeout
   plugins:
-    - '@tagma/driver-opencode'    # 唯一的外部插件
+    - '@tagma/driver-opencode'    # the only external plugin
 
-  # ---- 生命周期 hooks：单条命令 和 命令数组 两种形式都覆盖 ----
+  # ---- lifecycle hooks: exercise both single-command and command-array forms ----
   hooks:
     pipeline_start: 'echo "[hook] pipeline_start"'
     task_start: 'echo "[hook] task_start"'
@@ -22,7 +23,7 @@ pipeline:
 
   tracks:
     # =========================================================
-    # Track A：AI prompt 任务 + 各类 trigger / completion / middleware
+    # Track A: AI prompt tasks + various trigger / completion / middleware
     # =========================================================
     - id: backend
       name: Backend
@@ -30,26 +31,27 @@ pipeline:
       driver: opencode
       model: opencode/big-pickle
       agent_profile: senior
-      cwd: ./                     # track 级工作目录
+      cwd: ./                     # track-level working directory
       permissions:
         read: true
         write: true
         execute: false
-      on_failure: skip_downstream  # A 失败时跳过下游，而不是终止整条 pipeline
+      on_failure: skip_downstream  # if A fails, skip downstream rather than killing the whole pipeline
 
-      # track 级 middleware：所有 task 默认都会应用
+      # track-level middleware: applied to every task by default
       middlewares:
         - type: static_context
           file: ./README.md
           label: Project Readme
 
       tasks:
-        # 1) 手动审批 trigger + exit_code completion
+        # 1) manual approval trigger + exit_code completion
         - id: plan
           name: Plan the change
           prompt: |
-            列出对 src/server.ts 添加 /health 端点需要改动的文件清单。
-            只输出 markdown 列表，不要写代码。
+            List every file that needs to change to add a /health endpoint
+            to src/server.ts.
+            Respond with a markdown bullet list only. Do not write code.
           timeout: 5m
           trigger:
             type: manual
@@ -61,18 +63,19 @@ pipeline:
             type: exit_code
             expect: 0
 
-        # 2) continue_from 会话续接（靠连线传上下文）+ task 级 middleware 覆盖
+        # 2) continue_from session handoff (context flows via the edge)
+        #    + task-level middleware override
         - id: implement
           name: Implement /health endpoint
-          prompt: '基于上一步的计划，真正修改代码实现 /health 端点。'
-          continue_from: plan            # 同 track，裸引用
+          prompt: 'Based on the previous plan, actually modify the code to implement the /health endpoint.'
+          continue_from: plan            # same track, bare reference
           depends_on: [plan]
-          # task 级 middleware 覆盖 track 级列表（不是追加）
+          # task-level middleware REPLACES (not appends to) the track-level list
           middlewares:
             - type: static_context
               file: ./package.json
               label: Package Manifest
-          permissions:                   # task 级权限覆盖
+          permissions:                   # task-level permission override
             read: true
             write: true
             execute: true
@@ -80,38 +83,38 @@ pipeline:
             type: exit_code
             expect: 0
 
-        # 3) 禁用继承的 middleware（传空数组）+ output_check completion
+        # 3) disable inherited middleware (empty array) + output_check completion
         - id: review
           name: Self-review the diff
-          prompt: '对你刚才的改动做一次自审，输出 PASS 或 FAIL 开头的一行总结。'
+          prompt: 'Self-review the changes you just made. Output a single line starting with PASS or FAIL.'
           continue_from: implement
           depends_on: [implement]
-          middlewares: []                # 显式清空继承
+          middlewares: []                # explicitly clear inheritance
           completion:
             type: output_check
-            check: 'grep -q "^PASS"'     # stdin 会收到 task stdout
+            check: 'grep -q "^PASS"'     # stdin receives the task stdout
             timeout: 30s
 
     # =========================================================
-    # Track B：command 任务 + file trigger + 跨 track 依赖
+    # Track B: command tasks + file trigger + cross-track dependency
     # =========================================================
     - id: ops
       name: Ops
       color: '#10b981'
-      driver: opencode               # 用不到（全是 command 任务），但保留演示继承
-      on_failure: ignore             # B 失败也不影响其它 track
+      driver: opencode               # unused here (all command tasks) — kept to demo inheritance
+      on_failure: ignore             # failures in B do not affect other tracks
       permissions:
         read: true
         write: true
         execute: true
 
       tasks:
-        # 4) 纯 shell command，无 trigger/completion
+        # 4) plain shell command, no trigger/completion
         - id: prep
           name: Prepare signal dir
           command: 'mkdir -p ./.tagma/signal && echo prepared > ./.tagma/signal/.ready'
 
-        # 5) file trigger：等待某个文件出现后再跑
+        # 5) file trigger: wait for a file to appear before running
         - id: wait-signal
           name: Wait for signal file
           command: 'echo "signal received"'
@@ -122,18 +125,18 @@ pipeline:
             timeout: 1m
           completion:
             type: exit_code
-            expect: [0]                # 数组形式：多个可接受退出码
+            expect: [0]                # array form: multiple acceptable exit codes
 
-        # 6) 跨 track 依赖 & 跨 track continue_from（qualified 引用）
+        # 6) cross-track dependency & cross-track continue_from (qualified reference)
         - id: summarize
           name: Summarize backend work
-          prompt: '读取 backend.review 的结论，用一句话总结。'
+          prompt: 'Read the conclusion of backend.review and summarise it in one sentence.'
           depends_on:
             - wait-signal
-            - backend.review           # 跨 track：trackId.taskId
+            - backend.review           # cross-track: trackId.taskId
           continue_from: backend.review
           timeout: 3m
-          driver: opencode             # task 级显式声明（覆盖继承）
+          driver: opencode             # task-level explicit declaration (overrides inheritance)
           model: opencode/big-pickle
           completion:
             type: exit_code

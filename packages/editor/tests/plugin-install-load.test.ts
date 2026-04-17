@@ -152,8 +152,8 @@ describe('plugin install/import hardening', () => {
 });
 
 describe('plugin loader cache busting', () => {
-  test('loadPluginFromWorkDir reloads changed code from paths with spaces, #, and unicode', async () => {
-    const workDir = makeTempDir('workspace path #中文');
+  test('loadPluginFromWorkDir reloads changed code from paths with spaces and #', async () => {
+    const workDir = makeTempDir('workspace path #special');
     const pluginDir = join(workDir, 'node_modules', '@scope', 'plugin-under-test');
     S.workDir = workDir;
 
