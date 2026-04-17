@@ -17,7 +17,7 @@
     },
     "packages/completion-llm-judge": {
       "name": "@tagma/completion-llm-judge",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "devDependencies": {
         "bun-types": "^1.3.11",
         "typescript": "^5.8.3",
@@ -28,7 +28,7 @@
     },
     "packages/driver-codex": {
       "name": "@tagma/driver-codex",
-      "version": "0.1.12",
+      "version": "0.1.13",
       "devDependencies": {
         "bun-types": "^1.3.11",
         "typescript": "^5.8.3",
@@ -39,7 +39,7 @@
     },
     "packages/driver-opencode": {
       "name": "@tagma/driver-opencode",
-      "version": "0.1.12",
+      "version": "0.1.13",
       "devDependencies": {
         "bun-types": "^1.3.11",
         "typescript": "^5.8.3",
@@ -83,7 +83,7 @@
     },
     "packages/middleware-lightrag": {
       "name": "@tagma/middleware-lightrag",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "devDependencies": {
         "bun-types": "^1.3.11",
         "typescript": "^5.8.3",
@@ -94,7 +94,7 @@
     },
     "packages/sdk": {
       "name": "@tagma/sdk",
-      "version": "0.4.12",
+      "version": "0.4.13",
       "dependencies": {
         "@tagma/types": "workspace:*",
         "chokidar": "^4.0.0",
@@ -108,7 +108,7 @@
     },
     "packages/trigger-webhook": {
       "name": "@tagma/trigger-webhook",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "devDependencies": {
         "bun-types": "^1.3.11",
         "typescript": "^5.8.3",
@@ -119,7 +119,7 @@
     },
     "packages/types": {
       "name": "@tagma/types",
-      "version": "0.2.6",
+      "version": "0.2.7",
       "devDependencies": {
         "typescript": "^5.8.3",
       },
