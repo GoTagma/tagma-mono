@@ -147,6 +147,10 @@ export function registerPipelineRoutes(app: express.Express): void {
     const { trackId, task } = req.body;
     S.config = upsertTask(S.config, trackId, task as RawTaskConfig);
     S.config = reconcilePipelinePlugins(S.config);
+    // Paste/duplicate/import can drop in a task whose continue_from no
+    // longer points at a resolvable prompt upstream. Reconcile here so a
+    // dangling ref doesn't sit in memory until the next dependency edit.
+    S.config = reconcileContinueFrom(S.config);
     replyWithState(res);
   });
 
@@ -172,6 +176,10 @@ export function registerPipelineRoutes(app: express.Express): void {
     const updated = stripEmptyFields(merged, TASK_REQUIRED_KEYS) as unknown as RawTaskConfig;
     S.config = upsertTask(S.config, trackId, updated);
     S.config = reconcilePipelinePlugins(S.config);
+    // Switching a task prompt↔command invalidates its continue_from, and
+    // editing the prompt field itself can change its eligibility as an
+    // upstream continue_from source. Reconcile to keep refs consistent.
+    S.config = reconcileContinueFrom(S.config);
     replyWithState(res);
   });
 
@@ -193,6 +201,10 @@ export function registerPipelineRoutes(app: express.Express): void {
       S.config = removeTrack(S.config, trackId);
     }
     S.config = reconcilePipelinePlugins(S.config);
+    // Removing a task can reduce a downstream's prompt-upstream count to
+    // exactly one, at which point reconcile should auto-pick continue_from.
+    // It also strips any continue_from whose backing dep was just dropped.
+    S.config = reconcileContinueFrom(S.config);
     replyWithState(res);
   });
 
@@ -206,6 +218,11 @@ export function registerPipelineRoutes(app: express.Express): void {
     S.config = transferTask(S.config, fromTrackId, taskId, toTrackId);
     if (S.config === prev) return res.status(404).json({ error: 'Task or track not found' });
     S.config = reconcilePipelinePlugins(S.config);
+    // Transferring a task across tracks can change the resolution of bare
+    // refs (qualifyRefs rewrites most, but continue_from eligibility
+    // depends on prompt-ness which doesn't change, so this is mostly a
+    // safety net against any lingering mismatch).
+    S.config = reconcileContinueFrom(S.config);
     replyWithState(res);
   });
 
@@ -243,6 +260,10 @@ export function registerPipelineRoutes(app: express.Express): void {
       updated = noCf as RawTaskConfig;
     }
     S.config = upsertTask(S.config, trackId, updated);
+    // Removing a dep can leave the task with exactly one prompt upstream
+    // and an empty continue_from. Reconcile mirrors POST /api/dependencies
+    // so the auto-pick behavior is symmetric on add and remove.
+    S.config = reconcileContinueFrom(S.config);
     replyWithState(res);
   });
 

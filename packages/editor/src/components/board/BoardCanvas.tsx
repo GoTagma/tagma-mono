@@ -1379,10 +1379,20 @@ export function BoardCanvas({
                 ty = tp.y + TASK_H / 2;
               const toTask = taskByQid.get(edge.to);
               const cf = toTask?.continue_from;
+              // Match the same resolution order as dag.ts / validate-raw.ts:
+              //   1. Fully-qualified ref → exact match
+              //   2. Bare ref, same-track → ${toTrackId}.${cf} === edge.from
+              //   3. Bare ref, cross-track (unambiguous) → edge.from endsWith `.${cf}`
+              // Without (3) a bare cross-track continue_from still draws the
+              // edge, but the style falls back to the default dep arrow
+              // instead of the purple continue arrow.
               const isContinue =
                 !!cf &&
                 (cf === edge.from ||
-                  (cf.includes('.') ? false : `${edge.to.split('.')[0]}.${cf}` === edge.from));
+                  (cf.includes('.')
+                    ? false
+                    : `${edge.to.split('.')[0]}.${cf}` === edge.from ||
+                      edge.from.endsWith(`.${cf}`)));
               const inCycle = cycleEdgeSet.has(ek);
 
               return (

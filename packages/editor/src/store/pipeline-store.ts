@@ -1445,6 +1445,10 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
           // Strip dependencies: referenced ids may not resolve in the new
           // location and would fail server-side validation.
           depends_on: undefined,
+          // continue_from without its backing dep is dangling. Clearing here
+          // prevents the cloned task being saved to YAML with a stale ref
+          // before any reconcile step runs.
+          continue_from: undefined,
         };
         fire(() => api.addTask(targetTrackId, cloned), { errorPrefix: 'Failed to paste task' });
         return true;
@@ -1459,6 +1463,8 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
           ...t,
           id: generateConfigId(),
           depends_on: undefined,
+          // continue_from without its backing dep is dangling after the clone.
+          continue_from: undefined,
         }));
         const myEpoch = ++fireEpoch;
         const preSnapshot = takeSnapshot();
@@ -1530,6 +1536,8 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
           id: generateConfigId(),
           name: task.name ? `${task.name} (copy)` : undefined,
           depends_on: undefined,
+          // continue_from without its backing dep is dangling after duplicate.
+          continue_from: undefined,
         };
         fire(() => api.addTask(trackId, cloned), { errorPrefix: 'Failed to duplicate task' });
         return true;
