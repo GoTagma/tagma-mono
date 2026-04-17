@@ -1,5 +1,5 @@
 import { useMemo, useState, useCallback, useRef } from 'react';
-import { Check, X, Clock, SkipForward, Ban, Loader2, X as XIcon } from 'lucide-react';
+import { Check, X, Clock, SkipForward, Ban, Loader2, X as XIcon, Terminal, MessageSquare } from 'lucide-react';
 import type { RunSummary, RunSummaryTask, TaskStatus } from '../../api/client';
 import {
   HEADER_W,
@@ -376,19 +376,27 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
                   </span>
                 </div>
                 <div className="flex items-center h-[16px] gap-[4px] pointer-events-none min-w-0 overflow-hidden bg-black/20 px-[3px]">
-                  {task.driver && (
-                    <span className="inline-flex items-center h-[14px] px-[4px] min-w-0 overflow-hidden bg-tagma-accent/12 text-tagma-accent/80">
-                      <span className="truncate text-[7.5px] font-mono leading-[14px]">
-                        {task.driver}
-                      </span>
+                  {task.command ? (
+                    <span className="inline-flex items-center h-[14px] px-[4px] min-w-0 overflow-hidden bg-sky-500/15 text-sky-400/80">
+                      <span className="truncate text-[7.5px] font-mono leading-[14px]">shell</span>
                     </span>
-                  )}
-                  {task.model && (
-                    <span className="inline-flex items-center h-[14px] px-[4px] min-w-0 overflow-hidden bg-tagma-muted/12 text-tagma-muted/80">
-                      <span className="truncate text-[7.5px] font-mono font-bold leading-[14px]">
-                        {task.model}
-                      </span>
-                    </span>
+                  ) : (
+                    <>
+                      {task.driver && (
+                        <span className="inline-flex items-center h-[14px] px-[4px] min-w-0 overflow-hidden bg-tagma-accent/12 text-tagma-accent/80">
+                          <span className="truncate text-[7.5px] font-mono leading-[14px]">
+                            {task.driver}
+                          </span>
+                        </span>
+                      )}
+                      {task.model && (
+                        <span className="inline-flex items-center h-[14px] px-[4px] min-w-0 overflow-hidden bg-tagma-muted/12 text-tagma-muted/80">
+                          <span className="truncate text-[7.5px] font-mono font-bold leading-[14px]">
+                            {task.model}
+                          </span>
+                        </span>
+                      )}
+                    </>
                   )}
                   {task.exitCode != null && (
                     <span
@@ -453,6 +461,17 @@ function HistoryTaskPanel({ task, onClose }: { task: RunSummaryTask; onClose: ()
             Result
           </div>
           <div className="pt-2.5 space-y-3">
+            <div className="flex items-center gap-2 text-[10px] text-tagma-muted">
+              {task.command ? (
+                <>
+                  <Terminal size={11} className="text-sky-400" /> Shell command
+                </>
+              ) : (
+                <>
+                  <MessageSquare size={11} className="text-tagma-muted/70" /> AI prompt
+                </>
+              )}
+            </div>
             <div>
               <label className="field-label">Status</label>
               <div
@@ -504,19 +523,19 @@ function HistoryTaskPanel({ task, onClose }: { task: RunSummaryTask; onClose: ()
                 </div>
               </div>
             )}
-            {task.driver && (
+            {!task.command && task.driver && (
               <div>
                 <label className="field-label">Driver</label>
                 <div className="text-[11px] font-mono text-tagma-muted">{task.driver}</div>
               </div>
             )}
-            {task.model && (
+            {!task.command && task.model && (
               <div>
                 <label className="field-label">Model</label>
                 <div className="text-[11px] font-mono text-tagma-muted">{task.model}</div>
               </div>
             )}
-            {task.sessionId && (
+            {!task.command && task.sessionId && (
               <div>
                 <label className="field-label">Session</label>
                 <div

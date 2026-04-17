@@ -12,6 +12,7 @@ import {
   rmSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import yaml from 'js-yaml';
 import {
   serializePipeline,
   loadPipeline,
@@ -20,8 +21,10 @@ import {
   InMemoryApprovalGateway,
   unregisterPlugin,
   generateRunId,
+  parseYaml,
+  buildRawDag,
 } from '@tagma/sdk';
-import type { PipelineEvent, EngineResult } from '@tagma/sdk';
+import type { PipelineEvent, EngineResult, RawPipelineConfig } from '@tagma/sdk';
 import type {
   TaskState,
   TaskStatus,
@@ -31,7 +34,7 @@ import type {
 } from '@tagma/types';
 import { assertSafePluginName } from '../plugin-safety.js';
 import { errorMessage } from '../path-utils.js';
-import { S, MAX_LOG_RUNS } from '../state.js';
+import { S, MAX_LOG_RUNS, lenientParseYaml } from '../state.js';
 import { loadedPluginMeta, loadPluginFromWorkDir, classifyServerError } from '../plugins/loader.js';
 
 // ═══ Pipeline Run ═══
@@ -224,27 +227,79 @@ interface RunSummary {
   // the history view can offer a "view yaml" toggle without us having to
   // probe the filesystem.
   hasYamlSnapshot?: boolean;
+  // Origin tracking for replay-from-history runs. Set to the runId of the
+  // immediate source snapshot this run was replayed from. Absent for runs
+  // launched from the editor (the "classic" path).
+  //
+  // Deliberately records only ONE level of provenance: if C was replayed
+  // from B which was replayed from A, C.replayedFromRunId = "B" — we do
+  // NOT chain back to A. This keeps the history view easy to reason about
+  // (every replay is anchored to a concrete, still-inspectable snapshot)
+  // and sidesteps unbounded lineage growth when users iterate on a run.
+  replayedFromRunId?: string;
 }
 
-function persistRunSummary(cwd: string, runId: string, summary: RunSummary): void {
+/**
+ * Persist summary.json + pipeline.yaml for a completed run.
+ *
+ * `executedConfig` is the config the engine actually ran against — captured
+ * at run-start and held stable until persistence, so a user who edits the
+ * editor mid-run cannot cause the snapshot or summary fields to drift. This
+ * also makes snapshot-replay runs (which run a historical yaml without
+ * touching `S.config`) record their own identity, not the editor's.
+ *
+ * `yamlOverride`, if provided, is written verbatim as pipeline.yaml instead
+ * of re-serializing `executedConfig`. Used by replay runs to preserve the
+ * exact bytes (and comments) of the source snapshot.
+ */
+function persistRunSummary(
+  cwd: string,
+  runId: string,
+  summary: RunSummary,
+  executedConfig: RawPipelineConfig,
+  yamlOverride?: string,
+): void {
   const logsDir = join(cwd, '.tagma', 'logs', runId);
   if (!existsSync(logsDir)) {
     mkdirSync(logsDir, { recursive: true });
   }
-  // Snapshot the live yaml next to summary.json so the history view can
-  // show the exact pipeline definition this run executed against, even
-  // after the user has since edited or renamed the file. We copy from
-  // S.yamlPath (rather than re-serializing S.config) so any comments and
-  // formatting the user wrote by hand are preserved verbatim.
+  // Snapshot the pipeline definition next to summary.json so the history
+  // view can show the exact config this run executed against, even after
+  // the user has since edited or renamed the file.
+  //
+  // The engine ran against `executedConfig`, which may diverge from both
+  // the current in-memory S.config (user kept editing) and the on-disk
+  // yaml (unsaved edits, or a replay of a historical snapshot). We prefer
+  // the on-disk file ONLY when its parsed form matches executedConfig —
+  // that lets us preserve user comments/formatting for normal runs while
+  // guaranteeing accuracy when the two have drifted apart.
   let hasYamlSnapshot = false;
-  if (S.yamlPath && existsSync(S.yamlPath)) {
-    try {
-      const yamlText = readFileSync(S.yamlPath, 'utf-8');
-      writeFileSync(join(logsDir, 'pipeline.yaml'), yamlText, 'utf-8');
-      hasYamlSnapshot = true;
-    } catch (e) {
-      console.warn('[run] failed to snapshot pipeline.yaml:', e);
+  try {
+    const executedYaml = serializePipeline(executedConfig);
+    let snapshotText = yamlOverride ?? executedYaml;
+    if (yamlOverride === undefined && S.yamlPath && existsSync(S.yamlPath)) {
+      try {
+        const diskText = readFileSync(S.yamlPath, 'utf-8');
+        // Re-serialize the parsed disk yaml through the same code path to
+        // neutralize cosmetic differences (indentation, key order, trailing
+        // newlines) and compare semantically. If equal, prefer the original
+        // disk text so user comments survive.
+        const diskParsed = yaml.load(diskText) as unknown;
+        const diskReserialized =
+          diskParsed && typeof diskParsed === 'object'
+            ? serializePipeline(diskParsed as RawPipelineConfig)
+            : null;
+        if (diskReserialized === executedYaml) {
+          snapshotText = diskText;
+        }
+      } catch {
+        /* disk read/parse failed — fall through to serialized executedConfig */
+      }
     }
+    writeFileSync(join(logsDir, 'pipeline.yaml'), snapshotText, 'utf-8');
+    hasYamlSnapshot = true;
+  } catch (e) {
+    console.warn('[run] failed to snapshot pipeline.yaml:', e);
   }
   writeFileSync(
     join(logsDir, 'summary.json'),
@@ -354,6 +409,8 @@ interface RunHistoryEntry {
   pipelineName?: string;
   success?: boolean;
   finishedAt?: string;
+  /** Source snapshot runId when this run was launched via replay. */
+  replayedFromRunId?: string;
   taskCounts?: {
     total: number;
     success: number;
@@ -462,7 +519,7 @@ export function registerRunRoutes(app: express.Express): void {
     req.on('close', () => sseClients.delete(res));
   });
 
-  app.post('/api/run/start', async (_req, res) => {
+  app.post('/api/run/start', async (req, res) => {
     // B4: Check both the active controller AND the synchronous lock so two
     // concurrent POST requests can't both pass the check before either sets it.
     if (activeRunAbort || runStarting) {
@@ -470,19 +527,66 @@ export function registerRunRoutes(app: express.Express): void {
     }
     runStarting = true;
 
-    // Serialize the in-memory editor config to YAML and hand it to the SDK.
-    // The round-trip is intentional: it exercises the same load path the CLI
-    // uses (parse + resolution) so the run sees exactly what YAML-driven
-    // consumers would see.
-    const content = serializePipeline(S.config);
     const cwd = S.workDir || process.cwd();
+
+    // Replay-from-history support: when the client passes `{ fromRunId }`,
+    // load the pipeline.yaml captured in that run's log dir and execute it
+    // as-is. This deliberately does NOT touch `S.config` — the editor keeps
+    // whatever the user is currently editing; the replay run is isolated
+    // and records itself as a brand-new entry under .tagma/logs/<newRunId>.
+    //
+    // Body parsing is tolerant: JSON body may be missing (classic start).
+    const fromRunId: string | null =
+      typeof req.body?.fromRunId === 'string' && /^run_[A-Za-z0-9_-]+$/.test(req.body.fromRunId)
+        ? req.body.fromRunId
+        : null;
+
+    // Resolve the "effective config" for this run. Normal path: the editor's
+    // in-memory S.config (round-tripped through serializePipeline so we
+    // exercise the same load path a CLI user would hit). Replay path: parse
+    // the historical yaml snapshot. Either way we never mutate S.config.
+    let effectiveConfig: RawPipelineConfig;
+    let content: string;
+    let yamlOverride: string | undefined;
+    if (fromRunId !== null) {
+      const yamlPath = join(cwd, '.tagma', 'logs', fromRunId, 'pipeline.yaml');
+      if (!existsSync(yamlPath)) {
+        runStarting = false;
+        return res
+          .status(404)
+          .json({ error: `No yaml snapshot found for run ${fromRunId}; cannot replay` });
+      }
+      try {
+        const diskYaml = readFileSync(yamlPath, 'utf-8');
+        try {
+          effectiveConfig = parseYaml(diskYaml);
+        } catch {
+          // Strict parse failed (e.g. the snapshot is from an older version
+          // with missing fields) — fall back to the same lenient loader the
+          // editor uses for historical yaml files.
+          effectiveConfig = lenientParseYaml(diskYaml, `Replay ${fromRunId}`);
+        }
+        content = serializePipeline(effectiveConfig);
+        yamlOverride = diskYaml; // keep the original bytes (comments intact)
+      } catch (err: unknown) {
+        runStarting = false;
+        const message = err instanceof Error ? err.message : String(err);
+        return res.status(400).json({ error: `Failed to load snapshot yaml: ${message}` });
+      }
+    } else {
+      effectiveConfig = S.config;
+      // Round-trip through the SDK's serializer so replay and classic runs
+      // both go through the same load path — any normalization the SDK
+      // applies to yaml content stays consistent across both entrypoints.
+      content = serializePipeline(effectiveConfig);
+    }
 
     // H6: Pre-load plugins atomically — validate every name first, then load
     // them in order, and on any failure unregister everything we already
     // loaded so the SDK registry never ends up half-populated. The previous
     // path returned mid-iteration with whatever it had managed to register,
     // leaving stale handlers visible to subsequent runs.
-    const pluginsToLoad = S.config.plugins ?? [];
+    const pluginsToLoad = effectiveConfig.plugins ?? [];
     if (pluginsToLoad.length > 0) {
       for (const name of pluginsToLoad) {
         try {
@@ -562,10 +666,11 @@ export function registerRunRoutes(app: express.Express): void {
     // Without this, a mid-setup exception would leave the lock stuck at `true`
     // and block every subsequent /api/run/start until server restart.
     try {
-      // Build initial task list from the raw (editor-side) config. This keeps
+      // Build initial task list from the effective raw config. This keeps
       // the qualified taskIds aligned with the pipeline DAG that the SDK
-      // produces internally (`{trackId}.{taskId}`).
-      const initialTasks: RunTaskWire[] = S.config.tracks.flatMap((track) =>
+      // produces internally (`{trackId}.{taskId}`). For replay runs this
+      // draws from the historical snapshot, not the editor.
+      const initialTasks: RunTaskWire[] = effectiveConfig.tracks.flatMap((track) =>
         track.tasks.map((task) => ({
           taskId: `${track.id}.${task.id}`,
           trackId: track.id,
@@ -611,7 +716,7 @@ export function registerRunRoutes(app: express.Express): void {
       // timeline instead of a plaintext log (§3.12).
       const taskSnapshots = new Map<string, RunSummaryTask>();
       for (const t of initialTasks) {
-        const track = S.config.tracks.find((tr) => tr.id === t.trackId);
+        const track = effectiveConfig.tracks.find((tr) => tr.id === t.trackId);
         const taskConfig = track?.tasks.find((tc) => `${track!.id}.${tc.id}` === t.taskId);
         const deps = (taskConfig?.depends_on ?? []).map((dep) =>
           dep.includes('.') ? dep : `${t.trackId}.${dep}`,
@@ -843,21 +948,48 @@ export function registerRunRoutes(app: express.Express): void {
           // Persist a rich summary.json so RunHistoryBrowser can render a
           // per-task timeline for this run (§3.12).
           try {
-            persistRunSummary(cwd, runId, {
+            // For positions: classic runs get the live editor layout (the
+            // tasks we ran match S.config, so those coords make sense); for
+            // replay runs, carry the original snapshot's positions forward
+            // if that run still has them, otherwise leave empty so history
+            // view falls back to its default layout. We deliberately do NOT
+            // read S.layout.positions for replays — those are for a possibly
+            // completely different pipeline the user is now editing.
+            let persistedPositions: Record<string, { x: number }> = {};
+            if (fromRunId === null) {
+              persistedPositions = { ...S.layout.positions };
+            } else {
+              const priorSummary = readRunSummary(cwd, fromRunId);
+              if (priorSummary?.positions) {
+                persistedPositions = { ...priorSummary.positions };
+              }
+            }
+            persistRunSummary(
+              cwd,
               runId,
-              pipelineName: S.config.name,
-              startedAt: runStartedAt,
-              finishedAt: new Date().toISOString(),
-              success: runSuccess ?? false,
-              error: runErrorMessage,
-              tasks: Array.from(taskSnapshots.values()),
-              tracks: S.config.tracks.map((tr) => ({
-                id: tr.id,
-                name: tr.name,
-                color: tr.color,
-              })),
-              positions: { ...S.layout.positions },
-            });
+              {
+                runId,
+                pipelineName: effectiveConfig.name,
+                startedAt: runStartedAt,
+                finishedAt: new Date().toISOString(),
+                success: runSuccess ?? false,
+                error: runErrorMessage,
+                tasks: Array.from(taskSnapshots.values()),
+                tracks: effectiveConfig.tracks.map((tr) => ({
+                  id: tr.id,
+                  name: tr.name,
+                  color: tr.color,
+                })),
+                positions: persistedPositions,
+                // Only record the IMMEDIATE source. If fromRunId itself was
+                // already a replay, we deliberately ignore its own upstream
+                // — single-level provenance keeps the history view linear
+                // and the inspection target always a file that still exists.
+                ...(fromRunId !== null ? { replayedFromRunId: fromRunId } : {}),
+              },
+              effectiveConfig,
+              yamlOverride,
+            );
           } catch (persistErr) {
             console.error('[run] failed to persist summary.json:', persistErr);
           }
@@ -956,6 +1088,7 @@ export function registerRunRoutes(app: express.Express): void {
               pipelineName: summary?.pipelineName,
               success: summary?.success,
               finishedAt: summary?.finishedAt,
+              replayedFromRunId: summary?.replayedFromRunId,
               taskCounts: summary ? computeTaskCounts(summary.tasks) : undefined,
             };
           } catch {
@@ -1042,5 +1175,44 @@ export function registerRunRoutes(app: express.Express): void {
       return res.status(404).json({ error: 'yaml snapshot not found' });
     }
     res.type('text/yaml').send(readFileSync(yamlPath, 'utf-8'));
+  });
+
+  // Replay preview: returns everything the RunView needs to render the
+  // historical pipeline as if it were running, without actually starting
+  // it. The UI calls this first so it can populate the run-store's
+  // snapshot / dagEdges / positions overrides, THEN issues the real
+  // /api/run/start with { fromRunId } to execute. Splitting the two steps
+  // keeps the render path identical to a normal live run (the store gets
+  // the same data shape) and avoids racing the SSE run_start against
+  // still-loading yaml.
+  app.get('/api/run/history/:runId/replay-info', (req, res) => {
+    const { runId } = req.params;
+    if (!/^run_[A-Za-z0-9_-]+$/.test(runId)) {
+      return res.status(400).json({ error: 'invalid runId' });
+    }
+    const cwd = S.workDir || process.cwd();
+    const yamlPath = join(cwd, '.tagma', 'logs', runId, 'pipeline.yaml');
+    if (!existsSync(yamlPath)) {
+      return res.status(404).json({ error: 'yaml snapshot not found' });
+    }
+    try {
+      const diskYaml = readFileSync(yamlPath, 'utf-8');
+      let config: RawPipelineConfig;
+      try {
+        config = parseYaml(diskYaml);
+      } catch {
+        // Tolerate older/partial snapshots the strict parser rejects.
+        config = lenientParseYaml(diskYaml, `Replay ${runId}`);
+      }
+      const dag = buildRawDag(config);
+      // Carry the captured task positions forward so the replay renders
+      // with the same layout the original run used. An older snapshot
+      // without positions falls back to {} and the UI auto-lays-out.
+      const priorSummary = readRunSummary(cwd, runId);
+      const positions = priorSummary?.positions ?? {};
+      res.json({ config, dagEdges: dag.edges, positions });
+    } catch (err: unknown) {
+      res.status(500).json({ error: errorMessage(err) });
+    }
   });
 }

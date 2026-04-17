@@ -76,7 +76,12 @@ function countByStatus(tasks: Map<string, { status: TaskStatus }>) {
   return counts;
 }
 
-export function RunView({ config: liveConfig, dagEdges, positions, onBack }: RunViewProps) {
+export function RunView({
+  config: liveConfig,
+  dagEdges: liveDagEdges,
+  positions: livePositions,
+  onBack,
+}: RunViewProps) {
   const {
     status,
     tasks,
@@ -90,6 +95,8 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
     pendingApprovals,
     resolveApproval,
     snapshot,
+    replayDagEdges,
+    replayPositions,
     viewMode,
   } = useRunStore();
 
@@ -97,6 +104,12 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
   // pipeline is actually running with. Fall back to the live editor config
   // only when no snapshot exists (e.g. idle state showing history).
   const config = snapshot ?? liveConfig;
+  // For replay runs the editor's dagEdges/positions describe a completely
+  // different pipeline; use the overrides captured at startRun time. For
+  // normal runs (no override) we stick with the editor-derived props so
+  // live edits to the canvas still reflect in the RunView.
+  const dagEdges = replayDagEdges ?? liveDagEdges;
+  const positions = replayPositions ?? livePositions;
 
   const isTerminal =
     status === 'done' || status === 'failed' || status === 'aborted' || status === 'error';

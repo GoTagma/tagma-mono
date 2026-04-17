@@ -1,7 +1,29 @@
 import { create } from 'zustand';
 import { api } from '../api/client';
-import type { RunTaskState, RunEvent, RawPipelineConfig, ApprovalRequestInfo } from '../api/client';
+import type {
+  RunTaskState,
+  RunEvent,
+  RawPipelineConfig,
+  ApprovalRequestInfo,
+  DagEdge,
+} from '../api/client';
+import type { TaskPosition } from './pipeline-store';
 import { foldRunEvent, type RunFoldState } from './run-event-reducer';
+
+/**
+ * Optional bundle passed to startRun when launching a run whose config
+ * differs from the current editor state (e.g. replaying a historical
+ * snapshot from the run history). The editor's own dagEdges/positions
+ * describe a potentially unrelated pipeline, so we need our own.
+ *
+ * `fromRunId` is forwarded to the backend so it loads the snapshot yaml
+ * instead of serializing S.config.
+ */
+export interface RunStartOverrides {
+  readonly fromRunId?: string;
+  readonly dagEdges?: DagEdge[];
+  readonly positions?: Map<string, TaskPosition>;
+}
 
 interface RunStoreState extends RunFoldState {
   // `active` means the RunView is currently rendered. It is independent
@@ -15,8 +37,18 @@ interface RunStoreState extends RunFoldState {
   selectedTaskId: string | null;
   selectedTrackId: string | null;
   snapshot: RawPipelineConfig | null;
+  /**
+   * Overrides for DAG edges / task positions used when the run was
+   * launched from a source other than the current editor state (i.e.
+   * replay-from-history). Null for normal live runs — the RunView then
+   * falls back to the editor-derived props passed in from App.tsx.
+   */
+  replayDagEdges: DagEdge[] | null;
+  replayPositions: Map<string, TaskPosition> | null;
+  /** Original history runId this run was replayed from, if any. */
+  replayFromRunId: string | null;
 
-  startRun: (config: RawPipelineConfig) => Promise<void>;
+  startRun: (config: RawPipelineConfig, overrides?: RunStartOverrides) => Promise<void>;
   abortRun: () => Promise<void>;
   selectTask: (taskId: string | null) => void;
   selectTrack: (trackId: string | null) => void;
@@ -111,10 +143,13 @@ export const useRunStore = create<RunStoreState>((set, get) => {
     selectedTaskId: null,
     selectedTrackId: null,
     snapshot: null,
+    replayDagEdges: null,
+    replayPositions: null,
+    replayFromRunId: null,
     pendingApprovals: new Map<string, ApprovalRequestInfo>(),
     lastEventSeq: 0,
 
-    startRun: async (config) => {
+    startRun: async (config, overrides) => {
       // Defensive: a previous run may have been minimized (still alive
       // server-side). Close its SSE subscription before starting the new
       // one so we don't leak listeners / get stray events.
@@ -138,13 +173,16 @@ export const useRunStore = create<RunStoreState>((set, get) => {
         selectedTaskId: null,
         selectedTrackId: null,
         snapshot: config,
+        replayDagEdges: overrides?.dagEdges ?? null,
+        replayPositions: overrides?.positions ?? null,
+        replayFromRunId: overrides?.fromRunId ?? null,
         pendingApprovals: new Map(),
         lastEventSeq: 0,
       });
       // Subscribe to SSE events before starting
       unsubscribe = api.subscribeRunEvents(handleEvent);
       try {
-        await api.startRun();
+        await api.startRun(overrides?.fromRunId ? { fromRunId: overrides.fromRunId } : undefined);
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : 'Failed to start run';
         set({ status: 'error', error: message });
@@ -225,6 +263,9 @@ export const useRunStore = create<RunStoreState>((set, get) => {
         selectedTaskId: null,
         selectedTrackId: null,
         snapshot: null,
+        replayDagEdges: null,
+        replayPositions: null,
+        replayFromRunId: null,
         pendingApprovals: new Map(),
         lastEventSeq: 0,
       });

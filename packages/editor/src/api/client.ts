@@ -557,6 +557,8 @@ export interface RunHistoryEntry {
   pipelineName?: string;
   success?: boolean;
   finishedAt?: string;
+  /** Source runId when this run was launched via Replay (one level only). */
+  replayedFromRunId?: string;
   taskCounts?: RunHistoryTaskCounts;
 }
 
@@ -597,6 +599,8 @@ export interface RunSummary {
   tracks: RunSummaryTrack[];
   positions?: Record<string, { x: number }>;
   hasYamlSnapshot?: boolean;
+  /** Source runId when this run was launched via Replay (one level only). */
+  replayedFromRunId?: string;
 }
 
 // ── External state events (C5) ──
@@ -761,7 +765,27 @@ export const api = {
   saveLayout: (positions: Record<string, { x: number }>) =>
     request<{ ok: boolean }>('/layout', { method: 'PATCH', body: jsonBody({ positions }) }),
 
-  startRun: () => request<{ ok: boolean }>('/run/start', { method: 'POST' }),
+  // `fromRunId` triggers replay-from-history: the server loads
+  // pipeline.yaml from that log dir and executes it instead of the
+  // editor's S.config, without touching the editor state. A fresh
+  // runId is still generated so the replay records itself as a new
+  // history entry alongside the original.
+  startRun: (opts?: { fromRunId?: string }) =>
+    request<{ ok: boolean; runId?: string }>('/run/start', {
+      method: 'POST',
+      body: opts?.fromRunId ? jsonBody({ fromRunId: opts.fromRunId }) : undefined,
+    }),
+
+  // Fetch everything the RunView needs to render a historical pipeline
+  // as if it were the live one (config, DAG edges, positions). Paired
+  // with startRun({ fromRunId }) — call this first to populate the
+  // run-store, then kick off the run.
+  getRunReplayInfo: (runId: string) =>
+    request<{
+      config: RawPipelineConfig;
+      dagEdges: DagEdge[];
+      positions: Record<string, { x: number }>;
+    }>(`/run/history/${encodeURIComponent(runId)}/replay-info`),
 
   abortRun: () => request<{ ok: boolean }>('/run/abort', { method: 'POST' }),
 

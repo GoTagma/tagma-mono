@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import type { ReactNode } from 'react';
 import {
   FileText,
@@ -13,10 +13,13 @@ import {
   GitBranch,
   Code2,
   Copy,
+  Terminal,
+  Play,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import type { RunHistoryEntry, RunSummary, RunSummaryTask, TaskStatus } from '../../api/client';
 import { HistoryFlowView } from './HistoryFlowView';
+import { useRunStore } from '../../store/run-store';
 
 const STATUS_ICON: Record<TaskStatus, React.ReactNode> = {
   idle: <Clock size={9} className="text-tagma-muted/50" />,
@@ -203,21 +206,32 @@ export function RunHistoryBrowser({
     if (refreshToken > 0) loadHistory();
   }, [refreshToken, loadHistory]);
 
+  // Track the currently selected runId in a ref so async loaders can
+  // check they haven't been superseded before writing to state. Without
+  // this, rapid clicks between runs could let a slow response for run A
+  // overwrite the freshly-loaded summary/log/yaml for run B (B2).
+  const selectedRunIdRef = useRef<string | null>(null);
+
   const loadRun = useCallback(async (runId: string) => {
+    selectedRunIdRef.current = runId;
     setSelectedRunId(runId);
     setSummary(null);
     setLogContent('');
     setYamlContent(null);
     setSummaryError(null);
-    setViewMode('flow');
+    // B3: Do NOT force viewMode back to 'flow' here — keep whatever the
+    // user last chose so switching between runs doesn't disrupt a
+    // comparison session (e.g. side-by-side yaml inspection).
     setSummaryLoading(true);
     try {
       const s = await api.getRunSummary(runId);
+      if (selectedRunIdRef.current !== runId) return; // superseded
       setSummary(s);
     } catch (e: unknown) {
+      if (selectedRunIdRef.current !== runId) return;
       setSummaryError(e instanceof Error ? e.message : 'No summary available for this run');
     } finally {
-      setSummaryLoading(false);
+      if (selectedRunIdRef.current === runId) setSummaryLoading(false);
     }
   }, []);
 
@@ -226,11 +240,13 @@ export function RunHistoryBrowser({
     setLogContent('');
     try {
       const res = await api.getRunLog(runId);
+      if (selectedRunIdRef.current !== runId) return;
       setLogContent(res.content);
     } catch (e: unknown) {
+      if (selectedRunIdRef.current !== runId) return;
       setLogContent(`Error: ${e instanceof Error ? e.message : 'Failed to load log'}`);
     } finally {
-      setLogLoading(false);
+      if (selectedRunIdRef.current === runId) setLogLoading(false);
     }
   }, []);
 
@@ -239,11 +255,13 @@ export function RunHistoryBrowser({
     setYamlContent(null);
     try {
       const text = await api.getRunYamlSnapshot(runId);
+      if (selectedRunIdRef.current !== runId) return;
       setYamlContent(text ?? '');
     } catch (e: unknown) {
+      if (selectedRunIdRef.current !== runId) return;
       setYamlContent(`# Error: ${e instanceof Error ? e.message : 'Failed to load yaml snapshot'}`);
     } finally {
-      setYamlLoading(false);
+      if (selectedRunIdRef.current === runId) setYamlLoading(false);
     }
   }, []);
 
@@ -268,6 +286,44 @@ export function RunHistoryBrowser({
     }
     return out;
   }, [summary]);
+
+  // Replay: relaunch the currently-selected run's snapshot. Fetches the
+  // full render context (config + dagEdges + positions) first so the
+  // RunView can paint the snapshot's pipeline (which may differ
+  // substantially from the editor's current state) from the first frame.
+  // The run-store's `snapshot` / `replayDagEdges` / `replayPositions`
+  // override editor-derived props only while this run is active; once
+  // the user clicks Back, the editor view reappears untouched.
+  const startRunFromStore = useRunStore((s) => s.startRun);
+  const runStatus = useRunStore((s) => s.status);
+  const [replayLoading, setReplayLoading] = useState(false);
+  const [replayError, setReplayError] = useState<string | null>(null);
+  const replayBusy = replayLoading || runStatus === 'starting' || runStatus === 'running';
+
+  const handleReplay = useCallback(
+    async (runId: string) => {
+      if (replayBusy) return;
+      setReplayError(null);
+      setReplayLoading(true);
+      try {
+        const info = await api.getRunReplayInfo(runId);
+        const positionsMap = new Map<string, { x: number }>();
+        for (const [qid, pos] of Object.entries(info.positions ?? {})) {
+          positionsMap.set(qid, { x: pos.x });
+        }
+        await startRunFromStore(info.config, {
+          fromRunId: runId,
+          dagEdges: info.dagEdges,
+          positions: positionsMap,
+        });
+      } catch (e: unknown) {
+        setReplayError(e instanceof Error ? e.message : 'Failed to replay run');
+      } finally {
+        setReplayLoading(false);
+      }
+    },
+    [replayBusy, startRunFromStore],
+  );
 
   return (
     <div className="h-full flex flex-col bg-tagma-bg">
@@ -323,6 +379,10 @@ export function RunHistoryBrowser({
               }
             }}
             onDownload={() => summary && downloadSummary(summary)}
+            onReplay={selectedRunId ? () => handleReplay(selectedRunId) : undefined}
+            replayBusy={replayBusy}
+            replayError={replayError}
+            onOpenSource={(sourceRunId) => loadRun(sourceRunId)}
             tasksByTrack={tasksByTrack}
           />
         </section>
@@ -443,6 +503,18 @@ function RunListItem({
         <span className="text-[12px] tracking-wide text-tagma-text flex-1 truncate">
           {formatAbsTime(run.startedAt)}
         </span>
+        {run.replayedFromRunId && (
+          // Quick visual marker distinguishing replay runs from editor runs
+          // so the user can scan the list and see provenance at a glance.
+          // Full source id is in the Detail pane; here we only need a flag.
+          <span
+            className="shrink-0 inline-flex items-center gap-0.5 px-1 py-px text-[8px] font-mono uppercase tracking-wider border border-tagma-accent/40 text-tagma-accent/90"
+            title={`Replay of ${run.replayedFromRunId}`}
+          >
+            <Play size={7} />
+            replay
+          </span>
+        )}
         <span className="text-[9px] font-mono tabular-nums text-tagma-muted-dim shrink-0">
           {computeRunDuration(run)}
         </span>
@@ -539,6 +611,10 @@ function DetailPane({
   viewMode,
   onViewMode,
   onDownload,
+  onReplay,
+  replayBusy,
+  replayError,
+  onOpenSource,
   tasksByTrack,
 }: {
   selectedRunId: string | null;
@@ -552,6 +628,13 @@ function DetailPane({
   viewMode: 'summary' | 'flow' | 'log' | 'yaml';
   onViewMode: (mode: 'summary' | 'flow' | 'log' | 'yaml') => void;
   onDownload: () => void;
+  /** Replay this run from its pipeline.yaml snapshot. Disabled when the
+   *  snapshot is missing (older runs) or a run is already in progress. */
+  onReplay?: () => void;
+  replayBusy: boolean;
+  replayError: string | null;
+  /** Jump to the source run when viewing a replay's origin link. */
+  onOpenSource?: (sourceRunId: string) => void;
   tasksByTrack: Map<string, RunSummaryTask[]>;
 }) {
   const [copied, setCopied] = useState(false);
@@ -626,16 +709,38 @@ function DetailPane({
                 Yaml
               </button>
             </div>
-            {(viewMode === 'log' || viewMode === 'yaml') && (
-              <button
-                type="button"
-                onClick={handleCopy}
-                className="p-1 text-tagma-muted hover:text-tagma-text transition-colors"
-                title={`Copy ${viewMode} to clipboard`}
-              >
-                {copied ? <Check size={11} className="text-tagma-success" /> : <Copy size={11} />}
-              </button>
-            )}
+            {/* Always-present Copy affordance. Previously it popped in/out
+                based on viewMode, which made the toolbar visually jitter
+                when the user switched tabs. Keep it in layout and just
+                dim/disable it outside of Log/Yaml so the tool row stays
+                stable and users can still read what action would be
+                available if they switched tabs. */}
+            {(() => {
+              const copyable = viewMode === 'log' || viewMode === 'yaml';
+              return (
+                <button
+                  type="button"
+                  onClick={copyable ? handleCopy : undefined}
+                  disabled={!copyable}
+                  className={`p-1 transition-colors ${
+                    copyable
+                      ? 'text-tagma-muted hover:text-tagma-text cursor-pointer'
+                      : 'text-tagma-muted-dim/40 cursor-not-allowed'
+                  }`}
+                  title={
+                    copyable
+                      ? `Copy ${viewMode} to clipboard`
+                      : 'Switch to Log or Yaml to copy its contents'
+                  }
+                >
+                  {copied && copyable ? (
+                    <Check size={11} className="text-tagma-success" />
+                  ) : (
+                    <Copy size={11} />
+                  )}
+                </button>
+              );
+            })()}
             {summary && (
               <button
                 type="button"
@@ -646,12 +751,39 @@ function DetailPane({
                 <Download size={11} />
               </button>
             )}
+            {onReplay && (
+              <button
+                type="button"
+                onClick={onReplay}
+                disabled={replayBusy || !summary?.hasYamlSnapshot}
+                className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider border border-tagma-accent/40 text-tagma-accent hover:bg-tagma-accent/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                title={
+                  !summary?.hasYamlSnapshot
+                    ? 'No yaml snapshot available — this run predates the snapshot feature'
+                    : replayBusy
+                      ? 'A run is already in progress'
+                      : 'Replay this pipeline snapshot as a new run. Your editor content is not affected; the replay is recorded as a new history entry.'
+                }
+              >
+                {replayBusy ? (
+                  <Loader2 size={10} className="animate-spin" />
+                ) : (
+                  <Play size={10} />
+                )}
+                Replay
+              </button>
+            )}
             {(summaryLoading || logLoading) && (
               <Loader2 size={11} className="animate-spin text-tagma-muted" />
             )}
           </>
         )}
       </div>
+      {replayError && (
+        <div className="shrink-0 px-5 py-1.5 text-[10px] font-mono text-tagma-error bg-tagma-error/5 border-b border-tagma-error/20">
+          Replay failed: {replayError}
+        </div>
+      )}
 
       <div
         className={`flex-1 min-h-0 ${viewMode === 'flow' ? 'overflow-hidden flex' : 'overflow-auto'}`}
@@ -697,6 +829,34 @@ function DetailPane({
                       )}
                     </span>
                   </div>
+                  {summary.replayedFromRunId && (
+                    // Origin banner. We deliberately surface ONLY the
+                    // immediate source (single-level provenance) — if the
+                    // user wants to walk further up the chain, clicking
+                    // through to the source reveals ITS origin, and so on.
+                    // That keeps the UI linear and avoids implying there's
+                    // some canonical root ancestor.
+                    <div className="mt-2 flex items-center gap-2 text-[10px] font-mono">
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 border border-tagma-accent/40 text-tagma-accent/90 uppercase tracking-wider text-[9px]">
+                        <Play size={8} />
+                        replayed from
+                      </span>
+                      {onOpenSource ? (
+                        <button
+                          type="button"
+                          onClick={() => onOpenSource(summary.replayedFromRunId!)}
+                          className="text-tagma-muted hover:text-tagma-text underline decoration-dotted underline-offset-2 truncate max-w-[320px]"
+                          title="Open source snapshot run"
+                        >
+                          {summary.replayedFromRunId}
+                        </button>
+                      ) : (
+                        <span className="text-tagma-muted truncate max-w-[320px]">
+                          {summary.replayedFromRunId}
+                        </span>
+                      )}
+                    </div>
+                  )}
                   {summary.error && (
                     <div className="mt-3 text-[10px] font-mono text-tagma-error/90 bg-tagma-error/5 border border-tagma-error/20 px-2.5 py-1.5">
                       {summary.error}
@@ -726,15 +886,24 @@ function DetailPane({
                           <span className="flex-1 min-w-0 truncate text-tagma-text">
                             {task.taskName}
                           </span>
-                          {task.driver && (
-                            <span className="shrink-0 text-tagma-accent/70 text-[9px]">
-                              {task.driver}
+                          {task.command ? (
+                            <span className="shrink-0 inline-flex items-center gap-0.5 text-sky-400/80 text-[9px]">
+                              <Terminal size={8} />
+                              shell
                             </span>
-                          )}
-                          {task.model && (
-                            <span className="shrink-0 text-tagma-muted text-[9px]">
-                              {task.model}
-                            </span>
+                          ) : (
+                            <>
+                              {task.driver && (
+                                <span className="shrink-0 text-tagma-accent/70 text-[9px]">
+                                  {task.driver}
+                                </span>
+                              )}
+                              {task.model && (
+                                <span className="shrink-0 text-tagma-muted text-[9px]">
+                                  {task.model}
+                                </span>
+                              )}
+                            </>
                           )}
                           {task.exitCode != null && (
                             <span
