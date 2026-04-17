@@ -143,7 +143,12 @@ const OpenCodeDriver: DriverPlugin = {
         errorReason = msg
           ? `opencode reported error: ${msg}`
           : 'opencode emitted an error JSON payload';
-        continue;
+        // D21: stop at the first error. Continuing meant subsequent text
+        // lines got accumulated into `textParts` only to be discarded by
+        // the error-return below, and a later `{type:"error"}` would
+        // silently overwrite the original cause — operators then debugged
+        // a downstream symptom while the root-cause line scrolled past.
+        break;
       }
 
       // Session id — opencode uses `sessionID` (camelCase with capital D).

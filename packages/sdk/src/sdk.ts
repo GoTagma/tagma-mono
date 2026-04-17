@@ -86,7 +86,14 @@ export type { LogRecord, LogLevel, LogListener } from './logger';
 export type { HookResult, PipelineInfo, TrackInfo, TaskInfo } from './hooks';
 
 // ── Utils (public subset) ──
-export { parseDuration, validatePath, generateRunId, nowISO, truncateForName } from './utils';
+export {
+  parseDuration,
+  validatePath,
+  generateRunId,
+  nowISO,
+  truncateForName,
+  _resetShellCache,
+} from './utils';
 
 // ── Task reference resolution (shared id normalization) ──
 export {

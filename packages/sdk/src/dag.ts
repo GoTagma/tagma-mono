@@ -78,18 +78,27 @@ export function buildDag(config: PipelineConfig): Dag {
         }
       }
       if (task.continue_from) {
-        let resolved: string;
-        try {
-          resolved = resolveRef(task.continue_from, track.id);
-        } catch {
+        // Preserve the ambiguous-vs-not-found distinction in the user-facing
+        // error: rewording "ambiguous" as "no such task found" (the previous
+        // behavior) hid the real problem and sent users searching for a
+        // missing task that actually existed in two places.
+        const result = resolveTaskRef(task.continue_from, track.id, index);
+        if (result.kind === 'ambiguous') {
+          throw new Error(
+            `Task "${qid}": continue_from "${task.continue_from}" is ambiguous — ` +
+              `multiple tracks have a task with this id. Use the fully-qualified ` +
+              `form "trackId.${task.continue_from}".`,
+          );
+        }
+        if (result.kind === 'not_found') {
           throw new Error(
             `Task "${qid}": continue_from "${task.continue_from}" — no such task found. ` +
               `Use a fully-qualified reference (trackId.taskId) or ensure the target task exists.`,
           );
         }
-        resolvedContinueFrom = resolved;
-        if (!deps.includes(resolved)) {
-          deps.push(resolved); // continue_from implies dependency
+        resolvedContinueFrom = result.qid;
+        if (!deps.includes(result.qid)) {
+          deps.push(result.qid); // continue_from implies dependency
         }
       }
 
@@ -115,22 +124,37 @@ export function buildDag(config: PipelineConfig): Dag {
     }
   }
 
-  const queue: string[] = [];
+  // D20: deterministic topo order. Kahn's algorithm dequeues in insertion
+  // order by default, which depends on map iteration order — itself a
+  // function of the (track, task) order in the YAML. Two pipelines that
+  // are DAG-equivalent but written in a different order produced different
+  // `sorted` arrays, leading to subtle run-to-run non-determinism for
+  // parallel tasks with side effects (writing the same file, touching the
+  // same repo). Break the tie by qualified id so identical DAG shapes
+  // always yield identical schedules across machines and across YAML
+  // round-trips.
+  const ready: string[] = [];
   for (const [id, degree] of inDegree) {
-    if (degree === 0) queue.push(id);
+    if (degree === 0) ready.push(id);
   }
+  ready.sort();
 
   const sorted: string[] = [];
-  // Use an index pointer instead of shift() to avoid O(n) per dequeue.
   let qi = 0;
-  while (qi < queue.length) {
-    const current = queue[qi++]!;
+  while (qi < ready.length) {
+    const current = ready[qi++]!;
     sorted.push(current);
+    // Collect children whose in-degree hits zero in this step, then push
+    // them into the ready bucket in sorted order — keeps each "wave" of
+    // parallel-eligible tasks ordered by qid.
+    const newlyReady: string[] = [];
     for (const child of adjacency.get(current)!) {
       const newDegree = inDegree.get(child)! - 1;
       inDegree.set(child, newDegree);
-      if (newDegree === 0) queue.push(child);
+      if (newDegree === 0) newlyReady.push(child);
     }
+    if (newlyReady.length > 1) newlyReady.sort();
+    for (const child of newlyReady) ready.push(child);
   }
 
   if (sorted.length !== nodes.size) {

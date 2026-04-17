@@ -1,6 +1,6 @@
 {
   "name": "@tagma/driver-opencode",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "description": "OpenCode CLI driver for tagma-sdk pipelines",
   "license": "MIT",
   "repository": {

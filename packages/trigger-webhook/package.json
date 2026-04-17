@@ -1,6 +1,6 @@
 {
   "name": "@tagma/trigger-webhook",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "HTTP webhook trigger plugin for tagma-sdk pipelines",
   "license": "MIT",
   "repository": {

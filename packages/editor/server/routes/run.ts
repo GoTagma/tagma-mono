@@ -33,7 +33,7 @@ import type {
   Permissions,
 } from '@tagma/types';
 import { assertSafePluginName } from '../plugin-safety.js';
-import { errorMessage } from '../path-utils.js';
+import { errorMessage, atomicWriteFileSync } from '../path-utils.js';
 import { S, MAX_LOG_RUNS, lenientParseYaml } from '../state.js';
 import { loadedPluginMeta, loadPluginFromWorkDir, classifyServerError } from '../plugins/loader.js';
 
@@ -296,15 +296,14 @@ function persistRunSummary(
         /* disk read/parse failed — fall through to serialized executedConfig */
       }
     }
-    writeFileSync(join(logsDir, 'pipeline.yaml'), snapshotText, 'utf-8');
+    atomicWriteFileSync(join(logsDir, 'pipeline.yaml'), snapshotText);
     hasYamlSnapshot = true;
   } catch (e) {
     console.warn('[run] failed to snapshot pipeline.yaml:', e);
   }
-  writeFileSync(
+  atomicWriteFileSync(
     join(logsDir, 'summary.json'),
     JSON.stringify({ ...summary, hasYamlSnapshot }, null, 2),
-    'utf-8',
   );
 }
 
@@ -526,6 +525,18 @@ export function registerRunRoutes(app: express.Express): void {
       return res.status(409).json({ error: 'A run is already in progress' });
     }
     runStarting = true;
+
+    // D17: outer safety-net. The run-setup path below has several async/sync
+    // operations (existsSync, parseYaml, serializePipeline, plugin preload,
+    // loadPipeline, validateConfig) — earlier revisions sprinkled
+    // `runStarting = false` before every error return, and a single missed
+    // branch wedged the server into a permanent 409 until restart.
+    // `runLaunched` flips to true exactly once, right before we reply to the
+    // client after attaching `runPipeline().finally()`. If we exit the
+    // handler any other way — thrown error, a new codepath added without a
+    // matching release — the finally below clears the lock.
+    let runLaunched = false;
+    try {
 
     const cwd = S.workDir || process.cwd();
 
@@ -1002,6 +1013,7 @@ export function registerRunRoutes(app: express.Express): void {
           runStarting = false; // B4: release lock when run completes
         });
 
+      runLaunched = true; // D17: ownership of `runStarting` transfers to runPipeline's .finally()
       res.json({ ok: true, runId });
     } catch (err: unknown) {
       // Release the lock and clear any globals we may have set before the throw
@@ -1015,6 +1027,21 @@ export function registerRunRoutes(app: express.Express): void {
       activeRunTasksSnapshot = new Map();
       const message = err instanceof Error ? err.message : String(err);
       return res.status(500).json({ error: `Run setup failed: ${message}` });
+    }
+    } finally {
+      // D17: safety net. If anything threw (or a new early-return codepath
+      // is added without a matching `runStarting = false`), ensure the lock
+      // is released so the server isn't wedged. When the happy path attached
+      // `runPipeline().finally()`, `runLaunched` is true and we leave the
+      // lock alone — it stays held for the duration of the actual run and
+      // is released by that finally handler when the pipeline completes.
+      if (!runLaunched) {
+        runStarting = false;
+        activeRunAbort = null;
+        activeRunGateway = null;
+        activeRunId = null;
+        activeRunTasksSnapshot = new Map();
+      }
     }
   });
 

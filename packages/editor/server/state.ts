@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import yaml from 'js-yaml';
-import { isPathWithin as sharedIsPathWithin } from './path-utils.js';
+import { isPathWithin as sharedIsPathWithin, atomicWriteFileSync } from './path-utils.js';
 import { generateConfigId } from '../shared/config-id.js';
 import {
   createEmptyPipeline,
@@ -145,7 +145,7 @@ export function saveLayout(): void {
   const lp = layoutPath();
   if (!lp) return;
   try {
-    writeFileSync(lp, JSON.stringify(S.layout, null, 2), 'utf-8');
+    atomicWriteFileSync(lp, JSON.stringify(S.layout, null, 2));
   } catch {
     /* best-effort */
   }
@@ -194,15 +194,29 @@ export function reconcileContinueFrom(cfg: RawPipelineConfig): RawPipelineConfig
       }
 
       // Filter deps down to upstream prompt tasks (those eligible to be a
-      // continue_from source).
+      // continue_from source). We track each prompt dep in BOTH its original
+      // form (what the YAML actually says) and its qualified qid, so the
+      // downstream comparison with `continue_from` works regardless of
+      // whether the user wrote a bare ref in one field and a qualified one
+      // in the other. Previously this membership test compared raw strings
+      // and silently dropped `continue_from: "alpha.upstream"` whenever the
+      // matching `depends_on` entry was written as bare `"upstream"`.
       const promptDeps: string[] = [];
+      const promptDepQids = new Set<string>();
       for (const dep of deps) {
         const qid = isQualifiedRef(dep) ? dep : qualifyTaskId(track.id, dep);
         const depTask = taskMap.get(qid);
         if (depTask && !!depTask.prompt && !depTask.command) {
           promptDeps.push(dep);
+          promptDepQids.add(qid);
         }
       }
+
+      const cfQid = task.continue_from
+        ? isQualifiedRef(task.continue_from)
+          ? task.continue_from
+          : qualifyTaskId(track.id, task.continue_from)
+        : null;
 
       if (promptDeps.length === 0) {
         // No prompt upstreams — continue_from can't reference anything valid.
@@ -216,7 +230,7 @@ export function reconcileContinueFrom(cfg: RawPipelineConfig): RawPipelineConfig
 
       // If the user already chose a continue_from and it still points at a
       // real upstream prompt dep, do not touch it.
-      if (task.continue_from && promptDeps.includes(task.continue_from)) {
+      if (cfQid && promptDepQids.has(cfQid)) {
         return task;
       }
 
@@ -231,7 +245,7 @@ export function reconcileContinueFrom(cfg: RawPipelineConfig): RawPipelineConfig
       // The previous continue_from no longer matches any current upstream
       // prompt dep (e.g. the dep was removed). Clear it so the next save
       // doesn't carry a dangling reference.
-      if (task.continue_from && !promptDeps.includes(task.continue_from)) {
+      if (cfQid && !promptDepQids.has(cfQid)) {
         trackChanged = true;
         const { continue_from: _drop, ...rest } = task;
         return rest as RawTaskConfig;

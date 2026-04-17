@@ -28,7 +28,7 @@ import {
   beginWatching,
   lenientParseYaml,
 } from '../state.js';
-import { errorMessage } from '../path-utils.js';
+import { errorMessage, atomicWriteFileSync } from '../path-utils.js';
 
 const PORT = parseInt(process.env.PORT ?? '3001');
 const DEFAULT_ALLOWED_ORIGINS = new Set<string>([
@@ -339,7 +339,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       // which would falsely detect our own write as an external change.
       stopFileWatching();
       const content = serializePipeline(S.config);
-      writeFileSync(savePath, content, 'utf-8');
+      atomicWriteFileSync(savePath, content);
       S.yamlPath = savePath;
       saveLayout();
       beginWatching(savePath, content);
@@ -367,7 +367,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       // B4: Stop watcher before write to prevent false external-change detection.
       stopFileWatching();
       const yaml = serializePipeline(S.config);
-      writeFileSync(absPath, yaml, 'utf-8');
+      atomicWriteFileSync(absPath, yaml);
       S.yamlPath = absPath;
       saveLayout();
       beginWatching(absPath, yaml);
@@ -397,7 +397,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
     S.yamlPath = join(tagmaDir, fileName);
     S.layout = { positions: {} };
     const content = serializePipeline(S.config);
-    writeFileSync(S.yamlPath, content, 'utf-8');
+    atomicWriteFileSync(S.yamlPath, content);
     beginWatching(S.yamlPath, content);
     res.json(getState());
   });
@@ -434,13 +434,13 @@ export function registerWorkspaceRoutes(app: express.Express): void {
     const destPath = assertWithinWorkspace(join(tagmaDir, safeName), 'import destination');
     try {
       const content = readFileSync(absSource, 'utf-8');
-      writeFileSync(destPath, content, 'utf-8');
+      atomicWriteFileSync(destPath, content);
       // Copy the companion layout file alongside the YAML, if it exists.
       const sourceLayoutFile = companionLayoutPath(absSource);
       const destLayoutFile = companionLayoutPath(destPath);
       if (existsSync(sourceLayoutFile)) {
         try {
-          writeFileSync(destLayoutFile, readFileSync(sourceLayoutFile, 'utf-8'), 'utf-8');
+          atomicWriteFileSync(destLayoutFile, readFileSync(sourceLayoutFile, 'utf-8'));
         } catch {
           /* best-effort — missing or unreadable layout should not block import */
         }
@@ -487,14 +487,14 @@ export function registerWorkspaceRoutes(app: express.Express): void {
     }
     try {
       const content = serializePipeline(S.config);
-      writeFileSync(S.yamlPath, content, 'utf-8');
+      atomicWriteFileSync(S.yamlPath, content);
       // Keep the source-of-truth layout in sync on disk before copying.
       saveLayout();
       const destPath = join(absDestDir, basename(S.yamlPath));
-      writeFileSync(destPath, content, 'utf-8');
+      atomicWriteFileSync(destPath, content);
       // Write the companion layout next to the exported YAML.
       const destLayoutFile = companionLayoutPath(destPath);
-      writeFileSync(destLayoutFile, JSON.stringify(S.layout, null, 2), 'utf-8');
+      atomicWriteFileSync(destLayoutFile, JSON.stringify(S.layout, null, 2));
       res.json({ ok: true, path: destPath });
     } catch (err: unknown) {
       res.status(500).json({ error: errorMessage(err) || 'Failed to export file' });

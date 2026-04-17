@@ -10,10 +10,43 @@
 // no current call site exposes the difference. Both now import from here.
 
 import { relative, parse as parsePath } from 'node:path';
-import { realpathSync, lstatSync, existsSync } from 'node:fs';
+import {
+  realpathSync,
+  lstatSync,
+  existsSync,
+  writeFileSync,
+  renameSync,
+  unlinkSync,
+} from 'node:fs';
 
 export function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Write `content` to `target` atomically: stage to `<target>.tmp-<pid>` first,
+ * then `renameSync` into place. Readers observe either the previous version
+ * or the complete new version — never a half-written byte range.
+ *
+ * D19: summary.json + pipeline.yaml (history auto-refresh), layout.json
+ * (client state sync), and saved pipeline yaml (file watcher reload) all
+ * have concurrent readers. Before this helper, the watcher could pick up a
+ * truncated YAML and blow away the user's in-memory edits. `renameSync` is
+ * atomic on POSIX (rename(2)) and on Win32 (MoveFileEx w/ REPLACE_EXISTING).
+ */
+export function atomicWriteFileSync(target: string, content: string): void {
+  const tmp = `${target}.tmp-${process.pid}`;
+  writeFileSync(tmp, content, 'utf-8');
+  try {
+    renameSync(tmp, target);
+  } catch (err) {
+    try {
+      unlinkSync(tmp);
+    } catch {
+      /* best-effort cleanup */
+    }
+    throw err;
+  }
 }
 
 /**

@@ -122,14 +122,22 @@ function ensureServer(
       }
 
       // Decode JSON if possible so downstream tasks get structured data.
-      // Falls back to the raw string body otherwise.
+      //
+      // D22: when the sender explicitly declared `application/json`, a parse
+      // failure is a contract violation — silently falling through to the
+      // raw-string payload meant downstream tasks that did `payload.field`
+      // crashed later with "Cannot read properties of undefined", far away
+      // from the actual cause. Return 400 so the sender sees the problem
+      // up front. Bodies without a JSON content-type still pass through
+      // untouched, which preserves the "any POST body" escape hatch.
       let payload: unknown = rawBody;
       const contentType = req.headers.get('content-type') ?? '';
       if (contentType.includes('application/json')) {
         try {
           payload = JSON.parse(rawBody);
-        } catch {
-          /* keep raw body */
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          return new Response(`invalid JSON body: ${msg}`, { status: 400 });
         }
       }
 
