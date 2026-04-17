@@ -7,6 +7,13 @@
 // Returns a flat list of ValidationError objects. An empty array means valid.
 
 import type { RawPipelineConfig } from './types';
+import {
+  isValidTaskId,
+  qualifyTaskId,
+  buildTaskIndex,
+  resolveTaskRef,
+  type TaskIndex,
+} from './task-ref';
 
 const DURATION_RE = /^(\d*\.?\d+)\s*(s|m|h|d)$/;
 function isValidDuration(input: string): boolean {
@@ -17,10 +24,9 @@ function isValidDuration(input: string): boolean {
 // start with a letter or underscore. Dots are explicitly forbidden because the
 // engine uses "trackId.taskId" as the qualified separator — a dot in either
 // part creates an ambiguous qualified ID and breaks resolveRef.
-const ID_RE = /^[A-Za-z_][A-Za-z0-9_-]*$/;
-function isValidId(id: string): boolean {
-  return ID_RE.test(id);
-}
+// Canonical regex and helper live in ./task-ref so every resolver (dag.ts,
+// engine.ts, editor) stays in lockstep with what we accept here.
+const isValidId = isValidTaskId;
 
 const VALID_ON_FAILURE = new Set(['skip_downstream', 'stop_all', 'ignore']);
 const VALID_REASONING_EFFORT = new Set(['low', 'medium', 'high']);
@@ -114,25 +120,10 @@ export function validateRaw(
   }
 
   // ── Build qualified ID sets for cross-reference checks ──
-  // Qualified ID format: "trackId.taskId" (mirrors the engine's convention)
-  const allQualified = new Set<string>();
-  // bare taskId → qualified ID, or "__ambiguous__" when multiple tracks share that bare name.
-  // "__ambiguous__" signals that a bare ref is unresolvable without a track prefix.
-  const bareToQualified = new Map<string, string>();
-  const bareIdCount = new Map<string, number>();
-
-  for (const track of config.tracks) {
-    if (!track.id) continue;
-    for (const task of track.tasks ?? []) {
-      if (!task.id) continue;
-      const qid = `${track.id}.${task.id}`;
-      allQualified.add(qid);
-      const count = (bareIdCount.get(task.id) ?? 0) + 1;
-      bareIdCount.set(task.id, count);
-      // Mark as ambiguous when a second track introduces the same bare name.
-      bareToQualified.set(task.id, count === 1 ? qid : '__ambiguous__');
-    }
-  }
+  // Qualified ID format: "trackId.taskId" (mirrors the engine's convention).
+  // Shared with dag.ts so "ambiguous" / "not found" stay consistent — refs
+  // that buildDag later throws on will be reported here as errors first.
+  const index = buildTaskIndex(config);
 
   // ── Per-track validation ──
   const seenTrackIds = new Set<string>();
@@ -296,13 +287,13 @@ export function validateRaw(
       // ── depends_on reference checks ──
       if (task.depends_on && task.depends_on.length > 0) {
         for (const dep of task.depends_on) {
-          const resolved = resolveDepRef(dep, track.id, allQualified, bareToQualified);
-          if (!resolved) {
+          const resolved = resolveTaskRef(dep, track.id, index);
+          if (resolved.kind === 'not_found') {
             errors.push({
               path: `${taskPath}.depends_on`,
               message: `Task "${task.id}": depends_on "${dep}" — no such task found`,
             });
-          } else if (resolved === '__ambiguous__') {
+          } else if (resolved.kind === 'ambiguous') {
             errors.push({
               path: `${taskPath}.depends_on`,
               message: `Task "${task.id}": depends_on "${dep}" is ambiguous — multiple tracks have a task with this id. Use the fully-qualified form "trackId.${dep}".`,
@@ -313,22 +304,23 @@ export function validateRaw(
 
       // ── continue_from reference check ──
       if (task.continue_from) {
-        const resolved = resolveDepRef(task.continue_from, track.id, allQualified, bareToQualified);
-        if (!resolved) {
+        const resolved = resolveTaskRef(task.continue_from, track.id, index);
+        if (resolved.kind === 'not_found') {
           errors.push({
             path: `${taskPath}.continue_from`,
             message: `Task "${task.id}": continue_from "${task.continue_from}" — no such task found`,
           });
-        } else if (resolved === '__ambiguous__') {
+        } else if (resolved.kind === 'ambiguous') {
           errors.push({
             path: `${taskPath}.continue_from`,
             message: `Task "${task.id}": continue_from "${task.continue_from}" is ambiguous — multiple tracks have a task with this id. Use the fully-qualified form "trackId.${task.continue_from}".`,
           });
         } else if (
           !task.depends_on ||
-          !task.depends_on.some(
-            (dep) => resolveDepRef(dep, track.id, allQualified, bareToQualified) === resolved,
-          )
+          !task.depends_on.some((dep) => {
+            const depResolved = resolveTaskRef(dep, track.id, index);
+            return depResolved.kind === 'resolved' && depResolved.qid === resolved.qid;
+          })
         ) {
           // H8: demote to a warning. dag.ts/buildDag inserts continue_from
           // as an implicit dependency at runtime, so the pipeline runs fine
@@ -346,34 +338,12 @@ export function validateRaw(
   }
 
   // ── Cycle detection ──
-  errors.push(...detectCycles(config, allQualified, bareToQualified));
+  errors.push(...detectCycles(config, index));
 
   return errors;
 }
 
-// ── Helpers ──
-
-// Returns the resolved qualified ID, null (not found), or '__ambiguous__' (multiple tracks match).
-function resolveDepRef(
-  ref: string,
-  fromTrackId: string,
-  allQualified: Set<string>,
-  bareToQualified: Map<string, string>,
-): string | null {
-  // Fully qualified reference (trackId.taskId) — always unambiguous
-  if (allQualified.has(ref)) return ref;
-  // Same-track shorthand — always unambiguous (shadows any global bare match)
-  const sameTrack = `${fromTrackId}.${ref}`;
-  if (allQualified.has(sameTrack)) return sameTrack;
-  // Global bare lookup — may be '__ambiguous__' when multiple tracks share the name
-  return bareToQualified.get(ref) ?? null;
-}
-
-function detectCycles(
-  config: RawPipelineConfig,
-  allQualified: Set<string>,
-  bareToQualified: Map<string, string>,
-): ValidationError[] {
+function detectCycles(config: RawPipelineConfig, index: TaskIndex): ValidationError[] {
   // Build adjacency: qualifiedId → [resolved dep qualifiedIds]
   const adj = new Map<string, string[]>();
 
@@ -381,15 +351,15 @@ function detectCycles(
     if (!track.id) continue;
     for (const task of track.tasks ?? []) {
       if (!task.id) continue;
-      const qid = `${track.id}.${task.id}`;
+      const qid = qualifyTaskId(track.id, task.id);
       const deps: string[] = [];
       for (const dep of task.depends_on ?? []) {
-        const resolved = resolveDepRef(dep, track.id, allQualified, bareToQualified);
-        if (resolved) deps.push(resolved);
+        const resolved = resolveTaskRef(dep, track.id, index);
+        if (resolved.kind === 'resolved') deps.push(resolved.qid);
       }
       if (task.continue_from) {
-        const resolved = resolveDepRef(task.continue_from, track.id, allQualified, bareToQualified);
-        if (resolved && !deps.includes(resolved)) deps.push(resolved);
+        const resolved = resolveTaskRef(task.continue_from, track.id, index);
+        if (resolved.kind === 'resolved' && !deps.includes(resolved.qid)) deps.push(resolved.qid);
       }
       adj.set(qid, deps);
     }

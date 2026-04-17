@@ -5,6 +5,7 @@ import type {
   TaskConfig,
   TrackConfig,
 } from './types';
+import { buildTaskIndex, qualifyTaskId, resolveTaskRef } from './task-ref';
 
 export interface DagNode {
   readonly taskId: string; // fully qualified: track_id.task_id or just task_id
@@ -27,33 +28,17 @@ export interface Dag {
   readonly sorted: readonly string[]; // topological order
 }
 
-// Build a global task ID: for cross-track refs we use "track_id.task_id"
-// Within a track, bare "task_id" is also valid
-function qualifyId(trackId: string, taskId: string): string {
-  return `${trackId}.${taskId}`;
-}
-
 export function buildDag(config: PipelineConfig): Dag {
   const nodes = new Map<string, DagNode>();
-  // Map bare task IDs to qualified IDs (for resolving unqualified refs)
-  const bareToQualified = new Map<string, string>();
 
-  // 1. Register all nodes
+  // 1. Register all nodes. Duplicates throw — same-track task-id collisions
+  //    would otherwise silently overwrite one another in the DAG.
   for (const track of config.tracks) {
     for (const task of track.tasks) {
-      const qid = qualifyId(track.id, task.id);
-
+      const qid = qualifyTaskId(track.id, task.id);
       if (nodes.has(qid)) {
         throw new Error(`Duplicate task ID: "${qid}"`);
       }
-
-      // Track bare ID → qualified. If same bare ID in multiple tracks, mark ambiguous
-      if (bareToQualified.has(task.id)) {
-        bareToQualified.set(task.id, '__ambiguous__');
-      } else {
-        bareToQualified.set(task.id, qid);
-      }
-
       nodes.set(qid, {
         taskId: qid,
         task,
@@ -63,34 +48,27 @@ export function buildDag(config: PipelineConfig): Dag {
     }
   }
 
-  // Helper to resolve a dependency ref to a qualified ID
+  // Shared index for ref resolution — same code path validate-raw uses.
+  const index = buildTaskIndex(config);
+
   function resolveRef(ref: string, fromTrackId: string): string {
-    // Already qualified (contains dot)
-    if (ref.includes('.')) {
-      if (!nodes.has(ref)) {
-        throw new Error(`Task reference "${ref}" not found`);
-      }
-      return ref;
-    }
-    // Try within same track first
-    const sameTrack = qualifyId(fromTrackId, ref);
-    if (nodes.has(sameTrack)) return sameTrack;
-    // Try global bare lookup
-    const global = bareToQualified.get(ref);
-    if (global && global !== '__ambiguous__') return global;
-    if (global === '__ambiguous__') {
+    const result = resolveTaskRef(ref, fromTrackId, index);
+    if (result.kind === 'ambiguous') {
       throw new Error(
         `Ambiguous task reference "${ref}" exists in multiple tracks. ` +
           `Use "track_id.task_id" format.`,
       );
     }
-    throw new Error(`Task reference "${ref}" not found`);
+    if (result.kind === 'not_found') {
+      throw new Error(`Task reference "${ref}" not found`);
+    }
+    return result.qid;
   }
 
   // 2. Resolve depends_on and continue_from to qualified IDs
   for (const track of config.tracks) {
     for (const task of track.tasks) {
-      const qid = qualifyId(track.id, task.id);
+      const qid = qualifyTaskId(track.id, task.id);
       const deps: string[] = [];
       let resolvedContinueFrom: string | undefined;
 
@@ -193,38 +171,30 @@ export interface RawDag {
  */
 export function buildRawDag(config: RawPipelineConfig): RawDag {
   const nodes = new Map<string, RawDagNode>();
-  const bareToQualified = new Map<string, string>();
 
-  // 1. Register all concrete tasks
+  // 1. Register all concrete tasks. Duplicates are skipped (not thrown) so
+  //    partially-typed editor state doesn't produce a hard error.
   for (const track of config.tracks) {
     for (const task of track.tasks) {
-      const qid = `${track.id}.${task.id}`;
-      if (nodes.has(qid)) continue; // skip duplicates silently
-
-      if (bareToQualified.has(task.id)) {
-        bareToQualified.set(task.id, '__ambiguous__');
-      } else {
-        bareToQualified.set(task.id, qid);
-      }
+      const qid = qualifyTaskId(track.id, task.id);
+      if (nodes.has(qid)) continue;
       nodes.set(qid, { taskId: qid, trackId: track.id, rawTask: task, dependsOn: [] });
     }
   }
 
-  // 2. Resolve dependency refs leniently (missing / ambiguous refs are skipped)
+  const index = buildTaskIndex(config);
+
   function tryResolve(ref: string, fromTrackId: string): string | null {
-    if (ref.includes('.')) return nodes.has(ref) ? ref : null;
-    const sameTrack = `${fromTrackId}.${ref}`;
-    if (nodes.has(sameTrack)) return sameTrack;
-    const global = bareToQualified.get(ref);
-    if (global && global !== '__ambiguous__') return global;
-    return null;
+    const result = resolveTaskRef(ref, fromTrackId, index);
+    return result.kind === 'resolved' ? result.qid : null;
   }
 
+  // 2. Resolve dependency refs leniently (missing / ambiguous refs are skipped)
   const edges: { from: string; to: string }[] = [];
 
   for (const track of config.tracks) {
     for (const task of track.tasks) {
-      const qid = `${track.id}.${task.id}`;
+      const qid = qualifyTaskId(track.id, task.id);
       const deps: string[] = [];
 
       for (const ref of task.depends_on ?? []) {
