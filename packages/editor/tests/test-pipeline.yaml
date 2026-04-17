@@ -1,0 +1,140 @@
+# 基础功能全覆盖测试 pipeline
+# 外部插件只加载 @tagma/driver-opencode
+# trigger / completion / middleware 全部使用 SDK 内置（bootstrapBuiltins 注册）
+pipeline:
+  name: full-feature-smoke-test
+  driver: opencode                # pipeline 级默认 driver（会被 track/task 继承）
+  model: opencode/big-pickle       # pipeline 级默认 model（必须是 provider/model 两段式）
+  timeout: 30m                    # pipeline 级超时
+  plugins:
+    - '@tagma/driver-opencode'    # 唯一的外部插件
+
+  # ---- 生命周期 hooks：单条命令 和 命令数组 两种形式都覆盖 ----
+  hooks:
+    pipeline_start: 'echo "[hook] pipeline_start"'
+    task_start: 'echo "[hook] task_start"'
+    task_success:
+      - 'echo "[hook] task_success #1"'
+      - 'echo "[hook] task_success #2"'
+    task_failure: 'echo "[hook] task_failure"'
+    pipeline_complete: 'echo "[hook] pipeline_complete"'
+    pipeline_error: 'echo "[hook] pipeline_error"'
+
+  tracks:
+    # =========================================================
+    # Track A：AI prompt 任务 + 各类 trigger / completion / middleware
+    # =========================================================
+    - id: backend
+      name: Backend
+      color: '#3b82f6'
+      driver: opencode
+      model: opencode/big-pickle
+      agent_profile: senior
+      cwd: ./                     # track 级工作目录
+      permissions:
+        read: true
+        write: true
+        execute: false
+      on_failure: skip_downstream  # A 失败时跳过下游，而不是终止整条 pipeline
+
+      # track 级 middleware：所有 task 默认都会应用
+      middlewares:
+        - type: static_context
+          file: ./README.md
+          label: Project Readme
+
+      tasks:
+        # 1) 手动审批 trigger + exit_code completion
+        - id: plan
+          name: Plan the change
+          prompt: |
+            列出对 src/server.ts 添加 /health 端点需要改动的文件清单。
+            只输出 markdown 列表，不要写代码。
+          timeout: 5m
+          trigger:
+            type: manual
+            message: 'Approve before running plan step'
+            timeout: 2m
+            metadata:
+              owner: qa
+          completion:
+            type: exit_code
+            expect: 0
+
+        # 2) continue_from 会话续接（靠连线传上下文）+ task 级 middleware 覆盖
+        - id: implement
+          name: Implement /health endpoint
+          prompt: '基于上一步的计划，真正修改代码实现 /health 端点。'
+          continue_from: plan            # 同 track，裸引用
+          depends_on: [plan]
+          # task 级 middleware 覆盖 track 级列表（不是追加）
+          middlewares:
+            - type: static_context
+              file: ./package.json
+              label: Package Manifest
+          permissions:                   # task 级权限覆盖
+            read: true
+            write: true
+            execute: true
+          completion:
+            type: exit_code
+            expect: 0
+
+        # 3) 禁用继承的 middleware（传空数组）+ output_check completion
+        - id: review
+          name: Self-review the diff
+          prompt: '对你刚才的改动做一次自审，输出 PASS 或 FAIL 开头的一行总结。'
+          continue_from: implement
+          depends_on: [implement]
+          middlewares: []                # 显式清空继承
+          completion:
+            type: output_check
+            check: 'grep -q "^PASS"'     # stdin 会收到 task stdout
+            timeout: 30s
+
+    # =========================================================
+    # Track B：command 任务 + file trigger + 跨 track 依赖
+    # =========================================================
+    - id: ops
+      name: Ops
+      color: '#10b981'
+      driver: opencode               # 用不到（全是 command 任务），但保留演示继承
+      on_failure: ignore             # B 失败也不影响其它 track
+      permissions:
+        read: true
+        write: true
+        execute: true
+
+      tasks:
+        # 4) 纯 shell command，无 trigger/completion
+        - id: prep
+          name: Prepare signal dir
+          command: 'mkdir -p ./.tagma/signal && echo prepared > ./.tagma/signal/.ready'
+
+        # 5) file trigger：等待某个文件出现后再跑
+        - id: wait-signal
+          name: Wait for signal file
+          command: 'echo "signal received"'
+          depends_on: [prep]
+          trigger:
+            type: file
+            path: ./.tagma/signal/.ready
+            timeout: 1m
+          completion:
+            type: exit_code
+            expect: [0]                # 数组形式：多个可接受退出码
+
+        # 6) 跨 track 依赖 & 跨 track continue_from（qualified 引用）
+        - id: summarize
+          name: Summarize backend work
+          prompt: '读取 backend.review 的结论，用一句话总结。'
+          depends_on:
+            - wait-signal
+            - backend.review           # 跨 track：trackId.taskId
+          continue_from: backend.review
+          timeout: 3m
+          driver: opencode             # task 级显式声明（覆盖继承）
+          model: opencode/big-pickle
+          completion:
+            type: exit_code
+            expect: 0

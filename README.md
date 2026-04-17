@@ -92,7 +92,8 @@ bun run --filter tagma-editor test        # Editor only
 ### Clean
 
 ```bash
-bun run clean          # Remove all node_modules, dist, lock files
+bun run clean          # Remove all node_modules and dist outputs
+bun run clean:all      # Also remove bun.lock
 bun install            # Reinstall
 ```
 

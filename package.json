@@ -61,8 +61,8 @@
     "version:sdk:patch": "cd packages/sdk && bun pm version patch",
     "version:sdk:minor": "cd packages/sdk && bun pm version minor",
     "version:sdk:major": "cd packages/sdk && bun pm version major",
-    "clean": "rimraf packages/*/node_modules packages/*/dist node_modules",
-    "clean:all": "rimraf packages/*/node_modules packages/*/dist node_modules bun.lock",
+    "clean": "bun run ./scripts/clean.mjs",
+    "clean:all": "bun run ./scripts/clean.mjs --all",
     "lint": "eslint packages/ --max-warnings 0",
     "format": "prettier --write 'packages/**/*.{ts,tsx,js,json,css,md}'",
     "format:check": "prettier --check 'packages/**/*.{ts,tsx,js,json,css,md}'"
