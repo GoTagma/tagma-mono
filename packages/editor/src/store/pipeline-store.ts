@@ -217,7 +217,14 @@ interface PipelineState {
 }
 
 function generateId(): string {
-  return Math.random().toString(36).slice(2, 10);
+  const chars = 'abcdefghijklmnopqrstuvwxyz';
+  const alphanumeric = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  // First character must be a letter (to satisfy /^[A-Za-z_][A-Za-z0-9_-]*$/)
+  let id = chars[Math.floor(Math.random() * chars.length)];
+  for (let i = 0; i < 7; i++) {
+    id += alphanumeric[Math.floor(Math.random() * alphanumeric.length)];
+  }
+  return id;
 }
 
 /**
