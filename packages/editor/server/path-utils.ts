@@ -47,9 +47,17 @@ export function isPathWithin(child: string, root: string): boolean {
   let realChild = child;
   let realRoot = root;
   if (existsSync(child)) {
-    try { realChild = realpathSync.native(child); } catch { /* path vanished */ }
+    try {
+      realChild = realpathSync.native(child);
+    } catch {
+      /* path vanished */
+    }
   }
-  try { realRoot = realpathSync.native(root); } catch { /* root not on disk */ }
+  try {
+    realRoot = realpathSync.native(root);
+  } catch {
+    /* root not on disk */
+  }
 
   const realChildRoot = parsePath(realChild).root;
   const realRootRoot = parsePath(realRoot).root;

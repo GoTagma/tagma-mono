@@ -28,7 +28,11 @@ export const FileExistsCompletion: CompletionPlugin = {
     },
   },
 
-  async check(config: Record<string, unknown>, _result: TaskResult, ctx: CompletionContext): Promise<boolean> {
+  async check(
+    config: Record<string, unknown>,
+    _result: TaskResult,
+    ctx: CompletionContext,
+  ): Promise<boolean> {
     const filePath = config.path as string;
     if (!filePath) throw new Error('file_exists completion: "path" is required');
 
@@ -36,7 +40,9 @@ export const FileExistsCompletion: CompletionPlugin = {
 
     const kind = (config.kind as Kind | undefined) ?? 'any';
     if (kind !== 'file' && kind !== 'dir' && kind !== 'any') {
-      throw new Error(`file_exists completion: "kind" must be "file" | "dir" | "any", got "${kind}"`);
+      throw new Error(
+        `file_exists completion: "kind" must be "file" | "dir" | "any", got "${kind}"`,
+      );
     }
 
     const minSize = config.min_size;

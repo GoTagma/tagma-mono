@@ -1,6 +1,6 @@
 {
   "name": "@tagma/types",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "Shared type surface for the Tagma engine and plugins — types only, no runtime code",
   "license": "MIT",
   "repository": {

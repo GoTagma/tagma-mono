@@ -4,7 +4,24 @@
 // consistent with the editor.
 
 import { useMemo, useCallback, useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Square, Loader2, Check, X, LayoutGrid, Settings, Search, Package, ChevronDown, ChevronRight, Clock, SkipForward, Ban, AlertCircle, RefreshCw } from 'lucide-react';
+import {
+  ArrowLeft,
+  Square,
+  Loader2,
+  Check,
+  X,
+  LayoutGrid,
+  Settings,
+  Search,
+  Package,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  SkipForward,
+  Ban,
+  AlertCircle,
+  RefreshCw,
+} from 'lucide-react';
 import { useRunStore } from '../../store/run-store';
 import { TaskCard } from '../board/TaskCard';
 import { TrackLane } from '../board/TrackLane';
@@ -81,7 +98,8 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
   // only when no snapshot exists (e.g. idle state showing history).
   const config = snapshot ?? liveConfig;
 
-  const isTerminal = status === 'done' || status === 'failed' || status === 'aborted' || status === 'error';
+  const isTerminal =
+    status === 'done' || status === 'failed' || status === 'aborted' || status === 'error';
 
   // C7: Abort confirmation state
   const [showAbortConfirm, setShowAbortConfirm] = useState(false);
@@ -119,13 +137,20 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
     e.preventDefault();
     const el = contentRef.current;
     if (!el) return;
-    const startX = e.clientX, startY = e.clientY;
-    const startSL = el.scrollLeft, startST = el.scrollTop;
+    const startX = e.clientX,
+      startY = e.clientY;
+    const startSL = el.scrollLeft,
+      startST = el.scrollTop;
     let started = false;
     panDidDragRef.current = false;
     const onMove = (ev: MouseEvent) => {
-      const dx = ev.clientX - startX, dy = ev.clientY - startY;
-      if (!started) { if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return; started = true; panDidDragRef.current = true; }
+      const dx = ev.clientX - startX,
+        dy = ev.clientY - startY;
+      if (!started) {
+        if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+        started = true;
+        panDidDragRef.current = true;
+      }
       const z = getZoom();
       el.scrollLeft = startSL - dx / z;
       el.scrollTop = startST - dy / z;
@@ -150,7 +175,12 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
 
   // Build flat task list with positions (same layout as BoardCanvas).
   const flatTasks = useMemo(() => {
-    type FT = { qid: string; trackId: string; trackIndex: number; task: (typeof config.tracks)[number]['tasks'][number] };
+    type FT = {
+      qid: string;
+      trackId: string;
+      trackIndex: number;
+      task: (typeof config.tracks)[number]['tasks'][number];
+    };
     const result: FT[] = [];
     for (let ti = 0; ti < config.tracks.length; ti++) {
       const track = config.tracks[ti];
@@ -218,25 +248,35 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
     const out = new Map<string, boolean>();
     for (const track of config.tracks) {
       const taskCount = track.tasks.length;
-      if (taskCount <= 1) { out.set(track.id, false); continue; }
-      const depCount = dagEdges.filter((e) => e.from.startsWith(track.id + '.') && e.to.startsWith(track.id + '.')).length;
+      if (taskCount <= 1) {
+        out.set(track.id, false);
+        continue;
+      }
+      const depCount = dagEdges.filter(
+        (e) => e.from.startsWith(track.id + '.') && e.to.startsWith(track.id + '.'),
+      ).length;
       out.set(track.id, depCount < taskCount - 1);
     }
     return out;
   }, [config.tracks, dagEdges]);
 
   const edges = useMemo(() => {
-    return dagEdges.map((edge) => {
-      const from = taskPositions.get(edge.from);
-      const to = taskPositions.get(edge.to);
-      if (!from || !to) return null;
-      const x1 = from.x + TASK_W + 4;
-      const y1 = from.y + TASK_H / 2;
-      const x2 = to.x - 4;
-      const y2 = to.y + TASK_H / 2;
-      const mx = (x1 + x2) / 2;
-      return { key: `${edge.from}->${edge.to}`, d: `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}` };
-    }).filter(Boolean) as { key: string; d: string }[];
+    return dagEdges
+      .map((edge) => {
+        const from = taskPositions.get(edge.from);
+        const to = taskPositions.get(edge.to);
+        if (!from || !to) return null;
+        const x1 = from.x + TASK_W + 4;
+        const y1 = from.y + TASK_H / 2;
+        const x2 = to.x - 4;
+        const y2 = to.y + TASK_H / 2;
+        const mx = (x1 + x2) / 2;
+        return {
+          key: `${edge.from}->${edge.to}`,
+          d: `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`,
+        };
+      })
+      .filter(Boolean) as { key: string; d: string }[];
   }, [dagEdges, taskPositions]);
 
   // Build selected task state. Fall back to the snapshot config when the
@@ -294,24 +334,27 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
   // Keyboard: Ctrl+F opens search, Escape clears selection or closes search.
   // In history mode the search target (the run canvas) isn't rendered, so
   // the shortcut is a no-op there.
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
-      if (showHistory) return;
-      e.preventDefault();
-      setSearchVisible(true);
-      return;
-    }
-    if (e.key === 'Escape') {
-      if (searchVisible) {
-        setSearchVisible(false);
-        setSearchQuery('');
-      } else if (selectedTaskId) {
-        selectTask(null);
-      } else if (selectedTrackId) {
-        selectTrack(null);
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        if (showHistory) return;
+        e.preventDefault();
+        setSearchVisible(true);
+        return;
       }
-    }
-  }, [searchVisible, selectedTaskId, selectedTrackId, selectTask, selectTrack, showHistory]);
+      if (e.key === 'Escape') {
+        if (searchVisible) {
+          setSearchVisible(false);
+          setSearchQuery('');
+        } else if (selectedTaskId) {
+          selectTask(null);
+        } else if (selectedTrackId) {
+          selectTrack(null);
+        }
+      }
+    },
+    [searchVisible, selectedTaskId, selectedTrackId, selectTask, selectTrack, showHistory],
+  );
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
@@ -376,7 +419,10 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
       {/* Header — height matches the editor Toolbar (h-11) so switching
           between the two views doesn't shift the canvas by 4px. */}
       <header className="h-11 bg-tagma-surface border-b border-tagma-border flex items-center px-2 gap-2 shrink-0">
-        <button onClick={onBack} className="flex items-center gap-1.5 text-xs text-tagma-muted hover:text-tagma-text transition-colors px-2 py-1">
+        <button
+          onClick={onBack}
+          className="flex items-center gap-1.5 text-xs text-tagma-muted hover:text-tagma-text transition-colors px-2 py-1"
+        >
           <ArrowLeft size={12} />
           <span>Back to Editor</span>
         </button>
@@ -384,7 +430,9 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
 
         <div className="flex items-center gap-1.5 px-2">
           <LayoutGrid size={13} className="text-tagma-accent" />
-          <span className="text-xs font-medium text-tagma-text truncate max-w-[160px]">{config.name}</span>
+          <span className="text-xs font-medium text-tagma-text truncate max-w-[160px]">
+            {config.name}
+          </span>
         </div>
 
         {/* In history mode the header collapses to Back + pipeline name
@@ -408,142 +456,151 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
         )}
 
         {!showHistory && (
-        <>
-        <div className="w-px h-5 bg-tagma-border" />
+          <>
+            <div className="w-px h-5 bg-tagma-border" />
 
-        {/* Run status */}
-        <div className="flex items-center gap-2 text-[10px] font-medium">
-          {status === 'running' && (
-            <span className="chip-sm gap-1.5 px-2 bg-tagma-ready/10 border-tagma-ready/20 text-tagma-ready">
-              <Loader2 size={10} className="animate-spin" />
-              Running
-            </span>
-          )}
-          {status === 'done' && (
-            <span className="chip-sm gap-1.5 px-2 bg-tagma-success/10 border-tagma-success/20 text-tagma-success">
-              <Check size={10} />
-              Completed
-            </span>
-          )}
-          {(status === 'error' || status === 'aborted' || status === 'failed') && (
-            <span className="chip-sm gap-1.5 px-2 bg-tagma-error/10 border-tagma-error/20 text-tagma-error">
-              <X size={10} />
-              {RUN_STATUS_LABEL[status] ?? status}
-            </span>
-          )}
-          {status === 'starting' && (
-            <span className="chip-sm gap-1.5 px-2 bg-tagma-muted/8 border-tagma-muted/15 text-tagma-muted">
-              {RUN_STATUS_LABEL[status] ?? status}
-            </span>
-          )}
-        </div>
+            {/* Run status */}
+            <div className="flex items-center gap-2 text-[10px] font-medium">
+              {status === 'running' && (
+                <span className="chip-sm gap-1.5 px-2 bg-tagma-ready/10 border-tagma-ready/20 text-tagma-ready">
+                  <Loader2 size={10} className="animate-spin" />
+                  Running
+                </span>
+              )}
+              {status === 'done' && (
+                <span className="chip-sm gap-1.5 px-2 bg-tagma-success/10 border-tagma-success/20 text-tagma-success">
+                  <Check size={10} />
+                  Completed
+                </span>
+              )}
+              {(status === 'error' || status === 'aborted' || status === 'failed') && (
+                <span className="chip-sm gap-1.5 px-2 bg-tagma-error/10 border-tagma-error/20 text-tagma-error">
+                  <X size={10} />
+                  {RUN_STATUS_LABEL[status] ?? status}
+                </span>
+              )}
+              {status === 'starting' && (
+                <span className="chip-sm gap-1.5 px-2 bg-tagma-muted/8 border-tagma-muted/15 text-tagma-muted">
+                  {RUN_STATUS_LABEL[status] ?? status}
+                </span>
+              )}
+            </div>
 
-        {tasks.size > 0 && (
-          <div className="flex items-center gap-1">
-            {counts.success != null && counts.success > 0 && (
-              <span className="chip-sm bg-tagma-success/10 border-tagma-success/20 text-tagma-success">
-                <Check size={9} />
-                <span className="tabular-nums">{counts.success}</span>
-              </span>
+            {tasks.size > 0 && (
+              <div className="flex items-center gap-1">
+                {counts.success != null && counts.success > 0 && (
+                  <span className="chip-sm bg-tagma-success/10 border-tagma-success/20 text-tagma-success">
+                    <Check size={9} />
+                    <span className="tabular-nums">{counts.success}</span>
+                  </span>
+                )}
+                {counts.failed != null && counts.failed > 0 && (
+                  <span className="chip-sm bg-tagma-error/10 border-tagma-error/20 text-tagma-error">
+                    <X size={9} />
+                    <span className="tabular-nums">{counts.failed}</span>
+                  </span>
+                )}
+                {counts.running != null && counts.running > 0 && (
+                  <span className="chip-sm bg-tagma-ready/10 border-tagma-ready/20 text-tagma-ready">
+                    <Loader2 size={9} className="animate-spin" />
+                    <span className="tabular-nums">{counts.running}</span>
+                  </span>
+                )}
+                {counts.blocked != null && counts.blocked > 0 && (
+                  <span className="chip-sm bg-tagma-warning/10 border-tagma-warning/20 text-tagma-warning">
+                    <Ban size={9} />
+                    <span className="tabular-nums">{counts.blocked}</span>
+                  </span>
+                )}
+                {counts.waiting != null && counts.waiting > 0 && (
+                  <span className="chip-sm bg-tagma-muted/8 border-tagma-muted/15 text-tagma-muted">
+                    <Clock size={9} />
+                    <span className="tabular-nums">{counts.waiting}</span>
+                  </span>
+                )}
+                {counts.timeout != null && counts.timeout > 0 && (
+                  <span className="chip-sm bg-tagma-warning/10 border-tagma-warning/20 text-tagma-warning">
+                    <Clock size={9} />
+                    <span className="tabular-nums">{counts.timeout}</span>
+                  </span>
+                )}
+                {counts.skipped != null && counts.skipped > 0 && (
+                  <span className="chip-sm bg-tagma-muted/6 border-tagma-muted/10 text-tagma-muted/60">
+                    <SkipForward size={9} />
+                    <span className="font-semibold tabular-nums">{counts.skipped}</span>
+                  </span>
+                )}
+              </div>
             )}
-            {counts.failed != null && counts.failed > 0 && (
-              <span className="chip-sm bg-tagma-error/10 border-tagma-error/20 text-tagma-error">
-                <X size={9} />
-                <span className="tabular-nums">{counts.failed}</span>
-              </span>
-            )}
-            {counts.running != null && counts.running > 0 && (
-              <span className="chip-sm bg-tagma-ready/10 border-tagma-ready/20 text-tagma-ready">
-                <Loader2 size={9} className="animate-spin" />
-                <span className="tabular-nums">{counts.running}</span>
-              </span>
-            )}
-            {counts.blocked != null && counts.blocked > 0 && (
+
+            {pendingApprovals.size > 0 && (
               <span className="chip-sm bg-tagma-warning/10 border-tagma-warning/20 text-tagma-warning">
-                <Ban size={9} />
-                <span className="tabular-nums">{counts.blocked}</span>
+                <AlertCircle size={9} className="animate-pulse-slow" />
+                <span className="tabular-nums">{pendingApprovals.size}</span>
+                approval{pendingApprovals.size === 1 ? '' : 's'}
               </span>
             )}
-            {counts.waiting != null && counts.waiting > 0 && (
-              <span className="chip-sm bg-tagma-muted/8 border-tagma-muted/15 text-tagma-muted">
-                <Clock size={9} />
-                <span className="tabular-nums">{counts.waiting}</span>
-              </span>
-            )}
-            {counts.timeout != null && counts.timeout > 0 && (
-              <span className="chip-sm bg-tagma-warning/10 border-tagma-warning/20 text-tagma-warning">
-                <Clock size={9} />
-                <span className="tabular-nums">{counts.timeout}</span>
-              </span>
-            )}
-            {counts.skipped != null && counts.skipped > 0 && (
-              <span className="chip-sm bg-tagma-muted/6 border-tagma-muted/10 text-tagma-muted/60">
-                <SkipForward size={9} />
-                <span className="font-semibold tabular-nums">{counts.skipped}</span>
-              </span>
-            )}
-          </div>
-        )}
 
-        {pendingApprovals.size > 0 && (
-          <span className="chip-sm bg-tagma-warning/10 border-tagma-warning/20 text-tagma-warning">
-            <AlertCircle size={9} className="animate-pulse-slow" />
-            <span className="tabular-nums">{pendingApprovals.size}</span>
-            approval{pendingApprovals.size === 1 ? '' : 's'}
-          </span>
-        )}
+            <div className="flex-1" />
 
-        <div className="flex-1" />
-
-        {/* Plugins (read-only) */}
-        <button
-          onClick={() => setShowPlugins(true)}
-          className="flex items-center gap-1.5 px-2 py-1 text-xs text-tagma-muted hover:text-tagma-text transition-colors"
-          title="View loaded plugins (read-only)"
-          aria-label="View loaded plugins"
-        >
-          <Package size={12} />
-        </button>
-
-        {/* Pipeline settings (read-only) */}
-        <button
-          onClick={() => setShowPipelineSettings(true)}
-          className="flex items-center gap-1.5 px-2 py-1 text-xs text-tagma-muted hover:text-tagma-text transition-colors"
-          title="View pipeline settings (read-only)"
-          aria-label="View pipeline settings"
-        >
-          <Settings size={12} />
-        </button>
-
-        {/* Search */}
-        <button
-          onClick={() => setSearchVisible(true)}
-          className="flex items-center gap-1.5 px-2 py-1 text-xs text-tagma-muted hover:text-tagma-text transition-colors"
-          title="Search tasks (Ctrl+F)"
-          aria-label="Search tasks"
-        >
-          <Search size={12} />
-        </button>
-
-        {/* Abort with confirmation (C7) */}
-        {!isTerminal && !showAbortConfirm && (
-          <button onClick={handleAbortClick} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-tagma-error border border-tagma-error/20 hover:bg-tagma-error/10 transition-colors mr-1">
-            <Square size={10} />
-            <span>Abort</span>
-          </button>
-        )}
-        {showAbortConfirm && (
-          <div className="flex items-center gap-2 mr-1 px-2 py-1 bg-tagma-error/5 border border-tagma-error/20">
-            <span className="text-[10px] font-medium text-tagma-error">Stop all?</span>
-            <button onClick={handleAbortConfirm} className="px-2 py-0.5 text-[10px] font-medium bg-tagma-error/20 text-tagma-error border border-tagma-error/30 hover:bg-tagma-error/30 transition-colors">
-              Confirm
+            {/* Plugins (read-only) */}
+            <button
+              onClick={() => setShowPlugins(true)}
+              className="flex items-center gap-1.5 px-2 py-1 text-xs text-tagma-muted hover:text-tagma-text transition-colors"
+              title="View loaded plugins (read-only)"
+              aria-label="View loaded plugins"
+            >
+              <Package size={12} />
             </button>
-            <button onClick={handleAbortCancel} className="px-2 py-0.5 text-[10px] text-tagma-muted border border-tagma-border hover:bg-tagma-elevated transition-colors">
-              Cancel
+
+            {/* Pipeline settings (read-only) */}
+            <button
+              onClick={() => setShowPipelineSettings(true)}
+              className="flex items-center gap-1.5 px-2 py-1 text-xs text-tagma-muted hover:text-tagma-text transition-colors"
+              title="View pipeline settings (read-only)"
+              aria-label="View pipeline settings"
+            >
+              <Settings size={12} />
             </button>
-          </div>
-        )}
-        </>
+
+            {/* Search */}
+            <button
+              onClick={() => setSearchVisible(true)}
+              className="flex items-center gap-1.5 px-2 py-1 text-xs text-tagma-muted hover:text-tagma-text transition-colors"
+              title="Search tasks (Ctrl+F)"
+              aria-label="Search tasks"
+            >
+              <Search size={12} />
+            </button>
+
+            {/* Abort with confirmation (C7) */}
+            {!isTerminal && !showAbortConfirm && (
+              <button
+                onClick={handleAbortClick}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-tagma-error border border-tagma-error/20 hover:bg-tagma-error/10 transition-colors mr-1"
+              >
+                <Square size={10} />
+                <span>Abort</span>
+              </button>
+            )}
+            {showAbortConfirm && (
+              <div className="flex items-center gap-2 mr-1 px-2 py-1 bg-tagma-error/5 border border-tagma-error/20">
+                <span className="text-[10px] font-medium text-tagma-error">Stop all?</span>
+                <button
+                  onClick={handleAbortConfirm}
+                  className="px-2 py-0.5 text-[10px] font-medium bg-tagma-error/20 text-tagma-error border border-tagma-error/30 hover:bg-tagma-error/30 transition-colors"
+                >
+                  Confirm
+                </button>
+                <button
+                  onClick={handleAbortCancel}
+                  className="px-2 py-0.5 text-[10px] text-tagma-muted border border-tagma-border hover:bg-tagma-elevated transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </>
         )}
       </header>
 
@@ -567,13 +624,17 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
           {pipelineLogExpanded && (
             <div className="max-h-[120px] overflow-y-auto px-3 pb-2">
               {pipelineLogs.map((line, i) => (
-                <div key={i} className={`text-[10px] font-mono leading-relaxed ${
-                  line.level === 'error' ? 'text-tagma-error' :
-                  line.level === 'warn' ? 'text-tagma-warning' :
-                  'text-tagma-muted/80'
-                }`}>
-                  <span className="text-tagma-muted/50">{line.timestamp}</span>{' '}
-                  {line.text}
+                <div
+                  key={i}
+                  className={`text-[10px] font-mono leading-relaxed ${
+                    line.level === 'error'
+                      ? 'text-tagma-error'
+                      : line.level === 'warn'
+                        ? 'text-tagma-warning'
+                        : 'text-tagma-muted/80'
+                  }`}
+                >
+                  <span className="text-tagma-muted/50">{line.timestamp}</span> {line.text}
                 </div>
               ))}
             </div>
@@ -639,8 +700,13 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
                 onScroll={syncScroll}
                 onMouseDown={handlePanMouseDown}
               >
-                <div className="relative w-full cursor-grab active:cursor-grabbing" style={{ minWidth: canvasWidth, minHeight: canvasHeight }}
-                  onClick={() => { if (!panDidDragRef.current) selectTask(null); }}>
+                <div
+                  className="relative w-full cursor-grab active:cursor-grabbing"
+                  style={{ minWidth: canvasWidth, minHeight: canvasHeight }}
+                  onClick={() => {
+                    if (!panDidDragRef.current) selectTask(null);
+                  }}
+                >
                   {/* Track row backgrounds — even/odd classes match the
                       editor so the zebra striping is identical. */}
                   {config.tracks.map((track, i) => (
@@ -649,14 +715,27 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
                       className={`absolute left-0 right-0 border-b border-tagma-border/40 cursor-grab active:cursor-grabbing ${i % 2 === 0 ? 'track-row-even' : 'track-row-odd'}`}
                       style={{ top: i * TRACK_H, height: TRACK_H }}
                       onMouseDown={handlePanMouseDown}
-                      onClick={() => { if (!panDidDragRef.current) selectTask(null); }}
+                      onClick={() => {
+                        if (!panDidDragRef.current) selectTask(null);
+                      }}
                     />
                   ))}
 
                   {/* Edges */}
-                  <svg className="absolute inset-0 pointer-events-none" width={canvasWidth} height={canvasHeight} style={{ overflow: 'visible' }}>
+                  <svg
+                    className="absolute inset-0 pointer-events-none"
+                    width={canvasWidth}
+                    height={canvasHeight}
+                    style={{ overflow: 'visible' }}
+                  >
                     {edges.map((e) => (
-                      <path key={e.key} d={e.d} fill="none" stroke="rgba(107,114,128,0.25)" strokeWidth={1.5} />
+                      <path
+                        key={e.key}
+                        d={e.d}
+                        fill="none"
+                        stroke="rgba(107,114,128,0.25)"
+                        strokeWidth={1.5}
+                      />
                     ))}
                   </svg>
 
@@ -672,7 +751,10 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
                         task={ft.task}
                         trackId={ft.trackId}
                         pipelineConfig={config}
-                        x={pos.x} y={pos.y} w={TASK_W} h={TASK_H}
+                        x={pos.x}
+                        y={pos.y}
+                        w={TASK_W}
+                        h={TASK_H}
                         isSelected={selectedTaskId === ft.qid}
                         isInvalid={false}
                         isDragging={false}
@@ -689,29 +771,27 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
               </div>
 
               {/* Floating minimap + zoom controls — same UX as editor */}
-              <Minimap scrollElementId={RUN_SCROLL_ID} config={config} positions={minimapPositions} />
+              <Minimap
+                scrollElementId={RUN_SCROLL_ID}
+                config={config}
+                positions={minimapPositions}
+              />
               <ZoomControls />
             </div>
 
             {selectedTask && (
-              <RunTaskPanel
-                task={selectedTask}
-                config={config}
-                onClose={() => selectTask(null)}
-              />
+              <RunTaskPanel task={selectedTask} config={config} onClose={() => selectTask(null)} />
             )}
 
-            {!selectedTask && selectedTrackId && (() => {
-              const track = config.tracks.find((t) => t.id === selectedTrackId);
-              if (!track) return null;
-              return (
-                <TrackInfoPanel
-                  track={track}
-                  config={config}
-                  onClose={() => selectTrack(null)}
-                />
-              );
-            })()}
+            {!selectedTask &&
+              selectedTrackId &&
+              (() => {
+                const track = config.tracks.find((t) => t.id === selectedTrackId);
+                if (!track) return null;
+                return (
+                  <TrackInfoPanel track={track} config={config} onClose={() => selectTrack(null)} />
+                );
+              })()}
           </>
         )}
       </div>
@@ -732,19 +812,16 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
           config={config}
           drivers={[]}
           errors={[]}
-          onUpdate={() => { /* readOnly — no-op */ }}
+          onUpdate={() => {
+            /* readOnly — no-op */
+          }}
           onClose={() => setShowPipelineSettings(false)}
           readOnly
         />
       )}
 
       {/* Plugins modal (read-only) */}
-      {showPlugins && (
-        <RunPluginsPanel
-          config={config}
-          onClose={() => setShowPlugins(false)}
-        />
-      )}
+      {showPlugins && <RunPluginsPanel config={config} onClose={() => setShowPlugins(false)} />}
 
       {/* Search overlay — read-only, navigates selection on click */}
       {searchVisible && (
@@ -756,13 +833,19 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Escape') { setSearchVisible(false); setSearchQuery(''); }
+                if (e.key === 'Escape') {
+                  setSearchVisible(false);
+                  setSearchQuery('');
+                }
               }}
               placeholder="Search tasks by name or prompt..."
               className="flex-1 text-[11px] font-mono bg-tagma-bg border border-tagma-border focus:border-tagma-accent px-2 py-1 text-tagma-text outline-none"
             />
             <button
-              onClick={() => { setSearchVisible(false); setSearchQuery(''); }}
+              onClick={() => {
+                setSearchVisible(false);
+                setSearchQuery('');
+              }}
               className="p-1 text-tagma-muted hover:text-tagma-text"
               aria-label="Close search"
             >
@@ -771,7 +854,9 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
           </div>
           <div className="max-h-[240px] overflow-y-auto">
             {searchQuery.trim() === '' && (
-              <div className="px-3 py-2 text-[10px] font-mono text-tagma-muted/60">Type to search tasks</div>
+              <div className="px-3 py-2 text-[10px] font-mono text-tagma-muted/60">
+                Type to search tasks
+              </div>
             )}
             {searchQuery.trim() !== '' && searchMatches.length === 0 && (
               <div className="px-3 py-2 text-[10px] font-mono text-tagma-muted/60">No matches</div>
@@ -792,7 +877,9 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
               >
                 <div className="text-[11px] font-mono text-tagma-text truncate">{m.label}</div>
                 {m.snippet && (
-                  <div className="text-[10px] font-mono text-tagma-muted/60 truncate">{m.snippet}</div>
+                  <div className="text-[10px] font-mono text-tagma-muted/60 truncate">
+                    {m.snippet}
+                  </div>
                 )}
               </button>
             ))}
@@ -802,4 +889,3 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
     </div>
   );
 }
-

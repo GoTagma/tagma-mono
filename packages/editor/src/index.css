@@ -5,7 +5,9 @@
 html {
   zoom: 1.5;
 }
-html, body, #root {
+html,
+body,
+#root {
   margin: 0;
   overflow: hidden;
   height: 100%;
@@ -20,7 +22,11 @@ body {
   user-select: none;
 }
 
-input, textarea, select, [contenteditable="true"], .select-text {
+input,
+textarea,
+select,
+[contenteditable='true'],
+.select-text {
   -webkit-user-select: text;
   -moz-user-select: text;
   -ms-user-select: text;
@@ -32,44 +38,82 @@ input, textarea, select, [contenteditable="true"], .select-text {
   color: #e8eaed;
 }
 
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(107, 114, 128, 0.15); }
-::-webkit-scrollbar-thumb:hover { background: rgba(107, 114, 128, 0.3); }
-::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(107, 114, 128, 0.15);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(107, 114, 128, 0.3);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
 
 .hide-scrollbar::-webkit-scrollbar,
-.hide-scrollbar *::-webkit-scrollbar { width: 0; height: 0; display: none; }
-.hide-scrollbar, .hide-scrollbar * { scrollbar-width: none; }
+.hide-scrollbar *::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+.hide-scrollbar,
+.hide-scrollbar * {
+  scrollbar-width: none;
+}
 
 .timeline-grid {
   background-image: linear-gradient(to right, rgba(42, 42, 42, 0.3) 1px, transparent 1px);
   background-size: 184px 100%;
 }
 
-.track-row-even { background: transparent; }
-.track-row-odd { background: rgba(20, 20, 20, 0.4); }
+.track-row-even {
+  background: transparent;
+}
+.track-row-odd {
+  background: rgba(20, 20, 20, 0.4);
+}
 
 /* Brief flash applied to a TaskCard after the search overlay scrolls it
    into view — gives the user something to lock onto besides the smooth
    scroll. The class is added imperatively and removed ~1.4s later. */
 @keyframes tagma-focus-pulse {
-  0%   { box-shadow: 0 0 0 0 rgba(212, 132, 90, 0.55), 0 0 0 0 rgba(212, 132, 90, 0.4); }
-  50%  { box-shadow: 0 0 0 3px rgba(212, 132, 90, 0.45), 0 0 18px 6px rgba(212, 132, 90, 0.25); }
-  100% { box-shadow: 0 0 0 0 rgba(212, 132, 90, 0), 0 0 0 0 rgba(212, 132, 90, 0); }
+  0% {
+    box-shadow:
+      0 0 0 0 rgba(212, 132, 90, 0.55),
+      0 0 0 0 rgba(212, 132, 90, 0.4);
+  }
+  50% {
+    box-shadow:
+      0 0 0 3px rgba(212, 132, 90, 0.45),
+      0 0 18px 6px rgba(212, 132, 90, 0.25);
+  }
+  100% {
+    box-shadow:
+      0 0 0 0 rgba(212, 132, 90, 0),
+      0 0 0 0 rgba(212, 132, 90, 0);
+  }
 }
-[data-task-card="true"].focus-pulse {
+[data-task-card='true'].focus-pulse {
   animation: tagma-focus-pulse 1200ms ease-out 1;
   z-index: 20;
 }
 
-input:focus, textarea:focus, select:focus {
+input:focus,
+textarea:focus,
+select:focus {
   outline: none;
   border-color: #d4845a;
   box-shadow: 0 0 0 1px rgba(212, 132, 90, 0.2);
 }
 
-input[type="checkbox"] { accent-color: #d4845a; }
+input[type='checkbox'] {
+  accent-color: #d4845a;
+}
 
 @layer components {
   .panel-header {

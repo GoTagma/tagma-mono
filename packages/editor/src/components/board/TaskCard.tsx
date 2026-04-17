@@ -1,9 +1,19 @@
 import { useState, useRef, useLayoutEffect, memo } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  AlertTriangle, Terminal, MessageSquare, Lock, FileSearch,
-  Clock, CheckCircle2, Layers,
-  Loader2, Check, X as XIcon, SkipForward, Ban,
+  AlertTriangle,
+  Terminal,
+  MessageSquare,
+  Lock,
+  FileSearch,
+  Clock,
+  CheckCircle2,
+  Layers,
+  Loader2,
+  Check,
+  X as XIcon,
+  SkipForward,
+  Ban,
 } from 'lucide-react';
 import type { RawTaskConfig, RawPipelineConfig, TaskStatus } from '../../api/client';
 import { getZoom, viewportW, viewportH } from '../../utils/zoom';
@@ -47,15 +57,60 @@ interface TaskCardProps {
   onClickRun?: (taskId: string) => void;
 }
 
-const RUNTIME_CFG: Record<TaskStatus, { bar: string; bg: string; icon: typeof Check; iconColor: string; label: string }> = {
-  idle:    { bar: '',                   bg: '',                     icon: Clock,       iconColor: '',                     label: '' },
-  waiting: { bar: 'bg-tagma-muted/50',  bg: '',                     icon: Clock,       iconColor: 'text-tagma-muted/60',  label: 'waiting' },
-  running: { bar: 'bg-tagma-ready',     bg: 'bg-tagma-ready/8',     icon: Loader2,     iconColor: 'text-tagma-ready',     label: 'running' },
-  success: { bar: 'bg-tagma-success',   bg: 'bg-tagma-success/8',   icon: Check,       iconColor: 'text-tagma-success',   label: 'done' },
-  failed:  { bar: 'bg-tagma-error',     bg: 'bg-tagma-error/8',     icon: XIcon,       iconColor: 'text-tagma-error',     label: 'failed' },
-  timeout: { bar: 'bg-tagma-warning',   bg: 'bg-tagma-warning/8',   icon: Clock,       iconColor: 'text-tagma-warning',   label: 'timeout' },
-  skipped: { bar: 'bg-tagma-muted/40',  bg: '',                     icon: SkipForward, iconColor: 'text-tagma-muted/50',  label: 'skipped' },
-  blocked: { bar: 'bg-tagma-warning',   bg: 'bg-tagma-warning/8',   icon: Ban,         iconColor: 'text-tagma-warning',   label: 'blocked' },
+const RUNTIME_CFG: Record<
+  TaskStatus,
+  { bar: string; bg: string; icon: typeof Check; iconColor: string; label: string }
+> = {
+  idle: { bar: '', bg: '', icon: Clock, iconColor: '', label: '' },
+  waiting: {
+    bar: 'bg-tagma-muted/50',
+    bg: '',
+    icon: Clock,
+    iconColor: 'text-tagma-muted/60',
+    label: 'waiting',
+  },
+  running: {
+    bar: 'bg-tagma-ready',
+    bg: 'bg-tagma-ready/8',
+    icon: Loader2,
+    iconColor: 'text-tagma-ready',
+    label: 'running',
+  },
+  success: {
+    bar: 'bg-tagma-success',
+    bg: 'bg-tagma-success/8',
+    icon: Check,
+    iconColor: 'text-tagma-success',
+    label: 'done',
+  },
+  failed: {
+    bar: 'bg-tagma-error',
+    bg: 'bg-tagma-error/8',
+    icon: XIcon,
+    iconColor: 'text-tagma-error',
+    label: 'failed',
+  },
+  timeout: {
+    bar: 'bg-tagma-warning',
+    bg: 'bg-tagma-warning/8',
+    icon: Clock,
+    iconColor: 'text-tagma-warning',
+    label: 'timeout',
+  },
+  skipped: {
+    bar: 'bg-tagma-muted/40',
+    bg: '',
+    icon: SkipForward,
+    iconColor: 'text-tagma-muted/50',
+    label: 'skipped',
+  },
+  blocked: {
+    bar: 'bg-tagma-warning',
+    bg: 'bg-tagma-warning/8',
+    icon: Ban,
+    iconColor: 'text-tagma-warning',
+    label: 'blocked',
+  },
 };
 
 function formatRuntimeDuration(ms: number): string {
@@ -64,7 +119,10 @@ function formatRuntimeDuration(ms: number): string {
 }
 
 function resolveField<K extends 'driver' | 'model'>(
-  task: RawTaskConfig, trackId: string, config: RawPipelineConfig, field: K,
+  task: RawTaskConfig,
+  trackId: string,
+  config: RawPipelineConfig,
+  field: K,
 ): string | undefined {
   if (task[field]) return task[field];
   const track = config.tracks.find((t) => t.id === trackId);
@@ -80,7 +138,9 @@ function resolveField<K extends 'driver' | 'model'>(
  * className. */
 function Chip({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
-    <span className={`inline-flex items-center h-[14px] px-[4px] min-w-0 overflow-hidden ${className}`}>
+    <span
+      className={`inline-flex items-center h-[14px] px-[4px] min-w-0 overflow-hidden ${className}`}
+    >
       <span className="truncate text-[7.5px] font-mono leading-[14px]">{children}</span>
     </span>
   );
@@ -101,12 +161,16 @@ function ErrorTooltip({ messages, anchorRect }: { messages: string[]; anchorRect
     const el = ref.current;
     if (!el) return;
     const z = getZoom();
-    const gap = 8, margin = 8;
-    const vw = viewportW(), vh = viewportH();
+    const gap = 8,
+      margin = 8;
+    const vw = viewportW(),
+      vh = viewportH();
     const tW = el.getBoundingClientRect().width / z;
     const tH = el.getBoundingClientRect().height / z;
-    const aL = anchorRect.left / z, aT = anchorRect.top / z;
-    const aW = anchorRect.width / z, aB = anchorRect.bottom / z;
+    const aL = anchorRect.left / z,
+      aT = anchorRect.top / z;
+    const aW = anchorRect.width / z,
+      aB = anchorRect.bottom / z;
 
     // Anchor above the card centered horizontally; fall back to below if
     // there's not enough room above.
@@ -128,9 +192,12 @@ function ErrorTooltip({ messages, anchorRect }: { messages: string[]; anchorRect
       ref={ref}
       className="fixed pointer-events-none bg-[#1a1a1e] border border-tagma-error/40 shadow-lg"
       style={{
-        left: pos?.left ?? -9999, top: pos?.top ?? -9999,
-        width: 260, maxHeight: viewportH() - 16,
-        overflow: 'hidden', zIndex: 9999,
+        left: pos?.left ?? -9999,
+        top: pos?.top ?? -9999,
+        width: 260,
+        maxHeight: viewportH() - 16,
+        overflow: 'hidden',
+        zIndex: 9999,
         opacity: pos && visible ? 1 : 0,
         transition: 'opacity 150ms ease-out',
       }}
@@ -149,8 +216,16 @@ function ErrorTooltip({ messages, anchorRect }: { messages: string[]; anchorRect
 }
 
 /* ── Config Tooltip ── */
-function TaskTooltip({ task, trackId, config, anchorRect }: {
-  task: RawTaskConfig; trackId: string; config: RawPipelineConfig; anchorRect: DOMRect;
+function TaskTooltip({
+  task,
+  trackId,
+  config,
+  anchorRect,
+}: {
+  task: RawTaskConfig;
+  trackId: string;
+  config: RawPipelineConfig;
+  anchorRect: DOMRect;
 }) {
   const driver = resolveField(task, trackId, config, 'driver');
   const model = resolveField(task, trackId, config, 'model');
@@ -163,18 +238,30 @@ function TaskTooltip({ task, trackId, config, anchorRect }: {
   if (!isCmd && driver) rows.push(['Driver', driver]);
   if (!isCmd && model) rows.push(['Model', model]);
   if (!isCmd && perms) {
-    const parts = [perms.read && 'Read', perms.write && 'Write', perms.execute && 'Execute'].filter(Boolean);
+    const parts = [perms.read && 'Read', perms.write && 'Write', perms.execute && 'Execute'].filter(
+      Boolean,
+    );
     if (parts.length) rows.push(['Permissions', parts.join(', ')]);
   }
   if (task.timeout) rows.push(['Timeout', task.timeout]);
-  if (task.trigger) rows.push(['Trigger', `${task.trigger.type}${task.trigger.message ? ` — ${task.trigger.message}` : ''}`]);
+  if (task.trigger)
+    rows.push([
+      'Trigger',
+      `${task.trigger.type}${task.trigger.message ? ` — ${task.trigger.message}` : ''}`,
+    ]);
   if (task.completion) rows.push(['Completion', task.completion.type]);
-  if (task.middlewares?.length) rows.push(['Middleware', task.middlewares.map((m) => m.type).join(', ')]);
+  if (task.middlewares?.length)
+    rows.push(['Middleware', task.middlewares.map((m) => m.type).join(', ')]);
   if (task.continue_from) rows.push(['Continue', task.continue_from]);
   if (task.cwd) rows.push(['CWD', task.cwd]);
   if (!isCmd && task.agent_profile) rows.push(['Profile', task.agent_profile]);
-  if (task.prompt) rows.push(['Prompt', task.prompt.length > 60 ? task.prompt.slice(0, 60) + '…' : task.prompt]);
-  if (task.command) rows.push(['Command', task.command.length > 60 ? task.command.slice(0, 60) + '…' : task.command]);
+  if (task.prompt)
+    rows.push(['Prompt', task.prompt.length > 60 ? task.prompt.slice(0, 60) + '…' : task.prompt]);
+  if (task.command)
+    rows.push([
+      'Command',
+      task.command.length > 60 ? task.command.slice(0, 60) + '…' : task.command,
+    ]);
 
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
@@ -183,12 +270,16 @@ function TaskTooltip({ task, trackId, config, anchorRect }: {
     const el = tooltipRef.current;
     if (!el) return;
     const z = getZoom();
-    const gap = 6, margin = 8;
-    const vw = viewportW(), vh = viewportH();
+    const gap = 6,
+      margin = 8;
+    const vw = viewportW(),
+      vh = viewportH();
     const tW = el.getBoundingClientRect().width / z;
     const tH = el.getBoundingClientRect().height / z;
-    const aL = anchorRect.left / z, aT = anchorRect.top / z;
-    const aW = anchorRect.width / z, aB = anchorRect.bottom / z;
+    const aL = anchorRect.left / z,
+      aT = anchorRect.top / z;
+    const aW = anchorRect.width / z,
+      aB = anchorRect.bottom / z;
 
     let left = aL + aW / 2 - tW / 2;
     left = Math.max(margin, Math.min(left, vw - tW - margin));
@@ -204,9 +295,12 @@ function TaskTooltip({ task, trackId, config, anchorRect }: {
       ref={tooltipRef}
       className="fixed pointer-events-none bg-[#1a1a1e] border border-[#2a2a30] shadow-lg animate-fade-in"
       style={{
-        left: pos?.left ?? -9999, top: pos?.top ?? -9999,
-        width: 260, maxHeight: viewportH() - 16,
-        overflow: 'hidden', zIndex: 9999,
+        left: pos?.left ?? -9999,
+        top: pos?.top ?? -9999,
+        width: 260,
+        maxHeight: viewportH() - 16,
+        overflow: 'hidden',
+        zIndex: 9999,
         visibility: pos ? 'visible' : 'hidden',
       }}
     >
@@ -228,10 +322,27 @@ function TaskTooltip({ task, trackId, config, anchorRect }: {
 
 /* ── Main ── */
 export const TaskCard = memo(function TaskCard({
-  task, trackId, pipelineConfig, x, y, w, h,
-  isSelected, isInvalid, errorMessages, isDragging, isTrackDragging, isEdgeTarget,
-  onPointerDown, onHandlePointerDown, onTargetPointerUp, onContextMenu,
-  readOnly = false, runtimeStatus, runtimeDurationMs, onClickRun,
+  task,
+  trackId,
+  pipelineConfig,
+  x,
+  y,
+  w,
+  h,
+  isSelected,
+  isInvalid,
+  errorMessages,
+  isDragging,
+  isTrackDragging,
+  isEdgeTarget,
+  onPointerDown,
+  onHandlePointerDown,
+  onTargetPointerUp,
+  onContextMenu,
+  readOnly = false,
+  runtimeStatus,
+  runtimeDurationMs,
+  onClickRun,
 }: TaskCardProps) {
   const [hovered, setHovered] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -251,17 +362,25 @@ export const TaskCard = memo(function TaskCard({
 
   const borderColor = isDragging
     ? 'border-tagma-accent'
-    : isInvalid ? 'border-tagma-error/60'
-    : isSelected ? 'border-tagma-accent'
-    : isEdgeTarget ? 'border-tagma-accent/60'
-    : 'border-tagma-border/70';
+    : isInvalid
+      ? 'border-tagma-error/60'
+      : isSelected
+        ? 'border-tagma-accent'
+        : isEdgeTarget
+          ? 'border-tagma-accent/60'
+          : 'border-tagma-border/70';
 
   const bgColor = isDragging
     ? 'bg-tagma-accent/10'
-    : isInvalid ? 'bg-tagma-error/8'
-    : isSelected ? 'bg-tagma-accent/6'
-    : isEdgeTarget ? 'bg-tagma-accent/4'
-    : (runtimeCfg?.bg ? runtimeCfg.bg : 'bg-tagma-elevated hover:bg-tagma-elevated/80');
+    : isInvalid
+      ? 'bg-tagma-error/8'
+      : isSelected
+        ? 'bg-tagma-accent/6'
+        : isEdgeTarget
+          ? 'bg-tagma-accent/4'
+          : runtimeCfg?.bg
+            ? runtimeCfg.bg
+            : 'bg-tagma-elevated hover:bg-tagma-elevated/80';
 
   // Status indicators — each wrapped in a fixed 10x10 slot so badges
   // land on the same horizontal grid regardless of which icons appear.
@@ -273,15 +392,36 @@ export const TaskCard = memo(function TaskCard({
   const badges: React.ReactNode[] = [];
   if (task.trigger) {
     const I = task.trigger.type === 'file' ? FileSearch : Lock;
-    badges.push(<BadgeSlot key="trg"><I size={7} className="text-amber-400/80" /></BadgeSlot>);
+    badges.push(
+      <BadgeSlot key="trg">
+        <I size={7} className="text-amber-400/80" />
+      </BadgeSlot>,
+    );
   }
-  if (task.timeout) badges.push(<BadgeSlot key="to"><Clock size={7} className="text-sky-400/70" /></BadgeSlot>);
-  if (task.completion) badges.push(<BadgeSlot key="ck"><CheckCircle2 size={7} className="text-emerald-400/70" /></BadgeSlot>);
-  if (task.middlewares?.length) badges.push(<BadgeSlot key="mw"><Layers size={7} className="text-purple-400/70" /></BadgeSlot>);
+  if (task.timeout)
+    badges.push(
+      <BadgeSlot key="to">
+        <Clock size={7} className="text-sky-400/70" />
+      </BadgeSlot>,
+    );
+  if (task.completion)
+    badges.push(
+      <BadgeSlot key="ck">
+        <CheckCircle2 size={7} className="text-emerald-400/70" />
+      </BadgeSlot>,
+    );
+  if (task.middlewares?.length)
+    badges.push(
+      <BadgeSlot key="mw">
+        <Layers size={7} className="text-purple-400/70" />
+      </BadgeSlot>,
+    );
 
   const cursorClass = readOnly
     ? 'cursor-pointer'
-    : (isDragging ? 'cursor-grabbing' : 'cursor-grab active:cursor-grabbing');
+    : isDragging
+      ? 'cursor-grabbing'
+      : 'cursor-grab active:cursor-grabbing';
 
   return (
     <div
@@ -295,8 +435,12 @@ export const TaskCard = memo(function TaskCard({
         ${cursorClass}
       `}
       style={{
-        left: x, top: y, width: w, height: h,
-        transition: (isDragging || isTrackDragging) ? 'none' : 'left 100ms ease-out, top 100ms ease-out',
+        left: x,
+        top: y,
+        width: w,
+        height: h,
+        transition:
+          isDragging || isTrackDragging ? 'none' : 'left 100ms ease-out, top 100ms ease-out',
       }}
       onPointerDown={(e) => {
         if (e.button !== 0) return;
@@ -317,8 +461,12 @@ export const TaskCard = memo(function TaskCard({
         e.stopPropagation();
         onClickRun?.(task.id);
       }}
-      onPointerUp={() => { if (!readOnly) onTargetPointerUp?.(task.id); }}
-      onContextMenu={(e) => { if (!readOnly && onContextMenu) onContextMenu(task.id, e); }}
+      onPointerUp={() => {
+        if (!readOnly) onTargetPointerUp?.(task.id);
+      }}
+      onContextMenu={(e) => {
+        if (!readOnly && onContextMenu) onContextMenu(task.id, e);
+      }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -326,43 +474,56 @@ export const TaskCard = memo(function TaskCard({
           purely for drag-to-link interactions. */}
       {!readOnly && (
         <>
-          <div className={`
+          <div
+            className={`
             absolute -left-[4px] top-1/2 -translate-y-1/2 w-[8px] h-[8px]
             border bg-tagma-bg transition-all duration-75
             ${isEdgeTarget ? 'border-tagma-accent bg-tagma-accent scale-125' : 'border-tagma-border hover:border-tagma-accent'}
-          `} />
+          `}
+          />
           <div
             className="absolute -right-[4px] top-1/2 -translate-y-1/2 w-[8px] h-[8px]
               border border-tagma-border bg-tagma-bg cursor-crosshair
               hover:border-tagma-accent hover:bg-tagma-accent/20 transition-all duration-75"
-            onPointerDown={(e) => { if (e.button === 0) { e.stopPropagation(); onHandlePointerDown?.(task.id, e); } }}
+            onPointerDown={(e) => {
+              if (e.button === 0) {
+                e.stopPropagation();
+                onHandlePointerDown?.(task.id, e);
+              }
+            }}
           />
         </>
       )}
       {/* Left indicator bar: selection (edit mode) or runtime status (run mode). */}
-      {isSelected
-        ? <div className={`absolute left-0 top-0 bottom-0 w-[2px] ${isInvalid ? 'bg-tagma-error' : 'bg-tagma-accent'}`} />
-        : runtimeCfg?.bar
-          ? <div className={`absolute left-0 top-0 bottom-0 w-[2px] ${runtimeCfg.bar}`} />
-          : null}
+      {isSelected ? (
+        <div
+          className={`absolute left-0 top-0 bottom-0 w-[2px] ${isInvalid ? 'bg-tagma-error' : 'bg-tagma-accent'}`}
+        />
+      ) : runtimeCfg?.bar ? (
+        <div className={`absolute left-0 top-0 bottom-0 w-[2px] ${runtimeCfg.bar}`} />
+      ) : null}
 
       {/* ─── Row 1: Type icon · Name · Status badges · Runtime status ─── */}
       <div className="flex items-center h-[24px] gap-[6px] pointer-events-none min-w-0 overflow-hidden">
-        <span className={`inline-flex items-center justify-center w-[16px] h-[16px] shrink-0
-          ${isCommand ? 'bg-sky-500/10' : 'bg-tagma-muted/8'}`}>
-          {isCommand
-            ? <Terminal size={9} className="text-sky-400" />
-            : <MessageSquare size={9} className="text-tagma-muted/60" />}
+        <span
+          className={`inline-flex items-center justify-center w-[16px] h-[16px] shrink-0
+          ${isCommand ? 'bg-sky-500/10' : 'bg-tagma-muted/8'}`}
+        >
+          {isCommand ? (
+            <Terminal size={9} className="text-sky-400" />
+          ) : (
+            <MessageSquare size={9} className="text-tagma-muted/60" />
+          )}
         </span>
 
-        <span className={`text-[10px] font-medium truncate flex-1 leading-[24px] ${isSkipped ? 'text-tagma-muted/50 line-through' : 'text-tagma-text'}`}>
+        <span
+          className={`text-[10px] font-medium truncate flex-1 leading-[24px] ${isSkipped ? 'text-tagma-muted/50 line-through' : 'text-tagma-text'}`}
+        >
           {task.name || task.id}
         </span>
 
         {badges.length > 0 && (
-          <span className="flex items-center gap-[3px] shrink-0">
-            {badges}
-          </span>
+          <span className="flex items-center gap-[3px] shrink-0">{badges}</span>
         )}
 
         {/* Runtime status icon + duration (Run mode only). Mutually exclusive
@@ -403,21 +564,22 @@ export const TaskCard = memo(function TaskCard({
       {/* ─── Row 2: Driver chip · Tier chip · Permissions (prompt only) ─── */}
       {!isCommand && (
         <div className="flex items-center h-[16px] gap-[4px] pointer-events-none min-w-0 overflow-hidden bg-black/20 px-[3px]">
-          {driver && (
-            <Chip className="bg-tagma-accent/12 text-tagma-accent/80">{driver}</Chip>
-          )}
+          {driver && <Chip className="bg-tagma-accent/12 text-tagma-accent/80">{driver}</Chip>}
           {model && (
             <Chip className="bg-tagma-muted/12 text-tagma-muted/80 font-bold">{model}</Chip>
           )}
           {perms && (
             <span className="flex items-center h-[14px] gap-[1px] ml-auto shrink-0">
               {(['read', 'write', 'execute'] as const).map((k) => (
-                <span key={k} className={`text-[7px] font-mono font-bold w-[10px] text-center leading-[14px]
+                <span
+                  key={k}
+                  className={`text-[7px] font-mono font-bold w-[10px] text-center leading-[14px]
                   ${k === 'read' && perms.read ? 'text-emerald-400' : ''}
                   ${k === 'write' && perms.write ? 'text-amber-400' : ''}
                   ${k === 'execute' && perms.execute ? 'text-tagma-error' : ''}
                   ${!perms[k] ? 'text-tagma-muted/20' : ''}
-                `}>
+                `}
+                >
                   {k[0].toUpperCase()}
                 </span>
               ))}
@@ -427,11 +589,22 @@ export const TaskCard = memo(function TaskCard({
       )}
 
       {/* Hover tooltip */}
-      {hovered && !isDragging && cardRef.current && (
-        isInvalid && errorMessages?.length
-          ? <ErrorTooltip messages={errorMessages} anchorRect={cardRef.current.getBoundingClientRect()} />
-          : <TaskTooltip task={task} trackId={trackId} config={pipelineConfig} anchorRect={cardRef.current.getBoundingClientRect()} />
-      )}
+      {hovered &&
+        !isDragging &&
+        cardRef.current &&
+        (isInvalid && errorMessages?.length ? (
+          <ErrorTooltip
+            messages={errorMessages}
+            anchorRect={cardRef.current.getBoundingClientRect()}
+          />
+        ) : (
+          <TaskTooltip
+            task={task}
+            trackId={trackId}
+            config={pipelineConfig}
+            anchorRect={cardRef.current.getBoundingClientRect()}
+          />
+        ))}
     </div>
   );
 });

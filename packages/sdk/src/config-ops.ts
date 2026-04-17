@@ -32,15 +32,12 @@ export function setPipelineField(
 /**
  * Insert or replace a track by id. Appends if the id is new.
  */
-export function upsertTrack(
-  config: RawPipelineConfig,
-  track: RawTrackConfig,
-): RawPipelineConfig {
-  const exists = config.tracks.some(t => t.id === track.id);
+export function upsertTrack(config: RawPipelineConfig, track: RawTrackConfig): RawPipelineConfig {
+  const exists = config.tracks.some((t) => t.id === track.id);
   return {
     ...config,
     tracks: exists
-      ? config.tracks.map(t => (t.id === track.id ? track : t))
+      ? config.tracks.map((t) => (t.id === track.id ? track : t))
       : [...config.tracks, track],
   };
 }
@@ -48,11 +45,8 @@ export function upsertTrack(
 /**
  * Remove a track by id. No-op if the id is not found.
  */
-export function removeTrack(
-  config: RawPipelineConfig,
-  trackId: string,
-): RawPipelineConfig {
-  return { ...config, tracks: config.tracks.filter(t => t.id !== trackId) };
+export function removeTrack(config: RawPipelineConfig, trackId: string): RawPipelineConfig {
+  return { ...config, tracks: config.tracks.filter((t) => t.id !== trackId) };
 }
 
 /**
@@ -64,7 +58,7 @@ export function moveTrack(
   trackId: string,
   toIndex: number,
 ): RawPipelineConfig {
-  const idx = config.tracks.findIndex(t => t.id === trackId);
+  const idx = config.tracks.findIndex((t) => t.id === trackId);
   if (idx === -1) return config;
   const track = config.tracks[idx]!;
   const withoutTrack = [...config.tracks.slice(0, idx), ...config.tracks.slice(idx + 1)];
@@ -83,9 +77,7 @@ export function updateTrack(
 ): RawPipelineConfig {
   return {
     ...config,
-    tracks: config.tracks.map(t =>
-      t.id === trackId ? { ...t, ...fields } : t,
-    ),
+    tracks: config.tracks.map((t) => (t.id === trackId ? { ...t, ...fields } : t)),
   };
 }
 
@@ -102,14 +94,12 @@ export function upsertTask(
 ): RawPipelineConfig {
   return {
     ...config,
-    tracks: config.tracks.map(t => {
+    tracks: config.tracks.map((t) => {
       if (t.id !== trackId) return t;
-      const exists = t.tasks.some(tk => tk.id === task.id);
+      const exists = t.tasks.some((tk) => tk.id === task.id);
       return {
         ...t,
-        tasks: exists
-          ? t.tasks.map(tk => (tk.id === task.id ? task : tk))
-          : [...t.tasks, task],
+        tasks: exists ? t.tasks.map((tk) => (tk.id === task.id ? task : tk)) : [...t.tasks, task],
       };
     }),
   };
@@ -130,9 +120,9 @@ export function removeTask(
 ): RawPipelineConfig {
   const withoutTask = {
     ...config,
-    tracks: config.tracks.map(t => {
+    tracks: config.tracks.map((t) => {
       if (t.id !== trackId) return t;
-      return { ...t, tasks: t.tasks.filter(tk => tk.id !== taskId) };
+      return { ...t, tasks: t.tasks.filter((tk) => tk.id !== taskId) };
     }),
   };
 
@@ -142,16 +132,16 @@ export function removeTask(
 
   // After deletion, can a bare ref "taskId" still resolve to some other task globally?
   // It can if any track in the post-deletion config still contains a task with that bare id.
-  const bareIdSurvivesGlobally = withoutTask.tracks.some(t =>
-    t.tasks.some(tk => tk.id === taskId),
+  const bareIdSurvivesGlobally = withoutTask.tracks.some((t) =>
+    t.tasks.some((tk) => tk.id === taskId),
   );
 
   return {
     ...withoutTask,
-    tracks: withoutTask.tracks.map(t => {
+    tracks: withoutTask.tracks.map((t) => {
       // Build the set of task IDs remaining in this track (the deleted task
       // has already been removed from its own track in withoutTask).
-      const remainingIds = new Set(t.tasks.map(tk => tk.id));
+      const remainingIds = new Set(t.tasks.map((tk) => tk.id));
 
       // Resolve whether a ref in THIS track points to the deleted task:
       //   - Fully-qualified ref ("trackId.taskId") — always points to the deleted task.
@@ -165,29 +155,27 @@ export function removeTask(
       const isRemovedFrom = (ref: string): boolean => {
         if (ref === qualId) return true;
         if (ref === taskId) {
-          if (t.id === trackId) return true;            // same track — was pointing here
-          if (remainingIds.has(taskId)) return false;   // local task shadows — ref is fine
-          return !bareIdSurvivesGlobally;               // remove only if truly dangling
+          if (t.id === trackId) return true; // same track — was pointing here
+          if (remainingIds.has(taskId)) return false; // local task shadows — ref is fine
+          return !bareIdSurvivesGlobally; // remove only if truly dangling
         }
         return false;
       };
 
       return {
         ...t,
-        tasks: t.tasks.map(tk => cleanTaskRefs(tk, isRemovedFrom)),
+        tasks: t.tasks.map((tk) => cleanTaskRefs(tk, isRemovedFrom)),
       };
     }),
   };
 }
 
-function cleanTaskRefs(
-  task: RawTaskConfig,
-  isRemoved: (ref: string) => boolean,
-): RawTaskConfig {
-  const filteredDeps = task.depends_on?.filter(d => !isRemoved(d));
+function cleanTaskRefs(task: RawTaskConfig, isRemoved: (ref: string) => boolean): RawTaskConfig {
+  const filteredDeps = task.depends_on?.filter((d) => !isRemoved(d));
   const dropContinueFrom = task.continue_from !== undefined && isRemoved(task.continue_from);
 
-  const depsUnchanged = filteredDeps === undefined || filteredDeps.length === task.depends_on!.length;
+  const depsUnchanged =
+    filteredDeps === undefined || filteredDeps.length === task.depends_on!.length;
   if (depsUnchanged && !dropContinueFrom) return task;
 
   const { depends_on: _depends_on, continue_from, ...rest } = task;
@@ -210,9 +198,9 @@ export function moveTask(
 ): RawPipelineConfig {
   return {
     ...config,
-    tracks: config.tracks.map(t => {
+    tracks: config.tracks.map((t) => {
       if (t.id !== trackId) return t;
-      const idx = t.tasks.findIndex(tk => tk.id === taskId);
+      const idx = t.tasks.findIndex((tk) => tk.id === taskId);
       if (idx === -1) return t;
       const task = t.tasks[idx]!;
       const withoutTask = [...t.tasks.slice(0, idx), ...t.tasks.slice(idx + 1)];
@@ -244,12 +232,12 @@ export function transferTask(
   let task: RawTaskConfig | undefined;
   const afterRemove = {
     ...config,
-    tracks: config.tracks.map(t => {
+    tracks: config.tracks.map((t) => {
       if (t.id !== fromTrackId) return t;
-      const found = t.tasks.find(tk => tk.id === taskId);
+      const found = t.tasks.find((tk) => tk.id === taskId);
       if (!found) return t;
       task = found;
-      return { ...t, tasks: t.tasks.filter(tk => tk.id !== taskId) };
+      return { ...t, tasks: t.tasks.filter((tk) => tk.id !== taskId) };
     }),
   };
   if (!task) return config;
@@ -265,14 +253,14 @@ export function transferTask(
   const oldQualId = `${fromTrackId}.${taskId}`;
 
   // Does any track (other than the destination) still have a task with this bare id?
-  const bareIdSurvivesElsewhere = afterInsert.tracks.some(t =>
-    t.id !== toTrackId && t.tasks.some(tk => tk.id === taskId),
+  const bareIdSurvivesElsewhere = afterInsert.tracks.some(
+    (t) => t.id !== toTrackId && t.tasks.some((tk) => tk.id === taskId),
   );
 
   return {
     ...afterInsert,
-    tracks: afterInsert.tracks.map(t => {
-      const localHasId = t.tasks.some(tk => tk.id === taskId);
+    tracks: afterInsert.tracks.map((t) => {
+      const localHasId = t.tasks.some((tk) => tk.id === taskId);
 
       const qualifyRef = (ref: string): string => {
         // Already-qualified ref to old location → rewrite to new location
@@ -295,17 +283,14 @@ export function transferTask(
 
       return {
         ...t,
-        tasks: t.tasks.map(tk => qualifyTaskRefs(tk, qualifyRef)),
+        tasks: t.tasks.map((tk) => qualifyTaskRefs(tk, qualifyRef)),
       };
     }),
   };
 }
 
 /** Rewrite `depends_on` and `continue_from` refs using a mapping function. */
-function qualifyTaskRefs(
-  task: RawTaskConfig,
-  rewrite: (ref: string) => string,
-): RawTaskConfig {
+function qualifyTaskRefs(task: RawTaskConfig, rewrite: (ref: string) => string): RawTaskConfig {
   const newDeps = task.depends_on?.map(rewrite);
   const newContinue = task.continue_from !== undefined ? rewrite(task.continue_from) : undefined;
 

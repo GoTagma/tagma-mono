@@ -92,10 +92,10 @@ type StatusVariant = 'installed' | 'missing' | 'loaded' | 'declared' | 'update';
 
 const STATUS_STYLES: Record<StatusVariant, { dot: string; text: string; label: string }> = {
   installed: { dot: 'bg-tagma-success', text: 'text-tagma-success', label: 'Installed' },
-  missing:   { dot: 'bg-tagma-error',   text: 'text-tagma-error',   label: 'Missing' },
-  loaded:    { dot: 'bg-tagma-ready',   text: 'text-tagma-ready',   label: 'Loaded' },
-  declared:  { dot: 'bg-tagma-accent',  text: 'text-tagma-accent',  label: 'Declared' },
-  update:    { dot: 'bg-tagma-warning', text: 'text-tagma-warning', label: 'Update' },
+  missing: { dot: 'bg-tagma-error', text: 'text-tagma-error', label: 'Missing' },
+  loaded: { dot: 'bg-tagma-ready', text: 'text-tagma-ready', label: 'Loaded' },
+  declared: { dot: 'bg-tagma-accent', text: 'text-tagma-accent', label: 'Declared' },
+  update: { dot: 'bg-tagma-warning', text: 'text-tagma-warning', label: 'Update' },
 };
 
 export function StatusBadge({ variant }: { variant: StatusVariant }) {
@@ -295,11 +295,7 @@ export function PluginCardShell({
           </p>
         )}
 
-        {meta && (
-          <div className="mt-auto pt-3 flex items-center gap-1.5 flex-wrap">
-            {meta}
-          </div>
-        )}
+        {meta && <div className="mt-auto pt-3 flex items-center gap-1.5 flex-wrap">{meta}</div>}
       </div>
 
       <div className="shrink-0 flex flex-col items-end justify-between gap-3">

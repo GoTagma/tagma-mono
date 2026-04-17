@@ -1,17 +1,26 @@
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
 import type {
-  PluginCategory, DriverPlugin, TriggerPlugin,
-  CompletionPlugin, MiddlewarePlugin, PluginManifest,
+  PluginCategory,
+  DriverPlugin,
+  TriggerPlugin,
+  CompletionPlugin,
+  MiddlewarePlugin,
+  PluginManifest,
 } from './types';
 
 type PluginType = DriverPlugin | TriggerPlugin | CompletionPlugin | MiddlewarePlugin;
 
 const VALID_CATEGORIES: ReadonlySet<PluginCategory> = new Set([
-  'drivers', 'triggers', 'completions', 'middlewares',
+  'drivers',
+  'triggers',
+  'completions',
+  'middlewares',
 ]);
 
 const registries = {
-  drivers:     new Map<string, DriverPlugin>(),
-  triggers:    new Map<string, TriggerPlugin>(),
+  drivers: new Map<string, DriverPlugin>(),
+  triggers: new Map<string, TriggerPlugin>(),
   completions: new Map<string, CompletionPlugin>(),
   middlewares: new Map<string, MiddlewarePlugin>(),
 };
@@ -47,7 +56,7 @@ function validateContract(category: PluginCategory, handler: unknown): void {
       } catch (err) {
         throw new Error(
           `drivers plugin "${h.name}" capabilities accessor threw: ` +
-          (err instanceof Error ? err.message : String(err))
+            (err instanceof Error ? err.message : String(err)),
         );
       }
       if (!caps || typeof caps !== 'object') {
@@ -57,16 +66,14 @@ function validateContract(category: PluginCategory, handler: unknown): void {
       for (const field of ['sessionResume', 'systemPrompt', 'outputFormat'] as const) {
         if (typeof c[field] !== 'boolean') {
           throw new Error(
-            `drivers plugin "${h.name}".capabilities.${field} must be a boolean (got ${typeof c[field]})`
+            `drivers plugin "${h.name}".capabilities.${field} must be a boolean (got ${typeof c[field]})`,
           );
         }
       }
       // Optional methods, but if present must be functions.
       for (const opt of ['parseResult', 'resolveModel', 'resolveTools'] as const) {
         if (h[opt] !== undefined && typeof h[opt] !== 'function') {
-          throw new Error(
-            `drivers plugin "${h.name}".${opt} must be a function or undefined`
-          );
+          throw new Error(`drivers plugin "${h.name}".${opt} must be a function or undefined`);
         }
       }
       break;
@@ -101,7 +108,9 @@ export type RegisterResult = 'registered' | 'replaced' | 'unchanged';
  * minimum interface contract for the category.
  */
 export function registerPlugin<T extends PluginType>(
-  category: PluginCategory, type: string, handler: T,
+  category: PluginCategory,
+  type: string,
+  handler: T,
 ): RegisterResult {
   if (!VALID_CATEGORIES.has(category)) {
     throw new Error(`Unknown plugin category "${category}"`);
@@ -129,14 +138,12 @@ export function unregisterPlugin(category: PluginCategory, type: string): boolea
   return registries[category].delete(type);
 }
 
-export function getHandler<T extends PluginType>(
-  category: PluginCategory, type: string,
-): T {
+export function getHandler<T extends PluginType>(category: PluginCategory, type: string): T {
   const handler = registries[category].get(type);
   if (!handler) {
     throw new Error(
       `${category} type "${type}" not registered.\n` +
-      `Install the plugin: bun add @tagma/${category.replace(/s$/, '')}-${type}`
+        `Install the plugin: bun add @tagma/${category.replace(/s$/, '')}-${type}`,
     );
   }
   return handler as T;
@@ -181,7 +188,7 @@ export function readPluginManifest(pkgJson: unknown): PluginManifest | null {
   const type = m.type;
   if (typeof category !== 'string' || !VALID_CATEGORIES.has(category as PluginCategory)) {
     throw new Error(
-      `tagmaPlugin.category must be one of ${[...VALID_CATEGORIES].join(', ')}, got ${JSON.stringify(category)}`
+      `tagmaPlugin.category must be one of ${[...VALID_CATEGORIES].join(', ')}, got ${JSON.stringify(category)}`,
     );
   }
   if (typeof type !== 'string' || type.length === 0) {
@@ -190,20 +197,41 @@ export function readPluginManifest(pkgJson: unknown): PluginManifest | null {
   return { category: category as PluginCategory, type };
 }
 
-export async function loadPlugins(pluginNames: readonly string[]): Promise<void> {
+/**
+ * Load and register a list of plugin packages.
+ *
+ * @param pluginNames - Validated npm package names to load.
+ * @param resolveFrom - Optional absolute path to resolve plugins from (e.g. the
+ *   workspace's working directory). When omitted, the default ESM resolution
+ *   uses the SDK's own `node_modules`, which will fail for plugins installed
+ *   only in the user's workspace. CLI callers should pass `process.cwd()` or
+ *   the workspace root so that workspace-local plugins resolve correctly.
+ */
+export async function loadPlugins(
+  pluginNames: readonly string[],
+  resolveFrom?: string,
+): Promise<void> {
   for (const name of pluginNames) {
     if (!isValidPluginName(name)) {
       throw new Error(
         `Plugin "${name}" rejected: plugin names must be scoped npm packages ` +
-        `(e.g. @tagma/trigger-xyz) or tagma-plugin-* packages. ` +
-        `Relative/absolute paths are not allowed.`
+          `(e.g. @tagma/trigger-xyz) or tagma-plugin-* packages. ` +
+          `Relative/absolute paths are not allowed.`,
       );
     }
-    const mod = await import(name);
+    let moduleUrl: string = name;
+    if (resolveFrom) {
+      // Resolve the package entry point relative to the caller's directory so
+      // plugins installed in the workspace's node_modules are found even when
+      // the SDK itself lives elsewhere (e.g. a global install or a monorepo
+      // sibling package).
+      const req = createRequire(resolveFrom.endsWith('/') ? resolveFrom : resolveFrom + '/');
+      const resolved = req.resolve(name);
+      moduleUrl = pathToFileURL(resolved).href;
+    }
+    const mod = await import(moduleUrl);
     if (!mod.pluginCategory || !mod.pluginType || !mod.default) {
-      throw new Error(
-        `Plugin "${name}" must export pluginCategory, pluginType, and default`
-      );
+      throw new Error(`Plugin "${name}" must export pluginCategory, pluginType, and default`);
     }
     registerPlugin(mod.pluginCategory, mod.pluginType, mod.default);
   }

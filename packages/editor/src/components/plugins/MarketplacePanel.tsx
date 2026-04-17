@@ -1,5 +1,14 @@
 import {
-  AlertCircle, AlertTriangle, ArrowUpCircle, Calendar, Check, Download, Loader2, Package, Trash2, TrendingUp,
+  AlertCircle,
+  AlertTriangle,
+  ArrowUpCircle,
+  Calendar,
+  Check,
+  Download,
+  Loader2,
+  Package,
+  Trash2,
+  TrendingUp,
 } from 'lucide-react';
 import type { MarketplaceEntry, PluginCategory } from '../../api/client';
 import { errorHint, formatDownloads } from './plugin-errors';
@@ -62,17 +71,21 @@ export function MarketplacePanel({
   onDismissAction,
   onRetry,
 }: MarketplacePanelProps) {
-  const actionBannerVisible =
-    actionState.type === 'error' || actionState.type === 'success';
+  const actionBannerVisible = actionState.type === 'error' || actionState.type === 'success';
 
   return (
     <div className="h-full flex flex-col min-h-0">
       {upstreamWarning && (
         <div className="shrink-0 mx-6 mt-4 relative flex items-start gap-3 px-4 py-3 bg-tagma-warning/5 border border-tagma-warning/30">
-          <span className="absolute left-0 top-0 bottom-0 w-[2px] bg-tagma-warning" aria-hidden="true" />
+          <span
+            className="absolute left-0 top-0 bottom-0 w-[2px] bg-tagma-warning"
+            aria-hidden="true"
+          />
           <AlertTriangle size={13} className="shrink-0 mt-0.5 text-tagma-warning" />
           <div className="flex-1 min-w-0">
-            <div className="text-[11px] font-medium text-tagma-warning tracking-wide">Partial results</div>
+            <div className="text-[11px] font-medium text-tagma-warning tracking-wide">
+              Partial results
+            </div>
             <div className="text-[10px] text-tagma-muted-dim leading-relaxed mt-0.5">
               The npm registry reported an error — the list below may be incomplete. Try
               <button
@@ -118,7 +131,9 @@ export function MarketplacePanel({
                   : `No ${category} plugins found in the marketplace.`}
             </p>
             <p className="text-[10px] text-tagma-muted-dim max-w-sm text-center leading-relaxed">
-              Plugin authors tag packages with <code className="font-mono text-tagma-muted">keywords: ["tagma-plugin"]</code> in <code className="font-mono text-tagma-muted">package.json</code>.
+              Plugin authors tag packages with{' '}
+              <code className="font-mono text-tagma-muted">keywords: ["tagma-plugin"]</code> in{' '}
+              <code className="font-mono text-tagma-muted">package.json</code>.
             </p>
             <button
               onClick={onRetry}
@@ -195,13 +210,13 @@ function MarketplaceCard({
   //   • neither                → no badge (fresh marketplace entry)
   // The `declared` flag no longer masquerades as "installed"; it only
   // influences the card accent and the Missing-vs-nothing branch here.
-  const statuses = upgradeAvailable
-    ? <StatusBadge variant="update" />
-    : installed
-      ? <StatusBadge variant="installed" />
-      : declared
-        ? <StatusBadge variant="missing" />
-        : null;
+  const statuses = upgradeAvailable ? (
+    <StatusBadge variant="update" />
+  ) : installed ? (
+    <StatusBadge variant="installed" />
+  ) : declared ? (
+    <StatusBadge variant="missing" />
+  ) : null;
 
   // Inline meta ticker: downloads · date · author, separated by small
   // bullets. The `compactItems` helper skips missing values and keeps
@@ -234,16 +249,17 @@ function MarketplaceCard({
     );
   }
 
-  const meta = metaItems.length > 0 ? (
-    <>
-      {metaItems.map((item, i) => (
-        <span key={`meta-${i}`} className="flex items-center gap-1.5">
-          {i > 0 && <MetaBullet />}
-          {item}
-        </span>
-      ))}
-    </>
-  ) : null;
+  const meta =
+    metaItems.length > 0 ? (
+      <>
+        {metaItems.map((item, i) => (
+          <span key={`meta-${i}`} className="flex items-center gap-1.5">
+            {i > 0 && <MetaBullet />}
+            {item}
+          </span>
+        ))}
+      </>
+    ) : null;
 
   const actions = isBusy ? (
     <BusyLabel label={busyActionLabel(busyAction)} />
@@ -302,10 +318,14 @@ function MarketplaceCard({
 
 function busyActionLabel(action: string | null): string {
   switch (action) {
-    case 'install': return 'Installing…';
-    case 'upgrade': return 'Upgrading…';
-    case 'uninstall': return 'Uninstalling…';
-    default: return 'Working…';
+    case 'install':
+      return 'Installing…';
+    case 'upgrade':
+      return 'Upgrading…';
+    case 'uninstall':
+      return 'Uninstalling…';
+    default:
+      return 'Working…';
   }
 }
 
@@ -321,7 +341,7 @@ function isUpgrade(installed: string | null, latest: string): boolean {
   if (installed === latest) return false;
   const parse = (v: string): readonly [number, number, number] | null => {
     const m = /^(\d+)\.(\d+)\.(\d+)/.exec(v.trim().replace(/^[=v^~]+/, ''));
-    return m ? [Number(m[1]), Number(m[2]), Number(m[3])] as const : null;
+    return m ? ([Number(m[1]), Number(m[2]), Number(m[3])] as const) : null;
   };
   const a = parse(installed);
   const b = parse(latest);
@@ -333,13 +353,7 @@ function isUpgrade(installed: string | null, latest: string): boolean {
   return false;
 }
 
-function ActionBanner({
-  state,
-  onDismiss,
-}: {
-  state: PluginActionState;
-  onDismiss: () => void;
-}) {
+function ActionBanner({ state, onDismiss }: { state: PluginActionState; onDismiss: () => void }) {
   if (state.type !== 'error' && state.type !== 'success') return null;
 
   const isError = state.type === 'error';

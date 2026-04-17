@@ -4,12 +4,7 @@
 // unit tests without zustand / React / network dependencies. The store
 // itself just wraps this in a zustand set/get loop.
 
-import type {
-  RunEvent,
-  RunTaskState,
-  ApprovalRequestInfo,
-  TaskLogLine,
-} from '../api/client';
+import type { RunEvent, RunTaskState, ApprovalRequestInfo, TaskLogLine } from '../api/client';
 
 // Upper bound on per-task log buffer. A single AI task typically emits
 // 15-25 debug lines; shell tasks emit ~5. 500 gives plenty of headroom for
@@ -81,11 +76,13 @@ export function foldRunEvent(state: RunFoldState, event: RunEvent): RunFoldState
       runId: event.runId,
       status: 'running',
       tasks,
-      pipelineLogs: event.type === 'run_start' || state.runId !== event.runId ? [] : state.pipelineLogs,
+      pipelineLogs:
+        event.type === 'run_start' || state.runId !== event.runId ? [] : state.pipelineLogs,
       error: null,
-      pendingApprovals: event.type === 'run_snapshot'
-        ? new Map(event.pendingApprovals.map((req) => [req.id, req]))
-        : new Map(),
+      pendingApprovals:
+        event.type === 'run_snapshot'
+          ? new Map(event.pendingApprovals.map((req) => [req.id, req]))
+          : new Map(),
       lastEventSeq: typeof event.seq === 'number' ? event.seq : state.lastEventSeq,
     };
   }
@@ -111,7 +108,7 @@ export function foldRunEvent(state: RunFoldState, event: RunEvent): RunFoldState
       const existing = tasks.get(event.taskId);
       // Use explicit undefined checks instead of ?? so that null/0/""
       // values from the SDK are applied rather than preserving stale data.
-      const pick = <T,>(incoming: T | undefined, previous: T): T =>
+      const pick = <T>(incoming: T | undefined, previous: T): T =>
         incoming !== undefined ? incoming : previous;
       if (existing) {
         tasks.set(event.taskId, {
@@ -170,9 +167,10 @@ export function foldRunEvent(state: RunFoldState, event: RunEvent): RunFoldState
           timestamp: event.timestamp,
           text: event.text,
         };
-        const pipelineLogs = state.pipelineLogs.length >= TASK_LOG_CAP
-          ? [...state.pipelineLogs.slice(state.pipelineLogs.length - TASK_LOG_CAP + 1), line]
-          : [...state.pipelineLogs, line];
+        const pipelineLogs =
+          state.pipelineLogs.length >= TASK_LOG_CAP
+            ? [...state.pipelineLogs.slice(state.pipelineLogs.length - TASK_LOG_CAP + 1), line]
+            : [...state.pipelineLogs, line];
         next = { ...state, pipelineLogs };
         break;
       }
@@ -189,9 +187,10 @@ export function foldRunEvent(state: RunFoldState, event: RunEvent): RunFoldState
       const baseLogs = existing.logs ?? [];
       const newTotal = (existing.totalLogCount ?? baseLogs.length) + 1;
       // Append then trim to cap: keep the most recent TASK_LOG_CAP lines.
-      const appended = baseLogs.length >= TASK_LOG_CAP
-        ? [...baseLogs.slice(baseLogs.length - TASK_LOG_CAP + 1), line]
-        : [...baseLogs, line];
+      const appended =
+        baseLogs.length >= TASK_LOG_CAP
+          ? [...baseLogs.slice(baseLogs.length - TASK_LOG_CAP + 1), line]
+          : [...baseLogs, line];
       const tasks = new Map(state.tasks);
       tasks.set(event.taskId, { ...existing, logs: appended, totalLogCount: newTotal });
       next = { ...state, tasks };
@@ -204,9 +203,7 @@ export function foldRunEvent(state: RunFoldState, event: RunEvent): RunFoldState
       // the pipeline ran to completion but had task failures.
       next = {
         ...state,
-        status: event.success
-          ? 'done'
-          : state.status === 'aborted' ? 'aborted' : 'failed',
+        status: event.success ? 'done' : state.status === 'aborted' ? 'aborted' : 'failed',
       };
       break;
     case 'run_error':
@@ -224,9 +221,10 @@ export function foldRunEvent(state: RunFoldState, event: RunEvent): RunFoldState
       pending.delete(event.requestId);
       let error = state.error;
       if (wasPending && (event.outcome === 'timeout' || event.outcome === 'aborted')) {
-        error = event.outcome === 'timeout'
-          ? `Approval timed out (${event.requestId})`
-          : `Approval aborted (${event.requestId})`;
+        error =
+          event.outcome === 'timeout'
+            ? `Approval timed out (${event.requestId})`
+            : `Approval aborted (${event.requestId})`;
       }
       next = { ...state, pendingApprovals: pending, error };
       break;

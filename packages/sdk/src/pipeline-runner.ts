@@ -52,8 +52,12 @@ export class PipelineRunner {
     this.instanceId = generateRunId();
   }
 
-  get runId(): string | null { return this._runId; }
-  get status(): PipelineRunnerStatus { return this._status; }
+  get runId(): string | null {
+    return this._runId;
+  }
+  get status(): PipelineRunnerStatus {
+    return this._status;
+  }
 
   /**
    * Start the pipeline. Calling start() more than once returns the same Promise.
@@ -91,14 +95,16 @@ export class PipelineRunner {
         }
         for (const h of this._handlers) h(event);
       },
-    }).then(result => {
-      this._states = result.states;
-      if (this._status === 'running') this._status = 'done';
-      return result;
-    }).catch(err => {
-      this._status = 'aborted';
-      throw err;
-    });
+    })
+      .then((result) => {
+        this._states = result.states;
+        if (this._status === 'running') this._status = 'done';
+        return result;
+      })
+      .catch((err) => {
+        this._status = 'aborted';
+        throw err;
+      });
 
     return this._result;
   }

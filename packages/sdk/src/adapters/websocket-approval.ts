@@ -19,8 +19,8 @@ import type { ApprovalGateway, ApprovalEvent } from '../approval';
 //     actor?: string, reason?: string }
 
 export interface WebSocketApprovalAdapterOptions {
-  port?: number;      // default: 3000
-  hostname?: string;  // default: 'localhost'
+  port?: number; // default: 3000
+  hostname?: string; // default: 'localhost'
   /**
    * M11: shared secret required from the client during the WebSocket
    * upgrade. The token can be supplied either as the `?token=` query
@@ -115,7 +115,9 @@ export function attachWebSocketApprovalAdapter(
         let queryToken = '';
         try {
           queryToken = new URL(req.url).searchParams.get('token') ?? '';
-        } catch { /* malformed URL — leave queryToken empty */ }
+        } catch {
+          /* malformed URL — leave queryToken empty */
+        }
         const presented = headerToken || queryToken;
         if (presented !== requiredToken) {
           return new Response('unauthorized', { status: 401 });
@@ -175,10 +177,12 @@ export function attachWebSocketApprovalAdapter(
         });
 
         if (!ok) {
-          ws.send(JSON.stringify({
-            type: 'error',
-            message: `approval ${msg.approvalId} not found or already resolved`,
-          }));
+          ws.send(
+            JSON.stringify({
+              type: 'error',
+              message: `approval ${msg.approvalId} not found or already resolved`,
+            }),
+          );
         }
       },
 

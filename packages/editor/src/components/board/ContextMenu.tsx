@@ -44,7 +44,11 @@ interface ContextMenuProps {
   onClose: () => void;
 }
 
-function SubmenuPanel({ config, onClose, parentRect }: {
+function SubmenuPanel({
+  config,
+  onClose,
+  parentRect,
+}: {
   config: SubmenuConfig;
   onClose: () => void;
   parentRect: DOMRect;
@@ -129,16 +133,23 @@ function SubmenuPanel({ config, onClose, parentRect }: {
             <button
               key={i}
               disabled={entry.disabled}
-              onClick={() => { entry.onAction(); onClose(); }}
+              onClick={() => {
+                entry.onAction();
+                onClose();
+              }}
               className={`
                 w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left transition-colors
                 disabled:opacity-30 disabled:cursor-not-allowed
-                ${entry.danger
-                  ? 'text-tagma-error hover:bg-tagma-error/10'
-                  : 'text-tagma-text hover:bg-tagma-elevated'}
+                ${
+                  entry.danger
+                    ? 'text-tagma-error hover:bg-tagma-error/10'
+                    : 'text-tagma-text hover:bg-tagma-elevated'
+                }
               `}
             >
-              {entry.icon && <span className="w-4 flex items-center justify-center shrink-0">{entry.icon}</span>}
+              {entry.icon && (
+                <span className="w-4 flex items-center justify-center shrink-0">{entry.icon}</span>
+              )}
               <span className="flex-1 truncate">{entry.label}</span>
             </button>
           );
@@ -148,7 +159,15 @@ function SubmenuPanel({ config, onClose, parentRect }: {
   );
 }
 
-function SubmenuTrigger({ entry, isOpen, onMouseEnter, onMouseLeave, onClick, onSubmenuPanelEnter, onClose }: {
+function SubmenuTrigger({
+  entry,
+  isOpen,
+  onMouseEnter,
+  onMouseLeave,
+  onClick,
+  onSubmenuPanelEnter,
+  onClose,
+}: {
   entry: SubMenuItem;
   isOpen: boolean;
   onMouseEnter: () => void;
@@ -167,16 +186,14 @@ function SubmenuTrigger({ entry, isOpen, onMouseEnter, onMouseLeave, onClick, on
         onMouseLeave={onMouseLeave}
         onClick={onClick}
       >
-        {entry.icon && <span className="w-4 flex items-center justify-center shrink-0">{entry.icon}</span>}
+        {entry.icon && (
+          <span className="w-4 flex items-center justify-center shrink-0">{entry.icon}</span>
+        )}
         <span className="flex-1">{entry.label}</span>
         <ChevronRight size={10} className="text-tagma-muted shrink-0" />
       </button>
       {isOpen && btnRef.current && (
-        <div
-          data-submenu-panel
-          onMouseEnter={onSubmenuPanelEnter}
-          onMouseLeave={onMouseLeave}
-        >
+        <div data-submenu-panel onMouseEnter={onSubmenuPanelEnter} onMouseLeave={onMouseLeave}>
           <SubmenuPanel
             config={entry.submenu}
             onClose={onClose}
@@ -299,7 +316,9 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
   }, []);
 
   useEffect(() => {
-    return () => { if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current); };
+    return () => {
+      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    };
   }, []);
 
   return (
@@ -334,16 +353,23 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
           <button
             key={i}
             disabled={entry.disabled}
-            onClick={() => { entry.onAction(); onClose(); }}
+            onClick={() => {
+              entry.onAction();
+              onClose();
+            }}
             className={`
               w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left transition-colors
               disabled:opacity-30 disabled:cursor-not-allowed
-              ${entry.danger
-                ? 'text-tagma-error hover:bg-tagma-error/10'
-                : 'text-tagma-text hover:bg-tagma-elevated'}
+              ${
+                entry.danger
+                  ? 'text-tagma-error hover:bg-tagma-error/10'
+                  : 'text-tagma-text hover:bg-tagma-elevated'
+              }
             `}
           >
-            {entry.icon && <span className="w-4 flex items-center justify-center shrink-0">{entry.icon}</span>}
+            {entry.icon && (
+              <span className="w-4 flex items-center justify-center shrink-0">{entry.icon}</span>
+            )}
             <span>{entry.label}</span>
           </button>
         );

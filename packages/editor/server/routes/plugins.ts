@@ -1,10 +1,7 @@
 import type express from 'express';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import {
-  isValidPluginName,
-  unregisterPlugin,
-} from '@tagma/sdk';
+import { isValidPluginName, unregisterPlugin } from '@tagma/sdk';
 import type { PluginCategory } from '@tagma/sdk';
 import { assertSafePluginName } from '../plugin-safety.js';
 import { S, getRegistrySnapshot } from '../state.js';
@@ -74,8 +71,11 @@ export function registerPluginRoutes(app: express.Express): void {
     try {
       const meta = await registryMeta(name);
       res.json({
-        name, installed: false, loaded: false,
-        version: meta.version, description: meta.description,
+        name,
+        installed: false,
+        loaded: false,
+        version: meta.version,
+        description: meta.description,
         categories: [],
       });
     } catch (e: unknown) {
@@ -108,9 +108,10 @@ export function registerPluginRoutes(app: express.Express): void {
       // Load into SDK registry
       try {
         const { result } = await loadPluginFromWorkDir(name);
-        const note = result === 'replaced'
-          ? 'A plugin was already registered for this category/type — restart the server to pick up the new code.'
-          : undefined;
+        const note =
+          result === 'replaced'
+            ? 'A plugin was already registered for this category/type — restart the server to pick up the new code.'
+            : undefined;
         res.json({ plugin: getPluginInfo(name), registry: getRegistrySnapshot(), note });
       } catch (loadErr: unknown) {
         const { message, kind } = classifyServerError(loadErr);
@@ -222,9 +223,10 @@ export function registerPluginRoutes(app: express.Express): void {
       // Load into SDK registry
       try {
         const { result } = await loadPluginFromWorkDir(pkgName);
-        const note = result === 'replaced'
-          ? 'A plugin was already registered for this category/type — restart the server to pick up the new code.'
-          : undefined;
+        const note =
+          result === 'replaced'
+            ? 'A plugin was already registered for this category/type — restart the server to pick up the new code.'
+            : undefined;
         res.json({ plugin: getPluginInfo(pkgName), registry: getRegistrySnapshot(), note });
       } catch (loadErr: unknown) {
         const { message, kind } = classifyServerError(loadErr);
@@ -337,7 +339,9 @@ export function registerPluginRoutes(app: express.Express): void {
 
     const info = getPluginInfo(name);
     if (!info.installed) {
-      return res.status(404).json({ error: `Plugin "${name}" is not installed. Install it first.` });
+      return res
+        .status(404)
+        .json({ error: `Plugin "${name}" is not installed. Install it first.` });
     }
 
     if (loadedPlugins.has(name)) {
@@ -346,9 +350,10 @@ export function registerPluginRoutes(app: express.Express): void {
 
     try {
       const { result } = await loadPluginFromWorkDir(name);
-      const note = result === 'replaced'
-        ? 'Replaced an existing handler for this category/type. Restart the server to pick up new code.'
-        : undefined;
+      const note =
+        result === 'replaced'
+          ? 'Replaced an existing handler for this category/type. Restart the server to pick up new code.'
+          : undefined;
       res.json({ plugin: getPluginInfo(name), registry: getRegistrySnapshot(), note });
     } catch (e: unknown) {
       res.status(500).json(pluginErrorResponse(e, 'Load'));
@@ -359,10 +364,11 @@ export function registerPluginRoutes(app: express.Express): void {
   app.get('/api/marketplace/search', async (req, res) => {
     const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
     const rawCategory = typeof req.query.category === 'string' ? req.query.category : '';
-    const category: PluginCategory | null =
-      VALID_PLUGIN_CATEGORIES.has(rawCategory as PluginCategory)
-        ? (rawCategory as PluginCategory)
-        : null;
+    const category: PluginCategory | null = VALID_PLUGIN_CATEGORIES.has(
+      rawCategory as PluginCategory,
+    )
+      ? (rawCategory as PluginCategory)
+      : null;
     const cacheKey = `q=${q}|cat=${category ?? ''}`;
     const cached = cacheGet(marketplaceSearchCache, cacheKey);
     if (cached) {
@@ -396,7 +402,7 @@ export function registerPluginRoutes(app: express.Express): void {
         signal: AbortSignal.timeout(REGISTRY_FETCH_TIMEOUT_MS),
       });
       if (!r.ok) throw new Error(`npm search returned ${r.status}`);
-      const data = await r.json() as { objects?: Array<{ package?: { name?: unknown } }> };
+      const data = (await r.json()) as { objects?: Array<{ package?: { name?: unknown } }> };
       const out: string[] = [];
       for (const obj of data.objects ?? []) {
         const name = obj?.package?.name;
@@ -424,9 +430,7 @@ export function registerPluginRoutes(app: express.Express): void {
       });
       const rawNames = Array.from(new Set([...keywordHits, ...scopeHits]));
       const resolved = await resolveMarketplaceEntries(rawNames);
-      const filtered = category
-        ? resolved.filter((e) => e.category === category)
-        : resolved;
+      const filtered = category ? resolved.filter((e) => e.category === category) : resolved;
       // Sort: weekly downloads desc (null goes to the bottom), then name asc.
       filtered.sort((a, b) => {
         const ad = a.weeklyDownloads ?? -1;
@@ -449,7 +453,9 @@ export function registerPluginRoutes(app: express.Express): void {
         totalRaw: rawNames.length,
         fetchedAt: new Date().toISOString(),
         upstreamError: upstreamError
-          ? (upstreamError instanceof Error ? upstreamError.message : String(upstreamError))
+          ? upstreamError instanceof Error
+            ? upstreamError.message
+            : String(upstreamError)
           : null,
       });
     } catch (e: unknown) {
@@ -463,7 +469,8 @@ export function registerPluginRoutes(app: express.Express): void {
     const rawName = typeof req.query.name === 'string' ? req.query.name : '';
     if (!rawName || !isValidPluginName(rawName)) {
       return res.status(400).json({
-        error: 'Invalid plugin name. Names must be scoped (@scope/name) or prefixed (tagma-plugin-*).',
+        error:
+          'Invalid plugin name. Names must be scoped (@scope/name) or prefixed (tagma-plugin-*).',
       });
     }
     const cached = cacheGet(marketplacePackageCache, rawName);

@@ -27,9 +27,7 @@
 //             rubric: "Output must list at least 3 failing tests with file paths."
 //             # endpoint / model / api_key_env all default to local Ollama + qwen3:4b
 
-import type {
-  CompletionPlugin, CompletionContext, TaskResult,
-} from '@tagma/types';
+import type { CompletionPlugin, CompletionContext, TaskResult } from '@tagma/types';
 
 // Ollama exposes an OpenAI-compatible `/v1/chat/completions` route on port
 // 11434 by default. Point this at any OpenAI-compatible server (OpenAI,
@@ -67,11 +65,15 @@ function parseDurationSafe(raw: unknown, fallback: number): number {
   if (!m) return fallback;
   const n = Number(m[1]);
   switch (m[2]) {
-    case 'ms': return n;
-    case 'm':  return n * 60_000;
-    case 'h':  return n * 3_600_000;
+    case 'ms':
+      return n;
+    case 'm':
+      return n * 60_000;
+    case 'h':
+      return n * 3_600_000;
     case 's':
-    default:   return n * 1000;
+    default:
+      return n * 1000;
   }
 }
 
@@ -235,9 +237,10 @@ const LlmJudgeCompletion: CompletionPlugin = {
     const model = (config.model as string | undefined) ?? DEFAULT_MODEL;
     const endpoint = (config.endpoint as string | undefined) ?? DEFAULT_ENDPOINT;
     const timeoutMs = parseDurationSafe(config.timeout, DEFAULT_TIMEOUT_MS);
-    const maxChars = typeof config.max_output_chars === 'number' && config.max_output_chars > 0
-      ? Math.floor(config.max_output_chars)
-      : DEFAULT_MAX_OUTPUT_CHARS;
+    const maxChars =
+      typeof config.max_output_chars === 'number' && config.max_output_chars > 0
+        ? Math.floor(config.max_output_chars)
+        : DEFAULT_MAX_OUTPUT_CHARS;
 
     const userContent =
       `[Rubric]\n${rubric}\n\n` +
@@ -250,9 +253,7 @@ const LlmJudgeCompletion: CompletionPlugin = {
     ];
 
     try {
-      const content = await callJudge(
-        endpoint, model, apiKey, messages, timeoutMs, ctx.signal,
-      );
+      const content = await callJudge(endpoint, model, apiKey, messages, timeoutMs, ctx.signal);
       const firstLine = (content.split(/\r?\n/, 1)[0] ?? '').trim().toUpperCase();
       const passed = firstLine.startsWith('PASS');
       if (!passed) {

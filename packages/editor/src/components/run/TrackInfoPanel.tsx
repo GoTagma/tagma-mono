@@ -36,10 +36,10 @@ function permsLabel(perms: Permissions | undefined | null): string | null {
 function ConfigRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-start gap-2 py-[2px] text-[10px]">
-      <span className="text-tagma-muted/70 w-[80px] shrink-0 font-mono tracking-tight">{label}</span>
-      <span className="flex-1 min-w-0 break-words font-mono text-tagma-text/80">
-        {children}
+      <span className="text-tagma-muted/70 w-[80px] shrink-0 font-mono tracking-tight">
+        {label}
       </span>
+      <span className="flex-1 min-w-0 break-words font-mono text-tagma-text/80">{children}</span>
     </div>
   );
 }
@@ -49,7 +49,7 @@ export function TrackInfoPanel({ track, config, onClose }: TrackInfoPanelProps) 
   // values with an explicit "(inherited)" marker so the user can see what
   // the track actually contributes vs what came from above.
   const driver = track.driver ?? config.driver ?? 'claude-code';
-  const driverSource = track.driver ? 'track' : (config.driver ? 'pipeline' : 'default');
+  const driverSource = track.driver ? 'track' : config.driver ? 'pipeline' : 'default';
   const model = track.model ?? config.model ?? null;
   const cwd = track.cwd ?? null;
   const agentProfile = track.agent_profile ?? null;
@@ -62,10 +62,16 @@ export function TrackInfoPanel({ track, config, onClose }: TrackInfoPanelProps) 
     <div className="w-80 h-full bg-tagma-surface border-l border-tagma-border flex flex-col animate-slide-in-right">
       <div className="panel-header-sm">
         <div className="flex items-center gap-2 min-w-0">
-          {track.color && <span className="w-2 h-2 shrink-0" style={{ backgroundColor: track.color }} />}
+          {track.color && (
+            <span className="w-2 h-2 shrink-0" style={{ backgroundColor: track.color }} />
+          )}
           <h2 className="panel-title-sm truncate">{track.name}</h2>
         </div>
-        <button onClick={onClose} className="p-0.5 text-tagma-muted hover:text-tagma-text transition-colors" aria-label="Close">
+        <button
+          onClick={onClose}
+          className="p-0.5 text-tagma-muted hover:text-tagma-text transition-colors"
+          aria-label="Close"
+        >
           <X size={12} />
         </button>
       </div>
@@ -74,7 +80,10 @@ export function TrackInfoPanel({ track, config, onClose }: TrackInfoPanelProps) 
         {/* Basic identity */}
         <div>
           <label className="field-label">Track ID</label>
-          <div className="text-[11px] font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1.5 truncate" title={track.id}>
+          <div
+            className="text-[11px] font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1.5 truncate"
+            title={track.id}
+          >
             {track.id}
           </div>
         </div>
@@ -132,8 +141,13 @@ export function TrackInfoPanel({ track, config, onClose }: TrackInfoPanelProps) 
             <label className="field-label">Tasks in this track</label>
             <div className="border border-tagma-border/60 bg-tagma-bg/40 px-2.5 py-1.5 space-y-0.5">
               {track.tasks.map((task) => (
-                <div key={task.id} className="flex items-center gap-2 py-[2px] text-[10px] font-mono text-tagma-text/80 min-w-0">
-                  <span className="text-tagma-muted/60 truncate">{track.id}.{task.id}</span>
+                <div
+                  key={task.id}
+                  className="flex items-center gap-2 py-[2px] text-[10px] font-mono text-tagma-text/80 min-w-0"
+                >
+                  <span className="text-tagma-muted/60 truncate">
+                    {track.id}.{task.id}
+                  </span>
                   {task.name && task.name !== task.id && (
                     <span className="text-tagma-muted/40 truncate">— {task.name}</span>
                   )}

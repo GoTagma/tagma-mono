@@ -10,7 +10,11 @@
 
 import { test, expect } from 'bun:test';
 
-import { foldRunEvent, initialRunFoldState, type RunFoldState } from '../src/store/run-event-reducer';
+import {
+  foldRunEvent,
+  initialRunFoldState,
+  type RunFoldState,
+} from '../src/store/run-event-reducer';
 import type { RunEvent, RunTaskState, ApprovalRequestInfo } from '../src/api/client';
 
 function initialTasks(): RunTaskState[] {
@@ -219,15 +223,36 @@ test('run flow: reconnect mid-run replays buffered events idempotently', () => {
   // Simulate a server that broadcasts events 1..5, then a client
   // disconnection, then a reconnect where the server replays 3..5.
   const runStart: RunEvent = { type: 'run_start', runId: 'run_mid', tasks: initialTasks(), seq: 1 };
-  const ev2: RunEvent = { type: 'task_update', runId: 'run_mid', taskId: 'track_a.task_1', status: 'running', seq: 2 };
-  const ev3: RunEvent = {
-    type: 'task_update', runId: 'run_mid', taskId: 'track_a.task_1',
-    status: 'success', stdout: 'done', exitCode: 0, seq: 3,
+  const ev2: RunEvent = {
+    type: 'task_update',
+    runId: 'run_mid',
+    taskId: 'track_a.task_1',
+    status: 'running',
+    seq: 2,
   };
-  const ev4: RunEvent = { type: 'task_update', runId: 'run_mid', taskId: 'track_a.task_2', status: 'running', seq: 4 };
+  const ev3: RunEvent = {
+    type: 'task_update',
+    runId: 'run_mid',
+    taskId: 'track_a.task_1',
+    status: 'success',
+    stdout: 'done',
+    exitCode: 0,
+    seq: 3,
+  };
+  const ev4: RunEvent = {
+    type: 'task_update',
+    runId: 'run_mid',
+    taskId: 'track_a.task_2',
+    status: 'running',
+    seq: 4,
+  };
   const ev5: RunEvent = {
-    type: 'task_update', runId: 'run_mid', taskId: 'track_a.task_2',
-    status: 'success', exitCode: 0, seq: 5,
+    type: 'task_update',
+    runId: 'run_mid',
+    taskId: 'track_a.task_2',
+    status: 'success',
+    exitCode: 0,
+    seq: 5,
   };
 
   // Apply 1..5 normally.
@@ -246,8 +271,12 @@ test('run flow: reconnect mid-run replays buffered events idempotently', () => {
 
   // A fresh event with seq 6 still advances normally.
   const ev6: RunEvent = {
-    type: 'task_update', runId: 'run_mid', taskId: 'track_a.task_3',
-    status: 'success', stdout: 'last task done', seq: 6,
+    type: 'task_update',
+    runId: 'run_mid',
+    taskId: 'track_a.task_3',
+    status: 'success',
+    stdout: 'last task done',
+    seq: 6,
   };
   const afterReplay = foldRunEvent(state, ev6);
   expect(afterReplay).not.toBe(state);

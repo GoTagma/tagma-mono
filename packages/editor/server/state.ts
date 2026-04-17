@@ -27,10 +27,7 @@ import type {
   PluginSchema as SdkPluginSchema,
   PluginParamDef,
 } from '@tagma/types';
-import {
-  assertWithinNodeModules,
-  pluginDirFor as pluginDirForRaw,
-} from './plugin-safety.js';
+import { assertWithinNodeModules, pluginDirFor as pluginDirForRaw } from './plugin-safety.js';
 import {
   startWatching as startFileWatching,
   markSynced as markWatcherSynced,
@@ -95,15 +92,11 @@ export class WorkspaceFenceError extends Error {
 
 export function assertWithinWorkspace(absPath: string, label: string): string {
   if (!S.workDir) {
-    throw new WorkspaceFenceError(
-      `Workspace directory is not set; cannot resolve ${label}.`,
-    );
+    throw new WorkspaceFenceError(`Workspace directory is not set; cannot resolve ${label}.`);
   }
   const resolved = resolve(absPath);
   if (!isPathWithin(resolved, S.workDir)) {
-    throw new WorkspaceFenceError(
-      `Path "${resolved}" is outside the workspace directory.`,
-    );
+    throw new WorkspaceFenceError(`Path "${resolved}" is outside the workspace directory.`);
   }
   return resolved;
 }
@@ -134,7 +127,10 @@ export function layoutPath(): string | null {
 
 export function loadLayout(): void {
   const lp = layoutPath();
-  if (!lp || !existsSync(lp)) { S.layout = { positions: {} }; return; }
+  if (!lp || !existsSync(lp)) {
+    S.layout = { positions: {} };
+    return;
+  }
   try {
     S.layout = JSON.parse(readFileSync(lp, 'utf-8'));
   } catch {
@@ -147,7 +143,9 @@ export function saveLayout(): void {
   if (!lp) return;
   try {
     writeFileSync(lp, JSON.stringify(S.layout, null, 2), 'utf-8');
-  } catch { /* best-effort */ }
+  } catch {
+    /* best-effort */
+  }
 }
 
 /**
@@ -261,13 +259,20 @@ export const TRACK_REQUIRED_KEYS = new Set(['id', 'name', 'tasks']);
  * empty arrays, or empty objects removed — except keys in `required`.
  * Pure function — the input is never mutated.
  */
-export function stripEmptyFields(obj: Record<string, unknown>, required: Set<string>): Record<string, unknown> {
+export function stripEmptyFields(
+  obj: Record<string, unknown>,
+  required: Set<string>,
+): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const [key, v] of Object.entries(obj)) {
-    if (required.has(key)) { result[key] = v; continue; }
+    if (required.has(key)) {
+      result[key] = v;
+      continue;
+    }
     if (v === '' || v === undefined || v === null) continue;
     if (Array.isArray(v) && v.length === 0) continue;
-    if (typeof v === 'object' && v !== null && !Array.isArray(v) && Object.keys(v).length === 0) continue;
+    if (typeof v === 'object' && v !== null && !Array.isArray(v) && Object.keys(v).length === 0)
+      continue;
     result[key] = v;
   }
   return result;
@@ -338,9 +343,7 @@ function collectUsedPluginRefs(cfg: RawPipelineConfig): Set<string> {
       used.add(`${category}:${type}`);
     }
   };
-  const addMiddlewares = (
-    mws: readonly { type?: string }[] | undefined,
-  ): void => {
+  const addMiddlewares = (mws: readonly { type?: string }[] | undefined): void => {
     if (!mws) return;
     for (const m of mws) addRef('middlewares', m?.type);
   };
@@ -375,9 +378,7 @@ function collectUsedPluginRefs(cfg: RawPipelineConfig): Set<string> {
  * Users should install the plugin *and* wire it up in the same session;
  * the marketplace UI still surfaces it under "installed but unused".
  */
-export function reconcilePluginsFromUsage(
-  cfg: RawPipelineConfig,
-): RawPipelineConfig {
+export function reconcilePluginsFromUsage(cfg: RawPipelineConfig): RawPipelineConfig {
   const existing = cfg.plugins ?? [];
   if (existing.length === 0) return cfg;
 
@@ -406,9 +407,7 @@ export function reconcilePluginsFromUsage(
  * no longer referenced anywhere. Use this after any mutation that can
  * change which plugin types the pipeline references.
  */
-export function reconcilePipelinePlugins(
-  cfg: RawPipelineConfig,
-): RawPipelineConfig {
+export function reconcilePipelinePlugins(cfg: RawPipelineConfig): RawPipelineConfig {
   return reconcilePluginsFromUsage(ensureDriverPlugins(cfg));
 }
 
@@ -459,7 +458,9 @@ export function getDriverCapabilities(): Record<string, DriverCapabilities> {
     try {
       const plugin = getHandler<DriverPlugin>('drivers', name);
       out[name] = plugin.capabilities;
-    } catch { /* ignore broken plugin */ }
+    } catch {
+      /* ignore broken plugin */
+    }
   }
   return out;
 }
@@ -469,9 +470,9 @@ export function getDriverCapabilities(): Record<string, DriverCapabilities> {
  * descriptor. The array form lets the client preserve declared field order in
  * the form generator. Unknown param types are passed through verbatim.
  */
-export function serializeSdkSchema(schema: SdkPluginSchema | undefined):
-  | { description?: string; fields: Array<{ key: string } & PluginParamDef> }
-  | undefined {
+export function serializeSdkSchema(
+  schema: SdkPluginSchema | undefined,
+): { description?: string; fields: Array<{ key: string } & PluginParamDef> } | undefined {
   if (!schema || !schema.fields) return undefined;
   const fields: Array<{ key: string } & PluginParamDef> = [];
   for (const [key, def] of Object.entries(schema.fields)) {
@@ -498,7 +499,9 @@ export function getPluginSchemas(
             : getHandler<MiddlewarePlugin>('middlewares', name);
       const wire = serializeSdkSchema(plugin.schema);
       if (wire) out[name] = wire;
-    } catch { /* ignore broken plugin */ }
+    } catch {
+      /* ignore broken plugin */
+    }
   }
   return out;
 }
@@ -523,14 +526,37 @@ export function getRegistrySnapshot() {
 //
 // Keep these aligned with RawTaskConfig / RawTrackConfig in @tagma/types.
 const TASK_KNOWN_KEYS = new Set<string>([
-  'id', 'name', 'prompt', 'command', 'depends_on', 'trigger',
-  'continue_from', 'model', 'reasoning_effort', 'permissions', 'driver',
-  'timeout', 'middlewares', 'completion', 'agent_profile', 'cwd',
+  'id',
+  'name',
+  'prompt',
+  'command',
+  'depends_on',
+  'trigger',
+  'continue_from',
+  'model',
+  'reasoning_effort',
+  'permissions',
+  'driver',
+  'timeout',
+  'middlewares',
+  'completion',
+  'agent_profile',
+  'cwd',
 ]);
 
 const TRACK_KNOWN_KEYS = new Set<string>([
-  'id', 'name', 'color', 'agent_profile', 'model', 'reasoning_effort', 'permissions',
-  'driver', 'cwd', 'middlewares', 'on_failure', 'tasks',
+  'id',
+  'name',
+  'color',
+  'agent_profile',
+  'model',
+  'reasoning_effort',
+  'permissions',
+  'driver',
+  'cwd',
+  'middlewares',
+  'on_failure',
+  'tasks',
 ]);
 
 function pickKnownKeys(
@@ -559,18 +585,27 @@ function pickKnownKeys(
 export function lenientParseYaml(content: string, fallbackName: string): RawPipelineConfig {
   const doc = yaml.load(content) as Record<string, unknown>;
   const pCandidate = doc?.pipeline;
-  const p = (pCandidate && typeof pCandidate === 'object' && !Array.isArray(pCandidate) ? pCandidate : doc) as Record<string, unknown>;
+  const p = (
+    pCandidate && typeof pCandidate === 'object' && !Array.isArray(pCandidate) ? pCandidate : doc
+  ) as Record<string, unknown>;
   const rawTracks = Array.isArray(p.tracks) ? p.tracks : [];
   const tracks = rawTracks
-    .filter((t: unknown): t is Record<string, unknown> => !!t && typeof t === 'object' && !Array.isArray(t))
+    .filter(
+      (t: unknown): t is Record<string, unknown> =>
+        !!t && typeof t === 'object' && !Array.isArray(t),
+    )
     .map((t: Record<string, unknown>): RawTrackConfig => {
       const id = typeof t.id === 'string' && t.id ? t.id : Math.random().toString(36).slice(2, 10);
       const name = typeof t.name === 'string' && t.name ? t.name : id;
       const rawTasks = Array.isArray(t.tasks) ? t.tasks : [];
       const tasks = rawTasks
-        .filter((tk: unknown): tk is Record<string, unknown> => !!tk && typeof tk === 'object' && !Array.isArray(tk))
+        .filter(
+          (tk: unknown): tk is Record<string, unknown> =>
+            !!tk && typeof tk === 'object' && !Array.isArray(tk),
+        )
         .map((tk: Record<string, unknown>): RawTaskConfig => {
-          const tid = typeof tk.id === 'string' && tk.id ? tk.id : Math.random().toString(36).slice(2, 10);
+          const tid =
+            typeof tk.id === 'string' && tk.id ? tk.id : Math.random().toString(36).slice(2, 10);
           // Strip unknown / dangerous keys before spreading.
           return { ...pickKnownKeys(tk, TASK_KNOWN_KEYS), id: tid } as unknown as RawTaskConfig;
         });
@@ -620,13 +655,21 @@ export function broadcastStateEvent(payload: Record<string, unknown>): void {
   S.stateEventSeq++;
   const data = JSON.stringify({ ...payload, seq: S.stateEventSeq });
   for (const client of stateEventClients) {
-    try { client.res.write(`id: ${S.stateEventSeq}\nevent: state_event\ndata: ${data}\n\n`); } catch { stateEventClients.delete(client); }
+    try {
+      client.res.write(`id: ${S.stateEventSeq}\nevent: state_event\ndata: ${data}\n\n`);
+    } catch {
+      stateEventClients.delete(client);
+    }
   }
 }
 
 export function closeStateEventClients(): void {
   for (const client of stateEventClients) {
-    try { client.res.end(); } catch { /* best-effort */ }
+    try {
+      client.res.end();
+    } catch {
+      /* best-effort */
+    }
   }
   stateEventClients.clear();
 }

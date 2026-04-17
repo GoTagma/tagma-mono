@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import {
-  ArrowLeft, FolderOpen, Package, RefreshCw, Search, Store,
-} from 'lucide-react';
+import { ArrowLeft, FolderOpen, Package, RefreshCw, Search, Store } from 'lucide-react';
 import { api } from '../../api/client';
 import type {
   MarketplaceEntry,
@@ -11,11 +9,7 @@ import type {
   PluginRegistry,
   PluginUninstallImpact,
 } from '../../api/client';
-import {
-  classifyError,
-  extractErrorMessage,
-  type ErrorKind,
-} from './plugin-errors';
+import { classifyError, extractErrorMessage, type ErrorKind } from './plugin-errors';
 import { LocalPanel } from './LocalPanel';
 import { MarketplacePanel } from './MarketplacePanel';
 
@@ -23,7 +17,10 @@ type Tab = 'local' | 'marketplace';
 type CategoryFilter = 'all' | PluginCategory;
 
 const KNOWN_CATEGORIES: ReadonlySet<PluginCategory> = new Set([
-  'drivers', 'triggers', 'completions', 'middlewares',
+  'drivers',
+  'triggers',
+  'completions',
+  'middlewares',
 ]);
 
 /**
@@ -98,7 +95,9 @@ export function PluginsPage({
   const [category, setCategory] = useState<CategoryFilter>('all');
 
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
-  const [autoLoadErrors, setAutoLoadErrors] = useState<ReadonlyArray<{ name: string; message: string }>>([]);
+  const [autoLoadErrors, setAutoLoadErrors] = useState<
+    ReadonlyArray<{ name: string; message: string }>
+  >([]);
   const [pluginsLoading, setPluginsLoading] = useState(false);
 
   const [localQuery, setLocalQuery] = useState('');
@@ -260,7 +259,9 @@ export function PluginsPage({
         entry.type,
         entry.author ?? '',
         entry.keywords.join(' '),
-      ].join(' ').toLowerCase();
+      ]
+        .join(' ')
+        .toLowerCase();
       return haystack.includes(q);
     });
   }, [allMarketplaceEntries, category, marketplaceQuery]);
@@ -282,45 +283,51 @@ export function PluginsPage({
   // so the dialog can list affected YAML locations. `null` means no dialog.
   const [uninstallConfirm, setUninstallConfirm] = useState<PluginUninstallImpact | null>(null);
 
-  const handleInstall = useCallback(async (name: string) => {
-    setActionState({ type: 'loading', name, action: 'install' });
-    try {
-      const result = await api.installPlugin(name);
-      onRegistryUpdate(result.registry);
-      if (!declaredPlugins.includes(name)) {
-        onPluginsChange([...declaredPlugins, name]);
-      }
-      // Re-fetch the authoritative registry after the declared-plugins write.
-      // `updatePipelineFields` fires an async /api/pipeline PATCH whose
-      // applyState() does not touch `registry`, but the refetch here gives us
-      // the same hydration path Apply Now / workspace-open uses so the Task
-      // panel's trigger/completion/middleware dropdowns pick up the new type
-      // immediately instead of waiting for a reload.
+  const handleInstall = useCallback(
+    async (name: string) => {
+      setActionState({ type: 'loading', name, action: 'install' });
       try {
-        onRegistryUpdate(await api.getRegistry());
-      } catch { /* install already recorded; dropdowns will refresh on next fetch */ }
-      await refreshInstalled();
-      // Re-fetch server state so validateRaw re-runs with the new known-types
-      // snapshot and any pre-existing "unknown type" warnings clear out.
-      await onRefreshServerState();
-      setActionState({
-        type: 'success',
-        name,
-        action: 'install',
-        message: result.warning
-          ?? (result.plugin.version ? `Installed v${result.plugin.version}` : 'Installed'),
-      });
-    } catch (e: unknown) {
-      const message = extractErrorMessage(e);
-      setActionState({
-        type: 'error',
-        name,
-        action: 'install',
-        message,
-        kind: classifyError(e, message),
-      });
-    }
-  }, [declaredPlugins, onRegistryUpdate, onPluginsChange, refreshInstalled, onRefreshServerState]);
+        const result = await api.installPlugin(name);
+        onRegistryUpdate(result.registry);
+        if (!declaredPlugins.includes(name)) {
+          onPluginsChange([...declaredPlugins, name]);
+        }
+        // Re-fetch the authoritative registry after the declared-plugins write.
+        // `updatePipelineFields` fires an async /api/pipeline PATCH whose
+        // applyState() does not touch `registry`, but the refetch here gives us
+        // the same hydration path Apply Now / workspace-open uses so the Task
+        // panel's trigger/completion/middleware dropdowns pick up the new type
+        // immediately instead of waiting for a reload.
+        try {
+          onRegistryUpdate(await api.getRegistry());
+        } catch {
+          /* install already recorded; dropdowns will refresh on next fetch */
+        }
+        await refreshInstalled();
+        // Re-fetch server state so validateRaw re-runs with the new known-types
+        // snapshot and any pre-existing "unknown type" warnings clear out.
+        await onRefreshServerState();
+        setActionState({
+          type: 'success',
+          name,
+          action: 'install',
+          message:
+            result.warning ??
+            (result.plugin.version ? `Installed v${result.plugin.version}` : 'Installed'),
+        });
+      } catch (e: unknown) {
+        const message = extractErrorMessage(e);
+        setActionState({
+          type: 'error',
+          name,
+          action: 'install',
+          message,
+          kind: classifyError(e, message),
+        });
+      }
+    },
+    [declaredPlugins, onRegistryUpdate, onPluginsChange, refreshInstalled, onRefreshServerState],
+  );
 
   // Upgrade is a re-install against the latest registry version. The
   // install endpoint always wipes node_modules/<name> before extracting the
@@ -328,71 +335,82 @@ export function PluginsPage({
   // plugin is the supported upgrade path. A separate action label keeps the
   // busy spinner, success banner, and error classification distinct from a
   // fresh install so the user sees accurate feedback.
-  const handleUpgrade = useCallback(async (name: string) => {
-    setActionState({ type: 'loading', name, action: 'upgrade' });
-    try {
-      const result = await api.installPlugin(name);
-      onRegistryUpdate(result.registry);
+  const handleUpgrade = useCallback(
+    async (name: string) => {
+      setActionState({ type: 'loading', name, action: 'upgrade' });
       try {
-        onRegistryUpdate(await api.getRegistry());
-      } catch { /* next refetch will reconcile */ }
-      await refreshInstalled();
-      await onRefreshServerState();
-      setActionState({
-        type: 'success',
-        name,
-        action: 'upgrade',
-        message: result.warning
-          ?? (result.plugin.version ? `Upgraded to v${result.plugin.version}` : 'Upgraded'),
-      });
-    } catch (e: unknown) {
-      const message = extractErrorMessage(e);
-      setActionState({
-        type: 'error',
-        name,
-        action: 'upgrade',
-        message,
-        kind: classifyError(e, message),
-      });
-    }
-  }, [onRegistryUpdate, refreshInstalled, onRefreshServerState]);
+        const result = await api.installPlugin(name);
+        onRegistryUpdate(result.registry);
+        try {
+          onRegistryUpdate(await api.getRegistry());
+        } catch {
+          /* next refetch will reconcile */
+        }
+        await refreshInstalled();
+        await onRefreshServerState();
+        setActionState({
+          type: 'success',
+          name,
+          action: 'upgrade',
+          message:
+            result.warning ??
+            (result.plugin.version ? `Upgraded to v${result.plugin.version}` : 'Upgraded'),
+        });
+      } catch (e: unknown) {
+        const message = extractErrorMessage(e);
+        setActionState({
+          type: 'error',
+          name,
+          action: 'upgrade',
+          message,
+          kind: classifyError(e, message),
+        });
+      }
+    },
+    [onRegistryUpdate, refreshInstalled, onRefreshServerState],
+  );
 
-  const performUninstall = useCallback(async (name: string) => {
-    setActionState({ type: 'loading', name, action: 'uninstall' });
-    try {
-      const result = await api.uninstallPlugin(name);
-      onRegistryUpdate(result.registry);
-      // Intentionally do NOT strip `name` from pipeline.plugins[]. Tasks may
-      // still reference the plugin's driver/type; removing the declaration
-      // here would leave an inconsistent YAML (driver: codex but no
-      // @tagma/driver-codex in plugins). Keeping the declaration means
-      // validateRaw surfaces a soft warning immediately and Run fails fast
-      // with a clear "Plugin load error" instead of silently drifting.
-      // Re-installing the plugin restores the working state in one click.
+  const performUninstall = useCallback(
+    async (name: string) => {
+      setActionState({ type: 'loading', name, action: 'uninstall' });
       try {
-        onRegistryUpdate(await api.getRegistry());
-      } catch { /* next refetch will reconcile */ }
-      await refreshInstalled();
-      // Re-run server-side validation so newly-orphaned task references
-      // surface as warnings immediately, without having to touch the Task.
-      await onRefreshServerState();
-      setActionState({
-        type: 'success',
-        name,
-        action: 'uninstall',
-        message: 'Uninstalled',
-      });
-    } catch (e: unknown) {
-      const message = extractErrorMessage(e);
-      setActionState({
-        type: 'error',
-        name,
-        action: 'uninstall',
-        message,
-        kind: classifyError(e, message),
-      });
-    }
-  }, [onRegistryUpdate, refreshInstalled, onRefreshServerState]);
+        const result = await api.uninstallPlugin(name);
+        onRegistryUpdate(result.registry);
+        // Intentionally do NOT strip `name` from pipeline.plugins[]. Tasks may
+        // still reference the plugin's driver/type; removing the declaration
+        // here would leave an inconsistent YAML (driver: codex but no
+        // @tagma/driver-codex in plugins). Keeping the declaration means
+        // validateRaw surfaces a soft warning immediately and Run fails fast
+        // with a clear "Plugin load error" instead of silently drifting.
+        // Re-installing the plugin restores the working state in one click.
+        try {
+          onRegistryUpdate(await api.getRegistry());
+        } catch {
+          /* next refetch will reconcile */
+        }
+        await refreshInstalled();
+        // Re-run server-side validation so newly-orphaned task references
+        // surface as warnings immediately, without having to touch the Task.
+        await onRefreshServerState();
+        setActionState({
+          type: 'success',
+          name,
+          action: 'uninstall',
+          message: 'Uninstalled',
+        });
+      } catch (e: unknown) {
+        const message = extractErrorMessage(e);
+        setActionState({
+          type: 'error',
+          name,
+          action: 'uninstall',
+          message,
+          kind: classifyError(e, message),
+        });
+      }
+    },
+    [onRegistryUpdate, refreshInstalled, onRefreshServerState],
+  );
 
   /**
    * Top-level uninstall entry point. Runs a pre-flight impact scan against
@@ -401,57 +419,65 @@ export function PluginsPage({
    * Otherwise it proceeds straight through — no nag dialogs for truly
    * unused plugins.
    */
-  const handleUninstall = useCallback(async (name: string) => {
-    // Probe first with a loading banner so the user sees *something* even
-    // if the scan takes a beat. The dialog (if shown) will replace it.
-    setActionState({ type: 'loading', name, action: 'uninstall' });
-    let impact: PluginUninstallImpact;
-    try {
-      impact = await api.uninstallImpact(name);
-    } catch (e: unknown) {
-      // Impact scan is best-effort — if it fails, fall through to the
-      // real uninstall rather than blocking the user.
-      console.warn('[plugins] uninstall-impact scan failed:', e);
-      await performUninstall(name);
-      return;
-    }
-    if (impact.impacts.length === 0) {
-      await performUninstall(name);
-      return;
-    }
-    setUninstallConfirm(impact);
-    // Reset the action state so the confirm dialog owns the UI; the loading
-    // spinner will reappear when the user clicks "Uninstall anyway".
-    setActionState({ type: 'idle' });
-  }, [performUninstall]);
-
-  const handleLoad = useCallback(async (name: string) => {
-    setActionState({ type: 'loading', name, action: 'load' });
-    try {
-      const result = await api.loadPlugin(name);
-      onRegistryUpdate(result.registry);
+  const handleUninstall = useCallback(
+    async (name: string) => {
+      // Probe first with a loading banner so the user sees *something* even
+      // if the scan takes a beat. The dialog (if shown) will replace it.
+      setActionState({ type: 'loading', name, action: 'uninstall' });
+      let impact: PluginUninstallImpact;
       try {
-        onRegistryUpdate(await api.getRegistry());
-      } catch { /* next refetch will reconcile */ }
-      await refreshInstalled();
-      await onRefreshServerState();
-      setActionState({
-        type: 'success',
-        name,
-        action: 'load',
-        message: 'Loaded into registry',
-      });
-    } catch (e: unknown) {
-      const message = extractErrorMessage(e);
-      setActionState({
-        type: 'error',
-        name,
-        action: 'load',
-        message,
-        kind: classifyError(e, message),
-      });
-    }
-  }, [onRegistryUpdate, refreshInstalled, onRefreshServerState]);
+        impact = await api.uninstallImpact(name);
+      } catch (e: unknown) {
+        // Impact scan is best-effort — if it fails, fall through to the
+        // real uninstall rather than blocking the user.
+        console.warn('[plugins] uninstall-impact scan failed:', e);
+        await performUninstall(name);
+        return;
+      }
+      if (impact.impacts.length === 0) {
+        await performUninstall(name);
+        return;
+      }
+      setUninstallConfirm(impact);
+      // Reset the action state so the confirm dialog owns the UI; the loading
+      // spinner will reappear when the user clicks "Uninstall anyway".
+      setActionState({ type: 'idle' });
+    },
+    [performUninstall],
+  );
+
+  const handleLoad = useCallback(
+    async (name: string) => {
+      setActionState({ type: 'loading', name, action: 'load' });
+      try {
+        const result = await api.loadPlugin(name);
+        onRegistryUpdate(result.registry);
+        try {
+          onRegistryUpdate(await api.getRegistry());
+        } catch {
+          /* next refetch will reconcile */
+        }
+        await refreshInstalled();
+        await onRefreshServerState();
+        setActionState({
+          type: 'success',
+          name,
+          action: 'load',
+          message: 'Loaded into registry',
+        });
+      } catch (e: unknown) {
+        const message = extractErrorMessage(e);
+        setActionState({
+          type: 'error',
+          name,
+          action: 'load',
+          message,
+          kind: classifyError(e, message),
+        });
+      }
+    },
+    [onRegistryUpdate, refreshInstalled, onRefreshServerState],
+  );
 
   // Explicit user-triggered refresh is the only way to re-hit npm once
   // we've cached a result. Clicking it always re-fetches; the flag is
@@ -497,15 +523,13 @@ export function PluginsPage({
         onImportLocal={onRequestBrowseLocal}
         searchQuery={tab === 'local' ? localQuery : marketplaceQuery}
         onSearchQueryChange={tab === 'local' ? setLocalQuery : setMarketplaceQuery}
-        searchPlaceholder={tab === 'local' ? 'Search installed plugins…' : 'Search the npm marketplace…'}
+        searchPlaceholder={
+          tab === 'local' ? 'Search installed plugins…' : 'Search the npm marketplace…'
+        }
       />
 
       <div className="flex-1 min-h-0 flex">
-        <CategorySidebar
-          active={category}
-          counts={categoryCounts}
-          onSelect={setCategory}
-        />
+        <CategorySidebar active={category} counts={categoryCounts} onSelect={setCategory} />
 
         <section className="flex-1 min-h-0 overflow-hidden">
           {tab === 'local' ? (
@@ -580,7 +604,7 @@ function UninstallConfirmDialog({
     for (const entry of impact.impacts) {
       const bucket = map.get(entry.file);
       if (bucket) {
-        (bucket as unknown as typeof impact.impacts[number][]).push(entry);
+        (bucket as unknown as (typeof impact.impacts)[number][]).push(entry);
       } else {
         map.set(entry.file, [entry] as unknown as typeof impact.impacts);
       }
@@ -608,14 +632,16 @@ function UninstallConfirmDialog({
             <span className="font-mono text-tagma-accent">{impact.name}</span>
             {impact.category && impact.type && (
               <span className="text-tagma-muted">
-                {' '}({impact.category.replace(/s$/, '')}.<span className="font-mono">{impact.type}</span>)
+                {' '}
+                ({impact.category.replace(/s$/, '')}.
+                <span className="font-mono">{impact.type}</span>)
               </span>
             )}
           </div>
           <div className="text-[11px] text-tagma-warning">
-            {total} reference{total === 1 ? '' : 's'} in {fileCount} file{fileCount === 1 ? '' : 's'} will be left dangling.
-            The tasks will still save but fail at run time until the plugin is
-            reinstalled or the reference is removed.
+            {total} reference{total === 1 ? '' : 's'} in {fileCount} file
+            {fileCount === 1 ? '' : 's'} will be left dangling. The tasks will still save but fail
+            at run time until the plugin is reinstalled or the reference is removed.
           </div>
           <div className="border border-tagma-border bg-tagma-bg">
             {byFile.map(([file, entries]) => (
@@ -711,9 +737,7 @@ function CategorySidebar({
               >
                 {String(i + 1).padStart(2, '0')}
               </span>
-              <span className="flex-1 text-[12px] tracking-wide leading-tight">
-                {c.label}
-              </span>
+              <span className="flex-1 text-[12px] tracking-wide leading-tight">{c.label}</span>
               <span
                 className={`text-[10px] font-mono tabular-nums leading-none ${
                   isActive ? 'text-tagma-accent' : 'text-tagma-muted-dim'
@@ -767,7 +791,9 @@ function PluginsHeader({
         <div className="w-px h-5 bg-tagma-border" />
         <div className="flex items-center gap-1.5 px-2">
           <Package size={13} className="text-tagma-accent" />
-          <span className="text-xs font-medium text-tagma-text truncate max-w-[160px]">Plugins</span>
+          <span className="text-xs font-medium text-tagma-text truncate max-w-[160px]">
+            Plugins
+          </span>
         </div>
         <div className="flex-1" />
         {tab === 'local' && onImportLocal && (

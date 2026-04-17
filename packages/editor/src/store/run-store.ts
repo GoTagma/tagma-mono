@@ -1,11 +1,6 @@
 import { create } from 'zustand';
 import { api } from '../api/client';
-import type {
-  RunTaskState,
-  RunEvent,
-  RawPipelineConfig,
-  ApprovalRequestInfo,
-} from '../api/client';
+import type { RunTaskState, RunEvent, RawPipelineConfig, ApprovalRequestInfo } from '../api/client';
 import { foldRunEvent, type RunFoldState } from './run-event-reducer';
 
 interface RunStoreState extends RunFoldState {
@@ -79,12 +74,19 @@ export const useRunStore = create<RunStoreState>((set, get) => {
   function handleEvent(event: RunEvent) {
     // High-priority events (run lifecycle, approvals) flush immediately
     // so the UI transitions without waiting for the next frame.
-    if (event.type === 'run_start' || event.type === 'run_end' ||
-        event.type === 'run_error' || event.type === 'approval_request' ||
-        event.type === 'approval_resolved') {
+    if (
+      event.type === 'run_start' ||
+      event.type === 'run_end' ||
+      event.type === 'run_error' ||
+      event.type === 'approval_request' ||
+      event.type === 'approval_resolved'
+    ) {
       // Fold any pending batch first to preserve ordering
       if (pendingEvents.length > 0) {
-        if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+        if (rafId !== null) {
+          cancelAnimationFrame(rafId);
+          rafId = null;
+        }
         flushEvents();
       }
       const current = pickFoldState(get());
@@ -116,9 +118,15 @@ export const useRunStore = create<RunStoreState>((set, get) => {
       // Defensive: a previous run may have been minimized (still alive
       // server-side). Close its SSE subscription before starting the new
       // one so we don't leak listeners / get stray events.
-      if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
       pendingEvents = [];
-      if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+      if (unsubscribe) {
+        unsubscribe();
+        unsubscribe = null;
+      }
       set({
         active: true,
         viewMode: 'live',
@@ -194,9 +202,15 @@ export const useRunStore = create<RunStoreState>((set, get) => {
     },
 
     reset: () => {
-      if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
       pendingEvents = [];
-      if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+      if (unsubscribe) {
+        unsubscribe();
+        unsubscribe = null;
+      }
       // See minimizeView: leaving viewMode alone keeps RunView's exit
       // animation painting the same content it was showing when Back
       // was clicked (history browser stays visible until exit completes).

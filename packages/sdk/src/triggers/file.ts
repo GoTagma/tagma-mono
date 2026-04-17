@@ -57,7 +57,9 @@ export const FileTrigger: TriggerPlugin = {
       const dir = dirname(safePath);
       try {
         await mkdir(dir, { recursive: true });
-      } catch { /* best effort — dir may already exist */ }
+      } catch {
+        /* best effort — dir may already exist */
+      }
 
       // Pass `cwd: dir` so chokidar resolves paths relative to the watched
       // directory. The 'add'/'change' events will then carry paths relative
@@ -74,7 +76,9 @@ export const FileTrigger: TriggerPlugin = {
       const cleanup = () => {
         if (settled) return;
         settled = true;
-        watcher.close().catch(() => { /* ignore */ });
+        watcher.close().catch(() => {
+          /* ignore */
+        });
         if (timer) clearTimeout(timer);
         ctx.signal.removeEventListener('abort', onAbort);
       };
@@ -106,7 +110,11 @@ export const FileTrigger: TriggerPlugin = {
       watcher.on('error', (err: unknown) => {
         if (settled) return;
         cleanup();
-        reject(new Error(`file trigger watch error: ${err instanceof Error ? err.message : String(err)}`));
+        reject(
+          new Error(
+            `file trigger watch error: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+        );
       });
 
       // After the watcher finishes its initial scan, check if the file already exists.
@@ -114,24 +122,35 @@ export const FileTrigger: TriggerPlugin = {
       // and watcher startup, so we neither miss events nor double-resolve.
       watcher.on('ready', () => {
         if (settled) return;
-        Bun.file(safePath).exists().then((exists) => {
-          if (settled) return;
-          if (exists) {
+        Bun.file(safePath)
+          .exists()
+          .then((exists) => {
+            if (settled) return;
+            if (exists) {
+              cleanup();
+              resolve_p({ path: safePath });
+            }
+          })
+          .catch((err: unknown) => {
+            if (settled) return;
             cleanup();
-            resolve_p({ path: safePath });
-          }
-        }).catch((err: unknown) => {
-          if (settled) return;
-          cleanup();
-          reject(new Error(`file trigger existence check failed: ${err instanceof Error ? err.message : String(err)}`));
-        });
+            reject(
+              new Error(
+                `file trigger existence check failed: ${err instanceof Error ? err.message : String(err)}`,
+              ),
+            );
+          });
       });
 
       if (timeoutMs > 0) {
         timer = setTimeout(() => {
           if (settled) return;
           cleanup();
-          reject(new TriggerTimeoutError(`file trigger timeout: ${filePath} did not appear within ${config.timeout}`));
+          reject(
+            new TriggerTimeoutError(
+              `file trigger timeout: ${filePath} did not appear within ${config.timeout}`,
+            ),
+          );
         }, timeoutMs);
       }
 

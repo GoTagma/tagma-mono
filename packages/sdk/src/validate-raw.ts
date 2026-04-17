@@ -31,7 +31,9 @@ const VALID_REASONING_EFFORT = new Set(['low', 'medium', 'high']);
 // emit false-positive "unknown type" warnings for stock pipelines.
 const BUILTIN_TRIGGER_TYPES: ReadonlySet<string> = new Set(['manual', 'file']);
 const BUILTIN_COMPLETION_TYPES: ReadonlySet<string> = new Set([
-  'exit_code', 'file_exists', 'output_check',
+  'exit_code',
+  'file_exists',
+  'output_check',
 ]);
 const BUILTIN_MIDDLEWARE_TYPES: ReadonlySet<string> = new Set(['static_context']);
 
@@ -100,7 +102,10 @@ export function validateRaw(
     errors.push({ path: 'name', message: 'Pipeline name is required' });
   }
   if (config.reasoning_effort && !VALID_REASONING_EFFORT.has(config.reasoning_effort)) {
-    errors.push({ path: 'reasoning_effort', message: `Invalid reasoning_effort "${config.reasoning_effort}". Expected "low", "medium", or "high".` });
+    errors.push({
+      path: 'reasoning_effort',
+      message: `Invalid reasoning_effort "${config.reasoning_effort}". Expected "low", "medium", or "high".`,
+    });
   }
 
   if (!config.tracks || config.tracks.length === 0) {
@@ -151,10 +156,16 @@ export function validateRaw(
       errors.push({ path: `${trackPath}.name`, message: 'Track name is required' });
     }
     if (track.on_failure && !VALID_ON_FAILURE.has(track.on_failure)) {
-      errors.push({ path: `${trackPath}.on_failure`, message: `Invalid on_failure value "${track.on_failure}". Expected "skip_downstream", "stop_all", or "ignore".` });
+      errors.push({
+        path: `${trackPath}.on_failure`,
+        message: `Invalid on_failure value "${track.on_failure}". Expected "skip_downstream", "stop_all", or "ignore".`,
+      });
     }
     if (track.reasoning_effort && !VALID_REASONING_EFFORT.has(track.reasoning_effort)) {
-      errors.push({ path: `${trackPath}.reasoning_effort`, message: `Invalid reasoning_effort "${track.reasoning_effort}". Expected "low", "medium", or "high".` });
+      errors.push({
+        path: `${trackPath}.reasoning_effort`,
+        message: `Invalid reasoning_effort "${track.reasoning_effort}". Expected "low", "medium", or "high".`,
+      });
     }
 
     // Track-level middlewares can reference a plugin that was uninstalled
@@ -174,7 +185,10 @@ export function validateRaw(
     }
 
     if (!track.tasks || track.tasks.length === 0) {
-      errors.push({ path: `${trackPath}.tasks`, message: `Track "${track.id || ti}": must have at least one task` });
+      errors.push({
+        path: `${trackPath}.tasks`,
+        message: `Track "${track.id || ti}": must have at least one task`,
+      });
       continue;
     }
 
@@ -196,7 +210,10 @@ export function validateRaw(
         });
       }
       if (seenTaskIds.has(task.id)) {
-        errors.push({ path: taskPath, message: `Duplicate task id "${task.id}" in track "${track.id}"` });
+        errors.push({
+          path: taskPath,
+          message: `Duplicate task id "${task.id}" in track "${track.id}"`,
+        });
       }
       seenTaskIds.add(task.id);
 
@@ -229,10 +246,16 @@ export function validateRaw(
 
       // ── Field-level validations ──
       if (task.timeout && !isValidDuration(task.timeout)) {
-        errors.push({ path: `${taskPath}.timeout`, message: `Invalid duration format "${task.timeout}". Expected e.g. "30s", "5m", "1h".` });
+        errors.push({
+          path: `${taskPath}.timeout`,
+          message: `Invalid duration format "${task.timeout}". Expected e.g. "30s", "5m", "1h".`,
+        });
       }
       if (task.reasoning_effort && !VALID_REASONING_EFFORT.has(task.reasoning_effort)) {
-        errors.push({ path: `${taskPath}.reasoning_effort`, message: `Invalid reasoning_effort "${task.reasoning_effort}". Expected "low", "medium", or "high".` });
+        errors.push({
+          path: `${taskPath}.reasoning_effort`,
+          message: `Invalid reasoning_effort "${task.reasoning_effort}". Expected "low", "medium", or "high".`,
+        });
       }
 
       // ── Plugin type warnings (trigger / completion / middlewares) ──
@@ -246,7 +269,11 @@ export function validateRaw(
           severity: 'warning',
         });
       }
-      if (knownCompletions && task.completion?.type && !knownCompletions.has(task.completion.type)) {
+      if (
+        knownCompletions &&
+        task.completion?.type &&
+        !knownCompletions.has(task.completion.type)
+      ) {
         errors.push({
           path: `${taskPath}.completion.type`,
           message: `Completion type "${task.completion.type}" is not registered. Install the plugin (e.g. @tagma/completion-${task.completion.type}) or the task will fail at run time.`,
@@ -297,9 +324,12 @@ export function validateRaw(
             path: `${taskPath}.continue_from`,
             message: `Task "${task.id}": continue_from "${task.continue_from}" is ambiguous — multiple tracks have a task with this id. Use the fully-qualified form "trackId.${task.continue_from}".`,
           });
-        } else if (!task.depends_on || !task.depends_on.some(dep =>
-          resolveDepRef(dep, track.id, allQualified, bareToQualified) === resolved
-        )) {
+        } else if (
+          !task.depends_on ||
+          !task.depends_on.some(
+            (dep) => resolveDepRef(dep, track.id, allQualified, bareToQualified) === resolved,
+          )
+        ) {
           // H8: demote to a warning. dag.ts/buildDag inserts continue_from
           // as an implicit dependency at runtime, so the pipeline runs fine
           // without the explicit listing. Treat as a style hint rather than
@@ -386,7 +416,10 @@ function detectCycles(
       if (!seenCycles.has(key)) {
         seenCycles.add(key);
         const display = [...uniqueNodes, id]; // include start for readable display
-        errors.push({ path: 'tracks', message: `Circular dependency detected: ${display.join(' → ')}` });
+        errors.push({
+          path: 'tracks',
+          message: `Circular dependency detected: ${display.join(' → ')}`,
+        });
       }
       return;
     }

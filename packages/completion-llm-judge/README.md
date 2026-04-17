@@ -25,7 +25,7 @@ ollama serve  # usually auto-started
 pipeline:
   name: qa-loop
   plugins:
-    - "@tagma/completion-llm-judge"
+    - '@tagma/completion-llm-judge'
   tracks:
     - id: qa
       name: QA
@@ -33,7 +33,7 @@ pipeline:
       tasks:
         - id: find-bugs
           name: Find failing tests
-          prompt: "List all failing tests in the current workspace with their file paths."
+          prompt: 'List all failing tests in the current workspace with their file paths.'
           output: ./output/find-bugs.md
           completion:
             type: llm_judge
@@ -50,7 +50,7 @@ Swap to a hosted backend:
 ```yaml
 completion:
   type: llm_judge
-  rubric: "..."
+  rubric: '...'
   endpoint: https://api.openai.com/v1/chat/completions
   model: gpt-4o-mini
   api_key_env: OPENAI_API_KEY
@@ -67,14 +67,14 @@ await loadPlugins(['@tagma/completion-llm-judge']);
 
 ## Config
 
-| Field              | Type     | Default                                         | Notes                                                                                     |
-|--------------------|----------|-------------------------------------------------|-------------------------------------------------------------------------------------------|
-| `rubric`           | string   | *(required)*                                    | Plain-language success criteria the judge should verify                                   |
-| `model`            | string   | `qwen3:4b`                                      | Judge model name. Swap for `qwen3:8b`, `deepseek-r1:7b`, `gpt-4o-mini`, etc.              |
-| `endpoint`         | string   | `http://localhost:11434/v1/chat/completions`    | OpenAI-compatible chat completions URL. Default points at local Ollama                    |
-| `api_key_env`      | string   | *(none)*                                        | Env var holding the bearer token. Leave unset for local Ollama; set for hosted backends   |
-| `timeout`          | duration | `120s`                                          | Max time to wait for the judge response (reasoning models need more time than chat models)|
-| `max_output_chars` | number   | `8000`                                          | Truncate task stdout before judging (head+tail preserved)                                 |
+| Field              | Type     | Default                                      | Notes                                                                                      |
+| ------------------ | -------- | -------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `rubric`           | string   | _(required)_                                 | Plain-language success criteria the judge should verify                                    |
+| `model`            | string   | `qwen3:4b`                                   | Judge model name. Swap for `qwen3:8b`, `deepseek-r1:7b`, `gpt-4o-mini`, etc.               |
+| `endpoint`         | string   | `http://localhost:11434/v1/chat/completions` | OpenAI-compatible chat completions URL. Default points at local Ollama                     |
+| `api_key_env`      | string   | _(none)_                                     | Env var holding the bearer token. Leave unset for local Ollama; set for hosted backends    |
+| `timeout`          | duration | `120s`                                       | Max time to wait for the judge response (reasoning models need more time than chat models) |
+| `max_output_chars` | number   | `8000`                                       | Truncate task stdout before judging (head+tail preserved)                                  |
 
 ## Behavior
 

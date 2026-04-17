@@ -22,7 +22,8 @@ export const ManualTrigger: TriggerPlugin = {
 
   async watch(config: Record<string, unknown>, ctx: TriggerContext): Promise<unknown> {
     const message =
-      (config.message as string | undefined) ?? `Manual confirmation required for task "${ctx.taskId}"`;
+      (config.message as string | undefined) ??
+      `Manual confirmation required for task "${ctx.taskId}"`;
     const timeoutMs = config.timeout ? parseDuration(config.timeout as string) : 0;
     const metadata =
       config.metadata && typeof config.metadata === 'object'
@@ -73,9 +74,13 @@ export const ManualTrigger: TriggerPlugin = {
             (decision.reason ? `: ${decision.reason}` : ''),
         );
       case 'timeout':
-        throw new TriggerTimeoutError(`Manual trigger timeout: ${decision.reason ?? 'no decision made'}`);
+        throw new TriggerTimeoutError(
+          `Manual trigger timeout: ${decision.reason ?? 'no decision made'}`,
+        );
       case 'aborted':
-        throw new TriggerBlockedError(`Manual trigger aborted: ${decision.reason ?? 'pipeline aborted'}`);
+        throw new TriggerBlockedError(
+          `Manual trigger aborted: ${decision.reason ?? 'pipeline aborted'}`,
+        );
     }
   },
 };

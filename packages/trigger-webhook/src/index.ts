@@ -52,11 +52,15 @@ function parseDurationSafe(raw: unknown, fallback: number): number {
   if (!m) return fallback;
   const n = Number(m[1]);
   switch (m[2]) {
-    case 'ms': return n;
-    case 'm':  return n * 60_000;
-    case 'h':  return n * 3_600_000;
+    case 'ms':
+      return n;
+    case 'm':
+      return n * 60_000;
+    case 'h':
+      return n * 3_600_000;
     case 's':
-    default:   return n * 1000;
+    default:
+      return n * 1000;
   }
 }
 
@@ -151,8 +155,7 @@ function ensureServer(
 const WebhookTrigger: TriggerPlugin = {
   name: 'webhook',
   schema: {
-    description:
-      'Wait for an HTTP POST to arrive on a local listener before the task runs.',
+    description: 'Wait for an HTTP POST to arrive on a local listener before the task runs.',
     fields: {
       port: {
         type: 'number',
@@ -209,9 +212,7 @@ const WebhookTrigger: TriggerPlugin = {
       typeof rawHost === 'string' && rawHost.trim().length > 0
         ? rawHost.trim()
         : DEFAULT_WEBHOOK_HOST;
-    const timeoutMs = config.timeout != null
-      ? parseDurationSafe(config.timeout, 0)
-      : 0;
+    const timeoutMs = config.timeout != null ? parseDurationSafe(config.timeout, 0) : 0;
 
     if (hostname !== DEFAULT_WEBHOOK_HOST && hostname !== 'localhost' && !secretEnv) {
       // Loud warning — the user has opted into a non-loopback bind without

@@ -4,7 +4,6 @@ import {
   existsSync,
   readdirSync,
   mkdirSync,
-  rmSync,
   cpSync,
   lstatSync,
 } from 'node:fs';
@@ -17,24 +16,14 @@ import {
   readPluginManifest as parsePluginManifestField,
 } from '@tagma/sdk';
 import type { PluginCategory, RegisterResult } from '@tagma/sdk';
-import type {
-  DriverPlugin,
-  TriggerPlugin,
-  CompletionPlugin,
-  MiddlewarePlugin,
-} from '@tagma/types';
+import type { DriverPlugin, TriggerPlugin, CompletionPlugin, MiddlewarePlugin } from '@tagma/types';
 import {
   PluginSafetyError,
   assertSafePluginName,
   pluginCategoryFromName,
   importWithTimeout,
 } from '../plugin-safety.js';
-import {
-  S,
-  isPathWithin,
-  pluginDirFor,
-  fenceWithinNodeModules,
-} from '../state.js';
+import { S, isPathWithin, pluginDirFor, fenceWithinNodeModules } from '../state.js';
 import { installPackage } from './install.js';
 
 /**
@@ -91,7 +80,14 @@ export function getPluginInfo(name: string): PluginInfo {
   // For invalid names we return a non-installed stub; the route layer also
   // rejects with 400 on invalid input, but we belt-and-brace here too.
   if (!isValidPluginName(name)) {
-    return { name, installed: false, loaded: false, version: null, description: null, categories: [] };
+    return {
+      name,
+      installed: false,
+      loaded: false,
+      version: null,
+      description: null,
+      categories: [],
+    };
   }
 
   let installed = false;
@@ -110,9 +106,13 @@ export function getPluginInfo(name: string): PluginInfo {
       try {
         const manifest = parsePluginManifestField(pkg);
         if (manifest) manifestCategory = manifest.category;
-      } catch { /* malformed tagmaPlugin field — fall through to meta/name inference */ }
+      } catch {
+        /* malformed tagmaPlugin field — fall through to meta/name inference */
+      }
     }
-  } catch (_err) { /* plugin dir missing or unreadable — treat as not installed */ }
+  } catch (_err) {
+    /* plugin dir missing or unreadable — treat as not installed */
+  }
 
   const loaded = loadedPlugins.has(name);
 
@@ -210,7 +210,7 @@ function assertNoSymlinksInDir(dir: string, label: string): void {
     try {
       if (lstatSync(fullPath).isSymbolicLink()) {
         throw new PluginSafetyError(
-          `${label}: entry "${entry}" is a symbolic link. Symbolic links in plugin packages are not allowed.`
+          `${label}: entry "${entry}" is a symbolic link. Symbolic links in plugin packages are not allowed.`,
         );
       }
     } catch (err) {
@@ -248,7 +248,9 @@ function stagePluginForImport(name: string, pluginDir: string): string {
   return stageDir;
 }
 
-export async function loadPluginFromWorkDir(name: string): Promise<{ result: RegisterResult; meta: LoadedPluginMeta }> {
+export async function loadPluginFromWorkDir(
+  name: string,
+): Promise<{ result: RegisterResult; meta: LoadedPluginMeta }> {
   assertSafePluginName(name);
   if (!S.workDir) {
     throw new PluginSafetyError('Cannot load plugin: workspace directory is not set');
@@ -265,7 +267,7 @@ export async function loadPluginFromWorkDir(name: string): Promise<{ result: Reg
   const entryPoint = resolveEntryPoint(pluginPkg);
   if (!entryPoint) {
     throw new Error(
-      `Plugin "${name}" has no resolvable entry point (package.json must declare "main" or an "exports" import/default condition).`
+      `Plugin "${name}" has no resolvable entry point (package.json must declare "main" or an "exports" import/default condition).`,
     );
   }
   const modulePath = resolve(pluginDir, entryPoint);
@@ -274,7 +276,7 @@ export async function loadPluginFromWorkDir(name: string): Promise<{ result: Reg
   // prevent a malicious plugin's "main" field from escaping (e.g. "../../../evil.js").
   if (!isPathWithin(modulePath, pluginDir)) {
     throw new Error(
-      `Plugin "${name}" entry point "${entryPoint}" resolves outside its package directory. Refusing to load.`
+      `Plugin "${name}" entry point "${entryPoint}" resolves outside its package directory. Refusing to load.`,
     );
   }
 
@@ -282,7 +284,7 @@ export async function loadPluginFromWorkDir(name: string): Promise<{ result: Reg
   const stagedModulePath = resolve(stagedPluginDir, entryPoint);
   if (!isPathWithin(stagedModulePath, stagedPluginDir)) {
     throw new Error(
-      `Plugin "${name}" entry point "${entryPoint}" resolves outside its staged package directory. Refusing to load.`
+      `Plugin "${name}" entry point "${entryPoint}" resolves outside its staged package directory. Refusing to load.`,
     );
   }
   const fileUrl = pathToFileURL(stagedModulePath).href;
@@ -481,7 +483,9 @@ export function writeEditorSettings(patch: Partial<EditorSettings>): EditorSetti
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         existing = parsed as Record<string, unknown>;
       }
-    } catch { /* ignore — overwrite a corrupt file */ }
+    } catch {
+      /* ignore — overwrite a corrupt file */
+    }
   }
   const next: Record<string, unknown> = { ...existing };
   if (patch.autoInstallDeclaredPlugins !== undefined) {
@@ -553,7 +557,9 @@ export function discoverInstalledPlugins(): string[] {
           continue;
         }
         if (manifest) plugins.push(name);
-      } catch { /* skip unreadable packages */ }
+      } catch {
+        /* skip unreadable packages */
+      }
     }
     installedPluginsCache = plugins;
     installedPluginsCacheTime = now;
@@ -582,7 +588,10 @@ let workspaceDeclaredPluginsCacheTime = 0;
 export function discoverWorkspaceDeclaredPlugins(): string[] {
   if (!S.workDir) return [];
   const now = Date.now();
-  if (workspaceDeclaredPluginsCache !== null && now - workspaceDeclaredPluginsCacheTime < PLUGIN_CACHE_TTL_MS) {
+  if (
+    workspaceDeclaredPluginsCache !== null &&
+    now - workspaceDeclaredPluginsCacheTime < PLUGIN_CACHE_TTL_MS
+  ) {
     return workspaceDeclaredPluginsCache;
   }
   const tagmaDir = resolve(S.workDir, '.tagma');
@@ -703,17 +712,34 @@ export async function autoLoadInstalledPlugins(): Promise<string[]> {
  * localized hint without scraping English substrings out of the message body.
  * Keeps the wire format symmetric with PluginManager.classifyError.
  */
-export type PluginErrorKind = 'network' | 'permission' | 'version' | 'notfound' | 'invalid' | 'unknown';
+export type PluginErrorKind =
+  | 'network'
+  | 'permission'
+  | 'version'
+  | 'notfound'
+  | 'invalid'
+  | 'unknown';
 
 export function classifyServerError(err: unknown): { message: string; kind: PluginErrorKind } {
   const message = err instanceof Error ? err.message : String(err);
   if (err instanceof PluginSafetyError) return { message, kind: 'invalid' };
   const m = message.toLowerCase();
   if (m.includes('integrity') || m.includes('shasum')) return { message, kind: 'version' };
-  if (m.includes('enotfound') || m.includes('etimedout') || m.includes('econnrefused') || m.includes('fetch failed') || m.includes('aborted') || m.includes('network')) return { message, kind: 'network' };
-  if (m.includes('eacces') || m.includes('eperm') || m.includes('permission denied')) return { message, kind: 'permission' };
-  if (m.includes('etarget') || m.includes('eresolve') || m.includes('peer dep')) return { message, kind: 'version' };
-  if (m.includes('not found') || m.includes('e404') || m.includes('404')) return { message, kind: 'notfound' };
+  if (
+    m.includes('enotfound') ||
+    m.includes('etimedout') ||
+    m.includes('econnrefused') ||
+    m.includes('fetch failed') ||
+    m.includes('aborted') ||
+    m.includes('network')
+  )
+    return { message, kind: 'network' };
+  if (m.includes('eacces') || m.includes('eperm') || m.includes('permission denied'))
+    return { message, kind: 'permission' };
+  if (m.includes('etarget') || m.includes('eresolve') || m.includes('peer dep'))
+    return { message, kind: 'version' };
+  if (m.includes('not found') || m.includes('e404') || m.includes('404'))
+    return { message, kind: 'notfound' };
   return { message, kind: 'unknown' };
 }
 
@@ -746,7 +772,9 @@ export function resolvePluginCategoryType(
       const manifest = parsePluginManifestField(pkg);
       if (manifest) return { category: manifest.category, type: manifest.type };
     }
-  } catch { /* fall through */ }
+  } catch {
+    /* fall through */
+  }
   return pluginCategoryFromName(name);
 }
 
@@ -815,9 +843,10 @@ export function scanUninstallImpact(
     for (let ti = 0; ti < tracks.length; ti++) {
       const track = tracks[ti];
       if (!track || typeof track !== 'object') continue;
-      const trackId = typeof (track as { id?: unknown }).id === 'string'
-        ? (track as { id: string }).id
-        : `tracks[${ti}]`;
+      const trackId =
+        typeof (track as { id?: unknown }).id === 'string'
+          ? (track as { id: string }).id
+          : `tracks[${ti}]`;
 
       // Track-level middlewares
       if (category === 'middlewares') {
@@ -842,9 +871,10 @@ export function scanUninstallImpact(
       for (let ki = 0; ki < tasks.length; ki++) {
         const task = tasks[ki];
         if (!task || typeof task !== 'object') continue;
-        const taskId = typeof (task as { id?: unknown }).id === 'string'
-          ? (task as { id: string }).id
-          : `tasks[${ki}]`;
+        const taskId =
+          typeof (task as { id?: unknown }).id === 'string'
+            ? (task as { id: string }).id
+            : `tasks[${ki}]`;
         const taskObj = task as Record<string, unknown>;
 
         if (category === 'triggers') {

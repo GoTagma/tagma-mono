@@ -30,7 +30,14 @@ export { validateRaw } from './validate-raw';
 export type { ValidationError } from './validate-raw';
 
 // ── Schema: parse / resolve / load / serialize / validate ──
-export { parseYaml, resolveConfig, loadPipeline, serializePipeline, deresolvePipeline, validateConfig } from './schema';
+export {
+  parseYaml,
+  resolveConfig,
+  loadPipeline,
+  serializePipeline,
+  deresolvePipeline,
+  validateConfig,
+} from './schema';
 
 // ── DAG ──
 export { buildDag, buildRawDag } from './dag';
@@ -66,7 +73,10 @@ export type {
 export { attachStdinApprovalAdapter } from './adapters/stdin-approval';
 export type { StdinApprovalAdapter } from './adapters/stdin-approval';
 export { attachWebSocketApprovalAdapter } from './adapters/websocket-approval';
-export type { WebSocketApprovalAdapter, WebSocketApprovalAdapterOptions } from './adapters/websocket-approval';
+export type {
+  WebSocketApprovalAdapter,
+  WebSocketApprovalAdapterOptions,
+} from './adapters/websocket-approval';
 
 // ── Logger ──
 export { Logger, tailLines, clip } from './logger';

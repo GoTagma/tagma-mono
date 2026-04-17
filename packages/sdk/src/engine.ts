@@ -1,9 +1,17 @@
 import { resolve } from 'path';
 import { readdir, rm } from 'fs/promises';
 import type {
-  PipelineConfig, TaskConfig, TaskState, TaskStatus,
-  TaskResult, DriverPlugin, TriggerPlugin, CompletionPlugin,
-  MiddlewarePlugin, MiddlewareContext, DriverContext,
+  PipelineConfig,
+  TaskConfig,
+  TaskState,
+  TaskStatus,
+  TaskResult,
+  DriverPlugin,
+  TriggerPlugin,
+  CompletionPlugin,
+  MiddlewarePlugin,
+  MiddlewareContext,
+  DriverContext,
   OnFailure,
 } from './types';
 import { buildDag, type Dag } from './dag';
@@ -12,9 +20,13 @@ import { runSpawn, runCommand } from './runner';
 import { parseDuration, nowISO, generateRunId } from './utils';
 import {
   executeHook,
-  buildPipelineStartContext, buildTaskContext,
-  buildPipelineCompleteContext, buildPipelineErrorContext,
-  type PipelineInfo, type TrackInfo, type TaskInfo,
+  buildPipelineStartContext,
+  buildTaskContext,
+  buildPipelineCompleteContext,
+  buildPipelineErrorContext,
+  type PipelineInfo,
+  type TrackInfo,
+  type TaskInfo,
 } from './hooks';
 import { Logger, tailLines, clip, type LogLevel } from './logger';
 import { InMemoryApprovalGateway, type ApprovalGateway } from './approval';
@@ -61,7 +73,9 @@ function preflight(config: PipelineConfig, dag: Dag): void {
     }
 
     if (task.completion && !hasHandler('completions', task.completion.type)) {
-      errors.push(`Task "${node.taskId}": completion type "${task.completion.type}" not registered`);
+      errors.push(
+        `Task "${node.taskId}": completion type "${task.completion.type}" not registered`,
+      );
     }
 
     const mws = task.middlewares ?? track.middlewares ?? [];
@@ -81,8 +95,8 @@ function preflight(config: PipelineConfig, dag: Dag): void {
             // A handoff is possible via session resume (already ruled out above),
             // OR in-memory text injection through normalizedMap
             // (when the upstream driver implements parseResult and returns normalizedOutput).
-            const upstreamDriverName = upstream.task.driver ?? upstream.track.driver
-              ?? config.driver ?? 'claude-code';
+            const upstreamDriverName =
+              upstream.task.driver ?? upstream.track.driver ?? config.driver ?? 'claude-code';
             const upstreamDriver = hasHandler('drivers', upstreamDriverName)
               ? getHandler<DriverPlugin>('drivers', upstreamDriverName)
               : null;
@@ -91,9 +105,9 @@ function preflight(config: PipelineConfig, dag: Dag): void {
             if (!canNormalize) {
               errors.push(
                 `Task "${node.taskId}" uses continue_from: "${task.continue_from}", ` +
-                `but upstream task "${upstreamId}" its driver ` +
-                `does not implement parseResult for text-injection handoff. ` +
-                `Use a driver with parseResult, or remove continue_from.`
+                  `but upstream task "${upstreamId}" its driver ` +
+                  `does not implement parseResult for text-injection handoff. ` +
+                  `Use a driver with parseResult, or remove continue_from.`,
               );
             }
           }
@@ -134,8 +148,12 @@ export interface EngineResult {
   readonly runId: string;
   readonly logPath: string;
   readonly summary: {
-    total: number; success: number; failed: number;
-    skipped: number; timeout: number; blocked: number;
+    total: number;
+    success: number;
+    failed: number;
+    skipped: number;
+    timeout: number;
+    blocked: number;
   };
   readonly states: ReadonlyMap<string, TaskState>;
 }
@@ -143,8 +161,19 @@ export interface EngineResult {
 // ═══ Pipeline Events ═══
 
 export type PipelineEvent =
-  | { readonly type: 'task_status_change'; readonly taskId: string; readonly status: TaskStatus; readonly prevStatus: TaskStatus; readonly runId: string; readonly state: TaskState }
-  | { readonly type: 'pipeline_start'; readonly runId: string; readonly states: ReadonlyMap<string, TaskState> }
+  | {
+      readonly type: 'task_status_change';
+      readonly taskId: string;
+      readonly status: TaskStatus;
+      readonly prevStatus: TaskStatus;
+      readonly runId: string;
+      readonly state: TaskState;
+    }
+  | {
+      readonly type: 'pipeline_start';
+      readonly runId: string;
+      readonly states: ReadonlyMap<string, TaskState>;
+    }
   | { readonly type: 'pipeline_end'; readonly runId: string; readonly success: boolean }
   /**
    * Fine-grained log line emitted alongside every write to pipeline.log.
@@ -153,7 +182,14 @@ export type PipelineEvent =
    * null for pipeline-wide messages (e.g. configuration dumps, DAG
    * topology, pipeline start/end).
    */
-  | { readonly type: 'task_log'; readonly runId: string; readonly taskId: string | null; readonly level: LogLevel; readonly timestamp: string; readonly text: string };
+  | {
+      readonly type: 'task_log';
+      readonly runId: string;
+      readonly taskId: string | null;
+      readonly level: LogLevel;
+      readonly timestamp: string;
+      readonly text: string;
+    };
 
 export interface RunPipelineOptions {
   readonly approvalGateway?: ApprovalGateway;
@@ -234,638 +270,760 @@ export async function runPipeline(
   });
 
   try {
+    log.info('[pipeline]', `start "${config.name}" run_id=${runId}`);
 
-  log.info('[pipeline]', `start "${config.name}" run_id=${runId}`);
+    // File-only: dump the resolved pipeline shape + DAG topology for post-mortem.
+    log.section('Pipeline configuration');
+    log.quiet(`name:          ${config.name}`);
+    log.quiet(`driver:        ${config.driver ?? '(default: claude-code)'}`);
+    log.quiet(`timeout:       ${config.timeout ?? '(none)'}`);
+    log.quiet(`tracks:        ${config.tracks.length}`);
+    log.quiet(`tasks (total): ${dag.nodes.size}`);
+    log.quiet(`plugins:       ${(config.plugins ?? []).join(', ') || '(none)'}`);
+    log.quiet(
+      `hooks:         ${config.hooks ? Object.keys(config.hooks).join(', ') || '(none)' : '(none)'}`,
+    );
 
-  // File-only: dump the resolved pipeline shape + DAG topology for post-mortem.
-  log.section('Pipeline configuration');
-  log.quiet(`name:          ${config.name}`);
-  log.quiet(`driver:        ${config.driver ?? '(default: claude-code)'}`);
-  log.quiet(`timeout:       ${config.timeout ?? '(none)'}`);
-  log.quiet(`tracks:        ${config.tracks.length}`);
-  log.quiet(`tasks (total): ${dag.nodes.size}`);
-  log.quiet(`plugins:       ${(config.plugins ?? []).join(', ') || '(none)'}`);
-  log.quiet(`hooks:         ${config.hooks ? Object.keys(config.hooks).join(', ') || '(none)' : '(none)'}`);
+    log.section('DAG topology');
+    for (const [id, node] of dag.nodes) {
+      const deps = node.dependsOn.length ? node.dependsOn.join(', ') : '(root)';
+      const kind = node.task.prompt ? 'ai' : 'cmd';
+      log.quiet(`  • ${id}  [${kind}]  track=${node.track.id}  deps=[${deps}]`);
+    }
+    log.quiet('');
 
-  log.section('DAG topology');
-  for (const [id, node] of dag.nodes) {
-    const deps = node.dependsOn.length ? node.dependsOn.join(', ') : '(root)';
-    const kind = node.task.prompt ? 'ai' : 'cmd';
-    log.quiet(`  • ${id}  [${kind}]  track=${node.track.id}  deps=[${deps}]`);
-  }
-  log.quiet('');
+    // Initialize states (before hook, so we can return them even if blocked)
+    const states = new Map<string, TaskState>();
+    for (const [id, node] of dag.nodes) {
+      states.set(id, {
+        config: node.task,
+        trackConfig: node.track,
+        status: 'idle',
+        result: null,
+        startedAt: null,
+        finishedAt: null,
+      });
+    }
 
-  // Initialize states (before hook, so we can return them even if blocked)
-  const states = new Map<string, TaskState>();
-  for (const [id, node] of dag.nodes) {
-    states.set(id, {
-      config: node.task,
-      trackConfig: node.track,
-      status: 'idle',
-      result: null,
-      startedAt: null,
-      finishedAt: null,
+    // Pipeline start hook (gate)
+    const startHook = await executeHook(
+      config.hooks,
+      'pipeline_start',
+      buildPipelineStartContext(pipelineInfo),
+      workDir,
+    );
+    if (!startHook.allowed) {
+      console.error(`Pipeline blocked by pipeline_start hook (exit code ${startHook.exitCode})`);
+      await executeHook(
+        config.hooks,
+        'pipeline_error',
+        buildPipelineErrorContext(pipelineInfo, 'pipeline_blocked', 'pipeline_blocked'),
+        workDir,
+      );
+      // All tasks stay idle — pipeline never started
+      return {
+        success: false,
+        runId,
+        logPath: log.path,
+        summary: {
+          total: dag.nodes.size,
+          success: 0,
+          failed: 0,
+          skipped: 0,
+          timeout: 0,
+          blocked: 0,
+        },
+        states: freezeStates(states),
+      };
+    }
+
+    // Pipeline approved — transition all tasks to waiting
+    for (const [, state] of states) {
+      state.status = 'waiting';
+    }
+    // Include a full states snapshot so listeners can initialize their mirrors without missing events
+    const statesSnapshot: ReadonlyMap<string, TaskState> = new Map(
+      [...states.entries()].map(([id, s]) => [id, { ...s }]),
+    );
+    options.onEvent?.({ type: 'pipeline_start', runId, states: statesSnapshot });
+
+    const sessionMap = new Map<string, string>();
+    const normalizedMap = new Map<string, string>();
+
+    // Pipeline timeout
+    const pipelineTimeoutMs = config.timeout ? parseDuration(config.timeout) : 0;
+    let pipelineAborted = false;
+    const abortController = new AbortController();
+    let pipelineTimer: ReturnType<typeof setTimeout> | null = null;
+
+    if (pipelineTimeoutMs > 0) {
+      pipelineTimer = setTimeout(() => {
+        pipelineAborted = true;
+        abortController.abort();
+      }, pipelineTimeoutMs);
+    }
+
+    // When the pipeline is aborted (timeout, external shutdown), drain all
+    // pending approvals so waiting triggers unblock immediately.
+    abortController.signal.addEventListener('abort', () => {
+      approvalGateway.abortAll('pipeline aborted');
     });
-  }
 
-  // Pipeline start hook (gate)
-  const startHook = await executeHook(
-    config.hooks, 'pipeline_start', buildPipelineStartContext(pipelineInfo), workDir,
-  );
-  if (!startHook.allowed) {
-    console.error(`Pipeline blocked by pipeline_start hook (exit code ${startHook.exitCode})`);
-    await executeHook(config.hooks, 'pipeline_error',
-      buildPipelineErrorContext(pipelineInfo, 'pipeline_blocked', 'pipeline_blocked'), workDir);
-    // All tasks stay idle — pipeline never started
-    return {
-      success: false,
-      runId,
-      logPath: log.path,
-      summary: { total: dag.nodes.size, success: 0, failed: 0, skipped: 0, timeout: 0, blocked: 0 },
-      states: freezeStates(states),
-    };
-  }
-
-  // Pipeline approved — transition all tasks to waiting
-  for (const [, state] of states) {
-    state.status = 'waiting';
-  }
-  // Include a full states snapshot so listeners can initialize their mirrors without missing events
-  const statesSnapshot: ReadonlyMap<string, TaskState> = new Map(
-    [...states.entries()].map(([id, s]) => [id, { ...s }])
-  );
-  options.onEvent?.({ type: 'pipeline_start', runId, states: statesSnapshot });
-
-  const sessionMap = new Map<string, string>();
-  const normalizedMap = new Map<string, string>();
-
-  // Pipeline timeout
-  const pipelineTimeoutMs = config.timeout ? parseDuration(config.timeout) : 0;
-  let pipelineAborted = false;
-  const abortController = new AbortController();
-  let pipelineTimer: ReturnType<typeof setTimeout> | null = null;
-
-  if (pipelineTimeoutMs > 0) {
-    pipelineTimer = setTimeout(() => {
+    // Wire external cancel signal into the internal abort controller.
+    const externalAbortHandler = () => {
       pipelineAborted = true;
       abortController.abort();
-    }, pipelineTimeoutMs);
-  }
-
-  // When the pipeline is aborted (timeout, external shutdown), drain all
-  // pending approvals so waiting triggers unblock immediately.
-  abortController.signal.addEventListener('abort', () => {
-    approvalGateway.abortAll('pipeline aborted');
-  });
-
-  // Wire external cancel signal into the internal abort controller.
-  const externalAbortHandler = () => {
-    pipelineAborted = true;
-    abortController.abort();
-  };
-  if (options.signal) {
-    if (options.signal.aborted) {
-      externalAbortHandler();
-    } else {
-      options.signal.addEventListener('abort', externalAbortHandler, { once: true });
-    }
-  }
-
-  // ── Helpers ──
-
-  function emit(event: PipelineEvent): void {
-    options.onEvent?.(event);
-  }
-
-  function setTaskStatus(taskId: string, newStatus: TaskStatus): void {
-    const state = states.get(taskId)!;
-    // Terminal lock: once a task reaches a terminal state it must not be
-    // re-transitioned. This prevents stop_all from marking running tasks as
-    // skipped and then having their in-flight processTask promise overwrite
-    // that with success/failed, producing an invalid double transition.
-    if (isTerminal(state.status)) return;
-    const prevStatus = state.status;
-    state.status = newStatus;
-    // Snapshot state at emit time — result and finishedAt must be set before calling this for terminal statuses
-    const snapshot: TaskState = {
-      config: state.config,
-      trackConfig: state.trackConfig,
-      status: state.status,
-      result: state.result,
-      startedAt: state.startedAt,
-      finishedAt: state.finishedAt,
     };
-    emit({ type: 'task_status_change', taskId, status: newStatus, prevStatus, runId, state: snapshot });
-  }
-
-  function getOnFailure(taskId: string): OnFailure {
-    return dag.nodes.get(taskId)?.track.on_failure ?? 'skip_downstream';
-  }
-
-  function isDependencySatisfied(depId: string): 'satisfied' | 'unsatisfied' | 'skip' {
-    const depState = states.get(depId);
-    if (!depState) return 'skip';
-    switch (depState.status) {
-      case 'success': return 'satisfied';
-      case 'skipped': return 'skip';
-      case 'failed': case 'timeout': case 'blocked':
-        return getOnFailure(depId) === 'ignore' ? 'satisfied' : 'skip';
-      default: return 'unsatisfied';
-    }
-  }
-
-  /**
-   * H3: "stop_all" historically only stopped tasks within the same track,
-   * which contradicted both its name and user expectations. It now stops
-   * the **entire pipeline**:
-   *   - In-flight tasks are signalled via the shared abort controller so
-   *     drivers / runner.ts can cancel cooperatively (returning
-   *     `failureKind: 'timeout'`).
-   *   - Still-waiting tasks across every track are immediately marked
-   *     skipped so the run completes promptly.
-   * The terminal lock in setTaskStatus prevents any later re-transition
-   * should a completed running task try to overwrite the skipped state.
-   */
-  function applyStopAll(_failedTrackId: string): void {
-    pipelineAborted = true;
-    abortController.abort();
-    for (const [id, state] of states) {
-      if (state.status === 'waiting') {
-        state.finishedAt = nowISO();
-        setTaskStatus(id, 'skipped');
+    if (options.signal) {
+      if (options.signal.aborted) {
+        externalAbortHandler();
+      } else {
+        options.signal.addEventListener('abort', externalAbortHandler, { once: true });
       }
     }
-  }
 
-  function buildTaskInfoObj(taskId: string): TaskInfo {
-    const state = states.get(taskId)!;
-    return {
-      id: taskId,
-      name: state.config.name,
-      type: state.config.prompt ? 'ai' : 'command',
-      status: state.status,
-      exit_code: state.result?.exitCode ?? null,
-      duration_ms: state.result?.durationMs ?? null,
-      stderr_path: state.result?.stderrPath ?? null,
-      session_id: state.result?.sessionId ?? null,
-      started_at: state.startedAt,
-      finished_at: state.finishedAt,
-    };
-  }
+    // ── Helpers ──
 
-  function trackInfoOf(taskId: string): TrackInfo {
-    const node = dag.nodes.get(taskId)!;
-    return { id: node.track.id, name: node.track.name };
-  }
-
-  async function fireHook(taskId: string, event: 'task_success' | 'task_failure'): Promise<void> {
-    await executeHook(config.hooks, event,
-      buildTaskContext(event, pipelineInfo, trackInfoOf(taskId), buildTaskInfoObj(taskId)), workDir, abortController.signal);
-  }
-
-  // ── Process a single task ──
-
-  async function processTask(taskId: string): Promise<void> {
-    const state = states.get(taskId)!;
-    const node = dag.nodes.get(taskId)!;
-    const task = node.task;
-    const track = node.track;
-
-    log.section(`Task ${taskId}`, taskId);
-    log.debug(`[task:${taskId}]`,
-      `type=${task.prompt ? 'ai' : 'cmd'} track=${track.id} deps=[${node.dependsOn.join(', ') || '(root)'}]`);
-
-    // 1. Check dependencies
-    for (const depId of node.dependsOn) {
-      const result = isDependencySatisfied(depId);
-      if (result === 'skip') {
-        const depStatus = states.get(depId)?.status ?? 'unknown';
-        log.debug(`[task:${taskId}]`, `skipped (upstream "${depId}" status=${depStatus})`);
-        state.finishedAt = nowISO();
-        setTaskStatus(taskId, 'skipped');
-        return;
-      }
-      if (result === 'unsatisfied') return; // still waiting
+    function emit(event: PipelineEvent): void {
+      options.onEvent?.(event);
     }
 
-    // 2. Check trigger
-    if (task.trigger) {
-      log.debug(`[task:${taskId}]`, `trigger wait: type=${task.trigger.type} ${JSON.stringify(task.trigger)}`);
-      try {
-        const triggerPlugin = getHandler<TriggerPlugin>('triggers', task.trigger.type);
-        // R6: race the plugin's watch() against the pipeline's abort signal.
-        // Third-party triggers may forget to wire up ctx.signal — without
-        // this race, an aborted pipeline would hang forever waiting for the
-        // plugin's watch promise to resolve. The race resolves on whichever
-        // path settles first, and the cleanup paths in finally never run on
-        // the orphaned plugin promise (it's allowed to leak a watcher; the
-        // pipeline is being torn down anyway).
-        await new Promise<unknown>((resolve, reject) => {
-          let settled = false;
-          const onAbort = () => {
-            if (settled) return;
-            settled = true;
-            abortController.signal.removeEventListener('abort', onAbort);
-            reject(new Error('Pipeline aborted'));
-          };
-          if (abortController.signal.aborted) { onAbort(); return; }
-          abortController.signal.addEventListener('abort', onAbort, { once: true });
-          triggerPlugin.watch(task.trigger as Record<string, unknown>, {
-            taskId: node.taskId,
-            trackId: track.id,
-            workDir: task.cwd ?? workDir,
-            signal: abortController.signal,
-            approvalGateway,
-          }).then(
-            (v) => {
-              if (settled) return;
-              settled = true;
-              abortController.signal.removeEventListener('abort', onAbort);
-              resolve(v);
-            },
-            (e) => {
-              if (settled) return;
-              settled = true;
-              abortController.signal.removeEventListener('abort', onAbort);
-              reject(e);
-            },
-          );
-        });
-        log.debug(`[task:${taskId}]`, `trigger fired`);
-      } catch (err: unknown) {
-        // If pipeline was aborted while we were still waiting for the trigger,
-        // this task never entered running state → skipped, not timeout.
-        state.finishedAt = nowISO();
-        if (pipelineAborted) {
-          setTaskStatus(taskId, 'skipped');
-        } else if (err instanceof TriggerBlockedError) {
-          setTaskStatus(taskId, 'blocked');       // user/policy rejection
-        } else if (err instanceof TriggerTimeoutError) {
-          setTaskStatus(taskId, 'timeout');       // genuine trigger wait timeout
-        } else {
-          // A7 fallback: also check message strings for backward-compat with
-          // third-party trigger plugins that don't throw typed errors yet.
-          const msg = err instanceof Error ? err.message : String(err);
-          if (msg.includes('rejected') || msg.includes('denied')) {
-            setTaskStatus(taskId, 'blocked');
-          } else if (msg.includes('timeout')) {
-            setTaskStatus(taskId, 'timeout');
-          } else {
-            setTaskStatus(taskId, 'failed');      // plugin error, watcher crash, etc.
-          }
+    function setTaskStatus(taskId: string, newStatus: TaskStatus): void {
+      const state = states.get(taskId)!;
+      // Terminal lock: once a task reaches a terminal state it must not be
+      // re-transitioned. This prevents stop_all from marking running tasks as
+      // skipped and then having their in-flight processTask promise overwrite
+      // that with success/failed, producing an invalid double transition.
+      if (isTerminal(state.status)) return;
+      const prevStatus = state.status;
+      state.status = newStatus;
+      // Snapshot state at emit time — result and finishedAt must be set before calling this for terminal statuses
+      const snapshot: TaskState = {
+        config: state.config,
+        trackConfig: state.trackConfig,
+        status: state.status,
+        result: state.result,
+        startedAt: state.startedAt,
+        finishedAt: state.finishedAt,
+      };
+      emit({
+        type: 'task_status_change',
+        taskId,
+        status: newStatus,
+        prevStatus,
+        runId,
+        state: snapshot,
+      });
+    }
+
+    function getOnFailure(taskId: string): OnFailure {
+      return dag.nodes.get(taskId)?.track.on_failure ?? 'skip_downstream';
+    }
+
+    function isDependencySatisfied(depId: string): 'satisfied' | 'unsatisfied' | 'skip' {
+      const depState = states.get(depId);
+      if (!depState) return 'skip';
+      switch (depState.status) {
+        case 'success':
+          return 'satisfied';
+        case 'skipped':
+          return 'skip';
+        case 'failed':
+        case 'timeout':
+        case 'blocked':
+          return getOnFailure(depId) === 'ignore' ? 'satisfied' : 'skip';
+        default:
+          return 'unsatisfied';
+      }
+    }
+
+    /**
+     * H3: "stop_all" historically only stopped tasks within the same track,
+     * which contradicted both its name and user expectations. It now stops
+     * the **entire pipeline**:
+     *   - In-flight tasks are signalled via the shared abort controller so
+     *     drivers / runner.ts can cancel cooperatively (returning
+     *     `failureKind: 'timeout'`).
+     *   - Still-waiting tasks across every track are immediately marked
+     *     skipped so the run completes promptly.
+     * The terminal lock in setTaskStatus prevents any later re-transition
+     * should a completed running task try to overwrite the skipped state.
+     */
+    function applyStopAll(_failedTrackId: string): void {
+      pipelineAborted = true;
+      abortController.abort();
+      for (const [id, state] of states) {
+        if (state.status === 'waiting') {
+          state.finishedAt = nowISO();
+          setTaskStatus(id, 'skipped');
         }
+      }
+    }
+
+    function buildTaskInfoObj(taskId: string): TaskInfo {
+      const state = states.get(taskId)!;
+      return {
+        id: taskId,
+        name: state.config.name,
+        type: state.config.prompt ? 'ai' : 'command',
+        status: state.status,
+        exit_code: state.result?.exitCode ?? null,
+        duration_ms: state.result?.durationMs ?? null,
+        stderr_path: state.result?.stderrPath ?? null,
+        session_id: state.result?.sessionId ?? null,
+        started_at: state.startedAt,
+        finished_at: state.finishedAt,
+      };
+    }
+
+    function trackInfoOf(taskId: string): TrackInfo {
+      const node = dag.nodes.get(taskId)!;
+      return { id: node.track.id, name: node.track.name };
+    }
+
+    async function fireHook(taskId: string, event: 'task_success' | 'task_failure'): Promise<void> {
+      await executeHook(
+        config.hooks,
+        event,
+        buildTaskContext(event, pipelineInfo, trackInfoOf(taskId), buildTaskInfoObj(taskId)),
+        workDir,
+        abortController.signal,
+      );
+    }
+
+    // ── Process a single task ──
+
+    async function processTask(taskId: string): Promise<void> {
+      const state = states.get(taskId)!;
+      const node = dag.nodes.get(taskId)!;
+      const task = node.task;
+      const track = node.track;
+
+      log.section(`Task ${taskId}`, taskId);
+      log.debug(
+        `[task:${taskId}]`,
+        `type=${task.prompt ? 'ai' : 'cmd'} track=${track.id} deps=[${node.dependsOn.join(', ') || '(root)'}]`,
+      );
+
+      // 1. Check dependencies
+      for (const depId of node.dependsOn) {
+        const result = isDependencySatisfied(depId);
+        if (result === 'skip') {
+          const depStatus = states.get(depId)?.status ?? 'unknown';
+          log.debug(`[task:${taskId}]`, `skipped (upstream "${depId}" status=${depStatus})`);
+          state.finishedAt = nowISO();
+          setTaskStatus(taskId, 'skipped');
+          return;
+        }
+        if (result === 'unsatisfied') return; // still waiting
+      }
+
+      // 2. Check trigger
+      if (task.trigger) {
+        log.debug(
+          `[task:${taskId}]`,
+          `trigger wait: type=${task.trigger.type} ${JSON.stringify(task.trigger)}`,
+        );
+        try {
+          const triggerPlugin = getHandler<TriggerPlugin>('triggers', task.trigger.type);
+          // R6: race the plugin's watch() against the pipeline's abort signal.
+          // Third-party triggers may forget to wire up ctx.signal — without
+          // this race, an aborted pipeline would hang forever waiting for the
+          // plugin's watch promise to resolve. The race resolves on whichever
+          // path settles first, and the cleanup paths in finally never run on
+          // the orphaned plugin promise (it's allowed to leak a watcher; the
+          // pipeline is being torn down anyway).
+          await new Promise<unknown>((resolve, reject) => {
+            let settled = false;
+            const onAbort = () => {
+              if (settled) return;
+              settled = true;
+              abortController.signal.removeEventListener('abort', onAbort);
+              reject(new Error('Pipeline aborted'));
+            };
+            if (abortController.signal.aborted) {
+              onAbort();
+              return;
+            }
+            abortController.signal.addEventListener('abort', onAbort, { once: true });
+            triggerPlugin
+              .watch(task.trigger as Record<string, unknown>, {
+                taskId: node.taskId,
+                trackId: track.id,
+                workDir: task.cwd ?? workDir,
+                signal: abortController.signal,
+                approvalGateway,
+              })
+              .then(
+                (v) => {
+                  if (settled) return;
+                  settled = true;
+                  abortController.signal.removeEventListener('abort', onAbort);
+                  resolve(v);
+                },
+                (e) => {
+                  if (settled) return;
+                  settled = true;
+                  abortController.signal.removeEventListener('abort', onAbort);
+                  reject(e);
+                },
+              );
+          });
+          log.debug(`[task:${taskId}]`, `trigger fired`);
+        } catch (err: unknown) {
+          // If pipeline was aborted while we were still waiting for the trigger,
+          // this task never entered running state → skipped, not timeout.
+          state.finishedAt = nowISO();
+          if (pipelineAborted) {
+            setTaskStatus(taskId, 'skipped');
+          } else if (err instanceof TriggerBlockedError) {
+            setTaskStatus(taskId, 'blocked'); // user/policy rejection
+          } else if (err instanceof TriggerTimeoutError) {
+            setTaskStatus(taskId, 'timeout'); // genuine trigger wait timeout
+          } else {
+            // A7 fallback: also check message strings for backward-compat with
+            // third-party trigger plugins that don't throw typed errors yet.
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg.includes('rejected') || msg.includes('denied')) {
+              setTaskStatus(taskId, 'blocked');
+            } else if (msg.includes('timeout')) {
+              setTaskStatus(taskId, 'timeout');
+            } else {
+              setTaskStatus(taskId, 'failed'); // plugin error, watcher crash, etc.
+            }
+          }
+          try {
+            await fireHook(taskId, 'task_failure');
+          } catch (hookErr) {
+            log.error(
+              `[task:${taskId}]`,
+              `hook execution failed: ${hookErr instanceof Error ? hookErr.message : String(hookErr)}`,
+            );
+          }
+          return;
+        }
+      }
+
+      // 3. task_start hook (gate)
+      const hookResult = await executeHook(
+        config.hooks,
+        'task_start',
+        buildTaskContext('task_start', pipelineInfo, trackInfoOf(taskId), buildTaskInfoObj(taskId)),
+        workDir,
+        abortController.signal,
+      );
+      if (hookResult.exitCode !== 0 || config.hooks?.task_start) {
+        log.debug(
+          `[task:${taskId}]`,
+          `task_start hook exit=${hookResult.exitCode} allowed=${hookResult.allowed}`,
+        );
+      }
+      if (!hookResult.allowed) {
+        state.finishedAt = nowISO();
+        setTaskStatus(taskId, 'blocked');
         try {
           await fireHook(taskId, 'task_failure');
         } catch (hookErr) {
-          log.error(`[task:${taskId}]`, `hook execution failed: ${hookErr instanceof Error ? hookErr.message : String(hookErr)}`);
+          log.error(
+            `[task:${taskId}]`,
+            `hook execution failed: ${hookErr instanceof Error ? hookErr.message : String(hookErr)}`,
+          );
         }
         return;
       }
-    }
 
-    // 3. task_start hook (gate)
-    const hookResult = await executeHook(config.hooks, 'task_start',
-      buildTaskContext('task_start', pipelineInfo, trackInfoOf(taskId), buildTaskInfoObj(taskId)), workDir, abortController.signal);
-    if (hookResult.exitCode !== 0 || config.hooks?.task_start) {
-      log.debug(`[task:${taskId}]`,
-        `task_start hook exit=${hookResult.exitCode} allowed=${hookResult.allowed}`);
-    }
-    if (!hookResult.allowed) {
-      state.finishedAt = nowISO();
-      setTaskStatus(taskId, 'blocked');
-      try {
-        await fireHook(taskId, 'task_failure');
-      } catch (hookErr) {
-        log.error(`[task:${taskId}]`, `hook execution failed: ${hookErr instanceof Error ? hookErr.message : String(hookErr)}`);
+      // 4. Mark running — set startedAt before emitting so subscribers see a
+      // complete snapshot (startedAt non-null) in the task_status_change event.
+      state.startedAt = nowISO();
+      setTaskStatus(taskId, 'running');
+      log.info(
+        `[task:${taskId}]`,
+        task.command ? `running: ${task.command}` : `running (driver task)`,
+      );
+
+      // File-only: resolved config for this task
+      const resolvedDriver = task.driver ?? track.driver ?? config.driver ?? 'claude-code';
+      const resolvedModel = task.model ?? track.model ?? config.model ?? '(default)';
+      const resolvedPerms = task.permissions ?? track.permissions ?? '(default)';
+      const resolvedCwd = task.cwd ?? track.cwd ?? workDir;
+      log.debug(
+        `[task:${taskId}]`,
+        `resolved: driver=${resolvedDriver} model=${resolvedModel} cwd=${resolvedCwd}`,
+      );
+      log.debug(`[task:${taskId}]`, `permissions: ${JSON.stringify(resolvedPerms)}`);
+      if (task.continue_from) {
+        log.debug(`[task:${taskId}]`, `continue_from: "${task.continue_from}"`);
       }
-      return;
-    }
+      if (task.timeout) {
+        log.debug(`[task:${taskId}]`, `timeout: ${task.timeout}`);
+      }
 
-    // 4. Mark running — set startedAt before emitting so subscribers see a
-    // complete snapshot (startedAt non-null) in the task_status_change event.
-    state.startedAt = nowISO();
-    setTaskStatus(taskId, 'running');
-    log.info(`[task:${taskId}]`, task.command ? `running: ${task.command}` : `running (driver task)`);
+      try {
+        let result: TaskResult;
+        const timeoutMs = task.timeout ? parseDuration(task.timeout) : undefined;
 
-    // File-only: resolved config for this task
-    const resolvedDriver = task.driver ?? track.driver ?? config.driver ?? 'claude-code';
-    const resolvedModel = task.model ?? track.model ?? config.model ?? '(default)';
-    const resolvedPerms = task.permissions ?? track.permissions ?? '(default)';
-    const resolvedCwd = task.cwd ?? track.cwd ?? workDir;
-    log.debug(`[task:${taskId}]`,
-      `resolved: driver=${resolvedDriver} model=${resolvedModel} cwd=${resolvedCwd}`);
-    log.debug(`[task:${taskId}]`, `permissions: ${JSON.stringify(resolvedPerms)}`);
-    if (task.continue_from) {
-      log.debug(`[task:${taskId}]`, `continue_from: "${task.continue_from}"`);
-    }
-    if (task.timeout) {
-      log.debug(`[task:${taskId}]`, `timeout: ${task.timeout}`);
-    }
+        const runOpts = { timeoutMs, signal: abortController.signal };
 
-    try {
-      let result: TaskResult;
-      const timeoutMs = task.timeout ? parseDuration(task.timeout) : undefined;
+        if (task.command) {
+          log.debug(`[task:${taskId}]`, `command: ${task.command}`);
+          result = await runCommand(task.command, task.cwd ?? workDir, runOpts);
+        } else {
+          // AI task: apply middleware chain
+          const driverName = task.driver ?? track.driver ?? config.driver ?? 'claude-code';
+          const driver = getHandler<DriverPlugin>('drivers', driverName);
 
-      const runOpts = { timeoutMs, signal: abortController.signal };
-
-      if (task.command) {
-        log.debug(`[task:${taskId}]`, `command: ${task.command}`);
-        result = await runCommand(task.command, task.cwd ?? workDir, runOpts);
-      } else {
-        // AI task: apply middleware chain
-        const driverName = task.driver ?? track.driver ?? config.driver ?? 'claude-code';
-        const driver = getHandler<DriverPlugin>('drivers', driverName);
-
-        let prompt = task.prompt!;
-        const originalLen = prompt.length;
-        const mws = task.middlewares !== undefined ? task.middlewares : track.middlewares;
-        if (mws && mws.length > 0) {
-          log.debug(`[task:${taskId}]`,
-            `middleware chain: ${mws.map(m => m.type).join(' → ')}`);
-          const mwCtx: MiddlewareContext = {
-            task, track, workDir: task.cwd ?? workDir,
-          };
-          for (const mwConfig of mws) {
-            const before = prompt.length;
-            const mwPlugin = getHandler<MiddlewarePlugin>('middlewares', mwConfig.type);
-            const next = await mwPlugin.enhance(prompt, mwConfig as Record<string, unknown>, mwCtx);
-            // R3: a middleware that returns undefined / null / a non-string
-            // would silently corrupt the prompt sent to the driver. Fail loud
-            // here so the user sees "middleware X.enhance returned ..." in the
-            // task log instead of "[object Object]" arriving at the model.
-            if (typeof next !== 'string') {
-              throw new Error(
-                `middleware "${mwConfig.type}".enhance() returned ${next === null ? 'null' : typeof next}, expected string`
+          let prompt = task.prompt!;
+          const originalLen = prompt.length;
+          const mws = task.middlewares !== undefined ? task.middlewares : track.middlewares;
+          if (mws && mws.length > 0) {
+            log.debug(
+              `[task:${taskId}]`,
+              `middleware chain: ${mws.map((m) => m.type).join(' → ')}`,
+            );
+            const mwCtx: MiddlewareContext = {
+              task,
+              track,
+              workDir: task.cwd ?? workDir,
+            };
+            for (const mwConfig of mws) {
+              const before = prompt.length;
+              const mwPlugin = getHandler<MiddlewarePlugin>('middlewares', mwConfig.type);
+              const next = await mwPlugin.enhance(
+                prompt,
+                mwConfig as Record<string, unknown>,
+                mwCtx,
+              );
+              // R3: a middleware that returns undefined / null / a non-string
+              // would silently corrupt the prompt sent to the driver. Fail loud
+              // here so the user sees "middleware X.enhance returned ..." in the
+              // task log instead of "[object Object]" arriving at the model.
+              if (typeof next !== 'string') {
+                throw new Error(
+                  `middleware "${mwConfig.type}".enhance() returned ${next === null ? 'null' : typeof next}, expected string`,
+                );
+              }
+              prompt = next;
+              log.debug(
+                `[task:${taskId}]`,
+                `  ${mwConfig.type}: ${before} → ${prompt.length} chars`,
               );
             }
-            prompt = next;
-            log.debug(`[task:${taskId}]`,
-              `  ${mwConfig.type}: ${before} → ${prompt.length} chars`);
+          }
+          log.debug(
+            `[task:${taskId}]`,
+            `prompt: ${originalLen} chars (final: ${prompt.length} chars)`,
+          );
+          log.quiet(`--- prompt (final) ---\n${clip(prompt)}\n--- end prompt ---`, taskId);
+
+          // H1: hand the driver a continue_from that has already been
+          // qualified by dag.ts. Without this, drivers like codex/opencode/
+          // claude-code look up maps directly with
+          // the user's raw (possibly bare) string, which races whenever two
+          // tracks share a task name. dag.ts has the only authoritative
+          // resolver, so we use its precomputed answer here.
+          const enrichedTask: TaskConfig = {
+            ...task,
+            prompt,
+            continue_from: node.resolvedContinueFrom ?? task.continue_from,
+          };
+          const driverCtx: DriverContext = {
+            sessionMap,
+            normalizedMap,
+            workDir: task.cwd ?? workDir,
+          };
+          const spec = await driver.buildCommand(enrichedTask, track, driverCtx);
+          log.debug(`[task:${taskId}]`, `driver=${driverName}`);
+          log.debug(`[task:${taskId}]`, `spawn args: ${JSON.stringify(spec.args)}`);
+          if (spec.cwd) log.debug(`[task:${taskId}]`, `spawn cwd: ${spec.cwd}`);
+          if (spec.env)
+            log.debug(
+              `[task:${taskId}]`,
+              `spawn env overrides: ${Object.keys(spec.env).join(', ')}`,
+            );
+          if (spec.stdin) log.debug(`[task:${taskId}]`, `spawn stdin: ${spec.stdin.length} chars`);
+          result = await runSpawn(spec, driver, runOpts);
+        }
+
+        // 6. Determine terminal status (without emitting yet — result must be complete first)
+        // H2: branch on failureKind so spawn errors no longer masquerade as
+        // timeouts. Old runners that don't set failureKind still work — we
+        // fall back to the historical `exitCode === -1 → timeout` heuristic so
+        // pre-existing third-party drivers don't regress.
+        let terminalStatus: TaskStatus;
+        const kind = result.failureKind;
+        if (kind === 'timeout') {
+          terminalStatus = 'timeout';
+        } else if (kind === 'spawn_error') {
+          terminalStatus = 'failed';
+        } else if (kind === undefined && result.exitCode === -1) {
+          // Legacy path: pre-H2 driver returned -1 with no kind. Treat as
+          // timeout for backward compatibility (the previous behaviour).
+          terminalStatus = 'timeout';
+        } else if (result.exitCode !== 0) {
+          terminalStatus = 'failed';
+        } else if (task.completion) {
+          const plugin = getHandler<CompletionPlugin>('completions', task.completion.type);
+          const completionCtx = { workDir: task.cwd ?? workDir, signal: abortController.signal };
+          const passed = await plugin.check(
+            task.completion as Record<string, unknown>,
+            result,
+            completionCtx,
+          );
+          // R4: strict boolean check. Truthy strings/numbers used to be coerced
+          // to success — a check returning "ok" would let a failing task pass.
+          if (typeof passed !== 'boolean') {
+            throw new Error(
+              `completion "${task.completion.type}".check() returned ${passed === null ? 'null' : typeof passed}, expected boolean`,
+            );
+          }
+          terminalStatus = passed ? 'success' : 'failed';
+        } else {
+          terminalStatus = 'success';
+        }
+
+        // Store normalized text separately (in-memory) for continue_from handoff.
+        // R15: clip oversized values so a runaway parseResult can't accumulate
+        // hundreds of MB across tasks.
+        if (result.normalizedOutput !== null) {
+          const clipped =
+            result.normalizedOutput.length > MAX_NORMALIZED_BYTES
+              ? result.normalizedOutput.slice(0, MAX_NORMALIZED_BYTES) +
+                `\n[…clipped at ${MAX_NORMALIZED_BYTES} bytes]`
+              : result.normalizedOutput;
+          normalizedMap.set(taskId, clipped);
+        }
+
+        if (result.stderr) {
+          const stderrPath = resolve(log.dir, `${taskId.replace(/\./g, '_')}.stderr`);
+          await Bun.write(stderrPath, result.stderr);
+          result = { ...result, stderrPath };
+        }
+
+        if (result.sessionId) {
+          // H1: qualified-only key.
+          sessionMap.set(taskId, result.sessionId);
+        }
+
+        // Set result and finishedAt before emitting terminal status so listeners see complete state
+        state.result = result;
+        state.finishedAt = nowISO();
+        setTaskStatus(taskId, terminalStatus);
+
+        // Log task outcome with relevant details
+        const durSec = (result.durationMs / 1000).toFixed(1);
+        if (terminalStatus === 'success') {
+          log.info(`[task:${taskId}]`, `success (${durSec}s)`);
+        } else {
+          log.error(
+            `[task:${taskId}]`,
+            `${terminalStatus} exit=${result.exitCode} duration=${durSec}s`,
+          );
+          if (result.stderr) {
+            const tail = tailLines(result.stderr, 10);
+            log.error(`[task:${taskId}]`, `stderr tail:\n${tail}`);
           }
         }
-        log.debug(`[task:${taskId}]`,
-          `prompt: ${originalLen} chars (final: ${prompt.length} chars)`);
-        log.quiet(`--- prompt (final) ---\n${clip(prompt)}\n--- end prompt ---`, taskId);
 
-        // H1: hand the driver a continue_from that has already been
-        // qualified by dag.ts. Without this, drivers like codex/opencode/
-        // claude-code look up maps directly with
-        // the user's raw (possibly bare) string, which races whenever two
-        // tracks share a task name. dag.ts has the only authoritative
-        // resolver, so we use its precomputed answer here.
-        const enrichedTask: TaskConfig = {
-          ...task,
-          prompt,
-          continue_from: node.resolvedContinueFrom ?? task.continue_from,
-        };
-        const driverCtx: DriverContext = {
-          sessionMap, normalizedMap, workDir: task.cwd ?? workDir,
-        };
-        const spec = await driver.buildCommand(enrichedTask, track, driverCtx);
-        log.debug(`[task:${taskId}]`, `driver=${driverName}`);
-        log.debug(`[task:${taskId}]`,
-          `spawn args: ${JSON.stringify(spec.args)}`);
-        if (spec.cwd) log.debug(`[task:${taskId}]`, `spawn cwd: ${spec.cwd}`);
-        if (spec.env) log.debug(`[task:${taskId}]`,
-          `spawn env overrides: ${Object.keys(spec.env).join(', ')}`);
-        if (spec.stdin) log.debug(`[task:${taskId}]`,
-          `spawn stdin: ${spec.stdin.length} chars`);
-        result = await runSpawn(spec, driver, runOpts);
-      }
-
-      // 6. Determine terminal status (without emitting yet — result must be complete first)
-      // H2: branch on failureKind so spawn errors no longer masquerade as
-      // timeouts. Old runners that don't set failureKind still work — we
-      // fall back to the historical `exitCode === -1 → timeout` heuristic so
-      // pre-existing third-party drivers don't regress.
-      let terminalStatus: TaskStatus;
-      const kind = result.failureKind;
-      if (kind === 'timeout') {
-        terminalStatus = 'timeout';
-      } else if (kind === 'spawn_error') {
-        terminalStatus = 'failed';
-      } else if (kind === undefined && result.exitCode === -1) {
-        // Legacy path: pre-H2 driver returned -1 with no kind. Treat as
-        // timeout for backward compatibility (the previous behaviour).
-        terminalStatus = 'timeout';
-      } else if (result.exitCode !== 0) {
-        terminalStatus = 'failed';
-      } else if (task.completion) {
-        const plugin = getHandler<CompletionPlugin>('completions', task.completion.type);
-        const completionCtx = { workDir: task.cwd ?? workDir, signal: abortController.signal };
-        const passed = await plugin.check(task.completion as Record<string, unknown>, result, completionCtx);
-        // R4: strict boolean check. Truthy strings/numbers used to be coerced
-        // to success — a check returning "ok" would let a failing task pass.
-        if (typeof passed !== 'boolean') {
-          throw new Error(
-            `completion "${task.completion.type}".check() returned ${passed === null ? 'null' : typeof passed}, expected boolean`
+        // File-only: full stdout/stderr dump (clipped) + extracted metadata
+        log.debug(
+          `[task:${taskId}]`,
+          `stdout: ${result.stdout.length} chars, stderr: ${result.stderr.length} chars`,
+        );
+        if (result.sessionId) {
+          log.debug(`[task:${taskId}]`, `sessionId: ${result.sessionId}`);
+        }
+        if (result.stderrPath) {
+          log.debug(`[task:${taskId}]`, `wrote stderr: ${result.stderrPath}`);
+        }
+        if (result.stdout) {
+          log.quiet(
+            `--- stdout (${taskId}) ---\n${clip(result.stdout)}\n--- end stdout ---`,
+            taskId,
           );
         }
-        terminalStatus = passed ? 'success' : 'failed';
-      } else {
-        terminalStatus = 'success';
-      }
-
-      // Store normalized text separately (in-memory) for continue_from handoff.
-      // R15: clip oversized values so a runaway parseResult can't accumulate
-      // hundreds of MB across tasks.
-      if (result.normalizedOutput !== null) {
-        const clipped = result.normalizedOutput.length > MAX_NORMALIZED_BYTES
-          ? result.normalizedOutput.slice(0, MAX_NORMALIZED_BYTES) +
-            `\n[…clipped at ${MAX_NORMALIZED_BYTES} bytes]`
-          : result.normalizedOutput;
-        normalizedMap.set(taskId, clipped);
-      }
-
-      if (result.stderr) {
-        const stderrPath = resolve(log.dir, `${taskId.replace(/\./g, '_')}.stderr`);
-        await Bun.write(stderrPath, result.stderr);
-        result = { ...result, stderrPath };
-      }
-
-      if (result.sessionId) {
-        // H1: qualified-only key.
-        sessionMap.set(taskId, result.sessionId);
-      }
-
-      // Set result and finishedAt before emitting terminal status so listeners see complete state
-      state.result = result;
-      state.finishedAt = nowISO();
-      setTaskStatus(taskId, terminalStatus);
-
-      // Log task outcome with relevant details
-      const durSec = (result.durationMs / 1000).toFixed(1);
-      if (terminalStatus === 'success') {
-        log.info(`[task:${taskId}]`, `success (${durSec}s)`);
-      } else {
-        log.error(`[task:${taskId}]`,
-          `${terminalStatus} exit=${result.exitCode} duration=${durSec}s`);
         if (result.stderr) {
-          const tail = tailLines(result.stderr, 10);
-          log.error(`[task:${taskId}]`, `stderr tail:\n${tail}`);
+          log.quiet(
+            `--- stderr (${taskId}) ---\n${clip(result.stderr)}\n--- end stderr ---`,
+            taskId,
+          );
+        }
+        if (task.completion) {
+          log.debug(
+            `[task:${taskId}]`,
+            `completion check: type=${task.completion.type} result=${terminalStatus}`,
+          );
+        }
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? (err.stack ?? err.message) : String(err);
+        log.error(`[task:${taskId}]`, `failed before execution: ${errMsg}`);
+        state.result = {
+          exitCode: -1,
+          stdout: '',
+          stderr: errMsg,
+          stderrPath: null,
+          durationMs: 0,
+          sessionId: null,
+          normalizedOutput: null,
+          // H2: Engine-level pre-execution errors (driver throw, middleware
+          // throw, getHandler 404) classify as spawn_error — the process never
+          // ran, so calling them "timeout" was actively misleading.
+          failureKind: 'spawn_error',
+        };
+        state.finishedAt = nowISO();
+        setTaskStatus(taskId, 'failed');
+      }
+
+      // 7. Fire hooks
+      const finalStatus: TaskStatus = state.status;
+      try {
+        await fireHook(taskId, finalStatus === 'success' ? 'task_success' : 'task_failure');
+      } catch (hookErr) {
+        log.error(
+          `[task:${taskId}]`,
+          `hook execution failed: ${hookErr instanceof Error ? hookErr.message : String(hookErr)}`,
+        );
+      }
+
+      // 8. Handle stop_all for failure states
+      if (finalStatus !== 'success' && getOnFailure(taskId) === 'stop_all') {
+        applyStopAll(node.track.id);
+      }
+    }
+
+    // ── Event loop ──
+    // Each task is launched as soon as ALL its deps reach a terminal state.
+    // We track in-flight tasks in `running` so a task completing mid-batch
+    // immediately unblocks its dependents without waiting for sibling tasks.
+    const running = new Map<string, Promise<void>>();
+
+    try {
+      while (!pipelineAborted) {
+        // Launch every task whose deps are all terminal and that isn't already in-flight
+        for (const [id, state] of states) {
+          if (state.status !== 'waiting' || running.has(id)) continue;
+          const node = dag.nodes.get(id)!;
+          const allDepsTerminal =
+            node.dependsOn.length === 0 ||
+            node.dependsOn.every((d) => isTerminal(states.get(d)!.status));
+          if (!allDepsTerminal) continue;
+          const p = processTask(id).finally(() => running.delete(id));
+          running.set(id, p);
+        }
+
+        // All tasks terminal — done
+        if ([...states.values()].every((s) => isTerminal(s.status))) break;
+
+        if (running.size === 0) {
+          // Nothing in-flight but non-terminal tasks exist (e.g. trigger-wait states
+          // that processTask hasn't been called for yet). Poll briefly.
+          await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+        } else {
+          // Wait for any one task to finish, then re-scan for new launchables.
+          await Promise.race(running.values());
         }
       }
 
-      // File-only: full stdout/stderr dump (clipped) + extracted metadata
-      log.debug(`[task:${taskId}]`,
-        `stdout: ${result.stdout.length} chars, stderr: ${result.stderr.length} chars`);
-      if (result.sessionId) {
-        log.debug(`[task:${taskId}]`, `sessionId: ${result.sessionId}`);
+      if (pipelineAborted) {
+        // Wait for in-flight tasks to honour the abort signal before marking states.
+        if (running.size > 0) await Promise.allSettled(running.values());
+        for (const [id, state] of states) {
+          if (!isTerminal(state.status)) {
+            // By the time allSettled resolves, processTask's try/finally has already
+            // set running tasks to success/failed/timeout. The only non-terminal
+            // statuses remaining here are waiting/idle tasks that were never started.
+            state.finishedAt = nowISO();
+            setTaskStatus(id, 'skipped');
+          }
+        }
       }
-      if (result.stderrPath) {
-        log.debug(`[task:${taskId}]`, `wrote stderr: ${result.stderrPath}`);
+    } finally {
+      if (pipelineTimer) clearTimeout(pipelineTimer);
+      // Clean up the external abort signal listener to prevent dead references
+      // accumulating on long-lived shared AbortControllers.
+      if (options.signal) {
+        options.signal.removeEventListener('abort', externalAbortHandler);
       }
-      if (result.stdout) {
-        log.quiet(`--- stdout (${taskId}) ---\n${clip(result.stdout)}\n--- end stdout ---`, taskId);
-      }
-      if (result.stderr) {
-        log.quiet(`--- stderr (${taskId}) ---\n${clip(result.stderr)}\n--- end stderr ---`, taskId);
-      }
-      if (task.completion) {
-        log.debug(`[task:${taskId}]`,
-          `completion check: type=${task.completion.type} result=${terminalStatus}`);
-      }
-
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? (err.stack ?? err.message) : String(err);
-      log.error(`[task:${taskId}]`, `failed before execution: ${errMsg}`);
-      state.result = {
-        exitCode: -1,
-        stdout: '',
-        stderr: errMsg,
-        stderrPath: null, durationMs: 0,
-        sessionId: null, normalizedOutput: null,
-        // H2: Engine-level pre-execution errors (driver throw, middleware
-        // throw, getHandler 404) classify as spawn_error — the process never
-        // ran, so calling them "timeout" was actively misleading.
-        failureKind: 'spawn_error',
-      };
-      state.finishedAt = nowISO();
-      setTaskStatus(taskId, 'failed');
-    }
-
-    // 7. Fire hooks
-    const finalStatus: TaskStatus = state.status;
-    try {
-      await fireHook(taskId, finalStatus === 'success' ? 'task_success' : 'task_failure');
-    } catch (hookErr) {
-      log.error(`[task:${taskId}]`, `hook execution failed: ${hookErr instanceof Error ? hookErr.message : String(hookErr)}`);
-    }
-
-    // 8. Handle stop_all for failure states
-    if (finalStatus !== 'success' && getOnFailure(taskId) === 'stop_all') {
-      applyStopAll(node.track.id);
-    }
-  }
-
-  // ── Event loop ──
-  // Each task is launched as soon as ALL its deps reach a terminal state.
-  // We track in-flight tasks in `running` so a task completing mid-batch
-  // immediately unblocks its dependents without waiting for sibling tasks.
-  const running = new Map<string, Promise<void>>();
-
-  try {
-    while (!pipelineAborted) {
-      // Launch every task whose deps are all terminal and that isn't already in-flight
-      for (const [id, state] of states) {
-        if (state.status !== 'waiting' || running.has(id)) continue;
-        const node = dag.nodes.get(id)!;
-        const allDepsTerminal = node.dependsOn.length === 0 ||
-          node.dependsOn.every(d => isTerminal(states.get(d)!.status));
-        if (!allDepsTerminal) continue;
-        const p = processTask(id).finally(() => running.delete(id));
-        running.set(id, p);
-      }
-
-      // All tasks terminal — done
-      if ([...states.values()].every(s => isTerminal(s.status))) break;
-
-      if (running.size === 0) {
-        // Nothing in-flight but non-terminal tasks exist (e.g. trigger-wait states
-        // that processTask hasn't been called for yet). Poll briefly.
-        await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
-      } else {
-        // Wait for any one task to finish, then re-scan for new launchables.
-        await Promise.race(running.values());
+      // Safety net: drain any approvals still pending at shutdown (e.g. crash path).
+      if (approvalGateway.pending().length > 0) {
+        approvalGateway.abortAll('pipeline finished');
       }
     }
+
+    // ── Summary ──
+    const summary = { total: 0, success: 0, failed: 0, skipped: 0, timeout: 0, blocked: 0 };
+    for (const [, state] of states) {
+      summary.total++;
+      switch (state.status) {
+        case 'success':
+          summary.success++;
+          break;
+        case 'failed':
+          summary.failed++;
+          break;
+        case 'skipped':
+          summary.skipped++;
+          break;
+        case 'timeout':
+          summary.timeout++;
+          break;
+        case 'blocked':
+          summary.blocked++;
+          break;
+      }
+    }
+
+    const finishedAt = nowISO();
+    const durationMs = new Date(finishedAt).getTime() - new Date(startedAt).getTime();
 
     if (pipelineAborted) {
-      // Wait for in-flight tasks to honour the abort signal before marking states.
-      if (running.size > 0) await Promise.allSettled(running.values());
-      for (const [id, state] of states) {
-        if (!isTerminal(state.status)) {
-          // Running tasks get timeout (they were killed); waiting tasks get skipped
-          state.finishedAt = nowISO();
-          setTaskStatus(id, state.status === 'running' ? 'timeout' : 'skipped');
-        }
-      }
+      await executeHook(
+        config.hooks,
+        'pipeline_error',
+        buildPipelineErrorContext(pipelineInfo, 'Pipeline timeout exceeded'),
+        workDir,
+      );
+    } else {
+      await executeHook(
+        config.hooks,
+        'pipeline_complete',
+        buildPipelineCompleteContext(
+          { ...pipelineInfo, finished_at: finishedAt, duration_ms: durationMs },
+          summary,
+        ),
+        workDir,
+      );
     }
-  } finally {
-    if (pipelineTimer) clearTimeout(pipelineTimer);
-    // Clean up the external abort signal listener to prevent dead references
-    // accumulating on long-lived shared AbortControllers.
-    if (options.signal) {
-      options.signal.removeEventListener('abort', externalAbortHandler);
+
+    const allSuccess =
+      !pipelineAborted && summary.failed === 0 && summary.timeout === 0 && summary.blocked === 0;
+
+    log.section('Pipeline summary');
+    log.quiet(`status:   ${pipelineAborted ? 'aborted (timeout)' : 'completed'}`);
+    log.quiet(`duration: ${(durationMs / 1000).toFixed(1)}s`);
+    log.quiet(
+      `counts:   total=${summary.total} success=${summary.success} ` +
+        `failed=${summary.failed} skipped=${summary.skipped} ` +
+        `timeout=${summary.timeout} blocked=${summary.blocked}`,
+    );
+    log.quiet('');
+    log.quiet('per-task:');
+    for (const [id, state] of states) {
+      const dur =
+        state.result?.durationMs != null ? `${(state.result.durationMs / 1000).toFixed(1)}s` : '-';
+      const exit = state.result?.exitCode ?? '-';
+      log.quiet(`  ${state.status.padEnd(8)} ${id}  (exit=${exit}, ${dur})`);
     }
-    // Safety net: drain any approvals still pending at shutdown (e.g. crash path).
-    if (approvalGateway.pending().length > 0) {
-      approvalGateway.abortAll('pipeline finished');
-    }
-  }
 
-  // ── Summary ──
-  const summary = { total: 0, success: 0, failed: 0, skipped: 0, timeout: 0, blocked: 0 };
-  for (const [, state] of states) {
-    summary.total++;
-    switch (state.status) {
-      case 'success': summary.success++; break;
-      case 'failed':  summary.failed++; break;
-      case 'skipped': summary.skipped++; break;
-      case 'timeout': summary.timeout++; break;
-      case 'blocked': summary.blocked++; break;
-    }
-  }
+    log.info('[pipeline]', `completed "${config.name}"`);
+    log.info(
+      '[pipeline]',
+      `Total: ${summary.total} | Success: ${summary.success} | Failed: ${summary.failed} | Skipped: ${summary.skipped} | Timeout: ${summary.timeout} | Blocked: ${summary.blocked}`,
+    );
+    log.info('[pipeline]', `Duration: ${(durationMs / 1000).toFixed(1)}s`);
+    log.info('[pipeline]', `Log: ${log.path}`);
 
-  const finishedAt = nowISO();
-  const durationMs = new Date(finishedAt).getTime() - new Date(startedAt).getTime();
-
-  if (pipelineAborted) {
-    await executeHook(config.hooks, 'pipeline_error',
-      buildPipelineErrorContext(pipelineInfo, 'Pipeline timeout exceeded'), workDir);
-  } else {
-    await executeHook(config.hooks, 'pipeline_complete',
-      buildPipelineCompleteContext(
-        { ...pipelineInfo, finished_at: finishedAt, duration_ms: durationMs }, summary), workDir);
-  }
-
-  const allSuccess = !pipelineAborted
-    && summary.failed === 0 && summary.timeout === 0 && summary.blocked === 0;
-
-  log.section('Pipeline summary');
-  log.quiet(`status:   ${pipelineAborted ? 'aborted (timeout)' : 'completed'}`);
-  log.quiet(`duration: ${(durationMs / 1000).toFixed(1)}s`);
-  log.quiet(
-    `counts:   total=${summary.total} success=${summary.success} ` +
-    `failed=${summary.failed} skipped=${summary.skipped} ` +
-    `timeout=${summary.timeout} blocked=${summary.blocked}`);
-  log.quiet('');
-  log.quiet('per-task:');
-  for (const [id, state] of states) {
-    const dur = state.result?.durationMs != null
-      ? `${(state.result.durationMs / 1000).toFixed(1)}s` : '-';
-    const exit = state.result?.exitCode ?? '-';
-    log.quiet(`  ${state.status.padEnd(8)} ${id}  (exit=${exit}, ${dur})`);
-  }
-
-  log.info('[pipeline]', `completed "${config.name}"`);
-  log.info('[pipeline]', `Total: ${summary.total} | Success: ${summary.success} | Failed: ${summary.failed} | Skipped: ${summary.skipped} | Timeout: ${summary.timeout} | Blocked: ${summary.blocked}`);
-  log.info('[pipeline]', `Duration: ${(durationMs / 1000).toFixed(1)}s`);
-  log.info('[pipeline]', `Log: ${log.path}`);
-
-  emit({ type: 'pipeline_end', runId, success: allSuccess });
-  return { success: allSuccess, runId, logPath: log.path, summary, states: freezeStates(states) };
-
+    emit({ type: 'pipeline_end', runId, success: allSuccess });
+    return { success: allSuccess, runId, logPath: log.path, summary, states: freezeStates(states) };
   } finally {
     // Close the persistent log file handle before pruning.
     log.close();
@@ -899,23 +1057,28 @@ async function pruneLogDirs(logsDir: string, keep: number, excludeRunId: string)
   }
 
   // Only consider directories that look like run IDs (run_<...>), excluding the live run.
-  const runDirs = entries.filter(e => e.startsWith('run_') && e !== excludeRunId).sort();
+  const runDirs = entries.filter((e) => e.startsWith('run_') && e !== excludeRunId).sort();
   // keep - 1 historical slots (1 slot is reserved for the live excludeRunId).
   const historyKeep = Math.max(0, keep - 1);
   const toDelete = runDirs.slice(0, Math.max(0, runDirs.length - historyKeep));
 
   await Promise.all(
-    toDelete.map(dir =>
+    toDelete.map((dir) =>
       rm(resolve(logsDir, dir), { recursive: true, force: true }).catch(() => {
         // Ignore deletion errors — stale dirs are better than a crash
-      })
-    )
+      }),
+    ),
   );
 }
 
 function isTerminal(status: TaskStatus): boolean {
-  return status === 'success' || status === 'failed' || status === 'timeout'
-    || status === 'skipped' || status === 'blocked';
+  return (
+    status === 'success' ||
+    status === 'failed' ||
+    status === 'timeout' ||
+    status === 'skipped' ||
+    status === 'blocked'
+  );
 }
 
 /** Return a deep-copied, caller-safe snapshot of the states map. */

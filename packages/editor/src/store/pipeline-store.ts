@@ -1,6 +1,14 @@
 import { create } from 'zustand';
 import { api, RevisionConflictError } from '../api/client';
-import type { ServerState, RawPipelineConfig, RawTrackConfig, RawTaskConfig, ValidationError, DagEdge, PluginRegistry } from '../api/client';
+import type {
+  ServerState,
+  RawPipelineConfig,
+  RawTrackConfig,
+  RawTaskConfig,
+  ValidationError,
+  DagEdge,
+  PluginRegistry,
+} from '../api/client';
 import { flushAllLocalFields } from '../hooks/use-local-field';
 
 const EMPTY_REGISTRY: PluginRegistry = {
@@ -21,7 +29,9 @@ const EMPTY_REGISTRY: PluginRegistry = {
 const REVISION_CONFLICT_MESSAGE =
   'Your change was rejected — another client updated the pipeline first. Reloaded to the latest version; please retry if needed.';
 
-export interface TaskPosition { x: number; }
+export interface TaskPosition {
+  x: number;
+}
 
 /**
  * Undo/redo history entry. Captures only config-level state — selection,
@@ -91,7 +101,8 @@ const LAYOUT_COALESCE_TOTAL_MS = 500;
 
 function coalesceWindowsFor(key: string | undefined): { idle: number; total: number } {
   if (!key) return { idle: COALESCE_IDLE_MS, total: COALESCE_TOTAL_MS };
-  if (key.startsWith('layout:')) return { idle: LAYOUT_COALESCE_IDLE_MS, total: LAYOUT_COALESCE_TOTAL_MS };
+  if (key.startsWith('layout:'))
+    return { idle: LAYOUT_COALESCE_IDLE_MS, total: LAYOUT_COALESCE_TOTAL_MS };
   return { idle: COALESCE_IDLE_MS, total: COALESCE_TOTAL_MS };
 }
 
@@ -145,11 +156,20 @@ interface PipelineState {
   updateTrackFields: (trackId: string, fields: Record<string, unknown>) => void;
   deleteTrack: (trackId: string) => void;
   moveTrackTo: (trackId: string, toIndex: number) => void;
-  addTask: (trackId: string, name: string, options?: { kind?: 'prompt' | 'command'; positionX?: number }) => void;
+  addTask: (
+    trackId: string,
+    name: string,
+    options?: { kind?: 'prompt' | 'command'; positionX?: number },
+  ) => void;
   updateTask: (trackId: string, taskId: string, patch: Partial<RawTaskConfig>) => void;
   deleteTask: (trackId: string, taskId: string) => void;
   transferTaskToTrack: (fromTrackId: string, taskId: string, toTrackId: string) => void;
-  addDependency: (fromTrackId: string, fromTaskId: string, toTrackId: string, toTaskId: string) => void;
+  addDependency: (
+    fromTrackId: string,
+    fromTaskId: string,
+    toTrackId: string,
+    toTaskId: string,
+  ) => void;
   removeDependency: (trackId: string, taskId: string, depRef: string) => void;
   setRegistry: (registry: PluginRegistry) => void;
   /**
@@ -212,12 +232,24 @@ function errorToMessage(e: unknown): string {
     const m = (e as { message?: unknown }).message;
     if (typeof m === 'string') return m;
   }
-  try { return JSON.stringify(e); } catch { return String(e); }
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return String(e);
+  }
 }
 
 const TRACK_COLORS = [
-  '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
-  '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1',
+  '#3b82f6',
+  '#10b981',
+  '#f59e0b',
+  '#ef4444',
+  '#8b5cf6',
+  '#ec4899',
+  '#06b6d4',
+  '#84cc16',
+  '#f97316',
+  '#6366f1',
 ];
 
 /** Snapshot of mutable slice used for optimistic rollback. */
@@ -653,10 +685,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
 
     init: async () => {
       try {
-        const [state, registry] = await Promise.all([
-          api.getState(),
-          fetchRegistrySnapshot(),
-        ]);
+        const [state, registry] = await Promise.all([api.getState(), fetchRegistrySnapshot()]);
         applyStateWithLayout(state);
         // Fresh page load always starts at the welcome page. The editor server
         // keeps `S.workDir` in process memory, so reopening a tab would
@@ -681,27 +710,31 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
       }
     },
 
-    setPipelineName: (name) => fire(() => api.updatePipeline({ name }), {
-      errorPrefix: 'Failed to rename pipeline',
-      coalesceKey: 'pipeline:name',
-    }),
-    updatePipelineFields: (fields) => fire(() => api.updatePipeline(fields), {
-      errorPrefix: 'Failed to update pipeline',
-      coalesceKey: `pipeline:${Object.keys(fields).sort().join(',')}`,
-    }),
+    setPipelineName: (name) =>
+      fire(() => api.updatePipeline({ name }), {
+        errorPrefix: 'Failed to rename pipeline',
+        coalesceKey: 'pipeline:name',
+      }),
+    updatePipelineFields: (fields) =>
+      fire(() => api.updatePipeline(fields), {
+        errorPrefix: 'Failed to update pipeline',
+        coalesceKey: `pipeline:${Object.keys(fields).sort().join(',')}`,
+      }),
     addTrack: (name) => {
       const trackCount = _get().config.tracks.length;
       const color = TRACK_COLORS[trackCount % TRACK_COLORS.length];
       fire(() => api.addTrack(generateId(), name, color), { errorPrefix: 'Failed to add track' });
     },
-    renameTrack: (trackId, name) => fire(() => api.updateTrack(trackId, { name }), {
-      errorPrefix: 'Failed to rename track',
-      coalesceKey: `track:${trackId}:name`,
-    }),
-    updateTrackFields: (trackId, fields) => fire(() => api.updateTrack(trackId, fields), {
-      errorPrefix: 'Failed to update track',
-      coalesceKey: `track:${trackId}:${Object.keys(fields).sort().join(',')}`,
-    }),
+    renameTrack: (trackId, name) =>
+      fire(() => api.updateTrack(trackId, { name }), {
+        errorPrefix: 'Failed to rename track',
+        coalesceKey: `track:${trackId}:name`,
+      }),
+    updateTrackFields: (trackId, fields) =>
+      fire(() => api.updateTrack(trackId, fields), {
+        errorPrefix: 'Failed to update track',
+        coalesceKey: `track:${trackId}:${Object.keys(fields).sort().join(',')}`,
+      }),
 
     deleteTrack: (trackId) => {
       const snapshot = takeSnapshot();
@@ -721,7 +754,11 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
 
       // scope='both' because we deleted positions for every task in the track
       // alongside the config mutation.
-      fire(() => api.deleteTrack(trackId), { snapshot, errorPrefix: 'Failed to delete track', scope: 'both' });
+      fire(() => api.deleteTrack(trackId), {
+        snapshot,
+        errorPrefix: 'Failed to delete track',
+        scope: 'both',
+      });
     },
 
     moveTrackTo: (trackId, toIndex) => {
@@ -741,7 +778,10 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
         newTracks.splice(Math.min(toIndex, newTracks.length), 0, moved);
         return { config: { ...s.config, tracks: newTracks }, layoutDirty: true };
       });
-      fire(() => api.reorderTrack(trackId, toIndex), { snapshot, errorPrefix: 'Failed to reorder track' });
+      fire(() => api.reorderTrack(trackId, toIndex), {
+        snapshot,
+        errorPrefix: 'Failed to reorder track',
+      });
     },
 
     addTask: (trackId, name, options) => {
@@ -750,9 +790,8 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
       const positionX = options?.positionX;
       // L2: Use empty string instead of 'TODO' so validation surfaces a
       // meaningful warning instead of silently accepting a placeholder value.
-      const task: RawTaskConfig = kind === 'command'
-        ? { id, name, command: '' }
-        : { id, name, prompt: '' };
+      const task: RawTaskConfig =
+        kind === 'command' ? { id, name, command: '' } : { id, name, prompt: '' };
       const snapshot = takeSnapshot();
       const touchedPositions = positionX !== undefined;
       if (touchedPositions) {
@@ -785,12 +824,20 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
         selectedTaskId: s.selectedTaskId === qid ? null : s.selectedTaskId,
         selectedTaskIds: s.selectedTaskIds.filter((id) => id !== qid),
         pinnedTaskId: s.pinnedTaskId === qid ? null : s.pinnedTaskId,
-        positions: (() => { const p = new Map(s.positions); p.delete(qid); return p; })(),
+        positions: (() => {
+          const p = new Map(s.positions);
+          p.delete(qid);
+          return p;
+        })(),
       }));
 
       // scope='both' because we deleted the qid's position alongside the
       // config mutation — undo must restore both.
-      fire(() => api.deleteTask(trackId, taskId), { snapshot, errorPrefix: 'Failed to delete task', scope: 'both' });
+      fire(() => api.deleteTask(trackId, taskId), {
+        snapshot,
+        errorPrefix: 'Failed to delete task',
+        scope: 'both',
+      });
     },
 
     transferTaskToTrack: (fromTrackId, taskId, toTrackId) => {
@@ -829,7 +876,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
           config: { ...s.config, tracks: newTracks },
           positions,
           selectedTaskId: s.selectedTaskId === qidOld ? qidNew : s.selectedTaskId,
-          selectedTaskIds: s.selectedTaskIds.map((id) => id === qidOld ? qidNew : id),
+          selectedTaskIds: s.selectedTaskIds.map((id) => (id === qidOld ? qidNew : id)),
           pinnedTaskId: s.pinnedTaskId === qidOld ? qidNew : s.pinnedTaskId,
           layoutDirty: true,
         };
@@ -837,50 +884,49 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
 
       // scope='both' because we renamed a position key (qidOld→qidNew)
       // alongside the config mutation.
-      fire(
-        () => api.transferTask(fromTrackId, taskId, toTrackId),
-        { snapshot, errorPrefix: 'Failed to move task', scope: 'both' },
-      );
+      fire(() => api.transferTask(fromTrackId, taskId, toTrackId), {
+        snapshot,
+        errorPrefix: 'Failed to move task',
+        scope: 'both',
+      });
     },
 
     addDependency: (fromTrackId, fromTaskId, toTrackId, toTaskId) => {
-        // L8: Client-side cycle detection — reject edges that would create a
-        // cycle before hitting the server. Use BFS from the target back through
-        // existing edges; if the source is reachable, the edge would form a cycle.
-        const src = `${fromTrackId}.${fromTaskId}`;
-        const dst = `${toTrackId}.${toTaskId}`;
-        const edges = usePipelineStore.getState().dagEdges;
-        const visited = new Set<string>();
-        const queue = [dst];
-        while (queue.length > 0) {
-          const current = queue.shift()!;
-          if (current === src) {
-            set({ errorMessage: 'Cannot add dependency: would create a cycle' });
-            setTimeout(() => {
-              const s = usePipelineStore.getState();
-              if (s.errorMessage === 'Cannot add dependency: would create a cycle') {
-                set({ errorMessage: null });
-              }
-            }, 3000);
-            return;
-          }
-          if (visited.has(current)) continue;
-          visited.add(current);
-          for (const e of edges) {
-            if (e.from === current) queue.push(e.to);
-          }
+      // L8: Client-side cycle detection — reject edges that would create a
+      // cycle before hitting the server. Use BFS from the target back through
+      // existing edges; if the source is reachable, the edge would form a cycle.
+      const src = `${fromTrackId}.${fromTaskId}`;
+      const dst = `${toTrackId}.${toTaskId}`;
+      const edges = usePipelineStore.getState().dagEdges;
+      const visited = new Set<string>();
+      const queue = [dst];
+      while (queue.length > 0) {
+        const current = queue.shift()!;
+        if (current === src) {
+          set({ errorMessage: 'Cannot add dependency: would create a cycle' });
+          setTimeout(() => {
+            const s = usePipelineStore.getState();
+            if (s.errorMessage === 'Cannot add dependency: would create a cycle') {
+              set({ errorMessage: null });
+            }
+          }, 3000);
+          return;
         }
-        fire(
-          () => api.addDependency(fromTrackId, fromTaskId, toTrackId, toTaskId),
-          { errorPrefix: 'Failed to add dependency' },
-        );
-      },
+        if (visited.has(current)) continue;
+        visited.add(current);
+        for (const e of edges) {
+          if (e.from === current) queue.push(e.to);
+        }
+      }
+      fire(() => api.addDependency(fromTrackId, fromTaskId, toTrackId, toTaskId), {
+        errorPrefix: 'Failed to add dependency',
+      });
+    },
 
     removeDependency: (trackId, taskId, depRef) =>
-      fire(
-        () => api.removeDependency(trackId, taskId, depRef),
-        { errorPrefix: 'Failed to remove dependency' },
-      ),
+      fire(() => api.removeDependency(trackId, taskId, depRef), {
+        errorPrefix: 'Failed to remove dependency',
+      }),
 
     setRegistry: (registry) => set({ registry }),
 
@@ -893,22 +939,25 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
       }
     },
 
-    selectTask: (qualifiedId) => set({
-      selectedTaskId: qualifiedId,
-      selectedTaskIds: qualifiedId ? [qualifiedId] : [],
-      selectedTrackId: null,
-    }),
-    toggleTaskSelection: (qualifiedId) => set((s) => {
-      const ids = s.selectedTaskIds.includes(qualifiedId)
-        ? s.selectedTaskIds.filter((id) => id !== qualifiedId)
-        : [...s.selectedTaskIds, qualifiedId];
-      return {
-        selectedTaskId: ids.length > 0 ? ids[ids.length - 1] : null,
-        selectedTaskIds: ids,
+    selectTask: (qualifiedId) =>
+      set({
+        selectedTaskId: qualifiedId,
+        selectedTaskIds: qualifiedId ? [qualifiedId] : [],
         selectedTrackId: null,
-      };
-    }),
-    selectTrack: (trackId) => set({ selectedTrackId: trackId, selectedTaskId: null, selectedTaskIds: [] }),
+      }),
+    toggleTaskSelection: (qualifiedId) =>
+      set((s) => {
+        const ids = s.selectedTaskIds.includes(qualifiedId)
+          ? s.selectedTaskIds.filter((id) => id !== qualifiedId)
+          : [...s.selectedTaskIds, qualifiedId];
+        return {
+          selectedTaskId: ids.length > 0 ? ids[ids.length - 1] : null,
+          selectedTaskIds: ids,
+          selectedTrackId: null,
+        };
+      }),
+    selectTrack: (trackId) =>
+      set({ selectedTrackId: trackId, selectedTaskId: null, selectedTaskIds: [] }),
     pinTask: (qualifiedId) => set({ pinnedTaskId: qualifiedId, pinnedTrackId: null }),
     unpinTask: () => set({ pinnedTaskId: null }),
     pinTrack: (trackId) => set({ pinnedTrackId: trackId, pinnedTaskId: null }),
@@ -986,7 +1035,13 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
       try {
         const state = await api.openFile(path);
         const registry = await fetchRegistrySnapshot();
-        set({ selectedTaskId: null, selectedTaskIds: [], selectedTrackId: null, pinnedTaskId: null, pinnedTrackId: null });
+        set({
+          selectedTaskId: null,
+          selectedTaskIds: [],
+          selectedTrackId: null,
+          pinnedTaskId: null,
+          pinnedTrackId: null,
+        });
         applyStateWithLayout(state);
         set({ isDirty: false, layoutDirty: false, past: [], future: [], registry });
       } catch (e) {
@@ -1059,7 +1114,13 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     },
     newPipeline: async (name) => {
       try {
-        set({ selectedTaskId: null, selectedTaskIds: [], selectedTrackId: null, pinnedTaskId: null, pinnedTrackId: null });
+        set({
+          selectedTaskId: null,
+          selectedTaskIds: [],
+          selectedTrackId: null,
+          pinnedTaskId: null,
+          pinnedTrackId: null,
+        });
         const state = await api.newPipeline(name);
         applyStateWithLayout(state);
         set({ isDirty: false, layoutDirty: false, past: [], future: [] });
@@ -1072,7 +1133,13 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
       try {
         const state = await api.importFile(sourcePath);
         const registry = await fetchRegistrySnapshot();
-        set({ selectedTaskId: null, selectedTaskIds: [], selectedTrackId: null, pinnedTaskId: null, pinnedTrackId: null });
+        set({
+          selectedTaskId: null,
+          selectedTaskIds: [],
+          selectedTrackId: null,
+          pinnedTaskId: null,
+          pinnedTrackId: null,
+        });
         applyStateWithLayout(state);
         set({ isDirty: false, layoutDirty: false, past: [], future: [], registry });
       } catch (e) {
@@ -1347,7 +1414,12 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
       if (s.selectedTrackId) {
         const track = s.config.tracks.find((t) => t.id === s.selectedTrackId);
         if (!track) return false;
-        set({ clipboard: { kind: 'track', track: { ...track, tasks: track.tasks.map((t) => ({ ...t })) } } });
+        set({
+          clipboard: {
+            kind: 'track',
+            track: { ...track, tasks: track.tasks.map((t) => ({ ...t })) },
+          },
+        });
         return true;
       }
       return false;
@@ -1397,7 +1469,8 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
         // user triggered it, not after the loop of addTask calls finishes.
         // Track the push handle so we can roll back if the paste fails.
         const pushHandle = pushHistory(snapshotToHistory(preSnapshot, undefined, 'config'));
-        const pasteTrackPromise = api.addTrack(newTrackId, newName, clip.track.color)
+        const pasteTrackPromise = api
+          .addTrack(newTrackId, newName, clip.track.color)
           .then(async (state) => {
             if (myEpoch !== fireEpoch) return;
             applyState(state);
@@ -1424,7 +1497,13 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
             if (e instanceof RevisionConflictError) {
               if (!pushHandle.coalesced) removeHistoryByPushId(pushHandle.pushId);
               applyStateWithLayout(e.currentState);
-              set({ isDirty: false, layoutDirty: false, past: [], future: [], errorMessage: REVISION_CONFLICT_MESSAGE });
+              set({
+                isDirty: false,
+                layoutDirty: false,
+                past: [],
+                future: [],
+                errorMessage: REVISION_CONFLICT_MESSAGE,
+              });
               return;
             }
 
@@ -1460,7 +1539,12 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
         const track = s.config.tracks.find((t) => t.id === s.selectedTrackId);
         if (!track) return false;
         const prevClip = s.clipboard;
-        set({ clipboard: { kind: 'track', track: { ...track, tasks: track.tasks.map((t) => ({ ...t })) } } });
+        set({
+          clipboard: {
+            kind: 'track',
+            track: { ...track, tasks: track.tasks.map((t) => ({ ...t })) },
+          },
+        });
         const result = _get().pasteClipboard();
         set({ clipboard: prevClip });
         return result;

@@ -56,22 +56,39 @@ export interface PluginSchema {
 export const BUILTIN_TRIGGER_SCHEMAS: Record<string, PluginSchema> = {
   file: {
     fields: [
-      { key: 'path', type: 'path', required: true, placeholder: './path/to/watch',
-        description: 'File path to watch. Resolved relative to workDir.' },
-      { key: 'timeout', type: 'duration', placeholder: 'e.g. 5m',
-        description: 'Give up after this duration if the file does not appear.' },
+      {
+        key: 'path',
+        type: 'path',
+        required: true,
+        placeholder: './path/to/watch',
+        description: 'File path to watch. Resolved relative to workDir.',
+      },
+      {
+        key: 'timeout',
+        type: 'duration',
+        placeholder: 'e.g. 5m',
+        description: 'Give up after this duration if the file does not appear.',
+      },
     ],
   },
   manual: {
     fields: [
-      { key: 'message', type: 'string', placeholder: 'Approval message...',
-        description: 'Prompt shown to the approver.' },
+      {
+        key: 'message',
+        type: 'string',
+        placeholder: 'Approval message...',
+        description: 'Prompt shown to the approver.',
+      },
       // NOTE: `options` and `metadata` are intentionally NOT schematized here —
       // they are handled by dedicated editors (OptionsField, KeyValueEditor)
       // in TaskConfigPanel because they are list/object types that the generic
       // form generator doesn't handle yet.
-      { key: 'timeout', type: 'duration', placeholder: 'e.g. 5m',
-        description: 'Auto-reject after this duration.' },
+      {
+        key: 'timeout',
+        type: 'duration',
+        placeholder: 'e.g. 5m',
+        description: 'Auto-reject after this duration.',
+      },
     ],
   },
 };
@@ -79,26 +96,56 @@ export const BUILTIN_TRIGGER_SCHEMAS: Record<string, PluginSchema> = {
 export const BUILTIN_COMPLETION_SCHEMAS: Record<string, PluginSchema> = {
   exit_code: {
     fields: [
-      { key: 'expect', type: 'number-or-list', default: 0, placeholder: '0 (default)',
-        description: 'Expected exit code, or comma-separated list of codes.' },
+      {
+        key: 'expect',
+        type: 'number-or-list',
+        default: 0,
+        placeholder: '0 (default)',
+        description: 'Expected exit code, or comma-separated list of codes.',
+      },
     ],
   },
   file_exists: {
     fields: [
-      { key: 'path', type: 'path', required: true, placeholder: './path/to/check',
-        description: 'File or directory to check.' },
-      { key: 'kind', type: 'enum', enum: ['any', 'file', 'dir'], default: 'any',
-        description: 'Restrict to file, directory, or any.' },
-      { key: 'min_size', type: 'number', min: 0, placeholder: 'optional',
-        description: 'Minimum size in bytes (files only).' },
+      {
+        key: 'path',
+        type: 'path',
+        required: true,
+        placeholder: './path/to/check',
+        description: 'File or directory to check.',
+      },
+      {
+        key: 'kind',
+        type: 'enum',
+        enum: ['any', 'file', 'dir'],
+        default: 'any',
+        description: 'Restrict to file, directory, or any.',
+      },
+      {
+        key: 'min_size',
+        type: 'number',
+        min: 0,
+        placeholder: 'optional',
+        description: 'Minimum size in bytes (files only).',
+      },
     ],
   },
   output_check: {
     fields: [
-      { key: 'check', type: 'string', required: true, placeholder: 'shell command (exit 0 = pass)',
-        description: 'Shell command — exit 0 means the check passed.' },
-      { key: 'timeout', type: 'duration', default: '30s', placeholder: '30s (default)',
-        description: 'Max duration before the check is aborted.' },
+      {
+        key: 'check',
+        type: 'string',
+        required: true,
+        placeholder: 'shell command (exit 0 = pass)',
+        description: 'Shell command — exit 0 means the check passed.',
+      },
+      {
+        key: 'timeout',
+        type: 'duration',
+        default: '30s',
+        placeholder: '30s (default)',
+        description: 'Max duration before the check is aborted.',
+      },
     ],
   },
 };
@@ -106,10 +153,19 @@ export const BUILTIN_COMPLETION_SCHEMAS: Record<string, PluginSchema> = {
 export const BUILTIN_MIDDLEWARE_SCHEMAS: Record<string, PluginSchema> = {
   static_context: {
     fields: [
-      { key: 'file', type: 'path', required: true, placeholder: './context.md',
-        description: 'Markdown file to prepend to the prompt.' },
-      { key: 'label', type: 'string', placeholder: 'Reference: filename',
-        description: 'Optional display label used in the injected header.' },
+      {
+        key: 'file',
+        type: 'path',
+        required: true,
+        placeholder: './context.md',
+        description: 'Markdown file to prepend to the prompt.',
+      },
+      {
+        key: 'label',
+        type: 'string',
+        placeholder: 'Reference: filename',
+        description: 'Optional display label used in the injected header.',
+      },
     ],
   },
 };
@@ -123,7 +179,7 @@ function fromWireDescriptor(wire: PluginSchemaDescriptor): PluginSchema | null {
   if (!wire.fields || !Array.isArray(wire.fields)) return null;
   const fields: SchemaField[] = wire.fields.map((f) => ({
     key: f.key,
-    type: (f.type as SchemaFieldType),
+    type: f.type as SchemaFieldType,
     required: f.required,
     description: f.description,
     default: f.default,
@@ -149,9 +205,11 @@ export function getBuiltinSchema(
   // 1. Prefer live server-provided schema from the pipeline store registry.
   const registry = usePipelineStore.getState().registry;
   const registryMap =
-    kind === 'trigger' ? registry.triggerSchemas :
-    kind === 'completion' ? registry.completionSchemas :
-    registry.middlewareSchemas;
+    kind === 'trigger'
+      ? registry.triggerSchemas
+      : kind === 'completion'
+        ? registry.completionSchemas
+        : registry.middlewareSchemas;
   if (registryMap && registryMap[type]) {
     const fromWire = fromWireDescriptor(registryMap[type]);
     if (fromWire) return fromWire;
@@ -159,9 +217,11 @@ export function getBuiltinSchema(
 
   // 2. Fall back to the hand-written table for offline/legacy support.
   const table =
-    kind === 'trigger' ? BUILTIN_TRIGGER_SCHEMAS :
-    kind === 'completion' ? BUILTIN_COMPLETION_SCHEMAS :
-    BUILTIN_MIDDLEWARE_SCHEMAS;
+    kind === 'trigger'
+      ? BUILTIN_TRIGGER_SCHEMAS
+      : kind === 'completion'
+        ? BUILTIN_COMPLETION_SCHEMAS
+        : BUILTIN_MIDDLEWARE_SCHEMAS;
   return table[type] ?? null;
 }
 
@@ -180,15 +240,18 @@ interface SchemaFormProps {
  * verbatim in the output object (so round-tripping unknown keys is lossless).
  */
 export function SchemaForm({ schema, value, onChange, onBrowsePath }: SchemaFormProps) {
-  const commit = useCallback((key: string, next: unknown) => {
-    const updated = { ...value };
-    if (next === undefined || next === '' || next === null) {
-      delete updated[key];
-    } else {
-      updated[key] = next;
-    }
-    onChange(updated);
-  }, [value, onChange]);
+  const commit = useCallback(
+    (key: string, next: unknown) => {
+      const updated = { ...value };
+      if (next === undefined || next === '' || next === null) {
+        delete updated[key];
+      } else {
+        updated[key] = next;
+      }
+      onChange(updated);
+    },
+    [value, onChange],
+  );
 
   return (
     <div className="space-y-2">
@@ -210,7 +273,12 @@ export function SchemaForm({ schema, value, onChange, onBrowsePath }: SchemaForm
 
 // ── Field row ───────────────────────────────────────────────────────────────
 
-function SchemaFieldRow({ field, value, onChange, onBrowsePath }: {
+function SchemaFieldRow({
+  field,
+  value,
+  onChange,
+  onBrowsePath,
+}: {
   field: SchemaField;
   value: unknown;
   onChange: (next: unknown) => void;
@@ -228,10 +296,18 @@ function SchemaFieldRow({ field, value, onChange, onBrowsePath }: {
           {field.required && <span className="text-tagma-error ml-0.5">*</span>}
         </span>
         {field.description && (
-          <span className="text-tagma-muted/60" title={field.description}>&nbsp;(?)</span>
+          <span className="text-tagma-muted/60" title={field.description}>
+            &nbsp;(?)
+          </span>
         )}
       </label>
-      <SchemaFieldInput field={field} value={value} onChange={onChange} defaultStr={defaultStr} onBrowsePath={onBrowsePath} />
+      <SchemaFieldInput
+        field={field}
+        value={value}
+        onChange={onChange}
+        defaultStr={defaultStr}
+        onBrowsePath={onBrowsePath}
+      />
       {field.description && (
         <p className="text-[9px] text-tagma-muted/80 mt-0.5 leading-snug">{field.description}</p>
       )}
@@ -239,7 +315,13 @@ function SchemaFieldRow({ field, value, onChange, onBrowsePath }: {
   );
 }
 
-function SchemaFieldInput({ field, value, onChange, defaultStr, onBrowsePath }: {
+function SchemaFieldInput({
+  field,
+  value,
+  onChange,
+  defaultStr,
+  onBrowsePath,
+}: {
   field: SchemaField;
   value: unknown;
   onChange: (next: unknown) => void;
@@ -254,15 +336,24 @@ function SchemaFieldInput({ field, value, onChange, defaultStr, onBrowsePath }: 
   // typos like "1, two, 3" → [1,3] with no feedback.
   const [localStr, setLocalStr, blurStr] = useLocalField(strValue, (v) => {
     if (field.type === 'number') {
-      if (v === '') { onChange(undefined); return; }
+      if (v === '') {
+        onChange(undefined);
+        return;
+      }
       const n = Number(v);
       onChange(Number.isNaN(n) ? v : n);
       return;
     }
     if (field.type === 'number-or-list') {
-      if (v === '') { onChange(undefined); return; }
+      if (v === '') {
+        onChange(undefined);
+        return;
+      }
       if (v.includes(',')) {
-        const tokens = v.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+        const tokens = v
+          .split(',')
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0);
         const parsed = tokens.map((s) => Number(s));
         if (parsed.some((n) => Number.isNaN(n))) {
           onChange(v); // preserve raw string so the validation error surfaces
@@ -288,7 +379,9 @@ function SchemaFieldInput({ field, value, onChange, defaultStr, onBrowsePath }: 
         >
           <option value="">{defaultStr ? `${defaultStr} (default)` : '—'}</option>
           {field.enum?.map((opt) => (
-            <option key={opt} value={opt}>{opt}</option>
+            <option key={opt} value={opt}>
+              {opt}
+            </option>
           ))}
         </select>
       );

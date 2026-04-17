@@ -33,9 +33,7 @@ type QueryMode = 'local' | 'global' | 'hybrid' | 'naive' | 'mix';
 const DEFAULT_MODE: QueryMode = 'mix';
 const DEFAULT_TOP_K = 10;
 const DEFAULT_TIMEOUT_MS = 30_000;
-const VALID_MODES: ReadonlySet<QueryMode> = new Set([
-  'local', 'global', 'hybrid', 'naive', 'mix',
-]);
+const VALID_MODES: ReadonlySet<QueryMode> = new Set(['local', 'global', 'hybrid', 'naive', 'mix']);
 
 // Hardened URL parser: rejects anything that isn't http/https so malicious
 // pipeline config cannot coerce the middleware into fetching `file://`,
@@ -50,9 +48,7 @@ function validateEndpointUrl(endpoint: string): URL {
   try {
     url = new URL(endpoint);
   } catch {
-    throw new Error(
-      `lightrag middleware: "endpoint" is not a valid URL: ${endpoint}`,
-    );
+    throw new Error(`lightrag middleware: "endpoint" is not a valid URL: ${endpoint}`);
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new Error(
@@ -71,11 +67,15 @@ function parseDurationSafe(raw: unknown, fallback: number): number {
   if (!m) return fallback;
   const n = Number(m[1]);
   switch (m[2]) {
-    case 'ms': return n;
-    case 'm':  return n * 60_000;
-    case 'h':  return n * 3_600_000;
+    case 'ms':
+      return n;
+    case 'm':
+      return n * 60_000;
+    case 'h':
+      return n * 3_600_000;
     case 's':
-    default:   return n * 1000;
+    default:
+      return n * 1000;
   }
 }
 
@@ -205,9 +205,10 @@ const LightRAGMiddleware: MiddlewarePlugin = {
     }
     const mode = rawMode as QueryMode;
 
-    const topK = typeof config.top_k === 'number' && config.top_k > 0
-      ? Math.floor(config.top_k)
-      : DEFAULT_TOP_K;
+    const topK =
+      typeof config.top_k === 'number' && config.top_k > 0
+        ? Math.floor(config.top_k)
+        : DEFAULT_TOP_K;
 
     const apiKeyEnv = config.api_key_env as string | undefined;
     const apiKey = apiKeyEnv ? process.env[apiKeyEnv] : undefined;

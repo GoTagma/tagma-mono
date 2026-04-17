@@ -14,18 +14,28 @@ describe('completion defaults', () => {
 
   test('treats bare exit_code and exit_code expect=0 as the default completion', () => {
     expect(isDefaultExitCodeCompletion({ type: 'exit_code' } as CompletionConfig)).toBe(true);
-    expect(isDefaultExitCodeCompletion({ type: 'exit_code', expect: 0 } as CompletionConfig)).toBe(true);
+    expect(isDefaultExitCodeCompletion({ type: 'exit_code', expect: 0 } as CompletionConfig)).toBe(
+      true,
+    );
   });
 
   test('keeps non-default completion configs explicit', () => {
-    expect(isDefaultExitCodeCompletion({ type: 'exit_code', expect: 2 } as CompletionConfig)).toBe(false);
-    expect(isDefaultExitCodeCompletion({ type: 'file_exists', path: './out.txt' } as CompletionConfig)).toBe(false);
+    expect(isDefaultExitCodeCompletion({ type: 'exit_code', expect: 2 } as CompletionConfig)).toBe(
+      false,
+    );
+    expect(
+      isDefaultExitCodeCompletion({ type: 'file_exists', path: './out.txt' } as CompletionConfig),
+    ).toBe(false);
   });
 
   test('normalizes default exit_code completions back to undefined for clean state and YAML', () => {
     expect(normalizeCompletionForEditor({ type: 'exit_code' } as CompletionConfig)).toBeUndefined();
-    expect(normalizeCompletionForEditor({ type: 'exit_code', expect: 0 } as CompletionConfig)).toBeUndefined();
-    expect(normalizeCompletionForEditor({ type: 'exit_code', expect: 2 } as CompletionConfig)).toEqual({
+    expect(
+      normalizeCompletionForEditor({ type: 'exit_code', expect: 0 } as CompletionConfig),
+    ).toBeUndefined();
+    expect(
+      normalizeCompletionForEditor({ type: 'exit_code', expect: 2 } as CompletionConfig),
+    ).toEqual({
       type: 'exit_code',
       expect: 2,
     });

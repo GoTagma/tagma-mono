@@ -1,10 +1,33 @@
 import { useMemo, useRef, useEffect } from 'react';
 import {
-  X, Clock, Check, AlertCircle, Loader2, SkipForward, Ban,
-  FileText, ExternalLink, Hash, Link2, Lock, FileSearch,
-  CheckCircle2, Layers, Terminal, MessageSquare, Activity,
+  X,
+  Clock,
+  Check,
+  AlertCircle,
+  Loader2,
+  SkipForward,
+  Ban,
+  FileText,
+  ExternalLink,
+  Hash,
+  Link2,
+  Lock,
+  FileSearch,
+  CheckCircle2,
+  Layers,
+  Terminal,
+  MessageSquare,
+  Activity,
 } from 'lucide-react';
-import type { RunTaskState, TaskStatus, RawPipelineConfig, RawTaskConfig, RawTrackConfig, Permissions, TaskLogLevel } from '../../api/client';
+import type {
+  RunTaskState,
+  TaskStatus,
+  RawPipelineConfig,
+  RawTaskConfig,
+  RawTrackConfig,
+  Permissions,
+  TaskLogLevel,
+} from '../../api/client';
 import { TASK_LOG_CAP } from '../../store/run-event-reducer';
 
 interface RunTaskPanelProps {
@@ -44,7 +67,10 @@ const LOG_LEVEL_COLOR: Record<TaskLogLevel, string> = {
   quiet: 'text-tagma-muted/60',
 };
 
-function resolveTask(task: RunTaskState, config: RawPipelineConfig): { track: RawTrackConfig; taskConfig: RawTaskConfig } | null {
+function resolveTask(
+  task: RunTaskState,
+  config: RawPipelineConfig,
+): { track: RawTrackConfig; taskConfig: RawTaskConfig } | null {
   const [trackId, ...rest] = task.taskId.split('.');
   const taskId = rest.join('.');
   const track = config.tracks.find((t) => t.id === trackId);
@@ -64,10 +90,20 @@ function permsLabel(perms: Permissions | undefined | null): string | null {
 }
 
 /** Compact key/value row used throughout the read-only config section. */
-function ConfigRow({ label, children, mono = true }: { label: string; children: React.ReactNode; mono?: boolean }) {
+function ConfigRow({
+  label,
+  children,
+  mono = true,
+}: {
+  label: string;
+  children: React.ReactNode;
+  mono?: boolean;
+}) {
   return (
     <div className="flex items-start gap-2 py-[2px] text-[10px]">
-      <span className="text-tagma-muted/70 w-[68px] shrink-0 font-mono tracking-tight">{label}</span>
+      <span className="text-tagma-muted/70 w-[68px] shrink-0 font-mono tracking-tight">
+        {label}
+      </span>
       <span className={`flex-1 min-w-0 break-words ${mono ? 'font-mono' : ''} text-tagma-text/80`}>
         {children}
       </span>
@@ -105,20 +141,11 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
   // authoritative values emitted by the SDK (when present on RunTaskState),
   // then the raw snapshot's task-level value, then the track-level value,
   // then the pipeline default.
-  const driver = task.resolvedDriver
-    ?? taskConfig?.driver
-    ?? track?.driver
-    ?? config.driver
-    ?? null;
-  const model = task.resolvedModel
-    ?? taskConfig?.model
-    ?? track?.model
-    ?? config.model
-    ?? null;
-  const permissions = task.resolvedPermissions
-    ?? taskConfig?.permissions
-    ?? track?.permissions
-    ?? null;
+  const driver =
+    task.resolvedDriver ?? taskConfig?.driver ?? track?.driver ?? config.driver ?? null;
+  const model = task.resolvedModel ?? taskConfig?.model ?? track?.model ?? config.model ?? null;
+  const permissions =
+    task.resolvedPermissions ?? taskConfig?.permissions ?? track?.permissions ?? null;
   const cwd = taskConfig?.cwd ?? track?.cwd ?? null;
   const agentProfile = taskConfig?.agent_profile ?? track?.agent_profile ?? null;
   const timeout = taskConfig?.timeout ?? null;
@@ -134,14 +161,20 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path }),
-    }).catch(() => { /* swallow — the error toast handles user-facing reports */ });
+    }).catch(() => {
+      /* swallow — the error toast handles user-facing reports */
+    });
   };
 
   return (
     <div className="w-80 h-full bg-tagma-surface border-l border-tagma-border flex flex-col animate-slide-in-right">
       <div className="panel-header-sm">
         <h2 className="panel-title-sm truncate">{task.taskName}</h2>
-        <button onClick={onClose} className="p-0.5 text-tagma-muted hover:text-tagma-text transition-colors" aria-label="Close">
+        <button
+          onClick={onClose}
+          className="p-0.5 text-tagma-muted hover:text-tagma-text transition-colors"
+          aria-label="Close"
+        >
           <X size={12} />
         </button>
       </div>
@@ -164,14 +197,21 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
             {/* Status */}
             <div>
               <label className="field-label">Status</label>
-              <div className={`chip-md ${
-                task.status === 'running' ? 'bg-tagma-ready/10 border-tagma-ready/20 text-tagma-ready' :
-                task.status === 'success' ? 'bg-tagma-success/10 border-tagma-success/20 text-tagma-success' :
-                task.status === 'failed' ? 'bg-tagma-error/10 border-tagma-error/20 text-tagma-error' :
-                task.status === 'timeout' ? 'bg-tagma-warning/10 border-tagma-warning/20 text-tagma-warning' :
-                task.status === 'blocked' ? 'bg-tagma-warning/10 border-tagma-warning/20 text-tagma-warning' :
-                'bg-tagma-muted/8 border-tagma-muted/15 text-tagma-muted'
-              }`}>
+              <div
+                className={`chip-md ${
+                  task.status === 'running'
+                    ? 'bg-tagma-ready/10 border-tagma-ready/20 text-tagma-ready'
+                    : task.status === 'success'
+                      ? 'bg-tagma-success/10 border-tagma-success/20 text-tagma-success'
+                      : task.status === 'failed'
+                        ? 'bg-tagma-error/10 border-tagma-error/20 text-tagma-error'
+                        : task.status === 'timeout'
+                          ? 'bg-tagma-warning/10 border-tagma-warning/20 text-tagma-warning'
+                          : task.status === 'blocked'
+                            ? 'bg-tagma-warning/10 border-tagma-warning/20 text-tagma-warning'
+                            : 'bg-tagma-muted/8 border-tagma-muted/15 text-tagma-muted'
+                }`}
+              >
                 {task.status === 'running' && <Loader2 size={11} className="animate-spin" />}
                 {task.status === 'success' && <Check size={11} />}
                 {task.status === 'failed' && <AlertCircle size={11} />}
@@ -186,19 +226,25 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
             {task.startedAt && (
               <div>
                 <label className="field-label">Started</label>
-                <div className="text-[11px] font-mono text-tagma-muted">{new Date(task.startedAt).toLocaleTimeString()}</div>
+                <div className="text-[11px] font-mono text-tagma-muted">
+                  {new Date(task.startedAt).toLocaleTimeString()}
+                </div>
               </div>
             )}
             {task.finishedAt && (
               <div>
                 <label className="field-label">Finished</label>
-                <div className="text-[11px] font-mono text-tagma-muted">{new Date(task.finishedAt).toLocaleTimeString()}</div>
+                <div className="text-[11px] font-mono text-tagma-muted">
+                  {new Date(task.finishedAt).toLocaleTimeString()}
+                </div>
               </div>
             )}
             {task.durationMs != null && (
               <div>
                 <label className="field-label">Duration</label>
-                <div className="text-[11px] font-mono text-tagma-muted">{formatDuration(task.durationMs)}</div>
+                <div className="text-[11px] font-mono text-tagma-muted">
+                  {formatDuration(task.durationMs)}
+                </div>
               </div>
             )}
 
@@ -206,7 +252,9 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
             {task.exitCode != null && (
               <div>
                 <label className="field-label">Exit Code</label>
-                <div className={`text-[11px] font-mono ${task.exitCode === 0 ? 'text-tagma-success' : 'text-tagma-error'}`}>
+                <div
+                  className={`text-[11px] font-mono ${task.exitCode === 0 ? 'text-tagma-success' : 'text-tagma-error'}`}
+                >
                   {task.exitCode}
                 </div>
               </div>
@@ -218,7 +266,10 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
                 <label className="field-label flex items-center gap-1">
                   <Hash size={9} /> Session
                 </label>
-                <div className="text-[11px] font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1.5 truncate" title={task.sessionId}>
+                <div
+                  className="text-[11px] font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1.5 truncate"
+                  title={task.sessionId}
+                >
                   {task.sessionId}
                 </div>
               </div>
@@ -280,12 +331,16 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
               <Activity size={9} />
               <span>Process</span>
               <span className="text-tagma-muted/40 font-normal normal-case tracking-normal">
-                ({task.totalLogCount > task.logs.length
+                (
+                {task.totalLogCount > task.logs.length
                   ? `${task.logs.length} of ${task.totalLogCount} lines — oldest truncated`
-                  : `${task.logs.length} lines`})
+                  : `${task.logs.length} lines`}
+                )
               </span>
               {task.totalLogCount > TASK_LOG_CAP && (
-                <span className="text-amber-400/70 font-normal normal-case tracking-normal ml-1">(capped at {TASK_LOG_CAP})</span>
+                <span className="text-amber-400/70 font-normal normal-case tracking-normal ml-1">
+                  (capped at {TASK_LOG_CAP})
+                </span>
               )}
             </div>
             <div
@@ -314,9 +369,15 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
             <div className="pt-2.5 space-y-3">
               {/* Type banner */}
               <div className="flex items-center gap-2 text-[10px] text-tagma-muted">
-                {isCommand
-                  ? <><Terminal size={11} className="text-sky-400" /> Shell command</>
-                  : <><MessageSquare size={11} className="text-tagma-muted/70" /> AI prompt</>}
+                {isCommand ? (
+                  <>
+                    <Terminal size={11} className="text-sky-400" /> Shell command
+                  </>
+                ) : (
+                  <>
+                    <MessageSquare size={11} className="text-tagma-muted/70" /> AI prompt
+                  </>
+                )}
               </div>
 
               {/* Prompt or Command body */}
@@ -342,68 +403,83 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
                 {track && (
                   <ConfigRow label="Track">
                     <span className="inline-flex items-center gap-1.5">
-                      {track.color && <span className="w-2 h-2 shrink-0" style={{ backgroundColor: track.color }} />}
+                      {track.color && (
+                        <span
+                          className="w-2 h-2 shrink-0"
+                          style={{ backgroundColor: track.color }}
+                        />
+                      )}
                       <span className="truncate">{track.name}</span>
                     </span>
                   </ConfigRow>
                 )}
                 {driver && <ConfigRow label="Driver">{driver}</ConfigRow>}
                 {model && <ConfigRow label="Model">{model}</ConfigRow>}
-                {permsLabel(permissions) && <ConfigRow label="Perms">{permsLabel(permissions)}</ConfigRow>}
+                {permsLabel(permissions) && (
+                  <ConfigRow label="Perms">{permsLabel(permissions)}</ConfigRow>
+                )}
                 {timeout && <ConfigRow label="Timeout">{timeout}</ConfigRow>}
                 {cwd && <ConfigRow label="CWD">{cwd}</ConfigRow>}
                 {agentProfile && <ConfigRow label="Profile">{agentProfile}</ConfigRow>}
-                {taskConfig.continue_from && <ConfigRow label="Continue">{taskConfig.continue_from}</ConfigRow>}
+                {taskConfig.continue_from && (
+                  <ConfigRow label="Continue">{taskConfig.continue_from}</ConfigRow>
+                )}
               </div>
 
               {/* Trigger */}
-              {taskConfig.trigger && (() => {
-                const tr = taskConfig.trigger;
-                const message = typeof tr.message === 'string' ? tr.message : undefined;
-                const path = typeof tr.path === 'string' ? tr.path : undefined;
-                const timeout = typeof tr.timeout === 'string' ? tr.timeout : undefined;
-                return (
-                  <div>
-                    <label className="field-label flex items-center gap-1">
-                      {tr.type === 'file' ? <FileSearch size={9} /> : <Lock size={9} />}
-                      Trigger
-                    </label>
-                    <div className="border border-tagma-border/60 bg-tagma-bg/40 px-2.5 py-1.5">
-                      <ConfigRow label="Type">{tr.type}</ConfigRow>
-                      {message && <ConfigRow label="Message" mono={false}>{message}</ConfigRow>}
-                      {path && <ConfigRow label="Path">{path}</ConfigRow>}
-                      {timeout && <ConfigRow label="Timeout">{timeout}</ConfigRow>}
+              {taskConfig.trigger &&
+                (() => {
+                  const tr = taskConfig.trigger;
+                  const message = typeof tr.message === 'string' ? tr.message : undefined;
+                  const path = typeof tr.path === 'string' ? tr.path : undefined;
+                  const timeout = typeof tr.timeout === 'string' ? tr.timeout : undefined;
+                  return (
+                    <div>
+                      <label className="field-label flex items-center gap-1">
+                        {tr.type === 'file' ? <FileSearch size={9} /> : <Lock size={9} />}
+                        Trigger
+                      </label>
+                      <div className="border border-tagma-border/60 bg-tagma-bg/40 px-2.5 py-1.5">
+                        <ConfigRow label="Type">{tr.type}</ConfigRow>
+                        {message && (
+                          <ConfigRow label="Message" mono={false}>
+                            {message}
+                          </ConfigRow>
+                        )}
+                        {path && <ConfigRow label="Path">{path}</ConfigRow>}
+                        {timeout && <ConfigRow label="Timeout">{timeout}</ConfigRow>}
+                      </div>
                     </div>
-                  </div>
-                );
-              })()}
+                  );
+                })()}
 
               {/* Completion */}
-              {taskConfig.completion && (() => {
-                const cp = taskConfig.completion;
-                const path = typeof cp.path === 'string' ? cp.path : undefined;
-                const kind = typeof cp.kind === 'string' ? cp.kind : undefined;
-                const check = typeof cp.check === 'string' ? cp.check : undefined;
-                return (
-                  <div>
-                    <label className="field-label flex items-center gap-1">
-                      <CheckCircle2 size={9} /> Completion
-                    </label>
-                    <div className="border border-tagma-border/60 bg-tagma-bg/40 px-2.5 py-1.5">
-                      <ConfigRow label="Type">{cp.type}</ConfigRow>
-                      {cp.expect != null && (
-                        <ConfigRow label="Expect">{JSON.stringify(cp.expect)}</ConfigRow>
-                      )}
-                      {path && <ConfigRow label="Path">{path}</ConfigRow>}
-                      {kind && <ConfigRow label="Kind">{kind}</ConfigRow>}
-                      {cp.min_size != null && (
-                        <ConfigRow label="Min size">{String(cp.min_size)}</ConfigRow>
-                      )}
-                      {check && <ConfigRow label="Check">{check}</ConfigRow>}
+              {taskConfig.completion &&
+                (() => {
+                  const cp = taskConfig.completion;
+                  const path = typeof cp.path === 'string' ? cp.path : undefined;
+                  const kind = typeof cp.kind === 'string' ? cp.kind : undefined;
+                  const check = typeof cp.check === 'string' ? cp.check : undefined;
+                  return (
+                    <div>
+                      <label className="field-label flex items-center gap-1">
+                        <CheckCircle2 size={9} /> Completion
+                      </label>
+                      <div className="border border-tagma-border/60 bg-tagma-bg/40 px-2.5 py-1.5">
+                        <ConfigRow label="Type">{cp.type}</ConfigRow>
+                        {cp.expect != null && (
+                          <ConfigRow label="Expect">{JSON.stringify(cp.expect)}</ConfigRow>
+                        )}
+                        {path && <ConfigRow label="Path">{path}</ConfigRow>}
+                        {kind && <ConfigRow label="Kind">{kind}</ConfigRow>}
+                        {cp.min_size != null && (
+                          <ConfigRow label="Min size">{String(cp.min_size)}</ConfigRow>
+                        )}
+                        {check && <ConfigRow label="Check">{check}</ConfigRow>}
+                      </div>
                     </div>
-                  </div>
-                );
-              })()}
+                  );
+                })()}
 
               {/* Middlewares */}
               {taskConfig.middlewares && taskConfig.middlewares.length > 0 && (
@@ -433,12 +509,13 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
                   </label>
                   <div className="border border-tagma-border/60 bg-tagma-bg/40 px-2.5 py-1.5 space-y-0.5">
                     {taskConfig.depends_on.map((dep) => (
-                      <div key={dep} className="text-[10px] font-mono text-tagma-muted truncate">{dep}</div>
+                      <div key={dep} className="text-[10px] font-mono text-tagma-muted truncate">
+                        {dep}
+                      </div>
                     ))}
                   </div>
                 </div>
               )}
-
             </div>
           </section>
         )}

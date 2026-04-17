@@ -12,15 +12,8 @@
 
 import { test, expect } from 'bun:test';
 
-import {
-  foldRunEvent,
-  initialRunFoldState,
-} from '../src/store/run-event-reducer';
-import type {
-  RunEvent,
-  RunTaskState,
-  ApprovalRequestInfo,
-} from '../src/api/client';
+import { foldRunEvent, initialRunFoldState } from '../src/store/run-event-reducer';
+import type { RunEvent, RunTaskState, ApprovalRequestInfo } from '../src/api/client';
 
 function makeTask(overrides: Partial<RunTaskState> = {}): RunTaskState {
   return {
@@ -52,7 +45,10 @@ function runStart(seq = 1, tasks: RunTaskState[] = [makeTask()]): RunEvent {
 
 test('run_start resets tasks and populates lastEventSeq', () => {
   const state = initialRunFoldState();
-  const next = foldRunEvent(state, runStart(1, [makeTask({ taskId: 'a.1' }), makeTask({ taskId: 'a.2' })]));
+  const next = foldRunEvent(
+    state,
+    runStart(1, [makeTask({ taskId: 'a.1' }), makeTask({ taskId: 'a.2' })]),
+  );
 
   expect(next.runId).toBe('run_test');
   expect(next.status).toBe('running');
@@ -180,11 +176,15 @@ test('approval_request adds to pending map', () => {
     createdAt: '2026-04-11T10:00:01.000Z',
     timeoutMs: 60000,
   };
-  state = foldRunEvent(state, { type: 'approval_request', runId: 'run_test', request: req, seq: 2 });
+  state = foldRunEvent(state, {
+    type: 'approval_request',
+    runId: 'run_test',
+    request: req,
+    seq: 2,
+  });
   expect(state.pendingApprovals.size).toBe(1);
   expect(state.pendingApprovals.has('req_1')).toBe(true);
 });
-
 
 test('run_snapshot restores the latest task map and pending approvals without rewinding seq', () => {
   let state = foldRunEvent(initialRunFoldState(), runStart(5));
@@ -224,7 +224,12 @@ test('approval_resolved with timeout surfaces an error banner', () => {
     createdAt: '2026-04-11T10:00:01.000Z',
     timeoutMs: 60000,
   };
-  state = foldRunEvent(state, { type: 'approval_request', runId: 'run_test', request: req, seq: 2 });
+  state = foldRunEvent(state, {
+    type: 'approval_request',
+    runId: 'run_test',
+    request: req,
+    seq: 2,
+  });
   state = foldRunEvent(state, {
     type: 'approval_resolved',
     runId: 'run_test',
@@ -245,7 +250,12 @@ test('approval_resolved with approved does NOT set an error banner', () => {
     createdAt: '2026-04-11T10:00:01.000Z',
     timeoutMs: 60000,
   };
-  state = foldRunEvent(state, { type: 'approval_request', runId: 'run_test', request: req, seq: 2 });
+  state = foldRunEvent(state, {
+    type: 'approval_request',
+    runId: 'run_test',
+    request: req,
+    seq: 2,
+  });
   state = foldRunEvent(state, {
     type: 'approval_resolved',
     runId: 'run_test',
@@ -271,7 +281,12 @@ test('run_end failure flips status to failed when the client did not explicitly 
 
 test('run_error sets status=error and surfaces the message', () => {
   let state = foldRunEvent(initialRunFoldState(), runStart(1));
-  state = foldRunEvent(state, { type: 'run_error', runId: 'run_test', error: 'engine boom', seq: 2 });
+  state = foldRunEvent(state, {
+    type: 'run_error',
+    runId: 'run_test',
+    error: 'engine boom',
+    seq: 2,
+  });
   expect(state.status).toBe('error');
   expect(state.error).toBe('engine boom');
 });

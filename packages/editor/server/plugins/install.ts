@@ -12,15 +12,8 @@ import { resolve, dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import * as tar from 'tar';
-import {
-  assertSafePluginName,
-} from '../plugin-safety.js';
-import {
-  S,
-  isPathWithin,
-  pluginDirFor,
-  fenceWithinNodeModules,
-} from '../state.js';
+import { assertSafePluginName } from '../plugin-safety.js';
+import { S, isPathWithin, pluginDirFor, fenceWithinNodeModules } from '../state.js';
 import { readPluginManifest as parsePluginManifestField } from '@tagma/sdk';
 
 export const NPM_REGISTRY = 'https://registry.npmjs.org';
@@ -64,7 +57,7 @@ export async function registryMeta(name: string): Promise<PackageMeta> {
     signal: AbortSignal.timeout(REGISTRY_FETCH_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`Package "${name}" not found on registry (${res.status})`);
-  const meta = await res.json() as Record<string, unknown>;
+  const meta = (await res.json()) as Record<string, unknown>;
   const distTags = meta['dist-tags'] as Record<string, string> | undefined;
   const versions = meta.versions as Record<string, Record<string, unknown>> | undefined;
   const latest = distTags?.latest;
@@ -93,7 +86,7 @@ export async function downloadTarball(url: string): Promise<Buffer> {
   const declared = Number(res.headers.get('content-length'));
   if (Number.isFinite(declared) && declared > MAX_TARBALL_BYTES) {
     throw new Error(
-      `Tarball too large: declared ${declared} bytes exceeds cap of ${MAX_TARBALL_BYTES} bytes`
+      `Tarball too large: declared ${declared} bytes exceeds cap of ${MAX_TARBALL_BYTES} bytes`,
     );
   }
   if (!res.body) throw new Error('Tarball response has no body');
@@ -107,14 +100,21 @@ export async function downloadTarball(url: string): Promise<Buffer> {
     if (!value) continue;
     total += value.byteLength;
     if (total > MAX_TARBALL_BYTES) {
-      try { await reader.cancel(); } catch { /* ignore */ }
+      try {
+        await reader.cancel();
+      } catch {
+        /* ignore */
+      }
       throw new Error(
-        `Tarball exceeds size cap of ${MAX_TARBALL_BYTES} bytes (received ${total}+)`
+        `Tarball exceeds size cap of ${MAX_TARBALL_BYTES} bytes (received ${total}+)`,
       );
     }
     chunks.push(value);
   }
-  return Buffer.concat(chunks.map((c) => Buffer.from(c)), total);
+  return Buffer.concat(
+    chunks.map((c) => Buffer.from(c)),
+    total,
+  );
 }
 
 /**
@@ -133,7 +133,7 @@ export function verifyIntegrity(buffer: Buffer, meta: PackageMeta, name: string)
     if (actual !== expectedB64) {
       throw new Error(
         `Tarball integrity mismatch for "${name}": ` +
-        `expected ${meta.integrity}, got ${algo}-${actual}`
+          `expected ${meta.integrity}, got ${algo}-${actual}`,
       );
     }
     return;
@@ -142,14 +142,14 @@ export function verifyIntegrity(buffer: Buffer, meta: PackageMeta, name: string)
     const actual = createHash('sha1').update(buffer).digest('hex');
     if (actual !== meta.shasum) {
       throw new Error(
-        `Tarball shasum mismatch for "${name}": expected ${meta.shasum}, got ${actual}`
+        `Tarball shasum mismatch for "${name}": expected ${meta.shasum}, got ${actual}`,
       );
     }
     return;
   }
   throw new Error(
     `Registry returned no integrity or shasum for "${name}". Refusing to install ` +
-    `unverified tarball.`
+      `unverified tarball.`,
   );
 }
 
@@ -208,7 +208,11 @@ export function extractTarballStrip1(tgzPath: string, destDir: string): void {
 export function ensureWorkDirPackageJson(): void {
   const pkgPath = resolve(S.workDir, 'package.json');
   if (!existsSync(pkgPath)) {
-    writeFileSync(pkgPath, JSON.stringify({ name: 'tagma-workspace', private: true, dependencies: {} }, null, 2), 'utf-8');
+    writeFileSync(
+      pkgPath,
+      JSON.stringify({ name: 'tagma-workspace', private: true, dependencies: {} }, null, 2),
+      'utf-8',
+    );
   }
 }
 
@@ -217,7 +221,11 @@ function readPackageJson(pkgPath: string): PackageJson {
 }
 
 function ensureDependencyMap(pkg: PackageJson): Record<string, string> {
-  if (!pkg.dependencies || typeof pkg.dependencies !== 'object' || Array.isArray(pkg.dependencies)) {
+  if (
+    !pkg.dependencies ||
+    typeof pkg.dependencies !== 'object' ||
+    Array.isArray(pkg.dependencies)
+  ) {
     pkg.dependencies = {};
   }
   return pkg.dependencies;
@@ -227,7 +235,7 @@ function assertTagmaPluginPackage(pkgJson: PackageJson, name: string): void {
   const manifest = parsePluginManifestField(pkgJson);
   if (!manifest) {
     throw new Error(
-      `Package "${name}" is not a tagma plugin (missing tagmaPlugin manifest in package.json)`
+      `Package "${name}" is not a tagma plugin (missing tagmaPlugin manifest in package.json)`,
     );
   }
 }
@@ -383,7 +391,9 @@ export function uninstallPackage(name: string): void {
       ) {
         rmSync(scopeDir, { recursive: true, force: true });
       }
-    } catch (_err) { /* ignore — scope dir may be non-empty or already removed */ }
+    } catch (_err) {
+      /* ignore — scope dir may be non-empty or already removed */
+    }
   }
 
   // Remove from package.json

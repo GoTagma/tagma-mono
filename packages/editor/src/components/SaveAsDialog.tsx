@@ -11,19 +11,28 @@ export function SaveAsDialog({ defaultValue, onConfirm, onCancel }: SaveAsDialog
   const [value, setValue] = useState(defaultValue);
 
   return (
-    <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60" onClick={onCancel}>
+    <div
+      className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60"
+      onClick={onCancel}
+    >
       <div
         className="bg-tagma-surface border border-tagma-border shadow-panel w-[440px] flex flex-col animate-fade-in"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="panel-header">
           <h2 className="panel-title">Save As</h2>
-          <button onClick={onCancel} className="p-1 text-tagma-muted hover:text-tagma-text" aria-label="Close dialog">
+          <button
+            onClick={onCancel}
+            className="p-1 text-tagma-muted hover:text-tagma-text"
+            aria-label="Close dialog"
+          >
             <XIcon size={14} />
           </button>
         </div>
         <div className="px-4 py-4 flex flex-col gap-2">
-          <label className="text-[10px] font-mono text-tagma-muted uppercase tracking-wider">File name (saved under .tagma/)</label>
+          <label className="text-[10px] font-mono text-tagma-muted uppercase tracking-wider">
+            File name (saved under .tagma/)
+          </label>
           <input
             type="text"
             autoFocus
@@ -45,7 +54,9 @@ export function SaveAsDialog({ defaultValue, onConfirm, onCancel }: SaveAsDialog
           >
             Cancel
           </button>
-          <button onClick={() => onConfirm(value)} className="btn-primary">Save</button>
+          <button onClick={() => onConfirm(value)} className="btn-primary">
+            Save
+          </button>
         </div>
       </div>
     </div>

@@ -26,7 +26,9 @@ export function YamlPreview({ config, onClose }: YamlPreviewProps) {
     <div className="h-full flex flex-col bg-tagma-bg">
       {/* Header */}
       <div className="flex items-center justify-between px-3 h-7 border-b border-tagma-border bg-tagma-surface shrink-0">
-        <span className="text-[10px] font-medium text-tagma-muted uppercase tracking-wider">YAML Preview</span>
+        <span className="text-[10px] font-medium text-tagma-muted uppercase tracking-wider">
+          YAML Preview
+        </span>
         <div className="flex items-center gap-1.5">
           <button
             onClick={handleCopy}
@@ -35,14 +37,21 @@ export function YamlPreview({ config, onClose }: YamlPreviewProps) {
             {copied ? <Check size={10} className="text-tagma-success" /> : <Copy size={10} />}
             <span>{copied ? 'Copied' : 'Copy'}</span>
           </button>
-          <button onClick={onClose} className="text-tagma-muted hover:text-tagma-text transition-colors p-1" title="Close preview" aria-label="Close preview">
+          <button
+            onClick={onClose}
+            className="text-tagma-muted hover:text-tagma-text transition-colors p-1"
+            title="Close preview"
+            aria-label="Close preview"
+          >
             <X size={12} />
           </button>
         </div>
       </div>
       {/* Content */}
       <div className="flex-1 overflow-auto p-4">
-        <pre className="text-[11px] font-mono text-tagma-text/90 leading-relaxed whitespace-pre-wrap break-words select-text">{yamlContent}</pre>
+        <pre className="text-[11px] font-mono text-tagma-text/90 leading-relaxed whitespace-pre-wrap break-words select-text">
+          {yamlContent}
+        </pre>
       </div>
     </div>
   );

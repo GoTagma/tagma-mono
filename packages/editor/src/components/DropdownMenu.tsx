@@ -82,19 +82,30 @@ export function DropdownMenu({ items, onClose, anchorClassName, anchorStyle }: D
           >
             <button
               disabled={item.disabled}
-              onClick={() => { if (!item.disabled) { item.onAction(); onClose(); } }}
+              onClick={() => {
+                if (!item.disabled) {
+                  item.onAction();
+                  onClose();
+                }
+              }}
               className="flex-1 min-w-0 flex items-center justify-between px-3 py-1.5 text-left text-inherit disabled:cursor-not-allowed disabled:text-inherit"
             >
               <span className="flex flex-col min-w-0 items-start">
                 <span className="truncate max-w-full">{item.label}</span>
                 {item.subLabel && (
-                  <span className={`text-[9px] truncate max-w-full leading-tight ${item.disabled ? 'text-inherit' : 'text-tagma-muted/60'}`}>
+                  <span
+                    className={`text-[9px] truncate max-w-full leading-tight ${item.disabled ? 'text-inherit' : 'text-tagma-muted/60'}`}
+                  >
                     {item.subLabel}
                   </span>
                 )}
               </span>
               {item.shortcut && (
-                <span className={`text-[9px] font-mono ml-6 tracking-wider ${item.disabled ? 'text-inherit' : 'text-tagma-muted/60'}`}>{item.shortcut}</span>
+                <span
+                  className={`text-[9px] font-mono ml-6 tracking-wider ${item.disabled ? 'text-inherit' : 'text-tagma-muted/60'}`}
+                >
+                  {item.shortcut}
+                </span>
               )}
             </button>
             {item.onDelete && !item.disabled && (

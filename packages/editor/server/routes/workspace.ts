@@ -41,9 +41,7 @@ const EXTRA_ALLOWED_ORIGINS = (process.env.TAGMA_ALLOWED_ORIGINS ?? '')
   .map((s) => s.trim())
   .filter(Boolean);
 const ALLOWED_ORIGINS = new Set<string>([...DEFAULT_ALLOWED_ORIGINS, ...EXTRA_ALLOWED_ORIGINS]);
-import {
-  stopWatching as stopFileWatching,
-} from '../file-watcher.js';
+import { stopWatching as stopFileWatching } from '../file-watcher.js';
 import { unregisterPlugin } from '@tagma/sdk';
 import {
   autoLoadInstalledPlugins,
@@ -71,7 +69,9 @@ function unloadAllPluginsForWorkspaceSwitch(): void {
   for (const meta of loadedPluginMeta.values()) {
     try {
       unregisterPlugin(meta.category, meta.type);
-    } catch { /* best-effort */ }
+    } catch {
+      /* best-effort */
+    }
   }
   loadedPluginMeta.clear();
 }
@@ -161,7 +161,8 @@ export function registerWorkspaceRoutes(app: express.Express): void {
         try {
           assertWithinWorkspace(dirPath, 'directory');
         } catch (err) {
-          const msg = err instanceof Error ? err.message : 'Path is outside the workspace directory';
+          const msg =
+            err instanceof Error ? err.message : 'Path is outside the workspace directory';
           return res.status(403).json({ error: msg });
         }
       }
@@ -170,7 +171,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
         .map((e) => ({
           name: e.name,
           path: resolve(dirPath, e.name),
-          type: e.isDirectory() ? 'directory' as const : 'file' as const,
+          type: e.isDirectory() ? ('directory' as const) : ('file' as const),
         }))
         .sort((a, b) => {
           if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
@@ -195,13 +196,18 @@ export function registerWorkspaceRoutes(app: express.Express): void {
           let pipelineName: string | null = null;
           try {
             const doc = yaml.load(readFileSync(absPath, 'utf-8')) as Record<string, unknown> | null;
-            const pipeline = doc && typeof doc === 'object' && 'pipeline' in doc ? (doc.pipeline as Record<string, unknown>) : null;
+            const pipeline =
+              doc && typeof doc === 'object' && 'pipeline' in doc
+                ? (doc.pipeline as Record<string, unknown>)
+                : null;
             const candidate =
               (pipeline && typeof pipeline.name === 'string' && pipeline.name) ||
               (doc && typeof doc.name === 'string' && doc.name) ||
               null;
             if (candidate && String(candidate).trim()) pipelineName = String(candidate).trim();
-          } catch (_err) { /* non-YAML or unreadable file — pipelineName stays null */ }
+          } catch (_err) {
+            /* non-YAML or unreadable file — pipelineName stays null */
+          }
           return { name: e.name, path: absPath, pipelineName };
         })
         .sort((a, b) => a.name.localeCompare(b.name));
@@ -217,7 +223,11 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       const drives: string[] = [];
       for (let c = 65; c <= 90; c++) {
         const drive = String.fromCharCode(c) + ':\\';
-        try { if (existsSync(drive)) drives.push(drive); } catch (_err) { /* drive not accessible */ }
+        try {
+          if (existsSync(drive)) drives.push(drive);
+        } catch (_err) {
+          /* drive not accessible */
+        }
       }
       res.json({ roots: drives });
     } else {
@@ -315,7 +325,8 @@ export function registerWorkspaceRoutes(app: express.Express): void {
   app.post('/api/save', (_req, res) => {
     let savePath = S.yamlPath;
     if (!savePath) {
-      if (!S.workDir) return res.status(400).json({ error: 'No file path and no workspace configured.' });
+      if (!S.workDir)
+        return res.status(400).json({ error: 'No file path and no workspace configured.' });
       const tagmaDir = join(S.workDir, '.tagma');
       mkdirSync(tagmaDir, { recursive: true });
       const randomId = Math.random().toString(36).slice(2, 10);
@@ -377,7 +388,11 @@ export function registerWorkspaceRoutes(app: express.Express): void {
     const trackId = Math.random().toString(36).slice(2, 10);
     S.config = upsertTrack(S.config, { id: trackId, name: 'Track 1', color: '#3b82f6', tasks: [] });
     const taskId = Math.random().toString(36).slice(2, 10);
-    S.config = upsertTask(S.config, trackId, { id: taskId, name: 'Task 1', prompt: 'Hello world!' });
+    S.config = upsertTask(S.config, trackId, {
+      id: taskId,
+      name: 'Task 1',
+      prompt: 'Hello world!',
+    });
     S.yamlPath = join(tagmaDir, fileName);
     S.layout = { positions: {} };
     const content = serializePipeline(S.config);
@@ -407,7 +422,8 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       return res.status(400).json({ error: 'sourcePath must be a .yaml or .yml file' });
     }
     const absSource = resolve(sourcePath);
-    if (!existsSync(absSource)) return res.status(404).json({ error: `File not found: ${absSource}` });
+    if (!existsSync(absSource))
+      return res.status(404).json({ error: `File not found: ${absSource}` });
     const tagmaDir = join(S.workDir, '.tagma');
     mkdirSync(tagmaDir, { recursive: true });
     // Sanitize the destination filename: basename() keeps the extension and
@@ -424,7 +440,9 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       if (existsSync(sourceLayoutFile)) {
         try {
           writeFileSync(destLayoutFile, readFileSync(sourceLayoutFile, 'utf-8'), 'utf-8');
-        } catch { /* best-effort — missing or unreadable layout should not block import */ }
+        } catch {
+          /* best-effort — missing or unreadable layout should not block import */
+        }
       }
       try {
         S.config = parseYaml(content);
@@ -437,7 +455,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       await autoLoadInstalledPlugins();
       // Check if imported YAML contains shell command tasks — warn the user
       // that imported pipelines may execute arbitrary shell commands.
-      const hasCommandTasks = S.config.tracks.some(t => t.tasks.some(task => task.command));
+      const hasCommandTasks = S.config.tracks.some((t) => t.tasks.some((task) => task.command));
       const state = getState();
       if (hasCommandTasks) {
         (state as Record<string, unknown>).importWarning =
@@ -456,7 +474,8 @@ export function registerWorkspaceRoutes(app: express.Express): void {
     if (!destDir) return res.status(400).json({ error: 'destDir is required' });
     if (!S.yamlPath) return res.status(400).json({ error: 'No pipeline file to export' });
     const absDestDir = resolve(destDir);
-    if (!existsSync(absDestDir)) return res.status(404).json({ error: `Directory not found: ${absDestDir}` });
+    if (!existsSync(absDestDir))
+      return res.status(404).json({ error: `Directory not found: ${absDestDir}` });
     // C3: destDir is user-picked through the export dialog so it may legitimately
     // sit outside the workspace. We cap damage to "exactly one YAML + one
     // layout.json with the current pipeline's basename" (no path-traversal in
@@ -500,7 +519,9 @@ export function registerWorkspaceRoutes(app: express.Express): void {
     // C3: only YAML files under .tagma/ are user-deletable through this
     // endpoint. Layout files travel with their YAML and are removed transitively.
     if (!/\.ya?ml$/i.test(absPath)) {
-      return res.status(400).json({ error: 'Only .yaml/.yml pipeline files can be deleted via this endpoint' });
+      return res
+        .status(400)
+        .json({ error: 'Only .yaml/.yml pipeline files can be deleted via this endpoint' });
     }
     try {
       if (existsSync(absPath)) {

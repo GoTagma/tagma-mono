@@ -16,8 +16,13 @@ interface ConfirmDialogProps {
  * lightweight modal pattern used in PipelineConfigPanel.
  */
 export function ConfirmDialog({
-  title, message, confirmLabel = 'Delete', cancelLabel = 'Cancel',
-  danger = true, onConfirm, onCancel,
+  title,
+  message,
+  confirmLabel = 'Delete',
+  cancelLabel = 'Cancel',
+  danger = true,
+  onConfirm,
+  onCancel,
 }: ConfirmDialogProps) {
   return (
     <div
@@ -42,9 +47,7 @@ export function ConfirmDialog({
             <X size={14} />
           </button>
         </div>
-        <div className="px-5 py-4 text-[12px] text-tagma-text space-y-2">
-          {message}
-        </div>
+        <div className="px-5 py-4 text-[12px] text-tagma-text space-y-2">{message}</div>
         <div className="px-5 py-3 border-t border-tagma-border flex justify-end gap-2">
           <button
             type="button"
@@ -55,7 +58,9 @@ export function ConfirmDialog({
           </button>
           <button
             type="button"
-            onClick={() => { onConfirm(); }}
+            onClick={() => {
+              onConfirm();
+            }}
             className={danger ? 'btn-danger' : 'btn-primary'}
           >
             {confirmLabel}

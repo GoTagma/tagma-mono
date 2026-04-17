@@ -1,6 +1,11 @@
 import type {
-  DriverPlugin, DriverCapabilities, DriverResultMeta,
-  TaskConfig, TrackConfig, DriverContext, SpawnSpec,
+  DriverPlugin,
+  DriverCapabilities,
+  DriverResultMeta,
+  TaskConfig,
+  TrackConfig,
+  DriverContext,
+  SpawnSpec,
 } from '@tagma/types';
 
 const DEFAULT_MODEL = 'opencode/big-pickle';
@@ -23,25 +28,25 @@ const OpenCodeDriver: DriverPlugin = {
   name: 'opencode',
 
   capabilities: {
-    sessionResume: true,      // supports --session
-    systemPrompt: false,      // no --system-prompt flag; prepend to prompt instead
-    outputFormat: true,       // supports --format json
+    sessionResume: true, // supports --session
+    systemPrompt: false, // no --system-prompt flag; prepend to prompt instead
+    outputFormat: true, // supports --format json
   } satisfies DriverCapabilities,
 
   resolveModel(): string {
     return DEFAULT_MODEL;
   },
 
-  async buildCommand(
-    task: TaskConfig, track: TrackConfig, ctx: DriverContext,
-  ): Promise<SpawnSpec> {
+  async buildCommand(task: TaskConfig, track: TrackConfig, ctx: DriverContext): Promise<SpawnSpec> {
     const model = task.model ?? track.model ?? DEFAULT_MODEL;
     // Resolve reasoning_effort → opencode --variant. SDK schema layer already
     // resolved task → track → pipeline inheritance, so we only need to read
     // task.reasoning_effort here.
     const rawEffort = task.reasoning_effort ?? track.reasoning_effort;
     const variant = rawEffort
-      ? (rawEffort in EFFORT_TO_VARIANT ? EFFORT_TO_VARIANT[rawEffort] : rawEffort)
+      ? rawEffort in EFFORT_TO_VARIANT
+        ? EFFORT_TO_VARIANT[rawEffort]
+        : rawEffort
       : null;
 
     let prompt = task.prompt!;
@@ -76,8 +81,10 @@ const OpenCodeDriver: DriverPlugin = {
     const args: string[] = [
       'opencode',
       'run',
-      '--model', model,
-      '--format', 'json',       // JSON output for parseResult
+      '--model',
+      model,
+      '--format',
+      'json', // JSON output for parseResult
     ];
 
     // `--variant` must precede `--` like every other flag. opencode rejects
@@ -107,11 +114,12 @@ const OpenCodeDriver: DriverPlugin = {
         // engine treated those as success and downstream tasks ran on top
         // of the bogus output. Force a failure so the user sees a useful
         // error in the UI and skip_downstream / stop_all kick in.
-        const reason = typeof json.error?.message === 'string'
-          ? `opencode reported error: ${json.error.message}`
-          : typeof json.error === 'string'
-          ? `opencode reported error: ${json.error}`
-          : 'opencode emitted an error JSON payload';
+        const reason =
+          typeof json.error?.message === 'string'
+            ? `opencode reported error: ${json.error.message}`
+            : typeof json.error === 'string'
+              ? `opencode reported error: ${json.error}`
+              : 'opencode emitted an error JSON payload';
         return {
           forceFailure: true,
           forceFailureReason: reason,

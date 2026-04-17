@@ -1,13 +1,6 @@
-import {
-  isValidPluginName,
-  readPluginManifest as parsePluginManifestField,
-} from '@tagma/sdk';
+import { isValidPluginName, readPluginManifest as parsePluginManifestField } from '@tagma/sdk';
 import type { PluginCategory } from '@tagma/sdk';
-import {
-  NPM_REGISTRY,
-  REGISTRY_FETCH_TIMEOUT_MS,
-  registryUrl,
-} from './install.js';
+import { NPM_REGISTRY, REGISTRY_FETCH_TIMEOUT_MS, registryUrl } from './install.js';
 
 // ── Plugin marketplace (npm registry proxy) ──
 //
@@ -28,7 +21,10 @@ export const MARKETPLACE_CACHE_TTL_MS = 5 * 60 * 1000;
 export const MARKETPLACE_SEARCH_LIMIT = 50;
 export const MARKETPLACE_CONCURRENCY = 8;
 export const VALID_PLUGIN_CATEGORIES: ReadonlySet<PluginCategory> = new Set([
-  'drivers', 'triggers', 'completions', 'middlewares',
+  'drivers',
+  'triggers',
+  'completions',
+  'middlewares',
 ]);
 
 export interface CacheEntry<T> {
@@ -122,7 +118,7 @@ export async function fetchWeeklyDownloads(name: string): Promise<number | null>
       cacheSet(marketplaceDownloadsCache, name, null);
       return null;
     }
-    const body = await res.json() as { downloads?: unknown; error?: unknown };
+    const body = (await res.json()) as { downloads?: unknown; error?: unknown };
     if (typeof body.downloads === 'number' && Number.isFinite(body.downloads)) {
       cacheSet(marketplaceDownloadsCache, name, body.downloads);
       return body.downloads;
@@ -141,7 +137,9 @@ export async function fetchWeeklyDownloads(name: string): Promise<number | null>
  * MarketplacePackageDetail. Returns null when the package is absent, not a
  * valid plugin, or otherwise unusable.
  */
-export async function fetchMarketplacePackage(name: string): Promise<MarketplacePackageDetail | null> {
+export async function fetchMarketplacePackage(
+  name: string,
+): Promise<MarketplacePackageDetail | null> {
   if (!isValidPluginName(name)) return null;
   const cached = cacheGet(marketplaceManifestCache, name);
   if (cached) return cached;
@@ -198,7 +196,9 @@ export async function fetchMarketplacePackage(name: string): Promise<Marketplace
  * concurrency so we don't fan out dozens of simultaneous fetches against
  * the registry.
  */
-export async function resolveMarketplaceEntries(names: readonly string[]): Promise<MarketplaceEntry[]> {
+export async function resolveMarketplaceEntries(
+  names: readonly string[],
+): Promise<MarketplaceEntry[]> {
   const results: MarketplaceEntry[] = [];
   let i = 0;
   async function worker(): Promise<void> {

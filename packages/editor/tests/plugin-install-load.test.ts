@@ -11,7 +11,9 @@ const tempDirs: string[] = [];
 let restoreSpawn: (() => void) | null = null;
 
 function makeTempDir(name: string): string {
-  const dir = Bun.file(join(tmpdir(), `tagma-${name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`));
+  const dir = Bun.file(
+    join(tmpdir(), `tagma-${name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
+  );
   const abs = resolve(dir.name!);
   mkdirSync(abs, { recursive: true });
   tempDirs.push(abs);
@@ -22,14 +24,17 @@ function writeJson(path: string, value: unknown): void {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf-8');
 }
 
-function writeDriverPlugin(dir: string, opts: {
-  name?: string;
-  type?: string;
-  handlerName: string;
-  tagmaPlugin?: { category: 'drivers'; type: string };
-  dependencies?: Record<string, string>;
-  importDependency?: string;
-}): void {
+function writeDriverPlugin(
+  dir: string,
+  opts: {
+    name?: string;
+    type?: string;
+    handlerName: string;
+    tagmaPlugin?: { category: 'drivers'; type: string };
+    dependencies?: Record<string, string>;
+    importDependency?: string;
+  },
+): void {
   mkdirSync(dir, { recursive: true });
   writeJson(join(dir, 'package.json'), {
     name: opts.name ?? '@scope/plugin-under-test',
@@ -42,9 +47,7 @@ function writeDriverPlugin(dir: string, opts: {
   writeFileSync(
     join(dir, 'index.js'),
     [
-      ...(opts.importDependency
-        ? [`import dep from '${opts.importDependency}';`]
-        : []),
+      ...(opts.importDependency ? [`import dep from '${opts.importDependency}';`] : []),
       `export const pluginCategory = 'drivers';`,
       `export const pluginType = '${opts.type ?? 'test'}';`,
       `export default {`,
@@ -97,8 +100,16 @@ describe('plugin install/import hardening', () => {
       spawnCalls.push(cmd);
       return {
         exited: Promise.resolve(0),
-        stdout: new ReadableStream({ start(controller) { controller.close(); } }),
-        stderr: new ReadableStream({ start(controller) { controller.close(); } }),
+        stdout: new ReadableStream({
+          start(controller) {
+            controller.close();
+          },
+        }),
+        stderr: new ReadableStream({
+          start(controller) {
+            controller.close();
+          },
+        }),
       };
     }) as typeof Bun.spawn;
     restoreSpawn = () => {

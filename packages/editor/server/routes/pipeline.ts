@@ -10,11 +10,7 @@ import {
   serializePipeline,
   setPipelineField,
 } from '@tagma/sdk';
-import type {
-  RawPipelineConfig,
-  RawTrackConfig,
-  RawTaskConfig,
-} from '@tagma/sdk';
+import type { RawPipelineConfig, RawTrackConfig, RawTaskConfig } from '@tagma/sdk';
 import {
   S,
   getState,
@@ -65,7 +61,11 @@ export function registerPipelineRoutes(app: express.Express): void {
     res.write('\n');
     // B5: Send current state on connect so reconnecting clients are immediately
     // up-to-date even if they missed prior state events during disconnection.
-    const syncData = JSON.stringify({ type: 'state_sync', newState: getState(), seq: S.stateEventSeq });
+    const syncData = JSON.stringify({
+      type: 'state_sync',
+      newState: getState(),
+      seq: S.stateEventSeq,
+    });
     res.write(`id: ${S.stateEventSeq}\nevent: state_event\ndata: ${syncData}\n\n`);
     const client: StateEventClient = { res };
     stateEventClients.add(client);
@@ -122,7 +122,7 @@ export function registerPipelineRoutes(app: express.Express): void {
     const updated = stripEmptyFields(merged, TRACK_REQUIRED_KEYS) as unknown as RawTrackConfig;
     S.config = {
       ...S.config,
-      tracks: S.config.tracks.map(t => t.id === trackId ? updated : t),
+      tracks: S.config.tracks.map((t) => (t.id === trackId ? updated : t)),
     };
     S.config = reconcilePipelinePlugins(S.config);
     replyWithState(res);
@@ -286,11 +286,15 @@ export function registerPipelineRoutes(app: express.Express): void {
   app.post('/api/config/replace', (req, res) => {
     try {
       const incoming = req.body?.config as RawPipelineConfig | undefined;
-      const incomingLayout = req.body?.layout as { positions?: Record<string, { x: number }> } | undefined;
+      const incomingLayout = req.body?.layout as
+        | { positions?: Record<string, { x: number }> }
+        | undefined;
 
       // 1. Top-level shape
       if (!incoming || typeof incoming !== 'object' || !Array.isArray(incoming.tracks)) {
-        return res.status(400).json({ error: 'Invalid config: expected { config: { tracks: [] } }' });
+        return res
+          .status(400)
+          .json({ error: 'Invalid config: expected { config: { tracks: [] } }' });
       }
       if (typeof incoming.name !== 'string') {
         return res.status(400).json({ error: 'Invalid config: pipeline name must be a string' });
@@ -299,12 +303,21 @@ export function registerPipelineRoutes(app: express.Express): void {
       // 2. Deep structural check — fail closed on missing identifiers so a
       //    corrupt undo payload can never reach serializePipeline.
       for (const track of incoming.tracks) {
-        if (!track || typeof track !== 'object' || typeof track.id !== 'string' || !Array.isArray(track.tasks)) {
-          return res.status(400).json({ error: 'Invalid config: each track must have id (string) and tasks (array)' });
+        if (
+          !track ||
+          typeof track !== 'object' ||
+          typeof track.id !== 'string' ||
+          !Array.isArray(track.tasks)
+        ) {
+          return res
+            .status(400)
+            .json({ error: 'Invalid config: each track must have id (string) and tasks (array)' });
         }
         for (const task of track.tasks) {
           if (!task || typeof task !== 'object' || typeof task.id !== 'string') {
-            return res.status(400).json({ error: 'Invalid config: each task must have id (string)' });
+            return res
+              .status(400)
+              .json({ error: 'Invalid config: each task must have id (string)' });
           }
         }
       }
@@ -317,7 +330,12 @@ export function registerPipelineRoutes(app: express.Express): void {
 
       // 4. Atomically sync layout. Filter out orphan positions so the server's
       //    layout never references a qid that doesn't exist in the config.
-      if (incomingLayout && typeof incomingLayout === 'object' && incomingLayout.positions && typeof incomingLayout.positions === 'object') {
+      if (
+        incomingLayout &&
+        typeof incomingLayout === 'object' &&
+        incomingLayout.positions &&
+        typeof incomingLayout.positions === 'object'
+      ) {
         const validQids = new Set<string>();
         for (const t of normalized.tracks) {
           for (const k of t.tasks) validQids.add(`${t.id}.${k.id}`);

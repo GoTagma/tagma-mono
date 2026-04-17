@@ -1,8 +1,14 @@
 import { existsSync } from 'node:fs';
 import { isAbsolute, relative, dirname, join } from 'node:path';
 import type {
-  DriverPlugin, DriverCapabilities, DriverResultMeta,
-  TaskConfig, TrackConfig, DriverContext, SpawnSpec, Permissions,
+  DriverPlugin,
+  DriverCapabilities,
+  DriverResultMeta,
+  TaskConfig,
+  TrackConfig,
+  DriverContext,
+  SpawnSpec,
+  Permissions,
 } from '../types';
 
 // Claude Code CLI reference: https://code.claude.com/docs/en/cli-reference
@@ -146,9 +152,7 @@ export const ClaudeCodeDriver: DriverPlugin = {
   resolveModel,
   resolveTools,
 
-  async buildCommand(
-    task: TaskConfig, track: TrackConfig, ctx: DriverContext,
-  ): Promise<SpawnSpec> {
+  async buildCommand(task: TaskConfig, track: TrackConfig, ctx: DriverContext): Promise<SpawnSpec> {
     const permissions = task.permissions ?? track.permissions!;
     const model = task.model ?? track.model ?? DEFAULT_MODEL;
     // SDK schema layer already resolved task → track → pipeline inheritance.
@@ -167,18 +171,23 @@ export const ClaudeCodeDriver: DriverPlugin = {
 
     const args: string[] = [
       'claude',
-      '-p',  // no value — prompt is piped via stdin
-      '--model', model,
-      '--allowedTools', tools,
-      '--permission-mode', permissionMode,
-      '--output-format', 'json',
+      '-p', // no value — prompt is piped via stdin
+      '--model',
+      model,
+      '--allowedTools',
+      tools,
+      '--permission-mode',
+      permissionMode,
+      '--output-format',
+      'json',
       // NOTE: do NOT use --verbose here. It changes stdout from a single JSON
       // result object to a JSON event-stream array, breaking parseResult's
       // session_id extraction (needed for continue_from) and normalizedOutput.
       // The engine already captures stdout/stderr for pipeline logs.
       // Pin to project+local settings only; don't inherit arbitrary user-level
       // config (hooks, MCP servers, etc.) into pipeline automation.
-      '--setting-sources', 'project,local',
+      '--setting-sources',
+      'project,local',
     ];
 
     if (effort) {
@@ -229,9 +238,10 @@ export const ClaudeCodeDriver: DriverPlugin = {
       const normalizedOutput = json.result ?? json.text ?? json.content ?? stdout;
       return {
         sessionId: json.session_id,
-        normalizedOutput: typeof normalizedOutput === 'string'
-          ? normalizedOutput
-          : JSON.stringify(normalizedOutput),
+        normalizedOutput:
+          typeof normalizedOutput === 'string'
+            ? normalizedOutput
+            : JSON.stringify(normalizedOutput),
       };
     } catch {
       return { normalizedOutput: stdout };

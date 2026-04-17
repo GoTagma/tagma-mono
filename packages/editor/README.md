@@ -64,15 +64,15 @@ curl -fsSL https://bun.sh/install | bash
 
 ## Available Scripts
 
-| Script | Description |
-|--------|-------------|
-| `bun run dev` | Run frontend and backend dev servers in parallel |
+| Script               | Description                                      |
+| -------------------- | ------------------------------------------------ |
+| `bun run dev`        | Run frontend and backend dev servers in parallel |
 | `bun run dev:server` | Run backend only (`bun --watch server/index.ts`) |
-| `bun run dev:client` | Run frontend only (`vite`) |
-| `bun run build` | Build the frontend for production |
-| `bun start` | Start the backend in production mode |
-| `bun run preview` | Preview the production build locally |
-| `bun test` | Run the test suite |
+| `bun run dev:client` | Run frontend only (`vite`)                       |
+| `bun run build`      | Build the frontend for production                |
+| `bun start`          | Start the backend in production mode             |
+| `bun run preview`    | Preview the production build locally             |
+| `bun test`           | Run the test suite                               |
 
 ## Notes
 

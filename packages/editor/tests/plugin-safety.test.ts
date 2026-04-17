@@ -40,18 +40,18 @@ describe('isValidPluginName', () => {
   });
 
   test.each([
-    'plain-name',                    // no scope, no tagma-plugin- prefix
-    '../etc/passwd',                 // path traversal
-    '../../some-dir',                // path traversal
-    '@a/../../etc',                  // scope-prefixed traversal
-    '@a/b/c',                        // multi-segment scoped
-    '@/foo',                         // empty scope
-    '@scope/',                       // empty package
-    '@SCOPE/pkg',                    // uppercase rejected (regex is lowercase only)
-    '/absolute/path',                // absolute path
-    'C:\\Windows',                   // Windows absolute path
-    'tagma-plugin-../escape',        // tagma-plugin- prefix with traversal
-    '',                              // empty
+    'plain-name', // no scope, no tagma-plugin- prefix
+    '../etc/passwd', // path traversal
+    '../../some-dir', // path traversal
+    '@a/../../etc', // scope-prefixed traversal
+    '@a/b/c', // multi-segment scoped
+    '@/foo', // empty scope
+    '@scope/', // empty package
+    '@SCOPE/pkg', // uppercase rejected (regex is lowercase only)
+    '/absolute/path', // absolute path
+    'C:\\Windows', // Windows absolute path
+    'tagma-plugin-../escape', // tagma-plugin- prefix with traversal
+    '', // empty
   ])('rejects %s', (name) => {
     expect(isValidPluginName(name)).toBe(false);
   });
@@ -128,7 +128,9 @@ describe('assertWithinNodeModules', () => {
   });
 
   test('rejects an arbitrary absolute path elsewhere on disk', () => {
-    expect(() => assertWithinNodeModules(resolve('/etc/passwd'), FAKE_WORKDIR)).toThrow(PluginSafetyError);
+    expect(() => assertWithinNodeModules(resolve('/etc/passwd'), FAKE_WORKDIR)).toThrow(
+      PluginSafetyError,
+    );
   });
 });
 
@@ -184,25 +186,29 @@ describe('isPathWithin', () => {
 describe('pluginCategoryFromName', () => {
   test('parses driver packages', () => {
     expect(pluginCategoryFromName('@tagma/driver-codex')).toEqual({
-      category: 'drivers', type: 'codex',
+      category: 'drivers',
+      type: 'codex',
     });
   });
 
   test('parses trigger packages', () => {
     expect(pluginCategoryFromName('@tagma/trigger-github')).toEqual({
-      category: 'triggers', type: 'github',
+      category: 'triggers',
+      type: 'github',
     });
   });
 
   test('parses completion packages', () => {
     expect(pluginCategoryFromName('@tagma/completion-output_check')).toEqual({
-      category: 'completions', type: 'output_check',
+      category: 'completions',
+      type: 'output_check',
     });
   });
 
   test('parses middleware packages', () => {
     expect(pluginCategoryFromName('@tagma/middleware-static_context')).toEqual({
-      category: 'middlewares', type: 'static_context',
+      category: 'middlewares',
+      type: 'static_context',
     });
   });
 
@@ -239,10 +245,15 @@ function makeSlowImporter(delayMs: number): {
     setTimeout(() => reject(new Error('orphan-late-settle')), delayMs);
   });
   // Pre-attach so the orphan rejection doesn't trip unhandled-rejection.
-  promise.catch(() => { /* swallow */ });
+  promise.catch(() => {
+    /* swallow */
+  });
   return {
     importer: () => promise,
-    drain: () => promise.catch(() => { /* settled */ }) as Promise<void>,
+    drain: () =>
+      promise.catch(() => {
+        /* settled */
+      }) as Promise<void>,
   };
 }
 
@@ -250,7 +261,10 @@ describe('importWithTimeout (R11)', () => {
   test('returns the module on a fast import', async () => {
     const fakeMod = { pluginCategory: 'drivers', pluginType: 'mock', default: { name: 'mock' } };
     const result = await importWithTimeout<typeof fakeMod>(
-      'file:///fake', 5000, 'r11-fast', async () => fakeMod,
+      'file:///fake',
+      5000,
+      'r11-fast',
+      async () => fakeMod,
     );
     expect(result).toBe(fakeMod);
     expect(result.pluginCategory).toBe('drivers');
@@ -259,9 +273,9 @@ describe('importWithTimeout (R11)', () => {
   test('rejects with a timeout error when import is slower than the budget', async () => {
     const { importer, drain } = makeSlowImporter(400);
     const start = Date.now();
-    await expect(
-      importWithTimeout('file:///fake', 100, 'r11-hung', importer),
-    ).rejects.toThrow(/took longer than 100ms/);
+    await expect(importWithTimeout('file:///fake', 100, 'r11-hung', importer)).rejects.toThrow(
+      /took longer than 100ms/,
+    );
     const elapsed = Date.now() - start;
     expect(elapsed).toBeGreaterThanOrEqual(90);
     expect(elapsed).toBeLessThan(2000);
@@ -282,23 +296,17 @@ describe('importWithTimeout (R11)', () => {
 
   test('propagates module-level throws as the original error (not timeout)', async () => {
     await expect(
-      importWithTimeout(
-        'file:///fake-throws',
-        5000,
-        'r11-throws',
-        async () => { throw new Error('boom from module top'); },
-      )
+      importWithTimeout('file:///fake-throws', 5000, 'r11-throws', async () => {
+        throw new Error('boom from module top');
+      }),
     ).rejects.toThrow(/boom from module top/);
   });
 
   test('propagates synchronous throws from the importer', async () => {
     await expect(
-      importWithTimeout(
-        'file:///fake-sync-throw',
-        5000,
-        'r11-sync-throw',
-        () => { throw new Error('sync boom'); },
-      )
+      importWithTimeout('file:///fake-sync-throw', 5000, 'r11-sync-throw', () => {
+        throw new Error('sync boom');
+      }),
     ).rejects.toThrow(/sync boom/);
   });
 
@@ -307,7 +315,9 @@ describe('importWithTimeout (R11)', () => {
     // hang waiting for it to fire — so this test passing is itself the
     // assertion that the cleanup path runs.
     const result = await importWithTimeout(
-      'file:///fake', 30_000, 'r11-cleanup',
+      'file:///fake',
+      30_000,
+      'r11-cleanup',
       () => new Promise((r) => setTimeout(() => r({ ok: true }), 10)),
     );
     expect(result).toEqual({ ok: true });

@@ -39,7 +39,11 @@ describe('completion default serialization', () => {
           id: 'track_a',
           name: 'Track A',
           tasks: [
-            { id: 'task_1', prompt: 'check file', completion: { type: 'file_exists', path: './out.txt' } },
+            {
+              id: 'task_1',
+              prompt: 'check file',
+              completion: { type: 'file_exists', path: './out.txt' },
+            },
           ],
         },
       ],

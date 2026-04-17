@@ -1,5 +1,17 @@
 import { useState, useCallback, useMemo } from 'react';
-import { Check, X, Pencil, Play, LayoutGrid, AlertTriangle, FolderOpen, ExternalLink, ChevronDown, Code, History } from 'lucide-react';
+import {
+  Check,
+  X,
+  Pencil,
+  Play,
+  LayoutGrid,
+  AlertTriangle,
+  FolderOpen,
+  ExternalLink,
+  ChevronDown,
+  Code,
+  History,
+} from 'lucide-react';
 import { MenuBar } from '../MenuBar';
 import { DropdownMenu, type DropdownItem } from '../DropdownMenu';
 import { api } from '../../api/client';
@@ -35,8 +47,19 @@ interface ToolbarProps {
 }
 
 export function Toolbar({
-  pipelineName, yamlPath, workDir, isDirty, errorCount, menus, workspaceItems,
-  onUpdateName, onRun, yamlPreviewOpen, onToggleYamlPreview, onShowHistory, runStatusSlot,
+  pipelineName,
+  yamlPath,
+  workDir,
+  isDirty,
+  errorCount,
+  menus,
+  workspaceItems,
+  onUpdateName,
+  onRun,
+  yamlPreviewOpen,
+  onToggleYamlPreview,
+  onShowHistory,
+  runStatusSlot,
 }: ToolbarProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(pipelineName);
@@ -83,23 +106,47 @@ export function Toolbar({
         {isEditing ? (
           <div className="flex items-center gap-1.5 shrink-0">
             <input
-              type="text" value={editName}
+              type="text"
+              value={editName}
               onChange={(e) => setEditName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleSaveName(); if (e.key === 'Escape') handleCancel(); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSaveName();
+                if (e.key === 'Escape') handleCancel();
+              }}
               className="text-[11px] font-semibold tracking-wide bg-tagma-bg border border-tagma-accent/40 px-2 py-0.5 text-tagma-text focus:border-tagma-accent w-full max-w-[12rem]"
               autoFocus
             />
-            <button onClick={handleSaveName} className="p-0.5 text-tagma-success hover:text-tagma-success/80" aria-label="Save name"><Check size={12} /></button>
-            <button onClick={handleCancel} className="p-0.5 text-tagma-muted hover:text-tagma-error" aria-label="Cancel editing"><X size={12} /></button>
+            <button
+              onClick={handleSaveName}
+              className="p-0.5 text-tagma-success hover:text-tagma-success/80"
+              aria-label="Save name"
+            >
+              <Check size={12} />
+            </button>
+            <button
+              onClick={handleCancel}
+              className="p-0.5 text-tagma-muted hover:text-tagma-error"
+              aria-label="Cancel editing"
+            >
+              <X size={12} />
+            </button>
           </div>
         ) : (
           <button
-            onClick={() => { setEditName(pipelineName); setIsEditing(true); }}
+            onClick={() => {
+              setEditName(pipelineName);
+              setIsEditing(true);
+            }}
             className="flex items-center gap-1.5 group min-w-0 shrink-0"
             title={yamlPath ?? 'Unsaved pipeline'}
           >
-            <span className="text-[11px] font-semibold tracking-wide text-tagma-text truncate max-w-[180px] group-hover:text-white transition-colors">{pipelineName}</span>
-            <Pencil size={9} className="text-tagma-muted/50 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+            <span className="text-[11px] font-semibold tracking-wide text-tagma-text truncate max-w-[180px] group-hover:text-white transition-colors">
+              {pipelineName}
+            </span>
+            <Pencil
+              size={9}
+              className="text-tagma-muted/50 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+            />
           </button>
         )}
 
@@ -107,7 +154,10 @@ export function Toolbar({
           <>
             <span className="text-tagma-muted/30 text-[10px] select-none shrink-0">/</span>
             <div className="flex items-center gap-1 min-w-0 group/file">
-              <span className="text-[10px] font-mono text-tagma-muted/60 truncate" title={yamlPath!}>
+              <span
+                className="text-[10px] font-mono text-tagma-muted/60 truncate"
+                title={yamlPath!}
+              >
                 {displayPath}
               </span>
               <button
@@ -153,7 +203,9 @@ export function Toolbar({
               title={`${workDir}\nClick to browse workspace YAMLs`}
             >
               <FolderOpen size={10} className="text-tagma-muted/40 shrink-0" />
-              <span className="text-[10px] font-mono text-tagma-muted/40 truncate max-w-[180px]">{workDir}</span>
+              <span className="text-[10px] font-mono text-tagma-muted/40 truncate max-w-[180px]">
+                {workDir}
+              </span>
               <ChevronDown size={8} className="text-tagma-muted/40 opacity-60 shrink-0" />
             </button>
             <button

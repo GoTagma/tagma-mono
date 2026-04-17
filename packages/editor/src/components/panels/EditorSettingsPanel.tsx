@@ -68,8 +68,12 @@ export function EditorSettingsPanel({
           setDeclared(declaredRes.value);
         }
       })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const updateField = async <K extends keyof EditorSettings>(key: K, value: EditorSettings[K]) => {
@@ -113,7 +117,10 @@ export function EditorSettingsPanel({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={onClose}
+    >
       <div
         className="bg-tagma-surface border border-tagma-border shadow-panel w-[520px] flex flex-col animate-fade-in"
         style={{ maxHeight: maxH }}
@@ -121,7 +128,11 @@ export function EditorSettingsPanel({
       >
         <div className="panel-header">
           <h2 className="panel-title">Editor Settings</h2>
-          <button onClick={onClose} className="p-1 text-tagma-muted hover:text-tagma-text transition-colors" aria-label="Close">
+          <button
+            onClick={onClose}
+            className="p-1 text-tagma-muted hover:text-tagma-text transition-colors"
+            aria-label="Close"
+          >
             <X size={14} />
           </button>
         </div>
@@ -129,7 +140,8 @@ export function EditorSettingsPanel({
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
           {!hasWorkspace && (
             <WarnBox>
-              Open a workspace first — editor settings are stored per workspace in <code>.tagma/editor-settings.json</code>.
+              Open a workspace first — editor settings are stored per workspace in{' '}
+              <code>.tagma/editor-settings.json</code>.
             </WarnBox>
           )}
 
@@ -166,9 +178,11 @@ export function EditorSettingsPanel({
                       className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 border border-tagma-accent/50 text-tagma-accent hover:bg-tagma-accent/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
                       title="Re-scan all YAMLs in this workspace and install/load any missing plugins."
                     >
-                      {applyStatus.kind === 'running'
-                        ? <Loader2 size={11} className="animate-spin" />
-                        : <RefreshCw size={11} />}
+                      {applyStatus.kind === 'running' ? (
+                        <Loader2 size={11} className="animate-spin" />
+                      ) : (
+                        <RefreshCw size={11} />
+                      )}
                       Apply Now
                     </button>
                     {!settings.autoInstallDeclaredPlugins && (
@@ -187,7 +201,8 @@ export function EditorSettingsPanel({
           <div className="border-t border-tagma-border" />
 
           <div className="text-[10px] text-tagma-muted font-mono">
-            Stored in <code>.tagma/editor-settings.json</code>{saving ? ' · saving…' : ''}
+            Stored in <code>.tagma/editor-settings.json</code>
+            {saving ? ' · saving…' : ''}
           </div>
         </div>
       </div>
@@ -298,10 +313,14 @@ function ApplyResult({ status }: { status: ApplyStatus }) {
           <CheckCircle2 size={10} className="text-tagma-success shrink-0 mt-[1px]" />
           <div className="space-y-0.5">
             {installedCount > 0 && (
-              <div>Installed {installedCount}: {result.installed.join(', ')}</div>
+              <div>
+                Installed {installedCount}: {result.installed.join(', ')}
+              </div>
             )}
             {loadedCount > 0 && (
-              <div>Loaded {loadedCount}: {result.loaded.join(', ')}</div>
+              <div>
+                Loaded {loadedCount}: {result.loaded.join(', ')}
+              </div>
             )}
             {nothingHappened && missingCount === 0 && (
               <div>
@@ -318,7 +337,9 @@ function ApplyResult({ status }: { status: ApplyStatus }) {
           <div className="flex items-start gap-1.5 text-[10px] text-amber-400/90 font-mono">
             <AlertTriangle size={10} className="text-amber-400 shrink-0 mt-[1px]" />
             <div className="space-y-0.5">
-              <div>Still missing ({missingCount}): {result.missing.join(', ')}</div>
+              <div>
+                Still missing ({missingCount}): {result.missing.join(', ')}
+              </div>
               {!result.settings.autoInstallDeclaredPlugins && (
                 <div className="text-amber-400/70">
                   Turn on "Auto-install declared plugins" to install them.

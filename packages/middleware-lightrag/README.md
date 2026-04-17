@@ -20,7 +20,7 @@ Declare the plugin in your `pipeline.yaml` and reference it on any track or task
 pipeline:
   name: docs-rewrite
   plugins:
-    - "@tagma/middleware-lightrag"
+    - '@tagma/middleware-lightrag'
   tracks:
     - id: writer
       name: Docs writer
@@ -35,7 +35,7 @@ pipeline:
       tasks:
         - id: draft
           name: Draft migration guide
-          prompt: "Draft a migration guide for the new event bus API"
+          prompt: 'Draft a migration guide for the new event bus API'
           output: ./output/draft.md
 ```
 
@@ -50,15 +50,15 @@ await loadPlugins(['@tagma/middleware-lightrag']);
 
 ## Config
 
-| Field         | Type       | Default                  | Notes                                                                                |
-|---------------|------------|--------------------------|--------------------------------------------------------------------------------------|
-| `endpoint`    | string     | *(required)*             | LightRAG API server base URL (default port 9621)                                     |
-| `mode`        | enum       | `mix`                    | One of `local`, `global`, `hybrid`, `naive`, `mix` — matches LightRAG's server default |
-| `top_k`       | number     | `10`                     | Top-k entities (local mode) / relationships (global mode)                            |
-| `api_key_env` | string     | *(none)*                 | Env var holding the API key; sent via `X-API-Key` header                             |
-| `timeout`     | duration   | `30s`                    | Max time to wait for the LightRAG response                                           |
-| `label`       | string     | `Knowledge Graph Context`| Header rendered above the retrieved context in the final prompt                      |
-| `query`       | string     | *(task prompt)*          | Override the retrieval query; useful when the prompt itself is not a good KG query   |
+| Field         | Type     | Default                   | Notes                                                                                  |
+| ------------- | -------- | ------------------------- | -------------------------------------------------------------------------------------- |
+| `endpoint`    | string   | _(required)_              | LightRAG API server base URL (default port 9621)                                       |
+| `mode`        | enum     | `mix`                     | One of `local`, `global`, `hybrid`, `naive`, `mix` — matches LightRAG's server default |
+| `top_k`       | number   | `10`                      | Top-k entities (local mode) / relationships (global mode)                              |
+| `api_key_env` | string   | _(none)_                  | Env var holding the API key; sent via `X-API-Key` header                               |
+| `timeout`     | duration | `30s`                     | Max time to wait for the LightRAG response                                             |
+| `label`       | string   | `Knowledge Graph Context` | Header rendered above the retrieved context in the final prompt                        |
+| `query`       | string   | _(task prompt)_           | Override the retrieval query; useful when the prompt itself is not a good KG query     |
 
 ## Behavior
 

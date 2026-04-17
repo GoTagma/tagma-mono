@@ -55,7 +55,9 @@ export function onFileWatcherEvent(listener: Listener): () => void {
 
 function emit(event: ExternalChangeEvent): void {
   for (const l of listeners) {
-    try { l(event); } catch (err) {
+    try {
+      l(event);
+    } catch (err) {
       console.error('[file-watcher] listener threw', err);
     }
   }
@@ -87,7 +89,11 @@ export function isServerDirty(serializedCurrentConfig: string): boolean {
 export function stopWatching(): void {
   if (!current) return;
   if (current.debounce) clearTimeout(current.debounce);
-  try { current.watcher.close(); } catch { /* ignore */ }
+  try {
+    current.watcher.close();
+  } catch {
+    /* ignore */
+  }
   current = null;
 }
 
@@ -103,10 +109,7 @@ export function stopWatching(): void {
  * original inode. Watching the directory survives inode churn — we filter
  * events by filename before doing any work.
  */
-export function startWatching(
-  filePath: string,
-  getSerializedConfig: () => string,
-): void {
+export function startWatching(filePath: string, getSerializedConfig: () => string): void {
   stopWatching();
   if (!existsSync(filePath)) return;
 
@@ -145,11 +148,15 @@ export function startWatching(
     let serverDirty = false;
     try {
       serverDirty = isServerDirty(getSerializedConfig());
-    } catch { /* treat as clean if serializer throws */ }
+    } catch {
+      /* treat as clean if serializer throws */
+    }
 
     if (serverDirty) {
       emit({ type: 'external-conflict', path: filePath });
-      console.warn(`[file-watcher] external change detected but server has unsaved changes: ${filePath}`);
+      console.warn(
+        `[file-watcher] external change detected but server has unsaved changes: ${filePath}`,
+      );
     } else {
       emit({ type: 'external-change', path: filePath, content });
     }
@@ -178,7 +185,9 @@ export function startWatching(
       lastKnownHash = hashContent(seed);
       lastKnownMtimeMs = statSync(filePath).mtimeMs;
     }
-  } catch { /* best effort */ }
+  } catch {
+    /* best effort */
+  }
 }
 
 export function currentlyWatching(): string | null {

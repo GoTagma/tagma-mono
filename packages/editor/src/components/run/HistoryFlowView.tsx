@@ -1,21 +1,53 @@
 import { useMemo, useState, useCallback, useRef } from 'react';
-import {
-  Check, X, Clock, SkipForward, Ban, Loader2, X as XIcon,
-} from 'lucide-react';
+import { Check, X, Clock, SkipForward, Ban, Loader2, X as XIcon } from 'lucide-react';
 import type { RunSummary, RunSummaryTask, TaskStatus } from '../../api/client';
 import {
-  HEADER_W, TASK_W, TASK_H, TASK_GAP, PAD_LEFT, TRACK_H, CANVAS_PAD_RIGHT,
+  HEADER_W,
+  TASK_W,
+  TASK_H,
+  TASK_GAP,
+  PAD_LEFT,
+  TRACK_H,
+  CANVAS_PAD_RIGHT,
 } from '../board/layout-constants';
 
-const STATUS_CFG: Record<TaskStatus, { bar: string; bg: string; icon: typeof Check; iconColor: string }> = {
-  idle:    { bar: '',                    bg: '',                      icon: Clock,       iconColor: '' },
-  waiting: { bar: 'bg-tagma-muted/50',   bg: '',                      icon: Clock,       iconColor: 'text-tagma-muted/60' },
-  running: { bar: 'bg-tagma-ready',      bg: 'bg-tagma-ready/8',      icon: Loader2,     iconColor: 'text-tagma-ready' },
-  success: { bar: 'bg-tagma-success',    bg: 'bg-tagma-success/8',    icon: Check,       iconColor: 'text-tagma-success' },
-  failed:  { bar: 'bg-tagma-error',      bg: 'bg-tagma-error/8',      icon: X,           iconColor: 'text-tagma-error' },
-  timeout: { bar: 'bg-tagma-warning',    bg: 'bg-tagma-warning/8',    icon: Clock,       iconColor: 'text-tagma-warning' },
-  skipped: { bar: 'bg-tagma-muted/40',   bg: '',                      icon: SkipForward, iconColor: 'text-tagma-muted/50' },
-  blocked: { bar: 'bg-tagma-warning',    bg: 'bg-tagma-warning/8',    icon: Ban,         iconColor: 'text-tagma-warning' },
+const STATUS_CFG: Record<
+  TaskStatus,
+  { bar: string; bg: string; icon: typeof Check; iconColor: string }
+> = {
+  idle: { bar: '', bg: '', icon: Clock, iconColor: '' },
+  waiting: { bar: 'bg-tagma-muted/50', bg: '', icon: Clock, iconColor: 'text-tagma-muted/60' },
+  running: {
+    bar: 'bg-tagma-ready',
+    bg: 'bg-tagma-ready/8',
+    icon: Loader2,
+    iconColor: 'text-tagma-ready',
+  },
+  success: {
+    bar: 'bg-tagma-success',
+    bg: 'bg-tagma-success/8',
+    icon: Check,
+    iconColor: 'text-tagma-success',
+  },
+  failed: { bar: 'bg-tagma-error', bg: 'bg-tagma-error/8', icon: X, iconColor: 'text-tagma-error' },
+  timeout: {
+    bar: 'bg-tagma-warning',
+    bg: 'bg-tagma-warning/8',
+    icon: Clock,
+    iconColor: 'text-tagma-warning',
+  },
+  skipped: {
+    bar: 'bg-tagma-muted/40',
+    bg: '',
+    icon: SkipForward,
+    iconColor: 'text-tagma-muted/50',
+  },
+  blocked: {
+    bar: 'bg-tagma-warning',
+    bg: 'bg-tagma-warning/8',
+    icon: Ban,
+    iconColor: 'text-tagma-warning',
+  },
 };
 
 function formatDuration(ms: number | null): string {
@@ -147,12 +179,15 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
     e.preventDefault();
     const el = contentRef.current;
     if (!el) return;
-    const startX = e.clientX, startY = e.clientY;
-    const startSL = el.scrollLeft, startST = el.scrollTop;
+    const startX = e.clientX,
+      startY = e.clientY;
+    const startSL = el.scrollLeft,
+      startST = el.scrollTop;
     let started = false;
     panDidDragRef.current = false;
     const onMove = (ev: MouseEvent) => {
-      const dx = ev.clientX - startX, dy = ev.clientY - startY;
+      const dx = ev.clientX - startX,
+        dy = ev.clientY - startY;
       if (!started) {
         if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
         started = true;
@@ -228,17 +263,26 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
             >
               <div className="h-full flex items-center px-3 gap-2">
                 {tg.color && (
-                  <span className="w-2 h-2 shrink-0 rounded-sm" style={{ backgroundColor: tg.color }} />
+                  <span
+                    className="w-2 h-2 shrink-0 rounded-sm"
+                    style={{ backgroundColor: tg.color }}
+                  />
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="text-[10px] font-medium text-tagma-text truncate">{tg.name}</div>
                   <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="text-[8px] font-mono text-tagma-muted-dim">{tg.tasks.length} tasks</span>
+                    <span className="text-[8px] font-mono text-tagma-muted-dim">
+                      {tg.tasks.length} tasks
+                    </span>
                     {successCount > 0 && (
-                      <span className="text-[8px] font-mono text-tagma-success">{successCount} ok</span>
+                      <span className="text-[8px] font-mono text-tagma-success">
+                        {successCount} ok
+                      </span>
                     )}
                     {failedCount > 0 && (
-                      <span className="text-[8px] font-mono text-tagma-error">{failedCount} fail</span>
+                      <span className="text-[8px] font-mono text-tagma-error">
+                        {failedCount} fail
+                      </span>
                     )}
                   </div>
                 </div>
@@ -269,9 +313,20 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
             />
           ))}
 
-          <svg className="absolute left-0 top-0 pointer-events-none" width={canvasWidth} height={canvasHeight} style={{ overflow: 'visible' }}>
+          <svg
+            className="absolute left-0 top-0 pointer-events-none"
+            width={canvasWidth}
+            height={canvasHeight}
+            style={{ overflow: 'visible' }}
+          >
             {edges.map((e) => (
-              <path key={e.key} d={e.d} fill="none" stroke="rgba(107,114,128,0.25)" strokeWidth={1.5} />
+              <path
+                key={e.key}
+                d={e.d}
+                fill="none"
+                stroke="rgba(107,114,128,0.25)"
+                strokeWidth={1.5}
+              />
             ))}
           </svg>
 
@@ -286,7 +341,9 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
                 key={task.taskId}
                 data-task-id={task.taskId}
                 className={`absolute border select-none flex flex-col justify-center px-2.5 cursor-pointer transition-colors ${
-                  isSelected ? 'border-tagma-accent bg-tagma-accent/6' : 'border-tagma-border/70 bg-tagma-elevated hover:bg-tagma-elevated/80'
+                  isSelected
+                    ? 'border-tagma-accent bg-tagma-accent/6'
+                    : 'border-tagma-border/70 bg-tagma-elevated hover:bg-tagma-elevated/80'
                 } ${cfg.bg && !isSelected ? cfg.bg : ''}`}
                 style={{ left: pos.x, top: pos.y, width: TASK_W, height: TASK_H }}
                 // Intentionally NOT stopping mousedown propagation: the pan
@@ -304,9 +361,7 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
                   setSelectedTaskId(task.taskId);
                 }}
               >
-                {cfg.bar && (
-                  <div className={`absolute left-0 top-0 bottom-0 w-[2px] ${cfg.bar}`} />
-                )}
+                {cfg.bar && <div className={`absolute left-0 top-0 bottom-0 w-[2px] ${cfg.bar}`} />}
                 <div className="flex items-center h-[24px] gap-[6px] pointer-events-none min-w-0 overflow-hidden">
                   <span className="text-[10px] font-medium truncate flex-1 leading-[24px] text-tagma-text">
                     {task.taskName}
@@ -323,16 +378,22 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
                 <div className="flex items-center h-[16px] gap-[4px] pointer-events-none min-w-0 overflow-hidden bg-black/20 px-[3px]">
                   {task.driver && (
                     <span className="inline-flex items-center h-[14px] px-[4px] min-w-0 overflow-hidden bg-tagma-accent/12 text-tagma-accent/80">
-                      <span className="truncate text-[7.5px] font-mono leading-[14px]">{task.driver}</span>
+                      <span className="truncate text-[7.5px] font-mono leading-[14px]">
+                        {task.driver}
+                      </span>
                     </span>
                   )}
                   {task.model && (
                     <span className="inline-flex items-center h-[14px] px-[4px] min-w-0 overflow-hidden bg-tagma-muted/12 text-tagma-muted/80">
-                      <span className="truncate text-[7.5px] font-mono font-bold leading-[14px]">{task.model}</span>
+                      <span className="truncate text-[7.5px] font-mono font-bold leading-[14px]">
+                        {task.model}
+                      </span>
                     </span>
                   )}
                   {task.exitCode != null && (
-                    <span className={`ml-auto shrink-0 whitespace-nowrap text-[7.5px] font-mono ${task.exitCode === 0 ? 'text-tagma-success' : 'text-tagma-error'}`}>
+                    <span
+                      className={`ml-auto shrink-0 whitespace-nowrap text-[7.5px] font-mono ${task.exitCode === 0 ? 'text-tagma-success' : 'text-tagma-error'}`}
+                    >
                       exit {task.exitCode}
                     </span>
                   )}
@@ -350,7 +411,9 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
         <div className="absolute right-0 top-0 bottom-0 z-20">
           <HistoryTaskPanel
             task={selectedTask}
-            onClose={() => { setSelectedTaskId(null); }}
+            onClose={() => {
+              setSelectedTaskId(null);
+            }}
           />
         </div>
       )}
@@ -359,7 +422,9 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
         <div className="absolute right-0 top-0 bottom-0 z-20">
           <HistoryTrackPanel
             track={selectedTrack}
-            onClose={() => { setSelectedTrackId(null); }}
+            onClose={() => {
+              setSelectedTrackId(null);
+            }}
           />
         </div>
       )}
@@ -374,7 +439,11 @@ function HistoryTaskPanel({ task, onClose }: { task: RunSummaryTask; onClose: ()
     <div className="w-72 h-full bg-tagma-surface border-l border-tagma-border flex flex-col animate-slide-in-right">
       <div className="panel-header-sm">
         <h2 className="panel-title-sm truncate">{task.taskName}</h2>
-        <button onClick={onClose} className="p-0.5 text-tagma-muted hover:text-tagma-text transition-colors" aria-label="Close">
+        <button
+          onClick={onClose}
+          className="p-0.5 text-tagma-muted hover:text-tagma-text transition-colors"
+          aria-label="Close"
+        >
           <XIcon size={12} />
         </button>
       </div>
@@ -386,12 +455,17 @@ function HistoryTaskPanel({ task, onClose }: { task: RunSummaryTask; onClose: ()
           <div className="pt-2.5 space-y-3">
             <div>
               <label className="field-label">Status</label>
-              <div className={`chip-md ${
-                task.status === 'success' ? 'bg-tagma-success/10 border-tagma-success/20 text-tagma-success' :
-                task.status === 'failed' ? 'bg-tagma-error/10 border-tagma-error/20 text-tagma-error' :
-                task.status === 'timeout' ? 'bg-tagma-warning/10 border-tagma-warning/20 text-tagma-warning' :
-                'bg-tagma-muted/8 border-tagma-muted/15 text-tagma-muted'
-              }`}>
+              <div
+                className={`chip-md ${
+                  task.status === 'success'
+                    ? 'bg-tagma-success/10 border-tagma-success/20 text-tagma-success'
+                    : task.status === 'failed'
+                      ? 'bg-tagma-error/10 border-tagma-error/20 text-tagma-error'
+                      : task.status === 'timeout'
+                        ? 'bg-tagma-warning/10 border-tagma-warning/20 text-tagma-warning'
+                        : 'bg-tagma-muted/8 border-tagma-muted/15 text-tagma-muted'
+                }`}
+              >
                 <Icon size={11} className={cfg.iconColor} />
                 {task.status}
               </div>
@@ -399,25 +473,33 @@ function HistoryTaskPanel({ task, onClose }: { task: RunSummaryTask; onClose: ()
             {task.startedAt && (
               <div>
                 <label className="field-label">Started</label>
-                <div className="text-[11px] font-mono text-tagma-muted">{new Date(task.startedAt).toLocaleTimeString()}</div>
+                <div className="text-[11px] font-mono text-tagma-muted">
+                  {new Date(task.startedAt).toLocaleTimeString()}
+                </div>
               </div>
             )}
             {task.finishedAt && (
               <div>
                 <label className="field-label">Finished</label>
-                <div className="text-[11px] font-mono text-tagma-muted">{new Date(task.finishedAt).toLocaleTimeString()}</div>
+                <div className="text-[11px] font-mono text-tagma-muted">
+                  {new Date(task.finishedAt).toLocaleTimeString()}
+                </div>
               </div>
             )}
             {task.durationMs != null && (
               <div>
                 <label className="field-label">Duration</label>
-                <div className="text-[11px] font-mono text-tagma-muted">{formatDuration(task.durationMs)}</div>
+                <div className="text-[11px] font-mono text-tagma-muted">
+                  {formatDuration(task.durationMs)}
+                </div>
               </div>
             )}
             {task.exitCode != null && (
               <div>
                 <label className="field-label">Exit Code</label>
-                <div className={`text-[11px] font-mono ${task.exitCode === 0 ? 'text-tagma-success' : 'text-tagma-error'}`}>
+                <div
+                  className={`text-[11px] font-mono ${task.exitCode === 0 ? 'text-tagma-success' : 'text-tagma-error'}`}
+                >
                   {task.exitCode}
                 </div>
               </div>
@@ -437,7 +519,12 @@ function HistoryTaskPanel({ task, onClose }: { task: RunSummaryTask; onClose: ()
             {task.sessionId && (
               <div>
                 <label className="field-label">Session</label>
-                <div className="text-[11px] font-mono text-tagma-muted truncate" title={task.sessionId}>{task.sessionId}</div>
+                <div
+                  className="text-[11px] font-mono text-tagma-muted truncate"
+                  title={task.sessionId}
+                >
+                  {task.sessionId}
+                </div>
               </div>
             )}
           </div>
@@ -463,13 +550,17 @@ function HistoryTaskPanel({ task, onClose }: { task: RunSummaryTask; onClose: ()
               {task.stderrPath && (
                 <div>
                   <label className="field-label">stderr</label>
-                  <div className="text-[10px] font-mono text-tagma-muted break-all">{task.stderrPath}</div>
+                  <div className="text-[10px] font-mono text-tagma-muted break-all">
+                    {task.stderrPath}
+                  </div>
                 </div>
               )}
               {task.normalizedOutput && (
                 <div>
                   <label className="field-label">normalized</label>
-                  <div className="text-[10px] font-mono text-tagma-muted break-all">{task.normalizedOutput}</div>
+                  <div className="text-[10px] font-mono text-tagma-muted break-all">
+                    {task.normalizedOutput}
+                  </div>
                 </div>
               )}
             </div>
@@ -489,7 +580,11 @@ function HistoryTrackPanel({ track, onClose }: { track: TrackGroup; onClose: () 
     <div className="w-72 h-full bg-tagma-surface border-l border-tagma-border flex flex-col animate-slide-in-right">
       <div className="panel-header-sm">
         <h2 className="panel-title-sm truncate">{track.name}</h2>
-        <button onClick={onClose} className="p-0.5 text-tagma-muted hover:text-tagma-text transition-colors" aria-label="Close">
+        <button
+          onClick={onClose}
+          className="p-0.5 text-tagma-muted hover:text-tagma-text transition-colors"
+          aria-label="Close"
+        >
           <XIcon size={12} />
         </button>
       </div>
@@ -526,7 +621,9 @@ function HistoryTrackPanel({ track, onClose }: { track: TrackGroup; onClose: () 
             {totalMs > 0 && (
               <div>
                 <label className="field-label">Total Duration</label>
-                <div className="text-[11px] font-mono text-tagma-muted">{formatDuration(totalMs)}</div>
+                <div className="text-[11px] font-mono text-tagma-muted">
+                  {formatDuration(totalMs)}
+                </div>
               </div>
             )}
           </div>
@@ -540,11 +637,16 @@ function HistoryTrackPanel({ track, onClose }: { track: TrackGroup; onClose: () 
               const tc = STATUS_CFG[t.status];
               const TIcon = tc.icon;
               return (
-                <div key={t.taskId} className="flex items-center gap-2 py-1 text-[10px] font-mono border-b border-tagma-border/30 last:border-b-0">
+                <div
+                  key={t.taskId}
+                  className="flex items-center gap-2 py-1 text-[10px] font-mono border-b border-tagma-border/30 last:border-b-0"
+                >
                   <TIcon size={9} className={tc.iconColor} />
                   <span className="flex-1 min-w-0 truncate text-tagma-text">{t.taskName}</span>
                   {t.durationMs != null && (
-                    <span className="shrink-0 text-tagma-muted tabular-nums text-[9px]">{formatDuration(t.durationMs)}</span>
+                    <span className="shrink-0 text-tagma-muted tabular-nums text-[9px]">
+                      {formatDuration(t.durationMs)}
+                    </span>
                   )}
                 </div>
               );

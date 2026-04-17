@@ -62,11 +62,7 @@ export interface LocalFieldExtras {
   acceptLocal: () => void;
 }
 
-export type UseLocalFieldResult = [
-  string,
-  (value: string) => void,
-  () => void,
-] & LocalFieldExtras;
+export type UseLocalFieldResult = [string, (value: string) => void, () => void] & LocalFieldExtras;
 
 export function useLocalField(
   serverValue: string,
@@ -126,20 +122,27 @@ export function useLocalField(
     }
   }, [serverValue]);
 
-  const onChange = useCallback((value: string) => {
-    setLocal(value);
-    localRef.current = value;
-    // Debounced commit — cancels any in-flight timer.
-    clearDebounce();
-    debounceTimer.current = setTimeout(() => {
-      debounceTimer.current = null;
-      if (localRef.current !== committedRef.current) {
-        const val = localRef.current;
-        committedRef.current = val;
-        try { commitRef.current(val); } catch { /* commit errors surfaced by API layer */ }
-      }
-    }, COMMIT_DEBOUNCE_MS);
-  }, [clearDebounce]);
+  const onChange = useCallback(
+    (value: string) => {
+      setLocal(value);
+      localRef.current = value;
+      // Debounced commit — cancels any in-flight timer.
+      clearDebounce();
+      debounceTimer.current = setTimeout(() => {
+        debounceTimer.current = null;
+        if (localRef.current !== committedRef.current) {
+          const val = localRef.current;
+          committedRef.current = val;
+          try {
+            commitRef.current(val);
+          } catch {
+            /* commit errors surfaced by API layer */
+          }
+        }
+      }, COMMIT_DEBOUNCE_MS);
+    },
+    [clearDebounce],
+  );
 
   // onBlur still flushes synchronously for safety (e.g. the user tabs out
   // and we don't want to wait 250ms to persist).

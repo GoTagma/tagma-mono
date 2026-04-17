@@ -20,7 +20,8 @@ export function resolveScalar(
 ): ResolvedValue {
   if (taskValue !== undefined && taskValue !== '') return { value: taskValue, source: 'task' };
   if (trackValue !== undefined && trackValue !== '') return { value: trackValue, source: 'track' };
-  if (pipelineValue !== undefined && pipelineValue !== '') return { value: pipelineValue, source: 'pipeline' };
+  if (pipelineValue !== undefined && pipelineValue !== '')
+    return { value: pipelineValue, source: 'pipeline' };
   return { value: defaultValue, source: 'default' };
 }
 
@@ -39,16 +40,26 @@ export function resolvePermissions(
 
 export function permsToString(p: Permissions | undefined): string {
   if (!p) return 'none';
-  const parts = [p.read && 'read', p.write && 'write', p.execute && 'execute'].filter(Boolean) as string[];
+  const parts = [p.read && 'read', p.write && 'write', p.execute && 'execute'].filter(
+    Boolean,
+  ) as string[];
   return parts.length > 0 ? parts.join(', ') : 'none';
 }
 
-function sourceLabel(source: ResolvedValue['source'], trackName?: string, pipelineName?: string): string {
+function sourceLabel(
+  source: ResolvedValue['source'],
+  trackName?: string,
+  pipelineName?: string,
+): string {
   switch (source) {
-    case 'task': return 'task-level';
-    case 'track': return trackName ? `track "${trackName}"` : 'track';
-    case 'pipeline': return pipelineName ? `pipeline "${pipelineName}"` : 'pipeline';
-    case 'default': return 'SDK default';
+    case 'task':
+      return 'task-level';
+    case 'track':
+      return trackName ? `track "${trackName}"` : 'track';
+    case 'pipeline':
+      return pipelineName ? `pipeline "${pipelineName}"` : 'pipeline';
+    case 'default':
+      return 'SDK default';
   }
 }
 
@@ -73,7 +84,12 @@ interface InheritedValueProps {
  * (use the presence of a reset button to communicate override state in that case).
  */
 export function InheritedValue({
-  isOverridden, resolved, trackName, pipelineName, prefix = 'resolves to', displayValue,
+  isOverridden,
+  resolved,
+  trackName,
+  pipelineName,
+  prefix = 'resolves to',
+  displayValue,
 }: InheritedValueProps) {
   if (isOverridden) return null;
   const shown = displayValue ?? resolved.value;
@@ -101,7 +117,11 @@ interface ResetButtonProps {
 }
 
 /** Small ↺ button used next to inheritable fields to clear a task/track level override. */
-export function ResetButton({ onReset, visible, title = 'Reset to inherited value' }: ResetButtonProps) {
+export function ResetButton({
+  onReset,
+  visible,
+  title = 'Reset to inherited value',
+}: ResetButtonProps) {
   if (!visible) return null;
   return (
     <button

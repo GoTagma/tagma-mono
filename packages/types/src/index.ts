@@ -222,7 +222,7 @@ export interface DriverCapabilities {
 
 export interface DriverResultMeta {
   readonly sessionId?: string;
-  readonly normalizedOutput?: string;  // canonical text for continue_from handoff
+  readonly normalizedOutput?: string; // canonical text for continue_from handoff
   /**
    * M12: drivers can mark a task as failed even when the underlying process
    * exited 0. Common case: the CLI returns `{type:"error"}` JSON with exit
@@ -279,7 +279,11 @@ export interface ApprovalDecision {
 
 export type ApprovalEvent =
   | { readonly type: 'requested'; readonly request: ApprovalRequest }
-  | { readonly type: 'resolved'; readonly request: ApprovalRequest; readonly decision: ApprovalDecision }
+  | {
+      readonly type: 'resolved';
+      readonly request: ApprovalRequest;
+      readonly decision: ApprovalDecision;
+    }
   | { readonly type: 'expired'; readonly request: ApprovalRequest }
   | { readonly type: 'aborted'; readonly request: ApprovalRequest; readonly reason: string };
 
@@ -322,7 +326,11 @@ export interface CompletionContext {
 export interface CompletionPlugin {
   readonly name: string;
   readonly schema?: PluginSchema;
-  check(config: Record<string, unknown>, result: TaskResult, ctx: CompletionContext): Promise<boolean>;
+  check(
+    config: Record<string, unknown>,
+    result: TaskResult,
+    ctx: CompletionContext,
+  ): Promise<boolean>;
 }
 
 // ═══ Middleware Plugin ═══
@@ -350,11 +358,7 @@ export interface MiddlewarePlugin {
  *
  * `null` means "no failure" (success case).
  */
-export type TaskFailureKind =
-  | 'timeout'
-  | 'spawn_error'
-  | 'exit_nonzero'
-  | null;
+export type TaskFailureKind = 'timeout' | 'spawn_error' | 'exit_nonzero' | null;
 
 export interface TaskResult {
   readonly exitCode: number;

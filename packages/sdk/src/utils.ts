@@ -12,11 +12,16 @@ export function parseDuration(input: string): number {
   const value = parseFloat(match[1]);
   const unit = match[2];
   switch (unit) {
-    case 's': return value * 1000;
-    case 'm': return value * 60_000;
-    case 'h': return value * 3_600_000;
-    case 'd': return value * 86_400_000;
-    default:  throw new Error(`Unknown duration unit: "${unit}"`);
+    case 's':
+      return value * 1000;
+    case 'm':
+      return value * 60_000;
+    case 'h':
+      return value * 3_600_000;
+    case 'd':
+      return value * 86_400_000;
+    default:
+      throw new Error(`Unknown duration unit: "${unit}"`);
   }
 }
 
@@ -28,7 +33,7 @@ export function validatePath(filePath: string, projectRoot: string): string {
   // allow cross-drive paths. Reject them explicitly before any further comparison.
   if (parsePath(projectRoot).root !== parsePath(resolved).root) {
     throw new Error(
-      `Security: path "${filePath}" is on a different drive than the project root "${projectRoot}".`
+      `Security: path "${filePath}" is on a different drive than the project root "${projectRoot}".`,
     );
   }
 
@@ -36,7 +41,7 @@ export function validatePath(filePath: string, projectRoot: string): string {
   if (rel.startsWith('..') || rel.startsWith('/')) {
     throw new Error(
       `Security: path "${filePath}" escapes project root. ` +
-      `All file references must be within "${projectRoot}".`
+        `All file references must be within "${projectRoot}".`,
     );
   }
 
@@ -51,7 +56,7 @@ export function validatePath(filePath: string, projectRoot: string): string {
       const stat = lstatSync(resolved);
       if (stat.isSymbolicLink()) {
         throw new Error(
-          `Security: path "${filePath}" is a symbolic link. Symbolic links are not allowed within the project root.`
+          `Security: path "${filePath}" is a symbolic link. Symbolic links are not allowed within the project root.`,
         );
       }
     } catch (err) {
@@ -66,17 +71,21 @@ export function validatePath(filePath: string, projectRoot: string): string {
       real = resolved; // path vanished between existsSync and realpathSync — skip
     }
     const realRoot = (() => {
-      try { return realpathSync.native(projectRoot); } catch { return projectRoot; }
+      try {
+        return realpathSync.native(projectRoot);
+      } catch {
+        return projectRoot;
+      }
     })();
     if (parsePath(realRoot).root !== parsePath(real).root) {
       throw new Error(
-        `Security: resolved path "${real}" is on a different drive than the project root "${realRoot}".`
+        `Security: resolved path "${real}" is on a different drive than the project root "${realRoot}".`,
       );
     }
     const realRel = relative(realRoot, real);
     if (realRel.startsWith('..') || realRel.startsWith('/')) {
       throw new Error(
-        `Security: path "${filePath}" resolves via symlink to "${real}" which escapes project root "${realRoot}".`
+        `Security: path "${filePath}" resolves via symlink to "${real}" which escapes project root "${realRoot}".`,
       );
     }
   }
@@ -140,7 +149,9 @@ function detectShell(): { kind: ShellKind; path: string } {
         if (Bun.file(candidate).size > 0) {
           return { kind: 'sh', path: candidate };
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
   }
 

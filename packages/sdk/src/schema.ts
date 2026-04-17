@@ -1,8 +1,14 @@
 import yaml from 'js-yaml';
 import { relative } from 'path';
 import type {
-  PipelineConfig, RawPipelineConfig, RawTrackConfig, RawTaskConfig,
-  TrackConfig, TaskConfig, Permissions, CompletionConfig,
+  PipelineConfig,
+  RawPipelineConfig,
+  RawTrackConfig,
+  RawTaskConfig,
+  TrackConfig,
+  TaskConfig,
+  Permissions,
+  CompletionConfig,
 } from './types';
 import { truncateForName, validatePath } from './utils';
 import { DEFAULT_PERMISSIONS } from './types';
@@ -48,7 +54,7 @@ function assertValidId(id: string, label: string): void {
   if (!ID_RE.test(id)) {
     throw new Error(
       `${label}: id "${id}" is invalid. IDs must match /^[A-Za-z_][A-Za-z0-9_-]*$/ ` +
-      `(letters, digits, underscores, hyphens; no dots or spaces; must start with letter/underscore).`
+        `(letters, digits, underscores, hyphens; no dots or spaces; must start with letter/underscore).`,
     );
   }
 }
@@ -110,14 +116,15 @@ export function resolveConfig(raw: RawPipelineConfig, workDir: string): Pipeline
     return match ?? ref; // not found — leave as-is (validated elsewhere)
   }
 
-  const tracks: TrackConfig[] = raw.tracks.map(rawTrack => {
+  const tracks: TrackConfig[] = raw.tracks.map((rawTrack) => {
     const trackDriver = rawTrack.driver ?? raw.driver;
     // validatePath enforces no .. traversal and no absolute paths escaping workDir.
     const trackCwd = rawTrack.cwd ? validatePath(rawTrack.cwd, workDir) : workDir;
 
-    const tasks: TaskConfig[] = rawTrack.tasks.map(rawTask => {
-      const name = rawTask.name
-        ?? (rawTask.prompt ? truncateForName(rawTask.prompt) : rawTask.command ?? rawTask.id);
+    const tasks: TaskConfig[] = rawTrack.tasks.map((rawTask) => {
+      const name =
+        rawTask.name ??
+        (rawTask.prompt ? truncateForName(rawTask.prompt) : (rawTask.command ?? rawTask.id));
 
       return {
         id: rawTask.id,
@@ -131,7 +138,8 @@ export function resolveConfig(raw: RawPipelineConfig, workDir: string): Pipeline
           : undefined,
         // Inheritance: Task > Track > Pipeline
         model: rawTask.model ?? rawTrack.model ?? raw.model,
-        reasoning_effort: rawTask.reasoning_effort ?? rawTrack.reasoning_effort ?? raw.reasoning_effort,
+        reasoning_effort:
+          rawTask.reasoning_effort ?? rawTrack.reasoning_effort ?? raw.reasoning_effort,
         permissions: rawTask.permissions ?? rawTrack.permissions ?? DEFAULT_PERMISSIONS,
         driver: rawTask.driver ?? trackDriver ?? 'claude-code',
         timeout: rawTask.timeout,
@@ -178,28 +186,28 @@ function permissionsEqual(a: Permissions | undefined, b: Permissions | undefined
   return a.read === b.read && a.write === b.write && a.execute === b.execute;
 }
 
-function isDefaultExitCodeCompletion(
-  completion: CompletionConfig | undefined,
-): boolean {
+function isDefaultExitCodeCompletion(completion: CompletionConfig | undefined): boolean {
   if (!completion || completion.type !== 'exit_code') return false;
-  const { type: _type, expect, ...rest } = completion as CompletionConfig & {
+  const {
+    type: _type,
+    expect,
+    ...rest
+  } = completion as CompletionConfig & {
     expect?: unknown;
   };
   if (Object.keys(rest).length > 0) return false;
   return expect === undefined || expect === 0;
 }
 
-function stripDefaultTaskCompletion<T extends { completion?: CompletionConfig }>(
-  task: T,
-): T {
+function stripDefaultTaskCompletion<T extends { completion?: CompletionConfig }>(task: T): T {
   if (!isDefaultExitCodeCompletion(task.completion)) return task;
   const { completion: _completion, ...rest } = task;
   return rest as T;
 }
 
-function stripDefaultCompletionsForSerialization<
-  T extends PipelineConfig | RawPipelineConfig,
->(config: T): T {
+function stripDefaultCompletionsForSerialization<T extends PipelineConfig | RawPipelineConfig>(
+  config: T,
+): T {
   return {
     ...config,
     tracks: config.tracks.map((track) => ({
@@ -232,18 +240,16 @@ export function serializePipeline(config: PipelineConfig | RawPipelineConfig): s
  * parseYaml() → edit RawPipelineConfig → serializePipeline().
  */
 export function deresolvePipeline(config: PipelineConfig, workDir: string): RawPipelineConfig {
-  const tracks: RawTrackConfig[] = config.tracks.map(track => {
-    const trackCwdRel = track.cwd && track.cwd !== workDir
-      ? relative(workDir, track.cwd)
-      : undefined;
+  const tracks: RawTrackConfig[] = config.tracks.map((track) => {
+    const trackCwdRel =
+      track.cwd && track.cwd !== workDir ? relative(workDir, track.cwd) : undefined;
     const effectiveTrackDriver = track.driver ?? config.driver ?? 'claude-code';
     const effectiveTrackModel = track.model ?? config.model;
     const effectiveTrackReasoning = track.reasoning_effort ?? config.reasoning_effort;
 
-    const tasks: RawTaskConfig[] = track.tasks.map(task => {
-      const taskCwdRel = task.cwd && task.cwd !== track.cwd
-        ? relative(workDir, task.cwd)
-        : undefined;
+    const tasks: RawTaskConfig[] = track.tasks.map((task) => {
+      const taskCwdRel =
+        task.cwd && task.cwd !== track.cwd ? relative(workDir, task.cwd) : undefined;
 
       return {
         id: task.id,
@@ -280,10 +286,14 @@ export function deresolvePipeline(config: PipelineConfig, workDir: string): RawP
       ...(track.reasoning_effort && track.reasoning_effort !== config.reasoning_effort
         ? { reasoning_effort: track.reasoning_effort }
         : {}),
-      ...(track.driver && track.driver !== (config.driver ?? 'claude-code') ? { driver: track.driver } : {}),
+      ...(track.driver && track.driver !== (config.driver ?? 'claude-code')
+        ? { driver: track.driver }
+        : {}),
       ...(trackCwdRel ? { cwd: trackCwdRel } : {}),
       ...(track.middlewares?.length ? { middlewares: track.middlewares } : {}),
-      ...(track.on_failure && track.on_failure !== 'skip_downstream' ? { on_failure: track.on_failure } : {}),
+      ...(track.on_failure && track.on_failure !== 'skip_downstream'
+        ? { on_failure: track.on_failure }
+        : {}),
       ...(track.permissions && !permissionsEqual(track.permissions, DEFAULT_PERMISSIONS)
         ? { permissions: track.permissions }
         : {}),

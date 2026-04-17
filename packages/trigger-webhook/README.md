@@ -16,7 +16,7 @@ bun add @tagma/trigger-webhook
 pipeline:
   name: deploy-on-demand
   plugins:
-    - "@tagma/trigger-webhook"
+    - '@tagma/trigger-webhook'
   tracks:
     - id: deploy
       name: Deploy
@@ -30,7 +30,7 @@ pipeline:
             path: /hooks/deploy
             secret_env: TAGMA_WEBHOOK_SECRET
             timeout: 30m
-          prompt: "Run the deploy playbook for the staging environment"
+          prompt: 'Run the deploy playbook for the staging environment'
 ```
 
 Then fire the webhook from anywhere (CI, Slack, cron, another pipeline):
@@ -55,12 +55,12 @@ await loadPlugins(['@tagma/trigger-webhook']);
 
 ## Config
 
-| Field        | Type     | Default     | Notes                                                                                       |
-|--------------|----------|-------------|---------------------------------------------------------------------------------------------|
-| `port`       | number   | *(required)*| TCP port to listen on (1-65535)                                                             |
-| `path`       | string   | `/webhook`  | URL path to match; must start with `/`                                                      |
-| `secret_env` | string   | *(none)*    | Env var holding the HMAC-SHA256 secret. When set, requests must include `x-tagma-signature` |
-| `timeout`    | duration | *(forever)* | Max wait time; omit for unbounded wait                                                      |
+| Field        | Type     | Default      | Notes                                                                                       |
+| ------------ | -------- | ------------ | ------------------------------------------------------------------------------------------- |
+| `port`       | number   | _(required)_ | TCP port to listen on (1-65535)                                                             |
+| `path`       | string   | `/webhook`   | URL path to match; must start with `/`                                                      |
+| `secret_env` | string   | _(none)_     | Env var holding the HMAC-SHA256 secret. When set, requests must include `x-tagma-signature` |
+| `timeout`    | duration | _(forever)_  | Max wait time; omit for unbounded wait                                                      |
 
 ## Behavior
 

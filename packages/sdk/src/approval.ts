@@ -9,13 +9,21 @@ import { nowISO } from './utils';
 // ./types (the engine-side re-export) for consistency with the rest of
 // the SDK source.
 import type {
-  ApprovalRequest, ApprovalDecision, ApprovalEvent, ApprovalListener, ApprovalGateway,
+  ApprovalRequest,
+  ApprovalDecision,
+  ApprovalEvent,
+  ApprovalListener,
+  ApprovalGateway,
 } from './types';
 
 // Re-export for existing engine-side consumers that import from this file.
 export type {
-  ApprovalRequest, ApprovalDecision, ApprovalOutcome, ApprovalEvent,
-  ApprovalListener, ApprovalGateway,
+  ApprovalRequest,
+  ApprovalDecision,
+  ApprovalOutcome,
+  ApprovalEvent,
+  ApprovalListener,
+  ApprovalGateway,
 } from './types';
 
 // ═══ Default In-Memory Implementation ═══
@@ -30,9 +38,7 @@ export class InMemoryApprovalGateway implements ApprovalGateway {
   private readonly pendingMap = new Map<string, PendingEntry>();
   private readonly listeners = new Set<ApprovalListener>();
 
-  request(
-    req: Omit<ApprovalRequest, 'id' | 'createdAt'>,
-  ): Promise<ApprovalDecision> {
+  request(req: Omit<ApprovalRequest, 'id' | 'createdAt'>): Promise<ApprovalDecision> {
     const full: ApprovalRequest = {
       id: randomUUID(),
       createdAt: nowISO(),

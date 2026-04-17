@@ -11,10 +11,7 @@ import { PluginsPage } from './components/plugins/PluginsPage';
 import { FileExplorer, type FileExplorerMode } from './components/FileExplorer';
 import { WelcomePage } from './components/WelcomePage';
 import { api, type ServerStateEvent } from './api/client';
-import {
-  Loader2, X as XIcon,
-  Check, Square, ShieldCheck,
-} from 'lucide-react';
+import { Loader2, X as XIcon, Check, Square, ShieldCheck } from 'lucide-react';
 
 import { RunView } from './components/run/RunView';
 import { YamlPreview } from './components/panels/YamlPreview';
@@ -27,19 +24,64 @@ import { SaveAsDialog } from './components/SaveAsDialog';
 import { DialogModal, type DialogInfo } from './components/DialogModal';
 import { ConfirmModal, type ConfirmInfo } from './components/ConfirmModal';
 
-type ExplorerIntent = { mode: FileExplorerMode; purpose: 'import' | 'export' | 'workdir' | 'plugin-import' };
+type ExplorerIntent = {
+  mode: FileExplorerMode;
+  purpose: 'import' | 'export' | 'workdir' | 'plugin-import';
+};
 
 export function App() {
   const {
-    config, positions, selectedTaskId, selectedTaskIds, selectedTrackId, pinnedTaskId, pinnedTrackId, validationErrors, dagEdges,
-    yamlPath, yamlMtimeMs, workDir, isDirty, layoutDirty, loading, registry,
-    pluginsActive, showPluginsPage, hidePluginsPage,
-    setPipelineName, updatePipelineFields, addTrack, renameTrack, updateTrackFields, deleteTrack, moveTrackTo,
-    addTask, updateTask, deleteTask, transferTaskToTrack,
-    addDependency, removeDependency,
-    selectTask, toggleTaskSelection, selectTrack, pinTask, unpinTask, pinTrack, unpinTrack, setTaskPosition, setRegistry, refreshServerState,
-    setWorkDir, saveFile, saveFileAs, newPipeline, importFile, exportFile, openFile,
-    init, restoreDraft,
+    config,
+    positions,
+    selectedTaskId,
+    selectedTaskIds,
+    selectedTrackId,
+    pinnedTaskId,
+    pinnedTrackId,
+    validationErrors,
+    dagEdges,
+    yamlPath,
+    yamlMtimeMs,
+    workDir,
+    isDirty,
+    layoutDirty,
+    loading,
+    registry,
+    pluginsActive,
+    showPluginsPage,
+    hidePluginsPage,
+    setPipelineName,
+    updatePipelineFields,
+    addTrack,
+    renameTrack,
+    updateTrackFields,
+    deleteTrack,
+    moveTrackTo,
+    addTask,
+    updateTask,
+    deleteTask,
+    transferTaskToTrack,
+    addDependency,
+    removeDependency,
+    selectTask,
+    toggleTaskSelection,
+    selectTrack,
+    pinTask,
+    unpinTask,
+    pinTrack,
+    unpinTrack,
+    setTaskPosition,
+    setRegistry,
+    refreshServerState,
+    setWorkDir,
+    saveFile,
+    saveFileAs,
+    newPipeline,
+    importFile,
+    exportFile,
+    openFile,
+    init,
+    restoreDraft,
   } = usePipelineStore();
 
   const {
@@ -59,7 +101,9 @@ export function App() {
   const [explorer, setExplorer] = useState<ExplorerIntent | null>(null);
   const [dialog, setDialog] = useState<DialogInfo | null>(null);
   const [confirmInfo, setConfirmInfo] = useState<ConfirmInfo | null>(null);
-  const [workspaceYamls, setWorkspaceYamls] = useState<{ name: string; path: string; pipelineName: string | null }[]>([]);
+  const [workspaceYamls, setWorkspaceYamls] = useState<
+    { name: string; path: string; pipelineName: string | null }[]
+  >([]);
   const [saveAsInput, setSaveAsInput] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [searchVisible, setSearchVisible] = useState(false);
@@ -71,8 +115,11 @@ export function App() {
   // Store errors are surfaced via <ErrorToast />, which subscribes directly
   // to `errorMessage` and handles auto-dismiss. No effect needed here.
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { init(); }, []);
+  useEffect(() => {
+    init();
+    // init is a stable store action; [] would also be correct but including
+    // the dep satisfies the exhaustive-deps rule without causing re-runs.
+  }, [init]);
 
   // M4: After the initial state load completes, check for a newer autosave
   // draft for the CURRENT yamlPath. Re-check on path switches; compare the
@@ -103,15 +150,17 @@ export function App() {
       confirmLabel: 'Restore',
       cancelLabel: 'Discard',
       onConfirm: () => {
-        void restoreDraft(draft.config).then(() => {
-          clearDraft(draft.yamlPath);
-        }).catch((err: unknown) => {
-          setDialog({
-            type: 'error',
-            title: 'Draft Restore Failed',
-            details: [err instanceof Error ? err.message : String(err)],
+        void restoreDraft(draft.config)
+          .then(() => {
+            clearDraft(draft.yamlPath);
+          })
+          .catch((err: unknown) => {
+            setDialog({
+              type: 'error',
+              title: 'Draft Restore Failed',
+              details: [err instanceof Error ? err.message : String(err)],
+            });
           });
-        });
       },
       onCancel: () => {
         clearDraft(draft.yamlPath);
@@ -173,7 +222,9 @@ export function App() {
     return () => window.removeEventListener('beforeunload', handler);
   }, [isDirty]);
 
-  const refreshWorkspaceYamls = useCallback(async (): Promise<{ name: string; path: string; pipelineName: string | null }[]> => {
+  const refreshWorkspaceYamls = useCallback(async (): Promise<
+    { name: string; path: string; pipelineName: string | null }[]
+  > => {
     if (!workDir) {
       setWorkspaceYamls([]);
       return [];
@@ -199,56 +250,68 @@ export function App() {
         void yamls;
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [refreshWorkspaceYamls, yamlPath]);
 
-  const handleOpenWorkspaceFile = useCallback(async (path: string) => {
-    await openFile(path);
-  }, [openFile]);
+  const handleOpenWorkspaceFile = useCallback(
+    async (path: string) => {
+      await openFile(path);
+    },
+    [openFile],
+  );
 
-  const handleDeleteWorkspaceFile = useCallback((path: string) => {
-    const name = path.split(/[/\\]/).pop() ?? path;
-    setConfirmInfo({
-      title: 'Remove YAML',
-      details: [
-        `Remove "${name}" and its companion .layout.json?`,
-        'This cannot be undone.',
-      ],
-      confirmLabel: 'Remove',
-      danger: true,
-      onConfirm: async () => {
-        const wasActive = yamlPath === path;
-        const nextPath = wasActive
-          ? workspaceYamls.find((y) => y.path !== path)?.path ?? null
-          : null;
+  const handleDeleteWorkspaceFile = useCallback(
+    (path: string) => {
+      const name = path.split(/[/\\]/).pop() ?? path;
+      setConfirmInfo({
+        title: 'Remove YAML',
+        details: [`Remove "${name}" and its companion .layout.json?`, 'This cannot be undone.'],
+        confirmLabel: 'Remove',
+        danger: true,
+        onConfirm: async () => {
+          const wasActive = yamlPath === path;
+          const nextPath = wasActive
+            ? (workspaceYamls.find((y) => y.path !== path)?.path ?? null)
+            : null;
 
-        try {
-          await api.deleteFile(path);
-        } catch (e: unknown) {
-          setDialog({ type: 'error', title: 'Remove Failed', details: [(e instanceof Error ? e.message : null) ?? 'Unknown error'] });
-          return;
-        }
-
-        if (wasActive) {
-          if (nextPath) {
-            await openFile(nextPath);
-          } else {
-            await newPipeline();
+          try {
+            await api.deleteFile(path);
+          } catch (e: unknown) {
+            setDialog({
+              type: 'error',
+              title: 'Remove Failed',
+              details: [(e instanceof Error ? e.message : null) ?? 'Unknown error'],
+            });
+            return;
           }
-        } else {
-          await refreshWorkspaceYamls();
-        }
-      },
-    });
-  }, [yamlPath, workspaceYamls, openFile, newPipeline, refreshWorkspaceYamls]);
+
+          if (wasActive) {
+            if (nextPath) {
+              await openFile(nextPath);
+            } else {
+              await newPipeline();
+            }
+          } else {
+            await refreshWorkspaceYamls();
+          }
+        },
+      });
+    },
+    [yamlPath, workspaceYamls, openFile, newPipeline, refreshWorkspaceYamls],
+  );
 
   // Helper: ensure workspace is set before proceeding
-  const requireWorkspace = useCallback((then: 'new' | 'import' | 'save' | 'run'): boolean => {
-    if (workDir) return true;
-    afterWorkspaceRef.current = then;
-    setExplorer({ mode: 'directory', purpose: 'workdir' });
-    return false;
-  }, [workDir]);
+  const requireWorkspace = useCallback(
+    (then: 'new' | 'import' | 'save' | 'run'): boolean => {
+      if (workDir) return true;
+      afterWorkspaceRef.current = then;
+      setExplorer({ mode: 'directory', purpose: 'workdir' });
+      return false;
+    },
+    [workDir],
+  );
 
   // Save: workspace required, server auto-creates path in .tagma if needed
   const handleSave = useCallback(async () => {
@@ -275,7 +338,7 @@ export function App() {
   // If all errors in a track are track-level (no task index), mark the track.
   // Otherwise mark the specific tasks.
   const { errorsByTask, errorsByTrack } = useMemo(() => {
-    const byTask = new Map<string, string[]>();  // qid → messages
+    const byTask = new Map<string, string[]>(); // qid → messages
     const byTrack = new Map<string, string[]>(); // trackId → messages
 
     for (const err of validationErrors) {
@@ -319,10 +382,7 @@ export function App() {
   );
 
   // Compat: keep invalidTaskIds as a Set for BoardCanvas
-  const invalidTaskIds = useMemo(
-    () => new Set(errorsByTask.keys()),
-    [errorsByTask],
-  );
+  const invalidTaskIds = useMemo(() => new Set(errorsByTask.keys()), [errorsByTask]);
 
   const sidebarTaskId = pinnedTaskId ?? selectedTaskId;
 
@@ -369,7 +429,17 @@ export function App() {
     }
     startRun(config);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runStatus, showRun, requireWorkspace, yamlPath, validationErrors, isDirty, saveFile, config, startRun]);
+  }, [
+    runStatus,
+    showRun,
+    requireWorkspace,
+    yamlPath,
+    validationErrors,
+    isDirty,
+    saveFile,
+    config,
+    startRun,
+  ]);
 
   // After save completes and yamlPath is set, auto-trigger run
   useEffect(() => {
@@ -416,54 +486,81 @@ export function App() {
     }
   }, [newPipeline, saveFile, openFile]);
 
-  const handleOpenRecentWorkspace = useCallback(async (path: string) => {
-    try {
-      await setWorkDir(path);
-    } catch (e: unknown) {
-      setDialog({
-        type: 'error',
-        title: 'Failed to open workspace',
-        details: [(e instanceof Error ? e.message : null) ?? 'Unknown error'],
-      });
-      return;
-    }
-    await bootstrapAfterWorkspace();
-  }, [setWorkDir, bootstrapAfterWorkspace]);
-
-  const handleExplorerConfirm = useCallback(async (path: string) => {
-    if (!explorer) return;
-    if (explorer.purpose === 'workdir') {
-      await setWorkDir(path);
-      await bootstrapAfterWorkspace();
-    } else if (explorer.purpose === 'import') {
-      await importFile(path);
-      setExplorer(null);
-    } else if (explorer.purpose === 'export') {
-      const destPath = await exportFile(path);
-      setExplorer(null);
-      if (destPath) {
-        setDialog({ type: 'success', title: 'Export Successful', details: [`Exported to: ${destPath}`] });
-      }
-    } else if (explorer.purpose === 'plugin-import') {
-      setExplorer(null);
-      showPluginsPage();
+  const handleOpenRecentWorkspace = useCallback(
+    async (path: string) => {
       try {
-        const result = await api.importLocalPlugin(path);
-        setRegistry(result.registry);
-        const name = result.plugin.name;
-        if (!config.plugins?.includes(name)) {
-          updatePipelineFields({ plugins: [...(config.plugins ?? []), name] });
-        }
-        setDialog({ type: 'success', title: 'Plugin Imported', details: [
-          `${name} v${result.plugin.version ?? '?'}`,
-          ...(result.warning ? [result.warning] : []),
-        ]});
+        await setWorkDir(path);
       } catch (e: unknown) {
-        setDialog({ type: 'error', title: 'Import Failed', details: [(e instanceof Error ? e.message : null) ?? 'Unknown error'] });
+        setDialog({
+          type: 'error',
+          title: 'Failed to open workspace',
+          details: [(e instanceof Error ? e.message : null) ?? 'Unknown error'],
+        });
+        return;
       }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [explorer, setWorkDir, importFile, exportFile, bootstrapAfterWorkspace, config.plugins, setRegistry, updatePipelineFields]);
+      await bootstrapAfterWorkspace();
+    },
+    [setWorkDir, bootstrapAfterWorkspace],
+  );
+
+  const handleExplorerConfirm = useCallback(
+    async (path: string) => {
+      if (!explorer) return;
+      if (explorer.purpose === 'workdir') {
+        await setWorkDir(path);
+        await bootstrapAfterWorkspace();
+      } else if (explorer.purpose === 'import') {
+        await importFile(path);
+        setExplorer(null);
+      } else if (explorer.purpose === 'export') {
+        const destPath = await exportFile(path);
+        setExplorer(null);
+        if (destPath) {
+          setDialog({
+            type: 'success',
+            title: 'Export Successful',
+            details: [`Exported to: ${destPath}`],
+          });
+        }
+      } else if (explorer.purpose === 'plugin-import') {
+        setExplorer(null);
+        showPluginsPage();
+        try {
+          const result = await api.importLocalPlugin(path);
+          setRegistry(result.registry);
+          const name = result.plugin.name;
+          if (!config.plugins?.includes(name)) {
+            updatePipelineFields({ plugins: [...(config.plugins ?? []), name] });
+          }
+          setDialog({
+            type: 'success',
+            title: 'Plugin Imported',
+            details: [
+              `${name} v${result.plugin.version ?? '?'}`,
+              ...(result.warning ? [result.warning] : []),
+            ],
+          });
+        } catch (e: unknown) {
+          setDialog({
+            type: 'error',
+            title: 'Import Failed',
+            details: [(e instanceof Error ? e.message : null) ?? 'Unknown error'],
+          });
+        }
+      }
+    },
+    [
+      explorer,
+      setWorkDir,
+      importFile,
+      exportFile,
+      bootstrapAfterWorkspace,
+      config.plugins,
+      setRegistry,
+      updatePipelineFields,
+      showPluginsPage,
+    ],
+  );
 
   const handleNewPipeline = useCallback(() => {
     if (!requireWorkspace('new')) return;
@@ -483,12 +580,12 @@ export function App() {
   // U10: Save As... target file name. Server writes into {workDir}/.tagma/.
   const handleSaveAs = useCallback(() => {
     if (!requireWorkspace('save')) return;
-    const currentName = yamlPath ? yamlPath.split(/[/\\]/).pop() ?? '' : 'pipeline.yaml';
+    const currentName = yamlPath ? (yamlPath.split(/[/\\]/).pop() ?? '') : 'pipeline.yaml';
     setSaveAsInput(currentName);
   }, [requireWorkspace, yamlPath]);
 
   const activeYamlName = useMemo(
-    () => (yamlPath ? yamlPath.split(/[/\\]/).pop() ?? null : null),
+    () => (yamlPath ? (yamlPath.split(/[/\\]/).pop() ?? null) : null),
     [yamlPath],
   );
 
@@ -504,7 +601,8 @@ export function App() {
 
   const workspaceItems = useMemo<ActionItem[]>(() => {
     if (!workDir) return [{ label: '(No workspace selected)', disabled: true, onAction: () => {} }];
-    if (workspaceYamls.length === 0) return [{ label: '(No YAML files in .tagma)', disabled: true, onAction: () => {} }];
+    if (workspaceYamls.length === 0)
+      return [{ label: '(No YAML files in .tagma)', disabled: true, onAction: () => {} }];
     return workspaceYamls.map((y) => {
       const isActive = y.name === activeYamlName;
       const primary = y.pipelineName && y.pipelineName.trim() ? y.pipelineName : y.name;
@@ -526,7 +624,10 @@ export function App() {
         items: [
           // L6: Open Workspace at top with separator — it switches the entire
           // working directory, unlike the save/import actions below.
-          { label: 'Open Workspace...', onAction: () => setExplorer({ mode: 'directory', purpose: 'workdir' }) },
+          {
+            label: 'Open Workspace...',
+            onAction: () => setExplorer({ mode: 'directory', purpose: 'workdir' }),
+          },
           { separator: true as const },
           { label: 'New Pipeline', onAction: handleNewPipeline },
           { separator: true as const },
@@ -539,9 +640,7 @@ export function App() {
       },
       {
         label: 'Plugins',
-        items: [
-          { label: 'Manage Plugins...', onAction: () => showPluginsPage() },
-        ],
+        items: [{ label: 'Manage Plugins...', onAction: () => showPluginsPage() }],
       },
       {
         label: 'Settings',
@@ -552,7 +651,15 @@ export function App() {
       },
     ];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [yamlPath, handleNewPipeline, handleImport, handleExport, handleSave, handleSaveAs, workspaceItems]);
+  }, [
+    yamlPath,
+    handleNewPipeline,
+    handleImport,
+    handleExport,
+    handleSave,
+    handleSaveAs,
+    workspaceItems,
+  ]);
 
   // Ctrl+O → Import (editor only; suppressed during runs so a stray
   // keystroke can't clobber the pipeline-store while the engine is live)
@@ -572,9 +679,12 @@ export function App() {
   useAutosave();
 
   // Global undo/redo/copy/paste/duplicate/search/escape shortcuts (U1).
-  const shortcutHandlers = useMemo(() => ({
-    onFocusSearch: () => setSearchVisible(true),
-  }), []);
+  const shortcutHandlers = useMemo(
+    () => ({
+      onFocusSearch: () => setSearchVisible(true),
+    }),
+    [],
+  );
   useShortcuts(shortcutHandlers);
 
   // U3: beforeunload warning when the document has unsaved changes.
@@ -589,22 +699,29 @@ export function App() {
     return () => window.removeEventListener('beforeunload', handler);
   }, [isDirty, layoutDirty]);
 
-  const commitSaveAs = useCallback(async (name: string) => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    const withExt = /\.ya?ml$/i.test(trimmed) ? trimmed : `${trimmed}.yaml`;
-    // Build the target path inside the workspace's .tagma directory, matching
-    // the server's auto-save-location convention.
-    const sep = workDir.includes('\\') ? '\\' : '/';
-    const target = `${workDir}${sep}.tagma${sep}${withExt}`;
-    setSaveAsInput(null);
-    try {
-      await saveFileAs(target);
-      await refreshWorkspaceYamls();
-    } catch (e: unknown) {
-      setDialog({ type: 'error', title: 'Save As Failed', details: [(e instanceof Error ? e.message : null) ?? 'Unknown error'] });
-    }
-  }, [workDir, saveFileAs, refreshWorkspaceYamls]);
+  const commitSaveAs = useCallback(
+    async (name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      const withExt = /\.ya?ml$/i.test(trimmed) ? trimmed : `${trimmed}.yaml`;
+      // Build the target path inside the workspace's .tagma directory, matching
+      // the server's auto-save-location convention.
+      const sep = workDir.includes('\\') ? '\\' : '/';
+      const target = `${workDir}${sep}.tagma${sep}${withExt}`;
+      setSaveAsInput(null);
+      try {
+        await saveFileAs(target);
+        await refreshWorkspaceYamls();
+      } catch (e: unknown) {
+        setDialog({
+          type: 'error',
+          title: 'Save As Failed',
+          details: [(e instanceof Error ? e.message : null) ?? 'Unknown error'],
+        });
+      }
+    },
+    [workDir, saveFileAs, refreshWorkspaceYamls],
+  );
 
   // Back-from-run handler: while the run is live we just minimize the
   // view (SSE stays alive, run keeps executing server-side). Once the
@@ -619,7 +736,15 @@ export function App() {
 
   // Summary numbers used by the minimized-run indicator.
   const runTaskCounts = useMemo(() => {
-    const counts = { success: 0, failed: 0, running: 0, waiting: 0, skipped: 0, timeout: 0, blocked: 0 };
+    const counts = {
+      success: 0,
+      failed: 0,
+      running: 0,
+      waiting: 0,
+      skipped: 0,
+      timeout: 0,
+      blocked: 0,
+    };
     for (const [, t] of runTasks) {
       if (t.status in counts) (counts as Record<string, number>)[t.status] += 1;
     }
@@ -647,7 +772,9 @@ export function App() {
         confirmLabel: 'Abort run',
         danger: true,
         onConfirm: () => {
-          api.abortRun().catch(() => { /* best effort */ });
+          api.abortRun().catch(() => {
+            /* best effort */
+          });
           resetRun();
         },
       });
@@ -663,18 +790,22 @@ export function App() {
   // anyway, but this makes it clear in the UI).
   const runStatusSlot = useMemo(() => {
     if (!runIsMinimized) return null;
-    const label =
-      runIsLive ? (runTasks.size > 0
+    const label = runIsLive
+      ? runTasks.size > 0
         ? `Running ${runTaskCounts.success + runTaskCounts.failed + runTaskCounts.timeout + runTaskCounts.skipped}/${runTasks.size}`
-        : 'Running')
-      : runStatus === 'done' ? 'View run'
-      : runStatus === 'failed' ? 'Run failed'
-      : runStatus === 'aborted' ? 'Run aborted'
-      : 'Run error';
-    const borderClass =
-      runIsLive ? 'border-tagma-ready/50 hover:bg-tagma-ready/5 text-tagma-ready'
-      : runStatus === 'done' ? 'border-tagma-success/50 hover:bg-tagma-success/5 text-tagma-success'
-      : 'border-tagma-error/50 hover:bg-tagma-error/5 text-tagma-error';
+        : 'Running'
+      : runStatus === 'done'
+        ? 'View run'
+        : runStatus === 'failed'
+          ? 'Run failed'
+          : runStatus === 'aborted'
+            ? 'Run aborted'
+            : 'Run error';
+    const borderClass = runIsLive
+      ? 'border-tagma-ready/50 hover:bg-tagma-ready/5 text-tagma-ready'
+      : runStatus === 'done'
+        ? 'border-tagma-success/50 hover:bg-tagma-success/5 text-tagma-success'
+        : 'border-tagma-error/50 hover:bg-tagma-error/5 text-tagma-error';
     return (
       <div className="flex items-center gap-1 shrink-0">
         <button
@@ -686,7 +817,9 @@ export function App() {
         >
           {runIsLive && <Loader2 size={10} className="animate-spin" />}
           {runStatus === 'done' && <Check size={10} />}
-          {(runStatus === 'aborted' || runStatus === 'failed' || runStatus === 'error') && <XIcon size={10} />}
+          {(runStatus === 'aborted' || runStatus === 'failed' || runStatus === 'error') && (
+            <XIcon size={10} />
+          )}
           <span>{label}</span>
           {runPendingApprovals.size > 0 && (
             <span className="flex items-center gap-0.5 text-tagma-warning">
@@ -707,9 +840,17 @@ export function App() {
       </div>
     );
   }, [
-    runIsMinimized, runIsLive, runStatus,
-    runTasks.size, runTaskCounts.success, runTaskCounts.failed, runTaskCounts.timeout, runTaskCounts.skipped,
-    runPendingApprovals.size, showRun, handleRunStopOrDismiss,
+    runIsMinimized,
+    runIsLive,
+    runStatus,
+    runTasks.size,
+    runTaskCounts.success,
+    runTaskCounts.failed,
+    runTaskCounts.timeout,
+    runTaskCounts.skipped,
+    runPendingApprovals.size,
+    showRun,
+    handleRunStopOrDismiss,
   ]);
 
   if (loading) {
@@ -727,224 +868,253 @@ export function App() {
 
   return (
     <>
-    <AnimatePresence mode="wait">
-    {!workDir && !runActive && !pluginsActive ? (
-      <motion.div
-        key="welcome"
-        className="h-full"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={VIEW_TRANSITION}
-      >
-        <WelcomePage
-          onOpenWorkspace={() => setExplorer({ mode: 'directory', purpose: 'workdir' })}
-          onSelectRecent={handleOpenRecentWorkspace}
-        />
-        <ErrorToast />
-      </motion.div>
-    ) : runActive ? (
-      <motion.div
-        key="run"
-        className="h-full"
-        initial={{ opacity: 0, x: 40 }}
-        animate={{ opacity: 1, x: 0 }}
-        exit={{ opacity: 0, x: -40 }}
-        transition={VIEW_TRANSITION}
-      >
-        <RunView
-          config={config}
-          dagEdges={dagEdges}
-          positions={positions}
-          onBack={handleRunBack}
-        />
-        <ErrorToast />
-      </motion.div>
-    ) : pluginsActive ? (
-      <motion.div
-        key="plugins"
-        className="h-full"
-        initial={{ opacity: 0, x: 40 }}
-        animate={{ opacity: 1, x: 0 }}
-        exit={{ opacity: 0, x: -40 }}
-        transition={VIEW_TRANSITION}
-      >
-        <PluginsPage
-          workDir={workDir}
-          declaredPlugins={config.plugins ?? []}
-          onBack={hidePluginsPage}
-          onRegistryUpdate={setRegistry}
-          onPluginsChange={(plugins) =>
-            updatePipelineFields({ plugins: plugins.length > 0 ? plugins : undefined })
-          }
-          onRequestBrowseLocal={() => setExplorer({ mode: 'directory', purpose: 'plugin-import' })}
-          onRefreshServerState={refreshServerState}
-        />
-        <ErrorToast />
-      </motion.div>
-    ) : (
-    <motion.div
-      key="editor"
-      className="h-full flex flex-col bg-tagma-bg"
-      initial={{ opacity: 0, x: -40 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: 40 }}
-      transition={VIEW_TRANSITION}
-    >
-      <div onClick={() => { if (!pinnedTaskId && !pinnedTrackId) { selectTask(null); selectTrack(null); } }}>
-        <Toolbar
-          pipelineName={config.name} yamlPath={yamlPath} workDir={workDir} isDirty={isDirty} errorCount={blockingValidationErrors.length}
-          menus={menus} workspaceItems={workspaceItems}
-          onUpdateName={setPipelineName} onRun={handleRun}
-          yamlPreviewOpen={showYamlPreview} onToggleYamlPreview={() => setShowYamlPreview((v) => !v)}
-          onShowHistory={showRunHistory}
-          runStatusSlot={runStatusSlot}
-        />
-
-      </div>
-
-      <div className="flex-1 flex overflow-hidden">
-        <div className={`flex-1 min-w-0 overflow-hidden ${showYamlPreview ? 'flex' : ''}`}>
-          <div className={showYamlPreview ? 'flex-1 min-w-0 overflow-hidden' : 'h-full'}>
-            <BoardCanvas
-              config={config} dagEdges={dagEdges} positions={positions}
-              selectedTaskIds={selectedTaskIds} invalidTaskIds={invalidTaskIds}
-              errorsByTask={errorsByTask} errorsByTrack={errorsByTrack}
-              onSelectTask={selectTask} onToggleTaskSelection={toggleTaskSelection}
-              onSelectTrack={selectTrack}
-              onAddTask={addTask} onAddTrack={addTrack}
-              onDeleteTask={deleteTask} onDeleteTrack={deleteTrack}
-              onRenameTrack={renameTrack} onMoveTrackTo={moveTrackTo}
-              onAddDependency={addDependency} onRemoveDependency={removeDependency}
-              onSetTaskPosition={setTaskPosition} onTransferTask={transferTaskToTrack}
+      <AnimatePresence mode="wait">
+        {!workDir && !runActive && !pluginsActive ? (
+          <motion.div
+            key="welcome"
+            className="h-full"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={VIEW_TRANSITION}
+          >
+            <WelcomePage
+              onOpenWorkspace={() => setExplorer({ mode: 'directory', purpose: 'workdir' })}
+              onSelectRecent={handleOpenRecentWorkspace}
             />
-          </div>
-          {showYamlPreview && (
-            <div className="w-80 shrink-0 overflow-hidden border-l border-tagma-border">
-              <YamlPreview config={config} onClose={() => setShowYamlPreview(false)} />
+            <ErrorToast />
+          </motion.div>
+        ) : runActive ? (
+          <motion.div
+            key="run"
+            className="h-full"
+            initial={{ opacity: 0, x: 40 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -40 }}
+            transition={VIEW_TRANSITION}
+          >
+            <RunView
+              config={config}
+              dagEdges={dagEdges}
+              positions={positions}
+              onBack={handleRunBack}
+            />
+            <ErrorToast />
+          </motion.div>
+        ) : pluginsActive ? (
+          <motion.div
+            key="plugins"
+            className="h-full"
+            initial={{ opacity: 0, x: 40 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -40 }}
+            transition={VIEW_TRANSITION}
+          >
+            <PluginsPage
+              workDir={workDir}
+              declaredPlugins={config.plugins ?? []}
+              onBack={hidePluginsPage}
+              onRegistryUpdate={setRegistry}
+              onPluginsChange={(plugins) =>
+                updatePipelineFields({ plugins: plugins.length > 0 ? plugins : undefined })
+              }
+              onRequestBrowseLocal={() =>
+                setExplorer({ mode: 'directory', purpose: 'plugin-import' })
+              }
+              onRefreshServerState={refreshServerState}
+            />
+            <ErrorToast />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="editor"
+            className="h-full flex flex-col bg-tagma-bg"
+            initial={{ opacity: 0, x: -40 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 40 }}
+            transition={VIEW_TRANSITION}
+          >
+            <div
+              onClick={() => {
+                if (!pinnedTaskId && !pinnedTrackId) {
+                  selectTask(null);
+                  selectTrack(null);
+                }
+              }}
+            >
+              <Toolbar
+                pipelineName={config.name}
+                yamlPath={yamlPath}
+                workDir={workDir}
+                isDirty={isDirty}
+                errorCount={blockingValidationErrors.length}
+                menus={menus}
+                workspaceItems={workspaceItems}
+                onUpdateName={setPipelineName}
+                onRun={handleRun}
+                yamlPreviewOpen={showYamlPreview}
+                onToggleYamlPreview={() => setShowYamlPreview((v) => !v)}
+                onShowHistory={showRunHistory}
+                runStatusSlot={runStatusSlot}
+              />
             </div>
-          )}
-        </div>
 
-        {!pinnedTrackId && selectedInfo && (
-          <TaskConfigPanel
-            key={sidebarTaskId}
-            task={selectedInfo.task} trackId={selectedInfo.trackId} qualifiedId={sidebarTaskId!}
-            pipelineConfig={config}
-            dependencies={[...(selectedInfo.task.depends_on ?? [])]}
-            drivers={registry.drivers}
-            errors={errorsByTask.get(sidebarTaskId!) ?? []}
-            onUpdateTask={updateTask} onDeleteTask={deleteTask}
-            onRemoveDependency={removeDependency}
-            isPinned={!!pinnedTaskId}
-            onTogglePin={() => pinnedTaskId ? unpinTask() : pinTask(sidebarTaskId!)}
-          />
+            <div className="flex-1 flex overflow-hidden">
+              <div className={`flex-1 min-w-0 overflow-hidden ${showYamlPreview ? 'flex' : ''}`}>
+                <div className={showYamlPreview ? 'flex-1 min-w-0 overflow-hidden' : 'h-full'}>
+                  <BoardCanvas
+                    config={config}
+                    dagEdges={dagEdges}
+                    positions={positions}
+                    selectedTaskIds={selectedTaskIds}
+                    invalidTaskIds={invalidTaskIds}
+                    errorsByTask={errorsByTask}
+                    errorsByTrack={errorsByTrack}
+                    onSelectTask={selectTask}
+                    onToggleTaskSelection={toggleTaskSelection}
+                    onSelectTrack={selectTrack}
+                    onAddTask={addTask}
+                    onAddTrack={addTrack}
+                    onDeleteTask={deleteTask}
+                    onDeleteTrack={deleteTrack}
+                    onRenameTrack={renameTrack}
+                    onMoveTrackTo={moveTrackTo}
+                    onAddDependency={addDependency}
+                    onRemoveDependency={removeDependency}
+                    onSetTaskPosition={setTaskPosition}
+                    onTransferTask={transferTaskToTrack}
+                  />
+                </div>
+                {showYamlPreview && (
+                  <div className="w-80 shrink-0 overflow-hidden border-l border-tagma-border">
+                    <YamlPreview config={config} onClose={() => setShowYamlPreview(false)} />
+                  </div>
+                )}
+              </div>
+
+              {!pinnedTrackId && selectedInfo && (
+                <TaskConfigPanel
+                  key={sidebarTaskId}
+                  task={selectedInfo.task}
+                  trackId={selectedInfo.trackId}
+                  qualifiedId={sidebarTaskId!}
+                  pipelineConfig={config}
+                  dependencies={[...(selectedInfo.task.depends_on ?? [])]}
+                  drivers={registry.drivers}
+                  errors={errorsByTask.get(sidebarTaskId!) ?? []}
+                  onUpdateTask={updateTask}
+                  onDeleteTask={deleteTask}
+                  onRemoveDependency={removeDependency}
+                  isPinned={!!pinnedTaskId}
+                  onTogglePin={() => (pinnedTaskId ? unpinTask() : pinTask(sidebarTaskId!))}
+                />
+              )}
+
+              {!pinnedTaskId && selectedTrack && (
+                <TrackConfigPanel
+                  key={sidebarTrackId}
+                  track={selectedTrack}
+                  drivers={registry.drivers}
+                  errors={errorsByTrack.get(sidebarTrackId!) ?? []}
+                  onUpdateTrack={updateTrackFields}
+                  onDeleteTrack={deleteTrack}
+                  isPinned={!!pinnedTrackId}
+                  onTogglePin={() => (pinnedTrackId ? unpinTrack() : pinTrack(sidebarTrackId!))}
+                />
+              )}
+            </div>
+
+            {/* Pipeline Settings modal */}
+            {showPipelineSettings && (
+              <PipelineConfigPanel
+                config={config}
+                drivers={registry.drivers}
+                errors={pipelineLevelErrors}
+                onUpdate={updatePipelineFields}
+                onClose={() => setShowPipelineSettings(false)}
+              />
+            )}
+
+            {/* Editor Settings modal */}
+            {showEditorSettings && (
+              <EditorSettingsPanel
+                workDir={workDir}
+                onRegistryUpdate={setRegistry}
+                onClose={() => setShowEditorSettings(false)}
+              />
+            )}
+
+            {saveAsInput !== null && (
+              <SaveAsDialog
+                defaultValue={saveAsInput}
+                onConfirm={commitSaveAs}
+                onCancel={() => setSaveAsInput(null)}
+              />
+            )}
+
+            {searchVisible && (
+              <SearchOverlay
+                searchQuery={searchQuery}
+                onSearchQueryChange={setSearchQuery}
+                onClose={() => setSearchVisible(false)}
+                onSelectTask={selectTask}
+                config={config}
+              />
+            )}
+
+            <ErrorToast />
+          </motion.div>
         )}
+      </AnimatePresence>
 
-        {!pinnedTaskId && selectedTrack && (
-          <TrackConfigPanel
-            key={sidebarTrackId}
-            track={selectedTrack}
-            drivers={registry.drivers}
-            errors={errorsByTrack.get(sidebarTrackId!) ?? []}
-            onUpdateTrack={updateTrackFields}
-            onDeleteTrack={deleteTrack}
-            isPinned={!!pinnedTrackId}
-            onTogglePin={() => pinnedTrackId ? unpinTrack() : pinTrack(sidebarTrackId!)}
-          />
-        )}
-      </div>
+      {/* ─── Global modals — rendered at top level so they work from any view ─── */}
 
-      {/* Pipeline Settings modal */}
-      {showPipelineSettings && (
-        <PipelineConfigPanel
-          config={config}
-          drivers={registry.drivers}
-          errors={pipelineLevelErrors}
-          onUpdate={updatePipelineFields}
-          onClose={() => setShowPipelineSettings(false)}
+      {/* File Explorer modal */}
+      {explorer && (
+        <FileExplorer
+          mode={explorer.mode}
+          title={
+            explorer.purpose === 'import'
+              ? 'Import Pipeline YAML'
+              : explorer.purpose === 'export'
+                ? 'Export Pipeline — Select Destination'
+                : explorer.purpose === 'plugin-import'
+                  ? 'Import Local Plugin — Select Directory'
+                  : 'Select Workspace Directory'
+          }
+          initialPath={
+            explorer.purpose === 'import'
+              ? undefined
+              : explorer.purpose === 'export'
+                ? workDir
+                : workDir || undefined
+          }
+          fileFilter={explorer.purpose === 'import' ? ['.yaml', '.yml'] : undefined}
+          // C3: every legitimate "browse outside the workspace" intent flows
+          // through one of these four purposes. Anything else is in-workspace
+          // navigation and stays subject to the server's workspace fence.
+          picker={
+            explorer.purpose === 'workdir' ||
+            explorer.purpose === 'plugin-import' ||
+            explorer.purpose === 'import' ||
+            explorer.purpose === 'export'
+          }
+          onConfirm={handleExplorerConfirm}
+          onCancel={() => {
+            const wasPluginImport = explorer?.purpose === 'plugin-import';
+            setExplorer(null);
+            setPendingRun(false);
+            afterWorkspaceRef.current = null;
+            if (wasPluginImport) showPluginsPage();
+          }}
         />
       )}
 
-      {/* Editor Settings modal */}
-      {showEditorSettings && (
-        <EditorSettingsPanel
-          workDir={workDir}
-          onRegistryUpdate={setRegistry}
-          onClose={() => setShowEditorSettings(false)}
-        />
-      )}
+      {/* Info / error dialog */}
+      {dialog && <DialogModal info={dialog} onClose={() => setDialog(null)} />}
 
-      {saveAsInput !== null && (
-        <SaveAsDialog
-          defaultValue={saveAsInput}
-          onConfirm={commitSaveAs}
-          onCancel={() => setSaveAsInput(null)}
-        />
-      )}
-
-      {searchVisible && (
-        <SearchOverlay
-          searchQuery={searchQuery}
-          onSearchQueryChange={setSearchQuery}
-          onClose={() => setSearchVisible(false)}
-          onSelectTask={selectTask}
-          config={config}
-        />
-      )}
-
-      <ErrorToast />
-    </motion.div>
-    )}
-    </AnimatePresence>
-
-    {/* ─── Global modals — rendered at top level so they work from any view ─── */}
-
-    {/* File Explorer modal */}
-    {explorer && (
-      <FileExplorer
-        mode={explorer.mode}
-        title={
-          explorer.purpose === 'import' ? 'Import Pipeline YAML'
-          : explorer.purpose === 'export' ? 'Export Pipeline — Select Destination'
-          : explorer.purpose === 'plugin-import' ? 'Import Local Plugin — Select Directory'
-          : 'Select Workspace Directory'
-        }
-        initialPath={
-          explorer.purpose === 'import' ? undefined
-          : explorer.purpose === 'export' ? workDir
-          : (workDir || undefined)
-        }
-        fileFilter={explorer.purpose === 'import' ? ['.yaml', '.yml'] : undefined}
-        // C3: every legitimate "browse outside the workspace" intent flows
-        // through one of these four purposes. Anything else is in-workspace
-        // navigation and stays subject to the server's workspace fence.
-        picker={
-          explorer.purpose === 'workdir'
-          || explorer.purpose === 'plugin-import'
-          || explorer.purpose === 'import'
-          || explorer.purpose === 'export'
-        }
-        onConfirm={handleExplorerConfirm}
-        onCancel={() => {
-          const wasPluginImport = explorer?.purpose === 'plugin-import';
-          setExplorer(null);
-          setPendingRun(false);
-          afterWorkspaceRef.current = null;
-          if (wasPluginImport) showPluginsPage();
-        }}
-      />
-    )}
-
-    {/* Info / error dialog */}
-    {dialog && (
-      <DialogModal info={dialog} onClose={() => setDialog(null)} />
-    )}
-
-    {/* Confirm dialog */}
-    {confirmInfo && (
-      <ConfirmModal info={confirmInfo} onClose={() => setConfirmInfo(null)} />
-    )}
+      {/* Confirm dialog */}
+      {confirmInfo && <ConfirmModal info={confirmInfo} onClose={() => setConfirmInfo(null)} />}
     </>
   );
 }

@@ -41,13 +41,17 @@ export function WelcomePage({ onOpenWorkspace, onSelectRecent }: WelcomePageProp
     }
   }, []);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
   const handleRemove = useCallback(async (path: string) => {
     try {
       const result = await api.removeRecentWorkspace(path);
       setRecent(result.recent);
-    } catch { /* best-effort */ }
+    } catch {
+      /* best-effort */
+    }
   }, []);
 
   return (
@@ -129,7 +133,9 @@ export function WelcomePage({ onOpenWorkspace, onSelectRecent }: WelcomePageProp
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className={`text-[12px] font-medium truncate ${disabled ? 'text-tagma-muted-dim line-through' : 'text-tagma-text'}`}>
+                        <span
+                          className={`text-[12px] font-medium truncate ${disabled ? 'text-tagma-muted-dim line-through' : 'text-tagma-text'}`}
+                        >
                           {name}
                         </span>
                         {disabled && (
@@ -165,7 +171,8 @@ export function WelcomePage({ onOpenWorkspace, onSelectRecent }: WelcomePageProp
         {/* Footer hint */}
         <div className="mt-10 text-center">
           <p className="text-[10px] font-mono text-tagma-muted-dim/70 tracking-wide">
-            Config stored in <span className="text-tagma-muted-dim">~/.tagma/recent-workspaces.json</span>
+            Config stored in{' '}
+            <span className="text-tagma-muted-dim">~/.tagma/recent-workspaces.json</span>
           </p>
         </div>
       </div>

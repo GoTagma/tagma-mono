@@ -24,15 +24,26 @@ const ON_FAILURE_DESCRIPTIONS: Record<string, string> = {
   stop_all: '\u26a0 Skip ALL remaining tasks in the entire pipeline.',
 };
 
-export function TrackConfigPanel({ track, drivers, errors, onUpdateTrack, onDeleteTrack, isPinned, onTogglePin }: TrackConfigPanelProps) {
+export function TrackConfigPanel({
+  track,
+  drivers,
+  errors,
+  onUpdateTrack,
+  onDeleteTrack,
+  isPinned,
+  onTogglePin,
+}: TrackConfigPanelProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   // Read pipeline-level config from the store so we can resolve the inheritance
   // chain (track → pipeline). App.tsx doesn't need to thread anything new.
   const pipelineConfig = usePipelineStore((s) => s.config);
 
-  const commit = useCallback((fields: Record<string, unknown>) => {
-    onUpdateTrack(track.id, fields);
-  }, [track.id, onUpdateTrack]);
+  const commit = useCallback(
+    (fields: Record<string, unknown>) => {
+      onUpdateTrack(track.id, fields);
+    },
+    [track.id, onUpdateTrack],
+  );
 
   // Pipeline-level inheritance (pipeline only carries driver/timeout today).
   const resolvedDriver = useMemo(
@@ -44,7 +55,8 @@ export function TrackConfigPanel({ track, drivers, errors, onUpdateTrack, onDele
     [track.model, pipelineConfig.model],
   );
   const resolvedReasoning = useMemo(
-    () => resolveScalar(track.reasoning_effort, undefined, pipelineConfig.reasoning_effort, undefined),
+    () =>
+      resolveScalar(track.reasoning_effort, undefined, pipelineConfig.reasoning_effort, undefined),
     [track.reasoning_effort, pipelineConfig.reasoning_effort],
   );
   const resolvedAgentProfile = useMemo(
@@ -58,31 +70,50 @@ export function TrackConfigPanel({ track, drivers, errors, onUpdateTrack, onDele
 
   const [name, setName, blurName] = useLocalField(track.name ?? '', (v) => commit({ name: v }));
   // driver uses direct commit (no local field needed for select)
-  const [color, setColor, blurColor] = useLocalField(track.color ?? '', (v) => commit({ color: v || undefined }));
-  const [agentProfile, setAgentProfile, blurAgentProfile] = useLocalField(track.agent_profile ?? '', (v) => commit({ agent_profile: v || undefined }));
-  const [cwd, setCwd, blurCwd] = useLocalField(track.cwd ?? '', (v) => commit({ cwd: v || undefined }));
-  const [model, setModel, blurModel] = useLocalField(track.model ?? '', (v) => commit({ model: v || undefined }));
+  const [color, setColor, blurColor] = useLocalField(track.color ?? '', (v) =>
+    commit({ color: v || undefined }),
+  );
+  const [agentProfile, setAgentProfile, blurAgentProfile] = useLocalField(
+    track.agent_profile ?? '',
+    (v) => commit({ agent_profile: v || undefined }),
+  );
+  const [cwd, setCwd, blurCwd] = useLocalField(track.cwd ?? '', (v) =>
+    commit({ cwd: v || undefined }),
+  );
+  const [model, setModel, blurModel] = useLocalField(track.model ?? '', (v) =>
+    commit({ model: v || undefined }),
+  );
 
-  const handleOnFailureChange = useCallback((on_failure: string) => {
-    commit({ on_failure: on_failure || undefined });
-  }, [commit]);
+  const handleOnFailureChange = useCallback(
+    (on_failure: string) => {
+      commit({ on_failure: on_failure || undefined });
+    },
+    [commit],
+  );
 
-  const handlePermToggle = useCallback((key: 'read' | 'write' | 'execute') => {
-    const current = track.permissions ?? { read: false, write: false, execute: false };
-    const next = { ...current, [key]: !current[key] };
-    // If all are falsy, remove permissions entirely
-    if (!next.read && !next.write && !next.execute) {
-      commit({ permissions: undefined });
-    } else {
-      commit({ permissions: next });
-    }
-  }, [track.permissions, commit]);
+  const handlePermToggle = useCallback(
+    (key: 'read' | 'write' | 'execute') => {
+      const current = track.permissions ?? { read: false, write: false, execute: false };
+      const next = { ...current, [key]: !current[key] };
+      // If all are falsy, remove permissions entirely
+      if (!next.read && !next.write && !next.execute) {
+        commit({ permissions: undefined });
+      } else {
+        commit({ permissions: next });
+      }
+    },
+    [track.permissions, commit],
+  );
 
   return (
-    <div className={`w-80 h-full bg-tagma-surface border-l flex flex-col animate-slide-in-right ${isPinned ? 'border-tagma-accent/50' : 'border-tagma-border'}`}
-      onClick={(e) => e.stopPropagation()}>
+    <div
+      className={`w-80 h-full bg-tagma-surface border-l flex flex-col animate-slide-in-right ${isPinned ? 'border-tagma-accent/50' : 'border-tagma-border'}`}
+      onClick={(e) => e.stopPropagation()}
+    >
       <div className="flex items-center justify-between px-3 h-7 border-b border-tagma-border shrink-0">
-        <span className="text-[10px] font-medium text-tagma-muted uppercase tracking-wider">Track Inspector</span>
+        <span className="text-[10px] font-medium text-tagma-muted uppercase tracking-wider">
+          Track Inspector
+        </span>
         <button
           onClick={onTogglePin}
           className={`p-1 transition-colors ${isPinned ? 'text-tagma-accent bg-tagma-accent/10' : 'text-tagma-muted hover:text-tagma-text'}`}
@@ -96,7 +127,10 @@ export function TrackConfigPanel({ track, drivers, errors, onUpdateTrack, onDele
         {errors.length > 0 && (
           <div className="bg-tagma-error/8 border border-tagma-error/30 px-2.5 py-1.5 space-y-1">
             {errors.map((msg, i) => (
-              <div key={i} className="flex items-start gap-1.5 text-[10px] text-tagma-error/90 font-mono">
+              <div
+                key={i}
+                className="flex items-start gap-1.5 text-[10px] text-tagma-error/90 font-mono"
+              >
                 <AlertTriangle size={10} className="text-tagma-error shrink-0 mt-[1px]" />
                 <span>{msg}</span>
               </div>
@@ -106,23 +140,51 @@ export function TrackConfigPanel({ track, drivers, errors, onUpdateTrack, onDele
 
         {/* ID (readonly) * */}
         <div>
-          <label className="field-label">Track ID <span className="text-tagma-error">*</span></label>
-          <div className="text-[11px] font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1.5 truncate" title={track.id}>{track.id}</div>
+          <label className="field-label">
+            Track ID <span className="text-tagma-error">*</span>
+          </label>
+          <div
+            className="text-[11px] font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1.5 truncate"
+            title={track.id}
+          >
+            {track.id}
+          </div>
         </div>
 
         {/* Name * */}
         <div>
-          <label className="field-label">Name <span className="text-tagma-error">*</span></label>
-          <input type="text" className="field-input" value={name} onChange={(e) => setName(e.target.value)} onBlur={blurName} placeholder="Track name..." />
+          <label className="field-label">
+            Name <span className="text-tagma-error">*</span>
+          </label>
+          <input
+            type="text"
+            className="field-input"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={blurName}
+            placeholder="Track name..."
+          />
         </div>
 
         {/* Color */}
         <div>
           <label className="field-label">Color</label>
           <div className="flex items-center gap-2">
-            <input type="color" value={color || '#d4845a'} onChange={(e) => setColor(e.target.value)} onBlur={blurColor}
-              className="w-8 h-8 border border-tagma-border bg-tagma-bg cursor-pointer p-0.5" />
-            <input type="text" className="field-input flex-1" value={color} onChange={(e) => setColor(e.target.value)} onBlur={blurColor} placeholder="#hex or empty" />
+            <input
+              type="color"
+              value={color || '#d4845a'}
+              onChange={(e) => setColor(e.target.value)}
+              onBlur={blurColor}
+              className="w-8 h-8 border border-tagma-border bg-tagma-bg cursor-pointer p-0.5"
+            />
+            <input
+              type="text"
+              className="field-input flex-1"
+              value={color}
+              onChange={(e) => setColor(e.target.value)}
+              onBlur={blurColor}
+              placeholder="#hex or empty"
+            />
           </div>
         </div>
 
@@ -134,11 +196,23 @@ export function TrackConfigPanel({ track, drivers, errors, onUpdateTrack, onDele
             <label className="field-label">Driver</label>
             <ResetButton visible={!!track.driver} onReset={() => commit({ driver: undefined })} />
           </div>
-          <select className="field-input" value={track.driver ?? ''} onChange={(e) => commit({ driver: e.target.value || undefined })}>
+          <select
+            className="field-input"
+            value={track.driver ?? ''}
+            onChange={(e) => commit({ driver: e.target.value || undefined })}
+          >
             <option value="">(inherited)</option>
-            {drivers.map((d) => <option key={d} value={d}>{d}</option>)}
+            {drivers.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
           </select>
-          <InheritedValue isOverridden={!!track.driver} resolved={resolvedDriver} pipelineName={pipelineConfig.name} />
+          <InheritedValue
+            isOverridden={!!track.driver}
+            resolved={resolvedDriver}
+            pipelineName={pipelineConfig.name}
+          />
         </div>
 
         {/* Model */}
@@ -147,34 +221,68 @@ export function TrackConfigPanel({ track, drivers, errors, onUpdateTrack, onDele
             <label className="field-label">Model</label>
             <ResetButton visible={!!track.model} onReset={() => commit({ model: undefined })} />
           </div>
-          <input type="text" className="field-input font-mono text-[11px]" value={model} onChange={(e) => setModel(e.target.value)} onBlur={blurModel} placeholder="e.g. claude-sonnet-4-6" />
-          <InheritedValue isOverridden={!!track.model} resolved={resolvedModel} pipelineName={pipelineConfig.name} />
+          <input
+            type="text"
+            className="field-input font-mono text-[11px]"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            onBlur={blurModel}
+            placeholder="e.g. claude-sonnet-4-6"
+          />
+          <InheritedValue
+            isOverridden={!!track.model}
+            resolved={resolvedModel}
+            pipelineName={pipelineConfig.name}
+          />
         </div>
 
         {/* Reasoning Effort */}
         <div>
           <div className="flex items-center justify-between">
             <label className="field-label">Reasoning Effort</label>
-            <ResetButton visible={!!track.reasoning_effort} onReset={() => commit({ reasoning_effort: undefined })} />
+            <ResetButton
+              visible={!!track.reasoning_effort}
+              onReset={() => commit({ reasoning_effort: undefined })}
+            />
           </div>
-          <select className="field-input" value={track.reasoning_effort ?? ''} onChange={(e) => commit({ reasoning_effort: e.target.value || undefined })}>
+          <select
+            className="field-input"
+            value={track.reasoning_effort ?? ''}
+            onChange={(e) => commit({ reasoning_effort: e.target.value || undefined })}
+          >
             <option value="">(inherited)</option>
             <option value="low">low</option>
             <option value="medium">medium</option>
             <option value="high">high</option>
           </select>
-          <InheritedValue isOverridden={!!track.reasoning_effort} resolved={resolvedReasoning} pipelineName={pipelineConfig.name} />
+          <InheritedValue
+            isOverridden={!!track.reasoning_effort}
+            resolved={resolvedReasoning}
+            pipelineName={pipelineConfig.name}
+          />
         </div>
 
         {/* Agent Profile */}
         <div>
           <div className="flex items-center justify-between">
             <label className="field-label">Agent Profile</label>
-            <ResetButton visible={!!track.agent_profile} onReset={() => commit({ agent_profile: undefined })} />
+            <ResetButton
+              visible={!!track.agent_profile}
+              onReset={() => commit({ agent_profile: undefined })}
+            />
           </div>
-          <textarea className="field-input min-h-[60px] resize-y font-mono text-[11px]" value={agentProfile} onChange={(e) => setAgentProfile(e.target.value)} onBlur={blurAgentProfile}
-            placeholder="Named profile or multi-line system prompt..." />
-          <InheritedValue isOverridden={!!track.agent_profile} resolved={resolvedAgentProfile} pipelineName={pipelineConfig.name} />
+          <textarea
+            className="field-input min-h-[60px] resize-y font-mono text-[11px]"
+            value={agentProfile}
+            onChange={(e) => setAgentProfile(e.target.value)}
+            onBlur={blurAgentProfile}
+            placeholder="Named profile or multi-line system prompt..."
+          />
+          <InheritedValue
+            isOverridden={!!track.agent_profile}
+            resolved={resolvedAgentProfile}
+            pipelineName={pipelineConfig.name}
+          />
         </div>
 
         {/* CWD */}
@@ -183,8 +291,19 @@ export function TrackConfigPanel({ track, drivers, errors, onUpdateTrack, onDele
             <label className="field-label">Working Directory</label>
             <ResetButton visible={!!track.cwd} onReset={() => commit({ cwd: undefined })} />
           </div>
-          <input type="text" className="field-input font-mono text-[11px]" value={cwd} onChange={(e) => setCwd(e.target.value)} onBlur={blurCwd} placeholder="./path (relative, inherited)" />
-          <InheritedValue isOverridden={!!track.cwd} resolved={resolvedCwd} pipelineName={pipelineConfig.name} />
+          <input
+            type="text"
+            className="field-input font-mono text-[11px]"
+            value={cwd}
+            onChange={(e) => setCwd(e.target.value)}
+            onBlur={blurCwd}
+            placeholder="./path (relative, inherited)"
+          />
+          <InheritedValue
+            isOverridden={!!track.cwd}
+            resolved={resolvedCwd}
+            pipelineName={pipelineConfig.name}
+          />
         </div>
 
         <div className="border-t border-tagma-border" />
@@ -193,18 +312,35 @@ export function TrackConfigPanel({ track, drivers, errors, onUpdateTrack, onDele
         <div>
           <div className="flex items-center justify-between">
             <label className="field-label">Permissions</label>
-            <ResetButton visible={!!track.permissions} onReset={() => commit({ permissions: undefined })} />
+            <ResetButton
+              visible={!!track.permissions}
+              onReset={() => commit({ permissions: undefined })}
+            />
           </div>
           <div className="flex gap-3">
             {(['read', 'write', 'execute'] as const).map((key) => {
               const isExecute = key === 'execute';
               return (
-                <label key={key} className="flex items-center gap-1.5 cursor-pointer"
-                  title={isExecute ? 'Allows arbitrary shell execution (Bash, bypassPermissions on claude-code). Enable only in trusted workdirs.' : undefined}>
-                  <input type="checkbox" checked={!!track.permissions?.[key]}
+                <label
+                  key={key}
+                  className="flex items-center gap-1.5 cursor-pointer"
+                  title={
+                    isExecute
+                      ? 'Allows arbitrary shell execution (Bash, bypassPermissions on claude-code). Enable only in trusted workdirs.'
+                      : undefined
+                  }
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!track.permissions?.[key]}
                     onChange={() => handlePermToggle(key)}
-                    className="accent-tagma-accent" />
-                  <span className={`text-[11px] capitalize ${isExecute ? 'text-tagma-error' : 'text-tagma-text'}`}>{key}</span>
+                    className="accent-tagma-accent"
+                  />
+                  <span
+                    className={`text-[11px] capitalize ${isExecute ? 'text-tagma-error' : 'text-tagma-text'}`}
+                  >
+                    {key}
+                  </span>
                   {isExecute && <ShieldAlert size={10} className="text-tagma-error" />}
                 </label>
               );
@@ -215,13 +351,19 @@ export function TrackConfigPanel({ track, drivers, errors, onUpdateTrack, onDele
         {/* On Failure */}
         <div>
           <label className="field-label">On Failure</label>
-          <select className="field-input" value={track.on_failure ?? ''} onChange={(e) => handleOnFailureChange(e.target.value)}>
+          <select
+            className="field-input"
+            value={track.on_failure ?? ''}
+            onChange={(e) => handleOnFailureChange(e.target.value)}
+          >
             <option value="">skip_downstream (default)</option>
             <option value="skip_downstream">skip_downstream</option>
             <option value="stop_all">stop_all</option>
             <option value="ignore">ignore</option>
           </select>
-          <p className={`text-[10px] mt-1 ${(track.on_failure ?? '') === 'stop_all' ? 'text-amber-400' : 'text-tagma-muted'}`}>
+          <p
+            className={`text-[10px] mt-1 ${(track.on_failure ?? '') === 'stop_all' ? 'text-amber-400' : 'text-tagma-muted'}`}
+          >
             {ON_FAILURE_DESCRIPTIONS[track.on_failure ?? '']}
           </p>
         </div>
@@ -230,17 +372,26 @@ export function TrackConfigPanel({ track, drivers, errors, onUpdateTrack, onDele
 
         {/* Task count (readonly) */}
         <div>
-          <label className="field-label">Tasks <span className="text-tagma-error">*</span></label>
-          <div className="text-[11px] font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1.5">{track.tasks.length} task{track.tasks.length !== 1 ? 's' : ''}</div>
+          <label className="field-label">
+            Tasks <span className="text-tagma-error">*</span>
+          </label>
+          <div className="text-[11px] font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1.5">
+            {track.tasks.length} task{track.tasks.length !== 1 ? 's' : ''}
+          </div>
         </div>
 
         {/* Middlewares */}
-        <MiddlewareEditor middlewares={track.middlewares ?? []}
-          onChange={(mws) => commit({ middlewares: mws })} />
+        <MiddlewareEditor
+          middlewares={track.middlewares ?? []}
+          onChange={(mws) => commit({ middlewares: mws })}
+        />
 
         {/* Delete */}
         <div className="pt-4 border-t border-tagma-border">
-          <button onClick={() => setConfirmDelete(true)} className="btn-danger flex items-center justify-center gap-1.5">
+          <button
+            onClick={() => setConfirmDelete(true)}
+            className="btn-danger flex items-center justify-center gap-1.5"
+          >
             <Trash2 size={12} />
             Delete Track
           </button>
@@ -263,12 +414,15 @@ export function TrackConfigPanel({ track, drivers, errors, onUpdateTrack, onDele
               </p>
               <p className="text-tagma-muted mt-2">
                 This will remove <span className="text-amber-400">{track.tasks.length}</span> task
-                {track.tasks.length !== 1 ? 's' : ''} and any cross-track dependency references to them.
+                {track.tasks.length !== 1 ? 's' : ''} and any cross-track dependency references to
+                them.
               </p>
               {track.tasks.length > 0 && (
                 <ul className="mt-1 max-h-32 overflow-y-auto space-y-0.5">
                   {track.tasks.map((t) => (
-                    <li key={t.id} className="font-mono text-[11px] text-tagma-text/80">&bull; {track.id}.{t.id}</li>
+                    <li key={t.id} className="font-mono text-[11px] text-tagma-text/80">
+                      &bull; {track.id}.{t.id}
+                    </li>
                   ))}
                 </ul>
               )}

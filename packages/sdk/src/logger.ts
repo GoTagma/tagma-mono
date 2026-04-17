@@ -121,7 +121,11 @@ export class Logger {
   /** Close the persistent file handle. Called by the engine at run completion. */
   close(): void {
     if (this.fd !== null) {
-      try { closeSync(this.fd); } catch { /* already closed */ }
+      try {
+        closeSync(this.fd);
+      } catch {
+        /* already closed */
+      }
       this.fd = null;
     }
   }
@@ -157,7 +161,7 @@ function timestamp(): string {
 /** Return the last `n` non-empty lines of `text`, joined with newlines. */
 export function tailLines(text: string, n: number): string {
   if (!text) return '';
-  const lines = text.split(/\r?\n/).filter(l => l.length > 0);
+  const lines = text.split(/\r?\n/).filter((l) => l.length > 0);
   return lines.slice(-n).join('\n');
 }
 

@@ -24,7 +24,9 @@ export function MenuBar({ menus }: MenuBarProps) {
           <button
             className={`h-full px-2.5 text-[11px] tracking-wide transition-colors flex items-center gap-1 ${openIdx === mi ? 'bg-tagma-elevated text-tagma-text' : 'text-tagma-muted hover:text-tagma-text hover:bg-tagma-elevated/40'}`}
             onClick={() => setOpenIdx(openIdx === mi ? null : mi)}
-            onMouseEnter={() => { if (openIdx !== null) setOpenIdx(mi); }}
+            onMouseEnter={() => {
+              if (openIdx !== null) setOpenIdx(mi);
+            }}
           >
             {menu.label}
             <ChevronDown size={8} className="opacity-40" />

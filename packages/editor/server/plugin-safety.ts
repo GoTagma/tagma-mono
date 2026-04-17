@@ -44,8 +44,8 @@ export function assertSafePluginName(name: unknown): asserts name is string {
   if (!isValidPluginName(name)) {
     throw new PluginSafetyError(
       `Invalid plugin name "${name}". Must be a scoped npm package ` +
-      `(e.g. @tagma/trigger-xyz) or tagma-plugin-*. ` +
-      `Relative/absolute paths are not allowed.`
+        `(e.g. @tagma/trigger-xyz) or tagma-plugin-*. ` +
+        `Relative/absolute paths are not allowed.`,
     );
   }
 }
@@ -65,7 +65,7 @@ export function assertWithinNodeModules(pluginDir: string, workDir: string): voi
   const nodeModulesRoot = resolve(workDir, 'node_modules');
   if (!isPathWithin(pluginDir, nodeModulesRoot)) {
     throw new PluginSafetyError(
-      `Plugin directory "${pluginDir}" resolves outside ${nodeModulesRoot}. Refusing.`
+      `Plugin directory "${pluginDir}" resolves outside ${nodeModulesRoot}. Refusing.`,
     );
   }
 }
@@ -91,7 +91,9 @@ export function safePluginDir(name: unknown, workDir: string): string {
  * a future minor release — it cannot infer categories for third-party packages
  * or packages that don't follow the @tagma/<cat>-<type> naming convention.
  */
-export function pluginCategoryFromName(name: string): { category: PluginCategory; type: string } | null {
+export function pluginCategoryFromName(
+  name: string,
+): { category: PluginCategory; type: string } | null {
   const m = name.match(/^@tagma\/(driver|trigger|completion|middleware)-(.+)$/);
   if (!m) return null;
   const [, cat, type] = m;
@@ -131,10 +133,13 @@ export async function importWithTimeout<T = unknown>(
       importer(fileUrl) as Promise<T>,
       new Promise<T>((_, reject) => {
         timer = setTimeout(
-          () => reject(new Error(
-            `Plugin "${pluginName}" took longer than ${timeoutMs}ms to load. ` +
-            `The module's top-level code may be hung (infinite loop, pending fetch, etc.).`
-          )),
+          () =>
+            reject(
+              new Error(
+                `Plugin "${pluginName}" took longer than ${timeoutMs}ms to load. ` +
+                  `The module's top-level code may be hung (infinite loop, pending fetch, etc.).`,
+              ),
+            ),
           timeoutMs,
         );
         // Don't keep the event loop alive just for this timer.

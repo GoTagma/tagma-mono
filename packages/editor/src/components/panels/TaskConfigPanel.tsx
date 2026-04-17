@@ -1,12 +1,35 @@
 import { useState, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Trash2, Terminal, MessageSquare, ChevronDown, ChevronRight, AlertTriangle, ShieldAlert, FolderOpen, Pin } from 'lucide-react';
-import type { RawTaskConfig, RawPipelineConfig, RawTrackConfig, TriggerConfig, CompletionConfig } from '../../api/client';
+import {
+  X,
+  Trash2,
+  Terminal,
+  MessageSquare,
+  ChevronDown,
+  ChevronRight,
+  AlertTriangle,
+  ShieldAlert,
+  FolderOpen,
+  Pin,
+} from 'lucide-react';
+import type {
+  RawTaskConfig,
+  RawPipelineConfig,
+  RawTrackConfig,
+  TriggerConfig,
+  CompletionConfig,
+} from '../../api/client';
 import { useLocalField } from '../../hooks/use-local-field';
 import { usePipelineStore } from '../../store/pipeline-store';
 import { useDriverCapability } from '../../hooks/use-driver-capability';
 import { MiddlewareEditor } from './MiddlewareEditor';
-import { InheritedValue, ResetButton, resolveScalar, resolvePermissions, permsToString } from './InheritedValue';
+import {
+  InheritedValue,
+  ResetButton,
+  resolveScalar,
+  resolvePermissions,
+  permsToString,
+} from './InheritedValue';
 import { ConfirmDialog } from './ConfirmDialog';
 import { SchemaForm, getBuiltinSchema } from './SchemaForm';
 import {
@@ -102,8 +125,18 @@ function findTrack(trackId: string, config: RawPipelineConfig): RawTrackConfig |
 }
 
 export function TaskConfigPanel({
-  task, trackId, qualifiedId, pipelineConfig, dependencies, drivers, errors,
-  onUpdateTask, onDeleteTask, onRemoveDependency, isPinned, onTogglePin,
+  task,
+  trackId,
+  qualifiedId,
+  pipelineConfig,
+  dependencies,
+  drivers,
+  errors,
+  onUpdateTask,
+  onDeleteTask,
+  onRemoveDependency,
+  isPinned,
+  onTogglePin,
 }: TaskConfigPanelProps) {
   const mode: 'prompt' | 'command' = task.command !== undefined ? 'command' : 'prompt';
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -128,7 +161,13 @@ export function TaskConfigPanel({
     [task.model, track?.model, pipelineConfig.model],
   );
   const resolvedReasoning = useMemo(
-    () => resolveScalar(task.reasoning_effort, track?.reasoning_effort, pipelineConfig.reasoning_effort, undefined),
+    () =>
+      resolveScalar(
+        task.reasoning_effort,
+        track?.reasoning_effort,
+        pipelineConfig.reasoning_effort,
+        undefined,
+      ),
     [task.reasoning_effort, track?.reasoning_effort, pipelineConfig.reasoning_effort],
   );
   const resolvedAgentProfile = useMemo(
@@ -150,7 +189,10 @@ export function TaskConfigPanel({
 
   const registry = usePipelineStore((s) => s.registry);
   const triggerOptions = mergeTypeOptions(['manual', 'file'], registry.triggers);
-  const completionOptions = mergeTypeOptions(['exit_code', 'file_exists', 'output_check'], registry.completions);
+  const completionOptions = mergeTypeOptions(
+    ['exit_code', 'file_exists', 'output_check'],
+    registry.completions,
+  );
   const effectiveCompletionType = getEffectiveCompletionType(task.completion);
 
   // F2/G5: look up the resolved driver's capabilities for the current task.
@@ -160,17 +202,19 @@ export function TaskConfigPanel({
   const systemPromptUnsupported = driverCaps ? driverCaps.systemPrompt === false : false;
   const sessionResumeUnsupported = driverCaps ? driverCaps.sessionResume === false : false;
 
-  const commitField = useCallback((patch: Partial<RawTaskConfig>) => {
-    onUpdateTask(trackId, task.id, patch);
-  }, [trackId, task.id, onUpdateTask]);
+  const commitField = useCallback(
+    (patch: Partial<RawTaskConfig>) => {
+      onUpdateTask(trackId, task.id, patch);
+    },
+    [trackId, task.id, onUpdateTask],
+  );
 
-  const openFileBrowser = useCallback((
-    mode: FileExplorerMode,
-    currentValue: string,
-    onSelect: (path: string) => void,
-  ) => {
-    setFileBrowser({ mode, initialPath: currentValue || undefined, onSelect });
-  }, []);
+  const openFileBrowser = useCallback(
+    (mode: FileExplorerMode, currentValue: string, onSelect: (path: string) => void) => {
+      setFileBrowser({ mode, initialPath: currentValue || undefined, onSelect });
+    },
+    [],
+  );
 
   // H7: useLocalField exposes `serverChanged` / `discardLocal` / `acceptLocal`
   // as extras on the returned tuple so existing 3-element destructuring still
@@ -183,52 +227,82 @@ export function TaskConfigPanel({
   const [prompt, setPrompt, blurPrompt] = promptField;
   const commandField = useLocalField(task.command ?? '', (v) => commitField({ command: v }));
   const [command, setCommand, blurCommand] = commandField;
-  const handleDriverChange = useCallback((value: string) => {
-    onUpdateTask(trackId, task.id, { driver: value || undefined });
-  }, [trackId, task.id, onUpdateTask]);
-  const [timeout, setTimeout_, blurTimeout] = useLocalField(task.timeout ?? '', (v) => commitField({ timeout: v || undefined }));
-  const [agentProfile, setAgentProfile, blurAgentProfile] = useLocalField(task.agent_profile ?? '', (v) => commitField({ agent_profile: v || undefined }));
-  const [cwd, setCwd, blurCwd] = useLocalField(task.cwd ?? '', (v) => commitField({ cwd: v || undefined }));
-  const [model, setModel, blurModel] = useLocalField(task.model ?? '', (v) => commitField({ model: v || undefined }));
+  const handleDriverChange = useCallback(
+    (value: string) => {
+      onUpdateTask(trackId, task.id, { driver: value || undefined });
+    },
+    [trackId, task.id, onUpdateTask],
+  );
+  const [timeout, setTimeout_, blurTimeout] = useLocalField(task.timeout ?? '', (v) =>
+    commitField({ timeout: v || undefined }),
+  );
+  const [agentProfile, setAgentProfile, blurAgentProfile] = useLocalField(
+    task.agent_profile ?? '',
+    (v) => commitField({ agent_profile: v || undefined }),
+  );
+  const [cwd, setCwd, blurCwd] = useLocalField(task.cwd ?? '', (v) =>
+    commitField({ cwd: v || undefined }),
+  );
+  const [model, setModel, blurModel] = useLocalField(task.model ?? '', (v) =>
+    commitField({ model: v || undefined }),
+  );
 
-  const handlePermToggle = useCallback((key: 'read' | 'write' | 'execute') => {
-    const current = task.permissions ?? { read: false, write: false, execute: false };
-    const next = { ...current, [key]: !current[key] };
-    if (!next.read && !next.write && !next.execute) {
-      commitField({ permissions: undefined });
-    } else {
-      commitField({ permissions: next });
-    }
-  }, [task.permissions, commitField]);
+  const handlePermToggle = useCallback(
+    (key: 'read' | 'write' | 'execute') => {
+      const current = task.permissions ?? { read: false, write: false, execute: false };
+      const next = { ...current, [key]: !current[key] };
+      if (!next.read && !next.write && !next.execute) {
+        commitField({ permissions: undefined });
+      } else {
+        commitField({ permissions: next });
+      }
+    },
+    [task.permissions, commitField],
+  );
 
-  const handleTriggerTypeChange = useCallback((type: string) => {
-    if (!type) {
-      commitField({ trigger: undefined });
-    } else {
-      commitField({ trigger: { type } as TriggerConfig });
-    }
-  }, [commitField]);
+  const handleTriggerTypeChange = useCallback(
+    (type: string) => {
+      if (!type) {
+        commitField({ trigger: undefined });
+      } else {
+        commitField({ trigger: { type } as TriggerConfig });
+      }
+    },
+    [commitField],
+  );
 
-  const handleTriggerField = useCallback((field: string, value: string) => {
-    const current = task.trigger ?? { type: 'manual' };
-    const next = { ...current, [field]: value || undefined };
-    commitField({ trigger: next });
-  }, [task.trigger, commitField]);
+  const handleTriggerField = useCallback(
+    (field: string, value: string) => {
+      const current = task.trigger ?? { type: 'manual' };
+      const next = { ...current, [field]: value || undefined };
+      commitField({ trigger: next });
+    },
+    [task.trigger, commitField],
+  );
 
-  const handleCompletionTypeChange = useCallback((type: string) => {
-    const next = normalizeCompletionForEditor({ type } as CompletionConfig);
-    commitField({ completion: next });
-  }, [commitField]);
+  const handleCompletionTypeChange = useCallback(
+    (type: string) => {
+      const next = normalizeCompletionForEditor({ type } as CompletionConfig);
+      commitField({ completion: next });
+    },
+    [commitField],
+  );
 
-  const handleCompletionField = useCallback((field: string, value: unknown) => {
-    const current = task.completion ?? { type: DEFAULT_COMPLETION_TYPE };
-    const next = normalizeCompletionForEditor({ ...current, [field]: value } as CompletionConfig);
-    commitField({ completion: next });
-  }, [task.completion, commitField]);
+  const handleCompletionField = useCallback(
+    (field: string, value: unknown) => {
+      const current = task.completion ?? { type: DEFAULT_COMPLETION_TYPE };
+      const next = normalizeCompletionForEditor({ ...current, [field]: value } as CompletionConfig);
+      commitField({ completion: next });
+    },
+    [task.completion, commitField],
+  );
 
-  const handleContinueFromChange = useCallback((v: string) => {
-    commitField({ continue_from: v || undefined });
-  }, [commitField]);
+  const handleContinueFromChange = useCallback(
+    (v: string) => {
+      commitField({ continue_from: v || undefined });
+    },
+    [commitField],
+  );
 
   // F7: continue_from candidates — widen to any upstream dependency. The SDK
   // accepts continue_from when upstream has an `output` file, upstream driver
@@ -257,10 +331,14 @@ export function TaskConfigPanel({
   }, [pipelineConfig.tracks, trackId, task.id]);
 
   return (
-    <div className={`w-80 h-full bg-tagma-surface border-l flex flex-col animate-slide-in-right ${isPinned ? 'border-tagma-accent/50' : 'border-tagma-border'}`}
-      onClick={(e) => e.stopPropagation()}>
+    <div
+      className={`w-80 h-full bg-tagma-surface border-l flex flex-col animate-slide-in-right ${isPinned ? 'border-tagma-accent/50' : 'border-tagma-border'}`}
+      onClick={(e) => e.stopPropagation()}
+    >
       <div className="flex items-center justify-between px-3 h-7 border-b border-tagma-border shrink-0">
-        <span className="text-[10px] font-medium text-tagma-muted uppercase tracking-wider">Task Inspector</span>
+        <span className="text-[10px] font-medium text-tagma-muted uppercase tracking-wider">
+          Task Inspector
+        </span>
         <button
           onClick={onTogglePin}
           className={`p-1 transition-colors ${isPinned ? 'text-tagma-accent bg-tagma-accent/10' : 'text-tagma-muted hover:text-tagma-text'}`}
@@ -274,7 +352,10 @@ export function TaskConfigPanel({
         {errors.length > 0 && (
           <div className="bg-tagma-error/8 border border-tagma-error/30 px-2.5 py-1.5 space-y-1">
             {errors.map((msg, i) => (
-              <div key={i} className="flex items-start gap-1.5 text-[10px] text-tagma-error/90 font-mono">
+              <div
+                key={i}
+                className="flex items-start gap-1.5 text-[10px] text-tagma-error/90 font-mono"
+              >
                 <AlertTriangle size={10} className="text-tagma-error shrink-0 mt-[1px]" />
                 <span>{msg}</span>
               </div>
@@ -284,8 +365,15 @@ export function TaskConfigPanel({
 
         {/* ID (readonly) * */}
         <div>
-          <label className="field-label">Task ID <span className="text-tagma-error">*</span></label>
-          <div className="text-[11px] font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1.5 truncate" title={qualifiedId}>{qualifiedId}</div>
+          <label className="field-label">
+            Task ID <span className="text-tagma-error">*</span>
+          </label>
+          <div
+            className="text-[11px] font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1.5 truncate"
+            title={qualifiedId}
+          >
+            {qualifiedId}
+          </div>
         </div>
 
         {/* Name */}
@@ -296,7 +384,14 @@ export function TaskConfigPanel({
             onDiscard={nameField.discardLocal}
             onAccept={nameField.acceptLocal}
           />
-          <input type="text" className="field-input" value={name} onChange={(e) => setName(e.target.value)} onBlur={blurName} placeholder="Task name..." />
+          <input
+            type="text"
+            className="field-input"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={blurName}
+            placeholder="Task name..."
+          />
         </div>
 
         {/* Type (fixed at creation, not switchable) */}
@@ -319,9 +414,13 @@ export function TaskConfigPanel({
           <textarea
             className="field-input min-h-[120px] resize-y font-mono text-[11px]"
             value={mode === 'prompt' ? prompt : command}
-            onChange={(e) => mode === 'prompt' ? setPrompt(e.target.value) : setCommand(e.target.value)}
+            onChange={(e) =>
+              mode === 'prompt' ? setPrompt(e.target.value) : setCommand(e.target.value)
+            }
             onBlur={mode === 'prompt' ? blurPrompt : blurCommand}
-            placeholder={mode === 'prompt' ? 'Enter the task prompt...' : 'Enter the shell command...'}
+            placeholder={
+              mode === 'prompt' ? 'Enter the task prompt...' : 'Enter the shell command...'
+            }
           />
         </div>
 
@@ -332,54 +431,105 @@ export function TaskConfigPanel({
             <div>
               <div className="flex items-center justify-between">
                 <label className="field-label">Driver</label>
-                <ResetButton visible={!!task.driver} onReset={() => commitField({ driver: undefined })} />
+                <ResetButton
+                  visible={!!task.driver}
+                  onReset={() => commitField({ driver: undefined })}
+                />
               </div>
-              <select className="field-input" value={task.driver ?? ''} onChange={(e) => handleDriverChange(e.target.value)}>
+              <select
+                className="field-input"
+                value={task.driver ?? ''}
+                onChange={(e) => handleDriverChange(e.target.value)}
+              >
                 <option value="">(inherited)</option>
-                {drivers.map((d) => <option key={d} value={d}>{d}</option>)}
+                {drivers.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
               </select>
-              <InheritedValue isOverridden={!!task.driver} resolved={resolvedDriver} trackName={trackName} pipelineName={pipelineConfig.name} />
+              <InheritedValue
+                isOverridden={!!task.driver}
+                resolved={resolvedDriver}
+                trackName={trackName}
+                pipelineName={pipelineConfig.name}
+              />
             </div>
 
             {/* Model */}
             <div>
               <div className="flex items-center justify-between">
                 <label className="field-label">Model</label>
-                <ResetButton visible={!!task.model} onReset={() => commitField({ model: undefined })} />
+                <ResetButton
+                  visible={!!task.model}
+                  onReset={() => commitField({ model: undefined })}
+                />
               </div>
-              <input type="text" className="field-input font-mono text-[11px]" value={model} onChange={(e) => setModel(e.target.value)} onBlur={blurModel} placeholder="e.g. claude-sonnet-4-6" />
-              <InheritedValue isOverridden={!!task.model} resolved={resolvedModel} trackName={trackName} pipelineName={pipelineConfig.name} />
+              <input
+                type="text"
+                className="field-input font-mono text-[11px]"
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                onBlur={blurModel}
+                placeholder="e.g. claude-sonnet-4-6"
+              />
+              <InheritedValue
+                isOverridden={!!task.model}
+                resolved={resolvedModel}
+                trackName={trackName}
+                pipelineName={pipelineConfig.name}
+              />
             </div>
 
             {/* Reasoning Effort */}
             <div>
               <div className="flex items-center justify-between">
                 <label className="field-label">Reasoning Effort</label>
-                <ResetButton visible={!!task.reasoning_effort} onReset={() => commitField({ reasoning_effort: undefined })} />
+                <ResetButton
+                  visible={!!task.reasoning_effort}
+                  onReset={() => commitField({ reasoning_effort: undefined })}
+                />
               </div>
-              <select className="field-input" value={task.reasoning_effort ?? ''} onChange={(e) => commitField({ reasoning_effort: e.target.value || undefined })}>
+              <select
+                className="field-input"
+                value={task.reasoning_effort ?? ''}
+                onChange={(e) => commitField({ reasoning_effort: e.target.value || undefined })}
+              >
                 <option value="">(inherited)</option>
                 <option value="low">low</option>
                 <option value="medium">medium</option>
                 <option value="high">high</option>
               </select>
-              <InheritedValue isOverridden={!!task.reasoning_effort} resolved={resolvedReasoning} trackName={trackName} pipelineName={pipelineConfig.name} />
+              <InheritedValue
+                isOverridden={!!task.reasoning_effort}
+                resolved={resolvedReasoning}
+                trackName={trackName}
+                pipelineName={pipelineConfig.name}
+              />
             </div>
 
             {/* Agent Profile */}
             <div>
               <div className="flex items-center justify-between">
                 <label className="field-label">Agent Profile</label>
-                <ResetButton visible={!!task.agent_profile} onReset={() => commitField({ agent_profile: undefined })} />
+                <ResetButton
+                  visible={!!task.agent_profile}
+                  onReset={() => commitField({ agent_profile: undefined })}
+                />
               </div>
-              <textarea className="field-input min-h-[60px] resize-y font-mono text-[11px]" value={agentProfile} onChange={(e) => setAgentProfile(e.target.value)} onBlur={blurAgentProfile}
-                placeholder="Named profile or multi-line system prompt..." />
+              <textarea
+                className="field-input min-h-[60px] resize-y font-mono text-[11px]"
+                value={agentProfile}
+                onChange={(e) => setAgentProfile(e.target.value)}
+                onBlur={blurAgentProfile}
+                placeholder="Named profile or multi-line system prompt..."
+              />
               {systemPromptUnsupported && (
                 <p className="text-[10px] text-amber-400 mt-1 flex items-start gap-1">
                   <AlertTriangle size={10} className="mt-0.5 shrink-0" />
                   <span>
-                    Driver "{resolvedDriver.value ?? 'unknown'}" does not support <code>systemPrompt</code> — this
-                    text will be silently dropped at runtime.
+                    Driver "{resolvedDriver.value ?? 'unknown'}" does not support{' '}
+                    <code>systemPrompt</code> — this text will be silently dropped at runtime.
                   </span>
                 </p>
               )}
@@ -393,9 +543,17 @@ export function TaskConfigPanel({
                   >
                     {showTrackProfile ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
                     <span>
-                      {task.agent_profile
-                        ? <>Overrides track "<span className="text-tagma-text/70">{trackName}</span>" profile</>
-                        : <>Inherited from track "<span className="text-tagma-text/70">{trackName}</span>"</>}
+                      {task.agent_profile ? (
+                        <>
+                          Overrides track "<span className="text-tagma-text/70">{trackName}</span>"
+                          profile
+                        </>
+                      ) : (
+                        <>
+                          Inherited from track "
+                          <span className="text-tagma-text/70">{trackName}</span>"
+                        </>
+                      )}
                     </span>
                   </button>
                   {showTrackProfile && (
@@ -405,7 +563,12 @@ export function TaskConfigPanel({
                   )}
                 </div>
               ) : (
-                <InheritedValue isOverridden={!!task.agent_profile} resolved={resolvedAgentProfile} trackName={trackName} pipelineName={pipelineConfig.name} />
+                <InheritedValue
+                  isOverridden={!!task.agent_profile}
+                  resolved={resolvedAgentProfile}
+                  trackName={trackName}
+                  pipelineName={pipelineConfig.name}
+                />
               )}
             </div>
 
@@ -413,18 +576,35 @@ export function TaskConfigPanel({
             <div>
               <div className="flex items-center justify-between">
                 <label className="field-label">Permissions</label>
-                <ResetButton visible={!!task.permissions} onReset={() => commitField({ permissions: undefined })} />
+                <ResetButton
+                  visible={!!task.permissions}
+                  onReset={() => commitField({ permissions: undefined })}
+                />
               </div>
               <div className="flex gap-3">
                 {(['read', 'write', 'execute'] as const).map((key) => {
                   const isExecute = key === 'execute';
                   return (
-                    <label key={key} className="flex items-center gap-1.5 cursor-pointer"
-                      title={isExecute ? 'Allows arbitrary shell execution (Bash, bypassPermissions on claude-code). Enable only in trusted workdirs.' : undefined}>
-                      <input type="checkbox" checked={!!task.permissions?.[key]}
+                    <label
+                      key={key}
+                      className="flex items-center gap-1.5 cursor-pointer"
+                      title={
+                        isExecute
+                          ? 'Allows arbitrary shell execution (Bash, bypassPermissions on claude-code). Enable only in trusted workdirs.'
+                          : undefined
+                      }
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!!task.permissions?.[key]}
                         onChange={() => handlePermToggle(key)}
-                        className="accent-tagma-accent" />
-                      <span className={`text-[11px] capitalize ${isExecute ? 'text-tagma-error' : 'text-tagma-text'}`}>{key}</span>
+                        className="accent-tagma-accent"
+                      />
+                      <span
+                        className={`text-[11px] capitalize ${isExecute ? 'text-tagma-error' : 'text-tagma-text'}`}
+                      >
+                        {key}
+                      </span>
                       {isExecute && <ShieldAlert size={10} className="text-tagma-error" />}
                     </label>
                   );
@@ -432,7 +612,10 @@ export function TaskConfigPanel({
               </div>
               <InheritedValue
                 isOverridden={!!task.permissions}
-                resolved={{ value: permsToString(resolvedPerms.value), source: resolvedPerms.source }}
+                resolved={{
+                  value: permsToString(resolvedPerms.value),
+                  source: resolvedPerms.source,
+                }}
                 trackName={trackName}
                 pipelineName={pipelineConfig.name}
               />
@@ -444,10 +627,25 @@ export function TaskConfigPanel({
         <div>
           <div className="flex items-center justify-between">
             <label className="field-label">Timeout</label>
-            <ResetButton visible={!!task.timeout} onReset={() => commitField({ timeout: undefined })} />
+            <ResetButton
+              visible={!!task.timeout}
+              onReset={() => commitField({ timeout: undefined })}
+            />
           </div>
-          <input type="text" className="field-input" value={timeout} onChange={(e) => setTimeout_(e.target.value)} onBlur={blurTimeout} placeholder="e.g. 5m, 30s" />
-          <InheritedValue isOverridden={!!task.timeout} resolved={resolvedTimeout} trackName={trackName} pipelineName={pipelineConfig.name} />
+          <input
+            type="text"
+            className="field-input"
+            value={timeout}
+            onChange={(e) => setTimeout_(e.target.value)}
+            onBlur={blurTimeout}
+            placeholder="e.g. 5m, 30s"
+          />
+          <InheritedValue
+            isOverridden={!!task.timeout}
+            resolved={resolvedTimeout}
+            trackName={trackName}
+            pipelineName={pipelineConfig.name}
+          />
         </div>
 
         {/* CWD */}
@@ -457,13 +655,30 @@ export function TaskConfigPanel({
             <ResetButton visible={!!task.cwd} onReset={() => commitField({ cwd: undefined })} />
           </div>
           <div className="flex gap-1">
-            <input type="text" className="field-input font-mono text-[11px] flex-1 min-w-0" value={cwd} onChange={(e) => setCwd(e.target.value)} onBlur={blurCwd} placeholder="./path (relative, inherited)" />
-            <button type="button" onClick={() => openFileBrowser('directory', cwd, (path) => setCwd(path))}
-              className="shrink-0 p-1.5 border border-tagma-border text-tagma-muted hover:text-tagma-accent hover:border-tagma-accent/40 transition-colors" title="Browse..." aria-label="Browse for working directory">
+            <input
+              type="text"
+              className="field-input font-mono text-[11px] flex-1 min-w-0"
+              value={cwd}
+              onChange={(e) => setCwd(e.target.value)}
+              onBlur={blurCwd}
+              placeholder="./path (relative, inherited)"
+            />
+            <button
+              type="button"
+              onClick={() => openFileBrowser('directory', cwd, (path) => setCwd(path))}
+              className="shrink-0 p-1.5 border border-tagma-border text-tagma-muted hover:text-tagma-accent hover:border-tagma-accent/40 transition-colors"
+              title="Browse..."
+              aria-label="Browse for working directory"
+            >
               <FolderOpen size={13} />
             </button>
           </div>
-          <InheritedValue isOverridden={!!task.cwd} resolved={resolvedCwd} trackName={trackName} pipelineName={pipelineConfig.name} />
+          <InheritedValue
+            isOverridden={!!task.cwd}
+            resolved={resolvedCwd}
+            trackName={trackName}
+            pipelineName={pipelineConfig.name}
+          />
         </div>
 
         {/* Dependencies */}
@@ -472,9 +687,18 @@ export function TaskConfigPanel({
             <label className="field-label">Dependencies</label>
             <div className="space-y-1">
               {dependencies.map((dep) => (
-                <div key={dep} className="flex items-center gap-1.5 bg-tagma-bg border border-tagma-border px-2 py-1">
-                  <span className="text-[11px] font-mono text-tagma-text flex-1 truncate">{dep}</span>
-                  <button onClick={() => onRemoveDependency(trackId, task.id, dep)} className="text-tagma-muted hover:text-tagma-error transition-colors" aria-label="Remove dependency">
+                <div
+                  key={dep}
+                  className="flex items-center gap-1.5 bg-tagma-bg border border-tagma-border px-2 py-1"
+                >
+                  <span className="text-[11px] font-mono text-tagma-text flex-1 truncate">
+                    {dep}
+                  </span>
+                  <button
+                    onClick={() => onRemoveDependency(trackId, task.id, dep)}
+                    className="text-tagma-muted hover:text-tagma-error transition-colors"
+                    aria-label="Remove dependency"
+                  >
                     <X size={10} />
                   </button>
                 </div>
@@ -488,24 +712,33 @@ export function TaskConfigPanel({
           <div>
             <label className="field-label">
               Continue From
-              <span className="text-[10px] text-tagma-muted font-normal ml-1">(resume session from an upstream task)</span>
+              <span className="text-[10px] text-tagma-muted font-normal ml-1">
+                (resume session from an upstream task)
+              </span>
             </label>
-            <select className="field-input" value={task.continue_from ?? ''} onChange={(e) => handleContinueFromChange(e.target.value)}>
+            <select
+              className="field-input"
+              value={task.continue_from ?? ''}
+              onChange={(e) => handleContinueFromChange(e.target.value)}
+            >
               <option value="">none</option>
               {continueFromCandidates.map((ref) => (
-                <option key={ref} value={ref}>{ref}</option>
+                <option key={ref} value={ref}>
+                  {ref}
+                </option>
               ))}
             </select>
             <p className="text-[10px] text-tagma-muted mt-1">
-              Uses session resume when both drivers support it; otherwise falls back to injecting the upstream normalized output.
-              Server validation will flag unsupported combinations.
+              Uses session resume when both drivers support it; otherwise falls back to injecting
+              the upstream normalized output. Server validation will flag unsupported combinations.
             </p>
             {sessionResumeUnsupported && (
               <p className="text-[10px] text-amber-400 mt-1 flex items-start gap-1">
                 <AlertTriangle size={10} className="mt-0.5 shrink-0" />
                 <span>
                   Driver "{resolvedDriver.value ?? 'unknown'}" does not support session resume —
-                  <code>continue_from</code> will fall back to injecting the upstream normalized output as text.
+                  <code>continue_from</code> will fall back to injecting the upstream normalized
+                  output as text.
                 </span>
               </p>
             )}
@@ -514,8 +747,10 @@ export function TaskConfigPanel({
 
         {/* ── Advanced Section ── */}
         <div className="border-t border-tagma-border pt-2">
-          <button onClick={() => setShowAdvanced(!showAdvanced)}
-            className="flex items-center gap-1 text-[11px] text-tagma-muted hover:text-tagma-text transition-colors w-full">
+          <button
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="flex items-center gap-1 text-[11px] text-tagma-muted hover:text-tagma-text transition-colors w-full"
+          >
             {showAdvanced ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
             Advanced
           </button>
@@ -527,35 +762,71 @@ export function TaskConfigPanel({
             <div>
               <label className="field-label">
                 Trigger
-                <span className="text-[10px] text-tagma-muted font-normal ml-1">(from plugin registry)</span>
+                <span className="text-[10px] text-tagma-muted font-normal ml-1">
+                  (from plugin registry)
+                </span>
               </label>
-              <select className="field-input" value={task.trigger?.type ?? ''} onChange={(e) => handleTriggerTypeChange(e.target.value)}>
+              <select
+                className="field-input"
+                value={task.trigger?.type ?? ''}
+                onChange={(e) => handleTriggerTypeChange(e.target.value)}
+              >
                 <option value="">none</option>
                 {triggerOptions.map((t) => (
-                  <option key={t} value={t}>{t}</option>
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
                 ))}
               </select>
             </div>
 
             {task.trigger?.type === 'manual' && (
               <div className="pl-3 border-l-2 border-tagma-border space-y-2">
-                <TriggerField label="Message" value={asStr(task.trigger.message)} onChange={(v) => handleTriggerField('message', v)} placeholder="Approval message..." />
-                <TriggerField label="Timeout" value={asStr(task.trigger.timeout)} onChange={(v) => handleTriggerField('timeout', v)} placeholder="e.g. 5m" />
+                <TriggerField
+                  label="Message"
+                  value={asStr(task.trigger.message)}
+                  onChange={(v) => handleTriggerField('message', v)}
+                  placeholder="Approval message..."
+                />
+                <TriggerField
+                  label="Timeout"
+                  value={asStr(task.trigger.timeout)}
+                  onChange={(v) => handleTriggerField('timeout', v)}
+                  placeholder="e.g. 5m"
+                />
                 <div>
                   <label className="text-[10px] text-tagma-muted">Metadata</label>
-                  <KeyValueEditor value={asRecord(task.trigger.metadata)} onChange={(meta) => {
-                    const current = task.trigger ?? { type: 'manual' };
-                    commitField({ trigger: { ...current, metadata: Object.keys(meta).length > 0 ? meta : undefined } });
-                  }} />
+                  <KeyValueEditor
+                    value={asRecord(task.trigger.metadata)}
+                    onChange={(meta) => {
+                      const current = task.trigger ?? { type: 'manual' };
+                      commitField({
+                        trigger: {
+                          ...current,
+                          metadata: Object.keys(meta).length > 0 ? meta : undefined,
+                        },
+                      });
+                    }}
+                  />
                 </div>
               </div>
             )}
 
             {task.trigger?.type === 'file' && (
               <div className="pl-3 border-l-2 border-tagma-border space-y-2">
-                <TriggerField label="Path *" value={asStr(task.trigger.path)} onChange={(v) => handleTriggerField('path', v)} placeholder="./path/to/watch"
-                  onBrowse={(currentVal, setVal) => openFileBrowser('open', currentVal, setVal)} />
-                <TriggerField label="Timeout" value={asStr(task.trigger.timeout)} onChange={(v) => handleTriggerField('timeout', v)} placeholder="e.g. 5m" />
+                <TriggerField
+                  label="Path *"
+                  value={asStr(task.trigger.path)}
+                  onChange={(v) => handleTriggerField('path', v)}
+                  placeholder="./path/to/watch"
+                  onBrowse={(currentVal, setVal) => openFileBrowser('open', currentVal, setVal)}
+                />
+                <TriggerField
+                  label="Timeout"
+                  value={asStr(task.trigger.timeout)}
+                  onChange={(v) => handleTriggerField('timeout', v)}
+                  placeholder="e.g. 5m"
+                />
               </div>
             )}
 
@@ -563,47 +834,66 @@ export function TaskConfigPanel({
                 known (either from the hand-written built-in fallback or a
                 future server-provided descriptor). Fall back to KV editor for
                 truly unknown plugins. */}
-            {task.trigger && !KNOWN_TRIGGER_TYPES.has(task.trigger.type) && (() => {
-              const triggerType = task.trigger.type;
-              const schema = getBuiltinSchema('trigger', triggerType);
-              const fieldValues = Object.fromEntries(
-                Object.entries(task.trigger).filter(([k]) => k !== 'type'),
-              ) as Record<string, unknown>;
-              return (
-                <div className="pl-3 border-l-2 border-tagma-border space-y-2">
-                  {schema ? (
-                    <SchemaForm
-                      schema={schema}
-                      value={fieldValues}
-                      onChange={(kv) => commitField({ trigger: { type: triggerType, ...kv } as TriggerConfig })}
-                      onBrowsePath={(currentValue, onSelect) => openFileBrowser('open', currentValue, onSelect)}
-                    />
-                  ) : (
-                    <>
-                      <p className="text-[10px] text-tagma-muted">
-                        Custom trigger fields (plugin "{triggerType}" has no known schema — falling back to KV editor):
-                      </p>
-                      <KeyValueEditor
+            {task.trigger &&
+              !KNOWN_TRIGGER_TYPES.has(task.trigger.type) &&
+              (() => {
+                const triggerType = task.trigger.type;
+                const schema = getBuiltinSchema('trigger', triggerType);
+                const fieldValues = Object.fromEntries(
+                  Object.entries(task.trigger).filter(([k]) => k !== 'type'),
+                ) as Record<string, unknown>;
+                return (
+                  <div className="pl-3 border-l-2 border-tagma-border space-y-2">
+                    {schema ? (
+                      <SchemaForm
+                        schema={schema}
                         value={fieldValues}
-                        onChange={(kv) => commitField({ trigger: { type: triggerType, ...kv } as TriggerConfig })}
+                        onChange={(kv) =>
+                          commitField({ trigger: { type: triggerType, ...kv } as TriggerConfig })
+                        }
+                        onBrowsePath={(currentValue, onSelect) =>
+                          openFileBrowser('open', currentValue, onSelect)
+                        }
                       />
-                    </>
-                  )}
-                </div>
-              );
-            })()}
+                    ) : (
+                      <>
+                        <p className="text-[10px] text-tagma-muted">
+                          Custom trigger fields (plugin "{triggerType}" has no known schema —
+                          falling back to KV editor):
+                        </p>
+                        <KeyValueEditor
+                          value={fieldValues}
+                          onChange={(kv) =>
+                            commitField({ trigger: { type: triggerType, ...kv } as TriggerConfig })
+                          }
+                        />
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
 
             {/* Completion */}
             <div>
               <label className="field-label">
                 Completion Check
-                <span className="text-[10px] text-tagma-muted font-normal ml-1">(from plugin registry)</span>
+                <span className="text-[10px] text-tagma-muted font-normal ml-1">
+                  (from plugin registry)
+                </span>
               </label>
-              <select className="field-input" value={effectiveCompletionType} onChange={(e) => handleCompletionTypeChange(e.target.value)}>
+              <select
+                className="field-input"
+                value={effectiveCompletionType}
+                onChange={(e) => handleCompletionTypeChange(e.target.value)}
+              >
                 <option value={DEFAULT_COMPLETION_TYPE}>{DEFAULT_COMPLETION_TYPE} (default)</option>
-                {completionOptions.filter((t) => t !== DEFAULT_COMPLETION_TYPE).map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
+                {completionOptions
+                  .filter((t) => t !== DEFAULT_COMPLETION_TYPE)
+                  .map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
               </select>
             </div>
 
@@ -611,24 +901,47 @@ export function TaskConfigPanel({
               <div className="pl-3 border-l-2 border-tagma-border space-y-2">
                 <div>
                   <label className="text-[10px] text-tagma-muted">Expected Code</label>
-                  <input type="text" className="field-input font-mono text-[11px]"
-                    value={task.completion?.expect !== undefined ? String(task.completion.expect) : ''}
+                  <input
+                    type="text"
+                    className="field-input font-mono text-[11px]"
+                    value={
+                      task.completion?.expect !== undefined ? String(task.completion.expect) : ''
+                    }
                     onChange={(e) => {
                       const v = e.target.value.trim();
-                      handleCompletionField('expect', v ? (v.includes(',') ? v.split(',').map(Number) : Number(v)) : undefined);
+                      handleCompletionField(
+                        'expect',
+                        v ? (v.includes(',') ? v.split(',').map(Number) : Number(v)) : undefined,
+                      );
                     }}
-                    placeholder="0 (default)" />
+                    placeholder="0 (default)"
+                  />
                 </div>
               </div>
             )}
 
             {task.completion && effectiveCompletionType === 'file_exists' && (
               <div className="pl-3 border-l-2 border-tagma-border space-y-2">
-                <TriggerField label="Path *" value={asStr(task.completion.path)} onChange={(v) => handleCompletionField('path', v)} placeholder="./path/to/check"
-                  onBrowse={(currentVal, setVal) => openFileBrowser(task.completion?.kind === 'dir' ? 'directory' : 'open', currentVal, setVal)} />
+                <TriggerField
+                  label="Path *"
+                  value={asStr(task.completion.path)}
+                  onChange={(v) => handleCompletionField('path', v)}
+                  placeholder="./path/to/check"
+                  onBrowse={(currentVal, setVal) =>
+                    openFileBrowser(
+                      task.completion?.kind === 'dir' ? 'directory' : 'open',
+                      currentVal,
+                      setVal,
+                    )
+                  }
+                />
                 <div>
                   <label className="text-[10px] text-tagma-muted">Kind</label>
-                  <select className="field-input" value={asStr(task.completion.kind) ?? ''} onChange={(e) => handleCompletionField('kind', e.target.value || undefined)}>
+                  <select
+                    className="field-input"
+                    value={asStr(task.completion.kind) ?? ''}
+                    onChange={(e) => handleCompletionField('kind', e.target.value || undefined)}
+                  >
                     <option value="">any (default)</option>
                     <option value="file">file</option>
                     <option value="dir">dir</option>
@@ -637,63 +950,103 @@ export function TaskConfigPanel({
                 </div>
                 <div>
                   <label className="text-[10px] text-tagma-muted">Min Size (bytes)</label>
-                  <input type="number" className="field-input font-mono text-[11px]"
-                    value={typeof task.completion.min_size === 'number' ? task.completion.min_size : ''}
-                    onChange={(e) => handleCompletionField('min_size', e.target.value ? Number(e.target.value) : undefined)}
-                    placeholder="optional" />
+                  <input
+                    type="number"
+                    className="field-input font-mono text-[11px]"
+                    value={
+                      typeof task.completion.min_size === 'number' ? task.completion.min_size : ''
+                    }
+                    onChange={(e) =>
+                      handleCompletionField(
+                        'min_size',
+                        e.target.value ? Number(e.target.value) : undefined,
+                      )
+                    }
+                    placeholder="optional"
+                  />
                 </div>
               </div>
             )}
 
             {task.completion && effectiveCompletionType === 'output_check' && (
               <div className="pl-3 border-l-2 border-tagma-border space-y-2">
-                <TriggerField label="Check Command *" value={asStr(task.completion.check)} onChange={(v) => handleCompletionField('check', v)} placeholder="shell command (exit 0 = pass)" />
-                <TriggerField label="Timeout" value={asStr(task.completion.timeout)} onChange={(v) => handleCompletionField('timeout', v)} placeholder="30s (default)" />
+                <TriggerField
+                  label="Check Command *"
+                  value={asStr(task.completion.check)}
+                  onChange={(v) => handleCompletionField('check', v)}
+                  placeholder="shell command (exit 0 = pass)"
+                />
+                <TriggerField
+                  label="Timeout"
+                  value={asStr(task.completion.timeout)}
+                  onChange={(v) => handleCompletionField('timeout', v)}
+                  placeholder="30s (default)"
+                />
               </div>
             )}
 
             {/* Unknown plugin completion — F10: prefer SchemaForm when a
                 schema is known, fall back to KV editor otherwise. */}
-            {task.completion && !KNOWN_COMPLETION_TYPES.has(task.completion.type) && (() => {
-              const completionType = task.completion.type;
-              const schema = getBuiltinSchema('completion', completionType);
-              const fieldValues = Object.fromEntries(
-                Object.entries(task.completion).filter(([k]) => k !== 'type'),
-              ) as Record<string, unknown>;
-              return (
-                <div className="pl-3 border-l-2 border-tagma-border space-y-2">
-                  {schema ? (
-                    <SchemaForm
-                      schema={schema}
-                      value={fieldValues}
-                      onChange={(kv) => commitField({ completion: { type: completionType, ...kv } as CompletionConfig })}
-                      onBrowsePath={(currentValue, onSelect) => openFileBrowser('open', currentValue, onSelect)}
-                    />
-                  ) : (
-                    <>
-                      <p className="text-[10px] text-tagma-muted">
-                        Custom completion fields (plugin "{completionType}" has no known schema — falling back to KV editor):
-                      </p>
-                      <KeyValueEditor
+            {task.completion &&
+              !KNOWN_COMPLETION_TYPES.has(task.completion.type) &&
+              (() => {
+                const completionType = task.completion.type;
+                const schema = getBuiltinSchema('completion', completionType);
+                const fieldValues = Object.fromEntries(
+                  Object.entries(task.completion).filter(([k]) => k !== 'type'),
+                ) as Record<string, unknown>;
+                return (
+                  <div className="pl-3 border-l-2 border-tagma-border space-y-2">
+                    {schema ? (
+                      <SchemaForm
+                        schema={schema}
                         value={fieldValues}
-                        onChange={(kv) => commitField({ completion: { type: completionType, ...kv } as CompletionConfig })}
+                        onChange={(kv) =>
+                          commitField({
+                            completion: { type: completionType, ...kv } as CompletionConfig,
+                          })
+                        }
+                        onBrowsePath={(currentValue, onSelect) =>
+                          openFileBrowser('open', currentValue, onSelect)
+                        }
                       />
-                    </>
-                  )}
-                </div>
-              );
-            })()}
+                    ) : (
+                      <>
+                        <p className="text-[10px] text-tagma-muted">
+                          Custom completion fields (plugin "{completionType}" has no known schema —
+                          falling back to KV editor):
+                        </p>
+                        <KeyValueEditor
+                          value={fieldValues}
+                          onChange={(kv) =>
+                            commitField({
+                              completion: { type: completionType, ...kv } as CompletionConfig,
+                            })
+                          }
+                        />
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
 
             {/* Middlewares */}
-            <MiddlewareEditor middlewares={task.middlewares ?? []}
+            <MiddlewareEditor
+              middlewares={task.middlewares ?? []}
               onChange={(mws) => commitField({ middlewares: mws })}
-              onBrowsePath={(currentValue, onSelect) => openFileBrowser('open', currentValue, onSelect)} />
+              onBrowsePath={(currentValue, onSelect) =>
+                openFileBrowser('open', currentValue, onSelect)
+              }
+            />
           </>
         )}
 
         {/* Delete */}
         <div className="pt-4 border-t border-tagma-border">
-          <button onClick={() => setConfirmDelete(true)} className="btn-danger flex items-center justify-center gap-1.5">
+          <button
+            onClick={() => setConfirmDelete(true)}
+            className="btn-danger flex items-center justify-center gap-1.5"
+          >
             <Trash2 size={12} />
             Delete Task
           </button>
@@ -717,40 +1070,53 @@ export function TaskConfigPanel({
               {downstreamTasksThatDependOnMe.length > 0 ? (
                 <div className="mt-2">
                   <p className="text-tagma-muted">
-                    This will remove <span className="text-amber-400">{downstreamTasksThatDependOnMe.length}</span>{' '}
-                    downstream dependency reference{downstreamTasksThatDependOnMe.length !== 1 ? 's' : ''}:
+                    This will remove{' '}
+                    <span className="text-amber-400">{downstreamTasksThatDependOnMe.length}</span>{' '}
+                    downstream dependency reference
+                    {downstreamTasksThatDependOnMe.length !== 1 ? 's' : ''}:
                   </p>
                   <ul className="mt-1 max-h-32 overflow-y-auto space-y-0.5">
                     {downstreamTasksThatDependOnMe.map((d) => (
-                      <li key={d.qualified} className="font-mono text-[11px] text-tagma-text/80">&bull; {d.qualified}</li>
+                      <li key={d.qualified} className="font-mono text-[11px] text-tagma-text/80">
+                        &bull; {d.qualified}
+                      </li>
                     ))}
                   </ul>
                 </div>
               ) : (
-                <p className="text-tagma-muted text-[11px]">No downstream tasks depend on this task.</p>
+                <p className="text-tagma-muted text-[11px]">
+                  No downstream tasks depend on this task.
+                </p>
               )}
             </>
           }
         />
       )}
-      {fileBrowser && createPortal(
-        <FileExplorer
-          mode={fileBrowser.mode}
-          initialPath={fileBrowser.initialPath}
-          onConfirm={(path) => {
-            fileBrowser.onSelect(path);
-            setFileBrowser(null);
-          }}
-          onCancel={() => setFileBrowser(null)}
-        />,
-        document.body,
-      )}
+      {fileBrowser &&
+        createPortal(
+          <FileExplorer
+            mode={fileBrowser.mode}
+            initialPath={fileBrowser.initialPath}
+            onConfirm={(path) => {
+              fileBrowser.onSelect(path);
+              setFileBrowser(null);
+            }}
+            onCancel={() => setFileBrowser(null)}
+          />,
+          document.body,
+        )}
     </div>
   );
 }
 
 /** Reusable small text field for trigger/completion sub-fields */
-function TriggerField({ label, value, onChange, placeholder, onBrowse }: {
+function TriggerField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  onBrowse,
+}: {
   label: string;
   value: string | undefined;
   onChange: (v: string) => void;
@@ -763,21 +1129,43 @@ function TriggerField({ label, value, onChange, placeholder, onBrowse }: {
       <label className="text-[10px] text-tagma-muted">{label}</label>
       {onBrowse ? (
         <div className="flex gap-1">
-          <input type="text" className="field-input font-mono text-[11px] flex-1 min-w-0" value={val} onChange={(e) => setVal(e.target.value)} onBlur={blurVal} placeholder={placeholder} />
-          <button type="button" onClick={() => onBrowse(val, setVal)}
-            className="shrink-0 p-1.5 border border-tagma-border text-tagma-muted hover:text-tagma-accent hover:border-tagma-accent/40 transition-colors" title="Browse..." aria-label="Browse for file">
+          <input
+            type="text"
+            className="field-input font-mono text-[11px] flex-1 min-w-0"
+            value={val}
+            onChange={(e) => setVal(e.target.value)}
+            onBlur={blurVal}
+            placeholder={placeholder}
+          />
+          <button
+            type="button"
+            onClick={() => onBrowse(val, setVal)}
+            className="shrink-0 p-1.5 border border-tagma-border text-tagma-muted hover:text-tagma-accent hover:border-tagma-accent/40 transition-colors"
+            title="Browse..."
+            aria-label="Browse for file"
+          >
             <FolderOpen size={13} />
           </button>
         </div>
       ) : (
-        <input type="text" className="field-input font-mono text-[11px]" value={val} onChange={(e) => setVal(e.target.value)} onBlur={blurVal} placeholder={placeholder} />
+        <input
+          type="text"
+          className="field-input font-mono text-[11px]"
+          value={val}
+          onChange={(e) => setVal(e.target.value)}
+          onBlur={blurVal}
+          placeholder={placeholder}
+        />
       )}
     </div>
   );
 }
 
 /** Key-value pair editor for metadata and custom plugin fields */
-function KeyValueEditor({ value, onChange }: {
+function KeyValueEditor({
+  value,
+  onChange,
+}: {
   value: Record<string, unknown>;
   onChange: (kv: Record<string, unknown>) => void;
 }) {
@@ -810,16 +1198,33 @@ function KeyValueEditor({ value, onChange }: {
     <div className="space-y-1.5">
       {entries.map(([k, v]) => (
         <div key={k} className="flex items-center gap-1">
-          <input type="text" className="field-input font-mono text-[11px] w-[90px]" value={k}
-            onChange={(e) => handleKeyChange(k, e.target.value)} placeholder="key" />
-          <input type="text" className="field-input font-mono text-[11px] flex-1" value={String(v ?? '')}
-            onChange={(e) => handleValueChange(k, e.target.value)} placeholder="value" />
-          <button onClick={() => handleRemove(k)} className="text-tagma-muted hover:text-tagma-error transition-colors shrink-0" aria-label="Remove entry">
+          <input
+            type="text"
+            className="field-input font-mono text-[11px] w-[90px]"
+            value={k}
+            onChange={(e) => handleKeyChange(k, e.target.value)}
+            placeholder="key"
+          />
+          <input
+            type="text"
+            className="field-input font-mono text-[11px] flex-1"
+            value={String(v ?? '')}
+            onChange={(e) => handleValueChange(k, e.target.value)}
+            placeholder="value"
+          />
+          <button
+            onClick={() => handleRemove(k)}
+            className="text-tagma-muted hover:text-tagma-error transition-colors shrink-0"
+            aria-label="Remove entry"
+          >
             <X size={10} />
           </button>
         </div>
       ))}
-      <button onClick={handleAdd} className="text-[10px] text-tagma-accent hover:text-tagma-text transition-colors">
+      <button
+        onClick={handleAdd}
+        className="text-[10px] text-tagma-accent hover:text-tagma-text transition-colors"
+      >
         + Add entry
       </button>
     </div>

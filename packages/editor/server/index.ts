@@ -1,9 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import {
-  bootstrapBuiltins,
-  parseYaml,
-} from '@tagma/sdk';
+import { bootstrapBuiltins, parseYaml } from '@tagma/sdk';
 import {
   S,
   bumpRevision,
@@ -204,9 +201,7 @@ app.use((req, res, next) => {
       ? Number((req.body as Record<string, unknown>).expectedRevision)
       : undefined;
   const expected =
-    headerMatch !== undefined && headerMatch !== ''
-      ? Number(headerMatch)
-      : bodyExpected;
+    headerMatch !== undefined && headerMatch !== '' ? Number(headerMatch) : bodyExpected;
 
   // B3: Reject non-numeric If-Match values with 400 instead of silently
   // bypassing the revision check (NaN is not finite → check was skipped).
@@ -300,8 +295,8 @@ const server = app.listen(PORT, HOST, () => {
   } else if (!BOUND_LOOPBACK) {
     console.warn(
       '[auth] WARNING: server bound to non-loopback address without TAGMA_AUTH_TOKEN.\n' +
-      '  All /api/* endpoints are accessible to the network without authentication.\n' +
-      '  Set TAGMA_AUTH_TOKEN=<secret> to enable bearer token auth.'
+        '  All /api/* endpoints are accessible to the network without authentication.\n' +
+        '  Set TAGMA_AUTH_TOKEN=<secret> to enable bearer token auth.',
     );
   }
 });

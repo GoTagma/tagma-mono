@@ -28,12 +28,11 @@ import type {
 // Recursively strip `readonly` from object fields and array element
 // wrappers. Primitives, unions of primitives, and untyped index
 // signatures pass through unchanged.
-type Mutable<T> =
-  T extends readonly (infer U)[]
-    ? Mutable<U>[]
-    : T extends object
-      ? { -readonly [K in keyof T]: Mutable<T[K]> }
-      : T;
+type Mutable<T> = T extends readonly (infer U)[]
+  ? Mutable<U>[]
+  : T extends object
+    ? { -readonly [K in keyof T]: Mutable<T[K]> }
+    : T;
 
 export type Permissions = Mutable<SdkPermissions>;
 export type HookCommand = Mutable<SdkHookCommand>;
@@ -142,7 +141,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   if (res.status === 409) {
     // Revision conflict — parse payload and throw a typed error so future
     // pipeline-store work can detect and re-apply state.
-    const payload = await res.json().catch(() => null) as {
+    const payload = (await res.json().catch(() => null)) as {
       error?: string;
       expected?: number;
       current?: number;
@@ -173,7 +172,12 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   }
   const data = await res.json();
   // Opportunistically pick up revision from any ServerState-shaped response.
-  if (data && typeof data === 'object' && 'revision' in data && typeof (data as { revision?: unknown }).revision === 'number') {
+  if (
+    data &&
+    typeof data === 'object' &&
+    'revision' in data &&
+    typeof (data as { revision?: unknown }).revision === 'number'
+  ) {
     setClientRevision((data as { revision: number }).revision);
   }
   return data;
@@ -331,7 +335,13 @@ export interface PluginInfo {
 }
 
 /** Coarse server-side error classification — mirrors PluginManager's ErrorKind. */
-export type PluginErrorKind = 'network' | 'permission' | 'version' | 'notfound' | 'invalid' | 'unknown';
+export type PluginErrorKind =
+  | 'network'
+  | 'permission'
+  | 'version'
+  | 'notfound'
+  | 'invalid'
+  | 'unknown';
 
 export interface PluginActionResult {
   plugin: PluginInfo;
@@ -436,7 +446,7 @@ export type TaskLogLevel = 'info' | 'warn' | 'error' | 'debug' | 'section' | 'qu
 export interface TaskLogLine {
   level: TaskLogLevel;
   timestamp: string; // HH:MM:SS.mmm — mirrors pipeline.log formatting
-  text: string;       // fully-formatted line as written to the log file
+  text: string; // fully-formatted line as written to the log file
 }
 
 export interface RunTaskState {
@@ -519,7 +529,13 @@ export type RunEvent =
       seq?: number;
     }
   | { type: 'approval_request'; runId?: string; request: ApprovalRequestInfo; seq?: number }
-  | { type: 'approval_resolved'; runId?: string; requestId: string; outcome: ApprovalOutcome; seq?: number };
+  | {
+      type: 'approval_resolved';
+      runId?: string;
+      requestId: string;
+      outcome: ApprovalOutcome;
+      seq?: number;
+    };
 
 export interface RunHistoryTaskCounts {
   total: number;
@@ -613,7 +629,10 @@ export const api = {
     request<ServerState>(`/tracks/${trackId}`, { method: 'DELETE' }),
 
   reorderTrack: (trackId: string, toIndex: number) =>
-    request<ServerState>('/tracks/reorder', { method: 'POST', body: jsonBody({ trackId, toIndex }) }),
+    request<ServerState>('/tracks/reorder', {
+      method: 'POST',
+      body: jsonBody({ trackId, toIndex }),
+    }),
 
   addTask: (trackId: string, task: RawTaskConfig) =>
     request<ServerState>('/tasks', { method: 'POST', body: jsonBody({ trackId, task }) }),
@@ -625,13 +644,22 @@ export const api = {
     request<ServerState>(`/tasks/${trackId}/${taskId}`, { method: 'DELETE' }),
 
   transferTask: (fromTrackId: string, taskId: string, toTrackId: string) =>
-    request<ServerState>('/tasks/transfer', { method: 'POST', body: jsonBody({ fromTrackId, taskId, toTrackId }) }),
+    request<ServerState>('/tasks/transfer', {
+      method: 'POST',
+      body: jsonBody({ fromTrackId, taskId, toTrackId }),
+    }),
 
   addDependency: (fromTrackId: string, fromTaskId: string, toTrackId: string, toTaskId: string) =>
-    request<ServerState>('/dependencies', { method: 'POST', body: jsonBody({ fromTrackId, fromTaskId, toTrackId, toTaskId }) }),
+    request<ServerState>('/dependencies', {
+      method: 'POST',
+      body: jsonBody({ fromTrackId, fromTaskId, toTrackId, toTaskId }),
+    }),
 
   removeDependency: (trackId: string, taskId: string, depRef: string) =>
-    request<ServerState>('/dependencies', { method: 'DELETE', body: jsonBody({ trackId, taskId, depRef }) }),
+    request<ServerState>('/dependencies', {
+      method: 'DELETE',
+      body: jsonBody({ trackId, taskId, depRef }),
+    }),
 
   exportYaml: () => request<string>('/export'),
 
@@ -668,12 +696,14 @@ export const api = {
       '/workspace/yamls',
     ),
 
-  listRoots: () =>
-    request<{ roots: string[] }>('/fs/roots'),
+  listRoots: () => request<{ roots: string[] }>('/fs/roots'),
 
   mkdir: (path: string, opts?: { picker?: boolean }) => {
     const qs = opts?.picker ? '?picker=1' : '';
-    return request<{ path: string }>(`/fs/mkdir${qs}`, { method: 'POST', body: jsonBody({ path }) });
+    return request<{ path: string }>(`/fs/mkdir${qs}`, {
+      method: 'POST',
+      body: jsonBody({ path }),
+    });
   },
 
   reveal: (path: string) =>
@@ -682,8 +712,7 @@ export const api = {
   setWorkDir: (workDir: string) =>
     request<ServerState>('/workspace', { method: 'PATCH', body: jsonBody({ workDir }) }),
 
-  listRecentWorkspaces: () =>
-    request<{ recent: RecentWorkspaceEntry[] }>('/recent-workspaces'),
+  listRecentWorkspaces: () => request<{ recent: RecentWorkspaceEntry[] }>('/recent-workspaces'),
 
   addRecentWorkspace: (path: string) =>
     request<{ recent: RecentWorkspaceEntry[] }>('/recent-workspaces', {
@@ -697,23 +726,19 @@ export const api = {
       body: jsonBody({ path }),
     }),
 
-  getEditorSettings: () =>
-    request<EditorSettings>('/editor-settings'),
+  getEditorSettings: () => request<EditorSettings>('/editor-settings'),
 
   updateEditorSettings: (patch: Partial<EditorSettings>) =>
     request<EditorSettings>('/editor-settings', { method: 'PATCH', body: jsonBody(patch) }),
 
-  getDeclaredPlugins: () =>
-    request<PluginDeclaredResult>('/plugins/declared'),
+  getDeclaredPlugins: () => request<PluginDeclaredResult>('/plugins/declared'),
 
-  refreshPlugins: () =>
-    request<PluginRefreshResult>('/plugins/refresh', { method: 'POST' }),
+  refreshPlugins: () => request<PluginRefreshResult>('/plugins/refresh', { method: 'POST' }),
 
   openFile: (path: string) =>
     request<ServerState>('/open', { method: 'POST', body: jsonBody({ path }) }),
 
-  saveFile: () =>
-    request<ServerState>('/save', { method: 'POST' }),
+  saveFile: () => request<ServerState>('/save', { method: 'POST' }),
 
   saveFileAs: (path: string) =>
     request<ServerState>('/save-as', { method: 'POST', body: jsonBody({ path }) }),
@@ -725,7 +750,10 @@ export const api = {
     request<ServerState>('/import-file', { method: 'POST', body: jsonBody({ sourcePath }) }),
 
   exportFile: (destDir: string) =>
-    request<{ ok: boolean; path: string }>('/export-file', { method: 'POST', body: jsonBody({ destDir }) }),
+    request<{ ok: boolean; path: string }>('/export-file', {
+      method: 'POST',
+      body: jsonBody({ destDir }),
+    }),
 
   deleteFile: (path: string) =>
     request<ServerState>('/delete-file', { method: 'POST', body: jsonBody({ path }) }),
@@ -733,11 +761,9 @@ export const api = {
   saveLayout: (positions: Record<string, { x: number }>) =>
     request<{ ok: boolean }>('/layout', { method: 'PATCH', body: jsonBody({ positions }) }),
 
-  startRun: () =>
-    request<{ ok: boolean }>('/run/start', { method: 'POST' }),
+  startRun: () => request<{ ok: boolean }>('/run/start', { method: 'POST' }),
 
-  abortRun: () =>
-    request<{ ok: boolean }>('/run/abort', { method: 'POST' }),
+  abortRun: () => request<{ ok: boolean }>('/run/abort', { method: 'POST' }),
 
   subscribeRunEvents: (
     onEvent: (event: RunEvent) => void,
@@ -767,8 +793,7 @@ export const api = {
 
   // ── Plugin management ──
 
-  listPlugins: () =>
-    request<PluginListResult>('/plugins'),
+  listPlugins: () => request<PluginListResult>('/plugins'),
 
   getPluginInfo: (name: string) =>
     request<PluginInfo>(`/plugins/info?name=${encodeURIComponent(name)}`),
@@ -792,7 +817,10 @@ export const api = {
     request<PluginActionResult>('/plugins/load', { method: 'POST', body: jsonBody({ name }) }),
 
   importLocalPlugin: (path: string) =>
-    request<PluginActionResult>('/plugins/import-local', { method: 'POST', body: jsonBody({ path }) }),
+    request<PluginActionResult>('/plugins/import-local', {
+      method: 'POST',
+      body: jsonBody({ path }),
+    }),
 
   // ── Plugin marketplace (npm registry proxy) ──
   // The server proxies and caches npm registry queries so we can strip
@@ -812,8 +840,7 @@ export const api = {
     request<MarketplacePackageDetail>(`/marketplace/package?name=${encodeURIComponent(name)}`),
 
   // ── Run history (F8 / §3.12) ──
-  listRunHistory: () =>
-    request<{ runs: RunHistoryEntry[] }>('/run/history'),
+  listRunHistory: () => request<{ runs: RunHistoryEntry[] }>('/run/history'),
 
   getRunLog: (runId: string) =>
     request<{ runId: string; content: string }>(`/run/history/${encodeURIComponent(runId)}`),

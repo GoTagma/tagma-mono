@@ -15,8 +15,13 @@
 //       ...
 
 import type {
-  DriverPlugin, DriverCapabilities, TaskConfig, TrackConfig,
-  DriverContext, SpawnSpec, Permissions,
+  DriverPlugin,
+  DriverCapabilities,
+  TaskConfig,
+  TrackConfig,
+  DriverContext,
+  SpawnSpec,
+  Permissions,
 } from '@tagma/types';
 
 // gpt-5-codex is the current publicly available Codex coding model. An
@@ -46,9 +51,7 @@ function ensureCodexAvailable(): void {
     }
   }
   if (!codexAvailable) {
-    throw new Error(
-      'codex CLI not found on PATH. Install via: npm i -g @openai/codex',
-    );
+    throw new Error('codex CLI not found on PATH. Install via: npm i -g @openai/codex');
   }
 }
 
@@ -73,9 +76,7 @@ const CodexDriver: DriverPlugin = {
     return DEFAULT_MODEL;
   },
 
-  async buildCommand(
-    task: TaskConfig, track: TrackConfig, ctx: DriverContext,
-  ): Promise<SpawnSpec> {
+  async buildCommand(task: TaskConfig, track: TrackConfig, ctx: DriverContext): Promise<SpawnSpec> {
     // M1: cached preflight (see ensureCodexAvailable above).
     ensureCodexAvailable();
     const model = task.model ?? track.model ?? DEFAULT_MODEL;
@@ -84,7 +85,9 @@ const CodexDriver: DriverPlugin = {
     // undefined if it was never set). Guard against unexpected values coming
     // from user config that the editor might not have validated yet.
     const rawEffort = task.reasoning_effort ?? track.reasoning_effort ?? DEFAULT_REASONING_EFFORT;
-    const reasoningEffort = VALID_REASONING_EFFORT.has(rawEffort) ? rawEffort : DEFAULT_REASONING_EFFORT;
+    const reasoningEffort = VALID_REASONING_EFFORT.has(rawEffort)
+      ? rawEffort
+      : DEFAULT_REASONING_EFFORT;
     const sandbox = resolveSandbox(task.permissions ?? track.permissions!);
 
     let prompt = task.prompt!;
@@ -117,13 +120,18 @@ const CodexDriver: DriverPlugin = {
     // values that aren't supported by the current model.
     const args: string[] = [
       'codex',
-      '-a', 'never',
+      '-a',
+      'never',
       'exec',
       '--skip-git-repo-check',
-      '-c', `model_reasoning_effort="${reasoningEffort}"`,
-      '--model', model,
-      '--sandbox', sandbox,
-      '--color', 'never',
+      '-c',
+      `model_reasoning_effort="${reasoningEffort}"`,
+      '--model',
+      model,
+      '--sandbox',
+      sandbox,
+      '--color',
+      'never',
       '-',
     ];
 

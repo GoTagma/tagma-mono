@@ -26,7 +26,10 @@ interface LocalPanelProps {
 }
 
 const KNOWN_CATEGORIES: ReadonlySet<PluginCategory> = new Set([
-  'drivers', 'triggers', 'completions', 'middlewares',
+  'drivers',
+  'triggers',
+  'completions',
+  'middlewares',
 ]);
 
 /**
@@ -63,22 +66,29 @@ export function LocalPanel({
     });
   }, [plugins, query, category]);
 
-  const actionBannerVisible =
-    actionState.type === 'error' || actionState.type === 'success';
+  const actionBannerVisible = actionState.type === 'error' || actionState.type === 'success';
 
   return (
     <div className="h-full flex flex-col min-h-0">
       {autoLoadErrors.length > 0 && (
         <div className="shrink-0 mx-6 mt-4 relative flex items-start gap-3 px-4 py-3 bg-tagma-error/5 border border-tagma-error/30">
-          <span className="absolute left-0 top-0 bottom-0 w-[2px] bg-tagma-error" aria-hidden="true" />
+          <span
+            className="absolute left-0 top-0 bottom-0 w-[2px] bg-tagma-error"
+            aria-hidden="true"
+          />
           <AlertCircle size={13} className="shrink-0 mt-0.5 text-tagma-error" />
           <div className="flex-1 min-w-0">
             <p className="text-[11px] font-medium text-tagma-error tracking-wide">
-              {autoLoadErrors.length} plugin{autoLoadErrors.length === 1 ? '' : 's'} failed to auto-load
+              {autoLoadErrors.length} plugin{autoLoadErrors.length === 1 ? '' : 's'} failed to
+              auto-load
             </p>
             <ul className="mt-1 space-y-0.5">
               {autoLoadErrors.map((err) => (
-                <li key={err.name} className="text-[10px] font-mono text-tagma-muted-dim truncate" title={err.message}>
+                <li
+                  key={err.name}
+                  className="text-[10px] font-mono text-tagma-muted-dim truncate"
+                  title={err.message}
+                >
                   <span className="text-tagma-error/80">{err.name}</span>
                   <span className="text-tagma-border mx-1">—</span>
                   {err.message}
@@ -120,7 +130,8 @@ export function LocalPanel({
                   : 'No plugins installed in this workspace.'}
             </p>
             <p className="text-[10px] text-tagma-muted-dim">
-              Open the <span className="text-tagma-accent">Marketplace</span> tab to discover and install plugins.
+              Open the <span className="text-tagma-accent">Marketplace</span> tab to discover and
+              install plugins.
             </p>
           </div>
         )}
@@ -150,8 +161,7 @@ function LocalPluginCard({
   onUninstall: (name: string) => void;
   onLoad: (name: string) => void;
 }) {
-  const isBusy =
-    actionState.type === 'loading' && actionState.name === plugin.name;
+  const isBusy = actionState.type === 'loading' && actionState.name === plugin.name;
   const busyAction = isBusy ? actionState.action : null;
   const disabled = actionState.type === 'loading';
 
@@ -165,9 +175,7 @@ function LocalPluginCard({
 
   const statuses = (
     <>
-      {plugin.installed
-        ? <StatusBadge variant="installed" />
-        : <StatusBadge variant="missing" />}
+      {plugin.installed ? <StatusBadge variant="installed" /> : <StatusBadge variant="missing" />}
       {plugin.loaded && <StatusBadge variant="loaded" />}
       {declared && <StatusBadge variant="declared" />}
     </>
@@ -224,21 +232,20 @@ function LocalPluginCard({
 
 function busyActionLabel(action: string | null): string {
   switch (action) {
-    case 'install': return 'Installing…';
-    case 'uninstall': return 'Uninstalling…';
-    case 'load': return 'Loading…';
-    case 'import': return 'Importing…';
-    default: return 'Working…';
+    case 'install':
+      return 'Installing…';
+    case 'uninstall':
+      return 'Uninstalling…';
+    case 'load':
+      return 'Loading…';
+    case 'import':
+      return 'Importing…';
+    default:
+      return 'Working…';
   }
 }
 
-function ActionBanner({
-  state,
-  onDismiss,
-}: {
-  state: PluginActionState;
-  onDismiss: () => void;
-}) {
+function ActionBanner({ state, onDismiss }: { state: PluginActionState; onDismiss: () => void }) {
   if (state.type !== 'error' && state.type !== 'success') return null;
 
   const isError = state.type === 'error';

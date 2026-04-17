@@ -20,7 +20,7 @@ Declare the plugin in your `pipeline.yaml`:
 pipeline:
   name: my-pipeline
   plugins:
-    - "@tagma/driver-opencode"
+    - '@tagma/driver-opencode'
   tracks:
     - id: backend
       name: Backend
@@ -28,7 +28,7 @@ pipeline:
       tasks:
         - id: implement
           name: Implement feature
-          prompt: "Refactor the database layer to use connection pooling"
+          prompt: 'Refactor the database layer to use connection pooling'
           output: ./output/implement.txt
 ```
 

@@ -1,8 +1,17 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import {
-  FileText, Loader2, Check, X, Clock, SkipForward, Ban, Download,
-  History as HistoryIcon, GitBranch, Code2,
+  FileText,
+  Loader2,
+  Check,
+  X,
+  Clock,
+  SkipForward,
+  Ban,
+  Download,
+  History as HistoryIcon,
+  GitBranch,
+  Code2,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import type { RunHistoryEntry, RunSummary, RunSummaryTask, TaskStatus } from '../../api/client';
@@ -20,11 +29,11 @@ const STATUS_ICON: Record<TaskStatus, React.ReactNode> = {
 };
 
 const STATUS_CHIP: Record<TaskStatus, string> = {
-  idle:    'bg-tagma-muted/8 border-tagma-muted/15 text-tagma-muted',
+  idle: 'bg-tagma-muted/8 border-tagma-muted/15 text-tagma-muted',
   waiting: 'bg-tagma-muted/8 border-tagma-muted/15 text-tagma-muted',
   running: 'bg-tagma-ready/10 border-tagma-ready/20 text-tagma-ready',
   success: 'bg-tagma-success/10 border-tagma-success/20 text-tagma-success',
-  failed:  'bg-tagma-error/10 border-tagma-error/20 text-tagma-error',
+  failed: 'bg-tagma-error/10 border-tagma-error/20 text-tagma-error',
   timeout: 'bg-tagma-warning/10 border-tagma-warning/20 text-tagma-warning',
   skipped: 'bg-tagma-muted/6 border-tagma-muted/10 text-tagma-muted/60',
   blocked: 'bg-tagma-warning/10 border-tagma-warning/20 text-tagma-warning',
@@ -175,7 +184,9 @@ export function RunHistoryBrowser({
     }
   }, []);
 
-  useEffect(() => { loadHistory(); }, [loadHistory]);
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
 
   // Report loading transitions so the parent's external Refresh button
   // can animate its spinner. Fires on every change, including the
@@ -259,10 +270,7 @@ export function RunHistoryBrowser({
 
   return (
     <div className="h-full flex flex-col bg-tagma-bg">
-      <HistoryHeader
-        outcome={outcome}
-        onOutcome={setOutcome}
-      />
+      <HistoryHeader outcome={outcome} onOutcome={setOutcome} />
 
       <div className="flex-1 min-h-0 flex">
         <div className="w-72 shrink-0 border-r border-tagma-border flex flex-col bg-tagma-surface/25 overflow-hidden">
@@ -345,9 +353,13 @@ function HistoryHeader({
               active={outcome === t.key}
               onClick={() => onOutcome(t.key)}
               icon={
-                t.key === 'all' ? <HistoryIcon size={13} />
-                  : t.key === 'success' ? <Check size={13} />
-                  : <X size={13} />
+                t.key === 'all' ? (
+                  <HistoryIcon size={13} />
+                ) : t.key === 'success' ? (
+                  <Check size={13} />
+                ) : (
+                  <X size={13} />
+                )
               }
               label={t.label}
             />
@@ -400,11 +412,14 @@ function RunListItem({
   selected: boolean;
   onClick: () => void;
 }) {
-  const statusIcon = run.success == null
-    ? <Clock size={11} className="text-tagma-muted/60 shrink-0" />
-    : run.success
-      ? <Check size={11} className="text-tagma-success shrink-0" />
-      : <X size={11} className="text-tagma-error shrink-0" />;
+  const statusIcon =
+    run.success == null ? (
+      <Clock size={11} className="text-tagma-muted/60 shrink-0" />
+    ) : run.success ? (
+      <Check size={11} className="text-tagma-success shrink-0" />
+    ) : (
+      <X size={11} className="text-tagma-error shrink-0" />
+    );
 
   return (
     <button
@@ -483,19 +498,13 @@ function RunListItem({
   );
 }
 
-function EmptyRunList({
-  outcome,
-  totalRuns,
-}: {
-  outcome: OutcomeFilter;
-  totalRuns: number;
-}) {
+function EmptyRunList({ outcome, totalRuns }: { outcome: OutcomeFilter; totalRuns: number }) {
   const hasFilter = outcome !== 'all';
   if (totalRuns === 0) {
     return (
       <div className="px-5 py-6 text-[10px] text-tagma-muted-dim leading-relaxed">
-        No past runs found in <span className="font-mono text-tagma-muted">.tagma/logs/</span>.
-        Runs are recorded once you execute a pipeline.
+        No past runs found in <span className="font-mono text-tagma-muted">.tagma/logs/</span>. Runs
+        are recorded once you execute a pipeline.
       </div>
     );
   }
@@ -623,12 +632,14 @@ function DetailPane({
         )}
       </div>
 
-      <div className={`flex-1 min-h-0 ${viewMode === 'flow' ? 'overflow-hidden flex' : 'overflow-auto'}`}>
+      <div
+        className={`flex-1 min-h-0 ${viewMode === 'flow' ? 'overflow-hidden flex' : 'overflow-auto'}`}
+      >
         {!selectedRunId && (
           <div className="px-5 py-6 text-[11px] text-tagma-muted-dim leading-relaxed max-w-md">
-            Select a run from the list to see its per-task timeline. Each run
-            stores a <span className="font-mono text-tagma-muted">summary.json</span>
-            {' '}alongside its raw <span className="font-mono text-tagma-muted">pipeline.log</span>.
+            Select a run from the list to see its per-task timeline. Each run stores a{' '}
+            <span className="font-mono text-tagma-muted">summary.json</span> alongside its raw{' '}
+            <span className="font-mono text-tagma-muted">pipeline.log</span>.
           </div>
         )}
 
@@ -636,17 +647,19 @@ function DetailPane({
           <div className="px-6 py-5">
             {summaryError && (
               <div className="mb-4 p-3 bg-tagma-warning/5 border border-tagma-warning/20 text-[10px] text-tagma-warning font-mono leading-relaxed">
-                {summaryError}. Older runs (pre-summary.json) will only have a
-                pipeline.log available.
+                {summaryError}. Older runs (pre-summary.json) will only have a pipeline.log
+                available.
               </div>
             )}
             {summary && (
               <>
                 <div className="mb-5 pb-4 border-b border-tagma-border/60">
                   <div className="flex items-center gap-2 mb-1.5">
-                    {summary.success
-                      ? <Check size={14} className="text-tagma-success" />
-                      : <X size={14} className="text-tagma-error" />}
+                    {summary.success ? (
+                      <Check size={14} className="text-tagma-success" />
+                    ) : (
+                      <X size={14} className="text-tagma-error" />
+                    )}
                     <span className="text-[14px] font-medium text-tagma-text truncate">
                       {summary.pipelineName}
                     </span>
@@ -659,7 +672,7 @@ function DetailPane({
                     <span>
                       {formatDuration(
                         new Date(summary.finishedAt).getTime() -
-                        new Date(summary.startedAt).getTime(),
+                          new Date(summary.startedAt).getTime(),
                       )}
                     </span>
                   </div>
@@ -683,7 +696,9 @@ function DetailPane({
                             i > 0 ? 'border-t border-tagma-border/40' : ''
                           }`}
                         >
-                          <span className={`chip-xs shrink-0 uppercase tracking-wider ${STATUS_CHIP[task.status]}`}>
+                          <span
+                            className={`chip-xs shrink-0 uppercase tracking-wider ${STATUS_CHIP[task.status]}`}
+                          >
                             {STATUS_ICON[task.status]}
                             {task.status}
                           </span>
@@ -720,15 +735,14 @@ function DetailPane({
               </>
             )}
             {!summary && !summaryLoading && !summaryError && (
-              <div className="text-[10px] font-mono text-tagma-muted-dim">
-                Loading summary...
-              </div>
+              <div className="text-[10px] font-mono text-tagma-muted-dim">Loading summary...</div>
             )}
           </div>
         )}
 
-        {viewMode === 'flow' && selectedRunId && (
-          summary ? (
+        {viewMode === 'flow' &&
+          selectedRunId &&
+          (summary ? (
             <HistoryFlowView summary={summary} />
           ) : summaryLoading ? (
             <div className="px-6 py-10 text-[11px] text-tagma-muted-dim">
@@ -739,8 +753,7 @@ function DetailPane({
             <div className="px-6 py-10 text-[11px] text-tagma-muted-dim">
               No summary data available for flow view.
             </div>
-          )
-        )}
+          ))}
 
         {viewMode === 'log' && selectedRunId && !logLoading && (
           <pre className="text-[10px] font-mono text-tagma-text whitespace-pre-wrap break-words px-5 py-4">
@@ -748,24 +761,24 @@ function DetailPane({
           </pre>
         )}
 
-        {viewMode === 'yaml' && selectedRunId && (
-          yamlLoading ? (
+        {viewMode === 'yaml' &&
+          selectedRunId &&
+          (yamlLoading ? (
             <div className="px-6 py-10 text-[11px] text-tagma-muted-dim">
               <Loader2 size={12} className="animate-spin inline mr-2" />
               Loading yaml snapshot...
             </div>
           ) : yamlContent === null ? null : yamlContent === '' ? (
             <div className="px-6 py-10 text-[11px] text-tagma-muted-dim leading-relaxed max-w-md">
-              No yaml snapshot for this run. Older runs (before snapshotting was
-              added) only have a <span className="font-mono text-tagma-muted">summary.json</span>
-              {' '}and <span className="font-mono text-tagma-muted">pipeline.log</span>.
+              No yaml snapshot for this run. Older runs (before snapshotting was added) only have a{' '}
+              <span className="font-mono text-tagma-muted">summary.json</span> and{' '}
+              <span className="font-mono text-tagma-muted">pipeline.log</span>.
             </div>
           ) : (
             <pre className="text-[10px] font-mono text-tagma-text whitespace-pre-wrap break-words px-5 py-4">
               {yamlContent}
             </pre>
-          )
-        )}
+          ))}
       </div>
     </div>
   );

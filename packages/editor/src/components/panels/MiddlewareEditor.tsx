@@ -43,21 +43,30 @@ export function MiddlewareEditor({ middlewares, onChange, onBrowsePath }: Middle
     onChange([...middlewares, { type: 'static_context', file: '' }]);
   }, [middlewares, onChange]);
 
-  const handleRemove = useCallback((index: number) => {
-    const next = middlewares.filter((_, i) => i !== index);
-    onChange(next.length > 0 ? next : undefined);
-  }, [middlewares, onChange]);
+  const handleRemove = useCallback(
+    (index: number) => {
+      const next = middlewares.filter((_, i) => i !== index);
+      onChange(next.length > 0 ? next : undefined);
+    },
+    [middlewares, onChange],
+  );
 
-  const handleUpdate = useCallback((index: number, patch: Partial<MiddlewareConfig>) => {
-    const next = middlewares.map((m, i) => i === index ? { ...m, ...patch } : m);
-    onChange(next);
-  }, [middlewares, onChange]);
+  const handleUpdate = useCallback(
+    (index: number, patch: Partial<MiddlewareConfig>) => {
+      const next = middlewares.map((m, i) => (i === index ? { ...m, ...patch } : m));
+      onChange(next);
+    },
+    [middlewares, onChange],
+  );
 
   return (
     <div>
       <div className="flex items-center justify-between mb-1.5">
         <label className="field-label mb-0">Middlewares</label>
-        <button onClick={handleAdd} className="flex items-center gap-1 text-[10px] text-tagma-accent hover:text-tagma-text transition-colors">
+        <button
+          onClick={handleAdd}
+          className="flex items-center gap-1 text-[10px] text-tagma-accent hover:text-tagma-text transition-colors"
+        >
           <Plus size={10} /> Add
         </button>
       </div>
@@ -66,16 +75,27 @@ export function MiddlewareEditor({ middlewares, onChange, onBrowsePath }: Middle
       )}
       <div className="space-y-2">
         {middlewares.map((m, i) => (
-          <MiddlewareItem key={keys[i]} middleware={m} typeOptions={typeOptions}
-            onUpdate={(patch) => handleUpdate(i, patch)} onRemove={() => handleRemove(i)}
-            onBrowsePath={onBrowsePath} />
+          <MiddlewareItem
+            key={keys[i]}
+            middleware={m}
+            typeOptions={typeOptions}
+            onUpdate={(patch) => handleUpdate(i, patch)}
+            onRemove={() => handleRemove(i)}
+            onBrowsePath={onBrowsePath}
+          />
         ))}
       </div>
     </div>
   );
 }
 
-function MiddlewareItem({ middleware, typeOptions, onUpdate, onRemove, onBrowsePath }: {
+function MiddlewareItem({
+  middleware,
+  typeOptions,
+  onUpdate,
+  onRemove,
+  onBrowsePath,
+}: {
   middleware: MiddlewareConfig;
   typeOptions: string[];
   onUpdate: (patch: Partial<MiddlewareConfig>) => void;
@@ -88,41 +108,62 @@ function MiddlewareItem({ middleware, typeOptions, onUpdate, onRemove, onBrowseP
   const customEntries = Object.entries(middleware).filter(([k]) => k !== 'type');
   const fieldValues = Object.fromEntries(customEntries) as Record<string, unknown>;
 
-  const handleSchemaChange = useCallback((next: Record<string, unknown>) => {
-    // Replace all non-type fields with the schema-form output so removed keys
-    // are dropped rather than retained from the previous object.
-    onUpdate({
-      ...({ type: middleware.type } as MiddlewareConfig),
-      ...next,
-    });
-  }, [middleware.type, onUpdate]);
+  const handleSchemaChange = useCallback(
+    (next: Record<string, unknown>) => {
+      // Replace all non-type fields with the schema-form output so removed keys
+      // are dropped rather than retained from the previous object.
+      onUpdate({
+        ...({ type: middleware.type } as MiddlewareConfig),
+        ...next,
+      });
+    },
+    [middleware.type, onUpdate],
+  );
 
   return (
     <div className="bg-tagma-bg border border-tagma-border p-2 space-y-1.5 relative">
-      <button onClick={onRemove} className="absolute top-1.5 right-1.5 text-tagma-muted hover:text-tagma-error transition-colors" aria-label="Remove middleware">
+      <button
+        onClick={onRemove}
+        className="absolute top-1.5 right-1.5 text-tagma-muted hover:text-tagma-error transition-colors"
+        aria-label="Remove middleware"
+      >
         <X size={10} />
       </button>
       <div>
         <label className="text-[10px] text-tagma-muted">Type</label>
-        <select className="field-input text-[11px]" value={middleware.type} onChange={(e) => onUpdate({ type: e.target.value })}>
+        <select
+          className="field-input text-[11px]"
+          value={middleware.type}
+          onChange={(e) => onUpdate({ type: e.target.value })}
+        >
           {typeOptions.map((t) => (
-            <option key={t} value={t}>{t}</option>
+            <option key={t} value={t}>
+              {t}
+            </option>
           ))}
         </select>
       </div>
       {schema ? (
-        <SchemaForm schema={schema} value={fieldValues} onChange={handleSchemaChange} onBrowsePath={onBrowsePath} />
+        <SchemaForm
+          schema={schema}
+          value={fieldValues}
+          onChange={handleSchemaChange}
+          onBrowsePath={onBrowsePath}
+        />
       ) : (
         <div className="space-y-1">
           <p className="text-[10px] text-tagma-muted">
-            Custom fields (plugin "{middleware.type}" has no known schema — falling back to KV editor):
+            Custom fields (plugin "{middleware.type}" has no known schema — falling back to KV
+            editor):
           </p>
           <CustomFieldsEditor
             entries={customEntries as [string, unknown][]}
-            onChange={(next) => onUpdate({
-              ...({ type: middleware.type } as MiddlewareConfig),
-              ...Object.fromEntries(next),
-            })}
+            onChange={(next) =>
+              onUpdate({
+                ...({ type: middleware.type } as MiddlewareConfig),
+                ...Object.fromEntries(next),
+              })
+            }
           />
         </div>
       )}
@@ -131,29 +172,51 @@ function MiddlewareItem({ middleware, typeOptions, onUpdate, onRemove, onBrowseP
 }
 
 /** Small KV editor shared by custom middleware plugins. */
-function CustomFieldsEditor({ entries, onChange }: {
+function CustomFieldsEditor({
+  entries,
+  onChange,
+}: {
   entries: [string, unknown][];
   onChange: (entries: [string, unknown][]) => void;
 }) {
   const add = () => onChange([...entries, [`key${entries.length + 1}`, '']]);
   const remove = (i: number) => onChange(entries.filter((_, idx) => idx !== i));
-  const updateKey = (i: number, key: string) => onChange(entries.map((e, idx) => idx === i ? [key, e[1]] : e));
-  const updateValue = (i: number, value: string) => onChange(entries.map((e, idx) => idx === i ? [e[0], value] : e));
+  const updateKey = (i: number, key: string) =>
+    onChange(entries.map((e, idx) => (idx === i ? [key, e[1]] : e)));
+  const updateValue = (i: number, value: string) =>
+    onChange(entries.map((e, idx) => (idx === i ? [e[0], value] : e)));
 
   return (
     <div className="space-y-1">
       {entries.map(([k, v], i) => (
         <div key={i} className="flex items-center gap-1">
-          <input type="text" className="field-input font-mono text-[11px] w-[90px]" value={k}
-            onChange={(e) => updateKey(i, e.target.value)} placeholder="key" />
-          <input type="text" className="field-input font-mono text-[11px] flex-1" value={String(v ?? '')}
-            onChange={(e) => updateValue(i, e.target.value)} placeholder="value" />
-          <button onClick={() => remove(i)} className="text-tagma-muted hover:text-tagma-error transition-colors shrink-0" aria-label="Remove field">
+          <input
+            type="text"
+            className="field-input font-mono text-[11px] w-[90px]"
+            value={k}
+            onChange={(e) => updateKey(i, e.target.value)}
+            placeholder="key"
+          />
+          <input
+            type="text"
+            className="field-input font-mono text-[11px] flex-1"
+            value={String(v ?? '')}
+            onChange={(e) => updateValue(i, e.target.value)}
+            placeholder="value"
+          />
+          <button
+            onClick={() => remove(i)}
+            className="text-tagma-muted hover:text-tagma-error transition-colors shrink-0"
+            aria-label="Remove field"
+          >
             <X size={10} />
           </button>
         </div>
       ))}
-      <button onClick={add} className="text-[10px] text-tagma-accent hover:text-tagma-text transition-colors">
+      <button
+        onClick={add}
+        className="text-[10px] text-tagma-accent hover:text-tagma-text transition-colors"
+      >
         + Add field
       </button>
     </div>

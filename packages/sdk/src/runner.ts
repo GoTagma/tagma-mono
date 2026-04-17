@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import type { SpawnSpec, DriverPlugin, TaskResult } from './types';
 import { shellArgs } from './utils';
@@ -23,7 +23,9 @@ function killProcessTree(pid: number): void {
       const stderr = new TextDecoder().decode(result.stderr);
       // Exit code 128 = process not found (already exited) — not worth warning about
       if (result.exitCode !== 128) {
-        console.error(`[killProcessTree] taskkill exited ${result.exitCode} for PID ${pid}: ${stderr.trim()}`);
+        console.error(
+          `[killProcessTree] taskkill exited ${result.exitCode} for PID ${pid}: ${stderr.trim()}`,
+        );
       }
     }
   } catch {
@@ -61,10 +63,7 @@ function evictIfFull(): void {
   }
 }
 
-function resolveWindowsExe(
-  args: readonly string[],
-  envPath: string,
-): readonly string[] {
+function resolveWindowsExe(args: readonly string[], envPath: string): readonly string[] {
   if (process.platform !== 'win32' || args.length === 0) return args;
   const cmd = args[0]!;
   // Already a full path or has an extension → trust caller.
@@ -78,10 +77,7 @@ function resolveWindowsExe(
     return cached !== null ? [cached, ...args.slice(1)] : args;
   }
 
-  const exts = (
-    process.env.PATHEXT ??
-    '.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC'
-  )
+  const exts = (process.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC')
     .split(';')
     .filter(Boolean);
   const dirs = envPath.split(';').filter(Boolean);
@@ -89,10 +85,14 @@ function resolveWindowsExe(
   for (const dir of dirs) {
     for (const ext of exts) {
       const candidate = join(dir, cmd + ext);
-      if (existsSync(candidate)) {
-        evictIfFull();
-        resolvedExeCache.set(cacheKey, candidate);
-        return [candidate, ...args.slice(1)];
+      try {
+        if (existsSync(candidate) && statSync(candidate).isFile()) {
+          evictIfFull();
+          resolvedExeCache.set(cacheKey, candidate);
+          return [candidate, ...args.slice(1)];
+        }
+      } catch {
+        /* stat race — skip */
       }
     }
   }
@@ -189,10 +189,7 @@ export async function runSpawn(
   }
 
   const mergedEnv = { ...process.env, ...(spec.env ?? {}) };
-  const resolvedArgs = resolveWindowsExe(
-    spec.args,
-    mergedEnv.PATH ?? process.env.PATH ?? '',
-  );
+  const resolvedArgs = resolveWindowsExe(spec.args, mergedEnv.PATH ?? process.env.PATH ?? '');
 
   // ── 1. Spawn (catch ENOENT / bad-cwd up front) ────────────────────────
   let proc: ReturnType<typeof Bun.spawn>;
@@ -214,8 +211,8 @@ export async function runSpawn(
   // engine-level error.
   if (spec.stdin && proc.stdin && typeof proc.stdin !== 'number') {
     try {
-      proc.stdin.write(spec.stdin);
-      proc.stdin.end();
+      await proc.stdin.write(spec.stdin);
+      await proc.stdin.end();
     } catch {
       /* ignore EPIPE / closed-pipe errors */
     }
@@ -319,16 +316,17 @@ export async function runSpawn(
     try {
       const meta = driver.parseResult(stdout, stderr);
       if (meta && typeof meta === 'object') {
-        if (typeof meta.sessionId === 'string' && meta.sessionId.length > 0) {
+        if (typeof meta.sessionId === 'string' && /^[\w.-]{1,256}$/.test(meta.sessionId)) {
           sessionId = meta.sessionId;
         }
         if (typeof meta.normalizedOutput === 'string') {
           normalizedOutput = meta.normalizedOutput;
         }
         if (meta.forceFailure === true) {
-          forcedFailureMessage = typeof meta.forceFailureReason === 'string'
-            ? meta.forceFailureReason
-            : 'Driver flagged task as failed (forceFailure)';
+          forcedFailureMessage =
+            typeof meta.forceFailureReason === 'string'
+              ? meta.forceFailureReason
+              : 'Driver flagged task as failed (forceFailure)';
         }
       }
     } catch (err) {

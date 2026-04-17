@@ -12,7 +12,12 @@ import type { PluginErrorKind } from '../../api/client';
 export type ErrorKind = PluginErrorKind;
 
 const ERROR_KINDS: ReadonlySet<ErrorKind> = new Set([
-  'network', 'permission', 'version', 'notfound', 'invalid', 'unknown',
+  'network',
+  'permission',
+  'version',
+  'notfound',
+  'invalid',
+  'unknown',
 ]);
 
 export function classifyError(err: unknown, message: string): ErrorKind {
@@ -25,13 +30,24 @@ export function classifyError(err: unknown, message: string): ErrorKind {
     return 'invalid';
   }
   if (m.includes('integrity') || m.includes('shasum')) return 'version';
-  if (m.includes('enotfound') || m.includes('etimedout') || m.includes('econnrefused') || m.includes('network') || m.includes('fetch failed')) {
+  if (
+    m.includes('enotfound') ||
+    m.includes('etimedout') ||
+    m.includes('econnrefused') ||
+    m.includes('network') ||
+    m.includes('fetch failed')
+  ) {
     return 'network';
   }
   if (m.includes('eacces') || m.includes('eperm') || m.includes('permission denied')) {
     return 'permission';
   }
-  if (m.includes('etarget') || m.includes('eresolve') || m.includes('version') || m.includes('peer dep')) {
+  if (
+    m.includes('etarget') ||
+    m.includes('eresolve') ||
+    m.includes('version') ||
+    m.includes('peer dep')
+  ) {
     return 'version';
   }
   if (m.includes('e404') || m.includes('not found') || m.includes('404')) {
@@ -42,19 +58,29 @@ export function classifyError(err: unknown, message: string): ErrorKind {
 
 export function errorHint(kind: ErrorKind): string {
   switch (kind) {
-    case 'network': return 'Network error — check your connection or proxy settings.';
-    case 'permission': return 'Permission denied — check write access to the working directory.';
-    case 'version': return 'Version / integrity issue — the package could not be verified or resolved.';
-    case 'notfound': return 'Package not found on the registry.';
-    case 'invalid': return 'Plugin name rejected — must be a scoped @tagma/* or tagma-plugin-* package.';
-    case 'unknown': return 'See details below.';
+    case 'network':
+      return 'Network error — check your connection or proxy settings.';
+    case 'permission':
+      return 'Permission denied — check write access to the working directory.';
+    case 'version':
+      return 'Version / integrity issue — the package could not be verified or resolved.';
+    case 'notfound':
+      return 'Package not found on the registry.';
+    case 'invalid':
+      return 'Plugin name rejected — must be a scoped @tagma/* or tagma-plugin-* package.';
+    case 'unknown':
+      return 'See details below.';
   }
 }
 
 export function extractErrorMessage(err: unknown): string {
   if (err instanceof Error && err.message) return err.message;
   if (typeof err === 'string') return err;
-  try { return JSON.stringify(err); } catch { return 'Unknown error'; }
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return 'Unknown error';
+  }
 }
 
 /**

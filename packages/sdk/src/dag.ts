@@ -1,7 +1,13 @@
-import type { PipelineConfig, RawPipelineConfig, RawTaskConfig, TaskConfig, TrackConfig } from './types';
+import type {
+  PipelineConfig,
+  RawPipelineConfig,
+  RawTaskConfig,
+  TaskConfig,
+  TrackConfig,
+} from './types';
 
 export interface DagNode {
-  readonly taskId: string;   // fully qualified: track_id.task_id or just task_id
+  readonly taskId: string; // fully qualified: track_id.task_id or just task_id
   readonly task: TaskConfig;
   readonly track: TrackConfig;
   readonly dependsOn: readonly string[];
@@ -18,7 +24,7 @@ export interface DagNode {
 
 export interface Dag {
   readonly nodes: ReadonlyMap<string, DagNode>;
-  readonly sorted: readonly string[];   // topological order
+  readonly sorted: readonly string[]; // topological order
 }
 
 // Build a global task ID: for cross-track refs we use "track_id.task_id"
@@ -52,7 +58,7 @@ export function buildDag(config: PipelineConfig): Dag {
         taskId: qid,
         task,
         track,
-        dependsOn: [],  // filled below
+        dependsOn: [], // filled below
       });
     }
   }
@@ -75,7 +81,7 @@ export function buildDag(config: PipelineConfig): Dag {
     if (global === '__ambiguous__') {
       throw new Error(
         `Ambiguous task reference "${ref}" exists in multiple tracks. ` +
-        `Use "track_id.task_id" format.`
+          `Use "track_id.task_id" format.`,
       );
     }
     throw new Error(`Task reference "${ref}" not found`);
@@ -100,7 +106,7 @@ export function buildDag(config: PipelineConfig): Dag {
         } catch {
           throw new Error(
             `Task "${qid}": continue_from "${task.continue_from}" — no such task found. ` +
-            `Use a fully-qualified reference (trackId.taskId) or ensure the target task exists.`
+              `Use a fully-qualified reference (trackId.taskId) or ensure the target task exists.`,
           );
         }
         resolvedContinueFrom = resolved;
@@ -153,8 +159,8 @@ export function buildDag(config: PipelineConfig): Dag {
     // Only report nodes that are actually part of cycles (in-degree > 0
     // after Kahn's algorithm), not their downstream dependents.
     const sortedSet = new Set(sorted);
-    const cycleMembers = [...nodes.keys()].filter(id =>
-      !sortedSet.has(id) && (inDegree.get(id) ?? 0) > 0
+    const cycleMembers = [...nodes.keys()].filter(
+      (id) => !sortedSet.has(id) && (inDegree.get(id) ?? 0) > 0,
     );
     throw new Error(`Circular dependency detected involving tasks: ${cycleMembers.join(', ')}`);
   }
@@ -165,10 +171,10 @@ export function buildDag(config: PipelineConfig): Dag {
 // ═══ Raw DAG (for visual editor — no workDir required) ═══
 
 export interface RawDagNode {
-  readonly taskId: string;        // fully qualified: track_id.task_id
+  readonly taskId: string; // fully qualified: track_id.task_id
   readonly trackId: string;
   readonly rawTask: RawTaskConfig;
-  readonly dependsOn: readonly string[];  // fully qualified IDs, best-effort resolved
+  readonly dependsOn: readonly string[]; // fully qualified IDs, best-effort resolved
 }
 
 export interface RawDag {

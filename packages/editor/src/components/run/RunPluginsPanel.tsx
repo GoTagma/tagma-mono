@@ -16,7 +16,15 @@ interface RunPluginsPanelProps {
   onClose: () => void;
 }
 
-function Section({ icon, label, items }: { icon: React.ReactNode; label: string; items: readonly string[] }) {
+function Section({
+  icon,
+  label,
+  items,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  items: readonly string[];
+}) {
   if (items.length === 0) {
     return (
       <div>
@@ -25,7 +33,9 @@ function Section({ icon, label, items }: { icon: React.ReactNode; label: string;
           <span>{label}</span>
           <span className="text-tagma-muted/40">(0)</span>
         </div>
-        <div className="text-[10px] font-mono text-tagma-muted/40 italic pl-5">— none registered —</div>
+        <div className="text-[10px] font-mono text-tagma-muted/40 italic pl-5">
+          — none registered —
+        </div>
       </div>
     );
   }
@@ -57,7 +67,10 @@ export function RunPluginsPanel({ config, onClose }: RunPluginsPanelProps) {
   const maxH = useMemo(() => Math.floor(viewportH() * 0.8), []);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={onClose}
+    >
       <div
         className="bg-tagma-surface border border-tagma-border shadow-panel w-[560px] flex flex-col animate-fade-in"
         style={{ maxHeight: maxH }}
@@ -68,7 +81,11 @@ export function RunPluginsPanel({ config, onClose }: RunPluginsPanelProps) {
             <Package size={14} className="text-tagma-accent" />
             <h2 className="panel-title">Plugins (read-only)</h2>
           </div>
-          <button onClick={onClose} className="p-1 text-tagma-muted hover:text-tagma-text transition-colors" aria-label="Close">
+          <button
+            onClick={onClose}
+            className="p-1 text-tagma-muted hover:text-tagma-text transition-colors"
+            aria-label="Close"
+          >
             <X size={14} />
           </button>
         </div>
@@ -106,26 +123,14 @@ export function RunPluginsPanel({ config, onClose }: RunPluginsPanelProps) {
             <div className="text-[9px] font-mono uppercase tracking-wider text-tagma-muted/50">
               Registered handlers (builtin + declared packages)
             </div>
-            <Section
-              icon={<Cpu size={9} />}
-              label="Drivers"
-              items={registry.drivers}
-            />
-            <Section
-              icon={<Zap size={9} />}
-              label="Triggers"
-              items={registry.triggers}
-            />
+            <Section icon={<Cpu size={9} />} label="Drivers" items={registry.drivers} />
+            <Section icon={<Zap size={9} />} label="Triggers" items={registry.triggers} />
             <Section
               icon={<CheckCircle2 size={9} />}
               label="Completions"
               items={registry.completions}
             />
-            <Section
-              icon={<Layers size={9} />}
-              label="Middlewares"
-              items={registry.middlewares}
-            />
+            <Section icon={<Layers size={9} />} label="Middlewares" items={registry.middlewares} />
           </div>
         </div>
       </div>

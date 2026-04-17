@@ -32,9 +32,7 @@ import type { DriverCapabilities } from '../api/client';
 export function useDriverCapability(
   driverName: string | null | undefined,
 ): DriverCapabilities | undefined {
-  const driverCapabilities = usePipelineStore(
-    (state) => state.registry.driverCapabilities,
-  );
+  const driverCapabilities = usePipelineStore((state) => state.registry.driverCapabilities);
   if (!driverName) return undefined;
   if (!driverCapabilities) return undefined;
   return driverCapabilities[driverName];

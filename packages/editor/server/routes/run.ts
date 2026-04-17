@@ -18,14 +18,10 @@ import {
   validateConfig,
   runPipeline,
   InMemoryApprovalGateway,
-  clip,
   unregisterPlugin,
   generateRunId,
 } from '@tagma/sdk';
-import type {
-  PipelineEvent,
-  EngineResult,
-} from '@tagma/sdk';
+import type { PipelineEvent, EngineResult } from '@tagma/sdk';
 import type {
   TaskState,
   TaskStatus,
@@ -36,11 +32,7 @@ import type {
 import { assertSafePluginName } from '../plugin-safety.js';
 import { errorMessage } from '../path-utils.js';
 import { S, MAX_LOG_RUNS } from '../state.js';
-import {
-  loadedPluginMeta,
-  loadPluginFromWorkDir,
-  classifyServerError,
-} from '../plugins/loader.js';
+import { loadedPluginMeta, loadPluginFromWorkDir, classifyServerError } from '../plugins/loader.js';
 
 // ═══ Pipeline Run ═══
 
@@ -73,7 +65,20 @@ interface RunTaskWire {
 
 type RunEvent =
   | { type: 'run_start'; runId: string; tasks: RunTaskWire[] }
-  | { type: 'run_snapshot'; runId: string; tasks: RunTaskWire[]; pendingApprovals: Array<{ id: string; taskId: string; trackId?: string; message: string; createdAt: string; timeoutMs: number; metadata?: Record<string, unknown> }> }
+  | {
+      type: 'run_snapshot';
+      runId: string;
+      tasks: RunTaskWire[];
+      pendingApprovals: Array<{
+        id: string;
+        taskId: string;
+        trackId?: string;
+        message: string;
+        createdAt: string;
+        timeoutMs: number;
+        metadata?: Record<string, unknown>;
+      }>;
+    }
   | {
       type: 'task_update';
       runId: string;
@@ -103,8 +108,25 @@ type RunEvent =
       timestamp: string;
       text: string;
     }
-  | { type: 'approval_request'; runId: string; request: { id: string; taskId: string; trackId?: string; message: string; createdAt: string; timeoutMs: number; metadata?: Record<string, unknown> } }
-  | { type: 'approval_resolved'; runId: string; requestId: string; outcome: 'approved' | 'rejected' | 'timeout' | 'aborted' };
+  | {
+      type: 'approval_request';
+      runId: string;
+      request: {
+        id: string;
+        taskId: string;
+        trackId?: string;
+        message: string;
+        createdAt: string;
+        timeoutMs: number;
+        metadata?: Record<string, unknown>;
+      };
+    }
+  | {
+      type: 'approval_resolved';
+      runId: string;
+      requestId: string;
+      outcome: 'approved' | 'rejected' | 'timeout' | 'aborted';
+    };
 
 // ── In-process pipeline run state ──
 // We embed the SDK directly instead of spawning `tagma-cli` as a subprocess
@@ -332,11 +354,31 @@ interface RunHistoryEntry {
   pipelineName?: string;
   success?: boolean;
   finishedAt?: string;
-  taskCounts?: { total: number; success: number; failed: number; timeout: number; skipped: number; blocked: number; running: number; waiting: number; idle: number };
+  taskCounts?: {
+    total: number;
+    success: number;
+    failed: number;
+    timeout: number;
+    skipped: number;
+    blocked: number;
+    running: number;
+    waiting: number;
+    idle: number;
+  };
 }
 
 function computeTaskCounts(tasks: RunSummaryTask[]): NonNullable<RunHistoryEntry['taskCounts']> {
-  const counts = { total: tasks.length, success: 0, failed: 0, timeout: 0, skipped: 0, blocked: 0, running: 0, waiting: 0, idle: 0 };
+  const counts = {
+    total: tasks.length,
+    success: 0,
+    failed: 0,
+    timeout: 0,
+    skipped: 0,
+    blocked: 0,
+    running: 0,
+    waiting: 0,
+    idle: 0,
+  };
   for (const t of tasks) {
     const k = t.status;
     if (k in counts) (counts as Record<string, number>)[k] += 1;
@@ -355,7 +397,11 @@ export function shutdownRuns(): void {
     runStarting = false;
   }
   for (const client of sseClients) {
-    try { client.end(); } catch { /* best-effort */ }
+    try {
+      client.end();
+    } catch {
+      /* best-effort */
+    }
   }
   sseClients.clear();
 }
@@ -403,12 +449,14 @@ export function registerRunRoutes(app: express.Express): void {
     if (runInFlight && activeRunId) {
       const pending = activeRunGateway ? activeRunGateway.pending().map(approvalRequestToWire) : [];
       if (activeRunTasksSnapshot.size > 0 || pending.length > 0) {
-        res.write(`event: run_event\ndata: ${JSON.stringify({
-          type: 'run_snapshot',
-          runId: activeRunId,
-          tasks: Array.from(activeRunTasksSnapshot.values()),
-          pendingApprovals: pending,
-        })}\n\n`);
+        res.write(
+          `event: run_event\ndata: ${JSON.stringify({
+            type: 'run_snapshot',
+            runId: activeRunId,
+            tasks: Array.from(activeRunTasksSnapshot.values()),
+            pendingApprovals: pending,
+          })}\n\n`,
+        );
       }
     }
     req.on('close', () => sseClients.delete(res));
@@ -466,11 +514,19 @@ export function registerRunRoutes(app: express.Express): void {
         for (const name of newlyLoaded) {
           const meta = loadedPluginMeta.get(name);
           if (meta) {
-            try { unregisterPlugin(meta.category, meta.type); } catch { /* best-effort */ }
+            try {
+              unregisterPlugin(meta.category, meta.type);
+            } catch {
+              /* best-effort */
+            }
             // D13: Also clean up the staging directory left by stagePluginForImport
             // so failed plugin loads don't accumulate orphan dirs in plugin-runtime/.
             if (meta.stageDir) {
-              try { rmSync(meta.stageDir, { recursive: true, force: true }); } catch { /* best-effort */ }
+              try {
+                rmSync(meta.stageDir, { recursive: true, force: true });
+              } catch {
+                /* best-effort */
+              }
             }
             loadedPluginMeta.delete(name);
           }
@@ -506,206 +562,161 @@ export function registerRunRoutes(app: express.Express): void {
     // Without this, a mid-setup exception would leave the lock stuck at `true`
     // and block every subsequent /api/run/start until server restart.
     try {
-    // Build initial task list from the raw (editor-side) config. This keeps
-    // the qualified taskIds aligned with the pipeline DAG that the SDK
-    // produces internally (`{trackId}.{taskId}`).
-    const initialTasks: RunTaskWire[] = S.config.tracks.flatMap((track) =>
-      track.tasks.map((task) => ({
-        taskId: `${track.id}.${task.id}`,
-        trackId: track.id,
-        taskName: task.name || task.id,
-        status: 'waiting',
-        startedAt: null,
-        finishedAt: null,
-        durationMs: null,
-        exitCode: null,
-        stdout: '',
-        stderr: '',
-        stderrPath: null,
-        sessionId: null,
-        normalizedOutput: null,
-        resolvedDriver: null,
-        resolvedModel: null,
-        resolvedPermissions: null,
-        logs: [],
-        totalLogCount: 0,
-      })),
-    );
-
-    // H6: only reset the per-run event buffer once everything that could fail
-    // (plugin pre-load, loadPipeline, validateConfig) has succeeded. The old
-    // code reset it at the top of the handler — failing validation later left
-    // SSE consumers with no replay for the *previous* completed run.
-    resetRunEventBuffer();
-
-    // H4: use the SDK's own collision-resistant id generator. The previous
-    // `run_${Date.now().toString(36)}` lost the per-process counter + random
-    // suffix the SDK builds in (see utils.ts:generateRunId), so two starts
-    // landing in the same millisecond — common in test loops or rapid
-    // restarts — would share a runId, mix logs, and overwrite each other's
-    // summary.json under .tagma/logs/<runId>.
-    const runId = generateRunId();
-    const runStartedAt = new Date().toISOString();
-    const abortController = new AbortController();
-    const gateway = new InMemoryApprovalGateway();
-
-    // Running tally of the most recent TaskState per qualified id. Populated
-    // from the SDK's task_status_change events and flushed to summary.json
-    // at run completion so the RunHistoryBrowser can render a rich per-task
-    // timeline instead of a plaintext log (§3.12).
-    const taskSnapshots = new Map<string, RunSummaryTask>();
-    for (const t of initialTasks) {
-      const track = S.config.tracks.find((tr) => tr.id === t.trackId);
-      const taskConfig = track?.tasks.find((tc) => `${track!.id}.${tc.id}` === t.taskId);
-      const deps = (taskConfig?.depends_on ?? []).map((dep) =>
-        dep.includes('.') ? dep : `${t.trackId}.${dep}`,
+      // Build initial task list from the raw (editor-side) config. This keeps
+      // the qualified taskIds aligned with the pipeline DAG that the SDK
+      // produces internally (`{trackId}.{taskId}`).
+      const initialTasks: RunTaskWire[] = S.config.tracks.flatMap((track) =>
+        track.tasks.map((task) => ({
+          taskId: `${track.id}.${task.id}`,
+          trackId: track.id,
+          taskName: task.name || task.id,
+          status: 'waiting',
+          startedAt: null,
+          finishedAt: null,
+          durationMs: null,
+          exitCode: null,
+          stdout: '',
+          stderr: '',
+          stderrPath: null,
+          sessionId: null,
+          normalizedOutput: null,
+          resolvedDriver: null,
+          resolvedModel: null,
+          resolvedPermissions: null,
+          logs: [],
+          totalLogCount: 0,
+        })),
       );
-      taskSnapshots.set(t.taskId, {
-        taskId: t.taskId,
-        trackId: t.trackId,
-        trackName: track?.name ?? t.trackId,
-        taskName: t.taskName,
-        status: t.status,
-        startedAt: null,
-        finishedAt: null,
-        durationMs: null,
-        exitCode: null,
-        driver: null,
-        model: null,
-        depends_on: deps,
-      });
-    }
 
-    activeRunAbort = abortController;
-    activeRunGateway = gateway;
-    activeRunId = runId;
-    activeRunTasksSnapshot = new Map(initialTasks.map((task) => [task.taskId, structuredClone(task)]));
-    // Buffer was already reset at the top of this handler so any EventSource
-    // connection that arrives during validation never replays stale events
-    // from the prior run.
+      // H6: only reset the per-run event buffer once everything that could fail
+      // (plugin pre-load, loadPipeline, validateConfig) has succeeded. The old
+      // code reset it at the top of the handler — failing validation later left
+      // SSE consumers with no replay for the *previous* completed run.
+      resetRunEventBuffer();
 
-    // Subscribe to approval gateway events and forward them to the SSE
-    // clients. This replaces the old WebSocket-bridge-to-CLI path — the
-    // gateway lives in-process now so there's no IPC hop.
-    const unsubscribeApprovals = gateway.subscribe((event: ApprovalEvent) => {
-      try {
-        if (event.type === 'requested') {
-          broadcast({
-            type: 'approval_request',
-            runId,
-            request: approvalRequestToWire(event.request),
-          });
-          return;
-        }
-        if (event.type === 'resolved' || event.type === 'expired' || event.type === 'aborted') {
-          const outcome = event.type === 'resolved'
-            ? event.decision.outcome
-            : event.type === 'expired' ? 'timeout' : 'aborted';
-          broadcast({
-            type: 'approval_resolved',
-            runId,
-            requestId: event.request.id,
-            outcome: outcome as 'approved' | 'rejected' | 'timeout' | 'aborted',
-          });
-        }
-      } catch (e) {
-        console.warn('Failed to broadcast approval event:', e);
+      // H4: use the SDK's own collision-resistant id generator. The previous
+      // `run_${Date.now().toString(36)}` lost the per-process counter + random
+      // suffix the SDK builds in (see utils.ts:generateRunId), so two starts
+      // landing in the same millisecond — common in test loops or rapid
+      // restarts — would share a runId, mix logs, and overwrite each other's
+      // summary.json under .tagma/logs/<runId>.
+      const runId = generateRunId();
+      const runStartedAt = new Date().toISOString();
+      const abortController = new AbortController();
+      const gateway = new InMemoryApprovalGateway();
+
+      // Running tally of the most recent TaskState per qualified id. Populated
+      // from the SDK's task_status_change events and flushed to summary.json
+      // at run completion so the RunHistoryBrowser can render a rich per-task
+      // timeline instead of a plaintext log (§3.12).
+      const taskSnapshots = new Map<string, RunSummaryTask>();
+      for (const t of initialTasks) {
+        const track = S.config.tracks.find((tr) => tr.id === t.trackId);
+        const taskConfig = track?.tasks.find((tc) => `${track!.id}.${tc.id}` === t.taskId);
+        const deps = (taskConfig?.depends_on ?? []).map((dep) =>
+          dep.includes('.') ? dep : `${t.trackId}.${dep}`,
+        );
+        taskSnapshots.set(t.taskId, {
+          taskId: t.taskId,
+          trackId: t.trackId,
+          trackName: track?.name ?? t.trackId,
+          taskName: t.taskName,
+          status: t.status,
+          startedAt: null,
+          finishedAt: null,
+          durationMs: null,
+          exitCode: null,
+          driver: null,
+          model: null,
+          depends_on: deps,
+        });
       }
-    });
 
-    broadcast({ type: 'run_start', runId, tasks: initialTasks });
+      activeRunAbort = abortController;
+      activeRunGateway = gateway;
+      activeRunId = runId;
+      activeRunTasksSnapshot = new Map(
+        initialTasks.map((task) => [task.taskId, structuredClone(task)]),
+      );
+      // Buffer was already reset at the top of this handler so any EventSource
+      // connection that arrives during validation never replays stale events
+      // from the prior run.
 
-    // Kick off the run in the background. Event translation happens in
-    // onEvent; errors and finalization flow through .then/.catch/.finally.
-    let runSuccess: boolean | null = null;
-    let runErrorMessage: string | null = null;
-
-    runPipeline(pipelineConfig, cwd, {
-      approvalGateway: gateway,
-      signal: abortController.signal,
-      maxLogRuns: MAX_LOG_RUNS,
-      runId,
-      skipPluginLoading: true,
-      onEvent: (event: PipelineEvent) => {
-        if (event.type === 'task_status_change') {
-          // Update local snapshot for summary persistence.
-          const existing = taskSnapshots.get(event.taskId);
-          if (existing) {
-            const state = event.state;
-            const result = state.result;
-            taskSnapshots.set(event.taskId, {
-              ...existing,
-              status: event.status,
-              startedAt: state.startedAt ?? existing.startedAt,
-              finishedAt: state.finishedAt ?? existing.finishedAt,
-              durationMs: result?.durationMs ?? existing.durationMs,
-              exitCode: result?.exitCode ?? existing.exitCode,
-              driver: state.config.driver ?? existing.driver,
-              model: state.config.model ?? existing.model,
-              prompt: state.config.prompt ?? existing.prompt ?? null,
-              command: state.config.command ?? existing.command ?? null,
-              stderrPath: result?.stderrPath ?? existing.stderrPath ?? null,
-              normalizedOutput: result?.normalizedOutput ?? existing.normalizedOutput ?? null,
-              sessionId: result?.sessionId ?? existing.sessionId ?? null,
+      // Subscribe to approval gateway events and forward them to the SSE
+      // clients. This replaces the old WebSocket-bridge-to-CLI path — the
+      // gateway lives in-process now so there's no IPC hop.
+      const unsubscribeApprovals = gateway.subscribe((event: ApprovalEvent) => {
+        try {
+          if (event.type === 'requested') {
+            broadcast({
+              type: 'approval_request',
+              runId,
+              request: approvalRequestToWire(event.request),
+            });
+            return;
+          }
+          if (event.type === 'resolved' || event.type === 'expired' || event.type === 'aborted') {
+            const outcome =
+              event.type === 'resolved'
+                ? event.decision.outcome
+                : event.type === 'expired'
+                  ? 'timeout'
+                  : 'aborted';
+            broadcast({
+              type: 'approval_resolved',
+              runId,
+              requestId: event.request.id,
+              outcome: outcome as 'approved' | 'rejected' | 'timeout' | 'aborted',
             });
           }
-          const wireEvent: Extract<RunEvent, { type: 'task_update' }> =
-            taskStateChangeToWire(runId, event.taskId, event.status, event.state);
-          broadcast(wireEvent);
-          const prevTask = activeRunTasksSnapshot.get(event.taskId);
-          const dotIdx = event.taskId.indexOf('.');
-          const fallbackTrackId = dotIdx >= 0 ? event.taskId.slice(0, dotIdx) : '';
-          const baseTask: RunTaskWire = prevTask ?? {
-            taskId: event.taskId,
-            trackId: fallbackTrackId,
-            taskName: event.taskId,
-            status: wireEvent.status,
-            startedAt: null,
-            finishedAt: null,
-            durationMs: null,
-            exitCode: null,
-            stdout: '',
-            stderr: '',
-            stderrPath: null,
-            sessionId: null,
-            normalizedOutput: null,
-            resolvedDriver: null,
-            resolvedModel: null,
-            resolvedPermissions: null,
-            logs: [],
-            totalLogCount: 0,
-          };
-          activeRunTasksSnapshot.set(event.taskId, {
-            ...baseTask,
-            status: wireEvent.status,
-            startedAt: wireEvent.startedAt ?? baseTask.startedAt,
-            finishedAt: wireEvent.finishedAt ?? baseTask.finishedAt,
-            durationMs: wireEvent.durationMs ?? baseTask.durationMs,
-            exitCode: wireEvent.exitCode ?? baseTask.exitCode,
-            stdout: wireEvent.stdout ?? baseTask.stdout,
-            stderr: wireEvent.stderr ?? baseTask.stderr,
-            stderrPath: wireEvent.stderrPath ?? baseTask.stderrPath,
-            sessionId: wireEvent.sessionId ?? baseTask.sessionId,
-            normalizedOutput: wireEvent.normalizedOutput ?? baseTask.normalizedOutput,
-            resolvedDriver: wireEvent.resolvedDriver ?? baseTask.resolvedDriver,
-            resolvedModel: wireEvent.resolvedModel ?? baseTask.resolvedModel,
-            resolvedPermissions: wireEvent.resolvedPermissions ?? baseTask.resolvedPermissions,
-            logs: baseTask.logs,
-            totalLogCount: baseTask.totalLogCount,
-          });
-        } else if (event.type === 'task_log') {
-          // Stream every pipeline.log line out to SSE clients so the RunTaskPanel
-          // can show the same process detail the log file has.
-          const wireLog = {
-            type: 'task_log' as const,
-            runId,
-            taskId: event.taskId,
-            level: event.level,
-            timestamp: event.timestamp,
-            text: event.text,
-          };
-          broadcast(wireLog);
-          if (event.taskId) {
+        } catch (e) {
+          console.warn('Failed to broadcast approval event:', e);
+        }
+      });
+
+      broadcast({ type: 'run_start', runId, tasks: initialTasks });
+
+      // Kick off the run in the background. Event translation happens in
+      // onEvent; errors and finalization flow through .then/.catch/.finally.
+      let runSuccess: boolean | null = null;
+      let runErrorMessage: string | null = null;
+
+      runPipeline(pipelineConfig, cwd, {
+        approvalGateway: gateway,
+        signal: abortController.signal,
+        maxLogRuns: MAX_LOG_RUNS,
+        runId,
+        skipPluginLoading: true,
+        onEvent: (event: PipelineEvent) => {
+          if (event.type === 'task_status_change') {
+            // Update local snapshot for summary persistence.
+            const existing = taskSnapshots.get(event.taskId);
+            if (existing) {
+              const state = event.state;
+              const result = state.result;
+              taskSnapshots.set(event.taskId, {
+                ...existing,
+                status: event.status,
+                startedAt: state.startedAt ?? existing.startedAt,
+                finishedAt: state.finishedAt ?? existing.finishedAt,
+                durationMs: result?.durationMs ?? existing.durationMs,
+                exitCode: result?.exitCode ?? existing.exitCode,
+                driver: state.config.driver ?? existing.driver,
+                model: state.config.model ?? existing.model,
+                prompt: state.config.prompt ?? existing.prompt ?? null,
+                command: state.config.command ?? existing.command ?? null,
+                stderrPath: result?.stderrPath ?? existing.stderrPath ?? null,
+                normalizedOutput: result?.normalizedOutput ?? existing.normalizedOutput ?? null,
+                sessionId: result?.sessionId ?? existing.sessionId ?? null,
+              });
+            }
+            const wireEvent: Extract<RunEvent, { type: 'task_update' }> = taskStateChangeToWire(
+              runId,
+              event.taskId,
+              event.status,
+              event.state,
+            );
+            broadcast(wireEvent);
             const prevTask = activeRunTasksSnapshot.get(event.taskId);
             const dotIdx = event.taskId.indexOf('.');
             const fallbackTrackId = dotIdx >= 0 ? event.taskId.slice(0, dotIdx) : '';
@@ -713,7 +724,7 @@ export function registerRunRoutes(app: express.Express): void {
               taskId: event.taskId,
               trackId: fallbackTrackId,
               taskName: event.taskId,
-              status: 'running',
+              status: wireEvent.status,
               startedAt: null,
               finishedAt: null,
               durationMs: null,
@@ -729,78 +740,137 @@ export function registerRunRoutes(app: express.Express): void {
               logs: [],
               totalLogCount: 0,
             };
-            const nextLine: RunTaskLogLine = {
+            activeRunTasksSnapshot.set(event.taskId, {
+              ...baseTask,
+              status: wireEvent.status,
+              startedAt: wireEvent.startedAt ?? baseTask.startedAt,
+              finishedAt: wireEvent.finishedAt ?? baseTask.finishedAt,
+              durationMs: wireEvent.durationMs ?? baseTask.durationMs,
+              exitCode: wireEvent.exitCode ?? baseTask.exitCode,
+              stdout: wireEvent.stdout ?? baseTask.stdout,
+              stderr: wireEvent.stderr ?? baseTask.stderr,
+              stderrPath: wireEvent.stderrPath ?? baseTask.stderrPath,
+              sessionId: wireEvent.sessionId ?? baseTask.sessionId,
+              normalizedOutput: wireEvent.normalizedOutput ?? baseTask.normalizedOutput,
+              resolvedDriver: wireEvent.resolvedDriver ?? baseTask.resolvedDriver,
+              resolvedModel: wireEvent.resolvedModel ?? baseTask.resolvedModel,
+              resolvedPermissions: wireEvent.resolvedPermissions ?? baseTask.resolvedPermissions,
+              logs: baseTask.logs,
+              totalLogCount: baseTask.totalLogCount,
+            });
+          } else if (event.type === 'task_log') {
+            // Stream every pipeline.log line out to SSE clients so the RunTaskPanel
+            // can show the same process detail the log file has.
+            const wireLog = {
+              type: 'task_log' as const,
+              runId,
+              taskId: event.taskId,
               level: event.level,
               timestamp: event.timestamp,
               text: event.text,
             };
-            const baseLogs = baseTask.logs ?? [];
-            const nextTotalLogCount = (baseTask.totalLogCount ?? baseLogs.length) + 1;
-            const nextLogs = baseLogs.length >= 500
-              ? [...baseLogs.slice(baseLogs.length - 499), nextLine]
-              : [...baseLogs, nextLine];
-            activeRunTasksSnapshot.set(event.taskId, {
-              ...baseTask,
-              logs: nextLogs,
-              totalLogCount: nextTotalLogCount,
-            });
+            broadcast(wireLog);
+            if (event.taskId) {
+              const prevTask = activeRunTasksSnapshot.get(event.taskId);
+              const dotIdx = event.taskId.indexOf('.');
+              const fallbackTrackId = dotIdx >= 0 ? event.taskId.slice(0, dotIdx) : '';
+              const baseTask: RunTaskWire = prevTask ?? {
+                taskId: event.taskId,
+                trackId: fallbackTrackId,
+                taskName: event.taskId,
+                status: 'running',
+                startedAt: null,
+                finishedAt: null,
+                durationMs: null,
+                exitCode: null,
+                stdout: '',
+                stderr: '',
+                stderrPath: null,
+                sessionId: null,
+                normalizedOutput: null,
+                resolvedDriver: null,
+                resolvedModel: null,
+                resolvedPermissions: null,
+                logs: [],
+                totalLogCount: 0,
+              };
+              const nextLine: RunTaskLogLine = {
+                level: event.level,
+                timestamp: event.timestamp,
+                text: event.text,
+              };
+              const baseLogs = baseTask.logs ?? [];
+              const nextTotalLogCount = (baseTask.totalLogCount ?? baseLogs.length) + 1;
+              const nextLogs =
+                baseLogs.length >= 500
+                  ? [...baseLogs.slice(baseLogs.length - 499), nextLine]
+                  : [...baseLogs, nextLine];
+              activeRunTasksSnapshot.set(event.taskId, {
+                ...baseTask,
+                logs: nextLogs,
+                totalLogCount: nextTotalLogCount,
+              });
+            }
           }
-        }
-        // pipeline_start and pipeline_end are implicit in run_start / run_end
-        // — we already broadcast run_start above, and run_end is emitted in
-        // the .then/.catch below so we can include the actual success flag.
-      },
-    }).then((result: EngineResult) => {
-      runSuccess = result.success;
-      broadcast({ type: 'run_end', runId, success: result.success });
-    }).catch((err: unknown) => {
-      // AbortError from an explicit abort() → emit run_end with success:false
-      // so the UI transitions to "Aborted" rather than "Error".
-      const isAbort = err instanceof Error && (err.name === 'AbortError' || /abort/i.test(err.message));
-      runSuccess = false;
-      if (isAbort) {
-        broadcast({ type: 'run_end', runId, success: false });
-      } else {
-        const message = err instanceof Error ? err.message : String(err);
-        runErrorMessage = message;
-        broadcast({ type: 'run_error', runId, error: message });
-      }
-    }).finally(() => {
-      unsubscribeApprovals();
-      // Abort any dangling approvals so consumers get a deterministic
-      // timeout/aborted event rather than a silent drop.
-      gateway.abortAll('run finished');
-      // Persist a rich summary.json so RunHistoryBrowser can render a
-      // per-task timeline for this run (§3.12).
-      try {
-        persistRunSummary(cwd, runId, {
-          runId,
-          pipelineName: S.config.name,
-          startedAt: runStartedAt,
-          finishedAt: new Date().toISOString(),
-          success: runSuccess ?? false,
-          error: runErrorMessage,
-          tasks: Array.from(taskSnapshots.values()),
-          tracks: S.config.tracks.map((tr) => ({
-            id: tr.id,
-            name: tr.name,
-            color: tr.color,
-          })),
-          positions: { ...S.layout.positions },
+          // pipeline_start and pipeline_end are implicit in run_start / run_end
+          // — we already broadcast run_start above, and run_end is emitted in
+          // the .then/.catch below so we can include the actual success flag.
+        },
+      })
+        .then((result: EngineResult) => {
+          runSuccess = result.success;
+          broadcast({ type: 'run_end', runId, success: result.success });
+        })
+        .catch((err: unknown) => {
+          // AbortError from an explicit abort() → emit run_end with success:false
+          // so the UI transitions to "Aborted" rather than "Error".
+          const isAbort =
+            err instanceof Error && (err.name === 'AbortError' || /abort/i.test(err.message));
+          runSuccess = false;
+          if (isAbort) {
+            broadcast({ type: 'run_end', runId, success: false });
+          } else {
+            const message = err instanceof Error ? err.message : String(err);
+            runErrorMessage = message;
+            broadcast({ type: 'run_error', runId, error: message });
+          }
+        })
+        .finally(() => {
+          unsubscribeApprovals();
+          // Abort any dangling approvals so consumers get a deterministic
+          // timeout/aborted event rather than a silent drop.
+          gateway.abortAll('run finished');
+          // Persist a rich summary.json so RunHistoryBrowser can render a
+          // per-task timeline for this run (§3.12).
+          try {
+            persistRunSummary(cwd, runId, {
+              runId,
+              pipelineName: S.config.name,
+              startedAt: runStartedAt,
+              finishedAt: new Date().toISOString(),
+              success: runSuccess ?? false,
+              error: runErrorMessage,
+              tasks: Array.from(taskSnapshots.values()),
+              tracks: S.config.tracks.map((tr) => ({
+                id: tr.id,
+                name: tr.name,
+                color: tr.color,
+              })),
+              positions: { ...S.layout.positions },
+            });
+          } catch (persistErr) {
+            console.error('[run] failed to persist summary.json:', persistErr);
+          }
+          if (activeRunId === runId) {
+            activeRunAbort = null;
+            activeRunGateway = null;
+            activeRunId = null;
+            activeRunTasksSnapshot = new Map();
+          }
+          runStarting = false; // B4: release lock when run completes
         });
-      } catch (persistErr) {
-        console.error('[run] failed to persist summary.json:', persistErr);
-      }
-      if (activeRunId === runId) {
-        activeRunAbort = null;
-        activeRunGateway = null;
-        activeRunId = null;
-        activeRunTasksSnapshot = new Map();
-      }
-      runStarting = false; // B4: release lock when run completes
-    });
 
-    res.json({ ok: true, runId });
+      res.json({ ok: true, runId });
     } catch (err: unknown) {
       // Release the lock and clear any globals we may have set before the throw
       // so a subsequent /api/run/start can proceed. Without this, a synchronous

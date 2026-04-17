@@ -36,7 +36,11 @@ interface MinimapProps {
  * caused the content rect to stretch/shrink with sidebar width. Pinning it to
  * the canvas keeps coordinate math dependent only on the canvas itself.
  */
-export function Minimap({ scrollElementId = BOARD_SCROLL_ID, config: configProp, positions: positionsProp }: MinimapProps = {}) {
+export function Minimap({
+  scrollElementId = BOARD_SCROLL_ID,
+  config: configProp,
+  positions: positionsProp,
+}: MinimapProps = {}) {
   const storeConfig = usePipelineStore((s) => s.config);
   const storePositions = usePipelineStore((s) => s.positions);
   const config = configProp ?? storeConfig;
@@ -115,43 +119,49 @@ export function Minimap({ scrollElementId = BOARD_SCROLL_ID, config: configProp,
     };
   }, [scrollTick, offsetX, offsetY, scale, scrollElementId]);
 
-  const panToMapPoint = useCallback((mapX: number, mapY: number) => {
-    const el = document.getElementById(scrollElementId) as HTMLDivElement | null;
-    if (!el) return;
-    const cx = (mapX - offsetX) / scale;
-    const cy = (mapY - offsetY) / scale;
-    const vw = el.clientWidth;
-    const vh = el.clientHeight;
-    el.scrollLeft = Math.max(0, cx - vw / 2);
-    el.scrollTop = Math.max(0, cy - vh / 2);
-  }, [offsetX, offsetY, scale, scrollElementId]);
+  const panToMapPoint = useCallback(
+    (mapX: number, mapY: number) => {
+      const el = document.getElementById(scrollElementId) as HTMLDivElement | null;
+      if (!el) return;
+      const cx = (mapX - offsetX) / scale;
+      const cy = (mapY - offsetY) / scale;
+      const vw = el.clientWidth;
+      const vh = el.clientHeight;
+      el.scrollLeft = Math.max(0, cx - vw / 2);
+      el.scrollTop = Math.max(0, cy - vh / 2);
+    },
+    [offsetX, offsetY, scale, scrollElementId],
+  );
 
-  const handlePointerDown = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const svg = svgRef.current;
-    if (!svg) return;
-    const rect = svg.getBoundingClientRect();
-    const z = getZoom();
-    const toLocal = (clientX: number, clientY: number) => ({
-      x: (clientX - rect.left) / z,
-      y: (clientY - rect.top) / z,
-    });
-    const p0 = toLocal(e.clientX, e.clientY);
-    panToMapPoint(p0.x, p0.y);
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<SVGSVGElement>) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const svg = svgRef.current;
+      if (!svg) return;
+      const rect = svg.getBoundingClientRect();
+      const z = getZoom();
+      const toLocal = (clientX: number, clientY: number) => ({
+        x: (clientX - rect.left) / z,
+        y: (clientY - rect.top) / z,
+      });
+      const p0 = toLocal(e.clientX, e.clientY);
+      panToMapPoint(p0.x, p0.y);
 
-    const onMove = (ev: PointerEvent) => {
-      const p = toLocal(ev.clientX, ev.clientY);
-      panToMapPoint(p.x, p.y);
-    };
-    const onUp = () => {
-      document.removeEventListener('pointermove', onMove);
-      document.removeEventListener('pointerup', onUp);
-    };
-    document.addEventListener('pointermove', onMove);
-    document.addEventListener('pointerup', onUp);
-  }, [panToMapPoint]);
+      const onMove = (ev: PointerEvent) => {
+        const p = toLocal(ev.clientX, ev.clientY);
+        panToMapPoint(p.x, p.y);
+      };
+      const onUp = () => {
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+      };
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+    },
+    [panToMapPoint],
+  );
 
   const rects = useMemo(() => {
     const out: { x: number; y: number; w: number; h: number; fill: string }[] = [];
@@ -199,7 +209,9 @@ export function Minimap({ scrollElementId = BOARD_SCROLL_ID, config: configProp,
       onContextMenu={(e) => e.preventDefault()}
     >
       <div className="flex items-center justify-between px-2 h-[18px] border-b border-tagma-border/60 bg-black/20">
-        <span className="text-[9px] font-mono uppercase tracking-wider text-tagma-muted">minimap</span>
+        <span className="text-[9px] font-mono uppercase tracking-wider text-tagma-muted">
+          minimap
+        </span>
         <button
           type="button"
           className="text-tagma-muted hover:text-tagma-text"

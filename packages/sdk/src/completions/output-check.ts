@@ -23,13 +23,16 @@ export const OutputCheckCompletion: CompletionPlugin = {
     },
   },
 
-  async check(config: Record<string, unknown>, result: TaskResult, ctx: CompletionContext): Promise<boolean> {
+  async check(
+    config: Record<string, unknown>,
+    result: TaskResult,
+    ctx: CompletionContext,
+  ): Promise<boolean> {
     const checkCmd = config.check as string;
     if (!checkCmd) throw new Error('output_check completion: "check" is required');
 
-    const timeoutMs = config.timeout != null
-      ? parseDuration(String(config.timeout))
-      : DEFAULT_TIMEOUT_MS;
+    const timeoutMs =
+      config.timeout != null ? parseDuration(String(config.timeout)) : DEFAULT_TIMEOUT_MS;
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -68,10 +71,7 @@ export const OutputCheckCompletion: CompletionPlugin = {
 
       // Consume stderr concurrently with waiting for exit to prevent pipe-buffer
       // deadlock when check script emits more than ~64 KB of stderr output.
-      const [exitCode, stderr] = await Promise.all([
-        proc.exited,
-        new Response(proc.stderr).text(),
-      ]);
+      const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
 
       if (exitCode !== 0 && stderr.trim()) {
         console.warn(`[output_check] "${checkCmd}" exit=${exitCode}: ${stderr.trim()}`);

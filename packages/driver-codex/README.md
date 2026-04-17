@@ -20,7 +20,7 @@ Declare the plugin in your `pipeline.yaml`:
 pipeline:
   name: my-pipeline
   plugins:
-    - "@tagma/driver-codex"
+    - '@tagma/driver-codex'
   tracks:
     - id: backend
       name: Backend
@@ -29,7 +29,7 @@ pipeline:
       tasks:
         - id: implement
           name: Implement feature
-          prompt: "Add input validation to the signup form"
+          prompt: 'Add input validation to the signup form'
           output: ./output/implement.txt
 ```
 

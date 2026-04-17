@@ -2,13 +2,17 @@ import type { HooksConfig, HookCommand } from './types';
 import { shellArgs } from './utils';
 
 type HookEvent =
-  | 'pipeline_start' | 'task_start' | 'task_success'
-  | 'task_failure' | 'pipeline_complete' | 'pipeline_error';
+  | 'pipeline_start'
+  | 'task_start'
+  | 'task_success'
+  | 'task_failure'
+  | 'pipeline_complete'
+  | 'pipeline_error';
 
 const GATE_HOOKS: ReadonlySet<HookEvent> = new Set(['pipeline_start', 'task_start']);
 
 export interface HookResult {
-  readonly allowed: boolean;  // for gate hooks: true = proceed, false = block
+  readonly allowed: boolean; // for gate hooks: true = proceed, false = block
   readonly exitCode: number;
 }
 
@@ -30,9 +34,7 @@ async function runSingleHook(
   const jsonInput = JSON.stringify(context, null, 2);
 
   const controller = new AbortController();
-  const timer = timeoutMs > 0
-    ? setTimeout(() => controller.abort(), timeoutMs)
-    : null;
+  const timer = timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;
 
   // Wire pipeline abort signal into hook process
   const onAbort = () => controller.abort();
@@ -80,7 +82,9 @@ async function runSingleHook(
 
     return exitCode;
   } catch (err) {
-    console.error(`[hook: ${command}] spawn error: ${err instanceof Error ? err.message : String(err)}`);
+    console.error(
+      `[hook: ${command}] spawn error: ${err instanceof Error ? err.message : String(err)}`,
+    );
     return -1;
   } finally {
     if (timer) clearTimeout(timer);
@@ -163,8 +167,12 @@ export function buildTaskContext(
 export function buildPipelineCompleteContext(
   pipeline: PipelineInfo & { finished_at: string; duration_ms: number },
   summary: {
-    total: number; success: number; failed: number;
-    skipped: number; timeout: number; blocked: number;
+    total: number;
+    success: number;
+    failed: number;
+    skipped: number;
+    timeout: number;
+    blocked: number;
   },
 ) {
   return { event: 'pipeline_complete', pipeline, summary };

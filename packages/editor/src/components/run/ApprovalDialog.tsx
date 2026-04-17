@@ -24,7 +24,10 @@ interface ResolvedTaskContext {
   isCommand: boolean;
 }
 
-function resolveTaskContext(qualifiedId: string, config: RawPipelineConfig): ResolvedTaskContext | null {
+function resolveTaskContext(
+  qualifiedId: string,
+  config: RawPipelineConfig,
+): ResolvedTaskContext | null {
   const [trackId, ...rest] = qualifiedId.split('.');
   const taskId = rest.join('.');
   const track = config.tracks.find((t) => t.id === trackId);
@@ -81,9 +84,11 @@ export function ApprovalDialog({ request, onApprove, onReject, config }: Approva
         {taskContext && (
           <div className="px-4 py-2.5 border-b border-tagma-border/60 bg-tagma-bg/40">
             <div className="flex items-center gap-2 min-w-0">
-              {taskContext.isCommand
-                ? <Terminal size={11} className="text-sky-400 shrink-0" />
-                : <MessageSquare size={11} className="text-tagma-muted/70 shrink-0" />}
+              {taskContext.isCommand ? (
+                <Terminal size={11} className="text-sky-400 shrink-0" />
+              ) : (
+                <MessageSquare size={11} className="text-tagma-muted/70 shrink-0" />
+              )}
               <span className="text-[12px] font-medium text-tagma-text truncate flex-1">
                 {taskContext.taskName}
               </span>
@@ -127,7 +132,8 @@ export function ApprovalDialog({ request, onApprove, onReject, config }: Approva
           )}
 
           <div className="text-[10px] font-mono text-tagma-muted">
-            Timeout: {Math.round(request.timeoutMs / 1000)}s · Created {new Date(request.createdAt).toLocaleTimeString()}
+            Timeout: {Math.round(request.timeoutMs / 1000)}s · Created{' '}
+            {new Date(request.createdAt).toLocaleTimeString()}
           </div>
         </div>
 
