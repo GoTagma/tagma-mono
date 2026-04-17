@@ -7,6 +7,7 @@ import {
   upsertTask,
   upsertTrack,
   validateRaw,
+  TASK_ID_RE,
   type ValidationError,
 } from '@tagma/sdk';
 import type { ServerState } from '../src/api/client';
@@ -16,7 +17,9 @@ import { registerWorkspaceRoutes } from '../server/routes/workspace.js';
 import { S, lenientParseYaml } from '../server/state.js';
 
 const tempDirs: string[] = [];
-const ID_RE = /^[A-Za-z_][A-Za-z0-9_-]*$/;
+// Canonical regex lives in @tagma/sdk — importing here guards against the
+// editor's generator drifting away from what SDK's validateRaw accepts.
+const ID_RE = TASK_ID_RE;
 
 function makeTempDir(): string {
   const dir = mkdtempSync(join(tmpdir(), 'tagma-editor-'));

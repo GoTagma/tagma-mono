@@ -1,0 +1,89 @@
+pipeline:
+  name: verify-context-passthrough
+  driver: opencode
+  model: opencode/big-pickle
+  timeout: 10m
+  plugins:
+    - '@tagma/driver-opencode'
+
+  # Goal: prove prompt and session context actually flow through without
+  # relying on the model's reply content (big-pickle is a test model and
+  # frequently returns generic "I'm ready to help" noise).
+  #
+  # How to read the evidence after running:
+  #   Open .tagma/logs/<runId>/pipeline.log and check three hard facts:
+  #
+  #   Fact 1 — prompt reaches the opencode CLI:
+  #     In `spawn args:` for task `seed`, the literal token
+  #     CANARY_TAGMA_A1B2C3 MUST appear as part of the last argument.
+  #
+  #   Fact 2 — session is resumed (not restarted):
+  #     `spawn args:` for `recall_in_session` and `recall_twice` MUST
+  #     contain `--session ses_XXXX`, and the id must match the sessionId
+  #     recorded on the upstream task (look for `sessionId: ses_XXXX`
+  #     lines right below each task's stdout block).
+  #
+  #   Fact 3 — context is passed incrementally (not re-sent):
+  #     In each task's stdout NDJSON, the final `step_finish` carries
+  #     `"tokens":{"input":N,...}`. `seed.input` is large (full context);
+  #     `recall_in_session.input` and `recall_twice.input` should be much
+  #     smaller (incremental — the previous turns were not re-uploaded).
+  #
+  # The completion checks on recall_* are BONUS evidence only. If the
+  # model happens to echo the canary, those tasks succeed. If big-pickle
+  # doesn't follow the instruction, they fail — that does NOT disprove
+  # context passthrough; facts 1–3 above are the authoritative signals.
+  tracks:
+    - id: ctx
+      name: Context verification
+      color: '#a78bfa'
+      on_failure: ignore
+
+      tasks:
+        - id: seed
+          name: Seed canary into session
+          prompt: |
+            CANARY_TAGMA_A1B2C3. Please remember the exact token
+            CANARY_TAGMA_A1B2C3 verbatim. This is message #1 of a
+            three-message verification run.
+          timeout: 2m
+
+        - id: recall_in_session
+          name: Recall within the same opencode session
+          prompt: |
+            Message #2. Repeat the token you were asked to remember in
+            message #1, and nothing else.
+          continue_from: seed
+          depends_on: [seed]
+          timeout: 2m
+          completion:
+            type: output_check
+            check: 'grep -q "CANARY_TAGMA_A1B2C3"'
+            timeout: 10s
+
+        - id: recall_twice
+          name: Recall again (second resume)
+          prompt: |
+            Message #3. Repeat the token from message #1 one more time,
+            just the token.
+          continue_from: recall_in_session
+          depends_on: [recall_in_session]
+          timeout: 2m
+          completion:
+            type: output_check
+            check: 'grep -q "CANARY_TAGMA_A1B2C3"'
+            timeout: 10s
+
+        - id: verdict_hint
+          name: Print verification checklist
+          command: |
+            echo "=== Verification checklist ==="
+            echo "Open .tagma/logs/<runId>/pipeline.log and confirm:"
+            echo "  [1] seed 'spawn args' contains CANARY_TAGMA_A1B2C3"
+            echo "  [2] recall_in_session 'spawn args' contains --session ses_XXXX"
+            echo "      with the SAME ses_XXXX recorded as seed's sessionId"
+            echo "  [3] recall_twice 'spawn args' contains --session ses_XXXX"
+            echo "      with the SAME ses_XXXX (chained resume)"
+            echo "  [4] seed.input tokens >> recall_*.input tokens"
+            echo "      (prove context is incremental, not re-sent)"
+          depends_on: [recall_twice]
