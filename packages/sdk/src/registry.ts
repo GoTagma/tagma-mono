@@ -89,8 +89,21 @@ function validateContract(category: PluginCategory, handler: unknown): void {
       }
       break;
     case 'middlewares':
-      if (typeof h.enhance !== 'function') {
-        throw new Error(`middlewares plugin "${h.name}" must export enhance()`);
+      // A middleware must provide at least one entry point. `enhanceDoc` is
+      // the structured PromptDocument API (preferred); `enhance` is the
+      // legacy string-in/string-out API the engine still supports for
+      // v0.x plugins. Requiring only `enhance` here rejects every built-in
+      // and every plugin written against the current types.
+      if (typeof h.enhanceDoc !== 'function' && typeof h.enhance !== 'function') {
+        throw new Error(
+          `middlewares plugin "${h.name}" must export enhanceDoc() or enhance()`,
+        );
+      }
+      if (h.enhanceDoc !== undefined && typeof h.enhanceDoc !== 'function') {
+        throw new Error(`middlewares plugin "${h.name}".enhanceDoc must be a function or undefined`);
+      }
+      if (h.enhance !== undefined && typeof h.enhance !== 'function') {
+        throw new Error(`middlewares plugin "${h.name}".enhance must be a function or undefined`);
       }
       break;
   }
