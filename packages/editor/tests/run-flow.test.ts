@@ -28,6 +28,8 @@ function initialTasks(): RunTaskState[] {
     resolvedDriver: null,
     resolvedModel: null,
     resolvedPermissions: null,
+    logs: [],
+    totalLogCount: 0,
   };
   return [
     { taskId: 'track_a.task_1', taskName: 'Plan', status: 'waiting', ...base },

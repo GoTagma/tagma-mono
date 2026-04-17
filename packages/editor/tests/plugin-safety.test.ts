@@ -244,7 +244,7 @@ function makeSlowImporter(delayMs: number): {
   promise.catch(() => { /* swallow */ });
   return {
     importer: () => promise,
-    drain: () => promise.catch(() => { /* settled */ }),
+    drain: () => promise.catch(() => { /* settled */ }) as Promise<void>,
   };
 }
 

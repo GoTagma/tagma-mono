@@ -12,7 +12,7 @@ let restoreSpawn: (() => void) | null = null;
 
 function makeTempDir(name: string): string {
   const dir = Bun.file(join(tmpdir(), `tagma-${name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`));
-  const abs = resolve(dir.name);
+  const abs = resolve(dir.name!);
   mkdirSync(abs, { recursive: true });
   tempDirs.push(abs);
   return abs;
