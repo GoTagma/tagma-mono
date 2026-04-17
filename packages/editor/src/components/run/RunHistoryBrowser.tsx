@@ -12,6 +12,7 @@ import {
   History as HistoryIcon,
   GitBranch,
   Code2,
+  Copy,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import type { RunHistoryEntry, RunSummary, RunSummaryTask, TaskStatus } from '../../api/client';
@@ -553,6 +554,16 @@ function DetailPane({
   onDownload: () => void;
   tasksByTrack: Map<string, RunSummaryTask[]>;
 }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    const text = viewMode === 'log' ? logContent : yamlContent ?? '';
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }, [viewMode, logContent, yamlContent]);
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-tagma-bg">
       <div className="shrink-0 h-11 flex items-center gap-2 px-5 border-b border-tagma-border/60">
@@ -615,6 +626,16 @@ function DetailPane({
                 Yaml
               </button>
             </div>
+            {(viewMode === 'log' || viewMode === 'yaml') && (
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="p-1 text-tagma-muted hover:text-tagma-text transition-colors"
+                title={`Copy ${viewMode} to clipboard`}
+              >
+                {copied ? <Check size={11} className="text-tagma-success" /> : <Copy size={11} />}
+              </button>
+            )}
             {summary && (
               <button
                 type="button"
@@ -756,7 +777,7 @@ function DetailPane({
           ))}
 
         {viewMode === 'log' && selectedRunId && !logLoading && (
-          <pre className="text-[10px] font-mono text-tagma-text whitespace-pre-wrap break-words px-5 py-4">
+          <pre className="text-[10px] font-mono text-tagma-text whitespace-pre-wrap break-words px-5 py-4 select-text">
             {logContent || '(empty)'}
           </pre>
         )}
@@ -775,7 +796,7 @@ function DetailPane({
               <span className="font-mono text-tagma-muted">pipeline.log</span>.
             </div>
           ) : (
-            <pre className="text-[10px] font-mono text-tagma-text whitespace-pre-wrap break-words px-5 py-4">
+            <pre className="text-[10px] font-mono text-tagma-text whitespace-pre-wrap break-words px-5 py-4 select-text">
               {yamlContent}
             </pre>
           ))}
