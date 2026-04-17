@@ -246,7 +246,7 @@ export interface RecentWorkspaceEntry {
 export interface ServerState {
   config: RawPipelineConfig;
   validationErrors: ValidationError[];
-  dag: { nodes: Record<string, any>; edges: DagEdge[] };
+  dag: { nodes: Record<string, unknown>; edges: DagEdge[] };
   yamlPath: string | null;
   yamlMtimeMs?: number | null;
   workDir: string;
@@ -751,7 +751,9 @@ export const api = {
       try {
         const event: RunEvent = JSON.parse(e.data);
         onEvent(event);
-      } catch {}
+      } catch (_err) {
+        console.warn('[run-events] failed to parse SSE message:', e.data);
+      }
     });
     es.onopen = () => {
       onConnectionChange?.(true);

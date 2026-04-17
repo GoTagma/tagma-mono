@@ -37,7 +37,13 @@ export const FileTrigger: TriggerPlugin = {
     const safePath = validatePath(filePath, ctx.workDir);
     const timeoutMs = config.timeout != null ? parseDuration(String(config.timeout)) : 0;
 
-    return new Promise(async (resolve_p, reject) => {
+    // Hoist the async work into a named async function so the Promise
+    // constructor itself is synchronous — avoids the no-async-promise-executor
+    // lint error and ensures exceptions are always propagated via reject().
+    async function start(
+      resolve_p: (value: unknown) => void,
+      reject: (reason?: unknown) => void,
+    ): Promise<void> {
       if (ctx.signal.aborted) {
         reject(new Error('Pipeline aborted'));
         return;
@@ -53,9 +59,15 @@ export const FileTrigger: TriggerPlugin = {
         await mkdir(dir, { recursive: true });
       } catch { /* best effort — dir may already exist */ }
 
+      // Pass `cwd: dir` so chokidar resolves paths relative to the watched
+      // directory. The 'add'/'change' events will then carry paths relative
+      // to `dir`, which we resolve with `resolve(dir, addedPath)` for an
+      // accurate absolute comparison — fixing the ambiguous process.cwd()
+      // resolution of the previous implementation.
       const watcher = watch(dir, {
         ignoreInitial: true,
         depth: 0,
+        cwd: dir,
         awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 50 },
       });
 
@@ -74,7 +86,7 @@ export const FileTrigger: TriggerPlugin = {
 
       watcher.on('add', (addedPath: string) => {
         if (settled) return;
-        if (pathsEqual(resolve(addedPath), safePath)) {
+        if (pathsEqual(resolve(dir, addedPath), safePath)) {
           cleanup();
           resolve_p({ path: safePath });
         }
@@ -85,7 +97,7 @@ export const FileTrigger: TriggerPlugin = {
       // a 'change' event and the downstream trigger would never resolve.
       watcher.on('change', (changedPath: string) => {
         if (settled) return;
-        if (pathsEqual(resolve(changedPath), safePath)) {
+        if (pathsEqual(resolve(dir, changedPath), safePath)) {
           cleanup();
           resolve_p({ path: safePath });
         }
@@ -124,6 +136,10 @@ export const FileTrigger: TriggerPlugin = {
       }
 
       ctx.signal.addEventListener('abort', onAbort);
+    }
+
+    return new Promise((resolve_p, reject) => {
+      start(resolve_p, reject).catch(reject);
     });
   },
 };

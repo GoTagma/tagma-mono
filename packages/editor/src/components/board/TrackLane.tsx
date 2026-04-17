@@ -91,7 +91,7 @@ function FloatingPanel({ anchorRect, width, borderClass, children }: {
     const tH = el.getBoundingClientRect().height / z;
     const aR = anchorRect.right / z;
     const aT = anchorRect.top / z;
-    const aH = anchorRect.height / z;
+    const _aH = anchorRect.height / z;
     const aL = anchorRect.left / z;
 
     // Horizontal: prefer right of anchor, fall back to left

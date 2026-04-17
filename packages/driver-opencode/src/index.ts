@@ -1,6 +1,6 @@
 import type {
   DriverPlugin, DriverCapabilities, DriverResultMeta,
-  TaskConfig, TrackConfig, DriverContext, SpawnSpec, Permissions,
+  TaskConfig, TrackConfig, DriverContext, SpawnSpec,
 } from '@tagma/types';
 
 const DEFAULT_MODEL = 'opencode/big-pickle';

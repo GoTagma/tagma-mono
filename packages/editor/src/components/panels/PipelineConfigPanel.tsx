@@ -24,7 +24,7 @@ export function PipelineConfigPanel({ config, drivers, errors, onUpdate, onClose
   const [timeout, setTimeout_, blurTimeout] = useLocalField(config.timeout ?? '', (v) => onUpdate({ timeout: v || undefined }));
   const [model, setModel, blurModel] = useLocalField(config.model ?? '', (v) => onUpdate({ model: v || undefined }));
 
-  const hooks = config.hooks ?? {};
+  const hooks = useMemo(() => config.hooks ?? {}, [config.hooks]);
 
   const commitHook = useCallback((key: keyof HooksConfig, value: HookCommand | undefined) => {
     if (readOnly) return;

@@ -39,7 +39,7 @@ export function App() {
     addDependency, removeDependency,
     selectTask, toggleTaskSelection, selectTrack, pinTask, unpinTask, pinTrack, unpinTrack, setTaskPosition, setRegistry, refreshServerState,
     setWorkDir, saveFile, saveFileAs, newPipeline, importFile, exportFile, openFile,
-    exportYaml, importYaml, init, restoreDraft,
+    init, restoreDraft,
   } = usePipelineStore();
 
   const {
@@ -71,6 +71,7 @@ export function App() {
   // Store errors are surfaced via <ErrorToast />, which subscribes directly
   // to `errorMessage` and handles auto-dismiss. No effect needed here.
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { init(); }, []);
 
   // M4: After the initial state load completes, check for a newer autosave
@@ -223,8 +224,8 @@ export function App() {
 
         try {
           await api.deleteFile(path);
-        } catch (e: any) {
-          setDialog({ type: 'error', title: 'Remove Failed', details: [e?.message ?? 'Unknown error'] });
+        } catch (e: unknown) {
+          setDialog({ type: 'error', title: 'Remove Failed', details: [(e instanceof Error ? e.message : null) ?? 'Unknown error'] });
           return;
         }
 
@@ -367,6 +368,7 @@ export function App() {
       return;
     }
     startRun(config);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runStatus, showRun, requireWorkspace, yamlPath, validationErrors, isDirty, saveFile, config, startRun]);
 
   // After save completes and yamlPath is set, auto-trigger run
@@ -417,11 +419,11 @@ export function App() {
   const handleOpenRecentWorkspace = useCallback(async (path: string) => {
     try {
       await setWorkDir(path);
-    } catch (e: any) {
+    } catch (e: unknown) {
       setDialog({
         type: 'error',
         title: 'Failed to open workspace',
-        details: [e?.message ?? 'Unknown error'],
+        details: [(e instanceof Error ? e.message : null) ?? 'Unknown error'],
       });
       return;
     }
@@ -456,10 +458,11 @@ export function App() {
           `${name} v${result.plugin.version ?? '?'}`,
           ...(result.warning ? [result.warning] : []),
         ]});
-      } catch (e: any) {
-        setDialog({ type: 'error', title: 'Import Failed', details: [e.message ?? 'Unknown error'] });
+      } catch (e: unknown) {
+        setDialog({ type: 'error', title: 'Import Failed', details: [(e instanceof Error ? e.message : null) ?? 'Unknown error'] });
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [explorer, setWorkDir, importFile, exportFile, bootstrapAfterWorkspace, config.plugins, setRegistry, updatePipelineFields]);
 
   const handleNewPipeline = useCallback(() => {
@@ -548,6 +551,7 @@ export function App() {
         ],
       },
     ];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [yamlPath, handleNewPipeline, handleImport, handleExport, handleSave, handleSaveAs, workspaceItems]);
 
   // Ctrl+O → Import (editor only; suppressed during runs so a stray
@@ -597,8 +601,8 @@ export function App() {
     try {
       await saveFileAs(target);
       await refreshWorkspaceYamls();
-    } catch (e: any) {
-      setDialog({ type: 'error', title: 'Save As Failed', details: [e?.message ?? 'Unknown error'] });
+    } catch (e: unknown) {
+      setDialog({ type: 'error', title: 'Save As Failed', details: [(e instanceof Error ? e.message : null) ?? 'Unknown error'] });
     }
   }, [workDir, saveFileAs, refreshWorkspaceYamls]);
 
@@ -617,7 +621,7 @@ export function App() {
   const runTaskCounts = useMemo(() => {
     const counts = { success: 0, failed: 0, running: 0, waiting: 0, skipped: 0, timeout: 0, blocked: 0 };
     for (const [, t] of runTasks) {
-      if (t.status in counts) (counts as any)[t.status] += 1;
+      if (t.status in counts) (counts as Record<string, number>)[t.status] += 1;
     }
     return counts;
   }, [runTasks]);

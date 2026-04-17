@@ -41,7 +41,7 @@ export function Minimap({ scrollElementId = BOARD_SCROLL_ID, config: configProp,
   const storePositions = usePipelineStore((s) => s.positions);
   const config = configProp ?? storeConfig;
   const positions = positionsProp ?? storePositions;
-  const tracks = config?.tracks ?? [];
+  const tracks = useMemo(() => config?.tracks ?? [], [config?.tracks]);
 
   const [visible, setVisible] = useState(true);
   const [scrollTick, setScrollTick] = useState(0);

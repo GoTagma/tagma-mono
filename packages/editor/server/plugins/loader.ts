@@ -109,7 +109,7 @@ export function getPluginInfo(name: string): PluginInfo {
         if (manifest) manifestCategory = manifest.category;
       } catch { /* malformed tagmaPlugin field — fall through to meta/name inference */ }
     }
-  } catch {}
+  } catch (_err) { /* plugin dir missing or unreadable — treat as not installed */ }
 
   const loaded = loadedPlugins.has(name);
 

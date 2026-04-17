@@ -1,8 +1,8 @@
 import yaml from 'js-yaml';
-import { resolve, relative } from 'path';
+import { relative } from 'path';
 import type {
   PipelineConfig, RawPipelineConfig, RawTrackConfig, RawTaskConfig,
-  TrackConfig, TaskConfig, Permissions, MiddlewareConfig, CompletionConfig,
+  TrackConfig, TaskConfig, Permissions, CompletionConfig,
 } from './types';
 import { truncateForName, validatePath } from './utils';
 import { DEFAULT_PERMISSIONS } from './types';

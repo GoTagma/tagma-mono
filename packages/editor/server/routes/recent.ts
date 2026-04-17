@@ -75,7 +75,6 @@ function writeRecent(data: RecentFile): void {
   try {
     writeFileSync(RECENT_FILE, JSON.stringify(data, null, 2), 'utf-8');
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error('[recent-workspaces] failed to write', err);
   }
 }

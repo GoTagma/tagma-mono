@@ -63,6 +63,7 @@ export class Logger {
   info(prefix: string, message: string): void {
     const ts = timestamp();
     const line = `${ts} ${prefix} ${message}`;
+    // eslint-disable-next-line no-console
     console.log(line);
     this.emit('info', ts, line, taskIdFromPrefix(prefix));
     this.append(line);

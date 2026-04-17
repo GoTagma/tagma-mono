@@ -190,7 +190,7 @@ function cleanTaskRefs(
   const depsUnchanged = filteredDeps === undefined || filteredDeps.length === task.depends_on!.length;
   if (depsUnchanged && !dropContinueFrom) return task;
 
-  const { depends_on, continue_from, ...rest } = task;
+  const { depends_on: _depends_on, continue_from, ...rest } = task;
   return {
     ...rest,
     ...(filteredDeps !== undefined && filteredDeps.length > 0 ? { depends_on: filteredDeps } : {}),

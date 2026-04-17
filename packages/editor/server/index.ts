@@ -1,8 +1,5 @@
 import express from 'express';
 import cors from 'cors';
-import { randomBytes } from 'crypto';
-import { writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
 import {
   bootstrapBuiltins,
   parseYaml,
@@ -260,7 +257,6 @@ onFileWatcherEvent((event: ExternalChangeEvent) => {
       try {
         S.config = lenientParseYaml(event.content, 'Untitled');
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.error('[file-watcher] failed to parse reloaded YAML', err);
         broadcastStateEvent({ type: 'external-conflict', path: event.path, error: 'parse-failed' });
         return;

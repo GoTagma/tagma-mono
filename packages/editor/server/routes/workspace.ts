@@ -201,7 +201,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
               (doc && typeof doc.name === 'string' && doc.name) ||
               null;
             if (candidate && String(candidate).trim()) pipelineName = String(candidate).trim();
-          } catch {}
+          } catch (_err) { /* non-YAML or unreadable file — pipelineName stays null */ }
           return { name: e.name, path: absPath, pipelineName };
         })
         .sort((a, b) => a.name.localeCompare(b.name));
@@ -217,7 +217,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       const drives: string[] = [];
       for (let c = 65; c <= 90; c++) {
         const drive = String.fromCharCode(c) + ':\\';
-        try { if (existsSync(drive)) drives.push(drive); } catch {}
+        try { if (existsSync(drive)) drives.push(drive); } catch (_err) { /* drive not accessible */ }
       }
       res.json({ roots: drives });
     } else {

@@ -56,11 +56,12 @@ export function FileExplorer({ mode, title, initialPath, fileFilter, picker, onC
       }
 
       setEntries(filtered);
-    } catch (e: any) {
-      setError(e.message ?? 'Failed to load directory');
+    } catch (e: unknown) {
+      setError((e instanceof Error ? e.message : null) ?? 'Failed to load directory');
     } finally {
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, fileFilter]);
 
   useEffect(() => {
@@ -70,6 +71,7 @@ export function FileExplorer({ mode, title, initialPath, fileFilter, picker, onC
       // the host filesystem; in workspace-bound mode we don't show them.
       api.listRoots().then((r) => setRoots(r.roots)).catch(() => {});
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadDir, picker]);
 
   const handleEntryClick = useCallback((entry: FsEntry) => {
@@ -108,8 +110,8 @@ export function FileExplorer({ mode, title, initialPath, fileFilter, picker, onC
       await api.mkdir(fullPath, { picker });
       setNewFolderName(null);
       loadDir(currentPath);
-    } catch (e: any) {
-      setError(e.message ?? 'Failed to create folder');
+    } catch (e: unknown) {
+      setError((e instanceof Error ? e.message : null) ?? 'Failed to create folder');
     }
   }, [newFolderName, currentPath, loadDir, picker]);
 

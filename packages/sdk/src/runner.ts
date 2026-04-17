@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
-import type { SpawnSpec, DriverPlugin, TaskResult, TaskConfig } from './types';
+import type { SpawnSpec, DriverPlugin, TaskResult } from './types';
 import { shellArgs } from './utils';
 
 // Delay before escalating SIGTERM to SIGKILL when killing a timed-out process.

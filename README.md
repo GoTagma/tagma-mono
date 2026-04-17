@@ -19,7 +19,7 @@ tagma-mono/
 └── .gitignore
 ```
 
-The four plugin packages (`driver-codex`, `driver-opencode`, `middleware-lightrag`, `trigger-webhook`, `completion-llm-judge`) also serve as **reference implementations** for the four plugin categories — copy any of them as a starting point for a new plugin.
+The five plugin packages (`driver-codex`, `driver-opencode`, `middleware-lightrag`, `trigger-webhook`, `completion-llm-judge`) also serve as **reference implementations** for the five plugin categories — copy any of them as a starting point for a new plugin.
 
 ## Quick Start
 
@@ -40,7 +40,7 @@ Workspace packages are symlinked. Edit SDK code → restart server. No reinstall
 ```bash
 bun install
 # If proxy is blocking:
-$env:HTTP_PROXY=''; $env:HTTPS_PROXY=''; bun install --no-cache
+$env:HTTP_PROXY=''; $env:HTTPS_PROXY=''; bun install --force
 ```
 
 ### Local Development

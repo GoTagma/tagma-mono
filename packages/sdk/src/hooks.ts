@@ -72,7 +72,7 @@ async function runSingleHook(
     ]);
 
     if (stdout.trim()) {
-      console.log(`[hook: ${command}] stdout: ${stdout.trim()}`);
+      console.warn(`[hook: ${command}] stdout: ${stdout.trim()}`);
     }
     if (stderr.trim()) {
       console.error(`[hook: ${command}] stderr: ${stderr.trim()}`);

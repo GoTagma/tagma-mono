@@ -91,7 +91,7 @@ export function RunView({ config: liveConfig, dagEdges, positions, onBack }: Run
     abortRun();
   }, [abortRun]);
   const handleAbortCancel = useCallback(() => setShowAbortConfirm(false), []);
-  const isActive = status !== 'idle';
+  const _isActive = status !== 'idle';
 
   const [showPipelineSettings, setShowPipelineSettings] = useState(false);
   const [showPlugins, setShowPlugins] = useState(false);

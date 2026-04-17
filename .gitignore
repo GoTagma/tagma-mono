@@ -4,12 +4,6 @@ dist/
 *.lockb
 *.tsbuildinfo
 
-packages/types/dist/
-packages/sdk/dist/
-
-packages/editor/dist/
-packages/editor/.vite/
-
 .tagma/
 .tagma-demo-out/
 
@@ -20,6 +14,9 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+coverage/
+.eslintcache
 
 .claude/settings.local.json
 .omx

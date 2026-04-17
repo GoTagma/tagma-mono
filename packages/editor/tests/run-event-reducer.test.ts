@@ -15,7 +15,6 @@ import { test, expect } from 'bun:test';
 import {
   foldRunEvent,
   initialRunFoldState,
-  type RunFoldState,
 } from '../src/store/run-event-reducer';
 import type {
   RunEvent,

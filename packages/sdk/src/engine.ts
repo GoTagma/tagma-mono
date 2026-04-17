@@ -1,12 +1,12 @@
 import { resolve } from 'path';
 import { readdir, rm } from 'fs/promises';
 import type {
-  PipelineConfig, TaskConfig, TrackConfig, TaskState, TaskStatus,
+  PipelineConfig, TaskConfig, TaskState, TaskStatus,
   TaskResult, DriverPlugin, TriggerPlugin, CompletionPlugin,
   MiddlewarePlugin, MiddlewareContext, DriverContext,
   OnFailure,
 } from './types';
-import { buildDag, type Dag, type DagNode } from './dag';
+import { buildDag, type Dag } from './dag';
 import { getHandler, hasHandler, loadPlugins } from './registry';
 import { runSpawn, runCommand } from './runner';
 import { parseDuration, nowISO, generateRunId } from './utils';

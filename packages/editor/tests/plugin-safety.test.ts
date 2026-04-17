@@ -7,8 +7,6 @@
 
 import { test, expect, describe } from 'bun:test';
 import { resolve, join } from 'node:path';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 
 import {
   PluginSafetyError,

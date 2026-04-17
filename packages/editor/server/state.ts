@@ -589,7 +589,6 @@ export function beginWatching(path: string, content: string): void {
     markWatcherSynced(content, existsSync(path) ? statSync(path).mtimeMs : null);
     startFileWatching(path, () => serializePipeline(S.config));
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error('[file-watcher] beginWatching failed', err);
   }
 }

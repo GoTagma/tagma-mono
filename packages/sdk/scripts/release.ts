@@ -23,6 +23,7 @@ import * as readline from "readline";
 const MONO_ROOT = resolve(import.meta.dir, "..", "..", "..");
 const PACKAGES_DIR = resolve(MONO_ROOT, "packages");
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function readJson(path: string): Record<string, any> {
   return JSON.parse(readFileSync(path, "utf-8"));
 }
@@ -181,7 +182,7 @@ for (const { pkg, newVersion } of updates) {
     execSync("bun publish --access public", { cwd: pkg.dir, stdio: "inherit" });
     console.log(`✓ ${pkg.name}@${newVersion} published`);
     published.push(pkg.pkgPath);
-  } catch (err) {
+  } catch (_err) {
     console.error(`\n✗ Failed to publish ${pkg.name}@${newVersion}`);
     const unpublished = updates.filter(({ pkg: p }) => !published.includes(p.pkgPath));
     if (unpublished.length > 0) {

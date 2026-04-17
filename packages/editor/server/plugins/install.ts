@@ -101,7 +101,6 @@ export async function downloadTarball(url: string): Promise<Buffer> {
   const reader = (res.body as ReadableStream<Uint8Array>).getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -384,7 +383,7 @@ export function uninstallPackage(name: string): void {
       ) {
         rmSync(scopeDir, { recursive: true, force: true });
       }
-    } catch {}
+    } catch (_err) { /* ignore — scope dir may be non-empty or already removed */ }
   }
 
   // Remove from package.json

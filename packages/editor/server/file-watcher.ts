@@ -55,7 +55,6 @@ export function onFileWatcherEvent(listener: Listener): () => void {
 function emit(event: ExternalChangeEvent): void {
   for (const l of listeners) {
     try { l(event); } catch (err) {
-      // eslint-disable-next-line no-console
       console.error('[file-watcher] listener threw', err);
     }
   }
@@ -107,7 +106,6 @@ export function startWatching(
   try {
     watcher = watch(filePath, { persistent: false });
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error(`[file-watcher] failed to watch ${filePath}:`, err);
     return;
   }
@@ -140,7 +138,6 @@ export function startWatching(
 
     if (serverDirty) {
       emit({ type: 'external-conflict', path: filePath });
-      // eslint-disable-next-line no-console
       console.warn(`[file-watcher] external change detected but server has unsaved changes: ${filePath}`);
     } else {
       emit({ type: 'external-change', path: filePath, content });
@@ -154,7 +151,6 @@ export function startWatching(
   });
 
   watcher.on('error', (err) => {
-    // eslint-disable-next-line no-console
     console.error(`[file-watcher] watcher error on ${filePath}:`, err);
   });
 
