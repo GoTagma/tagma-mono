@@ -13,11 +13,13 @@ import type {
   MiddlewareContext,
   DriverContext,
   OnFailure,
+  PromptDocument,
 } from './types';
 import { buildDag, type Dag } from './dag';
 import { getHandler, hasHandler, loadPlugins } from './registry';
 import { runSpawn, runCommand } from './runner';
 import { parseDuration, nowISO, generateRunId } from './utils';
+import { promptDocumentFromString, serializePromptDocument } from './prompt-doc';
 import {
   executeHook,
   buildPipelineStartContext,
@@ -88,7 +90,10 @@ function preflight(config: PipelineConfig, dag: Dag): void {
     if (task.continue_from && hasHandler('drivers', driverName)) {
       const driver = getHandler<DriverPlugin>('drivers', driverName);
       if (!driver.capabilities.sessionResume) {
-        const upstreamId = resolveRefInDag(dag, task.continue_from, track.id);
+        // buildDag has already qualified `continue_from` and stored the result
+        // on the node; preflight runs after buildDag, so the upstream id is
+        // always available here without re-resolving.
+        const upstreamId = node.resolvedContinueFrom;
         if (upstreamId) {
           const upstream = dag.nodes.get(upstreamId);
           if (upstream) {
@@ -119,26 +124,6 @@ function preflight(config: PipelineConfig, dag: Dag): void {
   if (errors.length > 0) {
     throw new Error(`Preflight validation failed:\n  - ${errors.join('\n  - ')}`);
   }
-}
-
-function resolveRefInDag(dag: Dag, ref: string, fromTrackId: string): string | null {
-  // Already fully qualified
-  if (dag.nodes.has(ref)) return ref;
-  // Same-track match (preferred)
-  const sameTrack = `${fromTrackId}.${ref}`;
-  if (dag.nodes.has(sameTrack)) return sameTrack;
-  // Cross-track bare name lookup — must be unambiguous (aligned with buildDag's resolveRef)
-  let match: string | null = null;
-  for (const [id] of dag.nodes) {
-    if (id.endsWith(`.${ref}`)) {
-      if (match !== null) {
-        // Ambiguous: multiple tasks share the bare name across tracks
-        return null;
-      }
-      match = id;
-    }
-  }
-  return match;
 }
 
 // ═══ Engine ═══
@@ -668,12 +653,12 @@ export async function runPipeline(
           log.debug(`[task:${taskId}]`, `command: ${task.command}`);
           result = await runCommand(task.command, task.cwd ?? workDir, runOpts);
         } else {
-          // AI task: apply middleware chain
+          // AI task: apply middleware chain against a structured PromptDocument.
           const driverName = task.driver ?? track.driver ?? config.driver ?? 'claude-code';
           const driver = getHandler<DriverPlugin>('drivers', driverName);
 
-          let prompt = task.prompt!;
-          const originalLen = prompt.length;
+          const originalLen = task.prompt!.length;
+          let doc: PromptDocument = promptDocumentFromString(task.prompt!);
           const mws = task.middlewares !== undefined ? task.middlewares : track.middlewares;
           if (mws && mws.length > 0) {
             log.debug(
@@ -686,32 +671,71 @@ export async function runPipeline(
               workDir: task.cwd ?? workDir,
             };
             for (const mwConfig of mws) {
-              const before = prompt.length;
               const mwPlugin = getHandler<MiddlewarePlugin>('middlewares', mwConfig.type);
-              const next = await mwPlugin.enhance(
-                prompt,
-                mwConfig as Record<string, unknown>,
-                mwCtx,
-              );
-              // R3: a middleware that returns undefined / null / a non-string
-              // would silently corrupt the prompt sent to the driver. Fail loud
-              // here so the user sees "middleware X.enhance returned ..." in the
-              // task log instead of "[object Object]" arriving at the model.
-              if (typeof next !== 'string') {
+              const beforeBlocks = doc.contexts.length;
+              const beforeLen = serializePromptDocument(doc).length;
+
+              // Prefer the structured API. Fall back to the legacy
+              // `enhance(string) → string` path so v0.x plugins keep
+              // working — that fallback loses context structure (the
+              // middleware's output becomes the new task body) but never
+              // silently drops content.
+              if (typeof mwPlugin.enhanceDoc === 'function') {
+                const next = await mwPlugin.enhanceDoc(
+                  doc,
+                  mwConfig as Record<string, unknown>,
+                  mwCtx,
+                );
+                if (
+                  !next ||
+                  typeof next !== 'object' ||
+                  !Array.isArray((next as PromptDocument).contexts) ||
+                  typeof (next as PromptDocument).task !== 'string'
+                ) {
+                  throw new Error(
+                    `middleware "${mwConfig.type}".enhanceDoc() returned a malformed PromptDocument`,
+                  );
+                }
+                doc = next as PromptDocument;
+              } else if (typeof mwPlugin.enhance === 'function') {
+                const asString = serializePromptDocument(doc);
+                const next = await mwPlugin.enhance(
+                  asString,
+                  mwConfig as Record<string, unknown>,
+                  mwCtx,
+                );
+                // R3: a middleware that returns undefined / null / a non-string
+                // would silently corrupt the prompt. Fail loud.
+                if (typeof next !== 'string') {
+                  throw new Error(
+                    `middleware "${mwConfig.type}".enhance() returned ${next === null ? 'null' : typeof next}, expected string`,
+                  );
+                }
+                // Legacy fallback: collapse the returned string into a
+                // fresh doc. Earlier structure is folded into the string
+                // (serializePromptDocument just ran), so bytes the driver
+                // sees match the old string pipeline.
+                doc = { contexts: [], task: next };
+              } else {
                 throw new Error(
-                  `middleware "${mwConfig.type}".enhance() returned ${next === null ? 'null' : typeof next}, expected string`,
+                  `middleware "${mwConfig.type}" provides neither enhanceDoc nor enhance`,
                 );
               }
-              prompt = next;
+              const afterLen = serializePromptDocument(doc).length;
+              const addedBlocks = doc.contexts.length - beforeBlocks;
               log.debug(
                 `[task:${taskId}]`,
-                `  ${mwConfig.type}: ${before} → ${prompt.length} chars`,
+                `  ${mwConfig.type}: ${beforeLen} → ${afterLen} chars` +
+                  (addedBlocks > 0
+                    ? ` (+${addedBlocks} context block${addedBlocks > 1 ? 's' : ''})`
+                    : ''),
               );
             }
           }
+          const prompt = serializePromptDocument(doc);
           log.debug(
             `[task:${taskId}]`,
-            `prompt: ${originalLen} chars (final: ${prompt.length} chars)`,
+            `prompt: ${originalLen} chars (final: ${prompt.length} chars, ${doc.contexts.length} block${doc.contexts.length === 1 ? '' : 's'})`,
           );
           log.quiet(`--- prompt (final) ---\n${clip(prompt)}\n--- end prompt ---`, taskId);
 
@@ -721,15 +745,30 @@ export async function runPipeline(
           // the user's raw (possibly bare) string, which races whenever two
           // tracks share a task name. dag.ts has the only authoritative
           // resolver, so we use its precomputed answer here.
+          // Drivers key sessionMap/normalizedMap by fully-qualified id. buildDag
+          // guarantees `resolvedContinueFrom` is set for every task that has a
+          // `continue_from`, so if we see the bare form here something upstream
+          // is broken — fail loud instead of silently miskeying the lookup.
+          if (task.continue_from && !node.resolvedContinueFrom) {
+            throw new Error(
+              `Internal: task "${taskId}" has continue_from "${task.continue_from}" ` +
+                `but no resolvedContinueFrom. buildDag should have qualified it.`,
+            );
+          }
           const enrichedTask: TaskConfig = {
             ...task,
             prompt,
-            continue_from: node.resolvedContinueFrom ?? task.continue_from,
+            continue_from: node.resolvedContinueFrom,
           };
           const driverCtx: DriverContext = {
             sessionMap,
             normalizedMap,
             workDir: task.cwd ?? workDir,
+            // Structured view for drivers that want fine-grained control
+            // over serialization (e.g. inserting [Previous Output] between
+            // contexts and task). Drivers that read task.prompt see the
+            // default serialization and need no changes.
+            promptDoc: doc,
           };
           const spec = await driver.buildCommand(enrichedTask, track, driverCtx);
           log.debug(`[task:${taskId}]`, `driver=${driverName}`);

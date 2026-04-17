@@ -235,6 +235,30 @@ export interface DriverResultMeta {
   readonly forceFailureReason?: string;
 }
 
+// ═══ Prompt Document ═══
+//
+// Structured view of the prompt being assembled for a task. Replaces the
+// historical "just a string" model at the middleware/driver boundary.
+// Middlewares add labeled context blocks to `contexts`; the user's task
+// instruction sits in `task` and should not be mutated. At driver time,
+// either read `ctx.promptDoc` directly for structured access, or read
+// `task.prompt` which the engine pre-serializes into the default format
+// (blocks prepended, blank-line separated, no implicit [Task] header).
+
+export interface PromptContextBlock {
+  /** Section label rendered as `[<label>]` above the content. */
+  readonly label: string;
+  /** Context body — raw text. Serializer does not escape anything. */
+  readonly content: string;
+}
+
+export interface PromptDocument {
+  /** Ordered context blocks; serializer prepends them before `task`. */
+  readonly contexts: ReadonlyArray<PromptContextBlock>;
+  /** The user's original task instruction. Middlewares MUST preserve this. */
+  readonly task: string;
+}
+
 // ═══ Driver Context ═══
 
 export interface DriverContext {
@@ -242,6 +266,14 @@ export interface DriverContext {
   // Canonical text for continue_from handoff (driver-normalized).
   readonly normalizedMap: Map<string, string>;
   readonly workDir: string;
+  /**
+   * Structured prompt after the middleware chain has run. Drivers may
+   * either read this for fine-grained control over serialization (e.g.
+   * inserting `[Previous Output]` between contexts and task for
+   * continue_from text-fallback) or ignore it and read `task.prompt`,
+   * which the engine pre-serializes via `serializePromptDocument(doc)`.
+   */
+  readonly promptDoc: PromptDocument;
 }
 
 // ═══ Driver Plugin ═══
@@ -344,7 +376,50 @@ export interface MiddlewareContext {
 export interface MiddlewarePlugin {
   readonly name: string;
   readonly schema?: PluginSchema;
-  enhance(prompt: string, config: Record<string, unknown>, ctx: MiddlewareContext): Promise<string>;
+  /**
+   * **Preferred entry point.** Augment the structured `PromptDocument`
+   * and return a new document. Middlewares run in declaration order;
+   * each receives the previous output.
+   *
+   * ## Composition contract (READ BEFORE WRITING A MIDDLEWARE)
+   *
+   * **Append context blocks; do not rewrite `task`.**
+   *
+   *   - DO: `return { ...doc, contexts: [...doc.contexts, { label, content }] }`
+   *     — push a labeled block onto the contexts list.
+   *   - DO NOT: modify `doc.task` unless you are deliberately
+   *     transforming the instruction (e.g. translation). Middlewares are
+   *     expected to *augment* context, not rewrite intent.
+   *   - DO NOT: assume your middleware runs last. The engine serializes
+   *     the doc into `task.prompt` and the driver may wrap the result
+   *     further (e.g. opencode's `agent_profile` adds `[Role]...[Task]...`).
+   *
+   * Rationale: the previous `enhance(string) → string` API let each
+   * middleware make structural assumptions about where the task prompt
+   * lived (some added `[Task]\n` headers, assuming they were outermost).
+   * When two such plugins — or a plugin plus a driver wrapper — ran in
+   * sequence, the model received a malformed double-header payload and
+   * silently misinterpreted it as cut-off (observed with
+   * `opencode/big-pickle`). Operating on a structured document removes
+   * that ambiguity.
+   *
+   * If a middleware must fail-open (retrieval error, missing file,
+   * etc.), return `doc` unchanged rather than throwing.
+   */
+  enhanceDoc?(
+    doc: PromptDocument,
+    config: Record<string, unknown>,
+    ctx: MiddlewareContext,
+  ): Promise<PromptDocument>;
+  /**
+   * @deprecated Use {@link enhanceDoc}. Retained for v0.x plugins that
+   * predate the structured API. When both are defined, the engine prefers
+   * `enhanceDoc`. When only `enhance` is defined, the engine serializes
+   * the current doc, runs `enhance`, and treats the returned string as
+   * the new `task` text (any previous `contexts` are folded into it —
+   * lossy path).
+   */
+  enhance?(prompt: string, config: Record<string, unknown>, ctx: MiddlewareContext): Promise<string>;
 }
 
 // ═══ Task Result ═══

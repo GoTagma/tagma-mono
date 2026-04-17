@@ -65,16 +65,28 @@ await loadPlugins(['@tagma/middleware-lightrag']);
   - `only_need_context: true` — LightRAG skips the LLM synthesis step and returns the raw assembled context in the `response` field
   - `include_references: false` — strips reference metadata so the prompt stays focused
   - `stream: false`
-- The raw context is then prepended to the task prompt as `[<label>]\n<context>\n\n[Task]\n<prompt>` so the downstream driver's model consumes it as prompt augmentation.
+- The raw context is then prepended to the task prompt as `[<label>]\n<context>\n\n<prompt>` so the downstream driver's model consumes it as prompt augmentation. The middleware does **not** emit a `[Task]` header — that framing belongs to the driver (e.g. opencode's `agent_profile` wrapping). Emitting `[Task]` here would cause a second header to appear after the driver's wrapper, which some models interpret as an empty/cut-off message.
 - **Auth**: when `api_key_env` is set, the API key is sent via `X-API-Key` (LightRAG's server auth scheme), not `Authorization: Bearer`.
 - **Best-effort**: if the server is unreachable, returns an empty response, or errors, the middleware logs a warning and passes the original prompt through unchanged. Tasks never fail purely because the KG was offline.
-- The final prompt shape is:
+- The prompt shape produced by this middleware (middleware output):
 
   ```
   [Knowledge Graph Context]
   <retrieved text>
 
+  <original prompt>
+  ```
+
+  If the driver additionally wraps the prompt (e.g. opencode with `agent_profile: senior`), the final payload reaching the model is:
+
+  ```
+  [Role]
+  senior
+
   [Task]
+  [Knowledge Graph Context]
+  <retrieved text>
+
   <original prompt>
   ```
 

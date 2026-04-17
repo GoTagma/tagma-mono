@@ -88,5 +88,24 @@ export type { HookResult, PipelineInfo, TrackInfo, TaskInfo } from './hooks';
 // ── Utils (public subset) ──
 export { parseDuration, validatePath, generateRunId, nowISO, truncateForName } from './utils';
 
+// ── Task reference resolution (shared id normalization) ──
+export {
+  TASK_ID_RE,
+  isValidTaskId,
+  qualifyTaskId,
+  isQualifiedRef,
+  buildTaskIndex,
+  resolveTaskRef,
+  AMBIGUOUS,
+} from './task-ref';
+export type { TaskIndex, RefResolution } from './task-ref';
+
+// ── Prompt document helpers (middleware authors + drivers) ──
+export {
+  promptDocumentFromString,
+  serializePromptDocument,
+  appendContext,
+} from './prompt-doc';
+
 // ── All types from @tagma/types + runtime constants ──
 export * from './types';

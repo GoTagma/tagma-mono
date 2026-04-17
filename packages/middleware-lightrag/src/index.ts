@@ -20,7 +20,7 @@
 //           top_k: 20
 //           api_key_env: LIGHTRAG_API_KEY
 
-import type { MiddlewarePlugin, MiddlewareContext } from '@tagma/types';
+import type { MiddlewarePlugin, MiddlewareContext, PromptDocument } from '@tagma/types';
 
 // Modes are the exact set accepted by LightRAG's QueryRequest.mode
 // Literal in lightrag/api/routers/query_routes.py. `bypass` sends the query
@@ -188,11 +188,11 @@ const LightRAGMiddleware: MiddlewarePlugin = {
     },
   },
 
-  async enhance(
-    prompt: string,
+  async enhanceDoc(
+    doc: PromptDocument,
     config: Record<string, unknown>,
     _ctx: MiddlewareContext,
-  ): Promise<string> {
+  ): Promise<PromptDocument> {
     const endpoint = config.endpoint as string | undefined;
     if (!endpoint) throw new Error('lightrag middleware: "endpoint" is required');
     validateEndpointUrl(endpoint);
@@ -215,19 +215,26 @@ const LightRAGMiddleware: MiddlewarePlugin = {
 
     const timeoutMs = parseDurationSafe(config.timeout, DEFAULT_TIMEOUT_MS);
     const label = (config.label as string | undefined) ?? 'Knowledge Graph Context';
-    const query = (config.query as string | undefined) ?? prompt;
+    // Default retrieval query: the user's task instruction (doc.task), not
+    // the already-serialized prompt. Using doc.task keeps retrieval focused
+    // on user intent; upstream context blocks added by other middlewares
+    // should not re-influence the query unless the user explicitly overrides.
+    const query = (config.query as string | undefined) ?? doc.task;
 
     try {
       const context = await queryLightRAG(endpoint, query, mode, topK, apiKey, timeoutMs);
       if (!context.trim()) {
         console.warn('[lightrag] query returned empty context, passing prompt through');
-        return prompt;
+        return doc;
       }
-      return `[${label}]\n${context}\n\n[Task]\n${prompt}`;
+      // Append a labeled context block; the engine serializes these before
+      // the task, blank-line separated. No `[Task]` / `[Role]` headers here
+      // — those belong to the driver's final framing.
+      return { contexts: [...doc.contexts, { label, content: context }], task: doc.task };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`[lightrag] retrieval failed, passing prompt through: ${msg}`);
-      return prompt;
+      return doc;
     }
   },
 };

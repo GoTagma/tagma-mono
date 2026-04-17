@@ -11,6 +11,8 @@ import {
   listRegistered,
   getHandler,
   isValidPluginName,
+  qualifyTaskId,
+  isQualifiedRef,
 } from '@tagma/sdk';
 import type {
   RawPipelineConfig,
@@ -170,7 +172,7 @@ export function reconcileContinueFrom(cfg: RawPipelineConfig): RawPipelineConfig
   const taskMap = new Map<string, RawTaskConfig>();
   for (const track of cfg.tracks) {
     for (const task of track.tasks) {
-      taskMap.set(`${track.id}.${task.id}`, task);
+      taskMap.set(qualifyTaskId(track.id, task.id), task);
     }
   }
 
@@ -195,7 +197,7 @@ export function reconcileContinueFrom(cfg: RawPipelineConfig): RawPipelineConfig
       // continue_from source).
       const promptDeps: string[] = [];
       for (const dep of deps) {
-        const qid = dep.includes('.') ? dep : `${track.id}.${dep}`;
+        const qid = isQualifiedRef(dep) ? dep : qualifyTaskId(track.id, dep);
         const depTask = taskMap.get(qid);
         if (depTask && !!depTask.prompt && !depTask.command) {
           promptDeps.push(dep);

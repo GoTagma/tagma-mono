@@ -1,6 +1,7 @@
 import { basename } from 'path';
-import type { MiddlewarePlugin, MiddlewareContext } from '../types';
+import type { MiddlewarePlugin, MiddlewareContext, PromptDocument } from '../types';
 import { validatePath } from '../utils';
+import { appendContext } from '../prompt-doc';
 
 export const StaticContextMiddleware: MiddlewarePlugin = {
   name: 'static_context',
@@ -21,11 +22,11 @@ export const StaticContextMiddleware: MiddlewarePlugin = {
     },
   },
 
-  async enhance(
-    prompt: string,
+  async enhanceDoc(
+    doc: PromptDocument,
     config: Record<string, unknown>,
     ctx: MiddlewareContext,
-  ): Promise<string> {
+  ): Promise<PromptDocument> {
     const filePath = config.file as string;
     if (!filePath) throw new Error('static_context middleware: "file" is required');
 
@@ -34,12 +35,15 @@ export const StaticContextMiddleware: MiddlewarePlugin = {
 
     if (!(await file.exists())) {
       console.warn(`static_context: file ${filePath} not found, skipping`);
-      return prompt;
+      return doc;
     }
 
     const content = await file.text();
     const label = (config.label as string) ?? `Reference: ${basename(filePath)}`;
 
-    return `[${label}]\n${content}\n\n[Task]\n${prompt}`;
+    // Append a labeled context block; the engine's serializer joins blocks
+    // with blank lines and places the task last. No [Task] header here —
+    // that framing is the driver's concern (e.g. opencode's agent_profile).
+    return appendContext(doc, { label, content });
   },
 };
