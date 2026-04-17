@@ -8,7 +8,6 @@ import {
   Clock,
   SkipForward,
   Ban,
-  Download,
   History as HistoryIcon,
   GitBranch,
   Code2,
@@ -113,18 +112,6 @@ function formatRelTime(iso: string): string {
   return `${y} y ago`;
 }
 
-function downloadSummary(summary: RunSummary): void {
-  const blob = new Blob([JSON.stringify(summary, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${summary.runId}.summary.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
 interface RunHistoryBrowserProps {
   /**
    * Incremented by the parent (RunView) whenever the external Refresh
@@ -211,6 +198,11 @@ export function RunHistoryBrowser({
   // this, rapid clicks between runs could let a slow response for run A
   // overwrite the freshly-loaded summary/log/yaml for run B (B2).
   const selectedRunIdRef = useRef<string | null>(null);
+  // Per-slot cache markers used by the viewMode auto-load effect below.
+  // Declared up here so loadRun can invalidate them when it swaps the
+  // selection, forcing a refetch the next time the user is on Log/Yaml.
+  const logLoadedForRef = useRef<string | null>(null);
+  const yamlLoadedForRef = useRef<string | null>(null);
 
   const loadRun = useCallback(async (runId: string) => {
     selectedRunIdRef.current = runId;
@@ -219,6 +211,11 @@ export function RunHistoryBrowser({
     setLogContent('');
     setYamlContent(null);
     setSummaryError(null);
+    // Invalidate Log / Yaml caches so the effect below re-fetches for
+    // the new run — also covers re-selecting the same runId (e.g. after
+    // a replay completes and the user wants fresh content).
+    logLoadedForRef.current = null;
+    yamlLoadedForRef.current = null;
     // B3: Do NOT force viewMode back to 'flow' here — keep whatever the
     // user last chose so switching between runs doesn't disrupt a
     // comparison session (e.g. side-by-side yaml inspection).
@@ -265,6 +262,26 @@ export function RunHistoryBrowser({
     }
   }, []);
 
+  // Auto-load Log / Yaml when the user switches runs while already on
+  // one of those tabs. Flow / Summary refresh automatically because they
+  // derive from the `summary` state (which loadRun always fetches), but
+  // Log and Yaml have their own state slots that only the tab-click
+  // path was populating — so switching runs under Log showed the previous
+  // run's content until the user clicked Log again. Gated by the per-slot
+  // "loadedFor" refs (invalidated in loadRun) so toggling between Log and
+  // Yaml on the same run doesn't re-fetch already-cached text.
+  useEffect(() => {
+    if (!selectedRunId) return;
+    if (viewMode === 'log' && logLoadedForRef.current !== selectedRunId) {
+      logLoadedForRef.current = selectedRunId;
+      loadLog(selectedRunId);
+    } else if (viewMode === 'yaml' && yamlLoadedForRef.current !== selectedRunId) {
+      yamlLoadedForRef.current = selectedRunId;
+      loadYaml(selectedRunId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRunId, viewMode]);
+
   // Outcome filter from the header tabs. An empty list plus an active
   // filter surfaces a filter-aware empty state instead of the generic
   // "no past runs" copy.
@@ -296,6 +313,7 @@ export function RunHistoryBrowser({
   // the user clicks Back, the editor view reappears untouched.
   const startRunFromStore = useRunStore((s) => s.startRun);
   const runStatus = useRunStore((s) => s.status);
+  const runStoreRunId = useRunStore((s) => s.runId);
   const [replayLoading, setReplayLoading] = useState(false);
   const [replayError, setReplayError] = useState<string | null>(null);
   const replayBusy = replayLoading || runStatus === 'starting' || runStatus === 'running';
@@ -324,6 +342,29 @@ export function RunHistoryBrowser({
     },
     [replayBusy, startRunFromStore],
   );
+
+  // Auto-refresh the history list (and the currently-open detail, if the
+  // user is inspecting the running pipeline's entry) when a live run
+  // completes. Without this, the page shows a stale "in progress" marker
+  // until the user leaves and re-enters. Keyed on `status` transitioning
+  // INTO a terminal state; we use a prev-ref to fire exactly once per
+  // transition instead of on every render that happens to observe it.
+  const prevStatusRef = useRef(runStatus);
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = runStatus;
+    const terminal =
+      runStatus === 'done' ||
+      runStatus === 'failed' ||
+      runStatus === 'aborted' ||
+      runStatus === 'error';
+    const wasActive = prev === 'starting' || prev === 'running';
+    if (!terminal || !wasActive) return;
+    loadHistory();
+    if (runStoreRunId && selectedRunIdRef.current === runStoreRunId) {
+      loadRun(runStoreRunId);
+    }
+  }, [runStatus, runStoreRunId, loadHistory, loadRun]);
 
   return (
     <div className="h-full flex flex-col bg-tagma-bg">
@@ -378,7 +419,6 @@ export function RunHistoryBrowser({
                 loadYaml(selectedRunId);
               }
             }}
-            onDownload={() => summary && downloadSummary(summary)}
             onReplay={selectedRunId ? () => handleReplay(selectedRunId) : undefined}
             replayBusy={replayBusy}
             replayError={replayError}
@@ -610,7 +650,6 @@ function DetailPane({
   yamlLoading,
   viewMode,
   onViewMode,
-  onDownload,
   onReplay,
   replayBusy,
   replayError,
@@ -627,7 +666,6 @@ function DetailPane({
   yamlLoading: boolean;
   viewMode: 'summary' | 'flow' | 'log' | 'yaml';
   onViewMode: (mode: 'summary' | 'flow' | 'log' | 'yaml') => void;
-  onDownload: () => void;
   /** Replay this run from its pipeline.yaml snapshot. Disabled when the
    *  snapshot is missing (older runs) or a run is already in progress. */
   onReplay?: () => void;
@@ -741,16 +779,6 @@ function DetailPane({
                 </button>
               );
             })()}
-            {summary && (
-              <button
-                type="button"
-                onClick={onDownload}
-                className="p-1 text-tagma-muted hover:text-tagma-text transition-colors"
-                title="Export summary.json"
-              >
-                <Download size={11} />
-              </button>
-            )}
             {onReplay && (
               <button
                 type="button"
