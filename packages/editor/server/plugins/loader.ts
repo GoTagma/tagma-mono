@@ -6,6 +6,7 @@ import {
   mkdirSync,
   cpSync,
   lstatSync,
+  rmSync,
 } from 'node:fs';
 import { resolve, join as joinPath } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -31,11 +32,16 @@ import { installPackage } from './install.js';
  * SDK registry. Replaces the old `loadedPlugins: Set<string>` so we can
  * actually unregister a plugin on uninstall.
  *
- * Note: ESM module caching means we cannot reload a plugin's *code* after the
- * first import — but we CAN remove its handler from the registry, which makes
- * subsequent task references fail loudly instead of silently reusing stale
- * code. The PluginManager UI tells users they need to restart the server to
- * pick up new versions.
+ * Code reload: `stagePluginForImport` copies the plugin into a timestamped
+ * directory under `.tagma/plugin-runtime/<name>/<ts>/` and imports from that
+ * URL. Because each load gets a unique URL, the ESM cache miss forces a
+ * fresh module evaluation and the new handler replaces the old one in the
+ * SDK registry — no server restart required for upgrades.
+ *
+ * On success the previous staging dir is dropped from disk; on failure the
+ * new (failed) staging dir is dropped and the previous one is kept so the
+ * old handler keeps serving until the user retries the upgrade. The full
+ * `<name>/` tree is wiped on uninstall via `cleanupPluginStageTree`.
  */
 export interface LoadedPluginMeta {
   category: PluginCategory;
@@ -280,37 +286,99 @@ export async function loadPluginFromWorkDir(
     );
   }
 
+  // Remember the previously-staged copy (if this is a reload/upgrade) so we
+  // can delete it *after* the new load succeeds. Doing it after, not before,
+  // means a failed upgrade leaves the old working staging dir untouched and
+  // the old handler keeps serving Run requests until the user retries.
+  const previousStageDir = loadedPluginMeta.get(name)?.stageDir;
+
   const stagedPluginDir = stagePluginForImport(name, pluginDir);
-  const stagedModulePath = resolve(stagedPluginDir, entryPoint);
-  if (!isPathWithin(stagedModulePath, stagedPluginDir)) {
-    throw new Error(
-      `Plugin "${name}" entry point "${entryPoint}" resolves outside its staged package directory. Refusing to load.`,
-    );
-  }
-  const fileUrl = pathToFileURL(stagedModulePath).href;
+  try {
+    const stagedModulePath = resolve(stagedPluginDir, entryPoint);
+    if (!isPathWithin(stagedModulePath, stagedPluginDir)) {
+      throw new Error(
+        `Plugin "${name}" entry point "${entryPoint}" resolves outside its staged package directory. Refusing to load.`,
+      );
+    }
+    const fileUrl = pathToFileURL(stagedModulePath).href;
 
-  // R11: race the dynamic import against a hard timeout so a plugin with a
-  // top-level infinite loop / pending fetch can't wedge the loader. The
-  // orphaned import keeps running on the event loop after we throw — there
-  // is no way to cancel it from outside without worker_threads — but the
-  // route handler unblocks and returns a useful error to the user.
-  const mod = await importWithTimeout<{
-    pluginCategory?: unknown;
-    pluginType?: unknown;
-    default?: unknown;
-  }>(fileUrl, PLUGIN_IMPORT_TIMEOUT_MS, name, (url) => import(url));
+    // R11: race the dynamic import against a hard timeout so a plugin with a
+    // top-level infinite loop / pending fetch can't wedge the loader. The
+    // orphaned import keeps running on the event loop after we throw — there
+    // is no way to cancel it from outside without worker_threads — but the
+    // route handler unblocks and returns a useful error to the user.
+    const mod = await importWithTimeout<{
+      pluginCategory?: unknown;
+      pluginType?: unknown;
+      default?: unknown;
+    }>(fileUrl, PLUGIN_IMPORT_TIMEOUT_MS, name, (url) => import(url));
 
-  if (!mod.pluginCategory || !mod.pluginType || !mod.default) {
-    throw new Error(`Plugin "${name}" must export pluginCategory, pluginType, and default`);
+    if (!mod.pluginCategory || !mod.pluginType || !mod.default) {
+      throw new Error(`Plugin "${name}" must export pluginCategory, pluginType, and default`);
+    }
+    // SDK validates the category, type, and contract — let it throw on bad shapes.
+    const category = mod.pluginCategory as PluginCategory;
+    const type = String(mod.pluginType);
+    const handler = mod.default as
+      | DriverPlugin
+      | TriggerPlugin
+      | CompletionPlugin
+      | MiddlewarePlugin;
+    const result = registerPlugin(category, type, handler);
+    const meta: LoadedPluginMeta = { category, type, stageDir: stagedPluginDir };
+    loadedPluginMeta.set(name, meta);
+
+    // Success: the new module is imported and the handler registered. The
+    // previous staging dir (if any) is no longer referenced by the SDK
+    // registry — drop it so the plugin-runtime tree doesn't grow unbounded
+    // across successive upgrades. Best-effort; a stray lock or permission
+    // glitch is harmless because the next uninstall cleans the whole tree.
+    if (previousStageDir && previousStageDir !== stagedPluginDir) {
+      try {
+        rmSync(previousStageDir, { recursive: true, force: true });
+      } catch {
+        /* best-effort */
+      }
+    }
+    return { result, meta };
+  } catch (err) {
+    // Load failed after we created the new staging copy. Remove it so the
+    // plugin-runtime/ tree doesn't accumulate orphans on every failed retry.
+    // The previously-staged copy (for an already-loaded plugin) is kept
+    // intact so its handler continues to serve Run.
+    try {
+      rmSync(stagedPluginDir, { recursive: true, force: true });
+    } catch {
+      /* best-effort */
+    }
+    throw err;
   }
-  // SDK validates the category, type, and contract — let it throw on bad shapes.
-  const category = mod.pluginCategory as PluginCategory;
-  const type = String(mod.pluginType);
-  const handler = mod.default as DriverPlugin | TriggerPlugin | CompletionPlugin | MiddlewarePlugin;
-  const result = registerPlugin(category, type, handler);
-  const meta: LoadedPluginMeta = { category, type, stageDir: stagedPluginDir };
-  loadedPluginMeta.set(name, meta);
-  return { result, meta };
+}
+
+/**
+ * Remove every staging copy under `.tagma/plugin-runtime/<safe-name>/`.
+ *
+ * Called on uninstall so the plugin-runtime tree doesn't accumulate orphans
+ * from past upgrade cycles or failed loads. Safe to call when the tree is
+ * already absent or partially cleaned — the operation is best-effort.
+ *
+ * The caller MUST have validated `name` via `assertSafePluginName` (all the
+ * route handlers do). We re-fence here so a future caller path that forgets
+ * the check still can't escape `.tagma/plugin-runtime/`.
+ */
+export function cleanupPluginStageTree(name: string): void {
+  if (!S.workDir) return;
+  assertSafePluginName(name);
+  const safeName = name.replace(/[\\/]/g, '__');
+  const runtimeRoot = resolve(S.workDir, '.tagma', 'plugin-runtime');
+  const stageRoot = resolve(runtimeRoot, safeName);
+  if (!isPathWithin(stageRoot, runtimeRoot)) return;
+  if (!existsSync(stageRoot)) return;
+  try {
+    rmSync(stageRoot, { recursive: true, force: true });
+  } catch {
+    /* best-effort */
+  }
 }
 
 /** Read/write .tagma/plugins.json — the persistent manifest of installed plugins */

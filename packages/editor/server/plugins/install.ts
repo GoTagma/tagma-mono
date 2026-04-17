@@ -7,6 +7,7 @@ import {
   mkdirSync,
   mkdtempSync,
   rmSync,
+  cpSync,
 } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -404,5 +405,152 @@ export function uninstallPackage(name: string): void {
       delete pkg.dependencies[name];
       writeFileSync(pkgPath, JSON.stringify(pkg, null, 2), 'utf-8');
     }
+  }
+}
+
+/**
+ * Captured state for rolling back a failed upgrade. Holds a full copy of the
+ * plugin's prior `node_modules/<name>/` tree plus the prior
+ * `dependencies[name]` spec from the workspace `package.json`, so a failed
+ * upgrade can restore the working version instead of leaving the workspace
+ * with v2 files on disk but v1 still live in the SDK registry.
+ *
+ * `snapshotDir` is always allocated, even for a fresh install (where the
+ * plugin tree doesn't yet exist). Callers distinguish the "nothing to restore"
+ * case by looking at whether the plugin had any files before the install
+ * began — see the `wasInstalled` flag in the route handler.
+ */
+export interface PluginStateSnapshot {
+  name: string;
+  snapshotDir: string;
+  /** Prior `dependencies[name]` spec. `null` means no entry existed. */
+  prevDepSpec: string | null;
+  /** True when the plugin dir existed before the install began. */
+  hadPriorFiles: boolean;
+}
+
+/**
+ * Snapshot the plugin's current on-disk state so an upgrade failure can
+ * restore it. Safe to call even when the plugin isn't installed yet — the
+ * resulting snapshot will have `hadPriorFiles: false` and restore to "not
+ * installed" on rollback.
+ *
+ * Caller MUST have validated `name` via `assertSafePluginName`. We re-fence
+ * here via `pluginDirFor` + `fenceWithinNodeModules`.
+ */
+export function snapshotPluginState(name: string): PluginStateSnapshot {
+  assertSafePluginName(name);
+  if (!S.workDir) {
+    throw new Error('Cannot snapshot plugin state: workspace directory is not set');
+  }
+  const pluginDir = pluginDirFor(name);
+  fenceWithinNodeModules(pluginDir);
+
+  const snapshotDir = mkdtempSync(join(tmpdir(), 'tagma-pkg-snap-'));
+  const hadPriorFiles = existsSync(pluginDir);
+  if (hadPriorFiles) {
+    // dereference:false — never follow symlinks; we're snapshotting a
+    // freshly-extracted package tree that shouldn't contain any, but
+    // belt-and-braces in case a future local-import path plants one.
+    cpSync(pluginDir, snapshotDir, { recursive: true, dereference: false });
+  }
+
+  let prevDepSpec: string | null = null;
+  const wsPkgPath = resolve(S.workDir, 'package.json');
+  if (existsSync(wsPkgPath)) {
+    try {
+      const pkg = JSON.parse(readFileSync(wsPkgPath, 'utf-8')) as {
+        dependencies?: Record<string, string>;
+      };
+      const spec = pkg.dependencies?.[name];
+      prevDepSpec = typeof spec === 'string' ? spec : null;
+    } catch {
+      /* leave null — corrupt package.json shouldn't block the snapshot */
+    }
+  }
+
+  return { name, snapshotDir, prevDepSpec, hadPriorFiles };
+}
+
+/**
+ * Restore a previously-snapshotted plugin state. Reverses whatever the
+ * in-flight install did to `node_modules/<name>/` and `package.json`.
+ *
+ * Limitation: does NOT re-run `bun install`. Transitive dependencies that
+ * were promoted / upgraded in the workspace's `node_modules/` by the failed
+ * install stay at their new versions. For semver-compatible plugins this is
+ * fine; for a major-version breaking change the restored plugin may see a
+ * newer transitive dep than it expects at run time. A user who hits this can
+ * click Upgrade again (moves forward to v2) or run `bun install` manually.
+ */
+export function restorePluginState(snapshot: PluginStateSnapshot): void {
+  assertSafePluginName(snapshot.name);
+  if (!S.workDir) return;
+  const pluginDir = pluginDirFor(snapshot.name);
+  fenceWithinNodeModules(pluginDir);
+
+  // Restore node_modules/<name>/. Wipe whatever the failed install left
+  // behind, then copy the snapshot back if we had prior files.
+  if (existsSync(pluginDir)) {
+    try {
+      rmSync(pluginDir, { recursive: true, force: true });
+    } catch {
+      /* best-effort */
+    }
+  }
+  if (snapshot.hadPriorFiles && existsSync(snapshot.snapshotDir)) {
+    try {
+      mkdirSync(dirname(pluginDir), { recursive: true });
+      cpSync(snapshot.snapshotDir, pluginDir, { recursive: true, dereference: false });
+    } catch (err) {
+      console.error(
+        `[plugins] failed to restore plugin "${snapshot.name}" from snapshot:`,
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  }
+
+  // Restore dependencies[name] in workspace package.json.
+  const wsPkgPath = resolve(S.workDir, 'package.json');
+  if (existsSync(wsPkgPath)) {
+    try {
+      const pkg = JSON.parse(readFileSync(wsPkgPath, 'utf-8')) as {
+        dependencies?: Record<string, string>;
+      };
+      if (!pkg.dependencies || typeof pkg.dependencies !== 'object') {
+        pkg.dependencies = {};
+      }
+      if (snapshot.prevDepSpec !== null) {
+        pkg.dependencies[snapshot.name] = snapshot.prevDepSpec;
+      } else {
+        delete pkg.dependencies[snapshot.name];
+      }
+      writeFileSync(wsPkgPath, JSON.stringify(pkg, null, 2), 'utf-8');
+    } catch (err) {
+      console.error(
+        `[plugins] failed to restore package.json dep spec for "${snapshot.name}":`,
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  }
+
+  // Clean up the snapshot tempdir now that we've consumed it.
+  try {
+    rmSync(snapshot.snapshotDir, { recursive: true, force: true });
+  } catch {
+    /* best-effort */
+  }
+}
+
+/**
+ * Discard a snapshot without restoring anything. Called on install/upgrade
+ * success so the tempdir doesn't linger.
+ */
+export function discardPluginSnapshot(snapshot: PluginStateSnapshot | null): void {
+  if (!snapshot) return;
+  try {
+    rmSync(snapshot.snapshotDir, { recursive: true, force: true });
+  } catch {
+    /* best-effort */
   }
 }

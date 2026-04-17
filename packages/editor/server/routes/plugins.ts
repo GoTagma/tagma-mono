@@ -10,6 +10,10 @@ import {
   installFromLocalPath,
   uninstallPackage,
   registryMeta,
+  snapshotPluginState,
+  restorePluginState,
+  discardPluginSnapshot,
+  type PluginStateSnapshot,
 } from '../plugins/install.js';
 import {
   loadedPluginMeta,
@@ -31,6 +35,7 @@ import {
   resolvePluginCategoryType,
   scanUninstallImpact,
   getLastAutoLoadErrors,
+  cleanupPluginStageTree,
 } from '../plugins/loader.js';
 import {
   VALID_PLUGIN_CATEGORIES,
@@ -44,6 +49,41 @@ import {
   MARKETPLACE_SEARCH_LIMIT,
 } from '../plugins/marketplace.js';
 import { REGISTRY_FETCH_TIMEOUT_MS } from '../plugins/install.js';
+
+/**
+ * Per-plugin-name mutation lock. Serializes concurrent install / uninstall /
+ * load / upgrade for the same plugin name so two racing requests can't
+ * interleave writes to `package.json`, `.tagma/plugins.json`, the blocklist,
+ * or `node_modules/<name>/`. Different names run in parallel.
+ *
+ * Implementation: chain each incoming op onto the prior op's promise. A
+ * prior failure does not block the next op (try/catch swallows it for
+ * chaining purposes; the failed op has already resolved its own response).
+ * The slot is cleared when the latest chained task completes, so long-lived
+ * sessions don't leak entries.
+ */
+const pluginOpLocks = new Map<string, Promise<unknown>>();
+async function withPluginLock<T>(name: string, op: () => Promise<T>): Promise<T> {
+  const prev = pluginOpLocks.get(name);
+  const task = (async () => {
+    if (prev) {
+      try {
+        await prev;
+      } catch {
+        /* prior op's failure is already reported; don't block this one */
+      }
+    }
+    return op();
+  })();
+  pluginOpLocks.set(name, task);
+  try {
+    return await task;
+  } finally {
+    if (pluginOpLocks.get(name) === task) {
+      pluginOpLocks.delete(name);
+    }
+  }
+}
 
 export function registerPluginRoutes(app: express.Express): void {
   /** List all managed plugins (from pipeline config + manifest + loaded this session) */
@@ -97,34 +137,83 @@ export function registerPluginRoutes(app: express.Express): void {
       return res.status(400).json({ error: 'Set a working directory first' });
     }
 
-    try {
-      await installPackage(name);
-      addToPluginManifest(name);
-      // Clicking Install is an explicit opt-in — clear any prior user-
-      // uninstall block so the plugin can be auto-loaded on future opens.
-      removeFromPluginBlocklist(name);
-      invalidatePluginCache();
-
-      // Load into SDK registry
+    await withPluginLock(name, async () => {
+      // Snapshot the prior on-disk state so an upgrade failure can roll back
+      // to a working version. Fresh installs also snapshot (trivially — no
+      // files) so the code path is uniform; restore on fresh-install failure
+      // is a no-op plus a dep-spec cleanup.
+      let snapshot: PluginStateSnapshot | null = null;
       try {
-        const { result } = await loadPluginFromWorkDir(name);
-        const note =
-          result === 'replaced'
-            ? 'A plugin was already registered for this category/type — restart the server to pick up the new code.'
-            : undefined;
-        res.json({ plugin: getPluginInfo(name), registry: getRegistrySnapshot(), note });
-      } catch (loadErr: unknown) {
-        const { message, kind } = classifyServerError(loadErr);
-        return res.json({
-          plugin: getPluginInfo(name),
-          registry: getRegistrySnapshot(),
-          warning: `Installed but failed to load: ${message}`,
-          kind,
-        });
+        snapshot = snapshotPluginState(name);
+      } catch (snapErr) {
+        // Snapshot failure is non-fatal — proceed without rollback ability
+        // rather than blocking the user's install. Log so the cause is
+        // diagnosable from the server output.
+        console.warn(
+          `[plugins] failed to snapshot "${name}" before install; rollback disabled for this op:`,
+          snapErr instanceof Error ? snapErr.message : String(snapErr),
+        );
       }
-    } catch (e: unknown) {
-      res.status(500).json(pluginErrorResponse(e, 'Install'));
-    }
+
+      try {
+        await installPackage(name);
+        addToPluginManifest(name);
+        // Clicking Install is an explicit opt-in — clear any prior user-
+        // uninstall block so the plugin can be auto-loaded on future opens.
+        removeFromPluginBlocklist(name);
+        invalidatePluginCache();
+
+        // Load into SDK registry
+        try {
+          const { result } = await loadPluginFromWorkDir(name);
+          discardPluginSnapshot(snapshot);
+          const note =
+            result === 'replaced'
+              ? 'Replaced the existing handler for this (category, type). The new code is live.'
+              : undefined;
+          res.json({ plugin: getPluginInfo(name), registry: getRegistrySnapshot(), note });
+        } catch (loadErr: unknown) {
+          const { message, kind } = classifyServerError(loadErr);
+          // Upgrade case: restore the previous working version so the SDK
+          // registry (which still holds the old handler) stays consistent
+          // with what's on disk. Without this, subsequent Run requests use a
+          // handler backed by v1 code that no longer exists in node_modules,
+          // and the next workspace reopen fails to auto-load the plugin at
+          // all because discoverInstalledPlugins sees v2 and retries the
+          // load that just failed.
+          if (snapshot?.hadPriorFiles) {
+            restorePluginState(snapshot);
+            invalidatePluginCache();
+            return res.json({
+              plugin: getPluginInfo(name),
+              registry: getRegistrySnapshot(),
+              warning: `Upgrade failed to load; reverted to previous on-disk version. Error: ${message}`,
+              kind,
+            });
+          }
+          // Fresh install: nothing working to keep, so the partial install
+          // stays on disk and the user gets a load warning as before.
+          discardPluginSnapshot(snapshot);
+          return res.json({
+            plugin: getPluginInfo(name),
+            registry: getRegistrySnapshot(),
+            warning: `Installed but failed to load: ${message}`,
+            kind,
+          });
+        }
+      } catch (e: unknown) {
+        // installPackage itself failed (registry error, integrity mismatch,
+        // bun install error, etc). If the plugin was installed before, the
+        // previous version may have been partially overwritten — restore it.
+        if (snapshot?.hadPriorFiles) {
+          restorePluginState(snapshot);
+          invalidatePluginCache();
+        } else {
+          discardPluginSnapshot(snapshot);
+        }
+        res.status(500).json(pluginErrorResponse(e, 'Install'));
+      }
+    });
   });
 
   /**
@@ -161,7 +250,7 @@ export function registerPluginRoutes(app: express.Express): void {
   });
 
   /** Uninstall a plugin from workDir via direct filesystem ops (no package manager required) */
-  app.post('/api/plugins/uninstall', (_req, res) => {
+  app.post('/api/plugins/uninstall', async (_req, res) => {
     const { name } = _req.body;
     try {
       assertSafePluginName(name);
@@ -173,31 +262,38 @@ export function registerPluginRoutes(app: express.Express): void {
       return res.status(400).json({ error: 'Set a working directory first' });
     }
 
-    try {
-      uninstallPackage(name);
-      removeFromPluginManifest(name);
-      // Record the user's explicit uninstall so a subsequent workspace /
-      // pipeline open won't silently re-install this plugin via the
-      // `autoInstallDeclaredPlugins` path or reload it from a stray
-      // on-disk copy. Cleared the moment the user clicks Install again.
-      addToPluginBlocklist(name);
-      invalidatePluginCache();
-      // C4: actually remove the handler from the SDK registry so subsequent
-      // task references fail fast instead of silently using stale code.
-      const meta = loadedPluginMeta.get(name);
-      if (meta) {
-        unregisterPlugin(meta.category, meta.type);
-        loadedPluginMeta.delete(name);
-      }
+    await withPluginLock(name, async () => {
+      try {
+        uninstallPackage(name);
+        removeFromPluginManifest(name);
+        // Record the user's explicit uninstall so a subsequent workspace /
+        // pipeline open won't silently re-install this plugin via the
+        // `autoInstallDeclaredPlugins` path or reload it from a stray
+        // on-disk copy. Cleared the moment the user clicks Install again.
+        addToPluginBlocklist(name);
+        invalidatePluginCache();
+        // C4: actually remove the handler from the SDK registry so subsequent
+        // task references fail fast instead of silently using stale code.
+        const meta = loadedPluginMeta.get(name);
+        if (meta) {
+          unregisterPlugin(meta.category, meta.type);
+          loadedPluginMeta.delete(name);
+        }
+        // Drop every staging copy under `.tagma/plugin-runtime/<name>/`. This
+        // covers the currently-loaded one plus any orphans left behind by past
+        // upgrade cycles or failed loads. Without this, repeated install /
+        // upgrade / uninstall churn grows the plugin-runtime tree unboundedly.
+        cleanupPluginStageTree(name);
 
-      res.json({
-        plugin: getPluginInfo(name),
-        registry: getRegistrySnapshot(),
-        note: 'Plugin uninstalled. The cached module remains in the ESM loader; restart the server before reinstalling a different version.',
-      });
-    } catch (e: unknown) {
-      res.status(500).json(pluginErrorResponse(e, 'Uninstall'));
-    }
+        res.json({
+          plugin: getPluginInfo(name),
+          registry: getRegistrySnapshot(),
+          note: 'Plugin uninstalled.',
+        });
+      } catch (e: unknown) {
+        res.status(500).json(pluginErrorResponse(e, 'Uninstall'));
+      }
+    });
   });
 
   /** Import a plugin from a local directory or .tgz file */
@@ -225,7 +321,7 @@ export function registerPluginRoutes(app: express.Express): void {
         const { result } = await loadPluginFromWorkDir(pkgName);
         const note =
           result === 'replaced'
-            ? 'A plugin was already registered for this category/type — restart the server to pick up the new code.'
+            ? 'Replaced the existing handler for this (category, type). The new code is live.'
             : undefined;
         res.json({ plugin: getPluginInfo(pkgName), registry: getRegistrySnapshot(), note });
       } catch (loadErr: unknown) {
@@ -337,27 +433,29 @@ export function registerPluginRoutes(app: express.Express): void {
       return res.status(400).json({ error: 'Set a working directory first' });
     }
 
-    const info = getPluginInfo(name);
-    if (!info.installed) {
-      return res
-        .status(404)
-        .json({ error: `Plugin "${name}" is not installed. Install it first.` });
-    }
+    await withPluginLock(name, async () => {
+      const info = getPluginInfo(name);
+      if (!info.installed) {
+        return res
+          .status(404)
+          .json({ error: `Plugin "${name}" is not installed. Install it first.` });
+      }
 
-    if (loadedPlugins.has(name)) {
-      return res.json({ plugin: getPluginInfo(name), registry: getRegistrySnapshot() });
-    }
+      if (loadedPlugins.has(name)) {
+        return res.json({ plugin: getPluginInfo(name), registry: getRegistrySnapshot() });
+      }
 
-    try {
-      const { result } = await loadPluginFromWorkDir(name);
-      const note =
-        result === 'replaced'
-          ? 'Replaced an existing handler for this category/type. Restart the server to pick up new code.'
-          : undefined;
-      res.json({ plugin: getPluginInfo(name), registry: getRegistrySnapshot(), note });
-    } catch (e: unknown) {
-      res.status(500).json(pluginErrorResponse(e, 'Load'));
-    }
+      try {
+        const { result } = await loadPluginFromWorkDir(name);
+        const note =
+          result === 'replaced'
+            ? 'Replaced the existing handler for this (category, type). The new code is live.'
+            : undefined;
+        res.json({ plugin: getPluginInfo(name), registry: getRegistrySnapshot(), note });
+      } catch (e: unknown) {
+        res.status(500).json(pluginErrorResponse(e, 'Load'));
+      }
+    });
   });
 
   /** GET /api/marketplace/search?q=&category= */
