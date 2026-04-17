@@ -145,7 +145,7 @@ export async function fetchMarketplacePackage(name: string): Promise<Marketplace
   if (!isValidPluginName(name)) return null;
   const cached = cacheGet(marketplaceManifestCache, name);
   if (cached) return cached;
-  let body: any;
+  let body: Record<string, unknown>;
   try {
     const res = await fetch(registryUrl(name), {
       headers: { Accept: 'application/json' },
@@ -156,9 +156,11 @@ export async function fetchMarketplacePackage(name: string): Promise<Marketplace
   } catch {
     return null;
   }
-  const latest = body?.['dist-tags']?.latest;
+  const distTags = body?.['dist-tags'] as Record<string, string> | undefined;
+  const latest = distTags?.latest;
   if (typeof latest !== 'string') return null;
-  const versionEntry = body?.versions?.[latest];
+  const versions = body?.versions as Record<string, Record<string, unknown>> | undefined;
+  const versionEntry = versions?.[latest];
   if (!versionEntry || typeof versionEntry !== 'object') return null;
   let manifest;
   try {
@@ -170,7 +172,7 @@ export async function fetchMarketplacePackage(name: string): Promise<Marketplace
   }
   if (!manifest || !VALID_PLUGIN_CATEGORIES.has(manifest.category)) return null;
   const downloads = await fetchWeeklyDownloads(name);
-  const time = body?.time ?? {};
+  const time = (body?.time ?? {}) as Record<string, string>;
   const detail: MarketplacePackageDetail = {
     name,
     version: latest,
@@ -185,7 +187,7 @@ export async function fetchMarketplacePackage(name: string): Promise<Marketplace
     weeklyDownloads: downloads,
     readme: typeof body.readme === 'string' ? body.readme : null,
     license: typeof versionEntry.license === 'string' ? versionEntry.license : null,
-    versions: Object.keys(body.versions ?? {}).reverse(),
+    versions: Object.keys(versions ?? {}).reverse(),
   };
   cacheSet(marketplaceManifestCache, name, detail);
   return detail;

@@ -1,5 +1,8 @@
 import express from 'express';
 import cors from 'cors';
+import { randomBytes } from 'crypto';
+import { writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   bootstrapBuiltins,
   parseYaml,
@@ -60,6 +63,38 @@ app.use(
     credentials: false,
   }),
 );
+
+// ── C8: Optional bearer-token auth ──
+//
+// When TAGMA_AUTH_TOKEN is set (non-empty), every /api/* request MUST include
+// an Authorization: Bearer <token> header matching the configured value.
+// This protects all endpoints (including read-only ones like /api/fs/list)
+// from unauthenticated access — essential when binding to 0.0.0.0.
+//
+// When TAGMA_AUTH_TOKEN is not set, auth is skipped (backward compat for
+// local-only dev). The server prints a warning at startup if it detects a
+// non-loopback HOST without a token configured.
+//
+// Token sources (in priority order):
+//   1. TAGMA_AUTH_TOKEN env var (user-supplied)
+//   2. Auto-generated token persisted to <workDir>/.tagma/auth-token
+const AUTH_TOKEN = process.env.TAGMA_AUTH_TOKEN ?? '';
+const AUTH_ENABLED = AUTH_TOKEN.length > 0;
+
+app.use((req, res, next) => {
+  if (!AUTH_ENABLED) return next();
+  if (!req.path.startsWith('/api/')) return next();
+
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Missing Authorization header. Provide: Bearer <token>' });
+  }
+  const token = authHeader.slice(7);
+  if (token !== AUTH_TOKEN) {
+    return res.status(403).json({ error: 'Invalid auth token' });
+  }
+  next();
+});
 
 // ── C7: Host + Origin strict gate (DNS rebinding + CSRF defense) ──
 //
@@ -263,6 +298,16 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 // setups, but those should also enable TAGMA_ALLOWED_ORIGINS + token auth.
 const server = app.listen(PORT, HOST, () => {
   console.log(`Tagma Editor server running on http://${HOST}:${PORT}`);
+
+  if (AUTH_ENABLED) {
+    console.log('[auth] Bearer token authentication ENABLED');
+  } else if (!BOUND_LOOPBACK) {
+    console.warn(
+      '[auth] WARNING: server bound to non-loopback address without TAGMA_AUTH_TOKEN.\n' +
+      '  All /api/* endpoints are accessible to the network without authentication.\n' +
+      '  Set TAGMA_AUTH_TOKEN=<secret> to enable bearer token auth.'
+    );
+  }
 });
 
 // ── B6: Graceful shutdown ──

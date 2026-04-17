@@ -6,7 +6,7 @@
     "packages/*"
   ],
   "scripts": {
-    "postinstall": "test -f packages/types/dist/index.js && test -f packages/sdk/dist/sdk.js || (bun run build:types && bun run build:sdk)",
+    "postinstall": "node -e \"const{existsSync}=require('fs');if(!existsSync('packages/types/dist/index.js')||!existsSync('packages/sdk/dist/sdk.js'))process.exit(1)\" || (bun run build:types && bun run build:sdk)",
     "build": "bun run build:types && bun run build:sdk && bun run build:plugins",
     "build:types": "bun run --filter @tagma/types build",
     "build:sdk": "bun run --filter @tagma/sdk build",
@@ -61,9 +61,17 @@
     "version:sdk:patch": "cd packages/sdk && bun pm version patch",
     "version:sdk:minor": "cd packages/sdk && bun pm version minor",
     "version:sdk:major": "cd packages/sdk && bun pm version major",
-    "clean": "rimraf packages/*/node_modules packages/*/dist node_modules bun.lock"
+    "clean": "rimraf packages/*/node_modules packages/*/dist node_modules",
+    "clean:all": "rimraf packages/*/node_modules packages/*/dist node_modules bun.lock",
+    "lint": "eslint packages/ --max-warnings 0",
+    "format": "prettier --write 'packages/**/*.{ts,tsx,js,json,css,md}'",
+    "format:check": "prettier --check 'packages/**/*.{ts,tsx,js,json,css,md}'"
   },
   "devDependencies": {
-    "rimraf": "^6.0.1"
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.0.0",
+    "rimraf": "^6.0.1",
+    "typescript-eslint": "^8.0.0"
   }
 }

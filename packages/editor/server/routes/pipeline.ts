@@ -27,6 +27,7 @@ import {
   stateEventClients,
   type StateEventClient,
 } from '../state.js';
+import { errorMessage } from '../path-utils.js';
 
 export function registerPipelineRoutes(app: express.Express): void {
   // ── GET state ──
@@ -248,8 +249,8 @@ export function registerPipelineRoutes(app: express.Express): void {
       const { yaml } = req.body;
       S.config = reconcilePipelinePlugins(parseYaml(yaml));
       res.json(getState());
-    } catch (e: any) {
-      res.status(400).json({ error: e.message ?? 'Invalid YAML' });
+    } catch (err: unknown) {
+      res.status(400).json({ error: errorMessage(err) || 'Invalid YAML' });
     }
   });
 
@@ -319,8 +320,8 @@ export function registerPipelineRoutes(app: express.Express): void {
       }
 
       res.json(getState());
-    } catch (e: any) {
-      res.status(400).json({ error: e.message ?? 'Failed to replace config' });
+    } catch (err: unknown) {
+      res.status(400).json({ error: errorMessage(err) || 'Failed to replace config' });
     }
   });
 }

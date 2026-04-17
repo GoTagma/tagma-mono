@@ -176,6 +176,10 @@ export async function runSpawn(
   const start = performance.now();
   const elapsed = () => Math.round(performance.now() - start);
 
+  if (signal?.aborted) {
+    return failResult('Pipeline aborted before spawn', 0);
+  }
+
   // R2: validate the spec before touching it. A third-party driver that
   // returns a malformed SpawnSpec used to crash deep inside Bun.spawn with
   // an opaque TypeError; now we report a clear "Driver X returned …" message.

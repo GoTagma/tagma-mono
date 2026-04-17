@@ -431,7 +431,7 @@ export function getState() {
     console.error('[getState] buildRawDag threw:', err);
   }
   // Serialize dag for JSON (Map → object)
-  const dagNodes: Record<string, any> = {};
+  const dagNodes: Record<string, unknown> = {};
   for (const [k, v] of dag.nodes) dagNodes[k] = v;
   return {
     config: S.config,
@@ -553,8 +553,9 @@ function pickKnownKeys(
  * This blocks prototype-pollution vectors on the external-file-change path.
  */
 export function lenientParseYaml(content: string, fallbackName: string): RawPipelineConfig {
-  const doc = yaml.load(content) as any;
-  const p = doc?.pipeline ?? doc ?? {};
+  const doc = yaml.load(content) as Record<string, unknown>;
+  const pCandidate = doc?.pipeline;
+  const p = (pCandidate && typeof pCandidate === 'object' && !Array.isArray(pCandidate) ? pCandidate : doc) as Record<string, unknown>;
   const rawTracks = Array.isArray(p.tracks) ? p.tracks : [];
   const tracks = rawTracks
     .filter((t: unknown): t is Record<string, unknown> => !!t && typeof t === 'object' && !Array.isArray(t))

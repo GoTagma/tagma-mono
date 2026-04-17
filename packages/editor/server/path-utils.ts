@@ -11,6 +11,10 @@
 
 import { resolve, relative, sep } from 'node:path';
 
+export function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 /**
  * Returns true when `child` resolves to a path inside (or equal to) `root`.
  *

@@ -27,6 +27,20 @@ import {
   beginWatching,
   lenientParseYaml,
 } from '../state.js';
+import { errorMessage } from '../path-utils.js';
+
+const PORT = parseInt(process.env.PORT ?? '3001');
+const DEFAULT_ALLOWED_ORIGINS = new Set<string>([
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  `http://localhost:${PORT}`,
+  `http://127.0.0.1:${PORT}`,
+]);
+const EXTRA_ALLOWED_ORIGINS = (process.env.TAGMA_ALLOWED_ORIGINS ?? '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+const ALLOWED_ORIGINS = new Set<string>([...DEFAULT_ALLOWED_ORIGINS, ...EXTRA_ALLOWED_ORIGINS]);
 import {
   stopWatching as stopFileWatching,
 } from '../file-watcher.js';
@@ -123,6 +137,15 @@ export function registerWorkspaceRoutes(app: express.Express): void {
   app.get('/api/fs/list', (req, res) => {
     const requested = (req.query.path as string) || S.workDir;
     const isPicker = req.query.picker === '1' || req.query.picker === 'true';
+    // C3b: picker mode allows browsing outside workDir, but must come from
+    // an allowed origin. Without this check, a CSRF page could use picker
+    // mode to enumerate the host filesystem.
+    if (isPicker) {
+      const origin = req.headers.origin;
+      if (origin && !ALLOWED_ORIGINS.has(origin)) {
+        return res.status(403).json({ error: 'Picker mode requires an allowed Origin' });
+      }
+    }
     let dirPath = resolve(requested);
     try {
       if (!existsSync(dirPath)) {
@@ -155,8 +178,8 @@ export function registerWorkspaceRoutes(app: express.Express): void {
         });
       const parent = dirname(dirPath);
       res.json({ path: dirPath, parent: parent !== dirPath ? parent : null, entries });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message ?? 'Failed to list directory' });
+    } catch (err: unknown) {
+      res.status(500).json({ error: errorMessage(err) || 'Failed to list directory' });
     }
   });
 
@@ -171,10 +194,11 @@ export function registerWorkspaceRoutes(app: express.Express): void {
           const absPath = resolve(tagmaDir, e.name);
           let pipelineName: string | null = null;
           try {
-            const doc = yaml.load(readFileSync(absPath, 'utf-8')) as any;
+            const doc = yaml.load(readFileSync(absPath, 'utf-8')) as Record<string, unknown> | null;
+            const pipeline = doc && typeof doc === 'object' && 'pipeline' in doc ? (doc.pipeline as Record<string, unknown>) : null;
             const candidate =
-              (doc && typeof doc?.pipeline?.name === 'string' && doc.pipeline.name) ||
-              (doc && typeof doc?.name === 'string' && doc.name) ||
+              (pipeline && typeof pipeline.name === 'string' && pipeline.name) ||
+              (doc && typeof doc.name === 'string' && doc.name) ||
               null;
             if (candidate && String(candidate).trim()) pipelineName = String(candidate).trim();
           } catch {}
@@ -182,8 +206,8 @@ export function registerWorkspaceRoutes(app: express.Express): void {
         })
         .sort((a, b) => a.name.localeCompare(b.name));
       res.json({ entries });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message ?? 'Failed to list workspace yamls' });
+    } catch (err: unknown) {
+      res.status(500).json({ error: errorMessage(err) || 'Failed to list workspace yamls' });
     }
   });
 
@@ -209,14 +233,21 @@ export function registerWorkspaceRoutes(app: express.Express): void {
     // (workspace-root / import / export) UI that is explicitly allowed to
     // walk the host filesystem. Otherwise B1: mkdir must stay within workDir.
     const isPicker = req.query.picker === '1' || req.query.picker === 'true';
+    // C3b: picker mode mkdir must come from an allowed origin (same as fs/list).
+    if (isPicker) {
+      const origin = req.headers.origin;
+      if (origin && !ALLOWED_ORIGINS.has(origin)) {
+        return res.status(403).json({ error: 'Picker mode requires an allowed Origin' });
+      }
+    }
     if (!isPicker && S.workDir && !isPathWithin(absPath, S.workDir)) {
       return res.status(403).json({ error: 'Path is outside the workspace directory' });
     }
     try {
       mkdirSync(absPath, { recursive: true });
       res.json({ path: absPath });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message ?? 'Failed to create directory' });
+    } catch (err: unknown) {
+      res.status(500).json({ error: errorMessage(err) || 'Failed to create directory' });
     }
   });
 
@@ -240,8 +271,8 @@ export function registerWorkspaceRoutes(app: express.Express): void {
         Bun.spawnSync(['xdg-open', dir]);
       }
       res.json({ ok: true });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message ?? 'Failed to reveal' });
+    } catch (err: unknown) {
+      res.status(500).json({ error: errorMessage(err) || 'Failed to reveal' });
     }
   });
 
@@ -276,8 +307,8 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       beginWatching(absPath, content);
       await autoLoadInstalledPlugins();
       res.json(getState());
-    } catch (e: any) {
-      res.status(400).json({ error: e.message ?? 'Failed to open file' });
+    } catch (err: unknown) {
+      res.status(400).json({ error: errorMessage(err) || 'Failed to open file' });
     }
   });
 
@@ -301,8 +332,8 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       saveLayout();
       beginWatching(savePath, content);
       res.json(getState());
-    } catch (e: any) {
-      res.status(500).json({ error: e.message ?? 'Failed to save file' });
+    } catch (err: unknown) {
+      res.status(500).json({ error: errorMessage(err) || 'Failed to save file' });
     }
   });
 
@@ -329,8 +360,8 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       saveLayout();
       beginWatching(absPath, yaml);
       res.json(getState());
-    } catch (e: any) {
-      res.status(500).json({ error: e.message ?? 'Failed to save file' });
+    } catch (err: unknown) {
+      res.status(500).json({ error: errorMessage(err) || 'Failed to save file' });
     }
   });
 
@@ -404,9 +435,17 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       loadLayout();
       beginWatching(destPath, content);
       await autoLoadInstalledPlugins();
-      res.json(getState());
-    } catch (e: any) {
-      res.status(400).json({ error: e.message ?? 'Failed to import file' });
+      // Check if imported YAML contains shell command tasks — warn the user
+      // that imported pipelines may execute arbitrary shell commands.
+      const hasCommandTasks = S.config.tracks.some(t => t.tasks.some(task => task.command));
+      const state = getState();
+      if (hasCommandTasks) {
+        (state as Record<string, unknown>).importWarning =
+          'This pipeline contains shell command tasks that will execute on the host machine when run. Review them before starting a run.';
+      }
+      res.json(state);
+    } catch (err: unknown) {
+      res.status(400).json({ error: errorMessage(err) || 'Failed to import file' });
     }
   });
 
@@ -437,8 +476,8 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       const destLayoutFile = companionLayoutPath(destPath);
       writeFileSync(destLayoutFile, JSON.stringify(S.layout, null, 2), 'utf-8');
       res.json({ ok: true, path: destPath });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message ?? 'Failed to export file' });
+    } catch (err: unknown) {
+      res.status(500).json({ error: errorMessage(err) || 'Failed to export file' });
     }
   });
 
@@ -478,8 +517,8 @@ export function registerWorkspaceRoutes(app: express.Express): void {
         stopFileWatching();
       }
       res.json(getState());
-    } catch (e: any) {
-      res.status(500).json({ error: e.message ?? 'Failed to delete file' });
+    } catch (err: unknown) {
+      res.status(500).json({ error: errorMessage(err) || 'Failed to delete file' });
     }
   });
 
@@ -518,8 +557,8 @@ export function registerWorkspaceRoutes(app: express.Express): void {
     try {
       S.config = parseYaml(DEMO);
       res.json(getState());
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
+    } catch (err: unknown) {
+      res.status(500).json({ error: errorMessage(err) });
     }
   });
 }

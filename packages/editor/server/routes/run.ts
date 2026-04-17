@@ -30,6 +30,7 @@ import type {
   Permissions,
 } from '@tagma/types';
 import { assertSafePluginName } from '../plugin-safety.js';
+import { errorMessage } from '../path-utils.js';
 import { S, MAX_LOG_RUNS } from '../state.js';
 import {
   loadedPluginMeta,
@@ -327,7 +328,7 @@ function computeTaskCounts(tasks: RunSummaryTask[]): NonNullable<RunHistoryEntry
   const counts = { total: tasks.length, success: 0, failed: 0, timeout: 0, skipped: 0, blocked: 0, running: 0, waiting: 0, idle: 0 };
   for (const t of tasks) {
     const k = t.status;
-    if (k in counts) (counts as any)[k] += 1;
+    if (k in counts) (counts as Record<string, number>)[k] += 1;
   }
   return counts;
 }
@@ -879,8 +880,8 @@ export function registerRunRoutes(app: express.Express): void {
         .sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1))
         .slice(0, MAX_LOG_RUNS);
       res.json({ runs: entries });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
+    } catch (err: unknown) {
+      res.status(500).json({ error: errorMessage(err) });
     }
   });
 
@@ -900,8 +901,8 @@ export function registerRunRoutes(app: express.Express): void {
       const raw = readFileSync(logFile, 'utf-8');
       const content = stat.size > MAX_LOG_BYTES ? clip(raw, MAX_LOG_BYTES) : raw;
       res.json({ runId, content });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
+    } catch (err: unknown) {
+      res.status(500).json({ error: errorMessage(err) });
     }
   });
 

@@ -64,17 +64,20 @@ export async function registryMeta(name: string): Promise<PackageMeta> {
     signal: AbortSignal.timeout(REGISTRY_FETCH_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`Package "${name}" not found on registry (${res.status})`);
-  const meta = await res.json() as any;
-  const latest = meta['dist-tags']?.latest;
+  const meta = await res.json() as Record<string, unknown>;
+  const distTags = meta['dist-tags'] as Record<string, string> | undefined;
+  const versions = meta.versions as Record<string, Record<string, unknown>> | undefined;
+  const latest = distTags?.latest;
   if (!latest) throw new Error(`No published version for "${name}"`);
-  const info = meta.versions?.[latest];
-  if (!info?.dist?.tarball) throw new Error(`No tarball for ${name}@${latest}`);
+  const info = versions?.[latest] as Record<string, unknown> | undefined;
+  const dist = info?.dist as Record<string, unknown> | undefined;
+  if (!dist?.tarball) throw new Error(`No tarball for ${name}@${latest}`);
   return {
     version: latest,
-    description: info.description ?? null,
-    tarball: info.dist.tarball,
-    integrity: typeof info.dist.integrity === 'string' ? info.dist.integrity : null,
-    shasum: typeof info.dist.shasum === 'string' ? info.dist.shasum : null,
+    description: (info?.description as string) ?? null,
+    tarball: dist.tarball as string,
+    integrity: typeof dist.integrity === 'string' ? dist.integrity : null,
+    shasum: typeof dist.shasum === 'string' ? dist.shasum : null,
   };
 }
 

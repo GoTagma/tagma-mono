@@ -33,15 +33,10 @@ export function validatePath(filePath: string, projectRoot: string): string {
   return resolved;
 }
 
-let runCounter = 0;
-
 export function generateRunId(): string {
   const ts = Date.now().toString(36);
-  const seq = (runCounter++).toString(36).padStart(2, '0');
-  // Random suffix prevents ID collisions when two pipelines start within
-  // the same millisecond or after a process restart resets the counter.
-  const rand = randomBytes(3).toString('hex');
-  return `run_${ts}_${seq}_${rand}`;
+  const rand = randomBytes(6).toString('hex');
+  return `run_${ts}_${rand}`;
 }
 
 export function truncateForName(text: string, maxLen = 40): string {
