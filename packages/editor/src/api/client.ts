@@ -23,7 +23,13 @@ import type {
   ApprovalRequest as SdkApprovalRequest,
   DriverCapabilities as SdkDriverCapabilities,
   PluginCategory as SdkPluginCategory,
+  TaskLogLevel as SdkTaskLogLevel,
+  TaskLogLine as SdkTaskLogLine,
+  RunTaskState as SdkRunTaskState,
+  AbortReason as SdkAbortReason,
+  WireRunEvent as SdkWireRunEvent,
 } from '@tagma/types';
+import { RUN_PROTOCOL_VERSION } from '@tagma/types';
 
 // Recursively strip `readonly` from object fields and array element
 // wrappers. Primitives, unions of primitives, and untyped index
@@ -440,47 +446,20 @@ export interface FsListResult {
 }
 
 // ── Run types ──
+//
+// The canonical wire types live in `@tagma/types`. We alias them locally
+// so every component in the editor can `import { RunEvent } from '../api/client'`
+// without also having to know about `@tagma/types`. `RunEvent` is the
+// stamped wire event (always carries runId + seq) — the same values the
+// editor server broadcasts. `AbortReason` is re-exported for the RunView
+// to render a human-readable "why this stopped" when run_end.abortReason
+// is non-null.
 
-export type TaskLogLevel = 'info' | 'warn' | 'error' | 'debug' | 'section' | 'quiet';
-
-export interface TaskLogLine {
-  level: TaskLogLevel;
-  timestamp: string; // HH:MM:SS.mmm — mirrors pipeline.log formatting
-  text: string; // fully-formatted line as written to the log file
-}
-
-export interface RunTaskState {
-  taskId: string;
-  trackId: string;
-  taskName: string;
-  status: TaskStatus;
-  startedAt: string | null;
-  finishedAt: string | null;
-  durationMs: number | null;
-  exitCode: number | null;
-  stdout: string;
-  stderr: string;
-  // ── Extended fields from SDK TaskResult ──
-  // These mirror @tagma/sdk TaskResult and are populated by the server when
-  // it observes a task_status_change event with a finished TaskState. They
-  // stay null until the task actually completes.
-  stderrPath: string | null;
-  sessionId: string | null;
-  normalizedOutput: string | null;
-  // Resolved runtime config. The SDK resolves inheritance (task → track →
-  // pipeline → default) once a task starts, and the authoritative values are
-  // captured here so the Run-side panel can display what actually ran.
-  resolvedDriver: string | null;
-  resolvedModel: string | null;
-  resolvedPermissions: Permissions | null;
-  // Streamed process log lines sourced from the SDK Logger (same content as
-  // pipeline.log). Capped by the reducer so an excessively chatty task does
-  // not grow the store without bound.
-  logs: TaskLogLine[];
-  // C6: Total number of log lines received (including those truncated from
-  // the buffer). Used to show "showing N of M lines" when truncated.
-  totalLogCount: number;
-}
+export type TaskLogLevel = SdkTaskLogLevel;
+export type TaskLogLine = Mutable<SdkTaskLogLine>;
+export type RunTaskState = Mutable<SdkRunTaskState>;
+export type AbortReason = SdkAbortReason;
+export type RunEvent = SdkWireRunEvent;
 
 export interface RunState {
   runId: string | null;
@@ -488,54 +467,6 @@ export interface RunState {
   tasks: RunTaskState[];
   error: string | null;
 }
-
-export type RunEvent =
-  | { type: 'run_start'; runId: string; tasks: RunTaskState[]; seq?: number }
-  | {
-      type: 'run_snapshot';
-      runId: string;
-      tasks: RunTaskState[];
-      pendingApprovals: ApprovalRequestInfo[];
-      seq?: number;
-    }
-  | {
-      type: 'task_update';
-      runId?: string;
-      taskId: string;
-      status: TaskStatus;
-      startedAt?: string;
-      finishedAt?: string;
-      durationMs?: number;
-      exitCode?: number;
-      stdout?: string;
-      stderr?: string;
-      stderrPath?: string | null;
-      sessionId?: string | null;
-      normalizedOutput?: string | null;
-      resolvedDriver?: string | null;
-      resolvedModel?: string | null;
-      resolvedPermissions?: Permissions | null;
-      seq?: number;
-    }
-  | { type: 'run_end'; runId?: string; success: boolean; seq?: number }
-  | { type: 'run_error'; runId?: string; error: string; seq?: number }
-  | {
-      type: 'task_log';
-      runId?: string;
-      taskId: string | null;
-      level: TaskLogLevel;
-      timestamp: string;
-      text: string;
-      seq?: number;
-    }
-  | { type: 'approval_request'; runId?: string; request: ApprovalRequestInfo; seq?: number }
-  | {
-      type: 'approval_resolved';
-      runId?: string;
-      requestId: string;
-      outcome: ApprovalOutcome;
-      seq?: number;
-    };
 
 export interface RunHistoryTaskCounts {
   total: number;

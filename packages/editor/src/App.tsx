@@ -562,6 +562,57 @@ export function App() {
     ],
   );
 
+  // Batch import: copy each picked YAML into `.tagma/`. The server's
+  // `/api/import-file` is one-at-a-time — calling it sequentially is fine
+  // because each call (a) copies the file under the workspace and (b) sets
+  // `S.config` to it, so the LAST file in `paths` ends up as the active
+  // pipeline. That matches user intuition (the most recently clicked file is
+  // the one they want open). Earlier files remain in `.tagma/` and show up in
+  // the history list, ready to be opened.
+  const handleExplorerConfirmMany = useCallback(
+    async (paths: string[]) => {
+      if (!explorer || paths.length === 0) return;
+      if (paths.length === 1) {
+        await importFile(paths[0]);
+        setExplorer(null);
+        return;
+      }
+      setExplorer(null);
+      const failures: { path: string; error: string }[] = [];
+      for (const p of paths) {
+        try {
+          await importFile(p);
+        } catch (e: unknown) {
+          failures.push({
+            path: p,
+            error: (e instanceof Error ? e.message : null) ?? 'Unknown error',
+          });
+        }
+      }
+      const succeeded = paths.length - failures.length;
+      if (failures.length === 0) {
+        setDialog({
+          type: 'success',
+          title: 'Pipelines Imported',
+          details: [
+            `Imported ${succeeded} pipelines into the workspace.`,
+            `Now editing: ${paths[paths.length - 1].split(/[\\/]/).pop() ?? paths[paths.length - 1]}`,
+          ],
+        });
+      } else {
+        setDialog({
+          type: 'error',
+          title: 'Import Partially Failed',
+          details: [
+            `${succeeded} of ${paths.length} pipelines imported.`,
+            ...failures.map((f) => `Failed: ${f.path} — ${f.error}`),
+          ],
+        });
+      }
+    },
+    [explorer, importFile],
+  );
+
   const handleNewPipeline = useCallback(() => {
     if (!requireWorkspace('new')) return;
     newPipeline();
@@ -1100,6 +1151,10 @@ export function App() {
             explorer.purpose === 'export'
           }
           onConfirm={handleExplorerConfirm}
+          multiple={explorer.purpose === 'import'}
+          onConfirmMany={
+            explorer.purpose === 'import' ? handleExplorerConfirmMany : undefined
+          }
           onCancel={() => {
             const wasPluginImport = explorer?.purpose === 'plugin-import';
             setExplorer(null);

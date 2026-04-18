@@ -78,6 +78,7 @@ function pickFoldState(s: RunStoreState): RunFoldState {
     error: s.error,
     pendingApprovals: s.pendingApprovals,
     lastEventSeq: s.lastEventSeq,
+    abortReason: s.abortReason,
   };
 }
 
@@ -148,6 +149,7 @@ export const useRunStore = create<RunStoreState>((set, get) => {
     replayFromRunId: null,
     pendingApprovals: new Map<string, ApprovalRequestInfo>(),
     lastEventSeq: 0,
+    abortReason: null,
 
     startRun: async (config, overrides) => {
       // Defensive: a previous run may have been minimized (still alive
@@ -178,6 +180,7 @@ export const useRunStore = create<RunStoreState>((set, get) => {
         replayFromRunId: overrides?.fromRunId ?? null,
         pendingApprovals: new Map(),
         lastEventSeq: 0,
+        abortReason: null,
       });
       // Subscribe to SSE events before starting
       unsubscribe = api.subscribeRunEvents(handleEvent);
@@ -268,6 +271,7 @@ export const useRunStore = create<RunStoreState>((set, get) => {
         replayFromRunId: null,
         pendingApprovals: new Map(),
         lastEventSeq: 0,
+        abortReason: null,
       });
     },
   };

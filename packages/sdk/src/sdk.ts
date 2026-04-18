@@ -5,7 +5,7 @@
 
 // ── Core engine ──
 export { runPipeline, TriggerBlockedError, TriggerTimeoutError } from './engine';
-export type { EngineResult, RunPipelineOptions, PipelineEvent } from './engine';
+export type { EngineResult, RunPipelineOptions, RunEventPayload } from './engine';
 
 // ── Pipeline runner (multi-pipeline lifecycle management) ──
 export { PipelineRunner } from './pipeline-runner';

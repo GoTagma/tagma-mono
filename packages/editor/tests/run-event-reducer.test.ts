@@ -152,18 +152,28 @@ test('SSE reconnect replay with seq dedupe: duplicates are dropped', () => {
   expect(after3.lastEventSeq).toBe(3);
 });
 
-test('events whose runId mismatches the active run are dropped', () => {
-  const state = foldRunEvent(initialRunFoldState(), runStart(1));
-  const wrongRun: RunEvent = {
+test('events whose runId mismatches the active run trigger a state reset', () => {
+  // New-protocol behaviour: a mismatched runId signals the server is
+  // streaming a different run, so the reducer discards the prior run's
+  // state and adopts the new one. Previously (seq-only dedup) these
+  // events were silently dropped — that caused UI freezes when a cross-
+  // run reconnect arrived via run_snapshot without run_start.
+  const prior = foldRunEvent(initialRunFoldState(), runStart(1));
+  const crossRun: RunEvent = {
     type: 'task_update',
     runId: 'run_OTHER',
     taskId: 'track_a.task_1',
     status: 'success',
     seq: 2,
   };
-  const next = foldRunEvent(state, wrongRun);
-  // Same reference → no-op
-  expect(next).toBe(state);
+  const next = foldRunEvent(prior, crossRun);
+  expect(next).not.toBe(prior);
+  expect(next.runId).toBe('run_OTHER');
+  expect(next.lastEventSeq).toBe(2);
+  // task_update fabricates an entry when the task isn't in the seeded
+  // map (there is no seeded map yet because run_start for run_OTHER
+  // never arrived) — that fabricated record must carry the new status.
+  expect(next.tasks.get('track_a.task_1')?.status).toBe('success');
 });
 
 test('approval_request adds to pending map', () => {
@@ -186,7 +196,7 @@ test('approval_request adds to pending map', () => {
   expect(state.pendingApprovals.has('req_1')).toBe(true);
 });
 
-test('run_snapshot restores the latest task map and pending approvals without rewinding seq', () => {
+test('run_snapshot replaces task map + pending approvals + pipelineLogs and advances seq', () => {
   let state = foldRunEvent(initialRunFoldState(), runStart(5));
   state = foldRunEvent(state, {
     type: 'task_update',
@@ -208,11 +218,46 @@ test('run_snapshot restores the latest task map and pending approvals without re
     runId: 'run_test',
     tasks: [makeTask({ status: 'blocked', stdout: 'latest', totalLogCount: 3 })],
     pendingApprovals: [snapshotReq],
+    pipelineLogs: [
+      { level: 'info', timestamp: '10:00:00.000', text: '[pipeline] header line' },
+    ],
+    seq: 7,
   });
-  expect(state.lastEventSeq).toBe(6);
+  // Snapshot carries its own seq; reducer adopts it. No rewind — snapshot
+  // is emitted monotonically by the server alongside regular events.
+  expect(state.lastEventSeq).toBe(7);
   expect(state.tasks.get('track_a.task_1')?.status).toBe('blocked');
   expect(state.tasks.get('track_a.task_1')?.stdout).toBe('latest');
   expect(state.pendingApprovals.has('req_snapshot')).toBe(true);
+  expect(state.pipelineLogs).toHaveLength(1);
+  expect(state.pipelineLogs[0].text).toContain('header line');
+});
+
+test('run_snapshot with a different runId resets the fold state', () => {
+  // Simulated cross-run reconnect: client had folded run_test up to seq 50,
+  // then receives a run_snapshot for run_OTHER. Under the (runId, seq)
+  // dedup model this must reset lastEventSeq to the snapshot's seq so
+  // subsequent lower-seq events from run_OTHER are not dropped.
+  let state = foldRunEvent(initialRunFoldState(), runStart(50));
+  state = foldRunEvent(state, {
+    type: 'run_snapshot',
+    runId: 'run_OTHER',
+    tasks: [makeTask({ taskId: 'track_a.new_task', stdout: 'fresh' })],
+    pendingApprovals: [],
+    pipelineLogs: [],
+    seq: 1,
+  });
+  expect(state.runId).toBe('run_OTHER');
+  expect(state.lastEventSeq).toBe(1);
+  // A subsequent event from run_OTHER with seq=2 must fold, not drop.
+  state = foldRunEvent(state, {
+    type: 'task_update',
+    runId: 'run_OTHER',
+    taskId: 'track_a.new_task',
+    status: 'success',
+    seq: 2,
+  });
+  expect(state.tasks.get('track_a.new_task')?.status).toBe('success');
 });
 
 test('approval_resolved with timeout surfaces an error banner', () => {
@@ -269,14 +314,54 @@ test('approval_resolved with approved does NOT set an error banner', () => {
 
 test('run_end success flips status to done', () => {
   let state = foldRunEvent(initialRunFoldState(), runStart(1));
-  state = foldRunEvent(state, { type: 'run_end', runId: 'run_test', success: true, seq: 2 });
+  state = foldRunEvent(state, {
+    type: 'run_end',
+    runId: 'run_test',
+    success: true,
+    abortReason: null,
+    seq: 2,
+  });
   expect(state.status).toBe('done');
 });
 
 test('run_end failure flips status to failed when the client did not explicitly abort', () => {
   let state = foldRunEvent(initialRunFoldState(), runStart(1));
-  state = foldRunEvent(state, { type: 'run_end', runId: 'run_test', success: false, seq: 2 });
+  state = foldRunEvent(state, {
+    type: 'run_end',
+    runId: 'run_test',
+    success: false,
+    abortReason: null,
+    seq: 2,
+  });
   expect(state.status).toBe('failed');
+});
+
+test('run_end with abortReason=timeout maps to status=aborted', () => {
+  let state = foldRunEvent(initialRunFoldState(), runStart(1));
+  state = foldRunEvent(state, {
+    type: 'run_end',
+    runId: 'run_test',
+    success: false,
+    abortReason: 'timeout',
+    seq: 2,
+  });
+  expect(state.status).toBe('aborted');
+  expect(state.abortReason).toBe('timeout');
+});
+
+test('run_end with abortReason=stop_all maps to status=failed', () => {
+  // stop_all fires as a consequence of a task failure, which the user
+  // perceives as an organic pipeline failure — not an abort.
+  let state = foldRunEvent(initialRunFoldState(), runStart(1));
+  state = foldRunEvent(state, {
+    type: 'run_end',
+    runId: 'run_test',
+    success: false,
+    abortReason: 'stop_all',
+    seq: 2,
+  });
+  expect(state.status).toBe('failed');
+  expect(state.abortReason).toBe('stop_all');
 });
 
 test('run_error sets status=error and surfaces the message', () => {
@@ -399,15 +484,6 @@ test('task_update preserves streamed logs', () => {
   expect(task.logs[0].text).toBe('early diag');
 });
 
-test('events without seq never advance lastEventSeq', () => {
-  let state = foldRunEvent(initialRunFoldState(), runStart(1));
-  state = foldRunEvent(state, {
-    type: 'task_update',
-    runId: 'run_test',
-    taskId: 'track_a.task_1',
-    status: 'running',
-  });
-  // lastEventSeq preserved because event had no seq
-  expect(state.lastEventSeq).toBe(1);
-  expect(state.tasks.get('track_a.task_1')!.status).toBe('running');
-});
+// The old "events without seq never advance lastEventSeq" test was
+// obsoleted when seq became mandatory on every wire event; its premise
+// (seq-less events) is now unrepresentable at the type level.

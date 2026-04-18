@@ -14,6 +14,10 @@ import type {
   DriverContext,
   OnFailure,
   PromptDocument,
+  Permissions,
+  AbortReason,
+  RunEventPayload,
+  RunTaskState,
 } from './types';
 import { buildDag, type Dag } from './dag';
 import { getHandler, hasHandler, loadPlugins } from './registry';
@@ -144,37 +148,52 @@ export interface EngineResult {
 }
 
 // ═══ Pipeline Events ═══
+//
+// The engine emits RunEventPayload values (defined in @tagma/types) via
+// `onEvent`. Every payload carries `runId`; the editor server stamps a
+// per-run `seq` before broadcasting. There is one event vocabulary
+// end-to-end — no server-side translation layer.
 
-export type PipelineEvent =
-  | {
-      readonly type: 'task_status_change';
-      readonly taskId: string;
-      readonly status: TaskStatus;
-      readonly prevStatus: TaskStatus;
-      readonly runId: string;
-      readonly state: TaskState;
-    }
-  | {
-      readonly type: 'pipeline_start';
-      readonly runId: string;
-      readonly states: ReadonlyMap<string, TaskState>;
-    }
-  | { readonly type: 'pipeline_end'; readonly runId: string; readonly success: boolean }
-  /**
-   * Fine-grained log line emitted alongside every write to pipeline.log.
-   * Consumers use this to stream the full run process into UIs without
-   * tailing the log file. `taskId` is non-null for task-scoped lines and
-   * null for pipeline-wide messages (e.g. configuration dumps, DAG
-   * topology, pipeline start/end).
-   */
-  | {
-      readonly type: 'task_log';
-      readonly runId: string;
-      readonly taskId: string | null;
-      readonly level: LogLevel;
-      readonly timestamp: string;
-      readonly text: string;
-    };
+// Re-export so SDK consumers can import the event type without reaching
+// into @tagma/types directly.
+export type { RunEventPayload } from './types';
+
+// ═══ Helpers ═══
+
+/**
+ * Project the engine's internal TaskState onto the wire RunTaskState
+ * shape. `logs` / `totalLogCount` default to empty — they are populated
+ * on the server side from streamed `task_log` events, not from state.
+ */
+function toRunTaskState(
+  taskId: string,
+  trackId: string,
+  taskName: string,
+  state: TaskState,
+): RunTaskState {
+  const result = state.result;
+  const cfg = state.config;
+  return {
+    taskId,
+    trackId,
+    taskName,
+    status: state.status,
+    startedAt: state.startedAt,
+    finishedAt: state.finishedAt,
+    durationMs: result?.durationMs ?? null,
+    exitCode: result?.exitCode ?? null,
+    stdout: result?.stdout ?? '',
+    stderr: result?.stderr ?? '',
+    stderrPath: result?.stderrPath ?? null,
+    sessionId: result?.sessionId ?? null,
+    normalizedOutput: result?.normalizedOutput ?? null,
+    resolvedDriver: cfg.driver ?? null,
+    resolvedModel: cfg.model ?? null,
+    resolvedPermissions: (cfg.permissions as Permissions | undefined) ?? null,
+    logs: [],
+    totalLogCount: 0,
+  };
+}
 
 export interface RunPipelineOptions {
   readonly approvalGateway?: ApprovalGateway;
@@ -198,7 +217,7 @@ export interface RunPipelineOptions {
    * Called on every pipeline/task status transition.
    * Use for real-time UI updates (e.g. updating a visual workflow graph).
    */
-  readonly onEvent?: (event: PipelineEvent) => void;
+  readonly onEvent?: (event: RunEventPayload) => void;
   /**
    * Skip the engine's built-in `loadPlugins(config.plugins)` call.
    * Use this when the host has already pre-loaded plugins from a custom
@@ -290,7 +309,10 @@ export async function runPipeline(
       });
     }
 
-    // Pipeline start hook (gate)
+    // Pipeline start hook (gate). Runs BEFORE the engine emits run_start so
+    // a blocked pipeline produces zero wire events (the server treats the
+    // thrown error as run_error). Hosts get a rich error message; nothing
+    // is ever half-broadcast.
     const startHook = await executeHook(
       config.hooks,
       'pipeline_start',
@@ -305,7 +327,6 @@ export async function runPipeline(
         buildPipelineErrorContext(pipelineInfo, 'pipeline_blocked', 'pipeline_blocked'),
         workDir,
       );
-      // All tasks stay idle — pipeline never started
       return {
         success: false,
         runId,
@@ -322,41 +343,51 @@ export async function runPipeline(
       };
     }
 
-    // Pipeline approved — transition all tasks to waiting
+    // Pipeline approved — transition all tasks to waiting.
     for (const [, state] of states) {
       state.status = 'waiting';
     }
-    // Include a full states snapshot so listeners can initialize their mirrors without missing events
-    const statesSnapshot: ReadonlyMap<string, TaskState> = new Map(
-      [...states.entries()].map(([id, s]) => [id, { ...s }]),
-    );
-    options.onEvent?.({ type: 'pipeline_start', runId, states: statesSnapshot });
+    // Emit run_start with a wire-shape snapshot so SSE subscribers can
+    // initialize their task maps on the same event stream that carries
+    // updates. No separate "server pre-broadcasts run_start" ceremony —
+    // the engine owns the lifecycle boundary.
+    const runStartTasks: RunTaskState[] = [];
+    for (const [id, node] of dag.nodes) {
+      const s = states.get(id)!;
+      runStartTasks.push(toRunTaskState(id, node.track.id, node.task.name ?? id, s));
+    }
+    emit({ type: 'run_start', runId, tasks: runStartTasks });
 
     const sessionMap = new Map<string, string>();
     const normalizedMap = new Map<string, string>();
 
-    // Pipeline timeout
+    // Pipeline timeout + abort reason tracking.
+    //
+    // `abortReason` replaces the previous `pipelineAborted: boolean`: it
+    // carries the concrete cause (timeout / stop_all / external) through
+    // to run_end and the pipeline_error hook so downstream consumers can
+    // distinguish them without scraping message strings.
     const pipelineTimeoutMs = config.timeout ? parseDuration(config.timeout) : 0;
-    let pipelineAborted = false;
+    let abortReason: AbortReason | null = null;
     const abortController = new AbortController();
     let pipelineTimer: ReturnType<typeof setTimeout> | null = null;
 
     if (pipelineTimeoutMs > 0) {
       pipelineTimer = setTimeout(() => {
-        pipelineAborted = true;
+        if (abortReason === null) abortReason = 'timeout';
         abortController.abort();
       }, pipelineTimeoutMs);
     }
 
-    // When the pipeline is aborted (timeout, external shutdown), drain all
-    // pending approvals so waiting triggers unblock immediately.
+    // When the pipeline is aborted (timeout, stop_all, external), drain
+    // all pending approvals so waiting triggers unblock immediately.
     abortController.signal.addEventListener('abort', () => {
       approvalGateway.abortAll('pipeline aborted');
     });
 
     // Wire external cancel signal into the internal abort controller.
     const externalAbortHandler = () => {
-      pipelineAborted = true;
+      if (abortReason === null) abortReason = 'external';
       abortController.abort();
     };
     if (options.signal) {
@@ -367,9 +398,45 @@ export async function runPipeline(
       }
     }
 
+    // Bridge approval gateway events onto the wire stream so hosts (editor
+    // server, CLI adapters) see approvals on the same channel as task
+    // updates. The server no longer needs its own gateway subscription.
+    const unsubscribeApprovals = approvalGateway.subscribe((ev) => {
+      if (ev.type === 'requested') {
+        emit({
+          type: 'approval_request',
+          runId,
+          request: {
+            id: ev.request.id,
+            taskId: ev.request.taskId,
+            trackId: ev.request.trackId,
+            message: ev.request.message,
+            createdAt: ev.request.createdAt,
+            timeoutMs: ev.request.timeoutMs,
+            metadata: ev.request.metadata,
+          },
+        });
+        return;
+      }
+      if (ev.type === 'resolved' || ev.type === 'expired' || ev.type === 'aborted') {
+        const outcome =
+          ev.type === 'resolved'
+            ? ev.decision.outcome
+            : ev.type === 'expired'
+              ? 'timeout'
+              : 'aborted';
+        emit({
+          type: 'approval_resolved',
+          runId,
+          requestId: ev.request.id,
+          outcome,
+        });
+      }
+    });
+
     // ── Helpers ──
 
-    function emit(event: PipelineEvent): void {
+    function emit(event: RunEventPayload): void {
       options.onEvent?.(event);
     }
 
@@ -380,24 +447,26 @@ export async function runPipeline(
       // skipped and then having their in-flight processTask promise overwrite
       // that with success/failed, producing an invalid double transition.
       if (isTerminal(state.status)) return;
-      const prevStatus = state.status;
       state.status = newStatus;
-      // Snapshot state at emit time — result and finishedAt must be set before calling this for terminal statuses
-      const snapshot: TaskState = {
-        config: state.config,
-        trackConfig: state.trackConfig,
-        status: state.status,
-        result: state.result,
-        startedAt: state.startedAt,
-        finishedAt: state.finishedAt,
-      };
+      const result = state.result;
+      const cfg = state.config;
       emit({
-        type: 'task_status_change',
+        type: 'task_update',
+        runId,
         taskId,
         status: newStatus,
-        prevStatus,
-        runId,
-        state: snapshot,
+        startedAt: state.startedAt ?? undefined,
+        finishedAt: state.finishedAt ?? undefined,
+        durationMs: result?.durationMs,
+        exitCode: result?.exitCode,
+        stdout: result?.stdout,
+        stderr: result?.stderr,
+        stderrPath: result?.stderrPath ?? null,
+        sessionId: result?.sessionId ?? null,
+        normalizedOutput: result?.normalizedOutput ?? null,
+        resolvedDriver: cfg.driver ?? null,
+        resolvedModel: cfg.model ?? null,
+        resolvedPermissions: (cfg.permissions as Permissions | undefined) ?? null,
       });
     }
 
@@ -435,7 +504,7 @@ export async function runPipeline(
      * should a completed running task try to overwrite the skipped state.
      */
     function applyStopAll(_failedTrackId: string): void {
-      pipelineAborted = true;
+      if (abortReason === null) abortReason = 'stop_all';
       abortController.abort();
       for (const [id, state] of states) {
         if (state.status === 'waiting') {
@@ -559,7 +628,7 @@ export async function runPipeline(
           // If pipeline was aborted while we were still waiting for the trigger,
           // this task never entered running state → skipped, not timeout.
           state.finishedAt = nowISO();
-          if (pipelineAborted) {
+          if (abortReason !== null) {
             setTaskStatus(taskId, 'skipped');
           } else if (err instanceof TriggerBlockedError) {
             setTaskStatus(taskId, 'blocked'); // user/policy rejection
@@ -618,7 +687,7 @@ export async function runPipeline(
       }
 
       // 4. Mark running — set startedAt before emitting so subscribers see a
-      // complete snapshot (startedAt non-null) in the task_status_change event.
+      // complete task_update (startedAt non-null) on the status transition.
       state.startedAt = nowISO();
       setTaskStatus(taskId, 'running');
       log.info(
@@ -936,7 +1005,7 @@ export async function runPipeline(
     const running = new Map<string, Promise<void>>();
 
     try {
-      while (!pipelineAborted) {
+      while (abortReason === null) {
         // Launch every task whose deps are all terminal and that isn't already in-flight
         for (const [id, state] of states) {
           if (state.status !== 'waiting' || running.has(id)) continue;
@@ -962,7 +1031,7 @@ export async function runPipeline(
         }
       }
 
-      if (pipelineAborted) {
+      if (abortReason !== null) {
         // Wait for in-flight tasks to honour the abort signal before marking states.
         if (running.size > 0) await Promise.allSettled(running.values());
         for (const [id, state] of states) {
@@ -986,6 +1055,9 @@ export async function runPipeline(
       if (approvalGateway.pending().length > 0) {
         approvalGateway.abortAll('pipeline finished');
       }
+      // Detach gateway → onEvent bridge so a long-lived gateway (host-supplied)
+      // doesn't keep firing into a dead run.
+      unsubscribeApprovals();
     }
 
     // ── Summary ──
@@ -1014,11 +1086,17 @@ export async function runPipeline(
     const finishedAt = nowISO();
     const durationMs = new Date(finishedAt).getTime() - new Date(startedAt).getTime();
 
-    if (pipelineAborted) {
+    if (abortReason !== null) {
+      const reasonText =
+        abortReason === 'timeout'
+          ? 'Pipeline timeout exceeded'
+          : abortReason === 'stop_all'
+            ? 'Pipeline stopped (on_failure: stop_all)'
+            : 'Pipeline aborted by host';
       await executeHook(
         config.hooks,
         'pipeline_error',
-        buildPipelineErrorContext(pipelineInfo, 'Pipeline timeout exceeded'),
+        buildPipelineErrorContext(pipelineInfo, reasonText, undefined, abortReason),
         workDir,
       );
     } else {
@@ -1034,10 +1112,15 @@ export async function runPipeline(
     }
 
     const allSuccess =
-      !pipelineAborted && summary.failed === 0 && summary.timeout === 0 && summary.blocked === 0;
+      abortReason === null &&
+      summary.failed === 0 &&
+      summary.timeout === 0 &&
+      summary.blocked === 0;
 
     log.section('Pipeline summary');
-    log.quiet(`status:   ${pipelineAborted ? 'aborted (timeout)' : 'completed'}`);
+    log.quiet(
+      `status:   ${abortReason !== null ? `aborted (${abortReason})` : 'completed'}`,
+    );
     log.quiet(`duration: ${(durationMs / 1000).toFixed(1)}s`);
     log.quiet(
       `counts:   total=${summary.total} success=${summary.success} ` +
@@ -1061,7 +1144,7 @@ export async function runPipeline(
     log.info('[pipeline]', `Duration: ${(durationMs / 1000).toFixed(1)}s`);
     log.info('[pipeline]', `Log: ${log.path}`);
 
-    emit({ type: 'pipeline_end', runId, success: allSuccess });
+    emit({ type: 'run_end', runId, success: allSuccess, abortReason });
     return { success: allSuccess, runId, logPath: log.path, summary, states: freezeStates(states) };
   } finally {
     // Close the persistent log file handle before pruning.

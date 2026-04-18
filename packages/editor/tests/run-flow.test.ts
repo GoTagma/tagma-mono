@@ -133,7 +133,7 @@ test('full run flow: start → task transitions → approval → stdout visible 
       stdout: 'deployed!',
       seq: 9,
     },
-    { type: 'run_end', runId: 'run_1', success: true, seq: 10 },
+    { type: 'run_end', runId: 'run_1', success: true, abortReason: null, seq: 10 },
   ];
 
   const state = replay(events);
@@ -203,7 +203,7 @@ test('run flow: failure path with stderr visible and status=failed', () => {
       status: 'skipped',
       seq: 5,
     },
-    { type: 'run_end', runId: 'run_fail', success: false, seq: 6 },
+    { type: 'run_end', runId: 'run_fail', success: false, abortReason: null, seq: 6 },
   ];
 
   const state = replay(events);

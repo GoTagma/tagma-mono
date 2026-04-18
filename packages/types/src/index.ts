@@ -1,9 +1,12 @@
 // ═══ @tagma/types ═══
 //
-// Shared type surface for the tagma-sdk engine and all plugins.
-// This package contains ONLY types — no runtime code, no constants.
-// Plugins depend on this so they stay decoupled from the engine's
-// internal modules while remaining type-synchronized with it.
+// Shared type surface for the tagma-sdk engine, the editor server, and
+// the editor client. Plugins depend on this so they stay decoupled from
+// the engine's internal modules while remaining type-synchronized with it.
+//
+// Runtime code is kept to an absolute minimum — currently one protocol
+// constant (TASK_LOG_CAP) that must agree across SDK + server + client
+// (see "Wire Protocol Constants" below). Everything else here is types.
 
 // ═══ Task Status ═══
 
@@ -499,3 +502,203 @@ export interface PluginManifest {
   readonly category: PluginCategory;
   readonly type: string;
 }
+
+// ═══ Wire Protocol: Run Events ═══
+//
+// The engine, editor server, and editor client all speak the same event
+// vocabulary for a pipeline run. Earlier revisions maintained three
+// separate type families (SDK `PipelineEvent`, server `RunEvent`, client
+// `RunEvent`) plus a translation layer in `run.ts` — this was a source of
+// drift bugs and is replaced by the unified types below.
+//
+// Contract:
+//   - The SDK engine emits `RunEventPayload` values through `runPipeline`'s
+//     `onEvent` callback. Every payload carries a `runId` (domain id);
+//     the SDK does not stamp `seq`.
+//   - The editor server's `RunSession` stamps each broadcast with a
+//     monotonic per-run `seq`, producing `WireRunEvent`. The server also
+//     emits `run_snapshot` (server-only: payload shape isn't something the
+//     SDK produces) as part of the same wire union.
+//   - The client folds `WireRunEvent` values through a pure reducer. Dedup
+//     is keyed by `(runId, seq)` — when `runId` changes, the reducer
+//     discards the previous run's seq high-water mark and adopts the new
+//     one. This removes the cross-run stale-seq hazard that existed while
+//     `seq` was a single global counter.
+
+// ═══ Wire Protocol Constants ═══
+
+/**
+ * Protocol version for the SSE event stream between the editor server and
+ * the editor client. Bumped whenever the wire shape of RunEventPayload or
+ * WireRunEvent changes incompatibly. The server echoes this on connect
+ * (header `X-Tagma-Run-Protocol`) and the client refuses to fold events
+ * from a mismatched server. This is the forward-compat seam we use
+ * instead of trying to keep every old shape working.
+ */
+export const RUN_PROTOCOL_VERSION = 1;
+
+/**
+ * Maximum log lines retained per task (and for pipeline-level logs) in the
+ * SSE snapshot buffer on the server and in the reducer on the client. The
+ * two must agree — divergence silently hides log lines. Defined here so
+ * the SDK, server, and client all import the same value.
+ */
+export const TASK_LOG_CAP = 500;
+
+// ═══ Task Log Line ═══
+
+export type TaskLogLevel = 'info' | 'warn' | 'error' | 'debug' | 'section' | 'quiet';
+
+export interface TaskLogLine {
+  readonly level: TaskLogLevel;
+  /** HH:MM:SS.mmm — mirrors pipeline.log formatting. */
+  readonly timestamp: string;
+  /** Fully-formatted line as written to the log file. */
+  readonly text: string;
+}
+
+// ═══ Wire Task State ═══
+//
+// Projection of the engine's internal `TaskState` onto the wire. Flat
+// shape (no nested `result`) so the reducer can merge partial updates
+// with `??` semantics. Mirrors the existing `RunTaskState` the editor
+// client used to declare locally.
+
+export interface RunTaskState {
+  readonly taskId: string;
+  readonly trackId: string;
+  readonly taskName: string;
+  readonly status: TaskStatus;
+  readonly startedAt: string | null;
+  readonly finishedAt: string | null;
+  readonly durationMs: number | null;
+  readonly exitCode: number | null;
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly stderrPath: string | null;
+  readonly sessionId: string | null;
+  readonly normalizedOutput: string | null;
+  /** Resolved after inheritance. Null until the task starts. */
+  readonly resolvedDriver: string | null;
+  readonly resolvedModel: string | null;
+  readonly resolvedPermissions: Permissions | null;
+  /** Streamed log lines. Capped at TASK_LOG_CAP. */
+  readonly logs: readonly TaskLogLine[];
+  /** Running total of log lines emitted (including dropped tail-truncated ones). */
+  readonly totalLogCount: number;
+}
+
+// ═══ Approval Info (wire alias) ═══
+//
+// The editor historically called this `ApprovalRequestInfo`. Shape is
+// identical to `ApprovalRequest`; kept as an alias for readability at
+// the wire layer.
+
+export type ApprovalRequestInfo = ApprovalRequest;
+
+// ═══ Abort Reason ═══
+//
+// When `run_end` fires with `success: false`, `abortReason` disambiguates
+// WHY. Null means the pipeline ran to completion but contained failed
+// tasks. `timeout` means the pipeline hit its own timeout. `stop_all`
+// means a task failed with `on_failure: stop_all`. `external` means the
+// host (editor abort button, SIGINT, etc.) aborted the run.
+export type AbortReason = 'timeout' | 'stop_all' | 'external';
+
+// ═══ SDK-Emitted Event Payloads ═══
+//
+// The engine emits these through `runPipeline`'s `onEvent` callback.
+// Every payload carries a `runId` for routing; the server stamps a
+// per-run `seq` before broadcasting, producing a `WireRunEvent`.
+
+export type RunEventPayload =
+  | {
+      readonly type: 'run_start';
+      readonly runId: string;
+      readonly tasks: readonly RunTaskState[];
+    }
+  | {
+      readonly type: 'task_update';
+      readonly runId: string;
+      readonly taskId: string;
+      readonly status: TaskStatus;
+      readonly startedAt?: string;
+      readonly finishedAt?: string;
+      readonly durationMs?: number;
+      readonly exitCode?: number;
+      readonly stdout?: string;
+      readonly stderr?: string;
+      readonly stderrPath?: string | null;
+      readonly sessionId?: string | null;
+      readonly normalizedOutput?: string | null;
+      readonly resolvedDriver?: string | null;
+      readonly resolvedModel?: string | null;
+      readonly resolvedPermissions?: Permissions | null;
+    }
+  | {
+      readonly type: 'task_log';
+      readonly runId: string;
+      readonly taskId: string | null;
+      readonly level: TaskLogLevel;
+      readonly timestamp: string;
+      readonly text: string;
+    }
+  | {
+      readonly type: 'run_end';
+      readonly runId: string;
+      readonly success: boolean;
+      /**
+       * Non-null when the run did not complete on its own steam.
+       * Historically this was carried separately via a hardcoded string
+       * in the pipeline_error hook — now it's part of the event and the
+       * hook payload derives from the same value.
+       */
+      readonly abortReason: AbortReason | null;
+    }
+  | {
+      readonly type: 'run_error';
+      readonly runId: string;
+      readonly error: string;
+    }
+  | {
+      readonly type: 'approval_request';
+      readonly runId: string;
+      readonly request: ApprovalRequestInfo;
+    }
+  | {
+      readonly type: 'approval_resolved';
+      readonly runId: string;
+      readonly requestId: string;
+      readonly outcome: ApprovalOutcome;
+    };
+
+// ═══ Server-Only Event Payload ═══
+//
+// Emitted by the editor server on SSE (re)connect so a client can rebuild
+// its task map + pending approvals + pipeline-level logs even after the
+// bounded replay buffer has dropped older events. Not produced by the SDK.
+
+export interface RunSnapshotPayload {
+  readonly type: 'run_snapshot';
+  readonly runId: string;
+  readonly tasks: readonly RunTaskState[];
+  readonly pendingApprovals: readonly ApprovalRequestInfo[];
+  /**
+   * Pipeline-level log lines (taskId=null on the original task_log event).
+   * Server aggregates these into a bounded buffer alongside per-task logs
+   * so a reconnecting client can reconstruct header/DAG-topology output.
+   */
+  readonly pipelineLogs: readonly TaskLogLine[];
+}
+
+// ═══ Wire Event (stamped) ═══
+//
+// The on-the-wire event that the server broadcasts and the client folds.
+// Every variant has `runId` and `seq`. Client dedup is keyed by
+// `(runId, seq)`: when `runId` changes, the reducer resets its high-water
+// mark — no cross-run stale-seq hazard possible.
+
+export type WireRunEvent = (RunEventPayload | RunSnapshotPayload) & {
+  readonly seq: number;
+};
+

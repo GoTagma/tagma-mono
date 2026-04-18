@@ -1,4 +1,4 @@
-import type { HooksConfig, HookCommand } from './types';
+import type { HooksConfig, HookCommand, AbortReason } from './types';
 import { shellArgs } from './utils';
 
 type HookEvent =
@@ -182,6 +182,12 @@ export function buildPipelineErrorContext(
   pipeline: PipelineInfo,
   error: string,
   eventType?: string,
+  abortReason?: AbortReason,
 ) {
-  return { event: eventType ?? 'pipeline_error', pipeline, error };
+  return {
+    event: eventType ?? 'pipeline_error',
+    pipeline,
+    error,
+    ...(abortReason !== undefined ? { abort_reason: abortReason } : {}),
+  };
 }
