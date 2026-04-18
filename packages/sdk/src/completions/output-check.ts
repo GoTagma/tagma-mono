@@ -6,12 +6,14 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 export const OutputCheckCompletion: CompletionPlugin = {
   name: 'output_check',
   schema: {
-    description: 'Pipe task stdout into a shell command; mark success when that command exits 0.',
+    description:
+      'Pipe the task output into a shell command; mark success when that command exits 0. For AI driver tasks the driver-normalized text is piped (not the raw NDJSON); command tasks see their raw stdout.',
     fields: {
       check: {
         type: 'string',
         required: true,
-        description: 'Shell command to run. Task stdout is piped to its stdin.',
+        description:
+          'Shell command to run. The task output is piped to its stdin — normalizedOutput when the driver provides one, otherwise raw stdout.',
         placeholder: "grep -q 'PASS'",
       },
       timeout: {
@@ -59,7 +61,11 @@ export const OutputCheckCompletion: CompletionPlugin = {
     try {
       if (proc.stdin) {
         try {
-          proc.stdin.write(result.stdout);
+          // Prefer driver-normalized text (e.g. concatenated message text for
+          // AI drivers that emit NDJSON). Falling back to raw stdout keeps
+          // command tasks and drivers without parseResult working.
+          const payload = result.normalizedOutput ?? result.stdout;
+          proc.stdin.write(payload);
           proc.stdin.end(); // no await — consistent with runner.ts; proc.exited handles sync
         } catch (err: unknown) {
           // EPIPE is expected when the check process exits before reading all of stdin

@@ -242,10 +242,17 @@ const LlmJudgeCompletion: CompletionPlugin = {
         ? Math.floor(config.max_output_chars)
         : DEFAULT_MAX_OUTPUT_CHARS;
 
+    // Prefer the driver-normalized text (e.g. concatenated message text
+    // from AI drivers that emit NDJSON). Feeding raw NDJSON to the judge
+    // wastes tokens and obscures the semantic output the judge is meant
+    // to grade. Command tasks and drivers without parseResult fall back
+    // to raw stdout, which for them IS the semantic output.
+    const taskOutput = result.normalizedOutput ?? result.stdout;
+
     const userContent =
       `[Rubric]\n${rubric}\n\n` +
       `[Exit Code]\n${result.exitCode}\n\n` +
-      `[Task Output]\n${truncateForJudge(result.stdout, maxChars)}`;
+      `[Task Output]\n${truncateForJudge(taskOutput, maxChars)}`;
 
     const messages: ChatMessage[] = [
       { role: 'system', content: SYSTEM_PROMPT },
