@@ -306,35 +306,6 @@ function persistRunSummary(
   );
 }
 
-// Summaries persisted before depends_on was tracked (pre-9555457) have no
-// deps field, so HistoryFlowView renders a flowchart with no edges. When the
-// summary's pipeline still matches the currently loaded yaml, we can recover
-// the DAG from S.config without snapshotting any editor state — the yaml is
-// already the source of truth for structure.
-function backfillSummaryDeps(summary: RunSummary): RunSummary {
-  const needsDeps = summary.tasks.some((t) => !Array.isArray(t.depends_on));
-  const needsPositions = !summary.positions || Object.keys(summary.positions).length === 0;
-  if (!needsDeps && !needsPositions) return summary;
-  if (summary.pipelineName !== S.config.name) return summary;
-  const depMap = new Map<string, string[]>();
-  for (const track of S.config.tracks) {
-    for (const tc of track.tasks) {
-      const qid = `${track.id}.${tc.id}`;
-      const deps = (tc.depends_on ?? []).map((d) => (d.includes('.') ? d : `${track.id}.${d}`));
-      depMap.set(qid, deps);
-    }
-  }
-  return {
-    ...summary,
-    tasks: needsDeps
-      ? summary.tasks.map((t) =>
-          Array.isArray(t.depends_on) ? t : { ...t, depends_on: depMap.get(t.taskId) ?? [] },
-        )
-      : summary.tasks,
-    positions: needsPositions ? { ...S.layout.positions } : summary.positions,
-  };
-}
-
 function readRunSummary(cwd: string, runId: string): RunSummary | null {
   const summaryPath = join(cwd, '.tagma', 'logs', runId, 'summary.json');
   if (!existsSync(summaryPath)) return null;
@@ -1183,7 +1154,7 @@ export function registerRunRoutes(app: express.Express): void {
     if (!summary) {
       return res.status(404).json({ error: 'summary not found' });
     }
-    res.json(backfillSummaryDeps(summary));
+    res.json(summary);
   });
 
   // Return the per-run yaml snapshot as text/yaml so the history view can
