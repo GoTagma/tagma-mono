@@ -14,6 +14,7 @@ import {
   Copy,
   Terminal,
   Play,
+  Search,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import type { RunHistoryEntry, RunSummary, RunSummaryTask, TaskStatus } from '../../api/client';
@@ -161,6 +162,7 @@ export function RunHistoryBrowser({
   const [yamlLoading, setYamlLoading] = useState(false);
   const [viewMode, setViewMode] = useState<'summary' | 'flow' | 'log' | 'yaml'>('flow');
   const [outcome, setOutcome] = useState<OutcomeFilter>('all');
+  const [query, setQuery] = useState('');
 
   const loadHistory = useCallback(async () => {
     setLoading(true);
@@ -282,16 +284,20 @@ export function RunHistoryBrowser({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRunId, viewMode]);
 
-  // Outcome filter from the header tabs. An empty list plus an active
-  // filter surfaces a filter-aware empty state instead of the generic
-  // "no past runs" copy.
+  // Outcome + pipeline-name filter from the header tabs / search box.
+  // An empty list plus any active filter surfaces a filter-aware empty
+  // state instead of the generic "no past runs" copy. Search is a plain
+  // case-insensitive substring match on `pipelineName`; runs without a
+  // recorded pipeline name never match a non-empty query.
   const visibleRuns = useMemo(() => {
+    const q = query.trim().toLowerCase();
     return runs.filter((r) => {
       if (outcome === 'success' && r.success !== true) return false;
       if (outcome === 'failed' && r.success !== false) return false;
+      if (q && !(r.pipelineName ?? '').toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [runs, outcome]);
+  }, [runs, outcome, query]);
 
   const tasksByTrack = useMemo(() => {
     if (!summary) return new Map<string, RunSummaryTask[]>();
@@ -368,7 +374,12 @@ export function RunHistoryBrowser({
 
   return (
     <div className="h-full flex flex-col bg-tagma-bg">
-      <HistoryHeader outcome={outcome} onOutcome={setOutcome} />
+      <HistoryHeader
+        outcome={outcome}
+        onOutcome={setOutcome}
+        query={query}
+        onQuery={setQuery}
+      />
 
       <div className="flex-1 min-h-0 flex">
         <div className="w-72 shrink-0 border-r border-tagma-border flex flex-col bg-tagma-surface/25 overflow-hidden">
@@ -386,7 +397,7 @@ export function RunHistoryBrowser({
               <div className="px-5 py-3 text-[10px] text-tagma-error font-mono">{error}</div>
             )}
             {!loading && !error && visibleRuns.length === 0 && (
-              <EmptyRunList outcome={outcome} totalRuns={runs.length} />
+              <EmptyRunList outcome={outcome} query={query} totalRuns={runs.length} />
             )}
             {visibleRuns.map((run) => (
               <RunListItem
@@ -440,9 +451,13 @@ export function RunHistoryBrowser({
 function HistoryHeader({
   outcome,
   onOutcome,
+  query,
+  onQuery,
 }: {
   outcome: OutcomeFilter;
   onOutcome: (o: OutcomeFilter) => void;
+  query: string;
+  onQuery: (q: string) => void;
 }) {
   return (
     <header className="shrink-0 bg-tagma-surface/60 border-b border-tagma-border">
@@ -465,6 +480,25 @@ function HistoryHeader({
               label={t.label}
             />
           ))}
+          <div className="flex-1" />
+          {/* Mirrors the PluginsPage header search: 256px input pinned to
+              the right of the outcome tabs, with bottom padding that lines
+              its baseline up with the tabs' underline row. */}
+          <div className="pb-2 w-64">
+            <div className="relative">
+              <Search
+                size={12}
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-tagma-muted-dim pointer-events-none"
+              />
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => onQuery(e.target.value)}
+                placeholder="Search by pipeline name…"
+                className="w-full pl-7 pr-2 py-1 text-[11px] bg-tagma-bg border border-tagma-border text-tagma-text placeholder:text-tagma-muted-dim focus:border-tagma-accent focus:outline-none transition-colors"
+              />
+            </div>
+          </div>
         </div>
       </div>
     </header>
@@ -611,8 +645,18 @@ function RunListItem({
   );
 }
 
-function EmptyRunList({ outcome, totalRuns }: { outcome: OutcomeFilter; totalRuns: number }) {
-  const hasFilter = outcome !== 'all';
+function EmptyRunList({
+  outcome,
+  query,
+  totalRuns,
+}: {
+  outcome: OutcomeFilter;
+  query: string;
+  totalRuns: number;
+}) {
+  const hasOutcomeFilter = outcome !== 'all';
+  const trimmedQuery = query.trim();
+  const hasQuery = trimmedQuery.length > 0;
   if (totalRuns === 0) {
     return (
       <div className="px-5 py-6 text-[10px] text-tagma-muted-dim leading-relaxed">
@@ -623,7 +667,13 @@ function EmptyRunList({ outcome, totalRuns }: { outcome: OutcomeFilter; totalRun
   }
   return (
     <div className="px-5 py-6 text-[10px] text-tagma-muted-dim leading-relaxed">
-      {hasFilter ? (
+      {hasQuery ? (
+        <>
+          No runs match{' '}
+          <span className="font-mono text-tagma-muted">&ldquo;{trimmedQuery}&rdquo;</span>. Try a
+          different pipeline name{hasOutcomeFilter ? ' or widen the outcome tab' : ''}.
+        </>
+      ) : hasOutcomeFilter ? (
         <>No runs match the current filter. Try widening the outcome tab.</>
       ) : (
         <>No runs available.</>
@@ -698,10 +748,10 @@ function DetailPane({
         </span>
         {selectedRunId && (
           <>
-            <div className="flex items-center border border-tagma-border ml-2">
+            <div className="flex items-stretch border border-tagma-border ml-2">
               <button
                 type="button"
-                className={`px-2.5 py-0.5 text-[9px] font-mono uppercase tracking-wider ${
+                className={`px-2.5 py-0.5 text-[9px] font-mono uppercase tracking-wider flex items-center justify-center ${
                   viewMode === 'flow'
                     ? 'bg-tagma-accent/10 text-tagma-accent'
                     : 'text-tagma-muted hover:text-tagma-text'
@@ -713,7 +763,7 @@ function DetailPane({
               </button>
               <button
                 type="button"
-                className={`px-2.5 py-0.5 text-[9px] font-mono uppercase tracking-wider border-l border-tagma-border ${
+                className={`px-2.5 py-0.5 text-[9px] font-mono uppercase tracking-wider border-l border-tagma-border flex items-center justify-center ${
                   viewMode === 'summary'
                     ? 'bg-tagma-accent/10 text-tagma-accent'
                     : 'text-tagma-muted hover:text-tagma-text'
@@ -724,7 +774,7 @@ function DetailPane({
               </button>
               <button
                 type="button"
-                className={`px-2.5 py-0.5 text-[9px] font-mono uppercase tracking-wider border-l border-tagma-border ${
+                className={`px-2.5 py-0.5 text-[9px] font-mono uppercase tracking-wider border-l border-tagma-border flex items-center justify-center ${
                   viewMode === 'log'
                     ? 'bg-tagma-accent/10 text-tagma-accent'
                     : 'text-tagma-muted hover:text-tagma-text'
@@ -735,7 +785,7 @@ function DetailPane({
               </button>
               <button
                 type="button"
-                className={`px-2.5 py-0.5 text-[9px] font-mono uppercase tracking-wider border-l border-tagma-border flex items-center gap-1 ${
+                className={`px-2.5 py-0.5 text-[9px] font-mono uppercase tracking-wider border-l border-tagma-border flex items-center justify-center gap-1 ${
                   viewMode === 'yaml'
                     ? 'bg-tagma-accent/10 text-tagma-accent'
                     : 'text-tagma-muted hover:text-tagma-text'
