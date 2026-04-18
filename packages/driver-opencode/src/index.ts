@@ -1,5 +1,3 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, isAbsolute, join, resolve as pathResolve } from 'node:path';
 import type {
   DriverPlugin,
   DriverCapabilities,
@@ -12,80 +10,12 @@ import type {
 
 const DEFAULT_MODEL = 'opencode/big-pickle';
 
-// ─── Windows cmd.exe argv workaround ──────────────────────────────────────
-// On Windows, `opencode` resolves to `opencode.cmd`, a batch wrapper around
-// `node <opencode-bin.js>`. cmd.exe mangles argv elements that contain
-// newlines — subsequent chars after the first \n are silently dropped — so
-// a multi-line prompt reaches the model as just "[Role]" (or similar
-// truncated fragment) and the model replies with generic greetings.
-//
-// The fix is to bypass the .cmd wrapper entirely: find the real JS entry
-// point it would have invoked, and spawn `node <js>` directly. Node's own
-// argv handling on Windows preserves newlines correctly.
-//
-// Result is cached per-process — parsing the wrapper is cheap but the PATH
-// scan isn't, and every pipeline task goes through here.
-let cachedNodeTarget: readonly [string, string] | null | undefined;
-
-function findOpencodeCmdWrapper(): string | null {
-  const exts = ['.cmd', '.CMD', '.bat', '.BAT'];
-  const pathDirs = (process.env.PATH ?? '').split(';').filter(Boolean);
-  for (const dir of pathDirs) {
-    for (const ext of exts) {
-      const candidate = join(dir, 'opencode' + ext);
-      if (existsSync(candidate)) return candidate;
-    }
-  }
-  return null;
-}
-
-// npm's shim looks like:
-//   "%_prog%"  "%dp0%\node_modules\<pkg>\bin\<script>" %*
-// We extract the second double-quoted path, substitute %dp0% with the
-// wrapper's own directory, and return the absolute JS path.
-function parseCmdTargetPath(wrapperPath: string): string | null {
-  let contents: string;
-  try {
-    contents = readFileSync(wrapperPath, 'utf8');
-  } catch {
-    return null;
-  }
-  const execLine = contents
-    .split(/\r?\n/)
-    .find((l) => l.includes('%*') && l.includes('%dp0%'));
-  if (!execLine) return null;
-  const quoted = execLine.match(/"([^"]+)"/g);
-  if (!quoted || quoted.length < 2) return null;
-  const rawTarget = quoted[1]!.slice(1, -1); // strip the surrounding quotes
-  const wrapperDir = dirname(wrapperPath);
-  // %dp0% expands to wrapper dir with trailing backslash; our replace
-  // handles both forms (with or without the trailing slash).
-  const expanded = rawTarget.replace(/%dp0%\\?/i, '').replace(/\//g, '\\');
-  const abs = isAbsolute(expanded) ? expanded : pathResolve(wrapperDir, expanded);
-  return existsSync(abs) ? abs : null;
-}
-
-function resolveOpencodeNodeTarget(): readonly [string, string] | null {
-  if (process.platform !== 'win32') return null;
-  if (cachedNodeTarget !== undefined) return cachedNodeTarget;
-
-  const wrapper = findOpencodeCmdWrapper();
-  if (!wrapper) {
-    cachedNodeTarget = null;
-    return null;
-  }
-  const jsPath = parseCmdTargetPath(wrapper);
-  if (!jsPath) {
-    cachedNodeTarget = null;
-    return null;
-  }
-  // Prefer node from the wrapper's own directory (npm global bin often
-  // ships one), fall back to PATH's node.
-  const colocated = join(dirname(wrapper), 'node.exe');
-  const nodeExe = existsSync(colocated) ? colocated : 'node';
-  cachedNodeTarget = [nodeExe, jsPath];
-  return cachedNodeTarget;
-}
+// NOTE on Windows multi-line prompts: `opencode` resolves to `opencode.cmd`,
+// an npm-generated batch wrapper. cmd.exe silently truncates argv elements
+// at the first newline, so a multi-line prompt reaches the model as only
+// its first line. The SDK's runner auto-unwraps npm .cmd shims into direct
+// `node <js-entry>` invocations so newlines survive, and this driver can
+// keep using the bare `opencode` name on every platform.
 
 // tagma uses a provider-neutral reasoning_effort vocabulary (low|medium|high)
 // but opencode's `--variant` is provider-specific (e.g. high|max|minimal).
@@ -155,15 +85,10 @@ const OpenCodeDriver: DriverPlugin = {
     // the prompt follows after so that leading `--flag` content cannot be
     // misread by opencode's argument parser (flag-injection mitigation).
     // Shell-level injection is already prevented by Bun.spawn's direct argv array.
-    //
-    // Windows: spawn `node <opencode-bin.js>` directly instead of
-    // `opencode.cmd` to avoid cmd.exe silently truncating argv at the first
-    // newline (see top of file for details). Fall back to the bare name when
-    // the wrapper can't be parsed so non-npm installs still work.
-    const nodeTarget = resolveOpencodeNodeTarget();
-    const prefix: string[] = nodeTarget ? [nodeTarget[0], nodeTarget[1]] : ['opencode'];
+    // Windows cmd.exe argv truncation on the `.cmd` wrapper is handled by the
+    // SDK runner's shim unwrapping — see note at the top of this file.
     const args: string[] = [
-      ...prefix,
+      'opencode',
       'run',
       '--model',
       model,

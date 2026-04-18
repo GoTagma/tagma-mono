@@ -1,5 +1,5 @@
-import { existsSync, statSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { dirname, isAbsolute, join, resolve as pathResolve } from 'node:path';
 import type { SpawnSpec, DriverPlugin, TaskResult } from './types';
 import { shellArgs } from './utils';
 
@@ -45,14 +45,24 @@ export interface RunOptions {
  * manually resolve the command against PATH + PATHEXT here so Drivers can
  * keep using short names (`claude`, `npx`, etc.) cross-platform.
  *
+ * We also auto-unwrap npm-generated .cmd shims into direct `node <js>`
+ * invocations. Spawning the .cmd routes argv through cmd.exe, which silently
+ * truncates any argv element at the first newline — a multi-line prompt
+ * reaches the child as just its first line. By targeting the underlying JS
+ * entry point directly we bypass cmd.exe entirely and newlines survive.
+ *
  * Results are cached by (cmd, envPath) key so repeated spawns of the same
- * command don't block the event loop with synchronous PATH scans.
+ * command don't block the event loop with synchronous PATH/shim scans.
  *
  * Returns the original name if resolution fails; Bun will raise the same
  * ENOENT it would have otherwise.
  */
 const RESOLVED_EXE_CACHE_MAX = 128;
-const resolvedExeCache = new Map<string, string | null>();
+// A cache entry is the replacement argv head for the command:
+//   - [path]            — a single resolved executable (e.g. `foo.exe`)
+//   - [node, jsEntry]   — an npm-shim unwrapped into `node <js>`
+//   - null              — resolution failed, leave the original name
+const resolvedExeCache = new Map<string, readonly string[] | null>();
 
 /** Evict the oldest entry when the cache is at capacity. */
 function evictIfFull(): void {
@@ -63,18 +73,72 @@ function evictIfFull(): void {
   }
 }
 
+/**
+ * Parse an npm-generated .cmd shim and return the underlying JS entry path.
+ *
+ * npm's shim has the shape:
+ *   "%_prog%"  "%dp0%\node_modules\<pkg>\bin\<script>" %*
+ *
+ * We extract the second double-quoted path, substitute `%dp0%` with the
+ * wrapper's own directory, and return the absolute JS path. Returns null for
+ * anything that doesn't match the npm-shim pattern (user-written .cmd
+ * scripts, non-node tools, etc.), which keeps the caller on the .cmd path.
+ */
+function parseNpmCmdShim(wrapperPath: string): string | null {
+  let contents: string;
+  try {
+    contents = readFileSync(wrapperPath, 'utf8');
+  } catch {
+    return null;
+  }
+  const execLine = contents
+    .split(/\r?\n/)
+    .find((l) => l.includes('%*') && l.includes('%dp0%'));
+  if (!execLine) return null;
+  const quoted = execLine.match(/"([^"]+)"/g);
+  if (!quoted || quoted.length < 2) return null;
+  const rawTarget = quoted[1]!.slice(1, -1); // strip surrounding quotes
+  const wrapperDir = dirname(wrapperPath);
+  // %dp0% expands to wrapper dir with a trailing backslash; strip either form.
+  const expanded = rawTarget.replace(/%dp0%\\?/i, '').replace(/\//g, '\\');
+  const abs = isAbsolute(expanded) ? expanded : pathResolve(wrapperDir, expanded);
+  return existsSync(abs) ? abs : null;
+}
+
+/**
+ * Given a resolved .cmd/.bat path, return the argv prefix that should be
+ * spawned instead. For npm shims this is `[node, js-entry]`; for everything
+ * else it's `[wrapperPath]` (unchanged, caller keeps using the wrapper).
+ */
+function unwrapCmdShim(wrapperPath: string): readonly string[] {
+  if (!/\.(cmd|bat)$/i.test(wrapperPath)) return [wrapperPath];
+  const jsEntry = parseNpmCmdShim(wrapperPath);
+  if (!jsEntry) return [wrapperPath];
+  // Prefer node colocated with the wrapper (npm global bin often ships one).
+  const colocated = join(dirname(wrapperPath), 'node.exe');
+  const nodeExe = existsSync(colocated) ? colocated : 'node';
+  return [nodeExe, jsEntry];
+}
+
 function resolveWindowsExe(args: readonly string[], envPath: string): readonly string[] {
   if (process.platform !== 'win32' || args.length === 0) return args;
   const cmd = args[0]!;
-  // Already a full path or has an extension → trust caller.
-  if (isAbsolute(cmd) || /\.[a-z0-9]+$/i.test(cmd)) return args;
+  // Already a full path or has an extension → trust caller. We still attempt
+  // shim unwrapping when the caller handed us a bare .cmd/.bat so drivers
+  // that resolve the shim themselves still benefit from the cmd.exe bypass.
+  if (isAbsolute(cmd) || /\.[a-z0-9]+$/i.test(cmd)) {
+    if (/\.(cmd|bat)$/i.test(cmd) && existsSync(cmd)) {
+      const unwrapped = unwrapCmdShim(cmd);
+      if (unwrapped.length === 2) return [...unwrapped, ...args.slice(1)];
+    }
+    return args;
+  }
 
   const cacheKey = `${cmd}\x00${envPath}`;
   if (resolvedExeCache.has(cacheKey)) {
-    // ?? null coerces undefined→null so cached is string|null and the !== null
-    // check narrows it to string without a spurious 'undefined' arm.
+    // ?? null coerces undefined→null so the subsequent guard narrows cleanly.
     const cached = resolvedExeCache.get(cacheKey) ?? null;
-    return cached !== null ? [cached, ...args.slice(1)] : args;
+    return cached !== null ? [...cached, ...args.slice(1)] : args;
   }
 
   const exts = (process.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC')
@@ -87,9 +151,10 @@ function resolveWindowsExe(args: readonly string[], envPath: string): readonly s
       const candidate = join(dir, cmd + ext);
       try {
         if (existsSync(candidate) && statSync(candidate).isFile()) {
+          const head = unwrapCmdShim(candidate);
           evictIfFull();
-          resolvedExeCache.set(cacheKey, candidate);
-          return [candidate, ...args.slice(1)];
+          resolvedExeCache.set(cacheKey, head);
+          return [...head, ...args.slice(1)];
         }
       } catch {
         /* stat race — skip */
