@@ -264,9 +264,11 @@ function MarketplaceCard({
   const actions = isBusy ? (
     <BusyLabel label={busyActionLabel(busyAction)} />
   ) : upgradeAvailable ? (
-    // Paired buttons: Upgrade is the primary CTA, Uninstall stays
-    // available so users can opt out without first hitting Upgrade.
-    <div className="flex items-center gap-2">
+    // Stacked vertically: the long "Upgrade to vX.Y.Z" label on one row
+    // with Uninstall would force the shrink-0 actions column wide enough
+    // to collapse the middle column's truncated title. Card min-height
+    // already reserves the vertical room.
+    <div className="flex flex-col items-end gap-2">
       <ActionButton
         variant="primary"
         icon={<ArrowUpCircle size={12} />}
