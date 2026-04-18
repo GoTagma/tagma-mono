@@ -101,7 +101,10 @@ function ConfigRow({
 }) {
   return (
     <div className="flex items-start gap-2 py-[2px] text-[10px]">
-      <span className="text-tagma-muted/70 w-[68px] shrink-0 font-mono tracking-tight">
+      <span
+        className="text-tagma-muted/70 w-[68px] shrink-0 font-mono tracking-tight truncate"
+        title={label}
+      >
         {label}
       </span>
       <span className={`flex-1 min-w-0 break-words ${mono ? 'font-mono' : ''} text-tagma-text/80`}>
