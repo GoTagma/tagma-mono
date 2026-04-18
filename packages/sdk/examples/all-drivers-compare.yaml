@@ -5,7 +5,7 @@
 #
 # Uses:
 #   - built-in claude-code   (model: haiku)
-#   - external codex         (model: gpt-5.1-codex-mini)
+#   - external codex         (model: gpt-5.3-codex)
 #   - external opencode      (model: opencode/big-pickle)
 #
 # Each track is independent; failures are isolated with on_failure: ignore.
@@ -32,10 +32,10 @@ pipeline:
           timeout: 2m
 
     - id: codex
-      name: Codex · gpt-5.1-codex-mini
+      name: Codex · gpt-5.3-codex
       color: '#8b5cf6'
       driver: codex
-      model: gpt-5.1-codex-mini
+      model: gpt-5.3-codex
       reasoning_effort: low
       on_failure: ignore
       permissions: { read: true, write: false, execute: false }
