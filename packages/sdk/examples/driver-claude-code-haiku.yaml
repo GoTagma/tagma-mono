@@ -1,0 +1,30 @@
+# driver-claude-code-haiku.yaml
+# --------------------------------------------------------------------------
+# Minimal pipeline using the built-in Claude Code driver with the `haiku`
+# model. No `plugins:` list is required — claude-code is registered by
+# bootstrapBuiltins() at SDK startup.
+#
+# Requires:  `claude` CLI on PATH (authenticated).
+# --------------------------------------------------------------------------
+pipeline:
+  name: driver-claude-code-haiku
+  driver: claude-code
+  model: haiku
+  timeout: 5m
+
+  tracks:
+    - id: main
+      name: Haiku smoke test
+      color: '#f59e0b'
+      permissions:
+        read: true
+        write: false
+        execute: false
+
+      tasks:
+        - id: say_hello
+          name: Ask Haiku to say hello
+          prompt: |
+            Reply with the single word: HELLO
+            Do not add punctuation, quotes, or anything else.
+          timeout: 2m

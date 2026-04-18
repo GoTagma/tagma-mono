@@ -1,0 +1,35 @@
+# driver-opencode-big-pickle.yaml
+# --------------------------------------------------------------------------
+# Minimal pipeline using the OpenCode CLI driver with `opencode/big-pickle`.
+# OpenCode is an external plugin — declare it in `plugins:` to register it.
+#
+# Requires:  `opencode` CLI on PATH + auth.
+# Notes:     big-pickle is a test model; its text replies are often generic
+#            ("I'm ready to help"). Treat model output as a liveness signal
+#            only; see verify-context-passthrough.yaml for an evidence-based
+#            session/context verification flow.
+# --------------------------------------------------------------------------
+pipeline:
+  name: driver-opencode-big-pickle
+  driver: opencode
+  model: opencode/big-pickle
+  timeout: 5m
+  plugins:
+    - '@tagma/driver-opencode'
+
+  tracks:
+    - id: main
+      name: OpenCode big-pickle smoke test
+      color: '#14b8a6'
+      permissions:
+        read: true
+        write: false
+        execute: false
+
+      tasks:
+        - id: say_hello
+          name: Ask OpenCode to say hello
+          prompt: |
+            Reply with the single word: HELLO
+            Do not add punctuation, quotes, or anything else.
+          timeout: 2m

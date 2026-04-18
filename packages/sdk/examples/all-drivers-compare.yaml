@@ -1,0 +1,59 @@
+# all-drivers-compare.yaml
+# --------------------------------------------------------------------------
+# Runs the same simple prompt through all three supported drivers in three
+# parallel tracks — useful for an apples-to-apples availability check.
+#
+# Uses:
+#   - built-in claude-code   (model: haiku)
+#   - external codex         (model: gpt-5.1-codex-mini)
+#   - external opencode      (model: opencode/big-pickle)
+#
+# Each track is independent; failures are isolated with on_failure: ignore.
+# --------------------------------------------------------------------------
+pipeline:
+  name: all-drivers-compare
+  timeout: 10m
+  plugins:
+    - '@tagma/driver-codex'
+    - '@tagma/driver-opencode'
+
+  tracks:
+    - id: claude
+      name: Claude Code · haiku
+      color: '#f59e0b'
+      driver: claude-code
+      model: haiku
+      on_failure: ignore
+      permissions: { read: true, write: false, execute: false }
+      tasks:
+        - id: say_hello
+          name: say hello (claude)
+          prompt: 'Reply with one word: HELLO'
+          timeout: 2m
+
+    - id: codex
+      name: Codex · gpt-5.1-codex-mini
+      color: '#8b5cf6'
+      driver: codex
+      model: gpt-5.1-codex-mini
+      reasoning_effort: low
+      on_failure: ignore
+      permissions: { read: true, write: false, execute: false }
+      tasks:
+        - id: say_hello
+          name: say hello (codex)
+          prompt: 'Reply with one word: HELLO'
+          timeout: 2m
+
+    - id: opencode
+      name: OpenCode · big-pickle
+      color: '#14b8a6'
+      driver: opencode
+      model: opencode/big-pickle
+      on_failure: ignore
+      permissions: { read: true, write: false, execute: false }
+      tasks:
+        - id: say_hello
+          name: say hello (opencode)
+          prompt: 'Reply with one word: HELLO'
+          timeout: 2m

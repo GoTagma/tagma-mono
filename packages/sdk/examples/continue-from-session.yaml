@@ -1,0 +1,49 @@
+# continue-from-session.yaml
+# --------------------------------------------------------------------------
+# Demonstrates session handoff with `continue_from`. The Claude Code driver
+# has native session resume (--resume <session_id>), so the second task
+# actually continues the first task's session rather than re-uploading the
+# whole transcript as plain text.
+#
+# `continue_from` accepts:
+#   - same-track shorthand:  `plan`       → resolves to `<thisTrack>.plan`
+#   - cross-track qualified: `main.plan`
+#
+# For drivers without native session resume (codex, opencode fallback), the
+# SDK falls back to prepending the previous task's normalized output as
+# [Previous Output] / [Current Task] in the next prompt.
+# --------------------------------------------------------------------------
+pipeline:
+  name: continue-from-session
+  driver: claude-code
+  model: haiku
+  timeout: 5m
+
+  tracks:
+    - id: main
+      name: Session resume chain
+      color: '#10b981'
+      permissions: { read: true, write: false, execute: false }
+
+      tasks:
+        - id: plan
+          name: State a fact for the assistant to remember
+          prompt: |
+            My favorite color is indigo. Please acknowledge this by
+            replying with a single word: OK.
+          timeout: 2m
+
+        - id: recall
+          name: Resume the same session and ask about the fact
+          depends_on: [plan]
+          continue_from: plan
+          # Native session resume means the prior turn is in context, so the
+          # model should answer naturally without the instruction looking
+          # like a canary-memorisation test.
+          prompt: |
+            What color did I just tell you was my favorite?
+            Reply with just the single lowercase colour name and nothing else.
+          timeout: 2m
+          completion:
+            type: output_check
+            check: 'grep -iq "indigo"'

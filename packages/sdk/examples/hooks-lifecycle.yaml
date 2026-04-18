@@ -1,0 +1,44 @@
+# hooks-lifecycle.yaml
+# --------------------------------------------------------------------------
+# Pipeline-level lifecycle hooks. All six events exercised, including the
+# single-command form and the command-array form.
+#
+# Hook output lands in the pipeline log — great for shipping status pings
+# to Slack, writing audit breadcrumbs, or priming a local workspace.
+# --------------------------------------------------------------------------
+pipeline:
+  name: hooks-lifecycle
+  timeout: 2m
+
+  hooks:
+    pipeline_start: 'echo "[hook] pipeline_start @ $(date -Iseconds)"'
+    task_start: 'echo "[hook] task_start"'
+    task_success:
+      - 'echo "[hook] task_success #1"'
+      - 'echo "[hook] task_success #2"'
+    task_failure: 'echo "[hook] task_failure"'
+    pipeline_complete: 'echo "[hook] pipeline_complete"'
+    pipeline_error: 'echo "[hook] pipeline_error"'
+
+  tracks:
+    - id: demo
+      name: Hooks demo
+      color: '#f43f5e'
+      permissions: { read: true, write: true, execute: true }
+      on_failure: ignore
+
+      tasks:
+        - id: passes
+          name: A task that succeeds
+          command: 'echo "work done"'
+
+        # Explicit failure, combined with on_failure: ignore on the track so
+        # the pipeline still completes — demonstrates task_failure + final
+        # pipeline_complete firing (not pipeline_error).
+        - id: fails_softly
+          name: A task that fails (track ignores it)
+          depends_on: [passes]
+          command: 'echo "oh no" && exit 2'
+          completion:
+            type: exit_code
+            expect: 0

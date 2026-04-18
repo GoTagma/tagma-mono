@@ -1,0 +1,50 @@
+# middleware-static-context.yaml
+# --------------------------------------------------------------------------
+# Built-in `static_context` middleware. Prepends a reference file to the
+# prompt as a labelled context block so the model sees it before the task.
+#
+# Middleware inheritance & override:
+#   - Track-level middlewares apply to every task by default.
+#   - A task declaring its own `middlewares:` REPLACES the inherited list.
+#   - `middlewares: []` on a task explicitly disables inheritance.
+# --------------------------------------------------------------------------
+pipeline:
+  name: middleware-static-context
+  driver: claude-code
+  model: haiku
+  timeout: 5m
+
+  tracks:
+    - id: demo
+      name: static_context middleware demo
+      color: '#0ea5e9'
+      permissions: { read: true, write: false, execute: false }
+
+      # Every task in this track will see README.md as "[Project Readme]"
+      middlewares:
+        - type: static_context
+          file: ./README.md
+          label: Project Readme
+
+      tasks:
+        - id: uses_track_middleware
+          name: Uses the track-level readme context
+          prompt: 'Reply with one word: OK'
+          timeout: 2m
+
+        - id: overrides_with_own_file
+          name: Replaces inherited list with package.json
+          depends_on: [uses_track_middleware]
+          prompt: 'Reply with one word: OK'
+          timeout: 2m
+          middlewares:
+            - type: static_context
+              file: ./package.json
+              label: Package Manifest
+
+        - id: disables_inheritance
+          name: Clears all inherited middleware
+          depends_on: [overrides_with_own_file]
+          prompt: 'Reply with one word: OK'
+          timeout: 2m
+          middlewares: []   # no static context — bare prompt only

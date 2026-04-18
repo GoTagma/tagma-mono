@@ -1,0 +1,39 @@
+# trigger-manual.yaml
+# --------------------------------------------------------------------------
+# Built-in `manual` trigger. Pauses the task until a user approves via the
+# approval gateway (editor UI button, API call, etc.).
+#
+# Demonstrates:
+#   - trigger.type: manual
+#   - trigger.message / timeout / metadata
+#   - manual trigger on an AI task AND on a command task
+# --------------------------------------------------------------------------
+pipeline:
+  name: trigger-manual
+  driver: claude-code
+  model: haiku
+  timeout: 30m
+
+  tracks:
+    - id: gated
+      name: Manual approval gated
+      color: '#ef4444'
+      permissions: { read: true, write: false, execute: true }
+
+      tasks:
+        - id: prepare
+          name: Prepare work summary
+          prompt: 'Say READY in a single word.'
+          timeout: 2m
+
+        - id: approve_before_run
+          name: Require human approval before next step
+          depends_on: [prepare]
+          command: 'echo "approved — proceeding"'
+          trigger:
+            type: manual
+            message: 'Approve before the command runs?'
+            timeout: 10m
+            metadata:
+              stage: pre-run
+              requester: qa

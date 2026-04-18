@@ -1,0 +1,39 @@
+# completion-file-exists.yaml
+# --------------------------------------------------------------------------
+# Built-in `file_exists` completion. The task succeeds when a target file or
+# directory exists on disk after it finishes. Useful when a task's real
+# success signal is the artifact it produces, not its exit code.
+#
+# Fields:
+#   path     (required) — file/dir path, relative to workDir or absolute.
+#   kind     — 'file' | 'dir' | 'any' (default 'any').
+#   min_size — optional minimum size in bytes (files only).
+# --------------------------------------------------------------------------
+pipeline:
+  name: completion-file-exists
+  timeout: 2m
+
+  tracks:
+    - id: demo
+      name: file_exists completion demo
+      color: '#a855f7'
+      permissions: { read: true, write: true, execute: true }
+
+      tasks:
+        - id: build_artifact
+          name: Produce an artifact file
+          command: 'mkdir -p ./.tagma/out/completion-file-exists && echo "build-artifact-payload-1234567890" > ./.tagma/out/completion-file-exists/artifact.txt'
+          completion:
+            type: file_exists
+            path: ./.tagma/out/completion-file-exists/artifact.txt
+            kind: file
+            min_size: 10   # expect at least 10 bytes of content
+
+        - id: build_dir
+          name: Produce an output directory
+          depends_on: [build_artifact]
+          command: 'mkdir -p ./.tagma/out/completion-file-exists/nested'
+          completion:
+            type: file_exists
+            path: ./.tagma/out/completion-file-exists/nested
+            kind: dir

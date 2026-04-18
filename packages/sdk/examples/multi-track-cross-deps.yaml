@@ -1,0 +1,45 @@
+# multi-track-cross-deps.yaml
+# --------------------------------------------------------------------------
+# Demonstrates parallel tracks and cross-track dependencies.
+#
+#   build  ─┐
+#           ├──▶ release (depends on build.compile AND test.run)
+#   test   ─┘
+#
+# Tracks run in parallel by default. A task can depend on a task in another
+# track via the qualified reference form `<trackId>.<taskId>`.
+# --------------------------------------------------------------------------
+pipeline:
+  name: multi-track-cross-deps
+  timeout: 5m
+
+  tracks:
+    - id: build
+      name: Build
+      color: '#3b82f6'
+      permissions: { read: true, write: true, execute: true }
+      tasks:
+        - id: compile
+          name: Simulate a compile step
+          command: 'mkdir -p ./.tagma/out/multi-track && echo "compiled @ $(date +%s)" > ./.tagma/out/multi-track/build.log && sleep 1'
+
+    - id: test
+      name: Test
+      color: '#f97316'
+      permissions: { read: true, write: true, execute: true }
+      tasks:
+        - id: run
+          name: Simulate a test run
+          command: 'mkdir -p ./.tagma/out/multi-track && echo "tests passed @ $(date +%s)" > ./.tagma/out/multi-track/test.log && sleep 1'
+
+    - id: release
+      name: Release
+      color: '#22c55e'
+      permissions: { read: true, write: true, execute: true }
+      tasks:
+        - id: publish
+          name: Publish only after build AND test are green
+          depends_on:
+            - build.compile   # cross-track: qualified "<trackId>.<taskId>"
+            - test.run
+          command: 'cat ./.tagma/out/multi-track/build.log ./.tagma/out/multi-track/test.log && echo "RELEASED"'

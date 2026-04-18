@@ -1,0 +1,42 @@
+# completion-output-check.yaml
+# --------------------------------------------------------------------------
+# Built-in `output_check` completion. Pipes the task's output into a shell
+# command; success = that shell command exits 0.
+#
+# For AI driver tasks, the driver-normalized text is piped (not the raw
+# NDJSON/JSON envelope). For command tasks the raw stdout is piped.
+#
+# This example uses the Claude Code driver so we can assert on actual model
+# output — a tighter end-to-end signal than a simple `true` process exit.
+# --------------------------------------------------------------------------
+pipeline:
+  name: completion-output-check
+  driver: claude-code
+  model: haiku
+  timeout: 5m
+
+  tracks:
+    - id: demo
+      name: output_check completion demo
+      color: '#eab308'
+      permissions: { read: true, write: false, execute: false }
+
+      tasks:
+        - id: expect_pass_token
+          name: Require the model to emit PASS
+          prompt: |
+            Reply with exactly one word: PASS
+            Do not add punctuation, quotes, or explanation.
+          completion:
+            type: output_check
+            check: 'grep -q "PASS"'
+            timeout: 15s
+
+        # Same pattern on a plain command task — the raw stdout is piped in.
+        - id: command_payload_check
+          name: Check a command's stdout
+          depends_on: [expect_pass_token]
+          command: 'echo "result: OK; count: 42"'
+          completion:
+            type: output_check
+            check: 'grep -Eq "result: OK"'

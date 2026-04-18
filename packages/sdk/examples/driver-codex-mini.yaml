@@ -1,0 +1,34 @@
+# driver-codex-mini.yaml
+# --------------------------------------------------------------------------
+# Minimal pipeline using the Codex CLI driver with `gpt-5.1-codex-mini`.
+# Codex is an external plugin — declare it in `plugins:` to register it.
+#
+# Requires:  `codex` CLI on PATH (`npm i -g @openai/codex`) + auth.
+# Notes:     Codex driver has no native session resume or system-prompt;
+#            continue_from / agent_profile are folded into the prompt text.
+# --------------------------------------------------------------------------
+pipeline:
+  name: driver-codex-mini
+  driver: codex
+  model: gpt-5.1-codex-mini
+  timeout: 5m
+  plugins:
+    - '@tagma/driver-codex'
+
+  tracks:
+    - id: main
+      name: Codex mini smoke test
+      color: '#8b5cf6'
+      reasoning_effort: low
+      permissions:
+        read: true
+        write: false
+        execute: false
+
+      tasks:
+        - id: say_hello
+          name: Ask Codex to say hello
+          prompt: |
+            Reply with the single word: HELLO
+            Do not add punctuation, quotes, or anything else.
+          timeout: 2m

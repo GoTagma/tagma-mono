@@ -1,0 +1,34 @@
+# trigger-file.yaml
+# --------------------------------------------------------------------------
+# Built-in `file` trigger. Blocks a task until a file appears or is modified.
+# Useful for gating downstream work on an external build artifact, a human
+# dropping a review note, etc.
+#
+# This example self-demonstrates by having `producer` create the signal file
+# after a short sleep, and `consumer` wait for it before running.
+# --------------------------------------------------------------------------
+pipeline:
+  name: trigger-file
+  timeout: 5m
+
+  tracks:
+    - id: waiter
+      name: File-trigger demo
+      color: '#06b6d4'
+      permissions: { read: true, write: true, execute: true }
+
+      tasks:
+        - id: producer
+          name: Produce the signal file after a short delay
+          command: 'mkdir -p ./.tagma/out/trigger-file && sleep 2 && echo "GO" > ./.tagma/out/trigger-file/ready.signal'
+
+        - id: consumer
+          name: Wait for ./.tagma/out/trigger-file/ready.signal
+          command: 'echo "signal seen"; cat ./.tagma/out/trigger-file/ready.signal'
+          # NOTE: no `depends_on` — the file trigger is the synchronisation
+          # primitive. `producer` and `consumer` run concurrently until the
+          # signal file appears.
+          trigger:
+            type: file
+            path: ./.tagma/out/trigger-file/ready.signal
+            timeout: 1m

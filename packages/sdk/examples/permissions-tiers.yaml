@@ -1,0 +1,45 @@
+# permissions-tiers.yaml
+# --------------------------------------------------------------------------
+# Demonstrates the three permission tiers and how they are inherited.
+#
+#   read     — Grep, Glob, Read
+#   write    — + Edit, Write
+#   execute  — + Bash (and on Claude Code: bypassPermissions mode)
+#
+# Inheritance order: task > track > DEFAULT_PERMISSIONS({read:true,...}).
+# --------------------------------------------------------------------------
+pipeline:
+  name: permissions-tiers
+  driver: claude-code
+  model: haiku
+  timeout: 5m
+
+  tracks:
+    - id: readonly
+      name: Read-only track
+      color: '#94a3b8'
+      permissions: { read: true, write: false, execute: false }
+      tasks:
+        - id: inspect
+          name: Ask Haiku to name one file under src/
+          prompt: 'Use your tools to list ONE file under src/ if present. Reply with just the path, or NONE.'
+          timeout: 2m
+
+    - id: writable
+      name: Writable track (no shell)
+      color: '#38bdf8'
+      permissions: { read: true, write: true, execute: false }
+      tasks:
+        - id: touch
+          name: Task with track-level write permission
+          prompt: 'Reply with the single word: WRITABLE'
+          timeout: 2m
+
+        # Task-level override — this single task gets execute permission on
+        # top of the track's write permission. Use sparingly.
+        - id: escalated
+          name: Escalate to execute for one task only
+          depends_on: [touch]
+          prompt: 'Reply with the single word: EXECUTABLE'
+          permissions: { read: true, write: true, execute: true }
+          timeout: 2m

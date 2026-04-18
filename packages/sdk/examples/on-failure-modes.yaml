@@ -1,0 +1,61 @@
+# on-failure-modes.yaml
+# --------------------------------------------------------------------------
+# Demonstrates the three `on_failure` modes on a track.
+#
+#   ignore          — downstream tasks see the failure as success; other
+#                     tracks keep running.
+#   skip_downstream — downstream tasks of the failed task are marked skipped;
+#                     other tracks keep running (this is the default).
+#   stop_all        — abort the ENTIRE pipeline; every still-waiting task in
+#                     every track is marked skipped.
+#
+# Each track below triggers its own failure so you can observe the three
+# behaviours side-by-side in the pipeline log.
+#
+# CAUTION: `stop_all` is contagious — if you enable the `kill_switch` track,
+# the other two may get aborted mid-flight depending on scheduling. To
+# observe `ignore` and `skip_downstream` cleanly, comment out `kill_switch`.
+# --------------------------------------------------------------------------
+pipeline:
+  name: on-failure-modes
+  timeout: 2m
+
+  tracks:
+    - id: tolerant
+      name: ignore — downstream still runs
+      color: '#10b981'
+      on_failure: ignore
+      permissions: { read: true, write: true, execute: true }
+      tasks:
+        - id: boom
+          name: Explicit failure
+          command: 'echo "tolerant track failing" && exit 1'
+        - id: after
+          name: Still runs because on_failure is ignore
+          depends_on: [boom]
+          command: 'echo "tolerant: downstream ran despite upstream failure"'
+
+    - id: default_mode
+      name: skip_downstream — downstream is skipped
+      color: '#f59e0b'
+      # on_failure not set — defaults to skip_downstream.
+      permissions: { read: true, write: true, execute: true }
+      tasks:
+        - id: boom
+          name: Explicit failure
+          command: 'echo "default track failing" && exit 1'
+        - id: after
+          name: Will be skipped
+          depends_on: [boom]
+          command: 'echo "default: you should NOT see this"'
+
+    # Uncomment to see stop_all abort the whole pipeline.
+    # - id: kill_switch
+    #   name: stop_all — abort the whole pipeline
+    #   color: '#ef4444'
+    #   on_failure: stop_all
+    #   permissions: { read: true, write: true, execute: true }
+    #   tasks:
+    #     - id: boom
+    #       name: Explicit failure that aborts the pipeline
+    #       command: 'echo "kill switch firing" && exit 1'

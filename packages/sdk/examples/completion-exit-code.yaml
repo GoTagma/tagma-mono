@@ -1,0 +1,41 @@
+# completion-exit-code.yaml
+# --------------------------------------------------------------------------
+# Built-in `exit_code` completion. Marks the task successful when the child
+# process exit code matches `expect`. `expect` can be a single number or a
+# list of acceptable numbers (e.g. [0, 2] for tools that return 2 on "nothing
+# to do" but still want to count as success).
+# --------------------------------------------------------------------------
+pipeline:
+  name: completion-exit-code
+  timeout: 2m
+
+  tracks:
+    - id: demo
+      name: exit_code completion demo
+      color: '#22c55e'
+      permissions: { read: true, write: true, execute: true }
+
+      tasks:
+        # Default behaviour — no completion block means "expect exit 0".
+        - id: default_expect_zero
+          name: Default — expect 0
+          command: 'true'
+
+        # Explicit single expectation.
+        - id: explicit_zero
+          name: Explicit expect 0
+          command: 'true'
+          depends_on: [default_expect_zero]
+          completion:
+            type: exit_code
+            expect: 0
+
+        # List form — any of the listed codes counts as success.
+        # `diff -q` returns 1 when files differ; we whitelist it below.
+        - id: accept_multiple
+          name: Accept exit 0 or 1
+          depends_on: [explicit_zero]
+          command: 'mkdir -p ./.tagma/out/completion-exit && echo a > ./.tagma/out/completion-exit/a.txt && echo b > ./.tagma/out/completion-exit/b.txt && diff -q ./.tagma/out/completion-exit/a.txt ./.tagma/out/completion-exit/b.txt || true'
+          completion:
+            type: exit_code
+            expect: [0, 1]

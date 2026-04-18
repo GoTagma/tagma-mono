@@ -1,0 +1,32 @@
+# command-only.yaml
+# --------------------------------------------------------------------------
+# Simplest possible pipeline: no AI driver, just shell commands.
+# Demonstrates that a `task.command` does not need a driver/model/plugins.
+# --------------------------------------------------------------------------
+pipeline:
+  name: command-only
+  timeout: 2m
+
+  tracks:
+    - id: demo
+      name: Shell commands only
+      color: '#64748b'
+      permissions:
+        read: true
+        write: true
+        execute: true
+
+      tasks:
+        - id: make_dir
+          name: Create an output directory
+          command: 'mkdir -p ./.tagma/out/command-only'
+
+        - id: write_file
+          name: Write a file
+          depends_on: [make_dir]
+          command: 'echo "hello from command-only" > ./.tagma/out/command-only/hello.txt'
+
+        - id: read_file
+          name: Read the file back
+          depends_on: [write_file]
+          command: 'cat ./.tagma/out/command-only/hello.txt'
