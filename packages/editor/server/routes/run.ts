@@ -1,7 +1,6 @@
 import type express from 'express';
 import {
   readFileSync,
-  writeFileSync,
   existsSync,
   readdirSync,
   statSync,

@@ -144,7 +144,6 @@ export function registerPlugin<T extends PluginType>(
     // first's consumers with no audit trail. A console.warn is cheap,
     // respects existing callers that rely on 'replaced', and gives ops a
     // grep-able signal when registrations collide unexpectedly.
-    // eslint-disable-next-line no-console
     console.warn(
       `[tagma-sdk] registerPlugin: replaced existing ${category}/${type} — ` +
         `check for duplicate plugin packages claiming the same type.`,

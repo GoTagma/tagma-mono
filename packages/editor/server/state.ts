@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import yaml from 'js-yaml';
 import { isPathWithin as sharedIsPathWithin, atomicWriteFileSync } from './path-utils.js';
