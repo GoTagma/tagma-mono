@@ -22,18 +22,11 @@ if (!REPO) {
 }
 const TAG = `desktop-v${version}`;
 
-// Filenames are version-prefixed (`Tagma-<version>-<os>-<arch>.<ext>`) so users
-// can tell builds apart from the filename alone. Keep the regex in lock-step
-// with `artifactName` in packages/electron/package.json.
-function escapeRegex(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-const v = escapeRegex(version);
 const PLATFORMS = [
-  { match: new RegExp(`^Tagma-${v}-mac-arm64\\.zip$`), label: 'macOS (Apple Silicon)' },
-  { match: new RegExp(`^Tagma-${v}-mac-x64\\.zip$`), label: 'macOS (Intel)' },
-  { match: new RegExp(`^Tagma-${v}-win-x64\\.exe$`), label: 'Windows (x64) — portable' },
-  { match: new RegExp(`^Tagma-${v}-linux-x86_64\\.AppImage$`), label: 'Linux (x86_64)' },
+  { match: /^Tagma-mac-arm64\.dmg$/, label: 'macOS (Apple Silicon)' },
+  { match: /^Tagma-mac-x64\.dmg$/, label: 'macOS (Intel)' },
+  { match: /^Tagma-win-x64\.exe$/, label: 'Windows (x64)' },
+  { match: /^Tagma-linux-x86_64\.AppImage$/, label: 'Linux (x86_64)' },
 ];
 
 function readChecksum(dir, name) {

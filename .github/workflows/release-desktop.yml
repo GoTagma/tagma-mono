@@ -182,7 +182,7 @@ jobs:
         with:
           name: dist-${{ matrix.platform }}
           path: |
-            packages/electron/release/Tagma-*.zip
+            packages/electron/release/Tagma-*.dmg
             packages/electron/release/Tagma-*.exe
             packages/electron/release/Tagma-*.AppImage
             packages/electron/release/Tagma-*.sha256

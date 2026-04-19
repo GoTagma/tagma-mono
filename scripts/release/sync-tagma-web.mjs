@@ -52,8 +52,7 @@ writeFileSync(join(destArchiveDir, `${version}.md`), archiveOut);
 console.log(`wrote ${join(destArchiveDir, `${version}.md`)}`);
 
 // ---- 2. Patch site.config.ts. ----
-// Filename pattern matches `artifactName` in packages/electron/package.json.
-const MAC_ARM64 = `Tagma-${version}-mac-arm64.zip`;
+const MAC_ARM64 = 'Tagma-mac-arm64.dmg';
 const macArm64Path = join(assetsDir, MAC_ARM64);
 let macArm64Sha;
 try {

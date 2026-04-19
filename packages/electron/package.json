@@ -27,7 +27,7 @@
   "build": {
     "appId": "com.tagma.editor",
     "productName": "Tagma",
-    "artifactName": "Tagma-${version}-${os}-${arch}.${ext}",
+    "artifactName": "Tagma-${os}-${arch}.${ext}",
     "directories": {
       "output": "release"
     },
@@ -47,7 +47,7 @@
       }
     ],
     "win": {
-      "target": "portable",
+      "target": "nsis",
       "icon": "build/icon.ico"
     },
     "linux": {
@@ -57,7 +57,7 @@
     "mac": {
       "target": [
         {
-          "target": "zip",
+          "target": "dmg",
           "arch": ["x64", "arm64"]
         }
       ],
