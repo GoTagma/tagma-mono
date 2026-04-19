@@ -12,7 +12,14 @@ if (!version || !assetsDir) {
   process.exit(2);
 }
 
-const REPO = 'GoTagma/tagma-mono';
+// GITHUB_REPOSITORY is always set in GitHub Actions ("<owner>/<repo>").
+// Refusing to default avoids publishing notes that point at the wrong fork
+// after an org rename or when someone runs the release workflow from a fork.
+const REPO = process.env.GITHUB_REPOSITORY;
+if (!REPO) {
+  console.error('GITHUB_REPOSITORY env var is required (set automatically on GitHub Actions)');
+  process.exit(1);
+}
 const TAG = `desktop-v${version}`;
 
 const PLATFORMS = [

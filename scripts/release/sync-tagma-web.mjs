@@ -72,10 +72,15 @@ try {
 const sizeMB = Math.round(macArm64Bytes / (1024 * 1024));
 const shaHex = macArm64Sha.toUpperCase();
 const sha256Short = shaHex.length >= 8 ? `${shaHex.slice(0, 4)}…${shaHex.slice(-4)}` : shaHex;
-const today = new Date();
-const yyyy = today.getUTCFullYear();
-const mm = String(today.getUTCMonth() + 1).padStart(2, '0');
-const dd = String(today.getUTCDate()).padStart(2, '0');
+// Source the release date from the changelog frontmatter — not `new Date()` —
+// so sync-web job timing (retries, queued runs spanning midnight UTC) cannot
+// drift the displayed build date away from the actual release tag.
+const dateMatch = fm.date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+if (!dateMatch) {
+  console.error(`changelog frontmatter date must be YYYY-MM-DD, got: ${fm.date}`);
+  process.exit(1);
+}
+const [, yyyy, mm, dd] = dateMatch;
 const buildDate = `${yyyy}-${mm}-${dd}`;
 const build = `${yyyy}.${mm}.${dd}`;
 

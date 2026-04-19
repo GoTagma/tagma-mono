@@ -14,7 +14,7 @@ on:
       channel:
         description: 'Release channel'
         type: choice
-        options: [alpha, beta, rc, stable]
+        options: [alpha, beta, rc, stable, patch]
         default: alpha
 
 permissions:
@@ -254,7 +254,7 @@ jobs:
         with:
           app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
           private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
-          owner: GoTagma
+          owner: ${{ github.repository_owner }}
           repositories: |
             tagma-mono
             tagma-web
@@ -294,4 +294,12 @@ jobs:
             exit 0
           fi
           git commit -m "chore: sync desktop v${{ needs.publish.outputs.version }}"
-          git push origin HEAD:main
+          # Detect the web repo's default branch instead of hardcoding `main`.
+          # actions/checkout@v4 sets origin/HEAD to the default branch.
+          default_branch=$(git rev-parse --abbrev-ref origin/HEAD | sed 's|^origin/||')
+          if [ -z "$default_branch" ]; then
+            echo "could not determine tagma-web default branch"
+            exit 1
+          fi
+          echo "pushing to $default_branch"
+          git push origin "HEAD:$default_branch"
