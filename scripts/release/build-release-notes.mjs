@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Prints the GitHub Release body: hand-authored changelog body + a
-// "## Downloads" section with pinned download URLs, sizes, sha256.
+// Prints the GitHub Release body: a "## Downloads" section with pinned
+// download URLs, sizes, and sha256 hashes. No hand-written notes —
+// the Archive page on tagma-web is the canonical version index.
 // Args: <version> <assets-dir>
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -21,14 +22,9 @@ const PLATFORMS = [
   { match: /^Tagma-linux-x86_64\.AppImage$/, label: 'Linux (x86_64)' },
 ];
 
-function stripFrontmatter(src) {
-  return src.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '').trimStart();
-}
-
 function readChecksum(dir, name) {
   try {
-    const raw = readFileSync(join(dir, `${name}.sha256`), 'utf8').trim();
-    return raw.split(/\s+/)[0];
+    return readFileSync(join(dir, `${name}.sha256`), 'utf8').trim().split(/\s+/)[0];
   } catch {
     return null;
   }
@@ -38,13 +34,9 @@ function toMB(bytes) {
   return (bytes / (1024 * 1024)).toFixed(1);
 }
 
-const changelogPath = `packages/electron/CHANGELOG/${version}.md`;
-const body = stripFrontmatter(readFileSync(changelogPath, 'utf8'));
 const present = new Set(readdirSync(assetsDir));
 
 const lines = [];
-lines.push(body.trimEnd());
-lines.push('');
 lines.push('## Downloads');
 lines.push('');
 lines.push('| Platform | File | Size | SHA-256 |');

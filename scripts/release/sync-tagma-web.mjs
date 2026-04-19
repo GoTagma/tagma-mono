@@ -1,38 +1,15 @@
 #!/usr/bin/env node
 // Propagates a desktop release into the tagma-web repo:
-//   1. Copy CHANGELOG/<version>.md -> src/content/changelog/<version>.md
-//      (with an appended "## Downloads" section).
+//   1. Write src/content/archive/<version>.md with minimal frontmatter.
 //   2. Patch specific fields in src/site.config.ts (no full rewrite).
 // Args: <version> <mono-dir> <web-dir> <assets-dir>
-import { readFileSync, readdirSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const [version, monoDir, webDir, assetsDir] = process.argv.slice(2);
 if (!version || !monoDir || !webDir || !assetsDir) {
   console.error('usage: sync-tagma-web.mjs <version> <mono-dir> <web-dir> <assets-dir>');
   process.exit(2);
-}
-
-const REPO = 'GoTagma/tagma-mono';
-const TAG = `desktop-v${version}`;
-
-const PLATFORMS = [
-  { match: /^Tagma-mac-arm64\.dmg$/, label: 'macOS (Apple Silicon)' },
-  { match: /^Tagma-mac-x64\.dmg$/, label: 'macOS (Intel)' },
-  { match: /^Tagma-win-x64\.exe$/, label: 'Windows (x64)' },
-  { match: /^Tagma-linux-x86_64\.AppImage$/, label: 'Linux (x86_64)' },
-];
-
-function readChecksum(dir, name) {
-  try {
-    return readFileSync(join(dir, `${name}.sha256`), 'utf8').trim().split(/\s+/)[0];
-  } catch {
-    return null;
-  }
-}
-
-function toMB(bytes) {
-  return (bytes / (1024 * 1024)).toFixed(1);
 }
 
 function parseFrontmatter(src) {
@@ -51,60 +28,49 @@ function parseFrontmatter(src) {
   return fm;
 }
 
-function buildDownloadsTable(present) {
-  const lines = ['## Downloads', '', '| Platform | File | Size | SHA-256 |', '| --- | --- | --- | --- |'];
-  for (const p of PLATFORMS) {
-    const name = [...present.keys()].find((n) => p.match.test(n));
-    if (!name) continue;
-    const { size, sha } = present.get(name);
-    const url = `https://github.com/${REPO}/releases/download/${TAG}/${name}`;
-    lines.push(`| ${p.label} | [${name}](${url}) | ${size} MB | \`${sha}\` |`);
-  }
-  return lines.join('\n') + '\n';
-}
-
-function findAsset(present, re) {
-  for (const name of present.keys()) if (re.test(name)) return name;
-  return null;
-}
-
-const present = new Map();
-for (const name of readdirSync(assetsDir)) {
-  const full = join(assetsDir, name);
-  if (!statSync(full).isFile()) continue;
-  if (!/\.(dmg|exe|AppImage)$/.test(name)) continue;
-  present.set(name, { size: toMB(statSync(full).size), sha: readChecksum(assetsDir, name) ?? '' });
-}
-if (present.size === 0) {
-  console.error(`no installers found in ${assetsDir}`);
-  process.exit(1);
-}
-
-// ---- 1. Changelog copy + appended downloads. ----
+// ---- 1. Archive entry: minimal frontmatter only, no body. ----
 const srcChangelog = readFileSync(join(monoDir, 'packages/electron/CHANGELOG', `${version}.md`), 'utf8');
 const fm = parseFrontmatter(srcChangelog);
 if (fm.version !== version) {
   console.error(`changelog version (${fm.version}) != tag version (${version})`);
   process.exit(1);
 }
-
-const downloads = buildDownloadsTable(present);
-const changelogOut = `${srcChangelog.trimEnd()}\n\n${downloads}`;
-const destChangelogDir = join(webDir, 'src/content/changelog');
-mkdirSync(destChangelogDir, { recursive: true });
-writeFileSync(join(destChangelogDir, `${version}.md`), changelogOut);
-console.log(`wrote ${join(destChangelogDir, `${version}.md`)}`);
-
-// ---- 2. Patch site.config.ts. ----
-const macArm64Name = findAsset(present, /^Tagma-mac-arm64\.dmg$/);
-if (!macArm64Name) {
-  console.error('mac-arm64 dmg missing — required for sha256Short/sizeMB');
+if (!fm.date || !fm.channel) {
+  console.error('changelog frontmatter missing required field: date or channel');
   process.exit(1);
 }
-const macArm64 = present.get(macArm64Name);
-const macArm64Bytes = statSync(join(assetsDir, macArm64Name)).size;
+
+const archiveOut = `---
+version: "${fm.version}"
+date: "${fm.date}"
+channel: "${fm.channel}"
+---
+`;
+const destArchiveDir = join(webDir, 'src/content/archive');
+mkdirSync(destArchiveDir, { recursive: true });
+writeFileSync(join(destArchiveDir, `${version}.md`), archiveOut);
+console.log(`wrote ${join(destArchiveDir, `${version}.md`)}`);
+
+// ---- 2. Patch site.config.ts. ----
+const MAC_ARM64 = 'Tagma-mac-arm64.dmg';
+const macArm64Path = join(assetsDir, MAC_ARM64);
+let macArm64Sha;
+try {
+  macArm64Sha = readFileSync(`${macArm64Path}.sha256`, 'utf8').trim().split(/\s+/)[0];
+} catch {
+  console.error(`missing ${MAC_ARM64}.sha256 in ${assetsDir}`);
+  process.exit(1);
+}
+let macArm64Bytes;
+try {
+  macArm64Bytes = statSync(macArm64Path).size;
+} catch {
+  console.error(`missing ${MAC_ARM64} in ${assetsDir}`);
+  process.exit(1);
+}
+
 const sizeMB = Math.round(macArm64Bytes / (1024 * 1024));
-const shaHex = macArm64.sha.toUpperCase();
+const shaHex = macArm64Sha.toUpperCase();
 const sha256Short = shaHex.length >= 8 ? `${shaHex.slice(0, 4)}…${shaHex.slice(-4)}` : shaHex;
 const today = new Date();
 const yyyy = today.getUTCFullYear();
@@ -122,7 +88,7 @@ function replaceField(src, name, newLiteral) {
   return src.replace(re, `$1${newLiteral}$3`);
 }
 
-// site.config.ts's channel union is narrower than the changelog enum —
+// site.config.ts's channel union is narrower than the archive enum —
 // collapse `patch` into `stable` for display purposes.
 const siteChannel = fm.channel === 'patch' ? 'stable' : fm.channel;
 config = replaceField(config, 'version', JSON.stringify(version));

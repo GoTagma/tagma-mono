@@ -62,10 +62,7 @@ jobs:
           version: "${version}"
           date: "${date}"
           channel: "${{ inputs.channel }}"
-          summary: "TODO: one-line summary for v${version}."
           ---
-
-          TODO: write release notes for v${version}.
           EOF
           fi
 
