@@ -285,6 +285,8 @@ jobs:
 
       - name: Commit and push
         working-directory: web
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           git config user.name "Tagma Release Bot"
           git config user.email "release-bot@users.noreply.github.com"
@@ -294,12 +296,14 @@ jobs:
             exit 0
           fi
           git commit -m "chore: sync desktop v${{ needs.publish.outputs.version }}"
-          # Detect the web repo's default branch instead of hardcoding `main`.
-          # actions/checkout@v4 sets origin/HEAD to the default branch.
-          default_branch=$(git rev-parse --abbrev-ref origin/HEAD | sed 's|^origin/||')
-          if [ -z "$default_branch" ]; then
-            echo "could not determine tagma-web default branch"
+          # Query the default branch via the API. actions/checkout@v4 does NOT
+          # configure refs/remotes/origin/HEAD (only `git clone` does), so
+          # `git rev-parse --abbrev-ref origin/HEAD` silently falls back to the
+          # literal "HEAD" and would push to a phantom branch named HEAD.
+          default_branch=$(gh api "repos/${{ github.repository_owner }}/tagma-web" --jq .default_branch)
+          if [ -z "$default_branch" ] || [ "$default_branch" = "HEAD" ]; then
+            echo "could not determine tagma-web default branch (got: '$default_branch')"
             exit 1
           fi
           echo "pushing to $default_branch"
-          git push origin "HEAD:$default_branch"
+          git push origin "HEAD:refs/heads/$default_branch"
