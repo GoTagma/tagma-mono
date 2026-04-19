@@ -1,5 +1,11 @@
 import path from 'node:path';
 
+// Pick the platform-specific path module so tests can pass `platform: 'win32'`
+// with `D:/...` paths and still get correct resolution on a Linux CI host.
+function pathFor(platform: NodeJS.Platform): typeof path.win32 | typeof path.posix {
+  return platform === 'win32' ? path.win32 : path.posix;
+}
+
 export interface RuntimePathOptions {
   isPackaged: boolean;
   compiledDir: string;
@@ -28,30 +34,31 @@ export function executableName(platform: NodeJS.Platform = process.platform): st
 
 export function resolveRuntimePaths(options: RuntimePathOptions): RuntimePaths {
   const platform = options.platform ?? process.platform;
+  const p = pathFor(platform);
 
   if (options.isPackaged) {
-    const sidecarDir = path.join(options.resourcesPath, 'editor-sidecar');
+    const sidecarDir = p.join(options.resourcesPath, 'editor-sidecar');
     return {
-      command: path.join(sidecarDir, executableName(platform)),
+      command: p.join(sidecarDir, executableName(platform)),
       args: [],
       cwd: options.userDataDir ?? sidecarDir,
       env: {
         ...process.env,
         PORT: '0',
-        TAGMA_EDITOR_DIST_DIR: path.join(options.resourcesPath, 'editor-dist'),
+        TAGMA_EDITOR_DIST_DIR: p.join(options.resourcesPath, 'editor-dist'),
       },
     };
   }
 
-  const editorDir = path.resolve(options.compiledDir, '..', '..', 'editor');
+  const editorDir = p.resolve(options.compiledDir, '..', '..', 'editor');
   return {
     command: 'bun',
-    args: [path.join(editorDir, 'server', 'index.ts')],
+    args: [p.join(editorDir, 'server', 'index.ts')],
     cwd: editorDir,
     env: {
       ...process.env,
       PORT: '0',
-      TAGMA_EDITOR_DIST_DIR: path.join(editorDir, 'dist'),
+      TAGMA_EDITOR_DIST_DIR: p.join(editorDir, 'dist'),
     },
   };
 }
