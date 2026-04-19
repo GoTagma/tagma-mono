@@ -31,6 +31,166 @@ const EFFORT_TO_VARIANT: Record<string, string | null> = {
   high: 'high',
 };
 
+// ── Auto-install + free-model picker ───────────────────────────────────────
+//
+// The opencode driver is SDK-built-in, but the `opencode` CLI isn't; we
+// auto-install it on demand (via `bun install -g opencode-ai`) and pick a
+// sensible default model from whatever the CLI reports. Both checks are
+// process-cached via module-level variables so each concern runs at most
+// once per SDK process.
+//
+// Design:
+//   - User-provided `model:` wins; we only compute a default when it's empty.
+//   - Failure modes never throw — they fall back to `DEFAULT_MODEL` and let
+//     the subsequent `opencode run` spawn fail with its own error. Avoids
+//     two confusing errors for one missing dependency.
+
+interface OpencodeModelInfo {
+  id?: string;
+  providerID?: string;
+  status?: string;
+  cost?: { input?: number; output?: number };
+  limit?: { context?: number };
+}
+
+let opencodeReady: boolean | undefined;
+let cachedDefaultModel: string | undefined;
+
+async function runCapture(
+  args: string[],
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  try {
+    const proc = Bun.spawn(args, { stdout: 'pipe', stderr: 'pipe' });
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    return { code, stdout, stderr };
+  } catch {
+    return { code: -1, stdout: '', stderr: '' };
+  }
+}
+
+async function ensureOpencodeInstalled(): Promise<boolean> {
+  if (opencodeReady !== undefined) return opencodeReady;
+
+  // Probe existing install first — users who already have it get no delay.
+  const probe = await runCapture(['opencode', '--version']);
+  if (probe.code === 0) {
+    opencodeReady = true;
+    return true;
+  }
+
+  console.error(
+    '[driver:opencode] opencode CLI not found — installing via `bun install -g opencode-ai`... (this may take up to a minute)',
+  );
+  // Use inherit here so the user sees bun's own progress during the one-time
+  // install; runCapture would swallow it.
+  const install = Bun.spawn(['bun', 'install', '-g', 'opencode-ai'], {
+    stdout: 'inherit',
+    stderr: 'inherit',
+  });
+  const installCode = await install.exited;
+  if (installCode !== 0) {
+    console.error('[driver:opencode] install failed — opencode run will likely fail below.');
+    opencodeReady = false;
+    return false;
+  }
+
+  // Bun installs globals under `~/.bun/bin` (or `%USERPROFILE%\.bun\bin`),
+  // which isn't on this process's cached PATH unless the user already has
+  // bun set up. Ask bun for the directory and prepend it so bare `opencode`
+  // resolves in this process without requiring a shell reload.
+  const bin = await runCapture(['bun', 'pm', 'bin', '-g']);
+  if (bin.code === 0) {
+    const dir = bin.stdout.trim();
+    const sep = process.platform === 'win32' ? ';' : ':';
+    const current = process.env.PATH ?? '';
+    if (dir && !current.split(sep).includes(dir)) {
+      process.env.PATH = `${dir}${sep}${current}`;
+    }
+  }
+
+  const verify = await runCapture(['opencode', '--version']);
+  opencodeReady = verify.code === 0;
+  if (!opencodeReady) {
+    console.error(
+      '[driver:opencode] `opencode` still not resolvable after install — check that bun global bin is on PATH.',
+    );
+  }
+  return opencodeReady;
+}
+
+// `opencode models --verbose` emits "<provider>/<id>\n{...json...}\n" pairs.
+// Walk balanced braces rather than split on newlines so we survive any
+// whitespace oddities in the JSON payload.
+function parseVerboseModels(stdout: string): OpencodeModelInfo[] {
+  const out: OpencodeModelInfo[] = [];
+  let depth = 0;
+  let start = -1;
+  for (let i = 0; i < stdout.length; i++) {
+    const c = stdout[i];
+    if (c === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (c === '}') {
+      depth--;
+      if (depth === 0 && start !== -1) {
+        try {
+          out.push(JSON.parse(stdout.slice(start, i + 1)) as OpencodeModelInfo);
+        } catch {
+          /* skip malformed block */
+        }
+        start = -1;
+      }
+    }
+  }
+  return out;
+}
+
+function pickFreeModel(models: OpencodeModelInfo[]): string | null {
+  const fullId = (m: OpencodeModelInfo): string =>
+    `${m.providerID ?? 'opencode'}/${m.id ?? ''}`;
+  const eligible = models.filter((m) => {
+    if (!m.id || m.id === 'big-pickle') return false;
+    if (m.status && m.status !== 'active') return false;
+    const cost = m.cost;
+    if (!cost || cost.input !== 0 || cost.output !== 0) return false;
+    const ctx = m.limit?.context;
+    if (typeof ctx !== 'number' || ctx <= 128000) return false;
+    return true;
+  });
+  // Prefer models explicitly labelled "-free" by the provider — those are
+  // a stronger stability signal than "cost happens to be 0 right now".
+  const preferred = eligible.filter((m) => m.id?.endsWith('-free'));
+  const pool = preferred.length > 0 ? preferred : eligible;
+  if (pool.length === 0) return null;
+  // Deterministic pick: sort by full id so upstream model-list reordering
+  // doesn't flip our choice between runs.
+  pool.sort((a, b) => fullId(a).localeCompare(fullId(b)));
+  return fullId(pool[0]);
+}
+
+async function resolveDefaultModel(): Promise<string> {
+  if (cachedDefaultModel !== undefined) return cachedDefaultModel;
+  const ready = await ensureOpencodeInstalled();
+  if (!ready) {
+    cachedDefaultModel = DEFAULT_MODEL;
+    return cachedDefaultModel;
+  }
+  console.error('[driver:opencode] resolving free opencode model...');
+  const { code, stdout } = await runCapture(['opencode', 'models', '--verbose']);
+  if (code !== 0) {
+    cachedDefaultModel = DEFAULT_MODEL;
+    return cachedDefaultModel;
+  }
+  const picked = pickFreeModel(parseVerboseModels(stdout));
+  cachedDefaultModel = picked ?? DEFAULT_MODEL;
+  console.error(`[driver:opencode] default model: ${cachedDefaultModel}`);
+  return cachedDefaultModel;
+}
+
 export const OpenCodeDriver: DriverPlugin = {
   name: 'opencode',
 
@@ -45,7 +205,14 @@ export const OpenCodeDriver: DriverPlugin = {
   },
 
   async buildCommand(task: TaskConfig, track: TrackConfig, ctx: DriverContext): Promise<SpawnSpec> {
-    const model = task.model ?? track.model ?? DEFAULT_MODEL;
+    const explicitModel = task.model ?? track.model;
+    // Always make sure the opencode CLI is usable before we spawn it — even
+    // when the user pinned a model. If missing, ensureOpencodeInstalled
+    // auto-installs it via `bun install -g opencode-ai`.
+    if (explicitModel) await ensureOpencodeInstalled();
+    // Otherwise resolveDefaultModel both ensures the CLI and picks a free
+    // model from `opencode models --verbose` (cached per-process).
+    const model = explicitModel ?? (await resolveDefaultModel());
     // Resolve reasoning_effort → opencode --variant. SDK schema layer already
     // resolved task → track → pipeline inheritance, so we only need to read
     // task.reasoning_effort here.
