@@ -215,7 +215,11 @@ export function App() {
   }, [init]);
 
   // C2: Warn on browser close when there are unsaved changes.
+  // Skip under Electron — preventDefault on beforeunload silently cancels
+  // window close there (no confirmation dialog), so the X button stops working
+  // whenever the doc is dirty. The custom title-bar X handles its own confirm.
   useEffect(() => {
+    if (hasDesktopBridge()) return;
     const handler = (e: BeforeUnloadEvent) => {
       if (isDirty) {
         e.preventDefault();
@@ -769,7 +773,10 @@ export function App() {
   useShortcuts(shortcutHandlers);
 
   // U3: beforeunload warning when the document has unsaved changes.
+  // Skip under Electron (see C2 above) — preventDefault would silently block
+  // the title-bar close button. Desktop confirm lives in DesktopWindowControls.
   useEffect(() => {
+    if (hasDesktopBridge()) return;
     const handler = (e: BeforeUnloadEvent) => {
       if (!isDirty && !layoutDirty) return;
       e.preventDefault();

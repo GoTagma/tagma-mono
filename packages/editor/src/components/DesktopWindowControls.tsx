@@ -8,6 +8,21 @@ import {
   isDesktopWindowMaximized,
   subscribeMaximizedChanged,
 } from '../desktop';
+import { usePipelineStore } from '../store/pipeline-store';
+
+// Electron silently cancels window.close() if any beforeunload handler calls
+// preventDefault() (no native confirm dialog), so dirty-state confirmation
+// must live here, in the renderer, before we ask main to close.
+function requestCloseWithConfirm(): void {
+  const { isDirty, layoutDirty } = usePipelineStore.getState();
+  if (isDirty || layoutDirty) {
+    const ok = window.confirm(
+      'You have unsaved changes. Close anyway? Unsaved edits will be lost.',
+    );
+    if (!ok) return;
+  }
+  closeDesktopWindow();
+}
 
 // Tracks the native window's maximized state so the custom glyph toggles
 // between "maximize" (hollow square) and "restore" (two overlapping squares).
@@ -60,7 +75,7 @@ export function DesktopWindowControls() {
       </button>
       <button
         type="button"
-        onClick={() => closeDesktopWindow()}
+        onClick={() => requestCloseWithConfirm()}
         className="flex items-center justify-center w-11 h-full text-tagma-muted hover:text-white hover:bg-tagma-error/80 transition-colors"
         title="Close"
         aria-label="Close window"
