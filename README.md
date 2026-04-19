@@ -101,9 +101,9 @@ bun run --filter tagma-editor test        # Editor only
 
 ```bash
 bun run pack:desktop         # Build the desktop chain and produce an unpacked electron-builder dir
-bun run dist:desktop:win     # Build + produce Windows installer (nsis)
+bun run dist:desktop:win     # Build + produce Windows portable .exe
 bun run dist:desktop:linux   # Build + produce Linux AppImage
-bun run dist:desktop:mac     # Build + produce macOS dmg
+bun run dist:desktop:mac     # Build + produce macOS .zip (contains .app bundle)
 ```
 
 The `tagma-desktop` (Electron) package is private and is never published to npm.
