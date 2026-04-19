@@ -65,7 +65,7 @@ function preflight(config: PipelineConfig, dag: Dag): void {
   for (const [, node] of dag.nodes) {
     const task = node.task;
     const track = node.track;
-    const driverName = task.driver ?? track.driver ?? config.driver ?? 'claude-code';
+    const driverName = task.driver ?? track.driver ?? config.driver ?? 'opencode';
 
     // Pure command tasks don't use a driver — skip driver registration check.
     const isCommandOnly = task.command && !task.prompt;
@@ -105,7 +105,7 @@ function preflight(config: PipelineConfig, dag: Dag): void {
             // OR in-memory text injection through normalizedMap
             // (when the upstream driver implements parseResult and returns normalizedOutput).
             const upstreamDriverName =
-              upstream.task.driver ?? upstream.track.driver ?? config.driver ?? 'claude-code';
+              upstream.task.driver ?? upstream.track.driver ?? config.driver ?? 'opencode';
             const upstreamDriver = hasHandler('drivers', upstreamDriverName)
               ? getHandler<DriverPlugin>('drivers', upstreamDriverName)
               : null;
@@ -279,7 +279,7 @@ export async function runPipeline(
     // File-only: dump the resolved pipeline shape + DAG topology for post-mortem.
     log.section('Pipeline configuration');
     log.quiet(`name:          ${config.name}`);
-    log.quiet(`driver:        ${config.driver ?? '(default: claude-code)'}`);
+    log.quiet(`driver:        ${config.driver ?? '(default: opencode)'}`);
     log.quiet(`timeout:       ${config.timeout ?? '(none)'}`);
     log.quiet(`tracks:        ${config.tracks.length}`);
     log.quiet(`tasks (total): ${dag.nodes.size}`);
@@ -696,7 +696,7 @@ export async function runPipeline(
       );
 
       // File-only: resolved config for this task
-      const resolvedDriver = task.driver ?? track.driver ?? config.driver ?? 'claude-code';
+      const resolvedDriver = task.driver ?? track.driver ?? config.driver ?? 'opencode';
       const resolvedModel = task.model ?? track.model ?? config.model ?? '(default)';
       const resolvedPerms = task.permissions ?? track.permissions ?? '(default)';
       const resolvedCwd = task.cwd ?? track.cwd ?? workDir;
@@ -723,7 +723,7 @@ export async function runPipeline(
           result = await runCommand(task.command, task.cwd ?? workDir, runOpts);
         } else {
           // AI task: apply middleware chain against a structured PromptDocument.
-          const driverName = task.driver ?? track.driver ?? config.driver ?? 'claude-code';
+          const driverName = task.driver ?? track.driver ?? config.driver ?? 'opencode';
           const driver = getHandler<DriverPlugin>('drivers', driverName);
 
           const originalLen = task.prompt!.length;

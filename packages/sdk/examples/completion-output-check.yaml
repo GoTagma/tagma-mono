@@ -14,6 +14,8 @@ pipeline:
   driver: claude-code
   model: haiku
   timeout: 5m
+  plugins:
+    - '@tagma/driver-claude-code'
 
   tracks:
     - id: demo

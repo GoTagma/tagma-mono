@@ -54,7 +54,7 @@ interface Package {
 const ORDER: Record<string, number> = {
   '@tagma/types': 0,
   '@tagma/driver-codex': 10,
-  '@tagma/driver-opencode': 10,
+  '@tagma/driver-claude-code': 10,
   '@tagma/sdk': 100,
 };
 

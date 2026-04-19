@@ -47,7 +47,7 @@ export function TrackConfigPanel({
 
   // Pipeline-level inheritance (pipeline only carries driver/timeout today).
   const resolvedDriver = useMemo(
-    () => resolveScalar(track.driver, undefined, pipelineConfig.driver, 'claude-code'),
+    () => resolveScalar(track.driver, undefined, pipelineConfig.driver, 'opencode'),
     [track.driver, pipelineConfig.driver],
   );
   const resolvedModel = useMemo(

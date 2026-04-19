@@ -3,8 +3,6 @@ pipeline:
   driver: opencode
   model: opencode/big-pickle
   timeout: 10m
-  plugins:
-    - '@tagma/driver-opencode'
 
   # Goal: prove prompt and session context actually flow through without
   # relying on the model's reply content (big-pickle is a test model and

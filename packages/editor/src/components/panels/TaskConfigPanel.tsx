@@ -153,7 +153,7 @@ export function TaskConfigPanel({
 
   // Resolved inherited values (task → track → pipeline → default).
   const resolvedDriver = useMemo(
-    () => resolveScalar(task.driver, track?.driver, pipelineConfig.driver, 'claude-code'),
+    () => resolveScalar(task.driver, track?.driver, pipelineConfig.driver, 'opencode'),
     [task.driver, track?.driver, pipelineConfig.driver],
   );
   const resolvedModel = useMemo(

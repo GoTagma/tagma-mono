@@ -4,9 +4,9 @@
 # parallel tracks — useful for an apples-to-apples availability check.
 #
 # Uses:
-#   - built-in claude-code   (model: haiku)
+#   - built-in opencode      (model: opencode/big-pickle)
 #   - external codex         (model: gpt-5.3-codex)
-#   - external opencode      (model: opencode/big-pickle)
+#   - external claude-code   (model: haiku)
 #
 # Each track is independent; failures are isolated with on_failure: ignore.
 # --------------------------------------------------------------------------
@@ -15,7 +15,7 @@ pipeline:
   timeout: 10m
   plugins:
     - '@tagma/driver-codex'
-    - '@tagma/driver-opencode'
+    - '@tagma/driver-claude-code'
 
   tracks:
     - id: claude

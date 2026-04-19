@@ -141,7 +141,7 @@ export function resolveConfig(raw: RawPipelineConfig, workDir: string): Pipeline
         reasoning_effort:
           rawTask.reasoning_effort ?? rawTrack.reasoning_effort ?? raw.reasoning_effort,
         permissions: rawTask.permissions ?? rawTrack.permissions ?? DEFAULT_PERMISSIONS,
-        driver: rawTask.driver ?? trackDriver ?? 'claude-code',
+        driver: rawTask.driver ?? trackDriver ?? 'opencode',
         timeout: rawTask.timeout,
         // Middleware: Task-level overrides Track (including [] to disable)
         middlewares: rawTask.middlewares !== undefined ? rawTask.middlewares : rawTrack.middlewares,
@@ -159,7 +159,7 @@ export function resolveConfig(raw: RawPipelineConfig, workDir: string): Pipeline
       model: rawTrack.model ?? raw.model,
       reasoning_effort: rawTrack.reasoning_effort ?? raw.reasoning_effort,
       permissions: rawTrack.permissions ?? DEFAULT_PERMISSIONS,
-      driver: trackDriver ?? 'claude-code',
+      driver: trackDriver ?? 'opencode',
       cwd: trackCwd,
       middlewares: rawTrack.middlewares,
       on_failure: rawTrack.on_failure ?? 'skip_downstream',
@@ -243,7 +243,7 @@ export function deresolvePipeline(config: PipelineConfig, workDir: string): RawP
   const tracks: RawTrackConfig[] = config.tracks.map((track) => {
     const trackCwdRel =
       track.cwd && track.cwd !== workDir ? relative(workDir, track.cwd) : undefined;
-    const effectiveTrackDriver = track.driver ?? config.driver ?? 'claude-code';
+    const effectiveTrackDriver = track.driver ?? config.driver ?? 'opencode';
     const effectiveTrackModel = track.model ?? config.model;
     const effectiveTrackReasoning = track.reasoning_effort ?? config.reasoning_effort;
 
@@ -286,7 +286,7 @@ export function deresolvePipeline(config: PipelineConfig, workDir: string): RawP
       ...(track.reasoning_effort && track.reasoning_effort !== config.reasoning_effort
         ? { reasoning_effort: track.reasoning_effort }
         : {}),
-      ...(track.driver && track.driver !== (config.driver ?? 'claude-code')
+      ...(track.driver && track.driver !== (config.driver ?? 'opencode')
         ? { driver: track.driver }
         : {}),
       ...(trackCwdRel ? { cwd: trackCwdRel } : {}),

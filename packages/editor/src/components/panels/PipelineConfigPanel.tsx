@@ -103,7 +103,7 @@ export function PipelineConfigPanel({
                   value={config.driver ?? ''}
                   onChange={(e) => onUpdate({ driver: e.target.value || undefined })}
                 >
-                  <option value="">claude-code (default)</option>
+                  <option value="">opencode (default)</option>
                   {drivers.map((d) => (
                     <option key={d} value={d}>
                       {d}

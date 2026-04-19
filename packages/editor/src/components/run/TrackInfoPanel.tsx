@@ -51,7 +51,7 @@ export function TrackInfoPanel({ track, config, onClose }: TrackInfoPanelProps) 
   // Inheritance chain: track → pipeline → default. We surface the resolved
   // values with an explicit "(inherited)" marker so the user can see what
   // the track actually contributes vs what came from above.
-  const driver = track.driver ?? config.driver ?? 'claude-code';
+  const driver = track.driver ?? config.driver ?? 'opencode';
   const driverSource = track.driver ? 'track' : config.driver ? 'pipeline' : 'default';
   const model = track.model ?? config.model ?? null;
   const cwd = track.cwd ?? null;

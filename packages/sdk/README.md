@@ -15,7 +15,7 @@
 > the npm registry website and cannot be removed — please ignore it and use
 > the command above.)_
 
-A local AI task orchestration SDK for [Bun](https://bun.sh). Define multi-track pipelines in YAML, run AI coding agents (Claude Code, Codex, OpenCode) and shell commands in parallel with dependency resolution, approval gates, and lifecycle hooks.
+A local AI task orchestration SDK for [Bun](https://bun.sh). Define multi-track pipelines in YAML, run AI coding agents (OpenCode, Codex, Claude Code) and shell commands in parallel with dependency resolution, approval gates, and lifecycle hooks.
 
 ## Install
 
@@ -35,7 +35,7 @@ pipeline:
   tracks:
     - id: backend
       name: Backend
-      driver: claude-code
+      driver: opencode
       permissions: { read: true, write: true, execute: false }
       tasks:
         - id: implement
@@ -65,7 +65,7 @@ console.log(result.success ? 'Done' : 'Failed');
 ## Features
 
 - **Multi-track DAG execution** -- tasks run in parallel across tracks, respecting `depends_on` ordering
-- **Driver plugins** -- built-in `claude-code` driver; install `@tagma/driver-codex` or `@tagma/driver-opencode` for other agents
+- **Driver plugins** -- built-in `opencode` driver; install `@tagma/driver-codex` or `@tagma/driver-claude-code` for other agents
 - **Session handoff** -- `continue_from` passes context between tasks (session resume or text injection)
 - **Approval gates** -- trigger-based approval with stdin and WebSocket adapters
 - **Lifecycle hooks** -- `pipeline_start`, `task_start`, `task_success`, `task_failure`, `pipeline_complete`, `pipeline_error`
@@ -80,10 +80,11 @@ console.log(result.success ? 'Done' : 'Failed');
 ```yaml
 pipeline:
   name: my-pipeline
-  driver: claude-code
+  driver: opencode
   timeout: 30m
   plugins:
     - '@tagma/driver-codex'
+    - '@tagma/driver-claude-code'
   hooks:
     pipeline_start: 'echo starting'
     task_start: 'echo task begin'
@@ -95,8 +96,8 @@ pipeline:
     - id: track-1
       name: Track One
       color: '#3b82f6'
-      driver: claude-code
-      model: claude-sonnet-4-6
+      driver: opencode
+      model: opencode/big-pickle
       agent_profile: senior
       cwd: ./services/backend
       permissions:
@@ -113,8 +114,8 @@ pipeline:
           name: Do something
           prompt: 'Your prompt here'
           timeout: 10m
-          driver: claude-code
-          model: claude-sonnet-4-6
+          driver: opencode
+          model: opencode/big-pickle
           agent_profile: senior
           cwd: ./src
           permissions:
@@ -143,7 +144,7 @@ pipeline:
 | Field     | Type            | Required | Description                                                                                |
 | --------- | --------------- | -------- | ------------------------------------------------------------------------------------------ |
 | `name`    | `string`        | Yes      | Pipeline name, used in logs and run IDs                                                    |
-| `driver`  | `string`        | No       | Default driver for all tracks/tasks (inherited). Built-in: `claude-code`                   |
+| `driver`  | `string`        | No       | Default driver for all tracks/tasks (inherited). Built-in: `opencode`                      |
 | `model`   | `string`        | No       | Default model for all tracks/tasks (inherited). Exact model name, e.g. `claude-sonnet-4-6` |
 | `timeout` | `string`        | No       | Pipeline-level timeout. Format: `"30s"`, `"5m"`, `"2h"`                                    |
 | `plugins` | `string[]`      | No       | External plugin packages to load, e.g. `["@tagma/driver-codex"]`                           |
@@ -280,7 +281,7 @@ Track-level `middlewares` apply to all tasks in the track. Setting task-level `m
 
 ### `bootstrapBuiltins()`
 
-Registers all built-in plugins (claude-code driver, file/manual triggers, completion checks, static-context middleware).
+Registers all built-in plugins (opencode driver, file/manual triggers, completion checks, static-context middleware).
 
 ### `loadPipeline(yaml: string, workDir: string): Promise<PipelineConfig>`
 
@@ -564,8 +565,8 @@ Truncates `text` to at most `maxBytes` UTF-8 bytes (default 16 KB), appending a 
 | Package                                                                        | Description                |
 | ------------------------------------------------------------------------------ | -------------------------- |
 | [@tagma/types](https://www.npmjs.com/package/@tagma/types)                     | Shared TypeScript types    |
-| [@tagma/driver-codex](https://www.npmjs.com/package/@tagma/driver-codex)       | Codex CLI driver plugin    |
-| [@tagma/driver-opencode](https://www.npmjs.com/package/@tagma/driver-opencode) | OpenCode CLI driver plugin |
+| [@tagma/driver-codex](https://www.npmjs.com/package/@tagma/driver-codex)             | Codex CLI driver plugin       |
+| [@tagma/driver-claude-code](https://www.npmjs.com/package/@tagma/driver-claude-code) | Claude Code CLI driver plugin |
 
 ## License
 

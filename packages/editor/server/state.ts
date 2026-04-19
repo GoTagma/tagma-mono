@@ -295,7 +295,7 @@ export function stripEmptyFields(
   return result;
 }
 
-export const BUILTIN_DRIVERS = new Set(['claude-code']);
+export const BUILTIN_DRIVERS = new Set(['opencode']);
 
 /**
  * Sync `config.plugins` with actually-referenced non-built-in drivers.

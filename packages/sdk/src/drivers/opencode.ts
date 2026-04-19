@@ -6,7 +6,7 @@ import type {
   TrackConfig,
   DriverContext,
   SpawnSpec,
-} from '@tagma/types';
+} from '../types';
 
 const DEFAULT_MODEL = 'opencode/big-pickle';
 
@@ -31,7 +31,7 @@ const EFFORT_TO_VARIANT: Record<string, string | null> = {
   high: 'high',
 };
 
-const OpenCodeDriver: DriverPlugin = {
+export const OpenCodeDriver: DriverPlugin = {
   name: 'opencode',
 
   capabilities: {
@@ -202,7 +202,3 @@ const OpenCodeDriver: DriverPlugin = {
     };
   },
 };
-
-export const pluginCategory = 'drivers';
-export const pluginType = 'opencode';
-export default OpenCodeDriver;

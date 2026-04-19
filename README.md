@@ -10,7 +10,7 @@ tagma-mono/
 │   ├── types/                @tagma/types                Type-only package, no runtime code
 │   ├── sdk/                  @tagma/sdk                  Core engine
 │   ├── driver-codex/         @tagma/driver-codex         Codex CLI driver plugin
-│   ├── driver-opencode/      @tagma/driver-opencode      OpenCode CLI driver plugin
+│   ├── driver-claude-code/   @tagma/driver-claude-code   Claude Code CLI driver plugin
 │   ├── middleware-lightrag/  @tagma/middleware-lightrag  LightRAG knowledge-graph retrieval middleware
 │   ├── trigger-webhook/      @tagma/trigger-webhook      HTTP webhook trigger plugin
 │   ├── completion-llm-judge/ @tagma/completion-llm-judge LLM-as-judge completion plugin
@@ -20,7 +20,7 @@ tagma-mono/
 └── .gitignore
 ```
 
-The five plugin packages (`driver-codex`, `driver-opencode`, `middleware-lightrag`, `trigger-webhook`, `completion-llm-judge`) also serve as **reference implementations** for the five plugin categories — copy any of them as a starting point for a new plugin.
+The five plugin packages (`driver-codex`, `driver-claude-code`, `middleware-lightrag`, `trigger-webhook`, `completion-llm-judge`) also serve as **reference implementations** for the five plugin categories — copy any of them as a starting point for a new plugin. The SDK's built-in driver is `opencode`; all other drivers ship as plugins.
 
 ## Quick Start
 
@@ -79,7 +79,7 @@ bun run check                      # Run all type checks (types, sdk, all plugin
 bun run check:types                # Check @tagma/types only
 bun run check:sdk                  # Check @tagma/sdk only
 bun run check:driver-codex         # Check @tagma/driver-codex only
-bun run check:driver-opencode      # Check @tagma/driver-opencode only
+bun run check:driver-claude-code   # Check @tagma/driver-claude-code only
 bun run check:middleware-lightrag  # Check @tagma/middleware-lightrag only
 bun run check:trigger-webhook      # Check @tagma/trigger-webhook only
 bun run check:completion-llm-judge # Check @tagma/completion-llm-judge only
@@ -134,7 +134,7 @@ bun install            # Reinstall
 # Patch (+0.0.1)
 bun run version:types:patch
 bun run version:codex:patch
-bun run version:opencode:patch
+bun run version:claude-code:patch
 bun run version:lightrag:patch
 bun run version:webhook:patch
 bun run version:llm-judge:patch
@@ -143,7 +143,7 @@ bun run version:sdk:patch
 # Minor (+0.1.0)
 bun run version:types:minor
 bun run version:codex:minor
-bun run version:opencode:minor
+bun run version:claude-code:minor
 bun run version:lightrag:minor
 bun run version:webhook:minor
 bun run version:llm-judge:minor
@@ -152,7 +152,7 @@ bun run version:sdk:minor
 # Major (+1.0.0)
 bun run version:types:major
 bun run version:codex:major
-bun run version:opencode:major
+bun run version:claude-code:major
 bun run version:lightrag:major
 bun run version:webhook:major
 bun run version:llm-judge:major
@@ -164,7 +164,7 @@ This runs `bun pm version` which updates the `version` field in the package's `p
 Publish order must follow the dependency chain:
 
 1. `@tagma/types` (all other packages depend on it)
-2. All plugin packages: `@tagma/driver-codex`, `@tagma/driver-opencode`, `@tagma/middleware-lightrag`, `@tagma/trigger-webhook`, `@tagma/completion-llm-judge`
+2. All plugin packages: `@tagma/driver-codex`, `@tagma/driver-claude-code`, `@tagma/middleware-lightrag`, `@tagma/trigger-webhook`, `@tagma/completion-llm-judge`
 3. `@tagma/sdk`
 
 ### 2. Publish
@@ -173,7 +173,7 @@ Publish order must follow the dependency chain:
 # Publish individual packages (auto-builds before publish)
 bun run publish:types
 bun run publish:driver-codex
-bun run publish:driver-opencode
+bun run publish:driver-claude-code
 bun run publish:middleware-lightrag
 bun run publish:trigger-webhook
 bun run publish:completion-llm-judge

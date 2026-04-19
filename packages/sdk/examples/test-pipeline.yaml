@@ -1,5 +1,5 @@
 # End-to-end smoke-test pipeline covering the full plugin surface.
-# Only @tagma/driver-opencode is loaded as an external plugin.
+# No external driver plugin is needed — opencode is an SDK built-in.
 # trigger / completion / middleware plugins are all SDK built-ins
 # (registered by bootstrapBuiltins).
 pipeline:
@@ -7,8 +7,6 @@ pipeline:
   driver: opencode                # pipeline-level default driver (inherited by track/task)
   model: opencode/big-pickle       # pipeline-level default model (must be provider/model)
   timeout: 30m                    # pipeline-level timeout
-  plugins:
-    - '@tagma/driver-opencode'    # the only external plugin
 
   # ---- lifecycle hooks: exercise both single-command and command-array forms ----
   hooks:

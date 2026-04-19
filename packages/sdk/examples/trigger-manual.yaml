@@ -13,6 +13,8 @@ pipeline:
   driver: claude-code
   model: haiku
   timeout: 30m
+  plugins:
+    - '@tagma/driver-claude-code'
 
   tracks:
     - id: gated

@@ -1,8 +1,8 @@
 # driver-claude-code-haiku.yaml
 # --------------------------------------------------------------------------
-# Minimal pipeline using the built-in Claude Code driver with the `haiku`
-# model. No `plugins:` list is required — claude-code is registered by
-# bootstrapBuiltins() at SDK startup.
+# Minimal pipeline using the Claude Code driver with the `haiku` model.
+# Claude Code is an external plugin — declare it in `plugins:` to register
+# it. (The SDK's built-in driver is `opencode`; all others are plugins.)
 #
 # Requires:  `claude` CLI on PATH (authenticated).
 # --------------------------------------------------------------------------
@@ -11,6 +11,8 @@ pipeline:
   driver: claude-code
   model: haiku
   timeout: 5m
+  plugins:
+    - '@tagma/driver-claude-code'
 
   tracks:
     - id: main
