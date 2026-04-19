@@ -68,11 +68,17 @@ export function ConfirmModal({ info, onClose }: ConfirmModalProps) {
         <div className="px-4 py-3 border-t border-tagma-border flex justify-end gap-2">
           <button
             onClick={handleDismiss}
-            className="px-3 py-1 text-[11px] text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 transition-colors"
+            className="min-w-[120px] px-3 py-1 text-[11px] text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 transition-colors text-center"
           >
             {info.cancelLabel ?? 'Cancel'}
           </button>
-          <button onClick={handleConfirm} className={info.danger ? 'btn-danger' : 'btn-primary'}>
+          <button
+            onClick={handleConfirm}
+            // w-auto cancels btn-danger's baked-in w-full (that class is also
+            // used by full-width panel buttons elsewhere). justify-center keeps
+            // the label centered now that we widen via min-w.
+            className={`${info.danger ? 'btn-danger' : 'btn-primary'} w-auto min-w-[120px] justify-center text-center`}
+          >
             {info.confirmLabel}
           </button>
         </div>
