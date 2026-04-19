@@ -27,6 +27,7 @@
   "build": {
     "appId": "com.tagma.editor",
     "productName": "Tagma",
+    "artifactName": "Tagma-${os}-${arch}.${ext}",
     "directories": {
       "output": "release"
     },
@@ -55,7 +56,12 @@
       "icon": "build/icon.png"
     },
     "mac": {
-      "target": "dmg",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        }
+      ],
       "icon": "build/icon.icns"
     }
   }

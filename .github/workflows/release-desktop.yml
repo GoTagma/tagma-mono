@@ -1,0 +1,244 @@
+name: Release Desktop
+
+on:
+  push:
+    tags:
+      - 'desktop-v*'
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump'
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      channel:
+        description: 'Release channel'
+        type: choice
+        options: [alpha, beta, rc, stable]
+        default: alpha
+
+permissions:
+  contents: read
+
+jobs:
+  # Convenience path: bump version, scaffold changelog, commit, tag, push.
+  # The tag push re-enters this workflow via the tag trigger.
+  cut-tag:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Bump desktop version
+        id: bump
+        working-directory: packages/electron
+        run: |
+          bun pm version ${{ inputs.bump }} --no-git-tag-version
+          version=$(node -p "require('./package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Scaffold changelog entry
+        run: |
+          version="${{ steps.bump.outputs.version }}"
+          date=$(date -u +%Y-%m-%d)
+          mkdir -p packages/electron/CHANGELOG
+          file="packages/electron/CHANGELOG/${version}.md"
+          if [ ! -f "$file" ]; then
+            cat > "$file" <<EOF
+          ---
+          version: "${version}"
+          date: "${date}"
+          channel: "${{ inputs.channel }}"
+          summary: "TODO: one-line summary for v${version}."
+          ---
+
+          TODO: write release notes for v${version}.
+          EOF
+          fi
+
+      - name: Commit, tag, push
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          version="${{ steps.bump.outputs.version }}"
+          git config user.name "Tagma Release Bot"
+          git config user.email "release-bot@users.noreply.github.com"
+          git add packages/electron/package.json "packages/electron/CHANGELOG/${version}.md"
+          git commit -m "chore(desktop): cut v${version}"
+          git tag "desktop-v${version}"
+          git push origin HEAD:${{ github.ref_name }}
+          git push origin "desktop-v${version}"
+
+  build:
+    if: startsWith(github.ref, 'refs/tags/desktop-v')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: mac
+          - os: ubuntu-latest
+            platform: linux
+          - os: windows-latest
+            platform: win
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install deps
+        run: bun install
+
+      - name: Build desktop prerequisites
+        run: bun run build:desktop
+
+      - name: Package (${{ matrix.platform }})
+        working-directory: packages/electron
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npx --yes electron-builder --${{ matrix.platform }} --publish=never
+
+      - name: Compute checksums
+        shell: bash
+        run: node scripts/release/compute-checksums.mjs packages/electron/release
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.platform }}
+          path: |
+            packages/electron/release/Tagma-*.dmg
+            packages/electron/release/Tagma-*.exe
+            packages/electron/release/Tagma-*.AppImage
+            packages/electron/release/Tagma-*.sha256
+            packages/electron/release/latest*.yml
+            packages/electron/release/*.blockmap
+          if-no-files-found: ignore
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Flatten assets
+        run: |
+          mkdir -p flat
+          find release-assets -type f -exec cp {} flat/ \;
+          ls -la flat
+
+      - name: Extract version from tag
+        id: meta
+        run: |
+          version="${GITHUB_REF_NAME#desktop-v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Channel info
+        id: ch
+        run: |
+          node scripts/release/channel-info.mjs "packages/electron/CHANGELOG/${{ steps.meta.outputs.version }}.md" >> "$GITHUB_OUTPUT"
+
+      - name: Build release notes
+        run: |
+          node scripts/release/build-release-notes.mjs "${{ steps.meta.outputs.version }}" flat > RELEASE_NOTES.md
+          cat RELEASE_NOTES.md
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          args=()
+          if [ "${{ steps.ch.outputs.prerelease }}" = "true" ]; then
+            args+=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            --title "Tagma Desktop ${{ steps.meta.outputs.version }}" \
+            --notes-file RELEASE_NOTES.md \
+            --repo "${{ github.repository }}" \
+            "${args[@]}" \
+            flat/*
+
+  sync-web:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+          owner: GoTagma
+          repositories: |
+            tagma-mono
+            tagma-web
+
+      - name: Checkout tagma-mono
+        uses: actions/checkout@v4
+        with:
+          path: mono
+
+      - name: Checkout tagma-web
+        uses: actions/checkout@v4
+        with:
+          repository: GoTagma/tagma-web
+          token: ${{ steps.app-token.outputs.token }}
+          path: web
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: web-release-assets
+
+      - name: Flatten assets
+        run: |
+          mkdir -p flat
+          find web-release-assets -type f -exec cp {} flat/ \;
+
+      - name: Run sync script
+        run: node mono/scripts/release/sync-tagma-web.mjs "${{ needs.publish.outputs.version }}" mono web flat
+
+      - name: Commit and push
+        working-directory: web
+        run: |
+          git config user.name "Tagma Release Bot"
+          git config user.email "release-bot@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "nothing to sync"
+            exit 0
+          fi
+          git commit -m "chore: sync desktop v${{ needs.publish.outputs.version }}"
+          git push origin HEAD:main
