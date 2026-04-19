@@ -156,6 +156,13 @@ async function createEditorWindow(workspacePath: string | null = null): Promise<
     minWidth: 900,
     minHeight: 600,
     title: workspacePath ? `Tagma — ${path.basename(workspacePath)}` : 'Tagma',
+    // In dev (`electron .`) the host is electron.exe, so the window inherits
+    // Electron's default icon. In packaged builds the .exe icon (patched by
+    // electron-builder's rcedit pass) is used automatically, so only the dev
+    // case needs an explicit override.
+    ...(app.isPackaged
+      ? {}
+      : { icon: path.join(__dirname, '..', 'build', 'icon.png') }),
     // Fully self-drawn chrome: no native title bar, no OS min/max/close buttons,
     // no menu bar. The renderer paints its own title strip + window controls.
     // Same config on every platform by design — the app should look identical
