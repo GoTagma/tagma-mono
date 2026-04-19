@@ -1,4 +1,5 @@
-import { mkdirSync, rmSync, existsSync } from 'node:fs';
+import { mkdirSync, rmSync, existsSync, readdirSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const packageDir = resolve(import.meta.dir, '..');
@@ -61,20 +62,68 @@ if (compileTarget) {
   console.log(`Using Bun compile target: ${compileTarget}`);
 }
 
-const result = await Bun.build({
-  entrypoints: [join(packageDir, 'server', 'index.ts')],
-  target: 'bun',
-  compile: {
-    outfile,
-    ...(compileTarget ? { target: compileTarget as `bun-${string}` } : {}),
-  },
-});
-
-if (!result.success) {
-  for (const log of result.logs) {
-    console.error(log);
+// Cross-variant compile (e.g. host=windows-x64-modern → target=windows-x64-baseline)
+// requires Bun to download the target runtime into ~/.bun/install/cache. That
+// download is occasionally truncated on CI runners, leaving an unzippable zip
+// and a "Failed to extract executable for 'bun-...-vX.Y.Z'" error. Wipe the
+// matching cache entry and retry a couple of times before giving up.
+function purgeCachedTargetRuntime(target: string): void {
+  const cacheDir = join(homedir(), '.bun', 'install', 'cache');
+  if (!existsSync(cacheDir)) return;
+  let entries: string[];
+  try {
+    entries = readdirSync(cacheDir);
+  } catch {
+    return;
   }
-  process.exit(1);
+  for (const entry of entries) {
+    if (!entry.startsWith(target)) continue;
+    const fullPath = join(cacheDir, entry);
+    try {
+      rmSync(fullPath, { recursive: true, force: true });
+      console.warn(`Cleared stale Bun runtime cache: ${fullPath}`);
+    } catch (err) {
+      console.warn(`Could not clear ${fullPath}:`, err);
+    }
+  }
 }
 
-console.log(`Built desktop sidecar: ${outfile}`);
+async function buildWithRetry(maxAttempts: number): Promise<void> {
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const result = await Bun.build({
+        entrypoints: [join(packageDir, 'server', 'index.ts')],
+        target: 'bun',
+        compile: {
+          outfile,
+          ...(compileTarget ? { target: compileTarget as `bun-${string}` } : {}),
+        },
+      });
+      if (result.success) {
+        console.log(`Built desktop sidecar: ${outfile}`);
+        return;
+      }
+      for (const log of result.logs) {
+        console.error(log);
+      }
+      throw new Error('Bun.build returned success=false');
+    } catch (err) {
+      lastError = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      const isExtractFailure =
+        msg.includes('Failed to extract executable') ||
+        msg.includes('download may be incomplete');
+      console.error(`Build attempt ${attempt}/${maxAttempts} failed: ${msg}`);
+      if (attempt < maxAttempts && isExtractFailure && compileTarget) {
+        purgeCachedTargetRuntime(compileTarget);
+        await new Promise((r) => setTimeout(r, 1500 * attempt));
+        continue;
+      }
+      break;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+await buildWithRetry(3);

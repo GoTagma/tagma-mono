@@ -40,7 +40,11 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          # Pinned to match `packageManager` in root package.json. Avoid
+          # `latest` so a freshly published Bun build with a broken
+          # cross-target runtime (e.g. v1.3.12 windows-x64-baseline extract
+          # failure) can't take the release pipeline down without warning.
+          bun-version: 1.3.11
 
       - name: Bump desktop version
         id: bump
@@ -97,13 +101,39 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          # Pinned to match `packageManager` in root package.json. Avoid
+          # `latest` so a freshly published Bun build with a broken
+          # cross-target runtime (e.g. v1.3.12 windows-x64-baseline extract
+          # failure) can't take the release pipeline down without warning.
+          bun-version: 1.3.11
 
       - name: Install deps
         run: bun install
 
       - name: Build desktop prerequisites
-        run: bun run build:desktop
+        # Bun's cross-target compile occasionally lands a truncated zip in its
+        # cache and dies with "Failed to extract executable" before the script
+        # can catch it. Retry up to 3 times, wiping any stale baseline cache
+        # entries between attempts.
+        shell: bash
+        run: |
+          attempt=1
+          max=3
+          while [ "$attempt" -le "$max" ]; do
+            echo "── build:desktop attempt $attempt/$max ──"
+            if bun run build:desktop; then
+              echo "build:desktop succeeded on attempt $attempt"
+              exit 0
+            fi
+            echo "build:desktop attempt $attempt failed"
+            if [ "$attempt" -lt "$max" ]; then
+              find "$HOME/.bun" -maxdepth 6 \( -iname "bun-*-baseline-v*" -o -iname "bun-windows-x64-v*" -o -iname "bun-linux-x64-v*" \) -print -exec rm -rf {} + 2>/dev/null || true
+              sleep $((attempt * 5))
+            fi
+            attempt=$((attempt + 1))
+          done
+          echo "build:desktop exhausted retries"
+          exit 1
 
       - name: Package (${{ matrix.platform }})
         working-directory: packages/electron
