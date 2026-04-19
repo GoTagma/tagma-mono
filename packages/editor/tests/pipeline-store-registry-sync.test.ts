@@ -113,11 +113,12 @@ function setElectronApi(
       }
     | null,
 ): void {
+  const g = globalThis as { window?: unknown };
   if (api) {
-    (globalThis as typeof globalThis & { window: unknown }).window = { electronAPI: api };
+    g.window = { electronAPI: api };
     return;
   }
-  delete (globalThis as typeof globalThis & { window?: unknown }).window;
+  delete g.window;
 }
 
 describe('pipeline store plugin registry sync', () => {
@@ -154,10 +155,10 @@ describe('pipeline store plugin registry sync', () => {
   });
 
   test('setWorkDir aborts when Electron reports the workspace is already open in another window', async () => {
-    let requestedPath: string | null = null;
+    const captured: { path: string | null } = { path: null };
     setElectronApi({
       requestSetWorkDir: async (workspacePath) => {
-        requestedPath = workspacePath;
+        captured.path = workspacePath;
         return { action: 'focus-other' };
       },
       openNewWindow: async () => {},
@@ -167,7 +168,7 @@ describe('pipeline store plugin registry sync', () => {
 
     const state = usePipelineStore.getState();
     expect(switched).toBe(false);
-    expect(requestedPath).toBe('D:/workspace-a');
+    expect(captured.path).toBe('D:/workspace-a');
     expect(setWorkDirCalls).toBe(0);
     expect(getRegistryCalls).toBe(0);
     expect(state.workDir).toBe('C:/previous');

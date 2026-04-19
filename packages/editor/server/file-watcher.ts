@@ -22,6 +22,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { watch, type FSWatcher, readFileSync, statSync, existsSync } from 'node:fs';
+import { EventEmitter } from 'node:events';
 import { dirname, basename } from 'node:path';
 import { createHash } from 'node:crypto';
 
@@ -118,7 +119,19 @@ export function startWatching(filePath: string, getSerializedConfig: () => strin
 
   let watcher: FSWatcher;
   try {
-    watcher = watch(watchDir, { persistent: false });
+    watcher = watch(
+      watchDir,
+      { persistent: false },
+      (_eventType, changedFile) => {
+        // Filter: only react to events for our specific file. Directory watches
+        // fire for any file in the directory; we don't want unrelated changes
+        // to trigger a YAML reload. `changedFile` may be null on some platforms.
+        if (changedFile && changedFile !== watchFile) return;
+        if (handle.debounce) clearTimeout(handle.debounce);
+        // Debounce — editors often emit multiple change events per save.
+        handle.debounce = setTimeout(check, 120);
+      },
+    );
   } catch (err) {
     console.error(`[file-watcher] failed to watch directory ${watchDir}:`, err);
     return;
@@ -162,18 +175,9 @@ export function startWatching(filePath: string, getSerializedConfig: () => strin
     }
   };
 
-  watcher.on('change', (_eventType: string, changedFile: string | Buffer | null) => {
-    // Filter: only react to events for our specific file. Directory watches
-    // fire for any file in the directory; we don't want unrelated changes to
-    // trigger a YAML reload.
-    const changed = changedFile instanceof Buffer ? changedFile.toString() : changedFile;
-    if (changed && changed !== watchFile) return;
-    if (handle.debounce) clearTimeout(handle.debounce);
-    // Debounce — editors often emit multiple change events per save.
-    handle.debounce = setTimeout(check, 120);
-  });
-
-  watcher.on('error', (err) => {
+  // Cast to EventEmitter — FSWatcher's typed event map varies across
+  // @types/node versions (22 vs 25), but the runtime surface is stable.
+  (watcher as unknown as EventEmitter).on('error', (err: Error) => {
     console.error(`[file-watcher] watcher error on ${watchDir}:`, err);
   });
 

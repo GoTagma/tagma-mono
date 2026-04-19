@@ -34,7 +34,7 @@ import {
   type TrackInfo,
   type TaskInfo,
 } from './hooks';
-import { Logger, tailLines, clip, type LogLevel } from './logger';
+import { Logger, tailLines, clip } from './logger';
 import { InMemoryApprovalGateway, type ApprovalGateway } from './approval';
 
 // ═══ A7: Typed trigger errors ═══

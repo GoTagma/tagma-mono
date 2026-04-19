@@ -29,7 +29,6 @@ import type {
   AbortReason as SdkAbortReason,
   WireRunEvent as SdkWireRunEvent,
 } from '@tagma/types';
-import { RUN_PROTOCOL_VERSION } from '@tagma/types';
 
 // Recursively strip `readonly` from object fields and array element
 // wrappers. Primitives, unions of primitives, and untyped index
