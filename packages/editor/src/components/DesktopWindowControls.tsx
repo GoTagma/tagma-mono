@@ -9,19 +9,30 @@ import {
   subscribeMaximizedChanged,
 } from '../desktop';
 import { usePipelineStore } from '../store/pipeline-store';
+import { useUIStore } from '../store/ui-store';
 
 // Electron silently cancels window.close() if any beforeunload handler calls
 // preventDefault() (no native confirm dialog), so dirty-state confirmation
-// must live here, in the renderer, before we ask main to close.
+// must live here, in the renderer, before we ask main to close. Uses the
+// app's themed ConfirmModal via the global UI store rather than the OS's
+// `window.confirm` so the dialog matches the rest of Tagma's chrome.
 function requestCloseWithConfirm(): void {
   const { isDirty, layoutDirty } = usePipelineStore.getState();
-  if (isDirty || layoutDirty) {
-    const ok = window.confirm(
-      'You have unsaved changes. Close anyway? Unsaved edits will be lost.',
-    );
-    if (!ok) return;
+  if (!isDirty && !layoutDirty) {
+    closeDesktopWindow();
+    return;
   }
-  closeDesktopWindow();
+  useUIStore.getState().requestConfirm({
+    title: 'Discard unsaved changes?',
+    details: [
+      'You have unsaved edits in this workspace.',
+      'Closing the window now will lose them.',
+    ],
+    confirmLabel: 'Close anyway',
+    cancelLabel: 'Keep editing',
+    danger: true,
+    onConfirm: () => closeDesktopWindow(),
+  });
 }
 
 // Tracks the native window's maximized state so the custom glyph toggles

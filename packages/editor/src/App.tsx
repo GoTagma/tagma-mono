@@ -23,6 +23,7 @@ import { SearchOverlay } from './components/SearchOverlay';
 import { SaveAsDialog } from './components/SaveAsDialog';
 import { DialogModal, type DialogInfo } from './components/DialogModal';
 import { ConfirmModal, type ConfirmInfo } from './components/ConfirmModal';
+import { useUIStore } from './store/ui-store';
 import { hasDesktopBridge, openDesktopWindow } from './desktop';
 import { DesktopTitleStrip } from './components/DesktopWindowControls';
 
@@ -1212,6 +1213,16 @@ export function App() {
 
       {/* Confirm dialog */}
       {confirmInfo && <ConfirmModal info={confirmInfo} onClose={() => setConfirmInfo(null)} />}
+
+      {/* Global confirm channel — for callers outside App's tree (eg. title-bar X) */}
+      <GlobalConfirmModal />
     </>
   );
+}
+
+function GlobalConfirmModal() {
+  const confirm = useUIStore((s) => s.confirm);
+  const dismiss = useUIStore((s) => s.dismissConfirm);
+  if (!confirm) return null;
+  return <ConfirmModal info={confirm} onClose={dismiss} />;
 }
