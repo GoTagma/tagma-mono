@@ -27,7 +27,7 @@
   "build": {
     "appId": "com.tagma.editor",
     "productName": "Tagma",
-    "artifactName": "Tagma-${os}-${arch}.${ext}",
+    "artifactName": "Tagma-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "release"
     },
