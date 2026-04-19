@@ -110,6 +110,28 @@ jobs:
       - name: Install deps
         run: bun install
 
+      - name: Switch Bun to baseline runtime (Windows)
+        # Bun's own cross-target download fails consistently on Windows GitHub
+        # runners with "Failed to extract executable for bun-windows-x64-baseline".
+        # The published asset is fine — we verified the zip downloads and unzips
+        # cleanly via curl. Replace setup-bun's modern bun.exe with the baseline
+        # variant ourselves. After this swap host == target, so Bun.build's
+        # cross-target fetch in build-desktop-sidecar.ts becomes a no-op.
+        if: matrix.platform == 'win'
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUN_VERSION=$(bun --revision | cut -d+ -f1)
+          TARGET="bun-windows-x64-baseline"
+          URL="https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/${TARGET}.zip"
+          echo "Pre-fetching $URL"
+          curl -fsSL --retry 3 --retry-delay 5 "$URL" -o /tmp/bun-baseline.zip
+          unzip -oq /tmp/bun-baseline.zip -d /tmp/bun-baseline-extracted
+          BUN_BIN="$HOME/.bun/bin/bun.exe"
+          cp "/tmp/bun-baseline-extracted/${TARGET}/bun.exe" "$BUN_BIN"
+          "$BUN_BIN" --revision
+          echo "Bun runtime swapped to ${TARGET}-v${BUN_VERSION}"
+
       - name: Build desktop prerequisites
         # Bun's cross-target compile occasionally lands a truncated zip in its
         # cache and dies with "Failed to extract executable" before the script
