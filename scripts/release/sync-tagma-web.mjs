@@ -88,21 +88,38 @@ const build = `${yyyy}.${mm}.${dd}`;
 const siteConfigPath = join(webDir, 'src/site.config.ts');
 let config = readFileSync(siteConfigPath, 'utf8');
 
+function fieldRegex(name) {
+  return new RegExp(`(\\b${name}:\\s*)([^,\\n]+)(,?)`);
+}
+
+function readField(src, name) {
+  const m = src.match(fieldRegex(name));
+  if (!m) throw new Error(`field ${name} not found in site.config.ts`);
+  return m[2];
+}
+
 function replaceField(src, name, newLiteral) {
-  const re = new RegExp(`(\\b${name}:\\s*)([^,\\n]+)(,?)`);
+  const re = fieldRegex(name);
   if (!re.test(src)) throw new Error(`field ${name} not found in site.config.ts`);
   return src.replace(re, `$1${newLiteral}$3`);
 }
 
-// site.config.ts's channel union is narrower than the archive enum —
-// collapse `patch` into `stable` for display purposes.
-const siteChannel = fm.channel === 'patch' ? 'stable' : fm.channel;
+// Read the existing `channel:` line so we can preserve whatever `as '...'`
+// union annotation tagma-web currently declares — writing back a hardcoded
+// union would silently drift when the web repo widens or narrows the enum.
+const existingChannelExpr = readField(config, 'channel');
+const asMatch = existingChannelExpr.match(/\bas\s+(.+?)\s*$/);
+const channelUnionSuffix = asMatch ? ` as ${asMatch[1]}` : '';
+const channelUnionLiterals = asMatch
+  ? [...asMatch[1].matchAll(/'([^']+)'/g)].map((m) => m[1])
+  : [];
+// Only collapse `patch` → `stable` if the union doesn't actually accept
+// `patch`. Once tagma-web widens its union to include `patch`, the collapse
+// goes away on its own.
+const siteChannel =
+  fm.channel === 'patch' && !channelUnionLiterals.includes('patch') ? 'stable' : fm.channel;
 config = replaceField(config, 'version', JSON.stringify(version));
-config = replaceField(
-  config,
-  'channel',
-  `${JSON.stringify(siteChannel)} as 'beta' | 'stable' | 'rc' | 'alpha'`
-);
+config = replaceField(config, 'channel', `${JSON.stringify(siteChannel)}${channelUnionSuffix}`);
 config = replaceField(config, 'build', JSON.stringify(build));
 config = replaceField(config, 'buildDate', JSON.stringify(buildDate));
 config = replaceField(config, 'sha256Short', JSON.stringify(sha256Short));
