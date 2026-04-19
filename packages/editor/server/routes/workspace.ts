@@ -21,19 +21,8 @@ import {
   lenientParseYaml,
 } from '../state.js';
 import { errorMessage, atomicWriteFileSync } from '../path-utils.js';
+import { ALLOWED_ORIGINS } from '../allowed-origins.js';
 
-const PORT = parseInt(process.env.PORT ?? '3001');
-const DEFAULT_ALLOWED_ORIGINS = new Set<string>([
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
-  `http://localhost:${PORT}`,
-  `http://127.0.0.1:${PORT}`,
-]);
-const EXTRA_ALLOWED_ORIGINS = (process.env.TAGMA_ALLOWED_ORIGINS ?? '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
-const ALLOWED_ORIGINS = new Set<string>([...DEFAULT_ALLOWED_ORIGINS, ...EXTRA_ALLOWED_ORIGINS]);
 import { stopWatching as stopFileWatching } from '../file-watcher.js';
 import { unregisterPlugin } from '@tagma/sdk';
 import {

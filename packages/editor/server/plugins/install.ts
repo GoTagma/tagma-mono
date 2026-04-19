@@ -247,6 +247,7 @@ async function syncWorkspaceDependencies(): Promise<void> {
   }
   const proc = Bun.spawn([process.execPath, 'install'], {
     cwd: S.workDir,
+    env: { ...process.env, BUN_BE_BUN: '1' },
     stdout: 'pipe',
     stderr: 'pipe',
   });

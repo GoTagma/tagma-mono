@@ -1,0 +1,62 @@
+{
+  "name": "tagma-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Electron desktop shell for Tagma Editor",
+  "author": "Tagma",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "build:deps": "cd ../editor && bun run build && bun run build:sidecar",
+    "build:all": "bun run build:deps && bun run build",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "bun test",
+    "dev": "bun run build && electron .",
+    "start": "electron .",
+    "pack": "bun run build:all && electron-builder --dir",
+    "dist:win": "bun run build:all && electron-builder --win",
+    "dist:linux": "bun run build:all && electron-builder --linux",
+    "dist:mac": "bun run build:all && electron-builder --mac"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "electron": "^35.2.0",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.8.3"
+  },
+  "build": {
+    "appId": "com.tagma.editor",
+    "productName": "Tagma",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**"
+    ],
+    "extraResources": [
+      {
+        "from": "../editor/dist",
+        "to": "editor-dist",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../editor/desktop-dist",
+        "to": "editor-sidecar",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "build/icon.png"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "build/icon.icns"
+    }
+  }
+}

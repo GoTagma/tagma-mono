@@ -11,6 +11,7 @@ import type {
 } from '../api/client';
 import { flushAllLocalFields } from '../hooks/use-local-field';
 import { generateConfigId } from '../../shared/config-id.js';
+import { requestWorkspaceSwitch } from '../desktop';
 
 const EMPTY_REGISTRY: PluginRegistry = {
   drivers: [],
@@ -183,7 +184,7 @@ interface PipelineState {
   toggleTaskSelection: (qualifiedId: string) => void;
   selectTrack: (trackId: string | null) => void;
   setTaskPosition: (qualifiedId: string, x: number) => void;
-  setWorkDir: (workDir: string) => Promise<void>;
+  setWorkDir: (workDir: string) => Promise<boolean>;
   openFile: (path: string) => Promise<void>;
   saveFile: () => Promise<void>;
   saveFileAs: (path: string) => Promise<void>;
@@ -986,6 +987,9 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
 
     setWorkDir: async (wd) => {
       try {
+        if ((await requestWorkspaceSwitch(wd)) === 'focus-other') {
+          return false;
+        }
         // Auto-save current pipeline before switching workspace.
         // If the save fails we MUST abort the switch — otherwise the
         // caller may overwrite the in-memory pipeline and the user
@@ -1002,7 +1006,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
                 errorToMessage(saveErr) +
                 '. Save manually or discard changes before switching.',
             });
-            return;
+            return false;
           }
         }
         // Clear per-pipeline UI state so the previous workspace's
@@ -1025,8 +1029,10 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
         const registry = await fetchRegistrySnapshot();
         applyStateWithLayout(state);
         set({ isDirty: false, layoutDirty: false, registry });
+        return true;
       } catch (e) {
         set({ errorMessage: 'Failed to set workspace: ' + errorToMessage(e) });
+        return false;
       }
     },
 

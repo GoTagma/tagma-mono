@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import { existsSync } from 'fs';
+import { join } from 'path';
 import { bootstrapBuiltins, parseYaml } from '@tagma/sdk';
 import {
   S,
@@ -21,6 +23,8 @@ import { registerWorkspaceRoutes } from './routes/workspace.js';
 import { registerPluginRoutes } from './routes/plugins.js';
 import { registerRunRoutes, shutdownRuns } from './routes/run.js';
 import { registerRecentRoutes } from './routes/recent.js';
+import { ALLOWED_ORIGINS, addLoopbackAllowedOrigins } from './allowed-origins.js';
+import { resolveStaticAssetsDir } from './static-assets.js';
 
 // Register built-in plugins so we can list available drivers etc.
 bootstrapBuiltins();
@@ -34,17 +38,6 @@ const app = express();
 // (comma-separated) when running in a trusted multi-machine setup.
 const PORT = parseInt(process.env.PORT ?? '3001');
 const HOST = process.env.HOST ?? '127.0.0.1';
-const DEFAULT_ALLOWED_ORIGINS = new Set<string>([
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
-  `http://localhost:${PORT}`,
-  `http://127.0.0.1:${PORT}`,
-]);
-const EXTRA_ALLOWED_ORIGINS = (process.env.TAGMA_ALLOWED_ORIGINS ?? '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
-const ALLOWED_ORIGINS = new Set<string>([...DEFAULT_ALLOWED_ORIGINS, ...EXTRA_ALLOWED_ORIGINS]);
 app.use(
   cors({
     origin: (origin, cb) => {
@@ -284,11 +277,27 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
   }
 });
 
+// Serve Vite build output when dist/ exists (desktop / headless-server mode).
+// Must be registered after all /api routes so API paths take priority.
+const distDir = resolveStaticAssetsDir(import.meta.dirname);
+if (existsSync(distDir)) {
+  app.use(express.static(distDir));
+  // Express 5 migrated to path-to-regexp v8; bare '*' without a parameter name
+  // is rejected at route-registration time ("Missing parameter name at index 1").
+  // Use the named splat form so this SPA fallback keeps matching every path.
+  app.get('/*splat', (_req, res) => res.sendFile(join(distDir, 'index.html')));
+}
+
 // C1: Bind to 127.0.0.1 by default so the LAN can't reach the local file-system
 // endpoints. HOST may be set explicitly (e.g. "0.0.0.0") for trusted multi-machine
 // setups, but those should also enable TAGMA_ALLOWED_ORIGINS + token auth.
 const server = app.listen(PORT, HOST, () => {
-  console.log(`Tagma Editor server running on http://${HOST}:${PORT}`);
+  const addr = server.address();
+  const actualPort = typeof addr === 'object' && addr !== null ? addr.port : PORT;
+  addLoopbackAllowedOrigins(ALLOWED_ORIGINS, actualPort);
+  console.log(`Tagma Editor server running on http://${HOST}:${actualPort}`);
+  // Machine-readable readiness signal consumed by the Electron launcher.
+  process.stdout.write(`TAGMA_READY port=${actualPort}\n`);
 
   if (AUTH_ENABLED) {
     console.log('[auth] Bearer token authentication ENABLED');

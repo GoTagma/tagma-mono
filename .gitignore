@@ -20,3 +20,7 @@ coverage/
 
 .claude/settings.local.json
 .omx
+
+# Desktop packaging artifacts
+packages/editor/desktop-dist/
+packages/electron/release/

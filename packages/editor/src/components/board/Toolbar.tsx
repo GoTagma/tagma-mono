@@ -4,7 +4,6 @@ import {
   X,
   Pencil,
   Play,
-  LayoutGrid,
   AlertTriangle,
   FolderOpen,
   ExternalLink,
@@ -14,6 +13,9 @@ import {
 } from 'lucide-react';
 import { MenuBar } from '../MenuBar';
 import { DropdownMenu, type DropdownItem } from '../DropdownMenu';
+import { ProductLogo } from '../ProductLogo';
+import { DesktopWindowControls } from '../DesktopWindowControls';
+import { hasDesktopBridge, toggleMaximizeDesktopWindow } from '../../desktop';
 import { api } from '../../api/client';
 
 interface ToolbarProps {
@@ -64,6 +66,7 @@ export function Toolbar({
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(pipelineName);
   const [wdMenuOpen, setWdMenuOpen] = useState(false);
+  const isDesktop = hasDesktopBridge();
 
   const handleSaveName = useCallback(() => {
     const trimmed = editName.trim();
@@ -90,11 +93,17 @@ export function Toolbar({
   }, [yamlPath, workDir]);
 
   return (
-    <header className="h-11 bg-tagma-surface border-b border-tagma-border flex items-center pl-0 pr-2.5 shrink-0 overflow-visible relative z-[50]">
+    <header
+      className={`h-11 bg-tagma-bg border-b border-tagma-border flex items-center pl-0 shrink-0 overflow-visible relative z-[50] ${isDesktop ? 'app-drag-region pr-0' : 'pr-2.5'}`}
+      onDoubleClick={(e) => {
+        if (!isDesktop) return;
+        if (e.target === e.currentTarget) void toggleMaximizeDesktopWindow();
+      }}
+    >
       {/* Left: Logo + Menus */}
       <div className="flex items-center shrink-0 h-full">
-        <div className="w-11 h-full flex items-center justify-center shrink-0">
-          <LayoutGrid size={14} className="text-tagma-accent" />
+        <div className="w-10 h-full flex items-center justify-center shrink-0">
+          <ProductLogo size={18} />
         </div>
         <MenuBar menus={menus} />
       </div>
@@ -190,7 +199,9 @@ export function Toolbar({
         </div>
       )}
 
-      <div className="flex-1 min-w-0" />
+      {/* Flexible drag area so the user can move the window by dragging
+          the empty middle of the toolbar in desktop mode. */}
+      <div className="flex-1 min-w-[32px]" />
 
       {/* Right section */}
       <div className="flex items-center gap-2 shrink-0 h-full">
@@ -259,6 +270,8 @@ export function Toolbar({
           </button>
         )}
       </div>
+
+      {isDesktop && <DesktopWindowControls />}
     </header>
   );
 }

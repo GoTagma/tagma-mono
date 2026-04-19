@@ -23,6 +23,8 @@ import { SearchOverlay } from './components/SearchOverlay';
 import { SaveAsDialog } from './components/SaveAsDialog';
 import { DialogModal, type DialogInfo } from './components/DialogModal';
 import { ConfirmModal, type ConfirmInfo } from './components/ConfirmModal';
+import { hasDesktopBridge, openDesktopWindow } from './desktop';
+import { DesktopTitleStrip } from './components/DesktopWindowControls';
 
 type ExplorerIntent = {
   mode: FileExplorerMode;
@@ -30,6 +32,7 @@ type ExplorerIntent = {
 };
 
 export function App() {
+  const desktopMode = hasDesktopBridge();
   const {
     config,
     positions,
@@ -489,7 +492,8 @@ export function App() {
   const handleOpenRecentWorkspace = useCallback(
     async (path: string) => {
       try {
-        await setWorkDir(path);
+        const switched = await setWorkDir(path);
+        if (!switched) return;
       } catch (e: unknown) {
         setDialog({
           type: 'error',
@@ -507,7 +511,8 @@ export function App() {
     async (path: string) => {
       if (!explorer) return;
       if (explorer.purpose === 'workdir') {
-        await setWorkDir(path);
+        const switched = await setWorkDir(path);
+        if (!switched) return;
         await bootstrapAfterWorkspace();
       } else if (explorer.purpose === 'import') {
         await importFile(path);
@@ -673,6 +678,18 @@ export function App() {
       {
         label: 'File',
         items: [
+          ...(desktopMode
+            ? [
+                {
+                  label: 'New Window',
+                  shortcut: 'Ctrl+Shift+N',
+                  onAction: () => {
+                    void openDesktopWindow();
+                  },
+                },
+                { separator: true as const },
+              ]
+            : []),
           // L6: Open Workspace at top with separator — it switches the entire
           // working directory, unlike the save/import actions below.
           {
@@ -703,6 +720,7 @@ export function App() {
     ];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    desktopMode,
     yamlPath,
     handleNewPipeline,
     handleImport,
@@ -711,6 +729,18 @@ export function App() {
     handleSaveAs,
     workspaceItems,
   ]);
+
+  useEffect(() => {
+    if (!desktopMode) return;
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'n' || e.key === 'N')) {
+        e.preventDefault();
+        void openDesktopWindow();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [desktopMode]);
 
   // Ctrl+O → Import (editor only; suppressed during runs so a stray
   // keystroke can't clobber the pipeline-store while the engine is live)
@@ -923,16 +953,19 @@ export function App() {
         {!workDir && !runActive && !pluginsActive ? (
           <motion.div
             key="welcome"
-            className="h-full"
+            className="h-full flex flex-col"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={VIEW_TRANSITION}
           >
-            <WelcomePage
-              onOpenWorkspace={() => setExplorer({ mode: 'directory', purpose: 'workdir' })}
-              onSelectRecent={handleOpenRecentWorkspace}
-            />
+            <DesktopTitleStrip />
+            <div className="flex-1 min-h-0">
+              <WelcomePage
+                onOpenWorkspace={() => setExplorer({ mode: 'directory', purpose: 'workdir' })}
+                onSelectRecent={handleOpenRecentWorkspace}
+              />
+            </div>
             <ErrorToast />
           </motion.div>
         ) : runActive ? (
@@ -955,25 +988,27 @@ export function App() {
         ) : pluginsActive ? (
           <motion.div
             key="plugins"
-            className="h-full"
+            className="h-full flex flex-col"
             initial={{ opacity: 0, x: 40 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -40 }}
             transition={VIEW_TRANSITION}
           >
-            <PluginsPage
-              workDir={workDir}
-              declaredPlugins={config.plugins ?? []}
-              onBack={hidePluginsPage}
-              onRegistryUpdate={setRegistry}
-              onPluginsChange={(plugins) =>
-                updatePipelineFields({ plugins: plugins.length > 0 ? plugins : undefined })
-              }
-              onRequestBrowseLocal={() =>
-                setExplorer({ mode: 'directory', purpose: 'plugin-import' })
-              }
-              onRefreshServerState={refreshServerState}
-            />
+            <div className="flex-1 min-h-0">
+              <PluginsPage
+                workDir={workDir}
+                declaredPlugins={config.plugins ?? []}
+                onBack={hidePluginsPage}
+                onRegistryUpdate={setRegistry}
+                onPluginsChange={(plugins) =>
+                  updatePipelineFields({ plugins: plugins.length > 0 ? plugins : undefined })
+                }
+                onRequestBrowseLocal={() =>
+                  setExplorer({ mode: 'directory', purpose: 'plugin-import' })
+                }
+                onRefreshServerState={refreshServerState}
+              />
+            </div>
             <ErrorToast />
           </motion.div>
         ) : (

@@ -101,11 +101,18 @@ describe('plugin install/import hardening', () => {
     const pluginDir = makeTempDir('plugin');
     const depDir = makeTempDir('plugin-dep');
     S.workDir = workDir;
-    const spawnCalls: string[][] = [];
+    const spawnCalls: Array<{ cmd: string[]; cwd: string | undefined; envBunBeBun: string | undefined }> = [];
 
     const originalSpawn = Bun.spawn;
-    (Bun as unknown as { spawn: typeof Bun.spawn }).spawn = ((cmd: string[]) => {
-      spawnCalls.push(cmd);
+    (Bun as unknown as { spawn: typeof Bun.spawn }).spawn = ((
+      cmd: string[],
+      options?: { cwd?: string; env?: Record<string, string> },
+    ) => {
+      spawnCalls.push({
+        cmd,
+        cwd: options?.cwd,
+        envBunBeBun: options?.env?.BUN_BE_BUN,
+      });
       return {
         exited: Promise.resolve(0),
         stdout: new ReadableStream({
@@ -147,7 +154,9 @@ describe('plugin install/import hardening', () => {
     expect(pkgName).toBe('@scope/plugin-under-test');
     expect(workspacePkg.dependencies['@scope/plugin-under-test']).toBe(`file:${pluginDir}`);
     expect(spawnCalls).toHaveLength(1);
-    expect(spawnCalls[0]).toEqual([process.execPath, 'install']);
+    expect(spawnCalls[0]?.cmd).toEqual([process.execPath, 'install']);
+    expect(spawnCalls[0]?.cwd).toBe(workDir);
+    expect(spawnCalls[0]?.envBunBeBun).toBe('1');
   });
 });
 

@@ -105,6 +105,21 @@ function resetStore(): void {
   });
 }
 
+function setElectronApi(
+  api:
+    | {
+        requestSetWorkDir: (workspacePath: string) => Promise<{ action: 'proceed' | 'focus-other' }>;
+        openNewWindow: (workspacePath?: string) => Promise<void>;
+      }
+    | null,
+): void {
+  if (api) {
+    (globalThis as typeof globalThis & { window: unknown }).window = { electronAPI: api };
+    return;
+  }
+  delete (globalThis as typeof globalThis & { window?: unknown }).window;
+}
+
 describe('pipeline store plugin registry sync', () => {
   beforeEach(() => {
     nextWorkDirState = makeState();
@@ -115,6 +130,7 @@ describe('pipeline store plugin registry sync', () => {
     setWorkDirCalls = 0;
     openFileCalls = 0;
     importFileCalls = 0;
+    setElectronApi(null);
     resetStore();
   });
 
@@ -127,13 +143,35 @@ describe('pipeline store plugin registry sync', () => {
       middlewares: ['lightrag'],
     };
 
-    await usePipelineStore.getState().setWorkDir('D:/workspace-a');
+    const switched = await usePipelineStore.getState().setWorkDir('D:/workspace-a');
 
     const state = usePipelineStore.getState();
+    expect(switched).toBe(true);
     expect(setWorkDirCalls).toBe(1);
     expect(getRegistryCalls).toBe(1);
     expect(state.workDir).toBe('D:/workspace-a');
     expect(state.registry).toEqual(nextRegistry);
+  });
+
+  test('setWorkDir aborts when Electron reports the workspace is already open in another window', async () => {
+    let requestedPath: string | null = null;
+    setElectronApi({
+      requestSetWorkDir: async (workspacePath) => {
+        requestedPath = workspacePath;
+        return { action: 'focus-other' };
+      },
+      openNewWindow: async () => {},
+    });
+
+    const switched = await usePipelineStore.getState().setWorkDir('D:/workspace-a');
+
+    const state = usePipelineStore.getState();
+    expect(switched).toBe(false);
+    expect(requestedPath).toBe('D:/workspace-a');
+    expect(setWorkDirCalls).toBe(0);
+    expect(getRegistryCalls).toBe(0);
+    expect(state.workDir).toBe('C:/previous');
+    expect(state.yamlPath).toBe('C:/previous/.tagma/old.yaml');
   });
 
   test('openFile replaces any stale registry snapshot with the freshly loaded plugin registry', async () => {

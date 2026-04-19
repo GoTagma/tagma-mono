@@ -459,10 +459,13 @@ export function BoardCanvas({
     return m;
   }, [allTasks]);
 
-  // Build a lookup: taskId → FlatTask for O(1) callback lookups
-  const flatTaskById = useMemo(() => {
+  // Build a lookup: qualified id ("trackId.taskId") → FlatTask for O(1)
+  // callback lookups. Keying by bare task.id would collide when two tracks
+  // contain tasks with the same id (e.g. `say_hello` in multiple tracks of
+  // all-drivers-compare.yaml), routing every click to the last-written one.
+  const flatTaskByQid = useMemo(() => {
     const m = new Map<string, FlatTask>();
-    for (const ft of allTasks) m.set(ft.task.id, ft);
+    for (const ft of allTasks) m.set(ft.qid, ft);
     return m;
   }, [allTasks]);
 
@@ -563,15 +566,14 @@ export function BoardCanvas({
   selectedIdsRef.current = selectedTaskIds;
 
   const handleTaskPointerDown = useCallback(
-    (taskId: string, e: React.PointerEvent) => {
+    (qid: string, e: React.PointerEvent) => {
       e.preventDefault();
       const el = contentRef.current;
       if (!el) return;
       const isMultiKey = e.ctrlKey || e.metaKey;
-      // Find which track this task belongs to
-      const ft = flatTaskById.get(taskId);
+      const ft = flatTaskByQid.get(qid);
       if (!ft) return;
-      const qid = ft.qid;
+      const taskId = ft.task.id;
       const pos = staticPositions.get(qid);
       if (!pos) return;
       const cp = toContent(e, el);
@@ -655,7 +657,7 @@ export function BoardCanvas({
     [
       staticPositions,
       visualTracks,
-      flatTaskById,
+      flatTaskByQid,
       onSelectTask,
       onToggleTaskSelection,
       onSetTaskPosition,
@@ -665,13 +667,12 @@ export function BoardCanvas({
 
   // ── Edge drag ──
   const handleHandlePointerDown = useCallback(
-    (taskId: string, _e: React.PointerEvent) => {
+    (qid: string, _e: React.PointerEvent) => {
       _e.preventDefault();
       const el = contentRef.current;
       if (!el) return;
-      const ft = flatTaskById.get(taskId);
-      if (!ft) return;
-      const srcQid = ft.qid;
+      const srcQid = qid;
+      if (!flatTaskByQid.has(srcQid)) return;
 
       const onMove = (ev: PointerEvent) => {
         const cp = toContent(ev, el);
@@ -696,17 +697,16 @@ export function BoardCanvas({
       document.addEventListener('pointerup', onUp);
       document.body.style.cursor = 'crosshair';
     },
-    [flatTaskById, positionsMap, onAddDependency],
+    [flatTaskByQid, positionsMap, onAddDependency],
   );
 
   const handleTargetPointerUp = useCallback(
-    (taskId: string) => {
+    (qid: string) => {
       if (edgeDrag) {
-        const ft = flatTaskById.get(taskId);
-        if (ft && ft.qid !== edgeDrag.srcQid) nearRef.current = ft.qid;
+        if (flatTaskByQid.has(qid) && qid !== edgeDrag.srcQid) nearRef.current = qid;
       }
     },
-    [edgeDrag, flatTaskById],
+    [edgeDrag, flatTaskByQid],
   );
 
   // ── Track drag ──
@@ -847,10 +847,10 @@ export function BoardCanvas({
   );
 
   const handleTaskContextMenu = useCallback(
-    (taskId: string, e: React.MouseEvent) => {
+    (qid: string, e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      const ft = flatTaskById.get(taskId);
+      const ft = flatTaskByQid.get(qid);
       if (!ft) return;
       setCtx({
         x: e.clientX,
@@ -860,12 +860,12 @@ export function BoardCanvas({
             label: 'Delete Task',
             icon: <Trash2 size={12} />,
             danger: true,
-            onAction: () => onDeleteTask(ft.trackId, taskId),
+            onAction: () => onDeleteTask(ft.trackId, ft.task.id),
           },
         ],
       });
     },
-    [flatTaskById, onDeleteTask],
+    [flatTaskByQid, onDeleteTask],
   );
 
   const handleCanvasContextMenu = useCallback(

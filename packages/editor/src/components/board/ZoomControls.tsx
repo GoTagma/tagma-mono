@@ -1,12 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, Minus } from 'lucide-react';
+import {
+  hasDesktopBridge,
+  setDesktopZoomFactor,
+  getDesktopZoomFactor,
+} from '../../desktop';
 
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 3.0;
 const ZOOM_STEP = 0.1;
-const DEFAULT_ZOOM = 1.5; // matches html { zoom: 1.5 } in index.css
+const DEFAULT_ZOOM = 1.5; // matches webContents.setZoomFactor(1.5) in electron/src/main.ts
 
-function readZoom(): number {
+function readZoomBrowser(): number {
+  // Browser-only fallback. In Electron we read via IPC (getDesktopZoomFactor).
   const raw = parseFloat(getComputedStyle(document.documentElement).zoom);
   return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_ZOOM;
 }
@@ -17,28 +23,53 @@ function clamp(value: number): number {
 
 /**
  * Bottom-right floating zoom controls (U14).
- * Drives the global document zoom by writing to
- * document.documentElement.style.zoom — the same channel the existing
- * getZoom() utility reads from. Keeps zoom state in a simple local hook
- * so the display is reactive.
+ *
+ * In Electron: drives webContents.setZoomFactor via the desktop bridge so
+ * DOM coordinate APIs stay consistent (event.clientX / getBoundingClientRect
+ * remain in the same space, unlike CSS `zoom` which double-scales hit-
+ * testing in Chromium 134+).
+ *
+ * In the browser: falls back to document.documentElement.style.zoom.
  */
 export function ZoomControls() {
-  const [zoom, setZoom] = useState<number>(() => readZoom());
+  const isDesktop = hasDesktopBridge();
+  const [zoom, setZoom] = useState<number>(DEFAULT_ZOOM);
 
-  // Sync when other code (eg. ctrl+scroll) changes the zoom out from under us.
+  // Initial read + periodic resync for external zoom (ctrl+scroll, etc.).
   useEffect(() => {
-    const id = setInterval(() => {
-      const current = readZoom();
-      setZoom((prev) => (Math.abs(prev - current) > 0.005 ? current : prev));
-    }, 500);
-    return () => clearInterval(id);
-  }, []);
+    let cancelled = false;
+    const read = async () => {
+      if (isDesktop) {
+        const native = await getDesktopZoomFactor();
+        if (cancelled) return;
+        if (native != null) {
+          setZoom((prev) => (Math.abs(prev - native) > 0.005 ? native : prev));
+        }
+      } else {
+        const current = readZoomBrowser();
+        setZoom((prev) => (Math.abs(prev - current) > 0.005 ? current : prev));
+      }
+    };
+    void read();
+    const id = setInterval(() => void read(), 500);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [isDesktop]);
 
-  const applyZoom = useCallback((next: number) => {
-    const clamped = clamp(next);
-    document.documentElement.style.zoom = String(clamped);
-    setZoom(clamped);
-  }, []);
+  const applyZoom = useCallback(
+    (next: number) => {
+      const clamped = clamp(next);
+      if (isDesktop) {
+        void setDesktopZoomFactor(clamped);
+      } else {
+        document.documentElement.style.zoom = String(clamped);
+      }
+      setZoom(clamped);
+    },
+    [isDesktop],
+  );
 
   const zoomIn = useCallback(() => applyZoom(zoom + ZOOM_STEP), [zoom, applyZoom]);
   const zoomOut = useCallback(() => applyZoom(zoom - ZOOM_STEP), [zoom, applyZoom]);

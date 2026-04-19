@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { ArrowLeft, FolderOpen, Package, RefreshCw, Search, Store } from 'lucide-react';
 import { api } from '../../api/client';
+import { DesktopWindowControls } from '../DesktopWindowControls';
+import { hasDesktopBridge, toggleMaximizeDesktopWindow } from '../../desktop';
 import type {
   MarketplaceEntry,
   PluginCategory,
@@ -784,9 +786,16 @@ function PluginsHeader({
   onSearchQueryChange?: (q: string) => void;
   searchPlaceholder?: string;
 }) {
+  const isDesktop = hasDesktopBridge();
   return (
     <header className="shrink-0 bg-tagma-surface/60 border-b border-tagma-border">
-      <div className="h-11 flex items-center px-2 gap-2 border-b border-tagma-border/60">
+      <div
+        className={`h-11 flex items-center gap-2 border-b border-tagma-border/60 ${isDesktop ? 'app-drag-region pl-2 pr-0' : 'px-2'}`}
+        onDoubleClick={(e) => {
+          if (!isDesktop) return;
+          if (e.target === e.currentTarget) void toggleMaximizeDesktopWindow();
+        }}
+      >
         <UtilityLink onClick={onBack} icon={<ArrowLeft size={12} />} label="Back to Editor" />
         <div className="w-px h-5 bg-tagma-border" />
         <div className="flex items-center gap-1.5 px-2">
@@ -795,7 +804,7 @@ function PluginsHeader({
             Plugins
           </span>
         </div>
-        <div className="flex-1" />
+        <div className="flex-1 min-w-[32px]" />
         {tab === 'local' && onImportLocal && (
           <UtilityLink
             onClick={onImportLocal}
@@ -811,6 +820,7 @@ function PluginsHeader({
           title="Refresh plugin list"
           disabled={refreshing}
         />
+        {isDesktop && <DesktopWindowControls />}
       </div>
 
       <div className="px-6 pt-2">

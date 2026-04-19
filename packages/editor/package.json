@@ -11,6 +11,7 @@
     "dev:server": "bun --watch server/index.ts",
     "dev:client": "vite",
     "build": "vite build",
+    "build:sidecar": "bun scripts/build-desktop-sidecar.ts",
     "start": "bun server/index.ts",
     "preview": "vite preview",
     "test": "bun test",

@@ -445,27 +445,21 @@ export const TaskCard = memo(function TaskCard({
       onPointerDown={(e) => {
         if (e.button !== 0) return;
         if (readOnly) {
-          // Swallow the pointerdown so no parent pan / drag handler fires,
-          // but don't call onClickRun here — we handle that in onClick so
-          // the click bubbling chain up to the canvas body (which would
-          // otherwise clear selection on background-click) is stopped by
-          // onClick's stopPropagation, not by a side-effect of pointerdown
-          // that leaves the click free to deselect us again.
           e.stopPropagation();
           return;
         }
-        onPointerDown?.(task.id, e);
+        onPointerDown?.(`${trackId}.${task.id}`, e);
       }}
       onClick={(e) => {
         if (!readOnly) return;
         e.stopPropagation();
-        onClickRun?.(task.id);
+        onClickRun?.(`${trackId}.${task.id}`);
       }}
       onPointerUp={() => {
-        if (!readOnly) onTargetPointerUp?.(task.id);
+        if (!readOnly) onTargetPointerUp?.(`${trackId}.${task.id}`);
       }}
       onContextMenu={(e) => {
-        if (!readOnly && onContextMenu) onContextMenu(task.id, e);
+        if (!readOnly && onContextMenu) onContextMenu(`${trackId}.${task.id}`, e);
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -488,7 +482,7 @@ export const TaskCard = memo(function TaskCard({
             onPointerDown={(e) => {
               if (e.button === 0) {
                 e.stopPropagation();
-                onHandlePointerDown?.(task.id, e);
+                onHandlePointerDown?.(`${trackId}.${task.id}`, e);
               }
             }}
           />

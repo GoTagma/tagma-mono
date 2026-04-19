@@ -10,7 +10,6 @@ import {
   Loader2,
   Check,
   X,
-  LayoutGrid,
   Settings,
   Search,
   Package,
@@ -33,6 +32,9 @@ import { RunPluginsPanel } from './RunPluginsPanel';
 import { ApprovalDialog } from './ApprovalDialog';
 import { RunHistoryBrowser } from './RunHistoryBrowser';
 import { PipelineConfigPanel } from '../panels/PipelineConfigPanel';
+import { DesktopWindowControls } from '../DesktopWindowControls';
+import { ProductLogo } from '../ProductLogo';
+import { hasDesktopBridge, toggleMaximizeDesktopWindow } from '../../desktop';
 import type { RawPipelineConfig, DagEdge, TaskStatus, RunTaskState } from '../../api/client';
 import type { TaskPosition } from '../../store/pipeline-store';
 import { getZoom } from '../../utils/zoom';
@@ -111,8 +113,13 @@ export function RunView({
   const dagEdges = replayDagEdges ?? liveDagEdges;
   const positions = replayPositions ?? livePositions;
 
-  const isTerminal =
-    status === 'done' || status === 'failed' || status === 'aborted' || status === 'error';
+  // "Live" covers the only states in which aborting is meaningful.
+  // We deliberately do NOT derive this as `!isTerminal` because during a
+  // Back-from-terminal transition the store resets status to 'idle' while
+  // AnimatePresence still keeps RunView mounted for its exit animation —
+  // a `!isTerminal` check would flip true for one frame and flash the
+  // Abort button into view. Same trap the `showHistory` guard addresses.
+  const isLive = status === 'running' || status === 'starting';
 
   // C7: Abort confirmation state
   const [showAbortConfirm, setShowAbortConfirm] = useState(false);
@@ -122,7 +129,6 @@ export function RunView({
     abortRun();
   }, [abortRun]);
   const handleAbortCancel = useCallback(() => setShowAbortConfirm(false), []);
-  const _isActive = status !== 'idle';
 
   const [showPipelineSettings, setShowPipelineSettings] = useState(false);
   const [showPlugins, setShowPlugins] = useState(false);
@@ -431,7 +437,13 @@ export function RunView({
     <div className="h-full flex flex-col bg-tagma-bg relative">
       {/* Header — height matches the editor Toolbar (h-11) so switching
           between the two views doesn't shift the canvas by 4px. */}
-      <header className="h-11 bg-tagma-surface border-b border-tagma-border flex items-center px-2 gap-2 shrink-0">
+      <header
+        className={`h-11 bg-tagma-bg border-b border-tagma-border flex items-center pl-2 gap-2 shrink-0 ${hasDesktopBridge() ? 'app-drag-region pr-0' : 'pr-2'}`}
+        onDoubleClick={(e) => {
+          if (!hasDesktopBridge()) return;
+          if (e.target === e.currentTarget) void toggleMaximizeDesktopWindow();
+        }}
+      >
         <button
           onClick={onBack}
           className="flex items-center gap-1.5 text-xs text-tagma-muted hover:text-tagma-text transition-colors px-2 py-1"
@@ -442,7 +454,7 @@ export function RunView({
         <div className="w-px h-5 bg-tagma-border" />
 
         <div className="flex items-center gap-1.5 px-2">
-          <LayoutGrid size={13} className="text-tagma-accent" />
+          <ProductLogo size={14} />
           <span className="text-xs font-medium text-tagma-text truncate max-w-[160px]">
             {config.name}
           </span>
@@ -587,7 +599,7 @@ export function RunView({
             </button>
 
             {/* Abort with confirmation (C7) */}
-            {!isTerminal && !showAbortConfirm && (
+            {isLive && !showAbortConfirm && (
               <button
                 onClick={handleAbortClick}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-tagma-error border border-tagma-error/20 hover:bg-tagma-error/10 transition-colors mr-1"
@@ -615,6 +627,8 @@ export function RunView({
             )}
           </>
         )}
+
+        {hasDesktopBridge() && <DesktopWindowControls />}
       </header>
 
       {!showHistory && error && (
@@ -776,7 +790,7 @@ export function RunView({
                         readOnly
                         runtimeStatus={runtimeStatus}
                         runtimeDurationMs={taskState?.durationMs ?? null}
-                        onClickRun={(taskId) => selectTask(`${ft.trackId}.${taskId}`)}
+                        onClickRun={(qid) => selectTask(qid)}
                       />
                     );
                   })}

@@ -1,4 +1,11 @@
-/** CSS zoom factor applied on <html>. Change the value in src/index.css `html { zoom: ... }`. */
+/**
+ * CSS `zoom` factor on <html>. In Electron we use Chromium's native zoom
+ * (`webContents.setZoomFactor`) instead of CSS zoom — native zoom is
+ * transparent to DOM coordinate APIs, so this returns 1 in Electron and
+ * the callers' `/ z` becomes a no-op (correct: events and rects are
+ * already in the same space). In the browser, CSS `zoom` may still be
+ * applied via ZoomControls and this returns that value.
+ */
 export function getZoom(): number {
   return parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
 }

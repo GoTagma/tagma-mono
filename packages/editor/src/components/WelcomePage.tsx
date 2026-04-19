@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { motion } from 'motion/react';
-import { FolderOpen, Clock, X as XIcon, AlertCircle, LayoutGrid } from 'lucide-react';
+import { FolderOpen, Clock, X as XIcon, AlertCircle } from 'lucide-react';
 import { api, type RecentWorkspaceEntry } from '../api/client';
+import { ProductLogo } from './ProductLogo';
 
 interface WelcomePageProps {
   onOpenWorkspace: () => void;
@@ -64,8 +65,8 @@ export function WelcomePage({ onOpenWorkspace, onSelectRecent }: WelcomePageProp
       <div className="w-full max-w-[560px] px-8">
         {/* Header */}
         <div className="flex items-center gap-3 mb-10">
-          <div className="w-9 h-9 flex items-center justify-center border border-tagma-accent/40 bg-tagma-accent/5">
-            <LayoutGrid size={18} className="text-tagma-accent" />
+          <div className="w-9 h-9 flex items-center justify-center">
+            <ProductLogo size={32} />
           </div>
           <div className="min-w-0">
             <h1 className="text-[15px] font-semibold tracking-wide text-tagma-text">Tagma</h1>
