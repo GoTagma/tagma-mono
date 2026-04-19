@@ -111,6 +111,10 @@ jobs:
       - name: Package (${{ matrix.platform }})
         working-directory: packages/electron
         env:
+          # When no signing cert is provided, tell electron-builder not to
+          # probe the keychain — otherwise it fails fast on macOS runners.
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          DEBUG: electron-builder
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
