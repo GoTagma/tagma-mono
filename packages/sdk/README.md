@@ -294,24 +294,27 @@ Options:
 
 - `approvalGateway` -- custom `ApprovalGateway` instance (defaults to `InMemoryApprovalGateway`)
 - `signal` -- `AbortSignal` to cancel the run externally
-- `onEvent` -- callback for real-time `PipelineEvent` updates:
-  - `pipeline_start` — pipeline began; includes `states: ReadonlyMap<taskId, TaskState>` (initial snapshot of all tasks at `waiting`)
-  - `task_status_change` — a task changed status; includes `state: TaskState` (complete snapshot at the time of change: `startedAt` is populated before the `running` event; `result` and `finishedAt` are populated before any terminal-status event)
+- `onEvent` -- callback for real-time `RunEventPayload` updates. Every payload carries `runId`. The editor server stamps a per-run `seq` on top of this payload before broadcasting over SSE (producing a `WireRunEvent`); the SDK itself does not stamp `seq`. Event variants:
+  - `run_start` — pipeline approved and all tasks transitioned to `waiting`; includes `tasks: RunTaskState[]` (wire-shape snapshot of every task). Fires only when the `pipeline_start` hook allows the run — blocked pipelines emit no wire events at all.
+  - `task_update` — a task's status or result changed; flat fields (`status`, `startedAt?`, `finishedAt?`, `durationMs?`, `exitCode?`, `stdout?`, `stderr?`, `stderrPath?`, `sessionId?`, `normalizedOutput?`, `resolvedDriver?`, `resolvedModel?`, `resolvedPermissions?`) so clients can fold partial updates with `??` semantics. `startedAt` is populated before the `running` transition; `finishedAt` and result fields are populated before any terminal-status transition. Terminal-state locking in the engine guarantees at most one terminal event per task.
   - `task_log` — a structured log line was written to `pipeline.log`. Mirrors every `Logger` call (info/warn/error/debug/section/quiet) and carries `{ taskId: string | null, level, timestamp, text }`. `taskId` is non-null for lines tagged with a `[task:<id>]` prefix (or passed explicitly to `section`/`quiet`) and `null` for pipeline-wide messages such as the configuration dump and DAG topology. Use this to stream the full run process into UIs without tailing the log file.
-  - `pipeline_end` — pipeline finished; includes `success: boolean`
+  - `run_end` — pipeline finished; includes `success: boolean` and `abortReason: 'timeout' | 'stop_all' | 'external' | null`. `null` means the run completed on its own steam (success may still be `false` if tasks failed).
+  - `run_error` — reserved for fatal engine errors surfaced over the wire.
+  - `approval_request` / `approval_resolved` — bridged from the approval gateway so hosts see approvals on the same channel as task updates, without separately subscribing to the gateway.
 - `runId` -- caller-supplied run ID. When provided the engine uses this instead of generating its own, keeping the caller and the SDK log directories aligned on the same ID
 - `maxLogRuns` -- number of per-run log directories to keep under `<workDir>/.tagma/logs/` (default: 20)
+- `skipPluginLoading` -- skip the engine's built-in `loadPlugins(config.plugins)` call. Set this when the host has already pre-loaded plugins from a custom resolution path (e.g. the editor loading from the user's workspace `node_modules`) so the engine doesn't re-resolve them via Node's default cwd-based import.
 
 ### `PipelineRunner`
 
 Higher-level wrapper for managing multiple concurrent pipeline runs — designed for sidecar / Tauri IPC scenarios where the frontend controls pipeline lifecycle by ID.
 
 ```ts
-const runner = new PipelineRunner(config, workDir);
+const runner = new PipelineRunner(config, workDir, options?); // options: Omit<RunPipelineOptions, 'signal' | 'onEvent'>
 
-// Subscribe before start — handler is called for every PipelineEvent
+// Subscribe before start — handler is called for every RunEventPayload
 const unsubscribe = runner.subscribe((event) => {
-  tauriEmit('pipeline_event', { id: runner.instanceId, event });
+  tauriEmit('run_event', { id: runner.instanceId, event });
 });
 
 runner.start(); // returns Promise<EngineResult>, idempotent
@@ -319,16 +322,16 @@ runner.start(); // returns Promise<EngineResult>, idempotent
 // Cancel from IPC
 runner.abort();
 
-// Available from the first pipeline_start event onward (not just after completion)
-// Returns null only if the pipeline has never started
-const states = runner.getStates(); // ReadonlyMap<taskId, TaskState> | null
+// Live wire-shape task mirror, maintained from run_start + task_update events.
+// Empty map before the first run_start; safe to read at any time.
+const tasks = runner.getTasks(); // ReadonlyMap<taskId, RunTaskState>
 ```
 
 Properties:
 
 - `instanceId` — stable ID assigned at construction, safe to use as a Map key before `start()`
-- `runId` — engine-assigned run ID, available after the first `pipeline_start` event (`null` until then)
-- `status` — `'idle' | 'running' | 'done' | 'aborted'`
+- `runId` — engine-assigned run ID, available after the first `run_start` event (`null` until then)
+- `status` — `'idle' | 'running' | 'done' | 'aborted'` (see `PipelineRunnerStatus`)
 
 ### `TriggerBlockedError` / `TriggerTimeoutError`
 

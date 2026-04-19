@@ -14,7 +14,8 @@ tagma-mono/
 │   ├── middleware-lightrag/  @tagma/middleware-lightrag  LightRAG knowledge-graph retrieval middleware
 │   ├── trigger-webhook/      @tagma/trigger-webhook      HTTP webhook trigger plugin
 │   ├── completion-llm-judge/ @tagma/completion-llm-judge LLM-as-judge completion plugin
-│   └── editor/               tagma-editor (private)      Visual pipeline editor
+│   ├── editor/               tagma-editor (private)      Visual pipeline editor (React + Vite + Bun/Express)
+│   └── electron/             tagma-desktop (private)     Electron shell + Bun-compiled sidecar for desktop builds
 ├── package.json              monorepo root (bun workspaces)
 └── .gitignore
 ```
@@ -49,28 +50,32 @@ $env:HTTP_PROXY=''; $env:HTTPS_PROXY=''; bun install --force
 bun run dev:editor     # Start editor (server + client concurrently)
 bun run dev:server     # Start server only (watch mode)
 bun run dev:client     # Start Vite client only
+bun run dev:desktop    # Build the desktop chain and launch the Electron shell
 ```
 
 ### Build
 
 ```bash
-bun run build              # Build types + sdk + all plugin packages (required before publishing)
-bun run build:types        # Build @tagma/types only
-bun run build:sdk          # Build @tagma/sdk only
-bun run build:plugins      # Build all plugin packages (drivers + middlewares + triggers + completions)
-bun run build:drivers      # Build driver plugins only
-bun run build:middlewares  # Build middleware plugins only
-bun run build:triggers     # Build trigger plugins only
-bun run build:completions  # Build completion plugins only
-bun run build:editor       # Build editor client (Vite bundle)
+bun run build                # Build types + sdk + all plugin packages (required before publishing)
+bun run build:types          # Build @tagma/types only
+bun run build:sdk            # Build @tagma/sdk only
+bun run build:plugins        # Build all plugin packages (drivers + middlewares + triggers + completions)
+bun run build:drivers        # Build driver plugins only
+bun run build:middlewares    # Build middleware plugins only
+bun run build:triggers       # Build trigger plugins only
+bun run build:completions    # Build completion plugins only
+bun run build:editor         # Build editor client (Vite bundle)
+bun run build:editor-sidecar # Compile the editor server into a single-file executable (bun build --compile)
+bun run build:electron       # Build the Electron main/preload bundles only
+bun run build:desktop        # Full desktop chain: types → sdk → plugins → editor → editor-sidecar → electron
 ```
 
-Build order: **types → sdk → plugins** (sdk depends on types dist, plugins depend on types only).
+Build order: **types → sdk → plugins** (sdk depends on types dist, plugins depend on types only). The desktop chain layers the editor client, the compiled Bun sidecar, and the Electron shell on top.
 
 ### Type Checking
 
 ```bash
-bun run check                      # Run all type checks (types, sdk, all plugins, editor)
+bun run check                      # Run all type checks (types, sdk, all plugins, editor server/client/tests, electron)
 bun run check:types                # Check @tagma/types only
 bun run check:sdk                  # Check @tagma/sdk only
 bun run check:driver-codex         # Check @tagma/driver-codex only
@@ -79,6 +84,9 @@ bun run check:middleware-lightrag  # Check @tagma/middleware-lightrag only
 bun run check:trigger-webhook      # Check @tagma/trigger-webhook only
 bun run check:completion-llm-judge # Check @tagma/completion-llm-judge only
 bun run check:server               # Check editor server only
+bun run check:client               # Check editor client (Vite/React) only
+bun run check:tests                # Check editor test sources only
+bun run check:electron             # Check the Electron main/preload package only
 ```
 
 ### Testing
@@ -87,6 +95,25 @@ bun run check:server               # Check editor server only
 bun run test                              # Run all tests
 bun run --filter @tagma/sdk test          # SDK only
 bun run --filter tagma-editor test        # Editor only
+```
+
+### Desktop Packaging
+
+```bash
+bun run pack:desktop         # Build the desktop chain and produce an unpacked electron-builder dir
+bun run dist:desktop:win     # Build + produce Windows installer (nsis)
+bun run dist:desktop:linux   # Build + produce Linux AppImage
+bun run dist:desktop:mac     # Build + produce macOS dmg
+```
+
+The `tagma-desktop` (Electron) package is private and is never published to npm.
+
+### Lint & Format
+
+```bash
+bun run lint           # ESLint across packages/ (--max-warnings 0)
+bun run format         # Prettier write
+bun run format:check   # Prettier check
 ```
 
 ### Clean
