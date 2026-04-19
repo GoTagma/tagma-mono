@@ -94,19 +94,23 @@ export function Toolbar({
 
   return (
     <header
-      className={`h-11 bg-tagma-bg border-b border-tagma-border flex items-center pl-0 shrink-0 overflow-visible relative z-[50] ${isDesktop ? 'app-drag-region pr-0' : 'pr-2.5'}`}
+      className={`h-11 bg-tagma-bg border-b border-tagma-border flex items-stretch pl-0 shrink-0 overflow-visible relative z-[50] ${isDesktop ? 'app-drag-region pr-0' : 'pr-2.5'}`}
       onDoubleClick={(e) => {
         if (!isDesktop) return;
         if (e.target === e.currentTarget) void toggleMaximizeDesktopWindow();
       }}
     >
-      {/* Left: Logo + Menus */}
-      <div className="flex items-center shrink-0 h-full">
-        <div className="w-10 h-full flex items-center justify-center shrink-0">
-          <ProductLogo size={18} />
+      {/* Shrinkable content wrapper. Keeps DesktopWindowControls anchored
+          to the right edge — at narrow widths this wrapper shrinks so the
+          window controls are never pushed past the viewport. */}
+      <div className="flex items-center flex-1 min-w-0 h-full">
+        {/* Left: Logo + Menus */}
+        <div className="flex items-center shrink-0 h-full">
+          <div className="w-10 h-full flex items-center justify-center shrink-0">
+            <ProductLogo size={18} />
+          </div>
+          <MenuBar menus={menus} />
         </div>
-        <MenuBar menus={menus} />
-      </div>
 
       <div className="w-px h-4 bg-tagma-border/60 mx-2 shrink-0" />
 
@@ -206,7 +210,7 @@ export function Toolbar({
       {/* Right section */}
       <div className="flex items-center gap-2 shrink-0 h-full">
         {workDir && (
-          <div className="relative flex items-center gap-1.5 min-w-0 shrink group/wd">
+          <div className="relative hidden lg:flex items-center gap-1.5 min-w-0 shrink group/wd">
             <button
               type="button"
               onClick={() => setWdMenuOpen((v) => !v)}
@@ -237,7 +241,7 @@ export function Toolbar({
           </div>
         )}
 
-        {workDir && <div className="w-px h-4 bg-tagma-border/60 shrink-0" />}
+        {workDir && <div className="hidden lg:block w-px h-4 bg-tagma-border/60 shrink-0" />}
 
         {workDir && (
           <button
@@ -246,7 +250,7 @@ export function Toolbar({
             title="View run history"
           >
             <History size={11} />
-            <span>History</span>
+            <span className="hidden xl:inline">History</span>
           </button>
         )}
 
@@ -260,7 +264,7 @@ export function Toolbar({
           title="Toggle YAML Preview"
         >
           <Code size={11} />
-          <span>YAML</span>
+          <span className="hidden xl:inline">YAML</span>
         </button>
 
         {runStatusSlot ?? (
@@ -271,6 +275,7 @@ export function Toolbar({
         )}
       </div>
 
+      </div>
       {isDesktop && <DesktopWindowControls />}
     </header>
   );

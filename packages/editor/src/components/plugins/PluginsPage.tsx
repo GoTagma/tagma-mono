@@ -790,36 +790,40 @@ function PluginsHeader({
   return (
     <header className="shrink-0 bg-tagma-surface/60 border-b border-tagma-border">
       <div
-        className={`h-11 flex items-center gap-2 border-b border-tagma-border/60 ${isDesktop ? 'app-drag-region pl-2 pr-0' : 'px-2'}`}
+        className={`h-11 flex items-stretch border-b border-tagma-border/60 ${isDesktop ? 'app-drag-region pl-2 pr-0' : 'px-2'}`}
         onDoubleClick={(e) => {
           if (!isDesktop) return;
           if (e.target === e.currentTarget) void toggleMaximizeDesktopWindow();
         }}
       >
-        <UtilityLink onClick={onBack} icon={<ArrowLeft size={12} />} label="Back to Editor" />
-        <div className="w-px h-5 bg-tagma-border" />
-        <div className="flex items-center gap-1.5 px-2">
-          <Package size={13} className="text-tagma-accent" />
-          <span className="text-xs font-medium text-tagma-text truncate max-w-[160px]">
-            Plugins
-          </span>
-        </div>
-        <div className="flex-1 min-w-[32px]" />
-        {tab === 'local' && onImportLocal && (
+        {/* Shrinkable wrapper — DesktopWindowControls stays pinned right
+            at narrow window widths instead of being clipped. */}
+        <div className="flex items-center gap-2 flex-1 min-w-0 h-full">
+          <UtilityLink onClick={onBack} icon={<ArrowLeft size={12} />} label="Back to Editor" />
+          <div className="w-px h-5 bg-tagma-border shrink-0" />
+          <div className="flex items-center gap-1.5 px-2 shrink-0">
+            <Package size={13} className="text-tagma-accent" />
+            <span className="text-xs font-medium text-tagma-text truncate max-w-[160px]">
+              Plugins
+            </span>
+          </div>
+          <div className="flex-1 min-w-[32px]" />
+          {tab === 'local' && onImportLocal && (
+            <UtilityLink
+              onClick={onImportLocal}
+              icon={<FolderOpen size={12} />}
+              label="Import Local"
+              title="Import a plugin from a local directory"
+            />
+          )}
           <UtilityLink
-            onClick={onImportLocal}
-            icon={<FolderOpen size={12} />}
-            label="Import Local"
-            title="Import a plugin from a local directory"
+            onClick={onRefresh}
+            icon={<RefreshCw size={11} className={refreshing ? 'animate-spin' : ''} />}
+            label="Refresh"
+            title="Refresh plugin list"
+            disabled={refreshing}
           />
-        )}
-        <UtilityLink
-          onClick={onRefresh}
-          icon={<RefreshCw size={11} className={refreshing ? 'animate-spin' : ''} />}
-          label="Refresh"
-          title="Refresh plugin list"
-          disabled={refreshing}
-        />
+        </div>
         {isDesktop && <DesktopWindowControls />}
       </div>
 
@@ -883,11 +887,11 @@ function UtilityLink({
     <button
       onClick={onClick}
       disabled={disabled}
-      title={title}
-      className="flex items-center gap-1.5 text-xs text-tagma-muted hover:text-tagma-text transition-colors px-2 py-1 disabled:opacity-40 disabled:cursor-not-allowed"
+      title={title ?? label}
+      className="flex items-center gap-1.5 text-xs text-tagma-muted hover:text-tagma-text transition-colors px-2 py-1 disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
     >
       {icon}
-      <span>{label}</span>
+      <span className="hidden md:inline">{label}</span>
     </button>
   );
 }

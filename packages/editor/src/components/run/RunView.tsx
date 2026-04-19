@@ -438,22 +438,26 @@ export function RunView({
       {/* Header — height matches the editor Toolbar (h-11) so switching
           between the two views doesn't shift the canvas by 4px. */}
       <header
-        className={`h-11 bg-tagma-bg border-b border-tagma-border flex items-center pl-2 gap-2 shrink-0 ${hasDesktopBridge() ? 'app-drag-region pr-0' : 'pr-2'}`}
+        className={`h-11 bg-tagma-bg border-b border-tagma-border flex items-stretch pl-2 shrink-0 ${hasDesktopBridge() ? 'app-drag-region pr-0' : 'pr-2'}`}
         onDoubleClick={(e) => {
           if (!hasDesktopBridge()) return;
           if (e.target === e.currentTarget) void toggleMaximizeDesktopWindow();
         }}
       >
+        {/* Shrinkable wrapper so DesktopWindowControls stays pinned right
+            at narrow window widths instead of being clipped. */}
+        <div className="flex items-center gap-2 flex-1 min-w-0 h-full">
         <button
           onClick={onBack}
-          className="flex items-center gap-1.5 text-xs text-tagma-muted hover:text-tagma-text transition-colors px-2 py-1"
+          className="flex items-center gap-1.5 text-xs text-tagma-muted hover:text-tagma-text transition-colors px-2 py-1 shrink-0"
+          title="Back to Editor"
         >
           <ArrowLeft size={12} />
-          <span>Back to Editor</span>
+          <span className="hidden md:inline">Back to Editor</span>
         </button>
-        <div className="w-px h-5 bg-tagma-border" />
+        <div className="w-px h-5 bg-tagma-border shrink-0" />
 
-        <div className="flex items-center gap-1.5 px-2">
+        <div className="flex items-center gap-1.5 px-2 min-w-0 shrink">
           <ProductLogo size={14} />
           <span className="text-xs font-medium text-tagma-text truncate max-w-[160px]">
             {config.name}
@@ -475,7 +479,7 @@ export function RunView({
               className="flex items-center gap-1.5 text-xs text-tagma-muted hover:text-tagma-text transition-colors px-2 py-1 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <RefreshCw size={11} className={historyLoading ? 'animate-spin' : ''} />
-              <span>Refresh</span>
+              <span className="hidden md:inline">Refresh</span>
             </button>
           </>
         )}
@@ -602,10 +606,11 @@ export function RunView({
             {isLive && !showAbortConfirm && (
               <button
                 onClick={handleAbortClick}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-tagma-error border border-tagma-error/20 hover:bg-tagma-error/10 transition-colors mr-1"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-tagma-error border border-tagma-error/20 hover:bg-tagma-error/10 transition-colors mr-1 shrink-0"
+                title="Abort run"
               >
                 <Square size={10} />
-                <span>Abort</span>
+                <span className="hidden md:inline">Abort</span>
               </button>
             )}
             {showAbortConfirm && (
@@ -628,6 +633,7 @@ export function RunView({
           </>
         )}
 
+        </div>
         {hasDesktopBridge() && <DesktopWindowControls />}
       </header>
 

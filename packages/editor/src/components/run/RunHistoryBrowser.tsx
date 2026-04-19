@@ -519,14 +519,15 @@ function HeaderTab({
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-2 px-0.5 pb-2.5 text-[12px] font-medium tracking-wide transition-colors border-b-2 ${
+      title={label}
+      className={`flex items-center gap-2 px-0.5 pb-2.5 text-[12px] font-medium tracking-wide transition-colors border-b-2 shrink-0 whitespace-nowrap ${
         active
           ? 'text-tagma-text border-tagma-accent'
           : 'text-tagma-muted border-transparent hover:text-tagma-text hover:border-tagma-border'
       }`}
     >
       <span className={active ? 'text-tagma-accent' : ''}>{icon}</span>
-      <span>{label}</span>
+      <span className="hidden md:inline">{label}</span>
     </button>
   );
 }
