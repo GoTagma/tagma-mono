@@ -5,22 +5,44 @@
 // at the corresponding GitHub Release asset so the manifest and the payload
 // are versioned together and never drift.
 //
-// Args: <version> <channel> <assets-dir> <repo-slug> <out-file>
+// Args: <version> <channel> <assets-dir> <repo-slug> <out-file> [--min-shell <version>]
 //
 // <assets-dir>  — directory containing editor-dist-<version>.tar.gz(.sha256)
 //                 (the publish job's flattened release-assets dir).
 // <repo-slug>   — e.g. "GoTagma/tagma-mono"; used to build the tarball URL.
 // <out-file>    — absolute path where the manifest JSON should be written.
+// --min-shell   — optional floor for the installer (electron shell) version
+//                 required to apply this bundle. Omit unless this release
+//                 depends on an IPC/preload surface only present in a newer
+//                 shell; see the manifest-construction block below.
 //
 // The client-side consumer is packages/editor/server/routes/editor.ts —
 // keep this output shape aligned with the EditorManifest interface there.
 import { readFileSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-const [version, channel, assetsDir, repoSlug, outFile] = process.argv.slice(2);
+const rawArgs = process.argv.slice(2);
+let minShellVersion;
+const positional = [];
+for (let i = 0; i < rawArgs.length; i++) {
+  const arg = rawArgs[i];
+  if (arg === '--min-shell') {
+    minShellVersion = rawArgs[++i];
+    if (!minShellVersion) {
+      console.error('--min-shell requires a version argument');
+      process.exit(2);
+    }
+  } else if (arg.startsWith('--min-shell=')) {
+    minShellVersion = arg.slice('--min-shell='.length);
+  } else {
+    positional.push(arg);
+  }
+}
+
+const [version, channel, assetsDir, repoSlug, outFile] = positional;
 if (!version || !channel || !assetsDir || !repoSlug || !outFile) {
   console.error(
-    'usage: build-hotupdate-manifest.mjs <version> <channel> <assets-dir> <repo-slug> <out-file>',
+    'usage: build-hotupdate-manifest.mjs <version> <channel> <assets-dir> <repo-slug> <out-file> [--min-shell <version>]',
   );
   process.exit(2);
 }
@@ -56,15 +78,17 @@ const tagName = `desktop-v${version}`;
 const downloadUrl = `https://github.com/${repoSlug}/releases/download/${tagName}/${tarballName}`;
 const releaseNotesUrl = `https://github.com/${repoSlug}/releases/tag/${tagName}`;
 
-// minShellVersion is pinned to the version being released. Tier A (one
-// installer, one hot-update per release) means any shell at this version or
-// newer can always apply this bundle — older shells get refused. When tier B
-// (hotfix packages between installers) is introduced later, bump this
-// manually in the release process to gate features behind a newer shell.
+// minShellVersion represents the oldest installer whose IPC/preload surface
+// this bundle still works against — NOT the release version itself. Pinning
+// it to `version` would force users to reinstall the installer for every hot
+// update, defeating the point of hot updates. Omitting the field entirely
+// means any shell can apply this bundle, which is the correct default while
+// the IPC surface is stable. Pass --min-shell <ver> only when this release
+// depends on a shell feature introduced in that installer version.
 const manifest = {
   version,
   channel,
-  minShellVersion: version,
+  ...(minShellVersion ? { minShellVersion } : {}),
   dist: {
     url: downloadUrl,
     sha256: sha.toLowerCase(),
