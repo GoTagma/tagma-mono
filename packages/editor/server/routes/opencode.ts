@@ -58,10 +58,6 @@ function resolvePackageName(): string {
   throw new Error(`Unsupported opencode target for this machine: ${process.platform}/${process.arch}`);
 }
 
-function binaryRelPath(): string {
-  return process.platform === 'win32' ? 'bin/opencode.exe' : 'bin/opencode';
-}
-
 async function runOpencodeVersion(): Promise<string | null> {
   // Spawn `opencode --version` using the sidecar's PATH (bundled + userData
   // layers prepended by runtime-paths.ts). Returns the trimmed version string
