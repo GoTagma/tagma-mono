@@ -130,6 +130,8 @@ bun install            # Reinstall
 
 ## Publishing
 
+The default flow is **CI-driven**: bump a package's `version` field, push to `main`, and `.github/workflows/publish-npm.yml` detects the change and publishes to npm in dependency order. Manual scripts (below) are kept as a local fallback.
+
 ### 1. Bump version
 
 ```bash
@@ -142,37 +144,34 @@ bun run version:webhook:patch
 bun run version:llm-judge:patch
 bun run version:sdk:patch
 
-# Minor (+0.1.0)
-bun run version:types:minor
-bun run version:codex:minor
-bun run version:claude-code:minor
-bun run version:lightrag:minor
-bun run version:webhook:minor
-bun run version:llm-judge:minor
-bun run version:sdk:minor
-
-# Major (+1.0.0)
-bun run version:types:major
-bun run version:codex:major
-bun run version:claude-code:major
-bun run version:lightrag:major
-bun run version:webhook:major
-bun run version:llm-judge:major
-bun run version:sdk:major
+# Minor (+0.1.0) / Major (+1.0.0): swap :patch for :minor or :major
 ```
 
-This runs `bun pm version` which updates the `version` field in the package's `package.json`. Commit and tag manually afterwards (`bun pm version` does not auto-create git commits/tags).
+`bun pm version` only updates the `version` field — commit and push the change yourself. The CI workflow keys off the version diff in `packages/*/package.json`, not on git tags.
 
-Publish order must follow the dependency chain:
+### 2. Push to `main` → CI publishes automatically
+
+`publish-npm.yml` runs on every push to `main` that touches `packages/*/package.json`:
+
+1. **Detect** — diffs each package's `version` against the previous commit. Packages whose version is unchanged are skipped.
+2. **Publish** — for each changed package, runs the matching `publish:*` script in the dependency order **types → plugins → sdk**.
+
+Auth comes from the `NPM_TOKEN` repo secret (written to `.npmrc` at the workspace root before `bun publish`).
+
+To force-publish without a version bump, trigger the workflow manually from the Actions tab and pass a JSON array, e.g. `["types","sdk"]`. Valid keys: `types`, `codex`, `claude-code`, `lightrag`, `webhook`, `llm-judge`, `sdk`.
+
+Publish order — required because npm rejects a published version of `@tagma/sdk` that depends on a `@tagma/types` version that doesn't exist yet:
 
 1. `@tagma/types` (all other packages depend on it)
 2. All plugin packages: `@tagma/driver-codex`, `@tagma/driver-claude-code`, `@tagma/middleware-lightrag`, `@tagma/trigger-webhook`, `@tagma/completion-llm-judge`
 3. `@tagma/sdk`
 
-### 2. Publish
+### 3. Manual publish (local fallback)
+
+Use these only when the CI path is unavailable (workflow disabled, npm outage, hotfix from a branch). Each script runs `bun run build` then `bun publish`.
 
 ```bash
-# Publish individual packages (auto-builds before publish)
+# Publish individual packages
 bun run publish:types
 bun run publish:driver-codex
 bun run publish:driver-claude-code
@@ -185,15 +184,13 @@ bun run publish:sdk
 bun run publish:all
 ```
 
-Each `publish:*` script runs `bun run build` then `npm publish`.
-
-### 3. Dry run
+### 4. Dry run
 
 ```bash
 bun run publish:dry
 ```
 
-`tagma-editor` is a private package and is not published to npm.
+`tagma-editor` and `tagma-desktop` are private packages and are not published to npm. Desktop releases ship as installer artifacts via `release-desktop.yml` — see `packages/electron/README.md`.
 
 ---
 
@@ -212,4 +209,5 @@ bun run publish:dry
 - Types: TypeScript 5.8+
 - Frontend: React 19 + Vite + Tailwind
 - Server: Express 5 + Bun
+- Desktop: Electron 35 + electron-builder (NSIS / AppImage / deb / rpm / dmg)
 - Package manager: Bun workspaces
