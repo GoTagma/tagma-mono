@@ -347,6 +347,10 @@ jobs:
         with:
           token: ${{ steps.app-token.outputs.token }}
           submodules: recursive
+          # Need full history + tags so the min-shell gate below can diff the
+          # electron IPC surface between this tag and the prior desktop-v tag.
+          # Shallow (default depth=1) wouldn't even let us enumerate old tags.
+          fetch-depth: 0
 
       - uses: actions/download-artifact@v4
         with:
@@ -402,14 +406,87 @@ jobs:
         run: |
           node scripts/release/channel-info.mjs "apps/electron/CHANGELOG/${{ steps.meta.outputs.version }}.md" >> "$GITHUB_OUTPUT"
 
-      - name: Build editor hot-update manifest
+      # Auto-derive whether this release requires a newer installer. When the
+      # electron-side IPC surface (preload bridge, main-process handlers, env
+      # vars the renderer reads through runtime-paths) has changed since the
+      # previous desktop-v tag, a newer editor bundle can't be trusted to work
+      # against an older shell — the old shell's preload won't expose a method
+      # the new bundle calls at module-load, or TAGMA_EDITOR_* envs it expects
+      # won't be set, etc. Gate the hot-update on the installer so affected
+      # users get redirected to a reinstall (see editor.ts:315).
+      #
+      # Heuristic is intentionally conservative (file-touched, not signature
+      # diff): internal refactors inside these three files that don't change
+      # the renderer contract will still bump the gate. False positive cost is
+      # one forced reinstall; false negative cost is a black-screen like the
+      # one that motivated this gate. We err towards the former.
+      - name: Determine min-shell version (IPC surface gate)
+        id: shell_gate
+        shell: bash
         run: |
-          node scripts/release/build-hotupdate-manifest.mjs \
-            "${{ steps.meta.outputs.version }}" \
-            "${{ steps.ch.outputs.channel }}" \
-            flat \
-            "${{ github.repository }}" \
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#desktop-v}"
+          # Previous desktop-v tag, semver-ordered. --sort=-version:refname
+          # handles 0.1.10 > 0.1.9 correctly. Exclude the tag we're publishing
+          # in case the workflow was re-run against an existing tag.
+          prev_tag=$(git tag --list 'desktop-v*' --sort=-version:refname \
+            | grep -vx -- "${GITHUB_REF_NAME}" | head -1 || true)
+          if [ -z "$prev_tag" ]; then
+            echo "no prior desktop-v tag — first release, omitting min-shell"
+            echo "min_shell=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "diffing ${prev_tag} → ${GITHUB_REF_NAME}"
+
+          # apps/ is a submodule; `<tag>:apps` is the commit SHA the mono tag
+          # pinned in tagma-desktop. Diff happens inside that submodule repo
+          # where our files live at electron/src/ (no apps/ prefix).
+          prev_apps_sha=$(git rev-parse "${prev_tag}:apps")
+          cur_apps_sha=$(git rev-parse "${GITHUB_REF_NAME}:apps")
+          echo "apps submodule: ${prev_apps_sha} → ${cur_apps_sha}"
+          if [ "$prev_apps_sha" = "$cur_apps_sha" ]; then
+            echo "submodule pointer unchanged; no IPC surface change possible"
+            echo "min_shell=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # actions/checkout only fetches the currently-pinned submodule
+          # commit; the prior-tag SHA may not be in the local object DB yet.
+          # Try a targeted fetch first (cheap when server allows it), fall
+          # back to a full fetch so `git diff` can always resolve both sides.
+          git -C apps fetch --no-tags origin "$prev_apps_sha" 2>/dev/null \
+            || git -C apps fetch --no-tags origin
+
+          changed=$(git -C apps diff --name-only "$prev_apps_sha" "$cur_apps_sha" -- \
+            electron/src/main.ts \
+            electron/src/preload.ts \
+            electron/src/runtime-paths.ts)
+          if [ -n "$changed" ]; then
+            echo "IPC surface files touched:"
+            printf '  %s\n' $changed
+            echo "→ hot-update manifest will require installer >= ${version}"
+            echo "min_shell=${version}" >> "$GITHUB_OUTPUT"
+          else
+            echo "electron/src/{main,preload,runtime-paths}.ts unchanged"
+            echo "min_shell=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build editor hot-update manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(
+            "${{ steps.meta.outputs.version }}"
+            "${{ steps.ch.outputs.channel }}"
+            flat
+            "${{ github.repository }}"
             "flat/editor-hotupdate-manifest.json"
+          )
+          min_shell="${{ steps.shell_gate.outputs.min_shell }}"
+          if [ -n "$min_shell" ]; then
+            args+=(--min-shell "$min_shell")
+          fi
+          node scripts/release/build-hotupdate-manifest.mjs "${args[@]}"
 
       # Handed off to sync-web via an artifact so the two jobs ship literally
       # the same bytes to GitHub Releases and tagma-web/public/editor-updates/.
