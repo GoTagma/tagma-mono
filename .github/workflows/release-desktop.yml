@@ -51,6 +51,16 @@ jobs:
           # failure) can't take the release pipeline down without warning.
           bun-version: 1.3.11
 
+      # The submodule was checked out at whatever SHA mono's main currently
+      # pins, which may lag tagma-desktop/main. Fast-forward to the latest
+      # so the version bump lands on top of real HEAD and the subsequent
+      # `git push origin HEAD:main` stays a fast-forward.
+      - name: Sync submodule to latest tagma-desktop/main
+        run: |
+          git -C apps fetch origin main
+          git -C apps checkout main
+          git -C apps reset --hard origin/main
+
       - name: Bump desktop version
         id: bump
         working-directory: apps/electron
