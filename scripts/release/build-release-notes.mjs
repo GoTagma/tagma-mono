@@ -29,11 +29,17 @@ function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 const v = escapeRegex(version);
+// Arch token differs per Linux target (electron-builder convention):
+// AppImage → x86_64, deb → amd64, rpm → x86_64, tar.gz → x64. Match broadly
+// on `[^.]+` so a future arch-token rename doesn't silently drop rows.
 const PLATFORMS = [
   { match: new RegExp(`^Tagma-${v}-mac-arm64\\.dmg$`), label: 'macOS (Apple Silicon)' },
   { match: new RegExp(`^Tagma-${v}-mac-x64\\.dmg$`), label: 'macOS (Intel)' },
   { match: new RegExp(`^Tagma-${v}-win-x64\\.exe$`), label: 'Windows (x64)' },
-  { match: new RegExp(`^Tagma-${v}-linux-x86_64\\.AppImage$`), label: 'Linux (x86_64)' },
+  { match: new RegExp(`^Tagma-${v}-linux-[^.]+\\.AppImage$`), label: 'Linux — AppImage' },
+  { match: new RegExp(`^Tagma-${v}-linux-[^.]+\\.deb$`), label: 'Linux — Debian / Ubuntu (.deb)' },
+  { match: new RegExp(`^Tagma-${v}-linux-[^.]+\\.rpm$`), label: 'Linux — Fedora / RHEL (.rpm)' },
+  { match: new RegExp(`^Tagma-${v}-linux-[^.]+\\.tar\\.gz$`), label: 'Linux — Tarball (.tar.gz)' },
 ];
 
 function readChecksum(dir, name) {

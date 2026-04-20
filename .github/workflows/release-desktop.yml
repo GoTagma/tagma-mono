@@ -185,6 +185,9 @@ jobs:
             packages/electron/release/Tagma-*.dmg
             packages/electron/release/Tagma-*.exe
             packages/electron/release/Tagma-*.AppImage
+            packages/electron/release/Tagma-*.deb
+            packages/electron/release/Tagma-*.rpm
+            packages/electron/release/Tagma-*.tar.gz
             packages/electron/release/Tagma-*.sha256
             packages/electron/release/latest*.yml
             packages/electron/release/*.blockmap

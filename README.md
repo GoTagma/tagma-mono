@@ -102,7 +102,7 @@ bun run --filter tagma-editor test        # Editor only
 ```bash
 bun run pack:desktop         # Build the desktop chain and produce an unpacked electron-builder dir
 bun run dist:desktop:win     # Build + produce Windows installer (nsis)
-bun run dist:desktop:linux   # Build + produce Linux AppImage
+bun run dist:desktop:linux   # Build + produce Linux AppImage, .deb, .rpm, and .tar.gz
 bun run dist:desktop:mac     # Build + produce macOS dmg
 ```
 
