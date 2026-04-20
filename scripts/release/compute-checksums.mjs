@@ -5,7 +5,7 @@ import { readdirSync, readFileSync, writeFileSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 
-const INSTALLER_EXT = /\.(dmg|exe|AppImage)$/;
+const INSTALLER_EXT = /\.(dmg|exe|AppImage|deb|rpm|tar\.gz)$/;
 
 const dir = process.argv[2];
 if (!dir) {

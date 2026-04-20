@@ -51,8 +51,9 @@
       "icon": "build/icon.ico"
     },
     "linux": {
-      "target": "AppImage",
-      "icon": "build/icon.png"
+      "target": ["AppImage", "deb", "rpm", "tar.gz"],
+      "icon": "build/icon.png",
+      "category": "Development"
     },
     "mac": {
       "target": [
