@@ -69,7 +69,7 @@ export function DesktopWindowControls() {
       <button
         type="button"
         onClick={() => minimizeDesktopWindow()}
-        className="flex items-center justify-center w-11 h-full text-tagma-muted hover:text-tagma-text hover:bg-white/5 transition-colors"
+        className="flex items-center justify-center w-11 h-full text-tagma-muted hover:text-tagma-text hover:bg-tagma-elevated transition-colors"
         title="Minimize"
         aria-label="Minimize window"
       >
@@ -78,7 +78,7 @@ export function DesktopWindowControls() {
       <button
         type="button"
         onClick={() => void toggleMaximizeDesktopWindow()}
-        className="flex items-center justify-center w-11 h-full text-tagma-muted hover:text-tagma-text hover:bg-white/5 transition-colors"
+        className="flex items-center justify-center w-11 h-full text-tagma-muted hover:text-tagma-text hover:bg-tagma-elevated transition-colors"
         title={isMaximized ? 'Restore' : 'Maximize'}
         aria-label={isMaximized ? 'Restore window' : 'Maximize window'}
       >

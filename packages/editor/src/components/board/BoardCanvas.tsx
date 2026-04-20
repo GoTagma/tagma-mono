@@ -162,14 +162,14 @@ const EdgeLine = memo(function EdgeLine({
         fill="none"
         stroke={
           inCycle
-            ? '#f87171'
+            ? 'rgb(var(--tagma-error))'
             : highlighted
               ? isContinue
-                ? '#c4b5fd'
-                : '#d4845a'
+                ? 'var(--tagma-edge-continue-hi)'
+                : 'rgb(var(--tagma-accent))'
               : isContinue
-                ? 'rgba(167, 139, 250, 0.5)'
-                : 'rgba(100, 100, 100, 0.4)'
+                ? 'var(--tagma-edge-continue)'
+                : 'var(--tagma-edge-default)'
         }
         strokeWidth={inCycle ? 2.2 : highlighted ? 2 : 1}
         strokeDasharray={inCycle ? '4 3' : isContinue ? '6 3' : undefined}
@@ -200,8 +200,7 @@ const EdgeLine = memo(function EdgeLine({
             width={16}
             height={16}
             rx={0}
-            fill="#1e1e1e"
-            stroke="#f87171"
+            style={{ fill: 'rgb(var(--tagma-surface))', stroke: 'rgb(var(--tagma-error))' }}
             strokeWidth={1.2}
           />
           <line
@@ -209,7 +208,7 @@ const EdgeLine = memo(function EdgeLine({
             y1={midY - 3}
             x2={midX + 3}
             y2={midY + 3}
-            stroke="#f87171"
+            style={{ stroke: 'rgb(var(--tagma-error))' }}
             strokeWidth={1.5}
           />
           <line
@@ -217,7 +216,7 @@ const EdgeLine = memo(function EdgeLine({
             y1={midY - 3}
             x2={midX - 3}
             y2={midY + 3}
-            stroke="#f87171"
+            style={{ stroke: 'rgb(var(--tagma-error))' }}
             strokeWidth={1.5}
           />
         </g>
@@ -1273,8 +1272,8 @@ export function BoardCanvas({
                   top: topY,
                   width,
                   height: h,
-                  border: '1px dashed rgba(148, 163, 184, 0.25)',
-                  background: 'rgba(148, 163, 184, 0.035)',
+                  border: '1px dashed rgb(var(--tagma-muted-dim) / 0.35)',
+                  background: 'rgb(var(--tagma-muted-dim) / 0.06)',
                   borderRadius: 2,
                 }}
               >
@@ -1330,10 +1329,13 @@ export function BoardCanvas({
           >
             <defs>
               <marker id="ah" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto">
-                <polygon points="0 0, 7 2.5, 0 5" fill="#666" fillOpacity="0.7" />
+                <polygon
+                  points="0 0, 7 2.5, 0 5"
+                  style={{ fill: 'var(--tagma-edge-default-marker)' }}
+                />
               </marker>
               <marker id="ah-hi" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto">
-                <polygon points="0 0, 7 2.5, 0 5" fill="#d4845a" />
+                <polygon points="0 0, 7 2.5, 0 5" style={{ fill: 'rgb(var(--tagma-accent))' }} />
               </marker>
               <marker
                 id="ah-cont"
@@ -1343,7 +1345,10 @@ export function BoardCanvas({
                 refY="2.5"
                 orient="auto"
               >
-                <polygon points="0 0, 7 2.5, 0 5" fill="#a78bfa" fillOpacity="0.8" />
+                <polygon
+                  points="0 0, 7 2.5, 0 5"
+                  style={{ fill: 'var(--tagma-edge-continue-marker)' }}
+                />
               </marker>
               <marker
                 id="ah-cont-hi"
@@ -1353,7 +1358,10 @@ export function BoardCanvas({
                 refY="2.5"
                 orient="auto"
               >
-                <polygon points="0 0, 7 2.5, 0 5" fill="#c4b5fd" />
+                <polygon
+                  points="0 0, 7 2.5, 0 5"
+                  style={{ fill: 'var(--tagma-edge-continue-hi)' }}
+                />
               </marker>
               <marker
                 id="ah-cycle"
@@ -1363,7 +1371,7 @@ export function BoardCanvas({
                 refY="2.5"
                 orient="auto"
               >
-                <polygon points="0 0, 7 2.5, 0 5" fill="#f87171" />
+                <polygon points="0 0, 7 2.5, 0 5" style={{ fill: 'rgb(var(--tagma-error))' }} />
               </marker>
             </defs>
 
@@ -1429,7 +1437,7 @@ export function BoardCanvas({
                     <path
                       d={`M${sx} ${sy} C${sx + c} ${sy}, ${ex - c} ${ey}, ${ex} ${ey}`}
                       fill="none"
-                      stroke="#d4845a"
+                      style={{ stroke: 'rgb(var(--tagma-accent))' }}
                       strokeWidth={1.5}
                       strokeDasharray="5 3"
                       opacity={0.7}
@@ -1442,7 +1450,7 @@ export function BoardCanvas({
                     y1={sy}
                     x2={ex}
                     y2={ey}
-                    stroke="#d4845a"
+                    style={{ stroke: 'rgb(var(--tagma-accent))' }}
                     strokeWidth={1}
                     strokeDasharray="4 4"
                     opacity={0.4}

@@ -966,7 +966,7 @@ function DetailPane({
                             {task.taskName}
                           </span>
                           {task.command ? (
-                            <span className="shrink-0 inline-flex items-center gap-0.5 text-sky-400/80 text-[9px]">
+                            <span className="shrink-0 inline-flex items-center gap-0.5 text-tagma-ready/80 text-[9px]">
                               <Terminal size={8} />
                               shell
                             </span>

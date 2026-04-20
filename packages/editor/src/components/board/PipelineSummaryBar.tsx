@@ -42,7 +42,7 @@ export function PipelineSummaryBar({ config }: PipelineSummaryBarProps) {
     );
   if (config.timeout)
     chips.push(
-      <InfoChip key="t" icon={<Clock size={9} />} label={config.timeout} color="text-sky-400/50" />,
+      <InfoChip key="t" icon={<Clock size={9} />} label={config.timeout} color="text-tagma-ready/60" />,
     );
   if (pluginCount > 0)
     chips.push(
@@ -50,7 +50,7 @@ export function PipelineSummaryBar({ config }: PipelineSummaryBarProps) {
         key="p"
         icon={<Plug size={9} />}
         label={`${pluginCount} plugin${pluginCount !== 1 ? 's' : ''}`}
-        color="text-purple-400/50"
+        color="text-tagma-info/60"
       />,
     );
   if (hookCount > 0)
@@ -59,7 +59,7 @@ export function PipelineSummaryBar({ config }: PipelineSummaryBarProps) {
         key="h"
         icon={<Webhook size={9} />}
         label={`${hookCount}/6 hooks`}
-        color="text-emerald-400/50"
+        color="text-tagma-success/60"
       />,
     );
 

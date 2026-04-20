@@ -153,7 +153,7 @@ export function Toolbar({
             className="flex items-center gap-1.5 group min-w-0 shrink-0"
             title={yamlPath ?? 'Unsaved pipeline'}
           >
-            <span className="text-[11px] font-semibold tracking-wide text-tagma-text truncate max-w-[180px] group-hover:text-white transition-colors">
+            <span className="text-[11px] font-semibold tracking-wide text-tagma-text truncate max-w-[180px] group-hover:text-tagma-accent transition-colors">
               {pipelineName}
             </span>
             <Pencil

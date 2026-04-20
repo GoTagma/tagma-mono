@@ -35,7 +35,7 @@ export function ConfirmDialog({
       >
         <div className="panel-header">
           <h2 className="panel-title flex items-center gap-1.5">
-            {danger && <AlertTriangle size={13} className="text-amber-400" />}
+            {danger && <AlertTriangle size={13} className="text-tagma-warning" />}
             {title}
           </h2>
           <button

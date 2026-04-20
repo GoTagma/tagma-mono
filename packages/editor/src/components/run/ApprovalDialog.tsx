@@ -85,7 +85,7 @@ export function ApprovalDialog({ request, onApprove, onReject, config }: Approva
           <div className="px-4 py-2.5 border-b border-tagma-border/60 bg-tagma-bg/40">
             <div className="flex items-center gap-2 min-w-0">
               {taskContext.isCommand ? (
-                <Terminal size={11} className="text-sky-400 shrink-0" />
+                <Terminal size={11} className="text-tagma-ready shrink-0" />
               ) : (
                 <MessageSquare size={11} className="text-tagma-muted/70 shrink-0" />
               )}

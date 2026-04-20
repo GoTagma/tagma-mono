@@ -2,6 +2,46 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Theme palette. The tagma-* Tailwind colors resolve to these CSS vars
+   (see tailwind.config.js), so a full app-wide theme swap is just a class
+   flip on <html>. Values are space-separated RGB channels so Tailwind's
+   /alpha modifiers still compose correctly. Dark is the default; the
+   `.light` override is applied by useTheme() when the user picks light. */
+:root {
+  --tagma-bg: 10 10 10;
+  --tagma-surface: 20 20 20;
+  --tagma-elevated: 30 30 30;
+  --tagma-border: 42 42 42;
+  --tagma-text: 232 234 237;
+  --tagma-muted: 176 184 196;
+  --tagma-muted-dim: 138 145 156;
+  --tagma-accent: 212 132 90;
+  --tagma-success: 52 211 153;
+  --tagma-error: 248 113 113;
+  --tagma-warning: 251 191 36;
+  --tagma-info: 167 139 250;
+  --tagma-ready: 103 232 249;
+}
+html.light {
+  --tagma-bg: 250 250 250;
+  --tagma-surface: 255 255 255;
+  --tagma-elevated: 240 240 240;
+  --tagma-border: 212 212 212;
+  --tagma-text: 26 26 26;
+  --tagma-muted: 82 89 100;
+  --tagma-muted-dim: 115 123 135;
+  /* Functional accents are darker than their dark-mode counterparts to hit
+     ~4.5:1 contrast on a white surface — the dark-mode values (amber-400,
+     emerald-400, etc.) wash out to <2:1 on white and become unreadable.
+     Hues are preserved so the semantic meaning stays intact across themes. */
+  --tagma-accent: 176 96 54;    /* darker orange-brown — was 212 132 90 */
+  --tagma-success: 4 120 87;    /* emerald-700 */
+  --tagma-error: 185 28 28;     /* red-700 */
+  --tagma-warning: 180 83 9;    /* amber-700 */
+  --tagma-info: 109 40 217;     /* violet-700 */
+  --tagma-ready: 14 116 144;    /* cyan-700 */
+}
+
 /* Document zoom is driven by Electron's webContents.setZoomFactor (see
    packages/electron/src/main.ts) or the browser's built-in Ctrl+= zoom.
    The previous `html { zoom: 1.5 }` double-scaled event.clientX vs
@@ -32,7 +72,8 @@ body,
 body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: #0a0a0a;
+  background: rgb(var(--tagma-bg));
+  color: rgb(var(--tagma-text));
   -webkit-user-select: none;
   -moz-user-select: none;
   -ms-user-select: none;
@@ -51,8 +92,8 @@ select,
 }
 
 ::selection {
-  background: rgba(212, 132, 90, 0.25);
-  color: #e8eaed;
+  background: rgb(var(--tagma-accent) / 0.25);
+  color: rgb(var(--tagma-text));
 }
 
 ::-webkit-scrollbar {
@@ -62,11 +103,20 @@ select,
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+/* Dark mode keeps the original faint gray thumb. Light mode needs a
+   darker-tinted thumb since the original 15% cool-gray is nearly invisible
+   against the near-white bg. */
 ::-webkit-scrollbar-thumb {
   background: rgba(107, 114, 128, 0.15);
 }
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(107, 114, 128, 0.3);
+}
+html.light ::-webkit-scrollbar-thumb {
+  background: rgb(var(--tagma-muted) / 0.3);
+}
+html.light ::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--tagma-muted) / 0.55);
 }
 ::-webkit-scrollbar-corner {
   background: transparent;
@@ -84,7 +134,11 @@ select,
 }
 
 .timeline-grid {
-  background-image: linear-gradient(to right, rgba(42, 42, 42, 0.3) 1px, transparent 1px);
+  background-image: linear-gradient(
+    to right,
+    rgb(var(--tagma-border) / 0.5) 1px,
+    transparent 1px
+  );
   background-size: 184px 100%;
 }
 
@@ -92,7 +146,59 @@ select,
   background: transparent;
 }
 .track-row-odd {
-  background: rgba(20, 20, 20, 0.4);
+  /* Dark mode keeps the original barely-there stripe. In light mode the same
+     formula (white * 0.4 over near-white) collapses to invisible, so switch
+     to solid elevated which is mid-way between bg and surface. */
+  background: rgb(var(--tagma-surface) / 0.4);
+}
+html.light .track-row-odd {
+  background: rgb(var(--tagma-elevated));
+}
+
+/* Theme-sensitive meta rail used by TaskCard / TrackLane / HistoryFlowView /
+   Minimap header. In dark mode it's a slightly darker band over the card's
+   elevated bg (the original `bg-black/20` look). In light mode pure-black
+   alpha on white produces a heavy gray bar, so we swap to a muted tint that
+   reads as a subtle trough instead. */
+.tagma-rail {
+  background: rgba(0, 0, 0, 0.2);
+}
+html.light .tagma-rail {
+  background: rgb(var(--tagma-muted) / 0.12);
+}
+
+/* Minimap zebra rows — consumed via inline SVG `fill` in Minimap.tsx.
+   Dark mode preserves the original barely-there white alpha stripes; light
+   mode substitutes a muted tint since white-on-white is invisible. */
+:root {
+  --tagma-mm-stripe-a: rgb(255 255 255 / 0.015);
+  --tagma-mm-stripe-b: rgb(255 255 255 / 0.04);
+}
+html.light {
+  --tagma-mm-stripe-a: rgb(var(--tagma-muted) / 0.05);
+  --tagma-mm-stripe-b: rgb(var(--tagma-muted) / 0.14);
+}
+
+/* Canvas edge / arrow colors — consumed via inline SVG `stroke` and `fill`
+   in BoardCanvas.tsx and the run-history flow views. Dark mode keeps the
+   exact original hex values so the connection graph renders identically to
+   before. Light mode swaps to theme-aware variants since the originals
+   (rgba(100,100,100,0.4) etc.) are nearly invisible against a white canvas. */
+:root {
+  --tagma-edge-default: rgba(100, 100, 100, 0.4);
+  --tagma-edge-default-marker: rgba(102, 102, 102, 0.7);
+  --tagma-edge-continue: rgba(167, 139, 250, 0.5);
+  --tagma-edge-continue-marker: rgba(167, 139, 250, 0.8);
+  --tagma-edge-continue-hi: #c4b5fd;
+  --tagma-hist-edge: rgba(107, 114, 128, 0.25);
+}
+html.light {
+  --tagma-edge-default: rgb(var(--tagma-muted) / 0.55);
+  --tagma-edge-default-marker: rgb(var(--tagma-muted) / 0.75);
+  --tagma-edge-continue: rgb(var(--tagma-info) / 0.55);
+  --tagma-edge-continue-marker: rgb(var(--tagma-info) / 0.8);
+  --tagma-edge-continue-hi: rgb(var(--tagma-info));
+  --tagma-hist-edge: rgb(var(--tagma-muted) / 0.45);
 }
 
 /* Brief flash applied to a TaskCard after the search overlay scrolls it
@@ -124,12 +230,12 @@ input:focus,
 textarea:focus,
 select:focus {
   outline: none;
-  border-color: #d4845a;
-  box-shadow: 0 0 0 1px rgba(212, 132, 90, 0.2);
+  border-color: rgb(var(--tagma-accent));
+  box-shadow: 0 0 0 1px rgb(var(--tagma-accent) / 0.2);
 }
 
 input[type='checkbox'] {
-  accent-color: #d4845a;
+  accent-color: rgb(var(--tagma-accent));
 }
 
 @layer components {
@@ -161,7 +267,7 @@ input[type='checkbox'] {
     @apply w-full px-3 py-1.5 text-xs text-tagma-error border border-tagma-error/20 transition-colors;
   }
   .btn-danger:hover {
-    background-color: rgba(248, 113, 113, 0.08);
+    background-color: rgb(var(--tagma-error) / 0.08);
   }
   .chip-xs {
     @apply inline-flex items-center gap-0.5 px-1 py-px text-[9px] font-mono font-semibold border;

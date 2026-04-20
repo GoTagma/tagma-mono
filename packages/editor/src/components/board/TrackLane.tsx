@@ -56,8 +56,8 @@ function TrackTooltip({ track, anchorRect }: { track: RawTrackConfig; anchorRect
   if (rows.length === 0) return null;
 
   return (
-    <FloatingPanel anchorRect={anchorRect} width={240} borderClass="border-[#2a2a30]">
-      <div className="px-3 py-1.5 text-[10px] font-semibold text-tagma-text truncate border-b border-[#2a2a30]">
+    <FloatingPanel anchorRect={anchorRect} width={240} borderClass="border-tagma-border">
+      <div className="px-3 py-1.5 text-[10px] font-semibold text-tagma-text truncate border-b border-tagma-border">
         {track.name}
       </div>
       <div className="px-3 py-1.5">
@@ -132,7 +132,7 @@ function FloatingPanel({
   return createPortal(
     <div
       ref={ref}
-      className={`fixed pointer-events-none bg-[#1a1a1e] ${borderClass} border shadow-lg animate-fade-in`}
+      className={`fixed pointer-events-none bg-tagma-surface ${borderClass} border shadow-lg animate-fade-in`}
       style={{
         left: pos?.left ?? -9999,
         top: pos?.top ?? -9999,
@@ -219,7 +219,7 @@ export const TrackLane = memo(function TrackLane({
           nitpicks even if individual chip widths differ. The rail is
           always rendered (even when the track has no meta) so every row
           in the header sidebar has identical vertical structure. */}
-      <div className="flex items-center h-[16px] gap-[4px] min-w-0 overflow-hidden bg-black/20 px-[4px]">
+      <div className="tagma-rail flex items-center h-[16px] gap-[4px] min-w-0 overflow-hidden px-[4px]">
         {track.driver && (
           <Chip className="bg-tagma-accent/12 text-tagma-accent/70">{track.driver}</Chip>
         )}
@@ -232,8 +232,8 @@ export const TrackLane = memo(function TrackLane({
               <span
                 key={k}
                 className={`text-[7px] font-mono font-bold w-[10px] text-center leading-[14px]
-                  ${k === 'read' && perms.read ? 'text-emerald-400' : ''}
-                  ${k === 'write' && perms.write ? 'text-amber-400' : ''}
+                  ${k === 'read' && perms.read ? 'text-tagma-success' : ''}
+                  ${k === 'write' && perms.write ? 'text-tagma-warning' : ''}
                   ${k === 'execute' && perms.execute ? 'text-tagma-error' : ''}
                   ${!perms[k] ? 'text-tagma-muted/20' : ''}
                 `}
@@ -252,7 +252,7 @@ export const TrackLane = memo(function TrackLane({
           </span>
         )}
         {track.middlewares && track.middlewares.length > 0 && (
-          <Chip className="bg-purple-500/12 text-purple-400/60 shrink-0">
+          <Chip className="bg-tagma-info/12 text-tagma-info/60 shrink-0">
             mw:{track.middlewares.length}
           </Chip>
         )}

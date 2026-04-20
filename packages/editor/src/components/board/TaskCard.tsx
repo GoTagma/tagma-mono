@@ -190,7 +190,7 @@ function ErrorTooltip({ messages, anchorRect }: { messages: string[]; anchorRect
   return createPortal(
     <div
       ref={ref}
-      className="fixed pointer-events-none bg-[#1a1a1e] border border-tagma-error/40 shadow-lg"
+      className="fixed pointer-events-none bg-tagma-surface border border-tagma-error/40 shadow-lg"
       style={{
         left: pos?.left ?? -9999,
         top: pos?.top ?? -9999,
@@ -293,7 +293,7 @@ function TaskTooltip({
   return createPortal(
     <div
       ref={tooltipRef}
-      className="fixed pointer-events-none bg-[#1a1a1e] border border-[#2a2a30] shadow-lg animate-fade-in"
+      className="fixed pointer-events-none bg-tagma-surface border border-tagma-border shadow-lg animate-fade-in"
       style={{
         left: pos?.left ?? -9999,
         top: pos?.top ?? -9999,
@@ -304,7 +304,7 @@ function TaskTooltip({
         visibility: pos ? 'visible' : 'hidden',
       }}
     >
-      <div className="px-3 py-1.5 text-[10px] font-semibold text-tagma-text truncate border-b border-[#2a2a30]">
+      <div className="px-3 py-1.5 text-[10px] font-semibold text-tagma-text truncate border-b border-tagma-border">
         {task.name || task.id}
       </div>
       <div className="px-3 py-1.5">
@@ -394,26 +394,26 @@ export const TaskCard = memo(function TaskCard({
     const I = task.trigger.type === 'file' ? FileSearch : Lock;
     badges.push(
       <BadgeSlot key="trg">
-        <I size={7} className="text-amber-400/80" />
+        <I size={7} className="text-tagma-warning/80" />
       </BadgeSlot>,
     );
   }
   if (task.timeout)
     badges.push(
       <BadgeSlot key="to">
-        <Clock size={7} className="text-sky-400/70" />
+        <Clock size={7} className="text-tagma-ready/70" />
       </BadgeSlot>,
     );
   if (task.completion)
     badges.push(
       <BadgeSlot key="ck">
-        <CheckCircle2 size={7} className="text-emerald-400/70" />
+        <CheckCircle2 size={7} className="text-tagma-success/70" />
       </BadgeSlot>,
     );
   if (task.middlewares?.length)
     badges.push(
       <BadgeSlot key="mw">
-        <Layers size={7} className="text-purple-400/70" />
+        <Layers size={7} className="text-tagma-info/70" />
       </BadgeSlot>,
     );
 
@@ -501,10 +501,10 @@ export const TaskCard = memo(function TaskCard({
       <div className="flex items-center h-[24px] gap-[6px] pointer-events-none min-w-0 overflow-hidden">
         <span
           className={`inline-flex items-center justify-center w-[16px] h-[16px] shrink-0
-          ${isCommand ? 'bg-sky-500/10' : 'bg-tagma-muted/8'}`}
+          ${isCommand ? 'bg-tagma-ready/10' : 'bg-tagma-muted/8'}`}
         >
           {isCommand ? (
-            <Terminal size={9} className="text-sky-400" />
+            <Terminal size={9} className="text-tagma-ready" />
           ) : (
             <MessageSquare size={9} className="text-tagma-muted/60" />
           )}
@@ -557,7 +557,7 @@ export const TaskCard = memo(function TaskCard({
 
       {/* ─── Row 2: Driver chip · Tier chip · Permissions (prompt only) ─── */}
       {!isCommand && (
-        <div className="flex items-center h-[16px] gap-[4px] pointer-events-none min-w-0 overflow-hidden bg-black/20 px-[3px]">
+        <div className="tagma-rail flex items-center h-[16px] gap-[4px] pointer-events-none min-w-0 overflow-hidden px-[3px]">
           {driver && <Chip className="bg-tagma-accent/12 text-tagma-accent/80">{driver}</Chip>}
           {model && (
             <Chip className="bg-tagma-muted/12 text-tagma-muted/80 font-bold">{model}</Chip>
@@ -568,8 +568,8 @@ export const TaskCard = memo(function TaskCard({
                 <span
                   key={k}
                   className={`text-[7px] font-mono font-bold w-[10px] text-center leading-[14px]
-                  ${k === 'read' && perms.read ? 'text-emerald-400' : ''}
-                  ${k === 'write' && perms.write ? 'text-amber-400' : ''}
+                  ${k === 'read' && perms.read ? 'text-tagma-success' : ''}
+                  ${k === 'write' && perms.write ? 'text-tagma-warning' : ''}
                   ${k === 'execute' && perms.execute ? 'text-tagma-error' : ''}
                   ${!perms[k] ? 'text-tagma-muted/20' : ''}
                 `}

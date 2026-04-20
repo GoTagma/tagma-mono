@@ -324,7 +324,7 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
                 key={e.key}
                 d={e.d}
                 fill="none"
-                stroke="rgba(107,114,128,0.25)"
+                style={{ stroke: 'var(--tagma-hist-edge)' }}
                 strokeWidth={1.5}
               />
             ))}
@@ -375,9 +375,9 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
                     )}
                   </span>
                 </div>
-                <div className="flex items-center h-[16px] gap-[4px] pointer-events-none min-w-0 overflow-hidden bg-black/20 px-[3px]">
+                <div className="tagma-rail flex items-center h-[16px] gap-[4px] pointer-events-none min-w-0 overflow-hidden px-[3px]">
                   {task.command ? (
-                    <span className="inline-flex items-center h-[14px] px-[4px] min-w-0 overflow-hidden bg-sky-500/15 text-sky-400/80">
+                    <span className="inline-flex items-center h-[14px] px-[4px] min-w-0 overflow-hidden bg-tagma-ready/15 text-tagma-ready/80">
                       <span className="truncate text-[7.5px] font-mono leading-[14px]">shell</span>
                     </span>
                   ) : (
@@ -464,7 +464,7 @@ function HistoryTaskPanel({ task, onClose }: { task: RunSummaryTask; onClose: ()
             <div className="flex items-center gap-2 text-[10px] text-tagma-muted">
               {task.command ? (
                 <>
-                  <Terminal size={11} className="text-sky-400" /> Shell command
+                  <Terminal size={11} className="text-tagma-ready" /> Shell command
                 </>
               ) : (
                 <>

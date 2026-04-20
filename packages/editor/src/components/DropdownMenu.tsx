@@ -78,7 +78,7 @@ export function DropdownMenu({ items, onClose, anchorClassName, anchorStyle }: D
         return (
           <div
             key={ii}
-            className={`group w-full flex items-center justify-between pr-1 text-[11px] text-left transition-colors ${item.disabled ? 'text-tagma-muted/45 cursor-not-allowed' : 'text-tagma-text hover:bg-tagma-accent/10 hover:text-white'}`}
+            className={`group w-full flex items-center justify-between pr-1 text-[11px] text-left transition-colors ${item.disabled ? 'text-tagma-muted/45 cursor-not-allowed' : 'text-tagma-text hover:bg-tagma-accent/10 hover:text-tagma-accent'}`}
           >
             <button
               disabled={item.disabled}

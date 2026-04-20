@@ -341,7 +341,7 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
                 )
               </span>
               {task.totalLogCount > TASK_LOG_CAP && (
-                <span className="text-amber-400/70 font-normal normal-case tracking-normal ml-1">
+                <span className="text-tagma-warning/70 font-normal normal-case tracking-normal ml-1">
                   (capped at {TASK_LOG_CAP})
                 </span>
               )}
@@ -374,7 +374,7 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
               <div className="flex items-center gap-2 text-[10px] text-tagma-muted">
                 {isCommand ? (
                   <>
-                    <Terminal size={11} className="text-sky-400" /> Shell command
+                    <Terminal size={11} className="text-tagma-ready" /> Shell command
                   </>
                 ) : (
                   <>

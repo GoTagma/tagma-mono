@@ -525,7 +525,7 @@ export function TaskConfigPanel({
                 placeholder="Named profile or multi-line system prompt..."
               />
               {systemPromptUnsupported && (
-                <p className="text-[10px] text-amber-400 mt-1 flex items-start gap-1">
+                <p className="text-[10px] text-tagma-warning mt-1 flex items-start gap-1">
                   <AlertTriangle size={10} className="mt-0.5 shrink-0" />
                   <span>
                     Driver "{resolvedDriver.value ?? 'unknown'}" does not support{' '}
@@ -733,7 +733,7 @@ export function TaskConfigPanel({
               the upstream normalized output. Server validation will flag unsupported combinations.
             </p>
             {sessionResumeUnsupported && (
-              <p className="text-[10px] text-amber-400 mt-1 flex items-start gap-1">
+              <p className="text-[10px] text-tagma-warning mt-1 flex items-start gap-1">
                 <AlertTriangle size={10} className="mt-0.5 shrink-0" />
                 <span>
                   Driver "{resolvedDriver.value ?? 'unknown'}" does not support session resume —
@@ -1071,7 +1071,7 @@ export function TaskConfigPanel({
                 <div className="mt-2">
                   <p className="text-tagma-muted">
                     This will remove{' '}
-                    <span className="text-amber-400">{downstreamTasksThatDependOnMe.length}</span>{' '}
+                    <span className="text-tagma-warning">{downstreamTasksThatDependOnMe.length}</span>{' '}
                     downstream dependency reference
                     {downstreamTasksThatDependOnMe.length !== 1 ? 's' : ''}:
                   </p>

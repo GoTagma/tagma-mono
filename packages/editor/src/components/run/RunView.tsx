@@ -766,7 +766,7 @@ export function RunView({
                         key={e.key}
                         d={e.d}
                         fill="none"
-                        stroke="rgba(107,114,128,0.25)"
+                        style={{ stroke: 'var(--tagma-hist-edge)' }}
                         strokeWidth={1.5}
                       />
                     ))}

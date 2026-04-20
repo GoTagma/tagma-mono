@@ -208,7 +208,7 @@ export function Minimap({
       onMouseDown={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
     >
-      <div className="flex items-center justify-between px-2 h-[18px] border-b border-tagma-border/60 bg-black/20">
+      <div className="tagma-rail flex items-center justify-between px-2 h-[18px] border-b border-tagma-border/60">
         <span className="text-[9px] font-mono uppercase tracking-wider text-tagma-muted">
           minimap
         </span>
@@ -236,7 +236,9 @@ export function Minimap({
               y={offsetY + i * TRACK_H * scale}
               width={contentW * scale}
               height={TRACK_H * scale}
-              fill={i % 2 === 0 ? 'rgba(255,255,255,0.015)' : 'rgba(255,255,255,0.04)'}
+              style={{
+                fill: i % 2 === 0 ? 'var(--tagma-mm-stripe-a)' : 'var(--tagma-mm-stripe-b)',
+              }}
             />
           ))}
           {rects.map((r, i) => (
@@ -256,8 +258,10 @@ export function Minimap({
               y={viewport.y}
               width={Math.max(4, viewport.w)}
               height={Math.max(4, viewport.h)}
-              fill="rgba(212, 132, 90, 0.1)"
-              stroke="#d4845a"
+              style={{
+                fill: 'rgb(var(--tagma-accent) / 0.12)',
+                stroke: 'rgb(var(--tagma-accent))',
+              }}
               strokeWidth={1}
               pointerEvents="none"
             />

@@ -362,7 +362,7 @@ export function TrackConfigPanel({
             <option value="ignore">ignore</option>
           </select>
           <p
-            className={`text-[10px] mt-1 ${(track.on_failure ?? '') === 'stop_all' ? 'text-amber-400' : 'text-tagma-muted'}`}
+            className={`text-[10px] mt-1 ${(track.on_failure ?? '') === 'stop_all' ? 'text-tagma-warning' : 'text-tagma-muted'}`}
           >
             {ON_FAILURE_DESCRIPTIONS[track.on_failure ?? '']}
           </p>
@@ -413,7 +413,7 @@ export function TrackConfigPanel({
                 Delete track <span className="font-mono text-tagma-accent">{track.id}</span>?
               </p>
               <p className="text-tagma-muted mt-2">
-                This will remove <span className="text-amber-400">{track.tasks.length}</span> task
+                This will remove <span className="text-tagma-warning">{track.tasks.length}</span> task
                 {track.tasks.length !== 1 ? 's' : ''} and any cross-track dependency references to
                 them.
               </p>
