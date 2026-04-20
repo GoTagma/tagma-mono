@@ -3,7 +3,11 @@
   "private": true,
   "version": "0.1.14",
   "description": "Electron desktop shell for Tagma Editor",
-  "author": "Tagma",
+  "author": {
+    "name": "Tagma",
+    "email": "danuberiverferryman@gmail.com"
+  },
+  "homepage": "https://github.com/GoTagma/tagma-mono",
   "main": "dist/main.js",
   "tagma": {
     "bundledOpencodeVersion": "1.4.4"
@@ -63,7 +67,8 @@
     "linux": {
       "target": ["AppImage", "deb", "rpm", "tar.gz"],
       "icon": "build/icon.png",
-      "category": "Development"
+      "category": "Development",
+      "maintainer": "Tagma <danuberiverferryman@gmail.com>"
     },
     "mac": {
       "target": [
