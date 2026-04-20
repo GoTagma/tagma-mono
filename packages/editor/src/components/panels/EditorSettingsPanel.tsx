@@ -229,7 +229,7 @@ function DeclaredPreview({ declared }: { declared: PluginDeclaredResult | null }
         {' across all YAMLs · '}
         <span className="text-tagma-success">{declared.installed.length} installed</span>
         {' · '}
-        <span className={declared.missing.length > 0 ? 'text-amber-400' : 'text-tagma-muted'}>
+        <span className={declared.missing.length > 0 ? 'text-tagma-warning' : 'text-tagma-muted'}>
           {declared.missing.length} missing
         </span>
       </div>
@@ -243,7 +243,7 @@ function DeclaredPreview({ declared }: { declared: PluginDeclaredResult | null }
                 'text-[9px] font-mono px-1.5 py-0.5 border ' +
                 (isInstalled
                   ? 'text-tagma-success border-tagma-success/40 bg-tagma-success/5'
-                  : 'text-amber-400 border-amber-500/40 bg-amber-500/5')
+                  : 'text-tagma-warning border-tagma-warning/40 bg-tagma-warning/5')
               }
               title={isInstalled ? 'Installed' : 'Missing — click Apply Now to install'}
             >
@@ -333,15 +333,15 @@ function ApplyResult({ status }: { status: ApplyStatus }) {
         </div>
       </div>
       {missingCount > 0 && (
-        <div className="bg-amber-500/8 border border-amber-500/30 px-2 py-1.5">
-          <div className="flex items-start gap-1.5 text-[10px] text-amber-400/90 font-mono">
-            <AlertTriangle size={10} className="text-amber-400 shrink-0 mt-[1px]" />
+        <div className="bg-tagma-warning/8 border border-tagma-warning/30 px-2 py-1.5">
+          <div className="flex items-start gap-1.5 text-[10px] text-tagma-warning/90 font-mono">
+            <AlertTriangle size={10} className="text-tagma-warning shrink-0 mt-[1px]" />
             <div className="space-y-0.5">
               <div>
                 Still missing ({missingCount}): {result.missing.join(', ')}
               </div>
               {!result.settings.autoInstallDeclaredPlugins && (
-                <div className="text-amber-400/70">
+                <div className="text-tagma-warning/70">
                   Turn on "Auto-install declared plugins" to install them.
                 </div>
               )}
@@ -369,9 +369,9 @@ function ApplyResult({ status }: { status: ApplyStatus }) {
 
 function WarnBox({ children }: { children: ReactNode }) {
   return (
-    <div className="bg-amber-500/8 border border-amber-500/30 px-2.5 py-1.5">
-      <div className="flex items-start gap-1.5 text-[10px] text-amber-400/90 font-mono">
-        <AlertTriangle size={10} className="text-amber-400 shrink-0 mt-[1px]" />
+    <div className="bg-tagma-warning/8 border border-tagma-warning/30 px-2.5 py-1.5">
+      <div className="flex items-start gap-1.5 text-[10px] text-tagma-warning/90 font-mono">
+        <AlertTriangle size={10} className="text-tagma-warning shrink-0 mt-[1px]" />
         <span>{children}</span>
       </div>
     </div>
