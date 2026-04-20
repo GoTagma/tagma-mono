@@ -71,6 +71,8 @@
     "version:sdk:patch": "cd packages/sdk && bun pm version patch",
     "version:sdk:minor": "cd packages/sdk && bun pm version minor",
     "version:sdk:major": "cd packages/sdk && bun pm version major",
+    "apps:init": "git submodule update --init --recursive apps",
+    "apps:update": "git submodule update --remote --recursive apps",
     "sync:desktop": "node scripts/sync-desktop.mjs",
     "push:desktop": "node scripts/push-desktop.mjs",
     "clean": "bun run ./scripts/clean.mjs",
