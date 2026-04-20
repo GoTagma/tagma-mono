@@ -21,35 +21,35 @@ function run(cmd) {
   execSync(cmd, { stdio: 'inherit' });
 }
 
-const oldSha = sh('git -C apps rev-parse HEAD');
+// `recordedSha` is what mono's tree currently pins the submodule at.
+// `workingSha` is where apps/ actually is on disk (may already be ahead if
+// you committed inside apps/ without bumping mono's pointer yet).
+const recordedSha = sh('git ls-tree HEAD apps').split(/\s+/)[2];
+const workingSha = sh('git -C apps rev-parse HEAD');
 
 console.log('Fetching tagma-desktop…');
 run('git -C apps fetch origin main');
 
-const newSha = sh('git -C apps rev-parse origin/main');
+const remoteSha = sh('git -C apps rev-parse origin/main');
 
-if (oldSha === newSha) {
-  console.log(`apps/ already at latest (${newSha.slice(0, 7)}). Nothing to do.`);
+// Fast-forward working tree to remote if it's behind.
+if (workingSha !== remoteSha) {
+  console.log(`\nIncoming from tagma-desktop/main (${workingSha.slice(0, 7)}..${remoteSha.slice(0, 7)}):`);
+  run(`git -C apps log --oneline ${workingSha}..${remoteSha}`);
+  run(`git -C apps checkout --detach ${remoteSha}`);
+}
+
+// Now apps/ HEAD == remoteSha. If mono's recorded pointer already matches,
+// there's nothing to commit. Otherwise, stage + commit the bump. This catches
+// both the "remote moved" case and the "you pushed inside apps/ but forgot to
+// bump mono" case — in either state the pointer needs to be updated.
+if (recordedSha === remoteSha) {
+  console.log(`apps/ already at latest (${remoteSha.slice(0, 7)}) and mono pointer is in sync. Nothing to do.`);
   process.exit(0);
 }
 
-console.log(`\nIncoming commits (${oldSha.slice(0, 7)}..${newSha.slice(0, 7)}):`);
-run(`git -C apps log --oneline ${oldSha}..${newSha}`);
-
-// Detach to the new commit so the working tree reflects it.
-run(`git -C apps checkout --detach ${newSha}`);
-
-// Stage the pointer bump in mono and commit.
 run('git add apps');
-try {
-  sh('git diff --cached --quiet apps');
-  console.log('\nNo pointer change after checkout — unexpected, aborting.');
-  process.exit(1);
-} catch {
-  // Non-zero exit from --quiet means there ARE staged changes — good.
-}
-
-run(`git commit -m "chore(desktop): bump submodule to ${newSha.slice(0, 7)}"`);
+run(`git commit -m "chore(desktop): bump submodule to ${remoteSha.slice(0, 7)}"`);
 
 console.log('\nDone. Next:');
 console.log('  bun install && bun run build:desktop   # refresh deps + compile');
