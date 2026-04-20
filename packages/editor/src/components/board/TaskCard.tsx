@@ -370,12 +370,17 @@ export const TaskCard = memo(function TaskCard({
           ? 'border-tagma-accent/60'
           : 'border-tagma-border/70';
 
+  // Selected state keeps the opaque `bg-tagma-elevated` so the canvas
+  // grid behind it doesn't bleed through — the accent border + left
+  // indicator bar already signal selection strongly enough. Transient
+  // states (dragging, invalid, edge-target) stay translucent because
+  // they're short-lived and the bleed-through is visually expected.
   const bgColor = isDragging
     ? 'bg-tagma-accent/10'
     : isInvalid
       ? 'bg-tagma-error/8'
       : isSelected
-        ? 'bg-tagma-accent/6'
+        ? 'bg-tagma-elevated'
         : isEdgeTarget
           ? 'bg-tagma-accent/4'
           : runtimeCfg?.bg
@@ -441,6 +446,15 @@ export const TaskCard = memo(function TaskCard({
         height: h,
         transition:
           isDragging || isTrackDragging ? 'none' : 'left 100ms ease-out, top 100ms ease-out',
+      }}
+      onMouseDown={(e) => {
+        // In read-only mode the parent canvas also listens for
+        // mousedown to start a pan drag. Pointer events and mouse
+        // events are dispatched independently — stopPropagation on
+        // pointerdown does NOT suppress mousedown — so without this
+        // handler, clicking a task in Run/History would pan the
+        // canvas and make the task appear draggable.
+        if (readOnly && e.button === 0) e.stopPropagation();
       }}
       onPointerDown={(e) => {
         if (e.button !== 0) return;

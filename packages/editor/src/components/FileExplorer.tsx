@@ -206,7 +206,7 @@ export function FileExplorer({
       onClick={onCancel}
     >
       <div
-        className="bg-tagma-surface border border-tagma-border shadow-panel w-[560px] h-[50vh] flex flex-col animate-fade-in"
+        className="bg-tagma-surface border border-tagma-border shadow-panel w-[560px] h-[50vh] max-h-[calc(100vh-48px)] flex flex-col overflow-hidden animate-fade-in"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -271,7 +271,11 @@ export function FileExplorer({
         )}
 
         {/* File list */}
-        <div className="flex-1 overflow-y-auto min-h-[200px]">
+        {/* `min-h-0` is required for a flex-column child to shrink below
+            its content size so `overflow-y-auto` can scroll. Without it,
+            the list would force the dialog to grow and its footer would
+            spill past the dialog box on short viewports. */}
+        <div className="flex-1 overflow-y-auto min-h-0">
           {newFolderName !== null && (
             <div className="flex items-center gap-2 px-3 py-1.5 bg-tagma-elevated/50">
               <Folder size={13} className="text-tagma-accent shrink-0" />

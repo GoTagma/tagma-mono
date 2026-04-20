@@ -342,18 +342,20 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
                 data-task-id={task.taskId}
                 className={`absolute border select-none flex flex-col justify-center px-2.5 cursor-pointer transition-colors ${
                   isSelected
-                    ? 'border-tagma-accent bg-tagma-accent/6'
+                    ? 'border-tagma-accent bg-tagma-elevated'
                     : 'border-tagma-border/70 bg-tagma-elevated hover:bg-tagma-elevated/80'
                 } ${cfg.bg && !isSelected ? cfg.bg : ''}`}
                 style={{ left: pos.x, top: pos.y, width: TASK_W, height: TASK_H }}
-                // Intentionally NOT stopping mousedown propagation: the pan
-                // handler on the parent resets `panDidDragRef` at the start
-                // of every gesture. If we swallow mousedown here, a prior
-                // drag's `true` value stays stuck and blocks all future task
-                // clicks. Letting mousedown bubble means the pan handler
-                // runs, resets the ref, and — because the user isn't moving
-                // while clicking — the flag stays `false` so the click
-                // handler below can select the task.
+                onMouseDown={(e) => {
+                  // Block canvas pan from starting when the user clicks a
+                  // task — otherwise the task appears draggable because
+                  // the whole canvas scrolls under it. Also clear
+                  // panDidDragRef inline so a prior pan's `true` doesn't
+                  // stay stuck and block the click below.
+                  if (e.button !== 0) return;
+                  e.stopPropagation();
+                  panDidDragRef.current = false;
+                }}
                 onClick={(e) => {
                   e.stopPropagation();
                   if (panDidDragRef.current) return;
