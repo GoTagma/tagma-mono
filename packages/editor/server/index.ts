@@ -23,6 +23,7 @@ import { registerWorkspaceRoutes } from './routes/workspace.js';
 import { registerPluginRoutes } from './routes/plugins.js';
 import { registerRunRoutes, shutdownRuns } from './routes/run.js';
 import { registerRecentRoutes } from './routes/recent.js';
+import { registerOpencodeRoutes } from './routes/opencode.js';
 import { ALLOWED_ORIGINS, addLoopbackAllowedOrigins } from './allowed-origins.js';
 import { resolveStaticAssetsDir } from './static-assets.js';
 
@@ -185,6 +186,7 @@ app.use((req, res, next) => {
     '/api/state/events',
     '/api/layout',
     '/api/editor-settings',
+    '/api/opencode/',
   ];
   if (skipRoutes.some((p) => req.path.startsWith(p))) return next();
 
@@ -265,6 +267,7 @@ registerPluginRoutes(app);
 registerWorkspaceRoutes(app);
 registerRunRoutes(app);
 registerRecentRoutes(app);
+registerOpencodeRoutes(app);
 
 // ── B5: Global error handler ──
 // Catches unhandled errors in route handlers so the process doesn't crash.

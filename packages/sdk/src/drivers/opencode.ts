@@ -33,17 +33,25 @@ const EFFORT_TO_VARIANT: Record<string, string | null> = {
 
 // ── Auto-install + free-model picker ───────────────────────────────────────
 //
-// The opencode driver is SDK-built-in, but the `opencode` CLI isn't; we
-// auto-install it on demand (via `bun install -g opencode-ai`) and pick a
-// sensible default model from whatever the CLI reports. Both checks are
-// process-cached via module-level variables so each concern runs at most
-// once per SDK process.
+// The opencode driver is SDK-built-in, but the `opencode` CLI isn't. Two
+// provisioning paths:
 //
-// Design:
-//   - User-provided `model:` wins; we only compute a default when it's empty.
-//   - Failure modes never throw — they fall back to `DEFAULT_MODEL` and let
-//     the subsequent `opencode run` spawn fail with its own error. Avoids
-//     two confusing errors for one missing dependency.
+//   1. Desktop app — the Electron shell ships a platform-matched opencode
+//      binary under resources/opencode/bin/, prepended to the sidecar's PATH
+//      at launch (see packages/electron/src/runtime-paths.ts). In-app updates
+//      drop a newer copy into userData/opencode/bin/ which wins via PATH
+//      precedence. That path resolves on the first `opencode --version`
+//      probe below; no auto-install ever fires.
+//
+//   2. SDK direct use — when bun is on PATH we fall through to
+//      `bun install -g opencode-ai`, identical to the pre-desktop behavior.
+//
+// When BOTH paths are unavailable (no bundled binary, no bun) we fail with
+// an actionable error pointing at the desktop Settings panel instead of
+// silently letting `opencode run` ENOENT later — the old behavior swallowed
+// the root cause in runCapture's catch and left the user staring at an
+// opaque "exit code -1". The result is process-memoized so subsequent
+// tasks in the same run surface the same error without re-probing.
 
 interface OpencodeModelInfo {
   id?: string;
@@ -53,7 +61,12 @@ interface OpencodeModelInfo {
   limit?: { context?: number };
 }
 
+// Memoize BOTH success and failure. On failure we stash the message so every
+// subsequent ensureOpencodeInstalled() throws the identical error — re-running
+// the bun-install probe for each task of a failed run would just be slow and
+// produce confusing interleaved stderr.
 let opencodeReady: boolean | undefined;
+let opencodeReadyError: string | undefined;
 let cachedDefaultModel: string | undefined;
 
 async function runCapture(
@@ -72,14 +85,38 @@ async function runCapture(
   }
 }
 
-async function ensureOpencodeInstalled(): Promise<boolean> {
-  if (opencodeReady !== undefined) return opencodeReady;
+// Shared tail for every failure message — the Tagma desktop app exposes a
+// one-click installer at the same npm source path this driver would reach
+// for, so point users there first. Users running the SDK as a library still
+// see the manual bun/npm hint.
+const SETUP_HINT =
+  'If you are using the Tagma desktop app, open Editor Settings → OpenCode CLI to install or update the bundled binary. ' +
+  'Otherwise install it manually: `bun install -g opencode-ai` or `npm install -g opencode-ai`.';
 
-  // Probe existing install first — users who already have it get no delay.
+async function ensureOpencodeInstalled(): Promise<void> {
+  if (opencodeReady === true) return;
+  if (opencodeReady === false && opencodeReadyError) {
+    throw new Error(opencodeReadyError);
+  }
+
+  // Probe existing install first — this is the hot path for desktop users
+  // (bundled binary in PATH) and for anyone who already has opencode.
   const probe = await runCapture(['opencode', '--version']);
   if (probe.code === 0) {
     opencodeReady = true;
-    return true;
+    return;
+  }
+
+  // Distinguish "bun is missing" from "bun is here but install failed" so
+  // the error we surface points at the right next step. If bun is absent we
+  // skip the install attempt entirely — spawning with `bun` as argv[0]
+  // would just ENOENT inside runCapture's catch and look identical to a
+  // failed install.
+  const bunProbe = await runCapture(['bun', '--version']);
+  if (bunProbe.code !== 0) {
+    opencodeReady = false;
+    opencodeReadyError = `OpenCode CLI is not available and \`bun\` is not installed. ${SETUP_HINT}`;
+    throw new Error(opencodeReadyError);
   }
 
   console.error(
@@ -93,9 +130,9 @@ async function ensureOpencodeInstalled(): Promise<boolean> {
   });
   const installCode = await install.exited;
   if (installCode !== 0) {
-    console.error('[driver:opencode] install failed — opencode run will likely fail below.');
     opencodeReady = false;
-    return false;
+    opencodeReadyError = `\`bun install -g opencode-ai\` failed (exit code ${installCode}). ${SETUP_HINT}`;
+    throw new Error(opencodeReadyError);
   }
 
   // Bun installs globals under `~/.bun/bin` (or `%USERPROFILE%\.bun\bin`),
@@ -113,13 +150,14 @@ async function ensureOpencodeInstalled(): Promise<boolean> {
   }
 
   const verify = await runCapture(['opencode', '--version']);
-  opencodeReady = verify.code === 0;
-  if (!opencodeReady) {
-    console.error(
-      '[driver:opencode] `opencode` still not resolvable after install — check that bun global bin is on PATH.',
-    );
+  if (verify.code !== 0) {
+    opencodeReady = false;
+    opencodeReadyError =
+      '`opencode` is not resolvable after `bun install -g opencode-ai` completed. ' +
+      "Bun's global bin directory is probably not on PATH — add it manually or restart the app.";
+    throw new Error(opencodeReadyError);
   }
-  return opencodeReady;
+  opencodeReady = true;
 }
 
 // `opencode models --verbose` emits "<provider>/<id>\n{...json...}\n" pairs.
@@ -174,11 +212,11 @@ function pickFreeModel(models: OpencodeModelInfo[]): string | null {
 
 async function resolveDefaultModel(): Promise<string> {
   if (cachedDefaultModel !== undefined) return cachedDefaultModel;
-  const ready = await ensureOpencodeInstalled();
-  if (!ready) {
-    cachedDefaultModel = DEFAULT_MODEL;
-    return cachedDefaultModel;
-  }
+  // ensureOpencodeInstalled now throws with an actionable message when the
+  // CLI can't be provisioned, so we let the error bubble up to the task
+  // runner instead of silently falling back to DEFAULT_MODEL (which would
+  // produce a second confusing ENOENT a few lines later in `opencode run`).
+  await ensureOpencodeInstalled();
   console.error('[driver:opencode] resolving free opencode model...');
   const { code, stdout } = await runCapture(['opencode', 'models', '--verbose']);
   if (code !== 0) {
@@ -207,8 +245,9 @@ export const OpenCodeDriver: DriverPlugin = {
   async buildCommand(task: TaskConfig, track: TrackConfig, ctx: DriverContext): Promise<SpawnSpec> {
     const explicitModel = task.model ?? track.model;
     // Always make sure the opencode CLI is usable before we spawn it — even
-    // when the user pinned a model. If missing, ensureOpencodeInstalled
-    // auto-installs it via `bun install -g opencode-ai`.
+    // when the user pinned a model. ensureOpencodeInstalled throws with an
+    // actionable message when the binary is neither present on PATH (desktop
+    // bundles it there via runtime-paths.ts) nor installable via bun.
     if (explicitModel) await ensureOpencodeInstalled();
     // Otherwise resolveDefaultModel both ensures the CLI and picks a free
     // model from `opencode models --verbose` (cached per-process).

@@ -5,6 +5,9 @@
   "description": "Electron desktop shell for Tagma Editor",
   "author": "Tagma",
   "main": "dist/main.js",
+  "tagma": {
+    "bundledOpencodeVersion": "1.4.4"
+  },
   "scripts": {
     "build": "tsc",
     "build:deps": "cd ../editor && bun run build && bun run build:sidecar",
@@ -13,15 +16,17 @@
     "test": "bun test",
     "dev": "bun run build && electron .",
     "start": "electron .",
-    "pack": "bun run build:all && electron-builder --dir",
-    "dist:win": "bun run build:all && electron-builder --win",
-    "dist:linux": "bun run build:all && electron-builder --linux",
-    "dist:mac": "bun run build:all && electron-builder --mac"
+    "fetch:opencode": "bun ./scripts/fetch-opencode.mjs",
+    "pack": "bun run build:all && bun run fetch:opencode && electron-builder --dir",
+    "dist:win": "bun run build:all && bun ./scripts/fetch-opencode.mjs --platform=win32 --arch=x64 && electron-builder --win",
+    "dist:linux": "bun run build:all && bun ./scripts/fetch-opencode.mjs --platform=linux --arch=x64 && electron-builder --linux",
+    "dist:mac": "bun run build:all && bun ./scripts/fetch-opencode.mjs --platform=darwin --arch=arm64 && bun ./scripts/fetch-opencode.mjs --platform=darwin --arch=x64 && electron-builder --mac"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "electron": "^35.2.0",
     "electron-builder": "^25.1.8",
+    "tar": "^7.5.13",
     "typescript": "^5.8.3"
   },
   "build": {
@@ -43,6 +48,11 @@
       {
         "from": "../editor/desktop-dist",
         "to": "editor-sidecar",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "build/opencode/${platform}-${arch}",
+        "to": "opencode",
         "filter": ["**/*"]
       }
     ],

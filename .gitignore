@@ -24,3 +24,6 @@ coverage/
 # Desktop packaging artifacts
 packages/editor/desktop-dist/
 packages/electron/release/
+# Opencode binary staged by packages/electron/scripts/fetch-opencode.mjs
+# before electron-builder packs it via extraResources. ~150 MB per platform.
+packages/electron/build/opencode/

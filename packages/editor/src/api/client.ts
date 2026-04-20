@@ -208,6 +208,30 @@ export interface EditorSettings {
 }
 
 /**
+ * Snapshot of the OpenCode CLI binary the sidecar can currently see, plus
+ * the latest version available on npm. Drives the OpenCode CLI section of
+ * the Editor Settings panel — shows "shipped vX / running vY / update to vZ".
+ *
+ * Shape mirrors server/routes/opencode.ts GET /api/opencode/info.
+ */
+export interface OpencodeInfo {
+  /** Version pinned into the installer at desktop build time (null in dev). */
+  bundledVersion: string | null;
+  /** `opencode --version` result, or null when the CLI isn't resolvable. */
+  runningVersion: string | null;
+  /** Version of the user-installed override in userData, or null if none. */
+  userInstalledVersion: string | null;
+  /** Latest version published on npm (null if the registry lookup failed). */
+  latestVersion: string | null;
+  /** True when latestVersion is newer than whatever PATH currently resolves. */
+  updateAvailable: boolean;
+  /** False in non-desktop contexts — update endpoint returns 500 in that case. */
+  canUpdate: boolean;
+  platform: NodeJS.Platform;
+  arch: string;
+}
+
+/**
  * Read-only snapshot of plugins declared anywhere in the current workspace
  * (every YAML in `.tagma/`) plus their install/load status. Used by the
  * Editor Settings panel to preview what Apply will do without triggering
@@ -668,6 +692,14 @@ export const api = {
   getDeclaredPlugins: () => request<PluginDeclaredResult>('/plugins/declared'),
 
   refreshPlugins: () => request<PluginRefreshResult>('/plugins/refresh', { method: 'POST' }),
+
+  getOpencodeInfo: () => request<OpencodeInfo>('/opencode/info'),
+
+  updateOpencode: (version?: string) =>
+    request<{ ok: true; version: string; path: string }>('/opencode/update', {
+      method: 'POST',
+      body: jsonBody(version ? { version } : {}),
+    }),
 
   openFile: (path: string) =>
     request<ServerState>('/open', { method: 'POST', body: jsonBody({ path }) }),
