@@ -1,0 +1,149 @@
+name: Publish NPM
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/*/package.json'
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: 'JSON array of keys to force-publish (e.g. ["types","sdk"]). Leave empty to auto-detect.'
+        required: false
+        default: ''
+
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.diff.outputs.packages }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect version bumps
+        id: diff
+        shell: bash
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          FORCED: ${{ github.event.inputs.packages }}
+        run: |
+          declare -A DIR_TO_KEY
+          DIR_TO_KEY[types]="types"
+          DIR_TO_KEY[driver-codex]="codex"
+          DIR_TO_KEY[driver-claude-code]="claude-code"
+          DIR_TO_KEY[middleware-lightrag]="lightrag"
+          DIR_TO_KEY[trigger-webhook]="webhook"
+          DIR_TO_KEY[completion-llm-judge]="llm-judge"
+          DIR_TO_KEY[sdk]="sdk"
+
+          if [ -n "$FORCED" ] && [ "$FORCED" != "" ]; then
+            echo "Manual dispatch, forcing: $FORCED"
+            echo "packages=$FORCED" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Pick a valid "before" ref. For first push or force-push,
+          # github.event.before can be all-zeros or missing from local history.
+          base=""
+          if [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
+            if git cat-file -e "$BEFORE_SHA" 2>/dev/null; then
+              base="$BEFORE_SHA"
+            fi
+          fi
+          if [ -z "$base" ]; then
+            base="HEAD~1"
+          fi
+          echo "Comparing $base..HEAD"
+
+          CHANGED="[]"
+
+          for dir in packages/*/; do
+            dirname=$(basename "$dir")
+            key="${DIR_TO_KEY[$dirname]}"
+            [ -z "$key" ] && continue
+
+            old=$(git show "${base}:${dir}package.json" 2>/dev/null \
+              | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{process.stdout.write(JSON.parse(s).version||'')}catch{process.stdout.write('')}})" \
+              || echo "")
+            new=$(node -e "process.stdout.write(require('./${dir}package.json').version||'')")
+
+            if [ -n "$new" ] && [ "$old" != "$new" ]; then
+              echo "✅ ${dirname}: ${old:-NEW} → ${new}"
+              CHANGED=$(echo "$CHANGED" | node -e "
+                let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{
+                  const a=JSON.parse(s);
+                  a.push('${key}');
+                  process.stdout.write(JSON.stringify(a));
+                })
+              ")
+            else
+              echo "⏭️  ${dirname}: no version change (${old} → ${new})"
+            fi
+          done
+
+          echo "packages=$CHANGED" >> "$GITHUB_OUTPUT"
+          echo "Packages to publish: $CHANGED"
+
+  publish:
+    needs: detect
+    if: needs.detect.outputs.packages != '[]' && needs.detect.outputs.packages != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Configure npm auth
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+          echo "registry=https://registry.npmjs.org/" >> ~/.npmrc
+
+      - name: Publish packages in dependency order
+        env:
+          PACKAGES: ${{ needs.detect.outputs.packages }}
+        shell: bash
+        run: |
+          # Publish order must follow the dependency chain:
+          #   1. types (all others depend on it)
+          #   2. plugins (codex, claude-code, lightrag, webhook, llm-judge)
+          #   3. sdk
+          ORDER=("types" "codex" "claude-code" "lightrag" "webhook" "llm-judge" "sdk")
+
+          declare -A PUBLISH_MAP
+          PUBLISH_MAP[types]="publish:types"
+          PUBLISH_MAP[codex]="publish:driver-codex"
+          PUBLISH_MAP[claude-code]="publish:driver-claude-code"
+          PUBLISH_MAP[lightrag]="publish:middleware-lightrag"
+          PUBLISH_MAP[webhook]="publish:trigger-webhook"
+          PUBLISH_MAP[llm-judge]="publish:completion-llm-judge"
+          PUBLISH_MAP[sdk]="publish:sdk"
+
+          for key in "${ORDER[@]}"; do
+            is_changed=$(node -e "
+              const a=JSON.parse(process.env.PACKAGES);
+              process.stdout.write(a.includes('${key}') ? 'true' : 'false');
+            ")
+
+            if [ "$is_changed" = "true" ]; then
+              script="${PUBLISH_MAP[$key]}"
+              echo "━━━ Publishing ${key} (${script}) ━━━"
+              bun run "$script"
+              echo "✅ ${key} published"
+            fi
+          done
+
+          echo ""
+          echo "🎉 All changed packages published!"
