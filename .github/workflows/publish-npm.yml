@@ -108,8 +108,13 @@ jobs:
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
-          echo "registry=https://registry.npmjs.org/" >> ~/.npmrc
+          # Write to both workspace root and HOME so bun publish finds it
+          # regardless of where it resolves .npmrc from.
+          {
+            echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}"
+            echo "registry=https://registry.npmjs.org/"
+            echo "always-auth=true"
+          } | tee .npmrc > ~/.npmrc
 
       - name: Publish packages in dependency order
         env:
