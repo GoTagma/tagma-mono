@@ -1,7 +1,7 @@
 // RunView — read-only mirror of the editor board scoped to a running
-// pipeline. It reuses TaskCard, TrackLane, Minimap, ZoomControls and
-// TaskConfigPanel with readOnly props so the Run screen stays visually
-// consistent with the editor.
+// pipeline. It reuses TaskCard, TrackLane, Minimap, and TaskConfigPanel
+// with readOnly props so the Run screen stays visually consistent with
+// the editor.
 
 import { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import {
@@ -25,7 +25,6 @@ import { useRunStore } from '../../store/run-store';
 import { TaskCard } from '../board/TaskCard';
 import { TrackLane } from '../board/TrackLane';
 import { Minimap } from '../board/Minimap';
-import { ZoomControls } from '../board/ZoomControls';
 import { RunTaskPanel } from './RunTaskPanel';
 import { TrackInfoPanel } from './TrackInfoPanel';
 import { RunPluginsPanel } from './RunPluginsPanel';
@@ -803,13 +802,12 @@ export function RunView({
                 </div>
               </div>
 
-              {/* Floating minimap + zoom controls — same UX as editor */}
+              {/* Floating minimap — same UX as editor */}
               <Minimap
                 scrollElementId={RUN_SCROLL_ID}
                 config={config}
                 positions={minimapPositions}
               />
-              <ZoomControls />
             </div>
 
             {selectedTask && (

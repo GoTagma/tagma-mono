@@ -26,6 +26,7 @@ import { ConfirmModal, type ConfirmInfo } from './components/ConfirmModal';
 import { useUIStore } from './store/ui-store';
 import { hasDesktopBridge, openDesktopWindow } from './desktop';
 import { DesktopTitleStrip } from './components/DesktopWindowControls';
+import { VersionStatusBar } from './components/VersionStatusBar';
 
 type ExplorerIntent = {
   mode: FileExplorerMode;
@@ -979,18 +980,21 @@ export function App() {
         ) : runActive ? (
           <motion.div
             key="run"
-            className="h-full"
+            className="h-full flex flex-col"
             initial={{ opacity: 0, x: 40 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -40 }}
             transition={VIEW_TRANSITION}
           >
-            <RunView
-              config={config}
-              dagEdges={dagEdges}
-              positions={positions}
-              onBack={handleRunBack}
-            />
+            <div className="flex-1 min-h-0">
+              <RunView
+                config={config}
+                dagEdges={dagEdges}
+                positions={positions}
+                onBack={handleRunBack}
+              />
+            </div>
+            <VersionStatusBar />
             <ErrorToast />
           </motion.div>
         ) : pluginsActive ? (
@@ -1017,6 +1021,7 @@ export function App() {
                 onRefreshServerState={refreshServerState}
               />
             </div>
+            <VersionStatusBar />
             <ErrorToast />
           </motion.div>
         ) : (
@@ -1117,6 +1122,8 @@ export function App() {
                 />
               )}
             </div>
+
+            <VersionStatusBar />
 
             {/* Pipeline Settings modal */}
             {showPipelineSettings && (

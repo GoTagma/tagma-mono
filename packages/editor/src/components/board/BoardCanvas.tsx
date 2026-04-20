@@ -3,7 +3,6 @@ import { Trash2, Pencil, ListPlus, Terminal, MessageSquare } from 'lucide-react'
 import { TrackLane } from './TrackLane';
 import { TaskCard } from './TaskCard';
 import { ContextMenu, type MenuEntry } from './ContextMenu';
-import { ZoomControls } from './ZoomControls';
 import { Minimap } from './Minimap';
 import type { RawPipelineConfig, RawTrackConfig, RawTaskConfig } from '../../api/client';
 
@@ -1508,11 +1507,8 @@ export function BoardCanvas({
         </div>
       )}
 
-      {/* Minimap — floats at bottom-right, above the zoom controls. */}
+      {/* Minimap — floats at bottom-right. */}
       <Minimap />
-
-      {/* Zoom controls (U14) — bottom-right */}
-      <ZoomControls />
 
       {ctx && <ContextMenu x={ctx.x} y={ctx.y} items={ctx.items} onClose={closeCtx} />}
     </div>

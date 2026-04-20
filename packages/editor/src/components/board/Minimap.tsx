@@ -31,10 +31,10 @@ interface MinimapProps {
 }
 
 /**
- * Floating minimap overlaid on the canvas at bottom-right, just above the
- * ZoomControls. Previously embedded in the right-side config panels, which
- * caused the content rect to stretch/shrink with sidebar width. Pinning it to
- * the canvas keeps coordinate math dependent only on the canvas itself.
+ * Floating minimap overlaid on the canvas at bottom-right. Previously
+ * embedded in the right-side config panels, which caused the content rect
+ * to stretch/shrink with sidebar width. Pinning it to the canvas keeps
+ * coordinate math dependent only on the canvas itself.
  */
 export function Minimap({
   scrollElementId = BOARD_SCROLL_ID,
@@ -192,7 +192,7 @@ export function Minimap({
         onClick={() => setVisible(true)}
         onMouseDown={(e) => e.stopPropagation()}
         className="absolute z-20 flex items-center gap-1 px-2 bg-tagma-surface/90 border border-tagma-border shadow-panel text-tagma-muted hover:text-tagma-text"
-        style={{ bottom: 12, right: 96, height: 22 }}
+        style={{ bottom: 12, right: 12, height: 22 }}
         title="Show minimap"
       >
         <MapIcon size={11} />
@@ -204,7 +204,7 @@ export function Minimap({
   return (
     <div
       className="absolute z-20 bg-tagma-surface/90 border border-tagma-border shadow-panel"
-      style={{ bottom: 12, right: 96 }}
+      style={{ bottom: 12, right: 12 }}
       onMouseDown={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
     >

@@ -22,7 +22,7 @@ function clamp(value: number): number {
 }
 
 /**
- * Bottom-right floating zoom controls (U14).
+ * Inline zoom control for the bottom status bar.
  *
  * In Electron: drives webContents.setZoomFactor via the desktop bridge so
  * DOM coordinate APIs stay consistent (event.clientX / getBoundingClientRect
@@ -79,8 +79,7 @@ export function ZoomControls() {
 
   return (
     <div
-      className="absolute bottom-3 right-3 z-20 flex items-center bg-tagma-surface/90 border border-tagma-border shadow-panel"
-      style={{ height: 22 }}
+      className="flex items-center h-full"
       onMouseDown={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
     >
@@ -88,7 +87,7 @@ export function ZoomControls() {
         type="button"
         onClick={zoomOut}
         disabled={zoom <= MIN_ZOOM + 0.001}
-        className="flex items-center justify-center w-5 h-full text-tagma-muted hover:text-tagma-text disabled:opacity-30 disabled:cursor-not-allowed border-r border-tagma-border/60"
+        className="flex items-center justify-center w-5 h-full text-tagma-muted hover:text-tagma-text disabled:opacity-30 disabled:cursor-not-allowed"
         title="Zoom out"
         aria-label="Zoom out"
       >
@@ -97,9 +96,9 @@ export function ZoomControls() {
       <button
         type="button"
         onClick={zoomReset}
-        className="px-2 h-full text-[9px] font-mono text-tagma-text hover:text-tagma-accent tabular-nums"
+        className="px-1.5 h-full text-[10px] font-mono text-tagma-muted hover:text-tagma-text tabular-nums"
         title="Reset zoom"
-        style={{ minWidth: 36 }}
+        style={{ minWidth: 34 }}
       >
         {pct}%
       </button>
@@ -107,7 +106,7 @@ export function ZoomControls() {
         type="button"
         onClick={zoomIn}
         disabled={zoom >= MAX_ZOOM - 0.001}
-        className="flex items-center justify-center w-5 h-full text-tagma-muted hover:text-tagma-text disabled:opacity-30 disabled:cursor-not-allowed border-l border-tagma-border/60"
+        className="flex items-center justify-center w-5 h-full text-tagma-muted hover:text-tagma-text disabled:opacity-30 disabled:cursor-not-allowed"
         title="Zoom in"
         aria-label="Zoom in"
       >
