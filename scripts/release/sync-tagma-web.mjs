@@ -2,8 +2,10 @@
 // Propagates a desktop release into the tagma-web repo:
 //   1. Write src/content/archive/<version>.md with minimal frontmatter.
 //   2. Patch specific fields in src/site.config.ts (no full rewrite).
+//   3. Copy the editor hot-update manifest to public/editor-updates/<channel>/
+//      manifest.json so running editors can poll a stable URL for updates.
 // Args: <version> <mono-dir> <web-dir> <assets-dir>
-import { readFileSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const [version, monoDir, webDir, assetsDir] = process.argv.slice(2);
@@ -127,3 +129,27 @@ config = replaceField(config, 'sizeMB', String(sizeMB));
 
 writeFileSync(siteConfigPath, config);
 console.log(`patched ${siteConfigPath}`);
+
+// ---- 3. Editor hot-update manifest. ----
+// Copy the prebuilt manifest (see scripts/release/build-hotupdate-manifest.mjs)
+// into tagma-web's static-asset tree under public/editor-updates/<channel>/.
+// A running editor polls <web-domain>/editor-updates/<channel>/manifest.json
+// and downloads the tarball referenced inside. Absent = feature disabled for
+// this release (e.g. if the build job skipped the tarball step); we don't
+// fail the sync because nothing in tagma-web depends on this file existing.
+const manifestSrc = join(assetsDir, 'editor-hotupdate-manifest.json');
+if (existsSync(manifestSrc)) {
+  const raw = readFileSync(manifestSrc, 'utf8');
+  const parsed = JSON.parse(raw);
+  if (!parsed || typeof parsed.channel !== 'string' || !parsed.channel) {
+    console.error(`manifest at ${manifestSrc} missing channel`);
+    process.exit(1);
+  }
+  const destDir = join(webDir, 'public/editor-updates', parsed.channel);
+  mkdirSync(destDir, { recursive: true });
+  const destFile = join(destDir, 'manifest.json');
+  writeFileSync(destFile, raw);
+  console.log(`wrote ${destFile}`);
+} else {
+  console.log(`no editor hot-update manifest in ${assetsDir} — skipping`);
+}

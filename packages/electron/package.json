@@ -10,7 +10,9 @@
   "homepage": "https://github.com/GoTagma/tagma-mono",
   "main": "dist/main.js",
   "tagma": {
-    "bundledOpencodeVersion": "1.4.4"
+    "bundledOpencodeVersion": "1.4.4",
+    "channel": "stable",
+    "updateManifestBaseUrl": "https://tagma-web.danuberiverferryman.workers.dev/editor-updates"
   },
   "scripts": {
     "build": "tsc",

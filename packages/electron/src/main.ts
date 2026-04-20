@@ -4,24 +4,52 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { resolveRuntimePaths } from './runtime-paths';
 
-// Pinned opencode version from packages/electron/package.json. Read once at
-// startup and forwarded to the sidecar so the OpenCode CLI Settings section
-// can show "shipped vX / running vY" without the sidecar having to re-read
-// this file from a path that changes between dev and packaged layouts.
-function readBundledOpencodeVersion(): string | undefined {
+// Pinned release metadata from packages/electron/package.json. Read once at
+// startup and forwarded to the sidecar so the Settings panels can show
+// "shipped vX / running vY" without the sidecar having to re-read this file
+// from a path that changes between dev and packaged layouts. Returned fields:
+//   - bundledOpencodeVersion → OpenCode CLI section
+//   - channel + updateManifestBaseUrl → Editor hot-update section. Both come
+//     from `tagma.*` in package.json; channel is bumped by CI during the
+//     cut-tag job, base URL is a static config pointing at tagma-web.
+interface PackagedTagmaMetadata {
+  bundledOpencodeVersion?: string;
+  channel?: string;
+  updateManifestBaseUrl?: string;
+}
+function readTagmaMetadata(): PackagedTagmaMetadata {
   try {
     const pkgPath = app.isPackaged
       ? path.join(process.resourcesPath, 'app.asar', 'package.json')
       : path.join(__dirname, '..', 'package.json');
     const raw = fs.readFileSync(pkgPath, 'utf-8');
-    const pkg = JSON.parse(raw) as { tagma?: { bundledOpencodeVersion?: unknown } };
-    const v = pkg.tagma?.bundledOpencodeVersion;
-    return typeof v === 'string' && v ? v : undefined;
+    const pkg = JSON.parse(raw) as {
+      tagma?: {
+        bundledOpencodeVersion?: unknown;
+        channel?: unknown;
+        updateManifestBaseUrl?: unknown;
+      };
+    };
+    const t = pkg.tagma ?? {};
+    return {
+      bundledOpencodeVersion:
+        typeof t.bundledOpencodeVersion === 'string' && t.bundledOpencodeVersion
+          ? t.bundledOpencodeVersion
+          : undefined,
+      channel: typeof t.channel === 'string' && t.channel ? t.channel : undefined,
+      updateManifestBaseUrl:
+        typeof t.updateManifestBaseUrl === 'string' && t.updateManifestBaseUrl
+          ? t.updateManifestBaseUrl
+          : undefined,
+    };
   } catch {
-    return undefined;
+    return {};
   }
 }
-const BUNDLED_OPENCODE_VERSION = readBundledOpencodeVersion();
+const TAGMA_META = readTagmaMetadata();
+const BUNDLED_OPENCODE_VERSION = TAGMA_META.bundledOpencodeVersion;
+const EDITOR_UPDATE_CHANNEL = TAGMA_META.channel;
+const EDITOR_UPDATE_MANIFEST_BASE_URL = TAGMA_META.updateManifestBaseUrl;
 
 // Windows GUI apps don't attach a console, so process.stdout writes from the
 // Electron main process are invisible to the user. Mirror sidecar stdout and
@@ -85,6 +113,12 @@ function spawnSidecar(): Promise<{ proc: ChildProcess; actualPort: number }> {
       resourcesPath: process.resourcesPath,
       userDataDir: app.getPath('userData'),
       bundledOpencodeVersion: BUNDLED_OPENCODE_VERSION,
+      // Editor hot-update context: the installer's own version is the
+      // baseline editor-dist version (tier A: desktop release = editor
+      // release), plus the channel + manifest base URL the sidecar polls.
+      editorVersion: app.getVersion(),
+      editorUpdateChannel: EDITOR_UPDATE_CHANNEL,
+      editorUpdateManifestBaseUrl: EDITOR_UPDATE_MANIFEST_BASE_URL,
     });
 
     const proc = spawn(runtime.command, runtime.args, {

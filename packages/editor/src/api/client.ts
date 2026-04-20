@@ -232,6 +232,33 @@ export interface OpencodeInfo {
 }
 
 /**
+ * Snapshot of the Editor hot-update layer: which `dist/` the sidecar is
+ * currently serving (bundled vs userData override), the latest advertised in
+ * the channel's manifest, and whether an update is actionable. Shape mirrors
+ * server/routes/editor.ts GET /api/editor/info.
+ */
+export interface EditorInfo {
+  /** Version baked into the installer at desktop build time (null in dev). */
+  bundledVersion: string | null;
+  /** Version staged under userData/editor/dist, or null when none. */
+  userInstalledVersion: string | null;
+  /** What express.static is actually serving right now. */
+  activeVersion: string | null;
+  /** Latest version the remote manifest advertises (null if unreachable). */
+  latestVersion: string | null;
+  /** True when latestVersion > activeVersion. */
+  updateAvailable: boolean;
+  /** False when the sidecar has no writable userData or no manifest URL. */
+  canUpdate: boolean;
+  /** Current release channel (stable / alpha / beta / rc). */
+  channel: string | null;
+  /** Resolved manifest URL the sidecar would poll (null when disabled). */
+  manifestUrl: string | null;
+  /** Release notes URL from the manifest, if supplied. */
+  releaseNotesUrl: string | null;
+}
+
+/**
  * Read-only snapshot of plugins declared anywhere in the current workspace
  * (every YAML in `.tagma/`) plus their install/load status. Used by the
  * Editor Settings panel to preview what Apply will do without triggering
@@ -699,6 +726,13 @@ export const api = {
     request<{ ok: true; version: string; path: string }>('/opencode/update', {
       method: 'POST',
       body: jsonBody(version ? { version } : {}),
+    }),
+
+  getEditorInfo: () => request<EditorInfo>('/editor/info'),
+
+  updateEditor: () =>
+    request<{ ok: true; version: string; distDir: string }>('/editor/update', {
+      method: 'POST',
     }),
 
   openFile: (path: string) =>

@@ -26,6 +26,19 @@ export interface RuntimePathOptions {
    * and compare against userData overrides and the latest npm release.
    */
   bundledOpencodeVersion?: string;
+  /**
+   * Editor hot-update metadata, read from packages/electron/package.json.
+   * `editorVersion` is the installer version (same value as app.getVersion()) —
+   * treated as the version of the bundled `editor-dist`. The sidecar compares
+   * this against the remote manifest to decide whether a hot update is
+   * available. `channel` selects which manifest to fetch (stable/alpha/...).
+   * `updateManifestBaseUrl` is the base URL; the sidecar appends
+   * `/<channel>/manifest.json`. All fields optional so dev / headless-server
+   * invocations (where resolveRuntimePaths is not called) still compile.
+   */
+  editorVersion?: string;
+  editorUpdateChannel?: string;
+  editorUpdateManifestBaseUrl?: string;
 }
 
 export interface RuntimePaths {
@@ -86,9 +99,24 @@ export function resolveRuntimePaths(options: RuntimePathOptions): RuntimePaths {
     };
     if (options.userDataDir) {
       env.TAGMA_OPENCODE_USER_DIR = p.join(options.userDataDir, 'opencode');
+      // Editor hot-update writable layer: userData/editor-dist wins over the
+      // bundled resources/editor-dist when present (static-assets.ts picks it
+      // up). This is the destination path for /api/editor/update to stage a
+      // fresh frontend bundle into.
+      env.TAGMA_EDITOR_USER_DIR = p.join(options.userDataDir, 'editor');
+      env.TAGMA_EDITOR_USER_DIST_DIR = p.join(options.userDataDir, 'editor', 'dist');
     }
     if (options.bundledOpencodeVersion) {
       env.TAGMA_OPENCODE_BUNDLED_VERSION = options.bundledOpencodeVersion;
+    }
+    if (options.editorVersion) {
+      env.TAGMA_EDITOR_BUNDLED_VERSION = options.editorVersion;
+    }
+    if (options.editorUpdateChannel) {
+      env.TAGMA_EDITOR_UPDATE_CHANNEL = options.editorUpdateChannel;
+    }
+    if (options.editorUpdateManifestBaseUrl) {
+      env.TAGMA_EDITOR_UPDATE_MANIFEST_BASE_URL = options.editorUpdateManifestBaseUrl;
     }
     return {
       command: p.join(sidecarDir, executableName(platform)),

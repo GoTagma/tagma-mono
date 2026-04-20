@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import {
   api,
+  type EditorInfo,
   type EditorSettings,
   type OpencodeInfo,
   type PluginDeclaredResult,
@@ -168,6 +169,13 @@ export function EditorSettingsPanel({
             <ThemePicker theme={theme} onChange={setTheme} />
           </div>
 
+          {/* Editor hot-update panel. Lives above OpencodeSection because
+              the editor itself is the more impactful update — a stale dist
+              may be missing bug fixes in the panels the user is looking at
+              right now. Outside the workspace gate for the same reason as
+              OpenCode: the dist lives globally under userData. */}
+          <EditorUpdateSection />
+
           {/* OpenCode CLI panel. Also outside the workspace gate — the binary
               lives globally on disk (bundled in resources/ + userData overlay),
               not per-workspace. Rendered even without a workspace so users
@@ -233,6 +241,188 @@ export function EditorSettingsPanel({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+type EditorUpdateFetchStatus =
+  | { kind: 'loading' }
+  | { kind: 'loaded'; info: EditorInfo }
+  | { kind: 'error'; message: string };
+
+type EditorUpdateApplyStatus =
+  | { kind: 'idle' }
+  | { kind: 'updating' }
+  | { kind: 'done'; version: string }
+  | { kind: 'error'; message: string };
+
+function EditorUpdateSection() {
+  const [status, setStatus] = useState<EditorUpdateFetchStatus>({ kind: 'loading' });
+  const [applyStatus, setApplyStatus] = useState<EditorUpdateApplyStatus>({ kind: 'idle' });
+
+  const refresh = useCallback(async () => {
+    setStatus({ kind: 'loading' });
+    try {
+      const info = await api.getEditorInfo();
+      setStatus({ kind: 'loaded', info });
+    } catch (e) {
+      setStatus({
+        kind: 'error',
+        message: e instanceof Error ? e.message : 'Failed to read editor update status',
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const handleUpdate = useCallback(async () => {
+    setApplyStatus({ kind: 'updating' });
+    try {
+      const result = await api.updateEditor();
+      setApplyStatus({ kind: 'done', version: result.version });
+      // New dist is live in userData; a window reload swaps to it without
+      // touching the sidecar. Give the "installed vX" toast a beat to render
+      // before the page blanks out, so the user sees the success state.
+      window.setTimeout(() => window.location.reload(), 1200);
+    } catch (e) {
+      setApplyStatus({
+        kind: 'error',
+        message: e instanceof Error ? e.message : 'Editor update failed',
+      });
+    }
+  }, []);
+
+  return (
+    <div>
+      <label className="field-label">Editor Updates</label>
+      <div className="border border-tagma-border bg-tagma-bg p-2.5 space-y-2">
+        {status.kind === 'loading' && (
+          <div className="flex items-center gap-2 text-[11px] text-tagma-muted">
+            <Loader2 size={12} className="animate-spin" /> Reading editor update status…
+          </div>
+        )}
+        {status.kind === 'error' && (
+          <div className="text-[10px] text-tagma-error font-mono">{status.message}</div>
+        )}
+        {status.kind === 'loaded' && (
+          <EditorUpdateRows
+            info={status.info}
+            onRefresh={refresh}
+            onUpdate={handleUpdate}
+            applyStatus={applyStatus}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function EditorUpdateRows({
+  info,
+  onRefresh,
+  onUpdate,
+  applyStatus,
+}: {
+  info: EditorInfo;
+  onRefresh: () => void;
+  onUpdate: () => void;
+  applyStatus: EditorUpdateApplyStatus;
+}) {
+  const updating = applyStatus.kind === 'updating';
+  // "disabled" is a configuration state, not an error — no manifest URL means
+  // the build was packaged without an update endpoint wired up. Distinct from
+  // "can't reach the manifest host", which surfaces as latestVersion=null.
+  const disabled = !info.manifestUrl;
+
+  const updateButtonTitle = disabled
+    ? 'Editor updates are disabled in this build (no manifest URL configured).'
+    : !info.canUpdate
+      ? 'Editor updates are only available when running under the desktop app.'
+      : !info.updateAvailable
+        ? 'Editor is already at the latest version.'
+        : `Download editor ${info.latestVersion} and swap in without a restart`;
+
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[10px] font-mono">
+        <span className="text-tagma-muted">Running</span>
+        <span className="text-tagma-text">
+          {info.activeVersion ?? <span className="text-tagma-warning">not found</span>}
+        </span>
+        <span className="text-tagma-muted">Bundled</span>
+        <span className="text-tagma-muted-dim">
+          {info.bundledVersion ?? '(dev mode — none shipped)'}
+        </span>
+        {info.userInstalledVersion && (
+          <>
+            <span className="text-tagma-muted">Hot-update override</span>
+            <span className="text-tagma-muted-dim">{info.userInstalledVersion}</span>
+          </>
+        )}
+        <span className="text-tagma-muted">Channel</span>
+        <span className="text-tagma-muted-dim">{info.channel ?? 'stable'}</span>
+        <span className="text-tagma-muted">Latest</span>
+        <span className={info.updateAvailable ? 'text-tagma-accent' : 'text-tagma-muted-dim'}>
+          {disabled
+            ? '(updates disabled)'
+            : (info.latestVersion ?? '(manifest unreachable)')}
+        </span>
+      </div>
+
+      <div className="flex items-center gap-2 pt-1">
+        <button
+          onClick={onUpdate}
+          disabled={disabled || !info.canUpdate || !info.updateAvailable || updating}
+          className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 border border-tagma-accent/50 text-tagma-accent hover:bg-tagma-accent/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
+          title={updateButtonTitle}
+        >
+          {updating ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
+          {updating
+            ? 'Updating…'
+            : info.updateAvailable && info.latestVersion
+              ? `Update to ${info.latestVersion}`
+              : 'Up to date'}
+        </button>
+        <button
+          onClick={onRefresh}
+          disabled={updating}
+          className="btn-ghost"
+          title="Re-check the release manifest"
+        >
+          <RefreshCw size={11} /> Check again
+        </button>
+        {info.releaseNotesUrl && info.updateAvailable && (
+          <a
+            href={info.releaseNotesUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[10px] text-tagma-muted hover:text-tagma-text underline"
+          >
+            Release notes
+          </a>
+        )}
+      </div>
+
+      {applyStatus.kind === 'done' && (
+        <div className="bg-tagma-success/8 border border-tagma-success/30 px-2 py-1.5">
+          <div className="flex items-start gap-1.5 text-[10px] text-tagma-success/90 font-mono">
+            <CheckCircle2 size={10} className="text-tagma-success shrink-0 mt-[1px]" />
+            <span>
+              Installed editor {applyStatus.version}. Reloading to apply…
+            </span>
+          </div>
+        </div>
+      )}
+      {applyStatus.kind === 'error' && (
+        <div className="bg-tagma-error/8 border border-tagma-error/30 px-2 py-1.5">
+          <div className="flex items-start gap-1.5 text-[10px] text-tagma-error/90 font-mono">
+            <AlertTriangle size={10} className="text-tagma-error shrink-0 mt-[1px]" />
+            <span>{applyStatus.message}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

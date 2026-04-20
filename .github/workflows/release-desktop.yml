@@ -157,6 +157,26 @@ jobs:
           echo "build:desktop exhausted retries"
           exit 1
 
+      # ── Hot-update payload ──
+      # Every desktop release also ships an editor-dist tarball that the
+      # running app can pull down on demand (see server/routes/editor.ts).
+      # Built on Linux only: `bun run build:desktop` produces identical
+      # packages/editor/dist on every runner (pure JS), so one tarball is
+      # enough and we avoid publishing three byte-divergent copies.
+      - name: Package editor hot-update tarball
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#desktop-v}"
+          out="packages/electron/release"
+          mkdir -p "$out"
+          tarball="$out/editor-dist-${version}.tar.gz"
+          tar -czf "$tarball" -C packages/editor/dist .
+          sha=$(shasum -a 256 "$tarball" | awk '{print $1}')
+          echo "$sha  $(basename "$tarball")" > "${tarball}.sha256"
+          echo "wrote $tarball (sha256=$sha)"
+
       - name: Package (${{ matrix.platform }})
         working-directory: packages/electron
         env:
@@ -191,6 +211,8 @@ jobs:
             packages/electron/release/Tagma-*.sha256
             packages/electron/release/latest*.yml
             packages/electron/release/*.blockmap
+            packages/electron/release/editor-dist-*.tar.gz
+            packages/electron/release/editor-dist-*.tar.gz.sha256
           if-no-files-found: ignore
 
   publish:
@@ -198,6 +220,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.meta.outputs.version }}
+      channel: ${{ steps.ch.outputs.channel }}
     steps:
       - uses: actions/create-github-app-token@v1
         id: app-token
@@ -227,6 +250,15 @@ jobs:
         id: ch
         run: |
           node scripts/release/channel-info.mjs "packages/electron/CHANGELOG/${{ steps.meta.outputs.version }}.md" >> "$GITHUB_OUTPUT"
+
+      - name: Build editor hot-update manifest
+        run: |
+          node scripts/release/build-hotupdate-manifest.mjs \
+            "${{ steps.meta.outputs.version }}" \
+            "${{ steps.ch.outputs.channel }}" \
+            flat \
+            "${{ github.repository }}" \
+            "flat/editor-hotupdate-manifest.json"
 
       - name: Build release notes
         run: |
@@ -282,6 +314,20 @@ jobs:
         run: |
           mkdir -p flat
           find web-release-assets -type f -exec cp {} flat/ \;
+
+      # Regenerate the editor hot-update manifest inside this job so the
+      # sync script has a fresh file to copy into tagma-web/public/. The
+      # publish job already created an identical file in its own workspace,
+      # but job filesystems aren't shared; regenerating with the same inputs
+      # gives byte-identical output without needing a second artifact hop.
+      - name: Build editor hot-update manifest
+        run: |
+          node mono/scripts/release/build-hotupdate-manifest.mjs \
+            "${{ needs.publish.outputs.version }}" \
+            "${{ needs.publish.outputs.channel }}" \
+            flat \
+            "${{ github.repository }}" \
+            "flat/editor-hotupdate-manifest.json"
 
       - name: Run sync script
         run: node mono/scripts/release/sync-tagma-web.mjs "${{ needs.publish.outputs.version }}" mono web flat
