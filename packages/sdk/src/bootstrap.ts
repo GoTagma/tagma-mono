@@ -1,4 +1,4 @@
-import { registerPlugin } from './registry';
+import { defaultRegistry, type PluginRegistry } from './registry';
 
 // Built-in Drivers
 // Only opencode is built in. Other drivers (codex, claude-code) ship as
@@ -19,19 +19,28 @@ import { OutputCheckCompletion } from './completions/output-check';
 // Built-in Middleware
 import { StaticContextMiddleware } from './middlewares/static-context';
 
-export function bootstrapBuiltins(): void {
+/**
+ * Register every built-in plugin into `target` (defaults to the process-wide
+ * default registry). Multi-tenant hosts instantiate one PluginRegistry per
+ * workspace and call this once per instance so each workspace sees the same
+ * built-ins without sharing registration state.
+ *
+ * Built-in handlers are stateless module singletons — registering the same
+ * handler object into N registries is cheap and safe; no cloning is needed.
+ */
+export function bootstrapBuiltins(target: PluginRegistry = defaultRegistry): void {
   // Drivers
-  registerPlugin('drivers', 'opencode', OpenCodeDriver);
+  target.registerPlugin('drivers', 'opencode', OpenCodeDriver);
 
   // Triggers
-  registerPlugin('triggers', 'file', FileTrigger);
-  registerPlugin('triggers', 'manual', ManualTrigger);
+  target.registerPlugin('triggers', 'file', FileTrigger);
+  target.registerPlugin('triggers', 'manual', ManualTrigger);
 
   // Completions
-  registerPlugin('completions', 'exit_code', ExitCodeCompletion);
-  registerPlugin('completions', 'file_exists', FileExistsCompletion);
-  registerPlugin('completions', 'output_check', OutputCheckCompletion);
+  target.registerPlugin('completions', 'exit_code', ExitCodeCompletion);
+  target.registerPlugin('completions', 'file_exists', FileExistsCompletion);
+  target.registerPlugin('completions', 'output_check', OutputCheckCompletion);
 
   // Middlewares
-  registerPlugin('middlewares', 'static_context', StaticContextMiddleware);
+  target.registerPlugin('middlewares', 'static_context', StaticContextMiddleware);
 }

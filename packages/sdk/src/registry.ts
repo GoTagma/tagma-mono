@@ -18,13 +18,6 @@ const VALID_CATEGORIES: ReadonlySet<PluginCategory> = new Set([
   'middlewares',
 ]);
 
-const registries = {
-  drivers: new Map<string, DriverPlugin>(),
-  triggers: new Map<string, TriggerPlugin>(),
-  completions: new Map<string, CompletionPlugin>(),
-  middlewares: new Map<string, MiddlewarePlugin>(),
-};
-
 /**
  * Minimal contract enforcement so a malformed plugin fails fast at
  * registration time rather than crashing the engine mid-run.
@@ -111,73 +104,6 @@ function validateContract(category: PluginCategory, handler: unknown): void {
 
 export type RegisterResult = 'registered' | 'replaced' | 'unchanged';
 
-/**
- * Register a plugin under (category, type). Returns:
- *   - 'registered' on first registration
- *   - 'replaced'   when an existing entry was overwritten with a different handler
- *   - 'unchanged'  when the same handler instance was already present
- *
- * Throws if `category` is unknown, `type` is empty, or `handler` violates the
- * minimum interface contract for the category.
- */
-export function registerPlugin<T extends PluginType>(
-  category: PluginCategory,
-  type: string,
-  handler: T,
-): RegisterResult {
-  if (!VALID_CATEGORIES.has(category)) {
-    throw new Error(`Unknown plugin category "${category}"`);
-  }
-  if (typeof type !== 'string' || type.length === 0) {
-    throw new Error(`Plugin type must be a non-empty string (category="${category}")`);
-  }
-  validateContract(category, handler);
-  const registry = registries[category] as Map<string, T>;
-  const existing = registry.get(type);
-  if (existing === handler) return 'unchanged';
-  const wasReplaced = existing !== undefined;
-  registry.set(type, handler);
-  if (wasReplaced) {
-    // D18: surface silent shadowing. Hot-reload flows legitimately replace
-    // handlers; installing two different plugin packages that both claim
-    // the same (category, type) does not — the second wins and breaks the
-    // first's consumers with no audit trail. A console.warn is cheap,
-    // respects existing callers that rely on 'replaced', and gives ops a
-    // grep-able signal when registrations collide unexpectedly.
-    console.warn(
-      `[tagma-sdk] registerPlugin: replaced existing ${category}/${type} — ` +
-        `check for duplicate plugin packages claiming the same type.`,
-    );
-  }
-  return wasReplaced ? 'replaced' : 'registered';
-}
-
-/**
- * Remove a plugin from the in-process registry. Returns true if a plugin
- * was actually removed. Note: ESM module caching is not affected, so
- * re-importing the same file after unregister will yield the cached module —
- * callers wanting a fresh load must restart the host process.
- */
-export function unregisterPlugin(category: PluginCategory, type: string): boolean {
-  if (!VALID_CATEGORIES.has(category)) return false;
-  return registries[category].delete(type);
-}
-
-export function getHandler<T extends PluginType>(category: PluginCategory, type: string): T {
-  const handler = registries[category].get(type);
-  if (!handler) {
-    throw new Error(
-      `${category} type "${type}" not registered.\n` +
-        `Install the plugin: bun add @tagma/${category.replace(/s$/, '')}-${type}`,
-    );
-  }
-  return handler as T;
-}
-
-export function hasHandler(category: PluginCategory, type: string): boolean {
-  return registries[category].has(type);
-}
-
 // Plugin name must be a scoped npm package or a tagma-prefixed package.
 // Reject absolute/relative paths and suspicious patterns to prevent
 // arbitrary code execution via crafted YAML configs.
@@ -223,45 +149,168 @@ export function readPluginManifest(pkgJson: unknown): PluginManifest | null {
 }
 
 /**
- * Load and register a list of plugin packages.
- *
- * @param pluginNames - Validated npm package names to load.
- * @param resolveFrom - Optional absolute path to resolve plugins from (e.g. the
- *   workspace's working directory). When omitted, the default ESM resolution
- *   uses the SDK's own `node_modules`, which will fail for plugins installed
- *   only in the user's workspace. CLI callers should pass `process.cwd()` or
- *   the workspace root so that workspace-local plugins resolve correctly.
+ * Instance-scoped plugin registry. Each workspace in a multi-tenant sidecar
+ * owns its own PluginRegistry, so installing/uninstalling a driver in one
+ * workspace cannot clobber another. The process-wide `defaultRegistry`
+ * exported at the bottom of this file preserves the historical free-function
+ * API (registerPlugin / getHandler / …) for CLI and single-tenant hosts.
  */
-export async function loadPlugins(
-  pluginNames: readonly string[],
-  resolveFrom?: string,
-): Promise<void> {
-  for (const name of pluginNames) {
-    if (!isValidPluginName(name)) {
-      throw new Error(
-        `Plugin "${name}" rejected: plugin names must be scoped npm packages ` +
-          `(e.g. @tagma/trigger-xyz) or tagma-plugin-* packages. ` +
-          `Relative/absolute paths are not allowed.`,
+export class PluginRegistry {
+  private readonly registries = {
+    drivers: new Map<string, DriverPlugin>(),
+    triggers: new Map<string, TriggerPlugin>(),
+    completions: new Map<string, CompletionPlugin>(),
+    middlewares: new Map<string, MiddlewarePlugin>(),
+  };
+
+  /**
+   * Register a plugin under (category, type). Returns:
+   *   - 'registered' on first registration
+   *   - 'replaced'   when an existing entry was overwritten with a different handler
+   *   - 'unchanged'  when the same handler instance was already present
+   *
+   * Throws if `category` is unknown, `type` is empty, or `handler` violates
+   * the minimum interface contract for the category.
+   */
+  registerPlugin<T extends PluginType>(
+    category: PluginCategory,
+    type: string,
+    handler: T,
+  ): RegisterResult {
+    if (!VALID_CATEGORIES.has(category)) {
+      throw new Error(`Unknown plugin category "${category}"`);
+    }
+    if (typeof type !== 'string' || type.length === 0) {
+      throw new Error(`Plugin type must be a non-empty string (category="${category}")`);
+    }
+    validateContract(category, handler);
+    const registry = this.registries[category] as Map<string, T>;
+    const existing = registry.get(type);
+    if (existing === handler) return 'unchanged';
+    const wasReplaced = existing !== undefined;
+    registry.set(type, handler);
+    if (wasReplaced) {
+      // D18: surface silent shadowing. Hot-reload flows legitimately replace
+      // handlers; installing two different plugin packages that both claim
+      // the same (category, type) does not — the second wins and breaks the
+      // first's consumers with no audit trail. A console.warn is cheap,
+      // respects existing callers that rely on 'replaced', and gives ops a
+      // grep-able signal when registrations collide unexpectedly.
+      console.warn(
+        `[tagma-sdk] registerPlugin: replaced existing ${category}/${type} — ` +
+          `check for duplicate plugin packages claiming the same type.`,
       );
     }
-    let moduleUrl: string = name;
-    if (resolveFrom) {
-      // Resolve the package entry point relative to the caller's directory so
-      // plugins installed in the workspace's node_modules are found even when
-      // the SDK itself lives elsewhere (e.g. a global install or a monorepo
-      // sibling package).
-      const req = createRequire(resolveFrom.endsWith('/') ? resolveFrom : resolveFrom + '/');
-      const resolved = req.resolve(name);
-      moduleUrl = pathToFileURL(resolved).href;
+    return wasReplaced ? 'replaced' : 'registered';
+  }
+
+  /**
+   * Remove a plugin from the in-process registry. Returns true if a plugin
+   * was actually removed. Note: ESM module caching is not affected, so
+   * re-importing the same file after unregister will yield the cached module —
+   * callers wanting a fresh load must restart the host process.
+   */
+  unregisterPlugin(category: PluginCategory, type: string): boolean {
+    if (!VALID_CATEGORIES.has(category)) return false;
+    return this.registries[category].delete(type);
+  }
+
+  getHandler<T extends PluginType>(category: PluginCategory, type: string): T {
+    const handler = this.registries[category].get(type);
+    if (!handler) {
+      throw new Error(
+        `${category} type "${type}" not registered.\n` +
+          `Install the plugin: bun add @tagma/${category.replace(/s$/, '')}-${type}`,
+      );
     }
-    const mod = await import(moduleUrl);
-    if (!mod.pluginCategory || !mod.pluginType || !mod.default) {
-      throw new Error(`Plugin "${name}" must export pluginCategory, pluginType, and default`);
+    return handler as T;
+  }
+
+  hasHandler(category: PluginCategory, type: string): boolean {
+    return this.registries[category].has(type);
+  }
+
+  listRegistered(category: PluginCategory): string[] {
+    return [...this.registries[category].keys()];
+  }
+
+  /**
+   * Load and register a list of plugin packages into this registry.
+   *
+   * @param pluginNames - Validated npm package names to load.
+   * @param resolveFrom - Optional absolute path to resolve plugins from (e.g.
+   *   the workspace's working directory). When omitted, the default ESM
+   *   resolution uses the SDK's own `node_modules`, which will fail for
+   *   plugins installed only in the user's workspace. CLI callers should
+   *   pass `process.cwd()` or the workspace root so that workspace-local
+   *   plugins resolve correctly.
+   */
+  async loadPlugins(
+    pluginNames: readonly string[],
+    resolveFrom?: string,
+  ): Promise<void> {
+    for (const name of pluginNames) {
+      if (!isValidPluginName(name)) {
+        throw new Error(
+          `Plugin "${name}" rejected: plugin names must be scoped npm packages ` +
+            `(e.g. @tagma/trigger-xyz) or tagma-plugin-* packages. ` +
+            `Relative/absolute paths are not allowed.`,
+        );
+      }
+      let moduleUrl: string = name;
+      if (resolveFrom) {
+        // Resolve the package entry point relative to the caller's directory
+        // so plugins installed in the workspace's node_modules are found
+        // even when the SDK itself lives elsewhere (e.g. a global install
+        // or a monorepo sibling package).
+        const req = createRequire(resolveFrom.endsWith('/') ? resolveFrom : resolveFrom + '/');
+        const resolved = req.resolve(name);
+        moduleUrl = pathToFileURL(resolved).href;
+      }
+      const mod = await import(moduleUrl);
+      if (!mod.pluginCategory || !mod.pluginType || !mod.default) {
+        throw new Error(`Plugin "${name}" must export pluginCategory, pluginType, and default`);
+      }
+      this.registerPlugin(mod.pluginCategory, mod.pluginType, mod.default);
     }
-    registerPlugin(mod.pluginCategory, mod.pluginType, mod.default);
   }
 }
 
+/**
+ * Process-wide default registry. Preserves the historical free-function API
+ * for CLI and single-tenant hosts. Multi-tenant hosts (the editor sidecar
+ * after the one-sidecar refactor) build their own `PluginRegistry` per
+ * workspace and pass it through `RunPipelineOptions.registry`.
+ */
+export const defaultRegistry = new PluginRegistry();
+
+export function registerPlugin<T extends PluginType>(
+  category: PluginCategory,
+  type: string,
+  handler: T,
+): RegisterResult {
+  return defaultRegistry.registerPlugin(category, type, handler);
+}
+
+export function unregisterPlugin(category: PluginCategory, type: string): boolean {
+  return defaultRegistry.unregisterPlugin(category, type);
+}
+
+export function getHandler<T extends PluginType>(category: PluginCategory, type: string): T {
+  return defaultRegistry.getHandler<T>(category, type);
+}
+
+export function hasHandler(category: PluginCategory, type: string): boolean {
+  return defaultRegistry.hasHandler(category, type);
+}
+
 export function listRegistered(category: PluginCategory): string[] {
-  return [...registries[category].keys()];
+  return defaultRegistry.listRegistered(category);
+}
+
+export function loadPlugins(
+  pluginNames: readonly string[],
+  resolveFrom?: string,
+): Promise<void> {
+  return defaultRegistry.loadPlugins(pluginNames, resolveFrom);
 }

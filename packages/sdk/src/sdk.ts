@@ -46,6 +46,8 @@ export type { DagNode, Dag, RawDagNode, RawDag } from './dag';
 // ── Plugin registry ──
 export { bootstrapBuiltins } from './bootstrap';
 export {
+  PluginRegistry,
+  defaultRegistry,
   loadPlugins,
   registerPlugin,
   unregisterPlugin,

@@ -20,7 +20,7 @@ import type {
   RunTaskState,
 } from './types';
 import { buildDag, type Dag } from './dag';
-import { getHandler, hasHandler, loadPlugins } from './registry';
+import { defaultRegistry, type PluginRegistry } from './registry';
 import { runSpawn, runCommand } from './runner';
 import { parseDuration, nowISO, generateRunId } from './utils';
 import { promptDocumentFromString, serializePromptDocument } from './prompt-doc';
@@ -59,7 +59,7 @@ export class TriggerTimeoutError extends Error {
 
 // ═══ Preflight Validation ═══
 
-function preflight(config: PipelineConfig, dag: Dag): void {
+function preflight(config: PipelineConfig, dag: Dag, registry: PluginRegistry): void {
   const errors: string[] = [];
 
   for (const [, node] of dag.nodes) {
@@ -70,15 +70,15 @@ function preflight(config: PipelineConfig, dag: Dag): void {
     // Pure command tasks don't use a driver — skip driver registration check.
     const isCommandOnly = task.command && !task.prompt;
 
-    if (!isCommandOnly && !hasHandler('drivers', driverName)) {
+    if (!isCommandOnly && !registry.hasHandler('drivers', driverName)) {
       errors.push(`Task "${node.taskId}": driver "${driverName}" not registered`);
     }
 
-    if (task.trigger && !hasHandler('triggers', task.trigger.type)) {
+    if (task.trigger && !registry.hasHandler('triggers', task.trigger.type)) {
       errors.push(`Task "${node.taskId}": trigger type "${task.trigger.type}" not registered`);
     }
 
-    if (task.completion && !hasHandler('completions', task.completion.type)) {
+    if (task.completion && !registry.hasHandler('completions', task.completion.type)) {
       errors.push(
         `Task "${node.taskId}": completion type "${task.completion.type}" not registered`,
       );
@@ -86,13 +86,13 @@ function preflight(config: PipelineConfig, dag: Dag): void {
 
     const mws = task.middlewares ?? track.middlewares ?? [];
     for (const mw of mws) {
-      if (!hasHandler('middlewares', mw.type)) {
+      if (!registry.hasHandler('middlewares', mw.type)) {
         errors.push(`Task "${node.taskId}": middleware type "${mw.type}" not registered`);
       }
     }
 
-    if (task.continue_from && hasHandler('drivers', driverName)) {
-      const driver = getHandler<DriverPlugin>('drivers', driverName);
+    if (task.continue_from && registry.hasHandler('drivers', driverName)) {
+      const driver = registry.getHandler<DriverPlugin>('drivers', driverName);
       if (!driver.capabilities.sessionResume) {
         // buildDag has already qualified `continue_from` and stored the result
         // on the node; preflight runs after buildDag, so the upstream id is
@@ -106,8 +106,8 @@ function preflight(config: PipelineConfig, dag: Dag): void {
             // (when the upstream driver implements parseResult and returns normalizedOutput).
             const upstreamDriverName =
               upstream.task.driver ?? upstream.track.driver ?? config.driver ?? 'opencode';
-            const upstreamDriver = hasHandler('drivers', upstreamDriverName)
-              ? getHandler<DriverPlugin>('drivers', upstreamDriverName)
+            const upstreamDriver = registry.hasHandler('drivers', upstreamDriverName)
+              ? registry.getHandler<DriverPlugin>('drivers', upstreamDriverName)
               : null;
             const canNormalize = typeof upstreamDriver?.parseResult === 'function';
 
@@ -225,6 +225,13 @@ export interface RunPipelineOptions {
    * doesn't re-resolve them via Node's default cwd-based import.
    */
   readonly skipPluginLoading?: boolean;
+  /**
+   * Plugin registry to resolve drivers/triggers/completions/middlewares from.
+   * Defaults to the process-wide `defaultRegistry`. Multi-tenant hosts pass a
+   * per-workspace registry so concurrent runs in different workspaces see
+   * isolated handler sets.
+   */
+  readonly registry?: PluginRegistry;
 }
 
 // Poll interval when no tasks are in-flight but non-terminal tasks remain
@@ -243,6 +250,7 @@ export async function runPipeline(
 ): Promise<EngineResult> {
   const approvalGateway = options.approvalGateway ?? new InMemoryApprovalGateway();
   const maxLogRuns = options.maxLogRuns ?? 20;
+  const registry = options.registry ?? defaultRegistry;
 
   // Load any plugins declared in the pipeline config before preflight so that
   // drivers, completions, and middlewares referenced in YAML are registered.
@@ -250,12 +258,12 @@ export async function runPipeline(
   // from the user's workspace node_modules) pass skipPluginLoading: true so
   // we don't re-resolve via Node's cwd-based default import.
   if (!options.skipPluginLoading && config.plugins?.length) {
-    await loadPlugins(config.plugins);
+    await registry.loadPlugins(config.plugins);
   }
 
   const dag = buildDag(config);
   const runId = options.runId ?? generateRunId();
-  preflight(config, dag);
+  preflight(config, dag, registry);
 
   const startedAt = nowISO();
   const pipelineInfo: PipelineInfo = { name: config.name, run_id: runId, started_at: startedAt };
@@ -579,7 +587,7 @@ export async function runPipeline(
           `trigger wait: type=${task.trigger.type} ${JSON.stringify(task.trigger)}`,
         );
         try {
-          const triggerPlugin = getHandler<TriggerPlugin>('triggers', task.trigger.type);
+          const triggerPlugin = registry.getHandler<TriggerPlugin>('triggers', task.trigger.type);
           // R6: race the plugin's watch() against the pipeline's abort signal.
           // Third-party triggers may forget to wire up ctx.signal — without
           // this race, an aborted pipeline would hang forever waiting for the
@@ -724,7 +732,7 @@ export async function runPipeline(
         } else {
           // AI task: apply middleware chain against a structured PromptDocument.
           const driverName = task.driver ?? track.driver ?? config.driver ?? 'opencode';
-          const driver = getHandler<DriverPlugin>('drivers', driverName);
+          const driver = registry.getHandler<DriverPlugin>('drivers', driverName);
 
           const originalLen = task.prompt!.length;
           let doc: PromptDocument = promptDocumentFromString(task.prompt!);
@@ -740,7 +748,7 @@ export async function runPipeline(
               workDir: task.cwd ?? workDir,
             };
             for (const mwConfig of mws) {
-              const mwPlugin = getHandler<MiddlewarePlugin>('middlewares', mwConfig.type);
+              const mwPlugin = registry.getHandler<MiddlewarePlugin>('middlewares', mwConfig.type);
               const beforeBlocks = doc.contexts.length;
               const beforeLen = serializePromptDocument(doc).length;
 
@@ -870,7 +878,7 @@ export async function runPipeline(
         } else if (result.exitCode !== 0) {
           terminalStatus = 'failed';
         } else if (task.completion) {
-          const plugin = getHandler<CompletionPlugin>('completions', task.completion.type);
+          const plugin = registry.getHandler<CompletionPlugin>('completions', task.completion.type);
           const completionCtx = { workDir: task.cwd ?? workDir, signal: abortController.signal };
           const passed = await plugin.check(
             task.completion as Record<string, unknown>,
