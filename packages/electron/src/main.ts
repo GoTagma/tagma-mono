@@ -4,6 +4,25 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { resolveRuntimePaths } from './runtime-paths';
 
+// Pinned opencode version from packages/electron/package.json. Read once at
+// startup and forwarded to the sidecar so the OpenCode CLI Settings section
+// can show "shipped vX / running vY" without the sidecar having to re-read
+// this file from a path that changes between dev and packaged layouts.
+function readBundledOpencodeVersion(): string | undefined {
+  try {
+    const pkgPath = app.isPackaged
+      ? path.join(process.resourcesPath, 'app.asar', 'package.json')
+      : path.join(__dirname, '..', 'package.json');
+    const raw = fs.readFileSync(pkgPath, 'utf-8');
+    const pkg = JSON.parse(raw) as { tagma?: { bundledOpencodeVersion?: unknown } };
+    const v = pkg.tagma?.bundledOpencodeVersion;
+    return typeof v === 'string' && v ? v : undefined;
+  } catch {
+    return undefined;
+  }
+}
+const BUNDLED_OPENCODE_VERSION = readBundledOpencodeVersion();
+
 // Windows GUI apps don't attach a console, so process.stdout writes from the
 // Electron main process are invisible to the user. Mirror sidecar stdout and
 // stderr to a log file under app.getPath('logs') so a startup crash leaves a
@@ -65,6 +84,7 @@ function spawnSidecar(): Promise<{ proc: ChildProcess; actualPort: number }> {
       compiledDir: __dirname,
       resourcesPath: process.resourcesPath,
       userDataDir: app.getPath('userData'),
+      bundledOpencodeVersion: BUNDLED_OPENCODE_VERSION,
     });
 
     const proc = spawn(runtime.command, runtime.args, {

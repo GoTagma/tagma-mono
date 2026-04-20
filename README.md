@@ -102,9 +102,11 @@ bun run --filter tagma-editor test        # Editor only
 ```bash
 bun run pack:desktop         # Build the desktop chain and produce an unpacked electron-builder dir
 bun run dist:desktop:win     # Build + produce Windows installer (nsis)
-bun run dist:desktop:linux   # Build + produce Linux AppImage
+bun run dist:desktop:linux   # Build + produce Linux AppImage, .deb, .rpm, and .tar.gz
 bun run dist:desktop:mac     # Build + produce macOS dmg
 ```
+
+Each installer also ships a platform-matched `opencode` CLI binary in `resources/opencode/` so end users don't need `bun` or a manual install. The version is pinned via `packages/electron/package.json → tagma.bundledOpencodeVersion`; bump that field and re-run a `dist:desktop:*` command to cut a release with a new default. Users can upgrade opencode in-app (Editor Settings → OpenCode CLI); those upgrades land in `userData/opencode/` and take precedence over the shipped copy without replacing it.
 
 The `tagma-desktop` (Electron) package is private and is never published to npm.
 
