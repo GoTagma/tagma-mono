@@ -1,4 +1,5 @@
 import { useCallback, useSyncExternalStore } from 'react';
+import { broadcast, subscribe as subscribeChannel } from '../utils/window-sync';
 
 /**
  * Theme preference: 'dark' is the product default, 'light' is opt-in.
@@ -49,7 +50,7 @@ function getSnapshot(): Theme {
   return readStoredTheme();
 }
 
-export function setTheme(theme: Theme): void {
+function applyAndNotify(theme: Theme): void {
   try {
     window.localStorage.setItem(STORAGE_KEY, theme);
   } catch {
@@ -58,6 +59,18 @@ export function setTheme(theme: Theme): void {
   applyTheme(theme);
   for (const cb of listeners) cb();
 }
+
+export function setTheme(theme: Theme): void {
+  applyAndNotify(theme);
+  broadcast<Theme>('theme', theme);
+}
+
+// Peer windows broadcast on theme change; mirror locally without re-emitting
+// (BroadcastChannel skips the sender, so there's no echo loop to guard against).
+subscribeChannel<Theme>('theme', (next) => {
+  if (next !== 'light' && next !== 'dark') return;
+  applyAndNotify(next);
+});
 
 export function useTheme(): { theme: Theme; setTheme: (next: Theme) => void } {
   const theme = useSyncExternalStore(subscribe, getSnapshot, () => DEFAULT_THEME);

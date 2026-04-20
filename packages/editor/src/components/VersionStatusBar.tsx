@@ -14,6 +14,7 @@ import {
   type OpencodeInfo,
 } from '../api/client';
 import { useTheme } from '../hooks/use-theme';
+import { broadcast, subscribe as subscribeChannel } from '../utils/window-sync';
 import { ZoomControls } from './board/ZoomControls';
 
 type Popover = 'editor' | 'opencode' | null;
@@ -87,6 +88,11 @@ export function VersionStatusBar() {
     try {
       const result = await api.updateEditor();
       setEditorApply({ kind: 'done', version: result.version });
+      // Tell peer windows to reload too. The sidecar now serves the new
+      // bundle to everyone, but peers still hold the old JS in memory —
+      // leaving them split-brain (stale code vs. fresh API) until they
+      // reload.
+      broadcast('editor-updated', { version: result.version });
       window.setTimeout(() => window.location.reload(), 1200);
     } catch (e) {
       setEditorApply({
@@ -101,6 +107,7 @@ export function VersionStatusBar() {
     try {
       const result = await api.updateOpencode();
       setOpencodeApply({ kind: 'done', version: result.version });
+      broadcast('opencode-updated', { version: result.version });
       await refreshOpencode();
     } catch (e) {
       setOpencodeApply({
@@ -108,6 +115,22 @@ export function VersionStatusBar() {
         message: e instanceof Error ? e.message : 'Update failed',
       });
     }
+  }, [refreshOpencode]);
+
+  // Catch update broadcasts from peer windows. Editor updates require a hard
+  // reload here too; opencode updates are server-side-only, so we just
+  // re-fetch info to refresh our chip.
+  useEffect(() => {
+    const offEditor = subscribeChannel('editor-updated', () => {
+      window.location.reload();
+    });
+    const offOpencode = subscribeChannel('opencode-updated', () => {
+      void refreshOpencode();
+    });
+    return () => {
+      offEditor();
+      offOpencode();
+    };
   }, [refreshOpencode]);
 
   const editorVersion =
