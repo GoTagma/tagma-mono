@@ -342,7 +342,7 @@ export function RunView({
   const showHistory = viewMode === 'history';
 
   // Refresh-button state for the history browser: the button lives in
-  // the RunView toolbar (next to Back + pipeline name) so the h-11 bar
+  // the RunView toolbar (next to Back + pipeline name) so the h-9 bar
   // stays the same between live and history modes. Bumping
   // `historyRefreshToken` tells RunHistoryBrowser to reload; it reports
   // its loading state back via `onLoadingChange` so the spinner stays
@@ -435,10 +435,10 @@ export function RunView({
 
   return (
     <div className="h-full flex flex-col bg-tagma-bg relative">
-      {/* Header — height matches the editor Toolbar (h-11) so switching
-          between the two views doesn't shift the canvas by 4px. */}
+      {/* Header — height matches the editor Toolbar (h-9) so switching
+          between the two views doesn't shift the canvas. */}
       <header
-        className={`h-11 bg-tagma-bg border-b border-tagma-border flex items-stretch pl-2 shrink-0 ${hasDesktopBridge() ? 'app-drag-region pr-0' : 'pr-2'}`}
+        className={`h-9 bg-tagma-bg border-b border-tagma-border flex items-stretch pl-2 shrink-0 ${hasDesktopBridge() ? 'app-drag-region pr-0' : 'pr-2'}`}
         onDoubleClick={(e) => {
           if (!hasDesktopBridge()) return;
           if (e.target === e.currentTarget) void toggleMaximizeDesktopWindow();

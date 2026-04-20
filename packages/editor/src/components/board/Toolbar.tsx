@@ -94,7 +94,7 @@ export function Toolbar({
 
   return (
     <header
-      className={`h-11 bg-tagma-bg border-b border-tagma-border flex items-stretch pl-0 shrink-0 overflow-visible relative z-[50] ${isDesktop ? 'app-drag-region pr-0' : 'pr-2.5'}`}
+      className={`h-9 bg-tagma-bg border-b border-tagma-border flex items-stretch pl-0 shrink-0 overflow-visible relative z-[50] ${isDesktop ? 'app-drag-region pr-0' : 'pr-2.5'}`}
       onDoubleClick={(e) => {
         if (!isDesktop) return;
         if (e.target === e.currentTarget) void toggleMaximizeDesktopWindow();

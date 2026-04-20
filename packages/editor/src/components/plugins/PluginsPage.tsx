@@ -759,8 +759,8 @@ function CategorySidebar({
 //
 // Two-row header aligned with the editor / run toolbars:
 //
-//   1. Utility row — h-11 strip with back button on the left, refresh +
-//      (Local-only) import-local on the right. Matches the h-11 Toolbar
+//   1. Utility row — h-9 strip with back button on the left, refresh +
+//      (Local-only) import-local on the right. Matches the h-9 Toolbar
 //      used by Editor and RunView so switching pages doesn't shift the
 //      canvas vertically.
 //   2. Tab row — underline-style tabs. The active tab's copper border
@@ -790,7 +790,7 @@ function PluginsHeader({
   return (
     <header className="shrink-0 bg-tagma-surface/60 border-b border-tagma-border">
       <div
-        className={`h-11 flex items-stretch border-b border-tagma-border/60 ${isDesktop ? 'app-drag-region pl-2 pr-0' : 'px-2'}`}
+        className={`h-9 flex items-stretch border-b border-tagma-border/60 ${isDesktop ? 'app-drag-region pl-2 pr-0' : 'px-2'}`}
         onDoubleClick={(e) => {
           if (!isDesktop) return;
           if (e.target === e.currentTarget) void toggleMaximizeDesktopWindow();
