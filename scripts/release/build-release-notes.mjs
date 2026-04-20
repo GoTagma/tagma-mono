@@ -24,7 +24,7 @@ const TAG = `desktop-v${version}`;
 
 // Filenames are version-prefixed (`Tagma-<version>-<os>-<arch>.<ext>`) so users
 // can tell builds apart from the filename alone. Keep the regex in lock-step
-// with `artifactName` in packages/electron/package.json.
+// with `artifactName` in apps/electron/package.json.
 function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

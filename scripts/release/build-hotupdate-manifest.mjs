@@ -16,7 +16,7 @@
 //                 depends on an IPC/preload surface only present in a newer
 //                 shell; see the manifest-construction block below.
 //
-// The client-side consumer is packages/editor/server/routes/editor.ts —
+// The client-side consumer is apps/editor/server/routes/editor.ts —
 // keep this output shape aligned with the EditorManifest interface there.
 import { readFileSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';

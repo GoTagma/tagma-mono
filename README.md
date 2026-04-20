@@ -106,7 +106,7 @@ bun run dist:desktop:linux   # Build + produce Linux AppImage, .deb, .rpm, and .
 bun run dist:desktop:mac     # Build + produce macOS dmg
 ```
 
-Each installer also ships a platform-matched `opencode` CLI binary in `resources/opencode/` so end users don't need `bun` or a manual install. The version is pinned via `packages/electron/package.json → tagma.bundledOpencodeVersion`; bump that field and re-run a `dist:desktop:*` command to cut a release with a new default. Users can upgrade opencode in-app (Editor Settings → OpenCode CLI); those upgrades land in `userData/opencode/` and take precedence over the shipped copy without replacing it.
+Each installer also ships a platform-matched `opencode` CLI binary in `resources/opencode/` so end users don't need `bun` or a manual install. The version is pinned via `apps/electron/package.json → tagma.bundledOpencodeVersion`; bump that field and re-run a `dist:desktop:*` command to cut a release with a new default. Users can upgrade opencode in-app (Editor Settings → OpenCode CLI); those upgrades land in `userData/opencode/` and take precedence over the shipped copy without replacing it.
 
 The `tagma-desktop` (Electron) package is private and is never published to npm.
 
@@ -190,7 +190,7 @@ bun run publish:all
 bun run publish:dry
 ```
 
-`tagma-editor` and `tagma-desktop` are private packages and are not published to npm. Desktop releases ship as installer artifacts via `release-desktop.yml` — see `packages/electron/README.md`.
+`tagma-editor` and `tagma-desktop` live in the private [`GoTagma/tagma-desktop`](https://github.com/GoTagma/tagma-desktop) repo and are mounted here as a git submodule at `apps/`. Desktop releases ship as installer artifacts via `release-desktop.yml` — see `apps/electron/README.md`. Clone with `git clone --recurse-submodules`, or run `git submodule update --init --recursive` after a plain clone.
 
 ---
 

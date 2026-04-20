@@ -32,11 +32,16 @@ jobs:
         with:
           app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
           private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: |
+            tagma-mono
+            tagma-desktop
 
       - uses: actions/checkout@v4
         with:
           token: ${{ steps.app-token.outputs.token }}
           fetch-depth: 0
+          submodules: recursive
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -48,7 +53,7 @@ jobs:
 
       - name: Bump desktop version
         id: bump
-        working-directory: packages/electron
+        working-directory: apps/electron
         run: |
           bun pm version ${{ inputs.bump }} --no-git-tag-version
           version=$(node -p "require('./package.json').version")
@@ -63,7 +68,7 @@ jobs:
       # reason channel-info.mjs does: a patch release must reach stable
       # installers, not a phantom "patch" channel.
       - name: Pin release channel into package.json
-        working-directory: packages/electron
+        working-directory: apps/electron
         env:
           INPUT_CHANNEL: ${{ inputs.channel }}
         run: |
@@ -80,8 +85,8 @@ jobs:
         run: |
           version="${{ steps.bump.outputs.version }}"
           date=$(date -u +%Y-%m-%d)
-          mkdir -p packages/electron/CHANGELOG
-          file="packages/electron/CHANGELOG/${version}.md"
+          mkdir -p apps/electron/CHANGELOG
+          file="apps/electron/CHANGELOG/${version}.md"
           if [ ! -f "$file" ]; then
             cat > "$file" <<EOF
           ---
@@ -92,6 +97,10 @@ jobs:
           EOF
           fi
 
+      # Two-stage commit: first push the electron version+changelog into the
+      # tagma-desktop submodule, then bump the submodule pointer in tagma-mono
+      # and push the desktop-v* tag. Keeping the tag in tagma-mono means the
+      # build/publish/sync-web jobs below continue to key off the mono tag push.
       - name: Commit, tag, push
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -99,7 +108,16 @@ jobs:
           version="${{ steps.bump.outputs.version }}"
           git config user.name "Tagma Release Bot"
           git config user.email "release-bot@users.noreply.github.com"
-          git add packages/electron/package.json "packages/electron/CHANGELOG/${version}.md"
+
+          # Stage 1 — submodule (tagma-desktop): commit version + changelog
+          git -C apps config user.name "Tagma Release Bot"
+          git -C apps config user.email "release-bot@users.noreply.github.com"
+          git -C apps add electron/package.json "electron/CHANGELOG/${version}.md"
+          git -C apps commit -m "chore(desktop): cut v${version}"
+          git -C apps push origin HEAD:main
+
+          # Stage 2 — mono: bump submodule pointer, commit, tag, push
+          git add apps
           git commit -m "chore(desktop): cut v${version}"
           git tag "desktop-v${version}"
           git push origin HEAD:${{ github.ref_name }}
@@ -119,7 +137,20 @@ jobs:
             platform: win
     runs-on: ${{ matrix.os }}
     steps:
+      - uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: |
+            tagma-mono
+            tagma-desktop
+
       - uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          submodules: recursive
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -183,7 +214,7 @@ jobs:
       # Every desktop release also ships an editor-dist tarball that the
       # running app can pull down on demand (see server/routes/editor.ts).
       # Built on Linux only: `bun run build:desktop` produces identical
-      # packages/editor/dist on every runner (pure JS), so one tarball is
+      # apps/editor/dist on every runner (pure JS), so one tarball is
       # enough and we avoid publishing three byte-divergent copies.
       - name: Package editor hot-update tarball
         if: matrix.platform == 'linux'
@@ -191,16 +222,16 @@ jobs:
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#desktop-v}"
-          out="packages/electron/release"
+          out="apps/electron/release"
           mkdir -p "$out"
           tarball="$out/editor-dist-${version}.tar.gz"
-          tar -czf "$tarball" -C packages/editor/dist .
+          tar -czf "$tarball" -C apps/editor/dist .
           sha=$(shasum -a 256 "$tarball" | awk '{print $1}')
           echo "$sha  $(basename "$tarball")" > "${tarball}.sha256"
           echo "wrote $tarball (sha256=$sha)"
 
       - name: Package (${{ matrix.platform }})
-        working-directory: packages/electron
+        working-directory: apps/electron
         env:
           # When no signing cert is provided, tell electron-builder not to
           # probe the keychain — otherwise it fails fast on macOS runners.
@@ -217,24 +248,24 @@ jobs:
 
       - name: Compute checksums
         shell: bash
-        run: node scripts/release/compute-checksums.mjs packages/electron/release
+        run: node scripts/release/compute-checksums.mjs apps/electron/release
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: dist-${{ matrix.platform }}
           path: |
-            packages/electron/release/Tagma-*.dmg
-            packages/electron/release/Tagma-*.exe
-            packages/electron/release/Tagma-*.AppImage
-            packages/electron/release/Tagma-*.deb
-            packages/electron/release/Tagma-*.rpm
-            packages/electron/release/Tagma-*.tar.gz
-            packages/electron/release/Tagma-*.sha256
-            packages/electron/release/latest*.yml
-            packages/electron/release/*.blockmap
-            packages/electron/release/editor-dist-*.tar.gz
-            packages/electron/release/editor-dist-*.tar.gz.sha256
+            apps/electron/release/Tagma-*.dmg
+            apps/electron/release/Tagma-*.exe
+            apps/electron/release/Tagma-*.AppImage
+            apps/electron/release/Tagma-*.deb
+            apps/electron/release/Tagma-*.rpm
+            apps/electron/release/Tagma-*.tar.gz
+            apps/electron/release/Tagma-*.sha256
+            apps/electron/release/latest*.yml
+            apps/electron/release/*.blockmap
+            apps/electron/release/editor-dist-*.tar.gz
+            apps/electron/release/editor-dist-*.tar.gz.sha256
           if-no-files-found: ignore
 
   publish:
@@ -249,8 +280,15 @@ jobs:
         with:
           app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
           private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: |
+            tagma-mono
+            tagma-desktop
 
       - uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          submodules: recursive
 
       - uses: actions/download-artifact@v4
         with:
@@ -271,7 +309,7 @@ jobs:
       - name: Channel info
         id: ch
         run: |
-          node scripts/release/channel-info.mjs "packages/electron/CHANGELOG/${{ steps.meta.outputs.version }}.md" >> "$GITHUB_OUTPUT"
+          node scripts/release/channel-info.mjs "apps/electron/CHANGELOG/${{ steps.meta.outputs.version }}.md" >> "$GITHUB_OUTPUT"
 
       - name: Build editor hot-update manifest
         run: |
@@ -314,11 +352,14 @@ jobs:
           owner: ${{ github.repository_owner }}
           repositories: |
             tagma-mono
+            tagma-desktop
             tagma-web
 
       - name: Checkout tagma-mono
         uses: actions/checkout@v4
         with:
+          token: ${{ steps.app-token.outputs.token }}
+          submodules: recursive
           path: mono
 
       - name: Checkout tagma-web

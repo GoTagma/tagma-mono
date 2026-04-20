@@ -22,8 +22,8 @@ coverage/
 .omx
 
 # Desktop packaging artifacts
-packages/editor/desktop-dist/
-packages/electron/release/
-# Opencode binary staged by packages/electron/scripts/fetch-opencode.mjs
+apps/editor/desktop-dist/
+apps/electron/release/
+# Opencode binary staged by apps/electron/scripts/fetch-opencode.mjs
 # before electron-builder packs it via extraResources. ~150 MB per platform.
-packages/electron/build/opencode/
+apps/electron/build/opencode/
