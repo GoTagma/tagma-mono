@@ -54,6 +54,28 @@ jobs:
           version=$(node -p "require('./package.json').version")
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      # Write the release channel into tagma.channel so the packaged
+      # installer polls the correct hot-update manifest URL
+      # (editor-updates/<channel>/manifest.json). Without this, every
+      # installer — including alpha/beta builds — would stay on the default
+      # "stable" channel from the checked-in package.json and never see
+      # prerelease hot-updates. `patch` collapses to `stable` for the same
+      # reason channel-info.mjs does: a patch release must reach stable
+      # installers, not a phantom "patch" channel.
+      - name: Pin release channel into package.json
+        working-directory: packages/electron
+        env:
+          INPUT_CHANNEL: ${{ inputs.channel }}
+        run: |
+          node -e "
+            const fs = require('fs');
+            const p = JSON.parse(fs.readFileSync('./package.json', 'utf8'));
+            p.tagma = p.tagma || {};
+            const raw = process.env.INPUT_CHANNEL;
+            p.tagma.channel = raw === 'patch' ? 'stable' : raw;
+            fs.writeFileSync('./package.json', JSON.stringify(p, null, 2) + '\n');
+          "
+
       - name: Scaffold changelog entry
         run: |
           version="${{ steps.bump.outputs.version }}"

@@ -26,6 +26,13 @@ if (!channelMatch) {
   process.exit(1);
 }
 
-const channel = channelMatch[1];
-const prerelease = channel !== 'stable' && channel !== 'patch';
+// A `patch` release is an emergency fix on top of stable and must reach
+// stable installers. Collapse to `stable` here so (a) the GitHub Release is
+// not flagged prerelease and (b) downstream consumers (hot-update manifest
+// path, tagma-web sync) write to the stable channel rather than a phantom
+// "patch" channel no installer polls. sync-tagma-web.mjs does the same
+// collapse when patching site.config.ts for consistency.
+const rawChannel = channelMatch[1];
+const channel = rawChannel === 'patch' ? 'stable' : rawChannel;
+const prerelease = channel !== 'stable';
 process.stdout.write(`channel=${channel}\nprerelease=${prerelease}\n`);
