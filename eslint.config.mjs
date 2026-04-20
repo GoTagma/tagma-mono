@@ -34,7 +34,7 @@ export default tseslint.config(
   },
   // React editor source — add react-hooks plugin (rules-of-hooks + exhaustive-deps only)
   {
-    files: ['packages/editor/src/**/*.tsx', 'packages/editor/src/**/*.ts'],
+    files: ['apps/editor/src/**/*.tsx', 'apps/editor/src/**/*.ts'],
     plugins: {
       'react-hooks': reactHooks,
     },
@@ -49,7 +49,10 @@ export default tseslint.config(
       'packages/*/scripts/**/*.ts',
       'packages/*/scripts/**/*.js',
       'packages/*/scripts/**/*.mjs',
-      'packages/editor/server/**/*.ts',
+      'apps/*/scripts/**/*.ts',
+      'apps/*/scripts/**/*.js',
+      'apps/*/scripts/**/*.mjs',
+      'apps/editor/server/**/*.ts',
     ],
     languageOptions: {
       globals: {

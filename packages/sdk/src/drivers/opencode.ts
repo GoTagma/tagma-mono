@@ -38,7 +38,7 @@ const EFFORT_TO_VARIANT: Record<string, string | null> = {
 //
 //   1. Desktop app — the Electron shell ships a platform-matched opencode
 //      binary under resources/opencode/bin/, prepended to the sidecar's PATH
-//      at launch (see packages/electron/src/runtime-paths.ts). In-app updates
+//      at launch (see apps/electron/src/runtime-paths.ts). In-app updates
 //      drop a newer copy into userData/opencode/bin/ which wins via PATH
 //      precedence. That path resolves on the first `opencode --version`
 //      probe below; no auto-install ever fires.

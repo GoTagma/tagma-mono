@@ -31,7 +31,7 @@ function parseFrontmatter(src) {
 }
 
 // ---- 1. Archive entry: minimal frontmatter only, no body. ----
-const srcChangelog = readFileSync(join(monoDir, 'packages/electron/CHANGELOG', `${version}.md`), 'utf8');
+const srcChangelog = readFileSync(join(monoDir, 'apps/electron/CHANGELOG', `${version}.md`), 'utf8');
 const fm = parseFrontmatter(srcChangelog);
 if (fm.version !== version) {
   console.error(`changelog version (${fm.version}) != tag version (${version})`);

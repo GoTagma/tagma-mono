@@ -3,7 +3,8 @@
   "private": true,
   "packageManager": "bun@1.3.11",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "apps/*"
   ],
   "scripts": {
     "postinstall": "node -e \"const{existsSync}=require('fs');if(!existsSync('packages/types/dist/index.js')||!existsSync('packages/sdk/dist/sdk.js'))process.exit(1)\" || (bun run build:types && bun run build:sdk)",
@@ -27,12 +28,12 @@
     "check:middleware-lightrag": "tsc -p packages/middleware-lightrag/tsconfig.json --noEmit",
     "check:trigger-webhook": "tsc -p packages/trigger-webhook/tsconfig.json --noEmit",
     "check:completion-llm-judge": "tsc -p packages/completion-llm-judge/tsconfig.json --noEmit",
-    "check:server": "tsc -p packages/editor/tsconfig.server.json --noEmit",
-    "check:client": "tsc -p packages/editor/tsconfig.json --noEmit",
-    "check:tests": "tsc -p packages/editor/tsconfig.test.json --noEmit",
-    "check:electron": "tsc -p packages/electron/tsconfig.json --noEmit",
+    "check:server": "tsc -p apps/editor/tsconfig.server.json --noEmit",
+    "check:client": "tsc -p apps/editor/tsconfig.json --noEmit",
+    "check:tests": "tsc -p apps/editor/tsconfig.test.json --noEmit",
+    "check:electron": "tsc -p apps/electron/tsconfig.json --noEmit",
     "test": "bun run --filter '*' test",
-    "dev:editor": "cd packages/editor && bun run dev",
+    "dev:editor": "cd apps/editor && bun run dev",
     "dev:server": "bun run --filter tagma-editor dev:server",
     "dev:client": "bun run --filter tagma-editor dev:client",
     "dev:desktop": "bun run build:desktop && bun run --filter tagma-desktop start",
@@ -72,9 +73,9 @@
     "version:sdk:major": "cd packages/sdk && bun pm version major",
     "clean": "bun run ./scripts/clean.mjs",
     "clean:all": "bun run ./scripts/clean.mjs --all",
-    "lint": "eslint packages/ --max-warnings 0",
-    "format": "prettier --write 'packages/**/*.{ts,tsx,js,json,css,md}'",
-    "format:check": "prettier --check 'packages/**/*.{ts,tsx,js,json,css,md}'"
+    "lint": "eslint packages/ apps/ --max-warnings 0",
+    "format": "prettier --write 'packages/**/*.{ts,tsx,js,json,css,md}' 'apps/**/*.{ts,tsx,js,json,css,md}'",
+    "format:check": "prettier --check 'packages/**/*.{ts,tsx,js,json,css,md}' 'apps/**/*.{ts,tsx,js,json,css,md}'"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
