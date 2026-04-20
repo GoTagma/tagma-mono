@@ -71,6 +71,7 @@
     "version:sdk:patch": "cd packages/sdk && bun pm version patch",
     "version:sdk:minor": "cd packages/sdk && bun pm version minor",
     "version:sdk:major": "cd packages/sdk && bun pm version major",
+    "sync:desktop": "node scripts/sync-desktop.mjs",
     "clean": "bun run ./scripts/clean.mjs",
     "clean:all": "bun run ./scripts/clean.mjs --all",
     "lint": "eslint packages/ apps/ --max-warnings 0",
