@@ -204,6 +204,16 @@ jobs:
           # failure) can't take the release pipeline down without warning.
           bun-version: 1.3.11
 
+      - name: Clean build artifacts
+        # Wipe any stale editor/dist and desktop-dist from a previous workflow
+        # run on the same runner VM. Without this, a Windows runner that ran
+        # an earlier build would have a dirty editor/dist whose hash collides
+        # with the fresh mac/linux builds — causing the publish hash check to
+        # fire falsely.
+        shell: bash
+        run: |
+          rm -rf apps/editor/dist apps/editor/desktop-dist apps/electron/dist
+
       - name: Install deps
         run: bun install
 
