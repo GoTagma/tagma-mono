@@ -1,7 +1,7 @@
 {
   "name": "tagma-desktop",
   "private": true,
-  "version": "0.1.17",
+  "version": "0.1.18",
   "description": "Electron desktop shell for Tagma Editor",
   "author": {
     "name": "Tagma",
@@ -11,7 +11,7 @@
   "main": "dist/main.js",
   "tagma": {
     "bundledOpencodeVersion": "1.14.18",
-    "channel": "stable",
+    "channel": "alpha",
     "updateManifestBaseUrl": "https://tagma-web.danuberiverferryman.workers.dev/editor-updates"
   },
   "scripts": {
@@ -49,17 +49,23 @@
       {
         "from": "../editor/dist",
         "to": "editor-dist",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "../editor/desktop-dist",
         "to": "editor-sidecar",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "build/opencode/${platform}-${arch}",
         "to": "opencode",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {
@@ -72,7 +78,12 @@
       "perMachine": false
     },
     "linux": {
-      "target": ["AppImage", "deb", "rpm", "tar.gz"],
+      "target": [
+        "AppImage",
+        "deb",
+        "rpm",
+        "tar.gz"
+      ],
       "icon": "build/icon.png",
       "category": "Development",
       "maintainer": "Tagma <danuberiverferryman@gmail.com>"
@@ -81,7 +92,10 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
       "icon": "build/icon.icns",
