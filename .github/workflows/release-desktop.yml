@@ -16,6 +16,10 @@ on:
         type: choice
         options: [alpha, beta, rc, stable, patch]
         default: alpha
+      expected_apps_sha:
+        description: 'Optional: tagma-desktop/main SHA you expect to release (7+ chars or full). Aborts if origin/main has moved since. Leave empty to accept current HEAD.'
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -60,6 +64,36 @@ jobs:
           git -C apps fetch origin main
           git -C apps checkout main
           git -C apps reset --hard origin/main
+          echo "tagma-desktop/main is at $(git -C apps rev-parse HEAD)"
+
+      # Optional tripwire: operator passes a SHA from their local `git -C apps
+      # rev-parse main` before clicking Run workflow. If anyone else pushed to
+      # tagma-desktop/main between that check and this job, the reset above
+      # would silently pull in the extra commits. Fail instead so the operator
+      # can review the new commits and re-trigger with an updated SHA.
+      - name: Verify tagma-desktop/main matches expected SHA
+        if: inputs.expected_apps_sha != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="${{ inputs.expected_apps_sha }}"
+          n=${#expected}
+          if [ "$n" -lt 7 ]; then
+            echo "expected_apps_sha must be at least 7 chars (got: '$expected')"
+            exit 1
+          fi
+          actual=$(git -C apps rev-parse HEAD)
+          if [ "${actual:0:$n}" != "$expected" ]; then
+            echo "tagma-desktop/main HEAD is $actual"
+            echo "expected                  $expected"
+            echo ""
+            echo "Someone pushed to tagma-desktop/main after you captured the"
+            echo "expected SHA. Inspect the new commits and re-run the workflow"
+            echo "with the updated SHA, or leave expected_apps_sha empty to"
+            echo "accept the current HEAD unconditionally."
+            exit 1
+          fi
+          echo "tagma-desktop/main @ $actual matches expected $expected"
 
       - name: Bump desktop version
         id: bump
@@ -220,12 +254,25 @@ jobs:
           echo "build:desktop exhausted retries"
           exit 1
 
+      # Hash the editor dist tree on every runner and ship the digest in the
+      # artifact. The publish job compares the three and fails if they
+      # diverge — that protects the "one Linux-built hot-update tarball is
+      # equivalent to what Windows/Mac installers bundle" assumption.
+      - name: Hash editor dist (cross-OS verification)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p apps/electron/release
+          node scripts/release/hash-editor-dist.mjs apps/editor/dist > apps/electron/release/editor-dist.hash
+          echo "editor-dist hash (${{ matrix.platform }}): $(cat apps/electron/release/editor-dist.hash)"
+
       # ── Hot-update payload ──
       # Every desktop release also ships an editor-dist tarball that the
       # running app can pull down on demand (see server/routes/editor.ts).
       # Built on Linux only: `bun run build:desktop` produces identical
       # apps/editor/dist on every runner (pure JS), so one tarball is
       # enough and we avoid publishing three byte-divergent copies.
+      # The cross-OS hash check above enforces that invariant.
       - name: Package editor hot-update tarball
         if: matrix.platform == 'linux'
         shell: bash
@@ -276,6 +323,7 @@ jobs:
             apps/electron/release/*.blockmap
             apps/electron/release/editor-dist-*.tar.gz
             apps/electron/release/editor-dist-*.tar.gz.sha256
+            apps/electron/release/editor-dist.hash
           if-no-files-found: ignore
 
   publish:
@@ -304,10 +352,43 @@ jobs:
         with:
           path: release-assets
 
+      # Enforces the "Linux hot-update tarball == Windows/Mac bundled dist"
+      # invariant before anything gets flattened into the release. Runs here
+      # (not in build) because the matrix jobs don't see each other's output.
+      - name: Verify editor dist hashes match across OS
+        shell: bash
+        run: |
+          set -euo pipefail
+          mac=$(cat release-assets/dist-mac/editor-dist.hash 2>/dev/null || true)
+          win=$(cat release-assets/dist-win/editor-dist.hash 2>/dev/null || true)
+          linux=$(cat release-assets/dist-linux/editor-dist.hash 2>/dev/null || true)
+          if [ -z "$mac" ] || [ -z "$win" ] || [ -z "$linux" ]; then
+            echo "missing editor-dist.hash from one or more platforms:"
+            echo "  mac:   '${mac:-<missing>}'"
+            echo "  win:   '${win:-<missing>}'"
+            echo "  linux: '${linux:-<missing>}'"
+            exit 1
+          fi
+          if [ "$mac" != "$linux" ] || [ "$win" != "$linux" ]; then
+            echo "editor-dist hash mismatch across OS runners:"
+            echo "  mac:   $mac"
+            echo "  win:   $win"
+            echo "  linux: $linux"
+            echo ""
+            echo "Windows/Mac installers would bundle a different editor-dist"
+            echo "than the Linux hot-update tarball. Fix the source of"
+            echo "divergence (vite plugin or dep with OS-specific output)"
+            echo "before re-tagging this release."
+            exit 1
+          fi
+          echo "editor-dist hash: $linux (matches across mac/win/linux)"
+
       - name: Flatten assets
         run: |
           mkdir -p flat
-          find release-assets -type f -exec cp {} flat/ \;
+          # Exclude editor-dist.hash: its job ended at the verify step above,
+          # and three identical copies would collide on flatten anyway.
+          find release-assets -type f ! -name 'editor-dist.hash' -exec cp {} flat/ \;
           ls -la flat
 
       - name: Extract version from tag
@@ -329,6 +410,20 @@ jobs:
             flat \
             "${{ github.repository }}" \
             "flat/editor-hotupdate-manifest.json"
+
+      # Handed off to sync-web via an artifact so the two jobs ship literally
+      # the same bytes to GitHub Releases and tagma-web/public/editor-updates/.
+      # Previously sync-web regenerated the manifest from the same inputs;
+      # that worked but drifted away from the "single source of truth"
+      # principle — any future change to build-hotupdate-manifest.mjs only
+      # had to be applied in one place but could accidentally be called with
+      # different args in the other.
+      - name: Upload hot-update manifest as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hotupdate-manifest
+          path: flat/editor-hotupdate-manifest.json
+          if-no-files-found: error
 
       - name: Build release notes
         run: |
@@ -379,6 +474,10 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
           path: web
 
+      # Downloads every artifact uploaded by build (dist-mac/linux/win) and
+      # publish (hotupdate-manifest) into web-release-assets/<name>/... —
+      # the flatten step below collapses them into a single flat/ dir so the
+      # sync script can find everything by name.
       - uses: actions/download-artifact@v4
         with:
           path: web-release-assets
@@ -387,20 +486,6 @@ jobs:
         run: |
           mkdir -p flat
           find web-release-assets -type f -exec cp {} flat/ \;
-
-      # Regenerate the editor hot-update manifest inside this job so the
-      # sync script has a fresh file to copy into tagma-web/public/. The
-      # publish job already created an identical file in its own workspace,
-      # but job filesystems aren't shared; regenerating with the same inputs
-      # gives byte-identical output without needing a second artifact hop.
-      - name: Build editor hot-update manifest
-        run: |
-          node mono/scripts/release/build-hotupdate-manifest.mjs \
-            "${{ needs.publish.outputs.version }}" \
-            "${{ needs.publish.outputs.channel }}" \
-            flat \
-            "${{ github.repository }}" \
-            "flat/editor-hotupdate-manifest.json"
 
       - name: Run sync script
         run: node mono/scripts/release/sync-tagma-web.mjs "${{ needs.publish.outputs.version }}" mono web flat
