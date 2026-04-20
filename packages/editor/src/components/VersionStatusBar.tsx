@@ -295,7 +295,7 @@ function PopoverShell({ title, onClose, children }: PopoverShellProps) {
   return (
     <div
       ref={ref}
-      className="absolute left-0 bottom-full mb-1 z-[90] w-[320px] bg-tagma-surface border border-tagma-border/80 shadow-xl p-3 animate-fade-in"
+      className="absolute left-0 bottom-full mb-1 z-[90] w-max min-w-[320px] max-w-[480px] bg-tagma-surface border border-tagma-border/80 shadow-xl p-3 animate-fade-in"
     >
       <div className="text-[11px] font-sans text-tagma-text mb-2">{title}</div>
       {children}
@@ -366,7 +366,7 @@ function EditorUpdateBody({ info, apply, onRefresh, onUpdate }: EditorUpdateBody
         <button
           onClick={onUpdate}
           disabled={disabled || !info.canUpdate || !info.updateAvailable || updating}
-          className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 border border-tagma-accent/50 text-tagma-accent hover:bg-tagma-accent/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
+          className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 border border-tagma-accent/50 text-tagma-accent hover:bg-tagma-accent/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors whitespace-nowrap"
           title={buttonTitle}
         >
           {updating ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
@@ -379,7 +379,7 @@ function EditorUpdateBody({ info, apply, onRefresh, onUpdate }: EditorUpdateBody
         <button
           onClick={onRefresh}
           disabled={updating}
-          className="btn-ghost"
+          className="btn-ghost whitespace-nowrap"
           title="Re-check the release manifest"
         >
           <RefreshCw size={11} /> Check again
@@ -389,7 +389,7 @@ function EditorUpdateBody({ info, apply, onRefresh, onUpdate }: EditorUpdateBody
             href={info.releaseNotesUrl}
             target="_blank"
             rel="noreferrer"
-            className="text-[10px] text-tagma-muted hover:text-tagma-text underline"
+            className="text-[10px] text-tagma-muted hover:text-tagma-text underline whitespace-nowrap"
           >
             Release notes
           </a>
@@ -447,7 +447,7 @@ function OpencodeUpdateBody({ info, apply, onRefresh, onUpdate }: OpencodeUpdate
         <button
           onClick={onUpdate}
           disabled={!info.canUpdate || !info.updateAvailable || updating}
-          className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 border border-tagma-accent/50 text-tagma-accent hover:bg-tagma-accent/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
+          className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 border border-tagma-accent/50 text-tagma-accent hover:bg-tagma-accent/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors whitespace-nowrap"
           title={
             !info.canUpdate
               ? 'Updates are only available when running under the desktop app.'
@@ -466,7 +466,7 @@ function OpencodeUpdateBody({ info, apply, onRefresh, onUpdate }: OpencodeUpdate
         <button
           onClick={onRefresh}
           disabled={updating}
-          className="btn-ghost"
+          className="btn-ghost whitespace-nowrap"
           title="Re-check the registry"
         >
           <RefreshCw size={11} /> Check again
