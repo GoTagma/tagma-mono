@@ -55,24 +55,26 @@ await loadPlugins(['@tagma/trigger-webhook']);
 
 ## Config
 
-| Field        | Type     | Default      | Notes                                                                                       |
-| ------------ | -------- | ------------ | ------------------------------------------------------------------------------------------- |
-| `port`       | number   | _(required)_ | TCP port to listen on (1-65535)                                                             |
-| `path`       | string   | `/webhook`   | URL path to match; must start with `/`                                                      |
-| `secret_env` | string   | _(none)_     | Env var holding the HMAC-SHA256 secret. When set, requests must include `x-tagma-signature` |
-| `timeout`    | duration | _(forever)_  | Max wait time; omit for unbounded wait                                                      |
+| Field        | Type     | Default      | Notes                                                                                                                                                        |
+| ------------ | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `port`       | number   | _(required)_ | TCP port to listen on (1-65535)                                                                                                                              |
+| `path`       | string   | `/webhook`   | URL path to match; must start with `/`                                                                                                                       |
+| `host`       | string   | `127.0.0.1`  | Interface to bind. Defaults to loopback. Setting to `0.0.0.0` or any non-loopback address without `secret_env` is refused at config time                      |
+| `secret_env` | string   | _(none)_     | Env var holding the HMAC-SHA256 secret. When set, requests must include `x-tagma-signature`                                                                  |
+| `timeout`    | duration | _(forever)_  | Max wait time; omit (or set to `0`) for unbounded wait                                                                                                       |
 
 ## Behavior
 
-- A single `Bun.serve` listener is created per unique `(port, path)` pair and shared across all tasks that watch it. Multiple tasks on the same endpoint form a FIFO waiter queue — the next POST wakes one waiter.
+- A single `Bun.serve` listener is created per unique `(host, port, path)` triple and shared across all tasks that watch it. Multiple tasks on the same endpoint form a FIFO waiter queue — the next POST wakes one waiter.
+- Default bind is `127.0.0.1` so the endpoint is only reachable from the local machine. A non-loopback `host` without `secret_env` is refused.
 - Signature header format: `x-tagma-signature: sha256=<hex>`, HMAC-SHA256 of the raw request body using the secret. Verification is constant-time.
-- JSON bodies (`content-type: application/json`) are parsed and handed to the task as the trigger payload; other bodies are passed through as raw strings.
-- A POST arriving while no task is waiting is rejected with `409 no waiting task` so the caller can retry once a pipeline is up.
+- JSON bodies (`content-type: application/json`) are parsed and handed to the task as the trigger payload. A malformed JSON body under that content-type returns `400 invalid JSON body`. Other content-types are passed through as raw strings.
+- Successful delivery responds `202 ok`. A POST arriving while no task is waiting is rejected with `409 no waiting task` so the caller can retry once a pipeline is up. Non-matching paths return `404`, non-POST methods return `405`.
 - The listener outlives the task — it's a per-process singleton, not cleaned up between pipeline runs. Restart the host to free the port.
 
 ## Security
 
-Always set `secret_env` in production. Without it, anyone who can reach the port can fire the trigger. Bind the host to `127.0.0.1` at the OS level if you only need local callers.
+Always set `secret_env` in production. Without it, any caller that can reach the loopback port can fire the trigger. The plugin already binds to `127.0.0.1` by default; only change `host` when you deliberately need LAN/container reachability, and always pair a non-loopback bind with `secret_env`.
 
 ## License
 

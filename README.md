@@ -6,16 +6,17 @@ Tagma monorepo — local AI task orchestration SDK and visual editor.
 
 ```
 tagma-mono/
-├── packages/
+├── packages/                 public npm packages (bun workspace: packages/*)
 │   ├── types/                @tagma/types                Type-only package, no runtime code
 │   ├── sdk/                  @tagma/sdk                  Core engine
 │   ├── driver-codex/         @tagma/driver-codex         Codex CLI driver plugin
 │   ├── driver-claude-code/   @tagma/driver-claude-code   Claude Code CLI driver plugin
 │   ├── middleware-lightrag/  @tagma/middleware-lightrag  LightRAG knowledge-graph retrieval middleware
 │   ├── trigger-webhook/      @tagma/trigger-webhook      HTTP webhook trigger plugin
-│   ├── completion-llm-judge/ @tagma/completion-llm-judge LLM-as-judge completion plugin
-│   ├── editor/               tagma-editor (private)      Visual pipeline editor (React + Vite + Bun/Express)
-│   └── electron/             tagma-desktop (private)     Electron shell + Bun-compiled sidecar for desktop builds
+│   └── completion-llm-judge/ @tagma/completion-llm-judge LLM-as-judge completion plugin
+├── apps/                     git submodule → GoTagma/tagma-desktop (private, bun workspace: apps/*)
+│   ├── editor/               tagma-editor                Visual pipeline editor (React + Vite + Bun/Express)
+│   └── electron/             tagma-desktop               Electron shell + Bun-compiled sidecar for desktop builds
 ├── package.json              monorepo root (bun workspaces)
 └── .gitignore
 ```

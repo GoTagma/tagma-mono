@@ -562,11 +562,14 @@ Truncates `text` to at most `maxBytes` UTF-8 bytes (default 16 KB), appending a 
 
 ## Related Packages
 
-| Package                                                                        | Description                |
-| ------------------------------------------------------------------------------ | -------------------------- |
-| [@tagma/types](https://www.npmjs.com/package/@tagma/types)                     | Shared TypeScript types    |
-| [@tagma/driver-codex](https://www.npmjs.com/package/@tagma/driver-codex)             | Codex CLI driver plugin       |
-| [@tagma/driver-claude-code](https://www.npmjs.com/package/@tagma/driver-claude-code) | Claude Code CLI driver plugin |
+| Package                                                                                  | Description                                   |
+| ---------------------------------------------------------------------------------------- | --------------------------------------------- |
+| [@tagma/types](https://www.npmjs.com/package/@tagma/types)                               | Shared TypeScript types                       |
+| [@tagma/driver-codex](https://www.npmjs.com/package/@tagma/driver-codex)                 | Codex CLI driver plugin                       |
+| [@tagma/driver-claude-code](https://www.npmjs.com/package/@tagma/driver-claude-code)     | Claude Code CLI driver plugin                 |
+| [@tagma/middleware-lightrag](https://www.npmjs.com/package/@tagma/middleware-lightrag)   | LightRAG knowledge-graph retrieval middleware |
+| [@tagma/trigger-webhook](https://www.npmjs.com/package/@tagma/trigger-webhook)           | HTTP webhook trigger plugin                   |
+| [@tagma/completion-llm-judge](https://www.npmjs.com/package/@tagma/completion-llm-judge) | LLM-as-judge completion plugin                |
 
 ## License
 

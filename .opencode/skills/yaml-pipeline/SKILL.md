@@ -25,8 +25,11 @@ Help the user produce valid Tagma pipeline YAML. This includes:
    form `track-id.task-id` is how other tasks reference them.
 4. **Every task must declare a `driver`.** Pull the driver name from the
    workspace's plugin registry — never invent driver names.
-5. **`depends_on` entries are always fully-qualified** (`track.task`), even for
-   same-track dependencies. The editor's validator flags bare task IDs.
+5. **Prefer fully-qualified `depends_on` entries** (`track.task`), even for
+   same-track dependencies. The validator only hard-errors on *ambiguous*
+   bare refs (a task name that appears in more than one track); unambiguous
+   bare refs resolve silently. Fully-qualified refs stay correct when a task
+   is later copied into another track.
 6. **Prefer explicit `continue_from`** over implicit ordering when a task should
    only start after a specific upstream task, not just after the whole track.
 7. **Secrets never go in YAML.** Use `${env.NAME}` placeholders; Tagma resolves
