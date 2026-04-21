@@ -52,7 +52,7 @@ jobs:
       apps_sha: ${{ steps.sync.outputs.apps_sha }}
       prev_tag: ${{ steps.prev.outputs.prev_tag }}
     steps:
-      - uses: actions/create-github-app-token@v1
+      - uses: actions/create-github-app-token@v3
         id: app-token
         with:
           app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
@@ -62,7 +62,7 @@ jobs:
             tagma-mono
             tagma-desktop
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           token: ${{ steps.app-token.outputs.token }}
           fetch-depth: 0
@@ -182,7 +182,7 @@ jobs:
       # tagma-desktop. The artifact is the single source of truth for the
       # version bump across all downstream jobs.
       - name: Upload prepared bump
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: prepared
           path: |
@@ -204,7 +204,7 @@ jobs:
             platform: win
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/create-github-app-token@v1
+      - uses: actions/create-github-app-token@v3
         id: app-token
         with:
           app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
@@ -214,7 +214,7 @@ jobs:
             tagma-mono
             tagma-desktop
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           token: ${{ steps.app-token.outputs.token }}
           submodules: recursive
@@ -249,7 +249,7 @@ jobs:
           rm -rf apps/editor/dist apps/editor/desktop-dist apps/electron/dist
 
       - name: Download prepared bump
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: prepared
           path: overlay
@@ -371,7 +371,7 @@ jobs:
         run: node scripts/release/compute-checksums.mjs apps/electron/release
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: dist-${{ matrix.platform }}
           path: |
@@ -400,7 +400,7 @@ jobs:
       channel: ${{ steps.ch.outputs.channel }}
       prerelease: ${{ steps.ch.outputs.prerelease }}
     steps:
-      - uses: actions/create-github-app-token@v1
+      - uses: actions/create-github-app-token@v3
         id: app-token
         with:
           app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
@@ -410,7 +410,7 @@ jobs:
             tagma-mono
             tagma-desktop
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           token: ${{ steps.app-token.outputs.token }}
           submodules: recursive
@@ -419,7 +419,7 @@ jobs:
           # SHA prepare pinned.
           fetch-depth: 0
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           path: release-assets
 
@@ -566,7 +566,7 @@ jobs:
       # Handed off to sync-web via an artifact so the two jobs ship literally
       # the same bytes to GitHub Releases and tagma-web/public/editor-updates/.
       - name: Upload hot-update manifest as artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: hotupdate-manifest
           path: flat/editor-hotupdate-manifest.json
@@ -580,7 +580,7 @@ jobs:
       # Handoff to finalize: the flattened release directory and the release
       # notes. Finalize re-downloads and attaches them to `gh release create`.
       - name: Upload release payload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-payload
           path: |
@@ -595,7 +595,7 @@ jobs:
     needs: [prepare, publish]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/create-github-app-token@v1
+      - uses: actions/create-github-app-token@v3
         id: app-token
         with:
           app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
@@ -609,18 +609,18 @@ jobs:
       # build don't block our fast-forward push. The commit we're about to
       # create only touches `apps` (submodule pointer), so replaying on top
       # of newer mono commits is safe.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           token: ${{ steps.app-token.outputs.token }}
           submodules: recursive
           fetch-depth: 0
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: prepared
           path: overlay
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: release-payload
           path: release-payload
@@ -777,7 +777,7 @@ jobs:
     needs: [prepare, publish, finalize]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/create-github-app-token@v1
+      - uses: actions/create-github-app-token@v3
         id: app-token
         with:
           app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
@@ -789,14 +789,14 @@ jobs:
             tagma-web
 
       - name: Checkout tagma-mono
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           token: ${{ steps.app-token.outputs.token }}
           submodules: recursive
           path: mono
 
       - name: Checkout tagma-web
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: GoTagma/tagma-web
           token: ${{ steps.app-token.outputs.token }}
@@ -806,7 +806,7 @@ jobs:
       # publish (hotupdate-manifest) into web-release-assets/<name>/... —
       # the flatten step below collapses them into a single flat/ dir so the
       # sync script can find everything by name.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           path: web-release-assets
 
@@ -849,7 +849,7 @@ jobs:
             exit 0
           fi
           git commit -m "chore: sync desktop v${{ needs.publish.outputs.version }}"
-          # Query the default branch via the API. actions/checkout@v4 does NOT
+          # Query the default branch via the API. actions/checkout@v5 does NOT
           # configure refs/remotes/origin/HEAD (only `git clone` does), so
           # `git rev-parse --abbrev-ref origin/HEAD` silently falls back to the
           # literal "HEAD" and would push to a phantom branch named HEAD.

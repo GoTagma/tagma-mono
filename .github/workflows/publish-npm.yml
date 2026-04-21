@@ -22,7 +22,7 @@ jobs:
     outputs:
       packages: ${{ steps.diff.outputs.packages }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -95,7 +95,7 @@ jobs:
     if: needs.detect.outputs.packages != '[]' && needs.detect.outputs.packages != ''
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: oven-sh/setup-bun@v2
         with:

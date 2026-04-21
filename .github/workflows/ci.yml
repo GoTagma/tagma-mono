@@ -10,7 +10,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/create-github-app-token@v1
+      - uses: actions/create-github-app-token@v3
         id: app-token
         with:
           app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
@@ -20,7 +20,7 @@ jobs:
             tagma-mono
             tagma-desktop
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           token: ${{ steps.app-token.outputs.token }}
           submodules: recursive
