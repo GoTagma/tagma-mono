@@ -820,6 +820,19 @@ jobs:
             ! -path 'web-release-assets/release-payload/*' \
             -exec cp {} flat/ \;
 
+      # sync-web's tagma-mono checkout is pinned to github.sha (the commit that
+      # triggered the workflow), so the apps submodule is at the PRE-finalize
+      # pointer — the new CHANGELOG/<version>.md that finalize just pushed to
+      # tagma-desktop/main isn't reachable from here. Overlay the prepared
+      # CHANGELOG (same artifact publish uses) so sync-tagma-web.mjs can read
+      # it. Mirrors publish's "Overlay prepared CHANGELOG" step.
+      - name: Overlay prepared CHANGELOG into mono checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p mono/apps/electron/CHANGELOG
+          cp web-release-assets/prepared/CHANGELOG/*.md mono/apps/electron/CHANGELOG/
+
       - name: Run sync script
         run: node mono/scripts/release/sync-tagma-web.mjs "${{ needs.publish.outputs.version }}" mono web flat
 
