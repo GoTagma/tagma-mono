@@ -667,10 +667,18 @@ jobs:
 
           git -C apps add electron/package.json "electron/CHANGELOG/${version}.md"
           git -C apps commit -m "chore(desktop): cut v${version}"
-          # Fast-forward push only — if someone else pushed to tagma-desktop
-          # main between prepare and finalize, fail loud so the operator can
-          # review the new commits and re-run.
-          git -C apps push origin HEAD:main
+          # Try fast-forward first; if origin/main moved between prepare and
+          # finalize, rebase the version-bump commit onto it and retry. The
+          # bump only touches electron/package.json + a new CHANGELOG/<ver>.md,
+          # so rebase can only conflict if someone else pushed the same version
+          # bump — a legitimate failure worth surfacing. Mirrors stage2's
+          # rebase-retry on tagma-mono (below).
+          if ! git -C apps push origin HEAD:main; then
+            echo "fast-forward push failed; rebasing onto origin/main and retrying"
+            git -C apps fetch origin main
+            git -C apps rebase origin/main
+            git -C apps push origin HEAD:main
+          fi
           new_apps_sha=$(git -C apps rev-parse HEAD)
           echo "pushed tagma-desktop/main @ $new_apps_sha"
           echo "new_apps_sha=$new_apps_sha" >> "$GITHUB_OUTPUT"
