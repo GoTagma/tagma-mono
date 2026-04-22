@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-import { buildHotupdateManifest } from './build-hotupdate-manifest.mjs';
+import { buildHotupdateManifest, main } from './build-hotupdate-manifest.mjs';
 
 const tempRoots: string[] = [];
 
@@ -73,5 +73,27 @@ describe('build-hotupdate-manifest', () => {
     });
 
     expect(manifest.sidecar).toBeUndefined();
+  });
+
+  test('writes minShellVersion into manifest when --min-shell is passed via CLI', () => {
+    const dir = withTempDir();
+    writeAsset(dir, 'editor-dist-0.2.2.tar.gz', 'editor-dist');
+    const outFile = path.join(dir, 'manifest.json');
+
+    main(['0.2.2', 'alpha', dir, 'GoTagma/tagma-mono', outFile, '--min-shell', '0.2.0']);
+
+    const manifest = JSON.parse(readFileSync(outFile, 'utf-8'));
+    expect(manifest.minShellVersion).toBe('0.2.0');
+  });
+
+  test('writes minShellVersion when --min-shell=VALUE form is used', () => {
+    const dir = withTempDir();
+    writeAsset(dir, 'editor-dist-0.2.2.tar.gz', 'editor-dist');
+    const outFile = path.join(dir, 'manifest.json');
+
+    main(['0.2.2', 'alpha', dir, 'GoTagma/tagma-mono', outFile, '--min-shell=0.2.0']);
+
+    const manifest = JSON.parse(readFileSync(outFile, 'utf-8'));
+    expect(manifest.minShellVersion).toBe('0.2.0');
   });
 });
