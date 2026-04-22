@@ -1,103 +1,145 @@
 #!/usr/bin/env node
 // Generates the editor hot-update manifest for a given desktop release.
 // The manifest is the stable detection endpoint clients poll (served from
-// tagma-web/public/editor-updates/<channel>/manifest.json). Tarball URL points
-// at the corresponding GitHub Release asset so the manifest and the payload
-// are versioned together and never drift.
-//
-// Args: <version> <channel> <assets-dir> <repo-slug> <out-file> [--min-shell <version>]
-//
-// <assets-dir>  — directory containing editor-dist-<version>.tar.gz(.sha256)
-//                 (the publish job's flattened release-assets dir).
-// <repo-slug>   — e.g. "GoTagma/tagma-mono"; used to build the tarball URL.
-// <out-file>    — absolute path where the manifest JSON should be written.
-// --min-shell   — optional floor for the installer (electron shell) version
-//                 required to apply this bundle. Omit unless this release
-//                 depends on an IPC/preload surface only present in a newer
-//                 shell; see the manifest-construction block below.
-//
-// The client-side consumer is apps/editor/server/routes/editor.ts —
-// keep this output shape aligned with the EditorManifest interface there.
-import { readFileSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+// tagma-web/public/editor-updates/<channel>/manifest.json). Asset URLs point
+// at the corresponding GitHub Release assets so the manifest and payloads are
+// versioned together and never drift.
 
-const rawArgs = process.argv.slice(2);
-let minShellVersion;
-const positional = [];
-for (let i = 0; i < rawArgs.length; i++) {
-  const arg = rawArgs[i];
-  if (arg === '--min-shell') {
-    minShellVersion = rawArgs[++i];
-    if (!minShellVersion) {
-      console.error('--min-shell requires a version argument');
-      process.exit(2);
-    }
-  } else if (arg.startsWith('--min-shell=')) {
-    minShellVersion = arg.slice('--min-shell='.length);
-  } else {
-    positional.push(arg);
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const SIDECAR_TARGETS = [
+  { platform: 'win32', arch: 'x64', extension: '.exe' },
+  { platform: 'linux', arch: 'x64', extension: '' },
+  { platform: 'linux', arch: 'arm64', extension: '' },
+  { platform: 'darwin', arch: 'x64', extension: '' },
+  { platform: 'darwin', arch: 'arm64', extension: '' },
+];
+
+function readSha256File(assetPath) {
+  const shaPath = `${assetPath}.sha256`;
+  try {
+    return readFileSync(shaPath, 'utf8').trim().split(/\s+/)[0];
+  } catch {
+    throw new Error(`missing ${assetPath.split(/[\\/]/).pop()}.sha256 in ${dirname(assetPath)}`);
   }
 }
 
-const [version, channel, assetsDir, repoSlug, outFile] = positional;
-if (!version || !channel || !assetsDir || !repoSlug || !outFile) {
-  console.error(
-    'usage: build-hotupdate-manifest.mjs <version> <channel> <assets-dir> <repo-slug> <out-file> [--min-shell <version>]',
-  );
-  process.exit(2);
+function readRequiredAsset(assetsDir, filename) {
+  const assetPath = join(assetsDir, filename);
+  let size;
+  try {
+    size = statSync(assetPath).size;
+  } catch {
+    throw new Error(`missing ${filename} in ${assetsDir}`);
+  }
+  const sha = readSha256File(assetPath);
+  if (!/^[0-9a-f]{64}$/i.test(sha)) {
+    throw new Error(`bad sha256 in ${assetPath}.sha256: ${sha}`);
+  }
+  return { filename, size, sha: sha.toLowerCase() };
 }
 
-const tarballName = `editor-dist-${version}.tar.gz`;
-const tarballPath = join(assetsDir, tarballName);
-const shaPath = `${tarballPath}.sha256`;
-
-let size;
-try {
-  size = statSync(tarballPath).size;
-} catch {
-  console.error(`missing ${tarballName} in ${assetsDir}`);
-  process.exit(1);
+function readOptionalAsset(assetsDir, filename) {
+  const assetPath = join(assetsDir, filename);
+  if (!existsSync(assetPath)) return null;
+  return readRequiredAsset(assetsDir, filename);
 }
 
-let sha;
-try {
-  // The .sha256 sibling format is "<hex>  <filename>\n" (shasum -a 256 output).
-  sha = readFileSync(shaPath, 'utf8').trim().split(/\s+/)[0];
-} catch {
-  console.error(`missing ${tarballName}.sha256 in ${assetsDir}`);
-  process.exit(1);
-}
-if (!/^[0-9a-f]{64}$/i.test(sha)) {
-  console.error(`bad sha256 in ${shaPath}: ${sha}`);
-  process.exit(1);
+function buildReleaseAssetUrl(repoSlug, tagName, filename) {
+  return `https://github.com/${repoSlug}/releases/download/${tagName}/${filename}`;
 }
 
-const tagName = `desktop-v${version}`;
-// GitHub Release asset URL pattern. This URL is stable as long as the tag
-// is not deleted; renaming the release title doesn't affect it.
-const downloadUrl = `https://github.com/${repoSlug}/releases/download/${tagName}/${tarballName}`;
-const releaseNotesUrl = `https://github.com/${repoSlug}/releases/tag/${tagName}`;
-
-// minShellVersion represents the oldest installer whose IPC/preload surface
-// this bundle still works against — NOT the release version itself. Pinning
-// it to `version` would force users to reinstall the installer for every hot
-// update, defeating the point of hot updates. Omitting the field entirely
-// means any shell can apply this bundle, which is the correct default while
-// the IPC surface is stable. Pass --min-shell <ver> only when this release
-// depends on a shell feature introduced in that installer version.
-const manifest = {
+export function buildHotupdateManifest({
   version,
   channel,
-  ...(minShellVersion ? { minShellVersion } : {}),
-  dist: {
-    url: downloadUrl,
-    sha256: sha.toLowerCase(),
-    size,
-  },
-  releaseNotesUrl,
-};
+  assetsDir,
+  repoSlug,
+  minShellVersion,
+}) {
+  const tagName = `desktop-v${version}`;
+  const distAsset = readRequiredAsset(assetsDir, `editor-dist-${version}.tar.gz`);
+  const sidecarTargets = SIDECAR_TARGETS.flatMap(({ platform, arch, extension }) => {
+    const filename = `tagma-editor-server-${version}-${platform}-${arch}${extension}`;
+    const asset = readOptionalAsset(assetsDir, filename);
+    if (!asset) return [];
+    return [
+      {
+        platform,
+        arch,
+        url: buildReleaseAssetUrl(repoSlug, tagName, asset.filename),
+        sha256: asset.sha,
+        size: asset.size,
+      },
+    ];
+  });
 
-mkdirSync(dirname(outFile), { recursive: true });
-writeFileSync(outFile, JSON.stringify(manifest, null, 2) + '\n');
-console.log(`wrote ${outFile}`);
-console.log(JSON.stringify(manifest, null, 2));
+  return {
+    version,
+    channel,
+    ...(minShellVersion ? { minShellVersion } : {}),
+    dist: {
+      url: buildReleaseAssetUrl(repoSlug, tagName, distAsset.filename),
+      sha256: distAsset.sha,
+      size: distAsset.size,
+    },
+    ...(sidecarTargets.length > 0 ? { sidecar: { targets: sidecarTargets } } : {}),
+    releaseNotesUrl: `https://github.com/${repoSlug}/releases/tag/${tagName}`,
+  };
+}
+
+function parseCliArgs(argv) {
+  let minShellVersion;
+  const positional = [];
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === '--min-shell') {
+      minShellVersion = argv[++i];
+      if (!minShellVersion) {
+        throw new Error('--min-shell requires a version argument');
+      }
+      continue;
+    }
+    if (arg.startsWith('--min-shell=')) {
+      minShellVersion = arg.slice('--min-shell='.length);
+      continue;
+    }
+    positional.push(arg);
+  }
+  const [version, channel, assetsDir, repoSlug, outFile] = positional;
+  if (!version || !channel || !assetsDir || !repoSlug || !outFile) {
+    throw new Error(
+      'usage: build-hotupdate-manifest.mjs <version> <channel> <assets-dir> <repo-slug> <out-file> [--min-shell <version>]',
+    );
+  }
+  return { version, channel, assetsDir, repoSlug, outFile, minShellVersion };
+}
+
+export function writeHotupdateManifest(outFile, manifest) {
+  mkdirSync(dirname(outFile), { recursive: true });
+  writeFileSync(outFile, JSON.stringify(manifest, null, 2) + '\n');
+}
+
+export function main(argv = process.argv.slice(2)) {
+  try {
+    const { outFile, ...args } = parseCliArgs(argv);
+    const manifest = buildHotupdateManifest(args);
+    writeHotupdateManifest(outFile, manifest);
+    console.log(`wrote ${outFile}`);
+    console.log(JSON.stringify(manifest, null, 2));
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(2);
+  }
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main();
+}

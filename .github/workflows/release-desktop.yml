@@ -239,14 +239,15 @@ jobs:
           bun-version: 1.3.11
 
       - name: Clean build artifacts
-        # Wipe any stale editor/dist and desktop-dist from a previous workflow
+        # Wipe any stale editor/dist and desktop-dist* from a previous workflow
         # run on the same runner VM. Without this, a Windows runner that ran
         # an earlier build would have a dirty editor/dist whose hash collides
         # with the fresh mac/linux builds — causing the publish hash check to
-        # fire falsely.
+        # fire falsely. The `desktop-dist-*` glob covers per-arch sidecar
+        # staging dirs from previous runs (darwin-arm64, darwin-x64, etc.).
         shell: bash
         run: |
-          rm -rf apps/editor/dist apps/editor/desktop-dist apps/electron/dist
+          rm -rf apps/editor/dist apps/editor/desktop-dist apps/editor/desktop-dist-* apps/electron/dist
 
       - name: Download prepared bump
         uses: actions/download-artifact@v7
@@ -350,6 +351,175 @@ jobs:
               ;;
           esac
 
+      # macOS electron-builder produces BOTH arm64 and x64 dmgs from a single
+      # run. Without a second sidecar compile, both dmgs would embed whichever
+      # arch the runner built (currently arm64 on macos-latest), leaving
+      # darwin-x64 users with a bundled sidecar that won't launch. Cross-
+      # compile the other arch into a per-arch staging dir so electron-builder
+      # can pick up desktop-dist-${arch} per-target.
+      - name: Cross-compile macOS sidecar for the non-host arch
+        if: matrix.platform == 'mac'
+        shell: bash
+        run: |
+          set -euo pipefail
+          host_arch=$(node -p "process.arch")
+          case "$host_arch" in
+            arm64) other_arch="x64" ; other_target="bun-darwin-x64" ;;
+            x64)   other_arch="arm64" ; other_target="bun-darwin-arm64" ;;
+            *) echo "unexpected mac runner arch: $host_arch" ; exit 1 ;;
+          esac
+          echo "host=$host_arch → cross-compiling $other_target → desktop-dist-$other_arch"
+          cd apps/editor
+          # build:sidecar already has its own retry-with-cache-purge loop; CI=true
+          # is inherited. Override the target and outdir to land the binary in a
+          # separate per-arch dir so the first (host-arch) build isn't clobbered.
+          TAGMA_BUN_COMPILE_TARGET="$other_target" \
+          TAGMA_SIDECAR_OUTDIR="desktop-dist-$other_arch" \
+            bun run build:sidecar
+
+      # Cross-compile a Linux arm64 sidecar so the hot-update manifest can
+      # advertise linux/arm64 alongside x64. electron-builder only packages
+      # linux-x64 in this matrix (no arm64 installer yet), so this binary
+      # is purely a hot-update asset — useful for users running the x64
+      # AppImage under emulation or rolling their own arm64 install.
+      - name: Cross-compile Linux arm64 sidecar (hot-update only)
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd apps/editor
+          TAGMA_BUN_COMPILE_TARGET="bun-linux-arm64" \
+          TAGMA_SIDECAR_OUTDIR="desktop-dist-arm64" \
+            bun run build:sidecar
+
+      # Stage per-arch sidecar dirs so electron-builder's extraResources entry
+      # "../editor/desktop-dist-${arch}" finds a sidecar for every arch it's
+      # packaging. Linux/Windows matrix legs only ship one arch, but the
+      # helper is idempotent on pre-populated per-arch dirs so the mac run
+      # above stays intact.
+      - name: Stage per-arch sidecar dirs
+        shell: bash
+        working-directory: apps/electron
+        run: |
+          set -euo pipefail
+          case "${{ matrix.platform }}" in
+            mac)   node ./scripts/stage-sidecar.mjs arm64 x64 ;;
+            *)     node ./scripts/stage-sidecar.mjs x64 ;;
+          esac
+
+      # Codesign the sidecar binaries so both the installer-bundled copy and
+      # the standalone hot-update asset satisfy Gatekeeper on first launch.
+      # A raw unsigned Mach-O downloaded to userData will fail to spawn on
+      # macOS 10.15+ because Gatekeeper treats non-notarized/unsigned binaries
+      # as untrusted when Electron spawns them via child_process.
+      #
+      # Gated on TAGMA_SIGN_SIDECAR=1 (off by default) so the initial rollout
+      # doesn't change existing release behavior until the operator has
+      # verified the keychain import flow end-to-end. CSC_LINK /
+      # CSC_KEY_PASSWORD are already used by electron-builder below; reusing
+      # those secrets keeps the identity consistent between the bundled and
+      # hot-update copies. Notarization of the standalone binary is a separate
+      # follow-up (notarytool requires a zip+staple round trip).
+      - name: Sign sidecar binaries (macOS)
+        if: matrix.platform == 'mac'
+        env:
+          TAGMA_SIGN_SIDECAR: ${{ secrets.TAGMA_SIGN_SIDECAR }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${TAGMA_SIGN_SIDECAR:-}" != "1" ]; then
+            echo "TAGMA_SIGN_SIDECAR != 1 — skipping sidecar codesign (opt-in)"
+            exit 0
+          fi
+          # Two modes based on which secrets are present:
+          #   - Developer ID (CSC_LINK + CSC_KEY_PASSWORD): full codesign with
+          #     timestamp + hardened runtime. What we want once a paid cert is
+          #     available.
+          #   - Ad-hoc fallback (no secrets): `codesign --sign -` produces a
+          #     hash-only signature that macOS's dynamic loader accepts when a
+          #     trusted process (the installed .app) spawns it via fork/exec.
+          #     Sufficient for our hot-update path because the user never
+          #     launches the sidecar directly. Does NOT satisfy Gatekeeper for
+          #     quarantined downloads, but Node fetch doesn't set the quarantine
+          #     xattr, so in practice this is enough. Upgrade to real signing
+          #     by populating CSC_LINK / CSC_KEY_PASSWORD.
+          mode="adhoc"
+          if [ -n "${CSC_LINK:-}" ] && [ -n "${CSC_KEY_PASSWORD:-}" ]; then
+            mode="identity"
+          fi
+          echo "Sidecar codesign mode: $mode"
+
+          if [ "$mode" = "identity" ]; then
+            keychain="tagma-sidecar-sign.keychain"
+            password="tagma-sign-$$"
+            echo "$CSC_LINK" | base64 -d > /tmp/csc.p12
+            security create-keychain -p "$password" "$keychain"
+            security set-keychain-settings -lut 21600 "$keychain"
+            security unlock-keychain -p "$password" "$keychain"
+            security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+            security import /tmp/csc.p12 -k "$keychain" -P "$CSC_KEY_PASSWORD" -T /usr/bin/codesign
+            security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" >/dev/null
+            identity=$(security find-identity -v -p codesigning "$keychain" | awk -F'"' '/Developer ID Application/{print $2; exit}')
+            if [ -z "$identity" ]; then
+              echo "No Developer ID Application identity found in keychain — cannot sign sidecar"
+              exit 1
+            fi
+            echo "Signing with identity: $identity"
+            for f in apps/editor/desktop-dist-*/tagma-editor-server; do
+              [ -f "$f" ] || continue
+              codesign --force --sign "$identity" --timestamp --options runtime --keychain "$keychain" "$f"
+              codesign --verify --verbose "$f"
+            done
+            rm -f /tmp/csc.p12
+          else
+            for f in apps/editor/desktop-dist-*/tagma-editor-server; do
+              [ -f "$f" ] || continue
+              codesign --force --sign - "$f"
+              codesign --verify --verbose "$f"
+            done
+          fi
+
+      - name: Sign sidecar binaries (Windows)
+        if: matrix.platform == 'win'
+        env:
+          TAGMA_SIGN_SIDECAR: ${{ secrets.TAGMA_SIGN_SIDECAR }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${TAGMA_SIGN_SIDECAR:-}" != "1" ]; then
+            echo "TAGMA_SIGN_SIDECAR != 1 — skipping sidecar signtool (opt-in)"
+            exit 0
+          fi
+          # Windows doesn't have a meaningful ad-hoc sign equivalent to
+          # macOS's `codesign --sign -`. SmartScreen only fires on user-
+          # initiated launches of downloaded .exe files, not on CreateProcess
+          # from within the signed parent .app. So when WIN_CSC secrets are
+          # absent we skip cleanly instead of forcing a paid cert purchase.
+          # Upgrade by populating WIN_CSC_LINK / WIN_CSC_KEY_PASSWORD.
+          if [ -z "${WIN_CSC_LINK:-}" ] || [ -z "${WIN_CSC_KEY_PASSWORD:-}" ]; then
+            echo "WIN_CSC_LINK / WIN_CSC_KEY_PASSWORD unset — skipping sidecar signtool (no paid cert required: sidecar spawn bypasses SmartScreen)"
+            exit 0
+          fi
+          p12="$RUNNER_TEMP/win-csc.p12"
+          echo "$WIN_CSC_LINK" | base64 -d > "$p12"
+          # Resolve signtool.exe from the latest installed Windows SDK.
+          signtool=$(find "/c/Program Files (x86)/Windows Kits/10/bin" -name 'signtool.exe' 2>/dev/null | grep -E '/x64/signtool.exe$' | sort -V | tail -1)
+          if [ -z "$signtool" ]; then
+            echo "signtool.exe not found on runner — is the Windows 10 SDK installed?"
+            exit 1
+          fi
+          for f in apps/editor/desktop-dist-*/tagma-editor-server.exe; do
+            [ -f "$f" ] || continue
+            "$signtool" sign //f "$p12" //p "$WIN_CSC_KEY_PASSWORD" //fd sha256 //tr http://timestamp.digicert.com //td sha256 "$f"
+            "$signtool" verify //pa //v "$f"
+          done
+          rm -f "$p12"
+
       # Hash the editor dist tree on every runner and ship the digest in the
       # artifact. The publish job compares the three and fails if they
       # diverge — that protects the "one Linux-built hot-update tarball is
@@ -382,6 +552,46 @@ jobs:
           sha=$(shasum -a 256 "$tarball" | awk '{print $1}')
           echo "$sha  $(basename "$tarball")" > "${tarball}.sha256"
           echo "wrote $tarball (sha256=$sha)"
+
+      - name: Package sidecar hot-update binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.prepare.outputs.version }}"
+          out="apps/electron/release"
+          mkdir -p "$out"
+          node_platform=$(node -p "process.platform")
+          # Enumerate every per-arch staging dir produced on this runner.
+          # mac runs publish both darwin-arm64 and darwin-x64; linux/win
+          # publish a single x64 build. Each staging dir is authoritative
+          # for exactly one target arch.
+          shopt -s nullglob
+          any=0
+          for dir in apps/editor/desktop-dist-*; do
+            [ -d "$dir" ] || continue
+            arch=${dir##*desktop-dist-}
+            src_name="tagma-editor-server"
+            dest_name="tagma-editor-server-${version}-${node_platform}-${arch}"
+            if [ "$node_platform" = "win32" ]; then
+              src_name="${src_name}.exe"
+              dest_name="${dest_name}.exe"
+            fi
+            src="${dir}/${src_name}"
+            dest="${out}/${dest_name}"
+            if [ ! -f "$src" ]; then
+              echo "skip $dir — no ${src_name}"
+              continue
+            fi
+            cp "$src" "$dest"
+            sha=$(shasum -a 256 "$dest" | awk '{print $1}')
+            echo "$sha  $(basename "$dest")" > "${dest}.sha256"
+            echo "wrote $dest (sha256=$sha)"
+            any=1
+          done
+          if [ "$any" = "0" ]; then
+            echo "no desktop-dist-* dirs found — sidecar staging step must run first"
+            exit 1
+          fi
 
       - name: Package (${{ matrix.platform }})
         working-directory: apps/electron
@@ -420,6 +630,8 @@ jobs:
             apps/electron/release/editor-dist-*.tar.gz
             apps/electron/release/editor-dist-*.tar.gz.sha256
             apps/electron/release/editor-dist.hash
+            apps/electron/release/tagma-editor-server-*
+            apps/electron/release/tagma-editor-server-*.sha256
           if-no-files-found: ignore
 
   # Assemble the release payload (flatten, verify, build manifest + notes).
@@ -515,18 +727,26 @@ jobs:
         run: |
           node scripts/release/channel-info.mjs "apps/electron/CHANGELOG/${{ needs.prepare.outputs.version }}.md" >> "$GITHUB_OUTPUT"
 
-      # Auto-derive whether this release requires a newer installer. When the
-      # electron-side IPC surface (preload bridge, main-process handlers, env
-      # vars the renderer reads through runtime-paths) has changed since the
-      # previous desktop-v tag, a newer editor bundle can't be trusted to work
-      # against an older shell — the old shell's preload won't expose a method
-      # the new bundle calls at module-load, or TAGMA_EDITOR_* envs it expects
-      # won't be set, etc. Gate the hot-update on the installer so affected
-      # users get redirected to a reinstall (see editor.ts:315).
+      # Auto-derive whether this release requires a newer installer. Two
+      # surfaces can make a new hot-update payload incompatible with an older
+      # installer:
+      #
+      #   1. The Electron shell itself (main / preload / runtime-paths):
+      #      preload bridge calls, IPC handlers, or env vars the renderer
+      #      reads through runtime-paths. If the installer's preload doesn't
+      #      expose a method the new bundle calls, or runtime-paths doesn't
+      #      set a TAGMA_* env the new sidecar reads, things break.
+      #
+      #   2. Sidecar <-> renderer/manifest contract (editor-dist and sidecar
+      #      hot-update endpoints, the static-assets resolution order, and the
+      #      shared manifest validator). Sidecar can now hot-update itself,
+      #      but only after the user clicks Update — until then the shipped
+      #      sidecar has to stay compatible with the new renderer and new
+      #      manifest. A protocol break here leaves the update button wedged.
       #
       # Heuristic is intentionally conservative (file-touched, not signature
-      # diff): internal refactors inside these three files that don't change
-      # the renderer contract will still bump the gate. False positive cost is
+      # diff): internal refactors inside these files that don't change the
+      # renderer contract will still bump the gate. False positive cost is
       # one forced reinstall; false negative cost is a black-screen like the
       # one that motivated this gate. We err towards the former.
       - name: Determine min-shell version (IPC surface gate)
@@ -568,14 +788,18 @@ jobs:
           changed=$(git -C apps diff --name-only "$prev_apps_sha" "$cur_apps_sha" -- \
             electron/src/main.ts \
             electron/src/preload.ts \
-            electron/src/runtime-paths.ts)
+            electron/src/runtime-paths.ts \
+            editor/server/routes/editor.ts \
+            editor/server/routes/sidecar.ts \
+            editor/server/static-assets.ts \
+            editor/server/update-manifest.ts)
           if [ -n "$changed" ]; then
-            echo "IPC surface files touched:"
+            echo "compat surface files touched:"
             printf '  %s\n' $changed
             echo "→ hot-update manifest will require installer >= ${version}"
             echo "min_shell=${version}" >> "$GITHUB_OUTPUT"
           else
-            echo "electron/src/{main,preload,runtime-paths}.ts unchanged"
+            echo "electron shell + editor/server compat surface unchanged"
             echo "min_shell=" >> "$GITHUB_OUTPUT"
           fi
 
