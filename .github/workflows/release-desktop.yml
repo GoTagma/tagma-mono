@@ -549,7 +549,9 @@ jobs:
           mkdir -p "$out"
           tarball="$out/editor-dist-${version}.tar.gz"
           tar -czf "$tarball" -C apps/editor/dist .
-          sha=$(shasum -a 256 "$tarball" | awk '{print $1}')
+          # Windows Git Bash has no `shasum` (Perl), and macOS has no
+          # `sha256sum` — use node crypto for a uniform digest on every runner.
+          sha=$(node -e "const f=require('node:fs'),c=require('node:crypto');process.stdout.write(c.createHash('sha256').update(f.readFileSync(process.argv[1])).digest('hex'))" "$tarball")
           echo "$sha  $(basename "$tarball")" > "${tarball}.sha256"
           echo "wrote $tarball (sha256=$sha)"
 
@@ -583,7 +585,7 @@ jobs:
               continue
             fi
             cp "$src" "$dest"
-            sha=$(shasum -a 256 "$dest" | awk '{print $1}')
+            sha=$(node -e "const f=require('node:fs'),c=require('node:crypto');process.stdout.write(c.createHash('sha256').update(f.readFileSync(process.argv[1])).digest('hex'))" "$dest")
             echo "$sha  $(basename "$dest")" > "${dest}.sha256"
             echo "wrote $dest (sha256=$sha)"
             any=1
