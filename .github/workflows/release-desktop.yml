@@ -317,6 +317,39 @@ jobs:
           echo "build:desktop exhausted retries"
           exit 1
 
+      # Pre-stage the opencode binary into build/opencode/<platform>-<arch>/
+      # so electron-builder's extraResources entry picks it up when packaging.
+      # Without this the installer ships zero opencode binaries — the runtime
+      # resolver falls through to PATH and hits whatever stale bun/npm shim
+      # the user has lying around (the motivating failure: "Cannot find
+      # module .../.bun/install/global/node_modules/opencode-ai/bin/opencode").
+      # The `dist:<os>` scripts in apps/electron/package.json chain this
+      # step in for local packaging, but CI invokes `electron-builder`
+      # directly and needs it explicit.
+      - name: Stage bundled opencode binary
+        working-directory: apps/electron
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ matrix.platform }}" in
+            mac)
+              # electron-builder builds both arm64 and x64 dmgs; each picks
+              # its arch-specific staged dir via `${arch}` in extraResources.
+              bun ./scripts/fetch-opencode.mjs --platform=darwin --arch=arm64
+              bun ./scripts/fetch-opencode.mjs --platform=darwin --arch=x64
+              ;;
+            linux)
+              bun ./scripts/fetch-opencode.mjs --platform=linux --arch=x64
+              ;;
+            win)
+              bun ./scripts/fetch-opencode.mjs --platform=win32 --arch=x64
+              ;;
+            *)
+              echo "unknown matrix.platform: ${{ matrix.platform }}"
+              exit 1
+              ;;
+          esac
+
       # Hash the editor dist tree on every runner and ship the digest in the
       # artifact. The publish job compares the three and fails if they
       # diverge — that protects the "one Linux-built hot-update tarball is
