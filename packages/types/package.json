@@ -31,8 +31,5 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "prepublishOnly": "bun run build"
-  },
-  "devDependencies": {
-    "typescript": "^5.8.3"
   }
 }
