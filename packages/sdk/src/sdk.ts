@@ -127,8 +127,17 @@ export {
   extractInputReferences,
   resolveTaskInputs,
   extractTaskOutputs,
+  inferPromptPorts,
 } from './ports';
-export type { SubstituteResult, InputResolution, ExtractResult } from './ports';
+export type {
+  SubstituteResult,
+  InputResolution,
+  ExtractResult,
+  PromptPortInference,
+  PromptPortConflict,
+  PromptUpstreamNeighbor,
+  PromptDownstreamNeighbor,
+} from './ports';
 
 // ── All types from @tagma/types + runtime constants ──
 export * from './types';

@@ -1,6 +1,6 @@
-// ═══ Task ports: substitute / resolve / extract ═══
+// ═══ Task ports: substitute / resolve / extract / infer ═══
 //
-// One module, three concerns, all keyed on `task.ports`:
+// One module, four concerns, all keyed on `task.ports`:
 //
 //   1. `substituteInputs(text, inputs)` — expand `{{inputs.<name>}}` in
 //      user-authored strings (command lines, prompts). Strict syntax, no
@@ -22,10 +22,19 @@
 //      it. Prefer `normalizedOutput` for AI tasks, fall back to raw
 //      stdout — command tasks only ever have stdout.
 //
+//   4. `inferPromptPorts({upstreams, downstreams})` — Prompt Tasks do NOT
+//      declare ports; their I/O contract is inferred from direct-neighbor
+//      Command Tasks. This helper synthesizes a `TaskPorts` object the
+//      engine can feed into the three concerns above, and surfaces any
+//      collisions that block the task (same port name on two upstreams,
+//      incompatible types across downstreams, …). Prompt neighbors
+//      contribute zero structured I/O — they pass free text via
+//      `continue_from` / normalizedOutput instead.
+//
 // Everything here is pure / deterministic so it can be reused by the CLI,
 // the editor (for preview/simulation), and the engine without side effects.
 
-import type { PortDef, TaskConfig, TaskPorts } from './types';
+import type { PortDef, PortType, TaskConfig, TaskPorts } from './types';
 
 // ─── Template substitution ────────────────────────────────────────────
 
@@ -439,4 +448,222 @@ function safeParseJson(candidate: string): Record<string, unknown> | null {
     /* not JSON */
   }
   return null;
+}
+
+// ─── Prompt-task port inference ───────────────────────────────────────
+//
+// Prompt Tasks have no declared ports. The engine calls `inferPromptPorts`
+// to synthesize one from the Task's direct DAG neighbors:
+//
+//   - **inputs** are taken from the declared `outputs` of every direct
+//     upstream Command Task. The union of names becomes the Prompt's
+//     inferred inputs. Upstream Prompt neighbors contribute nothing —
+//     information flows between Prompts as free text through
+//     `continue_from` / normalizedOutput, not through port values.
+//
+//   - **outputs** are taken from the declared `inputs` of every direct
+//     downstream Command Task. The union of names becomes the Prompt's
+//     inferred outputs, which drives the `[Output Format]` block that
+//     tells the LLM what JSON to emit. Downstream Prompt neighbors
+//     contribute nothing (they just consume free text).
+//
+// Collisions:
+//
+//   - **Input collision**: two upstream Commands both export an output
+//     named `city`. Command→Command would let a downstream add
+//     `from: taskId.city` to pick one; Prompt Tasks have no port
+//     declarations and therefore no escape hatch. The only fix is to
+//     rename on the Command side. We surface this as an `inputConflicts`
+//     entry; the engine blocks the task with that reason.
+//
+//   - **Output collision with compatible types** (e.g. both downstreams
+//     ask for `date: string` with the same description) → merged into a
+//     single inferred output. The Prompt produces one `date`; both
+//     downstreams consume it.
+//
+//   - **Output collision with incompatible types** (e.g. one downstream
+//     wants `date: string`, another `date: number`) → no single LLM
+//     emission can satisfy both. Surfaced as `outputConflicts`; engine
+//     blocks the task. User must rename on one side.
+
+export interface PromptUpstreamNeighbor {
+  readonly taskId: string;
+  /**
+   * Declared outputs of the upstream task. `undefined` signals that the
+   * neighbor is a Prompt Task (no structured contribution) or otherwise
+   * has no outputs to offer. The inference logic treats `undefined` and
+   * an empty array the same way — neither contributes ports.
+   */
+  readonly outputs: readonly PortDef[] | undefined;
+}
+
+export interface PromptDownstreamNeighbor {
+  readonly taskId: string;
+  /**
+   * Declared inputs of the downstream task. `undefined` signals a
+   * Prompt-Task neighbor or a Command Task without declared inputs.
+   * Either way it contributes no ports to the inferred output contract.
+   */
+  readonly inputs: readonly PortDef[] | undefined;
+}
+
+export interface PromptPortConflict {
+  readonly portName: string;
+  readonly producers: readonly { readonly taskId: string; readonly type: PortType }[];
+  /** Pre-formatted human-readable reason for logs / stderr. */
+  readonly reason: string;
+}
+
+export interface PromptPortInference {
+  /**
+   * Synthetic `TaskPorts` the engine feeds into the resolve / substitute /
+   * render / extract helpers, exactly as if the Prompt had declared these
+   * ports itself. Empty arrays are preserved as absent so downstream code
+   * paths treat "no ports" uniformly (see engine.ts's existing
+   * `task.ports?.outputs && task.ports.outputs.length > 0` guard).
+   */
+  readonly ports: TaskPorts;
+  readonly inputConflicts: readonly PromptPortConflict[];
+  readonly outputConflicts: readonly PromptPortConflict[];
+}
+
+/**
+ * Derive the effective `TaskPorts` for a Prompt Task from its direct
+ * neighbors. See the module-level "Prompt-task port inference" comment
+ * for the full contract.
+ *
+ * Pure function — no side effects, safe to call from the CLI, editor
+ * preview, and engine hot path alike.
+ */
+export function inferPromptPorts(input: {
+  readonly upstreams: readonly PromptUpstreamNeighbor[];
+  readonly downstreams: readonly PromptDownstreamNeighbor[];
+}): PromptPortInference {
+  const { upstreams, downstreams } = input;
+
+  // ─── Inputs: union of upstream-Command outputs ─────────────────────
+  //
+  // Walk every upstream in DAG order. First occurrence of a name wins
+  // (for the synthesized port shape used to resolve values). Subsequent
+  // occurrences under the same name become an `inputConflicts` entry —
+  // the engine blocks the task because a Prompt can't disambiguate.
+  const inputsByName = new Map<string, { port: PortDef; firstProducer: string }>();
+  const inputCollisionSources = new Map<string, { taskId: string; type: PortType }[]>();
+
+  for (const upstream of upstreams) {
+    if (!upstream.outputs || upstream.outputs.length === 0) continue;
+    for (const out of upstream.outputs) {
+      const prior = inputsByName.get(out.name);
+      if (!prior) {
+        // Copy the shape verbatim but drop output-only fields and force
+        // `required: true`. Prompt-task inferred inputs are required by
+        // default: the LLM wouldn't be getting a real-world value
+        // otherwise, and substituting an empty string silently is the
+        // same kind of bug we already reject elsewhere.
+        inputsByName.set(out.name, {
+          port: {
+            name: out.name,
+            type: out.type,
+            ...(out.description ? { description: out.description } : {}),
+            ...(out.enum ? { enum: [...out.enum] } : {}),
+            required: true,
+          },
+          firstProducer: upstream.taskId,
+        });
+        continue;
+      }
+      // Collision — seed the source list with the first producer too so
+      // the emitted conflict lists *all* contributing producers.
+      const list = inputCollisionSources.get(out.name) ?? [
+        { taskId: prior.firstProducer, type: prior.port.type },
+      ];
+      list.push({ taskId: upstream.taskId, type: out.type });
+      inputCollisionSources.set(out.name, list);
+    }
+  }
+
+  const inputConflicts: PromptPortConflict[] = [];
+  for (const [portName, producers] of inputCollisionSources) {
+    const producerList = producers.map((p) => p.taskId).join(', ');
+    inputConflicts.push({
+      portName,
+      producers,
+      reason:
+        `input "${portName}" is produced by multiple upstream Commands (${producerList}) — ` +
+        `Prompt tasks cannot disambiguate (no explicit "from:" binding). ` +
+        `Rename the output on one of the upstream Commands.`,
+    });
+  }
+
+  // ─── Outputs: union of downstream-Command inputs ───────────────────
+  //
+  // Compatible repeats merge (preserve first-encountered shape; prefer
+  // required when any downstream requires it). Incompatible repeats
+  // (different type, different enum set) go to `outputConflicts`.
+  const outputsByName = new Map<string, { port: PortDef; firstConsumer: string }>();
+  const outputCollisionSources = new Map<string, { taskId: string; type: PortType }[]>();
+
+  for (const downstream of downstreams) {
+    if (!downstream.inputs || downstream.inputs.length === 0) continue;
+    for (const inp of downstream.inputs) {
+      const prior = outputsByName.get(inp.name);
+      if (!prior) {
+        // Outputs drop input-only fields (required, default, from).
+        outputsByName.set(inp.name, {
+          port: {
+            name: inp.name,
+            type: inp.type,
+            ...(inp.description ? { description: inp.description } : {}),
+            ...(inp.enum ? { enum: [...inp.enum] } : {}),
+          },
+          firstConsumer: downstream.taskId,
+        });
+        continue;
+      }
+      if (portsAreCompatible(prior.port, inp)) continue; // merge silently
+      const list = outputCollisionSources.get(inp.name) ?? [
+        { taskId: prior.firstConsumer, type: prior.port.type },
+      ];
+      list.push({ taskId: downstream.taskId, type: inp.type });
+      outputCollisionSources.set(inp.name, list);
+    }
+  }
+
+  const outputConflicts: PromptPortConflict[] = [];
+  for (const [portName, producers] of outputCollisionSources) {
+    const consumerList = producers.map((p) => `${p.taskId} (${p.type})`).join(', ');
+    outputConflicts.push({
+      portName,
+      producers,
+      reason:
+        `output "${portName}" has conflicting type requirements across downstream Commands ` +
+        `(${consumerList}) — a single LLM emission cannot satisfy both. ` +
+        `Rename the input on one of the downstream Commands.`,
+    });
+  }
+
+  const inferredInputs = [...inputsByName.values()].map((e) => e.port);
+  const inferredOutputs = [...outputsByName.values()].map((e) => e.port);
+
+  const ports: TaskPorts = {
+    ...(inferredInputs.length > 0 ? { inputs: inferredInputs } : {}),
+    ...(inferredOutputs.length > 0 ? { outputs: inferredOutputs } : {}),
+  };
+  return { ports, inputConflicts, outputConflicts };
+}
+
+/**
+ * Two ports with the same name are compatible if they agree on `type`
+ * and, for enum ports, on the enum value set. Descriptions and
+ * required/default flags are deliberately ignored — they don't affect
+ * whether a single value can satisfy both consumers.
+ */
+function portsAreCompatible(a: PortDef, b: PortDef): boolean {
+  if (a.type !== b.type) return false;
+  if (a.type === 'enum') {
+    const aEnum = [...(a.enum ?? [])].sort().join(' ');
+    const bEnum = [...(b.enum ?? [])].sort().join(' ');
+    if (aEnum !== bEnum) return false;
+  }
+  return true;
 }

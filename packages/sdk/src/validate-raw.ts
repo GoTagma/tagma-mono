@@ -6,7 +6,13 @@
 //
 // Returns a flat list of ValidationError objects. An empty array means valid.
 
-import type { PortDef, PortType, RawPipelineConfig, RawTaskConfig } from './types';
+import type {
+  PortDef,
+  PortType,
+  RawPipelineConfig,
+  RawTaskConfig,
+  RawTrackConfig,
+} from './types';
 import {
   isValidTaskId,
   qualifyTaskId,
@@ -15,6 +21,24 @@ import {
   type TaskIndex,
 } from './task-ref';
 import { extractInputReferences } from './ports';
+
+interface QidEntry {
+  readonly track: RawTrackConfig;
+  readonly task: RawTaskConfig;
+}
+
+/** qid → {track, task} lookup built once per validation pass. */
+function buildQidIndex(config: RawPipelineConfig): Map<string, QidEntry> {
+  const idx = new Map<string, QidEntry>();
+  for (const track of config.tracks ?? []) {
+    if (!track.id) continue;
+    for (const task of track.tasks ?? []) {
+      if (!task.id) continue;
+      idx.set(qualifyTaskId(track.id, task.id), { track, task });
+    }
+  }
+  return idx;
+}
 
 const DURATION_RE = /^(\d*\.?\d+)\s*(s|m|h|d)$/;
 function isValidDuration(input: string): boolean {
@@ -125,6 +149,9 @@ export function validateRaw(
   // Shared with dag.ts so "ambiguous" / "not found" stay consistent — refs
   // that buildDag later throws on will be reported here as errors first.
   const index = buildTaskIndex(config);
+  // Full qid → {track, task} index used by port-inference validation
+  // to walk a Prompt task's neighbors without re-scanning the tracks.
+  const qidIndex = buildQidIndex(config);
 
   // ── Per-track validation ──
   const seenTrackIds = new Set<string>();
@@ -286,7 +313,7 @@ export function validateRaw(
       }
 
       // ── Port declaration checks ──
-      validateTaskPorts(task, taskPath, errors);
+      validateTaskPorts(task, track.id, taskPath, qidIndex, index, errors);
 
       // ── depends_on reference checks ──
       if (task.depends_on && task.depends_on.length > 0) {
@@ -440,20 +467,40 @@ function validatePortList(
 
 function validateTaskPorts(
   task: RawTaskConfig,
+  trackId: string,
   taskPath: string,
+  qidIndex: Map<string, QidEntry>,
+  index: TaskIndex,
   errors: ValidationError[],
 ): void {
   const ports = task.ports;
-  // Placeholder cross-checks are independent of ports being declared —
-  // a user can type `{{inputs.X}}` without declaring any ports yet, and
-  // that's always an error (the engine has no `X` to substitute, and
-  // `validate-raw` is the one place that surfaces this before a run).
-  // Running the check unconditionally catches the typo on its own.
-  const declaredInputs = new Set<string>(
-    ports && Array.isArray(ports.inputs)
-      ? ports.inputs.filter((p): p is PortDef => !!p && typeof p === 'object').map((p) => p.name)
-      : [],
-  );
+  const isPromptTask = typeof task.prompt === 'string' && typeof task.command !== 'string';
+  const isCommandTask = typeof task.command === 'string' && typeof task.prompt !== 'string';
+
+  // ─── Prompt tasks do not declare ports ──
+  //
+  // A Prompt Task's I/O contract is inferred from direct-neighbor
+  // Command Tasks at runtime (see `inferPromptPorts` in ports.ts).
+  // Declaring `ports` on a Prompt Task is always a configuration
+  // mistake: the declared shape would be silently ignored in favour of
+  // the inferred one, and the two drifting out of sync is the exact bug
+  // the inference design eliminates.
+  if (isPromptTask && ports !== undefined) {
+    errors.push({
+      path: `${taskPath}.ports`,
+      message:
+        `Task "${task.id}": prompt tasks do not declare ports — their I/O is ` +
+        `inferred from direct-neighbor Command tasks. Remove the "ports" field ` +
+        `and declare the corresponding inputs/outputs on the upstream/downstream ` +
+        `Command tasks instead.`,
+    });
+  }
+
+  // ─── Collect placeholder references ──
+  // `{{inputs.X}}` is valid in both prompt and command text. The set of
+  // names a task may legally reference differs by task kind:
+  //   - Command Task: its own declared `ports.inputs`
+  //   - Prompt Task:  the union of direct-upstream Command outputs
   const referenced = new Set<string>();
   if (typeof task.prompt === 'string') {
     for (const n of extractInputReferences(task.prompt)) referenced.add(n);
@@ -461,40 +508,203 @@ function validateTaskPorts(
   if (typeof task.command === 'string') {
     for (const n of extractInputReferences(task.command)) referenced.add(n);
   }
+
+  let availableInputs: Set<string>;
+  if (isPromptTask) {
+    availableInputs = collectUpstreamCommandOutputNames(task, trackId, qidIndex, index);
+  } else {
+    // Command Task (or the pathological both-keys case, which is caught
+    // earlier as a separate error — tolerate it here).
+    availableInputs = new Set<string>(
+      ports && Array.isArray(ports.inputs)
+        ? ports.inputs.filter((p): p is PortDef => !!p && typeof p === 'object').map((p) => p.name)
+        : [],
+    );
+  }
+
   for (const name of referenced) {
-    if (!declaredInputs.has(name)) {
+    if (!availableInputs.has(name)) {
+      const hint = isPromptTask
+        ? `no upstream Command task exports an output port named "${name}"`
+        : `no such input port is declared`;
       errors.push({
         path: taskPath,
-        message: `Task "${task.id}": references "{{inputs.${name}}}" but no such input port is declared`,
+        message: `Task "${task.id}": references "{{inputs.${name}}}" but ${hint}`,
       });
     }
   }
 
-  if (!ports) return;
+  // ─── Structural port validation — Command Tasks only ──
+  //
+  // Prompt tasks already errored above if they tried to declare ports;
+  // running the per-port structural validator on the ignored object
+  // would just produce duplicate noise.
+  if (isCommandTask && ports) {
+    validatePortList(ports.inputs, `${taskPath}.ports.inputs`, 'inputs', errors);
+    validatePortList(ports.outputs, `${taskPath}.ports.outputs`, 'outputs', errors);
 
-  // Per-port structural validation runs only after we've established
-  // that `ports.inputs` / `ports.outputs` are arrays — validatePortList
-  // also re-checks Array.isArray internally, which keeps it callable
-  // from contexts that hand it stray values.
-  validatePortList(ports.inputs, `${taskPath}.ports.inputs`, 'inputs', errors);
-  validatePortList(ports.outputs, `${taskPath}.ports.outputs`, 'outputs', errors);
+    // Warn on declared-but-unused inputs. Not fatal — a user may want
+    // to surface an input as a data-flow hint for the editor even when
+    // the command doesn't template it explicitly.
+    if (typeof task.command === 'string' && Array.isArray(ports.inputs)) {
+      for (const port of ports.inputs) {
+        if (!port || typeof port !== 'object') continue;
+        if (!referenced.has(port.name)) {
+          errors.push({
+            path: `${taskPath}.ports.inputs`,
+            severity: 'warning',
+            message: `Task "${task.id}": command does not reference {{inputs.${port.name}}} — declared input is unused`,
+          });
+        }
+      }
+    }
+  }
 
-  // Warn on declared-but-unused inputs. Not fatal — a user may want to
-  // surface an input as a data-flow hint for the editor even when the
-  // prompt/command doesn't template it explicitly (e.g. AI tasks that
-  // consume inputs through the `[Inputs]` context block).
-  if (typeof task.command === 'string' && Array.isArray(ports.inputs)) {
-    for (const port of ports.inputs) {
-      if (!port || typeof port !== 'object') continue;
-      if (!referenced.has(port.name)) {
+  // ─── Prompt-task inferred-port conflict checks ──
+  //
+  // Static counterparts to the runtime checks `inferPromptPorts` runs.
+  // These surface problems at author-time in the editor so the user
+  // fixes them before a run, rather than hitting a "blocked" task.
+  if (isPromptTask) {
+    validateInferredPromptPortConflicts(task, trackId, taskPath, qidIndex, index, errors);
+  }
+}
+
+/**
+ * Walk the direct-upstream Commands of a Prompt Task and collect every
+ * output port name they export. Prompt upstreams contribute nothing —
+ * they pass free text via continue_from, not structured ports — so we
+ * skip them. This mirrors exactly what the engine does at runtime in
+ * `inferPromptPorts`, keeping the editor and runtime views aligned.
+ */
+function collectUpstreamCommandOutputNames(
+  task: RawTaskConfig,
+  trackId: string,
+  qidIndex: Map<string, QidEntry>,
+  index: TaskIndex,
+): Set<string> {
+  const names = new Set<string>();
+  for (const dep of task.depends_on ?? []) {
+    const r = resolveTaskRef(dep, trackId, index);
+    if (r.kind !== 'resolved') continue;
+    const entry = qidIndex.get(r.qid);
+    if (!entry) continue;
+    // Only Command tasks contribute — Prompt upstreams pass free text.
+    if (typeof entry.task.command !== 'string') continue;
+    const outputs = entry.task.ports?.outputs;
+    if (!Array.isArray(outputs)) continue;
+    for (const port of outputs) {
+      if (port && typeof port === 'object' && typeof port.name === 'string') {
+        names.add(port.name);
+      }
+    }
+  }
+  return names;
+}
+
+/**
+ * Detect the two kinds of collision that would block a Prompt Task at
+ * runtime — report them at validate-time so the editor lights them up
+ * before a run is attempted.
+ *
+ * 1. Input collision: two direct-upstream Commands both export an
+ *    output with the same name. Command→Command would let the
+ *    downstream disambiguate with `from:`; Prompt tasks have no port
+ *    declarations and therefore no escape hatch.
+ * 2. Output collision: two direct-downstream Commands declare inputs
+ *    with the same name but incompatible shapes (different type, or
+ *    different enum sets). A single LLM emission cannot satisfy both.
+ */
+function validateInferredPromptPortConflicts(
+  task: RawTaskConfig,
+  trackId: string,
+  taskPath: string,
+  qidIndex: Map<string, QidEntry>,
+  index: TaskIndex,
+  errors: ValidationError[],
+): void {
+  // ─── Input collision ──
+  const producersByName = new Map<string, string[]>();
+  for (const dep of task.depends_on ?? []) {
+    const r = resolveTaskRef(dep, trackId, index);
+    if (r.kind !== 'resolved') continue;
+    const entry = qidIndex.get(r.qid);
+    if (!entry || typeof entry.task.command !== 'string') continue;
+    const outputs = entry.task.ports?.outputs;
+    if (!Array.isArray(outputs)) continue;
+    for (const port of outputs) {
+      if (!port || typeof port !== 'object' || typeof port.name !== 'string') continue;
+      const list = producersByName.get(port.name) ?? [];
+      list.push(r.qid);
+      producersByName.set(port.name, list);
+    }
+  }
+  for (const [name, producers] of producersByName) {
+    if (producers.length > 1) {
+      errors.push({
+        path: taskPath,
+        message:
+          `Task "${task.id}": upstream Commands ${producers.join(', ')} all export ` +
+          `"${name}" — prompt tasks cannot disambiguate (no "from:" binding available). ` +
+          `Rename the output on one of the upstream Commands.`,
+      });
+    }
+  }
+
+  // ─── Output collision ──
+  //
+  // Walk every task in the pipeline once and check whether it depends on
+  // us. We reuse the shared qidIndex + TaskIndex for the lookup; small
+  // pipelines stay O(tasks), which is fine for validate-raw (it already
+  // O(tasks) elsewhere).
+  const taskQid = qualifyTaskId(trackId, task.id);
+  const consumerShapeByName = new Map<
+    string,
+    { readonly shape: string; readonly firstConsumer: string }
+  >();
+  const reported = new Set<string>();
+  for (const [downstreamQid, entry] of qidIndex) {
+    if (downstreamQid === taskQid) continue;
+    if (typeof entry.task.command !== 'string') continue; // only downstream Commands contribute
+    const deps = entry.task.depends_on ?? [];
+    let dependsOnUs = false;
+    for (const d of deps) {
+      const r = resolveTaskRef(d, entry.track.id, index);
+      if (r.kind === 'resolved' && r.qid === taskQid) {
+        dependsOnUs = true;
+        break;
+      }
+    }
+    if (!dependsOnUs) continue;
+    const inputs = entry.task.ports?.inputs;
+    if (!Array.isArray(inputs)) continue;
+    for (const port of inputs) {
+      if (!port || typeof port !== 'object' || typeof port.name !== 'string') continue;
+      const shape = portShapeKey(port);
+      const prior = consumerShapeByName.get(port.name);
+      if (!prior) {
+        consumerShapeByName.set(port.name, { shape, firstConsumer: downstreamQid });
+        continue;
+      }
+      if (prior.shape !== shape && !reported.has(port.name)) {
+        reported.add(port.name);
         errors.push({
-          path: `${taskPath}.ports.inputs`,
-          severity: 'warning',
-          message: `Task "${task.id}": command does not reference {{inputs.${port.name}}} — declared input is unused`,
+          path: taskPath,
+          message:
+            `Task "${task.id}": downstream Commands ${prior.firstConsumer} and ` +
+            `${downstreamQid} disagree on the shape of inferred output "${port.name}" — ` +
+            `a single LLM emission cannot satisfy both. Rename on one side.`,
         });
       }
     }
   }
+}
+
+/** Minimal shape fingerprint for conflict detection: type + enum set. */
+function portShapeKey(port: PortDef): string {
+  if (port.type !== 'enum') return String(port.type);
+  const enums = Array.isArray(port.enum) ? [...port.enum].sort().join('|') : '';
+  return `enum:${enums}`;
 }
 
 function detectCycles(config: RawPipelineConfig, index: TaskIndex): ValidationError[] {

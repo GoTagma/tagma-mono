@@ -30,7 +30,13 @@ import {
   renderInputsBlock,
   renderOutputSchemaBlock,
 } from './prompt-doc';
-import { extractTaskOutputs, resolveTaskInputs, substituteInputs } from './ports';
+import {
+  extractTaskOutputs,
+  inferPromptPorts,
+  resolveTaskInputs,
+  substituteInputs,
+} from './ports';
+import type { TaskPorts } from './types';
 import {
   executeHook,
   buildPipelineStartContext,
@@ -393,6 +399,20 @@ export async function runPipeline(
     // just before a task runs, so every subsequent task_update event can
     // echo them to the UI without re-resolving.
     const resolvedInputsMap = new Map<string, Readonly<Record<string, unknown>>>();
+    // Reverse adjacency: for each task, list the direct-downstream task ids
+    // (tasks whose `depends_on` includes this one after DAG qualification).
+    // Computed once up front so Prompt-task port inference — which needs
+    // "what Commands directly consume me?" — is O(1) instead of O(tasks)
+    // per Prompt start. `dag.nodes` only exposes forward edges via
+    // `dependsOn`, so we build this locally.
+    const directDownstreams = new Map<string, string[]>();
+    for (const [id] of dag.nodes) directDownstreams.set(id, []);
+    for (const [id, node] of dag.nodes) {
+      for (const upstream of node.dependsOn) {
+        const list = directDownstreams.get(upstream);
+        if (list) list.push(id);
+      }
+    }
 
     // Pipeline timeout + abort reason tracking.
     //
@@ -753,7 +773,83 @@ export async function runPipeline(
       // Resolution runs even for tasks that declare no ports — the call
       // is cheap and returns `{kind: 'ready', inputs: {}}` in that case,
       // which downstream code handles uniformly.
-      const inputResolution = resolveTaskInputs(task, outputValuesMap, node.dependsOn);
+      //
+      // Prompt Tasks have no declared ports — their I/O contract is
+      // inferred from direct-neighbor Command Tasks (see ports.ts:
+      // `inferPromptPorts`). We synthesize a `TaskPorts` object and
+      // feed it into the same resolve/substitute/render/extract
+      // pipeline the Command path uses. Collisions that a Prompt can't
+      // disambiguate (same input name on two upstreams, incompatible
+      // downstream output types) block the task with a clear message.
+      const isPromptTask = task.prompt !== undefined && task.command === undefined;
+      let effectivePorts: TaskPorts | undefined = task.ports;
+      let promptInferenceBlockReason: string | null = null;
+
+      if (isPromptTask) {
+        const inference = inferPromptPorts({
+          upstreams: node.dependsOn.map((upstreamId) => {
+            const upstream = dag.nodes.get(upstreamId);
+            const isUpstreamCommand = !!upstream?.task.command;
+            return {
+              taskId: upstreamId,
+              outputs: isUpstreamCommand ? upstream?.task.ports?.outputs : undefined,
+            };
+          }),
+          downstreams: (directDownstreams.get(taskId) ?? []).map((downstreamId) => {
+            const downstream = dag.nodes.get(downstreamId);
+            const isDownstreamCommand = !!downstream?.task.command;
+            return {
+              taskId: downstreamId,
+              inputs: isDownstreamCommand ? downstream?.task.ports?.inputs : undefined,
+            };
+          }),
+        });
+        effectivePorts = inference.ports;
+        if (inference.inputConflicts.length > 0 || inference.outputConflicts.length > 0) {
+          const lines: string[] = [];
+          for (const c of inference.inputConflicts) lines.push(c.reason);
+          for (const c of inference.outputConflicts) lines.push(c.reason);
+          promptInferenceBlockReason = lines.join('\n');
+        }
+      }
+
+      if (promptInferenceBlockReason !== null) {
+        log.error(
+          `[task:${taskId}]`,
+          `blocked — prompt port inference failed:\n${promptInferenceBlockReason}`,
+        );
+        state.result = {
+          exitCode: -1,
+          stdout: '',
+          stderr: `[engine] prompt port inference failed:\n${promptInferenceBlockReason}`,
+          stdoutPath: null,
+          stderrPath: null,
+          durationMs: 0,
+          sessionId: null,
+          normalizedOutput: null,
+          failureKind: 'spawn_error',
+          outputs: null,
+        };
+        state.finishedAt = nowISO();
+        setTaskStatus(taskId, 'blocked');
+        try {
+          await fireHook(taskId, 'task_failure');
+        } catch (hookErr) {
+          log.error(
+            `[task:${taskId}]`,
+            `hook execution failed: ${hookErr instanceof Error ? hookErr.message : String(hookErr)}`,
+          );
+        }
+        if (getOnFailure(taskId) === 'stop_all') applyStopAll(node.track.id);
+        return;
+      }
+
+      // Feed effective ports into `resolveTaskInputs` by shallow-cloning
+      // the task. Prompt tasks get the inferred ports; Command tasks are
+      // unchanged (effectivePorts === task.ports).
+      const taskForResolve: TaskConfig =
+        effectivePorts === task.ports ? task : { ...task, ports: effectivePorts };
+      const inputResolution = resolveTaskInputs(taskForResolve, outputValuesMap, node.dependsOn);
       if (inputResolution.kind === 'blocked') {
         log.error(
           `[task:${taskId}]`,
@@ -792,10 +888,11 @@ export async function runPipeline(
           `optional inputs unresolved (empty in placeholders): ${inputResolution.missingOptional.join(', ')}`,
         );
       }
-      if (task.ports?.inputs && task.ports.inputs.length > 0) {
+      if (effectivePorts?.inputs && effectivePorts.inputs.length > 0) {
         log.debug(
           `[task:${taskId}]`,
-          `resolved inputs: ${JSON.stringify(resolvedInputs)}`,
+          `resolved inputs: ${JSON.stringify(resolvedInputs)}` +
+            (isPromptTask ? ' (inferred from upstream Commands)' : ''),
         );
       }
 
@@ -888,11 +985,11 @@ export async function runPipeline(
           // matters: [Output Format] first (sets the deliverable), then
           // [Inputs] (the concrete data to operate on). Empty blocks are
           // filtered out — tasks without ports get no extra blocks at all.
-          const outputFormatBlock = renderOutputSchemaBlock(task.ports?.outputs);
+          const outputFormatBlock = renderOutputSchemaBlock(effectivePorts?.outputs);
           if (outputFormatBlock) {
             doc = prependContext(doc, outputFormatBlock);
           }
-          const inputsBlock = renderInputsBlock(task.ports?.inputs, resolvedInputs);
+          const inputsBlock = renderInputsBlock(effectivePorts?.inputs, resolvedInputs);
           if (inputsBlock) {
             doc = prependContext(doc, inputsBlock);
           }
@@ -996,6 +1093,13 @@ export async function runPipeline(
             ...task,
             prompt,
             continue_from: node.resolvedContinueFrom,
+            // Hand the driver the EFFECTIVE port schema rather than the
+            // raw task.ports. For Prompt tasks this is the one inferred
+            // from neighbor Commands; Command tasks are unchanged.
+            // Drivers that introspect ports (e.g. to annotate a system
+            // prompt with the I/O contract) otherwise saw `undefined`
+            // for every prompt and had no way to know the contract.
+            ports: effectivePorts,
           };
           const driverCtx: DriverContext = {
             sessionMap,
@@ -1074,17 +1178,22 @@ export async function runPipeline(
         // through driver-specific logs.
         let extractedOutputs: Readonly<Record<string, unknown>> | null = null;
         if (terminalStatus === 'success') {
+          // Prompt tasks use inferred ports (from direct-downstream Command
+          // inputs); Command tasks use their declared ports. Either way,
+          // `extractTaskOutputs` is a no-op when there are no declared
+          // outputs to pull, so pre-ports tasks pay nothing for this call.
           const extraction = extractTaskOutputs(
-            task.ports,
+            effectivePorts,
             result.stdout,
             result.normalizedOutput,
           );
-          if (task.ports?.outputs && task.ports.outputs.length > 0) {
+          if (effectivePorts?.outputs && effectivePorts.outputs.length > 0) {
             extractedOutputs = extraction.outputs;
             outputValuesMap.set(taskId, extraction.outputs);
             log.debug(
               `[task:${taskId}]`,
-              `extracted outputs: ${JSON.stringify(extraction.outputs)}`,
+              `extracted outputs: ${JSON.stringify(extraction.outputs)}` +
+                (isPromptTask ? ' (inferred from downstream Commands)' : ''),
             );
             if (extraction.diagnostic) {
               log.error(`[task:${taskId}]`, extraction.diagnostic);

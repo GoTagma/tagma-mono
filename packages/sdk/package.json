@@ -1,6 +1,6 @@
 {
   "name": "@tagma/sdk",
-  "version": "0.6.7",
+  "version": "0.6.8",
   "description": "Local AI task orchestration engine — core SDK for tagma pipelines",
   "license": "MIT",
   "repository": {
@@ -20,6 +20,11 @@
       "types": "./dist/sdk.d.ts",
       "import": "./dist/sdk.js",
       "default": "./dist/sdk.js"
+    },
+    "./ports": {
+      "types": "./dist/ports.d.ts",
+      "import": "./dist/ports.js",
+      "default": "./dist/ports.js"
     }
   },
   "files": [

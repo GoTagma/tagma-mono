@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   extractInputReferences,
   extractTaskOutputs,
+  inferPromptPorts,
   resolveTaskInputs,
   substituteInputs,
 } from './ports';
@@ -297,5 +298,174 @@ describe('extractTaskOutputs', () => {
     const r = extractTaskOutputs({ outputs }, 'plain text output\nnothing json\n', null);
     expect(r.outputs).toEqual({});
     expect(r.diagnostic).toContain('could not find a final-line JSON object');
+  });
+});
+
+// ─── inferPromptPorts ───────────────────────────────────────────────
+
+describe('inferPromptPorts', () => {
+  test('inputs are taken from direct-upstream Command outputs', () => {
+    const r = inferPromptPorts({
+      upstreams: [
+        {
+          taskId: 't.up',
+          outputs: [
+            { name: 'city', type: 'string' },
+            { name: 'id', type: 'number' },
+          ],
+        },
+      ],
+      downstreams: [],
+    });
+    expect(r.inputConflicts).toEqual([]);
+    expect(r.outputConflicts).toEqual([]);
+    expect(r.ports.inputs).toHaveLength(2);
+    expect(r.ports.inputs?.map((p) => p.name).sort()).toEqual(['city', 'id']);
+    // Inferred inputs default to required: the LLM wouldn't see a real
+    // value if the upstream failed to produce one.
+    expect(r.ports.inputs?.every((p) => p.required === true)).toBe(true);
+    expect(r.ports.outputs).toBeUndefined();
+  });
+
+  test('outputs are taken from direct-downstream Command inputs', () => {
+    const r = inferPromptPorts({
+      upstreams: [],
+      downstreams: [
+        {
+          taskId: 't.down',
+          inputs: [
+            { name: 'greeting', type: 'string', required: true },
+            { name: 'target', type: 'string', default: 'world' },
+          ],
+        },
+      ],
+    });
+    expect(r.outputConflicts).toEqual([]);
+    expect(r.ports.outputs?.map((p) => p.name).sort()).toEqual(['greeting', 'target']);
+    // Outputs drop input-only fields (required, default, from).
+    for (const p of r.ports.outputs ?? []) {
+      expect(p).not.toHaveProperty('required');
+      expect(p).not.toHaveProperty('default');
+      expect(p).not.toHaveProperty('from');
+    }
+    expect(r.ports.inputs).toBeUndefined();
+  });
+
+  test('Prompt neighbors (outputs undefined) contribute nothing', () => {
+    const r = inferPromptPorts({
+      upstreams: [
+        { taskId: 't.up', outputs: undefined }, // Prompt upstream
+      ],
+      downstreams: [
+        { taskId: 't.down', inputs: undefined }, // Prompt downstream
+      ],
+    });
+    expect(r.ports).toEqual({});
+    expect(r.inputConflicts).toEqual([]);
+    expect(r.outputConflicts).toEqual([]);
+  });
+
+  test('two upstreams with the same output name produce an input conflict', () => {
+    const r = inferPromptPorts({
+      upstreams: [
+        { taskId: 't.a', outputs: [{ name: 'city', type: 'string' }] },
+        { taskId: 't.b', outputs: [{ name: 'city', type: 'string' }] },
+      ],
+      downstreams: [],
+    });
+    expect(r.inputConflicts).toHaveLength(1);
+    expect(r.inputConflicts[0]!.portName).toBe('city');
+    expect(r.inputConflicts[0]!.producers.map((p) => p.taskId).sort()).toEqual(['t.a', 't.b']);
+    expect(r.inputConflicts[0]!.reason).toMatch(/cannot disambiguate/);
+  });
+
+  test('two downstreams with compatible input types merge silently', () => {
+    const r = inferPromptPorts({
+      upstreams: [],
+      downstreams: [
+        {
+          taskId: 't.d1',
+          inputs: [{ name: 'date', type: 'string', required: true }],
+        },
+        {
+          taskId: 't.d2',
+          inputs: [{ name: 'date', type: 'string', required: false }],
+        },
+      ],
+    });
+    expect(r.outputConflicts).toEqual([]);
+    expect(r.ports.outputs).toHaveLength(1);
+    expect(r.ports.outputs![0]!.name).toBe('date');
+    expect(r.ports.outputs![0]!.type).toBe('string');
+  });
+
+  test('two downstreams with incompatible input types produce an output conflict', () => {
+    const r = inferPromptPorts({
+      upstreams: [],
+      downstreams: [
+        { taskId: 't.d1', inputs: [{ name: 'date', type: 'string' }] },
+        { taskId: 't.d2', inputs: [{ name: 'date', type: 'number' }] },
+      ],
+    });
+    expect(r.outputConflicts).toHaveLength(1);
+    expect(r.outputConflicts[0]!.portName).toBe('date');
+    expect(r.outputConflicts[0]!.reason).toMatch(/conflicting type requirements/);
+  });
+
+  test('enum ports with differing value sets are incompatible', () => {
+    const r = inferPromptPorts({
+      upstreams: [],
+      downstreams: [
+        {
+          taskId: 't.d1',
+          inputs: [{ name: 'bucket', type: 'enum', enum: ['a', 'b'] }],
+        },
+        {
+          taskId: 't.d2',
+          inputs: [{ name: 'bucket', type: 'enum', enum: ['a', 'c'] }],
+        },
+      ],
+    });
+    expect(r.outputConflicts).toHaveLength(1);
+  });
+
+  test('enum ports with identical value sets merge', () => {
+    const r = inferPromptPorts({
+      upstreams: [],
+      downstreams: [
+        {
+          taskId: 't.d1',
+          inputs: [{ name: 'bucket', type: 'enum', enum: ['a', 'b'] }],
+        },
+        {
+          taskId: 't.d2',
+          inputs: [{ name: 'bucket', type: 'enum', enum: ['b', 'a'] }], // different order, same set
+        },
+      ],
+    });
+    expect(r.outputConflicts).toEqual([]);
+    expect(r.ports.outputs).toHaveLength(1);
+  });
+
+  test('description and enum propagate from the first occurrence', () => {
+    const r = inferPromptPorts({
+      upstreams: [
+        {
+          taskId: 't.up',
+          outputs: [
+            {
+              name: 'kind',
+              type: 'enum',
+              enum: ['hot', 'cold'],
+              description: 'Weather kind',
+            },
+          ],
+        },
+      ],
+      downstreams: [],
+    });
+    const port = r.ports.inputs![0]!;
+    expect(port.description).toBe('Weather kind');
+    expect(port.enum).toEqual(['hot', 'cold']);
   });
 });
