@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { PluginRegistry } from './registry';
 import { bootstrapBuiltins } from './bootstrap';
 import { runPipeline, type RunEventPayload } from './engine';
-import type { PipelineConfig, RunTaskState, TaskConfig, TaskPorts, TaskStatus } from './types';
+import type { PipelineConfig, TaskConfig, TaskPorts, TaskStatus } from './types';
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
