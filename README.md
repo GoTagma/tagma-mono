@@ -135,18 +135,18 @@ The default flow is **CI-driven**: bump a package's `version` field, push to `ma
 
 ### 1. Bump version
 
-```bash
-# Patch (+0.0.1)
-bun run version:types:patch
-bun run version:codex:patch
-bun run version:claude-code:patch
-bun run version:lightrag:patch
-bun run version:webhook:patch
-bun run version:llm-judge:patch
-bun run version:sdk:patch
+A single wrapper script delegates to `bun pm version` for the chosen package:
 
-# Minor (+0.1.0) / Major (+1.0.0): swap :patch for :minor or :major
+```bash
+bun run version <pkg-alias> <patch|minor|major>
+
+# Examples
+bun run version sdk patch         # +0.0.1 on @tagma/sdk
+bun run version types minor       # +0.1.0 on @tagma/types
+bun run version codex major       # +1.0.0 on @tagma/driver-codex
 ```
+
+Valid package aliases: `types`, `codex`, `claude-code`, `lightrag`, `webhook`, `llm-judge`, `sdk` (defined in `scripts/version.mjs`).
 
 `bun pm version` only updates the `version` field — commit and push the change yourself. The CI workflow keys off the version diff in `packages/*/package.json`, not on git tags.
 

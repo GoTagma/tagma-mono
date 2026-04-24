@@ -72,6 +72,7 @@ console.log(result.success ? 'Done' : 'Failed');
 - **Middleware** -- enrich prompts before execution (e.g. inject static context)
 - **Completion checks** -- validate task output with `exit_code`, `file_exists`, or `output_check` plugins
 - **Plugin schemas** -- triggers/completions/middlewares can declare a `PluginSchema` so visual editors render typed forms for their config
+- **Typed task ports** -- declare named, typed `inputs` / `outputs` on a task. Inputs from upstream tasks are substituted into `command` / `prompt` via `{{inputs.<name>}}` and rendered as an `[Inputs]` context block for AI tasks; outputs are extracted from the final-line JSON object on stdout (or `normalizedOutput`) and surfaced to downstream tasks
 
 ## Pipeline YAML Reference
 
@@ -199,6 +200,7 @@ Each hook value can be a single command string or an array of commands.
 | `middlewares`   | `MiddlewareConfig[]` | No       | Inherited from track | Middleware override. Set `[]` to disable inherited middlewares                                         |
 | `trigger`       | `TriggerConfig`      | No       | —                    | Gate that must resolve before the task runs (see Triggers)                                             |
 | `completion`    | `CompletionConfig`   | No       | —                    | Post-execution check to validate task output (see Completions)                                         |
+| `ports`         | `TaskPorts`          | No       | —                    | Typed input/output ports — see Typed Ports below                                                       |
 
 ### Permissions
 
@@ -215,6 +217,51 @@ Fields are inherited top-down: **pipeline → track → task**. A value set at a
 Inherited fields: `driver`, `model`, `permissions`, `cwd`, `middlewares`.
 
 Track-level `middlewares` apply to all tasks in the track. Setting task-level `middlewares` **replaces** (not appends) the track-level list. Use `middlewares: []` to disable all inherited middlewares for a task.
+
+---
+
+### Typed Ports
+
+Tasks can declare named, typed `inputs` / `outputs`. Inputs flow in from upstream task outputs; outputs are extracted from a task's stdout (or the AI driver's `normalizedOutput`) on success.
+
+```yaml
+- id: lookup-weather
+  name: Lookup weather
+  command: weather.sh --city "{{inputs.city}}"
+  ports:
+    inputs:
+      - { name: city, type: string, required: true, description: Target city }
+    outputs:
+      - { name: temperature, type: number, description: Current temperature in Celsius }
+      - { name: conditions, type: enum, enum: [sunny, cloudy, rain, snow] }
+
+- id: write-report
+  depends_on: [lookup-weather]
+  prompt: 'Write a brief weather report for {{inputs.city}}.'
+  ports:
+    inputs:
+      - { name: city, type: string, required: true }
+      - { name: temperature, type: number, required: true }
+      - { name: conditions, type: enum, enum: [sunny, cloudy, rain, snow] }
+```
+
+#### `PortDef` fields
+
+| Field         | Type                                                  | Required | Description                                                                                                                                                                       |
+| ------------- | ----------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`        | `string`                                              | Yes      | Port name; also the substitution key (`{{inputs.<name>}}`)                                                                                                                        |
+| `type`        | `'string' \| 'number' \| 'boolean' \| 'enum' \| 'json'` | Yes      | Coercion type. Mismatched values block the task with a typed-error diagnostic                                                                                                     |
+| `description` | `string`                                              | No       | Free-text description; rendered into the `[Inputs]` / `[Output Format]` blocks                                                                                                    |
+| `required`    | `boolean`                                             | No       | Inputs only. When `true`, missing upstream value (and no `default`) blocks the task                                                                                               |
+| `default`     | `unknown`                                             | No       | Inputs only. Fallback value when no upstream produces the port                                                                                                                    |
+| `enum`        | `string[]`                                            | When `type: enum` | Allowed values                                                                                                                                                                    |
+| `from`        | `string`                                              | No       | Inputs only. Explicit upstream binding — bare `portName` (match by name) or `taskId.portName` (fully qualified). Unset = match by name across all direct upstreams; ambiguous matches block |
+
+#### Substitution and AI prompt blocks
+
+- `{{inputs.<name>}}` is expanded verbatim in `command` and `prompt` strings before execution. Quote your placeholders in command lines (`--city "{{inputs.city}}"`) — the engine does not shell-escape.
+- AI tasks additionally get two prepended `PromptContextBlock`s: `[Output Format]` (instructs the model to emit a final-line JSON object matching the declared outputs) and `[Inputs]` (renders the resolved inputs as `name: value  # description`). Tasks without ports get no extra blocks.
+- Output extraction strategy: prefer `normalizedOutput` (AI tasks), fall back to stdout (command tasks). Find the last non-empty line that parses as a JSON object, then read each declared output key. Failures append a diagnostic to stderr; the port is absent from `outputs` and downstream tasks see it as missing.
 
 ---
 
@@ -305,6 +352,8 @@ Options:
 - `runId` -- caller-supplied run ID. When provided the engine uses this instead of generating its own, keeping the caller and the SDK log directories aligned on the same ID
 - `maxLogRuns` -- number of per-run log directories to keep under `<workDir>/.tagma/logs/` (default: 20)
 - `skipPluginLoading` -- skip the engine's built-in `loadPlugins(config.plugins)` call. Set this when the host has already pre-loaded plugins from a custom resolution path (e.g. the editor loading from the user's workspace `node_modules`) so the engine doesn't re-resolve them via Node's default cwd-based import.
+
+> **stdout / stderr persistence.** The engine streams every task's stdout and stderr to disk under `<workDir>/.tagma/logs/<runId>/<taskId>.stdout` and `.stderr`. The `TaskResult.stdout` / `stderr` strings are bounded tails (8 MB / 4 MB by default) — long outputs are truncated from the head with a marker, and consumers that need the full bytes should read `TaskResult.stdoutPath` / `stderrPath`. Use `TaskResult.stdoutBytes` / `stderrBytes` to display "32 MB (truncated)" without re-stat'ing the file.
 
 ### `PipelineRunner`
 
@@ -474,11 +523,27 @@ Validates a resolved pipeline config without executing it. Checks DAG structure 
 
 Use `validateRaw` for editing raw configs in a UI; use `validateConfig` after `resolveConfig` for a final pre-run check.
 
+### Typed Ports API
+
+Pure helpers backing the `task.ports` feature (see Typed Ports above). Safe to use in editors, simulators, and custom drivers — no I/O, no side effects.
+
+| Function                                                | Description                                                                                                                                                                                                                          |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `substituteInputs(text, inputs)`                        | Expand `{{inputs.<name>}}` placeholders in `text`. Returns `{ text, unresolved }`. Strings pass through, numbers/booleans coerce via `String(...)`, objects/arrays via `JSON.stringify`. Caller is responsible for shell quoting     |
+| `extractInputReferences(text)`                          | Return the set of input port names referenced by `{{inputs.<name>}}` placeholders in `text`. Use at edit time to flag undeclared references                                                                                          |
+| `resolveTaskInputs(task, upstreamOutputs, dependsOn)`   | Gather the input values a task will consume from its direct upstreams. Applies `from` bindings, defaults, and type coercion. Returns `{ kind: 'ready', inputs, missingOptional }` or `{ kind: 'blocked', missingRequired, ambiguous, typeErrors, reason }` |
+| `extractTaskOutputs(ports, stdout, normalizedOutput)`   | Pull declared output values from a terminated task's output. Strategy: prefer `normalizedOutput`; find the last non-empty line that parses as a JSON object; coerce each declared key. Returns `{ outputs, diagnostic }`             |
+| `prependContext(doc, block)`                            | Same shape as `appendContext` but prepends; the engine uses this to place `[Output Format]` and `[Inputs]` blocks before middleware-added context                                                                                    |
+| `renderInputsBlock(inputsDecl, values)`                 | Build the `[Inputs]` `PromptContextBlock` rendered into AI prompts (`name: value  # description` lines). Returns `null` when no inputs to render                                                                                     |
+| `renderOutputSchemaBlock(outputsDecl)`                  | Build the `[Output Format]` `PromptContextBlock` instructing the model to emit a final-line JSON object matching the declared outputs. Returns `null` when no outputs declared                                                       |
+
+Custom drivers that wrap the prompt in their own envelope can read `DriverContext.inputs` (resolved + coerced map keyed by port name) and call `substituteInputs` themselves — the engine has already substituted into `task.prompt` upstream, so most drivers can ignore this.
+
 ### `validateRaw(config: RawPipelineConfig): ValidationError[]`
 
 Validates a raw pipeline config without resolving inheritance or executing anything. Returns a flat list of `{ path, message }` objects — empty array means valid.
 
-Checks: required fields, `prompt`/`command` exclusivity, duplicate task IDs within a track, `depends_on`/`continue_from` reference integrity (including ambiguous bare refs that exist in multiple tracks — use `trackId.taskId` to disambiguate), circular dependency detection.
+Checks: required fields, `prompt`/`command` exclusivity, duplicate task IDs within a track, `depends_on`/`continue_from` reference integrity (including ambiguous bare refs that exist in multiple tracks — use `trackId.taskId` to disambiguate), circular dependency detection, port shape (name format, valid `type`, duplicate names, `enum` requires non-empty `enum` array, `required`/`from` ignored on outputs), and `{{inputs.<name>}}` references resolving to a declared input port.
 
 Does **not** check plugin registration (plugins may not be loaded at edit time).
 
