@@ -27,7 +27,11 @@ export {
 
 // ── Raw config validation (real-time feedback) ──
 export { validateRaw } from './validate-raw';
-export type { ValidationError } from './validate-raw';
+export type { ValidationError, KnownPluginTypes } from './validate-raw';
+
+// ── YAML compiler (validation + compile log support) ──
+export { compileYamlContent } from './yaml-compiler';
+export type { YamlCompileResult, CompileYamlOptions } from './yaml-compiler';
 
 // ── Schema: parse / resolve / load / serialize / validate ──
 export {
