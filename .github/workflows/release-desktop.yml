@@ -926,17 +926,27 @@ jobs:
 
           git -C apps add electron/package.json "electron/CHANGELOG/${version}.md"
           git -C apps commit -m "chore(desktop): cut v${version}"
-          # Try fast-forward first; if origin/main moved between prepare and
-          # finalize, rebase the version-bump commit onto it and retry. The
-          # bump only touches electron/package.json + a new CHANGELOG/<ver>.md,
-          # so rebase can only conflict if someone else pushed the same version
-          # bump — a legitimate failure worth surfacing. Mirrors stage2's
-          # rebase-retry on tagma-mono (below).
+          # Fast-forward only. If origin/main moved between prepare capturing
+          # apps_sha and finalize pushing, abort with a clear message rather
+          # than auto-rebase: the bump edits electron/package.json's "version"
+          # line, which any concurrent release has also touched — the 3-way
+          # merge can't pick between them and dies with a cryptic CONFLICT
+          # that obscures the real cause. Recovery is to re-run the workflow;
+          # the fresh prepare will re-capture the new main SHA and bump from
+          # there.
           if ! git -C apps push origin HEAD:main; then
-            echo "fast-forward push failed; rebasing onto origin/main and retrying"
-            git -C apps fetch origin main
-            git -C apps rebase origin/main
-            git -C apps push origin HEAD:main
+            git -C apps fetch origin main >/dev/null 2>&1 || true
+            latest=$(git -C apps rev-parse origin/main 2>/dev/null || echo '<unknown>')
+            echo ""
+            echo "tagma-desktop/main was changed during release — please re-run the workflow."
+            echo "  prepare captured:  ${prepared_apps_sha}"
+            echo "  origin/main now:   ${latest}"
+            echo ""
+            echo "Another commit landed on tagma-desktop/main between prepare and"
+            echo "finalize (likely a concurrent release). Re-trigger Release Desktop;"
+            echo "the fresh prepare will bump from the new base version. Optionally"
+            echo "pass expected_apps_sha=${latest} to fail fast if main moves again."
+            exit 1
           fi
           new_apps_sha=$(git -C apps rev-parse HEAD)
           echo "pushed tagma-desktop/main @ $new_apps_sha"
