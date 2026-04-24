@@ -444,15 +444,16 @@ function validateTaskPorts(
   errors: ValidationError[],
 ): void {
   const ports = task.ports;
-  if (!ports) return;
-
-  validatePortList(ports.inputs, `${taskPath}.ports.inputs`, 'inputs', errors);
-  validatePortList(ports.outputs, `${taskPath}.ports.outputs`, 'outputs', errors);
-
-  // Cross-check `{{inputs.<name>}}` references in prompt / command against
-  // the declared inputs. Typos are the easiest ports bug to ship and the
-  // hardest to debug at runtime (placeholders silently render empty).
-  const declaredInputs = new Set(ports.inputs?.map((p) => p.name) ?? []);
+  // Placeholder cross-checks are independent of ports being declared —
+  // a user can type `{{inputs.X}}` without declaring any ports yet, and
+  // that's always an error (the engine has no `X` to substitute, and
+  // `validate-raw` is the one place that surfaces this before a run).
+  // Running the check unconditionally catches the typo on its own.
+  const declaredInputs = new Set<string>(
+    ports && Array.isArray(ports.inputs)
+      ? ports.inputs.filter((p): p is PortDef => !!p && typeof p === 'object').map((p) => p.name)
+      : [],
+  );
   const referenced = new Set<string>();
   if (typeof task.prompt === 'string') {
     for (const n of extractInputReferences(task.prompt)) referenced.add(n);
@@ -469,12 +470,22 @@ function validateTaskPorts(
     }
   }
 
+  if (!ports) return;
+
+  // Per-port structural validation runs only after we've established
+  // that `ports.inputs` / `ports.outputs` are arrays — validatePortList
+  // also re-checks Array.isArray internally, which keeps it callable
+  // from contexts that hand it stray values.
+  validatePortList(ports.inputs, `${taskPath}.ports.inputs`, 'inputs', errors);
+  validatePortList(ports.outputs, `${taskPath}.ports.outputs`, 'outputs', errors);
+
   // Warn on declared-but-unused inputs. Not fatal — a user may want to
   // surface an input as a data-flow hint for the editor even when the
   // prompt/command doesn't template it explicitly (e.g. AI tasks that
   // consume inputs through the `[Inputs]` context block).
-  if (typeof task.command === 'string') {
-    for (const port of ports.inputs ?? []) {
+  if (typeof task.command === 'string' && Array.isArray(ports.inputs)) {
+    for (const port of ports.inputs) {
+      if (!port || typeof port !== 'object') continue;
       if (!referenced.has(port.name)) {
         errors.push({
           path: `${taskPath}.ports.inputs`,
