@@ -208,14 +208,32 @@ function stripDefaultTaskCompletion<T extends { completion?: CompletionConfig }>
   return rest as T;
 }
 
-function stripDefaultCompletionsForSerialization<T extends PipelineConfig | RawPipelineConfig>(
+// `continue_from` is a prompt-only field — it tells AI drivers with
+// session-resume capability to thread off an upstream prompt task's context.
+// A command task runs as a plain shell subprocess and has no session to
+// resume, so any `continue_from` on a command task is dead weight. Drop it
+// at serialization time so YAML on disk never carries the stale field after
+// a user toggles task mode from prompt → command. The tagma-yaml agent's
+// system prompt (apps/editor/server/opencode-seed.ts) documents this
+// stripping — keep them in sync.
+function stripPromptOnlyFieldsFromCommandTask<
+  T extends { command?: string; continue_from?: string },
+>(task: T): T {
+  if (task.command === undefined || task.continue_from === undefined) return task;
+  const { continue_from: _cf, ...rest } = task;
+  return rest as T;
+}
+
+function stripForSerialization<T extends PipelineConfig | RawPipelineConfig>(
   config: T,
 ): T {
   return {
     ...config,
     tracks: config.tracks.map((track) => ({
       ...track,
-      tasks: track.tasks.map((task) => stripDefaultTaskCompletion(task)),
+      tasks: track.tasks.map((task) =>
+        stripPromptOnlyFieldsFromCommandTask(stripDefaultTaskCompletion(task)),
+      ),
     })),
   } as T;
 }
@@ -228,7 +246,7 @@ function stripDefaultCompletionsForSerialization<T extends PipelineConfig | RawP
  */
 export function serializePipeline(config: PipelineConfig | RawPipelineConfig): string {
   return yaml.dump(
-    { pipeline: stripDefaultCompletionsForSerialization(config) },
+    { pipeline: stripForSerialization(config) },
     { lineWidth: 120, indent: 2 },
   );
 }

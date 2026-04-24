@@ -56,6 +56,37 @@ describe('completion default serialization', () => {
     });
   });
 
+  test('serializePipeline drops continue_from from command tasks (prompt-only field)', () => {
+    const raw: RawPipelineConfig = {
+      name: 'Strip Continue From',
+      tracks: [
+        {
+          id: 'track_a',
+          name: 'Track A',
+          tasks: [
+            { id: 'upstream', prompt: 'generate something' },
+            // Simulates a task the user authored as `prompt` with a
+            // continue_from, then toggled to `command` in the editor panel.
+            // The field should not survive serialization.
+            {
+              id: 'downstream',
+              command: 'bun run build',
+              continue_from: 'upstream',
+              depends_on: ['upstream'],
+            },
+            // A prompt task keeps its continue_from as-is.
+            { id: 'threaded', prompt: 'refine', continue_from: 'upstream' },
+          ],
+        },
+      ],
+    };
+
+    const parsed = parsePipelineYaml(serializePipeline(raw));
+    expect(parsed.tracks[0].tasks[1].continue_from).toBeUndefined();
+    expect(parsed.tracks[0].tasks[1].depends_on).toEqual(['upstream']);
+    expect(parsed.tracks[0].tasks[2].continue_from).toBe('upstream');
+  });
+
   test('deresolvePipeline also omits the default exit_code completion', () => {
     const resolved: PipelineConfig = {
       name: 'Deresolve Defaults',
