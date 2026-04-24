@@ -1,0 +1,39 @@
+import { describe, expect, test } from 'bun:test';
+import plugin from './index';
+import manifest from '../package.json' with { type: 'json' };
+
+describe('driver-codex plugin shape', () => {
+  test('manifest declares drivers/codex and matches plugin.name', () => {
+    expect(manifest.tagmaPlugin.category).toBe('drivers');
+    expect(manifest.tagmaPlugin.type).toBe('codex');
+    expect(plugin.name).toBe(manifest.tagmaPlugin.type);
+  });
+
+  test('capabilities exposes three boolean flags', () => {
+    expect(typeof plugin.capabilities.sessionResume).toBe('boolean');
+    expect(typeof plugin.capabilities.systemPrompt).toBe('boolean');
+    expect(typeof plugin.capabilities.outputFormat).toBe('boolean');
+  });
+
+  test('buildCommand is a function', () => {
+    expect(typeof plugin.buildCommand).toBe('function');
+  });
+
+  test('buildCommand returns a SpawnSpec-shaped object (when codex is available)', async () => {
+    const task = {
+      id: 't1',
+      name: 't1',
+      prompt: 'hello',
+      permissions: { read: true, write: false, execute: false },
+    } as any;
+    const track = { id: 'k', name: 'k', tasks: [] } as any;
+    const ctx = { workDir: process.cwd(), normalizedMap: new Map(), sessionMap: new Map() } as any;
+    try {
+      const spec = await plugin.buildCommand(task, track, ctx);
+      expect(Array.isArray(spec.args)).toBe(true);
+    } catch (err) {
+      // Acceptable: `codex` CLI not installed on this machine — preflight throws.
+      expect(String(err)).toMatch(/codex/i);
+    }
+  });
+});
