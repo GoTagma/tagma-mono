@@ -114,12 +114,12 @@ async function collectStream(
   const chunks: Uint8Array[] = [];
   let tailBytes = 0;
   let totalBytes = 0;
-  const reader = stream.getReader();
 
   try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    // Use for await...of to avoid Bun bug where getReader() returns an
+    // incomplete reader missing releaseLock() under concurrent spawn.
+    // https://github.com/oven-sh/bun/issues/28952
+    for await (const value of stream as AsyncIterable<Uint8Array>) {
       totalBytes += value.length;
 
       // Disk: persist every byte. Failure here degrades to tail-only mode
@@ -158,7 +158,6 @@ async function collectStream(
       }
     }
   } finally {
-    reader.releaseLock();
     if (fh) {
       try {
         await fh.close();
