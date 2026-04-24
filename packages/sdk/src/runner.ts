@@ -114,11 +114,19 @@ async function collectStream(
   const chunks: Uint8Array[] = [];
   let tailBytes = 0;
   let totalBytes = 0;
+  let streamError: Error | null = null;
 
   try {
     // Use for await...of to avoid Bun bug where getReader() returns an
     // incomplete reader missing releaseLock() under concurrent spawn.
     // https://github.com/oven-sh/bun/issues/28952
+    //
+    // Bun 1.3.x also has sporadic failures iterating a spawned process's
+    // stream under concurrent Bun.spawn — the iterator throws mid-drain even
+    // when the child exited 0. We record the error as a breadcrumb instead
+    // of propagating, so the caller still sees the real exitCode from
+    // proc.exited and a task that the OS considered successful doesn't get
+    // marked failed over a runtime stream glitch.
     for await (const value of stream as AsyncIterable<Uint8Array>) {
       totalBytes += value.length;
 
@@ -157,6 +165,11 @@ async function collectStream(
         tailBytes = chunks[0]!.length;
       }
     }
+  } catch (err) {
+    streamError = err instanceof Error ? err : new Error(String(err));
+    console.error(
+      `[runner] stream read failed: ${streamError.message} — returning partial output`,
+    );
   } finally {
     if (fh) {
       try {
@@ -184,6 +197,10 @@ async function collectStream(
         : filePath
       : 'not persisted (no path configured)';
     text = `[…${dropped} bytes truncated from head — full output at: ${pathHint}]\n${text}`;
+  }
+
+  if (streamError) {
+    text = text + `\n[runner] stream read aborted: ${streamError.message}`;
   }
 
   return {
