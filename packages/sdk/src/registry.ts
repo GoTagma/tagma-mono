@@ -17,6 +17,20 @@ const VALID_CATEGORIES: ReadonlySet<PluginCategory> = new Set([
   'completions',
   'middlewares',
 ]);
+const PLUGIN_TYPE_RE = /^[A-Za-z_][A-Za-z0-9_-]*$/;
+
+function singularCategory(category: PluginCategory): string {
+  switch (category) {
+    case 'drivers':
+      return 'driver';
+    case 'triggers':
+      return 'trigger';
+    case 'completions':
+      return 'completion';
+    case 'middlewares':
+      return 'middleware';
+  }
+}
 
 /**
  * Minimal contract enforcement so a malformed plugin fails fast at
@@ -145,6 +159,11 @@ export function readPluginManifest(pkgJson: unknown): PluginManifest | null {
   if (typeof type !== 'string' || type.length === 0) {
     throw new Error(`tagmaPlugin.type must be a non-empty string, got ${JSON.stringify(type)}`);
   }
+  if (!PLUGIN_TYPE_RE.test(type)) {
+    throw new Error(
+      `tagmaPlugin.type must match ${PLUGIN_TYPE_RE} (letters, digits, underscores, hyphens; no paths or dots), got ${JSON.stringify(type)}`,
+    );
+  }
   return { category: category as PluginCategory, type };
 }
 
@@ -183,6 +202,11 @@ export class PluginRegistry {
     if (typeof type !== 'string' || type.length === 0) {
       throw new Error(`Plugin type must be a non-empty string (category="${category}")`);
     }
+    if (!PLUGIN_TYPE_RE.test(type)) {
+      throw new Error(
+        `Plugin type "${type}" must match ${PLUGIN_TYPE_RE} (letters, digits, underscores, hyphens; no paths or dots)`,
+      );
+    }
     validateContract(category, handler);
     const registry = this.registries[category] as Map<string, T>;
     const existing = registry.get(type);
@@ -220,7 +244,7 @@ export class PluginRegistry {
     if (!handler) {
       throw new Error(
         `${category} type "${type}" not registered.\n` +
-          `Install the plugin: bun add @tagma/${category.replace(/s$/, '')}-${type}`,
+          `Install the plugin: bun add @tagma/${singularCategory(category)}-${type}`,
       );
     }
     return handler as T;

@@ -135,6 +135,24 @@ describe('PluginRegistry — validation', () => {
       ),
     ).toThrow(/non-empty "name"/);
   });
+
+  test('rejects plugin type identifiers that are not YAML-safe ids', () => {
+    const reg = new PluginRegistry();
+    expect(() =>
+      reg.registerPlugin(
+        'drivers',
+        '../evil',
+        makeDriver('evil', []),
+      ),
+    ).toThrow(/Plugin type .* must match/);
+  });
+
+  test('middleware install hint uses singular middleware package name', () => {
+    const reg = new PluginRegistry();
+    expect(() => reg.getHandler('middlewares', 'audit')).toThrow(
+      /bun add @tagma\/middleware-audit/,
+    );
+  });
 });
 
 describe('runPipeline — options.registry isolation', () => {

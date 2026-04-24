@@ -67,6 +67,7 @@ const BUILTIN_COMPLETION_TYPES: ReadonlySet<string> = new Set([
   'output_check',
 ]);
 const BUILTIN_MIDDLEWARE_TYPES: ReadonlySet<string> = new Set(['static_context']);
+const BUILTIN_DRIVER_TYPES: ReadonlySet<string> = new Set(['opencode']);
 
 /**
  * Optional second argument to `validateRaw`: the set of plugin types currently
@@ -78,6 +79,7 @@ const BUILTIN_MIDDLEWARE_TYPES: ReadonlySet<string> = new Set(['static_context']
  * this argument and no plugin warnings will be produced.
  */
 export interface KnownPluginTypes {
+  readonly drivers?: readonly string[];
   readonly triggers?: readonly string[];
   readonly completions?: readonly string[];
   readonly middlewares?: readonly string[];
@@ -121,6 +123,9 @@ export function validateRaw(
   const knownTriggers = knownTypes
     ? new Set<string>([...BUILTIN_TRIGGER_TYPES, ...(knownTypes.triggers ?? [])])
     : null;
+  const knownDrivers = knownTypes
+    ? new Set<string>([...BUILTIN_DRIVER_TYPES, ...(knownTypes.drivers ?? [])])
+    : null;
   const knownCompletions = knownTypes
     ? new Set<string>([...BUILTIN_COMPLETION_TYPES, ...(knownTypes.completions ?? [])])
     : null;
@@ -136,6 +141,13 @@ export function validateRaw(
     errors.push({
       path: 'reasoning_effort',
       message: `Invalid reasoning_effort "${config.reasoning_effort}". Expected "low", "medium", or "high".`,
+    });
+  }
+  if (knownDrivers && config.driver && !knownDrivers.has(config.driver)) {
+    errors.push({
+      path: 'driver',
+      message: `Unknown driver type "${config.driver}"`,
+      severity: 'warning',
     });
   }
 
@@ -184,6 +196,13 @@ export function validateRaw(
       errors.push({
         path: `${trackPath}.reasoning_effort`,
         message: `Invalid reasoning_effort "${track.reasoning_effort}". Expected "low", "medium", or "high".`,
+      });
+    }
+    if (knownDrivers && track.driver && !knownDrivers.has(track.driver)) {
+      errors.push({
+        path: `${trackPath}.driver`,
+        message: `Unknown driver type "${track.driver}"`,
+        severity: 'warning',
       });
     }
 
@@ -274,6 +293,13 @@ export function validateRaw(
         errors.push({
           path: `${taskPath}.reasoning_effort`,
           message: `Invalid reasoning_effort "${task.reasoning_effort}". Expected "low", "medium", or "high".`,
+        });
+      }
+      if (knownDrivers && task.driver && !knownDrivers.has(task.driver)) {
+        errors.push({
+          path: `${taskPath}.driver`,
+          message: `Unknown driver type "${task.driver}"`,
+          severity: 'warning',
         });
       }
 
