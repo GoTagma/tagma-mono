@@ -62,35 +62,35 @@
     },
     "packages/completion-llm-judge": {
       "name": "@tagma/completion-llm-judge",
-      "version": "0.2.1",
+      "version": "0.2.3",
       "peerDependencies": {
         "@tagma/types": "workspace:*",
       },
     },
     "packages/driver-claude-code": {
       "name": "@tagma/driver-claude-code",
-      "version": "0.3.1",
+      "version": "0.3.3",
       "peerDependencies": {
         "@tagma/types": "workspace:*",
       },
     },
     "packages/driver-codex": {
       "name": "@tagma/driver-codex",
-      "version": "0.2.1",
+      "version": "0.2.3",
       "peerDependencies": {
         "@tagma/types": "workspace:*",
       },
     },
     "packages/middleware-lightrag": {
       "name": "@tagma/middleware-lightrag",
-      "version": "0.2.1",
+      "version": "0.2.3",
       "peerDependencies": {
         "@tagma/types": "workspace:*",
       },
     },
     "packages/sdk": {
       "name": "@tagma/sdk",
-      "version": "0.6.4",
+      "version": "0.6.6",
       "dependencies": {
         "@tagma/types": "workspace:*",
         "chokidar": "^4.0.0",
@@ -99,14 +99,14 @@
     },
     "packages/trigger-webhook": {
       "name": "@tagma/trigger-webhook",
-      "version": "0.2.1",
+      "version": "0.2.3",
       "peerDependencies": {
         "@tagma/types": "workspace:*",
       },
     },
     "packages/types": {
       "name": "@tagma/types",
-      "version": "0.4.2",
+      "version": "0.4.4",
     },
   },
   "packages": {

@@ -42,11 +42,25 @@ if (!fm.date || !fm.channel) {
   process.exit(1);
 }
 
+// Optional human-written release summary — if the CHANGELOG frontmatter
+// carries `summary` (en) or `summary_zh` (zh), copy it through so the
+// web repo's AnnouncementBar can show a real release tagline instead
+// of a generic "vX.Y is out" fallback.
+function yamlString(value) {
+  // JSON.stringify gives us a safe double-quoted YAML string for any
+  // content (escapes quotes, backslashes, control chars).
+  return JSON.stringify(String(value));
+}
+
+const summaryLines = [];
+if (fm.summary)    summaryLines.push(`summary: ${yamlString(fm.summary)}`);
+if (fm.summary_zh) summaryLines.push(`summary_zh: ${yamlString(fm.summary_zh)}`);
+
 const archiveOut = `---
 version: "${fm.version}"
 date: "${fm.date}"
 channel: "${fm.channel}"
----
+${summaryLines.length ? summaryLines.join('\n') + '\n' : ''}---
 `;
 const destArchiveDir = join(webDir, 'src/content/archive');
 mkdirSync(destArchiveDir, { recursive: true });
