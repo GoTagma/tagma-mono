@@ -20,7 +20,12 @@
 //           top_k: 20
 //           api_key_env: LIGHTRAG_API_KEY
 
-import type { MiddlewarePlugin, MiddlewareContext, PromptDocument } from '@tagma/types';
+import {
+  parseDurationSafe,
+  type MiddlewarePlugin,
+  type MiddlewareContext,
+  type PromptDocument,
+} from '@tagma/types';
 
 // Modes are the exact set accepted by LightRAG's QueryRequest.mode
 // Literal in lightrag/api/routers/query_routes.py. `bypass` sends the query
@@ -56,27 +61,6 @@ function validateEndpointUrl(endpoint: string): URL {
     );
   }
   return url;
-}
-
-// Inlined to avoid importing from @tagma/sdk internals — plugins must only
-// depend on @tagma/types so they stay decoupled from the engine.
-function parseDurationSafe(raw: unknown, fallback: number): number {
-  if (raw == null) return fallback;
-  const str = String(raw).trim();
-  const m = str.match(/^(\d+(?:\.\d+)?)(ms|s|m|h)?$/);
-  if (!m) return fallback;
-  const n = Number(m[1]);
-  switch (m[2]) {
-    case 'ms':
-      return n;
-    case 'm':
-      return n * 60_000;
-    case 'h':
-      return n * 3_600_000;
-    case 's':
-    default:
-      return n * 1000;
-  }
 }
 
 // Shape of LightRAG's QueryResponse Pydantic model (see

@@ -27,7 +27,12 @@
 //             rubric: "Output must list at least 3 failing tests with file paths."
 //             # endpoint / model / api_key_env all default to local Ollama + qwen3:4b
 
-import type { CompletionPlugin, CompletionContext, TaskResult } from '@tagma/types';
+import {
+  parseDurationSafe,
+  type CompletionPlugin,
+  type CompletionContext,
+  type TaskResult,
+} from '@tagma/types';
 
 // Ollama exposes an OpenAI-compatible `/v1/chat/completions` route on port
 // 11434 by default. Point this at any OpenAI-compatible server (OpenAI,
@@ -56,25 +61,6 @@ interface ChatCompletionResponse {
   readonly choices?: ReadonlyArray<{
     readonly message?: { readonly content?: string };
   }>;
-}
-
-function parseDurationSafe(raw: unknown, fallback: number): number {
-  if (raw == null) return fallback;
-  const str = String(raw).trim();
-  const m = str.match(/^(\d+(?:\.\d+)?)(ms|s|m|h)?$/);
-  if (!m) return fallback;
-  const n = Number(m[1]);
-  switch (m[2]) {
-    case 'ms':
-      return n;
-    case 'm':
-      return n * 60_000;
-    case 'h':
-      return n * 3_600_000;
-    case 's':
-    default:
-      return n * 1000;
-  }
 }
 
 // Head-and-tail truncation preserves the start of the output (where agents

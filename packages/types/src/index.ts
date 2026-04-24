@@ -72,6 +72,62 @@ export interface PluginSchema {
   readonly fields: Readonly<Record<string, PluginParamDef>>;
 }
 
+// ═══ Task Ports ═══
+//
+// Typed I/O "ports" declared on a task. Inputs are named variables a task
+// consumes (substituted as `{{inputs.<name>}}` in `command` / `prompt`, and
+// rendered as a structured `[Inputs]` context block for AI tasks). Outputs
+// are named variables a task produces (extracted from stdout /
+// normalizedOutput on completion). Downstream tasks consume them by name —
+// the editor uses the hybrid "snapshot-with-drift-warning" strategy to keep
+// input/output shape in sync when the user connects two nodes.
+//
+// Wire format:
+//   inputs:
+//     - name: city
+//       type: string
+//       description: Target city for the query
+//       required: true
+//   outputs:
+//     - name: temperature
+//       type: number
+//       description: Current temperature in Celsius
+//
+// Runtime extraction:
+//   * Command tasks — last non-empty line of stdout is parsed as JSON, and
+//     each declared output name is looked up as a key.
+//   * AI (prompt) tasks — same, but prefer `normalizedOutput` over raw
+//     stdout. The engine also injects an `[Output Format]` context block
+//     instructing the model to emit a final-line JSON object matching the
+//     declared outputs.
+//
+// Nothing about ports is required for existing pipelines to keep working:
+// a task with no `ports` behaves exactly as it always did.
+
+export type PortType = 'string' | 'number' | 'boolean' | 'enum' | 'json';
+
+export interface PortDef {
+  readonly name: string;
+  readonly type: PortType;
+  readonly description?: string;
+  readonly required?: boolean;
+  readonly default?: unknown;
+  readonly enum?: readonly string[];
+  /**
+   * Optional explicit upstream binding. Accepts either a bare port name
+   * (must be unambiguous among the task's direct upstreams) or a
+   * fully-qualified `taskId.portName` reference. Only meaningful for
+   * inputs. Unset = match by name against all direct upstream outputs,
+   * with ambiguity flagged at validation time.
+   */
+  readonly from?: string;
+}
+
+export interface TaskPorts {
+  readonly inputs?: readonly PortDef[];
+  readonly outputs?: readonly PortDef[];
+}
+
 // ═══ Trigger / Completion / Middleware Configs ═══
 
 export interface TriggerConfig {
@@ -108,6 +164,12 @@ export interface TaskConfig {
   readonly completion?: CompletionConfig;
   readonly agent_profile?: string;
   readonly cwd?: string;
+  /**
+   * Typed I/O ports declared on this task. See `TaskPorts` above. Omitted =
+   * task has no declared ports and behaves as before (no substitution, no
+   * extraction, no `[Inputs]` / `[Output Format]` blocks).
+   */
+  readonly ports?: TaskPorts;
 }
 
 // ═══ Raw Task Config (from YAML, before inheritance) ═══
@@ -129,6 +191,7 @@ export interface RawTaskConfig {
   readonly completion?: CompletionConfig;
   readonly agent_profile?: string;
   readonly cwd?: string;
+  readonly ports?: TaskPorts;
 }
 
 // ═══ Track Config ═══
@@ -277,6 +340,20 @@ export interface DriverContext {
    * which the engine pre-serializes via `serializePromptDocument(doc)`.
    */
   readonly promptDoc: PromptDocument;
+  /**
+   * Resolved port inputs for the current task. Keyed by input port name,
+   * coerced to the declared port type. Defaults/optional-missing values
+   * have already been applied — drivers can treat this as authoritative.
+   * Empty object when the task declares no inputs.
+   *
+   * Drivers that need to re-render `{{inputs.foo}}` placeholders
+   * themselves (e.g. when they wrap `task.prompt` in a custom envelope
+   * and want substitution to happen inside their envelope instead of
+   * before it) should read this map and call
+   * `substituteInputs(text, inputs)` from `@tagma/sdk`. The default
+   * engine path substitutes upfront, so most drivers can ignore this.
+   */
+  readonly inputs: Readonly<Record<string, unknown>>;
 }
 
 // ═══ Driver Plugin ═══
@@ -440,9 +517,32 @@ export type TaskFailureKind = 'timeout' | 'spawn_error' | 'exit_nonzero' | null;
 
 export interface TaskResult {
   readonly exitCode: number;
+  /**
+   * Bounded tail of the child's stdout. When the child produced more than
+   * the configured cap (see `RunOptions.maxStdoutTailBytes` in the SDK),
+   * this is only the LAST `cap` bytes and is prefixed with a marker like
+   * `[...N bytes truncated from head — full output: <path>]`. The full
+   * content is at `stdoutPath` on disk.
+   */
   readonly stdout: string;
+  /** Same contract as `stdout` but for stderr; see `stderrPath`. */
   readonly stderr: string;
+  /**
+   * Absolute path to the full stdout on disk. Set by the SDK runner when
+   * the caller provides `RunOptions.stdoutPath` (the engine always does).
+   * Null when output wasn't persisted (pre-spawn failures, memory-only
+   * callers). The file is exactly what the child wrote — byte-identical.
+   */
+  readonly stdoutPath: string | null;
+  /** Same contract as `stdoutPath` but for stderr. */
   readonly stderrPath: string | null;
+  /**
+   * Total bytes the child wrote to stdout before tail-truncation, so UIs
+   * can display "32 MB (truncated)" without re-stat'ing the file.
+   * Undefined on legacy TaskResult literals predating streaming.
+   */
+  readonly stdoutBytes?: number;
+  readonly stderrBytes?: number;
   readonly durationMs: number;
   readonly sessionId: string | null;
   readonly normalizedOutput: string | null;
@@ -452,6 +552,15 @@ export interface TaskResult {
    * always populates it. Defaults to `null` (success / no classification).
    */
   readonly failureKind?: TaskFailureKind;
+  /**
+   * Extracted port output values — populated by the engine after a task
+   * terminates successfully when `task.ports.outputs` is declared. Keys
+   * match declared port names; values are coerced to each port's type.
+   * `null` = task had no declared outputs, or extraction failed (the
+   * engine appends a diagnostic to stderr in that case). Downstream
+   * tasks consume this via `DriverContext.inputs`.
+   */
+  readonly outputs?: Readonly<Record<string, unknown>> | null;
 }
 
 // ═══ Runtime Task State (mutable engine state — exposed for hook context typing) ═══
@@ -575,9 +684,27 @@ export interface RunTaskState {
   readonly exitCode: number | null;
   readonly stdout: string;
   readonly stderr: string;
+  readonly stdoutPath: string | null;
   readonly stderrPath: string | null;
+  readonly stdoutBytes: number | null;
+  readonly stderrBytes: number | null;
   readonly sessionId: string | null;
   readonly normalizedOutput: string | null;
+  /**
+   * Extracted port output values for this task. Null until the task
+   * completes successfully, or when the task declares no output ports.
+   * Carried on the wire so the editor can render resolved port values
+   * on node bubbles and so downstream nodes' "inputs" panels can be
+   * populated live as a run progresses.
+   */
+  readonly outputs: Readonly<Record<string, unknown>> | null;
+  /**
+   * Resolved port inputs for this task — the values that the engine
+   * substituted into placeholders / rendered into the `[Inputs]` block.
+   * Exposed primarily for the editor's task-panel; stays null until the
+   * task starts.
+   */
+  readonly inputs: Readonly<Record<string, unknown>> | null;
   /** Resolved after inheritance. Null until the task starts. */
   readonly resolvedDriver: string | null;
   readonly resolvedModel: string | null;
@@ -628,9 +755,14 @@ export type RunEventPayload =
       readonly exitCode?: number;
       readonly stdout?: string;
       readonly stderr?: string;
+      readonly stdoutPath?: string | null;
       readonly stderrPath?: string | null;
+      readonly stdoutBytes?: number | null;
+      readonly stderrBytes?: number | null;
       readonly sessionId?: string | null;
       readonly normalizedOutput?: string | null;
+      readonly outputs?: Readonly<Record<string, unknown>> | null;
+      readonly inputs?: Readonly<Record<string, unknown>> | null;
       readonly resolvedDriver?: string | null;
       readonly resolvedModel?: string | null;
       readonly resolvedPermissions?: Permissions | null;
@@ -701,4 +833,7 @@ export interface RunSnapshotPayload {
 export type WireRunEvent = (RunEventPayload | RunSnapshotPayload) & {
   readonly seq: number;
 };
+
+// ═══ Runtime Utilities ═══
+export { parseDurationSafe } from './duration.js';
 

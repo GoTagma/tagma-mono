@@ -114,7 +114,21 @@ export {
   promptDocumentFromString,
   serializePromptDocument,
   appendContext,
+  prependContext,
+  renderInputsBlock,
+  renderOutputSchemaBlock,
 } from './prompt-doc';
+
+// ── Task ports (editor: substitute placeholders, resolve upstream
+//    values, extract downstream outputs; drivers that wrap the prompt
+//    may want substituteInputs on their own envelope) ──
+export {
+  substituteInputs,
+  extractInputReferences,
+  resolveTaskInputs,
+  extractTaskOutputs,
+} from './ports';
+export type { SubstituteResult, InputResolution, ExtractResult } from './ports';
 
 // ── All types from @tagma/types + runtime constants ──
 export * from './types';

@@ -1,10 +1,22 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
+import { mkdir, open, type FileHandle } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve as pathResolve } from 'node:path';
 import type { SpawnSpec, DriverPlugin, TaskResult } from './types';
 import { shellArgs } from './utils';
 
 // Delay before escalating SIGTERM to SIGKILL when killing a timed-out process.
 const SIGKILL_DELAY_MS = 3_000;
+
+/**
+ * Default cap for the in-memory tail retained for each stream. Picked so that
+ * a task producing runaway output (AI agent bug, adversarial input) cannot
+ * balloon the sidecar's RSS, while still being large enough that typical AI
+ * responses (which top out around low-MB of text) are returned whole. Callers
+ * that need different limits supply `RunOptions.maxStdoutTailBytes` /
+ * `.maxStderrTailBytes`.
+ */
+const DEFAULT_STDOUT_TAIL_BYTES = 8 * 1024 * 1024; // 8 MB
+const DEFAULT_STDERR_TAIL_BYTES = 4 * 1024 * 1024; // 4 MB
 
 /**
  * On Windows, proc.kill('SIGTERM') / proc.kill('SIGKILL') only terminate the
@@ -36,6 +48,152 @@ function killProcessTree(pid: number): void {
 export interface RunOptions {
   readonly timeoutMs?: number;
   readonly signal?: AbortSignal; // pipeline-level abort
+  /**
+   * If set, stream the child's stdout to this file path as it arrives. The
+   * returned `TaskResult.stdout` is still a bounded in-memory tail
+   * (`maxStdoutTailBytes`) — callers that need the full output should read
+   * from the returned `stdoutPath`. Parent directories are created as needed.
+   */
+  readonly stdoutPath?: string;
+  /** Symmetric to `stdoutPath` for stderr. */
+  readonly stderrPath?: string;
+  /**
+   * Cap on bytes retained in memory for the returned `TaskResult.stdout`
+   * string. Defaults to `DEFAULT_STDOUT_TAIL_BYTES`. Bytes beyond this cap
+   * from the HEAD of the stream are dropped from the in-memory string; the
+   * on-disk file (if `stdoutPath` is set) is still the full output.
+   */
+  readonly maxStdoutTailBytes?: number;
+  readonly maxStderrTailBytes?: number;
+}
+
+/**
+ * Read a stream to completion, persisting every chunk to `filePath` (when
+ * provided) while keeping only the last `maxTailBytes` bytes in memory.
+ *
+ * Why the split: large child outputs (multi-MB AI responses, verbose debug
+ * dumps) used to accumulate entirely in memory via `new Response(s).text()`,
+ * which let a runaway task balloon the sidecar's RSS. Streaming to disk +
+ * bounded tail gives callers: (a) unbounded data fidelity on disk, (b) fixed
+ * memory footprint, (c) the tail — which is almost always what callers
+ * actually consume (final AI answer, error summary, last N lines).
+ *
+ * Backpressure: we `await fh.write(chunk)` per chunk, so if disk is slow we
+ * naturally slow the reader — but we do NOT stop reading the pipe, so the
+ * child never blocks on a full stdout pipe. Disk errors don't abort the
+ * stream; we close the handle, null it, and keep consuming into the tail
+ * buffer only (with a breadcrumb in the returned text).
+ *
+ * Tail eviction: drops whole chunks from the front until total retained is
+ * at or below the cap. If a single chunk alone exceeds the cap (rare — would
+ * require a >cap-bytes chunkless burst from the child), we slice its tail.
+ * UTF-8 boundaries at the slice point may emit replacement characters when
+ * decoded — acceptable (the trailing/leading codepoint is a cosmetic loss).
+ */
+async function collectStream(
+  stream: ReadableStream<Uint8Array> | undefined,
+  filePath: string | undefined,
+  maxTailBytes: number,
+): Promise<{ text: string; totalBytes: number; path: string | null }> {
+  if (!stream) return { text: '', totalBytes: 0, path: null };
+
+  let fh: FileHandle | null = null;
+  let diskWriteFailed = false;
+  if (filePath) {
+    try {
+      await mkdir(dirname(filePath), { recursive: true });
+      fh = await open(filePath, 'w');
+    } catch (err) {
+      console.error(
+        `[runner] failed to open ${filePath} for output streaming: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      diskWriteFailed = true;
+    }
+  }
+
+  const chunks: Uint8Array[] = [];
+  let tailBytes = 0;
+  let totalBytes = 0;
+  const reader = stream.getReader();
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.length;
+
+      // Disk: persist every byte. Failure here degrades to tail-only mode
+      // without interrupting the stream (child must not block on pipe fill).
+      if (fh) {
+        try {
+          await fh.write(value);
+        } catch (err) {
+          console.error(
+            `[runner] disk write failed for ${filePath}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          try {
+            await fh.close();
+          } catch {
+            /* ignore */
+          }
+          fh = null;
+          diskWriteFailed = true;
+        }
+      }
+
+      // Tail: append then evict whole chunks from the head while the total
+      // retained exceeds the cap. Keep at least one chunk so short outputs
+      // aren't lost entirely. Post-condition: tailBytes <= maxTailBytes OR
+      // only one chunk remains (handled by the next block).
+      chunks.push(value);
+      tailBytes += value.length;
+      while (chunks.length > 1 && tailBytes > maxTailBytes) {
+        tailBytes -= chunks.shift()!.length;
+      }
+      // Pathological: a single chunk larger than the cap. Slice its tail.
+      if (chunks.length === 1 && chunks[0]!.length > maxTailBytes) {
+        const only = chunks[0]!;
+        chunks[0] = only.slice(only.length - maxTailBytes);
+        tailBytes = chunks[0]!.length;
+      }
+    }
+  } finally {
+    reader.releaseLock();
+    if (fh) {
+      try {
+        await fh.close();
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  // Decode retained chunks. `stream: true` lets the decoder buffer partial
+  // code points across chunks, handling all boundaries except the very first
+  // chunk (which may itself start mid-codepoint after eviction) — that
+  // boundary gets a U+FFFD replacement, which is preferable to throwing.
+  const decoder = new TextDecoder();
+  let text = '';
+  for (const c of chunks) text += decoder.decode(c, { stream: true });
+  text += decoder.decode();
+
+  if (totalBytes > tailBytes) {
+    const dropped = totalBytes - tailBytes;
+    const pathHint = filePath
+      ? diskWriteFailed
+        ? `${filePath} (partial — disk write failed mid-stream)`
+        : filePath
+      : 'not persisted (no path configured)';
+    text = `[…${dropped} bytes truncated from head — full output at: ${pathHint}]\n${text}`;
+  }
+
+  return {
+    text,
+    totalBytes,
+    // Return the path even on partial-write failure so operators can still
+    // inspect the head bytes we managed to persist.
+    path: filePath ?? null,
+  };
 }
 
 /**
@@ -170,13 +328,20 @@ function resolveWindowsExe(args: readonly string[], envPath: string): readonly s
  * H2: Build a "failed before spawn" result. Tagged as 'spawn_error' so the
  * engine can show a useful classification ("driver tried to launch X but
  * the binary wasn't found") rather than the misleading "timeout".
+ *
+ * Pre-spawn failures never opened the output files, so stdoutPath /
+ * stderrPath are null regardless of what the caller passed in opts — there
+ * is nothing on disk to point at.
  */
 function failResult(stderr: string, durationMs: number): TaskResult {
   return {
     exitCode: -1,
     stdout: '',
     stderr,
+    stdoutPath: null,
     stderrPath: null,
+    stdoutBytes: 0,
+    stderrBytes: stderr.length,
     durationMs,
     sessionId: null,
     normalizedOutput: null,
@@ -326,15 +491,28 @@ export async function runSpawn(
     }
   }
 
-  // ── 4. Collect output & wait (parallel to avoid pipe-buffer deadlock) ─
+  // ── 4. Collect output & wait ──────────────────────────────────────────
+  // Both streams are drained concurrently with `proc.exited` to avoid the
+  // classic pipe-buffer deadlock (child blocks on a full stdout pipe, parent
+  // is blocked waiting on exit which the child can't reach). Each stream is
+  // persisted to disk via `collectStream` as it arrives so we never hold the
+  // full output in memory — only the bounded tail.
   const stdoutStream = typeof proc.stdout === 'object' ? proc.stdout : undefined;
   const stderrStream = typeof proc.stderr === 'object' ? proc.stderr : undefined;
+  const stdoutCap = opts.maxStdoutTailBytes ?? DEFAULT_STDOUT_TAIL_BYTES;
+  const stderrCap = opts.maxStderrTailBytes ?? DEFAULT_STDERR_TAIL_BYTES;
 
-  const [exitCode, stdout, stderr] = await Promise.all([
+  const [exitCode, stdoutResult, stderrResult] = await Promise.all([
     proc.exited,
-    stdoutStream ? new Response(stdoutStream).text() : Promise.resolve(''),
-    stderrStream ? new Response(stderrStream).text() : Promise.resolve(''),
+    collectStream(stdoutStream, opts.stdoutPath, stdoutCap),
+    collectStream(stderrStream, opts.stderrPath, stderrCap),
   ]);
+  const stdout = stdoutResult.text;
+  const stderr = stderrResult.text;
+  const stdoutPath = stdoutResult.path;
+  const stderrPath = stderrResult.path;
+  const stdoutBytes = stdoutResult.totalBytes;
+  const stderrBytes = stderrResult.totalBytes;
 
   // ── 5. Cleanup timers & listeners ──────────────────────────────────────
   if (timer) clearTimeout(timer);
@@ -354,7 +532,10 @@ export async function runSpawn(
       exitCode: -1,
       stdout,
       stderr,
-      stderrPath: null,
+      stdoutPath,
+      stderrPath,
+      stdoutBytes,
+      stderrBytes,
       durationMs,
       sessionId: null,
       normalizedOutput: null,
@@ -404,7 +585,10 @@ export async function runSpawn(
         exitCode,
         stdout,
         stderr: stderr + note,
-        stderrPath: null,
+        stdoutPath,
+        stderrPath,
+        stdoutBytes,
+        stderrBytes,
         durationMs,
         sessionId: null,
         normalizedOutput: null,
@@ -426,7 +610,10 @@ export async function runSpawn(
       exitCode: exitCode === 0 ? 1 : exitCode,
       stdout,
       stderr: stderr + (stderr.endsWith('\n') ? '' : '\n') + `[driver] ${forcedFailureMessage}`,
-      stderrPath: null,
+      stdoutPath,
+      stderrPath,
+      stdoutBytes,
+      stderrBytes,
       durationMs,
       sessionId,
       normalizedOutput,
@@ -437,7 +624,10 @@ export async function runSpawn(
     exitCode,
     stdout,
     stderr,
-    stderrPath: null,
+    stdoutPath,
+    stderrPath,
+    stdoutBytes,
+    stderrBytes,
     durationMs,
     sessionId,
     normalizedOutput,

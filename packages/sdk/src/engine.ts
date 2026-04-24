@@ -23,7 +23,14 @@ import { buildDag, type Dag } from './dag';
 import { defaultRegistry, type PluginRegistry } from './registry';
 import { runSpawn, runCommand } from './runner';
 import { parseDuration, nowISO, generateRunId } from './utils';
-import { promptDocumentFromString, serializePromptDocument } from './prompt-doc';
+import {
+  promptDocumentFromString,
+  serializePromptDocument,
+  prependContext,
+  renderInputsBlock,
+  renderOutputSchemaBlock,
+} from './prompt-doc';
+import { extractTaskOutputs, resolveTaskInputs, substituteInputs } from './ports';
 import {
   executeHook,
   buildPipelineStartContext,
@@ -184,12 +191,19 @@ function toRunTaskState(
     exitCode: result?.exitCode ?? null,
     stdout: result?.stdout ?? '',
     stderr: result?.stderr ?? '',
+    stdoutPath: result?.stdoutPath ?? null,
     stderrPath: result?.stderrPath ?? null,
+    stdoutBytes: result?.stdoutBytes ?? null,
+    stderrBytes: result?.stderrBytes ?? null,
     sessionId: result?.sessionId ?? null,
     normalizedOutput: result?.normalizedOutput ?? null,
     resolvedDriver: cfg.driver ?? null,
     resolvedModel: cfg.model ?? null,
     resolvedPermissions: (cfg.permissions as Permissions | undefined) ?? null,
+    // Ports not yet wired through the engine's event surface. Null placeholder
+    // keeps the wire type honest until the ports extraction pass lands.
+    outputs: result?.outputs ?? null,
+    inputs: null,
     logs: [],
     totalLogCount: 0,
   };
@@ -368,6 +382,17 @@ export async function runPipeline(
 
     const sessionMap = new Map<string, string>();
     const normalizedMap = new Map<string, string>();
+    // Extracted port outputs keyed by fully-qualified task id. Populated
+    // after a task succeeds when its `ports.outputs` is declared; read by
+    // downstream tasks via `resolveTaskInputs` to assemble their inputs.
+    // Kept separate from normalizedMap so the continue_from text handoff
+    // and the typed-port data handoff don't pollute each other — they
+    // solve different problems and have different lifetimes.
+    const outputValuesMap = new Map<string, Readonly<Record<string, unknown>>>();
+    // Resolved port inputs keyed by fully-qualified task id. Written once,
+    // just before a task runs, so every subsequent task_update event can
+    // echo them to the UI without re-resolving.
+    const resolvedInputsMap = new Map<string, Readonly<Record<string, unknown>>>();
 
     // Pipeline timeout + abort reason tracking.
     //
@@ -469,9 +494,14 @@ export async function runPipeline(
         exitCode: result?.exitCode,
         stdout: result?.stdout,
         stderr: result?.stderr,
+        stdoutPath: result?.stdoutPath ?? null,
         stderrPath: result?.stderrPath ?? null,
+        stdoutBytes: result?.stdoutBytes ?? null,
+        stderrBytes: result?.stderrBytes ?? null,
         sessionId: result?.sessionId ?? null,
         normalizedOutput: result?.normalizedOutput ?? null,
+        inputs: resolvedInputsMap.get(taskId) ?? null,
+        outputs: outputValuesMap.get(taskId) ?? null,
         resolvedDriver: cfg.driver ?? null,
         resolvedModel: cfg.model ?? null,
         resolvedPermissions: (cfg.permissions as Permissions | undefined) ?? null,
@@ -588,19 +618,26 @@ export async function runPipeline(
         );
         try {
           const triggerPlugin = registry.getHandler<TriggerPlugin>('triggers', task.trigger.type);
-          // R6: race the plugin's watch() against the pipeline's abort signal.
-          // Third-party triggers may forget to wire up ctx.signal — without
-          // this race, an aborted pipeline would hang forever waiting for the
-          // plugin's watch promise to resolve. The race resolves on whichever
-          // path settles first, and the cleanup paths in finally never run on
-          // the orphaned plugin promise (it's allowed to leak a watcher; the
-          // pipeline is being torn down anyway).
+          // R6: race the plugin's watch() against the pipeline's abort signal
+          // AND the task-level timeout. Third-party triggers may forget to
+          // wire up ctx.signal — without the abort race, an aborted pipeline
+          // would hang forever waiting for the plugin's watch promise to
+          // resolve. And without the timeout race, a buggy watch() that never
+          // settles would ignore the user's `task.timeout` (which the spawn
+          // path at step 4 already honours) — a task could wedge the whole
+          // pipeline until pipeline-level timeout fires (or forever, if none
+          // is set). Honouring task.timeout here makes the two stages
+          // symmetric. The cleanup paths in finally never run on the orphaned
+          // plugin promise (it's allowed to leak a watcher; the pipeline is
+          // being torn down anyway).
+          const triggerTimeoutMs = task.timeout ? parseDuration(task.timeout) : 0;
           await new Promise<unknown>((resolve, reject) => {
             let settled = false;
+            let timer: ReturnType<typeof setTimeout> | null = null;
             const onAbort = () => {
               if (settled) return;
               settled = true;
-              abortController.signal.removeEventListener('abort', onAbort);
+              if (timer !== null) clearTimeout(timer);
               reject(new Error('Pipeline aborted'));
             };
             if (abortController.signal.aborted) {
@@ -608,6 +645,18 @@ export async function runPipeline(
               return;
             }
             abortController.signal.addEventListener('abort', onAbort, { once: true });
+            if (triggerTimeoutMs > 0) {
+              timer = setTimeout(() => {
+                if (settled) return;
+                settled = true;
+                abortController.signal.removeEventListener('abort', onAbort);
+                reject(
+                  new TriggerTimeoutError(
+                    `Trigger "${task.trigger!.type}" did not settle within ${task.timeout} (task-level timeout)`,
+                  ),
+                );
+              }, triggerTimeoutMs);
+            }
             triggerPlugin
               .watch(task.trigger as Record<string, unknown>, {
                 taskId: node.taskId,
@@ -620,12 +669,14 @@ export async function runPipeline(
                 (v) => {
                   if (settled) return;
                   settled = true;
+                  if (timer !== null) clearTimeout(timer);
                   abortController.signal.removeEventListener('abort', onAbort);
                   resolve(v);
                 },
                 (e) => {
                   if (settled) return;
                   settled = true;
+                  if (timer !== null) clearTimeout(timer);
                   abortController.signal.removeEventListener('abort', onAbort);
                   reject(e);
                 },
@@ -694,6 +745,60 @@ export async function runPipeline(
         return;
       }
 
+      // 3.5. Resolve port inputs from upstream outputs. This is the last
+      // gate before execution: missing-required inputs block the task
+      // without ever spawning a process, so the caller sees a clear
+      // "blocked: missing input X" rather than a cryptic runtime error
+      // from a command that expanded a placeholder to the empty string.
+      // Resolution runs even for tasks that declare no ports — the call
+      // is cheap and returns `{kind: 'ready', inputs: {}}` in that case,
+      // which downstream code handles uniformly.
+      const inputResolution = resolveTaskInputs(task, outputValuesMap, node.dependsOn);
+      if (inputResolution.kind === 'blocked') {
+        log.error(
+          `[task:${taskId}]`,
+          `blocked — cannot resolve port inputs:\n${inputResolution.reason}`,
+        );
+        state.result = {
+          exitCode: -1,
+          stdout: '',
+          stderr: `[engine] port input resolution failed:\n${inputResolution.reason}`,
+          stdoutPath: null,
+          stderrPath: null,
+          durationMs: 0,
+          sessionId: null,
+          normalizedOutput: null,
+          failureKind: 'spawn_error',
+          outputs: null,
+        };
+        state.finishedAt = nowISO();
+        setTaskStatus(taskId, 'blocked');
+        try {
+          await fireHook(taskId, 'task_failure');
+        } catch (hookErr) {
+          log.error(
+            `[task:${taskId}]`,
+            `hook execution failed: ${hookErr instanceof Error ? hookErr.message : String(hookErr)}`,
+          );
+        }
+        if (getOnFailure(taskId) === 'stop_all') applyStopAll(node.track.id);
+        return;
+      }
+      const resolvedInputs = inputResolution.inputs;
+      resolvedInputsMap.set(taskId, resolvedInputs);
+      if (inputResolution.missingOptional.length > 0) {
+        log.debug(
+          `[task:${taskId}]`,
+          `optional inputs unresolved (empty in placeholders): ${inputResolution.missingOptional.join(', ')}`,
+        );
+      }
+      if (task.ports?.inputs && task.ports.inputs.length > 0) {
+        log.debug(
+          `[task:${taskId}]`,
+          `resolved inputs: ${JSON.stringify(resolvedInputs)}`,
+        );
+      }
+
       // 4. Mark running — set startedAt before emitting so subscribers see a
       // complete task_update (startedAt non-null) on the status transition.
       state.startedAt = nowISO();
@@ -724,18 +829,73 @@ export async function runPipeline(
         let result: TaskResult;
         const timeoutMs = task.timeout ? parseDuration(task.timeout) : undefined;
 
-        const runOpts = { timeoutMs, signal: abortController.signal };
+        // Stream child stdout/stderr directly to disk in the logger's run dir
+        // and keep only a bounded tail in the returned TaskResult. Filenames
+        // mirror the existing `.stderr` naming — dots in task ids are replaced
+        // so hierarchical ids (e.g. `track1.task2`) map cleanly to a flat dir.
+        const fsSafeTaskId = taskId.replace(/\./g, '_');
+        const stdoutPath = resolve(log.dir, `${fsSafeTaskId}.stdout`);
+        const stderrPath = resolve(log.dir, `${fsSafeTaskId}.stderr`);
+        const runOpts = {
+          timeoutMs,
+          signal: abortController.signal,
+          stdoutPath,
+          stderrPath,
+        };
 
         if (task.command) {
-          log.debug(`[task:${taskId}]`, `command: ${task.command}`);
-          result = await runCommand(task.command, task.cwd ?? workDir, runOpts);
+          // Substitute `{{inputs.X}}` placeholders into the command
+          // string. Tasks with no declared inputs always produce the same
+          // string back (no placeholders to match). Unresolved references
+          // render empty — validate-raw flags undeclared references as
+          // errors, so the only way to land here with an unresolved is an
+          // optional input that had no upstream producer and no default,
+          // which we surface in the log.
+          const { text: expandedCommand, unresolved } = substituteInputs(
+            task.command,
+            resolvedInputs,
+          );
+          if (unresolved.length > 0) {
+            log.debug(
+              `[task:${taskId}]`,
+              `command placeholders rendered empty: ${unresolved.join(', ')}`,
+            );
+          }
+          log.debug(`[task:${taskId}]`, `command: ${expandedCommand}`);
+          result = await runCommand(expandedCommand, task.cwd ?? workDir, runOpts);
         } else {
           // AI task: apply middleware chain against a structured PromptDocument.
           const driverName = task.driver ?? track.driver ?? config.driver ?? 'opencode';
           const driver = registry.getHandler<DriverPlugin>('drivers', driverName);
 
-          const originalLen = task.prompt!.length;
-          let doc: PromptDocument = promptDocumentFromString(task.prompt!);
+          // Substitute placeholders in the user-authored prompt before
+          // wrapping into a PromptDocument so middlewares see the
+          // already-resolved task text.
+          const { text: expandedPrompt, unresolved } = substituteInputs(
+            task.prompt!,
+            resolvedInputs,
+          );
+          if (unresolved.length > 0) {
+            log.debug(
+              `[task:${taskId}]`,
+              `prompt placeholders rendered empty: ${unresolved.join(', ')}`,
+            );
+          }
+          const originalLen = expandedPrompt.length;
+          let doc: PromptDocument = promptDocumentFromString(expandedPrompt);
+          // Prepend port-related context blocks so the model sees them
+          // before any middleware-added retrieval / memory blocks. Order
+          // matters: [Output Format] first (sets the deliverable), then
+          // [Inputs] (the concrete data to operate on). Empty blocks are
+          // filtered out — tasks without ports get no extra blocks at all.
+          const outputFormatBlock = renderOutputSchemaBlock(task.ports?.outputs);
+          if (outputFormatBlock) {
+            doc = prependContext(doc, outputFormatBlock);
+          }
+          const inputsBlock = renderInputsBlock(task.ports?.inputs, resolvedInputs);
+          if (inputsBlock) {
+            doc = prependContext(doc, inputsBlock);
+          }
           const mws = task.middlewares !== undefined ? task.middlewares : track.middlewares;
           if (mws && mws.length > 0) {
             log.debug(
@@ -846,6 +1006,13 @@ export async function runPipeline(
             // contexts and task). Drivers that read task.prompt see the
             // default serialization and need no changes.
             promptDoc: doc,
+            // Ports feature: resolved input values keyed by port name,
+            // already coerced to the declared port type. Drivers that
+            // need to re-substitute placeholders inside a custom envelope
+            // can read this and call `substituteInputs`; most drivers can
+            // ignore it because the engine has already expanded
+            // `{{inputs.X}}` into `task.prompt` upstream.
+            inputs: resolvedInputs,
           };
           const spec = await driver.buildCommand(enrichedTask, track, driverCtx);
           log.debug(`[task:${taskId}]`, `driver=${driverName}`);
@@ -897,6 +1064,41 @@ export async function runPipeline(
           terminalStatus = 'success';
         }
 
+        // Extract declared port outputs from the task's output stream.
+        // Only meaningful on success — a failed task's output is whatever
+        // the child happened to emit before exiting, and downstream tasks
+        // shouldn't receive partial data. `extractTaskOutputs` is a no-op
+        // when the task has no declared outputs, so this is free for
+        // pre-ports tasks. Diagnostics are appended to stderr so users
+        // see *why* a downstream input is missing without having to dig
+        // through driver-specific logs.
+        let extractedOutputs: Readonly<Record<string, unknown>> | null = null;
+        if (terminalStatus === 'success') {
+          const extraction = extractTaskOutputs(
+            task.ports,
+            result.stdout,
+            result.normalizedOutput,
+          );
+          if (task.ports?.outputs && task.ports.outputs.length > 0) {
+            extractedOutputs = extraction.outputs;
+            outputValuesMap.set(taskId, extraction.outputs);
+            log.debug(
+              `[task:${taskId}]`,
+              `extracted outputs: ${JSON.stringify(extraction.outputs)}`,
+            );
+            if (extraction.diagnostic) {
+              log.error(`[task:${taskId}]`, extraction.diagnostic);
+              const note = `\n[engine] ${extraction.diagnostic}`;
+              result = { ...result, stderr: result.stderr + note };
+            }
+          }
+        }
+        // Attach outputs to the result (null when task has no declared
+        // outputs or extraction failed entirely). Consumers of TaskResult
+        // — hooks, wire events, test assertions — all go through this
+        // one field rather than re-running extraction.
+        result = { ...result, outputs: extractedOutputs };
+
         // Store normalized text separately (in-memory) for continue_from handoff.
         // R15: clip oversized values so a runaway parseResult can't accumulate
         // hundreds of MB across tasks.
@@ -909,11 +1111,9 @@ export async function runPipeline(
           normalizedMap.set(taskId, clipped);
         }
 
-        if (result.stderr) {
-          const stderrPath = resolve(log.dir, `${taskId.replace(/\./g, '_')}.stderr`);
-          await Bun.write(stderrPath, result.stderr);
-          result = { ...result, stderrPath };
-        }
+        // Note: stderr is already persisted by runner.ts as it streams; the
+        // old "write full string after the fact" block is gone — that's what
+        // the streaming rewrite fixed (unbounded in-memory buffering).
 
         if (result.sessionId) {
           // H1: qualified-only key.
@@ -940,13 +1140,17 @@ export async function runPipeline(
           }
         }
 
-        // File-only: full stdout/stderr dump (clipped) + extracted metadata
-        log.debug(
-          `[task:${taskId}]`,
-          `stdout: ${result.stdout.length} chars, stderr: ${result.stderr.length} chars`,
-        );
+        // File-only: byte counts (prefer full totals from the runner over the
+        // bounded tail length so oversized outputs show their real size) +
+        // paths to the on-disk full copies.
+        const stdoutSize = result.stdoutBytes ?? result.stdout.length;
+        const stderrSize = result.stderrBytes ?? result.stderr.length;
+        log.debug(`[task:${taskId}]`, `stdout: ${stdoutSize} bytes, stderr: ${stderrSize} bytes`);
         if (result.sessionId) {
           log.debug(`[task:${taskId}]`, `sessionId: ${result.sessionId}`);
+        }
+        if (result.stdoutPath) {
+          log.debug(`[task:${taskId}]`, `wrote stdout: ${result.stdoutPath}`);
         }
         if (result.stderrPath) {
           log.debug(`[task:${taskId}]`, `wrote stderr: ${result.stderrPath}`);
@@ -976,7 +1180,10 @@ export async function runPipeline(
           exitCode: -1,
           stdout: '',
           stderr: errMsg,
+          stdoutPath: null,
           stderrPath: null,
+          stdoutBytes: 0,
+          stderrBytes: errMsg.length,
           durationMs: 0,
           sessionId: null,
           normalizedOutput: null,

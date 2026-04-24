@@ -6,7 +6,7 @@
 //
 // Returns a flat list of ValidationError objects. An empty array means valid.
 
-import type { RawPipelineConfig } from './types';
+import type { PortDef, PortType, RawPipelineConfig, RawTaskConfig } from './types';
 import {
   isValidTaskId,
   qualifyTaskId,
@@ -14,6 +14,7 @@ import {
   resolveTaskRef,
   type TaskIndex,
 } from './task-ref';
+import { extractInputReferences } from './ports';
 
 const DURATION_RE = /^(\d*\.?\d+)\s*(s|m|h|d)$/;
 function isValidDuration(input: string): boolean {
@@ -284,6 +285,9 @@ export function validateRaw(
         }
       }
 
+      // ── Port declaration checks ──
+      validateTaskPorts(task, taskPath, errors);
+
       // ── depends_on reference checks ──
       if (task.depends_on && task.depends_on.length > 0) {
         for (const dep of task.depends_on) {
@@ -341,6 +345,145 @@ export function validateRaw(
   errors.push(...detectCycles(config, index));
 
   return errors;
+}
+
+const VALID_PORT_TYPES: ReadonlySet<PortType> = new Set([
+  'string',
+  'number',
+  'boolean',
+  'enum',
+  'json',
+]);
+
+// Identifier pattern for port names. Deliberately narrower than task IDs —
+// port names appear in `{{inputs.<name>}}` templates where hyphens would
+// be parsed as subtraction, so we also forbid them here to keep the
+// template grammar unambiguous.
+const PORT_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+function validatePortList(
+  list: readonly PortDef[] | undefined,
+  basePath: string,
+  kind: 'inputs' | 'outputs',
+  errors: ValidationError[],
+): void {
+  if (!list) return;
+  if (!Array.isArray(list)) {
+    errors.push({
+      path: basePath,
+      message: `ports.${kind} must be an array`,
+    });
+    return;
+  }
+  const seen = new Set<string>();
+  for (let i = 0; i < list.length; i++) {
+    const port = list[i];
+    const path = `${basePath}[${i}]`;
+    if (!port || typeof port !== 'object') {
+      errors.push({ path, message: `ports.${kind}[${i}] must be an object` });
+      continue;
+    }
+    if (typeof port.name !== 'string' || !port.name.trim()) {
+      errors.push({ path: `${path}.name`, message: 'port.name is required' });
+      continue;
+    }
+    if (!PORT_NAME_RE.test(port.name)) {
+      errors.push({
+        path: `${path}.name`,
+        message: `port name "${port.name}" is invalid. Must match /^[A-Za-z_][A-Za-z0-9_]*$/ (letters, digits, underscores; starts with letter/underscore).`,
+      });
+    }
+    if (seen.has(port.name)) {
+      errors.push({
+        path,
+        message: `Duplicate ports.${kind} name "${port.name}"`,
+      });
+    }
+    seen.add(port.name);
+    if (!VALID_PORT_TYPES.has(port.type)) {
+      errors.push({
+        path: `${path}.type`,
+        message: `port "${port.name}": type must be one of ${[...VALID_PORT_TYPES].join(', ')} (got ${JSON.stringify(port.type)})`,
+      });
+    }
+    if (port.type === 'enum') {
+      if (!Array.isArray(port.enum) || port.enum.length === 0) {
+        errors.push({
+          path: `${path}.enum`,
+          message: `port "${port.name}": enum type requires a non-empty "enum" array`,
+        });
+      } else if (port.enum.some((v: unknown) => typeof v !== 'string')) {
+        errors.push({
+          path: `${path}.enum`,
+          message: `port "${port.name}": enum values must all be strings`,
+        });
+      }
+    }
+    if (kind === 'outputs' && (port.required === true || port.from !== undefined)) {
+      // `required` / `from` are input-only concepts — outputs are
+      // always "produced when the task succeeds". Warn softly so the
+      // YAML doesn't silently accept meaningless fields.
+      errors.push({
+        path,
+        severity: 'warning',
+        message: `port "${port.name}": "required" and "from" are input-only; ignored on outputs`,
+      });
+    }
+    if (port.from !== undefined && typeof port.from !== 'string') {
+      errors.push({
+        path: `${path}.from`,
+        message: `port "${port.name}": "from" must be a string (got ${typeof port.from})`,
+      });
+    }
+  }
+}
+
+function validateTaskPorts(
+  task: RawTaskConfig,
+  taskPath: string,
+  errors: ValidationError[],
+): void {
+  const ports = task.ports;
+  if (!ports) return;
+
+  validatePortList(ports.inputs, `${taskPath}.ports.inputs`, 'inputs', errors);
+  validatePortList(ports.outputs, `${taskPath}.ports.outputs`, 'outputs', errors);
+
+  // Cross-check `{{inputs.<name>}}` references in prompt / command against
+  // the declared inputs. Typos are the easiest ports bug to ship and the
+  // hardest to debug at runtime (placeholders silently render empty).
+  const declaredInputs = new Set(ports.inputs?.map((p) => p.name) ?? []);
+  const referenced = new Set<string>();
+  if (typeof task.prompt === 'string') {
+    for (const n of extractInputReferences(task.prompt)) referenced.add(n);
+  }
+  if (typeof task.command === 'string') {
+    for (const n of extractInputReferences(task.command)) referenced.add(n);
+  }
+  for (const name of referenced) {
+    if (!declaredInputs.has(name)) {
+      errors.push({
+        path: taskPath,
+        message: `Task "${task.id}": references "{{inputs.${name}}}" but no such input port is declared`,
+      });
+    }
+  }
+
+  // Warn on declared-but-unused inputs. Not fatal — a user may want to
+  // surface an input as a data-flow hint for the editor even when the
+  // prompt/command doesn't template it explicitly (e.g. AI tasks that
+  // consume inputs through the `[Inputs]` context block).
+  if (typeof task.command === 'string') {
+    for (const port of ports.inputs ?? []) {
+      if (!referenced.has(port.name)) {
+        errors.push({
+          path: `${taskPath}.ports.inputs`,
+          severity: 'warning',
+          message: `Task "${task.id}": command does not reference {{inputs.${port.name}}} — declared input is unused`,
+        });
+      }
+    }
+  }
 }
 
 function detectCycles(config: RawPipelineConfig, index: TaskIndex): ValidationError[] {

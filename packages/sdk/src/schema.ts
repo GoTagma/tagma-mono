@@ -148,6 +148,9 @@ export function resolveConfig(raw: RawPipelineConfig, workDir: string): Pipeline
         completion: rawTask.completion,
         agent_profile: rawTask.agent_profile ?? rawTrack.agent_profile,
         cwd: rawTask.cwd ? validatePath(rawTask.cwd, workDir) : trackCwd,
+        // Ports: no inheritance — they describe per-task I/O contract, not
+        // cross-task defaults. Passed through as-is (including `undefined`).
+        ports: rawTask.ports,
       };
     });
 
@@ -273,6 +276,11 @@ export function deresolvePipeline(config: PipelineConfig, workDir: string): RawP
         ...(task.agent_profile ? { agent_profile: task.agent_profile } : {}),
         ...(task.permissions && !permissionsEqual(task.permissions, track.permissions)
           ? { permissions: task.permissions }
+          : {}),
+        ...(task.ports &&
+        ((task.ports.inputs && task.ports.inputs.length > 0) ||
+          (task.ports.outputs && task.ports.outputs.length > 0))
+          ? { ports: task.ports }
           : {}),
       };
     });
