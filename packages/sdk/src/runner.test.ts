@@ -55,10 +55,10 @@ test('runSpawn: oversized output — bounded tail in memory, full bytes on disk'
     expect(result.exitCode).toBe(0);
     // Total bytes reported match reality
     expect(result.stdoutBytes).toBe(totalBytes);
-    // In-memory tail bounded (tail + truncation marker header is a couple
-    // hundred bytes at most; give it slack)
+    // In-memory tail bounded above (tail + truncation marker header is a
+    // couple hundred bytes at most; give it slack). No lower bound — chunk
+    // boundaries are platform-dependent so the exact retained size varies.
     expect(result.stdout.length).toBeLessThan(cap + 1024);
-    expect(result.stdout.length).toBeGreaterThan(cap - 1024);
     // Truncation breadcrumb present and points at the full output
     expect(result.stdout).toContain('truncated from head');
     expect(result.stdout).toContain(stdoutPath);
