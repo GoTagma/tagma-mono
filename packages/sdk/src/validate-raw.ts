@@ -558,6 +558,31 @@ function validateTaskPorts(
         }
       }
     }
+
+    // Validate that fully-qualified `from` references point to direct
+    // dependencies. The runtime's findUpstreamValue only scans dependsOn,
+    // so a from that skips the dependency list will always miss at run
+    // time and block the task with a cryptic "missing required input".
+    if (Array.isArray(ports.inputs)) {
+      for (const port of ports.inputs) {
+        if (!port || typeof port !== 'object' || typeof port.from !== 'string' || !port.from.includes('.')) {
+          continue;
+        }
+        const dot = port.from.lastIndexOf('.');
+        const upstreamId = port.from.slice(0, dot);
+        const deps = task.depends_on ?? [];
+        const isDirectDep = deps.some((dep) => {
+          const resolved = resolveTaskRef(dep, trackId, index);
+          return resolved.kind === 'resolved' && resolved.qid === upstreamId;
+        });
+        if (!isDirectDep) {
+          errors.push({
+            path: `${taskPath}.ports.inputs`,
+            message: `Task "${task.id}": port "${port.name}" from "${port.from}" references task "${upstreamId}" which is not a direct dependency (must be listed in depends_on)`,
+          });
+        }
+      }
+    }
   }
 
   // ─── Prompt-task inferred-port conflict checks ──

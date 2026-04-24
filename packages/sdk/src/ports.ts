@@ -476,10 +476,11 @@ function safeParseJson(candidate: string): Record<string, unknown> | null {
 //     rename on the Command side. We surface this as an `inputConflicts`
 //     entry; the engine blocks the task with that reason.
 //
-//   - **Output collision with compatible types** (e.g. both downstreams
-//     ask for `date: string` with the same description) → merged into a
-//     single inferred output. The Prompt produces one `date`; both
-//     downstreams consume it.
+  //   - **Output collision with compatible types** (e.g. both downstreams
+  //     ask for `date: string`) → merged into a single inferred output.
+  //     Compatibility is determined by `type` and `enum` only; `description`
+  //     differences are ignored. The Prompt produces one `date`; both
+  //     downstreams consume it.
 //
 //   - **Output collision with incompatible types** (e.g. one downstream
 //     wants `date: string`, another `date: number`) → no single LLM

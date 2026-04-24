@@ -52,7 +52,7 @@
     },
     "apps/electron": {
       "name": "tagma-desktop",
-      "version": "0.3.9",
+      "version": "0.3.11",
       "devDependencies": {
         "@types/node": "^22.0.0",
         "electron": "^35.2.0",
