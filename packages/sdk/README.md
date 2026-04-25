@@ -72,7 +72,8 @@ console.log(result.success ? 'Done' : 'Failed');
 - **Middleware** -- enrich prompts before execution (e.g. inject static context)
 - **Completion checks** -- validate task output with `exit_code`, `file_exists`, or `output_check` plugins
 - **Plugin schemas** -- triggers/completions/middlewares can declare a `PluginSchema` so visual editors render typed forms for their config
-- **Typed task ports** -- declare named, typed `inputs` / `outputs` on a task. Inputs from upstream tasks are substituted into `command` / `prompt` via `{{inputs.<name>}}` and rendered as an `[Inputs]` context block for AI tasks; outputs are extracted from the final-line JSON object on stdout (or `normalizedOutput`) and surfaced to downstream tasks
+- **Lightweight task bindings** -- pass dynamic values with task-level `inputs` / `outputs` without declaring a typed contract
+- **Typed task ports** -- declare named, typed `ports.inputs` / `ports.outputs` when a task needs a strict, validated I/O contract
 
 ## Pipeline YAML Reference
 
@@ -201,6 +202,8 @@ Each hook value can be a single command string or an array of commands.
 | `middlewares`   | `MiddlewareConfig[]` | No       | Inherited from track | Middleware override. Set `[]` to disable inherited middlewares                                         |
 | `trigger`       | `TriggerConfig`      | No       | —                    | Gate that must resolve before the task runs (see Triggers)                                             |
 | `completion`    | `CompletionConfig`   | No       | —                    | Post-execution check to validate task output (see Completions)                                         |
+| `inputs`        | `TaskInputBindings`  | No       | —                    | Lightweight parameter bindings for `{{inputs.<name>}}`                                                 |
+| `outputs`       | `TaskOutputBindings` | No       | —                    | Lightweight named outputs published after success                                                      |
 | `ports`         | `TaskPorts`          | No       | —                    | Typed input/output ports — see Typed Ports below                                                       |
 
 ### Permissions
@@ -218,6 +221,33 @@ Fields are inherited top-down: **pipeline → track → task**. A value set at a
 Inherited fields: `driver`, `model`, `permissions`, `cwd`, `middlewares`.
 
 Track-level `middlewares` apply to all tasks in the track. Setting task-level `middlewares` **replaces** (not appends) the track-level list. Use `middlewares: []` to disable all inherited middlewares for a task.
+
+---
+
+### Lightweight Bindings
+
+Use task-level `inputs` / `outputs` for ordinary parameter passing. They are task-level only, do not inherit, and do not add prompt schema blocks or type coercion.
+
+```yaml
+- id: build
+  command: bun run build
+  outputs:
+    bundlePath: { from: json.bundlePath }
+
+- id: test
+  depends_on: [build]
+  command: 'bun test "{{inputs.bundlePath}}"'
+  inputs:
+    bundlePath:
+      from: t.build.outputs.bundlePath
+      required: true
+```
+
+Input bindings support `value`, `from`, `default`, and `required`. `from` accepts `taskId.outputs.name`, `taskId.stdout`, `taskId.stderr`, `taskId.normalizedOutput`, `taskId.exitCode`, or `outputs.name` to name-match direct upstream outputs.
+
+Output bindings support `value`, `from`, and `default`. `from` defaults to `json.<outputName>` and also accepts `stdout`, `stderr`, or `normalizedOutput`.
+
+Use `ports` instead when downstream tasks need required typed values, the editor should present a stable I/O contract, or prompt tasks should receive `[Inputs]` / `[Output Format]` blocks.
 
 ---
 
@@ -541,15 +571,17 @@ Validates a resolved pipeline config without executing it. Checks DAG structure 
 
 Use `validateRaw` for editing raw configs in a UI; use `validateConfig` after `resolveConfig` for a final pre-run check.
 
-### Typed Ports API
+### Bindings And Ports API
 
-Pure helpers backing the `task.ports` feature (see Typed Ports above). Safe to use in editors, simulators, and custom drivers — no I/O, no side effects.
+Pure helpers backing lightweight bindings and `task.ports`. Safe to use in editors, simulators, and custom drivers — no I/O, no side effects.
 
 | Function                                                | Description                                                                                                                                                                                                                          |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `substituteInputs(text, inputs)`                        | Expand `{{inputs.<name>}}` placeholders in `text`. Returns `{ text, unresolved }`. Strings pass through, numbers/booleans coerce via `String(...)`, objects/arrays via `JSON.stringify`. Caller is responsible for shell quoting     |
 | `extractInputReferences(text)`                          | Return the set of input port names referenced by `{{inputs.<name>}}` placeholders in `text`. Use at edit time to flag undeclared references                                                                                          |
+| `resolveTaskBindingInputs(task, upstreamData, dependsOn)` | Resolve lightweight task-level `inputs` from literal values, upstream outputs, stdout/stderr, normalized output, defaults, and required flags                                                                                         |
 | `resolveTaskInputs(task, upstreamOutputs, dependsOn)`   | Gather the input values a task will consume from its direct upstreams. Applies `from` bindings, defaults, and type coercion. Returns `{ kind: 'ready', inputs, missingOptional }` or `{ kind: 'blocked', missingRequired, ambiguous, typeErrors, reason }` |
+| `extractTaskBindingOutputs(outputs, stdout, stderr, normalizedOutput)` | Publish lightweight task-level `outputs` from final-line JSON, stdout/stderr, normalized output, literal values, or defaults                                                                                              |
 | `extractTaskOutputs(ports, stdout, normalizedOutput)`   | Pull declared output values from a terminated task's output. Strategy: prefer `normalizedOutput`; find the last non-empty line that parses as a JSON object; coerce each declared key. Returns `{ outputs, diagnostic }`             |
 | `prependContext(doc, block)`                            | Same shape as `appendContext` but prepends; the engine uses this to place `[Output Format]` and `[Inputs]` blocks before middleware-added context                                                                                    |
 | `renderInputsBlock(inputsDecl, values)`                 | Build the `[Inputs]` `PromptContextBlock` rendered into AI prompts (`name: value  # description` lines). Returns `null` when no inputs to render                                                                                     |

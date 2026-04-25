@@ -128,6 +128,42 @@ export interface TaskPorts {
   readonly outputs?: readonly PortDef[];
 }
 
+// Lightweight task-level bindings. These are intentionally looser than
+// `ports`: use them for ordinary parameter passing; use `ports` when the
+// task needs a typed public I/O contract.
+export interface TaskInputBinding {
+  /** Literal value. When set, it wins over `from`. */
+  readonly value?: unknown;
+  /**
+   * Source expression. Supported forms:
+   *   - `taskId.outputs.name`
+   *   - `taskId.stdout`
+   *   - `taskId.stderr`
+   *   - `taskId.normalizedOutput`
+   *   - `outputs.name` (name-match across direct upstream outputs)
+   */
+  readonly from?: string;
+  /** Fallback when `from` is missing or unresolved. */
+  readonly default?: unknown;
+  /** When true, unresolved values block the task before it starts. */
+  readonly required?: boolean;
+}
+
+export interface TaskOutputBinding {
+  /** Literal value. When set, it wins over `from`. */
+  readonly value?: unknown;
+  /**
+   * Output source. Defaults to `json.<outputName>`.
+   * Supported forms: `json.name`, `stdout`, `stderr`, `normalizedOutput`.
+   */
+  readonly from?: string;
+  /** Fallback when the selected source is missing. */
+  readonly default?: unknown;
+}
+
+export type TaskInputBindings = Readonly<Record<string, TaskInputBinding>>;
+export type TaskOutputBindings = Readonly<Record<string, TaskOutputBinding>>;
+
 // ═══ Trigger / Completion / Middleware Configs ═══
 
 export interface TriggerConfig {
@@ -164,6 +200,8 @@ export interface TaskConfig {
   readonly completion?: CompletionConfig;
   readonly agent_profile?: string;
   readonly cwd?: string;
+  readonly inputs?: TaskInputBindings;
+  readonly outputs?: TaskOutputBindings;
   /**
    * Typed I/O ports declared on this task. See `TaskPorts` above. Omitted =
    * task has no declared ports and behaves as before (no substitution, no
@@ -191,6 +229,8 @@ export interface RawTaskConfig {
   readonly completion?: CompletionConfig;
   readonly agent_profile?: string;
   readonly cwd?: string;
+  readonly inputs?: TaskInputBindings;
+  readonly outputs?: TaskOutputBindings;
   readonly ports?: TaskPorts;
 }
 
@@ -555,12 +595,11 @@ export interface TaskResult {
    */
   readonly failureKind?: TaskFailureKind;
   /**
-   * Extracted port output values — populated by the engine after a task
-   * terminates successfully when `task.ports.outputs` is declared. Keys
-   * match declared port names; values are coerced to each port's type.
-   * `null` = task had no declared outputs, or extraction failed (the
-   * engine appends a diagnostic to stderr in that case). Downstream
-   * tasks consume this via `DriverContext.inputs`.
+   * Published output values — populated by the engine after a task
+   * terminates successfully when lightweight `task.outputs` or strict
+   * `task.ports.outputs` are declared. Strict port values are coerced to
+   * each port's type; lightweight outputs are passed through as selected.
+   * `null` = task had no declared outputs.
    */
   readonly outputs?: Readonly<Record<string, unknown>> | null;
 }

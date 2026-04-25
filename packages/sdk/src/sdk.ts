@@ -129,12 +129,16 @@ export {
 export {
   substituteInputs,
   extractInputReferences,
+  resolveTaskBindingInputs,
   resolveTaskInputs,
+  extractTaskBindingOutputs,
   extractTaskOutputs,
   inferPromptPorts,
 } from './ports';
 export type {
   SubstituteResult,
+  BindingInputResolution,
+  UpstreamBindingData,
   InputResolution,
   ExtractResult,
   PromptPortInference,

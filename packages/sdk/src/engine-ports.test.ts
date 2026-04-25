@@ -112,6 +112,72 @@ function finalStatusFrom(events: RunEventPayload[], qid: string): TaskStatus | u
 // ─── Tests ────────────────────────────────────────────────────────────
 
 describe('engine — ports: output extraction + input resolution', () => {
+  test('lightweight task inputs substitute command placeholders without ports', async () => {
+    const dir = makeDir();
+    try {
+      const echo = writeEchoArgsScript(dir, 'echo');
+      const config = pipeline([
+        task({
+          id: 'down',
+          command: `node "${echo}" "{{inputs.city}}" "{{inputs.mode}}"`,
+          inputs: {
+            city: { value: 'Shanghai' },
+            mode: { default: 'quick' },
+          },
+        }),
+      ]);
+
+      const { events, success } = await run(config, dir);
+      expect(success).toBe(true);
+      const downFinal = finalUpdateFor(events, 't.down');
+      if (downFinal?.type === 'task_update') {
+        expect((downFinal.stdout ?? '').trim()).toBe('Shanghai|quick');
+        expect(downFinal.inputs).toEqual({ city: 'Shanghai', mode: 'quick' });
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('lightweight task outputs publish named values for downstream bindings', async () => {
+    const dir = makeDir();
+    try {
+      const emit = writeEmitScript(dir, 'emit', { bundlePath: 'dist/app.js' });
+      const echo = writeEchoArgsScript(dir, 'echo');
+      const config = pipeline([
+        task({
+          id: 'build',
+          command: `node "${emit}"`,
+          outputs: {
+            bundlePath: {},
+          },
+        }),
+        task({
+          id: 'test',
+          depends_on: ['build'],
+          command: `node "${echo}" "{{inputs.bundlePath}}"`,
+          inputs: {
+            bundlePath: { from: 't.build.outputs.bundlePath', required: true },
+          },
+        }),
+      ]);
+
+      const { events, success } = await run(config, dir);
+      expect(success).toBe(true);
+      const buildFinal = finalUpdateFor(events, 't.build');
+      if (buildFinal?.type === 'task_update') {
+        expect(buildFinal.outputs).toEqual({ bundlePath: 'dist/app.js' });
+      }
+      const testFinal = finalUpdateFor(events, 't.test');
+      if (testFinal?.type === 'task_update') {
+        expect((testFinal.stdout ?? '').trim()).toBe('dist/app.js');
+        expect(testFinal.inputs).toEqual({ bundlePath: 'dist/app.js' });
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('upstream outputs feed downstream inputs via name match', async () => {
     const dir = makeDir();
     try {

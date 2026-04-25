@@ -538,6 +538,136 @@ function validatePortList(
   }
 }
 
+function validateBindingMap(
+  value: unknown,
+  basePath: string,
+  kind: 'inputs' | 'outputs',
+  errors: ValidationError[],
+): void {
+  if (value === undefined) return;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    errors.push({ path: basePath, message: `task.${kind} must be an object map` });
+    return;
+  }
+
+  const map = value as Record<string, unknown>;
+  for (const [name, rawBinding] of Object.entries(map)) {
+    const path = `${basePath}.${name}`;
+    if (!PORT_NAME_RE.test(name)) {
+      errors.push({
+        path,
+        message: `binding name "${name}" is invalid. Must match /^[A-Za-z_][A-Za-z0-9_]*$/.`,
+      });
+    }
+    if (!rawBinding || typeof rawBinding !== 'object' || Array.isArray(rawBinding)) {
+      errors.push({ path, message: `task.${kind}.${name} must be an object` });
+      continue;
+    }
+    const binding = rawBinding as Record<string, unknown>;
+    if ('from' in binding && typeof binding.from !== 'string') {
+      errors.push({ path: `${path}.from`, message: `task.${kind}.${name}.from must be a string` });
+    }
+    if (kind === 'inputs' && 'required' in binding && typeof binding.required !== 'boolean') {
+      errors.push({
+        path: `${path}.required`,
+        message: `task.inputs.${name}.required must be a boolean`,
+      });
+    }
+    if (kind === 'outputs' && typeof binding.from === 'string') {
+      const source = binding.from;
+      const ok =
+        source === 'stdout' ||
+        source === 'stderr' ||
+        source === 'normalizedOutput' ||
+        /^json\.[A-Za-z_][A-Za-z0-9_]*$/.test(source);
+      if (!ok) {
+        errors.push({
+          path: `${path}.from`,
+          message: `task.outputs.${name}.from must be stdout, stderr, normalizedOutput, or json.<key>`,
+        });
+      }
+    }
+  }
+}
+
+function validateBindingPortNameOverlap(
+  task: RawTaskConfig,
+  taskPath: string,
+  errors: ValidationError[],
+): void {
+  const looseInputs = objectKeys(task.inputs);
+  const looseOutputs = objectKeys(task.outputs);
+  const strictInputs = new Set(
+    Array.isArray(task.ports?.inputs) ? task.ports.inputs.map((p) => p?.name) : [],
+  );
+  const strictOutputs = new Set(
+    Array.isArray(task.ports?.outputs) ? task.ports.outputs.map((p) => p?.name) : [],
+  );
+
+  for (const name of looseInputs) {
+    if (strictInputs.has(name)) {
+      errors.push({
+        path: `${taskPath}.inputs.${name}`,
+        message: `task input binding "${name}" duplicates strict ports.inputs; choose one layer for this name`,
+      });
+    }
+  }
+  for (const name of looseOutputs) {
+    if (strictOutputs.has(name)) {
+      errors.push({
+        path: `${taskPath}.outputs.${name}`,
+        message: `task output binding "${name}" duplicates strict ports.outputs; choose one layer for this name`,
+      });
+    }
+  }
+}
+
+function objectKeys(value: unknown): string[] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+  return Object.keys(value as Record<string, unknown>);
+}
+
+function validateInputBindingSources(
+  task: RawTaskConfig,
+  trackId: string,
+  taskPath: string,
+  index: TaskIndex,
+  errors: ValidationError[],
+): void {
+  if (!task.inputs || typeof task.inputs !== 'object' || Array.isArray(task.inputs)) return;
+  for (const [name, rawBinding] of Object.entries(task.inputs)) {
+    if (!rawBinding || typeof rawBinding !== 'object' || Array.isArray(rawBinding)) continue;
+    const source = (rawBinding as Record<string, unknown>).from;
+    if (typeof source !== 'string') continue;
+    const upstreamId = bindingSourceTaskId(source);
+    if (!upstreamId) continue;
+    const deps = task.depends_on ?? [];
+    const isDirectDep = deps.some((dep) => {
+      const resolved = resolveTaskRef(dep, trackId, index);
+      return resolved.kind === 'resolved' && resolved.qid === upstreamId;
+    });
+    if (!isDirectDep) {
+      errors.push({
+        path: `${taskPath}.inputs.${name}.from`,
+        message: `Task "${task.id}": input binding "${name}" from "${source}" references task "${upstreamId}" which is not a direct dependency (must be listed in depends_on)`,
+      });
+    }
+  }
+}
+
+function bindingSourceTaskId(source: string): string | null {
+  const outputMarker = '.outputs.';
+  const outputIdx = source.lastIndexOf(outputMarker);
+  if (outputIdx > 0) return source.slice(0, outputIdx);
+  for (const field of ['stdout', 'stderr', 'normalizedOutput', 'exitCode']) {
+    const suffix = `.${field}`;
+    if (source.endsWith(suffix) && source.length > suffix.length) {
+      return source.slice(0, -suffix.length);
+    }
+  }
+  return null;
+}
+
 function validateTaskPorts(
   task: RawTaskConfig,
   trackId: string,
@@ -549,6 +679,11 @@ function validateTaskPorts(
   const ports = task.ports;
   const isPromptTask = typeof task.prompt === 'string' && typeof task.command !== 'string';
   const isCommandTask = typeof task.command === 'string' && typeof task.prompt !== 'string';
+
+  validateBindingMap(task.inputs, `${taskPath}.inputs`, 'inputs', errors);
+  validateBindingMap(task.outputs, `${taskPath}.outputs`, 'outputs', errors);
+  validateBindingPortNameOverlap(task, taskPath, errors);
+  validateInputBindingSources(task, trackId, taskPath, index, errors);
 
   // ─── Prompt tasks do not declare ports ──
   //
@@ -585,6 +720,7 @@ function validateTaskPorts(
   let availableInputs: Set<string>;
   if (isPromptTask) {
     availableInputs = collectUpstreamCommandOutputNames(task, trackId, qidIndex, index);
+    for (const name of objectKeys(task.inputs)) availableInputs.add(name);
   } else {
     // Command Task (or the pathological both-keys case, which is caught
     // earlier as a separate error — tolerate it here).
@@ -593,6 +729,7 @@ function validateTaskPorts(
         ? ports.inputs.filter((p): p is PortDef => !!p && typeof p === 'object').map((p) => p.name)
         : [],
     );
+    for (const name of objectKeys(task.inputs)) availableInputs.add(name);
   }
 
   for (const name of referenced) {

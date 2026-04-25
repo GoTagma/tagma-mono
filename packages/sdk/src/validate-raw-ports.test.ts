@@ -38,6 +38,12 @@ function portsErrors(errors: ReturnType<typeof validateRaw>): typeof errors {
   );
 }
 
+function bindingErrors(errors: ReturnType<typeof validateRaw>): typeof errors {
+  return errors.filter(
+    (e) => e.path.includes('.inputs') || e.path.includes('.outputs'),
+  );
+}
+
 // ─── Structural validation (Command Tasks) ───────────────────────────
 
 describe('validateRaw — port structure (command tasks)', () => {
@@ -120,6 +126,66 @@ describe('validateRaw — port structure (command tasks)', () => {
     } as TaskPorts;
     const errors = errorsFor(commandTask({ id: 'a', ports }));
     expect(portsErrors(errors).some((e) => /"from" must be a string/.test(e.message))).toBe(true);
+  });
+});
+
+// ─── Lightweight binding validation ──────────────────────────────────
+
+describe('validateRaw — lightweight task bindings', () => {
+  test('accepts top-level inputs for command placeholder references', () => {
+    const errors = errorsFor(
+      commandTask({
+        id: 'a',
+        command: 'echo {{inputs.city}}',
+        inputs: { city: { value: 'Shanghai' } },
+      }),
+    );
+    expect(errors.some((e) => e.message.includes('references "{{inputs.city}}"'))).toBe(false);
+  });
+
+  test('rejects non-object binding maps and entries', () => {
+    const errors = errorsFor(
+      commandTask({
+        id: 'a',
+        inputs: 'bad' as unknown as never,
+        outputs: { ok: 'bad' as unknown as never },
+      }),
+    );
+    const msgs = bindingErrors(errors).map((e) => e.message);
+    expect(msgs.some((m) => /task\.inputs must be an object/.test(m))).toBe(true);
+    expect(msgs.some((m) => /task\.outputs\.ok must be an object/.test(m))).toBe(true);
+  });
+
+  test('rejects invalid binding names and duplicate loose/strict names', () => {
+    const errors = errorsFor(
+      commandTask({
+        id: 'a',
+        inputs: { 'bad-name': { value: 'x' }, city: { value: 'Shanghai' } },
+        outputs: { report: { from: 'stdout' } },
+        ports: {
+          inputs: [{ name: 'city', type: 'string' }],
+          outputs: [{ name: 'report', type: 'string' }],
+        },
+      }),
+    );
+    const msgs = errors.map((e) => e.message);
+    expect(msgs.some((m) => /binding name "bad-name" is invalid/.test(m))).toBe(true);
+    expect(msgs.some((m) => /duplicates strict ports\.inputs/.test(m))).toBe(true);
+    expect(msgs.some((m) => /duplicates strict ports\.outputs/.test(m))).toBe(true);
+  });
+
+  test('fully-qualified binding sources must reference direct dependencies', () => {
+    const errors = validateRaw(
+      pipeline([
+        commandTask({ id: 'up', outputs: { city: {} } }),
+        commandTask({
+          id: 'down',
+          depends_on: [],
+          inputs: { city: { from: 't.up.outputs.city', required: true } },
+        }),
+      ]),
+    );
+    expect(errors.some((e) => /not a direct dependency/.test(e.message))).toBe(true);
   });
 });
 

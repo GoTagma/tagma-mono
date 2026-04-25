@@ -97,7 +97,7 @@ function validateRawTask(task: RawTaskConfig, trackId: string): void {
     throw new Error(`task "${task.id}": cannot have both "prompt" and "command"`);
   }
   // Empty-content tasks (e.g. `prompt: ''`) are allowed at parse time and
-  // flagged as non-fatal validation errors by validate-raw.ts.
+  // flagged as hard validation errors by validate-raw.ts.
 }
 
 // ═══ Config Inheritance Resolution ═══
@@ -161,8 +161,10 @@ export function resolveConfig(raw: RawPipelineConfig, workDir: string): Pipeline
         completion: rawTask.completion,
         agent_profile: rawTask.agent_profile ?? rawTrack.agent_profile,
         cwd: rawTask.cwd ? validatePath(rawTask.cwd, workDir) : trackCwd,
-        // Ports: no inheritance — they describe per-task I/O contract, not
-        // cross-task defaults. Passed through as-is (including `undefined`).
+        // Lightweight bindings and ports: no inheritance — they describe
+        // per-task data flow, not cross-task defaults.
+        inputs: rawTask.inputs,
+        outputs: rawTask.outputs,
         ports: rawTask.ports,
       };
     });
@@ -309,6 +311,8 @@ export function deresolvePipeline(config: PipelineConfig, workDir: string): RawP
         ...(task.permissions && !permissionsEqual(task.permissions, track.permissions)
           ? { permissions: task.permissions }
           : {}),
+        ...(task.inputs && Object.keys(task.inputs).length > 0 ? { inputs: task.inputs } : {}),
+        ...(task.outputs && Object.keys(task.outputs).length > 0 ? { outputs: task.outputs } : {}),
         ...(task.ports &&
         ((task.ports.inputs && task.ports.inputs.length > 0) ||
           (task.ports.outputs && task.ports.outputs.length > 0))

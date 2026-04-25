@@ -31,11 +31,14 @@ import {
   renderOutputSchemaBlock,
 } from './prompt-doc';
 import {
+  extractTaskBindingOutputs,
   extractTaskOutputs,
   inferPromptPorts,
+  resolveTaskBindingInputs,
   resolveTaskInputs,
   substituteInputs,
 } from './ports';
+import type { UpstreamBindingData } from './ports';
 import type { TaskPorts } from './types';
 import {
   executeHook,
@@ -70,6 +73,18 @@ export class TriggerTimeoutError extends Error {
   }
 }
 
+function isPromptTaskConfig(
+  task: TaskConfig,
+): task is TaskConfig & { readonly prompt: string; readonly command?: undefined } {
+  return task.prompt !== undefined && task.command === undefined;
+}
+
+function isCommandTaskConfig(
+  task: TaskConfig,
+): task is TaskConfig & { readonly command: string; readonly prompt?: undefined } {
+  return task.command !== undefined && task.prompt === undefined;
+}
+
 // ═══ Preflight Validation ═══
 
 function preflight(config: PipelineConfig, dag: Dag, registry: PluginRegistry): void {
@@ -81,7 +96,7 @@ function preflight(config: PipelineConfig, dag: Dag, registry: PluginRegistry): 
     const driverName = task.driver ?? track.driver ?? config.driver ?? 'opencode';
 
     // Pure command tasks don't use a driver — skip driver registration check.
-    const isCommandOnly = task.command && !task.prompt;
+    const isCommandOnly = isCommandTaskConfig(task);
 
     if (!isCommandOnly && !registry.hasHandler('drivers', driverName)) {
       errors.push(`Task "${node.taskId}": driver "${driverName}" not registered`);
@@ -319,7 +334,7 @@ export async function runPipeline(
     log.section('DAG topology');
     for (const [id, node] of dag.nodes) {
       const deps = node.dependsOn.length ? node.dependsOn.join(', ') : '(root)';
-      const kind = node.task.prompt ? 'ai' : 'cmd';
+      const kind = isPromptTaskConfig(node.task) ? 'ai' : 'cmd';
       log.quiet(`  • ${id}  [${kind}]  track=${node.track.id}  deps=[${deps}]`);
     }
     log.quiet('');
@@ -388,13 +403,12 @@ export async function runPipeline(
 
     const sessionMap = new Map<string, string>();
     const normalizedMap = new Map<string, string>();
-    // Extracted port outputs keyed by fully-qualified task id. Populated
-    // after a task succeeds when its `ports.outputs` is declared; read by
-    // downstream tasks via `resolveTaskInputs` to assemble their inputs.
-    // Kept separate from normalizedMap so the continue_from text handoff
-    // and the typed-port data handoff don't pollute each other — they
-    // solve different problems and have different lifetimes.
+    // Published structured outputs keyed by fully-qualified task id.
+    // Includes lightweight task.outputs and strict ports.outputs.
     const outputValuesMap = new Map<string, Readonly<Record<string, unknown>>>();
+    // Full upstream result data for lightweight input bindings such as
+    // `taskId.stdout` and `taskId.outputs.name`.
+    const bindingDataMap = new Map<string, UpstreamBindingData>();
     // Resolved port inputs keyed by fully-qualified task id. Written once,
     // just before a task runs, so every subsequent task_update event can
     // echo them to the UI without re-resolving.
@@ -577,7 +591,7 @@ export async function runPipeline(
       return {
         id: taskId,
         name: state.config.name,
-        type: state.config.prompt ? 'ai' : 'command',
+        type: isPromptTaskConfig(state.config) ? 'ai' : 'command',
         status: state.status,
         exit_code: state.result?.exitCode ?? null,
         duration_ms: state.result?.durationMs ?? null,
@@ -614,7 +628,7 @@ export async function runPipeline(
       log.section(`Task ${taskId}`, taskId);
       log.debug(
         `[task:${taskId}]`,
-        `type=${task.prompt ? 'ai' : 'cmd'} track=${track.id} deps=[${node.dependsOn.join(', ') || '(root)'}]`,
+        `type=${isPromptTaskConfig(task) ? 'ai' : 'cmd'} track=${track.id} deps=[${node.dependsOn.join(', ') || '(root)'}]`,
       );
 
       // 1. Check dependencies
@@ -781,7 +795,7 @@ export async function runPipeline(
       // pipeline the Command path uses. Collisions that a Prompt can't
       // disambiguate (same input name on two upstreams, incompatible
       // downstream output types) block the task with a clear message.
-      const isPromptTask = task.prompt !== undefined && task.command === undefined;
+      const isPromptTask = isPromptTaskConfig(task);
       let effectivePorts: TaskPorts | undefined = task.ports;
       let promptInferenceBlockReason: string | null = null;
 
@@ -789,7 +803,7 @@ export async function runPipeline(
         const inference = inferPromptPorts({
           upstreams: node.dependsOn.map((upstreamId) => {
             const upstream = dag.nodes.get(upstreamId);
-            const isUpstreamCommand = !!upstream?.task.command;
+            const isUpstreamCommand = upstream ? isCommandTaskConfig(upstream.task) : false;
             return {
               taskId: upstreamId,
               outputs: isUpstreamCommand ? upstream?.task.ports?.outputs : undefined,
@@ -797,7 +811,7 @@ export async function runPipeline(
           }),
           downstreams: (directDownstreams.get(taskId) ?? []).map((downstreamId) => {
             const downstream = dag.nodes.get(downstreamId);
-            const isDownstreamCommand = !!downstream?.task.command;
+            const isDownstreamCommand = downstream ? isCommandTaskConfig(downstream.task) : false;
             return {
               taskId: downstreamId,
               inputs: isDownstreamCommand ? downstream?.task.ports?.inputs : undefined,
@@ -844,6 +858,44 @@ export async function runPipeline(
         return;
       }
 
+      const bindingResolution = resolveTaskBindingInputs(task, bindingDataMap, node.dependsOn);
+      if (bindingResolution.kind === 'blocked') {
+        log.error(
+          `[task:${taskId}]`,
+          `blocked — cannot resolve task input bindings:\n${bindingResolution.reason}`,
+        );
+        state.result = {
+          exitCode: -1,
+          stdout: '',
+          stderr: `[engine] task input binding resolution failed:\n${bindingResolution.reason}`,
+          stdoutPath: null,
+          stderrPath: null,
+          durationMs: 0,
+          sessionId: null,
+          normalizedOutput: null,
+          failureKind: 'spawn_error',
+          outputs: null,
+        };
+        state.finishedAt = nowISO();
+        setTaskStatus(taskId, 'blocked');
+        try {
+          await fireHook(taskId, 'task_failure');
+        } catch (hookErr) {
+          log.error(
+            `[task:${taskId}]`,
+            `hook execution failed: ${hookErr instanceof Error ? hookErr.message : String(hookErr)}`,
+          );
+        }
+        if (getOnFailure(taskId) === 'stop_all') applyStopAll(node.track.id);
+        return;
+      }
+      if (bindingResolution.missingOptional.length > 0) {
+        log.debug(
+          `[task:${taskId}]`,
+          `optional input bindings unresolved (empty in placeholders): ${bindingResolution.missingOptional.join(', ')}`,
+        );
+      }
+
       // Feed effective ports into `resolveTaskInputs` by shallow-cloning
       // the task. Prompt tasks get the inferred ports; Command tasks are
       // unchanged (effectivePorts === task.ports).
@@ -880,7 +932,7 @@ export async function runPipeline(
         if (getOnFailure(taskId) === 'stop_all') applyStopAll(node.track.id);
         return;
       }
-      const resolvedInputs = inputResolution.inputs;
+      const resolvedInputs = { ...bindingResolution.inputs, ...inputResolution.inputs };
       resolvedInputsMap.set(taskId, resolvedInputs);
       if (inputResolution.missingOptional.length > 0) {
         log.debug(
@@ -902,7 +954,7 @@ export async function runPipeline(
       setTaskStatus(taskId, 'running');
       log.info(
         `[task:${taskId}]`,
-        task.command ? `running: ${task.command}` : `running (driver task)`,
+        isCommandTaskConfig(task) ? `running: ${task.command}` : `running (driver task)`,
       );
 
       // File-only: resolved config for this task
@@ -940,7 +992,7 @@ export async function runPipeline(
           stderrPath,
         };
 
-        if (task.command) {
+        if (isCommandTaskConfig(task)) {
           // Substitute `{{inputs.X}}` placeholders into the command
           // string. Tasks with no declared inputs always produce the same
           // string back (no placeholders to match). Unresolved references
@@ -1168,16 +1220,29 @@ export async function runPipeline(
           terminalStatus = 'success';
         }
 
-        // Extract declared port outputs from the task's output stream.
-        // Only meaningful on success — a failed task's output is whatever
-        // the child happened to emit before exiting, and downstream tasks
-        // shouldn't receive partial data. `extractTaskOutputs` is a no-op
-        // when the task has no declared outputs, so this is free for
-        // pre-ports tasks. Diagnostics are appended to stderr so users
-        // see *why* a downstream input is missing without having to dig
-        // through driver-specific logs.
+        // Extract declared outputs from the task's output stream. Only
+        // meaningful on success — a failed task's output is whatever the
+        // child happened to emit before exiting, and downstream tasks
+        // shouldn't receive partial data.
         let extractedOutputs: Readonly<Record<string, unknown>> | null = null;
         if (terminalStatus === 'success') {
+          const looseExtraction = extractTaskBindingOutputs(
+            task.outputs,
+            result.stdout,
+            result.stderr,
+            result.normalizedOutput,
+          );
+          if (task.outputs && Object.keys(task.outputs).length > 0) {
+            extractedOutputs = looseExtraction.outputs;
+            log.debug(
+              `[task:${taskId}]`,
+              `extracted binding outputs: ${JSON.stringify(looseExtraction.outputs)}`,
+            );
+            if (looseExtraction.diagnostic) {
+              log.debug(`[task:${taskId}]`, looseExtraction.diagnostic);
+            }
+          }
+
           // Prompt tasks use inferred ports (from direct-downstream Command
           // inputs); Command tasks use their declared ports. Either way,
           // `extractTaskOutputs` is a no-op when there are no declared
@@ -1188,8 +1253,7 @@ export async function runPipeline(
             result.normalizedOutput,
           );
           if (effectivePorts?.outputs && effectivePorts.outputs.length > 0) {
-            extractedOutputs = extraction.outputs;
-            outputValuesMap.set(taskId, extraction.outputs);
+            extractedOutputs = { ...(extractedOutputs ?? {}), ...extraction.outputs };
             log.debug(
               `[task:${taskId}]`,
               `extracted outputs: ${JSON.stringify(extraction.outputs)}` +
@@ -1207,6 +1271,16 @@ export async function runPipeline(
         // — hooks, wire events, test assertions — all go through this
         // one field rather than re-running extraction.
         result = { ...result, outputs: extractedOutputs };
+        if (extractedOutputs !== null) {
+          outputValuesMap.set(taskId, extractedOutputs);
+        }
+        bindingDataMap.set(taskId, {
+          outputs: extractedOutputs,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          normalizedOutput: result.normalizedOutput,
+          exitCode: result.exitCode,
+        });
 
         // Store normalized text separately (in-memory) for continue_from handoff.
         // R15: clip oversized values so a runaway parseResult can't accumulate

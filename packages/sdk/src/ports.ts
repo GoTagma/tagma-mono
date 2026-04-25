@@ -34,7 +34,13 @@
 // Everything here is pure / deterministic so it can be reused by the CLI,
 // the editor (for preview/simulation), and the engine without side effects.
 
-import type { PortDef, PortType, TaskConfig, TaskPorts } from './types';
+import type {
+  PortDef,
+  PortType,
+  TaskConfig,
+  TaskOutputBindings,
+  TaskPorts,
+} from './types';
 
 // ─── Template substitution ────────────────────────────────────────────
 
@@ -244,6 +250,157 @@ export function resolveTaskInputs(
   return { kind: 'ready', inputs, missingOptional };
 }
 
+// ─── Lightweight binding resolution ──────────────────────────────────
+
+export interface UpstreamBindingData {
+  readonly outputs?: Readonly<Record<string, unknown>> | null;
+  readonly stdout?: string;
+  readonly stderr?: string;
+  readonly normalizedOutput?: string | null;
+  readonly exitCode?: number | null;
+}
+
+export type BindingInputResolution =
+  | {
+      readonly kind: 'ready';
+      readonly inputs: Readonly<Record<string, unknown>>;
+      readonly missingOptional: readonly string[];
+    }
+  | {
+      readonly kind: 'blocked';
+      readonly missingRequired: readonly string[];
+      readonly ambiguous: readonly { input: string; producers: readonly string[] }[];
+      readonly reason: string;
+    };
+
+export function resolveTaskBindingInputs(
+  task: Pick<TaskConfig, 'inputs'>,
+  upstreamData: ReadonlyMap<string, UpstreamBindingData>,
+  dependsOn: readonly string[],
+): BindingInputResolution {
+  const bindings = task.inputs;
+  if (!bindings || Object.keys(bindings).length === 0) {
+    return { kind: 'ready', inputs: {}, missingOptional: [] };
+  }
+
+  const inputs: Record<string, unknown> = {};
+  const missingRequired: string[] = [];
+  const missingOptional: string[] = [];
+  const ambiguous: { input: string; producers: string[] }[] = [];
+
+  for (const [name, binding] of Object.entries(bindings)) {
+    let value: unknown;
+    let present = false;
+
+    if ('value' in binding) {
+      value = binding.value;
+      present = true;
+    } else if (binding.from) {
+      const found = resolveBindingSource(binding.from, upstreamData, dependsOn);
+      if (found.kind === 'ambiguous') {
+        ambiguous.push({ input: name, producers: found.producers });
+        continue;
+      }
+      if (found.kind === 'hit') {
+        value = found.value;
+        present = true;
+      }
+    }
+
+    if (!present && 'default' in binding) {
+      value = binding.default;
+      present = true;
+    }
+
+    if (!present || value === undefined || value === null) {
+      if (binding.required === true) {
+        missingRequired.push(name);
+      } else {
+        missingOptional.push(name);
+      }
+      continue;
+    }
+
+    inputs[name] = value;
+  }
+
+  if (missingRequired.length > 0 || ambiguous.length > 0) {
+    const lines: string[] = [];
+    if (missingRequired.length > 0) {
+      lines.push(`missing required binding input(s): ${missingRequired.join(', ')}`);
+    }
+    for (const amb of ambiguous) {
+      lines.push(
+        `binding input "${amb.input}" is produced by multiple upstreams ` +
+          `(${amb.producers.join(', ')}) — use "taskId.outputs.${amb.input}"`,
+      );
+    }
+    return { kind: 'blocked', missingRequired, ambiguous, reason: lines.join('\n') };
+  }
+
+  return { kind: 'ready', inputs, missingOptional };
+}
+
+type BindingLookup =
+  | { kind: 'hit'; producer: string; value: unknown }
+  | { kind: 'miss' }
+  | { kind: 'ambiguous'; producers: string[] };
+
+function resolveBindingSource(
+  source: string,
+  upstreamData: ReadonlyMap<string, UpstreamBindingData>,
+  dependsOn: readonly string[],
+): BindingLookup {
+  if (source.startsWith('outputs.')) {
+    return findOutputByName(source.slice('outputs.'.length), upstreamData, dependsOn);
+  }
+
+  const outputMarker = '.outputs.';
+  const outputIdx = source.lastIndexOf(outputMarker);
+  if (outputIdx > 0) {
+    const upstreamId = source.slice(0, outputIdx);
+    const outputName = source.slice(outputIdx + outputMarker.length);
+    if (!dependsOn.includes(upstreamId)) return { kind: 'miss' };
+    const upstream = upstreamData.get(upstreamId);
+    if (upstream?.outputs && outputName in upstream.outputs) {
+      return { kind: 'hit', producer: upstreamId, value: upstream.outputs[outputName] };
+    }
+    return { kind: 'miss' };
+  }
+
+  for (const field of ['stdout', 'stderr', 'normalizedOutput', 'exitCode'] as const) {
+    const suffix = `.${field}`;
+    if (!source.endsWith(suffix)) continue;
+    const upstreamId = source.slice(0, -suffix.length);
+    if (!dependsOn.includes(upstreamId)) return { kind: 'miss' };
+    const upstream = upstreamData.get(upstreamId);
+    if (!upstream) return { kind: 'miss' };
+    const value = upstream[field];
+    return value === undefined || value === null
+      ? { kind: 'miss' }
+      : { kind: 'hit', producer: upstreamId, value };
+  }
+
+  return { kind: 'miss' };
+}
+
+function findOutputByName(
+  name: string,
+  upstreamData: ReadonlyMap<string, UpstreamBindingData>,
+  dependsOn: readonly string[],
+): BindingLookup {
+  const hits: { producer: string; value: unknown }[] = [];
+  for (const upstreamId of dependsOn) {
+    const upstream = upstreamData.get(upstreamId);
+    if (upstream?.outputs && name in upstream.outputs) {
+      hits.push({ producer: upstreamId, value: upstream.outputs[name] });
+    }
+  }
+  if (hits.length === 0) return { kind: 'miss' };
+  if (hits.length === 1) return { kind: 'hit', producer: hits[0]!.producer, value: hits[0]!.value };
+  return { kind: 'ambiguous', producers: hits.map((h) => h.producer) };
+}
+
 type UpstreamLookup =
   | { kind: 'hit'; producer: string; value: unknown }
   | { kind: 'miss' }
@@ -414,6 +571,72 @@ export function extractTaskOutputs(
 
   const diagnostic = warnings.length > 0 ? `outputs: ${warnings.join('; ')}` : null;
   return { outputs, diagnostic };
+}
+
+export function extractTaskBindingOutputs(
+  bindings: TaskOutputBindings | undefined,
+  stdout: string,
+  stderr: string,
+  normalizedOutput: string | null,
+): ExtractResult {
+  if (!bindings || Object.keys(bindings).length === 0) {
+    return { outputs: {}, diagnostic: null };
+  }
+
+  const outputs: Record<string, unknown> = {};
+  const missing: string[] = [];
+  let record: Record<string, unknown> | null | undefined;
+
+  for (const [name, binding] of Object.entries(bindings)) {
+    let value: unknown;
+    let present = false;
+
+    if ('value' in binding) {
+      value = binding.value;
+      present = true;
+    } else {
+      const source = binding.from ?? `json.${name}`;
+      if (source === 'stdout') {
+        value = stdout;
+        present = true;
+      } else if (source === 'stderr') {
+        value = stderr;
+        present = true;
+      } else if (source === 'normalizedOutput') {
+        if (normalizedOutput !== null) {
+          value = normalizedOutput;
+          present = true;
+        }
+      } else if (source.startsWith('json.')) {
+        if (record === undefined) {
+          const jsonSource = (normalizedOutput ?? '').length > 0 ? normalizedOutput! : stdout;
+          record = parseJsonTail(jsonSource);
+        }
+        const key = source.slice('json.'.length);
+        if (record && key in record) {
+          value = record[key];
+          present = true;
+        }
+      }
+    }
+
+    if (!present && 'default' in binding) {
+      value = binding.default;
+      present = true;
+    }
+
+    if (!present || value === undefined || value === null) {
+      missing.push(name);
+      continue;
+    }
+
+    outputs[name] = value;
+  }
+
+  return {
+    outputs,
+    diagnostic: missing.length > 0 ? `outputs: unresolved binding output(s): ${missing.join(', ')}` : null,
+  };
 }
 
 /**

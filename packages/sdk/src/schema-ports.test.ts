@@ -13,6 +13,34 @@ const WORK_DIR = process.platform === 'win32' ? 'D:\\fake-work' : '/fake-work';
 // ─── resolveConfig preserves ports ───────────────────────────────────
 
 describe('resolveConfig — ports passthrough', () => {
+  test('raw lightweight bindings survive onto the resolved task', () => {
+    const raw: RawPipelineConfig = {
+      name: 'p',
+      tracks: [
+        {
+          id: 't',
+          name: 'T',
+          tasks: [
+            {
+              id: 'a',
+              command: 'echo "{{inputs.city}}"',
+              inputs: {
+                city: { from: 't.plan.outputs.city', required: true },
+              },
+              outputs: {
+                report: { from: 'json.reportPath' },
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const resolved = resolveConfig(raw, WORK_DIR);
+    const task = resolved.tracks[0]!.tasks[0]!;
+    expect(task.inputs).toEqual(raw.tracks[0]!.tasks[0]!.inputs!);
+    expect(task.outputs).toEqual(raw.tracks[0]!.tasks[0]!.outputs!);
+  });
+
   test('raw ports survive onto the resolved task', () => {
     const raw: RawPipelineConfig = {
       name: 'p',
@@ -83,6 +111,35 @@ describe('resolveConfig — ports passthrough', () => {
 // ─── deresolvePipeline preserves ports ───────────────────────────────
 
 describe('deresolvePipeline — ports round-trip', () => {
+  test('lightweight bindings round-trip', () => {
+    const raw: RawPipelineConfig = {
+      name: 'p',
+      tracks: [
+        {
+          id: 't',
+          name: 'T',
+          tasks: [
+            {
+              id: 'a',
+              command: 'echo "{{inputs.city}}"',
+              inputs: {
+                city: { from: 't.plan.outputs.city', required: true },
+                mode: { default: 'quick' },
+              },
+              outputs: {
+                raw: { from: 'stdout' },
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const resolved = resolveConfig(raw, WORK_DIR);
+    const back = deresolvePipeline(resolved, WORK_DIR);
+    expect(back.tracks[0]!.tasks[0]!.inputs).toEqual(raw.tracks[0]!.tasks[0]!.inputs!);
+    expect(back.tracks[0]!.tasks[0]!.outputs).toEqual(raw.tracks[0]!.tasks[0]!.outputs!);
+  });
+
   test('ports with both inputs and outputs round-trip', () => {
     const raw: RawPipelineConfig = {
       name: 'p',
@@ -200,6 +257,35 @@ describe('deresolvePipeline — ports round-trip', () => {
 // ─── parseYaml accepts ports ─────────────────────────────────────────
 
 describe('parseYaml — accepts ports declarations', () => {
+  test('real-world YAML with lightweight bindings parses cleanly', () => {
+    const text = `pipeline:
+  name: demo
+  tracks:
+    - id: t
+      name: Main
+      tasks:
+        - id: build
+          command: bun run build
+          outputs:
+            bundlePath: { from: json.bundlePath }
+        - id: test
+          depends_on: [build]
+          command: 'bun test "{{inputs.bundlePath}}"'
+          inputs:
+            bundlePath:
+              from: t.build.outputs.bundlePath
+              required: true
+`;
+    const config = parseYaml(text);
+    const build = config.tracks[0]!.tasks[0]!;
+    const testTask = config.tracks[0]!.tasks[1]!;
+    expect(build.outputs!.bundlePath).toEqual({ from: 'json.bundlePath' });
+    expect(testTask.inputs!.bundlePath).toEqual({
+      from: 't.build.outputs.bundlePath',
+      required: true,
+    });
+  });
+
   test('real-world YAML with ports parses cleanly', () => {
     const text = `pipeline:
   name: demo

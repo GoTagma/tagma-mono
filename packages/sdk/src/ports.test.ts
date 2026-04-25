@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import {
   extractInputReferences,
+  extractTaskBindingOutputs,
   extractTaskOutputs,
   inferPromptPorts,
+  resolveTaskBindingInputs,
   resolveTaskInputs,
   substituteInputs,
 } from './ports';
@@ -244,6 +246,87 @@ describe('resolveTaskInputs', () => {
   });
 });
 
+// ─── resolveTaskBindingInputs ────────────────────────────────────────
+
+describe('resolveTaskBindingInputs', () => {
+  test('resolves literal values and defaults without requiring ports', () => {
+    const t = task({
+      id: 'downstream',
+      command: 'echo',
+      inputs: {
+        city: { value: 'Shanghai' },
+        mode: { from: 't.up.outputs.missing', default: 'quick' },
+      },
+    });
+    const res = resolveTaskBindingInputs(t, new Map(), ['t.up']);
+    expect(res).toEqual({
+      kind: 'ready',
+      inputs: { city: 'Shanghai', mode: 'quick' },
+      missingOptional: [],
+    });
+  });
+
+  test('resolves values from a direct upstream output and stdout', () => {
+    const t = task({
+      id: 'downstream',
+      command: 'echo',
+      inputs: {
+        city: { from: 't.up.outputs.city' },
+        raw: { from: 't.up.stdout' },
+      },
+    });
+    const upstream = new Map([
+      [
+        't.up',
+        {
+          outputs: { city: 'Shanghai' },
+          stdout: 'raw text\n',
+          stderr: '',
+          normalizedOutput: null,
+          exitCode: 0,
+        },
+      ],
+    ]);
+    const res = resolveTaskBindingInputs(t, upstream, ['t.up']);
+    expect(res.kind).toBe('ready');
+    if (res.kind !== 'ready') return;
+    expect(res.inputs).toEqual({ city: 'Shanghai', raw: 'raw text\n' });
+  });
+
+  test('blocks required missing bindings with a readable reason', () => {
+    const t = task({
+      id: 'downstream',
+      command: 'echo',
+      inputs: {
+        city: { from: 't.up.outputs.city', required: true },
+      },
+    });
+    const res = resolveTaskBindingInputs(t, new Map(), ['t.up']);
+    expect(res.kind).toBe('blocked');
+    if (res.kind !== 'blocked') return;
+    expect(res.missingRequired).toEqual(['city']);
+    expect(res.reason).toContain('missing required binding input(s): city');
+  });
+
+  test('detects ambiguous loose output name matches', () => {
+    const t = task({
+      id: 'downstream',
+      command: 'echo',
+      inputs: {
+        val: { from: 'outputs.val', required: true },
+      },
+    });
+    const upstream = new Map([
+      ['t.a', { outputs: { val: 'a' }, stdout: '', stderr: '', normalizedOutput: null, exitCode: 0 }],
+      ['t.b', { outputs: { val: 'b' }, stdout: '', stderr: '', normalizedOutput: null, exitCode: 0 }],
+    ]);
+    const res = resolveTaskBindingInputs(t, upstream, ['t.a', 't.b']);
+    expect(res.kind).toBe('blocked');
+    if (res.kind !== 'blocked') return;
+    expect(res.ambiguous[0]).toEqual({ input: 'val', producers: ['t.a', 't.b'] });
+  });
+});
+
 // ─── extractTaskOutputs ──────────────────────────────────────────────
 
 describe('extractTaskOutputs', () => {
@@ -298,6 +381,50 @@ describe('extractTaskOutputs', () => {
     const r = extractTaskOutputs({ outputs }, 'plain text output\nnothing json\n', null);
     expect(r.outputs).toEqual({});
     expect(r.diagnostic).toContain('could not find a final-line JSON object');
+  });
+});
+
+// ─── extractTaskBindingOutputs ───────────────────────────────────────
+
+describe('extractTaskBindingOutputs', () => {
+  test('extracts loose outputs from final-line JSON by default', () => {
+    const r = extractTaskBindingOutputs(
+      {
+        city: {},
+        temp: { from: 'json.temperature' },
+      },
+      'log\n{"city":"Shanghai","temperature":23}\n',
+      '',
+      null,
+    );
+    expect(r.outputs).toEqual({ city: 'Shanghai', temp: 23 });
+    expect(r.diagnostic).toBeNull();
+  });
+
+  test('can publish whole stdout and normalizedOutput as named outputs', () => {
+    const r = extractTaskBindingOutputs(
+      {
+        raw: { from: 'stdout' },
+        normalized: { from: 'normalizedOutput' },
+      },
+      'raw text\n',
+      '',
+      'normalized text',
+    );
+    expect(r.outputs).toEqual({ raw: 'raw text\n', normalized: 'normalized text' });
+  });
+
+  test('uses defaults for missing loose outputs without failing extraction', () => {
+    const r = extractTaskBindingOutputs(
+      {
+        city: { default: 'Unknown' },
+      },
+      'not json\n',
+      '',
+      null,
+    );
+    expect(r.outputs).toEqual({ city: 'Unknown' });
+    expect(r.diagnostic).toBeNull();
   });
 });
 
