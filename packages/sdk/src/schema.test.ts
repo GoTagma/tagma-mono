@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import yaml from 'js-yaml';
 import type { PipelineConfig, RawPipelineConfig } from './types';
-import { deresolvePipeline, serializePipeline } from './schema';
+import { deresolvePipeline, parseYaml, resolveConfig, serializePipeline } from './schema';
 
 function parsePipelineYaml(content: string): RawPipelineConfig {
   const doc = yaml.load(content) as { pipeline: RawPipelineConfig };
@@ -128,5 +128,86 @@ describe('completion default serialization', () => {
       type: 'output_check',
       check: 'test -f ./done.txt',
     });
+  });
+});
+
+describe('parseYaml structural validation', () => {
+  test('rejects non-array pipeline.tracks with a clear error', () => {
+    expect(() =>
+      parseYaml(`
+pipeline:
+  name: Bad
+  tracks:
+    id: not-an-array
+`),
+    ).toThrow(/pipeline\.tracks must be an array/);
+  });
+
+  test('rejects non-array track.tasks with a clear error', () => {
+    expect(() =>
+      parseYaml(`
+pipeline:
+  name: Bad
+  tracks:
+    - id: t
+      name: T
+      tasks:
+        id: not-an-array
+`),
+    ).toThrow(/track "t": tasks must be an array/);
+  });
+});
+
+describe('permissions inheritance', () => {
+  test('resolveConfig applies pipeline-level permissions to tracks and tasks', () => {
+    const raw: RawPipelineConfig = {
+      name: 'Pipeline Permissions',
+      permissions: { read: true, write: true, execute: false },
+      tracks: [
+        {
+          id: 'track_a',
+          name: 'Track A',
+          tasks: [{ id: 'task_1', prompt: 'hello' }],
+        },
+      ],
+    };
+
+    const resolved = resolveConfig(raw, 'D:/workspace');
+    expect(resolved.tracks[0].permissions).toEqual({ read: true, write: true, execute: false });
+    expect(resolved.tracks[0].tasks[0].permissions).toEqual({
+      read: true,
+      write: true,
+      execute: false,
+    });
+  });
+
+  test('deresolvePipeline preserves pipeline-level permissions without repeating inherited values', () => {
+    const resolved: PipelineConfig = {
+      name: 'Deresolve Permissions',
+      permissions: { read: true, write: true, execute: false },
+      tracks: [
+        {
+          id: 'track_a',
+          name: 'Track A',
+          permissions: { read: true, write: true, execute: false },
+          cwd: 'D:/workspace',
+          tasks: [
+            {
+              id: 'task_1',
+              name: 'Task 1',
+              prompt: 'hello',
+              permissions: { read: true, write: true, execute: false },
+              cwd: 'D:/workspace',
+            },
+          ],
+        },
+      ],
+    };
+
+    const raw = deresolvePipeline(resolved, 'D:/workspace');
+
+    expect(raw.permissions).toEqual({ read: true, write: true, execute: false });
+    expect(raw.tracks[0].permissions).toBeUndefined();
+    expect(raw.tracks[0].tasks[0].permissions).toBeUndefined();
   });
 });

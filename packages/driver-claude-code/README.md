@@ -47,7 +47,7 @@ await loadPlugins(['@tagma/driver-claude-code']);
 - **Session resume**: native support via `--resume <session_id>` when `continue_from` references a task with a known session ID
 - **System prompt**: supported via `--append-system-prompt` (driven by `agent_profile`)
 - **Permissions**: mapped to `--permission-mode` (`bypassPermissions` when `execute: true`, otherwise `dontAsk` with an explicit `--allowedTools` whitelist)
-- **Reasoning effort**: passed through via `--effort` (accepts `low|medium|high|max`)
+- **Reasoning effort**: passed through via `--effort` (accepts `low|medium|high` — tagma's canonical vocabulary)
 - **Windows**: auto-discovers Git Bash and sets `CLAUDE_CODE_GIT_BASH_PATH` when needed
 
 ## License

@@ -147,6 +147,7 @@ pipeline:
 | `name`    | `string`        | Yes      | Pipeline name, used in logs and run IDs                                                    |
 | `driver`  | `string`        | No       | Default driver for all tracks/tasks (inherited). Built-in: `opencode`                      |
 | `model`   | `string`        | No       | Default model for all tracks/tasks (inherited). Exact model name, e.g. `claude-sonnet-4-6` |
+| `permissions` | `Permissions` | No     | Default permissions inherited by all tracks/tasks (see Permissions)                        |
 | `timeout` | `string`        | No       | Pipeline-level timeout. Format: `"30s"`, `"5m"`, `"2h"`                                    |
 | `plugins` | `string[]`      | No       | External plugin packages to load, e.g. `["@tagma/driver-codex"]`                           |
 | `hooks`   | `HooksConfig`   | No       | Shell commands to run at lifecycle events (see Hooks below)                                |
@@ -344,7 +345,7 @@ Options:
 - `signal` -- `AbortSignal` to cancel the run externally
 - `onEvent` -- callback for real-time `RunEventPayload` updates. Every payload carries `runId`. The editor server stamps a per-run `seq` on top of this payload before broadcasting over SSE (producing a `WireRunEvent`); the SDK itself does not stamp `seq`. Event variants:
   - `run_start` — pipeline approved and all tasks transitioned to `waiting`; includes `tasks: RunTaskState[]` (wire-shape snapshot of every task). Fires only when the `pipeline_start` hook allows the run — blocked pipelines emit no wire events at all.
-  - `task_update` — a task's status or result changed; flat fields (`status`, `startedAt?`, `finishedAt?`, `durationMs?`, `exitCode?`, `stdout?`, `stderr?`, `stderrPath?`, `sessionId?`, `normalizedOutput?`, `resolvedDriver?`, `resolvedModel?`, `resolvedPermissions?`) so clients can fold partial updates with `??` semantics. `startedAt` is populated before the `running` transition; `finishedAt` and result fields are populated before any terminal-status transition. Terminal-state locking in the engine guarantees at most one terminal event per task.
+  - `task_update` — a task's status or result changed; flat fields (`status`, `startedAt?`, `finishedAt?`, `durationMs?`, `exitCode?`, `stdout?`, `stderr?`, `stdoutPath?`, `stderrPath?`, `stdoutBytes?`, `stderrBytes?`, `sessionId?`, `normalizedOutput?`, `outputs?`, `inputs?`, `resolvedDriver?`, `resolvedModel?`, `resolvedPermissions?`) so clients can fold partial updates with `??` semantics. `inputs` carries the resolved port input map (set once just before the task transitions to `running`); `outputs` carries the extracted port output map after a successful terminal transition. `startedAt` is populated before the `running` transition; `finishedAt` and result fields are populated before any terminal-status transition. Terminal-state locking in the engine guarantees at most one terminal event per task.
   - `task_log` — a structured log line was written to `pipeline.log`. Mirrors every `Logger` call (info/warn/error/debug/section/quiet) and carries `{ taskId: string | null, level, timestamp, text }`. `taskId` is non-null for lines tagged with a `[task:<id>]` prefix (or passed explicitly to `section`/`quiet`) and `null` for pipeline-wide messages such as the configuration dump and DAG topology. Use this to stream the full run process into UIs without tailing the log file.
   - `run_end` — pipeline finished; includes `success: boolean` and `abortReason: 'timeout' | 'stop_all' | 'external' | null`. `null` means the run completed on its own steam (success may still be `false` if tasks failed).
   - `run_error` — reserved for fatal engine errors surfaced over the wire.
@@ -372,8 +373,11 @@ runner.start(); // returns Promise<EngineResult>, idempotent
 // Cancel from IPC
 runner.abort();
 
-// Live wire-shape task mirror, maintained from run_start + task_update events.
+// Live wire-shape task mirror, maintained from run_start + task_update + task_log events.
 // Empty map before the first run_start; safe to read at any time.
+// task_log entries are folded into RunTaskState.logs (capped at TASK_LOG_CAP)
+// and totalLogCount, so hosts get a self-contained per-task view without
+// having to buffer the event stream themselves.
 const tasks = runner.getTasks(); // ReadonlyMap<taskId, RunTaskState>
 ```
 
@@ -493,7 +497,21 @@ const yaml = serializePipeline(config);
 | `upsertTask(config, trackId, task)`                                  | Insert or replace a task                                                                                                                                                                                                              |
 | `removeTask(config, trackId, taskId, cleanRefs?)`                    | Remove a task; pass `cleanRefs: true` to also strip dangling `depends_on` / `continue_from` references. Only refs that resolve to the deleted task are removed — same-named tasks in other tracks are unaffected                      |
 | `moveTask(config, trackId, taskId, toIndex)`                         | Reorder a task within its track                                                                                                                                                                                                       |
-| `transferTask(config, fromTrackId, taskId, toTrackId, qualifyRefs?)` | Move a task across tracks. When `qualifyRefs` is `true` (default), bare `depends_on` / `continue_from` references to the moved task are converted to fully-qualified form (`toTrackId.taskId`) so same-track resolution stays correct |
+| `transferTask(config, fromTrackId, taskId, toTrackId, qualifyRefs?)` | Move a task across tracks (see invariants below)                                                                                                                                                                                       |
+
+`transferTask` invariants — the call is a **no-op** (returns the input config unchanged) when:
+
+- the target track doesn't exist, **or**
+- the target track already contains a task with the same id
+
+It never silently drops the source task or overwrites a task in the target track.
+
+When `qualifyRefs` is `true` (default), reference rewriting runs in two passes so same-track shorthand stays correct after the move:
+
+- the **moved task's own** bare `depends_on` / `continue_from` entries that pointed at siblings in the source track are rewritten to `fromTrackId.<dep>` (so they keep pointing at the original peers, not at coincidental same-named tasks in the destination track)
+- bare references **from other tasks** that resolved to the moved task are rewritten to `toTrackId.taskId` when same-track resolution would otherwise break (i.e. no shadow task exists in the referencing track and no other track still holds the bare id globally)
+
+Pass `qualifyRefs: false` to skip both passes — useful when the caller is doing a batch move and will requalify everything itself.
 
 ### `parseYaml(content: string): RawPipelineConfig`
 
@@ -539,20 +557,50 @@ Pure helpers backing the `task.ports` feature (see Typed Ports above). Safe to u
 
 Custom drivers that wrap the prompt in their own envelope can read `DriverContext.inputs` (resolved + coerced map keyed by port name) and call `substituteInputs` themselves — the engine has already substituted into `task.prompt` upstream, so most drivers can ignore this.
 
-### `validateRaw(config: RawPipelineConfig): ValidationError[]`
+### `validateRaw(config: RawPipelineConfig, knownTypes?: KnownPluginTypes): ValidationError[]`
 
-Validates a raw pipeline config without resolving inheritance or executing anything. Returns a flat list of `{ path, message }` objects — empty array means valid.
+Validates a raw pipeline config without resolving inheritance or executing anything. Returns a flat list of `{ path, message, severity? }` objects — empty array means valid. `severity` is `'error'` (default, fatal) or `'warning'` (soft hint; non-blocking).
 
-Checks: required fields, `prompt`/`command` exclusivity, duplicate task IDs within a track, `depends_on`/`continue_from` reference integrity (including ambiguous bare refs that exist in multiple tracks — use `trackId.taskId` to disambiguate), circular dependency detection, port shape (name format, valid `type`, duplicate names, `enum` requires non-empty `enum` array, `required`/`from` ignored on outputs), and `{{inputs.<name>}}` references resolving to a declared input port.
+Checks: required fields, `prompt`/`command` exclusivity, duplicate task IDs within a track, `depends_on`/`continue_from` reference integrity (including ambiguous bare refs that exist in multiple tracks — use `trackId.taskId` to disambiguate), circular dependency detection, port shape (name format, valid `type`, duplicate names, `enum` requires non-empty `enum` array, `required`/`from` ignored on outputs), `{{inputs.<name>}}` references resolving to a declared input port, and `permissions` shape (must be an object with boolean `read`/`write`/`execute`). Tolerant of half-built configs — non-array `tracks` or `tasks` produce a structured error instead of throwing.
 
-Does **not** check plugin registration (plugins may not be loaded at edit time).
+Plugin-type checks are opt-in via `knownTypes`: when provided, references to trigger/completion/middleware/driver types that are neither built-in nor in the supplied set produce a **warning** (`severity: 'warning'`) so editors can light up uninstalled plugins without blocking save / run. Omit `knownTypes` for offline / pre-load validation — no plugin warnings are emitted in that case.
 
 ```ts
-const errors = validateRaw(draftConfig);
-if (errors.length > 0) {
-  errors.forEach((e) => highlightNode(e.path, e.message));
+const errors = validateRaw(draftConfig, {
+  triggers: registry.list('triggers'),
+  completions: registry.list('completions'),
+  middlewares: registry.list('middlewares'),
+  drivers: registry.list('drivers'),
+});
+errors.forEach((e) => highlightNode(e.path, e.message, e.severity ?? 'error'));
+```
+
+### `compileYamlContent(content: string, opts?: CompileYamlOptions): YamlCompileResult`
+
+One-shot YAML → diagnostics for editor compile flows. Distinguishes **YAML syntax errors** (`parseOk: false`, `validation.errors` empty, `summary` starts with `"YAML parse error:"`) from **schema / structure errors** (`parseOk: true`, errors land in `validation.errors`). Half-built configs — missing top-level `pipeline`, non-object `pipeline`, non-array `tracks` / `tasks`, malformed `permissions` — surface as ordinary validation errors rather than parse failures or `"Validation crashed"` messages, so the editor never crashes on in-progress YAML.
+
+```ts
+const result = compileYamlContent(yaml, {
+  sourceName: 'pipeline.yaml',
+  knownTypes: {
+    triggers: registry.list('triggers'),
+    completions: registry.list('completions'),
+    middlewares: registry.list('middlewares'),
+    drivers: registry.list('drivers'),
+  },
+});
+
+if (!result.parseOk) {
+  showParseError(result.summary); // YAML syntax broken
+} else if (!result.success) {
+  result.validation.errors.forEach((e) => highlightNode(e.path, e.message));
+  result.validation.warnings.forEach((w) => softHint(w.path, w.message));
 }
 ```
+
+`opts.knownTypes` is forwarded to `validateRaw` (see above) — pass it when the host has loaded its plugin registry so unregistered plugin types light up as warnings; omit it for offline validation.
+
+`YamlCompileResult` shape: `{ timestamp, sourceName, success, parseOk, validation: { errors, warnings }, summary }`. `success` is `true` only when there are zero errors (warnings don't count). `validation.errors` and `validation.warnings` carry `{ path, message }` projections of the underlying `ValidationError` list.
 
 ### `buildRawDag(config: RawPipelineConfig): RawDag`
 

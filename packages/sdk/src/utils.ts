@@ -1,4 +1,4 @@
-import { resolve, relative, parse as parsePath } from 'path';
+import { isAbsolute, resolve, relative, parse as parsePath, sep } from 'path';
 import { realpathSync, lstatSync, existsSync } from 'fs';
 import { randomBytes } from 'crypto';
 
@@ -38,7 +38,7 @@ export function validatePath(filePath: string, projectRoot: string): string {
   }
 
   const rel = relative(projectRoot, resolved);
-  if (rel.startsWith('..') || rel.startsWith('/')) {
+  if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
     throw new Error(
       `Security: path "${filePath}" escapes project root. ` +
         `All file references must be within "${projectRoot}".`,
@@ -83,7 +83,7 @@ export function validatePath(filePath: string, projectRoot: string): string {
       );
     }
     const realRel = relative(realRoot, real);
-    if (realRel.startsWith('..') || realRel.startsWith('/')) {
+    if (realRel === '..' || realRel.startsWith(`..${sep}`) || isAbsolute(realRel)) {
       throw new Error(
         `Security: path "${filePath}" resolves via symlink to "${real}" which escapes project root "${realRoot}".`,
       );

@@ -23,7 +23,7 @@
 
 import { runPipeline } from './engine';
 import type { EngineResult, RunPipelineOptions } from './engine';
-import type { PipelineConfig, RunEventPayload, RunTaskState } from './types';
+import { TASK_LOG_CAP, type PipelineConfig, type RunEventPayload, type RunTaskState } from './types';
 import { generateRunId } from './utils';
 
 export type { EngineResult };
@@ -132,9 +132,26 @@ export class PipelineRunner {
           stderrBytes: pick(event.stderrBytes, prev.stderrBytes),
           sessionId: pick(event.sessionId, prev.sessionId),
           normalizedOutput: pick(event.normalizedOutput, prev.normalizedOutput),
+          outputs: pick(event.outputs, prev.outputs),
+          inputs: pick(event.inputs, prev.inputs),
           resolvedDriver: pick(event.resolvedDriver, prev.resolvedDriver),
           resolvedModel: pick(event.resolvedModel, prev.resolvedModel),
           resolvedPermissions: pick(event.resolvedPermissions, prev.resolvedPermissions),
+        });
+        return;
+      }
+      case 'task_log': {
+        if (event.taskId === null) return;
+        const prev = this._tasks.get(event.taskId);
+        if (!prev) return;
+        const logs = [
+          ...prev.logs,
+          { level: event.level, timestamp: event.timestamp, text: event.text },
+        ];
+        this._tasks.set(event.taskId, {
+          ...prev,
+          logs: logs.slice(-TASK_LOG_CAP),
+          totalLogCount: prev.totalLogCount + 1,
         });
         return;
       }

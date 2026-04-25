@@ -17,13 +17,17 @@ import { buildDag } from './dag';
 // ═══ YAML Parsing ═══
 
 export function parseYaml(content: string): RawPipelineConfig {
-  const doc = yaml.load(content) as { pipeline?: RawPipelineConfig };
+  const doc = yaml.load(content) as { pipeline?: unknown };
   if (!doc?.pipeline) {
     throw new Error('YAML must contain a top-level "pipeline" key');
   }
-  const p = doc.pipeline;
+  if (typeof doc.pipeline !== 'object' || Array.isArray(doc.pipeline)) {
+    throw new Error('pipeline must be an object');
+  }
+  const p = doc.pipeline as RawPipelineConfig;
   if (!p.name) throw new Error('pipeline.name is required');
-  if (!p.tracks || p.tracks.length === 0) throw new Error('pipeline.tracks must be non-empty');
+  if (!Array.isArray(p.tracks)) throw new Error('pipeline.tracks must be an array');
+  if (p.tracks.length === 0) throw new Error('pipeline.tracks must be non-empty');
 
   // D14: Detect duplicate track IDs before per-track validation so the error
   // message is clear ("Duplicate track id") rather than a confusing DAG error
@@ -60,10 +64,16 @@ function assertValidId(id: string, label: string): void {
 }
 
 function validateRawTrack(track: RawTrackConfig): void {
+  if (!track || typeof track !== 'object' || Array.isArray(track)) {
+    throw new Error('track must be an object');
+  }
   if (!track.id) throw new Error('track.id is required');
   assertValidId(track.id, `track "${track.id}"`);
   if (!track.name) throw new Error(`track "${track.id}": name is required`);
-  if (!track.tasks || track.tasks.length === 0) {
+  if (!Array.isArray(track.tasks)) {
+    throw new Error(`track "${track.id}": tasks must be an array`);
+  }
+  if (track.tasks.length === 0) {
     throw new Error(`track "${track.id}": tasks must be non-empty`);
   }
   for (const task of track.tasks) {
@@ -72,6 +82,9 @@ function validateRawTrack(track: RawTrackConfig): void {
 }
 
 function validateRawTask(task: RawTaskConfig, trackId: string): void {
+  if (!task || typeof task !== 'object' || Array.isArray(task)) {
+    throw new Error(`track "${trackId}": task must be an object`);
+  }
   if (!task.id) throw new Error(`track "${trackId}": task.id is required`);
   assertValidId(task.id, `task "${task.id}" in track "${trackId}"`);
 
@@ -140,7 +153,7 @@ export function resolveConfig(raw: RawPipelineConfig, workDir: string): Pipeline
         model: rawTask.model ?? rawTrack.model ?? raw.model,
         reasoning_effort:
           rawTask.reasoning_effort ?? rawTrack.reasoning_effort ?? raw.reasoning_effort,
-        permissions: rawTask.permissions ?? rawTrack.permissions ?? DEFAULT_PERMISSIONS,
+        permissions: rawTask.permissions ?? rawTrack.permissions ?? raw.permissions ?? DEFAULT_PERMISSIONS,
         driver: rawTask.driver ?? trackDriver ?? 'opencode',
         timeout: rawTask.timeout,
         // Middleware: Task-level overrides Track (including [] to disable)
@@ -161,7 +174,7 @@ export function resolveConfig(raw: RawPipelineConfig, workDir: string): Pipeline
       agent_profile: rawTrack.agent_profile,
       model: rawTrack.model ?? raw.model,
       reasoning_effort: rawTrack.reasoning_effort ?? raw.reasoning_effort,
-      permissions: rawTrack.permissions ?? DEFAULT_PERMISSIONS,
+      permissions: rawTrack.permissions ?? raw.permissions ?? DEFAULT_PERMISSIONS,
       driver: trackDriver ?? 'opencode',
       cwd: trackCwd,
       middlewares: rawTrack.middlewares,
@@ -175,6 +188,7 @@ export function resolveConfig(raw: RawPipelineConfig, workDir: string): Pipeline
     driver: raw.driver,
     model: raw.model,
     reasoning_effort: raw.reasoning_effort,
+    permissions: raw.permissions,
     timeout: raw.timeout,
     plugins: raw.plugins,
     hooks: raw.hooks,
@@ -320,7 +334,7 @@ export function deresolvePipeline(config: PipelineConfig, workDir: string): RawP
       ...(track.on_failure && track.on_failure !== 'skip_downstream'
         ? { on_failure: track.on_failure }
         : {}),
-      ...(track.permissions && !permissionsEqual(track.permissions, DEFAULT_PERMISSIONS)
+      ...(track.permissions && !permissionsEqual(track.permissions, config.permissions ?? DEFAULT_PERMISSIONS)
         ? { permissions: track.permissions }
         : {}),
       tasks,
@@ -332,6 +346,9 @@ export function deresolvePipeline(config: PipelineConfig, workDir: string): RawP
     ...(config.driver ? { driver: config.driver } : {}),
     ...(config.model ? { model: config.model } : {}),
     ...(config.reasoning_effort ? { reasoning_effort: config.reasoning_effort } : {}),
+    ...(config.permissions && !permissionsEqual(config.permissions, DEFAULT_PERMISSIONS)
+      ? { permissions: config.permissions }
+      : {}),
     ...(config.timeout ? { timeout: config.timeout } : {}),
     ...(config.plugins?.length ? { plugins: config.plugins } : {}),
     ...(config.hooks ? { hooks: config.hooks } : {}),

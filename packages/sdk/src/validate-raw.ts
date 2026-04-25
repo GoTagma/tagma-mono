@@ -32,6 +32,7 @@ function buildQidIndex(config: RawPipelineConfig): Map<string, QidEntry> {
   const idx = new Map<string, QidEntry>();
   for (const track of config.tracks ?? []) {
     if (!track.id) continue;
+    if (!Array.isArray(track.tasks)) continue;
     for (const task of track.tasks ?? []) {
       if (!task.id) continue;
       idx.set(qualifyTaskId(track.id, task.id), { track, task });
@@ -55,6 +56,7 @@ const isValidId = isValidTaskId;
 
 const VALID_ON_FAILURE = new Set(['skip_downstream', 'stop_all', 'ignore']);
 const VALID_REASONING_EFFORT = new Set(['low', 'medium', 'high']);
+const PERMISSION_FIELDS = ['read', 'write', 'execute'] as const;
 
 // Built-in plugin types always known to the SDK core, regardless of which
 // external plugin packages are installed. These MUST stay in sync with the
@@ -150,8 +152,13 @@ export function validateRaw(
       severity: 'warning',
     });
   }
+  validatePermissions(config.permissions, 'permissions', errors);
 
-  if (!config.tracks || config.tracks.length === 0) {
+  if (!Array.isArray(config.tracks)) {
+    errors.push({ path: 'tracks', message: 'pipeline.tracks must be an array' });
+    return errors;
+  }
+  if (config.tracks.length === 0) {
     errors.push({ path: 'tracks', message: 'At least one track is required' });
     return errors; // No point going further without tracks
   }
@@ -168,8 +175,13 @@ export function validateRaw(
   // ── Per-track validation ──
   const seenTrackIds = new Set<string>();
   for (let ti = 0; ti < config.tracks.length; ti++) {
-    const track = config.tracks[ti];
+    const maybeTrack = config.tracks[ti] as unknown;
     const trackPath = `tracks[${ti}]`;
+    if (!maybeTrack || typeof maybeTrack !== 'object' || Array.isArray(maybeTrack)) {
+      errors.push({ path: trackPath, message: `Track ${ti} must be an object` });
+      continue;
+    }
+    const track = maybeTrack as RawTrackConfig;
 
     if (!track.id?.trim()) {
       errors.push({ path: `${trackPath}.id`, message: 'Track id is required' });
@@ -205,6 +217,7 @@ export function validateRaw(
         severity: 'warning',
       });
     }
+    validatePermissions(track.permissions, `${trackPath}.permissions`, errors);
 
     // Track-level middlewares can reference a plugin that was uninstalled
     // after the YAML was written — surface a warning so the user notices
@@ -222,7 +235,14 @@ export function validateRaw(
       }
     }
 
-    if (!track.tasks || track.tasks.length === 0) {
+    if (!Array.isArray(track.tasks)) {
+      errors.push({
+        path: `${trackPath}.tasks`,
+        message: `Track "${track.id || ti}": tasks must be an array`,
+      });
+      continue;
+    }
+    if (track.tasks.length === 0) {
       errors.push({
         path: `${trackPath}.tasks`,
         message: `Track "${track.id || ti}": must have at least one task`,
@@ -302,6 +322,7 @@ export function validateRaw(
           severity: 'warning',
         });
       }
+      validatePermissions(task.permissions, `${taskPath}.permissions`, errors);
 
       // ── Plugin type warnings (trigger / completion / middlewares) ──
       // Only fire when the host supplied a `knownTypes` snapshot, so offline
@@ -374,7 +395,7 @@ export function validateRaw(
           });
         } else if (
           !task.depends_on ||
-          !task.depends_on.some((dep) => {
+          !task.depends_on.some((dep: string) => {
             const depResolved = resolveTaskRef(dep, track.id, index);
             return depResolved.kind === 'resolved' && depResolved.qid === resolved.qid;
           })
@@ -398,6 +419,32 @@ export function validateRaw(
   errors.push(...detectCycles(config, index));
 
   return errors;
+}
+
+function validatePermissions(
+  value: unknown,
+  basePath: string,
+  errors: ValidationError[],
+): void {
+  if (value === undefined) return;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    errors.push({
+      path: basePath,
+      message: 'permissions must be an object with read/write/execute booleans',
+    });
+    return;
+  }
+  const p = value as Record<string, unknown>;
+  for (const field of PERMISSION_FIELDS) {
+    const path = `${basePath}.${field}`;
+    if (!(field in p)) {
+      errors.push({ path, message: `permissions.${field} is required` });
+      continue;
+    }
+    if (typeof p[field] !== 'boolean') {
+      errors.push({ path, message: `permissions.${field} must be a boolean` });
+    }
+  }
 }
 
 const VALID_PORT_TYPES: ReadonlySet<PortType> = new Set([
@@ -764,6 +811,7 @@ function detectCycles(config: RawPipelineConfig, index: TaskIndex): ValidationEr
 
   for (const track of config.tracks) {
     if (!track.id) continue;
+    if (!Array.isArray(track.tasks)) continue;
     for (const task of track.tasks ?? []) {
       if (!task.id) continue;
       const qid = qualifyTaskId(track.id, task.id);

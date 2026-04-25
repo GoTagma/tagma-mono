@@ -248,6 +248,7 @@ export interface PipelineConfig {
   readonly driver?: string;
   readonly model?: string;
   readonly reasoning_effort?: string;
+  readonly permissions?: Permissions;
   readonly timeout?: string;
   readonly plugins?: readonly string[];
   readonly hooks?: HooksConfig;
@@ -261,6 +262,7 @@ export interface RawPipelineConfig {
   readonly driver?: string;
   readonly model?: string;
   readonly reasoning_effort?: string;
+  readonly permissions?: Permissions;
   readonly timeout?: string;
   readonly plugins?: readonly string[];
   readonly hooks?: HooksConfig;

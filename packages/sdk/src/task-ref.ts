@@ -68,6 +68,7 @@ export function buildTaskIndex(config: RawPipelineConfig | PipelineConfig): Task
   const bareToQualified = new Map<string, string>();
   for (const track of config.tracks ?? []) {
     if (!track?.id) continue;
+    if (!Array.isArray(track.tasks)) continue;
     for (const task of track.tasks ?? []) {
       if (!task?.id) continue;
       const qid = qualifyTaskId(track.id, task.id);

@@ -15,10 +15,12 @@ import type {
 
 const DEFAULT_MODEL = 'sonnet';
 
-// Claude Code CLI accepts --effort low|medium|high|max. tagma's vocabulary
-// is low|medium|high, so low/medium/high pass through unchanged; users who
-// want the claude-specific "max" tier can also set it explicitly.
-const VALID_EFFORT = new Set(['low', 'medium', 'high', 'max']);
+// Tagma's canonical reasoning_effort vocabulary is low|medium|high (enforced
+// by validate-raw.ts in the SDK). Claude Code CLI also exposes a "max" tier,
+// but accepting it here would diverge from the SDK validator — users who set
+// `reasoning_effort: max` in YAML would see an editor-side validation error
+// even though the driver tolerates it. Stay in sync with the SDK instead.
+const VALID_EFFORT = new Set(['low', 'medium', 'high']);
 
 function resolveModel(): string {
   return DEFAULT_MODEL;

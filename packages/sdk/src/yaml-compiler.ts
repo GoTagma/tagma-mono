@@ -1,4 +1,4 @@
-import { parseYaml } from './schema';
+import yaml from 'js-yaml';
 import { validateRaw } from './validate-raw';
 import type { ValidationError, KnownPluginTypes } from './validate-raw';
 import type { RawPipelineConfig } from './types';
@@ -27,9 +27,9 @@ export function compileYamlContent(
   const timestamp = new Date().toISOString();
   const sourceName = opts.sourceName ?? 'untitled';
 
-  let config: RawPipelineConfig;
+  let doc: unknown;
   try {
-    config = parseYaml(content);
+    doc = yaml.load(content);
   } catch (err) {
     return {
       timestamp,
@@ -40,6 +40,12 @@ export function compileYamlContent(
       summary: `YAML parse error: ${errorMessage(err)}`,
     };
   }
+
+  const envelopeErrors = validateEnvelope(doc);
+  if (envelopeErrors.length > 0) {
+    return buildValidationResult(timestamp, sourceName, envelopeErrors);
+  }
+  const config = (doc as { pipeline: RawPipelineConfig }).pipeline;
 
   let errors: ValidationError[];
   try {
@@ -55,8 +61,29 @@ export function compileYamlContent(
     };
   }
 
-  const validationErrors = errors.filter((e) => e.severity === 'error' || e.severity == null);
-  const validationWarnings = errors.filter((e) => e.severity === 'warning');
+  return buildValidationResult(timestamp, sourceName, errors);
+}
+
+function validateEnvelope(doc: unknown): ValidationError[] {
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc) || !('pipeline' in doc)) {
+    return [{ path: 'pipeline', message: 'Top-level "pipeline" key is required' }];
+  }
+  const pipeline = (doc as Record<string, unknown>).pipeline;
+  if (!pipeline || typeof pipeline !== 'object' || Array.isArray(pipeline)) {
+    return [{ path: 'pipeline', message: 'pipeline must be an object' }];
+  }
+  return [];
+}
+
+function buildValidationResult(
+  timestamp: string,
+  sourceName: string,
+  diagnostics: readonly ValidationError[],
+): YamlCompileResult {
+  const validationErrors = diagnostics.filter(
+    (e) => e.severity === 'error' || e.severity == null,
+  );
+  const validationWarnings = diagnostics.filter((e) => e.severity === 'warning');
 
   return {
     timestamp,

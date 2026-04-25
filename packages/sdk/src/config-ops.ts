@@ -228,19 +228,30 @@ export function transferTask(
   qualifyRefs = true,
 ): RawPipelineConfig {
   if (fromTrackId === toTrackId) return config;
+  const targetTrack = config.tracks.find((t) => t.id === toTrackId);
+  if (!targetTrack) return config;
+  if (targetTrack.tasks.some((tk) => tk.id === taskId)) return config;
 
   let task: RawTaskConfig | undefined;
+  let sourceLocalIds = new Set<string>();
   const afterRemove = {
     ...config,
     tracks: config.tracks.map((t) => {
       if (t.id !== fromTrackId) return t;
       const found = t.tasks.find((tk) => tk.id === taskId);
       if (!found) return t;
+      sourceLocalIds = new Set(t.tasks.map((tk) => tk.id));
       task = found;
       return { ...t, tasks: t.tasks.filter((tk) => tk.id !== taskId) };
     }),
   };
   if (!task) return config;
+  if (qualifyRefs) {
+    task = qualifyTaskRefs(task, (ref) => {
+      if (ref.includes('.') || !sourceLocalIds.has(ref)) return ref;
+      return `${fromTrackId}.${ref}`;
+    });
+  }
   const afterInsert = upsertTask(afterRemove, toTrackId, task);
 
   if (!qualifyRefs) return afterInsert;
