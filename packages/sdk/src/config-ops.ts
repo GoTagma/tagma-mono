@@ -43,9 +43,10 @@ export function upsertTrack(config: RawPipelineConfig, track: RawTrackConfig): R
 }
 
 /**
- * Remove a track by id. No-op if the id is not found.
+ * Remove a track by id. No-op (same reference) if the id is not found.
  */
 export function removeTrack(config: RawPipelineConfig, trackId: string): RawPipelineConfig {
+  if (!config.tracks.some((t) => t.id === trackId)) return config;
   return { ...config, tracks: config.tracks.filter((t) => t.id !== trackId) };
 }
 
@@ -69,12 +70,14 @@ export function moveTrack(
 
 /**
  * Update fields on a single track (excluding tasks list, use upsertTask / removeTask for that).
+ * No-op (same reference) if the trackId is not found.
  */
 export function updateTrack(
   config: RawPipelineConfig,
   trackId: string,
   fields: Partial<Omit<RawTrackConfig, 'id' | 'tasks'>>,
 ): RawPipelineConfig {
+  if (!config.tracks.some((t) => t.id === trackId)) return config;
   return {
     ...config,
     tracks: config.tracks.map((t) => (t.id === trackId ? { ...t, ...fields } : t)),
@@ -85,13 +88,14 @@ export function updateTrack(
 
 /**
  * Insert or replace a task within a track, matched by task.id. Appends if new.
- * No-op if the trackId is not found.
+ * No-op (same reference) if the trackId is not found.
  */
 export function upsertTask(
   config: RawPipelineConfig,
   trackId: string,
   task: RawTaskConfig,
 ): RawPipelineConfig {
+  if (!config.tracks.some((t) => t.id === trackId)) return config;
   return {
     ...config,
     tracks: config.tracks.map((t) => {
@@ -118,6 +122,9 @@ export function removeTask(
   taskId: string,
   cleanRefs = false,
 ): RawPipelineConfig {
+  const track = config.tracks.find((t) => t.id === trackId);
+  if (!track || !track.tasks.some((tk) => tk.id === taskId)) return config;
+
   const withoutTask = {
     ...config,
     tracks: config.tracks.map((t) => {
@@ -189,6 +196,7 @@ function cleanTaskRefs(task: RawTaskConfig, isRemoved: (ref: string) => boolean)
 /**
  * Reorder a task within its track.
  * Clamps toIndex to valid bounds.
+ * No-op (same reference) if the trackId or taskId is not found.
  */
 export function moveTask(
   config: RawPipelineConfig,
@@ -196,6 +204,8 @@ export function moveTask(
   taskId: string,
   toIndex: number,
 ): RawPipelineConfig {
+  const track = config.tracks.find((t) => t.id === trackId);
+  if (!track || !track.tasks.some((tk) => tk.id === taskId)) return config;
   return {
     ...config,
     tracks: config.tracks.map((t) => {
