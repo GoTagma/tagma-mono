@@ -280,7 +280,48 @@ only** — there is no `ms`, `us`, or `ns`. Decimals are allowed. Examples:
 `trigger.timeout`, `completion.timeout` (and any field the built-in plugins
 document as a duration).
 
-### 11. Typed task ports (`ports`)
+### 11. Lightweight task bindings (`inputs` / `outputs`)
+
+Use task-level `inputs` / `outputs` for ordinary dynamic parameter passing. This is the default choice when a command only needs a value from an upstream task. Bindings are task-level only and do not inherit.
+
+```yaml
+pipeline:
+  tracks:
+    - id: build
+      tasks:
+        - id: compile
+          command: 'bun run build'
+          outputs:
+            bundlePath: { from: json.bundlePath }
+        - id: test
+          command: 'bun test "{{inputs.bundlePath}}"'
+          depends_on: [compile]
+          inputs:
+            bundlePath:
+              from: build.compile.outputs.bundlePath
+              required: true
+```
+
+Input binding fields:
+
+| Field | Type | Notes |
+|---|---|---|
+| `value` | any | Literal value. Wins over `from`. |
+| `from` | string | `taskId.outputs.name`, `taskId.stdout`, `taskId.stderr`, `taskId.normalizedOutput`, `taskId.exitCode`, or `outputs.name` for direct-upstream name matching. |
+| `default` | any | Fallback when `from` is missing or unresolved. |
+| `required` | boolean | Inputs only. When true, unresolved values block the task before it starts. |
+
+Output binding fields:
+
+| Field | Type | Notes |
+|---|---|---|
+| `value` | any | Literal output value. |
+| `from` | string | Defaults to `json.<outputName>`; also accepts `stdout`, `stderr`, or `normalizedOutput`. |
+| `default` | any | Fallback when the selected output source is missing. |
+
+Use `ports` instead of lightweight bindings only when you need a stable typed public contract, type coercion, required typed downstream values, or prompt-task `[Inputs]` / `[Output Format]` blocks.
+
+### 12. Typed task ports (`ports`)
 
 Tasks can declare typed `inputs` and `outputs` under a `ports:` key. This is a **task-level-only** feature — ports do **not** inherit from track or pipeline. Omitting `ports` entirely is fine; the task behaves exactly as it always did.
 
