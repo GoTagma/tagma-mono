@@ -597,6 +597,13 @@ jobs:
 
       - name: Package (${{ matrix.platform }})
         working-directory: apps/electron
+        # Bash on every platform — electron-builder pulls helper binaries
+        # (fpm for deb/rpm, snap, etc.) from GitHub release assets at runtime,
+        # and a transient 5xx on that CDN sinks the whole job. The retry-loop
+        # below mirrors `Build desktop prerequisites` above. Backoff is longer
+        # (15s → 30s) because we're waiting for a CDN edge to recover, not a
+        # local cache eviction.
+        shell: bash
         env:
           # When no signing cert is provided, tell electron-builder not to
           # probe the keychain — otherwise it fails fast on macOS runners.
@@ -609,7 +616,23 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: npx --yes electron-builder --${{ matrix.platform }} --publish=never
+        run: |
+          attempt=1
+          max=3
+          while [ "$attempt" -le "$max" ]; do
+            echo "── electron-builder attempt $attempt/$max ──"
+            if npx --yes electron-builder --${{ matrix.platform }} --publish=never; then
+              echo "electron-builder succeeded on attempt $attempt"
+              exit 0
+            fi
+            echo "electron-builder attempt $attempt failed"
+            if [ "$attempt" -lt "$max" ]; then
+              sleep $((attempt * 15))
+            fi
+            attempt=$((attempt + 1))
+          done
+          echo "electron-builder exhausted retries"
+          exit 1
 
       - name: Compute checksums
         shell: bash
