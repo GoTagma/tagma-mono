@@ -1,4 +1,4 @@
-import { defaultRegistry, type PluginRegistry } from './registry';
+import type { PluginRegistry } from './registry';
 
 // Built-in Drivers
 // Only opencode is built in. Other drivers (codex, claude-code) ship as
@@ -20,15 +20,15 @@ import { OutputCheckCompletion } from './completions/output-check';
 import { StaticContextMiddleware } from './middlewares/static-context';
 
 /**
- * Register every built-in plugin into `target` (defaults to the process-wide
- * default registry). Multi-tenant hosts instantiate one PluginRegistry per
- * workspace and call this once per instance so each workspace sees the same
- * built-ins without sharing registration state.
+ * Register every built-in plugin into `target`. Hosts instantiate one
+ * PluginRegistry per workspace or SDK instance and call this once per
+ * instance so each workspace sees the same built-ins without sharing
+ * registration state.
  *
  * Built-in handlers are stateless module singletons — registering the same
  * handler object into N registries is cheap and safe; no cloning is needed.
  */
-export function bootstrapBuiltins(target: PluginRegistry = defaultRegistry): void {
+export function bootstrapBuiltins(target: PluginRegistry): void {
   // Drivers
   target.registerPlugin('drivers', 'opencode', OpenCodeDriver);
 

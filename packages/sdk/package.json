@@ -1,6 +1,6 @@
 {
   "name": "@tagma/sdk",
-  "version": "0.6.12",
+  "version": "0.7.0",
   "description": "Local AI task orchestration engine — core SDK for tagma pipelines",
   "license": "MIT",
   "repository": {
@@ -12,14 +12,59 @@
   "homepage": "https://github.com/GoTagma/tagma-mono/tree/main/packages/sdk#readme",
   "type": "module",
   "sideEffects": false,
-  "main": "./dist/sdk.js",
-  "module": "./dist/sdk.js",
-  "types": "./dist/sdk.d.ts",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/sdk.d.ts",
-      "import": "./dist/sdk.js",
-      "default": "./dist/sdk.js"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./yaml": {
+      "types": "./dist/yaml.d.ts",
+      "import": "./dist/yaml.js",
+      "default": "./dist/yaml.js"
+    },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "import": "./dist/config.js",
+      "default": "./dist/config.js"
+    },
+    "./plugins": {
+      "types": "./dist/plugins.d.ts",
+      "import": "./dist/plugins.js",
+      "default": "./dist/plugins.js"
+    },
+    "./runner": {
+      "types": "./dist/pipeline-runner.d.ts",
+      "import": "./dist/pipeline-runner.js",
+      "default": "./dist/pipeline-runner.js"
+    },
+    "./logger": {
+      "types": "./dist/logger.d.ts",
+      "import": "./dist/logger.js",
+      "default": "./dist/logger.js"
+    },
+    "./approval": {
+      "types": "./dist/approval.d.ts",
+      "import": "./dist/approval.js",
+      "default": "./dist/approval.js"
+    },
+    "./utils": {
+      "types": "./dist/utils-api.d.ts",
+      "import": "./dist/utils-api.js",
+      "default": "./dist/utils-api.js"
+    },
+    "./adapters/stdin-approval": {
+      "types": "./dist/adapters/stdin-approval.d.ts",
+      "import": "./dist/adapters/stdin-approval.js",
+      "default": "./dist/adapters/stdin-approval.js"
+    },
+    "./adapters/websocket-approval": {
+      "types": "./dist/adapters/websocket-approval.d.ts",
+      "import": "./dist/adapters/websocket-approval.js",
+      "default": "./dist/adapters/websocket-approval.js"
     },
     "./ports": {
       "types": "./dist/ports.d.ts",

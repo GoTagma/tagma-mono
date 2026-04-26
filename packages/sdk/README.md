@@ -50,17 +50,20 @@ pipeline:
 **2. Run it programmatically**
 
 ```ts
-import { bootstrapBuiltins, loadPipeline, runPipeline, InMemoryApprovalGateway } from '@tagma/sdk';
+import { createTagma } from '@tagma/sdk';
+import { loadPipeline } from '@tagma/sdk/yaml';
 
-// Register built-in drivers, triggers, completions
-bootstrapBuiltins();
+const tagma = createTagma();
 
 const yaml = await Bun.file('pipeline.yaml').text();
 const config = await loadPipeline(yaml, process.cwd());
 
-const result = await runPipeline(config, process.cwd());
+const result = await tagma.run(config, { cwd: process.cwd() });
 console.log(result.success ? 'Done' : 'Failed');
 ```
+
+The package root is intentionally small. Use explicit subpaths for YAML,
+config editing, plugin registry helpers, and low-level dataflow utilities.
 
 ## Features
 
@@ -357,7 +360,43 @@ Tasks can declare named, typed `inputs` / `outputs`. Inputs flow in from upstrea
 
 ## API
 
-### `bootstrapBuiltins()`
+### Root: `@tagma/sdk`
+
+- `createTagma(options?)`
+- `definePipeline(pipeline)`
+- `PluginRegistry`
+- stable pipeline/result/event types
+- trigger error classes
+
+### YAML: `@tagma/sdk/yaml`
+
+- `loadPipeline(yaml, workDir)`
+- `parseYaml(content)`
+- `resolveConfig(raw, workDir)`
+- `serializePipeline(config)`
+- `deresolvePipeline(config, workDir)`
+- `validateConfig(config)`
+- `compileYamlContent(content, options?)`
+
+### Plugins: `@tagma/sdk/plugins`
+
+- `PluginRegistry`
+- `bootstrapBuiltins(registry)`
+- `isValidPluginName(name)`
+- `readPluginManifest(packageJson)`
+
+### Config: `@tagma/sdk/config`
+
+- immutable config editing helpers
+- raw validation helpers
+- task reference helpers
+
+### Ports: `@tagma/sdk/ports`
+
+- current dataflow helpers for placeholder substitution, binding resolution,
+  output extraction, and prompt-port inference
+
+### `bootstrapBuiltins(registry)`
 
 Registers all built-in plugins (opencode driver, file/manual triggers, completion checks, static-context middleware).
 
@@ -365,7 +404,7 @@ Registers all built-in plugins (opencode driver, file/manual triggers, completio
 
 Parses YAML, resolves inheritance, and validates the configuration.
 
-### `runPipeline(config, workDir, options?): Promise<EngineResult>`
+### `createTagma().run(config, options): Promise<EngineResult>`
 
 Executes the pipeline. Returns `{ success, runId, logPath, summary, states }`.
 
@@ -431,11 +470,11 @@ throw new TriggerBlockedError('Access denied by policy');
 throw new TriggerTimeoutError('File did not appear within 30s');
 ```
 
-### `loadPlugins(names: string[]): Promise<void>`
+### `PluginRegistry.loadPlugins(names): Promise<void>`
 
 Dynamically loads and registers external plugin packages.
 
-### `registerPlugin(category, type, handler): void`
+### `PluginRegistry.registerPlugin(category, type, handler): void`
 
 Registers a plugin handler manually. Idempotent — duplicate registrations are silently ignored.
 
@@ -462,15 +501,15 @@ export const HttpTrigger: TriggerPlugin = {
 
 The schema is purely descriptive — plugins still perform their own runtime validation. Supported field types: `string`, `number`, `boolean`, `enum`, `path`, `duration`, `number-or-list`. Each field can declare `required`, `default`, `description`, `enum`, `min`/`max`, `placeholder`. Built-in plugins (`file`/`manual` triggers; `exit_code`/`file_exists`/`output_check` completions; `static_context` middleware) all ship with schemas so editors can generate forms out of the box.
 
-### `getHandler(category, type): PluginType`
+### `PluginRegistry.getHandler(category, type): PluginType`
 
 Retrieves a registered plugin handler. Throws if the plugin is not registered.
 
-### `hasHandler(category, type): boolean`
+### `PluginRegistry.hasHandler(category, type): boolean`
 
 Returns `true` if a handler is registered for the given category and type.
 
-### `listRegistered(category): string[]`
+### `PluginRegistry.listRegistered(category): string[]`
 
 Lists all registered handler type names for a plugin category (`'drivers'`, `'triggers'`, `'completions'`, `'middlewares'`).
 
@@ -504,8 +543,10 @@ import {
   removeTask,
   moveTask,
   transferTask,
+} from '@tagma/sdk/config';
+import {
   serializePipeline,
-} from '@tagma/sdk';
+} from '@tagma/sdk/yaml';
 
 // Build a config programmatically
 let config = createEmptyPipeline('my-pipeline');
@@ -662,14 +703,14 @@ logger.section('Title'); // file only — visual separator
 logger.quiet(bulkText); // file only — bulk payload
 logger.path; // log file path
 logger.dir; // run artifact directory
-logger.close(); // close the persistent file handle (called automatically by runPipeline at run completion)
+logger.close(); // close the persistent file handle (called automatically when Tagma.run completes)
 ```
 
 Pass an optional third argument to stream every appended line out as a
-structured `LogRecord` — `runPipeline` uses this to emit `task_log` events:
+structured `LogRecord`; the engine uses this to emit `task_log` events:
 
 ```ts
-import { Logger, type LogRecord } from '@tagma/sdk';
+import { Logger, type LogRecord } from '@tagma/sdk/logger';
 
 const logger = new Logger(workDir, runId, (record: LogRecord) => {
   // record = { level, taskId, timestamp, text }

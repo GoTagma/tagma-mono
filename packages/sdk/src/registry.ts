@@ -37,7 +37,7 @@ function singularCategory(category: PluginCategory): string {
  * registration time rather than crashing the engine mid-run.
  *
  * For drivers we materialize `capabilities` and assert each field is a
- * boolean â€” otherwise a plugin author can write
+ * boolean â€?otherwise a plugin author can write
  *     get capabilities() { throw new Error('boom') }
  * and pass the basic typeof check, then crash preflight when the engine
  * touches `driver.capabilities.sessionResume`. (R8)
@@ -55,7 +55,7 @@ function validateContract(category: PluginCategory, handler: unknown): void {
       if (typeof h.buildCommand !== 'function') {
         throw new Error(`drivers plugin "${h.name}" must export buildCommand()`);
       }
-      // Materialize capabilities â€” this triggers any throwing getter NOW
+      // Materialize capabilities â€?this triggers any throwing getter NOW
       // instead of during preflight.
       let caps: unknown;
       try {
@@ -132,7 +132,7 @@ export function isValidPluginName(name: unknown): name is string {
  *
  * Returns the strongly-typed manifest if the field is present and
  * well-formed (`category` is one of the four known categories and `type`
- * is a non-empty string). Returns `null` if the field is absent â€” that
+ * is a non-empty string). Returns `null` if the field is absent â€?that
  * is the host's signal that the package is a library, not a plugin.
  *
  * Throws if the field is present but malformed: that's a packaging bug
@@ -170,9 +170,7 @@ export function readPluginManifest(pkgJson: unknown): PluginManifest | null {
 /**
  * Instance-scoped plugin registry. Each workspace in a multi-tenant sidecar
  * owns its own PluginRegistry, so installing/uninstalling a driver in one
- * workspace cannot clobber another. The process-wide `defaultRegistry`
- * exported at the bottom of this file preserves the historical free-function
- * API (registerPlugin / getHandler / â€¦) for CLI and single-tenant hosts.
+ * workspace cannot clobber another.
  */
 export class PluginRegistry {
   private readonly registries = {
@@ -216,12 +214,12 @@ export class PluginRegistry {
     if (wasReplaced) {
       // D18: surface silent shadowing. Hot-reload flows legitimately replace
       // handlers; installing two different plugin packages that both claim
-      // the same (category, type) does not â€” the second wins and breaks the
+      // the same (category, type) does not â€?the second wins and breaks the
       // first's consumers with no audit trail. A console.warn is cheap,
       // respects existing callers that rely on 'replaced', and gives ops a
       // grep-able signal when registrations collide unexpectedly.
       console.warn(
-        `[tagma-sdk] registerPlugin: replaced existing ${category}/${type} â€” ` +
+        `[tagma-sdk] registerPlugin: replaced existing ${category}/${type} â€?` +
           `check for duplicate plugin packages claiming the same type.`,
       );
     }
@@ -231,8 +229,7 @@ export class PluginRegistry {
   /**
    * Remove a plugin from the in-process registry. Returns true if a plugin
    * was actually removed. Note: ESM module caching is not affected, so
-   * re-importing the same file after unregister will yield the cached module â€”
-   * callers wanting a fresh load must restart the host process.
+   * re-importing the same file after unregister will yield the cached module â€?   * callers wanting a fresh load must restart the host process.
    */
   unregisterPlugin(category: PluginCategory, type: string): boolean {
     if (!VALID_CATEGORIES.has(category)) return false;
@@ -298,43 +295,4 @@ export class PluginRegistry {
       this.registerPlugin(mod.pluginCategory, mod.pluginType, mod.default);
     }
   }
-}
-
-/**
- * Process-wide default registry. Preserves the historical free-function API
- * for CLI and single-tenant hosts. Multi-tenant hosts (the editor sidecar
- * after the one-sidecar refactor) build their own `PluginRegistry` per
- * workspace and pass it through `RunPipelineOptions.registry`.
- */
-export const defaultRegistry = new PluginRegistry();
-
-export function registerPlugin<T extends PluginType>(
-  category: PluginCategory,
-  type: string,
-  handler: T,
-): RegisterResult {
-  return defaultRegistry.registerPlugin(category, type, handler);
-}
-
-export function unregisterPlugin(category: PluginCategory, type: string): boolean {
-  return defaultRegistry.unregisterPlugin(category, type);
-}
-
-export function getHandler<T extends PluginType>(category: PluginCategory, type: string): T {
-  return defaultRegistry.getHandler<T>(category, type);
-}
-
-export function hasHandler(category: PluginCategory, type: string): boolean {
-  return defaultRegistry.hasHandler(category, type);
-}
-
-export function listRegistered(category: PluginCategory): string[] {
-  return defaultRegistry.listRegistered(category);
-}
-
-export function loadPlugins(
-  pluginNames: readonly string[],
-  resolveFrom?: string,
-): Promise<void> {
-  return defaultRegistry.loadPlugins(pluginNames, resolveFrom);
 }

@@ -7,7 +7,7 @@
     "apps/*"
   ],
   "scripts": {
-    "postinstall": "node -e \"const{existsSync}=require('fs');if(!existsSync('packages/types/dist/index.js')||!existsSync('packages/sdk/dist/sdk.js'))process.exit(1)\" || (bun run build:types && bun run build:sdk)",
+    "postinstall": "node -e \"const{existsSync}=require('fs');if(!existsSync('packages/types/dist/index.js')||!existsSync('packages/sdk/dist/index.js'))process.exit(1)\" || (bun run build:types && bun run build:sdk)",
     "build": "bun run build:types && bun run build:sdk && bun run build:plugins",
     "build:types": "bun run --filter @tagma/types build",
     "build:sdk": "bun run --filter @tagma/sdk build",

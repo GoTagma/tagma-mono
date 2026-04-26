@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { PluginRegistry, defaultRegistry } from './registry';
+import { PluginRegistry } from './registry';
 import { bootstrapBuiltins } from './bootstrap';
 import { runPipeline } from './engine';
 import type { DriverPlugin, TriggerPlugin, PipelineConfig } from './types';
@@ -80,7 +80,7 @@ describe('PluginRegistry — instance isolation', () => {
     expect(reg.getHandler<DriverPlugin>('drivers', 'mock').name).toBe('two');
   });
 
-  test('bootstrapBuiltins(target) populates a specific instance without touching the default', () => {
+  test('bootstrapBuiltins(target) populates a specific instance', () => {
     const fresh = new PluginRegistry();
     expect(fresh.hasHandler('drivers', 'opencode')).toBe(false);
 
@@ -222,13 +222,9 @@ describe('runPipeline — options.registry isolation', () => {
     }
   });
 
-  test('omitting options.registry falls back to defaultRegistry', async () => {
-    // bootstrapBuiltins into default happens in most host callers; do it
-    // explicitly here so the test is independent of module-load order.
-    bootstrapBuiltins(defaultRegistry);
-
+  test('runPipeline rejects missing explicit registry', async () => {
     const config: PipelineConfig = {
-      name: 'default-fallback',
+      name: 'missing-registry',
       tracks: [
         {
           id: 't',
@@ -239,8 +235,9 @@ describe('runPipeline — options.registry isolation', () => {
     };
     const tmp = mkdtempSync(join(tmpdir(), 'tagma-default-'));
     try {
-      const res = await runPipeline(config, tmp, { skipPluginLoading: true });
-      expect(res.success).toBe(true);
+      await expect(
+        runPipeline(config, tmp, { skipPluginLoading: true } as never),
+      ).rejects.toThrow(/requires options\.registry/);
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

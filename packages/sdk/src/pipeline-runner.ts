@@ -13,7 +13,7 @@
 //
 //   const runners = new Map<string, PipelineRunner>();
 //
-//   const runner = new PipelineRunner(config, workDir);
+//   const runner = new PipelineRunner(config, workDir, { registry });
 //   runner.subscribe(event => ipcEmit('run_event', event));
 //   runner.start();
 //   runners.set(runner.instanceId, runner);
@@ -29,6 +29,7 @@ import { generateRunId } from './utils';
 export type { EngineResult };
 
 export type PipelineRunnerStatus = 'idle' | 'running' | 'done' | 'aborted';
+export type PipelineRunnerOptions = Omit<RunPipelineOptions, 'signal' | 'onEvent'>;
 
 export class PipelineRunner {
   /**
@@ -57,7 +58,7 @@ export class PipelineRunner {
   constructor(
     private readonly config: PipelineConfig,
     private readonly workDir: string,
-    private readonly opts: Omit<RunPipelineOptions, 'signal' | 'onEvent'> = {},
+    private readonly opts: PipelineRunnerOptions,
   ) {
     this.instanceId = generateRunId();
   }

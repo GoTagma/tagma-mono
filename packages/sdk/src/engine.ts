@@ -20,7 +20,7 @@ import type {
   RunTaskState,
 } from './types';
 import { buildDag, type Dag } from './dag';
-import { defaultRegistry, type PluginRegistry } from './registry';
+import type { PluginRegistry } from './registry';
 import { runSpawn, runCommand } from './runner';
 import { parseDuration, nowISO, generateRunId } from './utils';
 import {
@@ -262,11 +262,10 @@ export interface RunPipelineOptions {
   readonly skipPluginLoading?: boolean;
   /**
    * Plugin registry to resolve drivers/triggers/completions/middlewares from.
-   * Defaults to the process-wide `defaultRegistry`. Multi-tenant hosts pass a
-   * per-workspace registry so concurrent runs in different workspaces see
-   * isolated handler sets.
+   * Callers pass a per-instance or per-workspace registry so concurrent runs
+   * do not share handler state.
    */
-  readonly registry?: PluginRegistry;
+  readonly registry: PluginRegistry;
 }
 
 // Poll interval when no tasks are in-flight but non-terminal tasks remain
@@ -281,11 +280,16 @@ const MAX_NORMALIZED_BYTES = 1_000_000;
 export async function runPipeline(
   config: PipelineConfig,
   workDir: string,
-  options: RunPipelineOptions = {},
+  options: RunPipelineOptions,
 ): Promise<EngineResult> {
   const approvalGateway = options.approvalGateway ?? new InMemoryApprovalGateway();
   const maxLogRuns = options.maxLogRuns ?? 20;
-  const registry = options.registry ?? defaultRegistry;
+  const registry = options.registry;
+  if (!registry) {
+    throw new Error(
+      'runPipeline requires options.registry. Use createTagma().run(...) for the public SDK API.',
+    );
+  }
 
   // Load any plugins declared in the pipeline config before preflight so that
   // drivers, completions, and middlewares referenced in YAML are registered.
