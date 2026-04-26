@@ -22,6 +22,7 @@ import type {
   DriverContext,
   SpawnSpec,
   Permissions,
+  TagmaPlugin,
 } from '@tagma/types';
 
 // gpt-5-codex is the current publicly available Codex coding model. An
@@ -63,7 +64,7 @@ function resolveSandbox(permissions: Permissions): string {
   return 'read-only';
 }
 
-const CodexDriver: DriverPlugin = {
+export const CodexDriver: DriverPlugin = {
   name: 'codex',
 
   capabilities: {
@@ -139,7 +140,11 @@ const CodexDriver: DriverPlugin = {
   },
 };
 
-// ═══ Plugin self-description exports ═══
-export const pluginCategory = 'drivers';
-export const pluginType = 'codex';
-export default CodexDriver;
+export default {
+  name: '@tagma/driver-codex',
+  capabilities: {
+    drivers: {
+      codex: CodexDriver,
+    },
+  },
+} satisfies TagmaPlugin;

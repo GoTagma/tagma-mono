@@ -1,4 +1,5 @@
 import type { PluginRegistry } from './registry';
+import type { TagmaPlugin } from './types';
 
 // Built-in Drivers
 // Only opencode is built in. Other drivers (codex, claude-code) ship as
@@ -19,6 +20,27 @@ import { OutputCheckCompletion } from './completions/output-check';
 // Built-in Middleware
 import { StaticContextMiddleware } from './middlewares/static-context';
 
+export const BuiltinTagmaPlugin = {
+  name: '@tagma/sdk/builtins',
+  capabilities: {
+    drivers: {
+      opencode: OpenCodeDriver,
+    },
+    triggers: {
+      file: FileTrigger,
+      manual: ManualTrigger,
+    },
+    completions: {
+      exit_code: ExitCodeCompletion,
+      file_exists: FileExistsCompletion,
+      output_check: OutputCheckCompletion,
+    },
+    middlewares: {
+      static_context: StaticContextMiddleware,
+    },
+  },
+} satisfies TagmaPlugin;
+
 /**
  * Register every built-in plugin into `target`. Hosts instantiate one
  * PluginRegistry per workspace or SDK instance and call this once per
@@ -29,18 +51,5 @@ import { StaticContextMiddleware } from './middlewares/static-context';
  * handler object into N registries is cheap and safe; no cloning is needed.
  */
 export function bootstrapBuiltins(target: PluginRegistry): void {
-  // Drivers
-  target.registerPlugin('drivers', 'opencode', OpenCodeDriver);
-
-  // Triggers
-  target.registerPlugin('triggers', 'file', FileTrigger);
-  target.registerPlugin('triggers', 'manual', ManualTrigger);
-
-  // Completions
-  target.registerPlugin('completions', 'exit_code', ExitCodeCompletion);
-  target.registerPlugin('completions', 'file_exists', FileExistsCompletion);
-  target.registerPlugin('completions', 'output_check', OutputCheckCompletion);
-
-  // Middlewares
-  target.registerPlugin('middlewares', 'static_context', StaticContextMiddleware);
+  target.registerTagmaPlugin(BuiltinTagmaPlugin);
 }

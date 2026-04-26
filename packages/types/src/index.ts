@@ -72,37 +72,15 @@ export interface PluginSchema {
   readonly fields: Readonly<Record<string, PluginParamDef>>;
 }
 
-// ═══ Task Ports ═══
+// ═══ Binding Types ═══
 //
-// Typed I/O "ports" declared on a task. Inputs are named variables a task
-// consumes (substituted as `{{inputs.<name>}}` in `command` / `prompt`, and
-// rendered as a structured `[Inputs]` context block for AI tasks). Outputs
-// are named variables a task produces (extracted from stdout /
-// normalizedOutput on completion). Downstream tasks consume them by name —
-// the editor uses the hybrid "snapshot-with-drift-warning" strategy to keep
-// input/output shape in sync when the user connects two nodes.
+// `inputs` / `outputs` are the public task-level dataflow model. Optional
+// `type` metadata turns a binding into a strict, coerced contract; omitted
+// `type` keeps the binding as a lightweight pass-through value.
 //
-// Wire format:
-//   inputs:
-//     - name: city
-//       type: string
-//       description: Target city for the query
-//       required: true
-//   outputs:
-//     - name: temperature
-//       type: number
-//       description: Current temperature in Celsius
-//
-// Runtime extraction:
-//   * Command tasks — last non-empty line of stdout is parsed as JSON, and
-//     each declared output name is looked up as a key.
-//   * AI (prompt) tasks — same, but prefer `normalizedOutput` over raw
-//     stdout. The engine also injects an `[Output Format]` context block
-//     instructing the model to emit a final-line JSON object matching the
-//     declared outputs.
-//
-// Nothing about ports is required for existing pipelines to keep working:
-// a task with no `ports` behaves exactly as it always did.
+// `PortDef` / `TaskPorts` are retained as internal compatibility shapes for
+// prompt-contract inference helpers. YAML `ports` is rejected by validateRaw;
+// authors should use typed `inputs` / `outputs` instead.
 
 export type PortType = 'string' | 'number' | 'boolean' | 'enum' | 'json';
 
@@ -208,9 +186,9 @@ export interface TaskConfig {
   readonly inputs?: TaskInputBindings;
   readonly outputs?: TaskOutputBindings;
   /**
-   * Typed I/O ports declared on this task. See `TaskPorts` above. Omitted =
-   * task has no declared ports and behaves as before (no substitution, no
-   * extraction, no `[Inputs]` / `[Output Format]` blocks).
+   * @deprecated YAML `ports` has been replaced by typed `inputs` / `outputs`.
+   * Kept in the type surface temporarily so validators and migration tools can
+   * produce a clear migration error instead of dropping the field silently.
    */
   readonly ports?: TaskPorts;
 }
@@ -236,6 +214,7 @@ export interface RawTaskConfig {
   readonly cwd?: string;
   readonly inputs?: TaskInputBindings;
   readonly outputs?: TaskOutputBindings;
+  /** @deprecated Use typed `inputs` / `outputs`; validateRaw rejects `ports`. */
   readonly ports?: TaskPorts;
 }
 
@@ -504,49 +483,49 @@ export interface MiddlewarePlugin {
   readonly name: string;
   readonly schema?: PluginSchema;
   /**
-   * **Preferred entry point.** Augment the structured `PromptDocument`
-   * and return a new document. Middlewares run in declaration order;
-   * each receives the previous output.
+   * Augment the structured `PromptDocument` and return a new document.
+   * Middlewares run in declaration order; each receives the previous output.
    *
-   * ## Composition contract (READ BEFORE WRITING A MIDDLEWARE)
-   *
-   * **Append context blocks; do not rewrite `task`.**
-   *
-   *   - DO: `return { ...doc, contexts: [...doc.contexts, { label, content }] }`
-   *     — push a labeled block onto the contexts list.
-   *   - DO NOT: modify `doc.task` unless you are deliberately
-   *     transforming the instruction (e.g. translation). Middlewares are
-   *     expected to *augment* context, not rewrite intent.
-   *   - DO NOT: assume your middleware runs last. The engine serializes
-   *     the doc into `task.prompt` and the driver may wrap the result
-   *     further (e.g. opencode's `agent_profile` adds `[Role]...[Task]...`).
-   *
-   * Rationale: the previous `enhance(string) → string` API let each
-   * middleware make structural assumptions about where the task prompt
-   * lived (some added `[Task]\n` headers, assuming they were outermost).
-   * When two such plugins — or a plugin plus a driver wrapper — ran in
-   * sequence, the model received a malformed double-header payload and
-   * silently misinterpreted it as cut-off (observed with
-   * `opencode/big-pickle`). Operating on a structured document removes
-   * that ambiguity.
-   *
-   * If a middleware must fail-open (retrieval error, missing file,
-   * etc.), return `doc` unchanged rather than throwing.
+   * Composition contract: append context blocks and preserve `doc.task`
+   * unless the middleware deliberately transforms the user's instruction.
    */
-  enhanceDoc?(
+  enhanceDoc(
     doc: PromptDocument,
     config: Record<string, unknown>,
     ctx: MiddlewareContext,
   ): Promise<PromptDocument>;
-  /**
-   * @deprecated Use {@link enhanceDoc}. Retained for v0.x plugins that
-   * predate the structured API. When both are defined, the engine prefers
-   * `enhanceDoc`. When only `enhance` is defined, the engine serializes
-   * the current doc, runs `enhance`, and treats the returned string as
-   * the new `task` text (any previous `contexts` are folded into it —
-   * lossy path).
-   */
-  enhance?(prompt: string, config: Record<string, unknown>, ctx: MiddlewareContext): Promise<string>;
+}
+
+// ═══ Capability Plugin Packages ═══
+
+export type CapabilityHandler =
+  | DriverPlugin
+  | TriggerPlugin
+  | CompletionPlugin
+  | MiddlewarePlugin;
+
+export interface PluginCapabilities {
+  readonly drivers?: Readonly<Record<string, DriverPlugin>>;
+  readonly triggers?: Readonly<Record<string, TriggerPlugin>>;
+  readonly completions?: Readonly<Record<string, CompletionPlugin>>;
+  readonly middlewares?: Readonly<Record<string, MiddlewarePlugin>>;
+  readonly policies?: Readonly<Record<string, unknown>>;
+  readonly storage?: Readonly<Record<string, unknown>>;
+  readonly telemetry?: Readonly<Record<string, unknown>>;
+}
+
+export interface PluginSetupContext {
+  registerPlugin(
+    category: PluginCategory,
+    type: string,
+    handler: CapabilityHandler,
+  ): void;
+}
+
+export interface TagmaPlugin {
+  readonly name: string;
+  readonly capabilities?: PluginCapabilities;
+  setup?(ctx: PluginSetupContext): void | Promise<void>;
 }
 
 // ═══ Task Result ═══
@@ -600,11 +579,10 @@ export interface TaskResult {
    */
   readonly failureKind?: TaskFailureKind;
   /**
-   * Published output values — populated by the engine after a task
-   * terminates successfully when lightweight `task.outputs` or strict
-   * `task.ports.outputs` are declared. Strict port values are coerced to
-   * each port's type; lightweight outputs are passed through as selected.
-   * `null` = task had no declared outputs.
+   * Published output values — populated by the engine after a task terminates
+   * successfully when `task.outputs` are declared or when a prompt task has an
+   * inferred output contract from downstream typed inputs.
+   * `null` = task had no declared or inferred outputs.
    */
   readonly outputs?: Readonly<Record<string, unknown>> | null;
 }
@@ -624,11 +602,11 @@ export interface TaskState {
 
 export type PluginCategory = 'drivers' | 'triggers' | 'completions' | 'middlewares';
 
-export interface PluginModule {
-  readonly pluginCategory: PluginCategory;
-  readonly pluginType: string;
-  readonly default: DriverPlugin | TriggerPlugin | CompletionPlugin | MiddlewarePlugin;
+export interface CapabilityPluginModule {
+  readonly default: TagmaPlugin;
 }
+
+export type PluginModule = CapabilityPluginModule;
 
 /**
  * Manifest a plugin package MUST declare under the `tagmaPlugin` field of
@@ -638,9 +616,9 @@ export interface PluginModule {
  * reads only `package.json` and trusts this field — no module import
  * required, which is both faster and safer (no top-level side effects).
  *
- * The manifest MUST stay in sync with the runtime exports (`pluginCategory`,
- * `pluginType`). Hosts may verify this on load and refuse to register a
- * plugin whose package.json and runtime contract disagree.
+ * The manifest MUST stay in sync with the capability key the package
+ * provides (for example `capabilities.drivers.codex`). Multi-capability
+ * packages may choose the primary capability they want discovery UIs to show.
  *
  * Example `package.json`:
  *

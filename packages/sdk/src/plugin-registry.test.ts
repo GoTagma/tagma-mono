@@ -3,9 +3,10 @@ import { PluginRegistry } from './registry';
 import { bootstrapBuiltins } from './bootstrap';
 import { runPipeline } from './engine';
 import type { DriverPlugin, TriggerPlugin, PipelineConfig } from './types';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { TagmaPlugin } from './types';
 
 function makeDriver(name: string, marker: string[]): DriverPlugin {
   return {
@@ -100,6 +101,130 @@ describe('PluginRegistry — instance isolation', () => {
   });
 });
 
+describe('PluginRegistry — capability plugins', () => {
+  test('registerTagmaPlugin registers multiple capabilities from one package', () => {
+    const reg = new PluginRegistry();
+    const driver = makeDriver('cap-driver', []);
+    const trigger = makeTrigger('cap-trigger', []);
+    const plugin: TagmaPlugin = {
+      name: 'tagma-plugin-multi',
+      capabilities: {
+        drivers: { cap_driver: driver },
+        triggers: { cap_trigger: trigger },
+      },
+    };
+
+    expect(reg.registerTagmaPlugin(plugin)).toEqual([
+      { category: 'drivers', type: 'cap_driver', result: 'registered' },
+      { category: 'triggers', type: 'cap_trigger', result: 'registered' },
+    ]);
+    expect(reg.getHandler<DriverPlugin>('drivers', 'cap_driver')).toBe(driver);
+    expect(reg.getHandler<TriggerPlugin>('triggers', 'cap_trigger')).toBe(trigger);
+  });
+
+  test('registerTagmaPlugin keeps replacement warnings from the registry path', () => {
+    const reg = new PluginRegistry();
+    const originalWarn = console.warn;
+    const warnings: string[] = [];
+    console.warn = (message?: unknown) => {
+      warnings.push(String(message));
+    };
+    try {
+      reg.registerPlugin('drivers', 'mock', makeDriver('first', []));
+      const result = reg.registerTagmaPlugin({
+        name: 'tagma-plugin-replacement',
+        capabilities: {
+          drivers: { mock: makeDriver('second', []) },
+        },
+      });
+
+      expect(result).toEqual([{ category: 'drivers', type: 'mock', result: 'replaced' }]);
+      expect(warnings).toContain(
+        '[tagma-sdk] registerPlugin: replaced existing drivers/mock - check for duplicate plugin packages claiming the same type.',
+      );
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  test('loadPlugins accepts capability plugin default exports', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tagma-capability-plugin-'));
+    const pluginDir = join(dir, 'node_modules', 'tagma-plugin-capability');
+    mkdirSync(pluginDir, { recursive: true });
+    writeFileSync(
+      join(pluginDir, 'package.json'),
+      JSON.stringify({ name: 'tagma-plugin-capability', version: '1.0.0', type: 'module', main: './index.js' }),
+      'utf-8',
+    );
+    writeFileSync(
+      join(pluginDir, 'index.js'),
+      [
+        'const driver = {',
+        "  name: 'cap-driver',",
+        '  capabilities: { sessionResume: false, systemPrompt: false, outputFormat: false },',
+        "  async buildCommand() { return { args: ['echo', 'cap'] }; },",
+        '};',
+        'const trigger = {',
+        "  name: 'cap-trigger',",
+        '  async watch() {}',
+        '};',
+        'export default {',
+        "  name: 'tagma-plugin-capability',",
+        '  capabilities: {',
+        '    drivers: { cap_driver: driver },',
+        '    triggers: { cap_trigger: trigger },',
+        '  },',
+        '};',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+
+    try {
+      const reg = new PluginRegistry();
+      await reg.loadPlugins(['tagma-plugin-capability'], dir);
+      expect(reg.hasHandler('drivers', 'cap_driver')).toBe(true);
+      expect(reg.hasHandler('triggers', 'cap_trigger')).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('loadPlugins rejects legacy plugin module exports', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tagma-legacy-plugin-'));
+    const pluginDir = join(dir, 'node_modules', 'tagma-plugin-legacy');
+    mkdirSync(pluginDir, { recursive: true });
+    writeFileSync(
+      join(pluginDir, 'package.json'),
+      JSON.stringify({ name: 'tagma-plugin-legacy', version: '1.0.0', type: 'module', main: './index.js' }),
+      'utf-8',
+    );
+    writeFileSync(
+      join(pluginDir, 'index.js'),
+      [
+        "export const pluginCategory = 'drivers';",
+        "export const pluginType = 'legacy';",
+        'export default {',
+        "  name: 'legacy',",
+        '  capabilities: { sessionResume: false, systemPrompt: false, outputFormat: false },',
+        "  async buildCommand() { return { args: ['echo', 'legacy'] }; },",
+        '};',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+
+    try {
+      const reg = new PluginRegistry();
+      await expect(reg.loadPlugins(['tagma-plugin-legacy'], dir)).rejects.toThrow(
+        /must default-export a TagmaPlugin/,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('PluginRegistry — validation', () => {
   test('rejects unknown category', () => {
     const reg = new PluginRegistry();
@@ -152,6 +277,18 @@ describe('PluginRegistry — validation', () => {
     expect(() => reg.getHandler('middlewares', 'audit')).toThrow(
       /bun add @tagma\/middleware-audit/,
     );
+  });
+
+  test('rejects middleware without enhanceDoc', () => {
+    const reg = new PluginRegistry();
+    expect(() =>
+      reg.registerPlugin('middlewares', 'old', {
+        name: 'old',
+        async enhance(prompt: string) {
+          return prompt;
+        },
+      } as never),
+    ).toThrow(/must export enhanceDoc/);
   });
 });
 

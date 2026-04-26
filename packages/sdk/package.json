@@ -1,6 +1,6 @@
 {
   "name": "@tagma/sdk",
-  "version": "0.7.1",
+  "version": "0.7.3",
   "description": "Local AI task orchestration engine — core SDK for tagma pipelines",
   "license": "MIT",
   "repository": {

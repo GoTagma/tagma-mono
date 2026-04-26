@@ -75,8 +75,7 @@ config editing, plugin registry helpers, and low-level dataflow utilities.
 - **Middleware** -- enrich prompts before execution (e.g. inject static context)
 - **Completion checks** -- validate task output with `exit_code`, `file_exists`, or `output_check` plugins
 - **Plugin schemas** -- triggers/completions/middlewares can declare a `PluginSchema` so visual editors render typed forms for their config
-- **Lightweight task bindings** -- pass dynamic values with task-level `inputs` / `outputs` without declaring a typed contract
-- **Typed task ports** -- declare named, typed `ports.inputs` / `ports.outputs` when a task needs a strict, validated I/O contract
+- **Unified task bindings** -- pass dynamic values with task-level `inputs` / `outputs`; add optional `type` metadata when a binding needs validation
 
 ## Pipeline YAML Reference
 
@@ -205,9 +204,8 @@ Each hook value can be a single command string or an array of commands.
 | `middlewares`   | `MiddlewareConfig[]` | No       | Inherited from track | Middleware override. Set `[]` to disable inherited middlewares                                         |
 | `trigger`       | `TriggerConfig`      | No       | —                    | Gate that must resolve before the task runs (see Triggers)                                             |
 | `completion`    | `CompletionConfig`   | No       | —                    | Post-execution check to validate task output (see Completions)                                         |
-| `inputs`        | `TaskInputBindings`  | No       | —                    | Lightweight parameter bindings for `{{inputs.<name>}}`                                                 |
-| `outputs`       | `TaskOutputBindings` | No       | —                    | Lightweight named outputs published after success                                                      |
-| `ports`         | `TaskPorts`          | No       | —                    | Typed input/output ports — see Typed Ports below                                                       |
+| `inputs`        | `TaskInputBindings`  | No       | —                    | Task input bindings for `{{inputs.<name>}}`; optional `type` enables coercion/validation                |
+| `outputs`       | `TaskOutputBindings` | No       | —                    | Named outputs published after success; optional `type` enables coercion/validation                      |
 
 ### Permissions
 
@@ -227,15 +225,17 @@ Track-level `middlewares` apply to all tasks in the track. Setting task-level `m
 
 ---
 
-### Lightweight Bindings
+### Unified Task Bindings
 
-Use task-level `inputs` / `outputs` for ordinary parameter passing. They are task-level only, do not inherit, and do not add prompt schema blocks or type coercion.
+Use task-level `inputs` / `outputs` for parameter passing. They are task-level only, do not inherit, and can stay lightweight by omitting `type`. Add `type`, `required`, `enum`, and `description` when a binding should be strict and editor-visible.
 
 ```yaml
 - id: build
   command: bun run build
   outputs:
-    bundlePath: { from: json.bundlePath }
+    bundlePath:
+      from: json.bundlePath
+      type: string
 
 - id: test
   depends_on: [build]
@@ -244,17 +244,18 @@ Use task-level `inputs` / `outputs` for ordinary parameter passing. They are tas
     bundlePath:
       from: t.build.outputs.bundlePath
       required: true
+      type: string
 ```
 
-Input bindings support `value`, `from`, `default`, and `required`. `from` accepts `taskId.outputs.name`, `taskId.stdout`, `taskId.stderr`, `taskId.normalizedOutput`, `taskId.exitCode`, or `outputs.name` to name-match direct upstream outputs.
+Input bindings support `value`, `from`, `default`, `required`, optional `type`, `enum`, and `description`. `from` accepts `taskId.outputs.name`, `taskId.stdout`, `taskId.stderr`, `taskId.normalizedOutput`, `taskId.exitCode`, or `outputs.name` to name-match direct upstream outputs.
 
-Output bindings support `value`, `from`, and `default`. `from` defaults to `json.<outputName>` and also accepts `stdout`, `stderr`, or `normalizedOutput`.
+Output bindings support `value`, `from`, `default`, optional `type`, `enum`, and `description`. `from` defaults to `json.<outputName>` and also accepts `stdout`, `stderr`, or `normalizedOutput`.
 
-Use `ports` instead when downstream tasks need required typed values, the editor should present a stable I/O contract, or prompt tasks should receive `[Inputs]` / `[Output Format]` blocks.
+Prompt tasks infer their structured input/output contract from neighboring command tasks that use typed `outputs` / `inputs`. The engine renders `[Inputs]` and `[Output Format]` blocks from that inferred contract.
 
 ---
 
-### Typed Ports
+### Typed Binding Example
 
 Tasks can declare named, typed `inputs` / `outputs`. Inputs flow in from upstream task outputs; outputs are extracted from a task's stdout (or the AI driver's `normalizedOutput`) on success.
 
@@ -262,40 +263,50 @@ Tasks can declare named, typed `inputs` / `outputs`. Inputs flow in from upstrea
 - id: lookup-weather
   name: Lookup weather
   command: weather.sh --city "{{inputs.city}}"
-  ports:
-    inputs:
-      - { name: city, type: string, required: true, description: Target city }
-    outputs:
-      - { name: temperature, type: number, description: Current temperature in Celsius }
-      - { name: conditions, type: enum, enum: [sunny, cloudy, rain, snow] }
+  inputs:
+    city:
+      type: string
+      required: true
+      description: Target city
+  outputs:
+    temperature:
+      type: number
+      description: Current temperature in Celsius
+    conditions:
+      type: enum
+      enum: [sunny, cloudy, rain, snow]
 
 - id: write-report
   depends_on: [lookup-weather]
   prompt: 'Write a brief weather report for {{inputs.city}}.'
-  ports:
-    inputs:
-      - { name: city, type: string, required: true }
-      - { name: temperature, type: number, required: true }
-      - { name: conditions, type: enum, enum: [sunny, cloudy, rain, snow] }
+  inputs:
+    city: { from: t.lookup-weather.outputs.city, type: string, required: true }
+    temperature: { from: t.lookup-weather.outputs.temperature, type: number, required: true }
+    conditions:
+      from: t.lookup-weather.outputs.conditions
+      type: enum
+      enum: [sunny, cloudy, rain, snow]
 ```
 
-#### `PortDef` fields
+#### Binding fields
 
 | Field         | Type                                                  | Required | Description                                                                                                                                                                       |
 | ------------- | ----------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`        | `string`                                              | Yes      | Port name; also the substitution key (`{{inputs.<name>}}`)                                                                                                                        |
-| `type`        | `'string' \| 'number' \| 'boolean' \| 'enum' \| 'json'` | Yes      | Coercion type. Mismatched values block the task with a typed-error diagnostic                                                                                                     |
+| `value`       | `unknown`                                             | No       | Literal value. For inputs, this wins over `from`                                                                                                                                  |
+| `from`        | `string`                                              | No       | Inputs: upstream source such as `taskId.outputs.name`, `taskId.stdout`, or `outputs.name`. Outputs: `json.<key>`, `stdout`, `stderr`, or `normalizedOutput`                      |
+| `default`     | `unknown`                                             | No       | Fallback value when the source is missing                                                                                                                                         |
+| `required`    | `boolean`                                             | Inputs only | When `true`, missing upstream value and no `default` blocks the task                                                                                                           |
+| `type`        | `'string' \| 'number' \| 'boolean' \| 'enum' \| 'json'` | No       | Optional coercion type. Omit it for pass-through values                                                                                                                           |
 | `description` | `string`                                              | No       | Free-text description; rendered into the `[Inputs]` / `[Output Format]` blocks                                                                                                    |
-| `required`    | `boolean`                                             | No       | Inputs only. When `true`, missing upstream value (and no `default`) blocks the task                                                                                               |
-| `default`     | `unknown`                                             | No       | Inputs only. Fallback value when no upstream produces the port                                                                                                                    |
 | `enum`        | `string[]`                                            | When `type: enum` | Allowed values                                                                                                                                                                    |
-| `from`        | `string`                                              | No       | Inputs only. Explicit upstream binding — bare `portName` (match by name) or `taskId.portName` (fully qualified). Unset = match by name across all direct upstreams; ambiguous matches block |
 
 #### Substitution and AI prompt blocks
 
 - `{{inputs.<name>}}` is expanded verbatim in `command` and `prompt` strings before execution. Quote your placeholders in command lines (`--city "{{inputs.city}}"`) — the engine does not shell-escape.
-- AI tasks additionally get two prepended `PromptContextBlock`s: `[Output Format]` (instructs the model to emit a final-line JSON object matching the declared outputs) and `[Inputs]` (renders the resolved inputs as `name: value  # description`). Tasks without ports get no extra blocks.
-- Output extraction strategy: prefer `normalizedOutput` (AI tasks), fall back to stdout (command tasks). Find the last non-empty line that parses as a JSON object, then read each declared output key. Failures append a diagnostic to stderr; the port is absent from `outputs` and downstream tasks see it as missing.
+- AI tasks get `[Output Format]` and `[Inputs]` blocks when typed bindings can be inferred from neighboring command tasks.
+- Output extraction strategy: prefer `normalizedOutput` (AI tasks), fall back to stdout (command tasks). Find the last non-empty line that parses as a JSON object, then read each declared output key. Failures append a diagnostic to stderr; the binding is absent from `outputs` and downstream tasks see it as missing.
+
+YAML `ports` has been replaced by typed `inputs` / `outputs`. `validateRaw` reports any `ports` field as a migration error.
 
 ---
 
@@ -363,9 +374,10 @@ Tasks can declare named, typed `inputs` / `outputs`. Inputs flow in from upstrea
 ### Root: `@tagma/sdk`
 
 - `createTagma(options?)`
+- `bunRuntime()`
 - `definePipeline(pipeline)`
 - `PluginRegistry`
-- stable pipeline/result/event types
+- stable pipeline/result/event/plugin/runtime types, including `TagmaPlugin` and `TagmaRuntime`
 - trigger error classes
 
 ### YAML: `@tagma/sdk/yaml`
@@ -391,10 +403,10 @@ Tasks can declare named, typed `inputs` / `outputs`. Inputs flow in from upstrea
 - raw validation helpers
 - task reference helpers
 
-### Ports: `@tagma/sdk/ports`
+### Dataflow helpers: `@tagma/sdk/ports`
 
-- current dataflow helpers for placeholder substitution, binding resolution,
-  output extraction, and prompt-port inference
+- placeholder substitution, binding resolution, output extraction, and internal prompt-contract inference
+- the subpath name is historical; YAML `ports` is rejected by validation
 
 ### `bootstrapBuiltins(registry)`
 
@@ -403,6 +415,17 @@ Registers all built-in plugins (opencode driver, file/manual triggers, completio
 ### `loadPipeline(yaml: string, workDir: string): Promise<PipelineConfig>`
 
 Parses YAML, resolves inheritance, and validates the configuration.
+
+### `createTagma(options?)`
+
+Creates an isolated SDK instance with its own plugin registry.
+
+Options:
+
+- `registry` -- use an existing `PluginRegistry` instance
+- `builtins` -- register built-in plugins into the instance registry; defaults to `true`
+- `plugins` -- register package-level `TagmaPlugin` capability objects into the instance registry
+- `runtime` -- override command/driver process execution; defaults to `bunRuntime()`
 
 ### `createTagma().run(config, options): Promise<EngineResult>`
 
@@ -414,7 +437,7 @@ Options:
 - `signal` -- `AbortSignal` to cancel the run externally
 - `onEvent` -- callback for real-time `RunEventPayload` updates. Every payload carries `runId`. The editor server stamps a per-run `seq` on top of this payload before broadcasting over SSE (producing a `WireRunEvent`); the SDK itself does not stamp `seq`. Event variants:
   - `run_start` — pipeline approved and all tasks transitioned to `waiting`; includes `tasks: RunTaskState[]` (wire-shape snapshot of every task). Fires only when the `pipeline_start` hook allows the run — blocked pipelines emit no wire events at all.
-  - `task_update` — a task's status or result changed; flat fields (`status`, `startedAt?`, `finishedAt?`, `durationMs?`, `exitCode?`, `stdout?`, `stderr?`, `stdoutPath?`, `stderrPath?`, `stdoutBytes?`, `stderrBytes?`, `sessionId?`, `normalizedOutput?`, `outputs?`, `inputs?`, `resolvedDriver?`, `resolvedModel?`, `resolvedPermissions?`) so clients can fold partial updates with `??` semantics. `inputs` carries the resolved port input map (set once just before the task transitions to `running`); `outputs` carries the extracted port output map after a successful terminal transition. `startedAt` is populated before the `running` transition; `finishedAt` and result fields are populated before any terminal-status transition. Terminal-state locking in the engine guarantees at most one terminal event per task.
+  - `task_update` — a task's status or result changed; flat fields (`status`, `startedAt?`, `finishedAt?`, `durationMs?`, `exitCode?`, `stdout?`, `stderr?`, `stdoutPath?`, `stderrPath?`, `stdoutBytes?`, `stderrBytes?`, `sessionId?`, `normalizedOutput?`, `outputs?`, `inputs?`, `resolvedDriver?`, `resolvedModel?`, `resolvedPermissions?`) so clients can fold partial updates with `??` semantics. `inputs` carries the resolved task input map (set once just before the task transitions to `running`); `outputs` carries the extracted binding output map after a successful terminal transition. `startedAt` is populated before the `running` transition; `finishedAt` and result fields are populated before any terminal-status transition. Terminal-state locking in the engine guarantees at most one terminal event per task.
   - `task_log` — a structured log line was written to `pipeline.log`. Mirrors every `Logger` call (info/warn/error/debug/section/quiet) and carries `{ taskId: string | null, level, timestamp, text }`. `taskId` is non-null for lines tagged with a `[task:<id>]` prefix (or passed explicitly to `section`/`quiet`) and `null` for pipeline-wide messages such as the configuration dump and DAG topology. Use this to stream the full run process into UIs without tailing the log file.
   - `run_end` — pipeline finished; includes `success: boolean` and `abortReason: 'timeout' | 'stop_all' | 'external' | null`. `null` means the run completed on its own steam (success may still be `false` if tasks failed).
   - `run_error` — reserved for fatal engine errors surfaced over the wire.
@@ -460,7 +483,7 @@ Properties:
 
 Typed error classes for trigger plugin error classification. The engine uses `instanceof` checks on these to set the correct task status (`blocked` or `timeout`) instead of matching on error message substrings.
 
-Built-in triggers (`manual`, `file`) throw these automatically. Third-party trigger plugins should throw `TriggerBlockedError` for user/policy rejections and `TriggerTimeoutError` for genuine wait timeouts. Plugins that throw plain `Error` still work — the engine falls back to string matching for backward compatibility, but typed errors are preferred to avoid misclassification from coincidental substrings.
+Built-in triggers (`manual`, `file`) throw these automatically. Trigger plugins should throw `TriggerBlockedError` for user/policy rejections and `TriggerTimeoutError` for genuine wait timeouts.
 
 ```ts
 import { TriggerBlockedError, TriggerTimeoutError } from '@tagma/sdk';
@@ -470,13 +493,30 @@ throw new TriggerBlockedError('Access denied by policy');
 throw new TriggerTimeoutError('File did not appear within 30s');
 ```
 
-### `PluginRegistry.loadPlugins(names): Promise<void>`
+### `PluginRegistry.loadPlugins(names, resolveFrom?): Promise<void>`
 
-Dynamically loads and registers external plugin packages.
+Dynamically loads and registers external plugin packages. Each package must default-export a `TagmaPlugin` with capability maps.
+
+```ts
+export default {
+  name: '@tagma/trigger-http',
+  capabilities: {
+    triggers: {
+      http: HttpTrigger,
+    },
+  },
+} satisfies TagmaPlugin;
+```
+
+Pass `resolveFrom` when plugins are installed in a workspace-local `node_modules`.
+
+### `PluginRegistry.registerTagmaPlugin(plugin): RegisteredCapability[]`
+
+Registers every supported capability from a `TagmaPlugin` default export.
 
 ### `PluginRegistry.registerPlugin(category, type, handler): void`
 
-Registers a plugin handler manually. Idempotent — duplicate registrations are silently ignored.
+Registers one capability handler manually. Prefer `registerTagmaPlugin()` for package-level plugins.
 
 Plugin handlers (`TriggerPlugin`, `CompletionPlugin`, `MiddlewarePlugin`) may optionally expose a declarative `schema: PluginSchema` field so visual editors can render a typed form for the plugin's config instead of a raw key/value editor:
 
@@ -612,9 +652,9 @@ Validates a resolved pipeline config without executing it. Checks DAG structure 
 
 Use `validateRaw` for editing raw configs in a UI; use `validateConfig` after `resolveConfig` for a final pre-run check.
 
-### Bindings And Ports API
+### Bindings API
 
-Pure helpers backing lightweight bindings and `task.ports`. Safe to use in editors, simulators, and custom drivers — no I/O, no side effects.
+Pure helpers backing typed task bindings and internal prompt-contract inference. Safe to use in editors, simulators, and custom drivers — no I/O, no side effects.
 
 | Function                                                | Description                                                                                                                                                                                                                          |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -623,7 +663,7 @@ Pure helpers backing lightweight bindings and `task.ports`. Safe to use in edito
 | `resolveTaskBindingInputs(task, upstreamData, dependsOn)` | Resolve lightweight task-level `inputs` from literal values, upstream outputs, stdout/stderr, normalized output, defaults, and required flags                                                                                         |
 | `resolveTaskInputs(task, upstreamOutputs, dependsOn)`   | Gather the input values a task will consume from its direct upstreams. Applies `from` bindings, defaults, and type coercion. Returns `{ kind: 'ready', inputs, missingOptional }` or `{ kind: 'blocked', missingRequired, ambiguous, typeErrors, reason }` |
 | `extractTaskBindingOutputs(outputs, stdout, stderr, normalizedOutput)` | Publish lightweight task-level `outputs` from final-line JSON, stdout/stderr, normalized output, literal values, or defaults                                                                                              |
-| `extractTaskOutputs(ports, stdout, normalizedOutput)`   | Pull declared output values from a terminated task's output. Strategy: prefer `normalizedOutput`; find the last non-empty line that parses as a JSON object; coerce each declared key. Returns `{ outputs, diagnostic }`             |
+| `extractTaskOutputs(ports, stdout, normalizedOutput)`   | Internal helper for inferred prompt contracts. Strategy: prefer `normalizedOutput`; find the last non-empty line that parses as a JSON object; coerce each declared key. Returns `{ outputs, diagnostic }`             |
 | `prependContext(doc, block)`                            | Same shape as `appendContext` but prepends; the engine uses this to place `[Output Format]` and `[Inputs]` blocks before middleware-added context                                                                                    |
 | `renderInputsBlock(inputsDecl, values)`                 | Build the `[Inputs]` `PromptContextBlock` rendered into AI prompts (`name: value  # description` lines). Returns `null` when no inputs to render                                                                                     |
 | `renderOutputSchemaBlock(outputsDecl)`                  | Build the `[Output Format]` `PromptContextBlock` instructing the model to emit a final-line JSON object matching the declared outputs. Returns `null` when no outputs declared                                                       |
@@ -634,7 +674,7 @@ Custom drivers that wrap the prompt in their own envelope can read `DriverContex
 
 Validates a raw pipeline config without resolving inheritance or executing anything. Returns a flat list of `{ path, message, severity? }` objects — empty array means valid. `severity` is `'error'` (default, fatal) or `'warning'` (soft hint; non-blocking).
 
-Checks: required fields, `prompt`/`command` exclusivity, duplicate task IDs within a track, `depends_on`/`continue_from` reference integrity (including ambiguous bare refs that exist in multiple tracks — use `trackId.taskId` to disambiguate), circular dependency detection, port shape (name format, valid `type`, duplicate names, `enum` requires non-empty `enum` array, `required`/`from` ignored on outputs), `{{inputs.<name>}}` references resolving to a declared input port, and `permissions` shape (must be an object with boolean `read`/`write`/`execute`). Tolerant of half-built configs — non-array `tracks` or `tasks` produce a structured error instead of throwing.
+Checks: required fields, `prompt`/`command` exclusivity, duplicate task IDs within a track, `depends_on`/`continue_from` reference integrity (including ambiguous bare refs that exist in multiple tracks — use `trackId.taskId` to disambiguate), circular dependency detection, binding shape (name format, valid `type`, duplicate names, `enum` requires non-empty `enum` array), `ports` migration errors, `{{inputs.<name>}}` references resolving to a declared or inferred input binding, and `permissions` shape (must be an object with boolean `read`/`write`/`execute`). Tolerant of half-built configs — non-array `tracks` or `tasks` produce a structured error instead of throwing.
 
 Plugin-type checks are opt-in via `knownTypes`: when provided, references to trigger/completion/middleware/driver types that are neither built-in nor in the supplied set produce a **warning** (`severity: 'warning'`) so editors can light up uninstalled plugins without blocking save / run. Omit `knownTypes` for offline / pre-load validation — no plugin warnings are emitted in that case.
 

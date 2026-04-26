@@ -22,7 +22,12 @@
 //             secret_env: TAGMA_WEBHOOK_SECRET
 //             timeout: 10m
 
-import { parseDurationSafe, type TriggerPlugin, type TriggerContext } from '@tagma/types';
+import {
+  parseDurationSafe,
+  type TagmaPlugin,
+  type TriggerPlugin,
+  type TriggerContext,
+} from '@tagma/types';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 type Resolver = (payload: unknown) => void;
@@ -141,7 +146,7 @@ function ensureServer(
   return state;
 }
 
-const WebhookTrigger: TriggerPlugin = {
+export const WebhookTrigger: TriggerPlugin = {
   name: 'webhook',
   schema: {
     description: 'Wait for an HTTP POST to arrive on a local listener before the task runs.',
@@ -263,7 +268,11 @@ const WebhookTrigger: TriggerPlugin = {
   },
 };
 
-// ═══ Plugin self-description exports ═══
-export const pluginCategory = 'triggers';
-export const pluginType = 'webhook';
-export default WebhookTrigger;
+export default {
+  name: '@tagma/trigger-webhook',
+  capabilities: {
+    triggers: {
+      webhook: WebhookTrigger,
+    },
+  },
+} satisfies TagmaPlugin;

@@ -17,6 +17,7 @@ import {
   type TaskInfo,
   type TrackInfo,
 } from '../hooks';
+import type { TagmaRuntime } from '../runtime';
 import { isTerminal } from './run-state';
 import { nowISO } from '../utils';
 
@@ -33,6 +34,7 @@ export interface RunContextOptions {
   readonly workDir: string;
   readonly pipelineInfo: PipelineInfo;
   readonly onEvent?: (event: RunEventPayload) => void;
+  readonly runtime: TagmaRuntime;
 }
 
 /**
@@ -49,6 +51,7 @@ export class RunContext {
   readonly workDir: string;
   readonly pipelineInfo: PipelineInfo;
   readonly onEvent?: (event: RunEventPayload) => void;
+  readonly runtime: TagmaRuntime;
 
   readonly states = new Map<string, TaskState>();
   readonly sessionMap = new Map<string, string>();
@@ -67,6 +70,7 @@ export class RunContext {
     this.workDir = options.workDir;
     this.pipelineInfo = options.pipelineInfo;
     this.onEvent = options.onEvent;
+    this.runtime = options.runtime;
 
     for (const [id, node] of this.dag.nodes) {
       this.states.set(id, {

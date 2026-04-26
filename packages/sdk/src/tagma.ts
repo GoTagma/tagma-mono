@@ -2,7 +2,8 @@ import { runPipeline, type EngineResult, type RunPipelineOptions } from './engin
 import { bootstrapBuiltins } from './bootstrap';
 import { PluginRegistry } from './registry';
 import { validateConfig } from './schema';
-import type { PipelineConfig } from './types';
+import { bunRuntime, type TagmaRuntime } from './runtime';
+import type { PipelineConfig, TagmaPlugin } from './types';
 
 export interface CreateTagmaOptions {
   /**
@@ -14,6 +15,15 @@ export interface CreateTagmaOptions {
    * instance registry. Defaults to true.
    */
   readonly builtins?: boolean;
+  /**
+   * Package-level capability plugins to register into this SDK instance.
+   */
+  readonly plugins?: readonly TagmaPlugin[];
+  /**
+   * Runtime implementation used for command and driver process execution.
+   * Defaults to the SDK's Bun runtime.
+   */
+  readonly runtime?: TagmaRuntime;
 }
 
 export interface TagmaRunOptions extends Omit<RunPipelineOptions, 'registry'> {
@@ -28,8 +38,12 @@ export interface Tagma {
 
 export function createTagma(options: CreateTagmaOptions = {}): Tagma {
   const registry = options.registry ?? new PluginRegistry();
+  const runtime = options.runtime ?? bunRuntime();
   if (options.builtins !== false) {
     bootstrapBuiltins(registry);
+  }
+  for (const plugin of options.plugins ?? []) {
+    registry.registerTagmaPlugin(plugin);
   }
 
   return {
@@ -38,6 +52,7 @@ export function createTagma(options: CreateTagmaOptions = {}): Tagma {
       return runPipeline(config, cwd, {
         ...runOptions,
         registry,
+        runtime,
       });
     },
     validate(config) {

@@ -1,15 +1,16 @@
 import { describe, expect, test } from 'bun:test';
-import plugin from './index';
+import plugin, { WebhookTrigger } from './index';
 import manifest from '../package.json' with { type: 'json' };
 
 describe('trigger-webhook plugin shape', () => {
-  test('manifest declares triggers/webhook and matches plugin.name', () => {
+  test('default export is a capability plugin matching package manifest', () => {
     expect(manifest.tagmaPlugin.category).toBe('triggers');
     expect(manifest.tagmaPlugin.type).toBe('webhook');
-    expect(plugin.name).toBe(manifest.tagmaPlugin.type);
+    expect(plugin.name).toBe(manifest.name);
+    expect(plugin.capabilities?.triggers?.[manifest.tagmaPlugin.type]).toBe(WebhookTrigger);
   });
 
-  test('exposes watch function', () => {
-    expect(typeof plugin.watch).toBe('function');
+  test('watch is a function', () => {
+    expect(typeof plugin.capabilities!.triggers!.webhook.watch).toBe('function');
   });
 });

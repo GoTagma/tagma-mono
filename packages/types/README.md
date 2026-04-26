@@ -33,17 +33,16 @@ import type {
 
 - `PipelineConfig` / `RawPipelineConfig` -- top-level pipeline definition
 - `TrackConfig` / `RawTrackConfig` -- parallel execution track
-- `TaskConfig` / `RawTaskConfig` -- individual task (AI prompt or shell command). Optional task-level `inputs` / `outputs` provide lightweight parameter bindings; optional `ports?: TaskPorts` declares a typed input/output contract
+- `TaskConfig` / `RawTaskConfig` -- individual task (AI prompt or shell command). Task-level `inputs` / `outputs` are the unified dataflow model; optional `type` metadata turns a binding into a strict, validated contract
 - `HooksConfig` / `HookCommand` -- lifecycle hook commands
 - `OnFailure` -- track failure strategy: `'ignore' | 'skip_downstream' | 'stop_all'`
 - `Permissions` -- `{ read, write, execute }` capability flags
 
-### Task Bindings And Ports
+### Task Bindings
 
-- `TaskInputBindings` -- `{ [name]: TaskInputBinding }`. Lightweight task-level values available as `{{inputs.name}}`; `from` can reference `taskId.outputs.name`, `taskId.stdout`, `taskId.stderr`, `taskId.normalizedOutput`, `taskId.exitCode`, or `outputs.name`
-- `TaskOutputBindings` -- `{ [name]: TaskOutputBinding }`. Lightweight named outputs selected from `json.name`, `stdout`, `stderr`, `normalizedOutput`, literal `value`, or `default`
-- `TaskPorts` -- `{ inputs?: PortDef[]; outputs?: PortDef[] }`. Declared on a task to enable typed I/O between upstream/downstream tasks
-- `PortDef` -- `{ name, type, description?, required?, default?, enum?, from? }`. `from` (input-only) accepts a bare port name or a fully-qualified `taskId.portName` upstream binding
+- `TaskInputBindings` -- `{ [name]: TaskInputBinding }`. Task-level values available as `{{inputs.name}}`; `from` can reference `taskId.outputs.name`, `taskId.stdout`, `taskId.stderr`, `taskId.normalizedOutput`, `taskId.exitCode`, or `outputs.name`; optional `type` enables coercion
+- `TaskOutputBindings` -- `{ [name]: TaskOutputBinding }`. Named outputs selected from `json.name`, `stdout`, `stderr`, `normalizedOutput`, literal `value`, or `default`; optional `type` enables coercion
+- `TaskPorts` / `PortDef` -- internal compatibility types used by prompt inference helpers. YAML `ports` is rejected by `validateRaw`; use typed `inputs` / `outputs` instead
 - `PortType` -- `'string' | 'number' | 'boolean' | 'enum' | 'json'`. Drives runtime coercion when resolving inputs and extracting outputs
 
 ### Plugin Interfaces
@@ -51,11 +50,12 @@ import type {
 - `DriverPlugin` -- translates a task into a spawn spec (`buildCommand`, optional `parseResult` / `resolveModel` / `resolveTools`). `parseResult` receives `stdout` and an optional `stderr` parameter
 - `TriggerPlugin` -- watches for an event before a task starts (`watch`)
 - `CompletionPlugin` -- validates task output (`check`)
-- `MiddlewarePlugin` -- enriches prompts before execution. Exposes `enhanceDoc(doc, config, ctx)` (preferred — operates on a structured `PromptDocument`) and/or the legacy `enhance(prompt, config, ctx)` (deprecated — kept for v0.x plugins). When both are defined the engine calls `enhanceDoc`
+- `MiddlewarePlugin` -- enriches prompts before execution through `enhanceDoc(doc, config, ctx)`, operating on a structured `PromptDocument`
 - `PluginManifest` -- shape of the `tagmaPlugin` field a plugin package declares in its `package.json` (`{ category, type }`). Hosts use this for auto-discovery without importing the module
+- `TagmaPlugin` / `PluginCapabilities` -- package-level plugin shape for one package that can provide one or more drivers, triggers, completions, or middlewares
 - `PluginSchema` / `PluginParamDef` / `PluginParamType` -- optional declarative form metadata so visual editors can render typed config forms for a plugin
 - `PluginCategory` -- `'drivers' | 'triggers' | 'completions' | 'middlewares'`
-- `PluginModule` -- runtime plugin entry shape (`pluginCategory`, `pluginType`, `default`)
+- `PluginModule` -- runtime plugin entry shape. Plugin packages default-export a `TagmaPlugin`
 
 ### Prompt Types
 
@@ -65,7 +65,7 @@ import type {
 ### Runtime Types
 
 - `TaskStatus` -- `'idle' | 'waiting' | 'running' | 'success' | 'failed' | 'timeout' | 'skipped' | 'blocked'`
-- `TaskResult` -- exit code, bounded `stdout`/`stderr` tails, on-disk `stdoutPath`/`stderrPath`, total `stdoutBytes`/`stderrBytes`, duration, session ID, normalized output, failure kind, and (when bindings or ports are declared) the published `outputs` map
+- `TaskResult` -- exit code, bounded `stdout`/`stderr` tails, on-disk `stdoutPath`/`stderrPath`, total `stdoutBytes`/`stderrBytes`, duration, session ID, normalized output, failure kind, and the published `outputs` map when a task declares output bindings
 - `TaskFailureKind` -- distinguishes _why_ a task didn't return exit 0: `'timeout' | 'spawn_error' | 'exit_nonzero' | null`
 - `TaskState` -- mutable engine state for a running task (config, status, result, timestamps)
 - `SpawnSpec` -- args, stdin, cwd, env returned by a driver

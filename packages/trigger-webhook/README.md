@@ -47,10 +47,10 @@ curl -X POST http://localhost:8787/hooks/deploy \
 Or load it programmatically:
 
 ```ts
-import { bootstrapBuiltins, loadPlugins } from '@tagma/sdk';
+import { createTagma } from '@tagma/sdk';
 
-bootstrapBuiltins();
-await loadPlugins(['@tagma/trigger-webhook']);
+const tagma = createTagma();
+await tagma.registry.loadPlugins(['@tagma/trigger-webhook'], process.cwd());
 ```
 
 ## Config

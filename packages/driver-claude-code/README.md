@@ -34,10 +34,10 @@ pipeline:
 Or load it programmatically:
 
 ```ts
-import { bootstrapBuiltins, loadPlugins } from '@tagma/sdk';
+import { createTagma } from '@tagma/sdk';
 
-bootstrapBuiltins();
-await loadPlugins(['@tagma/driver-claude-code']);
+const tagma = createTagma();
+await tagma.registry.loadPlugins(['@tagma/driver-claude-code'], process.cwd());
 ```
 
 ## Behavior

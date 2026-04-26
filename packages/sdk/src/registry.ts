@@ -1,23 +1,33 @@
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import type {
+  CapabilityHandler,
   PluginCategory,
   DriverPlugin,
   TriggerPlugin,
   CompletionPlugin,
   MiddlewarePlugin,
   PluginManifest,
+  TagmaPlugin,
 } from './types';
 
-type PluginType = DriverPlugin | TriggerPlugin | CompletionPlugin | MiddlewarePlugin;
+type PluginType = CapabilityHandler;
 
-const VALID_CATEGORIES: ReadonlySet<PluginCategory> = new Set([
+const CAPABILITY_CATEGORIES = [
   'drivers',
   'triggers',
   'completions',
   'middlewares',
-]);
+] as const satisfies readonly PluginCategory[];
+
+const VALID_CATEGORIES: ReadonlySet<PluginCategory> = new Set(CAPABILITY_CATEGORIES);
 const PLUGIN_TYPE_RE = /^[A-Za-z_][A-Za-z0-9_-]*$/;
+
+export interface RegisteredCapability {
+  readonly category: PluginCategory;
+  readonly type: string;
+  readonly result: RegisterResult;
+}
 
 function singularCategory(category: PluginCategory): string {
   switch (category) {
@@ -37,7 +47,7 @@ function singularCategory(category: PluginCategory): string {
  * registration time rather than crashing the engine mid-run.
  *
  * For drivers we materialize `capabilities` and assert each field is a
- * boolean â€?otherwise a plugin author can write
+ * boolean â€”otherwise a plugin author can write
  *     get capabilities() { throw new Error('boom') }
  * and pass the basic typeof check, then crash preflight when the engine
  * touches `driver.capabilities.sessionResume`. (R8)
@@ -55,7 +65,7 @@ function validateContract(category: PluginCategory, handler: unknown): void {
       if (typeof h.buildCommand !== 'function') {
         throw new Error(`drivers plugin "${h.name}" must export buildCommand()`);
       }
-      // Materialize capabilities â€?this triggers any throwing getter NOW
+      // Materialize capabilities â€”this triggers any throwing getter NOW
       // instead of during preflight.
       let caps: unknown;
       try {
@@ -96,21 +106,10 @@ function validateContract(category: PluginCategory, handler: unknown): void {
       }
       break;
     case 'middlewares':
-      // A middleware must provide at least one entry point. `enhanceDoc` is
-      // the structured PromptDocument API (preferred); `enhance` is the
-      // legacy string-in/string-out API the engine still supports for
-      // v0.x plugins. Requiring only `enhance` here rejects every built-in
-      // and every plugin written against the current types.
-      if (typeof h.enhanceDoc !== 'function' && typeof h.enhance !== 'function') {
+      if (typeof h.enhanceDoc !== 'function') {
         throw new Error(
-          `middlewares plugin "${h.name}" must export enhanceDoc() or enhance()`,
+          `middlewares plugin "${h.name}" must export enhanceDoc()`,
         );
-      }
-      if (h.enhanceDoc !== undefined && typeof h.enhanceDoc !== 'function') {
-        throw new Error(`middlewares plugin "${h.name}".enhanceDoc must be a function or undefined`);
-      }
-      if (h.enhance !== undefined && typeof h.enhance !== 'function') {
-        throw new Error(`middlewares plugin "${h.name}".enhance must be a function or undefined`);
       }
       break;
   }
@@ -132,7 +131,7 @@ export function isValidPluginName(name: unknown): name is string {
  *
  * Returns the strongly-typed manifest if the field is present and
  * well-formed (`category` is one of the four known categories and `type`
- * is a non-empty string). Returns `null` if the field is absent â€?that
+ * is a non-empty string). Returns `null` if the field is absent â€”that
  * is the host's signal that the package is a library, not a plugin.
  *
  * Throws if the field is present but malformed: that's a packaging bug
@@ -165,6 +164,33 @@ export function readPluginManifest(pkgJson: unknown): PluginManifest | null {
     );
   }
   return { category: category as PluginCategory, type };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isTagmaPlugin(value: unknown): value is TagmaPlugin {
+  if (!isRecord(value)) return false;
+  if (typeof value.name !== 'string' || value.name.length === 0) return false;
+  if (value.capabilities !== undefined && !isRecord(value.capabilities)) return false;
+  if (value.setup !== undefined && typeof value.setup !== 'function') return false;
+  return true;
+}
+
+function hasSupportedCapabilityMap(plugin: TagmaPlugin): boolean {
+  if (!plugin.capabilities) return false;
+  const capabilities = plugin.capabilities as Record<string, unknown>;
+  return CAPABILITY_CATEGORIES.some((category) => capabilities[category] !== undefined);
+}
+
+function moduleDefaultPlugin(name: string, mod: unknown): TagmaPlugin {
+  if (!isRecord(mod) || !isTagmaPlugin(mod.default) || !hasSupportedCapabilityMap(mod.default)) {
+    throw new Error(
+      `Plugin "${name}" must default-export a TagmaPlugin with capabilities maps`,
+    );
+  }
+  return mod.default;
 }
 
 /**
@@ -214,22 +240,54 @@ export class PluginRegistry {
     if (wasReplaced) {
       // D18: surface silent shadowing. Hot-reload flows legitimately replace
       // handlers; installing two different plugin packages that both claim
-      // the same (category, type) does not â€?the second wins and breaks the
+      // the same (category, type) does not â€”the second wins and breaks the
       // first's consumers with no audit trail. A console.warn is cheap,
       // respects existing callers that rely on 'replaced', and gives ops a
       // grep-able signal when registrations collide unexpectedly.
       console.warn(
-        `[tagma-sdk] registerPlugin: replaced existing ${category}/${type} â€?` +
+        `[tagma-sdk] registerPlugin: replaced existing ${category}/${type} - ` +
           `check for duplicate plugin packages claiming the same type.`,
       );
     }
     return wasReplaced ? 'replaced' : 'registered';
   }
 
+  registerTagmaPlugin(plugin: TagmaPlugin): RegisteredCapability[] {
+    if (!isTagmaPlugin(plugin)) {
+      throw new Error('TagmaPlugin must be an object with a non-empty "name"');
+    }
+    if (!plugin.capabilities) {
+      throw new Error(`TagmaPlugin "${plugin.name}" must declare capabilities`);
+    }
+
+    const registered: RegisteredCapability[] = [];
+    const capabilities = plugin.capabilities as Record<string, unknown>;
+    for (const category of CAPABILITY_CATEGORIES) {
+      const handlers = capabilities[category];
+      if (handlers === undefined) continue;
+      if (!isRecord(handlers)) {
+        throw new Error(
+          `TagmaPlugin "${plugin.name}" capabilities.${category} must be an object map`,
+        );
+      }
+      for (const [type, handler] of Object.entries(handlers)) {
+        const result = this.registerPlugin(category, type, handler as PluginType);
+        registered.push({ category, type, result });
+      }
+    }
+
+    if (registered.length === 0) {
+      throw new Error(
+        `TagmaPlugin "${plugin.name}" must declare at least one supported capability`,
+      );
+    }
+    return registered;
+  }
+
   /**
    * Remove a plugin from the in-process registry. Returns true if a plugin
    * was actually removed. Note: ESM module caching is not affected, so
-   * re-importing the same file after unregister will yield the cached module â€?   * callers wanting a fresh load must restart the host process.
+   * re-importing the same file after unregister will yield the cached module â€”   * callers wanting a fresh load must restart the host process.
    */
   unregisterPlugin(category: PluginCategory, type: string): boolean {
     if (!VALID_CATEGORIES.has(category)) return false;
@@ -289,10 +347,7 @@ export class PluginRegistry {
         moduleUrl = pathToFileURL(resolved).href;
       }
       const mod = await import(moduleUrl);
-      if (!mod.pluginCategory || !mod.pluginType || !mod.default) {
-        throw new Error(`Plugin "${name}" must export pluginCategory, pluginType, and default`);
-      }
-      this.registerPlugin(mod.pluginCategory, mod.pluginType, mod.default);
+      this.registerTagmaPlugin(moduleDefaultPlugin(name, mod));
     }
   }
 }

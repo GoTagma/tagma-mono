@@ -1,22 +1,24 @@
 import { describe, expect, test } from 'bun:test';
-import plugin from './index';
+import plugin, { ClaudeCodeDriver } from './index';
 import manifest from '../package.json' with { type: 'json' };
 
 describe('driver-claude-code plugin shape', () => {
-  test('manifest declares drivers/claude-code and matches plugin.name', () => {
+  test('default export is a capability plugin matching package manifest', () => {
     expect(manifest.tagmaPlugin.category).toBe('drivers');
     expect(manifest.tagmaPlugin.type).toBe('claude-code');
-    expect(plugin.name).toBe(manifest.tagmaPlugin.type);
+    expect(plugin.name).toBe(manifest.name);
+    expect(plugin.capabilities?.drivers?.[manifest.tagmaPlugin.type]).toBe(ClaudeCodeDriver);
   });
 
   test('capabilities exposes three boolean flags', () => {
-    expect(typeof plugin.capabilities.sessionResume).toBe('boolean');
-    expect(typeof plugin.capabilities.systemPrompt).toBe('boolean');
-    expect(typeof plugin.capabilities.outputFormat).toBe('boolean');
+    const driver = plugin.capabilities!.drivers!['claude-code'];
+    expect(typeof driver.capabilities.sessionResume).toBe('boolean');
+    expect(typeof driver.capabilities.systemPrompt).toBe('boolean');
+    expect(typeof driver.capabilities.outputFormat).toBe('boolean');
   });
 
   test('buildCommand is a function', () => {
-    expect(typeof plugin.buildCommand).toBe('function');
+    expect(typeof plugin.capabilities!.drivers!['claude-code'].buildCommand).toBe('function');
   });
 
   test('buildCommand returns a SpawnSpec-shaped object', async () => {
@@ -29,7 +31,7 @@ describe('driver-claude-code plugin shape', () => {
     const track = { id: 'k', name: 'k', tasks: [] } as unknown as Parameters<typeof plugin.buildCommand>[1];
     const ctx = { workDir: process.cwd(), normalizedMap: new Map(), sessionMap: new Map() } as unknown as Parameters<typeof plugin.buildCommand>[2];
     try {
-      const spec = await plugin.buildCommand(task, track, ctx);
+      const spec = await ClaudeCodeDriver.buildCommand(task, track, ctx);
       expect(Array.isArray(spec.args)).toBe(true);
     } catch (err) {
       expect(String(err)).toMatch(/claude/i);

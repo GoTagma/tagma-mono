@@ -9,6 +9,7 @@ import type {
   DriverContext,
   SpawnSpec,
   Permissions,
+  TagmaPlugin,
 } from '@tagma/types';
 
 // Claude Code CLI reference: https://code.claude.com/docs/en/cli-reference
@@ -142,7 +143,7 @@ function findExeInPath(exe: string): string | null {
   return null;
 }
 
-const ClaudeCodeDriver: DriverPlugin = {
+export const ClaudeCodeDriver: DriverPlugin = {
   name: 'claude-code',
 
   capabilities: {
@@ -251,6 +252,11 @@ const ClaudeCodeDriver: DriverPlugin = {
   },
 };
 
-export const pluginCategory = 'drivers';
-export const pluginType = 'claude-code';
-export default ClaudeCodeDriver;
+export default {
+  name: '@tagma/driver-claude-code',
+  capabilities: {
+    drivers: {
+      'claude-code': ClaudeCodeDriver,
+    },
+  },
+} satisfies TagmaPlugin;

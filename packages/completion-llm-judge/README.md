@@ -58,10 +58,10 @@ completion:
 Or load it programmatically:
 
 ```ts
-import { bootstrapBuiltins, loadPlugins } from '@tagma/sdk';
+import { createTagma } from '@tagma/sdk';
 
-bootstrapBuiltins();
-await loadPlugins(['@tagma/completion-llm-judge']);
+const tagma = createTagma();
+await tagma.registry.loadPlugins(['@tagma/completion-llm-judge'], process.cwd());
 ```
 
 ## Config

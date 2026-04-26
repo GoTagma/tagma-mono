@@ -41,10 +41,10 @@ pipeline:
 Or load it programmatically:
 
 ```ts
-import { bootstrapBuiltins, loadPlugins } from '@tagma/sdk';
+import { createTagma } from '@tagma/sdk';
 
-bootstrapBuiltins();
-await loadPlugins(['@tagma/middleware-lightrag']);
+const tagma = createTagma();
+await tagma.registry.loadPlugins(['@tagma/middleware-lightrag'], process.cwd());
 ```
 
 ## Config

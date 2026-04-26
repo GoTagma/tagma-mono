@@ -161,11 +161,10 @@ export function resolveConfig(raw: RawPipelineConfig, workDir: string): Pipeline
         completion: rawTask.completion,
         agent_profile: rawTask.agent_profile ?? rawTrack.agent_profile,
         cwd: rawTask.cwd ? validatePath(rawTask.cwd, workDir) : trackCwd,
-        // Lightweight bindings and ports: no inheritance — they describe
+        // Unified bindings have no inheritance; they describe
         // per-task data flow, not cross-task defaults.
         inputs: rawTask.inputs,
         outputs: rawTask.outputs,
-        ports: rawTask.ports,
       };
     });
 
@@ -313,11 +312,6 @@ export function deresolvePipeline(config: PipelineConfig, workDir: string): RawP
           : {}),
         ...(task.inputs && Object.keys(task.inputs).length > 0 ? { inputs: task.inputs } : {}),
         ...(task.outputs && Object.keys(task.outputs).length > 0 ? { outputs: task.outputs } : {}),
-        ...(task.ports &&
-        ((task.ports.inputs && task.ports.inputs.length > 0) ||
-          (task.ports.outputs && task.ports.outputs.length > 0))
-          ? { ports: task.ports }
-          : {}),
       };
     });
 

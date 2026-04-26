@@ -7,7 +7,6 @@
 // Returns a flat list of ValidationError objects. An empty array means valid.
 
 import type {
-  PortDef,
   PortType,
   RawPipelineConfig,
   RawTaskConfig,
@@ -461,83 +460,6 @@ const VALID_PORT_TYPES: ReadonlySet<PortType> = new Set([
 // template grammar unambiguous.
 const PORT_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-function validatePortList(
-  list: readonly PortDef[] | undefined,
-  basePath: string,
-  kind: 'inputs' | 'outputs',
-  errors: ValidationError[],
-): void {
-  if (!list) return;
-  if (!Array.isArray(list)) {
-    errors.push({
-      path: basePath,
-      message: `ports.${kind} must be an array`,
-    });
-    return;
-  }
-  const seen = new Set<string>();
-  for (let i = 0; i < list.length; i++) {
-    const port = list[i];
-    const path = `${basePath}[${i}]`;
-    if (!port || typeof port !== 'object') {
-      errors.push({ path, message: `ports.${kind}[${i}] must be an object` });
-      continue;
-    }
-    if (typeof port.name !== 'string' || !port.name.trim()) {
-      errors.push({ path: `${path}.name`, message: 'port.name is required' });
-      continue;
-    }
-    if (!PORT_NAME_RE.test(port.name)) {
-      errors.push({
-        path: `${path}.name`,
-        message: `port name "${port.name}" is invalid. Must match /^[A-Za-z_][A-Za-z0-9_]*$/ (letters, digits, underscores; starts with letter/underscore).`,
-      });
-    }
-    if (seen.has(port.name)) {
-      errors.push({
-        path,
-        message: `Duplicate ports.${kind} name "${port.name}"`,
-      });
-    }
-    seen.add(port.name);
-    if (!VALID_PORT_TYPES.has(port.type)) {
-      errors.push({
-        path: `${path}.type`,
-        message: `port "${port.name}": type must be one of ${[...VALID_PORT_TYPES].join(', ')} (got ${JSON.stringify(port.type)})`,
-      });
-    }
-    if (port.type === 'enum') {
-      if (!Array.isArray(port.enum) || port.enum.length === 0) {
-        errors.push({
-          path: `${path}.enum`,
-          message: `port "${port.name}": enum type requires a non-empty "enum" array`,
-        });
-      } else if (port.enum.some((v: unknown) => typeof v !== 'string')) {
-        errors.push({
-          path: `${path}.enum`,
-          message: `port "${port.name}": enum values must all be strings`,
-        });
-      }
-    }
-    if (kind === 'outputs' && (port.required === true || port.from !== undefined)) {
-      // `required` / `from` are input-only concepts 鈥?outputs are
-      // always "produced when the task succeeds". Warn softly so the
-      // YAML doesn't silently accept meaningless fields.
-      errors.push({
-        path,
-        severity: 'warning',
-        message: `port "${port.name}": "required" and "from" are input-only; ignored on outputs`,
-      });
-    }
-    if (port.from !== undefined && typeof port.from !== 'string') {
-      errors.push({
-        path: `${path}.from`,
-        message: `port "${port.name}": "from" must be a string (got ${typeof port.from})`,
-      });
-    }
-  }
-}
-
 function validateBindingMap(
   value: unknown,
   basePath: string,
@@ -609,38 +531,6 @@ function validateBindingMap(
   }
 }
 
-function validateBindingPortNameOverlap(
-  task: RawTaskConfig,
-  taskPath: string,
-  errors: ValidationError[],
-): void {
-  const looseInputs = objectKeys(task.inputs);
-  const looseOutputs = objectKeys(task.outputs);
-  const strictInputs = new Set(
-    Array.isArray(task.ports?.inputs) ? task.ports.inputs.map((p) => p?.name) : [],
-  );
-  const strictOutputs = new Set(
-    Array.isArray(task.ports?.outputs) ? task.ports.outputs.map((p) => p?.name) : [],
-  );
-
-  for (const name of looseInputs) {
-    if (strictInputs.has(name)) {
-      errors.push({
-        path: `${taskPath}.inputs.${name}`,
-        message: `task input binding "${name}" duplicates strict ports.inputs; choose one layer for this name`,
-      });
-    }
-  }
-  for (const name of looseOutputs) {
-    if (strictOutputs.has(name)) {
-      errors.push({
-        path: `${taskPath}.outputs.${name}`,
-        message: `task output binding "${name}" duplicates strict ports.outputs; choose one layer for this name`,
-      });
-    }
-  }
-}
-
 function objectKeys(value: unknown): string[] {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
   return Object.keys(value as Record<string, unknown>);
@@ -701,7 +591,6 @@ function validateTaskPorts(
 
   validateBindingMap(task.inputs, `${taskPath}.inputs`, 'inputs', errors);
   validateBindingMap(task.outputs, `${taskPath}.outputs`, 'outputs', errors);
-  validateBindingPortNameOverlap(task, taskPath, errors);
   validateInputBindingSources(task, trackId, taskPath, index, errors);
 
   if (ports !== undefined) {
@@ -717,7 +606,7 @@ function validateTaskPorts(
   // Collect placeholder references 鈹€鈹€
   // `{{inputs.X}}` is valid in both prompt and command text. The set of
   // names a task may legally reference differs by task kind:
-  //   - Command Task: its own declared `ports.inputs`
+  //   - Command Task: its own declared `inputs`
   //   - Prompt Task:  the union of direct-upstream Command outputs
   const referenced = new Set<string>();
   if (typeof task.prompt === 'string') {
@@ -885,11 +774,6 @@ function validateInferredPromptPortConflicts(
       }
     }
   }
-}
-
-/** Minimal shape fingerprint for conflict detection: type + enum set. */
-function portShapeKey(port: PortDef): string {
-  return bindingShapeKey(port);
 }
 
 function bindingShapeKey(port: { type?: PortType; enum?: readonly string[] }): string {

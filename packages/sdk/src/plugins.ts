@@ -5,14 +5,17 @@ export {
   PLUGIN_NAME_RE,
   readPluginManifest,
 } from './registry';
-export type { RegisterResult } from './registry';
+export type { RegisteredCapability, RegisterResult } from './registry';
 export type {
+  CapabilityHandler,
   PluginCategory,
+  PluginCapabilities,
   PluginModule,
   PluginManifest,
+  PluginSetupContext,
+  TagmaPlugin,
   DriverPlugin,
   TriggerPlugin,
   CompletionPlugin,
   MiddlewarePlugin,
 } from './types';
-

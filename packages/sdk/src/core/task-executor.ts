@@ -12,7 +12,6 @@ import type {
   TriggerPlugin,
 } from '../types';
 import type { PluginRegistry } from '../registry';
-import { runCommand, runSpawn } from '../runner';
 import { parseDuration, nowISO } from '../utils';
 import {
   promptDocumentFromString,
@@ -422,7 +421,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
         );
       }
       log.debug(`[task:${taskId}]`, `command: ${expandedCommand}`);
-      result = await runCommand(expandedCommand, task.cwd ?? workDir, runOpts);
+      result = await ctx.runtime.runCommand(expandedCommand, task.cwd ?? workDir, runOpts);
     } else {
       // AI task: apply middleware chain against a structured PromptDocument.
       const driverName = task.driver ?? track.driver ?? config.driver ?? 'opencode';
@@ -466,48 +465,23 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
           const beforeBlocks = doc.contexts.length;
           const beforeLen = serializePromptDocument(doc).length;
 
-          // Prefer the structured API. Fall back to the legacy
-          // `enhance(string) → string` path so v0.x plugins keep
-          // working — that fallback loses context structure (the
-          // middleware's output becomes the new task body) but never
-          // silently drops content.
-          if (typeof mwPlugin.enhanceDoc === 'function') {
-            const next = await mwPlugin.enhanceDoc(doc, mwConfig as Record<string, unknown>, mwCtx);
-            if (
-              !next ||
-              typeof next !== 'object' ||
-              !Array.isArray((next as PromptDocument).contexts) ||
-              typeof (next as PromptDocument).task !== 'string'
-            ) {
-              throw new Error(
-                `middleware "${mwConfig.type}".enhanceDoc() returned a malformed PromptDocument`,
-              );
-            }
-            doc = next as PromptDocument;
-          } else if (typeof mwPlugin.enhance === 'function') {
-            const asString = serializePromptDocument(doc);
-            const next = await mwPlugin.enhance(
-              asString,
-              mwConfig as Record<string, unknown>,
-              mwCtx,
-            );
-            // R3: a middleware that returns undefined / null / a non-string
-            // would silently corrupt the prompt. Fail loud.
-            if (typeof next !== 'string') {
-              throw new Error(
-                `middleware "${mwConfig.type}".enhance() returned ${next === null ? 'null' : typeof next}, expected string`,
-              );
-            }
-            // Legacy fallback: collapse the returned string into a
-            // fresh doc. Earlier structure is folded into the string
-            // (serializePromptDocument just ran), so bytes the driver
-            // sees match the old string pipeline.
-            doc = { contexts: [], task: next };
-          } else {
+          if (typeof mwPlugin.enhanceDoc !== 'function') {
             throw new Error(
-              `middleware "${mwConfig.type}" provides neither enhanceDoc nor enhance`,
+              `middleware "${mwConfig.type}" must provide enhanceDoc`,
             );
           }
+          const next = await mwPlugin.enhanceDoc(doc, mwConfig as Record<string, unknown>, mwCtx);
+          if (
+            !next ||
+            typeof next !== 'object' ||
+            !Array.isArray((next as PromptDocument).contexts) ||
+            typeof (next as PromptDocument).task !== 'string'
+          ) {
+            throw new Error(
+              `middleware "${mwConfig.type}".enhanceDoc() returned a malformed PromptDocument`,
+            );
+          }
+          doc = next as PromptDocument;
           const afterLen = serializePromptDocument(doc).length;
           const addedBlocks = doc.contexts.length - beforeBlocks;
           log.debug(
@@ -567,7 +541,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       if (spec.env)
         log.debug(`[task:${taskId}]`, `spawn env overrides: ${Object.keys(spec.env).join(', ')}`);
       if (spec.stdin) log.debug(`[task:${taskId}]`, `spawn stdin: ${spec.stdin.length} chars`);
-      result = await runSpawn(spec, driver, runOpts);
+      result = await ctx.runtime.runSpawn(spec, driver, runOpts);
     }
 
     // 6. Determine terminal status (without emitting yet — result must be complete first)

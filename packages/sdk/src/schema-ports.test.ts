@@ -83,6 +83,29 @@ describe('schema — unified bindings passthrough', () => {
     expect(back.tracks[0]!.tasks[0]!.outputs).toBeUndefined();
   });
 
+  test('legacy ports are not carried through resolve or deresolve', () => {
+    const raw: RawPipelineConfig = {
+      name: 'p',
+      tracks: [
+        {
+          id: 't',
+          name: 'T',
+          tasks: [
+            {
+              id: 'a',
+              command: 'echo ok',
+              ports: { outputs: [{ name: 'old', type: 'string' }] },
+            },
+          ],
+        },
+      ],
+    };
+    const resolved = resolveConfig(raw, WORK_DIR);
+    expect(resolved.tracks[0]!.tasks[0]!.ports).toBeUndefined();
+    const back = deresolvePipeline(resolved, WORK_DIR);
+    expect(back.tracks[0]!.tasks[0]!.ports).toBeUndefined();
+  });
+
   test('YAML round-trip preserves typed unified binding shape', () => {
     const raw: RawPipelineConfig = {
       name: 'p',

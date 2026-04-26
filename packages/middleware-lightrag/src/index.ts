@@ -22,6 +22,7 @@
 
 import {
   parseDurationSafe,
+  type TagmaPlugin,
   type MiddlewarePlugin,
   type MiddlewareContext,
   type PromptDocument,
@@ -124,7 +125,7 @@ async function queryLightRAG(
   }
 }
 
-const LightRAGMiddleware: MiddlewarePlugin = {
+export const LightRAGMiddleware: MiddlewarePlugin = {
   name: 'lightrag',
   schema: {
     description:
@@ -223,7 +224,11 @@ const LightRAGMiddleware: MiddlewarePlugin = {
   },
 };
 
-// ═══ Plugin self-description exports ═══
-export const pluginCategory = 'middlewares';
-export const pluginType = 'lightrag';
-export default LightRAGMiddleware;
+export default {
+  name: '@tagma/middleware-lightrag',
+  capabilities: {
+    middlewares: {
+      lightrag: LightRAGMiddleware,
+    },
+  },
+} satisfies TagmaPlugin;

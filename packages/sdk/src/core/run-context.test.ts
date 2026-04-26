@@ -3,6 +3,16 @@ import { RunContext } from './run-context';
 import { buildDag } from '../dag';
 import type { PipelineConfig, RunEventPayload } from '../types';
 import type { PipelineInfo } from '../hooks';
+import type { TagmaRuntime } from '../runtime';
+
+const fakeRuntime: TagmaRuntime = {
+  async runCommand() {
+    throw new Error('fakeRuntime.runCommand should not be called by RunContext tests');
+  },
+  async runSpawn() {
+    throw new Error('fakeRuntime.runSpawn should not be called by RunContext tests');
+  },
+};
 
 function makeContext(overrides: Partial<{
   config: PipelineConfig;
@@ -30,6 +40,7 @@ function makeContext(overrides: Partial<{
     workDir: '/tmp/wd',
     pipelineInfo: { name: config.name, run_id: 'run_test', started_at: '2026-04-26T00:00:00Z' } as PipelineInfo,
     onEvent,
+    runtime: fakeRuntime,
   });
   return { ctx, events };
 }
@@ -83,6 +94,7 @@ describe('RunContext.emit', () => {
       config,
       workDir: '/tmp/wd',
       pipelineInfo: { name: 'p', run_id: 'run_test', started_at: 'now' } as PipelineInfo,
+      runtime: fakeRuntime,
     });
     expect(() => ctx.emit({ type: 'run_end', runId: 'run_test', success: true, abortReason: null })).not.toThrow();
   });

@@ -29,6 +29,7 @@
 
 import {
   parseDurationSafe,
+  type TagmaPlugin,
   type CompletionPlugin,
   type CompletionContext,
   type TaskResult,
@@ -151,7 +152,7 @@ async function callJudge(
   }
 }
 
-const LlmJudgeCompletion: CompletionPlugin = {
+export const LlmJudgeCompletion: CompletionPlugin = {
   name: 'llm_judge',
   schema: {
     description:
@@ -268,7 +269,11 @@ const LlmJudgeCompletion: CompletionPlugin = {
   },
 };
 
-// ═══ Plugin self-description exports ═══
-export const pluginCategory = 'completions';
-export const pluginType = 'llm_judge';
-export default LlmJudgeCompletion;
+export default {
+  name: '@tagma/completion-llm-judge',
+  capabilities: {
+    completions: {
+      llm_judge: LlmJudgeCompletion,
+    },
+  },
+} satisfies TagmaPlugin;

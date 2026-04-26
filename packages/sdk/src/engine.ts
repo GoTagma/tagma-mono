@@ -32,6 +32,7 @@ import {
   skipNonTerminalTasks,
 } from './core/scheduler';
 import { executeTask } from './core/task-executor';
+import { bunRuntime, type TagmaRuntime } from './runtime';
 export { TriggerBlockedError, TriggerTimeoutError } from './core/trigger-errors';
 
 function isPromptTaskConfig(
@@ -104,6 +105,11 @@ export interface RunPipelineOptions {
    * do not share handler state.
    */
   readonly registry: PluginRegistry;
+  /**
+   * Runtime implementation for command and driver process execution.
+   * Defaults to the SDK's Bun runtime.
+   */
+  readonly runtime?: TagmaRuntime;
 }
 
 // Poll interval when no tasks are in-flight but non-terminal tasks remain
@@ -123,6 +129,7 @@ export async function runPipeline(
   const approvalGateway = options.approvalGateway ?? new InMemoryApprovalGateway();
   const maxLogRuns = options.maxLogRuns ?? 20;
   const registry = options.registry;
+  const runtime = options.runtime ?? bunRuntime();
   if (!registry) {
     throw new Error(
       'runPipeline requires options.registry. Use createTagma().run(...) for the public SDK API.',
@@ -192,6 +199,7 @@ export async function runPipeline(
       workDir,
       pipelineInfo,
       onEvent: options.onEvent,
+      runtime,
     });
 
     // Pipeline start hook (gate). Runs BEFORE the engine emits run_start so
