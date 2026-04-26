@@ -1,4 +1,4 @@
-import type { PluginRegistry } from './registry';
+import type { PluginRegistry } from '@tagma/core';
 import type { TagmaPlugin } from './types';
 
 // Built-in Drivers

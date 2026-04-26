@@ -2,7 +2,7 @@
 
 Date: 2026-04-26
 
-`TagmaRuntime` is the boundary between SDK orchestration and host/runtime-specific behavior. The default `bunRuntime()` implements it with Bun process APIs, chokidar file watching, and filesystem-backed logs.
+`TagmaRuntime` is the boundary between core orchestration and host/runtime-specific behavior. `@tagma/runtime-bun` provides the default `bunRuntime()` implementation with Bun process APIs, chokidar file watching, and filesystem-backed logs.
 
 ## Interface Responsibilities
 
@@ -44,7 +44,7 @@ When `options.cwd` is set, event paths may be relative to that cwd. Consumers sh
 ## Minimal Test Runtime
 
 ```ts
-import type { TagmaRuntime } from '@tagma/sdk';
+import type { TagmaRuntime } from '@tagma/core';
 
 export function fakeRuntime(): TagmaRuntime {
   return {

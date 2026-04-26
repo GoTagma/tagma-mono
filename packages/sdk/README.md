@@ -64,6 +64,8 @@ console.log(result.success ? 'Done' : 'Failed');
 
 The package root is intentionally small. Use explicit subpaths for YAML,
 config editing, plugin registry helpers, and low-level dataflow utilities.
+The SDK composes `@tagma/core` with `@tagma/runtime-bun`; import those packages
+directly only when you need lower-level package boundaries.
 
 ## Features
 
@@ -414,6 +416,12 @@ YAML `ports` has been replaced by typed `inputs` / `outputs`. `validateRaw` repo
 - `@tagma/sdk/runtime/adapters/websocket-approval`
 - the older `@tagma/sdk/adapters/*` subpaths remain thin compatibility re-exports
 
+### Split packages
+
+- `@tagma/core` -- runtime-independent orchestration, registry, approval, logging, event/result types, and the `TagmaRuntime` interface
+- `@tagma/runtime-bun` -- Bun process execution, file watching, log storage, `bunRuntime()`, and runtime approval adapters
+- `@tagma/sdk` -- convenience package that composes core + Bun runtime + built-in plugins
+
 ### `bootstrapBuiltins(registry)`
 
 Registers all built-in plugins (opencode driver, file/manual triggers, completion checks, static-context middleware).
@@ -742,7 +750,9 @@ Use `buildDag` instead when you have a fully resolved `PipelineConfig` and need 
 Dual-channel logger — console + file. Creates a per-run log file at `<workDir>/.tagma/logs/<runId>/pipeline.log`.
 
 ```ts
-const logger = new Logger(workDir, runId);
+import { bunRuntime } from '@tagma/sdk';
+
+const logger = new Logger(workDir, runId, bunRuntime().logStore);
 logger.info('[track]', 'message'); // console + file
 logger.warn('[track]', 'message'); // console + file
 logger.error('[track]', 'message'); // console + file
@@ -754,13 +764,14 @@ logger.dir; // run artifact directory
 logger.close(); // close the persistent file handle (called automatically when Tagma.run completes)
 ```
 
-Pass an optional third argument to stream every appended line out as a
+Pass an optional fourth argument to stream every appended line out as a
 structured `LogRecord`; the engine uses this to emit `task_log` events:
 
 ```ts
+import { bunRuntime } from '@tagma/sdk';
 import { Logger, type LogRecord } from '@tagma/sdk/logger';
 
-const logger = new Logger(workDir, runId, (record: LogRecord) => {
+const logger = new Logger(workDir, runId, bunRuntime().logStore, (record: LogRecord) => {
   // record = { level, taskId, timestamp, text }
   // level  = 'info' | 'warn' | 'error' | 'debug' | 'section' | 'quiet'
   // taskId is extracted from a '[task:<id>]' prefix, or null for untagged lines
@@ -799,6 +810,8 @@ Truncates `text` to at most `maxBytes` UTF-8 bytes (default 16 KB), appending a 
 | Package                                                                                  | Description                                   |
 | ---------------------------------------------------------------------------------------- | --------------------------------------------- |
 | [@tagma/types](https://www.npmjs.com/package/@tagma/types)                               | Shared TypeScript types                       |
+| [@tagma/core](https://www.npmjs.com/package/@tagma/core)                                 | Runtime-independent orchestration core        |
+| [@tagma/runtime-bun](https://www.npmjs.com/package/@tagma/runtime-bun)                   | Bun runtime implementation                    |
 | [@tagma/driver-codex](https://www.npmjs.com/package/@tagma/driver-codex)                 | Codex CLI driver plugin                       |
 | [@tagma/driver-claude-code](https://www.npmjs.com/package/@tagma/driver-claude-code)     | Claude Code CLI driver plugin                 |
 | [@tagma/middleware-lightrag](https://www.npmjs.com/package/@tagma/middleware-lightrag)   | LightRAG knowledge-graph retrieval middleware |

@@ -606,9 +606,17 @@ Do this only after phases 1-5 are stable. Splitting too early creates package ch
 
 Acceptance criteria:
 
-- Package exports are documented.
-- No circular dependencies.
-- Versioning strategy is clear.
+- [x] Package exports are documented.
+- [x] No circular dependencies.
+- [x] Versioning strategy is clear.
+
+**Phase 6a status (2026-04-26):**
+
+- [x] Added `@tagma/core` for runtime-independent orchestration, plugin registry, approval gateway, logging primitives, event/result types, and runtime interfaces.
+- [x] Added `@tagma/runtime-bun` for Bun process execution, file watching, log storage, and runtime approval adapters.
+- [x] Retargeted `@tagma/sdk` root APIs and compatibility subpaths to compose `@tagma/core` + `@tagma/runtime-bun`.
+- [x] Updated workspace build/check/publish ordering so split package dependencies build before `@tagma/sdk`.
+- [x] Documented exports and publish order in `docs/sdk-public-api.md`.
 
 ## 7. Testing Strategy
 
@@ -745,4 +753,4 @@ Audit status on 2026-04-26:
 - [x] Phase 3: runtime dataflow uses unified typed `inputs` / `outputs`; `ports` is a validation migration error.
 - [x] Phase 4: capability plugin model is implemented as a clean cutover with no legacy module compatibility.
 - [x] Phase 5: runtime boundary extraction is complete inside `@tagma/sdk`; process execution, file watching, log storage, and approval adapters are behind runtime boundaries.
-- [ ] Phase 6: package split remains future work after Phase 5 stabilizes.
+- [x] Phase 6: package split started with `@tagma/core`, `@tagma/runtime-bun`, and SDK composition boundaries.

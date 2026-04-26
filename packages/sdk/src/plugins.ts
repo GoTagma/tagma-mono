@@ -4,8 +4,8 @@ export {
   isValidPluginName,
   PLUGIN_NAME_RE,
   readPluginManifest,
-} from './registry';
-export type { RegisteredCapability, RegisterResult } from './registry';
+} from '@tagma/core';
+export type { RegisteredCapability, RegisterResult } from '@tagma/core';
 export type {
   CapabilityHandler,
   PluginCategory,

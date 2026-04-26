@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { PluginRegistry } from './registry';
 import { bootstrapBuiltins } from './bootstrap';
 import { runPipeline } from './engine';
-import type { DriverPlugin, TriggerPlugin, PipelineConfig } from './types';
+import type { DriverPlugin, TriggerPlugin, PipelineConfig, TagmaRuntime, TaskResult } from './types';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -25,6 +25,64 @@ function makeTrigger(name: string, marker: string[]): TriggerPlugin {
     async watch() {
       marker.push(`watch:${name}`);
     },
+  };
+}
+
+function taskResult(stdout = 'ok\n'): TaskResult {
+  return {
+    exitCode: 0,
+    stdout,
+    stderr: '',
+    stdoutPath: null,
+    stderrPath: null,
+    stdoutBytes: stdout.length,
+    stderrBytes: 0,
+    durationMs: 1,
+    sessionId: null,
+    normalizedOutput: null,
+    failureKind: null,
+  };
+}
+
+function fakeRuntime(): TagmaRuntime {
+  return {
+    async runCommand() {
+      return taskResult();
+    },
+    async runSpawn() {
+      return taskResult();
+    },
+    async ensureDir() {
+      /* no-op */
+    },
+    async fileExists() {
+      return false;
+    },
+    async *watch() {
+      /* no-op */
+    },
+    logStore: {
+      openRunLog({ runId }) {
+        return {
+          path: `mem://${runId}/pipeline.log`,
+          dir: `mem://${runId}`,
+          append() {
+            /* memory sink */
+          },
+          close() {
+            /* memory sink */
+          },
+        };
+      },
+      taskOutputPath({ runId, taskId, stream }) {
+        return `mem://${runId}/${taskId}.${stream}`;
+      },
+      logsDir() {
+        return 'mem://logs';
+      },
+    },
+    now: () => new Date('2026-04-26T00:00:00.000Z'),
+    sleep: () => Promise.resolve(),
   };
 }
 
@@ -324,8 +382,16 @@ describe('runPipeline — options.registry isolation', () => {
     const tmpB = mkdtempSync(join(tmpdir(), 'tagma-regB-'));
     try {
       const [resA, resB] = await Promise.all([
-        runPipeline(config, tmpA, { registry: regA, skipPluginLoading: true }),
-        runPipeline(config, tmpB, { registry: regB, skipPluginLoading: true }),
+        runPipeline(config, tmpA, {
+          registry: regA,
+          runtime: fakeRuntime(),
+          skipPluginLoading: true,
+        }),
+        runPipeline(config, tmpB, {
+          registry: regB,
+          runtime: fakeRuntime(),
+          skipPluginLoading: true,
+        }),
       ]);
       expect(resA.success).toBe(true);
       expect(resB.success).toBe(true);

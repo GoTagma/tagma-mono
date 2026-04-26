@@ -62,51 +62,67 @@
     },
     "packages/completion-llm-judge": {
       "name": "@tagma/completion-llm-judge",
-      "version": "0.2.4",
+      "version": "0.2.6",
       "peerDependencies": {
+        "@tagma/types": "workspace:*",
+      },
+    },
+    "packages/core": {
+      "name": "@tagma/core",
+      "version": "0.1.0",
+      "dependencies": {
         "@tagma/types": "workspace:*",
       },
     },
     "packages/driver-claude-code": {
       "name": "@tagma/driver-claude-code",
-      "version": "0.3.4",
+      "version": "0.3.6",
       "peerDependencies": {
         "@tagma/types": "workspace:*",
       },
     },
     "packages/driver-codex": {
       "name": "@tagma/driver-codex",
-      "version": "0.2.4",
+      "version": "0.2.6",
       "peerDependencies": {
         "@tagma/types": "workspace:*",
       },
     },
     "packages/middleware-lightrag": {
       "name": "@tagma/middleware-lightrag",
-      "version": "0.2.4",
+      "version": "0.2.6",
       "peerDependencies": {
         "@tagma/types": "workspace:*",
       },
     },
+    "packages/runtime-bun": {
+      "name": "@tagma/runtime-bun",
+      "version": "0.1.0",
+      "dependencies": {
+        "@tagma/core": "workspace:*",
+        "chokidar": "^4.0.0",
+      },
+    },
     "packages/sdk": {
       "name": "@tagma/sdk",
-      "version": "0.7.1",
+      "version": "0.7.4",
       "dependencies": {
+        "@tagma/core": "workspace:*",
+        "@tagma/runtime-bun": "workspace:*",
         "@tagma/types": "workspace:*",
-        "chokidar": "^4.0.0",
         "js-yaml": "^4.1.0",
       },
     },
     "packages/trigger-webhook": {
       "name": "@tagma/trigger-webhook",
-      "version": "0.2.4",
+      "version": "0.2.6",
       "peerDependencies": {
         "@tagma/types": "workspace:*",
       },
     },
     "packages/types": {
       "name": "@tagma/types",
-      "version": "0.4.9",
+      "version": "0.4.12",
     },
   },
   "packages": {
@@ -336,11 +352,15 @@
 
     "@tagma/completion-llm-judge": ["@tagma/completion-llm-judge@workspace:packages/completion-llm-judge"],
 
+    "@tagma/core": ["@tagma/core@workspace:packages/core"],
+
     "@tagma/driver-claude-code": ["@tagma/driver-claude-code@workspace:packages/driver-claude-code"],
 
     "@tagma/driver-codex": ["@tagma/driver-codex@workspace:packages/driver-codex"],
 
     "@tagma/middleware-lightrag": ["@tagma/middleware-lightrag@workspace:packages/middleware-lightrag"],
+
+    "@tagma/runtime-bun": ["@tagma/runtime-bun@workspace:packages/runtime-bun"],
 
     "@tagma/sdk": ["@tagma/sdk@workspace:packages/sdk"],
 

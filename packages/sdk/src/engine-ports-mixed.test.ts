@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { bootstrapBuiltins } from './bootstrap';
 import { runPipeline, type RunEventPayload } from './engine';
 import { PluginRegistry } from './registry';
-import type { DriverPlugin, PipelineConfig, TaskConfig } from './types';
+import type { DriverPlugin, PipelineConfig, TagmaRuntime, TaskConfig, TaskResult } from './types';
 
 const PERMS = { read: true, write: false, execute: false };
 
@@ -13,40 +13,7 @@ function makeDir(): string {
   return mkdtempSync(join(tmpdir(), 'tagma-bindings-mixed-'));
 }
 
-function writeEmitScript(dir: string, name: string, payload: Record<string, unknown>): string {
-  const path = join(dir, `${name}.js`);
-  writeFileSync(
-    path,
-    `process.stdout.write(${JSON.stringify(JSON.stringify(payload))});\nprocess.stdout.write('\\n');\n`,
-  );
-  return path;
-}
-
-function writeEchoArgsScript(dir: string): string {
-  const path = join(dir, 'echo.js');
-  writeFileSync(path, `process.stdout.write(process.argv.slice(2).join('|'));\n`);
-  return path;
-}
-
-function writeMockDriverScript(dir: string): string {
-  const path = join(dir, 'mock-driver.js');
-  writeFileSync(
-    path,
-    [
-      `const fs = require('fs');`,
-      `let buf = '';`,
-      `process.stdin.setEncoding('utf8');`,
-      `process.stdin.on('data', (c) => { buf += c; });`,
-      `process.stdin.on('end', () => {`,
-      `  fs.writeFileSync(process.env.MOCK_RECORD_PATH, buf);`,
-      `  process.stdout.write(process.env.MOCK_RESPONSE + '\\n');`,
-      `});`,
-    ].join('\n'),
-  );
-  return path;
-}
-
-function registry(script: string, responses: Record<string, Record<string, unknown>>, records: Record<string, string>) {
+function registry(responses: Record<string, Record<string, unknown>>, records: Record<string, string>) {
   const reg = new PluginRegistry();
   bootstrapBuiltins(reg);
   const driver: DriverPlugin = {
@@ -54,7 +21,7 @@ function registry(script: string, responses: Record<string, Record<string, unkno
     capabilities: { sessionResume: false, systemPrompt: true, outputFormat: true },
     async buildCommand(task) {
       return {
-        args: ['node', script],
+        args: ['mock-driver', task.id],
         stdin: task.prompt ?? '',
         env: {
           MOCK_RESPONSE: JSON.stringify(responses[task.id] ?? {}),
@@ -85,10 +52,73 @@ async function run(config: PipelineConfig, workDir: string, reg: PluginRegistry)
   const events: RunEventPayload[] = [];
   const result = await runPipeline(config, workDir, {
     registry: reg,
+    runtime: fakeRuntime(),
     skipPluginLoading: true,
     onEvent: (e) => events.push(e),
   });
   return { events, success: result.success };
+}
+
+function taskResult(stdout: string, normalizedOutput: string | null = null): TaskResult {
+  return {
+    exitCode: 0,
+    stdout,
+    stderr: '',
+    stdoutPath: null,
+    stderrPath: null,
+    stdoutBytes: stdout.length,
+    stderrBytes: 0,
+    durationMs: 1,
+    sessionId: null,
+    normalizedOutput,
+    failureKind: null,
+  };
+}
+
+function fakeRuntime(): TagmaRuntime {
+  return {
+    async runCommand(command) {
+      if (command.startsWith('emit-city')) return taskResult('{"city":"Berlin"}\n');
+      return taskResult('ok\n');
+    },
+    async runSpawn(spec) {
+      const response = spec.env?.['MOCK_RESPONSE'] ?? '{}';
+      const recordPath = spec.env?.['MOCK_RECORD_PATH'];
+      if (recordPath) writeFileSync(recordPath, spec.stdin ?? '');
+      return taskResult(response + '\n', response);
+    },
+    async ensureDir() {
+      /* no-op */
+    },
+    async fileExists() {
+      return false;
+    },
+    async *watch() {
+      /* no-op */
+    },
+    logStore: {
+      openRunLog({ runId }) {
+        return {
+          path: `mem://${runId}/pipeline.log`,
+          dir: `mem://${runId}`,
+          append() {
+            /* memory sink */
+          },
+          close() {
+            /* memory sink */
+          },
+        };
+      },
+      taskOutputPath({ runId, taskId, stream }) {
+        return `mem://${runId}/${taskId}.${stream}`;
+      },
+      logsDir() {
+        return 'mem://logs';
+      },
+    },
+    now: () => new Date('2026-04-26T00:00:00.000Z'),
+    sleep: () => Promise.resolve(),
+  };
 }
 
 function finalUpdateFor(events: RunEventPayload[], qid: string): RunEventPayload | undefined {
@@ -103,17 +133,15 @@ describe('engine — mixed prompt/command unified bindings', () => {
   test('prompt outputs are inferred from downstream command inputs', async () => {
     const dir = makeDir();
     try {
-      const driverScript = writeMockDriverScript(dir);
-      const echo = writeEchoArgsScript(dir);
       const record = join(dir, 'prompt.txt');
-      const reg = registry(driverScript, { plan: { city: 'Paris' } }, { plan: record });
+      const reg = registry({ plan: { city: 'Paris' } }, { plan: record });
       const config = pipeline([
         task({ id: 'plan', prompt: 'Pick a city' }),
         task({
           id: 'fetch',
           driver: 'opencode',
           depends_on: ['plan'],
-          command: `node "${echo}" "{{inputs.city}}"`,
+          command: 'echo-city "{{inputs.city}}"',
           inputs: { city: { from: 't.plan.outputs.city', type: 'string', required: true } },
         }),
       ]);
@@ -131,15 +159,13 @@ describe('engine — mixed prompt/command unified bindings', () => {
   test('prompt inputs are inferred from upstream command outputs', async () => {
     const dir = makeDir();
     try {
-      const emit = writeEmitScript(dir, 'emit', { city: 'Berlin' });
-      const driverScript = writeMockDriverScript(dir);
       const record = join(dir, 'prompt.txt');
-      const reg = registry(driverScript, { summarize: {} }, { summarize: record });
+      const reg = registry({ summarize: {} }, { summarize: record });
       const config = pipeline([
         task({
           id: 'up',
           driver: 'opencode',
-          command: `node "${emit}"`,
+          command: 'emit-city',
           outputs: { city: { type: 'string' } },
         }),
         task({ id: 'summarize', depends_on: ['up'], prompt: 'City is {{inputs.city}}' }),

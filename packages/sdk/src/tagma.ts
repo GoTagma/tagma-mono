@@ -1,8 +1,13 @@
-import { runPipeline, type EngineResult, type RunPipelineOptions } from './engine';
+import {
+  PluginRegistry,
+  runPipeline,
+  type EngineResult,
+  type RunPipelineOptions,
+} from '@tagma/core';
 import { bootstrapBuiltins } from './bootstrap';
-import { PluginRegistry } from './registry';
 import { validateConfig } from './schema';
-import { bunRuntime, type TagmaRuntime } from './runtime';
+import { bunRuntime } from '@tagma/runtime-bun';
+import type { TagmaRuntime } from '@tagma/core';
 import type { PipelineConfig, TagmaPlugin } from './types';
 
 export interface CreateTagmaOptions {
@@ -26,7 +31,7 @@ export interface CreateTagmaOptions {
   readonly runtime?: TagmaRuntime;
 }
 
-export interface TagmaRunOptions extends Omit<RunPipelineOptions, 'registry'> {
+export interface TagmaRunOptions extends Omit<RunPipelineOptions, 'registry' | 'runtime'> {
   readonly cwd: string;
 }
 

@@ -2,7 +2,7 @@
 
 Date: 2026-04-26
 
-`@tagma/sdk` exposes a narrow root API for normal pipeline hosts. Advanced helpers live on explicit subpaths so internal engine modules can evolve without becoming public contracts.
+`@tagma/sdk` exposes a narrow root API for normal Bun-based pipeline hosts. Advanced helpers live on explicit subpaths so internal engine modules can evolve without becoming public contracts.
 
 ## Root: `@tagma/sdk`
 
@@ -45,13 +45,21 @@ const result = await tagma.run(pipeline, {
 
 ## Package Boundary Direction
 
-The current SDK remains Bun-first, but its runtime dependency is explicit through `TagmaRuntime`. If the package split becomes valuable, the intended dependency direction is:
+Phase 6 split the orchestration and Bun runtime into publishable packages. The dependency direction is:
 
 ```txt
 @tagma/types
   <- @tagma/core
-  <- @tagma/runtime-bun
+      <- @tagma/runtime-bun
+
+@tagma/core + @tagma/runtime-bun
   <- @tagma/sdk
 ```
 
+`@tagma/core` exports `runPipeline`, `PluginRegistry`, approval/logging primitives, stable event/result/runtime types, and shared dataflow helpers. `@tagma/runtime-bun` exports `bunRuntime()`, process execution helpers, file watching/log storage, and Bun approval adapters. `@tagma/sdk` composes those packages with built-in plugins and keeps existing explicit subpaths as compatibility re-exports.
+
 Avoid adding imports from runtime-specific code back into core scheduling, dataflow, or registry modules.
+
+## Versioning Strategy
+
+Publish order is `@tagma/types` -> `@tagma/core` -> `@tagma/runtime-bun` -> plugin packages -> `@tagma/sdk`. Runtime packages may evolve independently, but `@tagma/sdk` pins compatible workspace versions during repository development and should bump whenever it changes the composed public API.

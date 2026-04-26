@@ -1,6 +1,6 @@
 {
   "name": "@tagma/sdk",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "description": "Local AI task orchestration engine — core SDK for tagma pipelines",
   "license": "MIT",
   "repository": {
@@ -102,8 +102,9 @@
     "release:publish": "bun scripts/release.ts --publish"
   },
   "dependencies": {
+    "@tagma/core": "workspace:*",
+    "@tagma/runtime-bun": "workspace:*",
     "@tagma/types": "workspace:*",
-    "js-yaml": "^4.1.0",
-    "chokidar": "^4.0.0"
+    "js-yaml": "^4.1.0"
   }
 }

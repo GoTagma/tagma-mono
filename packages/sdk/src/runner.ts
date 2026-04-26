@@ -1,1 +1,1 @@
-export * from './runtime/bun-process-runner';
+export { runCommand, runSpawn } from '@tagma/runtime-bun';
