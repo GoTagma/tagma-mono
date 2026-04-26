@@ -59,6 +59,7 @@ import {
 } from './core/run-state';
 import { preflight } from './core/preflight';
 import { pruneLogDirs } from './core/log-prune';
+import { RunContext } from './core/run-context';
 
 // ═══ A7: Typed trigger errors ═══
 // Replace string-matching on error messages with structured error types so
@@ -233,18 +234,18 @@ export async function runPipeline(
     }
     log.quiet('');
 
-    // Initialize states (before hook, so we can return them even if blocked)
-    const states = new Map<string, TaskState>();
-    for (const [id, node] of dag.nodes) {
-      states.set(id, {
-        config: node.task,
-        trackConfig: node.track,
-        status: 'idle',
-        result: null,
-        startedAt: null,
-        finishedAt: null,
-      });
-    }
+    // Per-run state container. Constructed before the pipeline_start hook
+    // so the early-return path (blocked pipeline) can call freezeStates on
+    // the populated idle-state map. The constructor has no side effects —
+    // no listeners installed, no events emitted.
+    const ctx = new RunContext({
+      runId,
+      dag,
+      config,
+      workDir,
+      pipelineInfo,
+      onEvent: options.onEvent,
+    });
 
     // Pipeline start hook (gate). Runs BEFORE the engine emits run_start so
     // a blocked pipeline produces zero wire events (the server treats the
@@ -276,12 +277,12 @@ export async function runPipeline(
           timeout: 0,
           blocked: 0,
         },
-        states: freezeStates(states),
+        states: freezeStates(ctx.states),
       };
     }
 
     // Pipeline approved — transition all tasks to waiting.
-    for (const [, state] of states) {
+    for (const [, state] of ctx.states) {
       state.status = 'waiting';
     }
     // Emit run_start with a wire-shape snapshot so SSE subscribers can
@@ -290,66 +291,35 @@ export async function runPipeline(
     // the engine owns the lifecycle boundary.
     const runStartTasks: RunTaskState[] = [];
     for (const [id, node] of dag.nodes) {
-      const s = states.get(id)!;
+      const s = ctx.states.get(id)!;
       runStartTasks.push(toRunTaskState(id, node.track.id, node.task.name ?? id, s));
     }
-    emit({ type: 'run_start', runId, tasks: runStartTasks });
+    ctx.emit({ type: 'run_start', runId, tasks: runStartTasks });
 
-    const sessionMap = new Map<string, string>();
-    const normalizedMap = new Map<string, string>();
-    // Published structured outputs keyed by fully-qualified task id.
-    // Includes lightweight task.outputs and strict ports.outputs.
-    const outputValuesMap = new Map<string, Readonly<Record<string, unknown>>>();
-    // Full upstream result data for lightweight input bindings such as
-    // `taskId.stdout` and `taskId.outputs.name`.
-    const bindingDataMap = new Map<string, UpstreamBindingData>();
-    // Resolved port inputs keyed by fully-qualified task id. Written once,
-    // just before a task runs, so every subsequent task_update event can
-    // echo them to the UI without re-resolving.
-    const resolvedInputsMap = new Map<string, Readonly<Record<string, unknown>>>();
-    // Reverse adjacency: for each task, list the direct-downstream task ids
-    // (tasks whose `depends_on` includes this one after DAG qualification).
-    // Computed once up front so Prompt-task port inference — which needs
-    // "what Commands directly consume me?" — is O(1) instead of O(tasks)
-    // per Prompt start. `dag.nodes` only exposes forward edges via
-    // `dependsOn`, so we build this locally.
-    const directDownstreams = new Map<string, string[]>();
-    for (const [id] of dag.nodes) directDownstreams.set(id, []);
-    for (const [id, node] of dag.nodes) {
-      for (const upstream of node.dependsOn) {
-        const list = directDownstreams.get(upstream);
-        if (list) list.push(id);
-      }
-    }
-
-    // Pipeline timeout + abort reason tracking.
-    //
-    // `abortReason` replaces the previous `pipelineAborted: boolean`: it
-    // carries the concrete cause (timeout / stop_all / external) through
-    // to run_end and the pipeline_error hook so downstream consumers can
-    // distinguish them without scraping message strings.
+    // Pipeline timeout. `ctx.abortReason` carries the concrete cause
+    // (timeout / stop_all / external) through to run_end and the
+    // pipeline_error hook so downstream consumers can distinguish them
+    // without scraping message strings.
     const pipelineTimeoutMs = config.timeout ? parseDuration(config.timeout) : 0;
-    let abortReason: AbortReason | null = null;
-    const abortController = new AbortController();
     let pipelineTimer: ReturnType<typeof setTimeout> | null = null;
 
     if (pipelineTimeoutMs > 0) {
       pipelineTimer = setTimeout(() => {
-        if (abortReason === null) abortReason = 'timeout';
-        abortController.abort();
+        if (ctx.abortReason === null) ctx.abortReason = 'timeout';
+        ctx.abortController.abort();
       }, pipelineTimeoutMs);
     }
 
     // When the pipeline is aborted (timeout, stop_all, external), drain
     // all pending approvals so waiting triggers unblock immediately.
-    abortController.signal.addEventListener('abort', () => {
+    ctx.abortController.signal.addEventListener('abort', () => {
       approvalGateway.abortAll('pipeline aborted');
     });
 
     // Wire external cancel signal into the internal abort controller.
     const externalAbortHandler = () => {
-      if (abortReason === null) abortReason = 'external';
-      abortController.abort();
+      if (ctx.abortReason === null) ctx.abortReason = 'external';
+      ctx.abortController.abort();
     };
     if (options.signal) {
       if (options.signal.aborted) {
@@ -364,7 +334,7 @@ export async function runPipeline(
     // updates. The server no longer needs its own gateway subscription.
     const unsubscribeApprovals = approvalGateway.subscribe((ev) => {
       if (ev.type === 'requested') {
-        emit({
+        ctx.emit({
           type: 'approval_request',
           runId,
           request: {
@@ -386,7 +356,7 @@ export async function runPipeline(
             : ev.type === 'expired'
               ? 'timeout'
               : 'aborted';
-        emit({
+        ctx.emit({
           type: 'approval_resolved',
           runId,
           requestId: ev.request.id,
@@ -395,126 +365,10 @@ export async function runPipeline(
       }
     });
 
-    // ── Helpers ──
-
-    function emit(event: RunEventPayload): void {
-      options.onEvent?.(event);
-    }
-
-    function setTaskStatus(taskId: string, newStatus: TaskStatus): void {
-      const state = states.get(taskId)!;
-      // Terminal lock: once a task reaches a terminal state it must not be
-      // re-transitioned. This prevents stop_all from marking running tasks as
-      // skipped and then having their in-flight processTask promise overwrite
-      // that with success/failed, producing an invalid double transition.
-      if (isTerminal(state.status)) return;
-      state.status = newStatus;
-      const result = state.result;
-      const cfg = state.config;
-      emit({
-        type: 'task_update',
-        runId,
-        taskId,
-        status: newStatus,
-        startedAt: state.startedAt ?? undefined,
-        finishedAt: state.finishedAt ?? undefined,
-        durationMs: result?.durationMs,
-        exitCode: result?.exitCode,
-        stdout: result?.stdout,
-        stderr: result?.stderr,
-        stdoutPath: result?.stdoutPath ?? null,
-        stderrPath: result?.stderrPath ?? null,
-        stdoutBytes: result?.stdoutBytes ?? null,
-        stderrBytes: result?.stderrBytes ?? null,
-        sessionId: result?.sessionId ?? null,
-        normalizedOutput: result?.normalizedOutput ?? null,
-        inputs: resolvedInputsMap.get(taskId) ?? null,
-        outputs: outputValuesMap.get(taskId) ?? null,
-        resolvedDriver: cfg.driver ?? null,
-        resolvedModel: cfg.model ?? null,
-        resolvedPermissions: (cfg.permissions as Permissions | undefined) ?? null,
-      });
-    }
-
-    function getOnFailure(taskId: string): OnFailure {
-      return dag.nodes.get(taskId)?.track.on_failure ?? 'skip_downstream';
-    }
-
-    function isDependencySatisfied(depId: string): 'satisfied' | 'unsatisfied' | 'skip' {
-      const depState = states.get(depId);
-      if (!depState) return 'skip';
-      switch (depState.status) {
-        case 'success':
-          return 'satisfied';
-        case 'skipped':
-          return 'skip';
-        case 'failed':
-        case 'timeout':
-        case 'blocked':
-          return getOnFailure(depId) === 'ignore' ? 'satisfied' : 'skip';
-        default:
-          return 'unsatisfied';
-      }
-    }
-
-    /**
-     * H3: "stop_all" historically only stopped tasks within the same track,
-     * which contradicted both its name and user expectations. It now stops
-     * the **entire pipeline**:
-     *   - In-flight tasks are signalled via the shared abort controller so
-     *     drivers / runner.ts can cancel cooperatively (returning
-     *     `failureKind: 'timeout'`).
-     *   - Still-waiting tasks across every track are immediately marked
-     *     skipped so the run completes promptly.
-     * The terminal lock in setTaskStatus prevents any later re-transition
-     * should a completed running task try to overwrite the skipped state.
-     */
-    function applyStopAll(_failedTrackId: string): void {
-      if (abortReason === null) abortReason = 'stop_all';
-      abortController.abort();
-      for (const [id, state] of states) {
-        if (state.status === 'waiting') {
-          state.finishedAt = nowISO();
-          setTaskStatus(id, 'skipped');
-        }
-      }
-    }
-
-    function buildTaskInfoObj(taskId: string): TaskInfo {
-      const state = states.get(taskId)!;
-      return {
-        id: taskId,
-        name: state.config.name,
-        type: isPromptTaskConfig(state.config) ? 'ai' : 'command',
-        status: state.status,
-        exit_code: state.result?.exitCode ?? null,
-        duration_ms: state.result?.durationMs ?? null,
-        stderr_path: state.result?.stderrPath ?? null,
-        session_id: state.result?.sessionId ?? null,
-        started_at: state.startedAt,
-        finished_at: state.finishedAt,
-      };
-    }
-
-    function trackInfoOf(taskId: string): TrackInfo {
-      const node = dag.nodes.get(taskId)!;
-      return { id: node.track.id, name: node.track.name };
-    }
-
-    async function fireHook(taskId: string, event: 'task_success' | 'task_failure'): Promise<void> {
-      await executeHook(
-        config.hooks,
-        event,
-        buildTaskContext(event, pipelineInfo, trackInfoOf(taskId), buildTaskInfoObj(taskId)),
-        workDir,
-        abortController.signal,
-      );
-    }
-
     // ── Process a single task ──
 
     async function processTask(taskId: string): Promise<void> {
-      const state = states.get(taskId)!;
+      const state = ctx.states.get(taskId)!;
       const node = dag.nodes.get(taskId)!;
       const task = node.task;
       const track = node.track;
@@ -527,12 +381,12 @@ export async function runPipeline(
 
       // 1. Check dependencies
       for (const depId of node.dependsOn) {
-        const result = isDependencySatisfied(depId);
+        const result = ctx.isDependencySatisfied(depId);
         if (result === 'skip') {
-          const depStatus = states.get(depId)?.status ?? 'unknown';
+          const depStatus = ctx.states.get(depId)?.status ?? 'unknown';
           log.debug(`[task:${taskId}]`, `skipped (upstream "${depId}" status=${depStatus})`);
           state.finishedAt = nowISO();
-          setTaskStatus(taskId, 'skipped');
+          ctx.setTaskStatus(taskId, 'skipped');
           return;
         }
         if (result === 'unsatisfied') return; // still waiting
@@ -568,16 +422,16 @@ export async function runPipeline(
               if (timer !== null) clearTimeout(timer);
               reject(new Error('Pipeline aborted'));
             };
-            if (abortController.signal.aborted) {
+            if (ctx.abortController.signal.aborted) {
               onAbort();
               return;
             }
-            abortController.signal.addEventListener('abort', onAbort, { once: true });
+            ctx.abortController.signal.addEventListener('abort', onAbort, { once: true });
             if (triggerTimeoutMs > 0) {
               timer = setTimeout(() => {
                 if (settled) return;
                 settled = true;
-                abortController.signal.removeEventListener('abort', onAbort);
+                ctx.abortController.signal.removeEventListener('abort', onAbort);
                 reject(
                   new TriggerTimeoutError(
                     `Trigger "${task.trigger!.type}" did not settle within ${task.timeout} (task-level timeout)`,
@@ -590,7 +444,7 @@ export async function runPipeline(
                 taskId: node.taskId,
                 trackId: track.id,
                 workDir: task.cwd ?? workDir,
-                signal: abortController.signal,
+                signal: ctx.abortController.signal,
                 approvalGateway,
               })
               .then(
@@ -598,14 +452,14 @@ export async function runPipeline(
                   if (settled) return;
                   settled = true;
                   if (timer !== null) clearTimeout(timer);
-                  abortController.signal.removeEventListener('abort', onAbort);
+                  ctx.abortController.signal.removeEventListener('abort', onAbort);
                   resolve(v);
                 },
                 (e) => {
                   if (settled) return;
                   settled = true;
                   if (timer !== null) clearTimeout(timer);
-                  abortController.signal.removeEventListener('abort', onAbort);
+                  ctx.abortController.signal.removeEventListener('abort', onAbort);
                   reject(e);
                 },
               );
@@ -615,26 +469,26 @@ export async function runPipeline(
           // If pipeline was aborted while we were still waiting for the trigger,
           // this task never entered running state → skipped, not timeout.
           state.finishedAt = nowISO();
-          if (abortReason !== null) {
-            setTaskStatus(taskId, 'skipped');
+          if (ctx.abortReason !== null) {
+            ctx.setTaskStatus(taskId, 'skipped');
           } else if (err instanceof TriggerBlockedError) {
-            setTaskStatus(taskId, 'blocked'); // user/policy rejection
+            ctx.setTaskStatus(taskId, 'blocked'); // user/policy rejection
           } else if (err instanceof TriggerTimeoutError) {
-            setTaskStatus(taskId, 'timeout'); // genuine trigger wait timeout
+            ctx.setTaskStatus(taskId, 'timeout'); // genuine trigger wait timeout
           } else {
             // A7 fallback: also check message strings for backward-compat with
             // third-party trigger plugins that don't throw typed errors yet.
             const msg = err instanceof Error ? err.message : String(err);
             if (msg.includes('rejected') || msg.includes('denied')) {
-              setTaskStatus(taskId, 'blocked');
+              ctx.setTaskStatus(taskId, 'blocked');
             } else if (msg.includes('timeout')) {
-              setTaskStatus(taskId, 'timeout');
+              ctx.setTaskStatus(taskId, 'timeout');
             } else {
-              setTaskStatus(taskId, 'failed'); // plugin error, watcher crash, etc.
+              ctx.setTaskStatus(taskId, 'failed'); // plugin error, watcher crash, etc.
             }
           }
           try {
-            await fireHook(taskId, 'task_failure');
+            await ctx.fireHook(taskId, 'task_failure');
           } catch (hookErr) {
             log.error(
               `[task:${taskId}]`,
@@ -649,9 +503,9 @@ export async function runPipeline(
       const hookResult = await executeHook(
         config.hooks,
         'task_start',
-        buildTaskContext('task_start', pipelineInfo, trackInfoOf(taskId), buildTaskInfoObj(taskId)),
+        buildTaskContext('task_start', pipelineInfo, ctx.trackInfoOf(taskId), ctx.buildTaskInfoObj(taskId)),
         workDir,
-        abortController.signal,
+        ctx.abortController.signal,
       );
       if (hookResult.exitCode !== 0 || config.hooks?.task_start) {
         log.debug(
@@ -661,9 +515,9 @@ export async function runPipeline(
       }
       if (!hookResult.allowed) {
         state.finishedAt = nowISO();
-        setTaskStatus(taskId, 'blocked');
+        ctx.setTaskStatus(taskId, 'blocked');
         try {
-          await fireHook(taskId, 'task_failure');
+          await ctx.fireHook(taskId, 'task_failure');
         } catch (hookErr) {
           log.error(
             `[task:${taskId}]`,
@@ -703,7 +557,7 @@ export async function runPipeline(
               outputs: isUpstreamCommand ? upstream?.task.ports?.outputs : undefined,
             };
           }),
-          downstreams: (directDownstreams.get(taskId) ?? []).map((downstreamId) => {
+          downstreams: (ctx.directDownstreams.get(taskId) ?? []).map((downstreamId) => {
             const downstream = dag.nodes.get(downstreamId);
             const isDownstreamCommand = downstream ? isCommandTaskConfig(downstream.task) : false;
             return {
@@ -739,20 +593,20 @@ export async function runPipeline(
           outputs: null,
         };
         state.finishedAt = nowISO();
-        setTaskStatus(taskId, 'blocked');
+        ctx.setTaskStatus(taskId, 'blocked');
         try {
-          await fireHook(taskId, 'task_failure');
+          await ctx.fireHook(taskId, 'task_failure');
         } catch (hookErr) {
           log.error(
             `[task:${taskId}]`,
             `hook execution failed: ${hookErr instanceof Error ? hookErr.message : String(hookErr)}`,
           );
         }
-        if (getOnFailure(taskId) === 'stop_all') applyStopAll(node.track.id);
+        if (ctx.getOnFailure(taskId) === 'stop_all') ctx.applyStopAll();
         return;
       }
 
-      const bindingResolution = resolveTaskBindingInputs(task, bindingDataMap, node.dependsOn);
+      const bindingResolution = resolveTaskBindingInputs(task, ctx.bindingDataMap, node.dependsOn);
       if (bindingResolution.kind === 'blocked') {
         log.error(
           `[task:${taskId}]`,
@@ -771,16 +625,16 @@ export async function runPipeline(
           outputs: null,
         };
         state.finishedAt = nowISO();
-        setTaskStatus(taskId, 'blocked');
+        ctx.setTaskStatus(taskId, 'blocked');
         try {
-          await fireHook(taskId, 'task_failure');
+          await ctx.fireHook(taskId, 'task_failure');
         } catch (hookErr) {
           log.error(
             `[task:${taskId}]`,
             `hook execution failed: ${hookErr instanceof Error ? hookErr.message : String(hookErr)}`,
           );
         }
-        if (getOnFailure(taskId) === 'stop_all') applyStopAll(node.track.id);
+        if (ctx.getOnFailure(taskId) === 'stop_all') ctx.applyStopAll();
         return;
       }
       if (bindingResolution.missingOptional.length > 0) {
@@ -795,7 +649,7 @@ export async function runPipeline(
       // unchanged (effectivePorts === task.ports).
       const taskForResolve: TaskConfig =
         effectivePorts === task.ports ? task : { ...task, ports: effectivePorts };
-      const inputResolution = resolveTaskInputs(taskForResolve, outputValuesMap, node.dependsOn);
+      const inputResolution = resolveTaskInputs(taskForResolve, ctx.outputValuesMap, node.dependsOn);
       if (inputResolution.kind === 'blocked') {
         log.error(
           `[task:${taskId}]`,
@@ -814,20 +668,20 @@ export async function runPipeline(
           outputs: null,
         };
         state.finishedAt = nowISO();
-        setTaskStatus(taskId, 'blocked');
+        ctx.setTaskStatus(taskId, 'blocked');
         try {
-          await fireHook(taskId, 'task_failure');
+          await ctx.fireHook(taskId, 'task_failure');
         } catch (hookErr) {
           log.error(
             `[task:${taskId}]`,
             `hook execution failed: ${hookErr instanceof Error ? hookErr.message : String(hookErr)}`,
           );
         }
-        if (getOnFailure(taskId) === 'stop_all') applyStopAll(node.track.id);
+        if (ctx.getOnFailure(taskId) === 'stop_all') ctx.applyStopAll();
         return;
       }
       const resolvedInputs = { ...bindingResolution.inputs, ...inputResolution.inputs };
-      resolvedInputsMap.set(taskId, resolvedInputs);
+      ctx.resolvedInputsMap.set(taskId, resolvedInputs);
       if (inputResolution.missingOptional.length > 0) {
         log.debug(
           `[task:${taskId}]`,
@@ -845,7 +699,7 @@ export async function runPipeline(
       // 4. Mark running — set startedAt before emitting so subscribers see a
       // complete task_update (startedAt non-null) on the status transition.
       state.startedAt = nowISO();
-      setTaskStatus(taskId, 'running');
+      ctx.setTaskStatus(taskId, 'running');
       log.info(
         `[task:${taskId}]`,
         isCommandTaskConfig(task) ? `running: ${task.command}` : `running (driver task)`,
@@ -881,7 +735,7 @@ export async function runPipeline(
         const stderrPath = resolve(log.dir, `${fsSafeTaskId}.stderr`);
         const runOpts = {
           timeoutMs,
-          signal: abortController.signal,
+          signal: ctx.abortController.signal,
           stdoutPath,
           stderrPath,
         };
@@ -1048,8 +902,8 @@ export async function runPipeline(
             ports: effectivePorts,
           };
           const driverCtx: DriverContext = {
-            sessionMap,
-            normalizedMap,
+            sessionMap: ctx.sessionMap,
+            normalizedMap: ctx.normalizedMap,
             workDir: task.cwd ?? workDir,
             // Structured view for drivers that want fine-grained control
             // over serialization (e.g. inserting [Previous Output] between
@@ -1096,7 +950,7 @@ export async function runPipeline(
           terminalStatus = 'failed';
         } else if (task.completion) {
           const plugin = registry.getHandler<CompletionPlugin>('completions', task.completion.type);
-          const completionCtx = { workDir: task.cwd ?? workDir, signal: abortController.signal };
+          const completionCtx = { workDir: task.cwd ?? workDir, signal: ctx.abortController.signal };
           const passed = await plugin.check(
             task.completion as Record<string, unknown>,
             result,
@@ -1166,9 +1020,9 @@ export async function runPipeline(
         // one field rather than re-running extraction.
         result = { ...result, outputs: extractedOutputs };
         if (extractedOutputs !== null) {
-          outputValuesMap.set(taskId, extractedOutputs);
+          ctx.outputValuesMap.set(taskId, extractedOutputs);
         }
-        bindingDataMap.set(taskId, {
+        ctx.bindingDataMap.set(taskId, {
           outputs: extractedOutputs,
           stdout: result.stdout,
           stderr: result.stderr,
@@ -1185,7 +1039,7 @@ export async function runPipeline(
               ? result.normalizedOutput.slice(0, MAX_NORMALIZED_BYTES) +
                 `\n[…clipped at ${MAX_NORMALIZED_BYTES} bytes]`
               : result.normalizedOutput;
-          normalizedMap.set(taskId, clipped);
+          ctx.normalizedMap.set(taskId, clipped);
         }
 
         // Note: stderr is already persisted by runner.ts as it streams; the
@@ -1194,13 +1048,13 @@ export async function runPipeline(
 
         if (result.sessionId) {
           // H1: qualified-only key.
-          sessionMap.set(taskId, result.sessionId);
+          ctx.sessionMap.set(taskId, result.sessionId);
         }
 
         // Set result and finishedAt before emitting terminal status so listeners see complete state
         state.result = result;
         state.finishedAt = nowISO();
-        setTaskStatus(taskId, terminalStatus);
+        ctx.setTaskStatus(taskId, terminalStatus);
 
         // Log task outcome with relevant details
         const durSec = (result.durationMs / 1000).toFixed(1);
@@ -1270,13 +1124,13 @@ export async function runPipeline(
           failureKind: 'spawn_error',
         };
         state.finishedAt = nowISO();
-        setTaskStatus(taskId, 'failed');
+        ctx.setTaskStatus(taskId, 'failed');
       }
 
       // 7. Fire hooks
       const finalStatus: TaskStatus = state.status;
       try {
-        await fireHook(taskId, finalStatus === 'success' ? 'task_success' : 'task_failure');
+        await ctx.fireHook(taskId, finalStatus === 'success' ? 'task_success' : 'task_failure');
       } catch (hookErr) {
         log.error(
           `[task:${taskId}]`,
@@ -1285,8 +1139,8 @@ export async function runPipeline(
       }
 
       // 8. Handle stop_all for failure states
-      if (finalStatus !== 'success' && getOnFailure(taskId) === 'stop_all') {
-        applyStopAll(node.track.id);
+      if (finalStatus !== 'success' && ctx.getOnFailure(taskId) === 'stop_all') {
+        ctx.applyStopAll();
       }
     }
 
@@ -1297,21 +1151,21 @@ export async function runPipeline(
     const running = new Map<string, Promise<void>>();
 
     try {
-      while (abortReason === null) {
+      while (ctx.abortReason === null) {
         // Launch every task whose deps are all terminal and that isn't already in-flight
-        for (const [id, state] of states) {
+        for (const [id, state] of ctx.states) {
           if (state.status !== 'waiting' || running.has(id)) continue;
           const node = dag.nodes.get(id)!;
           const allDepsTerminal =
             node.dependsOn.length === 0 ||
-            node.dependsOn.every((d) => isTerminal(states.get(d)!.status));
+            node.dependsOn.every((d) => isTerminal(ctx.states.get(d)!.status));
           if (!allDepsTerminal) continue;
           const p = processTask(id).finally(() => running.delete(id));
           running.set(id, p);
         }
 
         // All tasks terminal — done
-        if ([...states.values()].every((s) => isTerminal(s.status))) break;
+        if ([...ctx.states.values()].every((s) => isTerminal(s.status))) break;
 
         if (running.size === 0) {
           // Nothing in-flight but non-terminal tasks exist (e.g. trigger-wait states
@@ -1323,16 +1177,16 @@ export async function runPipeline(
         }
       }
 
-      if (abortReason !== null) {
+      if (ctx.abortReason !== null) {
         // Wait for in-flight tasks to honour the abort signal before marking states.
         if (running.size > 0) await Promise.allSettled(running.values());
-        for (const [id, state] of states) {
+        for (const [id, state] of ctx.states) {
           if (!isTerminal(state.status)) {
             // By the time allSettled resolves, processTask's try/finally has already
             // set running tasks to success/failed/timeout. The only non-terminal
             // statuses remaining here are waiting/idle tasks that were never started.
             state.finishedAt = nowISO();
-            setTaskStatus(id, 'skipped');
+            ctx.setTaskStatus(id, 'skipped');
           }
         }
       }
@@ -1353,22 +1207,22 @@ export async function runPipeline(
     }
 
     // ── Summary ──
-    const summary = summarizeStates(states);
+    const summary = summarizeStates(ctx.states);
 
     const finishedAt = nowISO();
     const durationMs = new Date(finishedAt).getTime() - new Date(startedAt).getTime();
 
-    if (abortReason !== null) {
+    if (ctx.abortReason !== null) {
       const reasonText =
-        abortReason === 'timeout'
+        ctx.abortReason === 'timeout'
           ? 'Pipeline timeout exceeded'
-          : abortReason === 'stop_all'
+          : ctx.abortReason === 'stop_all'
             ? 'Pipeline stopped (on_failure: stop_all)'
             : 'Pipeline aborted by host';
       await executeHook(
         config.hooks,
         'pipeline_error',
-        buildPipelineErrorContext(pipelineInfo, reasonText, undefined, abortReason),
+        buildPipelineErrorContext(pipelineInfo, reasonText, undefined, ctx.abortReason),
         workDir,
       );
     } else {
@@ -1384,14 +1238,14 @@ export async function runPipeline(
     }
 
     const allSuccess =
-      abortReason === null &&
+      ctx.abortReason === null &&
       summary.failed === 0 &&
       summary.timeout === 0 &&
       summary.blocked === 0;
 
     log.section('Pipeline summary');
     log.quiet(
-      `status:   ${abortReason !== null ? `aborted (${abortReason})` : 'completed'}`,
+      `status:   ${ctx.abortReason !== null ? `aborted (${ctx.abortReason})` : 'completed'}`,
     );
     log.quiet(`duration: ${(durationMs / 1000).toFixed(1)}s`);
     log.quiet(
@@ -1401,7 +1255,7 @@ export async function runPipeline(
     );
     log.quiet('');
     log.quiet('per-task:');
-    for (const [id, state] of states) {
+    for (const [id, state] of ctx.states) {
       const dur =
         state.result?.durationMs != null ? `${(state.result.durationMs / 1000).toFixed(1)}s` : '-';
       const exit = state.result?.exitCode ?? '-';
@@ -1416,8 +1270,8 @@ export async function runPipeline(
     log.info('[pipeline]', `Duration: ${(durationMs / 1000).toFixed(1)}s`);
     log.info('[pipeline]', `Log: ${log.path}`);
 
-    emit({ type: 'run_end', runId, success: allSuccess, abortReason });
-    return { success: allSuccess, runId, logPath: log.path, summary, states: freezeStates(states) };
+    ctx.emit({ type: 'run_end', runId, success: allSuccess, abortReason: ctx.abortReason });
+    return { success: allSuccess, runId, logPath: log.path, summary, states: freezeStates(ctx.states) };
   } finally {
     // Close the persistent log file handle before pruning.
     log.close();
