@@ -52,6 +52,12 @@ import {
 } from './hooks';
 import { Logger, tailLines, clip } from './logger';
 import { InMemoryApprovalGateway, type ApprovalGateway } from './approval';
+import {
+  isTerminal,
+  freezeStates,
+  summarizeStates,
+  toRunTaskState,
+} from './core/run-state';
 
 // ═══ A7: Typed trigger errors ═══
 // Replace string-matching on error messages with structured error types so
@@ -185,50 +191,6 @@ export interface EngineResult {
 // Re-export so SDK consumers can import the event type without reaching
 // into @tagma/types directly.
 export type { RunEventPayload } from './types';
-
-// ═══ Helpers ═══
-
-/**
- * Project the engine's internal TaskState onto the wire RunTaskState
- * shape. `logs` / `totalLogCount` default to empty — they are populated
- * on the server side from streamed `task_log` events, not from state.
- */
-function toRunTaskState(
-  taskId: string,
-  trackId: string,
-  taskName: string,
-  state: TaskState,
-): RunTaskState {
-  const result = state.result;
-  const cfg = state.config;
-  return {
-    taskId,
-    trackId,
-    taskName,
-    status: state.status,
-    startedAt: state.startedAt,
-    finishedAt: state.finishedAt,
-    durationMs: result?.durationMs ?? null,
-    exitCode: result?.exitCode ?? null,
-    stdout: result?.stdout ?? '',
-    stderr: result?.stderr ?? '',
-    stdoutPath: result?.stdoutPath ?? null,
-    stderrPath: result?.stderrPath ?? null,
-    stdoutBytes: result?.stdoutBytes ?? null,
-    stderrBytes: result?.stderrBytes ?? null,
-    sessionId: result?.sessionId ?? null,
-    normalizedOutput: result?.normalizedOutput ?? null,
-    resolvedDriver: cfg.driver ?? null,
-    resolvedModel: cfg.model ?? null,
-    resolvedPermissions: (cfg.permissions as Permissions | undefined) ?? null,
-    // Ports not yet wired through the engine's event surface. Null placeholder
-    // keeps the wire type honest until the ports extraction pass lands.
-    outputs: result?.outputs ?? null,
-    inputs: null,
-    logs: [],
-    totalLogCount: 0,
-  };
-}
 
 export interface RunPipelineOptions {
   readonly approvalGateway?: ApprovalGateway;
@@ -1463,27 +1425,7 @@ export async function runPipeline(
     }
 
     // ── Summary ──
-    const summary = { total: 0, success: 0, failed: 0, skipped: 0, timeout: 0, blocked: 0 };
-    for (const [, state] of states) {
-      summary.total++;
-      switch (state.status) {
-        case 'success':
-          summary.success++;
-          break;
-        case 'failed':
-          summary.failed++;
-          break;
-        case 'skipped':
-          summary.skipped++;
-          break;
-        case 'timeout':
-          summary.timeout++;
-          break;
-        case 'blocked':
-          summary.blocked++;
-          break;
-      }
-    }
+    const summary = summarizeStates(states);
 
     const finishedAt = nowISO();
     const durationMs = new Date(finishedAt).getTime() - new Date(startedAt).getTime();
@@ -1595,28 +1537,3 @@ async function pruneLogDirs(logsDir: string, keep: number, excludeRunId: string)
   );
 }
 
-function isTerminal(status: TaskStatus): boolean {
-  return (
-    status === 'success' ||
-    status === 'failed' ||
-    status === 'timeout' ||
-    status === 'skipped' ||
-    status === 'blocked'
-  );
-}
-
-/** Return a deep-copied, caller-safe snapshot of the states map. */
-function freezeStates(states: Map<string, TaskState>): ReadonlyMap<string, TaskState> {
-  const copy = new Map<string, TaskState>();
-  for (const [id, s] of states) {
-    copy.set(id, {
-      config: { ...s.config },
-      trackConfig: { ...s.trackConfig },
-      status: s.status,
-      result: s.result ? { ...s.result } : null,
-      startedAt: s.startedAt,
-      finishedAt: s.finishedAt,
-    });
-  }
-  return copy;
-}
