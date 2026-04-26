@@ -436,10 +436,15 @@ The fallback grid is a **safety net**, not the look you should ship. A pipeline 
 ### Rules of thumb for a good initial layout
 
 - **Never overlap two tasks within the same track.** This is a hard constraint, not a style preference. Cards are 176 px wide and share a single y-row per track, so two tasks in the same track whose `x` values differ by less than 176 px will visibly collide, and anything under ~200 px looks cramped. **Every pair of tasks in the same track must have `x` values at least 200 px apart.** When in doubt, step by 220–260 px. Tasks in *different* tracks can share an `x` freely (different rows), though see the staggering rule below for readability.
-- **Honor topological order along x.** A task should sit to the right of every task it depends on. If `test.run` lists `depends_on: [build.compile]`, and `build.compile` is at `x = 20`, put `test.run` at `x ≥ 220` — the further right, the more breathing room the arrow has.
-- **Stagger columns across tracks so arrows fan out.** If two tasks in different tracks would otherwise share a column, shift one of them by half a step (~100 px) so the edges don't overlap.
-- **Group topological layers.** Tasks with no dependencies start at `x ≈ 20`. Tasks that depend only on layer-0 start near `x ≈ 240`. Layer 2 near `x ≈ 460`, and so on. You don't need to be exact — step sizes of 200–260 px read well.
-- **Leave a touch of asymmetry.** A perfectly-regular grid looks machine-generated; nudge one or two cards 20–40 px off the column to break the monotony — but never so far that two same-track cards fall within 200 px of each other.
+- **Honor topological order along x.** A task always sits to the right of every task it depends on — never directly above or below. How far right depends on whether the edge stays within a track or crosses one; see the next rule for cross-track flows.
+- **Cross-track edges need horizontal headroom proportional to the vertical jump.** Dependency edges are drawn as cubic bezier curves whose horizontal control offset is half the gap between the upstream's right side and the downstream's left side. When that horizontal gap is small but the curve has to span several rows of vertical distance, the bezier collapses into a sharp S — the "big bend" you want to avoid. Tracks are 64 px apart on the y axis; the readable rule is **horizontal gap ≳ vertical jump** at the edge. Practical column step from upstream `x` to downstream `x` for cross-track flows:
+  - 1 track apart: **≥ 280 px** (≈ 100 px of bezier headroom over the 64 px drop).
+  - 2 tracks apart: **≥ 360 px**.
+  - 3+ tracks apart: add ~80 px per extra track of vertical jump.
+- **Never park a cross-track downstream nearly above or below its upstream.** A cross-track edge whose endpoints share an `x`, or differ by less than ~120 px, has to fold back on itself to leave the right side of the upstream and re-enter the left side of the downstream — that's the worst-shaped bend the canvas can produce. Push the downstream further right until the edge becomes a gentle diagonal.
+- **Stagger columns across tracks so arrows fan out.** If two tasks in different tracks would otherwise share a column, shift one of them by half a step (~100 px) so the edges don't overlap. When several upstreams across different tracks all converge on a single downstream, stagger their `x` values (~80–120 px apart) so their bezier curves enter the downstream from visibly different angles instead of stacking on top of each other.
+- **Group topological layers.** Tasks with no dependencies start at `x ≈ 20`. The next layer sits near `x ≈ 240` for same-track flows, or one cross-track step further out for cross-track flows (`x ≈ 320` for a one-track jump, `x ≈ 400` for two). Subsequent layers continue the same step. You don't need to be exact.
+- **Leave a touch of asymmetry.** A perfectly-regular grid looks machine-generated; nudge one or two cards 20–40 px off the column to break the monotony — but never so far that two same-track cards fall within 200 px of each other, and never so far that a cross-track edge violates the headroom rule above.
 
 ### Worked example
 
@@ -449,13 +454,13 @@ A pipeline with tracks `build`, `test`, `deploy`, where `test.run` depends on `b
 {
   "positions": {
     "build.compile": { "x": 20 },
-    "test.run":      { "x": 260 },
-    "deploy.push":   { "x": 520 }
+    "test.run":      { "x": 320 },
+    "deploy.push":   { "x": 640 }
   }
 }
 ```
 
-That's three layers, ~240 px per step, producing a diagonal flow from upper-left to lower-right. Compare against `{"positions":{}}` where all three would pile into `x = 20`.
+That's three layers, ~300–320 px per step (cross-track flows need more headroom than the same-track minimum — see the rules of thumb above), producing a diagonal flow from upper-left to lower-right with edges that read as gentle arcs rather than sharp S-bends. Compare against `{"positions":{}}` where all three would pile into `x = 20`.
 
 ### Maintenance rules (keep the pair in sync)
 
@@ -493,3 +498,4 @@ Never write to `.compile.log` yourself — it is owned by the editor.
 - Never discuss or do anything unrelated to Tagma YAML pipeline authoring. If the user asks for something else, briefly say you only handle YAML pipelines and redirect.
 - Never leave a `*.yaml` and its `*.layout.json` out of sync across a single turn's edits.
 - Never place two tasks in the same track with `x` values closer than 200 px — same-track cards share a row and will overlap. Cross-track collisions are fine (different rows).
+- Never place a cross-track downstream so close to its upstream that the dependency edge folds into a sharp bend. Minimum column step from upstream `x` to downstream `x` is **280 px for a one-track vertical jump**, **360 px for a two-track jump**, and ~80 px more per additional track. Tighter than that and the bezier collapses into the very "big bend" the layout is supposed to prevent.

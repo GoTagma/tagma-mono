@@ -28,3 +28,6 @@ apps/electron/release/
 # Opencode binary staged by apps/electron/scripts/fetch-opencode.mjs
 # before electron-builder packs it via extraResources. ~150 MB per platform.
 apps/electron/build/opencode/
+
+
+docs
