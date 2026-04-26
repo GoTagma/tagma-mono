@@ -66,6 +66,16 @@
       "import": "./dist/adapters/websocket-approval.js",
       "default": "./dist/adapters/websocket-approval.js"
     },
+    "./runtime/adapters/stdin-approval": {
+      "types": "./dist/runtime/adapters/stdin-approval.d.ts",
+      "import": "./dist/runtime/adapters/stdin-approval.js",
+      "default": "./dist/runtime/adapters/stdin-approval.js"
+    },
+    "./runtime/adapters/websocket-approval": {
+      "types": "./dist/runtime/adapters/websocket-approval.d.ts",
+      "import": "./dist/runtime/adapters/websocket-approval.js",
+      "default": "./dist/runtime/adapters/websocket-approval.js"
+    },
     "./ports": {
       "types": "./dist/ports.d.ts",
       "import": "./dist/ports.js",

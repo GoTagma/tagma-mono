@@ -1,4 +1,3 @@
-import { resolve } from 'path';
 import type {
   PipelineConfig,
   TaskConfig,
@@ -24,7 +23,6 @@ import {
   toRunTaskState,
 } from './core/run-state';
 import { preflight } from './core/preflight';
-import { pruneLogDirs } from './core/log-prune';
 import { RunContext } from './core/run-context';
 import {
   allTasksTerminal,
@@ -154,7 +152,7 @@ export async function runPipeline(
   // Forward every structured log line to subscribers as task_log events.
   // Reading options.onEvent inside the callback (vs. capturing it once) keeps
   // the SDK behavior correct if callers pass a fresh onEvent on each run.
-  const log = new Logger(workDir, runId, (record) => {
+  const log = new Logger(workDir, runId, runtime.logStore, (record) => {
     options.onEvent?.({
       type: 'task_log',
       runId,
@@ -449,8 +447,8 @@ export async function runPipeline(
     log.close();
     // Prune old per-run log directories on every exit path (normal, blocked, or thrown).
     // Exclude the current runId so a concurrent run cannot delete its own live directory.
-    if (maxLogRuns > 0) {
-      await pruneLogDirs(resolve(workDir, '.tagma', 'logs'), maxLogRuns, runId);
+    if (maxLogRuns > 0 && runtime.logStore.prune) {
+      await runtime.logStore.prune({ workDir, keep: maxLogRuns, excludeRunId: runId });
     }
   }
 }

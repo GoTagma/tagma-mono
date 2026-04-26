@@ -1,9 +1,7 @@
-import { watch } from 'chokidar';
 import { resolve, dirname } from 'path';
-import { mkdir } from 'fs/promises';
 import type { TriggerPlugin, TriggerContext } from '../types';
 import { parseDuration, validatePath } from '../utils';
-import { TriggerTimeoutError } from '../engine';
+import { TriggerTimeoutError } from '../core/trigger-errors';
 
 const IS_WINDOWS = process.platform === 'win32';
 
@@ -37,128 +35,97 @@ export const FileTrigger: TriggerPlugin = {
     const safePath = validatePath(filePath, ctx.workDir);
     const timeoutMs = config.timeout != null ? parseDuration(String(config.timeout)) : 0;
 
-    // Hoist the async work into a named async function so the Promise
-    // constructor itself is synchronous — avoids the no-async-promise-executor
-    // lint error and ensures exceptions are always propagated via reject().
-    async function start(
-      resolve_p: (value: unknown) => void,
-      reject: (reason?: unknown) => void,
-    ): Promise<void> {
-      if (ctx.signal.aborted) {
-        reject(new Error('Pipeline aborted'));
-        return;
-      }
-
-      let settled = false;
-      let timer: ReturnType<typeof setTimeout> | null = null;
-
-      // Ensure the parent directory exists so the watcher doesn't fail
-      // with ENOENT for nested paths like `build/output/result.json`.
-      const dir = dirname(safePath);
-      try {
-        await mkdir(dir, { recursive: true });
-      } catch {
-        /* best effort — dir may already exist */
-      }
-
-      // Pass `cwd: dir` so chokidar resolves paths relative to the watched
-      // directory. The 'add'/'change' events will then carry paths relative
-      // to `dir`, which we resolve with `resolve(dir, addedPath)` for an
-      // accurate absolute comparison — fixing the ambiguous process.cwd()
-      // resolution of the previous implementation.
-      const watcher = watch(dir, {
-        ignoreInitial: true,
-        depth: 0,
-        cwd: dir,
-        awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 50 },
-      });
-
-      const cleanup = () => {
-        if (settled) return;
-        settled = true;
-        watcher.close().catch(() => {
-          /* ignore */
-        });
-        if (timer) clearTimeout(timer);
-        ctx.signal.removeEventListener('abort', onAbort);
-      };
-
-      const onAbort = () => {
-        cleanup();
-        reject(new Error('Pipeline aborted'));
-      };
-
-      watcher.on('add', (addedPath: string) => {
-        if (settled) return;
-        if (pathsEqual(resolve(dir, addedPath), safePath)) {
-          cleanup();
-          resolve_p({ path: safePath });
-        }
-      });
-
-      // Also fire on 'change' so that overwriting an existing file is detected.
-      // Without this, upstream tasks that truncate-and-rewrite a file emit only
-      // a 'change' event and the downstream trigger would never resolve.
-      watcher.on('change', (changedPath: string) => {
-        if (settled) return;
-        if (pathsEqual(resolve(dir, changedPath), safePath)) {
-          cleanup();
-          resolve_p({ path: safePath });
-        }
-      });
-
-      watcher.on('error', (err: unknown) => {
-        if (settled) return;
-        cleanup();
-        reject(
-          new Error(
-            `file trigger watch error: ${err instanceof Error ? err.message : String(err)}`,
-          ),
-        );
-      });
-
-      // After the watcher finishes its initial scan, check if the file already exists.
-      // Doing this inside 'ready' eliminates the race window between existence check
-      // and watcher startup, so we neither miss events nor double-resolve.
-      watcher.on('ready', () => {
-        if (settled) return;
-        Bun.file(safePath)
-          .exists()
-          .then((exists) => {
-            if (settled) return;
-            if (exists) {
-              cleanup();
-              resolve_p({ path: safePath });
-            }
-          })
-          .catch((err: unknown) => {
-            if (settled) return;
-            cleanup();
-            reject(
-              new Error(
-                `file trigger existence check failed: ${err instanceof Error ? err.message : String(err)}`,
-              ),
-            );
-          });
-      });
-
-      if (timeoutMs > 0) {
-        timer = setTimeout(() => {
-          if (settled) return;
-          cleanup();
-          reject(
-            new TriggerTimeoutError(
-              `file trigger timeout: ${filePath} did not appear within ${config.timeout}`,
-            ),
-          );
-        }, timeoutMs);
-      }
-
-      ctx.signal.addEventListener('abort', onAbort);
-    }
-
-    return new Promise((resolve_p, reject) => {
-      start(resolve_p, reject).catch(reject);
-    });
+    return waitForFile({ filePath, safePath, timeoutMs, timeoutLabel: config.timeout, ctx });
   },
 };
+
+async function waitForFile(options: {
+  readonly filePath: string;
+  readonly safePath: string;
+  readonly timeoutMs: number;
+  readonly timeoutLabel: unknown;
+  readonly ctx: TriggerContext;
+}): Promise<unknown> {
+  const { filePath, safePath, timeoutMs, timeoutLabel, ctx } = options;
+  if (ctx.signal.aborted) throw new Error('Pipeline aborted');
+
+  const dir = dirname(safePath);
+  await ctx.runtime.ensureDir(dir).catch(() => {
+    /* best effort; runtime watch will surface real failures */
+  });
+
+  const watchController = new AbortController();
+  let removeAbortListener = () => {
+    /* no-op until the abort listener is installed */
+  };
+  const abortPromise = new Promise<never>((_, reject) => {
+    const onAbort = () => {
+      watchController.abort();
+      reject(new Error('Pipeline aborted'));
+    };
+    ctx.signal.addEventListener('abort', onAbort, { once: true });
+    removeAbortListener = () => ctx.signal.removeEventListener('abort', onAbort);
+  });
+
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise =
+    timeoutMs > 0
+      ? new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            watchController.abort();
+            reject(
+              new TriggerTimeoutError(
+                `file trigger timeout: ${filePath} did not appear within ${timeoutLabel}`,
+              ),
+            );
+          }, timeoutMs);
+        })
+      : new Promise<never>(() => {
+          /* no timeout */
+        });
+
+  async function watchLoop(): Promise<unknown> {
+    // Pass `cwd: dir` so runtimes can emit paths relative to the watched
+    // directory. The 'add'/'change' events are resolved against `dir` before
+    // comparison, preserving the old chokidar behavior without coupling this
+    // trigger to chokidar or Bun file APIs.
+    for await (const event of ctx.runtime.watch(dir, {
+      ignoreInitial: true,
+      depth: 0,
+      cwd: dir,
+      awaitWriteFinishMs: 100,
+      signal: watchController.signal,
+    })) {
+      if (event.type === 'ready') {
+        let exists = false;
+        try {
+          exists = await ctx.runtime.fileExists(safePath);
+        } catch (err) {
+          throw new Error(
+            `file trigger existence check failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+        if (exists) return { path: safePath };
+        continue;
+      }
+
+      if (
+        (event.type === 'add' || event.type === 'change') &&
+        pathsEqual(resolve(dir, event.path), safePath)
+      ) {
+        return { path: safePath };
+      }
+    }
+
+    if (ctx.signal.aborted) throw new Error('Pipeline aborted');
+    throw new Error(`file trigger watch ended before ${filePath} appeared`);
+  }
+
+  try {
+    return await Promise.race([watchLoop(), timeoutPromise, abortPromise]);
+  } finally {
+    if (timer !== null) clearTimeout(timer);
+    removeAbortListener();
+    watchController.abort();
+  }
+}

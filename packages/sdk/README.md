@@ -408,6 +408,12 @@ YAML `ports` has been replaced by typed `inputs` / `outputs`. `validateRaw` repo
 - placeholder substitution, binding resolution, output extraction, and internal prompt-contract inference
 - the subpath name is historical; YAML `ports` is rejected by validation
 
+### Runtime approval adapters
+
+- `@tagma/sdk/runtime/adapters/stdin-approval`
+- `@tagma/sdk/runtime/adapters/websocket-approval`
+- the older `@tagma/sdk/adapters/*` subpaths remain thin compatibility re-exports
+
 ### `bootstrapBuiltins(registry)`
 
 Registers all built-in plugins (opencode driver, file/manual triggers, completion checks, static-context middleware).
@@ -425,7 +431,7 @@ Options:
 - `registry` -- use an existing `PluginRegistry` instance
 - `builtins` -- register built-in plugins into the instance registry; defaults to `true`
 - `plugins` -- register package-level `TagmaPlugin` capability objects into the instance registry
-- `runtime` -- override command/driver process execution; defaults to `bunRuntime()`
+- `runtime` -- override process execution, file watching, file existence checks, log storage, time, and sleep; defaults to `bunRuntime()`
 
 ### `createTagma().run(config, options): Promise<EngineResult>`
 
@@ -446,7 +452,7 @@ Options:
 - `maxLogRuns` -- number of per-run log directories to keep under `<workDir>/.tagma/logs/` (default: 20)
 - `skipPluginLoading` -- skip the engine's built-in `loadPlugins(config.plugins)` call. Set this when the host has already pre-loaded plugins from a custom resolution path (e.g. the editor loading from the user's workspace `node_modules`) so the engine doesn't re-resolve them via Node's default cwd-based import.
 
-> **stdout / stderr persistence.** The engine streams every task's stdout and stderr to disk under `<workDir>/.tagma/logs/<runId>/<taskId>.stdout` and `.stderr`. The `TaskResult.stdout` / `stderr` strings are bounded tails (8 MB / 4 MB by default) — long outputs are truncated from the head with a marker, and consumers that need the full bytes should read `TaskResult.stdoutPath` / `stderrPath`. Use `TaskResult.stdoutBytes` / `stderrBytes` to display "32 MB (truncated)" without re-stat'ing the file.
+> **stdout / stderr persistence.** With the default Bun runtime, the engine streams every task's stdout and stderr to disk under `<workDir>/.tagma/logs/<runId>/<taskId>.stdout` and `.stderr`. Custom runtimes can relocate those artifacts by implementing `runtime.logStore.taskOutputPath()`. The `TaskResult.stdout` / `stderr` strings are bounded tails (8 MB / 4 MB by default) — long outputs are truncated from the head with a marker, and consumers that need the full bytes should read `TaskResult.stdoutPath` / `stderrPath`. Use `TaskResult.stdoutBytes` / `stderrBytes` to display "32 MB (truncated)" without re-stat'ing the file.
 
 ### `PipelineRunner`
 
@@ -534,6 +540,8 @@ export const HttpTrigger: TriggerPlugin = {
     },
   },
   async watch(config, ctx) {
+    // Trigger plugins should use ctx.runtime for file IO, watching, and
+    // timing so they can run under non-Bun test/runtime implementations.
     /* ... */
   },
 };

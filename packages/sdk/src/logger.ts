@@ -1,5 +1,4 @@
-import { resolve, dirname } from 'node:path';
-import { mkdirSync, writeFileSync, openSync, writeSync, closeSync } from 'node:fs';
+import type { RuntimeLogSink, RuntimeLogStore } from './types';
 
 /**
  * Structured record emitted for every log line. Consumers (e.g. the editor
@@ -40,24 +39,21 @@ function taskIdFromPrefix(prefix: string): string | null {
  * stream the run process over IPC/SSE don't need to tail the file.
  */
 export class Logger {
-  private readonly filePath: string;
-  private readonly runDir: string;
+  private readonly sink: RuntimeLogSink;
   private readonly onLine: LogListener | null;
-  /** Persistent file descriptor for append writes (avoids open/close per line). */
-  private fd: number | null;
 
-  constructor(workDir: string, runId: string, onLine?: LogListener) {
-    this.runDir = resolve(workDir, '.tagma', 'logs', runId);
-    this.filePath = resolve(this.runDir, 'pipeline.log');
+  constructor(
+    workDir: string,
+    runId: string,
+    logStore: RuntimeLogStore,
+    onLine?: LogListener,
+  ) {
     this.onLine = onLine ?? null;
-    mkdirSync(dirname(this.filePath), { recursive: true });
     const header =
       `# Pipeline run ${runId} @ ${new Date().toISOString()}\n` +
       `# Host: ${process.platform} ${process.arch}  Bun: ${process.versions.bun ?? 'n/a'}\n` +
       `# Work dir: ${workDir}\n\n`;
-    writeFileSync(this.filePath, header);
-    // Open once for all subsequent appends (O_APPEND is implied by 'a' flag)
-    this.fd = openSync(this.filePath, 'a');
+    this.sink = logStore.openRunLog({ workDir, runId, header });
   }
 
   info(prefix: string, message: string): void {
@@ -109,10 +105,8 @@ export class Logger {
   }
 
   private append(line: string): void {
-    if (this.fd === null) return;
     try {
-      const data = line.endsWith('\n') ? line : line + '\n';
-      writeSync(this.fd, data);
+      this.sink.append(line);
     } catch {
       // Swallow log write failures; engine correctness shouldn't depend on logging.
     }
@@ -120,13 +114,10 @@ export class Logger {
 
   /** Close the persistent file handle. Called by the engine at run completion. */
   close(): void {
-    if (this.fd !== null) {
-      try {
-        closeSync(this.fd);
-      } catch {
-        /* already closed */
-      }
-      this.fd = null;
+    try {
+      this.sink.close();
+    } catch {
+      /* already closed */
     }
   }
 
@@ -140,12 +131,12 @@ export class Logger {
   }
 
   get path(): string {
-    return this.filePath;
+    return this.sink.path;
   }
 
   /** Directory that holds all artifacts for this run (pipeline.log, *.stderr, etc.). */
   get dir(): string {
-    return this.runDir;
+    return this.sink.dir;
   }
 }
 

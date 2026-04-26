@@ -1,4 +1,3 @@
-import { resolve } from 'path';
 import type {
   CompletionPlugin,
   DriverContext,
@@ -136,6 +135,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
             workDir: task.cwd ?? workDir,
             signal: ctx.abortController.signal,
             approvalGateway,
+            runtime: ctx.runtime,
           })
           .then(
             (v) => {
@@ -395,9 +395,18 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
     // and keep only a bounded tail in the returned TaskResult. Filenames
     // mirror the existing `.stderr` naming — dots in task ids are replaced
     // so hierarchical ids (e.g. `track1.task2`) map cleanly to a flat dir.
-    const fsSafeTaskId = taskId.replace(/\./g, '_');
-    const stdoutPath = resolve(log.dir, `${fsSafeTaskId}.stdout`);
-    const stderrPath = resolve(log.dir, `${fsSafeTaskId}.stderr`);
+    const stdoutPath = ctx.runtime.logStore.taskOutputPath({
+      workDir,
+      runId: ctx.runId,
+      taskId,
+      stream: 'stdout',
+    });
+    const stderrPath = ctx.runtime.logStore.taskOutputPath({
+      workDir,
+      runId: ctx.runId,
+      taskId,
+      stream: 'stderr',
+    });
     const runOpts = {
       timeoutMs,
       signal: ctx.abortController.signal,

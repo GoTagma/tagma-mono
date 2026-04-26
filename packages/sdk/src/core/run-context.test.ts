@@ -12,6 +12,41 @@ const fakeRuntime: TagmaRuntime = {
   async runSpawn() {
     throw new Error('fakeRuntime.runSpawn should not be called by RunContext tests');
   },
+  async ensureDir() {
+    /* no-op */
+  },
+  async fileExists() {
+    return false;
+  },
+  async *watch() {
+    /* no-op */
+  },
+  logStore: {
+    openRunLog() {
+      return {
+        path: 'mem://pipeline.log',
+        dir: 'mem://run',
+        append() {
+          /* no-op */
+        },
+        close() {
+          /* no-op */
+        },
+      };
+    },
+    taskOutputPath({ taskId, stream }) {
+      return `mem://${taskId}.${stream}`;
+    },
+    logsDir() {
+      return 'mem://logs';
+    },
+  },
+  now() {
+    return new Date('2026-04-26T00:00:00.000Z');
+  },
+  sleep() {
+    return Promise.resolve();
+  },
 };
 
 function makeContext(overrides: Partial<{

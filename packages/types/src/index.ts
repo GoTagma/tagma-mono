@@ -302,6 +302,85 @@ export interface SpawnSpec {
   readonly env?: Readonly<Record<string, string>>;
 }
 
+// ═══ Runtime Boundary ═══
+
+export interface RunOptions {
+  readonly timeoutMs?: number;
+  readonly signal?: AbortSignal;
+  readonly stdoutPath?: string;
+  readonly stderrPath?: string;
+  readonly maxStdoutTailBytes?: number;
+  readonly maxStderrTailBytes?: number;
+}
+
+export type RuntimeWatchEventType = 'ready' | 'add' | 'change' | 'unlink';
+
+export interface RuntimeWatchEvent {
+  readonly type: RuntimeWatchEventType;
+  /**
+   * Runtime-specific path for the event. Bun runtime returns the same path
+   * shape chokidar emits, so callers that pass `cwd` receive paths relative
+   * to that directory.
+   */
+  readonly path: string;
+}
+
+export interface RuntimeWatchOptions {
+  readonly cwd?: string;
+  readonly depth?: number;
+  readonly ignoreInitial?: boolean;
+  readonly awaitWriteFinishMs?: number;
+  readonly signal?: AbortSignal;
+}
+
+export interface RuntimeLogSink {
+  readonly path: string;
+  readonly dir: string;
+  append(line: string): void;
+  close(): void;
+}
+
+export interface OpenRunLogOptions {
+  readonly workDir: string;
+  readonly runId: string;
+  readonly header: string;
+}
+
+export interface TaskOutputPathOptions {
+  readonly workDir: string;
+  readonly runId: string;
+  readonly taskId: string;
+  readonly stream: 'stdout' | 'stderr';
+}
+
+export interface PruneLogOptions {
+  readonly workDir: string;
+  readonly keep: number;
+  readonly excludeRunId: string;
+}
+
+export interface RuntimeLogStore {
+  openRunLog(options: OpenRunLogOptions): RuntimeLogSink;
+  taskOutputPath(options: TaskOutputPathOptions): string;
+  logsDir(workDir: string): string;
+  prune?(options: PruneLogOptions): Promise<void>;
+}
+
+export interface TagmaRuntime {
+  runSpawn(
+    spec: SpawnSpec,
+    driver: DriverPlugin | null,
+    options?: RunOptions,
+  ): Promise<TaskResult>;
+  runCommand(command: string, cwd: string, options?: RunOptions): Promise<TaskResult>;
+  ensureDir(path: string): Promise<void>;
+  fileExists(path: string): Promise<boolean>;
+  watch(path: string, options?: RuntimeWatchOptions): AsyncIterable<RuntimeWatchEvent>;
+  readonly logStore: RuntimeLogStore;
+  now(): Date;
+  sleep(ms: number, signal?: AbortSignal): Promise<void>;
+}
+
 // ═══ Driver Capabilities ═══
 
 export interface DriverCapabilities {
@@ -446,6 +525,7 @@ export interface TriggerContext {
   readonly workDir: string;
   readonly signal: AbortSignal;
   readonly approvalGateway: ApprovalGateway;
+  readonly runtime: TagmaRuntime;
 }
 
 export interface TriggerPlugin {
