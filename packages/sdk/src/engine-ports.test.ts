@@ -2,12 +2,10 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { PluginRegistry } from './registry';
 import { bootstrapBuiltins } from './bootstrap';
 import { runPipeline, type RunEventPayload } from './engine';
-import type { PipelineConfig, TaskConfig, TaskPorts, TaskStatus } from './types';
-
-// ─── Helpers ─────────────────────────────────────────────────────────
+import { PluginRegistry } from './registry';
+import type { PipelineConfig, TaskConfig, TaskStatus } from './types';
 
 const PERMS = { read: true, write: false, execute: false };
 
@@ -18,36 +16,21 @@ function freshRegistry(): PluginRegistry {
 }
 
 function makeDir(): string {
-  return mkdtempSync(join(tmpdir(), 'tagma-ports-'));
+  return mkdtempSync(join(tmpdir(), 'tagma-bindings-'));
 }
 
-/**
- * Write a small Node script to the workspace dir that emits the given
- * payload on stdout as a single-line JSON object.
- *
- * Tests that rely on shell-quoted inline JSON (`echo '{"x":1}'`) are
- * fragile across Windows cmd / PowerShell / Git Bash — quote handling
- * differs widely. Putting the payload into a Node script instead keeps
- * the command line a plain `node /path/to/file.js`, which survives any
- * shell, and still exercises the engine's "last-line JSON" extraction
- * on real child-process output.
- */
 function writeEmitScript(dir: string, name: string, payload: Record<string, unknown>): string {
   const path = join(dir, `${name}.js`);
-  const src = `process.stdout.write(${JSON.stringify(JSON.stringify(payload))});\nprocess.stdout.write('\\n');\n`;
-  writeFileSync(path, src);
+  writeFileSync(
+    path,
+    `process.stdout.write(${JSON.stringify(JSON.stringify(payload))});\nprocess.stdout.write('\\n');\n`,
+  );
   return path;
 }
 
-/**
- * Same as writeEmitScript but echoes args joined with `|`, so downstream
- * tests can assert that upstream input values ended up on the command
- * line post-substitution.
- */
 function writeEchoArgsScript(dir: string, name: string): string {
   const path = join(dir, `${name}.js`);
-  const src = `process.stdout.write(process.argv.slice(2).join('|'));\nprocess.stdout.write('\\n');\n`;
-  writeFileSync(path, src);
+  writeFileSync(path, `process.stdout.write(process.argv.slice(2).join('|'));\n`);
   return path;
 }
 
@@ -62,7 +45,7 @@ function task(overrides: Partial<TaskConfig> & { id: string }): TaskConfig {
 
 function pipeline(tasks: TaskConfig[]): PipelineConfig {
   return {
-    name: 'ports-test',
+    name: 'bindings-test',
     tracks: [
       {
         id: 't',
@@ -76,24 +59,14 @@ function pipeline(tasks: TaskConfig[]): PipelineConfig {
   };
 }
 
-interface RunResult {
-  events: RunEventPayload[];
-  states: ReadonlyMap<string, unknown>;
-  success: boolean;
-}
-
-async function run(
-  config: PipelineConfig,
-  workDir: string,
-  registry = freshRegistry(),
-): Promise<RunResult> {
+async function run(config: PipelineConfig, workDir: string) {
   const events: RunEventPayload[] = [];
   const result = await runPipeline(config, workDir, {
-    registry,
+    registry: freshRegistry(),
     skipPluginLoading: true,
     onEvent: (e) => events.push(e),
   });
-  return { events, states: result.states, success: result.success };
+  return { events, success: result.success };
 }
 
 function finalUpdateFor(events: RunEventPayload[], qid: string): RunEventPayload | undefined {
@@ -109,360 +82,83 @@ function finalStatusFrom(events: RunEventPayload[], qid: string): TaskStatus | u
   return last && last.type === 'task_update' ? last.status : undefined;
 }
 
-// ─── Tests ────────────────────────────────────────────────────────────
-
-describe('engine — ports: output extraction + input resolution', () => {
-  test('lightweight task inputs substitute command placeholders without ports', async () => {
+describe('engine — unified inputs and outputs', () => {
+  test('typed outputs feed typed inputs and command placeholders', async () => {
     const dir = makeDir();
     try {
-      const echo = writeEchoArgsScript(dir, 'echo');
-      const config = pipeline([
-        task({
-          id: 'down',
-          command: `node "${echo}" "{{inputs.city}}" "{{inputs.mode}}"`,
-          inputs: {
-            city: { value: 'Shanghai' },
-            mode: { default: 'quick' },
-          },
-        }),
-      ]);
-
-      const { events, success } = await run(config, dir);
-      expect(success).toBe(true);
-      const downFinal = finalUpdateFor(events, 't.down');
-      if (downFinal?.type === 'task_update') {
-        expect((downFinal.stdout ?? '').trim()).toBe('Shanghai|quick');
-        expect(downFinal.inputs).toEqual({ city: 'Shanghai', mode: 'quick' });
-      }
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test('lightweight task outputs publish named values for downstream bindings', async () => {
-    const dir = makeDir();
-    try {
-      const emit = writeEmitScript(dir, 'emit', { bundlePath: 'dist/app.js' });
-      const echo = writeEchoArgsScript(dir, 'echo');
-      const config = pipeline([
-        task({
-          id: 'build',
-          command: `node "${emit}"`,
-          outputs: {
-            bundlePath: {},
-          },
-        }),
-        task({
-          id: 'test',
-          depends_on: ['build'],
-          command: `node "${echo}" "{{inputs.bundlePath}}"`,
-          inputs: {
-            bundlePath: { from: 't.build.outputs.bundlePath', required: true },
-          },
-        }),
-      ]);
-
-      const { events, success } = await run(config, dir);
-      expect(success).toBe(true);
-      const buildFinal = finalUpdateFor(events, 't.build');
-      if (buildFinal?.type === 'task_update') {
-        expect(buildFinal.outputs).toEqual({ bundlePath: 'dist/app.js' });
-      }
-      const testFinal = finalUpdateFor(events, 't.test');
-      if (testFinal?.type === 'task_update') {
-        expect((testFinal.stdout ?? '').trim()).toBe('dist/app.js');
-        expect(testFinal.inputs).toEqual({ bundlePath: 'dist/app.js' });
-      }
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test('upstream outputs feed downstream inputs via name match', async () => {
-    const dir = makeDir();
-    try {
-      const emit = writeEmitScript(dir, 'emit', { city: 'Shanghai', id: 42 });
+      const emit = writeEmitScript(dir, 'emit', { id: '42', city: 'Shanghai' });
       const echo = writeEchoArgsScript(dir, 'echo');
       const config = pipeline([
         task({
           id: 'up',
           command: `node "${emit}"`,
-          ports: {
-            outputs: [
-              { name: 'city', type: 'string' },
-              { name: 'id', type: 'number' },
-            ],
-          } as TaskPorts,
+          outputs: { id: { type: 'number' }, city: { type: 'string' } },
         }),
         task({
           id: 'down',
           depends_on: ['up'],
           command: `node "${echo}" "{{inputs.city}}" "{{inputs.id}}"`,
-          ports: {
-            inputs: [
-              { name: 'city', type: 'string', required: true },
-              { name: 'id', type: 'number', required: true },
-            ],
-          } as TaskPorts,
+          inputs: {
+            city: { from: 't.up.outputs.city', type: 'string', required: true },
+            id: { from: 't.up.outputs.id', type: 'number', required: true },
+          },
         }),
       ]);
 
       const { events, success } = await run(config, dir);
       expect(success).toBe(true);
-
-      // Upstream's extracted outputs land on the final task_update event
-      // so the editor can render them on the card live.
-      const upFinal = finalUpdateFor(events, 't.up')!;
-      expect(upFinal.type).toBe('task_update');
-      if (upFinal.type !== 'task_update') return;
-      expect(upFinal.outputs).toEqual({ city: 'Shanghai', id: 42 });
-
-      // Downstream saw the values: echoed stdout is "Shanghai|42\n".
-      const downFinal = finalUpdateFor(events, 't.down')!;
-      if (downFinal.type !== 'task_update') return;
-      expect(downFinal.status).toBe('success');
-      expect((downFinal.stdout ?? '').trim()).toBe('Shanghai|42');
-      expect(downFinal.inputs).toEqual({ city: 'Shanghai', id: 42 });
+      expect(finalUpdateFor(events, 't.up')?.outputs).toEqual({ id: 42, city: 'Shanghai' });
+      expect(finalUpdateFor(events, 't.down')?.inputs).toEqual({ city: 'Shanghai', id: 42 });
+      expect(finalUpdateFor(events, 't.down')?.stdout).toContain('Shanghai|42');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  test('required input missing → downstream blocked, no spawn, upstream still succeeded', async () => {
+  test('missing required unified input blocks without spawning downstream', async () => {
     const dir = makeDir();
     try {
-      // Upstream declares `city` output but its script emits no JSON, so
-      // the engine can't extract `city` — diagnostic on stderr, no
-      // outputs. Downstream required input unresolved → blocked.
-      const noJson = join(dir, 'no-json.js');
-      writeFileSync(noJson, "process.stdout.write('hello\\n');\n");
+      const emit = writeEmitScript(dir, 'emit', { other: 'x' });
       const echo = writeEchoArgsScript(dir, 'echo');
       const config = pipeline([
-        task({
-          id: 'up',
-          command: `node "${noJson}"`,
-          ports: { outputs: [{ name: 'city', type: 'string' }] } as TaskPorts,
-        }),
+        task({ id: 'up', command: `node "${emit}"`, outputs: { city: { type: 'string' } } }),
         task({
           id: 'down',
           depends_on: ['up'],
           command: `node "${echo}" "{{inputs.city}}"`,
-          ports: {
-            inputs: [{ name: 'city', type: 'string', required: true }],
-          } as TaskPorts,
+          inputs: { city: { from: 't.up.outputs.city', type: 'string', required: true } },
         }),
       ]);
 
       const { events, success } = await run(config, dir);
       expect(success).toBe(false);
       expect(finalStatusFrom(events, 't.up')).toBe('success');
-      const downStatus = finalStatusFrom(events, 't.down');
-      expect(downStatus).toBe('blocked');
-      // The blocked update carries the engine's diagnostic in stderr so
-      // the editor can display it verbatim.
-      const downFinal = finalUpdateFor(events, 't.down');
-      if (downFinal?.type === 'task_update') {
-        expect(downFinal.stderr ?? '').toMatch(/missing required input.*city/i);
-      }
+      expect(finalStatusFrom(events, 't.down')).toBe('blocked');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  test('optional input with default is applied when upstream does not supply it', async () => {
+  test('typed output coercion diagnostics leave missing downstream input', async () => {
     const dir = makeDir();
     try {
-      const noop = join(dir, 'noop.js');
-      writeFileSync(noop, 'process.stdout.write("ok\\n");\n');
+      const emit = writeEmitScript(dir, 'emit', { id: 'not-a-number' });
       const echo = writeEchoArgsScript(dir, 'echo');
       const config = pipeline([
-        task({ id: 'up', command: `node "${noop}"` }),
+        task({ id: 'up', command: `node "${emit}"`, outputs: { id: { type: 'number' } } }),
         task({
           id: 'down',
           depends_on: ['up'],
-          command: `node "${echo}" "{{inputs.lang}}"`,
-          ports: {
-            inputs: [{ name: 'lang', type: 'string', default: 'en' }],
-          } as TaskPorts,
+          command: `node "${echo}" "{{inputs.id}}"`,
+          inputs: { id: { from: 't.up.outputs.id', type: 'number', required: true } },
         }),
       ]);
+
       const { events, success } = await run(config, dir);
-      expect(success).toBe(true);
-      const downFinal = finalUpdateFor(events, 't.down');
-      if (downFinal?.type === 'task_update') {
-        expect((downFinal.stdout ?? '').trim()).toBe('en');
-        expect(downFinal.inputs).toEqual({ lang: 'en' });
-      }
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test('optional input without default or upstream → empty placeholder', async () => {
-    const dir = makeDir();
-    try {
-      const noop = join(dir, 'noop.js');
-      writeFileSync(noop, 'process.stdout.write("ok\\n");\n');
-      // Use a Node script that prints `|<arg>|` so the empty substitution
-      // shows as `||` — cross-platform argv handling.
-      const sentinel = join(dir, 'sentinel.js');
-      writeFileSync(sentinel, 'process.stdout.write("<" + (process.argv[2] || "") + ">\\n");\n');
-      const config = pipeline([
-        task({ id: 'up', command: `node "${noop}"` }),
-        task({
-          id: 'down',
-          depends_on: ['up'],
-          command: `node "${sentinel}" "{{inputs.note}}"`,
-          ports: {
-            inputs: [{ name: 'note', type: 'string' }],
-          } as TaskPorts,
-        }),
-      ]);
-      const { events, success } = await run(config, dir);
-      expect(success).toBe(true);
-      const downFinal = finalUpdateFor(events, 't.down');
-      if (downFinal?.type === 'task_update') {
-        expect((downFinal.stdout ?? '').trim()).toBe('<>');
-      }
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test('tasks with no ports declared are unaffected', async () => {
-    const dir = makeDir();
-    try {
-      const config = pipeline([task({ id: 'plain', command: 'echo hello' })]);
-      const { events, success } = await run(config, dir);
-      expect(success).toBe(true);
-      const final = finalUpdateFor(events, 't.plain');
-      if (final?.type === 'task_update') {
-        expect(final.outputs).toBeFalsy();
-        expect(final.inputs).toEqual({});
-      }
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test('ambiguous name-match blocks downstream unless disambiguated', async () => {
-    const dir = makeDir();
-    try {
-      const emitA = writeEmitScript(dir, 'emitA', { val: 'from-a' });
-      const emitB = writeEmitScript(dir, 'emitB', { val: 'from-b' });
-      const echo = writeEchoArgsScript(dir, 'echo');
-      // Two upstreams both export `val`; downstream auto-matches → ambiguous.
-      const ambigConfig = pipeline([
-        task({
-          id: 'a',
-          command: `node "${emitA}"`,
-          ports: { outputs: [{ name: 'val', type: 'string' }] } as TaskPorts,
-        }),
-        task({
-          id: 'b',
-          command: `node "${emitB}"`,
-          ports: { outputs: [{ name: 'val', type: 'string' }] } as TaskPorts,
-        }),
-        task({
-          id: 'down',
-          depends_on: ['a', 'b'],
-          command: `node "${echo}" "{{inputs.val}}"`,
-          ports: {
-            inputs: [{ name: 'val', type: 'string', required: true }],
-          } as TaskPorts,
-        }),
-      ]);
-      const { events: evAmbig } = await run(ambigConfig, dir);
-      expect(finalStatusFrom(evAmbig, 't.down')).toBe('blocked');
-      const ambigFinal = finalUpdateFor(evAmbig, 't.down');
-      if (ambigFinal?.type === 'task_update') {
-        expect(ambigFinal.stderr ?? '').toMatch(/ambiguous|multiple upstreams/i);
-      }
-
-      // Now add an explicit `from: "t.b.val"` → downstream should succeed.
-      const dir2 = makeDir();
-      try {
-        const emitA2 = writeEmitScript(dir2, 'emitA', { val: 'from-a' });
-        const emitB2 = writeEmitScript(dir2, 'emitB', { val: 'from-b' });
-        const echo2 = writeEchoArgsScript(dir2, 'echo');
-        const explicitConfig = pipeline([
-          task({
-            id: 'a',
-            command: `node "${emitA2}"`,
-            ports: { outputs: [{ name: 'val', type: 'string' }] } as TaskPorts,
-          }),
-          task({
-            id: 'b',
-            command: `node "${emitB2}"`,
-            ports: { outputs: [{ name: 'val', type: 'string' }] } as TaskPorts,
-          }),
-          task({
-            id: 'down',
-            depends_on: ['a', 'b'],
-            command: `node "${echo2}" "{{inputs.val}}"`,
-            ports: {
-              inputs: [
-                { name: 'val', type: 'string', required: true, from: 't.b.val' },
-              ],
-            } as TaskPorts,
-          }),
-        ]);
-        const { events: evExplicit, success } = await run(explicitConfig, dir2);
-        expect(success).toBe(true);
-        const downFinal = finalUpdateFor(evExplicit, 't.down');
-        if (downFinal?.type === 'task_update') {
-          expect((downFinal.stdout ?? '').trim()).toBe('from-b');
-        }
-      } finally {
-        rmSync(dir2, { recursive: true, force: true });
-      }
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test('string → number coercion happens during input resolution', async () => {
-    const dir = makeDir();
-    try {
-      // Emit `id` as a string; downstream declares it as `number`.
-      const emit = writeEmitScript(dir, 'emit', { id: '42' });
-      const script = join(dir, 'assert-number.js');
-      writeFileSync(
-        script,
-        `const v = process.argv[2];
-         const n = Number(v);
-         if (!Number.isFinite(n)) { process.exit(2); }
-         process.stdout.write("n=" + n + "\\n");
-        `,
-      );
-      const config = pipeline([
-        task({
-          id: 'up',
-          command: `node "${emit}"`,
-          ports: {
-            // upstream declares string — matches the emitted literal.
-            outputs: [{ name: 'id', type: 'string' }],
-          } as TaskPorts,
-        }),
-        task({
-          id: 'down',
-          depends_on: ['up'],
-          command: `node "${script}" "{{inputs.id}}"`,
-          ports: {
-            // downstream demands number — resolve should coerce "42" → 42.
-            inputs: [{ name: 'id', type: 'number', required: true }],
-          } as TaskPorts,
-        }),
-      ]);
-      const { events, success } = await run(config, dir);
-      expect(success).toBe(true);
-      const downFinal = finalUpdateFor(events, 't.down');
-      if (downFinal?.type === 'task_update') {
-        expect((downFinal.stdout ?? '').trim()).toBe('n=42');
-        // Value on the wire should be the coerced number, not the raw
-        // string, so the editor renders it faithfully too.
-        expect(downFinal.inputs).toEqual({ id: 42 });
-      }
+      expect(success).toBe(false);
+      expect(finalStatusFrom(events, 't.up')).toBe('success');
+      expect(finalUpdateFor(events, 't.up')?.stderr).toContain('expected number');
+      expect(finalStatusFrom(events, 't.down')).toBe('blocked');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

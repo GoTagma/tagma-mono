@@ -11,7 +11,7 @@ function makeDir(): string {
   return mkdtempSync(join(tmpdir(), 'tagma-pipeline-runner-'));
 }
 
-function portsPipeline(dir: string): PipelineConfig {
+function bindingsPipeline(dir: string): PipelineConfig {
   const emit = join(dir, 'emit.js');
   writeFileSync(
     emit,
@@ -31,18 +31,14 @@ function portsPipeline(dir: string): PipelineConfig {
             id: 'up',
             name: 'up',
             command: `node "${emit}"`,
-            ports: {
-              outputs: [{ name: 'city', type: 'string' }],
-            },
+            outputs: { city: { type: 'string' } },
           },
           {
             id: 'down',
             name: 'down',
             depends_on: ['up'],
             command: `node "${echo}" "{{inputs.city}}"`,
-            ports: {
-              inputs: [{ name: 'city', type: 'string', required: true }],
-            },
+            inputs: { city: { from: 't.up.outputs.city', type: 'string', required: true } },
           },
         ],
       },
@@ -67,7 +63,7 @@ describe('PipelineRunner task snapshot', () => {
   test('getTasks reflects task_update inputs and outputs', async () => {
     const dir = makeDir();
     try {
-      const runner = await run(portsPipeline(dir), dir);
+      const runner = await run(bindingsPipeline(dir), dir);
 
       const tasks = runner.getTasks();
       const up = tasks.get('t.up');
@@ -82,7 +78,7 @@ describe('PipelineRunner task snapshot', () => {
   test('getTasks folds streamed task logs into the task snapshot', async () => {
     const dir = makeDir();
     try {
-      const runner = await run(portsPipeline(dir), dir);
+      const runner = await run(bindingsPipeline(dir), dir);
 
       const tasks = runner.getTasks();
       const up = tasks.get('t.up');

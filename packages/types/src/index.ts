@@ -128,9 +128,8 @@ export interface TaskPorts {
   readonly outputs?: readonly PortDef[];
 }
 
-// Lightweight task-level bindings. These are intentionally looser than
-// `ports`: use them for ordinary parameter passing; use `ports` when the
-// task needs a typed public I/O contract.
+// Unified task-level bindings. `type` is optional: omit it for lightweight
+// pass-through values, add it when the task wants a strict public I/O contract.
 export interface TaskInputBinding {
   /** Literal value. When set, it wins over `from`. */
   readonly value?: unknown;
@@ -147,6 +146,9 @@ export interface TaskInputBinding {
   readonly default?: unknown;
   /** When true, unresolved values block the task before it starts. */
   readonly required?: boolean;
+  readonly type?: PortType;
+  readonly enum?: readonly string[];
+  readonly description?: string;
 }
 
 export interface TaskOutputBinding {
@@ -159,6 +161,9 @@ export interface TaskOutputBinding {
   readonly from?: string;
   /** Fallback when the selected source is missing. */
   readonly default?: unknown;
+  readonly type?: PortType;
+  readonly enum?: readonly string[];
+  readonly description?: string;
 }
 
 export type TaskInputBindings = Readonly<Record<string, TaskInputBinding>>;

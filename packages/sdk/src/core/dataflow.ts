@@ -1,4 +1,11 @@
-import type { TaskConfig, TaskPorts, TaskResult } from '../types';
+import type {
+  PortDef,
+  TaskConfig,
+  TaskInputBindings,
+  TaskOutputBindings,
+  TaskPorts,
+  TaskResult,
+} from '../types';
 import {
   extractTaskBindingOutputs,
   extractTaskOutputs,
@@ -16,6 +23,40 @@ function isCommandTaskConfig(
   task: TaskConfig,
 ): task is TaskConfig & { readonly command: string; readonly prompt?: undefined } {
   return task.command !== undefined && task.prompt === undefined;
+}
+
+function inputBindingsToPorts(bindings: TaskInputBindings | undefined): PortDef[] | undefined {
+  if (!bindings || Object.keys(bindings).length === 0) return undefined;
+  return Object.entries(bindings).map(([name, binding]) => ({
+    name,
+    type: binding.type ?? 'json',
+    ...(binding.description ? { description: binding.description } : {}),
+    ...(binding.required !== undefined ? { required: binding.required } : {}),
+    ...(binding.default !== undefined ? { default: binding.default } : {}),
+    ...(binding.enum ? { enum: [...binding.enum] } : {}),
+    ...(binding.from ? { from: binding.from } : {}),
+  }));
+}
+
+function outputBindingsToPorts(bindings: TaskOutputBindings | undefined): PortDef[] | undefined {
+  if (!bindings || Object.keys(bindings).length === 0) return undefined;
+  return Object.entries(bindings).map(([name, binding]) => ({
+    name,
+    type: binding.type ?? 'json',
+    ...(binding.description ? { description: binding.description } : {}),
+    ...(binding.default !== undefined ? { default: binding.default } : {}),
+    ...(binding.enum ? { enum: [...binding.enum] } : {}),
+  }));
+}
+
+function taskBindingsAsPorts(task: TaskConfig): TaskPorts | undefined {
+  const inputs = inputBindingsToPorts(task.inputs);
+  const outputs = outputBindingsToPorts(task.outputs);
+  if (!inputs && !outputs) return undefined;
+  return {
+    ...(inputs ? { inputs } : {}),
+    ...(outputs ? { outputs } : {}),
+  };
 }
 
 export type EffectivePortsResult =
@@ -38,7 +79,7 @@ export function inferEffectivePorts(
   const isPromptTask = isPromptTaskConfig(task);
 
   if (!isPromptTask) {
-    return { kind: 'ready', isPromptTask: false, effectivePorts: task.ports };
+    return { kind: 'ready', isPromptTask: false, effectivePorts: taskBindingsAsPorts(task) };
   }
 
   const inference = inferPromptPorts({
@@ -47,7 +88,7 @@ export function inferEffectivePorts(
       const isUpstreamCommand = upstream ? isCommandTaskConfig(upstream.task) : false;
       return {
         taskId: upstreamId,
-        outputs: isUpstreamCommand ? upstream?.task.ports?.outputs : undefined,
+        outputs: isUpstreamCommand ? outputBindingsToPorts(upstream?.task.outputs) : undefined,
       };
     }),
     downstreams: (ctx.directDownstreams.get(taskId) ?? []).map((downstreamId) => {
@@ -55,7 +96,7 @@ export function inferEffectivePorts(
       const isDownstreamCommand = downstream ? isCommandTaskConfig(downstream.task) : false;
       return {
         taskId: downstreamId,
-        inputs: isDownstreamCommand ? downstream?.task.ports?.inputs : undefined,
+        inputs: isDownstreamCommand ? inputBindingsToPorts(downstream?.task.inputs) : undefined,
       };
     }),
   });
@@ -98,21 +139,23 @@ export function extractSuccessfulOutputs(
     extractedOutputs = bindingExtraction.outputs;
   }
 
-  const portExtraction = extractTaskOutputs(
-    effectivePorts,
-    result.stdout,
-    result.normalizedOutput,
-  );
-  if (effectivePorts?.outputs && effectivePorts.outputs.length > 0) {
-    extractedOutputs = {
-      ...(extractedOutputs ?? {}),
-      ...portExtraction.outputs,
+  if ((!task.outputs || Object.keys(task.outputs).length === 0) && effectivePorts?.outputs?.length) {
+    const portExtraction = extractTaskOutputs(
+      effectivePorts,
+      result.stdout,
+      result.normalizedOutput,
+    );
+    extractedOutputs = portExtraction.outputs;
+    return {
+      outputs: extractedOutputs,
+      bindingDiagnostic: bindingExtraction.diagnostic,
+      portDiagnostic: portExtraction.diagnostic,
     };
   }
 
   return {
     outputs: extractedOutputs,
     bindingDiagnostic: bindingExtraction.diagnostic,
-    portDiagnostic: portExtraction.diagnostic,
+    portDiagnostic: null,
   };
 }

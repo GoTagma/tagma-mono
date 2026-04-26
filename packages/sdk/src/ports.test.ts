@@ -249,6 +249,59 @@ describe('resolveTaskInputs', () => {
 // ─── resolveTaskBindingInputs ────────────────────────────────────────
 
 describe('resolveTaskBindingInputs', () => {
+  test('coerces typed unified inputs from upstream outputs', () => {
+    const t = task({
+      id: 'downstream',
+      command: 'echo',
+      inputs: {
+        id: { from: 't.up.outputs.id', type: 'number', required: true },
+        enabled: { value: 'true', type: 'boolean' },
+      },
+    });
+    const upstream = new Map([
+      [
+        't.up',
+        {
+          outputs: { id: '42' },
+          stdout: '',
+          stderr: '',
+          normalizedOutput: null,
+          exitCode: 0,
+        },
+      ],
+    ]);
+    const res = resolveTaskBindingInputs(t, upstream, ['t.up']);
+    expect(res.kind).toBe('ready');
+    if (res.kind !== 'ready') return;
+    expect(res.inputs).toEqual({ id: 42, enabled: true });
+  });
+
+  test('blocks typed unified input coercion failures', () => {
+    const t = task({
+      id: 'downstream',
+      command: 'echo',
+      inputs: {
+        id: { from: 't.up.outputs.id', type: 'number', required: true },
+      },
+    });
+    const upstream = new Map([
+      [
+        't.up',
+        {
+          outputs: { id: 'not-a-number' },
+          stdout: '',
+          stderr: '',
+          normalizedOutput: null,
+          exitCode: 0,
+        },
+      ],
+    ]);
+    const res = resolveTaskBindingInputs(t, upstream, ['t.up']);
+    expect(res.kind).toBe('blocked');
+    if (res.kind !== 'blocked') return;
+    expect(res.typeErrors).toEqual([{ input: 'id', reason: 'expected number, got string' }]);
+  });
+
   test('resolves literal values and defaults without requiring ports', () => {
     const t = task({
       id: 'downstream',
@@ -387,6 +440,33 @@ describe('extractTaskOutputs', () => {
 // ─── extractTaskBindingOutputs ───────────────────────────────────────
 
 describe('extractTaskBindingOutputs', () => {
+  test('coerces typed unified outputs from final-line JSON', () => {
+    const r = extractTaskBindingOutputs(
+      {
+        id: { type: 'number' },
+        ok: { from: 'json.success', type: 'boolean' },
+      },
+      'log\n{"id":"42","success":"true"}\n',
+      '',
+      null,
+    );
+    expect(r.outputs).toEqual({ id: 42, ok: true });
+    expect(r.diagnostic).toBeNull();
+  });
+
+  test('diagnoses typed unified output coercion failures', () => {
+    const r = extractTaskBindingOutputs(
+      {
+        id: { type: 'number' },
+      },
+      '{"id":"nope"}',
+      '',
+      null,
+    );
+    expect(r.outputs).toEqual({});
+    expect(r.diagnostic).toContain('"id": expected number, got string');
+  });
+
   test('extracts loose outputs from final-line JSON by default', () => {
     const r = extractTaskBindingOutputs(
       {

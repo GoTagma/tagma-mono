@@ -270,6 +270,7 @@ export type BindingInputResolution =
       readonly kind: 'blocked';
       readonly missingRequired: readonly string[];
       readonly ambiguous: readonly { input: string; producers: readonly string[] }[];
+      readonly typeErrors: readonly { input: string; reason: string }[];
       readonly reason: string;
     };
 
@@ -287,6 +288,7 @@ export function resolveTaskBindingInputs(
   const missingRequired: string[] = [];
   const missingOptional: string[] = [];
   const ambiguous: { input: string; producers: string[] }[] = [];
+  const typeErrors: { input: string; reason: string }[] = [];
 
   for (const [name, binding] of Object.entries(bindings)) {
     let value: unknown;
@@ -321,10 +323,16 @@ export function resolveTaskBindingInputs(
       continue;
     }
 
-    inputs[name] = value;
+    const coerced = coerceBindingValue(binding, value);
+    if (coerced.kind === 'error') {
+      typeErrors.push({ input: name, reason: coerced.reason });
+      continue;
+    }
+
+    inputs[name] = coerced.value;
   }
 
-  if (missingRequired.length > 0 || ambiguous.length > 0) {
+  if (missingRequired.length > 0 || ambiguous.length > 0 || typeErrors.length > 0) {
     const lines: string[] = [];
     if (missingRequired.length > 0) {
       lines.push(`missing required binding input(s): ${missingRequired.join(', ')}`);
@@ -335,7 +343,10 @@ export function resolveTaskBindingInputs(
           `(${amb.producers.join(', ')}) — use "taskId.outputs.${amb.input}"`,
       );
     }
-    return { kind: 'blocked', missingRequired, ambiguous, reason: lines.join('\n') };
+    for (const te of typeErrors) {
+      lines.push(`binding input "${te.input}": ${te.reason}`);
+    }
+    return { kind: 'blocked', missingRequired, ambiguous, typeErrors, reason: lines.join('\n') };
   }
 
   return { kind: 'ready', inputs, missingOptional };
@@ -494,6 +505,21 @@ function coerceValue(port: PortDef, raw: unknown): Coercion {
   }
 }
 
+function coerceBindingValue(
+  binding: { readonly type?: PortType; readonly enum?: readonly string[] },
+  raw: unknown,
+): Coercion {
+  if (!binding.type) return { kind: 'ok', value: raw };
+  return coerceValue(
+    {
+      name: 'binding',
+      type: binding.type,
+      ...(binding.enum ? { enum: binding.enum } : {}),
+    },
+    raw,
+  );
+}
+
 function describe(v: unknown): string {
   if (v === null) return 'null';
   if (Array.isArray(v)) return 'array';
@@ -630,7 +656,13 @@ export function extractTaskBindingOutputs(
       continue;
     }
 
-    outputs[name] = value;
+    const coerced = coerceBindingValue(binding, value);
+    if (coerced.kind === 'error') {
+      missing.push(`"${name}": ${coerced.reason}`);
+      continue;
+    }
+
+    outputs[name] = coerced.value;
   }
 
   return {

@@ -482,17 +482,28 @@ export type TaskOutputs = Readonly<Record<string, TaskBinding>>;
 
 Migration:
 
-- Continue accepting `ports` for one minor version.
-- Convert `ports.inputs` into `inputs` internally.
-- Convert `ports.outputs` into `outputs` internally.
-- Warn when both systems define the same name.
-- Update YAML examples to prefer only `inputs` and `outputs`.
+- Do not keep `ports` as a compatibility layer.
+- Validate `ports` as a clear migration error.
+- Move typed declarations into `inputs.<name>` and `outputs.<name>`.
+- Keep `type` optional so lightweight bindings remain lightweight.
+- Keep Prompt-task neighbor inference as an internal convenience over unified bindings.
 
 Acceptance criteria:
 
-- Existing `ports` examples still run.
-- New examples use no `ports`.
-- Validation errors explain migration clearly.
+- [x] Runtime data flow uses `inputs` and `outputs` as the single task-level model.
+- [x] `type` on bindings coerces and validates values; omitted `type` stays pass-through.
+- [x] Prompt/command mixed flows infer Prompt inputs/outputs from neighboring unified bindings.
+- [x] `ports` produces a migration validation error.
+- [x] New tests and examples use no `ports`.
+
+**Phase 3 status (2026-04-26):**
+
+- [x] Added typed fields to unified task input/output bindings.
+- [x] Rewired engine execution to resolve command bindings directly from `inputs`.
+- [x] Rewired successful output extraction to publish typed `outputs`.
+- [x] Kept Prompt neighbor inference internally, now sourced from neighboring `inputs` / `outputs`.
+- [x] Replaced old engine/schema/validation port tests with unified binding coverage.
+- [x] Full SDK suite green: 198/198.
 
 ### Phase 4: Convert Plugins To Capabilities
 

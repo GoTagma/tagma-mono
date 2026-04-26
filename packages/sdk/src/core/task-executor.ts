@@ -21,11 +21,7 @@ import {
   renderInputsBlock,
   renderOutputSchemaBlock,
 } from '../prompt-doc';
-import {
-  resolveTaskBindingInputs,
-  resolveTaskInputs,
-  substituteInputs,
-} from '../ports';
+import { resolveTaskBindingInputs, resolveTaskInputs, substituteInputs } from '../ports';
 import { executeHook, buildTaskContext } from '../hooks';
 import { clip, tailLines, type Logger } from '../logger';
 import type { ApprovalGateway } from '../approval';
@@ -35,15 +31,17 @@ import { TriggerBlockedError, TriggerTimeoutError } from './trigger-errors';
 
 const MAX_NORMALIZED_BYTES = 1_000_000;
 
-function isPromptTaskConfig(
-  task: { readonly prompt?: string; readonly command?: string },
-): task is { readonly prompt: string; readonly command?: undefined } {
+function isPromptTaskConfig(task: {
+  readonly prompt?: string;
+  readonly command?: string;
+}): task is { readonly prompt: string; readonly command?: undefined } {
   return task.prompt !== undefined && task.command === undefined;
 }
 
-function isCommandTaskConfig(
-  task: { readonly command?: string; readonly prompt?: string },
-): task is { readonly command: string; readonly prompt?: undefined } {
+function isCommandTaskConfig(task: {
+  readonly command?: string;
+  readonly prompt?: string;
+}): task is { readonly command: string; readonly prompt?: undefined } {
   return task.command !== undefined && task.prompt === undefined;
 }
 
@@ -196,7 +194,12 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
   const hookResult = await executeHook(
     config.hooks,
     'task_start',
-    buildTaskContext('task_start', pipelineInfo, ctx.trackInfoOf(taskId), ctx.buildTaskInfoObj(taskId)),
+    buildTaskContext(
+      'task_start',
+      pipelineInfo,
+      ctx.trackInfoOf(taskId),
+      ctx.buildTaskInfoObj(taskId),
+    ),
     workDir,
     ctx.abortController.signal,
   );
@@ -309,50 +312,48 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
     );
   }
 
-  // Feed effective ports into `resolveTaskInputs` by shallow-cloning
-  // the task. Prompt tasks get the inferred ports; Command tasks are
-  // unchanged (effectivePorts === task.ports).
-  const taskForResolve: TaskConfig =
-    effectivePorts === task.ports ? task : { ...task, ports: effectivePorts };
-  const inputResolution = resolveTaskInputs(taskForResolve, ctx.outputValuesMap, node.dependsOn);
-  if (inputResolution.kind === 'blocked') {
-    log.error(
-      `[task:${taskId}]`,
-      `blocked — cannot resolve port inputs:\n${inputResolution.reason}`,
+  let inferredPromptInputs: Readonly<Record<string, unknown>> = {};
+  if (isPromptTask && effectivePorts?.inputs && effectivePorts.inputs.length > 0) {
+    const inputResolution = resolveTaskInputs(
+      { ...task, ports: effectivePorts },
+      ctx.outputValuesMap,
+      node.dependsOn,
     );
-    state.result = {
-      exitCode: -1,
-      stdout: '',
-      stderr: `[engine] port input resolution failed:\n${inputResolution.reason}`,
-      stdoutPath: null,
-      stderrPath: null,
-      durationMs: 0,
-      sessionId: null,
-      normalizedOutput: null,
-      failureKind: 'spawn_error',
-      outputs: null,
-    };
-    state.finishedAt = nowISO();
-    ctx.setTaskStatus(taskId, 'blocked');
-    try {
-      await ctx.fireHook(taskId, 'task_failure');
-    } catch (hookErr) {
+    if (inputResolution.kind === 'blocked') {
       log.error(
         `[task:${taskId}]`,
-        `hook execution failed: ${hookErr instanceof Error ? hookErr.message : String(hookErr)}`,
+        `blocked — cannot resolve inferred prompt inputs:\n${inputResolution.reason}`,
       );
+      state.result = {
+        exitCode: -1,
+        stdout: '',
+        stderr: `[engine] inferred prompt input resolution failed:\n${inputResolution.reason}`,
+        stdoutPath: null,
+        stderrPath: null,
+        durationMs: 0,
+        sessionId: null,
+        normalizedOutput: null,
+        failureKind: 'spawn_error',
+        outputs: null,
+      };
+      state.finishedAt = nowISO();
+      ctx.setTaskStatus(taskId, 'blocked');
+      try {
+        await ctx.fireHook(taskId, 'task_failure');
+      } catch (hookErr) {
+        log.error(
+          `[task:${taskId}]`,
+          `hook execution failed: ${hookErr instanceof Error ? hookErr.message : String(hookErr)}`,
+        );
+      }
+      if (ctx.getOnFailure(taskId) === 'stop_all') ctx.applyStopAll();
+      return;
     }
-    if (ctx.getOnFailure(taskId) === 'stop_all') ctx.applyStopAll();
-    return;
+    inferredPromptInputs = inputResolution.inputs;
   }
-  const resolvedInputs = { ...bindingResolution.inputs, ...inputResolution.inputs };
+
+  const resolvedInputs = { ...inferredPromptInputs, ...bindingResolution.inputs };
   ctx.resolvedInputsMap.set(taskId, resolvedInputs);
-  if (inputResolution.missingOptional.length > 0) {
-    log.debug(
-      `[task:${taskId}]`,
-      `optional inputs unresolved (empty in placeholders): ${inputResolution.missingOptional.join(', ')}`,
-    );
-  }
   if (effectivePorts?.inputs && effectivePorts.inputs.length > 0) {
     log.debug(
       `[task:${taskId}]`,
@@ -413,10 +414,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       // errors, so the only way to land here with an unresolved is an
       // optional input that had no upstream producer and no default,
       // which we surface in the log.
-      const { text: expandedCommand, unresolved } = substituteInputs(
-        task.command,
-        resolvedInputs,
-      );
+      const { text: expandedCommand, unresolved } = substituteInputs(task.command, resolvedInputs);
       if (unresolved.length > 0) {
         log.debug(
           `[task:${taskId}]`,
@@ -433,10 +431,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       // Substitute placeholders in the user-authored prompt before
       // wrapping into a PromptDocument so middlewares see the
       // already-resolved task text.
-      const { text: expandedPrompt, unresolved } = substituteInputs(
-        task.prompt!,
-        resolvedInputs,
-      );
+      const { text: expandedPrompt, unresolved } = substituteInputs(task.prompt!, resolvedInputs);
       if (unresolved.length > 0) {
         log.debug(
           `[task:${taskId}]`,
@@ -460,10 +455,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       }
       const mws = task.middlewares !== undefined ? task.middlewares : track.middlewares;
       if (mws && mws.length > 0) {
-        log.debug(
-          `[task:${taskId}]`,
-          `middleware chain: ${mws.map((m) => m.type).join(' → ')}`,
-        );
+        log.debug(`[task:${taskId}]`, `middleware chain: ${mws.map((m) => m.type).join(' → ')}`);
         const mwCtx: MiddlewareContext = {
           task,
           track,
@@ -480,11 +472,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
           // middleware's output becomes the new task body) but never
           // silently drops content.
           if (typeof mwPlugin.enhanceDoc === 'function') {
-            const next = await mwPlugin.enhanceDoc(
-              doc,
-              mwConfig as Record<string, unknown>,
-              mwCtx,
-            );
+            const next = await mwPlugin.enhanceDoc(doc, mwConfig as Record<string, unknown>, mwCtx);
             if (
               !next ||
               typeof next !== 'object' ||
@@ -558,13 +546,6 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
         ...task,
         prompt,
         continue_from: node.resolvedContinueFrom,
-        // Hand the driver the EFFECTIVE port schema rather than the
-        // raw task.ports. For Prompt tasks this is the one inferred
-        // from neighbor Commands; Command tasks are unchanged.
-        // Drivers that introspect ports (e.g. to annotate a system
-        // prompt with the I/O contract) otherwise saw `undefined`
-        // for every prompt and had no way to know the contract.
-        ports: effectivePorts,
       };
       const driverCtx: DriverContext = {
         sessionMap: ctx.sessionMap,
@@ -575,12 +556,8 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
         // contexts and task). Drivers that read task.prompt see the
         // default serialization and need no changes.
         promptDoc: doc,
-        // Ports feature: resolved input values keyed by port name,
-        // already coerced to the declared port type. Drivers that
-        // need to re-substitute placeholders inside a custom envelope
-        // can read this and call `substituteInputs`; most drivers can
-        // ignore it because the engine has already expanded
-        // `{{inputs.X}}` into `task.prompt` upstream.
+        // Resolved input values keyed by input name. Typed bindings have
+        // already been coerced when a binding declares `type`.
         inputs: resolvedInputs,
       };
       const spec = await driver.buildCommand(enrichedTask, track, driverCtx);
@@ -588,10 +565,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       log.debug(`[task:${taskId}]`, `spawn args: ${JSON.stringify(spec.args)}`);
       if (spec.cwd) log.debug(`[task:${taskId}]`, `spawn cwd: ${spec.cwd}`);
       if (spec.env)
-        log.debug(
-          `[task:${taskId}]`,
-          `spawn env overrides: ${Object.keys(spec.env).join(', ')}`,
-        );
+        log.debug(`[task:${taskId}]`, `spawn env overrides: ${Object.keys(spec.env).join(', ')}`);
       if (spec.stdin) log.debug(`[task:${taskId}]`, `spawn stdin: ${spec.stdin.length} chars`);
       result = await runSpawn(spec, driver, runOpts);
     }
@@ -652,13 +626,11 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
         );
         if (outputExtraction.bindingDiagnostic) {
           log.debug(`[task:${taskId}]`, outputExtraction.bindingDiagnostic);
+          const note = `\n[engine] ${outputExtraction.bindingDiagnostic}`;
+          result = { ...result, stderr: result.stderr + note };
         }
       }
 
-      // Prompt tasks use inferred ports (from direct-downstream Command
-      // inputs); Command tasks use their declared ports. Either way,
-      // `extractTaskOutputs` is a no-op when there are no declared
-      // outputs to pull, so pre-ports tasks pay nothing for this call.
       if (effectivePorts?.outputs && effectivePorts.outputs.length > 0) {
         log.debug(
           `[task:${taskId}]`,
@@ -745,16 +717,10 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       log.debug(`[task:${taskId}]`, `wrote stderr: ${result.stderrPath}`);
     }
     if (result.stdout) {
-      log.quiet(
-        `--- stdout (${taskId}) ---\n${clip(result.stdout)}\n--- end stdout ---`,
-        taskId,
-      );
+      log.quiet(`--- stdout (${taskId}) ---\n${clip(result.stdout)}\n--- end stdout ---`, taskId);
     }
     if (result.stderr) {
-      log.quiet(
-        `--- stderr (${taskId}) ---\n${clip(result.stderr)}\n--- end stderr ---`,
-        taskId,
-      );
+      log.quiet(`--- stderr (${taskId}) ---\n${clip(result.stderr)}\n--- end stderr ---`, taskId);
     }
     if (task.completion) {
       log.debug(

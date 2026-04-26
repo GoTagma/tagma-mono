@@ -36,7 +36,7 @@ function result(stdout: string, normalizedOutput: string | null = null): TaskRes
 }
 
 describe('inferEffectivePorts', () => {
-  test('returns declared ports for command tasks', () => {
+  test('returns typed outputs for command tasks', () => {
     const config: PipelineConfig = {
       name: 'p',
       tracks: [
@@ -48,7 +48,7 @@ describe('inferEffectivePorts', () => {
               id: 'cmd',
               name: 'Cmd',
               command: 'echo',
-              ports: { outputs: [{ name: 'city', type: 'string' }] },
+              outputs: { city: { type: 'string' } },
             },
           ],
         },
@@ -75,7 +75,7 @@ describe('inferEffectivePorts', () => {
               id: 'up',
               name: 'Up',
               command: 'echo',
-              ports: { outputs: [{ name: 'city', type: 'string' }] },
+              outputs: { city: { type: 'string' } },
             },
             { id: 'prompt', name: 'Prompt', prompt: 'hi', depends_on: ['up'] },
           ],
@@ -103,13 +103,13 @@ describe('inferEffectivePorts', () => {
               id: 'a',
               name: 'A',
               command: 'echo',
-              ports: { outputs: [{ name: 'city', type: 'string' }] },
+              outputs: { city: { type: 'string' } },
             },
             {
               id: 'b',
               name: 'B',
               command: 'echo',
-              ports: { outputs: [{ name: 'city', type: 'string' }] },
+              outputs: { city: { type: 'string' } },
             },
             {
               id: 'prompt',
@@ -131,7 +131,7 @@ describe('inferEffectivePorts', () => {
 });
 
 describe('extractSuccessfulOutputs', () => {
-  test('combines lightweight binding outputs with typed port outputs', () => {
+  test('extracts typed binding outputs', () => {
     const config: PipelineConfig = {
       name: 'p',
       tracks: [
@@ -143,8 +143,7 @@ describe('extractSuccessfulOutputs', () => {
               id: 'cmd',
               name: 'Cmd',
               command: 'echo',
-              outputs: { raw: { from: 'stdout' } },
-              ports: { outputs: [{ name: 'city', type: 'string' }] },
+              outputs: { city: { type: 'string' }, raw: { from: 'stdout' } },
             },
           ],
         },
@@ -154,7 +153,7 @@ describe('extractSuccessfulOutputs', () => {
     const node = ctx.dag.nodes.get('t.cmd')!;
     const extracted = extractSuccessfulOutputs({
       task: node.task,
-      effectivePorts: node.task.ports,
+      effectivePorts: undefined,
       result: result('{"city":"Paris"}'),
     });
     expect(extracted.outputs).toEqual({

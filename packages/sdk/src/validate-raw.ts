@@ -1,7 +1,7 @@
-// ═══ Raw Pipeline Config Validation ═══
+﻿// 鈺愨晲鈺?Raw Pipeline Config Validation 鈺愨晲鈺?
 //
 // Validates a RawPipelineConfig without resolving inheritance or executing
-// anything — intended for real-time feedback in a visual editor (e.g. drag
+// anything 鈥?intended for real-time feedback in a visual editor (e.g. drag
 // to add a task, live error highlighting).
 //
 // Returns a flat list of ValidationError objects. An empty array means valid.
@@ -27,7 +27,7 @@ interface QidEntry {
   readonly task: RawTaskConfig;
 }
 
-/** qid → {track, task} lookup built once per validation pass. */
+/** qid 鈫?{track, task} lookup built once per validation pass. */
 function buildQidIndex(config: RawPipelineConfig): Map<string, QidEntry> {
   const idx = new Map<string, QidEntry>();
   for (const track of config.tracks ?? []) {
@@ -48,7 +48,7 @@ function isValidDuration(input: string): boolean {
 
 // D8: IDs may only contain letters, digits, underscores, and hyphens, and must
 // start with a letter or underscore. Dots are explicitly forbidden because the
-// engine uses "trackId.taskId" as the qualified separator — a dot in either
+// engine uses "trackId.taskId" as the qualified separator 鈥?a dot in either
 // part creates an ambiguous qualified ID and breaks resolveRef.
 // Canonical regex and helper live in ./task-ref so every resolver (dag.ts,
 // engine.ts, editor) stays in lockstep with what we accept here.
@@ -75,7 +75,7 @@ const BUILTIN_DRIVER_TYPES: ReadonlySet<string> = new Set(['opencode']);
  * Optional second argument to `validateRaw`: the set of plugin types currently
  * registered in the SDK runtime, keyed by category. Hosts (e.g. the editor
  * server) pass this so `validateRaw` can emit a soft warning when a task
- * references a type that isn't loaded — otherwise the Task panel would show
+ * references a type that isn't loaded 鈥?otherwise the Task panel would show
  * no hint and the pipeline would only blow up at run time. Callers that
  * legitimately validate a config offline (before plugins are loaded) can omit
  * this argument and no plugin warnings will be produced.
@@ -95,11 +95,11 @@ export interface ValidationError {
   message: string;
   /**
    * H8: not all "errors" are equally fatal. The DAG runtime is happy to
-   * insert implicit `continue_from → depends_on` ordering, so the matching
+   * insert implicit `continue_from 鈫?depends_on` ordering, so the matching
    * validate-raw check is a *style* nit, not a hard failure. Severity lets
    * the editor render it as a soft warning instead of blocking save / run.
    * Existing call sites that don't read this field still treat every entry
-   * as fatal — defaulting `severity` to undefined preserves that behaviour.
+   * as fatal 鈥?defaulting `severity` to undefined preserves that behaviour.
    */
   severity?: ValidationSeverity;
 }
@@ -111,7 +111,7 @@ export interface ValidationError {
  *
  * Plugin type checks: when `knownTypes` is provided, task/track references to
  * trigger/completion/middleware types that are neither built-in nor in the
- * supplied set produce a soft warning (severity: 'warning') — these don't
+ * supplied set produce a soft warning (severity: 'warning') 鈥?these don't
  * block save/run but light up the Task panel so users discover the broken
  * reference in the editor instead of at run time. Omit `knownTypes` to skip
  * plugin checks entirely (offline/pre-load validation).
@@ -135,7 +135,7 @@ export function validateRaw(
     ? new Set<string>([...BUILTIN_MIDDLEWARE_TYPES, ...(knownTypes.middlewares ?? [])])
     : null;
 
-  // ── Top level ──
+  // 鈹€鈹€ Top level 鈹€鈹€
   if (!config.name?.trim()) {
     errors.push({ path: 'name', message: 'Pipeline name is required' });
   }
@@ -163,16 +163,16 @@ export function validateRaw(
     return errors; // No point going further without tracks
   }
 
-  // ── Build qualified ID sets for cross-reference checks ──
+  // 鈹€鈹€ Build qualified ID sets for cross-reference checks 鈹€鈹€
   // Qualified ID format: "trackId.taskId" (mirrors the engine's convention).
-  // Shared with dag.ts so "ambiguous" / "not found" stay consistent — refs
+  // Shared with dag.ts so "ambiguous" / "not found" stay consistent 鈥?refs
   // that buildDag later throws on will be reported here as errors first.
   const index = buildTaskIndex(config);
-  // Full qid → {track, task} index used by port-inference validation
+  // Full qid 鈫?{track, task} index used by port-inference validation
   // to walk a Prompt task's neighbors without re-scanning the tracks.
   const qidIndex = buildQidIndex(config);
 
-  // ── Per-track validation ──
+  // 鈹€鈹€ Per-track validation 鈹€鈹€
   const seenTrackIds = new Set<string>();
   for (let ti = 0; ti < config.tracks.length; ti++) {
     const maybeTrack = config.tracks[ti] as unknown;
@@ -220,7 +220,7 @@ export function validateRaw(
     validatePermissions(track.permissions, `${trackPath}.permissions`, errors);
 
     // Track-level middlewares can reference a plugin that was uninstalled
-    // after the YAML was written — surface a warning so the user notices
+    // after the YAML was written 鈥?surface a warning so the user notices
     // before hitting Run.
     if (knownMiddlewares && track.middlewares) {
       for (let mi = 0; mi < track.middlewares.length; mi++) {
@@ -228,7 +228,7 @@ export function validateRaw(
         if (mw?.type && !knownMiddlewares.has(mw.type)) {
           errors.push({
             path: `${trackPath}.middlewares[${mi}].type`,
-            message: `Middleware type "${mw.type}" is not registered. Install the plugin (e.g. @tagma/middleware-${mw.type}) or remove the reference — the pipeline will fail at run time.`,
+            message: `Middleware type "${mw.type}" is not registered. Install the plugin (e.g. @tagma/middleware-${mw.type}) or remove the reference 鈥?the pipeline will fail at run time.`,
             severity: 'warning',
           });
         }
@@ -250,7 +250,7 @@ export function validateRaw(
       continue;
     }
 
-    // ── Per-task validation ──
+    // 鈹€鈹€ Per-task validation 鈹€鈹€
     const seenTaskIds = new Set<string>();
     for (let ki = 0; ki < track.tasks.length; ki++) {
       const task = track.tasks[ki];
@@ -302,7 +302,7 @@ export function validateRaw(
         });
       }
 
-      // ── Field-level validations ──
+      // 鈹€鈹€ Field-level validations 鈹€鈹€
       if (task.timeout && !isValidDuration(task.timeout)) {
         errors.push({
           path: `${taskPath}.timeout`,
@@ -324,7 +324,7 @@ export function validateRaw(
       }
       validatePermissions(task.permissions, `${taskPath}.permissions`, errors);
 
-      // ── Plugin type warnings (trigger / completion / middlewares) ──
+      // 鈹€鈹€ Plugin type warnings (trigger / completion / middlewares) 鈹€鈹€
       // Only fire when the host supplied a `knownTypes` snapshot, so offline
       // validation stays quiet. The messages deliberately name the npm
       // scope so users can copy-paste the install command.
@@ -352,46 +352,46 @@ export function validateRaw(
           if (mw?.type && !knownMiddlewares.has(mw.type)) {
             errors.push({
               path: `${taskPath}.middlewares[${mi}].type`,
-              message: `Middleware type "${mw.type}" is not registered. Install the plugin (e.g. @tagma/middleware-${mw.type}) or remove the reference — the pipeline will fail at run time.`,
+              message: `Middleware type "${mw.type}" is not registered. Install the plugin (e.g. @tagma/middleware-${mw.type}) or remove the reference 鈥?the pipeline will fail at run time.`,
               severity: 'warning',
             });
           }
         }
       }
 
-      // ── Port declaration checks ──
+      // 鈹€鈹€ Port declaration checks 鈹€鈹€
       validateTaskPorts(task, track.id, taskPath, qidIndex, index, errors);
 
-      // ── depends_on reference checks ──
+      // 鈹€鈹€ depends_on reference checks 鈹€鈹€
       if (task.depends_on && task.depends_on.length > 0) {
         for (const dep of task.depends_on) {
           const resolved = resolveTaskRef(dep, track.id, index);
           if (resolved.kind === 'not_found') {
             errors.push({
               path: `${taskPath}.depends_on`,
-              message: `Task "${task.id}": depends_on "${dep}" — no such task found`,
+              message: `Task "${task.id}": depends_on "${dep}" 鈥?no such task found`,
             });
           } else if (resolved.kind === 'ambiguous') {
             errors.push({
               path: `${taskPath}.depends_on`,
-              message: `Task "${task.id}": depends_on "${dep}" is ambiguous — multiple tracks have a task with this id. Use the fully-qualified form "trackId.${dep}".`,
+              message: `Task "${task.id}": depends_on "${dep}" is ambiguous 鈥?multiple tracks have a task with this id. Use the fully-qualified form "trackId.${dep}".`,
             });
           }
         }
       }
 
-      // ── continue_from reference check ──
+      // 鈹€鈹€ continue_from reference check 鈹€鈹€
       if (task.continue_from) {
         const resolved = resolveTaskRef(task.continue_from, track.id, index);
         if (resolved.kind === 'not_found') {
           errors.push({
             path: `${taskPath}.continue_from`,
-            message: `Task "${task.id}": continue_from "${task.continue_from}" — no such task found`,
+            message: `Task "${task.id}": continue_from "${task.continue_from}" 鈥?no such task found`,
           });
         } else if (resolved.kind === 'ambiguous') {
           errors.push({
             path: `${taskPath}.continue_from`,
-            message: `Task "${task.id}": continue_from "${task.continue_from}" is ambiguous — multiple tracks have a task with this id. Use the fully-qualified form "trackId.${task.continue_from}".`,
+            message: `Task "${task.id}": continue_from "${task.continue_from}" is ambiguous 鈥?multiple tracks have a task with this id. Use the fully-qualified form "trackId.${task.continue_from}".`,
           });
         } else if (
           !task.depends_on ||
@@ -415,7 +415,7 @@ export function validateRaw(
     }
   }
 
-  // ── Cycle detection ──
+  // 鈹€鈹€ Cycle detection 鈹€鈹€
   errors.push(...detectCycles(config, index));
 
   return errors;
@@ -455,7 +455,7 @@ const VALID_PORT_TYPES: ReadonlySet<PortType> = new Set([
   'json',
 ]);
 
-// Identifier pattern for port names. Deliberately narrower than task IDs —
+// Identifier pattern for port names. Deliberately narrower than task IDs 鈥?
 // port names appear in `{{inputs.<name>}}` templates where hyphens would
 // be parsed as subtraction, so we also forbid them here to keep the
 // template grammar unambiguous.
@@ -520,7 +520,7 @@ function validatePortList(
       }
     }
     if (kind === 'outputs' && (port.required === true || port.from !== undefined)) {
-      // `required` / `from` are input-only concepts — outputs are
+      // `required` / `from` are input-only concepts 鈥?outputs are
       // always "produced when the task succeeds". Warn softly so the
       // YAML doesn't silently accept meaningless fields.
       errors.push({
@@ -572,6 +572,25 @@ function validateBindingMap(
         path: `${path}.required`,
         message: `task.inputs.${name}.required must be a boolean`,
       });
+    }
+    if ('type' in binding && binding.type !== undefined && !VALID_PORT_TYPES.has(binding.type as PortType)) {
+      errors.push({
+        path: `${path}.type`,
+        message: `task.${kind}.${name}.type must be one of ${[...VALID_PORT_TYPES].join(', ')}`,
+      });
+    }
+    if (binding.type === 'enum') {
+      if (!Array.isArray(binding.enum) || binding.enum.length === 0) {
+        errors.push({
+          path: `${path}.enum`,
+          message: `task.${kind}.${name}.enum must be a non-empty string array when type is enum`,
+        });
+      } else if (!binding.enum.every((v: unknown) => typeof v === 'string')) {
+        errors.push({
+          path: `${path}.enum`,
+          message: `task.${kind}.${name}.enum values must all be strings`,
+        });
+      }
     }
     if (kind === 'outputs' && typeof binding.from === 'string') {
       const source = binding.from;
@@ -685,26 +704,17 @@ function validateTaskPorts(
   validateBindingPortNameOverlap(task, taskPath, errors);
   validateInputBindingSources(task, trackId, taskPath, index, errors);
 
-  // ─── Prompt tasks do not declare ports ──
-  //
-  // A Prompt Task's I/O contract is inferred from direct-neighbor
-  // Command Tasks at runtime (see `inferPromptPorts` in ports.ts).
-  // Declaring `ports` on a Prompt Task is always a configuration
-  // mistake: the declared shape would be silently ignored in favour of
-  // the inferred one, and the two drifting out of sync is the exact bug
-  // the inference design eliminates.
-  if (isPromptTask && ports !== undefined) {
+  if (ports !== undefined) {
     errors.push({
       path: `${taskPath}.ports`,
       message:
-        `Task "${task.id}": prompt tasks do not declare ports — their I/O is ` +
-        `inferred from direct-neighbor Command tasks. Remove the "ports" field ` +
-        `and declare the corresponding inputs/outputs on the upstream/downstream ` +
-        `Command tasks instead.`,
+        `Task "${task.id}": ports has been replaced by typed inputs/outputs. ` +
+        `Move ports.inputs entries to task.inputs.<name> and ports.outputs entries to task.outputs.<name>.`,
     });
+    return;
   }
 
-  // ─── Collect placeholder references ──
+  // Collect placeholder references 鈹€鈹€
   // `{{inputs.X}}` is valid in both prompt and command text. The set of
   // names a task may legally reference differs by task kind:
   //   - Command Task: its own declared `ports.inputs`
@@ -723,20 +733,16 @@ function validateTaskPorts(
     for (const name of objectKeys(task.inputs)) availableInputs.add(name);
   } else {
     // Command Task (or the pathological both-keys case, which is caught
-    // earlier as a separate error — tolerate it here).
-    availableInputs = new Set<string>(
-      ports && Array.isArray(ports.inputs)
-        ? ports.inputs.filter((p): p is PortDef => !!p && typeof p === 'object').map((p) => p.name)
-        : [],
-    );
+    // earlier as a separate error 鈥?tolerate it here).
+    availableInputs = new Set<string>();
     for (const name of objectKeys(task.inputs)) availableInputs.add(name);
   }
 
   for (const name of referenced) {
     if (!availableInputs.has(name)) {
       const hint = isPromptTask
-        ? `no upstream Command task exports an output port named "${name}"`
-        : `no such input port is declared`;
+        ? `no upstream Command task exports an output named "${name}"`
+        : `no such input is declared`;
       errors.push({
         path: taskPath,
         message: `Task "${task.id}": references "{{inputs.${name}}}" but ${hint}`,
@@ -744,58 +750,7 @@ function validateTaskPorts(
     }
   }
 
-  // ─── Structural port validation — Command Tasks only ──
-  //
-  // Prompt tasks already errored above if they tried to declare ports;
-  // running the per-port structural validator on the ignored object
-  // would just produce duplicate noise.
-  if (isCommandTask && ports) {
-    validatePortList(ports.inputs, `${taskPath}.ports.inputs`, 'inputs', errors);
-    validatePortList(ports.outputs, `${taskPath}.ports.outputs`, 'outputs', errors);
-
-    // Warn on declared-but-unused inputs. Not fatal — a user may want
-    // to surface an input as a data-flow hint for the editor even when
-    // the command doesn't template it explicitly.
-    if (typeof task.command === 'string' && Array.isArray(ports.inputs)) {
-      for (const port of ports.inputs) {
-        if (!port || typeof port !== 'object') continue;
-        if (!referenced.has(port.name)) {
-          errors.push({
-            path: `${taskPath}.ports.inputs`,
-            severity: 'warning',
-            message: `Task "${task.id}": command does not reference {{inputs.${port.name}}} — declared input is unused`,
-          });
-        }
-      }
-    }
-
-    // Validate that fully-qualified `from` references point to direct
-    // dependencies. The runtime's findUpstreamValue only scans dependsOn,
-    // so a from that skips the dependency list will always miss at run
-    // time and block the task with a cryptic "missing required input".
-    if (Array.isArray(ports.inputs)) {
-      for (const port of ports.inputs) {
-        if (!port || typeof port !== 'object' || typeof port.from !== 'string' || !port.from.includes('.')) {
-          continue;
-        }
-        const dot = port.from.lastIndexOf('.');
-        const upstreamId = port.from.slice(0, dot);
-        const deps = task.depends_on ?? [];
-        const isDirectDep = deps.some((dep) => {
-          const resolved = resolveTaskRef(dep, trackId, index);
-          return resolved.kind === 'resolved' && resolved.qid === upstreamId;
-        });
-        if (!isDirectDep) {
-          errors.push({
-            path: `${taskPath}.ports.inputs`,
-            message: `Task "${task.id}": port "${port.name}" from "${port.from}" references task "${upstreamId}" which is not a direct dependency (must be listed in depends_on)`,
-          });
-        }
-      }
-    }
-  }
-
-  // ─── Prompt-task inferred-port conflict checks ──
+  // Prompt-task inferred-port conflict checks 鈹€鈹€
   //
   // Static counterparts to the runtime checks `inferPromptPorts` runs.
   // These surface problems at author-time in the editor so the user
@@ -807,8 +762,8 @@ function validateTaskPorts(
 
 /**
  * Walk the direct-upstream Commands of a Prompt Task and collect every
- * output port name they export. Prompt upstreams contribute nothing —
- * they pass free text via continue_from, not structured ports — so we
+ * output port name they export. Prompt upstreams contribute nothing 鈥?
+ * they pass free text via continue_from, not structured ports 鈥?so we
  * skip them. This mirrors exactly what the engine does at runtime in
  * `inferPromptPorts`, keeping the editor and runtime views aligned.
  */
@@ -824,14 +779,12 @@ function collectUpstreamCommandOutputNames(
     if (r.kind !== 'resolved') continue;
     const entry = qidIndex.get(r.qid);
     if (!entry) continue;
-    // Only Command tasks contribute — Prompt upstreams pass free text.
+    // Only Command tasks contribute 鈥?Prompt upstreams pass free text.
     if (typeof entry.task.command !== 'string') continue;
-    const outputs = entry.task.ports?.outputs;
-    if (!Array.isArray(outputs)) continue;
-    for (const port of outputs) {
-      if (port && typeof port === 'object' && typeof port.name === 'string') {
-        names.add(port.name);
-      }
+    const outputs = entry.task.outputs;
+    if (!outputs || typeof outputs !== 'object' || Array.isArray(outputs)) continue;
+    for (const name of Object.keys(outputs)) {
+      names.add(name);
     }
   }
   return names;
@@ -839,11 +792,11 @@ function collectUpstreamCommandOutputNames(
 
 /**
  * Detect the two kinds of collision that would block a Prompt Task at
- * runtime — report them at validate-time so the editor lights them up
+ * runtime 鈥?report them at validate-time so the editor lights them up
  * before a run is attempted.
  *
  * 1. Input collision: two direct-upstream Commands both export an
- *    output with the same name. Command→Command would let the
+ *    output with the same name. Command鈫扖ommand would let the
  *    downstream disambiguate with `from:`; Prompt tasks have no port
  *    declarations and therefore no escape hatch.
  * 2. Output collision: two direct-downstream Commands declare inputs
@@ -858,20 +811,19 @@ function validateInferredPromptPortConflicts(
   index: TaskIndex,
   errors: ValidationError[],
 ): void {
-  // ─── Input collision ──
+  // 鈹€鈹€鈹€ Input collision 鈹€鈹€
   const producersByName = new Map<string, string[]>();
   for (const dep of task.depends_on ?? []) {
     const r = resolveTaskRef(dep, trackId, index);
     if (r.kind !== 'resolved') continue;
     const entry = qidIndex.get(r.qid);
     if (!entry || typeof entry.task.command !== 'string') continue;
-    const outputs = entry.task.ports?.outputs;
-    if (!Array.isArray(outputs)) continue;
-    for (const port of outputs) {
-      if (!port || typeof port !== 'object' || typeof port.name !== 'string') continue;
-      const list = producersByName.get(port.name) ?? [];
+    const outputs = entry.task.outputs;
+    if (!outputs || typeof outputs !== 'object' || Array.isArray(outputs)) continue;
+    for (const name of Object.keys(outputs)) {
+      const list = producersByName.get(name) ?? [];
       list.push(r.qid);
-      producersByName.set(port.name, list);
+      producersByName.set(name, list);
     }
   }
   for (const [name, producers] of producersByName) {
@@ -880,13 +832,13 @@ function validateInferredPromptPortConflicts(
         path: taskPath,
         message:
           `Task "${task.id}": upstream Commands ${producers.join(', ')} all export ` +
-          `"${name}" — prompt tasks cannot disambiguate (no "from:" binding available). ` +
+          `"${name}" 鈥?prompt tasks cannot disambiguate (no "from:" binding available). ` +
           `Rename the output on one of the upstream Commands.`,
       });
     }
   }
 
-  // ─── Output collision ──
+  // 鈹€鈹€鈹€ Output collision 鈹€鈹€
   //
   // Walk every task in the pipeline once and check whether it depends on
   // us. We reuse the shared qidIndex + TaskIndex for the lookup; small
@@ -911,23 +863,23 @@ function validateInferredPromptPortConflicts(
       }
     }
     if (!dependsOnUs) continue;
-    const inputs = entry.task.ports?.inputs;
-    if (!Array.isArray(inputs)) continue;
-    for (const port of inputs) {
-      if (!port || typeof port !== 'object' || typeof port.name !== 'string') continue;
-      const shape = portShapeKey(port);
-      const prior = consumerShapeByName.get(port.name);
+    const inputs = entry.task.inputs;
+    if (!inputs || typeof inputs !== 'object' || Array.isArray(inputs)) continue;
+    for (const [inputName, binding] of Object.entries(inputs)) {
+      if (!binding || typeof binding !== 'object' || Array.isArray(binding)) continue;
+      const shape = bindingShapeKey(binding as { type?: PortType; enum?: readonly string[] });
+      const prior = consumerShapeByName.get(inputName);
       if (!prior) {
-        consumerShapeByName.set(port.name, { shape, firstConsumer: downstreamQid });
+        consumerShapeByName.set(inputName, { shape, firstConsumer: downstreamQid });
         continue;
       }
-      if (prior.shape !== shape && !reported.has(port.name)) {
-        reported.add(port.name);
+      if (prior.shape !== shape && !reported.has(inputName)) {
+        reported.add(inputName);
         errors.push({
           path: taskPath,
           message:
             `Task "${task.id}": downstream Commands ${prior.firstConsumer} and ` +
-            `${downstreamQid} disagree on the shape of inferred output "${port.name}" — ` +
+            `${downstreamQid} disagree on the shape of inferred output "${inputName}" 鈥?` +
             `a single LLM emission cannot satisfy both. Rename on one side.`,
         });
       }
@@ -937,13 +889,17 @@ function validateInferredPromptPortConflicts(
 
 /** Minimal shape fingerprint for conflict detection: type + enum set. */
 function portShapeKey(port: PortDef): string {
-  if (port.type !== 'enum') return String(port.type);
+  return bindingShapeKey(port);
+}
+
+function bindingShapeKey(port: { type?: PortType; enum?: readonly string[] }): string {
+  if ((port.type ?? 'json') !== 'enum') return String(port.type ?? 'json');
   const enums = Array.isArray(port.enum) ? [...port.enum].sort().join('|') : '';
   return `enum:${enums}`;
 }
 
 function detectCycles(config: RawPipelineConfig, index: TaskIndex): ValidationError[] {
-  // Build adjacency: qualifiedId → [resolved dep qualifiedIds]
+  // Build adjacency: qualifiedId 鈫?[resolved dep qualifiedIds]
   const adj = new Map<string, string[]>();
 
   for (const track of config.tracks) {
@@ -969,7 +925,7 @@ function detectCycles(config: RawPipelineConfig, index: TaskIndex): ValidationEr
   const visited = new Set<string>();
   const inStack = new Set<string>();
   // Deduplicate cycles: the same cycle can be discovered from multiple entry points.
-  // Canonical key = sorted node list joined — order-independent fingerprint.
+  // Canonical key = sorted node list joined 鈥?order-independent fingerprint.
   const seenCycles = new Set<string>();
 
   // Use a mutable path array instead of copying at each level (O(n) vs O(n^2)).
@@ -988,7 +944,7 @@ function detectCycles(config: RawPipelineConfig, index: TaskIndex): ValidationEr
         const display = [...uniqueNodes, id]; // include start for readable display
         errors.push({
           path: 'tracks',
-          message: `Circular dependency detected: ${display.join(' → ')}`,
+          message: `Circular dependency detected: ${display.join(' 鈫?')}`,
         });
       }
       return;
