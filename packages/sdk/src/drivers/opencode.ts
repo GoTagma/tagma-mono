@@ -31,134 +31,11 @@ const EFFORT_TO_VARIANT: Record<string, string | null> = {
   high: 'high',
 };
 
-// CLI probe + free-model picker.
-//
-// The opencode driver is built into the SDK, but the opencode CLI is an
-// external executable. The desktop app places its bundled binary on PATH;
-// direct SDK users must install opencode-ai before running prompt tasks.
-// This driver only probes and fails with setup guidance. It never mutates
-// global tooling from inside a pipeline run.
-
-interface OpencodeModelInfo {
-  id?: string;
-  providerID?: string;
-  status?: string;
-  cost?: { input?: number; output?: number };
-  limit?: { context?: number };
-}
-
-// Memoize both success and failure so every task in a failed run reports
-// the same setup error without re-probing.
-let opencodeReady: boolean | undefined;
-let opencodeReadyError: string | undefined;
 let cachedDefaultModel: string | undefined;
 
-async function runCapture(
-  args: string[],
-): Promise<{ code: number; stdout: string; stderr: string }> {
-  try {
-    const proc = Bun.spawn(args, { stdout: 'pipe', stderr: 'pipe' });
-    const [stdout, stderr, code] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
-    return { code, stdout, stderr };
-  } catch {
-    return { code: -1, stdout: '', stderr: '' };
-  }
-}
-
-// Shared tail for every failure message. Desktop users get the in-app setup
-// path first; direct SDK users still see the manual bun/npm install hint.
-const SETUP_HINT =
-  'If you are using the Tagma desktop app, open Editor Settings -> OpenCode CLI to install or update the bundled binary. ' +
-  'Otherwise install it manually: `bun install -g opencode-ai` or `npm install -g opencode-ai`.';
-
-async function ensureOpencodeInstalled(): Promise<void> {
-  if (opencodeReady === true) return;
-  if (opencodeReady === false && opencodeReadyError) {
-    throw new Error(opencodeReadyError);
-  }
-
-  // Probe existing install first; this is the hot path for desktop users
-  // (bundled binary in PATH) and for anyone who already has opencode.
-  const probe = await runCapture(['opencode', '--version']);
-  if (probe.code === 0) {
-    opencodeReady = true;
-    return;
-  }
-
-  opencodeReady = false;
-  opencodeReadyError = `OpenCode CLI is not available on PATH. ${SETUP_HINT}`;
-  throw new Error(opencodeReadyError);
-}
-
-// `opencode models --verbose` emits "<provider>/<id>\n{...json...}\n" pairs.
-// Walk balanced braces rather than split on newlines so we survive any
-// whitespace oddities in the JSON payload.
-function parseVerboseModels(stdout: string): OpencodeModelInfo[] {
-  const out: OpencodeModelInfo[] = [];
-  let depth = 0;
-  let start = -1;
-  for (let i = 0; i < stdout.length; i++) {
-    const c = stdout[i];
-    if (c === '{') {
-      if (depth === 0) start = i;
-      depth++;
-    } else if (c === '}') {
-      depth--;
-      if (depth === 0 && start !== -1) {
-        try {
-          out.push(JSON.parse(stdout.slice(start, i + 1)) as OpencodeModelInfo);
-        } catch {
-          /* skip malformed block */
-        }
-        start = -1;
-      }
-    }
-  }
-  return out;
-}
-
-function pickFreeModel(models: OpencodeModelInfo[]): string | null {
-  const fullId = (m: OpencodeModelInfo): string => `${m.providerID ?? 'opencode'}/${m.id ?? ''}`;
-  const eligible = models.filter((m) => {
-    if (!m.id || m.id === 'big-pickle') return false;
-    if (m.status && m.status !== 'active') return false;
-    const cost = m.cost;
-    if (!cost || cost.input !== 0 || cost.output !== 0) return false;
-    const ctx = m.limit?.context;
-    if (typeof ctx !== 'number' || ctx <= 128000) return false;
-    return true;
-  });
-  // Prefer models explicitly labelled "-free" by the provider; those are
-  // a stronger stability signal than "cost happens to be 0 right now".
-  const preferred = eligible.filter((m) => m.id?.endsWith('-free'));
-  const pool = preferred.length > 0 ? preferred : eligible;
-  if (pool.length === 0) return null;
-  // Deterministic pick: sort by full id so upstream model-list reordering
-  // doesn't flip our choice between runs.
-  pool.sort((a, b) => fullId(a).localeCompare(fullId(b)));
-  return fullId(pool[0]);
-}
-
-async function resolveDefaultModel(): Promise<string> {
+function resolveDefaultModel(): string {
   if (cachedDefaultModel !== undefined) return cachedDefaultModel;
-  // ensureOpencodeInstalled now throws with an actionable message when the
-  // CLI can't be provisioned, so we let the error bubble up to the task
-  // runner instead of silently falling back to DEFAULT_MODEL (which would
-  // produce a second confusing ENOENT a few lines later in `opencode run`).
-  await ensureOpencodeInstalled();
-  console.error('[driver:opencode] resolving free opencode model...');
-  const { code, stdout } = await runCapture(['opencode', 'models', '--verbose']);
-  if (code !== 0) {
-    cachedDefaultModel = DEFAULT_MODEL;
-    return cachedDefaultModel;
-  }
-  const picked = pickFreeModel(parseVerboseModels(stdout));
-  cachedDefaultModel = picked ?? DEFAULT_MODEL;
-  console.error(`[driver:opencode] default model: ${cachedDefaultModel}`);
+  cachedDefaultModel = DEFAULT_MODEL;
   return cachedDefaultModel;
 }
 
@@ -177,13 +54,7 @@ export const OpenCodeDriver: DriverPlugin = {
 
   async buildCommand(task: TaskConfig, track: TrackConfig, ctx: DriverContext): Promise<SpawnSpec> {
     const explicitModel = task.model ?? track.model;
-    // Always make sure the opencode CLI is usable before we spawn it, even
-    // when the user pinned a model. ensureOpencodeInstalled throws with an
-    // actionable message when the binary is not present on PATH.
-    if (explicitModel) await ensureOpencodeInstalled();
-    // Otherwise resolveDefaultModel both ensures the CLI and picks a free
-    // model from `opencode models --verbose` (cached per-process).
-    const model = explicitModel ?? (await resolveDefaultModel());
+    const model = explicitModel ?? resolveDefaultModel();
     // Resolve reasoning_effort to opencode --variant. SDK schema layer already
     // resolved task -> track -> pipeline inheritance, so we only need to read
     // task.reasoning_effort here.

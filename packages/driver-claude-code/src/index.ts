@@ -67,7 +67,7 @@ function resolveGitBashEnv(): Record<string, string> {
   // set it to a non-existent path, fall through to discovery rather than
   // propagating the broken config.
   const existing = process.env.CLAUDE_CODE_GIT_BASH_PATH;
-  if (existing && existsSync(existing)) return {};
+  if (existing && existsSync(existing)) return { CLAUDE_CODE_GIT_BASH_PATH: existing };
 
   const discovered = discoverGitBash();
   return discovered ? { CLAUDE_CODE_GIT_BASH_PATH: discovered } : {};

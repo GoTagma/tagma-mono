@@ -75,6 +75,20 @@ describe('findLaunchableTasks', () => {
     expect(findLaunchableTasks(ctx, new Set(['t.a']))).toEqual(['t.c']);
   });
 
+  test('uses the DAG topological order instead of YAML insertion order', () => {
+    const ctx = makeContext({
+      name: 'p',
+      tracks: [
+        { id: 'z', name: 'Z', tasks: [{ id: 'root', name: 'Z root', command: 'echo z' }] },
+        { id: 'a', name: 'A', tasks: [{ id: 'root', name: 'A root', command: 'echo a' }] },
+      ],
+    });
+    for (const state of ctx.states.values()) state.status = 'waiting';
+
+    expect(ctx.dag.sorted).toEqual(['a.root', 'z.root']);
+    expect(findLaunchableTasks(ctx, new Set())).toEqual(['a.root', 'z.root']);
+  });
+
   test('returns dependents only after dependencies are terminal', () => {
     const ctx = makeContext(chainConfig);
     for (const state of ctx.states.values()) state.status = 'waiting';

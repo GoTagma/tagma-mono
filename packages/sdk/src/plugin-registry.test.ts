@@ -673,6 +673,136 @@ describe('runPipeline — options.registry isolation', () => {
     }
   });
 
+  test('trigger timeout honors on_failure stop_all across the whole pipeline', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'tagma-stop-all-trigger-'));
+    const reg = new PluginRegistry();
+    reg.registerPlugin(
+      'triggers',
+      'never',
+      {
+        name: 'never',
+        watch() {
+          return {
+            fired: new Promise<never>(() => {
+              /* intentionally never settles */
+            }),
+            dispose() {
+              /* no resources */
+            },
+          };
+        },
+      } as unknown as TriggerPlugin,
+    );
+
+    const commands: string[] = [];
+    const runtime: TagmaRuntime = {
+      ...fakeRuntime(),
+      async runCommand(command) {
+        commands.push(command);
+        if (command === 'slow') {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        return taskResult(command);
+      },
+    };
+    const events: unknown[] = [];
+
+    try {
+      const result = await runPipeline(
+        {
+          name: 'stop-all-trigger-timeout',
+          tracks: [
+            {
+              id: 't',
+              name: 'T',
+              on_failure: 'stop_all',
+              tasks: [
+                {
+                  id: 'gate',
+                  command: 'gate',
+                  timeout: '0.01s',
+                  trigger: { type: 'never' },
+                },
+                { id: 'slow', command: 'slow' },
+                { id: 'after', command: 'after', depends_on: ['slow'] },
+              ],
+            },
+          ],
+        },
+        tmp,
+        {
+          registry: reg,
+          runtime,
+          mode: 'trusted',
+          onEvent: (event) => events.push(event),
+        },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.states.get('t.gate')?.status).toBe('timeout');
+      expect(result.states.get('t.after')?.status).toBe('skipped');
+      expect(commands).not.toContain('after');
+      expect(events).toContainEqual(
+        expect.objectContaining({ type: 'run_end', abortReason: 'stop_all' }),
+      );
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('task_start blocked tasks honor on_failure stop_all', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'tagma-stop-all-task-start-'));
+    const runtime: TagmaRuntime = {
+      ...fakeRuntime(),
+      async runSpawn() {
+        return {
+          ...taskResult(''),
+          exitCode: 2,
+          stderr: 'blocked by policy',
+          stderrBytes: 'blocked by policy'.length,
+          failureKind: 'exit_nonzero',
+        };
+      },
+    };
+    const events: unknown[] = [];
+
+    try {
+      const result = await runPipeline(
+        {
+          name: 'stop-all-task-start',
+          hooks: { task_start: 'exit 2' },
+          tracks: [
+            {
+              id: 't',
+              name: 'T',
+              on_failure: 'stop_all',
+              tasks: [
+                { id: 'gate', command: 'gate' },
+                { id: 'after', command: 'after', depends_on: ['gate'] },
+              ],
+            },
+          ],
+        },
+        tmp,
+        {
+          registry: new PluginRegistry(),
+          runtime,
+          mode: 'trusted',
+          onEvent: (event) => events.push(event),
+        },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.states.get('t.gate')?.status).toBe('blocked');
+      expect(result.states.get('t.after')?.status).toBe('skipped');
+      expect(events).toContainEqual(
+        expect.objectContaining({ type: 'run_end', abortReason: 'stop_all' }),
+      );
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   test('pipeline_start gate marks all idle tasks blocked in summary', async () => {
     const tmp = mkdtempSync(join(tmpdir(), 'tagma-hook-blocked-'));
     const runtime: TagmaRuntime = {

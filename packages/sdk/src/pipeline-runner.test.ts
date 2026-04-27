@@ -142,4 +142,17 @@ describe('PipelineRunner task snapshot', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  test('abort after completion does not change a done runner to aborted', async () => {
+    const dir = makeDir();
+    try {
+      const runner = await run(bindingsPipeline(dir), dir);
+
+      expect(runner.status).toBe('done');
+      runner.abort('late abort');
+      expect(runner.status).toBe('done');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

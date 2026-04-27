@@ -1,8 +1,11 @@
 import type {
+  PipelineConfig,
   TaskState,
   TaskStatus,
   RunTaskState,
   Permissions,
+  TaskConfig,
+  TrackConfig,
 } from '../types';
 
 export function isTerminal(status: TaskStatus): boolean {
@@ -40,6 +43,31 @@ export interface RunSummary {
   skipped: number;
   timeout: number;
   blocked: number;
+}
+
+export interface ResolvedExecutionMetadata {
+  readonly resolvedDriver: string | null;
+  readonly resolvedModel: string | null;
+  readonly resolvedPermissions: Permissions | null;
+}
+
+function isPromptTaskConfig(task: TaskConfig): boolean {
+  return task.prompt !== undefined;
+}
+
+export function resolveExecutionMetadata(
+  task: TaskConfig,
+  track: TrackConfig,
+  config?: PipelineConfig,
+): ResolvedExecutionMetadata {
+  const isPromptTask = isPromptTaskConfig(task);
+  return {
+    resolvedDriver: isPromptTask
+      ? (task.driver ?? track.driver ?? config?.driver ?? 'opencode')
+      : null,
+    resolvedModel: isPromptTask ? (task.model ?? track.model ?? config?.model ?? null) : null,
+    resolvedPermissions: task.permissions ?? track.permissions ?? config?.permissions ?? null,
+  };
 }
 
 /**
@@ -91,9 +119,10 @@ export function toRunTaskState(
   trackId: string,
   taskName: string,
   state: TaskState,
+  config?: PipelineConfig,
 ): RunTaskState {
   const result = state.result;
-  const cfg = state.config;
+  const resolved = resolveExecutionMetadata(state.config, state.trackConfig, config);
   return {
     taskId,
     trackId,
@@ -111,9 +140,9 @@ export function toRunTaskState(
     stderrBytes: result?.stderrBytes ?? null,
     sessionId: result?.sessionId ?? null,
     normalizedOutput: result?.normalizedOutput ?? null,
-    resolvedDriver: cfg.driver ?? null,
-    resolvedModel: cfg.model ?? null,
-    resolvedPermissions: (cfg.permissions as Permissions | undefined) ?? null,
+    resolvedDriver: resolved.resolvedDriver,
+    resolvedModel: resolved.resolvedModel,
+    resolvedPermissions: resolved.resolvedPermissions,
     outputs: result?.outputs ?? null,
     inputs: null,
     logs: [],

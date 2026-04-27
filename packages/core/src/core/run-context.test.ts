@@ -171,6 +171,68 @@ describe('RunContext.setTaskStatus', () => {
       throw new Error('expected task_update');
     }
   });
+
+  test('emits inherited execution metadata after resolution', () => {
+    const pipelinePermissions = { read: true, write: false, execute: false };
+    const trackPermissions = { read: true, write: true, execute: false };
+    const { ctx, events } = makeContext({
+      config: {
+        name: 'p',
+        driver: 'pipeline-driver',
+        model: 'pipeline-model',
+        permissions: pipelinePermissions,
+        tracks: [
+          {
+            id: 't',
+            name: 'T',
+            driver: 'track-driver',
+            model: 'track-model',
+            permissions: trackPermissions,
+            tasks: [
+              { id: 'a', name: 'A', prompt: 'hi' },
+              {
+                id: 'b',
+                name: 'B',
+                prompt: 'hi',
+                driver: 'task-driver',
+                model: 'task-model',
+                permissions: { read: false, write: false, execute: false },
+              },
+            ],
+          },
+          {
+            id: 'u',
+            name: 'U',
+            tasks: [{ id: 'c', name: 'C', prompt: 'hi' }],
+          },
+        ],
+      },
+    });
+
+    ctx.setTaskStatus('t.a', 'running');
+    ctx.setTaskStatus('t.b', 'running');
+    ctx.setTaskStatus('u.c', 'running');
+
+    const updates = events.filter((event) => event.type === 'task_update');
+    expect(updates[0]).toMatchObject({
+      taskId: 't.a',
+      resolvedDriver: 'track-driver',
+      resolvedModel: 'track-model',
+      resolvedPermissions: trackPermissions,
+    });
+    expect(updates[1]).toMatchObject({
+      taskId: 't.b',
+      resolvedDriver: 'task-driver',
+      resolvedModel: 'task-model',
+      resolvedPermissions: { read: false, write: false, execute: false },
+    });
+    expect(updates[2]).toMatchObject({
+      taskId: 'u.c',
+      resolvedDriver: 'pipeline-driver',
+      resolvedModel: 'pipeline-model',
+      resolvedPermissions: pipelinePermissions,
+    });
+  });
 });
 
 describe('RunContext.getOnFailure', () => {

@@ -2,6 +2,16 @@ import { basename } from 'path';
 import type { MiddlewarePlugin, MiddlewareContext, PromptDocument } from '@tagma/types';
 import { appendContext, validatePath } from '@tagma/core';
 
+const DEFAULT_MAX_CONTEXT_CHARS = 200_000;
+
+function parseMaxChars(value: unknown): number {
+  if (value === undefined) return DEFAULT_MAX_CONTEXT_CHARS;
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) {
+    throw new Error('static_context middleware: "max_chars" must be a positive integer');
+  }
+  return value;
+}
+
 export const StaticContextMiddleware: MiddlewarePlugin = {
   name: 'static_context',
   schema: {
@@ -17,6 +27,12 @@ export const StaticContextMiddleware: MiddlewarePlugin = {
         type: 'string',
         description: 'Header shown before the content. Defaults to "Reference: <basename>".',
         placeholder: 'Reference: spec.md',
+      },
+      max_chars: {
+        type: 'number',
+        description: 'Maximum number of characters to read from the file.',
+        default: DEFAULT_MAX_CONTEXT_CHARS,
+        min: 1,
       },
     },
   },
@@ -37,7 +53,12 @@ export const StaticContextMiddleware: MiddlewarePlugin = {
       return doc;
     }
 
-    const content = await file.text();
+    const maxChars = parseMaxChars(config.max_chars);
+    const rawContent = await file.slice(0, maxChars + 1).text();
+    const content =
+      rawContent.length > maxChars
+        ? `${rawContent.slice(0, maxChars)}\n\n[truncated static context at ${maxChars} chars]`
+        : rawContent;
     const label = (config.label as string) ?? `Reference: ${basename(filePath)}`;
 
     // Append a labeled context block; the engine's serializer joins blocks

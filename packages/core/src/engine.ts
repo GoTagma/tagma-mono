@@ -234,6 +234,7 @@ export async function runPipeline(
   const runId = options.runId ?? generateRunId();
   assertValidRunId(runId);
   preflight(config, dag, registry);
+  const pipelineTimeoutMs = config.timeout ? parseDuration(config.timeout) : 0;
 
   const startedAt = nowISO();
   const pipelineInfo: PipelineInfo = { name: config.name, run_id: runId, started_at: startedAt };
@@ -342,7 +343,7 @@ export async function runPipeline(
     const runStartTasks: RunTaskState[] = [];
     for (const [id, node] of dag.nodes) {
       const s = ctx.states.get(id)!;
-      runStartTasks.push(toRunTaskState(id, node.track.id, node.task.name ?? id, s));
+      runStartTasks.push(toRunTaskState(id, node.track.id, node.task.name ?? id, s, config));
     }
     ctx.emit({ type: 'run_start', runId, tasks: runStartTasks });
 
@@ -350,7 +351,6 @@ export async function runPipeline(
     // (timeout / stop_all / external) through to run_end and the
     // pipeline_error hook so downstream consumers can distinguish them
     // without scraping message strings.
-    const pipelineTimeoutMs = config.timeout ? parseDuration(config.timeout) : 0;
     let pipelineTimer: ReturnType<typeof setTimeout> | null = null;
 
     if (pipelineTimeoutMs > 0) {

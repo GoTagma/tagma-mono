@@ -79,6 +79,11 @@ async function* watchPath(
   options: RuntimeWatchOptions = {},
 ): AsyncIterable<RuntimeWatchEvent> {
   const queue: RuntimeWatchEvent[] = [];
+  const rawMaxQueueEvents = options.maxQueueEvents ?? 1024;
+  const maxQueueEvents =
+    Number.isFinite(rawMaxQueueEvents) && rawMaxQueueEvents > 0
+      ? Math.floor(rawMaxQueueEvents)
+      : 1024;
   let wake: (() => void) | null = null;
   let closed = false;
   let error: unknown = null;
@@ -91,6 +96,9 @@ async function* watchPath(
 
   const push = (event: RuntimeWatchEvent) => {
     if (closed) return;
+    if (queue.length >= maxQueueEvents) {
+      queue.splice(0, queue.length - maxQueueEvents + 1);
+    }
     queue.push(event);
     notify();
   };

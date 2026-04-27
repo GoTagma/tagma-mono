@@ -5,7 +5,7 @@ import {
   summarizeStates,
   toRunTaskState,
 } from './run-state';
-import type { TaskState, TaskStatus } from '../types';
+import type { PipelineConfig, TaskState, TaskStatus } from '../types';
 
 describe('isTerminal', () => {
   test('returns true for terminal statuses', () => {
@@ -94,5 +94,33 @@ describe('toRunTaskState', () => {
     expect(wire.stderr).toBe('');
     expect(wire.exitCode).toBeNull();
     expect(wire.logs).toEqual([]);
+  });
+
+  test('projects inherited execution metadata onto the wire shape', () => {
+    const trackPermissions = { read: true, write: true, execute: false };
+    const state = makeState('idle', {
+      config: { id: 't', name: 'Task', prompt: 'Do the work' },
+      trackConfig: {
+        id: 'trk',
+        name: 'Track',
+        driver: 'track-driver',
+        model: 'track-model',
+        permissions: trackPermissions,
+        tasks: [],
+      },
+    });
+    const config: PipelineConfig = {
+      name: 'p',
+      driver: 'pipeline-driver',
+      model: 'pipeline-model',
+      permissions: { read: true, write: false, execute: false },
+      tracks: [state.trackConfig],
+    };
+
+    const wire = toRunTaskState('trk.t', 'trk', 'Task', state, config);
+
+    expect(wire.resolvedDriver).toBe('track-driver');
+    expect(wire.resolvedModel).toBe('track-model');
+    expect(wire.resolvedPermissions).toEqual(trackPermissions);
   });
 });

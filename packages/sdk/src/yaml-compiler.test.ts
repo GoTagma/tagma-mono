@@ -105,4 +105,25 @@ pipeline:
       message: 'permissions must be an object with read/write/execute booleans',
     });
   });
+
+  test('reports invalid pipeline timeout before runtime starts', () => {
+    const result = compileYamlContent(`
+pipeline:
+  name: Bad Timeout
+  timeout: nope
+  tracks:
+    - id: main
+      name: Main
+      tasks:
+        - id: task
+          command: echo hi
+`);
+
+    expect(result.parseOk).toBe(true);
+    expect(result.success).toBe(false);
+    expect(result.validation.errors).toContainEqual({
+      path: 'timeout',
+      message: 'Invalid duration format "nope". Expected e.g. "30s", "5m", "1h".',
+    });
+  });
 });

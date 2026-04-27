@@ -332,6 +332,12 @@ export interface RuntimeWatchOptions {
   readonly depth?: number;
   readonly ignoreInitial?: boolean;
   readonly awaitWriteFinishMs?: number;
+  /**
+   * Maximum number of filesystem events buffered while a consumer is not
+   * awaiting the async iterator. Older events are dropped when the cap is
+   * reached so a burst cannot grow memory without bound.
+   */
+  readonly maxQueueEvents?: number;
   readonly signal?: AbortSignal;
 }
 
@@ -822,7 +828,7 @@ export interface RunTaskState {
    * task starts.
    */
   readonly inputs: Readonly<Record<string, unknown>> | null;
-  /** Resolved after inheritance. Null until the task starts. */
+  /** Resolved after inheritance. Null only when not applicable or unset. */
   readonly resolvedDriver: string | null;
   readonly resolvedModel: string | null;
   readonly resolvedPermissions: Permissions | null;

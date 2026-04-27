@@ -11,7 +11,9 @@ export function findLaunchableTasks(
   runningTaskIds: ReadonlySet<string>,
 ): string[] {
   const launchable: string[] = [];
-  for (const [id, state] of ctx.states) {
+  for (const id of ctx.dag.sorted) {
+    const state = ctx.states.get(id);
+    if (!state) continue;
     if (state.status !== 'waiting' || runningTaskIds.has(id)) continue;
     const node = ctx.dag.nodes.get(id)!;
     const allDepsTerminal =

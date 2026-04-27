@@ -1,7 +1,6 @@
 import type {
   AbortReason,
   OnFailure,
-  Permissions,
   PipelineConfig,
   RunEventPayload,
   EnvPolicy,
@@ -20,7 +19,7 @@ import {
 } from '../hooks';
 import type { TagmaRuntime } from '../types';
 import type { Logger } from '../logger';
-import { isTerminal } from './run-state';
+import { isTerminal, resolveExecutionMetadata } from './run-state';
 import { nowISO } from '../utils';
 
 function isPromptTaskConfig(
@@ -115,6 +114,7 @@ export class RunContext {
     state.status = newStatus;
     const result = state.result;
     const cfg = state.config;
+    const resolved = resolveExecutionMetadata(cfg, state.trackConfig, this.config);
     this.emit({
       type: 'task_update',
       runId: this.runId,
@@ -134,9 +134,9 @@ export class RunContext {
       normalizedOutput: result?.normalizedOutput ?? null,
       inputs: this.resolvedInputsMap.get(taskId) ?? null,
       outputs: this.outputValuesMap.get(taskId) ?? null,
-      resolvedDriver: cfg.driver ?? null,
-      resolvedModel: cfg.model ?? null,
-      resolvedPermissions: (cfg.permissions as Permissions | undefined) ?? null,
+      resolvedDriver: resolved.resolvedDriver,
+      resolvedModel: resolved.resolvedModel,
+      resolvedPermissions: resolved.resolvedPermissions,
     });
   }
 

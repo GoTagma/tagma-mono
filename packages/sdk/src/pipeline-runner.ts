@@ -172,6 +172,7 @@ export class PipelineRunner {
    * Cancel the running pipeline. Safe to call multiple times or before start().
    */
   abort(reason?: string): void {
+    if (this._status === 'done' || this._status === 'aborted') return;
     this._status = 'aborted';
     this._abortController.abort(reason);
   }

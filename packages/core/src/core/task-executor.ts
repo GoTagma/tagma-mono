@@ -55,6 +55,10 @@ function isTriggerWatchHandle(value: unknown): value is TriggerWatchHandle {
   );
 }
 
+function applyStopAllAfterFailure(ctx: RunContext, taskId: string): void {
+  if (ctx.getOnFailure(taskId) === 'stop_all') ctx.applyStopAll();
+}
+
 async function disposeTriggerWatch(
   handle: TriggerWatchHandle,
   log: Logger,
@@ -211,6 +215,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
           `hook execution failed: ${hookErr instanceof Error ? hookErr.message : String(hookErr)}`,
         );
       }
+      applyStopAllAfterFailure(ctx, taskId);
       return;
     }
   }
@@ -248,6 +253,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
         `hook execution failed: ${hookErr instanceof Error ? hookErr.message : String(hookErr)}`,
       );
     }
+    applyStopAllAfterFailure(ctx, taskId);
     return;
   }
 
@@ -296,7 +302,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
         `hook execution failed: ${hookErr instanceof Error ? hookErr.message : String(hookErr)}`,
       );
     }
-    if (ctx.getOnFailure(taskId) === 'stop_all') ctx.applyStopAll();
+    applyStopAllAfterFailure(ctx, taskId);
     return;
   }
   const isPromptTask = effectivePortsResult.isPromptTask;
@@ -330,7 +336,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
         `hook execution failed: ${hookErr instanceof Error ? hookErr.message : String(hookErr)}`,
       );
     }
-    if (ctx.getOnFailure(taskId) === 'stop_all') ctx.applyStopAll();
+    applyStopAllAfterFailure(ctx, taskId);
     return;
   }
   if (bindingResolution.missingOptional.length > 0) {
@@ -374,7 +380,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
           `hook execution failed: ${hookErr instanceof Error ? hookErr.message : String(hookErr)}`,
         );
       }
-      if (ctx.getOnFailure(taskId) === 'stop_all') ctx.applyStopAll();
+      applyStopAllAfterFailure(ctx, taskId);
       return;
     }
     inferredPromptInputs = inputResolution.inputs;

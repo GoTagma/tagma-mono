@@ -37,4 +37,28 @@ describe('driver-claude-code plugin shape', () => {
       expect(String(err)).toMatch(/claude/i);
     }
   });
+
+  test('passes an existing CLAUDE_CODE_GIT_BASH_PATH through to the child env on Windows', async () => {
+    if (process.platform !== 'win32') return;
+
+    const previous = process.env.CLAUDE_CODE_GIT_BASH_PATH;
+    process.env.CLAUDE_CODE_GIT_BASH_PATH = process.execPath;
+
+    const task = {
+      id: 't1',
+      name: 't1',
+      prompt: 'hello',
+      permissions: { read: true, write: false, execute: false },
+    } as unknown as Parameters<typeof plugin.buildCommand>[0];
+    const track = { id: 'k', name: 'k', tasks: [] } as unknown as Parameters<typeof plugin.buildCommand>[1];
+    const ctx = { workDir: process.cwd(), normalizedMap: new Map(), sessionMap: new Map() } as unknown as Parameters<typeof plugin.buildCommand>[2];
+
+    try {
+      const spec = await ClaudeCodeDriver.buildCommand(task, track, ctx);
+      expect(spec.env?.CLAUDE_CODE_GIT_BASH_PATH).toBe(process.execPath);
+    } finally {
+      if (previous === undefined) delete process.env.CLAUDE_CODE_GIT_BASH_PATH;
+      else process.env.CLAUDE_CODE_GIT_BASH_PATH = previous;
+    }
+  });
 });

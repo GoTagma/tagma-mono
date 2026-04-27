@@ -146,6 +146,12 @@ export function validateRaw(
       message: `Invalid reasoning_effort "${config.reasoning_effort}". Expected "low", "medium", or "high".`,
     });
   }
+  if (config.timeout && !isValidDuration(config.timeout)) {
+    errors.push({
+      path: 'timeout',
+      message: `Invalid duration format "${config.timeout}". Expected e.g. "30s", "5m", "1h".`,
+    });
+  }
   if (knownDrivers && config.driver && !knownDrivers.has(config.driver)) {
     errors.push({
       path: 'driver',

@@ -203,6 +203,25 @@ pipeline:
     ).rejects.toThrow(/Invalid mode "sandbox"/);
   });
 
+  test('rejects invalid pipeline timeout during load', async () => {
+    await expect(
+      loadPipeline(
+        `
+pipeline:
+  name: Bad Timeout
+  timeout: nope
+  tracks:
+    - id: t
+      name: T
+      tasks:
+        - id: a
+          command: echo hi
+`,
+        'D:/workspace',
+      ),
+    ).rejects.toThrow(/Invalid duration format "nope"/);
+  });
+
   test('does not reject soft validation warnings', async () => {
     const config = await loadPipeline(
       `
