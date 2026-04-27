@@ -20,6 +20,7 @@ coverage/
 
 .claude/settings.local.json
 .omx
+.tmp
 
 # Desktop packaging artifacts
 apps/editor/desktop-dist/
