@@ -29,6 +29,12 @@ export interface RegisteredCapability {
   readonly result: RegisterResult;
 }
 
+interface PendingCapability {
+  readonly category: PluginCategory;
+  readonly type: string;
+  readonly handler: PluginType;
+}
+
 function singularCategory(category: PluginCategory): string {
   switch (category) {
     case 'drivers':
@@ -107,9 +113,7 @@ function validateContract(category: PluginCategory, handler: unknown): void {
       break;
     case 'middlewares':
       if (typeof h.enhanceDoc !== 'function') {
-        throw new Error(
-          `middlewares plugin "${h.name}" must export enhanceDoc()`,
-        );
+        throw new Error(`middlewares plugin "${h.name}" must export enhanceDoc()`);
       }
       break;
   }
@@ -188,9 +192,7 @@ function hasSupportedCapabilityMap(plugin: TagmaPlugin): boolean {
 
 function moduleDefaultPlugin(name: string, mod: unknown): TagmaPlugin {
   if (!isRecord(mod) || !isTagmaPlugin(mod.default) || !hasSupportedCapabilityMap(mod.default)) {
-    throw new Error(
-      `Plugin "${name}" must default-export a TagmaPlugin with capabilities maps`,
-    );
+    throw new Error(`Plugin "${name}" must default-export a TagmaPlugin with capabilities maps`);
   }
   return mod.default;
 }
@@ -208,6 +210,41 @@ export class PluginRegistry {
     middlewares: new Map<string, MiddlewarePlugin>(),
   };
 
+  private validatePluginRegistration(
+    category: PluginCategory,
+    type: string,
+    handler: PluginType,
+  ): void {
+    if (!VALID_CATEGORIES.has(category)) {
+      throw new Error(`Unknown plugin category "${category}"`);
+    }
+    if (typeof type !== 'string' || type.length === 0) {
+      throw new Error(`Plugin type must be a non-empty string (category="${category}")`);
+    }
+    if (!PLUGIN_TYPE_RE.test(type)) {
+      throw new Error(
+        `Plugin type "${type}" must match ${PLUGIN_TYPE_RE} (letters, digits, underscores, hyphens; no paths or dots)`,
+      );
+    }
+    validateContract(category, handler);
+  }
+
+  private assertCanRegister(
+    category: PluginCategory,
+    type: string,
+    handler: PluginType,
+    options: RegisterPluginOptions,
+  ): void {
+    const registry = this.registries[category] as Map<string, PluginType>;
+    const existing = registry.get(type);
+    if (existing === undefined || existing === handler) return;
+    if (options.replace !== true) {
+      throw new Error(
+        `Duplicate plugin capability "${category}/${type}". Unregister the existing handler first, or pass { replace: true } for an intentional hot replacement.`,
+      );
+    }
+  }
+
   /**
    * Register a plugin under (category, type). Returns:
    *   - 'registered' on first registration
@@ -224,27 +261,12 @@ export class PluginRegistry {
     handler: T,
     options: RegisterPluginOptions = {},
   ): RegisterResult {
-    if (!VALID_CATEGORIES.has(category)) {
-      throw new Error(`Unknown plugin category "${category}"`);
-    }
-    if (typeof type !== 'string' || type.length === 0) {
-      throw new Error(`Plugin type must be a non-empty string (category="${category}")`);
-    }
-    if (!PLUGIN_TYPE_RE.test(type)) {
-      throw new Error(
-        `Plugin type "${type}" must match ${PLUGIN_TYPE_RE} (letters, digits, underscores, hyphens; no paths or dots)`,
-      );
-    }
-    validateContract(category, handler);
+    this.validatePluginRegistration(category, type, handler);
+    this.assertCanRegister(category, type, handler, options);
     const registry = this.registries[category] as Map<string, T>;
     const existing = registry.get(type);
     if (existing === handler) return 'unchanged';
     const wasReplaced = existing !== undefined;
-    if (wasReplaced && options.replace !== true) {
-      throw new Error(
-        `Duplicate plugin capability "${category}/${type}". Unregister the existing handler first, or pass { replace: true } for an intentional hot replacement.`,
-      );
-    }
     registry.set(type, handler);
     return wasReplaced ? 'replaced' : 'registered';
   }
@@ -260,7 +282,7 @@ export class PluginRegistry {
       throw new Error(`TagmaPlugin "${plugin.name}" must declare capabilities`);
     }
 
-    const registered: RegisteredCapability[] = [];
+    const pending: PendingCapability[] = [];
     const capabilities = plugin.capabilities as Record<string, unknown>;
     for (const category of CAPABILITY_CATEGORIES) {
       const handlers = capabilities[category];
@@ -271,15 +293,39 @@ export class PluginRegistry {
         );
       }
       for (const [type, handler] of Object.entries(handlers)) {
-        const result = this.registerPlugin(category, type, handler as PluginType, options);
-        registered.push({ category, type, result });
+        const pendingCapability = { category, type, handler: handler as PluginType };
+        this.validatePluginRegistration(
+          pendingCapability.category,
+          pendingCapability.type,
+          pendingCapability.handler,
+        );
+        pending.push(pendingCapability);
       }
     }
 
-    if (registered.length === 0) {
+    if (pending.length === 0) {
       throw new Error(
         `TagmaPlugin "${plugin.name}" must declare at least one supported capability`,
       );
+    }
+
+    for (const capability of pending) {
+      this.assertCanRegister(capability.category, capability.type, capability.handler, options);
+    }
+
+    const registered: RegisteredCapability[] = [];
+    for (const capability of pending) {
+      const result = this.registerPlugin(
+        capability.category,
+        capability.type,
+        capability.handler,
+        options,
+      );
+      registered.push({
+        category: capability.category,
+        type: capability.type,
+        result,
+      });
     }
     return registered;
   }
@@ -324,10 +370,7 @@ export class PluginRegistry {
    *   pass `process.cwd()` or the workspace root so that workspace-local
    *   plugins resolve correctly.
    */
-  async loadPlugins(
-    pluginNames: readonly string[],
-    resolveFrom?: string,
-  ): Promise<void> {
+  async loadPlugins(pluginNames: readonly string[], resolveFrom?: string): Promise<void> {
     for (const name of pluginNames) {
       if (!isValidPluginName(name)) {
         throw new Error(
