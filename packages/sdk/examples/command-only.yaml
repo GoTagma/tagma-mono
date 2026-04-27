@@ -5,6 +5,7 @@
 # --------------------------------------------------------------------------
 pipeline:
   name: command-only
+  mode: trusted
   timeout: 2m
 
   tracks:

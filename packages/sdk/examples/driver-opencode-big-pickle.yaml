@@ -12,6 +12,7 @@
 # --------------------------------------------------------------------------
 pipeline:
   name: driver-opencode-big-pickle
+  mode: trusted
   driver: opencode
   model: opencode/big-pickle
   timeout: 5m

@@ -12,6 +12,7 @@
 # --------------------------------------------------------------------------
 pipeline:
   name: all-drivers-compare
+  mode: trusted
   timeout: 10m
   plugins:
     - '@tagma/driver-codex'

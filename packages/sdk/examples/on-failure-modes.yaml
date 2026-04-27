@@ -18,6 +18,7 @@
 # --------------------------------------------------------------------------
 pipeline:
   name: on-failure-modes
+  mode: trusted
   timeout: 2m
 
   tracks:

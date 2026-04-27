@@ -10,6 +10,7 @@
 # --------------------------------------------------------------------------
 pipeline:
   name: trigger-manual
+  mode: trusted
   driver: claude-code
   model: haiku
   timeout: 30m

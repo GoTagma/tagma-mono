@@ -8,6 +8,7 @@
 # --------------------------------------------------------------------------
 pipeline:
   name: driver-claude-code-haiku
+  mode: trusted
   driver: claude-code
   model: haiku
   timeout: 5m

@@ -9,6 +9,7 @@
 # --------------------------------------------------------------------------
 pipeline:
   name: driver-codex-mini
+  mode: trusted
   driver: codex
   model: gpt-5.3-codex
   timeout: 5m

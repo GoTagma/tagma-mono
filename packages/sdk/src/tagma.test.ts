@@ -102,6 +102,7 @@ describe('createTagma', () => {
       const result = await tagma.run(
         {
           name: 'runtime-run',
+          mode: 'trusted',
           tracks: [
             {
               id: 't',
@@ -210,6 +211,7 @@ describe('createTagma', () => {
       const result = await tagma.run(
         {
           name: 'runtime-log-store',
+          mode: 'trusted',
           tracks: [
             {
               id: 't',

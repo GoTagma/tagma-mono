@@ -30,6 +30,7 @@ function task(overrides: Partial<TaskConfig> & { id: string }): TaskConfig {
 function pipeline(tasks: TaskConfig[]): PipelineConfig {
   return {
     name: 'bindings-test',
+    mode: 'trusted',
     tracks: [
       {
         id: 't',

@@ -14,6 +14,7 @@ function makeDir(): string {
 function bindingsPipeline(_dir: string): PipelineConfig {
   return {
     name: 'runner-snapshot',
+    mode: 'trusted',
     tracks: [
       {
         id: 't',

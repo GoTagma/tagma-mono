@@ -34,9 +34,9 @@ on:
         options: [alpha, beta, rc, stable, patch]
         default: alpha
       expected_apps_sha:
-        description: 'Optional: tagma-desktop/main SHA you expect to release (7+ chars or full). Aborts if origin/main has moved since. Leave empty to accept current HEAD.'
+        description: 'Required: tagma-desktop/main SHA you expect to release (7+ chars or full). Aborts if origin/main has moved since.'
         type: string
-        default: ''
+        required: true
 
 permissions:
   contents: read
@@ -90,13 +90,12 @@ jobs:
           echo "tagma-desktop/main is at $apps_sha"
           echo "apps_sha=$apps_sha" >> "$GITHUB_OUTPUT"
 
-      # Optional tripwire: operator passes a SHA from their local `git -C apps
+      # Required tripwire: operator passes a SHA from their local `git -C apps
       # rev-parse main` before clicking Run workflow. If anyone else pushed to
       # tagma-desktop/main between that check and this job, the reset above
       # would silently pull in the extra commits. Fail instead so the operator
       # can review the new commits and re-trigger with an updated SHA.
       - name: Verify tagma-desktop/main matches expected SHA
-        if: inputs.expected_apps_sha != ''
         shell: bash
         run: |
           set -euo pipefail
@@ -113,8 +112,7 @@ jobs:
             echo ""
             echo "Someone pushed to tagma-desktop/main after you captured the"
             echo "expected SHA. Inspect the new commits and re-run the workflow"
-            echo "with the updated SHA, or leave expected_apps_sha empty to"
-            echo "accept the current HEAD unconditionally."
+            echo "with the updated SHA."
             exit 1
           fi
           echo "tagma-desktop/main @ $actual matches expected $expected"

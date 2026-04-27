@@ -15,6 +15,7 @@
 # --------------------------------------------------------------------------
 pipeline:
   name: continue-from-session
+  mode: trusted
   driver: claude-code
   model: haiku
   timeout: 5m

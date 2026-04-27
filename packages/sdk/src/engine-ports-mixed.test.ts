@@ -43,6 +43,7 @@ function task(overrides: Partial<TaskConfig> & { id: string }): TaskConfig {
 function pipeline(tasks: TaskConfig[]): PipelineConfig {
   return {
     name: 'mixed-bindings-test',
+    mode: 'trusted',
     tracks: [{ id: 't', name: 'T', permissions: PERMS, driver: 'mock', tasks }],
   };
 }

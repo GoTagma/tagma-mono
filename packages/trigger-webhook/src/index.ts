@@ -39,6 +39,7 @@ interface WebhookServerState {
   readonly port: number;
   readonly path: string;
   readonly secretEnv: string | undefined;
+  readonly maxBodyBytes: number;
   readonly server: ReturnType<typeof Bun.serve>;
   readonly waiters: Resolver[];
 }
@@ -53,6 +54,13 @@ function serverKey(port: number, path: string, hostname: string): string {
 }
 
 const DEFAULT_WEBHOOK_HOST = '127.0.0.1';
+const DEFAULT_MAX_BODY_BYTES = 1024 * 1024;
+const DEFAULT_WEBHOOK_TIMEOUT_LABEL = '30m';
+const DEFAULT_WEBHOOK_TIMEOUT_MS = 30 * 60 * 1000;
+
+type BodyReadResult =
+  | { readonly ok: true; readonly text: string }
+  | { readonly ok: false; readonly response: Response };
 
 function verifySignature(rawBody: string, header: string, secret: string): boolean {
   const expected = 'sha256=' + createHmac('sha256', secret).update(rawBody).digest('hex');
@@ -62,11 +70,74 @@ function verifySignature(rawBody: string, header: string, secret: string): boole
   return timingSafeEqual(a, b);
 }
 
+function parseMaxBodyBytes(value: unknown): number {
+  if (value == null) return DEFAULT_MAX_BODY_BYTES;
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isSafeInteger(n) || n < 1) {
+    throw new Error(`webhook trigger: "max_body_bytes" must be a positive safe integer, got ${String(value)}`);
+  }
+  return n;
+}
+
+async function readRequestTextWithLimit(
+  req: Request,
+  maxBodyBytes: number,
+): Promise<BodyReadResult> {
+  const contentLengthHeader = req.headers.get('content-length');
+  if (contentLengthHeader) {
+    const contentLength = Number(contentLengthHeader);
+    if (!Number.isSafeInteger(contentLength) || contentLength < 0) {
+      return { ok: false, response: new Response('invalid content-length', { status: 400 }) };
+    }
+    if (contentLength > maxBodyBytes) {
+      return { ok: false, response: new Response('payload too large', { status: 413 }) };
+    }
+  }
+
+  if (!req.body) return { ok: true, text: '' };
+
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > maxBodyBytes) {
+        try {
+          await reader.cancel('payload too large');
+        } catch {
+          /* best effort */
+        }
+        return { ok: false, response: new Response('payload too large', { status: 413 }) };
+      }
+      chunks.push(value);
+    }
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      /* best effort */
+    }
+  }
+
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { ok: true, text: new TextDecoder().decode(body) };
+}
+
 function ensureServer(
   port: number,
   path: string,
   secretEnv: string | undefined,
   hostname: string,
+  maxBodyBytes: number,
 ): WebhookServerState {
   const key = serverKey(port, path, hostname);
   const existing = servers.get(key);
@@ -74,6 +145,11 @@ function ensureServer(
     if (existing.secretEnv !== secretEnv) {
       throw new Error(
         `webhook trigger: ${hostname}:${port}${path} is already registered with a different secret_env`,
+      );
+    }
+    if (existing.maxBodyBytes !== maxBodyBytes) {
+      throw new Error(
+        `webhook trigger: ${hostname}:${port}${path} is already registered with a different max_body_bytes`,
       );
     }
     return existing;
@@ -100,7 +176,9 @@ function ensureServer(
         return new Response('method not allowed', { status: 405 });
       }
 
-      const rawBody = await req.text();
+      const bodyResult = await readRequestTextWithLimit(req, state.maxBodyBytes);
+      if (!bodyResult.ok) return bodyResult.response;
+      const rawBody = bodyResult.text;
 
       // HMAC gate — bypassed when no secret env is configured, which is
       // acceptable for loopback dev but should always be set in production.
@@ -155,6 +233,7 @@ function ensureServer(
     port,
     path,
     secretEnv,
+    maxBodyBytes,
     server,
     waiters: [],
   };
@@ -196,6 +275,14 @@ export const WebhookTrigger: TriggerPlugin = {
           'Env var containing the HMAC-SHA256 secret. When set, POSTs must include an x-tagma-signature: sha256=<hex> header computed over the raw body.',
         placeholder: 'TAGMA_WEBHOOK_SECRET',
       },
+      max_body_bytes: {
+        type: 'number',
+        default: DEFAULT_MAX_BODY_BYTES,
+        min: 1,
+        description:
+          'Maximum request body size in bytes. Requests larger than this are rejected with 413 before signature or JSON processing.',
+        placeholder: String(DEFAULT_MAX_BODY_BYTES),
+      },
       host: {
         type: 'string',
         default: DEFAULT_WEBHOOK_HOST,
@@ -205,8 +292,10 @@ export const WebhookTrigger: TriggerPlugin = {
       },
       timeout: {
         type: 'duration',
-        description: 'Maximum wait time (e.g. 10m). Omit or 0 to wait indefinitely.',
-        placeholder: '10m',
+        default: DEFAULT_WEBHOOK_TIMEOUT_LABEL,
+        description:
+          'Maximum wait time (e.g. 10m). Defaults to 30m; set to 0 to wait indefinitely.',
+        placeholder: DEFAULT_WEBHOOK_TIMEOUT_LABEL,
       },
     },
   },
@@ -227,12 +316,19 @@ export const WebhookTrigger: TriggerPlugin = {
       typeof config.secret_env === 'string' && config.secret_env.trim().length > 0
         ? config.secret_env.trim()
         : undefined;
+    if (secretEnv && !process.env[secretEnv]) {
+      throw new Error(`webhook trigger: env var ${secretEnv} not set`);
+    }
+    const maxBodyBytes = parseMaxBodyBytes(config.max_body_bytes);
     const rawHost = config.host;
     const hostname =
       typeof rawHost === 'string' && rawHost.trim().length > 0
         ? rawHost.trim()
         : DEFAULT_WEBHOOK_HOST;
-    const timeoutMs = config.timeout != null ? parseDurationSafe(config.timeout, 0) : 0;
+    const timeoutMs =
+      config.timeout != null ? parseDurationSafe(config.timeout, 0) : DEFAULT_WEBHOOK_TIMEOUT_MS;
+    const timeoutLabel =
+      config.timeout != null ? String(config.timeout) : DEFAULT_WEBHOOK_TIMEOUT_LABEL;
 
     if (hostname !== DEFAULT_WEBHOOK_HOST && hostname !== 'localhost' && !secretEnv) {
       // Loud warning — the user has opted into a non-loopback bind without
@@ -243,7 +339,7 @@ export const WebhookTrigger: TriggerPlugin = {
       );
     }
 
-    const state = ensureServer(port, path, secretEnv, hostname);
+    const state = ensureServer(port, path, secretEnv, hostname, maxBodyBytes);
 
     let dispose = (_reason?: string) => {
       /* assigned below */
@@ -296,7 +392,7 @@ export const WebhookTrigger: TriggerPlugin = {
           cleanup();
           rejectPromise(
             new TriggerTimeoutError(
-              `webhook trigger timeout: no POST on :${port}${path} within ${String(config.timeout)}`,
+              `webhook trigger timeout: no POST on :${port}${path} within ${timeoutLabel}`,
             ),
           );
         }, timeoutMs);

@@ -6,8 +6,39 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
-  check:
+  public-check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: false
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          # Pinned to match `packageManager` in root package.json.
+          bun-version: 1.3.11
+
+      - run: bun install
+
+      - name: Text hygiene
+        run: bun run check:text
+
+      - name: Type check public packages
+        run: bun run check:public
+
+      - name: Test public packages
+        run: bun run test:public
+
+      - name: Lint public packages
+        run: bun run lint:public
+
+  full-check:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/create-github-app-token@v3

@@ -1,5 +1,6 @@
 pipeline:
   name: verify-context-passthrough
+  mode: trusted
   driver: opencode
   model: opencode/big-pickle
   timeout: 10m

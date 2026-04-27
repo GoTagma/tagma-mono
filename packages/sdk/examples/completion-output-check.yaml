@@ -11,6 +11,7 @@
 # --------------------------------------------------------------------------
 pipeline:
   name: completion-output-check
+  mode: trusted
   driver: claude-code
   model: haiku
   timeout: 5m

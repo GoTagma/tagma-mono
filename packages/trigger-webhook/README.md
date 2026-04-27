@@ -61,12 +61,15 @@ await tagma.registry.loadPlugins(['@tagma/trigger-webhook'], process.cwd());
 | `path`       | string   | `/webhook`   | URL path to match; must start with `/`                                                                                                   |
 | `host`       | string   | `127.0.0.1`  | Interface to bind. Defaults to loopback. Setting to `0.0.0.0` or any non-loopback address without `secret_env` is refused at config time |
 | `secret_env` | string   | _(none)_     | Env var holding the HMAC-SHA256 secret. When set, requests must include `x-tagma-signature`                                              |
-| `timeout`    | duration | _(forever)_  | Max wait time; omit (or set to `0`) for unbounded wait                                                                                   |
+| `max_body_bytes` | number | `1048576` | Maximum accepted request body size. Larger requests return `413 payload too large` before signature or JSON processing                    |
+| `timeout`    | duration | `30m`        | Max wait time; set to `0` for unbounded wait                                                                                             |
 
 ## Behavior
 
 - A single `Bun.serve` listener is created per unique `(host, port, path)` triple and shared across all tasks that watch it. The same endpoint cannot be reused with a different `secret_env` in the same process. Multiple tasks on the same endpoint form a FIFO waiter queue; the next POST wakes one waiter.
 - Default bind is `127.0.0.1` so the endpoint is only reachable from the local machine. A non-loopback `host` without `secret_env` is refused.
+- If `secret_env` is set, the referenced environment variable must exist before the listener starts.
+- Request bodies are capped by `max_body_bytes` for both `Content-Length` and streamed bodies.
 - Signature header format: `x-tagma-signature: sha256=<hex>`, HMAC-SHA256 of the raw request body using the secret. Verification is constant-time.
 - JSON bodies (`content-type: application/json`) are parsed and handed to the task as the trigger payload. A malformed JSON body under that content-type returns `400 invalid JSON body`. Other content-types are passed through as raw strings.
 - Successful delivery responds `202 ok`. A POST arriving while no task is waiting is rejected with `409 no waiting task` so the caller can retry once a pipeline is up. Non-matching paths return `404`, non-POST methods return `405`.

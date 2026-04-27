@@ -8,6 +8,7 @@
 # --------------------------------------------------------------------------
 pipeline:
   name: hooks-lifecycle
+  mode: trusted
   timeout: 2m
 
   hooks:

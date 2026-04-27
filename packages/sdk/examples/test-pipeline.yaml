@@ -4,6 +4,7 @@
 # (registered by bootstrapBuiltins).
 pipeline:
   name: full-feature-smoke-test
+  mode: trusted
   driver: opencode                # pipeline-level default driver (inherited by track/task)
   model: opencode/big-pickle       # pipeline-level default model (must be provider/model)
   timeout: 30m                    # pipeline-level timeout

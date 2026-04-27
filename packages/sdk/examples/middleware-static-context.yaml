@@ -10,6 +10,7 @@
 # --------------------------------------------------------------------------
 pipeline:
   name: middleware-static-context
+  mode: trusted
   driver: claude-code
   model: haiku
   timeout: 5m

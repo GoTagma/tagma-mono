@@ -401,11 +401,13 @@ describe('runPipeline — options.registry isolation', () => {
           registry: regA,
           runtime: fakeRuntime(),
           skipPluginLoading: true,
+          mode: 'trusted',
         }),
         runPipeline(config, tmpB, {
           registry: regB,
           runtime: fakeRuntime(),
           skipPluginLoading: true,
+          mode: 'trusted',
         }),
       ]);
       expect(resA.success).toBe(true);
@@ -461,6 +463,27 @@ describe('runPipeline — options.registry isolation', () => {
     }
   });
 
+  test('runPipeline defaults to safe mode when no mode is configured', async () => {
+    const config: PipelineConfig = {
+      name: 'safe-by-default',
+      tracks: [
+        {
+          id: 't',
+          name: 'T',
+          tasks: [{ id: 'only', name: 'only', command: 'echo hi' }],
+        },
+      ],
+    };
+    const tmp = mkdtempSync(join(tmpdir(), 'tagma-safe-default-'));
+    try {
+      await expect(
+        runPipeline(config, tmp, { registry: new PluginRegistry(), runtime: fakeRuntime() }),
+      ).rejects.toThrow(/safe mode blocks command task "t\.only"/);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   test('runPipeline resolves pipeline plugins from the workspace workDir', async () => {
     const tmp = mkdtempSync(join(tmpdir(), 'tagma-workdir-plugin-'));
     const pluginDir = join(tmp, 'node_modules', 'tagma-plugin-workspace-driver');
@@ -510,6 +533,7 @@ describe('runPipeline — options.registry isolation', () => {
       const result = await runPipeline(config, tmp, {
         registry: reg,
         runtime: fakeRuntime(),
+        mode: 'trusted',
       });
 
       expect(result.success).toBe(true);
@@ -545,6 +569,29 @@ describe('runPipeline — options.registry isolation', () => {
           { registry: reg, runtime: fakeRuntime(), mode: 'safe' },
         ),
       ).rejects.toThrow(/safe mode blocks automatic plugin loading/);
+
+      await expect(
+        runPipeline(
+          {
+            name: 'safe-execute-permission',
+            tracks: [
+              {
+                id: 't',
+                name: 'T',
+                tasks: [
+                  {
+                    id: 'x',
+                    prompt: 'hello',
+                    permissions: { read: true, write: true, execute: true },
+                  },
+                ],
+              },
+            ],
+          },
+          tmp,
+          { registry: reg, runtime: fakeRuntime(), mode: 'safe' },
+        ),
+      ).rejects.toThrow(/safe mode blocks execute permission on task "t\.x"/);
 
       await expect(
         runPipeline(
@@ -615,7 +662,7 @@ describe('runPipeline — options.registry isolation', () => {
           ],
         },
         tmp,
-        { registry: reg, runtime: fakeRuntime() },
+        { registry: reg, runtime: fakeRuntime(), mode: 'trusted' },
       );
 
       expect(result.success).toBe(false);
@@ -649,7 +696,7 @@ describe('runPipeline — options.registry isolation', () => {
           tracks: [{ id: 't', name: 'T', tasks: [{ id: 'x', command: 'echo hi' }] }],
         },
         tmp,
-        { registry: new PluginRegistry(), runtime },
+        { registry: new PluginRegistry(), runtime, mode: 'trusted' },
       );
 
       expect(result.success).toBe(false);

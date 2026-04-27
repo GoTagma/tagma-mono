@@ -32,6 +32,7 @@ bun add @tagma/sdk
 ```yaml
 pipeline:
   name: build-and-test
+  mode: trusted # required for shell command tasks
   tracks:
     - id: backend
       name: Backend
@@ -151,7 +152,7 @@ pipeline:
 | Field         | Type            | Required | Description                                                                                |
 | ------------- | --------------- | -------- | ------------------------------------------------------------------------------------------ |
 | `name`        | `string`        | Yes      | Pipeline name, used in logs and run IDs                                                    |
-| `mode`        | `trusted \| safe` | No     | Execution boundary. Defaults to `trusted`; `safe` blocks shell tasks, hooks, automatic plugins, and non-allowlisted capabilities |
+| `mode`        | `trusted \| safe` | No     | Execution boundary. Defaults to `safe`; `safe` blocks shell tasks, hooks, automatic plugins, execute permissions, and non-allowlisted capabilities |
 | `driver`      | `string`        | No       | Default driver for all tracks/tasks (inherited). Built-in: `opencode`                      |
 | `model`       | `string`        | No       | Default model for all tracks/tasks (inherited). Exact model name, e.g. `claude-sonnet-4-6` |
 | `permissions` | `Permissions`   | No       | Default permissions inherited by all tracks/tasks (see Permissions)                        |
@@ -469,7 +470,7 @@ Options:
 - `runId` -- caller-supplied run ID. Must match `run_[A-Za-z0-9_-]{1,128}`. When provided the engine uses this instead of generating its own, keeping the caller and the SDK log directories aligned on the same ID
 - `maxLogRuns` -- number of per-run log directories to keep under `<workDir>/.tagma/logs/` (default: 20)
 - `skipPluginLoading` -- skip the engine's built-in `loadPlugins(config.plugins)` call. Set this when the host has already pre-loaded plugins from a custom resolution path (e.g. the editor loading from the user's workspace `node_modules`) so the engine doesn't re-resolve them via Node's default cwd-based import.
-- `mode` -- override `config.mode` for this run. `trusted` is the default. `safe` blocks `command` tasks, lifecycle hooks, automatic `pipeline.plugins` loading, and non-allowlisted driver/trigger/completion/middleware types.
+- `mode` -- override `config.mode` for this run. `safe` is the default. `safe` blocks `command` tasks, lifecycle hooks, automatic `pipeline.plugins` loading, execute permissions, and non-allowlisted driver/trigger/completion/middleware types.
 - `safeModeAllowlist` -- extends the built-in safe-mode allowlist for trusted host integrations.
 - `envPolicy` -- controls child process environment inheritance. Defaults to a minimal environment (`PATH`, home/user/temp/system keys). Use `{ mode: 'allowlist', keys: [...] }` or `{ mode: 'inherit' }` only when the host deliberately wants to expose more env vars.
 - `logPrompt` -- when `true`, writes the final middleware-expanded prompt to the run log. Defaults to `false`.

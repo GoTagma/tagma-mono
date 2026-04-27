@@ -9,6 +9,7 @@
 # --------------------------------------------------------------------------
 pipeline:
   name: trigger-file
+  mode: trusted
   timeout: 5m
 
   tracks:

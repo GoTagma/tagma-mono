@@ -11,6 +11,7 @@
 # --------------------------------------------------------------------------
 pipeline:
   name: completion-file-exists
+  mode: trusted
   timeout: 2m
 
   tracks:

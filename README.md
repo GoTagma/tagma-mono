@@ -162,7 +162,7 @@ The version script only updates package `version` fields; commit and push the ch
 1. Detect version diffs against the previous commit. Packages whose version is unchanged are skipped.
 2. Publish each changed package by running the matching `publish:*` script in dependency order.
 
-Auth comes from the `NPM_TOKEN` repo secret, written to `.npmrc` at the workspace root before `bun publish`.
+Auth currently comes from the `NPM_TOKEN` repo secret, written to `.npmrc` only for the publish job and removed in a cleanup step after publishing.
 
 To force-publish without a version bump, trigger the workflow manually from the Actions tab and pass a JSON array, for example `["types","sdk"]`. Valid keys: `types`, `core`, `runtime-bun`, `codex`, `claude-code`, `lightrag`, `webhook`, `llm-judge`, `sdk`.
 

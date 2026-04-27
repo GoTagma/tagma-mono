@@ -16,6 +16,9 @@ concurrency:
   group: publish-npm
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
   detect:
     runs-on: ubuntu-latest
@@ -158,3 +161,7 @@ jobs:
 
           echo ""
           echo "All changed packages published."
+
+      - name: Cleanup npm auth
+        if: always()
+        run: rm -f .npmrc ~/.npmrc

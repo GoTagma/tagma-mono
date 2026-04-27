@@ -172,8 +172,12 @@ function enforceExecutionMode(
     }
     for (const task of track.tasks) {
       const taskLabel = `${track.id}.${task.id}`;
+      const permissions = task.permissions ?? track.permissions ?? config.permissions;
       if (task.command !== undefined) {
         errors.push(`safe mode blocks command task "${taskLabel}"`);
+      }
+      if (permissions?.execute) {
+        errors.push(`safe mode blocks execute permission on task "${taskLabel}"`);
       }
       const driver = task.driver ?? trackDriver;
       if (task.prompt !== undefined && !allowedDrivers.has(driver)) {
@@ -214,7 +218,7 @@ export async function runPipeline(
     );
   }
 
-  const mode = options.mode ?? config.mode ?? 'trusted';
+  const mode = options.mode ?? config.mode ?? 'safe';
   enforceExecutionMode(config, mode, options.safeModeAllowlist);
 
   // Load any plugins declared in the pipeline config before preflight so that
