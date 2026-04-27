@@ -1,5 +1,9 @@
 import { expect, test } from 'bun:test';
+import { mkdirSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { _resetShellCache, shellArgs } from './utils';
+import { validatePath } from './utils';
 
 test('PIPELINE_SHELL override is evaluated per call instead of cached', () => {
   const previousShell = process.env.PIPELINE_SHELL;
@@ -17,5 +21,30 @@ test('PIPELINE_SHELL override is evaluated per call instead of cached', () => {
       process.env.PIPELINE_SHELL = previousShell;
     }
     _resetShellCache();
+  }
+});
+
+test('validatePath rejects a future file under a symlinked parent outside the project root', () => {
+  const root = join(
+    tmpdir(),
+    `tagma-core-root-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  );
+  const outside = join(
+    tmpdir(),
+    `tagma-core-outside-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  );
+  try {
+    mkdirSync(root, { recursive: true });
+    mkdirSync(outside, { recursive: true });
+    try {
+      symlinkSync(outside, join(root, 'link'), 'junction');
+    } catch {
+      return;
+    }
+
+    expect(() => validatePath('link/future.txt', root)).toThrow(/escapes project root/i);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
   }
 });

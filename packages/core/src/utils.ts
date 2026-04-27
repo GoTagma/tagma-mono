@@ -1,4 +1,4 @@
-import { isAbsolute, resolve, relative, parse as parsePath, sep } from 'path';
+import { dirname, isAbsolute, resolve, relative, parse as parsePath, sep } from 'path';
 import { realpathSync, lstatSync, existsSync } from 'fs';
 import { randomBytes } from 'crypto';
 
@@ -28,17 +28,18 @@ export function parseDuration(input: string): number {
 
 export function validatePath(filePath: string, projectRoot: string): string {
   const resolved = resolve(projectRoot, filePath);
+  const resolvedRoot = resolve(projectRoot);
 
   // D2: Cross-drive check (Windows) — path.relative('C:\\root', 'D:\\x') returns
   // 'D:\\x' which does NOT start with '..', so a pure relative check would wrongly
   // allow cross-drive paths. Reject them explicitly before any further comparison.
-  if (parsePath(projectRoot).root !== parsePath(resolved).root) {
+  if (parsePath(resolvedRoot).root.toLowerCase() !== parsePath(resolved).root.toLowerCase()) {
     throw new Error(
       `Security: path "${filePath}" is on a different drive than the project root "${projectRoot}".`,
     );
   }
 
-  const rel = relative(projectRoot, resolved);
+  const rel = relative(resolvedRoot, resolved);
   if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
     throw new Error(
       `Security: path "${filePath}" escapes project root. ` +
@@ -47,9 +48,17 @@ export function validatePath(filePath: string, projectRoot: string): string {
   }
 
   // D1: Resolve symlinks and re-validate so a symlink whose string path is
-  // inside the project root but whose target lies outside is rejected.
-  // Only resolve if the path exists on disk; at parse time the file may not
-  // yet exist (e.g. a future output path), so we skip realpath for absent paths.
+  // inside the project root but whose target lies outside is rejected. For
+  // future output paths, resolve the nearest existing parent so a symlinked
+  // parent cannot hide an escape before the final file exists.
+  const realRoot = (() => {
+    try {
+      return realpathSync.native(resolvedRoot);
+    } catch {
+      return resolvedRoot;
+    }
+  })();
+  let real = resolved;
   if (existsSync(resolved)) {
     // Reject the entry outright if it is itself a symlink — callers that want
     // to allow symlinks within the tree can pass pre-resolved paths.
@@ -65,20 +74,36 @@ export function validatePath(filePath: string, projectRoot: string): string {
     }
 
     // Also verify the real (fully resolved) path stays within the project root.
-    let real: string;
     try {
       real = realpathSync.native(resolved);
     } catch {
       real = resolved; // path vanished between existsSync and realpathSync — skip
     }
-    const realRoot = (() => {
-      try {
-        return realpathSync.native(projectRoot);
-      } catch {
-        return projectRoot;
-      }
-    })();
-    if (parsePath(realRoot).root !== parsePath(real).root) {
+    if (parsePath(realRoot).root.toLowerCase() !== parsePath(real).root.toLowerCase()) {
+      throw new Error(
+        `Security: resolved path "${real}" is on a different drive than the project root "${realRoot}".`,
+      );
+    }
+    const realRel = relative(realRoot, real);
+    if (realRel === '..' || realRel.startsWith(`..${sep}`) || isAbsolute(realRel)) {
+      throw new Error(
+        `Security: path "${filePath}" resolves via symlink to "${real}" which escapes project root "${realRoot}".`,
+      );
+    }
+  } else {
+    let existingParent = dirname(resolved);
+    while (!existsSync(existingParent)) {
+      const next = dirname(existingParent);
+      if (next === existingParent) break;
+      existingParent = next;
+    }
+    try {
+      const realParent = realpathSync.native(existingParent);
+      real = resolve(realParent, relative(existingParent, resolved));
+    } catch {
+      real = resolved;
+    }
+    if (parsePath(realRoot).root.toLowerCase() !== parsePath(real).root.toLowerCase()) {
       throw new Error(
         `Security: resolved path "${real}" is on a different drive than the project root "${realRoot}".`,
       );
