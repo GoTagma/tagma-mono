@@ -1,6 +1,6 @@
 {
   "name": "@tagma/core",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Runtime-independent orchestration core for Tagma pipelines",
   "license": "MIT",
   "repository": {
@@ -20,6 +20,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./ports": {
+      "types": "./dist/ports.d.ts",
+      "import": "./dist/ports.js",
+      "default": "./dist/ports.js"
     }
   },
   "files": [

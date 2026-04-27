@@ -6,7 +6,7 @@ export {
   resolveTaskBindingInputs,
   resolveTaskInputs,
   substituteInputs,
-} from '@tagma/core';
+} from '@tagma/core/ports';
 
 export type {
   BindingInputResolution,
@@ -18,4 +18,4 @@ export type {
   PromptUpstreamNeighbor,
   SubstituteResult,
   UpstreamBindingData,
-} from '@tagma/core';
+} from '@tagma/core/ports';
