@@ -147,16 +147,16 @@ pipeline:
 
 ### Pipeline Fields
 
-| Field     | Type            | Required | Description                                                                                |
-| --------- | --------------- | -------- | ------------------------------------------------------------------------------------------ |
-| `name`    | `string`        | Yes      | Pipeline name, used in logs and run IDs                                                    |
-| `driver`  | `string`        | No       | Default driver for all tracks/tasks (inherited). Built-in: `opencode`                      |
-| `model`   | `string`        | No       | Default model for all tracks/tasks (inherited). Exact model name, e.g. `claude-sonnet-4-6` |
-| `permissions` | `Permissions` | No     | Default permissions inherited by all tracks/tasks (see Permissions)                        |
-| `timeout` | `string`        | No       | Pipeline-level timeout. Format: `"30s"`, `"5m"`, `"2h"`                                    |
-| `plugins` | `string[]`      | No       | External plugin packages to load, e.g. `["@tagma/driver-codex"]`                           |
-| `hooks`   | `HooksConfig`   | No       | Shell commands to run at lifecycle events (see Hooks below)                                |
-| `tracks`  | `TrackConfig[]` | Yes      | List of parallel execution tracks                                                          |
+| Field         | Type            | Required | Description                                                                                |
+| ------------- | --------------- | -------- | ------------------------------------------------------------------------------------------ |
+| `name`        | `string`        | Yes      | Pipeline name, used in logs and run IDs                                                    |
+| `driver`      | `string`        | No       | Default driver for all tracks/tasks (inherited). Built-in: `opencode`                      |
+| `model`       | `string`        | No       | Default model for all tracks/tasks (inherited). Exact model name, e.g. `claude-sonnet-4-6` |
+| `permissions` | `Permissions`   | No       | Default permissions inherited by all tracks/tasks (see Permissions)                        |
+| `timeout`     | `string`        | No       | Pipeline-level timeout. Format: `"30s"`, `"5m"`, `"2h"`                                    |
+| `plugins`     | `string[]`      | No       | External plugin packages to load, e.g. `["@tagma/driver-codex"]`                           |
+| `hooks`       | `HooksConfig`   | No       | Shell commands to run at lifecycle events (see Hooks below)                                |
+| `tracks`      | `TrackConfig[]` | Yes      | List of parallel execution tracks                                                          |
 
 ### Hooks Fields
 
@@ -206,8 +206,8 @@ Each hook value can be a single command string or an array of commands.
 | `middlewares`   | `MiddlewareConfig[]` | No       | Inherited from track | Middleware override. Set `[]` to disable inherited middlewares                                         |
 | `trigger`       | `TriggerConfig`      | No       | —                    | Gate that must resolve before the task runs (see Triggers)                                             |
 | `completion`    | `CompletionConfig`   | No       | —                    | Post-execution check to validate task output (see Completions)                                         |
-| `inputs`        | `TaskInputBindings`  | No       | —                    | Task input bindings for `{{inputs.<name>}}`; optional `type` enables coercion/validation                |
-| `outputs`       | `TaskOutputBindings` | No       | —                    | Named outputs published after success; optional `type` enables coercion/validation                      |
+| `inputs`        | `TaskInputBindings`  | No       | —                    | Task input bindings for `{{inputs.<name>}}`; optional `type` enables coercion/validation               |
+| `outputs`       | `TaskOutputBindings` | No       | —                    | Named outputs published after success; optional `type` enables coercion/validation                     |
 
 ### Permissions
 
@@ -292,23 +292,21 @@ Tasks can declare named, typed `inputs` / `outputs`. Inputs flow in from upstrea
 
 #### Binding fields
 
-| Field         | Type                                                  | Required | Description                                                                                                                                                                       |
-| ------------- | ----------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `value`       | `unknown`                                             | No       | Literal value. For inputs, this wins over `from`                                                                                                                                  |
-| `from`        | `string`                                              | No       | Inputs: upstream source such as `taskId.outputs.name`, `taskId.stdout`, or `outputs.name`. Outputs: `json.<key>`, `stdout`, `stderr`, or `normalizedOutput`                      |
-| `default`     | `unknown`                                             | No       | Fallback value when the source is missing                                                                                                                                         |
-| `required`    | `boolean`                                             | Inputs only | When `true`, missing upstream value and no `default` blocks the task                                                                                                           |
-| `type`        | `'string' \| 'number' \| 'boolean' \| 'enum' \| 'json'` | No       | Optional coercion type. Omit it for pass-through values                                                                                                                           |
-| `description` | `string`                                              | No       | Free-text description; rendered into the `[Inputs]` / `[Output Format]` blocks                                                                                                    |
-| `enum`        | `string[]`                                            | When `type: enum` | Allowed values                                                                                                                                                                    |
+| Field         | Type                                                    | Required          | Description                                                                                                                                                 |
+| ------------- | ------------------------------------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `value`       | `unknown`                                               | No                | Literal value. For inputs, this wins over `from`                                                                                                            |
+| `from`        | `string`                                                | No                | Inputs: upstream source such as `taskId.outputs.name`, `taskId.stdout`, or `outputs.name`. Outputs: `json.<key>`, `stdout`, `stderr`, or `normalizedOutput` |
+| `default`     | `unknown`                                               | No                | Fallback value when the source is missing                                                                                                                   |
+| `required`    | `boolean`                                               | Inputs only       | When `true`, missing upstream value and no `default` blocks the task                                                                                        |
+| `type`        | `'string' \| 'number' \| 'boolean' \| 'enum' \| 'json'` | No                | Optional coercion type. Omit it for pass-through values                                                                                                     |
+| `description` | `string`                                                | No                | Free-text description; rendered into the `[Inputs]` / `[Output Format]` blocks                                                                              |
+| `enum`        | `string[]`                                              | When `type: enum` | Allowed values                                                                                                                                              |
 
 #### Substitution and AI prompt blocks
 
 - `{{inputs.<name>}}` is expanded verbatim in `command` and `prompt` strings before execution. Quote your placeholders in command lines (`--city "{{inputs.city}}"`) — the engine does not shell-escape.
 - AI tasks get `[Output Format]` and `[Inputs]` blocks when typed bindings can be inferred from neighboring command tasks.
 - Output extraction strategy: prefer `normalizedOutput` (AI tasks), fall back to stdout (command tasks). Find the last non-empty line that parses as a JSON object, then read each declared output key. Failures append a diagnostic to stderr; the binding is absent from `outputs` and downstream tasks see it as missing.
-
-YAML `ports` has been replaced by typed `inputs` / `outputs`. `validateRaw` reports any `ports` field as a migration error.
 
 ---
 
@@ -405,16 +403,15 @@ YAML `ports` has been replaced by typed `inputs` / `outputs`. `validateRaw` repo
 - raw validation helpers
 - task reference helpers
 
-### Dataflow helpers: `@tagma/sdk/ports`
+### Dataflow helpers: `@tagma/sdk/dataflow`
 
 - placeholder substitution, binding resolution, output extraction, and internal prompt-contract inference
-- the subpath name is historical; YAML `ports` is rejected by validation
+- stable public subpath for pure dataflow helpers; no runtime/process imports
 
 ### Runtime approval adapters
 
 - `@tagma/sdk/runtime/adapters/stdin-approval`
 - `@tagma/sdk/runtime/adapters/websocket-approval`
-- the older `@tagma/sdk/adapters/*` subpaths remain thin compatibility re-exports
 
 ### Split packages
 
@@ -600,9 +597,7 @@ import {
   moveTask,
   transferTask,
 } from '@tagma/sdk/config';
-import {
-  serializePipeline,
-} from '@tagma/sdk/yaml';
+import { serializePipeline } from '@tagma/sdk/yaml';
 
 // Build a config programmatically
 let config = createEmptyPipeline('my-pipeline');
@@ -613,18 +608,18 @@ config = upsertTask(config, 'backend', { id: 'implement', prompt: 'Add /health e
 const yaml = serializePipeline(config);
 ```
 
-| Function                                                             | Description                                                                                                                                                                                                                           |
-| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `createEmptyPipeline(name)`                                          | Create a minimal pipeline config                                                                                                                                                                                                      |
-| `setPipelineField(config, fields)`                                   | Update top-level pipeline fields                                                                                                                                                                                                      |
-| `upsertTrack(config, track)`                                         | Insert or replace a track by id                                                                                                                                                                                                       |
-| `removeTrack(config, trackId)`                                       | Remove a track                                                                                                                                                                                                                        |
-| `moveTrack(config, trackId, toIndex)`                                | Reorder a track                                                                                                                                                                                                                       |
-| `updateTrack(config, trackId, fields)`                               | Patch track fields (not tasks)                                                                                                                                                                                                        |
-| `upsertTask(config, trackId, task)`                                  | Insert or replace a task                                                                                                                                                                                                              |
-| `removeTask(config, trackId, taskId, cleanRefs?)`                    | Remove a task; pass `cleanRefs: true` to also strip dangling `depends_on` / `continue_from` references. Only refs that resolve to the deleted task are removed — same-named tasks in other tracks are unaffected                      |
-| `moveTask(config, trackId, taskId, toIndex)`                         | Reorder a task within its track                                                                                                                                                                                                       |
-| `transferTask(config, fromTrackId, taskId, toTrackId, qualifyRefs?)` | Move a task across tracks (see invariants below)                                                                                                                                                                                       |
+| Function                                                             | Description                                                                                                                                                                                                      |
+| -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createEmptyPipeline(name)`                                          | Create a minimal pipeline config                                                                                                                                                                                 |
+| `setPipelineField(config, fields)`                                   | Update top-level pipeline fields                                                                                                                                                                                 |
+| `upsertTrack(config, track)`                                         | Insert or replace a track by id                                                                                                                                                                                  |
+| `removeTrack(config, trackId)`                                       | Remove a track                                                                                                                                                                                                   |
+| `moveTrack(config, trackId, toIndex)`                                | Reorder a track                                                                                                                                                                                                  |
+| `updateTrack(config, trackId, fields)`                               | Patch track fields (not tasks)                                                                                                                                                                                   |
+| `upsertTask(config, trackId, task)`                                  | Insert or replace a task                                                                                                                                                                                         |
+| `removeTask(config, trackId, taskId, cleanRefs?)`                    | Remove a task; pass `cleanRefs: true` to also strip dangling `depends_on` / `continue_from` references. Only refs that resolve to the deleted task are removed — same-named tasks in other tracks are unaffected |
+| `moveTask(config, trackId, taskId, toIndex)`                         | Reorder a task within its track                                                                                                                                                                                  |
+| `transferTask(config, fromTrackId, taskId, toTrackId, qualifyRefs?)` | Move a task across tracks (see invariants below)                                                                                                                                                                 |
 
 `transferTask` invariants — the call is a **no-op** (returns the input config unchanged) when:
 
@@ -672,17 +667,17 @@ Use `validateRaw` for editing raw configs in a UI; use `validateConfig` after `r
 
 Pure helpers backing typed task bindings and internal prompt-contract inference. Safe to use in editors, simulators, and custom drivers — no I/O, no side effects.
 
-| Function                                                | Description                                                                                                                                                                                                                          |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `substituteInputs(text, inputs)`                        | Expand `{{inputs.<name>}}` placeholders in `text`. Returns `{ text, unresolved }`. Strings pass through, numbers/booleans coerce via `String(...)`, objects/arrays via `JSON.stringify`. Caller is responsible for shell quoting     |
-| `extractInputReferences(text)`                          | Return the set of input port names referenced by `{{inputs.<name>}}` placeholders in `text`. Use at edit time to flag undeclared references                                                                                          |
-| `resolveTaskBindingInputs(task, upstreamData, dependsOn)` | Resolve lightweight task-level `inputs` from literal values, upstream outputs, stdout/stderr, normalized output, defaults, and required flags                                                                                         |
-| `resolveTaskInputs(task, upstreamOutputs, dependsOn)`   | Gather the input values a task will consume from its direct upstreams. Applies `from` bindings, defaults, and type coercion. Returns `{ kind: 'ready', inputs, missingOptional }` or `{ kind: 'blocked', missingRequired, ambiguous, typeErrors, reason }` |
-| `extractTaskBindingOutputs(outputs, stdout, stderr, normalizedOutput)` | Publish lightweight task-level `outputs` from final-line JSON, stdout/stderr, normalized output, literal values, or defaults                                                                                              |
-| `extractTaskOutputs(ports, stdout, normalizedOutput)`   | Internal helper for inferred prompt contracts. Strategy: prefer `normalizedOutput`; find the last non-empty line that parses as a JSON object; coerce each declared key. Returns `{ outputs, diagnostic }`             |
-| `prependContext(doc, block)`                            | Same shape as `appendContext` but prepends; the engine uses this to place `[Output Format]` and `[Inputs]` blocks before middleware-added context                                                                                    |
-| `renderInputsBlock(inputsDecl, values)`                 | Build the `[Inputs]` `PromptContextBlock` rendered into AI prompts (`name: value  # description` lines). Returns `null` when no inputs to render                                                                                     |
-| `renderOutputSchemaBlock(outputsDecl)`                  | Build the `[Output Format]` `PromptContextBlock` instructing the model to emit a final-line JSON object matching the declared outputs. Returns `null` when no outputs declared                                                       |
+| Function                                                               | Description                                                                                                                                                                                                                                                |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `substituteInputs(text, inputs)`                                       | Expand `{{inputs.<name>}}` placeholders in `text`. Returns `{ text, unresolved }`. Strings pass through, numbers/booleans coerce via `String(...)`, objects/arrays via `JSON.stringify`. Caller is responsible for shell quoting                           |
+| `extractInputReferences(text)`                                         | Return the set of input port names referenced by `{{inputs.<name>}}` placeholders in `text`. Use at edit time to flag undeclared references                                                                                                                |
+| `resolveTaskBindingInputs(task, upstreamData, dependsOn)`              | Resolve lightweight task-level `inputs` from literal values, upstream outputs, stdout/stderr, normalized output, defaults, and required flags                                                                                                              |
+| `resolveTaskInputs(task, upstreamOutputs, dependsOn)`                  | Gather the input values a task will consume from its direct upstreams. Applies `from` bindings, defaults, and type coercion. Returns `{ kind: 'ready', inputs, missingOptional }` or `{ kind: 'blocked', missingRequired, ambiguous, typeErrors, reason }` |
+| `extractTaskBindingOutputs(outputs, stdout, stderr, normalizedOutput)` | Publish lightweight task-level `outputs` from final-line JSON, stdout/stderr, normalized output, literal values, or defaults                                                                                                                               |
+| `extractTaskOutputs(ports, stdout, normalizedOutput)`                  | Internal helper for inferred prompt contracts. Strategy: prefer `normalizedOutput`; find the last non-empty line that parses as a JSON object; coerce each declared key. Returns `{ outputs, diagnostic }`                                                 |
+| `prependContext(doc, block)`                                           | Same shape as `appendContext` but prepends; the engine uses this to place `[Output Format]` and `[Inputs]` blocks before middleware-added context                                                                                                          |
+| `renderInputsBlock(inputsDecl, values)`                                | Build the `[Inputs]` `PromptContextBlock` rendered into AI prompts (`name: value  # description` lines). Returns `null` when no inputs to render                                                                                                           |
+| `renderOutputSchemaBlock(outputsDecl)`                                 | Build the `[Output Format]` `PromptContextBlock` instructing the model to emit a final-line JSON object matching the declared outputs. Returns `null` when no outputs declared                                                                             |
 
 Custom drivers that wrap the prompt in their own envelope can read `DriverContext.inputs` (resolved + coerced map keyed by port name) and call `substituteInputs` themselves — the engine has already substituted into `task.prompt` upstream, so most drivers can ignore this.
 
@@ -690,7 +685,7 @@ Custom drivers that wrap the prompt in their own envelope can read `DriverContex
 
 Validates a raw pipeline config without resolving inheritance or executing anything. Returns a flat list of `{ path, message, severity? }` objects — empty array means valid. `severity` is `'error'` (default, fatal) or `'warning'` (soft hint; non-blocking).
 
-Checks: required fields, `prompt`/`command` exclusivity, duplicate task IDs within a track, `depends_on`/`continue_from` reference integrity (including ambiguous bare refs that exist in multiple tracks — use `trackId.taskId` to disambiguate), circular dependency detection, binding shape (name format, valid `type`, duplicate names, `enum` requires non-empty `enum` array), `ports` migration errors, `{{inputs.<name>}}` references resolving to a declared or inferred input binding, and `permissions` shape (must be an object with boolean `read`/`write`/`execute`). Tolerant of half-built configs — non-array `tracks` or `tasks` produce a structured error instead of throwing.
+Checks: required fields, `prompt`/`command` exclusivity, duplicate task IDs within a track, `depends_on`/`continue_from` reference integrity (including ambiguous bare refs that exist in multiple tracks — use `trackId.taskId` to disambiguate), circular dependency detection, binding shape (name format, valid `type`, duplicate names, `enum` requires non-empty `enum` array), `{{inputs.<name>}}` references resolving to a declared or inferred input binding, and `permissions` shape (must be an object with boolean `read`/`write`/`execute`). Tolerant of half-built configs — non-array `tracks` or `tasks` produce a structured error instead of throwing.
 
 Plugin-type checks are opt-in via `knownTypes`: when provided, references to trigger/completion/middleware/driver types that are neither built-in nor in the supplied set produce a **warning** (`severity: 'warning'`) so editors can light up uninstalled plugins without blocking save / run. Omit `knownTypes` for offline / pre-load validation — no plugin warnings are emitted in that case.
 
@@ -804,6 +799,18 @@ Truncates `text` to at most `maxBytes` UTF-8 bytes (default 16 KB), appending a 
 | `generateRunId()`                     | Generates a unique run ID (`run_<ts>_<seq>_<rand>`)       |
 | `nowISO()`                            | Returns `new Date().toISOString()`                        |
 | `truncateForName(text, maxLen?)`      | Truncates first line to `maxLen` (default 40) for display |
+
+## Release And Version Behavior
+
+`@tagma/sdk` depends on `@tagma/core`, `@tagma/runtime-bun`, and `@tagma/types`, so those packages must exist on npm before publishing the SDK version that references them. Package versions may remain independent; only bump the packages whose public contract changed.
+
+Release flow:
+
+1. Run `bun run version <package> <patch|minor|major|x.y.z>` for each package whose public contract changed, or `bun run version all patch` when a coordinated release is useful.
+2. Run `bun run build` and `bun run publish:dry` locally before pushing a release commit.
+3. Publish in dependency order: `@tagma/types`, `@tagma/core`, `@tagma/runtime-bun`, plugin packages, then `@tagma/sdk`.
+
+Published packages include `dist/` only. Each package build cleans `dist/` before TypeScript compilation so removed entry points cannot leak into the tarball.
 
 ## Related Packages
 

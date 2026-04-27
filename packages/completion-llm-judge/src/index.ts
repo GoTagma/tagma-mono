@@ -249,7 +249,7 @@ export const LlmJudgeCompletion: CompletionPlugin = {
     try {
       const content = await callJudge(endpoint, model, apiKey, messages, timeoutMs, ctx.signal);
       const firstLine = (content.split(/\r?\n/, 1)[0] ?? '').trim().toUpperCase();
-      const passed = firstLine.startsWith('PASS');
+      const passed = firstLine === 'PASS';
       if (!passed) {
         // Surface the judge's reasoning in logs so pipeline operators can
         // see why an output was rejected without re-running it themselves.

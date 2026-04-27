@@ -1,7 +1,6 @@
 import { resolve, dirname } from 'path';
 import type { TriggerPlugin, TriggerContext } from '../types';
-import { parseDuration, validatePath } from '../utils';
-import { TriggerTimeoutError } from '../core/trigger-errors';
+import { parseDuration, TriggerTimeoutError, validatePath } from '@tagma/core';
 
 const IS_WINDOWS = process.platform === 'win32';
 

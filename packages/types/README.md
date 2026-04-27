@@ -1,6 +1,6 @@
 # @tagma/types
 
-Shared TypeScript type definitions for the [@tagma/sdk](https://www.npmjs.com/package/@tagma/sdk) ecosystem. This package contains **types only** -- no runtime code.
+Shared TypeScript contracts for the [@tagma/sdk](https://www.npmjs.com/package/@tagma/sdk) ecosystem. Runtime code is intentionally tiny and limited to shared constants plus small helpers such as duration parsing.
 
 ## Install
 
@@ -8,7 +8,7 @@ Shared TypeScript type definitions for the [@tagma/sdk](https://www.npmjs.com/pa
 bun add @tagma/types
 ```
 
-You typically don't need to install this directly -- `@tagma/sdk` re-exports everything from this package. Install it only when building a standalone plugin that needs type definitions without depending on the full SDK.
+You typically don't need to install this directly -- `@tagma/sdk` re-exports everything from this package. Install it when building a standalone plugin that needs the shared contract surface without depending on the full SDK.
 
 ## Usage
 
@@ -42,7 +42,7 @@ import type {
 
 - `TaskInputBindings` -- `{ [name]: TaskInputBinding }`. Task-level values available as `{{inputs.name}}`; `from` can reference `taskId.outputs.name`, `taskId.stdout`, `taskId.stderr`, `taskId.normalizedOutput`, `taskId.exitCode`, or `outputs.name`; optional `type` enables coercion
 - `TaskOutputBindings` -- `{ [name]: TaskOutputBinding }`. Named outputs selected from `json.name`, `stdout`, `stderr`, `normalizedOutput`, literal `value`, or `default`; optional `type` enables coercion
-- `TaskPorts` / `PortDef` -- internal compatibility types used by prompt inference helpers. YAML `ports` is rejected by `validateRaw`; use typed `inputs` / `outputs` instead
+- `TaskPorts` / `PortDef` -- internal prompt-contract types used by core dataflow inference helpers. YAML uses task-level `inputs` / `outputs`, not a `ports` key
 - `PortType` -- `'string' | 'number' | 'boolean' | 'enum' | 'json'`. Drives runtime coercion when resolving inputs and extracting outputs
 
 ### Plugin Interfaces

@@ -1,7 +1,18 @@
 import type { CompletionPlugin, CompletionContext, TaskResult } from '../types';
-import { shellArgs, parseDuration } from '../utils';
+import { parseDuration, shellArgs } from '@tagma/core';
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+
+async function drain(stream: ReadableStream<Uint8Array> | null): Promise<void> {
+  if (!stream) return;
+  await stream.pipeTo(
+    new WritableStream<Uint8Array>({
+      write() {
+        // Discard check stdout; only exit status matters.
+      },
+    }),
+  );
+}
 
 export const OutputCheckCompletion: CompletionPlugin = {
   name: 'output_check',
@@ -75,9 +86,13 @@ export const OutputCheckCompletion: CompletionPlugin = {
         }
       }
 
-      // Consume stderr concurrently with waiting for exit to prevent pipe-buffer
-      // deadlock when check script emits more than ~64 KB of stderr output.
-      const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+      // Drain stdout and stderr concurrently so verbose check commands cannot
+      // block on pipe buffers while the parent waits for process exit.
+      const [exitCode, , stderr] = await Promise.all([
+        proc.exited,
+        drain(proc.stdout),
+        new Response(proc.stderr).text(),
+      ]);
 
       if (exitCode !== 0 && stderr.trim()) {
         console.warn(`[output_check] "${checkCmd}" exit=${exitCode}: ${stderr.trim()}`);

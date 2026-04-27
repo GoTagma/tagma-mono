@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       packages:
-        description: 'JSON array of keys to force-publish (e.g. ["types","sdk"]). Leave empty to auto-detect.'
+        description: 'JSON array of keys to force-publish (e.g. ["types","core","sdk"]). Leave empty to auto-detect.'
         required: false
         default: ''
 
@@ -35,6 +35,8 @@ jobs:
         run: |
           declare -A DIR_TO_KEY
           DIR_TO_KEY[types]="types"
+          DIR_TO_KEY[core]="core"
+          DIR_TO_KEY[runtime-bun]="runtime-bun"
           DIR_TO_KEY[driver-codex]="codex"
           DIR_TO_KEY[driver-claude-code]="claude-code"
           DIR_TO_KEY[middleware-lightrag]="lightrag"
@@ -74,7 +76,7 @@ jobs:
             new=$(node -e "process.stdout.write(require('./${dir}package.json').version||'')")
 
             if [ -n "$new" ] && [ "$old" != "$new" ]; then
-              echo "✅ ${dirname}: ${old:-NEW} → ${new}"
+              echo "鉁?${dirname}: ${old:-NEW} 鈫?${new}"
               CHANGED=$(echo "$CHANGED" | node -e "
                 let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{
                   const a=JSON.parse(s);
@@ -83,7 +85,7 @@ jobs:
                 })
               ")
             else
-              echo "⏭️  ${dirname}: no version change (${old} → ${new})"
+              echo "鈴笍  ${dirname}: no version change (${old} 鈫?${new})"
             fi
           done
 
@@ -123,12 +125,16 @@ jobs:
         run: |
           # Publish order must follow the dependency chain:
           #   1. types (all others depend on it)
-          #   2. plugins (codex, claude-code, lightrag, webhook, llm-judge)
-          #   3. sdk
-          ORDER=("types" "codex" "claude-code" "lightrag" "webhook" "llm-judge" "sdk")
+          #   2. core (depends on types)
+          #   3. runtime-bun (depends on core)
+          #   4. plugins (codex, claude-code, lightrag, webhook, llm-judge)
+          #   5. sdk (depends on core, runtime-bun, types)
+          ORDER=("types" "core" "runtime-bun" "codex" "claude-code" "lightrag" "webhook" "llm-judge" "sdk")
 
           declare -A PUBLISH_MAP
           PUBLISH_MAP[types]="publish:types"
+          PUBLISH_MAP[core]="publish:core"
+          PUBLISH_MAP[runtime-bun]="publish:runtime-bun"
           PUBLISH_MAP[codex]="publish:driver-codex"
           PUBLISH_MAP[claude-code]="publish:driver-claude-code"
           PUBLISH_MAP[lightrag]="publish:middleware-lightrag"
@@ -144,11 +150,11 @@ jobs:
 
             if [ "$is_changed" = "true" ]; then
               script="${PUBLISH_MAP[$key]}"
-              echo "━━━ Publishing ${key} (${script}) ━━━"
+              echo "Publishing ${key} (${script})"
               bun run "$script"
-              echo "✅ ${key} published"
+              echo "${key} published"
             fi
           done
 
           echo ""
-          echo "🎉 All changed packages published!"
+          echo "All changed packages published."

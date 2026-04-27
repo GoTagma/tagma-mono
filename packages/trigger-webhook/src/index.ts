@@ -33,9 +33,11 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 type Resolver = (payload: unknown) => void;
 
 interface WebhookServerState {
+  readonly key: string;
   readonly port: number;
   readonly path: string;
   readonly secretEnv: string | undefined;
+  readonly server: ReturnType<typeof Bun.serve>;
   readonly waiters: Resolver[];
 }
 
@@ -66,16 +68,17 @@ function ensureServer(
 ): WebhookServerState {
   const key = serverKey(port, path, hostname);
   const existing = servers.get(key);
-  if (existing) return existing;
+  if (existing) {
+    if (existing.secretEnv !== secretEnv) {
+      throw new Error(
+        `webhook trigger: ${hostname}:${port}${path} is already registered with a different secret_env`,
+      );
+    }
+    return existing;
+  }
 
-  const state: WebhookServerState = {
-    port,
-    path,
-    secretEnv,
-    waiters: [],
-  };
-
-  Bun.serve({
+  let state: WebhookServerState;
+  const server = Bun.serve({
     port,
     // Default to loopback so the webhook endpoint is not reachable from the
     // LAN unless the user explicitly sets `host` in their YAML (e.g. for
@@ -142,8 +145,23 @@ function ensureServer(
     },
   });
 
+  state = {
+    key,
+    port,
+    path,
+    secretEnv,
+    server,
+    waiters: [],
+  };
   servers.set(key, state);
   return state;
+}
+
+function closeServerIfIdle(state: WebhookServerState): void {
+  if (state.waiters.length > 0) return;
+  if (servers.get(state.key) !== state) return;
+  servers.delete(state.key);
+  state.server.stop(true);
 }
 
 export const WebhookTrigger: TriggerPlugin = {
@@ -200,7 +218,10 @@ export const WebhookTrigger: TriggerPlugin = {
       throw new Error(`webhook trigger: "path" must start with "/", got ${path}`);
     }
 
-    const secretEnv = config.secret_env as string | undefined;
+    const secretEnv =
+      typeof config.secret_env === 'string' && config.secret_env.trim().length > 0
+        ? config.secret_env.trim()
+        : undefined;
     const rawHost = config.host;
     const hostname =
       typeof rawHost === 'string' && rawHost.trim().length > 0
@@ -247,6 +268,7 @@ export const WebhookTrigger: TriggerPlugin = {
         ctx.signal.removeEventListener('abort', onAbort);
         const idx = state.waiters.indexOf(onFire);
         if (idx !== -1) state.waiters.splice(idx, 1);
+        closeServerIfIdle(state);
       };
 
       state.waiters.push(onFire);

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { PluginRegistry } from './registry';
+import { PluginRegistry } from '@tagma/core';
 import { bootstrapBuiltins } from './bootstrap';
 import { runPipeline } from './engine';
 import type { DriverPlugin, TriggerPlugin, PipelineConfig, TagmaRuntime, TaskResult } from './types';

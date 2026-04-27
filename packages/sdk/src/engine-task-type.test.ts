@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runPipeline, type RunEventPayload } from './engine';
-import { PluginRegistry } from './registry';
+import { PluginRegistry } from '@tagma/core';
 import type { PipelineConfig } from './types';
 
 function makeDir(): string {
@@ -13,8 +13,6 @@ function makeDir(): string {
 describe('engine task type detection', () => {
   test('empty command is still a command task and does not require a driver', async () => {
     const dir = makeDir();
-    const previousShell = process.env.PIPELINE_SHELL;
-    process.env.PIPELINE_SHELL = 'cmd';
     try {
       const events: RunEventPayload[] = [];
       const config: PipelineConfig = {
@@ -45,11 +43,6 @@ describe('engine task type detection', () => {
         expect(final.resolvedDriver).toBeNull();
       }
     } finally {
-      if (previousShell === undefined) {
-        delete process.env.PIPELINE_SHELL;
-      } else {
-        process.env.PIPELINE_SHELL = previousShell;
-      }
       rmSync(dir, { recursive: true, force: true });
     }
   });

@@ -1,6 +1,5 @@
 import type { TriggerPlugin, TriggerContext } from '../types';
-import { parseDuration } from '../utils';
-import { TriggerBlockedError, TriggerTimeoutError } from '../engine';
+import { parseDuration, TriggerBlockedError, TriggerTimeoutError } from '@tagma/core';
 
 export const ManualTrigger: TriggerPlugin = {
   name: 'manual',

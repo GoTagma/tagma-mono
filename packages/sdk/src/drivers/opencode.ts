@@ -20,9 +20,9 @@ const DEFAULT_MODEL = 'opencode/big-pickle';
 // tagma uses a provider-neutral reasoning_effort vocabulary (low|medium|high)
 // but opencode's `--variant` is provider-specific (e.g. high|max|minimal).
 // Map the tagma values to the closest opencode variant:
-//   low    → minimal  (least thinking)
-//   medium → <no flag, provider default>
-//   high   → high     (most thinking)
+//   low    闂?minimal  (least thinking)
+//   medium 闂?<no flag, provider default>
+//   high   闂?high     (most thinking)
 // Unknown values pass through unchanged so users who target a specific
 // opencode variant (e.g. "max") still work.
 const EFFORT_TO_VARIANT: Record<string, string | null> = {
@@ -31,27 +31,13 @@ const EFFORT_TO_VARIANT: Record<string, string | null> = {
   high: 'high',
 };
 
-// ── Auto-install + free-model picker ───────────────────────────────────────
+// CLI probe + free-model picker.
 //
-// The opencode driver is SDK-built-in, but the `opencode` CLI isn't. Two
-// provisioning paths:
-//
-//   1. Desktop app — the Electron shell ships a platform-matched opencode
-//      binary under resources/opencode/bin/, prepended to the sidecar's PATH
-//      at launch (see apps/electron/src/runtime-paths.ts). In-app updates
-//      drop a newer copy into userData/opencode/bin/ which wins via PATH
-//      precedence. That path resolves on the first `opencode --version`
-//      probe below; no auto-install ever fires.
-//
-//   2. SDK direct use — when bun is on PATH we fall through to
-//      `bun install -g opencode-ai`, identical to the pre-desktop behavior.
-//
-// When BOTH paths are unavailable (no bundled binary, no bun) we fail with
-// an actionable error pointing at the desktop Settings panel instead of
-// silently letting `opencode run` ENOENT later — the old behavior swallowed
-// the root cause in runCapture's catch and left the user staring at an
-// opaque "exit code -1". The result is process-memoized so subsequent
-// tasks in the same run surface the same error without re-probing.
+// The opencode driver is built into the SDK, but the opencode CLI is an
+// external executable. The desktop app places its bundled binary on PATH;
+// direct SDK users must install opencode-ai before running prompt tasks.
+// This driver only probes and fails with setup guidance. It never mutates
+// global tooling from inside a pipeline run.
 
 interface OpencodeModelInfo {
   id?: string;
@@ -61,10 +47,8 @@ interface OpencodeModelInfo {
   limit?: { context?: number };
 }
 
-// Memoize BOTH success and failure. On failure we stash the message so every
-// subsequent ensureOpencodeInstalled() throws the identical error — re-running
-// the bun-install probe for each task of a failed run would just be slow and
-// produce confusing interleaved stderr.
+// Memoize both success and failure so every task in a failed run reports
+// the same setup error without re-probing.
 let opencodeReady: boolean | undefined;
 let opencodeReadyError: string | undefined;
 let cachedDefaultModel: string | undefined;
@@ -85,12 +69,10 @@ async function runCapture(
   }
 }
 
-// Shared tail for every failure message — the Tagma desktop app exposes a
-// one-click installer at the same npm source path this driver would reach
-// for, so point users there first. Users running the SDK as a library still
-// see the manual bun/npm hint.
+// Shared tail for every failure message. Desktop users get the in-app setup
+// path first; direct SDK users still see the manual bun/npm install hint.
 const SETUP_HINT =
-  'If you are using the Tagma desktop app, open Editor Settings → OpenCode CLI to install or update the bundled binary. ' +
+  'If you are using the Tagma desktop app, open Editor Settings -> OpenCode CLI to install or update the bundled binary. ' +
   'Otherwise install it manually: `bun install -g opencode-ai` or `npm install -g opencode-ai`.';
 
 async function ensureOpencodeInstalled(): Promise<void> {
@@ -99,7 +81,7 @@ async function ensureOpencodeInstalled(): Promise<void> {
     throw new Error(opencodeReadyError);
   }
 
-  // Probe existing install first — this is the hot path for desktop users
+  // Probe existing install first 闂?this is the hot path for desktop users
   // (bundled binary in PATH) and for anyone who already has opencode.
   const probe = await runCapture(['opencode', '--version']);
   if (probe.code === 0) {
@@ -107,57 +89,9 @@ async function ensureOpencodeInstalled(): Promise<void> {
     return;
   }
 
-  // Distinguish "bun is missing" from "bun is here but install failed" so
-  // the error we surface points at the right next step. If bun is absent we
-  // skip the install attempt entirely — spawning with `bun` as argv[0]
-  // would just ENOENT inside runCapture's catch and look identical to a
-  // failed install.
-  const bunProbe = await runCapture(['bun', '--version']);
-  if (bunProbe.code !== 0) {
-    opencodeReady = false;
-    opencodeReadyError = `OpenCode CLI is not available and \`bun\` is not installed. ${SETUP_HINT}`;
-    throw new Error(opencodeReadyError);
-  }
-
-  console.error(
-    '[driver:opencode] opencode CLI not found — installing via `bun install -g opencode-ai`... (this may take up to a minute)',
-  );
-  // Use inherit here so the user sees bun's own progress during the one-time
-  // install; runCapture would swallow it.
-  const install = Bun.spawn(['bun', 'install', '-g', 'opencode-ai'], {
-    stdout: 'inherit',
-    stderr: 'inherit',
-  });
-  const installCode = await install.exited;
-  if (installCode !== 0) {
-    opencodeReady = false;
-    opencodeReadyError = `\`bun install -g opencode-ai\` failed (exit code ${installCode}). ${SETUP_HINT}`;
-    throw new Error(opencodeReadyError);
-  }
-
-  // Bun installs globals under `~/.bun/bin` (or `%USERPROFILE%\.bun\bin`),
-  // which isn't on this process's cached PATH unless the user already has
-  // bun set up. Ask bun for the directory and prepend it so bare `opencode`
-  // resolves in this process without requiring a shell reload.
-  const bin = await runCapture(['bun', 'pm', 'bin', '-g']);
-  if (bin.code === 0) {
-    const dir = bin.stdout.trim();
-    const sep = process.platform === 'win32' ? ';' : ':';
-    const current = process.env.PATH ?? '';
-    if (dir && !current.split(sep).includes(dir)) {
-      process.env.PATH = `${dir}${sep}${current}`;
-    }
-  }
-
-  const verify = await runCapture(['opencode', '--version']);
-  if (verify.code !== 0) {
-    opencodeReady = false;
-    opencodeReadyError =
-      '`opencode` is not resolvable after `bun install -g opencode-ai` completed. ' +
-      "Bun's global bin directory is probably not on PATH — add it manually or restart the app.";
-    throw new Error(opencodeReadyError);
-  }
-  opencodeReady = true;
+  opencodeReady = false;
+  opencodeReadyError = `OpenCode CLI is not available on PATH. ${SETUP_HINT}`;
+  throw new Error(opencodeReadyError);
 }
 
 // `opencode models --verbose` emits "<provider>/<id>\n{...json...}\n" pairs.
@@ -188,8 +122,7 @@ function parseVerboseModels(stdout: string): OpencodeModelInfo[] {
 }
 
 function pickFreeModel(models: OpencodeModelInfo[]): string | null {
-  const fullId = (m: OpencodeModelInfo): string =>
-    `${m.providerID ?? 'opencode'}/${m.id ?? ''}`;
+  const fullId = (m: OpencodeModelInfo): string => `${m.providerID ?? 'opencode'}/${m.id ?? ''}`;
   const eligible = models.filter((m) => {
     if (!m.id || m.id === 'big-pickle') return false;
     if (m.status && m.status !== 'active') return false;
@@ -199,7 +132,7 @@ function pickFreeModel(models: OpencodeModelInfo[]): string | null {
     if (typeof ctx !== 'number' || ctx <= 128000) return false;
     return true;
   });
-  // Prefer models explicitly labelled "-free" by the provider — those are
+  // Prefer models explicitly labelled "-free" by the provider 闂?those are
   // a stronger stability signal than "cost happens to be 0 right now".
   const preferred = eligible.filter((m) => m.id?.endsWith('-free'));
   const pool = preferred.length > 0 ? preferred : eligible;
@@ -244,16 +177,15 @@ export const OpenCodeDriver: DriverPlugin = {
 
   async buildCommand(task: TaskConfig, track: TrackConfig, ctx: DriverContext): Promise<SpawnSpec> {
     const explicitModel = task.model ?? track.model;
-    // Always make sure the opencode CLI is usable before we spawn it — even
+    // Always make sure the opencode CLI is usable before we spawn it, even
     // when the user pinned a model. ensureOpencodeInstalled throws with an
-    // actionable message when the binary is neither present on PATH (desktop
-    // bundles it there via runtime-paths.ts) nor installable via bun.
+    // actionable message when the binary is not present on PATH.
     if (explicitModel) await ensureOpencodeInstalled();
     // Otherwise resolveDefaultModel both ensures the CLI and picks a free
     // model from `opencode models --verbose` (cached per-process).
     const model = explicitModel ?? (await resolveDefaultModel());
-    // Resolve reasoning_effort → opencode --variant. SDK schema layer already
-    // resolved task → track → pipeline inheritance, so we only need to read
+    // Resolve reasoning_effort 闂?opencode --variant. SDK schema layer already
+    // resolved task 闂?track 闂?pipeline inheritance, so we only need to read
     // task.reasoning_effort here.
     const rawEffort = task.reasoning_effort ?? track.reasoning_effort;
     const variant = rawEffort
@@ -275,7 +207,7 @@ export const OpenCodeDriver: DriverPlugin = {
     if (task.continue_from) {
       sessionId = ctx.sessionMap.get(task.continue_from) ?? null;
       if (!sessionId) {
-        // no session — degrade to text context passthrough
+        // no session 闂?degrade to text context passthrough
         let prev: string | null = null;
         if (ctx.normalizedMap.has(task.continue_from)) {
           prev = ctx.normalizedMap.get(task.continue_from)!;
@@ -292,7 +224,7 @@ export const OpenCodeDriver: DriverPlugin = {
     // misread by opencode's argument parser (flag-injection mitigation).
     // Shell-level injection is already prevented by Bun.spawn's direct argv array.
     // Windows cmd.exe argv truncation on the `.cmd` wrapper is handled by the
-    // SDK runner's shim unwrapping — see note at the top of this file.
+    // SDK runner's shim unwrapping 闂?see note at the top of this file.
     const args: string[] = [
       'opencode',
       'run',
@@ -320,8 +252,8 @@ export const OpenCodeDriver: DriverPlugin = {
   },
 
   parseResult(stdout: string): DriverResultMeta {
-    // opencode --format json emits NDJSON — one JSON object per line
-    // (step_start / text / step_finish / …). The previous single
+    // opencode --format json emits NDJSON 闂?one JSON object per line
+    // (step_start / text / step_finish / 闂?. The previous single
     // `JSON.parse(stdout)` always threw on this shape and fell through to
     // the catch, returning sessionId:null and losing session resume.
     // Walk line-by-line, pick up the first sessionID we see, concatenate
@@ -361,12 +293,12 @@ export const OpenCodeDriver: DriverPlugin = {
         // D21: stop at the first error. Continuing meant subsequent text
         // lines got accumulated into `textParts` only to be discarded by
         // the error-return below, and a later `{type:"error"}` would
-        // silently overwrite the original cause — operators then debugged
+        // silently overwrite the original cause 闂?operators then debugged
         // a downstream symptom while the root-cause line scrolled past.
         break;
       }
 
-      // Session id — opencode uses `sessionID` (camelCase with capital D).
+      // Session id 闂?opencode uses `sessionID` (camelCase with capital D).
       // Keep `session_id` / `sessionId` as fallbacks for forward/backward
       // compatibility with other shapes.
       if (!sessionId) {

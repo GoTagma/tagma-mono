@@ -12,8 +12,8 @@ export {
 } from './config-ops';
 export { validateRaw } from './validate-raw';
 export type { ValidationError, KnownPluginTypes } from './validate-raw';
-export { buildRawDag } from './dag';
-export type { RawDag, RawDagNode } from './dag';
+export { buildRawDag } from '@tagma/core';
+export type { RawDag, RawDagNode } from '@tagma/core';
 export {
   TASK_ID_RE,
   isValidTaskId,
@@ -22,5 +22,5 @@ export {
   buildTaskIndex,
   resolveTaskRef,
   AMBIGUOUS,
-} from './task-ref';
-export type { TaskIndex, RefResolution } from './task-ref';
+} from '@tagma/core';
+export type { TaskIndex, RefResolution } from '@tagma/core';

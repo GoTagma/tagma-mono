@@ -113,38 +113,75 @@ export function nowISO(): string {
 
 // ═══ Platform-aware shell ═══
 //
+// Platform-aware shell resolution.
 // Resolution order:
 //   1. Env override: PIPELINE_SHELL="bash" or PIPELINE_SHELL="cmd" etc.
 //   2. Windows: prefer sh (Git Bash / MSYS2) if on PATH, fall back to cmd.exe
 //   3. Unix: sh
 //
-// Resolution is cached once on first call to avoid repeated PATH lookups.
+// Automatic resolution is cached; env overrides are intentionally not cached.
 
 const IS_WINDOWS = process.platform === 'win32';
 
 type ShellKind = 'sh' | 'bash' | 'cmd' | 'powershell';
 let resolvedShell: { kind: ShellKind; path: string } | null = null;
 
-function detectShell(): { kind: ShellKind; path: string } {
-  // Env override takes precedence
-  const override = process.env.PIPELINE_SHELL;
-  if (override) {
-    const kind = override as ShellKind;
-    return { kind, path: override };
+function shellKindForPath(path: string): ShellKind {
+  const normalized = path.toLowerCase();
+  if (normalized === 'cmd' || normalized.endsWith('\\cmd.exe') || normalized.endsWith('/cmd.exe')) {
+    return 'cmd';
   }
+  if (
+    normalized === 'powershell' ||
+    normalized === 'pwsh' ||
+    normalized.endsWith('\\powershell.exe') ||
+    normalized.endsWith('/powershell.exe') ||
+    normalized.endsWith('\\pwsh.exe') ||
+    normalized.endsWith('/pwsh.exe')
+  ) {
+    return 'powershell';
+  }
+  if (
+    normalized === 'bash' ||
+    normalized.endsWith('\\bash.exe') ||
+    normalized.endsWith('/bash.exe')
+  ) {
+    return 'bash';
+  }
+  return 'sh';
+}
 
+function detectShell(): { kind: ShellKind; path: string } {
   if (!IS_WINDOWS) {
     return { kind: 'sh', path: 'sh' };
   }
 
-  // Windows: default to cmd.exe. Hosts that prefer Git Bash/MSYS2 can set
-  // PIPELINE_SHELL explicitly; auto-picking sh from PATH is brittle in
-  // sandboxed environments where the file exists but cannot be spawned.
+  // Windows: prefer a POSIX shell when one is on PATH because quoting
+  // command strings with nested absolute paths is more predictable through
+  // `sh -c` than through `cmd.exe /c`. Hosts can still force cmd or
+  // PowerShell with PIPELINE_SHELL.
+  const pathEnv = process.env.PATH ?? '';
+  const pathExt = (process.env.PATHEXT ?? '.EXE;.CMD;.BAT').split(';');
+  const dirs = pathEnv.split(';').filter(Boolean);
+  for (const dir of dirs) {
+    for (const ext of ['', ...pathExt]) {
+      const candidate = `${dir}\\sh${ext}`;
+      if (existsSync(candidate)) {
+        return { kind: 'sh', path: candidate };
+      }
+    }
+  }
+
+  // Fallback: cmd.exe is always present on Windows.
   const systemRoot = process.env.SystemRoot ?? 'C:\\Windows';
   return { kind: 'cmd', path: `${systemRoot}\\System32\\cmd.exe` };
 }
 
 function getShell(): { kind: ShellKind; path: string } {
+  const override = process.env.PIPELINE_SHELL;
+  if (override) {
+    return { kind: shellKindForPath(override), path: override };
+  }
   if (!resolvedShell) resolvedShell = detectShell();
   return resolvedShell;
 }
@@ -162,14 +199,18 @@ export function shellArgs(command: string): readonly string[] {
 }
 
 /** Quote a single argument for inclusion in a shell command string. */
-function quoteArg(arg: string): string {
+function quoteArg(arg: string, kind: ShellKind): string {
   if (!/[\s"'\\<>|&;`$!^%]/.test(arg)) return arg;
-  if (IS_WINDOWS) {
-    // On Windows (cmd.exe), double-quote and escape embedded quotes + backslashes
+
+  if (kind === 'cmd') {
     return '"' + arg.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
   }
-  // On Unix, use single quotes to prevent $variable expansion.
-  // Escape embedded single quotes via the '\'' idiom.
+
+  if (kind === 'powershell') {
+    return "'" + arg.replace(/'/g, "''") + "'";
+  }
+
+  // POSIX shells: single-quote to prevent expansion and preserve Windows paths.
   return "'" + arg.replace(/'/g, "'\\''") + "'";
 }
 
@@ -178,7 +219,15 @@ function quoteArg(arg: string): string {
  * Each arg is quoted as needed, then joined and passed through shellArgs.
  */
 export function shellArgsFromArray(args: readonly string[]): readonly string[] {
-  return shellArgs(args.map(quoteArg).join(' '));
+  const sh = getShell();
+  const command = args.map((arg) => quoteArg(arg, sh.kind)).join(' ');
+  if (sh.kind === 'cmd') {
+    return [sh.path, '/c', command];
+  }
+  if (sh.kind === 'powershell') {
+    return [sh.path, '-Command', command];
+  }
+  return [sh.path, '-c', command];
 }
 
 // For tests: allow resetting the cached shell detection

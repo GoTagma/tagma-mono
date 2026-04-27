@@ -34,13 +34,7 @@
 // Everything here is pure / deterministic so it can be reused by the CLI,
 // the editor (for preview/simulation), and the engine without side effects.
 
-import type {
-  PortDef,
-  PortType,
-  TaskConfig,
-  TaskOutputBindings,
-  TaskPorts,
-} from './types';
+import type { PortDef, PortType, TaskInputBindings, TaskOutputBindings, TaskPorts } from './types';
 
 // ─── Template substitution ────────────────────────────────────────────
 
@@ -172,7 +166,7 @@ export type InputResolution =
  * message and mark the task blocked.
  */
 export function resolveTaskInputs(
-  task: TaskConfig,
+  task: { readonly ports?: TaskPorts },
   upstreamOutputs: ReadonlyMap<string, Readonly<Record<string, unknown>>>,
   dependsOn: readonly string[],
 ): InputResolution {
@@ -275,7 +269,7 @@ export type BindingInputResolution =
     };
 
 export function resolveTaskBindingInputs(
-  task: Pick<TaskConfig, 'inputs'>,
+  task: { readonly inputs?: TaskInputBindings },
   upstreamData: ReadonlyMap<string, UpstreamBindingData>,
   dependsOn: readonly string[],
 ): BindingInputResolution {
@@ -667,7 +661,8 @@ export function extractTaskBindingOutputs(
 
   return {
     outputs,
-    diagnostic: missing.length > 0 ? `outputs: unresolved binding output(s): ${missing.join(', ')}` : null,
+    diagnostic:
+      missing.length > 0 ? `outputs: unresolved binding output(s): ${missing.join(', ')}` : null,
   };
 }
 
@@ -731,11 +726,11 @@ function safeParseJson(candidate: string): Record<string, unknown> | null {
 //     rename on the Command side. We surface this as an `inputConflicts`
 //     entry; the engine blocks the task with that reason.
 //
-  //   - **Output collision with compatible types** (e.g. both downstreams
-  //     ask for `date: string`) → merged into a single inferred output.
-  //     Compatibility is determined by `type` and `enum` only; `description`
-  //     differences are ignored. The Prompt produces one `date`; both
-  //     downstreams consume it.
+//   - **Output collision with compatible types** (e.g. both downstreams
+//     ask for `date: string`) → merged into a single inferred output.
+//     Compatibility is determined by `type` and `enum` only; `description`
+//     differences are ignored. The Prompt produces one `date`; both
+//     downstreams consume it.
 //
 //   - **Output collision with incompatible types** (e.g. one downstream
 //     wants `date: string`, another `date: number`) → no single LLM
@@ -917,9 +912,10 @@ export function inferPromptPorts(input: {
 function portsAreCompatible(a: PortDef, b: PortDef): boolean {
   if (a.type !== b.type) return false;
   if (a.type === 'enum') {
-    const aEnum = [...(a.enum ?? [])].sort().join(' ');
-    const bEnum = [...(b.enum ?? [])].sort().join(' ');
-    if (aEnum !== bEnum) return false;
+    const aEnum = [...(a.enum ?? [])].sort();
+    const bEnum = [...(b.enum ?? [])].sort();
+    if (aEnum.length !== bEnum.length) return false;
+    if (aEnum.some((value, index) => value !== bEnum[index])) return false;
   }
   return true;
 }

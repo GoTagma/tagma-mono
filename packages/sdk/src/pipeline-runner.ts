@@ -23,8 +23,13 @@
 
 import { runPipeline } from './engine';
 import type { EngineResult, RunPipelineOptions } from './engine';
-import { TASK_LOG_CAP, type PipelineConfig, type RunEventPayload, type RunTaskState } from './types';
-import { generateRunId } from './utils';
+import {
+  TASK_LOG_CAP,
+  type PipelineConfig,
+  type RunEventPayload,
+  type RunTaskState,
+} from './types';
+import { generateRunId } from '@tagma/core';
 
 export type { EngineResult };
 

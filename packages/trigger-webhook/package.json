@@ -1,6 +1,6 @@
 {
   "name": "@tagma/trigger-webhook",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "HTTP webhook trigger plugin for tagma-sdk pipelines",
   "license": "MIT",
   "repository": {
@@ -23,8 +23,7 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "dist",
-    "src"
+    "dist"
   ],
   "publishConfig": {
     "access": "public"
@@ -44,11 +43,11 @@
     "type": "webhook"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "node ../../scripts/build-package.mjs",
     "test": "bun test",
     "prepublishOnly": "bun run build"
   },
-  "peerDependencies": {
+  "dependencies": {
     "@tagma/types": "workspace:*"
   }
 }

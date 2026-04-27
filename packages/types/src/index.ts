@@ -78,9 +78,9 @@ export interface PluginSchema {
 // `type` metadata turns a binding into a strict, coerced contract; omitted
 // `type` keeps the binding as a lightweight pass-through value.
 //
-// `PortDef` / `TaskPorts` are retained as internal compatibility shapes for
-// prompt-contract inference helpers. YAML `ports` is rejected by validateRaw;
-// authors should use typed `inputs` / `outputs` instead.
+// `PortDef` / `TaskPorts` are internal prompt-contract shapes used by core
+// dataflow inference helpers. YAML task configs expose typed `inputs` /
+// `outputs`; there is no public `ports` field.
 
 export type PortType = 'string' | 'number' | 'boolean' | 'enum' | 'json';
 
@@ -185,12 +185,6 @@ export interface TaskConfig {
   readonly cwd?: string;
   readonly inputs?: TaskInputBindings;
   readonly outputs?: TaskOutputBindings;
-  /**
-   * @deprecated YAML `ports` has been replaced by typed `inputs` / `outputs`.
-   * Kept in the type surface temporarily so validators and migration tools can
-   * produce a clear migration error instead of dropping the field silently.
-   */
-  readonly ports?: TaskPorts;
 }
 
 // ═══ Raw Task Config (from YAML, before inheritance) ═══
@@ -214,8 +208,6 @@ export interface RawTaskConfig {
   readonly cwd?: string;
   readonly inputs?: TaskInputBindings;
   readonly outputs?: TaskOutputBindings;
-  /** @deprecated Use typed `inputs` / `outputs`; validateRaw rejects `ports`. */
-  readonly ports?: TaskPorts;
 }
 
 // ═══ Track Config ═══
@@ -367,11 +359,7 @@ export interface RuntimeLogStore {
 }
 
 export interface TagmaRuntime {
-  runSpawn(
-    spec: SpawnSpec,
-    driver: DriverPlugin | null,
-    options?: RunOptions,
-  ): Promise<TaskResult>;
+  runSpawn(spec: SpawnSpec, driver: DriverPlugin | null, options?: RunOptions): Promise<TaskResult>;
   runCommand(command: string, cwd: string, options?: RunOptions): Promise<TaskResult>;
   ensureDir(path: string): Promise<void>;
   fileExists(path: string): Promise<boolean>;
@@ -578,11 +566,7 @@ export interface MiddlewarePlugin {
 
 // ═══ Capability Plugin Packages ═══
 
-export type CapabilityHandler =
-  | DriverPlugin
-  | TriggerPlugin
-  | CompletionPlugin
-  | MiddlewarePlugin;
+export type CapabilityHandler = DriverPlugin | TriggerPlugin | CompletionPlugin | MiddlewarePlugin;
 
 export interface PluginCapabilities {
   readonly drivers?: Readonly<Record<string, DriverPlugin>>;
@@ -595,11 +579,7 @@ export interface PluginCapabilities {
 }
 
 export interface PluginSetupContext {
-  registerPlugin(
-    category: PluginCategory,
-    type: string,
-    handler: CapabilityHandler,
-  ): void;
+  registerPlugin(category: PluginCategory, type: string, handler: CapabilityHandler): void;
 }
 
 export interface TagmaPlugin {
@@ -940,4 +920,3 @@ export type WireRunEvent = (RunEventPayload | RunSnapshotPayload) & {
 
 // ═══ Runtime Utilities ═══
 export { parseDurationSafe } from './duration.js';
-
