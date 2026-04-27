@@ -1,11 +1,38 @@
 import { describe, expect, test } from 'bun:test';
 import { buildDag } from '../dag';
-import type { PipelineConfig, TaskResult } from '../types';
+import type { PipelineConfig, TagmaRuntime, TaskResult } from '../types';
 import { RunContext } from './run-context';
 import {
   inferEffectivePorts,
   extractSuccessfulOutputs,
 } from './dataflow';
+
+const fakeRuntime: TagmaRuntime = {
+  async runCommand() {
+    throw new Error('not used');
+  },
+  async runSpawn() {
+    throw new Error('not used');
+  },
+  async ensureDir() {},
+  async fileExists() {
+    return false;
+  },
+  async *watch() {},
+  logStore: {
+    openRunLog() {
+      return { path: 'mem://log', dir: 'mem://run', append() {}, close() {} };
+    },
+    taskOutputPath() {
+      return 'mem://output';
+    },
+    logsDir() {
+      return 'mem://logs';
+    },
+  },
+  now: () => new Date('2026-04-26T00:00:00.000Z'),
+  sleep: () => Promise.resolve(),
+};
 
 function makeContext(config: PipelineConfig): RunContext {
   return new RunContext({
@@ -18,6 +45,8 @@ function makeContext(config: PipelineConfig): RunContext {
       run_id: 'run_dataflow',
       started_at: '2026-04-26T00:00:00Z',
     },
+    runtime: fakeRuntime,
+    logPrompt: false,
   });
 }
 

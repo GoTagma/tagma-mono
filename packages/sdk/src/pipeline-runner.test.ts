@@ -11,7 +11,7 @@ function makeDir(): string {
   return mkdtempSync(join(tmpdir(), 'tagma-pipeline-runner-'));
 }
 
-function bindingsPipeline(dir: string): PipelineConfig {
+function bindingsPipeline(_dir: string): PipelineConfig {
   return {
     name: 'runner-snapshot',
     tracks: [

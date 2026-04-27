@@ -7,7 +7,7 @@
     "apps/*"
   ],
   "scripts": {
-    "postinstall": "node -e \"const{existsSync}=require('fs');if(!existsSync('packages/types/dist/index.js')||!existsSync('packages/core/dist/index.js')||!existsSync('packages/runtime-bun/dist/index.js')||!existsSync('packages/sdk/dist/index.js'))process.exit(1)\" || (bun run build:types && bun run build:core && bun run build:runtime-bun && bun run build:sdk)",
+    "postinstall": "node scripts/postinstall-check.mjs || (bun run build:types && bun run build:core && bun run build:runtime-bun && bun run build:sdk)",
     "build": "bun run build:types && bun run build:core && bun run build:runtime-bun && bun run build:sdk && bun run build:plugins",
     "build:types": "bun run --filter @tagma/types build",
     "build:core": "bun run --cwd packages/core build",
@@ -23,6 +23,7 @@
     "build:electron": "bun run --filter tagma-desktop build",
     "build:desktop": "bun run build:types && bun run build:core && bun run build:runtime-bun && bun run build:sdk && bun run build:plugins && bun run build:editor && bun run build:editor-sidecar && bun run build:electron",
     "check": "bun run check:types && bun run check:core && bun run check:runtime-bun && bun run check:sdk && bun run check:driver-codex && bun run check:driver-claude-code && bun run check:middleware-lightrag && bun run check:trigger-webhook && bun run check:completion-llm-judge && bun run check:server && bun run check:client && bun run check:tests && bun run check:electron",
+    "check:text": "node scripts/text-hygiene-check.mjs",
     "check:types": "tsc -p packages/types/tsconfig.json --noEmit",
     "check:core": "tsc -p packages/core/tsconfig.json --noEmit",
     "check:runtime-bun": "tsc -p packages/runtime-bun/tsconfig.json --noEmit",

@@ -2,6 +2,7 @@ export {
   parseYaml,
   resolveConfig,
   loadPipeline,
+  PipelineValidationError,
   serializePipeline,
   deresolvePipeline,
   validateConfig,

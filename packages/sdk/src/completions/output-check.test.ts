@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { OutputCheckCompletion } from './output-check';
+import { bunRuntime } from '../runtime';
 import type { TaskResult } from '../types';
 
 function taskResult(stdout = 'payload'): TaskResult {
@@ -38,7 +39,7 @@ test(
           timeout: '1s',
         },
         taskResult(),
-        { workDir: dir, signal: new AbortController().signal },
+        { workDir: dir, signal: new AbortController().signal, runtime: bunRuntime() },
       );
 
       expect(passed).toBe(true);

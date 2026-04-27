@@ -50,6 +50,7 @@ const isValidId = isValidTaskId;
 
 const VALID_ON_FAILURE = new Set(['skip_downstream', 'stop_all', 'ignore']);
 const VALID_REASONING_EFFORT = new Set(['low', 'medium', 'high']);
+const VALID_PIPELINE_MODES = new Set(['trusted', 'safe']);
 const PERMISSION_FIELDS = ['read', 'write', 'execute'] as const;
 
 // Built-in plugin types always known to the SDK core, regardless of which
@@ -132,6 +133,12 @@ export function validateRaw(
   //  Top level
   if (!config.name?.trim()) {
     errors.push({ path: 'name', message: 'Pipeline name is required' });
+  }
+  if (config.mode && !VALID_PIPELINE_MODES.has(config.mode)) {
+    errors.push({
+      path: 'mode',
+      message: `Invalid mode "${config.mode}". Expected "trusted" or "safe".`,
+    });
   }
   if (config.reasoning_effort && !VALID_REASONING_EFFORT.has(config.reasoning_effort)) {
     errors.push({
@@ -581,7 +588,6 @@ function validateTaskPorts(
   errors: ValidationError[],
 ): void {
   const isPromptTask = typeof task.prompt === 'string' && typeof task.command !== 'string';
-  const isCommandTask = typeof task.command === 'string' && typeof task.prompt !== 'string';
 
   validateBindingMap(task.inputs, `${taskPath}.inputs`, 'inputs', errors);
   validateBindingMap(task.outputs, `${taskPath}.outputs`, 'outputs', errors);

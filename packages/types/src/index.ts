@@ -20,6 +20,8 @@ export type TaskStatus =
   | 'skipped'
   | 'blocked';
 
+export type PipelineExecutionMode = 'trusted' | 'safe';
+
 /**
  * What to do when a task in this track fails.
  *  - `ignore`          : downstream tasks see the failure as success (best-effort).
@@ -261,6 +263,7 @@ export interface HooksConfig {
 
 export interface PipelineConfig {
   readonly name: string;
+  readonly mode?: PipelineExecutionMode;
   readonly driver?: string;
   readonly model?: string;
   readonly reasoning_effort?: string;
@@ -275,6 +278,7 @@ export interface PipelineConfig {
 
 export interface RawPipelineConfig {
   readonly name: string;
+  readonly mode?: PipelineExecutionMode;
   readonly driver?: string;
   readonly model?: string;
   readonly reasoning_effort?: string;
@@ -296,6 +300,11 @@ export interface SpawnSpec {
 
 // ═══ Runtime Boundary ═══
 
+export type EnvPolicy =
+  | { readonly mode: 'minimal' }
+  | { readonly mode: 'inherit' }
+  | { readonly mode: 'allowlist'; readonly keys: readonly string[] };
+
 export interface RunOptions {
   readonly timeoutMs?: number;
   readonly signal?: AbortSignal;
@@ -303,6 +312,7 @@ export interface RunOptions {
   readonly stderrPath?: string;
   readonly maxStdoutTailBytes?: number;
   readonly maxStderrTailBytes?: number;
+  readonly envPolicy?: EnvPolicy;
 }
 
 export type RuntimeWatchEventType = 'ready' | 'add' | 'change' | 'unlink';
@@ -518,6 +528,12 @@ export interface TriggerContext {
 
 export interface TriggerPlugin {
   readonly name: string;
+  /**
+   * Trigger plugins must actively observe `ctx.signal` and release any
+   * watcher/listener resources when it aborts. The registry requires this
+   * explicit declaration so unsupported third-party triggers fail fast.
+   */
+  readonly supportsAbort: true;
   readonly schema?: PluginSchema;
   watch(config: Record<string, unknown>, ctx: TriggerContext): Promise<unknown>;
 }
@@ -527,6 +543,8 @@ export interface TriggerPlugin {
 export interface CompletionContext {
   readonly workDir: string;
   readonly signal?: AbortSignal;
+  readonly runtime: TagmaRuntime;
+  readonly envPolicy?: EnvPolicy;
 }
 
 export interface CompletionPlugin {
@@ -573,19 +591,11 @@ export interface PluginCapabilities {
   readonly triggers?: Readonly<Record<string, TriggerPlugin>>;
   readonly completions?: Readonly<Record<string, CompletionPlugin>>;
   readonly middlewares?: Readonly<Record<string, MiddlewarePlugin>>;
-  readonly policies?: Readonly<Record<string, unknown>>;
-  readonly storage?: Readonly<Record<string, unknown>>;
-  readonly telemetry?: Readonly<Record<string, unknown>>;
-}
-
-export interface PluginSetupContext {
-  registerPlugin(category: PluginCategory, type: string, handler: CapabilityHandler): void;
 }
 
 export interface TagmaPlugin {
   readonly name: string;
   readonly capabilities?: PluginCapabilities;
-  setup?(ctx: PluginSetupContext): void | Promise<void>;
 }
 
 // ═══ Task Result ═══
@@ -599,7 +609,7 @@ export interface TagmaPlugin {
  *
  * `null` means "no failure" (success case).
  */
-export type TaskFailureKind = 'timeout' | 'spawn_error' | 'exit_nonzero' | null;
+export type TaskFailureKind = 'timeout' | 'spawn_error' | 'exit_nonzero' | 'parse_error' | null;
 
 export interface TaskResult {
   readonly exitCode: number;
@@ -632,12 +642,7 @@ export interface TaskResult {
   readonly durationMs: number;
   readonly sessionId: string | null;
   readonly normalizedOutput: string | null;
-  /**
-   * H2: optional for backward compatibility with existing TaskResult
-   * literals scattered across drivers. New code (runner.ts, engine.ts)
-   * always populates it. Defaults to `null` (success / no classification).
-   */
-  readonly failureKind?: TaskFailureKind;
+  readonly failureKind: TaskFailureKind;
   /**
    * Published output values — populated by the engine after a task terminates
    * successfully when `task.outputs` are declared or when a prompt task has an

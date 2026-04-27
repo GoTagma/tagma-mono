@@ -77,6 +77,9 @@ function ensureServer(
     return existing;
   }
 
+  // Bun.serve callbacks need to close over the state object before the server
+  // handle exists, then the completed object is assigned once below.
+  // eslint-disable-next-line prefer-const
   let state: WebhookServerState;
   const server = Bun.serve({
     port,
@@ -166,6 +169,7 @@ function closeServerIfIdle(state: WebhookServerState): void {
 
 export const WebhookTrigger: TriggerPlugin = {
   name: 'webhook',
+  supportsAbort: true,
   schema: {
     description: 'Wait for an HTTP POST to arrive on a local listener before the task runs.',
     fields: {

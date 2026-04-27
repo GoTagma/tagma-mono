@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { mkdir, open, type FileHandle } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve as pathResolve } from 'node:path';
-import type { SpawnSpec, DriverPlugin, RunOptions, TaskResult } from '@tagma/core';
+import type { EnvPolicy, SpawnSpec, DriverPlugin, RunOptions, TaskResult } from '@tagma/core';
 import { shellArgs } from '@tagma/core';
 
 // Delay before escalating SIGTERM to SIGKILL when killing a timed-out process.
@@ -17,6 +17,45 @@ const SIGKILL_DELAY_MS = 3_000;
  */
 const DEFAULT_STDOUT_TAIL_BYTES = 8 * 1024 * 1024; // 8 MB
 const DEFAULT_STDERR_TAIL_BYTES = 4 * 1024 * 1024; // 4 MB
+
+const MINIMAL_ENV_KEYS = [
+  'PATH',
+  'Path',
+  'HOME',
+  'USER',
+  'USERNAME',
+  'SHELL',
+  'TMPDIR',
+  'TEMP',
+  'TMP',
+  'SystemRoot',
+  'WINDIR',
+  'COMSPEC',
+  'PATHEXT',
+] as const;
+
+function pickEnv(keys: readonly string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const key of keys) {
+    const value = process.env[key];
+    if (typeof value === 'string') out[key] = value;
+  }
+  return out;
+}
+
+function buildChildEnv(
+  overrides: Readonly<Record<string, string>> | undefined,
+  policy: EnvPolicy | undefined,
+): Record<string, string> {
+  const effective = policy ?? { mode: 'minimal' as const };
+  const base =
+    effective.mode === 'inherit'
+      ? pickEnv(Object.keys(process.env))
+      : effective.mode === 'allowlist'
+        ? { ...pickEnv(MINIMAL_ENV_KEYS), ...pickEnv(effective.keys) }
+        : pickEnv(MINIMAL_ENV_KEYS);
+  return { ...base, ...(overrides ?? {}) };
+}
 
 /**
  * On Windows, proc.kill('SIGTERM') / proc.kill('SIGKILL') only terminate the
@@ -42,6 +81,15 @@ function killProcessTree(pid: number): void {
     }
   } catch {
     /* best-effort — process may have already exited */
+  }
+}
+
+function killUnixProcessGroup(pid: number, signal: NodeJS.Signals): boolean {
+  try {
+    process.kill(-pid, signal);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -412,8 +460,11 @@ export async function runSpawn(
     return failResult(validationError, elapsed());
   }
 
-  const mergedEnv = { ...process.env, ...(spec.env ?? {}) };
-  const resolvedArgs = resolveWindowsExe(spec.args, mergedEnv.PATH ?? process.env.PATH ?? '');
+  const mergedEnv = buildChildEnv(spec.env, opts.envPolicy);
+  const resolvedArgs = resolveWindowsExe(
+    spec.args,
+    mergedEnv.PATH ?? mergedEnv.Path ?? process.env.PATH ?? process.env.Path ?? '',
+  );
 
   // ── 1. Spawn (catch ENOENT / bad-cwd up front) ────────────────────────
   let proc: ReturnType<typeof Bun.spawn>;
@@ -424,6 +475,7 @@ export async function runSpawn(
       stdout: 'pipe',
       stderr: 'pipe',
       stdin: spec.stdin ? 'pipe' : undefined,
+      detached: process.platform !== 'win32',
     });
   } catch (err) {
     return failResult(String(err), elapsed());
@@ -457,11 +509,15 @@ export async function runSpawn(
       // .cmd wrappers and nested child processes that proc.kill() misses.
       killProcessTree(proc.pid);
     } else {
-      proc.kill('SIGTERM');
+      if (!killUnixProcessGroup(proc.pid, 'SIGTERM')) {
+        proc.kill('SIGTERM');
+      }
       // If the child ignores SIGTERM, escalate to SIGKILL after 3 s.
       forceTimer = setTimeout(() => {
         try {
-          proc.kill('SIGKILL');
+          if (!killUnixProcessGroup(proc.pid, 'SIGKILL')) {
+            proc.kill('SIGKILL');
+          }
         } catch {
           /* already exited */
         }
@@ -586,12 +642,7 @@ export async function runSpawn(
         durationMs,
         sessionId: null,
         normalizedOutput: null,
-        // H2: parseResult threw — the spawn itself succeeded, so the failure
-        // is "the process exited but the driver couldn't parse it". Surface
-        // that as exit_nonzero (when the actual exit was non-zero) or null
-        // (when the underlying exit was 0 — UI will still mark it failed via
-        // engine.ts because the result is incomplete).
-        failureKind: exitCode === 0 ? null : 'exit_nonzero',
+        failureKind: 'parse_error',
       };
     }
   }

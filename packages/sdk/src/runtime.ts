@@ -2,6 +2,7 @@ export * from '@tagma/runtime-bun';
 export type {
   OpenRunLogOptions,
   PruneLogOptions,
+  EnvPolicy,
   RunOptions,
   RuntimeLogSink,
   RuntimeLogStore,

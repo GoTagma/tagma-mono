@@ -1,5 +1,6 @@
-import type { HooksConfig, HookCommand, AbortReason, TagmaRuntime } from './types';
+import type { HooksConfig, HookCommand, AbortReason, EnvPolicy, TagmaRuntime } from './types';
 import { shellArgs } from './utils';
+import type { Logger } from './logger';
 
 type HookEvent =
   | 'pipeline_start'
@@ -24,12 +25,25 @@ function normalizeCommands(cmd: HookCommand | undefined): readonly string[] {
 
 const DEFAULT_HOOK_TIMEOUT_MS = 30_000;
 
+function logWarn(log: Logger | undefined, prefix: string, message: string): void {
+  if (log) log.warn(prefix, message);
+  else console.warn(`${prefix} WARN: ${message}`);
+}
+
+function logError(log: Logger | undefined, prefix: string, message: string): void {
+  if (log) log.error(prefix, message);
+  else console.error(`${prefix} ERROR: ${message}`);
+}
+
 async function runSingleHook(
+  event: HookEvent,
   command: string,
   context: unknown,
   runtime: TagmaRuntime,
   cwd?: string,
   signal?: AbortSignal,
+  log?: Logger,
+  envPolicy?: EnvPolicy,
   timeoutMs: number = DEFAULT_HOOK_TIMEOUT_MS,
 ): Promise<number> {
   const jsonInput = JSON.stringify(context, null, 2);
@@ -47,21 +61,23 @@ async function runSingleHook(
         signal,
         maxStdoutTailBytes: 256 * 1024,
         maxStderrTailBytes: 256 * 1024,
+        envPolicy,
       },
     );
 
     if (result.stdout.trim()) {
-      console.warn(`[hook: ${command}] stdout: ${result.stdout.trim()}`);
+      const message = `"${command}" stdout:\n${result.stdout.trim()}`;
+      logWarn(log, `[hook:${event}]`, message);
     }
     if (result.stderr.trim()) {
-      console.error(`[hook: ${command}] stderr: ${result.stderr.trim()}`);
+      const message = `"${command}" stderr:\n${result.stderr.trim()}`;
+      logError(log, `[hook:${event}]`, message);
     }
 
     return result.exitCode;
   } catch (err) {
-    console.error(
-      `[hook: ${command}] spawn error: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    const message = `"${command}" spawn error: ${err instanceof Error ? err.message : String(err)}`;
+    logError(log, `[hook:${event}]`, message);
     return -1;
   }
 }
@@ -73,6 +89,8 @@ export async function executeHook(
   runtime: TagmaRuntime,
   workDir?: string,
   signal?: AbortSignal,
+  log?: Logger,
+  envPolicy?: EnvPolicy,
 ): Promise<HookResult> {
   if (!hooks) return { allowed: true, exitCode: 0 };
 
@@ -82,16 +100,15 @@ export async function executeHook(
   const isGate = GATE_HOOKS.has(event);
 
   for (const cmd of commands) {
-    const exitCode = await runSingleHook(cmd, context, runtime, workDir, signal);
+    const exitCode = await runSingleHook(event, cmd, context, runtime, workDir, signal, log, envPolicy);
 
-    if (isGate && exitCode === 1) {
-      // Only exit code 1 has gate semantics (block execution)
+    if (isGate && exitCode !== 0) {
       return { allowed: false, exitCode };
     }
 
     if (exitCode !== 0) {
-      // Non-zero but not 1: hook itself had an error, log but don't block
-      console.warn(`[hook: ${event}] "${cmd}" exited with code ${exitCode}`);
+      const message = `"${cmd}" exited with code ${exitCode}`;
+      logWarn(log, `[hook:${event}]`, message);
     }
   }
 

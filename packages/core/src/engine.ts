@@ -1,4 +1,6 @@
 import type {
+  EnvPolicy,
+  PipelineExecutionMode,
   PipelineConfig,
   TaskConfig,
   TaskState,
@@ -7,7 +9,7 @@ import type {
 } from './types';
 import { buildDag } from './dag';
 import type { PluginRegistry } from './registry';
-import { parseDuration, nowISO, generateRunId } from './utils';
+import { parseDuration, nowISO, generateRunId, assertValidRunId } from './utils';
 import {
   executeHook,
   buildPipelineStartContext,
@@ -80,6 +82,10 @@ export interface RunPipelineOptions {
    * log directories aligned on the same ID.
    */
   readonly runId?: string;
+  readonly mode?: PipelineExecutionMode;
+  readonly safeModeAllowlist?: SafeModeAllowlist;
+  readonly envPolicy?: EnvPolicy;
+  readonly logPrompt?: boolean;
   /**
    * External AbortSignal — aborting it cancels the pipeline immediately.
    * Equivalent to the pipeline timeout firing, but caller-controlled.
@@ -109,14 +115,89 @@ export interface RunPipelineOptions {
   readonly runtime: TagmaRuntime;
 }
 
+export interface SafeModeAllowlist {
+  readonly drivers?: readonly string[];
+  readonly triggers?: readonly string[];
+  readonly completions?: readonly string[];
+  readonly middlewares?: readonly string[];
+}
+
 // Poll interval when no tasks are in-flight but non-terminal tasks remain
 // (e.g. tasks waiting on a file or manual trigger).
 const POLL_INTERVAL_MS = 50;
 
-// R15: cap on each normalized-output entry stored in normalizedMap so a
-// runaway parseResult can't accumulate hundreds of MB across tasks. 1 MB
-// is generous for any text-context handoff between AI tasks.
-const MAX_NORMALIZED_BYTES = 1_000_000;
+const DEFAULT_SAFE_MODE_ALLOWLIST: Required<SafeModeAllowlist> = {
+  drivers: ['opencode'],
+  triggers: ['manual', 'file'],
+  completions: ['exit_code', 'file_exists'],
+  middlewares: ['static_context'],
+};
+
+function safeSet<T extends keyof Required<SafeModeAllowlist>>(
+  allowlist: SafeModeAllowlist | undefined,
+  key: T,
+): ReadonlySet<string> {
+  return new Set([...(DEFAULT_SAFE_MODE_ALLOWLIST[key] ?? []), ...(allowlist?.[key] ?? [])]);
+}
+
+function enforceExecutionMode(
+  config: PipelineConfig,
+  mode: PipelineExecutionMode,
+  allowlist?: SafeModeAllowlist,
+): void {
+  if (mode !== 'trusted' && mode !== 'safe') {
+    throw new Error(`Invalid pipeline execution mode "${mode}". Expected "trusted" or "safe".`);
+  }
+  if (mode !== 'safe') return;
+  const errors: string[] = [];
+  if (config.plugins?.length) {
+    errors.push('safe mode blocks automatic plugin loading via pipeline.plugins');
+  }
+  if (config.hooks && Object.keys(config.hooks).length > 0) {
+    errors.push('safe mode blocks lifecycle hooks');
+  }
+
+  const allowedDrivers = safeSet(allowlist, 'drivers');
+  const allowedTriggers = safeSet(allowlist, 'triggers');
+  const allowedCompletions = safeSet(allowlist, 'completions');
+  const allowedMiddlewares = safeSet(allowlist, 'middlewares');
+
+  for (const track of config.tracks) {
+    const trackDriver = track.driver ?? config.driver ?? 'opencode';
+    const trackMiddlewares = track.middlewares ?? [];
+    for (const mw of trackMiddlewares) {
+      if (!allowedMiddlewares.has(mw.type)) {
+        errors.push(`safe mode blocks middleware "${mw.type}" on track "${track.id}"`);
+      }
+    }
+    for (const task of track.tasks) {
+      const taskLabel = `${track.id}.${task.id}`;
+      if (task.command !== undefined) {
+        errors.push(`safe mode blocks command task "${taskLabel}"`);
+      }
+      const driver = task.driver ?? trackDriver;
+      if (task.prompt !== undefined && !allowedDrivers.has(driver)) {
+        errors.push(`safe mode blocks driver "${driver}" on task "${taskLabel}"`);
+      }
+      if (task.trigger && !allowedTriggers.has(task.trigger.type)) {
+        errors.push(`safe mode blocks trigger "${task.trigger.type}" on task "${taskLabel}"`);
+      }
+      if (task.completion && !allowedCompletions.has(task.completion.type)) {
+        errors.push(`safe mode blocks completion "${task.completion.type}" on task "${taskLabel}"`);
+      }
+      const middlewares = task.middlewares ?? trackMiddlewares;
+      for (const mw of middlewares) {
+        if (!allowedMiddlewares.has(mw.type)) {
+          errors.push(`safe mode blocks middleware "${mw.type}" on task "${taskLabel}"`);
+        }
+      }
+    }
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`Safe mode validation failed:\n  - ${errors.join('\n  - ')}`);
+  }
+}
 
 export async function runPipeline(
   config: PipelineConfig,
@@ -133,17 +214,21 @@ export async function runPipeline(
     );
   }
 
+  const mode = options.mode ?? config.mode ?? 'trusted';
+  enforceExecutionMode(config, mode, options.safeModeAllowlist);
+
   // Load any plugins declared in the pipeline config before preflight so that
   // drivers, completions, and middlewares referenced in YAML are registered.
   // Hosts that pre-load plugins from a custom path (e.g. the editor loading
   // from the user's workspace node_modules) pass skipPluginLoading: true so
   // we don't re-resolve via Node's cwd-based default import.
   if (!options.skipPluginLoading && config.plugins?.length) {
-    await registry.loadPlugins(config.plugins);
+    await registry.loadPlugins(config.plugins, workDir);
   }
 
   const dag = buildDag(config);
   const runId = options.runId ?? generateRunId();
+  assertValidRunId(runId);
   preflight(config, dag, registry);
 
   const startedAt = nowISO();
@@ -197,6 +282,8 @@ export async function runPipeline(
       pipelineInfo,
       onEvent: options.onEvent,
       runtime,
+      envPolicy: options.envPolicy,
+      logPrompt: options.logPrompt ?? false,
     });
 
     // Pipeline start hook (gate). Runs BEFORE the engine emits run_start so
@@ -209,28 +296,33 @@ export async function runPipeline(
       buildPipelineStartContext(pipelineInfo),
       runtime,
       workDir,
+      undefined,
+      log,
+      options.envPolicy,
     );
     if (!startHook.allowed) {
-      console.error(`Pipeline blocked by pipeline_start hook (exit code ${startHook.exitCode})`);
+      log.error('[pipeline]', `blocked by pipeline_start hook (exit code ${startHook.exitCode})`);
       await executeHook(
         config.hooks,
         'pipeline_error',
         buildPipelineErrorContext(pipelineInfo, 'pipeline_blocked', 'pipeline_blocked'),
         runtime,
         workDir,
+        undefined,
+        log,
+        options.envPolicy,
       );
+      const blockedAt = nowISO();
+      for (const [, state] of ctx.states) {
+        state.status = 'blocked';
+        state.finishedAt = blockedAt;
+      }
+      const summary = summarizeStates(ctx.states);
       return {
         success: false,
         runId,
         logPath: log.path,
-        summary: {
-          total: dag.nodes.size,
-          success: 0,
-          failed: 0,
-          skipped: 0,
-          timeout: 0,
-          blocked: 0,
-        },
+        summary,
         states: freezeStates(ctx.states),
       };
     }
@@ -396,6 +488,9 @@ export async function runPipeline(
         buildPipelineErrorContext(pipelineInfo, reasonText, undefined, ctx.abortReason),
         runtime,
         workDir,
+        undefined,
+        log,
+        options.envPolicy,
       );
     } else {
       await executeHook(
@@ -407,6 +502,9 @@ export async function runPipeline(
         ),
         runtime,
         workDir,
+        undefined,
+        log,
+        options.envPolicy,
       );
     }
 

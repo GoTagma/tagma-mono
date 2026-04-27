@@ -4,6 +4,7 @@ import type {
   Permissions,
   PipelineConfig,
   RunEventPayload,
+  EnvPolicy,
   TaskConfig,
   TaskState,
   TaskStatus,
@@ -18,6 +19,7 @@ import {
   type TrackInfo,
 } from '../hooks';
 import type { TagmaRuntime } from '../types';
+import type { Logger } from '../logger';
 import { isTerminal } from './run-state';
 import { nowISO } from '../utils';
 
@@ -35,6 +37,8 @@ export interface RunContextOptions {
   readonly pipelineInfo: PipelineInfo;
   readonly onEvent?: (event: RunEventPayload) => void;
   readonly runtime: TagmaRuntime;
+  readonly envPolicy?: EnvPolicy;
+  readonly logPrompt: boolean;
 }
 
 /**
@@ -52,6 +56,8 @@ export class RunContext {
   readonly pipelineInfo: PipelineInfo;
   readonly onEvent?: (event: RunEventPayload) => void;
   readonly runtime: TagmaRuntime;
+  readonly envPolicy?: EnvPolicy;
+  readonly logPrompt: boolean;
 
   readonly states = new Map<string, TaskState>();
   readonly sessionMap = new Map<string, string>();
@@ -71,6 +77,8 @@ export class RunContext {
     this.pipelineInfo = options.pipelineInfo;
     this.onEvent = options.onEvent;
     this.runtime = options.runtime;
+    this.envPolicy = options.envPolicy;
+    this.logPrompt = options.logPrompt;
 
     for (const [id, node] of this.dag.nodes) {
       this.states.set(id, {
@@ -194,6 +202,7 @@ export class RunContext {
   async fireHook(
     taskId: string,
     event: 'task_success' | 'task_failure',
+    log?: Logger,
   ): Promise<void> {
     await executeHook(
       this.config.hooks,
@@ -207,6 +216,8 @@ export class RunContext {
       this.runtime,
       this.workDir,
       this.abortController.signal,
+      log,
+      this.envPolicy,
     );
   }
 }

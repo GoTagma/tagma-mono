@@ -76,6 +76,7 @@ function makeContext(overrides: Partial<{
     pipelineInfo: { name: config.name, run_id: 'run_test', started_at: '2026-04-26T00:00:00Z' } as PipelineInfo,
     onEvent,
     runtime: fakeRuntime,
+    logPrompt: false,
   });
   return { ctx, events };
 }
@@ -130,6 +131,7 @@ describe('RunContext.emit', () => {
       workDir: '/tmp/wd',
       pipelineInfo: { name: 'p', run_id: 'run_test', started_at: 'now' } as PipelineInfo,
       runtime: fakeRuntime,
+      logPrompt: false,
     });
     expect(() => ctx.emit({ type: 'run_end', runId: 'run_test', success: true, abortReason: null })).not.toThrow();
   });

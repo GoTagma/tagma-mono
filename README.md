@@ -208,7 +208,7 @@ bun run publish:dry
 
 1. **No internal path imports** - packages only import from public `@tagma/*` package names.
 2. **No `latest`** - workspace packages use `workspace:*`, third-party dependencies use pinned ranges.
-3. **Published tarballs include `dist/` only** - build scripts clean `dist/` before compiling so removed source files cannot leak into published packages.
+3. **Published tarballs exclude `src/`** - public packages ship built `dist/` output; `@tagma/sdk` also ships its Bun-only `scripts/preinstall.js` guard.
 4. **Editor uses public API only** - it consumes sdk/types via workspace links and never reaches into package `src/`.
 
 ---

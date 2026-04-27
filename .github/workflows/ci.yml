@@ -32,6 +32,9 @@ jobs:
 
       - run: bun install
 
+      - name: Text hygiene
+        run: bun run check:text
+
       - name: Type check
         run: bun run check
 

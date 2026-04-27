@@ -22,6 +22,7 @@ function makeDriver(name: string, marker: string[]): DriverPlugin {
 function makeTrigger(name: string, marker: string[]): TriggerPlugin {
   return {
     name,
+    supportsAbort: true,
     async watch() {
       marker.push(`watch:${name}`);
     },
@@ -132,10 +133,22 @@ describe('PluginRegistry — instance isolation', () => {
     expect(reg.registerPlugin('drivers', 'mock', driver)).toBe('unchanged');
   });
 
-  test('replacing with a different handler returns replaced', () => {
+  test('duplicate handler registration is rejected unless replacement is explicit', () => {
     const reg = new PluginRegistry();
     expect(reg.registerPlugin('drivers', 'mock', makeDriver('one', []))).toBe('registered');
-    expect(reg.registerPlugin('drivers', 'mock', makeDriver('two', []))).toBe('replaced');
+
+    expect(() => reg.registerPlugin('drivers', 'mock', makeDriver('two', []))).toThrow(
+      /Duplicate plugin capability "drivers\/mock"/,
+    );
+    expect(reg.getHandler<DriverPlugin>('drivers', 'mock').name).toBe('one');
+  });
+
+  test('explicit replacement returns replaced', () => {
+    const reg = new PluginRegistry();
+    expect(reg.registerPlugin('drivers', 'mock', makeDriver('one', []))).toBe('registered');
+    expect(reg.registerPlugin('drivers', 'mock', makeDriver('two', []), { replace: true })).toBe(
+      'replaced',
+    );
     expect(reg.getHandler<DriverPlugin>('drivers', 'mock').name).toBe('two');
   });
 
@@ -180,29 +193,19 @@ describe('PluginRegistry — capability plugins', () => {
     expect(reg.getHandler<TriggerPlugin>('triggers', 'cap_trigger')).toBe(trigger);
   });
 
-  test('registerTagmaPlugin keeps replacement warnings from the registry path', () => {
+  test('registerTagmaPlugin rejects duplicate capabilities', () => {
     const reg = new PluginRegistry();
-    const originalWarn = console.warn;
-    const warnings: string[] = [];
-    console.warn = (message?: unknown) => {
-      warnings.push(String(message));
-    };
-    try {
-      reg.registerPlugin('drivers', 'mock', makeDriver('first', []));
-      const result = reg.registerTagmaPlugin({
+    reg.registerPlugin('drivers', 'mock', makeDriver('first', []));
+
+    expect(() =>
+      reg.registerTagmaPlugin({
         name: 'tagma-plugin-replacement',
         capabilities: {
           drivers: { mock: makeDriver('second', []) },
         },
-      });
-
-      expect(result).toEqual([{ category: 'drivers', type: 'mock', result: 'replaced' }]);
-      expect(warnings).toContain(
-        '[tagma-sdk] registerPlugin: replaced existing drivers/mock - check for duplicate plugin packages claiming the same type.',
-      );
-    } finally {
-      console.warn = originalWarn;
-    }
+      }),
+    ).toThrow(/Duplicate plugin capability "drivers\/mock"/);
+    expect(reg.getHandler<DriverPlugin>('drivers', 'mock').name).toBe('first');
   });
 
   test('loadPlugins accepts capability plugin default exports', async () => {
@@ -224,6 +227,7 @@ describe('PluginRegistry — capability plugins', () => {
         '};',
         'const trigger = {',
         "  name: 'cap-trigger',",
+        '  supportsAbort: true,',
         '  async watch() {}',
         '};',
         'export default {',
@@ -305,6 +309,18 @@ describe('PluginRegistry — validation', () => {
         { name: 'broken', capabilities: { sessionResume: false, systemPrompt: false, outputFormat: false } } as unknown as DriverPlugin,
       ),
     ).toThrow(/must export buildCommand/);
+  });
+
+  test('rejects trigger plugins that do not declare abort support', () => {
+    const reg = new PluginRegistry();
+    expect(() =>
+      reg.registerPlugin('triggers', 'broken', {
+        name: 'broken',
+        async watch() {
+          /* no-op */
+        },
+      } as unknown as TriggerPlugin),
+    ).toThrow(/must declare supportsAbort: true/);
   });
 
   test('rejects handler with missing name', () => {
@@ -441,6 +457,154 @@ describe('runPipeline — options.registry isolation', () => {
       await expect(
         runPipeline(config, tmp, { skipPluginLoading: true } as never),
       ).rejects.toThrow(/requires options\.registry/);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('runPipeline resolves pipeline plugins from the workspace workDir', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'tagma-workdir-plugin-'));
+    const pluginDir = join(tmp, 'node_modules', 'tagma-plugin-workspace-driver');
+    mkdirSync(pluginDir, { recursive: true });
+    writeFileSync(
+      join(pluginDir, 'package.json'),
+      JSON.stringify({
+        name: 'tagma-plugin-workspace-driver',
+        version: '1.0.0',
+        type: 'module',
+        main: './index.js',
+      }),
+      'utf-8',
+    );
+    writeFileSync(
+      join(pluginDir, 'index.js'),
+      [
+        'const driver = {',
+        "  name: 'workspace-driver',",
+        '  capabilities: { sessionResume: false, systemPrompt: false, outputFormat: false },',
+        "  async buildCommand() { return { args: ['echo', 'workspace'] }; },",
+        '};',
+        'export default {',
+        "  name: 'tagma-plugin-workspace-driver',",
+        '  capabilities: { drivers: { workspace: driver } },',
+        '};',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+
+    const reg = new PluginRegistry();
+    const config: PipelineConfig = {
+      name: 'workdir-plugin',
+      driver: 'workspace',
+      plugins: ['tagma-plugin-workspace-driver'],
+      tracks: [
+        {
+          id: 't',
+          name: 'T',
+          tasks: [{ id: 'x', name: 'x', prompt: 'hello' }],
+        },
+      ],
+    };
+
+    try {
+      const result = await runPipeline(config, tmp, {
+        registry: reg,
+        runtime: fakeRuntime(),
+      });
+
+      expect(result.success).toBe(true);
+      expect(reg.hasHandler('drivers', 'workspace')).toBe(true);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('safe mode blocks command tasks and unsafe capabilities', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'tagma-safe-mode-'));
+    const reg = new PluginRegistry();
+    try {
+      await expect(
+        runPipeline(
+          {
+            name: 'safe-command',
+            tracks: [{ id: 't', name: 'T', tasks: [{ id: 'x', command: 'echo hi' }] }],
+          },
+          tmp,
+          { registry: reg, runtime: fakeRuntime(), mode: 'safe' },
+        ),
+      ).rejects.toThrow(/safe mode blocks command task "t\.x"/);
+
+      await expect(
+        runPipeline(
+          {
+            name: 'safe-plugin',
+            plugins: ['tagma-plugin-anything'],
+            tracks: [{ id: 't', name: 'T', tasks: [{ id: 'x', prompt: 'hello' }] }],
+          },
+          tmp,
+          { registry: reg, runtime: fakeRuntime(), mode: 'safe' },
+        ),
+      ).rejects.toThrow(/safe mode blocks automatic plugin loading/);
+
+      await expect(
+        runPipeline(
+          {
+            name: 'safe-completion',
+            tracks: [
+              {
+                id: 't',
+                name: 'T',
+                tasks: [
+                  {
+                    id: 'x',
+                    prompt: 'hello',
+                    completion: { type: 'output_check', check: 'echo ok' },
+                  },
+                ],
+              },
+            ],
+          },
+          tmp,
+          { registry: reg, runtime: fakeRuntime(), mode: 'safe' },
+        ),
+      ).rejects.toThrow(/safe mode blocks completion "output_check"/);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('pipeline_start gate marks all idle tasks blocked in summary', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'tagma-hook-blocked-'));
+    const runtime: TagmaRuntime = {
+      ...fakeRuntime(),
+      async runSpawn() {
+        return {
+          ...taskResult(''),
+          exitCode: 2,
+          stderr: 'blocked by policy',
+          stderrBytes: 'blocked by policy'.length,
+          failureKind: 'exit_nonzero',
+        };
+      },
+    };
+
+    try {
+      const result = await runPipeline(
+        {
+          name: 'blocked-start',
+          hooks: { pipeline_start: 'exit 2' },
+          tracks: [{ id: 't', name: 'T', tasks: [{ id: 'x', command: 'echo hi' }] }],
+        },
+        tmp,
+        { registry: new PluginRegistry(), runtime },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.summary.total).toBe(1);
+      expect(result.summary.blocked).toBe(1);
+      expect(result.summary.success).toBe(0);
+      expect(result.states.get('t.x')?.status).toBe('blocked');
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

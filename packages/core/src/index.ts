@@ -10,7 +10,7 @@ export type {
 export { buildDag, buildRawDag } from './dag';
 export type { Dag, DagNode, RawDag, RawDagNode } from './dag';
 export { runPipeline, TriggerBlockedError, TriggerTimeoutError } from './engine';
-export type { EngineResult, RunEventPayload, RunPipelineOptions } from './engine';
+export type { EngineResult, RunEventPayload, RunPipelineOptions, SafeModeAllowlist } from './engine';
 export {
   buildPipelineCompleteContext,
   buildPipelineErrorContext,
@@ -55,14 +55,17 @@ export {
   PluginRegistry,
   PLUGIN_NAME_RE,
   readPluginManifest,
+  type RegisterPluginOptions,
   type RegisteredCapability,
   type RegisterResult,
 } from './registry';
 export {
   _resetShellCache,
   generateRunId,
+  assertValidRunId,
   nowISO,
   parseDuration,
+  RUN_ID_RE,
   shellArgs,
   shellArgsFromArray,
   truncateForName,

@@ -166,19 +166,15 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       } else if (err instanceof TriggerTimeoutError) {
         ctx.setTaskStatus(taskId, 'timeout'); // genuine trigger wait timeout
       } else {
-        // A7 fallback: also check message strings for backward-compat with
-        // third-party trigger plugins that don't throw typed errors yet.
         const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes('rejected') || msg.includes('denied')) {
-          ctx.setTaskStatus(taskId, 'blocked');
-        } else if (msg.includes('timeout')) {
-          ctx.setTaskStatus(taskId, 'timeout');
-        } else {
-          ctx.setTaskStatus(taskId, 'failed'); // plugin error, watcher crash, etc.
-        }
+        log.warn(
+          `[task:${taskId}]`,
+          `trigger "${task.trigger.type}" threw an untyped error; treating as failed: ${msg}`,
+        );
+        ctx.setTaskStatus(taskId, 'failed');
       }
       try {
-        await ctx.fireHook(taskId, 'task_failure');
+        await ctx.fireHook(taskId, 'task_failure', log);
       } catch (hookErr) {
         log.error(
           `[task:${taskId}]`,
@@ -202,6 +198,8 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
     ctx.runtime,
     workDir,
     ctx.abortController.signal,
+    log,
+    ctx.envPolicy,
   );
   if (hookResult.exitCode !== 0 || config.hooks?.task_start) {
     log.debug(
@@ -213,7 +211,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
     state.finishedAt = nowISO();
     ctx.setTaskStatus(taskId, 'blocked');
     try {
-      await ctx.fireHook(taskId, 'task_failure');
+      await ctx.fireHook(taskId, 'task_failure', log);
     } catch (hookErr) {
       log.error(
         `[task:${taskId}]`,
@@ -261,7 +259,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
     state.finishedAt = nowISO();
     ctx.setTaskStatus(taskId, 'blocked');
     try {
-      await ctx.fireHook(taskId, 'task_failure');
+      await ctx.fireHook(taskId, 'task_failure', log);
     } catch (hookErr) {
       log.error(
         `[task:${taskId}]`,
@@ -295,7 +293,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
     state.finishedAt = nowISO();
     ctx.setTaskStatus(taskId, 'blocked');
     try {
-      await ctx.fireHook(taskId, 'task_failure');
+      await ctx.fireHook(taskId, 'task_failure', log);
     } catch (hookErr) {
       log.error(
         `[task:${taskId}]`,
@@ -339,7 +337,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       state.finishedAt = nowISO();
       ctx.setTaskStatus(taskId, 'blocked');
       try {
-        await ctx.fireHook(taskId, 'task_failure');
+        await ctx.fireHook(taskId, 'task_failure', log);
       } catch (hookErr) {
         log.error(
           `[task:${taskId}]`,
@@ -413,6 +411,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       signal: ctx.abortController.signal,
       stdoutPath,
       stderrPath,
+      envPolicy: ctx.envPolicy,
     };
 
     if (isCommandTaskConfig(task)) {
@@ -508,7 +507,9 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
         `[task:${taskId}]`,
         `prompt: ${originalLen} chars (final: ${prompt.length} chars, ${doc.contexts.length} block${doc.contexts.length === 1 ? '' : 's'})`,
       );
-      log.quiet(`--- prompt (final) ---\n${clip(prompt)}\n--- end prompt ---`, taskId);
+      if (ctx.logPrompt) {
+        log.quiet(`--- prompt (final) ---\n${clip(prompt)}\n--- end prompt ---`, taskId);
+      }
 
       // H1: hand the driver a continue_from that has already been
       // qualified by dag.ts. Without this, drivers like codex/opencode/
@@ -555,25 +556,24 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
     }
 
     // 6. Determine terminal status (without emitting yet — result must be complete first)
-    // H2: branch on failureKind so spawn errors no longer masquerade as
-    // timeouts. Old runners that don't set failureKind still work — we
-    // fall back to the historical `exitCode === -1 → timeout` heuristic so
-    // pre-existing third-party drivers don't regress.
+    // H2: branch on failureKind so spawn and parse errors no longer
+    // masquerade as success or timeout.
     let terminalStatus: TaskStatus;
     const kind = result.failureKind;
     if (kind === 'timeout') {
       terminalStatus = 'timeout';
-    } else if (kind === 'spawn_error') {
+    } else if (kind === 'spawn_error' || kind === 'parse_error') {
       terminalStatus = 'failed';
-    } else if (kind === undefined && result.exitCode === -1) {
-      // Legacy path: pre-H2 driver returned -1 with no kind. Treat as
-      // timeout for backward compatibility (the previous behaviour).
-      terminalStatus = 'timeout';
     } else if (result.exitCode !== 0) {
       terminalStatus = 'failed';
     } else if (task.completion) {
       const plugin = registry.getHandler<CompletionPlugin>('completions', task.completion.type);
-      const completionCtx = { workDir: task.cwd ?? workDir, signal: ctx.abortController.signal };
+      const completionCtx = {
+        workDir: task.cwd ?? workDir,
+        signal: ctx.abortController.signal,
+        runtime: ctx.runtime,
+        envPolicy: ctx.envPolicy,
+      };
       const passed = await plugin.check(
         task.completion as Record<string, unknown>,
         result,
@@ -738,7 +738,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
   // 7. Fire hooks
   const finalStatus: TaskStatus = state.status;
   try {
-    await ctx.fireHook(taskId, finalStatus === 'success' ? 'task_success' : 'task_failure');
+    await ctx.fireHook(taskId, finalStatus === 'success' ? 'task_success' : 'task_failure', log);
   } catch (hookErr) {
     log.error(
       `[task:${taskId}]`,

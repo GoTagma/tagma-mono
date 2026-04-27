@@ -159,6 +159,7 @@ describe('createTagma', () => {
       },
       async *watch(path: string) {
         calls.push(`watch:${path}`);
+        if (path === '__never__') yield { type: 'ready' as const, path };
       },
       now() {
         return new Date('2026-04-26T00:00:00.000Z');

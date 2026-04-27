@@ -3,6 +3,7 @@ import { parseDuration, TriggerBlockedError, TriggerTimeoutError } from '@tagma/
 
 export const ManualTrigger: TriggerPlugin = {
   name: 'manual',
+  supportsAbort: true,
   schema: {
     description: 'Pause the task until a user approves via the approval gateway.',
     fields: {

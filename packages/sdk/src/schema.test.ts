@@ -1,7 +1,14 @@
 import { describe, expect, test } from 'bun:test';
 import yaml from 'js-yaml';
 import type { PipelineConfig, RawPipelineConfig } from './types';
-import { deresolvePipeline, parseYaml, resolveConfig, serializePipeline } from './schema';
+import {
+  deresolvePipeline,
+  loadPipeline,
+  parseYaml,
+  PipelineValidationError,
+  resolveConfig,
+  serializePipeline,
+} from './schema';
 
 function parsePipelineYaml(content: string): RawPipelineConfig {
   const doc = yaml.load(content) as { pipeline: RawPipelineConfig };
@@ -155,6 +162,66 @@ pipeline:
         id: not-an-array
 `),
     ).toThrow(/track "t": tasks must be an array/);
+  });
+});
+
+describe('loadPipeline validation', () => {
+  test('rejects hard validation errors from validateRaw', async () => {
+    await expect(
+      loadPipeline(
+        `
+pipeline:
+  name: Bad
+  tracks:
+    - id: t
+      name: T
+      tasks:
+        - id: a
+          prompt: ""
+`,
+        'D:/workspace',
+      ),
+    ).rejects.toThrow(PipelineValidationError);
+  });
+
+  test('rejects invalid execution modes', async () => {
+    await expect(
+      loadPipeline(
+        `
+pipeline:
+  name: Bad Mode
+  mode: sandbox
+  tracks:
+    - id: t
+      name: T
+      tasks:
+        - id: a
+          prompt: ok
+`,
+        'D:/workspace',
+      ),
+    ).rejects.toThrow(/Invalid mode "sandbox"/);
+  });
+
+  test('does not reject soft validation warnings', async () => {
+    const config = await loadPipeline(
+      `
+pipeline:
+  name: Warning Only
+  tracks:
+    - id: t
+      name: T
+      tasks:
+        - id: first
+          prompt: create a draft
+        - id: second
+          prompt: refine it
+          continue_from: first
+`,
+      'D:/workspace',
+    );
+
+    expect(config.tracks[0].tasks[1].continue_from).toBe('t.first');
   });
 });
 

@@ -11,6 +11,21 @@ import type {
   CompletionConfig,
 } from './types';
 import { buildDag, DEFAULT_PERMISSIONS, truncateForName, validatePath } from '@tagma/core';
+import { validateRaw, type ValidationError } from './validate-raw';
+
+export class PipelineValidationError extends Error {
+  readonly diagnostics: readonly ValidationError[];
+
+  constructor(diagnostics: readonly ValidationError[]) {
+    super(
+      `Pipeline validation failed:\n${diagnostics
+        .map((d) => `  - ${d.path}: ${d.message}`)
+        .join('\n')}`,
+    );
+    this.name = 'PipelineValidationError';
+    this.diagnostics = diagnostics;
+  }
+}
 
 // ═══ YAML Parsing ═══
 
@@ -185,6 +200,7 @@ export function resolveConfig(raw: RawPipelineConfig, workDir: string): Pipeline
 
   return {
     name: raw.name,
+    mode: raw.mode,
     driver: raw.driver,
     model: raw.model,
     reasoning_effort: raw.reasoning_effort,
@@ -336,6 +352,7 @@ export function deresolvePipeline(config: PipelineConfig, workDir: string): RawP
 
   return {
     name: config.name,
+    ...(config.mode ? { mode: config.mode } : {}),
     ...(config.driver ? { driver: config.driver } : {}),
     ...(config.model ? { model: config.model } : {}),
     ...(config.reasoning_effort ? { reasoning_effort: config.reasoning_effort } : {}),
@@ -370,5 +387,9 @@ export function validateConfig(config: PipelineConfig): string[] {
 
 export async function loadPipeline(yamlContent: string, workDir: string): Promise<PipelineConfig> {
   const raw = parseYaml(yamlContent);
+  const diagnostics = validateRaw(raw).filter((d) => d.severity !== 'warning');
+  if (diagnostics.length > 0) {
+    throw new PipelineValidationError(diagnostics);
+  }
   return resolveConfig(raw, workDir);
 }

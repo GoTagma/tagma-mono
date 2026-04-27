@@ -96,6 +96,9 @@ function validateContract(category: PluginCategory, handler: unknown): void {
       break;
     }
     case 'triggers':
+      if (h.supportsAbort !== true) {
+        throw new Error(`triggers plugin "${h.name}" must declare supportsAbort: true`);
+      }
       if (typeof h.watch !== 'function') {
         throw new Error(`triggers plugin "${h.name}" must export watch()`);
       }
@@ -116,6 +119,9 @@ function validateContract(category: PluginCategory, handler: unknown): void {
 }
 
 export type RegisterResult = 'registered' | 'replaced' | 'unchanged';
+export interface RegisterPluginOptions {
+  readonly replace?: boolean;
+}
 
 // Plugin name must be a scoped npm package or a tagma-prefixed package.
 // Reject absolute/relative paths and suspicious patterns to prevent
@@ -174,7 +180,6 @@ function isTagmaPlugin(value: unknown): value is TagmaPlugin {
   if (!isRecord(value)) return false;
   if (typeof value.name !== 'string' || value.name.length === 0) return false;
   if (value.capabilities !== undefined && !isRecord(value.capabilities)) return false;
-  if (value.setup !== undefined && typeof value.setup !== 'function') return false;
   return true;
 }
 
@@ -209,16 +214,18 @@ export class PluginRegistry {
   /**
    * Register a plugin under (category, type). Returns:
    *   - 'registered' on first registration
-   *   - 'replaced'   when an existing entry was overwritten with a different handler
+   *   - 'replaced'   when an existing entry was intentionally overwritten
    *   - 'unchanged'  when the same handler instance was already present
    *
-   * Throws if `category` is unknown, `type` is empty, or `handler` violates
-   * the minimum interface contract for the category.
+   * Throws if `category` is unknown, `type` is empty, `handler` violates
+   * the minimum interface contract for the category, or another handler is
+   * already registered for the same category/type without `{ replace: true }`.
    */
   registerPlugin<T extends PluginType>(
     category: PluginCategory,
     type: string,
     handler: T,
+    options: RegisterPluginOptions = {},
   ): RegisterResult {
     if (!VALID_CATEGORIES.has(category)) {
       throw new Error(`Unknown plugin category "${category}"`);
@@ -236,23 +243,19 @@ export class PluginRegistry {
     const existing = registry.get(type);
     if (existing === handler) return 'unchanged';
     const wasReplaced = existing !== undefined;
-    registry.set(type, handler);
-    if (wasReplaced) {
-      // D18: surface silent shadowing. Hot-reload flows legitimately replace
-      // handlers; installing two different plugin packages that both claim
-      // the same (category, type) does not —the second wins and breaks the
-      // first's consumers with no audit trail. A console.warn is cheap,
-      // respects existing callers that rely on 'replaced', and gives ops a
-      // grep-able signal when registrations collide unexpectedly.
-      console.warn(
-        `[tagma-sdk] registerPlugin: replaced existing ${category}/${type} - ` +
-          `check for duplicate plugin packages claiming the same type.`,
+    if (wasReplaced && options.replace !== true) {
+      throw new Error(
+        `Duplicate plugin capability "${category}/${type}". Unregister the existing handler first, or pass { replace: true } for an intentional hot replacement.`,
       );
     }
+    registry.set(type, handler);
     return wasReplaced ? 'replaced' : 'registered';
   }
 
-  registerTagmaPlugin(plugin: TagmaPlugin): RegisteredCapability[] {
+  registerTagmaPlugin(
+    plugin: TagmaPlugin,
+    options: RegisterPluginOptions = {},
+  ): RegisteredCapability[] {
     if (!isTagmaPlugin(plugin)) {
       throw new Error('TagmaPlugin must be an object with a non-empty "name"');
     }
@@ -271,7 +274,7 @@ export class PluginRegistry {
         );
       }
       for (const [type, handler] of Object.entries(handlers)) {
-        const result = this.registerPlugin(category, type, handler as PluginType);
+        const result = this.registerPlugin(category, type, handler as PluginType, options);
         registered.push({ category, type, result });
       }
     }

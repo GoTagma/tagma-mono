@@ -3,6 +3,7 @@ import { realpathSync, lstatSync, existsSync } from 'fs';
 import { randomBytes } from 'crypto';
 
 const DURATION_RE = /^(\d*\.?\d+)\s*(s|m|h|d)$/;
+export const RUN_ID_RE = /^run_[A-Za-z0-9_-]{1,128}$/;
 
 export function parseDuration(input: string): number {
   const match = DURATION_RE.exec(input.trim());
@@ -97,6 +98,14 @@ export function generateRunId(): string {
   const ts = Date.now().toString(36);
   const rand = randomBytes(6).toString('hex');
   return `run_${ts}_${rand}`;
+}
+
+export function assertValidRunId(runId: string): void {
+  if (!RUN_ID_RE.test(runId)) {
+    throw new Error(
+      `Invalid runId "${runId}". Run IDs must match ${RUN_ID_RE} and cannot contain path separators.`,
+    );
+  }
 }
 
 export function truncateForName(text: string, maxLen = 40): string {

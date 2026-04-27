@@ -5,14 +5,13 @@ export {
   PLUGIN_NAME_RE,
   readPluginManifest,
 } from '@tagma/core';
-export type { RegisteredCapability, RegisterResult } from '@tagma/core';
+export type { RegisteredCapability, RegisterPluginOptions, RegisterResult } from '@tagma/core';
 export type {
   CapabilityHandler,
   PluginCategory,
   PluginCapabilities,
   PluginModule,
   PluginManifest,
-  PluginSetupContext,
   TagmaPlugin,
   DriverPlugin,
   TriggerPlugin,

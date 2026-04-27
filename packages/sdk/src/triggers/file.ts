@@ -10,6 +10,7 @@ function pathsEqual(a: string, b: string): boolean {
 
 export const FileTrigger: TriggerPlugin = {
   name: 'file',
+  supportsAbort: true,
   schema: {
     description: 'Wait for a file to appear or be modified before the task runs.',
     fields: {

@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runSpawn } from './runner';
+import type { DriverPlugin } from './types';
 
 // Portable output producer — node is guaranteed in the bun dev env. Using a
 // known runtime avoids shell-quoting differences between platforms.
@@ -31,6 +32,67 @@ test('runSpawn: small output is returned whole, persisted byte-identical', async
     expect(readFileSync(stderrPath, 'utf8')).toBe('oops');
   } finally {
     rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('runSpawn: parseResult exceptions are classified as parse_error', async () => {
+  const driver: DriverPlugin = {
+    name: 'bad-parser',
+    capabilities: { sessionResume: false, systemPrompt: false, outputFormat: false },
+    async buildCommand() {
+      return { args: [] };
+    },
+    parseResult() {
+      throw new Error('bad metadata');
+    },
+  };
+
+  const result = await runSpawn(
+    { args: nodeArg('process.stdout.write("ok")') },
+    driver,
+    {},
+  );
+
+  expect(result.exitCode).toBe(0);
+  expect(result.failureKind).toBe('parse_error');
+  expect(result.stderr).toContain('parseResult threw: bad metadata');
+});
+
+test('runSpawn: child env defaults to minimal inheritance', async () => {
+  const key = 'TAGMA_SECRET_TEST';
+  const previous = process.env[key];
+  process.env[key] = 'secret-value';
+  try {
+    const result = await runSpawn(
+      { args: nodeArg(`process.stdout.write(process.env[${JSON.stringify(key)}] ?? "")`) },
+      null,
+      {},
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe('');
+  } finally {
+    if (previous === undefined) delete process.env[key];
+    else process.env[key] = previous;
+  }
+});
+
+test('runSpawn: env allowlist opts into explicit inherited keys', async () => {
+  const key = 'TAGMA_SECRET_TEST';
+  const previous = process.env[key];
+  process.env[key] = 'secret-value';
+  try {
+    const result = await runSpawn(
+      { args: nodeArg(`process.stdout.write(process.env[${JSON.stringify(key)}] ?? "")`) },
+      null,
+      { envPolicy: { mode: 'allowlist', keys: [key] } },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe('secret-value');
+  } finally {
+    if (previous === undefined) delete process.env[key];
+    else process.env[key] = previous;
   }
 });
 
