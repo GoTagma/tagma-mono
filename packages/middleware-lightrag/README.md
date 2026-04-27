@@ -49,23 +49,24 @@ await tagma.registry.loadPlugins(['@tagma/middleware-lightrag'], process.cwd());
 
 ## Config
 
-| Field         | Type     | Default                   | Notes                                                                                  |
-| ------------- | -------- | ------------------------- | -------------------------------------------------------------------------------------- |
-| `endpoint`    | string   | _(required)_              | LightRAG API server base URL (default port 9621)                                       |
-| `mode`        | enum     | `mix`                     | One of `local`, `global`, `hybrid`, `naive`, `mix` — matches LightRAG's server default |
-| `top_k`       | number   | `10`                      | Top-k entities (local mode) / relationships (global mode)                              |
-| `api_key_env` | string   | _(none)_                  | Env var holding the API key; sent via `X-API-Key` header                               |
-| `timeout`     | duration | `30s`                     | Max time to wait for the LightRAG response                                             |
-| `label`       | string   | `Knowledge Graph Context` | Header rendered above the retrieved context in the final prompt                        |
-| `query`       | string   | _(task prompt)_           | Override the retrieval query; useful when the prompt itself is not a good KG query     |
+| Field               | Type     | Default                   | Notes                                                                                   |
+| ------------------- | -------- | ------------------------- | --------------------------------------------------------------------------------------- |
+| `endpoint`          | string   | _(required)_              | LightRAG API server base URL (default port 9621)                                        |
+| `mode`              | enum     | `mix`                     | One of `local`, `global`, `hybrid`, `naive`, `mix` 鈥?matches LightRAG's server default |
+| `top_k`             | number   | `10`                      | Top-k entities (local mode) / relationships (global mode). Runtime capped at 200        |
+| `max_context_chars` | number   | `40000`                   | Maximum retrieved context characters inserted into the prompt                           |
+| `api_key_env`       | string   | _(none)_                  | Env var holding the API key; sent via `X-API-Key` header                                |
+| `timeout`           | duration | `30s`                     | Max time to wait for the LightRAG response                                              |
+| `label`             | string   | `Knowledge Graph Context` | Header rendered above the retrieved context in the final prompt                         |
+| `query`             | string   | _(task prompt)_           | Override the retrieval query; useful when the prompt itself is not a good KG query      |
 
 ## Behavior
 
 - Calls `POST /query` on the LightRAG server (see `lightrag/api/routers/query_routes.py`) with:
-  - `only_need_context: true` — LightRAG skips the LLM synthesis step and returns the raw assembled context in the `response` field
-  - `include_references: false` — strips reference metadata so the prompt stays focused
+  - `only_need_context: true` 鈥?LightRAG skips the LLM synthesis step and returns the raw assembled context in the `response` field
+  - `include_references: false` 鈥?strips reference metadata so the prompt stays focused
   - `stream: false`
-- The raw context is then prepended to the task prompt as `[<label>]\n<context>\n\n<prompt>` so the downstream driver's model consumes it as prompt augmentation. The middleware does **not** emit a `[Task]` header — that framing belongs to the driver (e.g. opencode's `agent_profile` wrapping). Emitting `[Task]` here would cause a second header to appear after the driver's wrapper, which some models interpret as an empty/cut-off message.
+- The raw context is then prepended to the task prompt as `[<label>]\n<context>\n\n<prompt>` so the downstream driver's model consumes it as prompt augmentation. The middleware does **not** emit a `[Task]` header 鈥?that framing belongs to the driver (e.g. opencode's `agent_profile` wrapping). Emitting `[Task]` here would cause a second header to appear after the driver's wrapper, which some models interpret as an empty/cut-off message.
 - **Auth**: when `api_key_env` is set, the API key is sent via `X-API-Key` (LightRAG's server auth scheme), not `Authorization: Bearer`.
 - **Best-effort**: if the server is unreachable, returns an empty response, or errors, the middleware logs a warning and passes the original prompt through unchanged. Tasks never fail purely because the KG was offline.
 - The prompt shape produced by this middleware (middleware output):

@@ -1,6 +1,6 @@
 {
   "name": "@tagma/core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Runtime-independent orchestration core for Tagma pipelines",
   "license": "MIT",
   "repository": {
@@ -23,14 +23,13 @@
     }
   },
   "files": [
-    "dist",
-    "src"
+    "dist"
   ],
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "node ../../scripts/build-package.mjs",
     "test": "bun test",
     "prepublishOnly": "bun run build"
   },

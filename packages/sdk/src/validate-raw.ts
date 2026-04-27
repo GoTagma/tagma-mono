@@ -6,20 +6,15 @@
 //
 // Returns a flat list of ValidationError objects. An empty array means valid.
 
-import type {
-  PortType,
-  RawPipelineConfig,
-  RawTaskConfig,
-  RawTrackConfig,
-} from './types';
+import type { PortType, RawPipelineConfig, RawTaskConfig, RawTrackConfig } from './types';
 import {
   isValidTaskId,
   qualifyTaskId,
   buildTaskIndex,
   resolveTaskRef,
   type TaskIndex,
-} from './task-ref';
-import { extractInputReferences } from './ports';
+} from '@tagma/core';
+import { extractInputReferences } from '@tagma/core';
 
 interface QidEntry {
   readonly track: RawTrackConfig;
@@ -420,11 +415,7 @@ export function validateRaw(
   return errors;
 }
 
-function validatePermissions(
-  value: unknown,
-  basePath: string,
-  errors: ValidationError[],
-): void {
+function validatePermissions(value: unknown, basePath: string, errors: ValidationError[]): void {
   if (value === undefined) return;
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     errors.push({
@@ -495,7 +486,11 @@ function validateBindingMap(
         message: `task.inputs.${name}.required must be a boolean`,
       });
     }
-    if ('type' in binding && binding.type !== undefined && !VALID_PORT_TYPES.has(binding.type as PortType)) {
+    if (
+      'type' in binding &&
+      binding.type !== undefined &&
+      !VALID_PORT_TYPES.has(binding.type as PortType)
+    ) {
       errors.push({
         path: `${path}.type`,
         message: `task.${kind}.${name}.type must be one of ${[...VALID_PORT_TYPES].join(', ')}`,
@@ -585,23 +580,12 @@ function validateTaskPorts(
   index: TaskIndex,
   errors: ValidationError[],
 ): void {
-  const ports = task.ports;
   const isPromptTask = typeof task.prompt === 'string' && typeof task.command !== 'string';
   const isCommandTask = typeof task.command === 'string' && typeof task.prompt !== 'string';
 
   validateBindingMap(task.inputs, `${taskPath}.inputs`, 'inputs', errors);
   validateBindingMap(task.outputs, `${taskPath}.outputs`, 'outputs', errors);
   validateInputBindingSources(task, trackId, taskPath, index, errors);
-
-  if (ports !== undefined) {
-    errors.push({
-      path: `${taskPath}.ports`,
-      message:
-        `Task "${task.id}": ports has been replaced by typed inputs/outputs. ` +
-        `Move ports.inputs entries to task.inputs.<name> and ports.outputs entries to task.outputs.<name>.`,
-    });
-    return;
-  }
 
   // Collect placeholder references 鈹€鈹€
   // `{{inputs.X}}` is valid in both prompt and command text. The set of

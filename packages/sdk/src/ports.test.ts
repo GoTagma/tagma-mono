@@ -7,12 +7,14 @@ import {
   resolveTaskBindingInputs,
   resolveTaskInputs,
   substituteInputs,
-} from './ports';
-import type { Permissions, PortDef, TaskConfig } from './types';
+} from './dataflow';
+import type { Permissions, PortDef, TaskConfig, TaskPorts } from './types';
 
 const PERMS: Permissions = { read: true, write: false, execute: false };
 
-function task(overrides: Partial<TaskConfig> & { id: string }): TaskConfig {
+function task(
+  overrides: Partial<TaskConfig> & { id: string; ports?: TaskPorts },
+): TaskConfig & { readonly ports?: TaskPorts } {
   return {
     name: overrides.id,
     permissions: PERMS,

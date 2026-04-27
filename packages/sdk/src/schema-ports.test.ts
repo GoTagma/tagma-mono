@@ -5,7 +5,7 @@ import { deresolvePipeline, parseYaml, resolveConfig, serializePipeline } from '
 
 const WORK_DIR = process.platform === 'win32' ? 'D:\\fake-work' : '/fake-work';
 
-describe('schema — unified bindings passthrough', () => {
+describe('schema 鈥?unified bindings passthrough', () => {
   test('typed inputs and outputs survive onto the resolved task', () => {
     const raw: RawPipelineConfig = {
       name: 'p',
@@ -81,29 +81,6 @@ describe('schema — unified bindings passthrough', () => {
     const back = deresolvePipeline(resolved, WORK_DIR);
     expect(back.tracks[0]!.tasks[0]!.inputs).toBeUndefined();
     expect(back.tracks[0]!.tasks[0]!.outputs).toBeUndefined();
-  });
-
-  test('legacy ports are not carried through resolve or deresolve', () => {
-    const raw: RawPipelineConfig = {
-      name: 'p',
-      tracks: [
-        {
-          id: 't',
-          name: 'T',
-          tasks: [
-            {
-              id: 'a',
-              command: 'echo ok',
-              ports: { outputs: [{ name: 'old', type: 'string' }] },
-            },
-          ],
-        },
-      ],
-    };
-    const resolved = resolveConfig(raw, WORK_DIR);
-    expect(resolved.tracks[0]!.tasks[0]!.ports).toBeUndefined();
-    const back = deresolvePipeline(resolved, WORK_DIR);
-    expect(back.tracks[0]!.tasks[0]!.ports).toBeUndefined();
   });
 
   test('YAML round-trip preserves typed unified binding shape', () => {

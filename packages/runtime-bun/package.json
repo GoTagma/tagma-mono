@@ -1,6 +1,6 @@
 {
   "name": "@tagma/runtime-bun",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Bun runtime implementation for Tagma pipeline execution",
   "license": "MIT",
   "repository": {
@@ -33,8 +33,7 @@
     }
   },
   "files": [
-    "dist",
-    "src"
+    "dist"
   ],
   "publishConfig": {
     "access": "public"
@@ -43,7 +42,7 @@
     "bun": ">=1.3"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "node ../../scripts/build-package.mjs",
     "test": "bun test",
     "prepublishOnly": "bun run build"
   },

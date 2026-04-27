@@ -10,9 +10,7 @@ import type {
   Permissions,
   CompletionConfig,
 } from './types';
-import { truncateForName, validatePath } from './utils';
-import { DEFAULT_PERMISSIONS } from './types';
-import { buildDag } from './dag';
+import { buildDag, DEFAULT_PERMISSIONS, truncateForName, validatePath } from '@tagma/core';
 
 // ═══ YAML Parsing ═══
 
@@ -153,7 +151,8 @@ export function resolveConfig(raw: RawPipelineConfig, workDir: string): Pipeline
         model: rawTask.model ?? rawTrack.model ?? raw.model,
         reasoning_effort:
           rawTask.reasoning_effort ?? rawTrack.reasoning_effort ?? raw.reasoning_effort,
-        permissions: rawTask.permissions ?? rawTrack.permissions ?? raw.permissions ?? DEFAULT_PERMISSIONS,
+        permissions:
+          rawTask.permissions ?? rawTrack.permissions ?? raw.permissions ?? DEFAULT_PERMISSIONS,
         driver: rawTask.driver ?? trackDriver ?? 'opencode',
         timeout: rawTask.timeout,
         // Middleware: Task-level overrides Track (including [] to disable)
@@ -239,9 +238,7 @@ function stripPromptOnlyFieldsFromCommandTask<
   return rest as T;
 }
 
-function stripForSerialization<T extends PipelineConfig | RawPipelineConfig>(
-  config: T,
-): T {
+function stripForSerialization<T extends PipelineConfig | RawPipelineConfig>(config: T): T {
   return {
     ...config,
     tracks: config.tracks.map((track) => ({
@@ -260,10 +257,7 @@ function stripForSerialization<T extends PipelineConfig | RawPipelineConfig>(
  * Wraps the config under the top-level `pipeline` key as expected by parseYaml.
  */
 export function serializePipeline(config: PipelineConfig | RawPipelineConfig): string {
-  return yaml.dump(
-    { pipeline: stripForSerialization(config) },
-    { lineWidth: 120, indent: 2 },
-  );
+  return yaml.dump({ pipeline: stripForSerialization(config) }, { lineWidth: 120, indent: 2 });
 }
 
 /**
@@ -332,7 +326,8 @@ export function deresolvePipeline(config: PipelineConfig, workDir: string): RawP
       ...(track.on_failure && track.on_failure !== 'skip_downstream'
         ? { on_failure: track.on_failure }
         : {}),
-      ...(track.permissions && !permissionsEqual(track.permissions, config.permissions ?? DEFAULT_PERMISSIONS)
+      ...(track.permissions &&
+      !permissionsEqual(track.permissions, config.permissions ?? DEFAULT_PERMISSIONS)
         ? { permissions: track.permissions }
         : {}),
       tasks,

@@ -1,7 +1,7 @@
 {
   "name": "@tagma/sdk",
-  "version": "0.7.4",
-  "description": "Local AI task orchestration engine — core SDK for tagma pipelines",
+  "version": "0.7.5",
+  "description": "Local AI task orchestration SDK for Tagma pipelines",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -56,16 +56,6 @@
       "import": "./dist/utils-api.js",
       "default": "./dist/utils-api.js"
     },
-    "./adapters/stdin-approval": {
-      "types": "./dist/adapters/stdin-approval.d.ts",
-      "import": "./dist/adapters/stdin-approval.js",
-      "default": "./dist/adapters/stdin-approval.js"
-    },
-    "./adapters/websocket-approval": {
-      "types": "./dist/adapters/websocket-approval.d.ts",
-      "import": "./dist/adapters/websocket-approval.js",
-      "default": "./dist/adapters/websocket-approval.js"
-    },
     "./runtime/adapters/stdin-approval": {
       "types": "./dist/runtime/adapters/stdin-approval.d.ts",
       "import": "./dist/runtime/adapters/stdin-approval.js",
@@ -76,15 +66,14 @@
       "import": "./dist/runtime/adapters/websocket-approval.js",
       "default": "./dist/runtime/adapters/websocket-approval.js"
     },
-    "./ports": {
-      "types": "./dist/ports.d.ts",
-      "import": "./dist/ports.js",
-      "default": "./dist/ports.js"
+    "./dataflow": {
+      "types": "./dist/dataflow.d.ts",
+      "import": "./dist/dataflow.js",
+      "default": "./dist/dataflow.js"
     }
   },
   "files": [
     "dist",
-    "src",
     "scripts/preinstall.js"
   ],
   "publishConfig": {
@@ -95,11 +84,9 @@
   },
   "scripts": {
     "preinstall": "node scripts/preinstall.js",
-    "build": "tsc -p tsconfig.json",
+    "build": "node ../../scripts/build-package.mjs",
     "prepublishOnly": "bun run build",
-    "test": "bun test",
-    "release": "bun scripts/release.ts",
-    "release:publish": "bun scripts/release.ts --publish"
+    "test": "bun test"
   },
   "dependencies": {
     "@tagma/core": "workspace:*",

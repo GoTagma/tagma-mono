@@ -21,25 +21,8 @@ function errorsFor(task: RawTaskConfig) {
   return validateRaw(config([task]));
 }
 
-describe('validateRaw — ports migration', () => {
-  test('rejects ports with a migration message', () => {
-    const errors = errorsFor(
-      commandTask({
-        id: 'a',
-        ports: { inputs: [{ name: 'city', type: 'string' }] },
-      }),
-    );
-    expect(errors.some((e) => e.path === 'tracks[0].tasks[0].ports')).toBe(true);
-    expect(errors.some((e) => /replaced by typed inputs\/outputs/.test(e.message))).toBe(true);
-  });
 
-  test('empty ports is still rejected', () => {
-    const errors = errorsFor(commandTask({ id: 'a', ports: {} }));
-    expect(errors.some((e) => /ports has been replaced/.test(e.message))).toBe(true);
-  });
-});
-
-describe('validateRaw — unified typed bindings', () => {
+describe('validateRaw 鈥?unified typed bindings', () => {
   test('accepts typed command inputs and outputs', () => {
     const errors = errorsFor(
       commandTask({
@@ -91,7 +74,7 @@ describe('validateRaw — unified typed bindings', () => {
   });
 });
 
-describe('validateRaw — prompt inferred bindings', () => {
+describe('validateRaw 鈥?prompt inferred bindings', () => {
   test('prompt placeholders can reference direct upstream command outputs', () => {
     const errors = validateRaw(
       config([

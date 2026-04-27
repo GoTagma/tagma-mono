@@ -38,7 +38,9 @@ type QueryMode = 'local' | 'global' | 'hybrid' | 'naive' | 'mix';
 // picking something else and surprising users who diffed against the UI.
 const DEFAULT_MODE: QueryMode = 'mix';
 const DEFAULT_TOP_K = 10;
+const MAX_TOP_K = 200;
 const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_MAX_CONTEXT_CHARS = 40_000;
 const VALID_MODES: ReadonlySet<QueryMode> = new Set(['local', 'global', 'hybrid', 'naive', 'mix']);
 
 // Hardened URL parser: rejects anything that isn't http/https so malicious
@@ -62,6 +64,20 @@ function validateEndpointUrl(endpoint: string): URL {
     );
   }
   return url;
+}
+
+function clampPositiveInt(raw: unknown, fallback: number, max: number): number {
+  const value = typeof raw === 'number' && Number.isFinite(raw) ? Math.floor(raw) : fallback;
+  return Math.max(1, Math.min(value, max));
+}
+
+function truncateContext(context: string, maxChars: number): string {
+  if (context.length <= maxChars) return context;
+  const marker = '\n...[truncated retrieved context]...\n';
+  const budget = Math.max(0, maxChars - marker.length);
+  const head = Math.ceil(budget * 0.7);
+  const tail = budget - head;
+  return context.slice(0, head) + marker + context.slice(-tail);
 }
 
 // Shape of LightRAG's QueryResponse Pydantic model (see
@@ -147,8 +163,15 @@ export const LightRAGMiddleware: MiddlewarePlugin = {
         type: 'number',
         default: 10,
         min: 1,
-        max: 200,
+        max: MAX_TOP_K,
         description: 'Number of top-k results to retrieve.',
+      },
+      max_context_chars: {
+        type: 'number',
+        default: DEFAULT_MAX_CONTEXT_CHARS,
+        min: 1_000,
+        max: 200_000,
+        description: 'Maximum retrieved context characters inserted into the prompt.',
       },
       api_key_env: {
         type: 'string',
@@ -190,10 +213,12 @@ export const LightRAGMiddleware: MiddlewarePlugin = {
     }
     const mode = rawMode as QueryMode;
 
-    const topK =
-      typeof config.top_k === 'number' && config.top_k > 0
-        ? Math.floor(config.top_k)
-        : DEFAULT_TOP_K;
+    const topK = clampPositiveInt(config.top_k, DEFAULT_TOP_K, MAX_TOP_K);
+    const maxContextChars = clampPositiveInt(
+      config.max_context_chars,
+      DEFAULT_MAX_CONTEXT_CHARS,
+      200_000,
+    );
 
     const apiKeyEnv = config.api_key_env as string | undefined;
     const apiKey = apiKeyEnv ? process.env[apiKeyEnv] : undefined;
@@ -207,7 +232,10 @@ export const LightRAGMiddleware: MiddlewarePlugin = {
     const query = (config.query as string | undefined) ?? doc.task;
 
     try {
-      const context = await queryLightRAG(endpoint, query, mode, topK, apiKey, timeoutMs);
+      const context = truncateContext(
+        await queryLightRAG(endpoint, query, mode, topK, apiKey, timeoutMs),
+        maxContextChars,
+      );
       if (!context.trim()) {
         console.warn('[lightrag] query returned empty context, passing prompt through');
         return doc;

@@ -1,6 +1,6 @@
 {
   "name": "@tagma/middleware-lightrag",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "LightRAG knowledge-graph retrieval middleware for tagma-sdk pipelines",
   "license": "MIT",
   "repository": {
@@ -23,8 +23,7 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "dist",
-    "src"
+    "dist"
   ],
   "publishConfig": {
     "access": "public"
@@ -45,11 +44,11 @@
     "type": "lightrag"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "node ../../scripts/build-package.mjs",
     "test": "bun test",
     "prepublishOnly": "bun run build"
   },
-  "peerDependencies": {
+  "dependencies": {
     "@tagma/types": "workspace:*"
   }
 }

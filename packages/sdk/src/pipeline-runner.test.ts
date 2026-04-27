@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { bootstrapBuiltins } from './bootstrap';
 import { PipelineRunner } from './pipeline-runner';
-import { PluginRegistry } from './registry';
+import { PluginRegistry } from '@tagma/core';
 import type { PipelineConfig, TagmaRuntime, TaskResult } from './types';
 
 function makeDir(): string {
