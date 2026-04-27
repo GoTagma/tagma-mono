@@ -6,7 +6,7 @@
 //
 // All operations return a new config object; inputs are never mutated.
 
-import type { RawPipelineConfig, RawTrackConfig, RawTaskConfig } from './types';
+import type { RawPipelineConfig, RawTrackConfig, RawTaskConfig } from '@tagma/types';
 
 // ── Pipeline ──
 

@@ -33,7 +33,7 @@ import {
 } from './core/scheduler';
 import { executeTask } from './core/task-executor';
 import type { TagmaRuntime } from './types';
-export { TriggerBlockedError, TriggerTimeoutError } from './core/trigger-errors';
+export { TriggerBlockedError, TriggerTimeoutError } from './types';
 
 function isPromptTaskConfig(
   task: TaskConfig,

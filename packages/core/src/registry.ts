@@ -96,9 +96,6 @@ function validateContract(category: PluginCategory, handler: unknown): void {
       break;
     }
     case 'triggers':
-      if (h.supportsAbort !== true) {
-        throw new Error(`triggers plugin "${h.name}" must declare supportsAbort: true`);
-      }
       if (typeof h.watch !== 'function') {
         throw new Error(`triggers plugin "${h.name}" must export watch()`);
       }

@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { OutputCheckCompletion } from './output-check';
-import { bunRuntime } from '../runtime';
-import type { TaskResult } from '../types';
+import { bunRuntime } from '@tagma/runtime-bun';
+import type { TaskResult } from '@tagma/types';
 
 function taskResult(stdout = 'payload'): TaskResult {
   return {

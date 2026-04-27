@@ -409,6 +409,7 @@ Tasks can declare named, typed `inputs` / `outputs`. Inputs flow in from upstrea
 
 - immutable config editing helpers
 - raw validation helpers
+- resolved and raw DAG helpers
 - task reference helpers
 
 ### Dataflow helpers: `@tagma/sdk/dataflow`
@@ -416,10 +417,14 @@ Tasks can declare named, typed `inputs` / `outputs`. Inputs flow in from upstrea
 - placeholder substitution, binding resolution, output extraction, and internal prompt-contract inference
 - stable public subpath for pure dataflow helpers; no runtime/process imports
 
+### Pipeline runner: `@tagma/sdk/pipeline-runner`
+
+- `PipelineRunner` lifecycle wrapper for hosts that manage multiple concurrent runs
+
 ### Runtime approval adapters
 
-- `@tagma/sdk/runtime/adapters/stdin-approval`
-- `@tagma/sdk/runtime/adapters/websocket-approval`
+- `@tagma/runtime-bun/adapters/stdin-approval`
+- `@tagma/runtime-bun/adapters/websocket-approval`
 
 ### Split packages
 
@@ -476,6 +481,8 @@ Options:
 Higher-level wrapper for managing multiple concurrent pipeline runs — designed for sidecar / Tauri IPC scenarios where the frontend controls pipeline lifecycle by ID.
 
 ```ts
+import { PipelineRunner } from '@tagma/sdk/pipeline-runner';
+
 const runner = new PipelineRunner(config, workDir, options?); // options: Omit<RunPipelineOptions, 'signal' | 'onEvent'>
 
 // Subscribe before start — handler is called for every RunEventPayload
@@ -548,7 +555,6 @@ import type { TriggerPlugin } from '@tagma/types';
 
 export const HttpTrigger: TriggerPlugin = {
   name: 'http',
-  supportsAbort: true,
   schema: {
     description: 'Wait for an HTTP endpoint to return 2xx before the task runs.',
     fields: {
@@ -557,16 +563,24 @@ export const HttpTrigger: TriggerPlugin = {
       timeout: { type: 'duration', description: 'Give up after this long.' },
     },
   },
-  async watch(config, ctx) {
+  watch(config, ctx) {
     // Trigger plugins should use ctx.runtime for file IO, watching, and
     // timing so they can run under non-Bun test/runtime implementations.
-    // They must also observe ctx.signal and release listeners/watchers on abort.
-    /* ... */
+    const controller = new AbortController();
+    const fired = waitForHttp(config, ctx, controller.signal);
+    return {
+      fired,
+      dispose(reason = 'trigger disposed') {
+        controller.abort(reason);
+      },
+    };
   },
 };
 ```
 
-The schema is purely descriptive — plugins still perform their own runtime validation. Supported field types: `string`, `number`, `boolean`, `enum`, `path`, `duration`, `number-or-list`. Each field can declare `required`, `default`, `description`, `enum`, `min`/`max`, `placeholder`. Built-in plugins (`file`/`manual` triggers; `exit_code`/`file_exists`/`output_check` completions; `static_context` middleware) all ship with schemas so editors can generate forms out of the box.
+Trigger `watch()` methods must return `{ fired, dispose }`: the engine awaits
+`fired` and calls `dispose()` on success, failure, task timeout, and pipeline
+abort. The schema is purely descriptive — plugins still perform their own runtime validation. Supported field types: `string`, `number`, `boolean`, `enum`, `path`, `duration`, `number-or-list`. Each field can declare `required`, `default`, `description`, `enum`, `min`/`max`, `placeholder`. Built-in plugins (`file`/`manual` triggers; `exit_code`/`file_exists`/`output_check` completions; `static_context` middleware) all ship with schemas so editors can generate forms out of the box.
 
 ### `PluginRegistry.getHandler(category, type): PluginType`
 
@@ -778,7 +792,7 @@ structured `LogRecord`; the engine uses this to emit `task_log` events:
 
 ```ts
 import { bunRuntime } from '@tagma/sdk';
-import { Logger, type LogRecord } from '@tagma/sdk/logger';
+import { Logger, type LogRecord } from '@tagma/core';
 
 const logger = new Logger(workDir, runId, bunRuntime().logStore, (record: LogRecord) => {
   // record = { level, taskId, timestamp, text }

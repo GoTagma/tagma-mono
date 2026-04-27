@@ -27,6 +27,8 @@ import {
   type TagmaPlugin,
   type TriggerPlugin,
   type TriggerContext,
+  type TriggerWatchHandle,
+  TriggerTimeoutError,
 } from '@tagma/types';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
@@ -169,7 +171,6 @@ function closeServerIfIdle(state: WebhookServerState): void {
 
 export const WebhookTrigger: TriggerPlugin = {
   name: 'webhook',
-  supportsAbort: true,
   schema: {
     description: 'Wait for an HTTP POST to arrive on a local listener before the task runs.',
     fields: {
@@ -210,7 +211,7 @@ export const WebhookTrigger: TriggerPlugin = {
     },
   },
 
-  watch(config: Record<string, unknown>, ctx: TriggerContext): Promise<unknown> {
+  watch(config: Record<string, unknown>, ctx: TriggerContext): TriggerWatchHandle {
     const rawPort = config.port;
     const port = typeof rawPort === 'number' ? rawPort : Number(rawPort);
     if (!Number.isFinite(port) || port < 1 || port > 65535) {
@@ -244,7 +245,10 @@ export const WebhookTrigger: TriggerPlugin = {
 
     const state = ensureServer(port, path, secretEnv, hostname);
 
-    return new Promise<unknown>((resolvePromise, rejectPromise) => {
+    let dispose = (_reason?: string) => {
+      /* assigned below */
+    };
+    const fired = new Promise<unknown>((resolvePromise, rejectPromise) => {
       if (ctx.signal.aborted) {
         rejectPromise(new Error('Pipeline aborted'));
         return;
@@ -275,6 +279,13 @@ export const WebhookTrigger: TriggerPlugin = {
         closeServerIfIdle(state);
       };
 
+      dispose = (reason = 'webhook trigger disposed'): void => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        rejectPromise(new Error(reason));
+      };
+
       state.waiters.push(onFire);
       ctx.signal.addEventListener('abort', onAbort, { once: true });
 
@@ -284,13 +295,14 @@ export const WebhookTrigger: TriggerPlugin = {
           settled = true;
           cleanup();
           rejectPromise(
-            new Error(
+            new TriggerTimeoutError(
               `webhook trigger timeout: no POST on :${port}${path} within ${String(config.timeout)}`,
             ),
           );
         }, timeoutMs);
       }
     });
+    return { fired, dispose };
   },
 };
 

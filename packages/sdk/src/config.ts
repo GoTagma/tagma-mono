@@ -12,8 +12,8 @@ export {
 } from './config-ops';
 export { validateRaw } from './validate-raw';
 export type { ValidationError, KnownPluginTypes } from './validate-raw';
-export { buildRawDag } from '@tagma/core';
-export type { RawDag, RawDagNode } from '@tagma/core';
+export { buildDag, buildRawDag } from '@tagma/core';
+export type { Dag, DagNode, RawDag, RawDagNode } from '@tagma/core';
 export {
   TASK_ID_RE,
   isValidTaskId,

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { transferTask } from './config-ops';
-import type { RawPipelineConfig } from './types';
+import type { RawPipelineConfig } from '@tagma/types';
 
 describe('transferTask', () => {
   test('does not remove the source task when the target track is missing', () => {

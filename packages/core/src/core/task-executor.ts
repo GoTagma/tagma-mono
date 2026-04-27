@@ -1,14 +1,17 @@
-import type {
-  CompletionPlugin,
-  DriverContext,
-  DriverPlugin,
-  MiddlewareContext,
-  MiddlewarePlugin,
-  PromptDocument,
-  TaskConfig,
-  TaskResult,
-  TaskStatus,
-  TriggerPlugin,
+import {
+  TriggerBlockedError,
+  TriggerTimeoutError,
+  type CompletionPlugin,
+  type DriverContext,
+  type DriverPlugin,
+  type MiddlewareContext,
+  type MiddlewarePlugin,
+  type PromptDocument,
+  type TaskConfig,
+  type TaskResult,
+  type TaskStatus,
+  type TriggerPlugin,
+  type TriggerWatchHandle,
 } from '../types';
 import type { PluginRegistry } from '../registry';
 import { parseDuration, nowISO } from '../utils';
@@ -25,7 +28,6 @@ import { clip, tailLines, type Logger } from '../logger';
 import type { ApprovalGateway } from '../approval';
 import type { RunContext } from './run-context';
 import { extractSuccessfulOutputs, inferEffectivePorts } from './dataflow';
-import { TriggerBlockedError, TriggerTimeoutError } from './trigger-errors';
 
 const MAX_NORMALIZED_BYTES = 1_000_000;
 
@@ -41,6 +43,32 @@ function isCommandTaskConfig(task: {
   readonly prompt?: string;
 }): task is { readonly command: string; readonly prompt?: undefined } {
   return task.command !== undefined && task.prompt === undefined;
+}
+
+function isTriggerWatchHandle(value: unknown): value is TriggerWatchHandle {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    Boolean(candidate.fired) &&
+    typeof (candidate.fired as Promise<unknown>).then === 'function' &&
+    typeof candidate.dispose === 'function'
+  );
+}
+
+async function disposeTriggerWatch(
+  handle: TriggerWatchHandle,
+  log: Logger,
+  taskId: string,
+  reason: string,
+): Promise<void> {
+  try {
+    await handle.dispose(reason);
+  } catch (err) {
+    log.warn(
+      `[task:${taskId}]`,
+      `trigger dispose failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 }
 
 export interface ExecuteTaskOptions {
@@ -89,71 +117,73 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
     );
     try {
       const triggerPlugin = registry.getHandler<TriggerPlugin>('triggers', task.trigger.type);
-      // R6: race the plugin's watch() against the pipeline's abort signal
-      // AND the task-level timeout. Third-party triggers may forget to
-      // wire up ctx.signal — without the abort race, an aborted pipeline
-      // would hang forever waiting for the plugin's watch promise to
-      // resolve. And without the timeout race, a buggy watch() that never
-      // settles would ignore the user's `task.timeout` (which the spawn
-      // path at step 4 already honours) — a task could wedge the whole
-      // pipeline until pipeline-level timeout fires (or forever, if none
-      // is set). Honouring task.timeout here makes the two stages
-      // symmetric. The cleanup paths in finally never run on the orphaned
-      // plugin promise (it's allowed to leak a watcher; the pipeline is
-      // being torn down anyway).
+      // Own the trigger resource lifecycle in the engine. Plugins return a
+      // watch handle, not a bare promise, so timeout/abort paths can always
+      // call dispose() even if the trigger condition never settles.
       const triggerTimeoutMs = task.timeout ? parseDuration(task.timeout) : 0;
-      await new Promise<unknown>((resolve, reject) => {
-        let settled = false;
-        let timer: ReturnType<typeof setTimeout> | null = null;
+      const watchHandle = triggerPlugin.watch(task.trigger as Record<string, unknown>, {
+        taskId: node.taskId,
+        trackId: track.id,
+        workDir: task.cwd ?? workDir,
+        signal: ctx.abortController.signal,
+        approvalGateway,
+        runtime: ctx.runtime,
+      });
+      if (!isTriggerWatchHandle(watchHandle)) {
+        throw new Error(
+          `Trigger "${task.trigger.type}" returned an invalid watch handle; expected { fired: Promise, dispose() }`,
+        );
+      }
+
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      let removeAbortListener = () => {
+        /* no-op until listener is installed */
+      };
+      let disposeReason = 'trigger settled';
+      try {
+        let rejectAbort: (err: Error) => void = () => {
+          /* assigned before listener can fire */
+        };
+        const abortPromise = new Promise<never>((_, reject) => {
+          rejectAbort = reject;
+        });
         const onAbort = () => {
-          if (settled) return;
-          settled = true;
           if (timer !== null) clearTimeout(timer);
-          reject(new Error('Pipeline aborted'));
+          disposeReason = 'pipeline aborted';
+          rejectAbort(new Error('Pipeline aborted'));
         };
         if (ctx.abortController.signal.aborted) {
-          onAbort();
-          return;
+          disposeReason = 'pipeline aborted';
+          throw new Error('Pipeline aborted');
         }
         ctx.abortController.signal.addEventListener('abort', onAbort, { once: true });
+        removeAbortListener = () => ctx.abortController.signal.removeEventListener('abort', onAbort);
+
+        const timeoutPromise =
+          triggerTimeoutMs > 0
+            ? new Promise<never>((_, reject) => {
+                timer = setTimeout(() => {
+                  disposeReason = `task timeout ${task.timeout}`;
+                  reject(
+                    new TriggerTimeoutError(
+                      `Trigger "${task.trigger!.type}" did not settle within ${task.timeout} (task-level timeout)`,
+                    ),
+                  );
+                }, triggerTimeoutMs);
+              })
+            : new Promise<never>(() => {
+                /* no timeout */
+              });
+
+        await Promise.race([watchHandle.fired, abortPromise, timeoutPromise]);
+      } finally {
         if (triggerTimeoutMs > 0) {
-          timer = setTimeout(() => {
-            if (settled) return;
-            settled = true;
-            ctx.abortController.signal.removeEventListener('abort', onAbort);
-            reject(
-              new TriggerTimeoutError(
-                `Trigger "${task.trigger!.type}" did not settle within ${task.timeout} (task-level timeout)`,
-              ),
-            );
-          }, triggerTimeoutMs);
+          // clearTimeout tolerates timers that already fired.
+          if (timer !== null) clearTimeout(timer);
         }
-        triggerPlugin
-          .watch(task.trigger as Record<string, unknown>, {
-            taskId: node.taskId,
-            trackId: track.id,
-            workDir: task.cwd ?? workDir,
-            signal: ctx.abortController.signal,
-            approvalGateway,
-            runtime: ctx.runtime,
-          })
-          .then(
-            (v) => {
-              if (settled) return;
-              settled = true;
-              if (timer !== null) clearTimeout(timer);
-              ctx.abortController.signal.removeEventListener('abort', onAbort);
-              resolve(v);
-            },
-            (e) => {
-              if (settled) return;
-              settled = true;
-              if (timer !== null) clearTimeout(timer);
-              ctx.abortController.signal.removeEventListener('abort', onAbort);
-              reject(e);
-            },
-          );
-      });
+        removeAbortListener();
+        await disposeTriggerWatch(watchHandle, log, taskId, disposeReason);
+      }
       log.debug(`[task:${taskId}]`, `trigger fired`);
     } catch (err: unknown) {
       // If pipeline was aborted while we were still waiting for the trigger,

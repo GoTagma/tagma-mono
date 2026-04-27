@@ -17,4 +17,4 @@ export type {
   TriggerPlugin,
   CompletionPlugin,
   MiddlewarePlugin,
-} from './types';
+} from '@tagma/types';

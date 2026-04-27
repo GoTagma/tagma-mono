@@ -1,5 +1,5 @@
 import { stat } from 'node:fs/promises';
-import type { CompletionPlugin, CompletionContext, TaskResult } from '../types';
+import type { CompletionPlugin, CompletionContext, TaskResult } from '@tagma/types';
 import { validatePath } from '@tagma/core';
 
 type Kind = 'file' | 'dir' | 'any';

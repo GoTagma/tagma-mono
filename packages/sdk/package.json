@@ -36,15 +36,10 @@
       "import": "./dist/plugins.js",
       "default": "./dist/plugins.js"
     },
-    "./runner": {
+    "./pipeline-runner": {
       "types": "./dist/pipeline-runner.d.ts",
       "import": "./dist/pipeline-runner.js",
       "default": "./dist/pipeline-runner.js"
-    },
-    "./logger": {
-      "types": "./dist/logger.d.ts",
-      "import": "./dist/logger.js",
-      "default": "./dist/logger.js"
     },
     "./approval": {
       "types": "./dist/approval.d.ts",
@@ -55,16 +50,6 @@
       "types": "./dist/utils-api.d.ts",
       "import": "./dist/utils-api.js",
       "default": "./dist/utils-api.js"
-    },
-    "./runtime/adapters/stdin-approval": {
-      "types": "./dist/runtime/adapters/stdin-approval.d.ts",
-      "import": "./dist/runtime/adapters/stdin-approval.js",
-      "default": "./dist/runtime/adapters/stdin-approval.js"
-    },
-    "./runtime/adapters/websocket-approval": {
-      "types": "./dist/runtime/adapters/websocket-approval.d.ts",
-      "import": "./dist/runtime/adapters/websocket-approval.js",
-      "default": "./dist/runtime/adapters/websocket-approval.js"
     },
     "./dataflow": {
       "types": "./dist/dataflow.d.ts",

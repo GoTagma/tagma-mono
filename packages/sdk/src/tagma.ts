@@ -8,7 +8,7 @@ import { bootstrapBuiltins } from './bootstrap';
 import { validateConfig } from './schema';
 import { bunRuntime } from '@tagma/runtime-bun';
 import type { TagmaRuntime } from '@tagma/core';
-import type { PipelineConfig, TagmaPlugin } from './types';
+import type { PipelineConfig, TagmaPlugin } from '@tagma/types';
 
 export interface CreateTagmaOptions {
   /**

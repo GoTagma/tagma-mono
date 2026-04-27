@@ -6,4 +6,5 @@ export type {
   ApprovalListener,
   ApprovalOutcome,
   ApprovalRequest,
+  ApprovalRequestHandle,
 } from '@tagma/core';

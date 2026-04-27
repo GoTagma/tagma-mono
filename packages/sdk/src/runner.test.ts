@@ -2,8 +2,8 @@ import { test, expect } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runSpawn } from './runner';
-import type { DriverPlugin } from './types';
+import { runSpawn } from '@tagma/runtime-bun';
+import type { DriverPlugin } from '@tagma/types';
 
 // Portable output producer — node is guaranteed in the bun dev env. Using a
 // known runtime avoids shell-quoting differences between platforms.

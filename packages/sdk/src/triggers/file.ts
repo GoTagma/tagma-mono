@@ -1,6 +1,11 @@
 import { resolve, dirname } from 'path';
-import type { TriggerPlugin, TriggerContext } from '../types';
-import { parseDuration, TriggerTimeoutError, validatePath } from '@tagma/core';
+import {
+  TriggerTimeoutError,
+  type TriggerPlugin,
+  type TriggerContext,
+  type TriggerWatchHandle,
+} from '@tagma/types';
+import { parseDuration, validatePath } from '@tagma/core';
 
 const IS_WINDOWS = process.platform === 'win32';
 
@@ -10,7 +15,6 @@ function pathsEqual(a: string, b: string): boolean {
 
 export const FileTrigger: TriggerPlugin = {
   name: 'file',
-  supportsAbort: true,
   schema: {
     description: 'Wait for a file to appear or be modified before the task runs.',
     fields: {
@@ -28,14 +32,27 @@ export const FileTrigger: TriggerPlugin = {
     },
   },
 
-  watch(config: Record<string, unknown>, ctx: TriggerContext): Promise<unknown> {
+  watch(config: Record<string, unknown>, ctx: TriggerContext): TriggerWatchHandle {
     const filePath = config.path as string;
     if (!filePath) throw new Error(`file trigger: "path" is required`);
 
     const safePath = validatePath(filePath, ctx.workDir);
     const timeoutMs = config.timeout != null ? parseDuration(String(config.timeout)) : 0;
+    const disposeController = new AbortController();
 
-    return waitForFile({ filePath, safePath, timeoutMs, timeoutLabel: config.timeout, ctx });
+    return {
+      fired: waitForFile({
+        filePath,
+        safePath,
+        timeoutMs,
+        timeoutLabel: config.timeout,
+        ctx,
+        disposeSignal: disposeController.signal,
+      }),
+      dispose(reason = 'file trigger disposed') {
+        disposeController.abort(reason);
+      },
+    };
   },
 };
 
@@ -45,9 +62,11 @@ async function waitForFile(options: {
   readonly timeoutMs: number;
   readonly timeoutLabel: unknown;
   readonly ctx: TriggerContext;
+  readonly disposeSignal: AbortSignal;
 }): Promise<unknown> {
-  const { filePath, safePath, timeoutMs, timeoutLabel, ctx } = options;
+  const { filePath, safePath, timeoutMs, timeoutLabel, ctx, disposeSignal } = options;
   if (ctx.signal.aborted) throw new Error('Pipeline aborted');
+  if (disposeSignal.aborted) throw new Error('Trigger disposed');
 
   const dir = dirname(safePath);
   await ctx.runtime.ensureDir(dir).catch(() => {
@@ -59,12 +78,18 @@ async function waitForFile(options: {
     /* no-op until the abort listener is installed */
   };
   const abortPromise = new Promise<never>((_, reject) => {
-    const onAbort = () => {
+    const onAbort = (message: string) => {
       watchController.abort();
-      reject(new Error('Pipeline aborted'));
+      reject(new Error(message));
     };
-    ctx.signal.addEventListener('abort', onAbort, { once: true });
-    removeAbortListener = () => ctx.signal.removeEventListener('abort', onAbort);
+    const onPipelineAbort = () => onAbort('Pipeline aborted');
+    const onDispose = () => onAbort('Trigger disposed');
+    ctx.signal.addEventListener('abort', onPipelineAbort, { once: true });
+    disposeSignal.addEventListener('abort', onDispose, { once: true });
+    removeAbortListener = () => {
+      ctx.signal.removeEventListener('abort', onPipelineAbort);
+      disposeSignal.removeEventListener('abort', onDispose);
+    };
   });
 
   let timer: ReturnType<typeof setTimeout> | null = null;

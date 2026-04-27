@@ -1,4 +1,4 @@
-import type { CompletionPlugin, CompletionContext, TaskResult } from '../types';
+import type { CompletionPlugin, CompletionContext, TaskResult } from '@tagma/types';
 import { parseDuration, shellArgs } from '@tagma/core';
 
 const DEFAULT_TIMEOUT_MS = 30_000;

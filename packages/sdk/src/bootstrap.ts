@@ -1,5 +1,5 @@
 import type { PluginRegistry } from '@tagma/core';
-import type { TagmaPlugin } from './types';
+import type { TagmaPlugin } from '@tagma/types';
 
 // Built-in Drivers
 // Only opencode is built in. Other drivers (codex, claude-code) ship as

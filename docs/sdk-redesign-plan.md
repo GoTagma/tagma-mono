@@ -23,13 +23,11 @@ The SDK should become a small orchestration core with explicit extension points.
 The redesign should move toward this shape:
 
 ```ts
-import { createTagma } from '@tagma/sdk';
-import { bunRuntime } from '@tagma/runtime-bun';
-import { opencodeDriver } from '@tagma/driver-opencode';
+import { createTagma, bunRuntime } from '@tagma/sdk';
 
 const tagma = createTagma({
   runtime: bunRuntime(),
-  plugins: [opencodeDriver()],
+  // Built-in plugins, including the opencode driver, are registered by default.
 });
 
 const result = await tagma.run(pipeline, {
@@ -524,10 +522,10 @@ New:
 
 ```ts
 export default {
-  name: '@tagma/driver-opencode',
+  name: '@tagma/driver-codex',
   capabilities: {
     drivers: {
-      opencode: opencodeDriver,
+      codex: CodexDriver,
     },
   },
 } satisfies TagmaPlugin;
@@ -565,7 +563,7 @@ Create runtime interface and Bun implementation.
 
 Move:
 
-- `runner.ts` into Bun runtime implementation.
+- process execution into the `@tagma/runtime-bun` package.
 - file trigger watch implementation behind runtime watch APIs.
 - log file writing behind runtime log store.
 - WebSocket/stdin adapters out of core.
@@ -574,7 +572,7 @@ Acceptance criteria:
 
 - Core tests run without Bun-specific spawn behavior.
 - Bun runtime tests cover process execution, timeout, Windows shim handling, and output streaming.
-- Public `@tagma/sdk` remains Bun-first until `@tagma/core` and `@tagma/runtime-bun` split.
+- Public `@tagma/sdk` remains the Bun-first convenience facade over `@tagma/core` and `@tagma/runtime-bun`.
 
 **Phase 5a status (2026-04-26):**
 
@@ -584,10 +582,10 @@ Acceptance criteria:
 
 **Phase 5b status (2026-04-26):**
 
-- [x] Moved the Bun process runner implementation under `src/runtime/bun-process-runner.ts`; `src/runner.ts` is now an internal compatibility re-export.
-- [x] Moved file trigger watching behind `TagmaRuntime.watch()`, `fileExists()`, and `ensureDir()`.
+- [x] Moved the Bun process runner implementation into `packages/runtime-bun/src/bun-process-runner.ts`.
+- [x] Moved file trigger watching behind `TagmaRuntime.watchPath()`, `fileExists()`, and `ensureDir()`.
 - [x] Moved log file creation, task stdout/stderr artifact paths, and log pruning behind `TagmaRuntime.logStore`.
-- [x] Moved stdin/WebSocket approval adapter implementations under `src/runtime/adapters/*`; old `src/adapters/*` files re-export the runtime boundary.
+- [x] Moved stdin/WebSocket approval adapter implementations into `packages/runtime-bun/src/adapters/*`; SDK adapter subpaths re-export the runtime package for compatibility.
 - [x] Added focused fake-runtime tests for file watching, log store routing, and runtime adapter subpaths.
 
 ### Phase 6: Package Split
@@ -752,5 +750,5 @@ Audit status on 2026-04-26:
 - [x] Phase 2: engine internals are split into focused core modules and `engine.ts` is an orchestrator.
 - [x] Phase 3: runtime dataflow uses unified typed `inputs` / `outputs`; `ports` is a validation migration error.
 - [x] Phase 4: capability plugin model is implemented as a clean cutover with no legacy module compatibility.
-- [x] Phase 5: runtime boundary extraction is complete inside `@tagma/sdk`; process execution, file watching, log storage, and approval adapters are behind runtime boundaries.
-- [x] Phase 6: package split started with `@tagma/core`, `@tagma/runtime-bun`, and SDK composition boundaries.
+- [x] Phase 5: runtime boundary extraction is complete; process execution, file watching, log storage, and approval adapters are behind runtime boundaries.
+- [x] Phase 6: package split is in place with `@tagma/core`, `@tagma/runtime-bun`, and SDK composition boundaries.

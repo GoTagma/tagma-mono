@@ -6,7 +6,7 @@
   TrackConfig,
   DriverContext,
   SpawnSpec,
-} from '../types';
+} from '@tagma/types';
 
 const DEFAULT_MODEL = 'opencode/big-pickle';
 

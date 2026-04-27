@@ -1,5 +1,5 @@
 ﻿import { describe, expect, test } from 'bun:test';
-import type { RawPipelineConfig, RawTaskConfig } from './types';
+import type { RawPipelineConfig, RawTaskConfig } from '@tagma/types';
 import { validateRaw } from './validate-raw';
 
 function commandTask(overrides: Partial<RawTaskConfig> & { id: string }): RawTaskConfig {

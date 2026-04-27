@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createTagma } from './tagma';
-import type { DriverPlugin, TagmaPlugin, TaskResult } from './types';
-import type { TagmaRuntime } from './runtime';
+import type { DriverPlugin, TagmaPlugin, TaskResult } from '@tagma/types';
+import type { TagmaRuntime } from '@tagma/core';
 
 function makeDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { bootstrapBuiltins } from './bootstrap';
 import { PipelineRunner } from './pipeline-runner';
 import { PluginRegistry } from '@tagma/core';
-import type { PipelineConfig, TagmaRuntime, TaskResult } from './types';
+import type { PipelineConfig, TagmaRuntime, TaskResult } from '@tagma/types';
 
 function makeDir(): string {
   return mkdtempSync(join(tmpdir(), 'tagma-pipeline-runner-'));

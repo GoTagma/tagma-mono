@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { compileYamlContent } from './yaml-compiler';
 import { validateRaw } from './validate-raw';
-import type { RawPipelineConfig } from './types';
+import type { RawPipelineConfig } from '@tagma/types';
 
 describe('validateRaw known plugin types', () => {
   test('warns when pipeline, track, or prompt task references an unknown driver', () => {

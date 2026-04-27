@@ -8,7 +8,7 @@ import {
   resolveTaskInputs,
   substituteInputs,
 } from './dataflow';
-import type { Permissions, PortDef, TaskConfig, TaskPorts } from './types';
+import type { Permissions, PortDef, TaskConfig, TaskPorts } from '@tagma/types';
 
 const PERMS: Permissions = { read: true, write: false, execute: false };
 

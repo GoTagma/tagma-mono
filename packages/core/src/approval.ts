@@ -14,6 +14,7 @@ import type {
   ApprovalEvent,
   ApprovalListener,
   ApprovalGateway,
+  ApprovalRequestHandle,
 } from './types';
 
 // Re-export for existing engine-side consumers that import from this file.
@@ -24,6 +25,7 @@ export type {
   ApprovalEvent,
   ApprovalListener,
   ApprovalGateway,
+  ApprovalRequestHandle,
 } from './types';
 
 // ═══ Default In-Memory Implementation ═══
@@ -38,7 +40,7 @@ export class InMemoryApprovalGateway implements ApprovalGateway {
   private readonly pendingMap = new Map<string, PendingEntry>();
   private readonly listeners = new Set<ApprovalListener>();
 
-  request(req: Omit<ApprovalRequest, 'id' | 'createdAt'>): Promise<ApprovalDecision> {
+  request(req: Omit<ApprovalRequest, 'id' | 'createdAt'>): ApprovalRequestHandle {
     const full: ApprovalRequest = {
       id: randomUUID(),
       createdAt: nowISO(),
@@ -49,7 +51,7 @@ export class InMemoryApprovalGateway implements ApprovalGateway {
       metadata: req.metadata,
     };
 
-    return new Promise<ApprovalDecision>((resolvePromise) => {
+    const decision = new Promise<ApprovalDecision>((resolvePromise) => {
       let timer: ReturnType<typeof setTimeout> | null = null;
       if (full.timeoutMs > 0) {
         timer = setTimeout(() => {
@@ -70,6 +72,24 @@ export class InMemoryApprovalGateway implements ApprovalGateway {
       this.pendingMap.set(full.id, { request: full, settle: resolvePromise, timer });
       this.emit({ type: 'requested', request: full });
     });
+
+    return {
+      request: full,
+      decision,
+      abort: (reason: string) => {
+        const entry = this.pendingMap.get(full.id);
+        if (!entry) return;
+        this.pendingMap.delete(full.id);
+        if (entry.timer) clearTimeout(entry.timer);
+        this.emit({ type: 'aborted', request: full, reason });
+        entry.settle({
+          approvalId: full.id,
+          outcome: 'aborted',
+          reason,
+          decidedAt: nowISO(),
+        });
+      },
+    };
   }
 
   resolve(

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { InMemoryApprovalGateway } from '../approval';
 import { FileTrigger } from './file';
-import type { TagmaRuntime } from '../runtime';
+import type { TagmaRuntime } from '@tagma/core';
 
 function makeDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
@@ -53,19 +53,19 @@ describe('FileTrigger runtime boundary', () => {
     } as unknown as TagmaRuntime;
 
     try {
-      await expect(
-        FileTrigger.watch(
-          { type: 'file', path: 'target.txt', timeout: '0.05s' },
-          {
-            taskId: 't.wait',
-            trackId: 't',
-            workDir: dir,
-            signal: new AbortController().signal,
-            approvalGateway: new InMemoryApprovalGateway(),
-            runtime,
-          } as never,
-        ),
-      ).resolves.toEqual({ path: resolve(dir, 'target.txt') });
+      const handle = FileTrigger.watch(
+        { type: 'file', path: 'target.txt', timeout: '0.05s' },
+        {
+          taskId: 't.wait',
+          trackId: 't',
+          workDir: dir,
+          signal: new AbortController().signal,
+          approvalGateway: new InMemoryApprovalGateway(),
+          runtime,
+        } as never,
+      );
+      await expect(handle.fired).resolves.toEqual({ path: resolve(dir, 'target.txt') });
+      await handle.dispose('test cleanup');
 
       expect(calls).toEqual([
         `ensure:${dir}`,

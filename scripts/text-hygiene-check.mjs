@@ -2,7 +2,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-const ROOTS = ['README.md', 'packages', 'apps', '.github'];
+const ROOTS = ['README.md', 'docs', 'packages', 'apps', '.github', 'scripts'];
 const SKIP_DIRS = new Set(['.git', 'node_modules', 'dist', 'coverage', '.turbo']);
 const SKIP_FILES = new Set(['bun.lock']);
 const TEXT_EXTENSIONS = new Set([
@@ -22,7 +22,7 @@ const TEXT_EXTENSIONS = new Set([
 ]);
 
 const CONFLICT_RE = /^(<<<<<<<|=======|>>>>>>>)(?:\s|$)/m;
-const MOJIBAKE_RE = /[�閳闂闁鈥鈹]/;
+const MOJIBAKE_RE = /[\uFFFD\u95B3\u95C2\u95C1\u9225\u9239]/;
 
 function extensionOf(path) {
   const idx = path.lastIndexOf('.');

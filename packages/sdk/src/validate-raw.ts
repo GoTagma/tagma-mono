@@ -6,7 +6,7 @@
 //
 // Returns a flat list of ValidationError objects. An empty array means valid.
 
-import type { PortType, RawPipelineConfig, RawTaskConfig, RawTrackConfig } from './types';
+import type { PortType, RawPipelineConfig, RawTaskConfig, RawTrackConfig } from '@tagma/types';
 import {
   isValidTaskId,
   qualifyTaskId,

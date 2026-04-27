@@ -1,7 +1,7 @@
 import yaml from 'js-yaml';
 import { validateRaw } from './validate-raw';
 import type { ValidationError, KnownPluginTypes } from './validate-raw';
-import type { RawPipelineConfig } from './types';
+import type { RawPipelineConfig } from '@tagma/types';
 
 export interface YamlCompileResult {
   readonly timestamp: string;

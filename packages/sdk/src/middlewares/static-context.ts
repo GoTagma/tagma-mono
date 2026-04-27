@@ -1,5 +1,5 @@
 import { basename } from 'path';
-import type { MiddlewarePlugin, MiddlewareContext, PromptDocument } from '../types';
+import type { MiddlewarePlugin, MiddlewareContext, PromptDocument } from '@tagma/types';
 import { appendContext, validatePath } from '@tagma/core';
 
 export const StaticContextMiddleware: MiddlewarePlugin = {

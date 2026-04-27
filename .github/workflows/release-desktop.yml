@@ -360,6 +360,7 @@ jobs:
       - name: Cross-compile macOS sidecar for the non-host arch
         if: matrix.platform == 'mac'
         shell: bash
+        working-directory: apps/editor
         run: |
           set -euo pipefail
           host_arch=$(node -p "process.arch")
@@ -369,7 +370,6 @@ jobs:
             *) echo "unexpected mac runner arch: $host_arch" ; exit 1 ;;
           esac
           echo "host=$host_arch → cross-compiling $other_target → desktop-dist-$other_arch"
-          cd apps/editor
           # build:sidecar already has its own retry-with-cache-purge loop; CI=true
           # is inherited. Override the target and outdir to land the binary in a
           # separate per-arch dir so the first (host-arch) build isn't clobbered.
@@ -385,9 +385,9 @@ jobs:
       - name: Cross-compile Linux arm64 sidecar (hot-update only)
         if: matrix.platform == 'linux'
         shell: bash
+        working-directory: apps/editor
         run: |
           set -euo pipefail
-          cd apps/editor
           TAGMA_BUN_COMPILE_TARGET="bun-linux-arm64" \
           TAGMA_SIDECAR_OUTDIR="desktop-dist-arm64" \
             bun run build:sidecar

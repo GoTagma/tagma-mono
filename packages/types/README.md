@@ -48,7 +48,7 @@ import type {
 ### Plugin Interfaces
 
 - `DriverPlugin` -- translates a task into a spawn spec (`buildCommand`, optional `parseResult` / `resolveModel` / `resolveTools`). `parseResult` receives `stdout` and an optional `stderr` parameter
-- `TriggerPlugin` -- watches for an event before a task starts (`watch`)
+- `TriggerPlugin` / `TriggerWatchHandle` -- starts a pre-task watcher and returns `{ fired, dispose }` so the engine can release resources on success, failure, timeout, or abort
 - `CompletionPlugin` -- validates task output (`check`)
 - `MiddlewarePlugin` -- enriches prompts before execution through `enhanceDoc(doc, config, ctx)`, operating on a structured `PromptDocument`
 - `PluginManifest` -- shape of the `tagmaPlugin` field a plugin package declares in its `package.json` (`{ category, type }`). Hosts use this for auto-discovery without importing the module
@@ -71,7 +71,7 @@ import type {
 - `SpawnSpec` -- args, stdin, cwd, env returned by a driver
 - `DriverCapabilities` -- declares session resume, system prompt, output format support
 - `DriverContext` / `DriverResultMeta` -- inputs and result metadata exchanged between driver and engine. `DriverContext.promptDoc` exposes the structured post-middleware prompt; `DriverContext.inputs` is the resolved lightweight binding values plus typed/coerced port input map (drivers that wrap the prompt in a custom envelope can re-substitute placeholders themselves); `DriverResultMeta.forceFailure` lets a driver mark a task failed even when the CLI exited 0 (e.g. an error-JSON payload)
-- `ApprovalGateway` / `ApprovalRequest` / `ApprovalDecision` / `ApprovalEvent` / `ApprovalListener` / `ApprovalOutcome` / `ApprovalRequestInfo` -- approval flow types (`ApprovalRequestInfo` is the wire alias for `ApprovalRequest`)
+- `ApprovalGateway` / `ApprovalRequestHandle` / `ApprovalRequest` / `ApprovalDecision` / `ApprovalEvent` / `ApprovalListener` / `ApprovalOutcome` / `ApprovalRequestInfo` -- approval flow types (`ApprovalRequestInfo` is the wire alias for `ApprovalRequest`)
 - `TriggerContext` / `CompletionContext` / `MiddlewareContext` -- contexts passed to plugin methods
 - `OnFailure`, `HooksConfig`, `HookCommand` -- failure strategy and lifecycle hook types
 

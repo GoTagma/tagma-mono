@@ -1,12 +1,11 @@
 import { describe, expect, test } from 'bun:test';
-import { PluginRegistry } from '@tagma/core';
+import { PluginRegistry, runPipeline } from '@tagma/core';
 import { bootstrapBuiltins } from './bootstrap';
-import { runPipeline } from './engine';
-import type { DriverPlugin, TriggerPlugin, PipelineConfig, TagmaRuntime, TaskResult } from './types';
+import type { DriverPlugin, TriggerPlugin, PipelineConfig, TagmaRuntime, TaskResult } from '@tagma/types';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { TagmaPlugin } from './types';
+import type { TagmaPlugin } from '@tagma/types';
 
 function makeDriver(name: string, marker: string[]): DriverPlugin {
   return {
@@ -22,10 +21,14 @@ function makeDriver(name: string, marker: string[]): DriverPlugin {
 function makeTrigger(name: string, marker: string[]): TriggerPlugin {
   return {
     name,
-    supportsAbort: true,
-    async watch() {
-      marker.push(`watch:${name}`);
-    },
+    watch: () => ({
+      fired: Promise.resolve().then(() => {
+        marker.push(`watch:${name}`);
+      }),
+      dispose() {
+        /* no resources */
+      },
+    }),
   };
 }
 
@@ -227,8 +230,7 @@ describe('PluginRegistry — capability plugins', () => {
         '};',
         'const trigger = {',
         "  name: 'cap-trigger',",
-        '  supportsAbort: true,',
-        '  async watch() {}',
+        '  watch() { return { fired: Promise.resolve(), dispose() {} }; }',
         '};',
         'export default {',
         "  name: 'tagma-plugin-capability',",
@@ -311,16 +313,13 @@ describe('PluginRegistry — validation', () => {
     ).toThrow(/must export buildCommand/);
   });
 
-  test('rejects trigger plugins that do not declare abort support', () => {
+  test('rejects trigger plugins without watch', () => {
     const reg = new PluginRegistry();
     expect(() =>
       reg.registerPlugin('triggers', 'broken', {
         name: 'broken',
-        async watch() {
-          /* no-op */
-        },
       } as unknown as TriggerPlugin),
-    ).toThrow(/must declare supportsAbort: true/);
+    ).toThrow(/must export watch/);
   });
 
   test('rejects handler with missing name', () => {
@@ -569,6 +568,59 @@ describe('runPipeline — options.registry isolation', () => {
           { registry: reg, runtime: fakeRuntime(), mode: 'safe' },
         ),
       ).rejects.toThrow(/safe mode blocks completion "output_check"/);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('trigger timeout disposes an unsettled trigger watcher', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'tagma-trigger-dispose-'));
+    const reg = new PluginRegistry();
+    let disposeCount = 0;
+    reg.registerPlugin(
+      'triggers',
+      'leaky',
+      {
+        name: 'leaky',
+        watch() {
+          return {
+            fired: new Promise<never>(() => {
+              /* intentionally never settles */
+            }),
+            dispose() {
+              disposeCount++;
+            },
+          };
+        },
+      } as unknown as TriggerPlugin,
+    );
+
+    try {
+      const result = await runPipeline(
+        {
+          name: 'trigger-dispose',
+          tracks: [
+            {
+              id: 't',
+              name: 'T',
+              tasks: [
+                {
+                  id: 'x',
+                  command: 'echo hi',
+                  timeout: '0.01s',
+                  trigger: { type: 'leaky' },
+                },
+              ],
+            },
+          ],
+        },
+        tmp,
+        { registry: reg, runtime: fakeRuntime() },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.states.get('t.x')?.status).toBe('timeout');
+      expect(disposeCount).toBe(1);
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

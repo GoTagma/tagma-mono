@@ -1,6 +1,6 @@
 ﻿import { describe, expect, test } from 'bun:test';
 import yaml from 'js-yaml';
-import type { PipelineConfig, RawPipelineConfig } from './types';
+import type { PipelineConfig, RawPipelineConfig } from '@tagma/types';
 import { deresolvePipeline, parseYaml, resolveConfig, serializePipeline } from './schema';
 
 const WORK_DIR = process.platform === 'win32' ? 'D:\\fake-work' : '/fake-work';

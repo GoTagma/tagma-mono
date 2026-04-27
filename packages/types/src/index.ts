@@ -505,7 +505,7 @@ export type ApprovalEvent =
 export type ApprovalListener = (event: ApprovalEvent) => void;
 
 export interface ApprovalGateway {
-  request(req: Omit<ApprovalRequest, 'id' | 'createdAt'>): Promise<ApprovalDecision>;
+  request(req: Omit<ApprovalRequest, 'id' | 'createdAt'>): ApprovalRequestHandle;
   resolve(
     approvalId: string,
     decision: Omit<ApprovalDecision, 'approvalId' | 'decidedAt'>,
@@ -513,6 +513,12 @@ export interface ApprovalGateway {
   pending(): readonly ApprovalRequest[];
   subscribe(listener: ApprovalListener): () => void;
   abortAll(reason: string): void;
+}
+
+export interface ApprovalRequestHandle {
+  readonly request: ApprovalRequest;
+  readonly decision: Promise<ApprovalDecision>;
+  abort(reason: string): void;
 }
 
 // ═══ Trigger Plugin ═══
@@ -526,16 +532,38 @@ export interface TriggerContext {
   readonly runtime: TagmaRuntime;
 }
 
+export interface TriggerWatchHandle {
+  readonly fired: Promise<unknown>;
+  dispose(reason?: string): void | Promise<void>;
+}
+
+export class TriggerBlockedError extends Error {
+  readonly code = 'TRIGGER_BLOCKED' as const;
+  constructor(message: string) {
+    super(message);
+    this.name = 'TriggerBlockedError';
+  }
+}
+
+export class TriggerTimeoutError extends Error {
+  readonly code = 'TRIGGER_TIMEOUT' as const;
+  constructor(message: string) {
+    super(message);
+    this.name = 'TriggerTimeoutError';
+  }
+}
+
 export interface TriggerPlugin {
   readonly name: string;
   /**
-   * Trigger plugins must actively observe `ctx.signal` and release any
-   * watcher/listener resources when it aborts. The registry requires this
-   * explicit declaration so unsupported third-party triggers fail fast.
+   * Starts the trigger watcher and returns a handle owned by the engine.
+   * `fired` resolves when the trigger condition is met. `dispose()` must
+   * release every watcher/listener/server/approval resource, even when
+   * `fired` has not settled. The engine calls it on success, failure,
+   * task timeout, and pipeline abort.
    */
-  readonly supportsAbort: true;
   readonly schema?: PluginSchema;
-  watch(config: Record<string, unknown>, ctx: TriggerContext): Promise<unknown>;
+  watch(config: Record<string, unknown>, ctx: TriggerContext): TriggerWatchHandle;
 }
 
 // ═══ Completion Plugin ═══

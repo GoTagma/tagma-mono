@@ -1,4 +1,4 @@
-import type { CompletionPlugin, CompletionContext, TaskResult } from '../types';
+import type { CompletionPlugin, CompletionContext, TaskResult } from '@tagma/types';
 
 export const ExitCodeCompletion: CompletionPlugin = {
   name: 'exit_code',

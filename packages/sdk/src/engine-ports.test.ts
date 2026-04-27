@@ -3,9 +3,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { bootstrapBuiltins } from './bootstrap';
-import { runPipeline, type RunEventPayload } from './engine';
-import { PluginRegistry } from '@tagma/core';
-import type { PipelineConfig, TaskConfig, TagmaRuntime, TaskResult, TaskStatus } from './types';
+import { PluginRegistry, runPipeline, type RunEventPayload } from '@tagma/core';
+import type { PipelineConfig, TaskConfig, TagmaRuntime, TaskResult, TaskStatus } from '@tagma/types';
 
 const PERMS = { read: true, write: false, execute: false };
 

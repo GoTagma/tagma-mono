@@ -21,14 +21,13 @@
 //   // Later, from IPC:
 //   runners.get(id)?.abort();
 
-import { runPipeline } from './engine';
-import type { EngineResult, RunPipelineOptions } from './engine';
+import { runPipeline, type EngineResult, type RunPipelineOptions } from '@tagma/core';
 import {
   TASK_LOG_CAP,
   type PipelineConfig,
   type RunEventPayload,
   type RunTaskState,
-} from './types';
+} from '@tagma/types';
 import { generateRunId } from '@tagma/core';
 
 export type { EngineResult };

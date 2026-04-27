@@ -9,7 +9,7 @@ import type {
   TaskConfig,
   Permissions,
   CompletionConfig,
-} from './types';
+} from '@tagma/types';
 import { buildDag, DEFAULT_PERMISSIONS, truncateForName, validatePath } from '@tagma/core';
 import { validateRaw, type ValidationError } from './validate-raw';
 
