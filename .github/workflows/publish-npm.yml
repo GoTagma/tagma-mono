@@ -1,4 +1,4 @@
-name: Publish NPM
+﻿name: Publish NPM
 
 on:
   push:
@@ -76,7 +76,7 @@ jobs:
             new=$(node -e "process.stdout.write(require('./${dir}package.json').version||'')")
 
             if [ -n "$new" ] && [ "$old" != "$new" ]; then
-              echo "鉁?${dirname}: ${old:-NEW} 鈫?${new}"
+              echo "changed ${dirname}: ${old:-NEW} -> ${new}"
               CHANGED=$(echo "$CHANGED" | node -e "
                 let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{
                   const a=JSON.parse(s);
@@ -85,7 +85,7 @@ jobs:
                 })
               ")
             else
-              echo "鈴笍  ${dirname}: no version change (${old} 鈫?${new})"
+              echo "unchanged ${dirname}: no version change (${old} -> ${new})"
             fi
           done
 

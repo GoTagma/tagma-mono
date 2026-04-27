@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   DriverPlugin,
   DriverCapabilities,
   DriverResultMeta,
@@ -20,9 +20,9 @@ const DEFAULT_MODEL = 'opencode/big-pickle';
 // tagma uses a provider-neutral reasoning_effort vocabulary (low|medium|high)
 // but opencode's `--variant` is provider-specific (e.g. high|max|minimal).
 // Map the tagma values to the closest opencode variant:
-//   low    闂?minimal  (least thinking)
-//   medium 闂?<no flag, provider default>
-//   high   闂?high     (most thinking)
+//   low    -> minimal  (least thinking)
+//   medium -> <no flag, provider default>
+//   high   -> high     (most thinking)
 // Unknown values pass through unchanged so users who target a specific
 // opencode variant (e.g. "max") still work.
 const EFFORT_TO_VARIANT: Record<string, string | null> = {
@@ -81,7 +81,7 @@ async function ensureOpencodeInstalled(): Promise<void> {
     throw new Error(opencodeReadyError);
   }
 
-  // Probe existing install first 闂?this is the hot path for desktop users
+  // Probe existing install first; this is the hot path for desktop users
   // (bundled binary in PATH) and for anyone who already has opencode.
   const probe = await runCapture(['opencode', '--version']);
   if (probe.code === 0) {
@@ -132,7 +132,7 @@ function pickFreeModel(models: OpencodeModelInfo[]): string | null {
     if (typeof ctx !== 'number' || ctx <= 128000) return false;
     return true;
   });
-  // Prefer models explicitly labelled "-free" by the provider 闂?those are
+  // Prefer models explicitly labelled "-free" by the provider; those are
   // a stronger stability signal than "cost happens to be 0 right now".
   const preferred = eligible.filter((m) => m.id?.endsWith('-free'));
   const pool = preferred.length > 0 ? preferred : eligible;
@@ -184,8 +184,8 @@ export const OpenCodeDriver: DriverPlugin = {
     // Otherwise resolveDefaultModel both ensures the CLI and picks a free
     // model from `opencode models --verbose` (cached per-process).
     const model = explicitModel ?? (await resolveDefaultModel());
-    // Resolve reasoning_effort 闂?opencode --variant. SDK schema layer already
-    // resolved task 闂?track 闂?pipeline inheritance, so we only need to read
+    // Resolve reasoning_effort to opencode --variant. SDK schema layer already
+    // resolved task -> track -> pipeline inheritance, so we only need to read
     // task.reasoning_effort here.
     const rawEffort = task.reasoning_effort ?? track.reasoning_effort;
     const variant = rawEffort
@@ -207,7 +207,7 @@ export const OpenCodeDriver: DriverPlugin = {
     if (task.continue_from) {
       sessionId = ctx.sessionMap.get(task.continue_from) ?? null;
       if (!sessionId) {
-        // no session 闂?degrade to text context passthrough
+        // no session; degrade to text context passthrough
         let prev: string | null = null;
         if (ctx.normalizedMap.has(task.continue_from)) {
           prev = ctx.normalizedMap.get(task.continue_from)!;
@@ -224,7 +224,7 @@ export const OpenCodeDriver: DriverPlugin = {
     // misread by opencode's argument parser (flag-injection mitigation).
     // Shell-level injection is already prevented by Bun.spawn's direct argv array.
     // Windows cmd.exe argv truncation on the `.cmd` wrapper is handled by the
-    // SDK runner's shim unwrapping 闂?see note at the top of this file.
+    // SDK runner's shim unwrapping; see note at the top of this file.
     const args: string[] = [
       'opencode',
       'run',
@@ -252,8 +252,8 @@ export const OpenCodeDriver: DriverPlugin = {
   },
 
   parseResult(stdout: string): DriverResultMeta {
-    // opencode --format json emits NDJSON 闂?one JSON object per line
-    // (step_start / text / step_finish / 闂?. The previous single
+    // opencode --format json emits NDJSON: one JSON object per line
+    // (step_start / text / step_finish / ...). The previous single
     // `JSON.parse(stdout)` always threw on this shape and fell through to
     // the catch, returning sessionId:null and losing session resume.
     // Walk line-by-line, pick up the first sessionID we see, concatenate
@@ -293,12 +293,12 @@ export const OpenCodeDriver: DriverPlugin = {
         // D21: stop at the first error. Continuing meant subsequent text
         // lines got accumulated into `textParts` only to be discarded by
         // the error-return below, and a later `{type:"error"}` would
-        // silently overwrite the original cause 闂?operators then debugged
+        // silently overwrite the original cause; operators then debugged
         // a downstream symptom while the root-cause line scrolled past.
         break;
       }
 
-      // Session id 闂?opencode uses `sessionID` (camelCase with capital D).
+      // Session id: opencode uses `sessionID` (camelCase with capital D).
       // Keep `session_id` / `sessionId` as fallbacks for forward/backward
       // compatibility with other shapes.
       if (!sessionId) {

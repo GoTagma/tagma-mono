@@ -1,11 +1,11 @@
-import { describe, expect, test } from 'bun:test';
+﻿import { describe, expect, test } from 'bun:test';
 import yaml from 'js-yaml';
 import type { PipelineConfig, RawPipelineConfig } from './types';
 import { deresolvePipeline, parseYaml, resolveConfig, serializePipeline } from './schema';
 
 const WORK_DIR = process.platform === 'win32' ? 'D:\\fake-work' : '/fake-work';
 
-describe('schema 鈥?unified bindings passthrough', () => {
+describe('schema - unified bindings passthrough', () => {
   test('typed inputs and outputs survive onto the resolved task', () => {
     const raw: RawPipelineConfig = {
       name: 'p',

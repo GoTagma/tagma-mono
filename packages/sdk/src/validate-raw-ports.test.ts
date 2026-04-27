@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+﻿import { describe, expect, test } from 'bun:test';
 import type { RawPipelineConfig, RawTaskConfig } from './types';
 import { validateRaw } from './validate-raw';
 
@@ -21,8 +21,7 @@ function errorsFor(task: RawTaskConfig) {
   return validateRaw(config([task]));
 }
 
-
-describe('validateRaw 鈥?unified typed bindings', () => {
+describe('validateRaw - unified typed bindings', () => {
   test('accepts typed command inputs and outputs', () => {
     const errors = errorsFor(
       commandTask({
@@ -74,7 +73,7 @@ describe('validateRaw 鈥?unified typed bindings', () => {
   });
 });
 
-describe('validateRaw 鈥?prompt inferred bindings', () => {
+describe('validateRaw - prompt inferred bindings', () => {
   test('prompt placeholders can reference direct upstream command outputs', () => {
     const errors = validateRaw(
       config([
@@ -114,6 +113,8 @@ describe('validateRaw 鈥?prompt inferred bindings', () => {
         }),
       ]),
     );
-    expect(errors.some((e) => /disagree on the shape of inferred output "date"/.test(e.message))).toBe(true);
+    expect(
+      errors.some((e) => /disagree on the shape of inferred output "date"/.test(e.message)),
+    ).toBe(true);
   });
 });
