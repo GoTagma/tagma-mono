@@ -610,7 +610,7 @@ export async function runSpawn(
   let forcedFailureMessage: string | null = null;
   if (driver?.parseResult) {
     try {
-      const meta = driver.parseResult(stdout, stderr);
+      const meta = await driver.parseResult(stdout, stderr);
       if (meta && typeof meta === 'object') {
         if (typeof meta.sessionId === 'string' && /^[\w.-]{1,256}$/.test(meta.sessionId)) {
           sessionId = meta.sessionId;

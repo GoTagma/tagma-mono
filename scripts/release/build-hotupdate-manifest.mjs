@@ -12,6 +12,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
+import { sign as signEd25519 } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -22,6 +23,31 @@ const SIDECAR_TARGETS = [
   { platform: 'darwin', arch: 'x64', extension: '' },
   { platform: 'darwin', arch: 'arm64', extension: '' },
 ];
+
+function stableStringify(value) {
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(',')}]`;
+  }
+  const entries = Object.keys(value)
+    .filter((key) => value[key] !== undefined)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`);
+  return `{${entries.join(',')}}`;
+}
+
+export function canonicalHotupdateManifestPayload(manifest) {
+  const { signature: _signature, ...signedPayload } = manifest;
+  return stableStringify(signedPayload);
+}
+
+export function signHotupdateManifest(manifest, privateKeyPem) {
+  const payload = Buffer.from(canonicalHotupdateManifestPayload(manifest), 'utf-8');
+  const signature = signEd25519(null, payload, privateKeyPem).toString('base64');
+  return { ...manifest, signature };
+}
 
 function readSha256File(assetPath) {
   const shaPath = `${assetPath}.sha256`;
@@ -97,6 +123,7 @@ export function buildHotupdateManifest({
 
 function parseCliArgs(argv) {
   let minShellVersion;
+  let signingKey;
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -111,15 +138,26 @@ function parseCliArgs(argv) {
       minShellVersion = arg.slice('--min-shell='.length);
       continue;
     }
+    if (arg === '--signing-key') {
+      signingKey = argv[++i];
+      if (!signingKey) {
+        throw new Error('--signing-key requires a PEM file path');
+      }
+      continue;
+    }
+    if (arg.startsWith('--signing-key=')) {
+      signingKey = arg.slice('--signing-key='.length);
+      continue;
+    }
     positional.push(arg);
   }
   const [version, channel, assetsDir, repoSlug, outFile] = positional;
   if (!version || !channel || !assetsDir || !repoSlug || !outFile) {
     throw new Error(
-      'usage: build-hotupdate-manifest.mjs <version> <channel> <assets-dir> <repo-slug> <out-file> [--min-shell <version>]',
+      'usage: build-hotupdate-manifest.mjs <version> <channel> <assets-dir> <repo-slug> <out-file> [--min-shell <version>] [--signing-key <private-key.pem>]',
     );
   }
-  return { version, channel, assetsDir, repoSlug, outFile, minShellVersion };
+  return { version, channel, assetsDir, repoSlug, outFile, minShellVersion, signingKey };
 }
 
 export function writeHotupdateManifest(outFile, manifest) {
@@ -129,11 +167,17 @@ export function writeHotupdateManifest(outFile, manifest) {
 
 export function main(argv = process.argv.slice(2)) {
   try {
-    const { outFile, ...args } = parseCliArgs(argv);
+    const { outFile, signingKey, ...args } = parseCliArgs(argv);
     const manifest = buildHotupdateManifest(args);
-    writeHotupdateManifest(outFile, manifest);
+    const privateKeyPem = signingKey
+      ? readFileSync(signingKey, 'utf-8')
+      : process.env.TAGMA_HOTUPDATE_MANIFEST_PRIVATE_KEY;
+    const outputManifest = privateKeyPem
+      ? signHotupdateManifest(manifest, privateKeyPem)
+      : manifest;
+    writeHotupdateManifest(outFile, outputManifest);
     console.log(`wrote ${outFile}`);
-    console.log(JSON.stringify(manifest, null, 2));
+    console.log(JSON.stringify(outputManifest, null, 2));
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exit(2);

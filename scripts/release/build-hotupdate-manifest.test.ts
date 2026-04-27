@@ -1,10 +1,14 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { createHash } from 'node:crypto';
+import { createHash, generateKeyPairSync, verify } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-import { buildHotupdateManifest, main } from './build-hotupdate-manifest.mjs';
+import {
+  buildHotupdateManifest,
+  canonicalHotupdateManifestPayload,
+  main,
+} from './build-hotupdate-manifest.mjs';
 
 const tempRoots: string[] = [];
 
@@ -95,5 +99,21 @@ describe('build-hotupdate-manifest', () => {
 
     const manifest = JSON.parse(readFileSync(outFile, 'utf-8'));
     expect(manifest.minShellVersion).toBe('0.2.0');
+  });
+
+  test('signs manifest when --signing-key is provided', () => {
+    const dir = withTempDir();
+    writeAsset(dir, 'editor-dist-0.2.2.tar.gz', 'editor-dist');
+    const outFile = path.join(dir, 'manifest.json');
+    const keyFile = path.join(dir, 'ed25519-private.pem');
+    const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+    writeFileSync(keyFile, privateKey.export({ type: 'pkcs8', format: 'pem' }).toString());
+
+    main(['0.2.2', 'alpha', dir, 'GoTagma/tagma-mono', outFile, '--signing-key', keyFile]);
+
+    const manifest = JSON.parse(readFileSync(outFile, 'utf-8'));
+    expect(typeof manifest.signature).toBe('string');
+    const payload = Buffer.from(canonicalHotupdateManifestPayload(manifest), 'utf-8');
+    expect(verify(null, payload, publicKey, Buffer.from(manifest.signature, 'base64'))).toBe(true);
   });
 });

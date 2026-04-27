@@ -151,6 +151,7 @@ jobs:
         working-directory: apps/electron
         env:
           INPUT_CHANNEL: ${{ inputs.channel }}
+          TAGMA_UPDATE_MANIFEST_PUBLIC_KEY: ${{ vars.TAGMA_UPDATE_MANIFEST_PUBLIC_KEY }}
         run: |
           node -e "
             const fs = require('fs');
@@ -158,6 +159,9 @@ jobs:
             p.tagma = p.tagma || {};
             const raw = process.env.INPUT_CHANNEL;
             p.tagma.channel = raw === 'patch' ? 'stable' : raw;
+            if (process.env.TAGMA_UPDATE_MANIFEST_PUBLIC_KEY) {
+              p.tagma.updateManifestPublicKey = process.env.TAGMA_UPDATE_MANIFEST_PUBLIC_KEY;
+            }
             fs.writeFileSync('./package.json', JSON.stringify(p, null, 2) + '\n');
           "
 
@@ -829,9 +833,16 @@ jobs:
           fi
 
       - name: Build editor hot-update manifest
+        env:
+          TAGMA_UPDATE_MANIFEST_PUBLIC_KEY: ${{ vars.TAGMA_UPDATE_MANIFEST_PUBLIC_KEY }}
+          TAGMA_HOTUPDATE_MANIFEST_PRIVATE_KEY: ${{ secrets.TAGMA_HOTUPDATE_MANIFEST_PRIVATE_KEY }}
         shell: bash
         run: |
           set -euo pipefail
+          if [ -n "${TAGMA_UPDATE_MANIFEST_PUBLIC_KEY:-}" ] && [ -z "${TAGMA_HOTUPDATE_MANIFEST_PRIVATE_KEY:-}" ]; then
+            echo "TAGMA_UPDATE_MANIFEST_PUBLIC_KEY is set, but TAGMA_HOTUPDATE_MANIFEST_PRIVATE_KEY is missing. Refusing to publish an unsigned manifest to clients that require signatures." >&2
+            exit 1
+          fi
           args=(
             "${{ needs.prepare.outputs.version }}"
             "${{ steps.ch.outputs.channel }}"
