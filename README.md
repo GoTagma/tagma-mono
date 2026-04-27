@@ -1,11 +1,16 @@
 ﻿# tagma-mono
 
+<<<<<<< HEAD
 Tagma monorepo - local AI task orchestration SDK and visual editor.
+=======
+Tagma monorepo 閳?local AI task orchestration SDK and visual editor.
+>>>>>>> e0adb706499c36b311619c819c82e2091ef818c5
 
 ## Repository Structure
 
 ```
 tagma-mono/
+<<<<<<< HEAD
 |-- packages/                 public npm packages (bun workspace: packages/*)
 |   |-- types/                @tagma/types                Shared contracts and small runtime helpers
 |   |-- core/                 @tagma/core                 Runtime-independent orchestration core
@@ -24,6 +29,26 @@ tagma-mono/
 ```
 
 The five plugin packages (`driver-codex`, `driver-claude-code`, `middleware-lightrag`, `trigger-webhook`, `completion-llm-judge`) also serve as **reference implementations** for the five plugin categories - copy any of them as a starting point for a new plugin. The SDK's built-in driver is `opencode`; all other drivers ship as plugins.
+=======
+閳规壕鏀㈤埞鈧?packages/                 public npm packages (bun workspace: packages/*)
+閳?  閳规壕鏀㈤埞鈧?types/                @tagma/types                Type-only package, no runtime code
+閳?  閳规壕鏀㈤埞鈧?core/                 @tagma/core                 Runtime-independent orchestration core
+閳?  閳规壕鏀㈤埞鈧?runtime-bun/          @tagma/runtime-bun          Bun runtime implementation
+閳?  閳规壕鏀㈤埞鈧?sdk/                  @tagma/sdk                  Public SDK and helpers
+閳?  閳规壕鏀㈤埞鈧?driver-codex/         @tagma/driver-codex         Codex CLI driver plugin
+閳?  閳规壕鏀㈤埞鈧?driver-claude-code/   @tagma/driver-claude-code   Claude Code CLI driver plugin
+閳?  閳规壕鏀㈤埞鈧?middleware-lightrag/  @tagma/middleware-lightrag  LightRAG knowledge-graph retrieval middleware
+閳?  閳规壕鏀㈤埞鈧?trigger-webhook/      @tagma/trigger-webhook      HTTP webhook trigger plugin
+閳?  閳规柡鏀㈤埞鈧?completion-llm-judge/ @tagma/completion-llm-judge LLM-as-judge completion plugin
+閳规壕鏀㈤埞鈧?apps/                     git submodule 閳?GoTagma/tagma-desktop (private, bun workspace: apps/*)
+閳?  閳规壕鏀㈤埞鈧?editor/               tagma-editor                Visual pipeline editor (React + Vite + Bun/Express)
+閳?  閳规柡鏀㈤埞鈧?electron/             tagma-desktop               Electron shell + Bun-compiled sidecar for desktop builds
+閳规壕鏀㈤埞鈧?package.json              monorepo root (bun workspaces)
+閳规柡鏀㈤埞鈧?.gitignore
+```
+
+The five plugin packages (`driver-codex`, `driver-claude-code`, `middleware-lightrag`, `trigger-webhook`, `completion-llm-judge`) also serve as **reference implementations** for the five plugin categories 閳?copy any of them as a starting point for a new plugin. The SDK's built-in driver is `opencode`; all other drivers ship as plugins.
+>>>>>>> e0adb706499c36b311619c819c82e2091ef818c5
 
 ## Quick Start
 
@@ -33,7 +58,11 @@ bun run build
 bun run dev:editor
 ```
 
+<<<<<<< HEAD
 Workspace packages are symlinked. Edit SDK code, then restart the server. No reinstall needed.
+=======
+Workspace packages are symlinked. Edit SDK code 閳?restart server. No reinstall needed.
+>>>>>>> e0adb706499c36b311619c819c82e2091ef818c5
 
 ---
 
@@ -72,10 +101,17 @@ bun run build:completions    # Build completion plugins only
 bun run build:editor         # Build editor client (Vite bundle)
 bun run build:editor-sidecar # Compile the editor server into a single-file executable (bun build --compile)
 bun run build:electron       # Build the Electron main/preload bundles only
+<<<<<<< HEAD
 bun run build:desktop        # Full desktop chain: types -> core -> runtime-bun -> sdk -> plugins -> editor -> editor-sidecar -> electron
 ```
 
 Build order: **types -> core -> runtime-bun -> sdk -> plugins**. The desktop chain layers the editor client, the compiled Bun sidecar, and the Electron shell on top.
+=======
+bun run build:desktop        # Full desktop chain: types 閳?core 閳?runtime-bun 閳?sdk 閳?plugins 閳?editor 閳?editor-sidecar 閳?electron
+```
+
+Build order: **types 閳?core 閳?runtime-bun 閳?sdk 閳?plugins**. The desktop chain layers the editor client, the compiled Bun sidecar, and the Electron shell on top.
+>>>>>>> e0adb706499c36b311619c819c82e2091ef818c5
 
 ### Type Checking
 
@@ -113,7 +149,11 @@ bun run dist:desktop:linux   # Build + produce Linux AppImage, .deb, .rpm, and .
 bun run dist:desktop:mac     # Build + produce macOS dmg
 ```
 
+<<<<<<< HEAD
 Each installer also ships a platform-matched `opencode` CLI binary in `resources/opencode/` so end users don't need `bun` or a manual install. The version is pinned via `apps/electron/package.json -> tagma.bundledOpencodeVersion`; bump that field and re-run a `dist:desktop:*` command to cut a release with a new default. Users can upgrade opencode in-app (Editor Settings -> OpenCode CLI); those upgrades land in `userData/opencode/` and take precedence over the shipped copy without replacing it.
+=======
+Each installer also ships a platform-matched `opencode` CLI binary in `resources/opencode/` so end users don't need `bun` or a manual install. The version is pinned via `apps/electron/package.json 閳?tagma.bundledOpencodeVersion`; bump that field and re-run a `dist:desktop:*` command to cut a release with a new default. Users can upgrade opencode in-app (Editor Settings 閳?OpenCode CLI); those upgrades land in `userData/opencode/` and take precedence over the shipped copy without replacing it.
+>>>>>>> e0adb706499c36b311619c819c82e2091ef818c5
 
 The `tagma-desktop` (Electron) package is private and is never published to npm.
 
@@ -200,16 +240,27 @@ bun run publish:all
 bun run publish:dry
 ```
 
+<<<<<<< HEAD
 `tagma-editor` and `tagma-desktop` live in the private [`GoTagma/tagma-desktop`](https://github.com/GoTagma/tagma-desktop) repo and are mounted here as a git submodule at `apps/`. Desktop releases ship as installer artifacts via `release-desktop.yml`; see `apps/electron/README.md`. Clone with `git clone --recurse-submodules`, or run `git submodule update --init --recursive` after a plain clone.
+=======
+`tagma-editor` and `tagma-desktop` live in the private [`GoTagma/tagma-desktop`](https://github.com/GoTagma/tagma-desktop) repo and are mounted here as a git submodule at `apps/`. Desktop releases ship as installer artifacts via `release-desktop.yml` 閳?see `apps/electron/README.md`. Clone with `git clone --recurse-submodules`, or run `git submodule update --init --recursive` after a plain clone.
+>>>>>>> e0adb706499c36b311619c819c82e2091ef818c5
 
 ---
 
 ## Dependency Principles
 
+<<<<<<< HEAD
 1. **No internal path imports** - packages only import from public `@tagma/*` package names
 2. **No `latest`** - workspace packages use `workspace:*`, third-party deps use pinned ranges
 3. **Published tarballs include `dist/` only** - build scripts clean `dist/` before compiling so removed source files cannot leak into published packages
 4. **Editor uses public API only** - consumes sdk/types via workspace link, never reaches into `src/`
+=======
+1. **No internal path imports** 閳?packages only import from public `@tagma/*` package names
+2. **No `latest`** 閳?workspace packages use `workspace:*`, third-party deps use pinned ranges
+3. **Published tarballs include `dist/` only** - build scripts clean `dist/` before compiling so removed source files cannot leak into published packages
+4. **Editor uses public API only** 閳?consumes sdk/types via workspace link, never reaches into `src/`
+>>>>>>> e0adb706499c36b311619c819c82e2091ef818c5
 
 ---
 
