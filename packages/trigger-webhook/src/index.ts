@@ -24,6 +24,7 @@
 
 import {
   parseOptionalPluginTimeout,
+  linkAbort,
   type TagmaPlugin,
   type TriggerPlugin,
   type TriggerContext,
@@ -352,6 +353,9 @@ export const WebhookTrigger: TriggerPlugin = {
     const fired = new Promise<unknown>((resolvePromise, rejectPromise) => {
       let settled = false;
       let timer: ReturnType<typeof setTimeout> | null = null;
+      let removeAbortListener = () => {
+        /* assigned below */
+      };
 
       const onFire: Resolver = (payload) => {
         if (settled) return;
@@ -360,16 +364,9 @@ export const WebhookTrigger: TriggerPlugin = {
         resolvePromise(payload);
       };
 
-      const onAbort = (): void => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        rejectPromise(new Error('Pipeline aborted'));
-      };
-
       const cleanup = (): void => {
         if (timer) clearTimeout(timer);
-        ctx.signal.removeEventListener('abort', onAbort);
+        removeAbortListener();
         const idx = state.waiters.indexOf(onFire);
         if (idx !== -1) state.waiters.splice(idx, 1);
         closeServerIfIdle(state);
@@ -383,7 +380,12 @@ export const WebhookTrigger: TriggerPlugin = {
       };
 
       state.waiters.push(onFire);
-      ctx.signal.addEventListener('abort', onAbort, { once: true });
+      removeAbortListener = linkAbort(ctx.signal, () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        rejectPromise(new Error('Pipeline aborted'));
+      });
 
       if (timeoutMs > 0) {
         timer = setTimeout(() => {

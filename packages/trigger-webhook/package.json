@@ -11,6 +11,7 @@
   "bugs": "https://github.com/GoTagma/tagma-mono/issues",
   "homepage": "https://github.com/GoTagma/tagma-mono/tree/main/packages/trigger-webhook#readme",
   "type": "module",
+  "sideEffects": false,
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",

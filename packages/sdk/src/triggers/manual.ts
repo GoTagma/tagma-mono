@@ -1,6 +1,7 @@
 import {
   TriggerBlockedError,
   TriggerTimeoutError,
+  linkAbort,
   type TriggerPlugin,
   type TriggerContext,
   type TriggerWatchHandle,
@@ -47,13 +48,11 @@ export const ManualTrigger: TriggerPlugin = {
       metadata,
     });
 
-    const onAbort = (): void => request.abort('Pipeline aborted');
     let removeAbortListener = () => {
       /* no-op until installed */
     };
     const fired = (async () => {
-      ctx.signal.addEventListener('abort', onAbort, { once: true });
-      removeAbortListener = () => ctx.signal.removeEventListener('abort', onAbort);
+      removeAbortListener = linkAbort(ctx.signal, () => request.abort('Pipeline aborted'));
       try {
         const decision = await request.decision;
         switch (decision.outcome) {

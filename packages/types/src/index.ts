@@ -559,6 +559,27 @@ export class TriggerTimeoutError extends Error {
   }
 }
 
+/**
+ * Install a one-shot abort listener and return a disposer that removes it.
+ *
+ * If `signal` has already aborted by the time we install, `handler` is
+ * queued via `queueMicrotask` so callers still get a notification and the
+ * "checked-aborted, then installed listener" race window closes. The
+ * disposer is safe to call any number of times and after the listener has
+ * already fired (the `once: true` registration auto-removes it).
+ *
+ * Lives in @tagma/types so external workspace plugins can share the
+ * idiom without depending on @tagma/sdk.
+ */
+export function linkAbort(signal: AbortSignal, handler: () => void): () => void {
+  if (signal.aborted) {
+    queueMicrotask(handler);
+    return () => {};
+  }
+  signal.addEventListener('abort', handler, { once: true });
+  return () => signal.removeEventListener('abort', handler);
+}
+
 export interface TriggerPlugin {
   readonly name: string;
   /**

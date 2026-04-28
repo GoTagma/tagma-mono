@@ -1,6 +1,7 @@
 import { resolve, dirname } from 'path';
 import {
   TriggerTimeoutError,
+  linkAbort,
   type TriggerPlugin,
   type TriggerContext,
   type TriggerWatchHandle,
@@ -81,17 +82,15 @@ async function waitForFile(options: {
     /* no-op until the abort listener is installed */
   };
   const abortPromise = new Promise<never>((_, reject) => {
-    const onAbort = (message: string) => {
+    const fire = (message: string) => {
       watchController.abort();
       reject(new Error(message));
     };
-    const onPipelineAbort = () => onAbort('Pipeline aborted');
-    const onDispose = () => onAbort('Trigger disposed');
-    ctx.signal.addEventListener('abort', onPipelineAbort, { once: true });
-    disposeSignal.addEventListener('abort', onDispose, { once: true });
+    const removePipeline = linkAbort(ctx.signal, () => fire('Pipeline aborted'));
+    const removeDispose = linkAbort(disposeSignal, () => fire('Trigger disposed'));
     removeAbortListener = () => {
-      ctx.signal.removeEventListener('abort', onPipelineAbort);
-      disposeSignal.removeEventListener('abort', onDispose);
+      removePipeline();
+      removeDispose();
     };
   });
 
