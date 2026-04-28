@@ -91,6 +91,21 @@ function stripThinking(content: string): string {
     .trim();
 }
 
+function validateEndpointUrl(endpoint: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(endpoint);
+  } catch {
+    throw new Error(`llm_judge completion: endpoint "${endpoint}" is not a valid URL`);
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(
+      `llm_judge completion: endpoint protocol must be http or https, got "${parsed.protocol}"`,
+    );
+  }
+  return parsed.toString();
+}
+
 async function callJudge(
   endpoint: string,
   model: string,
@@ -222,7 +237,9 @@ export const LlmJudgeCompletion: CompletionPlugin = {
     }
 
     const model = (config.model as string | undefined) ?? DEFAULT_MODEL;
-    const endpoint = (config.endpoint as string | undefined) ?? DEFAULT_ENDPOINT;
+    const endpoint = validateEndpointUrl(
+      (config.endpoint as string | undefined) ?? DEFAULT_ENDPOINT,
+    );
     const timeoutMs = parseDurationSafe(config.timeout, DEFAULT_TIMEOUT_MS);
     const maxChars =
       typeof config.max_output_chars === 'number' && config.max_output_chars > 0

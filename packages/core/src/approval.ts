@@ -44,6 +44,7 @@ export class InMemoryApprovalGateway implements ApprovalGateway {
     const full: ApprovalRequest = {
       id: randomUUID(),
       createdAt: nowISO(),
+      runId: req.runId,
       taskId: req.taskId,
       trackId: req.trackId,
       message: req.message,
@@ -125,9 +126,19 @@ export class InMemoryApprovalGateway implements ApprovalGateway {
   }
 
   abortAll(reason: string): void {
-    const entries = Array.from(this.pendingMap.entries());
-    this.pendingMap.clear();
+    this.abortEntries(Array.from(this.pendingMap.entries()), reason);
+  }
+
+  abortRun(runId: string, reason: string): void {
+    const entries = Array.from(this.pendingMap.entries()).filter(
+      ([, entry]) => entry.request.runId === runId,
+    );
+    this.abortEntries(entries, reason);
+  }
+
+  private abortEntries(entries: readonly (readonly [string, PendingEntry])[], reason: string): void {
     for (const [id, entry] of entries) {
+      this.pendingMap.delete(id);
       if (entry.timer) clearTimeout(entry.timer);
       this.emit({ type: 'aborted', request: entry.request, reason });
       entry.settle({
@@ -148,4 +159,38 @@ export class InMemoryApprovalGateway implements ApprovalGateway {
       }
     }
   }
+}
+
+export function scopeApprovalGateway(gateway: ApprovalGateway, runId: string): ApprovalGateway {
+  return {
+    request(req) {
+      return gateway.request({ ...req, runId });
+    },
+    resolve(approvalId, decision) {
+      return gateway.resolve(approvalId, decision);
+    },
+    pending() {
+      return gateway.pending().filter((request) => request.runId === runId);
+    },
+    subscribe(listener) {
+      return gateway.subscribe((event) => {
+        if (event.request.runId === runId) listener(event);
+      });
+    },
+    abortRun(targetRunId, reason) {
+      if (targetRunId !== runId) return;
+      if (gateway.abortRun) {
+        gateway.abortRun(runId, reason);
+      } else {
+        gateway.abortAll(reason);
+      }
+    },
+    abortAll(reason) {
+      if (gateway.abortRun) {
+        gateway.abortRun(runId, reason);
+      } else {
+        gateway.abortAll(reason);
+      }
+    },
+  };
 }

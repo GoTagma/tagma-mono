@@ -18,7 +18,7 @@ import {
   type PipelineInfo,
 } from './hooks';
 import { Logger } from './logger';
-import { InMemoryApprovalGateway, type ApprovalGateway } from './approval';
+import { InMemoryApprovalGateway, scopeApprovalGateway, type ApprovalGateway } from './approval';
 import { freezeStates, summarizeStates, toRunTaskState } from './core/run-state';
 import { preflight } from './core/preflight';
 import { RunContext } from './core/run-context';
@@ -78,6 +78,7 @@ export interface RunPipelineOptions {
   readonly safeModeAllowlist?: SafeModeAllowlist;
   readonly envPolicy?: EnvPolicy;
   readonly logPrompt?: boolean;
+  readonly maxConcurrency?: number;
   /**
    * External AbortSignal — aborting it cancels the pipeline immediately.
    * Equivalent to the pipeline timeout firing, but caller-controlled.
@@ -124,6 +125,36 @@ const DEFAULT_SAFE_MODE_ALLOWLIST: Required<SafeModeAllowlist> = {
   completions: ['exit_code', 'file_exists'],
   middlewares: ['static_context'],
 };
+
+const liveRunIdsByWorkDir = new Map<string, Set<string>>();
+
+function markRunLive(workDir: string, runId: string): void {
+  const existing = liveRunIdsByWorkDir.get(workDir);
+  if (existing) {
+    existing.add(runId);
+    return;
+  }
+  liveRunIdsByWorkDir.set(workDir, new Set([runId]));
+}
+
+function unmarkRunLive(workDir: string, runId: string): void {
+  const existing = liveRunIdsByWorkDir.get(workDir);
+  if (!existing) return;
+  existing.delete(runId);
+  if (existing.size === 0) liveRunIdsByWorkDir.delete(workDir);
+}
+
+function liveRunIds(workDir: string): readonly string[] {
+  return [...(liveRunIdsByWorkDir.get(workDir) ?? [])];
+}
+
+function normalizeMaxConcurrency(value: number | undefined): number {
+  if (value === undefined) return Number.POSITIVE_INFINITY;
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(`maxConcurrency must be a positive integer, got ${String(value)}`);
+  }
+  return value;
+}
 
 function safeSet<T extends keyof Required<SafeModeAllowlist>>(
   allowlist: SafeModeAllowlist | undefined,
@@ -203,13 +234,37 @@ export async function runPipeline(
   const approvalGateway = options.approvalGateway ?? new InMemoryApprovalGateway();
   const maxLogRuns = options.maxLogRuns ?? 20;
   const registry = options.registry;
-  const runtime = options.runtime;
   if (!registry) {
     throw new Error(
       'runPipeline requires options.registry. Use createTagma().run(...) for the public SDK API.',
     );
   }
+  const runId = options.runId ?? generateRunId();
+  assertValidRunId(runId);
 
+  try {
+    return await runPipelineInner(config, workDir, options, approvalGateway, runId, maxLogRuns);
+  } catch (err) {
+    options.onEvent?.({
+      type: 'run_error',
+      runId,
+      error: err instanceof Error ? (err.stack ?? err.message) : String(err),
+    });
+    throw err;
+  }
+}
+
+async function runPipelineInner(
+  config: PipelineConfig,
+  workDir: string,
+  options: RunPipelineOptions,
+  rootApprovalGateway: ApprovalGateway,
+  runId: string,
+  maxLogRuns: number,
+): Promise<EngineResult> {
+  const registry = options.registry;
+  const runtime = options.runtime;
+  const approvalGateway = scopeApprovalGateway(rootApprovalGateway, runId);
   const mode = options.mode ?? config.mode ?? 'safe';
   enforceExecutionMode(config, mode, options.safeModeAllowlist);
 
@@ -223,10 +278,11 @@ export async function runPipeline(
   }
 
   const dag = buildDag(config);
-  const runId = options.runId ?? generateRunId();
-  assertValidRunId(runId);
-  preflight(config, dag, registry);
+  preflight(config, dag, registry, mode);
   const pipelineTimeoutMs = config.timeout ? parseDuration(config.timeout) : 0;
+  const maxConcurrency = normalizeMaxConcurrency(
+    options.maxConcurrency ?? config.max_concurrency,
+  );
 
   const startedAt = nowISO();
   const pipelineInfo: PipelineInfo = { name: config.name, run_id: runId, started_at: startedAt };
@@ -244,6 +300,7 @@ export async function runPipeline(
     });
   });
 
+  markRunLive(workDir, runId);
   try {
     log.info('[pipeline]', `start "${config.name}" run_id=${runId}`);
 
@@ -381,6 +438,7 @@ export async function runPipeline(
           runId,
           request: {
             id: ev.request.id,
+            runId: ev.request.runId,
             taskId: ev.request.taskId,
             trackId: ev.request.trackId,
             message: ev.request.message,
@@ -417,7 +475,12 @@ export async function runPipeline(
     try {
       while (ctx.abortReason === null) {
         // Launch every task whose deps are all terminal and that isn't already in-flight
-        for (const id of findLaunchableTasks(ctx, new Set(running.keys()))) {
+        const capacity = maxConcurrency - running.size;
+        const launchable =
+          capacity > 0
+            ? findLaunchableTasks(ctx, new Set(running.keys())).slice(0, capacity)
+            : [];
+        for (const id of launchable) {
           const p = executeTask({
             taskId: id,
             ctx,
@@ -550,8 +613,17 @@ export async function runPipeline(
     log.close();
     // Prune old per-run log directories on every exit path (normal, blocked, or thrown).
     // Exclude the current runId so a concurrent run cannot delete its own live directory.
-    if (maxLogRuns > 0 && runtime.logStore.prune) {
-      await runtime.logStore.prune({ workDir, keep: maxLogRuns, excludeRunId: runId });
+    try {
+      if (maxLogRuns > 0 && runtime.logStore.prune) {
+        await runtime.logStore.prune({
+          workDir,
+          keep: maxLogRuns,
+          excludeRunId: runId,
+          excludeRunIds: liveRunIds(workDir),
+        });
+      }
+    } finally {
+      unmarkRunLive(workDir, runId);
     }
   }
 }

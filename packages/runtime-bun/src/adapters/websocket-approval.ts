@@ -16,6 +16,11 @@ const MAX_PAYLOAD_BYTES = 4_096;
 const RATE_LIMIT_MAX = 10;
 const RATE_LIMIT_WINDOW_MS = 1_000;
 
+function isLoopbackHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
+}
+
 export function attachWebSocketApprovalAdapter(
   gateway: ApprovalGateway,
   options: WebSocketApprovalAdapterOptions = {},
@@ -25,10 +30,14 @@ export function attachWebSocketApprovalAdapter(
   const requiredToken = options.token ?? null;
   const enforceOriginCheck = options.allowAnyOrigin !== true;
 
+  if (!isLoopbackHost(hostname) && !requiredToken) {
+    throw new Error('WebSocket approval adapter requires token when binding non-loopback host');
+  }
+
   function isLoopbackOrigin(origin: string): boolean {
     try {
       const host = new URL(origin).hostname.toLowerCase();
-      return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
+      return isLoopbackHost(host);
     } catch {
       return false;
     }

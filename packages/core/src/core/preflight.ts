@@ -1,6 +1,15 @@
-import type { PipelineConfig, TaskConfig, DriverPlugin } from '../types';
+import {
+  DEFAULT_PERMISSIONS,
+  type CompletionPlugin,
+  type DriverPlugin,
+  type MiddlewarePlugin,
+  type PipelineConfig,
+  type PipelineExecutionMode,
+  type TaskConfig,
+  type TriggerPlugin,
+} from '../types';
 import type { Dag } from '../dag';
-import type { PluginRegistry } from '../registry';
+import { validatePluginConfig, type PluginRegistry } from '../registry';
 
 function isCommandOnly(
   task: TaskConfig,
@@ -16,7 +25,12 @@ function isCommandOnly(
  * into one message so the caller sees every misconfiguration in a
  * single pass.
  */
-export function preflight(config: PipelineConfig, dag: Dag, registry: PluginRegistry): void {
+export function preflight(
+  config: PipelineConfig,
+  dag: Dag,
+  registry: PluginRegistry,
+  mode: PipelineExecutionMode = 'trusted',
+): void {
   const errors: string[] = [];
 
   for (const [, node] of dag.nodes) {
@@ -26,49 +40,88 @@ export function preflight(config: PipelineConfig, dag: Dag, registry: PluginRegi
 
     const isCommand = isCommandOnly(task);
 
-    if (!isCommand && !registry.hasHandler('drivers', driverName)) {
+    const driver = !isCommand && registry.hasHandler('drivers', driverName)
+      ? registry.getHandler<DriverPlugin>('drivers', driverName)
+      : null;
+
+    if (!isCommand && driver === null) {
       errors.push(`Task "${node.taskId}": driver "${driverName}" not registered`);
     }
 
-    if (task.trigger && !registry.hasHandler('triggers', task.trigger.type)) {
-      errors.push(`Task "${node.taskId}": trigger type "${task.trigger.type}" not registered`);
+    if (mode === 'safe' && !isCommand && driver !== null) {
+      const permissions = task.permissions ?? track.permissions ?? config.permissions ?? DEFAULT_PERMISSIONS;
+      if (permissions.write && driver.capabilities.enforcesPermissions !== true) {
+        errors.push(
+          `Task "${node.taskId}": safe mode blocks write permission for driver "${driverName}" ` +
+            `because it does not declare capabilities.enforcesPermissions`,
+        );
+      }
     }
 
-    if (task.completion && !registry.hasHandler('completions', task.completion.type)) {
-      errors.push(
-        `Task "${node.taskId}": completion type "${task.completion.type}" not registered`,
-      );
+    if (task.trigger) {
+      if (!registry.hasHandler('triggers', task.trigger.type)) {
+        errors.push(`Task "${node.taskId}": trigger type "${task.trigger.type}" not registered`);
+      } else {
+        const trigger = registry.getHandler<TriggerPlugin>('triggers', task.trigger.type);
+        errors.push(
+          ...validatePluginConfig(trigger.schema, task.trigger, `Task "${node.taskId}" trigger`),
+        );
+      }
+    }
+
+    if (task.completion) {
+      if (!registry.hasHandler('completions', task.completion.type)) {
+        errors.push(
+          `Task "${node.taskId}": completion type "${task.completion.type}" not registered`,
+        );
+      } else {
+        const completion = registry.getHandler<CompletionPlugin>(
+          'completions',
+          task.completion.type,
+        );
+        errors.push(
+          ...validatePluginConfig(
+            completion.schema,
+            task.completion,
+            `Task "${node.taskId}" completion`,
+          ),
+        );
+      }
     }
 
     const mws = task.middlewares ?? track.middlewares ?? [];
     for (const mw of mws) {
       if (!registry.hasHandler('middlewares', mw.type)) {
         errors.push(`Task "${node.taskId}": middleware type "${mw.type}" not registered`);
+      } else {
+        const middleware = registry.getHandler<MiddlewarePlugin>('middlewares', mw.type);
+        errors.push(
+          ...validatePluginConfig(middleware.schema, mw, `Task "${node.taskId}" middleware`),
+        );
       }
     }
 
-    if (task.continue_from && registry.hasHandler('drivers', driverName)) {
-      const driver = registry.getHandler<DriverPlugin>('drivers', driverName);
-      if (!driver.capabilities.sessionResume) {
-        const upstreamId = node.resolvedContinueFrom;
-        if (upstreamId) {
-          const upstream = dag.nodes.get(upstreamId);
-          if (upstream) {
-            const upstreamDriverName =
-              upstream.task.driver ?? upstream.track.driver ?? config.driver ?? 'opencode';
-            const upstreamDriver = registry.hasHandler('drivers', upstreamDriverName)
-              ? registry.getHandler<DriverPlugin>('drivers', upstreamDriverName)
-              : null;
-            const canNormalize = typeof upstreamDriver?.parseResult === 'function';
+    if (task.continue_from && driver !== null) {
+      const upstreamId = node.resolvedContinueFrom;
+      if (upstreamId) {
+        const upstream = dag.nodes.get(upstreamId);
+        if (upstream) {
+          const upstreamDriverName =
+            upstream.task.driver ?? upstream.track.driver ?? config.driver ?? 'opencode';
+          const upstreamDriver = registry.hasHandler('drivers', upstreamDriverName)
+            ? registry.getHandler<DriverPlugin>('drivers', upstreamDriverName)
+            : null;
+          const canResumeNative =
+            driver.capabilities.sessionResume && upstreamDriverName === driverName;
+          const canNormalize = typeof upstreamDriver?.parseResult === 'function';
 
-            if (!canNormalize) {
-              errors.push(
-                `Task "${node.taskId}" uses continue_from: "${task.continue_from}", ` +
-                  `but upstream task "${upstreamId}" its driver ` +
-                  `does not implement parseResult for text-injection handoff. ` +
-                  `Use a driver with parseResult, or remove continue_from.`,
-              );
-            }
+          if (!canResumeNative && !canNormalize) {
+            errors.push(
+              `Task "${node.taskId}" uses continue_from: "${task.continue_from}", ` +
+                `but upstream task "${upstreamId}" its driver ` +
+                `does not implement parseResult for text-injection handoff. ` +
+                `Use a same-driver resume path, a driver with parseResult, or remove continue_from.`,
+            );
           }
         }
       }

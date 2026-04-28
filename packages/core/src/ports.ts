@@ -787,10 +787,11 @@ export interface PromptPortInference {
  * preview, and engine hot path alike.
  */
 export function inferPromptPorts(input: {
+  readonly promptTaskId?: string;
   readonly upstreams: readonly PromptUpstreamNeighbor[];
   readonly downstreams: readonly PromptDownstreamNeighbor[];
 }): PromptPortInference {
-  const { upstreams, downstreams } = input;
+  const { promptTaskId, upstreams, downstreams } = input;
 
   // ─── Inputs: union of upstream-Command outputs ─────────────────────
   //
@@ -857,26 +858,23 @@ export function inferPromptPorts(input: {
   for (const downstream of downstreams) {
     if (!downstream.inputs || downstream.inputs.length === 0) continue;
     for (const inp of downstream.inputs) {
-      const prior = outputsByName.get(inp.name);
+      const outputPort = inferPromptOutputPort(inp, promptTaskId);
+      if (outputPort === null) continue;
+      const prior = outputsByName.get(outputPort.name);
       if (!prior) {
         // Outputs drop input-only fields (required, default, from).
-        outputsByName.set(inp.name, {
-          port: {
-            name: inp.name,
-            type: inp.type,
-            ...(inp.description ? { description: inp.description } : {}),
-            ...(inp.enum ? { enum: [...inp.enum] } : {}),
-          },
+        outputsByName.set(outputPort.name, {
+          port: outputPort,
           firstConsumer: downstream.taskId,
         });
         continue;
       }
-      if (portsAreCompatible(prior.port, inp)) continue; // merge silently
-      const list = outputCollisionSources.get(inp.name) ?? [
+      if (portsAreCompatible(prior.port, outputPort)) continue; // merge silently
+      const list = outputCollisionSources.get(outputPort.name) ?? [
         { taskId: prior.firstConsumer, type: prior.port.type },
       ];
-      list.push({ taskId: downstream.taskId, type: inp.type });
-      outputCollisionSources.set(inp.name, list);
+      list.push({ taskId: downstream.taskId, type: outputPort.type });
+      outputCollisionSources.set(outputPort.name, list);
     }
   }
 
@@ -901,6 +899,40 @@ export function inferPromptPorts(input: {
     ...(inferredOutputs.length > 0 ? { outputs: inferredOutputs } : {}),
   };
   return { ports, inputConflicts, outputConflicts };
+}
+
+function inferPromptOutputPort(input: PortDef, promptTaskId: string | undefined): PortDef | null {
+  const outputName = promptOutputNameFromInput(input, promptTaskId);
+  if (outputName === null) return null;
+  return {
+    name: outputName,
+    type: input.type,
+    ...(input.description ? { description: input.description } : {}),
+    ...(input.enum ? { enum: [...input.enum] } : {}),
+  };
+}
+
+function promptOutputNameFromInput(input: PortDef, promptTaskId: string | undefined): string | null {
+  const source = input.from;
+  if (!source) return input.name;
+  if (source.startsWith('outputs.')) return source.slice('outputs.'.length);
+
+  const outputMarker = '.outputs.';
+  const outputIdx = source.lastIndexOf(outputMarker);
+  if (outputIdx > 0) {
+    const sourceTaskId = source.slice(0, outputIdx);
+    if (promptTaskId !== undefined && sourceTaskId !== promptTaskId) return null;
+    return source.slice(outputIdx + outputMarker.length);
+  }
+
+  const dot = source.lastIndexOf('.');
+  if (dot > 0) {
+    const sourceTaskId = source.slice(0, dot);
+    if (promptTaskId !== undefined && sourceTaskId !== promptTaskId) return null;
+    return source.slice(dot + 1);
+  }
+
+  return source;
 }
 
 /**

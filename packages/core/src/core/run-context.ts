@@ -60,6 +60,7 @@ export class RunContext {
 
   readonly states = new Map<string, TaskState>();
   readonly sessionMap = new Map<string, string>();
+  readonly sessionDriverMap = new Map<string, string>();
   readonly normalizedMap = new Map<string, string>();
   readonly outputValuesMap = new Map<string, Readonly<Record<string, unknown>>>();
   readonly bindingDataMap = new Map<string, UpstreamBindingData>();

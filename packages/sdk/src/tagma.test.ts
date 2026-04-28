@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createTagma } from './tagma';
+import { PipelineValidationError } from './schema';
 import type { DriverPlugin, TagmaPlugin, TaskResult } from '@tagma/types';
 import type { TagmaRuntime } from '@tagma/core';
 
@@ -120,6 +121,72 @@ describe('createTagma', () => {
       expect(result.success).toBe(true);
       expect(calls).toEqual([`${dir}:fake-only-command`]);
       expect(result.states.get('t.cmd')?.result?.stdout).toBe('runtime-ok');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('lets exit_code completion accept a non-zero process exit', async () => {
+    const taskResult: TaskResult = {
+      exitCode: 1,
+      stdout: '',
+      stderr: '',
+      stdoutPath: null,
+      stderrPath: null,
+      stdoutBytes: 0,
+      stderrBytes: 0,
+      durationMs: 1,
+      sessionId: null,
+      normalizedOutput: null,
+      failureKind: 'exit_nonzero',
+    };
+    const runtime: TagmaRuntime = {
+      async runCommand() {
+        return taskResult;
+      },
+      async runSpawn() {
+        throw new Error('runSpawn should not be called for command tasks');
+      },
+      async ensureDir() {},
+      async fileExists() {
+        return false;
+      },
+      async *watch() {},
+      logStore: memoryLogStore(),
+      now() {
+        return new Date('2026-04-26T00:00:00.000Z');
+      },
+      sleep() {
+        return Promise.resolve();
+      },
+    };
+    const tagma = createTagma({ runtime });
+    const dir = makeDir('tagma-completion-nonzero-');
+    try {
+      const result = await tagma.run(
+        {
+          name: 'completion-nonzero',
+          mode: 'trusted',
+          tracks: [
+            {
+              id: 't',
+              name: 'T',
+              tasks: [
+                {
+                  id: 'cmd',
+                  name: 'cmd',
+                  command: 'fake-failing-command',
+                  completion: { type: 'exit_code', expect: 1 },
+                },
+              ],
+            },
+          ],
+        },
+        { cwd: dir, skipPluginLoading: true },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.states.get('t.cmd')?.status).toBe('success');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -317,6 +384,31 @@ describe('createTagma', () => {
           },
         ],
       }),
-    ).toEqual(['Task reference "missing" not found']);
+    ).toEqual(['tracks[0].tasks[0].depends_on: Task "a": depends_on "missing"  - no such task found']);
+  });
+
+  test('run rejects programmatic configs that bypass YAML structural validation', async () => {
+    const tagma = createTagma({ builtins: false, runtime: {} as TagmaRuntime });
+    const dir = makeDir('tagma-programmatic-validation-');
+    try {
+      await expect(
+        tagma.run(
+          {
+            name: 'invalid-programmatic',
+            mode: 'trusted',
+            tracks: [
+              {
+                id: 't',
+                name: 'T',
+                tasks: [{ id: 'a', name: 'A', prompt: 'x', command: 'echo x' }],
+              },
+            ],
+          },
+          { cwd: dir, skipPluginLoading: true },
+        ),
+      ).rejects.toThrow(PipelineValidationError);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

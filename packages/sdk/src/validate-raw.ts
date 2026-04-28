@@ -301,6 +301,14 @@ export function validateRaw(
       });
     }
   }
+  if (config.max_concurrency !== undefined) {
+    if (!Number.isInteger(config.max_concurrency) || config.max_concurrency < 1) {
+      errors.push({
+        path: 'max_concurrency',
+        message: 'max_concurrency must be a positive integer',
+      });
+    }
+  }
   validateStringList(config.plugins, 'plugins', 'plugins', errors);
   validateHooks(config.hooks, errors);
   if (knownDrivers && config.driver && !knownDrivers.has(config.driver)) {
@@ -927,24 +935,57 @@ function validateInferredPromptPortConflicts(
     if (!inputs || typeof inputs !== 'object' || Array.isArray(inputs)) continue;
     for (const [inputName, binding] of Object.entries(inputs)) {
       if (!binding || typeof binding !== 'object' || Array.isArray(binding)) continue;
+      const outputName = inferredPromptOutputName(
+        inputName,
+        binding as { readonly from?: unknown },
+        taskQid,
+      );
+      if (outputName === null) continue;
       const shape = bindingShapeKey(binding as { type?: PortType; enum?: readonly string[] });
-      const prior = consumerShapeByName.get(inputName);
+      const prior = consumerShapeByName.get(outputName);
       if (!prior) {
-        consumerShapeByName.set(inputName, { shape, firstConsumer: downstreamQid });
+        consumerShapeByName.set(outputName, { shape, firstConsumer: downstreamQid });
         continue;
       }
-      if (prior.shape !== shape && !reported.has(inputName)) {
-        reported.add(inputName);
+      if (prior.shape !== shape && !reported.has(outputName)) {
+        reported.add(outputName);
         errors.push({
           path: taskPath,
           message:
             `Task "${task.id}": downstream Commands ${prior.firstConsumer} and ` +
-            `${downstreamQid} disagree on the shape of inferred output "${inputName}"  - ` +
+            `${downstreamQid} disagree on the shape of inferred output "${outputName}"  - ` +
             `a single LLM emission cannot satisfy both. Rename on one side.`,
         });
       }
     }
   }
+}
+
+function inferredPromptOutputName(
+  inputName: string,
+  binding: { readonly from?: unknown },
+  promptTaskId: string,
+): string | null {
+  if (typeof binding.from !== 'string' || binding.from.length === 0) return inputName;
+  const source = binding.from;
+  if (source.startsWith('outputs.')) return source.slice('outputs.'.length);
+
+  const outputMarker = '.outputs.';
+  const outputIdx = source.lastIndexOf(outputMarker);
+  if (outputIdx > 0) {
+    const sourceTaskId = source.slice(0, outputIdx);
+    if (sourceTaskId !== promptTaskId) return null;
+    return source.slice(outputIdx + outputMarker.length);
+  }
+
+  const dot = source.lastIndexOf('.');
+  if (dot > 0) {
+    const sourceTaskId = source.slice(0, dot);
+    if (sourceTaskId !== promptTaskId) return null;
+    return source.slice(dot + 1);
+  }
+
+  return source;
 }
 
 function bindingShapeKey(port: { type?: PortType; enum?: readonly string[] }): string {

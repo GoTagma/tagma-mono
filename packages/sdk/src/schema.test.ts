@@ -241,6 +241,25 @@ pipeline:
     ).rejects.toThrow(/Invalid duration format "5"/);
   });
 
+  test('rejects invalid max_concurrency during load', async () => {
+    await expect(
+      loadPipeline(
+        `
+pipeline:
+  name: Bad Concurrency
+  max_concurrency: 0
+  tracks:
+    - id: t
+      name: T
+      tasks:
+        - id: a
+          command: echo hi
+`,
+        'D:/workspace',
+      ),
+    ).rejects.toThrow(/max_concurrency must be a positive integer/);
+  });
+
   test('rejects oversized task timeout during load', async () => {
     await expect(
       loadPipeline(

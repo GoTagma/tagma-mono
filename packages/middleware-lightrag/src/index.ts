@@ -33,6 +33,7 @@ import {
 // straight to the underlying LLM with no retrieval — useless for a
 // retrieval middleware, so we reject it at config validation.
 type QueryMode = 'local' | 'global' | 'hybrid' | 'naive' | 'mix';
+type OnError = 'warn' | 'fail' | 'skip';
 
 // LightRAG's own server default is `mix`, so we match it here instead of
 // picking something else and surprising users who diffed against the UI.
@@ -42,6 +43,14 @@ const MAX_TOP_K = 200;
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_CONTEXT_CHARS = 40_000;
 const VALID_MODES: ReadonlySet<QueryMode> = new Set(['local', 'global', 'hybrid', 'naive', 'mix']);
+const VALID_ON_ERROR: ReadonlySet<OnError> = new Set(['warn', 'fail', 'skip']);
+
+class LightRAGEmptyContextError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'LightRAGEmptyContextError';
+  }
+}
 
 // Hardened URL parser: rejects anything that isn't http/https so malicious
 // pipeline config cannot coerce the middleware into fetching `file://`,
@@ -184,6 +193,18 @@ export const LightRAGMiddleware: MiddlewarePlugin = {
         default: '30s',
         description: 'Maximum time to wait for the LightRAG response.',
       },
+      required: {
+        type: 'boolean',
+        default: false,
+        description: 'When true, an empty retrieval result fails the middleware.',
+      },
+      on_error: {
+        type: 'enum',
+        enum: ['warn', 'fail', 'skip'],
+        default: 'warn',
+        description:
+          'How to handle retrieval errors: warn and continue, fail closed, or skip silently.',
+      },
       label: {
         type: 'string',
         description: 'Header shown above the retrieved context.',
@@ -225,6 +246,14 @@ export const LightRAGMiddleware: MiddlewarePlugin = {
 
     const timeoutMs = parseDurationSafe(config.timeout, DEFAULT_TIMEOUT_MS);
     const label = (config.label as string | undefined) ?? 'Knowledge Graph Context';
+    const required = config.required === true;
+    const rawOnError = (config.on_error as string | undefined) ?? (required ? 'fail' : 'warn');
+    if (!VALID_ON_ERROR.has(rawOnError as OnError)) {
+      throw new Error(
+        `lightrag middleware: "on_error" must be one of ${[...VALID_ON_ERROR].join(', ')}, got ${rawOnError}`,
+      );
+    }
+    const onError = rawOnError as OnError;
     // Default retrieval query: the user's task instruction (doc.task), not
     // the already-serialized prompt. Using doc.task keeps retrieval focused
     // on user intent; upstream context blocks added by other middlewares
@@ -237,7 +266,9 @@ export const LightRAGMiddleware: MiddlewarePlugin = {
         maxContextChars,
       );
       if (!context.trim()) {
-        console.warn('[lightrag] query returned empty context, passing prompt through');
+        const msg = 'lightrag middleware: query returned empty context';
+        if (required || onError === 'fail') throw new LightRAGEmptyContextError(msg);
+        if (onError === 'warn') console.warn(`[lightrag] ${msg}, passing prompt through`);
         return doc;
       }
       // Append a labeled context block; the engine serializes these before
@@ -246,7 +277,12 @@ export const LightRAGMiddleware: MiddlewarePlugin = {
       return { contexts: [...doc.contexts, { label, content: context }], task: doc.task };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[lightrag] retrieval failed, passing prompt through: ${msg}`);
+      if (err instanceof LightRAGEmptyContextError || onError === 'fail') {
+        throw new Error(`lightrag middleware retrieval failed: ${msg}`);
+      }
+      if (onError === 'warn') {
+        console.warn(`[lightrag] retrieval failed, passing prompt through: ${msg}`);
+      }
       return doc;
     }
   },

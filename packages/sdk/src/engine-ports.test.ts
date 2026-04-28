@@ -167,7 +167,7 @@ describe('engine — unified inputs and outputs', () => {
     }
   });
 
-  test('missing required unified input blocks without spawning downstream', async () => {
+  test('missing declared producer output fails producer before downstream runs', async () => {
     const dir = makeDir();
     try {
       const runtime = fakeRuntime({ 'emit-missing': '{"other":"x"}\n' });
@@ -183,14 +183,15 @@ describe('engine — unified inputs and outputs', () => {
 
       const { events, success } = await run(config, dir, runtime);
       expect(success).toBe(false);
-      expect(finalStatusFrom(events, 't.up')).toBe('success');
-      expect(finalStatusFrom(events, 't.down')).toBe('blocked');
+      expect(finalStatusFrom(events, 't.up')).toBe('failed');
+      expect(finalUpdateFor(events, 't.up')?.stderr).toContain('unresolved binding output');
+      expect(finalStatusFrom(events, 't.down')).toBe('skipped');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  test('typed output coercion diagnostics leave missing downstream input', async () => {
+  test('typed output coercion diagnostics fail the producer task', async () => {
     const dir = makeDir();
     try {
       const runtime = fakeRuntime({ 'emit-bad': '{"id":"not-a-number"}\n' });
@@ -206,9 +207,9 @@ describe('engine — unified inputs and outputs', () => {
 
       const { events, success } = await run(config, dir, runtime);
       expect(success).toBe(false);
-      expect(finalStatusFrom(events, 't.up')).toBe('success');
+      expect(finalStatusFrom(events, 't.up')).toBe('failed');
       expect(finalUpdateFor(events, 't.up')?.stderr).toContain('expected number');
-      expect(finalStatusFrom(events, 't.down')).toBe('blocked');
+      expect(finalStatusFrom(events, 't.down')).toBe('skipped');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

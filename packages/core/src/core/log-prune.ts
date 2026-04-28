@@ -19,6 +19,7 @@ export async function pruneLogDirs(
   logsDir: string,
   keep: number,
   excludeRunId: string,
+  excludeRunIds: readonly string[] = [excludeRunId],
 ): Promise<void> {
   let entries: string[];
   try {
@@ -27,8 +28,9 @@ export async function pruneLogDirs(
     return; // logsDir doesn't exist yet
   }
 
-  const runDirs = entries.filter((e) => e.startsWith('run_') && e !== excludeRunId).sort();
-  const historyKeep = Math.max(0, keep - 1);
+  const excluded = new Set([excludeRunId, ...excludeRunIds]);
+  const runDirs = entries.filter((e) => e.startsWith('run_') && !excluded.has(e)).sort();
+  const historyKeep = Math.max(0, keep - excluded.size);
   const toDelete = runDirs.slice(0, Math.max(0, runDirs.length - historyKeep));
 
   await Promise.all(

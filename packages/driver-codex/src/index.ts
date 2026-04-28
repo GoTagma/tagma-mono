@@ -36,6 +36,7 @@ export const CodexDriver: DriverPlugin = {
     sessionResume: false,
     systemPrompt: false,
     outputFormat: false,
+    enforcesPermissions: true,
   } satisfies DriverCapabilities,
 
   resolveModel(): string {

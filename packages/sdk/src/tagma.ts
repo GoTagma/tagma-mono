@@ -5,7 +5,7 @@ import {
   type RunPipelineOptions,
 } from '@tagma/core';
 import { bootstrapBuiltins } from './bootstrap';
-import { validateConfig } from './schema';
+import { PipelineValidationError, validateConfig, validateConfigDiagnostics } from './schema';
 import { bunRuntime } from '@tagma/runtime-bun';
 import type { TagmaRuntime } from '@tagma/core';
 import type { PipelineConfig, TagmaPlugin } from '@tagma/types';
@@ -53,8 +53,12 @@ export function createTagma(options: CreateTagmaOptions = {}): Tagma {
 
   return {
     registry,
-    run(config, { cwd, ...runOptions }) {
-      return runPipeline(config, cwd, {
+    async run(config, { cwd, ...runOptions }) {
+      const diagnostics = validateConfigDiagnostics(config, cwd);
+      if (diagnostics.length > 0) {
+        throw new PipelineValidationError(diagnostics);
+      }
+      return await runPipeline(config, cwd, {
         ...runOptions,
         registry,
         runtime,

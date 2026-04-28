@@ -23,6 +23,10 @@ export const ManualTrigger: TriggerPlugin = {
         description: 'Maximum wait time (e.g. 10m). Omit or 0 to wait indefinitely.',
         placeholder: '10m',
       },
+      metadata: {
+        type: 'json',
+        description: 'Optional metadata forwarded with the approval request.',
+      },
     },
   },
 

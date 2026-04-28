@@ -102,6 +102,7 @@ describe('RunContext constructor', () => {
   test('initializes all state maps as empty', () => {
     const { ctx } = makeContext();
     expect(ctx.sessionMap.size).toBe(0);
+    expect(ctx.sessionDriverMap.size).toBe(0);
     expect(ctx.normalizedMap.size).toBe(0);
     expect(ctx.outputValuesMap.size).toBe(0);
     expect(ctx.bindingDataMap.size).toBe(0);

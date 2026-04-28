@@ -150,6 +150,7 @@ export const ClaudeCodeDriver: DriverPlugin = {
     sessionResume: true,
     systemPrompt: true,
     outputFormat: true,
+    enforcesPermissions: true,
   } satisfies DriverCapabilities,
 
   resolveModel,
@@ -171,7 +172,7 @@ export const ClaudeCodeDriver: DriverPlugin = {
     // multi-line strings in CLI arguments break cmd.exe argument parsing when
     // the executable is a .cmd wrapper — newlines cause all subsequent flags
     // (--output-format, --model, etc.) to be silently dropped.
-    const stdin = task.prompt!;
+    let stdin = task.prompt!;
 
     const args: string[] = [
       'claude',
@@ -208,9 +209,16 @@ export const ClaudeCodeDriver: DriverPlugin = {
 
     // Native session resume
     if (task.continue_from) {
-      const sessionId = ctx.sessionMap.get(task.continue_from);
+      const sessionDriver = ctx.sessionDriverMap.get(task.continue_from);
+      const sessionId =
+        sessionDriver === 'claude-code' ? ctx.sessionMap.get(task.continue_from) : undefined;
       if (sessionId) {
         args.push('--resume', sessionId);
+      } else {
+        const previousOutput = ctx.normalizedMap.get(task.continue_from);
+        if (previousOutput) {
+          stdin = `[Previous Output]\n${previousOutput}\n\n[Current Task]\n${stdin}`;
+        }
       }
     }
 

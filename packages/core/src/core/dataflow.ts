@@ -55,6 +55,37 @@ function taskBindingsAsPorts(task: TaskConfig): TaskPorts | undefined {
   };
 }
 
+function mergePromptEffectivePorts(
+  inferred: TaskPorts,
+  explicit: TaskPorts | undefined,
+): TaskPorts | undefined {
+  const explicitOutputs = explicit?.outputs ?? [];
+  if (explicitOutputs.length === 0) {
+    return inferred.inputs || inferred.outputs ? inferred : undefined;
+  }
+
+  const outputsByName = new Map<string, PortDef>();
+  for (const port of inferred.outputs ?? []) outputsByName.set(port.name, port);
+  for (const port of explicitOutputs) outputsByName.set(port.name, port);
+  return {
+    ...(inferred.inputs?.length ? { inputs: inferred.inputs } : {}),
+    ...(outputsByName.size > 0 ? { outputs: [...outputsByName.values()] } : {}),
+  };
+}
+
+function inferredOnlyOutputPorts(
+  task: TaskConfig,
+  effectivePorts: TaskPorts | undefined,
+): TaskPorts | undefined {
+  const explicitNames = new Set(Object.keys(task.outputs ?? {}));
+  if (explicitNames.size === 0) return effectivePorts;
+  const outputs = effectivePorts?.outputs?.filter((port) => !explicitNames.has(port.name)) ?? [];
+  return {
+    ...(effectivePorts?.inputs?.length ? { inputs: effectivePorts.inputs } : {}),
+    ...(outputs.length > 0 ? { outputs } : {}),
+  };
+}
+
 export type EffectivePortsResult =
   | {
       readonly kind: 'ready';
@@ -76,6 +107,7 @@ export function inferEffectivePorts(ctx: RunContext, taskId: string): EffectiveP
   }
 
   const inference = inferPromptPorts({
+    promptTaskId: taskId,
     upstreams: node.dependsOn.map((upstreamId) => {
       const upstream = ctx.dag.nodes.get(upstreamId);
       const isUpstreamCommand = upstream ? isCommandTaskConfig(upstream.task) : false;
@@ -101,7 +133,11 @@ export function inferEffectivePorts(ctx: RunContext, taskId: string): EffectiveP
     return { kind: 'blocked', reason: lines.join('\n') };
   }
 
-  return { kind: 'ready', isPromptTask: true, effectivePorts: inference.ports };
+  return {
+    kind: 'ready',
+    isPromptTask: true,
+    effectivePorts: mergePromptEffectivePorts(inference.ports, taskBindingsAsPorts(task)),
+  };
 }
 
 export interface ExtractSuccessfulOutputsOptions {
@@ -132,26 +168,20 @@ export function extractSuccessfulOutputs(
     extractedOutputs = bindingExtraction.outputs;
   }
 
-  if (
-    (!task.outputs || Object.keys(task.outputs).length === 0) &&
-    effectivePorts?.outputs?.length
-  ) {
-    const portExtraction = extractTaskOutputs(
-      effectivePorts,
-      result.stdout,
-      result.normalizedOutput,
-    );
-    extractedOutputs = portExtraction.outputs;
-    return {
-      outputs: extractedOutputs,
-      bindingDiagnostic: bindingExtraction.diagnostic,
-      portDiagnostic: portExtraction.diagnostic,
+  const inferredPorts = inferredOnlyOutputPorts(task, effectivePorts);
+  let portDiagnostic: string | null = null;
+  if (inferredPorts?.outputs?.length) {
+    const portExtraction = extractTaskOutputs(inferredPorts, result.stdout, result.normalizedOutput);
+    extractedOutputs = {
+      ...portExtraction.outputs,
+      ...(extractedOutputs ?? {}),
     };
+    portDiagnostic = portExtraction.diagnostic;
   }
 
   return {
     outputs: extractedOutputs,
     bindingDiagnostic: bindingExtraction.diagnostic,
-    portDiagnostic: null,
+    portDiagnostic,
   };
 }

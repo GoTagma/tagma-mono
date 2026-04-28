@@ -22,6 +22,7 @@ const ctx = {
   workDir: process.cwd(),
   normalizedMap: new Map(),
   sessionMap: new Map(),
+  sessionDriverMap: new Map(),
 } as unknown as Parameters<typeof OpenCodeDriver.buildCommand>[2];
 
 describe('OpenCodeDriver buildCommand', () => {
@@ -69,5 +70,24 @@ describe('OpenCodeDriver buildCommand', () => {
     const variantIndex = spec.args.indexOf('--variant');
     expect(variantIndex).toBeGreaterThan(-1);
     expect(spec.args[variantIndex + 1]).toBe('max');
+  });
+
+  test('does not resume sessions created by another driver', async () => {
+    const crossDriverCtx = {
+      ...ctx,
+      sessionMap: new Map([['t.up', 'foreign-session']]),
+      sessionDriverMap: new Map([['t.up', 'claude-code']]),
+      normalizedMap: new Map([['t.up', 'previous text']]),
+    } as unknown as Parameters<typeof OpenCodeDriver.buildCommand>[2];
+
+    const spec = await OpenCodeDriver.buildCommand(
+      task({ continue_from: 't.up' }),
+      track,
+      crossDriverCtx,
+    );
+
+    expect(spec.args).not.toContain('--session');
+    expect(spec.args.at(-1)).toContain('[Previous Output]');
+    expect(spec.args.at(-1)).toContain('previous text');
   });
 });

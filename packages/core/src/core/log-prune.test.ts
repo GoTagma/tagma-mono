@@ -42,6 +42,17 @@ describe('pruneLogDirs', () => {
     }
   });
 
+  test('never deletes any excluded live runIds', async () => {
+    const root = fixture();
+    try {
+      for (const id of ['run_001', 'run_002', 'run_003', 'run_004']) mkdirSync(join(root, id));
+      await pruneLogDirs(root, 2, 'run_004', ['run_001', 'run_004']);
+      expect(readdirSync(root).sort()).toEqual(['run_001', 'run_004']);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test('ignores entries that do not look like run dirs', async () => {
     const root = fixture();
     try {

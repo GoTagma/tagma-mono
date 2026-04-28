@@ -377,7 +377,11 @@ function resolveWindowsExe(args: readonly string[], envPath: string): readonly s
  * stderrPath are null regardless of what the caller passed in opts — there
  * is nothing on disk to point at.
  */
-function failResult(stderr: string, durationMs: number): TaskResult {
+function failResult(
+  stderr: string,
+  durationMs: number,
+  failureKind: TaskResult['failureKind'] = 'spawn_error',
+): TaskResult {
   return {
     exitCode: -1,
     stdout: '',
@@ -389,7 +393,7 @@ function failResult(stderr: string, durationMs: number): TaskResult {
     durationMs,
     sessionId: null,
     normalizedOutput: null,
-    failureKind: 'spawn_error',
+    failureKind,
   };
 }
 
@@ -451,7 +455,7 @@ export async function runSpawn(
   const elapsed = () => Math.round(performance.now() - start);
 
   if (signal?.aborted) {
-    return failResult('Pipeline aborted before spawn', 0);
+    return failResult('Pipeline aborted before spawn', 0, 'aborted');
   }
 
   // R2: validate the spec before touching it. A third-party driver that
@@ -497,14 +501,13 @@ export async function runSpawn(
   }
 
   // ── 3. Timeout & abort handling ────────────────────────────────────────
-  let killedByUs = false;
-  let timedOut = false;
+  let killReason: 'timeout' | 'aborted' | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let forceTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const killGracefully = () => {
-    if (killedByUs) return;
-    killedByUs = true;
+  const killGracefully = (reason: 'timeout' | 'aborted') => {
+    if (killReason !== null) return;
+    killReason = reason;
 
     if (process.platform === 'win32') {
       // On Windows, kill the entire process tree via taskkill. This handles
@@ -529,15 +532,14 @@ export async function runSpawn(
 
   if (timeoutMs && timeoutMs > 0) {
     timer = setTimeout(() => {
-      timedOut = true;
-      killGracefully();
+      killGracefully('timeout');
     }, timeoutMs);
   }
 
-  const onAbort = () => killGracefully();
+  const onAbort = () => killGracefully('aborted');
   if (signal) {
     if (signal.aborted) {
-      killGracefully();
+      killGracefully('aborted');
     } else {
       signal.addEventListener('abort', onAbort, { once: true });
     }
@@ -579,7 +581,7 @@ export async function runSpawn(
   // incorrectly. The `timedOut` flag guards against the narrow race where the
   // process exits naturally at the exact moment the timeout fires — even if
   // killedByUs wasn't set in time, the timeout intention still applies.
-  if (killedByUs || timedOut) {
+  if (killReason !== null) {
     return {
       exitCode: -1,
       stdout,
@@ -593,7 +595,7 @@ export async function runSpawn(
       normalizedOutput: null,
       // H2: explicit kind so engine.ts no longer has to guess "is exitCode -1
       // a timeout or a spawn-failure?" Both used to share the same code.
-      failureKind: 'timeout',
+      failureKind: killReason,
     };
   }
 

@@ -8,8 +8,10 @@ import type {
   CompletionPlugin,
   MiddlewarePlugin,
   PluginManifest,
+  PluginSchema,
   TagmaPlugin,
 } from './types';
+import { parseDuration } from './utils';
 
 type PluginType = CapabilityHandler;
 
@@ -93,6 +95,11 @@ function validateContract(category: PluginCategory, handler: unknown): void {
           );
         }
       }
+      if (c.enforcesPermissions !== undefined && typeof c.enforcesPermissions !== 'boolean') {
+        throw new Error(
+          `drivers plugin "${h.name}".capabilities.enforcesPermissions must be a boolean or undefined`,
+        );
+      }
       // Optional methods, but if present must be functions.
       for (const opt of ['parseResult', 'resolveModel', 'resolveTools'] as const) {
         if (h[opt] !== undefined && typeof h[opt] !== 'function') {
@@ -171,6 +178,109 @@ export function readPluginManifest(pkgJson: unknown): PluginManifest | null {
     );
   }
   return { category: category as PluginCategory, type };
+}
+
+function validateNumberField(
+  value: unknown,
+  path: string,
+  min: number | undefined,
+  max: number | undefined,
+  errors: string[],
+): void {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    errors.push(`${path} must be a finite number`);
+    return;
+  }
+  if (min !== undefined && value < min) errors.push(`${path} must be >= ${min}`);
+  if (max !== undefined && value > max) errors.push(`${path} must be <= ${max}`);
+}
+
+function validateNumberOrListField(
+  value: unknown,
+  path: string,
+  min: number | undefined,
+  max: number | undefined,
+  errors: string[],
+): void {
+  const values = Array.isArray(value) ? value : [value];
+  for (let i = 0; i < values.length; i++) {
+    validateNumberField(
+      values[i],
+      Array.isArray(value) ? `${path}[${i}]` : path,
+      min,
+      max,
+      errors,
+    );
+  }
+}
+
+export function validatePluginConfig(
+  schema: PluginSchema | undefined,
+  config: Record<string, unknown>,
+  path: string,
+): readonly string[] {
+  if (!schema) return [];
+  const errors: string[] = [];
+  const fields = schema.fields ?? {};
+  const allowed = new Set(['type', ...Object.keys(fields)]);
+
+  for (const key of Object.keys(config)) {
+    if (!allowed.has(key)) errors.push(`${path}.${key} is not a supported field`);
+  }
+
+  for (const [name, def] of Object.entries(fields)) {
+    const value = config[name];
+    const fieldPath = `${path}.${name}`;
+    if (value === undefined) {
+      if (def.required === true && def.default === undefined) {
+        errors.push(`${fieldPath} is required`);
+      }
+      continue;
+    }
+
+    switch (def.type) {
+      case 'string':
+      case 'path':
+        if (typeof value !== 'string') errors.push(`${fieldPath} must be a string`);
+        break;
+      case 'duration':
+        if (value === 0 || value === '0') {
+          break;
+        }
+        if (typeof value !== 'string') {
+          errors.push(`${fieldPath} must be a duration string`);
+        } else {
+          try {
+            parseDuration(value);
+          } catch (err) {
+            errors.push(
+              `${fieldPath} is invalid: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+        }
+        break;
+      case 'boolean':
+        if (typeof value !== 'boolean') errors.push(`${fieldPath} must be a boolean`);
+        break;
+      case 'number':
+        validateNumberField(value, fieldPath, def.min, def.max, errors);
+        break;
+      case 'number-or-list':
+        validateNumberOrListField(value, fieldPath, def.min, def.max, errors);
+        break;
+      case 'json':
+        break;
+      case 'enum':
+        if (typeof value !== 'string') {
+          errors.push(`${fieldPath} must be a string`);
+        } else if (!def.enum || !def.enum.includes(value)) {
+          errors.push(`${fieldPath} must be one of ${(def.enum ?? []).join(', ')}`);
+        }
+        break;
+    }
+  }
+
+  return errors;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

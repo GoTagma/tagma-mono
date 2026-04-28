@@ -19,6 +19,11 @@ export interface LogRecord {
 export type LogListener = (record: LogRecord) => void;
 
 const TASK_PREFIX_RE = /\[task:([^\]]+)\]/;
+const SECRET_VALUE_RE =
+  /((?:api[_-]?key|apikey|token|secret|password|session[_-]?id|sessionid)\s*[:=]\s*["']?)[^"'\s,;]+/gi;
+const JSON_SECRET_VALUE_RE =
+  /("(?:api_key|apiKey|token|secret|password|sessionId|session_id)"\s*:\s*")[^"]+(")/g;
+const BEARER_RE = /(authorization\s*:\s*bearer\s+)[^\s,;]+/gi;
 
 function taskIdFromPrefix(prefix: string): string | null {
   const m = TASK_PREFIX_RE.exec(prefix);
@@ -53,7 +58,7 @@ export class Logger {
 
   info(prefix: string, message: string): void {
     const ts = timestamp();
-    const line = `${ts} ${prefix} ${message}`;
+    const line = redactLogText(`${ts} ${prefix} ${message}`);
     // eslint-disable-next-line no-console
     console.log(line);
     this.emit('info', ts, line, taskIdFromPrefix(prefix));
@@ -62,7 +67,7 @@ export class Logger {
 
   warn(prefix: string, message: string): void {
     const ts = timestamp();
-    const line = `${ts} ${prefix} WARN: ${message}`;
+    const line = redactLogText(`${ts} ${prefix} WARN: ${message}`);
     console.warn(line);
     this.emit('warn', ts, line, taskIdFromPrefix(prefix));
     this.append(line);
@@ -70,7 +75,7 @@ export class Logger {
 
   error(prefix: string, message: string): void {
     const ts = timestamp();
-    const line = `${ts} ${prefix} ERROR: ${message}`;
+    const line = redactLogText(`${ts} ${prefix} ERROR: ${message}`);
     console.error(line);
     this.emit('error', ts, line, taskIdFromPrefix(prefix));
     this.append(line);
@@ -79,7 +84,7 @@ export class Logger {
   /** File-only diagnostic log line. */
   debug(prefix: string, message: string): void {
     const ts = timestamp();
-    const line = `${ts} ${prefix} DEBUG: ${message}`;
+    const line = redactLogText(`${ts} ${prefix} DEBUG: ${message}`);
     this.emit('debug', ts, line, taskIdFromPrefix(prefix));
     this.append(line);
   }
@@ -95,8 +100,9 @@ export class Logger {
   /** File-only bulk payload (e.g. full stdout / stderr dumps). */
   quiet(message: string, taskId?: string | null): void {
     const ts = timestamp();
-    this.emit('quiet', ts, message, taskId ?? null);
-    this.append(message);
+    const redacted = redactLogText(message);
+    this.emit('quiet', ts, redacted, taskId ?? null);
+    this.append(redacted);
   }
 
   private append(line: string): void {
@@ -133,6 +139,13 @@ export class Logger {
   get dir(): string {
     return this.sink.dir;
   }
+}
+
+export function redactLogText(text: string): string {
+  return text
+    .replace(JSON_SECRET_VALUE_RE, '$1[REDACTED]$2')
+    .replace(BEARER_RE, '$1[REDACTED]')
+    .replace(SECRET_VALUE_RE, '$1[REDACTED]');
 }
 
 function timestamp(): string {

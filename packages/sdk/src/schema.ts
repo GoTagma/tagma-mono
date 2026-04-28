@@ -206,6 +206,7 @@ export function resolveConfig(raw: RawPipelineConfig, workDir: string): Pipeline
     reasoning_effort: raw.reasoning_effort,
     permissions: raw.permissions,
     timeout: raw.timeout,
+    max_concurrency: raw.max_concurrency,
     plugins: raw.plugins,
     hooks: raw.hooks,
     tracks,
@@ -360,6 +361,7 @@ export function deresolvePipeline(config: PipelineConfig, workDir: string): RawP
       ? { permissions: config.permissions }
       : {}),
     ...(config.timeout ? { timeout: config.timeout } : {}),
+    ...(config.max_concurrency !== undefined ? { max_concurrency: config.max_concurrency } : {}),
     ...(config.plugins?.length ? { plugins: config.plugins } : {}),
     ...(config.hooks ? { hooks: config.hooks } : {}),
     tracks,
@@ -374,13 +376,79 @@ export function deresolvePipeline(config: PipelineConfig, workDir: string): RawP
  * Returns an array of error messages (empty = valid).
  */
 export function validateConfig(config: PipelineConfig): string[] {
-  const errors: string[] = [];
-  try {
-    buildDag(config);
-  } catch (err) {
-    errors.push(err instanceof Error ? err.message : String(err));
+  return validateConfigDiagnostics(config).map(formatDiagnostic);
+}
+
+export function validateConfigDiagnostics(
+  config: PipelineConfig,
+  workDir?: string,
+): ValidationError[] {
+  const errors: ValidationError[] = validateRaw(config as RawPipelineConfig).filter(
+    (d) => d.severity !== 'warning',
+  );
+
+  if (workDir !== undefined) {
+    validateConfigCwd(config, workDir, errors);
+  }
+
+  if (errors.length === 0) {
+    try {
+      buildDag(config);
+    } catch (err) {
+      pushDiagnostic(errors, {
+        path: 'tracks',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
   return errors;
+}
+
+function validateConfigCwd(
+  config: PipelineConfig,
+  workDir: string,
+  errors: ValidationError[],
+): void {
+  for (let ti = 0; ti < config.tracks.length; ti++) {
+    const track = config.tracks[ti]!;
+    if (track.cwd !== undefined) {
+      try {
+        validatePath(track.cwd, workDir);
+      } catch (err) {
+        pushDiagnostic(errors, {
+          path: `tracks[${ti}].cwd`,
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    for (let ki = 0; ki < track.tasks.length; ki++) {
+      const task = track.tasks[ki]!;
+      if (task.cwd === undefined) continue;
+      try {
+        validatePath(task.cwd, workDir);
+      } catch (err) {
+        pushDiagnostic(errors, {
+          path: `tracks[${ti}].tasks[${ki}].cwd`,
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  }
+}
+
+function pushDiagnostic(errors: ValidationError[], diagnostic: ValidationError): void {
+  if (
+    errors.some(
+      (existing) => existing.path === diagnostic.path && existing.message === diagnostic.message,
+    )
+  ) {
+    return;
+  }
+  errors.push(diagnostic);
+}
+
+function formatDiagnostic(diagnostic: ValidationError): string {
+  return `${diagnostic.path}: ${diagnostic.message}`;
 }
 
 // ═══ Full Parse Pipeline ═══

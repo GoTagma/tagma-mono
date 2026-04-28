@@ -46,6 +46,7 @@ export const OpenCodeDriver: DriverPlugin = {
     sessionResume: true, // supports --session
     systemPrompt: false, // no --system-prompt flag; prepend to prompt instead
     outputFormat: true, // supports --format json
+    enforcesPermissions: false,
   } satisfies DriverCapabilities,
 
   resolveModel(): string {
@@ -76,7 +77,9 @@ export const OpenCodeDriver: DriverPlugin = {
     // continue_from: prefer session resume, fall back to text injection
     let sessionId: string | null = null;
     if (task.continue_from) {
-      sessionId = ctx.sessionMap.get(task.continue_from) ?? null;
+      const sessionDriver = ctx.sessionDriverMap.get(task.continue_from);
+      sessionId =
+        sessionDriver === 'opencode' ? (ctx.sessionMap.get(task.continue_from) ?? null) : null;
       if (!sessionId) {
         // no session; degrade to text context passthrough
         let prev: string | null = null;

@@ -13,4 +13,30 @@ describe('completion-llm-judge plugin shape', () => {
   test('check is a function', () => {
     expect(typeof plugin.capabilities!.completions!.llm_judge.check).toBe('function');
   });
+
+  test('rejects non-http judge endpoints before fetch', async () => {
+    await expect(
+      LlmJudgeCompletion.check(
+        {
+          rubric: 'must pass',
+          endpoint: 'file:///tmp/judge.sock',
+        },
+        {
+          exitCode: 0,
+          stdout: 'ok',
+          stderr: '',
+          stdoutPath: null,
+          stderrPath: null,
+          durationMs: 1,
+          sessionId: null,
+          normalizedOutput: null,
+          failureKind: null,
+        },
+        {
+          workDir: '/tmp',
+          runtime: {} as never,
+        },
+      ),
+    ).rejects.toThrow(/endpoint protocol must be http or https/);
+  });
 });

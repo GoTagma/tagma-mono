@@ -31,6 +31,13 @@ import { extractSuccessfulOutputs, inferEffectivePorts } from './dataflow';
 
 const MAX_NORMALIZED_BYTES = 1_000_000;
 
+class TaskDeadlineExceededError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TaskDeadlineExceededError';
+  }
+}
+
 function isPromptTaskConfig(task: {
   readonly prompt?: string;
   readonly command?: string;
@@ -113,6 +120,15 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
     if (result === 'unsatisfied') return; // still waiting
   }
 
+  const taskTimeoutMs = task.timeout ? parseDuration(task.timeout) : undefined;
+  const taskDeadlineStartedAtMs = Date.now();
+  const taskDeadlineMs =
+    taskTimeoutMs === undefined ? undefined : taskDeadlineStartedAtMs + taskTimeoutMs;
+  const remainingTaskTimeoutMs = (): number | undefined => {
+    if (taskTimeoutMs === undefined) return undefined;
+    return Math.max(0, taskTimeoutMs - (Date.now() - taskDeadlineStartedAtMs));
+  };
+
   // 2. Check trigger
   if (task.trigger) {
     log.debug(
@@ -124,7 +140,12 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       // Own the trigger resource lifecycle in the engine. Plugins return a
       // watch handle, not a bare promise, so timeout/abort paths can always
       // call dispose() even if the trigger condition never settles.
-      const triggerTimeoutMs = task.timeout ? parseDuration(task.timeout) : 0;
+      const triggerTimeoutMs = remainingTaskTimeoutMs() ?? 0;
+      if (taskTimeoutMs !== undefined && triggerTimeoutMs <= 0) {
+        throw new TriggerTimeoutError(
+          `Trigger "${task.trigger.type}" did not settle before task timeout ${task.timeout}`,
+        );
+      }
       const watchHandle = triggerPlugin.watch(task.trigger as Record<string, unknown>, {
         taskId: node.taskId,
         trackId: track.id,
@@ -425,7 +446,12 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
 
   try {
     let result: TaskResult;
-    const timeoutMs = task.timeout ? parseDuration(task.timeout) : undefined;
+    const timeoutMs = remainingTaskTimeoutMs();
+    if (timeoutMs !== undefined && timeoutMs <= 0) {
+      throw new TaskDeadlineExceededError(
+        `Task "${taskId}" exceeded timeout ${task.timeout} before process execution`,
+      );
+    }
 
     // Stream child stdout/stderr directly to disk in the logger's run dir
     // and keep only a bounded tail in the returned TaskResult. Filenames
@@ -505,6 +531,8 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
           task,
           track,
           workDir: task.cwd ?? workDir,
+          signal: ctx.abortController.signal,
+          ...(taskDeadlineMs !== undefined ? { deadlineMs: taskDeadlineMs } : {}),
         };
         for (const mwConfig of mws) {
           const mwPlugin = registry.getHandler<MiddlewarePlugin>('middlewares', mwConfig.type);
@@ -569,6 +597,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       };
       const driverCtx: DriverContext = {
         sessionMap: ctx.sessionMap,
+        sessionDriverMap: ctx.sessionDriverMap,
         normalizedMap: ctx.normalizedMap,
         workDir: task.cwd ?? workDir,
         // Structured view for drivers that want fine-grained control
@@ -597,9 +626,9 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
     const kind = result.failureKind;
     if (kind === 'timeout') {
       terminalStatus = 'timeout';
+    } else if (kind === 'aborted') {
+      terminalStatus = ctx.abortReason === 'timeout' ? 'timeout' : 'skipped';
     } else if (kind === 'spawn_error' || kind === 'parse_error') {
-      terminalStatus = 'failed';
-    } else if (result.exitCode !== 0) {
       terminalStatus = 'failed';
     } else if (task.completion) {
       const plugin = registry.getHandler<CompletionPlugin>('completions', task.completion.type);
@@ -623,7 +652,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       }
       terminalStatus = passed ? 'success' : 'failed';
     } else {
-      terminalStatus = 'success';
+      terminalStatus = result.exitCode === 0 ? 'success' : 'failed';
     }
 
     // Extract declared outputs from the task's output stream. Only
@@ -644,7 +673,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
           `extracted binding outputs: ${JSON.stringify(extractedOutputs ?? {})}`,
         );
         if (outputExtraction.bindingDiagnostic) {
-          log.debug(`[task:${taskId}]`, outputExtraction.bindingDiagnostic);
+          log.error(`[task:${taskId}]`, outputExtraction.bindingDiagnostic);
           const note = `\n[engine] ${outputExtraction.bindingDiagnostic}`;
           result = { ...result, stderr: result.stderr + note };
         }
@@ -661,6 +690,11 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
           const note = `\n[engine] ${outputExtraction.portDiagnostic}`;
           result = { ...result, stderr: result.stderr + note };
         }
+      }
+      if (outputExtraction.bindingDiagnostic || outputExtraction.portDiagnostic) {
+        terminalStatus = 'failed';
+        extractedOutputs = null;
+        result = { ...result, failureKind: 'output_error' };
       }
     }
     // Attach outputs to the result (null when task has no declared
@@ -698,6 +732,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
     if (result.sessionId) {
       // H1: qualified-only key.
       ctx.sessionMap.set(taskId, result.sessionId);
+      ctx.sessionDriverMap.set(taskId, resolvedDriver);
     }
 
     // Set result and finishedAt before emitting terminal status so listeners see complete state
@@ -748,6 +783,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       );
     }
   } catch (err: unknown) {
+    const isDeadlineTimeout = err instanceof TaskDeadlineExceededError;
     const errMsg = err instanceof Error ? (err.stack ?? err.message) : String(err);
     log.error(`[task:${taskId}]`, `failed before execution: ${errMsg}`);
     state.result = {
@@ -764,10 +800,10 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       // H2: Engine-level pre-execution errors (driver throw, middleware
       // throw, getHandler 404) classify as spawn_error — the process never
       // ran, so calling them "timeout" was actively misleading.
-      failureKind: 'spawn_error',
+      failureKind: isDeadlineTimeout ? 'timeout' : 'spawn_error',
     };
     state.finishedAt = nowISO();
-    ctx.setTaskStatus(taskId, 'failed');
+    ctx.setTaskStatus(taskId, isDeadlineTimeout ? 'timeout' : 'failed');
   }
 
   // 7. Fire hooks

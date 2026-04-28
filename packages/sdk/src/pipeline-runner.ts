@@ -32,7 +32,7 @@ import { generateRunId } from '@tagma/core';
 
 export type { EngineResult };
 
-export type PipelineRunnerStatus = 'idle' | 'running' | 'done' | 'aborted';
+export type PipelineRunnerStatus = 'idle' | 'running' | 'done' | 'aborted' | 'failed';
 export type PipelineRunnerOptions = Omit<RunPipelineOptions, 'signal' | 'onEvent'>;
 
 export class PipelineRunner {
@@ -109,7 +109,7 @@ export class PipelineRunner {
         return result;
       })
       .catch((err) => {
-        this._status = 'aborted';
+        this._status = this._abortController.signal.aborted ? 'aborted' : 'failed';
         throw err;
       });
 
@@ -169,6 +169,9 @@ export class PipelineRunner {
       case 'run_end':
         this._status = this._abortController.signal.aborted ? 'aborted' : 'done';
         return;
+      case 'run_error':
+        if (this._status !== 'aborted') this._status = 'failed';
+        return;
       default:
         return;
     }
@@ -178,7 +181,7 @@ export class PipelineRunner {
    * Cancel the running pipeline. Safe to call multiple times or before start().
    */
   abort(reason?: string): void {
-    if (this._status === 'done' || this._status === 'aborted') return;
+    if (this._status === 'done' || this._status === 'aborted' || this._status === 'failed') return;
     this._status = 'aborted';
     this._abortController.abort(reason);
   }

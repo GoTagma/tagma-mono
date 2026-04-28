@@ -60,8 +60,8 @@ export interface Permissions {
 //
 // Declarative metadata a plugin can expose so editors/UIs can render a typed
 // form for its config instead of falling back to a raw key/value editor.
-// Schema is purely descriptive — plugins still perform their own runtime
-// validation. Declaring a field here is optional.
+// When present, core preflight also applies this schema as a strict runtime
+// config guard before plugin code runs. Declaring a field here is optional.
 
 export type PluginParamType =
   | 'string'
@@ -70,7 +70,8 @@ export type PluginParamType =
   | 'enum'
   | 'path'
   | 'duration'
-  | 'number-or-list';
+  | 'number-or-list'
+  | 'json';
 
 export interface PluginParamDef {
   readonly type: PluginParamType;
@@ -283,6 +284,7 @@ export interface PipelineConfig {
   readonly reasoning_effort?: string;
   readonly permissions?: Permissions;
   readonly timeout?: string;
+  readonly max_concurrency?: number;
   readonly plugins?: readonly string[];
   readonly hooks?: HooksConfig;
   readonly tracks: readonly TrackConfig[];
@@ -298,6 +300,7 @@ export interface RawPipelineConfig {
   readonly reasoning_effort?: string;
   readonly permissions?: Permissions;
   readonly timeout?: string;
+  readonly max_concurrency?: number;
   readonly plugins?: readonly string[];
   readonly hooks?: HooksConfig;
   readonly tracks: readonly RawTrackConfig[];
@@ -379,6 +382,7 @@ export interface PruneLogOptions {
   readonly workDir: string;
   readonly keep: number;
   readonly excludeRunId: string;
+  readonly excludeRunIds?: readonly string[];
 }
 
 export interface RuntimeLogStore {
@@ -405,6 +409,11 @@ export interface DriverCapabilities {
   readonly sessionResume: boolean;
   readonly systemPrompt: boolean;
   readonly outputFormat: boolean;
+  /**
+   * True when the driver maps Tagma Permissions into its underlying CLI/API
+   * and can fail closed for disallowed write/execute access.
+   */
+  readonly enforcesPermissions?: boolean;
 }
 
 // ═══ Driver Result Metadata ═══
@@ -452,6 +461,7 @@ export interface PromptDocument {
 
 export interface DriverContext {
   readonly sessionMap: Map<string, string>;
+  readonly sessionDriverMap: Map<string, string>;
   // Canonical text for continue_from handoff (driver-normalized).
   readonly normalizedMap: Map<string, string>;
   readonly workDir: string;
@@ -494,6 +504,7 @@ export interface DriverPlugin {
 
 export interface ApprovalRequest {
   readonly id: string;
+  readonly runId?: string;
   readonly taskId: string;
   readonly trackId?: string;
   readonly message: string;
@@ -532,6 +543,7 @@ export interface ApprovalGateway {
   ): boolean;
   pending(): readonly ApprovalRequest[];
   subscribe(listener: ApprovalListener): () => void;
+  abortRun?(runId: string, reason: string): void;
   abortAll(reason: string): void;
 }
 
@@ -642,6 +654,8 @@ export interface MiddlewareContext {
   readonly task: TaskConfig;
   readonly track: TrackConfig;
   readonly workDir: string;
+  readonly signal?: AbortSignal;
+  readonly deadlineMs?: number;
 }
 
 export interface MiddlewarePlugin {
@@ -688,7 +702,14 @@ export interface TagmaPlugin {
  *
  * `null` means "no failure" (success case).
  */
-export type TaskFailureKind = 'timeout' | 'spawn_error' | 'exit_nonzero' | 'parse_error' | null;
+export type TaskFailureKind =
+  | 'timeout'
+  | 'aborted'
+  | 'spawn_error'
+  | 'exit_nonzero'
+  | 'parse_error'
+  | 'output_error'
+  | null;
 
 export interface TaskResult {
   readonly exitCode: number;

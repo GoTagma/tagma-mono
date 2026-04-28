@@ -189,4 +189,40 @@ describe('PipelineRunner task snapshot', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  test('preflight errors leave the runner failed, not aborted', async () => {
+    const dir = makeDir();
+    const registry = new PluginRegistry();
+    const runner = new PipelineRunner(
+      {
+        name: 'missing-driver',
+        mode: 'trusted',
+        tracks: [
+          {
+            id: 't',
+            name: 'T',
+            tasks: [{ id: 'p', name: 'P', prompt: 'hello' }],
+          },
+        ],
+      },
+      dir,
+      {
+        registry,
+        runtime: fakeRuntime(),
+        skipPluginLoading: true,
+      },
+    );
+    const seen: string[] = [];
+    runner.subscribe((event) => {
+      if (event.type === 'run_error') seen.push(event.type);
+    });
+
+    try {
+      await expect(runner.start()).rejects.toThrow(/driver "opencode" not registered/);
+      expect(runner.status).toBe('failed');
+      expect(seen).toEqual(['run_error']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

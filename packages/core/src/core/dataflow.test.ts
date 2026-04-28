@@ -154,6 +154,78 @@ describe('inferEffectivePorts', () => {
       expect(inferred.reason).toContain('city');
     }
   });
+
+  test('does not infer prompt outputs from downstream inputs sourced from another task', () => {
+    const config: PipelineConfig = {
+      name: 'p',
+      tracks: [
+        {
+          id: 't',
+          name: 'T',
+          tasks: [
+            {
+              id: 'other',
+              name: 'Other',
+              command: 'echo',
+              outputs: { city: { type: 'string' } },
+            },
+            { id: 'prompt', name: 'Prompt', prompt: 'hi' },
+            {
+              id: 'down',
+              name: 'Down',
+              command: 'echo',
+              depends_on: ['prompt', 'other'],
+              inputs: {
+                city: { from: 't.other.outputs.city', type: 'string', required: true },
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const ctx = makeContext(config);
+    const inferred = inferEffectivePorts(ctx, 't.prompt');
+    expect(inferred.kind).toBe('ready');
+    if (inferred.kind === 'ready') {
+      expect(inferred.effectivePorts?.outputs).toBeUndefined();
+    }
+  });
+
+  test('merges explicit prompt outputs with inferred downstream outputs', () => {
+    const config: PipelineConfig = {
+      name: 'p',
+      tracks: [
+        {
+          id: 't',
+          name: 'T',
+          tasks: [
+            {
+              id: 'prompt',
+              name: 'Prompt',
+              prompt: 'hi',
+              outputs: { summary: { type: 'string' } },
+            },
+            {
+              id: 'down',
+              name: 'Down',
+              command: 'echo',
+              depends_on: ['prompt'],
+              inputs: { answer: { type: 'string', required: true } },
+            },
+          ],
+        },
+      ],
+    };
+    const ctx = makeContext(config);
+    const inferred = inferEffectivePorts(ctx, 't.prompt');
+    expect(inferred.kind).toBe('ready');
+    if (inferred.kind === 'ready') {
+      expect(inferred.effectivePorts?.outputs?.map((port) => port.name).sort()).toEqual([
+        'answer',
+        'summary',
+      ]);
+    }
+  });
 });
 
 describe('extractSuccessfulOutputs', () => {
@@ -186,6 +258,47 @@ describe('extractSuccessfulOutputs', () => {
       raw: '{"city":"Paris"}',
       city: 'Paris',
     });
+    expect(extracted.bindingDiagnostic).toBeNull();
+    expect(extracted.portDiagnostic).toBeNull();
+  });
+
+  test('extracts explicit and inferred prompt outputs together', () => {
+    const config: PipelineConfig = {
+      name: 'p',
+      tracks: [
+        {
+          id: 't',
+          name: 'T',
+          tasks: [
+            {
+              id: 'prompt',
+              name: 'Prompt',
+              prompt: 'hi',
+              outputs: { summary: { type: 'string' } },
+            },
+            {
+              id: 'down',
+              name: 'Down',
+              command: 'echo',
+              depends_on: ['prompt'],
+              inputs: { answer: { type: 'string', required: true } },
+            },
+          ],
+        },
+      ],
+    };
+    const ctx = makeContext(config);
+    const inferred = inferEffectivePorts(ctx, 't.prompt');
+    expect(inferred.kind).toBe('ready');
+    if (inferred.kind !== 'ready') return;
+    const node = ctx.dag.nodes.get('t.prompt')!;
+    const extracted = extractSuccessfulOutputs({
+      task: node.task,
+      effectivePorts: inferred.effectivePorts,
+      result: result('{"answer":"42","summary":"done"}'),
+    });
+
+    expect(extracted.outputs).toEqual({ answer: '42', summary: 'done' });
     expect(extracted.bindingDiagnostic).toBeNull();
     expect(extracted.portDiagnostic).toBeNull();
   });

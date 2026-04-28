@@ -377,6 +377,51 @@ describe('PluginRegistry — validation', () => {
       } as never),
     ).toThrow(/must export enhanceDoc/);
   });
+
+  test('preflight applies registered plugin schemas strictly', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'tagma-plugin-schema-'));
+    const reg = new PluginRegistry();
+    reg.registerPlugin('triggers', 'typed', {
+      name: 'typed',
+      schema: {
+        fields: {
+          path: { type: 'string', required: true },
+          timeout: { type: 'duration' },
+        },
+      },
+      watch() {
+        return { fired: Promise.resolve(), dispose() {} };
+      },
+    } as TriggerPlugin);
+
+    try {
+      await expect(
+        runPipeline(
+          {
+            name: 'plugin-schema',
+            mode: 'trusted',
+            tracks: [
+              {
+                id: 't',
+                name: 'T',
+                tasks: [
+                  {
+                    id: 'x',
+                    command: 'echo hi',
+                    trigger: { type: 'typed', path: 42, extra: true },
+                  },
+                ],
+              },
+            ],
+          },
+          tmp,
+          { registry: reg, runtime: fakeRuntime(), mode: 'trusted' },
+        ),
+      ).rejects.toThrow(/trigger\.extra is not a supported field[\s\S]*trigger\.path must be a string/);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('runPipeline — options.registry isolation', () => {
@@ -606,6 +651,31 @@ describe('runPipeline — options.registry isolation', () => {
           { registry: reg, runtime: fakeRuntime(), mode: 'safe' },
         ),
       ).rejects.toThrow(/safe mode blocks execute permission on task "t\.x"/);
+
+      const bootstrapped = new PluginRegistry();
+      bootstrapBuiltins(bootstrapped);
+      await expect(
+        runPipeline(
+          {
+            name: 'safe-write-unenforced-driver',
+            tracks: [
+              {
+                id: 't',
+                name: 'T',
+                tasks: [
+                  {
+                    id: 'x',
+                    prompt: 'hello',
+                    permissions: { read: true, write: true, execute: false },
+                  },
+                ],
+              },
+            ],
+          },
+          tmp,
+          { registry: bootstrapped, runtime: fakeRuntime(), mode: 'safe', skipPluginLoading: true },
+        ),
+      ).rejects.toThrow(/safe mode blocks write permission for driver "opencode"/);
 
       await expect(
         runPipeline(

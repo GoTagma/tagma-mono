@@ -222,8 +222,8 @@ function bunLogStore(): RuntimeLogStore {
     logsDir(workDir: string) {
       return resolve(workDir, '.tagma', 'logs');
     },
-    async prune({ workDir, keep, excludeRunId }) {
-      await pruneLogDirs(resolve(workDir, '.tagma', 'logs'), keep, excludeRunId);
+    async prune({ workDir, keep, excludeRunId, excludeRunIds }) {
+      await pruneLogDirs(resolve(workDir, '.tagma', 'logs'), keep, excludeRunId, excludeRunIds);
     },
   };
 }
