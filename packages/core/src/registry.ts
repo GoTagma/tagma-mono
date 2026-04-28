@@ -164,6 +164,7 @@ export function readPluginManifest(pkgJson: unknown): PluginManifest | null {
   const m = raw as Record<string, unknown>;
   const category = m.category;
   const type = m.type;
+  const minEditorVersion = m.minEditorVersion;
   if (typeof category !== 'string' || !VALID_CATEGORIES.has(category as PluginCategory)) {
     throw new Error(
       `tagmaPlugin.category must be one of ${[...VALID_CATEGORIES].join(', ')}, got ${JSON.stringify(category)}`,
@@ -177,7 +178,21 @@ export function readPluginManifest(pkgJson: unknown): PluginManifest | null {
       `tagmaPlugin.type must match ${PLUGIN_TYPE_RE} (letters, digits, underscores, hyphens; no paths or dots), got ${JSON.stringify(type)}`,
     );
   }
-  return { category: category as PluginCategory, type };
+  if (
+    minEditorVersion !== undefined &&
+    (typeof minEditorVersion !== 'string' || minEditorVersion.trim().length === 0)
+  ) {
+    throw new Error(
+      `tagmaPlugin.minEditorVersion must be a non-empty string, got ${JSON.stringify(minEditorVersion)}`,
+    );
+  }
+  return {
+    category: category as PluginCategory,
+    type,
+    ...(typeof minEditorVersion === 'string'
+      ? { minEditorVersion: minEditorVersion.trim() }
+      : {}),
+  };
 }
 
 function validateNumberField(

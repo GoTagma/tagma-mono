@@ -804,13 +804,15 @@ export type PluginModule = CapabilityPluginModule;
  *       "version": "0.1.7",
  *       "tagmaPlugin": {
  *         "category": "drivers",
- *         "type": "codex"
+ *         "type": "codex",
+ *         "minEditorVersion": "0.2.0"
  *       }
  *     }
  */
 export interface PluginManifest {
   readonly category: PluginCategory;
   readonly type: string;
+  readonly minEditorVersion?: string;
 }
 
 // ═══ Wire Protocol: Run Events ═══
