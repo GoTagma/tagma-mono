@@ -126,6 +126,70 @@ describe('createTagma', () => {
     }
   });
 
+  test('passes structured argv command tasks through the runtime boundary', async () => {
+    const calls: unknown[] = [];
+    const taskResult: TaskResult = {
+      exitCode: 0,
+      stdout: 'runtime-ok',
+      stderr: '',
+      stdoutPath: null,
+      stderrPath: null,
+      stdoutBytes: 10,
+      stderrBytes: 0,
+      durationMs: 1,
+      sessionId: null,
+      normalizedOutput: null,
+      failureKind: null,
+    };
+    const runtime: TagmaRuntime = {
+      async runCommand(command) {
+        calls.push(command);
+        return taskResult;
+      },
+      async runSpawn() {
+        throw new Error('runSpawn should not be called for command tasks');
+      },
+      async ensureDir() {
+        /* no-op */
+      },
+      async fileExists() {
+        return false;
+      },
+      async *watch() {
+        /* no-op */
+      },
+      logStore: memoryLogStore(),
+      now() {
+        return new Date('2026-04-26T00:00:00.000Z');
+      },
+      sleep() {
+        return Promise.resolve();
+      },
+    };
+    const tagma = createTagma({ builtins: false, runtime });
+    const dir = makeDir('tagma-runtime-argv-');
+    try {
+      await tagma.run(
+        {
+          name: 'runtime-argv',
+          mode: 'trusted',
+          tracks: [
+            {
+              id: 't',
+              name: 'T',
+              tasks: [{ id: 'cmd', name: 'cmd', command: { argv: ['tool', '--flag'] } }],
+            },
+          ],
+        },
+        { cwd: dir, skipPluginLoading: true },
+      );
+
+      expect(calls).toEqual([{ argv: ['tool', '--flag'] }]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('lets exit_code completion accept a non-zero process exit', async () => {
     const taskResult: TaskResult = {
       exitCode: 1,
@@ -362,6 +426,7 @@ describe('createTagma', () => {
           {
             cwd: dir,
             skipPluginLoading: true,
+            mode: 'trusted',
           },
         ),
       ).rejects.toThrow(/driver "opencode" not registered/);

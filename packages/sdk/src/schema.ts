@@ -1,6 +1,7 @@
 import yaml from 'js-yaml';
 import { relative } from 'path';
 import type {
+  CommandConfig,
   PipelineConfig,
   RawPipelineConfig,
   RawTrackConfig,
@@ -94,6 +95,47 @@ function validateRawTrack(track: RawTrackConfig): void {
   }
 }
 
+function commandConfigKind(value: unknown): 'shell' | 'argv' | null {
+  if (typeof value === 'string') return 'shell';
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const hasShell = 'shell' in raw;
+  const hasArgv = 'argv' in raw;
+  if (hasShell === hasArgv) return null;
+  if (hasShell) return typeof raw.shell === 'string' ? 'shell' : null;
+  return Array.isArray(raw.argv) && raw.argv.every((arg) => typeof arg === 'string')
+    ? 'argv'
+    : null;
+}
+
+function commandNameFallback(command: CommandConfig | undefined, fallback: string): string {
+  if (typeof command === 'string') return command;
+  if (command && 'shell' in command) return command.shell;
+  if (command && 'argv' in command) return command.argv.join(' ') || fallback;
+  return fallback;
+}
+
+function validateCommandConfig(command: unknown, label: string): void {
+  const kind = commandConfigKind(command);
+  if (kind === null) {
+    throw new Error(`${label}: command must be a shell string, { shell: string }, or { argv: string[] }`);
+  }
+  if (typeof command === 'string') {
+    if (command.trim().length === 0) throw new Error(`${label}: command must not be empty`);
+    return;
+  }
+  const raw = command as { shell?: string; argv?: readonly string[] };
+  if (kind === 'shell') {
+    if (!raw.shell || raw.shell.trim().length === 0) {
+      throw new Error(`${label}: command.shell must not be empty`);
+    }
+    return;
+  }
+  if (!raw.argv || raw.argv.length === 0 || raw.argv.some((arg) => arg.length === 0)) {
+    throw new Error(`${label}: command.argv must contain non-empty string arguments`);
+  }
+}
+
 function validateRawTask(task: RawTaskConfig, trackId: string): void {
   if (!task || typeof task !== 'object' || Array.isArray(task)) {
     throw new Error(`track "${trackId}": task must be an object`);
@@ -102,12 +144,16 @@ function validateRawTask(task: RawTaskConfig, trackId: string): void {
   assertValidId(task.id, `task "${task.id}" in track "${trackId}"`);
 
   const hasPromptKey = typeof task.prompt === 'string';
-  const hasCommandKey = typeof task.command === 'string';
-  if (!hasPromptKey && !hasCommandKey) {
+  const hasCommandField = task.command !== undefined;
+  const hasCommandKey = commandConfigKind(task.command) !== null;
+  if (!hasPromptKey && !hasCommandField) {
     throw new Error(`task "${task.id}": must have either "prompt" or "command"`);
   }
   if (hasPromptKey && hasCommandKey) {
     throw new Error(`task "${task.id}": cannot have both "prompt" and "command"`);
+  }
+  if (hasCommandField) {
+    validateCommandConfig(task.command, `task "${task.id}"`);
   }
   // Empty-content tasks (e.g. `prompt: ''`) are allowed at parse time and
   // flagged as hard validation errors by validate-raw.ts.
@@ -150,7 +196,9 @@ export function resolveConfig(raw: RawPipelineConfig, workDir: string): Pipeline
     const tasks: TaskConfig[] = rawTrack.tasks.map((rawTask) => {
       const name =
         rawTask.name ??
-        (rawTask.prompt ? truncateForName(rawTask.prompt) : (rawTask.command ?? rawTask.id));
+        (rawTask.prompt
+          ? truncateForName(rawTask.prompt)
+          : commandNameFallback(rawTask.command, rawTask.id));
 
       return {
         id: rawTask.id,
@@ -248,7 +296,7 @@ function stripDefaultTaskCompletion<T extends { completion?: CompletionConfig }>
 // system prompt (apps/editor/server/opencode-seed.ts) documents this
 // stripping — keep them in sync.
 function stripPromptOnlyFieldsFromCommandTask<
-  T extends { command?: string; continue_from?: string },
+  T extends { command?: CommandConfig; continue_from?: string },
 >(task: T): T {
   if (task.command === undefined || task.continue_from === undefined) return task;
   const { continue_from: _cf, ...rest } = task;

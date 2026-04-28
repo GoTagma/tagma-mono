@@ -1,5 +1,5 @@
-import type { HooksConfig, HookCommand, AbortReason, EnvPolicy, TagmaRuntime } from './types';
-import { shellArgs } from './utils';
+import type { CommandConfig, HooksConfig, HookCommand, AbortReason, EnvPolicy, TagmaRuntime } from './types';
+import { commandLabel, commandToSpawnSpec } from './command';
 import type { Logger } from './logger';
 
 type HookEvent =
@@ -17,9 +17,13 @@ export interface HookResult {
   readonly exitCode: number;
 }
 
-function normalizeCommands(cmd: HookCommand | undefined): readonly string[] {
+function isCommandList(cmd: HookCommand): cmd is readonly CommandConfig[] {
+  return Array.isArray(cmd);
+}
+
+function normalizeCommands(cmd: HookCommand | undefined): readonly CommandConfig[] {
   if (!cmd) return [];
-  if (typeof cmd === 'string') return [cmd];
+  if (!isCommandList(cmd)) return [cmd];
   return cmd;
 }
 
@@ -37,7 +41,7 @@ function logError(log: Logger | undefined, prefix: string, message: string): voi
 
 async function runSingleHook(
   event: HookEvent,
-  command: string,
+  command: CommandConfig,
   context: unknown,
   runtime: TagmaRuntime,
   cwd?: string,
@@ -47,13 +51,13 @@ async function runSingleHook(
   timeoutMs: number = DEFAULT_HOOK_TIMEOUT_MS,
 ): Promise<number> {
   const jsonInput = JSON.stringify(context, null, 2);
+  const label = commandLabel(command);
 
   try {
     const result = await runtime.runSpawn(
       {
-        args: shellArgs(command),
+        ...commandToSpawnSpec(command, cwd ?? process.cwd()),
         stdin: jsonInput,
-        ...(cwd ? { cwd } : {}),
       },
       null,
       {
@@ -66,17 +70,17 @@ async function runSingleHook(
     );
 
     if (result.stdout.trim()) {
-      const message = `"${command}" stdout:\n${result.stdout.trim()}`;
+      const message = `"${label}" stdout:\n${result.stdout.trim()}`;
       logWarn(log, `[hook:${event}]`, message);
     }
     if (result.stderr.trim()) {
-      const message = `"${command}" stderr:\n${result.stderr.trim()}`;
+      const message = `"${label}" stderr:\n${result.stderr.trim()}`;
       logError(log, `[hook:${event}]`, message);
     }
 
     return result.exitCode;
   } catch (err) {
-    const message = `"${command}" spawn error: ${err instanceof Error ? err.message : String(err)}`;
+    const message = `"${label}" spawn error: ${err instanceof Error ? err.message : String(err)}`;
     logError(log, `[hook:${event}]`, message);
     return -1;
   }
@@ -91,6 +95,7 @@ export async function executeHook(
   signal?: AbortSignal,
   log?: Logger,
   envPolicy?: EnvPolicy,
+  timeoutMs?: number,
 ): Promise<HookResult> {
   if (!hooks) return { allowed: true, exitCode: 0 };
 
@@ -109,6 +114,7 @@ export async function executeHook(
       signal,
       log,
       envPolicy,
+      timeoutMs,
     );
 
     if (isGate && exitCode !== 0) {
@@ -116,7 +122,7 @@ export async function executeHook(
     }
 
     if (exitCode !== 0) {
-      const message = `"${cmd}" exited with code ${exitCode}`;
+      const message = `"${commandLabel(cmd)}" exited with code ${exitCode}`;
       logWarn(log, `[hook:${event}]`, message);
     }
   }

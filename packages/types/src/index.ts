@@ -181,13 +181,23 @@ export interface MiddlewareConfig {
   readonly [key: string]: unknown;
 }
 
+export interface CommandArgvConfig {
+  readonly argv: readonly string[];
+}
+
+export interface CommandShellConfig {
+  readonly shell: string;
+}
+
+export type CommandConfig = string | CommandArgvConfig | CommandShellConfig;
+
 // ═══ Task Config (after inheritance resolution) ═══
 
 export interface TaskConfig {
   readonly id: string;
   readonly name: string;
   readonly prompt?: string;
-  readonly command?: string;
+  readonly command?: CommandConfig;
   readonly depends_on?: readonly string[];
   readonly trigger?: TriggerConfig;
   readonly continue_from?: string;
@@ -210,7 +220,7 @@ export interface RawTaskConfig {
   readonly id: string;
   readonly name?: string;
   readonly prompt?: string;
-  readonly command?: string;
+  readonly command?: CommandConfig;
   readonly depends_on?: readonly string[];
   readonly trigger?: TriggerConfig;
   readonly continue_from?: string;
@@ -263,7 +273,7 @@ export interface RawTrackConfig {
 
 // ═══ Hooks Config ═══
 
-export type HookCommand = string | readonly string[];
+export type HookCommand = CommandConfig | readonly CommandConfig[];
 
 export interface HooksConfig {
   readonly pipeline_start?: HookCommand;
@@ -394,7 +404,7 @@ export interface RuntimeLogStore {
 
 export interface TagmaRuntime {
   runSpawn(spec: SpawnSpec, driver: DriverPlugin | null, options?: RunOptions): Promise<TaskResult>;
-  runCommand(command: string, cwd: string, options?: RunOptions): Promise<TaskResult>;
+  runCommand(command: CommandConfig, cwd: string, options?: RunOptions): Promise<TaskResult>;
   ensureDir(path: string): Promise<void>;
   fileExists(path: string): Promise<boolean>;
   watch(path: string, options?: RuntimeWatchOptions): AsyncIterable<RuntimeWatchEvent>;
@@ -465,6 +475,8 @@ export interface DriverContext {
   // Canonical text for continue_from handoff (driver-normalized).
   readonly normalizedMap: Map<string, string>;
   readonly workDir: string;
+  readonly signal?: AbortSignal;
+  readonly deadlineMs?: number;
   /**
    * Structured prompt after the middleware chain has run. Drivers may
    * either read this for fine-grained control over serialization (e.g.

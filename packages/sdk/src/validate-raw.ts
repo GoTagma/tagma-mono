@@ -6,7 +6,13 @@
 //
 // Returns a flat list of ValidationError objects. An empty array means valid.
 
-import type { PortType, RawPipelineConfig, RawTaskConfig, RawTrackConfig } from '@tagma/types';
+import type {
+  CommandConfig,
+  PortType,
+  RawPipelineConfig,
+  RawTaskConfig,
+  RawTrackConfig,
+} from '@tagma/types';
 import {
   isValidTaskId,
   qualifyTaskId,
@@ -105,6 +111,70 @@ const BUILTIN_COMPLETION_TYPES: ReadonlySet<string> = new Set([
 ]);
 const BUILTIN_MIDDLEWARE_TYPES: ReadonlySet<string> = new Set(['static_context']);
 const BUILTIN_DRIVER_TYPES: ReadonlySet<string> = new Set(['opencode']);
+
+function commandConfigKind(value: unknown): 'shell' | 'argv' | null {
+  if (typeof value === 'string') return 'shell';
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const hasShell = 'shell' in raw;
+  const hasArgv = 'argv' in raw;
+  if (hasShell === hasArgv) return null;
+  if (hasShell) return typeof raw.shell === 'string' ? 'shell' : null;
+  return Array.isArray(raw.argv) && raw.argv.every((arg) => typeof arg === 'string')
+    ? 'argv'
+    : null;
+}
+
+function validateCommandConfig(
+  value: unknown,
+  path: string,
+  label: string,
+  errors: ValidationError[],
+): value is CommandConfig {
+  const kind = commandConfigKind(value);
+  if (kind === null) {
+    errors.push({
+      path,
+      message: `${label} must be a non-empty shell string, { shell: string }, or { argv: string[] }`,
+    });
+    return false;
+  }
+  if (typeof value === 'string') {
+    if (value.trim().length === 0) {
+      errors.push({ path, message: `${label} shell string must not be empty` });
+      return false;
+    }
+    return true;
+  }
+  const raw = value as { shell?: string; argv?: readonly string[] };
+  if (kind === 'shell') {
+    if (!raw.shell || raw.shell.trim().length === 0) {
+      errors.push({ path: `${path}.shell`, message: `${label}.shell must not be empty` });
+      return false;
+    }
+    return true;
+  }
+  if (!raw.argv || raw.argv.length === 0) {
+    errors.push({ path: `${path}.argv`, message: `${label}.argv must contain at least one argument` });
+    return false;
+  }
+  raw.argv.forEach((arg, index) => {
+    if (arg.length === 0) {
+      errors.push({ path: `${path}.argv[${index}]`, message: `${label}.argv entries must not be empty` });
+    }
+  });
+  return true;
+}
+
+function commandInputReferences(command: CommandConfig): string[] {
+  if (typeof command === 'string') return extractInputReferences(command);
+  if ('shell' in command) return extractInputReferences(command.shell);
+  const refs = new Set<string>();
+  for (const arg of command.argv) {
+    for (const ref of extractInputReferences(arg)) refs.add(ref);
+  }
+  return [...refs];
+}
 
 /**
  * Optional second argument to `validateRaw`: the set of plugin types currently
@@ -230,13 +300,17 @@ function validateHooks(value: unknown, errors: ValidationError[]): void {
   for (const field of HOOK_FIELDS) {
     if (!(field in value)) continue;
     const command = value[field];
-    if (typeof command === 'string') {
-      if (command.trim().length === 0) {
-        errors.push({ path: `hooks.${field}`, message: `hooks.${field} must not be empty` });
-      }
+    if (!Array.isArray(command)) {
+      validateCommandConfig(command, `hooks.${field}`, `hooks.${field}`, errors);
       continue;
     }
-    validateStringList(command, `hooks.${field}`, `hooks.${field}`, errors);
+    if (command.length === 0) {
+      errors.push({ path: `hooks.${field}`, message: `hooks.${field} must not be empty` });
+      continue;
+    }
+    command.forEach((entry, index) => {
+      validateCommandConfig(entry, `hooks.${field}[${index}]`, `hooks.${field}[${index}]`, errors);
+    });
   }
 }
 
@@ -446,30 +520,29 @@ export function validateRaw(
       seenTaskIds.add(task.id);
 
       const hasPromptKey = typeof task.prompt === 'string';
-      const hasCommandKey = typeof task.command === 'string';
+      const hasCommandField = task.command !== undefined;
+      const hasCommandKey = commandConfigKind(task.command) !== null;
       const promptEmpty = hasPromptKey && task.prompt!.trim().length === 0;
-      const commandEmpty = hasCommandKey && task.command!.trim().length === 0;
 
       if (hasPromptKey && hasCommandKey) {
         errors.push({
           path: taskPath,
           message: `Task "${task.id}": cannot have both "prompt" and "command"`,
         });
-      } else if (!hasPromptKey && !hasCommandKey) {
+      } else if (!hasPromptKey && !hasCommandField) {
         errors.push({
           path: taskPath,
           message: `Task "${task.id}": must have "prompt" or "command"`,
         });
+      } else if (hasCommandField && !hasCommandKey) {
+        validateCommandConfig(task.command, `${taskPath}.command`, `Task "${task.id}" command`, errors);
       } else if (promptEmpty) {
         errors.push({
           path: taskPath,
           message: `Task "${task.id}": prompt content cannot be empty`,
         });
-      } else if (commandEmpty) {
-        errors.push({
-          path: taskPath,
-          message: `Task "${task.id}": command content cannot be empty`,
-        });
+      } else if (task.command !== undefined) {
+        validateCommandConfig(task.command, `${taskPath}.command`, `Task "${task.id}" command`, errors);
       }
 
       //  Field-level validations
@@ -776,7 +849,7 @@ function validateTaskPorts(
   index: TaskIndex,
   errors: ValidationError[],
 ): void {
-  const isPromptTask = typeof task.prompt === 'string' && typeof task.command !== 'string';
+  const isPromptTask = typeof task.prompt === 'string' && commandConfigKind(task.command) === null;
 
   validateBindingMap(task.inputs, `${taskPath}.inputs`, 'inputs', errors);
   validateBindingMap(task.outputs, `${taskPath}.outputs`, 'outputs', errors);
@@ -791,8 +864,8 @@ function validateTaskPorts(
   if (typeof task.prompt === 'string') {
     for (const n of extractInputReferences(task.prompt)) referenced.add(n);
   }
-  if (typeof task.command === 'string') {
-    for (const n of extractInputReferences(task.command)) referenced.add(n);
+  if (commandConfigKind(task.command) !== null) {
+    for (const n of commandInputReferences(task.command as CommandConfig)) referenced.add(n);
   }
 
   let availableInputs: Set<string>;
@@ -848,7 +921,7 @@ function collectUpstreamCommandOutputNames(
     const entry = qidIndex.get(r.qid);
     if (!entry) continue;
     // Only Command tasks contribute  - Prompt upstreams pass free text.
-    if (typeof entry.task.command !== 'string') continue;
+    if (commandConfigKind(entry.task.command) === null) continue;
     const outputs = entry.task.outputs;
     if (!outputs || typeof outputs !== 'object' || Array.isArray(outputs)) continue;
     for (const name of Object.keys(outputs)) {
@@ -885,7 +958,7 @@ function validateInferredPromptPortConflicts(
     const r = resolveTaskRef(dep, trackId, index);
     if (r.kind !== 'resolved') continue;
     const entry = qidIndex.get(r.qid);
-    if (!entry || typeof entry.task.command !== 'string') continue;
+    if (!entry || commandConfigKind(entry.task.command) === null) continue;
     const outputs = entry.task.outputs;
     if (!outputs || typeof outputs !== 'object' || Array.isArray(outputs)) continue;
     for (const name of Object.keys(outputs)) {
@@ -920,7 +993,7 @@ function validateInferredPromptPortConflicts(
   const reported = new Set<string>();
   for (const [downstreamQid, entry] of qidIndex) {
     if (downstreamQid === taskQid) continue;
-    if (typeof entry.task.command !== 'string') continue; // only downstream Commands contribute
+    if (commandConfigKind(entry.task.command) === null) continue; // only downstream Commands contribute
     const deps = dependencyRefs(entry.task);
     let dependsOnUs = false;
     for (const d of deps) {

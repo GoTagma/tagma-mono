@@ -120,7 +120,7 @@ export interface SafeModeAllowlist {
 const POLL_INTERVAL_MS = 50;
 
 const DEFAULT_SAFE_MODE_ALLOWLIST: Required<SafeModeAllowlist> = {
-  drivers: ['opencode'],
+  drivers: [],
   triggers: ['manual', 'file'],
   completions: ['exit_code', 'file_exists'],
   middlewares: ['static_context'],

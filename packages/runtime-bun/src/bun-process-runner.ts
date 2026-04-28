@@ -1,8 +1,8 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { mkdir, open, type FileHandle } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve as pathResolve } from 'node:path';
-import type { EnvPolicy, SpawnSpec, DriverPlugin, RunOptions, TaskResult } from '@tagma/core';
-import { shellArgs } from '@tagma/core';
+import type { EnvPolicy, SpawnSpec, DriverPlugin, RunOptions, TaskResult, CommandConfig } from '@tagma/core';
+import { commandToSpawnSpec } from '@tagma/core';
 
 // Delay before escalating SIGTERM to SIGKILL when killing a timed-out process.
 const SIGKILL_DELAY_MS = 3_000;
@@ -687,13 +687,10 @@ export async function runSpawn(
 }
 
 export async function runCommand(
-  command: string,
+  command: CommandConfig,
   cwd: string,
   opts: RunOptions = {},
 ): Promise<TaskResult> {
-  const spec: SpawnSpec = {
-    args: shellArgs(command),
-    cwd,
-  };
+  const spec = commandToSpawnSpec(command, cwd);
   return runSpawn(spec, null, opts);
 }

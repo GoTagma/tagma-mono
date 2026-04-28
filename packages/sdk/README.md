@@ -508,7 +508,7 @@ Properties:
 
 - `instanceId` — stable ID assigned at construction, safe to use as a Map key before `start()`
 - `runId` — engine-assigned run ID, available after the first `run_start` event (`null` until then)
-- `status` — `'idle' | 'running' | 'done' | 'aborted'` (see `PipelineRunnerStatus`)
+- `status` — `'idle' | 'running' | 'done' | 'aborted' | 'failed'` (see `PipelineRunnerStatus`). `aborted` covers caller-initiated `abort()`; `failed` covers engine errors (config/preflight/plugin-load) thrown out of `runPipeline()`
 
 ### `TriggerBlockedError` / `TriggerTimeoutError`
 

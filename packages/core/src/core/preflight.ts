@@ -1,6 +1,7 @@
 import {
   DEFAULT_PERMISSIONS,
   type CompletionPlugin,
+  type CommandConfig,
   type DriverPlugin,
   type MiddlewarePlugin,
   type PipelineConfig,
@@ -13,7 +14,7 @@ import { validatePluginConfig, type PluginRegistry } from '../registry';
 
 function isCommandOnly(
   task: TaskConfig,
-): task is TaskConfig & { readonly command: string; readonly prompt?: undefined } {
+): task is TaskConfig & { readonly command: CommandConfig; readonly prompt?: undefined } {
   return task.command !== undefined && task.prompt === undefined;
 }
 
@@ -50,6 +51,12 @@ export function preflight(
 
     if (mode === 'safe' && !isCommand && driver !== null) {
       const permissions = task.permissions ?? track.permissions ?? config.permissions ?? DEFAULT_PERMISSIONS;
+      if (driver.capabilities.enforcesPermissions !== true) {
+        errors.push(
+          `Task "${node.taskId}": safe mode blocks driver "${driverName}" ` +
+            `because it does not declare capabilities.enforcesPermissions`,
+        );
+      }
       if (permissions.write && driver.capabilities.enforcesPermissions !== true) {
         errors.push(
           `Task "${node.taskId}": safe mode blocks write permission for driver "${driverName}" ` +

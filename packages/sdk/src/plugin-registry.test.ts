@@ -494,7 +494,11 @@ describe('runPipeline — options.registry isolation', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'tagma-miss-'));
     try {
       await expect(
-        runPipeline(config, tmp, { registry: regNoOpencode, skipPluginLoading: true }),
+        runPipeline(config, tmp, {
+          registry: regNoOpencode,
+          skipPluginLoading: true,
+          mode: 'trusted',
+        }),
       ).rejects.toThrow(/driver "opencode" not registered/);
     } finally {
       rmSync(tmp, { recursive: true, force: true });
@@ -673,9 +677,32 @@ describe('runPipeline — options.registry isolation', () => {
             ],
           },
           tmp,
-          { registry: bootstrapped, runtime: fakeRuntime(), mode: 'safe', skipPluginLoading: true },
+          {
+            registry: bootstrapped,
+            runtime: fakeRuntime(),
+            mode: 'safe',
+            safeModeAllowlist: { drivers: ['opencode'] },
+            skipPluginLoading: true,
+          },
         ),
       ).rejects.toThrow(/safe mode blocks write permission for driver "opencode"/);
+
+      await expect(
+        runPipeline(
+          {
+            name: 'safe-unenforced-driver',
+            tracks: [{ id: 't', name: 'T', tasks: [{ id: 'x', prompt: 'hello' }] }],
+          },
+          tmp,
+          {
+            registry: bootstrapped,
+            runtime: fakeRuntime(),
+            mode: 'safe',
+            safeModeAllowlist: { drivers: ['opencode'] },
+            skipPluginLoading: true,
+          },
+        ),
+      ).rejects.toThrow(/safe mode blocks driver "opencode"/);
 
       await expect(
         runPipeline(

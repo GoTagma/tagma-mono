@@ -49,16 +49,18 @@ await tagma.registry.loadPlugins(['@tagma/middleware-lightrag'], process.cwd());
 
 ## Config
 
-| Field               | Type     | Default                   | Notes                                                                                 |
-| ------------------- | -------- | ------------------------- | ------------------------------------------------------------------------------------- |
-| `endpoint`          | string   | _(required)_              | LightRAG API server base URL (default port 9621)                                      |
-| `mode`              | enum     | `mix`                     | One of `local`, `global`, `hybrid`, `naive`, `mix`; matches LightRAG's server default |
-| `top_k`             | number   | `10`                      | Top-k entities (local mode) / relationships (global mode). Runtime capped at 200      |
-| `max_context_chars` | number   | `40000`                   | Maximum retrieved context characters inserted into the prompt                         |
-| `api_key_env`       | string   | _(none)_                  | Env var holding the API key; sent via `X-API-Key` header                              |
-| `timeout`           | duration | `30s`                     | Max time to wait for the LightRAG response                                            |
-| `label`             | string   | `Knowledge Graph Context` | Header rendered above the retrieved context in the final prompt                       |
-| `query`             | string   | _(task prompt)_           | Override the retrieval query; useful when the prompt itself is not a good KG query    |
+| Field               | Type     | Default                   | Notes                                                                                                                                              |
+| ------------------- | -------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `endpoint`          | string   | _(required)_              | LightRAG API server base URL (default port 9621). Must use `http`/`https` -- other schemes are rejected                                            |
+| `mode`              | enum     | `mix`                     | One of `local`, `global`, `hybrid`, `naive`, `mix`; matches LightRAG's server default                                                              |
+| `top_k`             | number   | `10`                      | Top-k entities (local mode) / relationships (global mode). Runtime capped at 200                                                                   |
+| `max_context_chars` | number   | `40000`                   | Maximum retrieved context characters inserted into the prompt                                                                                      |
+| `api_key_env`       | string   | _(none)_                  | Env var holding the API key; sent via `X-API-Key` header                                                                                           |
+| `timeout`           | duration | `30s`                     | Max time to wait for the LightRAG response                                                                                                         |
+| `required`          | boolean  | `false`                   | When `true`, an empty retrieval result fails the middleware (and implies `on_error: fail` for transport errors)                                    |
+| `on_error`          | enum     | `warn` (or `fail`)        | One of `warn`, `fail`, `skip`. Controls how transport / non-2xx errors are handled. Defaults to `warn`; defaults to `fail` when `required: true`   |
+| `label`             | string   | `Knowledge Graph Context` | Header rendered above the retrieved context in the final prompt                                                                                    |
+| `query`             | string   | _(task instruction)_      | Override the retrieval query. Defaults to the user's task instruction (`PromptDocument.task`), not the already-serialized prompt                   |
 
 ## Behavior
 
@@ -68,7 +70,7 @@ await tagma.registry.loadPlugins(['@tagma/middleware-lightrag'], process.cwd());
   - `stream: false`
 - The raw context is then prepended to the task prompt as `[<label>]\n<context>\n\n<prompt>` so the downstream driver's model consumes it as prompt augmentation. The middleware does **not** emit a `[Task]` header; that framing belongs to the driver (e.g. opencode's `agent_profile` wrapping). Emitting `[Task]` here would cause a second header to appear after the driver's wrapper, which some models interpret as an empty/cut-off message.
 - **Auth**: when `api_key_env` is set, the API key is sent via `X-API-Key` (LightRAG's server auth scheme), not `Authorization: Bearer`.
-- **Best-effort**: if the server is unreachable, returns an empty response, or errors, the middleware logs a warning and passes the original prompt through unchanged. Tasks never fail purely because the KG was offline.
+- **Failure handling**: controlled by `on_error` (default `warn`, or `fail` when `required: true`). With `warn`, transport / non-2xx errors are logged and the original prompt is passed through unchanged. With `fail`, the middleware throws and the task fails. With `skip`, errors are swallowed silently. An empty retrieval result triggers `fail` only when `required: true` or `on_error: fail`; otherwise it follows the same `warn`/`skip` policy as transport errors.
 - The prompt shape produced by this middleware (middleware output):
 
   ```

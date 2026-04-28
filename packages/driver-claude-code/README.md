@@ -47,7 +47,7 @@ await tagma.registry.loadPlugins(['@tagma/driver-claude-code'], process.cwd());
 - **Session resume**: native support via `--resume <session_id>` when `continue_from` references a task with a known session ID
 - **System prompt**: supported via `--append-system-prompt` (driven by `agent_profile`)
 - **Permissions**: mapped to `--permission-mode` (`bypassPermissions` when `execute: true`, otherwise `dontAsk` with an explicit `--allowedTools` whitelist)
-- **Reasoning effort**: passed through via `--effort` (accepts `low|medium|high` — tagma's canonical vocabulary)
+- **Reasoning effort**: any non-empty `reasoning_effort` string is forwarded as `--effort <value>`. Tagma's canonical vocabulary is `low|medium|high`, but provider-specific tiers (e.g. `max`) pass through unchanged — the Claude Code CLI itself rejects values it doesn't recognize
 - **Windows**: auto-discovers Git Bash and sets `CLAUDE_CODE_GIT_BASH_PATH` when needed
 
 ## License

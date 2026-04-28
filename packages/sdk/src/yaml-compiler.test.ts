@@ -197,7 +197,8 @@ pipeline:
         { path: 'plugins', message: 'plugins must be an array of strings' },
         {
           path: 'hooks.task_start',
-          message: 'hooks.task_start must be an array of strings',
+          message:
+            'hooks.task_start must be a non-empty shell string, { shell: string }, or { argv: string[] }',
         },
         { path: 'tracks[0].middlewares', message: 'middlewares must be an array of objects' },
         {

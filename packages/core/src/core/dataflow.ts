@@ -1,6 +1,7 @@
 import type {
   PortDef,
   TaskConfig,
+  CommandConfig,
   TaskInputBindings,
   TaskOutputBindings,
   TaskPorts,
@@ -17,7 +18,7 @@ function isPromptTaskConfig(
 
 function isCommandTaskConfig(
   task: TaskConfig,
-): task is TaskConfig & { readonly command: string; readonly prompt?: undefined } {
+): task is TaskConfig & { readonly command: CommandConfig; readonly prompt?: undefined } {
   return task.command !== undefined && task.prompt === undefined;
 }
 

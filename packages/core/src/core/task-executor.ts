@@ -1,7 +1,9 @@
 import {
+  linkAbort,
   TriggerBlockedError,
   TriggerTimeoutError,
   type CompletionPlugin,
+  type CommandConfig,
   type DriverContext,
   type DriverPlugin,
   type MiddlewareContext,
@@ -15,6 +17,7 @@ import {
 } from '../types';
 import type { PluginRegistry } from '../registry';
 import { parseDuration, nowISO } from '../utils';
+import { commandLabel } from '../command';
 import {
   promptDocumentFromString,
   serializePromptDocument,
@@ -40,16 +43,37 @@ class TaskDeadlineExceededError extends Error {
 
 function isPromptTaskConfig(task: {
   readonly prompt?: string;
-  readonly command?: string;
+  readonly command?: CommandConfig;
 }): task is { readonly prompt: string; readonly command?: undefined } {
   return task.prompt !== undefined && task.command === undefined;
 }
 
 function isCommandTaskConfig(task: {
-  readonly command?: string;
+  readonly command?: CommandConfig;
   readonly prompt?: string;
-}): task is { readonly command: string; readonly prompt?: undefined } {
+}): task is { readonly command: CommandConfig; readonly prompt?: undefined } {
   return task.command !== undefined && task.prompt === undefined;
+}
+
+function substituteCommandInputs(
+  command: CommandConfig,
+  inputs: Readonly<Record<string, unknown>>,
+): { readonly command: CommandConfig; readonly unresolved: readonly string[] } {
+  if (typeof command === 'string') {
+    const { text, unresolved } = substituteInputs(command, inputs);
+    return { command: text, unresolved };
+  }
+  if ('shell' in command) {
+    const { text, unresolved } = substituteInputs(command.shell, inputs);
+    return { command: { shell: text }, unresolved };
+  }
+  const unresolved = new Set<string>();
+  const argv = command.argv.map((arg) => {
+    const result = substituteInputs(arg, inputs);
+    for (const name of result.unresolved) unresolved.add(name);
+    return result.text;
+  });
+  return { command: { argv }, unresolved: [...unresolved] };
 }
 
 function isTriggerWatchHandle(value: unknown): value is TriggerWatchHandle {
@@ -127,6 +151,49 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
   const remainingTaskTimeoutMs = (): number | undefined => {
     if (taskTimeoutMs === undefined) return undefined;
     return Math.max(0, taskTimeoutMs - (Date.now() - taskDeadlineStartedAtMs));
+  };
+  const withTaskDeadline = async <T>(
+    phase: string,
+    run: (signal: AbortSignal) => Promise<T>,
+  ): Promise<T> => {
+    const remaining = remainingTaskTimeoutMs();
+    if (remaining !== undefined && remaining <= 0) {
+      throw new TaskDeadlineExceededError(
+        `Task "${taskId}" exceeded timeout ${task.timeout} before ${phase}`,
+      );
+    }
+    const phaseController = new AbortController();
+    let timedOut = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const unlinkParent = linkAbort(ctx.abortController.signal, () => phaseController.abort());
+    let unlinkPhase = () => {
+      /* assigned below */
+    };
+    const abortPromise = new Promise<never>((_, reject) => {
+      unlinkPhase = linkAbort(phaseController.signal, () => {
+        unlinkPhase();
+        reject(
+          timedOut
+            ? new TaskDeadlineExceededError(
+                `Task "${taskId}" exceeded timeout ${task.timeout} during ${phase}`,
+              )
+            : new Error('Pipeline aborted'),
+        );
+      });
+    });
+    if (remaining !== undefined) {
+      timer = setTimeout(() => {
+        timedOut = true;
+        phaseController.abort();
+      }, remaining);
+    }
+    try {
+      return await Promise.race([run(phaseController.signal), abortPromise]);
+    } finally {
+      if (timer !== null) clearTimeout(timer);
+      unlinkParent();
+      unlinkPhase();
+    }
   };
 
   // 2. Check trigger
@@ -243,21 +310,56 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
   }
 
   // 3. task_start hook (gate)
-  const hookResult = await executeHook(
-    config.hooks,
-    'task_start',
-    buildTaskContext(
-      'task_start',
-      pipelineInfo,
-      ctx.trackInfoOf(taskId),
-      ctx.buildTaskInfoObj(taskId),
-    ),
-    ctx.runtime,
-    workDir,
-    ctx.abortController.signal,
-    log,
-    ctx.envPolicy,
-  );
+  let hookResult;
+  try {
+    hookResult = await withTaskDeadline('task_start hook', (signal) =>
+      executeHook(
+        config.hooks,
+        'task_start',
+        buildTaskContext(
+          'task_start',
+          pipelineInfo,
+          ctx.trackInfoOf(taskId),
+          ctx.buildTaskInfoObj(taskId),
+        ),
+        ctx.runtime,
+        workDir,
+        signal,
+        log,
+        ctx.envPolicy,
+        remainingTaskTimeoutMs(),
+      ),
+    );
+  } catch (err) {
+    const isDeadlineTimeout = err instanceof TaskDeadlineExceededError;
+    const errMsg = err instanceof Error ? (err.stack ?? err.message) : String(err);
+    log.error(`[task:${taskId}]`, `task_start hook failed: ${errMsg}`);
+    state.result = {
+      exitCode: -1,
+      stdout: '',
+      stderr: errMsg,
+      stdoutPath: null,
+      stderrPath: null,
+      stdoutBytes: 0,
+      stderrBytes: errMsg.length,
+      durationMs: 0,
+      sessionId: null,
+      normalizedOutput: null,
+      failureKind: isDeadlineTimeout ? 'timeout' : ctx.abortReason !== null ? 'aborted' : 'spawn_error',
+    };
+    state.finishedAt = nowISO();
+    ctx.setTaskStatus(taskId, isDeadlineTimeout ? 'timeout' : ctx.abortReason !== null ? 'skipped' : 'failed');
+    try {
+      await ctx.fireHook(taskId, 'task_failure', log);
+    } catch (hookErr) {
+      log.error(
+        `[task:${taskId}]`,
+        `hook execution failed: ${hookErr instanceof Error ? hookErr.message : String(hookErr)}`,
+      );
+    }
+    applyStopAllAfterFailure(ctx, taskId);
+    return;
+  }
   if (hookResult.exitCode !== 0 || config.hooks?.task_start) {
     log.debug(
       `[task:${taskId}]`,
@@ -424,7 +526,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
   ctx.setTaskStatus(taskId, 'running');
   log.info(
     `[task:${taskId}]`,
-    isCommandTaskConfig(task) ? `running: ${task.command}` : `running (driver task)`,
+    isCommandTaskConfig(task) ? `running: ${commandLabel(task.command)}` : `running (driver task)`,
   );
 
   // File-only: resolved config for this task
@@ -485,14 +587,17 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       // errors, so the only way to land here with an unresolved is an
       // optional input that had no upstream producer and no default,
       // which we surface in the log.
-      const { text: expandedCommand, unresolved } = substituteInputs(task.command, resolvedInputs);
+      const { command: expandedCommand, unresolved } = substituteCommandInputs(
+        task.command,
+        resolvedInputs,
+      );
       if (unresolved.length > 0) {
         log.debug(
           `[task:${taskId}]`,
           `command placeholders rendered empty: ${unresolved.join(', ')}`,
         );
       }
-      log.debug(`[task:${taskId}]`, `command: ${expandedCommand}`);
+      log.debug(`[task:${taskId}]`, `command: ${commandLabel(expandedCommand)}`);
       result = await ctx.runtime.runCommand(expandedCommand, task.cwd ?? workDir, runOpts);
     } else {
       // AI task: apply middleware chain against a structured PromptDocument.
@@ -527,11 +632,10 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       const mws = task.middlewares !== undefined ? task.middlewares : track.middlewares;
       if (mws && mws.length > 0) {
         log.debug(`[task:${taskId}]`, `middleware chain: ${mws.map((m) => m.type).join(' → ')}`);
-        const mwCtx: MiddlewareContext = {
+        const mwCtxBase: Omit<MiddlewareContext, 'signal'> = {
           task,
           track,
           workDir: task.cwd ?? workDir,
-          signal: ctx.abortController.signal,
           ...(taskDeadlineMs !== undefined ? { deadlineMs: taskDeadlineMs } : {}),
         };
         for (const mwConfig of mws) {
@@ -542,7 +646,12 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
           if (typeof mwPlugin.enhanceDoc !== 'function') {
             throw new Error(`middleware "${mwConfig.type}" must provide enhanceDoc`);
           }
-          const next = await mwPlugin.enhanceDoc(doc, mwConfig as Record<string, unknown>, mwCtx);
+          const next = await withTaskDeadline(`middleware "${mwConfig.type}"`, (signal) =>
+            mwPlugin.enhanceDoc(doc, mwConfig as Record<string, unknown>, {
+              ...mwCtxBase,
+              signal,
+            }),
+          );
           if (
             !next ||
             typeof next !== 'object' ||
@@ -595,11 +704,13 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
         prompt,
         continue_from: node.resolvedContinueFrom,
       };
-      const driverCtx: DriverContext = {
+      const buildDriverCtx = (signal: AbortSignal): DriverContext => ({
         sessionMap: ctx.sessionMap,
         sessionDriverMap: ctx.sessionDriverMap,
         normalizedMap: ctx.normalizedMap,
         workDir: task.cwd ?? workDir,
+        signal,
+        ...(taskDeadlineMs !== undefined ? { deadlineMs: taskDeadlineMs } : {}),
         // Structured view for drivers that want fine-grained control
         // over serialization (e.g. inserting [Previous Output] between
         // contexts and task). Drivers that read task.prompt see the
@@ -608,8 +719,10 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
         // Resolved input values keyed by input name. Typed bindings have
         // already been coerced when a binding declares `type`.
         inputs: resolvedInputs,
-      };
-      const spec = await driver.buildCommand(enrichedTask, track, driverCtx);
+      });
+      const spec = await withTaskDeadline(`driver "${driverName}" buildCommand`, (signal) =>
+        driver.buildCommand(enrichedTask, track, buildDriverCtx(signal)),
+      );
       log.debug(`[task:${taskId}]`, `driver=${driverName}`);
       log.debug(`[task:${taskId}]`, `spawn args: ${JSON.stringify(spec.args)}`);
       if (spec.cwd) log.debug(`[task:${taskId}]`, `spawn cwd: ${spec.cwd}`);
@@ -632,16 +745,16 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       terminalStatus = 'failed';
     } else if (task.completion) {
       const plugin = registry.getHandler<CompletionPlugin>('completions', task.completion.type);
-      const completionCtx = {
+      const completionCtxBase = {
         workDir: task.cwd ?? workDir,
-        signal: ctx.abortController.signal,
         runtime: ctx.runtime,
         envPolicy: ctx.envPolicy,
       };
-      const passed = await plugin.check(
-        task.completion as Record<string, unknown>,
-        result,
-        completionCtx,
+      const passed = await withTaskDeadline(`completion "${task.completion.type}"`, (signal) =>
+        plugin.check(task.completion as Record<string, unknown>, result, {
+          ...completionCtxBase,
+          signal,
+        }),
       );
       // R4: strict boolean check. Truthy strings/numbers used to be coerced
       // to success — a check returning "ok" would let a failing task pass.
@@ -784,6 +897,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
     }
   } catch (err: unknown) {
     const isDeadlineTimeout = err instanceof TaskDeadlineExceededError;
+    const isPipelineAbort = !isDeadlineTimeout && ctx.abortReason !== null;
     const errMsg = err instanceof Error ? (err.stack ?? err.message) : String(err);
     log.error(`[task:${taskId}]`, `failed before execution: ${errMsg}`);
     state.result = {
@@ -800,10 +914,10 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       // H2: Engine-level pre-execution errors (driver throw, middleware
       // throw, getHandler 404) classify as spawn_error — the process never
       // ran, so calling them "timeout" was actively misleading.
-      failureKind: isDeadlineTimeout ? 'timeout' : 'spawn_error',
+      failureKind: isDeadlineTimeout ? 'timeout' : isPipelineAbort ? 'aborted' : 'spawn_error',
     };
     state.finishedAt = nowISO();
-    ctx.setTaskStatus(taskId, isDeadlineTimeout ? 'timeout' : 'failed');
+    ctx.setTaskStatus(taskId, isDeadlineTimeout ? 'timeout' : isPipelineAbort ? 'skipped' : 'failed');
   }
 
   // 7. Fire hooks

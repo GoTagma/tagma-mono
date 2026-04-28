@@ -66,7 +66,7 @@ import type {
 
 - `TaskStatus` -- `'idle' | 'waiting' | 'running' | 'success' | 'failed' | 'timeout' | 'skipped' | 'blocked'`
 - `TaskResult` -- exit code, bounded `stdout`/`stderr` tails, on-disk `stdoutPath`/`stderrPath`, total `stdoutBytes`/`stderrBytes`, duration, session ID, normalized output, failure kind, and the published `outputs` map when a task declares output bindings
-- `TaskFailureKind` -- distinguishes _why_ a task didn't return exit 0: `'timeout' | 'spawn_error' | 'exit_nonzero' | null`
+- `TaskFailureKind` -- distinguishes _why_ a task didn't return exit 0: `'timeout' | 'aborted' | 'spawn_error' | 'exit_nonzero' | 'parse_error' | 'output_error' | null`. `'aborted'` covers external abort and `on_failure: stop_all`; `'parse_error'` covers driver `parseResult` failures; `'output_error'` covers post-success output-extraction failures
 - `TaskState` -- mutable engine state for a running task (config, status, result, timestamps)
 - `SpawnSpec` -- args, stdin, cwd, env returned by a driver
 - `DriverCapabilities` -- declares session resume, system prompt, output format support
