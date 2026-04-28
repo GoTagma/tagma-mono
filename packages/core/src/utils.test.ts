@@ -30,6 +30,25 @@ test('PIPELINE_SHELL override is evaluated per call instead of cached', () => {
   }
 });
 
+if (process.platform === 'win32') {
+  test('Windows automatic shell does not prefer Git Bash over native shells', () => {
+    const previousShell = process.env.PIPELINE_SHELL;
+    try {
+      delete process.env.PIPELINE_SHELL;
+      _resetShellCache();
+      const args = shellArgs('Get-ChildItem');
+      expect(['-Command', '/c']).toContain(args[1]);
+    } finally {
+      if (previousShell === undefined) {
+        delete process.env.PIPELINE_SHELL;
+      } else {
+        process.env.PIPELINE_SHELL = previousShell;
+      }
+      _resetShellCache();
+    }
+  });
+}
+
 test('validatePath rejects a future file under a symlinked parent outside the project root', () => {
   const root = join(
     tmpdir(),

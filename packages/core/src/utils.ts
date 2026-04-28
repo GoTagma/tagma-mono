@@ -158,8 +158,8 @@ export function nowISO(): string {
 //
 // Platform-aware shell resolution.
 // Resolution order:
-//   1. Env override: PIPELINE_SHELL="bash" or PIPELINE_SHELL="cmd" etc.
-//   2. Windows: prefer sh (Git Bash / MSYS2) if on PATH, fall back to cmd.exe
+//   1. Env override: PIPELINE_SHELL="bash" or "cmd" or "powershell" etc.
+//   2. Windows: prefer PowerShell, fall back to cmd.exe
 //   3. Unix: sh
 //
 // Automatic resolution is cached; env overrides are intentionally not cached.
@@ -199,24 +199,15 @@ function detectShell(): { kind: ShellKind; path: string } {
     return { kind: 'sh', path: 'sh' };
   }
 
-  // Windows: prefer a POSIX shell when one is on PATH because quoting
-  // command strings with nested absolute paths is more predictable through
-  // `sh -c` than through `cmd.exe /c`. Hosts can still force cmd or
-  // PowerShell with PIPELINE_SHELL.
-  const pathEnv = process.env.PATH ?? '';
-  const pathExt = (process.env.PATHEXT ?? '.EXE;.CMD;.BAT').split(';');
-  const dirs = pathEnv.split(';').filter(Boolean);
-  for (const dir of dirs) {
-    for (const ext of ['', ...pathExt]) {
-      const candidate = `${dir}\\sh${ext}`;
-      if (existsSync(candidate)) {
-        return { kind: 'sh', path: candidate };
-      }
-    }
-  }
+  // Windows command tasks should use a native Windows shell by default. Git
+  // Bash frequently exists on developer machines, but silently selecting it
+  // makes the editor's Windows guidance ("use PowerShell/cmd syntax") false.
+  // Users who intentionally want POSIX shell behavior can set PIPELINE_SHELL.
+  const systemRoot = process.env.SystemRoot ?? 'C:\\Windows';
+  const powershell = `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
+  if (existsSync(powershell)) return { kind: 'powershell', path: powershell };
 
   // Fallback: cmd.exe is always present on Windows.
-  const systemRoot = process.env.SystemRoot ?? 'C:\\Windows';
   return { kind: 'cmd', path: `${systemRoot}\\System32\\cmd.exe` };
 }
 

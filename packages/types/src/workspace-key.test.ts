@@ -15,13 +15,13 @@ describe('normalizeWorkspaceKey', () => {
   });
 
   if (process.platform === 'win32') {
-    test('lowercases Windows drive letter', () => {
-      expect(normalizeWorkspaceKey('C:\\Users\\Foo')).toBe('c:\\Users\\Foo');
+    test('lowercases Windows paths for case-insensitive workspace keys', () => {
+      expect(normalizeWorkspaceKey('C:\\Users\\Foo')).toBe('c:\\users\\foo');
       expect(normalizeWorkspaceKey('c:\\users\\foo')).toBe('c:\\users\\foo');
     });
 
-    test('collapses upper/lower drive variants to the same key', () => {
-      expect(normalizeWorkspaceKey('C:\\Foo\\Bar')).toBe(normalizeWorkspaceKey('c:\\Foo\\Bar'));
+    test('collapses upper/lower path variants to the same key', () => {
+      expect(normalizeWorkspaceKey('C:\\Foo\\Bar')).toBe(normalizeWorkspaceKey('c:\\foo\\bar'));
     });
   }
 });

@@ -9,6 +9,7 @@
 // the two processes — see the historical inline duplication that
 // motivated extracting this helper.
 
+import { existsSync, realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 /**
@@ -21,9 +22,16 @@ import { resolve } from 'node:path';
  * processes would otherwise drift on the same physical directory.
  */
 export function normalizeWorkspaceKey(rawPath: string): string {
-  const resolved = resolve(rawPath);
-  if (process.platform === 'win32' && /^[A-Z]:/.test(resolved)) {
-    return resolved[0]!.toLowerCase() + resolved.slice(1);
+  let resolved = resolve(rawPath);
+  try {
+    if (existsSync(resolved)) {
+      resolved = realpathSync.native(resolved);
+    }
+  } catch {
+    /* keep the string-resolved path */
+  }
+  if (process.platform === 'win32') {
+    return resolved.toLowerCase();
   }
   return resolved;
 }
