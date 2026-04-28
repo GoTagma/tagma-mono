@@ -5,7 +5,7 @@ import type {
   TaskConfig,
   TrackConfig,
 } from './types';
-import { buildTaskIndex, qualifyTaskId, resolveTaskRef } from './task-ref';
+import { buildTaskIndex, isValidTaskId, qualifyTaskId, resolveTaskRef } from './task-ref';
 
 export interface DagNode {
   readonly taskId: string; // fully qualified: track_id.task_id or just task_id
@@ -195,11 +195,20 @@ export interface RawDag {
  */
 export function buildRawDag(config: RawPipelineConfig): RawDag {
   const nodes = new Map<string, RawDagNode>();
+  const tracks = Array.isArray(config.tracks) ? config.tracks : [];
 
   // 1. Register all concrete tasks. Duplicates are skipped (not thrown) so
   //    partially-typed editor state doesn't produce a hard error.
-  for (const track of config.tracks) {
+  for (const track of tracks) {
+    if (
+      !track ||
+      typeof track !== 'object' ||
+      !isValidTaskId(track.id) ||
+      !Array.isArray(track.tasks)
+    )
+      continue;
     for (const task of track.tasks) {
+      if (!task || typeof task !== 'object' || !isValidTaskId(task.id)) continue;
       const qid = qualifyTaskId(track.id, task.id);
       if (nodes.has(qid)) continue;
       nodes.set(qid, { taskId: qid, trackId: track.id, rawTask: task, dependsOn: [] });
@@ -216,21 +225,32 @@ export function buildRawDag(config: RawPipelineConfig): RawDag {
   // 2. Resolve dependency refs leniently (missing / ambiguous refs are skipped)
   const edges: { from: string; to: string }[] = [];
 
-  for (const track of config.tracks) {
+  for (const track of tracks) {
+    if (
+      !track ||
+      typeof track !== 'object' ||
+      !isValidTaskId(track.id) ||
+      !Array.isArray(track.tasks)
+    )
+      continue;
     for (const task of track.tasks) {
+      if (!task || typeof task !== 'object' || !isValidTaskId(task.id)) continue;
       const qid = qualifyTaskId(track.id, task.id);
       const node = nodes.get(qid);
       if (!node || node.rawTask !== task) continue;
       const deps: string[] = [];
 
-      for (const ref of task.depends_on ?? []) {
+      const dependsOn = Array.isArray(task.depends_on)
+        ? task.depends_on.filter((ref: unknown): ref is string => typeof ref === 'string')
+        : [];
+      for (const ref of dependsOn) {
         const resolved = tryResolve(ref, track.id);
         if (resolved && !deps.includes(resolved)) {
           deps.push(resolved);
           edges.push({ from: resolved, to: qid });
         }
       }
-      if (task.continue_from) {
+      if (typeof task.continue_from === 'string' && task.continue_from.length > 0) {
         const resolved = tryResolve(task.continue_from, track.id);
         if (resolved && !deps.includes(resolved)) {
           deps.push(resolved);

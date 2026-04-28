@@ -2,8 +2,14 @@ import { expect, test } from 'bun:test';
 import { mkdirSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { _resetShellCache, shellArgs } from './utils';
-import { validatePath } from './utils';
+import { _resetShellCache, parseDuration, shellArgs, validatePath } from './utils';
+
+test('parseDuration rejects timer values above the runtime-safe setTimeout limit', () => {
+  expect(() => parseDuration('25d')).toThrow(/exceeds maximum supported timer value/);
+  expect(() => parseDuration('999999999999999999999999d')).toThrow(
+    /exceeds maximum supported timer value/,
+  );
+});
 
 test('PIPELINE_SHELL override is evaluated per call instead of cached', () => {
   const previousShell = process.env.PIPELINE_SHELL;

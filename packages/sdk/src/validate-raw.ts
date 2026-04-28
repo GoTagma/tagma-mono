@@ -25,10 +25,12 @@ interface QidEntry {
 function buildQidIndex(config: RawPipelineConfig): Map<string, QidEntry> {
   const idx = new Map<string, QidEntry>();
   for (const track of config.tracks ?? []) {
-    if (!track.id) continue;
+    if (!track || typeof track !== 'object') continue;
+    if (!isValidTaskId(track.id)) continue;
     if (!Array.isArray(track.tasks)) continue;
     for (const task of track.tasks ?? []) {
-      if (!task.id) continue;
+      if (!task || typeof task !== 'object') continue;
+      if (!isValidTaskId(task.id)) continue;
       idx.set(qualifyTaskId(track.id, task.id), { track, task });
     }
   }
@@ -36,8 +38,47 @@ function buildQidIndex(config: RawPipelineConfig): Map<string, QidEntry> {
 }
 
 const DURATION_RE = /^(\d*\.?\d+)\s*(s|m|h|d)$/;
-function isValidDuration(input: string): boolean {
-  return DURATION_RE.test(input.trim());
+const MAX_TIMER_DURATION_MS = 2_147_483_647;
+
+type DurationValidation =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: 'format' | 'range' };
+
+function validateDuration(input: unknown): DurationValidation {
+  if (typeof input !== 'string') return { ok: false, reason: 'format' };
+  const match = DURATION_RE.exec(input.trim());
+  if (!match) return { ok: false, reason: 'format' };
+  const value = parseFloat(match[1]);
+  const unit = match[2];
+  const ms = (() => {
+    switch (unit) {
+      case 's':
+        return value * 1000;
+      case 'm':
+        return value * 60_000;
+      case 'h':
+        return value * 3_600_000;
+      case 'd':
+        return value * 86_400_000;
+      default:
+        return Number.NaN;
+    }
+  })();
+  if (!Number.isFinite(ms) || ms > MAX_TIMER_DURATION_MS) {
+    return { ok: false, reason: 'range' };
+  }
+  return { ok: true };
+}
+
+function durationErrorMessage(
+  input: unknown,
+  validation: Exclude<DurationValidation, { ok: true }>,
+): string {
+  const label = String(input);
+  if (validation.reason === 'range') {
+    return `Duration "${label}" exceeds maximum supported timeout of ${MAX_TIMER_DURATION_MS}ms.`;
+  }
+  return `Invalid duration format "${label}". Expected e.g. "30s", "5m", "1h".`;
 }
 
 // D8: IDs may only contain letters, digits, underscores, and hyphens, and must
@@ -99,6 +140,107 @@ export interface ValidationError {
   severity?: ValidationSeverity;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function validateStringList(
+  value: unknown,
+  path: string,
+  label: string,
+  errors: ValidationError[],
+): readonly string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    errors.push({ path, message: `${label} must be an array of strings` });
+    return [];
+  }
+  const refs: string[] = [];
+  for (let i = 0; i < value.length; i++) {
+    const item = value[i];
+    if (typeof item !== 'string' || item.trim().length === 0) {
+      errors.push({ path: `${path}[${i}]`, message: `${label} entries must be non-empty strings` });
+      continue;
+    }
+    refs.push(item);
+  }
+  return refs;
+}
+
+function dependencyRefs(task: RawTaskConfig): readonly string[] {
+  return Array.isArray(task.depends_on)
+    ? task.depends_on.filter((dep): dep is string => typeof dep === 'string' && dep.length > 0)
+    : [];
+}
+
+function validatePluginRef(
+  value: unknown,
+  path: string,
+  label: string,
+  errors: ValidationError[],
+): string | null {
+  if (value === undefined) return null;
+  if (!isRecord(value)) {
+    errors.push({ path, message: `${label} must be an object with a non-empty type` });
+    return null;
+  }
+  if (!isNonEmptyString(value.type)) {
+    errors.push({ path: `${path}.type`, message: `${label}.type must be a non-empty string` });
+    return null;
+  }
+  return value.type;
+}
+
+function validateMiddlewareList(
+  value: unknown,
+  path: string,
+  errors: ValidationError[],
+): readonly { readonly index: number; readonly type: string }[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    errors.push({ path, message: 'middlewares must be an array of objects' });
+    return [];
+  }
+  const types: { index: number; type: string }[] = [];
+  for (let i = 0; i < value.length; i++) {
+    const type = validatePluginRef(value[i], `${path}[${i}]`, 'middleware', errors);
+    if (type !== null) types.push({ index: i, type });
+  }
+  return types;
+}
+
+const HOOK_FIELDS = [
+  'pipeline_start',
+  'task_start',
+  'task_success',
+  'task_failure',
+  'pipeline_complete',
+  'pipeline_error',
+] as const;
+
+function validateHooks(value: unknown, errors: ValidationError[]): void {
+  if (value === undefined) return;
+  if (!isRecord(value)) {
+    errors.push({ path: 'hooks', message: 'hooks must be an object map' });
+    return;
+  }
+  for (const field of HOOK_FIELDS) {
+    if (!(field in value)) continue;
+    const command = value[field];
+    if (typeof command === 'string') {
+      if (command.trim().length === 0) {
+        errors.push({ path: `hooks.${field}`, message: `hooks.${field} must not be empty` });
+      }
+      continue;
+    }
+    validateStringList(command, `hooks.${field}`, `hooks.${field}`, errors);
+  }
+}
+
 /**
  * Validate a raw pipeline config.
  * Checks structure, required fields, prompt/command exclusivity,
@@ -131,7 +273,7 @@ export function validateRaw(
     : null;
 
   //  Top level
-  if (!config.name?.trim()) {
+  if (!isNonEmptyString(config.name)) {
     errors.push({ path: 'name', message: 'Pipeline name is required' });
   }
   if (config.mode && !VALID_PIPELINE_MODES.has(config.mode)) {
@@ -146,12 +288,17 @@ export function validateRaw(
       message: `Invalid reasoning_effort "${config.reasoning_effort}". Expected "low", "medium", or "high".`,
     });
   }
-  if (config.timeout && !isValidDuration(config.timeout)) {
-    errors.push({
-      path: 'timeout',
-      message: `Invalid duration format "${config.timeout}". Expected e.g. "30s", "5m", "1h".`,
-    });
+  if (config.timeout !== undefined) {
+    const validation = validateDuration(config.timeout);
+    if (!validation.ok) {
+      errors.push({
+        path: 'timeout',
+        message: durationErrorMessage(config.timeout, validation),
+      });
+    }
   }
+  validateStringList(config.plugins, 'plugins', 'plugins', errors);
+  validateHooks(config.hooks, errors);
   if (knownDrivers && config.driver && !knownDrivers.has(config.driver)) {
     errors.push({
       path: 'driver',
@@ -190,7 +337,7 @@ export function validateRaw(
     }
     const track = maybeTrack as RawTrackConfig;
 
-    if (!track.id?.trim()) {
+    if (!isNonEmptyString(track.id)) {
       errors.push({ path: `${trackPath}.id`, message: 'Track id is required' });
     } else if (!isValidId(track.id)) {
       errors.push({
@@ -202,7 +349,7 @@ export function validateRaw(
     } else {
       seenTrackIds.add(track.id);
     }
-    if (!track.name?.trim()) {
+    if (!isNonEmptyString(track.name)) {
       errors.push({ path: `${trackPath}.name`, message: 'Track name is required' });
     }
     if (track.on_failure && !VALID_ON_FAILURE.has(track.on_failure)) {
@@ -229,13 +376,17 @@ export function validateRaw(
     // Track-level middlewares can reference a plugin that was uninstalled
     // after the YAML was written  - surface a warning so the user notices
     // before hitting Run.
-    if (knownMiddlewares && track.middlewares) {
-      for (let mi = 0; mi < track.middlewares.length; mi++) {
-        const mw = track.middlewares[mi];
-        if (mw?.type && !knownMiddlewares.has(mw.type)) {
+    const trackMiddlewareTypes = validateMiddlewareList(
+      track.middlewares,
+      `${trackPath}.middlewares`,
+      errors,
+    );
+    if (knownMiddlewares) {
+      for (const { index: mi, type } of trackMiddlewareTypes) {
+        if (!knownMiddlewares.has(type)) {
           errors.push({
             path: `${trackPath}.middlewares[${mi}].type`,
-            message: `Middleware type "${mw.type}" is not registered. Install the plugin (e.g. @tagma/middleware-${mw.type}) or remove the reference  - the pipeline will fail at run time.`,
+            message: `Middleware type "${type}" is not registered. Install the plugin (e.g. @tagma/middleware-${type}) or remove the reference  - the pipeline will fail at run time.`,
             severity: 'warning',
           });
         }
@@ -260,10 +411,15 @@ export function validateRaw(
     //  Per-task validation
     const seenTaskIds = new Set<string>();
     for (let ki = 0; ki < track.tasks.length; ki++) {
-      const task = track.tasks[ki];
       const taskPath = `${trackPath}.tasks[${ki}]`;
+      const maybeTask = track.tasks[ki] as unknown;
+      if (!isRecord(maybeTask)) {
+        errors.push({ path: taskPath, message: `Task ${ki} must be an object` });
+        continue;
+      }
+      const task = maybeTask as unknown as RawTaskConfig;
 
-      if (!task.id?.trim()) {
+      if (!isNonEmptyString(task.id)) {
         errors.push({ path: `${taskPath}.id`, message: 'Task id is required' });
         continue; // Can't check further without an id
       }
@@ -310,11 +466,14 @@ export function validateRaw(
       }
 
       //  Field-level validations
-      if (task.timeout && !isValidDuration(task.timeout)) {
-        errors.push({
-          path: `${taskPath}.timeout`,
-          message: `Invalid duration format "${task.timeout}". Expected e.g. "30s", "5m", "1h".`,
-        });
+      if (task.timeout !== undefined) {
+        const validation = validateDuration(task.timeout);
+        if (!validation.ok) {
+          errors.push({
+            path: `${taskPath}.timeout`,
+            message: durationErrorMessage(task.timeout, validation),
+          });
+        }
       }
       if (task.reasoning_effort && !VALID_REASONING_EFFORT.has(task.reasoning_effort)) {
         errors.push({
@@ -335,31 +494,39 @@ export function validateRaw(
       // Only fire when the host supplied a `knownTypes` snapshot, so offline
       // validation stays quiet. The messages deliberately name the npm
       // scope so users can copy-paste the install command.
-      if (knownTriggers && task.trigger?.type && !knownTriggers.has(task.trigger.type)) {
+      const triggerType = validatePluginRef(task.trigger, `${taskPath}.trigger`, 'trigger', errors);
+      const completionType = validatePluginRef(
+        task.completion,
+        `${taskPath}.completion`,
+        'completion',
+        errors,
+      );
+      const taskMiddlewareTypes = validateMiddlewareList(
+        task.middlewares,
+        `${taskPath}.middlewares`,
+        errors,
+      );
+
+      if (knownTriggers && triggerType !== null && !knownTriggers.has(triggerType)) {
         errors.push({
           path: `${taskPath}.trigger.type`,
-          message: `Trigger type "${task.trigger.type}" is not registered. Install the plugin (e.g. @tagma/trigger-${task.trigger.type}) or the task will fail at run time.`,
+          message: `Trigger type "${triggerType}" is not registered. Install the plugin (e.g. @tagma/trigger-${triggerType}) or the task will fail at run time.`,
           severity: 'warning',
         });
       }
-      if (
-        knownCompletions &&
-        task.completion?.type &&
-        !knownCompletions.has(task.completion.type)
-      ) {
+      if (knownCompletions && completionType !== null && !knownCompletions.has(completionType)) {
         errors.push({
           path: `${taskPath}.completion.type`,
-          message: `Completion type "${task.completion.type}" is not registered. Install the plugin (e.g. @tagma/completion-${task.completion.type}) or the task will fail at run time.`,
+          message: `Completion type "${completionType}" is not registered. Install the plugin (e.g. @tagma/completion-${completionType}) or the task will fail at run time.`,
           severity: 'warning',
         });
       }
-      if (knownMiddlewares && task.middlewares) {
-        for (let mi = 0; mi < task.middlewares.length; mi++) {
-          const mw = task.middlewares[mi];
-          if (mw?.type && !knownMiddlewares.has(mw.type)) {
+      if (knownMiddlewares) {
+        for (const { index: mi, type } of taskMiddlewareTypes) {
+          if (!knownMiddlewares.has(type)) {
             errors.push({
               path: `${taskPath}.middlewares[${mi}].type`,
-              message: `Middleware type "${mw.type}" is not registered. Install the plugin (e.g. @tagma/middleware-${mw.type}) or remove the reference  - the pipeline will fail at run time.`,
+              message: `Middleware type "${type}" is not registered. Install the plugin (e.g. @tagma/middleware-${type}) or remove the reference  - the pipeline will fail at run time.`,
               severity: 'warning',
             });
           }
@@ -367,11 +534,25 @@ export function validateRaw(
       }
 
       //  Port declaration checks
+      const deps = validateStringList(
+        task.depends_on,
+        `${taskPath}.depends_on`,
+        'task.depends_on',
+        errors,
+      );
+
+      if (task.continue_from !== undefined && !isNonEmptyString(task.continue_from)) {
+        errors.push({
+          path: `${taskPath}.continue_from`,
+          message: 'task.continue_from must be a non-empty string',
+        });
+      }
+
       validateTaskPorts(task, track.id, taskPath, qidIndex, index, errors);
 
       //  depends_on reference checks
-      if (task.depends_on && task.depends_on.length > 0) {
-        for (const dep of task.depends_on) {
+      if (deps.length > 0) {
+        for (const dep of deps) {
           const resolved = resolveTaskRef(dep, track.id, index);
           if (resolved.kind === 'not_found') {
             errors.push({
@@ -388,7 +569,7 @@ export function validateRaw(
       }
 
       //  continue_from reference check
-      if (task.continue_from) {
+      if (isNonEmptyString(task.continue_from)) {
         const resolved = resolveTaskRef(task.continue_from, track.id, index);
         if (resolved.kind === 'not_found') {
           errors.push({
@@ -401,8 +582,8 @@ export function validateRaw(
             message: `Task "${task.id}": continue_from "${task.continue_from}" is ambiguous  - multiple tracks have a task with this id. Use the fully-qualified form "trackId.${task.continue_from}".`,
           });
         } else if (
-          !task.depends_on ||
-          !task.depends_on.some((dep: string) => {
+          deps.length === 0 ||
+          !deps.some((dep: string) => {
             const depResolved = resolveTaskRef(dep, track.id, index);
             return depResolved.kind === 'resolved' && depResolved.qid === resolved.qid;
           })
@@ -558,7 +739,7 @@ function validateInputBindingSources(
     if (typeof source !== 'string') continue;
     const upstreamId = bindingSourceTaskId(source);
     if (!upstreamId) continue;
-    const deps = task.depends_on ?? [];
+    const deps = dependencyRefs(task);
     const isDirectDep = deps.some((dep) => {
       const resolved = resolveTaskRef(dep, trackId, index);
       return resolved.kind === 'resolved' && resolved.qid === upstreamId;
@@ -659,7 +840,7 @@ function collectUpstreamCommandOutputNames(
   index: TaskIndex,
 ): Set<string> {
   const names = new Set<string>();
-  for (const dep of task.depends_on ?? []) {
+  for (const dep of dependencyRefs(task)) {
     const r = resolveTaskRef(dep, trackId, index);
     if (r.kind !== 'resolved') continue;
     const entry = qidIndex.get(r.qid);
@@ -698,7 +879,7 @@ function validateInferredPromptPortConflicts(
 ): void {
   //  Input collision
   const producersByName = new Map<string, string[]>();
-  for (const dep of task.depends_on ?? []) {
+  for (const dep of dependencyRefs(task)) {
     const r = resolveTaskRef(dep, trackId, index);
     if (r.kind !== 'resolved') continue;
     const entry = qidIndex.get(r.qid);
@@ -738,7 +919,7 @@ function validateInferredPromptPortConflicts(
   for (const [downstreamQid, entry] of qidIndex) {
     if (downstreamQid === taskQid) continue;
     if (typeof entry.task.command !== 'string') continue; // only downstream Commands contribute
-    const deps = entry.task.depends_on ?? [];
+    const deps = dependencyRefs(entry.task);
     let dependsOnUs = false;
     for (const d of deps) {
       const r = resolveTaskRef(d, entry.track.id, index);
@@ -783,17 +964,17 @@ function detectCycles(config: RawPipelineConfig, index: TaskIndex): ValidationEr
   const adj = new Map<string, string[]>();
 
   for (const track of config.tracks) {
-    if (!track.id) continue;
+    if (!track || typeof track !== 'object' || !isValidTaskId(track.id)) continue;
     if (!Array.isArray(track.tasks)) continue;
     for (const task of track.tasks ?? []) {
-      if (!task.id) continue;
+      if (!task || typeof task !== 'object' || !isValidTaskId(task.id)) continue;
       const qid = qualifyTaskId(track.id, task.id);
       const deps: string[] = [];
-      for (const dep of task.depends_on ?? []) {
+      for (const dep of dependencyRefs(task)) {
         const resolved = resolveTaskRef(dep, track.id, index);
         if (resolved.kind === 'resolved') deps.push(resolved.qid);
       }
-      if (task.continue_from) {
+      if (isNonEmptyString(task.continue_from)) {
         const resolved = resolveTaskRef(task.continue_from, track.id, index);
         if (resolved.kind === 'resolved' && !deps.includes(resolved.qid)) deps.push(resolved.qid);
       }

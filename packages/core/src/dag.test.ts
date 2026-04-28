@@ -24,4 +24,28 @@ describe('buildRawDag', () => {
     expect(node?.dependsOn).toEqual([]);
     expect(dag.edges).not.toContainEqual({ from: 't.root', to: 't.dup' });
   });
+
+  test('malformed raw ids and dependency refs are ignored instead of crashing', () => {
+    const config = {
+      name: 'malformed-raw',
+      tracks: [
+        {
+          id: 't',
+          name: 'T',
+          tasks: [
+            { id: 'root', command: 'echo root' },
+            { id: 5, command: 'echo bad' },
+            { id: 'child', command: 'echo child', depends_on: ['root', 7], continue_from: 8 },
+          ],
+        },
+        { id: 9, name: 'Bad', tasks: [{ id: 'ignored', command: 'echo ignored' }] },
+      ],
+    } as unknown as RawPipelineConfig;
+
+    const dag = buildRawDag(config);
+
+    expect([...dag.nodes.keys()].sort()).toEqual(['t.child', 't.root']);
+    expect(dag.nodes.get('t.child')?.dependsOn).toEqual(['t.root']);
+    expect(dag.edges).toEqual([{ from: 't.root', to: 't.child' }]);
+  });
 });

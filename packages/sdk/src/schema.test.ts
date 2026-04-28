@@ -222,6 +222,44 @@ pipeline:
     ).rejects.toThrow(/Invalid duration format "nope"/);
   });
 
+  test('rejects non-string pipeline timeout during load', async () => {
+    await expect(
+      loadPipeline(
+        `
+pipeline:
+  name: Numeric Timeout
+  timeout: 5
+  tracks:
+    - id: t
+      name: T
+      tasks:
+        - id: a
+          command: echo hi
+`,
+        'D:/workspace',
+      ),
+    ).rejects.toThrow(/Invalid duration format "5"/);
+  });
+
+  test('rejects oversized task timeout during load', async () => {
+    await expect(
+      loadPipeline(
+        `
+pipeline:
+  name: Bad Timeout
+  tracks:
+    - id: t
+      name: T
+      tasks:
+        - id: a
+          command: echo hi
+          timeout: 25d
+`,
+        'D:/workspace',
+      ),
+    ).rejects.toThrow(/exceeds maximum supported timeout/);
+  });
+
   test('does not reject soft validation warnings', async () => {
     const config = await loadPipeline(
       `

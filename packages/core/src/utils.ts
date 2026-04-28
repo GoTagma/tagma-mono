@@ -3,6 +3,7 @@ import { realpathSync, lstatSync, existsSync } from 'fs';
 import { randomBytes } from 'crypto';
 
 const DURATION_RE = /^(\d*\.?\d+)\s*(s|m|h|d)$/;
+const MAX_TIMER_DURATION_MS = 2_147_483_647;
 export const RUN_ID_RE = /^run_[A-Za-z0-9_-]{1,128}$/;
 
 export function parseDuration(input: string): number {
@@ -12,18 +13,26 @@ export function parseDuration(input: string): number {
   }
   const value = parseFloat(match[1]);
   const unit = match[2];
-  switch (unit) {
-    case 's':
-      return value * 1000;
-    case 'm':
-      return value * 60_000;
-    case 'h':
-      return value * 3_600_000;
-    case 'd':
-      return value * 86_400_000;
-    default:
-      throw new Error(`Unknown duration unit: "${unit}"`);
+  const ms = (() => {
+    switch (unit) {
+      case 's':
+        return value * 1000;
+      case 'm':
+        return value * 60_000;
+      case 'h':
+        return value * 3_600_000;
+      case 'd':
+        return value * 86_400_000;
+      default:
+        throw new Error(`Unknown duration unit: "${unit}"`);
+    }
+  })();
+  if (!Number.isFinite(ms) || ms > MAX_TIMER_DURATION_MS) {
+    throw new Error(
+      `Invalid duration "${input}": exceeds maximum supported timer value of ${MAX_TIMER_DURATION_MS}ms`,
+    );
   }
+  return ms;
 }
 
 export function validatePath(filePath: string, projectRoot: string): string {

@@ -66,11 +66,12 @@ export interface TaskIndex {
 export function buildTaskIndex(config: RawPipelineConfig | PipelineConfig): TaskIndex {
   const allQualified = new Set<string>();
   const bareToQualified = new Map<string, string>();
-  for (const track of config.tracks ?? []) {
-    if (!track?.id) continue;
+  const tracks = Array.isArray(config.tracks) ? config.tracks : [];
+  for (const track of tracks) {
+    if (!isValidTaskId(track?.id)) continue;
     if (!Array.isArray(track.tasks)) continue;
     for (const task of track.tasks ?? []) {
-      if (!task?.id) continue;
+      if (!isValidTaskId(task?.id)) continue;
       const qid = qualifyTaskId(track.id, task.id);
       allQualified.add(qid);
       if (bareToQualified.has(task.id)) {
@@ -100,11 +101,7 @@ export type RefResolution =
  * Callers decide the policy: `buildDag` throws on non-resolved, `buildRawDag`
  * skips silently, `validateRaw` emits a structured ValidationError.
  */
-export function resolveTaskRef(
-  ref: string,
-  fromTrackId: string,
-  index: TaskIndex,
-): RefResolution {
+export function resolveTaskRef(ref: string, fromTrackId: string, index: TaskIndex): RefResolution {
   if (isQualifiedRef(ref)) {
     return index.allQualified.has(ref)
       ? { kind: 'resolved', qid: ref }
