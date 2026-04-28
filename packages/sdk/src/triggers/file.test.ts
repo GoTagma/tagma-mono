@@ -76,4 +76,74 @@ describe('FileTrigger runtime boundary', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  test('dispose during directory preparation prevents watcher startup', async () => {
+    const dir = makeDir('tagma-file-trigger-dispose-');
+    let releaseEnsure = () => {
+      /* assigned below */
+    };
+    let watchStarted = false;
+    const ensureStarted = Promise.withResolvers<void>();
+    const runtime = {
+      async runCommand() {
+        throw new Error('runCommand should not be called by FileTrigger');
+      },
+      async runSpawn() {
+        throw new Error('runSpawn should not be called by FileTrigger');
+      },
+      async ensureDir() {
+        ensureStarted.resolve();
+        await new Promise<void>((resolvePromise) => {
+          releaseEnsure = resolvePromise;
+        });
+      },
+      async fileExists() {
+        return false;
+      },
+      async *watch() {
+        watchStarted = true;
+        yield { type: 'ready' as const, path: '' };
+      },
+      now() {
+        return new Date('2026-04-26T00:00:00.000Z');
+      },
+      sleep() {
+        return Promise.resolve();
+      },
+      logStore: {
+        openRunLog() {
+          throw new Error('logStore should not be called by FileTrigger');
+        },
+        taskOutputPath() {
+          throw new Error('logStore should not be called by FileTrigger');
+        },
+        logsDir() {
+          throw new Error('logStore should not be called by FileTrigger');
+        },
+      },
+    } as unknown as TagmaRuntime;
+
+    try {
+      const handle = FileTrigger.watch(
+        { type: 'file', path: 'target.txt' },
+        {
+          taskId: 't.wait',
+          trackId: 't',
+          workDir: dir,
+          signal: new AbortController().signal,
+          approvalGateway: new InMemoryApprovalGateway(),
+          runtime,
+        } as never,
+      );
+
+      await ensureStarted.promise;
+      await handle.dispose('test cleanup');
+      releaseEnsure();
+
+      await expect(handle.fired).rejects.toThrow(/Trigger disposed/);
+      expect(watchStarted).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

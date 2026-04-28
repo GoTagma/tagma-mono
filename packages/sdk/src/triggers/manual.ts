@@ -26,6 +26,10 @@ export const ManualTrigger: TriggerPlugin = {
   },
 
   watch(config: Record<string, unknown>, ctx: TriggerContext): TriggerWatchHandle {
+    if (ctx.signal.aborted) {
+      throw new Error('Pipeline aborted');
+    }
+
     const message =
       (config.message as string | undefined) ??
       `Manual confirmation required for task "${ctx.taskId}"`;
@@ -48,9 +52,6 @@ export const ManualTrigger: TriggerPlugin = {
       /* no-op until installed */
     };
     const fired = (async () => {
-      if (ctx.signal.aborted) {
-        request.abort('Pipeline aborted');
-      }
       ctx.signal.addEventListener('abort', onAbort, { once: true });
       removeAbortListener = () => ctx.signal.removeEventListener('abort', onAbort);
       try {

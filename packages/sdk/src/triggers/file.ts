@@ -72,6 +72,8 @@ async function waitForFile(options: {
   await ctx.runtime.ensureDir(dir).catch(() => {
     /* best effort; runtime watch will surface real failures */
   });
+  if (ctx.signal.aborted) throw new Error('Pipeline aborted');
+  if (disposeSignal.aborted) throw new Error('Trigger disposed');
 
   const watchController = new AbortController();
   let removeAbortListener = () => {

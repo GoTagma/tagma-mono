@@ -219,6 +219,8 @@ export function buildRawDag(config: RawPipelineConfig): RawDag {
   for (const track of config.tracks) {
     for (const task of track.tasks) {
       const qid = qualifyTaskId(track.id, task.id);
+      const node = nodes.get(qid);
+      if (!node || node.rawTask !== task) continue;
       const deps: string[] = [];
 
       for (const ref of task.depends_on ?? []) {
@@ -236,7 +238,6 @@ export function buildRawDag(config: RawPipelineConfig): RawDag {
         }
       }
 
-      const node = nodes.get(qid)!;
       nodes.set(qid, { ...node, dependsOn: deps });
     }
   }
