@@ -339,17 +339,16 @@ export const WebhookTrigger: TriggerPlugin = {
       );
     }
 
+    if (ctx.signal.aborted) {
+      throw new Error('Pipeline aborted');
+    }
+
     const state = ensureServer(port, path, secretEnv, hostname, maxBodyBytes);
 
     let dispose = (_reason?: string) => {
       /* assigned below */
     };
     const fired = new Promise<unknown>((resolvePromise, rejectPromise) => {
-      if (ctx.signal.aborted) {
-        rejectPromise(new Error('Pipeline aborted'));
-        return;
-      }
-
       let settled = false;
       let timer: ReturnType<typeof setTimeout> | null = null;
 

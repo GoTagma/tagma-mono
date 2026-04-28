@@ -18,6 +18,12 @@ const SIGKILL_DELAY_MS = 3_000;
 const DEFAULT_STDOUT_TAIL_BYTES = 8 * 1024 * 1024; // 8 MB
 const DEFAULT_STDERR_TAIL_BYTES = 4 * 1024 * 1024; // 4 MB
 
+function normalizeTailLimit(value: number | undefined, fallback: number): number {
+  if (value === undefined) return fallback;
+  if (!Number.isFinite(value) || value < 0) return fallback;
+  return Math.floor(value);
+}
+
 const MINIMAL_ENV_KEYS = [
   'PATH',
   'Path',
@@ -219,10 +225,10 @@ async function collectStream(
     const dropped = totalBytes - tailBytes;
     const pathHint = filePath
       ? diskWriteFailed
-        ? `${filePath} (partial — disk write failed mid-stream)`
+        ? `${filePath} (partial; disk write failed mid-stream)`
         : filePath
       : 'not persisted (no path configured)';
-    text = `[…${dropped} bytes truncated from head — full output at: ${pathHint}]\n${text}`;
+    text = `[${dropped} bytes truncated from head; full output at: ${pathHint}]\n${text}`;
   }
 
   if (streamError) {
@@ -549,8 +555,8 @@ export async function runSpawn(
   // full output in memory — only the bounded tail.
   const stdoutStream = typeof proc.stdout === 'object' ? proc.stdout : undefined;
   const stderrStream = typeof proc.stderr === 'object' ? proc.stderr : undefined;
-  const stdoutCap = opts.maxStdoutTailBytes ?? DEFAULT_STDOUT_TAIL_BYTES;
-  const stderrCap = opts.maxStderrTailBytes ?? DEFAULT_STDERR_TAIL_BYTES;
+  const stdoutCap = normalizeTailLimit(opts.maxStdoutTailBytes, DEFAULT_STDOUT_TAIL_BYTES);
+  const stderrCap = normalizeTailLimit(opts.maxStderrTailBytes, DEFAULT_STDERR_TAIL_BYTES);
 
   const [exitCode, stdoutResult, stderrResult] = await Promise.all([
     proc.exited,

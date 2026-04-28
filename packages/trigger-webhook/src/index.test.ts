@@ -105,6 +105,31 @@ describe('trigger-webhook hardening', () => {
     ).toThrow(new RegExp(`env var ${envName} not set`));
   });
 
+  test('aborted signal does not leave a listener bound', () => {
+    const controller = new AbortController();
+    controller.abort();
+    const port = unusedPort();
+
+    expect(() =>
+      WebhookTrigger.watch(
+        {
+          port,
+          path: '/aborted',
+        },
+        triggerContext(controller.signal),
+      ),
+    ).toThrow(/Pipeline aborted/);
+
+    const server = Bun.serve({
+      port,
+      hostname: '127.0.0.1',
+      fetch() {
+        return new Response('ok');
+      },
+    });
+    server.stop(true);
+  });
+
   test('requests larger than max_body_bytes are rejected without firing the waiter', async () => {
     const controller = new AbortController();
     const port = unusedPort();
