@@ -38,8 +38,8 @@
     "check:client": "tsc -p apps/editor/tsconfig.json --noEmit",
     "check:tests": "tsc -p apps/editor/tsconfig.test.json --noEmit",
     "check:electron": "tsc -p apps/electron/tsconfig.json --noEmit",
-    "test": "bun run --filter '*' test",
-    "test:public": "bun run --filter '@tagma/*' test",
+    "test": "bun run --filter \"*\" test",
+    "test:public": "bun run --filter \"@tagma/*\" test",
     "dev:editor": "cd apps/editor && bun run dev",
     "dev:server": "bun run --filter tagma-editor dev:server",
     "dev:client": "bun run --filter tagma-editor dev:client",
@@ -68,8 +68,8 @@
     "clean:all": "bun run ./scripts/clean.mjs --all",
     "lint": "eslint packages/ apps/ --max-warnings 0",
     "lint:public": "eslint packages/ --max-warnings 0",
-    "format": "prettier --write 'packages/**/*.{ts,tsx,js,json,css,md}' 'apps/**/*.{ts,tsx,js,json,css,md}'",
-    "format:check": "prettier --check 'packages/**/*.{ts,tsx,js,json,css,md}' 'apps/**/*.{ts,tsx,js,json,css,md}'"
+    "format": "prettier --write \"packages/**/*.{ts,tsx,js,json,css,md}\" \"apps/**/*.{ts,tsx,js,json,css,md}\"",
+    "format:check": "prettier --check \"packages/**/*.{ts,tsx,js,json,css,md}\" \"apps/**/*.{ts,tsx,js,json,css,md}\""
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",

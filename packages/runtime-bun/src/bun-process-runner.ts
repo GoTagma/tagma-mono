@@ -1,7 +1,14 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { mkdir, open, type FileHandle } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve as pathResolve } from 'node:path';
-import type { EnvPolicy, SpawnSpec, DriverPlugin, RunOptions, TaskResult, CommandConfig } from '@tagma/core';
+import type {
+  EnvPolicy,
+  SpawnSpec,
+  DriverPlugin,
+  RunOptions,
+  TaskResult,
+  CommandConfig,
+} from '@tagma/core';
 import { commandToSpawnSpec } from '@tagma/core';
 
 // Delay before escalating SIGTERM to SIGKILL when killing a timed-out process.
@@ -40,6 +47,31 @@ const MINIMAL_ENV_KEYS = [
   'PATHEXT',
 ] as const;
 
+const WINDOWS_DEFAULT_PATHEXT = '.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC';
+
+function preferredWindowsPathEnvKey(): 'Path' | 'PATH' {
+  return typeof process.env.Path === 'string' ? 'Path' : 'PATH';
+}
+
+function readPathEnv(env: Readonly<Record<string, string>>): string {
+  return process.platform === 'win32' ? (env.Path ?? env.PATH ?? '') : (env.PATH ?? '');
+}
+
+function normalizePathEnv(
+  env: Record<string, string>,
+  preferred?: Readonly<Record<string, string>>,
+): Record<string, string> {
+  if (process.platform !== 'win32') return env;
+  // Windows env var names are case-insensitive. Keep one PATH spelling so
+  // child-process lookup does not depend on object insertion order. Explicit
+  // SpawnSpec overrides win over inherited/minimal values.
+  const value = preferred?.Path ?? preferred?.PATH ?? env.Path ?? env.PATH;
+  delete env.PATH;
+  delete env.Path;
+  if (typeof value === 'string') env[preferredWindowsPathEnvKey()] = value;
+  return env;
+}
+
 function pickEnv(keys: readonly string[]): Record<string, string> {
   const out: Record<string, string> = {};
   for (const key of keys) {
@@ -60,7 +92,7 @@ function buildChildEnv(
       : effective.mode === 'allowlist'
         ? { ...pickEnv(MINIMAL_ENV_KEYS), ...pickEnv(effective.keys) }
         : pickEnv(MINIMAL_ENV_KEYS);
-  return { ...base, ...(overrides ?? {}) };
+  return normalizePathEnv({ ...base, ...(overrides ?? {}) }, overrides);
 }
 
 /**
@@ -322,7 +354,11 @@ function unwrapCmdShim(wrapperPath: string): readonly string[] {
   return [nodeExe, jsEntry];
 }
 
-function resolveWindowsExe(args: readonly string[], envPath: string): readonly string[] {
+function resolveWindowsExe(
+  args: readonly string[],
+  envPath: string,
+  pathext: string = WINDOWS_DEFAULT_PATHEXT,
+): readonly string[] {
   if (process.platform !== 'win32' || args.length === 0) return args;
   const cmd = args[0]!;
   // Already a full path or has an extension → trust caller. We still attempt
@@ -336,16 +372,14 @@ function resolveWindowsExe(args: readonly string[], envPath: string): readonly s
     return args;
   }
 
-  const cacheKey = `${cmd}\x00${envPath}`;
+  const cacheKey = `${cmd}\x00${envPath}\x00${pathext}`;
   if (resolvedExeCache.has(cacheKey)) {
     // ?? null coerces undefined→null so the subsequent guard narrows cleanly.
     const cached = resolvedExeCache.get(cacheKey) ?? null;
     return cached !== null ? [...cached, ...args.slice(1)] : args;
   }
 
-  const exts = (process.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC')
-    .split(';')
-    .filter(Boolean);
+  const exts = pathext.split(';').filter(Boolean);
   const dirs = envPath.split(';').filter(Boolean);
 
   for (const dir of dirs) {
@@ -469,7 +503,8 @@ export async function runSpawn(
   const mergedEnv = buildChildEnv(spec.env, opts.envPolicy);
   const resolvedArgs = resolveWindowsExe(
     spec.args,
-    mergedEnv.PATH ?? mergedEnv.Path ?? process.env.PATH ?? process.env.Path ?? '',
+    readPathEnv(mergedEnv),
+    mergedEnv.PATHEXT ?? process.env.PATHEXT ?? WINDOWS_DEFAULT_PATHEXT,
   );
 
   // ── 1. Spawn (catch ENOENT / bad-cwd up front) ────────────────────────

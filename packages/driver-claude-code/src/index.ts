@@ -16,6 +16,10 @@ import type {
 
 const DEFAULT_MODEL = 'sonnet';
 
+function windowsPathEnv(): string {
+  return process.env.Path ?? process.env.PATH ?? '';
+}
+
 // Tagma's canonical reasoning_effort vocabulary is low|medium|high, but the
 // SDK validator deliberately accepts any non-empty string so provider-specific
 // variants (e.g. Claude Code's "max" tier) can travel through the runtime
@@ -117,7 +121,7 @@ function discoverGitBash(): string | null {
   // Strategy 3: scan PATH for any entry containing "git" (e.g. Git's
   // mingw64/bin or usr/bin already in PATH), walk up to find bash.exe.
   // Catches custom install locations.
-  const pathEntries = (process.env.PATH ?? '').split(';');
+  const pathEntries = windowsPathEnv().split(';');
   for (const entry of pathEntries) {
     if (!/git/i.test(entry)) continue;
     const normalized = entry.replace(/\//g, '\\').replace(/\\+$/, '');
@@ -134,7 +138,7 @@ function discoverGitBash(): string | null {
 }
 
 function findExeInPath(exe: string): string | null {
-  const pathDirs = (process.env.PATH ?? '').split(';');
+  const pathDirs = windowsPathEnv().split(';');
   for (const dir of pathDirs) {
     if (!dir) continue;
     const full = join(dir, exe);

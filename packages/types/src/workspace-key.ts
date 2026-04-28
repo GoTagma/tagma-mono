@@ -10,16 +10,22 @@
 // motivated extracting this helper.
 
 import { existsSync, realpathSync } from 'node:fs';
-import { resolve } from 'node:path';
+import path, { resolve } from 'node:path';
+
+function normalizeWindowsRoot(resolved: string): string {
+  const parsed = path.win32.parse(resolved);
+  if (!parsed.root) return resolved;
+  return parsed.root.toLowerCase() + resolved.slice(parsed.root.length);
+}
 
 /**
  * Normalize a user-supplied workspace path into a canonical key.
  *
- * Currently the only platform-specific transform is on Windows, where the
- * drive letter is lowercased so `C:\foo` and `c:\foo` collapse into the
- * same key. Sources of raw paths (file pickers, IPC arguments, recents
- * lists, OS shells) preserve case differently, so without this both
- * processes would otherwise drift on the same physical directory.
+ * The only string-level transform is on Windows, where the root portion is
+ * lowercased so `C:\foo` and `c:\foo` collapse into the same key while
+ * preserving the rest of the path's real/display casing. Avoid lowercasing
+ * the full path: NTFS can host case-sensitive directories, and the normalized
+ * key is also reused as the actual workspace cwd by the server.
  */
 export function normalizeWorkspaceKey(rawPath: string): string {
   let resolved = resolve(rawPath);
@@ -31,7 +37,7 @@ export function normalizeWorkspaceKey(rawPath: string): string {
     /* keep the string-resolved path */
   }
   if (process.platform === 'win32') {
-    return resolved.toLowerCase();
+    return normalizeWindowsRoot(resolved);
   }
   return resolved;
 }

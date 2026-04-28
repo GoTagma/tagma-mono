@@ -15,13 +15,9 @@ describe('normalizeWorkspaceKey', () => {
   });
 
   if (process.platform === 'win32') {
-    test('lowercases Windows paths for case-insensitive workspace keys', () => {
-      expect(normalizeWorkspaceKey('C:\\Users\\Foo')).toBe('c:\\users\\foo');
-      expect(normalizeWorkspaceKey('c:\\users\\foo')).toBe('c:\\users\\foo');
-    });
-
-    test('collapses upper/lower path variants to the same key', () => {
-      expect(normalizeWorkspaceKey('C:\\Foo\\Bar')).toBe(normalizeWorkspaceKey('c:\\foo\\bar'));
+    test('normalizes only the Windows root casing', () => {
+      expect(normalizeWorkspaceKey('C:\\Users\\Foo')).toBe('c:\\Users\\Foo');
+      expect(normalizeWorkspaceKey('c:\\Users\\Foo')).toBe('c:\\Users\\Foo');
     });
   }
 });
