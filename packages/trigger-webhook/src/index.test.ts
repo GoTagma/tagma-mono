@@ -86,6 +86,10 @@ describe('trigger-webhook plugin shape', () => {
     expect(WebhookTrigger.schema?.fields.max_body_bytes?.default).toBe(1024 * 1024);
     expect(WebhookTrigger.schema?.fields.timeout?.default).toBe('30m');
   });
+
+  test('manifest requires the types release that exports plugin timeout parsing', () => {
+    expect(manifest.peerDependencies?.['@tagma/types']).toBe('>=0.4.18 <0.5.0');
+  });
 });
 
 describe('trigger-webhook hardening', () => {
