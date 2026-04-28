@@ -49,10 +49,12 @@ const fakeRuntime: TagmaRuntime = {
   },
 };
 
-function makeContext(overrides: Partial<{
-  config: PipelineConfig;
-  onEvent: (e: RunEventPayload) => void;
-}> = {}): { ctx: RunContext; events: RunEventPayload[] } {
+function makeContext(
+  overrides: Partial<{
+    config: PipelineConfig;
+    onEvent: (e: RunEventPayload) => void;
+  }> = {},
+): { ctx: RunContext; events: RunEventPayload[] } {
   const config: PipelineConfig = overrides.config ?? {
     name: 'p',
     tracks: [
@@ -67,13 +69,21 @@ function makeContext(overrides: Partial<{
     ],
   };
   const events: RunEventPayload[] = [];
-  const onEvent = overrides.onEvent ?? ((e: RunEventPayload) => { events.push(e); });
+  const onEvent =
+    overrides.onEvent ??
+    ((e: RunEventPayload) => {
+      events.push(e);
+    });
   const ctx = new RunContext({
     runId: 'run_test',
     dag: buildDag(config),
     config,
     workDir: '/tmp/wd',
-    pipelineInfo: { name: config.name, run_id: 'run_test', started_at: '2026-04-26T00:00:00Z' } as PipelineInfo,
+    pipelineInfo: {
+      name: config.name,
+      run_id: 'run_test',
+      started_at: '2026-04-26T00:00:00Z',
+    } as PipelineInfo,
     onEvent,
     runtime: fakeRuntime,
     logPrompt: false,
@@ -116,7 +126,12 @@ describe('RunContext.emit', () => {
     const { ctx, events } = makeContext();
     ctx.emit({ type: 'run_end', runId: 'run_test', success: true, abortReason: null });
     expect(events).toHaveLength(1);
-    expect(events[0]).toEqual({ type: 'run_end', runId: 'run_test', success: true, abortReason: null });
+    expect(events[0]).toEqual({
+      type: 'run_end',
+      runId: 'run_test',
+      success: true,
+      abortReason: null,
+    });
   });
 
   test('is a no-op when onEvent is undefined', () => {
@@ -133,7 +148,9 @@ describe('RunContext.emit', () => {
       runtime: fakeRuntime,
       logPrompt: false,
     });
-    expect(() => ctx.emit({ type: 'run_end', runId: 'run_test', success: true, abortReason: null })).not.toThrow();
+    expect(() =>
+      ctx.emit({ type: 'run_end', runId: 'run_test', success: true, abortReason: null }),
+    ).not.toThrow();
   });
 });
 

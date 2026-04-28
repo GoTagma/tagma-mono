@@ -100,7 +100,16 @@ export async function executeHook(
   const isGate = GATE_HOOKS.has(event);
 
   for (const cmd of commands) {
-    const exitCode = await runSingleHook(event, cmd, context, runtime, workDir, signal, log, envPolicy);
+    const exitCode = await runSingleHook(
+      event,
+      cmd,
+      context,
+      runtime,
+      workDir,
+      signal,
+      log,
+      envPolicy,
+    );
 
     if (isGate && exitCode !== 0) {
       return { allowed: false, exitCode };

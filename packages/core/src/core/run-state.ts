@@ -19,9 +19,7 @@ export function isTerminal(status: TaskStatus): boolean {
 }
 
 /** Return a deep-copied, caller-safe snapshot of the states map. */
-export function freezeStates(
-  states: Map<string, TaskState>,
-): ReadonlyMap<string, TaskState> {
+export function freezeStates(states: Map<string, TaskState>): ReadonlyMap<string, TaskState> {
   const copy = new Map<string, TaskState>();
   for (const [id, s] of states) {
     copy.set(id, {
@@ -75,9 +73,7 @@ export function resolveExecutionMetadata(
  * `total` but not in any per-status bucket — same semantics as the
  * original engine.ts summary loop.
  */
-export function summarizeStates(
-  states: ReadonlyMap<string, TaskState>,
-): RunSummary {
+export function summarizeStates(states: ReadonlyMap<string, TaskState>): RunSummary {
   const summary: RunSummary = {
     total: 0,
     success: 0,

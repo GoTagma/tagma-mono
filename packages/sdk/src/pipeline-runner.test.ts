@@ -155,4 +155,38 @@ describe('PipelineRunner task snapshot', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  test('subscriber exceptions do not abort the pipeline', async () => {
+    const dir = makeDir();
+    const registry = new PluginRegistry();
+    bootstrapBuiltins(registry);
+    const runner = new PipelineRunner(bindingsPipeline(dir), dir, {
+      registry,
+      runtime: fakeRuntime(),
+      skipPluginLoading: true,
+    });
+    const seen: string[] = [];
+    const originalConsoleError = console.error;
+    console.error = () => {
+      /* suppress expected subscriber error in test output */
+    };
+
+    try {
+      runner.subscribe(() => {
+        throw new Error('subscriber failed');
+      });
+      runner.subscribe((event) => {
+        if (event.type === 'run_end') seen.push(event.type);
+      });
+
+      const result = await runner.start();
+
+      expect(result.success).toBe(true);
+      expect(runner.status).toBe('done');
+      expect(seen).toContain('run_end');
+    } finally {
+      console.error = originalConsoleError;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

@@ -4,7 +4,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { bootstrapBuiltins } from './bootstrap';
 import { PluginRegistry, runPipeline, type RunEventPayload } from '@tagma/core';
-import type { PipelineConfig, TaskConfig, TagmaRuntime, TaskResult, TaskStatus } from '@tagma/types';
+import type {
+  PipelineConfig,
+  TaskConfig,
+  TagmaRuntime,
+  TaskResult,
+  TaskStatus,
+} from '@tagma/types';
 
 const PERMS = { read: true, write: false, execute: false };
 

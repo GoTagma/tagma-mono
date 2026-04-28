@@ -55,14 +55,14 @@ await tagma.registry.loadPlugins(['@tagma/trigger-webhook'], process.cwd());
 
 ## Config
 
-| Field        | Type     | Default      | Notes                                                                                                                                    |
-| ------------ | -------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `port`       | number   | _(required)_ | TCP port to listen on (1-65535)                                                                                                          |
-| `path`       | string   | `/webhook`   | URL path to match; must start with `/`                                                                                                   |
-| `host`       | string   | `127.0.0.1`  | Interface to bind. Defaults to loopback. Setting to `0.0.0.0` or any non-loopback address without `secret_env` is refused at config time |
-| `secret_env` | string   | _(none)_     | Env var holding the HMAC-SHA256 secret. When set, requests must include `x-tagma-signature`                                              |
-| `max_body_bytes` | number | `1048576` | Maximum accepted request body size. Larger requests return `413 payload too large` before signature or JSON processing                    |
-| `timeout`    | duration | `30m`        | Max wait time; set to `0` for unbounded wait                                                                                             |
+| Field            | Type     | Default      | Notes                                                                                                                                    |
+| ---------------- | -------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `port`           | number   | _(required)_ | TCP port to listen on (1-65535)                                                                                                          |
+| `path`           | string   | `/webhook`   | URL path to match; must start with `/`                                                                                                   |
+| `host`           | string   | `127.0.0.1`  | Interface to bind. Defaults to loopback. Setting to `0.0.0.0` or any non-loopback address without `secret_env` is refused at config time |
+| `secret_env`     | string   | _(none)_     | Env var holding the HMAC-SHA256 secret. When set, requests must include `x-tagma-signature`                                              |
+| `max_body_bytes` | number   | `1048576`    | Maximum accepted request body size. Larger requests return `413 payload too large` before signature or JSON processing                   |
+| `timeout`        | duration | `30m`        | Max wait time; set to `0` for unbounded wait                                                                                             |
 
 ## Behavior
 

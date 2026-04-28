@@ -12,9 +12,7 @@ describe('pruneLogDirs', () => {
   test('returns silently when logsDir does not exist', async () => {
     const root = fixture();
     try {
-      await expect(
-        pruneLogDirs(join(root, 'nope'), 5, 'run_live'),
-      ).resolves.toBeUndefined();
+      await expect(pruneLogDirs(join(root, 'nope'), 5, 'run_live')).resolves.toBeUndefined();
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

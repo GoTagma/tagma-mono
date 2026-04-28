@@ -32,10 +32,7 @@ export function allTasksTerminal(ctx: RunContext): boolean {
  * Abort cleanup helper: after in-flight tasks settle, any remaining
  * non-terminal tasks are waiting/idle tasks that were never started.
  */
-export function skipNonTerminalTasks(
-  ctx: RunContext,
-  finishedAt = nowISO(),
-): void {
+export function skipNonTerminalTasks(ctx: RunContext, finishedAt = nowISO()): void {
   for (const [id, state] of ctx.states) {
     if (isTerminal(state.status)) continue;
     state.finishedAt = finishedAt;

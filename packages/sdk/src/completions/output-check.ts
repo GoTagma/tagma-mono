@@ -1,5 +1,6 @@
 import type { CompletionPlugin, CompletionContext, TaskResult } from '@tagma/types';
-import { parseDuration, shellArgs } from '@tagma/core';
+import { shellArgs } from '@tagma/core';
+import { parseOptionalPluginTimeout } from '../duration';
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
@@ -33,8 +34,7 @@ export const OutputCheckCompletion: CompletionPlugin = {
     const checkCmd = config.check as string;
     if (!checkCmd) throw new Error('output_check completion: "check" is required');
 
-    const timeoutMs =
-      config.timeout != null ? parseDuration(String(config.timeout)) : DEFAULT_TIMEOUT_MS;
+    const timeoutMs = parseOptionalPluginTimeout(config.timeout, DEFAULT_TIMEOUT_MS);
 
     const payload = result.normalizedOutput ?? result.stdout;
     const checkResult = await ctx.runtime.runSpawn(
@@ -54,7 +54,9 @@ export const OutputCheckCompletion: CompletionPlugin = {
     );
 
     if (checkResult.exitCode !== 0 && checkResult.stderr.trim()) {
-      console.warn(`[output_check] "${checkCmd}" exit=${checkResult.exitCode}: ${checkResult.stderr.trim()}`);
+      console.warn(
+        `[output_check] "${checkCmd}" exit=${checkResult.exitCode}: ${checkResult.stderr.trim()}`,
+      );
     }
 
     return checkResult.exitCode === 0 && checkResult.failureKind === null;

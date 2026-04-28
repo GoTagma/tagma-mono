@@ -4,7 +4,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { bootstrapBuiltins } from './bootstrap';
 import { PluginRegistry, runPipeline, type RunEventPayload } from '@tagma/core';
-import type { DriverPlugin, PipelineConfig, TagmaRuntime, TaskConfig, TaskResult } from '@tagma/types';
+import type {
+  DriverPlugin,
+  PipelineConfig,
+  TagmaRuntime,
+  TaskConfig,
+  TaskResult,
+} from '@tagma/types';
 
 const PERMS = { read: true, write: false, execute: false };
 
@@ -12,7 +18,10 @@ function makeDir(): string {
   return mkdtempSync(join(tmpdir(), 'tagma-bindings-mixed-'));
 }
 
-function registry(responses: Record<string, Record<string, unknown>>, records: Record<string, string>) {
+function registry(
+  responses: Record<string, Record<string, unknown>>,
+  records: Record<string, string>,
+) {
   const reg = new PluginRegistry();
   bootstrapBuiltins(reg);
   const driver: DriverPlugin = {

@@ -47,11 +47,7 @@ test('runSpawn: parseResult exceptions are classified as parse_error', async () 
     },
   };
 
-  const result = await runSpawn(
-    { args: nodeArg('process.stdout.write("ok")') },
-    driver,
-    {},
-  );
+  const result = await runSpawn({ args: nodeArg('process.stdout.write("ok")') }, driver, {});
 
   expect(result.exitCode).toBe(0);
   expect(result.failureKind).toBe('parse_error');
@@ -107,9 +103,7 @@ test('runSpawn: oversized output — bounded tail in memory, full bytes on disk'
     const totalBytes = 3 * 1024 * 1024;
     const result = await runSpawn(
       {
-        args: nodeArg(
-          `process.stdout.write("a".repeat(${totalBytes}))`,
-        ),
+        args: nodeArg(`process.stdout.write("a".repeat(${totalBytes}))`),
       },
       null,
       { stdoutPath, maxStdoutTailBytes: cap },
@@ -153,11 +147,10 @@ test('runSpawn: chunked output — tail eviction keeps retained <= cap', async (
         }
       })();
     `;
-    const result = await runSpawn(
-      { args: nodeArg(script) },
-      null,
-      { stdoutPath, maxStdoutTailBytes: cap },
-    );
+    const result = await runSpawn({ args: nodeArg(script) }, null, {
+      stdoutPath,
+      maxStdoutTailBytes: cap,
+    });
     expect(result.exitCode).toBe(0);
     expect(result.stdoutBytes).toBe(nChunks * chunkSize);
     // Retained tail should be strictly bounded by cap (eviction case, no
@@ -172,11 +165,7 @@ test('runSpawn: chunked output — tail eviction keeps retained <= cap', async (
 });
 
 test('runSpawn: no path configured — memory-only tail, returns null paths', async () => {
-  const result = await runSpawn(
-    { args: nodeArg('process.stdout.write("inline only")') },
-    null,
-    {},
-  );
+  const result = await runSpawn({ args: nodeArg('process.stdout.write("inline only")') }, null, {});
   expect(result.exitCode).toBe(0);
   expect(result.stdout).toBe('inline only');
   expect(result.stdoutPath).toBeNull();

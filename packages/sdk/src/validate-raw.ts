@@ -90,7 +90,6 @@ function durationErrorMessage(
 const isValidId = isValidTaskId;
 
 const VALID_ON_FAILURE = new Set(['skip_downstream', 'stop_all', 'ignore']);
-const VALID_REASONING_EFFORT = new Set(['low', 'medium', 'high']);
 const VALID_PIPELINE_MODES = new Set(['trusted', 'safe']);
 const PERMISSION_FIELDS = ['read', 'write', 'execute'] as const;
 
@@ -241,6 +240,16 @@ function validateHooks(value: unknown, errors: ValidationError[]): void {
   }
 }
 
+function validateReasoningEffort(value: unknown, path: string, errors: ValidationError[]): void {
+  if (value === undefined) return;
+  if (!isNonEmptyString(value)) {
+    errors.push({
+      path,
+      message: 'reasoning_effort must be a non-empty string',
+    });
+  }
+}
+
 /**
  * Validate a raw pipeline config.
  * Checks structure, required fields, prompt/command exclusivity,
@@ -282,12 +291,7 @@ export function validateRaw(
       message: `Invalid mode "${config.mode}". Expected "trusted" or "safe".`,
     });
   }
-  if (config.reasoning_effort && !VALID_REASONING_EFFORT.has(config.reasoning_effort)) {
-    errors.push({
-      path: 'reasoning_effort',
-      message: `Invalid reasoning_effort "${config.reasoning_effort}". Expected "low", "medium", or "high".`,
-    });
-  }
+  validateReasoningEffort(config.reasoning_effort, 'reasoning_effort', errors);
   if (config.timeout !== undefined) {
     const validation = validateDuration(config.timeout);
     if (!validation.ok) {
@@ -358,12 +362,7 @@ export function validateRaw(
         message: `Invalid on_failure value "${track.on_failure}". Expected "skip_downstream", "stop_all", or "ignore".`,
       });
     }
-    if (track.reasoning_effort && !VALID_REASONING_EFFORT.has(track.reasoning_effort)) {
-      errors.push({
-        path: `${trackPath}.reasoning_effort`,
-        message: `Invalid reasoning_effort "${track.reasoning_effort}". Expected "low", "medium", or "high".`,
-      });
-    }
+    validateReasoningEffort(track.reasoning_effort, `${trackPath}.reasoning_effort`, errors);
     if (knownDrivers && track.driver && !knownDrivers.has(track.driver)) {
       errors.push({
         path: `${trackPath}.driver`,
@@ -475,12 +474,7 @@ export function validateRaw(
           });
         }
       }
-      if (task.reasoning_effort && !VALID_REASONING_EFFORT.has(task.reasoning_effort)) {
-        errors.push({
-          path: `${taskPath}.reasoning_effort`,
-          message: `Invalid reasoning_effort "${task.reasoning_effort}". Expected "low", "medium", or "high".`,
-        });
-      }
+      validateReasoningEffort(task.reasoning_effort, `${taskPath}.reasoning_effort`, errors);
       if (knownDrivers && task.driver && !knownDrivers.has(task.driver)) {
         errors.push({
           path: `${taskPath}.driver`,

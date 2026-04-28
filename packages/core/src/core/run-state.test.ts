@@ -1,10 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import {
-  isTerminal,
-  freezeStates,
-  summarizeStates,
-  toRunTaskState,
-} from './run-state';
+import { isTerminal, freezeStates, summarizeStates, toRunTaskState } from './run-state';
 import type { PipelineConfig, TaskState, TaskStatus } from '../types';
 
 describe('isTerminal', () => {
@@ -45,19 +40,22 @@ describe('freezeStates', () => {
 
   test('copies result object so mutation does not bleed through', () => {
     const src = new Map<string, TaskState>();
-    src.set('a', makeState('success', {
-      result: {
-        exitCode: 0,
-        stdout: 'x',
-        stderr: '',
-        stdoutPath: null,
-        stderrPath: null,
-        durationMs: 1,
-        sessionId: null,
-        normalizedOutput: null,
-        outputs: null,
-      } as TaskState['result'],
-    }));
+    src.set(
+      'a',
+      makeState('success', {
+        result: {
+          exitCode: 0,
+          stdout: 'x',
+          stderr: '',
+          stdoutPath: null,
+          stderrPath: null,
+          durationMs: 1,
+          sessionId: null,
+          normalizedOutput: null,
+          outputs: null,
+        } as TaskState['result'],
+      }),
+    );
     const frozen = freezeStates(src);
     src.get('a')!.result!.stdout = 'mutated';
     expect(frozen.get('a')!.result!.stdout).toBe('x');

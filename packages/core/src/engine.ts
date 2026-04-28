@@ -19,18 +19,10 @@ import {
 } from './hooks';
 import { Logger } from './logger';
 import { InMemoryApprovalGateway, type ApprovalGateway } from './approval';
-import {
-  freezeStates,
-  summarizeStates,
-  toRunTaskState,
-} from './core/run-state';
+import { freezeStates, summarizeStates, toRunTaskState } from './core/run-state';
 import { preflight } from './core/preflight';
 import { RunContext } from './core/run-context';
-import {
-  allTasksTerminal,
-  findLaunchableTasks,
-  skipNonTerminalTasks,
-} from './core/scheduler';
+import { allTasksTerminal, findLaunchableTasks, skipNonTerminalTasks } from './core/scheduler';
 import { executeTask } from './core/task-executor';
 import type { TagmaRuntime } from './types';
 export { TriggerBlockedError, TriggerTimeoutError } from './types';
@@ -546,7 +538,13 @@ export async function runPipeline(
     log.info('[pipeline]', `Log: ${log.path}`);
 
     ctx.emit({ type: 'run_end', runId, success: allSuccess, abortReason: ctx.abortReason });
-    return { success: allSuccess, runId, logPath: log.path, summary, states: freezeStates(ctx.states) };
+    return {
+      success: allSuccess,
+      runId,
+      logPath: log.path,
+      summary,
+      states: freezeStates(ctx.states),
+    };
   } finally {
     // Close the persistent log file handle before pruning.
     log.close();
@@ -557,5 +555,3 @@ export async function runPipeline(
     }
   }
 }
-
-

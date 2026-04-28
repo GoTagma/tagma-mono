@@ -24,22 +24,16 @@ describe('preflight', () => {
   test('throws when a referenced driver is not registered', () => {
     const reg = new PluginRegistry();
     const cfg = emptyConfig({
-      tracks: [
-        { id: 't', name: 'T', tasks: [{ id: 'a', name: 'A', prompt: 'hi' }] },
-      ],
+      tracks: [{ id: 't', name: 'T', tasks: [{ id: 'a', name: 'A', prompt: 'hi' }] }],
     });
-    expect(() => preflight(cfg, buildDag(cfg), reg)).toThrow(
-      /driver "opencode" not registered/,
-    );
+    expect(() => preflight(cfg, buildDag(cfg), reg)).toThrow(/driver "opencode" not registered/);
   });
 
   test('passes when all referenced plugins are registered', () => {
     const reg = new PluginRegistry();
     reg.registerPlugin('drivers', 'opencode', noopDriver);
     const cfg = emptyConfig({
-      tracks: [
-        { id: 't', name: 'T', tasks: [{ id: 'a', name: 'A', prompt: 'hi' }] },
-      ],
+      tracks: [{ id: 't', name: 'T', tasks: [{ id: 'a', name: 'A', prompt: 'hi' }] }],
     });
     expect(() => preflight(cfg, buildDag(cfg), reg)).not.toThrow();
   });
@@ -47,9 +41,7 @@ describe('preflight', () => {
   test('skips driver check for command-only tasks', () => {
     const reg = new PluginRegistry(); // no drivers registered
     const cfg = emptyConfig({
-      tracks: [
-        { id: 't', name: 'T', tasks: [{ id: 'a', name: 'A', command: 'echo hi' }] },
-      ],
+      tracks: [{ id: 't', name: 'T', tasks: [{ id: 'a', name: 'A', command: 'echo hi' }] }],
     });
     expect(() => preflight(cfg, buildDag(cfg), reg)).not.toThrow();
   });

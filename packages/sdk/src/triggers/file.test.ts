@@ -53,17 +53,14 @@ describe('FileTrigger runtime boundary', () => {
     } as unknown as TagmaRuntime;
 
     try {
-      const handle = FileTrigger.watch(
-        { type: 'file', path: 'target.txt', timeout: '0.05s' },
-        {
-          taskId: 't.wait',
-          trackId: 't',
-          workDir: dir,
-          signal: new AbortController().signal,
-          approvalGateway: new InMemoryApprovalGateway(),
-          runtime,
-        } as never,
-      );
+      const handle = FileTrigger.watch({ type: 'file', path: 'target.txt', timeout: '0.05s' }, {
+        taskId: 't.wait',
+        trackId: 't',
+        workDir: dir,
+        signal: new AbortController().signal,
+        approvalGateway: new InMemoryApprovalGateway(),
+        runtime,
+      } as never);
       await expect(handle.fired).resolves.toEqual({ path: resolve(dir, 'target.txt') });
       await handle.dispose('test cleanup');
 
@@ -124,17 +121,14 @@ describe('FileTrigger runtime boundary', () => {
     } as unknown as TagmaRuntime;
 
     try {
-      const handle = FileTrigger.watch(
-        { type: 'file', path: 'target.txt' },
-        {
-          taskId: 't.wait',
-          trackId: 't',
-          workDir: dir,
-          signal: new AbortController().signal,
-          approvalGateway: new InMemoryApprovalGateway(),
-          runtime,
-        } as never,
-      );
+      const handle = FileTrigger.watch({ type: 'file', path: 'target.txt' }, {
+        taskId: 't.wait',
+        trackId: 't',
+        workDir: dir,
+        signal: new AbortController().signal,
+        approvalGateway: new InMemoryApprovalGateway(),
+        runtime,
+      } as never);
 
       await ensureStarted.promise;
       await handle.dispose('test cleanup');

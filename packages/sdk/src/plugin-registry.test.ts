@@ -1,7 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import { PluginRegistry, runPipeline } from '@tagma/core';
 import { bootstrapBuiltins } from './bootstrap';
-import type { DriverPlugin, TriggerPlugin, PipelineConfig, TagmaRuntime, TaskResult } from '@tagma/types';
+import type {
+  DriverPlugin,
+  TriggerPlugin,
+  PipelineConfig,
+  TagmaRuntime,
+  TaskResult,
+} from '@tagma/types';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -217,7 +223,12 @@ describe('PluginRegistry — capability plugins', () => {
     mkdirSync(pluginDir, { recursive: true });
     writeFileSync(
       join(pluginDir, 'package.json'),
-      JSON.stringify({ name: 'tagma-plugin-capability', version: '1.0.0', type: 'module', main: './index.js' }),
+      JSON.stringify({
+        name: 'tagma-plugin-capability',
+        version: '1.0.0',
+        type: 'module',
+        main: './index.js',
+      }),
       'utf-8',
     );
     writeFileSync(
@@ -260,7 +271,12 @@ describe('PluginRegistry — capability plugins', () => {
     mkdirSync(pluginDir, { recursive: true });
     writeFileSync(
       join(pluginDir, 'package.json'),
-      JSON.stringify({ name: 'tagma-plugin-legacy', version: '1.0.0', type: 'module', main: './index.js' }),
+      JSON.stringify({
+        name: 'tagma-plugin-legacy',
+        version: '1.0.0',
+        type: 'module',
+        main: './index.js',
+      }),
       'utf-8',
     );
     writeFileSync(
@@ -292,13 +308,9 @@ describe('PluginRegistry — capability plugins', () => {
 describe('PluginRegistry — validation', () => {
   test('rejects unknown category', () => {
     const reg = new PluginRegistry();
-    expect(() =>
-      reg.registerPlugin(
-        'nope' as 'drivers',
-        'x',
-        makeDriver('x', []),
-      ),
-    ).toThrow(/Unknown plugin category/);
+    expect(() => reg.registerPlugin('nope' as 'drivers', 'x', makeDriver('x', []))).toThrow(
+      /Unknown plugin category/,
+    );
   });
 
   test('rejects driver missing buildCommand', () => {
@@ -308,7 +320,10 @@ describe('PluginRegistry — validation', () => {
         'drivers',
         'broken',
         // deliberately bad: no buildCommand
-        { name: 'broken', capabilities: { sessionResume: false, systemPrompt: false, outputFormat: false } } as unknown as DriverPlugin,
+        {
+          name: 'broken',
+          capabilities: { sessionResume: false, systemPrompt: false, outputFormat: false },
+        } as unknown as DriverPlugin,
       ),
     ).toThrow(/must export buildCommand/);
   });
@@ -329,20 +344,19 @@ describe('PluginRegistry — validation', () => {
         'drivers',
         'x',
         // deliberately bad: no name
-        { capabilities: { sessionResume: false, systemPrompt: false, outputFormat: false }, buildCommand: async () => ({ args: [] }) } as unknown as DriverPlugin,
+        {
+          capabilities: { sessionResume: false, systemPrompt: false, outputFormat: false },
+          buildCommand: async () => ({ args: [] }),
+        } as unknown as DriverPlugin,
       ),
     ).toThrow(/non-empty "name"/);
   });
 
   test('rejects plugin type identifiers that are not YAML-safe ids', () => {
     const reg = new PluginRegistry();
-    expect(() =>
-      reg.registerPlugin(
-        'drivers',
-        '../evil',
-        makeDriver('evil', []),
-      ),
-    ).toThrow(/Plugin type .* must match/);
+    expect(() => reg.registerPlugin('drivers', '../evil', makeDriver('evil', []))).toThrow(
+      /Plugin type .* must match/,
+    );
   });
 
   test('middleware install hint uses singular middleware package name', () => {
@@ -455,9 +469,9 @@ describe('runPipeline — options.registry isolation', () => {
     };
     const tmp = mkdtempSync(join(tmpdir(), 'tagma-default-'));
     try {
-      await expect(
-        runPipeline(config, tmp, { skipPluginLoading: true } as never),
-      ).rejects.toThrow(/requires options\.registry/);
+      await expect(runPipeline(config, tmp, { skipPluginLoading: true } as never)).rejects.toThrow(
+        /requires options\.registry/,
+      );
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
@@ -624,23 +638,19 @@ describe('runPipeline — options.registry isolation', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'tagma-trigger-dispose-'));
     const reg = new PluginRegistry();
     let disposeCount = 0;
-    reg.registerPlugin(
-      'triggers',
-      'leaky',
-      {
-        name: 'leaky',
-        watch() {
-          return {
-            fired: new Promise<never>(() => {
-              /* intentionally never settles */
-            }),
-            dispose() {
-              disposeCount++;
-            },
-          };
-        },
-      } as unknown as TriggerPlugin,
-    );
+    reg.registerPlugin('triggers', 'leaky', {
+      name: 'leaky',
+      watch() {
+        return {
+          fired: new Promise<never>(() => {
+            /* intentionally never settles */
+          }),
+          dispose() {
+            disposeCount++;
+          },
+        };
+      },
+    } as unknown as TriggerPlugin);
 
     try {
       const result = await runPipeline(
@@ -676,23 +686,19 @@ describe('runPipeline — options.registry isolation', () => {
   test('trigger timeout honors on_failure stop_all across the whole pipeline', async () => {
     const tmp = mkdtempSync(join(tmpdir(), 'tagma-stop-all-trigger-'));
     const reg = new PluginRegistry();
-    reg.registerPlugin(
-      'triggers',
-      'never',
-      {
-        name: 'never',
-        watch() {
-          return {
-            fired: new Promise<never>(() => {
-              /* intentionally never settles */
-            }),
-            dispose() {
-              /* no resources */
-            },
-          };
-        },
-      } as unknown as TriggerPlugin,
-    );
+    reg.registerPlugin('triggers', 'never', {
+      name: 'never',
+      watch() {
+        return {
+          fired: new Promise<never>(() => {
+            /* intentionally never settles */
+          }),
+          dispose() {
+            /* no resources */
+          },
+        };
+      },
+    } as unknown as TriggerPlugin);
 
     const commands: string[] = [];
     const runtime: TagmaRuntime = {

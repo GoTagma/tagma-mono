@@ -95,7 +95,13 @@ export class PipelineRunner {
       signal: this._abortController.signal,
       onEvent: (event) => {
         this._applyEvent(event);
-        for (const h of this._handlers) h(event);
+        for (const h of [...this._handlers]) {
+          try {
+            h(event);
+          } catch (err) {
+            console.error('[PipelineRunner] subscriber threw while handling run event', err);
+          }
+        }
       },
     })
       .then((result) => {

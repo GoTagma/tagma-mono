@@ -35,8 +35,14 @@ describe('driver-codex plugin shape', () => {
       prompt: 'hello',
       permissions: { read: true, write: false, execute: false },
     } as unknown as Parameters<typeof plugin.buildCommand>[0];
-    const track = { id: 'k', name: 'k', tasks: [] } as unknown as Parameters<typeof plugin.buildCommand>[1];
-    const ctx = { workDir: process.cwd(), normalizedMap: new Map(), sessionMap: new Map() } as unknown as Parameters<typeof plugin.buildCommand>[2];
+    const track = { id: 'k', name: 'k', tasks: [] } as unknown as Parameters<
+      typeof plugin.buildCommand
+    >[1];
+    const ctx = {
+      workDir: process.cwd(),
+      normalizedMap: new Map(),
+      sessionMap: new Map(),
+    } as unknown as Parameters<typeof plugin.buildCommand>[2];
 
     try {
       const spec = await CodexDriver.buildCommand(task, track, ctx);
@@ -53,8 +59,14 @@ describe('driver-codex plugin shape', () => {
       name: 't1',
       prompt: 'hello',
     } as unknown as Parameters<typeof plugin.buildCommand>[0];
-    const track = { id: 'k', name: 'k', tasks: [] } as unknown as Parameters<typeof plugin.buildCommand>[1];
-    const ctx = { workDir: process.cwd(), normalizedMap: new Map(), sessionMap: new Map() } as unknown as Parameters<typeof plugin.buildCommand>[2];
+    const track = { id: 'k', name: 'k', tasks: [] } as unknown as Parameters<
+      typeof plugin.buildCommand
+    >[1];
+    const ctx = {
+      workDir: process.cwd(),
+      normalizedMap: new Map(),
+      sessionMap: new Map(),
+    } as unknown as Parameters<typeof plugin.buildCommand>[2];
 
     const spec = await CodexDriver.buildCommand(task, track, ctx);
     const sandboxIndex = spec.args.indexOf('--sandbox');
@@ -68,8 +80,14 @@ describe('driver-codex plugin shape', () => {
       prompt: 'hello',
       permissions: { read: true, write: false, execute: false },
     } as unknown as Parameters<typeof plugin.buildCommand>[0];
-    const track = { id: 'k', name: 'k', tasks: [] } as unknown as Parameters<typeof plugin.buildCommand>[1];
-    const ctx = { workDir: process.cwd(), normalizedMap: new Map(), sessionMap: new Map() } as unknown as Parameters<typeof plugin.buildCommand>[2];
+    const track = { id: 'k', name: 'k', tasks: [] } as unknown as Parameters<
+      typeof plugin.buildCommand
+    >[1];
+    const ctx = {
+      workDir: process.cwd(),
+      normalizedMap: new Map(),
+      sessionMap: new Map(),
+    } as unknown as Parameters<typeof plugin.buildCommand>[2];
     try {
       const spec = await CodexDriver.buildCommand(task, track, ctx);
       expect(Array.isArray(spec.args)).toBe(true);

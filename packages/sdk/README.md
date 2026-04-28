@@ -149,17 +149,17 @@ pipeline:
 
 ### Pipeline Fields
 
-| Field         | Type            | Required | Description                                                                                |
-| ------------- | --------------- | -------- | ------------------------------------------------------------------------------------------ |
-| `name`        | `string`        | Yes      | Pipeline name, used in logs and run IDs                                                    |
-| `mode`        | `trusted \| safe` | No     | Execution boundary. Defaults to `safe`; `safe` blocks shell tasks, hooks, automatic plugins, execute permissions, and non-allowlisted capabilities |
-| `driver`      | `string`        | No       | Default driver for all tracks/tasks (inherited). Built-in: `opencode`                      |
-| `model`       | `string`        | No       | Default model for all tracks/tasks (inherited). Exact model name, e.g. `claude-sonnet-4-6` |
-| `permissions` | `Permissions`   | No       | Default permissions inherited by all tracks/tasks (see Permissions)                        |
-| `timeout`     | `string`        | No       | Pipeline-level timeout. Format: `"30s"`, `"5m"`, `"2h"`                                    |
-| `plugins`     | `string[]`      | No       | External plugin packages to load, e.g. `["@tagma/driver-codex"]`                           |
-| `hooks`       | `HooksConfig`   | No       | Shell commands to run at lifecycle events (see Hooks below)                                |
-| `tracks`      | `TrackConfig[]` | Yes      | List of parallel execution tracks                                                          |
+| Field         | Type              | Required | Description                                                                                                                                        |
+| ------------- | ----------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`        | `string`          | Yes      | Pipeline name, used in logs and run IDs                                                                                                            |
+| `mode`        | `trusted \| safe` | No       | Execution boundary. Defaults to `safe`; `safe` blocks shell tasks, hooks, automatic plugins, execute permissions, and non-allowlisted capabilities |
+| `driver`      | `string`          | No       | Default driver for all tracks/tasks (inherited). Built-in: `opencode`                                                                              |
+| `model`       | `string`          | No       | Default model for all tracks/tasks (inherited). Exact model name, e.g. `claude-sonnet-4-6`                                                         |
+| `permissions` | `Permissions`     | No       | Default permissions inherited by all tracks/tasks (see Permissions)                                                                                |
+| `timeout`     | `string`          | No       | Pipeline-level timeout. Format: `"30s"`, `"5m"`, `"2h"`                                                                                            |
+| `plugins`     | `string[]`        | No       | External plugin packages to load, e.g. `["@tagma/driver-codex"]`                                                                                   |
+| `hooks`       | `HooksConfig`     | No       | Shell commands to run at lifecycle events (see Hooks below)                                                                                        |
+| `tracks`      | `TrackConfig[]`   | Yes      | List of parallel execution tracks                                                                                                                  |
 
 ### Hooks Fields
 
@@ -216,10 +216,10 @@ Each hook value can be a single command string or an array of commands.
 
 ### Permissions
 
-| Field     | Type      | Default | Description                                      |
-| --------- | --------- | ------- | ------------------------------------------------ |
-| `read`    | `boolean` | —       | Allow the AI driver/agent to read files          |
-| `write`   | `boolean` | —       | Allow the AI driver/agent to write files         |
+| Field     | Type      | Default | Description                                        |
+| --------- | --------- | ------- | -------------------------------------------------- |
+| `read`    | `boolean` | —       | Allow the AI driver/agent to read files            |
+| `write`   | `boolean` | —       | Allow the AI driver/agent to write files           |
 | `execute` | `boolean` | —       | Allow the AI driver/agent to execute tool commands |
 
 `permissions` are passed to AI drivers that support them. They do not sandbox

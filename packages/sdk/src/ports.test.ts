@@ -37,10 +37,7 @@ describe('substituteInputs', () => {
   });
 
   test('stringifies number / boolean values verbatim', () => {
-    const { text } = substituteInputs(
-      'n={{inputs.n}} b={{inputs.b}}',
-      { n: 42, b: true },
-    );
+    const { text } = substituteInputs('n={{inputs.n}} b={{inputs.b}}', { n: 42, b: true });
     expect(text).toBe('n=42 b=true');
   });
 
@@ -372,8 +369,14 @@ describe('resolveTaskBindingInputs', () => {
       },
     });
     const upstream = new Map([
-      ['t.a', { outputs: { val: 'a' }, stdout: '', stderr: '', normalizedOutput: null, exitCode: 0 }],
-      ['t.b', { outputs: { val: 'b' }, stdout: '', stderr: '', normalizedOutput: null, exitCode: 0 }],
+      [
+        't.a',
+        { outputs: { val: 'a' }, stdout: '', stderr: '', normalizedOutput: null, exitCode: 0 },
+      ],
+      [
+        't.b',
+        { outputs: { val: 'b' }, stdout: '', stderr: '', normalizedOutput: null, exitCode: 0 },
+      ],
     ]);
     const res = resolveTaskBindingInputs(t, upstream, ['t.a', 't.b']);
     expect(res.kind).toBe('blocked');
@@ -423,11 +426,7 @@ describe('extractTaskOutputs', () => {
   });
 
   test('reports coercion failure and skips bad port', () => {
-    const r = extractTaskOutputs(
-      { outputs },
-      '{"city":"Shanghai","temp":"not-a-number"}',
-      null,
-    );
+    const r = extractTaskOutputs({ outputs }, '{"city":"Shanghai","temp":"not-a-number"}', null);
     expect(r.outputs).toEqual({ city: 'Shanghai' });
     expect(r.diagnostic).toContain('"temp"');
   });

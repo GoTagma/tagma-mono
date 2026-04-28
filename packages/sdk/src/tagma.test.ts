@@ -131,7 +131,11 @@ describe('createTagma', () => {
     let stderrPath: string | undefined;
 
     const runtime = {
-      async runCommand(_command: string, _cwd: string, options?: { stdoutPath?: string; stderrPath?: string }) {
+      async runCommand(
+        _command: string,
+        _cwd: string,
+        options?: { stdoutPath?: string; stderrPath?: string },
+      ) {
         stdoutPath = options?.stdoutPath;
         stderrPath = options?.stderrPath;
         return {
@@ -309,9 +313,7 @@ describe('createTagma', () => {
           {
             id: 't',
             name: 'T',
-            tasks: [
-              { id: 'a', name: 'A', command: 'echo a', depends_on: ['missing'] },
-            ],
+            tasks: [{ id: 'a', name: 'A', command: 'echo a', depends_on: ['missing'] }],
           },
         ],
       }),

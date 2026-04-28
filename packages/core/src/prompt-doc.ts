@@ -41,10 +41,7 @@ export function serializePromptDocument(doc: PromptDocument): string {
  * Helper for middlewares: return a new document with the given block
  * appended to `contexts`, preserving immutability of `doc`.
  */
-export function appendContext(
-  doc: PromptDocument,
-  block: PromptContextBlock,
-): PromptDocument {
+export function appendContext(doc: PromptDocument, block: PromptContextBlock): PromptDocument {
   return { contexts: [...doc.contexts, block], task: doc.task };
 }
 
@@ -54,10 +51,7 @@ export function appendContext(
  * `[Output Format]`) at the top of the document so middlewares that
  * assemble retrieval context against the task's inputs see them.
  */
-export function prependContext(
-  doc: PromptDocument,
-  block: PromptContextBlock,
-): PromptDocument {
+export function prependContext(doc: PromptDocument, block: PromptContextBlock): PromptDocument {
   return { contexts: [block, ...doc.contexts], task: doc.task };
 }
 
@@ -119,9 +113,7 @@ export function renderOutputSchemaBlock(
 ): PromptContextBlock | null {
   if (!outputsDecl || outputsDecl.length === 0) return null;
   const lines: string[] = [];
-  lines.push(
-    'After your response, emit a single JSON object on the FINAL line with these keys:',
-  );
+  lines.push('After your response, emit a single JSON object on the FINAL line with these keys:');
   for (const port of outputsDecl) {
     const descr = port.description?.trim();
     const enumHint =

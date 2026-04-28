@@ -2,11 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { buildDag } from '../dag';
 import type { PipelineConfig, TagmaRuntime } from '../types';
 import { RunContext } from './run-context';
-import {
-  allTasksTerminal,
-  findLaunchableTasks,
-  skipNonTerminalTasks,
-} from './scheduler';
+import { allTasksTerminal, findLaunchableTasks, skipNonTerminalTasks } from './scheduler';
 
 const fakeRuntime: TagmaRuntime = {
   async runCommand() {

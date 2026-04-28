@@ -42,12 +42,7 @@ export class Logger {
   private readonly sink: RuntimeLogSink;
   private readonly onLine: LogListener | null;
 
-  constructor(
-    workDir: string,
-    runId: string,
-    logStore: RuntimeLogStore,
-    onLine?: LogListener,
-  ) {
+  constructor(workDir: string, runId: string, logStore: RuntimeLogStore, onLine?: LogListener) {
     this.onLine = onLine ?? null;
     const header =
       `# Pipeline run ${runId} @ ${new Date().toISOString()}\n` +

@@ -80,9 +80,7 @@ function buildValidationResult(
   sourceName: string,
   diagnostics: readonly ValidationError[],
 ): YamlCompileResult {
-  const validationErrors = diagnostics.filter(
-    (e) => e.severity === 'error' || e.severity == null,
-  );
+  const validationErrors = diagnostics.filter((e) => e.severity === 'error' || e.severity == null);
   const validationWarnings = diagnostics.filter((e) => e.severity === 'warning');
 
   return {

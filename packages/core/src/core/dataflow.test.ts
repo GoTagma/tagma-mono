@@ -2,10 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { buildDag } from '../dag';
 import type { PipelineConfig, TagmaRuntime, TaskResult } from '../types';
 import { RunContext } from './run-context';
-import {
-  inferEffectivePorts,
-  extractSuccessfulOutputs,
-} from './dataflow';
+import { inferEffectivePorts, extractSuccessfulOutputs } from './dataflow';
 
 const fakeRuntime: TagmaRuntime = {
   async runCommand() {

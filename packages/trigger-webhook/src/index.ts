@@ -74,7 +74,9 @@ function parseMaxBodyBytes(value: unknown): number {
   if (value == null) return DEFAULT_MAX_BODY_BYTES;
   const n = typeof value === 'number' ? value : Number(value);
   if (!Number.isSafeInteger(n) || n < 1) {
-    throw new Error(`webhook trigger: "max_body_bytes" must be a positive safe integer, got ${String(value)}`);
+    throw new Error(
+      `webhook trigger: "max_body_bytes" must be a positive safe integer, got ${String(value)}`,
+    );
   }
   return n;
 }

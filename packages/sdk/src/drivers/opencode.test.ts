@@ -1,13 +1,15 @@
 import { describe, expect, test } from 'bun:test';
 import { OpenCodeDriver } from './opencode';
 
-function task(model?: string): Parameters<typeof OpenCodeDriver.buildCommand>[0] {
+type BuildTask = Parameters<typeof OpenCodeDriver.buildCommand>[0];
+
+function task(overrides: Partial<BuildTask> = {}): BuildTask {
   return {
     id: 't1',
     name: 't1',
     prompt: 'hello',
-    ...(model ? { model } : {}),
-  } as Parameters<typeof OpenCodeDriver.buildCommand>[0];
+    ...overrides,
+  } as BuildTask;
 }
 
 const track = {
@@ -32,7 +34,11 @@ describe('OpenCodeDriver buildCommand', () => {
     }) as typeof Bun.spawn;
 
     try {
-      const spec = await OpenCodeDriver.buildCommand(task('opencode/test-model'), track, ctx);
+      const spec = await OpenCodeDriver.buildCommand(
+        task({ model: 'opencode/test-model' }),
+        track,
+        ctx,
+      );
       expect(spec.args.slice(0, 4)).toEqual(['opencode', 'run', '--model', 'opencode/test-model']);
       expect(called).toBe(false);
     } finally {
@@ -55,5 +61,13 @@ describe('OpenCodeDriver buildCommand', () => {
     } finally {
       Bun.spawn = original;
     }
+  });
+
+  test('passes provider-specific reasoning variants through to opencode', async () => {
+    const spec = await OpenCodeDriver.buildCommand(task({ reasoning_effort: 'max' }), track, ctx);
+
+    const variantIndex = spec.args.indexOf('--variant');
+    expect(variantIndex).toBeGreaterThan(-1);
+    expect(spec.args[variantIndex + 1]).toBe('max');
   });
 });

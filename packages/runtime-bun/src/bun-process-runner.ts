@@ -199,9 +199,7 @@ async function collectStream(
     }
   } catch (err) {
     streamError = err instanceof Error ? err : new Error(String(err));
-    console.error(
-      `[runner] stream read failed: ${streamError.message} — returning partial output`,
-    );
+    console.error(`[runner] stream read failed: ${streamError.message} — returning partial output`);
   } finally {
     if (fh) {
       try {
@@ -297,9 +295,7 @@ function parseNpmCmdShim(wrapperPath: string): string | null {
   } catch {
     return null;
   }
-  const execLine = contents
-    .split(/\r?\n/)
-    .find((l) => l.includes('%*') && l.includes('%dp0%'));
+  const execLine = contents.split(/\r?\n/).find((l) => l.includes('%*') && l.includes('%dp0%'));
   if (!execLine) return null;
   const quoted = execLine.match(/"([^"]+)"/g);
   if (!quoted || quoted.length < 2) return null;

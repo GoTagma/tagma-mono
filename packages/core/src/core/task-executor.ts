@@ -161,7 +161,8 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
           throw new Error('Pipeline aborted');
         }
         ctx.abortController.signal.addEventListener('abort', onAbort, { once: true });
-        removeAbortListener = () => ctx.abortController.signal.removeEventListener('abort', onAbort);
+        removeAbortListener = () =>
+          ctx.abortController.signal.removeEventListener('abort', onAbort);
 
         const timeoutPromise =
           triggerTimeoutMs > 0
@@ -511,9 +512,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
           const beforeLen = serializePromptDocument(doc).length;
 
           if (typeof mwPlugin.enhanceDoc !== 'function') {
-            throw new Error(
-              `middleware "${mwConfig.type}" must provide enhanceDoc`,
-            );
+            throw new Error(`middleware "${mwConfig.type}" must provide enhanceDoc`);
           }
           const next = await mwPlugin.enhanceDoc(doc, mwConfig as Record<string, unknown>, mwCtx);
           if (

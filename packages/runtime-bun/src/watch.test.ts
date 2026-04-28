@@ -22,13 +22,12 @@ describe('bunRuntime watch', () => {
   test('bounds queued filesystem events when the consumer is slower than the producer', async () => {
     const tmp = mkdtempSync(join(tmpdir(), 'tagma-watch-'));
     const abort = new AbortController();
-    const iterator = (
-      bunRuntime().watch(tmp, {
-        ignoreInitial: true,
-        maxQueueEvents: 2,
-        signal: abort.signal,
-      })
-    )[Symbol.asyncIterator]();
+    const watch = bunRuntime().watch(tmp, {
+      ignoreInitial: true,
+      maxQueueEvents: 2,
+      signal: abort.signal,
+    });
+    const iterator = watch[Symbol.asyncIterator]();
 
     try {
       const ready = await iterator.next();

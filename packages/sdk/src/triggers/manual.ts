@@ -5,7 +5,7 @@ import {
   type TriggerContext,
   type TriggerWatchHandle,
 } from '@tagma/types';
-import { parseDuration } from '@tagma/core';
+import { parseOptionalPluginTimeout } from '../duration';
 
 export const ManualTrigger: TriggerPlugin = {
   name: 'manual',
@@ -33,7 +33,7 @@ export const ManualTrigger: TriggerPlugin = {
     const message =
       (config.message as string | undefined) ??
       `Manual confirmation required for task "${ctx.taskId}"`;
-    const timeoutMs = config.timeout ? parseDuration(config.timeout as string) : 0;
+    const timeoutMs = parseOptionalPluginTimeout(config.timeout, 0);
     const metadata =
       config.metadata && typeof config.metadata === 'object'
         ? (config.metadata as Record<string, unknown>)

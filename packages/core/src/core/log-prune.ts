@@ -27,9 +27,7 @@ export async function pruneLogDirs(
     return; // logsDir doesn't exist yet
   }
 
-  const runDirs = entries
-    .filter((e) => e.startsWith('run_') && e !== excludeRunId)
-    .sort();
+  const runDirs = entries.filter((e) => e.startsWith('run_') && e !== excludeRunId).sort();
   const historyKeep = Math.max(0, keep - 1);
   const toDelete = runDirs.slice(0, Math.max(0, runDirs.length - historyKeep));
 

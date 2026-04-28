@@ -70,4 +70,15 @@ describe('ManualTrigger', () => {
     );
     expect(gateway.requests).toHaveLength(0);
   });
+
+  test('treats explicit zero timeout as wait indefinitely', () => {
+    const gateway = makeGateway();
+    const handle = ManualTrigger.watch(
+      { timeout: 0 },
+      triggerContext(new AbortController().signal, gateway),
+    );
+
+    expect(gateway.requests[0]?.timeoutMs).toBe(0);
+    handle.dispose('test cleanup');
+  });
 });

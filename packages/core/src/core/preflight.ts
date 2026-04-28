@@ -16,11 +16,7 @@ function isCommandOnly(
  * into one message so the caller sees every misconfiguration in a
  * single pass.
  */
-export function preflight(
-  config: PipelineConfig,
-  dag: Dag,
-  registry: PluginRegistry,
-): void {
+export function preflight(config: PipelineConfig, dag: Dag, registry: PluginRegistry): void {
   const errors: string[] = [];
 
   for (const [, node] of dag.nodes) {
@@ -35,9 +31,7 @@ export function preflight(
     }
 
     if (task.trigger && !registry.hasHandler('triggers', task.trigger.type)) {
-      errors.push(
-        `Task "${node.taskId}": trigger type "${task.trigger.type}" not registered`,
-      );
+      errors.push(`Task "${node.taskId}": trigger type "${task.trigger.type}" not registered`);
     }
 
     if (task.completion && !registry.hasHandler('completions', task.completion.type)) {
@@ -49,9 +43,7 @@ export function preflight(
     const mws = task.middlewares ?? track.middlewares ?? [];
     for (const mw of mws) {
       if (!registry.hasHandler('middlewares', mw.type)) {
-        errors.push(
-          `Task "${node.taskId}": middleware type "${mw.type}" not registered`,
-        );
+        errors.push(`Task "${node.taskId}": middleware type "${mw.type}" not registered`);
       }
     }
 

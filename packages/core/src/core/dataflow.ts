@@ -6,11 +6,7 @@ import type {
   TaskPorts,
   TaskResult,
 } from '../types';
-import {
-  extractTaskBindingOutputs,
-  extractTaskOutputs,
-  inferPromptPorts,
-} from '../ports';
+import { extractTaskBindingOutputs, extractTaskOutputs, inferPromptPorts } from '../ports';
 import type { RunContext } from './run-context';
 
 function isPromptTaskConfig(
@@ -70,10 +66,7 @@ export type EffectivePortsResult =
       readonly reason: string;
     };
 
-export function inferEffectivePorts(
-  ctx: RunContext,
-  taskId: string,
-): EffectivePortsResult {
+export function inferEffectivePorts(ctx: RunContext, taskId: string): EffectivePortsResult {
   const node = ctx.dag.nodes.get(taskId)!;
   const task = node.task;
   const isPromptTask = isPromptTaskConfig(task);
@@ -139,7 +132,10 @@ export function extractSuccessfulOutputs(
     extractedOutputs = bindingExtraction.outputs;
   }
 
-  if ((!task.outputs || Object.keys(task.outputs).length === 0) && effectivePorts?.outputs?.length) {
+  if (
+    (!task.outputs || Object.keys(task.outputs).length === 0) &&
+    effectivePorts?.outputs?.length
+  ) {
     const portExtraction = extractTaskOutputs(
       effectivePorts,
       result.stdout,
