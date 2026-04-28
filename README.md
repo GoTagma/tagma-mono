@@ -128,7 +128,7 @@ bun run format:check   # Prettier check
 ### Clean
 
 ```bash
-bun run clean          # Remove all node_modules and dist outputs
+bun run clean          # Remove workspace node_modules, dist outputs, and app packaging artifacts
 bun run clean:all      # Also remove bun.lock
 bun install            # Reinstall
 ```

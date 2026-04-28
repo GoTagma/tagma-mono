@@ -3,6 +3,7 @@ import { join, relative } from 'node:path';
 
 const rootDir = process.cwd();
 const packagesDir = join(rootDir, 'packages');
+const appsDir = join(rootDir, 'apps');
 const includeLockfile = process.argv.includes('--all');
 
 async function exists(path) {
@@ -26,6 +27,34 @@ async function collectTargets() {
     const packageDir = join(packagesDir, entry.name);
     targets.push(join(packageDir, 'node_modules'));
     targets.push(join(packageDir, 'dist'));
+  }
+
+  if (await exists(appsDir)) {
+    const appEntries = await readdir(appsDir, { withFileTypes: true });
+
+    for (const entry of appEntries) {
+      if (!entry.isDirectory()) continue;
+      const appDir = join(appsDir, entry.name);
+      targets.push(join(appDir, 'node_modules'));
+      targets.push(join(appDir, 'dist'));
+
+      if (entry.name === 'editor') {
+        targets.push(join(appDir, 'desktop-dist'));
+
+        const editorEntries = await readdir(appDir, { withFileTypes: true });
+        for (const editorEntry of editorEntries) {
+          if (!editorEntry.isDirectory() || !editorEntry.name.startsWith('desktop-dist-')) {
+            continue;
+          }
+          targets.push(join(appDir, editorEntry.name));
+        }
+      }
+
+      if (entry.name === 'electron') {
+        targets.push(join(appDir, 'release'));
+        targets.push(join(appDir, 'build', 'opencode'));
+      }
+    }
   }
 
   if (includeLockfile) {
