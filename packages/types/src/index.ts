@@ -7,6 +7,20 @@
 // Runtime code is kept to an absolute minimum — currently one protocol
 // constant (TASK_LOG_CAP) that must agree across SDK + server + client
 // (see "Wire Protocol Constants" below). Everything else here is types.
+//
+// ─── Naming conventions ─────────────────────────────────────────────────
+// User-facing YAML config fields use `snake_case` (`depends_on`,
+// `continue_from`, `reasoning_effort`, `agent_profile`, `on_failure`)
+// because that is the conventional shape for declarative config files
+// across the ecosystem (compose, ansible, GitHub Actions, etc.).
+// Programmatic / runtime / wire shapes use `camelCase` (`sessionId`,
+// `normalizedOutput`, `forceFailure`, `stdoutPath`, `stdoutBytes`,
+// `failureKind`, `runId`) because that is conventional in JS/TS APIs.
+// The boundary is intentional and there is no auto-translation layer:
+// what the user writes in YAML stays as-is in TaskConfig / TrackConfig /
+// PipelineConfig, and what the engine produces stays camelCase. Mixing
+// the two on either side of that line is the bug — translating between
+// them is not.
 
 // ═══ Task Status ═══
 
@@ -543,6 +557,16 @@ export interface TriggerWatchHandle {
   dispose(reason?: string): void | Promise<void>;
 }
 
+// Trigger plugins throw these when their watch resolves negatively. The
+// `code` field is a protocol contract: the engine inspects it to map the
+// trigger outcome onto a TaskFailureKind / TaskStatus, and downstream
+// `on_failure: stop_all` / hook payloads derive from the classification.
+// This is NOT a generic "plugin error" pattern — middleware, completion,
+// and driver plugins do not have an analogous protocol need (their
+// failures surface through return values or thrown plain Errors), so
+// don't mirror this onto them just for symmetry. New trigger outcome
+// classes should be added here only when they would change engine
+// behavior; otherwise a plain Error is the right shape.
 export class TriggerBlockedError extends Error {
   readonly code = 'TRIGGER_BLOCKED' as const;
   constructor(message: string) {
