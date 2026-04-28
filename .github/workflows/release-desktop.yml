@@ -602,9 +602,9 @@ jobs:
         # Bash on every platform — electron-builder pulls helper binaries
         # (fpm for deb/rpm, snap, etc.) from GitHub release assets at runtime,
         # and a transient 5xx on that CDN sinks the whole job. The retry-loop
-        # below mirrors `Build desktop prerequisites` above. Backoff is longer
-        # (15s → 30s) because we're waiting for a CDN edge to recover, not a
-        # local cache eviction.
+        # below mirrors `Build desktop prerequisites` above. macOS runs one
+        # arch per invocation so the log shows whether time is spent in arm64
+        # DMG creation, x64 DMG creation, or update-metadata generation.
         shell: bash
         env:
           # When no signing cert is provided, tell electron-builder not to
@@ -619,22 +619,48 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          attempt=1
-          max=3
-          while [ "$attempt" -le "$max" ]; do
-            echo "── electron-builder attempt $attempt/$max ──"
-            if npx --yes electron-builder --${{ matrix.platform }} --publish=never; then
-              echo "electron-builder succeeded on attempt $attempt"
-              exit 0
-            fi
-            echo "electron-builder attempt $attempt failed"
-            if [ "$attempt" -lt "$max" ]; then
-              sleep $((attempt * 15))
-            fi
-            attempt=$((attempt + 1))
-          done
-          echo "electron-builder exhausted retries"
-          exit 1
+          run_builder() {
+            local label="$1"
+            shift
+
+            local attempt=1
+            local max=3
+            while [ "$attempt" -le "$max" ]; do
+              echo "== electron-builder ${label} attempt ${attempt}/${max} started at $(date -u +%Y-%m-%dT%H:%M:%SZ) =="
+              if npx --yes electron-builder "$@" --publish=never; then
+                echo "== electron-builder ${label} succeeded at $(date -u +%Y-%m-%dT%H:%M:%SZ) =="
+                return 0
+              fi
+              echo "electron-builder ${label} attempt ${attempt} failed"
+              if [ "$attempt" -lt "$max" ]; then
+                sleep $((attempt * 15))
+              fi
+              attempt=$((attempt + 1))
+            done
+
+            echo "electron-builder ${label} exhausted retries"
+            return 1
+          }
+
+          collect_builder_output() {
+            local dir="$1"
+            mkdir -p release
+            find "$dir" -maxdepth 1 -type f \
+              \( -name 'Tagma-*' -o -name 'latest*.yml' -o -name '*.blockmap' \) \
+              -exec cp {} release/ \;
+          }
+
+          case "${{ matrix.platform }}" in
+            mac)
+              run_builder "mac arm64" --mac --arm64 -c.directories.output=release/mac-arm64
+              collect_builder_output release/mac-arm64
+              run_builder "mac x64" --mac --x64 -c.directories.output=release/mac-x64
+              collect_builder_output release/mac-x64
+              ;;
+            *)
+              run_builder "${{ matrix.platform }}" --${{ matrix.platform }}
+              ;;
+          esac
 
       - name: Compute checksums
         shell: bash

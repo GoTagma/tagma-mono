@@ -23,7 +23,7 @@
 //             timeout: 10m
 
 import {
-  parseDurationSafe,
+  parseOptionalPluginTimeout,
   type TagmaPlugin,
   type TriggerPlugin,
   type TriggerContext,
@@ -327,8 +327,7 @@ export const WebhookTrigger: TriggerPlugin = {
       typeof rawHost === 'string' && rawHost.trim().length > 0
         ? rawHost.trim()
         : DEFAULT_WEBHOOK_HOST;
-    const timeoutMs =
-      config.timeout != null ? parseDurationSafe(config.timeout, 0) : DEFAULT_WEBHOOK_TIMEOUT_MS;
+    const timeoutMs = parseOptionalPluginTimeout(config.timeout, DEFAULT_WEBHOOK_TIMEOUT_MS);
     const timeoutLabel =
       config.timeout != null ? String(config.timeout) : DEFAULT_WEBHOOK_TIMEOUT_LABEL;
 

@@ -958,4 +958,4 @@ export type WireRunEvent = (RunEventPayload | RunSnapshotPayload) & {
 };
 
 // ═══ Runtime Utilities ═══
-export { parseDurationSafe } from './duration.js';
+export { parseDurationSafe, parseOptionalPluginTimeout } from './duration.js';

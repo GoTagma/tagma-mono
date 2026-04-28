@@ -79,11 +79,23 @@ async function* watchPath(
   options: RuntimeWatchOptions = {},
 ): AsyncIterable<RuntimeWatchEvent> {
   const queue: RuntimeWatchEvent[] = [];
-  const rawMaxQueueEvents = options.maxQueueEvents ?? 1024;
+  const DEFAULT_MAX_QUEUE_EVENTS = 1024;
+  const rawMaxQueueEvents = options.maxQueueEvents ?? DEFAULT_MAX_QUEUE_EVENTS;
   const maxQueueEvents =
     Number.isFinite(rawMaxQueueEvents) && rawMaxQueueEvents > 0
       ? Math.floor(rawMaxQueueEvents)
-      : 1024;
+      : DEFAULT_MAX_QUEUE_EVENTS;
+  // Surface misconfiguration: if the caller explicitly passed something
+  // invalid (NaN, 0, negative, Infinity), we silently fell back. Without a
+  // breadcrumb the user has no way to tell their config was ignored.
+  if (
+    options.maxQueueEvents !== undefined &&
+    (!Number.isFinite(options.maxQueueEvents) || options.maxQueueEvents <= 0)
+  ) {
+    console.warn(
+      `[watch] invalid maxQueueEvents (${String(options.maxQueueEvents)}) for ${path}; falling back to ${DEFAULT_MAX_QUEUE_EVENTS}`,
+    );
+  }
   let wake: (() => void) | null = null;
   let closed = false;
   let error: unknown = null;

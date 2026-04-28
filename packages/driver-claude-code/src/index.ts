@@ -16,12 +16,12 @@ import type {
 
 const DEFAULT_MODEL = 'sonnet';
 
-// Tagma's canonical reasoning_effort vocabulary is low|medium|high (enforced
-// by validate-raw.ts in the SDK). Claude Code CLI also exposes a "max" tier,
-// but accepting it here would diverge from the SDK validator — users who set
-// `reasoning_effort: max` in YAML would see an editor-side validation error
-// even though the driver tolerates it. Stay in sync with the SDK instead.
-const VALID_EFFORT = new Set(['low', 'medium', 'high']);
+// Tagma's canonical reasoning_effort vocabulary is low|medium|high, but the
+// SDK validator deliberately accepts any non-empty string so provider-specific
+// variants (e.g. Claude Code's "max" tier) can travel through the runtime
+// contract — see commit 52e73cf. Drop only empty / non-string values here so
+// a typo can't break `claude -p` startup; let the CLI itself reject anything
+// it doesn't recognize so users see the upstream error message verbatim.
 
 function resolveModel(): string {
   return DEFAULT_MODEL;
@@ -159,10 +159,11 @@ export const ClaudeCodeDriver: DriverPlugin = {
     const permissions = task.permissions ?? track.permissions!;
     const model = task.model ?? track.model ?? DEFAULT_MODEL;
     // SDK schema layer already resolved task → track → pipeline inheritance.
-    // Drop unknown effort values so a typo can't break `claude -p` startup;
-    // validateRaw / the UI should prevent this from reaching us in practice.
+    // Pass any non-empty effort string through to the CLI so provider-specific
+    // values (e.g. "max") work without driver-side allowlist drift.
     const rawEffort = task.reasoning_effort ?? track.reasoning_effort;
-    const effort = rawEffort && VALID_EFFORT.has(rawEffort) ? rawEffort : null;
+    const effort =
+      typeof rawEffort === 'string' && rawEffort.trim().length > 0 ? rawEffort.trim() : null;
     const tools = resolveTools(permissions);
     const permissionMode = resolvePermissionMode(permissions);
 

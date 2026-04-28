@@ -19,6 +19,18 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./workspace-key": {
+      "types": "./dist/workspace-key.d.ts",
+      "import": "./dist/workspace-key.js",
+      "default": "./dist/workspace-key.js"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "workspace-key": [
+        "./dist/workspace-key.d.ts"
+      ]
     }
   },
   "files": [
