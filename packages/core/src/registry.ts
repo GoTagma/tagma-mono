@@ -134,7 +134,16 @@ export interface RegisterPluginOptions {
 // Plugin name must be a scoped npm package or a tagma-prefixed package.
 // Reject absolute/relative paths and suspicious patterns to prevent
 // arbitrary code execution via crafted YAML configs.
-export const PLUGIN_NAME_RE = /^(@[a-z0-9-]+\/[a-z0-9._-]+|tagma-plugin-[a-z0-9._-]+)$/;
+//
+// The negative lookahead `(?![._-]+$)` rejects names whose package-name
+// segment is composed entirely of the dot-class characters that npm permits
+// inside regular package names. Without it, `@scope/..` and `@scope/.` slip
+// through and `pluginDirFor()` resolves them via `path.resolve()` to the
+// parent `node_modules` root — letting an /api/plugins/uninstall caller
+// `rmSync` the whole tree. The lookahead keeps legitimate names like
+// `@scope/foo.bar` working while shutting that path-traversal door.
+export const PLUGIN_NAME_RE =
+  /^(@[a-z0-9-]+\/(?![._-]+$)[a-z0-9._-]+|tagma-plugin-(?![._-]+$)[a-z0-9._-]+)$/;
 
 export function isValidPluginName(name: unknown): name is string {
   return typeof name === 'string' && PLUGIN_NAME_RE.test(name);
