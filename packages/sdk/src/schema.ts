@@ -12,7 +12,13 @@ import type {
   CompletionConfig,
 } from '@tagma/types';
 import { isCommandTaskConfig } from '@tagma/types';
-import { buildDag, DEFAULT_PERMISSIONS, truncateForName, validatePath } from '@tagma/core';
+import {
+  buildDag,
+  DEFAULT_PERMISSIONS,
+  INVALID_TASK_ID_REASON,
+  truncateForName,
+  validatePath,
+} from '@tagma/core';
 import { validateRaw, type ValidationError } from './validate-raw';
 
 export class PipelineValidationError extends Error {
@@ -67,14 +73,16 @@ export function parseYaml(content: string): RawPipelineConfig {
 // alphanumerics, underscores, and hyphens. Dots are forbidden because
 // the engine uses "trackId.taskId" as the qualified separator — a dot in
 // either part creates an ambiguous qualified ID and breaks resolveRef.
+//
+// Canonical regex + error message live in @tagma/core's task-ref so every
+// validator (parse-time here, edit-time in validate-raw.ts, editor UI) reports
+// the same explanation. Drift used to confuse users who'd see two different
+// messages for the same rule depending on which validator fired.
 const ID_RE = /^[A-Za-z_][A-Za-z0-9_-]*$/;
 
 function assertValidId(id: string, label: string): void {
   if (!ID_RE.test(id)) {
-    throw new Error(
-      `${label}: id "${id}" is invalid. IDs must match /^[A-Za-z_][A-Za-z0-9_-]*$/ ` +
-        `(letters, digits, underscores, hyphens; no dots or spaces; must start with letter/underscore).`,
-    );
+    throw new Error(`${label}: id "${id}" is invalid. ${INVALID_TASK_ID_REASON}`);
   }
 }
 
@@ -424,11 +432,21 @@ export function deresolvePipeline(config: PipelineConfig, workDir: string): RawP
 
 /**
  * Validate a pipeline config without executing it.
- * Only checks structural/DAG correctness — does not check plugin registration.
- * Returns an array of error messages (empty = valid).
+ *
+ * Without `workDir`: only checks structural / DAG correctness. cwd path
+ * safety is *not* enforced — the engine still rejects unsafe cwds at run
+ * time, but you do not get an offline diagnostic for them.
+ *
+ * With `workDir`: also validates that every track / task `cwd` resolves
+ * inside `workDir` (no `..` traversal, no absolute paths escaping the
+ * root). Pass `workDir` when this is the final pre-run check; omit it
+ * when the call site has no workDir (pure structural lint).
+ *
+ * Does not check plugin registration — use `validateRaw(config, knownTypes)`
+ * for that. Returns an array of error message strings; empty means valid.
  */
-export function validateConfig(config: PipelineConfig): string[] {
-  return validateConfigDiagnostics(config).map(formatDiagnostic);
+export function validateConfig(config: PipelineConfig, workDir?: string): string[] {
+  return validateConfigDiagnostics(config, workDir).map(formatDiagnostic);
 }
 
 export function validateConfigDiagnostics(

@@ -31,14 +31,6 @@ const EFFORT_TO_VARIANT: Record<string, string | null> = {
   high: 'high',
 };
 
-let cachedDefaultModel: string | undefined;
-
-function resolveDefaultModel(): string {
-  if (cachedDefaultModel !== undefined) return cachedDefaultModel;
-  cachedDefaultModel = DEFAULT_MODEL;
-  return cachedDefaultModel;
-}
-
 export const OpenCodeDriver: DriverPlugin = {
   name: 'opencode',
 
@@ -55,7 +47,7 @@ export const OpenCodeDriver: DriverPlugin = {
 
   async buildCommand(task: TaskConfig, track: TrackConfig, ctx: DriverContext): Promise<SpawnSpec> {
     const explicitModel = task.model ?? track.model;
-    const model = explicitModel ?? resolveDefaultModel();
+    const model = explicitModel ?? DEFAULT_MODEL;
     // Resolve reasoning_effort to opencode --variant. SDK schema layer already
     // resolved task -> track -> pipeline inheritance, so we only need to read
     // task.reasoning_effort here.

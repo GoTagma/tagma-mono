@@ -35,5 +35,10 @@ export type {
   TriggerWatchHandle,
   CompletionPlugin,
   MiddlewarePlugin,
+  // Same type as the `RunEventPayload` re-exported from `@tagma/core`
+  // a few lines above (`@tagma/core` itself re-exports it from
+  // `@tagma/types`). The `PipelineRunEventPayload` alias exists for
+  // historical clarity in host code that wanted the word "Pipeline" in
+  // the name; new code should prefer `RunEventPayload`.
   RunEventPayload as PipelineRunEventPayload,
 } from '@tagma/types';

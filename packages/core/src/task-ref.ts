@@ -29,6 +29,16 @@ import type { PipelineConfig, RawPipelineConfig } from './types';
  */
 export const TASK_ID_RE = /^[A-Za-z_][A-Za-z0-9_-]*$/;
 
+/**
+ * Canonical "why is this id invalid" reason string. Single source of truth
+ * for every validator that reports a bad task / track id (sdk schema.ts,
+ * sdk validate-raw.ts, editor frontend) so the wording stays uniform
+ * across parse-time errors, edit-time diagnostics, and UI tooltips.
+ */
+export const INVALID_TASK_ID_REASON =
+  'IDs must match /^[A-Za-z_][A-Za-z0-9_-]*$/ ' +
+  '(letters, digits, underscores, hyphens; no dots or spaces; must start with letter/underscore).';
+
 export function isValidTaskId(id: unknown): id is string {
   return typeof id === 'string' && TASK_ID_RE.test(id);
 }

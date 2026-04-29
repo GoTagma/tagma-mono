@@ -45,6 +45,10 @@ export const StaticContextMiddleware: MiddlewarePlugin = {
     const filePath = config.file as string;
     if (!filePath) throw new Error('static_context middleware: "file" is required');
 
+    // Validate config before touching the disk so a bad max_chars surfaces
+    // without an unnecessary file read first.
+    const maxChars = parseMaxChars(config.max_chars);
+
     const safePath = validatePath(filePath, ctx.workDir);
     const file = Bun.file(safePath);
 
@@ -53,8 +57,17 @@ export const StaticContextMiddleware: MiddlewarePlugin = {
       return doc;
     }
 
-    const maxChars = parseMaxChars(config.max_chars);
-    const rawContent = await file.slice(0, maxChars + 1).text();
+    // max_chars is a *character* count, not a byte count. Blob.slice() is
+    // byte-level, so a naive `slice(0, maxChars + 1)` lands mid-UTF-8 for
+    // CJK / emoji content and either mis-reports truncation (decoded char
+    // count is far below the byte budget) or leaves a U+FFFD replacement
+    // at the boundary. Read up to maxChars * 4 + 8 bytes (UTF-8 worst
+    // case is 4 bytes per codepoint, +8 buffers a partial trailing char)
+    // so we have at least maxChars characters worth of material to slice
+    // by character. The trailing partial char (if any) is past `maxChars`
+    // and gets dropped by the slice below, so no U+FFFD leaks through.
+    const maxBytesNeeded = maxChars * 4 + 8;
+    const rawContent = await file.slice(0, maxBytesNeeded).text();
     const content =
       rawContent.length > maxChars
         ? `${rawContent.slice(0, maxChars)}\n\n[truncated static context at ${maxChars} chars]`

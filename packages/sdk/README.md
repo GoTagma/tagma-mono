@@ -230,9 +230,9 @@ by `mode: safe` / `mode: trusted`.
 
 Fields are inherited top-down: **pipeline → track → task**. A value set at a lower level overrides the inherited value.
 
-Inherited fields: `driver`, `model`, `permissions`, `cwd`, `middlewares`.
+Inherited from pipeline → track → task: `driver`, `model`, `reasoning_effort`, `permissions`. `cwd` is inherited track → task only (the pipeline's cwd is the workDir argument passed to `tagma.run` / `loadPipeline`, not a YAML field).
 
-Track-level `middlewares` apply to all tasks in the track. Setting task-level `middlewares` **replaces** (not appends) the track-level list. Use `middlewares: []` to disable all inherited middlewares for a task.
+`middlewares` is **track → task only** — there is no `pipeline.middlewares` field. Track-level `middlewares` apply to all tasks in the track. Setting task-level `middlewares` **replaces** (not appends) the track-level list. Use `middlewares: []` to disable all inherited middlewares for a task.
 
 ---
 
@@ -424,7 +424,7 @@ Tasks can declare named, typed `inputs` / `outputs`. Inputs flow in from upstrea
 ### Config: `@tagma/sdk/config`
 
 - immutable config editing helpers
-- raw validation helpers
+- raw validation helpers (`validateRaw`, plus `validateConfig` for the resolved-config counterpart — same function as `@tagma/sdk/yaml`'s `validateConfig`, re-exported here so config-editor code paths stay on `./config` without dipping into `./yaml`)
 - resolved and raw DAG helpers
 - task reference helpers
 
@@ -438,6 +438,8 @@ Tasks can declare named, typed `inputs` / `outputs`. Inputs flow in from upstrea
 - `PipelineRunner` lifecycle wrapper for hosts that manage multiple concurrent runs
 
 ### Runtime approval adapters
+
+These ship in `@tagma/runtime-bun`, not `@tagma/sdk` — when you `bun add @tagma/sdk`, runtime-bun comes along as a transitive dep, but you import the adapters from runtime-bun directly:
 
 - `@tagma/runtime-bun/adapters/stdin-approval`
 - `@tagma/runtime-bun/adapters/websocket-approval`
@@ -513,9 +515,12 @@ runner.abort();
 
 // Live wire-shape task mirror, maintained from run_start + task_update + task_log events.
 // Empty map before the first run_start; safe to read at any time.
-// task_log entries are folded into RunTaskState.logs (capped at TASK_LOG_CAP)
-// and totalLogCount, so hosts get a self-contained per-task view without
-// having to buffer the event stream themselves.
+// task_log entries with a non-null taskId are folded into RunTaskState.logs
+// (capped at TASK_LOG_CAP) and totalLogCount, so hosts get a self-contained
+// per-task view without having to buffer the event stream themselves.
+// Pipeline-wide log lines (taskId: null — config dump, DAG topology,
+// hook output without a [task:<id>] prefix) are NOT folded into any task's
+// log buffer; subscribe at the event stream level if you need them.
 const tasks = runner.getTasks(); // ReadonlyMap<taskId, RunTaskState>
 ```
 
@@ -701,11 +706,11 @@ const updatedRaw = setPipelineField(raw, { name: 'renamed' });
 const savedYaml = serializePipeline(updatedRaw);
 ```
 
-### `validateConfig(config: PipelineConfig): string[]`
+### `validateConfig(config: PipelineConfig, workDir?: string): string[]`
 
-Validates a resolved pipeline config without executing it. Checks DAG structure (cycles, missing dependencies). Returns an array of error message strings — empty means valid.
+Validates a resolved pipeline config without executing it. Checks DAG structure (cycles, missing dependencies). When `workDir` is supplied, also validates that every track / task `cwd` resolves inside it (no `..` traversal, no absolute paths escaping the root); without `workDir`, cwd paths are not checked offline (the engine still rejects unsafe cwds at run time, but you do not get an offline diagnostic). Returns an array of error message strings — empty means valid.
 
-Use `validateRaw` for editing raw configs in a UI; use `validateConfig` after `resolveConfig` for a final pre-run check.
+Use `validateRaw` for editing raw configs in a UI; pass `workDir` to `validateConfig` after `resolveConfig` for a final pre-run check that also covers cwd safety.
 
 ### Bindings API
 
@@ -733,12 +738,21 @@ Checks: required fields, `prompt`/`command` exclusivity, duplicate task IDs with
 
 Plugin-type checks are opt-in via `knownTypes`: when provided, references to trigger/completion/middleware/driver types that are neither built-in nor in the supplied set produce a **warning** (`severity: 'warning'`) so editors can light up uninstalled plugins without blocking save / run. Omit `knownTypes` for offline / pre-load validation — no plugin warnings are emitted in that case.
 
+Plugin **schemas** elevate the check from "type exists" to "type exists AND every config field matches the declared schema". Supply `knownTypes.schemas` (a `{ triggers, completions, middlewares }` map of `Record<typeName, PluginSchema | undefined>`) and `validateRaw` runs the same per-field guard core preflight runs at engine startup: a `timeout: "garbage"` on a `manual` trigger is reported at edit time, an out-of-enum `kind: "symlink"` on `file_exists` lights up before save, etc. Schema errors are returned as plain `error` (not `warning`) so editors block save on them just like other structural errors. Hosts collect schemas from the registry via `registry.getHandler(category, type).schema`.
+
 ```ts
+const triggerSchemas = Object.fromEntries(
+  registry.listRegistered('triggers').map((t) => [t, registry.getHandler('triggers', t).schema]),
+);
 const errors = validateRaw(draftConfig, {
-  triggers: registry.list('triggers'),
-  completions: registry.list('completions'),
-  middlewares: registry.list('middlewares'),
-  drivers: registry.list('drivers'),
+  triggers: registry.listRegistered('triggers'),
+  completions: registry.listRegistered('completions'),
+  middlewares: registry.listRegistered('middlewares'),
+  drivers: registry.listRegistered('drivers'),
+  schemas: {
+    triggers: triggerSchemas,
+    // ...completions / middlewares similarly
+  },
 });
 errors.forEach((e) => highlightNode(e.path, e.message, e.severity ?? 'error'));
 ```

@@ -61,6 +61,7 @@ export {
   PluginRegistry,
   PLUGIN_NAME_RE,
   readPluginManifest,
+  validatePluginConfig,
   type RegisterPluginOptions,
   type RegisteredCapability,
   type RegisterResult,
@@ -80,6 +81,7 @@ export {
 export {
   AMBIGUOUS,
   buildTaskIndex,
+  INVALID_TASK_ID_REASON,
   isQualifiedRef,
   isValidTaskId,
   qualifyTaskId,

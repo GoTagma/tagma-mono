@@ -8,6 +8,7 @@
 
 import type {
   CommandConfig,
+  PluginSchema,
   PortType,
   RawPipelineConfig,
   RawTaskConfig,
@@ -15,10 +16,12 @@ import type {
 } from '@tagma/types';
 import { isCommandTaskConfig, isPromptTaskConfig } from '@tagma/types';
 import {
+  INVALID_TASK_ID_REASON,
   isValidTaskId,
   qualifyTaskId,
   buildTaskIndex,
   resolveTaskRef,
+  validatePluginConfig,
   type TaskIndex,
 } from '@tagma/core';
 import { extractInputReferences } from '@tagma/core';
@@ -191,12 +194,30 @@ function commandInputReferences(command: CommandConfig): string[] {
  * no hint and the pipeline would only blow up at run time. Callers that
  * legitimately validate a config offline (before plugins are loaded) can omit
  * this argument and no plugin warnings will be produced.
+ *
+ * Plugin schemas (optional `schemas` field) elevate plugin config from "type
+ * exists" to "type exists AND every config field matches the declared
+ * schema". When a host supplies the schema for a registered trigger /
+ * completion / middleware type, the same per-field checks core preflight
+ * runs at engine startup (e.g. `timeout: duration` is parsed strictly,
+ * `kind: enum` must be one of the declared values) fire here at edit time -
+ * users see the underlying error in their editor instead of waiting for a
+ * preflight failure. Hosts can collect schemas from the registry via
+ * `registry.getHandler(category, type).schema`. Missing entries fall back
+ * to name-only checks (no per-field validation).
  */
 export interface KnownPluginTypes {
   readonly drivers?: readonly string[];
   readonly triggers?: readonly string[];
   readonly completions?: readonly string[];
   readonly middlewares?: readonly string[];
+  readonly schemas?: KnownPluginSchemas;
+}
+
+export interface KnownPluginSchemas {
+  readonly triggers?: Readonly<Record<string, PluginSchema | undefined>>;
+  readonly completions?: Readonly<Record<string, PluginSchema | undefined>>;
+  readonly middlewares?: Readonly<Record<string, PluginSchema | undefined>>;
 }
 
 export type ValidationSeverity = 'error' | 'warning';
@@ -269,6 +290,35 @@ function validatePluginRef(
     return null;
   }
   return value.type;
+}
+
+/**
+ * Run core's `validatePluginConfig` against a trigger / completion /
+ * middleware config object and lift the returned strings into the
+ * validate-raw `ValidationError` shape. The schema's per-field messages
+ * already carry the precise location (`<basePath>.<field>`); we keep
+ * `path` at the plugin-config root so editors can highlight the whole
+ * block, and put the full message in `message` so the field is named.
+ *
+ * No-ops when `schema` is undefined (caller didn't supply it) or when
+ * `config` isn't a plain object (the structural validator has already
+ * pushed an error for that earlier).
+ */
+function pushSchemaErrors(
+  schema: PluginSchema | undefined,
+  config: unknown,
+  basePath: string,
+  errors: ValidationError[],
+): void {
+  if (!schema) return;
+  if (!config || typeof config !== 'object' || Array.isArray(config)) return;
+  for (const message of validatePluginConfig(
+    schema,
+    config as Record<string, unknown>,
+    basePath,
+  )) {
+    errors.push({ path: basePath, message });
+  }
 }
 
 function validateMiddlewareList(
@@ -435,7 +485,7 @@ export function validateRaw(
     } else if (!isValidId(track.id)) {
       errors.push({
         path: `${trackPath}.id`,
-        message: `Track id "${track.id}" contains invalid characters. IDs must match /^[A-Za-z_][A-Za-z0-9_-]*$/ (no dots, spaces, or special chars).`,
+        message: `Track id "${track.id}" is invalid. ${INVALID_TASK_ID_REASON}`,
       });
     } else if (seenTrackIds.has(track.id)) {
       errors.push({ path: `${trackPath}.id`, message: `Duplicate track id "${track.id}"` });
@@ -480,6 +530,17 @@ export function validateRaw(
         }
       }
     }
+    if (knownTypes?.schemas?.middlewares && Array.isArray(track.middlewares)) {
+      const mwSchemas = knownTypes.schemas.middlewares;
+      for (const { index: mi, type } of trackMiddlewareTypes) {
+        pushSchemaErrors(
+          mwSchemas[type],
+          track.middlewares[mi],
+          `${trackPath}.middlewares[${mi}]`,
+          errors,
+        );
+      }
+    }
 
     if (!Array.isArray(track.tasks)) {
       errors.push({
@@ -515,7 +576,7 @@ export function validateRaw(
       if (!isValidId(task.id)) {
         errors.push({
           path: `${taskPath}.id`,
-          message: `Task id "${task.id}" contains invalid characters. IDs must match /^[A-Za-z_][A-Za-z0-9_-]*$/ (no dots, spaces, or special chars).`,
+          message: `Task id "${task.id}" is invalid. ${INVALID_TASK_ID_REASON}`,
         });
       }
       if ('ports' in (maybeTask as Record<string, unknown>)) {
@@ -631,6 +692,39 @@ export function validateRaw(
         }
       }
 
+      // Schema-based per-field validation. Mirrors what core preflight runs
+      // at engine startup (validatePluginConfig) so the editor surfaces a
+      // bad `timeout: "garbage"` or wrong-typed field at edit time instead
+      // of waiting for run time. No-op when the host doesn't supply
+      // schemas, or for plugin types whose schema entry is missing.
+      if (triggerType !== null && knownTypes?.schemas?.triggers) {
+        pushSchemaErrors(
+          knownTypes.schemas.triggers[triggerType],
+          task.trigger,
+          `${taskPath}.trigger`,
+          errors,
+        );
+      }
+      if (completionType !== null && knownTypes?.schemas?.completions) {
+        pushSchemaErrors(
+          knownTypes.schemas.completions[completionType],
+          task.completion,
+          `${taskPath}.completion`,
+          errors,
+        );
+      }
+      if (knownTypes?.schemas?.middlewares && Array.isArray(task.middlewares)) {
+        const mwSchemas = knownTypes.schemas.middlewares;
+        for (const { index: mi, type } of taskMiddlewareTypes) {
+          pushSchemaErrors(
+            mwSchemas[type],
+            task.middlewares[mi],
+            `${taskPath}.middlewares[${mi}]`,
+            errors,
+          );
+        }
+      }
+
       //  Port declaration checks
       const deps = validateStringList(
         task.depends_on,
@@ -743,6 +837,31 @@ const VALID_PORT_TYPES: ReadonlySet<PortType> = new Set([
 // template grammar unambiguous.
 const PORT_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
+// Two distinct field-name contracts live in this module. They look similar
+// but cover different surfaces, so they intentionally do not share a single
+// list:
+//
+//  - INPUT_TASK_STREAM_FIELDS: trailing field names allowed when an `inputs`
+//    binding's `from:` references an upstream task's stream (e.g.
+//    `up.stdout`, `track.up.exitCode`). Used by `bindingSourceTaskRef` to
+//    peel the field off when computing the upstream task ref. Includes
+//    `exitCode` because a downstream task can read the upstream's exit code.
+//
+//  - OUTPUT_BINDING_SOURCES: full set of legal `from:` values when a task
+//    publishes its OWN outputs (no task ref, just the local task's stream).
+//    Used to validate `task.outputs.<name>.from` shape. Does NOT include
+//    `exitCode` - a task's exitCode is implicit on success (always 0 on
+//    the success path through the engine), so publishing it as an output
+//    binding is degenerate.
+const INPUT_TASK_STREAM_FIELDS: readonly string[] = [
+  'stdout',
+  'stderr',
+  'normalizedOutput',
+  'exitCode',
+];
+const OUTPUT_BINDING_SOURCES: readonly string[] = ['stdout', 'stderr', 'normalizedOutput'];
+const OUTPUT_BINDING_JSON_RE = /^json\.[A-Za-z_][A-Za-z0-9_]*$/;
+
 function validateBindingMap(
   value: unknown,
   basePath: string,
@@ -804,14 +923,11 @@ function validateBindingMap(
     if (kind === 'outputs' && typeof binding.from === 'string') {
       const source = binding.from;
       const ok =
-        source === 'stdout' ||
-        source === 'stderr' ||
-        source === 'normalizedOutput' ||
-        /^json\.[A-Za-z_][A-Za-z0-9_]*$/.test(source);
+        OUTPUT_BINDING_SOURCES.includes(source) || OUTPUT_BINDING_JSON_RE.test(source);
       if (!ok) {
         errors.push({
           path: `${path}.from`,
-          message: `task.outputs.${name}.from must be stdout, stderr, normalizedOutput, or json.<key>`,
+          message: `task.outputs.${name}.from must be ${OUTPUT_BINDING_SOURCES.join(', ')}, or json.<key>`,
         });
       }
     }
@@ -838,7 +954,28 @@ function validateInputBindingSources(
     const upstreamRef = bindingSourceTaskRef(source);
     if (!upstreamRef) continue;
     const sourceResolution = resolveTaskRef(upstreamRef, trackId, index);
-    const upstreamId = sourceResolution.kind === 'resolved' ? sourceResolution.qid : upstreamRef;
+
+    // Surface "no such task" / "ambiguous" before the direct-dep check.
+    // Falling through to the not-a-direct-dep branch with an unresolved
+    // ref produces a misleading "references task <literal-string> which
+    // is not a direct dependency" message — the underlying problem is
+    // that the ref does not resolve at all.
+    if (sourceResolution.kind === 'not_found') {
+      errors.push({
+        path: `${taskPath}.inputs.${name}.from`,
+        message: `Task "${task.id}": input binding "${name}" from "${source}"  - no such task "${upstreamRef}"`,
+      });
+      continue;
+    }
+    if (sourceResolution.kind === 'ambiguous') {
+      errors.push({
+        path: `${taskPath}.inputs.${name}.from`,
+        message: `Task "${task.id}": input binding "${name}" from "${source}" is ambiguous  - multiple tracks have a task with id "${upstreamRef}". Use the fully-qualified form "trackId.${upstreamRef}".`,
+      });
+      continue;
+    }
+
+    const upstreamId = sourceResolution.qid;
     const deps = dependencyRefs(task);
     const isDirectDep = deps.some((dep) => {
       const resolved = resolveTaskRef(dep, trackId, index);
@@ -858,7 +995,7 @@ function bindingSourceTaskRef(source: string): string | null {
   const outputMarker = '.outputs.';
   const outputIdx = source.lastIndexOf(outputMarker);
   if (outputIdx > 0) return source.slice(0, outputIdx);
-  for (const field of ['stdout', 'stderr', 'normalizedOutput', 'exitCode']) {
+  for (const field of INPUT_TASK_STREAM_FIELDS) {
     const suffix = `.${field}`;
     if (source.endsWith(suffix) && source.length > suffix.length) {
       return source.slice(0, -suffix.length);

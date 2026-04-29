@@ -72,6 +72,61 @@ describe('validateRaw - unified typed bindings', () => {
     expect(errors.some((e) => /not a direct dependency/.test(e.message))).toBe(true);
   });
 
+  test('input binding source pointing to a non-existent task reports "no such task" instead of "not a direct dependency"', () => {
+    const errors = errorsFor(
+      commandTask({
+        id: 'down',
+        command: 'echo {{inputs.city}}',
+        inputs: { city: { from: 'nowhere.outputs.city' } },
+      }),
+    );
+    // Underlying problem is "no such task" — should not be downgraded
+    // into the (also-true but misleading) "not a direct dependency" form.
+    expect(errors.some((e) => /no such task "nowhere"/.test(e.message))).toBe(true);
+    expect(
+      errors.filter(
+        (e) =>
+          e.path.startsWith('tracks[0].tasks[0].inputs.city.from') &&
+          /not a direct dependency/.test(e.message),
+      ),
+    ).toEqual([]);
+  });
+
+  test('input binding source pointing to an ambiguous bare task ref reports the ambiguity', () => {
+    const errors = validateRaw({
+      name: 'p',
+      tracks: [
+        {
+          id: 'a',
+          name: 'A',
+          tasks: [commandTask({ id: 'shared', command: 'echo ok', outputs: { city: {} } })],
+        },
+        {
+          id: 'b',
+          name: 'B',
+          tasks: [commandTask({ id: 'shared', command: 'echo ok', outputs: { city: {} } })],
+        },
+        {
+          id: 'c',
+          name: 'C',
+          tasks: [
+            commandTask({
+              id: 'down',
+              command: 'echo {{inputs.city}}',
+              inputs: { city: { from: 'shared.outputs.city' } },
+            }),
+          ],
+        },
+      ],
+    });
+    expect(
+      errors.some(
+        (e) =>
+          e.path === 'tracks[2].tasks[0].inputs.city.from' && /is ambiguous/.test(e.message),
+      ),
+    ).toBe(true);
+  });
+
   test('short input sources validate against direct dependencies', () => {
     const errors = validateRaw(
       config([

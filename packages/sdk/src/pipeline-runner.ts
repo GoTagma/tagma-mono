@@ -125,7 +125,17 @@ export class PipelineRunner {
         return;
       case 'task_update': {
         const prev = this._tasks.get(event.taskId);
-        if (!prev) return;
+        if (!prev) {
+          // run_start should have populated every task before any
+          // task_update fires. Reaching this branch means the engine emitted
+          // an update for a task we never saw - usually a sign of a missed
+          // run_start or an event-ordering bug. Surface it once for visibility
+          // rather than silently dropping the state change.
+          console.warn(
+            `[PipelineRunner] dropping task_update for unknown taskId "${event.taskId}" - was run_start delivered?`,
+          );
+          return;
+        }
         const pick = <T>(incoming: T | undefined, previous: T): T =>
           incoming !== undefined ? incoming : previous;
         this._tasks.set(event.taskId, {
@@ -152,16 +162,31 @@ export class PipelineRunner {
         return;
       }
       case 'task_log': {
+        // Pipeline-wide log lines (configuration dump, DAG topology, hook
+        // output without a task tag) carry taskId: null. They go to the
+        // pipeline.log file but do not belong to any single task's
+        // bounded log buffer; hosts that need them subscribe at the event
+        // stream level.
         if (event.taskId === null) return;
         const prev = this._tasks.get(event.taskId);
-        if (!prev) return;
-        const logs = [
-          ...prev.logs,
-          { level: event.level, timestamp: event.timestamp, text: event.text },
-        ];
+        if (!prev) {
+          console.warn(
+            `[PipelineRunner] dropping task_log for unknown taskId "${event.taskId}"`,
+          );
+          return;
+        }
+        const entry = { level: event.level, timestamp: event.timestamp, text: event.text };
+        // O(1) per append once the buffer is at cap: pop the oldest, push
+        // the new one. Previously we spread the whole prev.logs array on
+        // every call (O(n) per event, O(n*k) over k events) which compounded
+        // for long-running tasks.
+        const nextLogs =
+          prev.logs.length >= TASK_LOG_CAP
+            ? [...prev.logs.slice(prev.logs.length - TASK_LOG_CAP + 1), entry]
+            : [...prev.logs, entry];
         this._tasks.set(event.taskId, {
           ...prev,
-          logs: logs.slice(-TASK_LOG_CAP),
+          logs: nextLogs,
           totalLogCount: prev.totalLogCount + 1,
         });
         return;
