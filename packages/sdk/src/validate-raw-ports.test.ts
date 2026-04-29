@@ -71,6 +71,39 @@ describe('validateRaw - unified typed bindings', () => {
     );
     expect(errors.some((e) => /not a direct dependency/.test(e.message))).toBe(true);
   });
+
+  test('short input sources validate against direct dependencies', () => {
+    const errors = validateRaw(
+      config([
+        commandTask({ id: 'up', command: 'echo ok', outputs: { city: {} } }),
+        commandTask({
+          id: 'down',
+          depends_on: ['up'],
+          command: 'echo {{inputs.city}}',
+          inputs: {
+            city: { from: 'up.city' },
+            sameCity: { from: 'up.outputs.city' },
+            raw: { from: 'up.stdout' },
+          },
+        }),
+      ]),
+    );
+    expect(errors.filter((e) => /not a direct dependency/.test(e.message))).toEqual([]);
+  });
+
+  test('short input sources still reject non-direct dependencies', () => {
+    const errors = validateRaw(
+      config([
+        commandTask({ id: 'up', command: 'echo ok', outputs: { city: {} } }),
+        commandTask({
+          id: 'down',
+          command: 'echo {{inputs.city}}',
+          inputs: { city: { from: 'up.city' } },
+        }),
+      ]),
+    );
+    expect(errors.some((e) => /not a direct dependency/.test(e.message))).toBe(true);
+  });
 });
 
 describe('validateRaw - prompt inferred bindings', () => {
@@ -107,6 +140,25 @@ describe('validateRaw - prompt inferred bindings', () => {
           inputs: {
             weatherCity: { from: 't.weather.outputs.city', type: 'string' },
             profileCity: { from: 't.profile.outputs.city', type: 'string' },
+          },
+        }),
+      ]),
+    );
+    expect(errors.some((e) => /cannot disambiguate/.test(e.message))).toBe(false);
+  });
+
+  test('short prompt input aliases can resolve ambiguous upstream command outputs', () => {
+    const errors = validateRaw(
+      config([
+        commandTask({ id: 'weather', command: 'echo ok', outputs: { city: { type: 'string' } } }),
+        commandTask({ id: 'profile', command: 'echo ok', outputs: { city: { type: 'string' } } }),
+        promptTask({
+          id: 'p',
+          depends_on: ['weather', 'profile'],
+          prompt: 'weather={{inputs.weatherCity}} profile={{inputs.profileCity}}',
+          inputs: {
+            weatherCity: { from: 'weather.city', type: 'string' },
+            profileCity: { from: 'profile.outputs.city', type: 'string' },
           },
         }),
       ]),

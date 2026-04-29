@@ -111,9 +111,10 @@ export interface PortDef {
   /**
    * Optional explicit upstream binding. Accepts either a bare port name
    * (must be unambiguous among the task's direct upstreams) or a
-   * fully-qualified `taskId.portName` reference. Only meaningful for
-   * inputs. Unset = match by name against all direct upstream outputs,
-   * with ambiguity flagged at validation time.
+   * `taskId.portName` / `taskId.outputs.portName` reference. `taskId`
+   * can be a direct-upstream task id or a fully-qualified `trackId.taskId`.
+   * Only meaningful for inputs. Unset = match by name against all direct
+   * upstream outputs, with ambiguity flagged at validation time.
    */
   readonly from?: string;
 }
@@ -130,11 +131,14 @@ export interface TaskInputBinding {
   readonly value?: unknown;
   /**
    * Source expression. Supported forms:
+   *   - `taskId.name`
    *   - `taskId.outputs.name`
    *   - `taskId.stdout`
    *   - `taskId.stderr`
    *   - `taskId.normalizedOutput`
    *   - `outputs.name` (name-match across direct upstream outputs)
+   * `taskId` may be a fully-qualified `trackId.taskId` or an
+   * unqualified direct-upstream task id when that id is unambiguous.
    * When unset, the runtime auto-matches a same-name output from direct
    * upstreams before falling back to `default`.
    */

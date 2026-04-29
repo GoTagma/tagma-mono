@@ -197,6 +197,38 @@ describe('engine — unified inputs and outputs', () => {
     }
   });
 
+  test('short from syntax resolves direct upstream outputs and streams', async () => {
+    const dir = makeDir();
+    try {
+      const runtime = fakeRuntime({ 'emit-valid': '{"city":"Shanghai"}\n' });
+      const config = pipeline([
+        task({
+          id: 'up',
+          command: 'emit-valid',
+          outputs: { city: { type: 'string' } },
+        }),
+        task({
+          id: 'down',
+          depends_on: ['up'],
+          command: 'echo-down "{{inputs.city}}" "{{inputs.raw}}"',
+          inputs: {
+            city: { from: 'up.city', type: 'string', required: true },
+            raw: { from: 'up.stdout', type: 'string', required: true },
+          },
+        }),
+      ]);
+
+      const { events, success } = await run(config, dir, runtime);
+      expect(success).toBe(true);
+      expect(finalUpdateFor(events, 't.down')?.inputs).toEqual({
+        city: 'Shanghai',
+        raw: '{"city":"Shanghai"}\n',
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('missing declared producer output fails producer before downstream runs', async () => {
     const dir = makeDir();
     try {

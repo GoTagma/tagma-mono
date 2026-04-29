@@ -78,7 +78,19 @@ function sourceReferencesOutput(
   upstreamId: string,
   outputName: string,
 ): boolean {
-  return source === `${upstreamId}.outputs.${outputName}`;
+  if (!source) return false;
+  if (source === `${upstreamId}.outputs.${outputName}`) return true;
+  const upstreamTaskId = bareTaskId(upstreamId);
+  return (
+    source === `${upstreamTaskId}.outputs.${outputName}` ||
+    source === `${upstreamId}.${outputName}` ||
+    source === `${upstreamTaskId}.${outputName}`
+  );
+}
+
+function bareTaskId(qid: string): string {
+  const dot = qid.lastIndexOf('.');
+  return dot >= 0 ? qid.slice(dot + 1) : qid;
 }
 
 function disambiguatesInputConflict(

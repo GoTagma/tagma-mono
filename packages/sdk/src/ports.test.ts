@@ -408,6 +408,74 @@ describe('resolveTaskBindingInputs', () => {
     expect(res.inputs).toEqual({ city: 'Shanghai', raw: 'raw text\n' });
   });
 
+  test('resolves short task output and stream sources from direct upstreams', () => {
+    const t = task({
+      id: 'downstream',
+      command: 'echo',
+      inputs: {
+        city: { from: 'up.city' },
+        explicitCity: { from: 'up.outputs.city' },
+        raw: { from: 'up.stdout' },
+      },
+    });
+    const upstream = new Map([
+      [
+        't.up',
+        {
+          outputs: { city: 'Shanghai' },
+          stdout: 'raw text\n',
+          stderr: '',
+          normalizedOutput: null,
+          exitCode: 0,
+        },
+      ],
+    ]);
+    const res = resolveTaskBindingInputs(t, upstream, ['t.up']);
+    expect(res.kind).toBe('ready');
+    if (res.kind !== 'ready') return;
+    expect(res.inputs).toEqual({
+      city: 'Shanghai',
+      explicitCity: 'Shanghai',
+      raw: 'raw text\n',
+    });
+  });
+
+  test('short task sources are ambiguous when multiple direct upstreams share the task id', () => {
+    const t = task({
+      id: 'downstream',
+      command: 'echo',
+      inputs: {
+        city: { from: 'up.city', required: true },
+      },
+    });
+    const upstream = new Map([
+      [
+        'a.up',
+        {
+          outputs: { city: 'Shanghai' },
+          stdout: '',
+          stderr: '',
+          normalizedOutput: null,
+          exitCode: 0,
+        },
+      ],
+      [
+        'b.up',
+        {
+          outputs: { city: 'Beijing' },
+          stdout: '',
+          stderr: '',
+          normalizedOutput: null,
+          exitCode: 0,
+        },
+      ],
+    ]);
+    const res = resolveTaskBindingInputs(t, upstream, ['a.up', 'b.up']);
+    expect(res.kind).toBe('blocked');
+    if (res.kind !== 'blocked') return;
+    expect(res.ambiguous).toEqual([{ input: 'city', producers: ['a.up', 'b.up'] }]);
+  });
+
   test('blocks required missing bindings with a readable reason', () => {
     const t = task({
       id: 'downstream',

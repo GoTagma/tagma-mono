@@ -373,21 +373,19 @@ function resolveBindingSource(
   const outputMarker = '.outputs.';
   const outputIdx = source.lastIndexOf(outputMarker);
   if (outputIdx > 0) {
-    const upstreamId = source.slice(0, outputIdx);
+    const upstreamRef = source.slice(0, outputIdx);
     const outputName = source.slice(outputIdx + outputMarker.length);
-    if (!dependsOn.includes(upstreamId)) return { kind: 'miss' };
-    const upstream = upstreamData.get(upstreamId);
-    if (upstream?.outputs && outputName in upstream.outputs) {
-      return { kind: 'hit', producer: upstreamId, value: upstream.outputs[outputName] };
-    }
-    return { kind: 'miss' };
+    return findOutputOnProducer(upstreamRef, outputName, upstreamData, dependsOn);
   }
 
   for (const field of ['stdout', 'stderr', 'normalizedOutput', 'exitCode'] as const) {
     const suffix = `.${field}`;
     if (!source.endsWith(suffix)) continue;
-    const upstreamId = source.slice(0, -suffix.length);
-    if (!dependsOn.includes(upstreamId)) return { kind: 'miss' };
+    const upstreamRef = source.slice(0, -suffix.length);
+    const resolved = resolveDirectUpstreamRef(upstreamRef, dependsOn);
+    if (resolved.kind === 'ambiguous') return { kind: 'ambiguous', producers: resolved.producers };
+    if (resolved.kind === 'miss') return { kind: 'miss' };
+    const upstreamId = resolved.producer;
     const upstream = upstreamData.get(upstreamId);
     if (!upstream) return { kind: 'miss' };
     const value = upstream[field];
@@ -396,6 +394,33 @@ function resolveBindingSource(
       : { kind: 'hit', producer: upstreamId, value };
   }
 
+  const dot = source.lastIndexOf('.');
+  if (dot > 0) {
+    const upstreamRef = source.slice(0, dot);
+    const outputName = source.slice(dot + 1);
+    return findOutputOnProducer(upstreamRef, outputName, upstreamData, dependsOn);
+  }
+
+  return { kind: 'miss' };
+}
+
+function findOutputOnProducer(
+  upstreamRef: string,
+  outputName: string,
+  upstreamData: ReadonlyMap<string, UpstreamBindingData>,
+  dependsOn: readonly string[],
+): BindingLookup {
+  const resolved = resolveDirectUpstreamRef(upstreamRef, dependsOn);
+  if (resolved.kind === 'ambiguous') return { kind: 'ambiguous', producers: resolved.producers };
+  if (resolved.kind === 'miss') return { kind: 'miss' };
+  const upstream = upstreamData.get(resolved.producer);
+  if (upstream?.outputs && outputName in upstream.outputs) {
+    return {
+      kind: 'hit',
+      producer: resolved.producer,
+      value: upstream.outputs[outputName],
+    };
+  }
   return { kind: 'miss' };
 }
 
@@ -434,25 +459,17 @@ function findUpstreamValue(
   const outputMarker = '.outputs.';
   const outputIdx = port.from?.lastIndexOf(outputMarker) ?? -1;
   if (outputIdx > 0 && port.from) {
-    const upstreamId = port.from.slice(0, outputIdx);
+    const upstreamRef = port.from.slice(0, outputIdx);
     const portName = port.from.slice(outputIdx + outputMarker.length);
-    const upstream = upstreamOutputs.get(upstreamId);
-    if (upstream && portName in upstream) {
-      return { kind: 'hit', producer: upstreamId, value: upstream[portName] };
-    }
-    return { kind: 'miss' };
+    return findOutputPortOnProducer(upstreamRef, portName, upstreamOutputs, dependsOn);
   }
 
   // Explicit fully-qualified binding: "taskId.portName"
   if (port.from && port.from.includes('.')) {
     const dot = port.from.lastIndexOf('.');
-    const upstreamId = port.from.slice(0, dot);
+    const upstreamRef = port.from.slice(0, dot);
     const portName = port.from.slice(dot + 1);
-    const upstream = upstreamOutputs.get(upstreamId);
-    if (upstream && portName in upstream) {
-      return { kind: 'hit', producer: upstreamId, value: upstream[portName] };
-    }
-    return { kind: 'miss' };
+    return findOutputPortOnProducer(upstreamRef, portName, upstreamOutputs, dependsOn);
   }
 
   // Name match (either explicit `from: "portName"` or defaulted to port.name)
@@ -467,6 +484,42 @@ function findUpstreamValue(
   if (hits.length === 0) return { kind: 'miss' };
   if (hits.length === 1) return { kind: 'hit', producer: hits[0]!.producer, value: hits[0]!.value };
   return { kind: 'ambiguous', producers: hits.map((h) => h.producer) };
+}
+
+function findOutputPortOnProducer(
+  upstreamRef: string,
+  portName: string,
+  upstreamOutputs: ReadonlyMap<string, Readonly<Record<string, unknown>>>,
+  dependsOn: readonly string[],
+): UpstreamLookup {
+  const resolved = resolveDirectUpstreamRef(upstreamRef, dependsOn);
+  if (resolved.kind === 'ambiguous') return { kind: 'ambiguous', producers: resolved.producers };
+  if (resolved.kind === 'miss') return { kind: 'miss' };
+  const upstream = upstreamOutputs.get(resolved.producer);
+  if (upstream && portName in upstream) {
+    return { kind: 'hit', producer: resolved.producer, value: upstream[portName] };
+  }
+  return { kind: 'miss' };
+}
+
+function resolveDirectUpstreamRef(
+  upstreamRef: string,
+  dependsOn: readonly string[],
+):
+  | { kind: 'hit'; producer: string }
+  | { kind: 'miss' }
+  | { kind: 'ambiguous'; producers: string[] } {
+  if (dependsOn.includes(upstreamRef)) return { kind: 'hit', producer: upstreamRef };
+  if (upstreamRef.includes('.')) return { kind: 'miss' };
+  const matches = dependsOn.filter((upstreamId) => bareTaskId(upstreamId) === upstreamRef);
+  if (matches.length === 0) return { kind: 'miss' };
+  if (matches.length === 1) return { kind: 'hit', producer: matches[0]! };
+  return { kind: 'ambiguous', producers: matches };
+}
+
+function bareTaskId(qid: string): string {
+  const dot = qid.lastIndexOf('.');
+  return dot >= 0 ? qid.slice(dot + 1) : qid;
 }
 
 function findUpstreamOutputByName(
@@ -967,18 +1020,24 @@ function promptOutputNameFromInput(
   const outputIdx = source.lastIndexOf(outputMarker);
   if (outputIdx > 0) {
     const sourceTaskId = source.slice(0, outputIdx);
-    if (promptTaskId !== undefined && sourceTaskId !== promptTaskId) return null;
+    if (!sourceRefMatchesTaskId(sourceTaskId, promptTaskId)) return null;
     return source.slice(outputIdx + outputMarker.length);
   }
 
   const dot = source.lastIndexOf('.');
   if (dot > 0) {
     const sourceTaskId = source.slice(0, dot);
-    if (promptTaskId !== undefined && sourceTaskId !== promptTaskId) return null;
+    if (!sourceRefMatchesTaskId(sourceTaskId, promptTaskId)) return null;
     return source.slice(dot + 1);
   }
 
   return source;
+}
+
+function sourceRefMatchesTaskId(sourceTaskId: string, taskId: string | undefined): boolean {
+  if (taskId === undefined) return true;
+  if (sourceTaskId === taskId) return true;
+  return !sourceTaskId.includes('.') && bareTaskId(taskId) === sourceTaskId;
 }
 
 /**

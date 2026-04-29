@@ -828,8 +828,10 @@ function validateInputBindingSources(
     if (!rawBinding || typeof rawBinding !== 'object' || Array.isArray(rawBinding)) continue;
     const source = (rawBinding as Record<string, unknown>).from;
     if (typeof source !== 'string') continue;
-    const upstreamId = bindingSourceTaskId(source);
-    if (!upstreamId) continue;
+    const upstreamRef = bindingSourceTaskRef(source);
+    if (!upstreamRef) continue;
+    const sourceResolution = resolveTaskRef(upstreamRef, trackId, index);
+    const upstreamId = sourceResolution.kind === 'resolved' ? sourceResolution.qid : upstreamRef;
     const deps = dependencyRefs(task);
     const isDirectDep = deps.some((dep) => {
       const resolved = resolveTaskRef(dep, trackId, index);
@@ -844,7 +846,8 @@ function validateInputBindingSources(
   }
 }
 
-function bindingSourceTaskId(source: string): string | null {
+function bindingSourceTaskRef(source: string): string | null {
+  if (source.startsWith('outputs.')) return null;
   const outputMarker = '.outputs.';
   const outputIdx = source.lastIndexOf(outputMarker);
   if (outputIdx > 0) return source.slice(0, outputIdx);
@@ -854,6 +857,8 @@ function bindingSourceTaskId(source: string): string | null {
       return source.slice(0, -suffix.length);
     }
   }
+  const dot = source.lastIndexOf('.');
+  if (dot > 0) return source.slice(0, dot);
   return null;
 }
 
@@ -1062,8 +1067,18 @@ function explicitInputsDisambiguateConflict(
     bindings.some((binding) => {
       if (!binding || typeof binding !== 'object' || Array.isArray(binding)) return false;
       const source = (binding as { readonly from?: unknown }).from;
-      return source === `${producer}.outputs.${outputName}`;
+      return typeof source === 'string' && sourceReferencesOutput(source, producer, outputName);
     }),
+  );
+}
+
+function sourceReferencesOutput(source: string, upstreamId: string, outputName: string): boolean {
+  if (source === `${upstreamId}.outputs.${outputName}`) return true;
+  const upstreamTaskId = bareTaskId(upstreamId);
+  return (
+    source === `${upstreamTaskId}.outputs.${outputName}` ||
+    source === `${upstreamId}.${outputName}` ||
+    source === `${upstreamTaskId}.${outputName}`
   );
 }
 
@@ -1080,18 +1095,28 @@ function inferredPromptOutputName(
   const outputIdx = source.lastIndexOf(outputMarker);
   if (outputIdx > 0) {
     const sourceTaskId = source.slice(0, outputIdx);
-    if (sourceTaskId !== promptTaskId) return null;
+    if (!sourceRefMatchesTaskId(sourceTaskId, promptTaskId)) return null;
     return source.slice(outputIdx + outputMarker.length);
   }
 
   const dot = source.lastIndexOf('.');
   if (dot > 0) {
     const sourceTaskId = source.slice(0, dot);
-    if (sourceTaskId !== promptTaskId) return null;
+    if (!sourceRefMatchesTaskId(sourceTaskId, promptTaskId)) return null;
     return source.slice(dot + 1);
   }
 
   return source;
+}
+
+function sourceRefMatchesTaskId(sourceTaskId: string, taskId: string): boolean {
+  if (sourceTaskId === taskId) return true;
+  return !sourceTaskId.includes('.') && bareTaskId(taskId) === sourceTaskId;
+}
+
+function bareTaskId(qid: string): string {
+  const dot = qid.lastIndexOf('.');
+  return dot >= 0 ? qid.slice(dot + 1) : qid;
 }
 
 function bindingShapeKey(port: { type?: PortType; enum?: readonly string[] }): string {
