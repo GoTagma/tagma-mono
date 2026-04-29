@@ -2,11 +2,11 @@ import type {
   EnvPolicy,
   PipelineExecutionMode,
   PipelineConfig,
-  TaskConfig,
   TaskState,
   RunEventPayload,
   RunTaskState,
 } from './types';
+import { isCommandTaskConfig, isPromptTaskConfig } from './types';
 import { buildDag } from './dag';
 import type { PluginRegistry } from './registry';
 import { parseDuration, nowISO, generateRunId, assertValidRunId } from './utils';
@@ -26,12 +26,6 @@ import { allTasksTerminal, findLaunchableTasks, skipNonTerminalTasks } from './c
 import { executeTask } from './core/task-executor';
 import type { TagmaRuntime } from './types';
 export { TriggerBlockedError, TriggerTimeoutError } from './types';
-
-function isPromptTaskConfig(
-  task: TaskConfig,
-): task is TaskConfig & { readonly prompt: string; readonly command?: undefined } {
-  return task.prompt !== undefined && task.command === undefined;
-}
 
 // ═══ Engine ═══
 
@@ -196,7 +190,7 @@ function enforceExecutionMode(
     for (const task of track.tasks) {
       const taskLabel = `${track.id}.${task.id}`;
       const permissions = task.permissions ?? track.permissions ?? config.permissions;
-      if (task.command !== undefined) {
+      if (isCommandTaskConfig(task)) {
         errors.push(`safe mode blocks command task "${taskLabel}"`);
       }
       if (permissions?.execute) {

@@ -101,6 +101,10 @@ export interface PluginSchema {
 
 export type PortType = 'string' | 'number' | 'boolean' | 'enum' | 'json';
 
+/**
+ * @internal Prompt-contract row used by core/editor inference helpers.
+ * Public pipeline YAML uses task-level `inputs` / `outputs`, not `ports`.
+ */
 export interface PortDef {
   readonly name: string;
   readonly type: PortType;
@@ -119,6 +123,10 @@ export interface PortDef {
   readonly from?: string;
 }
 
+/**
+ * @internal Prompt-contract shape used by core/editor inference helpers.
+ * Public pipeline YAML uses task-level `inputs` / `outputs`, not `ports`.
+ */
 export interface TaskPorts {
   readonly inputs?: readonly PortDef[];
   readonly outputs?: readonly PortDef[];
@@ -196,6 +204,23 @@ export interface CommandShellConfig {
 }
 
 export type CommandConfig = string | CommandArgvConfig | CommandShellConfig;
+
+export interface TaskKindConfig {
+  readonly prompt?: string;
+  readonly command?: CommandConfig;
+}
+
+export function isCommandTaskConfig<T extends TaskKindConfig>(
+  task: T,
+): task is T & { readonly command: CommandConfig } {
+  return task.command !== undefined;
+}
+
+export function isPromptTaskConfig<T extends TaskKindConfig>(
+  task: T,
+): task is T & { readonly prompt: string; readonly command?: undefined } {
+  return task.prompt !== undefined && task.command === undefined;
+}
 
 // ═══ Task Config (after inheritance resolution) ═══
 

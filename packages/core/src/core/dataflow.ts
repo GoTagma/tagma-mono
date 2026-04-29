@@ -1,26 +1,14 @@
 import type {
   PortDef,
   TaskConfig,
-  CommandConfig,
   TaskInputBindings,
   TaskOutputBindings,
   TaskPorts,
   TaskResult,
 } from '../types';
+import { isCommandTaskConfig, isPromptTaskConfig } from '../types';
 import { extractTaskBindingOutputs, extractTaskOutputs, inferPromptPorts } from '../ports';
 import type { RunContext } from './run-context';
-
-function isPromptTaskConfig(
-  task: TaskConfig,
-): task is TaskConfig & { readonly prompt: string; readonly command?: undefined } {
-  return task.prompt !== undefined && task.command === undefined;
-}
-
-function isCommandTaskConfig(
-  task: TaskConfig,
-): task is TaskConfig & { readonly command: CommandConfig; readonly prompt?: undefined } {
-  return task.command !== undefined && task.prompt === undefined;
-}
 
 function inputBindingsToPorts(bindings: TaskInputBindings | undefined): PortDef[] | undefined {
   if (!bindings || Object.keys(bindings).length === 0) return undefined;

@@ -146,4 +146,22 @@ describe('schema - unified bindings passthrough', () => {
       required: true,
     });
   });
+
+  test('YAML with public ports field is rejected', () => {
+    const text = `pipeline:
+  name: legacy
+  tracks:
+    - id: t
+      name: Main
+      tasks:
+        - id: p
+          prompt: Hello
+          ports:
+            inputs:
+              - name: city
+                type: string
+`;
+
+    expect(() => parseYaml(text)).toThrow(/ports.*inputs\/outputs/);
+  });
 });

@@ -37,6 +37,37 @@ Workspace packages are symlinked. Edit package code, then restart the server. No
 
 ---
 
+## Task Dataflow
+
+Every task can consume inputs and publish outputs.
+
+- `inputs` are values the task needs.
+- `outputs` are values the task produces.
+- Command tasks use inputs in `{{inputs.name}}`.
+- Prompt tasks receive inputs as context and produce outputs as structured JSON.
+- When names match, Tagma connects them automatically.
+- Use `from` only when you need to disambiguate, rename, or read raw streams.
+
+YAML uses task-level `inputs` / `outputs`; there is no public `ports:` key.
+
+```yaml
+tasks:
+  - id: choose_city
+    prompt: Choose a city for a weekend trip.
+
+  - id: weather
+    depends_on: [choose_city]
+    command: 'weather --city "{{inputs.city}}"'
+    inputs:
+      city:
+        type: string
+    outputs:
+      forecast:
+        type: string
+```
+
+---
+
 ## Common Commands
 
 ### Install Dependencies

@@ -240,6 +240,17 @@ Track-level `middlewares` apply to all tasks in the track. Setting task-level `m
 
 Use task-level `inputs` / `outputs` for parameter passing. They are task-level only, do not inherit, and can stay lightweight by omitting `type`. Add `type`, `required`, `enum`, and `description` when a binding should be strict and editor-visible.
 
+Every task can consume inputs and publish outputs:
+
+- `inputs` are values the task needs.
+- `outputs` are values the task produces.
+- Command tasks use inputs in `{{inputs.name}}`.
+- Prompt tasks receive inputs as context and produce outputs as structured JSON.
+- When names match, Tagma connects them automatically.
+- Use `from` only when you need to disambiguate, rename, or read raw streams.
+
+There is no public `ports:` key. Use `inputs` and `outputs` directly.
+
 ```yaml
 - id: build
   command: bun run build

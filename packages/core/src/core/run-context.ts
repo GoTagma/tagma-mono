@@ -4,10 +4,10 @@ import type {
   PipelineConfig,
   RunEventPayload,
   EnvPolicy,
-  TaskConfig,
   TaskState,
   TaskStatus,
 } from '../types';
+import { isPromptTaskConfig } from '../types';
 import type { Dag } from '../dag';
 import type { UpstreamBindingData } from '../ports';
 import {
@@ -21,12 +21,6 @@ import type { TagmaRuntime } from '../types';
 import type { Logger } from '../logger';
 import { isTerminal, resolveExecutionMetadata } from './run-state';
 import { nowISO } from '../utils';
-
-function isPromptTaskConfig(
-  task: TaskConfig,
-): task is TaskConfig & { readonly prompt: string; readonly command?: undefined } {
-  return task.prompt !== undefined && task.command === undefined;
-}
 
 export interface RunContextOptions {
   readonly runId: string;

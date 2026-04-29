@@ -11,6 +11,7 @@ import type {
   Permissions,
   CompletionConfig,
 } from '@tagma/types';
+import { isCommandTaskConfig } from '@tagma/types';
 import { buildDag, DEFAULT_PERMISSIONS, truncateForName, validatePath } from '@tagma/core';
 import { validateRaw, type ValidationError } from './validate-raw';
 
@@ -142,9 +143,12 @@ function validateRawTask(task: RawTaskConfig, trackId: string): void {
   }
   if (!task.id) throw new Error(`track "${trackId}": task.id is required`);
   assertValidId(task.id, `task "${task.id}" in track "${trackId}"`);
+  if ('ports' in (task as unknown as Record<string, unknown>)) {
+    throw new Error(`task "${task.id}": ports is not supported; use inputs/outputs`);
+  }
 
   const hasPromptKey = typeof task.prompt === 'string';
-  const hasCommandField = task.command !== undefined;
+  const hasCommandField = isCommandTaskConfig(task);
   const hasCommandKey = commandConfigKind(task.command) !== null;
   if (!hasPromptKey && !hasCommandField) {
     throw new Error(`task "${task.id}": must have either "prompt" or "command"`);
@@ -298,7 +302,7 @@ function stripDefaultTaskCompletion<T extends { completion?: CompletionConfig }>
 function stripPromptOnlyFieldsFromCommandTask<
   T extends { command?: CommandConfig; continue_from?: string },
 >(task: T): T {
-  if (task.command === undefined || task.continue_from === undefined) return task;
+  if (!isCommandTaskConfig(task) || task.continue_from === undefined) return task;
   const { continue_from: _cf, ...rest } = task;
   return rest as T;
 }
@@ -350,7 +354,7 @@ export function deresolvePipeline(config: PipelineConfig, workDir: string): RawP
         id: task.id,
         ...(task.name ? { name: task.name } : {}),
         ...(task.prompt !== undefined ? { prompt: task.prompt } : {}),
-        ...(task.command !== undefined ? { command: task.command } : {}),
+        ...(isCommandTaskConfig(task) ? { command: task.command } : {}),
         ...(task.depends_on?.length ? { depends_on: task.depends_on } : {}),
         ...(task.trigger ? { trigger: task.trigger } : {}),
         ...(task.continue_from ? { continue_from: task.continue_from } : {}),

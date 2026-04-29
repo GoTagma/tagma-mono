@@ -104,6 +104,14 @@ describe('validateRaw - unified typed bindings', () => {
     );
     expect(errors.some((e) => /not a direct dependency/.test(e.message))).toBe(true);
   });
+
+  test('rejects legacy public ports field', () => {
+    const rawTask = commandTask({ id: 'a', command: 'echo ok' }) as Record<string, unknown>;
+    rawTask.ports = { inputs: [{ name: 'city', type: 'string' }] };
+    const errors = validateRaw(config([rawTask as ReturnType<typeof commandTask>]));
+
+    expect(errors.some((e) => /ports.*inputs\/outputs/.test(e.message))).toBe(true);
+  });
 });
 
 describe('validateRaw - prompt inferred bindings', () => {
@@ -117,7 +125,7 @@ describe('validateRaw - prompt inferred bindings', () => {
     expect(errors.some((e) => e.message.includes('references "{{inputs.city}}"'))).toBe(false);
   });
 
-  test('two upstream command outputs with the same name are ambiguous for prompts', () => {
+  test('two upstream command outputs with the same name tell prompts to add aliases', () => {
     const errors = validateRaw(
       config([
         commandTask({ id: 'a', command: 'echo ok', outputs: { city: { type: 'string' } } }),
@@ -125,7 +133,9 @@ describe('validateRaw - prompt inferred bindings', () => {
         promptTask({ id: 'p', depends_on: ['a', 'b'], prompt: 'city={{inputs.city}}' }),
       ]),
     );
-    expect(errors.some((e) => /cannot disambiguate/.test(e.message))).toBe(true);
+    const message = errors.find((e) => /upstream Commands/.test(e.message))?.message ?? '';
+    expect(message).toMatch(/declare explicit input aliases/);
+    expect(message).toContain('from');
   });
 
   test('explicit prompt input aliases can resolve ambiguous upstream command outputs', () => {
@@ -144,7 +154,7 @@ describe('validateRaw - prompt inferred bindings', () => {
         }),
       ]),
     );
-    expect(errors.some((e) => /cannot disambiguate/.test(e.message))).toBe(false);
+    expect(errors.some((e) => /declare explicit input aliases/.test(e.message))).toBe(false);
   });
 
   test('short prompt input aliases can resolve ambiguous upstream command outputs', () => {
@@ -163,7 +173,7 @@ describe('validateRaw - prompt inferred bindings', () => {
         }),
       ]),
     );
-    expect(errors.some((e) => /cannot disambiguate/.test(e.message))).toBe(false);
+    expect(errors.some((e) => /declare explicit input aliases/.test(e.message))).toBe(false);
   });
 
   test('downstream commands with incompatible typed inputs conflict for prompt outputs', () => {

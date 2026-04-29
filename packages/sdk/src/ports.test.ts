@@ -715,7 +715,8 @@ describe('inferPromptPorts', () => {
     expect(r.inputConflicts).toHaveLength(1);
     expect(r.inputConflicts[0]!.portName).toBe('city');
     expect(r.inputConflicts[0]!.producers.map((p) => p.taskId).sort()).toEqual(['t.a', 't.b']);
-    expect(r.inputConflicts[0]!.reason).toMatch(/cannot disambiguate/);
+    expect(r.inputConflicts[0]!.reason).toMatch(/declare explicit input aliases/);
+    expect(r.inputConflicts[0]!.reason).toContain('from');
   });
 
   test('two downstreams with compatible input types merge silently', () => {

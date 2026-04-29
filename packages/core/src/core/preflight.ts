@@ -1,22 +1,15 @@
 import {
   DEFAULT_PERMISSIONS,
   type CompletionPlugin,
-  type CommandConfig,
   type DriverPlugin,
   type MiddlewarePlugin,
   type PipelineConfig,
   type PipelineExecutionMode,
-  type TaskConfig,
   type TriggerPlugin,
+  isCommandTaskConfig,
 } from '../types';
 import type { Dag } from '../dag';
 import { validatePluginConfig, type PluginRegistry } from '../registry';
-
-function isCommandOnly(
-  task: TaskConfig,
-): task is TaskConfig & { readonly command: CommandConfig; readonly prompt?: undefined } {
-  return task.command !== undefined && task.prompt === undefined;
-}
 
 /**
  * Validate that every plugin referenced by the pipeline (drivers,
@@ -39,7 +32,7 @@ export function preflight(
     const track = node.track;
     const driverName = task.driver ?? track.driver ?? config.driver ?? 'opencode';
 
-    const isCommand = isCommandOnly(task);
+    const isCommand = isCommandTaskConfig(task);
 
     const driver = !isCommand && registry.hasHandler('drivers', driverName)
       ? registry.getHandler<DriverPlugin>('drivers', driverName)

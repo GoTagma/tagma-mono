@@ -15,6 +15,7 @@ import {
   type TriggerPlugin,
   type TriggerWatchHandle,
 } from '../types';
+import { isCommandTaskConfig, isPromptTaskConfig } from '../types';
 import type { PluginRegistry } from '../registry';
 import { parseDuration, nowISO } from '../utils';
 import { commandLabel } from '../command';
@@ -39,20 +40,6 @@ class TaskDeadlineExceededError extends Error {
     super(message);
     this.name = 'TaskDeadlineExceededError';
   }
-}
-
-function isPromptTaskConfig(task: {
-  readonly prompt?: string;
-  readonly command?: CommandConfig;
-}): task is { readonly prompt: string; readonly command?: undefined } {
-  return task.prompt !== undefined && task.command === undefined;
-}
-
-function isCommandTaskConfig(task: {
-  readonly command?: CommandConfig;
-  readonly prompt?: string;
-}): task is { readonly command: CommandConfig; readonly prompt?: undefined } {
-  return task.command !== undefined && task.prompt === undefined;
 }
 
 function substituteCommandInputs(

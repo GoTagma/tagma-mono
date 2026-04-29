@@ -26,8 +26,9 @@
 //      receive an inferred I/O contract from direct-neighbor Command Tasks.
 //      The engine later merges that inferred contract with any explicit
 //      task-level `inputs` / `outputs`. This helper synthesizes the inferred
-//      `TaskPorts` object and surfaces collisions that block the task (same
-//      port name on two upstreams, incompatible types across downstreams, …).
+//      `TaskPorts` object and surfaces collisions that need aliases or block
+//      the task: same port name on two upstreams, or incompatible types
+//      across downstreams.
 //      Prompt neighbors contribute zero structured I/O — they pass free text
 //      via `continue_from` / normalizedOutput instead.
 //
@@ -893,8 +894,9 @@ export function inferPromptPorts(input: {
   //
   // Walk every upstream in DAG order. First occurrence of a name wins
   // (for the synthesized port shape used to resolve values). Subsequent
-  // occurrences under the same name become an `inputConflicts` entry —
-  // the engine blocks the task because a Prompt can't disambiguate.
+  // occurrences under the same name become an `inputConflicts` entry. The
+  // engine can remove those inferred names when explicit Prompt inputs alias
+  // every producer; otherwise it blocks before rendering the prompt.
   const inputsByName = new Map<string, { port: PortDef; firstProducer: string }>();
   const inputCollisionSources = new Map<string, { taskId: string; type: PortType }[]>();
 
@@ -938,8 +940,8 @@ export function inferPromptPorts(input: {
       producers,
       reason:
         `input "${portName}" is produced by multiple upstream Commands (${producerList}) — ` +
-        `Prompt tasks cannot disambiguate (no explicit "from:" binding). ` +
-        `Rename the output on one of the upstream Commands.`,
+        `declare explicit input aliases with "from" bindings on the Prompt task, ` +
+        `or rename one of the upstream outputs.`,
     });
   }
 

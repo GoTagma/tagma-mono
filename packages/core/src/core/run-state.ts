@@ -7,6 +7,7 @@ import type {
   TaskConfig,
   TrackConfig,
 } from '../types';
+import { isPromptTaskConfig } from '../types';
 
 export function isTerminal(status: TaskStatus): boolean {
   return (
@@ -47,10 +48,6 @@ export interface ResolvedExecutionMetadata {
   readonly resolvedDriver: string | null;
   readonly resolvedModel: string | null;
   readonly resolvedPermissions: Permissions | null;
-}
-
-function isPromptTaskConfig(task: TaskConfig): boolean {
-  return task.prompt !== undefined;
 }
 
 export function resolveExecutionMetadata(

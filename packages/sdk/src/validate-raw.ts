@@ -13,6 +13,7 @@ import type {
   RawTaskConfig,
   RawTrackConfig,
 } from '@tagma/types';
+import { isCommandTaskConfig, isPromptTaskConfig } from '@tagma/types';
 import {
   isValidTaskId,
   qualifyTaskId,
@@ -517,6 +518,12 @@ export function validateRaw(
           message: `Task id "${task.id}" contains invalid characters. IDs must match /^[A-Za-z_][A-Za-z0-9_-]*$/ (no dots, spaces, or special chars).`,
         });
       }
+      if ('ports' in (maybeTask as Record<string, unknown>)) {
+        errors.push({
+          path: `${taskPath}.ports`,
+          message: `Task "${task.id}": ports is not supported; use inputs/outputs`,
+        });
+      }
       if (seenTaskIds.has(task.id)) {
         errors.push({
           path: taskPath,
@@ -526,7 +533,7 @@ export function validateRaw(
       seenTaskIds.add(task.id);
 
       const hasPromptKey = typeof task.prompt === 'string';
-      const hasCommandField = task.command !== undefined;
+      const hasCommandField = isCommandTaskConfig(task);
       const hasCommandKey = commandConfigKind(task.command) !== null;
       const promptEmpty = hasPromptKey && task.prompt!.trim().length === 0;
 
@@ -552,7 +559,7 @@ export function validateRaw(
           path: taskPath,
           message: `Task "${task.id}": prompt content cannot be empty`,
         });
-      } else if (task.command !== undefined) {
+      } else if (isCommandTaskConfig(task)) {
         validateCommandConfig(
           task.command,
           `${taskPath}.command`,
@@ -870,7 +877,7 @@ function validateTaskPorts(
   index: TaskIndex,
   errors: ValidationError[],
 ): void {
-  const isPromptTask = typeof task.prompt === 'string' && commandConfigKind(task.command) === null;
+  const isPromptTask = isPromptTaskConfig(task);
 
   validateBindingMap(task.inputs, `${taskPath}.inputs`, 'inputs', errors);
   validateBindingMap(task.outputs, `${taskPath}.outputs`, 'outputs', errors);
@@ -942,7 +949,7 @@ function collectUpstreamCommandOutputNames(
     const entry = qidIndex.get(r.qid);
     if (!entry) continue;
     // Only Command tasks contribute  - Prompt upstreams pass free text.
-    if (commandConfigKind(entry.task.command) === null) continue;
+    if (!isCommandTaskConfig(entry.task)) continue;
     const outputs = entry.task.outputs;
     if (!outputs || typeof outputs !== 'object' || Array.isArray(outputs)) continue;
     for (const name of Object.keys(outputs)) {
@@ -958,9 +965,9 @@ function collectUpstreamCommandOutputNames(
  * before a run is attempted.
  *
  * 1. Input collision: two direct-upstream Commands both export an
- *    output with the same name. Command-to-command would let the
- *    downstream disambiguate with `from:`; Prompt tasks have no port
- *    declarations and therefore no escape hatch.
+ *    output with the same name. Prompt tasks can resolve this by declaring
+ *    explicit `inputs` aliases with `from:` for every producer; otherwise
+ *    validation reports the unresolved ambiguity.
  * 2. Output collision: two direct-downstream Commands declare inputs
  *    with the same name but incompatible shapes (different type, or
  *    different enum sets). A single LLM emission cannot satisfy both.
@@ -979,7 +986,7 @@ function validateInferredPromptPortConflicts(
     const r = resolveTaskRef(dep, trackId, index);
     if (r.kind !== 'resolved') continue;
     const entry = qidIndex.get(r.qid);
-    if (!entry || commandConfigKind(entry.task.command) === null) continue;
+    if (!entry || !isCommandTaskConfig(entry.task)) continue;
     const outputs = entry.task.outputs;
     if (!outputs || typeof outputs !== 'object' || Array.isArray(outputs)) continue;
     for (const name of Object.keys(outputs)) {
@@ -995,8 +1002,8 @@ function validateInferredPromptPortConflicts(
         path: taskPath,
         message:
           `Task "${task.id}": upstream Commands ${producers.join(', ')} all export ` +
-          `"${name}"  - prompt tasks cannot disambiguate (no "from:" binding available). ` +
-          `Rename the output on one of the upstream Commands.`,
+          `"${name}" - declare explicit input aliases with "from" bindings ` +
+          `on the Prompt task, or rename one of the upstream outputs.`,
       });
     }
   }
@@ -1015,7 +1022,7 @@ function validateInferredPromptPortConflicts(
   const reported = new Set<string>();
   for (const [downstreamQid, entry] of qidIndex) {
     if (downstreamQid === taskQid) continue;
-    if (commandConfigKind(entry.task.command) === null) continue; // only downstream Commands contribute
+    if (!isCommandTaskConfig(entry.task)) continue; // only downstream Commands contribute
     const deps = dependencyRefs(entry.task);
     let dependsOnUs = false;
     for (const d of deps) {

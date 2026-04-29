@@ -42,7 +42,7 @@ import type {
 
 - `TaskInputBindings` -- `{ [name]: TaskInputBinding }`. Task-level values available as `{{inputs.name}}`; inputs without `value` or `from` auto-match same-name direct-upstream outputs before using `default`; `from` can reference `taskId.outputs.name`, `taskId.stdout`, `taskId.stderr`, `taskId.normalizedOutput`, `taskId.exitCode`, or `outputs.name`; optional `type` enables coercion
 - `TaskOutputBindings` -- `{ [name]: TaskOutputBinding }`. Named outputs selected from `json.name`, `stdout`, `stderr`, `normalizedOutput`, literal `value`, or `default`; optional `type` enables coercion
-- `TaskPorts` / `PortDef` -- internal prompt-contract types used by core dataflow inference helpers. YAML uses task-level `inputs` / `outputs`, not a `ports` key
+- `TaskPorts` / `PortDef` -- internal prompt-contract helper types retained for core/editor inference APIs. YAML and user-facing SDK config use task-level `inputs` / `outputs`, never a `ports` key
 - `PortType` -- `'string' | 'number' | 'boolean' | 'enum' | 'json'`. Drives runtime coercion when resolving inputs and extracting outputs
 
 ### Plugin Interfaces
