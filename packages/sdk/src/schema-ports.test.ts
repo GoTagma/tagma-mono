@@ -1,7 +1,14 @@
 ﻿import { describe, expect, test } from 'bun:test';
 import yaml from 'js-yaml';
 import type { PipelineConfig, RawPipelineConfig } from '@tagma/types';
-import { deresolvePipeline, parseYaml, resolveConfig, serializePipeline } from './schema';
+import {
+  deresolvePipeline,
+  loadPipeline,
+  parseYaml,
+  PipelineValidationError,
+  resolveConfig,
+  serializePipeline,
+} from './schema';
 
 const WORK_DIR = process.platform === 'win32' ? 'D:\\fake-work' : '/fake-work';
 
@@ -147,7 +154,12 @@ describe('schema - unified bindings passthrough', () => {
     });
   });
 
-  test('YAML with public ports field is rejected', () => {
+  test('YAML with public ports field is rejected by loadPipeline (semantic check lives in validateRaw)', async () => {
+    // parseYaml is intentionally a structural parser - it returns the raw
+    // config without complaining about legacy `ports`. The semantic
+    // rejection happens in validateRaw, which loadPipeline runs before
+    // resolveConfig. Verify the user-facing flow still surfaces the
+    // problem with a clear message.
     const text = `pipeline:
   name: legacy
   tracks:
@@ -162,6 +174,7 @@ describe('schema - unified bindings passthrough', () => {
                 type: string
 `;
 
-    expect(() => parseYaml(text)).toThrow(/ports.*inputs\/outputs/);
+    await expect(loadPipeline(text, WORK_DIR)).rejects.toThrow(PipelineValidationError);
+    await expect(loadPipeline(text, WORK_DIR)).rejects.toThrow(/ports.*inputs\/outputs/);
   });
 });

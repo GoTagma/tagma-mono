@@ -596,8 +596,25 @@ export function validateRaw(
       const hasPromptKey = typeof task.prompt === 'string';
       const hasCommandField = isCommandTaskConfig(task);
       const hasCommandKey = commandConfigKind(task.command) !== null;
-      const promptEmpty = hasPromptKey && task.prompt!.trim().length === 0;
 
+      // Three independent rules. Splitting the cascading if/else chain
+      // (which previously had two `validateCommandConfig` call sites and
+      // a "promptEmpty" branch buried in the middle) into distinct
+      // statements makes each rule easier to read in isolation:
+      //
+      //  1. Mutex: cannot have both prompt and command. When this
+      //     fires we skip the per-field shape checks - the headline
+      //     error tells the user to remove one before any inner
+      //     issue with the survivor matters.
+      //  2. Required: at least one of prompt / command must be present.
+      //  3. Per-field shape (only when one is present, not both):
+      //       - prompt: non-empty trimmed string
+      //       - command: validateCommandConfig handles BOTH the
+      //         malformed-kind path (`command: 5`, `command: {}`) and
+      //         the well-formed-but-empty-content path
+      //         (`command: { shell: "" }`, `command: { argv: [] }`),
+      //         so a single call site replaces the previous two
+      //         branches.
       if (hasPromptKey && hasCommandKey) {
         errors.push({
           path: taskPath,
@@ -608,25 +625,21 @@ export function validateRaw(
           path: taskPath,
           message: `Task "${task.id}": must have "prompt" or "command"`,
         });
-      } else if (hasCommandField && !hasCommandKey) {
-        validateCommandConfig(
-          task.command,
-          `${taskPath}.command`,
-          `Task "${task.id}" command`,
-          errors,
-        );
-      } else if (promptEmpty) {
-        errors.push({
-          path: taskPath,
-          message: `Task "${task.id}": prompt content cannot be empty`,
-        });
-      } else if (isCommandTaskConfig(task)) {
-        validateCommandConfig(
-          task.command,
-          `${taskPath}.command`,
-          `Task "${task.id}" command`,
-          errors,
-        );
+      } else {
+        if (hasPromptKey && task.prompt!.trim().length === 0) {
+          errors.push({
+            path: taskPath,
+            message: `Task "${task.id}": prompt content cannot be empty`,
+          });
+        }
+        if (hasCommandField) {
+          validateCommandConfig(
+            task.command,
+            `${taskPath}.command`,
+            `Task "${task.id}" command`,
+            errors,
+          );
+        }
       }
 
       //  Field-level validations

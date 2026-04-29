@@ -12,13 +12,7 @@ import type {
   CompletionConfig,
 } from '@tagma/types';
 import { isCommandTaskConfig } from '@tagma/types';
-import {
-  buildDag,
-  DEFAULT_PERMISSIONS,
-  INVALID_TASK_ID_REASON,
-  truncateForName,
-  validatePath,
-} from '@tagma/core';
+import { buildDag, DEFAULT_PERMISSIONS, truncateForName, validatePath } from '@tagma/core';
 import { validateRaw, type ValidationError } from './validate-raw';
 
 export class PipelineValidationError extends Error {
@@ -37,6 +31,23 @@ export class PipelineValidationError extends Error {
 
 // ═══ YAML Parsing ═══
 
+/**
+ * Parse a YAML string into a `RawPipelineConfig`.
+ *
+ * parseYaml is intentionally a *structural* parser: it only refuses inputs
+ * that cannot be returned as a usable RawPipelineConfig at all (top-level
+ * envelope wrong, tracks not an array, etc.). Every semantic rule  -
+ * required name, valid id pattern, prompt/command exclusivity, duplicate
+ * task / track ids, command shape - lives in `validateRaw`, where it
+ * surfaces as a structured `ValidationError` instead of a thrown string
+ * and lets editors highlight the offending node.
+ *
+ * Callers wanting full validation should pipe `parseYaml(content)` into
+ * `validateRaw(raw)` (or just call `loadPipeline`, which does both). The
+ * envelope checks here exist only to prevent downstream helpers
+ * (`resolveConfig`, `serializePipeline`) from crashing on a malformed
+ * value before validation has a chance to produce an error list.
+ */
 export function parseYaml(content: string): RawPipelineConfig {
   const doc = yaml.load(content) as { pipeline?: unknown };
   if (!doc?.pipeline) {
@@ -46,75 +57,26 @@ export function parseYaml(content: string): RawPipelineConfig {
     throw new Error('pipeline must be an object');
   }
   const p = doc.pipeline as RawPipelineConfig;
-  if (!p.name) throw new Error('pipeline.name is required');
-  if (!Array.isArray(p.tracks)) throw new Error('pipeline.tracks must be an array');
-  if (p.tracks.length === 0) throw new Error('pipeline.tracks must be non-empty');
-
-  // D14: Detect duplicate track IDs before per-track validation so the error
-  // message is clear ("Duplicate track id") rather than a confusing DAG error
-  // ("Duplicate task ID: track.task_x") that only surfaces at runPipeline time.
-  const seenTrackIds = new Set<string>();
-  for (const track of p.tracks) {
-    if (track.id) {
-      if (seenTrackIds.has(track.id)) {
-        throw new Error(`Duplicate track id "${track.id}": each track must have a unique id.`);
-      }
-      seenTrackIds.add(track.id);
+  if (!Array.isArray(p.tracks)) {
+    throw new Error('pipeline.tracks must be an array');
+  }
+  // Per-track structural sanity. Anything beyond "is this an iterable
+  // shape downstream code can walk without crashing" defers to
+  // validateRaw, which produces structured diagnostics rather than a
+  // single thrown error.
+  for (let i = 0; i < p.tracks.length; i++) {
+    const track = p.tracks[i] as unknown;
+    if (!track || typeof track !== 'object' || Array.isArray(track)) {
+      throw new Error(`pipeline.tracks[${i}] must be an object`);
+    }
+    const tasks = (track as { tasks?: unknown }).tasks;
+    if (tasks !== undefined && !Array.isArray(tasks)) {
+      const id = (track as { id?: unknown }).id;
+      const label = typeof id === 'string' && id.length > 0 ? id : String(i);
+      throw new Error(`track "${label}": tasks must be an array`);
     }
   }
-
-  for (const track of p.tracks) {
-    validateRawTrack(track);
-  }
   return p;
-}
-
-// D8: IDs must start with a letter or underscore and contain only
-// alphanumerics, underscores, and hyphens. Dots are forbidden because
-// the engine uses "trackId.taskId" as the qualified separator — a dot in
-// either part creates an ambiguous qualified ID and breaks resolveRef.
-//
-// Canonical regex + error message live in @tagma/core's task-ref so every
-// validator (parse-time here, edit-time in validate-raw.ts, editor UI) reports
-// the same explanation. Drift used to confuse users who'd see two different
-// messages for the same rule depending on which validator fired.
-const ID_RE = /^[A-Za-z_][A-Za-z0-9_-]*$/;
-
-function assertValidId(id: string, label: string): void {
-  if (!ID_RE.test(id)) {
-    throw new Error(`${label}: id "${id}" is invalid. ${INVALID_TASK_ID_REASON}`);
-  }
-}
-
-function validateRawTrack(track: RawTrackConfig): void {
-  if (!track || typeof track !== 'object' || Array.isArray(track)) {
-    throw new Error('track must be an object');
-  }
-  if (!track.id) throw new Error('track.id is required');
-  assertValidId(track.id, `track "${track.id}"`);
-  if (!track.name) throw new Error(`track "${track.id}": name is required`);
-  if (!Array.isArray(track.tasks)) {
-    throw new Error(`track "${track.id}": tasks must be an array`);
-  }
-  if (track.tasks.length === 0) {
-    throw new Error(`track "${track.id}": tasks must be non-empty`);
-  }
-  for (const task of track.tasks) {
-    validateRawTask(task, track.id);
-  }
-}
-
-function commandConfigKind(value: unknown): 'shell' | 'argv' | null {
-  if (typeof value === 'string') return 'shell';
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const raw = value as Record<string, unknown>;
-  const hasShell = 'shell' in raw;
-  const hasArgv = 'argv' in raw;
-  if (hasShell === hasArgv) return null;
-  if (hasShell) return typeof raw.shell === 'string' ? 'shell' : null;
-  return Array.isArray(raw.argv) && raw.argv.every((arg) => typeof arg === 'string')
-    ? 'argv'
-    : null;
 }
 
 function commandNameFallback(command: CommandConfig | undefined, fallback: string): string {
@@ -122,53 +84,6 @@ function commandNameFallback(command: CommandConfig | undefined, fallback: strin
   if (command && 'shell' in command) return command.shell;
   if (command && 'argv' in command) return command.argv.join(' ') || fallback;
   return fallback;
-}
-
-function validateCommandConfig(command: unknown, label: string): void {
-  const kind = commandConfigKind(command);
-  if (kind === null) {
-    throw new Error(`${label}: command must be a shell string, { shell: string }, or { argv: string[] }`);
-  }
-  if (typeof command === 'string') {
-    if (command.trim().length === 0) throw new Error(`${label}: command must not be empty`);
-    return;
-  }
-  const raw = command as { shell?: string; argv?: readonly string[] };
-  if (kind === 'shell') {
-    if (!raw.shell || raw.shell.trim().length === 0) {
-      throw new Error(`${label}: command.shell must not be empty`);
-    }
-    return;
-  }
-  if (!raw.argv || raw.argv.length === 0 || raw.argv.some((arg) => arg.length === 0)) {
-    throw new Error(`${label}: command.argv must contain non-empty string arguments`);
-  }
-}
-
-function validateRawTask(task: RawTaskConfig, trackId: string): void {
-  if (!task || typeof task !== 'object' || Array.isArray(task)) {
-    throw new Error(`track "${trackId}": task must be an object`);
-  }
-  if (!task.id) throw new Error(`track "${trackId}": task.id is required`);
-  assertValidId(task.id, `task "${task.id}" in track "${trackId}"`);
-  if ('ports' in (task as unknown as Record<string, unknown>)) {
-    throw new Error(`task "${task.id}": ports is not supported; use inputs/outputs`);
-  }
-
-  const hasPromptKey = typeof task.prompt === 'string';
-  const hasCommandField = isCommandTaskConfig(task);
-  const hasCommandKey = commandConfigKind(task.command) !== null;
-  if (!hasPromptKey && !hasCommandField) {
-    throw new Error(`task "${task.id}": must have either "prompt" or "command"`);
-  }
-  if (hasPromptKey && hasCommandKey) {
-    throw new Error(`task "${task.id}": cannot have both "prompt" and "command"`);
-  }
-  if (hasCommandField) {
-    validateCommandConfig(task.command, `task "${task.id}"`);
-  }
-  // Empty-content tasks (e.g. `prompt: ''`) are allowed at parse time and
-  // flagged as hard validation errors by validate-raw.ts.
 }
 
 // ═══ Config Inheritance Resolution ═══
