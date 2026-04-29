@@ -22,14 +22,14 @@
 //      it. Prefer `normalizedOutput` for AI tasks, fall back to raw
 //      stdout — command tasks only ever have stdout.
 //
-//   4. `inferPromptPorts({upstreams, downstreams})` — Prompt Tasks do NOT
-//      declare ports; their I/O contract is inferred from direct-neighbor
-//      Command Tasks. This helper synthesizes a `TaskPorts` object the
-//      engine can feed into the three concerns above, and surfaces any
-//      collisions that block the task (same port name on two upstreams,
-//      incompatible types across downstreams, …). Prompt neighbors
-//      contribute zero structured I/O — they pass free text via
-//      `continue_from` / normalizedOutput instead.
+//   4. `inferPromptPorts({upstreams, downstreams})` — Prompt Tasks can
+//      receive an inferred I/O contract from direct-neighbor Command Tasks.
+//      The engine later merges that inferred contract with any explicit
+//      task-level `inputs` / `outputs`. This helper synthesizes the inferred
+//      `TaskPorts` object and surfaces collisions that block the task (same
+//      port name on two upstreams, incompatible types across downstreams, …).
+//      Prompt neighbors contribute zero structured I/O — they pass free text
+//      via `continue_from` / normalizedOutput instead.
 //
 // Everything here is pure / deterministic so it can be reused by the CLI,
 // the editor (for preview/simulation), and the engine without side effects.
@@ -301,6 +301,16 @@ export function resolveTaskBindingInputs(
         value = found.value;
         present = true;
       }
+    } else {
+      const found = findOutputByName(name, upstreamData, dependsOn);
+      if (found.kind === 'ambiguous') {
+        ambiguous.push({ input: name, producers: found.producers });
+        continue;
+      }
+      if (found.kind === 'hit') {
+        value = found.value;
+        present = true;
+      }
     }
 
     if (!present && 'default' in binding) {
@@ -416,6 +426,23 @@ function findUpstreamValue(
   upstreamOutputs: ReadonlyMap<string, Readonly<Record<string, unknown>>>,
   dependsOn: readonly string[],
 ): UpstreamLookup {
+  if (port.from?.startsWith('outputs.')) {
+    const key = port.from.slice('outputs.'.length);
+    return findUpstreamOutputByName(key, upstreamOutputs, dependsOn);
+  }
+
+  const outputMarker = '.outputs.';
+  const outputIdx = port.from?.lastIndexOf(outputMarker) ?? -1;
+  if (outputIdx > 0 && port.from) {
+    const upstreamId = port.from.slice(0, outputIdx);
+    const portName = port.from.slice(outputIdx + outputMarker.length);
+    const upstream = upstreamOutputs.get(upstreamId);
+    if (upstream && portName in upstream) {
+      return { kind: 'hit', producer: upstreamId, value: upstream[portName] };
+    }
+    return { kind: 'miss' };
+  }
+
   // Explicit fully-qualified binding: "taskId.portName"
   if (port.from && port.from.includes('.')) {
     const dot = port.from.lastIndexOf('.');
@@ -435,6 +462,23 @@ function findUpstreamValue(
     const upstream = upstreamOutputs.get(upstreamId);
     if (upstream && key in upstream) {
       hits.push({ producer: upstreamId, value: upstream[key] });
+    }
+  }
+  if (hits.length === 0) return { kind: 'miss' };
+  if (hits.length === 1) return { kind: 'hit', producer: hits[0]!.producer, value: hits[0]!.value };
+  return { kind: 'ambiguous', producers: hits.map((h) => h.producer) };
+}
+
+function findUpstreamOutputByName(
+  name: string,
+  upstreamOutputs: ReadonlyMap<string, Readonly<Record<string, unknown>>>,
+  dependsOn: readonly string[],
+): UpstreamLookup {
+  const hits: { producer: string; value: unknown }[] = [];
+  for (const upstreamId of dependsOn) {
+    const upstream = upstreamOutputs.get(upstreamId);
+    if (upstream && name in upstream) {
+      hits.push({ producer: upstreamId, value: upstream[name] });
     }
   }
   if (hits.length === 0) return { kind: 'miss' };
@@ -702,8 +746,9 @@ function safeParseJson(candidate: string): Record<string, unknown> | null {
 
 // ─── Prompt-task port inference ───────────────────────────────────────
 //
-// Prompt Tasks have no declared ports. The engine calls `inferPromptPorts`
-// to synthesize one from the Task's direct DAG neighbors:
+// Prompt Tasks get an inferred port contract from their direct DAG
+// neighbors. The engine merges this with explicit task-level `inputs` /
+// `outputs` before resolving values or rendering prompt context blocks:
 //
 //   - **inputs** are taken from the declared `outputs` of every direct
 //     upstream Command Task. The union of names becomes the Prompt's
@@ -720,11 +765,9 @@ function safeParseJson(candidate: string): Record<string, unknown> | null {
 // Collisions:
 //
 //   - **Input collision**: two upstream Commands both export an output
-//     named `city`. Command→Command would let a downstream add
-//     `from: taskId.city` to pick one; Prompt Tasks have no port
-//     declarations and therefore no escape hatch. The only fix is to
-//     rename on the Command side. We surface this as an `inputConflicts`
-//     entry; the engine blocks the task with that reason.
+//     named `city`. The engine can continue if the Prompt declares explicit
+//     input aliases with `from` bindings for every producer; otherwise we
+//     surface an `inputConflicts` entry and the engine blocks the task.
 //
 //   - **Output collision with compatible types** (e.g. both downstreams
 //     ask for `date: string`) → merged into a single inferred output.
@@ -912,7 +955,10 @@ function inferPromptOutputPort(input: PortDef, promptTaskId: string | undefined)
   };
 }
 
-function promptOutputNameFromInput(input: PortDef, promptTaskId: string | undefined): string | null {
+function promptOutputNameFromInput(
+  input: PortDef,
+  promptTaskId: string | undefined,
+): string | null {
   const source = input.from;
   if (!source) return input.name;
   if (source.startsWith('outputs.')) return source.slice('outputs.'.length);

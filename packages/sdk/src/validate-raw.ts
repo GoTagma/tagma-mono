@@ -155,12 +155,18 @@ function validateCommandConfig(
     return true;
   }
   if (!raw.argv || raw.argv.length === 0) {
-    errors.push({ path: `${path}.argv`, message: `${label}.argv must contain at least one argument` });
+    errors.push({
+      path: `${path}.argv`,
+      message: `${label}.argv must contain at least one argument`,
+    });
     return false;
   }
   raw.argv.forEach((arg, index) => {
     if (arg.length === 0) {
-      errors.push({ path: `${path}.argv[${index}]`, message: `${label}.argv entries must not be empty` });
+      errors.push({
+        path: `${path}.argv[${index}]`,
+        message: `${label}.argv entries must not be empty`,
+      });
     }
   });
   return true;
@@ -535,14 +541,24 @@ export function validateRaw(
           message: `Task "${task.id}": must have "prompt" or "command"`,
         });
       } else if (hasCommandField && !hasCommandKey) {
-        validateCommandConfig(task.command, `${taskPath}.command`, `Task "${task.id}" command`, errors);
+        validateCommandConfig(
+          task.command,
+          `${taskPath}.command`,
+          `Task "${task.id}" command`,
+          errors,
+        );
       } else if (promptEmpty) {
         errors.push({
           path: taskPath,
           message: `Task "${task.id}": prompt content cannot be empty`,
         });
       } else if (task.command !== undefined) {
-        validateCommandConfig(task.command, `${taskPath}.command`, `Task "${task.id}" command`, errors);
+        validateCommandConfig(
+          task.command,
+          `${taskPath}.command`,
+          `Task "${task.id}" command`,
+          errors,
+        );
       }
 
       //  Field-level validations
@@ -969,6 +985,7 @@ function validateInferredPromptPortConflicts(
   }
   for (const [name, producers] of producersByName) {
     if (producers.length > 1) {
+      if (explicitInputsDisambiguateConflict(task, name, producers)) continue;
       errors.push({
         path: taskPath,
         message:
@@ -1032,6 +1049,22 @@ function validateInferredPromptPortConflicts(
       }
     }
   }
+}
+
+function explicitInputsDisambiguateConflict(
+  task: RawTaskConfig,
+  outputName: string,
+  producers: readonly string[],
+): boolean {
+  if (!task.inputs || typeof task.inputs !== 'object' || Array.isArray(task.inputs)) return false;
+  const bindings = Object.values(task.inputs);
+  return producers.every((producer) =>
+    bindings.some((binding) => {
+      if (!binding || typeof binding !== 'object' || Array.isArray(binding)) return false;
+      const source = (binding as { readonly from?: unknown }).from;
+      return source === `${producer}.outputs.${outputName}`;
+    }),
+  );
 }
 
 function inferredPromptOutputName(

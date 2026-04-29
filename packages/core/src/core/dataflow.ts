@@ -60,17 +60,47 @@ function mergePromptEffectivePorts(
   inferred: TaskPorts,
   explicit: TaskPorts | undefined,
 ): TaskPorts | undefined {
-  const explicitOutputs = explicit?.outputs ?? [];
-  if (explicitOutputs.length === 0) {
-    return inferred.inputs || inferred.outputs ? inferred : undefined;
-  }
-
+  const inputsByName = new Map<string, PortDef>();
+  for (const port of inferred.inputs ?? []) inputsByName.set(port.name, port);
+  for (const port of explicit?.inputs ?? []) inputsByName.set(port.name, port);
   const outputsByName = new Map<string, PortDef>();
   for (const port of inferred.outputs ?? []) outputsByName.set(port.name, port);
-  for (const port of explicitOutputs) outputsByName.set(port.name, port);
+  for (const port of explicit?.outputs ?? []) outputsByName.set(port.name, port);
+  if (inputsByName.size === 0 && outputsByName.size === 0) return undefined;
   return {
-    ...(inferred.inputs?.length ? { inputs: inferred.inputs } : {}),
+    ...(inputsByName.size > 0 ? { inputs: [...inputsByName.values()] } : {}),
     ...(outputsByName.size > 0 ? { outputs: [...outputsByName.values()] } : {}),
+  };
+}
+
+function sourceReferencesOutput(
+  source: string | undefined,
+  upstreamId: string,
+  outputName: string,
+): boolean {
+  return source === `${upstreamId}.outputs.${outputName}`;
+}
+
+function disambiguatesInputConflict(
+  conflict: {
+    readonly portName: string;
+    readonly producers: readonly { readonly taskId: string }[];
+  },
+  explicitInputs: readonly PortDef[],
+): boolean {
+  return conflict.producers.every((producer) =>
+    explicitInputs.some((input) =>
+      sourceReferencesOutput(input.from, producer.taskId, conflict.portName),
+    ),
+  );
+}
+
+function removeInferredInputNames(ports: TaskPorts, names: ReadonlySet<string>): TaskPorts {
+  if (names.size === 0) return ports;
+  const inputs = ports.inputs?.filter((port) => !names.has(port.name)) ?? [];
+  return {
+    ...(inputs.length > 0 ? { inputs } : {}),
+    ...(ports.outputs?.length ? { outputs: ports.outputs } : {}),
   };
 }
 
@@ -126,18 +156,30 @@ export function inferEffectivePorts(ctx: RunContext, taskId: string): EffectiveP
       };
     }),
   });
+  const explicitPorts = taskBindingsAsPorts(task);
+  const explicitInputs = explicitPorts?.inputs ?? [];
+  const disambiguatedInputConflicts = inference.inputConflicts.filter((conflict) =>
+    disambiguatesInputConflict(conflict, explicitInputs),
+  );
+  const disambiguatedInputNames = new Set(
+    disambiguatedInputConflicts.map((conflict) => conflict.portName),
+  );
+  const remainingInputConflicts = inference.inputConflicts.filter(
+    (conflict) => !disambiguatedInputNames.has(conflict.portName),
+  );
 
-  if (inference.inputConflicts.length > 0 || inference.outputConflicts.length > 0) {
+  if (remainingInputConflicts.length > 0 || inference.outputConflicts.length > 0) {
     const lines: string[] = [];
-    for (const conflict of inference.inputConflicts) lines.push(conflict.reason);
+    for (const conflict of remainingInputConflicts) lines.push(conflict.reason);
     for (const conflict of inference.outputConflicts) lines.push(conflict.reason);
     return { kind: 'blocked', reason: lines.join('\n') };
   }
+  const inferredPorts = removeInferredInputNames(inference.ports, disambiguatedInputNames);
 
   return {
     kind: 'ready',
     isPromptTask: true,
-    effectivePorts: mergePromptEffectivePorts(inference.ports, taskBindingsAsPorts(task)),
+    effectivePorts: mergePromptEffectivePorts(inferredPorts, explicitPorts),
   };
 }
 
@@ -172,7 +214,11 @@ export function extractSuccessfulOutputs(
   const inferredPorts = inferredOnlyOutputPorts(task, effectivePorts);
   let portDiagnostic: string | null = null;
   if (inferredPorts?.outputs?.length) {
-    const portExtraction = extractTaskOutputs(inferredPorts, result.stdout, result.normalizedOutput);
+    const portExtraction = extractTaskOutputs(
+      inferredPorts,
+      result.stdout,
+      result.normalizedOutput,
+    );
     extractedOutputs = {
       ...portExtraction.outputs,
       ...(extractedOutputs ?? {}),

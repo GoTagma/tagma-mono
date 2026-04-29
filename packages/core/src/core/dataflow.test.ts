@@ -226,6 +226,89 @@ describe('inferEffectivePorts', () => {
       ]);
     }
   });
+
+  test('merges explicit prompt inputs with inferred upstream inputs', () => {
+    const config: PipelineConfig = {
+      name: 'p',
+      tracks: [
+        {
+          id: 't',
+          name: 'T',
+          tasks: [
+            {
+              id: 'up',
+              name: 'Up',
+              command: 'echo',
+              outputs: { city: { type: 'string' } },
+            },
+            {
+              id: 'prompt',
+              name: 'Prompt',
+              prompt: 'hi',
+              depends_on: ['up'],
+              inputs: {
+                weatherCity: { from: 't.up.outputs.city', type: 'string' },
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const ctx = makeContext(config);
+    const inferred = inferEffectivePorts(ctx, 't.prompt');
+    expect(inferred.kind).toBe('ready');
+    if (inferred.kind === 'ready') {
+      expect(inferred.effectivePorts?.inputs?.map((port) => port.name).sort()).toEqual([
+        'city',
+        'weatherCity',
+      ]);
+    }
+  });
+
+  test('explicit prompt input aliases can disambiguate conflicting upstream outputs', () => {
+    const config: PipelineConfig = {
+      name: 'p',
+      tracks: [
+        {
+          id: 't',
+          name: 'T',
+          tasks: [
+            {
+              id: 'weather',
+              name: 'Weather',
+              command: 'echo',
+              outputs: { city: { type: 'string' } },
+            },
+            {
+              id: 'profile',
+              name: 'Profile',
+              command: 'echo',
+              outputs: { city: { type: 'string' } },
+            },
+            {
+              id: 'prompt',
+              name: 'Prompt',
+              prompt: 'hi',
+              depends_on: ['weather', 'profile'],
+              inputs: {
+                weatherCity: { from: 't.weather.outputs.city', type: 'string' },
+                profileCity: { from: 't.profile.outputs.city', type: 'string' },
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const ctx = makeContext(config);
+    const inferred = inferEffectivePorts(ctx, 't.prompt');
+    expect(inferred.kind).toBe('ready');
+    if (inferred.kind === 'ready') {
+      expect(inferred.effectivePorts?.inputs?.map((port) => port.name).sort()).toEqual([
+        'profileCity',
+        'weatherCity',
+      ]);
+    }
+  });
 });
 
 describe('extractSuccessfulOutputs', () => {

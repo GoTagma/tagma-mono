@@ -253,16 +253,15 @@ Use task-level `inputs` / `outputs` for parameter passing. They are task-level o
   command: 'bun test "{{inputs.bundlePath}}"'
   inputs:
     bundlePath:
-      from: t.build.outputs.bundlePath
       required: true
       type: string
 ```
 
-Input bindings support `value`, `from`, `default`, `required`, optional `type`, `enum`, and `description`. `from` accepts `taskId.outputs.name`, `taskId.stdout`, `taskId.stderr`, `taskId.normalizedOutput`, `taskId.exitCode`, or `outputs.name` to name-match direct upstream outputs.
+Input bindings support `value`, `from`, `default`, `required`, optional `type`, `enum`, and `description`. When an input has no `value` or `from`, Tagma first looks for a same-name output from the task's direct upstreams, then falls back to `default`. Use `from` when you need to rename, disambiguate, or read `taskId.stdout`, `taskId.stderr`, `taskId.normalizedOutput`, or `taskId.exitCode`.
 
 Output bindings support `value`, `from`, `default`, optional `type`, `enum`, and `description`. `from` defaults to `json.<outputName>` and also accepts `stdout`, `stderr`, or `normalizedOutput`.
 
-Prompt tasks infer their structured input/output contract from neighboring command tasks that use typed `outputs` / `inputs`. The engine renders `[Inputs]` and `[Output Format]` blocks from that inferred contract.
+Prompt tasks infer their structured input/output contract from neighboring command tasks that use typed `outputs` / `inputs`, and they may also declare `inputs` / `outputs` explicitly. The engine renders `[Inputs]` and `[Output Format]` blocks from the merged inferred and explicit contract.
 
 ---
 
@@ -271,8 +270,12 @@ Prompt tasks infer their structured input/output contract from neighboring comma
 Tasks can declare named, typed `inputs` / `outputs`. Inputs flow in from upstream task outputs; outputs are extracted from a task's stdout (or the AI driver's `normalizedOutput`) on success.
 
 ```yaml
+- id: choose-city
+  prompt: Choose a city for a weekend trip.
+
 - id: lookup-weather
   name: Lookup weather
+  depends_on: [choose-city]
   command: weather.sh --city "{{inputs.city}}"
   inputs:
     city:
@@ -280,6 +283,8 @@ Tasks can declare named, typed `inputs` / `outputs`. Inputs flow in from upstrea
       required: true
       description: Target city
   outputs:
+    city:
+      type: string
     temperature:
       type: number
       description: Current temperature in Celsius
@@ -291,30 +296,29 @@ Tasks can declare named, typed `inputs` / `outputs`. Inputs flow in from upstrea
   depends_on: [lookup-weather]
   prompt: 'Write a brief weather report for {{inputs.city}}.'
   inputs:
-    city: { from: t.lookup-weather.outputs.city, type: string, required: true }
-    temperature: { from: t.lookup-weather.outputs.temperature, type: number, required: true }
+    city: { type: string, required: true }
+    temperature: { type: number, required: true }
     conditions:
-      from: t.lookup-weather.outputs.conditions
       type: enum
       enum: [sunny, cloudy, rain, snow]
 ```
 
 #### Binding fields
 
-| Field         | Type                                                    | Required          | Description                                                                                                                                                 |
-| ------------- | ------------------------------------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `value`       | `unknown`                                               | No                | Literal value. For inputs, this wins over `from`                                                                                                            |
-| `from`        | `string`                                                | No                | Inputs: upstream source such as `taskId.outputs.name`, `taskId.stdout`, or `outputs.name`. Outputs: `json.<key>`, `stdout`, `stderr`, or `normalizedOutput` |
-| `default`     | `unknown`                                               | No                | Fallback value when the source is missing                                                                                                                   |
-| `required`    | `boolean`                                               | Inputs only       | When `true`, missing upstream value and no `default` blocks the task                                                                                        |
-| `type`        | `'string' \| 'number' \| 'boolean' \| 'enum' \| 'json'` | No                | Optional coercion type. Omit it for pass-through values                                                                                                     |
-| `description` | `string`                                                | No                | Free-text description; rendered into the `[Inputs]` / `[Output Format]` blocks                                                                              |
-| `enum`        | `string[]`                                              | When `type: enum` | Allowed values                                                                                                                                              |
+| Field         | Type                                                    | Required          | Description                                                                                                                                                                                                                                                      |
+| ------------- | ------------------------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `value`       | `unknown`                                               | No                | Literal value. For inputs, this wins over `from`                                                                                                                                                                                                                 |
+| `from`        | `string`                                                | No                | Inputs: optional upstream source for rename/disambiguation or raw fields such as `taskId.outputs.name`, `outputs.name`, or `taskId.stdout`. Unset inputs auto-match same-name upstream outputs. Outputs: `json.<key>`, `stdout`, `stderr`, or `normalizedOutput` |
+| `default`     | `unknown`                                               | No                | Fallback value when the source is missing                                                                                                                                                                                                                        |
+| `required`    | `boolean`                                               | Inputs only       | When `true`, missing upstream value and no `default` blocks the task                                                                                                                                                                                             |
+| `type`        | `'string' \| 'number' \| 'boolean' \| 'enum' \| 'json'` | No                | Optional coercion type. Omit it for pass-through values                                                                                                                                                                                                          |
+| `description` | `string`                                                | No                | Free-text description; rendered into the `[Inputs]` / `[Output Format]` blocks                                                                                                                                                                                   |
+| `enum`        | `string[]`                                              | When `type: enum` | Allowed values                                                                                                                                                                                                                                                   |
 
 #### Substitution and AI prompt blocks
 
 - `{{inputs.<name>}}` is expanded verbatim in `command` and `prompt` strings before execution. Quote your placeholders in command lines (`--city "{{inputs.city}}"`) — the engine does not shell-escape.
-- AI tasks get `[Output Format]` and `[Inputs]` blocks when typed bindings can be inferred from neighboring command tasks.
+- AI tasks get `[Output Format]` and `[Inputs]` blocks from inferred and explicit typed bindings.
 - Output extraction strategy: prefer `normalizedOutput` (AI tasks), fall back to stdout (command tasks). Find the last non-empty line that parses as a JSON object, then read each declared output key. Failures append a diagnostic to stderr; the binding is absent from `outputs` and downstream tasks see it as missing.
 
 ---

@@ -135,6 +135,8 @@ export interface TaskInputBinding {
    *   - `taskId.stderr`
    *   - `taskId.normalizedOutput`
    *   - `outputs.name` (name-match across direct upstream outputs)
+   * When unset, the runtime auto-matches a same-name output from direct
+   * upstreams before falling back to `default`.
    */
   readonly from?: string;
   /** Fallback when `from` is missing or unresolved. */

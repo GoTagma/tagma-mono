@@ -40,7 +40,7 @@ import type {
 
 ### Task Bindings
 
-- `TaskInputBindings` -- `{ [name]: TaskInputBinding }`. Task-level values available as `{{inputs.name}}`; `from` can reference `taskId.outputs.name`, `taskId.stdout`, `taskId.stderr`, `taskId.normalizedOutput`, `taskId.exitCode`, or `outputs.name`; optional `type` enables coercion
+- `TaskInputBindings` -- `{ [name]: TaskInputBinding }`. Task-level values available as `{{inputs.name}}`; inputs without `value` or `from` auto-match same-name direct-upstream outputs before using `default`; `from` can reference `taskId.outputs.name`, `taskId.stdout`, `taskId.stderr`, `taskId.normalizedOutput`, `taskId.exitCode`, or `outputs.name`; optional `type` enables coercion
 - `TaskOutputBindings` -- `{ [name]: TaskOutputBinding }`. Named outputs selected from `json.name`, `stdout`, `stderr`, `normalizedOutput`, literal `value`, or `default`; optional `type` enables coercion
 - `TaskPorts` / `PortDef` -- internal prompt-contract types used by core dataflow inference helpers. YAML uses task-level `inputs` / `outputs`, not a `ports` key
 - `PortType` -- `'string' | 'number' | 'boolean' | 'enum' | 'json'`. Drives runtime coercion when resolving inputs and extracting outputs

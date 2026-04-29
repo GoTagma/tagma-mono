@@ -248,6 +248,69 @@ describe('resolveTaskInputs', () => {
 // ─── resolveTaskBindingInputs ────────────────────────────────────────
 
 describe('resolveTaskBindingInputs', () => {
+  test('defaults missing from/value bindings to same-name upstream outputs', () => {
+    const t = task({
+      id: 'downstream',
+      command: 'echo',
+      inputs: {
+        city: { type: 'string', required: true },
+        id: { type: 'number', required: true },
+      },
+    });
+    const upstream = new Map([
+      [
+        't.up',
+        {
+          outputs: { city: 'Shanghai', id: '42' },
+          stdout: '',
+          stderr: '',
+          normalizedOutput: null,
+          exitCode: 0,
+        },
+      ],
+    ]);
+    const res = resolveTaskBindingInputs(t, upstream, ['t.up']);
+    expect(res.kind).toBe('ready');
+    if (res.kind !== 'ready') return;
+    expect(res.inputs).toEqual({ city: 'Shanghai', id: 42 });
+  });
+
+  test('reports ambiguity for default same-name binding matches', () => {
+    const t = task({
+      id: 'downstream',
+      command: 'echo',
+      inputs: {
+        city: { type: 'string', required: true },
+      },
+    });
+    const upstream = new Map([
+      [
+        't.a',
+        {
+          outputs: { city: 'Shanghai' },
+          stdout: '',
+          stderr: '',
+          normalizedOutput: null,
+          exitCode: 0,
+        },
+      ],
+      [
+        't.b',
+        {
+          outputs: { city: 'Beijing' },
+          stdout: '',
+          stderr: '',
+          normalizedOutput: null,
+          exitCode: 0,
+        },
+      ],
+    ]);
+    const res = resolveTaskBindingInputs(t, upstream, ['t.a', 't.b']);
+    expect(res.kind).toBe('blocked');
+    if (res.kind !== 'blocked') return;
+    expect(res.ambiguous).toEqual([{ input: 'city', producers: ['t.a', 't.b'] }]);
+  });
+
   test('coerces typed unified inputs from upstream outputs', () => {
     const t = task({
       id: 'downstream',

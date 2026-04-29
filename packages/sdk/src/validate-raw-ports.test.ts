@@ -95,6 +95,25 @@ describe('validateRaw - prompt inferred bindings', () => {
     expect(errors.some((e) => /cannot disambiguate/.test(e.message))).toBe(true);
   });
 
+  test('explicit prompt input aliases can resolve ambiguous upstream command outputs', () => {
+    const errors = validateRaw(
+      config([
+        commandTask({ id: 'weather', command: 'echo ok', outputs: { city: { type: 'string' } } }),
+        commandTask({ id: 'profile', command: 'echo ok', outputs: { city: { type: 'string' } } }),
+        promptTask({
+          id: 'p',
+          depends_on: ['weather', 'profile'],
+          prompt: 'weather={{inputs.weatherCity}} profile={{inputs.profileCity}}',
+          inputs: {
+            weatherCity: { from: 't.weather.outputs.city', type: 'string' },
+            profileCity: { from: 't.profile.outputs.city', type: 'string' },
+          },
+        }),
+      ]),
+    );
+    expect(errors.some((e) => /cannot disambiguate/.test(e.message))).toBe(false);
+  });
+
   test('downstream commands with incompatible typed inputs conflict for prompt outputs', () => {
     const errors = validateRaw(
       config([
