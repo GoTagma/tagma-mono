@@ -89,23 +89,60 @@ export function buildHotupdateManifest({
   assetsDir,
   repoSlug,
   minShellVersion,
+  allowPartialSidecars = false,
 }) {
   const tagName = `desktop-v${version}`;
   const distAsset = readRequiredAsset(assetsDir, `editor-dist-${version}.tar.gz`);
-  const sidecarTargets = SIDECAR_TARGETS.flatMap(({ platform, arch, extension }) => {
+  const sidecarTargets = [];
+  const missingTargets = [];
+  for (const { platform, arch, extension } of SIDECAR_TARGETS) {
     const filename = `tagma-editor-server-${version}-${platform}-${arch}${extension}`;
     const asset = readOptionalAsset(assetsDir, filename);
-    if (!asset) return [];
-    return [
-      {
-        platform,
-        arch,
-        url: buildReleaseAssetUrl(repoSlug, tagName, asset.filename),
-        sha256: asset.sha,
-        size: asset.size,
-      },
-    ];
-  });
+    if (!asset) {
+      missingTargets.push({ platform, arch, filename });
+      continue;
+    }
+    sidecarTargets.push({
+      platform,
+      arch,
+      url: buildReleaseAssetUrl(repoSlug, tagName, asset.filename),
+      sha256: asset.sha,
+      size: asset.size,
+    });
+  }
+
+  if (missingTargets.length > 0) {
+    // The editor UI's primary "Update Tagma" button requires sidecar.canUpdate
+    // (VersionStatusBar.tsx bundleCanUpdate gate), and each platform/arch needs
+    // its own asset to set canUpdate true on that machine. A missing target
+    // silently disables Update Tagma on the affected platform — Windows users
+    // would see editor.canUpdate but sidecar.canUpdate = false and have to
+    // hunt for the advanced editor-only flow. Hard fail by default so a CI
+    // pipeline that drops one artifact can't ship a half-broken manifest;
+    // callers that intentionally publish editor-only or single-platform
+    // builds opt in via `allowPartialSidecars: true` (CLI:
+    // --allow-partial-sidecars).
+    const lines = missingTargets.map(
+      (t) => `  - ${t.platform}/${t.arch} (expected ${t.filename})`,
+    );
+    const summary =
+      sidecarTargets.length === 0
+        ? `no sidecar binaries found in ${assetsDir}`
+        : `${missingTargets.length}/${SIDECAR_TARGETS.length} sidecar targets missing in ${assetsDir}`;
+    if (!allowPartialSidecars) {
+      throw new Error(
+        `[build-hotupdate-manifest] ${summary}. Pass --allow-partial-sidecars ` +
+          `to publish anyway (Update Tagma will be unavailable on the missing ` +
+          `platforms — those users will only see editor-only updates via the ` +
+          `advanced UI). Missing targets:\n${lines.join('\n')}`,
+      );
+    }
+    console.warn(
+      `[build-hotupdate-manifest] WARNING: ${summary}. ` +
+        `Update Tagma will be disabled on the missing platforms ` +
+        `(only advanced editor-only updates remain available there).\n${lines.join('\n')}`,
+    );
+  }
 
   return {
     version,
@@ -124,6 +161,7 @@ export function buildHotupdateManifest({
 function parseCliArgs(argv) {
   let minShellVersion;
   let signingKey;
+  let allowPartialSidecars = false;
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -149,15 +187,28 @@ function parseCliArgs(argv) {
       signingKey = arg.slice('--signing-key='.length);
       continue;
     }
+    if (arg === '--allow-partial-sidecars') {
+      allowPartialSidecars = true;
+      continue;
+    }
     positional.push(arg);
   }
   const [version, channel, assetsDir, repoSlug, outFile] = positional;
   if (!version || !channel || !assetsDir || !repoSlug || !outFile) {
     throw new Error(
-      'usage: build-hotupdate-manifest.mjs <version> <channel> <assets-dir> <repo-slug> <out-file> [--min-shell <version>] [--signing-key <private-key.pem>]',
+      'usage: build-hotupdate-manifest.mjs <version> <channel> <assets-dir> <repo-slug> <out-file> [--min-shell <version>] [--signing-key <private-key.pem>] [--allow-partial-sidecars]',
     );
   }
-  return { version, channel, assetsDir, repoSlug, outFile, minShellVersion, signingKey };
+  return {
+    version,
+    channel,
+    assetsDir,
+    repoSlug,
+    outFile,
+    minShellVersion,
+    signingKey,
+    allowPartialSidecars,
+  };
 }
 
 export function writeHotupdateManifest(outFile, manifest) {
