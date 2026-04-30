@@ -838,12 +838,21 @@ jobs:
             || git -C apps fetch --no-tags origin
           git -C apps fetch --no-tags origin "$cur_apps_sha" 2>/dev/null || true
 
+          # The release/ directory drives the bundle update transaction
+          # (staging layout, activation order, current.json shape). Any change
+          # in there or in routes/release.ts can shift the on-disk contract
+          # the installed shell expects — a freshly-built sidecar with new
+          # staging conventions, hot-updated into an installer that pre-dates
+          # them, leaves the update button wedged. Treat the whole release/
+          # subtree as one compat surface rather than enumerating files.
           changed=$(git -C apps diff --name-only "$prev_apps_sha" "$cur_apps_sha" -- \
             electron/src/main.ts \
             electron/src/preload.ts \
             electron/src/runtime-paths.ts \
             editor/server/routes/editor.ts \
             editor/server/routes/sidecar.ts \
+            editor/server/routes/release.ts \
+            editor/server/release/ \
             editor/server/static-assets.ts \
             editor/server/update-manifest.ts)
           if [ -n "$changed" ]; then
@@ -863,8 +872,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ -n "${TAGMA_UPDATE_MANIFEST_PUBLIC_KEY:-}" ] && [ -z "${TAGMA_HOTUPDATE_MANIFEST_PRIVATE_KEY:-}" ]; then
-            echo "TAGMA_UPDATE_MANIFEST_PUBLIC_KEY is set, but TAGMA_HOTUPDATE_MANIFEST_PRIVATE_KEY is missing. Refusing to publish an unsigned manifest to clients that require signatures." >&2
+          # The signing requirement is driven by what the *installer* will
+          # ship with — i.e. whatever public key ends up baked into
+          # apps/electron/package.json — not by the workflow var alone. The
+          # `prepare` job overwrites the package.json key from
+          # vars.TAGMA_UPDATE_MANIFEST_PUBLIC_KEY when set, but if the var is
+          # unset the checked-in package.json still carries a key, so the
+          # installer still demands signed manifests. The previous guard only
+          # consulted the var and missed that path: an empty var with a
+          # checked-in key would publish an unsigned manifest that every
+          # installer rejects, wedging the update button across the fleet.
+          # Read the effective key out of the source of truth instead.
+          pkg_pubkey=$(node -p "require('./apps/electron/package.json').tagma?.updateManifestPublicKey || ''")
+          effective_pubkey="${TAGMA_UPDATE_MANIFEST_PUBLIC_KEY:-$pkg_pubkey}"
+          if [ -n "$effective_pubkey" ] && [ -z "${TAGMA_HOTUPDATE_MANIFEST_PRIVATE_KEY:-}" ]; then
+            src="vars.TAGMA_UPDATE_MANIFEST_PUBLIC_KEY"
+            if [ -z "${TAGMA_UPDATE_MANIFEST_PUBLIC_KEY:-}" ]; then
+              src="apps/electron/package.json (tagma.updateManifestPublicKey)"
+            fi
+            echo "Installers will ship with a manifest public key (source: ${src}), but TAGMA_HOTUPDATE_MANIFEST_PRIVATE_KEY is missing. Refusing to publish an unsigned manifest — signed-key clients would reject it." >&2
             exit 1
           fi
           args=(
