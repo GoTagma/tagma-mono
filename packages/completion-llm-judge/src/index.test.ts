@@ -39,4 +39,37 @@ describe('completion-llm-judge plugin shape', () => {
       ),
     ).rejects.toThrow(/endpoint protocol must be http or https/);
   });
+
+  test('rejects api_key_env over non-loopback http endpoints', async () => {
+    const envName = `TAGMA_TEST_JUDGE_KEY_${Date.now()}`;
+    process.env[envName] = 'secret-value';
+    try {
+      await expect(
+        LlmJudgeCompletion.check(
+          {
+            rubric: 'must pass',
+            endpoint: 'http://example.com/v1/chat/completions',
+            api_key_env: envName,
+          },
+          {
+            exitCode: 0,
+            stdout: 'ok',
+            stderr: '',
+            stdoutPath: null,
+            stderrPath: null,
+            durationMs: 1,
+            sessionId: null,
+            normalizedOutput: null,
+            failureKind: null,
+          },
+          {
+            workDir: '/tmp',
+            runtime: {} as never,
+          },
+        ),
+      ).rejects.toThrow(/requires https for non-loopback endpoint/);
+    } finally {
+      delete process.env[envName];
+    }
+  });
 });

@@ -91,7 +91,21 @@ function stripThinking(content: string): string {
     .trim();
 }
 
-function validateEndpointUrl(endpoint: string): string {
+function isLoopbackHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  return host === 'localhost' || host === '::1' || /^127(?:\.\d{1,3}){3}$/.test(host);
+}
+
+function assertSafeApiKeyTransport(endpoint: URL, apiKeyEnv: string | undefined): void {
+  if (!apiKeyEnv) return;
+  if (endpoint.protocol === 'http:' && !isLoopbackHostname(endpoint.hostname)) {
+    throw new Error(
+      `llm_judge completion: api_key_env "${apiKeyEnv}" requires https for non-loopback endpoint "${endpoint.origin}"`,
+    );
+  }
+}
+
+function validateEndpointUrl(endpoint: string): URL {
   let parsed: URL;
   try {
     parsed = new URL(endpoint);
@@ -103,7 +117,7 @@ function validateEndpointUrl(endpoint: string): string {
       `llm_judge completion: endpoint protocol must be http or https, got "${parsed.protocol}"`,
     );
   }
-  return parsed.toString();
+  return parsed;
 }
 
 async function callJudge(
@@ -237,9 +251,11 @@ export const LlmJudgeCompletion: CompletionPlugin = {
     }
 
     const model = (config.model as string | undefined) ?? DEFAULT_MODEL;
-    const endpoint = validateEndpointUrl(
+    const endpointUrl = validateEndpointUrl(
       (config.endpoint as string | undefined) ?? DEFAULT_ENDPOINT,
     );
+    assertSafeApiKeyTransport(endpointUrl, apiKeyEnv);
+    const endpoint = endpointUrl.toString();
     const timeoutMs = parseDurationSafe(config.timeout, DEFAULT_TIMEOUT_MS);
     const maxChars =
       typeof config.max_output_chars === 'number' && config.max_output_chars > 0
