@@ -24,6 +24,13 @@ const SECRET_VALUE_RE =
 const JSON_SECRET_VALUE_RE =
   /("(?:api_key|apiKey|token|secret|password|sessionId|session_id)"\s*:\s*")[^"]+(")/g;
 const BEARER_RE = /(authorization\s*:\s*bearer\s+)[^\s,;]+/gi;
+const SECRET_FLAG_NAMES =
+  '(?:api[_-]?key|apikey|token|secret|password|session[_-]?id|sessionid)';
+const SECRET_FLAG_RE = new RegExp(`((?:--?|/)${SECRET_FLAG_NAMES}(?:\\s+|=)["']?)[^"'\\s,;]+`, 'gi');
+const JSON_SECRET_FLAG_PAIR_RE = new RegExp(
+  `("[-/]{1,2}${SECRET_FLAG_NAMES}"\\s*,\\s*")[^"]+(")`,
+  'gi',
+);
 
 function taskIdFromPrefix(prefix: string): string | null {
   const m = TASK_PREFIX_RE.exec(prefix);
@@ -144,7 +151,9 @@ export class Logger {
 export function redactLogText(text: string): string {
   return text
     .replace(JSON_SECRET_VALUE_RE, '$1[REDACTED]$2')
+    .replace(JSON_SECRET_FLAG_PAIR_RE, '$1[REDACTED]$2')
     .replace(BEARER_RE, '$1[REDACTED]')
+    .replace(SECRET_FLAG_RE, '$1[REDACTED]')
     .replace(SECRET_VALUE_RE, '$1[REDACTED]');
 }
 
