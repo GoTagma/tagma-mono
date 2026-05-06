@@ -48,4 +48,18 @@ describe('InMemoryApprovalGateway run scoping', () => {
 
     expect(seen).toEqual(['requested:t.a']);
   });
+
+  test('scoped resolve cannot decide approvals from another run', async () => {
+    const root = new InMemoryApprovalGateway();
+    const runA = scopeApprovalGateway(root, 'run_a');
+    const runB = scopeApprovalGateway(root, 'run_b');
+
+    const b = runB.request({ taskId: 't.b', message: 'approve b', timeoutMs: 0 });
+
+    expect(runA.resolve(b.request.id, { outcome: 'approved', actor: 'test' })).toBe(false);
+    expect(root.pending().map((request) => request.id)).toEqual([b.request.id]);
+
+    expect(runB.resolve(b.request.id, { outcome: 'rejected', actor: 'test' })).toBe(true);
+    await expect(b.decision).resolves.toMatchObject({ outcome: 'rejected' });
+  });
 });

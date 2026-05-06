@@ -167,6 +167,9 @@ export function scopeApprovalGateway(gateway: ApprovalGateway, runId: string): A
       return gateway.request({ ...req, runId });
     },
     resolve(approvalId, decision) {
+      if (!gateway.pending().some((request) => request.id === approvalId && request.runId === runId)) {
+        return false;
+      }
       return gateway.resolve(approvalId, decision);
     },
     pending() {
