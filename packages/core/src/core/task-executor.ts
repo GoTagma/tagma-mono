@@ -500,9 +500,10 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
   const resolvedInputs = { ...inferredPromptInputs, ...bindingResolution.inputs };
   ctx.resolvedInputsMap.set(taskId, resolvedInputs);
   if (effectivePorts?.inputs && effectivePorts.inputs.length > 0) {
+    const inputNames = Object.keys(resolvedInputs).sort();
     log.debug(
       `[task:${taskId}]`,
-      `resolved inputs: ${JSON.stringify(resolvedInputs)}` +
+      `resolved inputs: ${inputNames.length > 0 ? inputNames.join(', ') : '(none)'}` +
         (isPromptTask ? ' (inferred from upstream Commands)' : ''),
     );
   }
