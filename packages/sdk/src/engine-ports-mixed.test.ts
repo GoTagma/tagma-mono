@@ -159,7 +159,7 @@ describe('engine — mixed prompt/command unified bindings', () => {
       expect(success).toBe(true);
       expect(readFileSync(record, 'utf8')).toContain('[Output Format]');
       expect(finalUpdateFor(events, 't.plan')?.outputs).toEqual({ city: 'Paris' });
-      expect(finalUpdateFor(events, 't.fetch')?.inputs).toEqual({ city: 'Paris' });
+      expect(finalUpdateFor(events, 't.fetch')?.inputs).toEqual({ city: '[REDACTED]' });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -183,7 +183,7 @@ describe('engine — mixed prompt/command unified bindings', () => {
       const { events, success } = await run(config, dir, reg);
       expect(success).toBe(true);
       expect(readFileSync(record, 'utf8')).toContain('City is Berlin');
-      expect(finalUpdateFor(events, 't.summarize')?.inputs).toEqual({ city: 'Berlin' });
+      expect(finalUpdateFor(events, 't.summarize')?.inputs).toEqual({ city: '[REDACTED]' });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

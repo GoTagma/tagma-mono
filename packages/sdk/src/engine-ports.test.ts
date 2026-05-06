@@ -160,7 +160,10 @@ describe('engine — unified inputs and outputs', () => {
       const { events, success } = await run(config, dir, runtime);
       expect(success).toBe(true);
       expect(finalUpdateFor(events, 't.up')?.outputs).toEqual({ id: 42, city: 'Shanghai' });
-      expect(finalUpdateFor(events, 't.down')?.inputs).toEqual({ city: 'Shanghai', id: 42 });
+      expect(finalUpdateFor(events, 't.down')?.inputs).toEqual({
+        city: '[REDACTED]',
+        id: '[REDACTED]',
+      });
       expect(finalUpdateFor(events, 't.down')?.stdout).toContain('Shanghai|42');
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -190,7 +193,10 @@ describe('engine — unified inputs and outputs', () => {
 
       const { events, success } = await run(config, dir, runtime);
       expect(success).toBe(true);
-      expect(finalUpdateFor(events, 't.down')?.inputs).toEqual({ city: 'Shanghai', id: 42 });
+      expect(finalUpdateFor(events, 't.down')?.inputs).toEqual({
+        city: '[REDACTED]',
+        id: '[REDACTED]',
+      });
       expect(finalUpdateFor(events, 't.down')?.stdout).toContain('Shanghai|42');
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -221,8 +227,8 @@ describe('engine — unified inputs and outputs', () => {
       const { events, success } = await run(config, dir, runtime);
       expect(success).toBe(true);
       expect(finalUpdateFor(events, 't.down')?.inputs).toEqual({
-        city: 'Shanghai',
-        raw: '{"city":"Shanghai"}\n',
+        city: '[REDACTED]',
+        raw: '[REDACTED]',
       });
     } finally {
       rmSync(dir, { recursive: true, force: true });
