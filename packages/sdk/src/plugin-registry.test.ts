@@ -417,7 +417,9 @@ describe('PluginRegistry — validation', () => {
           tmp,
           { registry: reg, runtime: fakeRuntime(), mode: 'trusted' },
         ),
-      ).rejects.toThrow(/trigger\.extra is not a supported field[\s\S]*trigger\.path must be a string/);
+      ).rejects.toThrow(
+        /trigger\.extra is not a supported field[\s\S]*trigger\.path must be a string/,
+      );
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

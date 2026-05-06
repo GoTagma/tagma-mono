@@ -449,7 +449,9 @@ describe('createTagma', () => {
           },
         ],
       }),
-    ).toEqual(['tracks[0].tasks[0].depends_on: Task "a": depends_on "missing"  - no such task found']);
+    ).toEqual([
+      'tracks[0].tasks[0].depends_on: Task "a": depends_on "missing"  - no such task found',
+    ]);
   });
 
   test('run rejects programmatic configs that bypass YAML structural validation', async () => {

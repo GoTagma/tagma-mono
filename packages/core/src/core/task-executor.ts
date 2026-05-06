@@ -332,10 +332,17 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       durationMs: 0,
       sessionId: null,
       normalizedOutput: null,
-      failureKind: isDeadlineTimeout ? 'timeout' : ctx.abortReason !== null ? 'aborted' : 'spawn_error',
+      failureKind: isDeadlineTimeout
+        ? 'timeout'
+        : ctx.abortReason !== null
+          ? 'aborted'
+          : 'spawn_error',
     };
     state.finishedAt = nowISO();
-    ctx.setTaskStatus(taskId, isDeadlineTimeout ? 'timeout' : ctx.abortReason !== null ? 'skipped' : 'failed');
+    ctx.setTaskStatus(
+      taskId,
+      isDeadlineTimeout ? 'timeout' : ctx.abortReason !== null ? 'skipped' : 'failed',
+    );
     try {
       await ctx.fireHook(taskId, 'task_failure', log);
     } catch (hookErr) {
@@ -905,7 +912,10 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       failureKind: isDeadlineTimeout ? 'timeout' : isPipelineAbort ? 'aborted' : 'spawn_error',
     };
     state.finishedAt = nowISO();
-    ctx.setTaskStatus(taskId, isDeadlineTimeout ? 'timeout' : isPipelineAbort ? 'skipped' : 'failed');
+    ctx.setTaskStatus(
+      taskId,
+      isDeadlineTimeout ? 'timeout' : isPipelineAbort ? 'skipped' : 'failed',
+    );
   }
 
   // 7. Fire hooks

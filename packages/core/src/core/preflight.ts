@@ -34,16 +34,18 @@ export function preflight(
 
     const isCommand = isCommandTaskConfig(task);
 
-    const driver = !isCommand && registry.hasHandler('drivers', driverName)
-      ? registry.getHandler<DriverPlugin>('drivers', driverName)
-      : null;
+    const driver =
+      !isCommand && registry.hasHandler('drivers', driverName)
+        ? registry.getHandler<DriverPlugin>('drivers', driverName)
+        : null;
 
     if (!isCommand && driver === null) {
       errors.push(`Task "${node.taskId}": driver "${driverName}" not registered`);
     }
 
     if (mode === 'safe' && !isCommand && driver !== null) {
-      const permissions = task.permissions ?? track.permissions ?? config.permissions ?? DEFAULT_PERMISSIONS;
+      const permissions =
+        task.permissions ?? track.permissions ?? config.permissions ?? DEFAULT_PERMISSIONS;
       if (driver.capabilities.enforcesPermissions !== true) {
         errors.push(
           `Task "${node.taskId}": safe mode blocks driver "${driverName}" ` +

@@ -250,5 +250,5 @@ bun run publish:dry
 - Types: TypeScript 5.8+
 - Frontend: React 19 + Vite + Tailwind
 - Server: Express 5 + Bun
-- Desktop: Electron 35 + electron-builder (NSIS / AppImage / deb / rpm / dmg)
+- Desktop: Electron 42 + electron-builder (NSIS / AppImage / deb / rpm / dmg)
 - Package manager: Bun workspaces

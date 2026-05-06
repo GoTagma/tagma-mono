@@ -71,7 +71,11 @@ describe('pruneLogDirs', () => {
     try {
       mkdirSync(join(outside, 'payload'));
       try {
-        symlinkSync(outside, join(root, 'run_001'), process.platform === 'win32' ? 'junction' : 'dir');
+        symlinkSync(
+          outside,
+          join(root, 'run_001'),
+          process.platform === 'win32' ? 'junction' : 'dir',
+        );
       } catch {
         return;
       }

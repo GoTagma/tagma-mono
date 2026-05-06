@@ -136,7 +136,10 @@ export class InMemoryApprovalGateway implements ApprovalGateway {
     this.abortEntries(entries, reason);
   }
 
-  private abortEntries(entries: readonly (readonly [string, PendingEntry])[], reason: string): void {
+  private abortEntries(
+    entries: readonly (readonly [string, PendingEntry])[],
+    reason: string,
+  ): void {
     for (const [id, entry] of entries) {
       this.pendingMap.delete(id);
       if (entry.timer) clearTimeout(entry.timer);
@@ -167,7 +170,9 @@ export function scopeApprovalGateway(gateway: ApprovalGateway, runId: string): A
       return gateway.request({ ...req, runId });
     },
     resolve(approvalId, decision) {
-      if (!gateway.pending().some((request) => request.id === approvalId && request.runId === runId)) {
+      if (
+        !gateway.pending().some((request) => request.id === approvalId && request.runId === runId)
+      ) {
         return false;
       }
       return gateway.resolve(approvalId, decision);

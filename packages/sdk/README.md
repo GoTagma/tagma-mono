@@ -437,6 +437,15 @@ Tasks can declare named, typed `inputs` / `outputs`. Inputs flow in from upstrea
 
 - `PipelineRunner` lifecycle wrapper for hosts that manage multiple concurrent runs
 
+### Approval: `@tagma/sdk/approval`
+
+- `InMemoryApprovalGateway` — default in-memory approval gateway implementation
+- type re-exports: `ApprovalDecision`, `ApprovalEvent`, `ApprovalGateway`, `ApprovalListener`, `ApprovalOutcome`, `ApprovalRequest`, `ApprovalRequestHandle`
+
+### Utils: `@tagma/sdk/utils`
+
+- `parseDuration`, `validatePath`, `generateRunId`, `nowISO`, `truncateForName` — small framework-free helpers re-exported from `@tagma/core`. See the Utilities table at the bottom of this README
+
 ### Runtime approval adapters
 
 These ship in `@tagma/runtime-bun`, not `@tagma/sdk` — when you `bun add @tagma/sdk`, runtime-bun comes along as a transitive dep, but you import the adapters from runtime-bun directly:
@@ -714,7 +723,7 @@ Use `validateRaw` for editing raw configs in a UI; pass `workDir` to `validateCo
 
 ### Bindings API
 
-Pure helpers backing typed task bindings and internal prompt-contract inference. Safe to use in editors, simulators, and custom drivers — no I/O, no side effects.
+Pure helpers backing typed task bindings and internal prompt-contract inference. Safe to use in editors, simulators, and custom drivers — no I/O, no side effects. Imported from `@tagma/sdk/dataflow`:
 
 | Function                                                               | Description                                                                                                                                                                                                                                                |
 | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -724,9 +733,8 @@ Pure helpers backing typed task bindings and internal prompt-contract inference.
 | `resolveTaskInputs(task, upstreamOutputs, dependsOn)`                  | Gather the input values a task will consume from its direct upstreams. Applies `from` bindings, defaults, and type coercion. Returns `{ kind: 'ready', inputs, missingOptional }` or `{ kind: 'blocked', missingRequired, ambiguous, typeErrors, reason }` |
 | `extractTaskBindingOutputs(outputs, stdout, stderr, normalizedOutput)` | Publish lightweight task-level `outputs` from final-line JSON, stdout/stderr, normalized output, literal values, or defaults                                                                                                                               |
 | `extractTaskOutputs(ports, stdout, normalizedOutput)`                  | Internal helper for inferred prompt contracts. Strategy: prefer `normalizedOutput`; find the last non-empty line that parses as a JSON object; coerce each declared key. Returns `{ outputs, diagnostic }`                                                 |
-| `prependContext(doc, block)`                                           | Same shape as `appendContext` but prepends; the engine uses this to place `[Output Format]` and `[Inputs]` blocks before middleware-added context                                                                                                          |
-| `renderInputsBlock(inputsDecl, values)`                                | Build the `[Inputs]` `PromptContextBlock` rendered into AI prompts (`name: value  # description` lines). Returns `null` when no inputs to render                                                                                                           |
-| `renderOutputSchemaBlock(outputsDecl)`                                 | Build the `[Output Format]` `PromptContextBlock` instructing the model to emit a final-line JSON object matching the declared outputs. Returns `null` when no outputs declared                                                                             |
+
+Prompt-document helpers (`prependContext`, `renderInputsBlock`, `renderOutputSchemaBlock`) live in `@tagma/core` and are not re-exported through any `@tagma/sdk` subpath. Custom drivers / engines that need them should `import { prependContext, renderInputsBlock, renderOutputSchemaBlock } from '@tagma/core'` directly.
 
 Custom drivers that wrap the prompt in their own envelope can read `DriverContext.inputs` (resolved + coerced map keyed by port name) and call `substituteInputs` themselves — the engine has already substituted into `task.prompt` upstream, so most drivers can ignore this.
 
@@ -800,10 +808,11 @@ Use `buildDag` instead when you have a fully resolved `PipelineConfig` and need 
 
 ### `Logger`
 
-Dual-channel logger — console + file. Creates a per-run log file at `<workDir>/.tagma/logs/<runId>/pipeline.log`.
+Dual-channel logger — console + file. Creates a per-run log file at `<workDir>/.tagma/logs/<runId>/pipeline.log`. `Logger` itself is exported from `@tagma/core` (not re-exported through `@tagma/sdk`); the Bun runtime's `logStore` provides the filesystem backing.
 
 ```ts
 import { bunRuntime } from '@tagma/sdk';
+import { Logger } from '@tagma/core';
 
 const logger = new Logger(workDir, runId, bunRuntime().logStore);
 logger.info('[track]', 'message'); // console + file
@@ -842,13 +851,15 @@ logger.quiet(`--- stdout (${taskId}) ---\n${body}\n--- end stdout ---`, taskId);
 
 ### `tailLines(text: string, n: number): string`
 
-Returns the last `n` non-empty lines of `text`, joined with newlines.
+Returns the last `n` non-empty lines of `text`, joined with newlines. Imported from `@tagma/core` (not re-exported through `@tagma/sdk`).
 
 ### `clip(text: string, maxBytes?: number): string`
 
-Truncates `text` to at most `maxBytes` UTF-8 bytes (default 16 KB), appending a `…[truncated N bytes]` marker when truncation occurs. Multi-byte characters (CJK, emoji) are counted correctly.
+Truncates `text` to at most `maxBytes` UTF-8 bytes (default 16 KB), appending a `…[truncated N bytes]` marker when truncation occurs. Multi-byte characters (CJK, emoji) are counted correctly. Imported from `@tagma/core` (not re-exported through `@tagma/sdk`).
 
 ### Utilities
+
+Imported from `@tagma/sdk/utils`:
 
 | Function                              | Description                                               |
 | ------------------------------------- | --------------------------------------------------------- |

@@ -44,7 +44,9 @@ export const OutputCheckCompletion: CompletionPlugin = {
             (checkCmd as { argv: unknown[] }).argv.every((arg) => typeof arg === 'string')))
       )
     ) {
-      throw new Error('output_check completion: "check" must be a shell string or { argv: string[] }');
+      throw new Error(
+        'output_check completion: "check" must be a shell string or { argv: string[] }',
+      );
     }
     const command = checkCmd as CommandConfig;
 

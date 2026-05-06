@@ -228,9 +228,7 @@ function validatePipelineCwds(config: PipelineConfig, workDir: string): void {
       try {
         validatePath(track.cwd, workDir);
       } catch (err) {
-        errors.push(
-          `tracks[${ti}].cwd: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        errors.push(`tracks[${ti}].cwd: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
     for (let ki = 0; ki < track.tasks.length; ki++) {
@@ -305,9 +303,7 @@ async function runPipelineInner(
   const dag = buildDag(config);
   preflight(config, dag, registry, mode);
   const pipelineTimeoutMs = config.timeout ? parseDuration(config.timeout) : 0;
-  const maxConcurrency = normalizeMaxConcurrency(
-    options.maxConcurrency ?? config.max_concurrency,
-  );
+  const maxConcurrency = normalizeMaxConcurrency(options.maxConcurrency ?? config.max_concurrency);
 
   const startedAt = nowISO();
   const pipelineInfo: PipelineInfo = { name: config.name, run_id: runId, started_at: startedAt };
@@ -502,9 +498,7 @@ async function runPipelineInner(
         // Launch every task whose deps are all terminal and that isn't already in-flight
         const capacity = maxConcurrency - running.size;
         const launchable =
-          capacity > 0
-            ? findLaunchableTasks(ctx, new Set(running.keys())).slice(0, capacity)
-            : [];
+          capacity > 0 ? findLaunchableTasks(ctx, new Set(running.keys())).slice(0, capacity) : [];
         for (const id of launchable) {
           const p = executeTask({
             taskId: id,

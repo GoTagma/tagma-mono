@@ -312,11 +312,7 @@ function pushSchemaErrors(
 ): void {
   if (!schema) return;
   if (!config || typeof config !== 'object' || Array.isArray(config)) return;
-  for (const message of validatePluginConfig(
-    schema,
-    config as Record<string, unknown>,
-    basePath,
-  )) {
+  for (const message of validatePluginConfig(schema, config as Record<string, unknown>, basePath)) {
     errors.push({ path: basePath, message });
   }
 }
@@ -935,8 +931,7 @@ function validateBindingMap(
     }
     if (kind === 'outputs' && typeof binding.from === 'string') {
       const source = binding.from;
-      const ok =
-        OUTPUT_BINDING_SOURCES.includes(source) || OUTPUT_BINDING_JSON_RE.test(source);
+      const ok = OUTPUT_BINDING_SOURCES.includes(source) || OUTPUT_BINDING_JSON_RE.test(source);
       if (!ok) {
         errors.push({
           path: `${path}.from`,

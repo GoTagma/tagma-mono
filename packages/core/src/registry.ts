@@ -198,9 +198,7 @@ export function readPluginManifest(pkgJson: unknown): PluginManifest | null {
   return {
     category: category as PluginCategory,
     type,
-    ...(typeof minEditorVersion === 'string'
-      ? { minEditorVersion: minEditorVersion.trim() }
-      : {}),
+    ...(typeof minEditorVersion === 'string' ? { minEditorVersion: minEditorVersion.trim() } : {}),
   };
 }
 
@@ -228,13 +226,7 @@ function validateNumberOrListField(
 ): void {
   const values = Array.isArray(value) ? value : [value];
   for (let i = 0; i < values.length; i++) {
-    validateNumberField(
-      values[i],
-      Array.isArray(value) ? `${path}[${i}]` : path,
-      min,
-      max,
-      errors,
-    );
+    validateNumberField(values[i], Array.isArray(value) ? `${path}[${i}]` : path, min, max, errors);
   }
 }
 

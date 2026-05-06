@@ -121,8 +121,7 @@ describe('validateRaw - unified typed bindings', () => {
     });
     expect(
       errors.some(
-        (e) =>
-          e.path === 'tracks[2].tasks[0].inputs.city.from' && /is ambiguous/.test(e.message),
+        (e) => e.path === 'tracks[2].tasks[0].inputs.city.from' && /is ambiguous/.test(e.message),
       ),
     ).toBe(true);
   });

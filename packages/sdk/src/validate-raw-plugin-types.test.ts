@@ -176,7 +176,9 @@ describe('validateRaw with plugin schemas', () => {
     );
     expect(
       errors.some(
-        (e) => e.path === 'tracks[0].tasks[0].trigger' && /timeout.*duration|Invalid duration/i.test(e.message),
+        (e) =>
+          e.path === 'tracks[0].tasks[0].trigger' &&
+          /timeout.*duration|Invalid duration/i.test(e.message),
       ),
     ).toBe(true);
   });
@@ -206,9 +208,7 @@ describe('validateRaw with plugin schemas', () => {
     );
     expect(
       errors.some(
-        (e) =>
-          e.path === 'tracks[0].tasks[0].trigger' &&
-          /message.*required/i.test(e.message),
+        (e) => e.path === 'tracks[0].tasks[0].trigger' && /message.*required/i.test(e.message),
       ),
     ).toBe(true);
   });
@@ -221,11 +221,7 @@ describe('validateRaw with plugin schemas', () => {
       { schemas: { completions: { file_exists: completionSchema } } },
     );
     expect(
-      errors.some(
-        (e) =>
-          e.path === 'tracks[0].tasks[0].completion' &&
-          /min_size/.test(e.message),
-      ),
+      errors.some((e) => e.path === 'tracks[0].tasks[0].completion' && /min_size/.test(e.message)),
     ).toBe(true);
   });
 
@@ -266,10 +262,7 @@ describe('validateRaw with plugin schemas', () => {
       { schemas: { middlewares: { static_context: middlewareSchema } } },
     );
     expect(
-      errors.some(
-        (e) =>
-          e.path === 'tracks[0].middlewares[0]' && /file.*string/i.test(e.message),
-      ),
+      errors.some((e) => e.path === 'tracks[0].middlewares[0]' && /file.*string/i.test(e.message)),
     ).toBe(true);
   });
 

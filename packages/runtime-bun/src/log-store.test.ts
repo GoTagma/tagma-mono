@@ -62,7 +62,11 @@ describe('bunRuntime log store path safety', () => {
     const logStore = bunRuntime().logStore;
     try {
       try {
-        symlinkSync(outside, join(tmp, '.tagma'), process.platform === 'win32' ? 'junction' : 'dir');
+        symlinkSync(
+          outside,
+          join(tmp, '.tagma'),
+          process.platform === 'win32' ? 'junction' : 'dir',
+        );
       } catch {
         return;
       }

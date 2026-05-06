@@ -16,7 +16,12 @@ export type {
   RunPipelineOptions,
   SafeModeAllowlist,
 } from './engine';
-export { commandLabel, commandToSpawnSpec, isCommandArgvConfig, isCommandShellConfig } from './command';
+export {
+  commandLabel,
+  commandToSpawnSpec,
+  isCommandArgvConfig,
+  isCommandShellConfig,
+} from './command';
 export {
   buildPipelineCompleteContext,
   buildPipelineErrorContext,

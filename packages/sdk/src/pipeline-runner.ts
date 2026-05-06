@@ -170,9 +170,7 @@ export class PipelineRunner {
         if (event.taskId === null) return;
         const prev = this._tasks.get(event.taskId);
         if (!prev) {
-          console.warn(
-            `[PipelineRunner] dropping task_log for unknown taskId "${event.taskId}"`,
-          );
+          console.warn(`[PipelineRunner] dropping task_log for unknown taskId "${event.taskId}"`);
           return;
         }
         const entry = { level: event.level, timestamp: event.timestamp, text: event.text };
