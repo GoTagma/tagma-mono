@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pruneLogDirs } from './log-prune';
@@ -62,6 +62,27 @@ describe('pruneLogDirs', () => {
       expect(readdirSync(root).sort()).toEqual(['not_a_run', 'run_001']);
     } finally {
       rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('skips symlinked run dirs when pruning', async () => {
+    const root = fixture();
+    const outside = fixture();
+    try {
+      mkdirSync(join(outside, 'payload'));
+      try {
+        symlinkSync(outside, join(root, 'run_001'), process.platform === 'win32' ? 'junction' : 'dir');
+      } catch {
+        return;
+      }
+
+      await pruneLogDirs(root, 0, 'run_live');
+
+      expect(existsSync(join(outside, 'payload'))).toBe(true);
+      expect(readdirSync(root).sort()).toEqual(['run_001']);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
     }
   });
 });
