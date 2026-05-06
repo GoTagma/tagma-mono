@@ -61,7 +61,7 @@ describe('StaticContextMiddleware', () => {
       // No characters past the 5-char boundary.
       expect(content).not.toContain('六');
       // No U+FFFD replacement char from a mid-UTF-8 boundary.
-      expect(content).not.toContain('�');
+      expect(content).not.toContain('\uFFFD');
       // Truncation is reported (the bug we are fixing was a silent miss).
       expect(content).toContain('truncated static context at 5 chars');
     } finally {

@@ -69,11 +69,22 @@ export function parseYaml(content: string): RawPipelineConfig {
     if (!track || typeof track !== 'object' || Array.isArray(track)) {
       throw new Error(`pipeline.tracks[${i}] must be an object`);
     }
+    const id = (track as { id?: unknown }).id;
+    const trackLabel = typeof id === 'string' && id.length > 0 ? id : String(i);
     const tasks = (track as { tasks?: unknown }).tasks;
     if (tasks !== undefined && !Array.isArray(tasks)) {
-      const id = (track as { id?: unknown }).id;
-      const label = typeof id === 'string' && id.length > 0 ? id : String(i);
-      throw new Error(`track "${label}": tasks must be an array`);
+      throw new Error(`track "${trackLabel}": tasks must be an array`);
+    }
+    // Task items themselves must be objects so downstream readers (BoardCanvas,
+    // resolveConfig, validateRaw) can walk `.id`/`.prompt`/etc. without
+    // crashing on `tasks: [null]` or `tasks: ['foo']` slipping through.
+    if (Array.isArray(tasks)) {
+      for (let j = 0; j < tasks.length; j++) {
+        const task = tasks[j];
+        if (!task || typeof task !== 'object' || Array.isArray(task)) {
+          throw new Error(`track "${trackLabel}": tasks[${j}] must be an object`);
+        }
+      }
     }
   }
   return p;
