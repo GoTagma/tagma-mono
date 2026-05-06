@@ -22,6 +22,17 @@ import type { Logger } from '../logger';
 import { isTerminal, resolveExecutionMetadata } from './run-state';
 import { nowISO } from '../utils';
 
+const REDACTED_INPUT_VALUE = '[REDACTED]';
+
+function redactInputsForEvent(
+  inputs: Readonly<Record<string, unknown>> | undefined,
+): Readonly<Record<string, unknown>> | null {
+  if (!inputs) return null;
+  const redacted: Record<string, unknown> = {};
+  for (const key of Object.keys(inputs)) redacted[key] = REDACTED_INPUT_VALUE;
+  return redacted;
+}
+
 export interface RunContextOptions {
   readonly runId: string;
   readonly dag: Dag;
@@ -127,7 +138,7 @@ export class RunContext {
       stderrBytes: result?.stderrBytes ?? null,
       sessionId: result?.sessionId ?? null,
       normalizedOutput: result?.normalizedOutput ?? null,
-      inputs: this.resolvedInputsMap.get(taskId) ?? null,
+      inputs: redactInputsForEvent(this.resolvedInputsMap.get(taskId)),
       outputs: this.outputValuesMap.get(taskId) ?? null,
       resolvedDriver: resolved.resolvedDriver,
       resolvedModel: resolved.resolvedModel,

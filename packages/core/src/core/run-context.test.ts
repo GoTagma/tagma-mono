@@ -177,13 +177,14 @@ describe('RunContext.setTaskStatus', () => {
     expect(events).toHaveLength(0);
   });
 
-  test('echoes resolvedInputs and outputs from the maps in the emitted event', () => {
+  test('redacts resolvedInputs but echoes outputs in the emitted event', () => {
     const { ctx, events } = makeContext();
-    ctx.resolvedInputsMap.set('t.a', { x: 1 });
+    ctx.resolvedInputsMap.set('t.a', { x: 1, token: 'secret-token' });
     ctx.outputValuesMap.set('t.a', { y: 2 });
     ctx.setTaskStatus('t.a', 'running');
     if (events[0].type === 'task_update') {
-      expect(events[0].inputs).toEqual({ x: 1 });
+      expect(events[0].inputs).toEqual({ x: '[REDACTED]', token: '[REDACTED]' });
+      expect(JSON.stringify(events[0])).not.toContain('secret-token');
       expect(events[0].outputs).toEqual({ y: 2 });
     } else {
       throw new Error('expected task_update');
