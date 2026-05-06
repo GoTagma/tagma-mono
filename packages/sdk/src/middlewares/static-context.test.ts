@@ -35,12 +35,12 @@ describe('StaticContextMiddleware', () => {
   test('truncates by character count, not bytes, for multi-byte UTF-8 content', async () => {
     const tmp = mkdtempSync(join(tmpdir(), 'tagma-static-context-cjk-'));
     try {
-      // 10 CJK Unified Ideographs; each encodes as 3 bytes in UTF-8.
+      // 10 accented Latin characters; each encodes as 2 bytes in UTF-8.
       // The previous byte-based Blob.slice(0, max_chars + 1) would have
-      // returned only 6 bytes (= 2 whole chars + a partial third), so
-      // rawContent.length came back as ~2-3 and never hit the truncation
+      // returned only 6 bytes (= 3 whole chars), so rawContent.length
+      // came back as 3 and never hit the truncation
       // branch even though the file was clearly bigger than max_chars.
-      writeFileSync(join(tmp, 'reference.txt'), '一二三四五六七八九十');
+      writeFileSync(join(tmp, 'reference.txt'), '\u00e1\u00e9\u00ed\u00f3\u00fa\u00f1\u00fc\u00e7\u00f8\u00e5');
       const doc: PromptDocument = { contexts: [], task: 'Do the work' };
       const ctx: MiddlewareContext = {
         workDir: tmp,
@@ -57,9 +57,9 @@ describe('StaticContextMiddleware', () => {
       expect(enhanced.contexts).toHaveLength(1);
       const content = enhanced.contexts[0].content;
       // First 5 *characters*, not first 5 bytes.
-      expect(content).toContain('一二三四五');
+      expect(content).toContain('\u00e1\u00e9\u00ed\u00f3\u00fa');
       // No characters past the 5-char boundary.
-      expect(content).not.toContain('六');
+      expect(content).not.toContain('\u00f1');
       // No U+FFFD replacement char from a mid-UTF-8 boundary.
       expect(content).not.toContain('\uFFFD');
       // Truncation is reported (the bug we are fixing was a silent miss).
