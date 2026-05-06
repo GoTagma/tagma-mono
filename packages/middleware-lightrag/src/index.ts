@@ -75,6 +75,20 @@ function validateEndpointUrl(endpoint: string): URL {
   return url;
 }
 
+function isLoopbackHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  return host === 'localhost' || host === '::1' || /^127(?:\.\d{1,3}){3}$/.test(host);
+}
+
+function assertSafeApiKeyTransport(endpoint: URL, apiKeyEnv: string | undefined): void {
+  if (!apiKeyEnv) return;
+  if (endpoint.protocol === 'http:' && !isLoopbackHostname(endpoint.hostname)) {
+    throw new Error(
+      `lightrag middleware: api_key_env "${apiKeyEnv}" requires https for non-loopback endpoint "${endpoint.origin}"`,
+    );
+  }
+}
+
 function clampPositiveInt(raw: unknown, fallback: number, max: number): number {
   const value = typeof raw === 'number' && Number.isFinite(raw) ? Math.floor(raw) : fallback;
   return Math.max(1, Math.min(value, max));
@@ -224,7 +238,7 @@ export const LightRAGMiddleware: MiddlewarePlugin = {
   ): Promise<PromptDocument> {
     const endpoint = config.endpoint as string | undefined;
     if (!endpoint) throw new Error('lightrag middleware: "endpoint" is required');
-    validateEndpointUrl(endpoint);
+    const endpointUrl = validateEndpointUrl(endpoint);
 
     const rawMode = (config.mode as string | undefined) ?? DEFAULT_MODE;
     if (!VALID_MODES.has(rawMode as QueryMode)) {
@@ -243,6 +257,7 @@ export const LightRAGMiddleware: MiddlewarePlugin = {
 
     const apiKeyEnv = config.api_key_env as string | undefined;
     const apiKey = apiKeyEnv ? process.env[apiKeyEnv] : undefined;
+    if (apiKey) assertSafeApiKeyTransport(endpointUrl, apiKeyEnv);
 
     const timeoutMs = parseDurationSafe(config.timeout, DEFAULT_TIMEOUT_MS);
     const label = (config.label as string | undefined) ?? 'Knowledge Graph Context';

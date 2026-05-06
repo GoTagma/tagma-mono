@@ -54,4 +54,20 @@ describe('middleware-lightrag plugin shape', () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  test('rejects api_key_env over non-loopback http endpoints', async () => {
+    const envName = `TAGMA_TEST_LIGHTRAG_KEY_${Date.now()}`;
+    process.env[envName] = 'secret-value';
+    try {
+      await expect(
+        LightRAGMiddleware.enhanceDoc(
+          { contexts: [], task: 'explain tagma' },
+          { endpoint: 'http://example.com:9621', api_key_env: envName },
+          { task: {} as never, track: {} as never, workDir: process.cwd() },
+        ),
+      ).rejects.toThrow(/requires https for non-loopback endpoint/);
+    } finally {
+      delete process.env[envName];
+    }
+  });
 });
