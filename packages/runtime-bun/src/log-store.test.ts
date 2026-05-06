@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { bunRuntime } from './index';
@@ -53,6 +53,31 @@ describe('bunRuntime log store path safety', () => {
       ).toBe(join(sink.dir, 'track_task.stderr'));
     } finally {
       rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('rejects a symlinked .tagma ancestor before writing logs', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'tagma-log-store-'));
+    const outside = mkdtempSync(join(tmpdir(), 'tagma-log-outside-'));
+    const logStore = bunRuntime().logStore;
+    try {
+      try {
+        symlinkSync(outside, join(tmp, '.tagma'), process.platform === 'win32' ? 'junction' : 'dir');
+      } catch {
+        return;
+      }
+      mkdirSync(join(outside, 'logs'), { recursive: true });
+
+      expect(() =>
+        logStore.openRunLog({
+          workDir: tmp,
+          runId: 'run_safe_123',
+          header: '',
+        }),
+      ).toThrow(/Security: path .*escapes project root|symbolic link/i);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
     }
   });
 });

@@ -1,10 +1,10 @@
-import { openSync, writeFileSync, writeSync, closeSync, mkdirSync } from 'node:fs';
+import { closeSync, constants, mkdirSync, openSync, writeSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { watch as chokidarWatch } from 'chokidar';
 import { runCommand, runSpawn } from './bun-process-runner';
 import { pruneLogDirs } from './log-prune';
-import { assertValidRunId } from '@tagma/core';
+import { assertValidRunId, validatePath } from '@tagma/core';
 import type {
   RuntimeLogSink,
   RuntimeLogStore,
@@ -72,6 +72,24 @@ function assertInside(parent: string, child: string, label: string): void {
   if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) {
     throw new Error(`Security: ${label} resolves outside ${parent}`);
   }
+}
+
+const WRITE_NOFOLLOW_FLAGS =
+  constants.O_CREAT | constants.O_WRONLY | constants.O_TRUNC | (constants.O_NOFOLLOW ?? 0);
+
+function checkedLogBase(workDir: string): string {
+  const base = resolve(workDir, '.tagma', 'logs');
+  validatePath(base, workDir);
+  return base;
+}
+
+function checkedRunDir(workDir: string, runId: string): { base: string; dir: string } {
+  assertValidRunId(runId);
+  const base = checkedLogBase(workDir);
+  const dir = resolve(base, runId);
+  assertInside(base, dir, `runId "${runId}"`);
+  validatePath(dir, workDir);
+  return { base, dir };
 }
 
 async function* watchPath(
@@ -177,15 +195,14 @@ async function* watchPath(
 function bunLogStore(): RuntimeLogStore {
   return {
     openRunLog({ workDir, runId, header }): RuntimeLogSink {
-      assertValidRunId(runId);
-      const base = resolve(workDir, '.tagma', 'logs');
-      const dir = resolve(base, runId);
-      assertInside(base, dir, `runId "${runId}"`);
+      const { base, dir } = checkedRunDir(workDir, runId);
       const path = resolve(dir, 'pipeline.log');
       assertInside(base, path, `log path for runId "${runId}"`);
+      validatePath(path, workDir);
       mkdirSync(dirname(path), { recursive: true });
-      writeFileSync(path, header);
-      const fd = openSync(path, 'a');
+      validatePath(path, workDir);
+      const fd = openSync(path, WRITE_NOFOLLOW_FLAGS, 0o600);
+      writeSync(fd, header);
       let closed = false;
 
       return {
@@ -211,19 +228,18 @@ function bunLogStore(): RuntimeLogStore {
       };
     },
     taskOutputPath({ workDir, runId, taskId, stream }) {
-      assertValidRunId(runId);
-      const base = resolve(workDir, '.tagma', 'logs');
-      const dir = resolve(base, runId);
-      assertInside(base, dir, `runId "${runId}"`);
+      const { dir } = checkedRunDir(workDir, runId);
       const path = resolve(dir, `${taskId.replace(/\./g, '_')}.${stream}`);
       assertInside(dir, path, `task output path for "${taskId}"`);
+      validatePath(path, workDir);
       return path;
     },
     logsDir(workDir: string) {
       return resolve(workDir, '.tagma', 'logs');
     },
     async prune({ workDir, keep, excludeRunId, excludeRunIds }) {
-      await pruneLogDirs(resolve(workDir, '.tagma', 'logs'), keep, excludeRunId, excludeRunIds);
+      const logsDir = checkedLogBase(workDir);
+      await pruneLogDirs(logsDir, keep, excludeRunId, excludeRunIds);
     },
   };
 }
