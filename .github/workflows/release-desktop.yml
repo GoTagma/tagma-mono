@@ -845,10 +845,17 @@ jobs:
           # staging conventions, hot-updated into an installer that pre-dates
           # them, leaves the update button wedged. Treat the whole release/
           # subtree as one compat surface rather than enumerating files.
+          #
+          # `electron/package.json` is included so an Electron / dependency
+          # bump (or any change to the shell's runtime deps, scripts, build
+          # config) forces a fresh installer instead of being hot-updated into
+          # an older shell whose Chromium / Node / preload contract no longer
+          # matches the new sidecar.
           changed=$(git -C apps diff --name-only "$prev_apps_sha" "$cur_apps_sha" -- \
             electron/src/main.ts \
             electron/src/preload.ts \
             electron/src/runtime-paths.ts \
+            electron/package.json \
             editor/server/routes/editor.ts \
             editor/server/routes/sidecar.ts \
             editor/server/routes/release.ts \
