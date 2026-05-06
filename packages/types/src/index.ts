@@ -933,10 +933,9 @@ export interface RunTaskState {
    */
   readonly outputs: Readonly<Record<string, unknown>> | null;
   /**
-   * Resolved port inputs for this task — the values that the engine
-   * substituted into placeholders / rendered into the `[Inputs]` block.
-   * Exposed primarily for the editor's task-panel; stays null until the
-   * task starts.
+   * Resolved port input names for this task. Values are redacted on the wire;
+   * the engine keeps real input values in-process for placeholder substitution,
+   * prompt rendering, and driver execution.
    */
   readonly inputs: Readonly<Record<string, unknown>> | null;
   /** Resolved after inheritance. Null only when not applicable or unset. */
