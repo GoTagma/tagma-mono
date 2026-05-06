@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { constants, existsSync, readFileSync, statSync } from 'node:fs';
 import { mkdir, open, type FileHandle } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve as pathResolve } from 'node:path';
 import type {
@@ -24,6 +24,8 @@ const SIGKILL_DELAY_MS = 3_000;
  */
 const DEFAULT_STDOUT_TAIL_BYTES = 8 * 1024 * 1024; // 8 MB
 const DEFAULT_STDERR_TAIL_BYTES = 4 * 1024 * 1024; // 4 MB
+const WRITE_NOFOLLOW_FLAGS =
+  constants.O_CREAT | constants.O_WRONLY | constants.O_TRUNC | (constants.O_NOFOLLOW ?? 0);
 
 function normalizeTailLimit(value: number | undefined, fallback: number): number {
   if (value === undefined) return fallback;
@@ -166,7 +168,7 @@ async function collectStream(
   if (filePath) {
     try {
       await mkdir(dirname(filePath), { recursive: true });
-      fh = await open(filePath, 'w');
+      fh = await open(filePath, WRITE_NOFOLLOW_FLAGS, 0o600);
     } catch (err) {
       console.error(
         `[runner] failed to open ${filePath} for output streaming: ${err instanceof Error ? err.message : String(err)}`,
