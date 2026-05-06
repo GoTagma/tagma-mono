@@ -114,7 +114,7 @@ async function run(config: PipelineConfig, dir: string): Promise<PipelineRunner>
 }
 
 describe('PipelineRunner task snapshot', () => {
-  test('getTasks reflects task_update inputs and outputs', async () => {
+  test('getTasks reflects task_update outputs and redacted input names', async () => {
     const dir = makeDir();
     try {
       const runner = await run(bindingsPipeline(dir), dir);
@@ -123,7 +123,7 @@ describe('PipelineRunner task snapshot', () => {
       const up = tasks.get('t.up');
       const down = tasks.get('t.down');
       expect(up?.outputs).toEqual({ city: 'Shanghai' });
-      expect(down?.inputs).toEqual({ city: 'Shanghai' });
+      expect(down?.inputs).toEqual({ city: '[REDACTED]' });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -223,6 +223,40 @@ describe('PipelineRunner task snapshot', () => {
       expect(seen).toEqual(['run_error']);
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('start rejects task cwd values that escape the workDir', async () => {
+    const dir = makeDir();
+    const outside = makeDir();
+    const registry = new PluginRegistry();
+    bootstrapBuiltins(registry);
+    const runner = new PipelineRunner(
+      {
+        name: 'unsafe-cwd',
+        mode: 'trusted',
+        tracks: [
+          {
+            id: 't',
+            name: 'T',
+            tasks: [{ id: 'p', name: 'P', command: 'echo hi', cwd: outside }],
+          },
+        ],
+      },
+      dir,
+      {
+        registry,
+        runtime: fakeRuntime(),
+        skipPluginLoading: true,
+      },
+    );
+
+    try {
+      await expect(runner.start()).rejects.toThrow(/Pipeline cwd validation failed/);
+      expect(runner.status).toBe('failed');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
     }
   });
 });
