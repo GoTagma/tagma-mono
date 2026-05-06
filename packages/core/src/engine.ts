@@ -9,7 +9,7 @@ import type {
 import { isCommandTaskConfig, isPromptTaskConfig } from './types';
 import { buildDag } from './dag';
 import type { PluginRegistry } from './registry';
-import { parseDuration, nowISO, generateRunId, assertValidRunId } from './utils';
+import { parseDuration, nowISO, generateRunId, assertValidRunId, validatePath } from './utils';
 import {
   executeHook,
   buildPipelineStartContext,
@@ -220,6 +220,36 @@ function enforceExecutionMode(
   }
 }
 
+function validatePipelineCwds(config: PipelineConfig, workDir: string): void {
+  const errors: string[] = [];
+  for (let ti = 0; ti < config.tracks.length; ti++) {
+    const track = config.tracks[ti]!;
+    if (track.cwd !== undefined) {
+      try {
+        validatePath(track.cwd, workDir);
+      } catch (err) {
+        errors.push(
+          `tracks[${ti}].cwd: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    for (let ki = 0; ki < track.tasks.length; ki++) {
+      const task = track.tasks[ki]!;
+      if (task.cwd === undefined) continue;
+      try {
+        validatePath(task.cwd, workDir);
+      } catch (err) {
+        errors.push(
+          `tracks[${ti}].tasks[${ki}].cwd: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+  }
+  if (errors.length > 0) {
+    throw new Error(`Pipeline cwd validation failed:\n  - ${errors.join('\n  - ')}`);
+  }
+}
+
 export async function runPipeline(
   config: PipelineConfig,
   workDir: string,
@@ -235,6 +265,7 @@ export async function runPipeline(
   }
   const runId = options.runId ?? generateRunId();
   assertValidRunId(runId);
+  validatePipelineCwds(config, workDir);
 
   try {
     return await runPipelineInner(config, workDir, options, approvalGateway, runId, maxLogRuns);
