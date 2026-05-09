@@ -773,10 +773,10 @@ One-shot YAML → diagnostics for editor compile flows. Distinguishes **YAML syn
 const result = compileYamlContent(yaml, {
   sourceName: 'pipeline.yaml',
   knownTypes: {
-    triggers: registry.list('triggers'),
-    completions: registry.list('completions'),
-    middlewares: registry.list('middlewares'),
-    drivers: registry.list('drivers'),
+    triggers: registry.listRegistered('triggers'),
+    completions: registry.listRegistered('completions'),
+    middlewares: registry.listRegistered('middlewares'),
+    drivers: registry.listRegistered('drivers'),
   },
 });
 

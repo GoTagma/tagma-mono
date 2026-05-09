@@ -231,7 +231,9 @@ bun run publish:all
 bun run publish:dry
 ```
 
-`tagma-editor` and `tagma-desktop` live in the private [`GoTagma/tagma-desktop`](https://github.com/GoTagma/tagma-desktop) repo and are mounted here as a git submodule at `apps/`. Desktop releases ship as installer artifacts via `release-desktop.yml`; see `apps/electron/README.md`. Clone with `git clone --recurse-submodules`, or run `git submodule update --init --recursive` after a plain clone.
+`tagma-editor` and `tagma-desktop` live in the private [`GoTagma/tagma-desktop`](https://github.com/GoTagma/tagma-desktop) repo and are mounted here as a git submodule at `apps/`. Desktop releases ship as installer artifacts via `release-desktop.yml`; see `apps/electron/README.md`. Clone with `git clone --recurse-submodules`, or run `bun run apps:init` (alias for `git submodule update --init --recursive apps`) after a plain clone. Use `bun run apps:update` to fast-forward the submodule pointer to the latest remote SHA.
+
+Local edits to the desktop sources stay inside this monorepo: edit files under `apps/editor/` and `apps/electron/`, then run `bun run push:desktop "<commit message>"` to commit + push the submodule and bump the parent pointer in one go. `bun run sync:desktop` is the inverse helper for pulling remote desktop changes back into the local clone.
 
 ---
 
@@ -250,5 +252,5 @@ bun run publish:dry
 - Types: TypeScript 5.8+
 - Frontend: React 19 + Vite + Tailwind
 - Server: Express 5 + Bun
-- Desktop: Electron 42 + electron-builder (NSIS / AppImage / deb / rpm / dmg)
+- Desktop: Electron 42 + electron-builder (NSIS / AppImage / deb / rpm / tar.gz / dmg)
 - Package manager: Bun workspaces
