@@ -74,7 +74,7 @@
     },
     "packages/core": {
       "name": "@tagma/core",
-      "version": "0.1.23",
+      "version": "0.1.24",
       "dependencies": {
         "@tagma/types": "workspace:*",
       },
@@ -1546,6 +1546,8 @@
 
     "@types/connect/@types/node": ["@types/node@24.12.3", "", { "dependencies": { "undici-types": "~7.16.0" } }, "sha512-8oljBDGun9cIsZRJR6fkihn0TSXJI0UDOOhncYaERq6M0JMDoPLxyscwruJcb4GKS6dvK/d8xebYBg27h/duaQ=="],
 
+    "@types/cors/@types/node": ["@types/node@24.12.3", "", { "dependencies": { "undici-types": "~7.16.0" } }, "sha512-8oljBDGun9cIsZRJR6fkihn0TSXJI0UDOOhncYaERq6M0JMDoPLxyscwruJcb4GKS6dvK/d8xebYBg27h/duaQ=="],
+
     "@types/express-serve-static-core/@types/node": ["@types/node@24.12.3", "", { "dependencies": { "undici-types": "~7.16.0" } }, "sha512-8oljBDGun9cIsZRJR6fkihn0TSXJI0UDOOhncYaERq6M0JMDoPLxyscwruJcb4GKS6dvK/d8xebYBg27h/duaQ=="],
 
     "@types/fs-extra/@types/node": ["@types/node@24.12.3", "", { "dependencies": { "undici-types": "~7.16.0" } }, "sha512-8oljBDGun9cIsZRJR6fkihn0TSXJI0UDOOhncYaERq6M0JMDoPLxyscwruJcb4GKS6dvK/d8xebYBg27h/duaQ=="],
@@ -1649,6 +1651,8 @@
     "@types/cacheable-request/@types/node/undici-types": ["undici-types@7.16.0", "", {}, "sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw=="],
 
     "@types/connect/@types/node/undici-types": ["undici-types@7.16.0", "", {}, "sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw=="],
+
+    "@types/cors/@types/node/undici-types": ["undici-types@7.16.0", "", {}, "sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw=="],
 
     "@types/express-serve-static-core/@types/node/undici-types": ["undici-types@7.16.0", "", {}, "sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw=="],
 
