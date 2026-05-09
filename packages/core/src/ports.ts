@@ -72,6 +72,20 @@ export interface SubstituteResult {
   readonly text: string;
   /** Port names that appeared in placeholders but weren't in `inputs`. */
   readonly unresolved: readonly string[];
+  /**
+   * Filter names that appeared after `|` but aren't recognised
+   * (e.g. `{{inputs.x | shelquote}}` — typo of `shellquote`). Surfaced
+   * separately from `unresolved` so the caller can distinguish "value was
+   * missing" from "filter was misspelled" — for command tasks the latter
+   * must hard-fail because a typoed `shellquote` silently degrades to
+   * verbatim interpolation, re-opening the shell-injection hole the filter
+   * was meant to close.
+   *
+   * Each entry is `{ name, filter }` where `name` is the input port and
+   * `filter` is the unknown filter token, so the diagnostic can name
+   * exactly what to fix.
+   */
+  readonly unknownFilters: ReadonlyArray<{ name: string; filter: string }>;
 }
 
 /**
@@ -98,6 +112,7 @@ export function substituteInputs(
   inputs: Readonly<Record<string, unknown>>,
 ): SubstituteResult {
   const unresolved = new Set<string>();
+  const unknownFilters: { name: string; filter: string }[] = [];
   const out = text.replace(PLACEHOLDER_RE, (_full, name: string, filter: string | undefined) => {
     if (!(name in inputs)) {
       unresolved.add(name);
@@ -123,20 +138,21 @@ export function substituteInputs(
     }
     // `shellquote` defers to the platform-aware quoter the runner already
     // uses to wrap argv arrays — POSIX `'…'\''…'` on sh/bash, doubled-
-    // single-quote on PowerShell, double-quoted with backslash escapes on
-    // cmd.exe. Picking the wrong style on the wrong shell would re-open
-    // the injection vector this filter is meant to close.
+    // single-quote on PowerShell, refused outright under cmd.exe. Picking
+    // the wrong style on the wrong shell would re-open the injection
+    // vector this filter is meant to close.
     if (filter === 'shellquote') return shellQuoteForActiveShell(rendered);
     if (filter !== undefined) {
-      // Unknown filter — render the raw value and surface as unresolved so
-      // a typo (`| shelquote`) doesn't silently degrade to verbatim
-      // interpolation. The diagnostic is the only signal callers need;
-      // returning the raw value preserves the existing "best effort" shape.
-      unresolved.add(name);
+      // Unknown filter (typo like `shelquote`). We collect it and let the
+      // caller decide how strict to be: command tasks must hard-fail —
+      // returning the raw value would silently revert to verbatim
+      // interpolation, re-opening the injection vector. AI tasks can
+      // tolerate it (the model just sees the raw value in its prompt).
+      unknownFilters.push({ name, filter });
     }
     return rendered;
   });
-  return { text: out, unresolved: [...unresolved] };
+  return { text: out, unresolved: [...unresolved], unknownFilters };
 }
 
 // ─── Input resolution ─────────────────────────────────────────────────

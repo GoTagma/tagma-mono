@@ -69,22 +69,28 @@ function isTriggerTimeoutError(err: unknown): boolean {
 function substituteCommandInputs(
   command: CommandConfig,
   inputs: Readonly<Record<string, unknown>>,
-): { readonly command: CommandConfig; readonly unresolved: readonly string[] } {
+): {
+  readonly command: CommandConfig;
+  readonly unresolved: readonly string[];
+  readonly unknownFilters: ReadonlyArray<{ name: string; filter: string }>;
+} {
   if (typeof command === 'string') {
-    const { text, unresolved } = substituteInputs(command, inputs);
-    return { command: text, unresolved };
+    const { text, unresolved, unknownFilters } = substituteInputs(command, inputs);
+    return { command: text, unresolved, unknownFilters };
   }
   if ('shell' in command) {
-    const { text, unresolved } = substituteInputs(command.shell, inputs);
-    return { command: { shell: text }, unresolved };
+    const { text, unresolved, unknownFilters } = substituteInputs(command.shell, inputs);
+    return { command: { shell: text }, unresolved, unknownFilters };
   }
   const unresolved = new Set<string>();
+  const unknownFilters: { name: string; filter: string }[] = [];
   const argv = command.argv.map((arg) => {
     const result = substituteInputs(arg, inputs);
     for (const name of result.unresolved) unresolved.add(name);
+    for (const entry of result.unknownFilters) unknownFilters.push(entry);
     return result.text;
   });
-  return { command: { argv }, unresolved: [...unresolved] };
+  return { command: { argv }, unresolved: [...unresolved], unknownFilters };
 }
 
 function isTriggerWatchHandle(value: unknown): value is TriggerWatchHandle {
@@ -614,10 +620,49 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       // errors, so the only way to land here with an unresolved is an
       // optional input that had no upstream producer and no default,
       // which we surface in the log.
-      const { command: expandedCommand, unresolved } = substituteCommandInputs(
-        task.command,
-        resolvedInputs,
-      );
+      const {
+        command: expandedCommand,
+        unresolved,
+        unknownFilters,
+      } = substituteCommandInputs(task.command, resolvedInputs);
+      if (unknownFilters.length > 0) {
+        // Unknown filters in a command placeholder hard-fail. A typo like
+        // `{{inputs.x | shelquote}}` would otherwise interpolate `x`
+        // verbatim and silently re-open the shell-injection vector the
+        // filter exists to close. Surface a clear diagnostic that names
+        // each offending filter so the YAML author can fix it.
+        const detail = unknownFilters
+          .map(({ name, filter }) => `${name} | ${filter}`)
+          .join(', ');
+        const reason =
+          `command placeholder uses unknown filter(s): ${detail}. ` +
+          `Supported filter: shellquote.`;
+        log.error(`[task:${taskId}]`, `blocked — ${reason}`);
+        state.result = {
+          exitCode: -1,
+          stdout: '',
+          stderr: `[engine] ${reason}`,
+          stdoutPath: null,
+          stderrPath: null,
+          durationMs: 0,
+          sessionId: null,
+          normalizedOutput: null,
+          failureKind: 'spawn_error',
+          outputs: null,
+        };
+        state.finishedAt = nowISO();
+        ctx.setTaskStatus(taskId, 'blocked');
+        try {
+          await ctx.fireHook(taskId, 'task_failure', log);
+        } catch (hookErr) {
+          log.error(
+            `[task:${taskId}]`,
+            `hook execution failed: ${hookErr instanceof Error ? hookErr.message : String(hookErr)}`,
+          );
+        }
+        applyStopAllAfterFailure(ctx, taskId);
+        return;
+      }
       if (unresolved.length > 0) {
         log.debug(
           `[task:${taskId}]`,
@@ -634,11 +679,30 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       // Substitute placeholders in the user-authored prompt before
       // wrapping into a PromptDocument so middlewares see the
       // already-resolved task text.
-      const { text: expandedPrompt, unresolved } = substituteInputs(task.prompt!, resolvedInputs);
+      const {
+        text: expandedPrompt,
+        unresolved,
+        unknownFilters,
+      } = substituteInputs(task.prompt!, resolvedInputs);
       if (unresolved.length > 0) {
         log.debug(
           `[task:${taskId}]`,
           `prompt placeholders rendered empty: ${unresolved.join(', ')}`,
+        );
+      }
+      if (unknownFilters.length > 0) {
+        // AI tasks don't hard-fail on unknown filters the way command
+        // tasks do — the value just lands in the model's prompt as the
+        // raw string, no shell layer involved. We still surface a warning
+        // so a typo doesn't silently mean the YAML author got something
+        // different from what they expected (e.g. `| shelquote` left the
+        // value unquoted in a sentence about quoting).
+        const detail = unknownFilters
+          .map(({ name, filter }) => `${name} | ${filter}`)
+          .join(', ');
+        log.warn(
+          `[task:${taskId}]`,
+          `prompt uses unknown placeholder filter(s): ${detail}. Supported filter: shellquote.`,
         );
       }
       const originalLen = expandedPrompt.length;

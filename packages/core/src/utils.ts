@@ -232,12 +232,43 @@ export function shellArgs(command: string): readonly string[] {
   return [sh.path, '-c', command];
 }
 
+export class UnsafeShellQuoteError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UnsafeShellQuoteError';
+  }
+}
+
 /** Quote a single argument for inclusion in a shell command string. */
 function quoteArg(arg: string, kind: ShellKind): string {
+  // Inputs with no shell-active characters need no quoting on any shell:
+  // `hello` is `hello` under cmd, PowerShell, and sh alike. Skipping the
+  // cmd-refuses branch for these keeps innocuous values working even on
+  // cmd.exe.
   if (!/[\s"'\\<>|&;`$!^%]/.test(arg)) return arg;
 
   if (kind === 'cmd') {
-    return '"' + arg.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+    // cmd.exe does NOT recognise `\"` as an escaped quote — that's a C-runtime
+    // convention CommandLineToArgvW applies, not something cmd.exe's command
+    // processor honours. Doubled `""` is the documented in-quote escape, but
+    // even with that, `%VAR%` still gets expanded inside double quotes and
+    // metacharacters like `&|<>^` outside the wrapper end the command. The
+    // safe envelope on cmd.exe is narrow enough that any non-trivial value
+    // becomes a research project to escape correctly.
+    //
+    // Rather than ship a "looks safe" cmd.exe quoter that re-opens the
+    // injection vector this filter exists to close, refuse outright. The
+    // detector picks PowerShell first on Windows; cmd.exe is reached only
+    // when the user explicitly sets `PIPELINE_SHELL=…cmd.exe` or the host
+    // has no PowerShell. In that case the user can switch shells, use the
+    // argv form, or put the value in a file — all of which keep the
+    // injection vector closed.
+    throw new UnsafeShellQuoteError(
+      'shellquote is not supported under cmd.exe — the cmd.exe parser cannot ' +
+        'safely escape arbitrary values (no `\\"` escape, %VAR% still expands, ' +
+        '`&|<>^` end the command outside quotes). Switch to PowerShell or ' +
+        'pwsh via PIPELINE_SHELL, or use an argv-form `command:` instead.',
+    );
   }
 
   if (kind === 'powershell') {

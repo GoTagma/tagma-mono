@@ -80,7 +80,9 @@ export {
   RUN_ID_RE,
   shellArgs,
   shellArgsFromArray,
+  shellQuoteForActiveShell,
   truncateForName,
+  UnsafeShellQuoteError,
   validatePath,
 } from './utils';
 export {

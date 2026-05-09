@@ -7,6 +7,7 @@ import {
   parseDuration,
   shellArgs,
   shellQuoteForActiveShell,
+  UnsafeShellQuoteError,
   validatePath,
 } from './utils';
 
@@ -32,15 +33,24 @@ test('shellQuoteForActiveShell escapes single quotes per the active shell', () =
     process.env.PIPELINE_SHELL = 'powershell';
     expect(shellQuoteForActiveShell("it's")).toBe("'it''s'");
 
-    // cmd.exe: double-quote with backslash escapes — single quotes have
-    // no special meaning, so they pass through unchanged inside the wrap.
+    // cmd.exe: refuse outright. The cmd.exe parser does not honour `\"`
+    // (that's a C-runtime convention CommandLineToArgvW applies, not
+    // something cmd's command processor accepts), `""` doubling still
+    // expands `%VAR%` inside quotes, and `&|<>^` end the command outside
+    // the wrap. Returning a "looks safe" wrapped string would silently
+    // re-open the injection vector this filter exists to close, so we
+    // throw and tell the caller to switch to PowerShell or argv form.
     process.env.PIPELINE_SHELL = 'cmd';
-    expect(shellQuoteForActiveShell("it's")).toBe('"it\'s"');
+    expect(() => shellQuoteForActiveShell("it's")).toThrow(UnsafeShellQuoteError);
+    expect(() => shellQuoteForActiveShell('a & calc')).toThrow(/cmd\.exe/);
 
     // Innocuous values pass through unquoted under any shell — no special
     // characters means there's nothing to escape and unquoted is more
-    // readable in command logs.
+    // readable in command logs. cmd.exe agrees with the others on this
+    // path because the early-return predates the kind-specific branches.
     process.env.PIPELINE_SHELL = 'sh';
+    expect(shellQuoteForActiveShell('shanghai')).toBe('shanghai');
+    process.env.PIPELINE_SHELL = 'cmd';
     expect(shellQuoteForActiveShell('shanghai')).toBe('shanghai');
   } finally {
     if (previousShell === undefined) {

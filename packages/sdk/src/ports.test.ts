@@ -75,6 +75,28 @@ describe('substituteInputs', () => {
     expect(text).toBe('');
     expect(unresolved).toEqual(['x']);
   });
+
+  test('reports unknown filter separately so command tasks can hard-fail', () => {
+    // The whole point of this surface: a typo like `shelquote` (intended
+    // `shellquote`) used to interpolate verbatim and silently re-open the
+    // shell-injection vector. We expose it as `unknownFilters` so the
+    // executor can refuse to run the command, while leaving `unresolved`
+    // unchanged for cases where the value really is missing.
+    const { text, unresolved, unknownFilters } = substituteInputs(
+      'echo {{inputs.x | shelquote}}',
+      { x: 'a; rm -rf /' },
+    );
+    expect(text).toBe('echo a; rm -rf /');
+    expect(unresolved).toEqual([]);
+    expect(unknownFilters).toEqual([{ name: 'x', filter: 'shelquote' }]);
+  });
+
+  test('known filter does not appear as unknown', () => {
+    const { unknownFilters } = substituteInputs('echo {{inputs.x | shellquote}}', {
+      x: 'safe',
+    });
+    expect(unknownFilters).toEqual([]);
+  });
 });
 
 describe('extractInputReferences', () => {
