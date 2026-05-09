@@ -749,6 +749,7 @@ export type TaskFailureKind =
   | 'timeout'
   | 'aborted'
   | 'spawn_error'
+  | 'binary_missing'
   | 'exit_nonzero'
   | 'parse_error'
   | 'output_error'
@@ -786,6 +787,12 @@ export interface TaskResult {
   readonly sessionId: string | null;
   readonly normalizedOutput: string | null;
   readonly failureKind: TaskFailureKind;
+  /**
+   * Set only when `failureKind === 'binary_missing'`: the executable name the
+   * driver tried to launch (e.g. `'claude'`, `'codex'`). UIs use this to look
+   * up tailored install instructions without having to scrape stderr.
+   */
+  readonly missingBinary?: string;
   /**
    * Published output values — populated by the engine after a task terminates
    * successfully when `task.outputs` are declared or when a prompt task has an
@@ -925,6 +932,18 @@ export interface RunTaskState {
   readonly sessionId: string | null;
   readonly normalizedOutput: string | null;
   /**
+   * Why the task didn't return exitCode 0. `null` for success or in-flight
+   * tasks. UIs branch on this rather than inferring from `exitCode` so e.g.
+   * a missing CLI surfaces an install hint instead of a generic stderr dump.
+   */
+  readonly failureKind: TaskFailureKind;
+  /**
+   * Set only when `failureKind === 'binary_missing'`: the executable name the
+   * runtime tried to spawn (e.g. `'claude'`, `'codex'`). The editor maps this
+   * to install instructions for known CLIs.
+   */
+  readonly missingBinary: string | null;
+  /**
    * Extracted port output values for this task. Null until the task
    * completes successfully, or when the task declares no output ports.
    * Carried on the wire so the editor can render resolved port values
@@ -994,6 +1013,8 @@ export type RunEventPayload =
       readonly stderrBytes?: number | null;
       readonly sessionId?: string | null;
       readonly normalizedOutput?: string | null;
+      readonly failureKind?: TaskFailureKind;
+      readonly missingBinary?: string | null;
       readonly outputs?: Readonly<Record<string, unknown>> | null;
       readonly inputs?: Readonly<Record<string, unknown>> | null;
       readonly resolvedDriver?: string | null;
