@@ -417,6 +417,7 @@ function failResult(
   stderr: string,
   durationMs: number,
   failureKind: TaskResult['failureKind'] = 'spawn_error',
+  missingBinary?: string,
 ): TaskResult {
   return {
     exitCode: -1,
@@ -430,7 +431,69 @@ function failResult(
     sessionId: null,
     normalizedOutput: null,
     failureKind,
+    ...(missingBinary !== undefined ? { missingBinary } : {}),
   };
+}
+
+/**
+ * Pattern-match an error string to decide if a spawn failure is a
+ * "binary not found" case versus a real spawn failure (permission denied,
+ * bad cwd, etc.). Bun's spawn surfaces ENOENT differently across platforms
+ * and Bun versions — POSIX prefixes with `posix_spawn`, Windows mentions
+ * `CreateProcess`, both can include the literal `ENOENT`. Match defensively.
+ */
+function isBinaryMissingError(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes('enoent') ||
+    m.includes('posix_spawn') ||
+    m.includes('no such file or directory') ||
+    m.includes('command not found') ||
+    m.includes('the system cannot find the file') ||
+    m.includes('cannot find the path')
+  );
+}
+
+/**
+ * `args[0]` is normally a bare command name (e.g. `claude`). When the driver
+ * already handed us a full path, strip directories and the trailing extension
+ * so the editor can match against the canonical "claude" / "codex" key in its
+ * install-hints table.
+ */
+function commandBaseName(arg: string): string {
+  const slashIdx = Math.max(arg.lastIndexOf('/'), arg.lastIndexOf('\\'));
+  const tail = slashIdx >= 0 ? arg.slice(slashIdx + 1) : arg;
+  const dotIdx = tail.lastIndexOf('.');
+  return dotIdx > 0 ? tail.slice(0, dotIdx) : tail;
+}
+
+/**
+ * On Windows we know up front whether the bare command resolves against
+ * PATH+PATHEXT — `resolveWindowsExe` returns the original args (unchanged)
+ * when no candidate matched. Detecting this lets us produce a clean
+ * `binary_missing` failure without first paying for the spawn attempt and
+ * its opaque CreateProcess error string.
+ *
+ * Returns the missing binary's base name when the pre-resolution clearly
+ * failed, or null when we shouldn't intervene (caller passed an absolute
+ * path, an extension, or resolution succeeded).
+ */
+function preflightMissingBinary(
+  originalArgs: readonly string[],
+  resolvedArgs: readonly string[],
+): string | null {
+  if (process.platform !== 'win32') return null;
+  if (originalArgs.length === 0) return null;
+  const cmd = originalArgs[0]!;
+  // `resolveWindowsExe` short-circuits when the caller already supplied an
+  // absolute path or a file extension — in those cases we have no PATH-lookup
+  // signal, so leave detection to the post-spawn error pattern match.
+  if (isAbsolute(cmd) || /\.[a-z0-9]+$/i.test(cmd)) return null;
+  // resolveWindowsExe returns the SAME reference when PATH+PATHEXT scan
+  // failed, and a freshly-spread array when it succeeded — so reference
+  // equality is a reliable "not found" signal for bare commands.
+  if (resolvedArgs !== originalArgs) return null;
+  return commandBaseName(cmd);
 }
 
 /**
@@ -509,6 +572,20 @@ export async function runSpawn(
     mergedEnv.PATHEXT ?? process.env.PATHEXT ?? WINDOWS_DEFAULT_PATHEXT,
   );
 
+  // Windows pre-flight: if PATH+PATHEXT scan turned up nothing for a bare
+  // command, surface `binary_missing` with the CLI name now — the post-spawn
+  // CreateProcess error string is opaque ("The system cannot find the file
+  // specified") and doesn't tell the UI which CLI is missing.
+  const preMissing = preflightMissingBinary(spec.args, resolvedArgs);
+  if (preMissing !== null) {
+    return failResult(
+      `Executable "${preMissing}" not found in PATH`,
+      elapsed(),
+      'binary_missing',
+      preMissing,
+    );
+  }
+
   // ── 1. Spawn (catch ENOENT / bad-cwd up front) ────────────────────────
   let proc: ReturnType<typeof Bun.spawn>;
   try {
@@ -521,7 +598,15 @@ export async function runSpawn(
       detached: process.platform !== 'win32',
     });
   } catch (err) {
-    return failResult(String(err), elapsed());
+    const message = String(err);
+    // ENOENT (POSIX) or "cannot find the file" (Windows fallback when the
+    // pre-flight didn't catch it — e.g. caller passed an absolute path that
+    // doesn't exist) → tag as binary_missing so the UI can render an install
+    // hint instead of a raw stderr dump.
+    if (isBinaryMissingError(message)) {
+      return failResult(message, elapsed(), 'binary_missing', commandBaseName(spec.args[0]!));
+    }
+    return failResult(message, elapsed());
   }
 
   // ── 2. Write stdin ─────────────────────────────────────────────────────

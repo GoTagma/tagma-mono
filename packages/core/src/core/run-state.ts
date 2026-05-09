@@ -133,6 +133,8 @@ export function toRunTaskState(
     stderrBytes: result?.stderrBytes ?? null,
     sessionId: result?.sessionId ?? null,
     normalizedOutput: result?.normalizedOutput ?? null,
+    failureKind: result?.failureKind ?? null,
+    missingBinary: result?.missingBinary ?? null,
     resolvedDriver: resolved.resolvedDriver,
     resolvedModel: resolved.resolvedModel,
     resolvedPermissions: resolved.resolvedPermissions,
