@@ -442,15 +442,19 @@ function failResult(
  * and Bun versions — POSIX prefixes with `posix_spawn`, Windows mentions
  * `CreateProcess`, both can include the literal `ENOENT`. Match defensively.
  */
-function isBinaryMissingError(message: string): boolean {
-  const m = message.toLowerCase();
+function isBinaryMissingError(err: unknown): boolean {
+  if (err && typeof err === 'object' && (err as { code?: unknown }).code === 'ENOENT') {
+    return true;
+  }
+  const m = String(err).toLowerCase();
   return (
     m.includes('enoent') ||
     m.includes('posix_spawn') ||
     m.includes('no such file or directory') ||
     m.includes('command not found') ||
     m.includes('the system cannot find the file') ||
-    m.includes('cannot find the path')
+    m.includes('cannot find the path') ||
+    m.includes('not found in $path')
   );
 }
 
@@ -603,7 +607,7 @@ export async function runSpawn(
     // pre-flight didn't catch it — e.g. caller passed an absolute path that
     // doesn't exist) → tag as binary_missing so the UI can render an install
     // hint instead of a raw stderr dump.
-    if (isBinaryMissingError(message)) {
+    if (isBinaryMissingError(err)) {
       return failResult(message, elapsed(), 'binary_missing', commandBaseName(spec.args[0]!));
     }
     return failResult(message, elapsed());

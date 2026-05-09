@@ -42,6 +42,30 @@ class TaskDeadlineExceededError extends Error {
   }
 }
 
+function hasStructuredErrorIdentity(
+  err: unknown,
+  code: 'TRIGGER_BLOCKED' | 'TRIGGER_TIMEOUT',
+  name: 'TriggerBlockedError' | 'TriggerTimeoutError',
+): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const candidate = err as { code?: unknown; name?: unknown };
+  return candidate.code === code || candidate.name === name;
+}
+
+function isTriggerBlockedError(err: unknown): boolean {
+  return (
+    err instanceof TriggerBlockedError ||
+    hasStructuredErrorIdentity(err, 'TRIGGER_BLOCKED', 'TriggerBlockedError')
+  );
+}
+
+function isTriggerTimeoutError(err: unknown): boolean {
+  return (
+    err instanceof TriggerTimeoutError ||
+    hasStructuredErrorIdentity(err, 'TRIGGER_TIMEOUT', 'TriggerTimeoutError')
+  );
+}
+
 function substituteCommandInputs(
   command: CommandConfig,
   inputs: Readonly<Record<string, unknown>>,
@@ -271,9 +295,9 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       state.finishedAt = nowISO();
       if (ctx.abortReason !== null) {
         ctx.setTaskStatus(taskId, 'skipped');
-      } else if (err instanceof TriggerBlockedError) {
+      } else if (isTriggerBlockedError(err)) {
         ctx.setTaskStatus(taskId, 'blocked'); // user/policy rejection
-      } else if (err instanceof TriggerTimeoutError) {
+      } else if (isTriggerTimeoutError(err)) {
         ctx.setTaskStatus(taskId, 'timeout'); // genuine trigger wait timeout
       } else {
         const msg = err instanceof Error ? err.message : String(err);
