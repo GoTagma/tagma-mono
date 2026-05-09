@@ -2,13 +2,54 @@ import { expect, test } from 'bun:test';
 import { mkdirSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { _resetShellCache, parseDuration, shellArgs, validatePath } from './utils';
+import {
+  _resetShellCache,
+  parseDuration,
+  shellArgs,
+  shellQuoteForActiveShell,
+  validatePath,
+} from './utils';
 
 test('parseDuration rejects timer values above the runtime-safe setTimeout limit', () => {
   expect(() => parseDuration('25d')).toThrow(/exceeds maximum supported timer value/);
   expect(() => parseDuration('999999999999999999999999d')).toThrow(
     /exceeds maximum supported timer value/,
   );
+});
+
+test('shellQuoteForActiveShell escapes single quotes per the active shell', () => {
+  const previousShell = process.env.PIPELINE_SHELL;
+  try {
+    _resetShellCache();
+
+    // POSIX: single-quote with the canonical close-reopen sequence.
+    process.env.PIPELINE_SHELL = 'sh';
+    expect(shellQuoteForActiveShell("it's")).toBe(`'it'\\''s'`);
+
+    // PowerShell: doubled single-quote inside a single-quoted literal.
+    // POSIX-style escaping here would parse as `'it'`, then `\''s'`,
+    // which is two strings under PowerShell — completely wrong.
+    process.env.PIPELINE_SHELL = 'powershell';
+    expect(shellQuoteForActiveShell("it's")).toBe("'it''s'");
+
+    // cmd.exe: double-quote with backslash escapes — single quotes have
+    // no special meaning, so they pass through unchanged inside the wrap.
+    process.env.PIPELINE_SHELL = 'cmd';
+    expect(shellQuoteForActiveShell("it's")).toBe('"it\'s"');
+
+    // Innocuous values pass through unquoted under any shell — no special
+    // characters means there's nothing to escape and unquoted is more
+    // readable in command logs.
+    process.env.PIPELINE_SHELL = 'sh';
+    expect(shellQuoteForActiveShell('shanghai')).toBe('shanghai');
+  } finally {
+    if (previousShell === undefined) {
+      delete process.env.PIPELINE_SHELL;
+    } else {
+      process.env.PIPELINE_SHELL = previousShell;
+    }
+    _resetShellCache();
+  }
 });
 
 test('PIPELINE_SHELL override is evaluated per call instead of cached', () => {

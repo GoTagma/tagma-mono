@@ -155,6 +155,15 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
     if (result === 'unsatisfied') return; // still waiting
   }
 
+  // Resolve effective working directory once at the top so every phase
+  // — trigger watch, hook, command spawn, driver buildCommand, middleware,
+  // completion — sees the same answer. Without this consistency, only the
+  // editor route path (which lowers track.cwd into task.cwd via
+  // loadPipeline) actually honored track-level cwd; SDK callers that pass a
+  // RawPipelineConfig with track.cwd set saw it silently dropped at every
+  // execution context except the resolved-debug-log line below.
+  const resolvedCwd = task.cwd ?? track.cwd ?? workDir;
+
   const taskTimeoutMs = task.timeout ? parseDuration(task.timeout) : undefined;
   const taskDeadlineStartedAtMs = Date.now();
   const taskDeadlineMs =
@@ -227,7 +236,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       const watchHandle = triggerPlugin.watch(task.trigger as Record<string, unknown>, {
         taskId: node.taskId,
         trackId: track.id,
-        workDir: task.cwd ?? workDir,
+        workDir: resolvedCwd,
         signal: ctx.abortController.signal,
         approvalGateway,
         runtime: ctx.runtime,
@@ -552,7 +561,6 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
   const resolvedDriver = task.driver ?? track.driver ?? config.driver ?? 'opencode';
   const resolvedModel = task.model ?? track.model ?? config.model ?? '(default)';
   const resolvedPerms = task.permissions ?? track.permissions ?? '(default)';
-  const resolvedCwd = task.cwd ?? track.cwd ?? workDir;
   log.debug(
     `[task:${taskId}]`,
     `resolved: driver=${resolvedDriver} model=${resolvedModel} cwd=${resolvedCwd}`,
@@ -617,7 +625,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
         );
       }
       log.debug(`[task:${taskId}]`, `command: ${commandLabel(expandedCommand)}`);
-      result = await ctx.runtime.runCommand(expandedCommand, task.cwd ?? workDir, runOpts);
+      result = await ctx.runtime.runCommand(expandedCommand, resolvedCwd, runOpts);
     } else {
       // AI task: apply middleware chain against a structured PromptDocument.
       const driverName = task.driver ?? track.driver ?? config.driver ?? 'opencode';
@@ -654,7 +662,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
         const mwCtxBase: Omit<MiddlewareContext, 'signal'> = {
           task,
           track,
-          workDir: task.cwd ?? workDir,
+          workDir: resolvedCwd,
           ...(taskDeadlineMs !== undefined ? { deadlineMs: taskDeadlineMs } : {}),
         };
         for (const mwConfig of mws) {
@@ -727,7 +735,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
         sessionMap: ctx.sessionMap,
         sessionDriverMap: ctx.sessionDriverMap,
         normalizedMap: ctx.normalizedMap,
-        workDir: task.cwd ?? workDir,
+        workDir: resolvedCwd,
         signal,
         ...(taskDeadlineMs !== undefined ? { deadlineMs: taskDeadlineMs } : {}),
         // Structured view for drivers that want fine-grained control
@@ -765,7 +773,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
     } else if (task.completion) {
       const plugin = registry.getHandler<CompletionPlugin>('completions', task.completion.type);
       const completionCtxBase = {
-        workDir: task.cwd ?? workDir,
+        workDir: resolvedCwd,
         runtime: ctx.runtime,
         envPolicy: ctx.envPolicy,
       };

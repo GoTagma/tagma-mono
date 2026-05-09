@@ -249,6 +249,24 @@ function quoteArg(arg: string, kind: ShellKind): string {
 }
 
 /**
+ * Quote `value` for safe inclusion in a shell command string under the
+ * shell that runtime-bun's `runCommand` will actually launch on this host
+ * (`PIPELINE_SHELL` override → cmd / PowerShell on Windows → sh on POSIX).
+ *
+ * Used by `{{inputs.X | shellquote}}` placeholder expansion: the same
+ * escaping the runner already uses to wrap argv arrays into a shell string,
+ * applied consistently to user inputs the YAML author interpolates by hand.
+ *
+ * Tying this to the actual launching shell rather than `process.platform`
+ * matters because POSIX `'foo'\''bar'` and PowerShell `'foo''bar'` are
+ * mutually unsafe — picking the wrong one re-opens the injection hole the
+ * filter is supposed to close.
+ */
+export function shellQuoteForActiveShell(value: string): string {
+  return quoteArg(value, getShell().kind);
+}
+
+/**
  * Convert an args array to shell-wrapped args suitable for Bun.spawn.
  * Each arg is quoted as needed, then joined and passed through shellArgs.
  */

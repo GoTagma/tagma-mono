@@ -36,17 +36,23 @@
 // the editor (for preview/simulation), and the engine without side effects.
 
 import type { PortDef, PortType, TaskInputBindings, TaskOutputBindings, TaskPorts } from './types';
+import { shellQuoteForActiveShell } from './utils';
 
 // ─── Template substitution ────────────────────────────────────────────
 
 /**
- * Matches `{{inputs.<identifier>}}` with optional whitespace inside the
- * braces. The identifier is restricted to the same character set we use
- * for task IDs (letter/underscore, then letters/digits/underscores) so
- * accidental use of `{{inputs.foo.bar}}` fails loudly rather than
- * silently producing garbage.
+ * Matches `{{inputs.<identifier>}}` (optionally followed by `| <filter>`)
+ * with surrounding whitespace allowed inside the braces. The identifier is
+ * restricted to the same character set we use for task IDs so accidental
+ * `{{inputs.foo.bar}}` fails loudly rather than silently producing garbage.
+ *
+ * Currently the only supported filter is `shellquote`, which quotes the
+ * substituted value for the active shell so it can be safely interpolated
+ * into a `shell:` command string. See substituteInputs for the rationale
+ * on why this is opt-in rather than the default.
  */
-const PLACEHOLDER_RE = /\{\{\s*inputs\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g;
+const PLACEHOLDER_RE =
+  /\{\{\s*inputs\.([A-Za-z_][A-Za-z0-9_]*)(?:\s*\|\s*([A-Za-z_][A-Za-z0-9_]*))?\s*\}\}/g;
 
 /**
  * Scan `text` for every `{{inputs.<name>}}` placeholder and return the
@@ -92,7 +98,7 @@ export function substituteInputs(
   inputs: Readonly<Record<string, unknown>>,
 ): SubstituteResult {
   const unresolved = new Set<string>();
-  const out = text.replace(PLACEHOLDER_RE, (_full, name: string) => {
+  const out = text.replace(PLACEHOLDER_RE, (_full, name: string, filter: string | undefined) => {
     if (!(name in inputs)) {
       unresolved.add(name);
       return '';
@@ -102,16 +108,33 @@ export function substituteInputs(
       unresolved.add(name);
       return '';
     }
-    if (typeof value === 'string') return value;
-    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-    try {
-      return JSON.stringify(value);
-    } catch {
-      // Circular / unserializable — render a placeholder rather than
-      // throwing, and mark it unresolved so the caller can warn.
-      unresolved.add(name);
-      return '';
+    let rendered: string;
+    if (typeof value === 'string') rendered = value;
+    else if (typeof value === 'number' || typeof value === 'boolean') rendered = String(value);
+    else {
+      try {
+        rendered = JSON.stringify(value);
+      } catch {
+        // Circular / unserializable — render a placeholder rather than
+        // throwing, and mark it unresolved so the caller can warn.
+        unresolved.add(name);
+        return '';
+      }
     }
+    // `shellquote` defers to the platform-aware quoter the runner already
+    // uses to wrap argv arrays — POSIX `'…'\''…'` on sh/bash, doubled-
+    // single-quote on PowerShell, double-quoted with backslash escapes on
+    // cmd.exe. Picking the wrong style on the wrong shell would re-open
+    // the injection vector this filter is meant to close.
+    if (filter === 'shellquote') return shellQuoteForActiveShell(rendered);
+    if (filter !== undefined) {
+      // Unknown filter — render the raw value and surface as unresolved so
+      // a typo (`| shelquote`) doesn't silently degrade to verbatim
+      // interpolation. The diagnostic is the only signal callers need;
+      // returning the raw value preserves the existing "best effort" shape.
+      unresolved.add(name);
+    }
+    return rendered;
   });
   return { text: out, unresolved: [...unresolved] };
 }
