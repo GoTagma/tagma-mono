@@ -38,7 +38,7 @@
     "check:client": "tsc -p apps/editor/tsconfig.json --noEmit",
     "check:tests": "tsc -p apps/editor/tsconfig.test.json --noEmit",
     "check:electron": "tsc -p apps/electron/tsconfig.json --noEmit",
-    "test": "bun run --filter \"*\" test",
+    "test": "bun run test:public && bun run --filter tagma-editor test && bun run --filter tagma-desktop test",
     "test:public": "bun run --filter \"@tagma/*\" test",
     "dev:editor": "cd apps/editor && bun run dev",
     "dev:server": "bun run --filter tagma-editor dev:server",
