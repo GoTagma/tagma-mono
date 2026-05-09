@@ -172,7 +172,7 @@ test('runSpawn: no path configured — memory-only tail, returns null paths', as
   expect(result.stderrPath).toBeNull();
 });
 
-test('runSpawn: pre-spawn failure (bad executable) — no paths leak on disk', async () => {
+test('runSpawn: missing executable surfaces binary_missing with the CLI name', async () => {
   const tmp = mkdtempSync(join(tmpdir(), 'tagma-runner-bad-'));
   const stdoutPath = join(tmp, 'out');
   try {
@@ -182,7 +182,10 @@ test('runSpawn: pre-spawn failure (bad executable) — no paths leak on disk', a
       { stdoutPath },
     );
     expect(result.exitCode).toBe(-1);
-    expect(result.failureKind).toBe('spawn_error');
+    // Bare-command ENOENT is now classified more specifically so UIs can
+    // render an install hint instead of a generic stderr dump.
+    expect(result.failureKind).toBe('binary_missing');
+    expect(result.missingBinary).toBe('this-command-definitely-does-not-exist-xyz123');
     // On pre-spawn failure the runner never opened the file, so stdoutPath
     // is null (not the unopened path). Callers can rely on this to decide
     // whether a disk file exists to read.
@@ -190,4 +193,17 @@ test('runSpawn: pre-spawn failure (bad executable) — no paths leak on disk', a
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
+});
+
+test('runSpawn: missingBinary strips path components and extensions', async () => {
+  // Driver might pre-resolve to a full path (e.g. C:\...\claude.cmd) — when
+  // that file is gone we still want the editor to look up the install hint
+  // by the canonical CLI name, not the full disk path.
+  const fakePath =
+    process.platform === 'win32'
+      ? 'C:\\does\\not\\exist\\claude.cmd'
+      : '/does/not/exist/claude';
+  const result = await runSpawn({ args: [fakePath] }, null, {});
+  expect(result.failureKind).toBe('binary_missing');
+  expect(result.missingBinary).toBe('claude');
 });
