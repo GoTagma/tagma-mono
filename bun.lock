@@ -21,7 +21,7 @@
       "name": "tagma-editor",
       "version": "0.2.0",
       "dependencies": {
-        "@opencode-ai/sdk": "^1.14.19",
+        "@opencode-ai/sdk": "1.14.41",
         "@tagma/sdk": "workspace:*",
         "@tagma/types": "workspace:*",
         "cors": "^2.8.5",
