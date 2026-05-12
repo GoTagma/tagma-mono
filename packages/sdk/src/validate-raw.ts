@@ -959,6 +959,15 @@ function validateInputBindingSources(
     if (!rawBinding || typeof rawBinding !== 'object' || Array.isArray(rawBinding)) continue;
     const source = (rawBinding as Record<string, unknown>).from;
     if (typeof source !== 'string') continue;
+    if (!source.startsWith('outputs.') && !source.includes('.')) {
+      errors.push({
+        path: `${taskPath}.inputs.${name}.from`,
+        message:
+          `Task "${task.id}": input binding "${name}" from "${source}" must reference an upstream output or stream ` +
+          '(use outputs.<name>, taskId.<name>, taskId.outputs.<name>, taskId.stdout, taskId.stderr, taskId.normalizedOutput, or taskId.exitCode)',
+      });
+      continue;
+    }
     const upstreamRef = bindingSourceTaskRef(source);
     if (!upstreamRef) continue;
     const sourceResolution = resolveTaskRef(upstreamRef, trackId, index);

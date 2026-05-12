@@ -145,6 +145,32 @@ describe('validateRaw - unified typed bindings', () => {
     expect(errors.filter((e) => /not a direct dependency/.test(e.message))).toEqual([]);
   });
 
+  test('rejects bare input from sources without an output name', () => {
+    const errors = validateRaw(
+      config([
+        commandTask({
+          id: 'controls',
+          command: 'node -e "console.log(JSON.stringify({limit: 3}))"',
+          outputs: { limit: { type: 'number' } },
+        }),
+        commandTask({
+          id: 'fetch',
+          depends_on: ['controls'],
+          command: 'echo {{inputs.limit}}',
+          inputs: { limit: { from: 'controls', type: 'number', required: true } },
+        }),
+      ]),
+    );
+
+    expect(
+      errors.some(
+        (e) =>
+          e.path === 'tracks[0].tasks[1].inputs.limit.from' &&
+          /must reference an upstream output or stream/.test(e.message),
+      ),
+    ).toBe(true);
+  });
+
   test('short input sources still reject non-direct dependencies', () => {
     const errors = validateRaw(
       config([
