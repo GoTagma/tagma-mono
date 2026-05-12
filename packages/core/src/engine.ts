@@ -7,7 +7,7 @@ import type {
   RunTaskState,
 } from './types';
 import { isCommandTaskConfig, isPromptTaskConfig } from './types';
-import { buildDag } from './dag';
+import { buildDag, type Dag } from './dag';
 import type { PluginRegistry } from './registry';
 import { parseDuration, nowISO, generateRunId, assertValidRunId, validatePath } from './utils';
 import {
@@ -73,6 +73,11 @@ export interface RunPipelineOptions {
   readonly envPolicy?: EnvPolicy;
   readonly logPrompt?: boolean;
   readonly maxConcurrency?: number;
+  /**
+   * Fully-qualified task ids to run. The engine executes these targets plus
+   * all upstream prerequisites; tasks outside that closure are marked skipped.
+   */
+  readonly targetTaskIds?: readonly string[];
   /**
    * External AbortSignal — aborting it cancels the pipeline immediately.
    * Equivalent to the pipeline timeout firing, but caller-controlled.
@@ -148,6 +153,28 @@ function normalizeMaxConcurrency(value: number | undefined): number {
     throw new Error(`maxConcurrency must be a positive integer, got ${String(value)}`);
   }
   return value;
+}
+
+function resolveTargetTaskRunSet(
+  dag: Dag,
+  targetTaskIds: readonly string[] | undefined,
+): ReadonlySet<string> | null {
+  if (targetTaskIds === undefined) return null;
+  if (targetTaskIds.length === 0) {
+    throw new Error('targetTaskIds must contain at least one task id');
+  }
+
+  const runSet = new Set<string>();
+  const visit = (taskId: string): void => {
+    const node = dag.nodes.get(taskId);
+    if (!node) throw new Error(`Target task "${taskId}" not found`);
+    if (runSet.has(taskId)) return;
+    for (const depId of node.dependsOn) visit(depId);
+    runSet.add(taskId);
+  };
+
+  for (const taskId of targetTaskIds) visit(taskId);
+  return runSet;
 }
 
 function safeSet<T extends keyof Required<SafeModeAllowlist>>(
@@ -302,6 +329,7 @@ async function runPipelineInner(
 
   const dag = buildDag(config);
   preflight(config, dag, registry, mode);
+  const activeTaskIds = resolveTargetTaskRunSet(dag, options.targetTaskIds);
   const pipelineTimeoutMs = config.timeout ? parseDuration(config.timeout) : 0;
   const maxConcurrency = normalizeMaxConcurrency(options.maxConcurrency ?? config.max_concurrency);
 
@@ -332,6 +360,10 @@ async function runPipelineInner(
     log.quiet(`timeout:       ${config.timeout ?? '(none)'}`);
     log.quiet(`tracks:        ${config.tracks.length}`);
     log.quiet(`tasks (total): ${dag.nodes.size}`);
+    if (activeTaskIds) {
+      log.quiet(`tasks (run):   ${activeTaskIds.size}`);
+      log.quiet(`targets:       ${options.targetTaskIds!.join(', ')}`);
+    }
     log.quiet(`plugins:       ${(config.plugins ?? []).join(', ') || '(none)'}`);
     log.quiet(
       `hooks:         ${config.hooks ? Object.keys(config.hooks).join(', ') || '(none)' : '(none)'}`,
@@ -359,6 +391,7 @@ async function runPipelineInner(
       runtime,
       envPolicy: options.envPolicy,
       logPrompt: options.logPrompt ?? false,
+      ...(activeTaskIds ? { activeTaskIds } : {}),
     });
 
     // Pipeline start hook (gate). Runs BEFORE the engine emits run_start so
@@ -402,9 +435,14 @@ async function runPipelineInner(
       };
     }
 
-    // Pipeline approved — transition all tasks to waiting.
-    for (const [, state] of ctx.states) {
-      state.status = 'waiting';
+    // Pipeline approved; targeted runs pre-skip tasks outside the run set.
+    for (const [id, state] of ctx.states) {
+      if (activeTaskIds && !activeTaskIds.has(id)) {
+        state.status = 'skipped';
+        state.finishedAt = startedAt;
+      } else {
+        state.status = 'waiting';
+      }
     }
     // Emit run_start with a wire-shape snapshot so SSE subscribers can
     // initialize their task maps on the same event stream that carries

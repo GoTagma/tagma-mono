@@ -43,6 +43,7 @@ export interface RunContextOptions {
   readonly runtime: TagmaRuntime;
   readonly envPolicy?: EnvPolicy;
   readonly logPrompt: boolean;
+  readonly activeTaskIds?: ReadonlySet<string>;
 }
 
 /**
@@ -62,6 +63,7 @@ export class RunContext {
   readonly runtime: TagmaRuntime;
   readonly envPolicy?: EnvPolicy;
   readonly logPrompt: boolean;
+  readonly activeTaskIds: ReadonlySet<string> | null;
 
   readonly states = new Map<string, TaskState>();
   readonly sessionMap = new Map<string, string>();
@@ -84,6 +86,7 @@ export class RunContext {
     this.runtime = options.runtime;
     this.envPolicy = options.envPolicy;
     this.logPrompt = options.logPrompt;
+    this.activeTaskIds = options.activeTaskIds ?? null;
 
     for (const [id, node] of this.dag.nodes) {
       this.states.set(id, {
@@ -99,7 +102,9 @@ export class RunContext {
     this.directDownstreams = new Map<string, string[]>();
     for (const [id] of this.dag.nodes) this.directDownstreams.set(id, []);
     for (const [id, node] of this.dag.nodes) {
+      if (this.activeTaskIds && !this.activeTaskIds.has(id)) continue;
       for (const upstream of node.dependsOn) {
+        if (this.activeTaskIds && !this.activeTaskIds.has(upstream)) continue;
         const list = this.directDownstreams.get(upstream);
         if (list) list.push(id);
       }
