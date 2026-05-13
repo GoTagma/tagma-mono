@@ -226,6 +226,50 @@ describe('PipelineRunner task snapshot', () => {
     }
   });
 
+  test('non-throwing pipeline failures leave the runner failed', async () => {
+    const dir = makeDir();
+    const registry = new PluginRegistry();
+    bootstrapBuiltins(registry);
+    const runner = new PipelineRunner(
+      {
+        name: 'failing-command',
+        mode: 'trusted',
+        tracks: [
+          {
+            id: 't',
+            name: 'T',
+            tasks: [{ id: 'fail', name: 'Fail', command: 'fail-command' }],
+          },
+        ],
+      },
+      dir,
+      {
+        registry,
+        runtime: {
+          ...fakeRuntime(),
+          async runCommand() {
+            return {
+              ...taskResult(''),
+              exitCode: 1,
+              stderr: 'command failed',
+              stderrBytes: 'command failed'.length,
+            };
+          },
+        },
+        skipPluginLoading: true,
+      },
+    );
+
+    try {
+      const result = await runner.start();
+
+      expect(result.success).toBe(false);
+      expect(runner.status).toBe('failed');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('start rejects task cwd values that escape the workDir', async () => {
     const dir = makeDir();
     const outside = makeDir();

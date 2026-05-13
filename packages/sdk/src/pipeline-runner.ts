@@ -105,7 +105,7 @@ export class PipelineRunner {
       },
     })
       .then((result) => {
-        if (this._status === 'running') this._status = 'done';
+        if (this._status === 'running') this._status = result.success ? 'done' : 'failed';
         return result;
       })
       .catch((err) => {
@@ -190,7 +190,11 @@ export class PipelineRunner {
         return;
       }
       case 'run_end':
-        this._status = this._abortController.signal.aborted ? 'aborted' : 'done';
+        this._status = this._abortController.signal.aborted
+          ? 'aborted'
+          : event.success
+            ? 'done'
+            : 'failed';
         return;
       case 'run_error':
         if (this._status !== 'aborted') this._status = 'failed';
