@@ -5,7 +5,12 @@ import { execFileSync } from 'node:child_process';
 import { rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-rmSync(resolve(process.cwd(), 'dist'), { recursive: true, force: true });
+rmSync(resolve(process.cwd(), 'dist'), {
+  recursive: true,
+  force: true,
+  maxRetries: 5,
+  retryDelay: 100,
+});
 
 execFileSync('tsc', ['-p', 'tsconfig.json'], {
   cwd: process.cwd(),

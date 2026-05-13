@@ -1,4 +1,4 @@
-﻿import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import yaml from 'js-yaml';
 import type { PipelineConfig, RawPipelineConfig } from '@tagma/types';
 import {

@@ -17,6 +17,13 @@ const result = await runPipeline(config, process.cwd(), {
 
 Use `@tagma/sdk` for the Bun-first convenience API with built-ins registered by default.
 
+## Runtime Contract
+
+`@tagma/core` intentionally does not declare an `engines.bun` requirement. The
+published package is runtime-agnostic orchestration code; concrete Bun-only
+process execution, file watching, and CLI convenience behavior live in
+`@tagma/runtime-bun` and `@tagma/sdk`.
+
 ## Publishing
 
 `@tagma/core` is a public npm dependency of `@tagma/runtime-bun` and `@tagma/sdk`. Publish it after `@tagma/types` and before runtime or SDK packages.

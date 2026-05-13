@@ -53,7 +53,7 @@
     },
     "apps/electron": {
       "name": "tagma-desktop",
-      "version": "0.5.19",
+      "version": "0.5.20",
       "dependencies": {
         "@tagma/types": "workspace:*",
       },
@@ -67,42 +67,54 @@
     },
     "packages/completion-llm-judge": {
       "name": "@tagma/completion-llm-judge",
-      "version": "0.2.24",
-      "peerDependencies": {
+      "version": "0.2.25",
+      "devDependencies": {
         "@tagma/types": "workspace:*",
+      },
+      "peerDependencies": {
+        "@tagma/types": ">=0.4.18 <0.5.0",
       },
     },
     "packages/core": {
       "name": "@tagma/core",
-      "version": "0.1.27",
+      "version": "0.1.28",
       "dependencies": {
         "@tagma/types": "workspace:*",
       },
     },
     "packages/driver-claude-code": {
       "name": "@tagma/driver-claude-code",
-      "version": "0.3.24",
-      "peerDependencies": {
+      "version": "0.3.25",
+      "devDependencies": {
         "@tagma/types": "workspace:*",
+      },
+      "peerDependencies": {
+        "@tagma/types": ">=0.4.18 <0.5.0",
       },
     },
     "packages/driver-codex": {
       "name": "@tagma/driver-codex",
-      "version": "0.2.24",
-      "peerDependencies": {
+      "version": "0.2.25",
+      "devDependencies": {
         "@tagma/types": "workspace:*",
+      },
+      "peerDependencies": {
+        "@tagma/types": ">=0.4.18 <0.5.0",
       },
     },
     "packages/middleware-lightrag": {
       "name": "@tagma/middleware-lightrag",
-      "version": "0.2.25",
-      "peerDependencies": {
+      "version": "0.2.26",
+      "devDependencies": {
         "@tagma/types": "workspace:*",
+      },
+      "peerDependencies": {
+        "@tagma/types": ">=0.4.18 <0.5.0",
       },
     },
     "packages/runtime-bun": {
       "name": "@tagma/runtime-bun",
-      "version": "0.1.19",
+      "version": "0.1.20",
       "dependencies": {
         "@tagma/core": "workspace:*",
         "chokidar": "^4.0.0",
@@ -110,7 +122,7 @@
     },
     "packages/sdk": {
       "name": "@tagma/sdk",
-      "version": "0.7.27",
+      "version": "0.7.28",
       "dependencies": {
         "@tagma/core": "workspace:*",
         "@tagma/runtime-bun": "workspace:*",
@@ -120,7 +132,7 @@
     },
     "packages/trigger-webhook": {
       "name": "@tagma/trigger-webhook",
-      "version": "0.2.25",
+      "version": "0.2.26",
       "devDependencies": {
         "@tagma/types": "workspace:*",
       },
@@ -130,7 +142,7 @@
     },
     "packages/types": {
       "name": "@tagma/types",
-      "version": "0.4.34",
+      "version": "0.4.35",
     },
   },
   "packages": {

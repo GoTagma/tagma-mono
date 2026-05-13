@@ -27,6 +27,9 @@ The five plugin packages (`driver-codex`, `driver-claude-code`, `middleware-ligh
 
 ## Quick Start
 
+Prerequisites: Bun 1.3.x for workspace install/build/test, plus Node.js 22+ for
+repository maintenance scripts that intentionally run with `node`.
+
 ```bash
 bun install
 bun run build
@@ -47,6 +50,9 @@ Every task can consume inputs and publish outputs.
 - Prompt tasks receive inputs as context and produce outputs as structured JSON.
 - When names match, Tagma connects them automatically.
 - Use `from` only when you need to disambiguate, rename, or read raw streams.
+- Command placeholders are verbatim by default. Use `| shellquote` for string
+  inputs in shell commands; otherwise a value containing shell syntax can change
+  the command that runs.
 
 YAML uses task-level `inputs` / `outputs`; there is no public `ports:` key.
 
@@ -57,7 +63,7 @@ tasks:
 
   - id: weather
     depends_on: [choose_city]
-    command: 'weather --city "{{inputs.city}}"'
+    command: 'weather --city {{inputs.city | shellquote}}'
     inputs:
       city:
         type: string
@@ -144,9 +150,13 @@ bun run dist:desktop:linux   # Build and produce Linux AppImage, .deb, .rpm, and
 bun run dist:desktop:mac     # Build and produce macOS dmg
 ```
 
-Each installer also ships a platform-matched `opencode` CLI binary in `resources/opencode/` so end users do not need `bun` or a manual install. The version is pinned via `apps/electron/package.json -> tagma.bundledOpencodeVersion`; bump that field and re-run a `dist:desktop:*` command to cut a release with a new default. Users can upgrade opencode in-app (Editor Settings -> OpenCode CLI); those upgrades land in `userData/opencode/` and take precedence over the shipped copy without replacing it.
+Each installer also ships platform-matched `opencode` and `bun` binaries in `resources/opencode/` and `resources/bun/`, so end users do not need a manual runtime install for bundled AI execution or plugin dependency installation. The versions are pinned via `apps/electron/package.json -> tagma.bundledOpencodeVersion` and `tagma.bundledBunVersion`; bump those fields and re-run a `dist:desktop:*` command to cut a release with new defaults. Users can upgrade opencode in-app (Editor Settings -> OpenCode CLI); those upgrades land in `userData/opencode/` and take precedence over the shipped copy without replacing it.
 
 The `tagma-desktop` package is private and is never published to npm.
+
+Desktop release signing is opt-in in CI. Set `TAGMA_SIGN_APP=1` plus the
+platform signing secrets to sign installers; local and alpha packaging skip app
+signing by default.
 
 ### Lint & Format
 
@@ -195,7 +205,7 @@ The version script only updates package `version` fields; commit and push the ch
 
 Auth currently comes from the `NPM_TOKEN` repo secret, written to `.npmrc` only for the publish job and removed in a cleanup step after publishing.
 
-To force-publish without a version bump, trigger the workflow manually from the Actions tab and pass a JSON array, for example `["types","sdk"]`. Valid keys: `types`, `core`, `runtime-bun`, `codex`, `claude-code`, `lightrag`, `webhook`, `llm-judge`, `sdk`.
+To re-trigger publish after bumping a package version manually, dispatch the workflow from the Actions tab and pass a JSON array, for example `["types","sdk"]`. Valid keys: `types`, `core`, `runtime-bun`, `codex`, `claude-code`, `lightrag`, `webhook`, `llm-judge`, `sdk`. npm does not allow overwriting an already-published version.
 
 Publish order matters because npm rejects a package version that depends on workspace package versions that do not exist yet:
 
@@ -240,7 +250,7 @@ Local edits to the desktop sources stay inside this monorepo: edit files under `
 ## Dependency Principles
 
 1. **No internal path imports** - packages only import from public `@tagma/*` package names.
-2. **No `latest`** - workspace packages use `workspace:*`, third-party dependencies use pinned ranges.
+2. **No `latest`** - workspace packages use `workspace:*`; third-party semver ranges are resolved by the committed root `bun.lock` and CI uses `bun install --frozen-lockfile`.
 3. **Published tarballs exclude `src/`** - public packages ship built `dist/` output; `@tagma/sdk` also ships its Bun-only `scripts/preinstall.js` guard.
 4. **Editor uses public API only** - it consumes sdk/types via workspace links and never reaches into package `src/`.
 

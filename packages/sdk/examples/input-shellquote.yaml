@@ -1,0 +1,37 @@
+# input-shellquote.yaml
+# --------------------------------------------------------------------------
+# Demonstrates safe shell interpolation for command task inputs.
+# Unfiltered `{{inputs.city}}` is a verbatim replacement; shell command
+# arguments should use `| shellquote` unless the value is intentionally a
+# trusted command fragment.
+# --------------------------------------------------------------------------
+pipeline:
+  name: input-shellquote
+  mode: trusted
+  timeout: 2m
+
+  tracks:
+    - id: demo
+      name: Input shell quoting
+      color: '#0f766e'
+      permissions:
+        read: true
+        write: true
+        execute: true
+
+      tasks:
+        - id: choose_city
+          name: Choose city
+          command: 'printf ''{"city":"Shanghai; echo unsafe"}\n'''
+          outputs:
+            city:
+              type: string
+
+        - id: print_city
+          name: Print city safely
+          depends_on: [choose_city]
+          command: 'printf ''city=%s\n'' {{inputs.city | shellquote}}'
+          inputs:
+            city:
+              type: string
+              required: true

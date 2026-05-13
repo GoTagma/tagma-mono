@@ -271,7 +271,7 @@ jobs:
           echo "overlay applied; apps/electron version = $version"
 
       - name: Install deps
-        run: bun install
+        run: bun install --frozen-lockfile
 
       - name: Switch Bun to baseline runtime (Windows)
         # Bun's own cross-target download fails consistently on Windows GitHub
@@ -346,6 +346,32 @@ jobs:
               ;;
             win)
               bun ./scripts/fetch-opencode.mjs --platform=win32 --arch=x64
+              ;;
+            *)
+              echo "unknown matrix.platform: ${{ matrix.platform }}"
+              exit 1
+              ;;
+          esac
+
+      # Pre-stage a real Bun binary for packaged plugin installs. The editor
+      # sidecar is a Bun-compiled executable, not a package-manager binary, so
+      # plugin install needs resources/bun/bin/bun(.exe) wired through
+      # TAGMA_BUN_BIN at runtime.
+      - name: Stage bundled Bun binary
+        working-directory: apps/electron
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ matrix.platform }}" in
+            mac)
+              bun ./scripts/fetch-bun.mjs --platform=darwin --arch=arm64
+              bun ./scripts/fetch-bun.mjs --platform=darwin --arch=x64
+              ;;
+            linux)
+              bun ./scripts/fetch-bun.mjs --platform=linux --arch=x64
+              ;;
+            win)
+              bun ./scripts/fetch-bun.mjs --platform=win32 --arch=x64
               ;;
             *)
               echo "unknown matrix.platform: ${{ matrix.platform }}"
@@ -615,10 +641,33 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          TAGMA_SIGN_APP: ${{ secrets.TAGMA_SIGN_APP }}
+          MAC_CODE_SIGN_IDENTITY: ${{ secrets.MAC_CODE_SIGN_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          if [ "${TAGMA_SIGN_APP:-}" != "1" ]; then
+            echo "TAGMA_SIGN_APP != 1 - skipping installer/app code signing"
+            unset CSC_LINK CSC_KEY_PASSWORD WIN_CSC_LINK WIN_CSC_KEY_PASSWORD
+            unset APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+          else
+            echo "TAGMA_SIGN_APP=1 - installer/app code signing enabled"
+            if [ "${{ matrix.platform }}" = "mac" ]; then
+              if [ -z "${CSC_LINK:-}" ] || [ -z "${CSC_KEY_PASSWORD:-}" ] || [ -z "${MAC_CODE_SIGN_IDENTITY:-}" ]; then
+                echo "mac signing requires CSC_LINK, CSC_KEY_PASSWORD, and MAC_CODE_SIGN_IDENTITY"
+                exit 1
+              fi
+            fi
+            if [ "${{ matrix.platform }}" = "win" ]; then
+              if [ -z "${WIN_CSC_LINK:-}" ] || [ -z "${WIN_CSC_KEY_PASSWORD:-}" ]; then
+                echo "windows signing requires WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD"
+                exit 1
+              fi
+            fi
+          fi
+
           run_builder() {
             local label="$1"
             shift
@@ -652,9 +701,13 @@ jobs:
 
           case "${{ matrix.platform }}" in
             mac)
-              run_builder "mac arm64" --mac --arm64 -c.directories.output=release/mac-arm64
+              mac_sign_args=(-c.mac.identity=null)
+              if [ "${TAGMA_SIGN_APP:-}" = "1" ]; then
+                mac_sign_args=(-c.mac.identity="$MAC_CODE_SIGN_IDENTITY")
+              fi
+              run_builder "mac arm64" --mac --arm64 "${mac_sign_args[@]}" -c.directories.output=release/mac-arm64
               collect_builder_output release/mac-arm64
-              run_builder "mac x64" --mac --x64 -c.directories.output=release/mac-x64
+              run_builder "mac x64" --mac --x64 "${mac_sign_args[@]}" -c.directories.output=release/mac-x64
               collect_builder_output release/mac-x64
               ;;
             *)

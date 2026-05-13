@@ -1,4 +1,4 @@
-﻿# @tagma/middleware-lightrag
+# @tagma/middleware-lightrag
 
 [LightRAG](https://github.com/HKUDS/LightRAG) knowledge-graph retrieval middleware for [@tagma/sdk](https://www.npmjs.com/package/@tagma/sdk).
 

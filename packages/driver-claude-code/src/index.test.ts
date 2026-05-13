@@ -21,6 +21,10 @@ describe('driver-claude-code plugin shape', () => {
     expect(typeof plugin.capabilities!.drivers!['claude-code'].buildCommand).toBe('function');
   });
 
+  test('manifest accepts compatible @tagma/types minor releases', () => {
+    expect(manifest.peerDependencies?.['@tagma/types']).toBe('>=0.4.18 <0.5.0');
+  });
+
   test('buildCommand returns a SpawnSpec-shaped object', async () => {
     const task = {
       id: 't1',

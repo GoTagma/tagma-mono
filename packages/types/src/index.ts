@@ -843,14 +843,18 @@ export type PluginModule = CapabilityPluginModule;
  *       "tagmaPlugin": {
  *         "category": "drivers",
  *         "type": "codex",
- *         "minEditorVersion": "0.2.0"
+ *         "minEditorVersion": "0.2.0",
+ *         "minDesktopVersion": "0.5.17"
  *       }
  *     }
  */
 export interface PluginManifest {
   readonly category: PluginCategory;
   readonly type: string;
+  /** Minimum `tagma-editor` package version required by this plugin. */
   readonly minEditorVersion?: string;
+  /** Minimum packaged desktop shell version required by this plugin. */
+  readonly minDesktopVersion?: string;
 }
 
 // ═══ Wire Protocol: Run Events ═══

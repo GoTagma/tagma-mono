@@ -21,6 +21,10 @@ describe('driver-codex plugin shape', () => {
     expect(typeof plugin.capabilities!.drivers!.codex.buildCommand).toBe('function');
   });
 
+  test('manifest accepts compatible @tagma/types minor releases', () => {
+    expect(manifest.peerDependencies?.['@tagma/types']).toBe('>=0.4.18 <0.5.0');
+  });
+
   test('buildCommand returns spawn spec without probing the codex binary', async () => {
     const original = Bun.spawnSync;
     let called = false;

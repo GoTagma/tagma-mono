@@ -51,7 +51,7 @@ import type {
 - `TriggerPlugin` / `TriggerWatchHandle` -- starts a pre-task watcher and returns `{ fired, dispose }` so the engine can release resources on success, failure, timeout, or abort
 - `CompletionPlugin` -- validates task output (`check`)
 - `MiddlewarePlugin` -- enriches prompts before execution through `enhanceDoc(doc, config, ctx)`, operating on a structured `PromptDocument`
-- `PluginManifest` -- shape of the `tagmaPlugin` field a plugin package declares in its `package.json` (`{ category, type }`). Hosts use this for auto-discovery without importing the module
+- `PluginManifest` -- shape of the `tagmaPlugin` field a plugin package declares in its `package.json` (`{ category, type, minEditorVersion?, minDesktopVersion? }`). Hosts use this for auto-discovery without importing the module. `minEditorVersion` is the `tagma-editor` package version; `minDesktopVersion` is the packaged desktop shell version.
 - `TagmaPlugin` / `PluginCapabilities` -- package-level plugin shape for one package that can provide one or more drivers, triggers, completions, or middlewares
 - `PluginSchema` / `PluginParamDef` / `PluginParamType` -- optional declarative form metadata so visual editors can render typed config forms for a plugin
 - `PluginCategory` -- `'drivers' | 'triggers' | 'completions' | 'middlewares'`

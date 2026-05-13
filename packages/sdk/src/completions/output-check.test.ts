@@ -30,8 +30,8 @@ test('output_check drains verbose check stdout so the check process can exit', a
 
     const passed = await OutputCheckCompletion.check(
       {
-        check: `node "${script}"`,
-        timeout: '1s',
+        check: { argv: [process.platform === 'win32' ? 'node.exe' : 'node', script] },
+        timeout: '5s',
       },
       taskResult(),
       { workDir: dir, signal: new AbortController().signal, runtime: bunRuntime() },

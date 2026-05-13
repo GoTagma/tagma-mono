@@ -29,6 +29,9 @@ apps/electron/release/
 # Opencode binary staged by apps/electron/scripts/fetch-opencode.mjs
 # before electron-builder packs it via extraResources. ~150 MB per platform.
 apps/electron/build/opencode/
+# Bun binary staged by apps/electron/scripts/fetch-bun.mjs for packaged
+# plugin installs. ~60-120 MB per platform.
+apps/electron/build/bun/
 
 
 docs/

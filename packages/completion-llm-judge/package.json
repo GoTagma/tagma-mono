@@ -1,6 +1,6 @@
 {
   "name": "@tagma/completion-llm-judge",
-  "version": "0.2.24",
+  "version": "0.2.25",
   "description": "LLM-as-judge completion plugin for tagma-sdk pipelines",
   "license": "MIT",
   "repository": {
@@ -49,7 +49,10 @@
     "test": "bun test",
     "prepublishOnly": "bun run build"
   },
-  "peerDependencies": {
+  "devDependencies": {
     "@tagma/types": "workspace:*"
+  },
+  "peerDependencies": {
+    "@tagma/types": ">=0.4.18 <0.5.0"
   }
 }

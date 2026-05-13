@@ -174,6 +174,7 @@ export function readPluginManifest(pkgJson: unknown): PluginManifest | null {
   const category = m.category;
   const type = m.type;
   const minEditorVersion = m.minEditorVersion;
+  const minDesktopVersion = m.minDesktopVersion;
   if (typeof category !== 'string' || !VALID_CATEGORIES.has(category as PluginCategory)) {
     throw new Error(
       `tagmaPlugin.category must be one of ${[...VALID_CATEGORIES].join(', ')}, got ${JSON.stringify(category)}`,
@@ -195,10 +196,21 @@ export function readPluginManifest(pkgJson: unknown): PluginManifest | null {
       `tagmaPlugin.minEditorVersion must be a non-empty string, got ${JSON.stringify(minEditorVersion)}`,
     );
   }
+  if (
+    minDesktopVersion !== undefined &&
+    (typeof minDesktopVersion !== 'string' || minDesktopVersion.trim().length === 0)
+  ) {
+    throw new Error(
+      `tagmaPlugin.minDesktopVersion must be a non-empty string, got ${JSON.stringify(minDesktopVersion)}`,
+    );
+  }
   return {
     category: category as PluginCategory,
     type,
     ...(typeof minEditorVersion === 'string' ? { minEditorVersion: minEditorVersion.trim() } : {}),
+    ...(typeof minDesktopVersion === 'string'
+      ? { minDesktopVersion: minDesktopVersion.trim() }
+      : {}),
   };
 }
 

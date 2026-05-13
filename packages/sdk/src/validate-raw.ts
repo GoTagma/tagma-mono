@@ -1,4 +1,4 @@
-﻿// Raw Pipeline Config Validation
+// Raw Pipeline Config Validation
 //
 // Validates a RawPipelineConfig without resolving inheritance or executing
 // anything  - intended for real-time feedback in a visual editor (e.g. drag

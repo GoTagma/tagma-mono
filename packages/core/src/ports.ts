@@ -96,11 +96,11 @@ export interface SubstituteResult {
  *   - null / undefined → empty string (name is also reported as unresolved)
  *   - anything else (object, array, json port) → `JSON.stringify(value)`
  *
- * Values are substituted *verbatim* — quoting is the user's
- * responsibility in the authored text. For command lines that interpolate
- * user-provided strings, authors should wrap the placeholder in quotes:
+ * Values are substituted *verbatim* unless the placeholder uses an explicit
+ * filter. For command lines that interpolate user-provided strings, authors
+ * should use the `shellquote` filter:
  *
- *     weather.sh --city "{{inputs.city}}"
+ *     weather.sh --city {{inputs.city | shellquote}}
  *
  * That's a documented contract rather than a silent shell-escape, because
  * silent escaping would hide the difference between `--city Shanghai` and

@@ -14,6 +14,10 @@ describe('middleware-lightrag plugin shape', () => {
     expect(typeof plugin.capabilities!.middlewares!.lightrag.enhanceDoc).toBe('function');
   });
 
+  test('manifest accepts compatible @tagma/types minor releases', () => {
+    expect(manifest.peerDependencies?.['@tagma/types']).toBe('>=0.4.18 <0.5.0');
+  });
+
   test('required retrieval fails when LightRAG returns empty context', async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async () =>

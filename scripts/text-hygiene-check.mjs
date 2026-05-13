@@ -23,6 +23,7 @@ const TEXT_EXTENSIONS = new Set([
 
 const CONFLICT_RE = /^(<<<<<<<|=======|>>>>>>>)(?:\s|$)/m;
 const MOJIBAKE_RE = /[\uFFFD\u95B3\u95C2\u95C1\u9225\u9239]/;
+const UTF8_BOM = '\uFEFF';
 
 function extensionOf(path) {
   const idx = path.lastIndexOf('.');
@@ -33,7 +34,10 @@ function* walk(path) {
   if (!existsSync(path)) return;
   const stat = statSync(path);
   if (stat.isFile()) {
-    if (!SKIP_FILES.has(path.split(/[\\/]/).at(-1) ?? '') && TEXT_EXTENSIONS.has(extensionOf(path))) {
+    if (
+      !SKIP_FILES.has(path.split(/[\\/]/).at(-1) ?? '') &&
+      TEXT_EXTENSIONS.has(extensionOf(path))
+    ) {
       yield path;
     }
     return;
@@ -50,6 +54,7 @@ const failures = [];
 for (const root of ROOTS) {
   for (const file of walk(root)) {
     const text = readFileSync(file, 'utf8');
+    if (text.startsWith(UTF8_BOM)) failures.push(`${file}: UTF-8 BOM`);
     if (CONFLICT_RE.test(text)) failures.push(`${file}: conflict marker`);
     if (MOJIBAKE_RE.test(text)) failures.push(`${file}: likely mojibake`);
   }

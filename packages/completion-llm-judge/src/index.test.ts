@@ -14,6 +14,10 @@ describe('completion-llm-judge plugin shape', () => {
     expect(typeof plugin.capabilities!.completions!.llm_judge.check).toBe('function');
   });
 
+  test('manifest accepts compatible @tagma/types minor releases', () => {
+    expect(manifest.peerDependencies?.['@tagma/types']).toBe('>=0.4.18 <0.5.0');
+  });
+
   test('rejects non-http judge endpoints before fetch', async () => {
     await expect(
       LlmJudgeCompletion.check(

@@ -248,6 +248,9 @@ Every task can consume inputs and publish outputs:
 - Prompt tasks receive inputs as context and produce outputs as structured JSON.
 - When names match, Tagma connects them automatically.
 - Use `from` only when you need to disambiguate, rename, or read raw streams.
+- Command placeholders are verbatim by default. Use `| shellquote` for string
+  inputs in shell commands; otherwise a value containing shell syntax can change
+  the command that runs.
 
 There is no public `ports:` key. Use `inputs` and `outputs` directly.
 
@@ -261,7 +264,7 @@ There is no public `ports:` key. Use `inputs` and `outputs` directly.
 
 - id: test
   depends_on: [build]
-  command: 'bun test "{{inputs.bundlePath}}"'
+  command: 'bun test {{inputs.bundlePath | shellquote}}'
   inputs:
     bundlePath:
       required: true
@@ -287,7 +290,7 @@ Tasks can declare named, typed `inputs` / `outputs`. Inputs flow in from upstrea
 - id: lookup-weather
   name: Lookup weather
   depends_on: [choose-city]
-  command: weather.sh --city "{{inputs.city}}"
+  command: weather.sh --city {{inputs.city | shellquote}}
   inputs:
     city:
       type: string
@@ -328,7 +331,7 @@ Tasks can declare named, typed `inputs` / `outputs`. Inputs flow in from upstrea
 
 #### Substitution and AI prompt blocks
 
-- `{{inputs.<name>}}` is expanded verbatim in `command` and `prompt` strings before execution. Quote your placeholders in command lines (`--city "{{inputs.city}}"`) — the engine does not shell-escape.
+- `{{inputs.<name>}}` is expanded verbatim in `command` and `prompt` strings before execution. Use `{{inputs.<name> | shellquote}}` for string values interpolated into shell command strings; the unfiltered placeholder is intentionally not shell-escaped.
 - AI tasks get `[Output Format]` and `[Inputs]` blocks from inferred and explicit typed bindings.
 - Output extraction strategy: prefer `normalizedOutput` (AI tasks), fall back to stdout (command tasks). Find the last non-empty line that parses as a JSON object, then read each declared output key. Failures append a diagnostic to stderr; the binding is absent from `outputs` and downstream tasks see it as missing.
 
@@ -725,14 +728,14 @@ Use `validateRaw` for editing raw configs in a UI; pass `workDir` to `validateCo
 
 Pure helpers backing typed task bindings and internal prompt-contract inference. Safe to use in editors, simulators, and custom drivers — no I/O, no side effects. Imported from `@tagma/sdk/dataflow`:
 
-| Function                                                               | Description                                                                                                                                                                                                                                                |
-| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `substituteInputs(text, inputs)`                                       | Expand `{{inputs.<name>}}` placeholders in `text`. Returns `{ text, unresolved }`. Strings pass through, numbers/booleans coerce via `String(...)`, objects/arrays via `JSON.stringify`. Caller is responsible for shell quoting                           |
-| `extractInputReferences(text)`                                         | Return the set of input port names referenced by `{{inputs.<name>}}` placeholders in `text`. Use at edit time to flag undeclared references                                                                                                                |
-| `resolveTaskBindingInputs(task, upstreamData, dependsOn)`              | Resolve lightweight task-level `inputs` from literal values, upstream outputs, stdout/stderr, normalized output, defaults, and required flags                                                                                                              |
-| `resolveTaskInputs(task, upstreamOutputs, dependsOn)`                  | Gather the input values a task will consume from its direct upstreams. Applies `from` bindings, defaults, and type coercion. Returns `{ kind: 'ready', inputs, missingOptional }` or `{ kind: 'blocked', missingRequired, ambiguous, typeErrors, reason }` |
-| `extractTaskBindingOutputs(outputs, stdout, stderr, normalizedOutput)` | Publish lightweight task-level `outputs` from final-line JSON, stdout/stderr, normalized output, literal values, or defaults                                                                                                                               |
-| `extractTaskOutputs(ports, stdout, normalizedOutput)`                  | Internal helper for inferred prompt contracts. Strategy: prefer `normalizedOutput`; find the last non-empty line that parses as a JSON object; coerce each declared key. Returns `{ outputs, diagnostic }`                                                 |
+| Function                                                               | Description                                                                                                                                                                                                                                                                           |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `substituteInputs(text, inputs)`                                       | Expand `{{inputs.<name>}}` placeholders in `text`. Returns `{ text, unresolved, unknownFilters }`. Strings pass through, numbers/booleans coerce via `String(...)`, objects/arrays via `JSON.stringify`. Use the `shellquote` filter when interpolating command-line string arguments |
+| `extractInputReferences(text)`                                         | Return the set of input port names referenced by `{{inputs.<name>}}` placeholders in `text`. Use at edit time to flag undeclared references                                                                                                                                           |
+| `resolveTaskBindingInputs(task, upstreamData, dependsOn)`              | Resolve lightweight task-level `inputs` from literal values, upstream outputs, stdout/stderr, normalized output, defaults, and required flags                                                                                                                                         |
+| `resolveTaskInputs(task, upstreamOutputs, dependsOn)`                  | Gather the input values a task will consume from its direct upstreams. Applies `from` bindings, defaults, and type coercion. Returns `{ kind: 'ready', inputs, missingOptional }` or `{ kind: 'blocked', missingRequired, ambiguous, typeErrors, reason }`                            |
+| `extractTaskBindingOutputs(outputs, stdout, stderr, normalizedOutput)` | Publish lightweight task-level `outputs` from final-line JSON, stdout/stderr, normalized output, literal values, or defaults                                                                                                                                                          |
+| `extractTaskOutputs(ports, stdout, normalizedOutput)`                  | Internal helper for inferred prompt contracts. Strategy: prefer `normalizedOutput`; find the last non-empty line that parses as a JSON object; coerce each declared key. Returns `{ outputs, diagnostic }`                                                                            |
 
 Prompt-document helpers (`prependContext`, `renderInputsBlock`, `renderOutputSchemaBlock`) live in `@tagma/core` and are not re-exported through any `@tagma/sdk` subpath. Custom drivers / engines that need them should `import { prependContext, renderInputsBlock, renderOutputSchemaBlock } from '@tagma/core'` directly.
 
