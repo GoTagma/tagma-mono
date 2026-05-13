@@ -22,6 +22,10 @@ coverage/
 .omx
 .tmp
 
+# Local Codex browser profiles and smoke-test artifacts
+.codex-*-profile/
+.codex-smoke.png
+
 # Desktop packaging artifacts
 apps/editor/desktop-dist/
 apps/editor/desktop-dist-*/
