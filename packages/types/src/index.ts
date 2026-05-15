@@ -229,6 +229,7 @@ export interface TaskConfig {
   readonly name: string;
   readonly prompt?: string;
   readonly command?: CommandConfig;
+  readonly secrets?: readonly string[];
   readonly depends_on?: readonly string[];
   readonly trigger?: TriggerConfig;
   readonly continue_from?: string;
@@ -252,6 +253,7 @@ export interface RawTaskConfig {
   readonly name?: string;
   readonly prompt?: string;
   readonly command?: CommandConfig;
+  readonly secrets?: readonly string[];
   readonly depends_on?: readonly string[];
   readonly trigger?: TriggerConfig;
   readonly continue_from?: string;
@@ -274,6 +276,7 @@ export interface TrackConfig {
   readonly id: string;
   readonly name: string;
   readonly color?: string;
+  readonly secrets?: readonly string[];
   readonly agent_profile?: string;
   readonly model?: string;
   readonly reasoning_effort?: string;
@@ -291,6 +294,7 @@ export interface RawTrackConfig {
   readonly id: string;
   readonly name: string;
   readonly color?: string;
+  readonly secrets?: readonly string[];
   readonly agent_profile?: string;
   readonly model?: string;
   readonly reasoning_effort?: string;
@@ -320,6 +324,7 @@ export interface HooksConfig {
 export interface PipelineConfig {
   readonly name: string;
   readonly mode?: PipelineExecutionMode;
+  readonly secrets?: readonly string[];
   readonly driver?: string;
   readonly model?: string;
   readonly reasoning_effort?: string;
@@ -336,6 +341,7 @@ export interface PipelineConfig {
 export interface RawPipelineConfig {
   readonly name: string;
   readonly mode?: PipelineExecutionMode;
+  readonly secrets?: readonly string[];
   readonly driver?: string;
   readonly model?: string;
   readonly reasoning_effort?: string;
@@ -362,6 +368,18 @@ export type EnvPolicy =
   | { readonly mode: 'minimal' }
   | { readonly mode: 'inherit' }
   | { readonly mode: 'allowlist'; readonly keys: readonly string[] };
+
+export interface SecretResolverContext {
+  readonly pipelineName: string;
+  readonly trackId: string;
+  readonly taskId: string;
+  readonly workDir: string;
+}
+
+export type SecretResolver = (
+  names: readonly string[],
+  context: SecretResolverContext,
+) => Readonly<Record<string, string>> | Promise<Readonly<Record<string, string>>>;
 
 export interface RunOptions {
   readonly timeoutMs?: number;

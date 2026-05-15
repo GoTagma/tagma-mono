@@ -9,16 +9,18 @@ import {
   type MiddlewareContext,
   type MiddlewarePlugin,
   type PromptDocument,
+  type PipelineConfig,
   type TaskConfig,
   type TaskResult,
   type TaskStatus,
+  type TrackConfig,
   type TriggerPlugin,
   type TriggerWatchHandle,
 } from '../types';
 import { isCommandTaskConfig, isPromptTaskConfig } from '../types';
 import type { PluginRegistry } from '../registry';
 import { parseDuration, nowISO } from '../utils';
-import { commandLabel } from '../command';
+import { commandLabel, commandToSpawnSpec } from '../command';
 import {
   promptDocumentFromString,
   serializePromptDocument,
@@ -105,6 +107,116 @@ function isTriggerWatchHandle(value: unknown): value is TriggerWatchHandle {
 
 function applyStopAllAfterFailure(ctx: RunContext, taskId: string): void {
   if (ctx.getOnFailure(taskId) === 'stop_all') ctx.applyStopAll();
+}
+
+function collectTaskSecretNames(
+  config: PipelineConfig,
+  track: TrackConfig,
+  task: TaskConfig,
+): readonly string[] {
+  const names = new Set<string>();
+  for (const name of config.secrets ?? []) names.add(name);
+  for (const name of track.secrets ?? []) names.add(name);
+  for (const name of task.secrets ?? []) names.add(name);
+  return [...names];
+}
+
+function mergeSecretEnv(
+  specEnv: Readonly<Record<string, string>> | undefined,
+  secretEnv: Readonly<Record<string, string>>,
+): Record<string, string> | undefined {
+  if (Object.keys(secretEnv).length === 0) {
+    return specEnv ? { ...specEnv } : undefined;
+  }
+  return { ...secretEnv, ...(specEnv ?? {}) };
+}
+
+async function resolveTaskSecretEnv(
+  ctx: RunContext,
+  taskId: string,
+  track: TrackConfig,
+  task: TaskConfig,
+  names: readonly string[],
+): Promise<
+  | { readonly kind: 'ready'; readonly env: Readonly<Record<string, string>> }
+  | { readonly kind: 'blocked'; readonly reason: string }
+> {
+  if (names.length === 0) return { kind: 'ready', env: {} };
+  if (!ctx.secretResolver) {
+    return {
+      kind: 'blocked',
+      reason:
+        `task declares secret(s) ${names.join(', ')} but the host did not configure ` +
+        'a secret resolver',
+    };
+  }
+
+  let resolved: Readonly<Record<string, string>>;
+  try {
+    resolved = await ctx.secretResolver(names, {
+      pipelineName: ctx.config.name,
+      trackId: track.id,
+      taskId,
+      workDir: ctx.workDir,
+    });
+  } catch (err) {
+    return {
+      kind: 'blocked',
+      reason: `secret resolver failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  const env: Record<string, string> = {};
+  const missing: string[] = [];
+  for (const name of names) {
+    if (Object.prototype.hasOwnProperty.call(resolved, name) && typeof resolved[name] === 'string') {
+      env[name] = resolved[name]!;
+    } else {
+      missing.push(name);
+    }
+  }
+  if (missing.length > 0) {
+    return {
+      kind: 'blocked',
+      reason: `missing required secret(s): ${missing.join(', ')}`,
+    };
+  }
+  return { kind: 'ready', env };
+}
+
+async function blockTaskBeforeExecution(
+  ctx: RunContext,
+  taskId: string,
+  log: Logger,
+  reason: string,
+): Promise<void> {
+  const state = ctx.states.get(taskId)!;
+  log.error(`[task:${taskId}]`, `blocked - ${reason}`);
+  state.result = {
+    exitCode: -1,
+    stdout: '',
+    stderr: `[engine] ${reason}`,
+    stdoutPath: null,
+    stderrPath: null,
+    stdoutBytes: 0,
+    stderrBytes: reason.length,
+    durationMs: 0,
+    sessionId: null,
+    normalizedOutput: null,
+    failureKind: 'spawn_error',
+    outputs: null,
+  };
+  state.finishedAt = nowISO();
+  ctx.setTaskStatus(taskId, 'blocked');
+  try {
+    await ctx.fireHook(taskId, 'task_failure', log);
+  } catch (hookErr) {
+    log.error(
+      `[task:${taskId}]`,
+      `hook execution failed: ${hookErr instanceof Error ? hookErr.message : String(hookErr)}`,
+    );
+  }
+  applyStopAllAfterFailure(ctx, taskId);
 }
 
 async function disposeTriggerWatch(
@@ -556,6 +668,17 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
 
   // 4. Mark running — set startedAt before emitting so subscribers see a
   // complete task_update (startedAt non-null) on the status transition.
+  const secretNames = collectTaskSecretNames(config, track, task);
+  const secretResolution = await resolveTaskSecretEnv(ctx, taskId, track, task, secretNames);
+  if (secretResolution.kind === 'blocked') {
+    await blockTaskBeforeExecution(ctx, taskId, log, secretResolution.reason);
+    return;
+  }
+  const secretEnv = secretResolution.env;
+  if (secretNames.length > 0) {
+    log.debug(`[task:${taskId}]`, `secrets: ${secretNames.join(', ')}`);
+  }
+
   state.startedAt = nowISO();
   ctx.setTaskStatus(taskId, 'running');
   log.info(
@@ -668,7 +791,15 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
         );
       }
       log.debug(`[task:${taskId}]`, `command: ${commandLabel(expandedCommand)}`);
-      result = await ctx.runtime.runCommand(expandedCommand, resolvedCwd, runOpts);
+      if (Object.keys(secretEnv).length > 0) {
+        result = await ctx.runtime.runSpawn(
+          { ...commandToSpawnSpec(expandedCommand, resolvedCwd), env: secretEnv },
+          null,
+          runOpts,
+        );
+      } else {
+        result = await ctx.runtime.runCommand(expandedCommand, resolvedCwd, runOpts);
+      }
     } else {
       // AI task: apply middleware chain against a structured PromptDocument.
       const driverName = task.driver ?? track.driver ?? config.driver ?? 'opencode';
@@ -810,13 +941,21 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       const spec = await withTaskDeadline(`driver "${driverName}" buildCommand`, (signal) =>
         driver.buildCommand(enrichedTask, track, buildDriverCtx(signal)),
       );
+      const spawnSpec =
+        Object.keys(secretEnv).length > 0
+          ? { ...spec, env: mergeSecretEnv(spec.env, secretEnv) }
+          : spec;
       log.debug(`[task:${taskId}]`, `driver=${driverName}`);
-      log.debug(`[task:${taskId}]`, `spawn args: ${JSON.stringify(spec.args)}`);
-      if (spec.cwd) log.debug(`[task:${taskId}]`, `spawn cwd: ${spec.cwd}`);
-      if (spec.env)
-        log.debug(`[task:${taskId}]`, `spawn env overrides: ${Object.keys(spec.env).join(', ')}`);
-      if (spec.stdin) log.debug(`[task:${taskId}]`, `spawn stdin: ${spec.stdin.length} chars`);
-      result = await ctx.runtime.runSpawn(spec, driver, runOpts);
+      log.debug(`[task:${taskId}]`, `spawn args: ${JSON.stringify(spawnSpec.args)}`);
+      if (spawnSpec.cwd) log.debug(`[task:${taskId}]`, `spawn cwd: ${spawnSpec.cwd}`);
+      if (spawnSpec.env)
+        log.debug(
+          `[task:${taskId}]`,
+          `spawn env overrides: ${Object.keys(spawnSpec.env).join(', ')}`,
+        );
+      if (spawnSpec.stdin)
+        log.debug(`[task:${taskId}]`, `spawn stdin: ${spawnSpec.stdin.length} chars`);
+      result = await ctx.runtime.runSpawn(spawnSpec, driver, runOpts);
     }
 
     // 6. Determine terminal status (without emitting yet — result must be complete first)

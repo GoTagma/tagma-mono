@@ -22,6 +22,8 @@ export type {
   WireRunEvent,
   RunTaskState,
   TaskLogLine,
+  SecretResolver,
+  SecretResolverContext,
   ApprovalRequestInfo,
   ApprovalRequestHandle,
   TaskStatus,

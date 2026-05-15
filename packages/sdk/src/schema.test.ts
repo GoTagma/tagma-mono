@@ -166,6 +166,48 @@ pipeline:
 });
 
 describe('loadPipeline validation', () => {
+  test('preserves secret declarations at pipeline, track, and task scopes', async () => {
+    const config = await loadPipeline(
+      `
+pipeline:
+  name: Secrets
+  secrets: [PIPE_TOKEN]
+  tracks:
+    - id: t
+      name: T
+      secrets: [TRACK_TOKEN]
+      tasks:
+        - id: a
+          command: echo $env:TASK_TOKEN
+          secrets: [TASK_TOKEN]
+`,
+      'D:/workspace',
+    );
+
+    expect(config.secrets).toEqual(['PIPE_TOKEN']);
+    expect(config.tracks[0].secrets).toEqual(['TRACK_TOKEN']);
+    expect(config.tracks[0].tasks[0].secrets).toEqual(['TASK_TOKEN']);
+  });
+
+  test('rejects invalid secret names', async () => {
+    await expect(
+      loadPipeline(
+        `
+pipeline:
+  name: Bad Secrets
+  secrets: [OK_NAME, BAD-NAME]
+  tracks:
+    - id: t
+      name: T
+      tasks:
+        - id: a
+          command: echo hi
+`,
+        'D:/workspace',
+      ),
+    ).rejects.toThrow(/secret name "BAD-NAME" is invalid/);
+  });
+
   test('rejects hard validation errors from validateRaw', async () => {
     await expect(
       loadPipeline(

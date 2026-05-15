@@ -2,6 +2,7 @@ import type {
   EnvPolicy,
   PipelineExecutionMode,
   PipelineConfig,
+  SecretResolver,
   TaskState,
   RunEventPayload,
   RunTaskState,
@@ -71,6 +72,7 @@ export interface RunPipelineOptions {
   readonly mode?: PipelineExecutionMode;
   readonly safeModeAllowlist?: SafeModeAllowlist;
   readonly envPolicy?: EnvPolicy;
+  readonly secretResolver?: SecretResolver;
   readonly logPrompt?: boolean;
   readonly maxConcurrency?: number;
   /**
@@ -390,6 +392,7 @@ async function runPipelineInner(
       onEvent: options.onEvent,
       runtime,
       envPolicy: options.envPolicy,
+      secretResolver: options.secretResolver,
       logPrompt: options.logPrompt ?? false,
       ...(activeTaskIds ? { activeTaskIds } : {}),
     });

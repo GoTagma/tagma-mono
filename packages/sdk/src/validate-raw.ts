@@ -102,6 +102,7 @@ const isValidId = isValidTaskId;
 const VALID_ON_FAILURE = new Set(['skip_downstream', 'stop_all', 'ignore']);
 const VALID_PIPELINE_MODES = new Set(['trusted', 'safe']);
 const PERMISSION_FIELDS = ['read', 'write', 'execute'] as const;
+const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 // Built-in plugin types always known to the SDK core, regardless of which
 // external plugin packages are installed. These MUST stay in sync with the
@@ -266,6 +267,28 @@ function validateStringList(
     refs.push(item);
   }
   return refs;
+}
+
+function validateSecretList(value: unknown, path: string, errors: ValidationError[]): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    errors.push({ path, message: 'secrets must be an array of environment variable names' });
+    return;
+  }
+  for (let i = 0; i < value.length; i++) {
+    const item = value[i];
+    const itemPath = `${path}[${i}]`;
+    if (typeof item !== 'string' || item.trim().length === 0) {
+      errors.push({ path: itemPath, message: 'secrets entries must be non-empty strings' });
+      continue;
+    }
+    if (!ENV_NAME_RE.test(item)) {
+      errors.push({
+        path: itemPath,
+        message: `secret name "${item}" is invalid. Must match /^[A-Za-z_][A-Za-z0-9_]*$/.`,
+      });
+    }
+  }
 }
 
 function dependencyRefs(task: RawTaskConfig): readonly string[] {
@@ -437,6 +460,7 @@ export function validateRaw(
     }
   }
   validateStringList(config.plugins, 'plugins', 'plugins', errors);
+  validateSecretList(config.secrets, 'secrets', errors);
   validateHooks(config.hooks, errors);
   if (knownDrivers && config.driver && !knownDrivers.has(config.driver)) {
     errors.push({
@@ -506,6 +530,7 @@ export function validateRaw(
       });
     }
     validatePermissions(track.permissions, `${trackPath}.permissions`, errors);
+    validateSecretList(track.secrets, `${trackPath}.secrets`, errors);
 
     // Track-level middlewares can reference a plugin that was uninstalled
     // after the YAML was written  - surface a warning so the user notices
@@ -657,6 +682,7 @@ export function validateRaw(
         });
       }
       validatePermissions(task.permissions, `${taskPath}.permissions`, errors);
+      validateSecretList(task.secrets, `${taskPath}.secrets`, errors);
 
       //  Plugin type warnings (trigger / completion / middlewares)
       // Only fire when the host supplied a `knownTypes` snapshot, so offline

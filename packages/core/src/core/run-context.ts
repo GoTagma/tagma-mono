@@ -4,6 +4,7 @@ import type {
   PipelineConfig,
   RunEventPayload,
   EnvPolicy,
+  SecretResolver,
   TaskState,
   TaskStatus,
 } from '../types';
@@ -42,6 +43,7 @@ export interface RunContextOptions {
   readonly onEvent?: (event: RunEventPayload) => void;
   readonly runtime: TagmaRuntime;
   readonly envPolicy?: EnvPolicy;
+  readonly secretResolver?: SecretResolver;
   readonly logPrompt: boolean;
   readonly activeTaskIds?: ReadonlySet<string>;
 }
@@ -62,6 +64,7 @@ export class RunContext {
   readonly onEvent?: (event: RunEventPayload) => void;
   readonly runtime: TagmaRuntime;
   readonly envPolicy?: EnvPolicy;
+  readonly secretResolver?: SecretResolver;
   readonly logPrompt: boolean;
   readonly activeTaskIds: ReadonlySet<string> | null;
 
@@ -85,6 +88,7 @@ export class RunContext {
     this.onEvent = options.onEvent;
     this.runtime = options.runtime;
     this.envPolicy = options.envPolicy;
+    this.secretResolver = options.secretResolver;
     this.logPrompt = options.logPrompt;
     this.activeTaskIds = options.activeTaskIds ?? null;
 

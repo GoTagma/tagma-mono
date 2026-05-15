@@ -143,6 +143,7 @@ export function resolveConfig(raw: RawPipelineConfig, workDir: string): Pipeline
         name,
         prompt: rawTask.prompt,
         command: rawTask.command,
+        secrets: rawTask.secrets,
         depends_on: rawTask.depends_on,
         trigger: rawTask.trigger,
         continue_from: rawTask.continue_from
@@ -172,6 +173,7 @@ export function resolveConfig(raw: RawPipelineConfig, workDir: string): Pipeline
       id: rawTrack.id,
       name: rawTrack.name,
       color: rawTrack.color,
+      secrets: rawTrack.secrets,
       agent_profile: rawTrack.agent_profile,
       model: rawTrack.model ?? raw.model,
       reasoning_effort: rawTrack.reasoning_effort ?? raw.reasoning_effort,
@@ -187,6 +189,7 @@ export function resolveConfig(raw: RawPipelineConfig, workDir: string): Pipeline
   return {
     name: raw.name,
     mode: raw.mode,
+    secrets: raw.secrets,
     driver: raw.driver,
     model: raw.model,
     reasoning_effort: raw.reasoning_effort,
@@ -289,6 +292,7 @@ export function deresolvePipeline(config: PipelineConfig, workDir: string): RawP
         ...(task.name ? { name: task.name } : {}),
         ...(task.prompt !== undefined ? { prompt: task.prompt } : {}),
         ...(isCommandTaskConfig(task) ? { command: task.command } : {}),
+        ...(task.secrets?.length ? { secrets: task.secrets } : {}),
         ...(task.depends_on?.length ? { depends_on: task.depends_on } : {}),
         ...(task.trigger ? { trigger: task.trigger } : {}),
         ...(task.continue_from ? { continue_from: task.continue_from } : {}),
@@ -316,6 +320,7 @@ export function deresolvePipeline(config: PipelineConfig, workDir: string): RawP
       id: track.id,
       name: track.name,
       ...(track.color ? { color: track.color } : {}),
+      ...(track.secrets?.length ? { secrets: track.secrets } : {}),
       ...(track.agent_profile ? { agent_profile: track.agent_profile } : {}),
       ...(track.model && track.model !== config.model ? { model: track.model } : {}),
       ...(track.reasoning_effort && track.reasoning_effort !== config.reasoning_effort
@@ -340,6 +345,7 @@ export function deresolvePipeline(config: PipelineConfig, workDir: string): RawP
   return {
     name: config.name,
     ...(config.mode ? { mode: config.mode } : {}),
+    ...(config.secrets?.length ? { secrets: config.secrets } : {}),
     ...(config.driver ? { driver: config.driver } : {}),
     ...(config.model ? { model: config.model } : {}),
     ...(config.reasoning_effort ? { reasoning_effort: config.reasoning_effort } : {}),
