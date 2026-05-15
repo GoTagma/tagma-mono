@@ -13,6 +13,12 @@ const GATES = [
     args: ['run', 'check:text'],
   },
   {
+    id: 'deps',
+    name: 'Dependency & lockfile integrity',
+    angle: 'bun.lock presence, frozen-lockfile sync, internal @tagma/* version ranges',
+    args: ['run', 'check:deps'],
+  },
+  {
     id: 'format',
     name: 'Format check',
     angle: 'Prettier drift across packages and apps',
@@ -35,6 +41,12 @@ const GATES = [
     name: 'Unit and integration tests',
     angle: 'Bun test suites for public packages, editor, and desktop shell',
     args: ['run', 'test'],
+  },
+  {
+    id: 'scripts',
+    name: 'Verification tooling self-test',
+    angle: 'node:test suite for the dependency-gate semver evaluator',
+    args: ['run', 'test:scripts'],
   },
   {
     id: 'build',
