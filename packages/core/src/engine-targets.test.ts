@@ -28,7 +28,12 @@ function taskResult(stdout: string): TaskResult {
 function fakeRuntime(seenCommands: string[]): TagmaRuntime {
   return {
     async runCommand(command) {
-      const text = typeof command === 'string' ? command : 'shell' in command ? command.shell : command.argv.join(' ');
+      const text =
+        typeof command === 'string'
+          ? command
+          : 'shell' in command
+            ? command.shell
+            : command.argv.join(' ');
       seenCommands.push(text);
       return taskResult(text);
     },

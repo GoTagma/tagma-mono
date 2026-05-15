@@ -631,9 +631,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
         // verbatim and silently re-open the shell-injection vector the
         // filter exists to close. Surface a clear diagnostic that names
         // each offending filter so the YAML author can fix it.
-        const detail = unknownFilters
-          .map(({ name, filter }) => `${name} | ${filter}`)
-          .join(', ');
+        const detail = unknownFilters.map(({ name, filter }) => `${name} | ${filter}`).join(', ');
         const reason =
           `command placeholder uses unknown filter(s): ${detail}. ` +
           `Supported filter: shellquote.`;
@@ -697,9 +695,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
         // so a typo doesn't silently mean the YAML author got something
         // different from what they expected (e.g. `| shelquote` left the
         // value unquoted in a sentence about quoting).
-        const detail = unknownFilters
-          .map(({ name, filter }) => `${name} | ${filter}`)
-          .join(', ');
+        const detail = unknownFilters.map(({ name, filter }) => `${name} | ${filter}`).join(', ');
         log.warn(
           `[task:${taskId}]`,
           `prompt uses unknown placeholder filter(s): ${detail}. Supported filter: shellquote.`,

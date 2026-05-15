@@ -82,10 +82,9 @@ describe('substituteInputs', () => {
     // shell-injection vector. We expose it as `unknownFilters` so the
     // executor can refuse to run the command, while leaving `unresolved`
     // unchanged for cases where the value really is missing.
-    const { text, unresolved, unknownFilters } = substituteInputs(
-      'echo {{inputs.x | shelquote}}',
-      { x: 'a; rm -rf /' },
-    );
+    const { text, unresolved, unknownFilters } = substituteInputs('echo {{inputs.x | shelquote}}', {
+      x: 'a; rm -rf /',
+    });
     expect(text).toBe('echo a; rm -rf /');
     expect(unresolved).toEqual([]);
     expect(unknownFilters).toEqual([{ name: 'x', filter: 'shelquote' }]);

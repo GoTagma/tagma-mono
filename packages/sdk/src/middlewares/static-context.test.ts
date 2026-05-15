@@ -40,7 +40,10 @@ describe('StaticContextMiddleware', () => {
       // returned only 6 bytes (= 3 whole chars), so rawContent.length
       // came back as 3 and never hit the truncation
       // branch even though the file was clearly bigger than max_chars.
-      writeFileSync(join(tmp, 'reference.txt'), '\u00e1\u00e9\u00ed\u00f3\u00fa\u00f1\u00fc\u00e7\u00f8\u00e5');
+      writeFileSync(
+        join(tmp, 'reference.txt'),
+        '\u00e1\u00e9\u00ed\u00f3\u00fa\u00f1\u00fc\u00e7\u00f8\u00e5',
+      );
       const doc: PromptDocument = { contexts: [], task: 'Do the work' };
       const ctx: MiddlewareContext = {
         workDir: tmp,

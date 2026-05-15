@@ -200,9 +200,7 @@ test('runSpawn: missingBinary strips path components and extensions', async () =
   // that file is gone we still want the editor to look up the install hint
   // by the canonical CLI name, not the full disk path.
   const fakePath =
-    process.platform === 'win32'
-      ? 'C:\\does\\not\\exist\\claude.cmd'
-      : '/does/not/exist/claude';
+    process.platform === 'win32' ? 'C:\\does\\not\\exist\\claude.cmd' : '/does/not/exist/claude';
   const result = await runSpawn({ args: [fakePath] }, null, {});
   expect(result.failureKind).toBe('binary_missing');
   expect(result.missingBinary).toBe('claude');

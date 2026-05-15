@@ -141,6 +141,17 @@ bun run --filter @tagma/sdk test          # SDK only
 bun run --filter tagma-editor test        # Editor only
 ```
 
+### Full Verification
+
+```bash
+bun run verify       # Text hygiene -> format -> type checks -> lint -> tests -> full desktop build
+bun run verify:quick # Same quality gates, but skips the full desktop build
+bun run verify:full  # Explicit full verification alias
+```
+
+`verify` keeps running after a failed gate so one run can report problems from
+multiple angles. It exits non-zero unless every selected gate passes.
+
 ### Desktop Packaging
 
 ```bash
