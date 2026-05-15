@@ -19,6 +19,30 @@ const GATES = [
     args: ['run', 'check:deps'],
   },
   {
+    id: 'focus',
+    name: 'Focused / disabled tests',
+    angle: 'stray .only/fdescribe/xit/debugger that mute the test gate',
+    args: ['run', 'check:focus'],
+  },
+  {
+    id: 'imports',
+    name: 'Phantom dependency & deep-import check',
+    angle: 'packages/* imports undeclared in their manifest, or bypassing a workspace entrypoint',
+    args: ['run', 'check:imports'],
+  },
+  {
+    id: 'cycles',
+    name: 'Workspace dependency cycles',
+    angle: 'circular @tagma/* runtime/publish edges that have no valid build order',
+    args: ['run', 'check:cycles'],
+  },
+  {
+    id: 'secrets',
+    name: 'Hardcoded credential scan',
+    angle: 'private keys, cloud/provider tokens, credential-like assignments in tracked files',
+    args: ['run', 'check:secrets'],
+  },
+  {
     id: 'format',
     name: 'Format check',
     angle: 'Prettier drift across packages and apps',
@@ -53,6 +77,13 @@ const GATES = [
     name: 'Full desktop build',
     angle: 'public packages, plugins, editor bundle, sidecar, and Electron compile',
     args: ['run', 'build:desktop'],
+    fullOnly: true,
+  },
+  {
+    id: 'publish',
+    name: 'Publish entrypoint & metadata integrity',
+    angle: 'non-private packages: main/module/types/exports/bin resolve, license/version present',
+    args: ['run', 'check:publish'],
     fullOnly: true,
   },
 ];
