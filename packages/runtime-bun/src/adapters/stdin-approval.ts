@@ -1,5 +1,5 @@
 import * as readline from 'readline';
-import type { ApprovalGateway, ApprovalRequest } from '@tagma/core';
+import type { ApprovalEvent, ApprovalGateway, ApprovalRequest } from '@tagma/core';
 
 export interface StdinApprovalAdapter {
   readonly detach: () => void;
@@ -34,7 +34,7 @@ export function attachStdinApprovalAdapter(gateway: ApprovalGateway): StdinAppro
     try {
       while (queue.length > 0) {
         const req = queue.shift()!;
-        if (!gateway.pending().some((p) => p.id === req.id)) continue;
+        if (!gateway.pending().some((p: ApprovalRequest) => p.id === req.id)) continue;
 
         process.stdout.write(
           `\n[APPROVAL REQUIRED] ${req.message}\n` +
@@ -70,7 +70,7 @@ export function attachStdinApprovalAdapter(gateway: ApprovalGateway): StdinAppro
     }
   }
 
-  const unsubscribe = gateway.subscribe((event) => {
+  const unsubscribe = gateway.subscribe((event: ApprovalEvent) => {
     switch (event.type) {
       case 'requested':
         queue.push(event.request);
