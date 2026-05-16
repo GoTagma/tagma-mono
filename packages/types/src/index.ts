@@ -389,6 +389,17 @@ export interface RunOptions {
   readonly maxStdoutTailBytes?: number;
   readonly maxStderrTailBytes?: number;
   readonly envPolicy?: EnvPolicy;
+  /**
+   * Live output sink. Invoked with each decoded stdout/stderr chunk as it
+   * arrives from the child — before the process exits. The runtime still
+   * persists the full stream to disk and returns the bounded tail in
+   * `TaskResult`; this callback is an additive side-channel the engine uses
+   * to surface a running task's output in real time. Decoding is
+   * incremental (`TextDecoder` streaming mode), so a chunk boundary that
+   * splits a multibyte codepoint is buffered until the next chunk rather
+   * than emitting a replacement character.
+   */
+  readonly onOutputChunk?: (stream: 'stdout' | 'stderr', text: string) => void;
 }
 
 export type RuntimeWatchEventType = 'ready' | 'add' | 'change' | 'unlink';
@@ -907,7 +918,9 @@ export interface PluginManifest {
  * from a mismatched server. This is the forward-compat seam we use
  * instead of trying to keep every old shape working.
  */
-export const RUN_PROTOCOL_VERSION = 1;
+// v2: added the `task_output` RunEventPayload variant (live child stdout/
+// stderr streamed while a task is still running).
+export const RUN_PROTOCOL_VERSION = 2;
 
 /**
  * Maximum log lines retained per task (and for pipeline-level logs) in the
@@ -916,6 +929,18 @@ export const RUN_PROTOCOL_VERSION = 1;
  * the SDK, server, and client all import the same value.
  */
 export const TASK_LOG_CAP = 500;
+
+/**
+ * Max characters retained in a task's *live* stdout/stderr buffer while it
+ * is still running (the `task_output` stream, accumulated by the server
+ * mirror and the client reducer). Bounds memory / snapshot size for a
+ * chatty task. Unlike TASK_LOG_CAP this is a soft display bound, not a
+ * correctness invariant: the terminal `task_update` replaces the live
+ * buffer with the canonical disk-backed tail, so server and client only
+ * need to agree to avoid a visual jump on SSE reconnect. When the cap is
+ * exceeded the oldest characters are dropped from the front.
+ */
+export const TASK_LIVE_OUTPUT_CAP = 256 * 1024;
 
 // ═══ Task Log Line ═══
 
@@ -1052,6 +1077,20 @@ export type RunEventPayload =
       readonly text: string;
     }
   | {
+      // Live child-process output, emitted incrementally while the task is
+      // still running (before the terminal task_update carries the bounded
+      // tail). Distinct from task_log, which carries the engine's own
+      // diagnostic Logger lines rather than the spawned process's raw
+      // stdout/stderr. Consumers append `chunk` to the task's live
+      // stdout/stderr buffer; the terminal task_update later replaces that
+      // buffer with the canonical (disk-backed, head-truncated) tail.
+      readonly type: 'task_output';
+      readonly runId: string;
+      readonly taskId: string;
+      readonly stream: 'stdout' | 'stderr';
+      readonly chunk: string;
+    }
+  | {
       readonly type: 'run_end';
       readonly runId: string;
       readonly success: boolean;
@@ -1109,6 +1148,21 @@ export interface RunSnapshotPayload {
 export type WireRunEvent = (RunEventPayload | RunSnapshotPayload) & {
   readonly seq: number;
 };
+
+/**
+ * Append a live `task_output` chunk to an accumulating stdout/stderr
+ * buffer, dropping characters from the front so the result never exceeds
+ * TASK_LIVE_OUTPUT_CAP. Shared by the editor server's session mirror and
+ * the client reducer so both bound the buffer identically (no visual jump
+ * on SSE reconnect). A leading marker records that earlier output was
+ * dropped — the full stream is always on disk and in the terminal tail.
+ */
+export function appendLiveOutput(prev: string, chunk: string): string {
+  const combined = prev + chunk;
+  if (combined.length <= TASK_LIVE_OUTPUT_CAP) return combined;
+  const marker = '[…earlier output truncated — see the on-disk log]\n';
+  return marker + combined.slice(combined.length - TASK_LIVE_OUTPUT_CAP);
+}
 
 // ═══ Runtime Utilities ═══
 export { parseDurationSafe, parseOptionalPluginTimeout } from './duration.js';

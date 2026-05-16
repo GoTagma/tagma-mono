@@ -160,8 +160,16 @@ async function collectStream(
   stream: ReadableStream<Uint8Array> | undefined,
   filePath: string | undefined,
   maxTailBytes: number,
+  onChunk?: (text: string) => void,
 ): Promise<{ text: string; totalBytes: number; path: string | null }> {
   if (!stream) return { text: '', totalBytes: 0, path: null };
+
+  // Independent streaming decoder for the live side-channel. Kept separate
+  // from the tail decoder below so emitting incremental text can't perturb
+  // the head-truncation / final-decode semantics of the returned `text`.
+  // `stream: true` buffers a codepoint split across a chunk boundary until
+  // the next chunk instead of emitting U+FFFD into the live view.
+  const liveDecoder = onChunk ? new TextDecoder() : null;
 
   let fh: FileHandle | null = null;
   let diskWriteFailed = false;
@@ -195,6 +203,18 @@ async function collectStream(
     // marked failed over a runtime stream glitch.
     for await (const value of stream as AsyncIterable<Uint8Array>) {
       totalBytes += value.length;
+
+      // Live side-channel: surface this chunk to the caller before the
+      // process exits. Best-effort — a throwing sink must not abort the
+      // drain (the child would then block on a full pipe).
+      if (liveDecoder) {
+        try {
+          const piece = liveDecoder.decode(value, { stream: true });
+          if (piece.length > 0) onChunk!(piece);
+        } catch {
+          /* ignore — live view is non-authoritative; disk + tail are */
+        }
+      }
 
       // Disk: persist every byte. Failure here degrades to tail-only mode
       // without interrupting the stream (child must not block on pipe fill).
@@ -240,6 +260,16 @@ async function collectStream(
         await fh.close();
       } catch {
         /* ignore */
+      }
+    }
+    // Flush any codepoint the streaming decoder buffered across the final
+    // chunk boundary so the live view isn't missing its last character(s).
+    if (liveDecoder) {
+      try {
+        const tail = liveDecoder.decode();
+        if (tail.length > 0) onChunk!(tail);
+      } catch {
+        /* ignore — live view is non-authoritative */
       }
     }
   }
@@ -682,10 +712,21 @@ export async function runSpawn(
   const stdoutCap = normalizeTailLimit(opts.maxStdoutTailBytes, DEFAULT_STDOUT_TAIL_BYTES);
   const stderrCap = normalizeTailLimit(opts.maxStderrTailBytes, DEFAULT_STDERR_TAIL_BYTES);
 
+  const sink = opts.onOutputChunk;
   const [exitCode, stdoutResult, stderrResult] = await Promise.all([
     proc.exited,
-    collectStream(stdoutStream, opts.stdoutPath, stdoutCap),
-    collectStream(stderrStream, opts.stderrPath, stderrCap),
+    collectStream(
+      stdoutStream,
+      opts.stdoutPath,
+      stdoutCap,
+      sink ? (text) => sink('stdout', text) : undefined,
+    ),
+    collectStream(
+      stderrStream,
+      opts.stderrPath,
+      stderrCap,
+      sink ? (text) => sink('stderr', text) : undefined,
+    ),
   ]);
   const stdout = stdoutResult.text;
   const stderr = stderrResult.text;

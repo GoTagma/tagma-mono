@@ -55,3 +55,45 @@ test('runSpawn keeps task timeout classified as timeout', async () => {
   expect(result.exitCode).toBe(-1);
   expect(result.failureKind).toBe('timeout');
 });
+
+test('runSpawn streams stdout/stderr to onOutputChunk before exit', async () => {
+  const seen: Array<{ stream: 'stdout' | 'stderr'; text: string }> = [];
+  const result = await runSpawn(
+    {
+      args: nodeArg(
+        'process.stdout.write("hello "); process.stderr.write("warn "); process.stdout.write("world")',
+      ),
+    },
+    null,
+    { onOutputChunk: (stream, text) => seen.push({ stream, text }) },
+  );
+
+  expect(result.exitCode).toBe(0);
+  const stdout = seen
+    .filter((c) => c.stream === 'stdout')
+    .map((c) => c.text)
+    .join('');
+  const stderr = seen
+    .filter((c) => c.stream === 'stderr')
+    .map((c) => c.text)
+    .join('');
+  expect(stdout).toBe('hello world');
+  expect(stderr).toBe('warn ');
+  // The bounded tail in the result still matches what was streamed.
+  expect(result.stdout).toBe('hello world');
+});
+
+test('runSpawn does not let a throwing onOutputChunk abort the drain', async () => {
+  const result = await runSpawn(
+    { args: nodeArg('process.stdout.write("abc")') },
+    null,
+    {
+      onOutputChunk: () => {
+        throw new Error('sink boom');
+      },
+    },
+  );
+
+  expect(result.exitCode).toBe(0);
+  expect(result.stdout).toBe('abc');
+});

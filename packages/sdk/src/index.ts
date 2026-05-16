@@ -9,7 +9,12 @@ export {
   TriggerTimeoutError,
 } from '@tagma/core';
 export type { EngineResult, RegisterPluginOptions, RunEventPayload } from '@tagma/core';
-export { RUN_PROTOCOL_VERSION, TASK_LOG_CAP } from '@tagma/types';
+export {
+  RUN_PROTOCOL_VERSION,
+  TASK_LOG_CAP,
+  TASK_LIVE_OUTPUT_CAP,
+  appendLiveOutput,
+} from '@tagma/types';
 export type {
   PipelineConfig,
   PipelineExecutionMode,

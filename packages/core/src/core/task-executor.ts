@@ -733,6 +733,19 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       stdoutPath,
       stderrPath,
       envPolicy: ctx.envPolicy,
+      // Surface the child's output live, while the task is still running.
+      // The authoritative bounded tail still arrives with the terminal
+      // task_update once the process exits; this is the streaming view
+      // that lets the UI show a running node's output before it finishes.
+      onOutputChunk: (stream: 'stdout' | 'stderr', text: string) => {
+        ctx.emit({
+          type: 'task_output',
+          runId: ctx.runId,
+          taskId,
+          stream,
+          chunk: text,
+        });
+      },
     };
 
     if (isCommandTaskConfig(task)) {
