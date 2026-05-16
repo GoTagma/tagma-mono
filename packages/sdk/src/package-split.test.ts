@@ -27,6 +27,7 @@ describe('Phase 6 package split', () => {
     };
     expect(pkg.exports['./runner']).toBeUndefined();
     expect(pkg.exports['./pipeline-runner']).toBeDefined();
+    expect(pkg.exports['./workflow']).toBeDefined();
     expect(pkg.exports['./logger']).toBeUndefined();
     expect(pkg.exports['./runtime/adapters/stdin-approval']).toBeUndefined();
     expect(pkg.exports['./runtime/adapters/websocket-approval']).toBeUndefined();

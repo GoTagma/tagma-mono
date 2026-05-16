@@ -20,6 +20,7 @@ import type {
   RawWorkflowPipelineConfig,
   WorkflowConfig,
   WorkflowFailurePolicy,
+  WorkflowPipelineConfig,
 } from '@tagma/types';
 import { PipelineValidationError, loadPipeline } from './schema';
 import type { ValidationError } from './validate-raw';
@@ -35,6 +36,7 @@ export type {
   RawWorkflowPipelineConfig,
   WorkflowConfig,
   WorkflowFailurePolicy,
+  WorkflowPipelineConfig,
 } from '@tagma/types';
 export type { EngineResult };
 
