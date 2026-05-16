@@ -41,6 +41,11 @@
       "import": "./dist/pipeline-runner.js",
       "default": "./dist/pipeline-runner.js"
     },
+    "./workflow": {
+      "types": "./dist/workflow.d.ts",
+      "import": "./dist/workflow.js",
+      "default": "./dist/workflow.js"
+    },
     "./approval": {
       "types": "./dist/approval.d.ts",
       "import": "./dist/approval.js",

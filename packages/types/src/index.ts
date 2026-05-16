@@ -353,6 +353,68 @@ export interface RawPipelineConfig {
   readonly tracks: readonly RawTrackConfig[];
 }
 
+// Pipeline graph / workflow config
+
+export type WorkflowFailurePolicy = 'stop_all' | 'continue_independent';
+
+export interface RawWorkflowPipelineConfig {
+  readonly id: string;
+  readonly path: string;
+  readonly depends_on?: readonly string[];
+}
+
+export interface RawWorkflowConfig {
+  readonly name: string;
+  readonly max_concurrency?: number;
+  readonly failure_policy?: WorkflowFailurePolicy;
+  readonly pipelines: readonly RawWorkflowPipelineConfig[];
+}
+
+export interface PipelineGraphPipelineConfig {
+  readonly id: string;
+  readonly config: PipelineConfig;
+  readonly cwd?: string;
+  readonly path?: string;
+  readonly depends_on?: readonly string[];
+}
+
+export interface PipelineGraphConfig {
+  readonly name: string;
+  readonly max_concurrency?: number;
+  readonly failure_policy?: WorkflowFailurePolicy;
+  readonly pipelines: readonly PipelineGraphPipelineConfig[];
+}
+
+export interface WorkflowPipelineConfig extends PipelineGraphPipelineConfig {
+  readonly path: string;
+  readonly cwd: string;
+}
+
+export interface WorkflowConfig extends PipelineGraphConfig {
+  readonly pipelines: readonly WorkflowPipelineConfig[];
+}
+
+export type PipelineGraphNodeStatus =
+  | 'waiting'
+  | 'running'
+  | 'success'
+  | 'failed'
+  | 'skipped'
+  | 'aborted';
+
+export interface PipelineGraphNodeState {
+  readonly pipelineId: string;
+  readonly path: string | null;
+  readonly dependsOn: readonly string[];
+  readonly status: PipelineGraphNodeStatus;
+  readonly runId: string | null;
+  readonly startedAt: string | null;
+  readonly finishedAt: string | null;
+  readonly error: string | null;
+}
+
+export type PipelineGraphAbortReason = 'external' | 'stop_all' | null;
+
 // ═══ SpawnSpec: Driver returns this to Engine ═══
 
 export interface SpawnSpec {
@@ -1117,6 +1179,42 @@ export type RunEventPayload =
       readonly runId: string;
       readonly requestId: string;
       readonly outcome: ApprovalOutcome;
+    };
+
+export type PipelineGraphEventPayload =
+  | {
+      readonly type: 'graph_start';
+      readonly graphRunId: string;
+      readonly workflowName: string;
+      readonly pipelines: readonly PipelineGraphNodeState[];
+    }
+  | {
+      readonly type: 'pipeline_update';
+      readonly graphRunId: string;
+      readonly pipelineId: string;
+      readonly status: PipelineGraphNodeStatus;
+      readonly runId?: string | null;
+      readonly startedAt?: string | null;
+      readonly finishedAt?: string | null;
+      readonly error?: string | null;
+    }
+  | {
+      readonly type: 'pipeline_event';
+      readonly graphRunId: string;
+      readonly pipelineId: string;
+      readonly event: RunEventPayload;
+    }
+  | {
+      readonly type: 'graph_end';
+      readonly graphRunId: string;
+      readonly success: boolean;
+      readonly abortReason: PipelineGraphAbortReason;
+      readonly pipelines: readonly PipelineGraphNodeState[];
+    }
+  | {
+      readonly type: 'graph_error';
+      readonly graphRunId: string;
+      readonly error: string;
     };
 
 // ═══ Server-Only Event Payload ═══
