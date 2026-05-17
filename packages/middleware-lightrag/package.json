@@ -49,7 +49,7 @@
     "test": "bun test",
     "prepublishOnly": "bun run build"
   },
-  "devDependencies": {
+  "dependencies": {
     "@tagma/types": "workspace:*"
   },
   "peerDependencies": {
