@@ -39,7 +39,9 @@ function taskResult(stdout: string): TaskResult {
   };
 }
 
-function fakeRuntime(onSpawn: (spec: SpawnSpec, driver: DriverPlugin | null) => string): TagmaRuntime {
+function fakeRuntime(
+  onSpawn: (spec: SpawnSpec, driver: DriverPlugin | null) => string,
+): TagmaRuntime {
   return {
     async runCommand() {
       throw new Error('runCommand should not be called for tasks with declared secrets');
@@ -117,11 +119,7 @@ describe('engine secret env injection', () => {
         registry: freshRegistry(),
         runtime: fakeRuntime((spec) => {
           seenSpec = spec;
-          return [
-            spec.env?.PIPE_TOKEN,
-            spec.env?.TRACK_TOKEN,
-            spec.env?.TASK_TOKEN,
-          ].join('|');
+          return [spec.env?.PIPE_TOKEN, spec.env?.TRACK_TOKEN, spec.env?.TASK_TOKEN].join('|');
         }),
         skipPluginLoading: true,
         secretResolver: async (names, context) => {
@@ -135,9 +133,7 @@ describe('engine secret env injection', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.states.get('t.a')?.result?.stdout).toBe(
-        'pipe-secret|track-secret|task-secret',
-      );
+      expect(result.states.get('t.a')?.result?.stdout).toBe('pipe-secret|track-secret|task-secret');
       expect(seenSpec?.env).toEqual({
         PIPE_TOKEN: 'pipe-secret',
         TRACK_TOKEN: 'track-secret',

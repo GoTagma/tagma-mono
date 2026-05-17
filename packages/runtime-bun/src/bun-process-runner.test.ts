@@ -84,15 +84,11 @@ test('runSpawn streams stdout/stderr to onOutputChunk before exit', async () => 
 });
 
 test('runSpawn does not let a throwing onOutputChunk abort the drain', async () => {
-  const result = await runSpawn(
-    { args: nodeArg('process.stdout.write("abc")') },
-    null,
-    {
-      onOutputChunk: () => {
-        throw new Error('sink boom');
-      },
+  const result = await runSpawn({ args: nodeArg('process.stdout.write("abc")') }, null, {
+    onOutputChunk: () => {
+      throw new Error('sink boom');
     },
-  );
+  });
 
   expect(result.exitCode).toBe(0);
   expect(result.stdout).toBe('abc');

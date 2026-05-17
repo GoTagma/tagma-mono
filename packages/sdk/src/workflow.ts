@@ -20,7 +20,6 @@ import type {
   RawWorkflowPipelineConfig,
   WorkflowConfig,
   WorkflowFailurePolicy,
-  WorkflowPipelineConfig,
 } from '@tagma/types';
 import { PipelineValidationError, loadPipeline } from './schema';
 import type { ValidationError } from './validate-raw';
@@ -573,14 +572,18 @@ function validatePipelineNodes(
       ids.add(pipeline.id);
     }
 
-    if (requirePath) validateWorkflowPath((pipeline as RawWorkflowPipelineConfig).path, path, errors);
+    if (requirePath)
+      validateWorkflowPath((pipeline as RawWorkflowPipelineConfig).path, path, errors);
   });
 
   pipelines.forEach((pipeline, index) => {
     const deps = pipeline.depends_on;
     if (deps === undefined) return;
     if (!Array.isArray(deps)) {
-      errors.push({ path: `pipelines[${index}].depends_on`, message: 'depends_on must be an array' });
+      errors.push({
+        path: `pipelines[${index}].depends_on`,
+        message: 'depends_on must be an array',
+      });
       return;
     }
     for (let di = 0; di < deps.length; di++) {
@@ -615,7 +618,10 @@ function validateWorkflowPath(value: unknown, basePath: string, errors: Validati
     });
   }
   if (!/\.ya?ml$/i.test(value)) {
-    errors.push({ path: `${basePath}.path`, message: 'pipeline path must be a .yaml or .yml file' });
+    errors.push({
+      path: `${basePath}.path`,
+      message: 'pipeline path must be a .yaml or .yml file',
+    });
   }
 }
 
@@ -708,7 +714,9 @@ function topologicalPipelineOrder(
 }
 
 function isTerminal(status: PipelineGraphNodeStatus): boolean {
-  return status === 'success' || status === 'failed' || status === 'skipped' || status === 'aborted';
+  return (
+    status === 'success' || status === 'failed' || status === 'skipped' || status === 'aborted'
+  );
 }
 
 function errorMessage(err: unknown): string {

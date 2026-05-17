@@ -101,8 +101,8 @@ test('publish: collectExportTargets flattens nested conditions', () => {
 });
 
 test('secrets: catches real signatures, ignores placeholders', () => {
-  assert.ok(secretHit('-----BEGIN RSA PRIVATE KEY-----', false), 'pem');
-  assert.ok(secretHit('aws_key = "AKIA1234567890ABCDEF"', false), 'akia');
+  assert.ok(secretHit('-----BEGIN ' + 'RSA PRIVATE KEY-----', false), 'pem');
+  assert.ok(secretHit('aws_key = "' + 'AKIA' + '1234567890ABCDEF"', false), 'akia');
   assert.ok(secretHit('token=ghp_' + 'a'.repeat(36), false), 'ghp');
   assert.ok(secretHit('const apiKey = "9f8e7d6c5b4a39281706abcd"', true), 'generic');
   // false-positive guards

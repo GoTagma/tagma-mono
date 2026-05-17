@@ -103,18 +103,19 @@ function buildChildEnv(
  * cmd.exe spawns the real process as a grandchild — proc.kill misses it entirely.
  * `taskkill /F /T /PID` kills the entire process tree rooted at the given PID.
  */
-function killProcessTree(pid: number): void {
-  if (process.platform !== 'win32') return;
+function killProcessTree(pid: number): boolean {
+  if (process.platform !== 'win32') return false;
   try {
     const result = Bun.spawnSync(['taskkill', '/F', '/T', '/PID', String(pid)], {
       stdout: 'pipe',
       stderr: 'pipe',
     });
+    if (result.exitCode === 0 || result.exitCode === 128) return true;
     if (result.exitCode !== 0) {
       const stderr = new TextDecoder().decode(result.stderr);
       // Exit code 128 = process not found (already exited) — not worth warning about
       if (result.exitCode !== 128) {
-        console.error(
+        console.warn(
           `[killProcessTree] taskkill exited ${result.exitCode} for PID ${pid}: ${stderr.trim()}`,
         );
       }
@@ -122,6 +123,7 @@ function killProcessTree(pid: number): void {
   } catch {
     /* best-effort — process may have already exited */
   }
+  return false;
 }
 
 function killUnixProcessGroup(pid: number, signal: NodeJS.Signals): boolean {
@@ -668,7 +670,24 @@ export async function runSpawn(
     if (process.platform === 'win32') {
       // On Windows, kill the entire process tree via taskkill. This handles
       // .cmd wrappers and nested child processes that proc.kill() misses.
-      killProcessTree(proc.pid);
+      const treeKilled = killProcessTree(proc.pid);
+      // Some restricted Windows environments deny taskkill even for direct
+      // children. Fall back to Bun's direct-child kill so abort/timeout paths
+      // can still make progress for non-wrapper commands.
+      if (!treeKilled) {
+        try {
+          proc.kill('SIGTERM');
+        } catch {
+          /* already exited */
+        }
+        forceTimer = setTimeout(() => {
+          try {
+            proc.kill('SIGKILL');
+          } catch {
+            /* already exited */
+          }
+        }, SIGKILL_DELAY_MS);
+      }
     } else {
       if (!killUnixProcessGroup(proc.pid, 'SIGTERM')) {
         proc.kill('SIGTERM');

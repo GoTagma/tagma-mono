@@ -169,7 +169,10 @@ async function resolveTaskSecretEnv(
   const env: Record<string, string> = {};
   const missing: string[] = [];
   for (const name of names) {
-    if (Object.prototype.hasOwnProperty.call(resolved, name) && typeof resolved[name] === 'string') {
+    if (
+      Object.prototype.hasOwnProperty.call(resolved, name) &&
+      typeof resolved[name] === 'string'
+    ) {
       env[name] = resolved[name]!;
     } else {
       missing.push(name);

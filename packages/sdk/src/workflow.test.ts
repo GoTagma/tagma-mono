@@ -166,7 +166,9 @@ describe('workflow YAML model', () => {
       path: .tagma/p2/p2.yaml
       depends_on: [p1]
 `);
-    expect(validateRawWorkflow(cycle).some((e) => /Circular dependency/.test(e.message))).toBe(true);
+    expect(validateRawWorkflow(cycle).some((e) => /Circular dependency/.test(e.message))).toBe(
+      true,
+    );
   });
 
   test('loads referenced pipeline YAML files from workspace-relative paths', async () => {
@@ -335,11 +337,7 @@ describe('PipelineGraphRunner', () => {
                   finish();
                   return;
                 }
-                options?.signal?.addEventListener(
-                  'abort',
-                  finish,
-                  { once: true },
-                );
+                options?.signal?.addEventListener('abort', finish, { once: true });
               }),
           ),
           skipPluginLoading: true,
