@@ -487,7 +487,7 @@ Options:
 - `registry` -- use an existing `PluginRegistry` instance
 - `builtins` -- register built-in plugins into the instance registry; defaults to `true`
 - `plugins` -- register package-level `TagmaPlugin` capability objects into the instance registry
-- `runtime` -- override process execution, file watching, file existence checks, log storage, time, and sleep; defaults to `bunRuntime()`
+- `runtime` -- override process execution, file/directory watching, file/directory existence checks, log storage, time, and sleep; defaults to `bunRuntime()`
 
 ### `createTagma().run(config, options): Promise<EngineResult>`
 
