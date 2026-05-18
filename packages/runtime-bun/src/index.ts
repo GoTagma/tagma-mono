@@ -157,6 +157,8 @@ async function* watchPath(
   watcher.on('add', (eventPath: string) => push({ type: 'add', path: eventPath }));
   watcher.on('change', (eventPath: string) => push({ type: 'change', path: eventPath }));
   watcher.on('unlink', (eventPath: string) => push({ type: 'unlink', path: eventPath }));
+  watcher.on('addDir', (eventPath: string) => push({ type: 'addDir', path: eventPath }));
+  watcher.on('unlinkDir', (eventPath: string) => push({ type: 'unlinkDir', path: eventPath }));
   watcher.on('error', fail);
 
   const onAbort = () => finish();

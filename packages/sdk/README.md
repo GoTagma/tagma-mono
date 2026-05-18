@@ -356,6 +356,14 @@ Tasks can declare named, typed `inputs` / `outputs`. Inputs flow in from upstrea
 | `path`    | `string` | Yes      | —       | File path to watch (relative to workDir)       |
 | `timeout` | `string` | No       | —       | How long to wait for the file to appear/change |
 
+#### `directory` - Directory watcher gate
+
+| Field     | Type          | Required | Default | Description                                      |
+| --------- | ------------- | -------- | ------- | ------------------------------------------------ |
+| `type`    | `"directory"` | Yes      | —       | Trigger type                                     |
+| `path`    | `string`      | Yes      | —       | Directory path to watch (relative to workDir)    |
+| `timeout` | `string`      | No       | —       | How long to wait for the directory to be created |
+
 ---
 
 ### Built-in Completions
@@ -464,7 +472,7 @@ These ship in `@tagma/runtime-bun`, not `@tagma/sdk` — when you `bun add @tagm
 
 ### `bootstrapBuiltins(registry)`
 
-Registers all built-in plugins (opencode driver, file/manual triggers, completion checks, static-context middleware).
+Registers all built-in plugins (opencode driver, file/directory/manual triggers, completion checks, static-context middleware).
 
 ### `loadPipeline(yaml: string, workDir: string): Promise<PipelineConfig>`
 
@@ -546,7 +554,7 @@ Properties:
 
 Typed error classes for trigger plugin error classification. The engine uses `instanceof` checks on these to set the correct task status (`blocked` or `timeout`) instead of matching on error message substrings.
 
-Built-in triggers (`manual`, `file`) throw these automatically. Trigger plugins should throw `TriggerBlockedError` for user/policy rejections and `TriggerTimeoutError` for genuine wait timeouts.
+Built-in triggers (`manual`, `file`, `directory`) throw these automatically. Trigger plugins should throw `TriggerBlockedError` for user/policy rejections and `TriggerTimeoutError` for genuine wait timeouts.
 
 ```ts
 import { TriggerBlockedError, TriggerTimeoutError } from '@tagma/sdk';

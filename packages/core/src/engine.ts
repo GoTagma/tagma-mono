@@ -117,12 +117,12 @@ export interface SafeModeAllowlist {
 }
 
 // Poll interval when no tasks are in-flight but non-terminal tasks remain
-// (e.g. tasks waiting on a file or manual trigger).
+// (e.g. tasks waiting on a file, directory, or manual trigger).
 const POLL_INTERVAL_MS = 50;
 
 const DEFAULT_SAFE_MODE_ALLOWLIST: Required<SafeModeAllowlist> = {
   drivers: [],
-  triggers: ['manual', 'file'],
+  triggers: ['manual', 'file', 'directory'],
   completions: ['exit_code', 'file_exists'],
   middlewares: ['static_context'],
 };

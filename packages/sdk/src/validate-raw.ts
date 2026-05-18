@@ -108,7 +108,7 @@ const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 // external plugin packages are installed. These MUST stay in sync with the
 // types that `bootstrapBuiltins()` registers, otherwise the editor will
 // emit false-positive "unknown type" warnings for stock pipelines.
-const BUILTIN_TRIGGER_TYPES: ReadonlySet<string> = new Set(['manual', 'file']);
+const BUILTIN_TRIGGER_TYPES: ReadonlySet<string> = new Set(['manual', 'file', 'directory']);
 const BUILTIN_COMPLETION_TYPES: ReadonlySet<string> = new Set([
   'exit_code',
   'file_exists',

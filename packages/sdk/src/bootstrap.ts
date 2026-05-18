@@ -11,6 +11,7 @@ import { OpenCodeDriver } from './drivers/opencode';
 // Built-in Triggers
 import { FileTrigger } from './triggers/file';
 import { ManualTrigger } from './triggers/manual';
+import { DirectoryTrigger } from './triggers/directory';
 
 // Built-in Completions
 import { ExitCodeCompletion } from './completions/exit-code';
@@ -27,6 +28,7 @@ export const BuiltinTagmaPlugin = {
       opencode: OpenCodeDriver,
     },
     triggers: {
+      directory: DirectoryTrigger,
       file: FileTrigger,
       manual: ManualTrigger,
     },

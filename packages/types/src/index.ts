@@ -464,7 +464,7 @@ export interface RunOptions {
   readonly onOutputChunk?: (stream: 'stdout' | 'stderr', text: string) => void;
 }
 
-export type RuntimeWatchEventType = 'ready' | 'add' | 'change' | 'unlink';
+export type RuntimeWatchEventType = 'ready' | 'add' | 'change' | 'unlink' | 'addDir' | 'unlinkDir';
 
 export interface RuntimeWatchEvent {
   readonly type: RuntimeWatchEventType;
