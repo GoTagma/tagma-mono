@@ -115,7 +115,8 @@ async function waitForDirectory(options: {
 
   async function watchLoop(): Promise<unknown> {
     // Use ignoreInitial:false so an already-created target directory still
-    // satisfies the gate during the initial chokidar scan.
+    // satisfies the gate during the initial scan. Runtimes that expose a
+    // precise directoryExists probe get a second ready-time check below.
     for await (const event of ctx.runtime.watch(parentDir, {
       ignoreInitial: false,
       depth: 0,
@@ -123,6 +124,21 @@ async function waitForDirectory(options: {
       awaitWriteFinishMs: 100,
       signal: watchController.signal,
     })) {
+      if (event.type === 'ready') {
+        if (ctx.runtime.directoryExists) {
+          let exists = false;
+          try {
+            exists = await ctx.runtime.directoryExists(safePath);
+          } catch (err) {
+            throw new Error(
+              `directory trigger existence check failed: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+          if (exists) return { path: safePath };
+        }
+        continue;
+      }
+
       if (
         event.type === 'addDir' &&
         pathsEqual(resolve(parentDir, event.path), safePath)

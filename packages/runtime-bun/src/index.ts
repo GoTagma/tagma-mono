@@ -1,5 +1,5 @@
 import { closeSync, constants, mkdirSync, openSync, writeSync } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { watch as chokidarWatch } from 'chokidar';
 import { runCommand, runSpawn } from './bun-process-runner';
@@ -34,6 +34,7 @@ export function bunRuntime(): TagmaRuntime {
     runCommand,
     ensureDir,
     fileExists,
+    directoryExists,
     watch: watchPath,
     logStore: bunLogStore(),
     now: () => new Date(),
@@ -47,6 +48,14 @@ async function ensureDir(path: string): Promise<void> {
 
 async function fileExists(path: string): Promise<boolean> {
   return Bun.file(path).exists();
+}
+
+async function directoryExists(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 async function sleep(ms: number, signal?: AbortSignal): Promise<void> {

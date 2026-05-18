@@ -529,6 +529,12 @@ export interface TagmaRuntime {
   runCommand(command: CommandConfig, cwd: string, options?: RunOptions): Promise<TaskResult>;
   ensureDir(path: string): Promise<void>;
   fileExists(path: string): Promise<boolean>;
+  /**
+   * Optional precise directory existence probe. Directory-sensitive triggers
+   * use this on `ready` when available, while older runtimes can keep relying
+   * on `watch(..., { ignoreInitial: false })` to emit initial `addDir` events.
+   */
+  directoryExists?(path: string): Promise<boolean>;
   watch(path: string, options?: RuntimeWatchOptions): AsyncIterable<RuntimeWatchEvent>;
   readonly logStore: RuntimeLogStore;
   now(): Date;
