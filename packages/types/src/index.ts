@@ -357,10 +357,16 @@ export interface RawPipelineConfig {
 
 export type WorkflowFailurePolicy = 'stop_all' | 'continue_independent';
 
+export interface WorkflowPipelinePosition {
+  readonly x: number;
+  readonly y: number;
+}
+
 export interface RawWorkflowPipelineConfig {
   readonly id: string;
   readonly path: string;
   readonly depends_on?: readonly string[];
+  readonly position?: WorkflowPipelinePosition;
 }
 
 export interface RawWorkflowConfig {
@@ -376,6 +382,7 @@ export interface PipelineGraphPipelineConfig {
   readonly cwd?: string;
   readonly path?: string;
   readonly depends_on?: readonly string[];
+  readonly position?: WorkflowPipelinePosition;
 }
 
 export interface PipelineGraphConfig {

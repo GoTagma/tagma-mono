@@ -71,6 +71,11 @@ const VALID_FAILURE_POLICIES: ReadonlySet<WorkflowFailurePolicy> = new Set([
   'stop_all',
   'continue_independent',
 ]);
+const WORKFLOW_YAML_DUMP_OPTIONS = {
+  lineWidth: 120,
+  indent: 2,
+  noCompatMode: true,
+} as Parameters<typeof yaml.dump>[1] & { noCompatMode: boolean };
 
 export class WorkflowValidationError extends PipelineValidationError {
   constructor(diagnostics: readonly ValidationError[]) {
@@ -101,7 +106,7 @@ export function parseWorkflowYaml(content: string): RawWorkflowConfig {
 }
 
 export function serializeWorkflow(config: RawWorkflowConfig | WorkflowConfig): string {
-  return yaml.dump({ workflow: stripLoadedPipelines(config) }, { lineWidth: 120, indent: 2 });
+  return yaml.dump({ workflow: stripLoadedPipelines(config) }, WORKFLOW_YAML_DUMP_OPTIONS);
 }
 
 function stripLoadedPipelines(config: RawWorkflowConfig | WorkflowConfig): RawWorkflowConfig {
@@ -113,6 +118,7 @@ function stripLoadedPipelines(config: RawWorkflowConfig | WorkflowConfig): RawWo
       id: pipeline.id,
       path: pipeline.path,
       ...(pipeline.depends_on?.length ? { depends_on: pipeline.depends_on } : {}),
+      ...(pipeline.position ? { position: pipeline.position } : {}),
     })),
   };
 }
@@ -149,6 +155,7 @@ export async function loadWorkflow(content: string, workDir: string): Promise<Wo
         path: pipeline.path,
         cwd: workDir,
         depends_on: pipeline.depends_on,
+        position: pipeline.position,
         config,
       };
     }),
@@ -574,6 +581,11 @@ function validatePipelineNodes(
 
     if (requirePath)
       validateWorkflowPath((pipeline as RawWorkflowPipelineConfig).path, path, errors);
+    validateWorkflowPosition(
+      (pipeline as RawWorkflowPipelineConfig | PipelineGraphPipelineConfig).position,
+      path,
+      errors,
+    );
   });
 
   pipelines.forEach((pipeline, index) => {
@@ -603,6 +615,30 @@ function validatePipelineNodes(
       }
     }
   });
+}
+
+function validateWorkflowPosition(
+  value: unknown,
+  basePath: string,
+  errors: ValidationError[],
+): void {
+  if (value === undefined) return;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    errors.push({ path: `${basePath}.position`, message: 'position must be an object' });
+    return;
+  }
+  const pos = value as { x?: unknown; y?: unknown };
+  if (
+    typeof pos.x !== 'number' ||
+    !Number.isFinite(pos.x) ||
+    typeof pos.y !== 'number' ||
+    !Number.isFinite(pos.y)
+  ) {
+    errors.push({
+      path: `${basePath}.position`,
+      message: 'position.x and position.y must be finite numbers',
+    });
+  }
 }
 
 function validateWorkflowPath(value: unknown, basePath: string, errors: ValidationError[]): void {

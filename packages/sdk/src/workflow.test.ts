@@ -11,6 +11,7 @@ import {
   loadWorkflow,
   parseWorkflowYaml,
   runPipelineGraph,
+  serializeWorkflow,
   validateRawWorkflow,
 } from './workflow';
 
@@ -129,6 +130,34 @@ describe('workflow YAML model', () => {
     expect(raw.max_concurrency).toBe(2);
     expect(raw.pipelines.map((p) => p.id)).toEqual(['p1', 'p2', 'p3']);
     expect(validateRawWorkflow(raw)).toEqual([]);
+  });
+
+  test('validates and serializes workflow node positions', () => {
+    const raw = parseWorkflowYaml(`workflow:
+  name: release-flow
+  pipelines:
+    - id: p1
+      path: .tagma/p1/p1.yaml
+      position:
+        x: 120
+        y: 80
+`);
+
+    expect(validateRawWorkflow(raw)).toEqual([]);
+    expect(serializeWorkflow(raw)).toContain('position:');
+    expect(serializeWorkflow(raw)).toContain('x: 120');
+    expect(serializeWorkflow(raw)).toContain('y: 80');
+
+    const invalid = parseWorkflowYaml(`workflow:
+  name: bad
+  pipelines:
+    - id: p1
+      path: .tagma/p1/p1.yaml
+      position:
+        x: no
+        y: 10
+`);
+    expect(validateRawWorkflow(invalid).map((e) => e.path)).toContain('pipelines[0].position');
   });
 
   test('reports duplicate ids, missing dependencies, cycles, and unsafe paths', () => {
