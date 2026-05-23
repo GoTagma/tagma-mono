@@ -108,6 +108,79 @@ summary_zh: "旧摘要"
   );
 });
 
+test('writes escaped newline summaries as readable YAML block scalars', () => {
+  const { dir, archiveDir } = withTempWeb();
+  writeArchive(
+    archiveDir,
+    '0.6.26',
+    `---
+version: "0.6.26"
+date: "2026-05-24"
+channel: "alpha"
+---
+`,
+  );
+
+  updateWebChangelogSummary({
+    webDir: dir,
+    version: '0.6.26',
+    summary: '- First line\\n- Second line',
+  });
+
+  assert.equal(
+    readArchive(archiveDir, '0.6.26'),
+    `---
+version: "0.6.26"
+date: "2026-05-24"
+channel: "alpha"
+summary: |-
+  - First line
+  - Second line
+---
+`,
+  );
+});
+
+test('loads summaries from files so shell quoting cannot corrupt markdown backticks', () => {
+  const { dir, archiveDir } = withTempWeb();
+  const summaryPath = path.join(dir, 'summary.md');
+  writeFileSync(summaryPath, '\uFEFF- Use `tagma-web` safely\n- Keep `bun.lock` intact\n', 'utf-8');
+  writeArchive(
+    archiveDir,
+    '0.6.27',
+    `---
+version: "0.6.27"
+date: "2026-05-25"
+channel: "alpha"
+---
+`,
+  );
+
+  let stdout = '';
+  const exitCode = main(
+    ['0.6.27', '--summary-file', summaryPath, '--web-dir', dir],
+    {
+      stdout: { write: (chunk) => { stdout += chunk; } },
+      stderr: { write: () => {} },
+    },
+  );
+
+  assert.equal(exitCode, 0);
+  assert.match(stdout, /updated .*0\.6\.27\.md/);
+  assert.equal(
+    readArchive(archiveDir, '0.6.27'),
+    `---
+version: "0.6.27"
+date: "2026-05-25"
+channel: "alpha"
+summary: |-
+  - Use \`tagma-web\` safely
+  - Keep \`bun.lock\` intact
+---
+`,
+  );
+});
+
 test('fails when the target web archive entry does not exist', () => {
   const { dir } = withTempWeb();
 

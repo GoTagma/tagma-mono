@@ -27,7 +27,17 @@ export function normalizeVersion(rawVersion) {
 }
 
 function yamlString(value) {
-  return JSON.stringify(String(value));
+  const text = normalizeSummaryText(value);
+  if (!text.includes('\n')) return JSON.stringify(text);
+  return `|-\n${text.split('\n').map((line) => `  ${line}`).join('\n')}`;
+}
+
+function normalizeSummaryText(value) {
+  return String(value)
+    .replace(/^\uFEFF/, '')
+    .replace(/\\r\\n|\\n|\\r/g, '\n')
+    .replace(/\r\n|\r/g, '\n')
+    .replace(/\n+$/g, '');
 }
 
 function fieldLineRe(name) {
@@ -62,11 +72,28 @@ function findFieldIndex(lines, name) {
   return lines.findIndex((line) => fieldLineRe(name).test(line));
 }
 
+function fieldEndIndex(lines, startIndex) {
+  const line = lines[startIndex] ?? '';
+  const value = line.slice(line.indexOf(':') + 1).trim();
+  if (!value.startsWith('|') && !value.startsWith('>')) return startIndex + 1;
+
+  let index = startIndex + 1;
+  while (index < lines.length) {
+    const next = lines[index];
+    if (next === '' || /^\s/.test(next)) {
+      index += 1;
+      continue;
+    }
+    break;
+  }
+  return index;
+}
+
 function upsertStringField(lines, name, value, options = {}) {
   const nextLine = `${name}: ${yamlString(value)}`;
   const existingIndex = findFieldIndex(lines, name);
   if (existingIndex >= 0) {
-    lines[existingIndex] = nextLine;
+    lines.splice(existingIndex, fieldEndIndex(lines, existingIndex) - existingIndex, ...nextLine.split('\n'));
     return;
   }
 
@@ -148,7 +175,9 @@ export function parseArgs(args) {
     webDir: defaultWebDir(),
     version: undefined,
     summary: undefined,
+    summaryFile: undefined,
     summaryZh: undefined,
+    summaryZhFile: undefined,
   };
   const positional = [];
 
@@ -180,6 +209,20 @@ export function parseArgs(args) {
       options.summary = arg.slice('--summary-en='.length);
       continue;
     }
+    if (arg === '--summary-file' || arg === '--summary-en-file') {
+      const [value, nextIndex] = takeValue(args, i, arg);
+      options.summaryFile = value;
+      i = nextIndex;
+      continue;
+    }
+    if (arg.startsWith('--summary-file=')) {
+      options.summaryFile = arg.slice('--summary-file='.length);
+      continue;
+    }
+    if (arg.startsWith('--summary-en-file=')) {
+      options.summaryFile = arg.slice('--summary-en-file='.length);
+      continue;
+    }
     if (arg === '--summary-zh') {
       const [value, nextIndex] = takeValue(args, i, arg);
       options.summaryZh = value;
@@ -188,6 +231,16 @@ export function parseArgs(args) {
     }
     if (arg.startsWith('--summary-zh=')) {
       options.summaryZh = arg.slice('--summary-zh='.length);
+      continue;
+    }
+    if (arg === '--summary-zh-file') {
+      const [value, nextIndex] = takeValue(args, i, arg);
+      options.summaryZhFile = value;
+      i = nextIndex;
+      continue;
+    }
+    if (arg.startsWith('--summary-zh-file=')) {
+      options.summaryZhFile = arg.slice('--summary-zh-file='.length);
       continue;
     }
     if (arg.startsWith('--')) {
@@ -213,13 +266,33 @@ function usage() {
   return [
     'usage:',
     '  update-web-changelog-summary.mjs <version> --summary <en> [--summary-zh <zh>] [--web-dir <path>]',
+    '  update-web-changelog-summary.mjs <version> --summary-file <path> [--summary-zh-file <path>] [--web-dir <path>]',
     '  update-web-changelog-summary.mjs <version> <summary-en> [summary-zh] [--web-dir <path>]',
   ].join('\n');
 }
 
+function readTextInput(filePath) {
+  return readFileSync(filePath === '-' ? 0 : filePath, 'utf-8');
+}
+
+function resolveSummaryInputs(options) {
+  if (options.summary !== undefined && options.summaryFile !== undefined) {
+    throw new Error('use either --summary or --summary-file, not both');
+  }
+  if (options.summaryZh !== undefined && options.summaryZhFile !== undefined) {
+    throw new Error('use either --summary-zh or --summary-zh-file, not both');
+  }
+  return {
+    ...options,
+    summary: options.summaryFile !== undefined ? readTextInput(options.summaryFile) : options.summary,
+    summaryZh:
+      options.summaryZhFile !== undefined ? readTextInput(options.summaryZhFile) : options.summaryZh,
+  };
+}
+
 export function main(args = process.argv.slice(2), io = { stdout: process.stdout, stderr: process.stderr }) {
   try {
-    const options = parseArgs(args);
+    const options = resolveSummaryInputs(parseArgs(args));
     if (options.help) {
       io.stdout.write(`${usage()}\n`);
       return 0;
