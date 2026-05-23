@@ -74,6 +74,72 @@ describe('FileTrigger runtime boundary', () => {
     }
   });
 
+  test('allows absolute watch paths outside the workspace without creating directories', async () => {
+    const workDir = makeDir('tagma-file-trigger-work-');
+    const externalDir = makeDir('tagma-file-trigger-external-');
+    const targetPath = join(externalDir, 'target.txt');
+    const calls: string[] = [];
+    const runtime = {
+      async runCommand() {
+        throw new Error('runCommand should not be called by FileTrigger');
+      },
+      async runSpawn() {
+        throw new Error('runSpawn should not be called by FileTrigger');
+      },
+      async ensureDir(path: string) {
+        calls.push(`ensure:${path}`);
+      },
+      async fileExists(path: string) {
+        calls.push(`exists:${path}`);
+        return false;
+      },
+      async *watch(path: string, options?: { cwd?: string }) {
+        calls.push(`watch:${path}:${options?.cwd ?? ''}`);
+        yield { type: 'ready', path: '' };
+        yield { type: 'change', path: 'target.txt' };
+      },
+      now() {
+        return new Date('2026-05-23T00:00:00.000Z');
+      },
+      sleep() {
+        return Promise.resolve();
+      },
+      logStore: {
+        openRunLog() {
+          throw new Error('logStore should not be called by FileTrigger');
+        },
+        taskOutputPath() {
+          throw new Error('logStore should not be called by FileTrigger');
+        },
+        logsDir() {
+          throw new Error('logStore should not be called by FileTrigger');
+        },
+      },
+    } as unknown as TagmaRuntime;
+
+    try {
+      const handle = FileTrigger.watch({ type: 'file', path: targetPath, timeout: '0.05s' }, {
+        taskId: 't.wait',
+        trackId: 't',
+        workDir,
+        signal: new AbortController().signal,
+        approvalGateway: new InMemoryApprovalGateway(),
+        runtime,
+      } as never);
+
+      await expect(handle.fired).resolves.toEqual({ path: resolve(targetPath) });
+      await handle.dispose('test cleanup');
+
+      expect(calls).toEqual([
+        `watch:${resolve(externalDir)}:${resolve(externalDir)}`,
+        `exists:${resolve(targetPath)}`,
+      ]);
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+      rmSync(externalDir, { recursive: true, force: true });
+    }
+  });
+
   test('dispose during directory preparation prevents watcher startup', async () => {
     const dir = makeDir('tagma-file-trigger-dispose-');
     let releaseEnsure = () => {

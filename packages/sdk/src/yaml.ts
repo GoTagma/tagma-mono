@@ -16,8 +16,11 @@ export {
   validateRawWorkflow,
 } from './workflow';
 export type {
+  PipelineGraphPipelineLifecycle,
+  PipelineGraphStopWhen,
   RawWorkflowConfig,
   RawWorkflowPipelineConfig,
   WorkflowConfig,
+  WorkflowDocumentKind,
   WorkflowPipelineConfig,
 } from './workflow';

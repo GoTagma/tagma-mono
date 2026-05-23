@@ -1,5 +1,13 @@
-export { createTagma } from './tagma';
-export type { CreateTagmaOptions, Tagma, TagmaRunOptions } from './tagma';
+export { createTagma, detectTagmaYamlKind, loadTagmaYaml } from './tagma';
+export type {
+  CreateTagmaOptions,
+  Tagma,
+  TagmaGraphRunOptions,
+  TagmaRunOptions,
+  TagmaRunnableConfig,
+  TagmaYamlDocument,
+  TagmaYamlRunResult,
+} from './tagma';
 export { bunRuntime } from '@tagma/runtime-bun';
 export type { EnvPolicy, TagmaRuntime, RunOptions as RuntimeRunOptions } from '@tagma/core';
 export {
@@ -41,7 +49,10 @@ export type {
   PipelineGraphEventPayload,
   PipelineGraphNodeState,
   PipelineGraphNodeStatus,
+  PipelineGraphPipelineAttemptState,
   PipelineGraphPipelineConfig,
+  PipelineGraphPipelineLifecycle,
+  PipelineGraphStopWhen,
   RawPipelineConfig,
   RawWorkflowConfig,
   RawWorkflowPipelineConfig,
@@ -50,6 +61,7 @@ export type {
   TrackConfig,
   TaskConfig,
   WorkflowConfig,
+  WorkflowDocumentKind,
   WorkflowFailurePolicy,
   WorkflowPipelineConfig,
   RunSnapshotPayload,

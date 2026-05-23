@@ -15,13 +15,18 @@ import type {
   PipelineGraphEventPayload,
   PipelineGraphNodeState,
   PipelineGraphNodeStatus,
+  PipelineGraphPipelineAttemptState,
   PipelineGraphPipelineConfig,
+  PipelineGraphPipelineLifecycle,
+  PipelineGraphStopWhen,
+  PipelineConfig,
   RawWorkflowConfig,
   RawWorkflowPipelineConfig,
   WorkflowConfig,
+  WorkflowDocumentKind,
   WorkflowFailurePolicy,
 } from '@tagma/types';
-import { PipelineValidationError, loadPipeline } from './schema';
+import { PipelineValidationError, loadPipeline, validateConfigDiagnostics } from './schema';
 import type { ValidationError } from './validate-raw';
 
 export type {
@@ -30,10 +35,14 @@ export type {
   PipelineGraphEventPayload,
   PipelineGraphNodeState,
   PipelineGraphNodeStatus,
+  PipelineGraphPipelineAttemptState,
   PipelineGraphPipelineConfig,
+  PipelineGraphPipelineLifecycle,
+  PipelineGraphStopWhen,
   RawWorkflowConfig,
   RawWorkflowPipelineConfig,
   WorkflowConfig,
+  WorkflowDocumentKind,
   WorkflowFailurePolicy,
   WorkflowPipelineConfig,
 } from '@tagma/types';
@@ -61,6 +70,9 @@ interface MutableNodeState {
   dependsOn: string[];
   status: PipelineGraphNodeStatus;
   runId: string | null;
+  runCount: number;
+  maxRuns: number;
+  attempts: PipelineGraphPipelineAttemptState[];
   startedAt: string | null;
   finishedAt: string | null;
   error: string | null;
@@ -70,6 +82,12 @@ interface MutableNodeState {
 const VALID_FAILURE_POLICIES: ReadonlySet<WorkflowFailurePolicy> = new Set([
   'stop_all',
   'continue_independent',
+]);
+const VALID_WORKFLOW_KINDS: ReadonlySet<WorkflowDocumentKind> = new Set(['workflow', 'graph']);
+const VALID_PIPELINE_STOP_WHEN: ReadonlySet<PipelineGraphStopWhen> = new Set([
+  'success',
+  'failure',
+  'always',
 ]);
 const WORKFLOW_YAML_DUMP_OPTIONS = {
   lineWidth: 120,
@@ -111,6 +129,7 @@ export function serializeWorkflow(config: RawWorkflowConfig | WorkflowConfig): s
 
 function stripLoadedPipelines(config: RawWorkflowConfig | WorkflowConfig): RawWorkflowConfig {
   return {
+    kind: config.kind ?? 'graph',
     name: config.name,
     ...(config.max_concurrency !== undefined ? { max_concurrency: config.max_concurrency } : {}),
     ...(config.failure_policy ? { failure_policy: config.failure_policy } : {}),
@@ -119,6 +138,7 @@ function stripLoadedPipelines(config: RawWorkflowConfig | WorkflowConfig): RawWo
       path: pipeline.path,
       ...(pipeline.depends_on?.length ? { depends_on: pipeline.depends_on } : {}),
       ...(pipeline.position ? { position: pipeline.position } : {}),
+      ...(pipeline.lifecycle ? { lifecycle: stripDefaultLifecycle(pipeline.lifecycle) } : {}),
     })),
   };
 }
@@ -156,12 +176,14 @@ export async function loadWorkflow(content: string, workDir: string): Promise<Wo
         cwd: workDir,
         depends_on: pipeline.depends_on,
         position: pipeline.position,
+        lifecycle: pipeline.lifecycle,
         config,
       };
     }),
   );
 
   return {
+    kind: raw.kind ?? 'graph',
     name: raw.name,
     max_concurrency: raw.max_concurrency,
     failure_policy: raw.failure_policy,
@@ -195,11 +217,13 @@ export class PipelineGraphRunner {
     private readonly options: PipelineGraphRunnerOptions,
   ) {
     const diagnostics = validatePipelineGraphConfig(config);
+    diagnostics.push(...validateGraphPipelineConfigs(config, workDir));
     if (diagnostics.length > 0) throw new WorkflowValidationError(diagnostics);
     this.graphRunId = generateRunId();
     this.order = topologicalPipelineOrder(config.pipelines);
 
     for (const pipeline of config.pipelines) {
+      const lifecycle = normalizePipelineLifecycle(pipeline.lifecycle);
       this.nodeConfigs.set(pipeline.id, pipeline);
       this.nodes.set(pipeline.id, {
         pipelineId: pipeline.id,
@@ -207,6 +231,9 @@ export class PipelineGraphRunner {
         dependsOn: [...(pipeline.depends_on ?? [])],
         status: 'waiting',
         runId: null,
+        runCount: 0,
+        maxRuns: lifecycle.max_runs ?? 1,
+        attempts: [],
         startedAt: null,
         finishedAt: null,
         error: null,
@@ -310,58 +337,131 @@ export class PipelineGraphRunner {
 
   private async runOnePipeline(pipelineId: string): Promise<void> {
     const pipeline = this.nodeConfigs.get(pipelineId)!;
-    const controller = new AbortController();
-    this.activeControllers.set(pipelineId, controller);
-    this.updateNode(pipelineId, { status: 'running', startedAt: new Date().toISOString() });
-
+    const lifecycle = normalizePipelineLifecycle(pipeline.lifecycle);
+    const maxRuns = lifecycle.max_runs ?? 1;
+    const stopWhen = lifecycle.stop_when ?? 'success';
     const { signal: _graphSignal, onEvent: _graphOnEvent, ...pipelineOptions } = this.options;
 
-    try {
-      const result = await runPipeline(pipeline.config, pipeline.cwd ?? this.workDir, {
-        ...pipelineOptions,
-        signal: controller.signal,
-        onEvent: (event) => {
-          if (event.type === 'run_start') {
-            this.updateNode(pipelineId, { runId: event.runId });
-          }
-          this.emit({
-            type: 'pipeline_event',
-            graphRunId: this.graphRunId,
-            pipelineId,
-            event,
-          });
-        },
+    for (let attempt = 1; attempt <= maxRuns; attempt++) {
+      if (this.aborted) {
+        const finishedAt = new Date().toISOString();
+        this.updateNode(pipelineId, {
+          status: 'aborted',
+          finishedAt,
+          error: 'Aborted before the next pipeline lifecycle attempt',
+        });
+        return;
+      }
+
+      const controller = new AbortController();
+      this.activeControllers.set(pipelineId, controller);
+      const startedAt = new Date().toISOString();
+      this.updateNode(pipelineId, {
+        status: 'running',
+        runId: null,
+        runCount: attempt,
+        maxRuns,
+        attempts: [
+          ...this.nodes.get(pipelineId)!.attempts,
+          { attempt, runId: null, status: 'running', startedAt, finishedAt: null, error: null },
+        ],
+        startedAt,
+        finishedAt: null,
+        error: null,
       });
 
-      const status: PipelineGraphNodeStatus = controller.signal.aborted
-        ? 'aborted'
-        : result.success
-          ? 'success'
-          : 'failed';
-      this.updateNode(pipelineId, {
-        status,
-        result,
-        finishedAt: new Date().toISOString(),
-        error: status === 'failed' ? 'Pipeline failed' : null,
-      });
-      if (status === 'failed' && (this.config.failure_policy ?? 'stop_all') === 'stop_all') {
-        this.stopAllForFailure();
+      try {
+        const result = await runPipeline(pipeline.config, pipeline.cwd ?? this.workDir, {
+          ...pipelineOptions,
+          signal: controller.signal,
+          onEvent: (event) => {
+            if (event.type === 'run_start') {
+              this.updateNode(pipelineId, {
+                runId: event.runId,
+                attempts: this.patchAttempt(pipelineId, attempt, { runId: event.runId }),
+              });
+            }
+            this.emit({
+              type: 'pipeline_event',
+              graphRunId: this.graphRunId,
+              pipelineId,
+              attempt,
+              event,
+            });
+          },
+        });
+
+        const status: PipelineGraphNodeStatus = controller.signal.aborted
+          ? 'aborted'
+          : result.success
+            ? 'success'
+            : 'failed';
+        const finishedAt = new Date().toISOString();
+        const error = status === 'failed' ? 'Pipeline failed' : null;
+        this.updateNode(pipelineId, {
+          result,
+          attempts: this.patchAttempt(pipelineId, attempt, { status, finishedAt, error }),
+        });
+
+        if (this.shouldFinishLifecycle(status, stopWhen, attempt, maxRuns)) {
+          this.updateNode(pipelineId, {
+            status,
+            result,
+            finishedAt,
+            error,
+          });
+          if (status === 'failed' && (this.config.failure_policy ?? 'stop_all') === 'stop_all') {
+            this.stopAllForFailure();
+          }
+          return;
+        }
+      } catch (err) {
+        const status: PipelineGraphNodeStatus = controller.signal.aborted ? 'aborted' : 'failed';
+        const error = errorMessage(err);
+        const finishedAt = new Date().toISOString();
+        this.updateNode(pipelineId, {
+          attempts: this.patchAttempt(pipelineId, attempt, { status, finishedAt, error }),
+        });
+        if (this.shouldFinishLifecycle(status, stopWhen, attempt, maxRuns)) {
+          this.updateNode(pipelineId, {
+            status,
+            error,
+            finishedAt,
+          });
+          if (status === 'failed') {
+            this.emit({ type: 'graph_error', graphRunId: this.graphRunId, error });
+            if ((this.config.failure_policy ?? 'stop_all') === 'stop_all') this.stopAllForFailure();
+          }
+          return;
+        }
+      } finally {
+        this.activeControllers.delete(pipelineId);
       }
-    } catch (err) {
-      const status: PipelineGraphNodeStatus = controller.signal.aborted ? 'aborted' : 'failed';
-      const error = errorMessage(err);
-      this.updateNode(pipelineId, {
-        status,
-        error,
-        finishedAt: new Date().toISOString(),
-      });
-      if (status === 'failed') {
-        this.emit({ type: 'graph_error', graphRunId: this.graphRunId, error });
-        if ((this.config.failure_policy ?? 'stop_all') === 'stop_all') this.stopAllForFailure();
-      }
-    } finally {
-      this.activeControllers.delete(pipelineId);
     }
+  }
+
+  private shouldFinishLifecycle(
+    status: PipelineGraphNodeStatus,
+    stopWhen: PipelineGraphStopWhen,
+    attempt: number,
+    maxRuns: number,
+  ): boolean {
+    if (status === 'aborted' || status === 'skipped') return true;
+    if (stopWhen === 'always') return attempt >= maxRuns;
+    if (stopWhen === 'success' && status === 'success') return true;
+    if (stopWhen === 'failure' && status === 'failed') return true;
+    return attempt >= maxRuns;
+  }
+
+  private patchAttempt(
+    pipelineId: string,
+    attempt: number,
+    patch: Partial<Omit<PipelineGraphPipelineAttemptState, 'attempt'>>,
+  ): PipelineGraphPipelineAttemptState[] {
+    const state = this.nodes.get(pipelineId)!;
+    return state.attempts.map((entry) =>
+      entry.attempt === attempt ? { ...entry, ...patch } : entry,
+    );
   }
 
   private stopAllForFailure(): void {
@@ -430,6 +530,8 @@ export class PipelineGraphRunner {
       pipelineId,
       status: state.status,
       runId: state.runId,
+      runCount: state.runCount,
+      maxRuns: state.maxRuns,
       startedAt: state.startedAt,
       finishedAt: state.finishedAt,
       error: state.error,
@@ -437,7 +539,11 @@ export class PipelineGraphRunner {
   }
 
   private snapshotNodes(): PipelineGraphNodeState[] {
-    return [...this.nodes.values()].map(({ result: _result, ...state }) => ({ ...state }));
+    return [...this.nodes.values()].map(({ result: _result, ...state }) => ({
+      ...state,
+      dependsOn: [...state.dependsOn],
+      attempts: state.attempts.map((attempt) => ({ ...attempt })),
+    }));
   }
 
   private snapshotResults(): PipelineGraphPipelineResult[] {
@@ -447,6 +553,9 @@ export class PipelineGraphRunner {
       dependsOn: [...state.dependsOn],
       status: state.status,
       runId: state.runId,
+      runCount: state.runCount,
+      maxRuns: state.maxRuns,
+      attempts: state.attempts.map((attempt) => ({ ...attempt })),
       startedAt: state.startedAt,
       finishedAt: state.finishedAt,
       error: state.error,
@@ -482,6 +591,7 @@ export interface PipelineGroupAddOptions {
   readonly cwd?: string;
   readonly path?: string;
   readonly dependsOn?: readonly string[];
+  readonly lifecycle?: PipelineGraphPipelineLifecycle;
 }
 
 export class PipelineGroup {
@@ -496,12 +606,14 @@ export class PipelineGroup {
       cwd: options.cwd,
       path: options.path,
       depends_on: options.dependsOn,
+      lifecycle: options.lifecycle,
     });
     return this;
   }
 
   toConfig(): PipelineGraphConfig {
     return {
+      kind: 'graph',
       name: this.options.name ?? 'pipeline-group',
       max_concurrency: this.options.maxConcurrency,
       failure_policy: this.options.failurePolicy,
@@ -534,10 +646,50 @@ function validatePipelineGraphConfig(config: PipelineGraphConfig): ValidationErr
   return errors;
 }
 
+function validateGraphPipelineConfigs(
+  config: PipelineGraphConfig,
+  workDir: string,
+): ValidationError[] {
+  const errors: ValidationError[] = [];
+  if (!Array.isArray(config.pipelines)) return errors;
+
+  config.pipelines.forEach((pipeline, index) => {
+    const graphNode = pipeline as { config?: unknown; cwd?: unknown };
+    if (
+      !graphNode.config ||
+      typeof graphNode.config !== 'object' ||
+      Array.isArray(graphNode.config)
+    ) {
+      errors.push({
+        path: `pipelines[${index}].config`,
+        message: 'pipeline config is required',
+      });
+      return;
+    }
+
+    const pipelineWorkDir =
+      typeof graphNode.cwd === 'string' && graphNode.cwd.length > 0 ? graphNode.cwd : workDir;
+    for (const diagnostic of validateConfigDiagnostics(
+      graphNode.config as PipelineConfig,
+      pipelineWorkDir,
+    )) {
+      errors.push({
+        path: `pipelines[${index}].config.${diagnostic.path}`,
+        message: diagnostic.message,
+      });
+    }
+  });
+
+  return errors;
+}
+
 function validateGraphHeader(
-  config: Pick<PipelineGraphConfig, 'name' | 'max_concurrency' | 'failure_policy'>,
+  config: Pick<PipelineGraphConfig, 'kind' | 'name' | 'max_concurrency' | 'failure_policy'>,
   errors: ValidationError[],
 ): void {
+  if (config.kind !== undefined && !VALID_WORKFLOW_KINDS.has(config.kind)) {
+    errors.push({ path: 'kind', message: 'workflow.kind must be "workflow" or "graph"' });
+  }
   if (typeof config.name !== 'string' || config.name.trim().length === 0) {
     errors.push({ path: 'name', message: 'Workflow name is required' });
   }
@@ -583,6 +735,11 @@ function validatePipelineNodes(
       validateWorkflowPath((pipeline as RawWorkflowPipelineConfig).path, path, errors);
     validateWorkflowPosition(
       (pipeline as RawWorkflowPipelineConfig | PipelineGraphPipelineConfig).position,
+      path,
+      errors,
+    );
+    validatePipelineLifecycle(
+      (pipeline as RawWorkflowPipelineConfig | PipelineGraphPipelineConfig).lifecycle,
       path,
       errors,
     );
@@ -639,6 +796,55 @@ function validateWorkflowPosition(
       message: 'position.x and position.y must be finite numbers',
     });
   }
+}
+
+function validatePipelineLifecycle(
+  value: unknown,
+  basePath: string,
+  errors: ValidationError[],
+): void {
+  if (value === undefined) return;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    errors.push({ path: `${basePath}.lifecycle`, message: 'lifecycle must be an object' });
+    return;
+  }
+  const lifecycle = value as PipelineGraphPipelineLifecycle;
+  if (
+    lifecycle.max_runs !== undefined &&
+    (!Number.isInteger(lifecycle.max_runs) || lifecycle.max_runs < 1)
+  ) {
+    errors.push({
+      path: `${basePath}.lifecycle.max_runs`,
+      message: 'lifecycle.max_runs must be a positive integer',
+    });
+  }
+  if (
+    lifecycle.stop_when !== undefined &&
+    !VALID_PIPELINE_STOP_WHEN.has(lifecycle.stop_when)
+  ) {
+    errors.push({
+      path: `${basePath}.lifecycle.stop_when`,
+      message: 'lifecycle.stop_when must be "success", "failure", or "always"',
+    });
+  }
+}
+
+function normalizePipelineLifecycle(
+  lifecycle: PipelineGraphPipelineLifecycle | undefined,
+): Required<PipelineGraphPipelineLifecycle> {
+  return {
+    max_runs: lifecycle?.max_runs ?? 1,
+    stop_when: lifecycle?.stop_when ?? 'success',
+  };
+}
+
+function stripDefaultLifecycle(
+  lifecycle: PipelineGraphPipelineLifecycle,
+): PipelineGraphPipelineLifecycle {
+  return {
+    ...(lifecycle.max_runs !== undefined ? { max_runs: lifecycle.max_runs } : {}),
+    ...(lifecycle.stop_when !== undefined ? { stop_when: lifecycle.stop_when } : {}),
+  };
 }
 
 function validateWorkflowPath(value: unknown, basePath: string, errors: ValidationError[]): void {

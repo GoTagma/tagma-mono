@@ -72,6 +72,70 @@ describe('DirectoryTrigger runtime boundary', () => {
     }
   });
 
+  test('allows absolute watch paths outside the workspace without creating directories', async () => {
+    const workDir = makeDir('tagma-directory-trigger-work-');
+    const externalParent = makeDir('tagma-directory-trigger-external-');
+    const targetPath = join(externalParent, 'ready');
+    const calls: string[] = [];
+    const runtime = {
+      async runCommand() {
+        throw new Error('runCommand should not be called by DirectoryTrigger');
+      },
+      async runSpawn() {
+        throw new Error('runSpawn should not be called by DirectoryTrigger');
+      },
+      async ensureDir(path: string) {
+        calls.push(`ensure:${path}`);
+      },
+      async fileExists() {
+        throw new Error('fileExists should not be called by DirectoryTrigger');
+      },
+      async *watch(path: string, options?: { cwd?: string; ignoreInitial?: boolean }) {
+        calls.push(`watch:${path}:${options?.cwd ?? ''}:${String(options?.ignoreInitial)}`);
+        yield { type: 'ready', path: '' };
+        yield { type: 'addDir', path: 'ready' };
+      },
+      now() {
+        return new Date('2026-05-23T00:00:00.000Z');
+      },
+      sleep() {
+        return Promise.resolve();
+      },
+      logStore: {
+        openRunLog() {
+          throw new Error('logStore should not be called by DirectoryTrigger');
+        },
+        taskOutputPath() {
+          throw new Error('logStore should not be called by DirectoryTrigger');
+        },
+        logsDir() {
+          throw new Error('logStore should not be called by DirectoryTrigger');
+        },
+      },
+    } as unknown as TagmaRuntime;
+
+    try {
+      const handle = DirectoryTrigger.watch(
+        { type: 'directory', path: targetPath, timeout: '0.05s' },
+        {
+          taskId: 't.wait',
+          trackId: 't',
+          workDir,
+          signal: new AbortController().signal,
+          approvalGateway: new InMemoryApprovalGateway(),
+          runtime,
+        } as never,
+      );
+
+      await expect(handle.fired).resolves.toEqual({ path: resolve(targetPath) });
+      await handle.dispose('test cleanup');
+      expect(calls).toEqual([`watch:${resolve(externalParent)}:${resolve(externalParent)}:false`]);
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+      rmSync(externalParent, { recursive: true, force: true });
+    }
+  });
+
   test('fires on ready when runtime can prove the directory already exists', async () => {
     const dir = makeDir('tagma-directory-trigger-ready-existing-');
     const calls: string[] = [];

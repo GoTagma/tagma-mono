@@ -256,6 +256,8 @@ bun run publish:dry
 
 Local edits to the desktop sources stay inside this monorepo: edit files under `apps/editor/` and `apps/electron/`, then run `bun run push:desktop "<commit message>"` to commit + push the submodule and bump the parent pointer in one go. `bun run sync:desktop` is the inverse helper for pulling remote desktop changes back into the local clone.
 
+After a desktop release syncs to `tagma-web`, use `bun run release:web-summary -- <version> --summary "<English summary>" --summary-zh "<Chinese summary>"` to update the matching web archive entry. The Chinese summary is optional, and `--web-dir <path>` can point at a non-default `tagma-web` checkout.
+
 ---
 
 ## Dependency Principles

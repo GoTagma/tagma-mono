@@ -1,4 +1,4 @@
-import { resolve, dirname } from 'path';
+import { resolve, dirname, isAbsolute, relative } from 'path';
 import {
   TriggerTimeoutError,
   linkAbort,
@@ -6,13 +6,17 @@ import {
   type TriggerContext,
   type TriggerWatchHandle,
 } from '@tagma/types';
-import { validatePath } from '@tagma/core';
 import { parseOptionalPluginTimeout } from '../duration';
 
 const IS_WINDOWS = process.platform === 'win32';
 
 function pathsEqual(a: string, b: string): boolean {
   return IS_WINDOWS ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
+
+function isInsideOrEqual(parent: string, child: string): boolean {
+  const rel = relative(resolve(parent), resolve(child));
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
 }
 
 export const DirectoryTrigger: TriggerPlugin = {
@@ -38,8 +42,8 @@ export const DirectoryTrigger: TriggerPlugin = {
     const dirPath = config.path as string;
     if (!dirPath) throw new Error(`directory trigger: "path" is required`);
 
-    const safePath = validatePath(dirPath, ctx.workDir);
-    const parentDir = validatePath(dirname(safePath), ctx.workDir);
+    const safePath = resolve(ctx.workDir, dirPath);
+    const parentDir = dirname(safePath);
     const timeoutMs = parseOptionalPluginTimeout(config.timeout, 0);
     const disposeController = new AbortController();
 
@@ -73,9 +77,11 @@ async function waitForDirectory(options: {
   if (ctx.signal.aborted) throw new Error('Pipeline aborted');
   if (disposeSignal.aborted) throw new Error('Trigger disposed');
 
-  await ctx.runtime.ensureDir(parentDir).catch(() => {
-    /* best effort; runtime watch will surface real failures */
-  });
+  if (isInsideOrEqual(ctx.workDir, parentDir)) {
+    await ctx.runtime.ensureDir(parentDir).catch(() => {
+      /* best effort; runtime watch will surface real failures */
+    });
+  }
   if (ctx.signal.aborted) throw new Error('Pipeline aborted');
   if (disposeSignal.aborted) throw new Error('Trigger disposed');
 

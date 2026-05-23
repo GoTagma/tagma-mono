@@ -339,6 +339,8 @@ Tasks can declare named, typed `inputs` / `outputs`. Inputs flow in from upstrea
 
 ### Built-in Triggers
 
+File and directory trigger watch paths may be relative to `workDir`, absolute, or external. This exception is only for trigger watch paths; other path fields remain workspace-bound.
+
 #### `manual` — Human approval gate
 
 | Field      | Type       | Required | Default                                                | Description                                       |
@@ -409,6 +411,10 @@ Tasks can declare named, typed `inputs` / `outputs`. Inputs flow in from upstrea
 ### Root: `@tagma/sdk`
 
 - `createTagma(options?)`
+- `createTagma().run(config, options)` for either a single `PipelineConfig` or a `PipelineGraphConfig`
+- `createTagma().runYaml(content, options)` for either `pipeline:` or `workflow:` YAML documents
+- `detectTagmaYamlKind(content)`
+- `loadTagmaYaml(content, workDir)`
 - `bunRuntime()`
 - `definePipeline(pipeline)`
 - `PluginRegistry`
@@ -424,6 +430,10 @@ Tasks can declare named, typed `inputs` / `outputs`. Inputs flow in from upstrea
 - `deresolvePipeline(config, workDir)`
 - `validateConfig(config)`
 - `compileYamlContent(content, options?)`
+- `loadWorkflow(yaml, workDir)`
+- `parseWorkflowYaml(content)`
+- `serializeWorkflow(config)`
+- `validateRawWorkflow(config)`
 
 ### Plugins: `@tagma/sdk/plugins`
 
@@ -491,7 +501,7 @@ Options:
 
 ### `createTagma().run(config, options): Promise<EngineResult>`
 
-Executes the pipeline. Returns `{ success, runId, logPath, summary, states }`.
+Executes a single pipeline. Returns `{ success, runId, logPath, summary, states }`.
 
 Options:
 
@@ -513,6 +523,31 @@ Options:
 - `logPrompt` -- when `true`, writes the final middleware-expanded prompt to the run log. Defaults to `false`.
 
 > **stdout / stderr persistence.** With the default Bun runtime, the engine streams every task's stdout and stderr to disk under `<workDir>/.tagma/logs/<runId>/<taskId>.stdout` and `.stderr`. Custom runtimes can relocate those artifacts by implementing `runtime.logStore.taskOutputPath()`. The `TaskResult.stdout` / `stderr` strings are bounded tails (8 MB / 4 MB by default) — long outputs are truncated from the head with a marker, and consumers that need the full bytes should read `TaskResult.stdoutPath` / `stderrPath`. Use `TaskResult.stdoutBytes` / `stderrBytes` to display "32 MB (truncated)" without re-stat'ing the file.
+
+### Workflow graph YAML
+
+Workflow graph YAML wraps multiple pipeline YAML files and lets the SDK execute them with graph-level dependencies and pipeline lifecycle controls.
+
+```yaml
+workflow:
+  kind: graph
+  name: release-flow
+  max_concurrency: 2
+  failure_policy: stop_all
+  pipelines:
+    - id: build
+      path: .tagma/build/build.yaml
+      lifecycle:
+        max_runs: 3
+        stop_when: success
+    - id: deploy
+      path: .tagma/deploy/deploy.yaml
+      depends_on: [build]
+```
+
+Per-pipeline `lifecycle.max_runs` defaults to `1`. `lifecycle.stop_when` defaults to `success`; supported values are `success` (retry until the first successful run or the max is reached), `failure` (run until the first failed run or the max is reached), and `always` (run exactly `max_runs` attempts unless aborted). Graph results include `runCount`, `maxRuns`, and per-attempt state on each pipeline node.
+
+`createTagma().run(graphConfig, options)` runs a programmatic `PipelineGraphConfig`. `createTagma().runYaml(content, options)` detects either top-level `pipeline:` or `workflow:` YAML and returns `{ kind: 'pipeline' | 'workflow', result }`, so CLI hosts can route one file path through one SDK call.
 
 ### `PipelineRunner`
 

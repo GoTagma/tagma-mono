@@ -70,6 +70,7 @@
     "publish:all": "bun run publish:types && bun run publish:core && bun run publish:runtime-bun && bun run publish:driver-codex && bun run publish:driver-claude-code && bun run publish:middleware-lightrag && bun run publish:trigger-webhook && bun run publish:completion-llm-judge && bun run publish:sdk",
     "publish:dry": "bun run build && cd packages/types && bun publish --dry-run && cd ../core && bun publish --dry-run && cd ../runtime-bun && bun publish --dry-run && cd ../driver-codex && bun publish --dry-run && cd ../driver-claude-code && bun publish --dry-run && cd ../middleware-lightrag && bun publish --dry-run && cd ../trigger-webhook && bun publish --dry-run && cd ../completion-llm-judge && bun publish --dry-run && cd ../sdk && bun publish --dry-run",
     "version": "node scripts/version.mjs",
+    "release:web-summary": "node scripts/release/update-web-changelog-summary.mjs",
     "apps:init": "git submodule update --init --recursive apps",
     "apps:update": "git submodule update --remote --recursive apps",
     "sync:desktop": "node scripts/sync-desktop.mjs",

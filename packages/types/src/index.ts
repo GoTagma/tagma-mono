@@ -356,10 +356,17 @@ export interface RawPipelineConfig {
 // Pipeline graph / workflow config
 
 export type WorkflowFailurePolicy = 'stop_all' | 'continue_independent';
+export type WorkflowDocumentKind = 'workflow' | 'graph';
+export type PipelineGraphStopWhen = 'success' | 'failure' | 'always';
 
 export interface WorkflowPipelinePosition {
   readonly x: number;
   readonly y: number;
+}
+
+export interface PipelineGraphPipelineLifecycle {
+  readonly max_runs?: number;
+  readonly stop_when?: PipelineGraphStopWhen;
 }
 
 export interface RawWorkflowPipelineConfig {
@@ -367,9 +374,11 @@ export interface RawWorkflowPipelineConfig {
   readonly path: string;
   readonly depends_on?: readonly string[];
   readonly position?: WorkflowPipelinePosition;
+  readonly lifecycle?: PipelineGraphPipelineLifecycle;
 }
 
 export interface RawWorkflowConfig {
+  readonly kind?: WorkflowDocumentKind;
   readonly name: string;
   readonly max_concurrency?: number;
   readonly failure_policy?: WorkflowFailurePolicy;
@@ -383,9 +392,11 @@ export interface PipelineGraphPipelineConfig {
   readonly path?: string;
   readonly depends_on?: readonly string[];
   readonly position?: WorkflowPipelinePosition;
+  readonly lifecycle?: PipelineGraphPipelineLifecycle;
 }
 
 export interface PipelineGraphConfig {
+  readonly kind?: WorkflowDocumentKind;
   readonly name: string;
   readonly max_concurrency?: number;
   readonly failure_policy?: WorkflowFailurePolicy;
@@ -409,12 +420,24 @@ export type PipelineGraphNodeStatus =
   | 'skipped'
   | 'aborted';
 
+export interface PipelineGraphPipelineAttemptState {
+  readonly attempt: number;
+  readonly runId: string | null;
+  readonly status: PipelineGraphNodeStatus;
+  readonly startedAt: string | null;
+  readonly finishedAt: string | null;
+  readonly error: string | null;
+}
+
 export interface PipelineGraphNodeState {
   readonly pipelineId: string;
   readonly path: string | null;
   readonly dependsOn: readonly string[];
   readonly status: PipelineGraphNodeStatus;
   readonly runId: string | null;
+  readonly runCount: number;
+  readonly maxRuns: number;
+  readonly attempts: readonly PipelineGraphPipelineAttemptState[];
   readonly startedAt: string | null;
   readonly finishedAt: string | null;
   readonly error: string | null;
@@ -1207,6 +1230,8 @@ export type PipelineGraphEventPayload =
       readonly pipelineId: string;
       readonly status: PipelineGraphNodeStatus;
       readonly runId?: string | null;
+      readonly runCount?: number;
+      readonly maxRuns?: number;
       readonly startedAt?: string | null;
       readonly finishedAt?: string | null;
       readonly error?: string | null;
@@ -1215,6 +1240,7 @@ export type PipelineGraphEventPayload =
       readonly type: 'pipeline_event';
       readonly graphRunId: string;
       readonly pipelineId: string;
+      readonly attempt: number;
       readonly event: RunEventPayload;
     }
   | {

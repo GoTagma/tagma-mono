@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createTagma } from './tagma';
@@ -474,6 +474,241 @@ describe('createTagma', () => {
           { cwd: dir, skipPluginLoading: true },
         ),
       ).rejects.toThrow(PipelineValidationError);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('run accepts a programmatic pipeline graph config', async () => {
+    const calls: string[] = [];
+    const runtime: TagmaRuntime = {
+      async runCommand(command) {
+        calls.push(String(command));
+        return {
+          exitCode: 0,
+          stdout: `${command}\n`,
+          stderr: '',
+          stdoutPath: null,
+          stderrPath: null,
+          stdoutBytes: String(command).length + 1,
+          stderrBytes: 0,
+          durationMs: 1,
+          sessionId: null,
+          normalizedOutput: null,
+          failureKind: null,
+        };
+      },
+      async runSpawn() {
+        throw new Error('runSpawn should not be called for command tasks');
+      },
+      async ensureDir() {},
+      async fileExists() {
+        return false;
+      },
+      async *watch() {},
+      logStore: memoryLogStore(),
+      now() {
+        return new Date('2026-05-23T00:00:00.000Z');
+      },
+      sleep() {
+        return Promise.resolve();
+      },
+    };
+    const tagma = createTagma({ builtins: false, runtime });
+    const dir = makeDir('tagma-graph-run-');
+    try {
+      const result = await tagma.run(
+        {
+          name: 'graph-run',
+          pipelines: [
+            {
+              id: 'first',
+              cwd: dir,
+              config: {
+                name: 'First',
+                mode: 'trusted',
+                tracks: [
+                  { id: 'main', name: 'Main', tasks: [{ id: 'task', command: 'first' }] },
+                ],
+              },
+            },
+            {
+              id: 'second',
+              cwd: dir,
+              depends_on: ['first'],
+              config: {
+                name: 'Second',
+                mode: 'trusted',
+                tracks: [
+                  { id: 'main', name: 'Main', tasks: [{ id: 'task', command: 'second' }] },
+                ],
+              },
+            },
+          ],
+        },
+        { cwd: dir, skipPluginLoading: true },
+      );
+
+      expect(result.success).toBe(true);
+      expect('pipelines' in result).toBe(true);
+      expect(calls).toEqual(['first', 'second']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('runYaml detects and runs either pipeline or workflow YAML documents', async () => {
+    const calls: string[] = [];
+    const runtime: TagmaRuntime = {
+      async runCommand(command) {
+        calls.push(String(command));
+        return {
+          exitCode: 0,
+          stdout: `${command}\n`,
+          stderr: '',
+          stdoutPath: null,
+          stderrPath: null,
+          stdoutBytes: String(command).length + 1,
+          stderrBytes: 0,
+          durationMs: 1,
+          sessionId: null,
+          normalizedOutput: null,
+          failureKind: null,
+        };
+      },
+      async runSpawn() {
+        throw new Error('runSpawn should not be called for command tasks');
+      },
+      async ensureDir() {},
+      async fileExists() {
+        return false;
+      },
+      async *watch() {},
+      logStore: memoryLogStore(),
+      now() {
+        return new Date('2026-05-23T00:00:00.000Z');
+      },
+      sleep() {
+        return Promise.resolve();
+      },
+    };
+    const tagma = createTagma({ builtins: false, runtime });
+    const dir = makeDir('tagma-yaml-document-run-');
+    const pipelineYaml = `pipeline:
+  name: Single
+  mode: trusted
+  tracks:
+    - id: main
+      name: Main
+      tasks:
+        - id: task
+          command: single
+`;
+    const workflowYaml = `workflow:
+  kind: graph
+  name: Flow
+  pipelines:
+    - id: first
+      path: .tagma/first/first.yaml
+`;
+    try {
+      mkdirSync(join(dir, '.tagma', 'first'), { recursive: true });
+      writeFileSync(join(dir, '.tagma', 'first', 'first.yaml'), pipelineYaml, 'utf-8');
+
+      const pipelineRun = await tagma.runYaml(pipelineYaml, {
+        cwd: dir,
+        skipPluginLoading: true,
+      });
+      const workflowRun = await tagma.runYaml(workflowYaml, {
+        cwd: dir,
+        skipPluginLoading: true,
+      });
+
+      expect(pipelineRun.kind).toBe('pipeline');
+      expect(pipelineRun.result.success).toBe(true);
+      expect(workflowRun.kind).toBe('workflow');
+      expect(workflowRun.result.success).toBe(true);
+      expect(calls).toEqual(['single', 'single']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('runYaml honors workflow pipeline lifecycle controls from YAML', async () => {
+    const calls: string[] = [];
+    const runtime: TagmaRuntime = {
+      async runCommand(command) {
+        calls.push(String(command));
+        return {
+          exitCode: 0,
+          stdout: `${command}\n`,
+          stderr: '',
+          stdoutPath: null,
+          stderrPath: null,
+          stdoutBytes: String(command).length + 1,
+          stderrBytes: 0,
+          durationMs: 1,
+          sessionId: null,
+          normalizedOutput: null,
+          failureKind: null,
+        };
+      },
+      async runSpawn() {
+        throw new Error('runSpawn should not be called for command tasks');
+      },
+      async ensureDir() {},
+      async fileExists() {
+        return false;
+      },
+      async *watch() {},
+      logStore: memoryLogStore(),
+      now() {
+        return new Date('2026-05-23T00:00:00.000Z');
+      },
+      sleep() {
+        return Promise.resolve();
+      },
+    };
+    const tagma = createTagma({ builtins: false, runtime });
+    const dir = makeDir('tagma-yaml-lifecycle-run-');
+    try {
+      mkdirSync(join(dir, '.tagma', 'build'), { recursive: true });
+      writeFileSync(
+        join(dir, '.tagma', 'build', 'build.yaml'),
+        `pipeline:
+  name: Build
+  mode: trusted
+  tracks:
+    - id: main
+      name: Main
+      tasks:
+        - id: task
+          command: build
+`,
+        'utf-8',
+      );
+
+      const workflowRun = await tagma.runYaml(
+        `workflow:
+  name: Flow
+  pipelines:
+    - id: build
+      path: .tagma/build/build.yaml
+      lifecycle:
+        max_runs: 2
+        stop_when: always
+`,
+        { cwd: dir, skipPluginLoading: true },
+      );
+
+      expect(workflowRun.kind).toBe('workflow');
+      expect(workflowRun.result.success).toBe(true);
+      expect(workflowRun.result.pipelines[0]?.runCount).toBe(2);
+      expect(workflowRun.result.pipelines[0]?.attempts.map((attempt) => attempt.attempt)).toEqual([
+        1,
+        2,
+      ]);
+      expect(calls).toEqual(['build', 'build']);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

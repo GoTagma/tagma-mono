@@ -160,6 +160,63 @@ describe('workflow YAML model', () => {
     expect(validateRawWorkflow(invalid).map((e) => e.path)).toContain('pipelines[0].position');
   });
 
+  test('validates and serializes workflow node lifecycle controls', () => {
+    const raw = parseWorkflowYaml(`workflow:
+  name: release-flow
+  pipelines:
+    - id: retry_build
+      path: .tagma/build/build.yaml
+      lifecycle:
+        max_runs: 3
+        stop_when: success
+`);
+
+    expect(validateRawWorkflow(raw)).toEqual([]);
+    expect(raw.pipelines[0]?.lifecycle).toEqual({ max_runs: 3, stop_when: 'success' });
+    expect(serializeWorkflow(raw)).toContain('lifecycle:');
+    expect(serializeWorkflow(raw)).toContain('max_runs: 3');
+    expect(serializeWorkflow(raw)).toContain('stop_when: success');
+
+    const invalid = parseWorkflowYaml(`workflow:
+  name: bad
+  pipelines:
+    - id: retry_build
+      path: .tagma/build/build.yaml
+      lifecycle:
+        max_runs: 0
+        stop_when: unknown
+`);
+    expect(validateRawWorkflow(invalid).map((e) => e.path)).toEqual(
+      expect.arrayContaining([
+        'pipelines[0].lifecycle.max_runs',
+        'pipelines[0].lifecycle.stop_when',
+      ]),
+    );
+  });
+
+  test('defaults workflow graph documents to kind graph when serialized and loaded', async () => {
+    const dir = makeDir();
+    try {
+      const pipelinePath = join(dir, '.tagma', 'build', 'build.yaml');
+      mkdirSync(dirname(pipelinePath), { recursive: true });
+      writeFileSync(pipelinePath, pipelineYaml('Build', 'build'), 'utf8');
+
+      const raw = parseWorkflowYaml(`workflow:
+  name: release-flow
+  pipelines:
+    - id: build
+      path: .tagma/build/build.yaml
+`);
+
+      expect(serializeWorkflow(raw)).toContain('kind: graph');
+
+      const loaded = await loadWorkflow(serializeWorkflow(raw), dir);
+      expect(loaded.kind).toBe('graph');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('reports duplicate ids, missing dependencies, cycles, and unsafe paths', () => {
     const duplicate = parseWorkflowYaml(`workflow:
   name: bad
@@ -299,6 +356,211 @@ describe('PipelineGraphRunner', () => {
       expect(result.success).toBe(true);
       expect(seen).toContain('p1:run_start');
       expect(seen).toContain('p1:run_end');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('retries a pipeline node until success within max_runs', async () => {
+    const dir = makeDir();
+    let attempts = 0;
+    const pipelineEvents: string[] = [];
+    try {
+      const result = await runPipelineGraph(
+        {
+          name: 'release-flow',
+          pipelines: [
+            {
+              id: 'flaky',
+              config: commandPipeline('Flaky', 'flaky-command'),
+              cwd: dir,
+              lifecycle: { max_runs: 3, stop_when: 'success' },
+            },
+          ],
+        },
+        dir,
+        {
+          registry: registry(),
+          runtime: fakeRuntime(async () => {
+            attempts += 1;
+            return attempts < 2
+              ? { ...taskResult(''), exitCode: 1, stderr: 'not yet', stderrBytes: 7 }
+              : taskResult('ok\n');
+          }),
+          skipPluginLoading: true,
+          onEvent: (event) => {
+            if (event.type === 'pipeline_event') {
+              pipelineEvents.push(`${event.pipelineId}:${event.attempt}:${event.event.type}`);
+            }
+          },
+        },
+      );
+
+      expect(result.success).toBe(true);
+      expect(attempts).toBe(2);
+      expect(result.pipelines[0]?.status).toBe('success');
+      expect(result.pipelines[0]?.runCount).toBe(2);
+      expect(result.pipelines[0]?.maxRuns).toBe(3);
+      expect(result.pipelines[0]?.attempts.map((attempt) => attempt.status)).toEqual([
+        'failed',
+        'success',
+      ]);
+      expect(pipelineEvents).toEqual(
+        expect.arrayContaining(['flaky:1:run_start', 'flaky:2:run_start']),
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('runs a fixed-count pipeline loop when stop_when is always', async () => {
+    const dir = makeDir();
+    let attempts = 0;
+    try {
+      const result = await runPipelineGraph(
+        {
+          name: 'release-flow',
+          pipelines: [
+            {
+              id: 'loop',
+              config: commandPipeline('Loop', 'loop-command'),
+              cwd: dir,
+              lifecycle: { max_runs: 3, stop_when: 'always' },
+            },
+          ],
+        },
+        dir,
+        {
+          registry: registry(),
+          runtime: fakeRuntime(async () => {
+            attempts += 1;
+            return taskResult(`attempt ${attempts}\n`);
+          }),
+          skipPluginLoading: true,
+        },
+      );
+
+      expect(result.success).toBe(true);
+      expect(attempts).toBe(3);
+      expect(result.pipelines[0]?.runCount).toBe(3);
+      expect(result.pipelines[0]?.attempts.map((attempt) => attempt.status)).toEqual([
+        'success',
+        'success',
+        'success',
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('marks a pipeline failed after exhausting success-conditioned retries', async () => {
+    const dir = makeDir();
+    let attempts = 0;
+    try {
+      const result = await runPipelineGraph(
+        {
+          name: 'release-flow',
+          pipelines: [
+            {
+              id: 'flaky',
+              config: commandPipeline('Flaky', 'flaky-command'),
+              cwd: dir,
+              lifecycle: { max_runs: 2, stop_when: 'success' },
+            },
+          ],
+        },
+        dir,
+        {
+          registry: registry(),
+          runtime: fakeRuntime(async () => {
+            attempts += 1;
+            return { ...taskResult(''), exitCode: 1, stderr: 'still failing', stderrBytes: 13 };
+          }),
+          skipPluginLoading: true,
+        },
+      );
+
+      expect(result.success).toBe(false);
+      expect(attempts).toBe(2);
+      expect(result.pipelines[0]?.status).toBe('failed');
+      expect(result.pipelines[0]?.attempts.map((attempt) => attempt.status)).toEqual([
+        'failed',
+        'failed',
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('stops a pipeline lifecycle when stop_when failure is reached', async () => {
+    const dir = makeDir();
+    let attempts = 0;
+    try {
+      const result = await runPipelineGraph(
+        {
+          name: 'release-flow',
+          pipelines: [
+            {
+              id: 'until_failure',
+              config: commandPipeline('Until failure', 'until-failure'),
+              cwd: dir,
+              lifecycle: { max_runs: 4, stop_when: 'failure' },
+            },
+          ],
+        },
+        dir,
+        {
+          registry: registry(),
+          runtime: fakeRuntime(async () => {
+            attempts += 1;
+            return attempts < 3
+              ? taskResult(`attempt ${attempts}\n`)
+              : { ...taskResult(''), exitCode: 1, stderr: 'failed as requested', stderrBytes: 19 };
+          }),
+          skipPluginLoading: true,
+        },
+      );
+
+      expect(result.success).toBe(false);
+      expect(attempts).toBe(3);
+      expect(result.pipelines[0]?.runCount).toBe(3);
+      expect(result.pipelines[0]?.attempts.map((attempt) => attempt.status)).toEqual([
+        'success',
+        'success',
+        'failed',
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('rejects invalid programmatic pipeline configs before graph execution starts', async () => {
+    const dir = makeDir();
+    const events: string[] = [];
+    try {
+      const invalidPipeline = {
+        name: 'Invalid',
+        mode: 'trusted',
+        tracks: [],
+      } as unknown as PipelineConfig;
+
+      await expect(
+        runPipelineGraph(
+          {
+            name: 'release-flow',
+            pipelines: [{ id: 'bad', config: invalidPipeline, cwd: dir }],
+          },
+          dir,
+          {
+            registry: registry(),
+            runtime: fakeRuntime(),
+            skipPluginLoading: true,
+            onEvent: (event) => events.push(event.type),
+          },
+        ),
+      ).rejects.toThrow(/pipelines\[0\]\.config\.tracks/);
+
+      expect(events).toEqual([]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
