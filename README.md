@@ -256,7 +256,35 @@ bun run publish:dry
 
 Local edits to the desktop sources stay inside this monorepo: edit files under `apps/editor/` and `apps/electron/`, then run `bun run push:desktop "<commit message>"` to commit + push the submodule and bump the parent pointer in one go. `bun run sync:desktop` is the inverse helper for pulling remote desktop changes back into the local clone.
 
-After a desktop release syncs to `tagma-web`, use `bun run release:web-summary -- <version> --summary-file <summary-en.md> --summary-zh-file <summary-zh.md>` to update the matching web archive entry. File input is preferred for multiline Markdown because shells such as PowerShell treat backticks as escapes. `--summary "<one-line summary>"` still works for short text, the Chinese summary is optional, and `--web-dir <path>` can point at a non-default `tagma-web` checkout.
+### 5. Update Web Release Summary
+
+After a desktop release syncs to `tagma-web`, update the matching web archive
+entry from the repository root:
+
+```bash
+bun run release:web-summary -- <version> --summary-file <summary-en.md> --summary-zh-file <summary-zh.md>
+```
+
+By default, the tool edits `../tagma-web/src/content/archive/<version>.md`.
+`<version>` accepts `0.6.24`, `v0.6.24`, or `desktop-v0.6.24`, and the archive
+entry must already exist. File input is preferred for multiline Markdown because
+shells such as PowerShell treat backticks as escapes.
+
+Common forms:
+
+```bash
+# English and Chinese multiline Markdown summaries from files
+bun run release:web-summary -- 0.6.24 --summary-file summary.en.md --summary-zh-file summary.zh.md
+
+# English-only one-line summary
+bun run release:web-summary -- v0.6.24 --summary "Short release summary"
+
+# Non-default tagma-web checkout
+bun run release:web-summary -- desktop-v0.6.24 --summary-file summary.en.md --web-dir D:\work\tagma-web
+```
+
+`--summary-zh-file` and `--summary-zh` are optional. Use either `--summary` or
+`--summary-file`, and either `--summary-zh` or `--summary-zh-file`, not both.
 
 ---
 
