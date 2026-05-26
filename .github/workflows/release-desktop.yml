@@ -37,6 +37,10 @@ on:
         description: 'Required: tagma-desktop/main SHA you expect to release (7+ chars or full). Aborts if origin/main has moved since.'
         type: string
         required: true
+      release_changes:
+        description: 'Optional: JSON array or newline list of English changelog changes to publish as the web archive summary.'
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -178,6 +182,20 @@ jobs:
           ---
           EOF
           fi
+
+      - name: Apply release changelog summary
+        if: ${{ inputs.release_changes != '' }}
+        env:
+          RELEASE_CHANGES: ${{ inputs.release_changes }}
+        run: |
+          set -euo pipefail
+          version="${{ steps.bump.outputs.version }}"
+          changes_file="$(mktemp)"
+          printf '%s' "$RELEASE_CHANGES" > "$changes_file"
+          node scripts/release/apply-release-changes.mjs \
+            "$version" \
+            "apps/electron/CHANGELOG/${version}.md" \
+            --changes-file "$changes_file"
 
       # Ship the staged package.json + changelog as an artifact; the build
       # job overlays it onto its own checkout, and finalize commits it to

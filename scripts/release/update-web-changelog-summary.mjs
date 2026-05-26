@@ -26,13 +26,13 @@ export function normalizeVersion(rawVersion) {
   return match[1];
 }
 
-function yamlString(value) {
+export function yamlString(value) {
   const text = normalizeSummaryText(value);
   if (!text.includes('\n')) return JSON.stringify(text);
   return `|-\n${text.split('\n').map((line) => `  ${line}`).join('\n')}`;
 }
 
-function normalizeSummaryText(value) {
+export function normalizeSummaryText(value) {
   return String(value)
     .replace(/^\uFEFF/, '')
     .replace(/\\r\\n|\\n|\\r/g, '\n')
@@ -58,7 +58,7 @@ function readFrontmatterScalar(frontmatter, name) {
 }
 
 function splitFrontmatterDocument(src) {
-  const match = src.match(/^---(\r?\n)([\s\S]*?)(\r?\n)---(\r?\n|$)([\s\S]*)$/);
+  const match = src.match(/^\uFEFF?---(\r?\n)([\s\S]*?)(\r?\n)---(\r?\n|$)([\s\S]*)$/);
   if (!match) throw new Error('web changelog archive entry has no YAML frontmatter');
   return {
     eol: match[1],

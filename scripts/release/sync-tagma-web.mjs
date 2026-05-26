@@ -15,13 +15,30 @@ if (!version || !monoDir || !webDir || !assetsDir) {
 }
 
 function parseFrontmatter(src) {
-  const m = src.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  const m = src.match(/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---/);
   if (!m) throw new Error('no frontmatter');
   const fm = {};
-  for (const line of m[1].split(/\r?\n/)) {
+  const lines = m[1].split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
     const kv = line.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*(.*)$/);
     if (!kv) continue;
     let val = kv[2].trim();
+    if (val.startsWith('|') || val.startsWith('>')) {
+      const blockLines = [];
+      index += 1;
+      while (index < lines.length) {
+        const blockLine = lines[index];
+        if (blockLine !== '' && !/^\s/.test(blockLine)) {
+          index -= 1;
+          break;
+        }
+        blockLines.push(blockLine.replace(/^  ?/, ''));
+        index += 1;
+      }
+      fm[kv[1]] = blockLines.join('\n').replace(/\n+$/g, '');
+      continue;
+    }
     if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
       val = val.slice(1, -1);
     }
@@ -47,9 +64,11 @@ if (!fm.date || !fm.channel) {
 // web repo's AnnouncementBar can show a real release tagline instead
 // of a generic "vX.Y is out" fallback.
 function yamlString(value) {
-  // JSON.stringify gives us a safe double-quoted YAML string for any
-  // content (escapes quotes, backslashes, control chars).
-  return JSON.stringify(String(value));
+  const text = String(value).replace(/\r\n|\r/g, '\n').replace(/\n+$/g, '');
+  if (!text.includes('\n')) {
+    return JSON.stringify(text);
+  }
+  return `|-\n${text.split('\n').map((line) => `  ${line}`).join('\n')}`;
 }
 
 const summaryLines = [];
