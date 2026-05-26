@@ -44,7 +44,7 @@
     "check:client": "bun run build:types && node node_modules/typescript/bin/tsc -p apps/editor/tsconfig.json --noEmit",
     "check:tests": "node node_modules/typescript/bin/tsc -p apps/editor/tsconfig.test.json --noEmit",
     "check:electron": "node node_modules/typescript/bin/tsc -p apps/electron/tsconfig.json --noEmit",
-    "test": "bun run test:public && bun run --filter tagma-editor test && bun run --filter tagma-desktop test",
+    "test": "bun run test:public && bun run build:plugins && bun run --filter tagma-editor test && bun run --filter tagma-desktop test",
     "verify": "node scripts/verify-project.mjs",
     "verify:quick": "node scripts/verify-project.mjs --quick",
     "verify:full": "node scripts/verify-project.mjs --full",
