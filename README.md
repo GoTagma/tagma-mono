@@ -16,7 +16,7 @@ tagma-mono/
 |   |-- middleware-lightrag/  @tagma/middleware-lightrag  LightRAG knowledge-graph retrieval middleware
 |   |-- trigger-webhook/      @tagma/trigger-webhook      HTTP webhook trigger plugin
 |   `-- completion-llm-judge/ @tagma/completion-llm-judge LLM-as-judge completion plugin
-|-- apps/                     git submodule: GoTagma/tagma-desktop (private, bun workspace: apps/*)
+|-- apps/                     private app workspaces tracked in this monorepo (bun workspace: apps/*)
 |   |-- editor/               tagma-editor                Visual pipeline editor (React + Vite + Bun/Express)
 |   `-- electron/             tagma-desktop               Electron shell + Bun-compiled sidecar for desktop builds
 |-- package.json              monorepo root (bun workspaces)
@@ -252,9 +252,9 @@ bun run publish:all
 bun run publish:dry
 ```
 
-`tagma-editor` and `tagma-desktop` live in the private [`GoTagma/tagma-desktop`](https://github.com/GoTagma/tagma-desktop) repo and are mounted here as a git submodule at `apps/`. Desktop releases ship as installer artifacts via `release-desktop.yml`; see `apps/electron/README.md`. Clone with `git clone --recurse-submodules`, or run `bun run apps:init` (alias for `git submodule update --init --recursive apps`) after a plain clone. Use `bun run apps:update` to fast-forward the submodule pointer to the latest remote SHA.
+`tagma-editor` and `tagma-desktop` live directly under `apps/` in this monorepo. Desktop releases ship as installer artifacts via `release-desktop.yml`; see `apps/electron/README.md`. A normal clone contains the desktop sources; no extra initialization step is required.
 
-Local edits to the desktop sources stay inside this monorepo: edit files under `apps/editor/` and `apps/electron/`, then run `bun run push:desktop "<commit message>"` to commit + push the submodule and bump the parent pointer in one go. `bun run sync:desktop` is the inverse helper for pulling remote desktop changes back into the local clone.
+Local edits to the desktop sources are ordinary monorepo changes: edit files under `apps/editor/` and `apps/electron/`, then commit them from the repository root with the related package changes.
 
 ### 5. Update Web Release Summary
 

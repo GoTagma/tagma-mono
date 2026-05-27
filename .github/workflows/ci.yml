@@ -10,15 +10,12 @@ permissions:
   contents: read
 
 jobs:
-  # Full repository gate: recursive submodule checkout + every check, lint
-  # and test the repo runs on push to main. Triggers on:
+  # Full repository gate: every check, lint, and test the repo runs on push
+  # to main. Triggers on:
   #   - push to main
-  #   - pull_request from a branch in the same repository (so the bot's
-  #     submodule-fetch token is available; fork PRs don't have access to
-  #     repository secrets and fall back to `public-check-fork` below).
+  #   - pull_request from a branch in the same repository.
   # Required so that any change which can affect apps/electron, apps/editor
-  # (the submodule), or anything depending on them is gated before merge,
-  # not after.
+  # or anything depending on them is gated before merge, not after.
   full-check:
     if: >-
       github.event_name == 'push' ||
@@ -26,20 +23,7 @@ jobs:
        github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/create-github-app-token@v3
-        id: app-token
-        with:
-          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
-          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: |
-            tagma-mono
-            tagma-desktop
-
       - uses: actions/checkout@v5
-        with:
-          token: ${{ steps.app-token.outputs.token }}
-          submodules: recursive
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -60,11 +44,9 @@ jobs:
       - name: Lint
         run: bun run lint
 
-  # Degraded gate for fork PRs: GitHub Actions does not expose repository
-  # secrets to fork-triggered workflows, so the bot token used to fetch the
-  # private submodule is unavailable. Instead of failing the PR outright,
-  # fork contributors get the public-package gates only — `full-check` will
-  # still run once a maintainer pulls the change into a same-repo branch.
+  # Degraded gate for fork PRs: keep untrusted forks on public packages only.
+  # `full-check` still runs once a maintainer pulls the change into a same-repo
+  # branch.
   public-check-fork:
     if: >-
       github.event_name == 'pull_request' &&
@@ -72,8 +54,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-        with:
-          submodules: false
 
       - uses: oven-sh/setup-bun@v2
         with:

@@ -1,22 +1,22 @@
 name: Release Desktop
 
-# Atomic-on-success design: the version bump, changelog commit, submodule
-# pointer bump, git tag, and GitHub Release are all deferred to the very last
+# Atomic-on-success design: the version bump, changelog commit, git tag, and
+# GitHub Release are all deferred to the very last
 # job (`finalize`). If ANY step before finalize fails — build, publish,
 # hash-verify, electron-builder — no commit and no tag ever touches
-# tagma-desktop/main or tagma-mono/main, so there's nothing to roll back and
-# the next run starts from the same base version as if this run never happened.
+# tagma-mono/main, so there's nothing to roll back and the next run starts from
+# the same base version as if this run never happened.
 #
 # Flow:
 #   prepare   → compute new version, write package.json + CHANGELOG onto the
 #               runner only, upload as an artifact. No commit.
-#   build     → matrix (mac/linux/win). Pins submodule to prepare's captured
-#               apps SHA, overlays the prepared package.json + CHANGELOG, then
-#               runs electron-builder. Artifacts uploaded per-platform.
+#   build     → matrix (mac/linux/win). Overlays the prepared package.json +
+#               CHANGELOG, then runs electron-builder. Artifacts uploaded
+#               per-platform.
 #   publish   → flatten + hash-verify artifacts, build hot-update manifest and
 #               release notes. Nothing is tagged or released yet.
-#   finalize  → commit+push the version bump into tagma-desktop/main, bump
-#               submodule pointer + tag `desktop-v<ver>` into tagma-mono/main,
+#   finalize  → commit+push the version bump + tag `desktop-v<ver>` into
+#               tagma-mono/main,
 #               create the GitHub Release pinned to that tag.
 #   sync-web  → sync archive entry + manifest into tagma-web (unchanged).
 
@@ -33,10 +33,6 @@ on:
         type: choice
         options: [alpha, beta, rc, stable, patch]
         default: alpha
-      expected_apps_sha:
-        description: 'Required: tagma-desktop/main SHA you expect to release (7+ chars or full). Aborts if origin/main has moved since.'
-        type: string
-        required: true
       release_changes:
         description: 'Optional: JSON array or newline list of English changelog changes to publish as the web archive summary.'
         type: string
@@ -53,24 +49,11 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.bump.outputs.version }}
-      apps_sha: ${{ steps.sync.outputs.apps_sha }}
       prev_tag: ${{ steps.prev.outputs.prev_tag }}
     steps:
-      - uses: actions/create-github-app-token@v3
-        id: app-token
-        with:
-          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
-          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: |
-            tagma-mono
-            tagma-desktop
-
       - uses: actions/checkout@v5
         with:
-          token: ${{ steps.app-token.outputs.token }}
           fetch-depth: 0
-          submodules: recursive
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -79,47 +62,6 @@ jobs:
           # cross-target runtime (e.g. v1.3.12 windows-x64-baseline extract
           # failure) can't take the release pipeline down without warning.
           bun-version: 1.3.11
-
-      # The submodule was checked out at whatever SHA mono's main currently
-      # pins, which may lag tagma-desktop/main. Fast-forward to the latest so
-      # the build runs against real HEAD and finalize's submodule-pointer
-      # bump lands on a reviewed commit.
-      - name: Sync submodule to latest tagma-desktop/main
-        id: sync
-        run: |
-          git -C apps fetch origin main
-          git -C apps checkout main
-          git -C apps reset --hard origin/main
-          apps_sha=$(git -C apps rev-parse HEAD)
-          echo "tagma-desktop/main is at $apps_sha"
-          echo "apps_sha=$apps_sha" >> "$GITHUB_OUTPUT"
-
-      # Required tripwire: operator passes a SHA from their local `git -C apps
-      # rev-parse main` before clicking Run workflow. If anyone else pushed to
-      # tagma-desktop/main between that check and this job, the reset above
-      # would silently pull in the extra commits. Fail instead so the operator
-      # can review the new commits and re-trigger with an updated SHA.
-      - name: Verify tagma-desktop/main matches expected SHA
-        shell: bash
-        run: |
-          set -euo pipefail
-          expected="${{ inputs.expected_apps_sha }}"
-          n=${#expected}
-          if [ "$n" -lt 7 ]; then
-            echo "expected_apps_sha must be at least 7 chars (got: '$expected')"
-            exit 1
-          fi
-          actual=$(git -C apps rev-parse HEAD)
-          if [ "${actual:0:$n}" != "$expected" ]; then
-            echo "tagma-desktop/main HEAD is $actual"
-            echo "expected                  $expected"
-            echo ""
-            echo "Someone pushed to tagma-desktop/main after you captured the"
-            echo "expected SHA. Inspect the new commits and re-run the workflow"
-            echo "with the updated SHA."
-            exit 1
-          fi
-          echo "tagma-desktop/main @ $actual matches expected $expected"
 
       # Record the previous desktop-v* tag now so publish's min-shell gate
       # has a stable reference even if someone pushes an unrelated tag
@@ -199,8 +141,8 @@ jobs:
 
       # Ship the staged package.json + changelog as an artifact; the build
       # job overlays it onto its own checkout, and finalize commits it to
-      # tagma-desktop. The artifact is the single source of truth for the
-      # version bump across all downstream jobs.
+      # tagma-mono. The artifact is the single source of truth for the version
+      # bump across all downstream jobs.
       - name: Upload prepared bump
         uses: actions/upload-artifact@v6
         with:
@@ -224,35 +166,7 @@ jobs:
             platform: win
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/create-github-app-token@v3
-        id: app-token
-        with:
-          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
-          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: |
-            tagma-mono
-            tagma-desktop
-
       - uses: actions/checkout@v5
-        with:
-          token: ${{ steps.app-token.outputs.token }}
-          submodules: recursive
-
-      # Re-pin the submodule to exactly what prepare resolved — the mono
-      # checkout brought us to whatever SHA is currently committed, which
-      # usually lags tagma-desktop/main. Without this, the three matrix
-      # runners could build against three different apps SHAs if someone
-      # pushes to tagma-desktop/main mid-build.
-      - name: Pin apps submodule to prepared SHA
-        shell: bash
-        run: |
-          set -euo pipefail
-          apps_sha="${{ needs.prepare.outputs.apps_sha }}"
-          git -C apps fetch --no-tags origin "$apps_sha" 2>/dev/null \
-            || git -C apps fetch --no-tags origin
-          git -C apps checkout "$apps_sha"
-          echo "apps pinned to $apps_sha"
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -769,23 +683,10 @@ jobs:
       channel: ${{ steps.ch.outputs.channel }}
       prerelease: ${{ steps.ch.outputs.prerelease }}
     steps:
-      - uses: actions/create-github-app-token@v3
-        id: app-token
-        with:
-          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
-          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: |
-            tagma-mono
-            tagma-desktop
-
       - uses: actions/checkout@v5
         with:
-          token: ${{ steps.app-token.outputs.token }}
-          submodules: recursive
           # Need full history + tags so the min-shell gate below can diff the
-          # electron IPC surface between the prior desktop-v tag and the apps
-          # SHA prepare pinned.
+          # electron IPC surface against the prior desktop-v tag.
           fetch-depth: 0
 
       - uses: actions/download-artifact@v7
@@ -880,34 +781,13 @@ jobs:
           set -euo pipefail
           version="${{ needs.prepare.outputs.version }}"
           prev_tag="${{ needs.prepare.outputs.prev_tag }}"
-          cur_apps_sha="${{ needs.prepare.outputs.apps_sha }}"
 
           if [ -z "$prev_tag" ]; then
             echo "no prior desktop-v tag — first release, omitting min-shell"
             echo "min_shell=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          echo "diffing ${prev_tag} → apps@${cur_apps_sha}"
-
-          # The prior tag still exists in mono; resolve its apps submodule
-          # pointer. The current side uses prepare's pinned SHA rather than a
-          # new tag (the tag won't exist until finalize).
-          prev_apps_sha=$(git rev-parse "${prev_tag}:apps")
-          echo "apps submodule: ${prev_apps_sha} → ${cur_apps_sha}"
-          if [ "$prev_apps_sha" = "$cur_apps_sha" ]; then
-            echo "submodule pointer unchanged; no IPC surface change possible"
-            echo "min_shell=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # actions/checkout only fetches the currently-pinned submodule
-          # commit; neither side of the diff is guaranteed to be in the local
-          # object DB. Try targeted fetches first (cheap when the server
-          # allows it), fall back to a full fetch so `git diff` can always
-          # resolve both sides.
-          git -C apps fetch --no-tags origin "$prev_apps_sha" 2>/dev/null \
-            || git -C apps fetch --no-tags origin
-          git -C apps fetch --no-tags origin "$cur_apps_sha" 2>/dev/null || true
+          echo "diffing ${prev_tag} → HEAD"
 
           # The release/ directory drives the bundle update transaction
           # (staging layout, activation order, current.json shape). Any change
@@ -922,17 +802,17 @@ jobs:
           # config) forces a fresh installer instead of being hot-updated into
           # an older shell whose Chromium / Node / preload contract no longer
           # matches the new sidecar.
-          changed=$(git -C apps diff --name-only "$prev_apps_sha" "$cur_apps_sha" -- \
-            electron/src/main.ts \
-            electron/src/preload.ts \
-            electron/src/runtime-paths.ts \
-            electron/package.json \
-            editor/server/routes/editor.ts \
-            editor/server/routes/sidecar.ts \
-            editor/server/routes/release.ts \
-            editor/server/release/ \
-            editor/server/static-assets.ts \
-            editor/server/update-manifest.ts)
+          changed=$(git diff --name-only "$prev_tag" HEAD -- \
+            apps/electron/src/main.ts \
+            apps/electron/src/preload.ts \
+            apps/electron/src/runtime-paths.ts \
+            apps/electron/package.json \
+            apps/editor/server/routes/editor.ts \
+            apps/editor/server/routes/sidecar.ts \
+            apps/editor/server/routes/release.ts \
+            apps/editor/server/release/ \
+            apps/editor/server/static-assets.ts \
+            apps/editor/server/update-manifest.ts)
           if [ -n "$changed" ]; then
             echo "compat surface files touched:"
             printf '  %s\n' $changed
@@ -1024,16 +904,12 @@ jobs:
           owner: ${{ github.repository_owner }}
           repositories: |
             tagma-mono
-            tagma-desktop
 
       # Fresh checkout of main so any unrelated commits that landed during
-      # build don't block our fast-forward push. The commit we're about to
-      # create only touches `apps` (submodule pointer), so replaying on top
-      # of newer mono commits is safe.
+      # build don't block our fast-forward push.
       - uses: actions/checkout@v5
         with:
           token: ${{ steps.app-token.outputs.token }}
-          submodules: recursive
           fetch-depth: 0
 
       - uses: actions/download-artifact@v7
@@ -1046,75 +922,7 @@ jobs:
           name: release-payload
           path: release-payload
 
-      - name: Commit version bump to tagma-desktop
-        id: stage1
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="${{ needs.prepare.outputs.version }}"
-          prepared_apps_sha="${{ needs.prepare.outputs.apps_sha }}"
-
-          git -C apps config user.name "Tagma Release Bot"
-          git -C apps config user.email "release-bot@users.noreply.github.com"
-          git -C apps fetch origin main
-
-          # Idempotency: if a previous finalize attempt already pushed the
-          # bump (e.g. stage 2 failed and the operator is re-running), don't
-          # create a duplicate commit. Check whether origin/main's electron
-          # package.json already carries the target version.
-          remote_version=$(git -C apps show origin/main:electron/package.json | node -e "
-            let s=''; process.stdin.on('data',c=>s+=c).on('end',()=>{
-              try { console.log(JSON.parse(s).version); } catch { process.exit(1); }
-            });
-          ")
-          if [ "$remote_version" = "$version" ]; then
-            new_apps_sha=$(git -C apps rev-parse origin/main)
-            echo "tagma-desktop/main already at v$version (sha=$new_apps_sha) — skipping commit"
-            echo "new_apps_sha=$new_apps_sha" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # Normal path: reset the submodule worktree to the SHA prepare
-          # captured, apply the overlay on top, commit, push.
-          git -C apps fetch --no-tags origin "$prepared_apps_sha" 2>/dev/null \
-            || git -C apps fetch --no-tags origin
-          git -C apps checkout "$prepared_apps_sha"
-
-          cp overlay/package.json apps/electron/package.json
-          mkdir -p apps/electron/CHANGELOG
-          cp overlay/CHANGELOG/*.md apps/electron/CHANGELOG/
-
-          git -C apps add electron/package.json "electron/CHANGELOG/${version}.md"
-          git -C apps commit -m "chore(desktop): cut v${version}"
-          # Fast-forward only. If origin/main moved between prepare capturing
-          # apps_sha and finalize pushing, abort with a clear message rather
-          # than auto-rebase: the bump edits electron/package.json's "version"
-          # line, which any concurrent release has also touched — the 3-way
-          # merge can't pick between them and dies with a cryptic CONFLICT
-          # that obscures the real cause. Recovery is to re-run the workflow;
-          # the fresh prepare will re-capture the new main SHA and bump from
-          # there.
-          if ! git -C apps push origin HEAD:main; then
-            git -C apps fetch origin main >/dev/null 2>&1 || true
-            latest=$(git -C apps rev-parse origin/main 2>/dev/null || echo '<unknown>')
-            echo ""
-            echo "tagma-desktop/main was changed during release — please re-run the workflow."
-            echo "  prepare captured:  ${prepared_apps_sha}"
-            echo "  origin/main now:   ${latest}"
-            echo ""
-            echo "Another commit landed on tagma-desktop/main between prepare and"
-            echo "finalize (likely a concurrent release). Re-trigger Release Desktop;"
-            echo "the fresh prepare will bump from the new base version. Optionally"
-            echo "pass expected_apps_sha=${latest} to fail fast if main moves again."
-            exit 1
-          fi
-          new_apps_sha=$(git -C apps rev-parse HEAD)
-          echo "pushed tagma-desktop/main @ $new_apps_sha"
-          echo "new_apps_sha=$new_apps_sha" >> "$GITHUB_OUTPUT"
-
-      - name: Commit submodule bump, tag, push to tagma-mono
+      - name: Commit desktop bump, tag, push to tagma-mono
         id: stage2
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -1122,16 +930,10 @@ jobs:
         run: |
           set -euo pipefail
           version="${{ needs.prepare.outputs.version }}"
-          new_apps_sha="${{ steps.stage1.outputs.new_apps_sha }}"
           tag="desktop-v${version}"
 
           git config user.name "Tagma Release Bot"
           git config user.email "release-bot@users.noreply.github.com"
-
-          # Move submodule pointer to the freshly-pushed tagma-desktop SHA.
-          git -C apps fetch --no-tags origin "$new_apps_sha" 2>/dev/null \
-            || git -C apps fetch --no-tags origin
-          git -C apps checkout "$new_apps_sha"
 
           # Idempotency: if the tag already exists on the remote (previous
           # attempt got this far), don't try to commit or re-tag. Just use
@@ -1145,12 +947,13 @@ jobs:
             exit 0
           fi
 
-          # Create the bump commit. If the submodule diff is empty (someone
-          # else already bumped it to the same SHA), skip the commit and tag
-          # the current HEAD.
-          git add apps
+          cp overlay/package.json apps/electron/package.json
+          mkdir -p apps/electron/CHANGELOG
+          cp overlay/CHANGELOG/*.md apps/electron/CHANGELOG/
+
+          git add apps/electron/package.json "apps/electron/CHANGELOG/${version}.md"
           if git diff --cached --quiet; then
-            echo "submodule pointer unchanged; tagging current HEAD"
+            echo "desktop version already staged in main; tagging current HEAD"
             target_sha=$(git rev-parse HEAD)
           else
             git commit -m "chore(desktop): cut v${version}"
@@ -1160,8 +963,7 @@ jobs:
           git tag "$tag" "$target_sha"
           # Push the commit first so the tag has a reachable target on the
           # remote. If the commit push fails (main moved), retry once after
-          # rebasing onto origin/main — the only change we introduce is the
-          # submodule pointer, which should not conflict with unrelated work.
+          # rebasing onto origin/main.
           if ! git push origin "HEAD:main"; then
             echo "fast-forward push failed; rebasing onto origin/main and retrying"
             git fetch origin main
@@ -1216,14 +1018,12 @@ jobs:
           owner: ${{ github.repository_owner }}
           repositories: |
             tagma-mono
-            tagma-desktop
             tagma-web
 
       - name: Checkout tagma-mono
         uses: actions/checkout@v5
         with:
           token: ${{ steps.app-token.outputs.token }}
-          submodules: recursive
           path: mono
 
       - name: Checkout tagma-web
@@ -1252,9 +1052,8 @@ jobs:
             -exec cp {} flat/ \;
 
       # sync-web's tagma-mono checkout is pinned to github.sha (the commit that
-      # triggered the workflow), so the apps submodule is at the PRE-finalize
-      # pointer — the new CHANGELOG/<version>.md that finalize just pushed to
-      # tagma-desktop/main isn't reachable from here. Overlay the prepared
+      # triggered the workflow), so the new CHANGELOG/<version>.md that
+      # finalize just pushed is not reachable from here. Overlay the prepared
       # CHANGELOG (same artifact publish uses) so sync-tagma-web.mjs can read
       # it. Mirrors publish's "Overlay prepared CHANGELOG" step.
       - name: Overlay prepared CHANGELOG into mono checkout

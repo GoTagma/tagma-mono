@@ -129,9 +129,9 @@ node -e "const { generateKeyPairSync } = require('node:crypto'); const { publicK
 `.github/workflows/release-desktop.yml` is the source of truth. The workflow is `workflow_dispatch` only — there is no tag trigger. Job graph (atomic-on-success: the bump + tag + release only land if every earlier job passed):
 
 1. **prepare** — compute the new `version`, pin `tagma.channel` to the chosen channel (`patch` collapses to `stable`), scaffold `CHANGELOG/<version>.md`. All writes stay on the runner and are shipped to downstream jobs as the `prepared` artifact. **No commits.**
-2. **build** (matrix: macos / ubuntu / windows) — pin the `apps` submodule to the SHA prepare captured, overlay the prepared `package.json` + `CHANGELOG`, then build the desktop chain, fetch opencode, run electron-builder, compute checksums. Linux additionally produces `editor-dist-<version>.tar.gz`.
+2. **build** (matrix: macos / ubuntu / windows) — overlay the prepared `package.json` + `CHANGELOG`, then build the desktop chain, fetch opencode, run electron-builder, compute checksums. Linux additionally produces `editor-dist-<version>.tar.gz`.
 3. **publish** — flatten artifacts, verify cross-OS editor-dist hashes match, generate the editor hot-update manifest via `scripts/release/build-hotupdate-manifest.mjs`, draft release notes. Still **no commits, no tag, no GitHub Release** yet.
-4. **finalize** — the only job that writes to a remote. Commits the bump into `tagma-desktop/main`, bumps the submodule pointer + tags `desktop-v<version>` in `tagma-mono/main`, creates the GitHub Release pinned to that tag. Each stage is idempotent so a re-run after a partial failure can complete what's missing.
+4. **finalize** — the only job that writes to a remote. Commits the desktop version bump and tags `desktop-v<version>` in `tagma-mono/main`, then creates the GitHub Release pinned to that tag. The stage is idempotent so a re-run after a partial failure can complete what's missing.
 5. **sync-web** — copy archive entry + hot-update manifest into the [tagma-web](https://github.com/GoTagma/tagma-web) repo at `public/editor-updates/<channel>/manifest.json`. Runs last so tagma-web only ever points at a release that actually exists on GitHub.
 
 Channel notes:
