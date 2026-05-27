@@ -1,0 +1,39 @@
+{
+  "success": true,
+  "summary": {
+    "total": 3,
+    "success": 3,
+    "failed": 0,
+    "skipped": 0,
+    "timeout": 0,
+    "blocked": 0
+  },
+  "tasks": {
+    "main.sink": {
+      "status": "success",
+      "exitCode": 0,
+      "stdout": "Result: Berlin (pop: 3645000)",
+      "stderr": "",
+      "outputs": null
+    },
+    "main.source": {
+      "status": "success",
+      "exitCode": 0,
+      "stdout": "{\"city\":\"Berlin\",\"pop\":3645000}",
+      "stderr": "",
+      "outputs": {
+        "city": "Berlin",
+        "pop": 3645000
+      }
+    },
+    "main.transform": {
+      "status": "success",
+      "exitCode": 0,
+      "stdout": "{\"label\":\"Berlin (pop: 3645000)\"}",
+      "stderr": "",
+      "outputs": {
+        "label": "Berlin (pop: 3645000)"
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+pipeline:
+  name: golden-simple-command
+  mode: trusted
+  tracks:
+    - id: main
+      name: Main
+      tasks:
+        - id: hello
+          name: hello
+          command:
+            argv: ["node", "-e", "process.stdout.write('hello golden')"]

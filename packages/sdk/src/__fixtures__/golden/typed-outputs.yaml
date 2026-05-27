@@ -1,0 +1,18 @@
+pipeline:
+  name: golden-typed-outputs
+  mode: trusted
+  tracks:
+    - id: main
+      name: Main
+      tasks:
+        - id: producer
+          name: producer
+          command:
+            argv: ["node", "-e", "process.stdout.write(JSON.stringify({name: 'Tagma', version: 42, active: true}))"]
+          outputs:
+            name:
+              type: string
+            version:
+              type: number
+            active:
+              type: boolean

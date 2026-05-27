@@ -1,0 +1,17 @@
+pipeline:
+  name: golden-error-exit-code
+  mode: trusted
+  tracks:
+    - id: main
+      name: Main
+      on_failure: skip_downstream
+      tasks:
+        - id: fail
+          name: fail
+          command:
+            argv: ["node", "-e", "process.stderr.write('expected failure'); process.exit(1)"]
+        - id: skipped
+          name: skipped
+          depends_on: [fail]
+          command:
+            argv: ["node", "-e", "process.stdout.write('should not run')"]

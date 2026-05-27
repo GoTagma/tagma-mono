@@ -1,0 +1,27 @@
+{
+  "success": false,
+  "summary": {
+    "total": 2,
+    "success": 0,
+    "failed": 1,
+    "skipped": 1,
+    "timeout": 0,
+    "blocked": 0
+  },
+  "tasks": {
+    "main.fail": {
+      "status": "failed",
+      "exitCode": 1,
+      "stdout": "",
+      "stderr": "expected failure",
+      "outputs": null
+    },
+    "main.skipped": {
+      "status": "skipped",
+      "exitCode": null,
+      "stdout": "",
+      "stderr": "",
+      "outputs": null
+    }
+  }
+}

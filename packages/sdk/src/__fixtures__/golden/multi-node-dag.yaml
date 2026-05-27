@@ -1,0 +1,52 @@
+pipeline:
+  name: golden-multi-node-dag
+  mode: trusted
+  tracks:
+    - id: main
+      name: Main
+      tasks:
+        - id: source
+          name: source
+          command:
+            argv: ["node", "-e", "process.stdout.write(JSON.stringify({city: 'Berlin', pop: 3645000}))"]
+          outputs:
+            city:
+              type: string
+            pop:
+              type: number
+        - id: transform
+          name: transform
+          depends_on: [source]
+          command:
+            argv:
+              - node
+              - "-e"
+              - "process.stdout.write(JSON.stringify({label: process.argv[1] + ' (pop: ' + process.argv[2] + ')'}))"
+              - "{{inputs.city}}"
+              - "{{inputs.pop}}"
+          inputs:
+            city:
+              from: source.city
+              type: string
+              required: true
+            pop:
+              from: source.pop
+              type: number
+              required: true
+          outputs:
+            label:
+              type: string
+        - id: sink
+          name: sink
+          depends_on: [transform]
+          command:
+            argv:
+              - node
+              - "-e"
+              - "process.stdout.write('Result: ' + process.argv[1])"
+              - "{{inputs.label}}"
+          inputs:
+            label:
+              from: transform.label
+              type: string
+              required: true
