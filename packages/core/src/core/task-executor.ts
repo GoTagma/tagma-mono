@@ -285,7 +285,12 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
   // execution context except the resolved-debug-log line below.
   const resolvedCwd = task.cwd ?? track.cwd ?? workDir;
 
-  const taskTimeoutMs = task.timeout ? parseDuration(task.timeout) : undefined;
+  // Per-task timeout: explicit task.timeout wins, then ctx.defaultTaskTimeoutMs
+  // (set by the editor to DEFAULT_TASK_TIMEOUT_MS = 30 min), then undefined
+  // (no timeout — task runs until completion or pipeline abort).
+  const taskTimeoutMs = task.timeout
+    ? parseDuration(task.timeout)
+    : (ctx.defaultTaskTimeoutMs ?? undefined);
   const taskDeadlineStartedAtMs = Date.now();
   const taskDeadlineMs =
     taskTimeoutMs === undefined ? undefined : taskDeadlineStartedAtMs + taskTimeoutMs;

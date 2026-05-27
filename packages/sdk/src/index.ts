@@ -15,6 +15,7 @@ export {
   PluginRegistry,
   TriggerBlockedError,
   TriggerTimeoutError,
+  DEFAULT_TASK_TIMEOUT_MS,
 } from '@tagma/core';
 export type { EngineResult, RegisterPluginOptions, RunEventPayload } from '@tagma/core';
 export {

@@ -46,6 +46,11 @@ export interface RunContextOptions {
   readonly secretResolver?: SecretResolver;
   readonly logPrompt: boolean;
   readonly activeTaskIds?: ReadonlySet<string>;
+  /**
+   * Fallback per-task timeout (ms) when a task has no explicit `timeout`.
+   * Undefined means no default — tasks run until completion or pipeline abort.
+   */
+  readonly defaultTaskTimeoutMs?: number;
 }
 
 /**
@@ -67,6 +72,12 @@ export class RunContext {
   readonly secretResolver?: SecretResolver;
   readonly logPrompt: boolean;
   readonly activeTaskIds: ReadonlySet<string> | null;
+  /**
+   * Fallback per-task timeout (ms) when a task has no explicit `timeout`.
+   * Undefined means no default safety net — tasks run until completion or
+   * pipeline abort. The editor passes DEFAULT_TASK_TIMEOUT_MS (30 min).
+   */
+  readonly defaultTaskTimeoutMs?: number;
 
   readonly states = new Map<string, TaskState>();
   readonly sessionMap = new Map<string, string>();
@@ -91,6 +102,7 @@ export class RunContext {
     this.secretResolver = options.secretResolver;
     this.logPrompt = options.logPrompt;
     this.activeTaskIds = options.activeTaskIds ?? null;
+    this.defaultTaskTimeoutMs = options.defaultTaskTimeoutMs;
 
     for (const [id, node] of this.dag.nodes) {
       this.states.set(id, {

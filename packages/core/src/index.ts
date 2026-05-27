@@ -9,7 +9,7 @@ export type {
 } from './approval';
 export { buildDag, buildRawDag } from './dag';
 export type { Dag, DagNode, RawDag, RawDagNode } from './dag';
-export { runPipeline, TriggerBlockedError, TriggerTimeoutError } from './engine';
+export { runPipeline, TriggerBlockedError, TriggerTimeoutError, DEFAULT_TASK_TIMEOUT_MS } from './engine';
 export type {
   EngineResult,
   RunEventPayload,

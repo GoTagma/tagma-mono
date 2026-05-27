@@ -2,6 +2,7 @@ import type {
   EnvPolicy,
   PipelineExecutionMode,
   PipelineConfig,
+  SafeModeAllowlist,
   SecretResolver,
   TaskState,
   RunEventPayload,
@@ -44,6 +45,15 @@ export interface EngineResult {
   };
   readonly states: ReadonlyMap<string, TaskState>;
 }
+
+/**
+ * Default per-task timeout (30 minutes) applied when neither the task nor
+ * the pipeline declares an explicit timeout. Long enough for heavy AI tasks;
+ * short enough to prevent truly hung processes from blocking the pipeline
+ * indefinitely. The editor passes this value; SDK callers may opt in or
+ * supply their own via RunPipelineOptions.defaultTaskTimeoutMs.
+ */
+export const DEFAULT_TASK_TIMEOUT_MS = 30 * 60 * 1000;
 
 // ═══ Pipeline Events ═══
 //
@@ -107,14 +117,22 @@ export interface RunPipelineOptions {
    * Runtime implementation for command and driver process execution.
    */
   readonly runtime: TagmaRuntime;
+  /**
+   * Fallback per-task timeout (ms) applied when a task has no explicit
+   * `timeout` and the pipeline has no pipeline-level `timeout`. Guards
+   * against indefinitely-hung AI API calls or shell commands. When unset,
+   * tasks without their own timeout run until completion or external abort.
+   *
+   * The editor sets this to DEFAULT_TASK_TIMEOUT_MS (30 min) so an unbounded
+   * pipeline still has a per-task safety net. SDK callers can pass their own
+   * value or omit it for the legacy "no default" behavior.
+   */
+  readonly defaultTaskTimeoutMs?: number;
 }
 
-export interface SafeModeAllowlist {
-  readonly drivers?: readonly string[];
-  readonly triggers?: readonly string[];
-  readonly completions?: readonly string[];
-  readonly middlewares?: readonly string[];
-}
+// Re-export from @tagma/types for backward compatibility — existing imports
+// from '@tagma/core' continue to work.
+export type { SafeModeAllowlist } from './types';
 
 // Poll interval when no tasks are in-flight but non-terminal tasks remain
 // (e.g. tasks waiting on a file, directory, or manual trigger).
@@ -180,16 +198,23 @@ function resolveTargetTaskRunSet(
 }
 
 function safeSet<T extends keyof Required<SafeModeAllowlist>>(
-  allowlist: SafeModeAllowlist | undefined,
+  hardcoded: SafeModeAllowlist,
+  registry: SafeModeAllowlist | undefined,
+  caller: SafeModeAllowlist | undefined,
   key: T,
 ): ReadonlySet<string> {
-  return new Set([...(DEFAULT_SAFE_MODE_ALLOWLIST[key] ?? []), ...(allowlist?.[key] ?? [])]);
+  return new Set([
+    ...(hardcoded[key] ?? []),
+    ...(registry?.[key] ?? []),
+    ...(caller?.[key] ?? []),
+  ]);
 }
 
 function enforceExecutionMode(
   config: PipelineConfig,
   mode: PipelineExecutionMode,
   allowlist?: SafeModeAllowlist,
+  registryAllowlist?: SafeModeAllowlist,
 ): void {
   if (mode !== 'trusted' && mode !== 'safe') {
     throw new Error(`Invalid pipeline execution mode "${mode}". Expected "trusted" or "safe".`);
@@ -203,10 +228,10 @@ function enforceExecutionMode(
     errors.push('safe mode blocks lifecycle hooks');
   }
 
-  const allowedDrivers = safeSet(allowlist, 'drivers');
-  const allowedTriggers = safeSet(allowlist, 'triggers');
-  const allowedCompletions = safeSet(allowlist, 'completions');
-  const allowedMiddlewares = safeSet(allowlist, 'middlewares');
+  const allowedDrivers = safeSet(DEFAULT_SAFE_MODE_ALLOWLIST, registryAllowlist, allowlist, 'drivers');
+  const allowedTriggers = safeSet(DEFAULT_SAFE_MODE_ALLOWLIST, registryAllowlist, allowlist, 'triggers');
+  const allowedCompletions = safeSet(DEFAULT_SAFE_MODE_ALLOWLIST, registryAllowlist, allowlist, 'completions');
+  const allowedMiddlewares = safeSet(DEFAULT_SAFE_MODE_ALLOWLIST, registryAllowlist, allowlist, 'middlewares');
 
   for (const track of config.tracks) {
     const trackDriver = track.driver ?? config.driver ?? 'opencode';
@@ -318,7 +343,7 @@ async function runPipelineInner(
   const runtime = options.runtime;
   const approvalGateway = scopeApprovalGateway(rootApprovalGateway, runId);
   const mode = options.mode ?? config.mode ?? 'safe';
-  enforceExecutionMode(config, mode, options.safeModeAllowlist);
+  enforceExecutionMode(config, mode, options.safeModeAllowlist, registry.getSafeModeDefaults());
 
   // Load any plugins declared in the pipeline config before preflight so that
   // drivers, completions, and middlewares referenced in YAML are registered.
@@ -394,6 +419,7 @@ async function runPipelineInner(
       envPolicy: options.envPolicy,
       secretResolver: options.secretResolver,
       logPrompt: options.logPrompt ?? false,
+      defaultTaskTimeoutMs: options.defaultTaskTimeoutMs,
       ...(activeTaskIds ? { activeTaskIds } : {}),
     });
 

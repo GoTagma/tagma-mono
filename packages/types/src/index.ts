@@ -37,6 +37,21 @@ export type TaskStatus =
 export type PipelineExecutionMode = 'trusted' | 'safe';
 
 /**
+ * Per-category allowlist of plugin types permitted under safe-mode execution.
+ * Each field lists plugin type strings (matching the registered `type` key)
+ * that are allowed. The engine merges three sources into the effective
+ * allowlist: hardcoded defaults (DEFAULT_SAFE_MODE_ALLOWLIST in engine.ts),
+ * registry-declared safe-mode types (PluginRegistry.getSafeModeDefaults()),
+ * and the caller-supplied SafeModeAllowlist on RunPipelineOptions.
+ */
+export interface SafeModeAllowlist {
+  readonly drivers?: readonly string[];
+  readonly triggers?: readonly string[];
+  readonly completions?: readonly string[];
+  readonly middlewares?: readonly string[];
+}
+
+/**
  * What to do when a task in this track fails.
  *  - `ignore`          : downstream tasks see the failure as success (best-effort).
  *  - `skip_downstream` : downstream tasks of the failed task get marked skipped.

@@ -179,10 +179,24 @@ export interface RawDagNode {
   readonly dependsOn: readonly string[]; // fully qualified IDs, best-effort resolved
 }
 
+export interface RawDagEdge {
+  readonly from: string;
+  readonly to: string;
+  /**
+   * 'explicit'  — from `depends_on` or `continue_from` (the user wrote it).
+   * 'dataflow'  — an edge that carries a runtime input/output binding, inferred
+   *                from inputs/outputs name matching or explicit `from`
+   *                bindings. The editor renders it as dashed so the user sees
+   *                the data contract. When a user-written dependency also
+   *                carries data, this kind wins for the single rendered edge.
+   */
+  readonly kind: 'explicit' | 'dataflow';
+}
+
 export interface RawDag {
   readonly nodes: ReadonlyMap<string, RawDagNode>;
   /** Directed edges: from → to means "from must complete before to starts" */
-  readonly edges: readonly { readonly from: string; readonly to: string }[];
+  readonly edges: readonly RawDagEdge[];
 }
 
 /**
@@ -223,7 +237,20 @@ export function buildRawDag(config: RawPipelineConfig): RawDag {
   }
 
   // 2. Resolve dependency refs leniently (missing / ambiguous refs are skipped)
-  const edges: { from: string; to: string }[] = [];
+  const edges: RawDagEdge[] = [];
+  const edgeIndex = new Map<string, number>(); // dedupe key: "from->to"
+  const addEdge = (from: string, to: string, kind: RawDagEdge['kind']): void => {
+    const key = `${from}->${to}`;
+    const existingIndex = edgeIndex.get(key);
+    if (existingIndex !== undefined) {
+      if (kind === 'dataflow' && edges[existingIndex]?.kind === 'explicit') {
+        edges[existingIndex] = { from, to, kind };
+      }
+      return;
+    }
+    edgeIndex.set(key, edges.length);
+    edges.push({ from, to, kind });
+  };
 
   for (const track of tracks) {
     if (
@@ -247,18 +274,93 @@ export function buildRawDag(config: RawPipelineConfig): RawDag {
         const resolved = tryResolve(ref, track.id);
         if (resolved && !deps.includes(resolved)) {
           deps.push(resolved);
-          edges.push({ from: resolved, to: qid });
+          addEdge(resolved, qid, 'explicit');
         }
       }
       if (typeof task.continue_from === 'string' && task.continue_from.length > 0) {
         const resolved = tryResolve(task.continue_from, track.id);
         if (resolved && !deps.includes(resolved)) {
           deps.push(resolved);
-          edges.push({ from: resolved, to: qid });
+          addEdge(resolved, qid, 'explicit');
         }
       }
 
       nodes.set(qid, { ...node, dependsOn: deps });
+    }
+  }
+
+  // 3. Infer dataflow edges from inputs/outputs name matching and explicit
+  //    `from` bindings. These are edges the engine will auto-wire at runtime
+  //    but the user didn't declare via depends_on/continue_from.
+  //
+  //    For each task with inputs, check:
+  //    (a) explicit `from` binding referencing an upstream task's output
+  //    (b) input name matching an output name on a task in the same pipeline
+  //        (best-effort: only when the producer task exists and has declared
+  //        outputs — we don't infer from prompt tasks whose outputs are
+  //        inferred at runtime)
+  for (const track of tracks) {
+    if (
+      !track ||
+      typeof track !== 'object' ||
+      !isValidTaskId(track.id) ||
+      !Array.isArray(track.tasks)
+    )
+      continue;
+    for (const task of track.tasks) {
+      if (!task || typeof task !== 'object' || !isValidTaskId(task.id)) continue;
+      const qid = qualifyTaskId(track.id, task.id);
+      const inputs = task.inputs;
+      if (!inputs || typeof inputs !== 'object' || Array.isArray(inputs)) continue;
+
+      for (const [inputName, binding] of Object.entries(inputs)) {
+        if (!binding || typeof binding !== 'object') continue;
+        const b = binding as Record<string, unknown>;
+        const node = nodes.get(qid);
+        const directDeps = node?.dependsOn ?? [];
+
+        // (a) Explicit `from` binding: e.g. from: "trackA.taskA.outputName"
+        //     or shorthand "taskA.outputName" (same-track).
+        if (typeof b.from === 'string' && b.from.length > 0) {
+          const fromStr = b.from as string;
+          // Try to extract upstream task reference from the `from` string.
+          // Formats: "trackId.taskId.outputName", "taskId.outputName",
+          //          "trackId.taskId.outputs.outputName", "taskId.outputs.outputName"
+          const parts = fromStr.split('.');
+          let upstreamRef: string | null = null;
+          if (parts.length >= 3 && parts[parts.length - 2] === 'outputs') {
+            // "trackId.taskId.outputs.name" or "taskId.outputs.name"
+            upstreamRef = parts.slice(0, parts.length - 2).join('.');
+          } else if (parts.length >= 2) {
+            // "trackId.taskId.name" or "taskId.name"
+            upstreamRef = parts.slice(0, parts.length - 1).join('.');
+          }
+          if (upstreamRef) {
+            const resolved = tryResolve(upstreamRef, track.id);
+            if (resolved && resolved !== qid && directDeps.includes(resolved)) {
+              addEdge(resolved, qid, 'dataflow');
+            }
+          }
+          continue; // `from` takes precedence over name matching
+        }
+
+        // (b) Auto-name-matching: input name matches an output name on a
+        //     DIRECT dependency (a task in depends_on). The engine only reads
+        //     outputs from direct upstream tasks (see ports.ts resolveInputs),
+        //     so we limit inference to those to avoid showing edges the engine
+        //     won't actually use. Scanning all tasks would create phantom edges
+        //     to tasks that aren't ordered before this one.
+        if (directDeps.length === 0) continue;
+        for (const depQid of directDeps) {
+          const depNode = nodes.get(depQid);
+          if (!depNode) continue;
+          const depOutputs = depNode.rawTask.outputs;
+          if (!depOutputs || typeof depOutputs !== 'object' || Array.isArray(depOutputs)) continue;
+          if (!(inputName in depOutputs)) continue;
+          // Found a name match on a direct dependency — add as dataflow edge.
+          addEdge(depQid, qid, 'dataflow');
+        }
+      }
     }
   }
 
