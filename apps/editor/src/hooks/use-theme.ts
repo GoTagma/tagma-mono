@@ -1,0 +1,100 @@
+import { useCallback, useSyncExternalStore } from 'react';
+import { broadcast, subscribe as subscribeChannel } from '../utils/window-sync';
+import { getDesktopTheme, setDesktopTheme, subscribeDesktopTheme } from '../desktop';
+
+/**
+ * Theme preference: 'dark' is the product default, 'light' is opt-in.
+ * Persisted globally (not per-workspace) in localStorage so the choice
+ * survives workspace switches and restarts.
+ *
+ * The palette itself lives in index.css as CSS variables; flipping this
+ * value just toggles the `.light` class on <html>, which swaps the
+ * variable block Tailwind's tagma-* colors resolve against.
+ */
+export type Theme = 'dark' | 'light';
+
+const STORAGE_KEY = 'tagma.editor.theme';
+const DEFAULT_THEME: Theme = 'dark';
+
+function readStoredTheme(): Theme {
+  if (typeof window === 'undefined') return DEFAULT_THEME;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    return raw === 'light' ? 'light' : 'dark';
+  } catch {
+    return DEFAULT_THEME;
+  }
+}
+
+function applyTheme(theme: Theme): void {
+  if (typeof document === 'undefined') return;
+  document.documentElement.classList.toggle('light', theme === 'light');
+}
+
+/**
+ * Call once from main.tsx before React renders so the theme class is on
+ * <html> before first paint — otherwise light-mode users see a dark flash.
+ *
+ * In Electron, also async-query the main process for any theme already set
+ * by a sibling window and switch to it if it differs — each window runs on
+ * its own localhost port, so localStorage can't share state across windows.
+ */
+export function initThemeEarly(): void {
+  applyTheme(readStoredTheme());
+  void getDesktopTheme().then((shared) => {
+    if (shared !== 'light' && shared !== 'dark') return;
+    if (shared !== readStoredTheme()) applyAndNotify(shared);
+  });
+}
+
+// Module-local pub/sub so useSyncExternalStore can rerender every consumer
+// when any caller flips the theme. A CustomEvent on window would also work
+// but this keeps the contract contained to this module.
+const listeners = new Set<() => void>();
+function subscribe(cb: () => void): () => void {
+  listeners.add(cb);
+  return () => listeners.delete(cb);
+}
+function getSnapshot(): Theme {
+  return readStoredTheme();
+}
+
+function applyAndNotify(theme: Theme): void {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, theme);
+  } catch {
+    /* storage quota or private mode — apply in-memory anyway */
+  }
+  applyTheme(theme);
+  for (const cb of listeners) cb();
+}
+
+export function setTheme(theme: Theme): void {
+  applyAndNotify(theme);
+  // Same-origin peer tabs (browser dev, or multiple renderers on one port).
+  broadcast<Theme>('theme', theme);
+  // Cross-window sync for the packaged app: each editor window has its own
+  // localhost origin, so BroadcastChannel can't reach siblings — hop through
+  // the Electron main process instead.
+  setDesktopTheme(theme);
+}
+
+// Peer windows broadcast on theme change; mirror locally without re-emitting
+// (BroadcastChannel skips the sender, so there's no echo loop to guard against).
+subscribeChannel<Theme>('theme', (next) => {
+  if (next !== 'light' && next !== 'dark') return;
+  applyAndNotify(next);
+});
+
+// Desktop fan-out from the Electron main process. The main-process handler
+// only forwards to *other* windows, so this never fires on the originator.
+subscribeDesktopTheme((next) => {
+  if (next !== 'light' && next !== 'dark') return;
+  applyAndNotify(next);
+});
+
+export function useTheme(): { theme: Theme; setTheme: (next: Theme) => void } {
+  const theme = useSyncExternalStore(subscribe, getSnapshot, () => DEFAULT_THEME);
+  const set = useCallback((next: Theme) => setTheme(next), []);
+  return { theme, setTheme: set };
+}

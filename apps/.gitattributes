@@ -1,0 +1,16 @@
+# Force consistent line endings across all platforms so vite build
+# produces byte-identical output regardless of core.autocrlf setting.
+* text=auto
+
+# TypeScript, JS, JSX, TSX, JSON, CSS, and config files are always LF.
+*.ts    text eol=lf
+*.tsx   text eol=lf
+*.js    text eol=lf
+*.jsx   text eol=lf
+*.json  text eol=lf
+*.css   text eol=lf
+*.svg   text eol=lf
+*.html  text eol=lf
+*.md    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf

@@ -1,0 +1,31 @@
+node_modules/
+dist/
+.bun/
+*.lockb
+*.tsbuildinfo
+.tagma/
+
+*.log
+.DS_Store
+Thumbs.db
+
+.env
+.env.*
+!.env.example
+
+coverage/
+.eslintcache
+
+.claude/settings.local.json
+.omx
+
+# Vite build output — must not be tracked; cross-OS diffs in this
+# directory are expected (different JS chunk names, source maps, etc.)
+# and would break the editor-dist cross-OS hash verification in CI.
+editor/dist/
+editor/desktop-dist/
+editor/desktop-dist-*/
+electron/release/
+# Opencode binary staged by electron/scripts/fetch-opencode.mjs before
+# electron-builder packs it via extraResources. ~150 MB per platform.
+electron/build/opencode/

@@ -1,0 +1,129 @@
+import { describe, expect, test } from 'bun:test';
+import type { WorkflowPipelineEntry, WorkspaceYamlEntry } from '../src/api/client';
+import {
+  addWorkspacePipelineToGraph,
+  connectWorkflowPipelines,
+  disconnectWorkflowPipelines,
+  moveWorkflowPipeline,
+  resolveWorkflowPipelineEditorPath,
+  removeWorkflowPipeline,
+  workflowDragPositionFromPointer,
+  workflowNodePointerOffset,
+} from '../src/components/workflow/workflow-graph-model';
+
+const workspacePipeline: WorkspaceYamlEntry = {
+  name: 'build.yaml',
+  path: 'E:/repo/.tagma/build/build.yaml',
+  pipelineName: 'Build Pipeline',
+  contentHash: 'abc',
+  layoutHash: null,
+  layoutMtimeMs: null,
+  layoutSize: null,
+  mtimeMs: 1,
+  size: 100,
+};
+
+describe('workflow graph model', () => {
+  test('adds a workspace pipeline with a stable unique id and drop position', () => {
+    const pipelines: WorkflowPipelineEntry[] = [
+      { id: 'build', path: '.tagma/old/build.yaml', depends_on: [] },
+    ];
+
+    const next = addWorkspacePipelineToGraph(pipelines, workspacePipeline, { x: 240, y: 160 });
+
+    expect(next).toEqual([
+      { id: 'build', path: '.tagma/old/build.yaml', depends_on: [] },
+      {
+        id: 'build_2',
+        path: 'E:/repo/.tagma/build/build.yaml',
+        depends_on: [],
+        position: { x: 240, y: 160 },
+      },
+    ]);
+  });
+
+  test('dragging the same workspace pipeline again creates a separate graph instance', () => {
+    const pipelines: WorkflowPipelineEntry[] = [
+      {
+        id: 'build',
+        path: 'E:/repo/.tagma/build/build.yaml',
+        depends_on: [],
+        position: { x: 20, y: 40 },
+      },
+    ];
+
+    expect(addWorkspacePipelineToGraph(pipelines, workspacePipeline, { x: 300, y: 220 })).toEqual([
+      {
+        id: 'build',
+        path: 'E:/repo/.tagma/build/build.yaml',
+        depends_on: [],
+        position: { x: 20, y: 40 },
+      },
+      {
+        id: 'build_2',
+        path: 'E:/repo/.tagma/build/build.yaml',
+        depends_on: [],
+        position: { x: 300, y: 220 },
+      },
+    ]);
+  });
+
+  test('connects many-to-one and one-to-many dependencies, then disconnects stale edges', () => {
+    const pipelines: WorkflowPipelineEntry[] = [
+      { id: 'build', path: '.tagma/build/build.yaml', depends_on: [] },
+      { id: 'test', path: '.tagma/test/test.yaml', depends_on: [] },
+      { id: 'deploy', path: '.tagma/deploy/deploy.yaml', depends_on: ['test'] },
+    ];
+
+    const oneToMany = connectWorkflowPipelines(
+      connectWorkflowPipelines(pipelines, 'build', 'test'),
+      'build',
+      'deploy',
+    );
+    expect(oneToMany.find((p) => p.id === 'test')?.depends_on).toEqual(['build']);
+    expect(oneToMany.find((p) => p.id === 'deploy')?.depends_on).toEqual(['test', 'build']);
+
+    const manyToOne = connectWorkflowPipelines(oneToMany, 'test', 'deploy');
+    expect(manyToOne.find((p) => p.id === 'deploy')?.depends_on).toEqual(['test', 'build']);
+
+    expect(() => connectWorkflowPipelines(oneToMany, 'deploy', 'build')).toThrow(
+      /circular dependency/i,
+    );
+
+    const moved = moveWorkflowPipeline(oneToMany, 'test', { x: 420, y: 80 });
+    expect(moved.find((p) => p.id === 'test')?.position).toEqual({ x: 420, y: 80 });
+
+    const disconnected = disconnectWorkflowPipelines(moved, 'build', 'test');
+    expect(disconnected.find((p) => p.id === 'test')?.depends_on).toEqual([]);
+
+    const removed = removeWorkflowPipeline(disconnected, 'test');
+    expect(removed.map((p) => p.id)).toEqual(['build', 'deploy']);
+    expect(removed.find((p) => p.id === 'deploy')?.depends_on).toEqual(['build']);
+  });
+
+  test('converts pointer movement into canvas-relative node positions', () => {
+    const offset = workflowNodePointerOffset(
+      { clientX: 260, clientY: 190 },
+      { left: 100, top: 50 },
+      { x: 140, y: 120 },
+    );
+
+    expect(offset).toEqual({ x: 20, y: 20 });
+    expect(
+      workflowDragPositionFromPointer(
+        { clientX: 310, clientY: 240 },
+        { left: 100, top: 50 },
+        offset,
+      ),
+    ).toEqual({ x: 190, y: 170 });
+  });
+
+  test('resolves workspace-relative workflow pipeline paths before opening editor', () => {
+    expect(resolveWorkflowPipelineEditorPath('E:/repo', '.tagma/build/build.yaml')).toBe(
+      'E:/repo/.tagma/build/build.yaml',
+    );
+    expect(resolveWorkflowPipelineEditorPath('E:/repo', 'E:/repo/.tagma/build/build.yaml')).toBe(
+      'E:/repo/.tagma/build/build.yaml',
+    );
+  });
+});
