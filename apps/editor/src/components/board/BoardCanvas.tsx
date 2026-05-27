@@ -253,6 +253,17 @@ const EdgeLine = memo(function EdgeLine({
           }}
         >
           <circle cx={midX} cy={midY} r={8} fill="transparent" />
+          <rect
+            data-board-edge-delete-frame="true"
+            x={midX - 6}
+            y={midY - 6}
+            width={12}
+            height={12}
+            rx={2}
+            fill="rgb(var(--tagma-surface))"
+            style={{ stroke: 'rgb(var(--tagma-border))' }}
+            strokeWidth={1}
+          />
           <line
             x1={midX - 3}
             y1={midY - 3}

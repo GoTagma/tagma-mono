@@ -280,10 +280,10 @@ describe('WorkflowView', () => {
     expect(html).toContain('Disconnect edge p1 to p2');
     expect(html).toContain('data-edge-delete="p1-&gt;p2"');
     expect(html).toContain('workflow-edge-delete-button');
-    expect(html).toContain('bg-transparent');
+    expect(html).toContain('bg-tagma-surface');
   });
 
-  test('renders edge delete affordance as icon-only without a fixed square box', () => {
+  test('renders edge delete affordance with a tight square box around the icon', () => {
     const html = renderToStaticMarkup(
       <WorkflowView
         workflows={workflows}
@@ -307,15 +307,16 @@ describe('WorkflowView', () => {
     );
     expect(edgeDeleteClasses.length).toBeGreaterThan(0);
     for (const className of edgeDeleteClasses) {
-      expect(className).not.toContain('h-6 w-6');
-      expect(className).not.toContain('w-6 h-6');
+      expect(className).toContain('h-4');
+      expect(className).toContain('w-4');
       expect(className).toContain('p-0');
-      expect(className).toContain('border-0');
+      expect(className).toContain('border');
+      expect(className).toContain('border-tagma-border');
       expect(className).toContain('outline-none');
       expect(className).toContain('focus:outline-none');
       expect(className).toContain('focus:ring-0');
       expect(className).toContain('focus:shadow-none');
-      expect(className).toContain('active:bg-transparent');
+      expect(className).toContain('active:bg-tagma-surface');
       expect(className).toContain('active:outline-none');
     }
   });

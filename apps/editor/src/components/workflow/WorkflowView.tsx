@@ -932,7 +932,7 @@ export function WorkflowView({
                           e.stopPropagation();
                           disconnect(edge.from, edge.to);
                         }}
-                        className={`workflow-edge-delete-button absolute inline-flex -translate-x-1/2 -translate-y-1/2 appearance-none border-0 bg-transparent p-0 leading-none text-tagma-muted shadow-none outline-none ring-0 hover:bg-transparent hover:text-tagma-error focus:bg-transparent focus:outline-none focus:ring-0 focus:shadow-none focus-visible:outline-none focus-visible:ring-0 focus-visible:shadow-none focus-visible:text-tagma-error active:bg-transparent active:outline-none active:ring-0 active:shadow-none transition-opacity ${
+                        className={`workflow-edge-delete-button absolute inline-flex h-4 w-4 -translate-x-1/2 -translate-y-1/2 appearance-none items-center justify-center border border-tagma-border bg-tagma-surface p-0 leading-none text-tagma-muted shadow-none outline-none ring-0 hover:border-tagma-error hover:bg-tagma-surface hover:text-tagma-error focus:bg-tagma-surface focus:outline-none focus:ring-0 focus:shadow-none focus-visible:outline-none focus-visible:ring-0 focus-visible:shadow-none focus-visible:border-tagma-error focus-visible:text-tagma-error active:bg-tagma-surface active:outline-none active:ring-0 active:shadow-none transition-opacity ${
                           selected
                             ? 'pointer-events-auto opacity-100'
                             : 'pointer-events-none opacity-0'
