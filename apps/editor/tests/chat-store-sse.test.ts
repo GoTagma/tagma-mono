@@ -1,5 +1,9 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
-import { useChatStore, applySseEvent } from '../src/store/chat-store';
+import {
+  useChatStore,
+  applySseEvent,
+  canEndCurrentTurnFromConfirmedIdle,
+} from '../src/store/chat-store';
 import { usePipelineStore } from '../src/store/pipeline-store';
 import { resetOpencodeClient } from '../src/api/opencode-chat';
 import type { ActivityEvent, OpencodeThreadEntry } from '../src/api/opencode-chat';
@@ -536,6 +540,48 @@ describe('applySseEvent — turn lifecycle', () => {
     });
 
     expect(useChatStore.getState().sending).toBe(false);
+  });
+
+  test('7a. confirmed idle can end a turn with a stale running tool part after quiet window', () => {
+    const turnStartedAt = Date.now() - 10_000;
+    const assistant: OpencodeThreadEntry = {
+      info: {
+        ...makeAssistantInfo('a1', 's1'),
+        time: { created: turnStartedAt + 100 },
+      } as never,
+      parts: [makeRunningToolPart('tool1', 's1', 'a1', 'edit') as never],
+    };
+
+    expect(
+      canEndCurrentTurnFromConfirmedIdle({
+        sending: true,
+        messages: [assistant],
+        turnStartedAt,
+        turnAssistantMessageIds: ['a1'],
+        lastActivityAt: turnStartedAt + 200,
+      }),
+    ).toBe(true);
+  });
+
+  test('7b. confirmed idle does not end a stale-tool turn before the quiet window', () => {
+    const turnStartedAt = Date.now() - 1_000;
+    const assistant: OpencodeThreadEntry = {
+      info: {
+        ...makeAssistantInfo('a1', 's1'),
+        time: { created: turnStartedAt + 100 },
+      } as never,
+      parts: [makeRunningToolPart('tool1', 's1', 'a1', 'edit') as never],
+    };
+
+    expect(
+      canEndCurrentTurnFromConfirmedIdle({
+        sending: true,
+        messages: [assistant],
+        turnStartedAt,
+        turnAssistantMessageIds: ['a1'],
+        lastActivityAt: Date.now(),
+      }),
+    ).toBe(false);
   });
 
   test('9a. session.status{retry} surfaces sessionStatus and bumps activity (only while sending)', () => {

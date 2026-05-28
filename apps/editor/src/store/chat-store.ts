@@ -1429,11 +1429,22 @@ function hasCurrentTurnEndableActivity(
   return entry.activity?.some(isEndableTurnActivity) ?? false;
 }
 
-function canEndCurrentTurnFromConfirmedIdle(
-  state: Pick<ChatStore, 'sending' | 'messages' | 'turnStartedAt' | 'turnAssistantMessageIds'>,
+export function canEndCurrentTurnFromConfirmedIdle(
+  state: Pick<
+    ChatStore,
+    'sending' | 'messages' | 'turnStartedAt' | 'turnAssistantMessageIds' | 'lastActivityAt'
+  >,
 ): boolean {
   if (!state.sending || state.turnStartedAt === null) return true;
-  return hasCurrentTurnEndableActivity(state);
+  if (hasCurrentTurnEndableActivity(state)) return true;
+  // If OpenCode's live status endpoint says the session is idle, a lingering
+  // running/pending tool part is stale local transcript state. This happens
+  // when the final part update is dropped near turn end: the pipeline write
+  // has landed, but the UI keeps showing the old tool row forever. Wait for
+  // the same short quiet window used by the stalled-turn poll so replayed idle
+  // envelopes cannot end an actively streaming turn.
+  if (!hasTurnBeenQuietLongEnoughForMissingStatusRecovery(state)) return false;
+  return hasCurrentTurnRecoverableActivity(state);
 }
 
 function statusMapOmittedSession(

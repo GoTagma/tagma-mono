@@ -36,6 +36,7 @@ import { requireWorkspace } from '../require-workspace.js';
 import { errorMessage } from '../path-utils.js';
 import { runCompileAndWriteLog } from '../compile-log.js';
 import { runPipelineManifestSync } from '../pipeline-manifest.js';
+import { getFileVersion } from '../optimistic-lock.js';
 
 /**
  * Fixed, workspace-free state used by the welcome-page read endpoints. Before
@@ -403,6 +404,7 @@ export function registerPipelineRoutes(app: express.Express): void {
       } catch {
         ws.config = withDefaultTrackColors(lenientParseYaml(content, 'Untitled'));
       }
+      ws.yamlVersion = getFileVersion(ws.yamlPath);
       loadLayout(ws);
       syncLayoutWatcherFromDisk(ws);
       // Seed the canonical baseline so the next file-watcher tick on this

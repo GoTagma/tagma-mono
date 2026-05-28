@@ -23,6 +23,7 @@ import { loadLayout, S, syncLayoutWatcherFromDisk } from '../server/state';
 import { workspaceRegistry, DEFAULT_WORKSPACE_KEY } from '../server/workspace-registry';
 import type { WorkspaceState } from '../server/workspace-state';
 import type { ExternalChangeEvent, LayoutChangeEvent } from '../server/file-watcher';
+import { getFileVersion } from '../server/optimistic-lock';
 
 // Minimal express.Response stand-in — broadcastStateEvent only ever calls
 // `.write()` (and `.end()` on teardown), so forwarding those to the chunks
@@ -105,6 +106,41 @@ test('non-default workspace: external-change fires state_event SSE with reloaded
     ws.stateEventClients.clear();
     S.stateEventClients.clear();
     workspaceRegistry.drop(key);
+  }
+});
+
+test('external YAML adoption refreshes optimistic save version', () => {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-yaml-version-'));
+  const tagmaDir = join(root, '.tagma', 'current');
+  mkdirSync(tagmaDir, { recursive: true });
+  const yamlPath = join(tagmaDir, 'current.yaml');
+  const oldConfig = createEmptyPipeline('Old');
+  const newConfig = createEmptyPipeline('New Pipeline');
+  const oldContent = serializePipeline(oldConfig);
+  const newContent = serializePipeline(newConfig);
+  writeFileSync(yamlPath, oldContent, 'utf-8');
+
+  const ws = workspaceRegistry.getOrCreate(root);
+  ws.workDir = root;
+  ws.yamlPath = yamlPath;
+  ws.config = oldConfig;
+  ws.yamlVersion = getFileVersion(yamlPath);
+  const previousVersion = ws.yamlVersion;
+
+  try {
+    writeFileSync(yamlPath, newContent, 'utf-8');
+    emitWatcherEvent(ws, {
+      type: 'external-change',
+      path: yamlPath,
+      content: newContent,
+    });
+
+    expect(ws.config.name).toBe('New Pipeline');
+    expect(ws.yamlVersion).toEqual(getFileVersion(yamlPath));
+    expect(ws.yamlVersion?.size).not.toBe(previousVersion?.size);
+  } finally {
+    workspaceRegistry.drop(root);
+    rmSync(root, { recursive: true, force: true });
   }
 });
 

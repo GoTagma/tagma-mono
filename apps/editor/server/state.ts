@@ -29,6 +29,7 @@ import { runCompileAndWriteLog } from './compile-log.js';
 import { runPipelineManifestSync } from './pipeline-manifest.js';
 import { getActiveYamlEditLock, publicYamlEditLock } from './yaml-edit-lock.js';
 import { readYamlRunVersion } from './yaml-run-version.js';
+import { getFileVersion } from './optimistic-lock.js';
 
 type HostPlatform = 'windows' | 'linux' | 'mac';
 
@@ -986,6 +987,7 @@ export function attachFileWatcherBridge(ws: WorkspaceState): void {
           return;
         }
       }
+      ws.yamlVersion = getFileVersion(event.path);
       // The chat agent's system prompt requires it to keep the sibling
       // `.layout.json` in sync whenever it adds / renames / removes tasks. Re-
       // read it here so that new task positions (or removed entries) propagate

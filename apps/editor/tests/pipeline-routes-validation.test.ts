@@ -1,8 +1,13 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { RawPipelineConfig } from '@tagma/sdk';
 import { createEmptyPipeline } from '@tagma/sdk/config';
+import { serializePipeline } from '@tagma/sdk/yaml';
 import { registerPipelineRoutes } from '../server/routes/pipeline';
 import { S } from '../server/state';
+import { getFileVersion } from '../server/optimistic-lock';
 
 type RouteHandler = (
   req: { body?: Record<string, unknown>; workspace?: typeof S },
@@ -79,6 +84,7 @@ function targetTask() {
 afterEach(() => {
   S.config = createEmptyPipeline('Untitled Pipeline');
   S.yamlPath = null;
+  S.yamlVersion = null;
   S.workDir = '';
   S.layout = { positions: {} };
   S.stateRevision = 0;
@@ -86,6 +92,37 @@ afterEach(() => {
 });
 
 describe('pipeline route validation', () => {
+  test('POST /api/state/reload refreshes optimistic save version after disk adoption', () => {
+    const root = mkdtempSync(join(tmpdir(), 'tagma-state-reload-version-'));
+    const pipelineDir = join(root, '.tagma', 'current');
+    mkdirSync(pipelineDir, { recursive: true });
+    const yamlPath = join(pipelineDir, 'current.yaml');
+    const oldConfig = createEmptyPipeline('Old');
+    const newConfig = createEmptyPipeline('New Pipeline');
+
+    try {
+      writeFileSync(yamlPath, serializePipeline(oldConfig), 'utf-8');
+      S.workDir = root;
+      S.yamlPath = yamlPath;
+      S.config = oldConfig;
+      S.yamlVersion = getFileVersion(yamlPath);
+      const previousVersion = S.yamlVersion;
+
+      writeFileSync(yamlPath, serializePipeline(newConfig), 'utf-8');
+
+      const handler = createRouteHarness().post('/api/state/reload');
+      const res = makeRes();
+      handler({ workspace: S }, res);
+
+      expect(res.statusCode).toBe(200);
+      expect(S.config.name).toBe('New Pipeline');
+      expect(S.yamlVersion).toEqual(getFileVersion(yamlPath));
+      expect(S.yamlVersion?.size).not.toBe(previousVersion?.size);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test('POST /api/tasks rejects missing task id without mutating config', () => {
     S.config = seedConfig();
     const before = S.config;
