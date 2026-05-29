@@ -134,6 +134,8 @@ function makeEditorSettings(opencodeChatModel: { providerID: string; modelID: st
       configuredAt: null,
     },
     opencodeChatModel,
+    chatContextLimitEnabled: false,
+    chatContextRounds: 0,
   };
 }
 

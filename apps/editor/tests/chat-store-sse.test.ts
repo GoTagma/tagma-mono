@@ -3,6 +3,7 @@ import {
   useChatStore,
   applySseEvent,
   canEndCurrentTurnFromConfirmedIdle,
+  shouldStartFreshChatSessionForContextLimit,
 } from '../src/store/chat-store';
 import { usePipelineStore } from '../src/store/pipeline-store';
 import { resetOpencodeClient } from '../src/api/opencode-chat';
@@ -81,6 +82,17 @@ const makeAssistantInfo = (id: string, sessionID: string) => ({
   role: 'assistant' as const,
 });
 
+const makeSession = (id: string, parentID?: string) =>
+  ({
+    id,
+    projectID: 'project',
+    directory: '/repo',
+    title: id,
+    version: '1',
+    time: { created: 1, updated: 1 },
+    ...(parentID ? { parentID } : {}),
+  }) as never;
+
 const makeUserInfo = (id: string, sessionID: string) => ({
   id,
   sessionID,
@@ -110,6 +122,34 @@ const makeReasoningPart = (id: string, sessionID: string, messageID: string, tex
   messageID,
   type: 'reasoning' as const,
   text,
+});
+
+test('session history hides delegated child agent sessions', () => {
+  dispatch({
+    type: 'session.created',
+    properties: { info: makeSession('parent') },
+  });
+  dispatch({
+    type: 'session.created',
+    properties: { info: makeSession('child', 'parent') },
+  });
+
+  expect(useChatStore.getState().sessions.map((s) => s.id)).toEqual(['parent']);
+});
+
+test('chat context limit supports unlimited, bounded, and stateless modes', () => {
+  expect(
+    shouldStartFreshChatSessionForContextLimit({ enabled: false, rounds: 0, userTurns: 100 }),
+  ).toBe(false);
+  expect(
+    shouldStartFreshChatSessionForContextLimit({ enabled: true, rounds: 0, userTurns: 0 }),
+  ).toBe(true);
+  expect(
+    shouldStartFreshChatSessionForContextLimit({ enabled: true, rounds: 3, userTurns: 2 }),
+  ).toBe(false);
+  expect(
+    shouldStartFreshChatSessionForContextLimit({ enabled: true, rounds: 3, userTurns: 3 }),
+  ).toBe(true);
 });
 
 const makeRunningToolPart = (id: string, sessionID: string, messageID: string, tool: string) => ({

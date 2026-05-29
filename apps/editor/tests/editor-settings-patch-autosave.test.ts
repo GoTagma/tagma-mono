@@ -74,6 +74,16 @@ describe('parseEditorSettingsPatch', () => {
     expect(parseEditorSettingsPatch({ chatContextRounds: Number.POSITIVE_INFINITY })).toEqual({});
   });
 
+  test('accepts boolean chatContextLimitEnabled', () => {
+    expect(parseEditorSettingsPatch({ chatContextLimitEnabled: true })).toEqual({
+      chatContextLimitEnabled: true,
+    });
+    expect(parseEditorSettingsPatch({ chatContextLimitEnabled: false })).toEqual({
+      chatContextLimitEnabled: false,
+    });
+    expect(parseEditorSettingsPatch({ chatContextLimitEnabled: 'yes' })).toEqual({});
+  });
+
   test('keeps existing fields working', () => {
     expect(parseEditorSettingsPatch({ autoInstallDeclaredPlugins: true })).toEqual({
       autoInstallDeclaredPlugins: true,

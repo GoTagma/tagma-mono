@@ -33,6 +33,8 @@ describe('EditorSettings autosave + viewMode fields', () => {
     expect(DEFAULT_EDITOR_SETTINGS.viewMode).toBe('production');
     expect(DEFAULT_EDITOR_SETTINGS.pythonAgent.enabled).toBe(false);
     expect(DEFAULT_EDITOR_SETTINGS.opencodeChatModel).toBe(null);
+    expect(DEFAULT_EDITOR_SETTINGS.chatContextLimitEnabled).toBe(false);
+    expect(DEFAULT_EDITOR_SETTINGS.chatContextRounds).toBe(0);
   });
 
   test('readEditorSettings returns defaults when file is missing', () => {
@@ -42,6 +44,8 @@ describe('EditorSettings autosave + viewMode fields', () => {
     expect(s.viewMode).toBe('production');
     expect(s.pythonAgent.enabled).toBe(false);
     expect(s.opencodeChatModel).toBe(null);
+    expect(s.chatContextLimitEnabled).toBe(false);
+    expect(s.chatContextRounds).toBe(0);
   });
 
   test('readEditorSettings preserves valid stored values', () => {
@@ -63,6 +67,8 @@ describe('EditorSettings autosave + viewMode fields', () => {
           providerID: 'anthropic',
           modelID: 'claude-sonnet-4-5',
         },
+        chatContextLimitEnabled: true,
+        chatContextRounds: 0,
       }),
     );
     const s = readEditorSettings(ws as unknown as WorkspaceState);
@@ -81,6 +87,8 @@ describe('EditorSettings autosave + viewMode fields', () => {
       providerID: 'anthropic',
       modelID: 'claude-sonnet-4-5',
     });
+    expect(s.chatContextLimitEnabled).toBe(true);
+    expect(s.chatContextRounds).toBe(0);
   });
 
   test('readEditorSettings falls back to production viewMode for malformed values', () => {
@@ -102,6 +110,8 @@ describe('EditorSettings autosave + viewMode fields', () => {
           providerID: '',
           modelID: 123,
         },
+        chatContextLimitEnabled: 'yes',
+        chatContextRounds: -1,
       }),
     );
     const s = readEditorSettings(ws as unknown as WorkspaceState);
@@ -110,6 +120,8 @@ describe('EditorSettings autosave + viewMode fields', () => {
     expect(s.viewMode).toBe('production');
     expect(s.pythonAgent).toEqual(DEFAULT_EDITOR_SETTINGS.pythonAgent);
     expect(s.opencodeChatModel).toBe(null);
+    expect(s.chatContextLimitEnabled).toBe(false);
+    expect(s.chatContextRounds).toBe(0);
   });
 
   test('legacy autoSimplifyTrackInspector is ignored — viewMode falls back to production', () => {
@@ -141,6 +153,8 @@ describe('EditorSettings autosave + viewMode fields', () => {
         providerID: 'anthropic',
         modelID: 'claude-sonnet-4-5',
       },
+      chatContextLimitEnabled: true,
+      chatContextRounds: 12,
     });
     expect(next.autoSaveEnabled).toBe(false);
     expect(next.autoSaveIntervalSec).toBe(60);
@@ -151,6 +165,8 @@ describe('EditorSettings autosave + viewMode fields', () => {
       providerID: 'anthropic',
       modelID: 'claude-sonnet-4-5',
     });
+    expect(next.chatContextLimitEnabled).toBe(true);
+    expect(next.chatContextRounds).toBe(12);
     const onDisk = JSON.parse(
       readFileSync(resolve(tmp, '.tagma', 'editor-settings.json'), 'utf-8'),
     );
@@ -162,5 +178,7 @@ describe('EditorSettings autosave + viewMode fields', () => {
       providerID: 'anthropic',
       modelID: 'claude-sonnet-4-5',
     });
+    expect(onDisk.chatContextLimitEnabled).toBe(true);
+    expect(onDisk.chatContextRounds).toBe(12);
   });
 });

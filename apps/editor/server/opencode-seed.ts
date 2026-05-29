@@ -212,13 +212,13 @@ Every user turn may include an \`<editor-context>\` block. Re-read it every turn
 - \`<current-file>\`: workspace-relative current YAML, usually \`.tagma/<stem>/<stem>.yaml\`; omitted when no file is open.
 - \`<workspace-yaml-folders>\`: all known pipeline folders. Each \`<pipeline>\` has \`<folder>\`, concrete \`<yaml>\`, and same-folder \`<manifest>\`; match by folder basename, YAML basename, or pipeline name. \`legacy="flat"\` means stranded pre-migration \`.tagma/*.yaml\`; use listed paths exactly.
 - Tool path rule: read/edit tools require \`filePath\`. They run from \`<workspace>/.tagma/\`, so strip leading \`.tagma/\` or the absolute \`<workspace>/.tagma/\` prefix. Examples: \`.tagma/build/build.yaml\` -> \`read({ "filePath": "build/build.yaml" })\`; \`.tagma/pipeline-9giapbf6.yaml\` -> \`read({ "filePath": "pipeline-9giapbf6.yaml" })\`. Never call \`read\` with only \`{ "limit": ... }\`.
-- \`<pipeline-availability>\`: optional. When \`protected="true"\`, the current file is locked by an in-progress chat edit or run.
+- \`<pipeline-availability>\`: optional. When \`protected="true"\`, the current file is locked by an active run.
 - \`<plugins>\`: authoritative allow-list for driver, trigger, completion, and middleware type names. Use only names that appear there. If a requested type is missing, tell the user to install the matching plugin via Plugins -> Manage Plugins before referencing it.
 - \`<python-agent>\`: optional. If absent, do not create Python helpers unless the user enables Python in settings.
 
 ## Protected Current Pipeline
 
-If \`<pipeline-availability protected="true">\` is present, the current pipeline is busy. Do not edit \`<current-file>\`, its sibling layout, or its requirements file in that turn.
+If \`<pipeline-availability protected="true">\` is present, the current pipeline is running. Do not edit \`<current-file>\`, its sibling layout, or its requirements file in that turn.
 
 Allowed while protected:
 - Answer general discussion without writing files.
@@ -900,11 +900,8 @@ export function seedOpencodeArtifacts(tagmaCwd: string): boolean {
       buildTagmaGeneralDiscussionAgent(),
     ) || changed;
   changed =
-    seedAgentFile(
-      tagmaCwd,
-      `${TAGMA_HISTORY_COMPARE_AGENT}.md`,
-      buildTagmaHistoryCompareAgent(),
-    ) || changed;
+    seedAgentFile(tagmaCwd, `${TAGMA_HISTORY_COMPARE_AGENT}.md`, buildTagmaHistoryCompareAgent()) ||
+    changed;
   changed =
     seedAgentFile(tagmaCwd, 'tagma-python-tools.md', buildTagmaPythonToolsAgent(hostOs)) || changed;
   changed =

@@ -12,7 +12,6 @@
 import { usePipelineStore } from './pipeline-store';
 import { useRunStore } from './run-store';
 import { useEditorSettingsStore } from './editor-settings-store';
-import { isYamlEditLocked } from './yaml-edit-lock-store';
 
 function normalizeChatPath(path: string | null | undefined): string | null {
   if (!path) return null;
@@ -117,14 +116,11 @@ export function buildEditorContext(options: EditorContextOptions = {}): string {
       '  </workspace-yaml-folders>',
     );
   }
-  const currentFileLocked = isYamlEditLocked();
   const currentFileRunning =
     (run.status === 'starting' || run.status === 'running') && sameChatPath(run.yamlPath, yamlPath);
-  if (currentFileLocked || currentFileRunning) {
+  if (currentFileRunning) {
     lines.push(
-      `  <pipeline-availability protected="true" reason="${
-        currentFileLocked ? 'editing' : 'running'
-      }">`,
+      '  <pipeline-availability protected="true" reason="running">',
       '    <allowed>general discussion; create a new pipeline; edit a different existing pipeline</allowed>',
       '    <unrestricted>Switch to another pipeline or create a new one before unrestricted chat work.</unrestricted>',
       '  </pipeline-availability>',

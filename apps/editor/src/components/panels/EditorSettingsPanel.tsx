@@ -335,35 +335,41 @@ export function EditorSettingsPanel({
                     },
                   ]}
                 />
-                <div className="mt-2 flex items-center gap-2 text-[11px]">
-                  <label htmlFor="context-rounds" className="text-tagma-muted">
-                    Chat context rounds:
-                  </label>
-                  <input
-                    id="context-rounds"
-                    type="number"
-                    min={0}
-                    max={200}
-                    step={1}
-                    value={settings.chatContextRounds}
+                <div className="mt-2 space-y-2 border border-tagma-border bg-tagma-bg px-2.5 py-2">
+                  <ToggleRow
+                    label="Limit chat memory"
+                    description="Off keeps unlimited conversation history in the active OpenCode session. On starts fresh sessions according to the round limit below."
+                    checked={settings.chatContextLimitEnabled}
                     disabled={!hasWorkspace || saving}
-                    onChange={(e) => {
-                      const n = Number.parseInt(e.target.value, 10);
-                      if (Number.isFinite(n)) {
-                        const clamped = Math.max(0, Math.min(200, n));
-                        void updateField('chatContextRounds', clamped);
-                      }
-                    }}
-                    className="w-16 px-1 py-0.5 bg-tagma-surface border border-tagma-border text-tagma-text"
+                    onChange={(v) => updateField('chatContextLimitEnabled', v)}
                   />
-                  <span className="text-tagma-muted/70">
-                    (0 = unlimited, starts a new session after the limit)
-                  </span>
-                </div>
-                <div className="mt-1 px-2.5 text-[10px] text-tagma-muted leading-snug">
-                  Limits how many conversation rounds stay in the active chat session. When the
-                  next message would exceed this value, the editor starts a fresh session to keep
-                  context compact. 0 leaves session management to opencode's internal compaction.
+                  <div className="flex items-center gap-2 text-[11px]">
+                    <label htmlFor="context-rounds" className="text-tagma-muted">
+                      Context rounds:
+                    </label>
+                    <input
+                      id="context-rounds"
+                      type="number"
+                      min={0}
+                      max={200}
+                      step={1}
+                      value={settings.chatContextRounds}
+                      disabled={!hasWorkspace || saving || !settings.chatContextLimitEnabled}
+                      onChange={(e) => {
+                        const n = Number.parseInt(e.target.value, 10);
+                        if (Number.isFinite(n)) {
+                          const clamped = Math.max(0, Math.min(200, n));
+                          void updateField('chatContextRounds', clamped);
+                        }
+                      }}
+                      className="w-16 px-1 py-0.5 bg-tagma-surface border border-tagma-border text-tagma-text disabled:opacity-50"
+                    />
+                    <span className="text-tagma-muted/70">
+                      {settings.chatContextLimitEnabled
+                        ? '0 = stateless, no history'
+                        : 'Off = unlimited'}
+                    </span>
+                  </div>
                 </div>
               </div>
 

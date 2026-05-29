@@ -37,6 +37,23 @@ describe('chat editor context', () => {
     expect(buildEditorContext()).toContain('<yaml-run-version>7</yaml-run-version>');
   });
 
+  test('does not mark current pipeline protected for the chat edit lock', () => {
+    usePipelineStore.setState({
+      workDir: 'C:/repo',
+      yamlPath: 'C:/repo/.tagma/build/build.yaml',
+      yamlRunVersion: 7,
+      registry: { drivers: [], triggers: [], completions: [], middlewares: [] },
+    } as never);
+    useYamlEditLockStore.setState({
+      active: true,
+      yamlPath: 'C:/repo/.tagma/build/build.yaml',
+      expiresAt: Date.now() + 60_000,
+    } as never);
+
+    expect(buildEditorContext()).toContain('<current-file>.tagma/build/build.yaml</current-file>');
+    expect(buildEditorContext()).not.toContain('protected="true"');
+  });
+
   test('includes workspace yaml folder entries with concrete yaml paths beyond the open file', () => {
     usePipelineStore.setState({
       workDir: 'C:/repo',

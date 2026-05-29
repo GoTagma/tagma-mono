@@ -53,12 +53,7 @@ import {
   YAML_EDIT_LOCK_MESSAGE,
 } from './yaml-edit-lock-store';
 import { describeToolPartForActivity } from '../utils/chat-tool-display';
-import {
-  loadPersisted,
-  savePersisted,
-  sameModelPick,
-  type ModelPick,
-} from './chat-persist';
+import { loadPersisted, savePersisted, sameModelPick, type ModelPick } from './chat-persist';
 import { buildEditorContext } from './chat-editor-context';
 
 // Re-export for backward compatibility — tests and other consumers import this
@@ -952,7 +947,9 @@ async function pollStalledTurn(get: () => ChatStore, set: ChatSet): Promise<void
       // crashed or hung, separate from upstream model slowness.
       getOpencodeBaseUrl()
         .then(async (baseUrl) => {
-          const res = await fetch(`${baseUrl}/global/health`, { signal: AbortSignal.timeout(5000) });
+          const res = await fetch(`${baseUrl}/global/health`, {
+            signal: AbortSignal.timeout(5000),
+          });
           return res.ok;
         })
         .catch(() => false),
@@ -984,12 +981,12 @@ async function pollStalledTurn(get: () => ChatStore, set: ChatSet): Promise<void
 
     const healthDegraded = statusMap === null && freshMessages === null;
     const sseState: ChatTurnHealth['sseState'] = sseConnected
-      ? (sseLastEventAt !== null && Date.now() - sseLastEventAt > SSE_IDLE_WARN_MS
-          ? 'idle'
-          : 'connected')
+      ? sseLastEventAt !== null && Date.now() - sseLastEventAt > SSE_IDLE_WARN_MS
+        ? 'idle'
+        : 'connected'
       : 'reconnecting';
     patch.turnHealth = {
-      status: healthDegraded ? 'degraded' : (processAlive ? 'ok' : 'degraded'),
+      status: healthDegraded ? 'degraded' : processAlive ? 'ok' : 'degraded',
       checkedAt: Date.now(),
       detail: healthDegraded
         ? 'status and messages unavailable'
@@ -1535,11 +1532,18 @@ function partTurnTimestamp(part: Part): number {
 }
 
 function upsertSession(sessions: Session[], info: Session): Session[] {
+  if ((info as Session & { parentID?: string }).parentID) {
+    return sessions.filter((session) => session.id !== info.id);
+  }
   const idx = sessions.findIndex((session) => session.id === info.id);
   if (idx < 0) return [info, ...sessions];
   const next = sessions.slice();
   next[idx] = info;
   return next;
+}
+
+function userVisibleSessions(sessions: Session[]): Session[] {
+  return sessions.filter((session) => !(session as Session & { parentID?: string }).parentID);
 }
 
 function botTurnPatch(turnStartedAt: number): Partial<ChatStore> {
@@ -1752,6 +1756,17 @@ function chatTurnBlockedMessage(): string {
   return 'Wait for the current OpenCode chat update to finish before changing sessions, providers, or OpenCode runtime state.';
 }
 
+export function shouldStartFreshChatSessionForContextLimit(opts: {
+  enabled: boolean;
+  rounds: number;
+  userTurns: number;
+}): boolean {
+  if (!opts.enabled) return false;
+  const rounds = Math.max(0, Math.trunc(opts.rounds));
+  if (rounds === 0) return true;
+  return opts.userTurns >= rounds;
+}
+
 /**
  * Last-resort path for `abort()` when opencode never acks the cancel — see
  * `abort()` for the full Ollama / @ai-sdk/openai-compatible context. Kills
@@ -1841,7 +1856,7 @@ async function promptOpencode(
         const s = await unwrap(client.session.create({ body: {} }));
         sessionId = s.id;
         set((prev) => ({
-          sessions: [s, ...prev.sessions],
+          sessions: upsertSession(prev.sessions, s),
           currentSessionId: s.id,
         }));
       } catch (err) {
@@ -1857,23 +1872,28 @@ async function promptOpencode(
     // context window stays bounded. Internal prompts (repair, bot-bridge
     // retries) are exempt — they're part of the same logical turn.
     if (!opts.internal) {
-      const contextRounds =
-        useEditorSettingsStore.getState().settings?.chatContextRounds ?? 0;
-      if (contextRounds > 0) {
-        const userTurns = get().messages.filter((m) => m.info.role === 'user').length;
-        if (userTurns >= contextRounds) {
-          try {
-            const fresh = await unwrap(client.session.create({ body: {} }));
-            sessionId = fresh.id;
-            set((prev) => ({
-              sessions: [fresh, ...prev.sessions],
-              currentSessionId: fresh.id,
-              messages: [],
-            }));
-          } catch (err) {
-            console.warn('[chat] context-rounds new-session failed:', err);
-            // Non-fatal: fall through and send to the existing session.
-          }
+      const chatSettings = useEditorSettingsStore.getState().settings;
+      const contextLimitEnabled = chatSettings?.chatContextLimitEnabled ?? false;
+      const contextRounds = chatSettings?.chatContextRounds ?? 0;
+      const userTurns = get().messages.filter((m) => m.info.role === 'user').length;
+      if (
+        shouldStartFreshChatSessionForContextLimit({
+          enabled: contextLimitEnabled,
+          rounds: contextRounds,
+          userTurns,
+        })
+      ) {
+        try {
+          const fresh = await unwrap(client.session.create({ body: {} }));
+          sessionId = fresh.id;
+          set((prev) => ({
+            sessions: upsertSession(prev.sessions, fresh),
+            currentSessionId: fresh.id,
+            messages: [],
+          }));
+        } catch (err) {
+          console.warn('[chat] context-rounds new-session failed:', err);
+          // Non-fatal: fall through and send to the existing session.
         }
       }
     }
@@ -2772,7 +2792,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       set({
         providers,
         agents,
-        sessions,
+        sessions: userVisibleSessions(sessions),
         providerCatalog,
         customProviders,
         model: nextModel,
@@ -2788,7 +2808,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({
       providers,
       agents,
-      sessions,
+      sessions: userVisibleSessions(sessions),
       providerCatalog,
       customProviders,
       model: nextModel,
@@ -2802,7 +2822,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   async refreshSessions() {
     const client = await getOpencodeClient();
     const sessions = await unwrap(client.session.list()).catch(() => [] as Session[]);
-    set({ sessions });
+    set({ sessions: userVisibleSessions(sessions) });
   },
 
   async selectSession(id) {
@@ -2850,7 +2870,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const client = await getOpencodeClient();
     const s = await unwrap(client.session.create({ body: {} }));
     set((prev) => ({
-      sessions: [s, ...prev.sessions],
+      sessions: upsertSession(prev.sessions, s),
       currentSessionId: s.id,
       messages: [],
       historyOpen: false,

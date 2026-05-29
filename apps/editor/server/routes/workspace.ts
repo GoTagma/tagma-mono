@@ -17,10 +17,7 @@ import { createHash } from 'node:crypto';
 import yaml from 'js-yaml';
 import { createEmptyPipeline, upsertTrack, upsertTask } from '@tagma/sdk/config';
 import { parseYaml, serializePipeline } from '@tagma/sdk/yaml';
-import {
-  parseWorkflowYaml,
-  validateRawWorkflow,
-} from '@tagma/sdk/workflow';
+import { parseWorkflowYaml, validateRawWorkflow } from '@tagma/sdk/workflow';
 import type { PipelineGraphStopWhen } from '@tagma/types';
 import {
   getState,
@@ -36,7 +33,11 @@ import {
 } from '../state.js';
 import { errorMessage, atomicWriteFileSync } from '../path-utils.js';
 import { runCompileAndWriteLog } from '../compile-log.js';
-import { buildYamlSkeletonFromManifest, pipelineManifestPath, runPipelineManifestSync } from '../pipeline-manifest.js';
+import {
+  buildYamlSkeletonFromManifest,
+  pipelineManifestPath,
+  runPipelineManifestSync,
+} from '../pipeline-manifest.js';
 import { ALLOWED_ORIGINS } from '../allowed-origins.js';
 import {
   consumeFsCapability,
@@ -202,6 +203,9 @@ export function parseEditorSettingsPatch(body: unknown): Partial<EditorSettings>
   }
   if (typeof raw.chatContextRounds === 'number' && Number.isFinite(raw.chatContextRounds)) {
     patch.chatContextRounds = raw.chatContextRounds;
+  }
+  if (typeof raw.chatContextLimitEnabled === 'boolean') {
+    patch.chatContextLimitEnabled = raw.chatContextLimitEnabled;
   }
   if (isValidEditorViewMode(raw.viewMode)) {
     patch.viewMode = raw.viewMode;
@@ -372,11 +376,7 @@ function readWorkflowLifecycle(
   if (Number.isInteger(raw.max_runs) && (raw.max_runs as number) > 0) {
     lifecycle.max_runs = raw.max_runs as number;
   }
-  if (
-    raw.stop_when === 'success' ||
-    raw.stop_when === 'failure' ||
-    raw.stop_when === 'always'
-  ) {
+  if (raw.stop_when === 'success' || raw.stop_when === 'failure' || raw.stop_when === 'always') {
     lifecycle.stop_when = raw.stop_when;
   }
   return Object.keys(lifecycle).length > 0 ? lifecycle : undefined;
@@ -946,7 +946,9 @@ export function registerWorkspaceRoutes(app: express.Express): void {
         parent: parent !== dirPath ? parent : null,
         entries,
         truncated: allEntries.length > MAX_FS_LIST_ENTRIES,
-        ...(capability ? { capabilityToken: capability.token, capabilityExpiresAt: capability.expiresAt } : {}),
+        ...(capability
+          ? { capabilityToken: capability.token, capabilityExpiresAt: capability.expiresAt }
+          : {}),
       });
     } catch (err: unknown) {
       res.status(500).json({ error: errorMessage(err) || 'Failed to list directory' });
@@ -1549,7 +1551,9 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       runCompileAndWriteLog(yamlAbsPath, ws.registry);
       res.json(getState(ws));
     } catch (err) {
-      res.status(500).json({ error: errorMessage(err) || 'Failed to create pipeline from manifest' });
+      res
+        .status(500)
+        .json({ error: errorMessage(err) || 'Failed to create pipeline from manifest' });
     }
   });
 

@@ -611,8 +611,12 @@ export interface EditorSettings {
   /** Last OpenCode chat provider/model selection for this workspace. */
   opencodeChatModel: OpenCodeChatModelSelection | null;
   /**
-   * Maximum conversation rounds kept in the active chat session. 0 = unlimited.
-   * When the next send would exceed this, a fresh session is created first.
+   * Disabled means unlimited. Enabled with 0 rounds means stateless.
+   */
+  chatContextLimitEnabled: boolean;
+  /**
+   * Maximum conversation rounds kept in the active chat session when enabled.
+   * 0 = stateless; positive values start a fresh session after the limit.
    */
   chatContextRounds: number;
 }
@@ -1419,7 +1423,10 @@ export const api = {
 
   loadDemo: () => request<ServerState>('/demo', { method: 'POST' }),
 
-  listDir: (path?: string, opts?: { picker?: boolean; capabilityPurpose?: FsCapabilityPurpose }) => {
+  listDir: (
+    path?: string,
+    opts?: { picker?: boolean; capabilityPurpose?: FsCapabilityPurpose },
+  ) => {
     // C3: `picker=1` opts a request out of the workspace fence so the
     // dedicated workspace-root / import / export pickers can walk the host
     // filesystem. Mutation endpoints still enforce their own fences.

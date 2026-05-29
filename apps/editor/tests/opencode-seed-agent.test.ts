@@ -91,9 +91,11 @@ test('tagma-pipeline agent documents edit/create modes and mandatory compile loo
   expect(doc).toContain('Edit current');
   expect(doc).toContain('Create new');
   expect(doc).toContain('## Manifest-Guided YAML Edits');
-  expect(doc).toContain('Read the same-folder `<stem>.manifest.json` before reading or editing YAML');
+  expect(doc).toContain(
+    'Read the same-folder `<stem>.manifest.json` before reading or editing YAML',
+  );
   expect(doc).toContain('preserve every unselected section');
-  expect(doc).toContain('When creating a new pipeline, write `<stem>.manifest.json` first');
+  expect(doc).toContain('For **create new**: write the manifest first');
   expect(doc).toContain('Bypass the manifest only when it is missing, unreadable, stale');
   expect(doc).toContain('compile.log');
   expect(doc).toContain('Never finish after a YAML write');
@@ -110,11 +112,13 @@ test('tagma-pipeline agent honors protected current pipeline context', () => {
   expect(doc).toContain('<pipeline-availability>');
   expect(doc).toContain('<workspace-yaml-folders>');
   expect(doc).toContain('concrete `<yaml>`, and same-folder `<manifest>`');
-  expect(doc).toContain('edit that entry\'s `<yaml>` file even if it is not `<current-file>`');
+  expect(doc).toContain("edit that entry's `<yaml>` file even if it is not `<current-file>`");
   expect(doc).toContain('Never call `read` with only `{ "limit": ... }`');
   expect(doc).toContain('read({ "filePath": "pipeline-9giapbf6.yaml" })');
   expect(doc).toContain('resolve the target `<pipeline>` entry from the user');
   expect(doc).toContain('protected="true"');
+  expect(doc).toContain('active run');
+  expect(doc).toContain('current pipeline is running');
   expect(doc).toContain('Do not edit `<current-file>`');
   expect(doc).toContain('create a new pipeline');
   expect(doc).toContain('edit a different existing pipeline');

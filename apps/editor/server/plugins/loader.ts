@@ -879,6 +879,8 @@ export interface EditorSettings {
   viewMode: EditorViewMode;
   pythonAgent: PythonAgentSettings;
   opencodeChatModel: OpenCodeChatModelSelection | null;
+  /** Disabled means unlimited. Enabled with 0 rounds means stateless. */
+  chatContextLimitEnabled: boolean;
   /**
    * Maximum number of conversation rounds (user+assistant turn pairs) kept
    * in the active opencode chat session. When the next `send()` would push
@@ -901,6 +903,7 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   viewMode: 'production',
   pythonAgent: DEFAULT_PYTHON_AGENT_SETTINGS,
   opencodeChatModel: null,
+  chatContextLimitEnabled: false,
   chatContextRounds: 0,
 };
 
@@ -945,6 +948,10 @@ export function readEditorSettings(ws: WorkspaceState): EditorSettings {
         : DEFAULT_EDITOR_SETTINGS.viewMode,
       pythonAgent: parsePythonAgentSettings(raw.pythonAgent) ?? DEFAULT_EDITOR_SETTINGS.pythonAgent,
       opencodeChatModel: parseOpenCodeChatModelSelection(raw.opencodeChatModel),
+      chatContextLimitEnabled:
+        typeof raw.chatContextLimitEnabled === 'boolean'
+          ? raw.chatContextLimitEnabled
+          : DEFAULT_EDITOR_SETTINGS.chatContextLimitEnabled,
       chatContextRounds:
         typeof raw.chatContextRounds === 'number' &&
         Number.isInteger(raw.chatContextRounds) &&
@@ -1003,6 +1010,9 @@ export function writeEditorSettings(
   }
   if (patch.opencodeChatModel !== undefined) {
     next.opencodeChatModel = patch.opencodeChatModel;
+  }
+  if (patch.chatContextLimitEnabled !== undefined) {
+    next.chatContextLimitEnabled = patch.chatContextLimitEnabled;
   }
   if (patch.chatContextRounds !== undefined) {
     next.chatContextRounds = Math.max(0, Math.min(200, Math.trunc(patch.chatContextRounds)));
