@@ -35,6 +35,27 @@ jobs:
       - name: Text hygiene
         run: bun run check:text
 
+      - name: Dependency & lockfile integrity
+        run: bun run check:deps
+
+      - name: Focused and disabled tests
+        run: bun run check:focus
+
+      - name: Phantom imports
+        run: bun run check:imports
+
+      - name: Workspace dependency cycles
+        run: bun run check:cycles
+
+      - name: Secret scan
+        run: bun run check:secrets
+
+      - name: Format check
+        run: bun run format:check
+
+      - name: Publish metadata check
+        run: bun run check:publish
+
       - name: Type check
         run: bun run check
 
@@ -64,6 +85,24 @@ jobs:
 
       - name: Text hygiene
         run: bun run check:text
+
+      - name: Dependency & lockfile integrity
+        run: bun run check:deps
+
+      - name: Focused and disabled tests
+        run: bun run check:focus
+
+      - name: Phantom imports
+        run: bun run check:imports
+
+      - name: Workspace dependency cycles
+        run: bun run check:cycles
+
+      - name: Secret scan
+        run: bun run check:secrets
+
+      - name: Format check
+        run: bun run format:check
 
       - name: Type check public packages
         run: bun run check:public

@@ -24,6 +24,7 @@ export interface HotupdateManifest {
 }
 
 const MANIFEST_TIMEOUT_MS = 15_000;
+const MAX_MANIFEST_JSON_BYTES = 1024 * 1024;
 export const MANIFEST_CACHE_TTL_MS = 60 * 1000;
 const MAX_DIST_TARBALL_BYTES = 100 * 1024 * 1024;
 const MAX_SIDECAR_BINARY_BYTES = 300 * 1024 * 1024;
@@ -144,6 +145,16 @@ export function validateHotupdateManifest(body: Partial<HotupdateManifest>, url:
   if (typeof body.channel !== 'string' || !body.channel) {
     throw new Error(`Manifest at ${url} missing "channel"`);
   }
+  if (body.minShellVersion !== undefined) {
+    if (typeof body.minShellVersion !== 'string' || !body.minShellVersion) {
+      throw new Error(`Manifest at ${url} has bad "minShellVersion"`);
+    }
+    try {
+      assertValidHotupdateVersion(body.minShellVersion, `Manifest at ${url} minShellVersion`);
+    } catch (err) {
+      throw new Error(errorMessage(err));
+    }
+  }
   if (body.signature !== undefined && typeof body.signature !== 'string') {
     throw new Error(`Manifest at ${url} has bad "signature"`);
   }
@@ -246,7 +257,28 @@ export async function fetchHotupdateManifest(
     cache: 'no-store',
   });
   if (!res.ok) throw new Error(`Manifest fetch failed: HTTP ${res.status} ${url}`);
-  const body = (await res.json()) as Partial<HotupdateManifest>;
+  const contentLength = res.headers.get('content-length');
+  if (contentLength) {
+    const declaredBytes = Number(contentLength);
+    if (Number.isFinite(declaredBytes) && declaredBytes > MAX_MANIFEST_JSON_BYTES) {
+      throw new Error(
+        `Manifest at ${url} is too large (${declaredBytes} bytes, cap ${MAX_MANIFEST_JSON_BYTES})`,
+      );
+    }
+  }
+  const text = await res.text();
+  const bodyBytes = Buffer.byteLength(text, 'utf8');
+  if (bodyBytes > MAX_MANIFEST_JSON_BYTES) {
+    throw new Error(
+      `Manifest at ${url} is too large (${bodyBytes} bytes, cap ${MAX_MANIFEST_JSON_BYTES})`,
+    );
+  }
+  let body: Partial<HotupdateManifest>;
+  try {
+    body = JSON.parse(text) as Partial<HotupdateManifest>;
+  } catch {
+    throw new Error(`Manifest at ${url} is not valid JSON`);
+  }
   validateHotupdateManifest(body, url);
   verifyHotupdateManifestSignature(body, url);
   const value = body as HotupdateManifest;

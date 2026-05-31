@@ -221,15 +221,7 @@ const EdgeLine = memo(function EdgeLine({
                   : 'var(--tagma-edge-default)'
         }
         strokeWidth={inCycle ? 2.2 : highlighted ? 2 : 1}
-        strokeDasharray={
-          inCycle
-            ? '4 3'
-            : isContinue
-              ? '6 3'
-              : isDataflow
-                ? '3 3'
-                : undefined
-        }
+        strokeDasharray={inCycle ? '4 3' : isContinue ? '6 3' : isDataflow ? '3 3' : undefined}
         opacity={inCycle || isContinue || highlighted || !isDataflow ? 1 : 0.5}
         markerEnd={
           inCycle

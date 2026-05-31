@@ -6,6 +6,7 @@ let lastStartOpts: unknown = undefined;
 let lastAbortRunId: string | undefined = undefined;
 let runEventListener: ((event: RunEvent) => void) | null = null;
 let emitRunStartBeforeStartResponse = false;
+let emitStaleRunErrorBeforeStartResponse = false;
 let mockClientWorkspace: string | null = null;
 const mockWorkspaceListeners = new Set<(key: string | null) => void>();
 
@@ -24,6 +25,14 @@ mock.module('../src/api/client', () => ({
           runId: 'run_1',
           tasks: [],
           seq: 1,
+        } as RunEvent);
+      }
+      if (emitStaleRunErrorBeforeStartResponse) {
+        runEventListener?.({
+          type: 'run_error',
+          runId: 'run_old',
+          seq: 99,
+          error: 'old run failed late',
         } as RunEvent);
       }
       return { ok: true, runId: 'run_1', events: [] };
@@ -86,6 +95,7 @@ beforeEach(() => {
   lastAbortRunId = undefined;
   runEventListener = null;
   emitRunStartBeforeStartResponse = false;
+  emitStaleRunErrorBeforeStartResponse = false;
   mockClientWorkspace = null;
   for (const listener of mockWorkspaceListeners) listener(null);
   useRunStore.getState().reset();
@@ -127,6 +137,24 @@ describe('run store target task ids', () => {
     expect(state.active).toBe(true);
     expect(state.viewMode).toBe('history');
     expect(state.status).toBe('running');
+    expect(state.historySelectedRunId).toBe('run_1');
+  });
+
+  test('ignores stale lifecycle events while waiting for the new run id', async () => {
+    emitStaleRunErrorBeforeStartResponse = true;
+
+    const runId = await useRunStore.getState().startRun(config);
+    const state = useRunStore.getState() as unknown as {
+      runId: string | null;
+      status: string;
+      error: string | null;
+      historySelectedRunId: string | null;
+    };
+
+    expect(runId).toBe('run_1');
+    expect(state.runId).toBe('run_1');
+    expect(state.status).toBe('starting');
+    expect(state.error).toBeNull();
     expect(state.historySelectedRunId).toBe('run_1');
   });
 

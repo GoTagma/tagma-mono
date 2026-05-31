@@ -106,6 +106,25 @@ test('tagma-pipeline agent documents edit/create modes and mandatory compile loo
   expect(doc).toContain('never call secret-manager APIs');
 });
 
+test('tagma-pipeline agent keeps manifest-first flow while enforcing section isolation', () => {
+  const doc = buildTagmaPipelineAgent('Windows');
+
+  expect(doc).toContain('Create new (manifest-first)');
+  expect(doc).toContain('POST /api/create-from-manifest');
+  expect(doc).toContain('## Section Isolation Protocol');
+  expect(doc).toContain('Treat each manifest section as the editing unit');
+  expect(doc).toContain('Before changing YAML, name the affected section ids');
+  expect(doc).toContain('Do not reorder, reformat, rename, or optimize unselected sections');
+  expect(doc).toContain('For local implementation edits, patch only the selected task or track');
+  expect(doc).toContain(
+    'Topology changes may touch only the selected section ids and their explicit dependents',
+  );
+  expect(doc).not.toContain('tagma_read_block');
+  expect(doc).not.toContain('tagma_upsert_block');
+  expect(doc).not.toContain('tagma_create_skeleton');
+  expect(doc).not.toContain('tagma_delete_block');
+});
+
 test('tagma-pipeline agent honors protected current pipeline context', () => {
   const doc = buildTagmaPipelineAgent('Windows');
 
@@ -239,6 +258,12 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   const historyAgent = join(agentsDir, 'tagma-history-compare.md');
   const pythonAgent = join(agentsDir, 'tagma-python-tools.md');
   const placementTool = join(dir, '.opencode', 'tools', 'tagma_placement_plan.ts');
+  const blockToolNames = [
+    'tagma_read_block.ts',
+    'tagma_upsert_block.ts',
+    'tagma_create_skeleton.ts',
+    'tagma_delete_block.ts',
+  ];
 
   expect(existsSync(routerAgent)).toBe(true);
   expect(readFileSync(routerAgent, 'utf8')).toContain('mode: primary');
@@ -266,6 +291,9 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   expect(readFileSync(placementTool, 'utf8')).toContain(
     'Compute deterministic Tagma .layout.json positions',
   );
+  for (const toolName of blockToolNames) {
+    expect(existsSync(join(dir, '.opencode', 'tools', toolName))).toBe(false);
+  }
   expect(readFileSync(nativeSkill, 'utf8')).toContain('name: tagma-native-primitives');
   expect(existsSync(yamlContractSkill)).toBe(true);
   const yamlContractDoc = readFileSync(yamlContractSkill, 'utf8');

@@ -34,6 +34,7 @@ import { clip, tailLines, type Logger } from '../logger';
 import type { ApprovalGateway } from '../approval';
 import type { RunContext } from './run-context';
 import { extractSuccessfulOutputs, inferEffectivePorts } from './dataflow';
+import { skippedTaskResult } from './run-state';
 
 const MAX_NORMALIZED_BYTES = 1_000_000;
 
@@ -270,6 +271,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       const depStatus = ctx.states.get(depId)?.status ?? 'unknown';
       log.debug(`[task:${taskId}]`, `skipped (upstream "${depId}" status=${depStatus})`);
       state.finishedAt = nowISO();
+      state.result = skippedTaskResult(`skipped because upstream "${depId}" status=${depStatus}`);
       ctx.setTaskStatus(taskId, 'skipped');
       return;
     }

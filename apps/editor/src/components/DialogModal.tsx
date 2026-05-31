@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { AlertCircle, CheckCircle2, X as XIcon } from 'lucide-react';
 
 export type DialogInfo = { type: 'error' | 'success'; title: string; details: string[] };
@@ -8,6 +9,14 @@ interface DialogModalProps {
 }
 
 export function DialogModal({ info, onClose }: DialogModalProps) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
   return (
     <div
       className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60"
@@ -15,6 +24,9 @@ export function DialogModal({ info, onClose }: DialogModalProps) {
     >
       <div
         className="bg-tagma-surface border border-tagma-border shadow-panel w-[480px] max-h-[60vh] flex flex-col animate-fade-in"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="dialog-modal-title"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="panel-header">
@@ -25,6 +37,7 @@ export function DialogModal({ info, onClose }: DialogModalProps) {
               <CheckCircle2 size={14} className="text-tagma-success shrink-0" />
             )}
             <h2
+              id="dialog-modal-title"
               className={`panel-title truncate ${info.type === 'error' ? 'text-tagma-error' : 'text-tagma-success'}`}
             >
               {info.title}

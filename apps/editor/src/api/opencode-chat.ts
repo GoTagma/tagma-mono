@@ -232,6 +232,7 @@ export interface OpencodeThreadEntry {
 interface ClientBootstrap {
   client: OpencodeClient;
   baseUrl: string;
+  authHeader?: string;
 }
 
 // One client per workspace. The sidecar runs a separate `opencode serve` per
@@ -253,6 +254,22 @@ function currentWorkspaceKey(): string {
 
 export function getOpencodeWorkspaceKey(): string {
   return currentWorkspaceKey();
+}
+
+export function buildOpencodeRequestHeaders(
+  authHeader: string | undefined,
+): Record<string, string> {
+  return authHeader ? { Authorization: authHeader } : {};
+}
+
+export function buildOpencodeClientConfig(
+  baseUrl: string,
+  authHeader: string | undefined,
+): Parameters<typeof createOpencodeClient>[0] {
+  return {
+    baseUrl,
+    headers: buildOpencodeRequestHeaders(authHeader),
+  };
 }
 
 async function bootstrap(workspaceKey: string): Promise<ClientBootstrap> {
@@ -284,10 +301,11 @@ async function bootstrap(workspaceKey: string): Promise<ClientBootstrap> {
     }
     throw new Error(`Failed to start opencode (${res.status}): ${detail}`);
   }
-  const body = (await res.json()) as { baseUrl?: string };
+  const body = (await res.json()) as { baseUrl?: string; authHeader?: unknown };
   if (!body.baseUrl) throw new Error('opencode ensure response missing baseUrl');
-  const client = createOpencodeClient({ baseUrl: body.baseUrl });
-  return { client, baseUrl: body.baseUrl };
+  const authHeader = typeof body.authHeader === 'string' ? body.authHeader : undefined;
+  const client = createOpencodeClient(buildOpencodeClientConfig(body.baseUrl, authHeader));
+  return { client, baseUrl: body.baseUrl, authHeader };
 }
 
 export async function getOpencodeClient(): Promise<OpencodeClient> {
@@ -321,6 +339,17 @@ export async function getOpencodeBaseUrl(): Promise<string> {
   }
   const { baseUrl } = await pending;
   return baseUrl;
+}
+
+export async function getOpencodeAuthHeader(): Promise<string | undefined> {
+  const key = currentWorkspaceKey();
+  let pending = bootstraps.get(key);
+  if (!pending) {
+    pending = bootstrap(key);
+    bootstraps.set(key, pending);
+  }
+  const { authHeader } = await pending;
+  return authHeader;
 }
 
 /**
@@ -368,16 +397,18 @@ export async function restartOpencodeForConfig(): Promise<void> {
     }
     throw new Error(`Failed to restart opencode (${res.status}): ${detail}`);
   }
-  const body = (await res.json()) as { baseUrl?: string };
+  const body = (await res.json()) as { baseUrl?: string; authHeader?: unknown };
   if (!body.baseUrl) throw new Error('opencode restart response missing baseUrl');
+  const authHeader = typeof body.authHeader === 'string' ? body.authHeader : undefined;
   // Overwrite the cached bootstrap with a client bound to the new port so
   // every subsequent `getOpencodeClient()` returns a client talking to the
   // fresh opencode — not the dead one on the old port.
   bootstraps.set(
     key,
     Promise.resolve({
-      client: createOpencodeClient({ baseUrl: body.baseUrl }),
+      client: createOpencodeClient(buildOpencodeClientConfig(body.baseUrl, authHeader)),
       baseUrl: body.baseUrl,
+      authHeader,
     }),
   );
 }

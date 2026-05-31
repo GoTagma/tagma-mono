@@ -1193,7 +1193,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
 
   app.post('/api/fs/capability', (req, res) => {
     const origin = req.headers.origin;
-    if (origin && !ALLOWED_ORIGINS.has(origin)) {
+    if (!origin || !ALLOWED_ORIGINS.has(origin)) {
       return res.status(403).json({ error: 'Filesystem capabilities require an allowed Origin' });
     }
     const { path: rawPath, purpose } = (req.body ?? {}) as {
@@ -1267,9 +1267,12 @@ export function registerWorkspaceRoutes(app: express.Express): void {
     if (!ws) return;
     const { path: filePath } = req.body;
     if (!filePath) return res.status(400).json({ error: 'path is required' });
+    if (!ws.workDir) {
+      return res.status(400).json({ error: 'Workspace directory is not set' });
+    }
     const absPath = resolve(filePath);
     // B1: reveal must stay within workDir to prevent revealing arbitrary filesystem paths.
-    if (ws.workDir && !isPathWithin(absPath, ws.workDir)) {
+    if (!isPathWithin(absPath, ws.workDir)) {
       return res.status(403).json({ error: 'Path is outside the workspace directory' });
     }
     if (!existsSync(absPath)) return res.status(404).json({ error: 'File not found' });
@@ -1835,12 +1838,13 @@ export function registerWorkspaceRoutes(app: express.Express): void {
           ? 'Restarting OpenCode because artifacts changed'
           : 'Connecting to existing OpenCode server',
       });
-      const { baseUrl } = seedChanged
+      const { baseUrl, auth } = seedChanged
         ? await restartOpencode(tagmaCwd)
         : await ensureOpencode(tagmaCwd);
 
       const converted = await convertPipelineYamlForPlatform({
         baseUrl,
+        authHeader: auth.authorization,
         sourceYaml: content,
         sourceName: basename(ws.yamlPath),
         sourcePlatform,

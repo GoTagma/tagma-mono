@@ -818,10 +818,7 @@ function validatePipelineLifecycle(
       message: 'lifecycle.max_runs must be a positive integer',
     });
   }
-  if (
-    lifecycle.stop_when !== undefined &&
-    !VALID_PIPELINE_STOP_WHEN.has(lifecycle.stop_when)
-  ) {
+  if (lifecycle.stop_when !== undefined && !VALID_PIPELINE_STOP_WHEN.has(lifecycle.stop_when)) {
     errors.push({
       path: `${basePath}.lifecycle.stop_when`,
       message: 'lifecycle.stop_when must be "success", "failure", or "always"',

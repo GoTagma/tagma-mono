@@ -6,6 +6,7 @@ import {
   type HotupdateManifest,
   MANIFEST_CACHE_TTL_MS,
   compareVersions,
+  fetchHotupdateManifest,
   pickSidecarTarget,
   validateHotupdateManifest,
   verifyHotupdateManifestSignature,
@@ -172,5 +173,56 @@ describe('hot-update manifest helpers', () => {
         'https://example.com/manifest.json',
       ),
     ).toThrow(/HTTPS/i);
+  });
+
+  test('rejects unsafe minShellVersion values', () => {
+    const good: HotupdateManifest = {
+      version: '1.2.3',
+      channel: 'stable',
+      minShellVersion: '1.0.0',
+      dist: {
+        url: 'https://example.com/editor.tgz',
+        sha256: 'a'.repeat(64),
+        size: 123,
+      },
+    };
+
+    expect(() =>
+      validateHotupdateManifest(good, 'https://example.com/manifest.json'),
+    ).not.toThrow();
+    expect(() =>
+      validateHotupdateManifest(
+        { ...good, minShellVersion: '../1.0.0' },
+        'https://example.com/manifest.json',
+      ),
+    ).toThrow(/minShellVersion|semver/i);
+  });
+
+  test('caps fetched manifest JSON bodies before parsing', async () => {
+    const previousFetch = globalThis.fetch;
+    const oversized = JSON.stringify({
+      version: '1.2.3',
+      channel: 'stable',
+      dist: {
+        url: 'file:///tmp/editor.tgz',
+        sha256: 'a'.repeat(64),
+        size: 123,
+      },
+      padding: 'x'.repeat(1024 * 1024 + 1),
+    });
+
+    globalThis.fetch = (async () =>
+      new Response(oversized, {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })) as unknown as typeof fetch;
+
+    try {
+      await expect(fetchHotupdateManifest('file:///tmp/manifest.json', true)).rejects.toThrow(
+        /manifest.*too large|exceeds/i,
+      );
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
   });
 });

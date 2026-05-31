@@ -36,7 +36,6 @@ import type {
   PipelineGraphEventPayload,
   PipelineGraphAbortReason,
   PipelineGraphNodeState,
-  PipelineGraphResult,
 } from '@tagma/sdk';
 import { atomicWriteFileSync, isPathWithin } from '../path-utils.js';
 import type { WorkspaceState } from '../workspace-state.js';
@@ -171,15 +170,6 @@ export function normalizeRunTargetTaskIds(
 
 // ═══ Workflow graph helpers ═════════════════════════════════════════════
 
-function publicPipelineGraphResult(result: PipelineGraphResult): unknown {
-  return {
-    graphRunId: result.graphRunId,
-    success: result.success,
-    abortReason: result.abortReason,
-    pipelines: result.pipelines.map(({ result: _engineResult, ...pipeline }) => pipeline),
-  };
-}
-
 function publicPipelineGraphResultFromEndEvent(
   event: Extract<PipelineGraphEventPayload, { type: 'graph_end' }>,
 ): unknown {
@@ -221,7 +211,9 @@ function applyWorkflowPipelineUpdate(
 }
 
 function isWorkflowPipelineTerminal(status: PipelineGraphNodeState['status']): boolean {
-  return status === 'success' || status === 'failed' || status === 'skipped' || status === 'aborted';
+  return (
+    status === 'success' || status === 'failed' || status === 'skipped' || status === 'aborted'
+  );
 }
 
 export function buildFatalWorkflowGraphEndEvent(
@@ -263,11 +255,14 @@ import { PipelineGraphRunner } from '@tagma/sdk';
 
 // ═══ WorkflowRunSession ═════════════════════════════════════════════════
 
+export type WorkflowRunSessionEvent = PipelineGraphEventPayload & { readonly seq: number };
+
 export class WorkflowRunSession {
   readonly graphRunId: string;
   readonly startedAt: string;
-  readonly events: PipelineGraphEventPayload[] = [];
+  readonly events: WorkflowRunSessionEvent[] = [];
   private latestPipelines: PipelineGraphNodeState[] = [];
+  private seqCounter = 0;
   result: unknown = null;
   error: string | null = null;
   done = false;
@@ -280,22 +275,23 @@ export class WorkflowRunSession {
     this.startedAt = new Date().toISOString();
   }
 
-  ingest(event: PipelineGraphEventPayload): PipelineGraphEventPayload {
-    if (event.type === 'graph_start' || event.type === 'graph_end') {
-      this.latestPipelines = cloneWorkflowPipelines(event.pipelines);
-    } else if (event.type === 'pipeline_update') {
-      this.latestPipelines = applyWorkflowPipelineUpdate(this.latestPipelines, event);
+  ingest(event: PipelineGraphEventPayload): WorkflowRunSessionEvent {
+    const stamped = { ...event, seq: ++this.seqCounter } as WorkflowRunSessionEvent;
+    if (stamped.type === 'graph_start' || stamped.type === 'graph_end') {
+      this.latestPipelines = cloneWorkflowPipelines(stamped.pipelines);
+    } else if (stamped.type === 'pipeline_update') {
+      this.latestPipelines = applyWorkflowPipelineUpdate(this.latestPipelines, stamped);
     }
-    this.events.push(event);
+    this.events.push(stamped);
     if (this.events.length > EVENT_BUFFER_MAX) {
       this.events.splice(0, this.events.length - EVENT_BUFFER_MAX);
     }
-    if (event.type === 'graph_end') {
-      this.result = publicPipelineGraphResultFromEndEvent(event);
+    if (stamped.type === 'graph_end') {
+      this.result = publicPipelineGraphResultFromEndEvent(stamped);
       this.done = true;
     }
-    if (event.type === 'graph_error') this.error = event.error;
-    return event;
+    if (stamped.type === 'graph_error') this.error = stamped.error;
+    return stamped;
   }
 
   fatalEndEvent(message: string): Extract<PipelineGraphEventPayload, { type: 'graph_end' }> {
@@ -307,8 +303,12 @@ export class WorkflowRunSession {
     );
   }
 
-  allBuffered(): PipelineGraphEventPayload[] {
+  allBuffered(): WorkflowRunSessionEvent[] {
     return [...this.events];
+  }
+
+  replayAfter(seq: number): WorkflowRunSessionEvent[] {
+    return this.events.filter((event) => event.seq > seq);
   }
 }
 
@@ -1208,7 +1208,11 @@ export function buildRunHistoryAskAiContext(
     currentPipelineArtifactPath(ws.yamlPath, '.requirements.md'),
     HISTORY_CONTEXT_TEXT_BYTES,
   );
-  const historicalLog = readOptionalTextSnapshot(historicalLogPath, HISTORY_CONTEXT_TEXT_BYTES, 'tail');
+  const historicalLog = readOptionalTextSnapshot(
+    historicalLogPath,
+    HISTORY_CONTEXT_TEXT_BYTES,
+    'tail',
+  );
   const historicalOutputs = readHistoricalTaskOutputs(cwd, runId, selectedTask);
 
   const lines: string[] = [
@@ -1259,7 +1263,13 @@ export function buildRunHistoryAskAiContext(
     summarizeRunHistoryForContext(summary),
     HISTORY_CONTEXT_JSON_BYTES,
   );
-  appendSnapshotSection(lines, 'Historical pipeline log', historicalLog, HISTORY_CONTEXT_TEXT_BYTES, 'tail');
+  appendSnapshotSection(
+    lines,
+    'Historical pipeline log',
+    historicalLog,
+    HISTORY_CONTEXT_TEXT_BYTES,
+    'tail',
+  );
   appendSnapshotSection(
     lines,
     'Selected historical task summary',
@@ -1285,7 +1295,9 @@ function currentPipelineArtifactPath(
   return join(dirname(yamlPath), `${stem}${ext}`);
 }
 
-export function computeTaskCounts(tasks: RunSummaryTask[]): NonNullable<RunHistoryEntry['taskCounts']> {
+export function computeTaskCounts(
+  tasks: RunSummaryTask[],
+): NonNullable<RunHistoryEntry['taskCounts']> {
   const counts = {
     total: tasks.length,
     success: 0,

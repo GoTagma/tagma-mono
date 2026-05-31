@@ -57,6 +57,7 @@ const NPM_REGISTRY = 'https://registry.npmjs.org';
 const REGISTRY_TIMEOUT_MS = 30_000;
 const TARBALL_TIMEOUT_MS = 180_000;
 const MAX_OPENCODE_TARBALL_BYTES = 200 * 1024 * 1024; // 200 MB hard cap
+const MAX_OPENCODE_TARBALL_REDIRECTS = 5;
 
 const ALLOWED_TARBALL_HOSTS: ReadonlySet<string> = new Set([
   'registry.npmjs.org',
@@ -192,7 +193,11 @@ async function fetchRegistryMeta(
   };
 }
 
-async function downloadTarball(url: string, externalSignal?: AbortSignal): Promise<Buffer> {
+export async function downloadTarball(
+  url: string,
+  externalSignal?: AbortSignal,
+  redirectsRemaining = MAX_OPENCODE_TARBALL_REDIRECTS,
+): Promise<Buffer> {
   // Pin URL host + scheme up front and disable automatic redirects so a
   // 30x to a non-allowlisted host gets rejected here rather than silently
   // followed.
@@ -204,8 +209,11 @@ async function downloadTarball(url: string, externalSignal?: AbortSignal): Promi
   if (res.status >= 300 && res.status < 400) {
     const location = res.headers.get('location');
     if (location) {
+      if (redirectsRemaining <= 0) {
+        throw new Error(`Tarball redirect limit exceeded (${MAX_OPENCODE_TARBALL_REDIRECTS})`);
+      }
       const next = assertHttpsTarballUrl(location, 'opencode tarball redirect');
-      return downloadTarball(next.toString(), externalSignal);
+      return downloadTarball(next.toString(), externalSignal, redirectsRemaining - 1);
     }
     throw new Error(`Tarball download failed (${res.status}): redirect with no location`);
   }
@@ -509,11 +517,11 @@ export function registerOpencodeRoutes(app: express.Express): void {
       const seedChanged = seedOpencodeArtifacts(tagmaCwd);
       startChatCompileWatcher(tagmaCwd, ws.registry);
       console.log('[opencode] ensure called, cwd =', tagmaCwd);
-      const { baseUrl } = seedChanged
+      const { baseUrl, auth } = seedChanged
         ? await restartOpencode(tagmaCwd)
         : await ensureOpencode(tagmaCwd);
       console.log('[opencode] ensure resolved, baseUrl =', baseUrl);
-      res.json({ ok: true, baseUrl });
+      res.json({ ok: true, baseUrl, authHeader: auth.authorization });
     } catch (err) {
       console.error('[opencode] ensure FAILED:', err);
       res.status(500).json({ error: errorMessage(err) });
@@ -540,9 +548,9 @@ export function registerOpencodeRoutes(app: express.Express): void {
       const tagmaCwd = ensureRealTagmaDirectory(workspaceRoot);
       seedOpencodeArtifacts(tagmaCwd);
       console.log('[opencode] restart called, cwd =', tagmaCwd);
-      const { baseUrl } = await restartOpencode(tagmaCwd);
+      const { baseUrl, auth } = await restartOpencode(tagmaCwd);
       console.log('[opencode] restart resolved, baseUrl =', baseUrl);
-      res.json({ ok: true, baseUrl });
+      res.json({ ok: true, baseUrl, authHeader: auth.authorization });
     } catch (err) {
       console.error('[opencode] restart FAILED:', err);
       res.status(500).json({ error: errorMessage(err) });

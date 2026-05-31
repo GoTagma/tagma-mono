@@ -13,10 +13,7 @@ import { findSavedTrack, isTrackFieldModified } from '../../utils/dirty-tracking
 import { FieldHelpButton } from './FieldHelpButton';
 import { CopyableField } from './CopyableField';
 import { InspectorModelField, isBuiltinOpencodeDriver } from './InspectorModelField';
-import {
-  buildTrackTaskListGroups,
-  type TrackTaskListSort,
-} from '../../utils/track-task-list';
+import { buildTrackTaskListGroups, type TrackTaskListSort } from '../../utils/track-task-list';
 
 interface TrackConfigPanelProps {
   track: RawTrackConfig;

@@ -22,13 +22,21 @@ import {
   buildEmbeddedOpencodeRuntimeConfig,
   prepareEmbeddedOpencodeRuntime,
 } from './opencode-config.js';
+import { randomBytes } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+
+export interface OpencodeServerAuth {
+  username: string;
+  password: string;
+  authorization: string;
+}
 
 export interface OpencodeHandle {
   baseUrl: string;
   pid: number;
   cwd: string;
+  auth: OpencodeServerAuth;
 }
 
 export function ensureRealTagmaDirectory(workspaceRoot: string): string {
@@ -48,6 +56,7 @@ export function ensureRealTagmaDirectory(workspaceRoot: string): string {
 const handles = new Map<string, OpencodeHandle>();
 const children = new Map<string, ReturnType<typeof Bun.spawn>>();
 const starting = new Map<string, Promise<OpencodeHandle>>();
+const authByCwd = new Map<string, OpencodeServerAuth>();
 let lifecycleGeneration = 0;
 
 type OpencodeProcess = ReturnType<typeof Bun.spawn>;
@@ -65,6 +74,24 @@ function normalizePathEnv(env: Record<string, string>): Record<string, string> {
   delete env.Path;
   if (typeof value === 'string') env[preferredWindowsPathEnvKey()] = value;
   return env;
+}
+
+export function createOpencodeServerAuth(): OpencodeServerAuth {
+  const username = 'tagma';
+  const password = randomBytes(32).toString('base64url');
+  return {
+    username,
+    password,
+    authorization: `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`,
+  };
+}
+
+function getOrCreateOpencodeServerAuth(cwd: string): OpencodeServerAuth {
+  const existing = authByCwd.get(cwd);
+  if (existing) return existing;
+  const auth = createOpencodeServerAuth();
+  authByCwd.set(cwd, auth);
+  return auth;
 }
 
 function requestOpencodeTermination(proc: OpencodeProcess, cwd: string, reason: string): void {
@@ -127,7 +154,10 @@ async function terminateOpencodeProcess(
   }
 }
 
-export function buildOpencodeEnv(cwd: string): Record<string, string> {
+export function buildOpencodeEnv(
+  cwd: string,
+  auth: OpencodeServerAuth = getOrCreateOpencodeServerAuth(cwd),
+): Record<string, string> {
   const runtime = prepareEmbeddedOpencodeRuntime(cwd);
   const keep = new Set([
     'PATH',
@@ -178,6 +208,8 @@ export function buildOpencodeEnv(cwd: string): Record<string, string> {
   env.XDG_STATE_HOME = runtime.stateHome;
   env.XDG_CACHE_HOME = runtime.cacheHome;
   env.OPENCODE_CONFIG_CONTENT = JSON.stringify(buildEmbeddedOpencodeRuntimeConfig(runtime));
+  env.OPENCODE_SERVER_USERNAME = auth.username;
+  env.OPENCODE_SERVER_PASSWORD = auth.password;
   return normalizePathEnv(env);
 }
 
@@ -290,6 +322,7 @@ function loopbackGet(
   port: number,
   path: string,
   timeoutMs: number,
+  authorization?: string,
 ): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
     const chunks: Uint8Array[] = [];
@@ -307,8 +340,9 @@ function loopbackGet(
       port,
       socket: {
         open(s) {
+          const authLine = authorization ? `Authorization: ${authorization}\r\n` : '';
           s.write(
-            `GET ${path} HTTP/1.1\r\nHost: ${host}:${port}\r\nConnection: close\r\nAccept: */*\r\n\r\n`,
+            `GET ${path} HTTP/1.1\r\nHost: ${host}:${port}\r\n${authLine}Connection: close\r\nAccept: */*\r\n\r\n`,
           );
         },
         data(_s, data) {
@@ -342,7 +376,11 @@ function loopbackGet(
   });
 }
 
-async function waitForHealth(baseUrl: string, timeoutMs = 300_000): Promise<void> {
+async function waitForHealth(
+  baseUrl: string,
+  timeoutMs = 300_000,
+  authorization?: string,
+): Promise<void> {
   const { hostname, port } = new URL(baseUrl);
   const portNum = Number(port);
   const deadline = Date.now() + timeoutMs;
@@ -354,7 +392,7 @@ async function waitForHealth(baseUrl: string, timeoutMs = 300_000): Promise<void
   while (Date.now() < deadline) {
     for (const path of healthPaths) {
       try {
-        const res = await loopbackGet(hostname, portNum, path, 2_000);
+        const res = await loopbackGet(hostname, portNum, path, 2_000, authorization);
         lastStatus = res.status;
         lastErr = null;
         if (res.status >= 200 && res.status < 300) {
@@ -390,6 +428,7 @@ export async function ensureOpencode(cwd: string): Promise<OpencodeHandle> {
 
   const startPromise = (async () => {
     const port = await pickFreePort();
+    const auth = getOrCreateOpencodeServerAuth(cwd);
     assertStartStillCurrent();
     // Expand ALLOWED_ORIGINS into repeated --cors flags. opencode accepts the
     // flag multiple times (one origin per use). If the set is empty for some
@@ -419,7 +458,7 @@ export async function ensureOpencode(cwd: string): Promise<OpencodeHandle> {
 
     const proc = Bun.spawn([binary, ...spawnArgs], {
       cwd,
-      env: buildOpencodeEnv(cwd),
+      env: buildOpencodeEnv(cwd, auth),
       stdout: 'pipe',
       stderr: 'pipe',
       onExit(_p, exitCode, signalCode) {
@@ -476,7 +515,9 @@ export async function ensureOpencode(cwd: string): Promise<OpencodeHandle> {
     let healthResult: { kind: 'healthy' } | { kind: 'exited'; exitCode: number };
     try {
       healthResult = await Promise.race([
-        waitForHealth(baseUrl).then(() => ({ kind: 'healthy' as const })),
+        waitForHealth(baseUrl, 300_000, auth.authorization).then(() => ({
+          kind: 'healthy' as const,
+        })),
         proc.exited.then((exitCode) => ({ kind: 'exited' as const, exitCode })),
       ]);
     } catch (err) {
@@ -494,7 +535,7 @@ export async function ensureOpencode(cwd: string): Promise<OpencodeHandle> {
       );
     }
 
-    const h: OpencodeHandle = { baseUrl, pid: proc.pid ?? -1, cwd };
+    const h: OpencodeHandle = { baseUrl, pid: proc.pid ?? -1, cwd, auth };
     handles.set(cwd, h);
     return h;
   })();

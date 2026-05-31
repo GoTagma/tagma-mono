@@ -52,6 +52,7 @@ import { incrementYamlRunVersion } from '../yaml-run-version.js';
 import {
   RunSession,
   WorkflowRunSession,
+  type WorkflowRunSessionEvent,
   runtimeWithInjectedEnv,
   normalizeRunTargetTaskIds,
   shouldMirrorEngineResult,
@@ -177,9 +178,8 @@ function removeSession(ws: WorkspaceState, s: RunSession): void {
 
 function findSessionForApproval(ws: WorkspaceState, requestId: string): RunSession | null {
   return (
-    listSessions(ws).find((session) =>
-      session.gateway.pending().some((p) => p.id === requestId),
-    ) ?? null
+    listSessions(ws).find((session) => session.gateway.pending().some((p) => p.id === requestId)) ??
+    null
   );
 }
 
@@ -216,11 +216,8 @@ function clearWorkflowSessionLater(ws: WorkspaceState, session: WorkflowRunSessi
   }, 30_000);
 }
 
-function broadcastWorkflowToClients(
-  ws: WorkspaceState,
-  event: PipelineGraphEventPayload,
-): void {
-  const frame = `event: workflow_event\ndata: ${JSON.stringify(event)}\n\n`;
+function broadcastWorkflowToClients(ws: WorkspaceState, event: WorkflowRunSessionEvent): void {
+  const frame = workflowSseFrame(event);
   for (const client of ws.workflowSseClients) {
     try {
       client.write(frame);
@@ -230,16 +227,23 @@ function broadcastWorkflowToClients(
   }
 }
 
+function workflowSseFrame(event: WorkflowRunSessionEvent): string {
+  return `id: ${event.graphRunId}:${event.seq}\nevent: workflow_event\ndata: ${JSON.stringify(event)}\n\n`;
+}
+
 // ═══ Last-Event-ID ══════════════════════════════════════════════════════
 
 /** Parse a Last-Event-ID header of the form `<runId>:<seq>`. */
-function parseLastEventId(raw: string | undefined): { runId: string; seq: number } | null {
+function parseLastEventId(
+  raw: string | undefined,
+  idPattern: RegExp = /^run_[A-Za-z0-9_-]+$/,
+): { runId: string; seq: number } | null {
   if (!raw) return null;
   const colon = raw.lastIndexOf(':');
   if (colon <= 0 || colon === raw.length - 1) return null;
   const runId = raw.slice(0, colon);
   const seqStr = raw.slice(colon + 1);
-  if (!/^run_[A-Za-z0-9_-]+$/.test(runId)) return null;
+  if (!idPattern.test(runId)) return null;
   const seq = parseInt(seqStr, 10);
   if (!Number.isFinite(seq) || seq < 0) return null;
   return { runId, seq };
@@ -302,8 +306,11 @@ export function registerRunRoutes(app: express.Express): void {
 
     const session = getWorkflowSession(ws);
     if (session) {
-      for (const event of session.allBuffered()) {
-        res.write(`event: workflow_event\ndata: ${JSON.stringify(event)}\n\n`);
+      const parsed = parseLastEventId(req.header('Last-Event-ID'), /^graph_[A-Za-z0-9_-]+$/);
+      const sameGraph = parsed !== null && parsed.runId === session.graphRunId;
+      const replay = sameGraph ? session.replayAfter(parsed.seq) : session.allBuffered();
+      for (const event of replay) {
+        res.write(workflowSseFrame(event));
       }
     }
     req.on('close', () => ws.workflowSseClients.delete(res));
@@ -604,9 +611,7 @@ export function registerRunRoutes(app: express.Express): void {
       }
 
       const yamlRunVersion =
-        fromRunId === null && ws.yamlPath
-          ? incrementYamlRunVersion(cwd, ws.yamlPath)
-          : undefined;
+        fromRunId === null && ws.yamlPath ? incrementYamlRunVersion(cwd, ws.yamlPath) : undefined;
       const runId = generateRunId();
       const session = new RunSession(
         runId,
@@ -760,10 +765,7 @@ export function registerRunRoutes(app: express.Express): void {
     if (!ws) return;
     const body = req.body ?? {};
     const hasRunId = Object.prototype.hasOwnProperty.call(body, 'runId');
-    if (
-      hasRunId &&
-      (typeof body.runId !== 'string' || !/^run_[A-Za-z0-9_-]+$/.test(body.runId))
-    ) {
+    if (hasRunId && (typeof body.runId !== 'string' || !/^run_[A-Za-z0-9_-]+$/.test(body.runId))) {
       return res.status(400).json({ error: 'invalid runId' });
     }
     const requestedRunId: string | null = hasRunId ? body.runId : null;
@@ -852,9 +854,7 @@ export function registerRunRoutes(app: express.Express): void {
         if (existing >= 0) entries[existing] = { ...entries[existing], ...liveEntry };
         else entries.push(liveEntry);
       }
-      entries = entries
-        .sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1))
-        .slice(0, MAX_LOG_RUNS);
+      entries = entries.sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1)).slice(0, MAX_LOG_RUNS);
       res.json({ runs: entries });
     } catch (err: unknown) {
       res.status(500).json({ error: errorMessage(err) });

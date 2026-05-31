@@ -12,7 +12,7 @@ import {
   upsertCustomProvider,
   validateCustomProvider,
 } from '../server/opencode-config';
-import { buildOpencodeEnv } from '../server/opencode-lifecycle';
+import { buildOpencodeEnv, createOpencodeServerAuth } from '../server/opencode-lifecycle';
 
 const ENV_KEYS = [
   'HOME',
@@ -232,6 +232,18 @@ test('embedded opencode runtime normalizes existing uppercase provider ids', () 
     },
   });
   expect(workspaceConfig.provider as Record<string, unknown>).not.toHaveProperty('Alibaba');
+});
+
+test('embedded opencode server env enables Basic Auth with generated credentials', () => {
+  const auth = createOpencodeServerAuth();
+  const env = buildOpencodeEnv(tagmaCwd, auth);
+
+  expect(env.OPENCODE_SERVER_USERNAME).toBe(auth.username);
+  expect(env.OPENCODE_SERVER_PASSWORD).toBe(auth.password);
+  expect(auth.authorization).toBe(
+    `Basic ${Buffer.from(`${auth.username}:${auth.password}`).toString('base64')}`,
+  );
+  expect(auth.password.length).toBeGreaterThanOrEqual(32);
 });
 
 test('embedded opencode env isolates config homes while reusing user login data', () => {

@@ -92,12 +92,16 @@ function writeSummaryFixture(summary: unknown): void {
 function writeLatestRunFixture(): void {
   const latestRunDir = join(tempDir, '.tagma', 'logs', 'run_latest');
   mkdirSync(latestRunDir, { recursive: true });
-  writeFileSync(join(tempDir, '.tagma', 'run-versions.json'), JSON.stringify({
-    schemaVersion: 1,
-    entries: {
-      '.tagma/latest/latest.yaml': 4,
-    },
-  }), 'utf-8');
+  writeFileSync(
+    join(tempDir, '.tagma', 'run-versions.json'),
+    JSON.stringify({
+      schemaVersion: 1,
+      entries: {
+        '.tagma/latest/latest.yaml': 4,
+      },
+    }),
+    'utf-8',
+  );
   writeFileSync(join(latestRunDir, 'pipeline.yaml'), 'pipeline:\n  name: Latest\n', 'utf-8');
   writeFileSync(join(latestRunDir, 'pipeline.log'), 'latest run log line\n', 'utf-8');
   writeFileSync(join(latestRunDir, 't_a.stdout'), 'latest stdout\n', 'utf-8');
@@ -253,10 +257,7 @@ test('builds history Ask AI context with latest and selected snapshot artifacts'
   writeLatestRunFixture();
   const { port, close } = await startApp(buildApp());
   try {
-    const res = await getReq(
-      port,
-      `/api/run/history/${RUN_ID}/ask-ai-context?taskId=t.a`,
-    );
+    const res = await getReq(port, `/api/run/history/${RUN_ID}/ask-ai-context?taskId=t.a`);
     expect(res.status).toBe(200);
     const body = JSON.parse(res.body) as { label: string; content: string };
     expect(body.label).toContain(RUN_ID);
@@ -291,10 +292,7 @@ test('bounds history Ask AI context and tails long logs and streams', async () =
 
   const { port, close } = await startApp(buildApp());
   try {
-    const res = await getReq(
-      port,
-      `/api/run/history/${RUN_ID}/ask-ai-context?taskId=t.a`,
-    );
+    const res = await getReq(port, `/api/run/history/${RUN_ID}/ask-ai-context?taskId=t.a`);
     expect(res.status).toBe(200);
     const body = JSON.parse(res.body) as { content: string };
     expect(Buffer.byteLength(body.content, 'utf-8')).toBeLessThan(450 * 1024);
@@ -325,10 +323,7 @@ test('builds history Ask AI context only from the selected task output', async (
 
   const { port, close } = await startApp(buildApp());
   try {
-    const res = await getReq(
-      port,
-      `/api/run/history/${RUN_ID}/ask-ai-context?taskId=t.a`,
-    );
+    const res = await getReq(port, `/api/run/history/${RUN_ID}/ask-ai-context?taskId=t.a`);
     expect(res.status).toBe(200);
     const body = JSON.parse(res.body) as { content: string };
     expect(body.content).toContain('hello from stdout');
@@ -343,10 +338,7 @@ test('builds history Ask AI context only from the selected task output', async (
 test('404 when history Ask AI context is requested for a task absent from summary', async () => {
   const { port, close } = await startApp(buildApp());
   try {
-    const res = await getReq(
-      port,
-      `/api/run/history/${RUN_ID}/ask-ai-context?taskId=t.missing`,
-    );
+    const res = await getReq(port, `/api/run/history/${RUN_ID}/ask-ai-context?taskId=t.missing`);
     expect(res.status).toBe(404);
   } finally {
     await close();

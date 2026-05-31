@@ -100,6 +100,32 @@ describe('PluginRegistry', () => {
     expect(registry.getHandler<DriverPlugin>('drivers', 'test')).toBe(second);
   });
 
+  test('replacement updates safe-mode defaults for that capability', () => {
+    const registry = new PluginRegistry();
+    const first = driver('safe-driver');
+    const second = driver('unsafe-driver');
+
+    registry.registerPlugin('drivers', 'test', first, { safeMode: true });
+    expect(registry.getSafeModeDefaults().drivers).toContain('test');
+
+    registry.registerPlugin('drivers', 'test', second, { replace: true });
+
+    expect(registry.getHandler<DriverPlugin>('drivers', 'test')).toBe(second);
+    expect(registry.getSafeModeDefaults().drivers).not.toContain('test');
+  });
+
+  test('unregister removes safe-mode defaults for that capability', () => {
+    const registry = new PluginRegistry();
+
+    registry.registerPlugin('drivers', 'test', driver('safe-driver'), { safeMode: true });
+    expect(registry.getSafeModeDefaults().drivers).toContain('test');
+
+    expect(registry.unregisterPlugin('drivers', 'test')).toBe(true);
+
+    expect(registry.hasHandler('drivers', 'test')).toBe(false);
+    expect(registry.getSafeModeDefaults().drivers).not.toContain('test');
+  });
+
   test('registerTagmaPlugin handles multiple capability categories together', () => {
     const registry = new PluginRegistry();
     const d = driver('driver');

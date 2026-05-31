@@ -64,6 +64,16 @@ describe('workflow path helpers', () => {
     ).toThrow();
   });
 
+  test('assertWorkflowYamlPath resolves workspace-relative workflow paths from workDir', () => {
+    const workDir = makeWorkDir();
+    const target = workflowYamlPath(workDir, 'release');
+    writeFileSync(target, 'workflow:\n  name: Release\n  pipelines: []\n', 'utf-8');
+
+    expect(
+      assertWorkflowYamlPath(workDir, '.tagma/workflows/release.workflow.yaml', 'workflow'),
+    ).toBe(target);
+  });
+
   test('rejects symlinked workflow directories', () => {
     const workDir = makeWorkDir();
     const workflowDir = join(workDir, '.tagma', 'workflows');

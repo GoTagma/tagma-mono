@@ -75,7 +75,7 @@ describe('pipeline manifest sidecar', () => {
   });
 
   test('writes a same-folder .manifest.json companion next to the YAML', () => {
-      const root = mkdtempSync(join(tmpdir(), 'tagma-pipeline-manifest-'));
+    const root = mkdtempSync(join(tmpdir(), 'tagma-pipeline-manifest-'));
     try {
       const yamlPath = join(root, '.tagma', 'build', 'build.yaml');
       const manifestPath = pipelineManifestPath(yamlPath);

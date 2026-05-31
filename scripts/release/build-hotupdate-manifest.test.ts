@@ -179,6 +179,22 @@ describe('build-hotupdate-manifest', () => {
     expect(manifest.minShellVersion).toBe('0.2.0');
   });
 
+  test('rejects unsafe minShellVersion values', () => {
+    const dir = withTempDir();
+    writeAsset(dir, 'editor-dist-0.2.2.tar.gz', 'editor-dist');
+    writeAllSidecarAssets(dir, '0.2.2');
+
+    expect(() =>
+      buildHotupdateManifest({
+        version: '0.2.2',
+        channel: 'alpha',
+        assetsDir: dir,
+        repoSlug: 'GoTagma/tagma-mono',
+        minShellVersion: '../0.2.0',
+      }),
+    ).toThrow(/minShellVersion|semver/i);
+  });
+
   test('signs manifest when --signing-key is provided', () => {
     const dir = withTempDir();
     writeAsset(dir, 'editor-dist-0.2.2.tar.gz', 'editor-dist');

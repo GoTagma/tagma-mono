@@ -53,7 +53,10 @@ export function savePersisted(workspaceKey: string, patch: WorkspacePersistedSha
 }
 
 /** Compare two model picks for structural equality. */
-export function sameModelPick(a: ModelPick | null | undefined, b: ModelPick | null | undefined): boolean {
+export function sameModelPick(
+  a: ModelPick | null | undefined,
+  b: ModelPick | null | undefined,
+): boolean {
   if (!a || !b) return !a && !b;
   return a.providerID === b.providerID && a.modelID === b.modelID;
 }

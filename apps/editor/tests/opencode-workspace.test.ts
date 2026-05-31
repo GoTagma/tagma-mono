@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { connect as netConnect } from 'node:net';
-import { registerOpencodeRoutes } from '../server/routes/opencode';
+import { downloadTarball, registerOpencodeRoutes } from '../server/routes/opencode';
 import { shutdownOpencode } from '../server/opencode-lifecycle';
 import { S } from '../server/state';
 
@@ -152,5 +152,29 @@ test('opencode update is rejected while YAML edit lock is active', async () => {
   } finally {
     S.yamlEditLock = null;
     await close();
+  }
+});
+
+test('opencode tarball download stops after a bounded redirect chain', async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = ((_url: string | URL | Request) => {
+    calls += 1;
+    if (calls <= 6) {
+      return Promise.resolve(
+        new Response(null, {
+          status: 302,
+          headers: { location: `https://registry.npmjs.org/opencode-${calls}.tgz` },
+        }),
+      );
+    }
+    return Promise.resolve(new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
+  }) as typeof fetch;
+  try {
+    await expect(downloadTarball('https://registry.npmjs.org/opencode.tgz')).rejects.toThrow(
+      /redirect/i,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });

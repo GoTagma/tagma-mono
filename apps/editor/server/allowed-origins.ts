@@ -1,14 +1,18 @@
 export function createAllowedOrigins(
   configuredPort: number,
   extraOriginsEnv: string | undefined = process.env.TAGMA_ALLOWED_ORIGINS,
+  options: { devOrigins?: boolean } = {},
 ): Set<string> {
   const origins = new Set<string>();
+  const includeDevOrigins = options.devOrigins ?? process.env.TAGMA_SIDECAR_ACTIVE_SOURCE === 'dev';
 
   // Vite starts on 5173 and, when that port is already busy, automatically
   // tries the next port. Keep this bounded to local dev origins instead of
   // allowing every localhost port.
-  for (let port = 5173; port <= 5183; port += 1) {
-    addLoopbackAllowedOrigins(origins, port);
+  if (includeDevOrigins) {
+    for (let port = 5173; port <= 5183; port += 1) {
+      addLoopbackAllowedOrigins(origins, port);
+    }
   }
 
   addLoopbackAllowedOrigins(origins, configuredPort);

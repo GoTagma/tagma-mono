@@ -39,6 +39,10 @@ let replaceConfigImpl: (
   config: RawPipelineConfig,
   layout?: { positions?: Record<string, { x: number }>; folders?: TrackFolder[] },
 ) => Promise<ServerState>;
+let updateTaskResolvers: Array<(state: ServerState) => void> = [];
+let updateTaskStarted: string[] = [];
+let updateTaskActiveCalls = 0;
+let updateTaskMaxActiveCalls = 0;
 let flushCalls = 0;
 let observedClientRevision: number | null = null;
 let mockClientWorkspace: string | null = null;
@@ -60,6 +64,21 @@ mock.module('../src/api/client', () => ({
           ...base,
           tracks: [...base.tracks, { id, name, color, tasks: [] }],
         },
+      });
+    },
+    updateTask: async (
+      _trackId: string,
+      _taskId: string,
+      patch: Partial<RawPipelineConfig['tracks'][number]['tasks'][number]>,
+    ) => {
+      updateTaskStarted.push(String(patch.prompt ?? ''));
+      updateTaskActiveCalls += 1;
+      updateTaskMaxActiveCalls = Math.max(updateTaskMaxActiveCalls, updateTaskActiveCalls);
+      return new Promise<ServerState>((resolve) => {
+        updateTaskResolvers.push((state) => {
+          updateTaskActiveCalls -= 1;
+          resolve(state);
+        });
       });
     },
     replaceConfig: async (
@@ -136,6 +155,12 @@ mock.module('../src/hooks/use-local-field', () => ({
 
 const { usePipelineStore } = await import('../src/store/pipeline-store');
 
+async function flushQueuedMutations(): Promise<void> {
+  for (let i = 0; i < 8; i += 1) {
+    await Promise.resolve();
+  }
+}
+
 beforeEach(() => {
   mockClientWorkspace = null;
   for (const listener of mockWorkspaceListeners) listener(null);
@@ -143,6 +168,10 @@ beforeEach(() => {
   replaceConfigPayload = null;
   replaceConfigImpl = async (config, layout) =>
     makeState({ config, layout: { positions: layout?.positions ?? {} }, revision: 2 });
+  updateTaskResolvers = [];
+  updateTaskStarted = [];
+  updateTaskActiveCalls = 0;
+  updateTaskMaxActiveCalls = 0;
   flushCalls = 0;
   observedClientRevision = null;
   usePipelineStore.setState({
@@ -172,6 +201,53 @@ beforeEach(() => {
 });
 
 describe('syncLocalStateToServerMemory', () => {
+  test('serializes local mutation requests so each PATCH can observe the latest revision', async () => {
+    usePipelineStore.getState().updateTask('track', 'task', { prompt: 'first' });
+    usePipelineStore.getState().updateTask('track', 'task', { prompt: 'second' });
+
+    await flushQueuedMutations();
+
+    expect(updateTaskStarted).toEqual(['first']);
+    expect(updateTaskMaxActiveCalls).toBe(1);
+
+    updateTaskResolvers.shift()?.(
+      makeState({
+        config: {
+          ...makeConfig(),
+          tracks: [
+            {
+              ...makeConfig().tracks[0]!,
+              tasks: [{ id: 'task', name: 'Task', prompt: 'first' }],
+            },
+          ],
+        },
+        revision: 2,
+      }),
+    );
+    await flushQueuedMutations();
+
+    expect(updateTaskStarted).toEqual(['first', 'second']);
+    expect(updateTaskMaxActiveCalls).toBe(1);
+
+    updateTaskResolvers.shift()?.(
+      makeState({
+        config: {
+          ...makeConfig(),
+          tracks: [
+            {
+              ...makeConfig().tracks[0]!,
+              tasks: [{ id: 'task', name: 'Task', prompt: 'second' }],
+            },
+          ],
+        },
+        revision: 3,
+      }),
+    );
+    await flushQueuedMutations();
+
+    expect(usePipelineStore.getState().config.tracks[0]?.tasks[0]?.prompt).toBe('second');
+  });
+
   test('adopted server state refreshes the client revision baseline', () => {
     usePipelineStore.getState().applyState(makeState({ revision: 7 }));
     expect(observedClientRevision).toBe(7);
@@ -219,7 +295,7 @@ describe('syncLocalStateToServerMemory', () => {
       });
 
     usePipelineStore.getState().addTrack('New Track', { folderId: 'folder' });
-    await Promise.resolve();
+    await flushQueuedMutations();
 
     expect(replaceConfigCalls).toBe(1);
     const newTrackId = replaceConfigPayload?.config.tracks.find((t) => t.name === 'New Track')?.id;
@@ -251,7 +327,7 @@ describe('syncLocalStateToServerMemory', () => {
       });
 
     usePipelineStore.getState().moveTrackToRoot('b', 2);
-    await Promise.resolve();
+    await flushQueuedMutations();
 
     expect(replaceConfigCalls).toBe(1);
     expect(replaceConfigPayload?.config.tracks.map((t) => t.id)).toEqual(['a', 'c', 'b']);

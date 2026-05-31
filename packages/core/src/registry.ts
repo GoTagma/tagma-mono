@@ -433,6 +433,8 @@ export class PluginRegistry {
     registry.set(type, handler);
     if (options.safeMode) {
       this.safeModeTypes[category].add(type);
+    } else {
+      this.safeModeTypes[category].delete(type);
     }
     return wasReplaced ? 'replaced' : 'registered';
   }
@@ -520,7 +522,9 @@ export class PluginRegistry {
    */
   unregisterPlugin(category: PluginCategory, type: string): boolean {
     if (!VALID_CATEGORIES.has(category)) return false;
-    return this.registries[category].delete(type);
+    const removed = this.registries[category].delete(type);
+    if (removed) this.safeModeTypes[category].delete(type);
+    return removed;
   }
 
   getHandler<T extends PluginType>(category: PluginCategory, type: string): T {

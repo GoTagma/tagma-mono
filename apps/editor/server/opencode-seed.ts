@@ -254,6 +254,15 @@ Read the same-folder \`<stem>.manifest.json\` before reading or editing YAML. Se
 
 After any YAML write, the editor regenerates the manifest from the YAML. Read the regenerated manifest if you continue editing.
 
+## Section Isolation Protocol
+
+Treat each manifest section as the editing unit for existing pipelines.
+
+- Before changing YAML, name the affected section ids (\`pipeline\`, \`track:*\`, \`task:*\`) from the manifest and state whether the change is local or topology-affecting.
+- For local implementation edits, patch only the selected task or track. Do not reorder, reformat, rename, or optimize unselected sections.
+- Topology changes may touch only the selected section ids and their explicit dependents: dependency refs, layout positions, and requirements entries forced by the change.
+- If compile feedback points outside selected sections, report that separate issue unless it blocks the requested edit; do not fix it by rewriting unrelated sections.
+
 ### Bypass conditions
 
 Bypass the manifest only when it is missing, unreadable, stale, contradicts the YAML, or the user requested a whole-pipeline refactor/rename; then edit YAML directly and let the editor regenerate it.
@@ -274,11 +283,11 @@ Use OpenCode and Tagma native mechanisms before custom scaffolding.
 1. Read the latest \`<editor-context>\`.
 2. Classify as edit current, edit named, or create new.
 3. For **create new**: write the manifest first, call \`POST /api/create-from-manifest\`, then read the generated YAML and fill in task content.
-4. For **edits**, resolve the target \`<pipeline>\` entry from the user's name plus \`<workspace-yaml-folders>\`; read its \`<manifest>\` first, select the target section, then read its \`<yaml>\`, \`.layout.json\`, \`.requirements.md\`, and \`.compile.log\`.
+4. For **edits**, resolve the target \`<pipeline>\` entry from the user's name plus \`<workspace-yaml-folders>\`; read its \`<manifest>\` first, select the target section ids, then read its \`<yaml>\`, \`.layout.json\`, \`.requirements.md\`, and \`.compile.log\`.
 5. Read only the workspace evidence needed to ground commands and paths.
 6. Load focused skill(s); never load every skill by default.
 7. Design the graph or local section change: tasks, dependencies, prompt-vs-command split, permissions, plugins, completions, layout, manifest, and requirements impact.
-8. Write YAML and keep layout/requirements synchronized in the same turn. The editor regenerates the manifest from YAML automatically.
+8. Write the smallest YAML patch that satisfies the selected sections and keep layout/requirements synchronized in the same turn. The editor regenerates the manifest from YAML automatically.
 9. Read the same-folder \`.compile.log\` after every YAML write.
 10. If \`success\` is false or parsing failed, repair YAML/layout and repeat until the compile log reports \`success: true\` or only warnings you explicitly accept.
 

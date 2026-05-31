@@ -1,8 +1,35 @@
 import { describe, expect, test } from 'bun:test';
-import { isWorkflowTerminalEvent } from '../src/App';
+import { appendWorkflowEvent, isWorkflowTerminalEvent } from '../src/App';
 import type { WorkflowGraphEvent } from '../src/api/client';
 
 describe('workflow live event state helpers', () => {
+  test('drops replayed same-run workflow events older than the latest seq', () => {
+    const graphStart = {
+      type: 'graph_start',
+      graphRunId: 'graph_1',
+      workflowName: 'release',
+      pipelines: [],
+      seq: 1,
+    } as WorkflowGraphEvent;
+    const latest = {
+      type: 'pipeline_update',
+      graphRunId: 'graph_1',
+      pipelineId: 'p1',
+      status: 'success',
+      seq: 3,
+    } as WorkflowGraphEvent;
+    const replayedStale = {
+      type: 'pipeline_update',
+      graphRunId: 'graph_1',
+      pipelineId: 'p1',
+      status: 'running',
+      seq: 2,
+    } as WorkflowGraphEvent;
+    const events = [graphStart, latest];
+
+    expect(appendWorkflowEvent(events, replayedStale)).toBe(events);
+  });
+
   test('does not treat graph_error as terminal because graph_end still follows normal failures', () => {
     expect(
       isWorkflowTerminalEvent({

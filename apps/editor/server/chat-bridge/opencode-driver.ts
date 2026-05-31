@@ -183,10 +183,11 @@ async function* loopbackEventStream(
   }
 }
 
-export function createLoopbackOpencodeClient(baseUrl: string): OpencodeClient {
+export function createLoopbackOpencodeClient(baseUrl: string, authHeader?: string): OpencodeClient {
   const loopbackFetch = createStreamingLoopbackFetch(baseUrl);
   const client = createOpencodeClient({
     baseUrl,
+    ...(authHeader ? { headers: { Authorization: authHeader } } : {}),
     fetch: loopbackFetch,
   });
   // The generated non-v2 SDK SSE helper currently calls global fetch instead
@@ -207,7 +208,7 @@ async function getClientFor(workspaceKey: string): Promise<OpencodeClient> {
   }
   const tagmaCwd = ensureRealTagmaDirectory(ws.workDir);
   seedOpencodeArtifacts(tagmaCwd);
-  const { baseUrl } = await ensureOpencode(tagmaCwd);
+  const { baseUrl, auth } = await ensureOpencode(tagmaCwd);
   const cached = clientCache.get(workspaceKey);
   if (cached && cached.baseUrl === baseUrl) return cached.client;
   // Talk to the loopback `opencode serve` over a raw socket. The SDK otherwise
@@ -215,7 +216,7 @@ async function getClientFor(workspaceKey: string): Promise<OpencodeClient> {
   // tunnels even 127.0.0.1 through a local proxy when NO_PROXY lacks loopback —
   // the proxy then answers 502 ("opencode request failed (502)"). The loopback
   // fetch streams the body so the per-turn `event.subscribe` SSE still works.
-  const client = createLoopbackOpencodeClient(baseUrl);
+  const client = createLoopbackOpencodeClient(baseUrl, auth.authorization);
   clientCache.set(workspaceKey, { baseUrl, client });
   return client;
 }

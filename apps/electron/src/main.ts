@@ -10,6 +10,8 @@ import {
   type RuntimePaths,
 } from './runtime-paths';
 import { resolveTrustedLocalOpenPath } from './local-paths';
+import { buildEditorRenderUrl, reloadSessionsForRecoveredSidecar } from './sidecar-recovery';
+import { createSidecarReadyParser } from './sidecar-stdout';
 
 /**
  * Generate a per-session bearer token for the sidecar. The renderer receives
@@ -115,6 +117,8 @@ const byWindow = new Map<number, WindowSession>();
  */
 let sharedSidecar: SidecarHandle | null = null;
 let sharedSidecarPromise: Promise<SidecarHandle> | null = null;
+let recoveringSidecarPromise: Promise<void> | null = null;
+let isAppQuitting = false;
 
 function ensureSidecar(): Promise<SidecarHandle> {
   if (sharedSidecar) return Promise.resolve(sharedSidecar);
@@ -124,12 +128,7 @@ function ensureSidecar(): Promise<SidecarHandle> {
       sharedSidecar = handle;
       // If the process dies unexpectedly, drop the cached handle so the next
       // createEditorWindow() call will respawn rather than reusing a dead one.
-      handle.proc.on('exit', () => {
-        if (sharedSidecar === handle) {
-          sharedSidecar = null;
-          sharedSidecarPromise = null;
-        }
-      });
+      handle.proc.on('exit', (code, signal) => handleSharedSidecarExit(handle, code, signal));
       return handle;
     })
     .catch((err) => {
@@ -137,6 +136,57 @@ function ensureSidecar(): Promise<SidecarHandle> {
       throw err;
     });
   return sharedSidecarPromise;
+}
+
+function sidecarExitDetail(code: number | null, signal: NodeJS.Signals | null): string {
+  return signal ? `signal ${signal}` : `code ${code}`;
+}
+
+function handleSharedSidecarExit(
+  handle: SidecarHandle,
+  code: number | null,
+  signal: NodeJS.Signals | null,
+): void {
+  const wasShared = sharedSidecar === handle;
+  if (wasShared) {
+    sharedSidecar = null;
+    sharedSidecarPromise = null;
+  }
+  if (!wasShared || isAppQuitting || byWindow.size === 0) return;
+
+  const detail = `[sidecar] exited after ready (${sidecarExitDetail(
+    code,
+    signal,
+  )}); restarting for ${byWindow.size} open window(s)\n`;
+  process.stderr.write(detail);
+  logSidecar('stderr', Buffer.from(detail));
+  void recoverSidecarForOpenWindows();
+}
+
+function recoverSidecarForOpenWindows(): Promise<void> {
+  if (recoveringSidecarPromise) return recoveringSidecarPromise;
+  recoveringSidecarPromise = ensureSidecar()
+    .then((handle) => {
+      reloadSessionsForRecoveredSidecar(
+        byWindow.values(),
+        handle.actualPort,
+        handle.authToken,
+        (win, port) => installContentSecurityPolicy(win, port),
+      );
+    })
+    .catch((err) => {
+      const message = sidecarErrorMessage(err);
+      logSidecar('stderr', Buffer.from(`[sidecar] restart failed: ${message}\n`));
+      dialog.showErrorBox(
+        'Tagma backend stopped',
+        `${message}\n\nThe embedded editor backend exited and could not be restarted. ` +
+          'Close and reopen Tagma to try again.',
+      );
+    })
+    .finally(() => {
+      recoveringSidecarPromise = null;
+    });
+  return recoveringSidecarPromise;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -259,16 +309,15 @@ function launchSidecar(runtime: RuntimePaths): Promise<SidecarHandle> {
     const timeout = setTimeout(() => {
       fail(new Error('Sidecar startup timeout (20s)'), true);
     }, 20_000);
+    const readyParser = createSidecarReadyParser();
 
     const onStdout = (chunk: Buffer) => {
       const text = chunk.toString();
       process.stdout.write(`[sidecar] ${text}`);
       logSidecar('stdout', chunk);
-      if (!settled) {
-        const m = text.match(/TAGMA_READY port=(\d+)/);
-        if (m) {
-          succeed(parseInt(m[1], 10));
-        }
+      const readyPort = readyParser.push(chunk);
+      if (!settled && readyPort !== null) {
+        succeed(readyPort);
       }
     };
 
@@ -489,7 +538,7 @@ async function confirmOpenExternal(parent: BrowserWindow | null, parsed: URL): P
   return true;
 }
 
-function installNavigationGuards(win: BrowserWindow, port: number): void {
+function installNavigationGuards(session: WindowSession): void {
   const openExternalFromNavigation = (rawUrl: string) => {
     let parsed: URL;
     try {
@@ -498,22 +547,22 @@ function installNavigationGuards(win: BrowserWindow, port: number): void {
       return;
     }
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return;
-    void confirmOpenExternal(win, parsed).catch(() => {
+    void confirmOpenExternal(session.win, parsed).catch(() => {
       /* best-effort */
     });
   };
 
-  win.webContents.on('will-navigate', (event, rawUrl) => {
-    if (isAllowedEditorUrl(rawUrl, port)) return;
+  session.win.webContents.on('will-navigate', (event, rawUrl) => {
+    if (isAllowedEditorUrl(rawUrl, session.port)) return;
     event.preventDefault();
     openExternalFromNavigation(rawUrl);
   });
-  win.webContents.on('will-redirect', (event, rawUrl) => {
-    if (isAllowedEditorUrl(rawUrl, port)) return;
+  session.win.webContents.on('will-redirect', (event, rawUrl) => {
+    if (isAllowedEditorUrl(rawUrl, session.port)) return;
     event.preventDefault();
   });
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (!isAllowedEditorUrl(url, port)) {
+  session.win.webContents.setWindowOpenHandler(({ url }) => {
+    if (!isAllowedEditorUrl(url, session.port)) {
       openExternalFromNavigation(url);
     }
     return { action: 'deny' };
@@ -606,7 +655,7 @@ async function createEditorWindow(rawWorkspacePath: string | null = null): Promi
 
   if (workspacePath) byWorkspace.set(workspacePath, session);
   byWindow.set(win.id, session);
-  installNavigationGuards(win, actualPort);
+  installNavigationGuards(session);
   installContentSecurityPolicy(win, actualPort);
 
   // Thread the pinned workspace to the renderer via a URL query param. The
@@ -622,14 +671,7 @@ async function createEditorWindow(rawWorkspacePath: string | null = null): Promi
   // fragment is never sent to the sidecar in the HTTP request line, so it
   // avoids server logs and request history while still letting the SPA read
   // and immediately scrub it into sessionStorage + a SameSite=Strict cookie.
-  const renderParams = new URLSearchParams();
-  if (workspacePath) renderParams.set('ws', workspacePath);
-  const query = renderParams.toString();
-  const hash = authToken ? `#auth=${encodeURIComponent(authToken)}` : '';
-  const renderUrl = query
-    ? `http://127.0.0.1:${actualPort}/?${query}${hash}`
-    : `http://127.0.0.1:${actualPort}/${hash}`;
-  win.loadURL(renderUrl);
+  win.loadURL(buildEditorRenderUrl(actualPort, workspacePath, authToken));
 
   win.on('closed', () => {
     byWindow.delete(win.id);
@@ -708,6 +750,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  isAppQuitting = true;
   if (sharedSidecar) {
     terminateSidecar(sharedSidecar);
     sharedSidecar = null;

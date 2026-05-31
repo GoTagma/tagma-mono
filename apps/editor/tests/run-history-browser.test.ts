@@ -84,15 +84,10 @@ describe('run history browser helpers', () => {
   });
 
   test('running tab spin state is driven by explicit live entries', () => {
-    const runs = [
-      entry({ runId: 'run_done', success: true }),
-      entry({ runId: 'run_unknown' }),
-    ];
+    const runs = [entry({ runId: 'run_done', success: true }), entry({ runId: 'run_unknown' })];
 
     expect(hasRunningRunEntries(runs)).toBe(false);
-    expect(hasRunningRunEntries([...runs, entry({ runId: 'run_live', running: true })])).toBe(
-      true,
-    );
+    expect(hasRunningRunEntries([...runs, entry({ runId: 'run_live', running: true })])).toBe(true);
   });
 
   test('running progress label keeps the completed-over-total count', () => {
@@ -119,11 +114,7 @@ describe('run history browser helpers', () => {
 
   test('a manually stopped running row moves into Failed while staying selected', () => {
     const runs = [entry({ runId: 'run_live', running: true, pipelineName: 'Live' })];
-    const stopped = applyStoppedRunToHistory(
-      runs,
-      'run_live',
-      '2026-05-22T08:01:00.000Z',
-    );
+    const stopped = applyStoppedRunToHistory(runs, 'run_live', '2026-05-22T08:01:00.000Z');
 
     expect(stopped[0]).toMatchObject({
       runId: 'run_live',
@@ -137,9 +128,7 @@ describe('run history browser helpers', () => {
   });
 
   test('focused running run is inserted at the top of RUNS before history reload returns', () => {
-    const runs = [
-      entry({ runId: 'run_old', running: false, success: true, pipelineName: 'Old' }),
-    ];
+    const runs = [entry({ runId: 'run_old', running: false, success: true, pipelineName: 'Old' })];
 
     const focused = applyFocusedRunningRunToHistory(runs, {
       runId: 'run_live',

@@ -56,14 +56,8 @@ export function RunCanvasView({
   scrollElementId,
   useEditorFolders = true,
 }: RunCanvasViewProps) {
-  const {
-    tasks,
-    selectedTaskId,
-    selectedTrackId,
-    selectTask,
-    selectTrack,
-    replayPositions,
-  } = useRunStore();
+  const { tasks, selectedTaskId, selectedTrackId, selectTask, selectTrack, replayPositions } =
+    useRunStore();
 
   const headerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);

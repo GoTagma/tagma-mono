@@ -89,18 +89,34 @@ type ExplorerIntent = {
   | { purpose: 'export-platform'; targetPlatform: PlatformExportTarget }
 );
 
-function workflowEventSignature(event: WorkflowGraphEvent): string {
-  return JSON.stringify(event);
+function workflowEventSeq(event: WorkflowGraphEvent): number | null {
+  return typeof event.seq === 'number' && Number.isFinite(event.seq) ? event.seq : null;
 }
 
-function appendWorkflowEvent(
+export function workflowEventSignature(event: WorkflowGraphEvent): string {
+  const seq = workflowEventSeq(event);
+  return seq === null ? JSON.stringify(event) : `${event.graphRunId}:${seq}`;
+}
+
+export function appendWorkflowEvent(
   events: WorkflowGraphEvent[],
   event: WorkflowGraphEvent,
 ): WorkflowGraphEvent[] {
   const signature = workflowEventSignature(event);
-  return events.some((existing) => workflowEventSignature(existing) === signature)
-    ? events
-    : [...events, event];
+  if (events.some((existing) => workflowEventSignature(existing) === signature)) {
+    return events;
+  }
+  const seq = workflowEventSeq(event);
+  if (
+    seq !== null &&
+    events.some(
+      (existing) =>
+        existing.graphRunId === event.graphRunId && (workflowEventSeq(existing) ?? -1) >= seq,
+    )
+  ) {
+    return events;
+  }
+  return [...events, event];
 }
 
 function workflowResultFromGraphEnd(event: WorkflowGraphEvent): WorkflowRunResult | null {
@@ -1730,7 +1746,7 @@ export function App() {
       const response = await api.startWorkflowRun(path);
       const graphRunId = response.graphRunId ?? response.result?.graphRunId ?? null;
       setWorkflowGraphRunId(graphRunId);
-      setWorkflowEvents(response.events);
+      setWorkflowEvents(response.events.reduce<WorkflowGraphEvent[]>(appendWorkflowEvent, []));
       setWorkflowRunResult(response.result);
       if (!response.running) {
         setWorkflowRunning(false);
@@ -2314,7 +2330,9 @@ export function App() {
                 runTargetCount={selectedTaskIds.length}
                 onShowHistory={showRunHistory}
                 onShowWorkflowGraph={handleShowWorkflows}
-                onReturnToWorkflowGraph={workflowReturnPath ? handleReturnToWorkflowGraph : undefined}
+                onReturnToWorkflowGraph={
+                  workflowReturnPath ? handleReturnToWorkflowGraph : undefined
+                }
                 onShowTrackIO={() => setShowTrackIO(true)}
                 searchQuery={searchQuery}
                 searchOpen={searchVisible}

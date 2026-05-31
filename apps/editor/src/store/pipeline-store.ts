@@ -767,12 +767,15 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
   // Monotonic request counter used to reject out-of-order responses from
   // local mutations and preserve-local requests.
   let fireEpoch = 0;
+  let mutationGeneration = 0;
+  let mutationTail: Promise<void> = Promise.resolve();
 
   const adoptDiskState = (state: ServerState, source?: YamlPreviewChangeSource) => {
     // Any in-flight local mutation or preserve-local request belongs to the
     // version the user just rejected. Advance the epoch before applying disk
     // state so late responses cannot put the discarded canvas back.
     fireEpoch++;
+    mutationGeneration++;
     discardAllLocalFieldEdits();
     if (source) {
       applyStateWithPreview(state, source);
@@ -1030,7 +1033,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     },
   ) => {
     if (blockIfYamlEditLocked()) return Promise.resolve();
-    const myEpoch = ++fireEpoch;
+    const queuedGeneration = mutationGeneration;
     // Capture pre-mutation snapshot for history. Reuse `opts.snapshot` when
     // provided (it's already a pre-mutation snapshot captured by the caller
     // BEFORE any optimistic local edits). Otherwise take one now.
@@ -1046,8 +1049,11 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
       pushHandle = pushHistory(snapshotToHistory(preSnapshot, opts?.coalesceKey, scope));
     }
 
-    const promise = fn().then(
-      (state) => {
+    const runMutation = async (): Promise<void> => {
+      if (queuedGeneration !== mutationGeneration) return;
+      const myEpoch = ++fireEpoch;
+      try {
+        const state = await fn();
         if (myEpoch !== fireEpoch) return; // a newer request superseded us
         const suppressPreview = opts?.previewSource === null;
         if (scope !== 'positions' && !suppressPreview) {
@@ -1061,19 +1067,13 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
         }
         applyState(state);
         if (suppressPreview) resetYamlPreviewBaseline(state.config);
-      },
-      (e) => {
+      } catch (e) {
         // C6: RevisionConflictError signals that our cached revision is stale.
         // The server's `currentState` is the authoritative baseline.
         //
-        // We NOW honor the epoch guard here (changed 2026-04-23). The previous
-        // unconditional handling assumed that a newer request always used the
-        // same stale revision, but that assumption is wrong when requests race:
-        // request B can reach the server first, succeed, and advance the
-        // revision before request A arrives. If A's 409 is handled
-        // unconditionally, it clobbers B's successful result and spams the
-        // user with a stale conflict toast. With the epoch guard, only the
-        // most recently dispatched request's 409 (or success) is applied.
+        // Network dispatch is serialized so ordinary local edits observe the
+        // latest revision. The epoch guard still protects this path from
+        // preserve-local/adopt-disk flows that can supersede a pending request.
         if (e instanceof RevisionConflictError) {
           if (myEpoch !== fireEpoch) return;
 
@@ -1088,6 +1088,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
           // state is NEWER than our snapshot and is the correct baseline to
           // continue from. A brief UI flicker is acceptable.
           applyStateWithLayout(e.currentState);
+          mutationGeneration++;
           set({
             isDirty: false,
             layoutDirty: false,
@@ -1114,7 +1115,12 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
         if (opts?.snapshot) restoreSnapshot(opts.snapshot);
         const prefix = opts?.errorPrefix ?? 'Operation failed';
         set({ errorMessage: `${prefix}: ${errorToMessage(e)}` });
-      },
+      }
+    };
+    const promise = mutationTail.then(runMutation, runMutation);
+    mutationTail = promise.then(
+      () => {},
+      () => {},
     );
     trackInFlight(promise);
     // Returning the promise is opt-in: callers that chain follow-up

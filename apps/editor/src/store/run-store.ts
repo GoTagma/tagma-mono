@@ -169,7 +169,8 @@ function foldGlobalApprovals(
 }
 
 function isFocusedRunEvent(state: RunFoldState, event: RunEvent): boolean {
-  return state.runId === null || state.runId === event.runId;
+  if (state.runId !== null) return state.runId === event.runId;
+  return event.type === 'run_start' || event.type === 'run_snapshot';
 }
 
 export const useRunStore = create<RunStoreState>((set, get) => {

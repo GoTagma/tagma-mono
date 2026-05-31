@@ -96,7 +96,11 @@ export function reconcileModelPick(
  */
 export async function refreshProvidersAndAuth(
   get: () => { model: ModelPick | null },
-  set: (patch: { providers: Provider[]; providerCatalog: ProviderCatalogEntry[]; model?: ModelPick | null }) => void,
+  set: (patch: {
+    providers: Provider[];
+    providerCatalog: ProviderCatalogEntry[];
+    model?: ModelPick | null;
+  }) => void,
 ): Promise<void> {
   const client = await getOpencodeClient();
   const [providersRes, providerCatalog] = await Promise.all([
@@ -108,7 +112,11 @@ export async function refreshProvidersAndAuth(
   ]);
   const providers = providersRes.providers;
   const nextModel = reconcileModelPick(providers, providersRes.default ?? {}, get().model);
-  const patch: { providers: Provider[]; providerCatalog: ProviderCatalogEntry[]; model?: ModelPick | null } = { providers, providerCatalog };
+  const patch: {
+    providers: Provider[];
+    providerCatalog: ProviderCatalogEntry[];
+    model?: ModelPick | null;
+  } = { providers, providerCatalog };
   if (
     nextModel?.providerID !== get().model?.providerID ||
     nextModel?.modelID !== get().model?.modelID

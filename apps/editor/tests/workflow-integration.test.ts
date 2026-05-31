@@ -146,7 +146,9 @@ afterEach(() => {
       if (attempt < 2) {
         // Brief pause before retry (synchronous to stay in afterEach)
         const end = Date.now() + 200;
-        while (Date.now() < end) { /* spin */ }
+        while (Date.now() < end) {
+          /* spin */
+        }
       }
     }
   }
@@ -282,7 +284,10 @@ describe('Workflow Integration Tests', () => {
         const res = await postJsonReq(url, '/api/run/workflow/start', { path: workflowPath });
         const body = JSON.parse(res.body) as {
           ok?: boolean;
-          result?: { success?: boolean; pipelines?: Array<{ pipelineId: string; runCount: number }> };
+          result?: {
+            success?: boolean;
+            pipelines?: Array<{ pipelineId: string; runCount: number }>;
+          };
         };
 
         expect(res.status).toBe(200);
@@ -322,7 +327,10 @@ describe('Workflow Integration Tests', () => {
         const res = await postJsonReq(url, '/api/run/workflow/start', { path: workflowPath });
         const body = JSON.parse(res.body) as {
           ok?: boolean;
-          result?: { success?: boolean; pipelines?: Array<{ pipelineId: string; runCount: number }> };
+          result?: {
+            success?: boolean;
+            pipelines?: Array<{ pipelineId: string; runCount: number }>;
+          };
         };
 
         expect(res.status).toBe(200);
@@ -362,7 +370,10 @@ describe('Workflow Integration Tests', () => {
         const res = await postJsonReq(url, '/api/run/workflow/start', { path: workflowPath });
         const body = JSON.parse(res.body) as {
           ok?: boolean;
-          result?: { success?: boolean; pipelines?: Array<{ pipelineId: string; runCount: number }> };
+          result?: {
+            success?: boolean;
+            pipelines?: Array<{ pipelineId: string; runCount: number }>;
+          };
         };
 
         expect(res.status).toBe(200);
@@ -402,7 +413,10 @@ describe('Workflow Integration Tests', () => {
         const res = await postJsonReq(url, '/api/run/workflow/start', { path: workflowPath });
         const body = JSON.parse(res.body) as {
           ok?: boolean;
-          result?: { success?: boolean; pipelines?: Array<{ pipelineId: string; runCount: number; status: string }> };
+          result?: {
+            success?: boolean;
+            pipelines?: Array<{ pipelineId: string; runCount: number; status: string }>;
+          };
         };
 
         expect(res.status).toBe(200);

@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Loader2, X as XIcon, ShieldCheck } from 'lucide-react';
 import type { PlatformExportStage, PlatformExportTarget } from '../api/client';
 import { useUIStore } from '../store/ui-store';
@@ -118,6 +119,14 @@ export function UnsavedChangesModal({
   onDiscard: () => void | Promise<void>;
   onCancel: () => void;
 }) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onCancel();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onCancel]);
+
   return (
     <div
       className="fixed inset-0 z-[215] flex items-center justify-center bg-black/60"
@@ -125,12 +134,17 @@ export function UnsavedChangesModal({
     >
       <div
         className="bg-tagma-surface border border-tagma-border shadow-panel w-[460px] max-h-[60vh] flex flex-col animate-fade-in"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="unsaved-changes-modal-title"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="panel-header">
           <div className="flex items-center gap-2 min-w-0">
             <ShieldCheck size={14} className="text-tagma-accent shrink-0" />
-            <h2 className="panel-title truncate">{action.title}</h2>
+            <h2 id="unsaved-changes-modal-title" className="panel-title truncate">
+              {action.title}
+            </h2>
           </div>
           <button
             onClick={onCancel}

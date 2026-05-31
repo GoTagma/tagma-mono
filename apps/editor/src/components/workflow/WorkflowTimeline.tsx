@@ -116,7 +116,9 @@ export function WorkflowTimeline({ events, pipelineIds }: WorkflowTimelineProps)
         const startedAt = event.startedAt ? new Date(event.startedAt) : existing.startedAt;
         const finishedAt = event.finishedAt ? new Date(event.finishedAt) : existing.finishedAt;
         const durationMs =
-          startedAt && finishedAt ? finishedAt.getTime() - startedAt.getTime() : existing.durationMs;
+          startedAt && finishedAt
+            ? finishedAt.getTime() - startedAt.getTime()
+            : existing.durationMs;
 
         // Count attempts (each run_start increments)
         const attempts =
@@ -144,7 +146,9 @@ export function WorkflowTimeline({ events, pipelineIds }: WorkflowTimelineProps)
             ? new Date(pipeline.finishedAt)
             : existing.finishedAt;
           const durationMs =
-            startedAt && finishedAt ? finishedAt.getTime() - startedAt.getTime() : existing.durationMs;
+            startedAt && finishedAt
+              ? finishedAt.getTime() - startedAt.getTime()
+              : existing.durationMs;
 
           entries.set(pipeline.pipelineId, {
             ...existing,
@@ -234,15 +238,17 @@ export function WorkflowTimeline({ events, pipelineIds }: WorkflowTimelineProps)
               {/* Pipeline label */}
               <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
-                  <Icon className={`w-3.5 h-3.5 ${config.color} ${isRunning ? 'animate-spin' : ''}`} />
+                  <Icon
+                    className={`w-3.5 h-3.5 ${config.color} ${isRunning ? 'animate-spin' : ''}`}
+                  />
                   <span className="font-medium text-tagma-text">{entry.pipelineId}</span>
-                  <span className={`px-1.5 py-0.5 rounded text-[10px] ${config.bgColor} ${config.color}`}>
+                  <span
+                    className={`px-1.5 py-0.5 rounded text-[10px] ${config.bgColor} ${config.color}`}
+                  >
                     {config.label}
                   </span>
                   {entry.attempts > 1 && (
-                    <span className="text-tagma-muted">
-                      Attempt {entry.attempts}
-                    </span>
+                    <span className="text-tagma-muted">Attempt {entry.attempts}</span>
                   )}
                 </div>
                 <div className="flex items-center gap-3 text-tagma-muted">

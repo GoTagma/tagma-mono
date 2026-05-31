@@ -153,6 +153,8 @@ export class PipelineRunner {
           stderrBytes: pick(event.stderrBytes, prev.stderrBytes),
           sessionId: pick(event.sessionId, prev.sessionId),
           normalizedOutput: pick(event.normalizedOutput, prev.normalizedOutput),
+          failureKind: pick(event.failureKind, prev.failureKind),
+          missingBinary: pick(event.missingBinary, prev.missingBinary),
           outputs: pick(event.outputs, prev.outputs),
           inputs: pick(event.inputs, prev.inputs),
           resolvedDriver: pick(event.resolvedDriver, prev.resolvedDriver),

@@ -591,7 +591,7 @@ export function buildEmbeddedOpencodeRuntimeConfig(paths: EmbeddedOpencodeRuntim
   // with legitimate long thinking times (chunkTimeout only fires after the
   // first chunk has arrived).
   if (isPlainObject(out.provider)) {
-    for (const [id, provider] of Object.entries(out.provider)) {
+    for (const provider of Object.values(out.provider)) {
       if (isPlainObject(provider) && isPlainObject(provider.options)) {
         if (provider.options.chunkTimeout === undefined) {
           provider.options = { ...provider.options, chunkTimeout: DEFAULT_CHUNK_TIMEOUT_MS };

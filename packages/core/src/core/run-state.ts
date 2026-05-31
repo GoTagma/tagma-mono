@@ -1,6 +1,7 @@
 import type {
   PipelineConfig,
   TaskState,
+  TaskResult,
   TaskStatus,
   RunTaskState,
   Permissions,
@@ -17,6 +18,24 @@ export function isTerminal(status: TaskStatus): boolean {
     status === 'skipped' ||
     status === 'blocked'
   );
+}
+
+export function skippedTaskResult(reason: string): TaskResult {
+  const stderr = `[engine] ${reason}`;
+  return {
+    exitCode: -1,
+    stdout: '',
+    stderr,
+    stdoutPath: null,
+    stderrPath: null,
+    stdoutBytes: 0,
+    stderrBytes: stderr.length,
+    durationMs: 0,
+    sessionId: null,
+    normalizedOutput: null,
+    failureKind: null,
+    outputs: null,
+  };
 }
 
 /** Return a deep-copied, caller-safe snapshot of the states map. */

@@ -270,6 +270,54 @@ describe('PipelineRunner task snapshot', () => {
     }
   });
 
+  test('getTasks preserves task failure metadata from task_update events', async () => {
+    const dir = makeDir();
+    const registry = new PluginRegistry();
+    bootstrapBuiltins(registry);
+    const runner = new PipelineRunner(
+      {
+        name: 'missing-command',
+        mode: 'trusted',
+        tracks: [
+          {
+            id: 't',
+            name: 'T',
+            tasks: [{ id: 'missing', name: 'Missing', command: 'missing-cli' }],
+          },
+        ],
+      },
+      dir,
+      {
+        registry,
+        runtime: {
+          ...fakeRuntime(),
+          async runCommand() {
+            return {
+              ...taskResult(''),
+              exitCode: -1,
+              stderr: 'missing-cli not found',
+              stderrBytes: 'missing-cli not found'.length,
+              failureKind: 'binary_missing',
+              missingBinary: 'missing-cli',
+            };
+          },
+        },
+        skipPluginLoading: true,
+      },
+    );
+
+    try {
+      const result = await runner.start();
+      const task = runner.getTasks().get('t.missing');
+
+      expect(result.success).toBe(false);
+      expect(task?.failureKind).toBe('binary_missing');
+      expect(task?.missingBinary).toBe('missing-cli');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('start rejects task cwd values that escape the workDir', async () => {
     const dir = makeDir();
     const outside = makeDir();

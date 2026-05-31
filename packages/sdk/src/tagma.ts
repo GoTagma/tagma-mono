@@ -14,7 +14,12 @@ import {
 } from './schema';
 import { bunRuntime } from '@tagma/runtime-bun';
 import type { TagmaRuntime } from '@tagma/core';
-import type { PipelineConfig, PipelineGraphConfig, TagmaPlugin, WorkflowConfig } from '@tagma/types';
+import type {
+  PipelineConfig,
+  PipelineGraphConfig,
+  TagmaPlugin,
+  WorkflowConfig,
+} from '@tagma/types';
 import {
   loadWorkflow,
   runPipelineGraph,
@@ -47,8 +52,10 @@ export interface TagmaRunOptions extends Omit<RunPipelineOptions, 'registry' | '
   readonly cwd: string;
 }
 
-export interface TagmaGraphRunOptions
-  extends Omit<PipelineGraphRunnerOptions, 'registry' | 'runtime'> {
+export interface TagmaGraphRunOptions extends Omit<
+  PipelineGraphRunnerOptions,
+  'registry' | 'runtime'
+> {
   readonly cwd: string;
 }
 

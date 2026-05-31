@@ -35,7 +35,8 @@ export function didOpenWorkflowPipelineFromGraph({
   errorAfter: string | null;
 }): boolean {
   if (!yamlPath) return false;
-  const openedRequestedPath = normalizeWorkflowPath(yamlPath) === normalizeWorkflowPath(expectedPath);
+  const openedRequestedPath =
+    normalizeWorkflowPath(yamlPath) === normalizeWorkflowPath(expectedPath);
   const hasNewError = errorAfter !== null && errorAfter !== errorBefore;
   return openedRequestedPath && !hasNewError;
 }

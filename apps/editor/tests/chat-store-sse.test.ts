@@ -3,6 +3,7 @@ import {
   useChatStore,
   applySseEvent,
   canEndCurrentTurnFromConfirmedIdle,
+  subscribeEventStreamWithReadinessTimeout,
   shouldStartFreshChatSessionForContextLimit,
 } from '../src/store/chat-store';
 import { usePipelineStore } from '../src/store/pipeline-store';
@@ -70,6 +71,30 @@ const jsonResponse = (data: unknown): Response =>
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   });
+
+test('OpenCode event subscription readiness timeout aborts a hung subscribe', async () => {
+  let subscribeSignal: AbortSignal | null = null;
+  const parent = new AbortController();
+
+  await expect(
+    subscribeEventStreamWithReadinessTimeout(
+      (signal) => {
+        subscribeSignal = signal;
+        return new Promise<unknown>((_resolve, reject) => {
+          signal.addEventListener(
+            'abort',
+            () => reject(signal.reason instanceof Error ? signal.reason : new Error('aborted')),
+            { once: true },
+          );
+        });
+      },
+      parent.signal,
+      5,
+    ),
+  ).rejects.toThrow(/event stream/i);
+  expect((subscribeSignal as unknown as AbortSignal).aborted).toBe(true);
+  expect(parent.signal.aborted).toBe(false);
+});
 
 const flushAsyncWork = (): Promise<void> =>
   new Promise((resolve) => {

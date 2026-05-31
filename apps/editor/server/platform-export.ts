@@ -25,6 +25,7 @@ export interface PlatformExportProgress {
 
 interface ConvertOptions {
   baseUrl: string;
+  authHeader?: string;
   sourceYaml: string;
   sourceName: string;
   sourcePlatform: TagmaPlatform | null;
@@ -153,6 +154,7 @@ export function extractPlatformYamlFromReply(reply: string): string {
 export async function convertPipelineYamlForPlatform(opts: ConvertOptions): Promise<string> {
   const client = createOpencodeClient({
     baseUrl: opts.baseUrl,
+    ...(opts.authHeader ? { headers: { Authorization: opts.authHeader } } : {}),
     fetch: createLoopbackFetch(opts.baseUrl),
   });
   const timeoutSignal = AbortSignal.timeout(PLATFORM_EXPORT_TIMEOUT_MS);

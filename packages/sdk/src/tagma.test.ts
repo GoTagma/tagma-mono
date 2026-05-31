@@ -527,9 +527,7 @@ describe('createTagma', () => {
               config: {
                 name: 'First',
                 mode: 'trusted',
-                tracks: [
-                  { id: 'main', name: 'Main', tasks: [{ id: 'task', command: 'first' }] },
-                ],
+                tracks: [{ id: 'main', name: 'Main', tasks: [{ id: 'task', command: 'first' }] }],
               },
             },
             {
@@ -539,9 +537,7 @@ describe('createTagma', () => {
               config: {
                 name: 'Second',
                 mode: 'trusted',
-                tracks: [
-                  { id: 'main', name: 'Main', tasks: [{ id: 'task', command: 'second' }] },
-                ],
+                tracks: [{ id: 'main', name: 'Main', tasks: [{ id: 'task', command: 'second' }] }],
               },
             },
           ],
@@ -705,8 +701,7 @@ describe('createTagma', () => {
       expect(workflowRun.result.success).toBe(true);
       expect(workflowRun.result.pipelines[0]?.runCount).toBe(2);
       expect(workflowRun.result.pipelines[0]?.attempts.map((attempt) => attempt.attempt)).toEqual([
-        1,
-        2,
+        1, 2,
       ]);
       expect(calls).toEqual(['build', 'build']);
     } finally {

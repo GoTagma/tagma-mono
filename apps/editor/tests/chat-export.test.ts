@@ -1,8 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import {
-  buildConversationExport,
-  conversationExportFilename,
-} from '../src/utils/chat-export';
+import { buildConversationExport, conversationExportFilename } from '../src/utils/chat-export';
 import type { OpencodeThreadEntry, Part } from '../src/api/opencode-chat';
 
 const textPart = (id: string, text: string, synthetic = false): Part =>
@@ -15,11 +12,7 @@ const textPart = (id: string, text: string, synthetic = false): Part =>
     ...(synthetic ? { synthetic } : {}),
   }) as Part;
 
-const entry = (
-  role: 'user' | 'assistant',
-  id: string,
-  parts: Part[],
-): OpencodeThreadEntry =>
+const entry = (role: 'user' | 'assistant', id: string, parts: Part[]): OpencodeThreadEntry =>
   ({
     info: { id, sessionID: 's1', role },
     parts,
@@ -69,7 +62,9 @@ describe('chat conversation export', () => {
       title: '',
       exportedAt: new Date('2026-05-20T12:00:00.000Z'),
       messages: [
-        entry('user', 'internal', [textPart('internal-p1', '<tagma-internal>repair</tagma-internal>')]),
+        entry('user', 'internal', [
+          textPart('internal-p1', '<tagma-internal>repair</tagma-internal>'),
+        ]),
         entry('user', 'context-only', [
           textPart(
             'context-p1',

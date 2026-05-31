@@ -5,7 +5,9 @@ import type {
 } from '@opencode-ai/sdk/client';
 import {
   getOpencodeClient,
+  getOpencodeAuthHeader,
   getOpencodeBaseUrl,
+  buildOpencodeRequestHeaders,
   getOpencodeWorkspaceKey,
   resetOpencodeClient,
   restartOpencodeForConfig,
@@ -15,7 +17,6 @@ import {
   type Agent,
   type ApiAuth,
   type Provider,
-  type ProviderAuthMethod,
   type ProviderAuthAuthorization,
   type Session,
   type OpencodeThreadEntry,
@@ -69,17 +70,6 @@ import {
 // Re-export for backward compatibility — external consumers (ProviderConnectDialog, etc.)
 // import this type from chat-store.
 export type { ProviderCatalogEntry } from './chat-provider-catalog';
-
-function sameChatPath(a: string | null | undefined, b: string | null | undefined): boolean {
-  if (!a || !b) return false;
-  const la = a.replace(/\\/g, '/').replace(/\/+$/, '');
-  const lb = b.replace(/\\/g, '/').replace(/\/+$/, '');
-  const isWinA = /^[A-Za-z]:\//.test(la) || la.startsWith('//');
-  const isWinB = /^[A-Za-z]:\//.test(lb) || lb.startsWith('//');
-  const na = isWinA ? la.toLowerCase() : la;
-  const nb = isWinB ? lb.toLowerCase() : lb;
-  return na === nb;
-}
 
 /**
  * A non-editable context attachment on the composer (e.g. a failed task's
@@ -529,10 +519,7 @@ const STALLED_TURN_POLL_INTERVAL_MS = 2_000;
 // output — but it does mean the SSE connection itself is quiet. The UI uses
 // this to show "SSE connected but idle" vs "SSE reconnecting".
 const SSE_IDLE_WARN_MS = 120_000; // 2 minutes without any SSE event
-// Process health check interval: ping opencode /global/health during stalled
-// turns to verify the process is still alive. If it stops responding, the
-// UI can show "opencode process unresponsive" instead of a generic "waiting".
-const PROCESS_HEALTH_CHECK_INTERVAL_MS = 30_000; // 30 seconds
+const SSE_READY_TIMEOUT_MS = 15_000;
 // Server-side message timestamps are produced by the embedded OpenCode process,
 // while turnStartedAt is a renderer wall-clock. They should be close, but a
 // small tolerance keeps a legitimate first assistant envelope from being
@@ -654,6 +641,31 @@ function clearTurnWatchdog(): void {
 
 function unrefTimerForTests(timer: ReturnType<typeof setTimeout>): void {
   (timer as unknown as { unref?: () => void }).unref?.();
+}
+
+export async function subscribeEventStreamWithReadinessTimeout<T>(
+  subscribe: (signal: AbortSignal) => Promise<T>,
+  parentSignal: AbortSignal,
+  timeoutMs = SSE_READY_TIMEOUT_MS,
+): Promise<T> {
+  const controller = new AbortController();
+  let removeParentAbort: (() => void) | null = null;
+  if (parentSignal.aborted) {
+    controller.abort(parentSignal.reason);
+  } else {
+    const onParentAbort = () => controller.abort(parentSignal.reason);
+    parentSignal.addEventListener('abort', onParentAbort, { once: true });
+    removeParentAbort = () => parentSignal.removeEventListener('abort', onParentAbort);
+  }
+  const timer = setTimeout(() => {
+    controller.abort(new Error(`event stream did not become ready within ${timeoutMs}ms`));
+  }, timeoutMs);
+  try {
+    return await subscribe(controller.signal);
+  } finally {
+    clearTimeout(timer);
+    removeParentAbort?.();
+  }
 }
 
 function scheduleTurnWatchdog(get: () => ChatStore, set: ChatSet): void {
@@ -945,9 +957,10 @@ async function pollStalledTurn(get: () => ChatStore, set: ChatSet): Promise<void
       // Process health check: ping /global/health to verify the opencode
       // process is alive. This catches cases where opencode itself has
       // crashed or hung, separate from upstream model slowness.
-      getOpencodeBaseUrl()
-        .then(async (baseUrl) => {
+      Promise.all([getOpencodeBaseUrl(), getOpencodeAuthHeader()])
+        .then(async ([baseUrl, authHeader]) => {
           const res = await fetch(`${baseUrl}/global/health`, {
+            headers: buildOpencodeRequestHeaders(authHeader),
             signal: AbortSignal.timeout(5000),
           });
           return res.ok;
@@ -1996,7 +2009,10 @@ async function ensureSseSubscription(get: () => ChatStore, set: ChatSet): Promis
       }
       try {
         const client = await getOpencodeClient();
-        const { stream } = await client.event.subscribe({ signal: controller.signal });
+        const { stream } = await subscribeEventStreamWithReadinessTimeout(
+          (signal) => client.event.subscribe({ signal }),
+          controller.signal,
+        );
         attempt = 0;
         markSseReady();
         sseConnected = true;
@@ -2637,10 +2653,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   async removeProviderAuth(providerId) {
     if (chatTurnBlocksSessionMutation(get())) throw new Error(chatTurnBlockedMessage());
-    const baseUrl = await getOpencodeBaseUrl();
+    const [baseUrl, authHeader] = await Promise.all([
+      getOpencodeBaseUrl(),
+      getOpencodeAuthHeader(),
+    ]);
     const res = await fetch(
       `${baseUrl.replace(/\/+$/, '')}/auth/${encodeURIComponent(providerId)}`,
-      { method: 'DELETE' },
+      { method: 'DELETE', headers: buildOpencodeRequestHeaders(authHeader) },
     );
     if (!res.ok) {
       let detail = res.statusText;

@@ -63,7 +63,10 @@ export function hasFileChanged(filePath: string, expectedVersion: FileVersion | 
   }
 
   // Quick check: mtime and size
-  if (currentVersion.mtime !== expectedVersion.mtime || currentVersion.size !== expectedVersion.size) {
+  if (
+    currentVersion.mtime !== expectedVersion.mtime ||
+    currentVersion.size !== expectedVersion.size
+  ) {
     return true;
   }
 

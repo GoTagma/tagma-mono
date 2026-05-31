@@ -1,5 +1,5 @@
 import { existsSync, lstatSync, readdirSync } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { isPathWithin } from './path-utils.js';
 import { sanitizePipelineStem, tagmaDirOf } from './pipeline-paths.js';
 
@@ -76,7 +76,7 @@ export function assertWorkflowYamlPath(workDir: string, absPath: string, label: 
   if (!workDir) {
     throw new Error(`Workspace directory is not set; cannot resolve ${label}.`);
   }
-  const resolved = resolve(absPath);
+  const resolved = resolve(isAbsolute(absPath) ? absPath : join(workDir, absPath));
   if (!isPathWithin(resolved, workDir)) {
     throw new Error(`${label} is outside the workspace directory.`);
   }

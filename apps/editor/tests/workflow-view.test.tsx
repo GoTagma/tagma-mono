@@ -302,9 +302,9 @@ describe('WorkflowView', () => {
     );
 
     expect(html).toContain('workflow-edge-delete-button');
-    const edgeDeleteClasses = [...html.matchAll(/class="([^"]*workflow-edge-delete-button[^"]*)"/g)].map(
-      (match) => match[1] ?? '',
-    );
+    const edgeDeleteClasses = [
+      ...html.matchAll(/class="([^"]*workflow-edge-delete-button[^"]*)"/g),
+    ].map((match) => match[1] ?? '');
     expect(edgeDeleteClasses.length).toBeGreaterThan(0);
     for (const className of edgeDeleteClasses) {
       expect(className).toContain('h-4');

@@ -145,10 +145,7 @@ async function waitForDirectory(options: {
         continue;
       }
 
-      if (
-        event.type === 'addDir' &&
-        pathsEqual(resolve(parentDir, event.path), safePath)
-      ) {
+      if (event.type === 'addDir' && pathsEqual(resolve(parentDir, event.path), safePath)) {
         return { path: safePath };
       }
     }

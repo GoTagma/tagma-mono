@@ -1,5 +1,5 @@
 import type { RunContext } from './run-context';
-import { isTerminal } from './run-state';
+import { isTerminal, skippedTaskResult } from './run-state';
 import { nowISO } from '../utils';
 
 /**
@@ -36,6 +36,7 @@ export function skipNonTerminalTasks(ctx: RunContext, finishedAt = nowISO()): vo
   for (const [id, state] of ctx.states) {
     if (isTerminal(state.status)) continue;
     state.finishedAt = finishedAt;
+    state.result = skippedTaskResult('skipped because the pipeline ended before this task started');
     ctx.setTaskStatus(id, 'skipped');
   }
 }

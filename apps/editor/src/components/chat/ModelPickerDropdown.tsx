@@ -56,8 +56,7 @@ export function buildModelPickerGroups(
       const models = providerHit
         ? allModels
         : allModels.filter(
-            (model) =>
-              model.id.toLowerCase().includes(q) || model.label.toLowerCase().includes(q),
+            (model) => model.id.toLowerCase().includes(q) || model.label.toLowerCase().includes(q),
           );
       return { provider, providerLabel, models };
     })
@@ -148,9 +147,7 @@ export function ModelPickerDropdown({
         maxHeight={420}
       >
         {providers.length === 0 ? (
-          <div className="px-3 py-4 text-[10px] font-mono text-tagma-muted">
-            {emptyText}
-          </div>
+          <div className="px-3 py-4 text-[10px] font-mono text-tagma-muted">{emptyText}</div>
         ) : (
           <>
             {showFilter && (

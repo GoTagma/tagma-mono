@@ -504,8 +504,7 @@ function YamlActionBubble() {
   if (!action) return null;
 
   const isOpen = action.kind === 'open-created';
-  const label =
-    isOpen || action.path !== currentYamlPath ? 'Open YAML' : 'Refresh current YAML';
+  const label = isOpen || action.path !== currentYamlPath ? 'Open YAML' : 'Refresh current YAML';
   const title =
     action.status === 'repairing'
       ? 'Validating YAML...'

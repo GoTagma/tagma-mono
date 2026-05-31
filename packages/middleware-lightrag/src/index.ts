@@ -21,6 +21,7 @@
 //           api_key_env: LIGHTRAG_API_KEY
 
 import {
+  linkAbort,
   parseDurationSafe,
   type TagmaPlugin,
   type MiddlewarePlugin,
@@ -119,6 +120,7 @@ async function queryLightRAG(
   topK: number,
   apiKey: string | undefined,
   timeoutMs: number,
+  signal?: AbortSignal,
 ): Promise<string> {
   // LightRAG API Server exposes POST /query (see query_routes.py). Setting
   // `only_need_context: true` tells the server to skip the LLM synthesis
@@ -131,6 +133,7 @@ async function queryLightRAG(
   // earlier draft of this plugin had this wrong.
   const url = endpoint.replace(/\/+$/, '') + '/query';
   const controller = new AbortController();
+  const unlinkAbort = signal ? linkAbort(signal, () => controller.abort(signal.reason)) : null;
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(url, {
@@ -160,6 +163,7 @@ async function queryLightRAG(
     const payload = (await res.json()) as LightRAGQueryResponse;
     return (payload.response ?? '').toString();
   } finally {
+    unlinkAbort?.();
     clearTimeout(timer);
   }
 }
@@ -234,7 +238,7 @@ export const LightRAGMiddleware: MiddlewarePlugin = {
   async enhanceDoc(
     doc: PromptDocument,
     config: Record<string, unknown>,
-    _ctx: MiddlewareContext,
+    ctx: MiddlewareContext,
   ): Promise<PromptDocument> {
     const endpoint = config.endpoint as string | undefined;
     if (!endpoint) throw new Error('lightrag middleware: "endpoint" is required');
@@ -257,6 +261,9 @@ export const LightRAGMiddleware: MiddlewarePlugin = {
 
     const apiKeyEnv = config.api_key_env as string | undefined;
     const apiKey = apiKeyEnv ? process.env[apiKeyEnv] : undefined;
+    if (apiKeyEnv && !apiKey) {
+      throw new Error(`lightrag middleware: api_key_env "${apiKeyEnv}" is not set`);
+    }
     if (apiKey) assertSafeApiKeyTransport(endpointUrl, apiKeyEnv);
 
     const timeoutMs = parseDurationSafe(config.timeout, DEFAULT_TIMEOUT_MS);
@@ -277,7 +284,7 @@ export const LightRAGMiddleware: MiddlewarePlugin = {
 
     try {
       const context = truncateContext(
-        await queryLightRAG(endpoint, query, mode, topK, apiKey, timeoutMs),
+        await queryLightRAG(endpoint, query, mode, topK, apiKey, timeoutMs, ctx.signal),
         maxContextChars,
       );
       if (!context.trim()) {

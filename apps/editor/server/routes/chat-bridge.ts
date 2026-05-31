@@ -350,7 +350,13 @@ export function registerChatBridgeRoutes(app: express.Express): void {
       if (!fromId) {
         return res.status(400).json({ error: 'fromId must be a non-empty string <= 128 chars' });
       }
-      const entry = addAllowedSender(ws.workDir, platform, fromId, coerceLabel(body.label), 'manual');
+      const entry = addAllowedSender(
+        ws.workDir,
+        platform,
+        fromId,
+        coerceLabel(body.label),
+        'manual',
+      );
       return res.json({ ok: true, entry, manifest: buildManifestPayload(ws.workDir) });
     } catch (err) {
       return res.status(500).json({ error: errorMessage(err) });

@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import type { AddressInfo } from 'node:net';
 import { connect as netConnect } from 'node:net';
 import { buildFatalWorkflowGraphEndEvent, registerRunRoutes } from '../server/routes/run';
+import { WorkflowRunSession } from '../server/routes/run-session';
 import { WorkspaceState } from '../server/workspace-state';
 
 let tempDir: string;
@@ -156,6 +157,26 @@ test('buildFatalWorkflowGraphEndEvent turns unexpected live workflow failures in
   expect(event.pipelines[0]?.attempts[0]?.status).toBe('failed');
 });
 
+test('WorkflowRunSession stamps workflow events and can replay after a seq', () => {
+  const session = new WorkflowRunSession({ graphRunId: 'graph_1' } as never, new AbortController());
+  const start = session.ingest({
+    type: 'graph_start',
+    graphRunId: 'graph_1',
+    workflowName: 'release',
+    pipelines: [],
+  });
+  const update = session.ingest({
+    type: 'pipeline_update',
+    graphRunId: 'graph_1',
+    pipelineId: 'p1',
+    status: 'running',
+  });
+
+  expect(start.seq).toBe(1);
+  expect(update.seq).toBe(2);
+  expect(session.replayAfter(1)).toEqual([update]);
+});
+
 function buildApp(): express.Express {
   const app = express();
   app.use(express.json());
@@ -232,7 +253,12 @@ test('POST /api/run/workflow/start honors workflow pipeline lifecycle attempts',
     const body = JSON.parse(res.body) as {
       ok?: boolean;
       result?: { success?: boolean; pipelines?: Array<{ pipelineId: string; runCount: number }> };
-      events?: Array<{ type: string; pipelineId?: string; attempt?: number; event?: { type: string } }>;
+      events?: Array<{
+        type: string;
+        pipelineId?: string;
+        attempt?: number;
+        event?: { type: string };
+      }>;
       error?: string;
     };
 
@@ -241,12 +267,14 @@ test('POST /api/run/workflow/start honors workflow pipeline lifecycle attempts',
     expect(body.result?.success).toBe(true);
     expect(body.result?.pipelines?.[0]).toMatchObject({ pipelineId: 'p1', runCount: 2 });
     expect(
-      body.events?.filter(
-        (event) =>
-          event.type === 'pipeline_event' &&
-          event.pipelineId === 'p1' &&
-          event.event?.type === 'run_start',
-      ).map((event) => event.attempt),
+      body.events
+        ?.filter(
+          (event) =>
+            event.type === 'pipeline_event' &&
+            event.pipelineId === 'p1' &&
+            event.event?.type === 'run_start',
+        )
+        .map((event) => event.attempt),
     ).toEqual([1, 2]);
   } finally {
     await close();

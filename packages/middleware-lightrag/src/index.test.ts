@@ -74,4 +74,64 @@ describe('middleware-lightrag plugin shape', () => {
       delete process.env[envName];
     }
   });
+
+  test('fails when api_key_env is configured but the env var is missing', async () => {
+    const envName = `TAGMA_TEST_LIGHTRAG_MISSING_${Date.now()}`;
+    const originalFetch = globalThis.fetch;
+    delete process.env[envName];
+    globalThis.fetch = (async () => {
+      throw new Error('fetch should not run without the configured API key');
+    }) as typeof fetch;
+
+    try {
+      await expect(
+        LightRAGMiddleware.enhanceDoc(
+          { contexts: [], task: 'explain tagma' },
+          { endpoint: 'https://example.com:9621', api_key_env: envName, on_error: 'skip' },
+          { task: {} as never, track: {} as never, workDir: process.cwd() },
+        ),
+      ).rejects.toThrow(new RegExp(envName));
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test('links LightRAG fetch cancellation to the middleware signal', async () => {
+    const originalFetch = globalThis.fetch;
+    const controller = new AbortController();
+    let requestSignal: AbortSignal | null = null;
+    let rejectFetch: ((err: Error) => void) | null = null;
+    globalThis.fetch = (async (_url, init) => {
+      requestSignal = init?.signal as AbortSignal;
+      return new Promise<Response>((_resolve, reject) => {
+        rejectFetch = reject;
+        requestSignal?.addEventListener(
+          'abort',
+          () => reject(new DOMException('The operation was aborted.', 'AbortError')),
+          { once: true },
+        );
+      });
+    }) as typeof fetch;
+
+    try {
+      const pending = LightRAGMiddleware.enhanceDoc(
+        { contexts: [], task: 'explain tagma' },
+        { endpoint: 'http://localhost:9621', on_error: 'fail', timeout: '10m' },
+        {
+          task: {} as never,
+          track: {} as never,
+          workDir: process.cwd(),
+          signal: controller.signal,
+        },
+      );
+      await Promise.resolve();
+      controller.abort('stop');
+
+      expect(requestSignal?.aborted).toBe(true);
+      rejectFetch?.(new Error('manual fetch stop'));
+      await expect(pending).rejects.toThrow(/retrieval failed|abort/i);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

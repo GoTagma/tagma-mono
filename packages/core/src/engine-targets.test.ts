@@ -112,6 +112,58 @@ describe('targeted pipeline runs', () => {
       expect(result.states.get('main.build')?.status).toBe('success');
       expect(result.states.get('main.test')?.status).toBe('success');
       expect(result.states.get('main.deploy')?.status).toBe('skipped');
+      expect(result.states.get('main.deploy')?.result).toMatchObject({
+        exitCode: -1,
+        stderr: expect.stringContaining('outside the selected target run set'),
+        failureKind: null,
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('dependency-skipped tasks carry terminal TaskResult metadata', async () => {
+    const dir = makeDir();
+    const seenCommands: string[] = [];
+    try {
+      const result = await runPipeline(config, dir, {
+        registry: new PluginRegistry(),
+        runtime: {
+          ...fakeRuntime(seenCommands),
+          async runCommand(command) {
+            const text =
+              typeof command === 'string'
+                ? command
+                : 'shell' in command
+                  ? command.shell
+                  : command.argv.join(' ');
+            seenCommands.push(text);
+            return {
+              ...taskResult(text),
+              exitCode: text === 'build' ? 1 : 0,
+              stderr: text === 'build' ? 'build failed' : '',
+              stderrBytes: text === 'build' ? 'build failed'.length : 0,
+              failureKind: text === 'build' ? 'exit_nonzero' : null,
+            };
+          },
+        },
+        skipPluginLoading: true,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.states.get('main.build')?.status).toBe('failed');
+      expect(result.states.get('main.test')?.status).toBe('skipped');
+      expect(result.states.get('main.test')?.result).toMatchObject({
+        exitCode: -1,
+        stderr: expect.stringContaining('upstream "main.build"'),
+        failureKind: null,
+      });
+      expect(result.states.get('main.deploy')?.status).toBe('skipped');
+      expect(result.states.get('main.deploy')?.result).toMatchObject({
+        exitCode: -1,
+        stderr: expect.stringContaining('upstream "main.test"'),
+        failureKind: null,
+      });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

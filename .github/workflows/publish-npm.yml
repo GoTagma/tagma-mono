@@ -109,10 +109,72 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Validate package selection
+        env:
+          PACKAGES: ${{ needs.detect.outputs.packages }}
+        shell: bash
+        run: |
+          node <<'NODE'
+          const allowed = new Set([
+            'types',
+            'core',
+            'runtime-bun',
+            'codex',
+            'claude-code',
+            'lightrag',
+            'webhook',
+            'llm-judge',
+            'sdk',
+          ]);
+          let packages;
+          try {
+            packages = JSON.parse(process.env.PACKAGES || '');
+          } catch {
+            console.error('PACKAGES must be a JSON array.');
+            process.exit(1);
+          }
+          if (!Array.isArray(packages)) {
+            console.error('PACKAGES must be a JSON array.');
+            process.exit(1);
+          }
+          const seen = new Set();
+          for (const key of packages) {
+            if (typeof key !== 'string' || !allowed.has(key)) {
+              console.error(`Unknown package key: ${String(key)}`);
+              process.exit(1);
+            }
+            if (seen.has(key)) {
+              console.error(`Duplicate package key: ${key}`);
+              process.exit(1);
+            }
+            seen.add(key);
+          }
+          console.log(`Validated package selection: ${packages.join(', ')}`);
+          NODE
+
+      - name: Text hygiene
+        run: bun run check:text
+
+      - name: Type check
+        run: bun run check
+
+      - name: Test
+        run: bun run test
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Publish metadata check
+        run: bun run check:publish
+
       - name: Configure npm auth
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "NPM_TOKEN is required" >&2
+            exit 1
+          fi
           # Write to both workspace root and HOME so bun publish finds it
           # regardless of where it resolves .npmrc from.
           {

@@ -23,6 +23,14 @@ const SIDECAR_TARGETS = [
   { platform: 'darwin', arch: 'x64', extension: '' },
   { platform: 'darwin', arch: 'arm64', extension: '' },
 ];
+const SEMVER_VERSION_RE =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+
+function assertValidVersion(version, label) {
+  if (typeof version !== 'string' || !SEMVER_VERSION_RE.test(version)) {
+    throw new Error(`${label} must be a semver string like 1.2.3 or 1.2.3-alpha.1`);
+  }
+}
 
 function stableStringify(value) {
   if (value === null || typeof value !== 'object') {
@@ -91,6 +99,10 @@ export function buildHotupdateManifest({
   minShellVersion,
   allowPartialSidecars = false,
 }) {
+  assertValidVersion(version, 'version');
+  if (minShellVersion !== undefined) {
+    assertValidVersion(minShellVersion, 'minShellVersion');
+  }
   const tagName = `desktop-v${version}`;
   const distAsset = readRequiredAsset(assetsDir, `editor-dist-${version}.tar.gz`);
   const sidecarTargets = [];
@@ -174,6 +186,9 @@ function parseCliArgs(argv) {
     }
     if (arg.startsWith('--min-shell=')) {
       minShellVersion = arg.slice('--min-shell='.length);
+      if (!minShellVersion) {
+        throw new Error('--min-shell requires a version argument');
+      }
       continue;
     }
     if (arg === '--signing-key') {

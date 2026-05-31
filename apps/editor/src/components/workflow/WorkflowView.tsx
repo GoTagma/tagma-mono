@@ -1153,7 +1153,10 @@ export function WorkflowView({
                       </div>
                     ) : (
                       selectedPipeline.depends_on.map((dep) => (
-                        <div key={dep} className="min-w-0 text-[11px] font-mono text-tagma-muted truncate">
+                        <div
+                          key={dep}
+                          className="min-w-0 text-[11px] font-mono text-tagma-muted truncate"
+                        >
                           {dep}
                         </div>
                       ))

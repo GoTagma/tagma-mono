@@ -1,5 +1,13 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import {
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+  mkdirSync,
+  existsSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, basename } from 'node:path';
 import { createTagma, type RunEventPayload, type EngineResult } from './index';
@@ -41,10 +49,7 @@ const UPDATE_GOLDEN = process.env.UPDATE_GOLDEN === '1';
  * Strips non-deterministic fields (runId, timestamps, paths, durations)
  * and keeps only the structural output that should be stable across runs.
  */
-function extractGoldenShape(
-  result: EngineResult,
-  events: RunEventPayload[],
-): GoldenOutput {
+function extractGoldenShape(result: EngineResult, events: RunEventPayload[]): GoldenOutput {
   const tasks: Record<string, GoldenTaskOutput> = {};
 
   for (const event of events) {
@@ -58,13 +63,12 @@ function extractGoldenShape(
       // Normalize stdout: trim trailing whitespace, strip platform-specific
       // path separators in truncation markers
       stdout: (event.stdout ?? '').trim(),
-      stderr: (event.stderr ?? '').trim()
+      stderr: (event.stderr ?? '')
+        .trim()
         // Normalize Windows paths in error messages for cross-platform stability
         .replace(/\\/g, '/'),
       outputs: event.outputs
-        ? Object.fromEntries(
-            Object.entries(event.outputs).sort(([a], [b]) => a.localeCompare(b)),
-          )
+        ? Object.fromEntries(Object.entries(event.outputs).sort(([a], [b]) => a.localeCompare(b)))
         : null,
     };
   }
@@ -72,9 +76,7 @@ function extractGoldenShape(
   return {
     success: result.success,
     summary: { ...result.summary },
-    tasks: Object.fromEntries(
-      Object.entries(tasks).sort(([a], [b]) => a.localeCompare(b)),
-    ),
+    tasks: Object.fromEntries(Object.entries(tasks).sort(([a], [b]) => a.localeCompare(b))),
   };
 }
 
@@ -138,7 +140,7 @@ describe('golden regression — pipeline output stability', () => {
             mkdirSync(EXPECTED_DIR, { recursive: true });
           }
           writeFileSync(expectedFile, JSON.stringify(shape, null, 2) + '\n');
-          console.log(`[golden] Updated: ${expectedFile}`);
+          console.warn(`[golden] Updated: ${expectedFile}`);
           return;
         }
 
@@ -150,18 +152,14 @@ describe('golden regression — pipeline output stability', () => {
           );
         }
 
-        const expected: GoldenOutput = JSON.parse(
-          readFileSync(expectedFile, 'utf8'),
-        );
+        const expected: GoldenOutput = JSON.parse(readFileSync(expectedFile, 'utf8'));
 
         // Deep structural comparison
         expect(shape.success).toBe(expected.success);
         expect(shape.summary).toEqual(expected.summary);
 
         // Compare tasks
-        expect(Object.keys(shape.tasks).sort()).toEqual(
-          Object.keys(expected.tasks).sort(),
-        );
+        expect(Object.keys(shape.tasks).sort()).toEqual(Object.keys(expected.tasks).sort());
 
         for (const [taskId, expectedTask] of Object.entries(expected.tasks)) {
           const actualTask = shape.tasks[taskId];

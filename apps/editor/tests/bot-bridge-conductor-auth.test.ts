@@ -152,10 +152,11 @@ describe('conductor onCommand allowlist gate', () => {
     await flush();
 
     expect(t.sent.at(-1)?.text).toContain('Paired this chat');
-    expect(getManifest(workDir).allowlist.map((sender) => sender.fromId).sort()).toEqual([
-      'guest-2',
-      'owner-1',
-    ]);
+    expect(
+      getManifest(workDir)
+        .allowlist.map((sender) => sender.fromId)
+        .sort(),
+    ).toEqual(['guest-2', 'owner-1']);
   });
 
   test('/pair rejects a valid code from a sender missing from a manually configured allowlist', async () => {

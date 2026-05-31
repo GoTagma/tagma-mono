@@ -1,3 +1,4 @@
+import { useCallback, useEffect } from 'react';
 import { AlertCircle, X as XIcon } from 'lucide-react';
 
 export type ConfirmInfo = {
@@ -16,15 +17,23 @@ interface ConfirmModalProps {
 }
 
 export function ConfirmModal({ info, onClose }: ConfirmModalProps) {
-  const handleDismiss = () => {
+  const handleDismiss = useCallback(() => {
     onClose();
     info.onCancel?.();
-  };
+  }, [info, onClose]);
 
-  const handleConfirm = () => {
+  const handleConfirm = useCallback(() => {
     onClose();
     info.onConfirm();
-  };
+  }, [info, onClose]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') handleDismiss();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [handleDismiss]);
 
   return (
     <div
@@ -33,6 +42,9 @@ export function ConfirmModal({ info, onClose }: ConfirmModalProps) {
     >
       <div
         className="bg-tagma-surface border border-tagma-border shadow-panel w-[440px] max-h-[60vh] flex flex-col animate-fade-in"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-modal-title"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="panel-header">
@@ -42,6 +54,7 @@ export function ConfirmModal({ info, onClose }: ConfirmModalProps) {
               className={`shrink-0 ${info.danger ? 'text-tagma-error' : 'text-tagma-accent'}`}
             />
             <h2
+              id="confirm-modal-title"
               className={`panel-title truncate ${info.danger ? 'text-tagma-error' : 'text-tagma-text'}`}
             >
               {info.title}

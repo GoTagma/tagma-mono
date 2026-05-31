@@ -31,9 +31,8 @@ export function buildConversationExport({
 
   const content =
     format === 'md'
-      ? [`# ${heading}`, `Exported: ${exportedAt.toISOString()}`, ...body]
-          .join('\n\n')
-          .trimEnd() + '\n'
+      ? [`# ${heading}`, `Exported: ${exportedAt.toISOString()}`, ...body].join('\n\n').trimEnd() +
+        '\n'
       : [heading, `Exported: ${exportedAt.toISOString()}`, '', body.join('\n\n')]
           .join('\n')
           .trimEnd() + '\n';
@@ -106,7 +105,8 @@ function renderPart(part: Part, role: 'user' | 'assistant', format: ChatExportFo
 function isInternalUserEntry(parts: readonly Part[]): boolean {
   return parts.some(
     (part) =>
-      part.type === 'text' && stripUserHiddenContext(part.text).trimStart().startsWith('<tagma-internal>'),
+      part.type === 'text' &&
+      stripUserHiddenContext(part.text).trimStart().startsWith('<tagma-internal>'),
   );
 }
 

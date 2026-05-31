@@ -18,9 +18,9 @@
     },
     "main.skipped": {
       "status": "skipped",
-      "exitCode": null,
+      "exitCode": -1,
       "stdout": "",
-      "stderr": "",
+      "stderr": "[engine] skipped because upstream \"main.fail\" status=failed",
       "outputs": null
     }
   }

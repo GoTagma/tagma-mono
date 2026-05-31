@@ -40,9 +40,7 @@ function hasPython(): boolean {
 function collectEvents(events: RunEventPayload[]) {
   return {
     finalTaskUpdate: (taskId: string) => {
-      const updates = events.filter(
-        (e) => e.type === 'task_update' && e.taskId === taskId,
-      );
+      const updates = events.filter((e) => e.type === 'task_update' && e.taskId === taskId);
       return updates[updates.length - 1];
     },
   };

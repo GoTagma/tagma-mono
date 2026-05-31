@@ -21,7 +21,7 @@ import {
 } from './hooks';
 import { Logger } from './logger';
 import { InMemoryApprovalGateway, scopeApprovalGateway, type ApprovalGateway } from './approval';
-import { freezeStates, summarizeStates, toRunTaskState } from './core/run-state';
+import { freezeStates, skippedTaskResult, summarizeStates, toRunTaskState } from './core/run-state';
 import { preflight } from './core/preflight';
 import { RunContext } from './core/run-context';
 import { allTasksTerminal, findLaunchableTasks, skipNonTerminalTasks } from './core/scheduler';
@@ -203,11 +203,7 @@ function safeSet<T extends keyof Required<SafeModeAllowlist>>(
   caller: SafeModeAllowlist | undefined,
   key: T,
 ): ReadonlySet<string> {
-  return new Set([
-    ...(hardcoded[key] ?? []),
-    ...(registry?.[key] ?? []),
-    ...(caller?.[key] ?? []),
-  ]);
+  return new Set([...(hardcoded[key] ?? []), ...(registry?.[key] ?? []), ...(caller?.[key] ?? [])]);
 }
 
 function enforceExecutionMode(
@@ -228,10 +224,30 @@ function enforceExecutionMode(
     errors.push('safe mode blocks lifecycle hooks');
   }
 
-  const allowedDrivers = safeSet(DEFAULT_SAFE_MODE_ALLOWLIST, registryAllowlist, allowlist, 'drivers');
-  const allowedTriggers = safeSet(DEFAULT_SAFE_MODE_ALLOWLIST, registryAllowlist, allowlist, 'triggers');
-  const allowedCompletions = safeSet(DEFAULT_SAFE_MODE_ALLOWLIST, registryAllowlist, allowlist, 'completions');
-  const allowedMiddlewares = safeSet(DEFAULT_SAFE_MODE_ALLOWLIST, registryAllowlist, allowlist, 'middlewares');
+  const allowedDrivers = safeSet(
+    DEFAULT_SAFE_MODE_ALLOWLIST,
+    registryAllowlist,
+    allowlist,
+    'drivers',
+  );
+  const allowedTriggers = safeSet(
+    DEFAULT_SAFE_MODE_ALLOWLIST,
+    registryAllowlist,
+    allowlist,
+    'triggers',
+  );
+  const allowedCompletions = safeSet(
+    DEFAULT_SAFE_MODE_ALLOWLIST,
+    registryAllowlist,
+    allowlist,
+    'completions',
+  );
+  const allowedMiddlewares = safeSet(
+    DEFAULT_SAFE_MODE_ALLOWLIST,
+    registryAllowlist,
+    allowlist,
+    'middlewares',
+  );
 
   for (const track of config.tracks) {
     const trackDriver = track.driver ?? config.driver ?? 'opencode';
@@ -469,6 +485,9 @@ async function runPipelineInner(
       if (activeTaskIds && !activeTaskIds.has(id)) {
         state.status = 'skipped';
         state.finishedAt = startedAt;
+        state.result = skippedTaskResult(
+          'skipped because task is outside the selected target run set',
+        );
       } else {
         state.status = 'waiting';
       }

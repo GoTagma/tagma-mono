@@ -143,6 +143,36 @@ describe('workspace route validation', () => {
     expect(existsSync(target)).toBe(true);
   });
 
+  test('POST /api/fs/capability rejects no-Origin self-issued host filesystem tokens', () => {
+    S.workDir = makeTempDir();
+    const external = makeTempDir();
+    const handler = createRouteHarness().post('/api/fs/capability');
+    const res = makeRes();
+
+    handler(
+      {
+        workspace: S,
+        headers: {},
+        body: { path: external, purpose: 'export-file' },
+      },
+      res,
+    );
+
+    expect(res.statusCode).toBe(403);
+    expect(String((res.body as { error?: unknown }).error)).toContain('allowed Origin');
+  });
+
+  test('POST /api/fs/reveal requires a real workspace directory', () => {
+    const external = makeTempDir();
+    const handler = createRouteHarness().post('/api/fs/reveal');
+    const res = makeRes();
+
+    handler({ workspace: S, body: { path: external } }, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(String((res.body as { error?: unknown }).error)).toContain('Workspace directory');
+  });
+
   test('POST /api/delete-file removes pipeline-scoped secret bindings with the pipeline', () => {
     S.workDir = makeTempDir();
     const pipelineDir = join(S.workDir, '.tagma', 'build');
@@ -333,7 +363,9 @@ describe('workspace route validation', () => {
     expect(
       (
         res.body as {
-          workflow?: { pipelines?: Array<{ lifecycle?: { max_runs?: number; stop_when?: string } }> };
+          workflow?: {
+            pipelines?: Array<{ lifecycle?: { max_runs?: number; stop_when?: string } }>;
+          };
         }
       ).workflow?.pipelines?.[0]?.lifecycle,
     ).toEqual({ max_runs: 3, stop_when: 'success' });
