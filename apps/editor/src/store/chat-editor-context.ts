@@ -12,6 +12,7 @@
 import { usePipelineStore } from './pipeline-store';
 import { useRunStore } from './run-store';
 import { useEditorSettingsStore } from './editor-settings-store';
+import { createNewPipelineRequestedActionLines } from '../../shared/requested-action.js';
 
 function normalizeChatPath(path: string | null | undefined): string | null {
   if (!path) return null;
@@ -92,6 +93,7 @@ function formatWorkspaceYamlFolderEntry(entry: WorkspaceYamlFolderEntry): string
 
 export interface EditorContextOptions {
   workspaceYamlFilePaths?: readonly string[];
+  userText?: string;
 }
 
 export function buildEditorContext(options: EditorContextOptions = {}): string {
@@ -100,6 +102,7 @@ export function buildEditorContext(options: EditorContextOptions = {}): string {
   const pythonAgent = useEditorSettingsStore.getState().settings?.pythonAgent;
   if (!workDir) return '';
   const lines = [`  <workspace>${workDir}</workspace>`];
+  lines.push(...createNewPipelineRequestedActionLines(options.userText));
   if (yamlPath) {
     const rel = workspaceRelativePath(workDir, yamlPath);
     if (rel) lines.push(`  <current-file>${rel}</current-file>`);

@@ -258,6 +258,41 @@ describe('workspace route validation', () => {
     expect(manifest.sections?.[0]?.id).toBe('pipeline');
   });
 
+  test('POST /api/create-from-manifest reports a fresh stem for create-intent name collisions', () => {
+    S.workDir = makeTempDir();
+    mkdirSync(join(S.workDir, '.tagma', 'deploy'), { recursive: true });
+    mkdirSync(join(S.workDir, '.tagma', 'deploy-2'), { recursive: true });
+
+    const handler = createRouteHarness().post('/api/create-from-manifest');
+    const res = makeRes();
+    handler(
+      {
+        workspace: S,
+        body: {
+          stem: 'deploy',
+          requestedAction: { kind: 'create-new-pipeline' },
+          manifest: {
+            pipeline: { name: 'Deploy' },
+            sections: [
+              { id: 'pipeline', type: 'pipeline', summary: 'Deploy', yamlPath: 'pipeline' },
+            ],
+          },
+        },
+      },
+      res,
+    );
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toMatchObject({
+      error: 'Pipeline folder already exists: deploy/',
+      code: 'PIPELINE_STEM_EXISTS',
+      requestedAction: 'create-new-pipeline',
+      stem: 'deploy',
+      suggestedStem: 'deploy-3',
+    });
+    expect(existsSync(join(S.workDir, '.tagma', 'deploy', 'deploy.yaml'))).toBe(false);
+  });
+
   test('POST /api/workspace/workflows can create an empty workflow graph explicitly', () => {
     S.workDir = makeTempDir();
     const handler = createRouteHarness().post('/api/workspace/workflows');

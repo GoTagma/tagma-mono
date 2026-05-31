@@ -209,4 +209,48 @@ describe('opencode-driver bot prompt body', () => {
       rmSync(workDir, { recursive: true, force: true });
     }
   });
+
+  test('marks remote bot create-pipeline turns so similar existing pipelines are not edit targets', () => {
+    const workDir = mkdtempSync(join(tmpdir(), 'tagma-bot-create-intent-'));
+    try {
+      workspaceRegistry.getOrCreate(workDir);
+      const deployYaml = join(workDir, '.tagma', 'deploy', 'deploy.yaml');
+      mkdirSync(join(workDir, '.tagma', 'deploy'), { recursive: true });
+      writeFileSync(deployYaml, 'pipeline:\n  name: Deploy\n  tracks: []\n', 'utf-8');
+
+      const body = buildBotPromptAsyncBody(workDir, 'create a new deploy pipeline');
+      const text = body.parts[0]?.text ?? '';
+
+      expect(text).toContain('<requested-action kind="create-new-pipeline">');
+      expect(text).toContain(
+        '<collision-policy>existing pipeline names are unavailable stems, not edit targets</collision-policy>',
+      );
+      expect(text).toContain('<yaml>.tagma/deploy/deploy.yaml</yaml>');
+    } finally {
+      workspaceRegistry.drop(workDir);
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+
+  test('does not mark remote bot task creation inside a pipeline as new-pipeline creation', () => {
+    const workDir = mkdtempSync(join(tmpdir(), 'tagma-bot-task-intent-'));
+    try {
+      workspaceRegistry.getOrCreate(workDir);
+      const deployYaml = join(workDir, '.tagma', 'deploy', 'deploy.yaml');
+      mkdirSync(join(workDir, '.tagma', 'deploy'), { recursive: true });
+      writeFileSync(deployYaml, 'pipeline:\n  name: Deploy\n  tracks: []\n', 'utf-8');
+
+      const body = buildBotPromptAsyncBody(
+        workDir,
+        'create a new smoke test task in the deploy pipeline',
+      );
+      const text = body.parts[0]?.text ?? '';
+
+      expect(text).not.toContain('<requested-action kind="create-new-pipeline">');
+      expect(text).toContain('<yaml>.tagma/deploy/deploy.yaml</yaml>');
+    } finally {
+      workspaceRegistry.drop(workDir);
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  });
 });

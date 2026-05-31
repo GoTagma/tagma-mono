@@ -30,6 +30,7 @@ import { errorMessage } from '../path-utils.js';
 import { readEditorSettings } from '../plugins/loader.js';
 import { enumerateFlatPipelineYamls, enumeratePipelineYamls } from '../pipeline-paths.js';
 import { runPipelineManifestSync } from '../pipeline-manifest.js';
+import { createNewPipelineRequestedActionLines } from '../../shared/requested-action.js';
 
 interface ClientCacheEntry {
   baseUrl: string;
@@ -280,12 +281,13 @@ function workspaceYamlFolders(workDir: string): WorkspaceYamlFolderEntry[] {
   }
 }
 
-function buildBotEditorContext(workspaceKey: string): string {
+function buildBotEditorContext(workspaceKey: string, userText?: string): string {
   const ws = workspaceRegistry.get(workspaceKey);
   const workDir = ws?.workDir ?? workspaceKey;
   if (!workDir) return '';
 
   const lines = [`  <workspace>${workDir}</workspace>`];
+  lines.push(...createNewPipelineRequestedActionLines(userText));
   const currentFile = workspaceRelativePath(workDir, ws?.yamlPath);
   if (currentFile) lines.push(`  <current-file>${currentFile}</current-file>`);
   const yamlFolders = workspaceYamlFolders(workDir);
@@ -340,7 +342,7 @@ export function buildBotPromptAsyncBody(
   return {
     ...(model ? { model } : {}),
     agent: TAGMA_ROUTER_AGENT,
-    parts: [{ type: 'text', text: buildBotEditorContext(workspaceKey) + text }],
+    parts: [{ type: 'text', text: buildBotEditorContext(workspaceKey, text) + text }],
   };
 }
 

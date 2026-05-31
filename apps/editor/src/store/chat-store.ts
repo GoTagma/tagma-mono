@@ -1946,6 +1946,7 @@ async function promptOpencode(
               type: 'text',
               text:
                 buildEditorContext({
+                  userText: text,
                   workspaceYamlFilePaths: preSendSnapshot?.entries.map((entry) => entry.path),
                 }) +
                 (opts.context ?? '') +

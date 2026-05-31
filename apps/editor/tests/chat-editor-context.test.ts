@@ -86,6 +86,55 @@ describe('chat editor context', () => {
     expect(context).not.toContain('ignored.yaml');
   });
 
+  test('marks explicit create-pipeline requests so existing yaml names are collision context only', () => {
+    usePipelineStore.setState({
+      workDir: 'C:/repo',
+      yamlPath: 'C:/repo/.tagma/deploy/deploy.yaml',
+      registry: { drivers: [], triggers: [], completions: [], middlewares: [] },
+    } as never);
+
+    const context = buildEditorContext({
+      userText: '请创建一个新的 deploy pipeline，功能类似现有部署流程',
+      workspaceYamlFilePaths: ['C:/repo/.tagma/deploy/deploy.yaml'],
+    });
+
+    expect(context).toContain('<requested-action kind="create-new-pipeline">');
+    expect(context).toContain(
+      '<collision-policy>existing pipeline names are unavailable stems, not edit targets</collision-policy>',
+    );
+    expect(context).toContain('<yaml>.tagma/deploy/deploy.yaml</yaml>');
+  });
+
+  test('does not mark ordinary task creation inside an existing pipeline as new-pipeline creation', () => {
+    usePipelineStore.setState({
+      workDir: 'C:/repo',
+      yamlPath: 'C:/repo/.tagma/deploy/deploy.yaml',
+      registry: { drivers: [], triggers: [], completions: [], middlewares: [] },
+    } as never);
+
+    const context = buildEditorContext({
+      userText: '在当前 pipeline 里新建一个测试 task',
+      workspaceYamlFilePaths: ['C:/repo/.tagma/deploy/deploy.yaml'],
+    });
+
+    expect(context).not.toContain('<requested-action kind="create-new-pipeline">');
+  });
+
+  test('does not mark ordinary task creation inside a named existing pipeline as new-pipeline creation', () => {
+    usePipelineStore.setState({
+      workDir: 'C:/repo',
+      yamlPath: 'C:/repo/.tagma/deploy/deploy.yaml',
+      registry: { drivers: [], triggers: [], completions: [], middlewares: [] },
+    } as never);
+
+    const context = buildEditorContext({
+      userText: 'create a new smoke test task in the deploy pipeline',
+      workspaceYamlFilePaths: ['C:/repo/.tagma/deploy/deploy.yaml'],
+    });
+
+    expect(context).not.toContain('<requested-action kind="create-new-pipeline">');
+  });
+
   test('does not protect a switched pipeline while another path is running', () => {
     usePipelineStore.setState({
       workDir: 'C:/repo',

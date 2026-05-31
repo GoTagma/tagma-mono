@@ -72,6 +72,10 @@ import {
 import { recordWorkspaceOpen } from './recent.js';
 import { generateConfigId } from '../../shared/config-id.js';
 import {
+  CREATE_NEW_PIPELINE_ACTION_KIND,
+  isCreateNewPipelineRequestedAction,
+} from '../../shared/requested-action.js';
+import {
   acquireYamlEditLock,
   releaseYamlEditLock,
   getActiveYamlEditLock,
@@ -528,6 +532,19 @@ function serializeWorkflowGraphForEditor(config: {
     },
     WORKFLOW_YAML_DUMP_OPTIONS,
   );
+}
+
+function nextAvailablePipelineStem(workDir: string, stem: string): string | null {
+  for (let i = 2; i < 1_000; i += 1) {
+    const candidate = `${stem}-${i}`;
+    try {
+      const folderPath = dirname(pipelineYamlPath(workDir, candidate));
+      if (!existsSync(folderPath)) return candidate;
+    } catch {
+      return null;
+    }
+  }
+  return null;
 }
 
 export function registerWorkspaceRoutes(app: express.Express): void {
@@ -1467,7 +1484,11 @@ export function registerWorkspaceRoutes(app: express.Express): void {
     if (!ws) return;
     if (!ws.workDir) return res.status(400).json({ error: 'Workspace directory is not set' });
 
-    const body = (req.body ?? {}) as { stem?: unknown; manifest?: unknown };
+    const body = (req.body ?? {}) as {
+      stem?: unknown;
+      manifest?: unknown;
+      requestedAction?: unknown;
+    };
     const rawStem = body.stem;
     if (typeof rawStem !== 'string' || !rawStem.trim()) {
       return res.status(400).json({ error: 'stem is required' });
@@ -1488,8 +1509,17 @@ export function registerWorkspaceRoutes(app: express.Express): void {
     // Refuse to overwrite an existing pipeline folder.
     const folderPath = dirname(yamlAbsPath);
     if (existsSync(folderPath)) {
+      const createRequested = isCreateNewPipelineRequestedAction(body.requestedAction);
       return res.status(409).json({
         error: `Pipeline folder already exists: ${stem}/`,
+        ...(createRequested
+          ? {
+              code: 'PIPELINE_STEM_EXISTS',
+              requestedAction: CREATE_NEW_PIPELINE_ACTION_KIND,
+              stem,
+              suggestedStem: nextAvailablePipelineStem(ws.workDir, stem),
+            }
+          : {}),
       });
     }
 

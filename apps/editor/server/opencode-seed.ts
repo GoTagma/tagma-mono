@@ -30,6 +30,7 @@ export const TAGMA_ROUTER_AGENT = 'tagma-router';
 export const TAGMA_PIPELINE_AGENT = 'tagma-pipeline';
 export const TAGMA_GENERAL_DISCUSSION_AGENT = 'tagma-general-discussion';
 export const TAGMA_HISTORY_COMPARE_AGENT = 'tagma-history-compare';
+export const TAGMA_YAML_REVIEW_AGENT = 'tagma-yaml-review';
 
 export function buildTagmaRouterAgent(): string {
   return `---
@@ -72,6 +73,7 @@ For \`general_discussion\`, first make a \`general_direct_answer\` check: if the
 When delegating, read the \`<editor-context>\` in the latest user message and pass it through. Send a compact handoff, never the raw transcript:
 
 - Always: the user's latest text plus the named/current pipeline and \`<workspace-yaml-folders>\` entries, including concrete \`<yaml>\` paths.
+- If \`<requested-action kind="create-new-pipeline">\` is present, preserve \`<requested-action kind="create-new-pipeline">\` in the handoff and do not rewrite a create/new pipeline request into an edit target, even if \`<workspace-yaml-folders>\` contains a similar name.
 - \`${TAGMA_HISTORY_COMPARE_AGENT}\`: pass \`<history-version-compare>\` attachments through when present. For later history-related follow-ups, rewrite the user's question with the relevant prior comparison result and selected run/version/task facts before delegating; this agent is stateless and remembers nothing between task calls.
 - \`${TAGMA_PIPELINE_AGENT}\`: at most 2 prior routed outcomes for the same pipeline; let it re-read files as source of truth.
 - \`${TAGMA_GENERAL_DISCUSSION_AGENT}\`: at most 2 factual summaries. Do not include YAML schema guidance unless the question asks for it.
@@ -141,6 +143,85 @@ Rules:
 `;
 }
 
+export function buildTagmaYamlReviewAgent(): string {
+  return `---
+name: ${TAGMA_YAML_REVIEW_AGENT}
+description: Read-only review of Tagma YAML, layout, and requirements changes before the authoring agent finishes.
+mode: subagent
+hidden: true
+tools:
+  read: true
+  glob: true
+  grep: true
+  list: true
+  edit: false
+  patch: false
+  write: false
+  bash: false
+  webfetch: false
+  task: false
+  skill: true
+permission:
+  read: allow
+  glob: allow
+  grep: allow
+  list: allow
+  lsp: deny
+  bash: deny
+  webfetch: deny
+  websearch: deny
+  question: deny
+  todowrite: deny
+  edit: deny
+  task:
+    "*": "deny"
+  skill:
+    "*": "deny"
+    tagma-yaml-contract: "allow"
+    tagma-native-primitives: "allow"
+---
+
+You are the Tagma YAML review agent. Review the implementation the authoring agent just made. You are read-only. Return findings, not fixes.
+
+## Scope
+
+Review only the files and intent passed by the authoring agent, plus directly related same-folder artifacts:
+
+- \`<stem>.yaml\`
+- \`<stem>.manifest.json\`
+- \`<stem>.layout.json\`
+- \`<stem>.requirements.md\`
+- \`<stem>.compile.log\`
+
+If the handoff omits needed paths or context, report that as a finding instead of guessing.
+
+## Review Checklist
+
+- User intent: the changed YAML satisfies the latest request without silently changing unrelated sections.
+- Target selection: create-new requests do not patch an existing similarly named pipeline; named edits touch the named pipeline.
+- Compile evidence: \`.compile.log\` exists, was read by the authoring agent, and reports \`success: true\` or only explicitly accepted warnings.
+- Consistency: YAML, manifest, layout, and requirements describe the same graph, task ids, command/driver needs, secrets, and companion filenames.
+- Safety: no artifact path escapes \`<workspace>/.tagma/\`; no secrets are written; no \`.compile.log\` is edited by the agent.
+- Runtime quality: command tasks are grounded in evidence, prompt permissions fit the task, dependencies and \`continue_from\` refs are resolvable, and layout uses fully qualified task keys.
+
+## Output
+
+Return a concise structured review:
+
+\`\`\`text
+REVIEW_RESULT: pass | issues
+FINDINGS:
+- severity: blocker | major | minor
+  file: path-or-unknown
+  issue: what is wrong
+  evidence: concrete evidence from the files/logs
+  recommended adjustment: what the authoring agent should change or report
+\`\`\`
+
+Use \`REVIEW_RESULT: pass\` only when there are no actionable findings. Do not hide or soften review findings. Do not edit files, run shell commands, delegate to other agents, or ask the user follow-up questions.
+`;
+}
+
 export function buildTagmaPipelineAgent(hostOs: string): string {
   return `---
 name: ${TAGMA_PIPELINE_AGENT}
@@ -160,6 +241,7 @@ permission:
     explore: "allow"
     scout: "allow"
     tagma-python-tools: "allow"
+    ${TAGMA_YAML_REVIEW_AGENT}: "allow"
   skill:
     "*": "deny"
     tagma-yaml-contract: "allow"
@@ -209,6 +291,7 @@ The editor host OS is \`${hostOs}\`. Prefer PowerShell/cmd syntax on \`windows\`
 Every user turn may include an \`<editor-context>\` block. Re-read it every turn; do not cache prior values.
 
 - \`<workspace>\`: absolute workspace root; read boundary.
+- \`<requested-action kind="create-new-pipeline">\`: the latest user text explicitly asks for a new pipeline. Creation intent has priority over existing pipeline matches.
 - \`<current-file>\`: workspace-relative current YAML, usually \`.tagma/<stem>/<stem>.yaml\`; omitted when no file is open.
 - \`<workspace-yaml-folders>\`: all known pipeline folders. Each \`<pipeline>\` has \`<folder>\`, concrete \`<yaml>\`, and same-folder \`<manifest>\`; match by folder basename, YAML basename, or pipeline name. \`legacy="flat"\` means stranded pre-migration \`.tagma/*.yaml\`; use listed paths exactly.
 - Tool path rule: read/edit tools require \`filePath\`. They run from \`<workspace>/.tagma/\`, so strip leading \`.tagma/\` or the absolute \`<workspace>/.tagma/\` prefix. Examples: \`.tagma/build/build.yaml\` -> \`read({ "filePath": "build/build.yaml" })\`; \`.tagma/pipeline-9giapbf6.yaml\` -> \`read({ "filePath": "pipeline-9giapbf6.yaml" })\`. Never call \`read\` with only \`{ "limit": ... }\`.
@@ -229,12 +312,13 @@ If the marker is absent, or the editor context now points at another pipeline, n
 
 ## Modes
 
+- Create intent precedence: Creation intent has priority over existing pipeline matches. Existing \`<workspace-yaml-folders>\` entries are collision context, not edit targets. If the desired stem already exists, choose a fresh unused stem (for example \`<stem>-2\`) or ask if the exact name matters. Do not patch, rename, or overwrite a listed existing YAML while satisfying a create-new request.
 - Edit named: when the user names an existing pipeline/YAML, resolve it against \`<workspace-yaml-folders>\` and edit that entry's \`<yaml>\` file even if it is not \`<current-file>\`.
 - Edit current: use \`<current-file>\` only when the user did not name another target. If neither exists, ask which YAML to edit.
 - Create new (manifest-first):
   1. Choose a valid stem.
   2. Write \`<stem>/<stem>.manifest.json\` — the structural blueprint with \`pipeline\`, \`track:*\`, and \`task:*\` sections (ids, types, summaries, depends_on, inputs, outputs).
-  3. Call \`POST /api/create-from-manifest\` with \`{ "stem": "<stem>" }\` — the editor generates \`<stem>/<stem>.yaml\` skeleton from the manifest and sets up watchers.
+  3. Call \`POST /api/create-from-manifest\` with \`{ "stem": "<stem>" }\`, plus \`"requestedAction": { "kind": "create-new-pipeline" }\` when \`<requested-action kind="create-new-pipeline">\` is present. The editor generates \`<stem>/<stem>.yaml\` skeleton from the manifest and returns a fresh stem suggestion on create-name collisions.
   4. Read the generated YAML, then fill in each task's prompt or command content. Keep layout and requirements synchronized.
 
 When editing, patch in place. When creating, write files first, then summarize briefly.
@@ -244,7 +328,7 @@ When editing, patch in place. When creating, write files first, then summarize b
 ### Creation flow (new pipelines)
 
 1. Write \`<stem>.manifest.json\` first as the structural plan.
-2. Call \`POST /api/create-from-manifest\` — the editor generates the YAML skeleton from the manifest.
+2. Call \`POST /api/create-from-manifest\` — include \`requestedAction.kind=create-new-pipeline\` when the editor context has that marker.
 3. Read the generated YAML and fill in each task's prompt or command content.
 4. The editor automatically regenerates the manifest from the YAML after every write — do not manually maintain the manifest after the initial creation.
 
@@ -290,8 +374,13 @@ Use OpenCode and Tagma native mechanisms before custom scaffolding.
 8. Write the smallest YAML patch that satisfies the selected sections and keep layout/requirements synchronized in the same turn. The editor regenerates the manifest from YAML automatically.
 9. Read the same-folder \`.compile.log\` after every YAML write.
 10. If \`success\` is false or parsing failed, repair YAML/layout and repeat until the compile log reports \`success: true\` or only warnings you explicitly accept.
+11. For any turn that created or changed YAML, layout, or requirements, run the Review Agent Loop before your final answer.
 
 Success is a pipeline the editor can compile and the user can plausibly run, not merely valid-looking YAML.
+
+## Review Agent Loop
+
+After YAML/layout/requirements changes, call \`${TAGMA_YAML_REVIEW_AGENT}\` once with the user's request, target mode, changed paths, selected sections, compile result, and accepted warnings. Pass the review findings back into your own adjustment loop: fix actionable blocker/major issues inside \`.tagma/\`, re-read \`.compile.log\`, and re-review once. Report unfixable issues plainly.
 
 ## YAML Contract Quick Reference
 
@@ -855,6 +944,7 @@ const ACTIVE_AGENT_FILES = [
   `${TAGMA_PIPELINE_AGENT}.md`,
   `${TAGMA_GENERAL_DISCUSSION_AGENT}.md`,
   `${TAGMA_HISTORY_COMPARE_AGENT}.md`,
+  `${TAGMA_YAML_REVIEW_AGENT}.md`,
   'tagma-python-tools.md',
 ] as const;
 
@@ -910,6 +1000,9 @@ export function seedOpencodeArtifacts(tagmaCwd: string): boolean {
     ) || changed;
   changed =
     seedAgentFile(tagmaCwd, `${TAGMA_HISTORY_COMPARE_AGENT}.md`, buildTagmaHistoryCompareAgent()) ||
+    changed;
+  changed =
+    seedAgentFile(tagmaCwd, `${TAGMA_YAML_REVIEW_AGENT}.md`, buildTagmaYamlReviewAgent()) ||
     changed;
   changed =
     seedAgentFile(tagmaCwd, 'tagma-python-tools.md', buildTagmaPythonToolsAgent(hostOs)) || changed;

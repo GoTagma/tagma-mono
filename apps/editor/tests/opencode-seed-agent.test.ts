@@ -49,7 +49,7 @@ test('router prompt stays compact with the history comparison lane', () => {
 test('tagma-pipeline agent stays compact and keeps schema detail out of the base prompt', () => {
   const doc = buildTagmaPipelineAgent('Windows');
 
-  expect(doc.length).toBeLessThan(13_500);
+  expect(doc.length).toBeLessThan(15_000);
   expect(doc).toContain('Keep context small');
   expect(doc).toContain('schema source of truth');
   expect(doc).toContain('YAML Contract Quick Reference');
@@ -104,6 +104,21 @@ test('tagma-pipeline agent documents edit/create modes and mandatory compile loo
   expect(doc).toContain('Never ask for or store secret values');
   expect(doc).toContain('never edit `.env`');
   expect(doc).toContain('never call secret-manager APIs');
+});
+
+test('tagma-pipeline agent treats explicit creation as higher priority than existing name matches', () => {
+  const router = buildTagmaRouterAgent();
+  const pipeline = buildTagmaPipelineAgent('Windows');
+
+  expect(router).toContain('preserve `<requested-action kind="create-new-pipeline">`');
+  expect(router).toContain('do not rewrite a create/new pipeline request into an edit target');
+
+  expect(pipeline).toContain('Creation intent has priority over existing pipeline matches');
+  expect(pipeline).toContain('Existing `<workspace-yaml-folders>` entries are collision context, not edit targets');
+  expect(pipeline).toContain('If the desired stem already exists, choose a fresh unused stem');
+  expect(pipeline).toContain('Do not patch, rename, or overwrite a listed existing YAML while satisfying a create-new request');
+  expect(pipeline).toContain('"requestedAction": { "kind": "create-new-pipeline" }');
+  expect(pipeline).toContain('returns a fresh stem suggestion on create-name collisions');
 });
 
 test('tagma-pipeline agent keeps manifest-first flow while enforcing section isolation', () => {
@@ -184,6 +199,16 @@ test('tagma-pipeline agent exposes focused skills and read-only native subagents
   expect(doc).toContain('Do not delegate writes except');
 });
 
+test('tagma-pipeline agent runs a read-only review subagent before finishing YAML work', () => {
+  const doc = buildTagmaPipelineAgent('Windows');
+
+  expect(doc).toContain('tagma-yaml-review: "allow"');
+  expect(doc).toContain('## Review Agent Loop');
+  expect(doc).toContain('After YAML/layout/requirements changes, call `tagma-yaml-review` once');
+  expect(doc).toContain('Pass the review findings back into your own adjustment loop');
+  expect(doc).toContain('Report unfixable issues plainly');
+});
+
 test('tagma-pipeline agent delegates mechanical layout to the placement tool', () => {
   const doc = buildTagmaPipelineAgent('Windows');
 
@@ -256,6 +281,7 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   const pipelineAgent = join(agentsDir, 'tagma-pipeline.md');
   const generalAgent = join(agentsDir, 'tagma-general-discussion.md');
   const historyAgent = join(agentsDir, 'tagma-history-compare.md');
+  const reviewAgent = join(agentsDir, 'tagma-yaml-review.md');
   const pythonAgent = join(agentsDir, 'tagma-python-tools.md');
   const placementTool = join(dir, '.opencode', 'tools', 'tagma_placement_plan.ts');
   const blockToolNames = [
@@ -273,6 +299,12 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   expect(existsSync(generalAgent)).toBe(true);
   expect(existsSync(historyAgent)).toBe(true);
   expect(readFileSync(historyAgent, 'utf8')).toContain('stateless');
+  expect(existsSync(reviewAgent)).toBe(true);
+  expect(readFileSync(reviewAgent, 'utf8')).toContain('name: tagma-yaml-review');
+  expect(readFileSync(reviewAgent, 'utf8')).toContain('mode: subagent');
+  expect(readFileSync(reviewAgent, 'utf8')).toContain('hidden: true');
+  expect(readFileSync(reviewAgent, 'utf8')).toContain('edit: deny');
+  expect(readFileSync(reviewAgent, 'utf8')).toContain('Return findings, not fixes');
   expect(existsSync(pythonAgent)).toBe(true);
   expect(readFileSync(pythonAgent, 'utf8')).toContain('name: tagma-python-tools');
   expect(readFileSync(pythonAgent, 'utf8')).toContain('hidden: true');
