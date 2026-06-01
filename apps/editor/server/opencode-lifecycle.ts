@@ -327,10 +327,23 @@ function loopbackGet(
   return new Promise((resolve, reject) => {
     const chunks: Uint8Array[] = [];
     let settled = false;
+    let closeSocket: (() => void) | null = null;
     const done = (fn: () => void) => {
       if (settled) return;
       settled = true;
       fn();
+    };
+    const tryResolve = (allowIncompleteBody: boolean) => {
+      const parsed = parseLoopbackHttpResponse(
+        Buffer.concat(chunks.map((c) => Buffer.from(c))),
+        allowIncompleteBody,
+      );
+      if (!parsed) return;
+      clearTimeout(timer);
+      done(() => {
+        closeSocket?.();
+        resolve(parsed);
+      });
     };
     const timer = setTimeout(() => {
       done(() => reject(new Error(`timeout after ${timeoutMs}ms`)));
@@ -340,6 +353,7 @@ function loopbackGet(
       port,
       socket: {
         open(s) {
+          closeSocket = () => s.end();
           const authLine = authorization ? `Authorization: ${authorization}\r\n` : '';
           s.write(
             `GET ${path} HTTP/1.1\r\nHost: ${host}:${port}\r\n${authLine}Connection: close\r\nAccept: */*\r\n\r\n`,
@@ -347,21 +361,25 @@ function loopbackGet(
         },
         data(_s, data) {
           chunks.push(data);
+          try {
+            tryResolve(false);
+          } catch (err) {
+            clearTimeout(timer);
+            done(() => reject(err));
+          }
         },
         close() {
           clearTimeout(timer);
           done(() => {
-            const raw = Buffer.concat(chunks.map((c) => Buffer.from(c))).toString('utf-8');
-            // Split headers from body on the first blank line; tolerate CRLF
-            // or bare LF so a quirky server response doesn't confuse parsing.
-            const sep = raw.indexOf('\r\n\r\n');
-            const headerEnd = sep === -1 ? raw.indexOf('\n\n') : sep;
-            const headerBlock = headerEnd === -1 ? raw : raw.slice(0, headerEnd);
-            const body = headerEnd === -1 ? '' : raw.slice(headerEnd + (sep === -1 ? 2 : 4));
-            const statusLine = headerBlock.split(/\r?\n/, 1)[0] ?? '';
-            const m = statusLine.match(/^HTTP\/\d\.\d\s+(\d{3})/);
-            const status = m ? Number(m[1]) : 0;
-            resolve({ status, body });
+            try {
+              const parsed = parseLoopbackHttpResponse(
+                Buffer.concat(chunks.map((c) => Buffer.from(c))),
+                true,
+              );
+              resolve(parsed ?? { status: 0, body: '' });
+            } catch (err) {
+              reject(err);
+            }
           });
         },
         error(_s, err) {
@@ -374,6 +392,69 @@ function loopbackGet(
       done(() => reject(err));
     });
   });
+}
+
+function parseLoopbackHttpResponse(
+  raw: Buffer,
+  allowIncompleteBody: boolean,
+): { status: number; body: string } | null {
+  // Split headers from body on the first blank line; tolerate CRLF or bare LF
+  // so a quirky server response doesn't confuse parsing.
+  const crlfSep = raw.indexOf('\r\n\r\n');
+  const lfSep = crlfSep === -1 ? raw.indexOf('\n\n') : -1;
+  const headerEnd = crlfSep === -1 ? lfSep : crlfSep;
+  if (headerEnd === -1) return allowIncompleteBody ? { status: 0, body: '' } : null;
+  const sepLen = crlfSep === -1 ? 2 : 4;
+  const headerBlock = raw.subarray(0, headerEnd).toString('latin1');
+  const bodyBytes = raw.subarray(headerEnd + sepLen);
+  const lines = headerBlock.split(/\r?\n/);
+  const statusLine = lines.shift() ?? '';
+  const m = statusLine.match(/^HTTP\/\d(?:\.\d)?\s+(\d{3})/);
+  const status = m ? Number(m[1]) : 0;
+  const headers = new Map<string, string>();
+  for (const line of lines) {
+    const i = line.indexOf(':');
+    if (i <= 0) continue;
+    headers.set(line.slice(0, i).trim().toLowerCase(), line.slice(i + 1).trim());
+  }
+
+  if ((headers.get('transfer-encoding') ?? '').toLowerCase().includes('chunked')) {
+    const decoded = decodeCompleteChunkedBody(bodyBytes, allowIncompleteBody);
+    if (!decoded) return null;
+    return { status, body: decoded.toString('utf-8') };
+  }
+
+  const contentLength = headers.get('content-length');
+  if (contentLength != null && contentLength !== '') {
+    const expected = Number(contentLength);
+    if (Number.isFinite(expected) && expected >= 0) {
+      if (bodyBytes.length < expected && !allowIncompleteBody) return null;
+      return { status, body: bodyBytes.subarray(0, expected).toString('utf-8') };
+    }
+  }
+
+  if (!allowIncompleteBody) return null;
+  return { status, body: bodyBytes.toString('utf-8') };
+}
+
+function decodeCompleteChunkedBody(body: Buffer, allowIncompleteBody: boolean): Buffer | null {
+  const chunks: Buffer[] = [];
+  let offset = 0;
+  while (offset < body.length) {
+    const lineEnd = body.indexOf('\r\n', offset);
+    if (lineEnd < 0) return allowIncompleteBody ? Buffer.concat(chunks) : null;
+    const sizeLine = body.subarray(offset, lineEnd).toString('ascii').split(';', 1)[0].trim();
+    const size = Number.parseInt(sizeLine, 16);
+    if (!Number.isFinite(size) || size < 0) {
+      throw new Error('opencode health response has invalid chunk size');
+    }
+    offset = lineEnd + 2;
+    if (size === 0) return Buffer.concat(chunks);
+    if (offset + size + 2 > body.length) return allowIncompleteBody ? Buffer.concat(chunks) : null;
+    chunks.push(body.subarray(offset, offset + size));
+    offset += size + 2;
+  }
+  return allowIncompleteBody ? Buffer.concat(chunks) : null;
 }
 
 async function waitForHealth(

@@ -18,11 +18,40 @@ import {
 const pw = path.win32;
 const hostPath = process.platform === 'win32' ? path.win32 : path.posix;
 const tempRoots: string[] = [];
+const releaseBaselineFile = 'release-baseline.json';
 
 function withTempDir(): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'tagma-runtime-paths-'));
   tempRoots.push(dir);
   return dir;
+}
+
+function writeUserReleaseOverride(
+  userDataDir: string,
+  version: string,
+): {
+  editorDir: string;
+  sidecarDir: string;
+} {
+  const editorDir = hostPath.join(userDataDir, 'editor');
+  const editorDistDir = hostPath.join(editorDir, 'dist');
+  mkdirSync(editorDistDir, { recursive: true });
+  writeFileSync(hostPath.join(editorDistDir, 'index.html'), '<html>override</html>');
+  writeFileSync(hostPath.join(editorDir, 'dist-version.txt'), `${version}\n`);
+
+  const sidecarDir = hostPath.join(userDataDir, 'editor-sidecar');
+  const versionDir = hostPath.join(sidecarDir, 'versions', version);
+  mkdirSync(versionDir, { recursive: true });
+  const body = Buffer.from(`sidecar-${version}`);
+  writeFileSync(hostPath.join(versionDir, executableName()), body);
+  const sha256 = createHash('sha256').update(body).digest('hex');
+  writeFileSync(
+    hostPath.join(sidecarDir, 'current.json'),
+    JSON.stringify({ version, sha256 }) + '\n',
+    'utf-8',
+  );
+
+  return { editorDir, sidecarDir };
 }
 
 afterEach(() => {
@@ -441,6 +470,55 @@ describe('runtime path resolution', () => {
 
     expect(existsSync(editorDir)).toBe(false);
     expect(existsSync(sidecarDir)).toBe(false);
+  });
+
+  test('packaged mode discards a newer user release override when a fresh older installer is launched', () => {
+    const root = withTempDir();
+    const resourcesPath = hostPath.join(root, 'resources');
+    const userDataDir = hostPath.join(root, 'userData');
+    const bundledSidecarDir = hostPath.join(resourcesPath, 'editor-sidecar');
+    mkdirSync(bundledSidecarDir, { recursive: true });
+    const { editorDir, sidecarDir } = writeUserReleaseOverride(userDataDir, '0.0.2');
+
+    const paths = resolveRuntimePaths({
+      isPackaged: true,
+      compiledDir: hostPath.join(root, 'compiled'),
+      resourcesPath,
+      userDataDir,
+      platform: process.platform,
+      appVersion: '0.0.1',
+    });
+
+    expect(paths.command).toBe(hostPath.join(bundledSidecarDir, executableName()));
+    expect(paths.sidecarSource).toBe('bundled');
+    expect(paths.sidecarVersion).toBe('0.0.1');
+    expect(existsSync(editorDir)).toBe(false);
+    expect(existsSync(sidecarDir)).toBe(false);
+    expect(
+      JSON.parse(readFileSync(hostPath.join(userDataDir, releaseBaselineFile), 'utf-8')),
+    ).toEqual({ bundledVersion: '0.0.1' });
+  });
+
+  test('packaged mode records the current installer baseline without clearing matching hot-update state', () => {
+    const root = withTempDir();
+    const resourcesPath = hostPath.join(root, 'resources');
+    const userDataDir = hostPath.join(root, 'userData');
+    writeUserReleaseOverride(userDataDir, '0.0.2');
+
+    const paths = resolveRuntimePaths({
+      isPackaged: true,
+      compiledDir: hostPath.join(root, 'compiled'),
+      resourcesPath,
+      userDataDir,
+      platform: process.platform,
+      appVersion: '0.0.2',
+    });
+
+    expect(paths.sidecarSource).toBe('user');
+    expect(paths.sidecarVersion).toBe('0.0.2');
+    expect(
+      JSON.parse(readFileSync(hostPath.join(userDataDir, releaseBaselineFile), 'utf-8')),
+    ).toEqual({ bundledVersion: '0.0.2' });
   });
 });
 

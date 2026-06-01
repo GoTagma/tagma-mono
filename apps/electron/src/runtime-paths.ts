@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 
@@ -183,6 +183,15 @@ function sidecarVersionDir(
   return p.join(sidecarUserDir(p, userDataDir), 'versions', version);
 }
 
+const RELEASE_BASELINE_FILE = 'release-baseline.json';
+
+function releaseBaselinePath(
+  p: typeof path.win32 | typeof path.posix,
+  userDataDir: string,
+): string {
+  return p.join(userDataDir, RELEASE_BASELINE_FILE);
+}
+
 interface UserSidecarPointer {
   version: string;
   /**
@@ -310,20 +319,110 @@ function cleanupStaleUserSidecar(
 }
 
 export function discardUserSidecarOverride(userDataDir: string): void {
+  discardUserSidecarOverrideWithPath(pathFor(process.platform), userDataDir);
+}
+
+function discardUserSidecarOverrideWithPath(
+  p: typeof path.win32 | typeof path.posix,
+  userDataDir: string,
+): void {
   try {
-    rmSync(path.join(userDataDir, 'editor-sidecar'), { recursive: true, force: true });
+    rmSync(sidecarUserDir(p, userDataDir), { recursive: true, force: true });
   } catch {
     /* best-effort */
   }
 }
 
 export function discardUserReleaseOverride(userDataDir: string): void {
-  discardUserSidecarOverride(userDataDir);
+  discardUserReleaseOverrideWithPath(pathFor(process.platform), userDataDir);
+}
+
+function discardUserReleaseOverrideWithPath(
+  p: typeof path.win32 | typeof path.posix,
+  userDataDir: string,
+): void {
+  discardUserSidecarOverrideWithPath(p, userDataDir);
   try {
-    rmSync(path.join(userDataDir, 'editor'), { recursive: true, force: true });
+    rmSync(p.join(userDataDir, 'editor'), { recursive: true, force: true });
   } catch {
     /* best-effort */
   }
+}
+
+function readReleaseBaseline(
+  p: typeof path.win32 | typeof path.posix,
+  userDataDir: string | undefined,
+): string | null {
+  if (!userDataDir) return null;
+  try {
+    const raw = JSON.parse(readFileSync(releaseBaselinePath(p, userDataDir), 'utf-8')) as {
+      bundledVersion?: unknown;
+    };
+    if (typeof raw.bundledVersion !== 'string') return null;
+    const version = raw.bundledVersion.trim();
+    return SIDECAR_VERSION_RE.test(version) ? version : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeReleaseBaseline(
+  p: typeof path.win32 | typeof path.posix,
+  userDataDir: string | undefined,
+  bundledVersion: string | undefined,
+): void {
+  if (!userDataDir || !bundledVersion || !SIDECAR_VERSION_RE.test(bundledVersion)) return;
+  try {
+    mkdirSync(userDataDir, { recursive: true });
+    writeFileSync(
+      releaseBaselinePath(p, userDataDir),
+      JSON.stringify({ bundledVersion }) + '\n',
+      'utf-8',
+    );
+  } catch {
+    /* best-effort */
+  }
+}
+
+function readUserEditorVersion(
+  p: typeof path.win32 | typeof path.posix,
+  userDataDir: string | undefined,
+): string | null {
+  if (!userDataDir) return null;
+  try {
+    const editorDir = p.join(userDataDir, 'editor');
+    if (!existsSync(p.join(editorDir, 'dist', 'index.html'))) return null;
+    const version = readFileSync(p.join(editorDir, 'dist-version.txt'), 'utf-8').trim();
+    return SIDECAR_VERSION_RE.test(version) ? version : null;
+  } catch {
+    return null;
+  }
+}
+
+function syncReleaseBaseline(
+  p: typeof path.win32 | typeof path.posix,
+  userDataDir: string | undefined,
+  bundledVersion: string | undefined,
+): void {
+  if (!userDataDir || !bundledVersion || !SIDECAR_VERSION_RE.test(bundledVersion)) return;
+
+  const previousBundledVersion = readReleaseBaseline(p, userDataDir);
+  const editorVersion = readUserEditorVersion(p, userDataDir);
+  const editorAhead = !!editorVersion && compareVersions(editorVersion, bundledVersion) > 0;
+
+  const installerDowngraded =
+    !!previousBundledVersion && compareVersions(bundledVersion, previousBundledVersion) < 0;
+
+  // If the user explicitly launches an older installer, the installer's
+  // bundled release must win over any userData hot-update layer. For installs
+  // predating this marker, an editor override ahead of the bundled installer is
+  // the legacy ambiguous state that caused downgrades to keep showing the newer
+  // editor after uninstall/reinstall.
+  if (installerDowngraded || (!previousBundledVersion && editorAhead)) {
+    discardUserReleaseOverrideWithPath(p, userDataDir);
+  }
+
+  writeReleaseBaseline(p, userDataDir, bundledVersion);
 }
 
 export interface VersionSkew {
@@ -405,6 +504,7 @@ export function resolveRuntimePaths(options: RuntimePathOptions): RuntimePaths {
       ];
       return candidates.find((c) => existsSync(c)) ?? null;
     })();
+    syncReleaseBaseline(p, options.userDataDir, options.appVersion);
     cleanupStaleUserSidecar(p, options.userDataDir, options.appVersion);
     if (options.userDataDir) {
       const skew = detectVersionSkew(options.userDataDir, platform);
