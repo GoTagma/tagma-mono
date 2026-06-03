@@ -2,11 +2,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const workflow = readFileSync(new URL('../.github/workflows/publish-npm.yml', import.meta.url), 'utf8');
-const ciWorkflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
-const packageJson = JSON.parse(
-  readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+const workflow = readFileSync(
+  new URL('../.github/workflows/publish-npm.yml', import.meta.url),
+  'utf8',
 );
+const ciWorkflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
 function stepIndex(text, name) {
   const needle = `- name: ${name}`;
@@ -79,7 +80,8 @@ test('ci fork check runs read-only hygiene gates before public package checks', 
 test('test:scripts runs both node mjs tests and Bun TypeScript script tests', () => {
   const script = packageJson.scripts?.['test:scripts'];
 
-  assert.match(script, /node --test/);
+  assert.match(script, /node scripts\/run-node-tests\.mjs/);
+  assert.doesNotMatch(script, /node --test ["']?scripts\/\*\*\/\*\.test\.mjs/);
   assert.match(script, /bun test/);
   assert.match(script, /scripts\/\*\*\/\*\.test\.ts/);
 });

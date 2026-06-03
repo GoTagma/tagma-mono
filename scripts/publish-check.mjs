@@ -7,9 +7,9 @@
 // compiles sources; it never asserts the published surface resolves.
 // `publish:dry` would catch it but is not gated. exports flattening +
 // teeth: scripts/lib/exports-targets.mjs (tested).
-import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { collectExportTargets } from './lib/exports-targets.mjs';
+import { describePublishTargetStatus, formatPublishTargetFailure } from './lib/publish-targets.mjs';
 import { reportGate, workspacePackages } from './lib/repo.mjs';
 
 const failures = [];
@@ -39,11 +39,9 @@ for (const { name, manifest, dir } of workspacePackages()) {
   for (const [field, rel] of targets) {
     if (typeof rel !== 'string' || rel.includes('*')) continue; // skip wildcard subpaths
     checkedTargets += 1;
-    if (!existsSync(join(dir, rel))) {
-      failures.push(
-        `${name}: ${field} -> "${rel}" does not exist (run \`bun run build\` and/or fix package.json)`,
-      );
-    }
+    const status = describePublishTargetStatus(join(dir, rel));
+    const failure = formatPublishTargetFailure(name, field, rel, status);
+    if (failure) failures.push(failure);
   }
 }
 

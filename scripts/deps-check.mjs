@@ -18,6 +18,10 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  formatFrozenInstallDetail,
+  formatFrozenInstallFailure,
+} from './lib/deps-check-message.mjs';
 import { satisfies } from './lib/semver-lite.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -88,9 +92,7 @@ for (const { manifest, manifestPath } of manifests) {
         continue;
       }
       if (satisfies(actual, range)) {
-        checkedEdges.push(
-          `${manifest.name} ${field} ${depName}@"${range}" -> ${actual} (ok)`,
-        );
+        checkedEdges.push(`${manifest.name} ${field} ${depName}@"${range}" -> ${actual} (ok)`);
       } else {
         failures.push(
           `${manifest.name} (${manifestPath}) ${field} requires ${depName}@"${range}" ` +
@@ -114,17 +116,8 @@ if (existsSync(lockPath)) {
   if (result.status === 0) {
     frozenDetail = 'ok';
   } else {
-    frozenDetail = `exit ${result.status}`;
-    const tail = `${result.stdout ?? ''}${result.stderr ?? ''}`
-      .trim()
-      .split('\n')
-      .slice(-6)
-      .join('\n');
-    failures.push(
-      `bun install --frozen-lockfile failed (${frozenDetail}). The lockfile ` +
-        `is out of sync with package.json. Run \`bun install\` and commit ` +
-        `bun.lock.\n${tail}`,
-    );
+    frozenDetail = formatFrozenInstallDetail(result);
+    failures.push(formatFrozenInstallFailure(result));
   }
 }
 

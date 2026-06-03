@@ -51,7 +51,7 @@
     "verify:quick": "node scripts/verify-project.mjs --quick",
     "verify:full": "node scripts/verify-project.mjs --full",
     "test:public": "bun run --filter \"@tagma/*\" test",
-    "test:scripts": "node --test \"scripts/**/*.test.mjs\" && bun test ./scripts/**/*.test.ts",
+    "test:scripts": "node scripts/run-node-tests.mjs scripts/**/*.test.mjs && bun test ./scripts/**/*.test.ts",
     "dev:editor": "cd apps/editor && bun run dev",
     "dev:server": "bun run --filter tagma-editor dev:server",
     "dev:client": "bun run --filter tagma-editor dev:client",

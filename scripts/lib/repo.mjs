@@ -7,6 +7,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+export const gitSafeDirectory = repoRoot.replaceAll('\\', '/');
 
 export function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
@@ -14,8 +15,12 @@ export function readJson(path) {
 
 // Tracked files only -- the verification angles must judge what is
 // committed, not local scratch files. Paths are repo-relative, POSIX.
+export function trackedFilesGitArgs() {
+  return ['-c', `safe.directory=${gitSafeDirectory}`, 'ls-files', '-z'];
+}
+
 export function trackedFiles() {
-  const out = execFileSync('git', ['ls-files', '-z'], {
+  const out = execFileSync('git', trackedFilesGitArgs(), {
     cwd: repoRoot,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,

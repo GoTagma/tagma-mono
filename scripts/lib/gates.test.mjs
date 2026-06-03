@@ -3,9 +3,13 @@
 // (node --test "scripts/**/*.test.mjs").
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { formatBuildCleanupFailure } from './build-package-message.mjs';
 import { collectExportTargets } from './exports-targets.mjs';
+import { formatFrozenInstallFailure } from './deps-check-message.mjs';
 import { findCycles } from './graph-cycles.mjs';
 import { isBuiltin, pkgNameOf, specifiersOf } from './import-spec.mjs';
+import { describePublishTargetStatus } from './publish-targets.mjs';
+import { gitSafeDirectory, trackedFilesGitArgs } from './repo.mjs';
 import { focusHit, secretHit } from './static-scan.mjs';
 
 test('focus: catches focus/skip/debugger, ignores clean code', () => {
@@ -100,6 +104,42 @@ test('publish: collectExportTargets flattens nested conditions', () => {
   assert.deepEqual(collectExportTargets('./dist/index.js'), ['./dist/index.js']);
 });
 
+test('publish: target status distinguishes inaccessible files from missing files', () => {
+  assert.deepEqual(
+    describePublishTargetStatus('dist/index.js', () => ({})),
+    { kind: 'ok' },
+  );
+  assert.deepEqual(
+    describePublishTargetStatus('dist/missing.js', () => {
+      throw Object.assign(new Error('no such file'), { code: 'ENOENT' });
+    }),
+    { kind: 'missing' },
+  );
+  assert.deepEqual(
+    describePublishTargetStatus('dist/index.js', () => {
+      throw Object.assign(new Error('permission denied'), { code: 'EPERM' });
+    }),
+    { kind: 'unreadable', code: 'EPERM', message: 'permission denied' },
+  );
+});
+
+test('build: dist cleanup failure reports package path without a raw Node stack', () => {
+  const message = formatBuildCleanupFailure(
+    'D:/TagmaV2/packages/types',
+    'D:/TagmaV2/packages/types/dist',
+    Object.assign(new Error('operation not permitted'), {
+      code: 'EPERM',
+      path: 'D:/TagmaV2/packages/types/dist/index.js',
+    }),
+  );
+
+  assert.match(message, /Failed to clean package dist directory before build/);
+  assert.match(message, /packages\/types\/dist/);
+  assert.match(message, /EPERM/);
+  assert.match(message, /index\.js/);
+  assert.doesNotMatch(message, /at rmSync/);
+});
+
 test('secrets: catches real signatures, ignores placeholders', () => {
   assert.ok(secretHit('-----BEGIN ' + 'RSA PRIVATE KEY-----', false), 'pem');
   assert.ok(secretHit('aws_key = "' + 'AKIA' + '1234567890ABCDEF"', false), 'akia');
@@ -113,4 +153,65 @@ test('secrets: catches real signatures, ignores placeholders', () => {
   // generic heuristic must stay OFF for fixtures/markdown callers
   assert.equal(secretHit('const apiKey = "9f8e7d6c5b4a39281706abcd"', false), null);
   assert.equal(secretHit('just a normal line of code', true), null);
+});
+
+test('repo: git tracked-file scan trusts only the current repo root', () => {
+  assert.deepEqual(trackedFilesGitArgs(), [
+    '-c',
+    `safe.directory=${gitSafeDirectory}`,
+    'ls-files',
+    '-z',
+  ]);
+});
+
+test('deps: frozen install failure keeps lockfile-drift guidance for frozen lock errors', () => {
+  const message = formatFrozenInstallFailure({
+    status: 1,
+    stdout: '',
+    stderr: 'error: lockfile had changes, but lockfile is frozen',
+  });
+
+  assert.match(message, /The lockfile is out of sync with package\.json/);
+  assert.match(message, /Run `bun install` and commit bun\.lock/);
+});
+
+test('deps: frozen install failure reports lifecycle errors without blaming lockfile drift', () => {
+  const message = formatFrozenInstallFailure({
+    status: 1,
+    stdout: '$ bun run --filter @tagma/types build',
+    stderr: [
+      'packages/types/dist/index.js: EPERM reading',
+      'error: postinstall script from "tagma-mono" exited with 1',
+    ].join('\n'),
+  });
+
+  assert.match(message, /bun install --frozen-lockfile failed \(exit 1\)/);
+  assert.match(message, /A lifecycle script or build step failed/);
+  assert.match(message, /postinstall script/);
+  assert.doesNotMatch(message, /The lockfile is out of sync/);
+});
+
+test('deps: lifecycle failure excerpt keeps nested build cleanup diagnostics', () => {
+  const message = formatFrozenInstallFailure({
+    status: 1,
+    stdout: [
+      'Resolved, downloaded and extracted [2]',
+      '',
+      '$ node scripts/postinstall-check.mjs || (bun run build:types && bun run build:core)',
+      '$ bun run --filter @tagma/types build',
+      'Failed to clean package dist directory before build.',
+      'Package: D:\\TagmaV2\\packages\\types',
+      'Dist: D:\\TagmaV2\\packages\\types\\dist',
+      "Error: EPERM: operation not permitted, lstat 'D:\\TagmaV2\\packages\\types\\dist\\duration.js'",
+      'Path: D:\\TagmaV2\\packages\\types\\dist\\duration.js',
+      'Remove or unlock the dist directory, then rerun the build.',
+      'error: script "build:types" exited with code 1',
+      'error: postinstall script from "tagma-mono" exited with 1',
+    ].join('\n'),
+    stderr: '',
+  });
+
+  assert.match(message, /Failed to clean package dist directory before build/);
+  assert.match(message, /EPERM/);
+  assert.match(message, /packages\\types\\dist\\duration\.js/);
 });
