@@ -22,7 +22,7 @@
 
 import {
   linkAbort,
-  parseDurationSafe,
+  parseOptionalPluginTimeout,
   type TagmaPlugin,
   type MiddlewarePlugin,
   type MiddlewareContext,
@@ -266,7 +266,7 @@ export const LightRAGMiddleware: MiddlewarePlugin = {
     }
     if (apiKey) assertSafeApiKeyTransport(endpointUrl, apiKeyEnv);
 
-    const timeoutMs = parseDurationSafe(config.timeout, DEFAULT_TIMEOUT_MS);
+    const timeoutMs = parseOptionalPluginTimeout(config.timeout, DEFAULT_TIMEOUT_MS);
     const label = (config.label as string | undefined) ?? 'Knowledge Graph Context';
     const required = config.required === true;
     const rawOnError = (config.on_error as string | undefined) ?? (required ? 'fail' : 'warn');

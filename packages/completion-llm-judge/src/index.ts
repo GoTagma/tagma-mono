@@ -28,7 +28,7 @@
 //             # endpoint / model / api_key_env all default to local Ollama + qwen3:4b
 
 import {
-  parseDurationSafe,
+  parseOptionalPluginTimeout,
   type TagmaPlugin,
   type CompletionPlugin,
   type CompletionContext,
@@ -256,7 +256,7 @@ export const LlmJudgeCompletion: CompletionPlugin = {
     );
     assertSafeApiKeyTransport(endpointUrl, apiKeyEnv);
     const endpoint = endpointUrl.toString();
-    const timeoutMs = parseDurationSafe(config.timeout, DEFAULT_TIMEOUT_MS);
+    const timeoutMs = parseOptionalPluginTimeout(config.timeout, DEFAULT_TIMEOUT_MS);
     const maxChars =
       typeof config.max_output_chars === 'number' && config.max_output_chars > 0
         ? Math.floor(config.max_output_chars)

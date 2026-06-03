@@ -96,6 +96,25 @@ describe('middleware-lightrag plugin shape', () => {
     }
   });
 
+  test('rejects malformed timeout before querying LightRAG', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      throw new Error('fetch should not run with malformed timeout');
+    }) as typeof fetch;
+
+    try {
+      await expect(
+        LightRAGMiddleware.enhanceDoc(
+          { contexts: [], task: 'explain tagma' },
+          { endpoint: 'http://localhost:9621', on_error: 'fail', timeout: 'soon' },
+          { task: {} as never, track: {} as never, workDir: process.cwd() },
+        ),
+      ).rejects.toThrow(/Invalid duration format/);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test('links LightRAG fetch cancellation to the middleware signal', async () => {
     const originalFetch = globalThis.fetch;
     const controller = new AbortController();

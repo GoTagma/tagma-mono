@@ -76,4 +76,40 @@ describe('completion-llm-judge plugin shape', () => {
       delete process.env[envName];
     }
   });
+
+  test('rejects malformed timeout before calling the judge endpoint', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      throw new Error('fetch should not run with malformed timeout');
+    }) as typeof fetch;
+
+    try {
+      await expect(
+        LlmJudgeCompletion.check(
+          {
+            rubric: 'must pass',
+            endpoint: 'http://localhost:11434/v1/chat/completions',
+            timeout: 'soon',
+          },
+          {
+            exitCode: 0,
+            stdout: 'ok',
+            stderr: '',
+            stdoutPath: null,
+            stderrPath: null,
+            durationMs: 1,
+            sessionId: null,
+            normalizedOutput: null,
+            failureKind: null,
+          },
+          {
+            workDir: '/tmp',
+            runtime: {} as never,
+          },
+        ),
+      ).rejects.toThrow(/Invalid duration format/);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
