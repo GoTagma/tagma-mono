@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import yaml from 'js-yaml';
+import { resolve } from 'path';
 import type { PipelineConfig, RawPipelineConfig } from '@tagma/types';
 import {
   deresolvePipeline,
@@ -136,6 +137,38 @@ describe('completion default serialization', () => {
       check: 'test -f ./done.txt',
     });
   });
+
+  test('deresolvePipeline preserves a task cwd reset to the workspace root', () => {
+    const workDir = resolve('D:/workspace');
+    const trackDir = resolve(workDir, 'apps');
+    const resolved: PipelineConfig = {
+      name: 'Deresolve Cwd',
+      tracks: [
+        {
+          id: 'track_a',
+          name: 'Track A',
+          cwd: trackDir,
+          tasks: [
+            {
+              id: 'root_task',
+              name: 'Root Task',
+              prompt: 'inspect root files',
+              cwd: workDir,
+            },
+          ],
+        },
+      ],
+    };
+
+    const raw = deresolvePipeline(resolved, workDir);
+
+    expect(raw.tracks[0].cwd).toBe('apps');
+    expect(raw.tracks[0].tasks[0].cwd).toBe('.');
+
+    const roundTrip = resolveConfig(raw, workDir);
+    expect(roundTrip.tracks[0].cwd).toBe(trackDir);
+    expect(roundTrip.tracks[0].tasks[0].cwd).toBe(workDir);
+  });
 });
 
 describe('parseYaml structural validation', () => {
@@ -163,9 +196,58 @@ pipeline:
 `),
     ).toThrow(/track "t": tasks must be an array/);
   });
+
+  test('downstream helpers tolerate raw tracks whose task list is omitted', () => {
+    const raw = parseYaml(`
+pipeline:
+  name: Missing Tasks
+  tracks:
+    - id: t
+      name: T
+`);
+
+    expect(() => serializePipeline(raw)).not.toThrow();
+    expect(resolveConfig(raw, 'D:/workspace').tracks[0].tasks).toEqual([]);
+  });
+
+  test('downstream helpers tolerate raw tracks whose task list is malformed', () => {
+    const raw = {
+      name: 'Malformed Tasks',
+      tracks: [
+        {
+          id: 't',
+          name: 'T',
+          tasks: { id: 'not-an-array' },
+        },
+      ],
+    } as unknown as RawPipelineConfig;
+
+    expect(() => serializePipeline(raw)).not.toThrow();
+    expect(resolveConfig(raw, 'D:/workspace').tracks[0].tasks).toEqual([]);
+  });
 });
 
 describe('loadPipeline validation', () => {
+  test('rejects missing or blank workDir before resolving cwd paths', async () => {
+    const yaml = `
+pipeline:
+  name: WorkDir Required
+  tracks:
+    - id: t
+      name: T
+      tasks:
+        - id: a
+          command: echo hi
+`;
+
+    await expect(loadPipeline(yaml, '' as string)).rejects.toThrow(
+      /workDir must be a non-empty string/,
+    );
+    await expect(loadPipeline(yaml, undefined as unknown as string)).rejects.toThrow(
+      /workDir must be a non-empty string/,
+    );
+  });
+
   test('preserves secret declarations at pipeline, track, and task scopes', async () => {
     const config = await loadPipeline(
       `
@@ -300,6 +382,98 @@ pipeline:
         'D:/workspace',
       ),
     ).rejects.toThrow(/max_concurrency must be a positive integer/);
+  });
+
+  test('rejects unknown lifecycle hook events during load', async () => {
+    try {
+      await loadPipeline(
+        `
+pipeline:
+  name: Bad Hook
+  hooks:
+    pipeline_done: echo done
+  tracks:
+    - id: t
+      name: T
+      tasks:
+        - id: a
+          command: echo hi
+`,
+        'D:/workspace',
+      );
+      throw new Error('expected loadPipeline to reject');
+    } catch (err) {
+      expect(err).toBeInstanceOf(PipelineValidationError);
+      expect((err as PipelineValidationError).diagnostics).toEqual(
+        expect.arrayContaining([
+          { path: 'hooks.pipeline_done', message: 'Unknown hook event "pipeline_done"' },
+        ]),
+      );
+    }
+  });
+
+  test('rejects malformed cwd fields during load validation', async () => {
+    try {
+      await loadPipeline(
+        `
+pipeline:
+  name: Bad Cwd
+  tracks:
+    - id: t
+      name: T
+      cwd: 5
+      tasks:
+        - id: a
+          command: echo hi
+          cwd: {}
+`,
+        'D:/workspace',
+      );
+      throw new Error('expected loadPipeline to reject');
+    } catch (err) {
+      expect(err).toBeInstanceOf(PipelineValidationError);
+      expect((err as PipelineValidationError).diagnostics).toEqual(
+        expect.arrayContaining([
+          { path: 'tracks[0].cwd', message: 'track.cwd must be a non-empty string' },
+          { path: 'tracks[0].tasks[0].cwd', message: 'task.cwd must be a non-empty string' },
+        ]),
+      );
+    }
+  });
+
+  test('rejects unsafe cwd paths with structured diagnostics during load validation', async () => {
+    try {
+      await loadPipeline(
+        `
+pipeline:
+  name: Unsafe Cwd
+  tracks:
+    - id: t
+      name: T
+      cwd: ../outside-track
+      tasks:
+        - id: a
+          command: echo hi
+          cwd: ../outside-task
+`,
+        'D:/workspace',
+      );
+      throw new Error('expected loadPipeline to reject');
+    } catch (err) {
+      expect(err).toBeInstanceOf(PipelineValidationError);
+      expect((err as PipelineValidationError).diagnostics).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: 'tracks[0].cwd',
+            message: expect.stringContaining('escapes project root'),
+          }),
+          expect.objectContaining({
+            path: 'tracks[0].tasks[0].cwd',
+            message: expect.stringContaining('escapes project root'),
+          }),
+        ]),
+      );
+    }
   });
 
   test('rejects oversized task timeout during load', async () => {

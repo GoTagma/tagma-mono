@@ -4,10 +4,12 @@ import {
   applySseEvent,
   canEndCurrentTurnFromConfirmedIdle,
   subscribeEventStreamWithReadinessTimeout,
+  waitForSseReadyWithTimeout,
   shouldStartFreshChatSessionForContextLimit,
 } from '../src/store/chat-store';
 import { usePipelineStore } from '../src/store/pipeline-store';
 import { resetOpencodeClient } from '../src/api/opencode-chat';
+import { setClientWorkspace } from '../src/api/client';
 import type { ActivityEvent, OpencodeThreadEntry } from '../src/api/opencode-chat';
 
 // Background work safety: session.idle and session.error{abort} can call
@@ -72,6 +74,23 @@ const jsonResponse = (data: unknown): Response =>
     headers: { 'Content-Type': 'application/json' },
   });
 
+function headerValue(headers: HeadersInit | undefined, name: string): string | null {
+  if (!headers) return null;
+  if (headers instanceof Headers) return headers.get(name);
+  if (Array.isArray(headers)) {
+    return headers.find(([key]) => key.toLowerCase() === name.toLowerCase())?.[1] ?? null;
+  }
+  return (headers as Record<string, string | undefined>)[name] ?? null;
+}
+
+async function waitFor(condition: () => boolean): Promise<void> {
+  for (let i = 0; i < 20; i += 1) {
+    if (condition()) return;
+    await Promise.resolve();
+  }
+  throw new Error('condition was not reached');
+}
+
 test('OpenCode event subscription readiness timeout aborts a hung subscribe', async () => {
   let subscribeSignal: AbortSignal | null = null;
   const parent = new AbortController();
@@ -94,6 +113,141 @@ test('OpenCode event subscription readiness timeout aborts a hung subscribe', as
   ).rejects.toThrow(/event stream/i);
   expect((subscribeSignal as unknown as AbortSignal).aborted).toBe(true);
   expect(parent.signal.aborted).toBe(false);
+});
+
+test('OpenCode send readiness wait resolves when the event stream is ready', async () => {
+  await expect(waitForSseReadyWithTimeout(Promise.resolve(), 5)).resolves.toBeUndefined();
+});
+
+test('OpenCode send readiness wait rejects instead of hanging forever', async () => {
+  await expect(waitForSseReadyWithTimeout(new Promise(() => {}), 5)).rejects.toThrow(
+    /event stream did not become ready/i,
+  );
+});
+
+test('replyPermission posts to the permission workspace/session, not mutable current state', async () => {
+  const requests: Array<{ url: string; method: string; workspace: string | null }> = [];
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : null;
+    const url = request?.url ?? String(input);
+    const method = init?.method ?? request?.method ?? 'GET';
+    const workspace = headerValue(init?.headers, 'X-Tagma-Workspace');
+    requests.push({ url, method, workspace });
+    if (url === '/api/opencode/chat/ensure') {
+      let baseUrl = 'http://opencode-current.test';
+      if (workspace === 'C:/permission-repo') {
+        baseUrl = 'http://opencode-permission.test';
+      } else if (workspace === 'C:/wrong-permission-repo') {
+        baseUrl = 'http://opencode-wrong-permission.test';
+      }
+      return Promise.resolve(jsonResponse({ baseUrl }));
+    }
+    if (url.includes('/permissions/')) {
+      return Promise.resolve(jsonResponse({ ok: true }));
+    }
+    return Promise.reject(new Error(`unexpected fetch ${method} ${url}`));
+  }) as typeof fetch;
+  try {
+    setClientWorkspace('C:/current-repo');
+    resetOpencodeClient();
+    useChatStore.setState({
+      currentSessionId: 'current-session',
+      pendingPermissions: [
+        {
+          workspaceKey: 'C:/wrong-permission-repo',
+          id: 'perm-1',
+          sessionID: 'permission-session',
+          title: 'Wrong workspace command',
+          tool: 'bash',
+          createdAt: 1,
+        },
+        {
+          workspaceKey: 'C:/permission-repo',
+          id: 'perm-1',
+          sessionID: 'permission-session',
+          title: 'Run command',
+          tool: 'bash',
+          createdAt: 2,
+        },
+      ],
+    } as never);
+
+    await useChatStore
+      .getState()
+      .replyPermission('perm-1', 'once', 'permission-session', 'C:/permission-repo');
+
+    const permissionRequest = requests.find((request) => request.url.includes('/permissions/'));
+    const ensureRequest = requests.find((request) => request.url === '/api/opencode/chat/ensure');
+    expect(ensureRequest?.workspace).toBe('C:/permission-repo');
+    expect(permissionRequest?.method).toBe('POST');
+    expect(permissionRequest?.url).toContain('http://opencode-permission.test/');
+    expect(permissionRequest?.url).not.toContain('http://opencode-wrong-permission.test/');
+    expect(permissionRequest?.url).toContain('/session/permission-session/');
+    expect(permissionRequest?.url).not.toContain('/session/current-session/');
+    expect(useChatStore.getState().sendError).toBeNull();
+  } finally {
+    setClientWorkspace('C:/permission-repo');
+    resetOpencodeClient();
+    setClientWorkspace('C:/current-repo');
+    resetOpencodeClient();
+    setClientWorkspace(null);
+    globalThis.fetch = rejectFetch;
+  }
+});
+
+test('abort posts to the workspace where Stop was requested', async () => {
+  const requests: Array<{ url: string; method: string; workspace: string | null }> = [];
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : null;
+    const url = request?.url ?? String(input);
+    const method = init?.method ?? request?.method ?? 'GET';
+    const workspace = headerValue(init?.headers, 'X-Tagma-Workspace');
+    requests.push({ url, method, workspace });
+    if (url === '/api/opencode/chat/ensure') {
+      const baseUrl =
+        workspace === 'C:/abort-repo-a'
+          ? 'http://opencode-abort-a.test'
+          : 'http://opencode-abort-b.test';
+      return Promise.resolve(jsonResponse({ baseUrl }));
+    }
+    if (url.includes('/abort')) {
+      return Promise.resolve(jsonResponse({ ok: true }));
+    }
+    return Promise.reject(new Error(`unexpected fetch ${method} ${url}`));
+  }) as typeof fetch;
+  try {
+    setClientWorkspace('C:/abort-repo-a');
+    resetOpencodeClient();
+    useChatStore.setState({
+      currentSessionId: 'session-a',
+      sending: true,
+      turnStartedAt: Date.now(),
+    } as never);
+
+    await useChatStore.getState().abort();
+    setClientWorkspace('C:/abort-repo-b');
+    await waitFor(() => requests.some((request) => request.url.includes('/abort')));
+
+    const ensureRequest = requests.find((request) => request.url === '/api/opencode/chat/ensure');
+    const abortRequest = requests.find((request) => request.url.includes('/abort'));
+    expect(ensureRequest?.workspace).toBe('C:/abort-repo-a');
+    expect(abortRequest?.url).toContain('http://opencode-abort-a.test/');
+    expect(abortRequest?.url).not.toContain('http://opencode-abort-b.test/');
+    dispatch({
+      type: 'session.error',
+      properties: {
+        sessionID: 'session-a',
+        error: { name: 'MessageAbortedError', data: { message: 'aborted' } },
+      },
+    });
+  } finally {
+    setClientWorkspace('C:/abort-repo-a');
+    resetOpencodeClient();
+    setClientWorkspace('C:/abort-repo-b');
+    resetOpencodeClient();
+    setClientWorkspace(null);
+    globalThis.fetch = rejectFetch;
+  }
 });
 
 const flushAsyncWork = (): Promise<void> =>

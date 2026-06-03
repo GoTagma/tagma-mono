@@ -24,7 +24,7 @@ export function PermissionBubble({ permission }: PermissionBubbleProps) {
     if (pending) return;
     setPending(response);
     try {
-      await reply(permission.id, response);
+      await reply(permission.id, response, permission.sessionID, permission.workspaceKey);
     } finally {
       // Whether server removes the entry (on success) or keeps it (on
       // failure — replyPermission sets sendError and doesn't throw),

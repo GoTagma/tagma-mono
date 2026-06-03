@@ -42,13 +42,14 @@ export function buildModelPickerGroups(
   return providers
     .map((provider) => {
       const providerLabel = provider.name?.trim() || provider.id;
-      const allModels = Object.values(provider.models ?? {}).map((model) => ({
+      const providerModels = provider.models ?? {};
+      const allModels = Object.values(providerModels).map((model) => ({
         id: model.id,
         value: `${provider.id}/${model.id}`,
         label: model.name?.trim() || model.id,
-        status: model.status,
-        context: model.limit.context,
-        reasoning: model.capabilities.reasoning,
+        status: model.status ?? 'active',
+        context: model.limit?.context ?? 0,
+        reasoning: model.capabilities?.reasoning ?? false,
       }));
       if (!q) return { provider, providerLabel, models: allModels };
       const providerHit =
@@ -71,7 +72,7 @@ export function modelPickerLabel(
 ): string {
   if (!value) return fallbackLabel?.trim() || placeholder;
   const provider = providers.find((entry) => entry.id === value.providerID);
-  const model = provider?.models[value.modelID];
+  const model = provider?.models?.[value.modelID];
   const providerLabel = provider?.name ?? value.providerID;
   const modelLabel = model?.name ?? value.modelID;
   return `${providerLabel} / ${modelLabel}`;
@@ -111,7 +112,8 @@ export function ModelPickerDropdown({
   );
   const groups = useMemo(() => buildModelPickerGroups(providers, query), [providers, query]);
   const totalModels = useMemo(
-    () => providers.reduce((count, provider) => count + Object.keys(provider.models).length, 0),
+    () =>
+      providers.reduce((count, provider) => count + Object.keys(provider.models ?? {}).length, 0),
     [providers],
   );
   const visibleCount = groups.reduce((count, group) => count + group.models.length, 0);

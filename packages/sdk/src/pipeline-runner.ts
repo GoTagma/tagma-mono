@@ -23,6 +23,7 @@
 
 import { runPipeline, type EngineResult, type RunPipelineOptions } from '@tagma/core';
 import {
+  appendLiveOutput,
   TASK_LOG_CAP,
   type PipelineConfig,
   type RunEventPayload,
@@ -34,6 +35,28 @@ export type { EngineResult };
 
 export type PipelineRunnerStatus = 'idle' | 'running' | 'done' | 'aborted' | 'failed';
 export type PipelineRunnerOptions = Omit<RunPipelineOptions, 'signal' | 'onEvent'>;
+
+function cloneTaskRecord(
+  record: Readonly<Record<string, unknown>> | null,
+): Readonly<Record<string, unknown>> | null {
+  return record ? { ...record } : record;
+}
+
+function clonePermissions(
+  permissions: RunTaskState['resolvedPermissions'],
+): RunTaskState['resolvedPermissions'] {
+  return permissions ? { ...permissions } : permissions;
+}
+
+function cloneTaskState(task: RunTaskState): RunTaskState {
+  return {
+    ...task,
+    outputs: cloneTaskRecord(task.outputs),
+    inputs: cloneTaskRecord(task.inputs),
+    resolvedPermissions: clonePermissions(task.resolvedPermissions),
+    logs: task.logs.map((line) => ({ ...line })),
+  };
+}
 
 export class PipelineRunner {
   /**
@@ -121,7 +144,7 @@ export class PipelineRunner {
       case 'run_start':
         this._runId = event.runId;
         this._tasks.clear();
-        for (const t of event.tasks) this._tasks.set(t.taskId, { ...t });
+        for (const t of event.tasks) this._tasks.set(t.taskId, cloneTaskState(t));
         return;
       case 'task_update': {
         const prev = this._tasks.get(event.taskId);
@@ -155,11 +178,14 @@ export class PipelineRunner {
           normalizedOutput: pick(event.normalizedOutput, prev.normalizedOutput),
           failureKind: pick(event.failureKind, prev.failureKind),
           missingBinary: pick(event.missingBinary, prev.missingBinary),
-          outputs: pick(event.outputs, prev.outputs),
-          inputs: pick(event.inputs, prev.inputs),
+          outputs: event.outputs !== undefined ? cloneTaskRecord(event.outputs) : prev.outputs,
+          inputs: event.inputs !== undefined ? cloneTaskRecord(event.inputs) : prev.inputs,
           resolvedDriver: pick(event.resolvedDriver, prev.resolvedDriver),
           resolvedModel: pick(event.resolvedModel, prev.resolvedModel),
-          resolvedPermissions: pick(event.resolvedPermissions, prev.resolvedPermissions),
+          resolvedPermissions:
+            event.resolvedPermissions !== undefined
+              ? clonePermissions(event.resolvedPermissions)
+              : prev.resolvedPermissions,
         });
         return;
       }
@@ -189,6 +215,22 @@ export class PipelineRunner {
           logs: nextLogs,
           totalLogCount: prev.totalLogCount + 1,
         });
+        return;
+      }
+      case 'task_output': {
+        const prev = this._tasks.get(event.taskId);
+        if (!prev) {
+          console.warn(
+            `[PipelineRunner] dropping task_output for unknown taskId "${event.taskId}"`,
+          );
+          return;
+        }
+        this._tasks.set(
+          event.taskId,
+          event.stream === 'stdout'
+            ? { ...prev, stdout: appendLiveOutput(prev.stdout, event.chunk) }
+            : { ...prev, stderr: appendLiveOutput(prev.stderr, event.chunk) },
+        );
         return;
       }
       case 'run_end':
@@ -221,7 +263,7 @@ export class PipelineRunner {
    */
   getTasks(): ReadonlyMap<string, RunTaskState> {
     const copy = new Map<string, RunTaskState>();
-    for (const [id, t] of this._tasks) copy.set(id, { ...t });
+    for (const [id, t] of this._tasks) copy.set(id, cloneTaskState(t));
     return copy;
   }
 

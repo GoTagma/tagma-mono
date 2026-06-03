@@ -413,6 +413,7 @@ File and directory trigger watch paths may be relative to `workDir`, absolute, o
 - `createTagma(options?)`
 - `createTagma().run(config, options)` for either a single `PipelineConfig` or a `PipelineGraphConfig`
 - `createTagma().runYaml(content, options)` for either `pipeline:` or `workflow:` YAML documents
+- `createTagma().validate(config, { cwd? })`
 - `detectTagmaYamlKind(content)`
 - `loadTagmaYaml(content, workDir)`
 - `bunRuntime()`
@@ -499,6 +500,11 @@ Options:
 - `plugins` -- register package-level `TagmaPlugin` capability objects into the instance registry
 - `runtime` -- override process execution, file/directory watching, file/directory existence checks, log storage, time, and sleep; defaults to `bunRuntime()`
 
+`createTagma().validate(config, { cwd })` validates a resolved pipeline without
+executing it. Pass `cwd` for the same cwd safety checks that `run()` performs;
+omitting it preserves structural-only validation for callers that do not have a
+workspace root yet.
+
 ### `createTagma().run(config, options): Promise<EngineResult>`
 
 Executes a single pipeline. Returns `{ success, runId, logPath, summary, states }`.
@@ -568,11 +574,13 @@ runner.start(); // returns Promise<EngineResult>, idempotent
 // Cancel from IPC
 runner.abort();
 
-// Live wire-shape task mirror, maintained from run_start + task_update + task_log events.
+// Live wire-shape task mirror, maintained from run_start + task_update + task_log + task_output events.
 // Empty map before the first run_start; safe to read at any time.
 // task_log entries with a non-null taskId are folded into RunTaskState.logs
 // (capped at TASK_LOG_CAP) and totalLogCount, so hosts get a self-contained
 // per-task view without having to buffer the event stream themselves.
+// task_output chunks are folded into RunTaskState.stdout/stderr while a task
+// is running; the terminal task_update replaces them with the final bounded tail.
 // Pipeline-wide log lines (taskId: null — config dump, DAG topology,
 // hook output without a [task:<id>] prefix) are NOT folded into any task's
 // log buffer; subscribe at the event stream level if you need them.
@@ -656,7 +664,7 @@ export const HttpTrigger: TriggerPlugin = {
 
 Trigger `watch()` methods must return `{ fired, dispose }`: the engine awaits
 `fired` and calls `dispose()` on success, failure, task timeout, and pipeline
-abort. The schema is purely descriptive — plugins still perform their own runtime validation. Supported field types: `string`, `number`, `boolean`, `enum`, `path`, `duration`, `number-or-list`. Each field can declare `required`, `default`, `description`, `enum`, `min`/`max`, `placeholder`. Built-in plugins (`file`/`manual` triggers; `exit_code`/`file_exists`/`output_check` completions; `static_context` middleware) all ship with schemas so editors can generate forms out of the box.
+abort. The schema is purely descriptive — plugins still perform their own runtime validation. Supported field types: `string`, `number`, `boolean`, `enum`, `path`, `duration`, `number-or-list`, `command`, `json`. Each field can declare `required`, `default`, `description`, `enum`, `min`/`max`, `placeholder`. Built-in plugins (`file`/`manual` triggers; `exit_code`/`file_exists`/`output_check` completions; `static_context` middleware) all ship with schemas so editors can generate forms out of the box.
 
 ### `PluginRegistry.getHandler(category, type): PluginType`
 
@@ -712,18 +720,18 @@ config = upsertTask(config, 'backend', { id: 'implement', prompt: 'Add /health e
 const yaml = serializePipeline(config);
 ```
 
-| Function                                                             | Description                                                                                                                                                                                                      |
-| -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `createEmptyPipeline(name)`                                          | Create a minimal pipeline config                                                                                                                                                                                 |
-| `setPipelineField(config, fields)`                                   | Update top-level pipeline fields                                                                                                                                                                                 |
-| `upsertTrack(config, track)`                                         | Insert or replace a track by id                                                                                                                                                                                  |
-| `removeTrack(config, trackId)`                                       | Remove a track                                                                                                                                                                                                   |
-| `moveTrack(config, trackId, toIndex)`                                | Reorder a track                                                                                                                                                                                                  |
-| `updateTrack(config, trackId, fields)`                               | Patch track fields (not tasks)                                                                                                                                                                                   |
-| `upsertTask(config, trackId, task)`                                  | Insert or replace a task                                                                                                                                                                                         |
-| `removeTask(config, trackId, taskId, cleanRefs?)`                    | Remove a task; pass `cleanRefs: true` to also strip dangling `depends_on` / `continue_from` references. Only refs that resolve to the deleted task are removed — same-named tasks in other tracks are unaffected |
-| `moveTask(config, trackId, taskId, toIndex)`                         | Reorder a task within its track                                                                                                                                                                                  |
-| `transferTask(config, fromTrackId, taskId, toTrackId, qualifyRefs?)` | Move a task across tracks (see invariants below)                                                                                                                                                                 |
+| Function                                                             | Description                                                                                                                                                                                                                      |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createEmptyPipeline(name)`                                          | Create a minimal pipeline config                                                                                                                                                                                                 |
+| `setPipelineField(config, fields)`                                   | Update top-level pipeline fields                                                                                                                                                                                                 |
+| `upsertTrack(config, track)`                                         | Insert or replace a track by id                                                                                                                                                                                                  |
+| `removeTrack(config, trackId, cleanRefs?)`                           | Remove a track; pass `cleanRefs: true` to also strip dangling `depends_on` / `continue_from` / `inputs.from` references to tasks removed with the track                                                                          |
+| `moveTrack(config, trackId, toIndex)`                                | Reorder a track                                                                                                                                                                                                                  |
+| `updateTrack(config, trackId, fields)`                               | Patch track fields (not tasks)                                                                                                                                                                                                   |
+| `upsertTask(config, trackId, task)`                                  | Insert or replace a task                                                                                                                                                                                                         |
+| `removeTask(config, trackId, taskId, cleanRefs?)`                    | Remove a task; pass `cleanRefs: true` to also strip dangling `depends_on` / `continue_from` / `inputs.from` references. Only refs that resolve to the deleted task are removed — same-named tasks in other tracks are unaffected |
+| `moveTask(config, trackId, taskId, toIndex)`                         | Reorder a task within its track                                                                                                                                                                                                  |
+| `transferTask(config, fromTrackId, taskId, toTrackId, qualifyRefs?)` | Move a task across tracks (see invariants below)                                                                                                                                                                                 |
 
 `transferTask` invariants — the call is a **no-op** (returns the input config unchanged) when:
 
@@ -734,8 +742,8 @@ It never silently drops the source task or overwrites a task in the target track
 
 When `qualifyRefs` is `true` (default), reference rewriting runs in two passes so same-track shorthand stays correct after the move:
 
-- the **moved task's own** bare `depends_on` / `continue_from` entries that pointed at siblings in the source track are rewritten to `fromTrackId.<dep>` (so they keep pointing at the original peers, not at coincidental same-named tasks in the destination track)
-- bare references **from other tasks** that resolved to the moved task are rewritten to `toTrackId.taskId` when same-track resolution would otherwise break (i.e. no shadow task exists in the referencing track and no other track still holds the bare id globally)
+- the **moved task's own** bare `depends_on`, `continue_from`, and `inputs.from` entries that pointed at siblings in the source track are rewritten to `fromTrackId.<dep>` (so they keep pointing at the original peers, not at coincidental same-named tasks in the destination track)
+- bare references **from other tasks** that resolved to the moved task are rewritten to `toTrackId.taskId` when same-track resolution would otherwise break (i.e. no shadow task exists in the referencing track and no other track still holds the bare id globally); this includes `depends_on`, `continue_from`, and `inputs.from`
 
 Pass `qualifyRefs: false` to skip both passes — useful when the caller is doing a batch move and will requalify everything itself.
 

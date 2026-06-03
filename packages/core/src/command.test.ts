@@ -6,6 +6,7 @@ import {
   isCommandArgvConfig,
   isCommandShellConfig,
 } from './command';
+import type { CommandConfig } from './types';
 
 const previousShell = process.env.PIPELINE_SHELL;
 
@@ -24,6 +25,8 @@ describe('command config helpers', () => {
     expect(isCommandArgvConfig({ shell: 'node --version' })).toBe(false);
     expect(isCommandShellConfig({ shell: 'node --version' })).toBe(true);
     expect(isCommandShellConfig({ argv: ['node', '--version'] })).toBe(false);
+    expect(isCommandArgvConfig({ shell: 'node --version', argv: ['node'] })).toBe(false);
+    expect(isCommandShellConfig({ shell: 'node --version', argv: ['node'] })).toBe(false);
   });
 
   test('argv commands become spawn specs without shell wrapping', () => {
@@ -55,6 +58,18 @@ describe('command config helpers', () => {
     );
     expect(() => commandToSpawnSpec({ argv: ['node', ''] }, '/tmp/work')).toThrow(
       /command\.argv must contain non-empty string arguments/,
+    );
+  });
+
+  test('command objects must be unambiguous and string-only', () => {
+    expect(() =>
+      commandToSpawnSpec({ shell: 'node --version', argv: ['node'] } as CommandConfig, '/tmp/work'),
+    ).toThrow(/command must be a non-empty shell string/);
+    expect(() => commandToSpawnSpec({ argv: ['node', 1] } as CommandConfig, '/tmp/work')).toThrow(
+      /command must be a non-empty shell string/,
+    );
+    expect(() => commandLabel({ shell: 'node --version', argv: ['node'] } as CommandConfig)).toThrow(
+      /command must be a non-empty shell string/,
     );
   });
 });

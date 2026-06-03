@@ -293,11 +293,11 @@ export function PluginsPage({
   > | null>(null);
 
   const handleInstall = useCallback(
-    async (name: string) => {
+    async (name: string, version?: string) => {
       if (yamlEditLocked) return;
       setActionState({ type: 'loading', name, action: 'install' });
       try {
-        const result = await api.installPlugin(name);
+        const result = await api.installPlugin(name, version);
         onRegistryUpdate(result.registry);
         // Only declare the plugin in pipeline.plugins[] when the new code is
         // actually live in the registry. The server reports loaded=false in
@@ -477,8 +477,8 @@ export function PluginsPage({
 
   /**
    * Top-level uninstall entry point. Runs a pre-flight impact scan against
-   * the workspace YAMLs; if any tasks reference this plugin's type the
-   * dialog is shown and the real uninstall waits for user confirmation.
+   * the workspace YAMLs; if any declarations or tasks reference this plugin
+   * the dialog is shown and the real uninstall waits for user confirmation.
    * Otherwise it proceeds straight through — no nag dialogs for truly
    * unused plugins.
    */
@@ -836,8 +836,8 @@ function UninstallConfirmDialog({
           </div>
           <div className="text-[11px] text-tagma-warning">
             {total} reference{total === 1 ? '' : 's'} in {fileCount} file
-            {fileCount === 1 ? '' : 's'} will be left dangling. The tasks will still save but fail
-            at run time until the plugin is reinstalled or the reference is removed.
+            {fileCount === 1 ? '' : 's'} will be left dangling. The pipeline will still save, but
+            affected runs may fail until the plugin is reinstalled or the reference is removed.
           </div>
           <div className="border border-tagma-border bg-tagma-bg">
             {byFile.map(([file, entries]) => (

@@ -324,7 +324,7 @@ describe('RunContext.isDependencySatisfied', () => {
 
 describe('RunContext.applyStopAll', () => {
   test('aborts the controller, sets abortReason, marks waiting tasks as skipped', () => {
-    const { ctx } = makeContext();
+    const { ctx, events } = makeContext();
     ctx.states.get('t.a')!.status = 'waiting';
     ctx.states.get('t.b')!.status = 'waiting';
     ctx.applyStopAll();
@@ -332,6 +332,26 @@ describe('RunContext.applyStopAll', () => {
     expect(ctx.abortController.signal.aborted).toBe(true);
     expect(ctx.states.get('t.a')!.status).toBe('skipped');
     expect(ctx.states.get('t.b')!.status).toBe('skipped');
+    expect(ctx.states.get('t.a')!.result).toMatchObject({
+      exitCode: -1,
+      stderr: expect.stringContaining('pipeline stopped after a task failure'),
+      failureKind: null,
+    });
+    expect(ctx.states.get('t.b')!.result).toMatchObject({
+      exitCode: -1,
+      stderr: expect.stringContaining('pipeline stopped after a task failure'),
+      failureKind: null,
+    });
+    const skippedUpdates = events.filter(
+      (event) => event.type === 'task_update' && event.status === 'skipped',
+    );
+    expect(skippedUpdates).toHaveLength(2);
+    expect(skippedUpdates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ taskId: 't.a', exitCode: -1 }),
+        expect.objectContaining({ taskId: 't.b', exitCode: -1 }),
+      ]),
+    );
   });
 
   test('does not overwrite an existing abortReason', () => {

@@ -52,6 +52,7 @@ import {
   isYamlEditLocked,
   releaseChatYamlEditLock,
   YAML_EDIT_LOCK_MESSAGE,
+  type ChatYamlEditLockLease,
 } from './yaml-edit-lock-store';
 import { describeToolPartForActivity } from '../utils/chat-tool-display';
 import { loadPersisted, savePersisted, sameModelPick, type ModelPick } from './chat-persist';
@@ -306,14 +307,15 @@ interface ChatStore {
    *  authorize body (e.g. `{method:0, deploymentType:"enterprise",
    *  enterpriseUrl:"…"}` for GitHub Copilot Enterprise). Returns the
    *  authorize envelope (URL + whether the browser can autocomplete or the
-   *  user must paste a code). The caller is responsible for opening the URL
-   *  and, when method === "code", calling `completeProviderOauth()` with the
-   *  pasted code. */
+   *  user must paste a code), or null if the workspace changed while the
+   *  authorization request was in flight. The caller is responsible for
+   *  opening the URL and, when method === "code", calling
+   *  `completeProviderOauth()` with the pasted code. */
   startProviderOauth: (
     providerId: string,
     methodIdx: number,
     promptAnswers?: Record<string, string>,
-  ) => Promise<ProviderAuthAuthorization>;
+  ) => Promise<ProviderAuthAuthorization | null>;
   /** Finish an OAuth flow with a pasted authorization code. Same refresh
    *  semantics as setProviderApiKey. */
   completeProviderOauth: (providerId: string, methodIdx: number, code: string) => Promise<void>;
@@ -362,7 +364,7 @@ interface ChatStore {
   refreshSessions: () => Promise<void>;
   selectSession: (id: string) => Promise<void>;
   newSession: () => Promise<void>;
-  deleteSession: (id: string) => Promise<void>;
+  deleteSession: (id: string, workspaceKey?: string) => Promise<void>;
   send: (text: string) => Promise<void>;
   cancelQueuedMessage: (id: string) => void;
   /**
@@ -393,10 +395,17 @@ interface ChatStore {
   pendingPermissions: PendingPermission[];
   /**
    * Reply to a pending permission. Calls
-   * POST /session/{id}/permissions/{permissionID}. No optimistic mutation —
-   * server's subsequent `permission.replied` event clears the entry.
+   * POST /session/{id}/permissions/{permissionID}. `sessionID` should come
+   * from the permission event; if omitted we fall back to the pending entry.
+   * No optimistic mutation — server's subsequent `permission.replied` event
+   * clears the entry.
    */
-  replyPermission: (id: string, reply: 'once' | 'always' | 'reject') => Promise<void>;
+  replyPermission: (
+    id: string,
+    reply: 'once' | 'always' | 'reject',
+    sessionID?: string,
+    workspaceKey?: string,
+  ) => Promise<void>;
 }
 
 type ChatSet = (patch: Partial<ChatStore> | ((prev: ChatStore) => Partial<ChatStore>)) => void;
@@ -442,6 +451,8 @@ function persistModelToEditorSettings(model: ModelPick | null): void {
 
 const activeSseWorkspaces = new Set<string>();
 const activeSseControllers = new Map<string, AbortController>();
+let bootstrappingWorkspaceKey: string | null = null;
+let appliedBootstrapWorkspaceKey: string | null = null;
 let sseReadyPromise: Promise<void> | null = null;
 let sseReadyResolve: (() => void) | null = null;
 let queuedMessageSeq = 0;
@@ -460,6 +471,15 @@ const PENDING_PART_MESSAGE_LIMIT = 80;
  * unnecessary: a new turn always produces a new message ID.
  */
 const recordedUsageMessageIDs = new Set<string>();
+
+function abortSseSubscriptionsExcept(workspaceKey: string): void {
+  for (const [key, controller] of activeSseControllers) {
+    if (key === workspaceKey) continue;
+    controller.abort();
+    activeSseControllers.delete(key);
+    activeSseWorkspaces.delete(key);
+  }
+}
 
 /**
  * Append a usage row to the workspace's `.tagma/.usage/usage.jsonl` once an
@@ -520,6 +540,7 @@ const STALLED_TURN_POLL_INTERVAL_MS = 2_000;
 // this to show "SSE connected but idle" vs "SSE reconnecting".
 const SSE_IDLE_WARN_MS = 120_000; // 2 minutes without any SSE event
 const SSE_READY_TIMEOUT_MS = 15_000;
+const SSE_READY_PROMPT_TIMEOUT_MS = SSE_READY_TIMEOUT_MS + 1_000;
 // Server-side message timestamps are produced by the embedded OpenCode process,
 // while turnStartedAt is a renderer wall-clock. They should be close, but a
 // small tolerance keeps a legitimate first assistant envelope from being
@@ -615,6 +636,23 @@ function markSseReady(): void {
   if (sseReadyResolve) {
     sseReadyResolve();
     sseReadyResolve = null;
+  }
+}
+
+export async function waitForSseReadyWithTimeout(
+  ready: Promise<void>,
+  timeoutMs = SSE_READY_PROMPT_TIMEOUT_MS,
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<void>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`event stream did not become ready within ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+  try {
+    await Promise.race([ready, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 
@@ -916,6 +954,7 @@ async function pollStalledTurn(get: () => ChatStore, set: ChatSet): Promise<void
     scheduleTurnWatchdog(get, set);
     return;
   }
+  const workspaceKey = getOpencodeWorkspaceKey();
   const before = get();
   const key = currentTurnKey(before);
   if (!before.sending || !key || key !== turnWatchdogAcceptedKey) {
@@ -942,7 +981,7 @@ async function pollStalledTurn(get: () => ChatStore, set: ChatSet): Promise<void
   });
 
   try {
-    const client = await getOpencodeClient();
+    const client = await getOpencodeClient(workspaceKey);
     const sessionId = before.currentSessionId;
     if (!sessionId) return;
     const [statusMap, freshMessages, processAlive] = await Promise.all([
@@ -957,7 +996,7 @@ async function pollStalledTurn(get: () => ChatStore, set: ChatSet): Promise<void
       // Process health check: ping /global/health to verify the opencode
       // process is alive. This catches cases where opencode itself has
       // crashed or hung, separate from upstream model slowness.
-      Promise.all([getOpencodeBaseUrl(), getOpencodeAuthHeader()])
+      Promise.all([getOpencodeBaseUrl(workspaceKey), getOpencodeAuthHeader(workspaceKey)])
         .then(async ([baseUrl, authHeader]) => {
           const res = await fetch(`${baseUrl}/global/health`, {
             headers: buildOpencodeRequestHeaders(authHeader),
@@ -970,6 +1009,7 @@ async function pollStalledTurn(get: () => ChatStore, set: ChatSet): Promise<void
 
     const current = get();
     if (
+      getOpencodeWorkspaceKey() !== workspaceKey ||
       !current.sending ||
       current.currentSessionId !== sessionId ||
       currentTurnKey(current) !== key
@@ -1037,6 +1077,7 @@ async function pollStalledTurn(get: () => ChatStore, set: ChatSet): Promise<void
     console.warn('[chat] stalled-turn poll failed:', err);
     const current = get();
     if (
+      getOpencodeWorkspaceKey() === workspaceKey &&
       current.sending &&
       current.currentSessionId === before.currentSessionId &&
       currentTurnKey(current) === key
@@ -1059,6 +1100,7 @@ async function pollStalledTurn(get: () => ChatStore, set: ChatSet): Promise<void
 }
 
 async function confirmIdleTurn(get: () => ChatStore, set: ChatSet): Promise<void> {
+  const workspaceKey = getOpencodeWorkspaceKey();
   const before = get();
   const sessionId = before.currentSessionId;
   const key = currentTurnKey(before);
@@ -1080,7 +1122,7 @@ async function confirmIdleTurn(get: () => ChatStore, set: ChatSet): Promise<void
   }
 
   try {
-    const client = await getOpencodeClient();
+    const client = await getOpencodeClient(workspaceKey);
     const [statusMap, freshMessages] = await Promise.all([
       unwrap(client.session.status()).catch((err) => {
         console.warn('[chat] idle confirmation status poll failed:', err);
@@ -1094,6 +1136,7 @@ async function confirmIdleTurn(get: () => ChatStore, set: ChatSet): Promise<void
 
     const current = get();
     if (
+      getOpencodeWorkspaceKey() !== workspaceKey ||
       current.currentSessionId !== sessionId ||
       currentTurnKey(current) !== key ||
       (!current.sending && !current.pendingUserText)
@@ -1760,13 +1803,36 @@ function activityFromPart(part: Part): ActivityInput | null {
 }
 
 function chatTurnBlocksSessionMutation(
-  state: Pick<ChatStore, 'sending' | 'pendingUserText' | 'reconciling'>,
+  state: Pick<
+    ChatStore,
+    'sending' | 'pendingUserText' | 'queuedMessages' | 'reconciling' | 'flushing'
+  >,
 ): boolean {
-  return state.sending || !!state.pendingUserText || state.reconciling || isYamlEditLocked();
+  return (
+    queuedPromptDispatchInFlight ||
+    state.sending ||
+    !!state.pendingUserText ||
+    state.queuedMessages.length > 0 ||
+    state.reconciling ||
+    state.flushing ||
+    isYamlEditLocked()
+  );
 }
 
 function chatTurnBlockedMessage(): string {
   return 'Wait for the current OpenCode chat update to finish before changing sessions, providers, or OpenCode runtime state.';
+}
+
+class ChatWorkspaceChangedError extends Error {
+  constructor() {
+    super('Workspace changed before the OpenCode chat request was sent.');
+  }
+}
+
+function assertChatWorkspaceStillCurrent(workspaceKey: string): void {
+  if (getOpencodeWorkspaceKey() !== workspaceKey) {
+    throw new ChatWorkspaceChangedError();
+  }
 }
 
 export function shouldStartFreshChatSessionForContextLimit(opts: {
@@ -1788,13 +1854,22 @@ export function shouldStartFreshChatSessionForContextLimit(opts: {
  * turn) by hand because the killed opencode never emits that event for the
  * severed in-flight session.
  */
-async function forceStopHungTurn(get: () => ChatStore, set: ChatSet): Promise<void> {
+async function forceStopHungTurn(
+  get: () => ChatStore,
+  set: ChatSet,
+  workspaceKey: string,
+): Promise<void> {
   try {
-    await restartOpencodeForConfig();
+    await restartOpencodeForConfig(workspaceKey);
   } catch (err) {
     console.error('[chat] forced opencode restart failed:', err);
-    set({ sendError: `Couldn't stop: ${describeError(err)}` });
+    if (getOpencodeWorkspaceKey() === workspaceKey) {
+      set({ sendError: `Couldn't stop: ${describeError(err)}` });
+    }
   }
+  if (getOpencodeWorkspaceKey() !== workspaceKey) return;
+  lastAbortAcked = true;
+  activeAbortAck = null;
   if (!get().sending) return;
   if (dispatchNextQueuedPrompt(get, set)) return;
   finishChatTurn(set);
@@ -1806,7 +1881,9 @@ async function promptOpencode(
   text: string,
   opts: { internal?: boolean; context?: string } = {},
 ): Promise<void> {
+  const workspaceKeyAtStart = getOpencodeWorkspaceKey();
   const { model, agent } = get();
+  let optimisticTurnStartedAt: number | null = null;
   if (!model) {
     set({ sendError: 'No model selected - pick one from the header dropdown.' });
     throw new Error('No model selected');
@@ -1819,28 +1896,13 @@ async function promptOpencode(
 
   const pipeline = usePipelineStore.getState();
   const preSendWorkDir = pipeline.workDir;
-  let lockAcquired = false;
+  let lockLease: ChatYamlEditLockLease | null = null;
   try {
-    if (preSendWorkDir) {
-      await acquireChatYamlEditLock(YAML_EDIT_LOCK_MESSAGE);
-      lockAcquired = true;
-    }
-    if (preSendWorkDir && (pipeline.isDirty || pipeline.layoutDirty)) {
-      const saved = await pipeline.saveFile({ allowDuringYamlEditLock: true });
-      if (!saved) {
-        const msg =
-          'Save failed, so chat was not started. Save or discard local YAML/layout edits first.';
-        set({ sendError: msg });
-        throw new Error(msg);
-      }
-    }
-
     const turnStartedAt = Date.now();
-    // Flip the UI into "request is in flight" as soon as the user has cleared
-    // local preflight checks. The first send may still need to create a
-    // session, attach SSE, and snapshot YAML before promptAsync is called; if
-    // we wait until after those steps, the chat pane looks blank even though
-    // work is happening.
+    optimisticTurnStartedAt = turnStartedAt;
+    // Mark the turn as in flight before YAML-lock/save/bootstrap preflight.
+    // Those steps can await; during that window session/model/provider changes
+    // and a second send must be serialized behind this prompt.
     const requestSent: ActivityEvent = {
       kind: 'request-sent',
       startedAt: turnStartedAt,
@@ -1861,12 +1923,29 @@ async function promptOpencode(
       ...(opts.internal ? {} : { postChatYamlAction: null }),
     });
 
-    const client = await getOpencodeClient();
+    if (preSendWorkDir) {
+      lockLease = await acquireChatYamlEditLock(YAML_EDIT_LOCK_MESSAGE);
+      assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
+    }
+    if (preSendWorkDir && (pipeline.isDirty || pipeline.layoutDirty)) {
+      const saved = await pipeline.saveFile({ allowDuringYamlEditLock: true });
+      assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
+      if (!saved) {
+        const msg =
+          'Save failed, so chat was not started. Save or discard local YAML/layout edits first.';
+        set({ sendError: msg });
+        throw new Error(msg);
+      }
+    }
+
+    const client = await getOpencodeClient(workspaceKeyAtStart);
+    assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
 
     let sessionId = get().currentSessionId;
     if (!sessionId) {
       try {
         const s = await unwrap(client.session.create({ body: {} }));
+        assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
         sessionId = s.id;
         set((prev) => ({
           sessions: upsertSession(prev.sessions, s),
@@ -1898,6 +1977,7 @@ async function promptOpencode(
       ) {
         try {
           const fresh = await unwrap(client.session.create({ body: {} }));
+          assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
           sessionId = fresh.id;
           set((prev) => ({
             sessions: upsertSession(prev.sessions, fresh),
@@ -1912,7 +1992,8 @@ async function promptOpencode(
     }
 
     void ensureSseSubscription(get, set);
-    await ensureSseReadyPromise();
+    await waitForSseReadyWithTimeout(ensureSseReadyPromise());
+    assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
 
     let preSendSnapshot: ChatYamlSnapshot | null = null;
     if (preSendWorkDir) {
@@ -1931,6 +2012,7 @@ async function promptOpencode(
         preSendSnapshot = null;
       }
     }
+    assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
 
     set({ yamlSnapshotBeforeSend: preSendSnapshot });
 
@@ -1956,11 +2038,32 @@ async function promptOpencode(
         },
       }),
     );
-    markTurnAcceptedForWatchdog(get, set);
+    if (getOpencodeWorkspaceKey() === workspaceKeyAtStart) {
+      markTurnAcceptedForWatchdog(get, set);
+    }
   } catch (err) {
     clearTurnWatchdog();
-    if (lockAcquired) {
-      await releaseChatYamlEditLock();
+    if (lockLease) {
+      await releaseChatYamlEditLock(lockLease);
+    }
+    if (err instanceof ChatWorkspaceChangedError) {
+      set((prev) =>
+        optimisticTurnStartedAt !== null && prev.turnStartedAt === optimisticTurnStartedAt
+          ? {
+              sending: false,
+              reconciling: false,
+              pendingUserText: null,
+              lastSendingEndedAt: Date.now(),
+              turnStartedAt: null,
+              turnAssistantMessageIds: [],
+              lastActivityAt: null,
+              sessionStatus: null,
+              turnHealth: null,
+              pendingActivity: [],
+            }
+          : {},
+      );
+      throw err;
     }
     set({
       sendError: describeError(err),
@@ -1981,13 +2084,7 @@ async function promptOpencode(
 
 async function ensureSseSubscription(get: () => ChatStore, set: ChatSet): Promise<void> {
   const workspaceKey = getOpencodeWorkspaceKey();
-  for (const [key, controller] of activeSseControllers) {
-    if (key !== workspaceKey) {
-      controller.abort();
-      activeSseControllers.delete(key);
-      activeSseWorkspaces.delete(key);
-    }
-  }
+  abortSseSubscriptionsExcept(workspaceKey);
   if (activeSseWorkspaces.has(workspaceKey)) return;
   activeSseWorkspaces.add(workspaceKey);
   const controller = new AbortController();
@@ -2009,7 +2106,7 @@ async function ensureSseSubscription(get: () => ChatStore, set: ChatSet): Promis
         return;
       }
       try {
-        const client = await getOpencodeClient();
+        const client = await getOpencodeClient(workspaceKey);
         const { stream } = await subscribeEventStreamWithReadinessTimeout(
           (signal) => client.event.subscribe({ signal }),
           controller.signal,
@@ -2300,13 +2397,16 @@ export function applySseEvent(event: OpencodeEvent, get: () => ChatStore, set: C
       // came back" — see STUCK_ABORT_TIMEOUT_MS.
       if (err && err.name === 'MessageAbortedError') {
         lastAbortAcked = true;
+        let trackedAbortAck = false;
         const key = currentTurnKey(state);
         if (activeAbortAck) {
-          if (activeAbortAck.handled || key !== activeAbortAck.turnKey) return;
+          if (key !== activeAbortAck.turnKey || activeAbortAck.handled) return;
           activeAbortAck = { ...activeAbortAck, handled: true };
+          trackedAbortAck = true;
         }
         if (dispatchNextQueuedPrompt(get, set)) return;
         finishChatTurn(set);
+        if (trackedAbortAck) activeAbortAck = null;
         return;
       }
       // The server emits one of ProviderAuthError / UnknownError /
@@ -2419,6 +2519,7 @@ export function applySseEvent(event: OpencodeEvent, get: () => ChatStore, set: C
       // server-side state changes. Treat it as source of truth: upsert the
       // entry keyed by id. Terminal clears come from permission.replied.
       const next = upsertPermission(state.pendingPermissions, {
+        workspaceKey: getOpencodeWorkspaceKey(),
         id: perm.id,
         sessionID: perm.sessionID,
         title: perm.title,
@@ -2435,7 +2536,12 @@ export function applySseEvent(event: OpencodeEvent, get: () => ChatStore, set: C
       // Any client (this panel, a parallel CLI) replying resolves the prompt.
       // Remove regardless of who replied so the bubble disappears.
       set({
-        pendingPermissions: removePermission(state.pendingPermissions, permissionID),
+        pendingPermissions: removePermission(
+          state.pendingPermissions,
+          permissionID,
+          sessionID,
+          getOpencodeWorkspaceKey(),
+        ),
       });
       return;
     }
@@ -2477,6 +2583,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   model: persisted.model ?? null,
   setModel: (m) => {
+    if (chatTurnBlocksSessionMutation(get())) {
+      set({ sendError: chatTurnBlockedMessage() });
+      return;
+    }
     set({ model: m });
     savePersisted(getOpencodeWorkspaceKey(), { model: m });
     persistModelToEditorSettings(m);
@@ -2554,40 +2664,53 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   customProviders: [],
 
   async refreshProviderCatalog() {
-    const catalog = await fetchProviderCatalog();
+    const workspaceKey = getOpencodeWorkspaceKey();
+    const catalog = await fetchProviderCatalog(workspaceKey);
+    if (getOpencodeWorkspaceKey() !== workspaceKey) return;
     set({ providerCatalog: catalog });
   },
 
   async refreshCustomProviders() {
-    const { providers } = await apiListCustomProviders();
+    const workspaceKey = getOpencodeWorkspaceKey();
+    const { providers } = await apiListCustomProviders(workspaceKey);
+    if (getOpencodeWorkspaceKey() !== workspaceKey) return;
     set({ customProviders: providers });
   },
 
   async saveCustomProvider(id, scope, def) {
     if (chatTurnBlocksSessionMutation(get())) throw new Error(chatTurnBlockedMessage());
-    await apiSaveCustomProvider(id, scope, def);
+    const workspaceKey = getOpencodeWorkspaceKey();
+    await apiSaveCustomProvider(id, scope, def, workspaceKey);
     // Single restart so opencode re-reads the merged config + the renderer's
     // SDK client points at the fresh process. Then refresh providers, auth,
     // and the custom-providers list in one shot — keeps the dialog in sync
     // without staggered repaints between the catalog and the editable list.
-    await restartOpencodeForConfig();
-    await refreshProvidersAndAuth(get, set);
-    const { providers } = await apiListCustomProviders();
+    await restartOpencodeForConfig(workspaceKey);
+    if (getOpencodeWorkspaceKey() !== workspaceKey) return;
+    await refreshProvidersAndAuth(get, set, workspaceKey);
+    if (getOpencodeWorkspaceKey() !== workspaceKey) return;
+    const { providers } = await apiListCustomProviders(workspaceKey);
+    if (getOpencodeWorkspaceKey() !== workspaceKey) return;
     set({ customProviders: providers });
   },
 
   async deleteCustomProvider(id, scope) {
     if (chatTurnBlocksSessionMutation(get())) throw new Error(chatTurnBlockedMessage());
-    await apiDeleteCustomProvider(id, scope);
-    await restartOpencodeForConfig();
-    await refreshProvidersAndAuth(get, set);
-    const { providers } = await apiListCustomProviders();
+    const workspaceKey = getOpencodeWorkspaceKey();
+    await apiDeleteCustomProvider(id, scope, workspaceKey);
+    await restartOpencodeForConfig(workspaceKey);
+    if (getOpencodeWorkspaceKey() !== workspaceKey) return;
+    await refreshProvidersAndAuth(get, set, workspaceKey);
+    if (getOpencodeWorkspaceKey() !== workspaceKey) return;
+    const { providers } = await apiListCustomProviders(workspaceKey);
+    if (getOpencodeWorkspaceKey() !== workspaceKey) return;
     set({ customProviders: providers });
   },
 
   async setProviderApiKey(providerId, key, metadata) {
     if (chatTurnBlocksSessionMutation(get())) throw new Error(chatTurnBlockedMessage());
-    const client = await getOpencodeClient();
+    const workspaceKey = getOpencodeWorkspaceKey();
+    const client = await getOpencodeClient(workspaceKey);
     // `metadata` lives on the 1.14.x `ApiAuth` but isn't in the generated SDK
     // types — cast down to the SDK's ApiAuth so the body type-checks. The
     // server accepts the extra field and persists it to auth.json.
@@ -2607,13 +2730,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // wouldn't take effect until the app restarted. Restarting the opencode
     // process forces a fresh read of auth.json — the refresh below then
     // reflects reality in the picker without a full app restart.
-    await restartOpencodeForConfig();
-    await refreshProvidersAndAuth(get, set);
+    await restartOpencodeForConfig(workspaceKey);
+    if (getOpencodeWorkspaceKey() !== workspaceKey) return;
+    await refreshProvidersAndAuth(get, set, workspaceKey);
   },
 
   async startProviderOauth(providerId, methodIdx, promptAnswers) {
     if (chatTurnBlocksSessionMutation(get())) throw new Error(chatTurnBlockedMessage());
-    const client = await getOpencodeClient();
+    const workspaceKey = getOpencodeWorkspaceKey();
+    const client = await getOpencodeClient(workspaceKey);
     // Prompt answers are spread flat into the body alongside `method` — the
     // 1.14.x authorize endpoint reads them directly (e.g. `deploymentType`,
     // `enterpriseUrl`, `accountId`). Cast because the generated SDK body type
@@ -2622,17 +2747,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       method: methodIdx,
       ...(promptAnswers ?? {}),
     } as Parameters<typeof client.provider.oauth.authorize>[0]['body'];
-    return unwrap(
+    const authorization = await unwrap(
       client.provider.oauth.authorize({
         path: { id: providerId },
         body,
       }),
     );
+    if (getOpencodeWorkspaceKey() !== workspaceKey) return null;
+    return authorization;
   },
 
   async completeProviderOauth(providerId, methodIdx, code) {
     if (chatTurnBlocksSessionMutation(get())) throw new Error(chatTurnBlockedMessage());
-    const client = await getOpencodeClient();
+    const workspaceKey = getOpencodeWorkspaceKey();
+    const client = await getOpencodeClient(workspaceKey);
     await unwrap(
       client.provider.oauth.callback({
         path: { id: providerId },
@@ -2643,20 +2771,23 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // persists credentials to auth.json but doesn't refresh opencode's
     // in-memory provider list. Restart + refresh makes the newly-linked
     // provider visible in the picker without requiring an app restart.
-    await restartOpencodeForConfig();
-    await refreshProvidersAndAuth(get, set);
+    await restartOpencodeForConfig(workspaceKey);
+    if (getOpencodeWorkspaceKey() !== workspaceKey) return;
+    await refreshProvidersAndAuth(get, set, workspaceKey);
   },
 
   async refreshProvidersAfterExternalAuth() {
     if (chatTurnBlocksSessionMutation(get())) throw new Error(chatTurnBlockedMessage());
-    await refreshProvidersAndAuth(get, set);
+    const workspaceKey = getOpencodeWorkspaceKey();
+    await refreshProvidersAndAuth(get, set, workspaceKey);
   },
 
   async removeProviderAuth(providerId) {
     if (chatTurnBlocksSessionMutation(get())) throw new Error(chatTurnBlockedMessage());
+    const workspaceKey = getOpencodeWorkspaceKey();
     const [baseUrl, authHeader] = await Promise.all([
-      getOpencodeBaseUrl(),
-      getOpencodeAuthHeader(),
+      getOpencodeBaseUrl(workspaceKey),
+      getOpencodeAuthHeader(workspaceKey),
     ]);
     const res = await fetch(
       `${baseUrl.replace(/\/+$/, '')}/auth/${encodeURIComponent(providerId)}`,
@@ -2680,30 +2811,76 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // reads fresh state from disk — otherwise the disconnected row would
     // stay green until the app was restarted. `refreshProvidersAndAuth`
     // reconciles the active model pick if the removed provider was selected.
-    await restartOpencodeForConfig();
-    await refreshProvidersAndAuth(get, set);
+    await restartOpencodeForConfig(workspaceKey);
+    if (getOpencodeWorkspaceKey() !== workspaceKey) return;
+    await refreshProvidersAndAuth(get, set, workspaceKey);
   },
 
   async bootstrap() {
+    const workspaceKeyAtStart = getOpencodeWorkspaceKey();
     const prevStatus = get().bootstrapStatus;
-    // Re-entry: if a bootstrap is already in flight, let it finish rather
-    // than kicking off a parallel one (which would double-spawn opencode on
-    // first mount + StrictMode).
-    if (prevStatus === 'booting') return;
-    // Only flip to "booting" on the initial attempt so that a remount after
-    // a successful bootstrap doesn't flash the loading overlay while catalogs
-    // refresh in the background.
-    const isInitial = prevStatus !== 'ready';
-    if (isInitial) set({ bootstrapStatus: 'booting', bootstrapError: null });
+    if (prevStatus === 'booting' && bootstrappingWorkspaceKey === workspaceKeyAtStart) return;
+    bootstrappingWorkspaceKey = workspaceKeyAtStart;
+
+    const workspaceChanged = appliedBootstrapWorkspaceKey !== workspaceKeyAtStart;
+    if (workspaceChanged) {
+      clearTurnWatchdog();
+      clearPendingPartsForSession(get().currentSessionId);
+      abortSseSubscriptionsExcept(workspaceKeyAtStart);
+    }
+    const isInitial = prevStatus !== 'ready' || workspaceChanged;
+    if (isInitial) {
+      set({
+        bootstrapStatus: 'booting',
+        bootstrapError: null,
+        ...(workspaceChanged
+          ? {
+              providers: [],
+              agents: [],
+              sessions: [],
+              currentSessionId: null,
+              messages: [],
+              sending: false,
+              reconciling: false,
+              pendingUserText: null,
+              queuedMessages: [],
+              flushing: false,
+              pendingPermissions: [],
+              turnStartedAt: null,
+              turnAssistantMessageIds: [],
+              lastActivityAt: null,
+              sessionStatus: null,
+              turnHealth: null,
+              pendingActivity: [],
+              composerAttachments: [],
+              yamlSnapshotBeforeSend: null,
+              postChatYamlAction: null,
+              providerCatalog: [],
+              customProviders: [],
+              model: null,
+              agent: null,
+            }
+          : {}),
+      });
+    }
 
     // Hydrate from this workspace's persisted blob immediately so the picker
     // shows the right model before catalog fetches complete. On the very first
     // mount this matches the module-level `persisted` constant; on a workspace
     // switch within one window it swaps in the new workspace's last pick
     // instead of carrying the previous workspace's pick across the gap.
-    const wsKeyEarly = getOpencodeWorkspaceKey();
+    const wsKeyEarly = workspaceKeyAtStart;
     const earlyPersisted = loadPersisted(wsKeyEarly);
-    const earlySettings = await loadEditorSettingsForChat();
+    let earlySettings: EditorSettings | null = null;
+    try {
+      earlySettings = await loadEditorSettingsForChat();
+    } catch (err) {
+      console.warn('[chat] editor settings load failed:', err);
+    }
+    if (getOpencodeWorkspaceKey() !== workspaceKeyAtStart) {
+      if (bootstrappingWorkspaceKey === workspaceKeyAtStart) bootstrappingWorkspaceKey = null;
+      return;
+    }
     const earlySettingsModel = earlySettings?.opencodeChatModel ?? null;
     const earlyModel =
       earlyPersisted.model !== undefined ? (earlyPersisted.model ?? null) : earlySettingsModel;
@@ -2721,15 +2898,21 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     let client: Awaited<ReturnType<typeof getOpencodeClient>>;
     try {
-      client = await getOpencodeClient();
+      client = await getOpencodeClient(workspaceKeyAtStart);
     } catch (err) {
       console.error('[chat] opencode bootstrap failed:', err);
-      if (isInitial) {
+      if (isInitial && getOpencodeWorkspaceKey() === workspaceKeyAtStart) {
+        appliedBootstrapWorkspaceKey = workspaceKeyAtStart;
         set({
           bootstrapStatus: 'error',
           bootstrapError: err instanceof Error ? err.message : String(err),
         });
       }
+      if (bootstrappingWorkspaceKey === workspaceKeyAtStart) bootstrappingWorkspaceKey = null;
+      return;
+    }
+    if (getOpencodeWorkspaceKey() !== workspaceKeyAtStart) {
+      if (bootstrappingWorkspaceKey === workspaceKeyAtStart) bootstrappingWorkspaceKey = null;
       return;
     }
     // Fire catalog queries in parallel — they're independent and each survives
@@ -2756,8 +2939,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           console.error('[chat] sessions failed:', err);
           return [] as Session[];
         }),
-        fetchProviderCatalog(),
-        apiListCustomProviders().catch((err) => {
+        fetchProviderCatalog(workspaceKeyAtStart),
+        apiListCustomProviders(workspaceKeyAtStart).catch((err) => {
           console.error('[chat] custom providers failed:', err);
           return {
             providers: [] as CustomProviderEntry[],
@@ -2765,6 +2948,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           };
         }),
       ]);
+    if (getOpencodeWorkspaceKey() !== workspaceKeyAtStart) {
+      if (bootstrappingWorkspaceKey === workspaceKeyAtStart) bootstrappingWorkspaceKey = null;
+      return;
+    }
     const providersRes = providersLoad.value;
     const providers = providersRes.providers;
     const agents = agentsRes;
@@ -2780,7 +2967,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // still holds the previous workspace's pick at that moment. Loading by
     // workspace key here is what makes "remember last pick per workspace"
     // actually work across switches within a single window session.
-    const workspaceKey = getOpencodeWorkspaceKey();
+    const workspaceKey = workspaceKeyAtStart;
     const wsPersisted = loadPersisted(workspaceKey);
     const settingsModel =
       earlySettings && workspaceKey === wsKeyEarly
@@ -2809,6 +2996,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const msg = `OpenCode agent "${FORCED_CHAT_AGENT}" is missing. Check .opencode/agents/${FORCED_CHAT_AGENT}.md or retry workspace bootstrap.`;
       console.error(`[chat] ${msg}`);
       savePersisted(workspaceKey, { agent: null });
+      appliedBootstrapWorkspaceKey = workspaceKey;
+      if (bootstrappingWorkspaceKey === workspaceKeyAtStart) bootstrappingWorkspaceKey = null;
       set({
         providers,
         agents,
@@ -2825,6 +3014,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const nextAgent = tagmaAgent.name;
     savePersisted(workspaceKey, { agent: nextAgent });
 
+    appliedBootstrapWorkspaceKey = workspaceKey;
+    if (bootstrappingWorkspaceKey === workspaceKeyAtStart) bootstrappingWorkspaceKey = null;
     set({
       providers,
       agents,
@@ -2840,8 +3031,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   async refreshSessions() {
-    const client = await getOpencodeClient();
+    const workspaceKey = getOpencodeWorkspaceKey();
+    const client = await getOpencodeClient(workspaceKey);
     const sessions = await unwrap(client.session.list()).catch(() => [] as Session[]);
+    if (getOpencodeWorkspaceKey() !== workspaceKey) return;
     set({ sessions: userVisibleSessions(sessions) });
   },
 
@@ -2850,12 +3043,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       set({ sendError: chatTurnBlockedMessage(), historyOpen: false });
       return;
     }
+    const workspaceKey = getOpencodeWorkspaceKey();
     clearTurnWatchdog();
     clearPendingPartsForSession(get().currentSessionId);
-    const client = await getOpencodeClient();
+    const client = await getOpencodeClient(workspaceKey);
     const messages = await unwrap(client.session.messages({ path: { id } })).catch(
       () => [] as OpencodeThreadEntry[],
     );
+    if (getOpencodeWorkspaceKey() !== workspaceKey) return;
     // Reset turn-scoped flags on switch. If the prior session was mid-stream
     // we'd otherwise carry its `sending`/`pendingUserText` into the new
     // thread; its session.idle won't land here (we filter by currentSessionId)
@@ -2885,10 +3080,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       set({ sendError: chatTurnBlockedMessage() });
       return;
     }
+    const workspaceKey = getOpencodeWorkspaceKey();
     clearTurnWatchdog();
     clearPendingPartsForSession(get().currentSessionId);
-    const client = await getOpencodeClient();
+    const client = await getOpencodeClient(workspaceKey);
     const s = await unwrap(client.session.create({ body: {} }));
+    if (getOpencodeWorkspaceKey() !== workspaceKey) return;
     set((prev) => ({
       sessions: upsertSession(prev.sessions, s),
       currentSessionId: s.id,
@@ -2910,19 +3107,24 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }));
   },
 
-  async deleteSession(id) {
-    if (chatTurnBlocksSessionMutation(get())) {
+  async deleteSession(id, requestedWorkspaceKey) {
+    const workspaceKey = requestedWorkspaceKey ?? getOpencodeWorkspaceKey();
+    const isCurrentWorkspace = getOpencodeWorkspaceKey() === workspaceKey;
+    if (isCurrentWorkspace && chatTurnBlocksSessionMutation(get())) {
       set({ sendError: chatTurnBlockedMessage(), historyOpen: false });
       return;
     }
-    clearTurnWatchdog();
-    clearPendingPartsForSession(id);
+    if (isCurrentWorkspace) {
+      clearTurnWatchdog();
+      clearPendingPartsForSession(id);
+    }
     try {
-      const client = await getOpencodeClient();
+      const client = await getOpencodeClient(workspaceKey);
       await unwrap(client.session.delete({ path: { id } }));
     } catch {
       /* best effort — surface nothing; session list re-sync is cosmetic */
     }
+    if (getOpencodeWorkspaceKey() !== workspaceKey) return;
     set((prev) => ({
       sessions: prev.sessions.filter((s) => s.id !== id),
       currentSessionId: prev.currentSessionId === id ? null : prev.currentSessionId,
@@ -2964,6 +3166,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     try {
       return await promptOpencode(get, set, text, { context });
     } catch (err) {
+      if (err instanceof ChatWorkspaceChangedError) return;
       if (attachments.length > 0) {
         set((prev) => ({ composerAttachments: [...attachments, ...prev.composerAttachments] }));
       }
@@ -3028,12 +3231,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       if (getOpencodeWorkspaceKey() !== workspaceAtAbort) return;
       if (currentTurnKey(get()) !== turnKeyAtAbort) return;
       if (!get().sending) return;
-      void forceStopHungTurn(get, set);
+      void forceStopHungTurn(get, set, workspaceAtAbort);
     }, STUCK_ABORT_TIMEOUT_MS);
     unrefTimerForTests(timer);
     void (async () => {
       try {
-        const client = await getOpencodeClient();
+        const client = await getOpencodeClient(workspaceAtAbort);
         await unwrap(client.session.abort({ path: { id: sessionId } }));
       } catch (err) {
         // Don't surface yet. opencode can be wedged on a hung upstream stream
@@ -3054,11 +3257,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // reconnects against the new port automatically.
   },
 
-  async replyPermission(id, reply) {
-    const sessionId = get().currentSessionId;
+  async replyPermission(id, reply, sessionID, permissionWorkspaceKey) {
+    const state = get();
+    const pending = state.pendingPermissions.find(
+      (perm) =>
+        perm.id === id &&
+        (sessionID === undefined || perm.sessionID === sessionID) &&
+        (permissionWorkspaceKey === undefined || perm.workspaceKey === permissionWorkspaceKey),
+    );
+    const sessionId = sessionID ?? pending?.sessionID ?? state.currentSessionId;
+    const workspaceKey = permissionWorkspaceKey ?? pending?.workspaceKey ?? getOpencodeWorkspaceKey();
     if (!sessionId) return;
     try {
-      const client = await getOpencodeClient();
+      const client = await getOpencodeClient(workspaceKey);
       await unwrap(
         client.postSessionIdPermissionsPermissionId({
           path: { id: sessionId, permissionID: id },
@@ -3070,7 +3281,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       // removes the entry. Optimistic removal would race with a failed
       // reply and leave the user with no bubble to retry from.
     } catch (err) {
-      set({ sendError: `Couldn't reply to permission: ${describeError(err)}` });
+      if (getOpencodeWorkspaceKey() === workspaceKey) {
+        set({ sendError: `Couldn't reply to permission: ${describeError(err)}` });
+      }
     }
   },
 }));

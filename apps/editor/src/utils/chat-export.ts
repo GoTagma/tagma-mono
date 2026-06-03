@@ -1,4 +1,4 @@
-import type { OpencodeThreadEntry, Part } from '../api/opencode-chat';
+import type { AssistantMessage, OpencodeThreadEntry, Part } from '../api/opencode-chat';
 import { stripAskAiContext } from './ask-ai-context';
 
 export type ChatExportFormat = 'md' | 'txt';
@@ -80,6 +80,10 @@ function renderEntry(entry: OpencodeThreadEntry, format: ChatExportFormat): stri
   const visibleParts = entry.parts
     .map((part) => renderPart(part, role, format))
     .filter((text): text is string => text.trim().length > 0);
+  if (role === 'assistant') {
+    const footer = renderAssistantFooter(entry.info as AssistantMessage, format);
+    if (footer) visibleParts.push(footer);
+  }
   if (visibleParts.length === 0) return null;
 
   const label = role === 'user' ? 'User' : 'Assistant';
@@ -100,6 +104,47 @@ function renderPart(part: Part, role: 'user' | 'assistant', format: ChatExportFo
     return format === 'md' ? `**Reasoning**\n\n${text}` : `Reasoning:\n${text}`;
   }
   return '';
+}
+
+function renderAssistantFooter(info: AssistantMessage, format: ChatExportFormat): string | null {
+  const tokens = info.tokens;
+  const outputTokens = tokens?.output ?? 0;
+  const inputTokens =
+    (tokens?.input ?? 0) + (tokens?.cache?.read ?? 0) + (tokens?.cache?.write ?? 0);
+  const chunks: string[] = [];
+  const usage: string[] = [];
+  if (outputTokens > 0) usage.push(`${formatTokens(outputTokens)} output tokens`);
+  if (inputTokens > 0) usage.push(`${formatTokens(inputTokens)} input tokens`);
+  const cost = info.cost ?? 0;
+  if (cost > 0) usage.push(formatCost(cost));
+  if (usage.length > 0) chunks.push(`Usage: ${usage.join(', ')}`);
+  if (info.finish && info.finish !== 'stop') chunks.push(`Finish: ${info.finish}`);
+  if (info.error) chunks.push(`Error: ${assistantErrorText(info.error)}`);
+  if (chunks.length === 0) return null;
+  return format === 'md' ? `_${chunks.join(' · ')}_` : chunks.join(' · ');
+}
+
+function formatTokens(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '0';
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
+function formatCost(cost: number): string {
+  if (!Number.isFinite(cost) || cost <= 0) return '$0';
+  if (cost < 0.01) return `$${cost.toFixed(4)}`;
+  if (cost < 1) return `$${cost.toFixed(3)}`;
+  return `$${cost.toFixed(2)}`;
+}
+
+function assistantErrorText(error: NonNullable<AssistantMessage['error']>): string {
+  const data = 'data' in error ? error.data : null;
+  const message =
+    data && typeof data === 'object' && 'message' in data && typeof data.message === 'string'
+      ? data.message
+      : null;
+  return message ? `${error.name}: ${message}` : error.name;
 }
 
 function isInternalUserEntry(parts: readonly Part[]): boolean {

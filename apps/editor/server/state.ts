@@ -1,4 +1,4 @@
-import { readFileSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, lstatSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import yaml from 'js-yaml';
 import { isPathWithin as sharedIsPathWithin, atomicWriteFileSync } from './path-utils.js';
@@ -17,7 +17,11 @@ import type {
   PluginSchema as SdkPluginSchema,
   PluginParamDef,
 } from '@tagma/types';
-import { assertWithinNodeModules, pluginDirFor as pluginDirForRaw } from './plugin-safety.js';
+import {
+  assertSafePluginName,
+  assertWithinNodeModules,
+  pluginDirFor as pluginDirForRaw,
+} from './plugin-safety.js';
 import {
   readPluginBlocklist,
   resolvePluginCapabilities,
@@ -237,8 +241,49 @@ export function pluginStorePackageDirFor(ws: WorkspaceState, name: string): stri
   return resolve(pluginStoreDirFor(ws, name), 'node_modules', ...packageNameParts(name));
 }
 
-export function fenceWithinPluginStore(ws: WorkspaceState, target: string): void {
+function assertRealDirectoryChain(
+  root: string,
+  components: readonly string[],
+  label: string,
+): void {
+  let current = root;
+  for (const component of components) {
+    current = resolve(current, component);
+    let st;
+    try {
+      st = lstatSync(current);
+    } catch {
+      return;
+    }
+    if (st.isSymbolicLink()) {
+      throw new WorkspaceFenceError(`${label}: refused to use symlinked path "${current}".`);
+    }
+    if (!st.isDirectory()) {
+      throw new WorkspaceFenceError(`${label}: path "${current}" is not a directory.`);
+    }
+  }
+}
+
+export function safePluginStoreRoot(ws: WorkspaceState): string {
+  if (!ws.workDir) throw new WorkspaceFenceError('Plugin store requires a workspace directory.');
   const root = pluginStoreRoot(ws);
+  assertRealDirectoryChain(ws.workDir, ['.tagma', 'plugin-store'], 'Plugin store');
+  return root;
+}
+
+export function safePluginStoreDirFor(ws: WorkspaceState, name: string): string {
+  assertSafePluginName(name);
+  const root = safePluginStoreRoot(ws);
+  const dir = pluginStoreDirFor(ws, name);
+  assertRealDirectoryChain(ws.workDir, ['.tagma', 'plugin-store', pluginStoreName(name)], name);
+  if (dir === root || !isPathWithin(dir, root)) {
+    throw new WorkspaceFenceError(`Path "${dir}" is outside the plugin store.`);
+  }
+  return dir;
+}
+
+export function fenceWithinPluginStore(ws: WorkspaceState, target: string): void {
+  const root = safePluginStoreRoot(ws);
   const resolved = resolve(target);
   if (resolved === root || !isPathWithin(resolved, root)) {
     throw new WorkspaceFenceError(`Path "${resolved}" is outside the plugin store.`);

@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  lstatSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -17,8 +18,9 @@ import { readPluginManifest as parsePluginManifestField } from '@tagma/sdk/plugi
 import { assertSafePluginName } from '../plugin-safety.js';
 import {
   isPathWithin,
-  pluginStoreDirFor,
   pluginStorePackageDirFor,
+  safePluginStoreDirFor,
+  safePluginStoreRoot,
   fenceWithinPluginStore,
 } from '../state.js';
 import { atomicWriteFileSync } from '../path-utils.js';
@@ -91,6 +93,10 @@ export const MAX_EXTRACTED_FILE_COUNT = 10_000;
 // string later code paths can compare against.
 const VERSION_RE =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+
+export function isStrictPluginVersion(version: unknown): version is string {
+  return typeof version === 'string' && VERSION_RE.test(version);
+}
 
 type PackageJson = Record<string, unknown> & {
   name?: string;
@@ -204,7 +210,7 @@ export function parsePluginInstallSpec(name: unknown, version?: unknown): Plugin
     }
   }
   assertSafePluginName(rawName);
-  if (parsedVersion !== undefined && !VERSION_RE.test(parsedVersion)) {
+  if (parsedVersion !== undefined && !isStrictPluginVersion(parsedVersion)) {
     throw new Error(
       `Invalid plugin version "${parsedVersion}". Install specs must pin a concrete npm version.`,
     );
@@ -238,7 +244,7 @@ export async function resolveLatestPluginVersion(name: string): Promise<string> 
       `No dist-tags.latest published for "${name}". Pin a concrete version when installing.`,
     );
   }
-  if (!VERSION_RE.test(latest)) {
+  if (!isStrictPluginVersion(latest)) {
     throw new Error(`Registry returned non-semver dist-tags.latest for "${name}": "${latest}".`);
   }
   return latest;
@@ -255,7 +261,7 @@ export async function resolveLatestPluginVersion(name: string): Promise<string> 
  */
 export async function registryMeta(name: string, version: string): Promise<PackageMeta> {
   assertSafePluginName(name);
-  if (typeof version !== 'string' || !VERSION_RE.test(version)) {
+  if (!isStrictPluginVersion(version)) {
     throw new Error(
       `registryMeta requires a strict semver version. Got "${version}". ` +
         `Resolve dist-tags.latest explicitly via resolveLatestPluginVersion if needed.`,
@@ -269,6 +275,16 @@ export async function registryMeta(name: string, version: string): Promise<Packa
   const versions = body.versions as Record<string, unknown> | undefined;
   const info = versions?.[version] as Record<string, unknown> | undefined;
   if (!info) throw new Error(`No registry metadata for ${name}@${version}`);
+  if (info.name !== name) {
+    throw new Error(
+      `Registry metadata for ${name}@${version} has mismatched package name ${JSON.stringify(info.name)}`,
+    );
+  }
+  if (info.version !== version) {
+    throw new Error(
+      `Registry metadata for ${name}@${version} has mismatched package version ${JSON.stringify(info.version)}`,
+    );
+  }
   const dist = info.dist as Record<string, unknown> | undefined;
   if (typeof dist?.tarball !== 'string') throw new Error(`No tarball for ${name}@${version}`);
   return {
@@ -415,19 +431,36 @@ export function extractTarballStrip1(tgzPath: string, destDir: string): void {
         return;
       }
       const type = entry.type;
+      if (type === 'SymbolicLink' || type === 'Link') {
+        fail(`Tarball contains unsupported link entry "${entry.path}"`);
+        entry.resume();
+        return;
+      }
       if (type !== 'File' && type !== 'OldFile' && type !== 'Directory') {
         entry.resume();
         return;
       }
-      const segs = String(entry.path).split('/');
+      const rawPath = String(entry.path).replace(/\\/g, '/');
+      if (rawPath.startsWith('/') || /^[A-Za-z]:/.test(rawPath)) {
+        fail(`Tarball entry "${entry.path}" uses an unsafe absolute path`);
+        entry.resume();
+        return;
+      }
+      const segs = rawPath.split('/');
       segs.shift();
-      const rel = segs.join('/');
+      const rel = segs.join('/').replace(/\/+$/, '');
       if (!rel) {
+        entry.resume();
+        return;
+      }
+      if (rel.split('/').some((seg) => !seg || seg === '.' || seg === '..')) {
+        fail(`Tarball entry "${entry.path}" uses an unsafe relative path`);
         entry.resume();
         return;
       }
       const outPath = resolve(destDir, rel);
       if (!isPathWithin(outPath, destDir)) {
+        fail(`Tarball entry "${entry.path}" escapes the extraction directory`);
         entry.resume();
         return;
       }
@@ -743,8 +776,7 @@ async function syncPluginStoreDependencies(root: string): Promise<void> {
 }
 
 function prepareInstallRoot(ws: WorkspaceState, name: string, spec: string): string {
-  const root = pluginStoreDirFor(ws, name);
-  fenceWithinPluginStore(ws, root);
+  const root = safePluginStoreDirFor(ws, name);
   rmSync(root, { recursive: true, force: true });
   mkdirSync(root, { recursive: true });
   writeFileSync(
@@ -755,6 +787,7 @@ function prepareInstallRoot(ws: WorkspaceState, name: string, spec: string): str
 }
 
 function installedPluginPackagePath(ws: WorkspaceState, name: string): string {
+  safePluginStoreDirFor(ws, name);
   const pluginDir = pluginStorePackageDirFor(ws, name);
   fenceWithinPluginStore(ws, pluginDir);
   return resolve(pluginDir, 'package.json');
@@ -773,6 +806,7 @@ function validateInstalledPlugin(ws: WorkspaceState, name: string, version?: str
 }
 
 export function readLocalPluginPackageName(absPath: string): string {
+  assertImportablePluginSource(absPath);
   const stat = statSync(absPath);
   let sourceDir: string;
   let cleanupTmp: string | null = null;
@@ -802,6 +836,31 @@ export function readLocalPluginPackageName(absPath: string): string {
   }
 }
 
+/**
+ * Refuse to import-local from anything other than a plain directory or
+ * regular tarball file. This lives in the install layer so direct callers get
+ * the same safety guarantees as the HTTP route.
+ */
+export function assertImportablePluginSource(absPath: string): void {
+  const top = lstatSync(absPath);
+  if (top.isSymbolicLink()) {
+    throw new Error(`Refusing to import a plugin through a symbolic link: ${absPath}`);
+  }
+  if (top.isDirectory()) {
+    assertNoSymlinksInDir(absPath, `Plugin source "${absPath}"`);
+    return;
+  }
+  if (top.isFile()) {
+    if (!/\.tgz$|\.tar\.gz$/i.test(absPath)) {
+      throw new Error(`Plugin source must be a directory or .tgz archive: ${absPath}`);
+    }
+    const stat = statSync(absPath);
+    if (stat.size === 0) throw new Error(`Plugin tarball is empty: ${absPath}`);
+    return;
+  }
+  throw new Error(`Plugin source must be a directory or .tgz archive: ${absPath}`);
+}
+
 function pluginVersionLockPath(ws: WorkspaceState): string {
   return resolve(ws.workDir, '.tagma', 'plugins-lock.json');
 }
@@ -819,8 +878,7 @@ export function readPluginVersionLock(ws: WorkspaceState): PluginVersionLockFile
         return (
           !!rec &&
           typeof rec.name === 'string' &&
-          typeof rec.version === 'string' &&
-          VERSION_RE.test(rec.version) &&
+          isStrictPluginVersion(rec.version) &&
           (rec.integrity === null || typeof rec.integrity === 'string') &&
           (rec.shasum === null || typeof rec.shasum === 'string') &&
           typeof rec.lockedAt === 'string'
@@ -872,14 +930,15 @@ function assertRegistryMetaMatchesLock(meta: PackageMeta, lock: PluginVersionLoc
       `Plugin lock mismatch for "${meta.name}": expected ${lock.version}, got ${meta.version}`,
     );
   }
-  if (lock.integrity && meta.integrity !== lock.integrity) {
+  if (!lock.integrity) {
     throw new Error(
-      `Plugin lock mismatch for "${meta.name}": registry integrity changed for ${meta.version}`,
+      `Plugin lock for "${meta.name}" lacks a trusted integrity hash for ${lock.version}. ` +
+        `Reinstall the plugin to refresh the lockfile before using the locked install path.`,
     );
   }
-  if (!lock.integrity && lock.shasum && meta.shasum !== lock.shasum) {
+  if (meta.integrity !== lock.integrity) {
     throw new Error(
-      `Plugin lock mismatch for "${meta.name}": registry shasum changed for ${meta.version}`,
+      `Plugin lock mismatch for "${meta.name}": registry integrity changed for ${meta.version}`,
     );
   }
 }
@@ -960,13 +1019,13 @@ export async function directRegistryInstall(
   options: { preferLocked?: boolean } = {},
 ): Promise<RegistryPackagePreflight & PluginInstallOutcome> {
   const preflight = await preflightRegistryPackage(ws, specOrName, options);
-  return { ...preflight, pluginRoot: pluginStoreDirFor(ws, preflight.meta.name) };
+  return { ...preflight, pluginRoot: safePluginStoreDirFor(ws, preflight.meta.name) };
 }
 
-export async function installPackage(
+export async function installPackageWithRollbackSnapshot(
   ws: WorkspaceState,
   name: string,
-): Promise<PluginInstallOutcome> {
+): Promise<PluginInstallTransactionOutcome> {
   const spec = parsePluginInstallSpec(name);
   // Prefer the lockfile when present — that's the whole point of having
   // one for autoload. When neither the spec nor the lock pin a version,
@@ -975,7 +1034,16 @@ export async function installPackage(
   if (!spec.version && !getPluginVersionLock(ws, name)) {
     spec.version = await resolveLatestPluginVersion(name);
   }
-  return installPackageSpec(ws, spec, { preferLocked: true });
+  return installPackageSpecWithRollbackSnapshot(ws, spec, { preferLocked: true });
+}
+
+export async function installPackage(
+  ws: WorkspaceState,
+  name: string,
+): Promise<PluginInstallOutcome> {
+  const result = await installPackageWithRollbackSnapshot(ws, name);
+  discardPluginSnapshot(result.snapshot);
+  return { pluginRoot: result.pluginRoot };
 }
 
 export async function installPackageSpec(
@@ -1038,7 +1106,7 @@ function isLocalDependencySpec(spec: string): boolean {
 
 function readStoreRootDependencySpec(ws: WorkspaceState, name: string): string | null {
   if (!ws.workDir) return null;
-  const root = pluginStoreDirFor(ws, name);
+  const root = safePluginStoreDirFor(ws, name);
   const pkgPath = resolve(root, 'package.json');
   if (!existsSync(pkgPath)) return null;
   try {
@@ -1196,7 +1264,7 @@ export async function installPluginUpgradeBatchWithRollbackSnapshot(
     plan.upgrades.map((entry) => entry.name),
   );
   try {
-    let pluginRoot = pluginStoreDirFor(ws, name);
+    let pluginRoot = safePluginStoreDirFor(ws, name);
     for (const entry of plan.upgrades) {
       const result = await installPackageSpecWithRollbackSnapshot(
         ws,
@@ -1243,8 +1311,7 @@ export async function installFromLocalPathWithRollbackSnapshot(
 }
 
 function removePluginFilesystemArtifacts(ws: WorkspaceState, name: string): void {
-  const root = pluginStoreDirFor(ws, name);
-  fenceWithinPluginStore(ws, root);
+  const root = safePluginStoreDirFor(ws, name);
   rmSync(root, { recursive: true, force: true });
 }
 
@@ -1273,8 +1340,7 @@ export interface PluginStateSnapshot {
 export function snapshotPluginState(ws: WorkspaceState, name: string): PluginStateSnapshot {
   assertSafePluginName(name);
   if (!ws.workDir) throw new Error('Cannot snapshot plugin state: workspace directory is not set');
-  const root = pluginStoreDirFor(ws, name);
-  fenceWithinPluginStore(ws, root);
+  const root = safePluginStoreDirFor(ws, name);
   const snapshotDir = mkdtempSync(join(tmpdir(), 'tagma-pkg-snap-'));
   const hadPriorFiles = existsSync(root);
   if (hadPriorFiles) cpSync(root, snapshotDir, { recursive: true, dereference: false });
@@ -1290,7 +1356,7 @@ export function snapshotPluginState(ws: WorkspaceState, name: string): PluginSta
 }
 
 function snapshotPluginStoreLockfiles(ws: WorkspaceState, name: string): WorkspaceFileSnapshot[] {
-  const root = pluginStoreDirFor(ws, name);
+  const root = safePluginStoreDirFor(ws, name);
   return ['bun.lock', 'bun.lockb'].map((fileName) => {
     const path = resolve(root, fileName);
     return { path, contents: existsSync(path) ? readFileSync(path) : null };
@@ -1298,8 +1364,7 @@ function snapshotPluginStoreLockfiles(ws: WorkspaceState, name: string): Workspa
 }
 
 function restorePluginStateContents(ws: WorkspaceState, snapshot: PluginStateSnapshot): void {
-  const root = pluginStoreDirFor(ws, snapshot.name);
-  fenceWithinPluginStore(ws, root);
+  const root = safePluginStoreDirFor(ws, snapshot.name);
   rmSync(root, { recursive: true, force: true });
   if (snapshot.hadPriorFiles && existsSync(snapshot.snapshotDir)) {
     mkdirSync(dirname(root), { recursive: true });
@@ -1379,7 +1444,8 @@ export function discardPluginSnapshot(snapshot: PluginStateSnapshot | null): voi
 }
 
 export function listPluginStoreNames(ws: WorkspaceState): string[] {
-  const root = resolve(ws.workDir, '.tagma', 'plugin-store');
+  if (!ws.workDir) return [];
+  const root = safePluginStoreRoot(ws);
   if (!existsSync(root)) return [];
   return readdirSync(root, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())

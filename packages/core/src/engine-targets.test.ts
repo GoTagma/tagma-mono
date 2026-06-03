@@ -3,7 +3,13 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PluginRegistry, runPipeline } from './index';
-import type { PipelineConfig, TagmaRuntime, TaskResult } from './types';
+import type {
+  PipelineConfig,
+  RunEventPayload,
+  TagmaRuntime,
+  TaskResult,
+  TriggerPlugin,
+} from './types';
 
 function makeDir(): string {
   return mkdtempSync(join(tmpdir(), 'tagma-target-run-'));
@@ -125,6 +131,7 @@ describe('targeted pipeline runs', () => {
   test('dependency-skipped tasks carry terminal TaskResult metadata', async () => {
     const dir = makeDir();
     const seenCommands: string[] = [];
+    const events: RunEventPayload[] = [];
     try {
       const result = await runPipeline(config, dir, {
         registry: new PluginRegistry(),
@@ -148,6 +155,7 @@ describe('targeted pipeline runs', () => {
           },
         },
         skipPluginLoading: true,
+        onEvent: (event) => events.push(event),
       });
 
       expect(result.success).toBe(false);
@@ -163,6 +171,208 @@ describe('targeted pipeline runs', () => {
         exitCode: -1,
         stderr: expect.stringContaining('upstream "main.test"'),
         failureKind: null,
+      });
+      const skippedUpdates = events.filter(
+        (event) => event.type === 'task_update' && event.status === 'skipped',
+      );
+      expect(skippedUpdates).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            taskId: 'main.test',
+            exitCode: -1,
+            stderr: expect.stringContaining('upstream "main.build"'),
+          }),
+          expect.objectContaining({
+            taskId: 'main.deploy',
+            exitCode: -1,
+            stderr: expect.stringContaining('upstream "main.test"'),
+          }),
+        ]),
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('trigger-wait tasks skipped by stop_all carry terminal TaskResult metadata', async () => {
+    const dir = makeDir();
+    const seenCommands: string[] = [];
+    const events: RunEventPayload[] = [];
+    const registry = new PluginRegistry();
+    registry.registerPlugin('triggers', 'never', {
+      name: 'never',
+      watch(_config, ctx) {
+        let rejectFired: (err: Error) => void = () => {
+          /* assigned synchronously below */
+        };
+        const fired = new Promise<void>((_, reject) => {
+          rejectFired = reject;
+        });
+        const onAbort = () => rejectFired(new Error('aborted'));
+        ctx.signal.addEventListener('abort', onAbort, { once: true });
+        return {
+          fired,
+          async dispose() {
+            ctx.signal.removeEventListener('abort', onAbort);
+          },
+        };
+      },
+    } satisfies TriggerPlugin);
+
+    try {
+      const result = await runPipeline(
+        {
+          name: 'trigger-stop-all',
+          mode: 'trusted',
+          tracks: [
+            {
+              id: 'main',
+              name: 'Main',
+              on_failure: 'stop_all',
+              tasks: [
+                { id: 'fail', name: 'Fail', command: 'fail' },
+                {
+                  id: 'wait',
+                  name: 'Wait',
+                  trigger: { type: 'never' },
+                  command: 'wait',
+                },
+              ],
+            },
+          ],
+        },
+        dir,
+        {
+          registry,
+          runtime: {
+            ...fakeRuntime(seenCommands),
+            async runCommand(command) {
+              const text =
+                typeof command === 'string'
+                  ? command
+                  : 'shell' in command
+                    ? command.shell
+                    : command.argv.join(' ');
+              seenCommands.push(text);
+              return {
+                ...taskResult(text),
+                exitCode: text === 'fail' ? 1 : 0,
+                stderr: text === 'fail' ? 'failed' : '',
+                stderrBytes: text === 'fail' ? 'failed'.length : 0,
+                failureKind: text === 'fail' ? 'exit_nonzero' : null,
+              };
+            },
+          },
+          skipPluginLoading: true,
+          onEvent: (event) => events.push(event),
+        },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.states.get('main.fail')?.status).toBe('failed');
+      expect(result.states.get('main.wait')?.status).toBe('skipped');
+      expect(result.states.get('main.wait')?.result).toMatchObject({
+        exitCode: -1,
+        stderr: expect.stringContaining('pipeline stopped after a task failure'),
+        failureKind: null,
+      });
+      expect(seenCommands).toEqual(['fail']);
+      const waitSkipped = events.find(
+        (event) =>
+          event.type === 'task_update' &&
+          event.taskId === 'main.wait' &&
+          event.status === 'skipped',
+      );
+      expect(waitSkipped).toMatchObject({
+        exitCode: -1,
+        stderr: expect.stringContaining('pipeline stopped after a task failure'),
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('trigger-wait tasks skipped by external abort carry terminal TaskResult metadata', async () => {
+    const dir = makeDir();
+    const seenCommands: string[] = [];
+    const events: RunEventPayload[] = [];
+    const controller = new AbortController();
+    let triggerStarted!: () => void;
+    const triggerReady = new Promise<void>((resolve) => {
+      triggerStarted = resolve;
+    });
+    const registry = new PluginRegistry();
+    registry.registerPlugin('triggers', 'never', {
+      name: 'never',
+      watch(_config, ctx) {
+        triggerStarted();
+        let rejectFired: (err: Error) => void = () => {
+          /* assigned synchronously below */
+        };
+        const fired = new Promise<void>((_, reject) => {
+          rejectFired = reject;
+        });
+        const onAbort = () => rejectFired(new Error('aborted'));
+        ctx.signal.addEventListener('abort', onAbort, { once: true });
+        return {
+          fired,
+          async dispose() {
+            ctx.signal.removeEventListener('abort', onAbort);
+          },
+        };
+      },
+    } satisfies TriggerPlugin);
+
+    try {
+      const run = runPipeline(
+        {
+          name: 'trigger-external-abort',
+          mode: 'trusted',
+          tracks: [
+            {
+              id: 'main',
+              name: 'Main',
+              tasks: [
+                {
+                  id: 'wait',
+                  name: 'Wait',
+                  trigger: { type: 'never' },
+                  command: 'wait',
+                },
+              ],
+            },
+          ],
+        },
+        dir,
+        {
+          registry,
+          runtime: fakeRuntime(seenCommands),
+          skipPluginLoading: true,
+          signal: controller.signal,
+          onEvent: (event) => events.push(event),
+        },
+      );
+      await triggerReady;
+      controller.abort();
+      const result = await run;
+
+      expect(result.success).toBe(false);
+      expect(result.states.get('main.wait')?.status).toBe('skipped');
+      expect(result.states.get('main.wait')?.result).toMatchObject({
+        exitCode: -1,
+        stderr: expect.stringContaining('before trigger "never" fired'),
+        failureKind: null,
+      });
+      expect(seenCommands).toEqual([]);
+      const waitSkipped = events.find(
+        (event) =>
+          event.type === 'task_update' &&
+          event.taskId === 'main.wait' &&
+          event.status === 'skipped',
+      );
+      expect(waitSkipped).toMatchObject({
+        exitCode: -1,
+        stderr: expect.stringContaining('before trigger "never" fired'),
       });
     } finally {
       rmSync(dir, { recursive: true, force: true });

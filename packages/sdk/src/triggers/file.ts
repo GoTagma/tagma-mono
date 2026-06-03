@@ -7,6 +7,7 @@ import {
   type TriggerWatchHandle,
 } from '@tagma/types';
 import { parseOptionalPluginTimeout } from '../duration';
+import { requiredPluginString, resolvePluginPath } from '../plugin-config';
 
 const IS_WINDOWS = process.platform === 'win32';
 
@@ -39,10 +40,9 @@ export const FileTrigger: TriggerPlugin = {
   },
 
   watch(config: Record<string, unknown>, ctx: TriggerContext): TriggerWatchHandle {
-    const filePath = config.path as string;
-    if (!filePath) throw new Error(`file trigger: "path" is required`);
+    const filePath = requiredPluginString(config, 'path', 'file trigger');
 
-    const safePath = resolve(ctx.workDir, filePath);
+    const safePath = resolvePluginPath(filePath, ctx.workDir, { allowAbsoluteOutside: true });
     const timeoutMs = parseOptionalPluginTimeout(config.timeout, 0);
     const disposeController = new AbortController();
 

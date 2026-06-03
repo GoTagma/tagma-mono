@@ -420,6 +420,30 @@ describe('PluginRegistry — validation', () => {
       ).rejects.toThrow(
         /trigger\.extra is not a supported field[\s\S]*trigger\.path must be a string/,
       );
+
+      await expect(
+        runPipeline(
+          {
+            name: 'plugin-schema',
+            mode: 'trusted',
+            tracks: [
+              {
+                id: 't',
+                name: 'T',
+                tasks: [
+                  {
+                    id: 'x',
+                    command: 'echo hi',
+                    trigger: { type: 'typed', path: '   ' },
+                  },
+                ],
+              },
+            ],
+          },
+          tmp,
+          { registry: reg, runtime: fakeRuntime(), mode: 'trusted' },
+        ),
+      ).rejects.toThrow(/trigger\.path is required/);
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

@@ -25,9 +25,11 @@ import type {
   WorkflowConfig,
   WorkflowDocumentKind,
   WorkflowFailurePolicy,
+  WorkflowPipelineConfig,
 } from '@tagma/types';
 import { PipelineValidationError, loadPipeline, validateConfigDiagnostics } from './schema';
 import type { ValidationError } from './validate-raw';
+import { assertWorkDir } from './workdir';
 
 export type {
   PipelineGraphAbortReason,
@@ -89,6 +91,31 @@ const VALID_PIPELINE_STOP_WHEN: ReadonlySet<PipelineGraphStopWhen> = new Set([
   'failure',
   'always',
 ]);
+const WORKFLOW_FIELDS: ReadonlySet<string> = new Set([
+  'kind',
+  'name',
+  'max_concurrency',
+  'failure_policy',
+  'pipelines',
+]);
+const RAW_WORKFLOW_PIPELINE_FIELDS: ReadonlySet<string> = new Set([
+  'id',
+  'path',
+  'depends_on',
+  'position',
+  'lifecycle',
+]);
+const GRAPH_PIPELINE_FIELDS: ReadonlySet<string> = new Set([
+  'id',
+  'config',
+  'cwd',
+  'path',
+  'depends_on',
+  'position',
+  'lifecycle',
+]);
+const WORKFLOW_POSITION_FIELDS: ReadonlySet<string> = new Set(['x', 'y']);
+const PIPELINE_LIFECYCLE_FIELDS: ReadonlySet<string> = new Set(['max_runs', 'stop_when']);
 const WORKFLOW_YAML_DUMP_OPTIONS = {
   lineWidth: 120,
   indent: 2,
@@ -145,6 +172,13 @@ function stripLoadedPipelines(config: RawWorkflowConfig | WorkflowConfig): RawWo
 
 export function validateRawWorkflow(config: RawWorkflowConfig): ValidationError[] {
   const errors: ValidationError[] = [];
+  validateUnknownFields(
+    config as unknown as Record<string, unknown>,
+    WORKFLOW_FIELDS,
+    '',
+    'workflow',
+    errors,
+  );
   validateGraphHeader(config, errors);
   if (!Array.isArray(config.pipelines)) {
     errors.push({ path: 'pipelines', message: 'workflow.pipelines must be an array' });
@@ -161,16 +195,21 @@ export function validateRawWorkflow(config: RawWorkflowConfig): ValidationError[
 }
 
 export async function loadWorkflow(content: string, workDir: string): Promise<WorkflowConfig> {
+  assertWorkDir(workDir);
   const raw = parseWorkflowYaml(content);
   const diagnostics = validateRawWorkflow(raw);
   if (diagnostics.length > 0) throw new WorkflowValidationError(diagnostics);
 
-  const pipelines = await Promise.all(
-    raw.pipelines.map(async (pipeline) => {
+  const pipelines: WorkflowPipelineConfig[] = [];
+  const loadDiagnostics: ValidationError[] = [];
+
+  for (let index = 0; index < raw.pipelines.length; index++) {
+    const pipeline = raw.pipelines[index]!;
+    try {
       const resolved = validatePath(pipeline.path, workDir);
       const pipelineYaml = readFileSync(resolved, 'utf8');
       const config = await loadPipeline(pipelineYaml, workDir);
-      return {
+      pipelines.push({
         id: pipeline.id,
         path: pipeline.path,
         cwd: workDir,
@@ -178,9 +217,26 @@ export async function loadWorkflow(content: string, workDir: string): Promise<Wo
         position: pipeline.position,
         lifecycle: pipeline.lifecycle,
         config,
-      };
-    }),
-  );
+      });
+    } catch (err) {
+      if (err instanceof PipelineValidationError) {
+        loadDiagnostics.push(
+          ...err.diagnostics.map((diagnostic) => ({
+            path: `pipelines[${index}].config.${diagnostic.path}`,
+            message: diagnostic.message,
+            severity: diagnostic.severity,
+          })),
+        );
+      } else {
+        loadDiagnostics.push({
+          path: `pipelines[${index}].path`,
+          message: errorMessage(err),
+        });
+      }
+    }
+  }
+
+  if (loadDiagnostics.length > 0) throw new WorkflowValidationError(loadDiagnostics);
 
   return {
     kind: raw.kind ?? 'graph',
@@ -216,6 +272,7 @@ export class PipelineGraphRunner {
     private readonly workDir: string,
     private readonly options: PipelineGraphRunnerOptions,
   ) {
+    assertWorkDir(workDir);
     const diagnostics = validatePipelineGraphConfig(config);
     diagnostics.push(...validateGraphPipelineConfigs(config, workDir));
     if (diagnostics.length > 0) throw new WorkflowValidationError(diagnostics);
@@ -371,25 +428,29 @@ export class PipelineGraphRunner {
       });
 
       try {
-        const result = await runPipeline(pipeline.config, pipeline.cwd ?? this.workDir, {
-          ...pipelineOptions,
-          signal: controller.signal,
-          onEvent: (event) => {
-            if (event.type === 'run_start') {
-              this.updateNode(pipelineId, {
-                runId: event.runId,
-                attempts: this.patchAttempt(pipelineId, attempt, { runId: event.runId }),
+        const result = await runPipeline(
+          pipeline.config,
+          graphPipelineWorkDir(pipeline.cwd, this.workDir),
+          {
+            ...pipelineOptions,
+            signal: controller.signal,
+            onEvent: (event) => {
+              if (event.type === 'run_start') {
+                this.updateNode(pipelineId, {
+                  runId: event.runId,
+                  attempts: this.patchAttempt(pipelineId, attempt, { runId: event.runId }),
+                });
+              }
+              this.emit({
+                type: 'pipeline_event',
+                graphRunId: this.graphRunId,
+                pipelineId,
+                attempt,
+                event,
               });
-            }
-            this.emit({
-              type: 'pipeline_event',
-              graphRunId: this.graphRunId,
-              pipelineId,
-              attempt,
-              event,
-            });
+            },
           },
-        });
+        );
 
         const status: PipelineGraphNodeStatus = controller.signal.aborted
           ? 'aborted'
@@ -632,6 +693,13 @@ export function createPipelineGroup(options: CreatePipelineGroupOptions = {}): P
 
 function validatePipelineGraphConfig(config: PipelineGraphConfig): ValidationError[] {
   const errors: ValidationError[] = [];
+  validateUnknownFields(
+    config as unknown as Record<string, unknown>,
+    WORKFLOW_FIELDS,
+    '',
+    'workflow',
+    errors,
+  );
   validateGraphHeader(config, errors);
   if (!Array.isArray(config.pipelines)) {
     errors.push({ path: 'pipelines', message: 'workflow.pipelines must be an array' });
@@ -654,6 +722,7 @@ function validateGraphPipelineConfigs(
   if (!Array.isArray(config.pipelines)) return errors;
 
   config.pipelines.forEach((pipeline, index) => {
+    if (!isRecord(pipeline)) return;
     const graphNode = pipeline as { config?: unknown; cwd?: unknown };
     if (
       !graphNode.config ||
@@ -667,8 +736,27 @@ function validateGraphPipelineConfigs(
       return;
     }
 
-    const pipelineWorkDir =
-      typeof graphNode.cwd === 'string' && graphNode.cwd.length > 0 ? graphNode.cwd : workDir;
+    const hasCwd = graphNode.cwd !== undefined;
+    const validCwd =
+      !hasCwd || (typeof graphNode.cwd === 'string' && graphNode.cwd.trim().length > 0);
+    if (!validCwd) {
+      errors.push({
+        path: `pipelines[${index}].cwd`,
+        message: 'pipeline cwd must be a non-empty string',
+      });
+    }
+
+    let pipelineWorkDir = workDir;
+    if (validCwd && typeof graphNode.cwd === 'string') {
+      try {
+        pipelineWorkDir = graphPipelineWorkDir(graphNode.cwd, workDir);
+      } catch (err) {
+        errors.push({
+          path: `pipelines[${index}].cwd`,
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
     for (const diagnostic of validateConfigDiagnostics(
       graphNode.config as PipelineConfig,
       pipelineWorkDir,
@@ -681,6 +769,33 @@ function validateGraphPipelineConfigs(
   });
 
   return errors;
+}
+
+function graphPipelineWorkDir(cwd: string | undefined, workDir: string): string {
+  if (cwd === undefined) return workDir;
+  if (isAbsolute(cwd)) return resolve(cwd);
+  return validatePath(cwd, workDir);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function validateUnknownFields(
+  value: unknown,
+  allowed: ReadonlySet<string>,
+  basePath: string,
+  label: string,
+  errors: ValidationError[],
+): void {
+  if (!isRecord(value)) return;
+  for (const field of Object.keys(value)) {
+    if (allowed.has(field)) continue;
+    errors.push({
+      path: basePath ? `${basePath}.${field}` : field,
+      message: `Unknown ${label} field "${field}"`,
+    });
+  }
 }
 
 function validateGraphHeader(
@@ -708,7 +823,7 @@ function validateGraphHeader(
 }
 
 function validatePipelineNodes(
-  pipelines: readonly (RawWorkflowPipelineConfig | PipelineGraphPipelineConfig)[],
+  pipelines: readonly unknown[],
   errors: ValidationError[],
   requirePath: boolean,
 ): void {
@@ -717,36 +832,44 @@ function validatePipelineNodes(
 
   pipelines.forEach((pipeline, index) => {
     const path = `pipelines[${index}]`;
-    if (typeof pipeline.id !== 'string' || pipeline.id.trim().length === 0) {
+    if (!isRecord(pipeline)) {
+      errors.push({ path, message: 'Pipeline node must be an object' });
+      return;
+    }
+    validateUnknownFields(
+      pipeline,
+      requirePath ? RAW_WORKFLOW_PIPELINE_FIELDS : GRAPH_PIPELINE_FIELDS,
+      path,
+      'workflow pipeline',
+      errors,
+    );
+    const node = pipeline as unknown as RawWorkflowPipelineConfig | PipelineGraphPipelineConfig;
+    if (typeof node.id !== 'string' || node.id.trim().length === 0) {
       errors.push({ path: `${path}.id`, message: 'Pipeline id is required' });
-    } else if (!isValidTaskId(pipeline.id)) {
+    } else if (!isValidTaskId(node.id)) {
       errors.push({
         path: `${path}.id`,
-        message: `Pipeline id "${pipeline.id}" is invalid`,
+        message: `Pipeline id "${node.id}" is invalid`,
       });
-    } else if (seen.has(pipeline.id)) {
-      errors.push({ path: `${path}.id`, message: `Duplicate pipeline id "${pipeline.id}"` });
+    } else if (seen.has(node.id)) {
+      errors.push({ path: `${path}.id`, message: `Duplicate pipeline id "${node.id}"` });
     } else {
-      seen.add(pipeline.id);
-      ids.add(pipeline.id);
+      seen.add(node.id);
+      ids.add(node.id);
     }
 
-    if (requirePath)
-      validateWorkflowPath((pipeline as RawWorkflowPipelineConfig).path, path, errors);
-    validateWorkflowPosition(
-      (pipeline as RawWorkflowPipelineConfig | PipelineGraphPipelineConfig).position,
-      path,
-      errors,
-    );
-    validatePipelineLifecycle(
-      (pipeline as RawWorkflowPipelineConfig | PipelineGraphPipelineConfig).lifecycle,
-      path,
-      errors,
-    );
+    const pipelinePath = node.path;
+    if (requirePath || pipelinePath !== undefined) {
+      validateWorkflowPath(pipelinePath, path, errors);
+    }
+    validateWorkflowPosition(node.position, path, errors);
+    validatePipelineLifecycle(node.lifecycle, path, errors);
   });
 
   pipelines.forEach((pipeline, index) => {
-    const deps = pipeline.depends_on;
+    if (!isRecord(pipeline)) return;
+    const node = pipeline as unknown as RawWorkflowPipelineConfig | PipelineGraphPipelineConfig;
+    const deps = node.depends_on;
     if (deps === undefined) return;
     if (!Array.isArray(deps)) {
       errors.push({
@@ -767,7 +890,7 @@ function validatePipelineNodes(
       if (!ids.has(dep)) {
         errors.push({
           path: `pipelines[${index}].depends_on`,
-          message: `Pipeline "${pipeline.id}" depends_on "${dep}" - no such pipeline found`,
+          message: `Pipeline "${node.id}" depends_on "${dep}" - no such pipeline found`,
         });
       }
     }
@@ -784,7 +907,14 @@ function validateWorkflowPosition(
     errors.push({ path: `${basePath}.position`, message: 'position must be an object' });
     return;
   }
-  const pos = value as { x?: unknown; y?: unknown };
+  const pos = value as Record<string, unknown>;
+  validateUnknownFields(
+    pos,
+    WORKFLOW_POSITION_FIELDS,
+    `${basePath}.position`,
+    'workflow position',
+    errors,
+  );
   if (
     typeof pos.x !== 'number' ||
     !Number.isFinite(pos.x) ||
@@ -808,7 +938,14 @@ function validatePipelineLifecycle(
     errors.push({ path: `${basePath}.lifecycle`, message: 'lifecycle must be an object' });
     return;
   }
-  const lifecycle = value as PipelineGraphPipelineLifecycle;
+  const lifecycle = value as Record<string, unknown> & PipelineGraphPipelineLifecycle;
+  validateUnknownFields(
+    lifecycle,
+    PIPELINE_LIFECYCLE_FIELDS,
+    `${basePath}.lifecycle`,
+    'workflow lifecycle',
+    errors,
+  );
   if (
     lifecycle.max_runs !== undefined &&
     (!Number.isInteger(lifecycle.max_runs) || lifecycle.max_runs < 1)
@@ -864,20 +1001,24 @@ function validateWorkflowPath(value: unknown, basePath: string, errors: Validati
   }
 }
 
-function detectPipelineCycles(
-  pipelines: readonly (RawWorkflowPipelineConfig | PipelineGraphPipelineConfig)[],
-): ValidationError[] {
+function detectPipelineCycles(pipelines: readonly unknown[]): ValidationError[] {
+  const pipelineNodes = pipelines.filter(isRecord) as unknown as readonly (
+    | RawWorkflowPipelineConfig
+    | PipelineGraphPipelineConfig
+  )[];
   const ids = new Set(
-    pipelines
+    pipelineNodes
       .map((pipeline) => pipeline.id)
       .filter((id): id is string => typeof id === 'string' && id.length > 0),
   );
   const depsById = new Map<string, string[]>();
-  for (const pipeline of pipelines) {
+  for (const pipeline of pipelineNodes) {
     if (!ids.has(pipeline.id)) continue;
     depsById.set(
       pipeline.id,
-      (pipeline.depends_on ?? []).filter((dep): dep is string => ids.has(dep)),
+      Array.isArray(pipeline.depends_on)
+        ? pipeline.depends_on.filter((dep): dep is string => ids.has(dep))
+        : [],
     );
   }
 

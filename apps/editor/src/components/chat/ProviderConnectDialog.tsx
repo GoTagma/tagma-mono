@@ -25,8 +25,10 @@ import type {
 } from '../../api/opencode-chat';
 import type { CustomProviderEntry } from '../../api/custom-providers';
 import { openExternalUrl } from '../../desktop';
+import { usePipelineStore } from '../../store/pipeline-store';
 import { useYamlEditLockStore } from '../../store/yaml-edit-lock-store';
 import { CustomProviderModal } from './CustomProviderModal';
+import { providerAuthMethodKey } from './provider-auth-method-key';
 
 /**
  * Provider connect dialog — the GUI equivalent of opencode's CLI `/connect`.
@@ -49,9 +51,20 @@ export function ProviderConnectDialog() {
   const catalog = useChatStore((s) => s.providerCatalog);
   const refreshCatalog = useChatStore((s) => s.refreshProviderCatalog);
   const customProviders = useChatStore((s) => s.customProviders);
+  const workDir = usePipelineStore((s) => s.workDir);
   const sending = useChatStore((s) => s.sending);
+  const pendingUserText = useChatStore((s) => s.pendingUserText);
+  const queuedMessages = useChatStore((s) => s.queuedMessages);
+  const reconciling = useChatStore((s) => s.reconciling);
+  const flushing = useChatStore((s) => s.flushing);
   const yamlEditLocked = useYamlEditLockStore((s) => s.active);
-  const blocked = sending || yamlEditLocked;
+  const blocked =
+    sending ||
+    !!pendingUserText ||
+    queuedMessages.length > 0 ||
+    reconciling ||
+    flushing ||
+    yamlEditLocked;
 
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
@@ -62,6 +75,12 @@ export function ProviderConnectDialog() {
   //   - { customModalOpen: true, editingEntry: <entry> } → edit in place
   const [customModalOpen, setCustomModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<CustomProviderEntry | null>(null);
+
+  useEffect(() => {
+    setCustomModalOpen(false);
+    setEditingEntry(null);
+    setQuery('');
+  }, [workDir]);
 
   // Map of provider id → custom-provider entry, used to flag rows that this
   // dialog can edit/delete (vs. built-in models.dev entries where editing
@@ -288,6 +307,7 @@ export function ProviderConnectDialog() {
       <CustomProviderModal
         open={customModalOpen}
         editing={editingEntry}
+        blocked={blocked}
         onClose={() => {
           setCustomModalOpen(false);
           setEditingEntry(null);
@@ -423,7 +443,7 @@ function ProviderRow({
         <div className="px-4 pb-3 space-y-2">
           {entry.methods.map((method, idx) => (
             <MethodBlock
-              key={`${entry.id}-${idx}`}
+              key={providerAuthMethodKey(entry.id, method, idx)}
               providerId={entry.id}
               method={method}
               methodIdx={idx}
@@ -862,6 +882,7 @@ function OauthRow({
     setError(null);
     try {
       const result = await startProviderOauth(providerId, methodIdx, visibleAnswers);
+      if (!result) return;
       setAuth(result);
       openExternalUrl(result.url);
     } catch (err) {

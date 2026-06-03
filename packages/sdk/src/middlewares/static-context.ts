@@ -1,6 +1,7 @@
 import { basename } from 'path';
 import type { MiddlewarePlugin, MiddlewareContext, PromptDocument } from '@tagma/types';
-import { appendContext, validatePath } from '@tagma/core';
+import { appendContext } from '@tagma/core';
+import { optionalPluginString, requiredPluginString, resolvePluginPath } from '../plugin-config';
 
 const DEFAULT_MAX_CONTEXT_CHARS = 200_000;
 
@@ -42,14 +43,16 @@ export const StaticContextMiddleware: MiddlewarePlugin = {
     config: Record<string, unknown>,
     ctx: MiddlewareContext,
   ): Promise<PromptDocument> {
-    const filePath = config.file as string;
-    if (!filePath) throw new Error('static_context middleware: "file" is required');
+    const filePath = requiredPluginString(config, 'file', 'static_context middleware');
+    const label =
+      optionalPluginString(config, 'label', 'static_context middleware') ??
+      `Reference: ${basename(filePath)}`;
 
     // Validate config before touching the disk so a bad max_chars surfaces
     // without an unnecessary file read first.
     const maxChars = parseMaxChars(config.max_chars);
 
-    const safePath = validatePath(filePath, ctx.workDir);
+    const safePath = resolvePluginPath(filePath, ctx.workDir);
     const file = Bun.file(safePath);
 
     if (!(await file.exists())) {
@@ -72,7 +75,6 @@ export const StaticContextMiddleware: MiddlewarePlugin = {
       rawContent.length > maxChars
         ? `${rawContent.slice(0, maxChars)}\n\n[truncated static context at ${maxChars} chars]`
         : rawContent;
-    const label = (config.label as string) ?? `Reference: ${basename(filePath)}`;
 
     // Append a labeled context block; the engine's serializer joins blocks
     // with blank lines and places the task last. No [Task] header here —

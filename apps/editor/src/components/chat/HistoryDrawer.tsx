@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { History, Trash2, X } from 'lucide-react';
+import { getOpencodeWorkspaceKey } from '../../api/opencode-chat';
 import { useChatStore } from '../../store/chat-store';
 import { useYamlEditLockStore } from '../../store/yaml-edit-lock-store';
 import { useUIStore } from '../../store/ui-store';
@@ -12,12 +13,22 @@ export function HistoryDrawer() {
   const selectSession = useChatStore((s) => s.selectSession);
   const deleteSession = useChatStore((s) => s.deleteSession);
   const sending = useChatStore((s) => s.sending);
+  const pendingUserText = useChatStore((s) => s.pendingUserText);
+  const queuedMessages = useChatStore((s) => s.queuedMessages);
   const reconciling = useChatStore((s) => s.reconciling);
+  const flushing = useChatStore((s) => s.flushing);
   const yamlEditLocked = useYamlEditLockStore((s) => s.active);
   const requestConfirm = useUIStore((s) => s.requestConfirm);
-  const blocked = sending || reconciling || yamlEditLocked;
+  const blocked =
+    sending ||
+    !!pendingUserText ||
+    queuedMessages.length > 0 ||
+    reconciling ||
+    flushing ||
+    yamlEditLocked;
 
   const handleRequestDelete = (id: string, title: string | undefined) => {
+    const workspaceKey = getOpencodeWorkspaceKey();
     // Destructive and irrecoverable — route through the global confirm modal
     // so a stray click on the trash icon can't nuke a long conversation.
     requestConfirm({
@@ -31,7 +42,7 @@ export function HistoryDrawer() {
       confirmLabel: 'Delete',
       danger: true,
       onConfirm: () => {
-        deleteSession(id).catch(() => {
+        deleteSession(id, workspaceKey).catch(() => {
           /* store already swallows; best effort */
         });
       },

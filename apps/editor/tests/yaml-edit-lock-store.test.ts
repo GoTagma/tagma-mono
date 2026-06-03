@@ -17,6 +17,14 @@ interface CapturedLockRequest {
 let requests: CapturedLockRequest[];
 let heartbeat: (() => void) | null;
 
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
+
 function jsonResponse(data: unknown): Response {
   return new Response(JSON.stringify(data), {
     status: 200,
@@ -76,6 +84,9 @@ beforeEach(() => {
 
 afterEach(async () => {
   await releaseChatYamlEditLock();
+  useYamlEditLockStore.getState().syncFromServer(null, 'C:/repo-a');
+  useYamlEditLockStore.getState().syncFromServer(null, 'C:/repo-b');
+  useYamlEditLockStore.getState().syncFromServer(null, null);
   setClientWorkspace(null);
   useYamlEditLockStore.getState().syncActiveYamlPath(null);
   globalThis.fetch = originalFetch;
@@ -105,5 +116,330 @@ describe('YAML edit lock store workspace routing', () => {
 
     expect(requests[2]?.method).toBe('DELETE');
     expect(requests[2]?.workspace).toBe('C:/repo-a');
+  });
+
+  test('does not reuse an in-flight acquire from another workspace', async () => {
+    const heldRepoA = deferred<Response>();
+
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      const workspace = headers['X-Tagma-Workspace'] ?? null;
+      requests.push({ method, workspace, body });
+
+      if (url !== '/api/workspace/yaml-edit-lock') {
+        return Promise.reject(new Error(`unexpected fetch ${method} ${url}`));
+      }
+      if (method === 'DELETE') return Promise.resolve(jsonResponse({ ok: true, released: true }));
+      if (workspace === 'C:/repo-a') return heldRepoA.promise;
+      return Promise.resolve(
+        jsonResponse({
+          lock: {
+            id: 'lock-b',
+            owner: 'chat',
+            reason: typeof body.reason === 'string' ? body.reason : 'test',
+            acquiredAt: Date.now(),
+            expiresAt: Date.now() + 120_000,
+            yamlPath: 'C:/repo-b/.tagma/beta/beta.yaml',
+          },
+        }),
+      );
+    }) as typeof fetch;
+
+    setClientWorkspace('C:/repo-a');
+    useYamlEditLockStore.getState().syncActiveYamlPath('C:/repo-a/.tagma/alpha/alpha.yaml');
+    const acquireA = acquireChatYamlEditLock('repo a lock');
+    await Promise.resolve();
+    expect(requests[0]).toMatchObject({ method: 'POST', workspace: 'C:/repo-a' });
+
+    setClientWorkspace('C:/repo-b');
+    useYamlEditLockStore.getState().syncActiveYamlPath('C:/repo-b/.tagma/beta/beta.yaml');
+    const leaseB = await acquireChatYamlEditLock('repo b lock');
+
+    expect(leaseB).toEqual({ id: 'lock-b', workspaceKey: 'C:/repo-b' });
+    expect(requests[1]).toMatchObject({ method: 'POST', workspace: 'C:/repo-b' });
+    expect(useYamlEditLockStore.getState()).toMatchObject({
+      active: true,
+      local: true,
+      lockWorkspaceKey: 'C:/repo-b',
+    });
+
+    heldRepoA.resolve(
+      jsonResponse({
+        lock: {
+          id: 'lock-a',
+          owner: 'chat',
+          reason: 'repo a lock',
+          acquiredAt: Date.now(),
+          expiresAt: Date.now() + 120_000,
+          yamlPath: 'C:/repo-a/.tagma/alpha/alpha.yaml',
+        },
+      }),
+    );
+    const leaseA = await acquireA;
+    await releaseChatYamlEditLock(leaseA);
+
+    expect(requests[2]).toMatchObject({ method: 'DELETE', workspace: 'C:/repo-a' });
+    expect(useYamlEditLockStore.getState()).toMatchObject({
+      active: true,
+      local: true,
+      lockWorkspaceKey: 'C:/repo-b',
+    });
+
+    await releaseChatYamlEditLock(leaseB);
+    expect(requests[3]).toMatchObject({ method: 'DELETE', workspace: 'C:/repo-b' });
+  });
+
+  test('releases the previous local lock with its original workspace during a new workspace acquire', async () => {
+    const heldRepoB = deferred<Response>();
+
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      const workspace = headers['X-Tagma-Workspace'] ?? null;
+      requests.push({ method, workspace, body });
+
+      if (url !== '/api/workspace/yaml-edit-lock') {
+        return Promise.reject(new Error(`unexpected fetch ${method} ${url}`));
+      }
+      if (method === 'DELETE') return Promise.resolve(jsonResponse({ ok: true, released: true }));
+      if (workspace === 'C:/repo-b') return heldRepoB.promise;
+      return Promise.resolve(
+        jsonResponse({
+          lock: {
+            id: 'lock-a',
+            owner: 'chat',
+            reason: typeof body.reason === 'string' ? body.reason : 'test',
+            acquiredAt: Date.now(),
+            expiresAt: Date.now() + 120_000,
+            yamlPath: 'C:/repo-a/.tagma/alpha/alpha.yaml',
+          },
+        }),
+      );
+    }) as typeof fetch;
+
+    setClientWorkspace('C:/repo-a');
+    useYamlEditLockStore.getState().syncActiveYamlPath('C:/repo-a/.tagma/alpha/alpha.yaml');
+    await acquireChatYamlEditLock('repo a lock');
+
+    setClientWorkspace('C:/repo-b');
+    useYamlEditLockStore.getState().syncActiveYamlPath('C:/repo-b/.tagma/beta/beta.yaml');
+    const acquireB = acquireChatYamlEditLock('repo b lock');
+    await Promise.resolve();
+
+    await releaseChatYamlEditLock();
+
+    expect(requests[0]).toMatchObject({ method: 'POST', workspace: 'C:/repo-a' });
+    expect(requests[1]).toMatchObject({ method: 'POST', workspace: 'C:/repo-b' });
+    expect(requests[2]).toMatchObject({ method: 'DELETE', workspace: 'C:/repo-a' });
+    expect(useYamlEditLockStore.getState()).toMatchObject({
+      active: true,
+      local: true,
+      lockWorkspaceKey: 'C:/repo-b',
+    });
+
+    heldRepoB.resolve(
+      jsonResponse({
+        lock: {
+          id: 'lock-b',
+          owner: 'chat',
+          reason: 'repo b lock',
+          acquiredAt: Date.now(),
+          expiresAt: Date.now() + 120_000,
+          yamlPath: 'C:/repo-b/.tagma/beta/beta.yaml',
+        },
+      }),
+    );
+    const leaseB = await acquireB;
+    await releaseChatYamlEditLock(leaseB);
+
+    expect(requests[3]).toMatchObject({ method: 'DELETE', workspace: 'C:/repo-b' });
+  });
+
+  test('ignores a stale heartbeat from a previous workspace lock', async () => {
+    const heartbeats: Array<() => void> = [];
+    globalThis.setInterval = ((handler: Parameters<typeof setInterval>[0]) => {
+      if (typeof handler === 'function') {
+        heartbeats.push(() => {
+          void handler();
+        });
+      }
+      return heartbeats.length as unknown as ReturnType<typeof setInterval>;
+    }) as typeof setInterval;
+
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      const workspace = headers['X-Tagma-Workspace'] ?? null;
+      requests.push({ method, workspace, body });
+
+      if (url !== '/api/workspace/yaml-edit-lock') {
+        return Promise.reject(new Error(`unexpected fetch ${method} ${url}`));
+      }
+      if (method === 'DELETE') return Promise.resolve(jsonResponse({ ok: true, released: true }));
+
+      return Promise.resolve(
+        jsonResponse({
+          lock: {
+            id: workspace === 'C:/repo-b' ? 'lock-b' : 'lock-a',
+            owner: 'chat',
+            reason: typeof body.reason === 'string' ? body.reason : 'test',
+            acquiredAt: Date.now(),
+            expiresAt: Date.now() + 120_000,
+            yamlPath:
+              workspace === 'C:/repo-b'
+                ? 'C:/repo-b/.tagma/beta/beta.yaml'
+                : 'C:/repo-a/.tagma/alpha/alpha.yaml',
+          },
+        }),
+      );
+    }) as typeof fetch;
+
+    setClientWorkspace('C:/repo-a');
+    useYamlEditLockStore.getState().syncActiveYamlPath('C:/repo-a/.tagma/alpha/alpha.yaml');
+    await acquireChatYamlEditLock('repo a lock');
+
+    setClientWorkspace('C:/repo-b');
+    useYamlEditLockStore.getState().syncActiveYamlPath('C:/repo-b/.tagma/beta/beta.yaml');
+    await acquireChatYamlEditLock('repo b lock');
+
+    heartbeats[0]?.();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(requests).toHaveLength(2);
+
+    heartbeats[1]?.();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(requests[2]).toMatchObject({
+      method: 'POST',
+      workspace: 'C:/repo-b',
+      body: { id: 'lock-b' },
+    });
+  });
+
+  test('keeps local and server locks isolated by workspace', async () => {
+    setClientWorkspace('C:/repo-a');
+    useYamlEditLockStore.getState().syncActiveYamlPath('C:/repo-a/.tagma/alpha/alpha.yaml');
+    await acquireChatYamlEditLock('repo a lock');
+
+    setClientWorkspace('C:/repo-b');
+    useYamlEditLockStore.getState().syncActiveYamlPath('C:/repo-b/.tagma/beta/beta.yaml');
+    useYamlEditLockStore.getState().syncFromServer(
+      {
+        owner: 'chat',
+        reason: 'external repo b lock',
+        acquiredAt: Date.now(),
+        expiresAt: Date.now() + 120_000,
+        yamlPath: 'C:/repo-b/.tagma/beta/beta.yaml',
+      },
+      'C:/repo-b',
+    );
+
+    expect(useYamlEditLockStore.getState()).toMatchObject({
+      active: true,
+      local: false,
+      lockWorkspaceKey: 'C:/repo-b',
+      reason: 'external repo b lock',
+    });
+
+    setClientWorkspace('C:/repo-a');
+    useYamlEditLockStore.getState().syncActiveYamlPath('C:/repo-a/.tagma/alpha/alpha.yaml');
+
+    expect(useYamlEditLockStore.getState()).toMatchObject({
+      active: true,
+      local: true,
+      lockWorkspaceKey: 'C:/repo-a',
+      reason: 'repo a lock',
+    });
+  });
+
+  test('stale heartbeat failure does not clear a newer workspace lock', async () => {
+    const heartbeats: Array<() => void> = [];
+    const heldHeartbeatA = deferred<Response>();
+    globalThis.setInterval = ((handler: Parameters<typeof setInterval>[0]) => {
+      if (typeof handler === 'function') {
+        heartbeats.push(() => {
+          void handler();
+        });
+      }
+      return heartbeats.length as unknown as ReturnType<typeof setInterval>;
+    }) as typeof setInterval;
+
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      const workspace = headers['X-Tagma-Workspace'] ?? null;
+      requests.push({ method, workspace, body });
+
+      if (url !== '/api/workspace/yaml-edit-lock') {
+        return Promise.reject(new Error(`unexpected fetch ${method} ${url}`));
+      }
+      if (method === 'DELETE') return Promise.resolve(jsonResponse({ ok: true, released: true }));
+      if (workspace === 'C:/repo-a' && body.id === 'lock-a') return heldHeartbeatA.promise;
+
+      return Promise.resolve(
+        jsonResponse({
+          lock: {
+            id: workspace === 'C:/repo-b' ? 'lock-b' : 'lock-a',
+            owner: 'chat',
+            reason: typeof body.reason === 'string' ? body.reason : 'test',
+            acquiredAt: Date.now(),
+            expiresAt: Date.now() + 120_000,
+            yamlPath:
+              workspace === 'C:/repo-b'
+                ? 'C:/repo-b/.tagma/beta/beta.yaml'
+                : 'C:/repo-a/.tagma/alpha/alpha.yaml',
+          },
+        }),
+      );
+    }) as typeof fetch;
+
+    setClientWorkspace('C:/repo-a');
+    useYamlEditLockStore.getState().syncActiveYamlPath('C:/repo-a/.tagma/alpha/alpha.yaml');
+    await acquireChatYamlEditLock('repo a lock');
+
+    heartbeats[0]?.();
+    await Promise.resolve();
+    expect(requests[1]).toMatchObject({
+      method: 'POST',
+      workspace: 'C:/repo-a',
+      body: { id: 'lock-a' },
+    });
+
+    setClientWorkspace('C:/repo-b');
+    useYamlEditLockStore.getState().syncActiveYamlPath('C:/repo-b/.tagma/beta/beta.yaml');
+    await acquireChatYamlEditLock('repo b lock');
+
+    heldHeartbeatA.resolve(new Response('nope', { status: 500 }));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(useYamlEditLockStore.getState()).toMatchObject({
+      active: true,
+      local: true,
+      lockWorkspaceKey: 'C:/repo-b',
+      reason: 'repo b lock',
+    });
+
+    heartbeats[1]?.();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(requests[3]).toMatchObject({
+      method: 'POST',
+      workspace: 'C:/repo-b',
+      body: { id: 'lock-b' },
+    });
   });
 });

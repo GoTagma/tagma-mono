@@ -38,6 +38,7 @@ import {
   classifyServerError,
   unloadPluginFromRegistry,
   readEditorSettings,
+  isPluginBlocked,
 } from '../plugins/loader.js';
 import { withWorkspacePluginMutationLock } from '../plugins/locks.js';
 import { requireWorkspace } from '../require-workspace.js';
@@ -524,29 +525,29 @@ export function registerRunRoutes(app: express.Express): void {
             return res.status(400).json({ error: `Plugin load error: ${message}` });
           }
         }
-        const { newlyLoaded, preloadError } = await withWorkspacePluginMutationLock(
-          ws,
-          async () => {
-            const newlyLoaded: string[] = [];
-            let preloadError: { message: string } | null = null;
-            for (const name of pluginsToLoad) {
-              if (ws.loadedPluginMeta.has(name)) continue;
-              try {
-                await loadPluginFromWorkDir(ws, name);
-                newlyLoaded.push(name);
-              } catch (err: unknown) {
-                const { message } = classifyServerError(err);
-                preloadError = { message };
-                break;
-              }
+        const preloadError = await withWorkspacePluginMutationLock(ws, async () => {
+          const newlyLoaded: string[] = [];
+          for (const name of pluginsToLoad) {
+            if (ws.loadedPluginMeta.has(name)) continue;
+            if (isPluginBlocked(ws, name)) {
+              return {
+                message: `Plugin "${name}" was explicitly uninstalled. Install it again before running this pipeline.`,
+              };
             }
-            return { newlyLoaded, preloadError };
-          },
-        );
-        if (preloadError) {
-          for (const name of newlyLoaded) {
-            unloadPluginFromRegistry(ws, name, { removeStageDir: true });
+            try {
+              await loadPluginFromWorkDir(ws, name);
+              newlyLoaded.push(name);
+            } catch (err: unknown) {
+              for (const loadedName of newlyLoaded) {
+                unloadPluginFromRegistry(ws, loadedName, { removeStageDir: true });
+              }
+              const { message } = classifyServerError(err);
+              return { message };
+            }
           }
+          return null;
+        });
+        if (preloadError) {
           return res.status(400).json({ error: `Plugin load error: ${preloadError.message}` });
         }
       }

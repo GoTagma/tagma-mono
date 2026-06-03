@@ -26,8 +26,10 @@ export interface ProviderCatalogEntry {
   env: string[];
 }
 
-export async function fetchProviderCatalog(): Promise<ProviderCatalogEntry[]> {
-  const client = await getOpencodeClient();
+export async function fetchProviderCatalog(
+  workspaceKey = getOpencodeWorkspaceKey(),
+): Promise<ProviderCatalogEntry[]> {
+  const client = await getOpencodeClient(workspaceKey);
   const [listRes, authRes] = await Promise.all([
     unwrap(client.provider.list()).catch((err) => {
       console.error('[chat] provider.list failed:', err);
@@ -71,17 +73,16 @@ export function reconcileModelPick(
   const stillValid =
     current &&
     providers.some(
-      (p) => p.id === current.providerID && Object.keys(p.models).includes(current.modelID),
+      (p) => p.id === current.providerID && Object.keys(p.models ?? {}).includes(current.modelID),
     );
   if (stillValid) return current;
   const defaultProviderID = Object.keys(defaults)[0];
   if (defaultProviderID) {
     return { providerID: defaultProviderID, modelID: defaults[defaultProviderID] };
   }
-  const firstProvider = providers[0];
-  const firstModelID = firstProvider ? Object.keys(firstProvider.models)[0] : undefined;
-  if (firstProvider && firstModelID) {
-    return { providerID: firstProvider.id, modelID: firstModelID };
+  for (const provider of providers) {
+    const firstModelID = Object.keys(provider.models ?? {})[0];
+    if (firstModelID) return { providerID: provider.id, modelID: firstModelID };
   }
   return null;
 }
@@ -101,15 +102,17 @@ export async function refreshProvidersAndAuth(
     providerCatalog: ProviderCatalogEntry[];
     model?: ModelPick | null;
   }) => void,
+  expectedWorkspaceKey = getOpencodeWorkspaceKey(),
 ): Promise<void> {
-  const client = await getOpencodeClient();
+  const client = await getOpencodeClient(expectedWorkspaceKey);
   const [providersRes, providerCatalog] = await Promise.all([
     unwrap(client.config.providers()).catch((err) => {
       console.error('[chat] providers refresh failed:', err);
       return { providers: [] as Provider[], default: {} as Record<string, string> };
     }),
-    fetchProviderCatalog(),
+    fetchProviderCatalog(expectedWorkspaceKey),
   ]);
+  if (getOpencodeWorkspaceKey() !== expectedWorkspaceKey) return;
   const providers = providersRes.providers;
   const nextModel = reconcileModelPick(providers, providersRes.default ?? {}, get().model);
   const patch: {
@@ -122,7 +125,7 @@ export async function refreshProvidersAndAuth(
     nextModel?.modelID !== get().model?.modelID
   ) {
     patch.model = nextModel;
-    if (nextModel) savePersisted(getOpencodeWorkspaceKey(), { model: nextModel });
+    if (nextModel) savePersisted(expectedWorkspaceKey, { model: nextModel });
   }
   set(patch);
 }

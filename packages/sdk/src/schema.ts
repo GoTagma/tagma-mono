@@ -14,6 +14,7 @@ import type {
 import { isCommandTaskConfig } from '@tagma/types';
 import { buildDag, DEFAULT_PERMISSIONS, truncateForName, validatePath } from '@tagma/core';
 import { validateRaw, type ValidationError } from './validate-raw';
+import { assertWorkDir, workDirError } from './workdir';
 
 export class PipelineValidationError extends Error {
   readonly diagnostics: readonly ValidationError[];
@@ -104,7 +105,8 @@ export function resolveConfig(raw: RawPipelineConfig, workDir: string): Pipeline
   const allQualifiedIds = new Set<string>();
   for (const t of raw.tracks) {
     if (!t.id) continue;
-    for (const tk of t.tasks ?? []) {
+    const tasks = Array.isArray(t.tasks) ? t.tasks : [];
+    for (const tk of tasks) {
       if (tk.id) allQualifiedIds.add(`${t.id}.${tk.id}`);
     }
   }
@@ -131,7 +133,8 @@ export function resolveConfig(raw: RawPipelineConfig, workDir: string): Pipeline
     // validatePath enforces no .. traversal and no absolute paths escaping workDir.
     const trackCwd = rawTrack.cwd ? validatePath(rawTrack.cwd, workDir) : workDir;
 
-    const tasks: TaskConfig[] = rawTrack.tasks.map((rawTask) => {
+    const rawTasks = Array.isArray(rawTrack.tasks) ? rawTrack.tasks : [];
+    const tasks: TaskConfig[] = rawTasks.map((rawTask) => {
       const name =
         rawTask.name ??
         (rawTask.prompt
@@ -244,15 +247,22 @@ function stripPromptOnlyFieldsFromCommandTask<
   return rest as T;
 }
 
+function stripTrackForSerialization<
+  T extends { readonly tasks?: readonly (TaskConfig | RawTaskConfig)[] },
+>(track: T): T {
+  if (!Array.isArray(track.tasks)) return track;
+  return {
+    ...track,
+    tasks: track.tasks.map((task) =>
+      stripPromptOnlyFieldsFromCommandTask(stripDefaultTaskCompletion(task)),
+    ),
+  } as T;
+}
+
 function stripForSerialization<T extends PipelineConfig | RawPipelineConfig>(config: T): T {
   return {
     ...config,
-    tracks: config.tracks.map((track) => ({
-      ...track,
-      tasks: track.tasks.map((task) =>
-        stripPromptOnlyFieldsFromCommandTask(stripDefaultTaskCompletion(task)),
-      ),
-    })),
+    tracks: config.tracks.map(stripTrackForSerialization),
   } as T;
 }
 
@@ -285,7 +295,7 @@ export function deresolvePipeline(config: PipelineConfig, workDir: string): RawP
 
     const tasks: RawTaskConfig[] = track.tasks.map((task) => {
       const taskCwdRel =
-        task.cwd && task.cwd !== track.cwd ? relative(workDir, task.cwd) : undefined;
+        task.cwd && task.cwd !== track.cwd ? relative(workDir, task.cwd) || '.' : undefined;
 
       return {
         id: task.id,
@@ -390,7 +400,12 @@ export function validateConfigDiagnostics(
   );
 
   if (workDir !== undefined) {
-    validateConfigCwd(config, workDir, errors);
+    const message = workDirError(workDir);
+    if (message) {
+      pushDiagnostic(errors, { path: 'workDir', message });
+    } else {
+      validateConfigCwd(config, workDir, errors);
+    }
   }
 
   if (errors.length === 0) {
@@ -406,16 +421,22 @@ export function validateConfigDiagnostics(
   return errors;
 }
 
-function validateConfigCwd(
-  config: PipelineConfig,
-  workDir: string,
-  errors: ValidationError[],
-): void {
-  for (let ti = 0; ti < config.tracks.length; ti++) {
-    const track = config.tracks[ti]!;
-    if (track.cwd !== undefined) {
+type CwdValidationConfig = {
+  readonly tracks?: readonly unknown[];
+};
+
+function validateConfigCwd(config: unknown, workDir: string, errors: ValidationError[]): void {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) return;
+  const tracks = (config as CwdValidationConfig).tracks;
+  if (!Array.isArray(tracks)) return;
+
+  for (let ti = 0; ti < tracks.length; ti++) {
+    const track = tracks[ti];
+    if (!track || typeof track !== 'object' || Array.isArray(track)) continue;
+    const trackConfig = track as { readonly cwd?: unknown; readonly tasks?: readonly unknown[] };
+    if (typeof trackConfig.cwd === 'string') {
       try {
-        validatePath(track.cwd, workDir);
+        validatePath(trackConfig.cwd, workDir);
       } catch (err) {
         pushDiagnostic(errors, {
           path: `tracks[${ti}].cwd`,
@@ -423,11 +444,14 @@ function validateConfigCwd(
         });
       }
     }
-    for (let ki = 0; ki < track.tasks.length; ki++) {
-      const task = track.tasks[ki]!;
-      if (task.cwd === undefined) continue;
+    if (!Array.isArray(trackConfig.tasks)) continue;
+    for (let ki = 0; ki < trackConfig.tasks.length; ki++) {
+      const task = trackConfig.tasks[ki];
+      if (!task || typeof task !== 'object' || Array.isArray(task)) continue;
+      const taskConfig = task as { readonly cwd?: unknown };
+      if (typeof taskConfig.cwd !== 'string') continue;
       try {
-        validatePath(task.cwd, workDir);
+        validatePath(taskConfig.cwd, workDir);
       } catch (err) {
         pushDiagnostic(errors, {
           path: `tracks[${ti}].tasks[${ki}].cwd`,
@@ -456,8 +480,12 @@ function formatDiagnostic(diagnostic: ValidationError): string {
 // ═══ Full Parse Pipeline ═══
 
 export async function loadPipeline(yamlContent: string, workDir: string): Promise<PipelineConfig> {
+  assertWorkDir(workDir);
   const raw = parseYaml(yamlContent);
   const diagnostics = validateRaw(raw).filter((d) => d.severity !== 'warning');
+  if (diagnostics.length === 0) {
+    validateConfigCwd(raw, workDir, diagnostics);
+  }
   if (diagnostics.length > 0) {
     throw new PipelineValidationError(diagnostics);
   }

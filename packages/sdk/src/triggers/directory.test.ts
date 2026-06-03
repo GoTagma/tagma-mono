@@ -11,6 +11,31 @@ function makeDir(prefix: string): string {
 }
 
 describe('DirectoryTrigger runtime boundary', () => {
+  test('rejects malformed path config with plugin errors', () => {
+    expect(() => DirectoryTrigger.watch({ type: 'directory', path: 42 }, {} as never)).toThrow(
+      /directory trigger: "path" must be a string/,
+    );
+    expect(() => DirectoryTrigger.watch({ type: 'directory', path: '' }, {} as never)).toThrow(
+      /directory trigger: "path" is required/,
+    );
+    expect(() => DirectoryTrigger.watch({ type: 'directory', path: '   ' }, {} as never)).toThrow(
+      /directory trigger: "path" is required/,
+    );
+  });
+
+  test('rejects relative paths that escape the workspace', () => {
+    const dir = makeDir('tagma-directory-trigger-escape-');
+    try {
+      expect(() =>
+        DirectoryTrigger.watch({ type: 'directory', path: '../outside' }, {
+          workDir: dir,
+        } as never),
+      ).toThrow(/escapes project root/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('waits for the target directory to be added under its parent', async () => {
     const dir = makeDir('tagma-directory-trigger-runtime-');
     const calls: string[] = [];

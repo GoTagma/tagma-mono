@@ -78,6 +78,17 @@ describe('opencode-driver assistant part gate', () => {
     expect(gate.observePart(part)).toEqual([]);
     expect(gate.observeMessage(userInfo('user-message'))).toEqual([]);
   });
+
+  test('drops historical assistant replay from reused sessions', () => {
+    const gate = createAssistantPartGate(new Set(['old-assistant-message']));
+    const oldPart = textPart('old-assistant-message', 'old answer');
+    const newPart = textPart('new-assistant-message', 'new answer');
+
+    expect(gate.observePart(oldPart)).toEqual([]);
+    expect(gate.observeMessage(assistantInfo('old-assistant-message'))).toEqual([]);
+    expect(gate.observePart(oldPart)).toEqual([]);
+    expect(gate.observePart(newPart)).toEqual([newPart]);
+  });
 });
 
 describe('opencode-driver loopback client', () => {
@@ -236,12 +247,7 @@ describe('opencode-driver bot prompt body', () => {
     const workDir = mkdtempSync(join(tmpdir(), 'tagma-bot-fill-manual-new-'));
     try {
       const ws = workspaceRegistry.getOrCreate(workDir);
-      const currentYaml = join(
-        workDir,
-        '.tagma',
-        'pipeline-abc123xy',
-        'pipeline-abc123xy.yaml',
-      );
+      const currentYaml = join(workDir, '.tagma', 'pipeline-abc123xy', 'pipeline-abc123xy.yaml');
       mkdirSync(join(workDir, '.tagma', 'pipeline-abc123xy'), { recursive: true });
       writeFileSync(
         currentYaml,

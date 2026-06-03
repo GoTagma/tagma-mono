@@ -10,6 +10,7 @@
  */
 
 import { getClientAuthToken, getClientWorkspace } from './client';
+import { opencodeWorkspaceHeaderValue } from './opencode-chat';
 
 export type ConfigScope = 'global' | 'workspace';
 
@@ -94,13 +95,13 @@ export interface DiscoverModelsResponse {
   format: 'openai' | 'ollama';
 }
 
-function buildHeaders(opts?: { method?: string }): Record<string, string> {
+function buildHeaders(opts?: { method?: string; workspaceKey?: string }): Record<string, string> {
   const headers: Record<string, string> = {};
   const method = (opts?.method ?? 'GET').toUpperCase();
   if (method !== 'GET' && method !== 'HEAD') {
     headers['Content-Type'] = 'application/json';
   }
-  const workspaceKey = getClientWorkspace();
+  const workspaceKey = opencodeWorkspaceHeaderValue(opts?.workspaceKey ?? getClientWorkspace());
   if (workspaceKey) headers['X-Tagma-Workspace'] = workspaceKey;
   const auth = getClientAuthToken();
   if (auth) headers.Authorization = `Bearer ${auth}`;
@@ -118,8 +119,12 @@ async function readError(res: Response): Promise<string> {
   return detail;
 }
 
-export async function listCustomProviders(): Promise<CustomProviderListResponse> {
-  const res = await fetch('/api/opencode/custom-providers', { headers: buildHeaders() });
+export async function listCustomProviders(
+  workspaceKey?: string | null,
+): Promise<CustomProviderListResponse> {
+  const res = await fetch('/api/opencode/custom-providers', {
+    headers: buildHeaders({ workspaceKey: workspaceKey ?? undefined }),
+  });
   if (!res.ok) {
     throw new Error(`Failed to list custom providers (${res.status}): ${await readError(res)}`);
   }
@@ -130,10 +135,11 @@ export async function saveCustomProvider(
   id: string,
   scope: ConfigScope,
   def: CustomProviderDef,
+  workspaceKey?: string | null,
 ): Promise<void> {
   const res = await fetch(`/api/opencode/custom-providers/${encodeURIComponent(id)}`, {
     method: 'PUT',
-    headers: buildHeaders({ method: 'PUT' }),
+    headers: buildHeaders({ method: 'PUT', workspaceKey: workspaceKey ?? undefined }),
     body: JSON.stringify({ scope, def }),
   });
   if (!res.ok) {
@@ -141,13 +147,17 @@ export async function saveCustomProvider(
   }
 }
 
-export async function deleteCustomProvider(id: string, scope: ConfigScope): Promise<void> {
+export async function deleteCustomProvider(
+  id: string,
+  scope: ConfigScope,
+  workspaceKey?: string | null,
+): Promise<void> {
   const params = new URLSearchParams({ scope });
   const res = await fetch(
     `/api/opencode/custom-providers/${encodeURIComponent(id)}?${params.toString()}`,
     {
       method: 'DELETE',
-      headers: buildHeaders({ method: 'DELETE' }),
+      headers: buildHeaders({ method: 'DELETE', workspaceKey: workspaceKey ?? undefined }),
     },
   );
   if (!res.ok) {

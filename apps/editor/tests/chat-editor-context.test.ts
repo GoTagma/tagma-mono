@@ -17,7 +17,6 @@ describe('chat editor context', () => {
     useYamlEditLockStore.setState({
       active: false,
       yamlPath: null,
-      rawLock: null,
     } as never);
   });
 

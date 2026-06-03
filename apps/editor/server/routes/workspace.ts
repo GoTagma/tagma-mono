@@ -148,6 +148,10 @@ const WORKFLOW_YAML_DUMP_OPTIONS = {
   noCompatMode: true,
 } as Parameters<typeof yaml.dump>[1] & { noCompatMode: boolean };
 
+function isPluginArchiveName(name: string): boolean {
+  return /\.tgz$|\.tar\.gz$/i.test(name);
+}
+
 function clipString(value: unknown, max = MAX_USAGE_STRING_LEN): string {
   if (typeof value !== 'string') return '';
   return value.length > max ? value.slice(0, max) : value;
@@ -959,13 +963,28 @@ export function registerWorkspaceRoutes(app: express.Express): void {
         capabilityPurpose === 'import-plugin'
           ? issueFsCapability(dirPath, capabilityPurpose, req.workspace)
           : null;
+      const entryCapabilityTokens: Record<string, string> = {};
+      if (capabilityPurpose === 'import-plugin') {
+        for (const entry of entries) {
+          if (entry.type !== 'file' || !isPluginArchiveName(entry.name)) continue;
+          entryCapabilityTokens[entry.path] = issueFsCapability(
+            entry.path,
+            capabilityPurpose,
+            req.workspace,
+          ).token;
+        }
+      }
       res.json({
         path: dirPath,
         parent: parent !== dirPath ? parent : null,
         entries,
         truncated: allEntries.length > MAX_FS_LIST_ENTRIES,
         ...(capability
-          ? { capabilityToken: capability.token, capabilityExpiresAt: capability.expiresAt }
+          ? {
+              capabilityToken: capability.token,
+              capabilityExpiresAt: capability.expiresAt,
+              entryCapabilityTokens,
+            }
           : {}),
       });
     } catch (err: unknown) {

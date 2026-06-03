@@ -56,6 +56,24 @@ pipeline:
     expect(result.summary).not.toMatch(/Validation crashed/);
   });
 
+  test('reports missing task lists as validation errors, not validation crashes', () => {
+    const result = compileYamlContent(`
+pipeline:
+  name: Missing Tasks
+  tracks:
+    - id: t
+      name: T
+`);
+
+    expect(result.parseOk).toBe(true);
+    expect(result.success).toBe(false);
+    expect(result.validation.errors).toContainEqual({
+      path: 'tracks[0].tasks',
+      message: 'Track "t": tasks must be an array',
+    });
+    expect(result.summary).not.toMatch(/Validation crashed/);
+  });
+
   test('routes schema errors through validation when YAML syntax is valid', () => {
     const result = compileYamlContent(`
 pipeline:
@@ -180,10 +198,12 @@ pipeline:
   tracks:
     - id: main
       name: Main
+      cwd: 123
       middlewares: nope
       tasks:
         - id: task
           command: echo hi
+          cwd: []
           depends_on: up
           trigger: manual
           completion: {}
@@ -200,7 +220,9 @@ pipeline:
           message:
             'hooks.task_start must be a non-empty shell string, { shell: string }, or { argv: string[] }',
         },
+        { path: 'tracks[0].cwd', message: 'track.cwd must be a non-empty string' },
         { path: 'tracks[0].middlewares', message: 'middlewares must be an array of objects' },
+        { path: 'tracks[0].tasks[0].cwd', message: 'task.cwd must be a non-empty string' },
         {
           path: 'tracks[0].tasks[0].trigger',
           message: 'trigger must be an object with a non-empty type',
@@ -215,6 +237,124 @@ pipeline:
         },
       ]),
     );
+  });
+
+  test('reports malformed optional scalar fields as validation errors', () => {
+    const result = compileYamlContent(`
+pipeline:
+  name: Bad Optional Scalars
+  mode: 0
+  driver: []
+  model: {}
+  tracks:
+    - id: main
+      name: Main
+      color: 5
+      driver: {}
+      model: []
+      agent_profile: false
+      on_failure: false
+      tasks:
+        - id: task
+          name: 123
+          command: echo hi
+          driver: []
+          model: {}
+          agent_profile: true
+        - id: prompt_task
+          prompt: 123
+`);
+
+    expect(result.parseOk).toBe(true);
+    expect(result.success).toBe(false);
+    expect(result.summary).not.toMatch(/Validation crashed/);
+    expect(result.validation.errors).toEqual(
+      expect.arrayContaining([
+        {
+          path: 'mode',
+          message: 'Invalid mode "0". Expected "trusted" or "safe".',
+        },
+        { path: 'driver', message: 'driver must be a non-empty string' },
+        { path: 'model', message: 'model must be a non-empty string' },
+        { path: 'tracks[0].color', message: 'track.color must be a non-empty string' },
+        { path: 'tracks[0].driver', message: 'track.driver must be a non-empty string' },
+        { path: 'tracks[0].model', message: 'track.model must be a non-empty string' },
+        {
+          path: 'tracks[0].agent_profile',
+          message: 'track.agent_profile must be a non-empty string',
+        },
+        {
+          path: 'tracks[0].on_failure',
+          message:
+            'Invalid on_failure value "false". Expected "skip_downstream", "stop_all", or "ignore".',
+        },
+        { path: 'tracks[0].tasks[0].name', message: 'task.name must be a non-empty string' },
+        { path: 'tracks[0].tasks[0].driver', message: 'task.driver must be a non-empty string' },
+        { path: 'tracks[0].tasks[0].model', message: 'task.model must be a non-empty string' },
+        {
+          path: 'tracks[0].tasks[0].agent_profile',
+          message: 'task.agent_profile must be a non-empty string',
+        },
+        {
+          path: 'tracks[0].tasks[1].prompt',
+          message: 'task.prompt must be a non-empty string',
+        },
+      ]),
+    );
+  });
+
+  test('reports unknown core config fields without closing plugin configs', () => {
+    const result = compileYamlContent(`
+pipeline:
+  name: Unknown Core Fields
+  maxConcurrency: 2
+  tracks:
+    - id: main
+      name: Main
+      dependsOn: [setup]
+      tasks:
+        - id: task
+          command:
+            shell: echo {{inputs.city}}
+            cwd: ignored
+          continueFrom: setup
+          trigger:
+            type: manual
+            metadata:
+              keep: true
+          inputs:
+            city:
+              requred: true
+          outputs:
+            report:
+              required: true
+`);
+
+    expect(result.parseOk).toBe(true);
+    expect(result.success).toBe(false);
+    expect(result.validation.errors).toEqual(
+      expect.arrayContaining([
+        { path: 'maxConcurrency', message: 'Unknown pipeline field "maxConcurrency"' },
+        { path: 'tracks[0].dependsOn', message: 'Unknown track field "dependsOn"' },
+        {
+          path: 'tracks[0].tasks[0].continueFrom',
+          message: 'Unknown task "task" field "continueFrom"',
+        },
+        {
+          path: 'tracks[0].tasks[0].command.cwd',
+          message: 'Unknown Task "task" command field "cwd"',
+        },
+        {
+          path: 'tracks[0].tasks[0].inputs.city.requred',
+          message: 'Unknown task.inputs.city field "requred"',
+        },
+        {
+          path: 'tracks[0].tasks[0].outputs.report.required',
+          message: 'Unknown task.outputs.report field "required"',
+        },
+      ]),
+    );
+    expect(result.validation.errors.some((e) => e.path.includes('metadata'))).toBe(false);
   });
 
   test('reports oversized task timeout before runtime starts', () => {

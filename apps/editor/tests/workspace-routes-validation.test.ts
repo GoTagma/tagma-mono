@@ -119,6 +119,56 @@ describe('workspace route validation', () => {
     ).not.toThrow();
   });
 
+  test('GET /api/fs/list picker mode issues exact import-plugin capabilities for plugin archives', () => {
+    S.workDir = makeTempDir();
+    const sourceDir = makeTempDir();
+    const tgzPath = join(sourceDir, 'plugin.tgz');
+    const tarGzPath = join(sourceDir, 'plugin.tar.gz');
+    const upperPath = join(sourceDir, 'plugin-uppercase.TGZ');
+    const textPath = join(sourceDir, 'notes.txt');
+    const childDir = join(sourceDir, 'plugin-dir');
+    writeFileSync(tgzPath, 'fake tgz', 'utf-8');
+    writeFileSync(tarGzPath, 'fake tar gz', 'utf-8');
+    writeFileSync(upperPath, 'fake upper tgz', 'utf-8');
+    writeFileSync(textPath, 'not a plugin archive', 'utf-8');
+    mkdirSync(childDir, { recursive: true });
+    const handler = createRouteHarness().get('/api/fs/list');
+    const res = makeRes();
+
+    handler(
+      {
+        workspace: S,
+        headers: {},
+        query: { picker: '1', path: sourceDir, capabilityPurpose: 'import-plugin' },
+      },
+      res,
+    );
+
+    expect(res.statusCode).toBe(200);
+    const body = res.body as {
+      path?: string;
+      capabilityToken?: string;
+      entryCapabilityTokens?: Record<string, string>;
+    };
+    expect(body.path).toBe(sourceDir);
+    expect(typeof body.capabilityToken).toBe('string');
+    expect(typeof body.entryCapabilityTokens?.[tgzPath]).toBe('string');
+    expect(typeof body.entryCapabilityTokens?.[tarGzPath]).toBe('string');
+    expect(typeof body.entryCapabilityTokens?.[upperPath]).toBe('string');
+    expect(body.entryCapabilityTokens?.[textPath]).toBeUndefined();
+    expect(body.entryCapabilityTokens?.[childDir]).toBeUndefined();
+
+    expect(() =>
+      consumeFsCapability(body.capabilityToken, sourceDir, 'import-plugin', S),
+    ).not.toThrow();
+    expect(() =>
+      consumeFsCapability(body.entryCapabilityTokens?.[tgzPath], tgzPath, 'import-plugin', S),
+    ).not.toThrow();
+    expect(() =>
+      consumeFsCapability(body.entryCapabilityTokens?.[tarGzPath], textPath, 'import-plugin', S),
+    ).toThrow(/does not match/);
+  });
+
   test('POST /api/fs/mkdir requires a real workspace in non-picker mode', () => {
     const tempRoot = makeTempDir();
     const target = join(tempRoot, 'created-outside-workspace');
@@ -258,9 +308,9 @@ describe('workspace route validation', () => {
     expect(manifest.pipeline?.name).toBe('Build');
     expect(manifest.sections?.[0]?.id).toBe('pipeline');
     expect(S.manualNewPipelineYamlPath).toBe(S.yamlPath);
-    expect((res.body as { manualNewPipelineYamlPath?: string | null }).manualNewPipelineYamlPath).toBe(
-      S.yamlPath,
-    );
+    expect(
+      (res.body as { manualNewPipelineYamlPath?: string | null }).manualNewPipelineYamlPath,
+    ).toBe(S.yamlPath);
   });
 
   test('POST /api/open clears the manual-new draft marker', async () => {

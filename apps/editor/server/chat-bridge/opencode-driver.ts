@@ -500,15 +500,19 @@ function isBridgePromptTextPart(part: Part): boolean {
   return part.type === 'text' && part.text.trimStart().startsWith('<editor-context>');
 }
 
-export function createAssistantPartGate(): AssistantPartGate {
+export function createAssistantPartGate(
+  historicalMessageIds: ReadonlySet<string> = new Set(),
+): AssistantPartGate {
   const roles = new Map<string, Message['role']>();
 
   return {
     observeMessage(info) {
+      if (historicalMessageIds.has(info.id)) return [];
       roles.set(info.id, info.role);
       return [];
     },
     observePart(part) {
+      if (historicalMessageIds.has(part.messageID)) return [];
       if (isSuppressedBridgePart(part)) return [];
       const role = roles.get(part.messageID);
       if (role === 'assistant') return [part];
@@ -525,16 +529,36 @@ export function createAssistantPartGate(): AssistantPartGate {
   };
 }
 
+async function loadHistoricalMessageIds(
+  client: OpencodeClient,
+  sessionId: string,
+): Promise<Set<string>> {
+  const ids = new Set<string>();
+  try {
+    const entries = (await unwrap(client.session.messages({ path: { id: sessionId } }))) as {
+      info?: { id?: unknown };
+      parts?: Array<{ messageID?: unknown }>;
+    }[];
+    for (const entry of entries) {
+      if (typeof entry.info?.id === 'string') ids.add(entry.info.id);
+      for (const part of entry.parts ?? []) {
+        if (typeof part.messageID === 'string') ids.add(part.messageID);
+      }
+    }
+  } catch (err) {
+    console.warn('[bot-bridge] failed to snapshot existing opencode messages:', err);
+  }
+  return ids;
+}
+
 // Each turn opens a FRESH `event.subscribe` (per-turn lifetime), which is
-// structurally a reconnect every turn. opencode can late-deliver / replay a
-// `session.idle` (or `session.status{idle}`) envelope from a reused session's
-// PRIOR turn onto that new subscription — chat-store.ts guards the same hazard
-// with its confirmIdleTurn re-check. We treat an idle that arrives before this
-// turn has produced ANY part or permission as stale: ignore it and keep
-// consuming. To avoid hanging a turn that legitimately produces nothing, a
-// pre-activity idle arms this bounded floor instead, after which we end the
-// turn anyway. A real turn emits a part well within this window (the router
-// delegates via a tool part almost immediately), disarming the floor.
+// structurally a reconnect every turn. opencode can late-deliver / replay
+// envelopes from a reused session's PRIOR turn onto that new subscription.
+// Existing message IDs are snapshotted before prompting so historical assistant
+// content cannot render as this turn. Idle/status replays are handled below:
+// an idle before any current-turn part/permission is treated as stale and only
+// arms a bounded floor. A real turn emits a part well within this window (the
+// router delegates via a tool part almost immediately), disarming the floor.
 const IDLE_GRACE_FLOOR_MS = 8000;
 
 /**
@@ -555,6 +579,7 @@ export async function sendPromptStreaming(
 ): Promise<StreamingHandle> {
   const client = await getClientFor(workspaceKey);
   const resolvedSession = await ensureSession(workspaceKey, sessionId, newSessionTitle);
+  const historicalMessageIds = await loadHistoricalMessageIds(client, resolvedSession);
   const controller = new AbortController();
   const { stream } = await client.event.subscribe({ signal: controller.signal });
 
@@ -592,7 +617,7 @@ export async function sendPromptStreaming(
   // Turn-end idle guard (see IDLE_GRACE_FLOOR_MS above).
   let observedTurnActivity = false;
   let idleFloorTimer: ReturnType<typeof setTimeout> | null = null;
-  const partGate = createAssistantPartGate();
+  const partGate = createAssistantPartGate(historicalMessageIds);
   const clearIdleFloor = () => {
     if (idleFloorTimer) {
       clearTimeout(idleFloorTimer);

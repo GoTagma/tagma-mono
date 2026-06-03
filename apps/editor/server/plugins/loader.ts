@@ -8,7 +8,7 @@ import {
   rmSync,
   statSync,
 } from 'node:fs';
-import { resolve, join as joinPath } from 'node:path';
+import { resolve, join as joinPath, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import yaml from 'js-yaml';
 import {
@@ -27,13 +27,17 @@ import {
 import { enumeratePipelineYamls } from '../pipeline-paths.js';
 import {
   isPathWithin,
-  pluginStoreRoot,
-  pluginStoreDirFor,
   pluginStorePackageDirFor,
+  safePluginStoreDirFor,
+  safePluginStoreRoot,
   fenceWithinPluginStore,
 } from '../state.js';
 import type { WorkspaceState, LoadedPluginMeta } from '../workspace-state.js';
-import { installPackage } from './install.js';
+import {
+  discardPluginSnapshot,
+  installPackageWithRollbackSnapshot,
+  restorePluginStateAndResync,
+} from './install.js';
 import { loadPluginWorker } from './worker-runtime.js';
 import { atomicWriteFileSync, readContainedTextFileSync } from '../path-utils.js';
 
@@ -92,20 +96,17 @@ export function getPluginInfo(ws: WorkspaceState, name: string): PluginInfo {
   let description: string | null = null;
   let manifestCategory: PluginCategory | null = null;
   try {
+    safePluginStoreDirFor(ws, name);
     const pluginDir = pluginStorePackageDirFor(ws, name);
     fenceWithinPluginStore(ws, pluginDir);
     const pkgPath = resolve(pluginDir, 'package.json');
     if (existsSync(pkgPath)) {
+      const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as Record<string, unknown>;
+      const manifest = assertStoredPluginPackage(pkg, name);
       installed = true;
-      const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
-      version = pkg.version ?? null;
-      description = pkg.description ?? null;
-      try {
-        const manifest = parsePluginManifestField(pkg);
-        if (manifest) manifestCategory = manifest.category;
-      } catch {
-        /* malformed tagmaPlugin field — fall through to meta/name inference */
-      }
+      version = typeof pkg.version === 'string' ? pkg.version : null;
+      description = typeof pkg.description === 'string' ? pkg.description : null;
+      manifestCategory = manifest.category;
     }
   } catch (_err) {
     /* plugin dir missing or unreadable — treat as not installed */
@@ -163,6 +164,25 @@ const CAPABILITY_CATEGORIES = [
 ] as const satisfies readonly PluginCategory[];
 
 type CapabilityRef = Pick<RegisteredCapability, 'category' | 'type'>;
+type ParsedPluginManifest = NonNullable<ReturnType<typeof parsePluginManifestField>>;
+
+function assertStoredPluginPackage(
+  pkg: Record<string, unknown>,
+  name: string,
+): ParsedPluginManifest {
+  if (pkg.name !== name) {
+    throw new Error(
+      `Package identity mismatch: expected "${name}", got ${JSON.stringify(pkg.name)}`,
+    );
+  }
+  const manifest = parsePluginManifestField(pkg);
+  if (!manifest) {
+    throw new Error(
+      `Package "${name}" is not a tagma plugin (missing tagmaPlugin manifest in package.json)`,
+    );
+  }
+  return manifest;
+}
 
 export interface LoadPluginOptions {
   methodTimeoutMs?: number;
@@ -254,6 +274,33 @@ function removeCapabilityOwners(
   }
 }
 
+function removePluginStageDir(ws: WorkspaceState, name: string, stageDir: string): void {
+  if (!ws.workDir) return;
+  try {
+    assertSafePluginName(name);
+  } catch {
+    return;
+  }
+  const safeName = name.replace(/[\\/]/g, '__');
+  const packageStageRoot = resolve(ws.workDir, '.tagma', 'plugin-runtime', safeName);
+  const resolvedStageDir = resolve(stageDir);
+  if (resolvedStageDir === packageStageRoot || !isPathWithin(resolvedStageDir, packageStageRoot)) {
+    return;
+  }
+  try {
+    assertSafeStagingAncestors(
+      ws.workDir,
+      ['.tagma', 'plugin-runtime', safeName],
+      `Plugin "${name}"`,
+    );
+    const stageStat = lstatSync(resolvedStageDir);
+    if (stageStat.isSymbolicLink() || !stageStat.isDirectory()) return;
+    rmSync(resolvedStageDir, { recursive: true, force: true });
+  } catch {
+    /* best-effort cleanup */
+  }
+}
+
 export function unloadPluginFromRegistry(
   ws: WorkspaceState,
   name: string,
@@ -272,11 +319,7 @@ export function unloadPluginFromRegistry(
     /* best-effort */
   }
   if (options.removeStageDir && meta.stageDir) {
-    try {
-      rmSync(meta.stageDir, { recursive: true, force: true });
-    } catch {
-      /* best-effort */
-    }
+    removePluginStageDir(ws, name, meta.stageDir);
   }
   return true;
 }
@@ -449,8 +492,7 @@ export async function loadPluginFromWorkDir(
     throw new PluginSafetyError('Cannot load plugin: workspace directory is not set');
   }
 
-  const storeRoot = pluginStoreDirFor(ws, name);
-  fenceWithinPluginStore(ws, storeRoot);
+  const storeRoot = safePluginStoreDirFor(ws, name);
   const pluginDir = pluginStorePackageDirFor(ws, name);
   fenceWithinPluginStore(ws, pluginDir);
 
@@ -458,20 +500,13 @@ export async function loadPluginFromWorkDir(
   if (!existsSync(pluginPkgPath)) {
     throw new Error(`Plugin "${name}" is not installed (no package.json at ${pluginPkgPath})`);
   }
-  const pluginPkg = JSON.parse(readFileSync(pluginPkgPath, 'utf-8'));
-  let fallbackManifest: { packageName: string; category: PluginCategory; type: string } | undefined;
-  try {
-    const manifest = parsePluginManifestField(pluginPkg);
-    if (manifest) {
-      fallbackManifest = {
-        packageName: name,
-        category: manifest.category,
-        type: manifest.type,
-      };
-    }
-  } catch {
-    /* malformed manifest will still fail normal plugin validation if needed */
-  }
+  const pluginPkg = JSON.parse(readFileSync(pluginPkgPath, 'utf-8')) as Record<string, unknown>;
+  const manifest = assertStoredPluginPackage(pluginPkg, name);
+  const fallbackManifest = {
+    packageName: name,
+    category: manifest.category,
+    type: manifest.type,
+  };
   const entryPoint = resolveEntryPoint(pluginPkg);
   if (!entryPoint) {
     throw new Error(
@@ -541,7 +576,7 @@ export async function loadPluginFromWorkDir(
     // The workspace owner map above narrows hot replacement to capabilities this
     // package already owns; attempts to take over another package's type fail
     // before touching the registry.
-    const registrations = ws.registry.registerTagmaPlugin(plugin, {
+    const registrations: RegisteredCapability[] = ws.registry.registerTagmaPlugin(plugin, {
       replace: previousMeta !== undefined,
     });
     const result: RegisterResult = registrations.some((r) => r.result === 'replaced')
@@ -576,12 +611,8 @@ export async function loadPluginFromWorkDir(
     // registry — drop it so the plugin-runtime tree doesn't grow unbounded
     // across successive upgrades. Best-effort; a stray lock or permission
     // glitch is harmless because the next uninstall cleans the whole tree.
-    if (previousStageDir && previousStageDir !== stagedPluginDir) {
-      try {
-        rmSync(previousStageDir, { recursive: true, force: true });
-      } catch {
-        /* best-effort */
-      }
+    if (previousStageDir && previousStageDir !== stagedRoot) {
+      removePluginStageDir(ws, name, previousStageDir);
     }
     try {
       previousMeta?.worker?.terminate();
@@ -594,11 +625,7 @@ export async function loadPluginFromWorkDir(
     // plugin-runtime/ tree doesn't accumulate orphans on every failed retry.
     // The previously-staged copy (for an already-loaded plugin) is kept
     // intact so its handler continues to serve Run.
-    try {
-      rmSync(stagedRoot, { recursive: true, force: true });
-    } catch {
-      /* best-effort */
-    }
+    removePluginStageDir(ws, name, stagedRoot);
     try {
       worker?.terminate();
     } catch {
@@ -629,8 +656,21 @@ export function cleanupPluginStageTree(ws: WorkspaceState, name: string): void {
   ];
   for (const runtimeRoot of runtimeRoots) {
     const stageRoot = resolve(runtimeRoot, safeName);
+    let runtimeStat;
+    try {
+      runtimeStat = lstatSync(runtimeRoot);
+    } catch {
+      continue;
+    }
+    if (runtimeStat.isSymbolicLink() || !runtimeStat.isDirectory()) continue;
+    let stageStat;
+    try {
+      stageStat = lstatSync(stageRoot);
+    } catch {
+      continue;
+    }
+    if (stageStat.isSymbolicLink() || !stageStat.isDirectory()) continue;
     if (!isPathWithin(stageRoot, runtimeRoot)) continue;
-    if (!existsSync(stageRoot)) continue;
     try {
       rmSync(stageRoot, { recursive: true, force: true });
     } catch {
@@ -1058,7 +1098,7 @@ export function discoverInstalledPlugins(ws: WorkspaceState): string[] {
   ) {
     return ws.installedPluginsCache;
   }
-  const storeRoot = pluginStoreRoot(ws);
+  const storeRoot = safePluginStoreRoot(ws);
   if (!existsSync(storeRoot)) return [];
   try {
     const plugins: string[] = [];
@@ -1254,20 +1294,38 @@ export async function autoLoadInstalledPlugins(ws: WorkspaceState): Promise<stri
       continue;
     }
     let info = getPluginInfo(ws, name);
+    let autoInstallOutcome: Awaited<ReturnType<typeof installPackageWithRollbackSnapshot>> | null =
+      null;
     if (!info.installed) {
       // Only auto-install plugins that are explicitly declared in the YAML —
       // the manifest/discovered sources can carry stale entries from a
       // previous workspace state, and we don't want to silently re-pull them.
       if (!settings.autoInstallDeclaredPlugins || !declaredSet.has(name)) continue;
       try {
-        await installPackage(ws, name);
+        autoInstallOutcome = await installPackageWithRollbackSnapshot(ws, name);
         addToPluginManifest(ws, name);
+        invalidatePluginCache(ws);
         info = getPluginInfo(ws, name);
         if (!info.installed) {
+          await restorePluginStateAndResync(ws, autoInstallOutcome.snapshot);
+          autoInstallOutcome = null;
+          invalidatePluginCache(ws);
           errors.push({ name, message: 'install completed but plugin still not on disk' });
           continue;
         }
       } catch (e) {
+        if (autoInstallOutcome) {
+          try {
+            await restorePluginStateAndResync(ws, autoInstallOutcome.snapshot);
+            invalidatePluginCache(ws);
+          } catch (restoreErr) {
+            console.error(
+              `[plugins] failed to roll back auto-install for "${name}":`,
+              restoreErr instanceof Error ? restoreErr.message : String(restoreErr),
+            );
+          }
+          autoInstallOutcome = null;
+        }
         const msg = e instanceof Error ? e.message : String(e);
         console.warn(`Failed to auto-install plugin "${name}":`, msg);
         errors.push({ name, message: `auto-install failed: ${msg}` });
@@ -1276,9 +1334,25 @@ export async function autoLoadInstalledPlugins(ws: WorkspaceState): Promise<stri
     }
     try {
       await loadPluginFromWorkDir(ws, name);
+      if (autoInstallOutcome) {
+        discardPluginSnapshot(autoInstallOutcome.snapshot);
+        autoInstallOutcome = null;
+      }
       loaded.push(name);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+      let msg = e instanceof Error ? e.message : String(e);
+      if (autoInstallOutcome) {
+        try {
+          await restorePluginStateAndResync(ws, autoInstallOutcome.snapshot);
+          invalidatePluginCache(ws);
+          msg = `auto-install completed but plugin failed to load; reverted install changes: ${msg}`;
+        } catch (restoreErr) {
+          const restoreMsg = restoreErr instanceof Error ? restoreErr.message : String(restoreErr);
+          console.error(`[plugins] failed to roll back auto-install for "${name}":`, restoreMsg);
+          msg = `auto-install completed but plugin failed to load; rollback also failed: ${restoreMsg}; original error: ${msg}`;
+        }
+        autoInstallOutcome = null;
+      }
       console.warn(`Failed to load plugin "${name}":`, msg);
       errors.push({ name, message: msg });
     }
@@ -1429,6 +1503,18 @@ export interface UninstallImpactEntry {
   taskId: string | null;
 }
 
+function extractPluginList(doc: unknown): { list: unknown[]; location: string } | null {
+  if (!doc || typeof doc !== 'object') return null;
+  const d = doc as Record<string, unknown>;
+  const pipeline = d.pipeline;
+  if (pipeline && typeof pipeline === 'object') {
+    const plugins = (pipeline as Record<string, unknown>).plugins;
+    if (Array.isArray(plugins)) return { list: plugins, location: 'pipeline.plugins' };
+  }
+  if (Array.isArray(d.plugins)) return { list: d.plugins, location: 'plugins' };
+  return null;
+}
+
 function extractTracks(doc: unknown): unknown[] | null {
   if (!doc || typeof doc !== 'object') return null;
   const d = doc as Record<string, unknown>;
@@ -1451,6 +1537,193 @@ function extractPipelineObject(doc: unknown): Record<string, unknown> | null {
   return d;
 }
 
+function currentConfigImpactFile(ws: WorkspaceState): string {
+  if (!ws.workDir || !ws.yamlPath) return '(current pipeline)';
+  try {
+    if (isPathWithin(ws.yamlPath, ws.workDir)) {
+      return relative(resolve(ws.workDir), resolve(ws.yamlPath)).replace(/\\/g, '/');
+    }
+  } catch {
+    /* fall through to a stable non-path label */
+  }
+  return '(current pipeline)';
+}
+
+function impactEntryKey(entry: UninstallImpactEntry): string {
+  return [entry.file, entry.location, entry.trackId, entry.taskId ?? ''].join('\x1f');
+}
+
+function addUniqueImpacts(
+  target: UninstallImpactEntry[],
+  seen: Set<string>,
+  entries: readonly UninstallImpactEntry[],
+): void {
+  for (const entry of entries) {
+    const key = impactEntryKey(entry);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    target.push(entry);
+  }
+}
+
+function scanDeclaredPluginImpactInDoc(
+  doc: unknown,
+  file: string,
+  name: string,
+): UninstallImpactEntry[] {
+  const plugins = extractPluginList(doc);
+  if (!plugins) return [];
+  const impacts: UninstallImpactEntry[] = [];
+  for (let i = 0; i < plugins.list.length; i++) {
+    if (plugins.list[i] !== name) continue;
+    impacts.push({
+      file,
+      location: `${plugins.location}[${i}]`,
+      trackId: 'pipeline',
+      taskId: null,
+    });
+  }
+  return impacts;
+}
+
+export function scanDeclaredPluginImpact(ws: WorkspaceState, name: string): UninstallImpactEntry[] {
+  if (!ws.workDir) return [];
+  const impacts: UninstallImpactEntry[] = [];
+  const seen = new Set<string>();
+  const pipelineEntries = enumeratePipelineYamls(ws.workDir);
+  for (const entry of pipelineEntries) {
+    let doc: unknown;
+    try {
+      doc = yaml.load(readFileSync(entry.yamlPath, 'utf-8'));
+    } catch {
+      continue;
+    }
+    const relFile = `.tagma/${entry.stem}/${entry.yamlBasename}`;
+    addUniqueImpacts(impacts, seen, scanDeclaredPluginImpactInDoc(doc, relFile, name));
+  }
+  addUniqueImpacts(
+    impacts,
+    seen,
+    scanDeclaredPluginImpactInDoc(ws.config, currentConfigImpactFile(ws), name),
+  );
+  return impacts;
+}
+
+function scanCapabilityImpactInDoc(
+  doc: unknown,
+  file: string,
+  category: PluginCategory,
+  type: string,
+): UninstallImpactEntry[] {
+  const impacts: UninstallImpactEntry[] = [];
+  const pipeline = extractPipelineObject(doc);
+  if (category === 'drivers' && pipeline?.driver === type) {
+    impacts.push({
+      file,
+      location: 'pipeline.driver',
+      trackId: 'pipeline',
+      taskId: null,
+    });
+  }
+  const tracks = extractTracks(doc);
+  if (!tracks) return impacts;
+
+  for (let ti = 0; ti < tracks.length; ti++) {
+    const track = tracks[ti];
+    if (!track || typeof track !== 'object') continue;
+    const trackId =
+      typeof (track as { id?: unknown }).id === 'string'
+        ? (track as { id: string }).id
+        : `tracks[${ti}]`;
+
+    if (category === 'drivers' && (track as { driver?: unknown }).driver === type) {
+      impacts.push({
+        file,
+        location: `tracks[${ti}].driver`,
+        trackId,
+        taskId: null,
+      });
+    }
+
+    if (category === 'middlewares') {
+      const trackMws = (track as { middlewares?: unknown }).middlewares;
+      if (Array.isArray(trackMws)) {
+        trackMws.forEach((mw, mi) => {
+          if (mw && typeof mw === 'object' && (mw as { type?: unknown }).type === type) {
+            impacts.push({
+              file,
+              location: `tracks[${ti}].middlewares[${mi}]`,
+              trackId,
+              taskId: null,
+            });
+          }
+        });
+      }
+    }
+
+    const tasks = (track as { tasks?: unknown }).tasks;
+    if (!Array.isArray(tasks)) continue;
+
+    for (let ki = 0; ki < tasks.length; ki++) {
+      const task = tasks[ki];
+      if (!task || typeof task !== 'object') continue;
+      const taskId =
+        typeof (task as { id?: unknown }).id === 'string'
+          ? (task as { id: string }).id
+          : `tasks[${ki}]`;
+      const taskObj = task as Record<string, unknown>;
+
+      if (category === 'drivers' && taskObj.driver === type) {
+        impacts.push({
+          file,
+          location: `tracks[${ti}].tasks[${ki}].driver`,
+          trackId,
+          taskId,
+        });
+      }
+
+      if (category === 'triggers') {
+        const trig = taskObj.trigger;
+        if (trig && typeof trig === 'object' && (trig as { type?: unknown }).type === type) {
+          impacts.push({
+            file,
+            location: `tracks[${ti}].tasks[${ki}].trigger`,
+            trackId,
+            taskId,
+          });
+        }
+      }
+      if (category === 'completions') {
+        const comp = taskObj.completion;
+        if (comp && typeof comp === 'object' && (comp as { type?: unknown }).type === type) {
+          impacts.push({
+            file,
+            location: `tracks[${ti}].tasks[${ki}].completion`,
+            trackId,
+            taskId,
+          });
+        }
+      }
+      if (category === 'middlewares') {
+        const taskMws = taskObj.middlewares;
+        if (Array.isArray(taskMws)) {
+          taskMws.forEach((mw, mi) => {
+            if (mw && typeof mw === 'object' && (mw as { type?: unknown }).type === type) {
+              impacts.push({
+                file,
+                location: `tracks[${ti}].tasks[${ki}].middlewares[${mi}]`,
+                trackId,
+                taskId,
+              });
+            }
+          });
+        }
+      }
+    }
+  }
+  return impacts;
+}
+
 /**
  * Scan every .tagma/*.yaml in the workspace for task/track entries that
  * reference a given (category, type) pair. Used by the uninstall flow so
@@ -1468,6 +1741,7 @@ export function scanUninstallImpact(
 ): UninstallImpactEntry[] {
   if (!ws.workDir) return [];
   const impacts: UninstallImpactEntry[] = [];
+  const seen = new Set<string>();
   // Walk `.tagma/<stem>/<stem>.yaml` via the shared enumerator so reserved
   // sibling dirs (`logs`, `plugin-runtime`, …) are skipped consistently with
   // the rest of the editor.
@@ -1481,113 +1755,13 @@ export function scanUninstallImpact(
       continue;
     }
     const relFile = `.tagma/${entry.stem}/${entry.yamlBasename}`;
-    const pipeline = extractPipelineObject(doc);
-    if (category === 'drivers' && pipeline?.driver === type) {
-      impacts.push({
-        file: relFile,
-        location: 'pipeline.driver',
-        trackId: 'pipeline',
-        taskId: null,
-      });
-    }
-    const tracks = extractTracks(doc);
-    if (!tracks) continue;
-
-    for (let ti = 0; ti < tracks.length; ti++) {
-      const track = tracks[ti];
-      if (!track || typeof track !== 'object') continue;
-      const trackId =
-        typeof (track as { id?: unknown }).id === 'string'
-          ? (track as { id: string }).id
-          : `tracks[${ti}]`;
-
-      if (category === 'drivers' && (track as { driver?: unknown }).driver === type) {
-        impacts.push({
-          file: relFile,
-          location: `tracks[${ti}].driver`,
-          trackId,
-          taskId: null,
-        });
-      }
-
-      // Track-level middlewares
-      if (category === 'middlewares') {
-        const trackMws = (track as { middlewares?: unknown }).middlewares;
-        if (Array.isArray(trackMws)) {
-          trackMws.forEach((mw, mi) => {
-            if (mw && typeof mw === 'object' && (mw as { type?: unknown }).type === type) {
-              impacts.push({
-                file: relFile,
-                location: `tracks[${ti}].middlewares[${mi}]`,
-                trackId,
-                taskId: null,
-              });
-            }
-          });
-        }
-      }
-
-      const tasks = (track as { tasks?: unknown }).tasks;
-      if (!Array.isArray(tasks)) continue;
-
-      for (let ki = 0; ki < tasks.length; ki++) {
-        const task = tasks[ki];
-        if (!task || typeof task !== 'object') continue;
-        const taskId =
-          typeof (task as { id?: unknown }).id === 'string'
-            ? (task as { id: string }).id
-            : `tasks[${ki}]`;
-        const taskObj = task as Record<string, unknown>;
-
-        if (category === 'drivers' && taskObj.driver === type) {
-          impacts.push({
-            file: relFile,
-            location: `tracks[${ti}].tasks[${ki}].driver`,
-            trackId,
-            taskId,
-          });
-        }
-
-        if (category === 'triggers') {
-          const trig = taskObj.trigger;
-          if (trig && typeof trig === 'object' && (trig as { type?: unknown }).type === type) {
-            impacts.push({
-              file: relFile,
-              location: `tracks[${ti}].tasks[${ki}].trigger`,
-              trackId,
-              taskId,
-            });
-          }
-        }
-        if (category === 'completions') {
-          const comp = taskObj.completion;
-          if (comp && typeof comp === 'object' && (comp as { type?: unknown }).type === type) {
-            impacts.push({
-              file: relFile,
-              location: `tracks[${ti}].tasks[${ki}].completion`,
-              trackId,
-              taskId,
-            });
-          }
-        }
-        if (category === 'middlewares') {
-          const taskMws = taskObj.middlewares;
-          if (Array.isArray(taskMws)) {
-            taskMws.forEach((mw, mi) => {
-              if (mw && typeof mw === 'object' && (mw as { type?: unknown }).type === type) {
-                impacts.push({
-                  file: relFile,
-                  location: `tracks[${ti}].tasks[${ki}].middlewares[${mi}]`,
-                  trackId,
-                  taskId,
-                });
-              }
-            });
-          }
-        }
-      }
-    }
+    addUniqueImpacts(impacts, seen, scanCapabilityImpactInDoc(doc, relFile, category, type));
   }
 
+  addUniqueImpacts(
+    impacts,
+    seen,
+    scanCapabilityImpactInDoc(ws.config, currentConfigImpactFile(ws), category, type),
+  );
   return impacts;
 }

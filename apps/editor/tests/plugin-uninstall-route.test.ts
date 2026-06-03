@@ -97,8 +97,33 @@ beforeEach(() => {
   });
 });
 
+function buildApp(): express.Express {
+  const app = express();
+  app.use(express.json());
+  app.use((req, _res, next) => {
+    req.workspace = ws;
+    next();
+  });
+  registerPluginRoutes(app);
+  return app;
+}
+
 afterEach(() => {
   rmSync(tempDir, { recursive: true, force: true });
+});
+
+test('local import checks the picker capability before probing the path', async () => {
+  const { port, close } = await startApp(buildApp());
+  try {
+    const missingPath = join(tempDir, 'missing-plugin.tgz');
+    const res = await postJsonBody(port, '/api/plugins/import-local', { path: missingPath });
+    expect(res.status).toBe(403);
+    const body = JSON.parse(res.body) as { error?: string };
+    expect(body.error).toMatch(/requires a one-time filesystem capability/);
+    expect(body.error).not.toContain(missingPath);
+  } finally {
+    await close();
+  }
 });
 
 test('uninstall rejects newly discovered impacts not acknowledged by the client', async () => {
@@ -125,14 +150,7 @@ test('uninstall rejects newly discovered impacts not acknowledged by the client'
     'utf-8',
   );
 
-  const app = express();
-  app.use(express.json());
-  app.use((req, _res, next) => {
-    req.workspace = ws;
-    next();
-  });
-  registerPluginRoutes(app);
-  const { port, close } = await startApp(app);
+  const { port, close } = await startApp(buildApp());
   try {
     const res = await postJsonBody(port, '/api/plugins/uninstall', {
       name: '@tagma/driver-foo',
@@ -147,6 +165,123 @@ test('uninstall rejects newly discovered impacts not acknowledged by the client'
     expect(body.impact?.impacts).toContainEqual(
       expect.objectContaining({
         file: '.tagma/pipeline/pipeline.yaml',
+        location: 'tracks[0].tasks[0].driver',
+      }),
+    );
+  } finally {
+    await close();
+  }
+});
+
+test('uninstall impact includes pipeline plugin declarations', async () => {
+  const pipelineFolder = join(tempDir, '.tagma', 'pipeline');
+  mkdirSync(pipelineFolder, { recursive: true });
+  writeFileSync(
+    join(pipelineFolder, 'pipeline.yaml'),
+    [
+      'pipeline:',
+      '  name: Declares Foo',
+      '  plugins:',
+      '    - "@tagma/driver-foo"',
+      '  tracks:',
+      '    - id: main',
+      '      name: Main',
+      '      tasks: []',
+      '',
+    ].join('\n'),
+    'utf-8',
+  );
+
+  const { port, close } = await startApp(buildApp());
+  try {
+    const res = await postJsonBody(port, '/api/plugins/uninstall', {
+      name: '@tagma/driver-foo',
+      acknowledgedImpacts: [],
+    });
+    expect(res.status).toBe(409);
+    const body = JSON.parse(res.body) as {
+      kind?: string;
+      impact?: { impacts?: Array<{ file: string; location: string; trackId: string }> };
+    };
+    expect(body.kind).toBe('impact-changed');
+    expect(body.impact?.impacts).toContainEqual(
+      expect.objectContaining({
+        file: '.tagma/pipeline/pipeline.yaml',
+        location: 'pipeline.plugins[0]',
+        trackId: 'pipeline',
+      }),
+    );
+  } finally {
+    await close();
+  }
+});
+
+test('uninstall impact reports top-level plugin declaration locations accurately', async () => {
+  const pipelineFolder = join(tempDir, '.tagma', 'pipeline');
+  mkdirSync(pipelineFolder, { recursive: true });
+  writeFileSync(
+    join(pipelineFolder, 'pipeline.yaml'),
+    ['name: Flat Declares Foo', 'plugins:', '  - "@tagma/driver-foo"', 'tracks: []', ''].join('\n'),
+    'utf-8',
+  );
+
+  const { port, close } = await startApp(buildApp());
+  try {
+    const res = await postJsonBody(port, '/api/plugins/uninstall', {
+      name: '@tagma/driver-foo',
+      acknowledgedImpacts: [],
+    });
+    expect(res.status).toBe(409);
+    const body = JSON.parse(res.body) as {
+      impact?: { impacts?: Array<{ location: string }> };
+    };
+    expect(body.impact?.impacts).toContainEqual(
+      expect.objectContaining({ location: 'plugins[0]' }),
+    );
+  } finally {
+    await close();
+  }
+});
+
+test('uninstall impact includes the current unsaved pipeline config', async () => {
+  ws.config = {
+    name: 'Unsaved Uses Foo',
+    plugins: ['@tagma/driver-foo'],
+    tracks: [
+      {
+        id: 'main',
+        name: 'Main',
+        tasks: [
+          {
+            id: 'task',
+            name: 'Task',
+            driver: 'foo',
+            prompt: 'hello',
+          },
+        ],
+      },
+    ],
+  };
+
+  const { port, close } = await startApp(buildApp());
+  try {
+    const res = await postJsonBody(port, '/api/plugins/uninstall', {
+      name: '@tagma/driver-foo',
+      acknowledgedImpacts: [],
+    });
+    expect(res.status).toBe(409);
+    const body = JSON.parse(res.body) as {
+      impact?: { impacts?: Array<{ file: string; location: string }> };
+    };
+    expect(body.impact?.impacts).toContainEqual(
+      expect.objectContaining({
+        file: '(current pipeline)',
+        location: 'plugins[0]',
+      }),
+    );
+    expect(body.impact?.impacts).toContainEqual(
+      expect.objectContaining({
+        file: '(current pipeline)',
         location: 'tracks[0].tasks[0].driver',
       }),
     );

@@ -184,7 +184,7 @@ export function resolveAssistantAttribution(
   const provider = providerID ? providers.find((p) => p.id === providerID) : undefined;
   return {
     providerLabel: provider?.name ?? providerID ?? 'unknown provider',
-    modelLabel: (modelID && provider?.models[modelID]?.name) || modelID || 'unknown model',
+    modelLabel: (modelID && provider?.models?.[modelID]?.name) || modelID || 'unknown model',
     title: providerID && modelID ? `${providerID}/${modelID}` : (providerID ?? modelID ?? ''),
   };
 }

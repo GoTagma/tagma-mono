@@ -11,7 +11,7 @@ export const OutputCheckCompletion: CompletionPlugin = {
       'Pipe the task output into a shell command; mark success when that command exits 0. For AI driver tasks the driver-normalized text is piped (not the raw NDJSON); command tasks see their raw stdout.',
     fields: {
       check: {
-        type: 'json',
+        type: 'command',
         required: true,
         description:
           'Shell command string or { argv: string[] } to run. The task output is piped to stdin.',

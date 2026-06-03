@@ -6,7 +6,12 @@
 //
 // All operations return a new config object; inputs are never mutated.
 
-import type { RawPipelineConfig, RawTrackConfig, RawTaskConfig } from '@tagma/types';
+import type {
+  RawPipelineConfig,
+  RawTrackConfig,
+  RawTaskConfig,
+  TaskInputBinding,
+} from '@tagma/types';
 
 // ── Pipeline ──
 
@@ -44,10 +49,43 @@ export function upsertTrack(config: RawPipelineConfig, track: RawTrackConfig): R
 
 /**
  * Remove a track by id. No-op (same reference) if the id is not found.
+ *
+ * When `cleanRefs` is true, references to tasks removed with the track are
+ * also removed from remaining tasks.
  */
-export function removeTrack(config: RawPipelineConfig, trackId: string): RawPipelineConfig {
-  if (!config.tracks.some((t) => t.id === trackId)) return config;
-  return { ...config, tracks: config.tracks.filter((t) => t.id !== trackId) };
+export function removeTrack(
+  config: RawPipelineConfig,
+  trackId: string,
+  cleanRefs = false,
+): RawPipelineConfig {
+  const removedTrack = config.tracks.find((t) => t.id === trackId);
+  if (!removedTrack) return config;
+
+  const withoutTrack = { ...config, tracks: config.tracks.filter((t) => t.id !== trackId) };
+  if (!cleanRefs) return withoutTrack;
+
+  const removedTaskIds = new Set(removedTrack.tasks.map((task) => task.id));
+  const removedQualifiedIds = new Set(
+    removedTrack.tasks.map((task) => `${removedTrack.id}.${task.id}`),
+  );
+  const survivingBareIds = new Set(
+    withoutTrack.tracks.flatMap((track) => track.tasks.map((task) => task.id)),
+  );
+
+  return {
+    ...withoutTrack,
+    tracks: withoutTrack.tracks.map((track) => {
+      const localIds = new Set(track.tasks.map((task) => task.id));
+      const isRemovedFrom = (ref: string): boolean => {
+        if (removedQualifiedIds.has(ref)) return true;
+        if (!removedTaskIds.has(ref)) return false;
+        if (localIds.has(ref)) return false;
+        return !survivingBareIds.has(ref);
+      };
+
+      return { ...track, tasks: track.tasks.map((task) => cleanTaskRefs(task, isRemovedFrom)) };
+    }),
+  };
 }
 
 /**
@@ -112,9 +150,10 @@ export function upsertTask(
 /**
  * Remove a task from a track. No-op if either id is not found.
  *
- * When `cleanRefs` is true, all `depends_on` and `continue_from` references to the
- * removed task are also removed from every other task in the pipeline. This prevents
- * validateRaw from reporting dangling-ref errors after the deletion.
+ * When `cleanRefs` is true, all `depends_on`, `continue_from`, and input binding
+ * references to the removed task are also removed from every other task in the
+ * pipeline. This prevents validateRaw from reporting dangling-ref errors after
+ * the deletion.
  */
 export function removeTask(
   config: RawPipelineConfig,
@@ -180,16 +219,21 @@ export function removeTask(
 function cleanTaskRefs(task: RawTaskConfig, isRemoved: (ref: string) => boolean): RawTaskConfig {
   const filteredDeps = task.depends_on?.filter((d) => !isRemoved(d));
   const dropContinueFrom = task.continue_from !== undefined && isRemoved(task.continue_from);
+  const cleanedInputs = cleanInputBindingRefs(task.inputs, isRemoved);
 
   const depsUnchanged =
     filteredDeps === undefined || filteredDeps.length === task.depends_on!.length;
-  if (depsUnchanged && !dropContinueFrom) return task;
+  const inputsUnchanged = cleanedInputs === task.inputs;
+  if (depsUnchanged && !dropContinueFrom && inputsUnchanged) return task;
 
-  const { depends_on: _depends_on, continue_from, ...rest } = task;
+  const { depends_on: _depends_on, continue_from, inputs: _inputs, ...rest } = task;
   return {
     ...rest,
     ...(filteredDeps !== undefined && filteredDeps.length > 0 ? { depends_on: filteredDeps } : {}),
     ...(!dropContinueFrom && continue_from !== undefined ? { continue_from } : {}),
+    ...(cleanedInputs !== undefined && Object.keys(cleanedInputs).length > 0
+      ? { inputs: cleanedInputs }
+      : {}),
   } as RawTaskConfig;
 }
 
@@ -226,9 +270,9 @@ export function moveTask(
  * No-op if either trackId or taskId is not found.
  *
  * When `qualifyRefs` is true (the default), bare references (`depends_on`,
- * `continue_from`) pointing to the moved task are converted to fully-qualified
- * refs (`toTrackId.taskId`) so that same-track resolution doesn't silently
- * break after the task changes tracks.
+ * `continue_from`, input bindings) pointing to the moved task are converted
+ * to fully-qualified refs (`toTrackId.taskId`) so that same-track resolution
+ * doesn't silently break after the task changes tracks.
  */
 export function transferTask(
   config: RawPipelineConfig,
@@ -310,19 +354,128 @@ export function transferTask(
   };
 }
 
-/** Rewrite `depends_on` and `continue_from` refs using a mapping function. */
+/** Rewrite `depends_on`, `continue_from`, and input binding refs using a mapping function. */
 function qualifyTaskRefs(task: RawTaskConfig, rewrite: (ref: string) => string): RawTaskConfig {
   const newDeps = task.depends_on?.map(rewrite);
   const newContinue = task.continue_from !== undefined ? rewrite(task.continue_from) : undefined;
+  const newInputs = rewriteInputBindingRefs(task.inputs, rewrite);
 
   const depsChanged = newDeps !== undefined && newDeps.some((d, i) => d !== task.depends_on![i]);
   const continueChanged = newContinue !== undefined && newContinue !== task.continue_from;
+  const inputsChanged = newInputs !== task.inputs;
 
-  if (!depsChanged && !continueChanged) return task;
+  if (!depsChanged && !continueChanged && !inputsChanged) return task;
 
   return {
     ...task,
     ...(newDeps !== undefined ? { depends_on: newDeps } : {}),
     ...(newContinue !== undefined ? { continue_from: newContinue } : {}),
+    ...(newInputs !== undefined ? { inputs: newInputs } : {}),
   };
+}
+
+const INPUT_TASK_STREAM_FIELDS = ['stdout', 'stderr', 'normalizedOutput', 'exitCode'] as const;
+
+interface ParsedInputSourceRef {
+  readonly ref: string;
+  replaceRef(ref: string): string;
+}
+
+function parseInputSourceRef(source: string): ParsedInputSourceRef | null {
+  if (source.startsWith('outputs.')) return null;
+
+  const outputMarker = '.outputs.';
+  const outputIdx = source.lastIndexOf(outputMarker);
+  if (outputIdx > 0) {
+    const suffix = source.slice(outputIdx);
+    return {
+      ref: source.slice(0, outputIdx),
+      replaceRef: (ref) => `${ref}${suffix}`,
+    };
+  }
+
+  for (const field of INPUT_TASK_STREAM_FIELDS) {
+    const suffix = `.${field}`;
+    if (source.endsWith(suffix) && source.length > suffix.length) {
+      return {
+        ref: source.slice(0, -suffix.length),
+        replaceRef: (ref) => `${ref}${suffix}`,
+      };
+    }
+  }
+
+  const dot = source.lastIndexOf('.');
+  if (dot > 0) {
+    const suffix = source.slice(dot);
+    return {
+      ref: source.slice(0, dot),
+      replaceRef: (ref) => `${ref}${suffix}`,
+    };
+  }
+
+  return null;
+}
+
+function rewriteInputBindingRefs(
+  inputs: RawTaskConfig['inputs'],
+  rewrite: (ref: string) => string,
+): RawTaskConfig['inputs'] {
+  if (!inputs || typeof inputs !== 'object' || Array.isArray(inputs)) return inputs;
+
+  let changed = false;
+  const next: Record<string, TaskInputBinding> = {};
+  for (const [name, binding] of Object.entries(inputs)) {
+    if (!binding || typeof binding !== 'object' || Array.isArray(binding)) {
+      next[name] = binding as TaskInputBinding;
+      continue;
+    }
+
+    const source = binding.from;
+    const parsed = typeof source === 'string' ? parseInputSourceRef(source) : null;
+    if (!parsed) {
+      next[name] = binding;
+      continue;
+    }
+
+    const rewrittenRef = rewrite(parsed.ref);
+    const rewrittenSource = parsed.replaceRef(rewrittenRef);
+    if (rewrittenSource === source) {
+      next[name] = binding;
+      continue;
+    }
+
+    next[name] = { ...binding, from: rewrittenSource };
+    changed = true;
+  }
+
+  return changed ? next : inputs;
+}
+
+function cleanInputBindingRefs(
+  inputs: RawTaskConfig['inputs'],
+  isRemoved: (ref: string) => boolean,
+): RawTaskConfig['inputs'] {
+  if (!inputs || typeof inputs !== 'object' || Array.isArray(inputs)) return inputs;
+
+  let changed = false;
+  const next: Record<string, TaskInputBinding> = {};
+  for (const [name, binding] of Object.entries(inputs)) {
+    if (!binding || typeof binding !== 'object' || Array.isArray(binding)) {
+      next[name] = binding as TaskInputBinding;
+      continue;
+    }
+
+    const source = binding.from;
+    const parsed = typeof source === 'string' ? parseInputSourceRef(source) : null;
+    if (!parsed || !isRemoved(parsed.ref)) {
+      next[name] = binding;
+      continue;
+    }
+
+    const { from: _from, ...rest } = binding;
+    next[name] = rest;
+    changed = true;
+  }
+
+  return changed ? next : inputs;
 }

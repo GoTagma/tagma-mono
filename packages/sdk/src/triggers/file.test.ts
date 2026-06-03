@@ -11,6 +11,29 @@ function makeDir(prefix: string): string {
 }
 
 describe('FileTrigger runtime boundary', () => {
+  test('rejects malformed path config with plugin errors', () => {
+    expect(() => FileTrigger.watch({ type: 'file', path: 42 }, {} as never)).toThrow(
+      /file trigger: "path" must be a string/,
+    );
+    expect(() => FileTrigger.watch({ type: 'file', path: '' }, {} as never)).toThrow(
+      /file trigger: "path" is required/,
+    );
+    expect(() => FileTrigger.watch({ type: 'file', path: '   ' }, {} as never)).toThrow(
+      /file trigger: "path" is required/,
+    );
+  });
+
+  test('rejects relative paths that escape the workspace', () => {
+    const dir = makeDir('tagma-file-trigger-escape-');
+    try {
+      expect(() =>
+        FileTrigger.watch({ type: 'file', path: '../outside.txt' }, { workDir: dir } as never),
+      ).toThrow(/escapes project root/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('uses ctx.runtime watch APIs instead of direct chokidar or Bun file APIs', async () => {
     const dir = makeDir('tagma-file-trigger-runtime-');
     const calls: string[] = [];

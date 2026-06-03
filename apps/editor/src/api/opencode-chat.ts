@@ -256,6 +256,13 @@ export function getOpencodeWorkspaceKey(): string {
   return currentWorkspaceKey();
 }
 
+export function opencodeWorkspaceHeaderValue(
+  workspaceKey: string | null | undefined,
+): string | undefined {
+  if (!workspaceKey || workspaceKey === NO_WORKSPACE_KEY) return undefined;
+  return workspaceKey;
+}
+
 export function buildOpencodeRequestHeaders(
   authHeader: string | undefined,
 ): Record<string, string> {
@@ -279,9 +286,8 @@ async function bootstrap(workspaceKey: string): Promise<ClientBootstrap> {
   // route falls back to process.cwd() (= the sidecar's own dir in dev),
   // which is how opencode ended up scoped to the developer's editor folder
   // instead of the user's workspace.
-  if (workspaceKey !== NO_WORKSPACE_KEY) {
-    headers['X-Tagma-Workspace'] = workspaceKey;
-  }
+  const workspaceHeader = opencodeWorkspaceHeaderValue(workspaceKey);
+  if (workspaceHeader) headers['X-Tagma-Workspace'] = workspaceHeader;
   const authToken = getClientAuthToken();
   if (authToken) headers.Authorization = `Bearer ${authToken}`;
   const res = await fetch('/api/opencode/chat/ensure', { method: 'POST', headers });
@@ -308,8 +314,10 @@ async function bootstrap(workspaceKey: string): Promise<ClientBootstrap> {
   return { client, baseUrl: body.baseUrl, authHeader };
 }
 
-export async function getOpencodeClient(): Promise<OpencodeClient> {
-  const key = currentWorkspaceKey();
+export async function getOpencodeClient(
+  workspaceKey = currentWorkspaceKey(),
+): Promise<OpencodeClient> {
+  const key = workspaceKey;
   let pending = bootstraps.get(key);
   if (!pending) {
     // A rejected bootstrap stays cached so every subsequent caller sees the
@@ -330,8 +338,10 @@ export async function getOpencodeClient(): Promise<OpencodeClient> {
  * `getOpencodeClient`, so calling this before the client is ready still
  * spawns `opencode serve` exactly once.
  */
-export async function getOpencodeBaseUrl(): Promise<string> {
-  const key = currentWorkspaceKey();
+export async function getOpencodeBaseUrl(
+  workspaceKey = currentWorkspaceKey(),
+): Promise<string> {
+  const key = workspaceKey;
   let pending = bootstraps.get(key);
   if (!pending) {
     pending = bootstrap(key);
@@ -341,8 +351,10 @@ export async function getOpencodeBaseUrl(): Promise<string> {
   return baseUrl;
 }
 
-export async function getOpencodeAuthHeader(): Promise<string | undefined> {
-  const key = currentWorkspaceKey();
+export async function getOpencodeAuthHeader(
+  workspaceKey = currentWorkspaceKey(),
+): Promise<string | undefined> {
+  const key = workspaceKey;
   let pending = bootstraps.get(key);
   if (!pending) {
     pending = bootstrap(key);
@@ -372,12 +384,13 @@ export function resetOpencodeClient(): void {
  * cached bootstrap over to the returned baseUrl so subsequent
  * `getOpencodeClient()` callers get a client pointed at the fresh process.
  */
-export async function restartOpencodeForConfig(): Promise<void> {
-  const key = currentWorkspaceKey();
+export async function restartOpencodeForConfig(
+  workspaceKey = currentWorkspaceKey(),
+): Promise<void> {
+  const key = workspaceKey;
   const headers: Record<string, string> = {};
-  if (key !== NO_WORKSPACE_KEY) {
-    headers['X-Tagma-Workspace'] = key;
-  }
+  const workspaceHeader = opencodeWorkspaceHeaderValue(key);
+  if (workspaceHeader) headers['X-Tagma-Workspace'] = workspaceHeader;
   const authToken = getClientAuthToken();
   if (authToken) headers.Authorization = `Bearer ${authToken}`;
   const res = await fetch('/api/opencode/chat/restart', { method: 'POST', headers });

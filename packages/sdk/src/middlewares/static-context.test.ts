@@ -71,4 +71,28 @@ describe('StaticContextMiddleware', () => {
       rmSync(tmp, { recursive: true, force: true });
     }
   });
+
+  test('rejects malformed string fields with plugin errors', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'tagma-static-context-invalid-'));
+    try {
+      const doc: PromptDocument = { contexts: [], task: 'Do the work' };
+      const ctx: MiddlewareContext = {
+        workDir: tmp,
+        track: { id: 't', name: 'T', tasks: [] },
+        task: { id: 'a', name: 'A', prompt: 'Do the work' },
+      };
+
+      await expect(StaticContextMiddleware.enhanceDoc(doc, { file: 42 }, ctx)).rejects.toThrow(
+        /"file" must be a string/,
+      );
+      await expect(StaticContextMiddleware.enhanceDoc(doc, { file: '   ' }, ctx)).rejects.toThrow(
+        /"file" is required/,
+      );
+      await expect(
+        StaticContextMiddleware.enhanceDoc(doc, { file: 'missing.txt', label: 42 }, ctx),
+      ).rejects.toThrow(/"label" must be a string/);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });

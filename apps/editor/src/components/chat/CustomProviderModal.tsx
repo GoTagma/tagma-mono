@@ -22,6 +22,10 @@ import type {
   CustomProviderModelDef,
 } from '../../api/custom-providers';
 import { usePipelineStore } from '../../store/pipeline-store';
+import {
+  customProviderProbeRequest,
+  isCurrentCustomProviderProbeRequest,
+} from './custom-provider-probe-request';
 
 /**
  * Sentinel apiKey value the renderer writes when the user leaves the API key
@@ -400,10 +404,16 @@ interface CustomProviderModalProps {
   open: boolean;
   /** Existing entry being edited, or `null` for "create new". */
   editing: CustomProviderEntry | null;
+  blocked?: boolean;
   onClose: () => void;
 }
 
-export function CustomProviderModal({ open, editing, onClose }: CustomProviderModalProps) {
+export function CustomProviderModal({
+  open,
+  editing,
+  blocked = false,
+  onClose,
+}: CustomProviderModalProps) {
   const saveCustomProvider = useChatStore((s) => s.saveCustomProvider);
   const customProviders = useChatStore((s) => s.customProviders);
   const workDir = usePipelineStore((s) => s.workDir);
@@ -427,16 +437,31 @@ export function CustomProviderModal({ open, editing, onClose }: CustomProviderMo
 
   const idInputRef = useRef<HTMLInputElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
+  const modalRunRef = useRef(0);
+  const latestFormRef = useRef(form);
+
+  useEffect(() => {
+    latestFormRef.current = form;
+  }, [form]);
 
   // Re-seed local form state every time the modal (re)opens for a new target.
   // Without this, closing-then-reopening for a different entry would show
   // stale fields from the previous edit until the user touched something.
   useEffect(() => {
-    if (!open) return;
+    modalRunRef.current += 1;
+    if (!open) {
+      setSaving(false);
+      setDetecting(false);
+      setVerifying(false);
+      return;
+    }
     setForm(initialForm);
     setError(null);
     setDetectMsg(null);
     setVerifyMsg(null);
+    setSaving(false);
+    setDetecting(false);
+    setVerifying(false);
     setShowAdvanced(false);
     setShowHeaders(initialForm.headers.length > 0);
     const t = window.setTimeout(() => {
@@ -519,19 +544,38 @@ export function CustomProviderModal({ open, editing, onClose }: CustomProviderMo
     setForm((prev) => ({ ...prev, headers: prev.headers.filter((_, i) => i !== idx) }));
   };
 
+  const currentDetectApiKey = (apiKey: string): string | undefined => {
+    const key = apiKey.trim();
+    return key && !isRedactedCredential(key) ? key : undefined;
+  };
+
   const handleDetect = async (): Promise<void> => {
     if (detecting || !form.baseURL.trim()) return;
+    const request = customProviderProbeRequest(
+      modalRunRef.current,
+      form.baseURL,
+      currentDetectApiKey(form.apiKey),
+    );
     setDetecting(true);
     setDetectMsg(null);
     try {
       // Pass apiKey through when it's filled — most local servers ignore the
       // Authorization header, but a few (e.g. vLLM started with --api-key)
       // require it, and forwarding the user's value avoids a confusing 401.
-      const apiKey =
-        form.apiKey.trim() && !isRedactedCredential(form.apiKey.trim())
-          ? form.apiKey.trim()
-          : undefined;
-      const { models, endpoint, format } = await discoverModels(form.baseURL.trim(), apiKey);
+      const { models, endpoint, format } = await discoverModels(
+        request.baseURL,
+        request.apiKey ?? undefined,
+      );
+      if (
+        !isCurrentCustomProviderProbeRequest(
+          request,
+          modalRunRef.current,
+          latestFormRef.current.baseURL,
+          currentDetectApiKey(latestFormRef.current.apiKey),
+        )
+      ) {
+        return;
+      }
       if (models.length === 0) {
         // Different servers want different actions for "no models loaded": for
         // Ollama you need to `ollama pull`; for LM Studio / vLLM you need to
@@ -561,9 +605,18 @@ export function CustomProviderModal({ open, editing, onClose }: CustomProviderMo
         `Imported ${models.length} model${models.length === 1 ? '' : 's'} via ${endpoint}.`,
       );
     } catch (err) {
-      setDetectMsg(err instanceof Error ? err.message : String(err));
+      if (
+        isCurrentCustomProviderProbeRequest(
+          request,
+          modalRunRef.current,
+          latestFormRef.current.baseURL,
+          currentDetectApiKey(latestFormRef.current.apiKey),
+        )
+      ) {
+        setDetectMsg(err instanceof Error ? err.message : String(err));
+      }
     } finally {
-      setDetecting(false);
+      if (modalRunRef.current === request.runId) setDetecting(false);
     }
   };
 
@@ -577,6 +630,11 @@ export function CustomProviderModal({ open, editing, onClose }: CustomProviderMo
    */
   const handleVerify = async (): Promise<void> => {
     if (verifying || !form.baseURL.trim()) return;
+    const request = customProviderProbeRequest(
+      modalRunRef.current,
+      form.baseURL,
+      form.apiKey.trim() || undefined,
+    );
     setVerifying(true);
     setVerifyMsg(null);
     try {
@@ -587,8 +645,20 @@ export function CustomProviderModal({ open, editing, onClose }: CustomProviderMo
         });
         return;
       }
-      const apiKey = form.apiKey.trim() || undefined;
-      const { models, endpoint } = await discoverModels(form.baseURL.trim(), apiKey);
+      const { models, endpoint } = await discoverModels(
+        request.baseURL,
+        request.apiKey ?? undefined,
+      );
+      if (
+        !isCurrentCustomProviderProbeRequest(
+          request,
+          modalRunRef.current,
+          latestFormRef.current.baseURL,
+          latestFormRef.current.apiKey.trim() || undefined,
+        )
+      ) {
+        return;
+      }
       setVerifyMsg({
         kind: 'ok',
         text: `Connected via ${endpoint} — ${models.length} model${
@@ -596,17 +666,27 @@ export function CustomProviderModal({ open, editing, onClose }: CustomProviderMo
         } reachable.`,
       });
     } catch (err) {
-      setVerifyMsg({
-        kind: 'warn',
-        text: err instanceof Error ? err.message : String(err),
-      });
+      if (
+        isCurrentCustomProviderProbeRequest(
+          request,
+          modalRunRef.current,
+          latestFormRef.current.baseURL,
+          latestFormRef.current.apiKey.trim() || undefined,
+        )
+      ) {
+        setVerifyMsg({
+          kind: 'warn',
+          text: err instanceof Error ? err.message : String(err),
+        });
+      }
     } finally {
-      setVerifying(false);
+      if (modalRunRef.current === request.runId) setVerifying(false);
     }
   };
 
   const handleSubmit = async (): Promise<void> => {
-    if (saving) return;
+    if (saving || blocked) return;
+    const runId = modalRunRef.current;
     const id = (isEdit ? editing!.id : form.id).trim();
     const validationError = validate(form, isEdit);
     if (validationError) {
@@ -621,11 +701,14 @@ export function CustomProviderModal({ open, editing, onClose }: CustomProviderMo
     setError(null);
     try {
       await saveCustomProvider(id, form.scope, formStateToDef(form));
+      if (modalRunRef.current !== runId) return;
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      if (modalRunRef.current === runId) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
     } finally {
-      setSaving(false);
+      if (modalRunRef.current === runId) setSaving(false);
     }
   };
 
@@ -1043,7 +1126,7 @@ export function CustomProviderModal({ open, editing, onClose }: CustomProviderMo
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={saving}
+            disabled={saving || blocked}
             className="btn-primary w-auto min-w-[100px] justify-center text-center"
           >
             {saving && <Loader2 size={11} className="animate-spin" />}

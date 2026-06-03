@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef } from 'react';
 import { AlertTriangle, Paperclip, Send, Square, X } from 'lucide-react';
+import { getOpencodeWorkspaceKey } from '../../api/opencode-chat';
 import { useChatStore } from '../../store/chat-store';
 
 /**
@@ -72,6 +73,15 @@ function AttachmentChips() {
   );
 }
 
+export function restoreComposerDraftAfterSendFailure(
+  submittedWorkspaceKey: string,
+  submittedText: string,
+): void {
+  const state = useChatStore.getState();
+  if (getOpencodeWorkspaceKey() !== submittedWorkspaceKey) return;
+  if (!state.composerDraft) state.setComposerDraft(submittedText);
+}
+
 export function ChatComposer() {
   const send = useChatStore((s) => s.send);
   const abort = useChatStore((s) => s.abort);
@@ -101,6 +111,7 @@ export function ChatComposer() {
   const submit = () => {
     if (!canSend) return;
     const trimmed = text.trim();
+    const submittedWorkspaceKey = getOpencodeWorkspaceKey();
     setText('');
     // Restore the user's text on failure so they don't have to retype it.
     // `send()` rethrows after surfacing the error via sendError, and we
@@ -109,7 +120,7 @@ export function ChatComposer() {
     // than losing the retry text. Attachments are restored by the store
     // (immediate sends keep their chips on failure).
     send(trimmed).catch(() => {
-      if (!useChatStore.getState().composerDraft) setText(trimmed);
+      restoreComposerDraftAfterSendFailure(submittedWorkspaceKey, trimmed);
     });
   };
 

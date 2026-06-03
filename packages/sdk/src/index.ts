@@ -5,6 +5,7 @@ export type {
   TagmaGraphRunOptions,
   TagmaRunOptions,
   TagmaRunnableConfig,
+  TagmaValidateOptions,
   TagmaYamlDocument,
   TagmaYamlRunResult,
 } from './tagma';

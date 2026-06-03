@@ -6,6 +6,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -13,19 +14,22 @@ import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import * as tar from 'tar';
-import type { DriverPlugin } from '@tagma/types';
+import type { DriverPlugin, TriggerPlugin } from '@tagma/types';
 import { S } from '../server/state';
 import {
   installPackageSpec,
   installPackageSpecWithRollbackSnapshot,
   installPluginUpgradeBatchWithRollbackSnapshot,
   installFromLocalPath,
+  listPluginStoreNames,
   parsePluginInstallSpec,
   planPluginUpgrade,
+  uninstallPackage,
   downloadTarball,
   readPluginVersionLock,
   recordPluginVersionLock,
   removePluginVersionLock,
+  registryMeta,
   discardPluginBatchSnapshot,
   snapshotPluginState,
   restorePluginState,
@@ -33,6 +37,7 @@ import {
 import {
   autoLoadInstalledPlugins,
   cleanupPluginStageTree,
+  getPluginInfo,
   getLastAutoLoadErrors,
   loadPluginFromWorkDir,
   unloadPluginFromRegistry,
@@ -413,6 +418,66 @@ describe('plugin install/import hardening', () => {
     expect(getLastAutoLoadErrors(S)[0]?.message).toMatch(/safe mode/i);
   });
 
+  test('autoLoadInstalledPlugins rolls back declared auto-install when load fails', async () => {
+    const workDir = makeTempDir('workspace-autoload-rollback');
+    const registryDir = makeTempDir('registry-autoload-broken');
+    const packageDir = join(registryDir, 'package');
+    const tgzPath = join(registryDir, 'plugin.tgz');
+    S.workDir = workDir;
+    S.config = {
+      name: 'Trusted pipeline',
+      mode: 'trusted',
+      plugins: ['@scope/plugin-under-test'],
+      tracks: [],
+    };
+    mkdirSync(join(workDir, '.tagma'), { recursive: true });
+    writeJson(join(workDir, '.tagma', 'editor-settings.json'), {
+      autoInstallDeclaredPlugins: true,
+    });
+    writeJson(join(workDir, 'package.json'), {
+      name: 'tagma-workspace',
+      private: true,
+      dependencies: {},
+    });
+    mkdirSync(packageDir, { recursive: true });
+    writeJson(join(packageDir, 'package.json'), {
+      name: '@scope/plugin-under-test',
+      version: '1.0.0',
+      type: 'module',
+      main: './index.js',
+      tagmaPlugin: { category: 'drivers', type: 'test' },
+    });
+    writeFileSync(
+      join(packageDir, 'index.js'),
+      [
+        `export default {`,
+        `  name: '@scope/plugin-under-test',`,
+        `  capabilities: { drivers: { test: { name: 'broken' } } },`,
+        `};`,
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+    tar.c({ cwd: registryDir, file: tgzPath, gzip: true, sync: true }, ['package']);
+    mockBunInstall(() => {});
+    const restoreBun = restoreSpawn;
+    const restoreFetch = mockRegistryFetch(tgzPath);
+    restoreSpawn = () => {
+      restoreFetch();
+      restoreBun?.();
+    };
+
+    await expect(autoLoadInstalledPlugins(S)).resolves.toEqual([]);
+
+    expect(S.loadedPluginMeta.has('@scope/plugin-under-test')).toBe(false);
+    expect(existsSync(pluginStoreRoot(workDir))).toBe(false);
+    expect(readPluginVersionLock(S).plugins).toEqual([]);
+    expect(readFileSync(join(workDir, '.tagma', 'plugins.json'), 'utf-8')).toBe('[]\n');
+    expect(getLastAutoLoadErrors(S)[0]?.message).toMatch(
+      /auto-install completed but plugin failed to load; reverted install changes/i,
+    );
+  });
+
   test('parsePluginInstallSpec accepts name@version pins', () => {
     expect(parsePluginInstallSpec('@scope/plugin-under-test@1.2.3')).toEqual({
       name: '@scope/plugin-under-test',
@@ -435,6 +500,56 @@ describe('plugin install/import hardening', () => {
     try {
       await expect(downloadTarball('https://registry.npmjs.org/plugin.tgz')).rejects.toThrow(
         /too many redirects/,
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test('registryMeta rejects version entries whose package identity mismatches', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          versions: {
+            '1.2.3': {
+              name: '@scope/other-plugin',
+              version: '1.2.3',
+              dist: { tarball: 'https://registry.npmjs.org/plugin.tgz' },
+            },
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )) as unknown as typeof fetch;
+
+    try {
+      await expect(registryMeta('@scope/plugin-under-test', '1.2.3')).rejects.toThrow(
+        /mismatched package name/,
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test('registryMeta rejects version entries whose manifest version mismatches the requested version', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          versions: {
+            '1.2.3': {
+              name: '@scope/plugin-under-test',
+              version: '1.2.4',
+              dist: { tarball: 'https://registry.npmjs.org/plugin.tgz' },
+            },
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )) as unknown as typeof fetch;
+
+    try {
+      await expect(registryMeta('@scope/plugin-under-test', '1.2.3')).rejects.toThrow(
+        /mismatched package version/,
       );
     } finally {
       globalThis.fetch = originalFetch;
@@ -468,6 +583,53 @@ describe('plugin install/import hardening', () => {
     expect(readPluginVersionLock(S).plugins).toEqual([]);
   });
 
+  test('locked registry installs reject shasum-only lock entries', async () => {
+    const workDir = makeTempDir('workspace-lock-shasum-only');
+    S.workDir = workDir;
+    recordPluginVersionLock(S, {
+      name: '@scope/plugin-under-test',
+      version: '1.2.3',
+      description: null,
+      tarball: 'https://registry.npmjs.org/plugin.tgz',
+      integrity: null,
+      shasum: 'legacy-sha1',
+    });
+    const originalFetch = globalThis.fetch;
+    let tarballRequested = false;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/@scope%2fplugin-under-test')) {
+        return new Response(
+          JSON.stringify({
+            versions: {
+              '1.2.3': {
+                name: '@scope/plugin-under-test',
+                version: '1.2.3',
+                dist: {
+                  tarball: 'https://registry.npmjs.org/plugin.tgz',
+                  integrity: 'sha512-current',
+                  shasum: 'legacy-sha1',
+                },
+              },
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      tarballRequested = true;
+      return new Response(Buffer.from('not a real tarball'), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    try {
+      await expect(
+        installPackageSpecWithRollbackSnapshot(S, { name: '@scope/plugin-under-test' }),
+      ).rejects.toThrow(/lacks a trusted integrity hash/i);
+      expect(tarballRequested).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test('installFromLocalPath rejects packages without a tagmaPlugin manifest', async () => {
     const workDir = makeTempDir('workspace');
     const pluginDir = makeTempDir('not-a-plugin');
@@ -480,6 +642,49 @@ describe('plugin install/import hardening', () => {
 
     await expect(installFromLocalPath(S, pluginDir)).rejects.toThrow(/not a tagma plugin/i);
     expect(existsSync(join(workDir, 'node_modules', '@scope', 'plugin-under-test'))).toBe(false);
+  });
+
+  test('installFromLocalPath rejects a symlinked source path directly', async () => {
+    const workDir = makeTempDir('workspace-local-source-symlink');
+    const srcDir = makeTempDir('local-source-target');
+    const linkPath = join(makeTempDir('local-source-link-parent'), 'plugin-link');
+    S.workDir = workDir;
+    writeJson(join(srcDir, 'package.json'), {
+      name: '@scope/plugin-under-test',
+      version: '1.0.0',
+      tagmaPlugin: { category: 'drivers', type: 'test' },
+    });
+    try {
+      symlinkSync(srcDir, linkPath, process.platform === 'win32' ? 'junction' : 'dir');
+    } catch {
+      return;
+    }
+
+    await expect(installFromLocalPath(S, linkPath)).rejects.toThrow(/symbolic link/i);
+  });
+
+  test('installFromLocalPath rejects nested symlinks in a local source directory', async () => {
+    const workDir = makeTempDir('workspace-local-nested-symlink');
+    const srcDir = makeTempDir('local-nested-symlink-source');
+    const outside = makeTempDir('local-nested-symlink-target');
+    S.workDir = workDir;
+    writeJson(join(srcDir, 'package.json'), {
+      name: '@scope/plugin-under-test',
+      version: '1.0.0',
+      tagmaPlugin: { category: 'drivers', type: 'test' },
+    });
+    mkdirSync(join(srcDir, 'lib'), { recursive: true });
+    try {
+      symlinkSync(
+        outside,
+        join(srcDir, 'lib', 'outside'),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+    } catch {
+      return;
+    }
+
+    await expect(installFromLocalPath(S, srcDir)).rejects.toThrow(/symbolic link/i);
   });
 
   test('installFromLocalPath records the plugin and triggers workspace dependency resolution', async () => {
@@ -1343,6 +1548,47 @@ describe('plugin install/import hardening', () => {
     expect(installedIndex).not.toContain("'tampered'");
   });
 
+  test('uninstallPackage refuses a symlinked plugin store root before deleting outside the workspace', () => {
+    const workDir = makeTempDir('workspace-store-symlink');
+    const outside = makeTempDir('outside-store-target');
+    S.workDir = workDir;
+    mkdirSync(join(workDir, '.tagma'), { recursive: true });
+    const outsideStore = join(outside, '@scope__plugin-under-test');
+    mkdirSync(outsideStore, { recursive: true });
+    writeFileSync(join(outsideStore, 'sentinel.txt'), 'keep', 'utf-8');
+    try {
+      symlinkSync(
+        outside,
+        join(workDir, '.tagma', 'plugin-store'),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+    } catch {
+      return;
+    }
+
+    expect(() => uninstallPackage(S, '@scope/plugin-under-test')).toThrow(/symlinked path/i);
+    expect(existsSync(join(outsideStore, 'sentinel.txt'))).toBe(true);
+  });
+
+  test('listPluginStoreNames refuses a symlinked plugin store root', () => {
+    const workDir = makeTempDir('workspace-store-list-symlink');
+    const outside = makeTempDir('outside-store-list-target');
+    S.workDir = workDir;
+    mkdirSync(join(workDir, '.tagma'), { recursive: true });
+    mkdirSync(join(outside, '@scope__plugin-under-test'), { recursive: true });
+    try {
+      symlinkSync(
+        outside,
+        join(workDir, '.tagma', 'plugin-store'),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+    } catch {
+      return;
+    }
+
+    expect(() => listPluginStoreNames(S)).toThrow(/symlinked path/i);
+  });
+
   test('installPackageSpecWithRollbackSnapshot returns the single install snapshot for post-install load rollback', async () => {
     const workDir = makeTempDir('workspace-install-transaction');
     const registryDir = makeTempDir('registry-install-transaction');
@@ -1483,6 +1729,91 @@ describe('plugin loader cache busting', () => {
     expect(S.registry.getHandler('drivers', 'reloadable').name).toBe('v2');
   });
 
+  test('loadPluginFromWorkDir does not delete the current staging dir if the generated stage id is reused', async () => {
+    const workDir = makeTempDir('workspace-stage-collision');
+    const pluginDir = pluginStorePackageDir(workDir);
+    S.workDir = workDir;
+
+    const originalNow = Date.now;
+    const originalRandom = Math.random;
+    Date.now = () => 123_456_789;
+    Math.random = () => 0.123456;
+    try {
+      writeDriverPlugin(pluginDir, {
+        handlerName: 'v1',
+        type: 'reloadable',
+        tagmaPlugin: { category: 'drivers', type: 'reloadable' },
+      });
+
+      const first = await loadPluginFromWorkDir(S, '@scope/plugin-under-test');
+      expect(existsSync(first.meta.stageDir!)).toBe(true);
+
+      writeDriverPlugin(pluginDir, {
+        handlerName: 'v2',
+        type: 'reloadable',
+        tagmaPlugin: { category: 'drivers', type: 'reloadable' },
+      });
+
+      const second = await loadPluginFromWorkDir(S, '@scope/plugin-under-test');
+      expect(second.meta.stageDir).toBe(first.meta.stageDir);
+      expect(existsSync(second.meta.stageDir!)).toBe(true);
+      expect(S.registry.getHandler('drivers', 'reloadable').name).toBe('v2');
+    } finally {
+      Date.now = originalNow;
+      Math.random = originalRandom;
+    }
+  });
+
+  test('unloadPluginFromRegistry removes the current staging dir inside the plugin runtime tree', async () => {
+    const workDir = makeTempDir('workspace-stage-unload');
+    const pluginDir = pluginStorePackageDir(workDir);
+    S.workDir = workDir;
+
+    writeDriverPlugin(pluginDir, {
+      handlerName: 'v1',
+      type: 'unloadable',
+      tagmaPlugin: { category: 'drivers', type: 'unloadable' },
+    });
+
+    const { meta } = await loadPluginFromWorkDir(S, '@scope/plugin-under-test');
+    expect(meta.stageDir).toBeTruthy();
+    expect(existsSync(meta.stageDir!)).toBe(true);
+
+    unloadPluginFromRegistry(S, '@scope/plugin-under-test', { removeStageDir: true });
+
+    expect(existsSync(meta.stageDir!)).toBe(false);
+  });
+
+  test('unloadPluginFromRegistry does not follow a symlinked plugin-runtime root', () => {
+    const workDir = makeTempDir('workspace-stage-unload-symlink');
+    const outside = makeTempDir('outside-stage-unload-target');
+    S.workDir = workDir;
+    const safeName = '@scope__plugin-under-test';
+    const outsideStage = join(outside, safeName, 'loaded-stage');
+    const stageDir = join(workDir, '.tagma', 'plugin-runtime', safeName, 'loaded-stage');
+    mkdirSync(join(workDir, '.tagma'), { recursive: true });
+    mkdirSync(outsideStage, { recursive: true });
+    writeFileSync(join(outsideStage, 'sentinel.txt'), 'keep', 'utf-8');
+    try {
+      symlinkSync(
+        outside,
+        join(workDir, '.tagma', 'plugin-runtime'),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+    } catch {
+      return;
+    }
+    S.loadedPluginMeta.set('@scope/plugin-under-test', {
+      registrations: [],
+      stageDir,
+    });
+
+    unloadPluginFromRegistry(S, '@scope/plugin-under-test', { removeStageDir: true });
+
+    expect(existsSync(join(outsideStage, 'sentinel.txt'))).toBe(true);
+    expect(S.loadedPluginMeta.has('@scope/plugin-under-test')).toBe(false);
+  });
+
   test('loadPluginFromWorkDir loads @tagma/types from the staged isolated store', async () => {
     const workDir = makeTempDir('workspace-types-runtime');
     const pluginDir = pluginStorePackageDir(workDir);
@@ -1544,6 +1875,72 @@ describe('plugin loader cache busting', () => {
     expect(S.registry.getHandler('drivers', 'test').name).toBe('types-runtime');
   });
 
+  test('getPluginInfo does not mark store packages without tagmaPlugin as installed', () => {
+    const workDir = makeTempDir('workspace-store-library');
+    const pluginDir = pluginStorePackageDir(workDir);
+    S.workDir = workDir;
+
+    mkdirSync(pluginDir, { recursive: true });
+    writeJson(join(pluginDir, 'package.json'), {
+      name: '@scope/plugin-under-test',
+      version: '1.0.0',
+      type: 'module',
+      main: './index.js',
+    });
+    writeFileSync(join(pluginDir, 'index.js'), 'export default {};\n', 'utf-8');
+
+    expect(getPluginInfo(S, '@scope/plugin-under-test')).toEqual(
+      expect.objectContaining({
+        installed: false,
+        loaded: false,
+      }),
+    );
+  });
+
+  test('loadPluginFromWorkDir rejects store packages whose package identity mismatches', async () => {
+    const workDir = makeTempDir('workspace-store-identity');
+    const pluginDir = pluginStorePackageDir(workDir);
+    const importedPath = join(workDir, 'imported.txt');
+    S.workDir = workDir;
+
+    mkdirSync(pluginDir, { recursive: true });
+    writeJson(join(pluginDir, 'package.json'), {
+      name: '@scope/other-plugin',
+      version: '1.0.0',
+      type: 'module',
+      main: './index.js',
+      tagmaPlugin: { category: 'drivers', type: 'test' },
+    });
+    writeFileSync(
+      join(pluginDir, 'index.js'),
+      [
+        `import { writeFileSync } from 'node:fs';`,
+        `writeFileSync(${JSON.stringify(importedPath)}, 'imported', 'utf-8');`,
+        `export default {`,
+        `  name: '@scope/other-plugin',`,
+        `  capabilities: {`,
+        `    drivers: {`,
+        `      test: {`,
+        `        name: 'wrong-package',`,
+        `        capabilities: { sessionResume: false, systemPrompt: false, outputFormat: false },`,
+        `        buildCommand() { return { args: ['echo', 'wrong'] }; },`,
+        `      },`,
+        `    },`,
+        `  },`,
+        `};`,
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+
+    await expect(loadPluginFromWorkDir(S, '@scope/plugin-under-test')).rejects.toThrow(
+      /Package identity mismatch/,
+    );
+    expect(existsSync(importedPath)).toBe(false);
+    expect(S.loadedPluginMeta.has('@scope/plugin-under-test')).toBe(false);
+    expect(S.registry.hasHandler('drivers', 'test')).toBe(false);
+  });
+
   test('loadPluginFromWorkDir unloads registry state when a worker capability call times out', async () => {
     const workDir = makeTempDir('workspace-worker-timeout');
     const pluginDir = pluginStorePackageDir(workDir);
@@ -1598,6 +1995,71 @@ describe('plugin loader cache busting', () => {
     expect(S.loadedPluginMeta.has('@scope/plugin-under-test')).toBe(false);
     expect(S.pluginCapabilityOwners.has('drivers/test')).toBe(false);
     expect(S.registry.hasHandler('drivers', 'test')).toBe(false);
+  });
+
+  test('plugin worker trigger dispose runs after the trigger naturally fires', async () => {
+    const workDir = makeTempDir('workspace-worker-trigger-dispose');
+    const pluginDir = pluginStorePackageDir(workDir);
+    const disposedPath = join(workDir, 'disposed.txt');
+    S.workDir = workDir;
+
+    mkdirSync(pluginDir, { recursive: true });
+    writeJson(join(pluginDir, 'package.json'), {
+      name: '@scope/plugin-under-test',
+      version: '1.0.0',
+      type: 'module',
+      main: './index.js',
+      tagmaPlugin: { category: 'triggers', type: 'settle' },
+    });
+    writeFileSync(
+      join(pluginDir, 'index.js'),
+      [
+        `import { writeFileSync } from 'node:fs';`,
+        `import { join } from 'node:path';`,
+        `export default {`,
+        `  name: '@scope/plugin-under-test',`,
+        `  capabilities: {`,
+        `    triggers: {`,
+        `      settle: {`,
+        `        name: 'settle-trigger',`,
+        `        watch(_config, ctx) {`,
+        `          return {`,
+        `            fired: Promise.resolve({ ok: true }),`,
+        `            dispose(reason) {`,
+        `              writeFileSync(join(ctx.workDir, 'disposed.txt'), reason ?? 'disposed', 'utf-8');`,
+        `            },`,
+        `          };`,
+        `        },`,
+        `      },`,
+        `    },`,
+        `  },`,
+        `};`,
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+
+    await loadPluginFromWorkDir(S, '@scope/plugin-under-test');
+    const handler = S.registry.getHandler<TriggerPlugin>('triggers', 'settle');
+    const handle = handler.watch(
+      {},
+      {
+        taskId: 'task',
+        trackId: 'track',
+        workDir,
+        signal: new AbortController().signal,
+        approvalGateway: {} as never,
+        runtime: {} as never,
+      },
+    );
+
+    await expect(handle.fired).resolves.toEqual({ ok: true });
+    await handle.dispose('after fired');
+
+    for (let i = 0; i < 50 && !existsSync(disposedPath); i++) {
+      await Bun.sleep(10);
+    }
+    expect(readFileSync(disposedPath, 'utf-8')).toBe('after fired');
   });
 
   test('loadPluginFromWorkDir wraps legacy single-handler plugin exports from package manifest', async () => {
@@ -1682,6 +2144,29 @@ describe('plugin loader cache busting', () => {
 
     cleanupPluginStageTree(S, '@scope/plugin-under-test');
     expect(existsSync(stageRoot)).toBe(false);
+  });
+
+  test('cleanupPluginStageTree does not follow a symlinked runtime root', () => {
+    const workDir = makeTempDir('workspace-stage-symlink');
+    const outside = makeTempDir('outside-stage-target');
+    S.workDir = workDir;
+    mkdirSync(join(workDir, '.tagma'), { recursive: true });
+    const outsideStage = join(outside, '@scope__plugin-under-test');
+    mkdirSync(outsideStage, { recursive: true });
+    writeFileSync(join(outsideStage, 'sentinel.txt'), 'keep', 'utf-8');
+    try {
+      symlinkSync(
+        outside,
+        join(workDir, '.tagma', 'plugin-runtime'),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+    } catch {
+      return;
+    }
+
+    cleanupPluginStageTree(S, '@scope/plugin-under-test');
+
+    expect(existsSync(join(outsideStage, 'sentinel.txt'))).toBe(true);
   });
 });
 

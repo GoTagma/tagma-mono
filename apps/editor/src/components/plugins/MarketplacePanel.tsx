@@ -34,7 +34,7 @@ interface MarketplacePanelProps {
   installedVersions: ReadonlyMap<string, string | null>;
   declaredSet: ReadonlySet<string>;
   actionState: PluginActionState;
-  onInstall: (name: string) => void;
+  onInstall: (name: string, version?: string) => void;
   onUpgrade: (name: string) => void;
   onUninstall: (name: string) => void;
   actionsDisabled?: boolean;
@@ -154,7 +154,7 @@ export function MarketplacePanel({
                 installedVersion={installedVersions.get(entry.name) ?? null}
                 declared={declaredSet.has(entry.name)}
                 actionState={actionState}
-                onInstall={() => onInstall(entry.name)}
+                onInstall={() => onInstall(entry.name, entry.version)}
                 onUpgrade={() => onUpgrade(entry.name)}
                 onUninstall={() => onUninstall(entry.name)}
                 actionsDisabled={actionsDisabled}

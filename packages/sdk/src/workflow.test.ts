@@ -3,10 +3,11 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { PluginRegistry } from '@tagma/core';
-import type { PipelineConfig, TaskResult, TagmaRuntime } from '@tagma/types';
+import type { PipelineConfig, PipelineGraphConfig, TaskResult, TagmaRuntime } from '@tagma/types';
 import { bootstrapBuiltins } from './bootstrap';
 import {
   PipelineGraphRunner,
+  WorkflowValidationError,
   createPipelineGroup,
   loadWorkflow,
   parseWorkflowYaml,
@@ -111,6 +112,22 @@ function registry(): PluginRegistry {
 }
 
 describe('workflow YAML model', () => {
+  test('rejects missing or blank workDir before resolving pipeline paths', async () => {
+    const yaml = `workflow:
+  name: release-flow
+  pipelines:
+    - id: p1
+      path: .tagma/p1/p1.yaml
+`;
+
+    await expect(loadWorkflow(yaml, '' as string)).rejects.toThrow(
+      /workDir must be a non-empty string/,
+    );
+    await expect(loadWorkflow(yaml, undefined as unknown as string)).rejects.toThrow(
+      /workDir must be a non-empty string/,
+    );
+  });
+
   test('parses and validates a top-level workflow document', () => {
     const raw = parseWorkflowYaml(`workflow:
   name: release-flow
@@ -190,6 +207,48 @@ describe('workflow YAML model', () => {
       expect.arrayContaining([
         'pipelines[0].lifecycle.max_runs',
         'pipelines[0].lifecycle.stop_when',
+      ]),
+    );
+  });
+
+  test('rejects unknown workflow fields instead of silently ignoring misspelled graph controls', () => {
+    const raw = parseWorkflowYaml(`workflow:
+  name: release-flow
+  maxConcurrency: 2
+  failurePolicy: continue_independent
+  pipelines:
+    - id: retry_build
+      path: .tagma/build/build.yaml
+      dependsOn: [prepare]
+      position:
+        x: 120
+        y: 80
+        z: 10
+      lifecycle:
+        maxRuns: 3
+        stopWhen: success
+`);
+
+    expect(validateRawWorkflow(raw)).toEqual(
+      expect.arrayContaining([
+        { path: 'maxConcurrency', message: 'Unknown workflow field "maxConcurrency"' },
+        { path: 'failurePolicy', message: 'Unknown workflow field "failurePolicy"' },
+        {
+          path: 'pipelines[0].dependsOn',
+          message: 'Unknown workflow pipeline field "dependsOn"',
+        },
+        {
+          path: 'pipelines[0].position.z',
+          message: 'Unknown workflow position field "z"',
+        },
+        {
+          path: 'pipelines[0].lifecycle.maxRuns',
+          message: 'Unknown workflow lifecycle field "maxRuns"',
+        },
+        {
+          path: 'pipelines[0].lifecycle.stopWhen',
+          message: 'Unknown workflow lifecycle field "stopWhen"',
+        },
       ]),
     );
   });
@@ -287,9 +346,100 @@ describe('workflow YAML model', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  test('reports missing referenced pipeline files as workflow diagnostics', async () => {
+    const dir = makeDir();
+    try {
+      let error: unknown;
+      try {
+        await loadWorkflow(
+          `workflow:
+  name: release-flow
+  pipelines:
+    - id: missing
+      path: .tagma/missing/missing.yaml
+`,
+          dir,
+        );
+      } catch (err) {
+        error = err;
+      }
+
+      expect(error).toBeInstanceOf(WorkflowValidationError);
+      const diagnostics = (error as WorkflowValidationError).diagnostics;
+      expect(diagnostics).toEqual([
+        expect.objectContaining({
+          path: 'pipelines[0].path',
+        }),
+      ]);
+      expect(diagnostics[0]?.message).toMatch(/ENOENT|no such file|cannot find/i);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('prefixes referenced pipeline validation diagnostics with workflow context', async () => {
+    const dir = makeDir();
+    try {
+      const pipelinePath = join(dir, '.tagma', 'bad', 'bad.yaml');
+      mkdirSync(dirname(pipelinePath), { recursive: true });
+      writeFileSync(
+        pipelinePath,
+        `pipeline:
+  name: Bad
+  mode: trusted
+  tracks: []
+`,
+        'utf8',
+      );
+
+      let error: unknown;
+      try {
+        await loadWorkflow(
+          `workflow:
+  name: release-flow
+  pipelines:
+    - id: bad
+      path: .tagma/bad/bad.yaml
+`,
+          dir,
+        );
+      } catch (err) {
+        error = err;
+      }
+
+      expect(error).toBeInstanceOf(WorkflowValidationError);
+      expect((error as WorkflowValidationError).diagnostics).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: 'pipelines[0].config.tracks',
+          }),
+        ]),
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('PipelineGraphRunner', () => {
+  test('rejects missing or blank graph workDir before execution starts', async () => {
+    await expect(
+      runPipelineGraph(
+        {
+          name: 'release-flow',
+          pipelines: [{ id: 'p1', config: commandPipeline('P1', 'p1') }],
+        },
+        '' as string,
+        {
+          registry: registry(),
+          runtime: fakeRuntime(),
+          skipPluginLoading: true,
+        },
+      ),
+    ).rejects.toThrow(/workDir must be a non-empty string/);
+  });
+
   test('runs dependent pipelines after their upstream and fans out within max_concurrency', async () => {
     const dir = makeDir();
     const started: string[] = [];
@@ -559,6 +709,230 @@ describe('PipelineGraphRunner', () => {
           },
         ),
       ).rejects.toThrow(/pipelines\[0\]\.config\.tracks/);
+
+      expect(events).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('rejects malformed programmatic pipeline cwd before graph execution starts', async () => {
+    const dir = makeDir();
+    const events: string[] = [];
+    try {
+      await expect(
+        runPipelineGraph(
+          {
+            name: 'release-flow',
+            pipelines: [
+              {
+                id: 'bad',
+                config: commandPipeline('Bad', 'bad'),
+                cwd: '   ',
+              },
+            ],
+          },
+          dir,
+          {
+            registry: registry(),
+            runtime: fakeRuntime(),
+            skipPluginLoading: true,
+            onEvent: (event) => events.push(event.type),
+          },
+        ),
+      ).rejects.toThrow(/pipelines\[0\]\.cwd/);
+
+      expect(events).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('rejects malformed programmatic graph shape before graph execution starts', async () => {
+    const dir = makeDir();
+    const events: string[] = [];
+    try {
+      const graph = {
+        name: 'release-flow',
+        maxConcurrency: 2,
+        pipelines: [
+          null,
+          {
+            id: 'api',
+            config: commandPipeline('API', 'build-api'),
+            cwd: dir,
+            dependsOn: ['missing'],
+            position: { x: 0, y: 0, z: 1 },
+            lifecycle: { maxRuns: 2 },
+          },
+        ],
+      } as unknown as PipelineGraphConfig;
+
+      let error: unknown;
+      try {
+        await runPipelineGraph(graph, dir, {
+          registry: registry(),
+          runtime: fakeRuntime(),
+          skipPluginLoading: true,
+          onEvent: (event) => events.push(event.type),
+        });
+      } catch (err) {
+        error = err;
+      }
+
+      expect(error).toBeInstanceOf(WorkflowValidationError);
+      expect((error as WorkflowValidationError).diagnostics).toEqual(
+        expect.arrayContaining([
+          { path: 'maxConcurrency', message: 'Unknown workflow field "maxConcurrency"' },
+          { path: 'pipelines[0]', message: 'Pipeline node must be an object' },
+          {
+            path: 'pipelines[1].dependsOn',
+            message: 'Unknown workflow pipeline field "dependsOn"',
+          },
+          {
+            path: 'pipelines[1].position.z',
+            message: 'Unknown workflow position field "z"',
+          },
+          {
+            path: 'pipelines[1].lifecycle.maxRuns',
+            message: 'Unknown workflow lifecycle field "maxRuns"',
+          },
+        ]),
+      );
+      expect(events).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('resolves relative programmatic pipeline cwd from the graph workDir', async () => {
+    const dir = makeDir();
+    const childDir = join(dir, 'services', 'api');
+    const seenCwds: string[] = [];
+    try {
+      mkdirSync(childDir, { recursive: true });
+      const result = await runPipelineGraph(
+        {
+          name: 'release-flow',
+          pipelines: [
+            {
+              id: 'api',
+              config: commandPipeline('API', 'build-api'),
+              cwd: 'services/api',
+            },
+          ],
+        },
+        dir,
+        {
+          registry: registry(),
+          runtime: fakeRuntime(async (command, cwd) => {
+            seenCwds.push(cwd);
+            return taskResult(String(command));
+          }),
+          skipPluginLoading: true,
+        },
+      );
+
+      expect(result.success).toBe(true);
+      expect(seenCwds).toEqual([childDir]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps absolute programmatic pipeline cwd as an explicit workDir', async () => {
+    const dir = makeDir();
+    const externalDir = makeDir();
+    const seenCwds: string[] = [];
+    try {
+      const result = await runPipelineGraph(
+        {
+          name: 'release-flow',
+          pipelines: [
+            {
+              id: 'external',
+              config: commandPipeline('External', 'build-external'),
+              cwd: externalDir,
+            },
+          ],
+        },
+        dir,
+        {
+          registry: registry(),
+          runtime: fakeRuntime(async (command, cwd) => {
+            seenCwds.push(cwd);
+            return taskResult(String(command));
+          }),
+          skipPluginLoading: true,
+        },
+      );
+
+      expect(result.success).toBe(true);
+      expect(seenCwds).toEqual([externalDir]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(externalDir, { recursive: true, force: true });
+    }
+  });
+
+  test('rejects relative programmatic pipeline cwd that escapes the graph workDir', async () => {
+    const dir = makeDir();
+    const events: string[] = [];
+    try {
+      await expect(
+        runPipelineGraph(
+          {
+            name: 'release-flow',
+            pipelines: [
+              {
+                id: 'bad',
+                config: commandPipeline('Bad', 'bad'),
+                cwd: '../outside',
+              },
+            ],
+          },
+          dir,
+          {
+            registry: registry(),
+            runtime: fakeRuntime(),
+            skipPluginLoading: true,
+            onEvent: (event) => events.push(event.type),
+          },
+        ),
+      ).rejects.toThrow(/pipelines\[0\]\.cwd/);
+
+      expect(events).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('rejects unsafe programmatic pipeline paths before graph execution starts', async () => {
+    const dir = makeDir();
+    const events: string[] = [];
+    try {
+      await expect(
+        runPipelineGraph(
+          {
+            name: 'release-flow',
+            pipelines: [
+              {
+                id: 'bad',
+                path: '../outside.yaml',
+                config: commandPipeline('Bad', 'bad'),
+                cwd: dir,
+              },
+            ],
+          },
+          dir,
+          {
+            registry: registry(),
+            runtime: fakeRuntime(),
+            skipPluginLoading: true,
+            onEvent: (event) => events.push(event.type),
+          },
+        ),
+      ).rejects.toThrow(/pipelines\[0\]\.path/);
 
       expect(events).toEqual([]);
     } finally {

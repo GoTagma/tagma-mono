@@ -7,6 +7,7 @@ import {
   type TriggerWatchHandle,
 } from '@tagma/types';
 import { parseOptionalPluginTimeout } from '../duration';
+import { optionalPluginString } from '../plugin-config';
 
 export const ManualTrigger: TriggerPlugin = {
   name: 'manual',
@@ -35,9 +36,12 @@ export const ManualTrigger: TriggerPlugin = {
       throw new Error('Pipeline aborted');
     }
 
+    const configuredMessage = optionalPluginString(config, 'message', 'manual trigger');
+    const defaultMessage = `Manual confirmation required for task "${ctx.taskId}"`;
     const message =
-      (config.message as string | undefined) ??
-      `Manual confirmation required for task "${ctx.taskId}"`;
+      configuredMessage !== undefined && configuredMessage.trim() !== ''
+        ? configuredMessage
+        : defaultMessage;
     const timeoutMs = parseOptionalPluginTimeout(config.timeout, 0);
     const metadata =
       config.metadata && typeof config.metadata === 'object'

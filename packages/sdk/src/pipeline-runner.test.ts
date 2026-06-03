@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { bootstrapBuiltins } from './bootstrap';
 import { PipelineRunner } from './pipeline-runner';
 import { PluginRegistry } from '@tagma/core';
-import type { PipelineConfig, TagmaRuntime, TaskResult } from '@tagma/types';
+import type { PipelineConfig, TagmaRuntime, TaskLogLine, TaskResult } from '@tagma/types';
 
 function makeDir(): string {
   return mkdtempSync(join(tmpdir(), 'tagma-pipeline-runner-'));
@@ -129,6 +129,63 @@ describe('PipelineRunner task snapshot', () => {
     }
   });
 
+  test('task snapshots are isolated from event and snapshot mutation', async () => {
+    const dir = makeDir();
+    const registry = new PluginRegistry();
+    bootstrapBuiltins(registry);
+    const runner = new PipelineRunner(bindingsPipeline(dir), dir, {
+      registry,
+      runtime: fakeRuntime(),
+      skipPluginLoading: true,
+    });
+
+    runner.subscribe((event) => {
+      if (event.type === 'run_start') {
+        const first = event.tasks[0];
+        (first.logs as unknown as TaskLogLine[]).push({
+          level: 'info',
+          timestamp: '00:00:00.000',
+          text: 'event-injected-log',
+        });
+      }
+      if (event.type === 'task_update' && event.outputs) {
+        (event.outputs as Record<string, unknown>).city = 'event-mutated-output';
+      }
+      if (event.type === 'task_update' && event.inputs) {
+        (event.inputs as Record<string, unknown>).city = 'event-mutated-input';
+      }
+    });
+
+    try {
+      const result = await runner.start();
+      expect(result.success).toBe(true);
+
+      const tasks = runner.getTasks();
+      const up = tasks.get('t.up');
+      const down = tasks.get('t.down');
+      expect(up?.outputs).toEqual({ city: 'Shanghai' });
+      expect(down?.inputs).toEqual({ city: '[REDACTED]' });
+      expect(up?.logs.some((line) => line.text === 'event-injected-log')).toBe(false);
+
+      (up?.outputs as Record<string, unknown>).city = 'snapshot-mutated-output';
+      (down?.inputs as Record<string, unknown>).city = 'snapshot-mutated-input';
+      (up?.logs as unknown as TaskLogLine[]).push({
+        level: 'info',
+        timestamp: '00:00:00.000',
+        text: 'snapshot-injected-log',
+      });
+
+      const nextTasks = runner.getTasks();
+      expect(nextTasks.get('t.up')?.outputs).toEqual({ city: 'Shanghai' });
+      expect(nextTasks.get('t.down')?.inputs).toEqual({ city: '[REDACTED]' });
+      expect(
+        nextTasks.get('t.up')?.logs.some((line) => line.text === 'snapshot-injected-log'),
+      ).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('getTasks folds streamed task logs into the task snapshot', async () => {
     const dir = makeDir();
     try {
@@ -138,6 +195,66 @@ describe('PipelineRunner task snapshot', () => {
       const up = tasks.get('t.up');
       expect(up?.logs.length).toBeGreaterThan(0);
       expect(up?.totalLogCount).toBeGreaterThan(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('getTasks folds live task_output chunks into stdout and stderr while running', async () => {
+    const dir = makeDir();
+    const registry = new PluginRegistry();
+    bootstrapBuiltins(registry);
+    const liveSnapshots: Array<{ stdout: string; stderr: string }> = [];
+    const runner = new PipelineRunner(
+      {
+        name: 'live-output',
+        mode: 'trusted',
+        tracks: [
+          {
+            id: 't',
+            name: 'T',
+            tasks: [{ id: 'cmd', name: 'Cmd', command: 'emit-live' }],
+          },
+        ],
+      },
+      dir,
+      {
+        registry,
+        runtime: {
+          ...fakeRuntime(),
+          async runCommand(_command, _cwd, options) {
+            options?.onOutputChunk?.('stdout', 'hello ');
+            options?.onOutputChunk?.('stdout', 'world');
+            options?.onOutputChunk?.('stderr', 'warn');
+            return {
+              ...taskResult('terminal stdout\n'),
+              stderr: 'terminal stderr',
+              stderrBytes: 'terminal stderr'.length,
+            };
+          },
+        },
+        skipPluginLoading: true,
+      },
+    );
+
+    runner.subscribe((event) => {
+      if (event.type !== 'task_output') return;
+      const task = runner.getTasks().get('t.cmd');
+      liveSnapshots.push({ stdout: task?.stdout ?? '', stderr: task?.stderr ?? '' });
+    });
+
+    try {
+      const result = await runner.start();
+      const task = runner.getTasks().get('t.cmd');
+
+      expect(result.success).toBe(true);
+      expect(liveSnapshots).toEqual([
+        { stdout: 'hello ', stderr: '' },
+        { stdout: 'hello world', stderr: '' },
+        { stdout: 'hello world', stderr: 'warn' },
+      ]);
+      expect(task?.stdout).toBe('terminal stdout\n');
+      expect(task?.stderr).toBe('terminal stderr');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

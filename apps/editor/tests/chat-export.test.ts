@@ -100,6 +100,69 @@ describe('chat conversation export', () => {
     expect(exported.content).not.toContain('hidden synthetic text');
   });
 
+  test('exports assistant messages that only have footer information', () => {
+    const exported = buildConversationExport({
+      format: 'txt',
+      title: 'Debug run',
+      exportedAt: new Date('2026-05-20T12:00:00.000Z'),
+      messages: [
+        {
+          info: {
+            id: 'cost-only',
+            sessionID: 's1',
+            role: 'assistant',
+            cost: 0.012,
+          },
+          parts: [],
+        } as unknown as OpencodeThreadEntry,
+        {
+          info: {
+            id: 'error-only',
+            sessionID: 's1',
+            role: 'assistant',
+            error: { name: 'ProviderAuthError', data: { message: 'missing key' } },
+          },
+          parts: [],
+        } as unknown as OpencodeThreadEntry,
+      ],
+    });
+
+    expect(exported.content).toContain('Assistant:\nUsage: $0.012');
+    expect(exported.content).toContain('Assistant:\nError: ProviderAuthError: missing key');
+  });
+
+  test('exports assistant footer metadata alongside visible text', () => {
+    const exported = buildConversationExport({
+      format: 'md',
+      title: 'Usage',
+      exportedAt: new Date('2026-05-20T12:00:00.000Z'),
+      messages: [
+        {
+          info: {
+            id: 'with-usage',
+            sessionID: 's1',
+            role: 'assistant',
+            cost: 0.0042,
+            finish: 'length',
+            tokens: {
+              input: 1200,
+              output: 50,
+              reasoning: 0,
+              cache: { read: 300, write: 0 },
+            },
+          },
+          parts: [textPart('answer', 'Partial answer')],
+        } as unknown as OpencodeThreadEntry,
+      ],
+    });
+
+    expect(exported.content).toContain('## Assistant\n\nPartial answer\n\n_');
+    expect(exported.content).toContain('50 output tokens');
+    expect(exported.content).toContain('1.5k input tokens');
+    expect(exported.content).toContain('$0.0042');
+    expect(exported.content).toContain('Finish: length');
+  });
+
   test('derives safe filenames for both export formats', () => {
     expect(conversationExportFilename('Feature / Q&A?', 'md')).toBe('tagma-chat-feature-q-a.md');
     expect(conversationExportFilename('', 'txt')).toBe('tagma-chat-conversation.txt');

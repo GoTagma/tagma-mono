@@ -254,6 +254,47 @@ function validateNumberOrListField(
   }
 }
 
+function validateCommandField(value: unknown, path: string, errors: string[]): void {
+  const shape = `${path} must be a non-empty shell string, { shell: string }, or { argv: string[] }`;
+  if (typeof value === 'string') {
+    if (value.trim().length === 0) errors.push(`${path} shell string must not be empty`);
+    return;
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    errors.push(shape);
+    return;
+  }
+  const raw = value as Record<string, unknown>;
+  const hasShell = 'shell' in raw;
+  const hasArgv = 'argv' in raw;
+  if (hasShell === hasArgv) {
+    errors.push(shape);
+    return;
+  }
+  if (hasShell) {
+    if (typeof raw.shell !== 'string') {
+      errors.push(`${path}.shell must be a string`);
+    } else if (raw.shell.trim().length === 0) {
+      errors.push(`${path}.shell must not be empty`);
+    }
+    return;
+  }
+  if (!Array.isArray(raw.argv)) {
+    errors.push(`${path}.argv must be an array of strings`);
+    return;
+  }
+  if (raw.argv.length === 0) {
+    errors.push(`${path}.argv must contain at least one argument`);
+  }
+  raw.argv.forEach((arg, index) => {
+    if (typeof arg !== 'string') {
+      errors.push(`${path}.argv[${index}] must be a string`);
+    } else if (arg.length === 0) {
+      errors.push(`${path}.argv[${index}] must not be empty`);
+    }
+  });
+}
+
 export function validatePluginConfig(
   schema: PluginSchema | undefined,
   config: Record<string, unknown>,
@@ -281,7 +322,15 @@ export function validatePluginConfig(
     switch (def.type) {
       case 'string':
       case 'path':
-        if (typeof value !== 'string') errors.push(`${fieldPath} must be a string`);
+        if (typeof value !== 'string') {
+          errors.push(`${fieldPath} must be a string`);
+        } else if (
+          def.required === true &&
+          def.default === undefined &&
+          value.trim().length === 0
+        ) {
+          errors.push(`${fieldPath} is required`);
+        }
         break;
       case 'duration':
         if (value === 0 || value === '0') {
@@ -307,6 +356,9 @@ export function validatePluginConfig(
         break;
       case 'number-or-list':
         validateNumberOrListField(value, fieldPath, def.min, def.max, errors);
+        break;
+      case 'command':
+        validateCommandField(value, fieldPath, errors);
         break;
       case 'json':
         break;
@@ -428,14 +480,14 @@ export class PluginRegistry {
     this.assertCanRegister(category, type, handler, options);
     const registry = this.registries[category] as Map<string, T>;
     const existing = registry.get(type);
-    if (existing === handler) return 'unchanged';
-    const wasReplaced = existing !== undefined;
-    registry.set(type, handler);
     if (options.safeMode) {
       this.safeModeTypes[category].add(type);
     } else {
       this.safeModeTypes[category].delete(type);
     }
+    if (existing === handler) return 'unchanged';
+    const wasReplaced = existing !== undefined;
+    registry.set(type, handler);
     return wasReplaced ? 'replaced' : 'registered';
   }
 

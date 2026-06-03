@@ -86,6 +86,7 @@ export type PluginParamType =
   | 'path'
   | 'duration'
   | 'number-or-list'
+  | 'command'
   | 'json';
 
 export interface PluginParamDef {

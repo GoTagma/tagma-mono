@@ -42,6 +42,7 @@ import type {
   IncomingCallback,
   IncomingCommand,
   IncomingMessage,
+  Platform,
 } from './transports/types.js';
 
 function describeWorkspace(workspaceKey: string): string {
@@ -60,6 +61,7 @@ function describeWorkspace(workspaceKey: string): string {
 // keep the real sessionID/permissionID server-side keyed by that token.
 
 interface PendingPermissionEntry {
+  platform: Platform;
   chatId: string;
   promptMessageId: string;
   permissionID: string;
@@ -76,8 +78,42 @@ const pendingPerms = new Map<string, PendingPermissionEntry>();
 const activeTurns = new Map<string, StreamingHandle>();
 const startingTurns = new Set<string>();
 
+export interface ConductorDeps {
+  sendPromptStreaming: typeof sendPromptStreaming;
+  describeDriverError: typeof describeDriverError;
+  describeOpencodeSessionError: typeof describeOpencodeSessionError;
+}
+
+const DEFAULT_CONDUCTOR_DEPS: ConductorDeps = {
+  sendPromptStreaming,
+  describeDriverError,
+  describeOpencodeSessionError,
+};
+
 function mintPermToken(): string {
   return randomBytes(6).toString('hex');
+}
+
+function conversationKey(platform: Platform, chatId: string): string {
+  return `${platform}::${chatId}`;
+}
+
+function conversationBusy(platform: Platform, chatId: string): boolean {
+  const key = conversationKey(platform, chatId);
+  return activeTurns.has(key) || startingTurns.has(key);
+}
+
+function clearPendingPermsForTurn(
+  platform: Platform,
+  chatId: string,
+  handle?: StreamingHandle,
+): void {
+  const key = conversationKey(platform, chatId);
+  for (const [token, entry] of pendingPerms) {
+    if (conversationKey(entry.platform, entry.chatId) !== key) continue;
+    if (handle && entry.handle !== handle) continue;
+    pendingPerms.delete(token);
+  }
 }
 
 function evictExpiredPerms(): void {
@@ -149,6 +185,7 @@ async function handlePermissionRequest(
       ],
     );
     pendingPerms.set(token, {
+      platform: transport.platform,
       chatId,
       promptMessageId: sent.messageId,
       permissionID: perm.id,
@@ -170,6 +207,7 @@ async function handlePermissionRequest(
 
 async function onCommand(transport: ChatTransport, cmd: IncomingCommand): Promise<void> {
   const { chatId, senderId, command, arg } = cmd;
+  const key = conversationKey(transport.platform, chatId);
 
   // Workspace-scoped allowlist gate for an already-paired chat. `/pair` is the
   // bootstrap and is protected by a one-time code, so it must stay reachable
@@ -211,6 +249,13 @@ async function onCommand(transport: ChatTransport, cmd: IncomingCommand): Promis
   }
 
   if (command === 'pair') {
+    if (conversationBusy(transport.platform, chatId)) {
+      await transport.sendMessage(
+        chatId,
+        'Still working on the previous message - send /cancel before pairing a different workspace.',
+      );
+      return;
+    }
     const pairAttempt = redeemPairCodeAttempt(
       arg.trim(),
       `${transport.platform}:${senderId}`,
@@ -242,6 +287,7 @@ async function onCommand(transport: ChatTransport, cmd: IncomingCommand): Promis
       );
       return;
     }
+    clearPendingPermsForTurn(transport.platform, chatId);
     addAllowedSender(ws.workDir, transport.platform, senderId, match.label ?? cmd.senderLabel);
     for (const key of workspaceRegistry.keys()) {
       const other = workspaceRegistry.get(key);
@@ -264,6 +310,14 @@ async function onCommand(transport: ChatTransport, cmd: IncomingCommand): Promis
       await transport.sendMessage(chatId, 'This chat is not paired yet — /pair <code> first.');
       return;
     }
+    if (activeTurns.has(key) || startingTurns.has(key)) {
+      await transport.sendMessage(
+        chatId,
+        'Still working on the previous message — send /cancel before starting a new session.',
+      );
+      return;
+    }
+    clearPendingPermsForTurn(transport.platform, chatId);
     forgetSession(transport.platform, chatId);
     await transport.sendMessage(
       chatId,
@@ -273,9 +327,9 @@ async function onCommand(transport: ChatTransport, cmd: IncomingCommand): Promis
   }
 
   if (command === 'cancel') {
-    const handle = activeTurns.get(chatId);
+    const handle = activeTurns.get(key);
     if (!handle) {
-      if (startingTurns.has(chatId)) {
+      if (startingTurns.has(key)) {
         await transport.sendMessage(
           chatId,
           'That turn is still starting. Try /cancel again in a moment.',
@@ -290,7 +344,8 @@ async function onCommand(transport: ChatTransport, cmd: IncomingCommand): Promis
     } catch (err) {
       console.warn('[bot-bridge] abort threw:', err);
     }
-    activeTurns.delete(chatId);
+    clearPendingPermsForTurn(transport.platform, chatId, handle);
+    activeTurns.delete(key);
     await transport.sendMessage(
       chatId,
       'Cancellation requested. The model may take a moment to wind down.',
@@ -301,8 +356,13 @@ async function onCommand(transport: ChatTransport, cmd: IncomingCommand): Promis
   // Unknown command — be quiet rather than chatty; /start documents the set.
 }
 
-async function onMessage(transport: ChatTransport, msg: IncomingMessage): Promise<void> {
+async function onMessage(
+  transport: ChatTransport,
+  msg: IncomingMessage,
+  deps: ConductorDeps,
+): Promise<void> {
   const { chatId, senderId, text } = msg;
+  const key = conversationKey(transport.platform, chatId);
   const binding = resolveChat(transport.platform, chatId);
   if (!binding) {
     // Slack has no relayed /pair code: an unbound chat becomes a pending
@@ -337,25 +397,27 @@ async function onMessage(transport: ChatTransport, msg: IncomingMessage): Promis
     }
     return; // Unpaired chat — nothing more until the owner approves.
   }
+  const turnWorkspaceKey = binding.workspaceKey;
+  const turnSessionId = binding.sessionId;
 
   // Workspace-scoped allowlist gate. A paired chat whose sender isn't on the
   // workspace allowlist (e.g. a new member of a paired group) is silently
   // dropped so we never leak "this bot exists" to randoms.
-  if (!isSenderAllowed(binding.workspaceKey, transport.platform, senderId)) {
+  if (!isSenderAllowed(turnWorkspaceKey, transport.platform, senderId)) {
     console.warn(
       `[bot-bridge] dropped message from non-allowlisted sender ${senderId} in chat ${chatId}`,
     );
     return;
   }
 
-  if (activeTurns.has(chatId) || startingTurns.has(chatId)) {
+  if (activeTurns.has(key) || startingTurns.has(key)) {
     await transport.sendMessage(
       chatId,
       'Still working on the previous message — send /cancel to abort.',
     );
     return;
   }
-  startingTurns.add(chatId);
+  startingTurns.add(key);
 
   try {
     await transport.sendTyping?.(chatId);
@@ -367,7 +429,7 @@ async function onMessage(transport: ChatTransport, msg: IncomingMessage): Promis
   try {
     placeholder = await transport.sendMessage(chatId, '⏳ working…');
   } catch (err) {
-    startingTurns.delete(chatId);
+    startingTurns.delete(key);
     console.warn('[bot-bridge] failed to send placeholder:', err);
     return;
   }
@@ -385,14 +447,14 @@ async function onMessage(transport: ChatTransport, msg: IncomingMessage): Promis
     transport.platform,
     msg.senderLabel,
     msg.senderId,
-    describeWorkspace(binding.workspaceKey),
+    describeWorkspace(turnWorkspaceKey),
   );
 
   let handle: StreamingHandle | null = null;
   try {
-    handle = await sendPromptStreaming(
-      binding.workspaceKey,
-      binding.sessionId,
+    handle = await deps.sendPromptStreaming(
+      turnWorkspaceKey,
+      turnSessionId,
       text,
       {
         onPart: (part) => {
@@ -404,7 +466,7 @@ async function onMessage(transport: ChatTransport, msg: IncomingMessage): Promis
           void handlePermissionRequest(
             transport,
             chatId,
-            binding.workspaceKey,
+            turnWorkspaceKey,
             perm,
             streamingHandle,
             turn,
@@ -421,7 +483,7 @@ async function onMessage(transport: ChatTransport, msg: IncomingMessage): Promis
           const render =
             err?.name === 'MessageAbortedError'
               ? turn.abort('user aborted')
-              : turn.abort(describeOpencodeSessionError(err));
+              : turn.abort(deps.describeOpencodeSessionError(err));
           void render.catch((renderErr) => {
             console.warn('[bot-bridge] error render failed:', renderErr);
           });
@@ -429,15 +491,26 @@ async function onMessage(transport: ChatTransport, msg: IncomingMessage): Promis
       },
       sessionTitle,
     );
-    activeTurns.set(chatId, handle);
-    startingTurns.delete(chatId);
-    rememberSession(transport.platform, chatId, handle.sessionId);
+    activeTurns.set(key, handle);
+    startingTurns.delete(key);
+    const currentBinding = resolveChat(transport.platform, chatId);
+    if (
+      currentBinding?.workspaceKey === turnWorkspaceKey &&
+      currentBinding.sessionId === turnSessionId
+    ) {
+      rememberSession(transport.platform, chatId, handle.sessionId);
+    } else {
+      console.warn(
+        `[bot-bridge] skipped stale session remember for ${transport.platform}:${chatId}`,
+      );
+    }
     await handle.done;
   } catch (err) {
-    await turn.abort(describeDriverError(err));
+    await turn.abort(deps.describeDriverError(err));
   } finally {
-    startingTurns.delete(chatId);
-    activeTurns.delete(chatId);
+    startingTurns.delete(key);
+    activeTurns.delete(key);
+    if (handle) clearPendingPermsForTurn(transport.platform, chatId, handle);
   }
 }
 
@@ -454,9 +527,13 @@ async function onCallback(transport: ChatTransport, cb: IncomingCallback): Promi
     await transport.ackCallback(cb.ackId, 'This request expired or was already answered.');
     return;
   }
+  if (entry.platform !== transport.platform || entry.chatId !== cb.chatId) {
+    await transport.ackCallback(cb.ackId, 'This request belongs to another chat.');
+    return;
+  }
   // Only allowlisted senders for that workspace may answer — a random group
   // member must not be able to approve a write by tapping a button.
-  if (!isSenderAllowed(entry.workspaceKey, transport.platform, cb.senderId)) {
+  if (!isSenderAllowed(entry.workspaceKey, entry.platform, cb.senderId)) {
     await transport.ackCallback(cb.ackId, 'You are not authorized to answer this prompt.');
     return;
   }
@@ -488,14 +565,17 @@ async function onCallback(transport: ChatTransport, cb: IncomingCallback): Promi
 }
 
 /** Wire a transport's inbound events to the shared orchestration. */
-export function attachConductor(transport: ChatTransport): void {
+export function attachConductor(
+  transport: ChatTransport,
+  deps: ConductorDeps = DEFAULT_CONDUCTOR_DEPS,
+): void {
   transport.onCommand((cmd) => {
     void onCommand(transport, cmd).catch((err) =>
       console.error('[bot-bridge] command handler error:', err),
     );
   });
   transport.onMessage((msg) => {
-    void onMessage(transport, msg).catch((err) =>
+    void onMessage(transport, msg, deps).catch((err) =>
       console.error('[bot-bridge] message handler error:', err),
     );
   });

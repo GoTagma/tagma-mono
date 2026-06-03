@@ -81,4 +81,28 @@ describe('ManualTrigger', () => {
     expect(gateway.requests[0]?.timeoutMs).toBe(0);
     handle.dispose('test cleanup');
   });
+
+  test('uses the default approval message when message is empty', () => {
+    for (const message of ['', '   ']) {
+      const gateway = makeGateway();
+      const handle = ManualTrigger.watch(
+        { message },
+        triggerContext(new AbortController().signal, gateway),
+      );
+
+      expect(gateway.requests[0]?.message).toBe(
+        'Manual confirmation required for task "t.manual"',
+      );
+      handle.dispose('test cleanup');
+    }
+  });
+
+  test('rejects non-string approval messages before enqueueing approval', () => {
+    const gateway = makeGateway();
+
+    expect(() =>
+      ManualTrigger.watch({ message: 42 }, triggerContext(new AbortController().signal, gateway)),
+    ).toThrow(/manual trigger: "message" must be a string/);
+    expect(gateway.requests).toHaveLength(0);
+  });
 });

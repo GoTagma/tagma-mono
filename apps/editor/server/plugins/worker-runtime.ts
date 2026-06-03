@@ -340,11 +340,11 @@ async function handleMessage(msg) {
     watchHandles.set(watchId, { handle, controller });
     Promise.resolve(handle.fired).then(
       (value) => {
-        watchHandles.delete(watchId);
+        if (!watchHandles.has(watchId)) return;
         self.postMessage({ kind: 'trigger', watchId, ok: true, value });
       },
       (err) => {
-        watchHandles.delete(watchId);
+        if (!watchHandles.has(watchId)) return;
         self.postMessage({ kind: 'trigger', watchId, ok: false, error: serializeError(err) });
       }
     );

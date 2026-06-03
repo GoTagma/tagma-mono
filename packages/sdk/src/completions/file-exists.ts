@@ -1,6 +1,6 @@
 import { stat } from 'node:fs/promises';
 import type { CompletionPlugin, CompletionContext, TaskResult } from '@tagma/types';
-import { validatePath } from '@tagma/core';
+import { requiredPluginString, resolvePluginPath } from '../plugin-config';
 
 type Kind = 'file' | 'dir' | 'any';
 
@@ -33,10 +33,9 @@ export const FileExistsCompletion: CompletionPlugin = {
     _result: TaskResult,
     ctx: CompletionContext,
   ): Promise<boolean> {
-    const filePath = config.path as string;
-    if (!filePath) throw new Error('file_exists completion: "path" is required');
+    const filePath = requiredPluginString(config, 'path', 'file_exists completion');
 
-    const safePath = validatePath(filePath, ctx.workDir);
+    const safePath = resolvePluginPath(filePath, ctx.workDir);
 
     const kind = (config.kind as Kind | undefined) ?? 'any';
     if (kind !== 'file' && kind !== 'dir' && kind !== 'any') {

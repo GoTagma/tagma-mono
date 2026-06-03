@@ -102,7 +102,80 @@ const isValidId = isValidTaskId;
 const VALID_ON_FAILURE = new Set(['skip_downstream', 'stop_all', 'ignore']);
 const VALID_PIPELINE_MODES = new Set(['trusted', 'safe']);
 const PERMISSION_FIELDS = ['read', 'write', 'execute'] as const;
+const PERMISSION_FIELD_SET: ReadonlySet<string> = new Set(PERMISSION_FIELDS);
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+const PIPELINE_FIELDS: ReadonlySet<string> = new Set([
+  'name',
+  'mode',
+  'secrets',
+  'driver',
+  'model',
+  'reasoning_effort',
+  'permissions',
+  'timeout',
+  'max_concurrency',
+  'plugins',
+  'hooks',
+  'tracks',
+]);
+const TRACK_FIELDS: ReadonlySet<string> = new Set([
+  'id',
+  'name',
+  'color',
+  'secrets',
+  'agent_profile',
+  'model',
+  'reasoning_effort',
+  'permissions',
+  'driver',
+  'cwd',
+  'middlewares',
+  'on_failure',
+  'tasks',
+]);
+const TASK_FIELDS: ReadonlySet<string> = new Set([
+  'id',
+  'name',
+  'prompt',
+  'command',
+  'secrets',
+  'depends_on',
+  'trigger',
+  'continue_from',
+  'model',
+  'reasoning_effort',
+  'permissions',
+  'driver',
+  'timeout',
+  'middlewares',
+  'completion',
+  'agent_profile',
+  'cwd',
+  'inputs',
+  'outputs',
+  // Legacy public field with a dedicated diagnostic below.
+  'ports',
+]);
+const COMMAND_SHELL_FIELDS: ReadonlySet<string> = new Set(['shell']);
+const COMMAND_ARGV_FIELDS: ReadonlySet<string> = new Set(['argv']);
+const INPUT_BINDING_FIELDS: ReadonlySet<string> = new Set([
+  'value',
+  'from',
+  'default',
+  'required',
+  'type',
+  'enum',
+  'description',
+]);
+const OUTPUT_BINDING_FIELDS: ReadonlySet<string> = new Set([
+  'value',
+  'from',
+  'default',
+  'type',
+  'enum',
+  'description',
+]);
 
 // Built-in plugin types always known to the SDK core, regardless of which
 // external plugin packages are installed. These MUST stay in sync with the
@@ -151,14 +224,17 @@ function validateCommandConfig(
     }
     return true;
   }
+  const rawRecord = value as Record<string, unknown>;
   const raw = value as { shell?: string; argv?: readonly string[] };
   if (kind === 'shell') {
+    validateUnknownFields(rawRecord, COMMAND_SHELL_FIELDS, path, label, errors);
     if (!raw.shell || raw.shell.trim().length === 0) {
       errors.push({ path: `${path}.shell`, message: `${label}.shell must not be empty` });
       return false;
     }
     return true;
   }
+  validateUnknownFields(rawRecord, COMMAND_ARGV_FIELDS, path, label, errors);
   if (!raw.argv || raw.argv.length === 0) {
     errors.push({
       path: `${path}.argv`,
@@ -242,8 +318,42 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
+function validateUnknownFields(
+  value: unknown,
+  allowed: ReadonlySet<string>,
+  basePath: string,
+  label: string,
+  errors: ValidationError[],
+): void {
+  if (!isRecord(value)) return;
+  for (const field of Object.keys(value)) {
+    if (allowed.has(field)) continue;
+    errors.push({
+      path: basePath ? `${basePath}.${field}` : field,
+      message: `Unknown ${label} field "${field}"`,
+    });
+  }
+}
+
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
+}
+
+function validateOptionalString(
+  value: unknown,
+  path: string,
+  label: string,
+  errors: ValidationError[],
+): value is string {
+  if (value === undefined) return false;
+  if (!isNonEmptyString(value)) {
+    errors.push({
+      path,
+      message: `${label} must be a non-empty string`,
+    });
+    return false;
+  }
+  return true;
 }
 
 function validateStringList(
@@ -366,12 +476,18 @@ const HOOK_FIELDS = [
   'pipeline_complete',
   'pipeline_error',
 ] as const;
+const HOOK_FIELD_SET: ReadonlySet<string> = new Set(HOOK_FIELDS);
 
 function validateHooks(value: unknown, errors: ValidationError[]): void {
   if (value === undefined) return;
   if (!isRecord(value)) {
     errors.push({ path: 'hooks', message: 'hooks must be an object map' });
     return;
+  }
+  for (const field of Object.keys(value)) {
+    if (!HOOK_FIELD_SET.has(field)) {
+      errors.push({ path: `hooks.${field}`, message: `Unknown hook event "${field}"` });
+    }
   }
   for (const field of HOOK_FIELDS) {
     if (!(field in value)) continue;
@@ -391,13 +507,7 @@ function validateHooks(value: unknown, errors: ValidationError[]): void {
 }
 
 function validateReasoningEffort(value: unknown, path: string, errors: ValidationError[]): void {
-  if (value === undefined) return;
-  if (!isNonEmptyString(value)) {
-    errors.push({
-      path,
-      message: 'reasoning_effort must be a non-empty string',
-    });
-  }
+  validateOptionalString(value, path, 'reasoning_effort', errors);
 }
 
 /**
@@ -417,6 +527,10 @@ export function validateRaw(
   knownTypes?: KnownPluginTypes,
 ): ValidationError[] {
   const errors: ValidationError[] = [];
+  if (!isRecord(config)) {
+    errors.push({ path: 'pipeline', message: 'pipeline must be an object' });
+    return errors;
+  }
 
   const knownTriggers = knownTypes
     ? new Set<string>([...BUILTIN_TRIGGER_TYPES, ...(knownTypes.triggers ?? [])])
@@ -432,16 +546,25 @@ export function validateRaw(
     : null;
 
   //  Top level
+  validateUnknownFields(
+    config as unknown as Record<string, unknown>,
+    PIPELINE_FIELDS,
+    '',
+    'pipeline',
+    errors,
+  );
   if (!isNonEmptyString(config.name)) {
     errors.push({ path: 'name', message: 'Pipeline name is required' });
   }
-  if (config.mode && !VALID_PIPELINE_MODES.has(config.mode)) {
+  if (config.mode !== undefined && !VALID_PIPELINE_MODES.has(config.mode)) {
     errors.push({
       path: 'mode',
       message: `Invalid mode "${config.mode}". Expected "trusted" or "safe".`,
     });
   }
   validateReasoningEffort(config.reasoning_effort, 'reasoning_effort', errors);
+  validateOptionalString(config.driver, 'driver', 'driver', errors);
+  validateOptionalString(config.model, 'model', 'model', errors);
   if (config.timeout !== undefined) {
     const validation = validateDuration(config.timeout);
     if (!validation.ok) {
@@ -462,7 +585,7 @@ export function validateRaw(
   validateStringList(config.plugins, 'plugins', 'plugins', errors);
   validateSecretList(config.secrets, 'secrets', errors);
   validateHooks(config.hooks, errors);
-  if (knownDrivers && config.driver && !knownDrivers.has(config.driver)) {
+  if (knownDrivers && isNonEmptyString(config.driver) && !knownDrivers.has(config.driver)) {
     errors.push({
       path: 'driver',
       message: `Unknown driver type "${config.driver}"`,
@@ -499,6 +622,13 @@ export function validateRaw(
       continue;
     }
     const track = maybeTrack as RawTrackConfig;
+    validateUnknownFields(
+      track as unknown as Record<string, unknown>,
+      TRACK_FIELDS,
+      trackPath,
+      'track',
+      errors,
+    );
 
     if (!isNonEmptyString(track.id)) {
       errors.push({ path: `${trackPath}.id`, message: 'Track id is required' });
@@ -515,14 +645,24 @@ export function validateRaw(
     if (!isNonEmptyString(track.name)) {
       errors.push({ path: `${trackPath}.name`, message: 'Track name is required' });
     }
-    if (track.on_failure && !VALID_ON_FAILURE.has(track.on_failure)) {
+    if (track.on_failure !== undefined && !VALID_ON_FAILURE.has(track.on_failure)) {
       errors.push({
         path: `${trackPath}.on_failure`,
         message: `Invalid on_failure value "${track.on_failure}". Expected "skip_downstream", "stop_all", or "ignore".`,
       });
     }
+    validateOptionalString(track.color, `${trackPath}.color`, 'track.color', errors);
+    validateOptionalString(track.driver, `${trackPath}.driver`, 'track.driver', errors);
+    validateOptionalString(track.model, `${trackPath}.model`, 'track.model', errors);
+    validateOptionalString(
+      track.agent_profile,
+      `${trackPath}.agent_profile`,
+      'track.agent_profile',
+      errors,
+    );
+    validateOptionalString(track.cwd, `${trackPath}.cwd`, 'track.cwd', errors);
     validateReasoningEffort(track.reasoning_effort, `${trackPath}.reasoning_effort`, errors);
-    if (knownDrivers && track.driver && !knownDrivers.has(track.driver)) {
+    if (knownDrivers && isNonEmptyString(track.driver) && !knownDrivers.has(track.driver)) {
       errors.push({
         path: `${trackPath}.driver`,
         message: `Unknown driver type "${track.driver}"`,
@@ -588,6 +728,13 @@ export function validateRaw(
         continue;
       }
       const task = maybeTask as unknown as RawTaskConfig;
+      validateUnknownFields(
+        maybeTask,
+        TASK_FIELDS,
+        taskPath,
+        `task "${typeof task.id === 'string' ? task.id : ki}"`,
+        errors,
+      );
 
       if (!isNonEmptyString(task.id)) {
         errors.push({ path: `${taskPath}.id`, message: 'Task id is required' });
@@ -614,6 +761,7 @@ export function validateRaw(
       }
       seenTaskIds.add(task.id);
 
+      const hasPromptField = task.prompt !== undefined;
       const hasPromptKey = typeof task.prompt === 'string';
       const hasCommandField = isCommandTaskConfig(task);
       const hasCommandKey = commandConfigKind(task.command) !== null;
@@ -641,13 +789,18 @@ export function validateRaw(
           path: taskPath,
           message: `Task "${task.id}": cannot have both "prompt" and "command"`,
         });
-      } else if (!hasPromptKey && !hasCommandField) {
+      } else if (!hasPromptField && !hasCommandField) {
         errors.push({
           path: taskPath,
           message: `Task "${task.id}": must have "prompt" or "command"`,
         });
       } else {
-        if (hasPromptKey && task.prompt!.trim().length === 0) {
+        if (hasPromptField && !hasPromptKey) {
+          errors.push({
+            path: `${taskPath}.prompt`,
+            message: 'task.prompt must be a non-empty string',
+          });
+        } else if (hasPromptKey && task.prompt!.trim().length === 0) {
           errors.push({
             path: taskPath,
             message: `Task "${task.id}": prompt content cannot be empty`,
@@ -673,8 +826,18 @@ export function validateRaw(
           });
         }
       }
+      validateOptionalString(task.name, `${taskPath}.name`, 'task.name', errors);
+      validateOptionalString(task.driver, `${taskPath}.driver`, 'task.driver', errors);
+      validateOptionalString(task.model, `${taskPath}.model`, 'task.model', errors);
+      validateOptionalString(
+        task.agent_profile,
+        `${taskPath}.agent_profile`,
+        'task.agent_profile',
+        errors,
+      );
+      validateOptionalString(task.cwd, `${taskPath}.cwd`, 'task.cwd', errors);
       validateReasoningEffort(task.reasoning_effort, `${taskPath}.reasoning_effort`, errors);
-      if (knownDrivers && task.driver && !knownDrivers.has(task.driver)) {
+      if (knownDrivers && isNonEmptyString(task.driver) && !knownDrivers.has(task.driver)) {
         errors.push({
           path: `${taskPath}.driver`,
           message: `Unknown driver type "${task.driver}"`,
@@ -846,6 +1009,7 @@ function validatePermissions(value: unknown, basePath: string, errors: Validatio
     return;
   }
   const p = value as Record<string, unknown>;
+  validateUnknownFields(p, PERMISSION_FIELD_SET, basePath, 'permissions', errors);
   for (const field of PERMISSION_FIELDS) {
     const path = `${basePath}.${field}`;
     if (!(field in p)) {
@@ -897,6 +1061,64 @@ const INPUT_TASK_STREAM_FIELDS: readonly string[] = [
 const OUTPUT_BINDING_SOURCES: readonly string[] = ['stdout', 'stderr', 'normalizedOutput'];
 const OUTPUT_BINDING_JSON_RE = /^json\.[A-Za-z_][A-Za-z0-9_]*$/;
 
+function pushInvalidInputBindingSource(
+  task: RawTaskConfig,
+  name: string,
+  source: string,
+  path: string,
+  errors: ValidationError[],
+): void {
+  errors.push({
+    path,
+    message:
+      `Task "${task.id}": input binding "${name}" from "${source}" must reference an upstream output or stream ` +
+      '(use outputs.<name>, taskId.<name>, taskId.outputs.<name>, taskId.stdout, taskId.stderr, taskId.normalizedOutput, or taskId.exitCode)',
+  });
+}
+
+function validateInputBindingSourceShape(
+  task: RawTaskConfig,
+  name: string,
+  source: string,
+  path: string,
+  errors: ValidationError[],
+): boolean {
+  if (source.startsWith('outputs.')) {
+    const outputName = source.slice('outputs.'.length);
+    if (PORT_NAME_RE.test(outputName)) return true;
+    pushInvalidInputBindingSource(task, name, source, path, errors);
+    return false;
+  }
+
+  if (!source.includes('.')) {
+    pushInvalidInputBindingSource(task, name, source, path, errors);
+    return false;
+  }
+
+  const outputMarker = '.outputs.';
+  const outputIdx = source.lastIndexOf(outputMarker);
+  if (outputIdx > 0) {
+    const outputName = source.slice(outputIdx + outputMarker.length);
+    if (PORT_NAME_RE.test(outputName)) return true;
+    pushInvalidInputBindingSource(task, name, source, path, errors);
+    return false;
+  }
+
+  for (const field of INPUT_TASK_STREAM_FIELDS) {
+    const suffix = `.${field}`;
+    if (source.endsWith(suffix) && source.length > suffix.length) return true;
+  }
+
+  const dot = source.lastIndexOf('.');
+  if (dot > 0) {
+    const outputName = source.slice(dot + 1);
+    if (PORT_NAME_RE.test(outputName)) return true;
+  }
+
+  pushInvalidInputBindingSource(task, name, source, path, errors);
+  return false;
+}
+
 function validateBindingMap(
   value: unknown,
   basePath: string,
@@ -923,6 +1145,13 @@ function validateBindingMap(
       continue;
     }
     const binding = rawBinding as Record<string, unknown>;
+    validateUnknownFields(
+      binding,
+      kind === 'inputs' ? INPUT_BINDING_FIELDS : OUTPUT_BINDING_FIELDS,
+      path,
+      `task.${kind}.${name}`,
+      errors,
+    );
     if ('from' in binding && typeof binding.from !== 'string') {
       errors.push({ path: `${path}.from`, message: `task.${kind}.${name}.from must be a string` });
     }
@@ -985,13 +1214,15 @@ function validateInputBindingSources(
     if (!rawBinding || typeof rawBinding !== 'object' || Array.isArray(rawBinding)) continue;
     const source = (rawBinding as Record<string, unknown>).from;
     if (typeof source !== 'string') continue;
-    if (!source.startsWith('outputs.') && !source.includes('.')) {
-      errors.push({
-        path: `${taskPath}.inputs.${name}.from`,
-        message:
-          `Task "${task.id}": input binding "${name}" from "${source}" must reference an upstream output or stream ` +
-          '(use outputs.<name>, taskId.<name>, taskId.outputs.<name>, taskId.stdout, taskId.stderr, taskId.normalizedOutput, or taskId.exitCode)',
-      });
+    if (
+      !validateInputBindingSourceShape(
+        task,
+        name,
+        source,
+        `${taskPath}.inputs.${name}.from`,
+        errors,
+      )
+    ) {
       continue;
     }
     const upstreamRef = bindingSourceTaskRef(source);

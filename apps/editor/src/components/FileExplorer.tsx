@@ -25,6 +25,7 @@ interface FileExplorerProps {
    * `onConfirmMany` with the selected paths in display order.
    */
   multiple?: boolean;
+  allowDirectorySelection?: boolean;
   capabilityPurpose?: 'import-plugin';
   onConfirm: (path: string) => void;
   onConfirmWithCapability?: (path: string, capabilityToken: string | null) => void;
@@ -39,6 +40,7 @@ export function FileExplorer({
   fileFilter,
   picker,
   multiple,
+  allowDirectorySelection,
   capabilityPurpose,
   onConfirm,
   onConfirmWithCapability,
@@ -55,6 +57,7 @@ export function FileExplorer({
   const [error, setError] = useState<string | null>(null);
   const [newFolderName, setNewFolderName] = useState<string | null>(null);
   const [capabilityToken, setCapabilityToken] = useState<string | null>(null);
+  const [entryCapabilityTokens, setEntryCapabilityTokens] = useState<Record<string, string>>({});
   // Multi-select bookkeeping. `selected` holds picked file paths (preserves
   // click order, which becomes import order). `anchorPath` is the last single-
   // clicked path — Shift-click extends a range from it through the click target
@@ -67,6 +70,17 @@ export function FileExplorer({
 
   const defaultTitle =
     mode === 'open' ? 'Open File' : mode === 'save' ? 'Save As' : 'Select Directory';
+
+  const confirmPath = useCallback(
+    (path: string, token: string | null = null) => {
+      if (onConfirmWithCapability) {
+        onConfirmWithCapability(path, token);
+      } else {
+        onConfirm(path);
+      }
+    },
+    [onConfirm, onConfirmWithCapability],
+  );
 
   const loadDir = useCallback(
     async (dirPath?: string) => {
@@ -82,11 +96,15 @@ export function FileExplorer({
         setParentPath(result.parent);
         setPathInput(result.path);
         setCapabilityToken(result.capabilityToken ?? null);
+        setEntryCapabilityTokens(result.entryCapabilityTokens ?? {});
 
         let filtered = result.entries;
         if (mode !== 'directory' && fileFilter && fileFilter.length > 0) {
+          const lowerFilters = fileFilter.map((ext) => ext.toLowerCase());
           filtered = filtered.filter(
-            (e) => e.type === 'directory' || fileFilter.some((ext) => e.name.endsWith(ext)),
+            (e) =>
+              e.type === 'directory' ||
+              lowerFilters.some((ext) => e.name.toLowerCase().endsWith(ext)),
           );
         }
         if (mode === 'directory') {
@@ -128,7 +146,7 @@ export function FileExplorer({
       }
       if (mode !== 'open') return;
       if (!multi) {
-        onConfirm(entry.path);
+        confirmPath(entry.path, entryCapabilityTokens[entry.path] ?? null);
         return;
       }
       // Multi-select mode. Shift-click = range extend from the anchor through
@@ -156,16 +174,12 @@ export function FileExplorer({
       );
       setAnchorPath(entry.path);
     },
-    [mode, multi, loadDir, onConfirm, anchorPath, entries, selected],
+    [mode, multi, loadDir, confirmPath, entryCapabilityTokens, anchorPath, entries, selected],
   );
 
   const handleConfirm = useCallback(() => {
-    if (mode === 'directory') {
-      if (onConfirmWithCapability) {
-        onConfirmWithCapability(currentPath, capabilityToken);
-      } else {
-        onConfirm(currentPath);
-      }
+    if (mode === 'directory' || (mode === 'open' && allowDirectorySelection)) {
+      confirmPath(currentPath, capabilityToken);
     } else if (mode === 'save') {
       const base = fileName.trim();
       if (!base) return;
@@ -173,7 +187,15 @@ export function FileExplorer({
       const withExt = /\.(yaml|yml)$/i.test(base) ? base : base + '.yaml';
       onConfirm(currentPath + sep + withExt);
     }
-  }, [mode, currentPath, fileName, onConfirm, onConfirmWithCapability, capabilityToken]);
+  }, [
+    mode,
+    allowDirectorySelection,
+    currentPath,
+    fileName,
+    onConfirm,
+    confirmPath,
+    capabilityToken,
+  ]);
 
   const handlePathSubmit = useCallback(() => {
     if (pathInput.trim()) loadDir(pathInput.trim());
@@ -208,10 +230,10 @@ export function FileExplorer({
           loadDir(entry.path);
         }
       } else {
-        onConfirm(entry.path);
+        confirmPath(entry.path, entryCapabilityTokens[entry.path] ?? null);
       }
     },
-    [mode, loadDir, onConfirm, capabilityPurpose],
+    [mode, loadDir, onConfirm, confirmPath, capabilityPurpose, entryCapabilityTokens],
   );
 
   return (
@@ -405,6 +427,10 @@ export function FileExplorer({
                   className="btn-primary disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {selected.length > 1 ? `Open ${selected.length} files` : 'Open'}
+                </button>
+              ) : allowDirectorySelection ? (
+                <button onClick={handleConfirm} className="btn-primary">
+                  Select Directory
                 </button>
               ) : (
                 <span className="text-[10px] text-tagma-muted self-center">

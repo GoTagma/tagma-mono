@@ -3,7 +3,12 @@ import {
   readPluginManifest as parsePluginManifestField,
   type PluginCategory,
 } from '@tagma/sdk/plugins';
-import { NPM_REGISTRY, REGISTRY_FETCH_TIMEOUT_MS, registryUrl } from './install.js';
+import {
+  isStrictPluginVersion,
+  NPM_REGISTRY,
+  REGISTRY_FETCH_TIMEOUT_MS,
+  registryUrl,
+} from './install.js';
 
 // ── Plugin marketplace (npm registry proxy) ──
 //
@@ -118,7 +123,7 @@ export async function fetchWeeklyDownloads(name: string): Promise<number | null>
     marketplaceDownloadsCache.delete(name);
   }
   try {
-    const url = `${NPM_DOWNLOADS_URL}/${name}`;
+    const url = `${NPM_DOWNLOADS_URL}/${encodeURIComponent(name)}`;
     const res = await fetch(url, {
       headers: { Accept: 'application/json' },
       signal: AbortSignal.timeout(REGISTRY_FETCH_TIMEOUT_MS),
@@ -165,10 +170,11 @@ export async function fetchMarketplacePackage(
   }
   const distTags = body?.['dist-tags'] as Record<string, string> | undefined;
   const latest = distTags?.latest;
-  if (typeof latest !== 'string') return null;
+  if (!isStrictPluginVersion(latest)) return null;
   const versions = body?.versions as Record<string, Record<string, unknown>> | undefined;
   const versionEntry = versions?.[latest];
   if (!versionEntry || typeof versionEntry !== 'object') return null;
+  if (versionEntry.name !== name || versionEntry.version !== latest) return null;
   let manifest;
   try {
     manifest = parsePluginManifestField(versionEntry);

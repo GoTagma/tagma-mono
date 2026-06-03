@@ -91,3 +91,32 @@ describe('OpenCodeDriver buildCommand', () => {
     expect(spec.args.at(-1)).toContain('previous text');
   });
 });
+
+describe('OpenCodeDriver parseResult', () => {
+  test('extracts NDJSON session id and normalized text', () => {
+    const meta = OpenCodeDriver.parseResult!(
+      [
+        '{"type":"step_start","sessionID":"sess-1"}',
+        '{"type":"text","part":{"text":"hello"}}',
+        '{"type":"text","part":{"text":"world"}}',
+      ].join('\n'),
+    );
+
+    expect(meta).toEqual({
+      sessionId: 'sess-1',
+      normalizedOutput: 'hello\nworld',
+    });
+  });
+
+  test('preserves session id from opencode error events while forcing failure', () => {
+    const meta = OpenCodeDriver.parseResult!(
+      '{"type":"error","sessionID":"sess-error","message":"rate limited"}',
+    );
+
+    expect(meta).toEqual({
+      sessionId: 'sess-error',
+      forceFailure: true,
+      forceFailureReason: 'opencode reported error: rate limited',
+    });
+  });
+});

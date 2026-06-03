@@ -171,6 +171,43 @@ describe('validateRaw - unified typed bindings', () => {
     ).toBe(true);
   });
 
+  test('rejects malformed input from sources with missing or invalid output names', () => {
+    const errors = validateRaw(
+      config([
+        commandTask({ id: 'up', command: 'echo ok', outputs: { city: {}, outputs: {} } }),
+        commandTask({
+          id: 'down',
+          depends_on: ['up'],
+          command: 'echo ok',
+          inputs: {
+            emptyMatch: { from: 'outputs.' },
+            emptyOutput: { from: 'up.outputs.' },
+            emptyShort: { from: 'up.' },
+            badName: { from: 'up.outputs.bad-name' },
+            literalOutputs: { from: 'up.outputs' },
+          },
+        }),
+      ]),
+    );
+
+    const invalidSourceErrors = errors.filter(
+      (e) =>
+        e.path.startsWith('tracks[0].tasks[1].inputs.') &&
+        /must reference an upstream output or stream/.test(e.message),
+    );
+    expect(invalidSourceErrors.map((e) => e.path)).toEqual(
+      expect.arrayContaining([
+        'tracks[0].tasks[1].inputs.emptyMatch.from',
+        'tracks[0].tasks[1].inputs.emptyOutput.from',
+        'tracks[0].tasks[1].inputs.emptyShort.from',
+        'tracks[0].tasks[1].inputs.badName.from',
+      ]),
+    );
+    expect(invalidSourceErrors.map((e) => e.path)).not.toContain(
+      'tracks[0].tasks[1].inputs.literalOutputs.from',
+    );
+  });
+
   test('short input sources still reject non-direct dependencies', () => {
     const errors = validateRaw(
       config([

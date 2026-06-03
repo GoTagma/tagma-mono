@@ -34,7 +34,7 @@ import { clip, tailLines, type Logger } from '../logger';
 import type { ApprovalGateway } from '../approval';
 import type { RunContext } from './run-context';
 import { extractSuccessfulOutputs, inferEffectivePorts } from './dataflow';
-import { skippedTaskResult } from './run-state';
+import { isTerminal, skippedTaskResult } from './run-state';
 
 const MAX_NORMALIZED_BYTES = 1_000_000;
 
@@ -431,7 +431,12 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       // this task never entered running state → skipped, not timeout.
       state.finishedAt = nowISO();
       if (ctx.abortReason !== null) {
-        ctx.setTaskStatus(taskId, 'skipped');
+        if (!isTerminal(state.status)) {
+          state.result = skippedTaskResult(
+            `skipped because the pipeline was aborted before trigger "${task.trigger.type}" fired`,
+          );
+          ctx.setTaskStatus(taskId, 'skipped');
+        }
       } else if (isTriggerBlockedError(err)) {
         ctx.setTaskStatus(taskId, 'blocked'); // user/policy rejection
       } else if (isTriggerTimeoutError(err)) {

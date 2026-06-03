@@ -20,7 +20,7 @@ import {
 } from '../hooks';
 import type { TagmaRuntime } from '../types';
 import type { Logger } from '../logger';
-import { isTerminal, resolveExecutionMetadata } from './run-state';
+import { isTerminal, resolveExecutionMetadata, skippedTaskResult } from './run-state';
 import { nowISO } from '../utils';
 
 const REDACTED_INPUT_VALUE = '[REDACTED]';
@@ -202,6 +202,9 @@ export class RunContext {
     for (const [id, state] of this.states) {
       if (state.status === 'waiting') {
         state.finishedAt = nowISO();
+        state.result = skippedTaskResult(
+          'skipped because the pipeline stopped after a task failure',
+        );
         this.setTaskStatus(id, 'skipped');
       }
     }

@@ -351,6 +351,10 @@ export function AssistantMessageFooter({ info }: { info: AssistantMessage }) {
   const outputTokens = tokens?.output ?? 0;
   const inputTokens =
     (tokens?.input ?? 0) + (tokens?.cache?.read ?? 0) + (tokens?.cache?.write ?? 0);
+  const rawInputTokens = tokens?.input ?? 0;
+  const reasoningTokens = tokens?.reasoning ?? 0;
+  const cacheReadTokens = tokens?.cache?.read ?? 0;
+  const cacheWriteTokens = tokens?.cache?.write ?? 0;
   const hasUsage = outputTokens > 0 || inputTokens > 0 || info.cost > 0;
   if (!hasUsage && !info.error && !info.finish) return null;
   return (
@@ -359,11 +363,11 @@ export function AssistantMessageFooter({ info }: { info: AssistantMessage }) {
         <span
           className="inline-flex items-center gap-1 tabular-nums"
           title={[
-            `output: ${tokens.output}`,
-            tokens.reasoning > 0 ? `  (incl. reasoning: ${tokens.reasoning})` : null,
-            `input: ${tokens.input}`,
-            tokens.cache.read > 0 ? `cache read: ${tokens.cache.read}` : null,
-            tokens.cache.write > 0 ? `cache write: ${tokens.cache.write}` : null,
+            `output: ${outputTokens}`,
+            reasoningTokens > 0 ? `  (incl. reasoning: ${reasoningTokens})` : null,
+            `input: ${rawInputTokens}`,
+            cacheReadTokens > 0 ? `cache read: ${cacheReadTokens}` : null,
+            cacheWriteTokens > 0 ? `cache write: ${cacheWriteTokens}` : null,
           ]
             .filter(Boolean)
             .join('\n')}

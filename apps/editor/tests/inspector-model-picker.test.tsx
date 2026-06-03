@@ -5,7 +5,11 @@ import type { RawPipelineConfig, RawTaskConfig, RawTrackConfig } from '../src/ap
 import { PipelineConfigPanel } from '../src/components/panels/PipelineConfigPanel';
 import { TaskConfigPanel } from '../src/components/panels/TaskConfigPanel';
 import { TrackConfigPanel } from '../src/components/panels/TrackConfigPanel';
-import { buildModelPickerGroups } from '../src/components/chat/ModelPickerDropdown';
+import {
+  buildModelPickerGroups,
+  ModelPickerDropdown,
+  modelPickerLabel,
+} from '../src/components/chat/ModelPickerDropdown';
 import { useChatStore } from '../src/store/chat-store';
 import { usePipelineStore } from '../src/store/pipeline-store';
 
@@ -95,6 +99,60 @@ describe('Inspector model picker', () => {
 
     expect(html).not.toContain('<datalist');
     expect(html).toContain('aria-label="Open model picker"');
+  });
+
+  test('model picker tolerates provider entries before models are available', () => {
+    const reconcilingProvider = {
+      id: 'custom-provider',
+      name: 'Custom Provider',
+    } as unknown as Provider;
+
+    expect(buildModelPickerGroups([reconcilingProvider], '')).toEqual([]);
+    expect(
+      modelPickerLabel(
+        [reconcilingProvider],
+        { providerID: 'custom-provider', modelID: 'missing-model' },
+        'Pick model',
+      ),
+    ).toBe('Custom Provider / missing-model');
+    expect(() =>
+      renderToStaticMarkup(
+        <ModelPickerDropdown providers={[reconcilingProvider]} value={null} onSelect={() => {}} />,
+      ),
+    ).not.toThrow();
+  });
+
+  test('model picker tolerates custom models without SDK metadata', () => {
+    const providersWithMinimalModel = [
+      {
+        id: 'local',
+        name: 'Local Models',
+        models: {
+          'llama3.1': {
+            id: 'llama3.1',
+            name: 'Llama 3.1',
+          },
+        },
+      },
+    ] as unknown as Provider[];
+
+    const groups = buildModelPickerGroups(providersWithMinimalModel, '');
+    expect(groups[0]?.models[0]).toMatchObject({
+      id: 'llama3.1',
+      label: 'Llama 3.1',
+      status: 'active',
+      context: 0,
+      reasoning: false,
+    });
+    expect(() =>
+      renderToStaticMarkup(
+        <ModelPickerDropdown
+          providers={providersWithMinimalModel}
+          value={{ providerID: 'local', modelID: 'llama3.1' }}
+          onSelect={() => {}}
+        />,
+      ),
+    ).not.toThrow();
   });
 
   test('opencode model field renders a chat-style dropdown trigger', () => {

@@ -12,6 +12,7 @@ import {
   validateConfig,
   validateConfigDiagnostics,
 } from './schema';
+import { assertWorkDir } from './workdir';
 import { bunRuntime } from '@tagma/runtime-bun';
 import type { TagmaRuntime } from '@tagma/core';
 import type {
@@ -59,6 +60,10 @@ export interface TagmaGraphRunOptions extends Omit<
   readonly cwd: string;
 }
 
+export interface TagmaValidateOptions {
+  readonly cwd?: string;
+}
+
 export type TagmaRunnableConfig = PipelineConfig | PipelineGraphConfig;
 
 export type TagmaYamlDocument =
@@ -81,7 +86,7 @@ export interface Tagma {
     content: string,
     options: TagmaRunOptions | TagmaGraphRunOptions,
   ): Promise<TagmaYamlRunResult>;
-  validate(config: PipelineConfig): readonly string[];
+  validate(config: PipelineConfig, options?: TagmaValidateOptions): readonly string[];
 }
 
 export function detectTagmaYamlKind(content: string): TagmaYamlDocument['kind'] {
@@ -104,8 +109,17 @@ export async function loadTagmaYaml(content: string, workDir: string): Promise<T
   return { kind, config: await loadWorkflow(content, workDir) };
 }
 
-function isPipelineGraphConfig(config: TagmaRunnableConfig): config is PipelineGraphConfig {
+function isPipelineGraphConfig(config: unknown): config is PipelineGraphConfig {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) return false;
   return Array.isArray((config as { pipelines?: unknown }).pipelines);
+}
+
+function assertRunOptions(
+  options: unknown,
+): asserts options is TagmaRunOptions | TagmaGraphRunOptions {
+  const cwd =
+    options && typeof options === 'object' ? (options as { cwd?: unknown }).cwd : undefined;
+  assertWorkDir(cwd, 'options.cwd');
 }
 
 export function createTagma(options: CreateTagmaOptions = {}): Tagma {
@@ -125,8 +139,10 @@ export function createTagma(options: CreateTagmaOptions = {}): Tagma {
   ): Promise<PipelineGraphResult>;
   async function run(
     config: TagmaRunnableConfig,
-    { cwd, ...runOptions }: TagmaRunOptions | TagmaGraphRunOptions,
+    options: TagmaRunOptions | TagmaGraphRunOptions,
   ): Promise<EngineResult | PipelineGraphResult> {
+    assertRunOptions(options);
+    const { cwd, ...runOptions } = options;
     if (isPipelineGraphConfig(config)) {
       return await runPipelineGraph(config, cwd, {
         ...(runOptions as Omit<TagmaGraphRunOptions, 'cwd'>),
@@ -149,6 +165,7 @@ export function createTagma(options: CreateTagmaOptions = {}): Tagma {
     registry,
     run,
     async runYaml(content, options) {
+      assertRunOptions(options);
       const document = await loadTagmaYaml(content, options.cwd);
       if (document.kind === 'pipeline') {
         return { kind: 'pipeline', result: await run(document.config, options as TagmaRunOptions) };
@@ -158,8 +175,8 @@ export function createTagma(options: CreateTagmaOptions = {}): Tagma {
         result: await run(document.config, options as TagmaGraphRunOptions),
       };
     },
-    validate(config) {
-      return validateConfig(config);
+    validate(config, options) {
+      return validateConfig(config, options?.cwd);
     },
   };
 }

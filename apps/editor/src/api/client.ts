@@ -1118,6 +1118,7 @@ export interface FsListResult {
   path: string;
   parent: string | null;
   entries: FsEntry[];
+  entryCapabilityTokens?: Record<string, string>;
   capabilityToken?: string;
   capabilityExpiresAt?: number;
 }
@@ -1805,8 +1806,11 @@ export const api = {
   getPluginInfo: (name: string) =>
     request<PluginInfo>(`/plugins/info?name=${encodeURIComponent(name)}`),
 
-  installPlugin: (name: string) =>
-    request<PluginActionResult>('/plugins/install', { method: 'POST', body: jsonBody({ name }) }),
+  installPlugin: (name: string, version?: string) =>
+    request<PluginActionResult>('/plugins/install', {
+      method: 'POST',
+      body: jsonBody(version ? { name, version } : { name }),
+    }),
 
   planPluginUpgrade: (name: string) =>
     request<PluginUpgradePlan>('/plugins/upgrade-plan', {
@@ -1828,8 +1832,8 @@ export const api = {
 
   /**
    * Pre-flight check for uninstall: returns the YAML locations that
-   * reference the plugin's (category, type) so the UI can show a confirm
-   * dialog before orphaning tasks. Safe to ignore for plugins that can't
+   * reference the plugin package or its (category, type) capabilities so
+   * the UI can show a confirm dialog before orphaning references. Safe to ignore for plugins that can't
    * be classified — `category` is null in that case.
    */
   uninstallImpact: (name: string) =>

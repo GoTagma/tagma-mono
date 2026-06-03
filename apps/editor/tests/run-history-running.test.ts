@@ -1,10 +1,11 @@
 import { beforeEach, expect, test } from 'bun:test';
 import express from 'express';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { connect as netConnect } from 'node:net';
+import { withWorkspacePluginMutationLock } from '../server/plugins/locks';
 import {
   beginRunSessionStart,
   endRunSessionStart,
@@ -159,9 +160,89 @@ async function waitForSessionDone(runId: string): Promise<void> {
   while (Date.now() < deadline) {
     const session = sessions.get(runId) ?? null;
     if (!session || (session as unknown as { done?: boolean }).done) return;
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await sleep(50);
   }
   throw new Error(`Timed out waiting for run ${runId} to finish`);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitUntil(predicate: () => boolean, message: string): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    await sleep(5);
+  }
+  throw new Error(message);
+}
+
+function pluginStorePackageDir(name: string): string {
+  const packageParts = name.startsWith('@') ? name.split('/') : [name];
+  return join(
+    tempDir,
+    '.tagma',
+    'plugin-store',
+    name.replace(/[\\/]/g, '__'),
+    'node_modules',
+    ...packageParts,
+  );
+}
+
+function writeStoredDriverPlugin(
+  name: string,
+  type: string,
+  handlerName: string,
+  options: { broken?: boolean; delayMs?: number } = {},
+): void {
+  const packageDir = pluginStorePackageDir(name);
+  mkdirSync(packageDir, { recursive: true });
+  writeFileSync(
+    join(packageDir, 'package.json'),
+    JSON.stringify(
+      {
+        name,
+        version: '1.0.0',
+        type: 'module',
+        main: './index.js',
+        tagmaPlugin: { category: 'drivers', type },
+      },
+      null,
+      2,
+    ) + '\n',
+  );
+
+  const delayLine = options.delayMs
+    ? `await new Promise((resolve) => setTimeout(resolve, ${Math.trunc(options.delayMs)}));\n`
+    : '';
+  const handlerNameJson = JSON.stringify(handlerName);
+  const handler = options.broken
+    ? `{ name: ${handlerNameJson} }`
+    : `{
+  name: ${handlerNameJson},
+  capabilities: {
+    sessionResume: true,
+    systemPrompt: false,
+    outputFormat: true,
+  },
+  buildCommand() {
+    return { args: ['echo', ${handlerNameJson}] };
+  },
+}`;
+  writeFileSync(
+    join(packageDir, 'index.js'),
+    `${delayLine}const handler = ${handler};
+export default {
+  name: ${JSON.stringify(name)},
+  capabilities: {
+    drivers: {
+      [${JSON.stringify(type)}]: handler,
+    },
+  },
+};
+`,
+  );
 }
 
 beforeEach(() => {
@@ -312,6 +393,100 @@ test('run start accepts a new instance while another run is live', async () => {
     const body = JSON.parse(res.body) as { runId?: string };
     expect(body.runId).toMatch(/^run_/);
     await waitForSessionDone(body.runId!);
+  } finally {
+    await close();
+    await removeTempDir();
+  }
+});
+
+test('run start unloads partially preloaded plugins before releasing the plugin mutation lock', async () => {
+  const goodPlugin = '@scope/plugin-good';
+  const badPlugin = '@scope/plugin-bad';
+  ws.config = {
+    name: 'Plugin Preload Rollback',
+    mode: 'trusted',
+    plugins: [goodPlugin, badPlugin],
+    tracks: [
+      {
+        id: 'main',
+        name: 'Main',
+        tasks: [
+          {
+            id: 'echo',
+            name: 'Echo',
+            command: 'echo ok',
+          },
+        ],
+      },
+    ],
+  } satisfies RawPipelineConfig;
+  writeStoredDriverPlugin(goodPlugin, 'good', 'good');
+  writeStoredDriverPlugin(badPlugin, 'bad', 'bad', { broken: true, delayMs: 100 });
+
+  const { port, close } = await startApp(buildApp());
+  try {
+    const startPromise = postJsonReq(port, '/api/run/start', {});
+    await waitUntil(
+      () => ws.loadedPluginMeta.has(goodPlugin) && ws.registry.hasHandler('drivers', 'good'),
+      'Timed out waiting for first plugin to load during run preload',
+    );
+
+    const observedPromise = withWorkspacePluginMutationLock(ws, async () => ({
+      loaded: ws.loadedPluginMeta.has(goodPlugin),
+      registered: ws.registry.hasHandler('drivers', 'good'),
+    }));
+    const [observed, res] = await Promise.all([observedPromise, startPromise]);
+
+    expect(res.status).toBe(400);
+    expect(JSON.parse(res.body)).toMatchObject({
+      error: expect.stringMatching(/^Plugin load error:/),
+    });
+    expect(observed).toEqual({ loaded: false, registered: false });
+    expect(ws.loadedPluginMeta.has(goodPlugin)).toBe(false);
+    expect(ws.registry.hasHandler('drivers', 'good')).toBe(false);
+  } finally {
+    await close();
+    await removeTempDir();
+  }
+});
+
+test('run start does not preload a plugin that was explicitly uninstalled', async () => {
+  const blockedPlugin = '@scope/plugin-blocked';
+  ws.config = {
+    name: 'Blocked Plugin Preload',
+    mode: 'trusted',
+    plugins: [blockedPlugin],
+    tracks: [
+      {
+        id: 'main',
+        name: 'Main',
+        tasks: [
+          {
+            id: 'echo',
+            name: 'Echo',
+            command: 'echo ok',
+          },
+        ],
+      },
+    ],
+  } satisfies RawPipelineConfig;
+  writeStoredDriverPlugin(blockedPlugin, 'blocked', 'blocked');
+  mkdirSync(join(tempDir, '.tagma'), { recursive: true });
+  writeFileSync(
+    join(tempDir, '.tagma', 'plugin-blocklist.json'),
+    JSON.stringify([blockedPlugin], null, 2) + '\n',
+  );
+
+  const { port, close } = await startApp(buildApp());
+  try {
+    const res = await postJsonReq(port, '/api/run/start', {});
+
+    expect(res.status).toBe(400);
+    expect(JSON.parse(res.body)).toMatchObject({
+      error: expect.stringContaining('was explicitly uninstalled'),
+    });
+    expect(ws.loadedPluginMeta.has(blockedPlugin)).toBe(false);
+    expect(ws.registry.hasHandler('drivers', 'blocked')).toBe(false);
   } finally {
     await close();
     await removeTempDir();

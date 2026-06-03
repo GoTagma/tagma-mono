@@ -2253,9 +2253,7 @@ export function App() {
                 onPluginsChange={(plugins) =>
                   updatePipelineFields({ plugins: plugins.length > 0 ? plugins : undefined })
                 }
-                onRequestBrowseLocal={() =>
-                  setExplorer({ mode: 'directory', purpose: 'plugin-import' })
-                }
+                onRequestBrowseLocal={() => setExplorer({ mode: 'open', purpose: 'plugin-import' })}
                 onRefreshServerState={refreshServerState}
               />
             </div>
@@ -2537,7 +2535,7 @@ export function App() {
                 : explorer.purpose === 'export-platform'
                   ? `Export to ${PLATFORM_EXPORT_LABELS[explorer.targetPlatform]} — Select Destination`
                   : explorer.purpose === 'plugin-import'
-                    ? 'Import Local Plugin — Select Directory'
+                    ? 'Import Local Plugin — Select Directory or Archive'
                     : 'Select Workspace Directory'
           }
           initialPath={
@@ -2547,7 +2545,13 @@ export function App() {
                 ? workDir
                 : workDir || undefined
           }
-          fileFilter={explorer.purpose === 'import' ? ['.yaml', '.yml'] : undefined}
+          fileFilter={
+            explorer.purpose === 'import'
+              ? ['.yaml', '.yml']
+              : explorer.purpose === 'plugin-import'
+                ? ['.tgz', '.tar.gz']
+                : undefined
+          }
           // C3: every legitimate "browse outside the workspace" intent flows
           // through one of these picker purposes. Anything else is in-workspace
           // navigation and stays subject to the server's workspace fence.
@@ -2563,6 +2567,7 @@ export function App() {
           onConfirmWithCapability={
             explorer.purpose === 'plugin-import' ? handleExplorerConfirm : undefined
           }
+          allowDirectorySelection={explorer.purpose === 'plugin-import'}
           multiple={explorer.purpose === 'import'}
           onConfirmMany={explorer.purpose === 'import' ? handleExplorerConfirmMany : undefined}
           onCancel={() => {

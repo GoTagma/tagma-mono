@@ -1,9 +1,35 @@
 import { describe, expect, test } from 'bun:test';
 import { compileYamlContent } from './yaml-compiler';
 import { validateRaw } from './validate-raw';
+import { OutputCheckCompletion } from './completions/output-check';
 import type { PluginSchema, RawPipelineConfig } from '@tagma/types';
 
 describe('validateRaw known plugin types', () => {
+  test('rejects malformed prompt fields even when command is valid', () => {
+    const diagnostics = validateRaw({
+      name: 'bad prompt field',
+      tracks: [
+        {
+          id: 'main',
+          name: 'Main',
+          tasks: [
+            {
+              id: 'task',
+              name: 'Task',
+              prompt: 123,
+              command: 'echo hi',
+            },
+          ],
+        },
+      ],
+    } as unknown as RawPipelineConfig);
+
+    expect(diagnostics).toContainEqual({
+      path: 'tracks[0].tasks[0].prompt',
+      message: 'task.prompt must be a non-empty string',
+    });
+  });
+
   test('warns when pipeline, track, or prompt task references an unknown driver', () => {
     const config: RawPipelineConfig = {
       name: 'driver checks',
@@ -213,6 +239,20 @@ describe('validateRaw with plugin schemas', () => {
     ).toBe(true);
   });
 
+  test('flags blank required string schema fields', () => {
+    const errors = validateRaw(
+      configWith({
+        trigger: { type: 'manual', message: '   ' },
+      }),
+      { schemas: { triggers: { manual: triggerSchema } } },
+    );
+    expect(
+      errors.some(
+        (e) => e.path === 'tracks[0].tasks[0].trigger' && /message.*required/i.test(e.message),
+      ),
+    ).toBe(true);
+  });
+
   test('flags out-of-range numeric schema field on completion config', () => {
     const errors = validateRaw(
       configWith({
@@ -238,6 +278,22 @@ describe('validateRaw with plugin schemas', () => {
           e.path === 'tracks[0].tasks[0].completion' &&
           /kind/.test(e.message) &&
           /one of/i.test(e.message),
+      ),
+    ).toBe(true);
+  });
+
+  test('flags malformed output_check command config before runtime', () => {
+    const errors = validateRaw(
+      configWith({
+        completion: { type: 'output_check', check: { argv: [] } },
+      }),
+      { schemas: { completions: { output_check: OutputCheckCompletion.schema } } },
+    );
+    expect(
+      errors.some(
+        (e) =>
+          e.path === 'tracks[0].tasks[0].completion' &&
+          /completion\.check\.argv.*at least one argument/.test(e.message),
       ),
     ).toBe(true);
   });

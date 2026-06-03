@@ -83,6 +83,12 @@ describe('FileExistsCompletion', () => {
       /"path" is required/,
     );
     await expect(
+      FileExistsCompletion.check({ path: '   ' }, result(), context(workDir)),
+    ).rejects.toThrow(/"path" is required/);
+    await expect(
+      FileExistsCompletion.check({ path: 42 }, result(), context(workDir)),
+    ).rejects.toThrow(/"path" must be a string/);
+    await expect(
       FileExistsCompletion.check(
         { path: 'missing.txt', kind: 'socket' },
         result(),

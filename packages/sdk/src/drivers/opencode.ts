@@ -31,6 +31,20 @@ const EFFORT_TO_VARIANT: Record<string, string | null> = {
   high: 'high',
 };
 
+function readSessionId(json: Record<string, unknown>): string | undefined {
+  const sid = json.sessionID ?? json.session_id ?? json.sessionId;
+  return typeof sid === 'string' && sid.length > 0 ? sid : undefined;
+}
+
+function readErrorMessage(json: Record<string, unknown>): string | null {
+  const err = json.error as { message?: unknown } | string | undefined;
+  if (typeof err === 'object' && err !== null && typeof err.message === 'string') {
+    return err.message;
+  }
+  if (typeof err === 'string') return err;
+  return typeof json.message === 'string' ? json.message : null;
+}
+
 export const OpenCodeDriver: DriverPlugin = {
   name: 'opencode',
 
@@ -142,17 +156,20 @@ export const OpenCodeDriver: DriverPlugin = {
       }
       sawAnyJson = true;
 
+      // Session id: opencode uses `sessionID` (camelCase with capital D).
+      // Keep `session_id` / `sessionId` as fallbacks for forward/backward
+      // compatibility with other shapes. Extract before the error branch:
+      // error events can still carry the session id needed for diagnostics or
+      // same-driver recovery under `on_failure: ignore`.
+      if (!sessionId) {
+        sessionId = readSessionId(json);
+      }
+
       // M12: opencode sometimes emits {type:"error", error:{...}} with
       // exit 0 for transient API failures. Force-fail so downstream
       // skip_downstream / stop_all kicks in.
       if (json.type === 'error') {
-        const err = json.error as { message?: unknown } | string | undefined;
-        const msg =
-          typeof err === 'object' && err !== null && typeof err.message === 'string'
-            ? err.message
-            : typeof err === 'string'
-              ? err
-              : null;
+        const msg = readErrorMessage(json);
         errorReason = msg
           ? `opencode reported error: ${msg}`
           : 'opencode emitted an error JSON payload';
@@ -162,18 +179,6 @@ export const OpenCodeDriver: DriverPlugin = {
         // silently overwrite the original cause; operators then debugged
         // a downstream symptom while the root-cause line scrolled past.
         break;
-      }
-
-      // Session id: opencode uses `sessionID` (camelCase with capital D).
-      // Keep `session_id` / `sessionId` as fallbacks for forward/backward
-      // compatibility with other shapes.
-      if (!sessionId) {
-        const sid =
-          (json.sessionID as string | undefined) ??
-          (json.session_id as string | undefined) ??
-          (json.sessionId as string | undefined) ??
-          null;
-        if (typeof sid === 'string' && sid.length > 0) sessionId = sid;
       }
 
       // Extract human-readable text from text-type parts.
@@ -190,7 +195,7 @@ export const OpenCodeDriver: DriverPlugin = {
     }
 
     if (errorReason) {
-      return { forceFailure: true, forceFailureReason: errorReason };
+      return { sessionId, forceFailure: true, forceFailureReason: errorReason };
     }
 
     // If nothing parsed as JSON, treat stdout as plain text.

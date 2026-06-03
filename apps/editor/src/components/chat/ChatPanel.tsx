@@ -128,9 +128,19 @@ function ChatHeader() {
   const messages = useChatStore((s) => s.messages);
   const ready = useChatStore((s) => s.bootstrapStatus === 'ready');
   const sending = useChatStore((s) => s.sending);
+  const pendingUserText = useChatStore((s) => s.pendingUserText);
+  const queuedMessages = useChatStore((s) => s.queuedMessages);
   const reconciling = useChatStore((s) => s.reconciling);
+  const flushing = useChatStore((s) => s.flushing);
   const yamlEditLocked = useYamlEditLockStore((s) => s.active);
-  const blocked = !ready || sending || reconciling || yamlEditLocked;
+  const blocked =
+    !ready ||
+    sending ||
+    !!pendingUserText ||
+    queuedMessages.length > 0 ||
+    reconciling ||
+    flushing ||
+    yamlEditLocked;
   const currentSessionTitle =
     sessions.find((session) => session.id === currentSessionId)?.title ?? currentSessionId;
 
@@ -465,7 +475,7 @@ function ChatMessages() {
           ))}
           {postChatYamlAction && !sending && <YamlActionBubble />}
           {pendingPermissions.map((p) => (
-            <PermissionBubble key={p.id} permission={p} />
+            <PermissionBubble key={`${p.workspaceKey}:${p.sessionID}:${p.id}`} permission={p} />
           ))}
         </div>
       </div>

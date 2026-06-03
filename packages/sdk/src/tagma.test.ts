@@ -454,9 +454,116 @@ describe('createTagma', () => {
     ]);
   });
 
+  test('validate reports malformed runtime config inputs instead of throwing', () => {
+    const tagma = createTagma({ builtins: false });
+    const dir = makeDir('tagma-validate-malformed-');
+
+    try {
+      expect(tagma.validate(null as never)).toEqual(['pipeline: pipeline must be an object']);
+      expect(tagma.validate(null as never, { cwd: dir })).toEqual([
+        'pipeline: pipeline must be an object',
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('validate can include cwd safety checks when a cwd is provided', () => {
+    const tagma = createTagma({ builtins: false });
+    const dir = makeDir('tagma-validate-cwd-');
+    try {
+      const config = {
+        name: 'unsafe-cwd',
+        mode: 'trusted',
+        tracks: [
+          {
+            id: 't',
+            name: 'T',
+            cwd: '../outside-track',
+            tasks: [
+              {
+                id: 'a',
+                name: 'A',
+                command: 'echo a',
+                cwd: '../outside-task',
+              },
+            ],
+          },
+        ],
+      } as const;
+
+      expect(tagma.validate(config)).toEqual([]);
+      expect(tagma.validate(config, { cwd: dir })).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining('tracks[0].cwd: Security: path "../outside-track"'),
+          expect.stringContaining('tracks[0].tasks[0].cwd: Security: path "../outside-task"'),
+        ]),
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('validate reports an invalid cwd instead of falling back to process cwd', () => {
+    const tagma = createTagma({ builtins: false });
+
+    expect(
+      tagma.validate(
+        {
+          name: 'invalid-cwd',
+          mode: 'trusted',
+          tracks: [{ id: 't', name: 'T', tasks: [{ id: 'a', command: 'echo a' }] }],
+        },
+        { cwd: '' },
+      ),
+    ).toEqual(['workDir: workDir must be a non-empty string']);
+  });
+
+  test('run rejects missing or blank options.cwd before execution starts', async () => {
+    const tagma = createTagma({ builtins: false, runtime: {} as TagmaRuntime });
+    const config = {
+      name: 'options-cwd-required',
+      mode: 'trusted',
+      tracks: [{ id: 't', name: 'T', tasks: [{ id: 'a', command: 'echo a' }] }],
+    } as const;
+    const run = tagma.run as unknown as (
+      config: typeof config,
+      options?: unknown,
+    ) => Promise<unknown>;
+
+    await expect(run(config, {})).rejects.toThrow(/options\.cwd must be a non-empty string/);
+    await expect(run(config, { cwd: ' ' })).rejects.toThrow(
+      /options\.cwd must be a non-empty string/,
+    );
+  });
+
+  test('runYaml rejects missing options.cwd before parsing execution paths', async () => {
+    const tagma = createTagma({ builtins: false, runtime: {} as TagmaRuntime });
+    const runYaml = tagma.runYaml as unknown as (
+      content: string,
+      options?: unknown,
+    ) => Promise<unknown>;
+
+    await expect(
+      runYaml(
+        `pipeline:
+  name: Missing Cwd
+  tracks:
+    - id: t
+      name: T
+      tasks:
+        - id: a
+          command: echo a
+`,
+        {},
+      ),
+    ).rejects.toThrow(/options\.cwd must be a non-empty string/);
+  });
+
   test('run rejects programmatic configs that bypass YAML structural validation', async () => {
     const tagma = createTagma({ builtins: false, runtime: {} as TagmaRuntime });
     const dir = makeDir('tagma-programmatic-validation-');
+    const run = tagma.run as unknown as (config: unknown, options: unknown) => Promise<unknown>;
     try {
       await expect(
         tagma.run(
@@ -474,6 +581,9 @@ describe('createTagma', () => {
           { cwd: dir, skipPluginLoading: true },
         ),
       ).rejects.toThrow(PipelineValidationError);
+      await expect(run(null, { cwd: dir, skipPluginLoading: true })).rejects.toThrow(
+        /pipeline must be an object/,
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

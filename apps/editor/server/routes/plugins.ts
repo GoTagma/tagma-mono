@@ -1,6 +1,6 @@
 import type express from 'express';
-import { existsSync, lstatSync, readdirSync, statSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { isValidPluginName, type PluginCategory } from '@tagma/sdk/plugins';
 import { assertSafePluginName } from '../plugin-safety.js';
 import { bumpRevision, getRegistrySnapshot } from '../state.js';
@@ -13,6 +13,7 @@ import {
   installPluginUpgradeBatchWithRollbackSnapshot,
   installFromLocalPathWithRollbackSnapshot,
   uninstallPackage,
+  assertImportablePluginSource,
   registryMeta,
   resolveLatestPluginVersion,
   planPluginUpgrade,
@@ -41,6 +42,7 @@ import {
   classifyServerError,
   pluginErrorResponse,
   resolvePluginCapabilities,
+  scanDeclaredPluginImpact,
   scanUninstallImpact,
   getLastAutoLoadErrors,
   cleanupPluginStageTree,
@@ -121,61 +123,11 @@ function acknowledgedImpactKeys(raw: unknown): Set<string> {
   return keys;
 }
 
-/**
- * Refuse to import-local from anything other than a plain directory or
- * regular tarball file. Specifically:
- *   - Top-level symlinks: the user's intent is the picker-selected path,
- *     not whatever it transitively resolves to.
- *   - Block / character / FIFO / socket: not valid plugin sources and
- *     could be probes of /dev or similar.
- *   - Directory contents containing top-level symlinks: install.ts already
- *     checks for symlinks under the staged plugin store, but doing the
- *     pre-flight check here gives the user a clear error before we copy
- *     anything onto disk.
- *
- * `lstatSync` is used everywhere so a symlink reports as a symlink rather
- * than dereferencing to its target.
- */
-function assertImportablePluginSource(absPath: string): void {
-  const top = lstatSync(absPath);
-  if (top.isSymbolicLink()) {
-    throw new Error(`Refusing to import a plugin through a symbolic link: ${absPath}`);
-  }
-  if (top.isDirectory()) {
-    // Surface symlinks at the top level of the source directory; install.ts
-    // walks deeper but the picker-friendly error happens here.
-    let entries: string[];
-    try {
-      entries = readdirSync(absPath);
-    } catch (err) {
-      throw new Error(`Cannot read plugin source directory: ${errorMessage(err)}`);
-    }
-    for (const name of entries) {
-      const child = lstatSync(join(absPath, name));
-      if (child.isSymbolicLink()) {
-        throw new Error(`Refusing to import a plugin directory containing symbolic link: ${name}`);
-      }
-    }
-    return;
-  }
-  if (top.isFile()) {
-    if (!/\.tgz$|\.tar\.gz$/i.test(absPath)) {
-      throw new Error(`Plugin source must be a directory or .tgz archive: ${absPath}`);
-    }
-    // Sanity-check the archive size before handing off to install.ts; the
-    // tarball extractor caps things further but a very large file at this
-    // stage is suspicious.
-    const stat = statSync(absPath);
-    if (stat.size === 0) throw new Error(`Plugin tarball is empty: ${absPath}`);
-    return;
-  }
-  throw new Error(`Plugin source must be a directory or .tgz archive: ${absPath}`);
-}
-
 function buildUninstallImpact(ws: WorkspaceState, name: string): UninstallImpactPayload {
   const capabilities = resolvePluginCapabilities(ws, name);
+  const declaredImpacts = scanDeclaredPluginImpact(ws, name);
   if (capabilities.length === 0) {
-    return { name, category: null, type: null, impacts: [] };
+    return { name, category: null, type: null, impacts: declaredImpacts };
   }
   const impacts = capabilities.flatMap((capability) =>
     scanUninstallImpact(ws, capability.category, capability.type).map((impact) => ({
@@ -189,7 +141,7 @@ function buildUninstallImpact(ws: WorkspaceState, name: string): UninstallImpact
     category: capabilities[0]!.category,
     type: capabilities[0]!.type,
     capabilities,
-    impacts,
+    impacts: [...declaredImpacts, ...impacts],
   };
 }
 
@@ -459,7 +411,8 @@ export function registerPluginRoutes(app: express.Express): void {
   /**
    * Return the list of YAML locations that would be broken if the given
    * plugin were uninstalled right now. The client shows this in a confirm
-   * dialog so the user can bail out before orphaning tasks.
+   * dialog so the user can bail out before orphaning declarations or task
+   * capability references.
    *
    * Returns `{ category: null }` when the plugin can't be classified —
    * the uninstall is still safe to attempt but impact scanning is a no-op.
@@ -576,11 +529,6 @@ export function registerPluginRoutes(app: express.Express): void {
       return res.status(400).json({ error: 'Set a working directory first' });
     }
 
-    const absPath = resolve(localPath);
-    if (!existsSync(absPath)) {
-      return res.status(400).json({ error: `Path does not exist: ${absPath}` });
-    }
-
     // C-IMPORT-PLUGIN: this endpoint loads arbitrary local code into the
     // workspace's plugin runtime. Treat it like /api/save-as: the path must
     // come from a user-driven file picker, gated by a one-shot capability
@@ -588,10 +536,14 @@ export function registerPluginRoutes(app: express.Express): void {
     // this, any page that can reach the sidecar (via CSRF or a stray
     // unauthenticated origin) could trick the user into installing a plugin
     // off a path of the attacker's choosing.
+    const absPath = resolve(localPath);
     try {
       consumeFsCapability(capabilityToken, absPath, 'import-plugin', ws);
     } catch (err) {
       return res.status(403).json({ error: errorMessage(err) });
+    }
+    if (!existsSync(absPath)) {
+      return res.status(400).json({ error: `Path does not exist: ${absPath}` });
     }
 
     // Reject symlinks, special files, and any source that isn't a plain
