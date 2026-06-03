@@ -35,7 +35,11 @@ import {
   startConfiguredBotBridge,
   shutdownBotBridge,
 } from './chat-bridge/index.js';
-import { ALLOWED_ORIGINS, addLoopbackAllowedOrigins } from './allowed-origins.js';
+import {
+  ALLOWED_ORIGINS,
+  addLoopbackAllowedOrigins,
+  resetAllowedOrigins,
+} from './allowed-origins.js';
 import { resolveStaticAssetsDir, cleanupStaleUserDist } from './static-assets.js';
 import { bypassesRevisionCheck } from './revision-routes.js';
 import {
@@ -55,6 +59,7 @@ const app = express();
 // (comma-separated) when running in a trusted multi-machine setup.
 const PORT = parseInt(process.env.PORT ?? '3001');
 const HOST = process.env.HOST ?? '127.0.0.1';
+resetAllowedOrigins(PORT);
 app.use(
   cors({
     origin: (origin, cb) => {

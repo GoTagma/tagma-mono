@@ -35,3 +35,14 @@ export function addLoopbackAllowedOrigins(origins: Set<string>, port: number): v
 const configuredPort = parseInt(process.env.PORT ?? '3001');
 
 export const ALLOWED_ORIGINS = createAllowedOrigins(configuredPort);
+
+export function resetAllowedOrigins(
+  configuredPort: number,
+  extraOriginsEnv: string | undefined = process.env.TAGMA_ALLOWED_ORIGINS,
+  options: { devOrigins?: boolean } = {},
+): Set<string> {
+  const next = createAllowedOrigins(configuredPort, extraOriginsEnv, options);
+  ALLOWED_ORIGINS.clear();
+  for (const origin of next) ALLOWED_ORIGINS.add(origin);
+  return ALLOWED_ORIGINS;
+}
