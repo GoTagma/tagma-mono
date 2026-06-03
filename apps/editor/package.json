@@ -16,7 +16,7 @@
     "build:sidecar": "bun scripts/build-desktop-sidecar.ts",
     "start": "bun server/index.ts",
     "preview": "vite preview",
-    "test": "bun test --max-concurrency 1",
+    "test": "bun scripts/test-serial.mjs",
     "check:server": "tsc -p tsconfig.server.json --noEmit",
     "install:clean": "rimraf node_modules bun.lock && bun pm cache rm && bun install"
   },
