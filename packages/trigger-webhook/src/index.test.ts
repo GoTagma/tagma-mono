@@ -93,6 +93,18 @@ describe('trigger-webhook plugin shape', () => {
 });
 
 describe('trigger-webhook hardening', () => {
+  test('port must be an integer before the listener starts', () => {
+    expect(() =>
+      WebhookTrigger.watch(
+        {
+          port: 8787.5,
+          path: '/fractional',
+        },
+        triggerContext(),
+      ),
+    ).toThrow(/"port" must be an integer from 1-65535/);
+  });
+
   test('secret_env must resolve before the listener starts', () => {
     const envName = `TAGMA_TEST_MISSING_${Date.now()}`;
     delete process.env[envName];

@@ -306,8 +306,10 @@ export const WebhookTrigger: TriggerPlugin = {
   watch(config: Record<string, unknown>, ctx: TriggerContext): TriggerWatchHandle {
     const rawPort = config.port;
     const port = typeof rawPort === 'number' ? rawPort : Number(rawPort);
-    if (!Number.isFinite(port) || port < 1 || port > 65535) {
-      throw new Error(`webhook trigger: "port" must be 1-65535, got ${String(rawPort)}`);
+    if (!Number.isSafeInteger(port) || port < 1 || port > 65535) {
+      throw new Error(
+        `webhook trigger: "port" must be an integer from 1-65535, got ${String(rawPort)}`,
+      );
     }
 
     const path = (config.path as string | undefined) ?? '/webhook';
