@@ -463,6 +463,19 @@ async function request<T>(
   return data;
 }
 
+export function buildInstallPluginRequest(
+  name: string,
+  version?: string,
+): { path: string; options: RequestInit } {
+  return {
+    path: '/plugins/install',
+    options: {
+      method: 'POST',
+      body: jsonBody(version ? { name, version } : { name }),
+    },
+  };
+}
+
 async function requestPlatformExportFile(
   destDir: string,
   targetPlatform: PlatformExportTarget,
@@ -1806,11 +1819,10 @@ export const api = {
   getPluginInfo: (name: string) =>
     request<PluginInfo>(`/plugins/info?name=${encodeURIComponent(name)}`),
 
-  installPlugin: (name: string, version?: string) =>
-    request<PluginActionResult>('/plugins/install', {
-      method: 'POST',
-      body: jsonBody(version ? { name, version } : { name }),
-    }),
+  installPlugin: (name: string, version?: string) => {
+    const installRequest = buildInstallPluginRequest(name, version);
+    return request<PluginActionResult>(installRequest.path, installRequest.options);
+  },
 
   planPluginUpgrade: (name: string) =>
     request<PluginUpgradePlan>('/plugins/upgrade-plan', {
