@@ -88,6 +88,7 @@ test('tagma-pipeline agent documents edit/create modes and mandatory compile loo
   const doc = buildTagmaPipelineAgent('Windows');
 
   expect(doc).toContain('## Modes');
+  expect(doc).toContain('Fill current manual-New draft');
   expect(doc).toContain('Edit current');
   expect(doc).toContain('Create new');
   expect(doc).toContain('## Manifest-Guided YAML Edits');
@@ -112,7 +113,10 @@ test('tagma-pipeline agent treats explicit creation as higher priority than exis
 
   expect(router).toContain('preserve `<requested-action kind="create-new-pipeline">`');
   expect(router).toContain('do not rewrite a create/new pipeline request into an edit target');
+  expect(router).toContain('<requested-action kind="fill-manual-new-pipeline">');
 
+  expect(pipeline).toContain('fill the manual New draft at `<current-file>`');
+  expect(pipeline).toContain('edit `<current-file>` in place even if the user used create/new wording');
   expect(pipeline).toContain('Creation intent has priority over existing pipeline matches');
   expect(pipeline).toContain('Existing `<workspace-yaml-folders>` entries are collision context, not edit targets');
   expect(pipeline).toContain('If the desired stem already exists, choose a fresh unused stem');

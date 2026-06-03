@@ -1,4 +1,9 @@
 export const CREATE_NEW_PIPELINE_ACTION_KIND = 'create-new-pipeline';
+export const FILL_MANUAL_NEW_PIPELINE_ACTION_KIND = 'fill-manual-new-pipeline';
+
+export interface PipelineRequestContext {
+  currentPipelineIsManualNewDraft?: boolean;
+}
 
 const CREATE_PIPELINE_PATTERNS = [
   /\b(?:create|generate|scaffold|set up)\b.{0,48}\b(?:new\s+)?[A-Za-z0-9_-]*\s*pipeline\b/i,
@@ -12,7 +17,12 @@ const NON_PIPELINE_OBJECT_BEFORE_RE =
   /\b(?:task|tasks|track|tracks|node|nodes|stage|stages|step|steps|job|jobs)\b|(?:任务|节点|步骤|阶段)/iu;
 const NON_PIPELINE_OBJECT_AFTER_RE =
   /^\s*(?:task|tasks|track|tracks|node|nodes|stage|stages|step|steps|job|jobs)\b|^\s*(?:的|中|里|里面)?\s*(?:任务|节点|步骤|阶段)/iu;
-
+const SEPARATE_NEW_PIPELINE_PATTERNS = [
+  /\b(?:another|separate|different|sibling|second)\b.{0,48}\bpipeline\b/i,
+  /\bpipeline\b.{0,48}\b(?:another|separate|different|sibling|second)\b/i,
+  /(?:另一个|另外|再(?:创建|新建|新增|生成|建立|搭建|做一个|建一个|来一个)|单独|独立|第二个|不要当前|不是当前|别改当前).{0,48}(?:pipeline|流水线|管线)/iu,
+  /(?:pipeline|流水线|管线).{0,48}(?:另一个|另外|单独|独立|第二个|不要当前|不是当前|别改当前)/iu,
+] as const;
 function looksLikePipelineSubobjectCreation(text: string, matchStart: number, matchText: string): boolean {
   const pipeline = PIPELINE_TARGET_RE.exec(matchText);
   if (!pipeline) return false;
@@ -37,7 +47,40 @@ export function isCreateNewPipelineRequest(text: string | undefined): boolean {
   });
 }
 
-export function createNewPipelineRequestedActionLines(text: string | undefined): string[] {
+export function isExplicitSeparateNewPipelineRequest(text: string | undefined): boolean {
+  if (!text?.trim()) return false;
+  return SEPARATE_NEW_PIPELINE_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+export function shouldFillManualNewPipeline(
+  text: string | undefined,
+  context: PipelineRequestContext | undefined,
+): boolean {
+  return (
+    isCreateNewPipelineRequest(text) &&
+    !isExplicitSeparateNewPipelineRequest(text) &&
+    context?.currentPipelineIsManualNewDraft === true
+  );
+}
+
+export function fillManualNewPipelineRequestedActionLines(
+  text: string | undefined,
+  context?: PipelineRequestContext,
+): string[] {
+  if (!shouldFillManualNewPipeline(text, context)) return [];
+  return [
+    `  <requested-action kind="${FILL_MANUAL_NEW_PIPELINE_ACTION_KIND}">`,
+    '    <target>current-file</target>',
+    '    <reason>current file is the editor-created manual new pipeline draft</reason>',
+    '  </requested-action>',
+  ];
+}
+
+export function createNewPipelineRequestedActionLines(
+  text: string | undefined,
+  context?: PipelineRequestContext,
+): string[] {
+  if (shouldFillManualNewPipeline(text, context)) return [];
   if (!isCreateNewPipelineRequest(text)) return [];
   return [
     `  <requested-action kind="${CREATE_NEW_PIPELINE_ACTION_KIND}">`,

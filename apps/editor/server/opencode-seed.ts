@@ -73,7 +73,8 @@ For \`general_discussion\`, first make a \`general_direct_answer\` check: if the
 When delegating, read the \`<editor-context>\` in the latest user message and pass it through. Send a compact handoff, never the raw transcript:
 
 - Always: the user's latest text plus the named/current pipeline and \`<workspace-yaml-folders>\` entries, including concrete \`<yaml>\` paths.
-- If \`<requested-action kind="create-new-pipeline">\` is present, preserve \`<requested-action kind="create-new-pipeline">\` in the handoff and do not rewrite a create/new pipeline request into an edit target, even if \`<workspace-yaml-folders>\` contains a similar name.
+- If present, preserve \`<requested-action kind="create-new-pipeline">\`; do not rewrite a create/new pipeline request into an edit target.
+- If present, preserve \`<requested-action kind="fill-manual-new-pipeline">\`; keep \`<current-file>\` as the target.
 - \`${TAGMA_HISTORY_COMPARE_AGENT}\`: pass \`<history-version-compare>\` attachments through when present. For later history-related follow-ups, rewrite the user's question with the relevant prior comparison result and selected run/version/task facts before delegating; this agent is stateless and remembers nothing between task calls.
 - \`${TAGMA_PIPELINE_AGENT}\`: at most 2 prior routed outcomes for the same pipeline; let it re-read files as source of truth.
 - \`${TAGMA_GENERAL_DISCUSSION_AGENT}\`: at most 2 factual summaries. Do not include YAML schema guidance unless the question asks for it.
@@ -292,6 +293,7 @@ Every user turn may include an \`<editor-context>\` block. Re-read it every turn
 
 - \`<workspace>\`: absolute workspace root; read boundary.
 - \`<requested-action kind="create-new-pipeline">\`: the latest user text explicitly asks for a new pipeline. Creation intent has priority over existing pipeline matches.
+- \`<requested-action kind="fill-manual-new-pipeline">\`: fill the manual New draft at \`<current-file>\`, not a sibling.
 - \`<current-file>\`: workspace-relative current YAML, usually \`.tagma/<stem>/<stem>.yaml\`; omitted when no file is open.
 - \`<workspace-yaml-folders>\`: all known pipeline folders. Each \`<pipeline>\` has \`<folder>\`, concrete \`<yaml>\`, and same-folder \`<manifest>\`; match by folder basename, YAML basename, or pipeline name. \`legacy="flat"\` means stranded pre-migration \`.tagma/*.yaml\`; use listed paths exactly.
 - Tool path rule: read/edit tools require \`filePath\`. They run from \`<workspace>/.tagma/\`, so strip leading \`.tagma/\` or the absolute \`<workspace>/.tagma/\` prefix. Examples: \`.tagma/build/build.yaml\` -> \`read({ "filePath": "build/build.yaml" })\`; \`.tagma/pipeline-9giapbf6.yaml\` -> \`read({ "filePath": "pipeline-9giapbf6.yaml" })\`. Never call \`read\` with only \`{ "limit": ... }\`.
@@ -312,6 +314,7 @@ If the marker is absent, or the editor context now points at another pipeline, n
 
 ## Modes
 
+- Fill current manual-New draft: edit \`<current-file>\` in place even if the user used create/new wording.
 - Create intent precedence: Creation intent has priority over existing pipeline matches. Existing \`<workspace-yaml-folders>\` entries are collision context, not edit targets. If the desired stem already exists, choose a fresh unused stem (for example \`<stem>-2\`) or ask if the exact name matters. Do not patch, rename, or overwrite a listed existing YAML while satisfying a create-new request.
 - Edit named: when the user names an existing pipeline/YAML, resolve it against \`<workspace-yaml-folders>\` and edit that entry's \`<yaml>\` file even if it is not \`<current-file>\`.
 - Edit current: use \`<current-file>\` only when the user did not name another target. If neither exists, ask which YAML to edit.
@@ -365,7 +368,7 @@ Use OpenCode and Tagma native mechanisms before custom scaffolding.
 ## Operating Loop
 
 1. Read the latest \`<editor-context>\`.
-2. Classify as edit current, edit named, or create new.
+2. Classify as fill current manual-New draft, edit current, edit named, or create new.
 3. For **create new**: write the manifest first, call \`POST /api/create-from-manifest\`, then read the generated YAML and fill in task content.
 4. For **edits**, resolve the target \`<pipeline>\` entry from the user's name plus \`<workspace-yaml-folders>\`; read its \`<manifest>\` first, select the target section ids, then read its \`<yaml>\`, \`.layout.json\`, \`.requirements.md\`, and \`.compile.log\`.
 5. Read only the workspace evidence needed to ground commands and paths.

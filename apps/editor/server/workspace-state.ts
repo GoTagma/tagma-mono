@@ -100,6 +100,9 @@ export class WorkspaceState {
   /** Absolute path to the YAML this `config` was loaded from (or null). */
   yamlPath: string | null;
 
+  /** Absolute YAML path created by the editor's manual New flow and still awaiting first chat fill. */
+  manualNewPipelineYamlPath: string | null;
+
   /**
    * F12: Optimistic locking version for the YAML file. Captured at load time
    * and checked before save to detect external modifications. Null when no
@@ -192,6 +195,7 @@ export class WorkspaceState {
     this.workDir = '';
     this.config = createEmptyPipeline('Untitled Pipeline');
     this.yamlPath = null;
+    this.manualNewPipelineYamlPath = null;
     this.yamlVersion = null;
     this.layout = { positions: {} };
     this.stateRevision = 0;

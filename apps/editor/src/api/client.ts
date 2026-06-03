@@ -874,6 +874,7 @@ export interface ServerState {
   validationErrors: ValidationError[];
   dag: { nodes: Record<string, unknown>; edges: DagEdge[] };
   yamlPath: string | null;
+  manualNewPipelineYamlPath?: string | null;
   yamlMtimeMs?: number | null;
   /** Monotonic per-YAML run counter. 0 means this YAML has not been run yet. */
   yamlRunVersion?: number;

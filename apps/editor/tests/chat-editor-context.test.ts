@@ -7,8 +7,10 @@ import { useYamlEditLockStore } from '../src/store/yaml-edit-lock-store';
 describe('chat editor context', () => {
   afterEach(() => {
     usePipelineStore.setState({
+      config: { name: 'Loading...', tracks: [] },
       workDir: null,
       yamlPath: null,
+      manualNewPipelineYamlPath: null,
       registry: { drivers: [], triggers: [], completions: [], middlewares: [] },
     } as never);
     useRunStore.setState({ status: 'idle', yamlPath: null } as never);
@@ -103,6 +105,46 @@ describe('chat editor context', () => {
       '<collision-policy>existing pipeline names are unavailable stems, not edit targets</collision-policy>',
     );
     expect(context).toContain('<yaml>.tagma/deploy/deploy.yaml</yaml>');
+  });
+
+  test('fills the editor-created manual-new draft instead of creating a sibling', () => {
+    const yamlPath = 'C:/repo/.tagma/pipeline-abc123xy/pipeline-abc123xy.yaml';
+    usePipelineStore.setState({
+      workDir: 'C:/repo',
+      yamlPath,
+      manualNewPipelineYamlPath: yamlPath,
+      registry: { drivers: [], triggers: [], completions: [], middlewares: [] },
+    } as never);
+
+    const context = buildEditorContext({
+      userText: '请创建一个新的 deploy pipeline，负责发布',
+      workspaceYamlFilePaths: ['C:/repo/.tagma/pipeline-abc123xy/pipeline-abc123xy.yaml'],
+    });
+
+    expect(context).toContain('<requested-action kind="fill-manual-new-pipeline">');
+    expect(context).toContain('<target>current-file</target>');
+    expect(context).not.toContain('<requested-action kind="create-new-pipeline">');
+    expect(context).toContain(
+      '<current-file>.tagma/pipeline-abc123xy/pipeline-abc123xy.yaml</current-file>',
+    );
+  });
+
+  test('keeps create-new marker for separate requests against a manual-new draft', () => {
+    const yamlPath = 'C:/repo/.tagma/pipeline-abc123xy/pipeline-abc123xy.yaml';
+    usePipelineStore.setState({
+      workDir: 'C:/repo',
+      yamlPath,
+      manualNewPipelineYamlPath: yamlPath,
+      registry: { drivers: [], triggers: [], completions: [], middlewares: [] },
+    } as never);
+
+    const context = buildEditorContext({
+      userText: '请另外创建一个新的 deploy pipeline',
+      workspaceYamlFilePaths: ['C:/repo/.tagma/pipeline-abc123xy/pipeline-abc123xy.yaml'],
+    });
+
+    expect(context).toContain('<requested-action kind="create-new-pipeline">');
+    expect(context).not.toContain('<requested-action kind="fill-manual-new-pipeline">');
   });
 
   test('does not mark ordinary task creation inside an existing pipeline as new-pipeline creation', () => {

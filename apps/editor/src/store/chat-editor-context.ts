@@ -12,7 +12,10 @@
 import { usePipelineStore } from './pipeline-store';
 import { useRunStore } from './run-store';
 import { useEditorSettingsStore } from './editor-settings-store';
-import { createNewPipelineRequestedActionLines } from '../../shared/requested-action.js';
+import {
+  createNewPipelineRequestedActionLines,
+  fillManualNewPipelineRequestedActionLines,
+} from '../../shared/requested-action.js';
 
 function normalizeChatPath(path: string | null | undefined): string | null {
   if (!path) return null;
@@ -97,12 +100,17 @@ export interface EditorContextOptions {
 }
 
 export function buildEditorContext(options: EditorContextOptions = {}): string {
-  const { workDir, yamlPath, yamlRunVersion, registry } = usePipelineStore.getState();
+  const { workDir, yamlPath, manualNewPipelineYamlPath, yamlRunVersion, registry } =
+    usePipelineStore.getState();
   const run = useRunStore.getState();
   const pythonAgent = useEditorSettingsStore.getState().settings?.pythonAgent;
   if (!workDir) return '';
   const lines = [`  <workspace>${workDir}</workspace>`];
-  lines.push(...createNewPipelineRequestedActionLines(options.userText));
+  const requestContext = {
+    currentPipelineIsManualNewDraft: sameChatPath(manualNewPipelineYamlPath, yamlPath),
+  };
+  lines.push(...fillManualNewPipelineRequestedActionLines(options.userText, requestContext));
+  lines.push(...createNewPipelineRequestedActionLines(options.userText, requestContext));
   if (yamlPath) {
     const rel = workspaceRelativePath(workDir, yamlPath);
     if (rel) lines.push(`  <current-file>${rel}</current-file>`);

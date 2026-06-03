@@ -29,8 +29,12 @@ import { seedOpencodeArtifacts, TAGMA_ROUTER_AGENT } from '../opencode-seed.js';
 import { errorMessage } from '../path-utils.js';
 import { readEditorSettings } from '../plugins/loader.js';
 import { enumerateFlatPipelineYamls, enumeratePipelineYamls } from '../pipeline-paths.js';
+import { sameFilesystemPath } from '../state.js';
 import { runPipelineManifestSync } from '../pipeline-manifest.js';
-import { createNewPipelineRequestedActionLines } from '../../shared/requested-action.js';
+import {
+  createNewPipelineRequestedActionLines,
+  fillManualNewPipelineRequestedActionLines,
+} from '../../shared/requested-action.js';
 
 interface ClientCacheEntry {
   baseUrl: string;
@@ -287,7 +291,14 @@ function buildBotEditorContext(workspaceKey: string, userText?: string): string 
   if (!workDir) return '';
 
   const lines = [`  <workspace>${workDir}</workspace>`];
-  lines.push(...createNewPipelineRequestedActionLines(userText));
+  const requestContext = {
+    currentPipelineIsManualNewDraft: sameFilesystemPath(
+      ws?.manualNewPipelineYamlPath,
+      ws?.yamlPath,
+    ),
+  };
+  lines.push(...fillManualNewPipelineRequestedActionLines(userText, requestContext));
+  lines.push(...createNewPipelineRequestedActionLines(userText, requestContext));
   const currentFile = workspaceRelativePath(workDir, ws?.yamlPath);
   if (currentFile) lines.push(`  <current-file>${currentFile}</current-file>`);
   const yamlFolders = workspaceYamlFolders(workDir);

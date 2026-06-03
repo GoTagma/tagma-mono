@@ -40,6 +40,21 @@ function currentHostPlatform(): HostPlatform | null {
   return null;
 }
 
+function comparablePath(path: string | null | undefined): string | null {
+  if (!path) return null;
+  const normalized = resolve(path).replace(/\\/g, '/').replace(/\/+$/, '');
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
+
+export function sameFilesystemPath(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
+  const left = comparablePath(a);
+  const right = comparablePath(b);
+  return !!left && !!right && left === right;
+}
+
 // Re-export the workspace-scoped types under their historical names so
 // callers that still import `EditorLayout` / `StateEventClient` from
 // '../state.js' keep compiling.
@@ -676,6 +691,7 @@ export function getState(ws: WorkspaceState) {
     validationErrors,
     dag: { nodes: dagNodes, edges: dag.edges },
     yamlPath: ws.yamlPath,
+    manualNewPipelineYamlPath: ws.manualNewPipelineYamlPath,
     yamlMtimeMs: ws.yamlPath && existsSync(ws.yamlPath) ? statSync(ws.yamlPath).mtimeMs : null,
     yamlRunVersion: readYamlRunVersion(ws.workDir, ws.yamlPath),
     workDir: ws.workDir,
@@ -988,6 +1004,9 @@ export function attachFileWatcherBridge(ws: WorkspaceState): void {
         }
       }
       ws.yamlVersion = getFileVersion(event.path);
+      if (sameFilesystemPath(ws.manualNewPipelineYamlPath, event.path)) {
+        ws.manualNewPipelineYamlPath = null;
+      }
       // The chat agent's system prompt requires it to keep the sibling
       // `.layout.json` in sync whenever it adds / renames / removes tasks. Re-
       // read it here so that new task positions (or removed entries) propagate

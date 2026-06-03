@@ -243,6 +243,7 @@ interface PipelineState {
   validationErrors: ValidationError[];
   dagEdges: DagEdge[];
   yamlPath: string | null;
+  manualNewPipelineYamlPath: string | null;
   yamlMtimeMs: number | null;
   yamlRunVersion: number;
   workDir: string;
@@ -543,6 +544,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
       validationErrors: state.validationErrors,
       dagEdges: state.dag.edges,
       yamlPath: state.yamlPath,
+      manualNewPipelineYamlPath: state.manualNewPipelineYamlPath ?? null,
       yamlMtimeMs: state.yamlMtimeMs ?? null,
       yamlRunVersion: state.yamlRunVersion ?? 0,
       workDir: state.workDir,
@@ -567,6 +569,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
       validationErrors: state.validationErrors,
       dagEdges: state.dag.edges,
       yamlPath: state.yamlPath,
+      manualNewPipelineYamlPath: state.manualNewPipelineYamlPath ?? null,
       yamlMtimeMs: state.yamlMtimeMs ?? null,
       yamlRunVersion: state.yamlRunVersion ?? 0,
       workDir: state.workDir,
@@ -1141,6 +1144,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     validationErrors: [],
     dagEdges: [],
     yamlPath: null,
+    manualNewPipelineYamlPath: null,
     yamlMtimeMs: null,
     yamlRunVersion: 0,
     workDir: '',
@@ -1292,6 +1296,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
         set({
           workDir: '',
           yamlPath: null,
+          manualNewPipelineYamlPath: null,
           yamlMtimeMs: null,
           yamlRunVersion: 0,
           hostPlatform: null,
@@ -1919,6 +1924,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
       set({
         workDir: '',
         yamlPath: null,
+        manualNewPipelineYamlPath: null,
         yamlMtimeMs: null,
         yamlRunVersion: 0,
         hostPlatform: null,

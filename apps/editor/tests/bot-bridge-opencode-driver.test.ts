@@ -232,6 +232,39 @@ describe('opencode-driver bot prompt body', () => {
     }
   });
 
+  test('routes remote bot create wording to the editor-created manual-new draft', () => {
+    const workDir = mkdtempSync(join(tmpdir(), 'tagma-bot-fill-manual-new-'));
+    try {
+      const ws = workspaceRegistry.getOrCreate(workDir);
+      const currentYaml = join(
+        workDir,
+        '.tagma',
+        'pipeline-abc123xy',
+        'pipeline-abc123xy.yaml',
+      );
+      mkdirSync(join(workDir, '.tagma', 'pipeline-abc123xy'), { recursive: true });
+      writeFileSync(
+        currentYaml,
+        'pipeline:\n  name: Draft With Arbitrary Content\n  tracks:\n    - id: custom\n      name: Custom\n      tasks:\n        - id: seed\n          name: Seed\n          prompt: Replace me\n',
+        'utf-8',
+      );
+      ws.yamlPath = currentYaml;
+      ws.manualNewPipelineYamlPath = currentYaml;
+
+      const body = buildBotPromptAsyncBody(workDir, '请创建一个新的 deploy pipeline，负责发布');
+      const text = body.parts[0]?.text ?? '';
+
+      expect(text).toContain('<requested-action kind="fill-manual-new-pipeline">');
+      expect(text).not.toContain('<requested-action kind="create-new-pipeline">');
+      expect(text).toContain(
+        '<current-file>.tagma/pipeline-abc123xy/pipeline-abc123xy.yaml</current-file>',
+      );
+    } finally {
+      workspaceRegistry.drop(workDir);
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+
   test('does not mark remote bot task creation inside a pipeline as new-pipeline creation', () => {
     const workDir = mkdtempSync(join(tmpdir(), 'tagma-bot-task-intent-'));
     try {

@@ -82,6 +82,7 @@ function makeRes() {
 afterEach(() => {
   S.config = createEmptyPipeline('Untitled Pipeline');
   S.yamlPath = null;
+  S.manualNewPipelineYamlPath = null;
   S.workDir = '';
   S.layout = { positions: {} };
   S.yamlEditLock = null;
@@ -239,7 +240,7 @@ describe('workspace route validation', () => {
     );
   });
 
-  test('POST /api/new creates the manifest companion before returning state', () => {
+  test('POST /api/new creates a manifest companion and marks the manual-new draft', () => {
     S.workDir = makeTempDir();
     const handler = createRouteHarness().post('/api/new');
     const res = makeRes();
@@ -256,6 +257,37 @@ describe('workspace route validation', () => {
     };
     expect(manifest.pipeline?.name).toBe('Build');
     expect(manifest.sections?.[0]?.id).toBe('pipeline');
+    expect(S.manualNewPipelineYamlPath).toBe(S.yamlPath);
+    expect((res.body as { manualNewPipelineYamlPath?: string | null }).manualNewPipelineYamlPath).toBe(
+      S.yamlPath,
+    );
+  });
+
+  test('POST /api/open clears the manual-new draft marker', async () => {
+    S.workDir = makeTempDir();
+    const routes = createRouteHarness();
+    const newRes = makeRes();
+    routes.post('/api/new')({ workspace: S, body: { name: 'Draft' } }, newRes);
+    expect(S.manualNewPipelineYamlPath).toBe(S.yamlPath);
+
+    const pipelineDir = join(S.workDir, '.tagma', 'existing');
+    const yamlPath = join(pipelineDir, 'existing.yaml');
+    mkdirSync(pipelineDir, { recursive: true });
+    writeFileSync(
+      yamlPath,
+      'pipeline:\n  name: Existing\n  tracks:\n    - id: main\n      name: Main\n      tasks:\n        - id: task\n          prompt: Hello\n',
+      'utf-8',
+    );
+
+    const openRes = makeRes();
+    await routes.post('/api/open')({ workspace: S, body: { path: yamlPath } }, openRes);
+
+    expect(openRes.statusCode).toBe(200);
+    expect(S.yamlPath).toBe(yamlPath);
+    expect(S.manualNewPipelineYamlPath).toBeNull();
+    expect(
+      (openRes.body as { manualNewPipelineYamlPath?: string | null }).manualNewPipelineYamlPath,
+    ).toBeNull();
   });
 
   test('POST /api/create-from-manifest reports a fresh stem for create-intent name collisions', () => {

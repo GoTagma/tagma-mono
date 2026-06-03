@@ -30,6 +30,7 @@ import {
   lenientParseYaml,
   withDefaultTrackColors,
   broadcastStateEvent,
+  sameFilesystemPath,
 } from '../state.js';
 import { errorMessage, atomicWriteFileSync } from '../path-utils.js';
 import { runCompileAndWriteLog } from '../compile-log.js';
@@ -1342,6 +1343,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
         );
       }
       ws.yamlPath = absPath;
+      ws.manualNewPipelineYamlPath = null;
       ws.yamlVersion = getFileVersion(absPath);
       loadLayout(ws);
       beginWatching(ws, absPath, content);
@@ -1427,6 +1429,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       const yaml = serializePipeline(ws.config);
       atomicWriteFileSync(absPath, yaml);
       ws.yamlPath = absPath;
+      ws.manualNewPipelineYamlPath = null;
       saveLayout(ws);
       beginWatching(ws, absPath, yaml);
       runCompileAndWriteLog(absPath, ws.registry);
@@ -1463,6 +1466,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       prompt: 'Hello world!',
     });
     ws.yamlPath = yamlAbsPath;
+    ws.manualNewPipelineYamlPath = yamlAbsPath;
     ws.layout = { positions: {} };
     const content = serializePipeline(ws.config);
     mkdirSync(dirname(yamlAbsPath), { recursive: true });
@@ -1575,6 +1579,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       atomicWriteFileSync(yamlAbsPath, skeleton);
       ws.config = parseYaml(skeleton);
       ws.yamlPath = yamlAbsPath;
+      ws.manualNewPipelineYamlPath = null;
       ws.layout = { positions: {} };
       // Regenerate manifest from the skeleton YAML so manifest and YAML
       // stay consistent. The agent's original manifest may have been a
@@ -1709,6 +1714,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
         );
       }
       ws.yamlPath = destPath;
+      ws.manualNewPipelineYamlPath = null;
       loadLayout(ws);
       beginWatching(ws, destPath, content);
       await withWorkspacePluginMutationLock(ws, () => autoLoadInstalledPlugins(ws));
@@ -1964,12 +1970,19 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       const wasCurrent =
         absYamlPath !== null && ws.yamlPath !== null && ws.yamlPath === absYamlPath;
       const folderHostsCurrentYaml = ws.yamlPath !== null && dirname(ws.yamlPath) === absFolderPath;
+      const deletingManualNewDraft =
+        sameFilesystemPath(ws.manualNewPipelineYamlPath, absYamlPath) ||
+        (ws.manualNewPipelineYamlPath !== null &&
+          sameFilesystemPath(dirname(ws.manualNewPipelineYamlPath), absFolderPath));
       if (wasCurrent || folderHostsCurrentYaml) {
         ws.yamlPath = null;
+        ws.manualNewPipelineYamlPath = null;
         ws.config = createEmptyPipeline('Untitled Pipeline');
         ws.layout = { positions: {} };
         ws.watcher.stopWatching();
         ws.layoutWatcher.stopWatching();
+      } else if (deletingManualNewDraft) {
+        ws.manualNewPipelineYamlPath = null;
       }
       if (boundYamlPath) {
         deletePipelineSecretBindings(ws.workDir, boundYamlPath);
@@ -2021,6 +2034,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
 `;
     try {
       ws.config = withDefaultTrackColors(parseYaml(DEMO));
+      ws.manualNewPipelineYamlPath = null;
       res.json(getState(ws));
     } catch (err: unknown) {
       res.status(500).json({ error: errorMessage(err) });

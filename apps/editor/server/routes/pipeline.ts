@@ -27,6 +27,7 @@ import {
   lenientParseYaml,
   sanitizeFoldersInput,
   withDefaultTrackColors,
+  sameFilesystemPath,
 } from '../state.js';
 import { importRawYamlIntoWorkspace } from '../raw-import.js';
 import { invalidatePluginCache } from '../plugins/loader.js';
@@ -62,6 +63,7 @@ const WELCOME_EMPTY_STATE = {
   validationErrors: [] as const,
   dag: { nodes: {}, edges: [] as const },
   yamlPath: null,
+  manualNewPipelineYamlPath: null,
   yamlMtimeMs: null,
   workDir: '',
   layout: { positions: {} },
@@ -405,6 +407,9 @@ export function registerPipelineRoutes(app: express.Express): void {
         ws.config = withDefaultTrackColors(lenientParseYaml(content, 'Untitled'));
       }
       ws.yamlVersion = getFileVersion(ws.yamlPath);
+      if (sameFilesystemPath(ws.manualNewPipelineYamlPath, ws.yamlPath)) {
+        ws.manualNewPipelineYamlPath = null;
+      }
       loadLayout(ws);
       syncLayoutWatcherFromDisk(ws);
       // Seed the canonical baseline so the next file-watcher tick on this
