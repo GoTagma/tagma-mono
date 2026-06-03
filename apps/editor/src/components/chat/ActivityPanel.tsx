@@ -14,6 +14,9 @@ import {
 import { useChatStore } from '../../store/chat-store';
 import type { ActivityEvent, ActivityKind } from '../../api/opencode-chat';
 
+const LIVE_ACTIVITY_TICK_MS = 1000;
+const LIVE_ACTIVITY_RESYNC_MS = 5000;
+
 /**
  * Compact, collapsible "what is the model doing" log attached to an
  * assistant message. The summary line is visible only when it explains a
@@ -50,19 +53,36 @@ export function TurnActivityPanel({
 
   const hasOpenEvent =
     isCurrentTurn && activity.length > 0 && activity[activity.length - 1].endedAt === null;
+  const openEvent = hasOpenEvent ? activity[activity.length - 1] : null;
+  const liveClockKey = openEvent
+    ? `${openEvent.kind}:${openEvent.startedAt}:${openEvent.key ?? ''}:${openEvent.detail ?? ''}`
+    : null;
 
-  // Tick once per second while the panel has live data. Pure cosmetic
-  // re-render driver; we don't read the tick value, just need the cycle.
-  const [, setTick] = useState(0);
+  // Tick once per second while the panel has live data. Store the displayed
+  // clock value so unrelated parent renders do not make the counter jump.
+  const [liveNow, setLiveNow] = useState(() => Date.now());
   useEffect(() => {
-    if (!hasOpenEvent) return;
-    const id = window.setInterval(() => setTick((t) => (t + 1) % 1_000_000), 1000);
-    return () => window.clearInterval(id);
-  }, [hasOpenEvent]);
+    if (!liveClockKey) return;
+    setLiveNow(Date.now());
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof window.setTimeout> | null = null;
+    const schedule = () => {
+      timeoutId = window.setTimeout(() => {
+        if (cancelled) return;
+        setLiveNow((previous) => advanceLiveActivityNow(previous, Date.now()));
+        schedule();
+      }, LIVE_ACTIVITY_TICK_MS);
+    };
+    schedule();
+    return () => {
+      cancelled = true;
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+    };
+  }, [liveClockKey]);
 
   if (activity.length === 0 && !isCurrentTurn) return null;
 
-  const now = Date.now();
+  const now = hasOpenEvent ? liveNow : Date.now();
   const firstStartedAt = activity.length > 0 ? activity[0].startedAt : now;
   const summary = computeActivitySummary({
     activity,
@@ -88,21 +108,23 @@ export function TurnActivityPanel({
       onToggle={(e) => {
         if (e.currentTarget.open !== expanded) onToggle();
       }}
-      className="w-full text-[10px] font-mono border-l-2 border-tagma-muted/30 pl-2 mt-1"
+      className="w-full max-w-full min-w-0 text-[10px] font-mono border-l-2 border-tagma-muted/30 pl-2 mt-1"
     >
       <summary
-        className={`cursor-pointer flex items-center gap-1.5 select-none ${visibleSummary.tone}`}
+        className={`cursor-pointer flex items-center gap-1.5 min-w-0 select-none ${visibleSummary.tone}`}
       >
         {visibleSummary.icon}
-        <span>{visibleSummary.line}</span>
+        <span className="min-w-0 flex-1 truncate tabular-nums" title={visibleSummary.line}>
+          {visibleSummary.line}
+        </span>
         <ChevronRight
           size={10}
-          className={`text-tagma-muted/50 transition-transform ml-auto ${
+          className={`text-tagma-muted/50 transition-transform shrink-0 ${
             expanded ? 'rotate-90' : ''
           }`}
         />
       </summary>
-      <div className="mt-1 flex flex-col gap-0.5 text-tagma-muted/80">
+      <div className="mt-1 flex flex-col gap-0.5 min-w-0 text-tagma-muted/80">
         {activity.map((event, idx) => (
           <ActivityRow key={idx} event={event} now={now} firstStartedAt={firstStartedAt} />
         ))}
@@ -125,7 +147,7 @@ function ActivityRow({
   const durationLabel = formatDurationShort(durationMs);
   const meta = describeActivity(event);
   return (
-    <div className="flex items-baseline gap-2">
+    <div className="flex items-baseline gap-2 min-w-0">
       <span className="text-tagma-muted/50 tabular-nums shrink-0 w-10">{startSec}</span>
       <span className="shrink-0">{meta.icon}</span>
       <span className="min-w-0 flex-1 break-words">
@@ -136,9 +158,19 @@ function ActivityRow({
         )}
         {event.count > 1 && <span className="text-tagma-muted/50"> · ×{event.count}</span>}
       </span>
-      <span className="text-tagma-muted/50 tabular-nums shrink-0">{durationLabel}</span>
+      <span className="w-14 text-right text-tagma-muted/50 tabular-nums shrink-0">
+        {durationLabel}
+      </span>
     </div>
   );
+}
+
+export function advanceLiveActivityNow(previousNow: number, actualNow: number): number {
+  if (!Number.isFinite(previousNow) || !Number.isFinite(actualNow)) return actualNow;
+  if (actualNow <= previousNow) return previousNow;
+  const elapsed = actualNow - previousNow;
+  if (elapsed > LIVE_ACTIVITY_RESYNC_MS) return actualNow;
+  return previousNow + Math.min(LIVE_ACTIVITY_TICK_MS, elapsed);
 }
 
 interface ActivitySummaryInput {
