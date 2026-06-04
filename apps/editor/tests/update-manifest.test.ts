@@ -7,10 +7,26 @@ import {
   MANIFEST_CACHE_TTL_MS,
   compareVersions,
   fetchHotupdateManifest,
+  pickOpencodeTarget,
   pickSidecarTarget,
   validateHotupdateManifest,
   verifyHotupdateManifestSignature,
 } from '../server/update-manifest';
+
+function opencodeManifestSection(): NonNullable<HotupdateManifest['opencode']> {
+  return {
+    version: '1.15.13',
+    targets: [
+      {
+        platform: process.platform,
+        arch: process.arch,
+        url: 'https://example.com/opencode/current',
+        sha256: 'd'.repeat(64),
+        size: 321,
+      },
+    ],
+  };
+}
 
 describe('hot-update manifest helpers', () => {
   test('selects the sidecar asset matching the current platform and arch', () => {
@@ -40,6 +56,7 @@ describe('hot-update manifest helpers', () => {
           },
         ],
       },
+      opencode: opencodeManifestSection(),
     };
 
     expect(pickSidecarTarget(manifest, process.platform, process.arch)).toEqual(
@@ -67,9 +84,45 @@ describe('hot-update manifest helpers', () => {
           },
         ],
       },
+      opencode: opencodeManifestSection(),
     };
 
     expect(pickSidecarTarget(manifest, process.platform, process.arch)).toBeNull();
+  });
+
+  test('selects the opencode asset matching the current platform and arch', () => {
+    const manifest: HotupdateManifest = {
+      version: '0.2.2',
+      channel: 'alpha',
+      dist: {
+        url: 'https://example.com/editor-dist-0.2.2.tar.gz',
+        sha256: 'a'.repeat(64),
+        size: 123,
+      },
+      opencode: {
+        version: '1.15.13',
+        targets: [
+          {
+            platform: process.platform,
+            arch: process.arch,
+            url: 'https://example.com/opencode/current',
+            sha256: 'd'.repeat(64),
+            size: 321,
+          },
+          {
+            platform: process.platform === 'win32' ? 'linux' : 'win32',
+            arch: process.arch,
+            url: 'https://example.com/opencode/other',
+            sha256: 'e'.repeat(64),
+            size: 654,
+          },
+        ],
+      },
+    };
+
+    expect(pickOpencodeTarget(manifest, process.platform, process.arch)).toEqual(
+      manifest.opencode!.targets[0],
+    );
   });
 
   test('verifies signed manifests against the configured Ed25519 public key', () => {
@@ -84,6 +137,7 @@ describe('hot-update manifest helpers', () => {
         sha256: 'a'.repeat(64),
         size: 123,
       },
+      opencode: opencodeManifestSection(),
     };
     const signature = sign(
       null,
@@ -115,6 +169,7 @@ describe('hot-update manifest helpers', () => {
         sha256: 'a'.repeat(64),
         size: 123,
       },
+      opencode: opencodeManifestSection(),
     };
 
     try {
@@ -156,6 +211,7 @@ describe('hot-update manifest helpers', () => {
         sha256: 'a'.repeat(64),
         size: 123,
       },
+      opencode: opencodeManifestSection(),
     };
 
     expect(() =>
@@ -173,6 +229,18 @@ describe('hot-update manifest helpers', () => {
         'https://example.com/manifest.json',
       ),
     ).toThrow(/HTTPS/i);
+    expect(() =>
+      validateHotupdateManifest(
+        { ...good, opencode: undefined },
+        'https://example.com/manifest.json',
+      ),
+    ).toThrow(/opencode/i);
+    expect(() =>
+      validateHotupdateManifest(
+        { ...good, opencode: { ...good.opencode!, version: '../1.15.13' } },
+        'https://example.com/manifest.json',
+      ),
+    ).toThrow(/opencode|semver/i);
   });
 
   test('rejects unsafe minShellVersion values', () => {
@@ -185,6 +253,7 @@ describe('hot-update manifest helpers', () => {
         sha256: 'a'.repeat(64),
         size: 123,
       },
+      opencode: opencodeManifestSection(),
     };
 
     expect(() =>
@@ -207,6 +276,18 @@ describe('hot-update manifest helpers', () => {
         url: 'file:///tmp/editor.tgz',
         sha256: 'a'.repeat(64),
         size: 123,
+      },
+      opencode: {
+        version: '1.15.13',
+        targets: [
+          {
+            platform: process.platform,
+            arch: process.arch,
+            url: 'file:///tmp/opencode',
+            sha256: 'd'.repeat(64),
+            size: 321,
+          },
+        ],
       },
       padding: 'x'.repeat(1024 * 1024 + 1),
     });

@@ -5,18 +5,19 @@
 // at the corresponding GitHub Release assets so the manifest and payloads are
 // versioned together and never drift.
 
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { sign as signEd25519 } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SIDECAR_TARGETS = [
+  { platform: 'win32', arch: 'x64', extension: '.exe' },
+  { platform: 'linux', arch: 'x64', extension: '' },
+  { platform: 'linux', arch: 'arm64', extension: '' },
+  { platform: 'darwin', arch: 'x64', extension: '' },
+  { platform: 'darwin', arch: 'arm64', extension: '' },
+];
+const OPENCODE_TARGETS = [
   { platform: 'win32', arch: 'x64', extension: '.exe' },
   { platform: 'linux', arch: 'x64', extension: '' },
   { platform: 'linux', arch: 'arm64', extension: '' },
@@ -97,12 +98,14 @@ export function buildHotupdateManifest({
   assetsDir,
   repoSlug,
   minShellVersion,
+  opencodeVersion,
   allowPartialSidecars = false,
 }) {
   assertValidVersion(version, 'version');
   if (minShellVersion !== undefined) {
     assertValidVersion(minShellVersion, 'minShellVersion');
   }
+  assertValidVersion(opencodeVersion, 'opencodeVersion');
   const tagName = `desktop-v${version}`;
   const distAsset = readRequiredAsset(assetsDir, `editor-dist-${version}.tar.gz`);
   const sidecarTargets = [];
@@ -127,16 +130,13 @@ export function buildHotupdateManifest({
     // The editor UI's primary "Update Tagma" button requires sidecar.canUpdate
     // (VersionStatusBar.tsx bundleCanUpdate gate), and each platform/arch needs
     // its own asset to set canUpdate true on that machine. A missing target
-    // silently disables Update Tagma on the affected platform — Windows users
-    // would see editor.canUpdate but sidecar.canUpdate = false and have to
-    // hunt for the advanced editor-only flow. Hard fail by default so a CI
-    // pipeline that drops one artifact can't ship a half-broken manifest;
+    // silently disables Update Tagma on the affected platform. Hard fail by
+    // default so a CI pipeline that drops one artifact can't ship a half-broken
+    // manifest;
     // callers that intentionally publish editor-only or single-platform
     // builds opt in via `allowPartialSidecars: true` (CLI:
     // --allow-partial-sidecars).
-    const lines = missingTargets.map(
-      (t) => `  - ${t.platform}/${t.arch} (expected ${t.filename})`,
-    );
+    const lines = missingTargets.map((t) => `  - ${t.platform}/${t.arch} (expected ${t.filename})`);
     const summary =
       sidecarTargets.length === 0
         ? `no sidecar binaries found in ${assetsDir}`
@@ -145,14 +145,42 @@ export function buildHotupdateManifest({
       throw new Error(
         `[build-hotupdate-manifest] ${summary}. Pass --allow-partial-sidecars ` +
           `to publish anyway (Update Tagma will be unavailable on the missing ` +
-          `platforms — those users will only see editor-only updates via the ` +
-          `advanced UI). Missing targets:\n${lines.join('\n')}`,
+          `platforms). Missing targets:\n${lines.join('\n')}`,
       );
     }
     console.warn(
       `[build-hotupdate-manifest] WARNING: ${summary}. ` +
-        `Update Tagma will be disabled on the missing platforms ` +
-        `(only advanced editor-only updates remain available there).\n${lines.join('\n')}`,
+        `Update Tagma will be unavailable on the missing platforms.\n${lines.join('\n')}`,
+    );
+  }
+
+  const opencodeTargets = [];
+  const missingOpencodeTargets = [];
+  for (const { platform, arch, extension } of OPENCODE_TARGETS) {
+    const filename = `opencode-${opencodeVersion}-${platform}-${arch}${extension}`;
+    const asset = readOptionalAsset(assetsDir, filename);
+    if (!asset) {
+      missingOpencodeTargets.push({ platform, arch, filename });
+      continue;
+    }
+    opencodeTargets.push({
+      platform,
+      arch,
+      url: buildReleaseAssetUrl(repoSlug, tagName, asset.filename),
+      sha256: asset.sha,
+      size: asset.size,
+    });
+  }
+  if (missingOpencodeTargets.length > 0) {
+    const lines = missingOpencodeTargets.map(
+      (t) => `  - ${t.platform}/${t.arch} (expected ${t.filename})`,
+    );
+    const summary =
+      opencodeTargets.length === 0
+        ? `no opencode binaries found in ${assetsDir}`
+        : `${missingOpencodeTargets.length}/${OPENCODE_TARGETS.length} opencode targets missing in ${assetsDir}`;
+    throw new Error(
+      `[build-hotupdate-manifest] ${summary}. Update Tagma is an atomic editor + sidecar + OpenCode update, so every platform needs an OpenCode binary. Missing targets:\n${lines.join('\n')}`,
     );
   }
 
@@ -166,12 +194,17 @@ export function buildHotupdateManifest({
       size: distAsset.size,
     },
     ...(sidecarTargets.length > 0 ? { sidecar: { targets: sidecarTargets } } : {}),
+    opencode: {
+      version: opencodeVersion,
+      targets: opencodeTargets,
+    },
     releaseNotesUrl: `https://github.com/${repoSlug}/releases/tag/${tagName}`,
   };
 }
 
 function parseCliArgs(argv) {
   let minShellVersion;
+  let opencodeVersion;
   let signingKey;
   let allowPartialSidecars = false;
   const positional = [];
@@ -188,6 +221,20 @@ function parseCliArgs(argv) {
       minShellVersion = arg.slice('--min-shell='.length);
       if (!minShellVersion) {
         throw new Error('--min-shell requires a version argument');
+      }
+      continue;
+    }
+    if (arg === '--opencode-version') {
+      opencodeVersion = argv[++i];
+      if (!opencodeVersion) {
+        throw new Error('--opencode-version requires a version argument');
+      }
+      continue;
+    }
+    if (arg.startsWith('--opencode-version=')) {
+      opencodeVersion = arg.slice('--opencode-version='.length);
+      if (!opencodeVersion) {
+        throw new Error('--opencode-version requires a version argument');
       }
       continue;
     }
@@ -211,8 +258,11 @@ function parseCliArgs(argv) {
   const [version, channel, assetsDir, repoSlug, outFile] = positional;
   if (!version || !channel || !assetsDir || !repoSlug || !outFile) {
     throw new Error(
-      'usage: build-hotupdate-manifest.mjs <version> <channel> <assets-dir> <repo-slug> <out-file> [--min-shell <version>] [--signing-key <private-key.pem>] [--allow-partial-sidecars]',
+      'usage: build-hotupdate-manifest.mjs <version> <channel> <assets-dir> <repo-slug> <out-file> --opencode-version <version> [--min-shell <version>] [--signing-key <private-key.pem>] [--allow-partial-sidecars]',
     );
+  }
+  if (!opencodeVersion) {
+    throw new Error('--opencode-version is required so release updates pin the OpenCode binary');
   }
   return {
     version,
@@ -221,6 +271,7 @@ function parseCliArgs(argv) {
     repoSlug,
     outFile,
     minShellVersion,
+    opencodeVersion,
     signingKey,
     allowPartialSidecars,
   };

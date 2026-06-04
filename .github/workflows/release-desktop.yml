@@ -555,6 +555,42 @@ jobs:
             exit 1
           fi
 
+      - name: Package OpenCode hot-update binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          opencode_version=$(node -p "require('./apps/electron/package.json').tagma.bundledOpencodeVersion")
+          out="apps/electron/release"
+          mkdir -p "$out"
+          node_platform=$(node -p "process.platform")
+          shopt -s nullglob
+          any=0
+          for dir in apps/electron/build/opencode/${node_platform}-*; do
+            [ -d "$dir" ] || continue
+            arch=${dir##*${node_platform}-}
+            src_name="opencode"
+            dest_name="opencode-${opencode_version}-${node_platform}-${arch}"
+            if [ "$node_platform" = "win32" ]; then
+              src_name="${src_name}.exe"
+              dest_name="${dest_name}.exe"
+            fi
+            src="${dir}/bin/${src_name}"
+            dest="${out}/${dest_name}"
+            if [ ! -f "$src" ]; then
+              echo "skip $dir - no bin/${src_name}"
+              continue
+            fi
+            cp "$src" "$dest"
+            sha=$(node -e "const f=require('node:fs'),c=require('node:crypto');process.stdout.write(c.createHash('sha256').update(f.readFileSync(process.argv[1])).digest('hex'))" "$dest")
+            echo "$sha  $(basename "$dest")" > "${dest}.sha256"
+            echo "wrote $dest (sha256=$sha)"
+            any=1
+          done
+          if [ "$any" = "0" ]; then
+            echo "no apps/electron/build/opencode/${node_platform}-* dirs found - Stage bundled opencode binary must run first"
+            exit 1
+          fi
+
       - name: Package (${{ matrix.platform }})
         working-directory: apps/electron
         # Bash on every platform — electron-builder pulls helper binaries
@@ -670,6 +706,8 @@ jobs:
             apps/electron/release/editor-dist.hash
             apps/electron/release/tagma-editor-server-*
             apps/electron/release/tagma-editor-server-*.sha256
+            apps/electron/release/opencode-*
+            apps/electron/release/opencode-*.sha256
           if-no-files-found: ignore
 
   # Assemble the release payload (flatten, verify, build manifest + notes).
@@ -858,6 +896,8 @@ jobs:
             "${{ github.repository }}"
             "flat/editor-hotupdate-manifest.json"
           )
+          opencode_version=$(node -p "require('./apps/electron/package.json').tagma.bundledOpencodeVersion")
+          args+=(--opencode-version "$opencode_version")
           min_shell="${{ steps.shell_gate.outputs.min_shell }}"
           if [ -n "$min_shell" ]; then
             args+=(--min-shell "$min_shell")

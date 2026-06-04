@@ -11,6 +11,11 @@ export interface SidecarTargetAsset extends HotupdateAsset {
   arch: string;
 }
 
+export interface OpencodeTargetAsset extends HotupdateAsset {
+  platform: NodeJS.Platform;
+  arch: string;
+}
+
 export interface HotupdateManifest {
   version: string;
   channel: string;
@@ -18,6 +23,10 @@ export interface HotupdateManifest {
   dist: HotupdateAsset;
   sidecar?: {
     targets: SidecarTargetAsset[];
+  };
+  opencode?: {
+    version: string;
+    targets: OpencodeTargetAsset[];
   };
   releaseNotesUrl?: string;
   signature?: string;
@@ -28,6 +37,7 @@ const MAX_MANIFEST_JSON_BYTES = 1024 * 1024;
 export const MANIFEST_CACHE_TTL_MS = 60 * 1000;
 const MAX_DIST_TARBALL_BYTES = 100 * 1024 * 1024;
 const MAX_SIDECAR_BINARY_BYTES = 300 * 1024 * 1024;
+const MAX_OPENCODE_BINARY_BYTES = 300 * 1024 * 1024;
 const SEMVER_VERSION_RE =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 
@@ -41,6 +51,17 @@ export function assertValidHotupdateVersion(version: string, label = 'version'):
   if (!isValidHotupdateVersion(version)) {
     throw new Error(`${label} must be a semver string like 1.2.3 or 1.2.3-alpha.1`);
   }
+}
+
+export function assertComponentHotupdateAllowed(
+  manifest: HotupdateManifest,
+  component: 'editor' | 'sidecar',
+): void {
+  if (process.env.TAGMA_UNSAFE_ALLOW_COMPONENT_HOTUPDATES === '1') return;
+  if (!manifest.opencode?.version) return;
+  throw new Error(
+    `Component-only ${component} updates are disabled for release ${manifest.version} because it includes OpenCode ${manifest.opencode.version}. Use /api/release/update so editor, sidecar, and OpenCode update together.`,
+  );
 }
 
 function stableStringify(value: unknown): string {
@@ -165,21 +186,50 @@ export function validateHotupdateManifest(body: Partial<HotupdateManifest>, url:
   validateAsset(dist, url, 'dist', MAX_DIST_TARBALL_BYTES);
 
   const sidecar = body.sidecar;
-  if (sidecar == null) return;
-  if (typeof sidecar !== 'object' || !Array.isArray(sidecar.targets)) {
-    throw new Error(`Manifest at ${url} has bad "sidecar.targets"`);
+  if (sidecar != null) {
+    if (typeof sidecar !== 'object' || !Array.isArray(sidecar.targets)) {
+      throw new Error(`Manifest at ${url} has bad "sidecar.targets"`);
+    }
+    for (const [index, target] of sidecar.targets.entries()) {
+      if (!target || typeof target !== 'object') {
+        throw new Error(`Manifest at ${url} has bad sidecar.targets[${index}]`);
+      }
+      if (typeof target.platform !== 'string' || !target.platform) {
+        throw new Error(`Manifest at ${url} has bad sidecar.targets[${index}].platform`);
+      }
+      if (typeof target.arch !== 'string' || !target.arch) {
+        throw new Error(`Manifest at ${url} has bad sidecar.targets[${index}].arch`);
+      }
+      validateAsset(target, url, `sidecar.targets[${index}]`, MAX_SIDECAR_BINARY_BYTES);
+    }
   }
-  for (const [index, target] of sidecar.targets.entries()) {
+
+  const opencode = body.opencode;
+  if (!opencode || typeof opencode !== 'object') {
+    throw new Error(`Manifest at ${url} missing "opencode"`);
+  }
+  if (typeof opencode.version !== 'string' || !opencode.version) {
+    throw new Error(`Manifest at ${url} has bad "opencode.version"`);
+  }
+  try {
+    assertValidHotupdateVersion(opencode.version, `Manifest at ${url} opencode.version`);
+  } catch (err) {
+    throw new Error(errorMessage(err));
+  }
+  if (!Array.isArray(opencode.targets)) {
+    throw new Error(`Manifest at ${url} has bad "opencode.targets"`);
+  }
+  for (const [index, target] of opencode.targets.entries()) {
     if (!target || typeof target !== 'object') {
-      throw new Error(`Manifest at ${url} has bad sidecar.targets[${index}]`);
+      throw new Error(`Manifest at ${url} has bad opencode.targets[${index}]`);
     }
     if (typeof target.platform !== 'string' || !target.platform) {
-      throw new Error(`Manifest at ${url} has bad sidecar.targets[${index}].platform`);
+      throw new Error(`Manifest at ${url} has bad opencode.targets[${index}].platform`);
     }
     if (typeof target.arch !== 'string' || !target.arch) {
-      throw new Error(`Manifest at ${url} has bad sidecar.targets[${index}].arch`);
+      throw new Error(`Manifest at ${url} has bad opencode.targets[${index}].arch`);
     }
-    validateAsset(target, url, `sidecar.targets[${index}]`, MAX_SIDECAR_BINARY_BYTES);
+    validateAsset(target, url, `opencode.targets[${index}]`, MAX_OPENCODE_BINARY_BYTES);
   }
 }
 
@@ -363,5 +413,14 @@ export function pickSidecarTarget(
   arch: string = process.arch,
 ): SidecarTargetAsset | null {
   const targets = manifest.sidecar?.targets ?? [];
+  return targets.find((target) => target.platform === platform && target.arch === arch) ?? null;
+}
+
+export function pickOpencodeTarget(
+  manifest: HotupdateManifest,
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
+): OpencodeTargetAsset | null {
+  const targets = manifest.opencode?.targets ?? [];
   return targets.find((target) => target.platform === platform && target.arch === arch) ?? null;
 }

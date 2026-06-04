@@ -3,6 +3,7 @@ import { errorMessage } from '../path-utils.js';
 import { fetchHotupdateManifest, resolveHotupdateManifestUrl } from '../update-manifest.js';
 import { performBundleUpdate } from '../release/bundle-update.js';
 import { cancelHotupdate, endHotupdate, tryBeginHotupdate } from '../release/hotupdate-lock.js';
+import { stopOpencodeProcesses } from '../opencode-lifecycle.js';
 
 export function registerReleaseRoutes(app: express.Express): void {
   /**
@@ -19,7 +20,8 @@ export function registerReleaseRoutes(app: express.Express): void {
   app.post('/api/release/update', async (_req, res) => {
     const editorUserDir = process.env.TAGMA_EDITOR_USER_DIR;
     const sidecarUserDir = process.env.TAGMA_SIDECAR_USER_DIR;
-    if (!editorUserDir || !sidecarUserDir) {
+    const opencodeUserDir = process.env.TAGMA_OPENCODE_USER_DIR;
+    if (!editorUserDir || !sidecarUserDir || !opencodeUserDir) {
       return res.status(400).json({
         error:
           'Release updates require a writable userData directory. This is only available when running under the desktop app.',
@@ -43,16 +45,19 @@ export function registerReleaseRoutes(app: express.Express): void {
     }
     try {
       const manifest = await fetchHotupdateManifest(manifestUrl, true, controller.signal);
+      await stopOpencodeProcesses(3_000);
       const result = await performBundleUpdate({
         manifest,
         editorUserDir,
         sidecarUserDir,
+        opencodeUserDir,
         signal: controller.signal,
       });
       res.json({
         ok: true,
         editorVersion: result.editorVersion,
         sidecarVersion: result.sidecarVersion,
+        opencodeVersion: result.opencodeVersion,
       });
     } catch (err) {
       if (controller.signal.aborted) {

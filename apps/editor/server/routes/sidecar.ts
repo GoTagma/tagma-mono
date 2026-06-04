@@ -3,8 +3,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { errorMessage } from '../path-utils.js';
 import {
+  assertComponentHotupdateAllowed,
   compareVersions,
   fetchHotupdateManifest,
+  pickOpencodeTarget,
   pickSidecarTarget,
   resolveHotupdateManifestUrl,
 } from '../update-manifest.js';
@@ -90,6 +92,7 @@ async function performUpdate(signal?: AbortSignal): Promise<{ version: string; p
     );
   }
   const manifest = await fetchHotupdateManifest(manifestUrl, true, signal);
+  assertComponentHotupdateAllowed(manifest, 'sidecar');
 
   // Note: no route-level "already on this version" short-circuit anymore —
   // it would only check `existsSync(binary)` and miss a corrupt or truncated
@@ -133,7 +136,8 @@ export function registerSidecarRoutes(app: express.Express): void {
           const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
           const manifest = await fetchHotupdateManifest(manifestUrl, forceRefresh);
           const target = pickSidecarTarget(manifest);
-          if (target) {
+          const opencodeTarget = pickOpencodeTarget(manifest);
+          if (target && opencodeTarget) {
             latestVersion = manifest.version;
             releaseNotesUrl = manifest.releaseNotesUrl ?? null;
             minShellVersion = manifest.minShellVersion ?? null;

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { appendWorkflowEvent, isWorkflowTerminalEvent } from '../src/App';
+import { appendWorkflowEvent, isWorkflowTerminalEvent, reconcileWorkflowRunState } from '../src/App';
 import type { WorkflowGraphEvent } from '../src/api/client';
 
 describe('workflow live event state helpers', () => {
@@ -58,5 +58,34 @@ describe('workflow live event state helpers', () => {
         status: 'running',
       } as WorkflowGraphEvent),
     ).toBe(false);
+  });
+
+  test('reconciles stale running UI state when the server has no live workflow session', () => {
+    const graphStart = {
+      type: 'graph_start',
+      graphRunId: 'graph_1',
+      workflowName: 'release',
+      pipelines: [],
+      seq: 1,
+    } as WorkflowGraphEvent;
+
+    const next = reconcileWorkflowRunState(
+      {
+        events: [graphStart],
+        result: null,
+        running: true,
+        graphRunId: 'graph_1',
+      },
+      {
+        events: [],
+        result: null,
+        running: false,
+        graphRunId: null,
+      },
+    );
+
+    expect(next.running).toBe(false);
+    expect(next.graphRunId).toBeNull();
+    expect(next.events).toEqual([graphStart]);
   });
 });

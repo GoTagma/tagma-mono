@@ -190,6 +190,50 @@ describe('runtime path resolution', () => {
     }
   });
 
+  test('packaged Windows mode lets a newer bundled opencode outrank a stale user install', () => {
+    const previousPATH = process.env.PATH;
+    const previousPath = process.env.Path;
+    try {
+      delete process.env.PATH;
+      delete process.env.Path;
+      process.env.Path = 'C:\\Windows\\System32';
+
+      const root = withTempDir();
+      const resourcesPath = hostPath.join(root, 'resources');
+      const userDataDir = hostPath.join(root, 'userData');
+      const userOpencodeDir = hostPath.join(userDataDir, 'opencode');
+      mkdirSync(hostPath.join(userOpencodeDir, 'bin'), { recursive: true });
+      writeFileSync(hostPath.join(userOpencodeDir, 'version.txt'), '1.14.19\n');
+
+      const paths = resolveRuntimePaths({
+        isPackaged: true,
+        compiledDir: 'D:/tagma/tagma-mono/apps/electron/dist',
+        resourcesPath,
+        userDataDir,
+        platform: 'win32',
+        tagmaMetadataJson: JSON.stringify({ bundledOpencodeVersion: '1.15.13' }),
+      });
+
+      const expectedPath = [
+        pw.join(resourcesPath, 'opencode', 'bin'),
+        'C:\\Windows\\System32',
+      ].join(';');
+      expect(paths.env.Path).toBe(expectedPath);
+      expect(existsSync(userOpencodeDir)).toBe(false);
+    } finally {
+      if (previousPATH === undefined) {
+        delete process.env.PATH;
+      } else {
+        process.env.PATH = previousPATH;
+      }
+      if (previousPath === undefined) {
+        delete process.env.Path;
+      } else {
+        process.env.Path = previousPath;
+      }
+    }
+  });
+
   test('packaged mode ignores a hashless user-installed sidecar override', () => {
     const root = withTempDir();
     const resourcesPath = hostPath.join(root, 'resources');

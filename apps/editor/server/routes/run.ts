@@ -317,6 +317,32 @@ export function registerRunRoutes(app: express.Express): void {
     req.on('close', () => ws.workflowSseClients.delete(res));
   });
 
+  app.get('/api/run/workflow/status', (req, res) => {
+    const ws = requireWorkspace(req, res);
+    if (!ws) return;
+    const requestedGraphRunId =
+      typeof req.query.graphRunId === 'string' && req.query.graphRunId.trim().length > 0
+        ? req.query.graphRunId
+        : null;
+    const session = getWorkflowSession(ws);
+    if (!session || (requestedGraphRunId && requestedGraphRunId !== session.graphRunId)) {
+      return res.json({
+        ok: true,
+        graphRunId: null,
+        running: false,
+        result: null,
+        events: [],
+      });
+    }
+    return res.json({
+      ok: true,
+      graphRunId: session.graphRunId,
+      running: !session.done,
+      result: session.result ?? null,
+      events: session.allBuffered(),
+    });
+  });
+
   app.post('/api/run/workflow/start', async (req, res) => {
     const ws = requireWorkspace(req, res);
     if (!ws) return;

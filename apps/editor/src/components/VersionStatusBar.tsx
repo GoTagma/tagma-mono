@@ -58,7 +58,7 @@ type OpencodeFetch =
 type BundleApply =
   | { kind: 'idle' }
   | { kind: 'updating' }
-  | { kind: 'done'; editorVersion: string; sidecarVersion: string }
+  | { kind: 'done'; editorVersion: string; sidecarVersion: string; opencodeVersion: string }
   | { kind: 'canceled' }
   | { kind: 'error'; message: string };
 
@@ -274,6 +274,7 @@ export function VersionStatusBar() {
         case 'release':
           void refreshEditor();
           void refreshSidecar();
+          void refreshOpencode();
           break;
         case 'editor':
           void refreshEditor();
@@ -398,9 +399,11 @@ export function VersionStatusBar() {
         kind: 'done',
         editorVersion: result.editorVersion,
         sidecarVersion: result.sidecarVersion,
+        opencodeVersion: result.opencodeVersion,
       });
       void refreshEditor();
       void refreshSidecar();
+      void refreshOpencode();
       broadcast('editor-updated', { version: result.editorVersion });
       broadcast('sidecar-updated', { version: result.sidecarVersion });
     } catch (e) {
@@ -416,15 +419,15 @@ export function VersionStatusBar() {
       if (localHotupdateKindRef.current === 'release') localHotupdateKindRef.current = null;
       void refreshHotupdateStatus();
     }
-  }, [refreshEditor, refreshSidecar, refreshHotupdateStatus]);
+  }, [refreshEditor, refreshSidecar, refreshOpencode, refreshHotupdateStatus]);
 
   const handleBundleCancel = useCallback(() => {
     void api.cancelReleaseUpdate().catch(() => {});
   }, []);
 
   // Catch update broadcasts from peer windows so chips flip to pendingRestart
-  // and prompt the user. (OpenCode is bundled with each Tagma release and
-  // not user-updatable from the UI, so it has no peer event.)
+  // and prompt the user. OpenCode only changes through the release update
+  // path, which refreshes its status directly.
   useEffect(() => {
     const offEditor = subscribeChannel('editor-updated', () => {
       void refreshEditor();
@@ -856,8 +859,8 @@ function TagmaBundleBody(props: TagmaBundleBodyProps) {
 
       {bundleApply.kind === 'done' && (
         <SuccessBox>
-          Downloaded editor {bundleApply.editorVersion} and sidecar {bundleApply.sidecarVersion}.
-          Close and reopen Tagma to apply.
+          Downloaded editor {bundleApply.editorVersion}, sidecar {bundleApply.sidecarVersion}, and
+          OpenCode {bundleApply.opencodeVersion}. Close and reopen Tagma to apply.
         </SuccessBox>
       )}
       {pendingRestart && bundleApply.kind !== 'done' && (
@@ -872,41 +875,34 @@ function TagmaBundleBody(props: TagmaBundleBodyProps) {
         onClick={() => setShowAdvanced((v) => !v)}
         className="text-[10px] text-tagma-muted hover:text-tagma-text underline"
       >
-        {showAdvanced ? 'Hide advanced recovery' : 'Advanced: update one component only'}
+        {showAdvanced ? 'Hide advanced recovery' : 'Advanced recovery'}
       </button>
       {showAdvanced && (
         <div className="border-t border-tagma-border/60 pt-2 space-y-2">
           <div className="text-[10px] text-tagma-muted font-sans">
-            Use these only when the bundle update keeps failing on one side and you need to recover
-            from a half-applied state.
+            Single-component hot updates are disabled for OpenCode-pinned releases. Run Update Tagma
+            again to recover from a partial update; it stages editor, sidecar, and OpenCode
+            together.
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={onEditorOnlyUpdate}
-              disabled={
-                editorApply.kind === 'updating' ||
-                editorFetch.kind !== 'loaded' ||
-                !editorFetch.info.canUpdate ||
-                !editorFetch.info.updateAvailable
-              }
+              disabled={true}
               className="btn-ghost whitespace-nowrap"
+              title="Use Update Tagma so editor, sidecar, and OpenCode stay compatible."
             >
-              {editorApply.kind === 'updating' ? 'Updating editor...' : 'Update editor only'}
+              {editorApply.kind === 'updating' ? 'Updating editor...' : 'Editor-only disabled'}
             </button>
             {editorApply.kind === 'updating' && (
               <CancelUpdateButton onCancel={onEditorOnlyCancel} />
             )}
             <button
               onClick={onSidecarOnlyUpdate}
-              disabled={
-                sidecarApply.kind === 'updating' ||
-                sidecarFetch.kind !== 'loaded' ||
-                !sidecarFetch.info.canUpdate ||
-                !sidecarFetch.info.updateAvailable
-              }
+              disabled={true}
               className="btn-ghost whitespace-nowrap"
+              title="Use Update Tagma so editor, sidecar, and OpenCode stay compatible."
             >
-              {sidecarApply.kind === 'updating' ? 'Updating sidecar...' : 'Update sidecar only'}
+              {sidecarApply.kind === 'updating' ? 'Updating sidecar...' : 'Sidecar-only disabled'}
             </button>
             {sidecarApply.kind === 'updating' && (
               <CancelUpdateButton onCancel={onSidecarOnlyCancel} />

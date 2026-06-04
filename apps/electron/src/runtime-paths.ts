@@ -100,10 +100,11 @@ function buildSidecarPath(
   resourcesPath: string,
   userDataDir: string | undefined,
   platform: NodeJS.Platform,
+  includeUserOpencode: boolean,
 ): string {
   const sep = platform === 'win32' ? ';' : ':';
   const layers: string[] = [];
-  if (userDataDir) {
+  if (userDataDir && includeUserOpencode) {
     layers.push(p.join(userDataDir, 'opencode', 'bin'));
   }
   layers.push(p.join(resourcesPath, 'opencode', 'bin'));
@@ -318,6 +319,44 @@ function cleanupStaleUserSidecar(
   }
 }
 
+function opencodeUserDir(p: typeof path.win32 | typeof path.posix, userDataDir: string): string {
+  return p.join(userDataDir, 'opencode');
+}
+
+function readUserOpencodeVersion(
+  p: typeof path.win32 | typeof path.posix,
+  userDataDir: string | undefined,
+): string | null {
+  if (!userDataDir) return null;
+  const userDir = opencodeUserDir(p, userDataDir);
+  try {
+    if (!existsSync(userDir)) return null;
+    const version = readFileSync(p.join(userDir, 'version.txt'), 'utf-8').trim();
+    return SIDECAR_VERSION_RE.test(version) ? version : null;
+  } catch {
+    return null;
+  }
+}
+
+function shouldUseUserOpencode(
+  p: typeof path.win32 | typeof path.posix,
+  userDataDir: string | undefined,
+  bundledVersion: string | undefined,
+): boolean {
+  if (!userDataDir) return false;
+  if (!bundledVersion || !SIDECAR_VERSION_RE.test(bundledVersion)) return true;
+  const userDir = opencodeUserDir(p, userDataDir);
+  if (!existsSync(userDir)) return false;
+  const userVersion = readUserOpencodeVersion(p, userDataDir);
+  if (userVersion && compareVersions(userVersion, bundledVersion) >= 0) return true;
+  try {
+    rmSync(userDir, { recursive: true, force: true });
+  } catch {
+    /* best-effort */
+  }
+  return false;
+}
+
 export function discardUserSidecarOverride(userDataDir: string): void {
   discardUserSidecarOverrideWithPath(pathFor(process.platform), userDataDir);
 }
@@ -487,7 +526,18 @@ export function resolveRuntimePaths(options: RuntimePathOptions): RuntimePaths {
 
   if (options.isPackaged) {
     const sidecarDir = p.join(options.resourcesPath, 'editor-sidecar');
-    const sidecarPath = buildSidecarPath(p, options.resourcesPath, options.userDataDir, platform);
+    const includeUserOpencode = shouldUseUserOpencode(
+      p,
+      options.userDataDir,
+      bundledOpencodeVersion,
+    );
+    const sidecarPath = buildSidecarPath(
+      p,
+      options.resourcesPath,
+      options.userDataDir,
+      platform,
+      includeUserOpencode,
+    );
     // Plugin install runs `bun install` inside an isolated workspace under
     // `.tagma/plugin-store/<name>`. The packaged sidecar's process.execPath
     // points at the compiled `tagma-editor-server` binary, NOT at bun, so

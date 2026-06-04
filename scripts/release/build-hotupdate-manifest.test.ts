@@ -42,16 +42,26 @@ describe('build-hotupdate-manifest', () => {
     writeAsset(dir, `tagma-editor-server-${version}-darwin-arm64`, 'mac-arm-sidecar');
   }
 
-  test('includes sidecar targets when matching release assets are present', () => {
+  function writeAllOpencodeAssets(dir: string, version: string): void {
+    writeAsset(dir, `opencode-${version}-win32-x64.exe`, 'win-opencode');
+    writeAsset(dir, `opencode-${version}-linux-x64`, 'linux-opencode');
+    writeAsset(dir, `opencode-${version}-linux-arm64`, 'linux-arm-opencode');
+    writeAsset(dir, `opencode-${version}-darwin-x64`, 'mac-opencode');
+    writeAsset(dir, `opencode-${version}-darwin-arm64`, 'mac-arm-opencode');
+  }
+
+  test('includes sidecar and opencode targets when matching release assets are present', () => {
     const dir = withTempDir();
     writeAsset(dir, 'editor-dist-0.2.2.tar.gz', 'editor-dist');
     writeAllSidecarAssets(dir, '0.2.2');
+    writeAllOpencodeAssets(dir, '1.15.13');
 
     const manifest = buildHotupdateManifest({
       version: '0.2.2',
       channel: 'alpha',
       assetsDir: dir,
       repoSlug: 'GoTagma/tagma-mono',
+      opencodeVersion: '1.15.13',
     });
 
     // Spot-check the win32 entry — full set is verified by absence of a throw
@@ -64,6 +74,15 @@ describe('build-hotupdate-manifest', () => {
       sha256: createHash('sha256').update('win-sidecar').digest('hex'),
       size: 'win-sidecar'.length,
     });
+    expect(manifest.opencode?.version).toBe('1.15.13');
+    expect(manifest.opencode?.targets.length).toBe(5);
+    expect(manifest.opencode?.targets[0]).toEqual({
+      platform: 'win32',
+      arch: 'x64',
+      url: 'https://github.com/GoTagma/tagma-mono/releases/download/desktop-v0.2.2/opencode-1.15.13-win32-x64.exe',
+      sha256: createHash('sha256').update('win-opencode').digest('hex'),
+      size: 'win-opencode'.length,
+    });
   });
 
   test('throws when sidecar assets are missing without --allow-partial-sidecars', () => {
@@ -72,6 +91,7 @@ describe('build-hotupdate-manifest', () => {
     // generator refuses to silently emit a half-broken manifest.
     const dir = withTempDir();
     writeAsset(dir, 'editor-dist-0.2.2.tar.gz', 'editor-dist');
+    writeAllOpencodeAssets(dir, '1.15.13');
 
     expect(() =>
       buildHotupdateManifest({
@@ -79,6 +99,7 @@ describe('build-hotupdate-manifest', () => {
         channel: 'alpha',
         assetsDir: dir,
         repoSlug: 'GoTagma/tagma-mono',
+        opencodeVersion: '1.15.13',
       }),
     ).toThrow(/no sidecar binaries found|sidecar targets missing/);
   });
@@ -93,6 +114,7 @@ describe('build-hotupdate-manifest', () => {
     writeAsset(dir, 'tagma-editor-server-0.2.2-linux-arm64', 'linux-arm-sidecar');
     writeAsset(dir, 'tagma-editor-server-0.2.2-darwin-x64', 'mac-sidecar');
     writeAsset(dir, 'tagma-editor-server-0.2.2-darwin-arm64', 'mac-arm-sidecar');
+    writeAllOpencodeAssets(dir, '1.15.13');
 
     expect(() =>
       buildHotupdateManifest({
@@ -100,46 +122,67 @@ describe('build-hotupdate-manifest', () => {
         channel: 'alpha',
         assetsDir: dir,
         repoSlug: 'GoTagma/tagma-mono',
+        opencodeVersion: '1.15.13',
       }),
     ).toThrow(/win32\/x64/);
+  });
+
+  test('throws when opencode assets are missing', () => {
+    const dir = withTempDir();
+    writeAsset(dir, 'editor-dist-0.2.2.tar.gz', 'editor-dist');
+    writeAllSidecarAssets(dir, '0.2.2');
+
+    expect(() =>
+      buildHotupdateManifest({
+        version: '0.2.2',
+        channel: 'alpha',
+        assetsDir: dir,
+        repoSlug: 'GoTagma/tagma-mono',
+        opencodeVersion: '1.15.13',
+      }),
+    ).toThrow(/opencode/i);
   });
 
   test('omits the sidecar section when allowPartialSidecars opts in', () => {
     const dir = withTempDir();
     writeAsset(dir, 'editor-dist-0.2.2.tar.gz', 'editor-dist');
+    writeAllOpencodeAssets(dir, '1.15.13');
 
     const manifest = buildHotupdateManifest({
       version: '0.2.2',
       channel: 'alpha',
       assetsDir: dir,
       repoSlug: 'GoTagma/tagma-mono',
+      opencodeVersion: '1.15.13',
       allowPartialSidecars: true,
     });
 
     expect(manifest.sidecar).toBeUndefined();
+    expect(manifest.opencode?.targets).toHaveLength(5);
   });
 
   test('emits partial sidecar set when allowPartialSidecars opts in', () => {
     const dir = withTempDir();
     writeAsset(dir, 'editor-dist-0.2.2.tar.gz', 'editor-dist');
     writeAsset(dir, 'tagma-editor-server-0.2.2-linux-x64', 'linux-sidecar');
+    writeAllOpencodeAssets(dir, '1.15.13');
 
     const manifest = buildHotupdateManifest({
       version: '0.2.2',
       channel: 'alpha',
       assetsDir: dir,
       repoSlug: 'GoTagma/tagma-mono',
+      opencodeVersion: '1.15.13',
       allowPartialSidecars: true,
     });
 
-    expect(manifest.sidecar?.targets.map((t) => `${t.platform}/${t.arch}`)).toEqual([
-      'linux/x64',
-    ]);
+    expect(manifest.sidecar?.targets.map((t) => `${t.platform}/${t.arch}`)).toEqual(['linux/x64']);
   });
 
   test('--allow-partial-sidecars CLI flag plumbs through to builder', () => {
     const dir = withTempDir();
     writeAsset(dir, 'editor-dist-0.2.2.tar.gz', 'editor-dist');
+    writeAllOpencodeAssets(dir, '1.15.13');
     const outFile = path.join(dir, 'manifest.json');
 
     main([
@@ -148,20 +191,34 @@ describe('build-hotupdate-manifest', () => {
       dir,
       'GoTagma/tagma-mono',
       outFile,
+      '--opencode-version',
+      '1.15.13',
       '--allow-partial-sidecars',
     ]);
 
     const manifest = JSON.parse(readFileSync(outFile, 'utf-8'));
     expect(manifest.sidecar).toBeUndefined();
+    expect(manifest.opencode.version).toBe('1.15.13');
   });
 
   test('writes minShellVersion into manifest when --min-shell is passed via CLI', () => {
     const dir = withTempDir();
     writeAsset(dir, 'editor-dist-0.2.2.tar.gz', 'editor-dist');
     writeAllSidecarAssets(dir, '0.2.2');
+    writeAllOpencodeAssets(dir, '1.15.13');
     const outFile = path.join(dir, 'manifest.json');
 
-    main(['0.2.2', 'alpha', dir, 'GoTagma/tagma-mono', outFile, '--min-shell', '0.2.0']);
+    main([
+      '0.2.2',
+      'alpha',
+      dir,
+      'GoTagma/tagma-mono',
+      outFile,
+      '--min-shell',
+      '0.2.0',
+      '--opencode-version',
+      '1.15.13',
+    ]);
 
     const manifest = JSON.parse(readFileSync(outFile, 'utf-8'));
     expect(manifest.minShellVersion).toBe('0.2.0');
@@ -171,15 +228,42 @@ describe('build-hotupdate-manifest', () => {
     const dir = withTempDir();
     writeAsset(dir, 'editor-dist-0.2.2.tar.gz', 'editor-dist');
     writeAllSidecarAssets(dir, '0.2.2');
+    writeAllOpencodeAssets(dir, '1.15.13');
     const outFile = path.join(dir, 'manifest.json');
 
-    main(['0.2.2', 'alpha', dir, 'GoTagma/tagma-mono', outFile, '--min-shell=0.2.0']);
+    main([
+      '0.2.2',
+      'alpha',
+      dir,
+      'GoTagma/tagma-mono',
+      outFile,
+      '--min-shell=0.2.0',
+      '--opencode-version=1.15.13',
+    ]);
 
     const manifest = JSON.parse(readFileSync(outFile, 'utf-8'));
     expect(manifest.minShellVersion).toBe('0.2.0');
   });
 
   test('rejects unsafe minShellVersion values', () => {
+    const dir = withTempDir();
+    writeAsset(dir, 'editor-dist-0.2.2.tar.gz', 'editor-dist');
+    writeAllSidecarAssets(dir, '0.2.2');
+    writeAllOpencodeAssets(dir, '1.15.13');
+
+    expect(() =>
+      buildHotupdateManifest({
+        version: '0.2.2',
+        channel: 'alpha',
+        assetsDir: dir,
+        repoSlug: 'GoTagma/tagma-mono',
+        minShellVersion: '../0.2.0',
+        opencodeVersion: '1.15.13',
+      }),
+    ).toThrow(/minShellVersion|semver/i);
+  });
+
+  test('rejects unsafe opencode versions', () => {
     const dir = withTempDir();
     writeAsset(dir, 'editor-dist-0.2.2.tar.gz', 'editor-dist');
     writeAllSidecarAssets(dir, '0.2.2');
@@ -190,21 +274,32 @@ describe('build-hotupdate-manifest', () => {
         channel: 'alpha',
         assetsDir: dir,
         repoSlug: 'GoTagma/tagma-mono',
-        minShellVersion: '../0.2.0',
+        opencodeVersion: '../1.15.13',
       }),
-    ).toThrow(/minShellVersion|semver/i);
+    ).toThrow(/opencodeVersion|semver/i);
   });
 
   test('signs manifest when --signing-key is provided', () => {
     const dir = withTempDir();
     writeAsset(dir, 'editor-dist-0.2.2.tar.gz', 'editor-dist');
     writeAllSidecarAssets(dir, '0.2.2');
+    writeAllOpencodeAssets(dir, '1.15.13');
     const outFile = path.join(dir, 'manifest.json');
     const keyFile = path.join(dir, 'ed25519-private.pem');
     const { publicKey, privateKey } = generateKeyPairSync('ed25519');
     writeFileSync(keyFile, privateKey.export({ type: 'pkcs8', format: 'pem' }).toString());
 
-    main(['0.2.2', 'alpha', dir, 'GoTagma/tagma-mono', outFile, '--signing-key', keyFile]);
+    main([
+      '0.2.2',
+      'alpha',
+      dir,
+      'GoTagma/tagma-mono',
+      outFile,
+      '--opencode-version',
+      '1.15.13',
+      '--signing-key',
+      keyFile,
+    ]);
 
     const manifest = JSON.parse(readFileSync(outFile, 'utf-8'));
     expect(typeof manifest.signature).toBe('string');

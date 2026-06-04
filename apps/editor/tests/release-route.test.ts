@@ -132,11 +132,13 @@ const describeOrSkip = proxyActive ? describe.skip : describe;
 describeOrSkip('POST /api/release/update', () => {
   let editorUserDir: string;
   let sidecarUserDir: string;
+  let opencodeUserDir: string;
   let srvDir: string;
 
   beforeEach(() => {
     editorUserDir = mkdtempSync(join(tmpdir(), 'rr-editor-'));
     sidecarUserDir = mkdtempSync(join(tmpdir(), 'rr-sidecar-'));
+    opencodeUserDir = mkdtempSync(join(tmpdir(), 'rr-opencode-'));
     srvDir = mkdtempSync(join(tmpdir(), 'rr-srv-'));
 
     const src = mkdtempSync(join(tmpdir(), 'rr-src-'));
@@ -151,6 +153,11 @@ describeOrSkip('POST /api/release/update', () => {
     const sidecarBody = Buffer.from('FAKE-SIDECAR');
     writeFileSync(sidecarBin, sidecarBody);
     const sidecarSha = createHash('sha256').update(sidecarBody).digest('hex');
+
+    const opencodeBin = join(srvDir, process.platform === 'win32' ? 'opencode.exe' : 'opencode');
+    const opencodeBody = Buffer.from('FAKE-OPENCODE');
+    writeFileSync(opencodeBin, opencodeBody);
+    const opencodeSha = createHash('sha256').update(opencodeBody).digest('hex');
 
     // Manifest fetched via file:// — resolveHotupdateManifestUrl() assembles
     // `<base>/<channel>/manifest.json`, so lay the file out accordingly.
@@ -173,6 +180,18 @@ describeOrSkip('POST /api/release/update', () => {
             },
           ],
         },
+        opencode: {
+          version: '1.15.13',
+          targets: [
+            {
+              platform: process.platform,
+              arch: process.arch,
+              url: `file://${opencodeBin}`,
+              sha256: opencodeSha,
+              size: opencodeBody.byteLength,
+            },
+          ],
+        },
       }),
     );
   });
@@ -180,16 +199,19 @@ describeOrSkip('POST /api/release/update', () => {
   afterEach(() => {
     rmSync(editorUserDir, { recursive: true, force: true });
     rmSync(sidecarUserDir, { recursive: true, force: true });
+    rmSync(opencodeUserDir, { recursive: true, force: true });
     rmSync(srvDir, { recursive: true, force: true });
     delete process.env.TAGMA_EDITOR_USER_DIR;
     delete process.env.TAGMA_SIDECAR_USER_DIR;
+    delete process.env.TAGMA_OPENCODE_USER_DIR;
     delete process.env.TAGMA_EDITOR_UPDATE_MANIFEST_BASE_URL;
     delete process.env.TAGMA_EDITOR_UPDATE_CHANNEL;
   });
 
-  test('runs bundle-update and returns both versions on success', async () => {
+  test('runs bundle-update and returns all component versions on success', async () => {
     process.env.TAGMA_EDITOR_USER_DIR = editorUserDir;
     process.env.TAGMA_SIDECAR_USER_DIR = sidecarUserDir;
+    process.env.TAGMA_OPENCODE_USER_DIR = opencodeUserDir;
     process.env.TAGMA_EDITOR_UPDATE_MANIFEST_BASE_URL = `file://${srvDir}`;
     process.env.TAGMA_EDITOR_UPDATE_CHANNEL = 'alpha';
 
@@ -204,16 +226,19 @@ describeOrSkip('POST /api/release/update', () => {
         ok: boolean;
         editorVersion: string;
         sidecarVersion: string;
+        opencodeVersion: string;
       };
       expect(body).toEqual({
         ok: true,
         editorVersion: '9.9.9',
         sidecarVersion: '9.9.9',
+        opencodeVersion: '1.15.13',
       });
       expect(existsSync(join(editorUserDir, 'dist', 'index.html'))).toBe(true);
       expect(JSON.parse(readFileSync(join(sidecarUserDir, 'current.json'), 'utf-8')).version).toBe(
         '9.9.9',
       );
+      expect(readFileSync(join(opencodeUserDir, 'version.txt'), 'utf-8').trim()).toBe('1.15.13');
     } finally {
       await close();
     }
@@ -222,6 +247,7 @@ describeOrSkip('POST /api/release/update', () => {
   test('serializes concurrent requests: second caller gets 409', async () => {
     process.env.TAGMA_EDITOR_USER_DIR = editorUserDir;
     process.env.TAGMA_SIDECAR_USER_DIR = sidecarUserDir;
+    process.env.TAGMA_OPENCODE_USER_DIR = opencodeUserDir;
     process.env.TAGMA_EDITOR_UPDATE_MANIFEST_BASE_URL = `file://${srvDir}`;
     process.env.TAGMA_EDITOR_UPDATE_CHANNEL = 'alpha';
 

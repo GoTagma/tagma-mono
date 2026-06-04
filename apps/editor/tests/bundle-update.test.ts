@@ -40,80 +40,135 @@ function buildSidecarBinary(destDir: string): {
   };
 }
 
+function buildOpencodeBinary(destDir: string): {
+  url: string;
+  sha256: string;
+  size: number;
+} {
+  const p = join(destDir, process.platform === 'win32' ? 'opencode.exe' : 'opencode');
+  const body = Buffer.from('FAKE-OPENCODE');
+  writeFileSync(p, body);
+  return {
+    url: `file://${p}`,
+    sha256: createHash('sha256').update(body).digest('hex'),
+    size: body.byteLength,
+  };
+}
+
+function withOpencode(manifest: HotupdateManifest, asset: ReturnType<typeof buildOpencodeBinary>) {
+  return {
+    ...manifest,
+    opencode: {
+      version: '1.15.13',
+      targets: [
+        {
+          platform: process.platform,
+          arch: process.arch,
+          url: asset.url,
+          sha256: asset.sha256,
+          size: asset.size,
+        },
+      ],
+    },
+  };
+}
+
 describe('performBundleUpdate', () => {
   let editorUserDir: string;
   let sidecarUserDir: string;
+  let opencodeUserDir: string;
   let srv: string;
 
   beforeEach(() => {
     editorUserDir = mkdtempSync(join(tmpdir(), 'bundle-editor-'));
     sidecarUserDir = mkdtempSync(join(tmpdir(), 'bundle-sidecar-'));
+    opencodeUserDir = mkdtempSync(join(tmpdir(), 'bundle-opencode-'));
     srv = mkdtempSync(join(tmpdir(), 'bundle-srv-'));
   });
 
   afterEach(() => {
     rmSync(editorUserDir, { recursive: true, force: true });
     rmSync(sidecarUserDir, { recursive: true, force: true });
+    rmSync(opencodeUserDir, { recursive: true, force: true });
     rmSync(srv, { recursive: true, force: true });
   });
 
-  test('stages both, activates both, returns versions', async () => {
+  test('stages editor, sidecar, and opencode before activating the release', async () => {
     const editor = buildEditorTarball(srv);
     const sidecar = buildSidecarBinary(srv);
-    const manifest: HotupdateManifest = {
-      version: '9.9.9',
-      channel: 'alpha',
-      dist: editor,
-      sidecar: {
-        targets: [
-          {
-            platform: process.platform,
-            arch: process.arch,
-            url: sidecar.url,
-            sha256: sidecar.sha256,
-            size: sidecar.size,
-          },
-        ],
+    const opencode = buildOpencodeBinary(srv);
+    const manifest: HotupdateManifest = withOpencode(
+      {
+        version: '9.9.9',
+        channel: 'alpha',
+        dist: editor,
+        sidecar: {
+          targets: [
+            {
+              platform: process.platform,
+              arch: process.arch,
+              url: sidecar.url,
+              sha256: sidecar.sha256,
+              size: sidecar.size,
+            },
+          ],
+        },
       },
-    };
+      opencode,
+    );
 
     const result = await performBundleUpdate({
       manifest,
       editorUserDir,
       sidecarUserDir,
+      opencodeUserDir,
     });
 
-    expect(result).toEqual({ editorVersion: '9.9.9', sidecarVersion: '9.9.9' });
+    expect(result).toEqual({
+      editorVersion: '9.9.9',
+      sidecarVersion: '9.9.9',
+      opencodeVersion: '1.15.13',
+    });
     expect(readFileSync(join(editorUserDir, 'dist-version.txt'), 'utf-8').trim()).toBe('9.9.9');
     expect(existsSync(join(editorUserDir, 'dist', 'index.html'))).toBe(true);
     expect(JSON.parse(readFileSync(join(sidecarUserDir, 'current.json'), 'utf-8')).version).toBe(
       '9.9.9',
     );
+    expect(readFileSync(join(opencodeUserDir, 'version.txt'), 'utf-8').trim()).toBe('1.15.13');
+    expect(
+      existsSync(
+        join(opencodeUserDir, 'bin', process.platform === 'win32' ? 'opencode.exe' : 'opencode'),
+      ),
+    ).toBe(true);
   });
 
   test('editor stage sha mismatch: nothing activates, sidecar staging cleaned', async () => {
     const editor = buildEditorTarball(srv);
     const sidecar = buildSidecarBinary(srv);
-    const manifest: HotupdateManifest = {
-      version: '9.9.9',
-      channel: 'alpha',
-      dist: { url: editor.url, sha256: 'f'.repeat(64), size: editor.size },
-      sidecar: {
-        targets: [
-          {
-            platform: process.platform,
-            arch: process.arch,
-            url: sidecar.url,
-            sha256: sidecar.sha256,
-            size: sidecar.size,
-          },
-        ],
+    const opencode = buildOpencodeBinary(srv);
+    const manifest: HotupdateManifest = withOpencode(
+      {
+        version: '9.9.9',
+        channel: 'alpha',
+        dist: { url: editor.url, sha256: 'f'.repeat(64), size: editor.size },
+        sidecar: {
+          targets: [
+            {
+              platform: process.platform,
+              arch: process.arch,
+              url: sidecar.url,
+              sha256: sidecar.sha256,
+              size: sidecar.size,
+            },
+          ],
+        },
       },
-    };
-
-    await expect(performBundleUpdate({ manifest, editorUserDir, sidecarUserDir })).rejects.toThrow(
-      /sha256/i,
+      opencode,
     );
+
+    await expect(
+      performBundleUpdate({ manifest, editorUserDir, sidecarUserDir, opencodeUserDir }),
+    ).rejects.toThrow(/sha256/i);
 
     // Editor: no dist/, no dist-version.txt.
     expect(existsSync(join(editorUserDir, 'dist'))).toBe(false);
@@ -122,31 +177,36 @@ describe('performBundleUpdate', () => {
     // versions/ is empty: editor staging fails BEFORE sidecar staging runs
     // in the current flow, so no sidecar bytes were ever written.
     expect(existsSync(join(sidecarUserDir, 'current.json'))).toBe(false);
+    expect(existsSync(join(opencodeUserDir, 'version.txt'))).toBe(false);
   });
 
   test('sidecar stage sha mismatch: editor staging is rolled back', async () => {
     const editor = buildEditorTarball(srv);
     const sidecar = buildSidecarBinary(srv);
-    const manifest: HotupdateManifest = {
-      version: '9.9.9',
-      channel: 'alpha',
-      dist: editor,
-      sidecar: {
-        targets: [
-          {
-            platform: process.platform,
-            arch: process.arch,
-            url: sidecar.url,
-            sha256: 'f'.repeat(64),
-            size: sidecar.size,
-          },
-        ],
+    const opencode = buildOpencodeBinary(srv);
+    const manifest: HotupdateManifest = withOpencode(
+      {
+        version: '9.9.9',
+        channel: 'alpha',
+        dist: editor,
+        sidecar: {
+          targets: [
+            {
+              platform: process.platform,
+              arch: process.arch,
+              url: sidecar.url,
+              sha256: 'f'.repeat(64),
+              size: sidecar.size,
+            },
+          ],
+        },
       },
-    };
-
-    await expect(performBundleUpdate({ manifest, editorUserDir, sidecarUserDir })).rejects.toThrow(
-      /sha256/i,
+      opencode,
     );
+
+    await expect(
+      performBundleUpdate({ manifest, editorUserDir, sidecarUserDir, opencodeUserDir }),
+    ).rejects.toThrow(/sha256/i);
 
     // Editor: staged bytes discarded, no activation.
     expect(existsSync(join(editorUserDir, 'dist.staged'))).toBe(false);
@@ -154,64 +214,80 @@ describe('performBundleUpdate', () => {
     expect(existsSync(join(editorUserDir, 'dist-version.txt'))).toBe(false);
     // Sidecar: no activation.
     expect(existsSync(join(sidecarUserDir, 'current.json'))).toBe(false);
+    expect(existsSync(join(opencodeUserDir, 'version.txt'))).toBe(false);
   });
 
   test('sidecar stage missing target: editor staging is rolled back', async () => {
     const editor = buildEditorTarball(srv);
     const sidecar = buildSidecarBinary(srv);
+    const opencode = buildOpencodeBinary(srv);
     const wrongPlatform = process.platform === 'win32' ? 'linux' : 'win32';
-    const manifest: HotupdateManifest = {
-      version: '9.9.9',
-      channel: 'alpha',
-      dist: editor,
-      sidecar: {
-        targets: [
-          {
-            platform: wrongPlatform,
-            arch: process.arch,
-            url: sidecar.url,
-            sha256: sidecar.sha256,
-            size: sidecar.size,
-          },
-        ],
+    const manifest: HotupdateManifest = withOpencode(
+      {
+        version: '9.9.9',
+        channel: 'alpha',
+        dist: editor,
+        sidecar: {
+          targets: [
+            {
+              platform: wrongPlatform,
+              arch: process.arch,
+              url: sidecar.url,
+              sha256: sidecar.sha256,
+              size: sidecar.size,
+            },
+          ],
+        },
       },
-    };
-
-    await expect(performBundleUpdate({ manifest, editorUserDir, sidecarUserDir })).rejects.toThrow(
-      /No sidecar update published/,
+      opencode,
     );
+
+    await expect(
+      performBundleUpdate({ manifest, editorUserDir, sidecarUserDir, opencodeUserDir }),
+    ).rejects.toThrow(/No sidecar update published/);
 
     expect(existsSync(join(editorUserDir, 'dist.staged'))).toBe(false);
     expect(existsSync(join(editorUserDir, 'dist'))).toBe(false);
+    expect(existsSync(join(opencodeUserDir, 'version.txt'))).toBe(false);
   });
 
-  test('sidecar activation failure rolls back editor activation', async () => {
+  test('sidecar activation failure rolls back editor and opencode activation', async () => {
     const editor = buildEditorTarball(srv);
     const sidecar = buildSidecarBinary(srv);
+    const opencode = buildOpencodeBinary(srv);
     mkdirSync(join(editorUserDir, 'dist'), { recursive: true });
     writeFileSync(join(editorUserDir, 'dist', 'index.html'), '<html>old</html>');
     writeFileSync(join(editorUserDir, 'dist-version.txt'), '1.0.0\n');
+    mkdirSync(join(opencodeUserDir, 'bin'), { recursive: true });
+    writeFileSync(
+      join(opencodeUserDir, 'bin', process.platform === 'win32' ? 'opencode.exe' : 'opencode'),
+      'old-opencode',
+    );
+    writeFileSync(join(opencodeUserDir, 'version.txt'), '1.14.19\n');
     mkdirSync(join(sidecarUserDir, 'current.json.staging'), { recursive: true });
 
-    const manifest: HotupdateManifest = {
-      version: '9.9.9',
-      channel: 'alpha',
-      dist: editor,
-      sidecar: {
-        targets: [
-          {
-            platform: process.platform,
-            arch: process.arch,
-            url: sidecar.url,
-            sha256: sidecar.sha256,
-            size: sidecar.size,
-          },
-        ],
+    const manifest: HotupdateManifest = withOpencode(
+      {
+        version: '9.9.9',
+        channel: 'alpha',
+        dist: editor,
+        sidecar: {
+          targets: [
+            {
+              platform: process.platform,
+              arch: process.arch,
+              url: sidecar.url,
+              sha256: sidecar.sha256,
+              size: sidecar.size,
+            },
+          ],
+        },
       },
-    };
+      opencode,
+    );
 
     await expect(
-      performBundleUpdate({ manifest, editorUserDir, sidecarUserDir }),
+      performBundleUpdate({ manifest, editorUserDir, sidecarUserDir, opencodeUserDir }),
     ).rejects.toThrow();
 
     expect(readFileSync(join(editorUserDir, 'dist-version.txt'), 'utf-8').trim()).toBe('1.0.0');
@@ -220,5 +296,12 @@ describe('performBundleUpdate', () => {
     );
     expect(existsSync(join(editorUserDir, 'dist.previous'))).toBe(false);
     expect(existsSync(join(sidecarUserDir, 'current.json'))).toBe(false);
+    expect(readFileSync(join(opencodeUserDir, 'version.txt'), 'utf-8').trim()).toBe('1.14.19');
+    expect(
+      readFileSync(
+        join(opencodeUserDir, 'bin', process.platform === 'win32' ? 'opencode.exe' : 'opencode'),
+        'utf-8',
+      ),
+    ).toBe('old-opencode');
   });
 });

@@ -14,15 +14,25 @@ import {
   stageSidecarBinary,
   type SidecarStagingResult,
 } from './sidecar-staging.js';
+import {
+  activateOpencodeBinary,
+  discardOpencodeStaging,
+  finalizeOpencodeActivation,
+  rollbackOpencodeActivation,
+  stageOpencodeBinary,
+  type OpencodeActivationResult,
+  type OpencodeStagingResult,
+} from './opencode-staging.js';
 
 export interface BundleUpdateInput {
   manifest: HotupdateManifest;
   editorUserDir: string;
   sidecarUserDir: string;
+  opencodeUserDir: string;
   /**
    * Optional external abort signal. When fired, whichever download is currently
-   * running (editor or sidecar tarball) rejects with AbortError; already-staged
-   * bytes from the other side are discarded. No activation happens.
+   * running (editor, sidecar, or opencode) rejects with AbortError; already-
+   * staged bytes from the other components are discarded. No activation happens.
    */
   signal?: AbortSignal;
 }
@@ -30,6 +40,7 @@ export interface BundleUpdateInput {
 export interface BundleUpdateResult {
   editorVersion: string;
   sidecarVersion: string;
+  opencodeVersion: string;
 }
 
 /**
@@ -44,30 +55,38 @@ export interface BundleUpdateResult {
  * update to realign.
  */
 export async function performBundleUpdate(input: BundleUpdateInput): Promise<BundleUpdateResult> {
-  const { manifest, editorUserDir, sidecarUserDir, signal } = input;
+  const { manifest, editorUserDir, sidecarUserDir, opencodeUserDir, signal } = input;
 
   let editorStaged: EditorStagingResult | null = null;
   let sidecarStaged: SidecarStagingResult | null = null;
+  let opencodeStaged: OpencodeStagingResult | null = null;
+  let opencodeActivation: OpencodeActivationResult | null = null;
   let editorActivation: EditorActivationResult | null = null;
   try {
     editorStaged = await stageEditorDist(manifest, editorUserDir, signal);
     sidecarStaged = await stageSidecarBinary(manifest, sidecarUserDir, signal);
+    opencodeStaged = await stageOpencodeBinary(manifest, opencodeUserDir, signal);
   } catch (err) {
     if (editorStaged) discardEditorStaging(editorStaged);
     if (sidecarStaged) discardSidecarStaging(sidecarStaged);
+    if (opencodeStaged) discardOpencodeStaging(opencodeStaged);
     throw err;
   }
 
   try {
+    opencodeActivation = activateOpencodeBinary(opencodeStaged, { keepPrevious: true });
     editorActivation = activateEditorDist(editorStaged, { keepPrevious: true });
     const sidecarResult = activateSidecarBinary(sidecarStaged);
     finalizeEditorDistActivation(editorActivation);
+    finalizeOpencodeActivation(opencodeActivation);
     return {
       editorVersion: editorActivation.version,
       sidecarVersion: sidecarResult.version,
+      opencodeVersion: opencodeActivation.version,
     };
   } catch (err) {
     if (editorActivation) rollbackEditorDistActivation(editorActivation);
+    if (opencodeActivation) rollbackOpencodeActivation(opencodeActivation);
     throw err;
   }
 }

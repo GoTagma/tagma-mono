@@ -92,13 +92,23 @@ function postJsonBody(
 let originalCwd: string;
 let tempCwd: string;
 let originalBundledDir: string | undefined;
+let originalBundledVersion: string | undefined;
+let originalOpencodeUserDir: string | undefined;
+let originalAllowIndependentOpencodeUpdate: string | undefined;
 
 beforeEach(() => {
   originalCwd = process.cwd();
   tempCwd = mkdtempSync(join(tmpdir(), 'opencode-workspace-'));
   process.chdir(tempCwd);
   originalBundledDir = process.env.TAGMA_OPENCODE_BUNDLED_DIR;
+  originalBundledVersion = process.env.TAGMA_OPENCODE_BUNDLED_VERSION;
+  originalOpencodeUserDir = process.env.TAGMA_OPENCODE_USER_DIR;
+  originalAllowIndependentOpencodeUpdate =
+    process.env.TAGMA_UNSAFE_ALLOW_INDEPENDENT_OPENCODE_UPDATE;
   process.env.TAGMA_OPENCODE_BUNDLED_DIR = join(tempCwd, 'missing-bundled-opencode');
+  delete process.env.TAGMA_OPENCODE_BUNDLED_VERSION;
+  delete process.env.TAGMA_OPENCODE_USER_DIR;
+  delete process.env.TAGMA_UNSAFE_ALLOW_INDEPENDENT_OPENCODE_UPDATE;
 });
 
 afterEach(() => {
@@ -108,6 +118,22 @@ afterEach(() => {
     delete process.env.TAGMA_OPENCODE_BUNDLED_DIR;
   } else {
     process.env.TAGMA_OPENCODE_BUNDLED_DIR = originalBundledDir;
+  }
+  if (originalBundledVersion === undefined) {
+    delete process.env.TAGMA_OPENCODE_BUNDLED_VERSION;
+  } else {
+    process.env.TAGMA_OPENCODE_BUNDLED_VERSION = originalBundledVersion;
+  }
+  if (originalOpencodeUserDir === undefined) {
+    delete process.env.TAGMA_OPENCODE_USER_DIR;
+  } else {
+    process.env.TAGMA_OPENCODE_USER_DIR = originalOpencodeUserDir;
+  }
+  if (originalAllowIndependentOpencodeUpdate === undefined) {
+    delete process.env.TAGMA_UNSAFE_ALLOW_INDEPENDENT_OPENCODE_UPDATE;
+  } else {
+    process.env.TAGMA_UNSAFE_ALLOW_INDEPENDENT_OPENCODE_UPDATE =
+      originalAllowIndependentOpencodeUpdate;
   }
   rmSync(tempCwd, { recursive: true, force: true });
 });
@@ -151,6 +177,23 @@ test('opencode update is rejected while YAML edit lock is active', async () => {
     expect(body.error).toContain('YAML/layout editing is locked');
   } finally {
     S.yamlEditLock = null;
+    await close();
+  }
+});
+
+test('opencode update is disabled when OpenCode is pinned to the Tagma release', async () => {
+  process.env.TAGMA_OPENCODE_BUNDLED_VERSION = '1.15.13';
+  process.env.TAGMA_OPENCODE_USER_DIR = join(tempCwd, 'opencode-user');
+  const app = express();
+  app.use(express.json());
+  registerOpencodeRoutes(app);
+  const { port, close } = await startApp(app);
+  try {
+    const res = await postJsonBody(port, '/api/opencode/update', { version: '1.16.0' });
+    expect(res.status).toBe(403);
+    const body = JSON.parse(res.body) as { error?: string };
+    expect(body.error).toContain('Update Tagma');
+  } finally {
     await close();
   }
 });

@@ -141,6 +141,11 @@ function readUserVersion(userDir: string | undefined): string | null {
   }
 }
 
+function independentOpencodeUpdatesAllowed(): boolean {
+  if (process.env.TAGMA_UNSAFE_ALLOW_INDEPENDENT_OPENCODE_UPDATE === '1') return true;
+  return !process.env.TAGMA_OPENCODE_BUNDLED_VERSION;
+}
+
 function mergeSignalWithTimeout(timeoutMs: number, externalSignal?: AbortSignal): AbortSignal {
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
   return externalSignal ? AbortSignal.any([timeoutSignal, externalSignal]) : timeoutSignal;
@@ -442,6 +447,12 @@ export function registerOpencodeRoutes(app: express.Express): void {
       return res.status(423).json({
         error: 'YAML/layout editing is locked while OpenCode chat is updating this workspace.',
         lock: publicYamlEditLock(activeYamlLock),
+      });
+    }
+    if (!independentOpencodeUpdatesAllowed()) {
+      return res.status(403).json({
+        error:
+          'Independent OpenCode updates are disabled because OpenCode is pinned to the Tagma release. Use Update Tagma so editor, sidecar, and OpenCode update together.',
       });
     }
     if (updateInFlight) {

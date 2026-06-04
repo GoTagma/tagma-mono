@@ -13,6 +13,7 @@ const originalFetch = globalThis.fetch;
 const ENV_KEYS = [
   'TAGMA_EDITOR_USER_DIR',
   'TAGMA_SIDECAR_USER_DIR',
+  'TAGMA_OPENCODE_USER_DIR',
   'TAGMA_EDITOR_UPDATE_MANIFEST_BASE_URL',
   'TAGMA_EDITOR_UPDATE_CHANNEL',
   'TAGMA_SIDECAR_UPDATE_MANIFEST_BASE_URL',
@@ -149,7 +150,7 @@ interface RouteCase {
   updatePath: string;
   cancelPath: string;
   register(app: express.Express): void;
-  configure(editorUserDir: string, sidecarUserDir: string): void;
+  configure(editorUserDir: string, sidecarUserDir: string, opencodeUserDir: string): void;
 }
 
 const ROUTES: RouteCase[] = [
@@ -180,9 +181,10 @@ const ROUTES: RouteCase[] = [
     updatePath: '/api/release/update',
     cancelPath: '/api/release/update/cancel',
     register: registerReleaseRoutes,
-    configure: (editorUserDir, sidecarUserDir) => {
+    configure: (editorUserDir, sidecarUserDir, opencodeUserDir) => {
       process.env.TAGMA_EDITOR_USER_DIR = editorUserDir;
       process.env.TAGMA_SIDECAR_USER_DIR = sidecarUserDir;
+      process.env.TAGMA_OPENCODE_USER_DIR = opencodeUserDir;
       process.env.TAGMA_EDITOR_UPDATE_MANIFEST_BASE_URL = 'https://updates.example.test/release';
       process.env.TAGMA_EDITOR_UPDATE_CHANNEL = 'alpha';
     },
@@ -199,7 +201,8 @@ describe('hot-update cancel routes', () => {
     test(`${route.name} update cancel aborts an in-flight manifest fetch`, async () => {
       const editorUserDir = mkdtempSync(join(tmpdir(), `cancel-${route.name}-editor-`));
       const sidecarUserDir = mkdtempSync(join(tmpdir(), `cancel-${route.name}-sidecar-`));
-      route.configure(editorUserDir, sidecarUserDir);
+      const opencodeUserDir = mkdtempSync(join(tmpdir(), `cancel-${route.name}-opencode-`));
+      route.configure(editorUserDir, sidecarUserDir, opencodeUserDir);
       const manifestFetch = installHangingManifestFetch();
 
       const app = express();
@@ -228,6 +231,7 @@ describe('hot-update cancel routes', () => {
         await close();
         rmSync(editorUserDir, { recursive: true, force: true });
         rmSync(sidecarUserDir, { recursive: true, force: true });
+        rmSync(opencodeUserDir, { recursive: true, force: true });
       }
     });
   }

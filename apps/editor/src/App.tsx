@@ -19,6 +19,7 @@ import {
   type ServerStateEvent,
   type WorkspaceYamlEntry,
   type WorkflowGraphEvent,
+  type WorkflowRunStatus,
   type WorkflowRunResult,
   type WorkflowYamlEntry,
   type DiagnosticItem,
@@ -133,6 +134,37 @@ export function isWorkflowTerminalEvent(event: WorkflowGraphEvent): boolean {
   return event.type === 'graph_end';
 }
 
+interface WorkflowRunStateSnapshot {
+  events: WorkflowGraphEvent[];
+  result: WorkflowRunResult | null;
+  running: boolean;
+  graphRunId: string | null;
+}
+
+export function reconcileWorkflowRunState(
+  current: WorkflowRunStateSnapshot,
+  snapshot: Pick<WorkflowRunStatus, 'events' | 'result' | 'running' | 'graphRunId'>,
+): WorkflowRunStateSnapshot {
+  const events = snapshot.events.reduce<WorkflowGraphEvent[]>(appendWorkflowEvent, current.events);
+  const terminalResult =
+    [...events].reverse().map(workflowResultFromGraphEnd).find(Boolean) ?? null;
+  const result = snapshot.result ?? terminalResult ?? current.result;
+  return {
+    events,
+    result,
+    running: snapshot.running,
+    graphRunId: snapshot.running ? (snapshot.graphRunId ?? current.graphRunId) : null,
+  };
+}
+
+function isMissingWorkflowRunError(err: unknown): boolean {
+  return (
+    err instanceof Error &&
+    (err as Error & { status?: number }).status === 404 &&
+    err.message === 'No workflow run in progress'
+  );
+}
+
 export function App() {
   const desktopMode = hasDesktopBridge();
   const {
@@ -238,6 +270,12 @@ export function App() {
   const [workflowRunResult, setWorkflowRunResult] = useState<WorkflowRunResult | null>(null);
   const [workflowRunning, setWorkflowRunning] = useState(false);
   const [workflowGraphRunId, setWorkflowGraphRunId] = useState<string | null>(null);
+  const workflowRunStateRef = useRef<WorkflowRunStateSnapshot>({
+    events: [],
+    result: null,
+    running: false,
+    graphRunId: null,
+  });
   const [platformExportProgress, setPlatformExportProgress] =
     useState<PlatformExportProgressState | null>(null);
   const platformExportBusy = platformExportProgress !== null;
@@ -263,6 +301,15 @@ export function App() {
     },
     [],
   );
+
+  useEffect(() => {
+    workflowRunStateRef.current = {
+      events: workflowEvents,
+      result: workflowRunResult,
+      running: workflowRunning,
+      graphRunId: workflowGraphRunId,
+    };
+  }, [workflowEvents, workflowGraphRunId, workflowRunResult, workflowRunning]);
 
   const hasUnsavedEditorState = useCallback(
     () =>
@@ -1730,11 +1777,32 @@ export function App() {
     setSaveAsInput(currentName);
   }, [yamlEditLocked, requireWorkspace, yamlPath]);
 
+  const refreshWorkflowRunStatus = useCallback(async () => {
+    const current = workflowRunStateRef.current;
+    if (!current.running && !current.graphRunId) return;
+    try {
+      const snapshot = await api.getWorkflowRunStatus(current.graphRunId ?? undefined);
+      const next = reconcileWorkflowRunState(current, snapshot);
+      setWorkflowEvents(next.events);
+      setWorkflowRunResult(next.result);
+      setWorkflowRunning(next.running);
+      setWorkflowGraphRunId(next.graphRunId);
+      workflowRunStateRef.current = next;
+      if (!next.running) {
+        workflowEventsUnsubscribeRef.current?.();
+        workflowEventsUnsubscribeRef.current = null;
+      }
+    } catch {
+      /* A transient status miss should not block returning to the graph. */
+    }
+  }, []);
+
   const handleShowWorkflows = useCallback(() => {
     if (!workDir) return;
     setWorkflowViewActive(true);
     void refreshWorkflowYamls();
-  }, [refreshWorkflowYamls, workDir]);
+    void refreshWorkflowRunStatus();
+  }, [refreshWorkflowRunStatus, refreshWorkflowYamls, workDir]);
 
   const handleWorkflowStart = useCallback(async (path: string) => {
     setWorkflowRunning(true);
@@ -1781,13 +1849,17 @@ export function App() {
     try {
       await api.abortWorkflowRun(workflowGraphRunId ?? undefined);
     } catch (err: unknown) {
+      if (isMissingWorkflowRunError(err)) {
+        await refreshWorkflowRunStatus();
+        return;
+      }
       setDialog({
         type: 'error',
         title: 'Abort workflow failed',
         details: [err instanceof Error ? err.message : String(err)],
       });
     }
-  }, [workflowGraphRunId, workflowRunning]);
+  }, [refreshWorkflowRunStatus, workflowGraphRunId, workflowRunning]);
 
   const activeYamlName = useMemo(
     () => (yamlPath ? (yamlPath.split(/[/\\]/).pop() ?? null) : null),
@@ -1881,7 +1953,13 @@ export function App() {
     setPipelinePickerActive(false);
     clearWorkflowReturnPathForNavigation('return-to-workflow-graph');
     void refreshWorkflowYamls();
-  }, [clearWorkflowReturnPathForNavigation, refreshWorkflowYamls, workflowReturnPath]);
+    void refreshWorkflowRunStatus();
+  }, [
+    clearWorkflowReturnPathForNavigation,
+    refreshWorkflowRunStatus,
+    refreshWorkflowYamls,
+    workflowReturnPath,
+  ]);
 
   type ActionItem = {
     label: string;

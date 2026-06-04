@@ -817,6 +817,7 @@ export interface ReleaseUpdateResult {
   ok: true;
   editorVersion: string;
   sidecarVersion: string;
+  opencodeVersion: string;
 }
 
 export type HotupdateKind = 'editor' | 'sidecar' | 'opencode' | 'release';
@@ -1217,6 +1218,14 @@ export interface StartWorkflowRunResult {
   ok: boolean;
   graphRunId?: string;
   running?: boolean;
+  result: WorkflowRunResult | null;
+  events: WorkflowGraphEvent[];
+}
+
+export interface WorkflowRunStatus {
+  ok: boolean;
+  graphRunId: string | null;
+  running: boolean;
   result: WorkflowRunResult | null;
   events: WorkflowGraphEvent[];
 }
@@ -1640,9 +1649,9 @@ export const api = {
   cancelSidecarUpdate: () => request<{ ok: true }>('/sidecar/update/cancel', { method: 'POST' }),
 
   /**
-   * Atomically update editor-dist + sidecar binary in one transaction. Either
-   * both components are staged and flipped, or neither is — there is no
-   * "editor new, sidecar old" intermediate state. Caller must prompt the user
+   * Atomically update editor-dist + sidecar binary + OpenCode in one transaction. Either
+   * all components are staged and flipped, or none are — there is no
+   * "editor new, sidecar old, OpenCode old" intermediate state. Caller must prompt the user
    * to restart (the bundled versions only go live after the app relaunches).
    */
   updateRelease: () => request<ReleaseUpdateResult>('/release/update', { method: 'POST' }),
@@ -1719,6 +1728,11 @@ export const api = {
       method: 'POST',
       body: jsonBody({ path, live: true }),
     }),
+
+  getWorkflowRunStatus: (graphRunId?: string) => {
+    const qs = graphRunId ? `?graphRunId=${encodeURIComponent(graphRunId)}` : '';
+    return request<WorkflowRunStatus>(`/run/workflow/status${qs}`);
+  },
 
   abortWorkflowRun: (graphRunId?: string) =>
     request<{ ok: boolean }>('/run/workflow/abort', {

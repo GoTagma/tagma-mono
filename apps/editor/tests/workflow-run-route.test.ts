@@ -115,6 +115,61 @@ function postJsonReq(
   });
 }
 
+function getReq(url: string, path: string): Promise<{ status: number; body: string }> {
+  const port = Number(new URL(url).port);
+  return new Promise((resolve, reject) => {
+    const sock = netConnect(port, '127.0.0.1', () => {
+      sock.write(
+        [
+          `GET ${path} HTTP/1.0`,
+          'Host: 127.0.0.1',
+          'Connection: close',
+          '',
+          '',
+        ].join('\r\n'),
+      );
+    });
+    let buffer = Buffer.alloc(0);
+    let resolved = false;
+    const finish = (result: { status: number; body: string }) => {
+      if (resolved) return;
+      resolved = true;
+      try {
+        sock.destroy();
+      } catch {
+        /* ignore */
+      }
+      resolve(result);
+    };
+    sock.on('data', (chunk: Buffer) => {
+      if (resolved) return;
+      buffer = Buffer.concat([buffer, chunk]);
+      const raw = buffer.toString('utf-8');
+      const sep = raw.indexOf('\r\n\r\n');
+      if (sep < 0) return;
+      const headerBlock = raw.slice(0, sep);
+      const statusLine = headerBlock.split('\r\n', 1)[0] ?? '';
+      const match = statusLine.match(/^HTTP\/\d\.\d (\d+)/);
+      const lengthMatch = headerBlock.match(/^content-length:\s*(\d+)/im);
+      const declared = lengthMatch ? Number(lengthMatch[1]) : null;
+      const bodyStart = sep + 4;
+      const bodyBytes = buffer.byteLength - bodyStart;
+      if (declared === null || bodyBytes >= declared) {
+        finish({
+          status: match ? Number(match[1]) : 0,
+          body:
+            declared === null
+              ? raw.slice(bodyStart)
+              : buffer.slice(bodyStart, bodyStart + declared).toString('utf-8'),
+        });
+      }
+    });
+    sock.on('error', (err) => {
+      if (!resolved) reject(err);
+    });
+  });
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -316,3 +371,28 @@ test('POST /api/run/workflow/start can launch a live workflow that is abortable'
     await close();
   }
 }, 10_000);
+
+test('GET /api/run/workflow/status reports no live workflow session', async () => {
+  const { url, close } = await startApp(buildApp());
+  try {
+    const res = await getReq(url, '/api/run/workflow/status');
+    const body = JSON.parse(res.body) as {
+      ok?: boolean;
+      running?: boolean;
+      graphRunId?: string | null;
+      result?: unknown;
+      events?: unknown[];
+    };
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({
+      ok: true,
+      running: false,
+      graphRunId: null,
+      result: null,
+      events: [],
+    });
+  } finally {
+    await close();
+  }
+});
