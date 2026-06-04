@@ -165,6 +165,14 @@ function isMissingWorkflowRunError(err: unknown): boolean {
   );
 }
 
+export function yamlEditLockRunBlockMessage(
+  yamlEditLocked: boolean,
+  yamlEditLockReason: string | null,
+): string | null {
+  if (!yamlEditLocked) return null;
+  return yamlEditLockReason || YAML_EDIT_LOCK_MESSAGE;
+}
+
 export function App() {
   const desktopMode = hasDesktopBridge();
   const {
@@ -1389,6 +1397,16 @@ export function App() {
 
   const handleRun = useCallback(async () => {
     if (!requireWorkspace('run')) return;
+    const lockMessage = yamlEditLockRunBlockMessage(yamlEditLocked, yamlEditLockReason);
+    if (lockMessage) {
+      setPendingRun(false);
+      setDialog({
+        type: 'error',
+        title: 'Cannot run while OpenCode chat is editing',
+        details: [lockMessage],
+      });
+      return;
+    }
     if (blockingValidationErrors.length > 0) {
       setDialog({
         type: 'error',
@@ -1410,6 +1428,8 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     requireWorkspace,
+    yamlEditLocked,
+    yamlEditLockReason,
     yamlPath,
     validationErrors,
     isDirty,

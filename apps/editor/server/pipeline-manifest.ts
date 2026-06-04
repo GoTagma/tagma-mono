@@ -214,7 +214,7 @@ export function buildYamlSkeletonFromManifest(manifest: PipelineManifest): strin
   const tasksByTrack = new Map<string, PipelineManifestSection[]>();
   for (const section of manifest.sections) {
     if (section.type === 'command' || section.type === 'prompt' || section.type === 'unknown') {
-      const trackId = section.track;
+      const { trackId } = taskSectionIds(section);
       if (!trackId) continue;
       const list = tasksByTrack.get(trackId) ?? [];
       list.push(section);
@@ -223,12 +223,12 @@ export function buildYamlSkeletonFromManifest(manifest: PipelineManifest): strin
   }
 
   const tracks = trackSections.map((trackSection) => {
-    const trackId = trackSection.track ?? trackSection.id.replace(/^track:/, '');
+    const trackId = trackSectionId(trackSection);
     const trackName = trackSection.summary || trackId;
     const taskSections = tasksByTrack.get(trackId) ?? [];
 
     const tasks = taskSections.map((taskSection) => {
-      const taskId = taskSection.task ?? taskSection.id.replace(/^task:/, '');
+      const taskId = taskSectionIds(taskSection).taskId;
       const isCommand = taskSection.type === 'command';
       const defaultPrompt =
         taskSection.summary && taskSection.summary !== taskId
@@ -277,6 +277,21 @@ export function buildYamlSkeletonFromManifest(manifest: PipelineManifest): strin
     noRefs: true,
   };
   return yaml.dump({ pipeline: pipelineObj }, dumpOptions);
+}
+
+function trackSectionId(section: PipelineManifestSection): string {
+  return section.track ?? section.id.replace(/^track:/, '');
+}
+
+function taskSectionIds(section: PipelineManifestSection): {
+  trackId: string | null;
+  taskId: string;
+} {
+  const raw = section.id.replace(/^task:/, '');
+  const dot = raw.indexOf('.');
+  const trackId = section.track ?? (dot > 0 ? raw.slice(0, dot) : null);
+  const taskId = section.task ?? (dot > 0 ? raw.slice(dot + 1) : raw);
+  return { trackId, taskId };
 }
 
 function removeManifestIfPresent(yamlPath: string): void {

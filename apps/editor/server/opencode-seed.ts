@@ -234,8 +234,10 @@ tools:
   webfetch: false
   task: true
   skill: true
+  tagma_yaml_skeleton: true
   tagma_placement_plan: true
 permission:
+  tagma_yaml_skeleton: allow
   tagma_placement_plan: allow
   task:
     "*": "deny"
@@ -321,7 +323,7 @@ If the marker is absent, or the editor context now points at another pipeline, n
 - Create new (manifest-first):
   1. Choose a valid stem.
   2. Write \`<stem>/<stem>.manifest.json\` — the structural blueprint with \`pipeline\`, \`track:*\`, and \`task:*\` sections (ids, types, summaries, depends_on, inputs, outputs).
-  3. Call \`POST /api/create-from-manifest\` with \`{ "stem": "<stem>" }\`, plus \`"requestedAction": { "kind": "create-new-pipeline" }\` when \`<requested-action kind="create-new-pipeline">\` is present. The editor generates \`<stem>/<stem>.yaml\` skeleton from the manifest and returns a fresh stem suggestion on create-name collisions.
+  3. Call \`tagma_yaml_skeleton\` with the same manifest object and write the returned YAML text to \`<stem>/<stem>.yaml\`.
   4. Read the generated YAML, then fill in each task's prompt or command content. Keep layout and requirements synchronized.
 
 When editing, patch in place. When creating, write files first, then summarize briefly.
@@ -331,7 +333,7 @@ When editing, patch in place. When creating, write files first, then summarize b
 ### Creation flow (new pipelines)
 
 1. Write \`<stem>.manifest.json\` first as the structural plan.
-2. Call \`POST /api/create-from-manifest\` — include \`requestedAction.kind=create-new-pipeline\` when the editor context has that marker.
+2. Call \`tagma_yaml_skeleton\` with the same manifest object and write the returned YAML text to \`<stem>/<stem>.yaml\`.
 3. Read the generated YAML and fill in each task's prompt or command content.
 4. The editor automatically regenerates the manifest from the YAML after every write — do not manually maintain the manifest after the initial creation.
 
@@ -369,7 +371,7 @@ Use OpenCode and Tagma native mechanisms before custom scaffolding.
 
 1. Read the latest \`<editor-context>\`.
 2. Classify as fill current manual-New draft, edit current, edit named, or create new.
-3. For **create new**: write the manifest first, call \`POST /api/create-from-manifest\`, then read the generated YAML and fill in task content.
+3. For **create new**: write the manifest first, call \`tagma_yaml_skeleton\`, write the returned YAML text, then read the generated YAML and fill in task content.
 4. For **edits**, resolve the target \`<pipeline>\` entry from the user's name plus \`<workspace-yaml-folders>\`; read its \`<manifest>\` first, select the target section ids, then read its \`<yaml>\`, \`.layout.json\`, \`.requirements.md\`, and \`.compile.log\`.
 5. Read only the workspace evidence needed to ground commands and paths.
 6. Load focused skill(s); never load every skill by default.
@@ -785,6 +787,150 @@ Load this when a workflow should remember lessons, reuse prior project knowledge
 `;
 }
 
+export function buildTagmaYamlSkeletonTool(): string {
+  return `import { tool } from "@opencode-ai/plugin";
+
+function asRecord(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function asString(value, fallback = "") {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : fallback;
+}
+
+function asStringArray(value) {
+  return Array.isArray(value)
+    ? value.filter((item) => typeof item === "string" && item.trim().length > 0).map((item) => item.trim())
+    : [];
+}
+
+function yamlString(value) {
+  return JSON.stringify(String(value));
+}
+
+function sectionIdWithoutPrefix(section, prefix) {
+  const id = asString(section.id);
+  return id.startsWith(prefix) ? id.slice(prefix.length) : id;
+}
+
+function trackSectionId(section) {
+  return asString(section.track, sectionIdWithoutPrefix(section, "track:")) || "main";
+}
+
+function taskSectionIds(section) {
+  const raw = sectionIdWithoutPrefix(section, "task:");
+  const dot = raw.indexOf(".");
+  return {
+    trackId: asString(section.track, dot > 0 ? raw.slice(0, dot) : ""),
+    taskId: asString(section.task, dot > 0 ? raw.slice(dot + 1) : raw) || "task",
+  };
+}
+
+function addBindingMap(lines, indent, key, names) {
+  if (names.length === 0) return;
+  lines.push(indent + key + ":");
+  for (const name of names) lines.push(indent + "  " + name + ": {}");
+}
+
+function buildTask(section) {
+  const taskId = taskSectionIds(section).taskId;
+  const isCommand = section.type === "command";
+  const summary = asString(section.summary);
+  const body =
+    summary && summary !== taskId
+      ? summary
+      : "TODO: define " + (isCommand ? "command" : "prompt") + " for " + taskId;
+  return {
+    id: taskId,
+    name: summary && summary !== taskId ? summary : "",
+    field: isCommand ? "command" : "prompt",
+    body,
+    depends_on: asStringArray(section.depends_on),
+    inputs: asStringArray(section.inputs),
+    outputs: asStringArray(section.outputs),
+  };
+}
+
+function buildYamlSkeleton(manifest) {
+  const root = asRecord(manifest);
+  const pipeline = asRecord(root.pipeline);
+  const sections = Array.isArray(root.sections) ? root.sections.map(asRecord) : [];
+  const pipelineName = asString(pipeline.name, "Untitled Pipeline");
+  const trackSections = sections.filter((section) => section.type === "track");
+  const tasksByTrack = new Map();
+
+  for (const section of sections) {
+    if (section.type !== "command" && section.type !== "prompt" && section.type !== "unknown") {
+      continue;
+    }
+    const trackId = taskSectionIds(section).trackId;
+    if (!trackId) continue;
+    const list = tasksByTrack.get(trackId) || [];
+    list.push(buildTask(section));
+    tasksByTrack.set(trackId, list);
+  }
+
+  const tracks =
+    trackSections.length > 0
+      ? trackSections.map((section) => {
+          const trackId = trackSectionId(section);
+          return {
+            id: trackId,
+            name: asString(section.summary, trackId),
+            tasks: tasksByTrack.get(trackId) || [],
+          };
+        })
+      : [{ id: "main", name: "Main", tasks: [] }];
+
+  const lines = ["pipeline:", "  name: " + yamlString(pipelineName), "  tracks:"];
+  for (const track of tracks) {
+    lines.push("    - id: " + yamlString(track.id));
+    lines.push("      name: " + yamlString(track.name));
+    lines.push("      tasks:");
+    const tasks = track.tasks.length > 0 ? track.tasks : [{ id: "placeholder", field: "prompt", body: "TODO: add tasks", depends_on: [], inputs: [], outputs: [] }];
+    for (const task of tasks) {
+      lines.push("        - id: " + yamlString(task.id));
+      if (task.name) lines.push("          name: " + yamlString(task.name));
+      lines.push("          " + task.field + ": " + yamlString(task.body));
+      if (task.depends_on.length > 0) {
+        lines.push("          depends_on:");
+        for (const dep of task.depends_on) lines.push("            - " + yamlString(dep));
+      }
+      addBindingMap(lines, "          ", "inputs", task.inputs);
+      addBindingMap(lines, "          ", "outputs", task.outputs);
+    }
+  }
+  return lines.join("\\n") + "\\n";
+}
+
+export default tool({
+  description: "Generate a Tagma YAML skeleton from a pipeline manifest.",
+  args: {
+    manifest: tool.schema
+      .object({
+        pipeline: tool.schema.object({ name: tool.schema.string().optional() }),
+        sections: tool.schema.array(
+          tool.schema.object({
+            id: tool.schema.string(),
+            type: tool.schema.string(),
+            summary: tool.schema.string().optional(),
+            track: tool.schema.string().optional(),
+            task: tool.schema.string().optional(),
+            depends_on: tool.schema.array(tool.schema.string()).optional(),
+            inputs: tool.schema.array(tool.schema.string()).optional(),
+            outputs: tool.schema.array(tool.schema.string()).optional(),
+          }),
+        ),
+      })
+      .describe("Pipeline manifest object previously written to <stem>/<stem>.manifest.json"),
+  },
+  async execute(args) {
+    return JSON.stringify({ yaml: buildYamlSkeleton(args.manifest) }, null, 2);
+  },
+});
+`;
+}
+
 export function buildTagmaPlacementTool(): string {
   return `import { tool } from "@opencode-ai/plugin";
 
@@ -1013,6 +1159,12 @@ export function seedOpencodeArtifacts(tagmaCwd: string): boolean {
     changed;
   changed =
     seedAgentFile(tagmaCwd, 'tagma-python-tools.md', buildTagmaPythonToolsAgent(hostOs)) || changed;
+  changed =
+    seedFile(
+      join(tagmaCwd, '.opencode', 'tools'),
+      'tagma_yaml_skeleton.ts',
+      buildTagmaYamlSkeletonTool(),
+    ) || changed;
   changed =
     seedFile(
       join(tagmaCwd, '.opencode', 'tools'),

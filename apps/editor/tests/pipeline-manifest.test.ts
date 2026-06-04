@@ -204,4 +204,42 @@ describe('pipeline manifest sidecar', () => {
     expect(parsed.pipeline.name).toBe('Empty');
     expect(parsed.pipeline.tracks.length).toBeGreaterThan(0);
   });
+
+  test('buildYamlSkeletonFromManifest derives track and task ids from section ids', () => {
+    const skeleton = buildYamlSkeletonFromManifest({
+      pipeline: { name: 'ID Only Pipeline', yaml: 'id-only.yaml' },
+      sections: [
+        { id: 'pipeline', type: 'pipeline', summary: 'ID Only Pipeline', yamlPath: 'pipeline' },
+        { id: 'track:main', type: 'track', summary: 'Main', yamlPath: 'pipeline.tracks[0]' },
+        {
+          id: 'task:main.plan',
+          type: 'prompt',
+          summary: 'Plan the implementation.',
+          yamlPath: 'pipeline.tracks[0].tasks[0]',
+        },
+        {
+          id: 'task:main.run',
+          type: 'command',
+          summary: 'echo run',
+          yamlPath: 'pipeline.tracks[0].tasks[1]',
+          depends_on: ['plan'],
+          outputs: ['result'],
+        },
+      ],
+    } as never);
+    const parsed = yaml.load(skeleton) as {
+      pipeline: {
+        tracks: Array<{
+          id: string;
+          tasks: Array<{ id: string; prompt?: string; command?: string; depends_on?: string[] }>;
+        }>;
+      };
+    };
+
+    expect(parsed.pipeline.tracks[0].id).toBe('main');
+    expect(parsed.pipeline.tracks[0].tasks.map((task) => task.id)).toEqual(['plan', 'run']);
+    expect(parsed.pipeline.tracks[0].tasks[0].prompt).toBe('Plan the implementation.');
+    expect(parsed.pipeline.tracks[0].tasks[1].command).toBe('echo run');
+    expect(parsed.pipeline.tracks[0].tasks[1].depends_on).toEqual(['plan']);
+  });
 });

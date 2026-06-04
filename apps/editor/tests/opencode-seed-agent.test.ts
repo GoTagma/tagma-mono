@@ -127,15 +127,16 @@ test('tagma-pipeline agent treats explicit creation as higher priority than exis
   expect(pipeline).toContain(
     'Do not patch, rename, or overwrite a listed existing YAML while satisfying a create-new request',
   );
-  expect(pipeline).toContain('"requestedAction": { "kind": "create-new-pipeline" }');
-  expect(pipeline).toContain('returns a fresh stem suggestion on create-name collisions');
+  expect(pipeline).toContain('call `tagma_yaml_skeleton`');
+  expect(pipeline).toContain('write the returned YAML text');
 });
 
 test('tagma-pipeline agent keeps manifest-first flow while enforcing section isolation', () => {
   const doc = buildTagmaPipelineAgent('Windows');
 
   expect(doc).toContain('Create new (manifest-first)');
-  expect(doc).toContain('POST /api/create-from-manifest');
+  expect(doc).toContain('tagma_yaml_skeleton');
+  expect(doc).not.toContain('POST /api/create-from-manifest');
   expect(doc).toContain('## Section Isolation Protocol');
   expect(doc).toContain('Treat each manifest section as the editing unit');
   expect(doc).toContain('Before changing YAML, name the affected section ids');
@@ -196,6 +197,8 @@ test('tagma-pipeline agent exposes focused skills and read-only native subagents
 
   expect(doc).toContain('task: true');
   expect(doc).toContain('skill: true');
+  expect(doc).toContain('tagma_yaml_skeleton: true');
+  expect(doc).toContain('tagma_yaml_skeleton: allow');
   expect(doc).toContain('tagma_placement_plan: true');
   expect(doc).toContain('tagma_placement_plan: allow');
   expect(doc).toContain('explore: "allow"');
@@ -293,6 +296,7 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   const historyAgent = join(agentsDir, 'tagma-history-compare.md');
   const reviewAgent = join(agentsDir, 'tagma-yaml-review.md');
   const pythonAgent = join(agentsDir, 'tagma-python-tools.md');
+  const skeletonTool = join(dir, '.opencode', 'tools', 'tagma_yaml_skeleton.ts');
   const placementTool = join(dir, '.opencode', 'tools', 'tagma_placement_plan.ts');
   const blockToolNames = [
     'tagma_read_block.ts',
@@ -319,6 +323,11 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   expect(readFileSync(pythonAgent, 'utf8')).toContain('name: tagma-python-tools');
   expect(readFileSync(pythonAgent, 'utf8')).toContain('hidden: true');
   expect(readFileSync(pythonAgent, 'utf8')).toContain('function-oriented Python helpers');
+  expect(existsSync(skeletonTool)).toBe(true);
+  expect(readFileSync(skeletonTool, 'utf8')).toContain(
+    'Generate a Tagma YAML skeleton from a pipeline manifest',
+  );
+  expect(readFileSync(skeletonTool, 'utf8')).toContain('export default tool');
 
   // No singular `.opencode/agent/` dir, and no renamed-away agents anywhere.
   expect(existsSync(join(dir, '.opencode', 'agent'))).toBe(false);
