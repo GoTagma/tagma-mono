@@ -38,9 +38,7 @@ export function describeOpencodeError(error: unknown, response?: Response): stri
     if (message) {
       const data = record.data;
       const status =
-        data && typeof data === 'object'
-          ? (data as Record<string, unknown>).statusCode
-          : undefined;
+        data && typeof data === 'object' ? (data as Record<string, unknown>).statusCode : undefined;
       if (typeof status === 'number' || typeof status === 'string') {
         return `HTTP ${status}: ${message}`;
       }
