@@ -21,7 +21,7 @@
     "install:clean": "rimraf node_modules bun.lock && bun pm cache rm && bun install"
   },
   "dependencies": {
-    "@opencode-ai/sdk": "1.14.41",
+    "@opencode-ai/sdk": "1.15.13",
     "@slack/socket-mode": "^2.0.7",
     "@slack/web-api": "^7.15.2",
     "@tagma/sdk": "workspace:*",

@@ -286,7 +286,7 @@ export function registerEditorRoutes(
     try {
       // Force-refresh the manifest cache on an explicit update click so the
       // user isn't ever blocked by an old "nothing to do" snapshot.
-      const manifest = await fetchHotupdateManifest(manifestUrl, true);
+      const manifest = await fetchHotupdateManifest(manifestUrl, true, controller.signal);
 
       const result = await performUpdate(manifest, controller.signal);
       res.json({ ok: true, version: result.version, distDir: result.distDir });

@@ -1,12 +1,25 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
+  convertPipelineYamlForPlatform,
   createLoopbackFetch,
   extractPlatformYamlFromReply,
   normalizeTagmaPlatform,
   parsePlatformExportModelPick,
   platformExportFileName,
 } from '../server/platform-export';
+
+const validPipelineYaml = [
+  'pipeline:',
+  '  name: Demo',
+  '  tracks:',
+  '    - id: build',
+  '      name: Build',
+  '      tasks:',
+  '        - id: say',
+  '          name: Say',
+  '          command: echo ok',
+].join('\n');
 
 describe('platform export helpers', () => {
   test('normalizes supported platform names only', () => {
@@ -99,6 +112,82 @@ describe('platform export helpers', () => {
       } else {
         process.env.HTTP_PROXY = prevProxy;
       }
+      server.stop(true);
+    }
+  });
+
+  test('platform conversion creates the temporary session with v2 metadata', async () => {
+    const sessionCreateBodies: unknown[] = [];
+    const promptBodies: unknown[] = [];
+    const deletedSessions: string[] = [];
+    const model = { providerID: 'anthropic', modelID: 'claude' };
+    const server = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      async fetch(req) {
+        const url = new URL(req.url);
+        if (url.pathname === '/config/providers' && req.method === 'GET') {
+          return new Response(
+            JSON.stringify({
+              providers: [{ id: 'anthropic', models: { claude: {} } }],
+              default: { anthropic: 'claude' },
+            }),
+            { headers: { 'content-type': 'application/json' } },
+          );
+        }
+        if (url.pathname === '/session' && req.method === 'POST') {
+          sessionCreateBodies.push(await req.json());
+          return new Response(JSON.stringify({ id: 'platform-session' }), {
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        if (url.pathname === '/session/platform-session/message' && req.method === 'POST') {
+          promptBodies.push(await req.json());
+          return new Response(
+            JSON.stringify({ parts: [{ type: 'text', text: validPipelineYaml }] }),
+            {
+              headers: { 'content-type': 'application/json' },
+            },
+          );
+        }
+        if (url.pathname === '/session/platform-session' && req.method === 'DELETE') {
+          deletedSessions.push('platform-session');
+          return new Response(JSON.stringify({ ok: true }), {
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        return new Response(`unexpected ${req.method} ${url.pathname}`, { status: 404 });
+      },
+    });
+
+    try {
+      const converted = await convertPipelineYamlForPlatform({
+        baseUrl: server.url.href,
+        sourceYaml: validPipelineYaml,
+        sourceName: 'pipeline.yaml',
+        sourcePlatform: 'windows',
+        targetPlatform: 'linux',
+        model,
+      });
+
+      expect(converted).toContain('pipeline:');
+      expect(sessionCreateBodies).toHaveLength(1);
+      expect(sessionCreateBodies[0]).toMatchObject({
+        metadata: {
+          tagma: {
+            source: 'platform-export',
+            model,
+            platformExport: {
+              sourceName: 'pipeline.yaml',
+              sourcePlatform: 'windows',
+              targetPlatform: 'linux',
+            },
+          },
+        },
+      });
+      expect(promptBodies).toHaveLength(1);
+      expect(deletedSessions).toEqual(['platform-session']);
+    } finally {
       server.stop(true);
     }
   });

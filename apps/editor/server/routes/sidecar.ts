@@ -89,7 +89,7 @@ async function performUpdate(signal?: AbortSignal): Promise<{ version: string; p
       'No update manifest URL configured. Set tagma.updateManifestBaseUrl in the installer package metadata.',
     );
   }
-  const manifest = await fetchHotupdateManifest(manifestUrl, true);
+  const manifest = await fetchHotupdateManifest(manifestUrl, true, signal);
 
   // Note: no route-level "already on this version" short-circuit anymore —
   // it would only check `existsSync(binary)` and miss a corrupt or truncated

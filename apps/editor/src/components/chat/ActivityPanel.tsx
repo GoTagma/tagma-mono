@@ -16,13 +16,15 @@ import type { ActivityEvent, ActivityKind } from '../../api/opencode-chat';
 
 const LIVE_ACTIVITY_TICK_MS = 1000;
 const LIVE_ACTIVITY_RESYNC_MS = 5000;
+const SILENT_TURN_SUMMARY_MS = 3000;
+const LONG_SILENT_TURN_MS = 15000;
 
 /**
  * Compact, collapsible "what is the model doing" log attached to an
- * assistant message. The summary line is visible only when it explains a
- * wait the user would otherwise perceive as blank/stuck (first response,
- * first token, retry, compaction, long-running tool, or long silence). Normal
- * streaming does not get a noisy "Working · Xs · N events" footer.
+ * assistant message. During the active turn, the summary names the latest
+ * phase directly (thinking, streaming answer, running a tool, retrying, or
+ * waiting). That keeps the chat from looking frozen while OpenCode is still
+ * making progress.
  *
  * Re-renders once per second whenever there's an open event tail, so the
  * elapsed counter and retry countdown move without depending on SSE traffic
@@ -253,8 +255,8 @@ function iconWithHealth(base: React.ReactNode, health: TurnHealthSummary | null)
  *   1. retry — provider is between attempts; users want the countdown.
  *   2. last event is `compacting` and recent (≤3 s) — surface it briefly.
  *   3. no assistant envelope yet — explicit "waiting for first response".
- *   4. tool running ≥5 s — name the tool so users know what's blocking.
- *   5. current turn but silent ≥10 s after assistant activity — "waiting
+ *   4. latest thinking / answer / tool activity — show current progress.
+ *   5. current turn but silent after assistant activity — "waiting
  *      for next update" (not "no activity", which reads like an error).
  */
 function computeActivitySummary({
@@ -314,7 +316,33 @@ function computeActivitySummary({
     };
   }
 
-  if (isCurrentTurn && last?.kind === 'tool-running' && now - last.startedAt > 5000) {
+  if (isCurrentTurn && last?.kind === 'thinking') {
+    const elapsed = formatDurationShort((last.endedAt ?? now) - last.startedAt);
+    const baseIcon = <Brain size={11} className="text-tagma-muted shrink-0 animate-pulse" />;
+    return {
+      line: appendTurnHealth(
+        `Thinking · ${elapsed}${activitySizeSuffix(last.bytes)}`,
+        recentHealth,
+      ),
+      tone: toneWithHealth('text-tagma-text', recentHealth),
+      icon: iconWithHealth(baseIcon, recentHealth),
+    };
+  }
+
+  if (isCurrentTurn && last?.kind === 'streaming-answer') {
+    const elapsed = formatDurationShort((last.endedAt ?? now) - last.startedAt);
+    const baseIcon = <Loader2 size={11} className="animate-spin shrink-0 text-tagma-muted" />;
+    return {
+      line: appendTurnHealth(
+        `Streaming answer · ${elapsed}${activitySizeSuffix(last.bytes)}`,
+        recentHealth,
+      ),
+      tone: toneWithHealth('text-tagma-text', recentHealth),
+      icon: iconWithHealth(baseIcon, recentHealth),
+    };
+  }
+
+  if (isCurrentTurn && last?.kind === 'tool-running') {
     const sec = Math.floor((now - last.startedAt) / 1000);
     const baseIcon = <Wrench size={11} className="text-tagma-muted shrink-0 animate-pulse" />;
     return {
@@ -324,7 +352,7 @@ function computeActivitySummary({
     };
   }
 
-  if (isCurrentTurn && lastActivityAt !== null && now - lastActivityAt > 10_000) {
+  if (isCurrentTurn && lastActivityAt !== null && now - lastActivityAt > SILENT_TURN_SUMMARY_MS) {
     if (turnHealth?.status === 'checking') {
       return {
         line: 'Checking OpenCode...',
@@ -381,7 +409,7 @@ function computeActivitySummary({
       };
     }
     const idleSec = Math.floor((now - lastActivityAt) / 1000);
-    const isLongIdle = idleSec >= 30;
+    const isLongIdle = idleSec >= LONG_SILENT_TURN_MS / 1000;
     return {
       line: isLongIdle
         ? `Still waiting · ${idleSec}s since last update`
@@ -408,6 +436,10 @@ function computeActivitySummary({
     tone: 'text-tagma-text',
     icon: <Loader2 size={11} className="animate-spin shrink-0 text-tagma-muted" />,
   };
+}
+
+function activitySizeSuffix(bytes: number | undefined): string {
+  return typeof bytes === 'number' && bytes > 0 ? ` · ${formatBytes(bytes)}` : '';
 }
 
 function countUniqueTools(activity: ActivityEvent[]): number {

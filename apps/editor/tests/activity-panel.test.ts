@@ -117,6 +117,45 @@ describe('activity panel live timer layout', () => {
     }
   });
 
+  test('surfaces live reasoning as the active turn summary', () => {
+    const realNow = Date.now;
+    const previous = {
+      sessionStatus: useChatStore.getState().sessionStatus,
+      lastActivityAt: useChatStore.getState().lastActivityAt,
+      turnHealth: useChatStore.getState().turnHealth,
+    };
+    Date.now = () => 6_000;
+    useChatStore.setState({ sessionStatus: null, lastActivityAt: 5_500, turnHealth: null });
+
+    try {
+      const html = renderToStaticMarkup(
+        createElement(TurnActivityPanel, {
+          activity: [
+            { kind: 'request-sent', startedAt: 0, endedAt: 100, count: 1 },
+            { kind: 'assistant-started', startedAt: 100, endedAt: 500, count: 1 },
+            {
+              kind: 'thinking',
+              startedAt: 1_000,
+              endedAt: null,
+              count: 3,
+              bytes: 2048,
+              key: 'part:p1',
+            },
+          ] satisfies ActivityEvent[],
+          isCurrentTurn: true,
+          surfaceSummary: true,
+          expanded: false,
+          onToggle: () => {},
+        }),
+      );
+
+      expect(html).toContain('Thinking · 5s · 2.0k chars');
+    } finally {
+      Date.now = realNow;
+      useChatStore.setState(previous);
+    }
+  });
+
   test('cosmetic live clock advances one visible second after a delayed tick', () => {
     expect(advanceLiveActivityNow(10_000, 12_150)).toBe(11_000);
   });

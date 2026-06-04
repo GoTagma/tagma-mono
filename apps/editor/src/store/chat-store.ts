@@ -4,6 +4,7 @@ import type {
   SessionStatus as OpencodeSessionStatus,
 } from '@opencode-ai/sdk/client';
 import {
+  createOpencodeSessionV2,
   getOpencodeClient,
   getOpencodeAuthHeader,
   getOpencodeBaseUrl,
@@ -11,6 +12,7 @@ import {
   getOpencodeWorkspaceKey,
   resetOpencodeClient,
   restartOpencodeForConfig,
+  updateOpencodeSessionV2,
   unwrap,
   type ActivityEvent,
   type ActivityKind,
@@ -57,11 +59,13 @@ import {
 import { describeToolPartForActivity } from '../utils/chat-tool-display';
 import { loadPersisted, savePersisted, sameModelPick, type ModelPick } from './chat-persist';
 import { buildEditorContext } from './chat-editor-context';
+import { buildTagmaSessionMetadata } from '../../shared/opencode-session-metadata.js';
 
 // Re-export for backward compatibility — tests and other consumers import this
 // from chat-store.
 export { buildEditorContext } from './chat-editor-context';
 import {
+  fetchConfiguredProviderModels,
   fetchProviderCatalog,
   reconcileModelPick,
   refreshProvidersAndAuth,
@@ -417,11 +421,59 @@ type ActivityInput = {
   key?: string;
 };
 
+interface SessionCreateBodyWithMetadata {
+  parentID?: string;
+  title?: string;
+  metadata?: Record<string, unknown>;
+}
+
 const FORCED_CHAT_AGENT = 'tagma-router';
 // Editable instruction seeded into the composer when error/bug context is
 // attached via "Ask AI" and the composer is empty. The user can edit or
 // clear it before sending.
 const DEFAULT_BUG_INSTRUCTION = 'Fix this bug.';
+
+function buildDesktopChatSessionMetadata(
+  workspaceKey: string,
+  reason: string,
+  model: ModelPick | null,
+): Record<string, unknown> {
+  const pipeline = usePipelineStore.getState();
+  return buildTagmaSessionMetadata({
+    source: 'desktop-chat',
+    workspacePath: workspaceKey,
+    yamlPath: pipeline.yamlPath,
+    model,
+    reason,
+  });
+}
+
+async function updateDesktopChatSessionMetadata(
+  sessionId: string,
+  workspaceKey: string,
+  reason: string,
+  model: ModelPick | null,
+): Promise<void> {
+  try {
+    await updateOpencodeSessionV2(
+      {
+        sessionID: sessionId,
+        metadata: buildDesktopChatSessionMetadata(workspaceKey, reason, model),
+      },
+      workspaceKey,
+    );
+  } catch (err) {
+    console.warn('[chat] session metadata update failed:', err);
+  }
+}
+
+async function createDesktopChatSessionWithMetadata(
+  workspaceKey: string,
+  body: SessionCreateBodyWithMetadata,
+): Promise<Session> {
+  const session = await createOpencodeSessionV2(body, workspaceKey);
+  return session as unknown as Session;
+}
 
 // ─── SSE plumbing ───────────────────────────────────────────────────────────
 // opencode emits granular events as generation progresses: envelope updates,
@@ -1944,7 +1996,13 @@ async function promptOpencode(
     let sessionId = get().currentSessionId;
     if (!sessionId) {
       try {
-        const s = await unwrap(client.session.create({ body: {} }));
+        const s = await createDesktopChatSessionWithMetadata(workspaceKeyAtStart, {
+          metadata: buildDesktopChatSessionMetadata(
+            workspaceKeyAtStart,
+            opts.internal ? 'internal-repair' : 'first-send',
+            model,
+          ),
+        });
         assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
         sessionId = s.id;
         set((prev) => ({
@@ -1976,7 +2034,9 @@ async function promptOpencode(
         })
       ) {
         try {
-          const fresh = await unwrap(client.session.create({ body: {} }));
+          const fresh = await createDesktopChatSessionWithMetadata(workspaceKeyAtStart, {
+            metadata: buildDesktopChatSessionMetadata(workspaceKeyAtStart, 'context-limit', model),
+          });
           assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
           sessionId = fresh.id;
           set((prev) => ({
@@ -2015,6 +2075,13 @@ async function promptOpencode(
     assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
 
     set({ yamlSnapshotBeforeSend: preSendSnapshot });
+
+    void updateDesktopChatSessionMetadata(
+      sessionId,
+      workspaceKeyAtStart,
+      opts.internal ? 'internal-repair' : 'prompt',
+      model,
+    );
 
     markTurnAcceptedForWatchdog(get, set);
     await unwrap(
@@ -2922,7 +2989,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // round-trip.
     const [providersLoad, agentsRes, sessions, providerCatalog, customProvidersRes] =
       await Promise.all([
-        unwrap(client.config.providers())
+        fetchConfiguredProviderModels(workspaceKeyAtStart)
           .then((value) => ({ ok: true as const, value }))
           .catch((err) => {
             console.error('[chat] providers failed:', err);
@@ -3083,8 +3150,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const workspaceKey = getOpencodeWorkspaceKey();
     clearTurnWatchdog();
     clearPendingPartsForSession(get().currentSessionId);
-    const client = await getOpencodeClient(workspaceKey);
-    const s = await unwrap(client.session.create({ body: {} }));
+    await getOpencodeClient(workspaceKey);
+    const s = await createDesktopChatSessionWithMetadata(workspaceKey, {
+      metadata: buildDesktopChatSessionMetadata(workspaceKey, 'manual-new-session', get().model),
+    });
     if (getOpencodeWorkspaceKey() !== workspaceKey) return;
     set((prev) => ({
       sessions: upsertSession(prev.sessions, s),

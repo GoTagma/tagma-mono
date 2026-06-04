@@ -42,7 +42,7 @@ export function registerReleaseRoutes(app: express.Express): void {
         .json({ error: `Another ${lock.activeKind} update is already running.` });
     }
     try {
-      const manifest = await fetchHotupdateManifest(manifestUrl, true);
+      const manifest = await fetchHotupdateManifest(manifestUrl, true, controller.signal);
       const result = await performBundleUpdate({
         manifest,
         editorUserDir,

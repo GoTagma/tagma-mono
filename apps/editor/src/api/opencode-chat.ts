@@ -18,6 +18,13 @@
  */
 
 import { createOpencodeClient, type OpencodeClient } from '@opencode-ai/sdk/client';
+import {
+  createOpencodeClient as createOpencodeV2Client,
+  type ModelV2Info,
+  type OpencodeClient as OpencodeV2Client,
+  type ProviderV2Info,
+  type Session as V2Session,
+} from '@opencode-ai/sdk/v2/client';
 import type {
   Agent as SdkAgent,
   Message,
@@ -26,6 +33,7 @@ import type {
   ProviderAuthMethod as SdkProviderAuthMethod,
 } from '@opencode-ai/sdk/client';
 import { getClientAuthToken, getClientWorkspace } from './client';
+import { describeOpencodeError, toOpencodeError } from '../../shared/opencode-errors.js';
 
 /**
  * Opencode 1.14 returns a `hidden: true` marker on internal utility agents
@@ -231,6 +239,7 @@ export interface OpencodeThreadEntry {
 
 interface ClientBootstrap {
   client: OpencodeClient;
+  v2Client: OpencodeV2Client;
   baseUrl: string;
   authHeader?: string;
 }
@@ -276,6 +285,18 @@ export function buildOpencodeClientConfig(
   return {
     baseUrl,
     headers: buildOpencodeRequestHeaders(authHeader),
+    throwOnError: true,
+  };
+}
+
+export function buildOpencodeV2ClientConfig(
+  baseUrl: string,
+  authHeader: string | undefined,
+): Parameters<typeof createOpencodeV2Client>[0] {
+  return {
+    baseUrl,
+    headers: buildOpencodeRequestHeaders(authHeader),
+    throwOnError: true,
   };
 }
 
@@ -311,7 +332,8 @@ async function bootstrap(workspaceKey: string): Promise<ClientBootstrap> {
   if (!body.baseUrl) throw new Error('opencode ensure response missing baseUrl');
   const authHeader = typeof body.authHeader === 'string' ? body.authHeader : undefined;
   const client = createOpencodeClient(buildOpencodeClientConfig(body.baseUrl, authHeader));
-  return { client, baseUrl: body.baseUrl, authHeader };
+  const v2Client = createOpencodeV2Client(buildOpencodeV2ClientConfig(body.baseUrl, authHeader));
+  return { client, v2Client, baseUrl: body.baseUrl, authHeader };
 }
 
 export async function getOpencodeClient(
@@ -329,6 +351,55 @@ export async function getOpencodeClient(
   }
   const { client } = await pending;
   return client;
+}
+
+export async function getOpencodeV2Client(
+  workspaceKey = currentWorkspaceKey(),
+): Promise<OpencodeV2Client> {
+  const key = workspaceKey;
+  let pending = bootstraps.get(key);
+  if (!pending) {
+    pending = bootstrap(key);
+    bootstraps.set(key, pending);
+  }
+  const { v2Client } = await pending;
+  return v2Client;
+}
+
+export interface ProviderModelCatalogV2Snapshot {
+  providers: ProviderV2Info[];
+  models: ModelV2Info[];
+}
+
+export type OpencodeSessionCreateV2Input = Parameters<OpencodeV2Client['session']['create']>[0];
+export type OpencodeSessionUpdateV2Input = Parameters<OpencodeV2Client['session']['update']>[0];
+export type OpencodeSessionV2 = V2Session;
+
+export async function fetchProviderModelCatalogV2(
+  workspaceKey = currentWorkspaceKey(),
+): Promise<ProviderModelCatalogV2Snapshot> {
+  const client = await getOpencodeV2Client(workspaceKey);
+  const [providers, models] = await Promise.all([
+    unwrap(client.v2.provider.list()),
+    unwrap(client.v2.model.list()),
+  ]);
+  return { providers, models };
+}
+
+export async function createOpencodeSessionV2(
+  body: OpencodeSessionCreateV2Input,
+  workspaceKey = currentWorkspaceKey(),
+): Promise<OpencodeSessionV2> {
+  const client = await getOpencodeV2Client(workspaceKey);
+  return unwrap(client.session.create(body));
+}
+
+export async function updateOpencodeSessionV2(
+  body: OpencodeSessionUpdateV2Input,
+  workspaceKey = currentWorkspaceKey(),
+): Promise<OpencodeSessionV2> {
+  const client = await getOpencodeV2Client(workspaceKey);
+  return unwrap(client.session.update(body));
 }
 
 /**
@@ -418,6 +489,7 @@ export async function restartOpencodeForConfig(
     key,
     Promise.resolve({
       client: createOpencodeClient(buildOpencodeClientConfig(body.baseUrl, authHeader)),
+      v2Client: createOpencodeV2Client(buildOpencodeV2ClientConfig(body.baseUrl, authHeader)),
       baseUrl: body.baseUrl,
       authHeader,
     }),
@@ -433,16 +505,16 @@ export async function restartOpencodeForConfig(
 export async function unwrap<T>(
   p: Promise<{ data?: T; error?: unknown; response: Response }>,
 ): Promise<T> {
-  const res = await p;
+  const res = await p.catch((err) => {
+    throw toOpencodeError(err);
+  });
   if (res.error) {
-    const msg =
-      typeof res.error === 'object' && res.error !== null && 'message' in res.error
-        ? String((res.error as { message: unknown }).message)
-        : `opencode request failed (${res.response.status})`;
-    throw new Error(msg);
+    throw toOpencodeError(res.error, res.response);
   }
   if (res.data === undefined) {
     throw new Error(`opencode returned no data (${res.response.status})`);
   }
   return res.data;
 }
+
+export { describeOpencodeError };

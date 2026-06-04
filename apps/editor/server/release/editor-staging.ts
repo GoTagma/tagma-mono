@@ -16,8 +16,9 @@ import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import * as tar from 'tar';
 import { assertValidHotupdateVersion, type HotupdateManifest } from '../update-manifest.js';
+import { downloadUrlToBuffer } from './download.js';
 
-const TARBALL_TIMEOUT_MS = 180_000;
+const TARBALL_IDLE_TIMEOUT_MS = 60_000;
 const MAX_DIST_TARBALL_BYTES = 100 * 1024 * 1024;
 // Decompression caps protect against zip-bomb-style tarballs where a tiny
 // .tar.gz expands into gigabytes. The download cap above only bounds the
@@ -88,44 +89,16 @@ async function downloadToFile(
   destFile: string,
   externalSignal?: AbortSignal,
 ): Promise<number> {
-  const timeoutSignal = AbortSignal.timeout(TARBALL_TIMEOUT_MS);
-  const signal = externalSignal ? AbortSignal.any([timeoutSignal, externalSignal]) : timeoutSignal;
-  const res = await fetch(url, { signal });
-  if (!res.ok) throw new Error(`Tarball download failed: HTTP ${res.status}`);
-  if (!res.body) throw new Error('Tarball response has no body');
-  const declared = Number(res.headers.get('content-length'));
-  if (Number.isFinite(declared) && declared > MAX_DIST_TARBALL_BYTES) {
-    throw new Error(
-      `Tarball too large: declared ${declared} bytes exceeds ${MAX_DIST_TARBALL_BYTES} byte cap`,
-    );
-  }
-  const reader = (res.body as ReadableStream<Uint8Array>).getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (!value) continue;
-    total += value.byteLength;
-    if (total > MAX_DIST_TARBALL_BYTES) {
-      try {
-        await reader.cancel();
-      } catch {
-        /* ignore */
-      }
-      throw new Error(`Tarball exceeds ${MAX_DIST_TARBALL_BYTES} byte cap (received ${total}+)`);
-    }
-    chunks.push(value);
-  }
+  const { buffer, bytesReceived } = await downloadUrlToBuffer({
+    url,
+    label: 'Editor tarball',
+    maxBytes: MAX_DIST_TARBALL_BYTES,
+    idleTimeoutMs: TARBALL_IDLE_TIMEOUT_MS,
+    signal: externalSignal,
+  });
   mkdirSync(dirname(destFile), { recursive: true });
-  writeFileSync(
-    destFile,
-    Buffer.concat(
-      chunks.map((c) => Buffer.from(c)),
-      total,
-    ),
-  );
-  return total;
+  writeFileSync(destFile, buffer);
+  return bytesReceived;
 }
 
 function sanitizeTarEntryPath(rawPath: string): string | null {

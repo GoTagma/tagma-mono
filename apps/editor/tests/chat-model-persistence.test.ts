@@ -1,6 +1,9 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
-import type { Provider, Session } from '../src/api/opencode-chat';
-import { reconcileModelPick } from '../src/store/chat-provider-catalog';
+import type { Provider, ProviderModelCatalogV2Snapshot, Session } from '../src/api/opencode-chat';
+import {
+  buildProvidersFromV2Catalog,
+  reconcileModelPick,
+} from '../src/store/chat-provider-catalog';
 
 class MemoryStorage {
   private readonly values = new Map<string, string>();
@@ -41,8 +44,11 @@ const customProviderRequests: Array<{ method: string; workspace: string }> = [];
 const restartRequests: string[] = [];
 const promptAsyncRequests: string[] = [];
 const sessionDeleteRequests: string[] = [];
+const sessionCreateRequests: Array<{ url: string; body: Record<string, unknown> }> = [];
+const sessionUpdateRequests: Array<{ url: string; body: Record<string, unknown> }> = [];
 let editorSettingsModel: { providerID: string; modelID: string } | null = null;
 let providersShouldFail = false;
+let sessionCreateShouldFail = false;
 const originalFetch = globalThis.fetch;
 const originalLocalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
 
@@ -52,7 +58,7 @@ Object.defineProperty(globalThis, 'localStorage', {
 });
 
 const { getClientWorkspace, setClientWorkspace } = await import('../src/api/client');
-const { resetOpencodeClient } = await import('../src/api/opencode-chat');
+const { resetOpencodeClient, updateOpencodeSessionV2 } = await import('../src/api/opencode-chat');
 const { useChatStore } = await import('../src/store/chat-store');
 const { useEditorSettingsStore } = await import('../src/store/editor-settings-store');
 
@@ -75,6 +81,27 @@ function endpointBase(url: string, suffix: string): string | null {
   return url.endsWith(suffix) ? url.slice(0, -suffix.length) : null;
 }
 
+async function jsonRequestBody(
+  request: Request | null,
+  init: RequestInit | undefined,
+): Promise<Record<string, unknown>> {
+  const explicitBody = init?.body;
+  if (explicitBody !== undefined && explicitBody !== null) {
+    const text =
+      typeof explicitBody === 'string'
+        ? explicitBody
+        : explicitBody instanceof URLSearchParams
+          ? explicitBody.toString()
+          : explicitBody instanceof FormData
+            ? ''
+            : await new Response(explicitBody).text();
+    return text ? (JSON.parse(text) as Record<string, unknown>) : {};
+  }
+  if (!request) return {};
+  const text = await request.clone().text();
+  return text ? (JSON.parse(text) as Record<string, unknown>) : {};
+}
+
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((r) => {
@@ -92,7 +119,7 @@ async function waitFor(condition: () => boolean): Promise<void> {
 }
 
 beforeAll(() => {
-  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = input instanceof Request ? input : null;
     const url = request?.url ?? String(input);
     const method = init?.method ?? request?.method ?? 'GET';
@@ -160,12 +187,32 @@ beforeAll(() => {
         jsonResponse(providerBodiesByBaseUrl.get(providerBase) ?? providersBody()),
       );
     }
+    const v2ProviderBase = endpointBase(url, '/api/provider');
+    if (v2ProviderBase) {
+      if (providersShouldFail) {
+        return Promise.reject(new Error('provider catalog unavailable'));
+      }
+      return Promise.resolve(jsonResponse(v2ProvidersBody(v2ProviderBase)));
+    }
+    const v2ModelBase = endpointBase(url, '/api/model');
+    if (v2ModelBase) {
+      if (providersShouldFail) {
+        return Promise.reject(new Error('provider catalog unavailable'));
+      }
+      return Promise.resolve(jsonResponse(v2ModelsBody(v2ModelBase)));
+    }
     if (endpointBase(url, '/agent')) {
       return Promise.resolve(jsonResponse([]));
     }
     const sessionBase = endpointBase(url, '/session');
     if (sessionBase && method === 'GET') {
       return Promise.resolve(jsonResponse(sessionListsByBaseUrl.get(sessionBase) ?? []));
+    }
+    if (method === 'PATCH' && /\/session\/[^/]+$/.test(new URL(url).pathname)) {
+      const body = await jsonRequestBody(request, init);
+      sessionUpdateRequests.push({ url, body });
+      const id = new URL(url).pathname.split('/').pop() ?? 'updated-session';
+      return Promise.resolve(jsonResponse({ id, metadata: body.metadata }));
     }
     for (const baseUrl of workspaceBaseUrls.values()) {
       if (url.startsWith(`${baseUrl}/session/`) && method === 'DELETE') {
@@ -180,7 +227,20 @@ beforeAll(() => {
       return Promise.resolve(jsonResponse({}));
     }
     if (sessionBase && method === 'POST') {
-      return Promise.resolve(jsonResponse({ id: 'new-session' }));
+      const body = await jsonRequestBody(request, init);
+      sessionCreateRequests.push({ url, body });
+      if (sessionCreateShouldFail) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ name: 'ServerError', data: { message: 'create failed' } }),
+            {
+              status: 500,
+              headers: { 'Content-Type': 'application/json' },
+            },
+          ),
+        );
+      }
+      return Promise.resolve(jsonResponse({ id: 'new-session', metadata: body.metadata }));
     }
     if (url.includes('/prompt_async')) {
       promptAsyncRequests.push(url);
@@ -246,6 +306,94 @@ function modelDef(id: string) {
   };
 }
 
+function v2Options() {
+  return { headers: {}, body: {}, aisdk: { provider: {}, request: {} } };
+}
+
+function v2Provider(
+  id: string,
+  enabled: ProviderModelCatalogV2Snapshot['providers'][number]['enabled'] = {
+    via: 'env',
+    name: `${id.toUpperCase()}_API_KEY`,
+  },
+): ProviderModelCatalogV2Snapshot['providers'][number] {
+  return {
+    id,
+    name: id[0].toUpperCase() + id.slice(1),
+    enabled,
+    env: [`${id.toUpperCase()}_API_KEY`],
+    endpoint: { type: 'anthropic/messages', url: `https://${id}.example.test` },
+    options: v2Options(),
+  };
+}
+
+function v2Model(
+  providerID: string,
+  id: string,
+  enabled = true,
+): ProviderModelCatalogV2Snapshot['models'][number] {
+  return {
+    id,
+    apiID: id,
+    providerID,
+    name: id.toUpperCase(),
+    endpoint: { type: 'anthropic/messages', url: `https://${providerID}.example.test` },
+    capabilities: { tools: true, input: ['text', 'image'], output: ['text'] },
+    options: v2Options(),
+    variants: [],
+    time: { released: 0 },
+    cost: [{ input: 3, output: 15, cache: { read: 0.3, write: 3 } }],
+    status: 'active',
+    enabled,
+    limit: { context: 200_000, output: 8_192 },
+  };
+}
+
+interface LegacyProviderFixture {
+  id: string;
+  name?: string;
+  env?: string[];
+  models?: Record<
+    string,
+    {
+      name?: string;
+      status?: ProviderModelCatalogV2Snapshot['models'][number]['status'];
+      limit?: { context?: number; output?: number };
+    }
+  >;
+}
+
+interface LegacyProviderBodyFixture {
+  providers: LegacyProviderFixture[];
+  default: Record<string, string>;
+}
+
+function legacyProviderBodyForBase(baseUrl: string): LegacyProviderBodyFixture {
+  return (providerBodiesByBaseUrl.get(baseUrl) ?? providersBody()) as LegacyProviderBodyFixture;
+}
+
+function v2ProvidersBody(baseUrl: string): ProviderModelCatalogV2Snapshot['providers'] {
+  return legacyProviderBodyForBase(baseUrl).providers.map((provider) => ({
+    ...v2Provider(provider.id),
+    name: provider.name ?? provider.id,
+    env: provider.env ?? [`${provider.id.toUpperCase()}_API_KEY`],
+  }));
+}
+
+function v2ModelsBody(baseUrl: string): ProviderModelCatalogV2Snapshot['models'] {
+  return legacyProviderBodyForBase(baseUrl).providers.flatMap((provider) =>
+    Object.entries(provider.models ?? {}).map(([modelID, model]) => ({
+      ...v2Model(provider.id, modelID),
+      name: model.name ?? modelID,
+      status: model.status ?? 'active',
+      limit: {
+        context: model.limit?.context ?? 100_000,
+        output: model.limit?.output ?? 8_192,
+      },
+    })),
+  );
+}
+
 afterEach(() => {
   const currentWorkspace = getClientWorkspace();
   if (currentWorkspace) resetOpencodeClient();
@@ -269,8 +417,11 @@ afterEach(() => {
   restartRequests.length = 0;
   promptAsyncRequests.length = 0;
   sessionDeleteRequests.length = 0;
+  sessionCreateRequests.length = 0;
+  sessionUpdateRequests.length = 0;
   editorSettingsModel = null;
   providersShouldFail = false;
+  sessionCreateShouldFail = false;
   setClientWorkspace(null);
   resetOpencodeClient();
   useEditorSettingsStore.getState().updateLocal(null);
@@ -303,6 +454,56 @@ afterAll(() => {
 });
 
 describe('chat model persistence', () => {
+  test('maps v2 provider/model catalog into the existing picker provider shape', () => {
+    const providers = buildProvidersFromV2Catalog({
+      providers: [v2Provider('anthropic')],
+      models: [v2Model('anthropic', 'claude-sonnet')],
+    });
+
+    expect(providers).toHaveLength(1);
+    expect(providers[0]?.source).toBe('env');
+    expect(providers[0]?.models['claude-sonnet']).toMatchObject({
+      id: 'claude-sonnet',
+      providerID: 'anthropic',
+      name: 'CLAUDE-SONNET',
+      status: 'active',
+      capabilities: {
+        toolcall: true,
+        input: { text: true, image: true },
+        output: { text: true },
+      },
+      limit: { context: 200_000, output: 8_192 },
+    });
+  });
+
+  test('filters disabled v2 providers and models from picker options', () => {
+    const providers = buildProvidersFromV2Catalog({
+      providers: [v2Provider('anthropic'), v2Provider('openai', false)],
+      models: [
+        v2Model('anthropic', 'enabled-model'),
+        v2Model('anthropic', 'disabled-model', false),
+        v2Model('openai', 'gpt-disabled-provider'),
+      ],
+    });
+
+    expect(providers.map((provider) => provider.id)).toEqual(['anthropic']);
+    expect(Object.keys(providers[0]?.models ?? {})).toEqual(['enabled-model']);
+  });
+
+  test('marks OpenAI Responses endpoints as reasoning capable', () => {
+    const providers = buildProvidersFromV2Catalog({
+      providers: [v2Provider('openai')],
+      models: [
+        {
+          ...v2Model('openai', 'gpt-5'),
+          endpoint: { type: 'openai/responses', url: 'https://api.openai.com/v1/responses' },
+        },
+      ],
+    });
+
+    expect(providers[0]?.models['gpt-5']?.capabilities.reasoning).toBe(true);
+  });
+
   test('reconciles model picks when a provider entry has no models yet', () => {
     const reconcilingProvider = { id: 'custom', name: 'Custom' } as unknown as Provider;
     const readyProvider = {
@@ -325,7 +526,15 @@ describe('chat model persistence', () => {
         { openai: 'gpt-5' },
         { providerID: 'custom', modelID: 'missing' },
       ),
-    ).toEqual({ providerID: 'openai', modelID: 'gpt-5' });
+    ).toBeNull();
+
+    expect(
+      reconcileModelPick(
+        [readyProvider],
+        { anthropic: 'claude' },
+        { providerID: 'custom', modelID: 'missing' },
+      ),
+    ).toEqual({ providerID: 'anthropic', modelID: 'claude' });
   });
 
   test('persists the selected model per workspace', () => {
@@ -661,6 +870,80 @@ describe('chat model persistence', () => {
     expect(promptAsyncRequests).toEqual([]);
     expect(useChatStore.getState().sending).toBe(false);
     expect(useChatStore.getState().pendingUserText).toBeNull();
+  });
+
+  test('creates desktop chat sessions with v2 metadata in the request body', async () => {
+    const repo = 'C:/metadata-repo';
+    const baseUrl = 'http://opencode-metadata.test';
+    const model = { providerID: 'anthropic', modelID: 'claude' };
+    workspaceBaseUrls.set(repo, baseUrl);
+    setClientWorkspace(repo);
+    useChatStore.setState({ model } as never);
+
+    await useChatStore.getState().newSession();
+
+    expect(sessionCreateRequests).toHaveLength(1);
+    expect(sessionCreateRequests[0]?.url).toBe(`${baseUrl}/session`);
+    expect(sessionCreateRequests[0]?.body).toMatchObject({
+      metadata: {
+        tagma: {
+          source: 'desktop-chat',
+          workspacePath: repo,
+          reason: 'manual-new-session',
+          model,
+        },
+      },
+    });
+    expect(Object.prototype.hasOwnProperty.call(sessionCreateRequests[0]?.body ?? {}, 'body')).toBe(
+      false,
+    );
+  });
+
+  test('does not retry desktop session creation after a non-schema failure', async () => {
+    const repo = 'C:/metadata-failure-repo';
+    const baseUrl = 'http://opencode-metadata-failure.test';
+    workspaceBaseUrls.set(repo, baseUrl);
+    setClientWorkspace(repo);
+    sessionCreateShouldFail = true;
+
+    let failed = false;
+    try {
+      await useChatStore.getState().newSession();
+    } catch {
+      failed = true;
+    }
+
+    expect(failed).toBe(true);
+    expect(sessionCreateRequests).toHaveLength(1);
+    expect(sessionCreateRequests[0]?.url).toBe(`${baseUrl}/session`);
+    expect(sessionCreateRequests[0]?.body).toMatchObject({
+      metadata: {
+        tagma: {
+          source: 'desktop-chat',
+          workspacePath: repo,
+          reason: 'manual-new-session',
+        },
+      },
+    });
+  });
+
+  test('updates session metadata with the v2 flat PATCH shape', async () => {
+    const repo = 'C:/metadata-update-repo';
+    const baseUrl = 'http://opencode-metadata-update.test';
+    const metadata = {
+      tagma: {
+        source: 'desktop-chat',
+        reason: 'prompt',
+      },
+    };
+    workspaceBaseUrls.set(repo, baseUrl);
+    setClientWorkspace(repo);
+
+    await updateOpencodeSessionV2({ sessionID: 'existing', metadata }, repo);
+
+    expect(sessionUpdateRequests).toHaveLength(1);
+    expect(sessionUpdateRequests[0]?.url).toBe(`${baseUrl}/session/existing`);
+    expect(sessionUpdateRequests[0]?.body).toEqual({ metadata });
   });
 
   test('keeps the selected model when switching or creating chat sessions', async () => {

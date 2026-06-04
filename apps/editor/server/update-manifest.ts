@@ -241,6 +241,7 @@ export function resolveHotupdateManifestUrl(kind: 'editor' | 'sidecar' = 'editor
 export async function fetchHotupdateManifest(
   url: string,
   force = false,
+  externalSignal?: AbortSignal,
 ): Promise<HotupdateManifest> {
   const now = Date.now();
   if (
@@ -251,22 +252,39 @@ export async function fetchHotupdateManifest(
   ) {
     return manifestCache.value;
   }
-  const res = await fetch(url, {
-    headers: { Accept: 'application/json' },
-    signal: AbortSignal.timeout(MANIFEST_TIMEOUT_MS),
-    cache: 'no-store',
-  });
-  if (!res.ok) throw new Error(`Manifest fetch failed: HTTP ${res.status} ${url}`);
-  const contentLength = res.headers.get('content-length');
-  if (contentLength) {
-    const declaredBytes = Number(contentLength);
-    if (Number.isFinite(declaredBytes) && declaredBytes > MAX_MANIFEST_JSON_BYTES) {
-      throw new Error(
-        `Manifest at ${url} is too large (${declaredBytes} bytes, cap ${MAX_MANIFEST_JSON_BYTES})`,
-      );
+  const timeoutSignal = AbortSignal.timeout(MANIFEST_TIMEOUT_MS);
+  const signal = externalSignal ? AbortSignal.any([timeoutSignal, externalSignal]) : timeoutSignal;
+  const prefix = `Manifest fetch failed for ${url}`;
+  let res: Response;
+  let text: string;
+  try {
+    res = await fetch(url, {
+      headers: { Accept: 'application/json' },
+      signal,
+      cache: 'no-store',
+    });
+    if (!res.ok) throw new Error(`${prefix}: HTTP ${res.status}`);
+    const contentLength = res.headers.get('content-length');
+    if (contentLength) {
+      const declaredBytes = Number(contentLength);
+      if (Number.isFinite(declaredBytes) && declaredBytes > MAX_MANIFEST_JSON_BYTES) {
+        throw new Error(
+          `Manifest at ${url} is too large (${declaredBytes} bytes, cap ${MAX_MANIFEST_JSON_BYTES})`,
+        );
+      }
     }
+    text = await res.text();
+  } catch (err) {
+    if (externalSignal?.aborted) throw err;
+    if (timeoutSignal.aborted) {
+      throw new Error(`${prefix}: timed out after ${MANIFEST_TIMEOUT_MS / 1000}s`);
+    }
+    if (err instanceof Error) {
+      if (err.message.startsWith(prefix)) throw err;
+      throw new Error(`${prefix}: ${err.message}`);
+    }
+    throw new Error(`${prefix}: ${String(err)}`);
   }
-  const text = await res.text();
   const bodyBytes = Buffer.byteLength(text, 'utf8');
   if (bodyBytes > MAX_MANIFEST_JSON_BYTES) {
     throw new Error(

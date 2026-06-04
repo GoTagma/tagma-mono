@@ -17,9 +17,10 @@ import {
   pickSidecarTarget,
   type HotupdateManifest,
 } from '../update-manifest.js';
+import { downloadUrlToBuffer } from './download.js';
 
 const MAX_SIDECAR_BINARY_BYTES = 300 * 1024 * 1024;
-const SIDECAR_DOWNLOAD_TIMEOUT_MS = 180_000;
+const SIDECAR_DOWNLOAD_IDLE_TIMEOUT_MS = 60_000;
 
 export interface SidecarStagingResult {
   version: string;
@@ -98,42 +99,15 @@ async function downloadBinary(
       `Manifest advertises a ${declaredSize} byte sidecar, exceeds ${MAX_SIDECAR_BINARY_BYTES} byte cap`,
     );
   }
-  const timeoutSignal = AbortSignal.timeout(SIDECAR_DOWNLOAD_TIMEOUT_MS);
-  const signal = externalSignal ? AbortSignal.any([timeoutSignal, externalSignal]) : timeoutSignal;
-  const res = await fetch(url, { signal });
-  if (!res.ok) throw new Error(`Sidecar download failed: HTTP ${res.status}`);
-  if (!res.body) throw new Error('Sidecar response has no body');
-  const headerSize = Number(res.headers.get('content-length'));
-  if (Number.isFinite(headerSize) && headerSize > MAX_SIDECAR_BINARY_BYTES) {
-    throw new Error(
-      `Sidecar too large: declared ${headerSize} bytes exceeds ${MAX_SIDECAR_BINARY_BYTES} byte cap`,
-    );
-  }
-  const reader = (res.body as ReadableStream<Uint8Array>).getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (!value) continue;
-    total += value.byteLength;
-    if (total > MAX_SIDECAR_BINARY_BYTES) {
-      try {
-        await reader.cancel();
-      } catch {
-        /* ignore */
-      }
-      throw new Error(`Sidecar exceeds ${MAX_SIDECAR_BINARY_BYTES} byte cap (received ${total}+)`);
-    }
-    chunks.push(value);
-  }
-  if (declaredSize > 0 && total !== declaredSize) {
-    throw new Error(`Sidecar size mismatch: manifest expected ${declaredSize}, got ${total}`);
-  }
-  return Buffer.concat(
-    chunks.map((chunk) => Buffer.from(chunk)),
-    total,
-  );
+  const { buffer } = await downloadUrlToBuffer({
+    url,
+    label: 'Sidecar binary',
+    maxBytes: MAX_SIDECAR_BINARY_BYTES,
+    idleTimeoutMs: SIDECAR_DOWNLOAD_IDLE_TIMEOUT_MS,
+    signal: externalSignal,
+    expectedBytes: declaredSize > 0 ? declaredSize : undefined,
+  });
+  return buffer;
 }
 
 /**
