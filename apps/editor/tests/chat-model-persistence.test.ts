@@ -476,6 +476,18 @@ describe('chat model persistence', () => {
     });
   });
 
+  test('treats missing v2 model enabled flag as enabled', () => {
+    const model = v2Model('anthropic', 'claude-sonnet');
+    delete (model as { enabled?: boolean }).enabled;
+
+    const providers = buildProvidersFromV2Catalog({
+      providers: [v2Provider('anthropic')],
+      models: [model],
+    });
+
+    expect(Object.keys(providers[0]?.models ?? {})).toEqual(['claude-sonnet']);
+  });
+
   test('filters disabled v2 providers and models from picker options', () => {
     const providers = buildProvidersFromV2Catalog({
       providers: [v2Provider('anthropic'), v2Provider('openai', false)],

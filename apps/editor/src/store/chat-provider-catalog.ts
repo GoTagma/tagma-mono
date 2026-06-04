@@ -115,7 +115,7 @@ export function buildProvidersFromV2Catalog(
   const modelsByProvider = new Map<string, Provider['models']>();
 
   for (const model of catalog.models) {
-    if (!model.enabled || !v2ProviderById.has(model.providerID)) continue;
+    if (model.enabled === false || !v2ProviderById.has(model.providerID)) continue;
     const providerModels = modelsByProvider.get(model.providerID) ?? {};
     const legacyModel = legacyById.get(model.providerID)?.models?.[model.id];
     providerModels[model.id] = {
