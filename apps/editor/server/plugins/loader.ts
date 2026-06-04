@@ -36,6 +36,8 @@ import type { WorkspaceState, LoadedPluginMeta } from '../workspace-state.js';
 import {
   discardPluginSnapshot,
   installPackageWithRollbackSnapshot,
+  packageManagerEnv,
+  resolveBunBinary,
   restorePluginStateAndResync,
 } from './install.js';
 import { loadPluginWorker } from './worker-runtime.js';
@@ -445,6 +447,41 @@ function packageDirInStoreRoot(storeRoot: string, name: string): string {
   return resolve(storeRoot, 'node_modules', ...parts);
 }
 
+function isRunningFromBunExecutable(): boolean {
+  const execPath = process.execPath.replace(/\\/g, '/').toLowerCase();
+  return execPath.endsWith('/bun') || execPath.endsWith('/bun.exe');
+}
+
+async function bundleStagedPluginEntryForImport(
+  stagedRoot: string,
+  stagedModulePath: string,
+  name: string,
+): Promise<string> {
+  const bundleDir = resolve(stagedRoot, '.tagma-plugin-bundle');
+  mkdirSync(bundleDir, { recursive: true });
+  const bundlePath = resolve(bundleDir, 'plugin.mjs');
+  const bun = resolveBunBinary();
+  const proc = Bun.spawn(
+    [bun, 'build', stagedModulePath, '--target=bun', '--format=esm', '--outfile', bundlePath],
+    {
+      cwd: stagedRoot,
+      env: packageManagerEnv(),
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  );
+  const [exitCode, stdout, stderr] = await Promise.all([
+    proc.exited,
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  if (exitCode !== 0 || !existsSync(bundlePath)) {
+    const detail = stderr.trim() || stdout.trim() || `bun build exited with code ${exitCode}`;
+    throw new Error(`Plugin "${name}" failed to bundle for packaged runtime: ${detail}`);
+  }
+  return bundlePath;
+}
+
 function stagePluginForImport(ws: WorkspaceState, name: string, storeRoot: string): string {
   if (!ws.workDir) {
     throw new PluginSafetyError('Cannot stage plugin: workspace directory is not set');
@@ -540,7 +577,10 @@ export async function loadPluginFromWorkDir(
         `Plugin "${name}" entry point "${entryPoint}" resolves outside its staged package directory. Refusing to load.`,
       );
     }
-    const fileUrl = pathToFileURL(stagedModulePath).href;
+    const importModulePath = isRunningFromBunExecutable()
+      ? stagedModulePath
+      : await bundleStagedPluginEntryForImport(stagedRoot, stagedModulePath, name);
+    const fileUrl = pathToFileURL(importModulePath).href;
 
     // R11: evaluate plugin code outside the sidecar isolate. A hung import or
     // long-running capability call terminates the worker instead of pinning

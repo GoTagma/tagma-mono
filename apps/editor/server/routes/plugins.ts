@@ -58,6 +58,7 @@ import {
   fetchMarketplacePackage,
   NPM_SEARCH_URL,
   MARKETPLACE_SEARCH_LIMIT,
+  OFFICIAL_MARKETPLACE_PLUGIN_NAMES,
 } from '../plugins/marketplace.js';
 import { REGISTRY_FETCH_TIMEOUT_MS } from '../plugins/install.js';
 import type { WorkspaceState } from '../workspace-state.js';
@@ -806,7 +807,8 @@ export function registerPluginRoutes(app: express.Express): void {
       });
       return;
     }
-    // We hit two upstream queries in parallel and merge them.
+    // We hit two upstream queries, add deterministic first-party package
+    // names, and merge everything before fetching exact package manifests.
     //
     //   1. `keywords:tagma-plugin` — the canonical discovery channel. Plugin
     //      authors (including third parties) opt in by adding the keyword
@@ -818,8 +820,23 @@ export function registerPluginRoutes(app: express.Express): void {
     //      @tagma/types are libraries) — the manifest check below
     //      discards any candidate whose package.json doesn't carry a
     //      `tagmaPlugin` field, so this scope-based discovery is safe.
+    //
+    //   3. First-party names — direct manifest fetches keep official plugins
+    //      visible while npm search indexing catches up immediately after
+    //      publish. These still pass the same tagmaPlugin validation below.
     const keywordText = q ? `keywords:tagma-plugin ${q}` : 'keywords:tagma-plugin';
     const scopeText = q ? `tagma ${q}` : 'tagma';
+    const queryNeedle = q.toLowerCase();
+    const compactQueryNeedle = queryNeedle.replace(/[\s_-]+/g, '');
+    const officialHits = compactQueryNeedle
+      ? OFFICIAL_MARKETPLACE_PLUGIN_NAMES.filter((name) => {
+          const lower = name.toLowerCase();
+          return (
+            lower.includes(queryNeedle) ||
+            lower.replace(/[\s_-]+/g, '').includes(compactQueryNeedle)
+          );
+        })
+      : OFFICIAL_MARKETPLACE_PLUGIN_NAMES;
     async function fetchSearch(text: string, scopeOnly: boolean): Promise<string[]> {
       const params = new URLSearchParams({ text, size: String(MARKETPLACE_SEARCH_LIMIT) });
       const r = await fetch(`${NPM_SEARCH_URL}?${params.toString()}`, {
@@ -848,7 +865,7 @@ export function registerPluginRoutes(app: express.Express): void {
         if (!upstreamError) upstreamError = e;
         return [] as string[];
       });
-      const rawNames = Array.from(new Set([...keywordHits, ...scopeHits]));
+      const rawNames = Array.from(new Set([...officialHits, ...keywordHits, ...scopeHits]));
       const resolved = await resolveMarketplaceEntries(rawNames);
       const filtered = category ? resolved.filter((e) => e.category === category) : resolved;
       // Sort: weekly downloads desc (null goes to the bottom), then name asc.

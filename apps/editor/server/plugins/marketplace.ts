@@ -28,6 +28,13 @@ export const NPM_DOWNLOADS_URL = 'https://api.npmjs.org/downloads/point/last-wee
 export const MARKETPLACE_CACHE_TTL_MS = 5 * 60 * 1000;
 export const MARKETPLACE_SEARCH_LIMIT = 50;
 export const MARKETPLACE_CONCURRENCY = 8;
+export const OFFICIAL_MARKETPLACE_PLUGIN_NAMES = [
+  '@tagma/driver-codex',
+  '@tagma/driver-claude-code',
+  '@tagma/middleware-lightrag',
+  '@tagma/trigger-webhook',
+  '@tagma/completion-llm-judge',
+] as const;
 export const VALID_PLUGIN_CATEGORIES: ReadonlySet<PluginCategory> = new Set([
   'drivers',
   'triggers',

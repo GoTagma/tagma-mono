@@ -671,7 +671,7 @@ function installRootPackageJson(name: string, spec: string): PackageJson {
   };
 }
 
-function packageManagerEnv(): Record<string, string> {
+export function packageManagerEnv(): Record<string, string> {
   const keep = new Set([
     'PATH',
     'Path',
@@ -725,7 +725,7 @@ function packageManagerEnv(): Record<string, string> {
  *   4. Otherwise throw with a clear "bun is required" error so the desktop
  *      packager knows it must ship one (or skip plugin install entirely).
  */
-function resolveBunBinary(): string {
+export function resolveBunBinary(): string {
   const explicit = process.env.TAGMA_BUN_BIN?.trim();
   if (explicit) {
     if (!existsSync(explicit)) {
