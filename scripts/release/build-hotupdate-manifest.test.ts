@@ -37,7 +37,6 @@ describe('build-hotupdate-manifest', () => {
   function writeAllSidecarAssets(dir: string, version: string): void {
     writeAsset(dir, `tagma-editor-server-${version}-win32-x64.exe`, 'win-sidecar');
     writeAsset(dir, `tagma-editor-server-${version}-linux-x64`, 'linux-sidecar');
-    writeAsset(dir, `tagma-editor-server-${version}-linux-arm64`, 'linux-arm-sidecar');
     writeAsset(dir, `tagma-editor-server-${version}-darwin-x64`, 'mac-sidecar');
     writeAsset(dir, `tagma-editor-server-${version}-darwin-arm64`, 'mac-arm-sidecar');
   }
@@ -45,7 +44,6 @@ describe('build-hotupdate-manifest', () => {
   function writeAllOpencodeAssets(dir: string, version: string): void {
     writeAsset(dir, `opencode-${version}-win32-x64.exe`, 'win-opencode');
     writeAsset(dir, `opencode-${version}-linux-x64`, 'linux-opencode');
-    writeAsset(dir, `opencode-${version}-linux-arm64`, 'linux-arm-opencode');
     writeAsset(dir, `opencode-${version}-darwin-x64`, 'mac-opencode');
     writeAsset(dir, `opencode-${version}-darwin-arm64`, 'mac-arm-opencode');
   }
@@ -66,7 +64,13 @@ describe('build-hotupdate-manifest', () => {
 
     // Spot-check the win32 entry — full set is verified by absence of a throw
     // (default mode requires every platform), and length matches SIDECAR_TARGETS.
-    expect(manifest.sidecar?.targets.length).toBe(5);
+    expect(manifest.sidecar?.targets.length).toBe(4);
+    expect(manifest.sidecar?.targets.map((t) => `${t.platform}/${t.arch}`)).toEqual([
+      'win32/x64',
+      'linux/x64',
+      'darwin/x64',
+      'darwin/arm64',
+    ]);
     expect(manifest.sidecar?.targets[0]).toEqual({
       platform: 'win32',
       arch: 'x64',
@@ -75,7 +79,13 @@ describe('build-hotupdate-manifest', () => {
       size: 'win-sidecar'.length,
     });
     expect(manifest.opencode?.version).toBe('1.15.13');
-    expect(manifest.opencode?.targets.length).toBe(5);
+    expect(manifest.opencode?.targets.length).toBe(4);
+    expect(manifest.opencode?.targets.map((t) => `${t.platform}/${t.arch}`)).toEqual([
+      'win32/x64',
+      'linux/x64',
+      'darwin/x64',
+      'darwin/arm64',
+    ]);
     expect(manifest.opencode?.targets[0]).toEqual({
       platform: 'win32',
       arch: 'x64',
@@ -111,7 +121,6 @@ describe('build-hotupdate-manifest', () => {
     const dir = withTempDir();
     writeAsset(dir, 'editor-dist-0.2.2.tar.gz', 'editor-dist');
     writeAsset(dir, 'tagma-editor-server-0.2.2-linux-x64', 'linux-sidecar');
-    writeAsset(dir, 'tagma-editor-server-0.2.2-linux-arm64', 'linux-arm-sidecar');
     writeAsset(dir, 'tagma-editor-server-0.2.2-darwin-x64', 'mac-sidecar');
     writeAsset(dir, 'tagma-editor-server-0.2.2-darwin-arm64', 'mac-arm-sidecar');
     writeAllOpencodeAssets(dir, '1.15.13');
@@ -158,7 +167,7 @@ describe('build-hotupdate-manifest', () => {
     });
 
     expect(manifest.sidecar).toBeUndefined();
-    expect(manifest.opencode?.targets).toHaveLength(5);
+    expect(manifest.opencode?.targets).toHaveLength(4);
   });
 
   test('emits partial sidecar set when allowPartialSidecars opts in', () => {

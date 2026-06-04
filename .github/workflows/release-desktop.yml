@@ -337,21 +337,6 @@ jobs:
           TAGMA_SIDECAR_OUTDIR="desktop-dist-$other_arch" \
             bun run build:sidecar
 
-      # Cross-compile a Linux arm64 sidecar so the hot-update manifest can
-      # advertise linux/arm64 alongside x64. electron-builder only packages
-      # linux-x64 in this matrix (no arm64 installer yet), so this binary
-      # is purely a hot-update asset — useful for users running the x64
-      # AppImage under emulation or rolling their own arm64 install.
-      - name: Cross-compile Linux arm64 sidecar (hot-update only)
-        if: matrix.platform == 'linux'
-        shell: bash
-        working-directory: apps/editor
-        run: |
-          set -euo pipefail
-          TAGMA_BUN_COMPILE_TARGET="bun-linux-arm64" \
-          TAGMA_SIDECAR_OUTDIR="desktop-dist-arm64" \
-            bun run build:sidecar
-
       # Stage per-arch sidecar dirs so electron-builder's extraResources entry
       # "../editor/desktop-dist-${arch}" finds a sidecar for every arch it's
       # packaging. Linux/Windows matrix legs only ship one arch, but the

@@ -10,20 +10,17 @@ import { sign as signEd25519 } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const SIDECAR_TARGETS = [
+// Hot updates are atomic: every advertised platform needs editor sidecar and
+// OpenCode payloads. Keep this list to targets the release workflow stages for
+// both components.
+const HOTUPDATE_TARGETS = [
   { platform: 'win32', arch: 'x64', extension: '.exe' },
   { platform: 'linux', arch: 'x64', extension: '' },
-  { platform: 'linux', arch: 'arm64', extension: '' },
   { platform: 'darwin', arch: 'x64', extension: '' },
   { platform: 'darwin', arch: 'arm64', extension: '' },
 ];
-const OPENCODE_TARGETS = [
-  { platform: 'win32', arch: 'x64', extension: '.exe' },
-  { platform: 'linux', arch: 'x64', extension: '' },
-  { platform: 'linux', arch: 'arm64', extension: '' },
-  { platform: 'darwin', arch: 'x64', extension: '' },
-  { platform: 'darwin', arch: 'arm64', extension: '' },
-];
+const SIDECAR_TARGETS = HOTUPDATE_TARGETS;
+const OPENCODE_TARGETS = HOTUPDATE_TARGETS;
 const SEMVER_VERSION_RE =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 

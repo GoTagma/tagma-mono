@@ -7,6 +7,10 @@ const workflow = readFileSync(
   'utf8',
 );
 const ciWorkflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+const releaseDesktopWorkflow = readFileSync(
+  new URL('../.github/workflows/release-desktop.yml', import.meta.url),
+  'utf8',
+);
 const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
 function stepIndex(text, name) {
@@ -14,6 +18,13 @@ function stepIndex(text, name) {
   const index = text.indexOf(needle);
   assert.notEqual(index, -1, `missing workflow step: ${name}`);
   return index;
+}
+
+function stepBlock(text, name, nextName) {
+  const start = stepIndex(text, name);
+  const end = stepIndex(text, nextName);
+  assert(start < end, `${name} must appear before ${nextName}`);
+  return text.slice(start, end);
 }
 
 test('publish-npm validates package selection and runs gates before npm auth', () => {
@@ -84,4 +95,39 @@ test('test:scripts runs both node mjs tests and Bun TypeScript script tests', ()
   assert.doesNotMatch(script, /node --test ["']?scripts\/\*\*\/\*\.test\.mjs/);
   assert.match(script, /bun test/);
   assert.match(script, /scripts\/\*\*\/\*\.test\.ts/);
+});
+
+test('release-desktop stages OpenCode for every hot-update manifest target', () => {
+  const block = stepBlock(
+    releaseDesktopWorkflow,
+    'Stage bundled opencode binary',
+    'Stage bundled Bun binary',
+  );
+  const targets = [
+    ['darwin', 'arm64'],
+    ['darwin', 'x64'],
+    ['linux', 'x64'],
+    ['win32', 'x64'],
+  ];
+
+  for (const [platform, arch] of targets) {
+    assert.match(
+      block,
+      new RegExp(`fetch-opencode\\.mjs --platform=${platform} --arch=${arch}\\b`),
+      `missing OpenCode staging for ${platform}/${arch}`,
+    );
+  }
+  assert.doesNotMatch(
+    block,
+    /fetch-opencode\.mjs --platform=linux --arch=arm64\b/,
+    'release must not stage linux/arm64 OpenCode unless linux/arm64 is a published hot-update target',
+  );
+});
+
+test('release-desktop does not publish linux arm64 sidecar-only hot-update assets', () => {
+  assert.doesNotMatch(
+    releaseDesktopWorkflow,
+    /Cross-compile Linux arm64 sidecar|bun-linux-arm64|desktop-dist-arm64/,
+    'linux/arm64 sidecars must not be produced without a matching published OpenCode target',
+  );
 });
