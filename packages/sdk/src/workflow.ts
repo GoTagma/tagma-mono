@@ -30,6 +30,10 @@ import type {
 import { PipelineValidationError, loadPipeline, validateConfigDiagnostics } from './schema';
 import type { ValidationError } from './validate-raw';
 import { assertWorkDir } from './workdir';
+import {
+  validateDeclaredSdkRequirement,
+  withInferredWorkflowSdkRequirement,
+} from './compatibility';
 
 export type {
   PipelineGraphAbortReason,
@@ -92,6 +96,7 @@ const VALID_PIPELINE_STOP_WHEN: ReadonlySet<PipelineGraphStopWhen> = new Set([
   'always',
 ]);
 const WORKFLOW_FIELDS: ReadonlySet<string> = new Set([
+  'requires',
   'kind',
   'name',
   'max_concurrency',
@@ -151,11 +156,15 @@ export function parseWorkflowYaml(content: string): RawWorkflowConfig {
 }
 
 export function serializeWorkflow(config: RawWorkflowConfig | WorkflowConfig): string {
-  return yaml.dump({ workflow: stripLoadedPipelines(config) }, WORKFLOW_YAML_DUMP_OPTIONS);
+  return yaml.dump(
+    { workflow: withInferredWorkflowSdkRequirement(stripLoadedPipelines(config)) },
+    WORKFLOW_YAML_DUMP_OPTIONS,
+  );
 }
 
 function stripLoadedPipelines(config: RawWorkflowConfig | WorkflowConfig): RawWorkflowConfig {
   return {
+    ...(config.requires ? { requires: config.requires } : {}),
     kind: config.kind ?? 'graph',
     name: config.name,
     ...(config.max_concurrency !== undefined ? { max_concurrency: config.max_concurrency } : {}),
@@ -179,6 +188,7 @@ export function validateRawWorkflow(config: RawWorkflowConfig): ValidationError[
     'workflow',
     errors,
   );
+  errors.push(...validateDeclaredSdkRequirement(config.requires, 'requires', 'workflow'));
   validateGraphHeader(config, errors);
   if (!Array.isArray(config.pipelines)) {
     errors.push({ path: 'pipelines', message: 'workflow.pipelines must be an array' });
@@ -700,6 +710,7 @@ function validatePipelineGraphConfig(config: PipelineGraphConfig): ValidationErr
     'workflow',
     errors,
   );
+  errors.push(...validateDeclaredSdkRequirement(config.requires, 'requires', 'workflow'));
   validateGraphHeader(config, errors);
   if (!Array.isArray(config.pipelines)) {
     errors.push({ path: 'pipelines', message: 'workflow.pipelines must be an array' });

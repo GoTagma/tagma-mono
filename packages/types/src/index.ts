@@ -335,9 +335,19 @@ export interface HooksConfig {
   readonly pipeline_error?: HookCommand;
 }
 
+export interface TagmaSdkRequirements {
+  /**
+   * Minimum @tagma/sdk version that may run this YAML document. The public
+   * YAML form is a lower-bound range such as ">=0.8.0"; plain "0.8.0" is
+   * accepted by the SDK as equivalent to ">=0.8.0".
+   */
+  readonly sdk?: string;
+}
+
 // ═══ Pipeline Config ═══
 
 export interface PipelineConfig {
+  readonly requires?: TagmaSdkRequirements;
   readonly name: string;
   readonly mode?: PipelineExecutionMode;
   readonly secrets?: readonly string[];
@@ -355,6 +365,7 @@ export interface PipelineConfig {
 // ═══ Raw Pipeline Config (from YAML) ═══
 
 export interface RawPipelineConfig {
+  readonly requires?: TagmaSdkRequirements;
   readonly name: string;
   readonly mode?: PipelineExecutionMode;
   readonly secrets?: readonly string[];
@@ -394,6 +405,7 @@ export interface RawWorkflowPipelineConfig {
 }
 
 export interface RawWorkflowConfig {
+  readonly requires?: TagmaSdkRequirements;
   readonly kind?: WorkflowDocumentKind;
   readonly name: string;
   readonly max_concurrency?: number;
@@ -412,6 +424,7 @@ export interface PipelineGraphPipelineConfig {
 }
 
 export interface PipelineGraphConfig {
+  readonly requires?: TagmaSdkRequirements;
   readonly kind?: WorkflowDocumentKind;
   readonly name: string;
   readonly max_concurrency?: number;

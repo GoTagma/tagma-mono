@@ -1,4 +1,25 @@
 export { createTagma, detectTagmaYamlKind, loadTagmaYaml } from './tagma';
+export {
+  TAGMA_SDK_VERSION,
+  YAML_FEATURE_MIN_SDK,
+  YAML_REQUIRES_FIELD_MIN_SDK,
+  compareSemver,
+  formatSdkRequirement,
+  inferPipelineCompatibility,
+  inferWorkflowCompatibility,
+  inferYamlCompatibility,
+  parseSdkRequirement,
+  sdkRequirementSatisfied,
+  validateDeclaredSdkRequirement,
+  withInferredPipelineSdkRequirement,
+  withInferredWorkflowSdkRequirement,
+} from './compatibility';
+export type {
+  CompatibilityDiagnostic,
+  ParsedSdkRequirement,
+  TagmaYamlCompatibility,
+  YamlCompatibilityFeature,
+} from './compatibility';
 export type {
   CreateTagmaOptions,
   Tagma,
@@ -72,6 +93,7 @@ export type {
   TaskLogLine,
   SecretResolver,
   SecretResolverContext,
+  TagmaSdkRequirements,
   ApprovalRequestInfo,
   ApprovalRequestHandle,
   TaskStatus,

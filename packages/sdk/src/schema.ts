@@ -15,6 +15,7 @@ import { isCommandTaskConfig } from '@tagma/types';
 import { buildDag, DEFAULT_PERMISSIONS, truncateForName, validatePath } from '@tagma/core';
 import { validateRaw, type ValidationError } from './validate-raw';
 import { assertWorkDir, workDirError } from './workdir';
+import { withInferredPipelineSdkRequirement } from './compatibility';
 
 export class PipelineValidationError extends Error {
   readonly diagnostics: readonly ValidationError[];
@@ -190,6 +191,7 @@ export function resolveConfig(raw: RawPipelineConfig, workDir: string): Pipeline
   });
 
   return {
+    requires: raw.requires,
     name: raw.name,
     mode: raw.mode,
     secrets: raw.secrets,
@@ -273,7 +275,10 @@ function stripForSerialization<T extends PipelineConfig | RawPipelineConfig>(con
  * Wraps the config under the top-level `pipeline` key as expected by parseYaml.
  */
 export function serializePipeline(config: PipelineConfig | RawPipelineConfig): string {
-  return yaml.dump({ pipeline: stripForSerialization(config) }, { lineWidth: 120, indent: 2 });
+  return yaml.dump(
+    { pipeline: withInferredPipelineSdkRequirement(stripForSerialization(config)) },
+    { lineWidth: 120, indent: 2 },
+  );
 }
 
 /**
@@ -353,6 +358,7 @@ export function deresolvePipeline(config: PipelineConfig, workDir: string): RawP
   });
 
   return {
+    ...(config.requires ? { requires: config.requires } : {}),
     name: config.name,
     ...(config.mode ? { mode: config.mode } : {}),
     ...(config.secrets?.length ? { secrets: config.secrets } : {}),

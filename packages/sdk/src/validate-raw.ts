@@ -25,6 +25,7 @@ import {
   type TaskIndex,
 } from '@tagma/core';
 import { extractInputReferences } from '@tagma/core';
+import { validateDeclaredSdkRequirement } from './compatibility';
 
 interface QidEntry {
   readonly track: RawTrackConfig;
@@ -106,6 +107,7 @@ const PERMISSION_FIELD_SET: ReadonlySet<string> = new Set(PERMISSION_FIELDS);
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 const PIPELINE_FIELDS: ReadonlySet<string> = new Set([
+  'requires',
   'name',
   'mode',
   'secrets',
@@ -553,6 +555,7 @@ export function validateRaw(
     'pipeline',
     errors,
   );
+  errors.push(...validateDeclaredSdkRequirement(config.requires, 'requires', 'pipeline'));
   if (!isNonEmptyString(config.name)) {
     errors.push({ path: 'name', message: 'Pipeline name is required' });
   }

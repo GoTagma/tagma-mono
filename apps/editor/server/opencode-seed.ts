@@ -476,7 +476,11 @@ export function buildTagmaYamlContractSkill(): string {
         'This exception does not apply to cwd, static_context.file, or file_exists.path.',
     )
     .split('\\`')
-    .join('`');
+    .join('`')
+    .replace(
+      'The whole config lives under a single top-level `pipeline:` key. A document\nwithout that wrapper is rejected with `YAML must contain a top-level\n"pipeline" key`.\n\n```yaml',
+      'The whole config lives under a single top-level `pipeline:` key. A document\nwithout that wrapper is rejected with `YAML must contain a top-level\n"pipeline" key`.\n\n`pipeline.requires.sdk` is SDK-owned compatibility metadata. Do not guess or\nhand-write a minimum SDK version unless the user explicitly asks for a higher\nruntime floor. The editor/SDK serializer infers the minimum from the final YAML\nfeatures and preserves existing higher requirements.\n\n```yaml',
+    );
 }
 
 export function buildTagmaNativePrimitivesSkill(): string {

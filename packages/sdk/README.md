@@ -86,6 +86,8 @@ directly only when you need lower-level package boundaries.
 
 ```yaml
 pipeline:
+  requires:
+    sdk: '>=0.7.40'
   name: my-pipeline
   mode: trusted
   driver: opencode
@@ -149,17 +151,20 @@ pipeline:
 
 ### Pipeline Fields
 
-| Field         | Type              | Required | Description                                                                                                                                        |
-| ------------- | ----------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`        | `string`          | Yes      | Pipeline name, used in logs and run IDs                                                                                                            |
-| `mode`        | `trusted \| safe` | No       | Execution boundary. Defaults to `safe`; `safe` blocks shell tasks, hooks, automatic plugins, execute permissions, and non-allowlisted capabilities |
-| `driver`      | `string`          | No       | Default driver for all tracks/tasks (inherited). Built-in: `opencode`                                                                              |
-| `model`       | `string`          | No       | Default model for all tracks/tasks (inherited). Exact model name, e.g. `claude-sonnet-4-6`                                                         |
-| `permissions` | `Permissions`     | No       | Default permissions inherited by all tracks/tasks (see Permissions)                                                                                |
-| `timeout`     | `string`          | No       | Pipeline-level timeout. Format: `"30s"`, `"5m"`, `"2h"`                                                                                            |
-| `plugins`     | `string[]`        | No       | External plugin packages to load, e.g. `["@tagma/driver-codex"]`                                                                                   |
-| `hooks`       | `HooksConfig`     | No       | Shell commands to run at lifecycle events (see Hooks below)                                                                                        |
-| `tracks`      | `TrackConfig[]`   | Yes      | List of parallel execution tracks                                                                                                                  |
+| Field         | Type               | Required | Description                                                                                                                                        |
+| ------------- | ------------------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `requires`    | `{ sdk?: string }` | No       | SDK-owned compatibility gate. `serializePipeline()` adds or raises `requires.sdk` when the YAML uses features that need a newer SDK                |
+| `name`        | `string`           | Yes      | Pipeline name, used in logs and run IDs                                                                                                            |
+| `mode`        | `trusted \| safe`  | No       | Execution boundary. Defaults to `safe`; `safe` blocks shell tasks, hooks, automatic plugins, execute permissions, and non-allowlisted capabilities |
+| `driver`      | `string`           | No       | Default driver for all tracks/tasks (inherited). Built-in: `opencode`                                                                              |
+| `model`       | `string`           | No       | Default model for all tracks/tasks (inherited). Exact model name, e.g. `claude-sonnet-4-6`                                                         |
+| `permissions` | `Permissions`      | No       | Default permissions inherited by all tracks/tasks (see Permissions)                                                                                |
+| `timeout`     | `string`           | No       | Pipeline-level timeout. Format: `"30s"`, `"5m"`, `"2h"`                                                                                            |
+| `plugins`     | `string[]`         | No       | External plugin packages to load, e.g. `["@tagma/driver-codex"]`                                                                                   |
+| `hooks`       | `HooksConfig`      | No       | Shell commands to run at lifecycle events (see Hooks below)                                                                                        |
+| `tracks`      | `TrackConfig[]`    | Yes      | List of parallel execution tracks                                                                                                                  |
+
+`requires.sdk` is a lower-bound SDK gate such as `">=0.7.40"`; plain `"0.7.40"` is accepted as equivalent. Older SDKs must not run a document that declares a higher requirement. Hosts and chat agents should not guess this value manually: save through `serializePipeline()` / `serializeWorkflow()` or call `inferYamlCompatibility()` and write the returned `sdkRequirement`. If an existing document declares a higher SDK requirement, the serializer preserves it rather than downgrading.
 
 ### Hooks Fields
 
@@ -431,6 +436,9 @@ File and directory trigger watch paths may be relative to `workDir`, absolute, o
 - `deresolvePipeline(config, workDir)`
 - `validateConfig(config)`
 - `compileYamlContent(content, options?)`
+- `inferYamlCompatibility(content)`
+- `inferPipelineCompatibility(config)`
+- `inferWorkflowCompatibility(config)`
 - `loadWorkflow(yaml, workDir)`
 - `parseWorkflowYaml(content)`
 - `serializeWorkflow(config)`
@@ -536,6 +544,8 @@ Workflow graph YAML wraps multiple pipeline YAML files and lets the SDK execute 
 
 ```yaml
 workflow:
+  requires:
+    sdk: '>=0.7.40'
   kind: graph
   name: release-flow
   max_concurrency: 2
@@ -554,6 +564,8 @@ workflow:
 Per-pipeline `lifecycle.max_runs` defaults to `1`. `lifecycle.stop_when` defaults to `success`; supported values are `success` (retry until the first successful run or the max is reached), `failure` (run until the first failed run or the max is reached), and `always` (run exactly `max_runs` attempts unless aborted). Graph results include `runCount`, `maxRuns`, and per-attempt state on each pipeline node.
 
 `createTagma().run(graphConfig, options)` runs a programmatic `PipelineGraphConfig`. `createTagma().runYaml(content, options)` detects either top-level `pipeline:` or `workflow:` YAML and returns `{ kind: 'pipeline' | 'workflow', result }`, so CLI hosts can route one file path through one SDK call.
+
+`serializeWorkflow()` also adds or raises `workflow.requires.sdk`. Raw workflow YAML references external pipeline files by `path`; each referenced pipeline file is loaded and checked through `loadPipeline()`, so nested pipeline requirements are enforced at run time too.
 
 ### `PipelineRunner`
 
