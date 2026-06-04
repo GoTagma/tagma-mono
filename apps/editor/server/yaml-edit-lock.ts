@@ -148,12 +148,7 @@ export function isYamlEditLockProtectedMutation(path: string): boolean {
     '/api/workspace/workflows',
   ]);
   if (exact.has(path)) return true;
-  const prefixes = [
-    '/api/pipeline',
-    '/api/tracks',
-    '/api/tasks',
-    '/api/dependencies',
-  ];
+  const prefixes = ['/api/pipeline', '/api/tracks', '/api/tasks', '/api/dependencies'];
   return prefixes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
 }
 

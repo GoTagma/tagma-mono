@@ -145,10 +145,7 @@ function setRawLock(
   recompute();
 }
 
-async function refreshHeldLock(
-  reason: string,
-  lease: ChatYamlEditLockLease,
-): Promise<void> {
+async function refreshHeldLock(reason: string, lease: ChatYamlEditLockLease): Promise<void> {
   const lock = localLock;
   if (!lock || lock.id !== lease.id || lock.workspaceKey !== lease.workspaceKey) return;
   const result = await api.acquireYamlEditLock(

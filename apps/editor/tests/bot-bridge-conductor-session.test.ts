@@ -101,11 +101,7 @@ class FakeTransport implements ChatTransport {
   async editMessage(chatId: string, messageId: string, text: string): Promise<void> {
     this.edited.push({ chatId, messageId, text });
   }
-  async sendButtons(
-    chatId: string,
-    text: string,
-    rows: InlineButton[][],
-  ): Promise<SentMessageRef> {
+  async sendButtons(chatId: string, text: string, rows: InlineButton[][]): Promise<SentMessageRef> {
     const messageId = `button-${this.buttons.length + 1}`;
     this.buttons.push({ chatId, text, rows, messageId });
     return { chatId, messageId };

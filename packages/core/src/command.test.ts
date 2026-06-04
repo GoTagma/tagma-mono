@@ -68,8 +68,8 @@ describe('command config helpers', () => {
     expect(() => commandToSpawnSpec({ argv: ['node', 1] } as CommandConfig, '/tmp/work')).toThrow(
       /command must be a non-empty shell string/,
     );
-    expect(() => commandLabel({ shell: 'node --version', argv: ['node'] } as CommandConfig)).toThrow(
-      /command must be a non-empty shell string/,
-    );
+    expect(() =>
+      commandLabel({ shell: 'node --version', argv: ['node'] } as CommandConfig),
+    ).toThrow(/command must be a non-empty shell string/);
   });
 });

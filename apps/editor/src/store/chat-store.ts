@@ -3266,7 +3266,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         (permissionWorkspaceKey === undefined || perm.workspaceKey === permissionWorkspaceKey),
     );
     const sessionId = sessionID ?? pending?.sessionID ?? state.currentSessionId;
-    const workspaceKey = permissionWorkspaceKey ?? pending?.workspaceKey ?? getOpencodeWorkspaceKey();
+    const workspaceKey =
+      permissionWorkspaceKey ?? pending?.workspaceKey ?? getOpencodeWorkspaceKey();
     if (!sessionId) return;
     try {
       const client = await getOpencodeClient(workspaceKey);

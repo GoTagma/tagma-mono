@@ -116,11 +116,17 @@ test('tagma-pipeline agent treats explicit creation as higher priority than exis
   expect(router).toContain('<requested-action kind="fill-manual-new-pipeline">');
 
   expect(pipeline).toContain('fill the manual New draft at `<current-file>`');
-  expect(pipeline).toContain('edit `<current-file>` in place even if the user used create/new wording');
+  expect(pipeline).toContain(
+    'edit `<current-file>` in place even if the user used create/new wording',
+  );
   expect(pipeline).toContain('Creation intent has priority over existing pipeline matches');
-  expect(pipeline).toContain('Existing `<workspace-yaml-folders>` entries are collision context, not edit targets');
+  expect(pipeline).toContain(
+    'Existing `<workspace-yaml-folders>` entries are collision context, not edit targets',
+  );
   expect(pipeline).toContain('If the desired stem already exists, choose a fresh unused stem');
-  expect(pipeline).toContain('Do not patch, rename, or overwrite a listed existing YAML while satisfying a create-new request');
+  expect(pipeline).toContain(
+    'Do not patch, rename, or overwrite a listed existing YAML while satisfying a create-new request',
+  );
   expect(pipeline).toContain('"requestedAction": { "kind": "create-new-pipeline" }');
   expect(pipeline).toContain('returns a fresh stem suggestion on create-name collisions');
 });

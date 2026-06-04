@@ -19,9 +19,7 @@ export function upsertPermission(
 ): PendingPermission[] {
   const idx = list.findIndex(
     (p) =>
-      p.id === next.id &&
-      p.sessionID === next.sessionID &&
-      p.workspaceKey === next.workspaceKey,
+      p.id === next.id && p.sessionID === next.sessionID && p.workspaceKey === next.workspaceKey,
   );
   if (idx < 0) return [...list, next];
   const copy = list.slice();

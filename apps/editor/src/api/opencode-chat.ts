@@ -338,9 +338,7 @@ export async function getOpencodeClient(
  * `getOpencodeClient`, so calling this before the client is ready still
  * spawns `opencode serve` exactly once.
  */
-export async function getOpencodeBaseUrl(
-  workspaceKey = currentWorkspaceKey(),
-): Promise<string> {
+export async function getOpencodeBaseUrl(workspaceKey = currentWorkspaceKey()): Promise<string> {
   const key = workspaceKey;
   let pending = bootstraps.get(key);
   if (!pending) {

@@ -23,7 +23,11 @@ const SEPARATE_NEW_PIPELINE_PATTERNS = [
   /(?:另一个|另外|再(?:创建|新建|新增|生成|建立|搭建|做一个|建一个|来一个)|单独|独立|第二个|不要当前|不是当前|别改当前).{0,48}(?:pipeline|流水线|管线)/iu,
   /(?:pipeline|流水线|管线).{0,48}(?:另一个|另外|单独|独立|第二个|不要当前|不是当前|别改当前)/iu,
 ] as const;
-function looksLikePipelineSubobjectCreation(text: string, matchStart: number, matchText: string): boolean {
+function looksLikePipelineSubobjectCreation(
+  text: string,
+  matchStart: number,
+  matchText: string,
+): boolean {
   const pipeline = PIPELINE_TARGET_RE.exec(matchText);
   if (!pipeline) return false;
 

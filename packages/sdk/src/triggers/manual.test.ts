@@ -90,9 +90,7 @@ describe('ManualTrigger', () => {
         triggerContext(new AbortController().signal, gateway),
       );
 
-      expect(gateway.requests[0]?.message).toBe(
-        'Manual confirmation required for task "t.manual"',
-      );
+      expect(gateway.requests[0]?.message).toBe('Manual confirmation required for task "t.manual"');
       handle.dispose('test cleanup');
     }
   });

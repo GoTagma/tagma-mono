@@ -88,9 +88,9 @@ describe('validatePluginConfig', () => {
     expect(validatePluginConfig(schema, { type: 'x', check: '' }, 'completion')).toContain(
       'completion.check shell string must not be empty',
     );
-    expect(validatePluginConfig(schema, { type: 'x', check: { argv: [] } }, 'completion')).toContain(
-      'completion.check.argv must contain at least one argument',
-    );
+    expect(
+      validatePluginConfig(schema, { type: 'x', check: { argv: [] } }, 'completion'),
+    ).toContain('completion.check.argv must contain at least one argument');
     expect(
       validatePluginConfig(schema, { type: 'x', check: { shell: 'x', argv: ['x'] } }, 'completion'),
     ).toContain(
