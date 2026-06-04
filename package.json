@@ -30,7 +30,7 @@
     "check:focus": "node scripts/focus-check.mjs",
     "check:imports": "node scripts/imports-check.mjs",
     "check:cycles": "node scripts/cycles-check.mjs",
-    "check:publish": "node scripts/publish-check.mjs",
+    "check:publish": "bun run build && node scripts/publish-check.mjs",
     "check:secrets": "node scripts/secrets-check.mjs",
     "check:types": "node node_modules/typescript/bin/tsc -p packages/types/tsconfig.json --noEmit",
     "check:core": "node node_modules/typescript/bin/tsc -p packages/core/tsconfig.json --noEmit",
