@@ -12,7 +12,6 @@ import {
   type PythonInstallPlan,
 } from '../../api/client';
 import { useEditorSettingsStore } from '../../store/editor-settings-store';
-import { useYamlEditLockStore } from '../../store/yaml-edit-lock-store';
 import { viewportH } from '../../utils/zoom';
 
 interface EditorSettingsPanelProps {
@@ -57,7 +56,6 @@ export function EditorSettingsPanel({
   const [installPlan, setInstallPlan] = useState<PythonInstallPlan | null>(null);
   const [pythonStatus, setPythonStatus] = useState<PythonWizardStatus>({ kind: 'idle' });
   const maxH = useMemo(() => Math.floor(viewportH() * 0.8), []);
-  const yamlEditLocked = useYamlEditLockStore((s) => s.active);
 
   const hasWorkspace = workDir.length > 0;
 
@@ -132,7 +130,6 @@ export function EditorSettingsPanel({
   };
 
   const handleApply = async () => {
-    if (yamlEditLocked) return;
     if (!hasWorkspace) return;
     setApplyStatus({ kind: 'running' });
     try {
@@ -418,7 +415,7 @@ export function EditorSettingsPanel({
                   <div className="flex items-center gap-2 pt-1">
                     <button
                       onClick={handleApply}
-                      disabled={!hasWorkspace || yamlEditLocked || applyStatus.kind === 'running'}
+                      disabled={!hasWorkspace || applyStatus.kind === 'running'}
                       className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 border border-tagma-accent/50 text-tagma-accent hover:bg-tagma-accent/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
                       title="Re-scan all YAMLs in this workspace and install/load any missing plugins. Affects plugins only — other settings above save instantly."
                     >

@@ -169,6 +169,8 @@ describe('YAML edit lock', () => {
     expect(isYamlEditLockProtectedMutation('/api/layout')).toBe(true);
     expect(isYamlEditLockProtectedMutation('/api/export-file/platform')).toBe(true);
     expect(isYamlEditLockProtectedMutation('/api/workspace/workflows')).toBe(true);
-    expect(isYamlEditLockProtectedMutation('/api/plugins/refresh')).toBe(true);
+    expect(isYamlEditLockProtectedMutation('/api/plugins/refresh')).toBe(false);
+    expect(isYamlEditLockProtectedMutation('/api/plugins/install')).toBe(false);
+    expect(isYamlEditLockProtectedMutation('/api/plugins/uninstall')).toBe(false);
   });
 });

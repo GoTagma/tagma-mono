@@ -61,6 +61,7 @@ import {
 } from '../plugins/marketplace.js';
 import { REGISTRY_FETCH_TIMEOUT_MS } from '../plugins/install.js';
 import type { WorkspaceState } from '../workspace-state.js';
+import { getActiveYamlEditLock, shouldBlockYamlEditLockMutation } from '../yaml-edit-lock.js';
 
 type UninstallImpactPayload = {
   name: string;
@@ -579,7 +580,17 @@ export function registerPluginRoutes(app: express.Express): void {
           removeFromPluginBlocklist(ws, pkgName);
           invalidatePluginCache(ws);
           let declaredPluginAdded = false;
-          if (declareInPipeline === true) {
+          const canDeclareInPipeline =
+            declareInPipeline === true &&
+            !shouldBlockYamlEditLockMutation(getActiveYamlEditLock(ws), {
+              // Declaring a local plugin updates the in-memory current
+              // pipeline config, so keep that write behind the YAML lock even
+              // though plugin package management itself remains available.
+              path: '/api/pipeline',
+              currentYamlPath: ws.yamlPath,
+              workDir: ws.workDir,
+            });
+          if (canDeclareInPipeline) {
             const existing = ws.config.plugins ?? [];
             if (!existing.includes(pkgName)) {
               ws.config = { ...ws.config, plugins: [...existing, pkgName] };

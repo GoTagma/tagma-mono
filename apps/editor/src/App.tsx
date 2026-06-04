@@ -1572,7 +1572,7 @@ export function App() {
         showPluginsPage();
         try {
           const result = await api.importLocalPlugin(path, {
-            declareInPipeline: true,
+            declareInPipeline: !yamlEditLocked,
             capabilityToken: capabilityToken ?? undefined,
           });
           setRegistry(result.registry);
@@ -1610,6 +1610,7 @@ export function App() {
       showPluginsPage,
       guardUnsavedChanges,
       clearWorkflowReturnPathForNavigation,
+      yamlEditLocked,
     ],
   );
 

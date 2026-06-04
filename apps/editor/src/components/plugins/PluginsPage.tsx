@@ -294,7 +294,6 @@ export function PluginsPage({
 
   const handleInstall = useCallback(
     async (name: string, version?: string) => {
-      if (yamlEditLocked) return;
       setActionState({ type: 'loading', name, action: 'install' });
       try {
         const result = await api.installPlugin(name, version);
@@ -309,7 +308,10 @@ export function PluginsPage({
         //     the plugin in YAML would point at a handler that isn't there.
         // In either case we leave declared state untouched and let the
         // success/error banner carry the message.
-        if (result.plugin.loaded && !declaredPlugins.includes(name)) {
+        // Plugin package/registry management is allowed while OpenCode chat
+        // owns the YAML edit lock. Only the optional current-pipeline
+        // declaration is deferred because it writes pipeline.plugins[].
+        if (result.plugin.loaded && !declaredPlugins.includes(name) && !yamlEditLocked) {
           onPluginsChange([...declaredPlugins, name]);
         }
         // Re-fetch the authoritative registry after the declared-plugins write.
@@ -358,7 +360,6 @@ export function PluginsPage({
 
   const performUpgrade = useCallback(
     async (name: string) => {
-      if (yamlEditLocked) return;
       setActionState({ type: 'loading', name, action: 'upgrade' });
       try {
         const result = await api.upgradePlugin(name);
@@ -393,12 +394,11 @@ export function PluginsPage({
         });
       }
     },
-    [onRegistryUpdate, refreshInstalled, onRefreshServerState, yamlEditLocked],
+    [onRegistryUpdate, refreshInstalled, onRefreshServerState],
   );
 
   const handleUpgrade = useCallback(
     async (name: string) => {
-      if (yamlEditLocked) return;
       setActionState({ type: 'loading', name, action: 'upgrade' });
       try {
         const plan = await api.planPluginUpgrade(name);
@@ -429,12 +429,11 @@ export function PluginsPage({
         });
       }
     },
-    [performUpgrade, yamlEditLocked],
+    [performUpgrade],
   );
 
   const performUninstall = useCallback(
     async (name: string, acknowledgedImpacts?: PluginUninstallImpact['impacts']) => {
-      if (yamlEditLocked) return;
       setActionState({ type: 'loading', name, action: 'uninstall' });
       try {
         const result = await api.uninstallPlugin(name, acknowledgedImpacts);
@@ -472,7 +471,7 @@ export function PluginsPage({
         });
       }
     },
-    [onRegistryUpdate, refreshInstalled, onRefreshServerState, yamlEditLocked],
+    [onRegistryUpdate, refreshInstalled, onRefreshServerState],
   );
 
   /**
@@ -484,7 +483,6 @@ export function PluginsPage({
    */
   const handleUninstall = useCallback(
     async (name: string) => {
-      if (yamlEditLocked) return;
       // Probe first with a loading banner so the user sees *something* even
       // if the scan takes a beat. The dialog (if shown) will replace it.
       setActionState({ type: 'loading', name, action: 'uninstall' });
@@ -507,12 +505,11 @@ export function PluginsPage({
       // spinner will reappear when the user clicks "Uninstall anyway".
       setActionState({ type: 'idle' });
     },
-    [performUninstall, yamlEditLocked],
+    [performUninstall],
   );
 
   const handleLoad = useCallback(
     async (name: string) => {
-      if (yamlEditLocked) return;
       setActionState({ type: 'loading', name, action: 'load' });
       try {
         const result = await api.loadPlugin(name);
@@ -541,7 +538,7 @@ export function PluginsPage({
         });
       }
     },
-    [onRegistryUpdate, refreshInstalled, onRefreshServerState, yamlEditLocked],
+    [onRegistryUpdate, refreshInstalled, onRefreshServerState],
   );
 
   // Reload re-stages and re-imports an already-loaded plugin. Useful when a
@@ -551,7 +548,6 @@ export function PluginsPage({
   // route short-circuits when the plugin is already in `loadedPluginMeta`.
   const handleReload = useCallback(
     async (name: string) => {
-      if (yamlEditLocked) return;
       setActionState({ type: 'loading', name, action: 'reload' });
       try {
         const result = await api.loadPlugin(name, { force: true });
@@ -580,7 +576,7 @@ export function PluginsPage({
         });
       }
     },
-    [onRegistryUpdate, refreshInstalled, onRefreshServerState, yamlEditLocked],
+    [onRegistryUpdate, refreshInstalled, onRefreshServerState],
   );
 
   // Explicit user-triggered refresh is the only way to re-hit npm once
@@ -601,7 +597,7 @@ export function PluginsPage({
           onRefresh={handleRefresh}
           refreshing={pluginsLoading || marketplaceLoading}
           onImportLocal={onRequestBrowseLocal}
-          actionsDisabled={yamlEditLocked}
+          actionsDisabled
         />
         <div className="flex-1 flex flex-col items-center justify-center text-tagma-muted gap-3">
           <Package size={48} className="opacity-30" />
@@ -626,7 +622,6 @@ export function PluginsPage({
         onRefresh={handleRefresh}
         refreshing={pluginsLoading || marketplaceLoading}
         onImportLocal={onRequestBrowseLocal}
-        actionsDisabled={yamlEditLocked}
         searchQuery={tab === 'local' ? localQuery : marketplaceQuery}
         onSearchQueryChange={tab === 'local' ? setLocalQuery : setMarketplaceQuery}
         searchPlaceholder={
@@ -651,7 +646,6 @@ export function PluginsPage({
               onUninstall={handleUninstall}
               onLoad={handleLoad}
               onReload={handleReload}
-              actionsDisabled={yamlEditLocked}
               onDismissAction={() => setActionState({ type: 'idle' })}
             />
           ) : (
@@ -669,7 +663,6 @@ export function PluginsPage({
               onInstall={handleInstall}
               onUpgrade={handleUpgrade}
               onUninstall={handleUninstall}
-              actionsDisabled={yamlEditLocked}
               onDismissAction={() => setActionState({ type: 'idle' })}
               onRetry={fetchMarketplace}
             />

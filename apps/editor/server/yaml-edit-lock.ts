@@ -153,7 +153,6 @@ export function isYamlEditLockProtectedMutation(path: string): boolean {
     '/api/tracks',
     '/api/tasks',
     '/api/dependencies',
-    '/api/plugins',
   ];
   return prefixes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
 }
