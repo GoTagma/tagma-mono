@@ -43,7 +43,6 @@ interface ConvertOptions {
 }
 
 type OpencodeRequest<T> = Promise<{ data?: T; error?: unknown; response: Response }>;
-type OpencodeClient = ReturnType<typeof createOpencodeClient>;
 type SessionCreateBodyWithMetadata = {
   metadata?: Record<string, unknown>;
 };

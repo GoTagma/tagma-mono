@@ -71,19 +71,17 @@ async function delay(ms: number, externalSignal?: AbortSignal): Promise<void> {
   if (externalSignal?.aborted) return;
   await new Promise<void>((resolve) => {
     let settled = false;
-    let onAbort: (() => void) | undefined;
-    let timer: ReturnType<typeof setTimeout>;
     const finish = () => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      if (onAbort) externalSignal?.removeEventListener('abort', onAbort);
+      externalSignal?.removeEventListener('abort', onAbort);
       resolve();
     };
-    timer = setTimeout(finish, ms);
-    onAbort = () => {
+    const onAbort = () => {
       finish();
     };
+    const timer = setTimeout(finish, ms);
     externalSignal?.addEventListener('abort', onAbort, { once: true });
   });
 }

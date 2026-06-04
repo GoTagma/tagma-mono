@@ -250,10 +250,6 @@ async function getClientEntryFor(workspaceKey: string): Promise<ClientCacheEntry
   return entry;
 }
 
-async function getClientFor(workspaceKey: string): Promise<OpencodeClient> {
-  return (await getClientEntryFor(workspaceKey)).client;
-}
-
 function workspaceRelativePath(workDir: string, absPath: string | null | undefined): string | null {
   if (!workDir || !absPath) return null;
   const rel = relative(workDir, absPath).replace(/\\/g, '/');
