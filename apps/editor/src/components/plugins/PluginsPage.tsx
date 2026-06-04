@@ -41,6 +41,7 @@ export type PluginActionState =
   | { type: 'error'; name: string; action: PluginAction; message: string; kind: ErrorKind };
 
 export type PluginAction = 'install' | 'uninstall' | 'load' | 'reload' | 'import' | 'upgrade';
+export type PluginActionStates = Readonly<Record<string, PluginActionState>>;
 
 interface PluginsPageProps {
   workDir: string;
@@ -118,17 +119,63 @@ export function PluginsPage({
   const [marketplaceWarning, setMarketplaceWarning] = useState<string | null>(null);
   const marketplaceReloadIdRef = useRef(0);
 
-  const [actionState, setActionState] = useState<PluginActionState>({ type: 'idle' });
+  const [actionStates, setActionStates] = useState<Record<string, PluginActionState>>({});
+  const [actionFeedback, setActionFeedback] = useState<PluginActionState>({ type: 'idle' });
   const yamlEditLocked = useYamlEditLockStore((s) => s.active);
+  const yamlEditLockedRef = useRef(yamlEditLocked);
+  const declaredPluginsRef = useRef<readonly string[]>(declaredPlugins);
+
+  useEffect(() => {
+    yamlEditLockedRef.current = yamlEditLocked;
+  }, [yamlEditLocked]);
+
+  useEffect(() => {
+    declaredPluginsRef.current = declaredPlugins;
+  }, [declaredPlugins]);
+
+  const beginAction = useCallback((name: string, action: PluginAction) => {
+    const state: PluginActionState = { type: 'loading', name, action };
+    setActionStates((states) => ({ ...states, [name]: state }));
+    setActionFeedback(state);
+  }, []);
+
+  const finishAction = useCallback((state: Exclude<PluginActionState, { type: 'idle' }>) => {
+    setActionStates((states) => ({ ...states, [state.name]: state }));
+    setActionFeedback(state);
+  }, []);
+
+  const dismissActionFeedback = useCallback(() => {
+    setActionFeedback({ type: 'idle' });
+  }, []);
+
+  const declarePluginIfAllowed = useCallback(
+    (name: string) => {
+      if (yamlEditLockedRef.current) return;
+      const current = declaredPluginsRef.current;
+      if (current.includes(name)) return;
+      const next = [...current, name];
+      declaredPluginsRef.current = next;
+      onPluginsChange(next);
+    },
+    [onPluginsChange],
+  );
 
   // Auto-dismiss success messages so they don't linger as visual noise.
   useEffect(() => {
-    if (actionState.type !== 'success') return;
+    if (actionFeedback.type !== 'success') return;
+    const target = actionFeedback;
     const id = setTimeout(() => {
-      setActionState((s) => (s.type === 'success' ? { type: 'idle' } : s));
+      setActionFeedback((s) =>
+        s.type === 'success' &&
+        s.name === target.name &&
+        s.action === target.action &&
+        s.message === target.message
+          ? { type: 'idle' }
+          : s,
+      );
     }, SUCCESS_DISMISS_MS);
     return () => clearTimeout(id);
-  }, [actionState]);
+  }, [actionFeedback]);
 
   // ── Installed plugins (shared between both tabs) ──
   const refreshInstalled = useCallback(async () => {
@@ -294,7 +341,7 @@ export function PluginsPage({
 
   const handleInstall = useCallback(
     async (name: string, version?: string) => {
-      setActionState({ type: 'loading', name, action: 'install' });
+      beginAction(name, 'install');
       try {
         const result = await api.installPlugin(name, version);
         onRegistryUpdate(result.registry);
@@ -311,8 +358,8 @@ export function PluginsPage({
         // Plugin package/registry management is allowed while OpenCode chat
         // owns the YAML edit lock. Only the optional current-pipeline
         // declaration is deferred because it writes pipeline.plugins[].
-        if (result.plugin.loaded && !declaredPlugins.includes(name) && !yamlEditLocked) {
-          onPluginsChange([...declaredPlugins, name]);
+        if (result.plugin.loaded) {
+          declarePluginIfAllowed(name);
         }
         // Re-fetch the authoritative registry after the declared-plugins write.
         // `updatePipelineFields` fires an async /api/pipeline PATCH whose
@@ -329,7 +376,7 @@ export function PluginsPage({
         // Re-fetch server state so validateRaw re-runs with the new known-types
         // snapshot and any pre-existing "unknown type" warnings clear out.
         await onRefreshServerState();
-        setActionState({
+        finishAction({
           type: 'success',
           name,
           action: 'install',
@@ -339,7 +386,7 @@ export function PluginsPage({
         });
       } catch (e: unknown) {
         const message = extractErrorMessage(e);
-        setActionState({
+        finishAction({
           type: 'error',
           name,
           action: 'install',
@@ -349,18 +396,18 @@ export function PluginsPage({
       }
     },
     [
-      declaredPlugins,
+      beginAction,
+      declarePluginIfAllowed,
+      finishAction,
       onRegistryUpdate,
-      onPluginsChange,
       refreshInstalled,
       onRefreshServerState,
-      yamlEditLocked,
     ],
   );
 
   const performUpgrade = useCallback(
     async (name: string) => {
-      setActionState({ type: 'loading', name, action: 'upgrade' });
+      beginAction(name, 'upgrade');
       try {
         const result = await api.upgradePlugin(name);
         onRegistryUpdate(result.registry);
@@ -371,7 +418,7 @@ export function PluginsPage({
         }
         await refreshInstalled();
         await onRefreshServerState();
-        setActionState({
+        finishAction({
           type: 'success',
           name,
           action: 'upgrade',
@@ -385,7 +432,7 @@ export function PluginsPage({
         });
       } catch (e: unknown) {
         const message = extractErrorMessage(e);
-        setActionState({
+        finishAction({
           type: 'error',
           name,
           action: 'upgrade',
@@ -394,16 +441,16 @@ export function PluginsPage({
         });
       }
     },
-    [onRegistryUpdate, refreshInstalled, onRefreshServerState],
+    [beginAction, finishAction, onRegistryUpdate, refreshInstalled, onRefreshServerState],
   );
 
   const handleUpgrade = useCallback(
     async (name: string) => {
-      setActionState({ type: 'loading', name, action: 'upgrade' });
+      beginAction(name, 'upgrade');
       try {
         const plan = await api.planPluginUpgrade(name);
         if (plan.status === 'blocked') {
-          setActionState({
+          finishAction({
             type: 'error',
             name,
             action: 'upgrade',
@@ -414,13 +461,14 @@ export function PluginsPage({
         }
         if (plan.upgrades.length > 1) {
           setUpgradeConfirm(plan);
-          setActionState({ type: 'idle' });
+          setActionStates((states) => ({ ...states, [name]: { type: 'idle' } }));
+          setActionFeedback({ type: 'idle' });
           return;
         }
         await performUpgrade(name);
       } catch (e: unknown) {
         const message = extractErrorMessage(e);
-        setActionState({
+        finishAction({
           type: 'error',
           name,
           action: 'upgrade',
@@ -429,12 +477,12 @@ export function PluginsPage({
         });
       }
     },
-    [performUpgrade],
+    [beginAction, finishAction, performUpgrade],
   );
 
   const performUninstall = useCallback(
     async (name: string, acknowledgedImpacts?: PluginUninstallImpact['impacts']) => {
-      setActionState({ type: 'loading', name, action: 'uninstall' });
+      beginAction(name, 'uninstall');
       try {
         const result = await api.uninstallPlugin(name, acknowledgedImpacts);
         onRegistryUpdate(result.registry);
@@ -454,7 +502,7 @@ export function PluginsPage({
         // Re-run server-side validation so newly-orphaned task references
         // surface as warnings immediately, without having to touch the Task.
         await onRefreshServerState();
-        setActionState({
+        finishAction({
           type: 'success',
           name,
           action: 'uninstall',
@@ -462,7 +510,7 @@ export function PluginsPage({
         });
       } catch (e: unknown) {
         const message = extractErrorMessage(e);
-        setActionState({
+        finishAction({
           type: 'error',
           name,
           action: 'uninstall',
@@ -471,7 +519,7 @@ export function PluginsPage({
         });
       }
     },
-    [onRegistryUpdate, refreshInstalled, onRefreshServerState],
+    [beginAction, finishAction, onRegistryUpdate, refreshInstalled, onRefreshServerState],
   );
 
   /**
@@ -485,7 +533,7 @@ export function PluginsPage({
     async (name: string) => {
       // Probe first with a loading banner so the user sees *something* even
       // if the scan takes a beat. The dialog (if shown) will replace it.
-      setActionState({ type: 'loading', name, action: 'uninstall' });
+      beginAction(name, 'uninstall');
       let impact: PluginUninstallImpact;
       try {
         impact = await api.uninstallImpact(name);
@@ -503,14 +551,15 @@ export function PluginsPage({
       setUninstallConfirm(impact);
       // Reset the action state so the confirm dialog owns the UI; the loading
       // spinner will reappear when the user clicks "Uninstall anyway".
-      setActionState({ type: 'idle' });
+      setActionStates((states) => ({ ...states, [name]: { type: 'idle' } }));
+      setActionFeedback({ type: 'idle' });
     },
-    [performUninstall],
+    [beginAction, performUninstall],
   );
 
   const handleLoad = useCallback(
     async (name: string) => {
-      setActionState({ type: 'loading', name, action: 'load' });
+      beginAction(name, 'load');
       try {
         const result = await api.loadPlugin(name);
         onRegistryUpdate(result.registry);
@@ -521,7 +570,7 @@ export function PluginsPage({
         }
         await refreshInstalled();
         await onRefreshServerState();
-        setActionState({
+        finishAction({
           type: 'success',
           name,
           action: 'load',
@@ -529,7 +578,7 @@ export function PluginsPage({
         });
       } catch (e: unknown) {
         const message = extractErrorMessage(e);
-        setActionState({
+        finishAction({
           type: 'error',
           name,
           action: 'load',
@@ -538,7 +587,7 @@ export function PluginsPage({
         });
       }
     },
-    [onRegistryUpdate, refreshInstalled, onRefreshServerState],
+    [beginAction, finishAction, onRegistryUpdate, refreshInstalled, onRefreshServerState],
   );
 
   // Reload re-stages and re-imports an already-loaded plugin. Useful when a
@@ -548,7 +597,7 @@ export function PluginsPage({
   // route short-circuits when the plugin is already in `loadedPluginMeta`.
   const handleReload = useCallback(
     async (name: string) => {
-      setActionState({ type: 'loading', name, action: 'reload' });
+      beginAction(name, 'reload');
       try {
         const result = await api.loadPlugin(name, { force: true });
         onRegistryUpdate(result.registry);
@@ -559,7 +608,7 @@ export function PluginsPage({
         }
         await refreshInstalled();
         await onRefreshServerState();
-        setActionState({
+        finishAction({
           type: 'success',
           name,
           action: 'reload',
@@ -567,7 +616,7 @@ export function PluginsPage({
         });
       } catch (e: unknown) {
         const message = extractErrorMessage(e);
-        setActionState({
+        finishAction({
           type: 'error',
           name,
           action: 'reload',
@@ -576,7 +625,7 @@ export function PluginsPage({
         });
       }
     },
-    [onRegistryUpdate, refreshInstalled, onRefreshServerState],
+    [beginAction, finishAction, onRegistryUpdate, refreshInstalled, onRefreshServerState],
   );
 
   // Explicit user-triggered refresh is the only way to re-hit npm once
@@ -641,12 +690,13 @@ export function PluginsPage({
               category={category}
               query={localQuery}
               loading={pluginsLoading}
-              actionState={actionState}
+              actionStates={actionStates}
+              actionFeedback={actionFeedback}
               onInstall={handleInstall}
               onUninstall={handleUninstall}
               onLoad={handleLoad}
               onReload={handleReload}
-              onDismissAction={() => setActionState({ type: 'idle' })}
+              onDismissAction={dismissActionFeedback}
             />
           ) : (
             <MarketplacePanel
@@ -659,11 +709,12 @@ export function PluginsPage({
               installedNames={installedNames}
               installedVersions={installedVersions}
               declaredSet={declaredSet}
-              actionState={actionState}
+              actionStates={actionStates}
+              actionFeedback={actionFeedback}
               onInstall={handleInstall}
               onUpgrade={handleUpgrade}
               onUninstall={handleUninstall}
-              onDismissAction={() => setActionState({ type: 'idle' })}
+              onDismissAction={dismissActionFeedback}
               onRetry={fetchMarketplace}
             />
           )}

@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import type { MarketplaceEntry, PluginCategory } from '../../api/client';
 import { errorHint, formatDownloads } from './plugin-errors';
-import type { PluginActionState } from './PluginsPage';
+import type { PluginActionState, PluginActionStates } from './PluginsPage';
 import {
   ActionButton,
   BusyLabel,
@@ -22,6 +22,8 @@ import {
   PluginCardShell,
   StatusBadge,
 } from './plugin-card';
+
+const IDLE_ACTION_STATE: PluginActionState = { type: 'idle' };
 
 interface MarketplacePanelProps {
   entries: readonly MarketplaceEntry[];
@@ -33,7 +35,8 @@ interface MarketplacePanelProps {
   installedNames: ReadonlySet<string>;
   installedVersions: ReadonlyMap<string, string | null>;
   declaredSet: ReadonlySet<string>;
-  actionState: PluginActionState;
+  actionStates: PluginActionStates;
+  actionFeedback: PluginActionState;
   onInstall: (name: string, version?: string) => void;
   onUpgrade: (name: string) => void;
   onUninstall: (name: string) => void;
@@ -65,7 +68,8 @@ export function MarketplacePanel({
   installedNames,
   installedVersions,
   declaredSet,
-  actionState,
+  actionStates,
+  actionFeedback,
   onInstall,
   onUpgrade,
   onUninstall,
@@ -73,7 +77,7 @@ export function MarketplacePanel({
   onDismissAction,
   onRetry,
 }: MarketplacePanelProps) {
-  const actionBannerVisible = actionState.type === 'error' || actionState.type === 'success';
+  const actionBannerVisible = actionFeedback.type === 'error' || actionFeedback.type === 'success';
 
   return (
     <div className="h-full flex flex-col min-h-0">
@@ -153,7 +157,7 @@ export function MarketplacePanel({
                 installed={installedNames.has(entry.name)}
                 installedVersion={installedVersions.get(entry.name) ?? null}
                 declared={declaredSet.has(entry.name)}
-                actionState={actionState}
+                actionState={actionStates[entry.name] ?? IDLE_ACTION_STATE}
                 onInstall={() => onInstall(entry.name, entry.version)}
                 onUpgrade={() => onUpgrade(entry.name)}
                 onUninstall={() => onUninstall(entry.name)}
@@ -166,7 +170,7 @@ export function MarketplacePanel({
 
       {actionBannerVisible && (
         <div className="shrink-0 mx-6 mb-4">
-          <ActionBanner state={actionState} onDismiss={onDismissAction} />
+          <ActionBanner state={actionFeedback} onDismiss={onDismissAction} />
         </div>
       )}
     </div>

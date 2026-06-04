@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { AlertCircle, Check, Download, Loader2, Package, RefreshCw, Trash2 } from 'lucide-react';
 import type { PluginCategory, PluginInfo } from '../../api/client';
 import { errorHint } from './plugin-errors';
-import type { PluginActionState } from './PluginsPage';
+import type { PluginActionState, PluginActionStates } from './PluginsPage';
 import {
   ActionButton,
   BusyLabel,
@@ -18,7 +18,8 @@ interface LocalPanelProps {
   category: 'all' | PluginCategory;
   query: string;
   loading: boolean;
-  actionState: PluginActionState;
+  actionStates: PluginActionStates;
+  actionFeedback: PluginActionState;
   onInstall: (name: string) => void;
   onUninstall: (name: string) => void;
   onLoad: (name: string) => void;
@@ -38,6 +39,7 @@ const KNOWN_CATEGORIES: ReadonlySet<PluginCategory> = new Set([
   'completions',
   'middlewares',
 ]);
+const IDLE_ACTION_STATE: PluginActionState = { type: 'idle' };
 
 /**
  * Stateless card view of the workspace's local plugins. All data (plugins,
@@ -57,7 +59,8 @@ export function LocalPanel({
   category,
   query,
   loading,
-  actionState,
+  actionStates,
+  actionFeedback,
   onInstall,
   onUninstall,
   onLoad,
@@ -75,7 +78,7 @@ export function LocalPanel({
     });
   }, [plugins, query, category]);
 
-  const actionBannerVisible = actionState.type === 'error' || actionState.type === 'success';
+  const actionBannerVisible = actionFeedback.type === 'error' || actionFeedback.type === 'success';
 
   return (
     <div className="h-full flex flex-col min-h-0">
@@ -121,7 +124,7 @@ export function LocalPanel({
                 key={p.name}
                 plugin={p}
                 declared={declaredSet.has(p.name)}
-                actionState={actionState}
+                actionState={actionStates[p.name] ?? IDLE_ACTION_STATE}
                 onInstall={onInstall}
                 onUninstall={onUninstall}
                 onLoad={onLoad}
@@ -150,7 +153,7 @@ export function LocalPanel({
 
       {actionBannerVisible && (
         <div className="shrink-0 mx-6 mb-4">
-          <ActionBanner state={actionState} onDismiss={onDismissAction} />
+          <ActionBanner state={actionFeedback} onDismiss={onDismissAction} />
         </div>
       )}
     </div>
