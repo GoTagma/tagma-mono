@@ -21,6 +21,7 @@ import {
   type Provider,
   type ProviderAuthAuthorization,
   type Session,
+  type OpencodeSessionUpdateV2Input,
   type OpencodeThreadEntry,
 } from '../api/opencode-chat';
 import type { Message, Part } from '@opencode-ai/sdk/client';
@@ -428,10 +429,29 @@ interface SessionCreateBodyWithMetadata {
 }
 
 const FORCED_CHAT_AGENT = 'tagma-router';
+const DESKTOP_CHAT_TITLE_MAX_LENGTH = 80;
 // Editable instruction seeded into the composer when error/bug context is
 // attached via "Ask AI" and the composer is empty. The user can edit or
 // clear it before sending.
 const DEFAULT_BUG_INSTRUCTION = 'Fix this bug.';
+
+function desktopChatTitleFromPrompt(text: string): string | null {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (!normalized) return null;
+  if (normalized.length <= DESKTOP_CHAT_TITLE_MAX_LENGTH) return normalized;
+  const clipped = normalized.slice(0, DESKTOP_CHAT_TITLE_MAX_LENGTH - 3).trimEnd();
+  return clipped ? `${clipped}...` : normalized.slice(0, DESKTOP_CHAT_TITLE_MAX_LENGTH);
+}
+
+function isDefaultDesktopChatSessionTitle(title: string | null | undefined): boolean {
+  const value = title?.trim() ?? '';
+  return value.length === 0 || /^New Session\b/i.test(value);
+}
+
+function withPromptTitleFallback(session: Session, title: string | null): Session {
+  if (!title || !isDefaultDesktopChatSessionTitle(session.title)) return session;
+  return { ...session, title };
+}
 
 function buildDesktopChatSessionMetadata(
   workspaceKey: string,
@@ -453,13 +473,16 @@ async function updateDesktopChatSessionMetadata(
   workspaceKey: string,
   reason: string,
   model: ModelPick | null,
+  title?: string | null,
 ): Promise<void> {
   try {
+    const body: OpencodeSessionUpdateV2Input = {
+      sessionID: sessionId,
+      metadata: buildDesktopChatSessionMetadata(workspaceKey, reason, model),
+    };
+    if (title) body.title = title;
     await updateOpencodeSessionV2(
-      {
-        sessionID: sessionId,
-        metadata: buildDesktopChatSessionMetadata(workspaceKey, reason, model),
-      },
+      body,
       workspaceKey,
     );
   } catch (err) {
@@ -1650,6 +1673,19 @@ function upsertSession(sessions: Session[], info: Session): Session[] {
   return next;
 }
 
+function shouldRetitleDesktopChatSession(sessions: Session[], sessionId: string): boolean {
+  const session = sessions.find((item) => item.id === sessionId);
+  return session ? isDefaultDesktopChatSessionTitle(session.title) : false;
+}
+
+function retitleDesktopChatSession(
+  sessions: Session[],
+  sessionId: string,
+  title: string,
+): Session[] {
+  return sessions.map((session) => (session.id === sessionId ? { ...session, title } : session));
+}
+
 function userVisibleSessions(sessions: Session[]): Session[] {
   return sessions.filter((session) => !(session as Session & { parentID?: string }).parentID);
 }
@@ -1935,6 +1971,7 @@ async function promptOpencode(
 ): Promise<void> {
   const workspaceKeyAtStart = getOpencodeWorkspaceKey();
   const { model, agent } = get();
+  const promptTitle = opts.internal ? null : desktopChatTitleFromPrompt(text);
   let optimisticTurnStartedAt: number | null = null;
   if (!model) {
     set({ sendError: 'No model selected - pick one from the header dropdown.' });
@@ -1997,6 +2034,7 @@ async function promptOpencode(
     if (!sessionId) {
       try {
         const s = await createDesktopChatSessionWithMetadata(workspaceKeyAtStart, {
+          ...(promptTitle ? { title: promptTitle } : {}),
           metadata: buildDesktopChatSessionMetadata(
             workspaceKeyAtStart,
             opts.internal ? 'internal-repair' : 'first-send',
@@ -2004,10 +2042,11 @@ async function promptOpencode(
           ),
         });
         assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
-        sessionId = s.id;
+        const titledSession = withPromptTitleFallback(s, promptTitle);
+        sessionId = titledSession.id;
         set((prev) => ({
-          sessions: upsertSession(prev.sessions, s),
-          currentSessionId: s.id,
+          sessions: upsertSession(prev.sessions, titledSession),
+          currentSessionId: titledSession.id,
         }));
       } catch (err) {
         const msg = `Couldn't start a new session: ${describeError(err)}`;
@@ -2035,13 +2074,15 @@ async function promptOpencode(
       ) {
         try {
           const fresh = await createDesktopChatSessionWithMetadata(workspaceKeyAtStart, {
+            ...(promptTitle ? { title: promptTitle } : {}),
             metadata: buildDesktopChatSessionMetadata(workspaceKeyAtStart, 'context-limit', model),
           });
           assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
-          sessionId = fresh.id;
+          const titledFresh = withPromptTitleFallback(fresh, promptTitle);
+          sessionId = titledFresh.id;
           set((prev) => ({
-            sessions: upsertSession(prev.sessions, fresh),
-            currentSessionId: fresh.id,
+            sessions: upsertSession(prev.sessions, titledFresh),
+            currentSessionId: titledFresh.id,
             messages: [],
           }));
         } catch (err) {
@@ -2076,11 +2117,20 @@ async function promptOpencode(
 
     set({ yamlSnapshotBeforeSend: preSendSnapshot });
 
+    const shouldApplyPromptTitle =
+      !!promptTitle && shouldRetitleDesktopChatSession(get().sessions, sessionId);
+    if (shouldApplyPromptTitle) {
+      set((prev) => ({
+        sessions: retitleDesktopChatSession(prev.sessions, sessionId, promptTitle),
+      }));
+    }
+
     void updateDesktopChatSessionMetadata(
       sessionId,
       workspaceKeyAtStart,
       opts.internal ? 'internal-repair' : 'prompt',
       model,
+      shouldApplyPromptTitle ? promptTitle : undefined,
     );
 
     markTurnAcceptedForWatchdog(get, set);

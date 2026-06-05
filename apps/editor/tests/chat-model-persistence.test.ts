@@ -240,7 +240,9 @@ beforeAll(() => {
           ),
         );
       }
-      return Promise.resolve(jsonResponse({ id: 'new-session', metadata: body.metadata }));
+      return Promise.resolve(
+        jsonResponse({ id: 'new-session', title: body.title, metadata: body.metadata }),
+      );
     }
     if (url.includes('/prompt_async')) {
       promptAsyncRequests.push(url);
@@ -908,6 +910,72 @@ describe('chat model persistence', () => {
     });
     expect(Object.prototype.hasOwnProperty.call(sessionCreateRequests[0]?.body ?? {}, 'body')).toBe(
       false,
+    );
+  });
+
+  test('titles a first-send desktop chat session from the user prompt', async () => {
+    const repo = 'C:/title-first-send-repo';
+    const baseUrl = 'http://opencode-title-first-send.test';
+    const model = { providerID: 'anthropic', modelID: 'claude' };
+    workspaceBaseUrls.set(repo, baseUrl);
+    setClientWorkspace(repo);
+    useChatStore.setState({ model, agent: 'tagma-router' } as never);
+
+    await useChatStore.getState().send('Fix the Windows checkout workflow failure');
+
+    expect(sessionCreateRequests).toHaveLength(1);
+    expect(sessionCreateRequests[0]?.body).toMatchObject({
+      title: 'Fix the Windows checkout workflow failure',
+      metadata: {
+        tagma: {
+          source: 'desktop-chat',
+          workspacePath: repo,
+          reason: 'first-send',
+          model,
+        },
+      },
+    });
+    expect(useChatStore.getState().sessions[0]?.title).toBe(
+      'Fix the Windows checkout workflow failure',
+    );
+  });
+
+  test('retitles an existing default desktop chat session from the first user prompt', async () => {
+    const repo = 'C:/title-existing-default-repo';
+    const baseUrl = 'http://opencode-title-existing-default.test';
+    const model = { providerID: 'anthropic', modelID: 'claude' };
+    workspaceBaseUrls.set(repo, baseUrl);
+    setClientWorkspace(repo);
+    useChatStore.setState({
+      model,
+      agent: 'tagma-router',
+      currentSessionId: 'existing',
+      sessions: [
+        {
+          id: 'existing',
+          title: 'New Session 2026-06-05 21:30',
+          time: { created: 1, updated: 1 },
+        } as Session,
+      ],
+    } as never);
+
+    await useChatStore.getState().send('Explain how to migrate this pipeline to staging');
+    await waitFor(() => sessionUpdateRequests.length > 0);
+
+    expect(sessionUpdateRequests[0]?.url).toBe(`${baseUrl}/session/existing`);
+    expect(sessionUpdateRequests[0]?.body).toMatchObject({
+      title: 'Explain how to migrate this pipeline to staging',
+      metadata: {
+        tagma: {
+          source: 'desktop-chat',
+          workspacePath: repo,
+          reason: 'prompt',
+          model,
+        },
+      },
+    });
+    expect(useChatStore.getState().sessions[0]?.title).toBe(
+      'Explain how to migrate this pipeline to staging',
     );
   });
 
