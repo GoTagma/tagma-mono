@@ -120,13 +120,7 @@ function getReq(url: string, path: string): Promise<{ status: number; body: stri
   return new Promise((resolve, reject) => {
     const sock = netConnect(port, '127.0.0.1', () => {
       sock.write(
-        [
-          `GET ${path} HTTP/1.0`,
-          'Host: 127.0.0.1',
-          'Connection: close',
-          '',
-          '',
-        ].join('\r\n'),
+        [`GET ${path} HTTP/1.0`, 'Host: 127.0.0.1', 'Connection: close', '', ''].join('\r\n'),
       );
     });
     let buffer = Buffer.alloc(0);

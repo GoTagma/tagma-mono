@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test';
-import { appendWorkflowEvent, isWorkflowTerminalEvent, reconcileWorkflowRunState } from '../src/App';
+import {
+  appendWorkflowEvent,
+  isWorkflowTerminalEvent,
+  reconcileWorkflowRunState,
+} from '../src/App';
 import type { WorkflowGraphEvent } from '../src/api/client';
 
 describe('workflow live event state helpers', () => {

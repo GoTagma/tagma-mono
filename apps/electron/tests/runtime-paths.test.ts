@@ -219,7 +219,6 @@ describe('runtime path resolution', () => {
         'C:\\Windows\\System32',
       ].join(';');
       expect(paths.env.Path).toBe(expectedPath);
-      expect(existsSync(userOpencodeDir)).toBe(false);
     } finally {
       if (previousPATH === undefined) {
         delete process.env.PATH;
@@ -232,6 +231,26 @@ describe('runtime path resolution', () => {
         process.env.Path = previousPath;
       }
     }
+  });
+
+  test('packaged mode removes a stale user opencode install on the host platform', () => {
+    const root = withTempDir();
+    const resourcesPath = hostPath.join(root, 'resources');
+    const userDataDir = hostPath.join(root, 'userData');
+    const userOpencodeDir = hostPath.join(userDataDir, 'opencode');
+    mkdirSync(hostPath.join(userOpencodeDir, 'bin'), { recursive: true });
+    writeFileSync(hostPath.join(userOpencodeDir, 'version.txt'), '1.14.19\n');
+
+    resolveRuntimePaths({
+      isPackaged: true,
+      compiledDir: hostPath.join(root, 'compiled'),
+      resourcesPath,
+      userDataDir,
+      platform: process.platform,
+      tagmaMetadataJson: JSON.stringify({ bundledOpencodeVersion: '1.15.13' }),
+    });
+
+    expect(existsSync(userOpencodeDir)).toBe(false);
   });
 
   test('packaged mode ignores a hashless user-installed sidecar override', () => {
