@@ -3,6 +3,7 @@ import yaml from 'js-yaml';
 import type { RawPipelineConfig, RawWorkflowConfig } from '@tagma/types';
 import {
   TAGMA_SDK_VERSION,
+  YAML_REQUIRES_FIELD_MIN_SDK,
   inferPipelineCompatibility,
   inferYamlCompatibility,
   parseSdkRequirement,
@@ -36,6 +37,10 @@ function parseSerializedWorkflow(content: string): RawWorkflowConfig {
 }
 
 describe('YAML SDK compatibility', () => {
+  test('keeps the requires metadata minimum pinned to its first supported SDK', () => {
+    expect(YAML_REQUIRES_FIELD_MIN_SDK).toBe('0.7.40');
+  });
+
   test('accepts plain and lower-bound SDK requirements', () => {
     expect(parseSdkRequirement('0.8.0')?.minVersion).toBe('0.8.0');
     expect(parseSdkRequirement('>=0.8.0')?.minVersion).toBe('0.8.0');
@@ -78,10 +83,10 @@ describe('YAML SDK compatibility', () => {
       }),
     );
     const parsed = parseSerializedPipeline(serialized);
-    expect(parsed.requires).toEqual({ sdk: `>=${TAGMA_SDK_VERSION}` });
+    expect(parsed.requires).toEqual({ sdk: `>=${YAML_REQUIRES_FIELD_MIN_SDK}` });
 
     const compatibility = inferYamlCompatibility(serialized);
-    expect(compatibility.sdkRequirement).toBe(`>=${TAGMA_SDK_VERSION}`);
+    expect(compatibility.sdkRequirement).toBe(`>=${YAML_REQUIRES_FIELD_MIN_SDK}`);
     expect(compatibility.features.map((feature) => feature.id)).toContain('task_bindings');
   });
 
@@ -134,7 +139,7 @@ pipeline:
       pipelines: [{ id: 'build', path: '.tagma/build/build.yaml' }],
     });
     const parsed = parseSerializedWorkflow(serialized);
-    expect(parsed.requires).toEqual({ sdk: `>=${TAGMA_SDK_VERSION}` });
+    expect(parsed.requires).toEqual({ sdk: `>=${YAML_REQUIRES_FIELD_MIN_SDK}` });
 
     const futureErrors = validateRawWorkflow({
       requires: { sdk: '>=99.0.0' },

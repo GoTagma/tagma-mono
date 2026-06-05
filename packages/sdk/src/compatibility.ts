@@ -52,7 +52,7 @@ export const TAGMA_SDK_VERSION = readCurrentSdkVersion();
  * Minimum SDK that understands the `requires.sdk` YAML metadata itself.
  * Keep this aligned with the first package version that ships this file.
  */
-export const YAML_REQUIRES_FIELD_MIN_SDK = TAGMA_SDK_VERSION;
+export const YAML_REQUIRES_FIELD_MIN_SDK = '0.7.40';
 
 export const YAML_FEATURE_MIN_SDK = {
   requires: YAML_REQUIRES_FIELD_MIN_SDK,

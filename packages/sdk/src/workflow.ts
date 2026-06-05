@@ -249,6 +249,7 @@ export async function loadWorkflow(content: string, workDir: string): Promise<Wo
   if (loadDiagnostics.length > 0) throw new WorkflowValidationError(loadDiagnostics);
 
   return {
+    ...(raw.requires ? { requires: raw.requires } : {}),
     kind: raw.kind ?? 'graph',
     name: raw.name,
     max_concurrency: raw.max_concurrency,

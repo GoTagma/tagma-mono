@@ -17,8 +17,13 @@ import { createHash } from 'node:crypto';
 import yaml from 'js-yaml';
 import { createEmptyPipeline, upsertTrack, upsertTask } from '@tagma/sdk/config';
 import { parseYaml, serializePipeline } from '@tagma/sdk/yaml';
-import { parseWorkflowYaml, validateRawWorkflow } from '@tagma/sdk/workflow';
-import type { PipelineGraphStopWhen } from '@tagma/types';
+import { parseWorkflowYaml, serializeWorkflow, validateRawWorkflow } from '@tagma/sdk/workflow';
+import type {
+  PipelineGraphStopWhen,
+  TagmaSdkRequirements,
+  WorkflowDocumentKind,
+  WorkflowFailurePolicy,
+} from '@tagma/types';
 import {
   getState,
   isPathWithin,
@@ -142,12 +147,6 @@ const MAX_USAGE_STRING_LEN = 256;
 const MAX_LAYOUT_COORD = 100_000;
 const MAX_LAYOUT_TRACK_IDS = 10_000;
 const MAX_WORKFLOW_GRAPH_COORD = 100_000;
-const WORKFLOW_YAML_DUMP_OPTIONS = {
-  lineWidth: 120,
-  indent: 2,
-  noCompatMode: true,
-} as Parameters<typeof yaml.dump>[1] & { noCompatMode: boolean };
-
 function isPluginArchiveName(name: string): boolean {
   return /\.tgz$|\.tar\.gz$/i.test(name);
 }
@@ -505,10 +504,11 @@ function normalizeWorkflowLifecycleInput(
 }
 
 function serializeWorkflowGraphForEditor(config: {
-  kind?: 'workflow' | 'graph';
+  requires?: TagmaSdkRequirements;
+  kind?: WorkflowDocumentKind;
   name: string;
   max_concurrency?: number;
-  failure_policy?: string;
+  failure_policy?: WorkflowFailurePolicy;
   pipelines: Array<{
     id: string;
     path: string;
@@ -517,25 +517,30 @@ function serializeWorkflowGraphForEditor(config: {
     lifecycle?: { max_runs?: number; stop_when?: PipelineGraphStopWhen };
   }>;
 }): string {
-  return yaml.dump(
-    {
-      workflow: {
-        kind: config.kind ?? 'graph',
-        name: config.name,
-        ...(config.max_concurrency !== undefined
-          ? { max_concurrency: config.max_concurrency }
-          : {}),
-        ...(config.failure_policy ? { failure_policy: config.failure_policy } : {}),
-        pipelines: config.pipelines.map((pipeline) => ({
-          id: pipeline.id,
-          path: pipeline.path,
-          ...(pipeline.depends_on?.length ? { depends_on: pipeline.depends_on } : {}),
-          ...(pipeline.position ? { position: pipeline.position } : {}),
-          ...(pipeline.lifecycle ? { lifecycle: pipeline.lifecycle } : {}),
-        })),
-      },
-    },
-    WORKFLOW_YAML_DUMP_OPTIONS,
+  return serializeWorkflow({
+    ...(config.requires ? { requires: config.requires } : {}),
+    kind: config.kind ?? 'graph',
+    name: config.name,
+    ...(config.max_concurrency !== undefined ? { max_concurrency: config.max_concurrency } : {}),
+    ...(config.failure_policy ? { failure_policy: config.failure_policy } : {}),
+    pipelines: config.pipelines.map((pipeline) => ({
+      id: pipeline.id,
+      path: pipeline.path,
+      ...(pipeline.depends_on?.length ? { depends_on: pipeline.depends_on } : {}),
+      ...(pipeline.position ? { position: pipeline.position } : {}),
+      ...(pipeline.lifecycle ? { lifecycle: pipeline.lifecycle } : {}),
+    })),
+  });
+}
+
+function workflowGraphPatchDiagnostics(
+  config: Parameters<typeof validateRawWorkflow>[0],
+  allowEmptyGraph: boolean,
+): ReturnType<typeof validateRawWorkflow> {
+  const diagnostics = validateRawWorkflow(config);
+  if (!allowEmptyGraph) return diagnostics;
+  return diagnostics.filter(
+    (diag) => diag.path !== 'pipelines' || diag.message !== 'At least one pipeline is required',
   );
 }
 
@@ -1158,14 +1163,12 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       const existing = parseWorkflowYaml(readFileSync(workflowPath, 'utf-8'));
       const pipelines = normalizeWorkflowGraphPipelinesInput(ws.workDir, rawPipelines);
       const nextWorkflow = { ...existing, pipelines };
-      if (pipelines.length > 0) {
-        const diagnostics = validateRawWorkflow(nextWorkflow);
-        if (diagnostics.length > 0) {
-          return res.status(400).json({
-            error: diagnostics.map((diag) => `[${diag.path}] ${diag.message}`).join('\n'),
-            diagnostics,
-          });
-        }
+      const diagnostics = workflowGraphPatchDiagnostics(nextWorkflow, pipelines.length === 0);
+      if (diagnostics.length > 0) {
+        return res.status(400).json({
+          error: diagnostics.map((diag) => `[${diag.path}] ${diag.message}`).join('\n'),
+          diagnostics,
+        });
       }
       atomicWriteFileSync(workflowPath, serializeWorkflowGraphForEditor(nextWorkflow));
       res.json({

@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { PluginRegistry } from '@tagma/core';
 import type { PipelineConfig, PipelineGraphConfig, TaskResult, TagmaRuntime } from '@tagma/types';
 import { bootstrapBuiltins } from './bootstrap';
+import { YAML_REQUIRES_FIELD_MIN_SDK } from './compatibility';
 import {
   PipelineGraphRunner,
   WorkflowValidationError,
@@ -328,6 +329,8 @@ describe('workflow YAML model', () => {
 
       const workflow = await loadWorkflow(
         `workflow:
+  requires:
+    sdk: ">=${YAML_REQUIRES_FIELD_MIN_SDK}"
   name: release-flow
   pipelines:
     - id: p1
@@ -340,6 +343,10 @@ describe('workflow YAML model', () => {
       );
 
       expect(workflow.name).toBe('release-flow');
+      expect(workflow.requires).toEqual({ sdk: `>=${YAML_REQUIRES_FIELD_MIN_SDK}` });
+      expect(parseWorkflowYaml(serializeWorkflow(workflow)).requires).toEqual({
+        sdk: `>=${YAML_REQUIRES_FIELD_MIN_SDK}`,
+      });
       expect(workflow.pipelines[0]?.config.name).toBe('P1');
       expect(workflow.pipelines[1]?.depends_on).toEqual(['p1']);
     } finally {

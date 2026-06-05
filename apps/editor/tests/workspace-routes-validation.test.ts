@@ -3,6 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createEmptyPipeline } from '@tagma/sdk/config';
+import { TAGMA_SDK_VERSION, YAML_REQUIRES_FIELD_MIN_SDK } from '@tagma/sdk/yaml';
+import { parseWorkflowYaml } from '@tagma/sdk/workflow';
 import { registerWorkspaceRoutes } from '../server/routes/workspace';
 import { S } from '../server/state';
 import { _resetFsCapabilities, consumeFsCapability } from '../server/fs-capability';
@@ -222,6 +224,183 @@ describe('workspace route validation', () => {
 
     expect(res.statusCode).toBe(400);
     expect(String((res.body as { error?: unknown }).error)).toContain('Workspace directory');
+  });
+
+  test('POST /api/workspace/workflows writes stable workflow SDK requirements', () => {
+    S.workDir = makeTempDir();
+    const pipelineDir = join(S.workDir, '.tagma', 'build');
+    const pipelinePath = join(pipelineDir, 'build.yaml');
+    mkdirSync(pipelineDir, { recursive: true });
+    writeFileSync(
+      pipelinePath,
+      `pipeline:
+  name: Build
+  tracks:
+    - id: main
+      name: Main
+      tasks:
+        - id: task
+          command: echo hi
+`,
+      'utf-8',
+    );
+
+    const handler = createRouteHarness().post('/api/workspace/workflows');
+    const res = makeRes();
+
+    handler(
+      {
+        workspace: S,
+        body: { name: 'release', pipelinePaths: [pipelinePath] },
+      },
+      res,
+    );
+
+    expect(res.statusCode).toBe(200);
+    const workflowPath = join(S.workDir, '.tagma', 'workflows', 'release.workflow.yaml');
+    const workflow = parseWorkflowYaml(readFileSync(workflowPath, 'utf-8'));
+    expect(workflow.requires).toEqual({ sdk: `>=${YAML_REQUIRES_FIELD_MIN_SDK}` });
+  });
+
+  test('PATCH /api/workspace/workflows preserves workflow SDK requirements', () => {
+    S.workDir = makeTempDir();
+    const pipelineDir = join(S.workDir, '.tagma', 'build');
+    const pipelinePath = join(pipelineDir, 'build.yaml');
+    const workflowDir = join(S.workDir, '.tagma', 'workflows');
+    const workflowPath = join(workflowDir, 'release.workflow.yaml');
+    mkdirSync(pipelineDir, { recursive: true });
+    mkdirSync(workflowDir, { recursive: true });
+    writeFileSync(
+      pipelinePath,
+      `pipeline:
+  name: Build
+  tracks:
+    - id: main
+      name: Main
+      tasks:
+        - id: task
+          command: echo hi
+`,
+      'utf-8',
+    );
+    writeFileSync(
+      workflowPath,
+      `workflow:
+  requires:
+    sdk: ">=${YAML_REQUIRES_FIELD_MIN_SDK}"
+  kind: graph
+  name: release
+  pipelines:
+    - id: build
+      path: .tagma/build/build.yaml
+`,
+      'utf-8',
+    );
+
+    const handler = createRouteHarness().patch('/api/workspace/workflows');
+    const res = makeRes();
+
+    handler(
+      {
+        workspace: S,
+        body: {
+          path: workflowPath,
+          pipelines: [{ id: 'build', path: pipelinePath, position: { x: 120, y: 80 } }],
+        },
+      },
+      res,
+    );
+
+    expect(res.statusCode).toBe(200);
+    const workflow = parseWorkflowYaml(readFileSync(workflowPath, 'utf-8'));
+    expect(workflow.requires).toEqual({ sdk: `>=${YAML_REQUIRES_FIELD_MIN_SDK}` });
+    expect(workflow.pipelines[0]?.position).toEqual({ x: 120, y: 80 });
+  });
+
+  test('PATCH /api/workspace/workflows preserves higher workflow SDK requirements', () => {
+    S.workDir = makeTempDir();
+    const pipelineDir = join(S.workDir, '.tagma', 'build');
+    const pipelinePath = join(pipelineDir, 'build.yaml');
+    const workflowDir = join(S.workDir, '.tagma', 'workflows');
+    const workflowPath = join(workflowDir, 'release.workflow.yaml');
+    mkdirSync(pipelineDir, { recursive: true });
+    mkdirSync(workflowDir, { recursive: true });
+    writeFileSync(
+      pipelinePath,
+      `pipeline:
+  name: Build
+  tracks:
+    - id: main
+      name: Main
+      tasks:
+        - id: task
+          command: echo hi
+`,
+      'utf-8',
+    );
+    writeFileSync(
+      workflowPath,
+      `workflow:
+  requires:
+    sdk: ">=${TAGMA_SDK_VERSION}"
+  kind: graph
+  name: release
+  pipelines:
+    - id: build
+      path: .tagma/build/build.yaml
+`,
+      'utf-8',
+    );
+
+    const handler = createRouteHarness().patch('/api/workspace/workflows');
+    const res = makeRes();
+
+    handler(
+      {
+        workspace: S,
+        body: {
+          path: workflowPath,
+          pipelines: [{ id: 'build', path: pipelinePath, position: { x: 120, y: 80 } }],
+        },
+      },
+      res,
+    );
+
+    expect(res.statusCode).toBe(200);
+    const workflow = parseWorkflowYaml(readFileSync(workflowPath, 'utf-8'));
+    expect(workflow.requires).toEqual({ sdk: `>=${TAGMA_SDK_VERSION}` });
+  });
+
+  test('PATCH /api/workspace/workflows validates requires even when saving an empty graph', () => {
+    S.workDir = makeTempDir();
+    const workflowDir = join(S.workDir, '.tagma', 'workflows');
+    const workflowPath = join(workflowDir, 'empty.workflow.yaml');
+    mkdirSync(workflowDir, { recursive: true });
+    writeFileSync(
+      workflowPath,
+      `workflow:
+  requires:
+    sdk: "^1.0.0"
+  kind: graph
+  name: empty
+  pipelines: []
+`,
+      'utf-8',
+    );
+
+    const handler = createRouteHarness().patch('/api/workspace/workflows');
+    const res = makeRes();
+
+    handler(
+      {
+        workspace: S,
+        body: { path: workflowPath, pipelines: [] },
+      },
+      res,
+    );
+
+    expect(res.statusCode).toBe(400);
+    expect(String((res.body as { error?: unknown }).error)).toContain('requires.sdk');
   });
 
   test('POST /api/delete-file removes pipeline-scoped secret bindings with the pipeline', () => {
