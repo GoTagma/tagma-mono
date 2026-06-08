@@ -303,8 +303,10 @@ export const useRunStore = create<RunStoreState>((set, get) => {
           fromRunId?: string;
           skipPreflight?: boolean;
           targetTaskIds?: readonly string[];
+          yamlPath?: string | null;
         } = {};
         if (overrides?.fromRunId) startOpts.fromRunId = overrides.fromRunId;
+        if (!overrides?.fromRunId && overrides?.yamlPath) startOpts.yamlPath = overrides.yamlPath;
         if (overrides?.targetTaskIds && overrides.targetTaskIds.length > 0) {
           startOpts.targetTaskIds = overrides.targetTaskIds;
         }

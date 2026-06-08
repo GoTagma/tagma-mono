@@ -399,6 +399,51 @@ test('run start accepts a new instance while another run is live', async () => {
   }
 });
 
+test('run start reloads the requested current yaml before validating target tasks', async () => {
+  const pipelineDir = join(tempDir, '.tagma', 'chat-created');
+  mkdirSync(pipelineDir, { recursive: true });
+  const yamlPath = join(pipelineDir, 'chat-created.yaml');
+  writeFileSync(
+    yamlPath,
+    [
+      'pipeline:',
+      '  name: Chat Created',
+      '  mode: trusted',
+      '  tracks:',
+      '    - id: main',
+      '      name: Main',
+      '      tasks:',
+      '        - id: build',
+      '          name: Build',
+      '          command: echo ok',
+      '',
+    ].join('\n'),
+    'utf-8',
+  );
+  ws.yamlPath = yamlPath;
+  ws.config = {
+    name: 'Stale Empty Draft',
+    tracks: [{ id: 'draft', name: 'Draft', tasks: [] }],
+  } satisfies RawPipelineConfig;
+
+  const { port, close } = await startApp(buildApp());
+  try {
+    const res = await postJsonReq(port, '/api/run/start', {
+      yamlPath,
+      targetTaskIds: ['main.build'],
+    });
+
+    expect(res.status).toBe(200);
+    const body = JSON.parse(res.body) as { runId?: string };
+    expect(body.runId).toMatch(/^run_/);
+    expect(ws.config.name).toBe('Chat Created');
+    await waitForSessionDone(body.runId!);
+  } finally {
+    await close();
+    await removeTempDir();
+  }
+});
+
 test('run start unloads partially preloaded plugins before releasing the plugin mutation lock', async () => {
   const goodPlugin = '@scope/plugin-good';
   const badPlugin = '@scope/plugin-bad';

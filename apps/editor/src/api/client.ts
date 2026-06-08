@@ -1241,6 +1241,7 @@ export interface StartRunOptions {
   fromRunId?: string;
   skipPreflight?: boolean;
   targetTaskIds?: readonly string[];
+  yamlPath?: string | null;
 }
 
 export function buildStartRunRequestBody(
@@ -1251,6 +1252,9 @@ export function buildStartRunRequestBody(
   if (opts?.skipPreflight) body.skipPreflight = true;
   if (opts?.targetTaskIds && opts.targetTaskIds.length > 0) {
     body.targetTaskIds = [...opts.targetTaskIds];
+  }
+  if (typeof opts?.yamlPath === 'string' && opts.yamlPath.trim().length > 0) {
+    body.yamlPath = opts.yamlPath;
   }
   return Object.keys(body).length > 0 ? body : undefined;
 }

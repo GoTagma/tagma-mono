@@ -101,6 +101,15 @@ function countByStatus(tasks: Map<string, { status: TaskStatus }>) {
   return counts;
 }
 
+export function shouldShowRunErrorBanner({
+  error,
+}: {
+  showHistory: boolean;
+  error: string | null;
+}): boolean {
+  return typeof error === 'string' && error.trim().length > 0;
+}
+
 export function RunView({
   config: liveConfig,
   dagEdges: liveDagEdges,
@@ -400,6 +409,7 @@ export function RunView({
   // here, the live canvas would flip to the history browser for a frame
   // before the exit completes, producing a visible flash.
   const showHistory = viewMode === 'history';
+  const showRunErrorBanner = shouldShowRunErrorBanner({ showHistory, error });
 
   // Refresh-button state for the history browser: the button lives in
   // the RunView toolbar (next to Back + pipeline name) so the h-9 bar
@@ -686,12 +696,12 @@ export function RunView({
         {hasDesktopBridge() && <DesktopWindowControls />}
       </header>
 
-      {!showHistory && error && (
+      {showRunErrorBanner && (
         <div className="flex items-center gap-2 bg-tagma-error/5 border-b border-tagma-error/20">
           <div className="w-[3px] self-stretch shrink-0 bg-tagma-error" />
           <span
             className="flex-1 min-w-0 text-[11px] text-tagma-error font-mono py-2 truncate"
-            title={error}
+            title={error ?? undefined}
           >
             {error}
           </span>

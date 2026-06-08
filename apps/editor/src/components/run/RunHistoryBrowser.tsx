@@ -104,6 +104,16 @@ export function applyStoppedRunToHistory(
   );
 }
 
+export function applyCompletedRunToHistory(
+  runs: readonly RunHistoryEntry[],
+  runId: string,
+  finishedAt: string,
+): RunHistoryEntry[] {
+  return runs.map((run) =>
+    run.runId === runId ? { ...run, running: false, success: true, finishedAt } : run,
+  );
+}
+
 export function applyFocusedRunningRunToHistory(
   runs: readonly RunHistoryEntry[],
   focused: { runId: string; pipelineName?: string | null; startedAt?: string | null },
@@ -178,6 +188,59 @@ export function isHistoryReplayBusy({
   runStatus?: string;
 }): boolean {
   return replayLoading;
+}
+
+export function terminalOutcomeForRunStatus(status: string): OutcomeFilter | null {
+  if (status === 'done') return 'success';
+  if (status === 'failed' || status === 'aborted' || status === 'error') return 'failed';
+  return null;
+}
+
+export function terminalRunFocusForStatus(
+  status: string,
+  runId: string | null,
+): { outcome: OutcomeFilter; runId: string; viewMode: 'flow'; success: boolean } | null {
+  if (!runId) return null;
+  const outcome = terminalOutcomeForRunStatus(status);
+  if (!outcome) return null;
+  return {
+    outcome,
+    runId,
+    viewMode: 'flow',
+    success: outcome === 'success',
+  };
+}
+
+type TerminalRunFocus = NonNullable<ReturnType<typeof terminalRunFocusForStatus>>;
+
+export function applyTerminalRunFocusToHistory(
+  runs: readonly RunHistoryEntry[],
+  focus: TerminalRunFocus,
+  finishedAt: string,
+): RunHistoryEntry[] {
+  const existing = runs.find((run) => run.runId === focus.runId);
+  const terminalEntry: RunHistoryEntry = {
+    ...(existing ?? {
+      runId: focus.runId,
+      path: '',
+      startedAt: finishedAt,
+      sizeBytes: 0,
+    }),
+    running: false,
+    success: focus.success,
+    finishedAt,
+  };
+  return [terminalEntry, ...runs.filter((run) => run.runId !== focus.runId)];
+}
+
+function hasTerminalRunFocusInHistory(
+  runs: readonly RunHistoryEntry[],
+  focus: TerminalRunFocus,
+): boolean {
+  return runs.some(
+    (run) =>
+      run.runId === focus.runId && run.running !== true && run.success === focus.success,
+  );
 }
 
 export interface HistoryRunPrimaryAction {
@@ -424,7 +487,6 @@ export function RunHistoryBrowser({
   // this, rapid clicks between runs could let a slow response for run A
   // overwrite the freshly-loaded summary/log/yaml for run B (B2).
   const selectedRunIdRef = useRef<string | null>(null);
-  const manualStopRunIdRef = useRef<string | null>(null);
   // Per-slot cache markers used by the viewMode auto-load effect below.
   // Declared up here so loadRun can invalidate them when it swaps the
   // selection, forcing a refetch the next time the user is on Log/Yaml.
@@ -714,7 +776,6 @@ export function RunHistoryBrowser({
       setReplayError(null);
       setStopError(null);
       setStopLoading(true);
-      manualStopRunIdRef.current = runId;
       try {
         await api.abortRun(runId);
         await refreshStoppedRun(runId, finishedAt);
@@ -727,6 +788,29 @@ export function RunHistoryBrowser({
     [refreshStoppedRun, stopLoading],
   );
 
+  const refreshTerminalRun = useCallback(
+    async (focus: TerminalRunFocus, finishedAt: string) => {
+      setOutcome(focus.outcome);
+      setSelectedRunId(focus.runId);
+      selectedRunIdRef.current = focus.runId;
+      setSummary(null);
+      setSummaryError(null);
+      setViewMode(focus.viewMode);
+      setRuns((prevRuns) => applyTerminalRunFocusToHistory(prevRuns, focus, finishedAt));
+
+      for (let attempt = 0; attempt < 20; attempt++) {
+        const refreshedRuns = await loadHistory();
+        if (!hasTerminalRunFocusInHistory(refreshedRuns, focus)) {
+          setRuns(applyTerminalRunFocusToHistory(refreshedRuns, focus, finishedAt));
+        }
+        const loaded = await loadRun(focus.runId);
+        if (loaded && loaded.running !== true) return;
+        await new Promise((resolve) => setTimeout(resolve, 150));
+      }
+    },
+    [loadHistory, loadRun],
+  );
+
   // Auto-refresh the history list (and the currently-open detail, if the
   // user is inspecting the running pipeline's entry) when a live run
   // completes. Without this, the page shows a stale "in progress" marker
@@ -737,33 +821,11 @@ export function RunHistoryBrowser({
   useEffect(() => {
     const prev = prevStatusRef.current;
     prevStatusRef.current = runStatus;
-    const terminal =
-      runStatus === 'done' ||
-      runStatus === 'failed' ||
-      runStatus === 'aborted' ||
-      runStatus === 'error';
     const wasActive = prev === 'starting' || prev === 'running';
-    if (!terminal || !wasActive) return;
-    if (!runStoreRunId || selectedRunIdRef.current !== runStoreRunId) {
-      void loadHistory();
-      return;
-    }
-    if (runStatus === 'done') {
-      void (async () => {
-        await loadHistory();
-        await loadRun(runStoreRunId);
-      })();
-      return;
-    }
-    if (
-      manualStopRunIdRef.current === runStoreRunId ||
-      runStatus === 'failed' ||
-      runStatus === 'aborted' ||
-      runStatus === 'error'
-    ) {
-      void refreshStoppedRun(runStoreRunId, new Date().toISOString());
-    }
-  }, [runStatus, runStoreRunId, loadHistory, loadRun, refreshStoppedRun]);
+    const focus = terminalRunFocusForStatus(runStatus, runStoreRunId);
+    if (!focus || !wasActive) return;
+    void refreshTerminalRun(focus, new Date().toISOString());
+  }, [runStatus, runStoreRunId, refreshTerminalRun]);
 
   return (
     <div className="h-full flex flex-col bg-tagma-surface">

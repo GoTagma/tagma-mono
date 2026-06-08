@@ -9,7 +9,7 @@ import {
   readSync,
   closeSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import {
   createTagma,
   DEFAULT_TASK_TIMEOUT_MS,
@@ -32,13 +32,21 @@ import type {
 } from '@tagma/sdk';
 import { assertSafePluginName } from '../plugin-safety.js';
 import { errorMessage } from '../path-utils.js';
-import { MAX_LOG_RUNS, lenientParseYaml } from '../state.js';
+import {
+  MAX_LOG_RUNS,
+  lenientParseYaml,
+  loadLayout,
+  sameFilesystemPath,
+  syncLayoutWatcherFromDisk,
+  withDefaultTrackColors,
+} from '../state.js';
 import {
   loadPluginFromWorkDir,
   classifyServerError,
   unloadPluginFromRegistry,
   readEditorSettings,
   isPluginBlocked,
+  invalidatePluginCache,
 } from '../plugins/loader.js';
 import { withWorkspacePluginMutationLock } from '../plugins/locks.js';
 import { requireWorkspace } from '../require-workspace.js';
@@ -49,7 +57,9 @@ import type { WorkspaceState } from '../workspace-state.js';
 import { buildPythonAgentRunEnv, pythonAgentVenvBinDir } from '../python-agent.js';
 import { buildPipelineSecretEnv } from '../secrets.js';
 import { assertWorkflowYamlPath } from '../workflow-paths.js';
+import { assertPipelineYamlPath } from '../pipeline-paths.js';
 import { incrementYamlRunVersion } from '../yaml-run-version.js';
+import { getFileVersion } from '../optimistic-lock.js';
 import {
   RunSession,
   WorkflowRunSession,
@@ -491,6 +501,12 @@ export function registerRunRoutes(app: express.Express): void {
         typeof req.body?.fromRunId === 'string' && /^run_[A-Za-z0-9_-]+$/.test(req.body.fromRunId)
           ? req.body.fromRunId
           : null;
+      const requestedYamlPath: string | null =
+        fromRunId === null &&
+        typeof req.body?.yamlPath === 'string' &&
+        req.body.yamlPath.trim().length > 0
+          ? req.body.yamlPath
+          : null;
 
       let effectiveConfig: RawPipelineConfig;
       let content: string;
@@ -521,8 +537,51 @@ export function registerRunRoutes(app: express.Express): void {
           return res.status(400).json({ error: `Failed to load snapshot yaml: ${message}` });
         }
       } else {
-        effectiveConfig = ws.config;
-        content = serializePipeline(effectiveConfig);
+        if (requestedYamlPath) {
+          // Normal editor runs are tied to the currently-open YAML. Reload it
+          // here so a chat/external write that missed the watcher cannot leave
+          // /run/start validating stale in-memory config.
+          let runYamlPath: string;
+          try {
+            runYamlPath = assertPipelineYamlPath(
+              ws.workDir,
+              resolve(requestedYamlPath),
+              'run YAML',
+            );
+          } catch (err) {
+            return res.status(403).json({ error: errorMessage(err) || 'Invalid run YAML path' });
+          }
+          if (!sameFilesystemPath(ws.yamlPath, runYamlPath)) {
+            return res.status(409).json({
+              error: 'Run YAML no longer matches the current workspace file',
+            });
+          }
+          if (!existsSync(runYamlPath)) {
+            return res.status(404).json({ error: `File not found: ${runYamlPath}` });
+          }
+          let diskYaml: string;
+          try {
+            diskYaml = readFileSync(runYamlPath, 'utf-8');
+            effectiveConfig = withDefaultTrackColors(parseYaml(diskYaml));
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            return res.status(400).json({ error: `Configuration error: ${message}` });
+          }
+          content = serializePipeline(effectiveConfig);
+          ws.config = effectiveConfig;
+          ws.yamlPath = runYamlPath;
+          ws.yamlVersion = getFileVersion(runYamlPath);
+          if (sameFilesystemPath(ws.manualNewPipelineYamlPath, runYamlPath)) {
+            ws.manualNewPipelineYamlPath = null;
+          }
+          loadLayout(ws);
+          syncLayoutWatcherFromDisk(ws);
+          ws.watcher.markSynced(diskYaml, statSync(runYamlPath).mtimeMs, content);
+          invalidatePluginCache(ws);
+        } else {
+          effectiveConfig = ws.config;
+          content = serializePipeline(effectiveConfig);
+        }
       }
 
       let targetTaskIds: string[] | undefined;

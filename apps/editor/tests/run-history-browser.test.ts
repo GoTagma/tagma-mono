@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import {
   applyStoppedRunToHistory,
+  applyCompletedRunToHistory,
   applyFocusedRunningRunToHistory,
+  applyTerminalRunFocusToHistory,
   configDagEdgesForRunCanvas,
   filterRunHistoryEntries,
   formatHistoryYamlExportFilename,
@@ -11,6 +13,8 @@ import {
   hasRunningRunEntries,
   shouldRenderLiveRunCanvas,
   summaryDagEdgesForRunCanvas,
+  terminalRunFocusForStatus,
+  terminalOutcomeForRunStatus,
   type OutcomeFilter,
 } from '../src/components/run/RunHistoryBrowser';
 import type { RunHistoryEntry, RunSummary } from '../src/api/client';
@@ -90,6 +94,32 @@ describe('run history browser helpers', () => {
     expect(hasRunningRunEntries([...runs, entry({ runId: 'run_live', running: true })])).toBe(true);
   });
 
+  test('terminal run status selects the final outcome tab', () => {
+    expect(terminalOutcomeForRunStatus('done')).toBe('success');
+    expect(terminalOutcomeForRunStatus('failed')).toBe('failed');
+    expect(terminalOutcomeForRunStatus('aborted')).toBe('failed');
+    expect(terminalOutcomeForRunStatus('error')).toBe('failed');
+    expect(terminalOutcomeForRunStatus('running')).toBeNull();
+    expect(terminalOutcomeForRunStatus('starting')).toBeNull();
+  });
+
+  test('terminal run focus mirrors selecting the completed run row', () => {
+    expect(terminalRunFocusForStatus('done', 'run_live')).toEqual({
+      outcome: 'success',
+      runId: 'run_live',
+      viewMode: 'flow',
+      success: true,
+    });
+    expect(terminalRunFocusForStatus('failed', 'run_live')).toEqual({
+      outcome: 'failed',
+      runId: 'run_live',
+      viewMode: 'flow',
+      success: false,
+    });
+    expect(terminalRunFocusForStatus('running', 'run_live')).toBeNull();
+    expect(terminalRunFocusForStatus('done', null)).toBeNull();
+  });
+
   test('running progress label keeps the completed-over-total count', () => {
     expect(
       formatRunProgressLabel(
@@ -123,6 +153,38 @@ describe('run history browser helpers', () => {
       finishedAt: '2026-05-22T08:01:00.000Z',
     });
     expect(filterRunHistoryEntries(stopped, 'failed', '').map((run) => run.runId)).toEqual([
+      'run_live',
+    ]);
+  });
+
+  test('a completed running row moves into Successful while staying selected', () => {
+    const runs = [entry({ runId: 'run_live', running: true, pipelineName: 'Live' })];
+    const completed = applyCompletedRunToHistory(runs, 'run_live', '2026-05-22T08:01:00.000Z');
+
+    expect(completed[0]).toMatchObject({
+      runId: 'run_live',
+      running: false,
+      success: true,
+      finishedAt: '2026-05-22T08:01:00.000Z',
+    });
+    expect(filterRunHistoryEntries(completed, 'success', '').map((run) => run.runId)).toEqual([
+      'run_live',
+    ]);
+  });
+
+  test('terminal focus keeps a stale refreshed row visible in the final tab', () => {
+    const runs = [entry({ runId: 'run_live', running: true, pipelineName: 'Live' })];
+    const focused = terminalRunFocusForStatus('done', 'run_live');
+    expect(focused).not.toBeNull();
+
+    const completed = applyTerminalRunFocusToHistory(
+      runs,
+      focused!,
+      '2026-05-22T08:01:00.000Z',
+    );
+
+    expect(completed[0]).toMatchObject({ runId: 'run_live', running: false, success: true });
+    expect(filterRunHistoryEntries(completed, 'success', '').map((run) => run.runId)).toEqual([
       'run_live',
     ]);
   });
