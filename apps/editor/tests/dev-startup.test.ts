@@ -18,10 +18,13 @@ describe('editor dev startup scripts', () => {
     expect(pkg.scripts['dev:server']).toBe('bun run ensure:opencode && bun run dev:server:watch');
   });
 
-  test('proxies API requests to the loopback sidecar address used by desktop HMR', () => {
+  test('proxies API requests to the loopback sidecar port selected by desktop HMR', () => {
     const viteConfig = readFileSync(join(editorRoot, 'vite.config.ts'), 'utf-8');
 
-    expect(viteConfig).toContain("'/api': 'http://127.0.0.1:3001'");
+    expect(viteConfig).toContain(
+      "const desktopSidecarPort = process.env.TAGMA_DESKTOP_SIDECAR_PORT ?? '3001';",
+    );
+    expect(viteConfig).toContain("'/api': `http://127.0.0.1:${desktopSidecarPort}`");
   });
 
   test('waits for a TCP port before continuing startup', async () => {

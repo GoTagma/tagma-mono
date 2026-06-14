@@ -2,6 +2,8 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
+const desktopSidecarPort = process.env.TAGMA_DESKTOP_SIDECAR_PORT ?? '3001';
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -11,7 +13,7 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': 'http://127.0.0.1:3001',
+      '/api': `http://127.0.0.1:${desktopSidecarPort}`,
     },
   },
 });

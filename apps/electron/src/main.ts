@@ -64,6 +64,23 @@ function readTagmaMetadata(): Record<string, unknown> {
 const TAGMA_META = readTagmaMetadata();
 const DEV_RENDERER_URL = normalizeDevRendererUrl(process.env.TAGMA_DESKTOP_RENDERER_URL);
 
+function applyDevHardwareAccelerationFlag(): void {
+  if (app.isPackaged || process.env.TAGMA_DESKTOP_DISABLE_GPU !== '1') return;
+  app.disableHardwareAcceleration();
+}
+
+function applyDevUserDataDir(): void {
+  const userDataDir = process.env.TAGMA_DESKTOP_USER_DATA_DIR?.trim();
+  if (app.isPackaged || !userDataDir) return;
+
+  const resolved = path.resolve(userDataDir);
+  fs.mkdirSync(resolved, { recursive: true });
+  app.setPath('userData', resolved);
+}
+
+applyDevHardwareAccelerationFlag();
+applyDevUserDataDir();
+
 // Windows GUI apps don't attach a console, so process.stdout writes from the
 // Electron main process are invisible to the user. Mirror sidecar stdout and
 // stderr to a log file under app.getPath('logs') so a startup crash leaves a

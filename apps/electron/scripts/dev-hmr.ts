@@ -1,3 +1,4 @@
+import { createServer } from 'node:net';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -17,18 +18,91 @@ export function desktopHmrRendererUrl(): string {
   return `http://${RENDERER_HOST}:${RENDERER_PORT}/`;
 }
 
-export function desktopHmrSidecarPort(): number {
-  return SIDECAR_PORT;
+export function desktopHmrSidecarPort(base: NodeJS.ProcessEnv = process.env): number {
+  const configured = base.TAGMA_DESKTOP_SIDECAR_PORT?.trim();
+  const port = configured ? Number(configured) : SIDECAR_PORT;
+  return Number.isInteger(port) && port > 0 ? port : SIDECAR_PORT;
+}
+
+export function desktopHmrUserDataDir(): string {
+  return resolve(electronRoot, '.tmp', 'desktop-hmr-user-data');
 }
 
 export function buildDesktopHmrEnv(
   base: NodeJS.ProcessEnv = process.env,
+  sidecarPort: number = desktopHmrSidecarPort(base),
 ): NodeJS.ProcessEnv {
   return {
     ...base,
     TAGMA_DESKTOP_RENDERER_URL: desktopHmrRendererUrl(),
-    TAGMA_DESKTOP_SIDECAR_PORT: String(desktopHmrSidecarPort()),
+    TAGMA_DESKTOP_SIDECAR_PORT: String(sidecarPort),
+    TAGMA_DESKTOP_USER_DATA_DIR: desktopHmrUserDataDir(),
+    TAGMA_DESKTOP_DISABLE_GPU: '1',
   };
+}
+
+export type AssertTcpPortAvailableOptions = {
+  host: string;
+  port: number;
+  label: string;
+};
+
+function listenOnTcpPort(host: string, port: number): Promise<ReturnType<typeof createServer>> {
+  const server = createServer();
+
+  return new Promise((resolveListen, rejectListen) => {
+    server.once('error', rejectListen);
+    server.listen({ host, port }, () => resolveListen(server));
+  });
+}
+
+async function closeServer(server: ReturnType<typeof createServer>): Promise<void> {
+  await new Promise<void>((resolveClose, rejectClose) => {
+    server.close((err) => (err ? rejectClose(err) : resolveClose()));
+  });
+}
+
+export async function assertTcpPortAvailable({
+  host,
+  port,
+  label,
+}: AssertTcpPortAvailableOptions): Promise<void> {
+  try {
+    const server = await listenOnTcpPort(host, port);
+    await closeServer(server);
+  } catch (err) {
+    const message =
+      err && typeof err === 'object' && 'code' in err ? ` (${String(err.code)})` : '';
+    throw new Error(
+      `[desktop:hmr] ${label} port ${host}:${port} is already unavailable${message}. Stop the existing dev process and retry.`,
+    );
+  }
+}
+
+export type SelectAvailableTcpPortOptions = {
+  host: string;
+  preferredPort: number;
+};
+
+export async function selectAvailableTcpPort({
+  host,
+  preferredPort,
+}: SelectAvailableTcpPortOptions): Promise<number> {
+  try {
+    const preferred = await listenOnTcpPort(host, preferredPort);
+    await closeServer(preferred);
+    return preferredPort;
+  } catch {
+    const fallback = await listenOnTcpPort(host, 0);
+    const address = fallback.address();
+    await closeServer(fallback);
+
+    if (!address || typeof address === 'string') {
+      throw new Error('[desktop:hmr] Failed to allocate a fallback sidecar port.');
+    }
+
+    return address.port;
+  }
 }
 
 async function stopChildren(children: Set<Subprocess>): Promise<void> {
@@ -73,13 +147,30 @@ export async function runDesktopHmr(): Promise<void> {
   process.once('SIGTERM', () => void stopAndExit(143));
 
   try {
+    await assertTcpPortAvailable({
+      host: RENDERER_HOST,
+      port: RENDERER_PORT,
+      label: 'Vite renderer',
+    });
+    const preferredSidecarPort = desktopHmrSidecarPort();
+    const sidecarPort = await selectAvailableTcpPort({
+      host: RENDERER_HOST,
+      preferredPort: preferredSidecarPort,
+    });
+    if (sidecarPort !== preferredSidecarPort) {
+      console.warn(
+        `[desktop:hmr] editor sidecar port ${preferredSidecarPort} is unavailable; using ${sidecarPort}.`,
+      );
+    }
+    const hmrEnv = buildDesktopHmrEnv(process.env, sidecarPort);
+
     const vite = track(
       Bun.spawn([process.execPath, 'run', 'dev:client:desktop'], {
         cwd: editorRoot,
         stdin: 'inherit',
         stdout: 'inherit',
         stderr: 'inherit',
-        env: process.env,
+        env: hmrEnv,
       }),
     );
     const viteExit = vite.exited.then((code) => ({ name: 'vite', code }));
@@ -102,7 +193,7 @@ export async function runDesktopHmr(): Promise<void> {
     }
 
     console.log(
-      `[desktop:hmr] Vite ready at ${desktopHmrRendererUrl()}; starting Electron with sidecar port ${SIDECAR_PORT}`,
+      `[desktop:hmr] Vite ready at ${desktopHmrRendererUrl()}; starting Electron with sidecar port ${sidecarPort}`,
     );
 
     const electron = track(
@@ -111,7 +202,7 @@ export async function runDesktopHmr(): Promise<void> {
         stdin: 'inherit',
         stdout: 'inherit',
         stderr: 'inherit',
-        env: buildDesktopHmrEnv(process.env),
+        env: hmrEnv,
       }),
     );
     const electronExit = electron.exited.then((code) => ({ name: 'electron', code }));
