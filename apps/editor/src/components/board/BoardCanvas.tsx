@@ -393,7 +393,6 @@ interface TrackDragState {
 
 interface TrackResizeState {
   trackId: string;
-  edge: 'top' | 'bottom';
   height: number;
 }
 
@@ -1054,7 +1053,7 @@ export function BoardCanvas({
   }, [trackDrag]);
 
   const handleTrackResizeStart = useCallback(
-    (trackId: string, edge: 'top' | 'bottom', e: React.PointerEvent<HTMLDivElement>) => {
+    (trackId: string, e: React.PointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
@@ -1064,8 +1063,8 @@ export function BoardCanvas({
 
       const onMove = (ev: PointerEvent) => {
         const dy = (ev.clientY - startClientY) / getZoom();
-        latestHeight = clampTrackHeight(edge === 'bottom' ? startHeight + dy : startHeight - dy);
-        setTrackResize({ trackId, edge, height: latestHeight });
+        latestHeight = clampTrackHeight(startHeight + dy);
+        setTrackResize({ trackId, height: latestHeight });
       };
       const onUp = () => {
         document.removeEventListener('pointermove', onMove);
@@ -1719,7 +1718,7 @@ export function BoardCanvas({
                 className="h-full flex cursor-grab active:cursor-grabbing"
                 onPointerDown={(e) => handleTrackDragStart(track.id, e)}
               >
-                <div className="flex-1 min-w-0 flex items-center">
+                <div className="flex-1 min-w-0 flex items-stretch">
                   <TrackLane
                     track={track}
                     taskCount={taskCount}
@@ -1729,16 +1728,10 @@ export function BoardCanvas({
                 </div>
               </div>
               <div
-                data-track-resize-edge="top"
-                className="absolute left-0 right-0 top-0 h-1 cursor-ns-resize z-20"
-                title="Resize track"
-                onPointerDown={(e) => handleTrackResizeStart(track.id, 'top', e)}
-              />
-              <div
                 data-track-resize-edge="bottom"
                 className="absolute left-0 right-0 bottom-0 h-1 cursor-ns-resize z-20"
                 title="Resize track"
-                onPointerDown={(e) => handleTrackResizeStart(track.id, 'bottom', e)}
+                onPointerDown={(e) => handleTrackResizeStart(track.id, e)}
               />
             </div>
           );

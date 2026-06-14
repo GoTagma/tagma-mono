@@ -194,7 +194,7 @@ export const TrackLane = memo(function TrackLane({
   return (
     <div
       ref={laneRef}
-      className="h-full w-full flex flex-col justify-center px-3 select-none"
+      className="h-full w-full flex flex-col justify-start px-3 pt-2 select-none"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
