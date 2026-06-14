@@ -14,7 +14,6 @@ function makeDir(): string {
 function bindingsPipeline(_dir: string): PipelineConfig {
   return {
     name: 'runner-snapshot',
-    mode: 'trusted',
     tracks: [
       {
         id: 't',
@@ -208,7 +207,6 @@ describe('PipelineRunner task snapshot', () => {
     const runner = new PipelineRunner(
       {
         name: 'live-output',
-        mode: 'trusted',
         tracks: [
           {
             id: 't',
@@ -313,7 +311,6 @@ describe('PipelineRunner task snapshot', () => {
     const runner = new PipelineRunner(
       {
         name: 'missing-driver',
-        mode: 'trusted',
         tracks: [
           {
             id: 't',
@@ -350,7 +347,6 @@ describe('PipelineRunner task snapshot', () => {
     const runner = new PipelineRunner(
       {
         name: 'failing-command',
-        mode: 'trusted',
         tracks: [
           {
             id: 't',
@@ -394,7 +390,6 @@ describe('PipelineRunner task snapshot', () => {
     const runner = new PipelineRunner(
       {
         name: 'missing-command',
-        mode: 'trusted',
         tracks: [
           {
             id: 't',
@@ -443,7 +438,6 @@ describe('PipelineRunner task snapshot', () => {
     const runner = new PipelineRunner(
       {
         name: 'unsafe-cwd',
-        mode: 'trusted',
         tracks: [
           {
             id: 't',

@@ -558,8 +558,15 @@ export interface TrackFolder {
   collapsed: boolean;
 }
 
+export interface LayoutTaskPosition {
+  x: number;
+  y?: number;
+}
+
 export interface EditorLayout {
-  positions: Record<string, { x: number }>;
+  positions: Record<string, LayoutTaskPosition>;
+  /** Per-track editor lane heights in canvas pixels. Older layout files omit it. */
+  trackHeights?: Record<string, number>;
   /** Optional editor-only track grouping. Older layout files omit it. */
   folders?: TrackFolder[];
 }
@@ -1355,7 +1362,8 @@ export interface RunSummary {
   error: string | null;
   tasks: RunSummaryTask[];
   tracks: RunSummaryTrack[];
-  positions?: Record<string, { x: number }>;
+  positions?: Record<string, LayoutTaskPosition>;
+  trackHeights?: Record<string, number>;
   hasYamlSnapshot?: boolean;
   /** Source runId when this run was launched via Replay (one level only). */
   replayedFromRunId?: string;
@@ -1442,7 +1450,11 @@ export const api = {
    */
   replaceConfig: (
     config: RawPipelineConfig,
-    layout?: { positions?: Record<string, { x: number }>; folders?: TrackFolder[] },
+    layout?: {
+      positions?: Record<string, LayoutTaskPosition>;
+      folders?: TrackFolder[];
+      trackHeights?: Record<string, number>;
+    },
   ) =>
     request<ServerState>('/config/replace', {
       method: 'POST',
@@ -1704,10 +1716,18 @@ export const api = {
   deleteFile: (path: string) =>
     request<ServerState>('/delete-file', { method: 'POST', body: jsonBody({ path }) }),
 
-  saveLayout: (positions: Record<string, { x: number }>, folders?: TrackFolder[]) =>
+  saveLayout: (
+    positions: Record<string, LayoutTaskPosition>,
+    folders?: TrackFolder[],
+    trackHeights?: Record<string, number>,
+  ) =>
     request<{ ok: boolean }>('/layout', {
       method: 'PATCH',
-      body: jsonBody(folders !== undefined ? { positions, folders } : { positions }),
+      body: jsonBody(
+        folders !== undefined || trackHeights !== undefined
+          ? { positions, folders, trackHeights }
+          : { positions },
+      ),
     }),
 
   // `fromRunId` triggers replay-from-history: the server loads
@@ -1795,7 +1815,8 @@ export const api = {
     request<{
       config: RawPipelineConfig;
       dagEdges: DagEdge[];
-      positions: Record<string, { x: number }>;
+      positions: Record<string, LayoutTaskPosition>;
+      trackHeights?: Record<string, number>;
     }>(`/run/history/${encodeURIComponent(runId)}/replay-info`),
 
   abortRun: (runId?: string) =>

@@ -1621,7 +1621,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
   app.patch('/api/layout', (req, res) => {
     const ws = requireWorkspace(req, res);
     if (!ws) return;
-    const { positions, folders } = req.body;
+    const { positions, folders, trackHeights } = req.body;
     const validTrackIds = new Set<string>();
     const validQids = new Set<string>();
     for (const t of ws.config.tracks) {
@@ -1636,18 +1636,37 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       // but render nothing useful and can confuse downstream layout code.
       // Cap entry count to the number of valid tasks so a noisy client can't
       // make ws.layout.positions grow unboundedly across mutations.
-      const sanitized: Record<string, { x: number }> = {};
+      const sanitized: Record<string, { x: number; y?: number }> = {};
       let kept = 0;
       for (const [qid, pos] of Object.entries(positions)) {
         if (kept >= MAX_LAYOUT_TRACK_IDS) break;
-        const p = pos as { x?: unknown } | null;
+        const p = pos as { x?: unknown; y?: unknown } | null;
         if (!validQids.has(qid)) continue;
         if (!p || typeof p.x !== 'number' || !Number.isFinite(p.x)) continue;
         const clamped = Math.max(-MAX_LAYOUT_COORD, Math.min(MAX_LAYOUT_COORD, p.x));
-        sanitized[qid] = { x: clamped };
+        if (typeof p.y === 'number' && Number.isFinite(p.y)) {
+          sanitized[qid] = {
+            x: clamped,
+            y: Math.max(-MAX_LAYOUT_COORD, Math.min(MAX_LAYOUT_COORD, p.y)),
+          };
+        } else {
+          sanitized[qid] = { x: clamped };
+        }
         kept += 1;
       }
       ws.layout.positions = sanitized;
+    }
+    if (trackHeights && typeof trackHeights === 'object') {
+      const sanitized: Record<string, number> = {};
+      let kept = 0;
+      for (const [trackId, height] of Object.entries(trackHeights)) {
+        if (kept >= MAX_LAYOUT_TRACK_IDS) break;
+        if (!validTrackIds.has(trackId)) continue;
+        if (typeof height !== 'number' || !Number.isFinite(height)) continue;
+        sanitized[trackId] = Math.max(0, Math.min(MAX_LAYOUT_COORD, height));
+        kept += 1;
+      }
+      ws.layout.trackHeights = sanitized;
     }
     const sanitizedFolders = sanitizeFoldersInput(folders, validTrackIds);
     if (sanitizedFolders !== undefined) ws.layout.folders = sanitizedFolders;
@@ -1746,14 +1765,10 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       const hasCommandTasks = ws.config.tracks.some((t) => t.tasks.some((task) => task.command));
       const hasPlugins = (ws.config.plugins ?? []).length > 0;
       const hasHooks = !!ws.config.hooks && Object.keys(ws.config.hooks).length > 0;
-      const isTrustedMode = ws.config.mode === 'trusted';
       const state = getState(ws);
       const warnings: string[] = [];
       if (hasCommandTasks) {
         warnings.push('shell command tasks that execute on the host machine');
-      }
-      if (isTrustedMode) {
-        warnings.push('trusted mode, which enables local execution features after review');
       }
       if (hasPlugins) {
         warnings.push('plugins, which are local code');

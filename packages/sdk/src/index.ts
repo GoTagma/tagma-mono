@@ -66,7 +66,6 @@ export type {
 } from './workflow';
 export type {
   PipelineConfig,
-  PipelineExecutionMode,
   PipelineGraphAbortReason,
   PipelineGraphConfig,
   PipelineGraphEventPayload,

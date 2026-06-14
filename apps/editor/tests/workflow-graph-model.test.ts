@@ -118,6 +118,25 @@ describe('workflow graph model', () => {
     ).toEqual({ x: 190, y: 170 });
   });
 
+  test('converts zoomed pointer movement into canvas-relative node positions', () => {
+    const offset = workflowNodePointerOffset(
+      { clientX: 350, clientY: 250 },
+      { left: 100, top: 50 },
+      { x: 180, y: 140 },
+      1.25,
+    );
+
+    expect(offset).toEqual({ x: 20, y: 20 });
+    expect(
+      workflowDragPositionFromPointer(
+        { clientX: 412.5, clientY: 300 },
+        { left: 100, top: 50 },
+        offset,
+        1.25,
+      ),
+    ).toEqual({ x: 230, y: 180 });
+  });
+
   test('resolves workspace-relative workflow pipeline paths before opening editor', () => {
     expect(resolveWorkflowPipelineEditorPath('E:/repo', '.tagma/build/build.yaml')).toBe(
       'E:/repo/.tagma/build/build.yaml',

@@ -99,7 +99,6 @@ const FORBIDDEN_JSON_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 
 const PIPELINE_PATCH_KEYS = new Set([
   'name',
-  'mode',
   'driver',
   'model',
   'reasoning_effort',
@@ -146,7 +145,6 @@ const TASK_KEYS = new Set([
 // it must allow everything those interfaces declare.
 const REPLACE_PIPELINE_KEYS = new Set([
   'name',
-  'mode',
   'driver',
   'model',
   'reasoning_effort',
@@ -171,7 +169,7 @@ const REPLACE_TRACK_KEYS = new Set([
   'on_failure',
   'tasks',
 ]);
-const REPLACE_LAYOUT_KEYS = new Set(['positions', 'folders']);
+const REPLACE_LAYOUT_KEYS = new Set(['positions', 'folders', 'trackHeights']);
 const REPLACE_FOLDER_KEYS = new Set(['id', 'name', 'color', 'trackIds', 'collapsed']);
 
 function assertBoundedJson(
@@ -448,12 +446,11 @@ export function registerPipelineRoutes(app: express.Express): void {
       'pipeline patch',
     ) as Partial<RawPipelineConfig> | null;
     if (!body) return;
-    const { name, mode, driver, model, reasoning_effort, timeout, plugins, hooks } = body;
+    const { name, driver, model, reasoning_effort, timeout, plugins, hooks } = body;
     // `RawPipelineConfig` fields are declared readonly, so we build the patch
     // as an object literal instead of mutating field-by-field.
     const patch: Partial<RawPipelineConfig> = {
       ...(name !== undefined && { name }),
-      ...(mode !== undefined && { mode: mode || undefined }),
       ...(driver !== undefined && { driver: driver || undefined }),
       ...(model !== undefined && { model: model || undefined }),
       ...(reasoning_effort !== undefined && { reasoning_effort: reasoning_effort || undefined }),
@@ -832,8 +829,9 @@ export function registerPipelineRoutes(app: express.Express): void {
       const incomingLayout =
         rawBodyLayout && typeof rawBodyLayout === 'object' && !Array.isArray(rawBodyLayout)
           ? (sanitizeReplaceLayout(rawBodyLayout as Record<string, unknown>) as {
-              positions?: Record<string, { x: number }>;
+              positions?: Record<string, { x: number; y?: number }>;
               folders?: unknown;
+              trackHeights?: Record<string, number>;
             })
           : undefined;
 
@@ -886,13 +884,25 @@ export function registerPipelineRoutes(app: express.Express): void {
           for (const k of t.tasks) validQids.add(`${t.id}.${k.id}`);
         }
         if (incomingLayout.positions && typeof incomingLayout.positions === 'object') {
-          const sanitized: Record<string, { x: number }> = {};
+          const sanitized: Record<string, { x: number; y?: number }> = {};
           for (const [qid, pos] of Object.entries(incomingLayout.positions)) {
             if (validQids.has(qid) && pos && typeof pos.x === 'number' && Number.isFinite(pos.x)) {
-              sanitized[qid] = { x: pos.x };
+              sanitized[qid] =
+                typeof pos.y === 'number' && Number.isFinite(pos.y)
+                  ? { x: pos.x, y: pos.y }
+                  : { x: pos.x };
             }
           }
           ws.layout.positions = sanitized;
+        }
+        if (incomingLayout.trackHeights && typeof incomingLayout.trackHeights === 'object') {
+          const sanitized: Record<string, number> = {};
+          for (const [trackId, height] of Object.entries(incomingLayout.trackHeights)) {
+            if (!validTrackIds.has(trackId)) continue;
+            if (typeof height !== 'number' || !Number.isFinite(height)) continue;
+            sanitized[trackId] = height;
+          }
+          ws.layout.trackHeights = sanitized;
         }
         const sanitizedFolders = sanitizeFoldersInput(incomingLayout.folders, validTrackIds);
         if (sanitizedFolders !== undefined) ws.layout.folders = sanitizedFolders;

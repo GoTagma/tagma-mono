@@ -1,10 +1,8 @@
 import {
-  DEFAULT_PERMISSIONS,
   type CompletionPlugin,
   type DriverPlugin,
   type MiddlewarePlugin,
   type PipelineConfig,
-  type PipelineExecutionMode,
   type TriggerPlugin,
   isCommandTaskConfig,
 } from '../types';
@@ -23,7 +21,6 @@ export function preflight(
   config: PipelineConfig,
   dag: Dag,
   registry: PluginRegistry,
-  mode: PipelineExecutionMode = 'trusted',
 ): void {
   const errors: string[] = [];
 
@@ -41,23 +38,6 @@ export function preflight(
 
     if (!isCommand && driver === null) {
       errors.push(`Task "${node.taskId}": driver "${driverName}" not registered`);
-    }
-
-    if (mode === 'safe' && !isCommand && driver !== null) {
-      const permissions =
-        task.permissions ?? track.permissions ?? config.permissions ?? DEFAULT_PERMISSIONS;
-      if (driver.capabilities.enforcesPermissions !== true) {
-        errors.push(
-          `Task "${node.taskId}": safe mode blocks driver "${driverName}" ` +
-            `because it does not declare capabilities.enforcesPermissions`,
-        );
-      }
-      if (permissions.write && driver.capabilities.enforcesPermissions !== true) {
-        errors.push(
-          `Task "${node.taskId}": safe mode blocks write permission for driver "${driverName}" ` +
-            `because it does not declare capabilities.enforcesPermissions`,
-        );
-      }
     }
 
     if (task.trigger) {

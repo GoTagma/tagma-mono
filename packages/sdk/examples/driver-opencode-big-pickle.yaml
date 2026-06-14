@@ -1,7 +1,7 @@
 # driver-opencode-big-pickle.yaml
 # --------------------------------------------------------------------------
 # Minimal pipeline using the built-in OpenCode CLI driver with the
-# `opencode/big-pickle` model. No `plugins:` list is required â€” opencode is
+# `opencode/big-pickle` model. No `plugins:` list is required â€?opencode is
 # registered by bootstrapBuiltins() at SDK startup.
 #
 # Requires:  `opencode` CLI on PATH + auth.
@@ -12,7 +12,6 @@
 # --------------------------------------------------------------------------
 pipeline:
   name: driver-opencode-big-pickle
-  mode: trusted
   driver: opencode
   model: opencode/big-pickle
   timeout: 5m

@@ -1,10 +1,9 @@
 # End-to-end smoke-test pipeline covering the full plugin surface.
-# No external driver plugin is needed â€” opencode is an SDK built-in.
+# No external driver plugin is needed â€?opencode is an SDK built-in.
 # trigger / completion / middleware plugins are all SDK built-ins
 # (registered by bootstrapBuiltins).
 pipeline:
   name: full-feature-smoke-test
-  mode: trusted
   driver: opencode                # pipeline-level default driver (inherited by track/task)
   model: opencode/big-pickle       # pipeline-level default model (must be provider/model)
   timeout: 30m                    # pipeline-level timeout
@@ -100,7 +99,7 @@ pipeline:
     - id: ops
       name: Ops
       color: '#10b981'
-      driver: opencode               # unused here (all command tasks) â€” kept to demo inheritance
+      driver: opencode               # unused here (all command tasks) â€?kept to demo inheritance
       on_failure: ignore             # failures in B do not affect other tracks
       permissions:
         read: true

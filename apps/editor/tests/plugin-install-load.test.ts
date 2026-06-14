@@ -283,7 +283,7 @@ function mockRegistryFetch(tarballPath: string, name = '@scope/plugin-under-test
   globalThis.fetch = (async (input: string | URL | Request) => {
     const url = String(input);
     // Tarball URLs end in `.tgz` and live on registry.npmjs.org just like
-    // the metadata document does — distinguish by extension so the mock
+    // the metadata document does; distinguish by extension so the mock
     // doesn't return JSON when the production code asked for a tarball.
     if (url.endsWith('.tgz')) {
       return new Response(readFileSync(tarballPath), { status: 200 });
@@ -352,7 +352,7 @@ function mockRegistryFetchPackages(packages: Record<string, string>): () => void
               name: scopedName,
               version: entry.version,
               dist: {
-                // Stay on the real registry host — the production code now
+                // Stay on the real registry host; the production code now
                 // requires tarball URLs to live on registry.npmjs.org so
                 // a corrupted mirror or compromised dist.tarball field
                 // can't redirect us to an untrusted location.
@@ -395,27 +395,22 @@ afterEach(() => {
 });
 
 describe('plugin install/import hardening', () => {
-  test('autoLoadInstalledPlugins does not import plugin code while pipeline is safe', async () => {
-    const workDir = makeTempDir('workspace-safe-autoload');
+  test('autoLoadInstalledPlugins imports declared installed plugin code', async () => {
+    const workDir = makeTempDir('workspace-autoload-declared');
     S.workDir = workDir;
     S.config = {
-      name: 'Safe pipeline',
-      mode: 'safe',
+      name: 'Plugin pipeline',
       plugins: ['@scope/plugin-under-test'],
       tracks: [],
     };
-    writeJson(join(workDir, 'package.json'), {
-      dependencies: { '@scope/plugin-under-test': '1.0.0' },
-    });
-    writeDriverPlugin(join(workDir, 'node_modules', '@scope', 'plugin-under-test'), {
+    writeInstalledDriverPlugin(workDir, {
       name: '@scope/plugin-under-test',
-      handlerName: 'safe-autoload',
+      handlerName: 'declared-autoload',
       tagmaPlugin: { category: 'drivers', type: 'test' },
     });
 
-    await expect(autoLoadInstalledPlugins(S)).resolves.toEqual([]);
-    expect(S.loadedPluginMeta.has('@scope/plugin-under-test')).toBe(false);
-    expect(getLastAutoLoadErrors(S)[0]?.message).toMatch(/safe mode/i);
+    await expect(autoLoadInstalledPlugins(S)).resolves.toEqual(['@scope/plugin-under-test']);
+    expect(S.loadedPluginMeta.has('@scope/plugin-under-test')).toBe(true);
   });
 
   test('autoLoadInstalledPlugins rolls back declared auto-install when load fails', async () => {
@@ -426,7 +421,6 @@ describe('plugin install/import hardening', () => {
     S.workDir = workDir;
     S.config = {
       name: 'Trusted pipeline',
-      mode: 'trusted',
       plugins: ['@scope/plugin-under-test'],
       tracks: [],
     };
@@ -1006,7 +1000,7 @@ describe('plugin install/import hardening', () => {
       dependencies: { '@scope/plugin-under-test': `file:${localSourceDir}` },
     });
 
-    // Even if the registry advertises a newer version, the plan must refuse —
+    // Even if the registry advertises a newer version, the plan must refuse:
     // installing it would silently replace the user's local copy. We don't
     // mock fetch; the local check has to short-circuit before any network call.
     const plan = await planPluginUpgrade(S, '@scope/plugin-under-test');
@@ -1652,7 +1646,6 @@ describe('plugin loader cache busting', () => {
     S.workDir = workDir;
     S.config = {
       name: 'First party plugins',
-      mode: 'trusted',
       tracks: [],
     };
 

@@ -16,7 +16,6 @@ describe('pipeline manifest sidecar', () => {
       [
         'pipeline:',
         '  name: Outlook Email Summarizer',
-        '  mode: trusted',
         '  tracks:',
         '    - id: outlook',
         '      name: Outlook',

@@ -370,7 +370,6 @@ test('run start lock is only released by the owner token', async () => {
 test('run start accepts a new instance while another run is live', async () => {
   ws.config = {
     name: 'Concurrent Pipeline',
-    mode: 'trusted',
     tracks: [
       {
         id: 'main',
@@ -408,7 +407,6 @@ test('run start reloads the requested current yaml before validating target task
     [
       'pipeline:',
       '  name: Chat Created',
-      '  mode: trusted',
       '  tracks:',
       '    - id: main',
       '      name: Main',
@@ -449,7 +447,6 @@ test('run start unloads partially preloaded plugins before releasing the plugin 
   const badPlugin = '@scope/plugin-bad';
   ws.config = {
     name: 'Plugin Preload Rollback',
-    mode: 'trusted',
     plugins: [goodPlugin, badPlugin],
     tracks: [
       {
@@ -499,7 +496,6 @@ test('run start does not preload a plugin that was explicitly uninstalled', asyn
   const blockedPlugin = '@scope/plugin-blocked';
   ws.config = {
     name: 'Blocked Plugin Preload',
-    mode: 'trusted',
     plugins: [blockedPlugin],
     tracks: [
       {

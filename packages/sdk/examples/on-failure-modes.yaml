@@ -2,28 +2,27 @@
 # --------------------------------------------------------------------------
 # Demonstrates the three `on_failure` modes on a track.
 #
-#   ignore          â€” downstream tasks see the failure as success; other
+#   ignore          â€?downstream tasks see the failure as success; other
 #                     tracks keep running.
-#   skip_downstream â€” downstream tasks of the failed task are marked skipped;
+#   skip_downstream â€?downstream tasks of the failed task are marked skipped;
 #                     other tracks keep running (this is the default).
-#   stop_all        â€” abort the ENTIRE pipeline; every still-waiting task in
+#   stop_all        â€?abort the ENTIRE pipeline; every still-waiting task in
 #                     every track is marked skipped.
 #
 # Each track below triggers its own failure so you can observe the three
 # behaviours side-by-side in the pipeline log.
 #
-# CAUTION: `stop_all` is contagious â€” if you enable the `kill_switch` track,
+# CAUTION: `stop_all` is contagious â€?if you enable the `kill_switch` track,
 # the other two may get aborted mid-flight depending on scheduling. To
 # observe `ignore` and `skip_downstream` cleanly, comment out `kill_switch`.
 # --------------------------------------------------------------------------
 pipeline:
   name: on-failure-modes
-  mode: trusted
   timeout: 2m
 
   tracks:
     - id: tolerant
-      name: ignore â€” downstream still runs
+      name: ignore â€?downstream still runs
       color: '#10b981'
       on_failure: ignore
       permissions: { read: true, write: true, execute: true }
@@ -37,9 +36,9 @@ pipeline:
           command: 'echo "tolerant: downstream ran despite upstream failure"'
 
     - id: default_mode
-      name: skip_downstream â€” downstream is skipped
+      name: skip_downstream â€?downstream is skipped
       color: '#f59e0b'
-      # on_failure not set â€” defaults to skip_downstream.
+      # on_failure not set â€?defaults to skip_downstream.
       permissions: { read: true, write: true, execute: true }
       tasks:
         - id: boom
@@ -52,7 +51,7 @@ pipeline:
 
     # Uncomment to see stop_all abort the whole pipeline.
     # - id: kill_switch
-    #   name: stop_all â€” abort the whole pipeline
+    #   name: stop_all â€?abort the whole pipeline
     #   color: '#ef4444'
     #   on_failure: stop_all
     #   permissions: { read: true, write: true, execute: true }

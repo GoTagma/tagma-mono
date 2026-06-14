@@ -438,7 +438,7 @@ export interface RunSummary {
   error: string | null;
   tasks: RunSummaryTask[];
   tracks: RunSummaryTrack[];
-  positions?: Record<string, { x: number }>;
+  positions?: Record<string, { x: number; y?: number }>;
   hasYamlSnapshot?: boolean;
   replayedFromRunId?: string;
 }
@@ -664,7 +664,7 @@ export class RunSession {
     return [...this.buffer];
   }
 
-  buildSummary(endedAt: string, positions: Record<string, { x: number }>): RunSummary {
+  buildSummary(endedAt: string, positions: Record<string, { x: number; y?: number }>): RunSummary {
     return {
       runId: this.runId,
       pipelineName: this.effectiveConfig.name,
@@ -684,7 +684,7 @@ export class RunSession {
     };
   }
 
-  buildLiveSummary(positions: Record<string, { x: number }>): RunSummary {
+  buildLiveSummary(positions: Record<string, { x: number; y?: number }>): RunSummary {
     return {
       runId: this.runId,
       pipelineName: this.effectiveConfig.name,
@@ -1320,7 +1320,7 @@ export function positionsForSession(
   ws: WorkspaceState,
   cwd: string,
   session: RunSession,
-): Record<string, { x: number }> {
+): Record<string, { x: number; y?: number }> {
   if (session.fromRunId === null) return { ...ws.layout.positions };
   const priorSummary = readRunSummary(cwd, session.fromRunId);
   return priorSummary?.positions ? { ...priorSummary.positions } : {};

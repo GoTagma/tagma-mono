@@ -323,17 +323,32 @@ export function loadLayout(ws: WorkspaceState): void {
       for (const task of track.tasks) validQids.add(`${track.id}.${task.id}`);
     }
     const parsed = raw as Record<string, unknown>;
-    const positions: Record<string, { x: number }> = {};
+    const positions: Record<string, { x: number; y?: number }> = {};
     if (parsed.positions && typeof parsed.positions === 'object') {
       for (const [qid, pos] of Object.entries(parsed.positions)) {
-        const p = pos as { x?: unknown } | null;
+        const p = pos as { x?: unknown; y?: unknown } | null;
         if (validQids.has(qid) && p && typeof p.x === 'number' && Number.isFinite(p.x)) {
-          positions[qid] = { x: p.x };
+          positions[qid] =
+            typeof p.y === 'number' && Number.isFinite(p.y) ? { x: p.x, y: p.y } : { x: p.x };
         }
       }
     }
+    let trackHeights: Record<string, number> | undefined;
+    if (parsed.trackHeights && typeof parsed.trackHeights === 'object') {
+      const sanitized: Record<string, number> = {};
+      for (const [trackId, height] of Object.entries(parsed.trackHeights)) {
+        if (!validTrackIds.has(trackId)) continue;
+        if (typeof height !== 'number' || !Number.isFinite(height)) continue;
+        sanitized[trackId] = height;
+      }
+      if (Object.keys(sanitized).length > 0) trackHeights = sanitized;
+    }
     const folders = sanitizeFoldersInput(parsed.folders, validTrackIds);
-    ws.layout = folders === undefined ? { positions } : { positions, folders };
+    ws.layout = {
+      positions,
+      ...(trackHeights === undefined ? {} : { trackHeights }),
+      ...(folders === undefined ? {} : { folders }),
+    };
   } catch {
     ws.layout = { positions: {} };
   }
@@ -917,7 +932,6 @@ export function lenientParseYaml(content: string, fallbackName: string): RawPipe
     });
   return {
     name: typeof p.name === 'string' && p.name ? p.name : fallbackName,
-    mode: p.mode === 'trusted' || p.mode === 'safe' ? p.mode : undefined,
     driver: typeof p.driver === 'string' ? p.driver : undefined,
     timeout: typeof p.timeout === 'string' ? p.timeout : undefined,
     tracks,

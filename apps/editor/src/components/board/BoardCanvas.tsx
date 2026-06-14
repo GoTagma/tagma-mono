@@ -33,6 +33,8 @@ import {
   TASK_GAP,
   PAD_LEFT,
   TRACK_H,
+  TRACK_MAX_H,
+  TRACK_MIN_H,
   CANVAS_PAD_RIGHT,
   BOARD_SCROLL_ID,
 } from './layout-constants';
@@ -81,7 +83,8 @@ interface BoardCanvasProps {
     toTaskId: string,
   ) => void;
   onRemoveDependency: (trackId: string, taskId: string, depRef: string) => void;
-  onSetTaskPosition: (qualifiedId: string, x: number) => void;
+  onSetTaskPosition: (qualifiedId: string, x: number, y?: number) => void;
+  onSetTrackHeight: (trackId: string, height: number) => void;
   onTransferTask: (fromTrackId: string, taskId: string, toTrackId: string) => void;
 }
 
@@ -128,13 +131,15 @@ function buildPositions(
       y += row.height;
       continue;
     }
-    const centerY = y + (row.height - TASK_H) / 2;
+    const defaultY = (row.height - TASK_H) / 2;
     for (let i = 0; i < tr.tasks.length; i++) {
       const task = tr.tasks[i];
       const qid = `${tr.id}.${task.id}`;
       const stored = storedPositions.get(qid);
       const x = stored ? stored.x : PAD_LEFT + i * (TASK_W + TASK_GAP);
-      m.set(qid, { x, y: centerY });
+      const innerY =
+        stored?.y === undefined ? defaultY : Math.max(0, Math.min(row.height - TASK_H, stored.y));
+      m.set(qid, { x, y: y + innerY });
     }
     y += row.height;
   }
@@ -290,6 +295,21 @@ function trackTopY(plan: readonly RenderRow[], trackId: string): number {
   return trackTopYInPlan(plan, trackId) ?? 0;
 }
 
+function trackHeightInPlan(plan: readonly RenderRow[], trackId: string): number {
+  return plan.find((row) => row.kind === 'track' && row.trackId === trackId)?.height ?? TRACK_H;
+}
+
+function clampTaskYInTrack(plan: readonly RenderRow[], trackId: string, contentY: number): number {
+  const top = trackTopY(plan, trackId);
+  const height = trackHeightInPlan(plan, trackId);
+  return Math.max(0, Math.min(Math.max(0, height - TASK_H), contentY - top));
+}
+
+function clampTrackHeight(height: number): number {
+  if (!Number.isFinite(height)) return TRACK_H;
+  return Math.max(TRACK_MIN_H, Math.min(TRACK_MAX_H, Math.round(height)));
+}
+
 /** Reverse lookup: which track row sits at the given Y? Folder header rows
  *  return null. */
 function trackAtY(plan: readonly RenderRow[], cursorY: number): string | null {
@@ -342,14 +362,17 @@ interface DragCompanion {
   taskId: string;
   trackId: string;
   startX: number;
+  startY: number;
 }
 interface TaskDragState {
   qid: string;
   taskId: string;
   trackId: string;
   contentX: number;
+  contentY: number;
   targetTrackId: string;
   startX: number;
+  startY: number;
   companions: DragCompanion[];
 }
 interface EdgeDragState {
@@ -366,6 +389,12 @@ interface TrackDragState {
   folderStartIndex: number | null;
   folderDropIndex: number | null;
   deltaY: number;
+}
+
+interface TrackResizeState {
+  trackId: string;
+  edge: 'top' | 'bottom';
+  height: number;
 }
 
 /**
@@ -470,6 +499,7 @@ export function BoardCanvas({
   onAddDependency,
   onRemoveDependency,
   onSetTaskPosition,
+  onSetTrackHeight,
   onTransferTask,
 }: BoardCanvasProps) {
   const headerRef = useRef<HTMLDivElement>(null);
@@ -494,12 +524,14 @@ export function BoardCanvas({
   const toggleFolderCollapsed = usePipelineStore((s) => s.toggleFolderCollapsed);
   const moveTrackToFolder = usePipelineStore((s) => s.moveTrackToFolder);
   const moveTrackToRoot = usePipelineStore((s) => s.moveTrackToRoot);
+  const storedTrackHeights = usePipelineStore((s) => s.trackHeights);
   const [taskDrag, setTaskDrag] = useState<TaskDragState | null>(null);
   const [edgeDrag, setEdgeDrag] = useState<EdgeDragState | null>(null);
   const [trackDrag, setTrackDrag] = useState<TrackDragState | null>(null);
+  const [trackResize, setTrackResize] = useState<TrackResizeState | null>(null);
   const [selEdge, setSelEdge] = useState<string | null>(null);
   const [ctx, setCtx] = useState<CtxState | null>(null);
-  const dropRef = useRef<{ trackId: string; positionX: number } | null>(null);
+  const dropRef = useRef<{ trackId: string; positionX: number; positionY: number } | null>(null);
   const nearRef = useRef<string | null>(null);
 
   const [inlineAdd, setInlineAdd] = useState<
@@ -578,6 +610,13 @@ export function BoardCanvas({
     });
   }, [folders, trackDrag]);
 
+  const effectiveTrackHeights = useMemo(() => {
+    if (!trackResize) return storedTrackHeights;
+    const next = new Map(storedTrackHeights);
+    next.set(trackResize.trackId, trackResize.height);
+    return next;
+  }, [storedTrackHeights, trackResize]);
+
   /**
    * Render plan — the single source of truth for lane geometry. Folders
    * inject thin (FOLDER_H) header rows, and collapsed folders hide their
@@ -585,8 +624,8 @@ export function BoardCanvas({
    * this component derives from this plan.
    */
   const renderPlan = useMemo(
-    () => buildRenderPlan(orderedTracks, planFolders),
-    [orderedTracks, planFolders],
+    () => buildRenderPlan(orderedTracks, planFolders, effectiveTrackHeights),
+    [orderedTracks, planFolders, effectiveTrackHeights],
   );
 
   /** Tracks that actually have a lane on screen (collapsed-folder members
@@ -608,12 +647,12 @@ export function BoardCanvas({
    */
   const trackDragOffsetByTrackId = useMemo(() => {
     if (!trackDrag) return null;
-    const origPlan = buildRenderPlan(tracks, folders);
+    const origPlan = buildRenderPlan(tracks, folders, effectiveTrackHeights);
     const fromY = trackTopYInPlan(origPlan, trackDrag.trackId);
     const toY = trackTopYInPlan(renderPlan, trackDrag.trackId);
     if (fromY === null || toY === null) return null;
     return new Map([[trackDrag.trackId, trackDrag.deltaY - (toY - fromY)]]);
-  }, [trackDrag, tracks, folders, renderPlan]);
+  }, [trackDrag, tracks, folders, renderPlan, effectiveTrackHeights]);
 
   const positionsMap = useMemo(() => {
     let base = staticPositions;
@@ -630,16 +669,22 @@ export function BoardCanvas({
     if (!taskDrag) return base;
     const result = new Map(base);
     const targetY = trackTopY(renderPlan, taskDrag.targetTrackId);
+    const innerY = clampTaskYInTrack(renderPlan, taskDrag.targetTrackId, taskDrag.contentY);
     result.set(taskDrag.qid, {
       x: Math.max(PAD_LEFT, taskDrag.contentX),
-      y: targetY + (TRACK_H - TASK_H) / 2,
+      y: targetY + innerY,
     });
-    // Move companion tasks by the same horizontal delta (stay on own track)
+    // Move companion tasks by the same delta (stay on own track).
     const dx = taskDrag.contentX - taskDrag.startX;
+    const dy = taskDrag.contentY - taskDrag.startY;
     for (const c of taskDrag.companions) {
       const cx = Math.max(PAD_LEFT, c.startX + dx);
       const cy = trackTopY(renderPlan, c.trackId);
-      result.set(c.qid, { x: cx, y: cy + (TRACK_H - TASK_H) / 2 });
+      const innerCompanionY = Math.max(
+        0,
+        Math.min(Math.max(0, trackHeightInPlan(renderPlan, c.trackId) - TASK_H), c.startY + dy),
+      );
+      result.set(c.qid, { x: cx, y: cy + innerCompanionY });
     }
     return result;
   }, [taskDrag, staticPositions, renderPlan, trackDrag, trackDragOffsetByTrackId, allTasks]);
@@ -715,6 +760,7 @@ export function BoardCanvas({
       if (!pos) return;
       const cp = toContent(e, el);
       const offX = cp.x - pos.x;
+      const offY = cp.y - pos.y;
       const startCX = e.clientX,
         startCY = e.clientY;
       let started = false;
@@ -729,9 +775,16 @@ export function BoardCanvas({
       const companions: DragCompanion[] = companionQids.map((cqid) => {
         const [trkId, tskId] = cqid.split('.');
         const cPos = staticPositions.get(cqid);
-        return { qid: cqid, taskId: tskId, trackId: trkId, startX: cPos?.x ?? 0 };
+        return {
+          qid: cqid,
+          taskId: tskId,
+          trackId: trkId,
+          startX: cPos?.x ?? 0,
+          startY: cPos ? cPos.y - trackTopY(renderPlan, trkId) : 0,
+        };
       });
       const startX = pos.x;
+      const startY = pos.y;
 
       const hasCompanions = companions.length > 0;
 
@@ -743,16 +796,20 @@ export function BoardCanvas({
         }
         const c = toContent(ev, el);
         const cx = Math.max(PAD_LEFT, c.x - offX);
+        const rawY = c.y - offY;
         // Multi-drag is horizontal only — lock to original track
         const trkId = hasCompanions ? ft.trackId : (trackAtY(renderPlan, c.y) ?? ft.trackId);
-        dropRef.current = { trackId: trkId, positionX: cx };
+        const positionY = clampTaskYInTrack(renderPlan, trkId, rawY);
+        dropRef.current = { trackId: trkId, positionX: cx, positionY };
         setTaskDrag({
           qid,
           taskId,
           trackId: ft.trackId,
           contentX: cx,
+          contentY: trackTopY(renderPlan, trkId) + positionY,
           targetTrackId: trkId,
           startX,
+          startY,
           companions,
         });
       };
@@ -773,13 +830,21 @@ export function BoardCanvas({
           const d = dropRef.current;
           if (d) {
             const dx = d.positionX - startX;
+            const dy = d.positionY - (startY - trackTopY(renderPlan, ft.trackId));
             // Commit position for grabbed task
-            onSetTaskPosition(`${d.trackId}.${taskId}`, d.positionX);
+            onSetTaskPosition(`${d.trackId}.${taskId}`, d.positionX, d.positionY);
             if (d.trackId !== ft.trackId) onTransferTask(ft.trackId, taskId, d.trackId);
             // Commit horizontal positions for companions (no cross-track)
             for (const c of companions) {
               const cx = Math.max(PAD_LEFT, c.startX + dx);
-              onSetTaskPosition(`${c.trackId}.${c.taskId}`, cx);
+              const companionY = Math.max(
+                0,
+                Math.min(
+                  Math.max(0, trackHeightInPlan(renderPlan, c.trackId) - TASK_H),
+                  c.startY + dy,
+                ),
+              );
+              onSetTaskPosition(`${c.trackId}.${c.taskId}`, cx, companionY);
             }
           }
         }
@@ -861,8 +926,7 @@ export function BoardCanvas({
       let started = false;
       const startClientY = e.clientY;
       const startRelY = (e.clientY - headerRect.top) / getZoom() + headerEl.scrollTop;
-      // Plan-aware start: where this track's lane currently sits (folders
-      // mixed in change the Y, so we can't multiply by TRACK_H).
+      // Plan-aware start: where this track's lane currently sits.
       const startTopY = trackTopYInPlan(renderPlan, trackId) ?? startIndex * TRACK_H;
       const grabOffsetY = startRelY - startTopY;
 
@@ -878,7 +942,7 @@ export function BoardCanvas({
         // (append); folder member → into that folder at the member's slot;
         // top-level track → top-level reorder. When the cursor falls outside
         // any row, hold the previous target so the indicator doesn't jitter.
-        const draggedCenterY = relY - grabOffsetY + TRACK_H / 2;
+        const draggedCenterY = relY - grabOffsetY + trackHeightInPlan(renderPlan, trackId) / 2;
         const row = rowAtY(renderPlan, draggedCenterY);
 
         const startTargetFolderId = startFolder?.id ?? null;
@@ -988,6 +1052,37 @@ export function BoardCanvas({
   useEffect(() => {
     trackDragRef.current = trackDrag;
   }, [trackDrag]);
+
+  const handleTrackResizeStart = useCallback(
+    (trackId: string, edge: 'top' | 'bottom', e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const startHeight = trackHeightInPlan(renderPlan, trackId);
+      const startClientY = e.clientY;
+      let latestHeight = startHeight;
+
+      const onMove = (ev: PointerEvent) => {
+        const dy = (ev.clientY - startClientY) / getZoom();
+        latestHeight = clampTrackHeight(edge === 'bottom' ? startHeight + dy : startHeight - dy);
+        setTrackResize({ trackId, edge, height: latestHeight });
+      };
+      const onUp = () => {
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        setTrackResize(null);
+        if (latestHeight !== startHeight) onSetTrackHeight(trackId, latestHeight);
+      };
+
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+      document.body.style.cursor = 'ns-resize';
+      document.body.style.userSelect = 'none';
+    },
+    [onSetTrackHeight, renderPlan],
+  );
 
   // ── Context menus ──
   const handleHeaderContextMenu = useCallback(
@@ -1455,7 +1550,10 @@ export function BoardCanvas({
       if (!trackId || !el || !visualTracks.some((track) => track.id === trackId)) return;
       const top = trackTopY(renderPlan, trackId);
       const z = getZoom();
-      const targetTop = Math.max(0, top + TRACK_H / 2 - el.clientHeight / (2 * z));
+      const targetTop = Math.max(
+        0,
+        top + trackHeightInPlan(renderPlan, trackId) / 2 - el.clientHeight / (2 * z),
+      );
       el.scrollTo({ top: targetTop, behavior: 'smooth' });
       headerRef.current?.scrollTo({ top: targetTop, behavior: 'smooth' });
       window.setTimeout(() => {
@@ -1630,6 +1728,18 @@ export function BoardCanvas({
                   />
                 </div>
               </div>
+              <div
+                data-track-resize-edge="top"
+                className="absolute left-0 right-0 top-0 h-1 cursor-ns-resize z-20"
+                title="Resize track"
+                onPointerDown={(e) => handleTrackResizeStart(track.id, 'top', e)}
+              />
+              <div
+                data-track-resize-edge="bottom"
+                className="absolute left-0 right-0 bottom-0 h-1 cursor-ns-resize z-20"
+                title="Resize track"
+                onPointerDown={(e) => handleTrackResizeStart(track.id, 'bottom', e)}
+              />
             </div>
           );
         })}
@@ -1701,7 +1811,7 @@ export function BoardCanvas({
             const trackTop = trackTopYInPlan(renderPlan, zone.trackId);
             if (trackTop === null) return null;
             const topY = trackTop + 4;
-            const h = TRACK_H - 8;
+            const h = trackHeightInPlan(renderPlan, zone.trackId) - 8;
             const left = zone.minX - 6;
             const LABEL_TAB_W = 56;
             const tasksRight = zone.maxX + TASK_W + 6 - left;

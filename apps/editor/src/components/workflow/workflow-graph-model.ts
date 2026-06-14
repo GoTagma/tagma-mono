@@ -30,10 +30,12 @@ export function workflowNodePointerOffset(
   pointer: { clientX: number; clientY: number },
   canvasRect: { left: number; top: number },
   nodePosition: WorkflowGraphPosition,
+  zoom = 1,
 ): WorkflowGraphPosition {
+  const scale = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
   return {
-    x: pointer.clientX - canvasRect.left - nodePosition.x,
-    y: pointer.clientY - canvasRect.top - nodePosition.y,
+    x: (pointer.clientX - canvasRect.left) / scale - nodePosition.x,
+    y: (pointer.clientY - canvasRect.top) / scale - nodePosition.y,
   };
 }
 
@@ -41,10 +43,12 @@ export function workflowDragPositionFromPointer(
   pointer: { clientX: number; clientY: number },
   canvasRect: { left: number; top: number },
   pointerOffset: WorkflowGraphPosition,
+  zoom = 1,
 ): WorkflowGraphPosition {
+  const scale = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
   return normalizeWorkflowPosition({
-    x: pointer.clientX - canvasRect.left - pointerOffset.x,
-    y: pointer.clientY - canvasRect.top - pointerOffset.y,
+    x: (pointer.clientX - canvasRect.left) / scale - pointerOffset.x,
+    y: (pointer.clientY - canvasRect.top) / scale - pointerOffset.y,
   });
 }
 

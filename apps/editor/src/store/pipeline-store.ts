@@ -107,6 +107,7 @@ const REVISION_CONFLICT_MESSAGE =
 
 export interface TaskPosition {
   x: number;
+  y?: number;
 }
 
 /**
@@ -177,6 +178,10 @@ export interface PositionsDiff {
   oldFolders: TrackFolder[] | null;
   /** New folders (for forward), null if scope doesn't include positions */
   newFolders: TrackFolder[] | null;
+  /** Old track heights (for reverse), null if scope doesn't include positions */
+  oldTrackHeights: Map<string, number> | null;
+  /** New track heights (for forward), null if scope doesn't include positions */
+  newTrackHeights: Map<string, number> | null;
 }
 
 export interface HistoryDiff {
@@ -231,6 +236,7 @@ export type ClipboardSlot =
 interface PipelineState {
   config: RawPipelineConfig;
   positions: Map<string, TaskPosition>;
+  trackHeights: Map<string, number>;
   /**
    * Editor-only track grouping. Persisted in `.layout.json`, never in YAML.
    * A track may belong to at most one folder; tracks not present in any
@@ -323,7 +329,8 @@ interface PipelineState {
   selectTask: (qualifiedId: string | null) => void;
   toggleTaskSelection: (qualifiedId: string) => void;
   selectTrack: (trackId: string | null) => void;
-  setTaskPosition: (qualifiedId: string, x: number) => void;
+  setTaskPosition: (qualifiedId: string, x: number, y?: number) => void;
+  setTrackHeight: (trackId: string, height: number) => void;
   setWorkDir: (workDir: string) => Promise<boolean>;
   clearWorkspace: () => void;
   openFile: (path: string, opts?: YamlLockBypassOptions) => Promise<void>;
@@ -445,6 +452,7 @@ const TRACK_COLORS = [
 interface Snapshot {
   config: RawPipelineConfig;
   positions: Map<string, TaskPosition>;
+  trackHeights: Map<string, number>;
   folders: TrackFolder[];
   dagEdges: DagEdge[];
   validationErrors: ValidationError[];
@@ -463,6 +471,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     return {
       config: s.config,
       positions: new Map(s.positions),
+      trackHeights: new Map(s.trackHeights),
       folders: structuredClone(s.folders),
       dagEdges: s.dagEdges,
       validationErrors: s.validationErrors,
@@ -480,6 +489,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     set({
       config: snap.config,
       positions: snap.positions,
+      trackHeights: snap.trackHeights,
       folders: snap.folders,
       dagEdges: snap.dagEdges,
       validationErrors: snap.validationErrors,
@@ -501,10 +511,9 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
    */
   const flushLayout = async (): Promise<void> => {
     const s = _get();
-    const obj: Record<string, { x: number }> = {};
-    for (const [k, v] of s.positions) obj[k] = v;
+    const obj = positionsToObj(s.positions);
     try {
-      await api.saveLayout(obj, structuredClone(s.folders));
+      await api.saveLayout(obj, structuredClone(s.folders), trackHeightsToObj(s.trackHeights));
       set({ layoutDirty: false });
     } catch (e) {
       if (e instanceof RevisionConflictError) {
@@ -539,6 +548,10 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     // editor layout slice. Keep the local folders and only prune deleted
     // tracks. Full layout adoption is explicit via applyStateWithLayout().
     const validTrackIds = new Set<string>(state.config.tracks.map((t) => t.id));
+    const nextTrackHeights = new Map<string, number>();
+    for (const [trackId, height] of _get().trackHeights) {
+      if (validTrackIds.has(trackId)) nextTrackHeights.set(trackId, height);
+    }
     set({
       config: state.config,
       validationErrors: state.validationErrors,
@@ -549,6 +562,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
       yamlRunVersion: state.yamlRunVersion ?? 0,
       workDir: state.workDir,
       hostPlatform: state.hostPlatform ?? null,
+      trackHeights: nextTrackHeights,
       folders: pruneFolderMembers(_get().folders, validTrackIds),
       loading: false,
     });
@@ -560,7 +574,13 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     const positions = new Map<string, TaskPosition>();
     if (state.layout?.positions) {
       for (const [k, v] of Object.entries(state.layout.positions)) {
-        positions.set(k, v);
+        positions.set(k, v.y === undefined ? { x: v.x } : { x: v.x, y: v.y });
+      }
+    }
+    const trackHeights = new Map<string, number>();
+    if (state.layout?.trackHeights) {
+      for (const [trackId, height] of Object.entries(state.layout.trackHeights)) {
+        trackHeights.set(trackId, height);
       }
     }
     const validTrackIds = new Set<string>(state.config.tracks.map((t) => t.id));
@@ -575,6 +595,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
       workDir: state.workDir,
       hostPlatform: state.hostPlatform ?? null,
       positions,
+      trackHeights,
       folders: pruneFolderMembers(state.layout?.folders, validTrackIds),
       loading: false,
     });
@@ -590,9 +611,17 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
   };
 
   /** Convert the live positions Map to the wire shape replaceConfig expects. */
-  const positionsToObj = (positions: Map<string, TaskPosition>): Record<string, { x: number }> => {
-    const obj: Record<string, { x: number }> = {};
-    for (const [k, v] of positions) obj[k] = { x: v.x };
+  const positionsToObj = (
+    positions: Map<string, TaskPosition>,
+  ): Record<string, { x: number; y?: number }> => {
+    const obj: Record<string, { x: number; y?: number }> = {};
+    for (const [k, v] of positions) obj[k] = v.y === undefined ? { x: v.x } : { x: v.x, y: v.y };
+    return obj;
+  };
+
+  const trackHeightsToObj = (trackHeights: Map<string, number>): Record<string, number> => {
+    const obj: Record<string, number> = {};
+    for (const [k, v] of trackHeights) obj[k] = v;
     return obj;
   };
 
@@ -604,9 +633,15 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
   const layoutPayload = (
     positions: Map<string, TaskPosition>,
     folders: TrackFolder[],
-  ): { positions: Record<string, { x: number }>; folders: TrackFolder[] } => ({
+    trackHeights: Map<string, number> = _get().trackHeights,
+  ): {
+    positions: Record<string, { x: number; y?: number }>;
+    folders: TrackFolder[];
+    trackHeights: Record<string, number>;
+  } => ({
     positions: positionsToObj(positions),
     folders: structuredClone(folders),
+    trackHeights: trackHeightsToObj(trackHeights),
   });
 
   /**
@@ -699,21 +734,23 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
   };
 
   const clonePositionsObj = (
-    positions: Record<string, { x: number }> | undefined,
-  ): Record<string, { x: number }> => {
-    const obj: Record<string, { x: number }> = {};
-    for (const [k, v] of Object.entries(positions ?? {})) obj[k] = { x: v.x };
+    positions: Record<string, { x: number; y?: number }> | undefined,
+  ): Record<string, { x: number; y?: number }> => {
+    const obj: Record<string, { x: number; y?: number }> = {};
+    for (const [k, v] of Object.entries(positions ?? {})) {
+      obj[k] = v.y === undefined ? { x: v.x } : { x: v.x, y: v.y };
+    }
     return obj;
   };
 
   const positionsEqual = (
-    a: Record<string, { x: number }>,
-    b: Record<string, { x: number }>,
+    a: Record<string, { x: number; y?: number }>,
+    b: Record<string, { x: number; y?: number }>,
   ): boolean => {
     const aKeys = Object.keys(a);
     const bKeys = Object.keys(b);
     if (aKeys.length !== bKeys.length) return false;
-    return aKeys.every((key) => b[key]?.x === a[key].x);
+    return aKeys.every((key) => b[key]?.x === a[key].x && b[key]?.y === a[key].y);
   };
 
   const recordYamlPreviewChange = (
@@ -755,7 +792,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     const current = _get();
     const afterPositions = new Map<string, TaskPosition>();
     for (const [k, v] of Object.entries(state.layout?.positions ?? {})) {
-      afterPositions.set(k, { x: v.x });
+      afterPositions.set(k, v.y === undefined ? { x: v.x } : { x: v.x, y: v.y });
     }
     recordYamlPreviewChange(
       source,
@@ -912,6 +949,8 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
         newPositions: null,
         oldFolders: includePositions ? structuredClone(snap.folders) : null,
         newFolders: null,
+        oldTrackHeights: includePositions ? new Map(snap.trackHeights) : null,
+        newTrackHeights: null,
       },
     };
 
@@ -1137,6 +1176,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
   return {
     config: { name: 'Loading...', tracks: [] },
     positions: new Map(),
+    trackHeights: new Map(),
     folders: [],
     selectedTaskId: null,
     selectedTaskIds: [],
@@ -1201,9 +1241,12 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
         const state = await api.replaceConfig(nextConfig, {
           positions: nextPositions,
           folders: structuredClone(_get().folders),
+          trackHeights: trackHeightsToObj(_get().trackHeights),
         });
         const afterPositions = new Map<string, TaskPosition>();
-        for (const [k, v] of Object.entries(nextPositions)) afterPositions.set(k, { x: v.x });
+        for (const [k, v] of Object.entries(nextPositions)) {
+          afterPositions.set(k, v.y === undefined ? { x: v.x } : { x: v.x, y: v.y });
+        }
         recordYamlPreviewChange(
           'editor',
           preSnapshot.config,
@@ -1368,6 +1411,8 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
         for (const key of positions.keys()) {
           if (key.startsWith(trackId + '.')) positions.delete(key);
         }
+        const trackHeights = new Map(s.trackHeights);
+        trackHeights.delete(trackId);
         // Also strip the deleted track out of any folder so the slim header
         // count and member list reflect reality immediately. Empty folders
         // are preserved (the user may have meant to keep them as a sticky
@@ -1379,6 +1424,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
         );
         return {
           positions,
+          trackHeights,
           folders,
           selectedTaskId: s.selectedTaskId?.startsWith(trackId + '.') ? null : s.selectedTaskId,
           selectedTaskIds: s.selectedTaskIds.filter((id) => !id.startsWith(trackId + '.')),
@@ -1812,17 +1858,18 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
       });
     },
 
-    setTaskPosition: (qualifiedId, x) => {
+    setTaskPosition: (qualifiedId, x, y) => {
       if (blockIfYamlEditLocked()) return;
       const s = _get();
       // Skip no-op writes so dead-clicks don't bloat history.
-      if (s.positions.get(qualifiedId)?.x === x) return;
+      const current = s.positions.get(qualifiedId);
+      if (current?.x === x && current?.y === y) return;
       // Capture pre-mutation snapshot BEFORE the set() so the history entry
       // represents the state before this (and any coalesced) drag began.
       const snap = takeSnapshot();
       set((s) => {
         const positions = new Map(s.positions);
-        positions.set(qualifiedId, { x });
+        positions.set(qualifiedId, y === undefined ? { x } : { x, y });
         return { positions, isDirty: true, layoutDirty: true };
       });
       // P1-C1: scope='positions' so undoing this entry only reverts the
@@ -1830,6 +1877,20 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
       // Coalesce all position writes within the same drag burst (grabbed +
       // companions fire in the same tick on pointerup) into a single entry.
       pushHistory(snapshotToHistory(snap, 'layout:position', 'positions'));
+    },
+
+    setTrackHeight: (trackId, height) => {
+      if (blockIfYamlEditLocked()) return;
+      const s = _get();
+      if (!s.config.tracks.some((track) => track.id === trackId)) return;
+      if (s.trackHeights.get(trackId) === height) return;
+      const snap = takeSnapshot();
+      set((s) => {
+        const trackHeights = new Map(s.trackHeights);
+        trackHeights.set(trackId, height);
+        return { trackHeights, isDirty: true, layoutDirty: true };
+      });
+      pushHistory(snapshotToHistory(snap, `layout:track-height:${trackId}`, 'positions'));
     },
 
     setWorkDir: async (wd) => {
@@ -2268,6 +2329,11 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
             scope === 'positions' || scope === 'both'
               ? (diff.positions.newFolders ?? structuredClone(s.folders))
               : null,
+          oldTrackHeights: diff.positions.oldTrackHeights,
+          newTrackHeights:
+            scope === 'positions' || scope === 'both'
+              ? (diff.positions.newTrackHeights ?? new Map(s.trackHeights))
+              : null,
         },
       };
 
@@ -2294,6 +2360,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
         if (restorePositions && diff.positions.oldPositions !== null) {
           next.positions = new Map(diff.positions.oldPositions);
           next.folders = structuredClone(diff.positions.oldFolders ?? []);
+          next.trackHeights = new Map(diff.positions.oldTrackHeights ?? []);
         }
         return next;
       });
@@ -2342,6 +2409,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
               if (restorePositions && completedDiff.positions.newPositions !== null) {
                 rb.positions = new Map(completedDiff.positions.newPositions);
                 rb.folders = structuredClone(completedDiff.positions.newFolders ?? []);
+                rb.trackHeights = new Map(completedDiff.positions.newTrackHeights ?? []);
               }
               return rb;
             });
@@ -2410,6 +2478,14 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
             scope === 'positions' || scope === 'both'
               ? (diff.positions.newFolders ?? structuredClone(s.folders))
               : null,
+          oldTrackHeights:
+            scope === 'positions' || scope === 'both'
+              ? (diff.positions.oldTrackHeights ?? new Map(s.trackHeights))
+              : null,
+          newTrackHeights:
+            scope === 'positions' || scope === 'both'
+              ? (diff.positions.newTrackHeights ?? new Map(s.trackHeights))
+              : null,
         },
       };
 
@@ -2434,6 +2510,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
         if (restorePositions && completedDiff.positions.newPositions !== null) {
           patch.positions = new Map(completedDiff.positions.newPositions);
           patch.folders = structuredClone(completedDiff.positions.newFolders ?? []);
+          patch.trackHeights = new Map(completedDiff.positions.newTrackHeights ?? []);
         }
         return patch;
       });
@@ -2477,6 +2554,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
               if (restorePositions && completedDiff.positions.oldPositions !== null) {
                 rb.positions = new Map(completedDiff.positions.oldPositions);
                 rb.folders = structuredClone(completedDiff.positions.oldFolders ?? []);
+                rb.trackHeights = new Map(completedDiff.positions.oldTrackHeights ?? []);
               }
               return rb;
             });

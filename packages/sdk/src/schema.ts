@@ -193,7 +193,6 @@ export function resolveConfig(raw: RawPipelineConfig, workDir: string): Pipeline
   return {
     requires: raw.requires,
     name: raw.name,
-    mode: raw.mode,
     secrets: raw.secrets,
     driver: raw.driver,
     model: raw.model,
@@ -360,7 +359,6 @@ export function deresolvePipeline(config: PipelineConfig, workDir: string): RawP
   return {
     ...(config.requires ? { requires: config.requires } : {}),
     name: config.name,
-    ...(config.mode ? { mode: config.mode } : {}),
     ...(config.secrets?.length ? { secrets: config.secrets } : {}),
     ...(config.driver ? { driver: config.driver } : {}),
     ...(config.model ? { model: config.model } : {}),

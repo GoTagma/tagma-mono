@@ -120,21 +120,6 @@ export function PipelineConfigPanel({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="field-label">
-              Mode
-              <FieldHelpButton field="Mode" scope="pipeline" />
-              <ModifiedBadge visible={isFieldModified('mode')} />
-            </label>
-            <select
-              className="field-input"
-              value={config.mode ?? 'safe'}
-              onChange={(e) => onUpdate({ mode: e.target.value })}
-            >
-              <option value="safe">safe</option>
-              <option value="trusted">trusted</option>
-            </select>
-          </div>
-          <div>
-            <label className="field-label">
               Default Timeout
               <FieldHelpButton field="Default Timeout" scope="pipeline" />
               <ModifiedBadge visible={isFieldModified('timeout')} />

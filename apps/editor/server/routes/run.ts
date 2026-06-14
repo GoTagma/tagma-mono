@@ -596,12 +596,6 @@ export function registerRunRoutes(app: express.Express): void {
       // workspace registry never ends up half-populated.
       const pluginsToLoad = effectiveConfig.plugins ?? [];
       if (pluginsToLoad.length > 0) {
-        if ((effectiveConfig.mode ?? 'safe') !== 'trusted') {
-          return res.status(400).json({
-            error:
-              'safe mode blocks pipeline.plugins before plugin code is loaded; set mode: trusted after reviewing the pipeline',
-          });
-        }
         for (const name of pluginsToLoad) {
           try {
             assertSafePluginName(name);
@@ -801,7 +795,7 @@ export function registerRunRoutes(app: express.Express): void {
             session.gateway.abortAll('run finished');
           }
           try {
-            let persistedPositions: Record<string, { x: number }> = {};
+            let persistedPositions: Record<string, { x: number; y?: number }> = {};
             if (fromRunId === null) {
               persistedPositions = { ...ws.layout.positions };
             } else {

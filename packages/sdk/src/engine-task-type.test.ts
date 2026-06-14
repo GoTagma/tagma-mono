@@ -81,7 +81,6 @@ describe('engine task type detection', () => {
       const events: RunEventPayload[] = [];
       const config: PipelineConfig = {
         name: 'empty-command',
-        mode: 'trusted',
         tracks: [
           {
             id: 't',

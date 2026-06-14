@@ -52,7 +52,6 @@ function task(overrides: Partial<TaskConfig> & { id: string }): TaskConfig {
 function pipeline(tasks: TaskConfig[]): PipelineConfig {
   return {
     name: 'mixed-bindings-test',
-    mode: 'trusted',
     tracks: [{ id: 't', name: 'T', permissions: PERMS, driver: 'mock', tasks }],
   };
 }
@@ -138,7 +137,7 @@ function finalUpdateFor(events: RunEventPayload[], qid: string): RunEventPayload
   return last;
 }
 
-describe('engine â€” mixed prompt/command unified bindings', () => {
+describe('engine â€?mixed prompt/command unified bindings', () => {
   test('prompt outputs are inferred from downstream command inputs', async () => {
     const dir = makeDir();
     try {

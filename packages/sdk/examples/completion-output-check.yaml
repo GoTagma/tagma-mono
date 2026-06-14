@@ -7,11 +7,10 @@
 # NDJSON/JSON envelope). For command tasks the raw stdout is piped.
 #
 # This example uses the Claude Code driver so we can assert on actual model
-# output â€” a tighter end-to-end signal than a simple `true` process exit.
+# output â€?a tighter end-to-end signal than a simple `true` process exit.
 # --------------------------------------------------------------------------
 pipeline:
   name: completion-output-check
-  mode: trusted
   driver: claude-code
   model: haiku
   timeout: 5m
@@ -35,7 +34,7 @@ pipeline:
             check: 'grep -q "PASS"'
             timeout: 15s
 
-        # Same pattern on a plain command task â€” the raw stdout is piped in.
+        # Same pattern on a plain command task â€?the raw stdout is piped in.
         - id: command_payload_check
           name: Check a command's stdout
           depends_on: [expect_pass_token]

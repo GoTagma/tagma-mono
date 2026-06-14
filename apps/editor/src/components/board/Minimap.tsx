@@ -2,7 +2,7 @@ import { useMemo, useRef, useState, useCallback, useEffect, useLayoutEffect } fr
 import { Map as MapIcon, X } from 'lucide-react';
 import { usePipelineStore } from '../../store/pipeline-store';
 import { getZoom } from '../../utils/zoom';
-import { TASK_W, TASK_H, TRACK_H, TASK_GAP, PAD_LEFT, BOARD_SCROLL_ID } from './layout-constants';
+import { TASK_W, TASK_H, TASK_GAP, PAD_LEFT, BOARD_SCROLL_ID } from './layout-constants';
 import type { RawPipelineConfig, TrackFolder } from '../../api/client';
 import type { TaskPosition } from '../../store/pipeline-store';
 import { buildRenderPlan, trackTopYInPlan } from './render-plan';
@@ -36,6 +36,7 @@ interface MinimapProps {
    * entirely.
    */
   folders?: readonly TrackFolder[];
+  trackHeights?: ReadonlyMap<string, number>;
 }
 
 /**
@@ -49,15 +50,21 @@ export function Minimap({
   config: configProp,
   positions: positionsProp,
   folders: foldersProp,
+  trackHeights: trackHeightsProp,
 }: MinimapProps = {}) {
   const storeConfig = usePipelineStore((s) => s.config);
   const storePositions = usePipelineStore((s) => s.positions);
   const storeFolders = usePipelineStore((s) => s.folders);
+  const storeTrackHeights = usePipelineStore((s) => s.trackHeights);
   const config = configProp ?? storeConfig;
   const positions = positionsProp ?? storePositions;
   const folders = foldersProp ?? storeFolders;
+  const trackHeights = trackHeightsProp ?? storeTrackHeights;
   const tracks = useMemo(() => config?.tracks ?? [], [config?.tracks]);
-  const renderPlan = useMemo(() => buildRenderPlan(tracks, folders), [tracks, folders]);
+  const renderPlan = useMemo(
+    () => buildRenderPlan(tracks, folders, trackHeights),
+    [tracks, folders, trackHeights],
+  );
 
   const [visible, setVisible] = useState(true);
   const [scrollTick, setScrollTick] = useState(0);
@@ -182,14 +189,20 @@ export function Minimap({
       // Tracks inside a collapsed folder have no rendered position — skip
       // them so the minimap mirrors the canvas's hidden state.
       if (trackTop === null) return;
+      const row = renderPlan.find((entry) => entry.kind === 'track' && entry.trackId === track.id);
       const fill = track.color || '#64748b';
       track.tasks.forEach((task, taskIdx) => {
         const qid = `${track.id}.${task.id}`;
         const stored = positions.get(qid);
         const x = stored ? stored.x : PAD_LEFT + taskIdx * (TASK_W + TASK_GAP);
+        const rowHeight = row?.height ?? TASK_H;
+        const innerY =
+          stored?.y === undefined
+            ? (rowHeight - TASK_H) / 2
+            : Math.max(0, Math.min(Math.max(0, rowHeight - TASK_H), stored.y));
         out.push({
           x: offsetX + x * scale,
-          y: offsetY + (trackTop + (TRACK_H - TASK_H) / 2) * scale,
+          y: offsetY + (trackTop + innerY) * scale,
           w: Math.max(1, TASK_W * scale),
           h: Math.max(1, TASK_H * scale),
           fill,

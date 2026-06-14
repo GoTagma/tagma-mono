@@ -1316,8 +1316,6 @@ export async function autoLoadInstalledPlugins(ws: WorkspaceState): Promise<stri
   const blocklist = new Set(readPluginBlocklist(ws));
   const loaded: string[] = [];
   const errors: Array<{ name: string; message: string }> = [];
-  const mayExecutePluginCode =
-    (ws.config.mode ?? 'safe') === 'trusted' || process.env.TAGMA_UNSAFE_AUTOLOAD_PLUGINS === '1';
   for (const name of candidates) {
     if (ws.loadedPluginMeta.has(name)) continue;
     if (!isValidPluginName(name)) {
@@ -1325,14 +1323,6 @@ export async function autoLoadInstalledPlugins(ws: WorkspaceState): Promise<stri
       continue;
     }
     if (blocklist.has(name)) continue;
-    if (!mayExecutePluginCode) {
-      errors.push({
-        name,
-        message:
-          'safe mode does not auto-load plugin code; switch the pipeline to trusted mode or load the plugin explicitly',
-      });
-      continue;
-    }
     let info = getPluginInfo(ws, name);
     let autoInstallOutcome: Awaited<ReturnType<typeof installPackageWithRollbackSnapshot>> | null =
       null;

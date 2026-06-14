@@ -3,12 +3,11 @@
 # Pipeline-level lifecycle hooks. All six events exercised, including the
 # single-command form and the command-array form.
 #
-# Hook output lands in the pipeline log â€” great for shipping status pings
+# Hook output lands in the pipeline log â€?great for shipping status pings
 # to Slack, writing audit breadcrumbs, or priming a local workspace.
 # --------------------------------------------------------------------------
 pipeline:
   name: hooks-lifecycle
-  mode: trusted
   timeout: 2m
 
   hooks:
@@ -34,7 +33,7 @@ pipeline:
           command: 'echo "work done"'
 
         # Explicit failure, combined with on_failure: ignore on the track so
-        # the pipeline still completes â€” demonstrates task_failure + final
+        # the pipeline still completes â€?demonstrates task_failure + final
         # pipeline_complete firing (not pipeline_error).
         - id: fails_softly
           name: A task that fails (track ignores it)

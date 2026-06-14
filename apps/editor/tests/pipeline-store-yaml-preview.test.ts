@@ -26,7 +26,11 @@ function makeConfigWithTask(name = 'Old Pipeline'): RawPipelineConfig {
 let serverConfig = makeConfig();
 let replaceConfigPayload: {
   config: RawPipelineConfig;
-  layout?: { positions?: Record<string, { x: number }>; folders?: unknown };
+  layout?: {
+    positions?: Record<string, { x: number; y?: number }>;
+    folders?: unknown;
+    trackHeights?: Record<string, number>;
+  };
 } | null = null;
 let mockClientWorkspace: string | null = null;
 const mockWorkspaceListeners = new Set<(key: string | null) => void>();
@@ -71,7 +75,11 @@ mock.module('../src/api/client', () => ({
     },
     replaceConfig: async (
       config: RawPipelineConfig,
-      layout?: { positions?: Record<string, { x: number }>; folders?: unknown },
+      layout?: {
+        positions?: Record<string, { x: number; y?: number }>;
+        folders?: unknown;
+        trackHeights?: Record<string, number>;
+      },
     ) => {
       replaceConfigPayload = { config, layout };
       serverConfig = config;

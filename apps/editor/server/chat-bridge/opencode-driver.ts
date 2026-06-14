@@ -52,6 +52,19 @@ interface ClientCacheEntry {
 /** workspaceKey → bound SDK client; flushed when baseUrl drifts (after restart). */
 const clientCache = new Map<string, ClientCacheEntry>();
 
+interface OpencodeRuntimeHooksForTests {
+  ensureRealTagmaDirectory?: typeof ensureRealTagmaDirectory;
+  seedOpencodeArtifacts?: typeof seedOpencodeArtifacts;
+  ensureOpencode?: typeof ensureOpencode;
+}
+
+let runtimeHooksForTests: OpencodeRuntimeHooksForTests | null = null;
+
+export function _setOpencodeRuntimeHooksForTests(hooks: OpencodeRuntimeHooksForTests | null): void {
+  runtimeHooksForTests = hooks;
+  if (!hooks) clientCache.clear();
+}
+
 type EventSubscribeOptions = Parameters<OpencodeClient['event']['subscribe']>[0];
 type EventSubscribeResult = Awaited<ReturnType<OpencodeClient['event']['subscribe']>>;
 type BotSessionCreateBody = {
@@ -233,9 +246,13 @@ async function getClientEntryFor(workspaceKey: string): Promise<ClientCacheEntry
   if (!ws?.workDir) {
     throw new Error(`bot-bridge: workspace "${workspaceKey}" not registered or has no workDir`);
   }
-  const tagmaCwd = ensureRealTagmaDirectory(ws.workDir);
-  seedOpencodeArtifacts(tagmaCwd);
-  const { baseUrl, auth } = await ensureOpencode(tagmaCwd);
+  const realTagmaDirectory =
+    runtimeHooksForTests?.ensureRealTagmaDirectory ?? ensureRealTagmaDirectory;
+  const seedArtifacts = runtimeHooksForTests?.seedOpencodeArtifacts ?? seedOpencodeArtifacts;
+  const ensureRuntime = runtimeHooksForTests?.ensureOpencode ?? ensureOpencode;
+  const tagmaCwd = realTagmaDirectory(ws.workDir);
+  seedArtifacts(tagmaCwd);
+  const { baseUrl, auth } = await ensureRuntime(tagmaCwd);
   const cached = clientCache.get(workspaceKey);
   if (cached && cached.baseUrl === baseUrl) return cached;
   // Talk to the loopback `opencode serve` over a raw socket. The SDK otherwise

@@ -8,6 +8,8 @@ export const TASK_H = 52;
 export const TASK_GAP = 24;
 export const PAD_LEFT = 20;
 export const TRACK_H = 64;
+export const TRACK_MIN_H = 64;
+export const TRACK_MAX_H = 480;
 /**
  * Height of a slim folder header bar (sidebar caret + name + count). Folder
  * grouping is editor-only — see TrackFolder in api/client.ts. Picked to be

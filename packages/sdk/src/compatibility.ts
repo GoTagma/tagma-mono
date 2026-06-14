@@ -59,7 +59,6 @@ export const YAML_FEATURE_MIN_SDK = {
   workflow: '0.7.0',
   workflow_lifecycle: '0.7.0',
   task_bindings: '0.7.0',
-  safe_mode: '0.7.0',
 } as const;
 
 const FEATURE_DESCRIPTIONS: Record<keyof typeof YAML_FEATURE_MIN_SDK, string> = {
@@ -67,7 +66,6 @@ const FEATURE_DESCRIPTIONS: Record<keyof typeof YAML_FEATURE_MIN_SDK, string> = 
   workflow: 'YAML uses the workflow graph document format',
   workflow_lifecycle: 'Workflow pipeline declares lifecycle retry policy',
   task_bindings: 'Pipeline tasks declare inputs/outputs bindings or input placeholders',
-  safe_mode: 'Pipeline declares an explicit safe/trusted execution mode',
 };
 
 export function compareSemver(a: string, b: string): number {
@@ -267,7 +265,6 @@ function collectPipelineFeatures(
 ): YamlCompatibilityFeature[] {
   const features = new Map<string, YamlCompatibilityFeature>();
   if (config.requires !== undefined) addFeature(features, 'requires');
-  if (config.mode !== undefined) addFeature(features, 'safe_mode');
   const tracks = Array.isArray(config.tracks) ? config.tracks : [];
   for (const track of tracks) {
     const tasks = Array.isArray(track.tasks) ? track.tasks : [];

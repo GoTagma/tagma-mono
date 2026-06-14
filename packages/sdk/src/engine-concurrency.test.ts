@@ -63,7 +63,6 @@ describe('engine max concurrency', () => {
     const probe = { active: 0, maxActive: 0 };
     const config: PipelineConfig = {
       name: 'concurrency',
-      mode: 'trusted',
       max_concurrency: 1,
       tracks: [
         {
@@ -115,7 +114,6 @@ describe('engine max concurrency', () => {
     };
     const config: PipelineConfig = {
       name: 'timeout-budget',
-      mode: 'trusted',
       tracks: [
         {
           id: 't',

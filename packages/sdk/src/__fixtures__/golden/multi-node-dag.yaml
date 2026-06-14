@@ -1,6 +1,5 @@
 pipeline:
   name: golden-multi-node-dag
-  mode: trusted
   tracks:
     - id: main
       name: Main

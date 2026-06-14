@@ -1,6 +1,5 @@
 pipeline:
   name: verify-context-passthrough
-  mode: trusted
   driver: opencode
   model: opencode/big-pickle
   timeout: 10m
@@ -12,26 +11,26 @@ pipeline:
   # How to read the evidence after running:
   #   Open .tagma/logs/<runId>/pipeline.log and check three hard facts:
   #
-  #   Fact 1 â€” prompt reaches the opencode CLI:
+  #   Fact 1 â€?prompt reaches the opencode CLI:
   #     In `spawn args:` for task `seed`, the literal token
   #     CANARY_TAGMA_A1B2C3 MUST appear as part of the last argument.
   #
-  #   Fact 2 â€” session is resumed (not restarted):
+  #   Fact 2 â€?session is resumed (not restarted):
   #     `spawn args:` for `recall_in_session` and `recall_twice` MUST
   #     contain `--session ses_XXXX`, and the id must match the sessionId
   #     recorded on the upstream task (look for `sessionId: ses_XXXX`
   #     lines right below each task's stdout block).
   #
-  #   Fact 3 â€” context is passed incrementally (not re-sent):
+  #   Fact 3 â€?context is passed incrementally (not re-sent):
   #     In each task's stdout NDJSON, the final `step_finish` carries
   #     `"tokens":{"input":N,...}`. `seed.input` is large (full context);
   #     `recall_in_session.input` and `recall_twice.input` should be much
-  #     smaller (incremental â€” the previous turns were not re-uploaded).
+  #     smaller (incremental â€?the previous turns were not re-uploaded).
   #
   # The completion checks on recall_* are BONUS evidence only. If the
   # model happens to echo the canary, those tasks succeed. If big-pickle
-  # doesn't follow the instruction, they fail â€” that does NOT disprove
-  # context passthrough; facts 1â€“3 above are the authoritative signals.
+  # doesn't follow the instruction, they fail â€?that does NOT disprove
+  # context passthrough; facts 1â€? above are the authoritative signals.
   tracks:
     - id: ctx
       name: Context verification

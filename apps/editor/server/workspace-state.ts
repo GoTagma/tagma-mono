@@ -40,8 +40,15 @@ export interface TrackFolder {
 }
 
 /** Editor layout data stored alongside the YAML file as .layout.json */
+export interface LayoutTaskPosition {
+  x: number;
+  y?: number;
+}
+
 export interface EditorLayout {
-  positions: Record<string, { x: number }>;
+  positions: Record<string, LayoutTaskPosition>;
+  /** Per-track editor lane heights in canvas pixels. */
+  trackHeights?: Record<string, number>;
   /**
    * Editor-only track grouping. Optional for backward compat — older layout
    * files without this field load as if every track is at the top level.

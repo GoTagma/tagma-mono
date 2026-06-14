@@ -96,7 +96,7 @@ function fakeRuntime(): TagmaRuntime {
   };
 }
 
-describe('PluginRegistry — instance isolation', () => {
+describe('PluginRegistry - instance isolation', () => {
   test('two registries do not share drivers registered under the same type', () => {
     const regA = new PluginRegistry();
     const regB = new PluginRegistry();
@@ -173,7 +173,7 @@ describe('PluginRegistry — instance isolation', () => {
     expect(fresh.hasHandler('completions', 'exit_code')).toBe(true);
     expect(fresh.hasHandler('middlewares', 'static_context')).toBe(true);
 
-    // Default registry's state is independent of `fresh` — if the default
+    // Default registry's state is independent of `fresh`; if the default
     // happens to have opencode (because another test bootstrapped it), that
     // is fine; the guarantee is that `fresh.unregister` does not leak.
     fresh.unregisterPlugin('drivers', 'opencode');
@@ -181,7 +181,7 @@ describe('PluginRegistry — instance isolation', () => {
   });
 });
 
-describe('PluginRegistry — capability plugins', () => {
+describe('PluginRegistry - capability plugins', () => {
   test('registerTagmaPlugin registers multiple capabilities from one package', () => {
     const reg = new PluginRegistry();
     const driver = makeDriver('cap-driver', []);
@@ -305,7 +305,7 @@ describe('PluginRegistry — capability plugins', () => {
   });
 });
 
-describe('PluginRegistry — validation', () => {
+describe('PluginRegistry - validation', () => {
   test('rejects unknown category', () => {
     const reg = new PluginRegistry();
     expect(() => reg.registerPlugin('nope' as 'drivers', 'x', makeDriver('x', []))).toThrow(
@@ -399,7 +399,6 @@ describe('PluginRegistry — validation', () => {
         runPipeline(
           {
             name: 'plugin-schema',
-            mode: 'trusted',
             tracks: [
               {
                 id: 't',
@@ -415,7 +414,7 @@ describe('PluginRegistry — validation', () => {
             ],
           },
           tmp,
-          { registry: reg, runtime: fakeRuntime(), mode: 'trusted' },
+          { registry: reg, runtime: fakeRuntime() },
         ),
       ).rejects.toThrow(
         /trigger\.extra is not a supported field[\s\S]*trigger\.path must be a string/,
@@ -425,7 +424,6 @@ describe('PluginRegistry — validation', () => {
         runPipeline(
           {
             name: 'plugin-schema',
-            mode: 'trusted',
             tracks: [
               {
                 id: 't',
@@ -441,7 +439,7 @@ describe('PluginRegistry — validation', () => {
             ],
           },
           tmp,
-          { registry: reg, runtime: fakeRuntime(), mode: 'trusted' },
+          { registry: reg, runtime: fakeRuntime() },
         ),
       ).rejects.toThrow(/trigger\.path is required/);
     } finally {
@@ -450,7 +448,7 @@ describe('PluginRegistry — validation', () => {
   });
 });
 
-describe('runPipeline — options.registry isolation', () => {
+describe('runPipeline - options.registry isolation', () => {
   test('concurrent runs with different registries see their own drivers', async () => {
     const regA = new PluginRegistry();
     const regB = new PluginRegistry();
@@ -486,13 +484,11 @@ describe('runPipeline — options.registry isolation', () => {
           registry: regA,
           runtime: fakeRuntime(),
           skipPluginLoading: true,
-          mode: 'trusted',
         }),
         runPipeline(config, tmpB, {
           registry: regB,
           runtime: fakeRuntime(),
           skipPluginLoading: true,
-          mode: 'trusted',
         }),
       ]);
       expect(resA.success).toBe(true);
@@ -506,7 +502,7 @@ describe('runPipeline — options.registry isolation', () => {
 
   test('preflight fails when referenced driver is missing from the passed registry', async () => {
     const regNoOpencode = new PluginRegistry();
-    // Deliberately do NOT bootstrap builtins — opencode is not registered.
+    // Deliberately do NOT bootstrap builtins; opencode is not registered.
     const config: PipelineConfig = {
       name: 'preflight-miss',
       tracks: [
@@ -523,7 +519,6 @@ describe('runPipeline — options.registry isolation', () => {
         runPipeline(config, tmp, {
           registry: regNoOpencode,
           skipPluginLoading: true,
-          mode: 'trusted',
         }),
       ).rejects.toThrow(/driver "opencode" not registered/);
     } finally {
@@ -552,9 +547,9 @@ describe('runPipeline — options.registry isolation', () => {
     }
   });
 
-  test('runPipeline defaults to safe mode when no mode is configured', async () => {
+  test('runPipeline runs command tasks without a pipeline mode', async () => {
     const config: PipelineConfig = {
-      name: 'safe-by-default',
+      name: 'command-by-default',
       tracks: [
         {
           id: 't',
@@ -563,16 +558,21 @@ describe('runPipeline — options.registry isolation', () => {
         },
       ],
     };
-    const tmp = mkdtempSync(join(tmpdir(), 'tagma-safe-default-'));
+    const tmp = mkdtempSync(join(tmpdir(), 'tagma-command-default-'));
+    const registry = new PluginRegistry();
+    bootstrapBuiltins(registry);
     try {
-      await expect(
-        runPipeline(config, tmp, { registry: new PluginRegistry(), runtime: fakeRuntime() }),
-      ).rejects.toThrow(/safe mode blocks command task "t\.only"/);
+      const result = await runPipeline(config, tmp, {
+        registry,
+        runtime: fakeRuntime(),
+        skipPluginLoading: true,
+      });
+
+      expect(result.success).toBe(true);
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
   });
-
   test('runPipeline resolves pipeline plugins from the workspace workDir', async () => {
     const tmp = mkdtempSync(join(tmpdir(), 'tagma-workdir-plugin-'));
     const pluginDir = join(tmp, 'node_modules', 'tagma-plugin-workspace-driver');
@@ -622,136 +622,10 @@ describe('runPipeline — options.registry isolation', () => {
       const result = await runPipeline(config, tmp, {
         registry: reg,
         runtime: fakeRuntime(),
-        mode: 'trusted',
       });
 
       expect(result.success).toBe(true);
       expect(reg.hasHandler('drivers', 'workspace')).toBe(true);
-    } finally {
-      rmSync(tmp, { recursive: true, force: true });
-    }
-  });
-
-  test('safe mode blocks command tasks and unsafe capabilities', async () => {
-    const tmp = mkdtempSync(join(tmpdir(), 'tagma-safe-mode-'));
-    const reg = new PluginRegistry();
-    try {
-      await expect(
-        runPipeline(
-          {
-            name: 'safe-command',
-            tracks: [{ id: 't', name: 'T', tasks: [{ id: 'x', command: 'echo hi' }] }],
-          },
-          tmp,
-          { registry: reg, runtime: fakeRuntime(), mode: 'safe' },
-        ),
-      ).rejects.toThrow(/safe mode blocks command task "t\.x"/);
-
-      await expect(
-        runPipeline(
-          {
-            name: 'safe-plugin',
-            plugins: ['tagma-plugin-anything'],
-            tracks: [{ id: 't', name: 'T', tasks: [{ id: 'x', prompt: 'hello' }] }],
-          },
-          tmp,
-          { registry: reg, runtime: fakeRuntime(), mode: 'safe' },
-        ),
-      ).rejects.toThrow(/safe mode blocks automatic plugin loading/);
-
-      await expect(
-        runPipeline(
-          {
-            name: 'safe-execute-permission',
-            tracks: [
-              {
-                id: 't',
-                name: 'T',
-                tasks: [
-                  {
-                    id: 'x',
-                    prompt: 'hello',
-                    permissions: { read: true, write: true, execute: true },
-                  },
-                ],
-              },
-            ],
-          },
-          tmp,
-          { registry: reg, runtime: fakeRuntime(), mode: 'safe' },
-        ),
-      ).rejects.toThrow(/safe mode blocks execute permission on task "t\.x"/);
-
-      const bootstrapped = new PluginRegistry();
-      bootstrapBuiltins(bootstrapped);
-      await expect(
-        runPipeline(
-          {
-            name: 'safe-write-unenforced-driver',
-            tracks: [
-              {
-                id: 't',
-                name: 'T',
-                tasks: [
-                  {
-                    id: 'x',
-                    prompt: 'hello',
-                    permissions: { read: true, write: true, execute: false },
-                  },
-                ],
-              },
-            ],
-          },
-          tmp,
-          {
-            registry: bootstrapped,
-            runtime: fakeRuntime(),
-            mode: 'safe',
-            safeModeAllowlist: { drivers: ['opencode'] },
-            skipPluginLoading: true,
-          },
-        ),
-      ).rejects.toThrow(/safe mode blocks write permission for driver "opencode"/);
-
-      await expect(
-        runPipeline(
-          {
-            name: 'safe-unenforced-driver',
-            tracks: [{ id: 't', name: 'T', tasks: [{ id: 'x', prompt: 'hello' }] }],
-          },
-          tmp,
-          {
-            registry: bootstrapped,
-            runtime: fakeRuntime(),
-            mode: 'safe',
-            safeModeAllowlist: { drivers: ['opencode'] },
-            skipPluginLoading: true,
-          },
-        ),
-      ).rejects.toThrow(/safe mode blocks driver "opencode"/);
-
-      await expect(
-        runPipeline(
-          {
-            name: 'safe-completion',
-            tracks: [
-              {
-                id: 't',
-                name: 'T',
-                tasks: [
-                  {
-                    id: 'x',
-                    prompt: 'hello',
-                    completion: { type: 'output_check', check: 'echo ok' },
-                  },
-                ],
-              },
-            ],
-          },
-          tmp,
-          { registry: reg, runtime: fakeRuntime(), mode: 'safe' },
-        ),
-      ).rejects.toThrow(/safe mode blocks completion "output_check"/);
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
@@ -795,7 +669,7 @@ describe('runPipeline — options.registry isolation', () => {
           ],
         },
         tmp,
-        { registry: reg, runtime: fakeRuntime(), mode: 'trusted' },
+        { registry: reg, runtime: fakeRuntime() },
       );
 
       expect(result.success).toBe(false);
@@ -862,7 +736,6 @@ describe('runPipeline — options.registry isolation', () => {
         {
           registry: reg,
           runtime,
-          mode: 'trusted',
           onEvent: (event) => events.push(event),
         },
       );
@@ -916,7 +789,6 @@ describe('runPipeline — options.registry isolation', () => {
         {
           registry: new PluginRegistry(),
           runtime,
-          mode: 'trusted',
           onEvent: (event) => events.push(event),
         },
       );
@@ -955,7 +827,7 @@ describe('runPipeline — options.registry isolation', () => {
           tracks: [{ id: 't', name: 'T', tasks: [{ id: 'x', command: 'echo hi' }] }],
         },
         tmp,
-        { registry: new PluginRegistry(), runtime, mode: 'trusted' },
+        { registry: new PluginRegistry(), runtime },
       );
 
       expect(result.success).toBe(false);

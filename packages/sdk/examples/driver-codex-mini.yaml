@@ -1,7 +1,7 @@
 # driver-codex-mini.yaml
 # --------------------------------------------------------------------------
 # Minimal pipeline using the Codex CLI driver with `gpt-5.3-codex`.
-# Codex is an external plugin â€” declare it in `plugins:` to register it.
+# Codex is an external plugin â€?declare it in `plugins:` to register it.
 #
 # Requires:  `codex` CLI on PATH (`npm i -g @openai/codex`) + auth.
 # Notes:     Codex driver has no native session resume or system-prompt;
@@ -9,7 +9,6 @@
 # --------------------------------------------------------------------------
 pipeline:
   name: driver-codex-mini
-  mode: trusted
   driver: codex
   model: gpt-5.3-codex
   timeout: 5m

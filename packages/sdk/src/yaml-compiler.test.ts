@@ -243,7 +243,6 @@ pipeline:
     const result = compileYamlContent(`
 pipeline:
   name: Bad Optional Scalars
-  mode: 0
   driver: []
   model: {}
   tracks:
@@ -270,10 +269,6 @@ pipeline:
     expect(result.summary).not.toMatch(/Validation crashed/);
     expect(result.validation.errors).toEqual(
       expect.arrayContaining([
-        {
-          path: 'mode',
-          message: 'Invalid mode "0". Expected "trusted" or "safe".',
-        },
         { path: 'driver', message: 'driver must be a non-empty string' },
         { path: 'model', message: 'model must be a non-empty string' },
         { path: 'tracks[0].color', message: 'track.color must be a non-empty string' },

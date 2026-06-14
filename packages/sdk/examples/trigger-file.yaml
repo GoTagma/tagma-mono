@@ -9,7 +9,6 @@
 # --------------------------------------------------------------------------
 pipeline:
   name: trigger-file
-  mode: trusted
   timeout: 5m
 
   tracks:
@@ -26,7 +25,7 @@ pipeline:
         - id: consumer
           name: Wait for ./.tagma/out/trigger-file/ready.signal
           command: 'echo "signal seen"; cat ./.tagma/out/trigger-file/ready.signal'
-          # NOTE: no `depends_on` â€” the file trigger is the synchronisation
+          # NOTE: no `depends_on` â€?the file trigger is the synchronisation
           # primitive. `producer` and `consumer` run concurrently until the
           # signal file appears.
           trigger:

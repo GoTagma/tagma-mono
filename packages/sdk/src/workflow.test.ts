@@ -24,7 +24,6 @@ function makeDir(): string {
 function commandPipeline(name: string, command: string): PipelineConfig {
   return {
     name,
-    mode: 'trusted',
     tracks: [
       {
         id: 'main',
@@ -38,7 +37,6 @@ function commandPipeline(name: string, command: string): PipelineConfig {
 function pipelineYaml(name: string, command: string): string {
   return `pipeline:
   name: ${name}
-  mode: trusted
   tracks:
     - id: main
       name: Main
@@ -394,7 +392,6 @@ describe('workflow YAML model', () => {
         pipelinePath,
         `pipeline:
   name: Bad
-  mode: trusted
   tracks: []
 `,
         'utf8',
@@ -697,7 +694,6 @@ describe('PipelineGraphRunner', () => {
     try {
       const invalidPipeline = {
         name: 'Invalid',
-        mode: 'trusted',
         tracks: [],
       } as unknown as PipelineConfig;
 

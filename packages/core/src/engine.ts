@@ -1,14 +1,12 @@
 import type {
   EnvPolicy,
-  PipelineExecutionMode,
   PipelineConfig,
-  SafeModeAllowlist,
   SecretResolver,
   TaskState,
   RunEventPayload,
   RunTaskState,
 } from './types';
-import { isCommandTaskConfig, isPromptTaskConfig } from './types';
+import { isPromptTaskConfig } from './types';
 import { buildDag, type Dag } from './dag';
 import type { PluginRegistry } from './registry';
 import { parseDuration, nowISO, generateRunId, assertValidRunId, validatePath } from './utils';
@@ -79,8 +77,6 @@ export interface RunPipelineOptions {
    * log directories aligned on the same ID.
    */
   readonly runId?: string;
-  readonly mode?: PipelineExecutionMode;
-  readonly safeModeAllowlist?: SafeModeAllowlist;
   readonly envPolicy?: EnvPolicy;
   readonly secretResolver?: SecretResolver;
   readonly logPrompt?: boolean;
@@ -132,18 +128,10 @@ export interface RunPipelineOptions {
 
 // Re-export from @tagma/types for backward compatibility — existing imports
 // from '@tagma/core' continue to work.
-export type { SafeModeAllowlist } from './types';
 
 // Poll interval when no tasks are in-flight but non-terminal tasks remain
 // (e.g. tasks waiting on a file, directory, or manual trigger).
 const POLL_INTERVAL_MS = 50;
-
-const DEFAULT_SAFE_MODE_ALLOWLIST: Required<SafeModeAllowlist> = {
-  drivers: [],
-  triggers: ['manual', 'file', 'directory'],
-  completions: ['exit_code', 'file_exists'],
-  middlewares: ['static_context'],
-};
 
 const liveRunIdsByWorkDir = new Map<string, Set<string>>();
 
@@ -195,99 +183,6 @@ function resolveTargetTaskRunSet(
 
   for (const taskId of targetTaskIds) visit(taskId);
   return runSet;
-}
-
-function safeSet<T extends keyof Required<SafeModeAllowlist>>(
-  hardcoded: SafeModeAllowlist,
-  registry: SafeModeAllowlist | undefined,
-  caller: SafeModeAllowlist | undefined,
-  key: T,
-): ReadonlySet<string> {
-  return new Set([...(hardcoded[key] ?? []), ...(registry?.[key] ?? []), ...(caller?.[key] ?? [])]);
-}
-
-function enforceExecutionMode(
-  config: PipelineConfig,
-  mode: PipelineExecutionMode,
-  allowlist?: SafeModeAllowlist,
-  registryAllowlist?: SafeModeAllowlist,
-): void {
-  if (mode !== 'trusted' && mode !== 'safe') {
-    throw new Error(`Invalid pipeline execution mode "${mode}". Expected "trusted" or "safe".`);
-  }
-  if (mode !== 'safe') return;
-  const errors: string[] = [];
-  if (config.plugins?.length) {
-    errors.push('safe mode blocks automatic plugin loading via pipeline.plugins');
-  }
-  if (config.hooks && Object.keys(config.hooks).length > 0) {
-    errors.push('safe mode blocks lifecycle hooks');
-  }
-
-  const allowedDrivers = safeSet(
-    DEFAULT_SAFE_MODE_ALLOWLIST,
-    registryAllowlist,
-    allowlist,
-    'drivers',
-  );
-  const allowedTriggers = safeSet(
-    DEFAULT_SAFE_MODE_ALLOWLIST,
-    registryAllowlist,
-    allowlist,
-    'triggers',
-  );
-  const allowedCompletions = safeSet(
-    DEFAULT_SAFE_MODE_ALLOWLIST,
-    registryAllowlist,
-    allowlist,
-    'completions',
-  );
-  const allowedMiddlewares = safeSet(
-    DEFAULT_SAFE_MODE_ALLOWLIST,
-    registryAllowlist,
-    allowlist,
-    'middlewares',
-  );
-
-  for (const track of config.tracks) {
-    const trackDriver = track.driver ?? config.driver ?? 'opencode';
-    const trackMiddlewares = track.middlewares ?? [];
-    for (const mw of trackMiddlewares) {
-      if (!allowedMiddlewares.has(mw.type)) {
-        errors.push(`safe mode blocks middleware "${mw.type}" on track "${track.id}"`);
-      }
-    }
-    for (const task of track.tasks) {
-      const taskLabel = `${track.id}.${task.id}`;
-      const permissions = task.permissions ?? track.permissions ?? config.permissions;
-      if (isCommandTaskConfig(task)) {
-        errors.push(`safe mode blocks command task "${taskLabel}"`);
-      }
-      if (permissions?.execute) {
-        errors.push(`safe mode blocks execute permission on task "${taskLabel}"`);
-      }
-      const driver = task.driver ?? trackDriver;
-      if (task.prompt !== undefined && !allowedDrivers.has(driver)) {
-        errors.push(`safe mode blocks driver "${driver}" on task "${taskLabel}"`);
-      }
-      if (task.trigger && !allowedTriggers.has(task.trigger.type)) {
-        errors.push(`safe mode blocks trigger "${task.trigger.type}" on task "${taskLabel}"`);
-      }
-      if (task.completion && !allowedCompletions.has(task.completion.type)) {
-        errors.push(`safe mode blocks completion "${task.completion.type}" on task "${taskLabel}"`);
-      }
-      const middlewares = task.middlewares ?? trackMiddlewares;
-      for (const mw of middlewares) {
-        if (!allowedMiddlewares.has(mw.type)) {
-          errors.push(`safe mode blocks middleware "${mw.type}" on task "${taskLabel}"`);
-        }
-      }
-    }
-  }
-
-  if (errors.length > 0) {
-    throw new Error(`Safe mode validation failed:\n  - ${errors.join('\n  - ')}`);
-  }
 }
 
 function validatePipelineCwds(config: PipelineConfig, workDir: string): void {
@@ -358,8 +253,6 @@ async function runPipelineInner(
   const registry = options.registry;
   const runtime = options.runtime;
   const approvalGateway = scopeApprovalGateway(rootApprovalGateway, runId);
-  const mode = options.mode ?? config.mode ?? 'safe';
-  enforceExecutionMode(config, mode, options.safeModeAllowlist, registry.getSafeModeDefaults());
 
   // Load any plugins declared in the pipeline config before preflight so that
   // drivers, completions, and middlewares referenced in YAML are registered.
@@ -371,7 +264,7 @@ async function runPipelineInner(
   }
 
   const dag = buildDag(config);
-  preflight(config, dag, registry, mode);
+  preflight(config, dag, registry);
   const activeTaskIds = resolveTargetTaskRunSet(dag, options.targetTaskIds);
   const pipelineTimeoutMs = config.timeout ? parseDuration(config.timeout) : 0;
   const maxConcurrency = normalizeMaxConcurrency(options.maxConcurrency ?? config.max_concurrency);

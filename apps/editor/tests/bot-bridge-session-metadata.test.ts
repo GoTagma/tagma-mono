@@ -1,32 +1,19 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 let activeBaseUrl = 'http://127.0.0.1:1';
 
-mock.module('../server/opencode-lifecycle.js', () => ({
-  ensureRealTagmaDirectory: (workspaceRoot: string) => workspaceRoot,
-  ensureOpencode: async () => ({
-    baseUrl: activeBaseUrl,
-    auth: {
-      username: 'tagma',
-      password: 'test',
-      authorization: 'Basic dGFnbWE6dGVzdA==',
-    },
-  }),
-}));
-
-mock.module('../server/opencode-seed.js', () => ({
-  seedOpencodeArtifacts: () => {},
-  TAGMA_ROUTER_AGENT: 'tagma-router',
-}));
-
-const { dropClientCache, ensureSession } = await import('../server/chat-bridge/opencode-driver');
+const { _setOpencodeRuntimeHooksForTests, dropClientCache, ensureSession } = await import(
+  '../server/chat-bridge/opencode-driver'
+);
 const { workspaceRegistry } = await import('../server/workspace-registry');
 
 afterEach(() => {
+  _setOpencodeRuntimeHooksForTests(null);
   dropClientCache();
+  activeBaseUrl = 'http://127.0.0.1:1';
 });
 
 describe('opencode-driver session metadata', () => {
@@ -49,6 +36,20 @@ describe('opencode-driver session metadata', () => {
     });
 
     activeBaseUrl = server.url.href;
+    _setOpencodeRuntimeHooksForTests({
+      ensureRealTagmaDirectory: (workspaceRoot: string) => workspaceRoot,
+      seedOpencodeArtifacts: () => true,
+      ensureOpencode: async (cwd: string) => ({
+        baseUrl: activeBaseUrl,
+        pid: -1,
+        cwd,
+        auth: {
+          username: 'tagma',
+          password: 'test',
+          authorization: 'Basic dGFnbWE6dGVzdA==',
+        },
+      }),
+    });
     try {
       workspaceRegistry.getOrCreate(workDir).yamlPath = join(
         workDir,

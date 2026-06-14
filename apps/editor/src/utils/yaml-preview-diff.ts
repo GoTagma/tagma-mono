@@ -27,8 +27,8 @@ export interface YamlPreviewBlock {
   source: YamlPreviewChangeSource;
   changedAt: number;
   hunk: YamlDiffHunk;
-  layoutBefore?: Record<string, { x: number }>;
-  layoutAfter?: Record<string, { x: number }>;
+  layoutBefore?: Record<string, { x: number; y?: number }>;
+  layoutAfter?: Record<string, { x: number; y?: number }>;
   layoutChanged?: boolean;
 }
 
@@ -249,8 +249,8 @@ export function buildYamlPreviewBlocks(args: {
   afterYaml: string;
   source: YamlPreviewChangeSource;
   changedAt: number;
-  layoutBefore?: Record<string, { x: number }>;
-  layoutAfter?: Record<string, { x: number }>;
+  layoutBefore?: Record<string, { x: number; y?: number }>;
+  layoutAfter?: Record<string, { x: number; y?: number }>;
   layoutChanged?: boolean;
 }): YamlPreviewBlock[] {
   const nextHunks = buildYamlDiffHunks(args.baselineYaml, args.afterYaml);

@@ -1,5 +1,5 @@
 import type { RawTrackConfig, TrackFolder } from '../../api/client';
-import { FOLDER_H, TRACK_H } from './layout-constants';
+import { FOLDER_H, TRACK_H, TRACK_MAX_H, TRACK_MIN_H } from './layout-constants';
 
 /**
  * One renderable row in the BoardCanvas/Minimap stack. Folders contribute a
@@ -35,10 +35,16 @@ export type RenderRow =
 export function buildRenderPlan(
   tracks: readonly RawTrackConfig[],
   folders: readonly TrackFolder[],
+  trackHeights: ReadonlyMap<string, number> = new Map(),
 ): RenderRow[] {
   const out: RenderRow[] = [];
   const claimed = new Set<string>();
   const trackIds = new Set<string>(tracks.map((t) => t.id));
+  const rowHeight = (trackId: string) => {
+    const height = trackHeights.get(trackId);
+    if (typeof height !== 'number' || !Number.isFinite(height)) return TRACK_H;
+    return Math.max(TRACK_MIN_H, Math.min(TRACK_MAX_H, Math.round(height)));
+  };
 
   for (const f of folders) {
     out.push({ kind: 'folder', folderId: f.id, height: FOLDER_H });
@@ -50,13 +56,13 @@ export function buildRenderPlan(
     }
     for (const tid of f.trackIds) {
       if (!trackIds.has(tid)) continue;
-      out.push({ kind: 'track', trackId: tid, folderId: f.id, height: TRACK_H });
+      out.push({ kind: 'track', trackId: tid, folderId: f.id, height: rowHeight(tid) });
       claimed.add(tid);
     }
   }
   for (const t of tracks) {
     if (claimed.has(t.id)) continue;
-    out.push({ kind: 'track', trackId: t.id, folderId: null, height: TRACK_H });
+    out.push({ kind: 'track', trackId: t.id, folderId: null, height: rowHeight(t.id) });
   }
   return out;
 }

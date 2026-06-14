@@ -52,7 +52,6 @@ import {
   TASK_H,
   TASK_GAP,
   PAD_LEFT,
-  TRACK_H,
   CANVAS_PAD_RIGHT,
 } from '../board/layout-constants';
 import { usePipelineStore } from '../../store/pipeline-store';
@@ -236,6 +235,7 @@ export function RunView({
   // capture layout folders, so suppress live folders there rather than mixing
   // an unrelated editor layout with the replay snapshot.
   const liveFolders = usePipelineStore((s) => s.folders);
+  const liveTrackHeights = usePipelineStore((s) => s.trackHeights);
   const toggleFolderCollapsed = usePipelineStore((s) => s.toggleFolderCollapsed);
   const folders = useMemo<TrackFolder[]>(() => {
     if (replayPositions) return [];
@@ -248,8 +248,8 @@ export function RunView({
       .filter((f) => f.trackIds.length > 0);
   }, [config.tracks, liveFolders, replayPositions]);
   const renderPlan = useMemo(
-    () => buildRenderPlan(config.tracks, folders),
-    [config.tracks, folders],
+    () => buildRenderPlan(config.tracks, folders, replayPositions ? new Map() : liveTrackHeights),
+    [config.tracks, folders, liveTrackHeights, replayPositions],
   );
 
   // Build flat task list with positions (same layout as BoardCanvas).
@@ -283,7 +283,13 @@ export function RunView({
       const count = taskCountPerTrack.get(ft.trackId) ?? 0;
       const stored = positions.get(ft.qid);
       const x = stored ? stored.x : PAD_LEFT + count * (TASK_W + TASK_GAP);
-      const y = trackTop + (TRACK_H - TASK_H) / 2;
+      const row = renderPlan.find((entry) => entry.kind === 'track' && entry.trackId === ft.trackId);
+      const rowHeight = row?.height ?? TASK_H;
+      const innerY =
+        stored?.y === undefined
+          ? (rowHeight - TASK_H) / 2
+          : Math.max(0, Math.min(Math.max(0, rowHeight - TASK_H), stored.y));
+      const y = trackTop + innerY;
       posMap.set(ft.qid, { x, y });
       taskCountPerTrack.set(ft.trackId, count + 1);
     }
@@ -296,10 +302,11 @@ export function RunView({
   const minimapPositions = useMemo(() => {
     const out = new Map<string, TaskPosition>();
     for (const [qid, pos] of taskPositions) {
-      out.set(qid, { x: pos.x });
+      const trackTop = trackTopYInPlan(renderPlan, qid.split('.')[0] ?? '');
+      out.set(qid, trackTop === null ? { x: pos.x } : { x: pos.x, y: pos.y - trackTop });
     }
     return out;
-  }, [taskPositions]);
+  }, [taskPositions, renderPlan]);
 
   const canvasWidth = useMemo(() => {
     let maxX = 0;
@@ -948,6 +955,7 @@ export function RunView({
                 config={config}
                 positions={minimapPositions}
                 folders={folders}
+                trackHeights={replayPositions ? new Map() : liveTrackHeights}
               />
             </div>
 

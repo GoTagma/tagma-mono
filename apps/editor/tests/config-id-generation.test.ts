@@ -230,6 +230,46 @@ pipeline:
     ]);
   });
 
+  test('loadLayout preserves task y coordinates and track heights from layout.json', () => {
+    const dir = makeTempDir();
+    const yamlPath = join(dir, 'pipeline.yaml');
+    writeFileSync(yamlPath, 'pipeline:\n  name: Layout\n');
+    writeFileSync(
+      join(dir, 'pipeline.layout.json'),
+      JSON.stringify({
+        positions: {
+          'track.task': { x: 120, y: 24 },
+          'track.bad': { x: 80, y: Number.NaN },
+          'ghost.task': { x: 240, y: 12 },
+        },
+        trackHeights: {
+          track: 144,
+          ghost: 200,
+          bad: Number.POSITIVE_INFINITY,
+        },
+      }),
+    );
+
+    let config = createEmptyPipeline('Layout');
+    config = upsertTrack(config, {
+      id: 'track',
+      name: 'Track',
+      tasks: [],
+    });
+    config = upsertTask(config, 'track', {
+      id: 'task',
+      name: 'Task',
+      prompt: 'Hello',
+    });
+    S.config = config;
+    S.yamlPath = yamlPath;
+
+    loadLayout(S);
+
+    expect(S.layout.positions).toEqual({ 'track.task': { x: 120, y: 24 } });
+    expect(S.layout.trackHeights).toEqual({ track: 144 });
+  });
+
   test('POST /api/new seeds a pipeline with valid track and task ids', async () => {
     S.workDir = makeTempDir();
     const harness = createRouteHarness();

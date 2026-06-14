@@ -130,7 +130,6 @@ describe('run session task mirror', () => {
   test('run history snapshot preserves matching disk YAML text', () => {
     const config = {
       name: 'P',
-      mode: 'trusted',
       tracks: [
         {
           id: 't',
@@ -143,7 +142,6 @@ describe('run session task mirror', () => {
       '# keep user formatting',
       'pipeline:',
       '  name: P',
-      '  mode: trusted',
       '  tracks:',
       '    - id: t',
       '      name: T',
@@ -225,7 +223,7 @@ describe('run session task mirror', () => {
     const summary = session.buildSummary('2026-05-15T00:00:01.000Z', {});
     const ta = summary.tasks.find((task) => task.taskId === 't.a');
     // Without stdoutPath in the summary, history has no way to reach a
-    // command task's console output — this is the persistence half of
+    // command task's console output 鈥?this is the persistence half of
     // the "view console output in history" gap fix.
     expect(ta?.stdoutPath).toBe('/ws/.tagma/logs/run_output/t_a.stdout');
     expect(ta?.stderrPath).toBe('/ws/.tagma/logs/run_output/t_a.stderr');

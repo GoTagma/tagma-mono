@@ -103,7 +103,6 @@ describe('createTagma', () => {
       const result = await tagma.run(
         {
           name: 'runtime-run',
-          mode: 'trusted',
           tracks: [
             {
               id: 't',
@@ -172,7 +171,6 @@ describe('createTagma', () => {
       await tagma.run(
         {
           name: 'runtime-argv',
-          mode: 'trusted',
           tracks: [
             {
               id: 't',
@@ -230,7 +228,6 @@ describe('createTagma', () => {
       const result = await tagma.run(
         {
           name: 'completion-nonzero',
-          mode: 'trusted',
           tracks: [
             {
               id: 't',
@@ -346,7 +343,6 @@ describe('createTagma', () => {
       const result = await tagma.run(
         {
           name: 'runtime-log-store',
-          mode: 'trusted',
           tracks: [
             {
               id: 't',
@@ -426,7 +422,6 @@ describe('createTagma', () => {
           {
             cwd: dir,
             skipPluginLoading: true,
-            mode: 'trusted',
           },
         ),
       ).rejects.toThrow(/driver "opencode" not registered/);
@@ -474,7 +469,6 @@ describe('createTagma', () => {
     try {
       const config = {
         name: 'unsafe-cwd',
-        mode: 'trusted',
         tracks: [
           {
             id: 't',
@@ -511,7 +505,6 @@ describe('createTagma', () => {
       tagma.validate(
         {
           name: 'invalid-cwd',
-          mode: 'trusted',
           tracks: [{ id: 't', name: 'T', tasks: [{ id: 'a', command: 'echo a' }] }],
         },
         { cwd: '' },
@@ -523,7 +516,6 @@ describe('createTagma', () => {
     const tagma = createTagma({ builtins: false, runtime: {} as TagmaRuntime });
     const config = {
       name: 'options-cwd-required',
-      mode: 'trusted',
       tracks: [{ id: 't', name: 'T', tasks: [{ id: 'a', command: 'echo a' }] }],
     } as const;
     const run = tagma.run as unknown as (
@@ -569,7 +561,6 @@ describe('createTagma', () => {
         tagma.run(
           {
             name: 'invalid-programmatic',
-            mode: 'trusted',
             tracks: [
               {
                 id: 't',
@@ -636,7 +627,6 @@ describe('createTagma', () => {
               cwd: dir,
               config: {
                 name: 'First',
-                mode: 'trusted',
                 tracks: [{ id: 'main', name: 'Main', tasks: [{ id: 'task', command: 'first' }] }],
               },
             },
@@ -646,7 +636,6 @@ describe('createTagma', () => {
               depends_on: ['first'],
               config: {
                 name: 'Second',
-                mode: 'trusted',
                 tracks: [{ id: 'main', name: 'Main', tasks: [{ id: 'task', command: 'second' }] }],
               },
             },
@@ -702,7 +691,6 @@ describe('createTagma', () => {
     const dir = makeDir('tagma-yaml-document-run-');
     const pipelineYaml = `pipeline:
   name: Single
-  mode: trusted
   tracks:
     - id: main
       name: Main
@@ -783,7 +771,6 @@ describe('createTagma', () => {
         join(dir, '.tagma', 'build', 'build.yaml'),
         `pipeline:
   name: Build
-  mode: trusted
   tracks:
     - id: main
       name: Main

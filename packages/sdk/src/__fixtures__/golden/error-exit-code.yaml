@@ -1,6 +1,5 @@
 pipeline:
   name: golden-error-exit-code
-  mode: trusted
   tracks:
     - id: main
       name: Main

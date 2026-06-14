@@ -5,13 +5,12 @@
 # success signal is the artifact it produces, not its exit code.
 #
 # Fields:
-#   path     (required) â€” file/dir path, relative to workDir or absolute.
-#   kind     â€” 'file' | 'dir' | 'any' (default 'any').
-#   min_size â€” optional minimum size in bytes (files only).
+#   path     (required) â€?file/dir path, relative to workDir or absolute.
+#   kind     â€?'file' | 'dir' | 'any' (default 'any').
+#   min_size â€?optional minimum size in bytes (files only).
 # --------------------------------------------------------------------------
 pipeline:
   name: completion-file-exists
-  mode: trusted
   timeout: 2m
 
   tracks:

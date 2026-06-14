@@ -1,6 +1,5 @@
 pipeline:
   name: golden-typed-outputs
-  mode: trusted
   tracks:
     - id: main
       name: Main

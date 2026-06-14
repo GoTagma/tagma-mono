@@ -9,7 +9,6 @@ import type {
   MiddlewarePlugin,
   PluginManifest,
   PluginSchema,
-  SafeModeAllowlist,
   TagmaPlugin,
 } from './types';
 import { parseDuration } from './utils';
@@ -130,17 +129,6 @@ function validateContract(category: PluginCategory, handler: unknown): void {
 export type RegisterResult = 'registered' | 'replaced' | 'unchanged';
 export interface RegisterPluginOptions {
   readonly replace?: boolean;
-  /**
-   * When true, the registered plugin type is considered safe for safe-mode
-   * execution. The engine consults the registry's safe-mode set (via
-   * `getSafeModeDefaults()`) in addition to the caller-supplied allowlist when
-   * validating a pipeline under `mode: 'safe'`. Built-in plugins (exit_code,
-   * file_exists, static_context, manual, file, directory) register with this
-   * flag so they remain available without explicit allowlist entries.
-   *
-   * Default: false — new plugin types must explicitly opt in.
-   */
-  readonly safeMode?: boolean;
 }
 
 // Plugin name must be a scoped npm package or a tagma-prefixed package.
@@ -151,7 +139,7 @@ export interface RegisterPluginOptions {
 // segment is composed entirely of the dot-class characters that npm permits
 // inside regular package names. Without it, `@scope/..` and `@scope/.` slip
 // through and `pluginDirFor()` resolves them via `path.resolve()` to the
-// parent `node_modules` root — letting an /api/plugins/uninstall caller
+// parent `node_modules` root �?letting an /api/plugins/uninstall caller
 // `rmSync` the whole tree. The lookahead keeps legitimate names like
 // `@scope/foo.bar` working while shutting that path-traversal door.
 export const PLUGIN_NAME_RE =
@@ -412,19 +400,6 @@ export class PluginRegistry {
     middlewares: new Map<string, MiddlewarePlugin>(),
   };
 
-  /**
-   * Tracks plugin types registered with `{ safeMode: true }` per category.
-   * The engine merges these into the effective safe-mode allowlist so that
-   * newly-registered safe plugins are automatically available without
-   * updating the hardcoded DEFAULT_SAFE_MODE_ALLOWLIST in engine.ts.
-   */
-  private readonly safeModeTypes = {
-    drivers: new Set<string>(),
-    triggers: new Set<string>(),
-    completions: new Set<string>(),
-    middlewares: new Set<string>(),
-  };
-
   private validatePluginRegistration(
     category: PluginCategory,
     type: string,
@@ -480,32 +455,10 @@ export class PluginRegistry {
     this.assertCanRegister(category, type, handler, options);
     const registry = this.registries[category] as Map<string, T>;
     const existing = registry.get(type);
-    if (options.safeMode) {
-      this.safeModeTypes[category].add(type);
-    } else {
-      this.safeModeTypes[category].delete(type);
-    }
     if (existing === handler) return 'unchanged';
     const wasReplaced = existing !== undefined;
     registry.set(type, handler);
     return wasReplaced ? 'replaced' : 'registered';
-  }
-
-  /**
-   * Returns a SafeModeAllowlist built from all plugin types registered with
-   * `{ safeMode: true }`. The engine merges this with the hardcoded defaults
-   * and the caller-supplied allowlist when validating a pipeline under safe
-   * mode. New plugin categories automatically appear here once they register
-   * with the safeMode flag — no manual DEFAULT_SAFE_MODE_ALLOWLIST update
-   * needed.
-   */
-  getSafeModeDefaults(): SafeModeAllowlist {
-    return {
-      drivers: [...this.safeModeTypes.drivers],
-      triggers: [...this.safeModeTypes.triggers],
-      completions: [...this.safeModeTypes.completions],
-      middlewares: [...this.safeModeTypes.middlewares],
-    };
   }
 
   registerTagmaPlugin(
@@ -570,12 +523,11 @@ export class PluginRegistry {
   /**
    * Remove a plugin from the in-process registry. Returns true if a plugin
    * was actually removed. Note: ESM module caching is not affected, so
-   * re-importing the same file after unregister will yield the cached module —   * callers wanting a fresh load must restart the host process.
+   * re-importing the same file after unregister will yield the cached module �?  * callers wanting a fresh load must restart the host process.
    */
   unregisterPlugin(category: PluginCategory, type: string): boolean {
     if (!VALID_CATEGORIES.has(category)) return false;
     const removed = this.registries[category].delete(type);
-    if (removed) this.safeModeTypes[category].delete(type);
     return removed;
   }
 

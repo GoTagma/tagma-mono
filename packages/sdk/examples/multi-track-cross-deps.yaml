@@ -2,16 +2,15 @@
 # --------------------------------------------------------------------------
 # Demonstrates parallel tracks and cross-track dependencies.
 #
-#   build  ─┐
-#           ├──▶ release (depends on build.compile AND test.run)
-#   test   ─┘
+#   build  ─�?
+#           ├──�?release (depends on build.compile AND test.run)
+#   test   ─�?
 #
 # Tracks run in parallel by default. A task can depend on a task in another
 # track via the qualified reference form `<trackId>.<taskId>`.
 # --------------------------------------------------------------------------
 pipeline:
   name: multi-track-cross-deps
-  mode: trusted
   timeout: 5m
 
   tracks:

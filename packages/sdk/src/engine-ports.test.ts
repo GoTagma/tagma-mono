@@ -36,7 +36,6 @@ function task(overrides: Partial<TaskConfig> & { id: string }): TaskConfig {
 function pipeline(tasks: TaskConfig[]): PipelineConfig {
   return {
     name: 'bindings-test',
-    mode: 'trusted',
     tracks: [
       {
         id: 't',
@@ -135,7 +134,7 @@ function finalStatusFrom(events: RunEventPayload[], qid: string): TaskStatus | u
   return last && last.type === 'task_update' ? last.status : undefined;
 }
 
-describe('engine â€” unified inputs and outputs', () => {
+describe('engine â€?unified inputs and outputs', () => {
   test('typed outputs feed typed inputs and command placeholders', async () => {
     const dir = makeDir();
     try {

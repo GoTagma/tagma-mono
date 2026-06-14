@@ -19,7 +19,6 @@ export type {
   EngineResult,
   RunEventPayload,
   RunPipelineOptions,
-  SafeModeAllowlist,
 } from './engine';
 export {
   commandLabel,

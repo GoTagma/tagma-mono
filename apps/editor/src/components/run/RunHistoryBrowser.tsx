@@ -648,7 +648,12 @@ export function RunHistoryBrowser({
     const map = new Map<string, TaskPosition>();
     const source = summary?.positions ?? Object.fromEntries(editorPositions);
     for (const [taskId, pos] of Object.entries(source)) {
-      if (typeof pos?.x === 'number') map.set(taskId, { x: pos.x });
+      if (typeof pos?.x === 'number') {
+        map.set(
+          taskId,
+          typeof pos.y === 'number' && Number.isFinite(pos.y) ? { x: pos.x, y: pos.y } : { x: pos.x },
+        );
+      }
     }
     return map;
   }, [editorPositions, summary?.positions]);

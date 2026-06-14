@@ -85,7 +85,6 @@ function fakeRuntime(seenCommands: string[]): TagmaRuntime {
 
 const config: PipelineConfig = {
   name: 'targeted',
-  mode: 'trusted',
   tracks: [
     {
       id: 'main',
@@ -223,7 +222,6 @@ describe('targeted pipeline runs', () => {
       const result = await runPipeline(
         {
           name: 'trigger-stop-all',
-          mode: 'trusted',
           tracks: [
             {
               id: 'main',
@@ -327,7 +325,6 @@ describe('targeted pipeline runs', () => {
       const run = runPipeline(
         {
           name: 'trigger-external-abort',
-          mode: 'trusted',
           tracks: [
             {
               id: 'main',

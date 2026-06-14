@@ -14,7 +14,6 @@ let ws: WorkspaceState;
 function pipelineYaml(name: string, command: string): string {
   return `pipeline:
   name: ${name}
-  mode: trusted
   tracks:
     - id: main
       name: Main
@@ -27,7 +26,6 @@ function pipelineYaml(name: string, command: string): string {
 function failingPipelineYaml(name: string): string {
   return `pipeline:
   name: ${name}
-  mode: trusted
   tracks:
     - id: main
       name: Main

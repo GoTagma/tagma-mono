@@ -101,7 +101,6 @@ function durationErrorMessage(
 const isValidId = isValidTaskId;
 
 const VALID_ON_FAILURE = new Set(['skip_downstream', 'stop_all', 'ignore']);
-const VALID_PIPELINE_MODES = new Set(['trusted', 'safe']);
 const PERMISSION_FIELDS = ['read', 'write', 'execute'] as const;
 const PERMISSION_FIELD_SET: ReadonlySet<string> = new Set(PERMISSION_FIELDS);
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -109,7 +108,6 @@ const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const PIPELINE_FIELDS: ReadonlySet<string> = new Set([
   'requires',
   'name',
-  'mode',
   'secrets',
   'driver',
   'model',
@@ -558,12 +556,6 @@ export function validateRaw(
   errors.push(...validateDeclaredSdkRequirement(config.requires, 'requires', 'pipeline'));
   if (!isNonEmptyString(config.name)) {
     errors.push({ path: 'name', message: 'Pipeline name is required' });
-  }
-  if (config.mode !== undefined && !VALID_PIPELINE_MODES.has(config.mode)) {
-    errors.push({
-      path: 'mode',
-      message: `Invalid mode "${config.mode}". Expected "trusted" or "safe".`,
-    });
   }
   validateReasoningEffort(config.reasoning_effort, 'reasoning_effort', errors);
   validateOptionalString(config.driver, 'driver', 'driver', errors);

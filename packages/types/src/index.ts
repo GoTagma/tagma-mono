@@ -34,23 +34,6 @@ export type TaskStatus =
   | 'skipped'
   | 'blocked';
 
-export type PipelineExecutionMode = 'trusted' | 'safe';
-
-/**
- * Per-category allowlist of plugin types permitted under safe-mode execution.
- * Each field lists plugin type strings (matching the registered `type` key)
- * that are allowed. The engine merges three sources into the effective
- * allowlist: hardcoded defaults (DEFAULT_SAFE_MODE_ALLOWLIST in engine.ts),
- * registry-declared safe-mode types (PluginRegistry.getSafeModeDefaults()),
- * and the caller-supplied SafeModeAllowlist on RunPipelineOptions.
- */
-export interface SafeModeAllowlist {
-  readonly drivers?: readonly string[];
-  readonly triggers?: readonly string[];
-  readonly completions?: readonly string[];
-  readonly middlewares?: readonly string[];
-}
-
 /**
  * What to do when a task in this track fails.
  *  - `ignore`          : downstream tasks see the failure as success (best-effort).
@@ -349,7 +332,6 @@ export interface TagmaSdkRequirements {
 export interface PipelineConfig {
   readonly requires?: TagmaSdkRequirements;
   readonly name: string;
-  readonly mode?: PipelineExecutionMode;
   readonly secrets?: readonly string[];
   readonly driver?: string;
   readonly model?: string;
@@ -367,7 +349,6 @@ export interface PipelineConfig {
 export interface RawPipelineConfig {
   readonly requires?: TagmaSdkRequirements;
   readonly name: string;
-  readonly mode?: PipelineExecutionMode;
   readonly secrets?: readonly string[];
   readonly driver?: string;
   readonly model?: string;

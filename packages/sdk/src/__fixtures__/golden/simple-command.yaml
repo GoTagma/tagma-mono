@@ -1,6 +1,5 @@
 pipeline:
   name: golden-simple-command
-  mode: trusted
   tracks:
     - id: main
       name: Main

@@ -7,7 +7,6 @@
 # --------------------------------------------------------------------------
 pipeline:
   name: input-shellquote
-  mode: trusted
   timeout: 2m
 
   tracks:

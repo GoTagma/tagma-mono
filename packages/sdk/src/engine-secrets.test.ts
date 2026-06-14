@@ -86,7 +86,6 @@ function fakeRuntime(
 function commandSecretConfig(): PipelineConfig {
   return {
     name: 'secret-test',
-    mode: 'trusted',
     secrets: ['PIPE_TOKEN'],
     tracks: [
       {
@@ -176,7 +175,6 @@ describe('engine secret env injection', () => {
     try {
       const config: PipelineConfig = {
         name: 'prompt-secret-test',
-        mode: 'trusted',
         secrets: ['PIPE_TOKEN'],
         tracks: [
           {

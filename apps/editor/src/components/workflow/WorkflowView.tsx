@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { DesktopWindowControls } from '../DesktopWindowControls';
 import { hasDesktopBridge, toggleMaximizeDesktopWindow } from '../../desktop';
+import { getZoom } from '../../utils/zoom';
 import { WorkflowTimeline } from './WorkflowTimeline';
 import type {
   RunTaskState,
@@ -418,7 +419,7 @@ export function WorkflowView({
     return workflowDragPositionFromPointer(e, rect, {
       x: drag.offsetX,
       y: drag.offsetY,
-    });
+    }, getZoom());
   };
 
   const beginNodeDrag = (
@@ -430,7 +431,7 @@ export function WorkflowView({
     if ((e.target as HTMLElement).closest('button')) return;
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const offset = workflowNodePointerOffset(e, rect, pos);
+    const offset = workflowNodePointerOffset(e, rect, pos, getZoom());
     dragRef.current = {
       id: pipelineId,
       pointerId: e.pointerId,
@@ -484,8 +485,8 @@ export function WorkflowView({
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!entry || !rect) return;
     const next = addWorkspacePipelineToGraph(selectedWorkflow.pipelines, entry, {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
+      x: (e.clientX - rect.left) / getZoom(),
+      y: (e.clientY - rect.top) / getZoom(),
     });
     void savePipelines(next);
   };
@@ -495,7 +496,8 @@ export function WorkflowView({
   ): WorkflowGraphPosition | null => {
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return null;
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const zoom = getZoom();
+    return { x: (e.clientX - rect.left) / zoom, y: (e.clientY - rect.top) / zoom };
   };
 
   const connectPipelineSlots = (upstreamId: string, downstreamId: string) => {

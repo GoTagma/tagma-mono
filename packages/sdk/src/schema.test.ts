@@ -308,7 +308,7 @@ pipeline:
     ).rejects.toThrow(PipelineValidationError);
   });
 
-  test('rejects invalid execution modes', async () => {
+  test('rejects removed execution mode field', async () => {
     await expect(
       loadPipeline(
         `
@@ -324,7 +324,7 @@ pipeline:
 `,
         'D:/workspace',
       ),
-    ).rejects.toThrow(/Invalid mode "sandbox"/);
+    ).rejects.toThrow(/Unknown pipeline field "mode"/);
   });
 
   test('rejects invalid pipeline timeout during load', async () => {

@@ -11,17 +11,17 @@ import { createTagma, type RunEventPayload } from './index';
  * engine using the **real** `bunRuntime`. Each test creates Python scripts
  * in a temp directory and runs them as pipeline command tasks, validating:
  *
- *   1. JSON input â†’ Python reads from argv (via `{{inputs.x}}` templates)
- *   2. JSON output â†’ Python writes to stdout, engine parses declared outputs
+ *   1. JSON input â†?Python reads from argv (via `{{inputs.x}}` templates)
+ *   2. JSON output â†?Python writes to stdout, engine parses declared outputs
  *   3. Environment variable passing
  *   4. Error propagation (non-zero exit, malformed JSON output)
- *   5. End-to-end: upstream task produces JSON â†’ Python transform consumes it
+ *   5. End-to-end: upstream task produces JSON â†?Python transform consumes it
  *
  * The harness uses `python` (Python 3.x) which is available in the dev
  * environment. Tests are skipped when Python is not found.
  *
  * These tests close the gap identified in the testing pipeline review:
- * "No execution â€” I can't run `python your_script.py` to see if it works."
+ * "No execution â€?I can't run `python your_script.py` to see if it works."
  */
 
 function makeDir(): string {
@@ -50,8 +50,8 @@ const PYTHON_AVAILABLE = hasPython();
 
 const describeIf = PYTHON_AVAILABLE ? describe : describe.skip;
 
-describeIf('python sandbox â€” data contract verification', () => {
-  test('Python transform: JSON in via argv â†’ JSON out via stdout', async () => {
+describeIf('python sandbox â€?data contract verification', () => {
+  test('Python transform: JSON in via argv â†?JSON out via stdout', async () => {
     const dir = makeDir();
     try {
       // Create a Python transform script that doubles a number
@@ -72,7 +72,6 @@ sys.stdout.write(json.dumps(result))
         `
 pipeline:
   name: python-double
-  mode: trusted
   tracks:
     - id: main
       name: Main
@@ -143,7 +142,6 @@ sys.stdout.write(json.dumps(result))
           `
 pipeline:
   name: python-env
-  mode: trusted
   tracks:
     - id: main
       name: Main
@@ -201,7 +199,6 @@ sys.exit(1)
         `
 pipeline:
   name: python-fail
-  mode: trusted
   tracks:
     - id: main
       name: Main
@@ -235,12 +232,12 @@ pipeline:
   test('Python syntax error surfaces as task failure with stderr', async () => {
     const dir = makeDir();
     try {
-      // Intentionally broken Python â€” syntax error
+      // Intentionally broken Python â€?syntax error
       writeFileSync(
         join(dir, 'broken.py'),
         `
 def broken(
-    # missing closing paren and colon â€” SyntaxError
+    # missing closing paren and colon â€?SyntaxError
 print("never reached")
 `,
       );
@@ -251,7 +248,6 @@ print("never reached")
         `
 pipeline:
   name: python-syntax-error
-  mode: trusted
   tracks:
     - id: main
       name: Main
@@ -282,7 +278,7 @@ pipeline:
     }
   });
 
-  test('Python multi-step pipeline: produce â†’ python transform â†’ consume', async () => {
+  test('Python multi-step pipeline: produce â†?python transform â†?consume', async () => {
     const dir = makeDir();
     try {
       // Python transform: receives city name, returns a greeting
@@ -303,7 +299,6 @@ sys.stdout.write(json.dumps(result))
         `
 pipeline:
   name: python-multi-step
-  mode: trusted
   tracks:
     - id: main
       name: Main
@@ -409,7 +404,6 @@ sys.stdout.write(json.dumps(result))
         `
 pipeline:
   name: python-context
-  mode: trusted
   tracks:
     - id: main
       name: Main

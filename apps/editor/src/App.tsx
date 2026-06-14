@@ -221,6 +221,7 @@ export function App() {
     pinTrack,
     unpinTrack,
     setTaskPosition,
+    setTrackHeight,
     setRegistry,
     refreshServerState,
     resetYamlPreviewBaseline,
@@ -2472,6 +2473,7 @@ export function App() {
                   onAddDependency={addDependency}
                   onRemoveDependency={removeDependency}
                   onSetTaskPosition={setTaskPosition}
+                  onSetTrackHeight={setTrackHeight}
                   onTransferTask={transferTaskToTrack}
                 />
               </div>

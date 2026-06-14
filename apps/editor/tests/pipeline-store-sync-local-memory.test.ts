@@ -33,11 +33,19 @@ function makeState(overrides: Partial<ServerState> = {}): ServerState {
 let replaceConfigCalls = 0;
 let replaceConfigPayload: {
   config: RawPipelineConfig;
-  layout?: { positions?: Record<string, { x: number }>; folders?: TrackFolder[] };
+  layout?: {
+    positions?: Record<string, { x: number; y?: number }>;
+    folders?: TrackFolder[];
+    trackHeights?: Record<string, number>;
+  };
 } | null = null;
 let replaceConfigImpl: (
   config: RawPipelineConfig,
-  layout?: { positions?: Record<string, { x: number }>; folders?: TrackFolder[] },
+  layout?: {
+    positions?: Record<string, { x: number; y?: number }>;
+    folders?: TrackFolder[];
+    trackHeights?: Record<string, number>;
+  },
 ) => Promise<ServerState>;
 let updateTaskResolvers: Array<(state: ServerState) => void> = [];
 let updateTaskStarted: string[] = [];
@@ -83,7 +91,11 @@ mock.module('../src/api/client', () => ({
     },
     replaceConfig: async (
       config: RawPipelineConfig,
-      layout?: { positions?: Record<string, { x: number }>; folders?: TrackFolder[] },
+      layout?: {
+        positions?: Record<string, { x: number; y?: number }>;
+        folders?: TrackFolder[];
+        trackHeights?: Record<string, number>;
+      },
     ) => {
       replaceConfigCalls += 1;
       replaceConfigPayload = { config, layout };
@@ -352,6 +364,20 @@ describe('syncLocalStateToServerMemory', () => {
     expect(state.isDirty).toBe(true);
     expect(state.layoutDirty).toBe(true);
     expect(state.errorMessage).toBeNull();
+  });
+
+  test('mirrors two-dimensional task positions and track heights to server memory', async () => {
+    usePipelineStore.setState({
+      positions: new Map([['track.task', { x: 42, y: 18 }]]),
+      trackHeights: new Map([['track', 132]]),
+      layoutDirty: true,
+    } as Partial<ReturnType<typeof usePipelineStore.getState>>);
+
+    const ok = await usePipelineStore.getState().syncLocalStateToServerMemory();
+
+    expect(ok).toBe(true);
+    expect(replaceConfigPayload?.layout?.positions).toEqual({ 'track.task': { x: 42, y: 18 } });
+    expect(replaceConfigPayload?.layout?.trackHeights).toEqual({ track: 132 });
   });
 
   test('adopting disk state ignores a late preserve-local response', async () => {

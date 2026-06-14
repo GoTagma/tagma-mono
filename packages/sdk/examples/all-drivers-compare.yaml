@@ -1,7 +1,7 @@
 # all-drivers-compare.yaml
 # --------------------------------------------------------------------------
 # Runs the same simple prompt through all three supported drivers in three
-# parallel tracks â€” useful for an apples-to-apples availability check.
+# parallel tracks â€?useful for an apples-to-apples availability check.
 #
 # Uses:
 #   - built-in opencode      (model: opencode/big-pickle)
@@ -12,7 +12,6 @@
 # --------------------------------------------------------------------------
 pipeline:
   name: all-drivers-compare
-  mode: trusted
   timeout: 10m
   plugins:
     - '@tagma/driver-codex'
