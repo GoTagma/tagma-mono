@@ -76,6 +76,8 @@ describe('desktop HMR scripts', () => {
     const mainSource = readFileSync(join(electronRoot, 'src', 'main.ts'), 'utf-8');
 
     expect(mainSource).toContain('function applyDevHardwareAccelerationFlag()');
+    expect(mainSource).toContain("app.commandLine.appendSwitch('disable-gpu')");
+    expect(mainSource).toContain("app.commandLine.appendSwitch('disable-gpu-compositing')");
     expect(mainSource.indexOf('applyDevHardwareAccelerationFlag();')).toBeLessThan(
       mainSource.indexOf('app.whenReady()'),
     );

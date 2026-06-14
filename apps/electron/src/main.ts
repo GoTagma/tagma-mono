@@ -67,6 +67,9 @@ const DEV_RENDERER_URL = normalizeDevRendererUrl(process.env.TAGMA_DESKTOP_RENDE
 function applyDevHardwareAccelerationFlag(): void {
   if (app.isPackaged || process.env.TAGMA_DESKTOP_DISABLE_GPU !== '1') return;
   app.disableHardwareAcceleration();
+  app.commandLine.appendSwitch('disable-gpu');
+  app.commandLine.appendSwitch('disable-gpu-compositing');
+  app.commandLine.appendSwitch('disable-gpu-rasterization');
 }
 
 function applyDevUserDataDir(): void {
