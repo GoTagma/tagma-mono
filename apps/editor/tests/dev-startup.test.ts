@@ -18,6 +18,12 @@ describe('editor dev startup scripts', () => {
     expect(pkg.scripts['dev:server']).toBe('bun run ensure:opencode && bun run dev:server:watch');
   });
 
+  test('proxies API requests to the loopback sidecar address used by desktop HMR', () => {
+    const viteConfig = readFileSync(join(editorRoot, 'vite.config.ts'), 'utf-8');
+
+    expect(viteConfig).toContain("'/api': 'http://127.0.0.1:3001'");
+  });
+
   test('waits for a TCP port before continuing startup', async () => {
     const server = createServer();
     await new Promise<void>((resolve) => {

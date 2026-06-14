@@ -6,19 +6,65 @@ export interface ReloadableWindow {
 export interface ReloadableWindowSession {
   workspacePath: string | null;
   port: number;
+  rendererBaseUrl?: string | null;
   win: ReloadableWindow;
+}
+
+const LOOPBACK_RENDERER_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
+
+export function normalizeDevRendererUrl(rawUrl: string | null | undefined): string | null {
+  if (!rawUrl?.trim()) return null;
+  try {
+    const parsed = new URL(rawUrl.trim());
+    if (parsed.protocol !== 'http:') return null;
+    if (!LOOPBACK_RENDERER_HOSTS.has(parsed.hostname)) return null;
+    parsed.search = '';
+    parsed.hash = '';
+    return parsed.toString();
+  } catch {
+    return null;
+  }
 }
 
 export function buildEditorRenderUrl(
   port: number,
   workspacePath: string | null,
   authToken: string | null,
+  rendererBaseUrl?: string | null,
 ): string {
-  const renderParams = new URLSearchParams();
-  if (workspacePath) renderParams.set('ws', workspacePath);
-  const query = renderParams.toString();
-  const hash = authToken ? `#auth=${encodeURIComponent(authToken)}` : '';
-  return query ? `http://127.0.0.1:${port}/?${query}${hash}` : `http://127.0.0.1:${port}/${hash}`;
+  const baseUrl = normalizeDevRendererUrl(rendererBaseUrl) ?? `http://127.0.0.1:${port}/`;
+  const url = new URL(baseUrl);
+  if (workspacePath) url.searchParams.set('ws', workspacePath);
+  if (authToken) url.hash = `auth=${encodeURIComponent(authToken)}`;
+  return url.toString();
+}
+
+export function isAllowedEditorUrl(
+  rawUrl: string,
+  sidecarPort: number,
+  rendererBaseUrl?: string | null,
+): boolean {
+  try {
+    const parsed = new URL(rawUrl);
+    if (
+      parsed.protocol === 'http:' &&
+      parsed.hostname === '127.0.0.1' &&
+      parsed.port === String(sidecarPort)
+    ) {
+      return true;
+    }
+
+    const rendererUrl = normalizeDevRendererUrl(rendererBaseUrl);
+    if (!rendererUrl) return false;
+    const renderer = new URL(rendererUrl);
+    return (
+      parsed.protocol === renderer.protocol &&
+      parsed.hostname === renderer.hostname &&
+      parsed.port === renderer.port
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function reloadSessionsForRecoveredSidecar<T extends ReloadableWindowSession>(
@@ -31,6 +77,8 @@ export function reloadSessionsForRecoveredSidecar<T extends ReloadableWindowSess
     if (session.win.isDestroyed()) continue;
     session.port = actualPort;
     installContentSecurityPolicy(session.win, actualPort);
-    session.win.loadURL(buildEditorRenderUrl(actualPort, session.workspacePath, authToken));
+    session.win.loadURL(
+      buildEditorRenderUrl(actualPort, session.workspacePath, authToken, session.rendererBaseUrl),
+    );
   }
 }

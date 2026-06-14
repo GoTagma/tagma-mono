@@ -84,6 +84,25 @@ describe('runtime path resolution', () => {
     expect(paths.env.TAGMA_EDITOR_BUNDLED_VERSION).toBeUndefined();
   });
 
+  test('development mode can pin the sidecar port for the Vite HMR proxy', () => {
+    const previous = process.env.TAGMA_DESKTOP_SIDECAR_PORT;
+    try {
+      process.env.TAGMA_DESKTOP_SIDECAR_PORT = '3001';
+
+      const paths = resolveRuntimePaths({
+        isPackaged: false,
+        compiledDir: 'D:/tagma/tagma-mono/apps/electron/dist',
+        resourcesPath: 'C:/unused/resources',
+        platform: 'win32',
+      });
+
+      expect(paths.env.PORT).toBe('3001');
+    } finally {
+      if (previous === undefined) delete process.env.TAGMA_DESKTOP_SIDECAR_PORT;
+      else process.env.TAGMA_DESKTOP_SIDECAR_PORT = previous;
+    }
+  });
+
   test('packaged mode uses the compiled sidecar and packaged resources', () => {
     const paths = resolveRuntimePaths({
       isPackaged: true,

@@ -10,7 +10,12 @@ import {
   type RuntimePaths,
 } from './runtime-paths';
 import { resolveTrustedLocalOpenPath } from './local-paths';
-import { buildEditorRenderUrl, reloadSessionsForRecoveredSidecar } from './sidecar-recovery';
+import {
+  buildEditorRenderUrl,
+  isAllowedEditorUrl,
+  normalizeDevRendererUrl,
+  reloadSessionsForRecoveredSidecar,
+} from './sidecar-recovery';
 import { createSidecarReadyParser } from './sidecar-stdout';
 
 /**
@@ -57,6 +62,7 @@ function readTagmaMetadata(): Record<string, unknown> {
   }
 }
 const TAGMA_META = readTagmaMetadata();
+const DEV_RENDERER_URL = normalizeDevRendererUrl(process.env.TAGMA_DESKTOP_RENDERER_URL);
 
 // Windows GUI apps don't attach a console, so process.stdout writes from the
 // Electron main process are invisible to the user. Mirror sidecar stdout and
@@ -91,6 +97,7 @@ function logSidecar(prefix: 'stdout' | 'stderr', chunk: Buffer): void {
 interface WindowSession {
   workspacePath: string | null;
   port: number;
+  rendererBaseUrl?: string | null;
   win: BrowserWindow;
 }
 
@@ -459,17 +466,6 @@ function reportFatalStartupError(err: unknown): void {
   );
 }
 
-function isAllowedEditorUrl(rawUrl: string, port: number): boolean {
-  try {
-    const parsed = new URL(rawUrl);
-    return (
-      parsed.protocol === 'http:' && parsed.hostname === '127.0.0.1' && parsed.port === String(port)
-    );
-  } catch {
-    return false;
-  }
-}
-
 const cspPorts = new Set<number>();
 let cspHandlerInstalled = false;
 
@@ -553,16 +549,16 @@ function installNavigationGuards(session: WindowSession): void {
   };
 
   session.win.webContents.on('will-navigate', (event, rawUrl) => {
-    if (isAllowedEditorUrl(rawUrl, session.port)) return;
+    if (isAllowedEditorUrl(rawUrl, session.port, session.rendererBaseUrl)) return;
     event.preventDefault();
     openExternalFromNavigation(rawUrl);
   });
   session.win.webContents.on('will-redirect', (event, rawUrl) => {
-    if (isAllowedEditorUrl(rawUrl, session.port)) return;
+    if (isAllowedEditorUrl(rawUrl, session.port, session.rendererBaseUrl)) return;
     event.preventDefault();
   });
   session.win.webContents.setWindowOpenHandler(({ url }) => {
-    if (!isAllowedEditorUrl(url, session.port)) {
+    if (!isAllowedEditorUrl(url, session.port, session.rendererBaseUrl)) {
       openExternalFromNavigation(url);
     }
     return { action: 'deny' };
@@ -575,7 +571,10 @@ function isTrustedIpcSender(event: Electron.IpcMainInvokeEvent): boolean {
   const session = byWindow.get(win.id);
   if (!session) return false;
   const frameUrl = event.senderFrame?.url;
-  return typeof frameUrl === 'string' && isAllowedEditorUrl(frameUrl, session.port);
+  return (
+    typeof frameUrl === 'string' &&
+    isAllowedEditorUrl(frameUrl, session.port, session.rendererBaseUrl)
+  );
 }
 
 // ── Window creation ────────────────────────────────────────────────────────
@@ -651,7 +650,12 @@ async function createEditorWindow(rawWorkspacePath: string | null = null): Promi
   win.on('maximize', () => sendMaximized(true));
   win.on('unmaximize', () => sendMaximized(false));
 
-  const session: WindowSession = { workspacePath, port: actualPort, win };
+  const session: WindowSession = {
+    workspacePath,
+    port: actualPort,
+    rendererBaseUrl: DEV_RENDERER_URL,
+    win,
+  };
 
   if (workspacePath) byWorkspace.set(workspacePath, session);
   byWindow.set(win.id, session);
@@ -671,7 +675,7 @@ async function createEditorWindow(rawWorkspacePath: string | null = null): Promi
   // fragment is never sent to the sidecar in the HTTP request line, so it
   // avoids server logs and request history while still letting the SPA read
   // and immediately scrub it into sessionStorage + a SameSite=Strict cookie.
-  win.loadURL(buildEditorRenderUrl(actualPort, workspacePath, authToken));
+  win.loadURL(buildEditorRenderUrl(actualPort, workspacePath, authToken, DEV_RENDERER_URL));
 
   win.on('closed', () => {
     byWindow.delete(win.id);

@@ -626,13 +626,15 @@ export function resolveRuntimePaths(options: RuntimePathOptions): RuntimePaths {
 
   const sidecarVersion = options.appVersion ?? null;
   const editorDir = p.resolve(options.compiledDir, '..', '..', 'editor');
+  const devSidecarPort = process.env.TAGMA_DESKTOP_SIDECAR_PORT?.trim();
+  const devPort = devSidecarPort && /^\d+$/.test(devSidecarPort) ? devSidecarPort : '0';
   return {
     command: 'bun',
     args: [p.join(editorDir, 'server', 'index.ts')],
     cwd: editorDir,
     env: {
       ...process.env,
-      PORT: '0',
+      PORT: devPort,
       TAGMA_EDITOR_DIST_DIR: p.join(editorDir, 'dist'),
       TAGMA_SIDECAR_ACTIVE_SOURCE: 'dev',
       ...(sidecarVersion ? { TAGMA_SIDECAR_ACTIVE_VERSION: sidecarVersion } : {}),
