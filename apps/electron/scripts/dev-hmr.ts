@@ -24,8 +24,8 @@ export function desktopHmrSidecarPort(base: NodeJS.ProcessEnv = process.env): nu
   return Number.isInteger(port) && port > 0 ? port : SIDECAR_PORT;
 }
 
-export function desktopHmrUserDataDir(): string {
-  return resolve(electronRoot, '.tmp', 'desktop-hmr-user-data');
+export function desktopHmrUserDataDir(runId: string | number = process.pid): string {
+  return resolve(electronRoot, '.tmp', 'desktop-hmr-user-data', String(runId));
 }
 
 export function buildDesktopHmrEnv(
@@ -105,24 +105,40 @@ export async function selectAvailableTcpPort({
   }
 }
 
-async function stopChildren(children: Set<Subprocess>): Promise<void> {
-  const snapshot = [...children];
-  for (const child of snapshot) {
+export function windowsTaskkillArgs(pid: number, force: boolean): string[] {
+  return [...(force ? ['/F'] : []), '/T', '/PID', String(pid)];
+}
+
+function killSubprocess(child: Subprocess, force: boolean): void {
+  if (process.platform === 'win32' && child.pid) {
     try {
-      child.kill('SIGTERM');
+      Bun.spawnSync(['taskkill', ...windowsTaskkillArgs(child.pid, force)], {
+        stdout: 'ignore',
+        stderr: 'ignore',
+      });
     } catch {
       /* already exited */
     }
+    return;
+  }
+
+  try {
+    child.kill(force ? 'SIGKILL' : 'SIGTERM');
+  } catch {
+    /* already exited */
+  }
+}
+
+async function stopChildren(children: Set<Subprocess>): Promise<void> {
+  const snapshot = [...children];
+  for (const child of snapshot) {
+    killSubprocess(child, false);
   }
 
   await Promise.race([Promise.allSettled(snapshot.map((child) => child.exited)), delay(5_000)]);
 
   for (const child of snapshot) {
-    try {
-      child.kill('SIGKILL');
-    } catch {
-      /* already exited */
-    }
+    killSubprocess(child, true);
   }
 }
 

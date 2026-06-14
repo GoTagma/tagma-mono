@@ -9,6 +9,7 @@ import {
   desktopHmrSidecarPort,
   desktopHmrUserDataDir,
   selectAvailableTcpPort,
+  windowsTaskkillArgs,
 } from '../scripts/dev-hmr';
 
 const electronRoot = join(import.meta.dir, '..');
@@ -60,7 +61,10 @@ describe('desktop HMR scripts', () => {
   });
 
   test('launcher isolates Electron dev profile data under the desktop workspace', () => {
-    expect(desktopHmrUserDataDir()).toBe(resolve(electronRoot, '.tmp', 'desktop-hmr-user-data'));
+    expect(desktopHmrUserDataDir('run-a')).toBe(
+      resolve(electronRoot, '.tmp', 'desktop-hmr-user-data', 'run-a'),
+    );
+    expect(desktopHmrUserDataDir('run-a')).not.toBe(desktopHmrUserDataDir('run-b'));
   });
 
   test('main process applies dev user data before taking the single-instance lock', () => {
@@ -78,9 +82,16 @@ describe('desktop HMR scripts', () => {
     expect(mainSource).toContain('function applyDevHardwareAccelerationFlag()');
     expect(mainSource).toContain("app.commandLine.appendSwitch('disable-gpu')");
     expect(mainSource).toContain("app.commandLine.appendSwitch('disable-gpu-compositing')");
+    expect(mainSource).toContain("app.commandLine.appendSwitch('disable-gpu-sandbox')");
+    expect(mainSource).toContain("app.commandLine.appendSwitch('in-process-gpu')");
     expect(mainSource.indexOf('applyDevHardwareAccelerationFlag();')).toBeLessThan(
       mainSource.indexOf('app.whenReady()'),
     );
+  });
+
+  test('launcher stops full child process trees on Windows', () => {
+    expect(windowsTaskkillArgs(1234, false)).toEqual(['/T', '/PID', '1234']);
+    expect(windowsTaskkillArgs(1234, true)).toEqual(['/F', '/T', '/PID', '1234']);
   });
 
   test('launcher rejects an already occupied renderer port before spawning Vite', async () => {

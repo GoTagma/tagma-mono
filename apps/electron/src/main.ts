@@ -70,6 +70,8 @@ function applyDevHardwareAccelerationFlag(): void {
   app.commandLine.appendSwitch('disable-gpu');
   app.commandLine.appendSwitch('disable-gpu-compositing');
   app.commandLine.appendSwitch('disable-gpu-rasterization');
+  app.commandLine.appendSwitch('disable-gpu-sandbox');
+  app.commandLine.appendSwitch('in-process-gpu');
 }
 
 function applyDevUserDataDir(): void {
