@@ -31,7 +31,7 @@ pipeline:
         - id: approve_before_run
           name: Require human approval before next step
           depends_on: [prepare]
-          command: 'echo "approved â€?proceeding"'
+          command: 'echo "approved - proceeding"'
           trigger:
             type: manual
             message: 'Approve before the command runs?'

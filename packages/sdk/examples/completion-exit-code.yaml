@@ -16,9 +16,9 @@ pipeline:
       permissions: { read: true, write: true, execute: true }
 
       tasks:
-        # Default behaviour â€?no completion block means "expect exit 0".
+        # Default behaviour - no completion block means "expect exit 0".
         - id: default_expect_zero
-          name: Default â€?expect 0
+          name: Default - expect 0
           command: 'true'
 
         # Explicit single expectation.
@@ -30,7 +30,7 @@ pipeline:
             type: exit_code
             expect: 0
 
-        # List form â€?any of the listed codes counts as success.
+        # List form - any of the listed codes counts as success.
         # `diff -q` returns 1 when files differ; we whitelist it below.
         - id: accept_multiple
           name: Accept exit 0 or 1

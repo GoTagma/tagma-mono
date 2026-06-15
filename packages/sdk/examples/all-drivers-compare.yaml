@@ -1,7 +1,7 @@
 # all-drivers-compare.yaml
 # --------------------------------------------------------------------------
 # Runs the same simple prompt through all three supported drivers in three
-# parallel tracks â€?useful for an apples-to-apples availability check.
+# parallel tracks - useful for an apples-to-apples availability check.
 #
 # Uses:
 #   - built-in opencode      (model: opencode/big-pickle)

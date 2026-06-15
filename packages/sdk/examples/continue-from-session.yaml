@@ -6,7 +6,7 @@
 # whole transcript as plain text.
 #
 # `continue_from` accepts:
-#   - same-track shorthand:  `plan`       â†?resolves to `<thisTrack>.plan`
+#   - same-track shorthand:  `plan`       - resolves to `<thisTrack>.plan`
 #   - cross-track qualified: `main.plan`
 #
 # For drivers without native session resume (codex, opencode fallback), the

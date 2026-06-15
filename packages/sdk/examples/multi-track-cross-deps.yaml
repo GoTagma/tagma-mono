@@ -2,9 +2,9 @@
 # --------------------------------------------------------------------------
 # Demonstrates parallel tracks and cross-track dependencies.
 #
-#   build  â”€â”?
-#           â”œâ”€â”€â–?release (depends on build.compile AND test.run)
-#   test   â”€â”?
+#   build.compile --\
+#                    +--> release.publish
+#   test.run      --/
 #
 # Tracks run in parallel by default. A task can depend on a task in another
 # track via the qualified reference form `<trackId>.<taskId>`.

@@ -182,58 +182,58 @@ Each hook value can be a single command string or an array of commands.
 
 | Field           | Type                 | Required | Default                 | Description                                                          |
 | --------------- | -------------------- | -------- | ----------------------- | -------------------------------------------------------------------- |
-| `id`            | `string`             | Yes      | 鈥?                      | Unique track identifier                                              |
-| `name`          | `string`             | Yes      | 鈥?                      | Display name                                                         |
-| `color`         | `string`             | No       | 鈥?                      | Color hint for UI rendering (e.g. `"#3b82f6"`)                       |
+| `id`            | `string`             | Yes      | -                      | Unique track identifier                                              |
+| `name`          | `string`             | Yes      | -                      | Display name                                                         |
+| `color`         | `string`             | No       | -                      | Color hint for UI rendering (e.g. `"#3b82f6"`)                       |
 | `driver`        | `string`             | No       | Inherited from pipeline | Driver for all tasks in this track                                   |
 | `model`         | `string`             | No       | Inherited from pipeline | Exact model name passed to the driver CLI (e.g. `claude-sonnet-4-6`) |
-| `agent_profile` | `string`             | No       | 鈥?                      | Named agent configuration profile                                    |
+| `agent_profile` | `string`             | No       | -                      | Named agent configuration profile                                    |
 | `cwd`           | `string`             | No       | Pipeline workDir        | Working directory for tasks in this track (relative path)            |
 | `permissions`   | `Permissions`        | No       | Inherited from pipeline | Default permissions for tasks (see Permissions)                      |
 | `on_failure`    | `OnFailure`          | No       | `skip_downstream`       | Failure strategy: `skip_downstream`, `stop_all`, `ignore`            |
-| `middlewares`   | `MiddlewareConfig[]` | No       | 鈥?                      | Middlewares applied to all tasks (task-level overrides track-level)  |
-| `tasks`         | `TaskConfig[]`       | Yes      | 鈥?                      | Ordered list of tasks in this track                                  |
+| `middlewares`   | `MiddlewareConfig[]` | No       | -                      | Middlewares applied to all tasks (task-level overrides track-level)  |
+| `tasks`         | `TaskConfig[]`       | Yes      | -                      | Ordered list of tasks in this track                                  |
 
 ### Task Fields
 
 | Field           | Type                 | Required | Default              | Description                                                                                            |
 | --------------- | -------------------- | -------- | -------------------- | ------------------------------------------------------------------------------------------------------ |
-| `id`            | `string`             | Yes      | 鈥?                   | Unique task identifier within its track. Cross-track refs use `trackId.taskId`                         |
-| `name`          | `string`             | No       | 鈥?                   | Display name                                                                                           |
-| `prompt`        | `string`             | No\*     | 鈥?                   | AI prompt to send to the driver. \*Mutually exclusive with `command`                                   |
-| `command`       | `string`             | No\*     | 鈥?                   | Shell command to execute directly. \*Mutually exclusive with `prompt`                                  |
-| `depends_on`    | `string[]`           | No       | 鈥?                   | Task IDs that must complete before this task runs. Cross-track refs use `trackId.taskId`               |
-| `continue_from` | `string`             | No       | 鈥?                   | Task ID whose output/session to continue from (session handoff). Cross-track refs use `trackId.taskId` |
+| `id`            | `string`             | Yes      | -                   | Unique task identifier within its track. Cross-track refs use `trackId.taskId`                         |
+| `name`          | `string`             | No       | -                   | Display name                                                                                           |
+| `prompt`        | `string`             | No\*     | -                   | AI prompt to send to the driver. \*Mutually exclusive with `command`                                   |
+| `command`       | `string`             | No\*     | -                   | Shell command to execute directly. \*Mutually exclusive with `prompt`                                  |
+| `depends_on`    | `string[]`           | No       | -                   | Task IDs that must complete before this task runs. Cross-track refs use `trackId.taskId`               |
+| `continue_from` | `string`             | No       | -                   | Task ID whose output/session to continue from (session handoff). Cross-track refs use `trackId.taskId` |
 | `driver`        | `string`             | No       | Inherited from track | Driver override for this task                                                                          |
 | `model`         | `string`             | No       | Inherited from track | Model name override for this task                                                                      |
 | `agent_profile` | `string`             | No       | Inherited from track | Agent profile override                                                                                 |
 | `cwd`           | `string`             | No       | Inherited from track | Working directory override (relative path)                                                             |
-| `timeout`       | `string`             | No       | 鈥?                   | Task-level timeout. Format: `"30s"`, `"5m"`, `"2h"`                                                    |
+| `timeout`       | `string`             | No       | -                   | Task-level timeout. Format: `"30s"`, `"5m"`, `"2h"`                                                    |
 | `permissions`   | `Permissions`        | No       | Inherited from track | Permission override (see Permissions)                                                                  |
 | `middlewares`   | `MiddlewareConfig[]` | No       | Inherited from track | Middleware override. Set `[]` to disable inherited middlewares                                         |
-| `trigger`       | `TriggerConfig`      | No       | 鈥?                   | Gate that must resolve before the task runs (see Triggers)                                             |
-| `completion`    | `CompletionConfig`   | No       | 鈥?                   | Post-execution check to validate task output (see Completions)                                         |
-| `inputs`        | `TaskInputBindings`  | No       | 鈥?                   | Task input bindings for `{{inputs.<name>}}`; optional `type` enables coercion/validation               |
-| `outputs`       | `TaskOutputBindings` | No       | 鈥?                   | Named outputs published after success; optional `type` enables coercion/validation                     |
+| `trigger`       | `TriggerConfig`      | No       | -                   | Gate that must resolve before the task runs (see Triggers)                                             |
+| `completion`    | `CompletionConfig`   | No       | -                   | Post-execution check to validate task output (see Completions)                                         |
+| `inputs`        | `TaskInputBindings`  | No       | -                   | Task input bindings for `{{inputs.<name>}}`; optional `type` enables coercion/validation               |
+| `outputs`       | `TaskOutputBindings` | No       | -                   | Named outputs published after success; optional `type` enables coercion/validation                     |
 
 ### Permissions
 
 | Field     | Type      | Default | Description                                        |
 | --------- | --------- | ------- | -------------------------------------------------- |
-| `read`    | `boolean` | 鈥?      | Allow the AI driver/agent to read files            |
-| `write`   | `boolean` | 鈥?      | Allow the AI driver/agent to write files           |
-| `execute` | `boolean` | 鈥?      | Allow the AI driver/agent to execute tool commands |
+| `read`    | `boolean` | -      | Allow the AI driver/agent to read files            |
+| `write`   | `boolean` | -      | Allow the AI driver/agent to write files           |
+| `execute` | `boolean` | -      | Allow the AI driver/agent to execute tool commands |
 
 `permissions` are passed to AI drivers that support them. They do not sandbox
 YAML `command` tasks; command tasks execute through the host shell.
 
 ### Inheritance
 
-Fields are inherited top-down: **pipeline 鈫?track 鈫?task**. A value set at a lower level overrides the inherited value.
+Fields are inherited top-down: **pipeline -> track -> task**. A value set at a lower level overrides the inherited value.
 
-Inherited from pipeline 鈫?track 鈫?task: `driver`, `model`, `reasoning_effort`, `permissions`. `cwd` is inherited track 鈫?task only (the pipeline's cwd is the workDir argument passed to `tagma.run` / `loadPipeline`, not a YAML field).
+Inherited from pipeline -> track -> task: `driver`, `model`, `reasoning_effort`, `permissions`. `cwd` is inherited track -> task only (the pipeline's cwd is the workDir argument passed to `tagma.run` / `loadPipeline`, not a YAML field).
 
-`middlewares` is **track 鈫?task only** 鈥?there is no `pipeline.middlewares` field. Track-level `middlewares` apply to all tasks in the track. Setting task-level `middlewares` **replaces** (not appends) the track-level list. Use `middlewares: []` to disable all inherited middlewares for a task.
+`middlewares` is **track -> task only** - there is no `pipeline.middlewares` field. Track-level `middlewares` apply to all tasks in the track. Setting task-level `middlewares` **replaces** (not appends) the track-level list. Use `middlewares: []` to disable all inherited middlewares for a task.
 
 ---
 
@@ -342,69 +342,69 @@ Tasks can declare named, typed `inputs` / `outputs`. Inputs flow in from upstrea
 
 File and directory trigger watch paths may be relative to `workDir`, absolute, or external. This exception is only for trigger watch paths; other path fields remain workspace-bound.
 
-#### `manual` 鈥?Human approval gate
+#### `manual` - Human approval gate
 
 | Field      | Type       | Required | Default                                                | Description                                       |
 | ---------- | ---------- | -------- | ------------------------------------------------------ | ------------------------------------------------- |
-| `type`     | `"manual"` | Yes      | 鈥?                                                     | Trigger type                                      |
+| `type`     | `"manual"` | Yes      | -                                                     | Trigger type                                      |
 | `message`  | `string`   | No       | `"Manual confirmation required for task \"{taskId}\""` | Message shown to the approver                     |
-| `timeout`  | `string`   | No       | 鈥?                                                     | How long to wait for a decision before timing out |
-| `metadata` | `object`   | No       | 鈥?                                                     | Arbitrary metadata passed to the approval gateway |
+| `timeout`  | `string`   | No       | -                                                     | How long to wait for a decision before timing out |
+| `metadata` | `object`   | No       | -                                                     | Arbitrary metadata passed to the approval gateway |
 
-#### `file` 鈥?File watcher gate
+#### `file` - File watcher gate
 
 | Field     | Type     | Required | Default | Description                                    |
 | --------- | -------- | -------- | ------- | ---------------------------------------------- |
-| `type`    | `"file"` | Yes      | 鈥?      | Trigger type                                   |
-| `path`    | `string` | Yes      | 鈥?      | File path to watch (relative to workDir)       |
-| `timeout` | `string` | No       | 鈥?      | How long to wait for the file to appear/change |
+| `type`    | `"file"` | Yes      | -      | Trigger type                                   |
+| `path`    | `string` | Yes      | -      | File path to watch (relative to workDir)       |
+| `timeout` | `string` | No       | -      | How long to wait for the file to appear/change |
 
 #### `directory` - Directory watcher gate
 
 | Field     | Type          | Required | Default | Description                                      |
 | --------- | ------------- | -------- | ------- | ------------------------------------------------ |
-| `type`    | `"directory"` | Yes      | 鈥?      | Trigger type                                     |
-| `path`    | `string`      | Yes      | 鈥?      | Directory path to watch (relative to workDir)    |
-| `timeout` | `string`      | No       | 鈥?      | How long to wait for the directory to be created |
+| `type`    | `"directory"` | Yes      | -      | Trigger type                                     |
+| `path`    | `string`      | Yes      | -      | Directory path to watch (relative to workDir)    |
+| `timeout` | `string`      | No       | -      | How long to wait for the directory to be created |
 
 ---
 
 ### Built-in Completions
 
-#### `exit_code` 鈥?Exit code check
+#### `exit_code` - Exit code check
 
 | Field    | Type                 | Required | Default | Description                                                        |
 | -------- | -------------------- | -------- | ------- | ------------------------------------------------------------------ |
-| `type`   | `"exit_code"`        | Yes      | 鈥?      | Completion type                                                    |
+| `type`   | `"exit_code"`        | Yes      | -      | Completion type                                                    |
 | `expect` | `number \| number[]` | No       | `0`     | Expected exit code(s). Pass an array for multiple acceptable codes |
 
-#### `file_exists` 鈥?File existence check
+#### `file_exists` - File existence check
 
 | Field      | Type                       | Required | Default | Description                                           |
 | ---------- | -------------------------- | -------- | ------- | ----------------------------------------------------- |
-| `type`     | `"file_exists"`            | Yes      | 鈥?      | Completion type                                       |
-| `path`     | `string`                   | Yes      | 鈥?      | File or directory path to check (relative to workDir) |
+| `type`     | `"file_exists"`            | Yes      | -      | Completion type                                       |
+| `path`     | `string`                   | Yes      | -      | File or directory path to check (relative to workDir) |
 | `kind`     | `"file" \| "dir" \| "any"` | No       | `"any"` | Entity type constraint                                |
-| `min_size` | `number`                   | No       | 鈥?      | Minimum file size in bytes (files only)               |
+| `min_size` | `number`                   | No       | -      | Minimum file size in bytes (files only)               |
 
-#### `output_check` 鈥?Command-based output validation
+#### `output_check` - Command-based output validation
 
 | Field     | Type             | Required | Default | Description                                                             |
 | --------- | ---------------- | -------- | ------- | ----------------------------------------------------------------------- |
-| `type`    | `"output_check"` | Yes      | 鈥?      | Completion type                                                         |
-| `check`   | `string`         | Yes      | 鈥?      | Shell command to run. Task stdout is piped to its stdin; exits 0 = pass |
+| `type`    | `"output_check"` | Yes      | -      | Completion type                                                         |
+| `check`   | `string`         | Yes      | -      | Shell command to run. Task stdout is piped to its stdin; exits 0 = pass |
 | `timeout` | `string`         | No       | `"30s"` | Max time to wait for the check command                                  |
 
 ---
 
 ### Built-in Middlewares
 
-#### `static_context` 鈥?Prepend file content to prompt
+#### `static_context` - Prepend file content to prompt
 
 | Field   | Type               | Required | Default                   | Description                                    |
 | ------- | ------------------ | -------- | ------------------------- | ---------------------------------------------- |
-| `type`  | `"static_context"` | Yes      | 鈥?                        | Middleware type                                |
-| `file`  | `string`           | Yes      | 鈥?                        | Path to the context file (relative to workDir) |
+| `type`  | `"static_context"` | Yes      | -                        | Middleware type                                |
+| `file`  | `string`           | Yes      | -                        | Path to the context file (relative to workDir) |
 | `label` | `string`           | No       | `"Reference: {filename}"` | Label for the injected context section         |
 
 ## API
@@ -450,7 +450,7 @@ File and directory trigger watch paths may be relative to `workDir`, absolute, o
 ### Config: `@tagma/sdk/config`
 
 - immutable config editing helpers
-- raw validation helpers (`validateRaw`, plus `validateConfig` for the resolved-config counterpart 鈥?same function as `@tagma/sdk/yaml`'s `validateConfig`, re-exported here so config-editor code paths stay on `./config` without dipping into `./yaml`)
+- raw validation helpers (`validateRaw`, plus `validateConfig` for the resolved-config counterpart - same function as `@tagma/sdk/yaml`'s `validateConfig`, re-exported here so config-editor code paths stay on `./config` without dipping into `./yaml`)
 - resolved and raw DAG helpers
 - task reference helpers
 
@@ -465,16 +465,16 @@ File and directory trigger watch paths may be relative to `workDir`, absolute, o
 
 ### Approval: `@tagma/sdk/approval`
 
-- `InMemoryApprovalGateway` 鈥?default in-memory approval gateway implementation
+- `InMemoryApprovalGateway` - default in-memory approval gateway implementation
 - type re-exports: `ApprovalDecision`, `ApprovalEvent`, `ApprovalGateway`, `ApprovalListener`, `ApprovalOutcome`, `ApprovalRequest`, `ApprovalRequestHandle`
 
 ### Utils: `@tagma/sdk/utils`
 
-- `parseDuration`, `validatePath`, `generateRunId`, `nowISO`, `truncateForName` 鈥?small framework-free helpers re-exported from `@tagma/core`. See the Utilities table at the bottom of this README
+- `parseDuration`, `validatePath`, `generateRunId`, `nowISO`, `truncateForName` - small framework-free helpers re-exported from `@tagma/core`. See the Utilities table at the bottom of this README
 
 ### Runtime approval adapters
 
-These ship in `@tagma/runtime-bun`, not `@tagma/sdk` 鈥?when you `bun add @tagma/sdk`, runtime-bun comes along as a transitive dep, but you import the adapters from runtime-bun directly:
+These ship in `@tagma/runtime-bun`, not `@tagma/sdk` - when you `bun add @tagma/sdk`, runtime-bun comes along as a transitive dep, but you import the adapters from runtime-bun directly:
 
 - `@tagma/runtime-bun/adapters/stdin-approval`
 - `@tagma/runtime-bun/adapters/websocket-approval`
@@ -518,19 +518,19 @@ Options:
 - `approvalGateway` -- custom `ApprovalGateway` instance (defaults to `InMemoryApprovalGateway`)
 - `signal` -- `AbortSignal` to cancel the run externally
 - `onEvent` -- callback for real-time `RunEventPayload` updates. Every payload carries `runId`. The editor server stamps a per-run `seq` on top of this payload before broadcasting over SSE (producing a `WireRunEvent`); the SDK itself does not stamp `seq`. Event variants:
-  - `run_start` 鈥?pipeline approved and all tasks transitioned to `waiting`; includes `tasks: RunTaskState[]` (wire-shape snapshot of every task). Fires only when the `pipeline_start` hook allows the run 鈥?blocked pipelines emit no wire events at all.
-  - `task_update` 鈥?a task's status or result changed; flat fields (`status`, `startedAt?`, `finishedAt?`, `durationMs?`, `exitCode?`, `stdout?`, `stderr?`, `stdoutPath?`, `stderrPath?`, `stdoutBytes?`, `stderrBytes?`, `sessionId?`, `normalizedOutput?`, `outputs?`, `inputs?`, `resolvedDriver?`, `resolvedModel?`, `resolvedPermissions?`) so clients can fold partial updates with `??` semantics. `inputs` carries the resolved task input map (set once just before the task transitions to `running`); `outputs` carries the extracted binding output map after a successful terminal transition. `startedAt` is populated before the `running` transition; `finishedAt` and result fields are populated before any terminal-status transition. Terminal-state locking in the engine guarantees at most one terminal event per task.
-  - `task_log` 鈥?a structured log line was written to `pipeline.log`. Mirrors every `Logger` call (info/warn/error/debug/section/quiet) and carries `{ taskId: string | null, level, timestamp, text }`. `taskId` is non-null for lines tagged with a `[task:<id>]` prefix (or passed explicitly to `section`/`quiet`) and `null` for pipeline-wide messages such as the configuration dump and DAG topology. Use this to stream the full run process into UIs without tailing the log file.
-  - `run_end` 鈥?pipeline finished; includes `success: boolean` and `abortReason: 'timeout' | 'stop_all' | 'external' | null`. `null` means the run completed on its own steam (success may still be `false` if tasks failed).
-  - `run_error` 鈥?reserved for fatal engine errors surfaced over the wire.
-  - `approval_request` / `approval_resolved` 鈥?bridged from the approval gateway so hosts see approvals on the same channel as task updates, without separately subscribing to the gateway.
+  - `run_start` - pipeline approved and all tasks transitioned to `waiting`; includes `tasks: RunTaskState[]` (wire-shape snapshot of every task). Fires only when the `pipeline_start` hook allows the run - blocked pipelines emit no wire events at all.
+  - `task_update` - a task's status or result changed; flat fields (`status`, `startedAt?`, `finishedAt?`, `durationMs?`, `exitCode?`, `stdout?`, `stderr?`, `stdoutPath?`, `stderrPath?`, `stdoutBytes?`, `stderrBytes?`, `sessionId?`, `normalizedOutput?`, `outputs?`, `inputs?`, `resolvedDriver?`, `resolvedModel?`, `resolvedPermissions?`) so clients can fold partial updates with `??` semantics. `inputs` carries the resolved task input map (set once just before the task transitions to `running`); `outputs` carries the extracted binding output map after a successful terminal transition. `startedAt` is populated before the `running` transition; `finishedAt` and result fields are populated before any terminal-status transition. Terminal-state locking in the engine guarantees at most one terminal event per task.
+  - `task_log` - a structured log line was written to `pipeline.log`. Mirrors every `Logger` call (info/warn/error/debug/section/quiet) and carries `{ taskId: string | null, level, timestamp, text }`. `taskId` is non-null for lines tagged with a `[task:<id>]` prefix (or passed explicitly to `section`/`quiet`) and `null` for pipeline-wide messages such as the configuration dump and DAG topology. Use this to stream the full run process into UIs without tailing the log file.
+  - `run_end` - pipeline finished; includes `success: boolean` and `abortReason: 'timeout' | 'stop_all' | 'external' | null`. `null` means the run completed on its own steam (success may still be `false` if tasks failed).
+  - `run_error` - reserved for fatal engine errors surfaced over the wire.
+  - `approval_request` / `approval_resolved` - bridged from the approval gateway so hosts see approvals on the same channel as task updates, without separately subscribing to the gateway.
 - `runId` -- caller-supplied run ID. Must match `run_[A-Za-z0-9_-]{1,128}`. When provided the engine uses this instead of generating its own, keeping the caller and the SDK log directories aligned on the same ID
 - `maxLogRuns` -- number of per-run log directories to keep under `<workDir>/.tagma/logs/` (default: 20)
 - `skipPluginLoading` -- skip the engine's built-in `loadPlugins(config.plugins)` call. Set this when the host has already pre-loaded plugins from a custom resolution path (e.g. the editor loading from the user's workspace `node_modules`) so the engine doesn't re-resolve them via Node's default cwd-based import.
 - `envPolicy` -- controls child process environment inheritance. Defaults to a minimal environment (`PATH`, home/user/temp/system keys). Use `{ mode: 'allowlist', keys: [...] }` or `{ mode: 'inherit' }` only when the host deliberately wants to expose more env vars.
 - `logPrompt` -- when `true`, writes the final middleware-expanded prompt to the run log. Defaults to `false`.
 
-> **stdout / stderr persistence.** With the default Bun runtime, the engine streams every task's stdout and stderr to disk under `<workDir>/.tagma/logs/<runId>/<taskId>.stdout` and `.stderr`. Custom runtimes can relocate those artifacts by implementing `runtime.logStore.taskOutputPath()`. The `TaskResult.stdout` / `stderr` strings are bounded tails (8 MB / 4 MB by default) 鈥?long outputs are truncated from the head with a marker, and consumers that need the full bytes should read `TaskResult.stdoutPath` / `stderrPath`. Use `TaskResult.stdoutBytes` / `stderrBytes` to display "32 MB (truncated)" without re-stat'ing the file.
+> **stdout / stderr persistence.** With the default Bun runtime, the engine streams every task's stdout and stderr to disk under `<workDir>/.tagma/logs/<runId>/<taskId>.stdout` and `.stderr`. Custom runtimes can relocate those artifacts by implementing `runtime.logStore.taskOutputPath()`. The `TaskResult.stdout` / `stderr` strings are bounded tails (8 MB / 4 MB by default) - long outputs are truncated from the head with a marker, and consumers that need the full bytes should read `TaskResult.stdoutPath` / `stderrPath`. Use `TaskResult.stdoutBytes` / `stderrBytes` to display "32 MB (truncated)" without re-stat'ing the file.
 
 ### Workflow graph YAML
 
@@ -563,14 +563,14 @@ Per-pipeline `lifecycle.max_runs` defaults to `1`. `lifecycle.stop_when` default
 
 ### `PipelineRunner`
 
-Higher-level wrapper for managing multiple concurrent pipeline runs 鈥?designed for sidecar / Tauri IPC scenarios where the frontend controls pipeline lifecycle by ID.
+Higher-level wrapper for managing multiple concurrent pipeline runs - designed for sidecar / Tauri IPC scenarios where the frontend controls pipeline lifecycle by ID.
 
 ```ts
 import { PipelineRunner } from '@tagma/sdk/pipeline-runner';
 
 const runner = new PipelineRunner(config, workDir, options?); // options: Omit<RunPipelineOptions, 'signal' | 'onEvent'>
 
-// Subscribe before start 鈥?handler is called for every RunEventPayload
+// Subscribe before start - handler is called for every RunEventPayload
 const unsubscribe = runner.subscribe((event) => {
   tauriEmit('run_event', { id: runner.instanceId, event });
 });
@@ -587,7 +587,7 @@ runner.abort();
 // per-task view without having to buffer the event stream themselves.
 // task_output chunks are folded into RunTaskState.stdout/stderr while a task
 // is running; the terminal task_update replaces them with the final bounded tail.
-// Pipeline-wide log lines (taskId: null 鈥?config dump, DAG topology,
+// Pipeline-wide log lines (taskId: null - config dump, DAG topology,
 // hook output without a [task:<id>] prefix) are NOT folded into any task's
 // log buffer; subscribe at the event stream level if you need them.
 const tasks = runner.getTasks(); // ReadonlyMap<taskId, RunTaskState>
@@ -595,9 +595,9 @@ const tasks = runner.getTasks(); // ReadonlyMap<taskId, RunTaskState>
 
 Properties:
 
-- `instanceId` 鈥?stable ID assigned at construction, safe to use as a Map key before `start()`
-- `runId` 鈥?engine-assigned run ID, available after the first `run_start` event (`null` until then)
-- `status` 鈥?`'idle' | 'running' | 'done' | 'aborted' | 'failed'` (see `PipelineRunnerStatus`). `aborted` covers caller-initiated `abort()`; `failed` covers thrown engine errors and completed runs whose `EngineResult.success` is `false`.
+- `instanceId` - stable ID assigned at construction, safe to use as a Map key before `start()`
+- `runId` - engine-assigned run ID, available after the first `run_start` event (`null` until then)
+- `status` - `'idle' | 'running' | 'done' | 'aborted' | 'failed'` (see `PipelineRunnerStatus`). `aborted` covers caller-initiated `abort()`; `failed` covers thrown engine errors and completed runs whose `EngineResult.success` is `false`.
 
 ### `TriggerBlockedError` / `TriggerTimeoutError`
 
@@ -670,7 +670,7 @@ export const HttpTrigger: TriggerPlugin = {
 
 Trigger `watch()` methods must return `{ fired, dispose }`: the engine awaits
 `fired` and calls `dispose()` on success, failure, task timeout, and pipeline
-abort. The schema is purely descriptive 鈥?plugins still perform their own runtime validation. Supported field types: `string`, `number`, `boolean`, `enum`, `path`, `duration`, `number-or-list`, `command`, `json`. Each field can declare `required`, `default`, `description`, `enum`, `min`/`max`, `placeholder`. Built-in plugins (`file`/`manual` triggers; `exit_code`/`file_exists`/`output_check` completions; `static_context` middleware) all ship with schemas so editors can generate forms out of the box.
+abort. The schema is purely descriptive - plugins still perform their own runtime validation. Supported field types: `string`, `number`, `boolean`, `enum`, `path`, `duration`, `number-or-list`, `command`, `json`. Each field can declare `required`, `default`, `description`, `enum`, `min`/`max`, `placeholder`. Built-in plugins (`file`/`manual` triggers; `exit_code`/`file_exists`/`output_check` completions; `static_context` middleware) all ship with schemas so editors can generate forms out of the box.
 
 ### `PluginRegistry.getHandler(category, type): PluginType`
 
@@ -686,7 +686,7 @@ Lists all registered handler type names for a plugin category (`'drivers'`, `'tr
 
 ### `resolveConfig(raw: RawPipelineConfig, workDir: string): PipelineConfig`
 
-Resolves a raw pipeline config into a fully resolved `PipelineConfig` 鈥?applies inheritance (pipeline 鈫?track 鈫?task) for driver, model, permissions, and cwd. Validates and resolves all file paths against `workDir`.
+Resolves a raw pipeline config into a fully resolved `PipelineConfig` - applies inheritance (pipeline -> track -> task) for driver, model, permissions, and cwd. Validates and resolves all file paths against `workDir`.
 
 Use `loadPipeline` for the common parse-and-resolve flow. Use `resolveConfig` directly when you need to manipulate the raw config between parsing and resolution.
 
@@ -700,7 +700,7 @@ Starts a WebSocket server for remote approval decisions.
 
 ### Config CRUD (`config-ops`)
 
-Pure, immutable helper functions for building and editing `RawPipelineConfig` in a visual editor. No runtime dependencies 鈥?safe to use in renderer processes.
+Pure, immutable helper functions for building and editing `RawPipelineConfig` in a visual editor. No runtime dependencies - safe to use in renderer processes.
 
 ```ts
 import {
@@ -735,11 +735,11 @@ const yaml = serializePipeline(config);
 | `moveTrack(config, trackId, toIndex)`                                | Reorder a track                                                                                                                                                                                                                  |
 | `updateTrack(config, trackId, fields)`                               | Patch track fields (not tasks)                                                                                                                                                                                                   |
 | `upsertTask(config, trackId, task)`                                  | Insert or replace a task                                                                                                                                                                                                         |
-| `removeTask(config, trackId, taskId, cleanRefs?)`                    | Remove a task; pass `cleanRefs: true` to also strip dangling `depends_on` / `continue_from` / `inputs.from` references. Only refs that resolve to the deleted task are removed 鈥?same-named tasks in other tracks are unaffected |
+| `removeTask(config, trackId, taskId, cleanRefs?)`                    | Remove a task; pass `cleanRefs: true` to also strip dangling `depends_on` / `continue_from` / `inputs.from` references. Only refs that resolve to the deleted task are removed - same-named tasks in other tracks are unaffected |
 | `moveTask(config, trackId, taskId, toIndex)`                         | Reorder a task within its track                                                                                                                                                                                                  |
 | `transferTask(config, fromTrackId, taskId, toTrackId, qualifyRefs?)` | Move a task across tracks (see invariants below)                                                                                                                                                                                 |
 
-`transferTask` invariants 鈥?the call is a **no-op** (returns the input config unchanged) when:
+`transferTask` invariants - the call is a **no-op** (returns the input config unchanged) when:
 
 - the target track doesn't exist, **or**
 - the target track already contains a task with the same id
@@ -751,11 +751,11 @@ When `qualifyRefs` is `true` (default), reference rewriting runs in two passes s
 - the **moved task's own** bare `depends_on`, `continue_from`, and `inputs.from` entries that pointed at siblings in the source track are rewritten to `fromTrackId.<dep>` (so they keep pointing at the original peers, not at coincidental same-named tasks in the destination track)
 - bare references **from other tasks** that resolved to the moved task are rewritten to `toTrackId.taskId` when same-track resolution would otherwise break (i.e. no shadow task exists in the referencing track and no other track still holds the bare id globally); this includes `depends_on`, `continue_from`, and `inputs.from`
 
-Pass `qualifyRefs: false` to skip both passes 鈥?useful when the caller is doing a batch move and will requalify everything itself.
+Pass `qualifyRefs: false` to skip both passes - useful when the caller is doing a batch move and will requalify everything itself.
 
 ### `parseYaml(content: string): RawPipelineConfig`
 
-Parses a YAML string and returns the raw (unresolved) pipeline config. Use this when you need to edit and re-save YAML without losing relative paths or user-authored formatting 鈥?pass the result to `serializePipeline()` rather than going through `loadPipeline()`.
+Parses a YAML string and returns the raw (unresolved) pipeline config. Use this when you need to edit and re-save YAML without losing relative paths or user-authored formatting - pass the result to `serializePipeline()` rather than going through `loadPipeline()`.
 
 ### `deresolvePipeline(config: PipelineConfig, workDir: string): RawPipelineConfig`
 
@@ -764,7 +764,7 @@ Converts a resolved `PipelineConfig` back to a `RawPipelineConfig` suitable for 
 Use this when you have a programmatically modified resolved config and need to save it back to YAML:
 
 ```ts
-// Correct: load 鈫?modify resolved config 鈫?deresolve 鈫?save
+// Correct: load -> modify resolved config -> deresolve -> save
 const config = await loadPipeline(yaml, workDir);
 const modified = { ...config, name: 'renamed' };
 const savedYaml = serializePipeline(deresolvePipeline(modified, workDir));
@@ -777,13 +777,13 @@ const savedYaml = serializePipeline(updatedRaw);
 
 ### `validateConfig(config: PipelineConfig, workDir?: string): string[]`
 
-Validates a resolved pipeline config without executing it. Checks DAG structure (cycles, missing dependencies). When `workDir` is supplied, also validates that every track / task `cwd` resolves inside it (no `..` traversal, no absolute paths escaping the root); without `workDir`, cwd paths are not checked offline (the engine still rejects unsafe cwds at run time, but you do not get an offline diagnostic). Returns an array of error message strings 鈥?empty means valid.
+Validates a resolved pipeline config without executing it. Checks DAG structure (cycles, missing dependencies). When `workDir` is supplied, also validates that every track / task `cwd` resolves inside it (no `..` traversal, no absolute paths escaping the root); without `workDir`, cwd paths are not checked offline (the engine still rejects unsafe cwds at run time, but you do not get an offline diagnostic). Returns an array of error message strings - empty means valid.
 
 Use `validateRaw` for editing raw configs in a UI; pass `workDir` to `validateConfig` after `resolveConfig` for a final pre-run check that also covers cwd safety.
 
 ### Bindings API
 
-Pure helpers backing typed task bindings and internal prompt-contract inference. Safe to use in editors, simulators, and custom drivers 鈥?no I/O, no side effects. Imported from `@tagma/sdk/dataflow`:
+Pure helpers backing typed task bindings and internal prompt-contract inference. Safe to use in editors, simulators, and custom drivers - no I/O, no side effects. Imported from `@tagma/sdk/dataflow`:
 
 | Function                                                               | Description                                                                                                                                                                                                                                                                           |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -796,15 +796,15 @@ Pure helpers backing typed task bindings and internal prompt-contract inference.
 
 Prompt-document helpers (`prependContext`, `renderInputsBlock`, `renderOutputSchemaBlock`) live in `@tagma/core` and are not re-exported through any `@tagma/sdk` subpath. Custom drivers / engines that need them should `import { prependContext, renderInputsBlock, renderOutputSchemaBlock } from '@tagma/core'` directly.
 
-Custom drivers that wrap the prompt in their own envelope can read `DriverContext.inputs` (resolved + coerced map keyed by port name) and call `substituteInputs` themselves 鈥?the engine has already substituted into `task.prompt` upstream, so most drivers can ignore this.
+Custom drivers that wrap the prompt in their own envelope can read `DriverContext.inputs` (resolved + coerced map keyed by port name) and call `substituteInputs` themselves - the engine has already substituted into `task.prompt` upstream, so most drivers can ignore this.
 
 ### `validateRaw(config: RawPipelineConfig, knownTypes?: KnownPluginTypes): ValidationError[]`
 
-Validates a raw pipeline config without resolving inheritance or executing anything. Returns a flat list of `{ path, message, severity? }` objects 鈥?empty array means valid. `severity` is `'error'` (default, fatal) or `'warning'` (soft hint; non-blocking).
+Validates a raw pipeline config without resolving inheritance or executing anything. Returns a flat list of `{ path, message, severity? }` objects - empty array means valid. `severity` is `'error'` (default, fatal) or `'warning'` (soft hint; non-blocking).
 
-Checks: required fields, `prompt`/`command` exclusivity, duplicate task IDs within a track, `depends_on`/`continue_from` reference integrity (including ambiguous bare refs that exist in multiple tracks 鈥?use `trackId.taskId` to disambiguate), circular dependency detection, binding shape (name format, valid `type`, duplicate names, `enum` requires non-empty `enum` array), `{{inputs.<name>}}` references resolving to a declared or inferred input binding, and `permissions` shape (must be an object with boolean `read`/`write`/`execute`). Tolerant of half-built configs 鈥?non-array `tracks` or `tasks` produce a structured error instead of throwing.
+Checks: required fields, `prompt`/`command` exclusivity, duplicate task IDs within a track, `depends_on`/`continue_from` reference integrity (including ambiguous bare refs that exist in multiple tracks - use `trackId.taskId` to disambiguate), circular dependency detection, binding shape (name format, valid `type`, duplicate names, `enum` requires non-empty `enum` array), `{{inputs.<name>}}` references resolving to a declared or inferred input binding, and `permissions` shape (must be an object with boolean `read`/`write`/`execute`). Tolerant of half-built configs - non-array `tracks` or `tasks` produce a structured error instead of throwing.
 
-Plugin-type checks are opt-in via `knownTypes`: when provided, references to trigger/completion/middleware/driver types that are neither built-in nor in the supplied set produce a **warning** (`severity: 'warning'`) so editors can light up uninstalled plugins without blocking save / run. Omit `knownTypes` for offline / pre-load validation 鈥?no plugin warnings are emitted in that case.
+Plugin-type checks are opt-in via `knownTypes`: when provided, references to trigger/completion/middleware/driver types that are neither built-in nor in the supplied set produce a **warning** (`severity: 'warning'`) so editors can light up uninstalled plugins without blocking save / run. Omit `knownTypes` for offline / pre-load validation - no plugin warnings are emitted in that case.
 
 Plugin **schemas** elevate the check from "type exists" to "type exists AND every config field matches the declared schema". Supply `knownTypes.schemas` (a `{ triggers, completions, middlewares }` map of `Record<typeName, PluginSchema | undefined>`) and `validateRaw` runs the same per-field guard core preflight runs at engine startup: a `timeout: "garbage"` on a `manual` trigger is reported at edit time, an out-of-enum `kind: "symlink"` on `file_exists` lights up before save, etc. Schema errors are returned as plain `error` (not `warning`) so editors block save on them just like other structural errors. Hosts collect schemas from the registry via `registry.getHandler(category, type).schema`.
 
@@ -827,7 +827,7 @@ errors.forEach((e) => highlightNode(e.path, e.message, e.severity ?? 'error'));
 
 ### `compileYamlContent(content: string, opts?: CompileYamlOptions): YamlCompileResult`
 
-One-shot YAML 鈫?diagnostics for editor compile flows. Distinguishes **YAML syntax errors** (`parseOk: false`, `validation.errors` empty, `summary` starts with `"YAML parse error:"`) from **schema / structure errors** (`parseOk: true`, errors land in `validation.errors`). Half-built configs 鈥?missing top-level `pipeline`, non-object `pipeline`, non-array `tracks` / `tasks`, malformed `permissions` 鈥?surface as ordinary validation errors rather than parse failures or `"Validation crashed"` messages, so the editor never crashes on in-progress YAML.
+One-shot YAML -> diagnostics for editor compile flows. Distinguishes **YAML syntax errors** (`parseOk: false`, `validation.errors` empty, `summary` starts with `"YAML parse error:"`) from **schema / structure errors** (`parseOk: true`, errors land in `validation.errors`). Half-built configs - missing top-level `pipeline`, non-object `pipeline`, non-array `tracks` / `tasks`, malformed `permissions` - surface as ordinary validation errors rather than parse failures or `"Validation crashed"` messages, so the editor never crashes on in-progress YAML.
 
 ```ts
 const result = compileYamlContent(yaml, {
@@ -848,27 +848,27 @@ if (!result.parseOk) {
 }
 ```
 
-`opts.knownTypes` is forwarded to `validateRaw` (see above) 鈥?pass it when the host has loaded its plugin registry so unregistered plugin types light up as warnings; omit it for offline validation.
+`opts.knownTypes` is forwarded to `validateRaw` (see above) - pass it when the host has loaded its plugin registry so unregistered plugin types light up as warnings; omit it for offline validation.
 
 `YamlCompileResult` shape: `{ timestamp, sourceName, success, parseOk, validation: { errors, warnings }, summary }`. `success` is `true` only when there are zero errors (warnings don't count). `validation.errors` and `validation.warnings` carry `{ path, message }` projections of the underlying `ValidationError` list.
 
 ### `buildRawDag(config: RawPipelineConfig): RawDag`
 
-Extracts the topology of a raw (unresolved) pipeline config as a graph 鈥?no `workDir` or plugin registration required. Intended for the visual editor to render the flow graph during editing.
+Extracts the topology of a raw (unresolved) pipeline config as a graph - no `workDir` or plugin registration required. Intended for the visual editor to render the flow graph during editing.
 
 Returns `{ nodes: ReadonlyMap<taskId, RawDagNode>, edges: { from, to }[] }` where each edge represents a dependency (from must complete before to). Unresolvable refs are silently skipped.
 
 ```ts
 const { nodes, edges } = buildRawDag(draftConfig);
-// nodes 鈥?keyed by "trackId.taskId"
-// edges 鈥?[{ from: "track.taskA", to: "track.taskB" }, ...]
+// nodes - keyed by "trackId.taskId"
+// edges - [{ from: "track.taskA", to: "track.taskB" }, ...]
 ```
 
 Use `buildDag` instead when you have a fully resolved `PipelineConfig` and need topological sort order.
 
 ### `Logger`
 
-Dual-channel logger 鈥?console + file. Creates a per-run log file at `<workDir>/.tagma/logs/<runId>/pipeline.log`. `Logger` itself is exported from `@tagma/core` (not re-exported through `@tagma/sdk`); the Bun runtime's `logStore` provides the filesystem backing.
+Dual-channel logger - console + file. Creates a per-run log file at `<workDir>/.tagma/logs/<runId>/pipeline.log`. `Logger` itself is exported from `@tagma/core` (not re-exported through `@tagma/sdk`); the Bun runtime's `logStore` provides the filesystem backing.
 
 ```ts
 import { bunRuntime } from '@tagma/sdk';
@@ -879,8 +879,8 @@ logger.info('[track]', 'message'); // console + file
 logger.warn('[track]', 'message'); // console + file
 logger.error('[track]', 'message'); // console + file
 logger.debug('[track]', 'message'); // file only
-logger.section('Title'); // file only 鈥?visual separator
-logger.quiet(bulkText); // file only 鈥?bulk payload
+logger.section('Title'); // file only - visual separator
+logger.quiet(bulkText); // file only - bulk payload
 logger.path; // log file path
 logger.dir; // run artifact directory
 logger.close(); // close the persistent file handle (called automatically when Tagma.run completes)
@@ -902,7 +902,7 @@ const logger = new Logger(workDir, runId, bunRuntime().logStore, (record: LogRec
 ```
 
 `section` and `quiet` carry no prefix, so pass an explicit `taskId` when the
-line logically belongs to a task 鈥?the extractor cannot infer one otherwise:
+line logically belongs to a task - the extractor cannot infer one otherwise:
 
 ```ts
 logger.section(`Task ${taskId}`, taskId);
@@ -915,7 +915,7 @@ Returns the last `n` non-empty lines of `text`, joined with newlines. Imported f
 
 ### `clip(text: string, maxBytes?: number): string`
 
-Truncates `text` to at most `maxBytes` UTF-8 bytes (default 16 KB), appending a `鈥truncated N bytes]` marker when truncation occurs. Multi-byte characters (CJK, emoji) are counted correctly. Imported from `@tagma/core` (not re-exported through `@tagma/sdk`).
+Truncates `text` to at most `maxBytes` UTF-8 bytes (default 16 KB), appending a `...truncated N bytes]` marker when truncation occurs. Multi-byte characters (CJK, emoji) are counted correctly. Imported from `@tagma/core` (not re-exported through `@tagma/sdk`).
 
 ### Utilities
 
@@ -923,7 +923,7 @@ Imported from `@tagma/sdk/utils`:
 
 | Function                              | Description                                               |
 | ------------------------------------- | --------------------------------------------------------- |
-| `parseDuration(input)`                | Parses `"30s"`, `"5m"`, `"2h"` 鈫?milliseconds             |
+| `parseDuration(input)`                | Parses `"30s"`, `"5m"`, `"2h"` -> milliseconds             |
 | `validatePath(filePath, projectRoot)` | Resolves path, throws if it escapes project root          |
 | `generateRunId()`                     | Generates a unique run ID (`run_<ts>_<seq>_<rand>`)       |
 | `nowISO()`                            | Returns `new Date().toISOString()`                        |

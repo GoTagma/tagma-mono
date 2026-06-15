@@ -2,9 +2,9 @@
 # --------------------------------------------------------------------------
 # Demonstrates the three permission tiers and how they are inherited.
 #
-#   read     â€?Grep, Glob, Read
-#   write    â€?+ Edit, Write
-#   execute  â€?+ Bash (and on Claude Code: bypassPermissions mode)
+#   read     - Grep, Glob, Read
+#   write    - + Edit, Write
+#   execute  - + Bash (and on Claude Code: bypassPermissions mode)
 #
 # Inheritance order: task > track > DEFAULT_PERMISSIONS({read:true,...}).
 # --------------------------------------------------------------------------
@@ -37,7 +37,7 @@ pipeline:
           prompt: 'Reply with the single word: WRITABLE'
           timeout: 2m
 
-        # Task-level override â€?this single task gets execute permission on
+        # Task-level override - this single task gets execute permission on
         # top of the track's write permission. Use sparingly.
         - id: escalated
           name: Escalate to execute for one task only

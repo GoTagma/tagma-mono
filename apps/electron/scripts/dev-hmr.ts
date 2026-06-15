@@ -10,12 +10,13 @@ const editorRoot = resolve(electronRoot, '..', 'editor');
 
 const RENDERER_HOST = '127.0.0.1';
 const RENDERER_PORT = 5173;
+const RENDERER_PORT_FALLBACK_END = 5183;
 const SIDECAR_PORT = 3001;
 
 type Subprocess = ReturnType<typeof Bun.spawn>;
 
-export function desktopHmrRendererUrl(): string {
-  return `http://${RENDERER_HOST}:${RENDERER_PORT}/`;
+export function desktopHmrRendererUrl(port: number = RENDERER_PORT): string {
+  return `http://${RENDERER_HOST}:${port}/`;
 }
 
 export function desktopHmrSidecarPort(base: NodeJS.ProcessEnv = process.env): number {
@@ -31,21 +32,17 @@ export function desktopHmrUserDataDir(runId: string | number = process.pid): str
 export function buildDesktopHmrEnv(
   base: NodeJS.ProcessEnv = process.env,
   sidecarPort: number = desktopHmrSidecarPort(base),
+  rendererPort: number = RENDERER_PORT,
 ): NodeJS.ProcessEnv {
   return {
     ...base,
-    TAGMA_DESKTOP_RENDERER_URL: desktopHmrRendererUrl(),
+    TAGMA_DESKTOP_RENDERER_URL: desktopHmrRendererUrl(rendererPort),
+    TAGMA_DESKTOP_RENDERER_PORT: String(rendererPort),
     TAGMA_DESKTOP_SIDECAR_PORT: String(sidecarPort),
     TAGMA_DESKTOP_USER_DATA_DIR: desktopHmrUserDataDir(),
     TAGMA_DESKTOP_DISABLE_GPU: '1',
   };
 }
-
-export type AssertTcpPortAvailableOptions = {
-  host: string;
-  port: number;
-  label: string;
-};
 
 function listenOnTcpPort(host: string, port: number): Promise<ReturnType<typeof createServer>> {
   const server = createServer();
@@ -62,47 +59,48 @@ async function closeServer(server: ReturnType<typeof createServer>): Promise<voi
   });
 }
 
-export async function assertTcpPortAvailable({
-  host,
-  port,
-  label,
-}: AssertTcpPortAvailableOptions): Promise<void> {
+async function trySelectTcpPort(host: string, port: number): Promise<number | null> {
   try {
     const server = await listenOnTcpPort(host, port);
+    const address = server.address();
     await closeServer(server);
-  } catch (err) {
-    const message =
-      err && typeof err === 'object' && 'code' in err ? ` (${String(err.code)})` : '';
-    throw new Error(
-      `[desktop:hmr] ${label} port ${host}:${port} is already unavailable${message}. Stop the existing dev process and retry.`,
-    );
+    return !address || typeof address === 'string' ? port : address.port;
+  } catch {
+    return null;
   }
 }
 
 export type SelectAvailableTcpPortOptions = {
   host: string;
   preferredPort: number;
+  fallbackPortEnd?: number;
+  label?: string;
 };
 
 export async function selectAvailableTcpPort({
   host,
   preferredPort,
+  fallbackPortEnd,
+  label = 'TCP',
 }: SelectAvailableTcpPortOptions): Promise<number> {
-  try {
-    const preferred = await listenOnTcpPort(host, preferredPort);
-    await closeServer(preferred);
-    return preferredPort;
-  } catch {
-    const fallback = await listenOnTcpPort(host, 0);
-    const address = fallback.address();
-    await closeServer(fallback);
+  const preferred = await trySelectTcpPort(host, preferredPort);
+  if (preferred !== null) return preferred;
 
-    if (!address || typeof address === 'string') {
-      throw new Error('[desktop:hmr] Failed to allocate a fallback sidecar port.');
+  if (fallbackPortEnd !== undefined) {
+    for (let port = preferredPort + 1; port <= fallbackPortEnd; port += 1) {
+      const selected = await trySelectTcpPort(host, port);
+      if (selected !== null) return selected;
     }
 
-    return address.port;
+    throw new Error(
+      `[desktop:hmr] No available ${label} port from ${host}:${preferredPort} through ${host}:${fallbackPortEnd}.`,
+    );
   }
+
+  const fallback = await trySelectTcpPort(host, 0);
+  if (fallback !== null) return fallback;
+
+  throw new Error(`[desktop:hmr] Failed to allocate a fallback ${label} port.`);
 }
 
 export function windowsTaskkillArgs(pid: number, force: boolean): string[] {
@@ -163,22 +161,30 @@ export async function runDesktopHmr(): Promise<void> {
   process.once('SIGTERM', () => void stopAndExit(143));
 
   try {
-    await assertTcpPortAvailable({
+    const rendererPort = await selectAvailableTcpPort({
       host: RENDERER_HOST,
-      port: RENDERER_PORT,
+      preferredPort: RENDERER_PORT,
+      fallbackPortEnd: RENDERER_PORT_FALLBACK_END,
       label: 'Vite renderer',
     });
+    if (rendererPort !== RENDERER_PORT) {
+      console.warn(
+        `[desktop:hmr] Vite renderer port ${RENDERER_PORT} is unavailable; using ${rendererPort}.`,
+      );
+    }
     const preferredSidecarPort = desktopHmrSidecarPort();
     const sidecarPort = await selectAvailableTcpPort({
       host: RENDERER_HOST,
       preferredPort: preferredSidecarPort,
+      label: 'editor sidecar',
     });
     if (sidecarPort !== preferredSidecarPort) {
       console.warn(
         `[desktop:hmr] editor sidecar port ${preferredSidecarPort} is unavailable; using ${sidecarPort}.`,
       );
     }
-    const hmrEnv = buildDesktopHmrEnv(process.env, sidecarPort);
+    const rendererUrl = desktopHmrRendererUrl(rendererPort);
+    const hmrEnv = buildDesktopHmrEnv(process.env, sidecarPort, rendererPort);
 
     const vite = track(
       Bun.spawn([process.execPath, 'run', 'dev:client:desktop'], {
@@ -194,7 +200,7 @@ export async function runDesktopHmr(): Promise<void> {
     const readyOrExit = await Promise.race([
       waitForTcpPort({
         host: RENDERER_HOST,
-        port: RENDERER_PORT,
+        port: rendererPort,
         timeoutMs: 60_000,
         intervalMs: 250,
         connectTimeoutMs: 1_000,
@@ -204,12 +210,12 @@ export async function runDesktopHmr(): Promise<void> {
 
     if (readyOrExit.name !== 'ready') {
       throw new Error(
-        `[desktop:hmr] Vite exited before listening on ${desktopHmrRendererUrl()} with code ${readyOrExit.code}`,
+        `[desktop:hmr] Vite exited before listening on ${rendererUrl} with code ${readyOrExit.code}`,
       );
     }
 
     console.log(
-      `[desktop:hmr] Vite ready at ${desktopHmrRendererUrl()}; starting Electron with sidecar port ${sidecarPort}`,
+      `[desktop:hmr] Vite ready at ${rendererUrl}; starting Electron with sidecar port ${sidecarPort}`,
     );
 
     const electron = track(

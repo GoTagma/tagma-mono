@@ -6,9 +6,8 @@ export function createAllowedOrigins(
   const origins = new Set<string>();
   const includeDevOrigins = options.devOrigins ?? process.env.TAGMA_SIDECAR_ACTIVE_SOURCE === 'dev';
 
-  // Vite starts on 5173 and, when that port is already busy, automatically
-  // tries the next port. Keep this bounded to local dev origins instead of
-  // allowing every localhost port.
+  // Desktop HMR chooses a Vite renderer port in this bounded local range.
+  // Keep this explicit instead of allowing every localhost port.
   if (includeDevOrigins) {
     for (let port = 5173; port <= 5183; port += 1) {
       addLoopbackAllowedOrigins(origins, port);

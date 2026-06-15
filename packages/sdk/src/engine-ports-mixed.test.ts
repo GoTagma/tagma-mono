@@ -137,7 +137,7 @@ function finalUpdateFor(events: RunEventPayload[], qid: string): RunEventPayload
   return last;
 }
 
-describe('engine â€?mixed prompt/command unified bindings', () => {
+describe('engine - mixed prompt/command unified bindings', () => {
   test('prompt outputs are inferred from downstream command inputs', async () => {
     const dir = makeDir();
     try {

@@ -8,10 +8,11 @@ import { createTagma, type RunEventPayload } from './index';
  * In-process pipeline smoke tests.
  *
  * Unlike the rest of the SDK test suite (which uses `fakeRuntime()`), these
- * tests exercise the **real** `bunRuntime` â€?real `Bun.spawn`, real log
+ * tests exercise the **real** `bunRuntime`: real `Bun.spawn`, real log
  * store, real filesystem. The goal is to verify the full chain:
  *
- *   YAML string â†?parse â†?validate â†?resolve inheritance â†?build DAG â†? *   schedule tasks â†?spawn real processes â†?emit events â†?collect results
+ *   YAML string -> parse -> validate -> resolve inheritance -> build DAG
+ *   -> schedule tasks -> spawn real processes -> emit events -> collect results
  *
  * Commands use `{ argv: ["node", "-e", "..."] }` for portability across
  * Windows (cmd/PowerShell) and Unix shells.
@@ -42,8 +43,8 @@ function collectEvents(events: RunEventPayload[]) {
   };
 }
 
-describe('smoke â€?real runtime pipeline execution', () => {
-  test('single command task: YAML â†?real process â†?success', async () => {
+describe('smoke - real runtime pipeline execution', () => {
+  test('single command task: YAML -> real process -> success', async () => {
     const dir = makeDir();
     try {
       const tagma = createTagma();
@@ -301,7 +302,7 @@ pipeline:
       expect(result.kind).toBe('pipeline');
       if (result.kind === 'pipeline') {
         expect(result.result.success).toBe(true);
-        // The engine persisted a log file â€?verify it exists on disk
+        // The engine persisted a log file; verify it exists on disk.
         expect(result.result.logPath).toBeDefined();
         expect(result.result.logPath.length).toBeGreaterThan(0);
       }

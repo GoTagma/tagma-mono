@@ -3,7 +3,6 @@ import { createServer } from 'node:net';
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import {
-  assertTcpPortAvailable,
   buildDesktopHmrEnv,
   desktopHmrRendererUrl,
   desktopHmrSidecarPort,
@@ -38,13 +37,12 @@ describe('desktop HMR scripts', () => {
       scripts: Record<string, string>;
     };
 
-    expect(pkg.scripts['dev:client:desktop']).toBe(
-      'vite --host 127.0.0.1 --port 5173 --strictPort',
-    );
+    expect(pkg.scripts['dev:client:desktop']).toBe('vite --host 127.0.0.1 --strictPort');
   });
 
   test('launcher pins Electron to the Vite renderer and matching sidecar proxy port', () => {
     expect(desktopHmrRendererUrl()).toBe('http://127.0.0.1:5173/');
+    expect(desktopHmrRendererUrl(5174)).toBe('http://127.0.0.1:5174/');
     expect(desktopHmrSidecarPort()).toBe(3001);
     expect(
       buildDesktopHmrEnv({
@@ -54,9 +52,16 @@ describe('desktop HMR scripts', () => {
     ).toMatchObject({
       PATH: 'base-path',
       TAGMA_DESKTOP_RENDERER_URL: 'http://127.0.0.1:5173/',
+      TAGMA_DESKTOP_RENDERER_PORT: '5173',
       TAGMA_DESKTOP_SIDECAR_PORT: '3001',
       TAGMA_DESKTOP_USER_DATA_DIR: desktopHmrUserDataDir(),
       TAGMA_DESKTOP_DISABLE_GPU: '1',
+    });
+
+    expect(buildDesktopHmrEnv({ PATH: 'base-path' }, 3002, 5174)).toMatchObject({
+      TAGMA_DESKTOP_RENDERER_URL: 'http://127.0.0.1:5174/',
+      TAGMA_DESKTOP_RENDERER_PORT: '5174',
+      TAGMA_DESKTOP_SIDECAR_PORT: '3002',
     });
   });
 
@@ -94,7 +99,7 @@ describe('desktop HMR scripts', () => {
     expect(windowsTaskkillArgs(1234, true)).toEqual(['/F', '/T', '/PID', '1234']);
   });
 
-  test('launcher rejects an already occupied renderer port before spawning Vite', async () => {
+  test('launcher selects a fallback renderer port when the preferred port is occupied', async () => {
     const server = createServer();
     await new Promise<void>((resolveListen, rejectListen) => {
       server.once('error', rejectListen);
@@ -107,13 +112,20 @@ describe('desktop HMR scripts', () => {
         throw new Error('expected a TCP server address');
       }
 
-      await expect(
-        assertTcpPortAvailable({
-          host: '127.0.0.1',
-          port: address.port,
-          label: 'test renderer',
-        }),
-      ).rejects.toThrow('test renderer port 127.0.0.1');
+      const fallbackPortEnd = Math.min(address.port + 25, 65535);
+      if (fallbackPortEnd === address.port) {
+        throw new Error('expected room for a fallback TCP port');
+      }
+
+      const port = await selectAvailableTcpPort({
+        host: '127.0.0.1',
+        preferredPort: address.port,
+        fallbackPortEnd,
+        label: 'test renderer',
+      });
+
+      expect(port).toBeGreaterThan(address.port);
+      expect(port).toBeLessThanOrEqual(fallbackPortEnd);
     } finally {
       await new Promise<void>((resolveClose, rejectClose) => {
         server.close((err) => (err ? rejectClose(err) : resolveClose()));

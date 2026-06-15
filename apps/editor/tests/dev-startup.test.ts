@@ -22,6 +22,10 @@ describe('editor dev startup scripts', () => {
     const viteConfig = readFileSync(join(editorRoot, 'vite.config.ts'), 'utf-8');
 
     expect(viteConfig).toContain(
+      "const desktopRendererPort = positivePortFromEnv('TAGMA_DESKTOP_RENDERER_PORT', 5173);",
+    );
+    expect(viteConfig).toContain('port: desktopRendererPort');
+    expect(viteConfig).toContain(
       "const desktopSidecarPort = process.env.TAGMA_DESKTOP_SIDECAR_PORT ?? '3001';",
     );
     expect(viteConfig).toContain("'/api': `http://127.0.0.1:${desktopSidecarPort}`");

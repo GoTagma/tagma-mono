@@ -55,7 +55,7 @@ function singularCategory(category: PluginCategory): string {
  * registration time rather than crashing the engine mid-run.
  *
  * For drivers we materialize `capabilities` and assert each field is a
- * boolean â€”otherwise a plugin author can write
+ * boolean; otherwise a plugin author can write
  *     get capabilities() { throw new Error('boom') }
  * and pass the basic typeof check, then crash preflight when the engine
  * touches `driver.capabilities.sessionResume`. (R8)
@@ -73,7 +73,7 @@ function validateContract(category: PluginCategory, handler: unknown): void {
       if (typeof h.buildCommand !== 'function') {
         throw new Error(`drivers plugin "${h.name}" must export buildCommand()`);
       }
-      // Materialize capabilities â€”this triggers any throwing getter NOW
+      // Materialize capabilities; this triggers any throwing getter NOW
       // instead of during preflight.
       let caps: unknown;
       try {
@@ -139,7 +139,7 @@ export interface RegisterPluginOptions {
 // segment is composed entirely of the dot-class characters that npm permits
 // inside regular package names. Without it, `@scope/..` and `@scope/.` slip
 // through and `pluginDirFor()` resolves them via `path.resolve()` to the
-// parent `node_modules` root â€?letting an /api/plugins/uninstall caller
+// parent `node_modules` root, letting an /api/plugins/uninstall caller
 // `rmSync` the whole tree. The lookahead keeps legitimate names like
 // `@scope/foo.bar` working while shutting that path-traversal door.
 export const PLUGIN_NAME_RE =
@@ -154,7 +154,7 @@ export function isValidPluginName(name: unknown): name is string {
  *
  * Returns the strongly-typed manifest if the field is present and
  * well-formed (`category` is one of the four known categories and `type`
- * is a non-empty string). Returns `null` if the field is absent â€”that
+ * is a non-empty string). Returns `null` if the field is absent; that
  * is the host's signal that the package is a library, not a plugin.
  *
  * Throws if the field is present but malformed: that's a packaging bug
@@ -523,7 +523,8 @@ export class PluginRegistry {
   /**
    * Remove a plugin from the in-process registry. Returns true if a plugin
    * was actually removed. Note: ESM module caching is not affected, so
-   * re-importing the same file after unregister will yield the cached module â€?  * callers wanting a fresh load must restart the host process.
+   * re-importing the same file after unregister will yield the cached module;
+   * callers wanting a fresh load must restart the host process.
    */
   unregisterPlugin(category: PluginCategory, type: string): boolean {
     if (!VALID_CATEGORIES.has(category)) return false;

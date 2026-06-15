@@ -12,7 +12,7 @@
     "dev:server": "bun run ensure:opencode && bun run dev:server:watch",
     "dev:server:watch": "bun --watch server/index.ts",
     "dev:client": "vite",
-    "dev:client:desktop": "vite --host 127.0.0.1 --port 5173 --strictPort",
+    "dev:client:desktop": "vite --host 127.0.0.1 --strictPort",
     "build": "vite build",
     "build:sidecar": "bun scripts/build-desktop-sidecar.ts",
     "start": "bun server/index.ts",

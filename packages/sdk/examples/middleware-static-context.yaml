@@ -49,4 +49,4 @@ pipeline:
           depends_on: [overrides_with_own_file]
           prompt: 'Reply with one word: OK'
           timeout: 2m
-          middlewares: []   # no static context â€?bare prompt only
+          middlewares: []   # no static context - bare prompt only
