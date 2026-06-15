@@ -63,6 +63,9 @@ function readTagmaMetadata(): Record<string, unknown> {
 }
 const TAGMA_META = readTagmaMetadata();
 const DEV_RENDERER_URL = normalizeDevRendererUrl(process.env.TAGMA_DESKTOP_RENDERER_URL);
+const DESKTOP_HMR = process.env.TAGMA_DESKTOP_HMR === '1';
+const SIDECAR_SHUTDOWN_TIMEOUT_MS = 3000;
+const SIDECAR_FORCE_EXIT_TIMEOUT_MS = 1000;
 
 function applyDevHardwareAccelerationFlag(): void {
   if (app.isPackaged || process.env.TAGMA_DESKTOP_DISABLE_GPU !== '1') return;
@@ -140,13 +143,16 @@ const byWindow = new Map<number, WindowSession>();
 /**
  * Shared sidecar — one process serves every window via the multi-workspace
  * sidecar (see server/require-workspace.ts). Lazily started on the first
- * `createEditorWindow()` call. Killed once on `before-quit`. The previous
+ * `createEditorWindow()` call. Killed when the last window closes or on
+ * `before-quit`. The previous
  * one-sidecar-per-window design was the root cause of version/manifest
  * drift across windows; sharing state in a single process eliminates it.
  */
 let sharedSidecar: SidecarHandle | null = null;
 let sharedSidecarPromise: Promise<SidecarHandle> | null = null;
 let recoveringSidecarPromise: Promise<void> | null = null;
+let sidecarShutdownPromise: Promise<void> | null = null;
+let sidecarShutdownComplete = false;
 let isAppQuitting = false;
 
 function ensureSidecar(): Promise<SidecarHandle> {
@@ -155,6 +161,7 @@ function ensureSidecar(): Promise<SidecarHandle> {
   sharedSidecarPromise = spawnSidecar()
     .then((handle) => {
       sharedSidecar = handle;
+      sidecarShutdownComplete = false;
       // If the process dies unexpectedly, drop the cached handle so the next
       // createEditorWindow() call will respawn rather than reusing a dead one.
       handle.proc.on('exit', (code, signal) => handleSharedSidecarExit(handle, code, signal));
@@ -234,6 +241,7 @@ function isProcessAlive(proc: ChildProcess): boolean {
 }
 
 function forceKillProcessTree(proc: ChildProcess): void {
+  if (!isProcessAlive(proc)) return;
   if (process.platform === 'win32' && proc.pid) {
     spawnSync('taskkill', ['/F', '/T', '/PID', String(proc.pid)], {
       stdio: 'ignore',
@@ -241,7 +249,6 @@ function forceKillProcessTree(proc: ChildProcess): void {
     });
     return;
   }
-  if (!isProcessAlive(proc)) return;
   try {
     proc.kill('SIGKILL');
   } catch {
@@ -249,24 +256,49 @@ function forceKillProcessTree(proc: ChildProcess): void {
   }
 }
 
-function requestSidecarShutdown(handle: SidecarHandle): void {
+function waitForProcessExit(proc: ChildProcess, timeoutMs: number): Promise<boolean> {
+  if (!isProcessAlive(proc)) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const finish = (exited: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      proc.off('exit', onExit);
+      proc.off('error', onError);
+      resolve(exited);
+    };
+    const onExit = () => finish(true);
+    const onError = () => finish(true);
+    timer = setTimeout(() => finish(false), timeoutMs);
+    timer.unref?.();
+    proc.once('exit', onExit);
+    proc.once('error', onError);
+  });
+}
+
+async function requestSidecarShutdown(handle: SidecarHandle): Promise<void> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 1500);
   const headers: Record<string, string> = {};
   if (handle.authToken) headers.Authorization = `Bearer ${handle.authToken}`;
-  fetch(`http://127.0.0.1:${handle.actualPort}/api/shutdown`, {
-    method: 'POST',
-    headers,
-    signal: controller.signal,
-  })
-    .catch(() => {
-      /* fallback timer will kill if the sidecar does not exit */
-    })
-    .finally(() => clearTimeout(timer));
+  timer.unref?.();
+  try {
+    await fetch(`http://127.0.0.1:${handle.actualPort}/api/shutdown`, {
+      method: 'POST',
+      headers,
+      signal: controller.signal,
+    });
+  } catch {
+    /* fallback timeout below will kill if the sidecar does not exit */
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
-function terminateSidecar(handle: SidecarHandle): void {
-  requestSidecarShutdown(handle);
+async function terminateSidecar(handle: SidecarHandle): Promise<void> {
+  void requestSidecarShutdown(handle);
   if (process.platform !== 'win32') {
     try {
       handle.proc.kill('SIGTERM');
@@ -274,8 +306,34 @@ function terminateSidecar(handle: SidecarHandle): void {
       /* best-effort */
     }
   }
-  const forceTimer = setTimeout(() => forceKillProcessTree(handle.proc), 3000);
-  forceTimer.unref?.();
+  const exited = await waitForProcessExit(handle.proc, SIDECAR_SHUTDOWN_TIMEOUT_MS);
+  if (exited) return;
+  forceKillProcessTree(handle.proc);
+  await waitForProcessExit(handle.proc, SIDECAR_FORCE_EXIT_TIMEOUT_MS);
+}
+
+function shutdownSharedSidecar(): Promise<void> | null {
+  if (sidecarShutdownPromise) return sidecarShutdownPromise;
+  const handle = sharedSidecar;
+  if (!handle) return null;
+  sharedSidecar = null;
+  sharedSidecarPromise = null;
+  sidecarShutdownComplete = false;
+  sidecarShutdownPromise = terminateSidecar(handle).finally(() => {
+    sidecarShutdownComplete = true;
+    sidecarShutdownPromise = null;
+  });
+  return sidecarShutdownPromise;
+}
+
+function closeSidecarLogStream(): void {
+  if (!sidecarLogStream) return;
+  try {
+    sidecarLogStream.end();
+  } catch {
+    /* best-effort */
+  }
+  sidecarLogStream = null;
 }
 
 function launchSidecar(runtime: RuntimePaths): Promise<SidecarHandle> {
@@ -714,7 +772,7 @@ async function createEditorWindow(rawWorkspacePath: string | null = null): Promi
       }
     }
     // The sidecar is shared across all windows now — never killed here.
-    // before-quit handles the single lifecycle teardown.
+    // window-all-closed / before-quit handles the single lifecycle teardown.
   });
 
   return session;
@@ -767,29 +825,22 @@ app.on('window-all-closed', () => {
   // createEditorWindow → ensureSidecar) will respawn a fresh sidecar,
   // which is what we want: a new window should see current on-disk state,
   // not a day-old in-memory snapshot.
-  if (sharedSidecar) {
-    terminateSidecar(sharedSidecar);
-    sharedSidecar = null;
-    sharedSidecarPromise = null;
-  }
-  if (process.platform !== 'darwin') app.quit();
+  void shutdownSharedSidecar();
+  if (DESKTOP_HMR || process.platform !== 'darwin') app.quit();
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
   isAppQuitting = true;
-  if (sharedSidecar) {
-    terminateSidecar(sharedSidecar);
-    sharedSidecar = null;
-    sharedSidecarPromise = null;
+  const shutdown = sidecarShutdownPromise ?? shutdownSharedSidecar();
+  if (shutdown && !sidecarShutdownComplete) {
+    event.preventDefault();
+    void shutdown.finally(() => {
+      closeSidecarLogStream();
+      app.quit();
+    });
+    return;
   }
-  if (sidecarLogStream) {
-    try {
-      sidecarLogStream.end();
-    } catch {
-      /* best-effort */
-    }
-    sidecarLogStream = null;
-  }
+  closeSidecarLogStream();
 });
 
 // ── IPC handlers ───────────────────────────────────────────────────────────

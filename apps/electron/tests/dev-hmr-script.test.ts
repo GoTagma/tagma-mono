@@ -56,12 +56,14 @@ describe('desktop HMR scripts', () => {
       TAGMA_DESKTOP_SIDECAR_PORT: '3001',
       TAGMA_DESKTOP_USER_DATA_DIR: desktopHmrUserDataDir(),
       TAGMA_DESKTOP_DISABLE_GPU: '1',
+      TAGMA_DESKTOP_HMR: '1',
     });
 
     expect(buildDesktopHmrEnv({ PATH: 'base-path' }, 3002, 5174)).toMatchObject({
       TAGMA_DESKTOP_RENDERER_URL: 'http://127.0.0.1:5174/',
       TAGMA_DESKTOP_RENDERER_PORT: '5174',
       TAGMA_DESKTOP_SIDECAR_PORT: '3002',
+      TAGMA_DESKTOP_HMR: '1',
     });
   });
 
@@ -97,6 +99,21 @@ describe('desktop HMR scripts', () => {
   test('launcher stops full child process trees on Windows', () => {
     expect(windowsTaskkillArgs(1234, false)).toEqual(['/T', '/PID', '1234']);
     expect(windowsTaskkillArgs(1234, true)).toEqual(['/F', '/T', '/PID', '1234']);
+  });
+
+  test('main process exits HMR when the last desktop window closes', () => {
+    const mainSource = readFileSync(join(electronRoot, 'src', 'main.ts'), 'utf-8');
+
+    expect(mainSource).toContain("const DESKTOP_HMR = process.env.TAGMA_DESKTOP_HMR === '1';");
+    expect(mainSource).toContain("if (DESKTOP_HMR || process.platform !== 'darwin') app.quit();");
+  });
+
+  test('main process waits for sidecar shutdown before app quit completes', () => {
+    const mainSource = readFileSync(join(electronRoot, 'src', 'main.ts'), 'utf-8');
+
+    expect(mainSource).toContain('function shutdownSharedSidecar(): Promise<void> | null');
+    expect(mainSource).toContain('event.preventDefault();');
+    expect(mainSource).toContain('await waitForProcessExit(handle.proc, SIDECAR_FORCE_EXIT_TIMEOUT_MS);');
   });
 
   test('launcher selects a fallback renderer port when the preferred port is occupied', async () => {

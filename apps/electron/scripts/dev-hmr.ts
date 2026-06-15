@@ -41,6 +41,7 @@ export function buildDesktopHmrEnv(
     TAGMA_DESKTOP_SIDECAR_PORT: String(sidecarPort),
     TAGMA_DESKTOP_USER_DATA_DIR: desktopHmrUserDataDir(),
     TAGMA_DESKTOP_DISABLE_GPU: '1',
+    TAGMA_DESKTOP_HMR: '1',
   };
 }
 
