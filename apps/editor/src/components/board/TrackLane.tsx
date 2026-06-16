@@ -1,6 +1,6 @@
 import { useState, useRef, useLayoutEffect, memo } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, ShieldAlert, SkipForward, Ban } from 'lucide-react';
+import { AlertTriangle, ShieldAlert, SkipForward, Ban, Wrench } from 'lucide-react';
 import type { RawTrackConfig, DiagnosticItem } from '../../api/client';
 import { getZoom, viewportW, viewportH } from '../../utils/zoom';
 import { usePipelineStore } from '../../store/pipeline-store';
@@ -11,6 +11,7 @@ interface TrackLaneProps {
   taskCount: number;
   hasParallelWarning: boolean;
   errorMessages?: DiagnosticItem[];
+  onModifyClick?: (trackId: string) => void;
 }
 
 const FAIL_CFG: Record<string, { icon: React.ReactNode; cls: string; tip: string }> = {
@@ -175,6 +176,7 @@ export const TrackLane = memo(function TrackLane({
   taskCount,
   hasParallelWarning,
   errorMessages,
+  onModifyClick,
 }: TrackLaneProps) {
   const hasError = errorMessages?.some((d) => d.severity === 'error') ?? false;
   const hasWarningOnly =
@@ -190,14 +192,36 @@ export const TrackLane = memo(function TrackLane({
 
   const [hovered, setHovered] = useState(false);
   const laneRef = useRef<HTMLDivElement>(null);
+  const canModify = !!onModifyClick;
 
   return (
     <div
       ref={laneRef}
-      className="h-full w-full flex flex-col justify-start px-3 pt-2 select-none"
+      className={`relative h-full w-full flex flex-col justify-start pl-3 ${canModify ? 'pr-8' : 'pr-3'} pt-2 select-none`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
+      {canModify && (
+        <button
+          type="button"
+          data-track-modify-button="true"
+          className="absolute right-2 top-2 z-20 inline-flex h-[18px] w-[18px] items-center justify-center border border-tagma-border/70 bg-tagma-bg/90 text-tagma-muted hover:text-tagma-accent hover:border-tagma-accent/60 focus:outline-none focus:border-tagma-accent focus:text-tagma-accent transition-colors"
+          title="Modify this track with AI"
+          aria-label={`Modify track ${track.name || track.id} with AI`}
+          onPointerDown={(e) => {
+            if (e.button !== 0) return;
+            e.stopPropagation();
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onModifyClick(track.id);
+          }}
+        >
+          <Wrench size={10} strokeWidth={2.25} />
+        </button>
+      )}
+
       {/* ─── Row 1 (22px): Name · Badges · Count ─── */}
       {/* The error- and parallel-warning slots are ALWAYS rendered at the
           same fixed size (even when empty) so the row layout — and, in turn,

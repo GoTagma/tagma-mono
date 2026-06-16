@@ -13,6 +13,14 @@ describe('track resize handles', () => {
     expect(source).not.toContain("handleTrackResizeStart(track.id, 'top'");
   });
 
+  test('BoardCanvas shows the track resize edge on hover and while active', () => {
+    const source = readFileSync(join(root, 'src/components/board/BoardCanvas.tsx'), 'utf8');
+
+    expect(source).toContain('hover:bg-tagma-accent/60');
+    expect(source).toContain('active:bg-tagma-accent');
+    expect(source).toContain('transition-colors');
+  });
+
   test('TrackLane pins header content to the top of tall tracks', () => {
     const source = readFileSync(join(root, 'src/components/board/TrackLane.tsx'), 'utf8');
 

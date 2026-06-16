@@ -24,8 +24,10 @@ import type {
 
 import type { TaskPosition } from '../../store/pipeline-store';
 import { usePipelineStore } from '../../store/pipeline-store';
+import { useChatStore } from '../../store/chat-store';
 import type { DagEdge } from '../../api/client';
 import { getZoom } from '../../utils/zoom';
+import { buildModifyTargetAttachment } from '../../utils/ask-ai-context';
 import {
   HEADER_W,
   TASK_W,
@@ -1084,6 +1086,46 @@ export function BoardCanvas({
   );
 
   // ── Context menus ──
+  const handleTaskModifyClick = useCallback(
+    (qid: string) => {
+      const ft = flatTaskByQid.get(qid);
+      if (!ft) return;
+      const track = tracks.find((t) => t.id === ft.trackId);
+      if (!track) return;
+
+      onSelectTask(qid);
+      setSelEdge(null);
+      setCtx(null);
+
+      const attachment = buildModifyTargetAttachment({
+        kind: 'task',
+        track,
+        task: ft.task,
+      });
+      useChatStore
+        .getState()
+        .attachComposerContext(attachment, attachment.defaultInstruction);
+    },
+    [flatTaskByQid, onSelectTask, tracks],
+  );
+
+  const handleTrackModifyClick = useCallback(
+    (trackId: string) => {
+      const track = tracks.find((t) => t.id === trackId);
+      if (!track) return;
+
+      onSelectTrack(trackId);
+      setSelEdge(null);
+      setCtx(null);
+
+      const attachment = buildModifyTargetAttachment({ kind: 'track', track });
+      useChatStore
+        .getState()
+        .attachComposerContext(attachment, attachment.defaultInstruction);
+    },
+    [onSelectTrack, tracks],
+  );
+
   const handleHeaderContextMenu = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       e.preventDefault();
@@ -1681,6 +1723,7 @@ export function BoardCanvas({
           ).length;
           const hasParallel = taskCount > 1 && depCount < taskCount - 1;
           const isDraggedTrack = trackDrag?.trackId === track.id;
+          const isResizingTrack = trackResize?.trackId === track.id;
           const isSelectedTrack = selectedTrackId === track.id;
           const inFolder = row.folderId !== null;
 
@@ -1724,12 +1767,17 @@ export function BoardCanvas({
                     taskCount={taskCount}
                     hasParallelWarning={hasParallel}
                     errorMessages={errorsByTrack.get(track.id)}
+                    onModifyClick={handleTrackModifyClick}
                   />
                 </div>
               </div>
               <div
                 data-track-resize-edge="bottom"
-                className="absolute left-0 right-0 bottom-0 h-1 cursor-ns-resize z-20"
+                className={`absolute left-0 right-0 bottom-0 h-1 cursor-ns-resize z-20 transition-colors ${
+                  isResizingTrack
+                    ? 'bg-tagma-accent'
+                    : 'bg-transparent hover:bg-tagma-accent/60 active:bg-tagma-accent'
+                }`}
                 title="Resize track"
                 onPointerDown={(e) => handleTrackResizeStart(track.id, e)}
               />
@@ -1862,6 +1910,7 @@ export function BoardCanvas({
                 onHandlePointerDown={handleHandlePointerDown}
                 onTargetPointerUp={handleTargetPointerUp}
                 onContextMenu={handleTaskContextMenu}
+                onModifyClick={handleTaskModifyClick}
               />
             );
           })}
