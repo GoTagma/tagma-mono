@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef } from 'react';
 import { AlertTriangle, Paperclip, Send, Square, X } from 'lucide-react';
 import { getOpencodeWorkspaceKey } from '../../api/opencode-chat';
 import { useChatStore } from '../../store/chat-store';
+import { useYamlEditLockStore } from '../../store/yaml-edit-lock-store';
 
 /**
  * Error banner — surfaces send() failures inline above the composer so users
@@ -85,11 +86,16 @@ export function restoreComposerDraftAfterSendFailure(
 export function ChatComposer() {
   const send = useChatStore((s) => s.send);
   const abort = useChatStore((s) => s.abort);
+  const currentSessionId = useChatStore((s) => s.currentSessionId);
+  const sessionStates = useChatStore((s) => s.sessionStates);
   const sending = useChatStore((s) => s.sending);
+  const reconciling = useChatStore((s) => s.reconciling);
+  const flushing = useChatStore((s) => s.flushing);
   const model = useChatStore((s) => s.model);
   const ready = useChatStore((s) => s.bootstrapStatus === 'ready');
   const text = useChatStore((s) => s.composerDraft);
   const setText = useChatStore((s) => s.setComposerDraft);
+  const yamlEditLocked = useYamlEditLockStore((s) => s.active);
   // Attachments can carry a message on their own (the instruction is optional
   // once context is attached), so the send affordance keys off either signal.
   const hasAttachments = useChatStore((s) => s.composerAttachments.length > 0);
@@ -106,7 +112,18 @@ export function ChatComposer() {
     el.style.height = `${next}px`;
   }, [text]);
 
-  const canSend = (text.trim().length > 0 || hasAttachments) && !!model && ready;
+  const hiddenTurnActive = Object.entries(sessionStates).some(
+    ([sessionId, runtime]) =>
+      sessionId !== currentSessionId &&
+      (runtime.sending ||
+        !!runtime.pendingUserText ||
+        runtime.queuedMessages.length > 0 ||
+        runtime.flushing),
+  );
+  const blockedByAnotherChatUpdate =
+    !sending && (hiddenTurnActive || reconciling || flushing || yamlEditLocked);
+  const canSend =
+    (text.trim().length > 0 || hasAttachments) && !!model && ready && !blockedByAnotherChatUpdate;
 
   const submit = () => {
     if (!canSend) return;
@@ -125,10 +142,17 @@ export function ChatComposer() {
   };
 
   const placeholder = !ready
-    ? 'Starting OpenCode…'
+    ? 'Starting OpenCode...'
     : model
-      ? 'Message opencode… (Enter to send)'
+      ? blockedByAnotherChatUpdate
+        ? 'Waiting for the current chat update to finish...'
+        : 'Message opencode... (Enter to send)'
       : 'Pick a model first';
+  const sendLabel = blockedByAnotherChatUpdate
+    ? 'Waiting for current chat update'
+    : sending
+      ? 'Queue message'
+      : 'Send';
 
   return (
     <div className="border-t border-tagma-border p-2 shrink-0 flex flex-col gap-2">
@@ -155,8 +179,8 @@ export function ChatComposer() {
           onClick={submit}
           disabled={!canSend}
           className="p-1.5 border border-tagma-border text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          title={sending ? 'Queue message' : 'Send'}
-          aria-label={sending ? 'Queue message' : 'Send'}
+          title={sendLabel}
+          aria-label={sendLabel}
         >
           <Send size={14} />
         </button>
