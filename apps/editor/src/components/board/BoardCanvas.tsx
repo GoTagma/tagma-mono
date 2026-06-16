@@ -1093,7 +1093,6 @@ export function BoardCanvas({
       const track = tracks.find((t) => t.id === ft.trackId);
       if (!track) return;
 
-      onSelectTask(qid);
       setSelEdge(null);
       setCtx(null);
 
@@ -1106,7 +1105,7 @@ export function BoardCanvas({
         .getState()
         .attachComposerContext(attachment, attachment.defaultInstruction);
     },
-    [flatTaskByQid, onSelectTask, tracks],
+    [flatTaskByQid, tracks],
   );
 
   const handleTrackModifyClick = useCallback(
@@ -1114,7 +1113,6 @@ export function BoardCanvas({
       const track = tracks.find((t) => t.id === trackId);
       if (!track) return;
 
-      onSelectTrack(trackId);
       setSelEdge(null);
       setCtx(null);
 
@@ -1123,7 +1121,7 @@ export function BoardCanvas({
         .getState()
         .attachComposerContext(attachment, attachment.defaultInstruction);
     },
-    [onSelectTrack, tracks],
+    [tracks],
   );
 
   const handleHeaderContextMenu = useCallback(

@@ -35,4 +35,19 @@ describe('board modify chat buttons', () => {
     expect(source).toContain('onModifyClick={handleTaskModifyClick}');
     expect(source).toContain('onModifyClick={handleTrackModifyClick}');
   });
+
+  test('BoardCanvas modify clicks do not select inspector targets', () => {
+    const source = readFileSync(join(root, 'src/components/board/BoardCanvas.tsx'), 'utf8');
+    const taskModifyHandler =
+      source.match(/const handleTaskModifyClick = useCallback\([\s\S]*?const handleTrackModifyClick = useCallback/)?.[0] ??
+      '';
+    const trackModifyHandler =
+      source.match(/const handleTrackModifyClick = useCallback\([\s\S]*?const handleHeaderContextMenu = useCallback/)?.[0] ??
+      '';
+
+    expect(taskModifyHandler).toContain('attachComposerContext');
+    expect(trackModifyHandler).toContain('attachComposerContext');
+    expect(taskModifyHandler).not.toContain('onSelectTask(qid);');
+    expect(trackModifyHandler).not.toContain('onSelectTrack(trackId);');
+  });
 });

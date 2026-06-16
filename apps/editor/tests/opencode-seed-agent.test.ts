@@ -9,6 +9,7 @@ import {
   buildTagmaHistoryCompareAgent,
   buildTagmaPipelineAgent,
   buildTagmaPipelinePlannerAgent,
+  buildTagmaPipelineSectionBuilderAgent,
   buildTagmaPlacementTool,
   buildTagmaRuntimeGuardAgent,
   buildTagmaRouterAgent,
@@ -223,7 +224,7 @@ test('tagma-pipeline agent exposes focused skills and read-only native subagents
   expect(doc).toContain('Call `tagma-runtime-guard`');
   expect(doc).toContain('Call `tagma-context-packager`');
   expect(doc).toContain('Merge specialist findings into the smallest YAML/layout/requirements change');
-  expect(doc).toContain('Do not delegate writes except');
+  expect(doc).toContain('Delegate YAML/layout/requirements section implementation only');
 });
 
 test('specialized Tagma advisor subagents are hidden, read-only, and task-focused', () => {
@@ -274,9 +275,34 @@ test('tagma-pipeline agent runs a read-only review subagent before finishing YAM
 
   expect(doc).toContain('tagma-yaml-review: "allow"');
   expect(doc).toContain('## Review Agent Loop');
-  expect(doc).toContain('After YAML/layout/requirements changes, call `tagma-yaml-review` once');
+  expect(doc).toContain('After each section step and before the final answer');
   expect(doc).toContain('Pass the review findings back into your own adjustment loop');
   expect(doc).toContain('Report unfixable issues plainly');
+});
+
+test('tagma-pipeline agent delegates manifest sections to a builder and reviews each step', () => {
+  const doc = buildTagmaPipelineAgent('Windows');
+
+  expect(doc).toContain('tagma-pipeline-section-builder: "allow"');
+  expect(doc).toContain('## Manifest Step Implementation Protocol');
+  expect(doc).toContain('delegate exactly one manifest section at a time to `tagma-pipeline-section-builder`');
+  expect(doc).toContain('After each section-builder handoff, call `tagma-yaml-review`');
+  expect(doc).toContain('The builder and reviewer must be different agents');
+  expect(doc).toContain('Do not start the next section until the review step passes');
+});
+
+test('tagma-pipeline-section-builder is a write-capable bounded implementer, not a reviewer', () => {
+  const doc = buildTagmaPipelineSectionBuilderAgent('Windows');
+
+  expect(doc).toContain('name: tagma-pipeline-section-builder');
+  expect(doc).toContain('mode: subagent');
+  expect(doc).toContain('hidden: true');
+  expect(doc).toContain('edit: allow');
+  expect(doc).toContain('bash: deny');
+  expect(doc).toContain('"*": "deny"');
+  expect(doc).toContain('Implement exactly one manifest section');
+  expect(doc).toContain('Do not review or approve your own work');
+  expect(doc).toContain('STEP_RESULT');
 });
 
 test('tagma-pipeline agent delegates mechanical layout to the placement tool', () => {
@@ -356,6 +382,7 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   const commandEvidenceAgent = join(agentsDir, 'tagma-command-evidence.md');
   const runtimeGuardAgent = join(agentsDir, 'tagma-runtime-guard.md');
   const contextPackagerAgent = join(agentsDir, 'tagma-context-packager.md');
+  const sectionBuilderAgent = join(agentsDir, 'tagma-pipeline-section-builder.md');
   const pythonAgent = join(agentsDir, 'tagma-python-tools.md');
   const skeletonTool = join(dir, '.opencode', 'tools', 'tagma_yaml_skeleton.ts');
   const placementTool = join(dir, '.opencode', 'tools', 'tagma_placement_plan.ts');
@@ -392,6 +419,13 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   expect(existsSync(contextPackagerAgent)).toBe(true);
   expect(readFileSync(contextPackagerAgent, 'utf8')).toContain('name: tagma-context-packager');
   expect(readFileSync(contextPackagerAgent, 'utf8')).toContain('compact handoff');
+  expect(existsSync(sectionBuilderAgent)).toBe(true);
+  expect(readFileSync(sectionBuilderAgent, 'utf8')).toContain(
+    'name: tagma-pipeline-section-builder',
+  );
+  expect(readFileSync(sectionBuilderAgent, 'utf8')).toContain(
+    'Implement exactly one manifest section',
+  );
   expect(existsSync(pythonAgent)).toBe(true);
   expect(readFileSync(pythonAgent, 'utf8')).toContain('name: tagma-python-tools');
   expect(readFileSync(pythonAgent, 'utf8')).toContain('hidden: true');
