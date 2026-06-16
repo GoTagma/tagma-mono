@@ -21,7 +21,7 @@
       "name": "tagma-editor",
       "version": "0.2.0",
       "dependencies": {
-        "@opencode-ai/sdk": "1.15.13",
+        "@opencode-ai/sdk": "1.15.12",
         "@slack/socket-mode": "^2.0.7",
         "@slack/web-api": "^7.15.2",
         "@tagma/sdk": "workspace:*",
@@ -58,7 +58,7 @@
     },
     "apps/electron": {
       "name": "tagma-desktop",
-      "version": "0.8.17",
+      "version": "0.8.19",
       "dependencies": {
         "@tagma/types": "workspace:*",
       },
@@ -327,7 +327,7 @@
 
     "@nodelib/fs.walk": ["@nodelib/fs.walk@1.2.8", "", { "dependencies": { "@nodelib/fs.scandir": "2.1.5", "fastq": "^1.6.0" } }, "sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg=="],
 
-    "@opencode-ai/sdk": ["@opencode-ai/sdk@1.15.13", "", { "dependencies": { "cross-spawn": "7.0.6" } }, "sha512-4TwojIoQ8EG6/mVBuUVYZXiFcwNmiiytEnjnvyuvSJjGwFIlw2YIBFxtSVC3FbwwbwHT63teh1RHiQUUC4U5xw=="],
+    "@opencode-ai/sdk": ["@opencode-ai/sdk@1.15.12", "", { "dependencies": { "cross-spawn": "7.0.6" } }, "sha512-lOaBNX93dkakZe6C42ttX1bkSx3K2c6+Yv+w8Qv02v5rPlu1vCXbmdfYDh9/bw+oq+NKPSaBm9d6kPA19hA5Lg=="],
 
     "@peculiar/asn1-schema": ["@peculiar/asn1-schema@2.8.0", "", { "dependencies": { "@peculiar/utils": "^2.0.2", "asn1js": "^3.0.10", "tslib": "^2.8.1" } }, "sha512-7YT0U/ze0tF2QOBbE15gKZwy5tvgGyLRiRHLzhlbOpf7BT032oBSd0haZqXn5W6l26WLlu3dyxzjM+2638/z2Q=="],
 

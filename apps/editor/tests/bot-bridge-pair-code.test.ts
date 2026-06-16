@@ -88,4 +88,18 @@ describe('pair-code', () => {
     expect(consumePairCodeAttempt(entry.code, 'telegram:chat:attacker').status).toBe('locked');
     expect(consumePairCode(entry.code)?.workspaceKey).toBe('/ws/zeta');
   });
+
+  test('distributed wrong guesses lock pending pair codes across callers', () => {
+    const entry = createPairCode('/ws/eta', null);
+    let result = consumePairCodeAttempt('000000', 'telegram:user-0');
+    expect(result.status).toBe('miss');
+
+    for (let i = 1; i < 20 && result.status !== 'locked'; i++) {
+      result = consumePairCodeAttempt('000000', `telegram:user-${i}`);
+    }
+
+    expect(result.status).toBe('locked');
+    expect(consumePairCodeAttempt(entry.code, 'telegram:legit-user').status).toBe('locked');
+    expect(consumePairCode(entry.code)?.workspaceKey).toBe('/ws/eta');
+  });
 });

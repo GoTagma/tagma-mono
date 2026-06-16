@@ -12,13 +12,23 @@
  */
 
 import { workspaceRegistry } from '../workspace-registry.js';
-import { getManifest, setChatSession } from './allowlist.js';
-import type { Platform } from './types.js';
+import { getManifest, setChatSession, unbindChat } from './allowlist.js';
+import type { ChatRoute, Platform } from './types.js';
 
 interface ChatBinding {
   workspaceKey: string;
   /** Per-chat opencode session, set once the first prompt is sent. */
   sessionId: string | null;
+}
+
+interface IndexedChatBinding extends ChatBinding {
+  pairedAtMs: number;
+}
+
+interface StaleChatRoute {
+  workDir: string;
+  platform: Platform;
+  chatId: string;
 }
 
 function indexKey(platform: Platform, chatId: string): string {
@@ -27,21 +37,59 @@ function indexKey(platform: Platform, chatId: string): string {
 
 const index = new Map<string, ChatBinding>();
 
+function routeTimestamp(route: ChatRoute): number {
+  const parsed = Date.parse(route.pairedAt);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function bindingCompare(a: IndexedChatBinding, b: IndexedChatBinding): number {
+  if (a.pairedAtMs !== b.pairedAtMs) return a.pairedAtMs - b.pairedAtMs;
+  return a.workspaceKey.localeCompare(b.workspaceKey);
+}
+
 /** Rebuild the in-memory index by scanning every live workspace's manifest. */
 export function rebuildIndex(): void {
-  index.clear();
+  const nextIndex = new Map<string, IndexedChatBinding>();
+  const staleRoutes: StaleChatRoute[] = [];
   for (const key of workspaceRegistry.keys()) {
     const ws = workspaceRegistry.get(key);
     if (!ws?.workDir) continue;
     const m = getManifest(ws.workDir);
     for (const route of m.chats) {
-      index.set(indexKey(route.platform, route.chatId), {
+      const routeKey = indexKey(route.platform, route.chatId);
+      const candidate: IndexedChatBinding = {
         workspaceKey: ws.workDir,
         // Restore the persisted session so the bound chat keeps driving the
         // same (titled, readable) opencode conversation across a restart
         // instead of spawning a fresh anonymous one.
         sessionId: route.sessionId ?? null,
-      });
+        pairedAtMs: routeTimestamp(route),
+      };
+      const existing = nextIndex.get(routeKey);
+      if (!existing) {
+        nextIndex.set(routeKey, candidate);
+        continue;
+      }
+      if (bindingCompare(candidate, existing) > 0) {
+        staleRoutes.push({
+          workDir: existing.workspaceKey,
+          platform: route.platform,
+          chatId: route.chatId,
+        });
+        nextIndex.set(routeKey, candidate);
+      } else {
+        staleRoutes.push({ workDir: ws.workDir, platform: route.platform, chatId: route.chatId });
+      }
+    }
+  }
+  index.clear();
+  for (const [key, binding] of nextIndex) {
+    index.set(key, { workspaceKey: binding.workspaceKey, sessionId: binding.sessionId });
+  }
+  for (const stale of staleRoutes) {
+    const winner = nextIndex.get(indexKey(stale.platform, stale.chatId));
+    if (winner && winner.workspaceKey !== stale.workDir) {
+      unbindChat(stale.workDir, stale.platform, stale.chatId);
     }
   }
 }

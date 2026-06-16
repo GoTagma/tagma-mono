@@ -18,6 +18,7 @@ import type { PairCode } from './types.js';
 const DEFAULT_TTL_MS = 120_000;
 const CODE_DIGITS = 6;
 const MAX_FAILED_ATTEMPTS = 5;
+const MAX_GLOBAL_FAILED_ATTEMPTS = 20;
 const ATTEMPT_WINDOW_MS = 10 * 60_000;
 const LOCKOUT_MS = 10 * 60_000;
 
@@ -31,6 +32,7 @@ interface AttemptState {
 }
 
 const attempts = new Map<string, AttemptState>();
+let globalAttempts: AttemptState | null = null;
 
 export type PairCodeAttemptResult =
   | { status: 'matched'; entry: PairCode }
@@ -46,6 +48,7 @@ function evictExpired(): void {
   for (const [code, entry] of pending) {
     if (entry.expiresAt <= t) pending.delete(code);
   }
+  if (pending.size === 0) globalAttempts = null;
 }
 
 function evictExpiredAttempts(): void {
@@ -54,6 +57,12 @@ function evictExpiredAttempts(): void {
     const lockExpired = state.lockedUntil > 0 && state.lockedUntil <= t;
     const windowExpired = state.lockedUntil === 0 && state.firstFailedAt + ATTEMPT_WINDOW_MS <= t;
     if (lockExpired || windowExpired) attempts.delete(key);
+  }
+  if (globalAttempts) {
+    const lockExpired = globalAttempts.lockedUntil > 0 && globalAttempts.lockedUntil <= t;
+    const windowExpired =
+      globalAttempts.lockedUntil === 0 && globalAttempts.firstFailedAt + ATTEMPT_WINDOW_MS <= t;
+    if (lockExpired || windowExpired) globalAttempts = null;
   }
 }
 
@@ -102,24 +111,41 @@ export function consumePairCode(submitted: string): PairCode | null {
   return match;
 }
 
+function recordAttempt(state: AttemptState | null, maxAttempts: number): [AttemptState, PairCodeAttemptResult] {
+  const t = now();
+  const next =
+    state && state.firstFailedAt + ATTEMPT_WINDOW_MS > t
+      ? state
+      : { firstFailedAt: t, failedCount: 0, lockedUntil: 0 };
+  next.failedCount += 1;
+  if (next.failedCount >= maxAttempts) {
+    next.failedCount = 0;
+    next.firstFailedAt = t;
+    next.lockedUntil = t + LOCKOUT_MS;
+    return [next, { status: 'locked', lockedUntil: next.lockedUntil }];
+  }
+  return [next, { status: 'miss', attemptsRemaining: maxAttempts - next.failedCount }];
+}
+
 function recordFailedAttempt(attemptKey: string): PairCodeAttemptResult {
   evictExpiredAttempts();
-  const t = now();
-  const existing = attempts.get(attemptKey);
-  const state =
-    existing && existing.firstFailedAt + ATTEMPT_WINDOW_MS > t
-      ? existing
-      : { firstFailedAt: t, failedCount: 0, lockedUntil: 0 };
-  state.failedCount += 1;
-  if (state.failedCount >= MAX_FAILED_ATTEMPTS) {
-    state.failedCount = 0;
-    state.firstFailedAt = t;
-    state.lockedUntil = t + LOCKOUT_MS;
-    attempts.set(attemptKey, state);
-    return { status: 'locked', lockedUntil: state.lockedUntil };
-  }
+  const [state, result] = recordAttempt(attempts.get(attemptKey) ?? null, MAX_FAILED_ATTEMPTS);
   attempts.set(attemptKey, state);
-  return { status: 'miss', attemptsRemaining: MAX_FAILED_ATTEMPTS - state.failedCount };
+  return result;
+}
+
+function recordGlobalFailedAttempt(): PairCodeAttemptResult {
+  evictExpiredAttempts();
+  const [state, result] = recordAttempt(globalAttempts, MAX_GLOBAL_FAILED_ATTEMPTS);
+  globalAttempts = state;
+  return result;
+}
+
+function globalLockout(): PairCodeAttemptResult | null {
+  evictExpiredAttempts();
+  return globalAttempts && globalAttempts.lockedUntil > now()
+    ? { status: 'locked', lockedUntil: globalAttempts.lockedUntil }
+    : null;
 }
 
 export function consumePairCodeAttempt(
@@ -147,16 +173,23 @@ export function redeemPairCodeAttempt(
   if (state && state.lockedUntil > now()) {
     return { status: 'locked', lockedUntil: state.lockedUntil };
   }
+  const globalLocked = globalLockout();
+  if (globalLocked) return globalLocked;
   const entry = findPairCode(submitted);
   if (entry) {
     if (canRedeem && !canRedeem(entry)) {
-      return recordFailedAttempt(key);
+      const callerResult = recordFailedAttempt(key);
+      const globalResult = recordGlobalFailedAttempt();
+      return globalResult.status === 'locked' ? globalResult : callerResult;
     }
     pending.delete(entry.code);
     attempts.delete(key);
+    if (pending.size === 0) globalAttempts = null;
     return { status: 'matched', entry };
   }
-  return recordFailedAttempt(key);
+  const callerResult = recordFailedAttempt(key);
+  const globalResult = recordGlobalFailedAttempt();
+  return globalResult.status === 'locked' ? globalResult : callerResult;
 }
 
 export function pendingCount(): number {
@@ -167,4 +200,5 @@ export function pendingCount(): number {
 export function _resetForTests(): void {
   pending.clear();
   attempts.clear();
+  globalAttempts = null;
 }
