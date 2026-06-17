@@ -9,6 +9,8 @@ import type {
   TagmaSdkRequirements,
 } from '@tagma/types';
 
+declare const __TAGMA_SDK_VERSION__: string | undefined;
+
 export interface YamlCompatibilityFeature {
   readonly id: string;
   readonly minSdkVersion: string;
@@ -361,18 +363,66 @@ function normalizeVersion(value: string | undefined): string | null {
   return `${parsed.major}.${parsed.minor}.${parsed.patch}${prerelease}`;
 }
 
-function readCurrentSdkVersion(): string {
-  try {
-    const raw = readFileSync(new URL('../package.json', import.meta.url), 'utf8');
-    const parsed = JSON.parse(raw) as { version?: unknown };
-    if (typeof parsed.version === 'string' && parseSemver(parsed.version)) {
-      return normalizeVersion(parsed.version) ?? SDK_PACKAGE_VERSION_FALLBACK;
-    }
-  } catch {
-    // Fall through to the explicit fallback. This should only happen in
-    // unusual test bundles that omit package.json.
+export interface CurrentSdkVersionSources {
+  readonly injectedVersion?: unknown;
+  readonly envVersion?: unknown;
+  readonly packageJsonText?: string;
+  readonly readPackageJson?: () => string;
+}
+
+export function resolveCurrentSdkVersion(sources: CurrentSdkVersionSources = {}): string {
+  const injectedVersion = normalizeVersionCandidate(sources.injectedVersion);
+  if (injectedVersion) return injectedVersion;
+
+  const envVersion = normalizeVersionCandidate(sources.envVersion);
+  if (envVersion) return envVersion;
+
+  if (sources.packageJsonText !== undefined) {
+    const packageJsonVersion = readSdkVersionFromPackageJson(sources.packageJsonText);
+    if (packageJsonVersion) return packageJsonVersion;
   }
+
+  if (sources.readPackageJson) {
+    try {
+      const packageJsonVersion = readSdkVersionFromPackageJson(sources.readPackageJson());
+      if (packageJsonVersion) return packageJsonVersion;
+    } catch {
+      // Fall through to the explicit fallback.
+    }
+  }
+
   return SDK_PACKAGE_VERSION_FALLBACK;
+}
+
+function readCurrentSdkVersion(): string {
+  return resolveCurrentSdkVersion({
+    injectedVersion: readInjectedSdkVersion(),
+    envVersion: process.env.TAGMA_SDK_VERSION,
+    readPackageJson: () => readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+  });
+}
+
+function readInjectedSdkVersion(): unknown {
+  try {
+    if (typeof __TAGMA_SDK_VERSION__ !== 'undefined') return __TAGMA_SDK_VERSION__;
+  } catch {
+    // The compile-time identifier is intentionally absent outside bundled
+    // desktop sidecars.
+  }
+  return undefined;
+}
+
+function normalizeVersionCandidate(value: unknown): string | null {
+  return typeof value === 'string' ? normalizeVersion(value.trim()) : null;
+}
+
+function readSdkVersionFromPackageJson(raw: string): string | null {
+  try {
+    const parsed = JSON.parse(raw) as { version?: unknown };
+    return normalizeVersionCandidate(parsed.version);
+  } catch {
+    return null;
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

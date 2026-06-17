@@ -7,6 +7,7 @@ import {
   inferPipelineCompatibility,
   inferYamlCompatibility,
   parseSdkRequirement,
+  resolveCurrentSdkVersion,
 } from './compatibility';
 import { loadPipeline, serializePipeline } from './schema';
 import { serializeWorkflow, validateRawWorkflow } from './workflow';
@@ -46,6 +47,25 @@ describe('YAML SDK compatibility', () => {
     expect(parseSdkRequirement('>=0.8.0')?.minVersion).toBe('0.8.0');
     expect(parseSdkRequirement('v0.8.0')?.minVersion).toBe('0.8.0');
     expect(parseSdkRequirement('^0.8.0')).toBeNull();
+  });
+
+  test('uses injected SDK version when package.json is unavailable in a desktop bundle', () => {
+    expect(
+      resolveCurrentSdkVersion({
+        injectedVersion: '0.8.21',
+        readPackageJson: () => {
+          throw new Error('package.json is not bundled');
+        },
+      }),
+    ).toBe('0.8.21');
+  });
+
+  test('falls back to package.json when no SDK version is injected', () => {
+    expect(
+      resolveCurrentSdkVersion({
+        packageJsonText: JSON.stringify({ version: '0.7.43' }),
+      }),
+    ).toBe('0.7.43');
   });
 
   test('does not add requires.sdk to baseline pipeline YAML', () => {

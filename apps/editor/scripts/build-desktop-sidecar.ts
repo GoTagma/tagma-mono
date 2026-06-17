@@ -1,8 +1,9 @@
-import { mkdirSync, rmSync, existsSync, readdirSync } from 'node:fs';
+import { mkdirSync, rmSync, existsSync, readFileSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const packageDir = resolve(import.meta.dir, '..');
+const repoRoot = resolve(packageDir, '../..');
 // CI multi-arch builds (e.g. macOS producing both darwin-arm64 and darwin-x64
 // sidecars in one job) need separate output dirs per arch so the second run
 // doesn't clobber the first. TAGMA_SIDECAR_OUTDIR is the opt-in override used
@@ -58,6 +59,19 @@ function pickCompileTarget(): string | undefined {
   return undefined;
 }
 
+function readBundledSdkVersion(): string {
+  const packageJsonPath = join(repoRoot, 'packages', 'sdk', 'package.json');
+  const raw = readFileSync(packageJsonPath, 'utf8');
+  const parsed = JSON.parse(raw) as { version?: unknown };
+  if (
+    typeof parsed.version !== 'string' ||
+    !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(parsed.version)
+  ) {
+    throw new Error(`Invalid @tagma/sdk version in ${packageJsonPath}`);
+  }
+  return parsed.version;
+}
+
 // Only remove the target binary, not the whole directory. Wiping the entire
 // directory used to EACCES on Windows when a previous sidecar instance (or
 // AV / file-indexer) still held a handle on a file inside — aborting the
@@ -80,6 +94,8 @@ const compileTarget = pickCompileTarget();
 if (compileTarget) {
   console.log(`Using Bun compile target: ${compileTarget}`);
 }
+const bundledSdkVersion = readBundledSdkVersion();
+console.log(`Embedding @tagma/sdk version: ${bundledSdkVersion}`);
 
 // Cross-variant compile (e.g. host=windows-x64-modern → target=windows-x64-baseline)
 // requires Bun to download the target runtime into ~/.bun/install/cache. That
@@ -114,6 +130,9 @@ async function buildWithRetry(maxAttempts: number): Promise<void> {
       const result = await Bun.build({
         entrypoints: [join(packageDir, 'server', 'index.ts')],
         target: 'bun',
+        define: {
+          __TAGMA_SDK_VERSION__: JSON.stringify(bundledSdkVersion),
+        },
         compile: {
           outfile,
           ...(compileTarget ? { target: compileTarget as `bun-${string}` } : {}),
