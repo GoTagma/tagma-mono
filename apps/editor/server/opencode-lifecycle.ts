@@ -219,10 +219,11 @@ export function buildOpencodeEnv(
  * staged binary so the chat panel never depends on a separate user install.
  *
  * Precedence (highest first):
- *   1. `$TAGMA_OPENCODE_USER_DIR/bin/opencode[.exe]`
+ *   1. `$TAGMA_OPENCODE_RUNTIME_USER_DIR/bin/opencode[.exe]`
  *        — writable userData layer that in-app updates (/api/opencode/update)
- *          stage into. Matches the PATH precedence set up by
- *          apps/electron/src/runtime-paths.ts:buildSidecarPath.
+ *          stage into. `$TAGMA_OPENCODE_USER_DIR` remains the update
+ *          destination, while `TAGMA_OPENCODE_SKIP_USER_DIR=1` disables this
+ *          runtime layer.
  *   2. `$TAGMA_OPENCODE_BUNDLED_DIR/bin/opencode[.exe]`
  *        — signed binary pinned at desktop build time
  *          (apps/electron/scripts/fetch-opencode.mjs).
@@ -249,7 +250,11 @@ export function buildOpencodeEnv(
  */
 export function resolveOpencodeBinary(): string {
   const exe = process.platform === 'win32' ? 'opencode.exe' : 'opencode';
-  const layers = [process.env.TAGMA_OPENCODE_USER_DIR, process.env.TAGMA_OPENCODE_BUNDLED_DIR];
+  const userRuntimeDir =
+    process.env.TAGMA_OPENCODE_SKIP_USER_DIR === '1'
+      ? undefined
+      : (process.env.TAGMA_OPENCODE_RUNTIME_USER_DIR ?? process.env.TAGMA_OPENCODE_USER_DIR);
+  const layers = [userRuntimeDir, process.env.TAGMA_OPENCODE_BUNDLED_DIR];
   for (const dir of layers) {
     if (!dir) continue;
     const candidate = join(dir, 'bin', exe);

@@ -342,13 +342,18 @@ function shouldUseUserOpencode(
   p: typeof path.win32 | typeof path.posix,
   userDataDir: string | undefined,
   bundledVersion: string | undefined,
+  options: { allowNewerUserVersion?: boolean } = {},
 ): boolean {
   if (!userDataDir) return false;
   if (!bundledVersion || !SIDECAR_VERSION_RE.test(bundledVersion)) return true;
   const userDir = opencodeUserDir(p, userDataDir);
   if (!existsSync(userDir)) return false;
   const userVersion = readUserOpencodeVersion(p, userDataDir);
-  if (userVersion && compareVersions(userVersion, bundledVersion) >= 0) return true;
+  if (userVersion) {
+    const cmp = compareVersions(userVersion, bundledVersion);
+    if (cmp === 0) return true;
+    if (cmp > 0) return !!options.allowNewerUserVersion;
+  }
   try {
     rmSync(userDir, { recursive: true, force: true });
   } catch {
@@ -526,18 +531,6 @@ export function resolveRuntimePaths(options: RuntimePathOptions): RuntimePaths {
 
   if (options.isPackaged) {
     const sidecarDir = p.join(options.resourcesPath, 'editor-sidecar');
-    const includeUserOpencode = shouldUseUserOpencode(
-      p,
-      options.userDataDir,
-      bundledOpencodeVersion,
-    );
-    const sidecarPath = buildSidecarPath(
-      p,
-      options.resourcesPath,
-      options.userDataDir,
-      platform,
-      includeUserOpencode,
-    );
     // Plugin install runs `bun install` inside an isolated workspace under
     // `.tagma/plugin-store/<name>`. The packaged sidecar's process.execPath
     // points at the compiled `tagma-editor-server` binary, NOT at bun, so
@@ -568,6 +561,22 @@ export function resolveRuntimePaths(options: RuntimePathOptions): RuntimePaths {
       options.sidecarPreference === 'bundled'
         ? null
         : resolveUserSidecarOverride(p, options.userDataDir, platform);
+    const includeUserOpencode = shouldUseUserOpencode(
+      p,
+      options.userDataDir,
+      bundledOpencodeVersion,
+      {
+        allowNewerUserVersion:
+          !!userOverride || process.env.TAGMA_UNSAFE_ALLOW_INDEPENDENT_OPENCODE_UPDATE === '1',
+      },
+    );
+    const sidecarPath = buildSidecarPath(
+      p,
+      options.resourcesPath,
+      options.userDataDir,
+      platform,
+      includeUserOpencode,
+    );
     const sidecarSource: RuntimePaths['sidecarSource'] = userOverride ? 'user' : 'bundled';
     const sidecarVersion = userOverride?.version ?? options.appVersion ?? null;
     const env: NodeJS.ProcessEnv = withPathEnv(
@@ -586,7 +595,13 @@ export function resolveRuntimePaths(options: RuntimePathOptions): RuntimePaths {
       platform,
     );
     if (options.userDataDir) {
-      env.TAGMA_OPENCODE_USER_DIR = p.join(options.userDataDir, 'opencode');
+      const opencodeUserDir = p.join(options.userDataDir, 'opencode');
+      env.TAGMA_OPENCODE_USER_DIR = opencodeUserDir;
+      if (includeUserOpencode) {
+        env.TAGMA_OPENCODE_RUNTIME_USER_DIR = opencodeUserDir;
+      } else {
+        env.TAGMA_OPENCODE_SKIP_USER_DIR = '1';
+      }
       // Editor hot-update writable layer: userData/editor-dist wins over the
       // bundled resources/editor-dist when present (static-assets.ts picks it
       // up). This is the destination path for /api/editor/update to stage a

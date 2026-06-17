@@ -146,6 +146,10 @@ function independentOpencodeUpdatesAllowed(): boolean {
   return !process.env.TAGMA_OPENCODE_BUNDLED_VERSION;
 }
 
+function userOpencodeRuntimeEnabled(): boolean {
+  return process.env.TAGMA_OPENCODE_SKIP_USER_DIR !== '1';
+}
+
 function mergeSignalWithTimeout(timeoutMs: number, externalSignal?: AbortSignal): AbortSignal {
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
   return externalSignal ? AbortSignal.any([timeoutSignal, externalSignal]) : timeoutSignal;
@@ -419,11 +423,12 @@ export function registerOpencodeRoutes(app: express.Express): void {
         fetchLatestVersion().catch(() => null),
       ]);
 
-      // Active version drives the "update available" comparison: prefer the
-      // user-installed override when present (that's what PATH resolves to),
-      // fall back to bundled for freshly-installed desktops, fall back to
-      // the running probe when neither env var is set (dev / SDK direct use).
-      const activeVersion = userInstalledVersion ?? bundledVersion ?? runningVersion;
+      // Active version drives the "update available" comparison. A userData
+      // install can exist purely as the writable update destination while the
+      // release-pinned runtime is deliberately using the bundled binary.
+      const activeVersion = userOpencodeRuntimeEnabled()
+        ? (userInstalledVersion ?? bundledVersion ?? runningVersion)
+        : (bundledVersion ?? runningVersion);
       const updateAvailable = !!latestVersion && !!activeVersion && latestVersion !== activeVersion;
 
       res.json({

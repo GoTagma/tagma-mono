@@ -238,6 +238,110 @@ describe('runtime path resolution', () => {
         'C:\\Windows\\System32',
       ].join(';');
       expect(paths.env.Path).toBe(expectedPath);
+      expect(paths.env.TAGMA_OPENCODE_SKIP_USER_DIR).toBe('1');
+      expect(paths.env.TAGMA_OPENCODE_RUNTIME_USER_DIR).toBeUndefined();
+    } finally {
+      if (previousPATH === undefined) {
+        delete process.env.PATH;
+      } else {
+        process.env.PATH = previousPATH;
+      }
+      if (previousPath === undefined) {
+        delete process.env.Path;
+      } else {
+        process.env.Path = previousPath;
+      }
+    }
+  });
+
+  test('packaged mode keeps a newer user opencode out of runtime when release-pinned', () => {
+    const previousPATH = process.env.PATH;
+    const previousPath = process.env.Path;
+    try {
+      delete process.env.PATH;
+      delete process.env.Path;
+      process.env.Path = 'C:\\Windows\\System32';
+
+      const root = withTempDir();
+      const resourcesPath = hostPath.join(root, 'resources');
+      const userDataDir = hostPath.join(root, 'userData');
+      const userOpencodeDir = hostPath.join(userDataDir, 'opencode');
+      mkdirSync(hostPath.join(userOpencodeDir, 'bin'), { recursive: true });
+      writeFileSync(hostPath.join(userOpencodeDir, 'version.txt'), '1.15.14\n');
+
+      const paths = resolveRuntimePaths({
+        isPackaged: true,
+        compiledDir: 'D:/tagma/tagma-mono/apps/electron/dist',
+        resourcesPath,
+        userDataDir,
+        platform: 'win32',
+        tagmaMetadataJson: JSON.stringify({ bundledOpencodeVersion: '1.15.13' }),
+      });
+
+      const expectedPath = [
+        pw.join(resourcesPath, 'opencode', 'bin'),
+        'C:\\Windows\\System32',
+      ].join(';');
+      expect(paths.env.Path).toBe(expectedPath);
+      expect(paths.env.TAGMA_OPENCODE_USER_DIR).toBe(pw.join(userDataDir, 'opencode'));
+      expect(paths.env.TAGMA_OPENCODE_RUNTIME_USER_DIR).toBeUndefined();
+      expect(paths.env.TAGMA_OPENCODE_SKIP_USER_DIR).toBe('1');
+    } finally {
+      if (previousPATH === undefined) {
+        delete process.env.PATH;
+      } else {
+        process.env.PATH = previousPATH;
+      }
+      if (previousPath === undefined) {
+        delete process.env.Path;
+      } else {
+        process.env.Path = previousPath;
+      }
+    }
+  });
+
+  test('packaged mode uses user opencode when a coherent user release is active', () => {
+    const previousPATH = process.env.PATH;
+    const previousPath = process.env.Path;
+    try {
+      delete process.env.PATH;
+      delete process.env.Path;
+      process.env.Path = 'C:\\Windows\\System32';
+
+      const root = withTempDir();
+      const resourcesPath = hostPath.join(root, 'resources');
+      const userDataDir = hostPath.join(root, 'userData');
+      const userOpencodeDir = hostPath.join(userDataDir, 'opencode');
+      mkdirSync(hostPath.join(userOpencodeDir, 'bin'), { recursive: true });
+      writeFileSync(hostPath.join(userOpencodeDir, 'version.txt'), '1.15.14\n');
+      writeUserReleaseOverride(userDataDir, '0.8.22');
+      writeFileSync(
+        hostPath.join(userDataDir, releaseBaselineFile),
+        JSON.stringify({ bundledVersion: '0.8.21' }) + '\n',
+        'utf-8',
+      );
+
+      const paths = resolveRuntimePaths({
+        isPackaged: true,
+        compiledDir: 'D:/tagma/tagma-mono/apps/electron/dist',
+        resourcesPath,
+        userDataDir,
+        platform: 'win32',
+        appVersion: '0.8.21',
+        tagmaMetadataJson: JSON.stringify({ bundledOpencodeVersion: '1.15.13' }),
+      });
+
+      const expectedPath = [
+        pw.join(userDataDir, 'opencode', 'bin'),
+        pw.join(resourcesPath, 'opencode', 'bin'),
+        'C:\\Windows\\System32',
+      ].join(';');
+      expect(paths.env.Path).toBe(expectedPath);
+      expect(paths.env.TAGMA_OPENCODE_USER_DIR).toBe(pw.join(userDataDir, 'opencode'));
+      expect(paths.env.TAGMA_OPENCODE_RUNTIME_USER_DIR).toBe(
+        pw.join(userDataDir, 'opencode'),
+      );
+      expect(paths.env.TAGMA_OPENCODE_SKIP_USER_DIR).toBeUndefined();
     } finally {
       if (previousPATH === undefined) {
         delete process.env.PATH;

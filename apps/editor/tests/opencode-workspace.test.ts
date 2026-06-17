@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test';
 import express from 'express';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { connect as netConnect } from 'node:net';
 import { downloadTarball, registerOpencodeRoutes } from '../server/routes/opencode';
-import { shutdownOpencode } from '../server/opencode-lifecycle';
+import { resolveOpencodeBinary, shutdownOpencode } from '../server/opencode-lifecycle';
 import { S } from '../server/state';
 
 function startApp(app: express.Express): Promise<{ port: number; close: () => Promise<void> }> {
@@ -94,6 +94,8 @@ let tempCwd: string;
 let originalBundledDir: string | undefined;
 let originalBundledVersion: string | undefined;
 let originalOpencodeUserDir: string | undefined;
+let originalOpencodeRuntimeUserDir: string | undefined;
+let originalOpencodeSkipUserDir: string | undefined;
 let originalAllowIndependentOpencodeUpdate: string | undefined;
 
 beforeEach(() => {
@@ -103,11 +105,15 @@ beforeEach(() => {
   originalBundledDir = process.env.TAGMA_OPENCODE_BUNDLED_DIR;
   originalBundledVersion = process.env.TAGMA_OPENCODE_BUNDLED_VERSION;
   originalOpencodeUserDir = process.env.TAGMA_OPENCODE_USER_DIR;
+  originalOpencodeRuntimeUserDir = process.env.TAGMA_OPENCODE_RUNTIME_USER_DIR;
+  originalOpencodeSkipUserDir = process.env.TAGMA_OPENCODE_SKIP_USER_DIR;
   originalAllowIndependentOpencodeUpdate =
     process.env.TAGMA_UNSAFE_ALLOW_INDEPENDENT_OPENCODE_UPDATE;
   process.env.TAGMA_OPENCODE_BUNDLED_DIR = join(tempCwd, 'missing-bundled-opencode');
   delete process.env.TAGMA_OPENCODE_BUNDLED_VERSION;
   delete process.env.TAGMA_OPENCODE_USER_DIR;
+  delete process.env.TAGMA_OPENCODE_RUNTIME_USER_DIR;
+  delete process.env.TAGMA_OPENCODE_SKIP_USER_DIR;
   delete process.env.TAGMA_UNSAFE_ALLOW_INDEPENDENT_OPENCODE_UPDATE;
 });
 
@@ -129,6 +135,16 @@ afterEach(() => {
   } else {
     process.env.TAGMA_OPENCODE_USER_DIR = originalOpencodeUserDir;
   }
+  if (originalOpencodeRuntimeUserDir === undefined) {
+    delete process.env.TAGMA_OPENCODE_RUNTIME_USER_DIR;
+  } else {
+    process.env.TAGMA_OPENCODE_RUNTIME_USER_DIR = originalOpencodeRuntimeUserDir;
+  }
+  if (originalOpencodeSkipUserDir === undefined) {
+    delete process.env.TAGMA_OPENCODE_SKIP_USER_DIR;
+  } else {
+    process.env.TAGMA_OPENCODE_SKIP_USER_DIR = originalOpencodeSkipUserDir;
+  }
   if (originalAllowIndependentOpencodeUpdate === undefined) {
     delete process.env.TAGMA_UNSAFE_ALLOW_INDEPENDENT_OPENCODE_UPDATE;
   } else {
@@ -136,6 +152,21 @@ afterEach(() => {
       originalAllowIndependentOpencodeUpdate;
   }
   rmSync(tempCwd, { recursive: true, force: true });
+});
+
+test('opencode resolver honors runtime user-dir disable while keeping update dir configured', () => {
+  const userDir = join(tempCwd, 'opencode-user');
+  const bundledDir = join(tempCwd, 'opencode-bundled');
+  const exe = process.platform === 'win32' ? 'opencode.exe' : 'opencode';
+  mkdirSync(join(userDir, 'bin'), { recursive: true });
+  mkdirSync(join(bundledDir, 'bin'), { recursive: true });
+  writeFileSync(join(userDir, 'bin', exe), 'user');
+  writeFileSync(join(bundledDir, 'bin', exe), 'bundled');
+  process.env.TAGMA_OPENCODE_USER_DIR = userDir;
+  process.env.TAGMA_OPENCODE_BUNDLED_DIR = bundledDir;
+  process.env.TAGMA_OPENCODE_SKIP_USER_DIR = '1';
+
+  expect(resolveOpencodeBinary()).toBe(join(bundledDir, 'bin', exe));
 });
 
 test('opencode chat ensure requires an explicit workspace binding', async () => {
