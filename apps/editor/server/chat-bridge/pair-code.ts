@@ -111,7 +111,10 @@ export function consumePairCode(submitted: string): PairCode | null {
   return match;
 }
 
-function recordAttempt(state: AttemptState | null, maxAttempts: number): [AttemptState, PairCodeAttemptResult] {
+function recordAttempt(
+  state: AttemptState | null,
+  maxAttempts: number,
+): [AttemptState, PairCodeAttemptResult] {
   const t = now();
   const next =
     state && state.firstFailedAt + ATTEMPT_WINDOW_MS > t

@@ -260,7 +260,6 @@ function waitForProcessExit(proc: ChildProcess, timeoutMs: number): Promise<bool
   if (!isProcessAlive(proc)) return Promise.resolve(true);
   return new Promise((resolve) => {
     let settled = false;
-    let timer: ReturnType<typeof setTimeout>;
     const finish = (exited: boolean) => {
       if (settled) return;
       settled = true;
@@ -271,7 +270,7 @@ function waitForProcessExit(proc: ChildProcess, timeoutMs: number): Promise<bool
     };
     const onExit = () => finish(true);
     const onError = () => finish(true);
-    timer = setTimeout(() => finish(false), timeoutMs);
+    const timer = setTimeout(() => finish(false), timeoutMs);
     timer.unref?.();
     proc.once('exit', onExit);
     proc.once('error', onError);

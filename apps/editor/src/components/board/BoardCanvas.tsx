@@ -1101,9 +1101,7 @@ export function BoardCanvas({
         track,
         task: ft.task,
       });
-      useChatStore
-        .getState()
-        .attachComposerContext(attachment, attachment.defaultInstruction);
+      useChatStore.getState().attachComposerContext(attachment, attachment.defaultInstruction);
     },
     [flatTaskByQid, tracks],
   );
@@ -1117,9 +1115,7 @@ export function BoardCanvas({
       setCtx(null);
 
       const attachment = buildModifyTargetAttachment({ kind: 'track', track });
-      useChatStore
-        .getState()
-        .attachComposerContext(attachment, attachment.defaultInstruction);
+      useChatStore.getState().attachComposerContext(attachment, attachment.defaultInstruction);
     },
     [tracks],
   );

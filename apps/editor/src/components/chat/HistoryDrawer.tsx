@@ -95,14 +95,13 @@ export function HistoryDrawer() {
             {sessions.map((s) => {
               const active = s.id === currentSessionId;
               const runtime = sessionStates[s.id];
-              const running =
-                active
-                  ? sending || !!pendingUserText || queuedMessages.length > 0 || flushing
-                  : !!runtime &&
-                    (runtime.sending ||
-                      !!runtime.pendingUserText ||
-                      runtime.queuedMessages.length > 0 ||
-                      runtime.flushing);
+              const running = active
+                ? sending || !!pendingUserText || queuedMessages.length > 0 || flushing
+                : !!runtime &&
+                  (runtime.sending ||
+                    !!runtime.pendingUserText ||
+                    runtime.queuedMessages.length > 0 ||
+                    runtime.flushing);
               const completedUnread = !running && completedUnreadSessionIds.includes(s.id);
               return (
                 <div

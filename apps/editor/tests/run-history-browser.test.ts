@@ -177,11 +177,7 @@ describe('run history browser helpers', () => {
     const focused = terminalRunFocusForStatus('done', 'run_live');
     expect(focused).not.toBeNull();
 
-    const completed = applyTerminalRunFocusToHistory(
-      runs,
-      focused!,
-      '2026-05-22T08:01:00.000Z',
-    );
+    const completed = applyTerminalRunFocusToHistory(runs, focused!, '2026-05-22T08:01:00.000Z');
 
     expect(completed[0]).toMatchObject({ runId: 'run_live', running: false, success: true });
     expect(filterRunHistoryEntries(completed, 'success', '').map((run) => run.runId)).toEqual([

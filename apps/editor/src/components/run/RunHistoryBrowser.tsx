@@ -238,8 +238,7 @@ function hasTerminalRunFocusInHistory(
   focus: TerminalRunFocus,
 ): boolean {
   return runs.some(
-    (run) =>
-      run.runId === focus.runId && run.running !== true && run.success === focus.success,
+    (run) => run.runId === focus.runId && run.running !== true && run.success === focus.success,
   );
 }
 
@@ -651,7 +650,9 @@ export function RunHistoryBrowser({
       if (typeof pos?.x === 'number') {
         map.set(
           taskId,
-          typeof pos.y === 'number' && Number.isFinite(pos.y) ? { x: pos.x, y: pos.y } : { x: pos.x },
+          typeof pos.y === 'number' && Number.isFinite(pos.y)
+            ? { x: pos.x, y: pos.y }
+            : { x: pos.x },
         );
       }
     }

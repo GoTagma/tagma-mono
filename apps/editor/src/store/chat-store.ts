@@ -500,10 +500,7 @@ async function updateDesktopChatSessionMetadata(
       metadata: buildDesktopChatSessionMetadata(workspaceKey, reason, model),
     };
     if (title) body.title = title;
-    await updateOpencodeSessionV2(
-      body,
-      workspaceKey,
-    );
+    await updateOpencodeSessionV2(body, workspaceKey);
   } catch (err) {
     console.warn('[chat] session metadata update failed:', err);
   }
@@ -1788,9 +1785,7 @@ function applyRuntimePatchToSession(
   });
 }
 
-function saveCurrentSessionRuntime(
-  state: ChatStore,
-): Record<string, ChatSessionRuntimeState> {
+function saveCurrentSessionRuntime(state: ChatStore): Record<string, ChatSessionRuntimeState> {
   if (!state.currentSessionId) return state.sessionStates;
   return {
     ...state.sessionStates,
@@ -2264,7 +2259,9 @@ function chatTurnBlocksSessionMutation(
 function chatTurnBlocksNewPrompt(
   state: Pick<ChatStore, 'sessionStates' | 'currentSessionId' | 'reconciling' | 'flushing'>,
 ): boolean {
-  return hasHiddenActiveChatTurn(state) || state.reconciling || state.flushing || isYamlEditLocked();
+  return (
+    hasHiddenActiveChatTurn(state) || state.reconciling || state.flushing || isYamlEditLocked()
+  );
 }
 
 function chatTurnBlockedMessage(): string {
@@ -3562,10 +3559,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const runtime = restoreCachedRuntime(sessionStates[id], messages);
       return {
         sessionStates,
-        completedUnreadSessionIds: clearSessionCompletedUnread(
-          prev.completedUnreadSessionIds,
-          id,
-        ),
+        completedUnreadSessionIds: clearSessionCompletedUnread(prev.completedUnreadSessionIds, id),
         currentSessionId: id,
         ...runtimePatch(runtime),
         historyOpen: false,

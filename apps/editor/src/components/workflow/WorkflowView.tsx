@@ -416,10 +416,15 @@ export function WorkflowView({
   ): WorkflowGraphPosition | null => {
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return null;
-    return workflowDragPositionFromPointer(e, rect, {
-      x: drag.offsetX,
-      y: drag.offsetY,
-    }, getZoom());
+    return workflowDragPositionFromPointer(
+      e,
+      rect,
+      {
+        x: drag.offsetX,
+        y: drag.offsetY,
+      },
+      getZoom(),
+    );
   };
 
   const beginNodeDrag = (

@@ -149,17 +149,17 @@ pipeline:
 
 ### Pipeline Fields
 
-| Field         | Type               | Required | Description                                                                                                                                        |
-| ------------- | ------------------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `requires`    | `{ sdk?: string }` | No       | SDK-owned compatibility gate. `serializePipeline()` adds or raises `requires.sdk` when the YAML uses features that need a newer SDK                |
-| `name`        | `string`           | Yes      | Pipeline name, used in logs and run IDs                                                                                                            |
-| `driver`      | `string`           | No       | Default driver for all tracks/tasks (inherited). Built-in: `opencode`                                                                              |
-| `model`       | `string`           | No       | Default model for all tracks/tasks (inherited). Exact model name, e.g. `claude-sonnet-4-6`                                                         |
-| `permissions` | `Permissions`      | No       | Default permissions inherited by all tracks/tasks (see Permissions)                                                                                |
-| `timeout`     | `string`           | No       | Pipeline-level timeout. Format: `"30s"`, `"5m"`, `"2h"`                                                                                            |
-| `plugins`     | `string[]`         | No       | External plugin packages to load, e.g. `["@tagma/driver-codex"]`                                                                                   |
-| `hooks`       | `HooksConfig`      | No       | Shell commands to run at lifecycle events (see Hooks below)                                                                                        |
-| `tracks`      | `TrackConfig[]`    | Yes      | List of parallel execution tracks                                                                                                                  |
+| Field         | Type               | Required | Description                                                                                                                         |
+| ------------- | ------------------ | -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `requires`    | `{ sdk?: string }` | No       | SDK-owned compatibility gate. `serializePipeline()` adds or raises `requires.sdk` when the YAML uses features that need a newer SDK |
+| `name`        | `string`           | Yes      | Pipeline name, used in logs and run IDs                                                                                             |
+| `driver`      | `string`           | No       | Default driver for all tracks/tasks (inherited). Built-in: `opencode`                                                               |
+| `model`       | `string`           | No       | Default model for all tracks/tasks (inherited). Exact model name, e.g. `claude-sonnet-4-6`                                          |
+| `permissions` | `Permissions`      | No       | Default permissions inherited by all tracks/tasks (see Permissions)                                                                 |
+| `timeout`     | `string`           | No       | Pipeline-level timeout. Format: `"30s"`, `"5m"`, `"2h"`                                                                             |
+| `plugins`     | `string[]`         | No       | External plugin packages to load, e.g. `["@tagma/driver-codex"]`                                                                    |
+| `hooks`       | `HooksConfig`      | No       | Shell commands to run at lifecycle events (see Hooks below)                                                                         |
+| `tracks`      | `TrackConfig[]`    | Yes      | List of parallel execution tracks                                                                                                   |
 
 `requires.sdk` is a lower-bound SDK gate such as `">=0.7.40"`; plain `"0.7.40"` is accepted as equivalent. Older SDKs must not run a document that declares a higher requirement. Hosts and chat agents should not guess this value manually: save through `serializePipeline()` / `serializeWorkflow()` or call `inferYamlCompatibility()` and write the returned `sdkRequirement`. If an existing document declares a higher SDK requirement, the serializer preserves it rather than downgrading.
 
@@ -182,47 +182,47 @@ Each hook value can be a single command string or an array of commands.
 
 | Field           | Type                 | Required | Default                 | Description                                                          |
 | --------------- | -------------------- | -------- | ----------------------- | -------------------------------------------------------------------- |
-| `id`            | `string`             | Yes      | -                      | Unique track identifier                                              |
-| `name`          | `string`             | Yes      | -                      | Display name                                                         |
-| `color`         | `string`             | No       | -                      | Color hint for UI rendering (e.g. `"#3b82f6"`)                       |
+| `id`            | `string`             | Yes      | -                       | Unique track identifier                                              |
+| `name`          | `string`             | Yes      | -                       | Display name                                                         |
+| `color`         | `string`             | No       | -                       | Color hint for UI rendering (e.g. `"#3b82f6"`)                       |
 | `driver`        | `string`             | No       | Inherited from pipeline | Driver for all tasks in this track                                   |
 | `model`         | `string`             | No       | Inherited from pipeline | Exact model name passed to the driver CLI (e.g. `claude-sonnet-4-6`) |
-| `agent_profile` | `string`             | No       | -                      | Named agent configuration profile                                    |
+| `agent_profile` | `string`             | No       | -                       | Named agent configuration profile                                    |
 | `cwd`           | `string`             | No       | Pipeline workDir        | Working directory for tasks in this track (relative path)            |
 | `permissions`   | `Permissions`        | No       | Inherited from pipeline | Default permissions for tasks (see Permissions)                      |
 | `on_failure`    | `OnFailure`          | No       | `skip_downstream`       | Failure strategy: `skip_downstream`, `stop_all`, `ignore`            |
-| `middlewares`   | `MiddlewareConfig[]` | No       | -                      | Middlewares applied to all tasks (task-level overrides track-level)  |
-| `tasks`         | `TaskConfig[]`       | Yes      | -                      | Ordered list of tasks in this track                                  |
+| `middlewares`   | `MiddlewareConfig[]` | No       | -                       | Middlewares applied to all tasks (task-level overrides track-level)  |
+| `tasks`         | `TaskConfig[]`       | Yes      | -                       | Ordered list of tasks in this track                                  |
 
 ### Task Fields
 
 | Field           | Type                 | Required | Default              | Description                                                                                            |
 | --------------- | -------------------- | -------- | -------------------- | ------------------------------------------------------------------------------------------------------ |
-| `id`            | `string`             | Yes      | -                   | Unique task identifier within its track. Cross-track refs use `trackId.taskId`                         |
-| `name`          | `string`             | No       | -                   | Display name                                                                                           |
-| `prompt`        | `string`             | No\*     | -                   | AI prompt to send to the driver. \*Mutually exclusive with `command`                                   |
-| `command`       | `string`             | No\*     | -                   | Shell command to execute directly. \*Mutually exclusive with `prompt`                                  |
-| `depends_on`    | `string[]`           | No       | -                   | Task IDs that must complete before this task runs. Cross-track refs use `trackId.taskId`               |
-| `continue_from` | `string`             | No       | -                   | Task ID whose output/session to continue from (session handoff). Cross-track refs use `trackId.taskId` |
+| `id`            | `string`             | Yes      | -                    | Unique task identifier within its track. Cross-track refs use `trackId.taskId`                         |
+| `name`          | `string`             | No       | -                    | Display name                                                                                           |
+| `prompt`        | `string`             | No\*     | -                    | AI prompt to send to the driver. \*Mutually exclusive with `command`                                   |
+| `command`       | `string`             | No\*     | -                    | Shell command to execute directly. \*Mutually exclusive with `prompt`                                  |
+| `depends_on`    | `string[]`           | No       | -                    | Task IDs that must complete before this task runs. Cross-track refs use `trackId.taskId`               |
+| `continue_from` | `string`             | No       | -                    | Task ID whose output/session to continue from (session handoff). Cross-track refs use `trackId.taskId` |
 | `driver`        | `string`             | No       | Inherited from track | Driver override for this task                                                                          |
 | `model`         | `string`             | No       | Inherited from track | Model name override for this task                                                                      |
 | `agent_profile` | `string`             | No       | Inherited from track | Agent profile override                                                                                 |
 | `cwd`           | `string`             | No       | Inherited from track | Working directory override (relative path)                                                             |
-| `timeout`       | `string`             | No       | -                   | Task-level timeout. Format: `"30s"`, `"5m"`, `"2h"`                                                    |
+| `timeout`       | `string`             | No       | -                    | Task-level timeout. Format: `"30s"`, `"5m"`, `"2h"`                                                    |
 | `permissions`   | `Permissions`        | No       | Inherited from track | Permission override (see Permissions)                                                                  |
 | `middlewares`   | `MiddlewareConfig[]` | No       | Inherited from track | Middleware override. Set `[]` to disable inherited middlewares                                         |
-| `trigger`       | `TriggerConfig`      | No       | -                   | Gate that must resolve before the task runs (see Triggers)                                             |
-| `completion`    | `CompletionConfig`   | No       | -                   | Post-execution check to validate task output (see Completions)                                         |
-| `inputs`        | `TaskInputBindings`  | No       | -                   | Task input bindings for `{{inputs.<name>}}`; optional `type` enables coercion/validation               |
-| `outputs`       | `TaskOutputBindings` | No       | -                   | Named outputs published after success; optional `type` enables coercion/validation                     |
+| `trigger`       | `TriggerConfig`      | No       | -                    | Gate that must resolve before the task runs (see Triggers)                                             |
+| `completion`    | `CompletionConfig`   | No       | -                    | Post-execution check to validate task output (see Completions)                                         |
+| `inputs`        | `TaskInputBindings`  | No       | -                    | Task input bindings for `{{inputs.<name>}}`; optional `type` enables coercion/validation               |
+| `outputs`       | `TaskOutputBindings` | No       | -                    | Named outputs published after success; optional `type` enables coercion/validation                     |
 
 ### Permissions
 
 | Field     | Type      | Default | Description                                        |
 | --------- | --------- | ------- | -------------------------------------------------- |
-| `read`    | `boolean` | -      | Allow the AI driver/agent to read files            |
-| `write`   | `boolean` | -      | Allow the AI driver/agent to write files           |
-| `execute` | `boolean` | -      | Allow the AI driver/agent to execute tool commands |
+| `read`    | `boolean` | -       | Allow the AI driver/agent to read files            |
+| `write`   | `boolean` | -       | Allow the AI driver/agent to write files           |
+| `execute` | `boolean` | -       | Allow the AI driver/agent to execute tool commands |
 
 `permissions` are passed to AI drivers that support them. They do not sandbox
 YAML `command` tasks; command tasks execute through the host shell.
@@ -346,26 +346,26 @@ File and directory trigger watch paths may be relative to `workDir`, absolute, o
 
 | Field      | Type       | Required | Default                                                | Description                                       |
 | ---------- | ---------- | -------- | ------------------------------------------------------ | ------------------------------------------------- |
-| `type`     | `"manual"` | Yes      | -                                                     | Trigger type                                      |
+| `type`     | `"manual"` | Yes      | -                                                      | Trigger type                                      |
 | `message`  | `string`   | No       | `"Manual confirmation required for task \"{taskId}\""` | Message shown to the approver                     |
-| `timeout`  | `string`   | No       | -                                                     | How long to wait for a decision before timing out |
-| `metadata` | `object`   | No       | -                                                     | Arbitrary metadata passed to the approval gateway |
+| `timeout`  | `string`   | No       | -                                                      | How long to wait for a decision before timing out |
+| `metadata` | `object`   | No       | -                                                      | Arbitrary metadata passed to the approval gateway |
 
 #### `file` - File watcher gate
 
 | Field     | Type     | Required | Default | Description                                    |
 | --------- | -------- | -------- | ------- | ---------------------------------------------- |
-| `type`    | `"file"` | Yes      | -      | Trigger type                                   |
-| `path`    | `string` | Yes      | -      | File path to watch (relative to workDir)       |
-| `timeout` | `string` | No       | -      | How long to wait for the file to appear/change |
+| `type`    | `"file"` | Yes      | -       | Trigger type                                   |
+| `path`    | `string` | Yes      | -       | File path to watch (relative to workDir)       |
+| `timeout` | `string` | No       | -       | How long to wait for the file to appear/change |
 
 #### `directory` - Directory watcher gate
 
 | Field     | Type          | Required | Default | Description                                      |
 | --------- | ------------- | -------- | ------- | ------------------------------------------------ |
-| `type`    | `"directory"` | Yes      | -      | Trigger type                                     |
-| `path`    | `string`      | Yes      | -      | Directory path to watch (relative to workDir)    |
-| `timeout` | `string`      | No       | -      | How long to wait for the directory to be created |
+| `type`    | `"directory"` | Yes      | -       | Trigger type                                     |
+| `path`    | `string`      | Yes      | -       | Directory path to watch (relative to workDir)    |
+| `timeout` | `string`      | No       | -       | How long to wait for the directory to be created |
 
 ---
 
@@ -375,24 +375,24 @@ File and directory trigger watch paths may be relative to `workDir`, absolute, o
 
 | Field    | Type                 | Required | Default | Description                                                        |
 | -------- | -------------------- | -------- | ------- | ------------------------------------------------------------------ |
-| `type`   | `"exit_code"`        | Yes      | -      | Completion type                                                    |
+| `type`   | `"exit_code"`        | Yes      | -       | Completion type                                                    |
 | `expect` | `number \| number[]` | No       | `0`     | Expected exit code(s). Pass an array for multiple acceptable codes |
 
 #### `file_exists` - File existence check
 
 | Field      | Type                       | Required | Default | Description                                           |
 | ---------- | -------------------------- | -------- | ------- | ----------------------------------------------------- |
-| `type`     | `"file_exists"`            | Yes      | -      | Completion type                                       |
-| `path`     | `string`                   | Yes      | -      | File or directory path to check (relative to workDir) |
+| `type`     | `"file_exists"`            | Yes      | -       | Completion type                                       |
+| `path`     | `string`                   | Yes      | -       | File or directory path to check (relative to workDir) |
 | `kind`     | `"file" \| "dir" \| "any"` | No       | `"any"` | Entity type constraint                                |
-| `min_size` | `number`                   | No       | -      | Minimum file size in bytes (files only)               |
+| `min_size` | `number`                   | No       | -       | Minimum file size in bytes (files only)               |
 
 #### `output_check` - Command-based output validation
 
 | Field     | Type             | Required | Default | Description                                                             |
 | --------- | ---------------- | -------- | ------- | ----------------------------------------------------------------------- |
-| `type`    | `"output_check"` | Yes      | -      | Completion type                                                         |
-| `check`   | `string`         | Yes      | -      | Shell command to run. Task stdout is piped to its stdin; exits 0 = pass |
+| `type`    | `"output_check"` | Yes      | -       | Completion type                                                         |
+| `check`   | `string`         | Yes      | -       | Shell command to run. Task stdout is piped to its stdin; exits 0 = pass |
 | `timeout` | `string`         | No       | `"30s"` | Max time to wait for the check command                                  |
 
 ---
@@ -403,8 +403,8 @@ File and directory trigger watch paths may be relative to `workDir`, absolute, o
 
 | Field   | Type               | Required | Default                   | Description                                    |
 | ------- | ------------------ | -------- | ------------------------- | ---------------------------------------------- |
-| `type`  | `"static_context"` | Yes      | -                        | Middleware type                                |
-| `file`  | `string`           | Yes      | -                        | Path to the context file (relative to workDir) |
+| `type`  | `"static_context"` | Yes      | -                         | Middleware type                                |
+| `file`  | `string`           | Yes      | -                         | Path to the context file (relative to workDir) |
 | `label` | `string`           | No       | `"Reference: {filename}"` | Label for the injected context section         |
 
 ## API
@@ -923,7 +923,7 @@ Imported from `@tagma/sdk/utils`:
 
 | Function                              | Description                                               |
 | ------------------------------------- | --------------------------------------------------------- |
-| `parseDuration(input)`                | Parses `"30s"`, `"5m"`, `"2h"` -> milliseconds             |
+| `parseDuration(input)`                | Parses `"30s"`, `"5m"`, `"2h"` -> milliseconds            |
 | `validatePath(filePath, projectRoot)` | Resolves path, throws if it escapes project root          |
 | `generateRunId()`                     | Generates a unique run ID (`run_<ts>_<seq>_<rand>`)       |
 | `nowISO()`                            | Returns `new Date().toISOString()`                        |

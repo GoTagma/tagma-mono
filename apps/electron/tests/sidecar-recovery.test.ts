@@ -46,13 +46,9 @@ describe('sidecar recovery helpers', () => {
   test('allows sidecar and Vite renderer origins for trusted desktop navigation', () => {
     const rendererUrl = normalizeDevRendererUrl('http://localhost:5173/');
 
-    expect(isAllowedEditorUrl('http://127.0.0.1:8123/?ws=C%3A%2Fa', 8123, rendererUrl)).toBe(
-      true,
-    );
+    expect(isAllowedEditorUrl('http://127.0.0.1:8123/?ws=C%3A%2Fa', 8123, rendererUrl)).toBe(true);
     expect(isAllowedEditorUrl('http://localhost:5173/src/main.tsx', 8123, rendererUrl)).toBe(true);
-    expect(isAllowedEditorUrl('http://localhost:5174/src/main.tsx', 8123, rendererUrl)).toBe(
-      false,
-    );
+    expect(isAllowedEditorUrl('http://localhost:5174/src/main.tsx', 8123, rendererUrl)).toBe(false);
     expect(isAllowedEditorUrl('https://example.com/', 8123, rendererUrl)).toBe(false);
   });
 

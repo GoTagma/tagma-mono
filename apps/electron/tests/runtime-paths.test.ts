@@ -338,9 +338,7 @@ describe('runtime path resolution', () => {
       ].join(';');
       expect(paths.env.Path).toBe(expectedPath);
       expect(paths.env.TAGMA_OPENCODE_USER_DIR).toBe(pw.join(userDataDir, 'opencode'));
-      expect(paths.env.TAGMA_OPENCODE_RUNTIME_USER_DIR).toBe(
-        pw.join(userDataDir, 'opencode'),
-      );
+      expect(paths.env.TAGMA_OPENCODE_RUNTIME_USER_DIR).toBe(pw.join(userDataDir, 'opencode'));
       expect(paths.env.TAGMA_OPENCODE_SKIP_USER_DIR).toBeUndefined();
     } finally {
       if (previousPATH === undefined) {

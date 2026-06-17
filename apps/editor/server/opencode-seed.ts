@@ -1399,11 +1399,8 @@ export function seedOpencodeArtifacts(tagmaCwd: string): boolean {
       buildTagmaCommandEvidenceAgent(),
     ) || changed;
   changed =
-    seedAgentFile(
-      tagmaCwd,
-      `${TAGMA_RUNTIME_GUARD_AGENT}.md`,
-      buildTagmaRuntimeGuardAgent(),
-    ) || changed;
+    seedAgentFile(tagmaCwd, `${TAGMA_RUNTIME_GUARD_AGENT}.md`, buildTagmaRuntimeGuardAgent()) ||
+    changed;
   changed =
     seedAgentFile(
       tagmaCwd,

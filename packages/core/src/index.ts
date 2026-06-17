@@ -15,11 +15,7 @@ export {
   TriggerTimeoutError,
   DEFAULT_TASK_TIMEOUT_MS,
 } from './engine';
-export type {
-  EngineResult,
-  RunEventPayload,
-  RunPipelineOptions,
-} from './engine';
+export type { EngineResult, RunEventPayload, RunPipelineOptions } from './engine';
 export {
   commandLabel,
   commandToSpawnSpec,

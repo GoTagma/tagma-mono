@@ -223,7 +223,9 @@ test('tagma-pipeline agent exposes focused skills and read-only native subagents
   expect(doc).toContain('Call `tagma-command-evidence`');
   expect(doc).toContain('Call `tagma-runtime-guard`');
   expect(doc).toContain('Call `tagma-context-packager`');
-  expect(doc).toContain('Merge specialist findings into the smallest YAML/layout/requirements change');
+  expect(doc).toContain(
+    'Merge specialist findings into the smallest YAML/layout/requirements change',
+  );
   expect(doc).toContain('Delegate YAML/layout/requirements section implementation only');
 });
 
@@ -285,7 +287,9 @@ test('tagma-pipeline agent delegates manifest sections to a builder and reviews 
 
   expect(doc).toContain('tagma-pipeline-section-builder: "allow"');
   expect(doc).toContain('## Manifest Step Implementation Protocol');
-  expect(doc).toContain('delegate exactly one manifest section at a time to `tagma-pipeline-section-builder`');
+  expect(doc).toContain(
+    'delegate exactly one manifest section at a time to `tagma-pipeline-section-builder`',
+  );
   expect(doc).toContain('After each section-builder handoff, call `tagma-yaml-review`');
   expect(doc).toContain('The builder and reviewer must be different agents');
   expect(doc).toContain('Do not start the next section until the review step passes');

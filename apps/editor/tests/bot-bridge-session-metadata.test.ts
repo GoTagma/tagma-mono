@@ -5,9 +5,8 @@ import { join } from 'node:path';
 
 let activeBaseUrl = 'http://127.0.0.1:1';
 
-const { _setOpencodeRuntimeHooksForTests, dropClientCache, ensureSession } = await import(
-  '../server/chat-bridge/opencode-driver'
-);
+const { _setOpencodeRuntimeHooksForTests, dropClientCache, ensureSession } =
+  await import('../server/chat-bridge/opencode-driver');
 const { workspaceRegistry } = await import('../server/workspace-registry');
 
 afterEach(() => {

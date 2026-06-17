@@ -106,7 +106,9 @@ export function RunCanvasView({
       const count = taskCountPerTrack.get(ft.trackId) ?? 0;
       const stored = positions.get(ft.qid);
       const x = stored ? stored.x : PAD_LEFT + count * (TASK_W + TASK_GAP);
-      const row = renderPlan.find((entry) => entry.kind === 'track' && entry.trackId === ft.trackId);
+      const row = renderPlan.find(
+        (entry) => entry.kind === 'track' && entry.trackId === ft.trackId,
+      );
       const rowHeight = row?.height ?? TASK_H;
       const innerY =
         stored?.y === undefined

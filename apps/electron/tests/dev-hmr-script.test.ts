@@ -113,7 +113,9 @@ describe('desktop HMR scripts', () => {
 
     expect(mainSource).toContain('function shutdownSharedSidecar(): Promise<void> | null');
     expect(mainSource).toContain('event.preventDefault();');
-    expect(mainSource).toContain('await waitForProcessExit(handle.proc, SIDECAR_FORCE_EXIT_TIMEOUT_MS);');
+    expect(mainSource).toContain(
+      'await waitForProcessExit(handle.proc, SIDECAR_FORCE_EXIT_TIMEOUT_MS);',
+    );
   });
 
   test('launcher selects a fallback renderer port when the preferred port is occupied', async () => {

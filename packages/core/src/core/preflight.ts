@@ -17,11 +17,7 @@ import { validatePluginConfig, type PluginRegistry } from '../registry';
  * into one message so the caller sees every misconfiguration in a
  * single pass.
  */
-export function preflight(
-  config: PipelineConfig,
-  dag: Dag,
-  registry: PluginRegistry,
-): void {
+export function preflight(config: PipelineConfig, dag: Dag, registry: PluginRegistry): void {
   const errors: string[] = [];
 
   for (const [, node] of dag.nodes) {
