@@ -29,6 +29,7 @@ function withTempDir(): string {
 function writeUserReleaseOverride(
   userDataDir: string,
   version: string,
+  platform: NodeJS.Platform = process.platform,
 ): {
   editorDir: string;
   sidecarDir: string;
@@ -43,7 +44,7 @@ function writeUserReleaseOverride(
   const versionDir = hostPath.join(sidecarDir, 'versions', version);
   mkdirSync(versionDir, { recursive: true });
   const body = Buffer.from(`sidecar-${version}`);
-  writeFileSync(hostPath.join(versionDir, executableName()), body);
+  writeFileSync(hostPath.join(versionDir, executableName(platform)), body);
   const sha256 = createHash('sha256').update(body).digest('hex');
   writeFileSync(
     hostPath.join(sidecarDir, 'current.json'),
@@ -314,7 +315,7 @@ describe('runtime path resolution', () => {
       const userOpencodeDir = hostPath.join(userDataDir, 'opencode');
       mkdirSync(hostPath.join(userOpencodeDir, 'bin'), { recursive: true });
       writeFileSync(hostPath.join(userOpencodeDir, 'version.txt'), '1.15.14\n');
-      writeUserReleaseOverride(userDataDir, '0.8.22');
+      writeUserReleaseOverride(userDataDir, '0.8.22', 'win32');
       writeFileSync(
         hostPath.join(userDataDir, releaseBaselineFile),
         JSON.stringify({ bundledVersion: '0.8.21' }) + '\n',

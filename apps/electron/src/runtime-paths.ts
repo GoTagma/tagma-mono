@@ -2,9 +2,11 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 
+type PathModule = typeof path.win32 | typeof path.posix;
+
 // Pick the platform-specific path module so tests can pass `platform: 'win32'`
 // with `D:/...` paths and still get correct resolution on a Linux CI host.
-function pathFor(platform: NodeJS.Platform): typeof path.win32 | typeof path.posix {
+function pathFor(platform: NodeJS.Platform): PathModule {
   return platform === 'win32' ? path.win32 : path.posix;
 }
 
@@ -168,28 +170,21 @@ function comparePrereleaseIdentifier(a: string, b: string): number {
 const SIDECAR_VERSION_RE =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 
-function sidecarUserDir(p: typeof path.win32 | typeof path.posix, userDataDir: string): string {
+function sidecarUserDir(p: PathModule, userDataDir: string): string {
   return p.join(userDataDir, 'editor-sidecar');
 }
 
-function sidecarCurrentFile(p: typeof path.win32 | typeof path.posix, userDataDir: string): string {
+function sidecarCurrentFile(p: PathModule, userDataDir: string): string {
   return p.join(sidecarUserDir(p, userDataDir), 'current.json');
 }
 
-function sidecarVersionDir(
-  p: typeof path.win32 | typeof path.posix,
-  userDataDir: string,
-  version: string,
-): string {
+function sidecarVersionDir(p: PathModule, userDataDir: string, version: string): string {
   return p.join(sidecarUserDir(p, userDataDir), 'versions', version);
 }
 
 const RELEASE_BASELINE_FILE = 'release-baseline.json';
 
-function releaseBaselinePath(
-  p: typeof path.win32 | typeof path.posix,
-  userDataDir: string,
-): string {
+function releaseBaselinePath(p: PathModule, userDataDir: string): string {
   return p.join(userDataDir, RELEASE_BASELINE_FILE);
 }
 
@@ -212,12 +207,12 @@ const SHA256_LEN = 64;
 const SHA512_LEN = 128;
 
 function readUserSidecarPointer(
-  p: typeof path.win32 | typeof path.posix,
+  fsPath: PathModule,
   userDataDir: string | undefined,
 ): UserSidecarPointer | null {
   if (!userDataDir) return null;
   try {
-    const raw = JSON.parse(readFileSync(sidecarCurrentFile(p, userDataDir), 'utf-8')) as {
+    const raw = JSON.parse(readFileSync(sidecarCurrentFile(fsPath, userDataDir), 'utf-8')) as {
       version?: unknown;
       sha256?: unknown;
       sha512?: unknown;
@@ -263,23 +258,28 @@ function hashFile(filePath: string, algo: 'sha256' | 'sha512'): string | null {
 }
 
 function resolveUserSidecarOverride(
-  p: typeof path.win32 | typeof path.posix,
+  p: PathModule,
+  fsPath: PathModule,
   userDataDir: string | undefined,
   platform: NodeJS.Platform,
 ): { version: string; command: string } | null {
-  const pointer = readUserSidecarPointer(p, userDataDir);
+  const pointer = readUserSidecarPointer(fsPath, userDataDir);
   if (!pointer || !userDataDir) return null;
   const command = p.join(
     sidecarVersionDir(p, userDataDir, pointer.version),
     executableName(platform),
   );
-  if (!existsSync(command)) return null;
+  const commandOnDisk = fsPath.join(
+    sidecarVersionDir(fsPath, userDataDir, pointer.version),
+    executableName(platform),
+  );
+  if (!existsSync(commandOnDisk)) return null;
   // Release hardening: user-installed sidecars are trusted only when the
   // activation pointer carries an integrity hash. Earlier transition builds
   // accepted hashless pointers, but that makes the check bypassable by
   // deleting the hash field from current.json.
   if (pointer.sha512) {
-    const actual = hashFile(command, 'sha512');
+    const actual = hashFile(commandOnDisk, 'sha512');
     if (actual !== pointer.sha512) {
       console.warn(
         `[tagma] User-installed sidecar at ${command} failed sha512 verification; ignoring override.`,
@@ -287,7 +287,7 @@ function resolveUserSidecarOverride(
       return null;
     }
   } else if (pointer.sha256) {
-    const actual = hashFile(command, 'sha256');
+    const actual = hashFile(commandOnDisk, 'sha256');
     if (actual !== pointer.sha256) {
       console.warn(
         `[tagma] User-installed sidecar at ${command} failed sha256 verification; ignoring override.`,
@@ -304,34 +304,34 @@ function resolveUserSidecarOverride(
 }
 
 function cleanupStaleUserSidecar(
-  p: typeof path.win32 | typeof path.posix,
+  fsPath: PathModule,
   userDataDir: string | undefined,
   bundledVersion: string | undefined,
 ): void {
   if (!userDataDir || !bundledVersion) return;
-  const pointer = readUserSidecarPointer(p, userDataDir);
+  const pointer = readUserSidecarPointer(fsPath, userDataDir);
   if (!pointer) return;
   if (compareVersions(pointer.version, bundledVersion) >= 0) return;
   try {
-    rmSync(sidecarUserDir(p, userDataDir), { recursive: true, force: true });
+    rmSync(sidecarUserDir(fsPath, userDataDir), { recursive: true, force: true });
   } catch {
     /* best-effort */
   }
 }
 
-function opencodeUserDir(p: typeof path.win32 | typeof path.posix, userDataDir: string): string {
+function opencodeUserDir(p: PathModule, userDataDir: string): string {
   return p.join(userDataDir, 'opencode');
 }
 
 function readUserOpencodeVersion(
-  p: typeof path.win32 | typeof path.posix,
+  fsPath: PathModule,
   userDataDir: string | undefined,
 ): string | null {
   if (!userDataDir) return null;
-  const userDir = opencodeUserDir(p, userDataDir);
+  const userDir = opencodeUserDir(fsPath, userDataDir);
   try {
     if (!existsSync(userDir)) return null;
-    const version = readFileSync(p.join(userDir, 'version.txt'), 'utf-8').trim();
+    const version = readFileSync(fsPath.join(userDir, 'version.txt'), 'utf-8').trim();
     return SIDECAR_VERSION_RE.test(version) ? version : null;
   } catch {
     return null;
@@ -339,16 +339,16 @@ function readUserOpencodeVersion(
 }
 
 function shouldUseUserOpencode(
-  p: typeof path.win32 | typeof path.posix,
+  fsPath: PathModule,
   userDataDir: string | undefined,
   bundledVersion: string | undefined,
   options: { allowNewerUserVersion?: boolean } = {},
 ): boolean {
   if (!userDataDir) return false;
   if (!bundledVersion || !SIDECAR_VERSION_RE.test(bundledVersion)) return true;
-  const userDir = opencodeUserDir(p, userDataDir);
+  const userDir = opencodeUserDir(fsPath, userDataDir);
   if (!existsSync(userDir)) return false;
-  const userVersion = readUserOpencodeVersion(p, userDataDir);
+  const userVersion = readUserOpencodeVersion(fsPath, userDataDir);
   if (userVersion) {
     const cmp = compareVersions(userVersion, bundledVersion);
     if (cmp === 0) return true;
@@ -366,10 +366,7 @@ export function discardUserSidecarOverride(userDataDir: string): void {
   discardUserSidecarOverrideWithPath(pathFor(process.platform), userDataDir);
 }
 
-function discardUserSidecarOverrideWithPath(
-  p: typeof path.win32 | typeof path.posix,
-  userDataDir: string,
-): void {
+function discardUserSidecarOverrideWithPath(p: PathModule, userDataDir: string): void {
   try {
     rmSync(sidecarUserDir(p, userDataDir), { recursive: true, force: true });
   } catch {
@@ -381,10 +378,7 @@ export function discardUserReleaseOverride(userDataDir: string): void {
   discardUserReleaseOverrideWithPath(pathFor(process.platform), userDataDir);
 }
 
-function discardUserReleaseOverrideWithPath(
-  p: typeof path.win32 | typeof path.posix,
-  userDataDir: string,
-): void {
+function discardUserReleaseOverrideWithPath(p: PathModule, userDataDir: string): void {
   discardUserSidecarOverrideWithPath(p, userDataDir);
   try {
     rmSync(p.join(userDataDir, 'editor'), { recursive: true, force: true });
@@ -393,13 +387,10 @@ function discardUserReleaseOverrideWithPath(
   }
 }
 
-function readReleaseBaseline(
-  p: typeof path.win32 | typeof path.posix,
-  userDataDir: string | undefined,
-): string | null {
+function readReleaseBaseline(fsPath: PathModule, userDataDir: string | undefined): string | null {
   if (!userDataDir) return null;
   try {
-    const raw = JSON.parse(readFileSync(releaseBaselinePath(p, userDataDir), 'utf-8')) as {
+    const raw = JSON.parse(readFileSync(releaseBaselinePath(fsPath, userDataDir), 'utf-8')) as {
       bundledVersion?: unknown;
     };
     if (typeof raw.bundledVersion !== 'string') return null;
@@ -411,7 +402,7 @@ function readReleaseBaseline(
 }
 
 function writeReleaseBaseline(
-  p: typeof path.win32 | typeof path.posix,
+  fsPath: PathModule,
   userDataDir: string | undefined,
   bundledVersion: string | undefined,
 ): void {
@@ -419,7 +410,7 @@ function writeReleaseBaseline(
   try {
     mkdirSync(userDataDir, { recursive: true });
     writeFileSync(
-      releaseBaselinePath(p, userDataDir),
+      releaseBaselinePath(fsPath, userDataDir),
       JSON.stringify({ bundledVersion }) + '\n',
       'utf-8',
     );
@@ -428,15 +419,12 @@ function writeReleaseBaseline(
   }
 }
 
-function readUserEditorVersion(
-  p: typeof path.win32 | typeof path.posix,
-  userDataDir: string | undefined,
-): string | null {
+function readUserEditorVersion(fsPath: PathModule, userDataDir: string | undefined): string | null {
   if (!userDataDir) return null;
   try {
-    const editorDir = p.join(userDataDir, 'editor');
-    if (!existsSync(p.join(editorDir, 'dist', 'index.html'))) return null;
-    const version = readFileSync(p.join(editorDir, 'dist-version.txt'), 'utf-8').trim();
+    const editorDir = fsPath.join(userDataDir, 'editor');
+    if (!existsSync(fsPath.join(editorDir, 'dist', 'index.html'))) return null;
+    const version = readFileSync(fsPath.join(editorDir, 'dist-version.txt'), 'utf-8').trim();
     return SIDECAR_VERSION_RE.test(version) ? version : null;
   } catch {
     return null;
@@ -444,14 +432,14 @@ function readUserEditorVersion(
 }
 
 function syncReleaseBaseline(
-  p: typeof path.win32 | typeof path.posix,
+  fsPath: PathModule,
   userDataDir: string | undefined,
   bundledVersion: string | undefined,
 ): void {
   if (!userDataDir || !bundledVersion || !SIDECAR_VERSION_RE.test(bundledVersion)) return;
 
-  const previousBundledVersion = readReleaseBaseline(p, userDataDir);
-  const editorVersion = readUserEditorVersion(p, userDataDir);
+  const previousBundledVersion = readReleaseBaseline(fsPath, userDataDir);
+  const editorVersion = readUserEditorVersion(fsPath, userDataDir);
   const editorAhead = !!editorVersion && compareVersions(editorVersion, bundledVersion) > 0;
 
   const installerDowngraded =
@@ -463,15 +451,34 @@ function syncReleaseBaseline(
   // the legacy ambiguous state that caused downgrades to keep showing the newer
   // editor after uninstall/reinstall.
   if (installerDowngraded || (!previousBundledVersion && editorAhead)) {
-    discardUserReleaseOverrideWithPath(p, userDataDir);
+    discardUserReleaseOverrideWithPath(fsPath, userDataDir);
   }
 
-  writeReleaseBaseline(p, userDataDir, bundledVersion);
+  writeReleaseBaseline(fsPath, userDataDir, bundledVersion);
 }
 
 export interface VersionSkew {
   editorVersion: string;
   sidecarVersion: string;
+}
+
+function detectVersionSkewWithPath(fsPath: PathModule, userDataDir: string): VersionSkew | null {
+  let editorVersion: string | null = null;
+  try {
+    const distVersionFile = fsPath.join(userDataDir, 'editor', 'dist-version.txt');
+    if (existsSync(distVersionFile)) {
+      editorVersion = readFileSync(distVersionFile, 'utf-8').trim() || null;
+    }
+  } catch {
+    /* treat unreadable as absent */
+  }
+
+  const sidecarPointer = readUserSidecarPointer(fsPath, userDataDir);
+  const sidecarVersion = sidecarPointer?.version ?? null;
+
+  if (!editorVersion || !sidecarVersion) return null;
+  if (editorVersion === sidecarVersion) return null;
+  return { editorVersion, sidecarVersion };
 }
 
 /**
@@ -485,28 +492,13 @@ export function detectVersionSkew(
   userDataDir: string,
   platform: NodeJS.Platform = process.platform,
 ): VersionSkew | null {
-  const p = pathFor(platform);
-  let editorVersion: string | null = null;
-  try {
-    const distVersionFile = p.join(userDataDir, 'editor', 'dist-version.txt');
-    if (existsSync(distVersionFile)) {
-      editorVersion = readFileSync(distVersionFile, 'utf-8').trim() || null;
-    }
-  } catch {
-    /* treat unreadable as absent */
-  }
-
-  const sidecarPointer = readUserSidecarPointer(p, userDataDir);
-  const sidecarVersion = sidecarPointer?.version ?? null;
-
-  if (!editorVersion || !sidecarVersion) return null;
-  if (editorVersion === sidecarVersion) return null;
-  return { editorVersion, sidecarVersion };
+  return detectVersionSkewWithPath(pathFor(platform), userDataDir);
 }
 
 export function resolveRuntimePaths(options: RuntimePathOptions): RuntimePaths {
   const platform = options.platform ?? process.platform;
   const p = pathFor(platform);
+  const fsPath = pathFor(process.platform);
 
   let metadata: Record<string, unknown> = {};
   try {
@@ -547,10 +539,10 @@ export function resolveRuntimePaths(options: RuntimePathOptions): RuntimePaths {
       ];
       return candidates.find((c) => existsSync(c)) ?? null;
     })();
-    syncReleaseBaseline(p, options.userDataDir, options.appVersion);
-    cleanupStaleUserSidecar(p, options.userDataDir, options.appVersion);
+    syncReleaseBaseline(fsPath, options.userDataDir, options.appVersion);
+    cleanupStaleUserSidecar(fsPath, options.userDataDir, options.appVersion);
     if (options.userDataDir) {
-      const skew = detectVersionSkew(options.userDataDir, platform);
+      const skew = detectVersionSkewWithPath(fsPath, options.userDataDir);
       if (skew) {
         console.warn(
           `[tagma] Version skew detected after last update: editor ${skew.editorVersion}, sidecar ${skew.sidecarVersion}. Re-run "Update Tagma" from the editor to realign.`,
@@ -560,9 +552,9 @@ export function resolveRuntimePaths(options: RuntimePathOptions): RuntimePaths {
     const userOverride =
       options.sidecarPreference === 'bundled'
         ? null
-        : resolveUserSidecarOverride(p, options.userDataDir, platform);
+        : resolveUserSidecarOverride(p, fsPath, options.userDataDir, platform);
     const includeUserOpencode = shouldUseUserOpencode(
-      p,
+      fsPath,
       options.userDataDir,
       bundledOpencodeVersion,
       {
