@@ -67,10 +67,19 @@ export function _setOpencodeRuntimeHooksForTests(hooks: OpencodeRuntimeHooksForT
 
 type EventSubscribeOptions = Parameters<OpencodeClient['event']['subscribe']>[0];
 type EventSubscribeResult = Awaited<ReturnType<OpencodeClient['event']['subscribe']>>;
-type BotSessionCreateBody = {
+type BotSessionCreateBody = Parameters<OpencodeV2Client['session']['create']>[0] & {
   title?: string;
   metadata?: Record<string, unknown>;
 };
+type BotSessionUpdateBody = Parameters<OpencodeV2Client['session']['update']>[0] & {
+  metadata?: Record<string, unknown>;
+};
+type BotSessionCreateWithMetadata = (
+  body: BotSessionCreateBody,
+) => ReturnType<OpencodeV2Client['session']['create']>;
+type BotSessionUpdateWithMetadata = (
+  body: BotSessionUpdateBody,
+) => ReturnType<OpencodeV2Client['session']['update']>;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -431,8 +440,11 @@ async function updateBotSessionMetadata(
   title?: string,
 ): Promise<void> {
   try {
+    const session = client.session as typeof client.session & {
+      update: BotSessionUpdateWithMetadata;
+    };
     await unwrap(
-      client.session.update({
+      session.update({
         sessionID: sessionId,
         metadata: botSessionMetadata(workspaceKey, title),
       }),
@@ -446,7 +458,10 @@ async function createBotSessionWithMetadata(
   client: OpencodeV2Client,
   body: BotSessionCreateBody,
 ): Promise<V2Session> {
-  return unwrap(client.session.create(body));
+  const session = client.session as typeof client.session & {
+    create: BotSessionCreateWithMetadata;
+  };
+  return unwrap(session.create(body));
 }
 
 export async function ensureSession(

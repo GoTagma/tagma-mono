@@ -57,7 +57,7 @@ describe('buildModifyTargetAttachment', () => {
   test('builds task context that identifies the exact qualified task target', () => {
     const attachment = buildModifyTargetAttachment({
       kind: 'task',
-      track: { id: 'build', name: 'Build', tasks: [] },
+      track: { id: 'build', name: 'Build' },
       task: { id: 'lint', name: 'Lint', command: 'bun lint' },
     });
 

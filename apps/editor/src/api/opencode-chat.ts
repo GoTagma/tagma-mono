@@ -371,9 +371,26 @@ export interface ProviderModelCatalogV2Snapshot {
   models: ModelV2Info[];
 }
 
-export type OpencodeSessionCreateV2Input = Parameters<OpencodeV2Client['session']['create']>[0];
-export type OpencodeSessionUpdateV2Input = Parameters<OpencodeV2Client['session']['update']>[0];
+export type OpencodeSessionCreateV2Input = Parameters<
+  OpencodeV2Client['session']['create']
+>[0] & {
+  parentID?: string;
+  title?: string;
+  metadata?: Record<string, unknown>;
+};
+export type OpencodeSessionUpdateV2Input = Parameters<
+  OpencodeV2Client['session']['update']
+>[0] & {
+  title?: string;
+  metadata?: Record<string, unknown>;
+};
 export type OpencodeSessionV2 = V2Session;
+type OpencodeSessionCreateV2WithMetadata = (
+  body: OpencodeSessionCreateV2Input,
+) => ReturnType<OpencodeV2Client['session']['create']>;
+type OpencodeSessionUpdateV2WithMetadata = (
+  body: OpencodeSessionUpdateV2Input,
+) => ReturnType<OpencodeV2Client['session']['update']>;
 
 export async function fetchProviderModelCatalogV2(
   workspaceKey = currentWorkspaceKey(),
@@ -391,7 +408,10 @@ export async function createOpencodeSessionV2(
   workspaceKey = currentWorkspaceKey(),
 ): Promise<OpencodeSessionV2> {
   const client = await getOpencodeV2Client(workspaceKey);
-  return unwrap(client.session.create(body));
+  const session = client.session as typeof client.session & {
+    create: OpencodeSessionCreateV2WithMetadata;
+  };
+  return unwrap(session.create(body));
 }
 
 export async function updateOpencodeSessionV2(
@@ -399,7 +419,10 @@ export async function updateOpencodeSessionV2(
   workspaceKey = currentWorkspaceKey(),
 ): Promise<OpencodeSessionV2> {
   const client = await getOpencodeV2Client(workspaceKey);
-  return unwrap(client.session.update(body));
+  const session = client.session as typeof client.session & {
+    update: OpencodeSessionUpdateV2WithMetadata;
+  };
+  return unwrap(session.update(body));
 }
 
 /**

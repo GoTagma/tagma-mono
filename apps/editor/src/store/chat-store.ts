@@ -3544,6 +3544,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   async newSession() {
+    if (chatTurnBlocksSessionMutation(get())) {
+      set({ sendError: chatTurnBlockedMessage(), historyOpen: false });
+      return;
+    }
     const workspaceKey = getOpencodeWorkspaceKey();
     set((prev) => ({ sessionStates: saveCurrentSessionRuntime(prev) }));
     clearTurnWatchdog();

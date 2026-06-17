@@ -43,9 +43,13 @@ interface ConvertOptions {
 }
 
 type OpencodeRequest<T> = Promise<{ data?: T; error?: unknown; response: Response }>;
-type SessionCreateBodyWithMetadata = {
+type SessionCreateBodyWithMetadata = Parameters<OpencodeV2Client['session']['create']>[0] & {
   metadata?: Record<string, unknown>;
 };
+type SessionCreateWithMetadata = (
+  body: SessionCreateBodyWithMetadata,
+  options?: { signal?: AbortSignal },
+) => ReturnType<OpencodeV2Client['session']['create']>;
 
 const PLATFORM_LABELS: Record<TagmaPlatform, string> = {
   windows: 'Windows',
@@ -344,7 +348,10 @@ async function createPlatformExportSessionWithMetadata(
   body: SessionCreateBodyWithMetadata,
   signal: AbortSignal,
 ): Promise<V2Session> {
-  return unwrap(client.session.create(body, { signal }));
+  const session = client.session as typeof client.session & {
+    create: SessionCreateWithMetadata;
+  };
+  return unwrap(session.create(body, { signal }));
 }
 
 function isLoopbackHost(host: string): boolean {
