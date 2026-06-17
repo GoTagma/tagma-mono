@@ -21,10 +21,9 @@ import {
   type OpencodeClient,
   type Part,
 } from '@opencode-ai/sdk/client';
-import {
-  createOpencodeClient as createOpencodeV2Client,
-  type OpencodeClient as OpencodeV2Client,
-  type Session as V2Session,
+import type {
+  OpencodeClient as OpencodeV2Client,
+  Session as V2Session,
 } from '@opencode-ai/sdk/v2/client';
 import { dirname, relative } from 'node:path';
 import { ensureOpencode, ensureRealTagmaDirectory } from '../opencode-lifecycle.js';
@@ -45,8 +44,8 @@ import {
 
 interface ClientCacheEntry {
   baseUrl: string;
+  authHeader?: string;
   client: OpencodeClient;
-  v2Client: OpencodeV2Client;
 }
 
 /** workspaceKey → bound SDK client; flushed when baseUrl drifts (after restart). */
@@ -71,15 +70,6 @@ type BotSessionCreateBody = Parameters<OpencodeV2Client['session']['create']>[0]
   title?: string;
   metadata?: Record<string, unknown>;
 };
-type BotSessionUpdateBody = Parameters<OpencodeV2Client['session']['update']>[0] & {
-  metadata?: Record<string, unknown>;
-};
-type BotSessionCreateWithMetadata = (
-  body: BotSessionCreateBody,
-) => ReturnType<OpencodeV2Client['session']['create']>;
-type BotSessionUpdateWithMetadata = (
-  body: BotSessionUpdateBody,
-) => ReturnType<OpencodeV2Client['session']['update']>;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -241,15 +231,6 @@ export function createLoopbackOpencodeClient(baseUrl: string, authHeader?: strin
   return client;
 }
 
-function createLoopbackOpencodeV2Client(baseUrl: string, authHeader?: string): OpencodeV2Client {
-  return createOpencodeV2Client({
-    baseUrl,
-    ...(authHeader ? { headers: { Authorization: authHeader } } : {}),
-    throwOnError: true,
-    fetch: createStreamingLoopbackFetch(baseUrl),
-  });
-}
-
 async function getClientEntryFor(workspaceKey: string): Promise<ClientCacheEntry> {
   const ws = workspaceRegistry.get(workspaceKey);
   if (!ws?.workDir) {
@@ -262,16 +243,16 @@ async function getClientEntryFor(workspaceKey: string): Promise<ClientCacheEntry
   const tagmaCwd = realTagmaDirectory(ws.workDir);
   seedArtifacts(tagmaCwd);
   const { baseUrl, auth } = await ensureRuntime(tagmaCwd);
+  const authHeader = auth.authorization;
   const cached = clientCache.get(workspaceKey);
-  if (cached && cached.baseUrl === baseUrl) return cached;
+  if (cached && cached.baseUrl === baseUrl && cached.authHeader === authHeader) return cached;
   // Talk to the loopback `opencode serve` over a raw socket. The SDK otherwise
   // falls back to Bun's global fetch, which honors HTTP(S)_PROXY/ALL_PROXY and
   // tunnels even 127.0.0.1 through a local proxy when NO_PROXY lacks loopback —
   // the proxy then answers 502 ("opencode request failed (502)"). The loopback
   // fetch streams the body so the per-turn `event.subscribe` SSE still works.
-  const client = createLoopbackOpencodeClient(baseUrl, auth.authorization);
-  const v2Client = createLoopbackOpencodeV2Client(baseUrl, auth.authorization);
-  const entry = { baseUrl, client, v2Client };
+  const client = createLoopbackOpencodeClient(baseUrl, authHeader);
+  const entry = { baseUrl, authHeader, client };
   clientCache.set(workspaceKey, entry);
   return entry;
 }
@@ -422,6 +403,41 @@ async function unwrap<T>(
   return res.data;
 }
 
+async function readOpencodeJsonResponse<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  if (!response.ok) {
+    let errorBody: unknown = response.statusText;
+    if (text) {
+      try {
+        errorBody = JSON.parse(text);
+      } catch {
+        errorBody = text;
+      }
+    }
+    throw toOpencodeError(errorBody, response);
+  }
+  if (!text) {
+    throw new Error(`opencode returned no data (${response.status})`);
+  }
+  return JSON.parse(text) as T;
+}
+
+async function requestOpencodeJson<T>(
+  entry: ClientCacheEntry,
+  path: string,
+  method: string,
+  body: unknown,
+): Promise<T> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (entry.authHeader) headers.Authorization = entry.authHeader;
+  const response = await createStreamingLoopbackFetch(entry.baseUrl)(new URL(path, entry.baseUrl), {
+    method,
+    headers,
+    body: JSON.stringify(body),
+  });
+  return readOpencodeJsonResponse<T>(response);
+}
+
 function botSessionMetadata(workspaceKey: string, title?: string): Record<string, unknown> {
   const ws = workspaceRegistry.get(workspaceKey);
   return buildTagmaSessionMetadata({
@@ -434,20 +450,17 @@ function botSessionMetadata(workspaceKey: string, title?: string): Record<string
 }
 
 async function updateBotSessionMetadata(
-  client: OpencodeV2Client,
+  entry: ClientCacheEntry,
   workspaceKey: string,
   sessionId: string,
   title?: string,
 ): Promise<void> {
   try {
-    const session = client.session as typeof client.session & {
-      update: BotSessionUpdateWithMetadata;
-    };
-    await unwrap(
-      session.update({
-        sessionID: sessionId,
-        metadata: botSessionMetadata(workspaceKey, title),
-      }),
+    await requestOpencodeJson<V2Session>(
+      entry,
+      `/session/${encodeURIComponent(sessionId)}`,
+      'PATCH',
+      { metadata: botSessionMetadata(workspaceKey, title) },
     );
   } catch (err) {
     console.warn('[bot-bridge] session metadata update failed:', err);
@@ -455,13 +468,10 @@ async function updateBotSessionMetadata(
 }
 
 async function createBotSessionWithMetadata(
-  client: OpencodeV2Client,
+  entry: ClientCacheEntry,
   body: BotSessionCreateBody,
 ): Promise<V2Session> {
-  const session = client.session as typeof client.session & {
-    create: BotSessionCreateWithMetadata;
-  };
-  return unwrap(session.create(body));
+  return requestOpencodeJson<V2Session>(entry, '/session', 'POST', body);
 }
 
 export async function ensureSession(
@@ -469,11 +479,11 @@ export async function ensureSession(
   sessionId: string | null,
   title?: string,
 ): Promise<string> {
-  const { v2Client } = await getClientEntryFor(workspaceKey);
+  const entry = await getClientEntryFor(workspaceKey);
   if (sessionId) return sessionId;
   // Title only at creation: it makes this bot conversation discoverable and
   // readable in the desktop chat session list (same opencode store).
-  const s = await createBotSessionWithMetadata(v2Client, {
+  const s = await createBotSessionWithMetadata(entry, {
     ...(title ? { title } : {}),
     metadata: botSessionMetadata(workspaceKey, title),
   });
@@ -670,9 +680,10 @@ export async function sendPromptStreaming(
   callbacks: StreamingCallbacks,
   newSessionTitle?: string,
 ): Promise<StreamingHandle> {
-  const { client, v2Client } = await getClientEntryFor(workspaceKey);
+  const entry = await getClientEntryFor(workspaceKey);
+  const { client } = entry;
   const resolvedSession = await ensureSession(workspaceKey, sessionId, newSessionTitle);
-  void updateBotSessionMetadata(v2Client, workspaceKey, resolvedSession, newSessionTitle);
+  void updateBotSessionMetadata(entry, workspaceKey, resolvedSession, newSessionTitle);
   const historicalMessageIds = await loadHistoricalMessageIds(client, resolvedSession);
   const controller = new AbortController();
   const { stream } = await client.event.subscribe({ signal: controller.signal });

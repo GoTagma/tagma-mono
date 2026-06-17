@@ -339,6 +339,34 @@ async function bootstrap(workspaceKey: string): Promise<ClientBootstrap> {
 export async function getOpencodeClient(
   workspaceKey = currentWorkspaceKey(),
 ): Promise<OpencodeClient> {
+  const { client } = await getClientBootstrap(workspaceKey);
+  return client;
+}
+
+export async function getOpencodeV2Client(
+  workspaceKey = currentWorkspaceKey(),
+): Promise<OpencodeV2Client> {
+  const { v2Client } = await getClientBootstrap(workspaceKey);
+  return v2Client;
+}
+
+export interface ProviderModelCatalogV2Snapshot {
+  providers: ProviderV2Info[];
+  models: ModelV2Info[];
+}
+
+export type OpencodeSessionCreateV2Input = Parameters<OpencodeV2Client['session']['create']>[0] & {
+  parentID?: string;
+  title?: string;
+  metadata?: Record<string, unknown>;
+};
+export type OpencodeSessionUpdateV2Input = Parameters<OpencodeV2Client['session']['update']>[0] & {
+  title?: string;
+  metadata?: Record<string, unknown>;
+};
+export type OpencodeSessionV2 = V2Session;
+
+async function getClientBootstrap(workspaceKey: string): Promise<ClientBootstrap> {
   const key = workspaceKey;
   let pending = bootstraps.get(key);
   if (!pending) {
@@ -349,48 +377,44 @@ export async function getOpencodeClient(
     pending = bootstrap(key);
     bootstraps.set(key, pending);
   }
-  const { client } = await pending;
-  return client;
+  return pending;
 }
 
-export async function getOpencodeV2Client(
-  workspaceKey = currentWorkspaceKey(),
-): Promise<OpencodeV2Client> {
-  const key = workspaceKey;
-  let pending = bootstraps.get(key);
-  if (!pending) {
-    pending = bootstrap(key);
-    bootstraps.set(key, pending);
+async function readOpencodeJsonResponse<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  if (!response.ok) {
+    let errorBody: unknown = response.statusText;
+    if (text) {
+      try {
+        errorBody = JSON.parse(text);
+      } catch {
+        errorBody = text;
+      }
+    }
+    throw toOpencodeError(errorBody, response);
   }
-  const { v2Client } = await pending;
-  return v2Client;
+  if (!text) {
+    throw new Error(`opencode returned no data (${response.status})`);
+  }
+  return JSON.parse(text) as T;
 }
 
-export interface ProviderModelCatalogV2Snapshot {
-  providers: ProviderV2Info[];
-  models: ModelV2Info[];
+async function requestOpencodeJson<T>(
+  bootstrap: ClientBootstrap,
+  path: string,
+  method: string,
+  body: unknown,
+): Promise<T> {
+  const response = await fetch(new URL(path, bootstrap.baseUrl), {
+    method,
+    headers: {
+      ...buildOpencodeRequestHeaders(bootstrap.authHeader),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  return readOpencodeJsonResponse<T>(response);
 }
-
-export type OpencodeSessionCreateV2Input = Parameters<
-  OpencodeV2Client['session']['create']
->[0] & {
-  parentID?: string;
-  title?: string;
-  metadata?: Record<string, unknown>;
-};
-export type OpencodeSessionUpdateV2Input = Parameters<
-  OpencodeV2Client['session']['update']
->[0] & {
-  title?: string;
-  metadata?: Record<string, unknown>;
-};
-export type OpencodeSessionV2 = V2Session;
-type OpencodeSessionCreateV2WithMetadata = (
-  body: OpencodeSessionCreateV2Input,
-) => ReturnType<OpencodeV2Client['session']['create']>;
-type OpencodeSessionUpdateV2WithMetadata = (
-  body: OpencodeSessionUpdateV2Input,
-) => ReturnType<OpencodeV2Client['session']['update']>;
 
 export async function fetchProviderModelCatalogV2(
   workspaceKey = currentWorkspaceKey(),
@@ -407,22 +431,27 @@ export async function createOpencodeSessionV2(
   body: OpencodeSessionCreateV2Input,
   workspaceKey = currentWorkspaceKey(),
 ): Promise<OpencodeSessionV2> {
-  const client = await getOpencodeV2Client(workspaceKey);
-  const session = client.session as typeof client.session & {
-    create: OpencodeSessionCreateV2WithMetadata;
-  };
-  return unwrap(session.create(body));
+  const bootstrap = await getClientBootstrap(workspaceKey);
+  return requestOpencodeJson<OpencodeSessionV2>(bootstrap, '/session', 'POST', body);
 }
 
 export async function updateOpencodeSessionV2(
   body: OpencodeSessionUpdateV2Input,
   workspaceKey = currentWorkspaceKey(),
 ): Promise<OpencodeSessionV2> {
-  const client = await getOpencodeV2Client(workspaceKey);
-  const session = client.session as typeof client.session & {
-    update: OpencodeSessionUpdateV2WithMetadata;
+  const { sessionID, ...patchBody } = body as OpencodeSessionUpdateV2Input & {
+    sessionID?: unknown;
   };
-  return unwrap(session.update(body));
+  if (typeof sessionID !== 'string' || sessionID.length === 0) {
+    throw new Error('opencode session update requires sessionID');
+  }
+  const bootstrap = await getClientBootstrap(workspaceKey);
+  return requestOpencodeJson<OpencodeSessionV2>(
+    bootstrap,
+    `/session/${encodeURIComponent(sessionID)}`,
+    'PATCH',
+    patchBody,
+  );
 }
 
 /**
@@ -433,26 +462,14 @@ export async function updateOpencodeSessionV2(
  * spawns `opencode serve` exactly once.
  */
 export async function getOpencodeBaseUrl(workspaceKey = currentWorkspaceKey()): Promise<string> {
-  const key = workspaceKey;
-  let pending = bootstraps.get(key);
-  if (!pending) {
-    pending = bootstrap(key);
-    bootstraps.set(key, pending);
-  }
-  const { baseUrl } = await pending;
+  const { baseUrl } = await getClientBootstrap(workspaceKey);
   return baseUrl;
 }
 
 export async function getOpencodeAuthHeader(
   workspaceKey = currentWorkspaceKey(),
 ): Promise<string | undefined> {
-  const key = workspaceKey;
-  let pending = bootstraps.get(key);
-  if (!pending) {
-    pending = bootstrap(key);
-    bootstraps.set(key, pending);
-  }
-  const { authHeader } = await pending;
+  const { authHeader } = await getClientBootstrap(workspaceKey);
   return authHeader;
 }
 

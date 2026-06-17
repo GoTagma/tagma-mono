@@ -1,10 +1,6 @@
 import { basename, join } from 'node:path';
 import { createOpencodeClient } from '@opencode-ai/sdk/client';
-import {
-  createOpencodeClient as createOpencodeV2Client,
-  type OpencodeClient as OpencodeV2Client,
-  type Session as V2Session,
-} from '@opencode-ai/sdk/v2/client';
+import type { Session as V2Session } from '@opencode-ai/sdk/v2/client';
 import { compileYamlContent, parseYaml, serializePipeline } from '@tagma/sdk/yaml';
 import { toOpencodeError } from '../shared/opencode-errors.js';
 import { buildTagmaSessionMetadata } from '../shared/opencode-session-metadata.js';
@@ -43,13 +39,11 @@ interface ConvertOptions {
 }
 
 type OpencodeRequest<T> = Promise<{ data?: T; error?: unknown; response: Response }>;
-type SessionCreateBodyWithMetadata = Parameters<OpencodeV2Client['session']['create']>[0] & {
+type SessionCreateBodyWithMetadata = {
+  title?: string;
+  parentID?: string;
   metadata?: Record<string, unknown>;
 };
-type SessionCreateWithMetadata = (
-  body: SessionCreateBodyWithMetadata,
-  options?: { signal?: AbortSignal },
-) => ReturnType<OpencodeV2Client['session']['create']>;
 
 const PLATFORM_LABELS: Record<TagmaPlatform, string> = {
   windows: 'Windows',
@@ -173,12 +167,6 @@ export async function convertPipelineYamlForPlatform(opts: ConvertOptions): Prom
     throwOnError: true,
     fetch: loopbackFetch,
   });
-  const v2Client = createOpencodeV2Client({
-    baseUrl: opts.baseUrl,
-    ...(opts.authHeader ? { headers: { Authorization: opts.authHeader } } : {}),
-    throwOnError: true,
-    fetch: loopbackFetch,
-  });
   const timeoutSignal = AbortSignal.timeout(PLATFORM_EXPORT_TIMEOUT_MS);
   const signal = opts.signal ? AbortSignal.any([opts.signal, timeoutSignal]) : timeoutSignal;
 
@@ -198,7 +186,13 @@ export async function convertPipelineYamlForPlatform(opts: ConvertOptions): Prom
         },
       }),
     };
-    const session = await createPlatformExportSessionWithMetadata(v2Client, sessionBody, signal);
+    const session = await createPlatformExportSessionWithMetadata(
+      loopbackFetch,
+      opts.baseUrl,
+      opts.authHeader,
+      sessionBody,
+      signal,
+    );
     emitProgress(opts, 'opencode', `OpenCode session ready: ${session.id}`);
     let lastCandidate: string | null = null;
 
@@ -343,15 +337,41 @@ async function unwrap<T>(request: OpencodeRequest<T>): Promise<T> {
   return res.data;
 }
 
+async function readOpencodeJsonResponse<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  if (!response.ok) {
+    let errorBody: unknown = response.statusText;
+    if (text) {
+      try {
+        errorBody = JSON.parse(text);
+      } catch {
+        errorBody = text;
+      }
+    }
+    throw toOpencodeError(errorBody, response);
+  }
+  if (!text) {
+    throw new Error(`OpenCode returned no data (${response.status})`);
+  }
+  return JSON.parse(text) as T;
+}
+
 async function createPlatformExportSessionWithMetadata(
-  client: OpencodeV2Client,
+  loopbackFetch: typeof fetch,
+  baseUrl: string,
+  authHeader: string | undefined,
   body: SessionCreateBodyWithMetadata,
   signal: AbortSignal,
 ): Promise<V2Session> {
-  const session = client.session as typeof client.session & {
-    create: SessionCreateWithMetadata;
-  };
-  return unwrap(session.create(body, { signal }));
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (authHeader) headers.Authorization = authHeader;
+  const response = await loopbackFetch(new URL('/session', baseUrl), {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+    signal,
+  });
+  return readOpencodeJsonResponse<V2Session>(response);
 }
 
 function isLoopbackHost(host: string): boolean {
