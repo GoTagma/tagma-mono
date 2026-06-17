@@ -127,6 +127,23 @@ export type ChatTurnHealth = {
   lastSseEventAt?: number | null;
 };
 
+type ChatSessionRuntimeState = {
+  messages: OpencodeThreadEntry[];
+  sending: boolean;
+  pendingUserText: string | null;
+  queuedMessages: ChatQueuedMessage[];
+  flushing: boolean;
+  pendingPermissions: PendingPermission[];
+  turnStartedAt: number | null;
+  turnAssistantMessageIds: string[];
+  lastActivityAt: number | null;
+  sessionStatus: OpencodeSessionStatus | null;
+  turnHealth: ChatTurnHealth | null;
+  pendingActivity: ActivityEvent[];
+  yamlSnapshotBeforeSend: ChatYamlSnapshot | null;
+  postChatYamlAction: ChatYamlPostAction | null;
+};
+
 interface ChatStore {
   historyOpen: boolean;
   openHistory: () => void;
@@ -153,6 +170,7 @@ interface ChatStore {
   agent: string | null;
 
   sessions: Session[];
+  sessionStates: Record<string, ChatSessionRuntimeState>;
   currentSessionId: string | null;
   messages: OpencodeThreadEntry[];
   sending: boolean;
@@ -1690,6 +1708,301 @@ function userVisibleSessions(sessions: Session[]): Session[] {
   return sessions.filter((session) => !(session as Session & { parentID?: string }).parentID);
 }
 
+function idleSessionRuntimeState(messages: OpencodeThreadEntry[] = []): ChatSessionRuntimeState {
+  return {
+    messages,
+    sending: false,
+    pendingUserText: null,
+    queuedMessages: [],
+    flushing: false,
+    pendingPermissions: [],
+    turnStartedAt: null,
+    turnAssistantMessageIds: [],
+    lastActivityAt: null,
+    sessionStatus: null,
+    turnHealth: null,
+    pendingActivity: [],
+    yamlSnapshotBeforeSend: null,
+    postChatYamlAction: null,
+  };
+}
+
+function captureSessionRuntimeState(state: ChatStore): ChatSessionRuntimeState {
+  return {
+    messages: state.messages,
+    sending: state.sending,
+    pendingUserText: state.pendingUserText,
+    queuedMessages: state.queuedMessages,
+    flushing: state.flushing,
+    pendingPermissions: state.pendingPermissions,
+    turnStartedAt: state.turnStartedAt,
+    turnAssistantMessageIds: state.turnAssistantMessageIds,
+    lastActivityAt: state.lastActivityAt,
+    sessionStatus: state.sessionStatus,
+    turnHealth: state.turnHealth,
+    pendingActivity: state.pendingActivity,
+    yamlSnapshotBeforeSend: state.yamlSnapshotBeforeSend,
+    postChatYamlAction: state.postChatYamlAction,
+  };
+}
+
+function runtimePatch(runtime: ChatSessionRuntimeState): Partial<ChatStore> {
+  return {
+    messages: runtime.messages,
+    sending: runtime.sending,
+    pendingUserText: runtime.pendingUserText,
+    queuedMessages: runtime.queuedMessages,
+    flushing: runtime.flushing,
+    pendingPermissions: runtime.pendingPermissions,
+    turnStartedAt: runtime.turnStartedAt,
+    turnAssistantMessageIds: runtime.turnAssistantMessageIds,
+    lastActivityAt: runtime.lastActivityAt,
+    sessionStatus: runtime.sessionStatus,
+    turnHealth: runtime.turnHealth,
+    pendingActivity: runtime.pendingActivity,
+    yamlSnapshotBeforeSend: runtime.yamlSnapshotBeforeSend,
+    postChatYamlAction: runtime.postChatYamlAction,
+  };
+}
+
+function applyRuntimePatchToSession(
+  get: () => ChatStore,
+  set: ChatSet,
+  sessionId: string | null,
+  patch: Partial<ChatSessionRuntimeState>,
+): void {
+  if (!sessionId || get().currentSessionId === sessionId) {
+    set(patch);
+    return;
+  }
+  set((prev) => {
+    const runtime = prev.sessionStates[sessionId];
+    if (!runtime) return {};
+    return {
+      sessionStates: {
+        ...prev.sessionStates,
+        [sessionId]: { ...runtime, ...patch },
+      },
+    };
+  });
+}
+
+function saveCurrentSessionRuntime(
+  state: ChatStore,
+): Record<string, ChatSessionRuntimeState> {
+  if (!state.currentSessionId) return state.sessionStates;
+  return {
+    ...state.sessionStates,
+    [state.currentSessionId]: captureSessionRuntimeState(state),
+  };
+}
+
+function restoreCachedRuntime(
+  cached: ChatSessionRuntimeState | undefined,
+  fetchedMessages: OpencodeThreadEntry[],
+): ChatSessionRuntimeState {
+  if (!cached) return idleSessionRuntimeState(fetchedMessages);
+  if (cached.sending || cached.pendingUserText || cached.queuedMessages.length > 0) return cached;
+  if (cached.messages.length > 0 && fetchedMessages.length === 0) return cached;
+  return { ...cached, messages: fetchedMessages };
+}
+
+function updateHiddenSessionRuntime(
+  set: ChatSet,
+  sessionId: string,
+  updater: (runtime: ChatSessionRuntimeState) => ChatSessionRuntimeState | null,
+): boolean {
+  let updated = false;
+  set((prev) => {
+    const current = prev.sessionStates[sessionId];
+    if (!current) return {};
+    const next = updater(current);
+    if (!next) return {};
+    updated = true;
+    return {
+      sessionStates: {
+        ...prev.sessionStates,
+        [sessionId]: next,
+      },
+    };
+  });
+  return updated;
+}
+
+function applyHiddenMessageUpdated(
+  runtime: ChatSessionRuntimeState,
+  info: OpencodeThreadEntry['info'],
+): ChatSessionRuntimeState {
+  const pendingParts = takePendingParts(info.sessionID, info.id);
+  const idx = runtime.messages.findIndex((m) => m.info.id === info.id);
+  const isNewEntry = idx < 0;
+  let messages: OpencodeThreadEntry[];
+  if (!isNewEntry) {
+    messages = runtime.messages.slice();
+    const entry = messages[idx];
+    messages[idx] = {
+      ...entry,
+      info,
+      parts: pendingParts.length > 0 ? mergeParts(entry.parts, pendingParts) : entry.parts,
+    };
+  } else {
+    messages = [...runtime.messages, { info, parts: pendingParts }];
+  }
+
+  const timestampMatchesTurn = messageTimestampMatchesCurrentTurn(info, runtime.turnStartedAt);
+  const isAbortErrorMessage = isAbortErrorMessageInfo(info);
+  const assistantAlreadyTracked =
+    info.role === 'assistant' &&
+    !isAbortErrorMessage &&
+    runtime.turnAssistantMessageIds.includes(info.id);
+  const assistantNewAndPlausiblyCurrent =
+    info.role === 'assistant' &&
+    !isAbortErrorMessage &&
+    isNewEntry &&
+    messageTimestampCouldBeCurrentTurn(info, runtime.turnStartedAt);
+  const isTurnRelevantMessage =
+    runtime.sending &&
+    runtime.turnStartedAt !== null &&
+    !isAbortErrorMessage &&
+    (timestampMatchesTurn || assistantAlreadyTracked || assistantNewAndPlausiblyCurrent);
+  const next: ChatSessionRuntimeState = {
+    ...runtime,
+    messages,
+    ...timestampPatch(runtime),
+  };
+  let turnAssistantMessageIds = runtime.turnAssistantMessageIds;
+  if (info.role === 'assistant' && isTurnRelevantMessage) {
+    turnAssistantMessageIds = addTurnAssistantMessageId(turnAssistantMessageIds, info.id);
+  }
+  next.turnAssistantMessageIds = turnAssistantMessageIds;
+
+  const targetIdx = isNewEntry ? messages.length - 1 : idx;
+  if (info.role === 'assistant' && isTurnRelevantMessage && targetIdx >= 0) {
+    const now = Date.now();
+    const entry = next.messages[targetIdx];
+    let activity = entry.activity ?? [];
+    if (activity.length === 0) {
+      const detail = info.modelID ? info.modelID : undefined;
+      activity = appendOrCoalesce(
+        runtime.pendingActivity.slice(),
+        { kind: 'assistant-started', detail },
+        now,
+      );
+      next.pendingActivity = [];
+    }
+    for (const part of pendingParts) {
+      const incoming = activityFromPart(part);
+      if (incoming) activity = appendOrCoalesce(activity, incoming, now);
+    }
+    const adoptedMessages = next.messages.slice();
+    adoptedMessages[targetIdx] = { ...entry, activity };
+    next.messages = adoptedMessages;
+  }
+  return next;
+}
+
+function applyHiddenPartUpdated(
+  runtime: ChatSessionRuntimeState,
+  part: Part,
+): ChatSessionRuntimeState {
+  const sessionState = { ...runtime, currentSessionId: part.sessionID, model: null } as Pick<
+    ChatStore,
+    | 'messages'
+    | 'sending'
+    | 'turnStartedAt'
+    | 'turnAssistantMessageIds'
+    | 'lastActivityAt'
+    | 'currentSessionId'
+    | 'pendingActivity'
+    | 'sessionStatus'
+    | 'model'
+  >;
+  const messages = runtime.messages.slice();
+  const msgIdx = messages.findIndex((m) => m.info.id === part.messageID);
+  if (msgIdx < 0) {
+    if (canRenderOrphanPartImmediately(part, sessionState)) {
+      const activity = provisionalActivityForPart(part, sessionState);
+      const entry: OpencodeThreadEntry = {
+        info: provisionalAssistantMessageFromPart(part, sessionState),
+        parts: [part],
+        activity,
+      };
+      return {
+        ...runtime,
+        ...timestampPatch(runtime),
+        messages: [...messages, entry],
+        pendingActivity: [],
+        turnAssistantMessageIds: addTurnAssistantMessageId(
+          runtime.turnAssistantMessageIds,
+          part.messageID,
+        ),
+      };
+    }
+    rememberPendingPart(part);
+    return { ...runtime, ...timestampPatch(runtime) };
+  }
+
+  const parts = messages[msgIdx].parts.slice();
+  const partIdx = parts.findIndex((p) => p.id === part.id);
+  if (partIdx >= 0) parts[partIdx] = part;
+  else parts.push(part);
+  messages[msgIdx] = { ...messages[msgIdx], parts };
+  const isTurnRelevantPart = isCurrentTurnAssistantEntry(messages[msgIdx], runtime);
+  const incoming = activityFromPart(part);
+  const activityPart = incoming
+    ? messagesWithActivityForMessage({ ...runtime, messages }, part.messageID, incoming)
+    : null;
+  return {
+    ...runtime,
+    ...(isTurnRelevantPart ? timestampPatch(runtime) : {}),
+    ...(activityPart ?? { messages }),
+  };
+}
+
+function finishSessionRuntime(
+  runtime: ChatSessionRuntimeState,
+  patch: Partial<ChatSessionRuntimeState> = {},
+): ChatSessionRuntimeState {
+  return {
+    ...runtime,
+    ...patch,
+    messages: sealCurrentTurnActivity(runtime),
+    sending: false,
+    pendingUserText: null,
+    queuedMessages: [],
+    flushing: false,
+    turnStartedAt: null,
+    turnAssistantMessageIds: [],
+    lastActivityAt: null,
+    sessionStatus: null,
+    turnHealth: null,
+    pendingActivity: [],
+    yamlSnapshotBeforeSend: null,
+  };
+}
+
+function finishHiddenSessionIfEndable(set: ChatSet, sessionId: string): boolean {
+  let finished = false;
+  set((prev) => {
+    const runtime = prev.sessionStates[sessionId];
+    if (!runtime) return {};
+    if (!runtime.sending && !runtime.pendingUserText) return {};
+    if (!canEndCurrentTurnFromConfirmedIdle(runtime)) return {};
+    const endedAt = Date.now();
+    const next = finishSessionRuntime(runtime);
+    finished = true;
+    return {
+      sessionStates: {
+        ...prev.sessionStates,
+        [sessionId]: next,
+      },
+      lastSendingEndedAt: endedAt,
+      yamlSnapshotBeforeSend: runtime.yamlSnapshotBeforeSend,
+    };
+  });
+  return finished;
+}
+
 function botTurnPatch(turnStartedAt: number): Partial<ChatStore> {
   const now = Date.now();
   return {
@@ -1890,14 +2203,34 @@ function activityFromPart(part: Part): ActivityInput | null {
   }
 }
 
+function hasHiddenActiveChatTurn(
+  state: Pick<ChatStore, 'sessionStates' | 'currentSessionId'>,
+): boolean {
+  return Object.entries(state.sessionStates).some(
+    ([sessionId, runtime]) =>
+      sessionId !== state.currentSessionId &&
+      (runtime.sending ||
+        !!runtime.pendingUserText ||
+        runtime.queuedMessages.length > 0 ||
+        runtime.flushing),
+  );
+}
+
 function chatTurnBlocksSessionMutation(
   state: Pick<
     ChatStore,
-    'sending' | 'pendingUserText' | 'queuedMessages' | 'reconciling' | 'flushing'
+    | 'sending'
+    | 'pendingUserText'
+    | 'queuedMessages'
+    | 'reconciling'
+    | 'flushing'
+    | 'sessionStates'
+    | 'currentSessionId'
   >,
 ): boolean {
   return (
     queuedPromptDispatchInFlight ||
+    hasHiddenActiveChatTurn(state) ||
     state.sending ||
     !!state.pendingUserText ||
     state.queuedMessages.length > 0 ||
@@ -1905,6 +2238,12 @@ function chatTurnBlocksSessionMutation(
     state.flushing ||
     isYamlEditLocked()
   );
+}
+
+function chatTurnBlocksNewPrompt(
+  state: Pick<ChatStore, 'sessionStates' | 'currentSessionId' | 'reconciling' | 'flushing'>,
+): boolean {
+  return hasHiddenActiveChatTurn(state) || state.reconciling || state.flushing || isYamlEditLocked();
 }
 
 function chatTurnBlockedMessage(): string {
@@ -1971,6 +2310,7 @@ async function promptOpencode(
 ): Promise<void> {
   const workspaceKeyAtStart = getOpencodeWorkspaceKey();
   const { model, agent } = get();
+  const sessionIdAtDispatch = get().currentSessionId;
   const promptTitle = opts.internal ? null : desktopChatTitleFromPrompt(text);
   let optimisticTurnStartedAt: number | null = null;
   if (!model) {
@@ -2030,7 +2370,7 @@ async function promptOpencode(
     const client = await getOpencodeClient(workspaceKeyAtStart);
     assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
 
-    let sessionId = get().currentSessionId;
+    let sessionId = sessionIdAtDispatch;
     if (!sessionId) {
       try {
         const s = await createDesktopChatSessionWithMetadata(workspaceKeyAtStart, {
@@ -2115,7 +2455,7 @@ async function promptOpencode(
     }
     assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
 
-    set({ yamlSnapshotBeforeSend: preSendSnapshot });
+    applyRuntimePatchToSession(get, set, sessionId, { yamlSnapshotBeforeSend: preSendSnapshot });
 
     const shouldApplyPromptTitle =
       !!promptTitle && shouldRetitleDesktopChatSession(get().sessions, sessionId);
@@ -2163,37 +2503,44 @@ async function promptOpencode(
     if (lockLease) {
       await releaseChatYamlEditLock(lockLease);
     }
-    if (err instanceof ChatWorkspaceChangedError) {
-      set((prev) =>
-        optimisticTurnStartedAt !== null && prev.turnStartedAt === optimisticTurnStartedAt
-          ? {
-              sending: false,
-              reconciling: false,
-              pendingUserText: null,
-              lastSendingEndedAt: Date.now(),
-              turnStartedAt: null,
-              turnAssistantMessageIds: [],
-              lastActivityAt: null,
-              sessionStatus: null,
-              turnHealth: null,
-              pendingActivity: [],
-            }
-          : {},
-      );
-      throw err;
-    }
-    set({
-      sendError: describeError(err),
+    const resetRuntime: Partial<ChatSessionRuntimeState> = {
       sending: false,
-      reconciling: false,
       pendingUserText: null,
-      lastSendingEndedAt: Date.now(),
+      queuedMessages: [],
+      flushing: false,
       turnStartedAt: null,
       turnAssistantMessageIds: [],
       lastActivityAt: null,
       sessionStatus: null,
       turnHealth: null,
       pendingActivity: [],
+    };
+    if (err instanceof ChatWorkspaceChangedError) {
+      if (sessionIdAtDispatch && get().currentSessionId !== sessionIdAtDispatch) {
+        applyRuntimePatchToSession(get, set, sessionIdAtDispatch, resetRuntime);
+        set({ lastSendingEndedAt: Date.now() });
+        throw err;
+      }
+      set((prev) =>
+        optimisticTurnStartedAt !== null && prev.turnStartedAt === optimisticTurnStartedAt
+          ? {
+              ...resetRuntime,
+              lastSendingEndedAt: Date.now(),
+            }
+          : {},
+      );
+      throw err;
+    }
+    if (sessionIdAtDispatch && get().currentSessionId !== sessionIdAtDispatch) {
+      applyRuntimePatchToSession(get, set, sessionIdAtDispatch, resetRuntime);
+      set({ sendError: describeError(err), lastSendingEndedAt: Date.now() });
+      throw err instanceof Error ? err : new Error(describeError(err));
+    }
+    set({
+      sendError: describeError(err),
+      ...resetRuntime,
+      reconciling: false,
+      lastSendingEndedAt: Date.now(),
     });
     throw err instanceof Error ? err : new Error(describeError(err));
   }
@@ -2334,11 +2681,14 @@ export function applySseEvent(event: OpencodeEvent, get: () => ChatStore, set: C
     case 'message.updated': {
       const info = event.properties.info;
       const turnStartedAt = messageTurnTimestamp(info);
-      if (
-        info.sessionID !== currentSessionId &&
-        !adoptBotSessionIfNeeded(info.sessionID, turnStartedAt)
-      ) {
-        return;
+      if (info.sessionID !== currentSessionId) {
+        if (!adoptBotSessionIfNeeded(info.sessionID, turnStartedAt)) {
+          const updated = updateHiddenSessionRuntime(set, info.sessionID, (runtime) =>
+            applyHiddenMessageUpdated(runtime, info),
+          );
+          if (updated) recordAssistantUsageIfReady(info);
+          return;
+        }
       }
       startCurrentBotSessionTurnIfNeeded(info.sessionID, turnStartedAt);
       const pendingParts = takePendingParts(info.sessionID, info.id);
@@ -2417,11 +2767,13 @@ export function applySseEvent(event: OpencodeEvent, get: () => ChatStore, set: C
     case 'message.part.updated': {
       const part = event.properties.part;
       const turnStartedAt = partTurnTimestamp(part);
-      if (
-        part.sessionID !== currentSessionId &&
-        !adoptBotSessionIfNeeded(part.sessionID, turnStartedAt)
-      ) {
-        return;
+      if (part.sessionID !== currentSessionId) {
+        if (!adoptBotSessionIfNeeded(part.sessionID, turnStartedAt)) {
+          updateHiddenSessionRuntime(set, part.sessionID, (runtime) =>
+            applyHiddenPartUpdated(runtime, part),
+          );
+          return;
+        }
       }
       startCurrentBotSessionTurnIfNeeded(part.sessionID, turnStartedAt);
       const messages = state.messages.slice();
@@ -2494,7 +2846,10 @@ export function applySseEvent(event: OpencodeEvent, get: () => ChatStore, set: C
       return;
     }
     case 'session.idle': {
-      if (event.properties.sessionID !== currentSessionId) return;
+      if (event.properties.sessionID !== currentSessionId) {
+        finishHiddenSessionIfEndable(set, event.properties.sessionID);
+        return;
+      }
       // OpenCode can replay/late-deliver idle envelopes around reconnects. A
       // stale idle after the first streamed part used to flip the composer back
       // to Send while the model was still generating. Confirm against the live
@@ -2551,8 +2906,11 @@ export function applySseEvent(event: OpencodeEvent, get: () => ChatStore, set: C
       // matching idle status the same as session.idle so `sending` still
       // flips off. The busy branch is intentionally not used to set sending
       // — that's send()'s optimistic responsibility.
-      if (event.properties.sessionID !== currentSessionId) return;
       const status = event.properties.status;
+      if (event.properties.sessionID !== currentSessionId) {
+        if (status.type === 'idle') finishHiddenSessionIfEndable(set, event.properties.sessionID);
+        return;
+      }
       if (status.type === 'idle') {
         void confirmIdleTurn(get, set);
         return;
@@ -2602,6 +2960,9 @@ export function applySseEvent(event: OpencodeEvent, get: () => ChatStore, set: C
       clearPendingPartsForSession(deletedId);
       const patch: Partial<ChatStore> = {
         sessions: state.sessions.filter((s) => s.id !== deletedId),
+        sessionStates: Object.fromEntries(
+          Object.entries(state.sessionStates).filter(([sessionId]) => sessionId !== deletedId),
+        ),
       };
       if (state.currentSessionId === deletedId) {
         clearTurnWatchdog();
@@ -2715,6 +3076,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   agent: persisted.agent === FORCED_CHAT_AGENT ? persisted.agent : null,
 
   sessions: [],
+  sessionStates: {},
   currentSessionId: null,
   messages: [],
   sending: false,
@@ -2955,6 +3317,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               providers: [],
               agents: [],
               sessions: [],
+              sessionStates: {},
               currentSessionId: null,
               messages: [],
               sending: false,
@@ -3156,73 +3519,46 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   async selectSession(id) {
-    if (chatTurnBlocksSessionMutation(get())) {
-      set({ sendError: chatTurnBlockedMessage(), historyOpen: false });
-      return;
-    }
     const workspaceKey = getOpencodeWorkspaceKey();
+    set((prev) => ({ sessionStates: saveCurrentSessionRuntime(prev) }));
     clearTurnWatchdog();
-    clearPendingPartsForSession(get().currentSessionId);
     const client = await getOpencodeClient(workspaceKey);
     const messages = await unwrap(client.session.messages({ path: { id } })).catch(
       () => [] as OpencodeThreadEntry[],
     );
     if (getOpencodeWorkspaceKey() !== workspaceKey) return;
-    // Reset turn-scoped flags on switch. If the prior session was mid-stream
-    // we'd otherwise carry its `sending`/`pendingUserText` into the new
-    // thread; its session.idle won't land here (we filter by currentSessionId)
-    // so the composer would stay locked on Stop indefinitely.
-    set({
-      currentSessionId: id,
-      messages,
-      historyOpen: false,
-      sendError: null,
-      sending: false,
-      reconciling: false,
-      pendingUserText: null,
-      queuedMessages: [],
-      flushing: false,
-      pendingPermissions: [],
-      turnStartedAt: null,
-      turnAssistantMessageIds: [],
-      lastActivityAt: null,
-      sessionStatus: null,
-      turnHealth: null,
-      pendingActivity: [],
+    set((prev) => {
+      const sessionStates = saveCurrentSessionRuntime(prev);
+      const runtime = restoreCachedRuntime(sessionStates[id], messages);
+      return {
+        sessionStates,
+        currentSessionId: id,
+        ...runtimePatch(runtime),
+        historyOpen: false,
+        sendError: null,
+      };
     });
+    if (get().currentSessionId === id && get().sending) {
+      markTurnAcceptedForWatchdog(get, set);
+    }
   },
 
   async newSession() {
-    if (chatTurnBlocksSessionMutation(get())) {
-      set({ sendError: chatTurnBlockedMessage() });
-      return;
-    }
     const workspaceKey = getOpencodeWorkspaceKey();
+    set((prev) => ({ sessionStates: saveCurrentSessionRuntime(prev) }));
     clearTurnWatchdog();
-    clearPendingPartsForSession(get().currentSessionId);
     await getOpencodeClient(workspaceKey);
     const s = await createDesktopChatSessionWithMetadata(workspaceKey, {
       metadata: buildDesktopChatSessionMetadata(workspaceKey, 'manual-new-session', get().model),
     });
     if (getOpencodeWorkspaceKey() !== workspaceKey) return;
     set((prev) => ({
+      sessionStates: saveCurrentSessionRuntime(prev),
       sessions: upsertSession(prev.sessions, s),
       currentSessionId: s.id,
-      messages: [],
+      ...runtimePatch(idleSessionRuntimeState()),
       historyOpen: false,
       sendError: null,
-      sending: false,
-      reconciling: false,
-      pendingUserText: null,
-      queuedMessages: [],
-      flushing: false,
-      pendingPermissions: [],
-      turnStartedAt: null,
-      turnAssistantMessageIds: [],
-      lastActivityAt: null,
-      sessionStatus: null,
-      turnHealth: null,
-      pendingActivity: [],
     }));
   },
 
@@ -3245,6 +3581,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
     if (getOpencodeWorkspaceKey() !== workspaceKey) return;
     set((prev) => ({
+      sessionStates: Object.fromEntries(
+        Object.entries(prev.sessionStates).filter(([sessionId]) => sessionId !== id),
+      ),
       sessions: prev.sessions.filter((s) => s.id !== id),
       currentSessionId: prev.currentSessionId === id ? null : prev.currentSessionId,
       messages: prev.currentSessionId === id ? [] : prev.messages,
@@ -3259,6 +3598,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const state = get();
     const attachments = state.composerAttachments;
     const context = renderAskAiContext(attachments);
+    if (!state.sending && chatTurnBlocksNewPrompt(state)) {
+      const msg = chatTurnBlockedMessage();
+      set({ sendError: msg });
+      throw new Error(msg);
+    }
     if (
       shouldQueueOutgoingMessage({
         sending: state.sending,

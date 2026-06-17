@@ -16,6 +16,7 @@ import {
   Ban,
   ArrowDownToLine,
   ArrowUpFromLine,
+  Wrench,
 } from 'lucide-react';
 import type {
   PortDef,
@@ -53,6 +54,7 @@ interface TaskCardProps {
   onHandlePointerDown?: (taskId: string, e: React.PointerEvent) => void;
   onTargetPointerUp?: (taskId: string) => void;
   onContextMenu?: (taskId: string, e: React.MouseEvent) => void;
+  onModifyClick?: (taskId: string) => void;
   /**
    * Read-only mode: disables drag/edge handles and pointer interactions so
    * the same component can be rendered inside the Run view (where the
@@ -483,6 +485,7 @@ export const TaskCard = memo(function TaskCard({
   onHandlePointerDown,
   onTargetPointerUp,
   onContextMenu,
+  onModifyClick,
   readOnly = false,
   runtimeStatus,
   runtimeDurationMs,
@@ -659,6 +662,7 @@ export const TaskCard = memo(function TaskCard({
     : isDragging
       ? 'cursor-grabbing'
       : 'cursor-grab active:cursor-grabbing';
+  const canModify = !readOnly && !!onModifyClick;
 
   return (
     <div
@@ -666,7 +670,7 @@ export const TaskCard = memo(function TaskCard({
       data-task-card="true"
       data-task-id={`${trackId}.${task.id}`}
       className={`
-        absolute border select-none flex flex-col justify-center px-2.5
+        absolute border select-none flex flex-col justify-center pl-2.5 ${canModify ? 'pr-7' : 'pr-2.5'}
         ${borderColor} ${bgColor}
         ${isDragging ? 'z-30 shadow-glow-accent' : ''}
         ${cursorClass}
@@ -710,6 +714,27 @@ export const TaskCard = memo(function TaskCard({
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
+      {canModify && (
+        <button
+          type="button"
+          data-task-modify-button="true"
+          className="absolute right-1 top-1 z-20 inline-flex h-[18px] w-[18px] items-center justify-center border border-tagma-border/70 bg-tagma-bg/90 text-tagma-muted hover:text-tagma-accent hover:border-tagma-accent/60 focus:outline-none focus:border-tagma-accent focus:text-tagma-accent transition-colors"
+          title="Modify this task with AI"
+          aria-label={`Modify task ${task.name || task.id} with AI`}
+          onPointerDown={(e) => {
+            if (e.button !== 0) return;
+            e.stopPropagation();
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onModifyClick(`${trackId}.${task.id}`);
+          }}
+        >
+          <Wrench size={10} strokeWidth={2.25} />
+        </button>
+      )}
+
       {/* Connection handles — hidden in read-only mode since they are
           purely for drag-to-link interactions. A larger invisible hit area
           (16x16) wraps the 8x8 visual dot so the target is easier to grab. */}

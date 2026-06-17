@@ -61,7 +61,7 @@ Artifacts are named `Tagma-${version}-${os}-${arch}.${ext}`.
 
 The editor's primary driver is OpenCode. Each installer ships a platform-matched `opencode` binary in `resources/opencode/` so end users don't need `bun` or a manual install.
 
-- **Pin location:** `package.json → tagma.bundledOpencodeVersion` (currently `1.15.13`). Bump that field and re-run a `dist:desktop:*` command to cut a release with a new default.
+- **Pin location:** `package.json → tagma.bundledOpencodeVersion` (currently `1.15.12`). Bump that field and re-run a `dist:desktop:*` command to cut a release with a new default.
 - **Fetcher:** `scripts/fetch-opencode.mjs` downloads the platform-specific binary into `build/opencode/<platform>-<arch>/` before electron-builder copies it into `extraResources`.
 - **Runtime lookup order** (`src/runtime-paths.ts`): `userData/opencode/bin` → `resources/opencode/bin` → system `PATH`. The bundled copy is read-only and never overwritten.
 

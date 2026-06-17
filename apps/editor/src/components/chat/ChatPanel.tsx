@@ -125,6 +125,7 @@ function ChatHeader() {
   const openConnect = useChatStore((s) => s.openConnect);
   const currentSessionId = useChatStore((s) => s.currentSessionId);
   const sessions = useChatStore((s) => s.sessions);
+  const sessionStates = useChatStore((s) => s.sessionStates);
   const messages = useChatStore((s) => s.messages);
   const ready = useChatStore((s) => s.bootstrapStatus === 'ready');
   const sending = useChatStore((s) => s.sending);
@@ -133,14 +134,24 @@ function ChatHeader() {
   const reconciling = useChatStore((s) => s.reconciling);
   const flushing = useChatStore((s) => s.flushing);
   const yamlEditLocked = useYamlEditLockStore((s) => s.active);
-  const blocked =
+  const hiddenTurnActive = Object.entries(sessionStates).some(
+    ([sessionId, runtime]) =>
+      sessionId !== currentSessionId &&
+      (runtime.sending ||
+        !!runtime.pendingUserText ||
+        runtime.queuedMessages.length > 0 ||
+        runtime.flushing),
+  );
+  const providerBlocked =
     !ready ||
+    hiddenTurnActive ||
     sending ||
     !!pendingUserText ||
     queuedMessages.length > 0 ||
     reconciling ||
     flushing ||
     yamlEditLocked;
+  const navigationBlocked = !ready;
   const currentSessionTitle =
     sessions.find((session) => session.id === currentSessionId)?.title ?? currentSessionId;
 
@@ -163,13 +174,13 @@ function ChatHeader() {
   return (
     <header className="relative z-20 flex items-center gap-1 px-2 h-7 border-b border-tagma-border bg-tagma-surface shrink-0">
       <div className="flex items-center gap-1 min-w-0 flex-1">
-        <ModelPicker disabled={blocked} />
+        <ModelPicker disabled={providerBlocked} />
       </div>
       <BotBridgeStatusBadge />
       <button
         type="button"
         onClick={openConnect}
-        disabled={blocked}
+        disabled={providerBlocked}
         title="Connect providers"
         className="shrink-0 p-1 text-tagma-muted hover:text-tagma-text disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-tagma-muted transition-colors"
       >
@@ -178,7 +189,7 @@ function ChatHeader() {
       <button
         type="button"
         onClick={() => newSession()}
-        disabled={blocked}
+        disabled={navigationBlocked}
         title="New conversation"
         className="shrink-0 p-1 text-tagma-muted hover:text-tagma-text disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-tagma-muted transition-colors"
       >
@@ -187,7 +198,7 @@ function ChatHeader() {
       <button
         type="button"
         onClick={handleHistory}
-        disabled={blocked}
+        disabled={navigationBlocked}
         title="History"
         className="shrink-0 p-1 text-tagma-muted hover:text-tagma-text disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-tagma-muted transition-colors"
       >

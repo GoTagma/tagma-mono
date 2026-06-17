@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test';
-import { renderAskAiContext, stripAskAiContext } from '../src/utils/ask-ai-context';
+import {
+  buildModifyTargetAttachment,
+  renderAskAiContext,
+  stripAskAiContext,
+} from '../src/utils/ask-ai-context';
 
 describe('renderAskAiContext', () => {
   test('returns empty string when there are no attachments', () => {
@@ -46,5 +50,41 @@ describe('stripAskAiContext', () => {
 
   test('is a no-op on text that has no block', () => {
     expect(stripAskAiContext('just a message')).toBe('just a message');
+  });
+});
+
+describe('buildModifyTargetAttachment', () => {
+  test('builds task context that identifies the exact qualified task target', () => {
+    const attachment = buildModifyTargetAttachment({
+      kind: 'task',
+      track: { id: 'build', name: 'Build', tasks: [] },
+      task: { id: 'lint', name: 'Lint', command: 'bun lint' },
+    });
+
+    expect(attachment.label).toBe('Modify task build.lint');
+    expect(attachment.defaultInstruction).toBe('Modify this task according to my instruction: ');
+    expect(attachment.content).toContain('Target type: task');
+    expect(attachment.content).toContain('Qualified task id: build.lint');
+    expect(attachment.content).toContain('Only edit this task unless');
+    expect(attachment.content).toContain('"command": "bun lint"');
+  });
+
+  test('builds track context that keeps child task edits opt-in', () => {
+    const attachment = buildModifyTargetAttachment({
+      kind: 'track',
+      track: {
+        id: 'deploy',
+        name: 'Deploy',
+        model: 'gpt-5',
+        tasks: [{ id: 'ship', name: 'Ship', prompt: 'release' }],
+      },
+    });
+
+    expect(attachment.label).toBe('Modify track deploy');
+    expect(attachment.defaultInstruction).toBe('Modify this track according to my instruction: ');
+    expect(attachment.content).toContain('Target type: track');
+    expect(attachment.content).toContain('Track id: deploy');
+    expect(attachment.content).toContain('Do not alter child tasks unless');
+    expect(attachment.content).toContain('"model": "gpt-5"');
   });
 });

@@ -10,6 +10,7 @@ export function HistoryDrawer() {
   const closeHistory = useChatStore((s) => s.closeHistory);
   const sessions = useChatStore((s) => s.sessions);
   const currentSessionId = useChatStore((s) => s.currentSessionId);
+  const sessionStates = useChatStore((s) => s.sessionStates);
   const selectSession = useChatStore((s) => s.selectSession);
   const deleteSession = useChatStore((s) => s.deleteSession);
   const sending = useChatStore((s) => s.sending);
@@ -19,7 +20,16 @@ export function HistoryDrawer() {
   const flushing = useChatStore((s) => s.flushing);
   const yamlEditLocked = useYamlEditLockStore((s) => s.active);
   const requestConfirm = useUIStore((s) => s.requestConfirm);
-  const blocked =
+  const hiddenTurnActive = Object.entries(sessionStates).some(
+    ([sessionId, runtime]) =>
+      sessionId !== currentSessionId &&
+      (runtime.sending ||
+        !!runtime.pendingUserText ||
+        runtime.queuedMessages.length > 0 ||
+        runtime.flushing),
+  );
+  const deleteBlocked =
+    hiddenTurnActive ||
     sending ||
     !!pendingUserText ||
     queuedMessages.length > 0 ||
@@ -86,13 +96,11 @@ export function HistoryDrawer() {
               return (
                 <div
                   key={s.id}
-                  className={`group flex items-center gap-2 px-3 py-2 border-b border-tagma-border/50 transition-colors ${
-                    blocked
-                      ? 'opacity-50 cursor-not-allowed'
-                      : 'hover:bg-tagma-border/20 cursor-pointer'
-                  } ${active ? 'bg-tagma-border/20' : ''}`}
+                  className={`group flex items-center gap-2 px-3 py-2 border-b border-tagma-border/50 transition-colors hover:bg-tagma-border/20 cursor-pointer ${
+                    active ? 'bg-tagma-border/20' : ''
+                  }`}
                   onClick={() => {
-                    if (!blocked) void selectSession(s.id);
+                    void selectSession(s.id);
                   }}
                 >
                   <div className="flex-1 min-w-0">
@@ -110,10 +118,10 @@ export function HistoryDrawer() {
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (blocked) return;
+                      if (deleteBlocked) return;
                       handleRequestDelete(s.id, s.title);
                     }}
-                    disabled={blocked}
+                    disabled={deleteBlocked}
                     className="opacity-0 group-hover:opacity-100 p-1 text-tagma-muted hover:text-tagma-error disabled:hover:text-tagma-muted disabled:cursor-not-allowed transition-all"
                     title="Delete"
                   >
