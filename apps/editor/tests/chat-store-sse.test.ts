@@ -40,6 +40,7 @@ afterAll(() => {
 const RESET = {
   currentSessionId: null,
   sessionStates: {},
+  completedUnreadSessionIds: [],
   messages: [],
   sessions: [],
   sending: false,
@@ -459,6 +460,7 @@ test('hidden in-flight conversation can finish without clearing the visible conv
     expect(state.currentSessionId).toBe('session-b');
     expect(state.sending).toBe(false);
     expect(state.messages.map((m) => m.info.id)).toEqual(['b-user']);
+    expect(state.completedUnreadSessionIds).toEqual(['session-a']);
 
     await useChatStore.getState().selectSession('session-a');
 
@@ -467,10 +469,55 @@ test('hidden in-flight conversation can finish without clearing the visible conv
     expect(state.sending).toBe(false);
     expect(state.pendingUserText).toBe(null);
     expect(state.messages.map((m) => m.info.id)).toEqual(['a-final']);
+    expect(state.completedUnreadSessionIds).toEqual([]);
   } finally {
     resetOpencodeClient();
     globalThis.fetch = rejectFetch;
   }
+});
+
+test('hidden in-flight conversation error clears its running state and marks it unread', () => {
+  const turnStartedAt = Date.now() - 1_000;
+  useChatStore.setState({
+    currentSessionId: 'session-b',
+    sessions: [makeSession('session-a'), makeSession('session-b')],
+    sessionStates: {
+      'session-a': {
+        messages: [],
+        sending: true,
+        pendingUserText: 'working in session a',
+        queuedMessages: [],
+        flushing: false,
+        pendingPermissions: [],
+        turnStartedAt,
+        turnAssistantMessageIds: [],
+        lastActivityAt: turnStartedAt + 500,
+        sessionStatus: null,
+        turnHealth: null,
+        pendingActivity: [],
+        yamlSnapshotBeforeSend: null,
+        postChatYamlAction: null,
+      },
+    },
+    sending: false,
+    messages: [],
+  } as never);
+
+  dispatch({
+    type: 'session.error',
+    properties: {
+      sessionID: 'session-a',
+      error: { name: 'UnknownError', data: { message: 'failed' } },
+    },
+  });
+
+  const state = useChatStore.getState();
+  expect(state.currentSessionId).toBe('session-b');
+  expect(state.sending).toBe(false);
+  expect(state.sendError).toBeNull();
+  expect(state.sessionStates['session-a']?.sending).toBe(false);
+  expect(state.sessionStates['session-a']?.pendingUserText).toBeNull();
+  expect(state.completedUnreadSessionIds).toEqual(['session-a']);
 });
 
 test('blocks sending from another conversation while a hidden conversation is still updating YAML', async () => {

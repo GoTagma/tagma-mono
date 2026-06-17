@@ -13,9 +13,14 @@ afterEach(() => {
   useChatStore.setState({
     bootstrapStatus: 'idle',
     currentSessionId: null,
+    sessionStates: {},
+    completedUnreadSessionIds: [],
     messages: [],
     sessions: [],
     sending: false,
+    pendingUserText: null,
+    queuedMessages: [],
+    flushing: false,
     reconciling: false,
     historyOpen: false,
   } as never);

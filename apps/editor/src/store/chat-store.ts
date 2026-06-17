@@ -171,6 +171,7 @@ interface ChatStore {
 
   sessions: Session[];
   sessionStates: Record<string, ChatSessionRuntimeState>;
+  completedUnreadSessionIds: string[];
   currentSessionId: string | null;
   messages: OpencodeThreadEntry[];
   sending: boolean;
@@ -1981,13 +1982,17 @@ function finishSessionRuntime(
   };
 }
 
-function finishHiddenSessionIfEndable(set: ChatSet, sessionId: string): boolean {
+function finishHiddenSession(
+  set: ChatSet,
+  sessionId: string,
+  canFinish: (runtime: ChatSessionRuntimeState) => boolean = () => true,
+): boolean {
   let finished = false;
   set((prev) => {
     const runtime = prev.sessionStates[sessionId];
     if (!runtime) return {};
     if (!runtime.sending && !runtime.pendingUserText) return {};
-    if (!canEndCurrentTurnFromConfirmedIdle(runtime)) return {};
+    if (!canFinish(runtime)) return {};
     const endedAt = Date.now();
     const next = finishSessionRuntime(runtime);
     finished = true;
@@ -1996,11 +2001,27 @@ function finishHiddenSessionIfEndable(set: ChatSet, sessionId: string): boolean 
         ...prev.sessionStates,
         [sessionId]: next,
       },
+      completedUnreadSessionIds: markSessionCompletedUnread(
+        prev.completedUnreadSessionIds,
+        sessionId,
+      ),
       lastSendingEndedAt: endedAt,
       yamlSnapshotBeforeSend: runtime.yamlSnapshotBeforeSend,
     };
   });
   return finished;
+}
+
+function finishHiddenSessionIfEndable(set: ChatSet, sessionId: string): boolean {
+  return finishHiddenSession(set, sessionId, canEndCurrentTurnFromConfirmedIdle);
+}
+
+function markSessionCompletedUnread(ids: string[], sessionId: string): string[] {
+  return ids.includes(sessionId) ? ids : [...ids, sessionId];
+}
+
+function clearSessionCompletedUnread(ids: string[], sessionId: string): string[] {
+  return ids.filter((id) => id !== sessionId);
 }
 
 function botTurnPatch(turnStartedAt: number): Partial<ChatStore> {
@@ -2859,7 +2880,10 @@ export function applySseEvent(event: OpencodeEvent, get: () => ChatStore, set: C
     }
     case 'session.error': {
       const errSessionID = event.properties.sessionID;
-      if (errSessionID && errSessionID !== currentSessionId) return;
+      if (errSessionID && errSessionID !== currentSessionId) {
+        finishHiddenSession(set, errSessionID);
+        return;
+      }
       const err = event.properties.error;
       // User-initiated abort: don't surface as an error. If a force-push
       // queue is waiting, drain it so the new prompt takes over; otherwise
@@ -2962,6 +2986,10 @@ export function applySseEvent(event: OpencodeEvent, get: () => ChatStore, set: C
         sessions: state.sessions.filter((s) => s.id !== deletedId),
         sessionStates: Object.fromEntries(
           Object.entries(state.sessionStates).filter(([sessionId]) => sessionId !== deletedId),
+        ),
+        completedUnreadSessionIds: clearSessionCompletedUnread(
+          state.completedUnreadSessionIds,
+          deletedId,
         ),
       };
       if (state.currentSessionId === deletedId) {
@@ -3077,6 +3105,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   sessions: [],
   sessionStates: {},
+  completedUnreadSessionIds: [],
   currentSessionId: null,
   messages: [],
   sending: false,
@@ -3318,6 +3347,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               agents: [],
               sessions: [],
               sessionStates: {},
+              completedUnreadSessionIds: [],
               currentSessionId: null,
               messages: [],
               sending: false,
@@ -3532,6 +3562,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const runtime = restoreCachedRuntime(sessionStates[id], messages);
       return {
         sessionStates,
+        completedUnreadSessionIds: clearSessionCompletedUnread(
+          prev.completedUnreadSessionIds,
+          id,
+        ),
         currentSessionId: id,
         ...runtimePatch(runtime),
         historyOpen: false,
@@ -3588,6 +3622,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       sessionStates: Object.fromEntries(
         Object.entries(prev.sessionStates).filter(([sessionId]) => sessionId !== id),
       ),
+      completedUnreadSessionIds: clearSessionCompletedUnread(prev.completedUnreadSessionIds, id),
       sessions: prev.sessions.filter((s) => s.id !== id),
       currentSessionId: prev.currentSessionId === id ? null : prev.currentSessionId,
       messages: prev.currentSessionId === id ? [] : prev.messages,

@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { History, Trash2, X } from 'lucide-react';
+import { History, Loader2, Trash2, X } from 'lucide-react';
 import { getOpencodeWorkspaceKey } from '../../api/opencode-chat';
 import { useChatStore } from '../../store/chat-store';
 import { useYamlEditLockStore } from '../../store/yaml-edit-lock-store';
@@ -11,6 +11,7 @@ export function HistoryDrawer() {
   const sessions = useChatStore((s) => s.sessions);
   const currentSessionId = useChatStore((s) => s.currentSessionId);
   const sessionStates = useChatStore((s) => s.sessionStates);
+  const completedUnreadSessionIds = useChatStore((s) => s.completedUnreadSessionIds);
   const selectSession = useChatStore((s) => s.selectSession);
   const deleteSession = useChatStore((s) => s.deleteSession);
   const sending = useChatStore((s) => s.sending);
@@ -93,6 +94,16 @@ export function HistoryDrawer() {
             )}
             {sessions.map((s) => {
               const active = s.id === currentSessionId;
+              const runtime = sessionStates[s.id];
+              const running =
+                active
+                  ? sending || !!pendingUserText || queuedMessages.length > 0 || flushing
+                  : !!runtime &&
+                    (runtime.sending ||
+                      !!runtime.pendingUserText ||
+                      runtime.queuedMessages.length > 0 ||
+                      runtime.flushing);
+              const completedUnread = !running && completedUnreadSessionIds.includes(s.id);
               return (
                 <div
                   key={s.id}
@@ -103,6 +114,20 @@ export function HistoryDrawer() {
                     void selectSession(s.id);
                   }}
                 >
+                  <div className="w-3 shrink-0 flex justify-center">
+                    {running ? (
+                      <span aria-label="Running" role="img" title="Running">
+                        <Loader2 size={11} className="text-tagma-muted animate-spin" />
+                      </span>
+                    ) : completedUnread ? (
+                      <span
+                        className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.55)]"
+                        aria-label="Completed unread"
+                        role="img"
+                        title="Completed unread"
+                      />
+                    ) : null}
+                  </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-[11px] font-mono text-tagma-text truncate">
                       {active ? '● ' : '  '}
