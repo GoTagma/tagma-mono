@@ -192,14 +192,16 @@ beforeAll(() => {
       if (providersShouldFail) {
         return Promise.reject(new Error('provider catalog unavailable'));
       }
-      return Promise.resolve(jsonResponse(v2ProvidersBody(v2ProviderBase)));
+      return Promise.resolve(
+        jsonResponse(v2CatalogBody(v2ProviderBase, v2ProvidersBody(v2ProviderBase))),
+      );
     }
     const v2ModelBase = endpointBase(url, '/api/model');
     if (v2ModelBase) {
       if (providersShouldFail) {
         return Promise.reject(new Error('provider catalog unavailable'));
       }
-      return Promise.resolve(jsonResponse(v2ModelsBody(v2ModelBase)));
+      return Promise.resolve(jsonResponse(v2CatalogBody(v2ModelBase, v2ModelsBody(v2ModelBase))));
     }
     if (endpointBase(url, '/agent')) {
       return Promise.resolve(jsonResponse([]));
@@ -308,24 +310,26 @@ function modelDef(id: string) {
   };
 }
 
-function v2Options() {
-  return { headers: {}, body: {}, aisdk: { provider: {}, request: {} } };
+function v2CatalogBody<T>(baseUrl: string, data: T) {
+  return {
+    location: {
+      directory: baseUrl,
+      project: { id: 'test-project', directory: baseUrl },
+    },
+    data,
+  };
 }
 
 function v2Provider(
   id: string,
-  enabled: ProviderModelCatalogV2Snapshot['providers'][number]['enabled'] = {
-    via: 'env',
-    name: `${id.toUpperCase()}_API_KEY`,
-  },
+  disabled = false,
 ): ProviderModelCatalogV2Snapshot['providers'][number] {
   return {
     id,
     name: id[0].toUpperCase() + id.slice(1),
-    enabled,
-    env: [`${id.toUpperCase()}_API_KEY`],
-    endpoint: { type: 'anthropic/messages', url: `https://${id}.example.test` },
-    options: v2Options(),
+    ...(disabled ? { disabled: true } : {}),
+    api: { type: 'native', url: `https://${id}.example.test`, settings: {} },
+    request: { headers: {}, body: {} },
   };
 }
 
@@ -336,12 +340,11 @@ function v2Model(
 ): ProviderModelCatalogV2Snapshot['models'][number] {
   return {
     id,
-    apiID: id,
     providerID,
     name: id.toUpperCase(),
-    endpoint: { type: 'anthropic/messages', url: `https://${providerID}.example.test` },
+    api: { id, type: 'native', url: `https://${providerID}.example.test`, settings: {} },
     capabilities: { tools: true, input: ['text', 'image'], output: ['text'] },
-    options: v2Options(),
+    request: { headers: {}, body: {}, options: {} },
     variants: [],
     time: { released: 0 },
     cost: [{ input: 3, output: 15, cache: { read: 0.3, write: 3 } }],
@@ -378,7 +381,6 @@ function v2ProvidersBody(baseUrl: string): ProviderModelCatalogV2Snapshot['provi
   return legacyProviderBodyForBase(baseUrl).providers.map((provider) => ({
     ...v2Provider(provider.id),
     name: provider.name ?? provider.id,
-    env: provider.env ?? [`${provider.id.toUpperCase()}_API_KEY`],
   }));
 }
 
@@ -463,7 +465,7 @@ describe('chat model persistence', () => {
     });
 
     expect(providers).toHaveLength(1);
-    expect(providers[0]?.source).toBe('env');
+    expect(providers[0]?.source).toBe('api');
     expect(providers[0]?.models['claude-sonnet']).toMatchObject({
       id: 'claude-sonnet',
       providerID: 'anthropic',
@@ -492,7 +494,7 @@ describe('chat model persistence', () => {
 
   test('filters disabled v2 providers and models from picker options', () => {
     const providers = buildProvidersFromV2Catalog({
-      providers: [v2Provider('anthropic'), v2Provider('openai', false)],
+      providers: [v2Provider('anthropic'), v2Provider('openai', true)],
       models: [
         v2Model('anthropic', 'enabled-model'),
         v2Model('anthropic', 'disabled-model', false),
@@ -505,12 +507,16 @@ describe('chat model persistence', () => {
   });
 
   test('marks OpenAI Responses endpoints as reasoning capable', () => {
+    const model = v2Model('openai', 'gpt-5');
     const providers = buildProvidersFromV2Catalog({
       providers: [v2Provider('openai')],
       models: [
         {
-          ...v2Model('openai', 'gpt-5'),
-          endpoint: { type: 'openai/responses', url: 'https://api.openai.com/v1/responses' },
+          ...model,
+          api: {
+            ...model.api,
+            url: 'https://api.openai.com/v1/responses',
+          },
         },
       ],
     });

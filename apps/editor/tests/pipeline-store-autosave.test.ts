@@ -40,7 +40,7 @@ class MockRevisionConflictError extends Error {
   constructor(
     currentState: ServerState,
     expected: number | null = null,
-    current = currentState.revision,
+    current = currentState.revision ?? -1,
   ) {
     super('Revision conflict');
     this.name = 'RevisionConflictError';

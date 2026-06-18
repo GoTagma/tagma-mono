@@ -109,7 +109,7 @@ export function buildProvidersFromV2Catalog(
   const legacyById = new Map(legacyProviders.map((provider) => [provider.id, provider]));
   const v2ProviderById = new Map(
     catalog.providers
-      .filter((provider) => provider.enabled !== false)
+      .filter((provider) => provider.disabled !== true)
       .map((provider) => [provider.id, provider]),
   );
   const modelsByProvider = new Map<string, Provider['models']>();
@@ -123,14 +123,14 @@ export function buildProvidersFromV2Catalog(
       id: model.id,
       providerID: model.providerID,
       api: legacyModel?.api ?? {
-        id: model.apiID,
-        url: endpointUrl(model.endpoint),
-        npm: endpointPackage(model.endpoint),
+        id: model.api.id,
+        url: modelApiUrl(model.api),
+        npm: modelApiPackage(model.api),
       },
       name: model.name,
       capabilities: {
         temperature: legacyModel?.capabilities?.temperature ?? true,
-        reasoning: legacyModel?.capabilities?.reasoning ?? endpointHasReasoning(model.endpoint),
+        reasoning: legacyModel?.capabilities?.reasoning ?? v2ModelSupportsReasoning(model),
         attachment:
           legacyModel?.capabilities?.attachment ??
           ['audio', 'image', 'video', 'pdf'].some((kind) =>
@@ -146,14 +146,14 @@ export function buildProvidersFromV2Catalog(
         output: model.limit.output,
       },
       status: model.status,
-      options: legacyModel?.options ?? model.options.body ?? {},
-      headers: legacyModel?.headers ?? model.options.headers ?? {},
+      options: legacyModel?.options ?? modelRequestOptions(model),
+      headers: legacyModel?.headers ?? model.request.headers,
     };
     modelsByProvider.set(model.providerID, providerModels);
   }
 
   return catalog.providers.flatMap((provider) => {
-    if (provider.enabled === false) return [];
+    if (provider.disabled === true) return [];
     const models = modelsByProvider.get(provider.id);
     if (!models || Object.keys(models).length === 0) return [];
     const legacyProvider = legacyById.get(provider.id);
@@ -162,9 +162,9 @@ export function buildProvidersFromV2Catalog(
         ...(legacyProvider ?? {}),
         id: provider.id,
         name: provider.name,
-        source: legacyProvider?.source ?? providerSource(provider.enabled),
-        env: provider.env ?? legacyProvider?.env ?? [],
-        options: legacyProvider?.options ?? provider.options ?? {},
+        source: legacyProvider?.source ?? 'api',
+        env: legacyProvider?.env ?? [],
+        options: legacyProvider?.options ?? providerOptions(provider),
         models,
       } as Provider,
     ];
@@ -194,31 +194,51 @@ function firstV2Cost(
   };
 }
 
-function endpointHasReasoning(
-  endpoint: ProviderModelCatalogV2Snapshot['models'][number]['endpoint'],
+function modelApiUrl(api: ProviderModelCatalogV2Snapshot['models'][number]['api']): string {
+  return typeof api.url === 'string' ? api.url : '';
+}
+
+function modelApiPackage(api: ProviderModelCatalogV2Snapshot['models'][number]['api']): string {
+  return api.type === 'aisdk' ? api.package : '';
+}
+
+function modelRequestOptions(
+  model: ProviderModelCatalogV2Snapshot['models'][number],
+): Record<string, unknown> {
+  return {
+    ...(model.api.settings ?? {}),
+    ...model.request.body,
+    ...(model.request.options ?? {}),
+  };
+}
+
+function providerOptions(
+  provider: ProviderModelCatalogV2Snapshot['providers'][number],
+): Record<string, unknown> {
+  return {
+    ...(provider.api.settings ?? {}),
+    ...provider.request.body,
+  };
+}
+
+function v2ModelSupportsReasoning(
+  model: ProviderModelCatalogV2Snapshot['models'][number],
 ): boolean {
-  if (endpoint.type === 'openai/responses') return true;
-  return endpoint.type === 'openai/completions' && Boolean(endpoint.reasoning);
+  const apiId = model.api.id.toLowerCase();
+  const apiUrl = modelApiUrl(model.api).toLowerCase();
+  if (apiId.includes('responses') || apiUrl.includes('/responses')) return true;
+  return (
+    hasReasoningConfig(model.api.settings) ||
+    hasReasoningConfig(model.request.body) ||
+    hasReasoningConfig(model.request.options)
+  );
 }
 
-function endpointUrl(
-  endpoint: ProviderModelCatalogV2Snapshot['models'][number]['endpoint'],
-): string {
-  return 'url' in endpoint && typeof endpoint.url === 'string' ? endpoint.url : '';
-}
-
-function endpointPackage(
-  endpoint: ProviderModelCatalogV2Snapshot['models'][number]['endpoint'],
-): string {
-  return endpoint.type === 'aisdk' ? endpoint.package : '';
-}
-
-function providerSource(
-  providerEnabled: ProviderModelCatalogV2Snapshot['providers'][number]['enabled'],
-): Provider['source'] {
-  if (providerEnabled && providerEnabled.via === 'env') return 'env';
-  if (providerEnabled && providerEnabled.via === 'custom') return 'custom';
-  return 'api';
+function hasReasoningConfig(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  if (!Object.prototype.hasOwnProperty.call(value, 'reasoning')) return false;
+  const reasoning = (value as { reasoning?: unknown }).reasoning;
+  return reasoning !== undefined && reasoning !== null && reasoning !== false;
 }
 
 /**

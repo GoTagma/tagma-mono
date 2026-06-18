@@ -420,11 +420,11 @@ export async function fetchProviderModelCatalogV2(
   workspaceKey = currentWorkspaceKey(),
 ): Promise<ProviderModelCatalogV2Snapshot> {
   const client = await getOpencodeV2Client(workspaceKey);
-  const [providers, models] = await Promise.all([
+  const [providerList, modelList] = await Promise.all([
     unwrap(client.v2.provider.list()),
     unwrap(client.v2.model.list()),
   ]);
-  return { providers, models };
+  return { providers: providerList.data, models: modelList.data };
 }
 
 export async function createOpencodeSessionV2(
