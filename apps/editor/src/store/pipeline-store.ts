@@ -1939,7 +1939,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
         // `resolveWorkspace` middleware routes this PATCH (and everything
         // after it) to the correct WorkspaceState.
         setClientWorkspace(wd);
-        let state;
+        let state: ServerState;
         try {
           state = await api.setWorkDir(wd);
         } catch (e) {
@@ -2171,9 +2171,23 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
           pinnedTaskId: null,
           pinnedTrackId: null,
         });
-        const state = await api.newPipeline(name);
+        let state: ServerState;
+        try {
+          state = await api.newPipeline(name);
+        } catch (e) {
+          if (!(e instanceof RevisionConflictError)) throw e;
+          applyFreshStateWithLayout(e.currentState);
+          state = await api.newPipeline(name);
+        }
         applyFreshStateWithLayout(state);
-        set({ isDirty: false, layoutDirty: false, past: [], future: [], lastAutosaveAt: null });
+        set({
+          isDirty: false,
+          layoutDirty: false,
+          past: [],
+          future: [],
+          lastAutosaveAt: null,
+          errorMessage: null,
+        });
       } catch (e) {
         set({ errorMessage: 'Failed to create pipeline: ' + errorToMessage(e) });
       }

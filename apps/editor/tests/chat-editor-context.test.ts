@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { buildEditorContext } from '../src/store/chat-store';
+import { useEditorSettingsStore } from '../src/store/editor-settings-store';
 import { usePipelineStore } from '../src/store/pipeline-store';
 import { useRunStore } from '../src/store/run-store';
 import { useYamlEditLockStore } from '../src/store/yaml-edit-lock-store';
@@ -18,6 +19,7 @@ describe('chat editor context', () => {
       active: false,
       yamlPath: null,
     } as never);
+    useEditorSettingsStore.getState().updateLocal(null);
   });
 
   test('marks current pipeline protected while its run is still active', () => {
@@ -53,6 +55,53 @@ describe('chat editor context', () => {
 
     expect(buildEditorContext()).toContain('<current-file>.tagma/build/build.yaml</current-file>');
     expect(buildEditorContext()).not.toContain('protected="true"');
+  });
+
+  test('marks Python agent unavailable when it is not configured', () => {
+    usePipelineStore.setState({
+      workDir: 'C:/repo',
+      yamlPath: 'C:/repo/.tagma/build/build.yaml',
+      registry: { drivers: [], triggers: [], completions: [], middlewares: [] },
+    } as never);
+
+    const context = buildEditorContext();
+
+    expect(context).toContain('<python-agent enabled="false" reason="not-configured">');
+    expect(context).toContain('Enable Python AI Agent in Editor Settings');
+  });
+
+  test('includes configured Python agent interpreter and venv', () => {
+    usePipelineStore.setState({
+      workDir: 'C:/repo',
+      yamlPath: 'C:/repo/.tagma/build/build.yaml',
+      registry: { drivers: [], triggers: [], completions: [], middlewares: [] },
+    } as never);
+    useEditorSettingsStore.getState().updateLocal({
+      autoInstallDeclaredPlugins: false,
+      chatDirtyConflictPolicy: 'ask',
+      autoSaveEnabled: true,
+      autoSaveIntervalSec: 30,
+      viewMode: 'production',
+      pythonAgent: {
+        enabled: true,
+        interpreterCommand: 'py',
+        interpreterArgs: ['-3.13'],
+        interpreterVersion: '3.13.7',
+        venvPath: '.tagma/.python-agent/venv',
+        configuredAt: '2026-06-18T00:00:00.000Z',
+      },
+      opencodeChatModel: null,
+      chatContextLimitEnabled: false,
+      chatContextRounds: 0,
+    } as never);
+
+    const context = buildEditorContext();
+
+    expect(context).toContain('<python-agent enabled="true">');
+    expect(context).toContain('<interpreter>py -3.13</interpreter>');
+    expect(context).toContain('<version>3.13.7</version>');
+    expect(context).toContain('<venv>.tagma/.python-agent/venv</venv>');
+    expect(context).not.toContain('enabled="false"');
   });
 
   test('includes workspace yaml folder entries with concrete yaml paths beyond the open file', () => {

@@ -460,7 +460,15 @@ notes:
 `;
 }
 
-export function buildTagmaPipelineAgent(hostOs: string): string {
+export interface TagmaPipelineAgentOptions {
+  pythonToolsEnabled?: boolean;
+}
+
+export function buildTagmaPipelineAgent(
+  hostOs: string,
+  options: TagmaPipelineAgentOptions = {},
+): string {
+  const pythonToolsPermission = options.pythonToolsEnabled ? 'allow' : 'deny';
   return `---
 name: ${TAGMA_PIPELINE_AGENT}
 description: Author Tagma pipeline YAML, layout, and requirements inside workspace .tagma/.
@@ -485,7 +493,7 @@ permission:
     ${TAGMA_RUNTIME_GUARD_AGENT}: "allow"
     ${TAGMA_CONTEXT_PACKAGER_AGENT}: "allow"
     ${TAGMA_PIPELINE_SECTION_BUILDER_AGENT}: "allow"
-    tagma-python-tools: "allow"
+    tagma-python-tools: "${pythonToolsPermission}"
     ${TAGMA_YAML_REVIEW_AGENT}: "allow"
   skill:
     "*": "deny"
@@ -526,7 +534,7 @@ Every turn may include \`<editor-context>\`; re-read it.
 - Tool path rule: tools run from \`<workspace>/.tagma/\`; strip leading \`.tagma/\` or absolute \`<workspace>/.tagma/\`. Examples: \`.tagma/build/build.yaml\` -> \`read({ "filePath": "build/build.yaml" })\`; \`.tagma/pipeline-9giapbf6.yaml\` -> \`read({ "filePath": "pipeline-9giapbf6.yaml" })\`. Never call \`read\` with only \`{ "limit": ... }\`.
 - \`<pipeline-availability>\`: optional. \`protected="true"\` means the current file is locked by an active run.
 - \`<plugins>\`: authoritative type allow-list. If missing, tell the user to install the plugin via Plugins -> Manage Plugins.
-- \`<python-agent>\`: optional. If absent, do not create Python helpers.
+- \`<python-agent>\`: Python helper status. If absent or \`enabled="false"\`, do not call \`tagma-python-tools\` or run Python; say: Enable Python AI Agent in Editor Settings.
 
 ## Protected Current Pipeline
 
@@ -580,7 +588,7 @@ Use OpenCode/Tagma native mechanisms before custom scaffolding.
 - Load \`tagma-native-primitives\` before creating or materially editing any pipeline.
 - Before stateless CLI/Python helpers, check whether the need is really webhooks, warm processing, shared state, sockets, browser backend, or a server/plugin/manual handoff.
 - Load extra skills only when needed: \`tagma-plan-delegate\`, \`tagma-trigger-strategy\`, \`tagma-execution-resilience\`, \`tagma-local-tools\`, \`tagma-human-safety\`, \`tagma-memory-context\`.
-- Use \`explore\` for repository lookup and \`scout\` for external docs. Delegate YAML/layout/requirements section implementation only through \`${TAGMA_PIPELINE_SECTION_BUILDER_AGENT}\`; delegate narrow Python helpers only to \`tagma-python-tools\` when \`<python-agent>\` is enabled.
+- Use \`explore\` for repo lookup and \`scout\` for external docs. Delegate YAML/layout/requirements sections only through \`${TAGMA_PIPELINE_SECTION_BUILDER_AGENT}\`; delegate Python only to \`tagma-python-tools\` when \`<python-agent enabled="true">\` is present, and include that interpreter/venv block in the handoff.
 - Prefer native fields: \`command\`, \`prompt\`, \`secrets\`, \`depends_on\`, \`continue_from\`, \`trigger\`, \`completion\`, \`inputs\`, \`outputs\`, \`hooks\`, \`permissions\`, model/driver.
 
 ## Subagent Dispatch
@@ -592,7 +600,7 @@ Act as authoring orchestrator. Before writing, call matching read-only advisors.
 - Call \`${TAGMA_RUNTIME_GUARD_AGENT}\` for triggers, manual approval, secrets, destructive steps, unattended runs, retries, timeouts, cost, or failure handling.
 - Call \`${TAGMA_CONTEXT_PACKAGER_AGENT}\` for static_context, memory, large logs, noisy outputs, summaries, structured outputs, or compact handoff.
 - Call \`${TAGMA_PIPELINE_SECTION_BUILDER_AGENT}\` to implement one selected manifest section after the graph/change is designed.
-- Call \`tagma-python-tools\` only for narrow Python helpers when \`<python-agent>\` is enabled.
+- Call \`tagma-python-tools\` only when \`<python-agent enabled="true">\` is present. If Python is requested but unavailable, stop and say: Enable Python AI Agent in Editor Settings.
 
 For broad create/edit work, use every matching specialist before first YAML write. \`${TAGMA_YAML_REVIEW_AGENT}\` is the independent reviewer for each implemented step and the final whole-change review.
 
@@ -662,6 +670,7 @@ name: tagma-python-tools
 description: Write and test function-oriented Python helpers for Tagma pipelines.
 mode: subagent
 hidden: true
+steps: 8
 tools:
   bash: true
   webfetch: false
@@ -675,6 +684,16 @@ You are the Tagma Python helper agent. The pipeline create/edit agents delegate 
 - Write only under \`<workspace>/.tagma/tools/<pipeline-name>/\`. Never edit YAML, layout, requirements, source code outside \`.tagma/tools/\`, or shared tools unless the delegating prompt explicitly asks for \`tools/shared/\`.
 - Do not add third-party dependencies. Use the Python standard library.
 - Do not store secrets in source, arguments, logs, or generated files.
+
+## Preflight hard stop
+
+Before running bash or writing files, inspect the delegating prompt. If it does not include \`<python-agent enabled="true">\` with both \`<interpreter>\` and \`<venv>\`, return exactly these lines and stop:
+
+PYTHON_HELPER_BLOCKED
+reason: Python AI Agent is not configured for this workspace.
+required_action: Enable Python AI Agent in Editor Settings, then retry the chat request.
+
+Do not fall back to \`python\`, \`python3\`, \`py\`, or PATH probing when the configured interpreter is missing from the handoff.
 
 ## Output shape
 
@@ -1368,12 +1387,20 @@ function pruneStaleAgentFiles(tagmaCwd: string): boolean {
   return changed;
 }
 
-export function seedOpencodeArtifacts(tagmaCwd: string): boolean {
+export interface SeedOpencodeArtifactsOptions extends TagmaPipelineAgentOptions {}
+
+export function seedOpencodeArtifacts(
+  tagmaCwd: string,
+  options: SeedOpencodeArtifactsOptions = {},
+): boolean {
   const hostOs = hostOsLabel();
   let changed = seedAgentFile(tagmaCwd, `${TAGMA_ROUTER_AGENT}.md`, buildTagmaRouterAgent());
   changed =
-    seedAgentFile(tagmaCwd, `${TAGMA_PIPELINE_AGENT}.md`, buildTagmaPipelineAgent(hostOs)) ||
-    changed;
+    seedAgentFile(
+      tagmaCwd,
+      `${TAGMA_PIPELINE_AGENT}.md`,
+      buildTagmaPipelineAgent(hostOs, options),
+    ) || changed;
   changed =
     seedAgentFile(
       tagmaCwd,

@@ -146,6 +146,13 @@ export function buildEditorContext(options: EditorContextOptions = {}): string {
     }
     lines.push(`    <venv>${pythonAgent.venvPath}</venv>`);
     lines.push('  </python-agent>');
+  } else {
+    const reason = pythonAgent?.enabled ? 'incomplete' : 'not-configured';
+    lines.push(`  <python-agent enabled="false" reason="${reason}">`);
+    lines.push(
+      '    <action>Enable Python AI Agent in Editor Settings before creating Python helpers.</action>',
+    );
+    lines.push('  </python-agent>');
   }
   const pluginLines: string[] = [];
   const fmt = (xs: readonly string[]) => xs.join(', ');

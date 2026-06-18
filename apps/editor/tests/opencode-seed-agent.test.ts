@@ -11,6 +11,7 @@ import {
   buildTagmaPipelinePlannerAgent,
   buildTagmaPipelineSectionBuilderAgent,
   buildTagmaPlacementTool,
+  buildTagmaPythonToolsAgent,
   buildTagmaRuntimeGuardAgent,
   buildTagmaRouterAgent,
   buildTagmaTriggerStrategySkill,
@@ -212,7 +213,7 @@ test('tagma-pipeline agent exposes focused skills and read-only native subagents
   expect(doc).toContain('tagma-command-evidence: "allow"');
   expect(doc).toContain('tagma-runtime-guard: "allow"');
   expect(doc).toContain('tagma-context-packager: "allow"');
-  expect(doc).toContain('tagma-python-tools: "allow"');
+  expect(doc).toContain('tagma-python-tools: "deny"');
   expect(doc).toContain('tagma-yaml-contract: "allow"');
   expect(doc).toContain('Load `tagma-yaml-contract` before any create');
   expect(doc).toContain('tagma-native-primitives: "allow"');
@@ -226,7 +227,7 @@ test('tagma-pipeline agent exposes focused skills and read-only native subagents
   expect(doc).toContain(
     'Merge specialist findings into the smallest YAML/layout/requirements change',
   );
-  expect(doc).toContain('Delegate YAML/layout/requirements section implementation only');
+  expect(doc).toContain('Delegate YAML/layout/requirements sections only');
 });
 
 test('specialized Tagma advisor subagents are hidden, read-only, and task-focused', () => {
@@ -335,8 +336,30 @@ test('tagma-pipeline agent prefers host-native commands before Python glue', () 
   expect(doc).toContain('Use Python only when host-native commands would be bulky');
   expect(doc).toContain('stateless CLI');
   expect(doc).toContain('webhooks, warm processing, shared state');
-  expect(doc).toContain('<python-agent>');
+  expect(doc).toContain('enabled="false"');
+  expect(doc).toContain('Enable Python AI Agent in Editor Settings');
+  expect(doc).toContain('<python-agent enabled="true">');
+  expect(doc).toContain('include that interpreter/venv block in the handoff');
   expect(doc).toContain('tagma-python-tools');
+});
+
+test('tagma-pipeline agent grants python tools only when workspace settings enable them', () => {
+  expect(buildTagmaPipelineAgent('Windows')).toContain('tagma-python-tools: "deny"');
+  expect(buildTagmaPipelineAgent('Windows', { pythonToolsEnabled: true })).toContain(
+    'tagma-python-tools: "allow"',
+  );
+});
+
+test('tagma-python-tools refuses to run without configured Python handoff', () => {
+  const doc = buildTagmaPythonToolsAgent('Windows');
+
+  expect(doc).toContain('## Preflight hard stop');
+  expect(doc).toContain('steps: 8');
+  expect(doc).toContain('<python-agent enabled="true">');
+  expect(doc).toContain('<interpreter>');
+  expect(doc).toContain('<venv>');
+  expect(doc).toContain('PYTHON_HELPER_BLOCKED');
+  expect(doc).toContain('Do not fall back to `python`, `python3`, `py`, or PATH probing');
 });
 
 test('tagma-pipeline agent codifies track design as agent identity vs layout lane', () => {
@@ -433,7 +456,10 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   expect(existsSync(pythonAgent)).toBe(true);
   expect(readFileSync(pythonAgent, 'utf8')).toContain('name: tagma-python-tools');
   expect(readFileSync(pythonAgent, 'utf8')).toContain('hidden: true');
+  expect(readFileSync(pythonAgent, 'utf8')).toContain('steps: 8');
   expect(readFileSync(pythonAgent, 'utf8')).toContain('function-oriented Python helpers');
+  expect(readFileSync(pythonAgent, 'utf8')).toContain('PYTHON_HELPER_BLOCKED');
+  expect(readFileSync(pipelineAgent, 'utf8')).toContain('tagma-python-tools: "deny"');
   expect(existsSync(skeletonTool)).toBe(true);
   expect(readFileSync(skeletonTool, 'utf8')).toContain(
     'Generate a Tagma YAML skeleton from a pipeline manifest',
@@ -488,6 +514,17 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
     'Prefer CLI-style helpers for stateless, idempotent work',
   );
   expect(seedOpencodeArtifacts(dir)).toBe(false);
+});
+
+test('seedOpencodeArtifacts rewrites the pipeline agent when Python tools are enabled', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tagma-opencode-python-seed-'));
+  const pipelineAgent = join(dir, '.opencode', 'agents', 'tagma-pipeline.md');
+
+  expect(seedOpencodeArtifacts(dir)).toBe(true);
+  expect(readFileSync(pipelineAgent, 'utf8')).toContain('tagma-python-tools: "deny"');
+  expect(seedOpencodeArtifacts(dir, { pythonToolsEnabled: true })).toBe(true);
+  expect(readFileSync(pipelineAgent, 'utf8')).toContain('tagma-python-tools: "allow"');
+  expect(seedOpencodeArtifacts(dir, { pythonToolsEnabled: true })).toBe(false);
 });
 
 test('seedOpencodeArtifacts prunes stale agents left by an older editor', () => {

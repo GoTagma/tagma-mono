@@ -20,6 +20,8 @@ function makeState(overrides: Partial<ServerState> = {}): ServerState {
 
 let saveCalls = 0;
 let saveLayoutCalls = 0;
+let newPipelineCalls = 0;
+let newPipelineFirstConflict = false;
 let saveShouldThrow = false;
 let saveAsShouldThrow = false;
 let mockClientWorkspace: string | null = null;
@@ -28,6 +30,24 @@ const mockWorkspaceListeners = new Set<(key: string | null) => void>();
 function mockWorkspaceHeaders(workspaceKeyOverride?: string | null): Record<string, string> {
   const workspace = workspaceKeyOverride === undefined ? mockClientWorkspace : workspaceKeyOverride;
   return workspace ? { 'X-Tagma-Workspace': workspace } : {};
+}
+
+class MockRevisionConflictError extends Error {
+  currentState: ServerState;
+  expected: number | null;
+  current: number;
+
+  constructor(
+    currentState: ServerState,
+    expected: number | null = null,
+    current = currentState.revision,
+  ) {
+    super('Revision conflict');
+    this.name = 'RevisionConflictError';
+    this.currentState = currentState;
+    this.expected = expected;
+    this.current = current;
+  }
 }
 
 mock.module('../src/api/client', () => ({
@@ -50,7 +70,17 @@ mock.module('../src/api/client', () => ({
     setWorkDir: async () => makeState({ workDir: '/tmp/other' }),
     openFile: async () => makeState(),
     importFile: async () => makeState(),
-    newPipeline: async () => makeState({ yamlPath: null }),
+    newPipeline: async () => {
+      newPipelineCalls += 1;
+      if (newPipelineFirstConflict && newPipelineCalls === 1) {
+        throw new MockRevisionConflictError(
+          makeState({ config: { name: 'Server Current', tracks: [] }, revision: 2 }),
+          1,
+          2,
+        );
+      }
+      return makeState({ config: { name: 'Created', tracks: [] }, yamlPath: null, revision: 3 });
+    },
     acquireYamlEditLock: async (
       opts?: { id?: string; reason?: string; ttlMs?: number; yamlPath?: string | null },
       workspaceKeyOverride?: string | null,
@@ -71,7 +101,7 @@ mock.module('../src/api/client', () => ({
       return res.json();
     },
   },
-  RevisionConflictError: class extends Error {},
+  RevisionConflictError: MockRevisionConflictError,
   setClientRevision: (_rev: number | null | undefined) => {},
   setClientWorkspace: (key: string | null | undefined) => {
     mockClientWorkspace = typeof key === 'string' && key.trim() ? key : null;
@@ -92,6 +122,8 @@ beforeEach(() => {
   for (const listener of mockWorkspaceListeners) listener(null);
   saveCalls = 0;
   saveLayoutCalls = 0;
+  newPipelineCalls = 0;
+  newPipelineFirstConflict = false;
   saveShouldThrow = false;
   saveAsShouldThrow = false;
   usePipelineStore.setState({
@@ -146,6 +178,18 @@ describe('saveFile boolean return + lastAutosaveAt', () => {
   test('lastAutosaveAt resets to null on newPipeline', async () => {
     usePipelineStore.setState({ lastAutosaveAt: 12345 });
     await usePipelineStore.getState().newPipeline();
+    expect(usePipelineStore.getState().lastAutosaveAt).toBeNull();
+  });
+
+  test('newPipeline retries once after adopting a stale revision conflict', async () => {
+    newPipelineFirstConflict = true;
+    usePipelineStore.setState({ errorMessage: 'old warning', lastAutosaveAt: 12345 });
+
+    await usePipelineStore.getState().newPipeline();
+
+    expect(newPipelineCalls).toBe(2);
+    expect(usePipelineStore.getState().config.name).toBe('Created');
+    expect(usePipelineStore.getState().errorMessage).toBeNull();
     expect(usePipelineStore.getState().lastAutosaveAt).toBeNull();
   });
 

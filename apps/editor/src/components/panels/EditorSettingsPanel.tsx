@@ -11,6 +11,7 @@ import {
   type PythonDetectionResult,
   type PythonInstallPlan,
 } from '../../api/client';
+import { restartOpencodeForConfig } from '../../api/opencode-chat';
 import { useEditorSettingsStore } from '../../store/editor-settings-store';
 import { viewportH } from '../../utils/zoom';
 
@@ -186,6 +187,15 @@ export function EditorSettingsPanel({
       const result = await api.disablePythonAgent();
       setSettings(result.settings);
       useEditorSettingsStore.getState().updateLocal(result.settings);
+      try {
+        await restartOpencodeForConfig();
+      } catch (e) {
+        setError(
+          e instanceof Error
+            ? `Python settings saved, but OpenCode restart failed: ${e.message}`
+            : 'Python settings saved, but OpenCode restart failed',
+        );
+      }
     } catch (e) {
       setSettings(previous);
       setError(e instanceof Error ? e.message : 'Failed to disable Python AI Agent');
@@ -230,6 +240,18 @@ export function EditorSettingsPanel({
       const result = await api.configurePythonAgent(command.trim(), args);
       setSettings(result.settings);
       useEditorSettingsStore.getState().updateLocal(result.settings);
+      try {
+        await restartOpencodeForConfig();
+      } catch (e) {
+        setPythonStatus({
+          kind: 'error',
+          message:
+            e instanceof Error
+              ? `Python configured, but OpenCode restart failed: ${e.message}`
+              : 'Python configured, but OpenCode restart failed',
+        });
+        return;
+      }
       setPythonWizardOpen(false);
       setPythonStatus({ kind: 'idle' });
     } catch (e) {

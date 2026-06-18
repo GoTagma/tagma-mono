@@ -64,6 +64,13 @@ export function _setOpencodeRuntimeHooksForTests(hooks: OpencodeRuntimeHooksForT
   if (!hooks) clientCache.clear();
 }
 
+function pythonToolsEnabledForWorkspace(workspaceKey: string): boolean {
+  const ws = workspaceRegistry.get(workspaceKey);
+  if (!ws?.workDir) return false;
+  const pythonAgent = readEditorSettings(ws).pythonAgent;
+  return Boolean(pythonAgent.enabled && pythonAgent.interpreterCommand && pythonAgent.venvPath);
+}
+
 type EventSubscribeOptions = Parameters<OpencodeClient['event']['subscribe']>[0];
 type EventSubscribeResult = Awaited<ReturnType<OpencodeClient['event']['subscribe']>>;
 type BotSessionCreateBody = Parameters<OpencodeV2Client['session']['create']>[0] & {
@@ -241,7 +248,7 @@ async function getClientEntryFor(workspaceKey: string): Promise<ClientCacheEntry
   const seedArtifacts = runtimeHooksForTests?.seedOpencodeArtifacts ?? seedOpencodeArtifacts;
   const ensureRuntime = runtimeHooksForTests?.ensureOpencode ?? ensureOpencode;
   const tagmaCwd = realTagmaDirectory(ws.workDir);
-  seedArtifacts(tagmaCwd);
+  seedArtifacts(tagmaCwd, { pythonToolsEnabled: pythonToolsEnabledForWorkspace(workspaceKey) });
   const { baseUrl, auth } = await ensureRuntime(tagmaCwd);
   const authHeader = auth.authorization;
   const cached = clientCache.get(workspaceKey);
