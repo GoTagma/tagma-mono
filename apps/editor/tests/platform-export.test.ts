@@ -191,4 +191,95 @@ describe('platform export helpers', () => {
       server.stop(true);
     }
   });
+
+  test('platform conversion accepts requested models that are only present in the v2 catalog', async () => {
+    const sessionCreateBodies: unknown[] = [];
+    const model = { providerID: 'anthropic', modelID: 'claude' };
+    const server = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      async fetch(req) {
+        const url = new URL(req.url);
+        if (url.pathname === '/config/providers' && req.method === 'GET') {
+          return new Response(JSON.stringify({ providers: [], default: {} }), {
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        if (url.pathname === '/api/provider' && req.method === 'GET') {
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: 'anthropic',
+                  name: 'Anthropic',
+                  api: { type: 'native', url: 'https://api.anthropic.test', settings: {} },
+                  request: { headers: {}, body: {} },
+                },
+              ],
+            }),
+            { headers: { 'content-type': 'application/json' } },
+          );
+        }
+        if (url.pathname === '/api/model' && req.method === 'GET') {
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: 'claude',
+                  providerID: 'anthropic',
+                  name: 'Claude',
+                  api: { id: 'messages', type: 'native', url: 'https://api.anthropic.test' },
+                  capabilities: { tools: true, input: ['text'], output: ['text'] },
+                  request: { headers: {}, body: {}, options: {} },
+                  variants: [],
+                  time: { released: 0 },
+                  cost: [],
+                  status: 'active',
+                  enabled: true,
+                  limit: { context: 200000, output: 8192 },
+                },
+              ],
+            }),
+            { headers: { 'content-type': 'application/json' } },
+          );
+        }
+        if (url.pathname === '/session' && req.method === 'POST') {
+          sessionCreateBodies.push(await req.json());
+          return new Response(JSON.stringify({ id: 'platform-session' }), {
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        if (url.pathname === '/session/platform-session/message' && req.method === 'POST') {
+          return new Response(
+            JSON.stringify({ parts: [{ type: 'text', text: validPipelineYaml }] }),
+            { headers: { 'content-type': 'application/json' } },
+          );
+        }
+        if (url.pathname === '/session/platform-session' && req.method === 'DELETE') {
+          return new Response(JSON.stringify({ ok: true }), {
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        return new Response(`unexpected ${req.method} ${url.pathname}`, { status: 404 });
+      },
+    });
+
+    try {
+      await convertPipelineYamlForPlatform({
+        baseUrl: server.url.href,
+        sourceYaml: validPipelineYaml,
+        sourceName: 'pipeline.yaml',
+        sourcePlatform: 'windows',
+        targetPlatform: 'linux',
+        model,
+      });
+
+      expect(sessionCreateBodies).toHaveLength(1);
+      expect(sessionCreateBodies[0]).toMatchObject({
+        metadata: { tagma: { source: 'platform-export', model } },
+      });
+    } finally {
+      server.stop(true);
+    }
+  });
 });

@@ -107,6 +107,7 @@ export function buildProvidersFromV2Catalog(
   legacyProviders: Provider[] = [],
 ): Provider[] {
   const legacyById = new Map(legacyProviders.map((provider) => [provider.id, provider]));
+  const v2ProviderIds = new Set(catalog.providers.map((provider) => provider.id));
   const v2ProviderById = new Map(
     catalog.providers
       .filter((provider) => provider.disabled !== true)
@@ -152,7 +153,7 @@ export function buildProvidersFromV2Catalog(
     modelsByProvider.set(model.providerID, providerModels);
   }
 
-  return catalog.providers.flatMap((provider) => {
+  const providers = catalog.providers.flatMap((provider) => {
     if (provider.disabled === true) return [];
     const models = modelsByProvider.get(provider.id);
     if (!models || Object.keys(models).length === 0) return [];
@@ -169,6 +170,14 @@ export function buildProvidersFromV2Catalog(
       } as Provider,
     ];
   });
+
+  for (const legacyProvider of legacyProviders) {
+    if (v2ProviderIds.has(legacyProvider.id)) continue;
+    if (Object.keys(legacyProvider.models ?? {}).length === 0) continue;
+    providers.push(legacyProvider);
+  }
+
+  return providers;
 }
 
 function mediaCapabilities(values: string[]): Provider['models'][string]['capabilities']['input'] {

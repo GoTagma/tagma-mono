@@ -480,6 +480,33 @@ describe('chat model persistence', () => {
     });
   });
 
+  test('keeps configured providers that are only present in the legacy catalog', () => {
+    const legacyCustomProvider = {
+      id: 'ollama',
+      name: 'Ollama',
+      source: 'api',
+      env: [],
+      models: {
+        'llama3.1:8b': {
+          ...modelDef('llama3.1:8b'),
+          providerID: 'ollama',
+          name: 'Llama 3.1 8B',
+        },
+      },
+    } as unknown as Provider;
+
+    const providers = buildProvidersFromV2Catalog(
+      {
+        providers: [v2Provider('anthropic')],
+        models: [v2Model('anthropic', 'claude-sonnet')],
+      },
+      [legacyCustomProvider],
+    );
+
+    expect(providers.map((provider) => provider.id)).toEqual(['anthropic', 'ollama']);
+    expect(providers[1]?.models['llama3.1:8b']?.name).toBe('Llama 3.1 8B');
+  });
+
   test('treats missing v2 model enabled flag as enabled', () => {
     const model = v2Model('anthropic', 'claude-sonnet');
     delete (model as { enabled?: boolean }).enabled;

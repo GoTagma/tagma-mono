@@ -1,6 +1,12 @@
 import { basename, join } from 'node:path';
 import { createOpencodeClient } from '@opencode-ai/sdk/client';
-import type { Session as V2Session } from '@opencode-ai/sdk/v2/client';
+import {
+  createOpencodeClient as createOpencodeV2Client,
+  type ModelV2Info,
+  type OpencodeClient as OpencodeV2Client,
+  type ProviderV2Info,
+  type Session as V2Session,
+} from '@opencode-ai/sdk/v2/client';
 import { compileYamlContent, parseYaml, serializePipeline } from '@tagma/sdk/yaml';
 import { toOpencodeError } from '../shared/opencode-errors.js';
 import { buildTagmaSessionMetadata } from '../shared/opencode-session-metadata.js';
@@ -44,6 +50,10 @@ type SessionCreateBodyWithMetadata = {
   parentID?: string;
   metadata?: Record<string, unknown>;
 };
+interface ProviderModelCatalogV2Snapshot {
+  providers: ProviderV2Info[];
+  models: ModelV2Info[];
+}
 
 const PLATFORM_LABELS: Record<TagmaPlatform, string> = {
   windows: 'Windows',
@@ -161,18 +171,20 @@ export function extractPlatformYamlFromReply(reply: string): string {
 
 export async function convertPipelineYamlForPlatform(opts: ConvertOptions): Promise<string> {
   const loopbackFetch = createLoopbackFetch(opts.baseUrl);
-  const client = createOpencodeClient({
+  const clientConfig = {
     baseUrl: opts.baseUrl,
     ...(opts.authHeader ? { headers: { Authorization: opts.authHeader } } : {}),
     throwOnError: true,
     fetch: loopbackFetch,
-  });
+  };
+  const client = createOpencodeClient(clientConfig);
+  const v2Client = createOpencodeV2Client(clientConfig);
   const timeoutSignal = AbortSignal.timeout(PLATFORM_EXPORT_TIMEOUT_MS);
   const signal = opts.signal ? AbortSignal.any([opts.signal, timeoutSignal]) : timeoutSignal;
 
   try {
     emitProgress(opts, 'model', 'Selecting OpenCode model');
-    const model = await resolveModel(client, opts.model, signal);
+    const model = await resolveModel(client, v2Client, opts.model, signal);
     emitProgress(opts, 'model', `Using ${model.providerID}/${model.modelID}`);
     emitProgress(opts, 'opencode', 'Creating temporary OpenCode conversion session');
     const sessionBody: SessionCreateBodyWithMetadata = {
@@ -289,28 +301,33 @@ export function createLoopbackFetch(baseUrl: string): typeof fetch {
 
 async function resolveModel(
   client: ReturnType<typeof createOpencodeClient>,
+  v2Client: OpencodeV2Client,
   requested?: PlatformExportModelPick,
   signal?: AbortSignal,
 ): Promise<PlatformExportModelPick> {
-  const { providers, default: defaults } = await unwrap(client.config.providers({ signal }));
+  const [legacyLoad, v2Load] = await Promise.all([
+    unwrap(client.config.providers({ signal }))
+      .then((value) => ({ ok: true as const, value }))
+      .catch((error) => ({ ok: false as const, error })),
+    fetchProviderModelCatalogV2(v2Client, signal)
+      .then((value) => ({ ok: true as const, value }))
+      .catch((error) => ({ ok: false as const, error })),
+  ]);
+  const providers = legacyLoad.ok ? legacyLoad.value.providers : [];
+  const defaults = legacyLoad.ok ? legacyLoad.value.default : {};
+  const v2Picks = v2Load.ok ? v2ModelPicks(v2Load.value) : [];
+
   if (
     requested &&
-    providers.some(
-      (provider) =>
-        provider.id === requested.providerID &&
-        Object.prototype.hasOwnProperty.call(provider.models, requested.modelID),
-    )
+    (legacyModelExists(providers, requested) || modelPickInList(v2Picks, requested))
   ) {
     return requested;
   }
 
   for (const [providerID, modelID] of Object.entries(defaults)) {
     if (
-      providers.some(
-        (provider) =>
-          provider.id === providerID &&
-          Object.prototype.hasOwnProperty.call(provider.models, modelID),
-      )
+      legacyModelExists(providers, { providerID, modelID }) ||
+      modelPickInList(v2Picks, { providerID, modelID })
     ) {
       return { providerID, modelID };
     }
@@ -320,8 +337,53 @@ async function resolveModel(
     const modelID = Object.keys(provider.models)[0];
     if (modelID) return { providerID: provider.id, modelID };
   }
+  const firstV2Pick = v2Picks[0];
+  if (firstV2Pick) return firstV2Pick;
 
+  if (!legacyLoad.ok && !v2Load.ok) throw legacyLoad.error;
   throw new Error('No OpenCode model is configured. Connect a provider in the chat panel first.');
+}
+
+async function fetchProviderModelCatalogV2(
+  client: OpencodeV2Client,
+  signal?: AbortSignal,
+): Promise<ProviderModelCatalogV2Snapshot> {
+  const [providerList, modelList] = await Promise.all([
+    unwrap(client.v2.provider.list(undefined, { signal })),
+    unwrap(client.v2.model.list(undefined, { signal })),
+  ]);
+  return { providers: providerList.data, models: modelList.data };
+}
+
+function v2ModelPicks(catalog: ProviderModelCatalogV2Snapshot): PlatformExportModelPick[] {
+  const enabledProviders = new Set(
+    catalog.providers
+      .filter((provider) => provider.disabled !== true)
+      .map((provider) => provider.id),
+  );
+  return catalog.models
+    .filter((model) => model.enabled !== false && enabledProviders.has(model.providerID))
+    .map((model) => ({ providerID: model.providerID, modelID: model.id }));
+}
+
+function legacyModelExists(
+  providers: Array<{ id: string; models: Record<string, unknown> }>,
+  pick: PlatformExportModelPick,
+): boolean {
+  return providers.some(
+    (provider) =>
+      provider.id === pick.providerID &&
+      Object.prototype.hasOwnProperty.call(provider.models, pick.modelID),
+  );
+}
+
+function modelPickInList(
+  picks: PlatformExportModelPick[],
+  pick: PlatformExportModelPick,
+): boolean {
+  return picks.some(
+    (candidate) => candidate.providerID === pick.providerID && candidate.modelID === pick.modelID,
+  );
 }
 
 async function unwrap<T>(request: OpencodeRequest<T>): Promise<T> {
