@@ -1387,7 +1387,7 @@ function pruneStaleAgentFiles(tagmaCwd: string): boolean {
   return changed;
 }
 
-export interface SeedOpencodeArtifactsOptions extends TagmaPipelineAgentOptions {}
+export type SeedOpencodeArtifactsOptions = TagmaPipelineAgentOptions;
 
 export function seedOpencodeArtifacts(
   tagmaCwd: string,
