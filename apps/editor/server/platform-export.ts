@@ -377,10 +377,7 @@ function legacyModelExists(
   );
 }
 
-function modelPickInList(
-  picks: PlatformExportModelPick[],
-  pick: PlatformExportModelPick,
-): boolean {
+function modelPickInList(picks: PlatformExportModelPick[], pick: PlatformExportModelPick): boolean {
   return picks.some(
     (candidate) => candidate.providerID === pick.providerID && candidate.modelID === pick.modelID,
   );
