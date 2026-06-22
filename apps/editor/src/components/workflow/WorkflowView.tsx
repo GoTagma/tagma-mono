@@ -49,9 +49,11 @@ import {
   disconnectWorkflowPipelines,
   moveWorkflowPipeline,
   removeWorkflowPipeline,
+  setWorkflowPipelineLoopCount,
   workflowDragPositionFromPointer,
   workflowNodePointerOffset,
   workflowPathEquals,
+  workflowPipelineLoopCount,
   type WorkflowGraphPosition,
 } from './workflow-graph-model';
 
@@ -75,6 +77,16 @@ interface WorkflowViewProps {
 interface PipelineRuntimeState {
   status: WorkflowGraphNodeStatus;
   runId: string | null;
+  runCount: number;
+  maxRuns: number;
+  attempts: Array<{
+    attempt: number;
+    runId: string | null;
+    status: WorkflowGraphNodeStatus;
+    startedAt: string | null;
+    finishedAt: string | null;
+    error: string | null;
+  }>;
   startedAt: string | null;
   finishedAt: string | null;
   error: string | null;
@@ -246,6 +258,9 @@ function buildRuntimeStateByPipeline(
     states.set(pipeline.id, {
       status: 'waiting',
       runId: null,
+      runCount: 0,
+      maxRuns: workflowPipelineLoopCount(pipeline),
+      attempts: [],
       startedAt: null,
       finishedAt: null,
       error: null,
@@ -256,6 +271,9 @@ function buildRuntimeStateByPipeline(
     pipelineId: string;
     status: WorkflowGraphNodeStatus;
     runId?: string | null;
+    runCount?: number | null;
+    maxRuns?: number | null;
+    attempts?: PipelineRuntimeState['attempts'];
     startedAt?: string | null;
     finishedAt?: string | null;
     error?: string | null;
@@ -263,6 +281,9 @@ function buildRuntimeStateByPipeline(
     const prev = states.get(node.pipelineId) ?? {
       status: 'waiting' as WorkflowGraphNodeStatus,
       runId: null,
+      runCount: 0,
+      maxRuns: 1,
+      attempts: [],
       startedAt: null,
       finishedAt: null,
       error: null,
@@ -270,6 +291,10 @@ function buildRuntimeStateByPipeline(
     states.set(node.pipelineId, {
       status: node.status,
       runId: node.runId !== undefined ? node.runId : prev.runId,
+      runCount:
+        node.runCount !== undefined && node.runCount !== null ? node.runCount : prev.runCount,
+      maxRuns: node.maxRuns !== undefined && node.maxRuns !== null ? node.maxRuns : prev.maxRuns,
+      attempts: node.attempts !== undefined ? node.attempts : prev.attempts,
       startedAt: node.startedAt !== undefined ? node.startedAt : prev.startedAt,
       finishedAt: node.finishedAt !== undefined ? node.finishedAt : prev.finishedAt,
       error: node.error !== undefined ? node.error : prev.error,
@@ -296,6 +321,41 @@ function joinIds(ids: readonly string[], emptyLabel: string): string {
 
 function displayPipelineName(entry: WorkspaceYamlEntry): string {
   return entry.pipelineName && entry.pipelineName.trim() ? entry.pipelineName : entry.name;
+}
+
+function normalizeWorkflowDisplayPath(path: string): string {
+  return path.replace(/\\/g, '/').replace(/^\.\//, '').toLocaleLowerCase();
+}
+
+function workflowPathMatchesPipelineEntry(workflowPath: string, entryPath: string): boolean {
+  if (workflowPathEquals(workflowPath, entryPath)) return true;
+  const workflowNorm = normalizeWorkflowDisplayPath(workflowPath);
+  const entryNorm = normalizeWorkflowDisplayPath(entryPath);
+  return entryNorm.endsWith(`/${workflowNorm}`) || workflowNorm.endsWith(`/${entryNorm}`);
+}
+
+function workflowPipelineDisplayInfo(
+  pipeline: WorkflowPipelineEntry,
+  workspacePipelines: readonly WorkspaceYamlEntry[],
+): { title: string; subtitle: string; pathLabel: string } {
+  const entry =
+    workspacePipelines.find((candidate) =>
+      workflowPathMatchesPipelineEntry(pipeline.path, candidate.path),
+    ) ?? null;
+  return {
+    title: entry ? displayPipelineName(entry) : pipeline.id,
+    subtitle: `ID: ${pipeline.id}`,
+    pathLabel: entry?.name ?? pipeline.path,
+  };
+}
+
+function graphRunIdFromEvents(events: readonly WorkflowGraphEvent[]): string | null {
+  return events[events.length - 1]?.graphRunId ?? null;
+}
+
+function formatWorkflowRunTime(value: string | null | undefined): string {
+  if (!value) return 'n/a';
+  return new Date(value).toLocaleTimeString();
 }
 
 export function WorkflowView({
@@ -325,6 +385,7 @@ export function WorkflowView({
   const [localError, setLocalError] = useState<string | null>(null);
   const [draftPositions, setDraftPositions] = useState<Record<string, WorkflowGraphPosition>>({});
   const [timelineExpanded, setTimelineExpanded] = useState(false);
+  const [runPageVisible, setRunPageVisible] = useState(() => running || !!result);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{
@@ -351,6 +412,14 @@ export function WorkflowView({
     setDraftPositions({});
     setLocalError(null);
   }, [selectedWorkflowPath, selectedWorkflow]);
+
+  useEffect(() => {
+    setRunPageVisible(false);
+  }, [selectedWorkflowPath]);
+
+  useEffect(() => {
+    if (running || result) setRunPageVisible(true);
+  }, [result, running]);
 
   useEffect(() => {
     if (!selectedWorkflow) {
@@ -391,6 +460,9 @@ export function WorkflowView({
   }, [graphLayout.edges, selectedEdgeKey]);
   const selectedPipeline =
     selectedWorkflow?.pipelines.find((pipeline) => pipeline.id === selectedPipelineId) ?? null;
+  const selectedPipelineDisplay = selectedPipeline
+    ? workflowPipelineDisplayInfo(selectedPipeline, workspacePipelines)
+    : null;
   const selectedState = selectedPipeline
     ? (runtimeByPipeline.get(selectedPipeline.id) ?? null)
     : null;
@@ -398,6 +470,9 @@ export function WorkflowView({
     ? (downstreamByPipeline.get(selectedPipeline.id) ?? [])
     : [];
   const selectedTasks = selectedPipelineId ? (taskSnapshots[selectedPipelineId] ?? []) : [];
+  const selectedLoopCount = selectedPipeline ? workflowPipelineLoopCount(selectedPipeline) : 1;
+  const graphRunId = result?.graphRunId ?? graphRunIdFromEvents(events);
+  const hasRunActivity = running || !!result || events.length > 0;
   const isDesktop = hasDesktopBridge();
 
   const savePipelines = async (pipelines: WorkflowPipelineEntry[]) => {
@@ -624,6 +699,13 @@ export function WorkflowView({
     void savePipelines(removeWorkflowPipeline(selectedWorkflow.pipelines, selectedPipeline.id));
   };
 
+  const updateSelectedLoopCount = (rawCount: number) => {
+    if (!selectedWorkflow || !selectedPipeline) return;
+    void savePipelines(
+      setWorkflowPipelineLoopCount(selectedWorkflow.pipelines, selectedPipeline.id, rawCount),
+    );
+  };
+
   return (
     <div className="h-full flex flex-col bg-tagma-bg text-tagma-text">
       <header
@@ -670,6 +752,18 @@ export function WorkflowView({
           <Plus size={12} />
           <span>New Graph</span>
         </button>
+        {selectedWorkflow && hasRunActivity && (
+          <button
+            type="button"
+            onClick={() => setRunPageVisible((visible) => !visible)}
+            className="h-7 px-2 flex items-center gap-1 border border-tagma-border text-[11px] text-tagma-muted hover:text-tagma-text"
+            aria-label={runPageVisible ? 'Edit graph' : 'Show graph run'}
+            title={runPageVisible ? 'Edit graph' : 'Show graph run'}
+          >
+            {runPageVisible ? <Workflow size={11} /> : <Play size={11} />}
+            <span>{runPageVisible ? 'Edit graph' : 'Graph run'}</span>
+          </button>
+        )}
         {selectedWorkflow && !running && (
           <button
             type="button"
@@ -698,573 +792,899 @@ export function WorkflowView({
         {isDesktop && <DesktopWindowControls />}
       </header>
 
-      <div className="flex-1 min-h-0 grid grid-cols-[260px_minmax(420px,1fr)_360px] overflow-hidden">
-        <aside className="border-r border-tagma-border bg-tagma-surface/70 min-h-0 overflow-auto p-3">
-          <div className="flex items-center justify-between gap-2 mb-2">
-            <div className="text-[10px] font-mono uppercase tracking-wide text-tagma-muted">
-              Workflow Graphs
+      {runPageVisible && selectedWorkflow ? (
+        <WorkflowRunPage
+          workflow={selectedWorkflow}
+          workspacePipelines={workspacePipelines}
+          runtimeByPipeline={runtimeByPipeline}
+          taskSnapshots={taskSnapshots}
+          events={events}
+          result={result ?? null}
+          running={running}
+          graphRunId={graphRunId}
+          onEditGraph={() => setRunPageVisible(false)}
+          onRunAgain={() => onStart(selectedWorkflow.path)}
+          onAbort={onAbort}
+        />
+      ) : (
+        <div className="flex-1 min-h-0 grid grid-cols-[260px_minmax(420px,1fr)_360px] overflow-hidden">
+          <aside className="border-r border-tagma-border bg-tagma-surface/70 min-h-0 overflow-auto p-3">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <div className="text-[10px] font-mono uppercase tracking-wide text-tagma-muted">
+                Workflow Graphs
+              </div>
+              <button
+                type="button"
+                onClick={onCreateWorkflow}
+                className="h-6 px-2 inline-flex items-center gap-1 border border-tagma-border text-[10px] text-tagma-muted hover:text-tagma-text"
+                title="New Graph"
+                aria-label="New Graph"
+              >
+                <Plus size={11} />
+                <span>New Graph</span>
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={onCreateWorkflow}
-              className="h-6 px-2 inline-flex items-center gap-1 border border-tagma-border text-[10px] text-tagma-muted hover:text-tagma-text"
-              title="New Graph"
-              aria-label="New Graph"
-            >
-              <Plus size={11} />
-              <span>New Graph</span>
-            </button>
-          </div>
-          {workflows.length === 0 ? (
-            <div className="text-[11px] font-mono text-tagma-muted">No workflow graphs found.</div>
-          ) : (
-            <div className="space-y-2">
-              {workflows.map((workflow) => {
-                const active = workflow.path === selectedWorkflow?.path;
-                return (
-                  <button
-                    key={workflow.path}
-                    type="button"
-                    onClick={() => {
-                      onSelectWorkflow(workflow.path);
-                      setSelectedPipelineId(workflow.pipelines[0]?.id ?? null);
-                    }}
-                    aria-current={active ? true : undefined}
-                    aria-label={`Select workflow ${workflow.name}`}
-                    className={`w-full text-left border px-2.5 py-2 transition-colors ${
-                      active
-                        ? 'border-tagma-accent bg-tagma-elevated'
-                        : 'border-tagma-border bg-tagma-bg hover:border-tagma-accent/50'
-                    }`}
-                  >
-                    <div className="text-[12px] font-semibold truncate">
-                      {workflow.workflowName ?? workflow.name}
-                    </div>
-                    <div className="mt-0.5 text-[10px] font-mono text-tagma-muted truncate">
-                      {workflow.name}
-                    </div>
-                    <div className="mt-2 flex items-center justify-between text-[9px] font-mono text-tagma-muted-dim">
-                      <span>{workflow.pipelines.length} pipelines</span>
-                      <span>
-                        {workflow.pipelines.reduce((sum, p) => sum + p.depends_on.length, 0)} deps
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          <div className="mt-5 text-[10px] font-mono uppercase tracking-wide text-tagma-muted mb-2">
-            Workspace Pipelines
-          </div>
-          {workspacePipelines.length === 0 ? (
-            <div className="text-[11px] font-mono text-tagma-muted">No pipelines found.</div>
-          ) : (
-            <div className="space-y-2">
-              {workspacePipelines.map((pipeline) => {
-                const inGraph = Boolean(
-                  selectedWorkflow?.pipelines.some((p) =>
-                    workflowPathEquals(p.path, pipeline.path),
-                  ),
-                );
-                return (
-                  <button
-                    key={pipeline.path}
-                    type="button"
-                    draggable
-                    onDragStart={(e) => {
-                      e.dataTransfer.setData(DRAG_PIPELINE_PATH, pipeline.path);
-                      e.dataTransfer.effectAllowed = 'copyMove';
-                    }}
-                    className="w-full text-left border border-tagma-border bg-tagma-bg px-2.5 py-2 hover:border-tagma-accent/60"
-                    title={pipeline.path}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="min-w-0 text-[12px] font-semibold truncate">
-                        {displayPipelineName(pipeline)}
-                      </span>
-                      {inGraph && (
-                        <span className="shrink-0 text-[9px] font-mono text-tagma-accent">
-                          In graph
+            {workflows.length === 0 ? (
+              <div className="text-[11px] font-mono text-tagma-muted">
+                No workflow graphs found.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {workflows.map((workflow) => {
+                  const active = workflow.path === selectedWorkflow?.path;
+                  return (
+                    <button
+                      key={workflow.path}
+                      type="button"
+                      onClick={() => {
+                        onSelectWorkflow(workflow.path);
+                        setSelectedPipelineId(workflow.pipelines[0]?.id ?? null);
+                      }}
+                      aria-current={active ? true : undefined}
+                      aria-label={`Select workflow ${workflow.name}`}
+                      className={`w-full text-left border px-2.5 py-2 transition-colors ${
+                        active
+                          ? 'border-tagma-accent bg-tagma-elevated'
+                          : 'border-tagma-border bg-tagma-bg hover:border-tagma-accent/50'
+                      }`}
+                    >
+                      <div className="text-[12px] font-semibold truncate">
+                        {workflow.workflowName ?? workflow.name}
+                      </div>
+                      <div className="mt-0.5 text-[10px] font-mono text-tagma-muted truncate">
+                        {workflow.name}
+                      </div>
+                      <div className="mt-2 flex items-center justify-between text-[9px] font-mono text-tagma-muted-dim">
+                        <span>{workflow.pipelines.length} pipelines</span>
+                        <span>
+                          {workflow.pipelines.reduce((sum, p) => sum + p.depends_on.length, 0)} deps
                         </span>
-                      )}
-                    </div>
-                    <div className="mt-0.5 text-[10px] font-mono text-tagma-muted truncate">
-                      {pipeline.name}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </aside>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
-        <main className="min-w-0 min-h-0 flex flex-col overflow-hidden">
-          {!selectedWorkflow ? (
-            <div className="flex-1 flex items-center justify-center text-[12px] font-mono text-tagma-muted">
-              No workflow graph selected.
+            <div className="mt-5 text-[10px] font-mono uppercase tracking-wide text-tagma-muted mb-2">
+              Workspace Pipelines
             </div>
-          ) : (
-            <>
-              <div className="h-9 shrink-0 border-b border-tagma-border bg-tagma-surface/40 px-3 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="text-[10px] font-mono uppercase tracking-wide text-tagma-muted">
-                    Graph Canvas
+            {workspacePipelines.length === 0 ? (
+              <div className="text-[11px] font-mono text-tagma-muted">No pipelines found.</div>
+            ) : (
+              <div className="space-y-2">
+                {workspacePipelines.map((pipeline) => {
+                  const inGraph = Boolean(
+                    selectedWorkflow?.pipelines.some((p) =>
+                      workflowPathEquals(p.path, pipeline.path),
+                    ),
+                  );
+                  return (
+                    <button
+                      key={pipeline.path}
+                      type="button"
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData(DRAG_PIPELINE_PATH, pipeline.path);
+                        e.dataTransfer.effectAllowed = 'copyMove';
+                      }}
+                      className="w-full text-left border border-tagma-border bg-tagma-bg px-2.5 py-2 hover:border-tagma-accent/60"
+                      title={pipeline.path}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="min-w-0 text-[12px] font-semibold truncate">
+                          {displayPipelineName(pipeline)}
+                        </span>
+                        {inGraph && (
+                          <span className="shrink-0 text-[9px] font-mono text-tagma-accent">
+                            In graph
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-0.5 text-[10px] font-mono text-tagma-muted truncate">
+                        {pipeline.name}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </aside>
+
+          <main className="min-w-0 min-h-0 flex flex-col overflow-hidden">
+            {!selectedWorkflow ? (
+              <div className="flex-1 flex items-center justify-center text-[12px] font-mono text-tagma-muted">
+                No workflow graph selected.
+              </div>
+            ) : (
+              <>
+                <div className="h-9 shrink-0 border-b border-tagma-border bg-tagma-surface/40 px-3 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="text-[10px] font-mono uppercase tracking-wide text-tagma-muted">
+                      Graph Canvas
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 text-[10px] font-mono text-tagma-muted">
+                    <span>{selectedWorkflow.pipelines.length} pipelines</span>
+                    <span>{graphLayout.edges.length} edges</span>
                   </div>
                 </div>
-                <div className="flex items-center gap-3 text-[10px] font-mono text-tagma-muted">
-                  <span>{selectedWorkflow.pipelines.length} pipelines</span>
-                  <span>{graphLayout.edges.length} edges</span>
-                </div>
-              </div>
 
-              {localError && (
-                <div className="shrink-0 border-b border-tagma-error/30 bg-tagma-error/8 px-3 py-2 text-[11px] font-mono text-tagma-error">
-                  {localError}
-                </div>
-              )}
+                {localError && (
+                  <div className="shrink-0 border-b border-tagma-error/30 bg-tagma-error/8 px-3 py-2 text-[11px] font-mono text-tagma-error">
+                    {localError}
+                  </div>
+                )}
 
-              <div
-                ref={scrollRef}
-                className="flex-1 min-h-0 overflow-auto timeline-grid cursor-grab active:cursor-grabbing"
-                data-workflow-pan-surface="true"
-                data-workflow-drop-surface="true"
-                aria-label="Drag canvas to pan"
-                title="Drag canvas to pan"
-                onPointerDown={beginCanvasPan}
-                onPointerMove={moveCanvasPan}
-                onPointerUp={finishCanvasPan}
-                onPointerCancel={finishCanvasPan}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = 'copy';
-                }}
-                onDrop={handleCanvasDrop}
-              >
                 <div
-                  ref={canvasRef}
-                  className="relative"
-                  style={{
-                    minWidth: graphLayout.width,
-                    minHeight: graphLayout.height,
+                  ref={scrollRef}
+                  className="flex-1 min-h-0 overflow-auto timeline-grid cursor-grab active:cursor-grabbing"
+                  data-workflow-pan-surface="true"
+                  data-workflow-drop-surface="true"
+                  aria-label="Drag canvas to pan"
+                  title="Drag canvas to pan"
+                  onPointerDown={beginCanvasPan}
+                  onPointerMove={moveCanvasPan}
+                  onPointerUp={finishCanvasPan}
+                  onPointerCancel={finishCanvasPan}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'copy';
                   }}
+                  onDrop={handleCanvasDrop}
                 >
-                  <svg
-                    className="absolute left-0 top-0 pointer-events-none"
-                    width={graphLayout.width}
-                    height={graphLayout.height}
-                    style={{ overflow: 'visible' }}
+                  <div
+                    ref={canvasRef}
+                    className="relative"
+                    style={{
+                      minWidth: graphLayout.width,
+                      minHeight: graphLayout.height,
+                    }}
                   >
-                    <defs>
-                      <marker
-                        id="workflow-graph-arrow"
-                        markerWidth="8"
-                        markerHeight="8"
-                        refX="7"
-                        refY="4"
-                        orient="auto"
-                      >
-                        <path d="M0,0 L8,4 L0,8 Z" fill="var(--tagma-edge-default-marker)" />
-                      </marker>
-                    </defs>
-                    {graphLayout.edges.map((edge) => {
-                      return (
-                        <g key={edge.key}>
-                          <path
-                            d={edge.d}
-                            fill="none"
-                            stroke="transparent"
-                            strokeWidth={14}
-                            pointerEvents="stroke"
-                            role="button"
-                            tabIndex={0}
-                            data-workflow-edge={edge.key}
-                            className="workflow-edge-hit-path outline-none focus:outline-none focus-visible:outline-none"
-                            aria-label={`Select dependency ${edge.from} to ${edge.to}`}
-                            style={{ outline: 'none' }}
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedEdgeKey(edge.key);
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
+                    <svg
+                      className="absolute left-0 top-0 pointer-events-none"
+                      width={graphLayout.width}
+                      height={graphLayout.height}
+                      style={{ overflow: 'visible' }}
+                    >
+                      <defs>
+                        <marker
+                          id="workflow-graph-arrow"
+                          markerWidth="8"
+                          markerHeight="8"
+                          refX="7"
+                          refY="4"
+                          orient="auto"
+                        >
+                          <path d="M0,0 L8,4 L0,8 Z" fill="var(--tagma-edge-default-marker)" />
+                        </marker>
+                      </defs>
+                      {graphLayout.edges.map((edge) => {
+                        return (
+                          <g key={edge.key}>
+                            <path
+                              d={edge.d}
+                              fill="none"
+                              stroke="transparent"
+                              strokeWidth={14}
+                              pointerEvents="stroke"
+                              role="button"
+                              tabIndex={0}
+                              data-workflow-edge={edge.key}
+                              className="workflow-edge-hit-path outline-none focus:outline-none focus-visible:outline-none"
+                              aria-label={`Select dependency ${edge.from} to ${edge.to}`}
+                              style={{ outline: 'none' }}
+                              onMouseDown={(e) => {
                                 e.preventDefault();
-                                setSelectedEdgeKey(edge.key);
-                              }
-                            }}
-                          />
-                          <path
-                            d={edge.d}
-                            fill="none"
-                            stroke="var(--tagma-edge-default)"
-                            strokeWidth={1.6}
-                            markerEnd="url(#workflow-graph-arrow)"
-                            pointerEvents="none"
-                          />
-                        </g>
-                      );
-                    })}
-                    {connectionDrag && (
-                      <path
-                        d={`M${connectionDrag.startX},${connectionDrag.startY} C${
-                          (connectionDrag.startX + connectionDrag.x) / 2
-                        },${connectionDrag.startY} ${
-                          (connectionDrag.startX + connectionDrag.x) / 2
-                        },${connectionDrag.y} ${connectionDrag.x},${connectionDrag.y}`}
-                        fill="none"
-                        stroke="rgb(var(--tagma-accent))"
-                        strokeWidth={1.8}
-                        strokeDasharray="4 4"
-                        markerEnd="url(#workflow-graph-arrow)"
-                        pointerEvents="none"
-                      />
-                    )}
-                  </svg>
-
-                  {graphLayout.edges.map((edge) => {
-                    const selected = selectedEdgeKey === edge.key;
-                    return (
-                      <button
-                        key={`${edge.key}:delete`}
-                        type="button"
-                        data-edge-delete={`${edge.from}->${edge.to}`}
-                        aria-label={`Disconnect edge ${edge.from} to ${edge.to}`}
-                        aria-hidden={selected ? undefined : true}
-                        tabIndex={selected ? 0 : -1}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          disconnect(edge.from, edge.to);
-                        }}
-                        className={`workflow-edge-delete-button absolute inline-flex h-4 w-4 -translate-x-1/2 -translate-y-1/2 appearance-none items-center justify-center border border-tagma-border bg-tagma-surface p-0 leading-none text-tagma-muted shadow-none outline-none ring-0 hover:border-tagma-error hover:bg-tagma-surface hover:text-tagma-error focus:bg-tagma-surface focus:outline-none focus:ring-0 focus:shadow-none focus-visible:outline-none focus-visible:ring-0 focus-visible:shadow-none focus-visible:border-tagma-error focus-visible:text-tagma-error active:bg-tagma-surface active:outline-none active:ring-0 active:shadow-none transition-opacity ${
-                          selected
-                            ? 'pointer-events-auto opacity-100'
-                            : 'pointer-events-none opacity-0'
-                        }`}
-                        title={`Disconnect edge ${edge.from} to ${edge.to}`}
-                        style={{
-                          left: edge.labelX,
-                          top: edge.labelY,
-                        }}
-                      >
-                        <X size={13} />
-                      </button>
-                    );
-                  })}
-
-                  {renderedPipelines.length === 0 && (
-                    <div className="absolute left-8 top-8 border border-dashed border-tagma-border bg-tagma-surface/70 px-4 py-3 text-[12px] font-mono text-tagma-muted">
-                      No pipelines in this graph.
-                    </div>
-                  )}
-
-                  {renderedPipelines.map((pipeline) => {
-                    const pos = graphLayout.positions.get(pipeline.id);
-                    if (!pos) return null;
-                    const state = runtimeByPipeline.get(pipeline.id);
-                    const status = state?.status ?? 'waiting';
-                    const meta = STATUS_META[status];
-                    const Icon = meta.icon;
-                    const selected = pipeline.id === selectedPipelineId;
-                    const downstream = downstreamByPipeline.get(pipeline.id) ?? [];
-                    const targetSlotActive = hoveredConnectionTargetId === pipeline.id;
-                    return (
-                      <div
-                        key={pipeline.id}
-                        data-workflow-node={pipeline.id}
-                        role="button"
-                        tabIndex={0}
-                        onPointerDown={(e) => beginNodeDrag(e, pipeline.id, pos)}
-                        onPointerMove={moveNodeDrag}
-                        onPointerUp={finishNodeDrag}
-                        onPointerCancel={finishNodeDrag}
-                        onClick={() => {
-                          if (suppressClickRef.current) return;
-                          setSelectedPipelineId(pipeline.id);
-                        }}
-                        onDoubleClick={() => onEditPipeline(pipeline.path, selectedWorkflowPath)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            setSelectedPipelineId(pipeline.id);
-                          }
-                        }}
-                        aria-pressed={selected}
-                        aria-label={`Select pipeline ${pipeline.id}, ${meta.label}, upstream ${joinIds(
-                          pipeline.depends_on,
-                          'none',
-                        )}, downstream ${joinIds(downstream, 'none')}`}
-                        className={`absolute text-left border px-3 py-2 transition-colors cursor-grab active:cursor-grabbing ${meta.bg} ${
-                          selected ? 'border-tagma-accent shadow-glow-accent' : meta.border
-                        } hover:border-tagma-accent/70`}
-                        style={{
-                          left: pos.x,
-                          top: pos.y,
-                          width: WORKFLOW_NODE_W,
-                          height: WORKFLOW_NODE_H,
-                        }}
-                      >
-                        <button
-                          type="button"
-                          data-workflow-input-slot={pipeline.id}
-                          data-workflow-slot-role="target"
-                          aria-label={`Drop dependency on ${pipeline.id}`}
-                          title={`Drop dependency on ${pipeline.id}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className={`absolute -left-2 top-1/2 h-4 w-4 -translate-y-1/2 border bg-tagma-bg transition-all duration-100 cursor-crosshair focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tagma-accent/70 hover:scale-125 hover:border-tagma-accent hover:bg-tagma-accent hover:shadow-glow-accent ${
-                            targetSlotActive
-                              ? 'scale-125 border-tagma-accent bg-tagma-accent shadow-glow-accent ring-2 ring-tagma-accent/40'
-                              : 'border-tagma-border'
-                          }`}
-                        />
-                        <button
-                          type="button"
-                          data-workflow-output-slot={pipeline.id}
-                          data-workflow-slot-role="source"
-                          aria-label={`Drag dependency from ${pipeline.id}`}
-                          title={`Drag dependency from ${pipeline.id}`}
-                          onPointerDown={(e) => beginConnectionDrag(e, pipeline.id, pos)}
-                          onPointerMove={moveConnectionDrag}
-                          onPointerUp={finishConnectionDrag}
-                          onPointerCancel={cancelConnectionDrag}
-                          onClick={(e) => e.stopPropagation()}
-                          className="absolute -right-2 top-1/2 h-4 w-4 -translate-y-1/2 border border-tagma-border bg-tagma-bg transition-all duration-100 cursor-grab active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tagma-accent/70 hover:scale-125 hover:border-tagma-accent hover:bg-tagma-accent hover:shadow-glow-accent"
-                        />
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="min-w-0 flex items-center gap-2">
-                            <span className={`h-2 w-2 shrink-0 ${meta.dot}`} />
-                            <span className="text-[12px] font-semibold truncate">
-                              {pipeline.id}
-                            </span>
-                          </div>
-                          <span
-                            className={`inline-flex items-center gap-1 text-[10px] font-mono ${meta.text}`}
-                          >
-                            <Icon
-                              size={11}
-                              className={status === 'running' ? 'animate-spin' : ''}
-                            />
-                            {meta.label}
-                          </span>
-                        </div>
-                        <div className="mt-2 text-[10px] font-mono text-tagma-muted truncate">
-                          {pipeline.path}
-                        </div>
-                        <div className="mt-2 flex items-center justify-between gap-2">
-                          <div className="min-w-0 flex items-center gap-2 text-[9px] font-mono text-tagma-muted-dim">
-                            <span>{pipeline.depends_on.length} upstream</span>
-                            <span>{downstream.length} downstream</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
+                              }}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                onEditPipeline(pipeline.path, selectedWorkflowPath);
+                                setSelectedEdgeKey(edge.key);
                               }}
-                              className="h-5 w-5 flex items-center justify-center border border-tagma-border text-tagma-muted hover:text-tagma-text"
-                              title={`Edit ${pipeline.id} in pipeline editor`}
-                              aria-label={`Edit ${pipeline.id} in pipeline editor`}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  setSelectedEdgeKey(edge.key);
+                                }
+                              }}
+                            />
+                            <path
+                              d={edge.d}
+                              fill="none"
+                              stroke="var(--tagma-edge-default)"
+                              strokeWidth={1.6}
+                              markerEnd="url(#workflow-graph-arrow)"
+                              pointerEvents="none"
+                            />
+                          </g>
+                        );
+                      })}
+                      {connectionDrag && (
+                        <path
+                          d={`M${connectionDrag.startX},${connectionDrag.startY} C${
+                            (connectionDrag.startX + connectionDrag.x) / 2
+                          },${connectionDrag.startY} ${
+                            (connectionDrag.startX + connectionDrag.x) / 2
+                          },${connectionDrag.y} ${connectionDrag.x},${connectionDrag.y}`}
+                          fill="none"
+                          stroke="rgb(var(--tagma-accent))"
+                          strokeWidth={1.8}
+                          strokeDasharray="4 4"
+                          markerEnd="url(#workflow-graph-arrow)"
+                          pointerEvents="none"
+                        />
+                      )}
+                    </svg>
+
+                    {graphLayout.edges.map((edge) => {
+                      const selected = selectedEdgeKey === edge.key;
+                      return (
+                        <button
+                          key={`${edge.key}:delete`}
+                          type="button"
+                          data-edge-delete={`${edge.from}->${edge.to}`}
+                          aria-label={`Disconnect edge ${edge.from} to ${edge.to}`}
+                          aria-hidden={selected ? undefined : true}
+                          tabIndex={selected ? 0 : -1}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            disconnect(edge.from, edge.to);
+                          }}
+                          className={`workflow-edge-delete-button absolute inline-flex h-4 w-4 -translate-x-1/2 -translate-y-1/2 appearance-none items-center justify-center border border-tagma-border bg-tagma-surface p-0 leading-none text-tagma-muted shadow-none outline-none ring-0 hover:border-tagma-error hover:bg-tagma-surface hover:text-tagma-error focus:bg-tagma-surface focus:outline-none focus:ring-0 focus:shadow-none focus-visible:outline-none focus-visible:ring-0 focus-visible:shadow-none focus-visible:border-tagma-error focus-visible:text-tagma-error active:bg-tagma-surface active:outline-none active:ring-0 active:shadow-none transition-opacity ${
+                            selected
+                              ? 'pointer-events-auto opacity-100'
+                              : 'pointer-events-none opacity-0'
+                          }`}
+                          title={`Disconnect edge ${edge.from} to ${edge.to}`}
+                          style={{
+                            left: edge.labelX,
+                            top: edge.labelY,
+                          }}
+                        >
+                          <X size={13} />
+                        </button>
+                      );
+                    })}
+
+                    {renderedPipelines.length === 0 && (
+                      <div className="absolute left-8 top-8 border border-dashed border-tagma-border bg-tagma-surface/70 px-4 py-3 text-[12px] font-mono text-tagma-muted">
+                        No pipelines in this graph.
+                      </div>
+                    )}
+
+                    {renderedPipelines.map((pipeline) => {
+                      const pos = graphLayout.positions.get(pipeline.id);
+                      if (!pos) return null;
+                      const state = runtimeByPipeline.get(pipeline.id);
+                      const status = state?.status ?? 'waiting';
+                      const meta = STATUS_META[status];
+                      const Icon = meta.icon;
+                      const selected = pipeline.id === selectedPipelineId;
+                      const downstream = downstreamByPipeline.get(pipeline.id) ?? [];
+                      const targetSlotActive = hoveredConnectionTargetId === pipeline.id;
+                      const display = workflowPipelineDisplayInfo(pipeline, workspacePipelines);
+                      const loopCount = workflowPipelineLoopCount(pipeline);
+                      const runCount = state?.runCount ?? 0;
+                      const maxRuns = state?.maxRuns ?? loopCount;
+                      return (
+                        <div
+                          key={pipeline.id}
+                          data-workflow-node={pipeline.id}
+                          role="button"
+                          tabIndex={0}
+                          onPointerDown={(e) => beginNodeDrag(e, pipeline.id, pos)}
+                          onPointerMove={moveNodeDrag}
+                          onPointerUp={finishNodeDrag}
+                          onPointerCancel={finishNodeDrag}
+                          onClick={() => {
+                            if (suppressClickRef.current) return;
+                            setSelectedPipelineId(pipeline.id);
+                          }}
+                          onDoubleClick={() => onEditPipeline(pipeline.path, selectedWorkflowPath)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              setSelectedPipelineId(pipeline.id);
+                            }
+                          }}
+                          aria-pressed={selected}
+                          aria-label={`Select pipeline ${display.title} (${pipeline.id}), ${meta.label}, upstream ${joinIds(
+                            pipeline.depends_on,
+                            'none',
+                          )}, downstream ${joinIds(downstream, 'none')}`}
+                          className={`absolute text-left border px-3 py-2 transition-colors cursor-grab active:cursor-grabbing ${meta.bg} ${
+                            selected ? 'border-tagma-accent shadow-glow-accent' : meta.border
+                          } hover:border-tagma-accent/70`}
+                          style={{
+                            left: pos.x,
+                            top: pos.y,
+                            width: WORKFLOW_NODE_W,
+                            height: WORKFLOW_NODE_H,
+                          }}
+                        >
+                          <button
+                            type="button"
+                            data-workflow-input-slot={pipeline.id}
+                            data-workflow-slot-role="target"
+                            aria-label={`Drop dependency on ${pipeline.id}`}
+                            title={`Drop dependency on ${pipeline.id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className={`absolute -left-2 top-1/2 h-4 w-4 -translate-y-1/2 border bg-tagma-bg transition-all duration-100 cursor-crosshair focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tagma-accent/70 hover:scale-125 hover:border-tagma-accent hover:bg-tagma-accent hover:shadow-glow-accent ${
+                              targetSlotActive
+                                ? 'scale-125 border-tagma-accent bg-tagma-accent shadow-glow-accent ring-2 ring-tagma-accent/40'
+                                : 'border-tagma-border'
+                            }`}
+                          />
+                          <button
+                            type="button"
+                            data-workflow-output-slot={pipeline.id}
+                            data-workflow-slot-role="source"
+                            aria-label={`Drag dependency from ${pipeline.id}`}
+                            title={`Drag dependency from ${pipeline.id}`}
+                            onPointerDown={(e) => beginConnectionDrag(e, pipeline.id, pos)}
+                            onPointerMove={moveConnectionDrag}
+                            onPointerUp={finishConnectionDrag}
+                            onPointerCancel={cancelConnectionDrag}
+                            onClick={(e) => e.stopPropagation()}
+                            className="absolute -right-2 top-1/2 h-4 w-4 -translate-y-1/2 border border-tagma-border bg-tagma-bg transition-all duration-100 cursor-grab active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tagma-accent/70 hover:scale-125 hover:border-tagma-accent hover:bg-tagma-accent hover:shadow-glow-accent"
+                          />
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="min-w-0 flex items-center gap-2">
+                              <span className={`h-2 w-2 shrink-0 ${meta.dot}`} />
+                              <div className="min-w-0">
+                                <div className="text-[12px] font-semibold truncate">
+                                  {display.title}
+                                </div>
+                                <div className="text-[9px] font-mono text-tagma-muted truncate">
+                                  {display.subtitle}
+                                </div>
+                              </div>
+                            </div>
+                            <span
+                              className={`inline-flex items-center gap-1 text-[10px] font-mono ${meta.text}`}
                             >
-                              <Edit3 size={11} />
-                            </button>
+                              <Icon
+                                size={11}
+                                className={status === 'running' ? 'animate-spin' : ''}
+                              />
+                              {meta.label}
+                            </span>
+                          </div>
+                          <div className="mt-1 text-[10px] font-mono text-tagma-muted truncate">
+                            {display.pathLabel}
+                          </div>
+                          <div className="mt-2 flex items-center justify-between gap-2">
+                            <div className="min-w-0 flex items-center gap-2 text-[9px] font-mono text-tagma-muted-dim">
+                              <span>{pipeline.depends_on.length} upstream</span>
+                              <span>{downstream.length} downstream</span>
+                              {loopCount > 1 && <span>Loop x{loopCount}</span>}
+                              {runCount > 0 && (
+                                <span>
+                                  Run {runCount}/{maxRuns}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onEditPipeline(pipeline.path, selectedWorkflowPath);
+                                }}
+                                className="h-5 w-5 flex items-center justify-center border border-tagma-border text-tagma-muted hover:text-tagma-text"
+                                title={`Edit ${pipeline.id} in pipeline editor`}
+                                aria-label={`Edit ${pipeline.id} in pipeline editor`}
+                              >
+                                <Edit3 size={11} />
+                              </button>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
 
-              <div className="shrink-0 border-t border-tagma-border bg-tagma-surface/70 p-3">
-                <div className="text-[10px] font-mono uppercase tracking-wide text-tagma-muted mb-2">
-                  Dependency Edges
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {graphLayout.edges.length === 0 ? (
-                    <span className="text-[11px] font-mono text-tagma-muted">
-                      No dependency edges
-                    </span>
-                  ) : (
-                    graphLayout.edges.map((edge) => (
-                      <span
-                        key={edge.key}
-                        className="inline-flex items-center gap-1 text-[11px] font-mono border border-tagma-border bg-tagma-bg px-2 py-1"
-                      >
-                        {edge.from} -&gt; {edge.to}
+                <div className="shrink-0 border-t border-tagma-border bg-tagma-surface/70 p-3">
+                  <div className="text-[10px] font-mono uppercase tracking-wide text-tagma-muted mb-2">
+                    Dependency Edges
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {graphLayout.edges.length === 0 ? (
+                      <span className="text-[11px] font-mono text-tagma-muted">
+                        No dependency edges
                       </span>
-                    ))
-                  )}
+                    ) : (
+                      graphLayout.edges.map((edge) => (
+                        <span
+                          key={edge.key}
+                          className="inline-flex items-center gap-1 text-[11px] font-mono border border-tagma-border bg-tagma-bg px-2 py-1"
+                        >
+                          {edge.from} -&gt; {edge.to}
+                        </span>
+                      ))
+                    )}
+                  </div>
                 </div>
-              </div>
-            </>
-          )}
-        </main>
+              </>
+            )}
+          </main>
 
-        <aside className="border-l border-tagma-border bg-tagma-surface min-h-0 overflow-auto p-3">
-          <div className="text-[10px] font-mono uppercase tracking-wide text-tagma-muted mb-2">
-            Pipeline Detail
-          </div>
-          {!selectedPipeline ? (
-            <div className="text-[11px] font-mono text-tagma-muted">No pipeline selected.</div>
-          ) : (
-            <div className="space-y-2">
-              <div className="border border-tagma-border bg-tagma-bg p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="text-[13px] font-semibold truncate">{selectedPipeline.id}</div>
-                    <div className="text-[10px] font-mono text-tagma-muted truncate">
-                      {selectedPipeline.path}
+          <aside className="border-l border-tagma-border bg-tagma-surface min-h-0 overflow-auto p-3">
+            <div className="text-[10px] font-mono uppercase tracking-wide text-tagma-muted mb-2">
+              Pipeline Detail
+            </div>
+            {!selectedPipeline ? (
+              <div className="text-[11px] font-mono text-tagma-muted">No pipeline selected.</div>
+            ) : (
+              <div className="space-y-2">
+                <div className="border border-tagma-border bg-tagma-bg p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-semibold truncate">
+                        {selectedPipelineDisplay?.title ?? selectedPipeline.id}
+                      </div>
+                      <div className="text-[10px] font-mono text-tagma-muted truncate">
+                        ID: {selectedPipeline.id}
+                      </div>
+                      <div className="text-[10px] font-mono text-tagma-muted-dim truncate">
+                        {selectedPipeline.path}
+                      </div>
+                    </div>
+                    <div className="shrink-0 flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => onEditPipeline(selectedPipeline.path, selectedWorkflowPath)}
+                        className="h-6 w-6 flex items-center justify-center border border-tagma-border text-tagma-muted hover:text-tagma-text"
+                        title="Edit in pipeline editor"
+                        aria-label="Edit in pipeline editor"
+                      >
+                        <Edit3 size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={removeSelected}
+                        className="h-6 w-6 flex items-center justify-center border border-tagma-border text-tagma-muted hover:text-tagma-error"
+                        title="Remove from graph"
+                        aria-label="Remove from graph"
+                      >
+                        <Trash2 size={12} />
+                      </button>
                     </div>
                   </div>
-                  <div className="shrink-0 flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => onEditPipeline(selectedPipeline.path, selectedWorkflowPath)}
-                      className="h-6 w-6 flex items-center justify-center border border-tagma-border text-tagma-muted hover:text-tagma-text"
-                      title="Edit in pipeline editor"
-                      aria-label="Edit in pipeline editor"
+                  {selectedState && (
+                    <div
+                      className={`mt-2 inline-flex chip-sm ${STATUS_META[selectedState.status].text} ${STATUS_META[selectedState.status].border}`}
                     >
-                      <Edit3 size={12} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={removeSelected}
-                      className="h-6 w-6 flex items-center justify-center border border-tagma-border text-tagma-muted hover:text-tagma-error"
-                      title="Remove from graph"
-                      aria-label="Remove from graph"
-                    >
-                      <Trash2 size={12} />
-                    </button>
+                      Status {STATUS_META[selectedState.status].label}
+                    </div>
+                  )}
+                </div>
+
+                <div className="border border-tagma-border bg-tagma-bg p-2">
+                  <label
+                    className="field-label flex items-center gap-1"
+                    htmlFor="workflow-loop-count"
+                  >
+                    <RefreshCw size={9} />
+                    Loop Count
+                  </label>
+                  <input
+                    id="workflow-loop-count"
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={selectedLoopCount}
+                    onChange={(e) => updateSelectedLoopCount(Number(e.currentTarget.value))}
+                    className="w-full bg-tagma-surface border border-tagma-border px-2 py-1 text-[11px] font-mono text-tagma-text"
+                    aria-label="Loop count"
+                  />
+                  <div className="mt-1 text-[10px] font-mono text-tagma-muted-dim">
+                    1 runs once. Values above 1 repeat this pipeline exactly that many times.
                   </div>
                 </div>
-                {selectedState && (
-                  <div
-                    className={`mt-2 inline-flex chip-sm ${STATUS_META[selectedState.status].text} ${STATUS_META[selectedState.status].border}`}
-                  >
-                    Status {STATUS_META[selectedState.status].label}
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="border border-tagma-border bg-tagma-bg p-2">
+                    <div className="field-label">Upstream</div>
+                    <div className="space-y-1">
+                      {selectedPipeline.depends_on.length === 0 ? (
+                        <div className="text-[11px] font-mono text-tagma-muted">
+                          No upstream dependencies
+                        </div>
+                      ) : (
+                        selectedPipeline.depends_on.map((dep) => (
+                          <div
+                            key={dep}
+                            className="min-w-0 text-[11px] font-mono text-tagma-muted truncate"
+                          >
+                            {dep}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                  <div className="border border-tagma-border bg-tagma-bg p-2">
+                    <div className="field-label">Downstream</div>
+                    <div className="space-y-1">
+                      {selectedDownstream.length === 0 ? (
+                        <div className="text-[11px] font-mono text-tagma-muted">
+                          No downstream pipelines
+                        </div>
+                      ) : (
+                        selectedDownstream.map((downstream) => (
+                          <div
+                            key={downstream}
+                            className="min-w-0 text-[11px] font-mono text-tagma-muted truncate"
+                          >
+                            {downstream}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {selectedState?.runId && (
+                  <div className="border border-tagma-border bg-tagma-bg p-2">
+                    <div className="field-label">Run</div>
+                    <div className="text-[11px] font-mono text-tagma-muted truncate">
+                      {selectedState.runId}
+                    </div>
                   </div>
                 )}
-              </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div className="border border-tagma-border bg-tagma-bg p-2">
-                  <div className="field-label">Upstream</div>
-                  <div className="space-y-1">
-                    {selectedPipeline.depends_on.length === 0 ? (
-                      <div className="text-[11px] font-mono text-tagma-muted">
-                        No upstream dependencies
-                      </div>
-                    ) : (
-                      selectedPipeline.depends_on.map((dep) => (
+                {selectedState?.error && (
+                  <div className="border border-tagma-error/30 bg-tagma-error/8 p-2">
+                    <div className="field-label text-tagma-error">Error</div>
+                    <div className="text-[11px] font-mono text-tagma-error select-text">
+                      {selectedState.error}
+                    </div>
+                  </div>
+                )}
+
+                <div className="pt-2">
+                  <div className="text-[10px] font-mono uppercase tracking-wide text-tagma-muted mb-2">
+                    Task Events
+                  </div>
+                  {selectedTasks.length === 0 ? (
+                    <div className="text-[11px] font-mono text-tagma-muted">
+                      No task events for this pipeline yet.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {selectedTasks.map((task) => (
                         <div
-                          key={dep}
-                          className="min-w-0 text-[11px] font-mono text-tagma-muted truncate"
+                          key={task.taskId}
+                          className="border border-tagma-border bg-tagma-bg p-2"
                         >
-                          {dep}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-                <div className="border border-tagma-border bg-tagma-bg p-2">
-                  <div className="field-label">Downstream</div>
-                  <div className="space-y-1">
-                    {selectedDownstream.length === 0 ? (
-                      <div className="text-[11px] font-mono text-tagma-muted">
-                        No downstream pipelines
-                      </div>
-                    ) : (
-                      selectedDownstream.map((downstream) => (
-                        <div
-                          key={downstream}
-                          className="min-w-0 text-[11px] font-mono text-tagma-muted truncate"
-                        >
-                          {downstream}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {selectedState?.runId && (
-                <div className="border border-tagma-border bg-tagma-bg p-2">
-                  <div className="field-label">Run</div>
-                  <div className="text-[11px] font-mono text-tagma-muted truncate">
-                    {selectedState.runId}
-                  </div>
-                </div>
-              )}
-
-              {selectedState?.error && (
-                <div className="border border-tagma-error/30 bg-tagma-error/8 p-2">
-                  <div className="field-label text-tagma-error">Error</div>
-                  <div className="text-[11px] font-mono text-tagma-error select-text">
-                    {selectedState.error}
-                  </div>
-                </div>
-              )}
-
-              <div className="pt-2">
-                <div className="text-[10px] font-mono uppercase tracking-wide text-tagma-muted mb-2">
-                  Task Events
-                </div>
-                {selectedTasks.length === 0 ? (
-                  <div className="text-[11px] font-mono text-tagma-muted">
-                    No task events for this pipeline yet.
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {selectedTasks.map((task) => (
-                      <div key={task.taskId} className="border border-tagma-border bg-tagma-bg p-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="text-[12px] font-semibold truncate">{task.taskName}</div>
-                          <div className="text-[10px] font-mono uppercase text-tagma-muted">
-                            {task.status}
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-[12px] font-semibold truncate">
+                              {task.taskName}
+                            </div>
+                            <div className="text-[10px] font-mono uppercase text-tagma-muted">
+                              {task.status}
+                            </div>
+                          </div>
+                          <div className="text-[10px] font-mono text-tagma-muted truncate">
+                            {task.taskId}
                           </div>
                         </div>
-                        <div className="text-[10px] font-mono text-tagma-muted truncate">
-                          {task.taskId}
-                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Execution Timeline - Collapsible Section */}
+                {events.length > 0 && (
+                  <div className="pt-2 border-t border-tagma-border">
+                    <button
+                      type="button"
+                      onClick={() => setTimelineExpanded(!timelineExpanded)}
+                      className="flex items-center gap-2 w-full text-left mb-2 hover:text-tagma-text text-tagma-muted transition-colors"
+                    >
+                      {timelineExpanded ? (
+                        <ChevronDown size={14} className="shrink-0" />
+                      ) : (
+                        <ChevronRight size={14} className="shrink-0" />
+                      )}
+                      <div className="text-[10px] font-mono uppercase tracking-wide">
+                        Execution Timeline
                       </div>
-                    ))}
+                    </button>
+                    {timelineExpanded && (
+                      <WorkflowTimeline
+                        events={events}
+                        pipelineIds={selectedWorkflow.pipelines.map((p) => p.id)}
+                      />
+                    )}
                   </div>
                 )}
               </div>
+            )}
+          </aside>
+        </div>
+      )}
+    </div>
+  );
+}
 
-              {/* Execution Timeline - Collapsible Section */}
-              {events.length > 0 && (
-                <div className="pt-2 border-t border-tagma-border">
-                  <button
-                    type="button"
-                    onClick={() => setTimelineExpanded(!timelineExpanded)}
-                    className="flex items-center gap-2 w-full text-left mb-2 hover:text-tagma-text text-tagma-muted transition-colors"
-                  >
-                    {timelineExpanded ? (
-                      <ChevronDown size={14} className="shrink-0" />
-                    ) : (
-                      <ChevronRight size={14} className="shrink-0" />
-                    )}
-                    <div className="text-[10px] font-mono uppercase tracking-wide">
-                      Execution Timeline
-                    </div>
-                  </button>
-                  {timelineExpanded && (
-                    <WorkflowTimeline
-                      events={events}
-                      pipelineIds={selectedWorkflow.pipelines.map((p) => p.id)}
-                    />
-                  )}
-                </div>
+function workflowRunOutcome(
+  running: boolean,
+  result: WorkflowRunResult | null,
+): { label: string; status: WorkflowGraphNodeStatus; icon: typeof Clock } {
+  if (running) return { label: 'Running', status: 'running', icon: Loader2 };
+  if (!result) return { label: 'Waiting', status: 'waiting', icon: Clock };
+  if (result.success) return { label: 'Succeeded', status: 'success', icon: CheckCircle2 };
+  return { label: 'Failed', status: 'failed', icon: XCircle };
+}
+
+function workflowRuntimeCounts(states: readonly PipelineRuntimeState[]): {
+  total: number;
+  completed: number;
+  failed: number;
+  running: number;
+} {
+  let completed = 0;
+  let failed = 0;
+  let running = 0;
+  for (const state of states) {
+    if (
+      state.status === 'success' ||
+      state.status === 'failed' ||
+      state.status === 'skipped' ||
+      state.status === 'aborted'
+    ) {
+      completed += 1;
+    }
+    if (state.status === 'failed' || state.status === 'aborted') failed += 1;
+    if (state.status === 'running') running += 1;
+  }
+  return { total: states.length, completed, failed, running };
+}
+
+function WorkflowRunPage({
+  workflow,
+  workspacePipelines,
+  runtimeByPipeline,
+  taskSnapshots,
+  events,
+  result,
+  running,
+  graphRunId,
+  onEditGraph,
+  onRunAgain,
+  onAbort,
+}: {
+  workflow: WorkflowYamlEntry;
+  workspacePipelines: WorkspaceYamlEntry[];
+  runtimeByPipeline: Map<string, PipelineRuntimeState>;
+  taskSnapshots: Record<string, RunTaskState[]>;
+  events: WorkflowGraphEvent[];
+  result: WorkflowRunResult | null;
+  running: boolean;
+  graphRunId: string | null;
+  onEditGraph: () => void;
+  onRunAgain: () => void;
+  onAbort: () => void;
+}) {
+  const pipelineStates = workflow.pipelines.map(
+    (pipeline) =>
+      runtimeByPipeline.get(pipeline.id) ?? {
+        status: 'waiting' as WorkflowGraphNodeStatus,
+        runId: null,
+        runCount: 0,
+        maxRuns: workflowPipelineLoopCount(pipeline),
+        attempts: [],
+        startedAt: null,
+        finishedAt: null,
+        error: null,
+      },
+  );
+  const counts = workflowRuntimeCounts(pipelineStates);
+  const outcome = workflowRunOutcome(running, result);
+  const OutcomeIcon = outcome.icon;
+  const outcomeMeta = STATUS_META[outcome.status];
+
+  return (
+    <main className="flex-1 min-h-0 overflow-auto bg-tagma-bg">
+      <div className="border-b border-tagma-border bg-tagma-surface/70 px-5 py-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="text-[10px] font-mono uppercase tracking-[0.22em] text-tagma-muted-dim">
+              Graph Run
+            </div>
+            <div className="mt-1 flex items-center gap-2">
+              <OutcomeIcon
+                size={16}
+                className={`${outcomeMeta.text} ${running ? 'animate-spin' : ''}`}
+              />
+              <h1 className="text-[18px] font-semibold text-tagma-text truncate">
+                {outcome.label}
+              </h1>
+              <span className={`chip-sm ${outcomeMeta.text} ${outcomeMeta.border} bg-tagma-bg/60`}>
+                {counts.completed}/{counts.total} pipelines
+              </span>
+              {counts.running > 0 && (
+                <span className="chip-sm border-tagma-ready/30 text-tagma-ready bg-tagma-ready/8">
+                  {counts.running} running
+                </span>
+              )}
+              {counts.failed > 0 && (
+                <span className="chip-sm border-tagma-error/30 text-tagma-error bg-tagma-error/8">
+                  {counts.failed} failed
+                </span>
               )}
             </div>
+            <div className="mt-1 text-[11px] font-mono text-tagma-muted truncate">
+              {workflow.workflowName ?? workflow.name}
+              {graphRunId ? ` · ${graphRunId}` : ''}
+            </div>
+          </div>
+          <div className="shrink-0 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onEditGraph}
+              className="h-7 px-2 flex items-center gap-1 border border-tagma-border text-[11px] text-tagma-muted hover:text-tagma-text"
+              title="Edit graph"
+              aria-label="Edit graph"
+            >
+              <Workflow size={11} />
+              <span>Edit graph</span>
+            </button>
+            {running ? (
+              <button
+                type="button"
+                onClick={onAbort}
+                className="h-7 px-2 flex items-center gap-1 border border-tagma-error/40 text-[11px] text-tagma-error hover:bg-tagma-error/10"
+                title="Abort workflow"
+                aria-label="Abort workflow"
+              >
+                <Ban size={11} />
+                <span>Abort</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onRunAgain}
+                disabled={workflow.pipelines.length === 0}
+                className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Run selected workflow"
+                aria-label="Run selected workflow"
+              >
+                <Play size={11} />
+                <span>Run again</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-[minmax(420px,1fr)_360px] gap-0 min-h-[calc(100%-80px)]">
+        <section className="min-w-0 border-r border-tagma-border p-4">
+          <div className="mb-3 text-[10px] font-mono uppercase tracking-wide text-tagma-muted">
+            Pipeline Runtime
+          </div>
+          <div className="space-y-3">
+            {workflow.pipelines.map((pipeline, index) => {
+              const state = pipelineStates[index]!;
+              const meta = STATUS_META[state.status];
+              const Icon = meta.icon;
+              const display = workflowPipelineDisplayInfo(pipeline, workspacePipelines);
+              const tasks = taskSnapshots[pipeline.id] ?? [];
+              return (
+                <div key={pipeline.id} className={`border ${meta.border} ${meta.bg} p-3`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Icon
+                          size={13}
+                          className={`${meta.text} ${state.status === 'running' ? 'animate-spin' : ''}`}
+                        />
+                        <div className="text-[13px] font-semibold truncate">{display.title}</div>
+                      </div>
+                      <div className="mt-0.5 text-[10px] font-mono text-tagma-muted truncate">
+                        {display.subtitle} · {display.pathLabel}
+                      </div>
+                    </div>
+                    <div className={`shrink-0 text-[10px] font-mono ${meta.text}`}>
+                      {meta.label}
+                    </div>
+                  </div>
+                  <div className="mt-3 grid grid-cols-3 gap-2 text-[10px] font-mono">
+                    <div className="border border-tagma-border/60 bg-tagma-bg/60 px-2 py-1.5">
+                      <div className="text-tagma-muted-dim">Run</div>
+                      <div className="text-tagma-text">
+                        {state.runCount > 0
+                          ? `Run ${state.runCount}/${state.maxRuns}`
+                          : `0/${state.maxRuns}`}
+                      </div>
+                    </div>
+                    <div className="border border-tagma-border/60 bg-tagma-bg/60 px-2 py-1.5">
+                      <div className="text-tagma-muted-dim">Started</div>
+                      <div className="text-tagma-text">
+                        {formatWorkflowRunTime(state.startedAt)}
+                      </div>
+                    </div>
+                    <div className="border border-tagma-border/60 bg-tagma-bg/60 px-2 py-1.5">
+                      <div className="text-tagma-muted-dim">Finished</div>
+                      <div className="text-tagma-text">
+                        {formatWorkflowRunTime(state.finishedAt)}
+                      </div>
+                    </div>
+                  </div>
+                  {state.runId && (
+                    <div className="mt-2 text-[10px] font-mono text-tagma-muted truncate">
+                      Run ID: {state.runId}
+                    </div>
+                  )}
+                  {state.error && (
+                    <div className="mt-2 border border-tagma-error/25 bg-tagma-error/8 px-2 py-1.5 text-[10px] font-mono text-tagma-error">
+                      {state.error}
+                    </div>
+                  )}
+                  {tasks.length > 0 && (
+                    <div className="mt-3 border-t border-tagma-border/50 pt-2">
+                      <div className="mb-1.5 text-[9px] font-mono uppercase tracking-wide text-tagma-muted-dim">
+                        Task Events
+                      </div>
+                      <div className="space-y-1">
+                        {tasks.map((task) => (
+                          <div
+                            key={task.taskId}
+                            className="flex items-center gap-2 text-[10px] font-mono"
+                          >
+                            <span className="w-16 shrink-0 uppercase text-tagma-muted">
+                              {task.status}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate text-tagma-text">
+                              {task.taskName}
+                            </span>
+                            <span className="shrink-0 text-tagma-muted-dim">{task.taskId}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        <aside className="min-w-0 bg-tagma-surface/70 p-4">
+          <div className="mb-3 text-[10px] font-mono uppercase tracking-wide text-tagma-muted">
+            Execution Timeline
+          </div>
+          {events.length === 0 ? (
+            <div className="text-[11px] font-mono text-tagma-muted">
+              No workflow events recorded yet.
+            </div>
+          ) : (
+            <WorkflowTimeline events={events} pipelineIds={workflow.pipelines.map((p) => p.id)} />
           )}
         </aside>
       </div>
-    </div>
+    </main>
   );
 }

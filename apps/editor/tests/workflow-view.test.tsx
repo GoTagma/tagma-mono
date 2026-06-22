@@ -13,7 +13,13 @@ const workflows: WorkflowYamlEntry[] = [
     size: 120,
     pipelines: [
       { id: 'p1', path: '.tagma/p1/p1.yaml', depends_on: [] },
-      { id: 'p2', path: '.tagma/p2/p2.yaml', depends_on: ['p1'], position: { x: 320, y: 96 } },
+      {
+        id: 'p2',
+        path: '.tagma/p2/p2.yaml',
+        depends_on: ['p1'],
+        position: { x: 320, y: 96 },
+        lifecycle: { max_runs: 2, stop_when: 'always' },
+      },
       { id: 'p3', path: '.tagma/p3/p3.yaml', depends_on: ['p1'] },
     ],
   },
@@ -34,6 +40,17 @@ const workspacePipelines: WorkspaceYamlEntry[] = [
     path: 'E:/repo/.tagma/p1/p1.yaml',
     pipelineName: 'Pipeline One',
     contentHash: 'p1',
+    layoutHash: null,
+    layoutMtimeMs: null,
+    layoutSize: null,
+    mtimeMs: 1,
+    size: 120,
+  },
+  {
+    name: 'p2.yaml',
+    path: 'E:/repo/.tagma/p2/p2.yaml',
+    pipelineName: 'Pipeline Two',
+    contentHash: 'p2',
     layoutHash: null,
     layoutMtimeMs: null,
     layoutSize: null,
@@ -175,13 +192,17 @@ describe('WorkflowView', () => {
     );
 
     expect(html).toContain('release-flow');
-    expect(html).toContain('p1');
+    expect(html).toContain('Pipeline One');
+    expect(html).toContain('ID: p1');
     expect(html).toContain('p2');
     expect(html).toContain('p3');
     expect(html).toContain('p1 -&gt; p2');
     expect(html).toContain('p1 -&gt; p3');
     expect(html).toContain('left:320px');
     expect(html).toContain('top:96px');
+    expect(html).toContain('Loop Count');
+    expect(html).toContain('value="1"');
+    expect(html).toContain('Loop x2');
     expect(html).toContain('Build');
     expect(html).toContain('success');
   });
@@ -227,6 +248,75 @@ describe('WorkflowView', () => {
     expect(html).toContain('cursor-grab');
     expect(html).toContain('cursor-crosshair');
     expect(html).toContain('Edit deploy in pipeline editor');
+  });
+
+  test('renders a workflow graph run result page with runtime counts', () => {
+    const html = renderToStaticMarkup(
+      <WorkflowView
+        workflows={workflows}
+        selectedPath={workflows[0]!.path}
+        workspacePipelines={workspacePipelines}
+        events={events}
+        result={{
+          graphRunId: 'graph_1',
+          success: true,
+          abortReason: null,
+          pipelines: [
+            {
+              pipelineId: 'p1',
+              path: '.tagma/p1/p1.yaml',
+              dependsOn: [],
+              status: 'success',
+              runId: 'run_p1',
+              runCount: 1,
+              maxRuns: 1,
+              attempts: [
+                {
+                  attempt: 1,
+                  runId: 'run_p1',
+                  status: 'success',
+                  startedAt: '2026-05-22T08:00:00.000Z',
+                  finishedAt: '2026-05-22T08:00:01.000Z',
+                  error: null,
+                },
+              ],
+              startedAt: '2026-05-22T08:00:00.000Z',
+              finishedAt: '2026-05-22T08:00:01.000Z',
+              error: null,
+            },
+            {
+              pipelineId: 'p2',
+              path: '.tagma/p2/p2.yaml',
+              dependsOn: ['p1'],
+              status: 'success',
+              runId: 'run_p2',
+              runCount: 2,
+              maxRuns: 2,
+              attempts: [],
+              startedAt: '2026-05-22T08:00:01.000Z',
+              finishedAt: '2026-05-22T08:00:03.000Z',
+              error: null,
+            },
+          ],
+        }}
+        running={false}
+        onSelectWorkflow={() => {}}
+        onBack={() => {}}
+        onRefresh={() => {}}
+        onStart={() => {}}
+        onCreateWorkflow={() => {}}
+        onSaveWorkflow={async () => {}}
+        onEditPipeline={() => {}}
+      />,
+    );
+
+    expect(html).toContain('Graph Run');
+    expect(html).toContain('Succeeded');
+    expect(html).toContain('graph_1');
+    expect(html).toContain('Pipeline Runtime');
+    expect(html).toContain('Pipeline Two');
+    expect(html).toContain('Run 2/2');
+    expect(html).toContain('Edit graph');
   });
 
   test('renders an abort affordance while a workflow graph is running', () => {

@@ -5,8 +5,10 @@ import {
   connectWorkflowPipelines,
   disconnectWorkflowPipelines,
   moveWorkflowPipeline,
+  setWorkflowPipelineLoopCount,
   resolveWorkflowPipelineEditorPath,
   removeWorkflowPipeline,
+  workflowPipelineLoopCount,
   workflowDragPositionFromPointer,
   workflowNodePointerOffset,
 } from '../src/components/workflow/workflow-graph-model';
@@ -99,6 +101,44 @@ describe('workflow graph model', () => {
     const removed = removeWorkflowPipeline(disconnected, 'test');
     expect(removed.map((p) => p.id)).toEqual(['build', 'deploy']);
     expect(removed.find((p) => p.id === 'deploy')?.depends_on).toEqual(['build']);
+  });
+
+  test('connects repeated pipeline paths as distinct graph instances', () => {
+    const pipelines: WorkflowPipelineEntry[] = [
+      { id: 'build', path: '.tagma/build/build.yaml', depends_on: [] },
+      { id: 'build_2', path: '.tagma/build/build.yaml', depends_on: [] },
+    ];
+
+    const next = connectWorkflowPipelines(pipelines, 'build', 'build_2');
+
+    expect(next.find((p) => p.id === 'build_2')?.depends_on).toEqual(['build']);
+    expect(next.find((p) => p.id === 'build')?.depends_on).toEqual([]);
+  });
+
+  test('stores graph loop count as a fixed-count lifecycle', () => {
+    const pipelines: WorkflowPipelineEntry[] = [
+      { id: 'build', path: '.tagma/build/build.yaml', depends_on: [] },
+      {
+        id: 'deploy',
+        path: '.tagma/deploy/deploy.yaml',
+        depends_on: [],
+        lifecycle: { max_runs: 4, stop_when: 'always' },
+      },
+    ];
+
+    expect(workflowPipelineLoopCount(pipelines[0]!)).toBe(1);
+    expect(workflowPipelineLoopCount(pipelines[1]!)).toBe(4);
+
+    expect(
+      setWorkflowPipelineLoopCount(pipelines, 'build', 3).find((p) => p.id === 'build'),
+    ).toMatchObject({
+      lifecycle: { max_runs: 3, stop_when: 'always' },
+    });
+
+    expect(
+      setWorkflowPipelineLoopCount(pipelines, 'deploy', 1).find((p) => p.id === 'deploy')
+        ?.lifecycle,
+    ).toBeUndefined();
   });
 
   test('converts pointer movement into canvas-relative node positions', () => {

@@ -28,6 +28,8 @@ import { CopyButton } from './CopyButton';
 
 const HISTORY_COMPARE_INSTRUCTION =
   'Compare this historical version with the latest pipeline and explain what changed.';
+const HISTORY_FIX_INSTRUCTION = 'Fix this bug.';
+const HISTORY_FIX_STATUSES = new Set<TaskStatus>(['failed', 'timeout', 'blocked']);
 
 const STATUS_CFG: Record<
   TaskStatus,
@@ -67,6 +69,73 @@ const STATUS_CFG: Record<
     iconColor: 'text-tagma-warning',
   },
 };
+
+export function historyAskAiModeForTask(
+  _summary: RunSummary,
+  task: RunSummaryTask,
+): 'compare' | 'fix' {
+  if (HISTORY_FIX_STATUSES.has(task.status)) return 'fix';
+  if (typeof task.exitCode === 'number' && task.exitCode !== 0) return 'fix';
+  return 'compare';
+}
+
+function fenced(body: string): string {
+  return '```\n' + body.trimEnd() + '\n```';
+}
+
+export function formatRunSummaryTaskErrorAttachment(
+  summary: RunSummary,
+  task: RunSummaryTask,
+  output: { stdout?: string | null; stderr?: string | null } = {},
+): { label: string; content: string } {
+  const exitCode = task.exitCode == null ? 'n/a' : String(task.exitCode);
+  const lines = [
+    `Run \`${summary.runId}\` task \`${task.taskId}\` failed (status: ${task.status}, exit code: ${exitCode}).`,
+    '',
+    `Pipeline: ${summary.pipelineName}`,
+    `Track: ${task.trackName}`,
+    `Task: ${task.taskName}`,
+    '',
+  ];
+
+  if (task.command) {
+    lines.push('Command:', fenced(task.command), '');
+  } else if (task.prompt) {
+    lines.push('Prompt:', fenced(task.prompt), '');
+  }
+
+  if (output.stderr?.trim()) {
+    lines.push('Last stderr:', fenced(output.stderr), '');
+  }
+  if (output.stdout?.trim()) {
+    lines.push('Last stdout:', fenced(output.stdout), '');
+  }
+  if (task.normalizedOutput?.trim()) {
+    lines.push('Normalized output:', fenced(task.normalizedOutput), '');
+  }
+  if (task.stderrPath) lines.push(`Full stderr log: ${task.stderrPath}`);
+  if (task.stdoutPath) lines.push(`Full stdout log: ${task.stdoutPath}`);
+
+  return {
+    label: `Task \`${task.taskId}\` failed (exit ${exitCode})`,
+    content: lines.join('\n').trimEnd(),
+  };
+}
+
+async function readTaskOutputOrNull(
+  runId: string,
+  taskId: string,
+  stream: 'stdout' | 'stderr',
+  hasPath: boolean,
+): Promise<string | null> {
+  if (!hasPath) return null;
+  try {
+    const data = await api.getRunTaskOutput(runId, taskId, stream);
+    return data?.content ?? null;
+  } catch {
+    return null;
+  }
+}
 
 function formatDuration(ms: number | null): string {
   if (ms == null) return '';
@@ -387,7 +456,10 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
                     {task.taskName}
                   </span>
                   <span className="flex items-center gap-[3px] shrink-0">
-                    <Icon size={9} className={cfg.iconColor} />
+                    <Icon
+                      size={9}
+                      className={`${cfg.iconColor} ${task.status === 'running' ? 'animate-spin' : ''}`}
+                    />
                     {task.durationMs != null && (
                       <span className={`text-[8px] font-mono tabular-nums ${cfg.iconColor}`}>
                         {formatDuration(task.durationMs)}
@@ -438,6 +510,7 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
       {selectedTask && (
         <div className="absolute right-0 top-0 bottom-0 z-20">
           <HistoryTaskPanel
+            summary={summary}
             task={selectedTask}
             runId={summary.runId}
             onClose={() => {
@@ -462,10 +535,12 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
 }
 
 function HistoryTaskPanel({
+  summary,
   task,
   runId,
   onClose,
 }: {
+  summary: RunSummary;
   task: RunSummaryTask;
   runId: string;
   onClose: () => void;
@@ -599,6 +674,8 @@ function HistoryTaskPanel({
         )}
 
         <TaskOutputSection
+          summary={summary}
+          task={task}
           runId={runId}
           taskId={task.taskId}
           stdoutPath={task.stdoutPath}
@@ -680,7 +757,10 @@ function HistoryTrackPanel({ track, onClose }: { track: TrackGroup; onClose: () 
                   key={t.taskId}
                   className="flex items-center gap-2 py-1 text-[10px] font-mono border-b border-tagma-border/30 last:border-b-0"
                 >
-                  <TIcon size={9} className={tc.iconColor} />
+                  <TIcon
+                    size={9}
+                    className={`${tc.iconColor} ${t.status === 'running' ? 'animate-spin' : ''}`}
+                  />
                   <span className="flex-1 min-w-0 truncate text-tagma-text">{t.taskName}</span>
                   {t.durationMs != null && (
                     <span className="shrink-0 text-tagma-muted tabular-nums text-[9px]">
@@ -711,12 +791,16 @@ function formatBytes(n: number): string {
  * output is actually readable here — not just a dead file path like before.
  */
 function TaskOutputSection({
+  summary,
+  task,
   runId,
   taskId,
   stdoutPath,
   stderrPath,
   normalizedOutput,
 }: {
+  summary: RunSummary;
+  task: RunSummaryTask;
   runId: string;
   taskId: string;
   stdoutPath?: string | null;
@@ -729,14 +813,27 @@ function TaskOutputSection({
     setAskBusy(true);
     setAskError(null);
     try {
-      const context = await api.getRunHistoryAskAiContext(runId, taskId);
-      useChatStore.getState().attachComposerContext(context, HISTORY_COMPARE_INSTRUCTION);
+      if (historyAskAiModeForTask(summary, task) === 'fix') {
+        const [stdout, stderr] = await Promise.all([
+          readTaskOutputOrNull(runId, taskId, 'stdout', !!stdoutPath),
+          readTaskOutputOrNull(runId, taskId, 'stderr', !!stderrPath),
+        ]);
+        useChatStore
+          .getState()
+          .attachComposerContext(
+            formatRunSummaryTaskErrorAttachment(summary, task, { stdout, stderr }),
+            HISTORY_FIX_INSTRUCTION,
+          );
+      } else {
+        const context = await api.getRunHistoryAskAiContext(runId, taskId);
+        useChatStore.getState().attachComposerContext(context, HISTORY_COMPARE_INSTRUCTION);
+      }
     } catch (err) {
-      setAskError(err instanceof Error ? err.message : 'Failed to build history context');
+      setAskError(err instanceof Error ? err.message : 'Failed to build Ask AI context');
     } finally {
       setAskBusy(false);
     }
-  }, [runId, taskId]);
+  }, [normalizedOutput, runId, stderrPath, stdoutPath, summary, task, taskId]);
 
   // `stdoutPath` / `stderrPath` come from summary.json and signal that the
   // task actually ran a process that produced a stream file — only then is
@@ -763,7 +860,11 @@ function TaskOutputSection({
           onClick={handleAskAi}
           disabled={askBusy}
           className="w-full flex items-center justify-center gap-1.5 text-[11px] font-medium text-tagma-accent border border-tagma-accent/30 hover:bg-tagma-accent/10 disabled:opacity-60 disabled:cursor-wait px-2.5 py-1.5 transition-colors"
-          title="Ask AI to compare this historical output with the latest pipeline"
+          title={
+            historyAskAiModeForTask(summary, task) === 'fix'
+              ? 'Ask AI to fix this task error'
+              : 'Ask AI to compare this historical output with the latest pipeline'
+          }
         >
           {askBusy ? <Loader2 size={11} className="animate-spin" /> : <MessageSquare size={11} />}
           <span>Ask AI</span>

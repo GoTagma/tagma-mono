@@ -142,6 +142,28 @@ export function removeWorkflowPipeline(
     }));
 }
 
+export function workflowPipelineLoopCount(pipeline: WorkflowPipelineEntry): number {
+  const count = pipeline.lifecycle?.max_runs;
+  return typeof count === 'number' && Number.isInteger(count) && count > 1 ? count : 1;
+}
+
+export function setWorkflowPipelineLoopCount(
+  pipelines: readonly WorkflowPipelineEntry[],
+  pipelineId: string,
+  rawCount: number,
+): WorkflowPipelineEntry[] {
+  const count = Number.isFinite(rawCount) ? Math.max(1, Math.round(rawCount)) : 1;
+  return pipelines.map((pipeline) => {
+    if (pipeline.id !== pipelineId) return pipeline;
+    const { lifecycle: _lifecycle, ...rest } = pipeline;
+    if (count <= 1) return rest;
+    return {
+      ...rest,
+      lifecycle: { max_runs: count, stop_when: 'always' },
+    };
+  });
+}
+
 function hasAncestor(
   pipelines: readonly WorkflowPipelineEntry[],
   startId: string,
