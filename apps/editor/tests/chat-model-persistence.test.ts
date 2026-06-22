@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test
 import type { Provider, ProviderModelCatalogV2Snapshot, Session } from '../src/api/opencode-chat';
 import {
   buildProvidersFromV2Catalog,
+  filterProviderCatalogEntriesForStableModels,
   reconcileModelPick,
 } from '../src/store/chat-provider-catalog';
 
@@ -566,6 +567,50 @@ describe('chat model persistence', () => {
     expect(providers.map((provider) => provider.id)).toEqual(['proxyllm', 'deepseek-anthropic']);
     expect(Object.keys(providers[0]?.models ?? {})).toEqual(['safe-coder']);
     expect(Object.keys(providers[1]?.models ?? {})).toEqual(['deepseek-v4-pro']);
+  });
+
+  test('filters providers with only blocked models from the connect catalog', () => {
+    const catalog = [
+      { id: 'deepseek', name: 'DeepSeek', env: [], connected: false, methods: [] },
+      { id: 'proxyllm', name: 'Proxy LLM', env: [], connected: false, methods: [] },
+      { id: 'anthropic', name: 'Anthropic', env: [], connected: false, methods: [] },
+    ];
+
+    const providers = filterProviderCatalogEntriesForStableModels(
+      catalog,
+      {
+        providers: [v2Provider('deepseek'), v2Provider('proxyllm'), v2Provider('anthropic')],
+        models: [
+          withAiSdkPackage(v2Model('deepseek', 'deepseek-v4-pro'), '@ai-sdk/openai-compatible'),
+          withAiSdkPackage(v2Model('proxyllm', 'deepseek-v4-pro'), '@ai-sdk/openai-compatible'),
+          withAiSdkPackage(v2Model('proxyllm', 'safe-coder'), '@ai-sdk/openai-compatible'),
+          v2Model('anthropic', 'claude-sonnet'),
+        ],
+      },
+      [],
+    );
+
+    expect(providers.map((provider) => provider.id)).toEqual(['proxyllm', 'anthropic']);
+  });
+
+  test('keeps connect catalog providers that are not covered by v2 or legacy models', () => {
+    const catalog = [
+      { id: 'deepseek', name: 'DeepSeek', env: [], connected: false, methods: [] },
+      { id: 'opencode-zen', name: 'OpenCode Zen', env: [], connected: false, methods: [] },
+    ];
+
+    const providers = filterProviderCatalogEntriesForStableModels(
+      catalog,
+      {
+        providers: [v2Provider('deepseek')],
+        models: [
+          withAiSdkPackage(v2Model('deepseek', 'deepseek-v4-pro'), '@ai-sdk/openai-compatible'),
+        ],
+      },
+      [],
+    );
+
+    expect(providers.map((provider) => provider.id)).toEqual(['opencode-zen']);
   });
 
   test('marks OpenAI Responses endpoints as reasoning capable', () => {

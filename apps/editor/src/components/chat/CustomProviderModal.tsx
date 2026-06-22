@@ -26,6 +26,7 @@ import {
   customProviderProbeRequest,
   isCurrentCustomProviderProbeRequest,
 } from './custom-provider-probe-request';
+import { classifyModelStability } from '../../../shared/opencode-model-stability.js';
 
 /**
  * Sentinel apiKey value the renderer writes when the user leaves the API key
@@ -381,6 +382,10 @@ function validate(form: FormState, isEdit: boolean): string | null {
   }
   const validModels = form.models.filter((m) => m.id.trim().length > 0);
   if (validModels.length === 0) return 'Add at least one model.';
+  const blockedModel = firstBlockedModel(form, validModels);
+  if (blockedModel) {
+    return `Model "${blockedModel}" is blocked for this provider and cannot be configured.`;
+  }
   for (const m of validModels) {
     if (m.context.trim() && !(Number(m.context) > 0)) {
       return `Model "${m.id}" has an invalid context limit.`;
@@ -398,6 +403,40 @@ function validate(form: FormState, isEdit: boolean): string | null {
     }
   }
   return null;
+}
+
+function firstBlockedModel(form: FormState, models: readonly ModelRow[]): string | null {
+  const provider = {
+    id: form.id.trim(),
+    name: form.name.trim(),
+    npm: form.npm.trim(),
+    options: { baseURL: form.baseURL.trim() },
+  };
+  for (const model of models) {
+    const modelID = model.id.trim();
+    if (!modelID) continue;
+    const result = classifyModelStability(
+      provider,
+      {
+        id: modelID,
+        name: model.name.trim(),
+        api: { npm: form.npm.trim() },
+      },
+      modelID,
+    );
+    if (result.status === 'blocked') return modelID;
+  }
+  return null;
+}
+
+function stableDetectedModels(
+  form: FormState,
+  models: Array<{ id: string; name?: string }>,
+): Array<{ id: string; name?: string }> {
+  return models.filter(
+    (model) =>
+      !firstBlockedModel(form, [{ id: model.id, name: model.name ?? '', context: '', output: '' }]),
+  );
 }
 
 interface CustomProviderModalProps {
@@ -588,6 +627,11 @@ export function CustomProviderModal({
         );
         return;
       }
+      const importableModels = stableDetectedModels(latestFormRef.current, models);
+      if (importableModels.length === 0) {
+        setDetectMsg('All detected models are blocked for this provider.');
+        return;
+      }
       // Merge into form: keep any rows the user already typed (matched by id),
       // append discovered rows that aren't present yet. Avoids clobbering an
       // edit-in-progress when the user clicks Detect mid-edit.
@@ -595,14 +639,17 @@ export function CustomProviderModal({
         const existingIds = new Set(
           prev.models.map((m) => m.id.trim()).filter((id) => id.length > 0),
         );
-        const additions: ModelRow[] = models
+        const additions: ModelRow[] = importableModels
           .filter((m) => !existingIds.has(m.id))
-          .map((m) => ({ id: m.id, name: m.name, context: '', output: '' }));
+          .map((m) => ({ id: m.id, name: m.name ?? '', context: '', output: '' }));
         const cleaned = prev.models.filter((m) => m.id.trim().length > 0);
         return { ...prev, models: [...cleaned, ...additions] };
       });
+      const blockedCount = models.length - importableModels.length;
       setDetectMsg(
-        `Imported ${models.length} model${models.length === 1 ? '' : 's'} via ${endpoint}.`,
+        `Imported ${importableModels.length} model${
+          importableModels.length === 1 ? '' : 's'
+        } via ${endpoint}${blockedCount > 0 ? `; skipped ${blockedCount} blocked` : ''}.`,
       );
     } catch (err) {
       if (

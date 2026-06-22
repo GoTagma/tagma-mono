@@ -38,7 +38,7 @@ export async function fetchProviderCatalog(
   workspaceKey = getOpencodeWorkspaceKey(),
 ): Promise<ProviderCatalogEntry[]> {
   const client = await getOpencodeClient(workspaceKey);
-  const [listRes, authRes] = await Promise.all([
+  const [listRes, authRes, legacyLoad, v2Load] = await Promise.all([
     unwrap(client.provider.list()).catch((err) => {
       console.error('[chat] provider.list failed:', err);
       return {
@@ -51,9 +51,15 @@ export async function fetchProviderCatalog(
       console.error('[chat] provider.auth failed:', err);
       return {} as Record<string, ProviderAuthMethod[]>;
     }),
+    unwrap(client.config.providers())
+      .then((value) => ({ ok: true as const, value }))
+      .catch((error) => ({ ok: false as const, error })),
+    fetchProviderModelCatalogV2(workspaceKey)
+      .then((value) => ({ ok: true as const, value }))
+      .catch((error) => ({ ok: false as const, error })),
   ]);
   const connectedSet = new Set(listRes.connected);
-  return listRes.all.map((p) => {
+  const entries = listRes.all.map((p) => {
     const registered = authRes[p.id];
     const methods: ProviderAuthMethod[] =
       registered && registered.length > 0 ? registered : [{ type: 'api', label: 'API Key' }];
@@ -65,6 +71,46 @@ export async function fetchProviderCatalog(
       methods,
     };
   });
+  return filterProviderCatalogEntriesForStableModels(
+    entries,
+    v2Load.ok ? v2Load.value : null,
+    legacyLoad.ok ? legacyLoad.value.providers : [],
+  );
+}
+
+export function filterProviderCatalogEntriesForStableModels(
+  entries: ProviderCatalogEntry[],
+  v2Catalog: ProviderModelCatalogV2Snapshot | null,
+  legacyProviders: Provider[],
+): ProviderCatalogEntry[] {
+  const filteredIds = filteredCatalogProviderIds(v2Catalog, legacyProviders);
+  if (!filteredIds) return entries;
+  return entries.filter(
+    (entry) => !filteredIds.known.has(entry.id) || filteredIds.visible.has(entry.id),
+  );
+}
+
+function filteredCatalogProviderIds(
+  v2Catalog: ProviderModelCatalogV2Snapshot | null,
+  legacyProviders: Provider[],
+): { known: Set<string>; visible: Set<string> } | null {
+  if (!v2Catalog) {
+    if (legacyProviders.length === 0) return null;
+    return {
+      known: new Set(legacyProviders.map((provider) => provider.id)),
+      visible: new Set(filterBlockedProviderModels(legacyProviders).map((provider) => provider.id)),
+    };
+  }
+  const known = new Set([
+    ...v2Catalog.providers.map((provider) => provider.id),
+    ...legacyProviders.map((provider) => provider.id),
+  ]);
+  return {
+    known,
+    visible: new Set(
+      buildProvidersFromV2Catalog(v2Catalog, legacyProviders).map((provider) => provider.id),
+    ),
+  };
 }
 
 export async function fetchConfiguredProviderModels(
