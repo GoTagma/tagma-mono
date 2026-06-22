@@ -12,7 +12,7 @@ interface MakeOpts {
   yamlPath?: string | null;
   yamlEditLocked?: boolean;
   runActive?: boolean;
-  runStatus?: 'idle' | 'starting' | 'running' | 'success' | 'failed' | 'error' | 'aborted';
+  runStatus?: 'idle' | 'starting' | 'running' | 'done' | 'failed' | 'error' | 'aborted';
   saveResult?: boolean;
   savingRef?: { current: boolean };
   lastEditAt?: number | null;
@@ -76,6 +76,12 @@ describe('autosaveTickOnce guards', () => {
     const { deps, saveCalls } = makeDeps({ runActive: false, runStatus: 'running' });
     expect(await autosaveTickOnce(deps)).toBe('skip-running');
     expect(saveCalls.count).toBe(0);
+  });
+
+  test('does not treat a completed minimized run as still running', async () => {
+    const { deps, saveCalls } = makeDeps({ runActive: false, runStatus: 'done' });
+    expect(await autosaveTickOnce(deps)).toBe('saved');
+    expect(saveCalls.count).toBe(1);
   });
 
   test('skip silently while YAML edit lock is active', async () => {

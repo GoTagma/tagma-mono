@@ -670,9 +670,31 @@ export function RunHistoryBrowser({
 
   useEffect(() => {
     if (!focusedHistoryRunId || selectedRunIdRef.current === focusedHistoryRunId) return;
-    setOutcome('running');
+    const terminalFocus =
+      focusedHistoryRunId === runStoreRunId
+        ? terminalRunFocusForStatus(runStatus, focusedHistoryRunId)
+        : null;
     selectedRunIdRef.current = focusedHistoryRunId;
     setSelectedRunId(focusedHistoryRunId);
+    setSummary(null);
+    setSummaryError(null);
+    setViewMode('flow');
+
+    if (terminalFocus) {
+      const finishedAt = new Date().toISOString();
+      setOutcome(terminalFocus.outcome);
+      setRuns((current) => applyTerminalRunFocusToHistory(current, terminalFocus, finishedAt));
+      void (async () => {
+        const loadedRuns = await loadHistory();
+        if (!hasTerminalRunFocusInHistory(loadedRuns, terminalFocus)) {
+          setRuns(applyTerminalRunFocusToHistory(loadedRuns, terminalFocus, finishedAt));
+        }
+        await loadRun(focusedHistoryRunId);
+      })();
+      return;
+    }
+
+    setOutcome('running');
     setRuns((current) =>
       applyFocusedRunningRunToHistory(current, {
         runId: focusedHistoryRunId,
@@ -680,9 +702,6 @@ export function RunHistoryBrowser({
         startedAt: liveRunStartedAt,
       }),
     );
-    setSummary(null);
-    setSummaryError(null);
-    setViewMode('flow');
     void (async () => {
       const loadedRuns = await loadHistory();
       setRuns(
@@ -694,7 +713,15 @@ export function RunHistoryBrowser({
       );
       await loadRun(focusedHistoryRunId);
     })();
-  }, [focusedHistoryRunId, liveRunStartedAt, liveSnapshot?.name, loadHistory, loadRun]);
+  }, [
+    focusedHistoryRunId,
+    liveRunStartedAt,
+    liveSnapshot?.name,
+    loadHistory,
+    loadRun,
+    runStatus,
+    runStoreRunId,
+  ]);
 
   useEffect(() => {
     if (!hasLiveRuns && summary?.running !== true && !hasActiveStoreRun) return;

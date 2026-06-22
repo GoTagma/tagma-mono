@@ -251,6 +251,42 @@ test('run_snapshot replaces task map + pending approvals + pipelineLogs and adva
   expect(state.pipelineLogs[0].text).toContain('header line');
 });
 
+test('run_snapshot after run_end does not regress the run back to running', () => {
+  let state = foldRunEvent(initialRunFoldState(), runStart(1));
+  state = foldRunEvent(state, {
+    type: 'task_update',
+    runId: 'run_test',
+    taskId: 'track_a.task_1',
+    status: 'success',
+    finishedAt: '2026-04-11T10:00:05.000Z',
+    durationMs: 5000,
+    exitCode: 0,
+    seq: 2,
+  });
+  state = foldRunEvent(state, {
+    type: 'run_end',
+    runId: 'run_test',
+    success: true,
+    abortReason: null,
+    seq: 3,
+  });
+
+  expect(state.status).toBe('done');
+
+  state = foldRunEvent(state, {
+    type: 'run_snapshot',
+    runId: 'run_test',
+    tasks: [makeTask({ status: 'success', totalLogCount: 1 })],
+    pendingApprovals: [],
+    pipelineLogs: [],
+    seq: 4,
+  });
+
+  expect(state.status).toBe('done');
+  expect(state.lastEventSeq).toBe(4);
+  expect(state.tasks.get('track_a.task_1')?.status).toBe('success');
+});
+
 test('run_snapshot with a different runId resets the fold state', () => {
   // Simulated cross-run reconnect: client had folded run_test up to seq 50,
   // then receives a run_snapshot for run_OTHER. Under the (runId, seq)

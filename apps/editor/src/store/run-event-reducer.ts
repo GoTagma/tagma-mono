@@ -119,6 +119,10 @@ function statusForRunEnd(
   return 'failed';
 }
 
+function isTerminalRunStatus(status: RunStatus): boolean {
+  return status === 'done' || status === 'failed' || status === 'aborted' || status === 'error';
+}
+
 export const TASK_LOG_CAP = SDK_TASK_LOG_CAP;
 
 /**
@@ -158,7 +162,7 @@ export function foldRunEvent(state: RunFoldState, event: RunEvent): RunFoldState
     return {
       ...state,
       runId: event.runId,
-      status: 'running',
+      status: isStart || !isTerminalRunStatus(state.status) ? 'running' : state.status,
       tasks,
       // run_start clears pipeline logs; run_snapshot carries them from the
       // server's bounded buffer so reconnecting clients don't lose the
