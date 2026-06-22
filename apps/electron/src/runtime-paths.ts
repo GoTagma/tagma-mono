@@ -407,13 +407,11 @@ function writeReleaseBaseline(
   bundledVersion: string | undefined,
 ): void {
   if (!userDataDir || !bundledVersion || !SIDECAR_VERSION_RE.test(bundledVersion)) return;
+  if (!fsPath.isAbsolute(userDataDir)) return;
   try {
-    mkdirSync(userDataDir, { recursive: true });
-    writeFileSync(
-      releaseBaselinePath(fsPath, userDataDir),
-      JSON.stringify({ bundledVersion }) + '\n',
-      'utf-8',
-    );
+    const baselinePath = releaseBaselinePath(fsPath, userDataDir);
+    mkdirSync(fsPath.dirname(baselinePath), { recursive: true });
+    writeFileSync(baselinePath, JSON.stringify({ bundledVersion }) + '\n', 'utf-8');
   } catch {
     /* best-effort */
   }

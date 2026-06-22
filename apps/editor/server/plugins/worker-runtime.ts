@@ -85,6 +85,7 @@ interface PendingRequest {
   resolve(value: unknown): void;
   reject(error: Error): void;
   timer: ReturnType<typeof setTimeout> | null;
+  cleanup?: () => void;
 }
 
 interface PendingTrigger {
@@ -338,17 +339,7 @@ async function handleMessage(msg) {
       throw new Error('Trigger returned an invalid watch handle');
     }
     watchHandles.set(watchId, { handle, controller });
-    Promise.resolve(handle.fired).then(
-      (value) => {
-        if (!watchHandles.has(watchId)) return;
-        self.postMessage({ kind: 'trigger', watchId, ok: true, value });
-      },
-      (err) => {
-        if (!watchHandles.has(watchId)) return;
-        self.postMessage({ kind: 'trigger', watchId, ok: false, error: serializeError(err) });
-      }
-    );
-    return { watchId };
+    return await Promise.resolve(handle.fired);
   }
   if (msg.kind === 'dispose') {
     const entry = watchHandles.get(msg.watchId);
@@ -363,9 +354,14 @@ async function handleMessage(msg) {
 
 self.onmessage = (event) => {
   const msg = event.data;
+  const replyPort = msg.replyPort;
+  const postResponse = (message) => {
+    (replyPort ?? self).postMessage(message);
+    replyPort?.close?.();
+  };
   handleMessage(msg).then(
-    (value) => self.postMessage({ kind: 'response', id: msg.id, ok: true, value }),
-    (err) => self.postMessage({ kind: 'response', id: msg.id, ok: false, error: serializeError(err) })
+    (value) => postResponse({ kind: 'response', id: msg.id, ok: true, value }),
+    (err) => postResponse({ kind: 'response', id: msg.id, ok: false, error: serializeError(err) })
   );
 };
 `;
@@ -373,7 +369,6 @@ self.onmessage = (event) => {
 function createPluginWorker(): { worker: Worker; sourceUrl: string } {
   const sourceUrl = URL.createObjectURL(new Blob([WORKER_SOURCE], { type: 'text/javascript' }));
   const worker = new Worker(sourceUrl, { type: 'module' });
-  (worker as Worker & { unref?: () => void }).unref?.();
   return { worker, sourceUrl };
 }
 
@@ -430,6 +425,7 @@ export async function loadPluginWorker(
     }
     for (const request of pending.values()) {
       if (request.timer) clearTimeout(request.timer);
+      request.cleanup?.();
       request.reject(reason);
     }
     pending.clear();
@@ -453,17 +449,30 @@ export async function loadPluginWorker(
         timeout > 0
           ? setTimeout(() => {
               const err = new Error(`Plugin worker call timed out after ${timeout}ms`);
+              const entry = pending.get(id);
               pending.delete(id);
+              entry?.cleanup?.();
               terminate(err, true);
               reject(err);
             }, timeout)
           : null;
-      pending.set(id, { resolve, reject, timer });
+      const replyChannel = new MessageChannel();
+      const cleanup = () => {
+        try {
+          replyChannel.port1.close();
+        } catch {
+          /* best-effort */
+        }
+      };
+      replyChannel.port1.onmessage = handleWorkerMessage;
+      replyChannel.port1.start?.();
+      pending.set(id, { resolve, reject, timer, cleanup });
       try {
-        worker.postMessage({ ...message, id });
+        worker.postMessage({ ...message, id, replyPort: replyChannel.port2 }, [replyChannel.port2]);
       } catch (err) {
         if (timer) clearTimeout(timer);
         pending.delete(id);
+        cleanup();
         reject(err instanceof Error ? err : new Error(String(err)));
       }
     });
@@ -486,28 +495,42 @@ export async function loadPluginWorker(
       const timer =
         timeoutMs > 0
           ? setTimeout(() => {
+              const entry = pending.get(id);
               pending.delete(id);
+              entry?.cleanup?.();
               reject(new Error(`Plugin worker soft call timed out after ${timeoutMs}ms`));
             }, timeoutMs)
           : null;
-      pending.set(id, { resolve, reject, timer });
+      const replyChannel = new MessageChannel();
+      const cleanup = () => {
+        try {
+          replyChannel.port1.close();
+        } catch {
+          /* best-effort */
+        }
+      };
+      replyChannel.port1.onmessage = handleWorkerMessage;
+      replyChannel.port1.start?.();
+      pending.set(id, { resolve, reject, timer, cleanup });
       try {
-        worker.postMessage({ ...message, id });
+        worker.postMessage({ ...message, id, replyPort: replyChannel.port2 }, [replyChannel.port2]);
       } catch (err) {
         if (timer) clearTimeout(timer);
         pending.delete(id);
+        cleanup();
         reject(err instanceof Error ? err : new Error(String(err)));
       }
     });
   };
 
-  worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
+  const handleWorkerMessage = (event: MessageEvent<WorkerResponse>) => {
     const msg = event.data;
     if (msg.kind === 'response') {
       const entry = pending.get(msg.id);
       if (!entry) return;
       pending.delete(msg.id);
       if (entry.timer) clearTimeout(entry.timer);
+      entry.cleanup?.();
       if (msg.ok) entry.resolve(msg.value);
       else entry.reject(deserializeWorkerError(msg.error));
       return;
@@ -520,6 +543,7 @@ export async function loadPluginWorker(
       else entry.reject(deserializeWorkerError(msg.error));
     }
   };
+  worker.onmessage = handleWorkerMessage;
 
   worker.onerror = (event: ErrorEvent) => {
     const err = new Error(event.message);
@@ -532,7 +556,6 @@ export async function loadPluginWorker(
       { kind: 'load', fileUrl, fallbackManifest },
       timeoutMs,
     )) as WorkerLoadPayload;
-    revokeSourceUrl();
   } catch (err) {
     terminate(err instanceof Error ? err : new Error(String(err)));
     throw err;
@@ -624,16 +647,15 @@ function proxyTrigger(
   meta: WorkerCapabilityMeta,
   request: (message: Record<string, unknown>, timeout?: number) => Promise<unknown>,
   requestSoft: (message: Record<string, unknown>, timeoutMs: number) => Promise<unknown>,
-  triggers: Map<number, PendingTrigger>,
+  _triggers: Map<number, PendingTrigger>,
 ): TriggerPlugin {
   return {
     name: meta.name,
     schema: meta.schema,
     watch(config, ctx): TriggerWatchHandle {
       const watchId = nextHostWatchId++;
-      const fired = new Promise<unknown>((resolve, reject) => {
-        triggers.set(watchId, { resolve, reject });
-        request({
+      const fired = request(
+        {
           kind: 'watch',
           watchId,
           type: meta.type,
@@ -643,15 +665,12 @@ function proxyTrigger(
             trackId: ctx.trackId,
             workDir: ctx.workDir,
           },
-        }).catch((err) => {
-          triggers.delete(watchId);
-          reject(err);
-        });
-      });
+        },
+        0,
+      );
       return {
         fired,
         dispose(reason?: string) {
-          triggers.delete(watchId);
           // Soft-request: the pending entry self-evicts after a finite
           // timeout instead of leaking when a stuck plugin never acks.
           // A timed-out dispose does NOT terminate the worker — other

@@ -169,6 +169,9 @@ describe('runtime path resolution', () => {
       pw.join('C:/Users/alice/AppData/Roaming/Tagma', 'editor-sidecar'),
     );
     expect(paths.env.TAGMA_SIDECAR_BUNDLED_VERSION).toBe('0.1.16');
+    if (process.platform !== 'win32') {
+      expect(existsSync(hostPath.join(process.cwd(), 'C:'))).toBe(false);
+    }
   });
 
   test('packaged Windows mode preserves a single Path env spelling', () => {
