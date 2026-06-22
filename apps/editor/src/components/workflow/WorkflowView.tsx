@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type DragEvent as ReactDragEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import {
@@ -358,6 +359,69 @@ function formatWorkflowRunTime(value: string | null | undefined): string {
   return new Date(value).toLocaleTimeString();
 }
 
+const WORKFLOW_LOOP_COUNT_DRAFT_RE = /^\d+$/;
+
+export function parseWorkflowLoopCountDraft(value: string): number | null {
+  const trimmed = value.trim();
+  if (!WORKFLOW_LOOP_COUNT_DRAFT_RE.test(trimmed)) return null;
+  const parsed = Number.parseInt(trimmed, 10);
+  return Number.isFinite(parsed) ? Math.max(1, parsed) : null;
+}
+
+function WorkflowLoopCountInput({
+  value,
+  onCommit,
+}: {
+  value: number;
+  onCommit: (count: number) => void;
+}) {
+  const [draft, setDraft] = useState(() => String(value));
+  const [editing, setEditing] = useState(false);
+  const [pendingValue, setPendingValue] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (pendingValue !== null) {
+      if (pendingValue === value) setPendingValue(null);
+      return;
+    }
+    if (!editing) setDraft(String(value));
+  }, [editing, pendingValue, value]);
+
+  const commitDraft = () => {
+    const parsed = parseWorkflowLoopCountDraft(draft) ?? 1;
+    setDraft(String(parsed));
+    setEditing(false);
+    if (parsed === value) {
+      setPendingValue(null);
+      return;
+    }
+    setPendingValue(parsed);
+    onCommit(parsed);
+  };
+
+  const handleKeyDown = (e: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    e.currentTarget.blur();
+  };
+
+  return (
+    <input
+      id="workflow-loop-count"
+      type="text"
+      inputMode="numeric"
+      pattern="[0-9]*"
+      value={draft}
+      onFocus={() => setEditing(true)}
+      onChange={(e) => setDraft(e.currentTarget.value)}
+      onBlur={commitDraft}
+      onKeyDown={handleKeyDown}
+      className="w-full bg-tagma-surface border border-tagma-border px-2 py-1 text-[11px] font-mono text-tagma-text"
+      aria-label="Loop count"
+    />
+  );
+}
+
 export function WorkflowView({
   workflows,
   selectedPath,
@@ -471,6 +535,9 @@ export function WorkflowView({
     : [];
   const selectedTasks = selectedPipelineId ? (taskSnapshots[selectedPipelineId] ?? []) : [];
   const selectedLoopCount = selectedPipeline ? workflowPipelineLoopCount(selectedPipeline) : 1;
+  const selectedLoopCountInputKey = selectedPipeline
+    ? `${selectedWorkflowPath ?? ''}:${selectedPipeline.id}`
+    : 'none';
   const graphRunId = result?.graphRunId ?? graphRunIdFromEvents(events);
   const hasRunActivity = running || !!result || events.length > 0;
   const isDesktop = hasDesktopBridge();
@@ -701,6 +768,7 @@ export function WorkflowView({
 
   const updateSelectedLoopCount = (rawCount: number) => {
     if (!selectedWorkflow || !selectedPipeline) return;
+    if (rawCount === selectedLoopCount) return;
     void savePipelines(
       setWorkflowPipelineLoopCount(selectedWorkflow.pipelines, selectedPipeline.id, rawCount),
     );
@@ -1289,15 +1357,10 @@ export function WorkflowView({
                     <RefreshCw size={9} />
                     Loop Count
                   </label>
-                  <input
-                    id="workflow-loop-count"
-                    type="number"
-                    min={1}
-                    step={1}
+                  <WorkflowLoopCountInput
+                    key={selectedLoopCountInputKey}
                     value={selectedLoopCount}
-                    onChange={(e) => updateSelectedLoopCount(Number(e.currentTarget.value))}
-                    className="w-full bg-tagma-surface border border-tagma-border px-2 py-1 text-[11px] font-mono text-tagma-text"
-                    aria-label="Loop count"
+                    onCommit={updateSelectedLoopCount}
                   />
                   <div className="mt-1 text-[10px] font-mono text-tagma-muted-dim">
                     1 runs once. Values above 1 repeat this pipeline exactly that many times.

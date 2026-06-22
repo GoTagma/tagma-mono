@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { WorkflowView, buildWorkflowTaskSnapshots } from '../src/components/workflow/WorkflowView';
+import {
+  WorkflowView,
+  buildWorkflowTaskSnapshots,
+  parseWorkflowLoopCountDraft,
+} from '../src/components/workflow/WorkflowView';
 import type { WorkflowGraphEvent, WorkflowYamlEntry, WorkspaceYamlEntry } from '../src/api/client';
 
 const workflows: WorkflowYamlEntry[] = [
@@ -144,6 +148,13 @@ function setElectronApi(enabled: boolean): void {
 }
 
 describe('WorkflowView', () => {
+  test('parses loop count drafts without forcing empty edits back to one', () => {
+    expect(parseWorkflowLoopCountDraft('')).toBeNull();
+    expect(parseWorkflowLoopCountDraft('21')).toBe(21);
+    expect(parseWorkflowLoopCountDraft('0')).toBe(1);
+    expect(parseWorkflowLoopCountDraft('2.5')).toBeNull();
+  });
+
   test('renders draggable desktop chrome in the header when running in Electron', () => {
     setElectronApi(true);
     try {
@@ -201,6 +212,9 @@ describe('WorkflowView', () => {
     expect(html).toContain('left:320px');
     expect(html).toContain('top:96px');
     expect(html).toContain('Loop Count');
+    expect(html).toContain('id="workflow-loop-count"');
+    expect(html).toContain('type="text"');
+    expect(html).toContain('inputMode="numeric"');
     expect(html).toContain('value="1"');
     expect(html).toContain('Loop x2');
     expect(html).toContain('Build');
