@@ -19,6 +19,7 @@ import {
 } from '../api/opencode-chat';
 import type { Provider } from '../api/opencode-chat';
 import { savePersisted, type ModelPick } from './chat-persist';
+import { filterBlockedProviderModels } from '../../shared/opencode-model-stability.js';
 
 export interface ProviderCatalogEntry {
   id: string;
@@ -97,7 +98,12 @@ export async function fetchConfiguredProviderModels(
     );
   }
 
-  if (legacyLoad.ok) return legacyLoad.value;
+  if (legacyLoad.ok) {
+    return {
+      ...legacyLoad.value,
+      providers: filterBlockedProviderModels(legacyLoad.value.providers),
+    };
+  }
   if (!v2Load.ok) throw v2Load.error;
   return { providers: [], default: {} };
 }
@@ -177,7 +183,7 @@ export function buildProvidersFromV2Catalog(
     providers.push(legacyProvider);
   }
 
-  return providers;
+  return filterBlockedProviderModels(providers);
 }
 
 function mediaCapabilities(values: string[]): Provider['models'][string]['capabilities']['input'] {
@@ -263,15 +269,15 @@ export function reconcileModelPick(
 ): ModelPick | null {
   const stillValid = current && modelPickExists(providers, current);
   if (stillValid) return current;
-  const defaultProviderID = Object.keys(defaults)[0];
-  if (
-    defaultProviderID &&
-    modelPickExists(providers, {
-      providerID: defaultProviderID,
-      modelID: defaults[defaultProviderID],
-    })
-  ) {
-    return { providerID: defaultProviderID, modelID: defaults[defaultProviderID] };
+  for (const [defaultProviderID, defaultModelID] of Object.entries(defaults)) {
+    if (
+      modelPickExists(providers, {
+        providerID: defaultProviderID,
+        modelID: defaultModelID,
+      })
+    ) {
+      return { providerID: defaultProviderID, modelID: defaultModelID };
+    }
   }
   for (const provider of providers) {
     const firstModelID = Object.keys(provider.models ?? {})[0];

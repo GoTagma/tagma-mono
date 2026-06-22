@@ -354,6 +354,20 @@ function v2Model(
   };
 }
 
+function withAiSdkPackage(
+  model: ProviderModelCatalogV2Snapshot['models'][number],
+  packageName: string,
+): ProviderModelCatalogV2Snapshot['models'][number] {
+  return {
+    ...model,
+    api: {
+      ...model.api,
+      type: 'aisdk',
+      package: packageName,
+    } as unknown as ProviderModelCatalogV2Snapshot['models'][number]['api'],
+  };
+}
+
 interface LegacyProviderFixture {
   id: string;
   name?: string;
@@ -531,6 +545,27 @@ describe('chat model persistence', () => {
 
     expect(providers.map((provider) => provider.id)).toEqual(['anthropic']);
     expect(Object.keys(providers[0]?.models ?? {})).toEqual(['enabled-model']);
+  });
+
+  test('filters unstable OpenAI-compatible model paths from picker options', () => {
+    const providers = buildProvidersFromV2Catalog({
+      providers: [
+        v2Provider('proxyllm'),
+        {
+          ...v2Provider('deepseek-anthropic'),
+          request: { headers: {}, body: { baseURL: 'https://api.deepseek.com/anthropic' } },
+        },
+      ],
+      models: [
+        withAiSdkPackage(v2Model('proxyllm', 'deepseek-v4-pro'), '@ai-sdk/openai-compatible'),
+        withAiSdkPackage(v2Model('proxyllm', 'safe-coder'), '@ai-sdk/openai-compatible'),
+        withAiSdkPackage(v2Model('deepseek-anthropic', 'deepseek-v4-pro'), '@ai-sdk/anthropic'),
+      ],
+    });
+
+    expect(providers.map((provider) => provider.id)).toEqual(['proxyllm', 'deepseek-anthropic']);
+    expect(Object.keys(providers[0]?.models ?? {})).toEqual(['safe-coder']);
+    expect(Object.keys(providers[1]?.models ?? {})).toEqual(['deepseek-v4-pro']);
   });
 
   test('marks OpenAI Responses endpoints as reasoning capable', () => {

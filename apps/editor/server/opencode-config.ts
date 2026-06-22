@@ -26,6 +26,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { atomicWriteFileSync } from './path-utils.js';
+import { classifyModelStability } from '../shared/opencode-model-stability.js';
 
 export type ConfigScope = 'global' | 'workspace';
 
@@ -522,11 +523,15 @@ function writeConfigAt(path: string, next: RawConfig): void {
 
 function sanitizeEmbeddedConfig(raw: RawConfig): RawConfig {
   const provider: Record<string, CustomProviderDef> = {};
+  const blockedModelRefs = new Set<string>();
   if (isPlainObject(raw.provider)) {
     for (const [id, value] of Object.entries(raw.provider)) {
       const def = coerceProviderDef(value);
       const normalizedId = normalizeCustomProviderId(id);
-      if (def && PROVIDER_ID_RE.test(normalizedId)) provider[normalizedId] = def;
+      if (def && PROVIDER_ID_RE.test(normalizedId)) {
+        const filtered = filterBlockedCustomProviderDef(normalizedId, def, blockedModelRefs);
+        if (filtered) provider[normalizedId] = filtered;
+      }
     }
   }
 
@@ -534,12 +539,58 @@ function sanitizeEmbeddedConfig(raw: RawConfig): RawConfig {
     $schema: OPENCODE_SCHEMA_URL,
     plugin: [],
   };
-  if (typeof raw.model === 'string' && raw.model.trim()) out.model = raw.model;
-  if (typeof raw.small_model === 'string' && raw.small_model.trim()) {
+  if (
+    typeof raw.model === 'string' &&
+    raw.model.trim() &&
+    !blockedModelRefs.has(modelRefKeyFromString(raw.model))
+  ) {
+    out.model = raw.model;
+  }
+  if (
+    typeof raw.small_model === 'string' &&
+    raw.small_model.trim() &&
+    !blockedModelRefs.has(modelRefKeyFromString(raw.small_model))
+  ) {
     out.small_model = raw.small_model;
   }
   if (Object.keys(provider).length > 0) out.provider = provider;
   return out;
+}
+
+function modelRefKey(providerID: string, modelID: string): string {
+  return `${providerID.trim().toLowerCase()}/${modelID.trim().toLowerCase()}`;
+}
+
+function modelRefKeyFromString(value: string): string {
+  const slash = value.indexOf('/');
+  if (slash <= 0 || slash === value.length - 1) return '';
+  return modelRefKey(value.slice(0, slash), value.slice(slash + 1));
+}
+
+function filterBlockedCustomProviderDef(
+  providerID: string,
+  def: CustomProviderDef,
+  blockedModelRefs: Set<string>,
+): CustomProviderDef | null {
+  const providerForClassification = { ...def, id: providerID };
+  const models: Record<string, CustomProviderModelDef> = {};
+  let changed = false;
+
+  for (const [modelID, model] of Object.entries(def.models)) {
+    const modelForClassification = { ...model, id: modelID };
+    if (
+      classifyModelStability(providerForClassification, modelForClassification, modelID).status ===
+      'blocked'
+    ) {
+      blockedModelRefs.add(modelRefKey(providerID, modelID));
+      changed = true;
+      continue;
+    }
+    models[modelID] = model;
+  }
+
+  if (Object.keys(models).length === 0) return null;
+  return changed ? { ...def, models } : def;
 }
 
 function readSanitizedConfigAt(path: string): RawConfig {

@@ -39,6 +39,31 @@ const providerDef = {
   },
 };
 
+const unstableOpenAICompatibleProviderDef = {
+  name: 'Proxy LLM',
+  npm: '@ai-sdk/openai-compatible',
+  options: {
+    baseURL: 'https://proxy.example.test/v1',
+    apiKey: '{env:PROXY_LLM_API_KEY}',
+  },
+  models: {
+    'deepseek-v4-pro': { name: 'DeepSeek V4 Pro' },
+    'safe-coder': { name: 'Safe Coder' },
+  },
+};
+
+const deepseekAnthropicProviderDef = {
+  name: 'DeepSeek Anthropic',
+  npm: '@ai-sdk/anthropic',
+  options: {
+    baseURL: 'https://api.deepseek.com/anthropic',
+    apiKey: '{env:DEEPSEEK_API_KEY}',
+  },
+  models: {
+    'deepseek-v4-pro': { name: 'DeepSeek V4 Pro' },
+  },
+};
+
 let tempRoot: string;
 let tagmaCwd: string;
 let savedEnv: Partial<Record<(typeof ENV_KEYS)[number], string>>;
@@ -232,6 +257,32 @@ test('embedded opencode runtime normalizes existing uppercase provider ids', () 
     },
   });
   expect(workspaceConfig.provider as Record<string, unknown>).not.toHaveProperty('Alibaba');
+});
+
+test('embedded opencode runtime filters unstable OpenAI-compatible model paths', () => {
+  const paths = resolveOpencodeRuntimePaths(tagmaCwd);
+  writeJson(paths.workspaceConfigPath, {
+    model: 'proxyllm/deepseek-v4-pro',
+    small_model: 'proxyllm/safe-coder',
+    provider: {
+      proxyllm: unstableOpenAICompatibleProviderDef,
+      deepseekanthropic: deepseekAnthropicProviderDef,
+    },
+  });
+
+  const env = buildOpencodeEnv(tagmaCwd);
+  const injectedConfig = JSON.parse(env.OPENCODE_CONFIG_CONTENT ?? '{}') as {
+    model?: string;
+    small_model?: string;
+    provider?: Record<string, { models?: Record<string, unknown> }>;
+  };
+
+  expect(injectedConfig.model).toBeUndefined();
+  expect(injectedConfig.small_model).toBe('proxyllm/safe-coder');
+  expect(Object.keys(injectedConfig.provider?.proxyllm?.models ?? {})).toEqual(['safe-coder']);
+  expect(Object.keys(injectedConfig.provider?.deepseekanthropic?.models ?? {})).toEqual([
+    'deepseek-v4-pro',
+  ]);
 });
 
 test('embedded opencode server env enables Basic Auth with generated credentials', () => {
