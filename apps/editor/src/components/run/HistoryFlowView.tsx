@@ -833,7 +833,7 @@ function TaskOutputSection({
     } finally {
       setAskBusy(false);
     }
-  }, [normalizedOutput, runId, stderrPath, stdoutPath, summary, task, taskId]);
+  }, [runId, stderrPath, stdoutPath, summary, task, taskId]);
 
   // `stdoutPath` / `stderrPath` come from summary.json and signal that the
   // task actually ran a process that produced a stream file — only then is
