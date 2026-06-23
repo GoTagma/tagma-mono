@@ -3,6 +3,7 @@ import { ShieldCheck, X, Check, Terminal, MessageSquare } from 'lucide-react';
 import type { ApprovalRequestInfo, RawPipelineConfig } from '../../api/client';
 import { formatCommand } from '../../api/client';
 import { isCommandTaskConfig } from '@tagma/types';
+import { useModalFocusTrap } from '../../hooks/use-modal-focus-trap';
 
 interface ApprovalDialogProps {
   request: ApprovalRequestInfo;
@@ -68,15 +69,25 @@ export function ApprovalDialog({ request, onApprove, onReject, config }: Approva
     const body = taskContext.isCommand ? taskContext.command : taskContext.prompt;
     if (!body) return null;
     const trimmed = body.trim();
-    return trimmed.length > 220 ? trimmed.slice(0, 220) + '…' : trimmed;
+    return trimmed.length > 220 ? trimmed.slice(0, 220) + '...' : trimmed;
   }, [taskContext]);
+  const modalRef = useModalFocusTrap<HTMLDivElement>();
 
   return (
-    <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/40">
-      <div className="w-[480px] max-w-full bg-tagma-surface border border-tagma-border shadow-xl">
+    <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/40 p-4">
+      <div
+        ref={modalRef}
+        className="w-[min(480px,100%)] max-h-[min(82vh,calc(100vh-48px))] bg-tagma-surface border border-tagma-border shadow-xl flex flex-col"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="approval-dialog-title"
+        tabIndex={-1}
+      >
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-tagma-border bg-tagma-elevated">
           <ShieldCheck size={14} className="text-tagma-warning" />
-          <span className="text-xs font-medium text-tagma-text flex-1">Approval Required</span>
+          <span id="approval-dialog-title" className="text-xs font-medium text-tagma-text flex-1">
+            Approval Required
+          </span>
           <span className="text-[10px] font-mono text-tagma-muted">{request.taskId}</span>
         </div>
 
@@ -116,7 +127,7 @@ export function ApprovalDialog({ request, onApprove, onReject, config }: Approva
           </div>
         )}
 
-        <div className="px-4 py-3 space-y-3">
+        <div className="px-4 py-3 space-y-3 overflow-y-auto">
           <div>
             <label className="field-label">Message</label>
             <div className="text-[12px] text-tagma-text whitespace-pre-wrap break-words">

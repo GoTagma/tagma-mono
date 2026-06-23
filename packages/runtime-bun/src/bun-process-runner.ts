@@ -27,6 +27,9 @@ const DEFAULT_STDERR_TAIL_BYTES = 4 * 1024 * 1024; // 4 MB
 const WRITE_NOFOLLOW_FLAGS =
   constants.O_CREAT | constants.O_WRONLY | constants.O_TRUNC | (constants.O_NOFOLLOW ?? 0);
 
+type OutputStreamName = 'stdout' | 'stderr';
+type OutputRedactor = NonNullable<RunOptions['outputRedactor']>;
+
 function normalizeTailLimit(value: number | undefined, fallback: number): number {
   if (value === undefined) return fallback;
   if (!Number.isFinite(value) || value < 0) return fallback;
@@ -162,16 +165,20 @@ async function collectStream(
   stream: ReadableStream<Uint8Array> | undefined,
   filePath: string | undefined,
   maxTailBytes: number,
+  streamName: OutputStreamName,
   onChunk?: (text: string) => void,
+  outputRedactor?: OutputRedactor,
 ): Promise<{ text: string; totalBytes: number; path: string | null }> {
   if (!stream) return { text: '', totalBytes: 0, path: null };
 
   // Independent streaming decoder for the live side-channel. Kept separate
   // from the tail decoder below so emitting incremental text can't perturb
   // the head-truncation / final-decode semantics of the returned `text`.
-  // `stream: true` buffers a codepoint split across a chunk boundary until
-  // the next chunk instead of emitting U+FFFD into the live view.
-  const liveDecoder = onChunk ? new TextDecoder() : null;
+  // Redacted streams use a separate decoder so the same sanitized bytes feed
+  // live chunks, disk, and the returned bounded tail.
+  const liveDecoder = !outputRedactor && onChunk ? new TextDecoder() : null;
+  const redactorDecoder = outputRedactor ? new TextDecoder() : null;
+  const redactorEncoder = outputRedactor ? new TextEncoder() : null;
 
   let fh: FileHandle | null = null;
   let diskWriteFailed = false;
@@ -192,71 +199,107 @@ async function collectStream(
   let totalBytes = 0;
   let streamError: Error | null = null;
 
+  const redactPiece = (text: string, final: boolean): string => {
+    if (!outputRedactor) return text;
+    try {
+      return outputRedactor(streamName, text, final);
+    } catch (err) {
+      console.error(
+        `[runner] output redactor failed for ${streamName}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return '[redaction failed]';
+    }
+  };
+
+  const appendChunk = async (chunk: Uint8Array, liveText?: string): Promise<void> => {
+    if (chunk.length === 0) return;
+    totalBytes += chunk.length;
+
+    // Live side-channel: surface this chunk to the caller before the
+    // process exits. Best-effort -- a throwing sink must not abort the
+    // drain (the child would then block on a full pipe).
+    if (onChunk) {
+      try {
+        if (liveText !== undefined) {
+          if (liveText.length > 0) onChunk(liveText);
+        } else if (liveDecoder) {
+          const piece = liveDecoder.decode(chunk, { stream: true });
+          if (piece.length > 0) onChunk(piece);
+        }
+      } catch {
+        /* ignore -- live view is non-authoritative; disk + tail are */
+      }
+    }
+
+    // Disk: persist every byte. Failure here degrades to tail-only mode
+    // without interrupting the stream (child must not block on pipe fill).
+    if (fh) {
+      try {
+        await fh.write(chunk);
+      } catch (err) {
+        console.error(
+          `[runner] disk write failed for ${filePath}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        try {
+          await fh.close();
+        } catch {
+          /* ignore */
+        }
+        fh = null;
+        diskWriteFailed = true;
+      }
+    }
+
+    // Tail: append then evict whole chunks from the head while the total
+    // retained exceeds the cap. Keep at least one chunk so short outputs
+    // aren't lost entirely. Post-condition: tailBytes <= maxTailBytes OR
+    // only one chunk remains (handled by the next block).
+    chunks.push(chunk);
+    tailBytes += chunk.length;
+    while (chunks.length > 1 && tailBytes > maxTailBytes) {
+      tailBytes -= chunks.shift()!.length;
+    }
+    // Pathological: a single chunk larger than the cap. Slice its tail.
+    if (chunks.length === 1 && chunks[0]!.length > maxTailBytes) {
+      const only = chunks[0]!;
+      chunks[0] = only.slice(only.length - maxTailBytes);
+      tailBytes = chunks[0]!.length;
+    }
+  };
+
   try {
     // Use for await...of to avoid Bun bug where getReader() returns an
     // incomplete reader missing releaseLock() under concurrent spawn.
     // https://github.com/oven-sh/bun/issues/28952
     //
     // Bun 1.3.x also has sporadic failures iterating a spawned process's
-    // stream under concurrent Bun.spawn — the iterator throws mid-drain even
+    // stream under concurrent Bun.spawn -- the iterator throws mid-drain even
     // when the child exited 0. We record the error as a breadcrumb instead
     // of propagating, so the caller still sees the real exitCode from
     // proc.exited and a task that the OS considered successful doesn't get
     // marked failed over a runtime stream glitch.
     for await (const value of stream as AsyncIterable<Uint8Array>) {
-      totalBytes += value.length;
-
-      // Live side-channel: surface this chunk to the caller before the
-      // process exits. Best-effort — a throwing sink must not abort the
-      // drain (the child would then block on a full pipe).
-      if (liveDecoder) {
-        try {
-          const piece = liveDecoder.decode(value, { stream: true });
-          if (piece.length > 0) onChunk!(piece);
-        } catch {
-          /* ignore — live view is non-authoritative; disk + tail are */
+      if (outputRedactor && redactorDecoder && redactorEncoder) {
+        const piece = redactorDecoder.decode(value, { stream: true });
+        if (piece.length > 0) {
+          const redacted = redactPiece(piece, false);
+          if (redacted.length > 0) await appendChunk(redactorEncoder.encode(redacted), redacted);
         }
-      }
-
-      // Disk: persist every byte. Failure here degrades to tail-only mode
-      // without interrupting the stream (child must not block on pipe fill).
-      if (fh) {
-        try {
-          await fh.write(value);
-        } catch (err) {
-          console.error(
-            `[runner] disk write failed for ${filePath}: ${err instanceof Error ? err.message : String(err)}`,
-          );
-          try {
-            await fh.close();
-          } catch {
-            /* ignore */
-          }
-          fh = null;
-          diskWriteFailed = true;
-        }
-      }
-
-      // Tail: append then evict whole chunks from the head while the total
-      // retained exceeds the cap. Keep at least one chunk so short outputs
-      // aren't lost entirely. Post-condition: tailBytes <= maxTailBytes OR
-      // only one chunk remains (handled by the next block).
-      chunks.push(value);
-      tailBytes += value.length;
-      while (chunks.length > 1 && tailBytes > maxTailBytes) {
-        tailBytes -= chunks.shift()!.length;
-      }
-      // Pathological: a single chunk larger than the cap. Slice its tail.
-      if (chunks.length === 1 && chunks[0]!.length > maxTailBytes) {
-        const only = chunks[0]!;
-        chunks[0] = only.slice(only.length - maxTailBytes);
-        tailBytes = chunks[0]!.length;
+      } else {
+        await appendChunk(value);
       }
     }
   } catch (err) {
     streamError = err instanceof Error ? err : new Error(String(err));
-    console.error(`[runner] stream read failed: ${streamError.message} — returning partial output`);
+    console.error(
+      `[runner] stream read failed: ${streamError.message} -- returning partial output`,
+    );
   } finally {
+    if (outputRedactor && redactorDecoder && redactorEncoder) {
+      const redactedTail = redactPiece(redactorDecoder.decode(), true);
+      if (redactedTail.length > 0)
+        await appendChunk(redactorEncoder.encode(redactedTail), redactedTail);
+    }
     if (fh) {
       try {
         await fh.close();
@@ -271,14 +314,14 @@ async function collectStream(
         const tail = liveDecoder.decode();
         if (tail.length > 0) onChunk!(tail);
       } catch {
-        /* ignore — live view is non-authoritative */
+        /* ignore -- live view is non-authoritative */
       }
     }
   }
 
   // Decode retained chunks. `stream: true` lets the decoder buffer partial
   // code points across chunks, handling all boundaries except the very first
-  // chunk (which may itself start mid-codepoint after eviction) — that
+  // chunk (which may itself start mid-codepoint after eviction) -- that
   // boundary gets a U+FFFD replacement, which is preferable to throwing.
   const decoder = new TextDecoder();
   let text = '';
@@ -307,7 +350,6 @@ async function collectStream(
     path: filePath ?? null,
   };
 }
-
 /**
  * On Windows, Bun.spawn does NOT auto-append PATHEXT extensions like
  * CreateProcess does. A bare command like `claude` fails with ENOENT if the
@@ -738,13 +780,17 @@ export async function runSpawn(
       stdoutStream,
       opts.stdoutPath,
       stdoutCap,
+      'stdout',
       sink ? (text) => sink('stdout', text) : undefined,
+      opts.outputRedactor,
     ),
     collectStream(
       stderrStream,
       opts.stderrPath,
       stderrCap,
+      'stderr',
       sink ? (text) => sink('stderr', text) : undefined,
+      opts.outputRedactor,
     ),
   ]);
   const stdout = stdoutResult.text;

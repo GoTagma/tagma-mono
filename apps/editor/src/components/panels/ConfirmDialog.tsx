@@ -1,4 +1,5 @@
 import { AlertTriangle, X } from 'lucide-react';
+import { useModalFocusTrap } from '../../hooks/use-modal-focus-trap';
 
 interface ConfirmDialogProps {
   title: string;
@@ -12,8 +13,8 @@ interface ConfirmDialogProps {
 
 /**
  * Shared confirmation modal for destructive operations (delete task / track, etc.).
- * Kept intentionally small — no focus trap, no portals — to match the existing
- * lightweight modal pattern used by the editor's modal surfaces.
+ * Kept intentionally small to match the existing lightweight modal pattern used
+ * by the editor's modal surfaces.
  */
 export function ConfirmDialog({
   title,
@@ -24,17 +25,24 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const modalRef = useModalFocusTrap<HTMLDivElement>();
+
   return (
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60"
       onClick={onCancel}
     >
       <div
-        className="bg-tagma-surface border border-tagma-border shadow-panel w-[420px] flex flex-col animate-fade-in"
+        ref={modalRef}
+        className="bg-tagma-surface border border-tagma-border shadow-panel w-[min(420px,calc(100vw-32px))] max-h-[min(60vh,calc(100vh-48px))] flex flex-col animate-fade-in"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="panel-confirm-dialog-title"
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="panel-header">
-          <h2 className="panel-title flex items-center gap-1.5">
+          <h2 id="panel-confirm-dialog-title" className="panel-title flex items-center gap-1.5">
             {danger && <AlertTriangle size={13} className="text-tagma-warning" />}
             {title}
           </h2>
@@ -47,7 +55,9 @@ export function ConfirmDialog({
             <X size={14} />
           </button>
         </div>
-        <div className="px-5 py-4 text-[12px] text-tagma-text space-y-2">{message}</div>
+        <div className="px-5 py-4 text-[12px] text-tagma-text space-y-2 overflow-y-auto">
+          {message}
+        </div>
         <div className="px-5 py-3 border-t border-tagma-border flex justify-end gap-2">
           <button
             type="button"

@@ -14,6 +14,7 @@ import {
 import { restartOpencodeForConfig } from '../../api/opencode-chat';
 import { useEditorSettingsStore } from '../../store/editor-settings-store';
 import { viewportH } from '../../utils/zoom';
+import { useModalFocusTrap } from '../../hooks/use-modal-focus-trap';
 
 interface EditorSettingsPanelProps {
   workDir: string;
@@ -57,6 +58,7 @@ export function EditorSettingsPanel({
   const [installPlan, setInstallPlan] = useState<PythonInstallPlan | null>(null);
   const [pythonStatus, setPythonStatus] = useState<PythonWizardStatus>({ kind: 'idle' });
   const maxH = useMemo(() => Math.floor(viewportH() * 0.8), []);
+  const modalRef = useModalFocusTrap<HTMLDivElement>();
 
   const hasWorkspace = workDir.length > 0;
 
@@ -295,12 +297,19 @@ export function EditorSettingsPanel({
       onClick={onClose}
     >
       <div
-        className="bg-tagma-surface border border-tagma-border shadow-panel w-[480px] flex flex-col animate-fade-in"
+        ref={modalRef}
+        className="bg-tagma-surface border border-tagma-border shadow-panel w-[min(480px,calc(100vw-32px))] flex flex-col animate-fade-in"
         style={{ maxHeight: maxH }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="editor-settings-title"
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="panel-header">
-          <h2 className="panel-title">Editor Settings</h2>
+          <h2 id="editor-settings-title" className="panel-title">
+            Editor Settings
+          </h2>
           <button
             onClick={onClose}
             className="p-1 text-tagma-muted hover:text-tagma-text transition-colors"
@@ -594,15 +603,25 @@ function PythonAgentWizard({
         ? [selected.command, ...selected.args].join(' ')
         : manualPath
       : (installPlan?.command.join(' ') ?? '');
+  const wizardModalRef = useModalFocusTrap<HTMLDivElement>();
 
   return (
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="bg-tagma-surface border border-tagma-border shadow-panel w-[520px] max-h-[82vh] flex flex-col">
+      <div
+        ref={wizardModalRef}
+        className="bg-tagma-surface border border-tagma-border shadow-panel w-[min(520px,calc(100vw-32px))] max-h-[min(82vh,calc(100vh-48px))] flex flex-col"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="python-agent-wizard-title"
+        tabIndex={-1}
+      >
         <div className="panel-header">
-          <h3 className="panel-title">Python AI Agent</h3>
+          <h3 id="python-agent-wizard-title" className="panel-title">
+            Python AI Agent
+          </h3>
           <button
             onClick={onClose}
             className="p-1 text-tagma-muted hover:text-tagma-text transition-colors"

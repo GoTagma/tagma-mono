@@ -480,7 +480,8 @@ async function requestPlatformExportFile(
   destDir: string,
   targetPlatform: PlatformExportTarget,
   model: PlatformExportModel | null | undefined,
-  onProgress?: (event: PlatformExportProgressEvent) => void,
+  onProgress: ((event: PlatformExportProgressEvent) => void) | undefined,
+  capabilityToken: string,
 ): Promise<PlatformExportDoneEvent> {
   const res = await fetch(`${BASE}/export-file/platform`, {
     method: 'POST',
@@ -489,7 +490,7 @@ async function requestPlatformExportFile(
       destDir,
       targetPlatform,
       ...(model ? { model } : {}),
-      capabilityToken: await createFsCapability(destDir, 'export-file'),
+      capabilityToken,
     }),
   });
 
@@ -1142,6 +1143,8 @@ export interface FsListResult {
   entryCapabilityTokens?: Record<string, string>;
   capabilityToken?: string;
   capabilityExpiresAt?: number;
+  pickerMkdirCapabilityToken?: string;
+  pickerMkdirCapabilityExpiresAt?: number;
 }
 
 export type FsCapabilityPurpose = 'picker-mkdir' | 'import-file' | 'export-file' | 'import-plugin';
@@ -1185,14 +1188,6 @@ type PlatformExportStreamEvent =
   | PlatformExportProgressEvent
   | PlatformExportDoneEvent
   | PlatformExportErrorEvent;
-
-async function createFsCapability(path: string, purpose: FsCapabilityPurpose): Promise<string> {
-  const result = await request<{ token: string; expiresAt: number }>('/fs/capability', {
-    method: 'POST',
-    body: jsonBody({ path, purpose }),
-  });
-  return result.token;
-}
 
 // ── Run types ──
 //
@@ -1540,14 +1535,11 @@ export const api = {
 
   listRoots: () => request<{ roots: string[] }>('/fs/roots'),
 
-  mkdir: async (path: string, opts?: { picker?: boolean }) => {
+  mkdir: async (path: string, opts?: { picker?: boolean; capabilityToken?: string | null }) => {
     const qs = opts?.picker ? '?picker=1' : '';
-    const capabilityToken = opts?.picker
-      ? await createFsCapability(path, 'picker-mkdir')
-      : undefined;
     return request<{ path: string }>(`/fs/mkdir${qs}`, {
       method: 'POST',
-      body: jsonBody({ path, capabilityToken }),
+      body: jsonBody({ path, capabilityToken: opts?.capabilityToken ?? undefined }),
     });
   },
 
@@ -1688,30 +1680,25 @@ export const api = {
   newPipeline: (name?: string) =>
     request<ServerState>('/new', { method: 'POST', body: jsonBody({ name }) }),
 
-  importFile: async (sourcePath: string) =>
+  importFile: async (sourcePath: string, capabilityToken: string) =>
     request<ServerState>('/import-file', {
       method: 'POST',
-      body: jsonBody({
-        sourcePath,
-        capabilityToken: await createFsCapability(sourcePath, 'import-file'),
-      }),
+      body: jsonBody({ sourcePath, capabilityToken }),
     }),
 
-  exportFile: async (destDir: string) =>
+  exportFile: async (destDir: string, capabilityToken: string) =>
     request<{ ok: boolean; path: string }>('/export-file', {
       method: 'POST',
-      body: jsonBody({
-        destDir,
-        capabilityToken: await createFsCapability(destDir, 'export-file'),
-      }),
+      body: jsonBody({ destDir, capabilityToken }),
     }),
 
   exportPlatformFile: async (
     destDir: string,
     targetPlatform: PlatformExportTarget,
-    model?: PlatformExportModel | null,
-    onProgress?: (event: PlatformExportProgressEvent) => void,
-  ) => requestPlatformExportFile(destDir, targetPlatform, model, onProgress),
+    model: PlatformExportModel | null | undefined,
+    onProgress: ((event: PlatformExportProgressEvent) => void) | undefined,
+    capabilityToken: string,
+  ) => requestPlatformExportFile(destDir, targetPlatform, model, onProgress, capabilityToken),
 
   deleteFile: (path: string) =>
     request<ServerState>('/delete-file', { method: 'POST', body: jsonBody({ path }) }),

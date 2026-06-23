@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { X as XIcon } from 'lucide-react';
+import { useModalFocusTrap } from '../hooks/use-modal-focus-trap';
 
 interface SaveAsDialogProps {
   defaultValue: string;
@@ -23,6 +24,7 @@ export function SaveAsDialog({
   onCancel,
 }: SaveAsDialogProps) {
   const [value, setValue] = useState(defaultValue);
+  const modalRef = useModalFocusTrap<HTMLDivElement>();
 
   return (
     <div
@@ -30,11 +32,18 @@ export function SaveAsDialog({
       onClick={onCancel}
     >
       <div
-        className="bg-tagma-surface border border-tagma-border shadow-panel w-[400px] flex flex-col animate-fade-in"
+        ref={modalRef}
+        className="bg-tagma-surface border border-tagma-border shadow-panel w-[min(400px,calc(100vw-32px))] max-h-[min(60vh,calc(100vh-48px))] flex flex-col animate-fade-in"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="save-as-dialog-title"
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="panel-header">
-          <h2 className="panel-title">{title}</h2>
+          <h2 id="save-as-dialog-title" className="panel-title">
+            {title}
+          </h2>
           <button
             onClick={onCancel}
             className="p-1 text-tagma-muted hover:text-tagma-text"

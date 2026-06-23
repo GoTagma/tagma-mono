@@ -11,6 +11,7 @@ import { api } from '../../api/client';
 import { useRunStore, type RequirementsMissingState } from '../../store/run-store';
 import { CopyButton } from './CopyButton';
 import { openLocalFilePath } from '../../desktop';
+import { useModalFocusTrap } from '../../hooks/use-modal-focus-trap';
 
 interface BinarySection {
   readonly label: string;
@@ -88,6 +89,7 @@ export function RequirementsCheckModal({
   onRunAnyway,
   onCancel,
 }: RequirementsCheckModalProps) {
+  const modalRef = useModalFocusTrap<HTMLDivElement>();
   const [body, setBody] = useState<string | null>(null);
   const [envFrontmatter, setEnvFrontmatter] = useState<EnvSection[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -130,13 +132,21 @@ export function RequirementsCheckModal({
       onClick={onCancel}
     >
       <div
-        className="bg-tagma-surface border border-tagma-border shadow-panel w-[640px] max-h-[80vh] flex flex-col animate-fade-in"
+        ref={modalRef}
+        className="bg-tagma-surface border border-tagma-border shadow-panel w-[min(640px,calc(100vw-32px))] max-h-[min(80vh,calc(100vh-48px))] flex flex-col animate-fade-in"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="requirements-check-modal-title"
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="panel-header">
           <div className="flex items-center gap-2 min-w-0">
             <AlertTriangle size={14} className="text-tagma-warning shrink-0" />
-            <h2 className="panel-title truncate text-tagma-warning">
+            <h2
+              id="requirements-check-modal-title"
+              className="panel-title truncate text-tagma-warning"
+            >
               Pipeline requirements not satisfied
             </h2>
           </div>

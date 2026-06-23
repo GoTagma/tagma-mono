@@ -29,6 +29,7 @@ import { usePipelineStore } from '../../store/pipeline-store';
 import { useYamlEditLockStore } from '../../store/yaml-edit-lock-store';
 import { CustomProviderModal } from './CustomProviderModal';
 import { providerAuthMethodKey } from './provider-auth-method-key';
+import { useModalFocusTrap } from '../../hooks/use-modal-focus-trap';
 
 /**
  * Provider connect dialog — the GUI equivalent of opencode's CLI `/connect`.
@@ -68,6 +69,7 @@ export function ProviderConnectDialog() {
 
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
+  const modalRef = useModalFocusTrap<HTMLDivElement>();
 
   // The "Add custom" / "Edit" modal lives inside this dialog so it tears down
   // with the right dock. `editingEntry === null` distinguishes the two modes:
@@ -159,10 +161,13 @@ export function ProviderConnectDialog() {
       onClick={close}
     >
       <div
-        className="bg-tagma-surface border border-tagma-border shadow-panel w-[600px] max-w-[92vw] max-h-[80vh] flex flex-col animate-fade-in"
+        ref={modalRef}
+        className="bg-tagma-surface border border-tagma-border shadow-panel w-[min(600px,calc(100vw-32px))] max-h-[min(80vh,calc(100vh-48px))] flex flex-col animate-fade-in"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-label="Connect providers"
+        aria-modal="true"
+        tabIndex={-1}
       >
         <div className="panel-header">
           <div className="flex items-center gap-2 min-w-0">

@@ -10,6 +10,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   requestSetWorkDir: (workspacePath: string) =>
     ipcRenderer.invoke('request-set-work-dir', workspacePath),
 
+  /** Commit a workspace switch after the sidecar accepted it. */
+  commitSetWorkDir: (workspacePath: string) =>
+    ipcRenderer.invoke('commit-set-work-dir', workspacePath),
+
   /** Open an additional editor window, optionally targeting a workspace. */
   openNewWindow: (workspacePath?: string) => ipcRenderer.invoke('open-new-window', workspacePath),
 

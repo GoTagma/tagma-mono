@@ -21,6 +21,7 @@ import {
 import { viewportH, viewportW } from '../../utils/zoom';
 import { subscribeDesktopZoom } from '../../desktop';
 import { ConfirmDialog } from './ConfirmDialog';
+import { useModalFocusTrap } from '../../hooks/use-modal-focus-trap';
 
 interface SecretsManagerPanelProps {
   workDir: string;
@@ -117,6 +118,7 @@ export function SecretsManagerPanel({
   const [bounds, setBounds] = useState(() =>
     computeSecretsManagerBounds({ width: viewportW(), height: viewportH() }),
   );
+  const modalRef = useModalFocusTrap<HTMLDivElement>();
   const currentRel = useMemo(
     () => toWorkspaceRelative(workDir, currentYamlPath),
     [workDir, currentYamlPath],
@@ -289,14 +291,21 @@ export function SecretsManagerPanel({
         onClick={onClose}
       >
         <div
+          ref={modalRef}
           className="bg-tagma-surface border border-tagma-border shadow-panel flex flex-col animate-fade-in"
           style={{ width: bounds.width, height: bounds.height, maxHeight: bounds.height }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="secrets-manager-title"
+          tabIndex={-1}
           onClick={(e) => e.stopPropagation()}
         >
           <div className="panel-header">
             <div className="flex items-center gap-2">
               <KeyRound size={14} className="text-tagma-accent" />
-              <h2 className="panel-title">Secrets Manager</h2>
+              <h2 id="secrets-manager-title" className="panel-title">
+                Secrets Manager
+              </h2>
             </div>
             <button
               onClick={onClose}

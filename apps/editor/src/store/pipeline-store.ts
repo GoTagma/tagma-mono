@@ -25,7 +25,7 @@ import {
   flushAllLocalFields,
 } from '../hooks/use-local-field';
 import { generateConfigId } from '../../shared/config-id.js';
-import { requestWorkspaceSwitch } from '../desktop';
+import { commitWorkspaceSwitch, requestWorkspaceSwitch } from '../desktop';
 import {
   buildDownstreamPortsReport,
   buildUpstreamPortsReport,
@@ -339,13 +339,14 @@ interface PipelineState {
   syncLocalStateToServerMemory: (opts?: YamlLockBypassOptions) => Promise<boolean>;
   restoreDraft: (config: RawPipelineConfig) => Promise<void>;
   newPipeline: (name?: string) => Promise<void>;
-  importFile: (sourcePath: string) => Promise<void>;
-  exportFile: (destDir: string) => Promise<string | null>;
+  importFile: (sourcePath: string, capabilityToken: string) => Promise<void>;
+  exportFile: (destDir: string, capabilityToken: string) => Promise<string | null>;
   exportPlatformFile: (
     destDir: string,
     targetPlatform: PlatformExportTarget,
-    model?: PlatformExportModel | null,
-    onProgress?: (event: PlatformExportProgressEvent) => void,
+    model: PlatformExportModel | null | undefined,
+    onProgress: ((event: PlatformExportProgressEvent) => void) | undefined,
+    capabilityToken: string,
   ) => Promise<string | null>;
   exportYaml: () => Promise<string>;
   importYaml: (yaml: string) => Promise<void>;
@@ -1301,9 +1302,11 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
               );
             }
           }
-          setClientWorkspace(pinnedWorkspace);
           try {
             const state = await api.setWorkDir(pinnedWorkspace);
+            const nextWorkDir = state.workDir || pinnedWorkspace;
+            await commitWorkspaceSwitch(nextWorkDir);
+            setClientWorkspace(nextWorkDir);
             const registry = await fetchRegistrySnapshot();
             applyFreshStateWithLayout(state);
             set({
@@ -1898,10 +1901,9 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
         if ((await requestWorkspaceSwitch(wd)) === 'focus-other') {
           return false;
         }
-        // Auto-save current pipeline before switching workspace.
-        // If the save fails we MUST abort the switch — otherwise the
-        // caller may overwrite the in-memory pipeline and the user
-        // silently loses their unsaved work.
+        // Auto-save current pipeline before switching workspace. If the save
+        // fails we must abort the switch; otherwise the caller may overwrite
+        // the in-memory pipeline and the user silently loses local edits.
         const current = _get();
         if ((current.isDirty || current.layoutDirty) && current.yamlPath) {
           try {
@@ -1929,41 +1931,21 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
           past: [],
           future: [],
         });
-        // Switch workspace and apply the returned state (workDir only —
-        // the server still holds the previous config/yamlPath, which the
-        // caller will overwrite by opening an existing file or creating a
-        // new pipeline).
-        //
-        // Multi-window sidecar: stamp the workspace key on the client BEFORE
-        // the first fetch targeting the new workspace, so the server's
-        // `resolveWorkspace` middleware routes this PATCH (and everything
-        // after it) to the correct WorkspaceState.
-        setClientWorkspace(wd);
+
         let state: ServerState;
         try {
           state = await api.setWorkDir(wd);
         } catch (e) {
           if (e instanceof RevisionConflictError) {
-            // Defense in depth: setClientWorkspace already cleared
-            // lastRevision for the new workspace, so this branch should
-            // never fire in practice. If it does, adopt the server's
-            // authoritative state (already populated by request() on 409)
-            // and report success — the client is now consistent with the
-            // server and the UI will reflect the switched workspace.
-            applyFreshStateWithLayout(e.currentState);
-            const registry = await fetchRegistrySnapshot();
-            set({
-              isDirty: false,
-              layoutDirty: false,
-              past: [],
-              future: [],
-              registry,
-              lastAutosaveAt: null,
-            });
-            return true;
+            state = e.currentState;
+          } else {
+            throw e;
           }
-          throw e;
         }
+
+        const nextWorkDir = state.workDir || wd;
+        await commitWorkspaceSwitch(nextWorkDir);
+        setClientWorkspace(nextWorkDir);
         const registry = await fetchRegistrySnapshot();
         applyFreshStateWithLayout(state);
         set({ isDirty: false, layoutDirty: false, registry, lastAutosaveAt: null });
@@ -2193,10 +2175,10 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
       }
     },
 
-    importFile: async (sourcePath) => {
+    importFile: async (sourcePath, capabilityToken) => {
       if (blockIfYamlEditLocked()) return;
       try {
-        const state = await api.importFile(sourcePath);
+        const state = await api.importFile(sourcePath, capabilityToken);
         const registry = await fetchRegistrySnapshot();
         set({
           selectedTaskId: null,
@@ -2219,10 +2201,10 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
       }
     },
 
-    exportFile: async (destDir) => {
+    exportFile: async (destDir, capabilityToken) => {
       if (blockIfYamlEditLocked()) return null;
       try {
-        const result = await api.exportFile(destDir);
+        const result = await api.exportFile(destDir, capabilityToken);
         return result.path;
       } catch (e) {
         set({ errorMessage: 'Failed to export: ' + errorToMessage(e) });
@@ -2230,10 +2212,16 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
       }
     },
 
-    exportPlatformFile: async (destDir, targetPlatform, model, onProgress) => {
+    exportPlatformFile: async (destDir, targetPlatform, model, onProgress, capabilityToken) => {
       if (blockIfYamlEditLocked()) return null;
       try {
-        const result = await api.exportPlatformFile(destDir, targetPlatform, model, onProgress);
+        const result = await api.exportPlatformFile(
+          destDir,
+          targetPlatform,
+          model,
+          onProgress,
+          capabilityToken,
+        );
         return result.path;
       } catch (e) {
         set({ errorMessage: 'Failed to export platform pipeline: ' + errorToMessage(e) });

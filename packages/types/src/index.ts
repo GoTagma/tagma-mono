@@ -492,6 +492,13 @@ export interface RunOptions {
   readonly maxStderrTailBytes?: number;
   readonly envPolicy?: EnvPolicy;
   /**
+   * Optional sanitizer applied before live chunks, persisted output files,
+   * and returned stdout/stderr tails are exposed to callers. Hosts use this
+   * to redact resolved secrets while preserving the runtime's streaming
+   * and disk-backed output flow.
+   */
+  readonly outputRedactor?: (stream: 'stdout' | 'stderr', text: string, final?: boolean) => string;
+  /**
    * Live output sink. Invoked with each decoded stdout/stderr chunk as it
    * arrives from the child — before the process exits. The runtime still
    * persists the full stream to disk and returns the bounded tail in
@@ -908,7 +915,8 @@ export interface TaskResult {
    * Absolute path to the full stdout on disk. Set by the SDK runner when
    * the caller provides `RunOptions.stdoutPath` (the engine always does).
    * Null when output wasn't persisted (pre-spawn failures, memory-only
-   * callers). The file is exactly what the child wrote — byte-identical.
+   * callers). The file is byte-identical unless RunOptions.outputRedactor is configured,
+   * in which case it contains the redacted stream bytes.
    */
   readonly stdoutPath: string | null;
   /** Same contract as `stdoutPath` but for stderr. */

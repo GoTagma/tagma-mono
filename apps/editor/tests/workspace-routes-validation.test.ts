@@ -7,7 +7,11 @@ import { TAGMA_SDK_VERSION, YAML_REQUIRES_FIELD_MIN_SDK } from '@tagma/sdk/yaml'
 import { parseWorkflowYaml } from '@tagma/sdk/workflow';
 import { registerWorkspaceRoutes } from '../server/routes/workspace';
 import { S } from '../server/state';
-import { _resetFsCapabilities, consumeFsCapability } from '../server/fs-capability';
+import {
+  _resetFsCapabilities,
+  consumeFsCapability,
+  consumeFsCapabilityForChild,
+} from '../server/fs-capability';
 
 type Req = {
   body?: Record<string, unknown>;
@@ -171,6 +175,87 @@ describe('workspace route validation', () => {
     ).toThrow(/does not match/);
   });
 
+  test('GET /api/fs/list picker mode issues import-file, export-file, and mkdir capabilities', () => {
+    S.workDir = makeTempDir();
+    const sourceDir = makeTempDir();
+    const yamlPath = join(sourceDir, 'import-me.yaml');
+    const textPath = join(sourceDir, 'notes.txt');
+    writeFileSync(yamlPath, 'pipeline:\n  name: Imported\n  tracks: []\n', 'utf-8');
+    writeFileSync(textPath, 'not yaml', 'utf-8');
+    const handler = createRouteHarness().get('/api/fs/list');
+
+    const importRes = makeRes();
+    handler(
+      {
+        workspace: S,
+        headers: {},
+        query: { picker: '1', path: sourceDir, capabilityPurpose: 'import-file' },
+      },
+      importRes,
+    );
+
+    expect(importRes.statusCode).toBe(200);
+    const importBody = importRes.body as {
+      entryCapabilityTokens?: Record<string, string>;
+      pickerMkdirCapabilityToken?: string;
+    };
+    expect(typeof importBody.entryCapabilityTokens?.[yamlPath]).toBe('string');
+    expect(importBody.entryCapabilityTokens?.[textPath]).toBeUndefined();
+    expect(typeof importBody.pickerMkdirCapabilityToken).toBe('string');
+    expect(() =>
+      consumeFsCapability(importBody.entryCapabilityTokens?.[yamlPath], yamlPath, 'import-file', S),
+    ).not.toThrow();
+    expect(() =>
+      consumeFsCapabilityForChild(
+        importBody.pickerMkdirCapabilityToken,
+        join(sourceDir, 'created-from-picker'),
+        'picker-mkdir',
+        S,
+      ),
+    ).not.toThrow();
+
+    const exportRes = makeRes();
+    handler(
+      {
+        workspace: S,
+        headers: {},
+        query: { picker: '1', path: sourceDir, capabilityPurpose: 'export-file' },
+      },
+      exportRes,
+    );
+
+    expect(exportRes.statusCode).toBe(200);
+    const exportBody = exportRes.body as {
+      capabilityToken?: string;
+      pickerMkdirCapabilityToken?: string;
+    };
+    expect(typeof exportBody.capabilityToken).toBe('string');
+    expect(typeof exportBody.pickerMkdirCapabilityToken).toBe('string');
+    expect(() =>
+      consumeFsCapability(exportBody.capabilityToken, sourceDir, 'export-file', S),
+    ).not.toThrow();
+  });
+
+  test('POST /api/fs/capability rejects direct self-issued tokens even from allowed origins', () => {
+    S.workDir = makeTempDir();
+    const external = makeTempDir();
+    const handler = createRouteHarness().post('/api/fs/capability');
+    const res = makeRes();
+
+    handler(
+      {
+        workspace: S,
+        headers: { origin: 'http://localhost:3001' },
+        body: { path: external, purpose: 'export-file' },
+      },
+      res,
+    );
+
+    expect(res.statusCode).toBe(403);
+    expect(String((res.body as { error?: unknown }).error)).toContain(
+      'direct self-issue is disabled',
+    );
+  });
   test('POST /api/fs/mkdir requires a real workspace in non-picker mode', () => {
     const tempRoot = makeTempDir();
     const target = join(tempRoot, 'created-outside-workspace');

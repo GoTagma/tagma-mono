@@ -872,10 +872,30 @@ ipcMain.handle('request-set-work-dir', (event, rawPath: string) => {
     return { action: 'focus-other' };
   }
 
+  return { action: 'proceed' };
+});
+
+ipcMain.handle('commit-set-work-dir', (event, rawPath: string) => {
+  if (!isTrustedIpcSender(event)) {
+    throw new Error('IPC sender is not the Tagma editor origin');
+  }
+  const normalized = normalizeWorkspaceKey(rawPath);
+  const existing = byWorkspace.get(normalized);
+  const callerWin = BrowserWindow.fromWebContents(event.sender);
+
+  if (existing && callerWin && existing.win.id !== callerWin.id) {
+    focusWindow(existing.win);
+    return { action: 'focus-other' };
+  }
+
   if (callerWin) {
     const session = byWindow.get(callerWin.id);
     if (session) {
-      if (session.workspacePath) byWorkspace.delete(session.workspacePath);
+      const previous = session.workspacePath;
+      if (previous && previous !== normalized) {
+        byWorkspace.delete(previous);
+        if (sharedSidecar) requestWorkspaceDrop(sharedSidecar, previous);
+      }
       session.workspacePath = normalized;
       byWorkspace.set(normalized, session);
       callerWin.setTitle(`Tagma — ${path.basename(normalized)}`);

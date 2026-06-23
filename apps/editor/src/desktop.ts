@@ -13,6 +13,7 @@ declare global {
 // (e.g. initThemeEarly → getTheme) blanks the whole window.
 export interface DesktopBridge {
   requestSetWorkDir?: (workspacePath: string) => Promise<{ action: DesktopWorkspaceAction }>;
+  commitSetWorkDir?: (workspacePath: string) => Promise<{ action: DesktopWorkspaceAction }>;
   openNewWindow?: (workspacePath?: string) => Promise<void>;
   minimizeWindow?: () => Promise<void>;
   toggleMaximizeWindow?: () => Promise<boolean>;
@@ -44,6 +45,15 @@ export async function requestWorkspaceSwitch(
   const bridge = getDesktopBridge();
   if (typeof bridge?.requestSetWorkDir !== 'function') return 'proceed';
   const result = await bridge.requestSetWorkDir(workspacePath);
+  return result?.action === 'focus-other' ? 'focus-other' : 'proceed';
+}
+
+export async function commitWorkspaceSwitch(
+  workspacePath: string,
+): Promise<DesktopWorkspaceAction> {
+  const bridge = getDesktopBridge();
+  if (typeof bridge?.commitSetWorkDir !== 'function') return 'proceed';
+  const result = await bridge.commitSetWorkDir(workspacePath);
   return result?.action === 'focus-other' ? 'focus-other' : 'proceed';
 }
 

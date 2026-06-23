@@ -11,15 +11,14 @@
  * in another browser tab or a curl-from-the-shell attempt that doesn't have
  * a fresh token from the picker flow gets rejected.
  *
- * Tokens are TTL-bounded (2 minutes) and one-shot — consume() removes them
- * — so a leaked or replayed token has a tight blast window. The total
- * count is capped (`MAX_CAPABILITIES`) so a noisy caller can't blow up
- * sidecar memory by spamming the issue endpoint; oldest tokens get evicted
- * to make room.
+ * Tokens are TTL-bounded (2 minutes) and one-shot: consume removes them, so
+ * a leaked or replayed token has a tight blast window. The total count is
+ * capped (`MAX_CAPABILITIES`) so a noisy caller can't blow up sidecar memory
+ * by spamming the issue endpoint; oldest tokens get evicted to make room.
  */
 
 import { randomUUID } from 'node:crypto';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import type { WorkspaceState } from './workspace-state.js';
 
 export type FsCapabilityPurpose = 'picker-mkdir' | 'import-file' | 'export-file' | 'import-plugin';
@@ -82,12 +81,11 @@ export function issueFsCapability(
   return { token, expiresAt };
 }
 
-export function consumeFsCapability(
+function takeFsCapability(
   token: unknown,
-  absPath: string,
   purpose: FsCapabilityPurpose,
   ws: WorkspaceState | null | undefined,
-): void {
+): FsCapability {
   if (typeof token !== 'string' || token.length === 0) {
     throw new Error(`${purpose} requires a one-time filesystem capability`);
   }
@@ -97,17 +95,42 @@ export function consumeFsCapability(
   // the purpose check below fails.
   fsCapabilities.delete(token);
   if (!cap) throw new Error(`${purpose} filesystem capability is missing or expired`);
-  if (cap.purpose !== purpose)
+  if (cap.purpose !== purpose) {
     throw new Error(`${purpose} filesystem capability has wrong purpose`);
+  }
   if (cap.workspaceKey !== (ws?.key ?? null)) {
     throw new Error(`${purpose} filesystem capability belongs to another workspace`);
   }
+  return cap;
+}
+
+export function consumeFsCapability(
+  token: unknown,
+  absPath: string,
+  purpose: FsCapabilityPurpose,
+  ws: WorkspaceState | null | undefined,
+): void {
+  const cap = takeFsCapability(token, purpose, ws);
   if (resolve(cap.path) !== resolve(absPath)) {
     throw new Error(`${purpose} filesystem capability does not match the requested path`);
   }
 }
 
-/** Test-only — drains the capability map. */
+export function consumeFsCapabilityForChild(
+  token: unknown,
+  absChildPath: string,
+  purpose: FsCapabilityPurpose,
+  ws: WorkspaceState | null | undefined,
+): void {
+  const cap = takeFsCapability(token, purpose, ws);
+  const parent = resolve(cap.path);
+  const child = resolve(absChildPath);
+  if (child === parent || resolve(dirname(child)) !== parent) {
+    throw new Error(`${purpose} filesystem capability does not match the requested parent path`);
+  }
+}
+
+/** Test-only: drains the capability map. */
 export function _resetFsCapabilities(): void {
   fsCapabilities.clear();
 }

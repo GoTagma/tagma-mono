@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from 'react';
 import { AlertCircle, X as XIcon } from 'lucide-react';
+import { useModalFocusTrap } from '../hooks/use-modal-focus-trap';
 
 export type ConfirmInfo = {
   title: string;
@@ -17,6 +18,8 @@ interface ConfirmModalProps {
 }
 
 export function ConfirmModal({ info, onClose }: ConfirmModalProps) {
+  const modalRef = useModalFocusTrap<HTMLDivElement>();
+
   const handleDismiss = useCallback(() => {
     onClose();
     info.onCancel?.();
@@ -41,10 +44,12 @@ export function ConfirmModal({ info, onClose }: ConfirmModalProps) {
       onClick={handleDismiss}
     >
       <div
-        className="bg-tagma-surface border border-tagma-border shadow-panel w-[440px] max-h-[60vh] flex flex-col animate-fade-in"
+        ref={modalRef}
+        className="bg-tagma-surface border border-tagma-border shadow-panel w-[min(440px,calc(100vw-32px))] max-h-[min(60vh,calc(100vh-48px))] flex flex-col animate-fade-in"
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-modal-title"
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="panel-header">
@@ -87,9 +92,6 @@ export function ConfirmModal({ info, onClose }: ConfirmModalProps) {
           </button>
           <button
             onClick={handleConfirm}
-            // w-auto cancels btn-danger's baked-in w-full (that class is also
-            // used by full-width panel buttons elsewhere). justify-center keeps
-            // the label centered now that we widen via min-w.
             className={`${info.danger ? 'btn-danger' : 'btn-primary'} w-auto min-w-[120px] justify-center text-center`}
           >
             {info.confirmLabel}

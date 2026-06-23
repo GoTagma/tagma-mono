@@ -1,8 +1,7 @@
-// ═══ Plugin Worker Runtime — Isolation Boundary ═══
+// ═══ Plugin Worker Runtime — Trusted Plugin Boundary ═══
 //
 // ALL four plugin categories (Driver, Trigger, Middleware, Completion) execute
-// inside an isolated Bun worker thread, NOT in the editor server's main process.
-// This is the single isolation boundary for the plugin system:
+// inside a dedicated Bun worker thread, NOT in the editor server's main thread:
 //
 //   Editor Server (main thread)          Worker Thread (per plugin package)
 //   ───────────────────────────          ─────────────────────────────────
@@ -12,6 +11,13 @@
 //        │                                       │
 //        └──── postMessage(JSON-RPC) ────────────┘
 //
+// This is crash/hang containment and API mediation, not an OS sandbox. Bun
+// workers still run trusted JavaScript in the same desktop/server process and
+// can use runtime APIs available to that process. For that reason, workspace
+// open/import paths do not auto-install YAML-declared plugins; plugin install
+// and declared-plugin refresh are explicit user actions, and worker load is
+// pinned to the plugin's staged import root before dynamic import.
+//
 // Each loaded plugin package gets its own worker. Host-side proxy objects
 // (proxyDriver, proxyTrigger, proxyMiddleware, proxyCompletion) forward method
 // calls over the message channel and deserialize responses.
@@ -20,7 +26,7 @@
 // (default 120 s). Trigger watch callbacks use a softer path that does not
 // enforce the timeout, because triggers are inherently long-lived.
 //
-// Why worker isolation:
+// Why worker containment:
 //   • A plugin crash (OOM, uncaught exception) kills only its worker;
 //     the server stays alive and reports the failure.
 //   • A plugin hang (stuck API call) is caught by the method timeout.
@@ -107,6 +113,7 @@ export interface PluginWorkerHandle {
 
 export interface PluginWorkerOptions {
   methodTimeoutMs?: number;
+  importRootUrl?: string;
   onUnexpectedTerminate?: (error: Error) => void;
 }
 
@@ -308,9 +315,34 @@ function normalizeLoadedPlugin(loaded, fallbackManifest) {
   return loaded;
 }
 
+function normalizeImportRootUrl(rootUrl) {
+  if (typeof rootUrl !== 'string' || rootUrl.length === 0) {
+    throw new Error('Plugin worker load requires an import root URL');
+  }
+  const root = new URL(rootUrl);
+  if (root.protocol !== 'file:') {
+    throw new Error('Plugin worker import root must be a file URL');
+  }
+  return root.href.endsWith('/') ? root.href : root.href + '/';
+}
+
+function assertLoadFileUrl(fileUrl, rootUrl) {
+  if (typeof fileUrl !== 'string' || fileUrl.length === 0) {
+    throw new Error('Plugin worker load requires a file URL');
+  }
+  const url = new URL(fileUrl);
+  if (url.protocol !== 'file:') {
+    throw new Error('Plugin worker only loads file URLs');
+  }
+  const root = normalizeImportRootUrl(rootUrl);
+  if (!url.href.startsWith(root)) {
+    throw new Error('Plugin entry resolves outside the isolated plugin import root');
+  }
+  return url.href;
+}
 async function handleMessage(msg) {
   if (msg.kind === 'load') {
-    const mod = await import(msg.fileUrl);
+    const mod = await import(assertLoadFileUrl(msg.fileUrl, msg.importRootUrl));
     const loaded = normalizeLoadedPlugin(mod.default, msg.fallbackManifest);
     plugin = loaded;
     return { pluginName: loaded.name, capabilities: capabilityMetadata(loaded) };
@@ -550,10 +582,11 @@ export async function loadPluginWorker(
     terminate(err, true);
   };
 
+  const importRootUrl = options.importRootUrl ?? new URL('.', fileUrl).href;
   let payload: WorkerLoadPayload;
   try {
     payload = (await request(
-      { kind: 'load', fileUrl, fallbackManifest },
+      { kind: 'load', fileUrl, importRootUrl, fallbackManifest },
       timeoutMs,
     )) as WorkerLoadPayload;
   } catch (err) {

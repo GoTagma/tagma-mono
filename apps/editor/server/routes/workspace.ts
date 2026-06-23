@@ -47,6 +47,7 @@ import {
 import { ALLOWED_ORIGINS } from '../allowed-origins.js';
 import {
   consumeFsCapability,
+  consumeFsCapabilityForChild,
   isValidFsCapabilityPurpose,
   issueFsCapability,
 } from '../fs-capability.js';
@@ -671,20 +672,10 @@ export function registerWorkspaceRoutes(app: express.Express): void {
         workDir: normalized,
       });
     }
-    // Guard against header/body drift. Clients are expected to call
-    // setClientWorkspace(wd) before this PATCH, so the header should already
-    // match the body. If they diverge the client has a bug — fail loudly
-    // instead of silently favouring `body` and routing subsequent requests
-    // through a different WorkspaceState than the one we just switched into.
-    // The default sentinel passes through because the header is absent on
-    // boot when the window first hydrates from the welcome page.
-    if (req.workspace && req.workspace.key !== normalized && req.workspace.key !== '__default__') {
-      return res.status(400).json({
-        error: 'header/body workspace mismatch',
-        headerKey: req.workspace.key,
-        bodyKey: normalized,
-      });
-    }
+    // The target workspace comes from the request body. Clients now commit
+    // their X-Tagma-Workspace key only after this PATCH succeeds, so the
+    // previous header (or no header on the welcome page) is intentionally not
+    // treated as a routing mismatch here.
     const ws = workspaceRegistry.getOrCreate(normalized);
     ws.workDir = normalized;
     invalidatePluginCache(ws);
@@ -929,14 +920,10 @@ export function registerWorkspaceRoutes(app: express.Express): void {
     if (origin && !ALLOWED_ORIGINS.has(origin)) {
       return res.status(403).json({ error: 'Picker mode requires an allowed Origin' });
     }
-    const capabilityPurpose = req.query.capabilityPurpose;
-    if (capabilityPurpose !== undefined) {
-      if (!isValidFsCapabilityPurpose(capabilityPurpose)) {
-        return res.status(400).json({ error: 'invalid filesystem capability purpose' });
-      }
-      if (capabilityPurpose !== 'import-plugin') {
-        return res.status(400).json({ error: 'unsupported picker capability purpose' });
-      }
+    const rawCapabilityPurpose = req.query.capabilityPurpose;
+    const capabilityPurpose = rawCapabilityPurpose === undefined ? undefined : rawCapabilityPurpose;
+    if (capabilityPurpose !== undefined && !isValidFsCapabilityPurpose(capabilityPurpose)) {
+      return res.status(400).json({ error: 'invalid filesystem capability purpose' });
     }
     const requested = (req.query.path as string) || process.cwd();
     let dirPath = resolve(requested);
@@ -964,14 +951,17 @@ export function registerWorkspaceRoutes(app: express.Express): void {
         });
       const entries = allEntries.slice(0, MAX_FS_LIST_ENTRIES);
       const parent = dirname(dirPath);
-      const capability =
-        capabilityPurpose === 'import-plugin'
+      const directoryCapability =
+        capabilityPurpose === 'import-plugin' || capabilityPurpose === 'export-file'
           ? issueFsCapability(dirPath, capabilityPurpose, req.workspace)
           : null;
+      const mkdirCapability = issueFsCapability(dirPath, 'picker-mkdir', req.workspace);
       const entryCapabilityTokens: Record<string, string> = {};
-      if (capabilityPurpose === 'import-plugin') {
+      if (capabilityPurpose === 'import-plugin' || capabilityPurpose === 'import-file') {
         for (const entry of entries) {
-          if (entry.type !== 'file' || !isPluginArchiveName(entry.name)) continue;
+          if (entry.type !== 'file') continue;
+          if (capabilityPurpose === 'import-plugin' && !isPluginArchiveName(entry.name)) continue;
+          if (capabilityPurpose === 'import-file' && !/\.ya?ml$/i.test(entry.name)) continue;
           entryCapabilityTokens[entry.path] = issueFsCapability(
             entry.path,
             capabilityPurpose,
@@ -984,13 +974,15 @@ export function registerWorkspaceRoutes(app: express.Express): void {
         parent: parent !== dirPath ? parent : null,
         entries,
         truncated: allEntries.length > MAX_FS_LIST_ENTRIES,
-        ...(capability
+        pickerMkdirCapabilityToken: mkdirCapability.token,
+        pickerMkdirCapabilityExpiresAt: mkdirCapability.expiresAt,
+        ...(directoryCapability
           ? {
-              capabilityToken: capability.token,
-              capabilityExpiresAt: capability.expiresAt,
-              entryCapabilityTokens,
+              capabilityToken: directoryCapability.token,
+              capabilityExpiresAt: directoryCapability.expiresAt,
             }
           : {}),
+        ...(Object.keys(entryCapabilityTokens).length > 0 ? { entryCapabilityTokens } : {}),
       });
     } catch (err: unknown) {
       res.status(500).json({ error: errorMessage(err) || 'Failed to list directory' });
@@ -1236,25 +1228,14 @@ export function registerWorkspaceRoutes(app: express.Express): void {
     if (!origin || !ALLOWED_ORIGINS.has(origin)) {
       return res.status(403).json({ error: 'Filesystem capabilities require an allowed Origin' });
     }
-    const { path: rawPath, purpose } = (req.body ?? {}) as {
-      path?: unknown;
-      purpose?: unknown;
-    };
-    if (typeof rawPath !== 'string' || rawPath.trim().length === 0) {
-      return res.status(400).json({ error: 'path is required' });
-    }
-    if (!isValidFsCapabilityPurpose(purpose)) {
+    const { purpose } = (req.body ?? {}) as { purpose?: unknown };
+    if (purpose !== undefined && !isValidFsCapabilityPurpose(purpose)) {
       return res.status(400).json({ error: 'invalid filesystem capability purpose' });
     }
-    if (purpose === 'import-plugin') {
-      return res.status(403).json({
-        error:
-          'Plugin import capabilities cannot be self-issued through /api/fs/capability; they must come from a trusted picker flow.',
-      });
-    }
-    const absPath = resolve(rawPath);
-    const { token, expiresAt } = issueFsCapability(absPath, purpose, req.workspace);
-    res.json({ token, expiresAt });
+    return res.status(403).json({
+      error:
+        'Filesystem capabilities must come from a trusted picker flow; direct self-issue is disabled.',
+    });
   });
 
   app.post('/api/fs/mkdir', (req, res) => {
@@ -1276,7 +1257,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
         return res.status(403).json({ error: 'Picker mode requires an allowed Origin' });
       }
       try {
-        consumeFsCapability(capabilityToken, absPath, 'picker-mkdir', req.workspace);
+        consumeFsCapabilityForChild(capabilityToken, absPath, 'picker-mkdir', req.workspace);
         mkdirSync(absPath, { recursive: true });
         return res.json({ path: absPath });
       } catch (err: unknown) {

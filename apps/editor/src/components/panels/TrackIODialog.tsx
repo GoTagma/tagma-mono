@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { X as XIcon } from 'lucide-react';
+import { useModalFocusTrap } from '../../hooks/use-modal-focus-trap';
 import type { RawPipelineConfig } from '../../api/client';
 import {
   collectPipelineInputs,
@@ -85,6 +86,7 @@ export function TrackIODialog({ config, onClose }: TrackIODialogProps) {
     [mode, scope, taskId, pipelineOutputs, trackOutputs],
   );
 
+  const modalRef = useModalFocusTrap<HTMLDivElement>();
   const selectClass =
     'text-[11px] bg-tagma-bg border border-tagma-border px-2 py-1 text-tagma-text focus:border-tagma-accent outline-none';
 
@@ -94,11 +96,18 @@ export function TrackIODialog({ config, onClose }: TrackIODialogProps) {
       onClick={onClose}
     >
       <div
-        className="bg-tagma-surface border border-tagma-border shadow-panel w-[640px] max-h-[80vh] flex flex-col animate-fade-in"
+        ref={modalRef}
+        className="bg-tagma-surface border border-tagma-border shadow-panel w-[min(640px,calc(100vw-32px))] max-h-[min(80vh,calc(100vh-48px))] flex flex-col animate-fade-in"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="track-io-dialog-title"
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="panel-header">
-          <h2 className="panel-title">Track I/O</h2>
+          <h2 id="track-io-dialog-title" className="panel-title">
+            Track I/O
+          </h2>
           <button
             type="button"
             onClick={onClose}

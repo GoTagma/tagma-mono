@@ -219,7 +219,7 @@ export function registerPluginRoutes(app: express.Express): void {
     // The install pipeline now refuses unpinned specs (no silent
     // dist-tags.latest fallback). When the renderer's "Install" button
     // didn't ask for a specific version we resolve latest at the route
-    // boundary and pin it before proceeding — the pinned value flows into
+    // boundary and pin it before proceeding - the pinned value flows into
     // the lockfile and the response so the user sees exactly which
     // version landed.
     if (!spec.version) {
@@ -256,7 +256,7 @@ export function registerPluginRoutes(app: express.Express): void {
       try {
         if (!installOutcome) throw new Error('Install did not produce rollback state');
         addToPluginManifest(ws, spec.name);
-        // Clicking Install is an explicit opt-in — clear any prior user-
+        // Clicking Install is an explicit opt-in - clear any prior user-
         // uninstall block so the plugin can be auto-loaded on future opens.
         removeFromPluginBlocklist(ws, spec.name);
         invalidatePluginCache(ws);
@@ -416,7 +416,7 @@ export function registerPluginRoutes(app: express.Express): void {
    * dialog so the user can bail out before orphaning declarations or task
    * capability references.
    *
-   * Returns `{ category: null }` when the plugin can't be classified —
+   * Returns `{ category: null }` when the plugin can't be classified -
    * the uninstall is still safe to attempt but impact scanning is a no-op.
    */
   app.get('/api/plugins/uninstall-impact', (req, res) => {
@@ -642,8 +642,8 @@ export function registerPluginRoutes(app: express.Express): void {
    *
    * `declared` is the union of every YAML in `.tagma/` (via
    * discoverWorkspaceDeclaredPlugins) and any plugins declared by the
-   * currently-loaded in-memory pipeline — same source that
-   * `autoLoadInstalledPlugins()` uses, so the preview matches reality.
+   * currently-loaded in-memory pipeline, which is the same declared set used by
+   * an explicit plugin refresh.
    */
   app.get('/api/plugins/declared', (req, res) => {
     const ws = requireWorkspace(req, res);
@@ -679,9 +679,8 @@ export function registerPluginRoutes(app: express.Express): void {
    *
    * Pulls declared plugins from BOTH the workspace's `.tagma/*.yaml` files
    * (so it covers every pipeline in the workspace, not just the one the user
-   * happens to be editing) AND the in-memory pipeline. Same source that
-   * `autoLoadInstalledPlugins()` uses on workspace open, so the on-demand and
-   * on-open paths stay in lockstep.
+   * happens to be editing) AND the in-memory pipeline. This explicit refresh
+   * path is the only place declared plugins may be auto-installed or loaded.
    */
   app.post('/api/plugins/refresh', async (req, res) => {
     const ws = requireWorkspace(req, res);
@@ -701,7 +700,11 @@ export function registerPluginRoutes(app: express.Express): void {
         const wasInstalled = new Set(declared.filter((n) => getPluginInfo(ws, n).installed));
         const wasLoaded = new Set(ws.loadedPluginMeta.keys());
 
-        const loaded = await autoLoadInstalledPlugins(ws);
+        const loaded = await autoLoadInstalledPlugins(ws, {
+          includeDeclared: true,
+          allowAutoInstallDeclared: true,
+          includeDiscovered: true,
+        });
 
         const installed = declared.filter(
           (n) => getPluginInfo(ws, n).installed && !wasInstalled.has(n),
@@ -771,7 +774,7 @@ export function registerPluginRoutes(app: express.Express): void {
   app.get('/api/marketplace/search', async (req, res) => {
     // Rate limit per workspace so a runaway script can't push the editor's
     // npm registry quota into 429 territory. We cap at 60 searches per
-    // minute — the dashboard debounces user typing aggressively, so even a
+    // minute - the dashboard debounces user typing aggressively, so even a
     // patient human won't hit this.
     const wsKey = req.workspace?.key ?? 'default';
     const decision = takeRateLimitToken(`marketplace-search:${wsKey}`, {
@@ -810,18 +813,18 @@ export function registerPluginRoutes(app: express.Express): void {
     // We hit two upstream queries, add deterministic first-party package
     // names, and merge everything before fetching exact package manifests.
     //
-    //   1. `keywords:tagma-plugin` — the canonical discovery channel. Plugin
+    //   1. `keywords:tagma-plugin` - the canonical discovery channel. Plugin
     //      authors (including third parties) opt in by adding the keyword
     //      to their package.json. This is the long-term right answer.
     //
-    //   2. Free-text "tagma" filtered to the @tagma/* scope — backstop for
+    //   2. Free-text "tagma" filtered to the @tagma/* scope - backstop for
     //      official packages that haven't declared the keyword yet. Note
     //      that not every @tagma/* package is a plugin (e.g. @tagma/sdk,
-    //      @tagma/types are libraries) — the manifest check below
+    //      @tagma/types are libraries) - the manifest check below
     //      discards any candidate whose package.json doesn't carry a
     //      `tagmaPlugin` field, so this scope-based discovery is safe.
     //
-    //   3. First-party names — direct manifest fetches keep official plugins
+    //   3. First-party names - direct manifest fetches keep official plugins
     //      visible while npm search indexing catches up immediately after
     //      publish. These still pass the same tagmaPlugin validation below.
     const keywordText = q ? `keywords:tagma-plugin ${q}` : 'keywords:tagma-plugin';

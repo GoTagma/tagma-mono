@@ -16,6 +16,7 @@ import type {
 import { classifyError, extractErrorMessage, type ErrorKind } from './plugin-errors';
 import { LocalPanel } from './LocalPanel';
 import { MarketplacePanel } from './MarketplacePanel';
+import { useModalFocusTrap } from '../../hooks/use-modal-focus-trap';
 
 type Tab = 'local' | 'marketplace';
 type CategoryFilter = 'all' | PluginCategory;
@@ -765,17 +766,26 @@ function UpgradeConfirmDialog({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const modalRef = useModalFocusTrap<HTMLDivElement>();
+
   return (
     <div
       className="fixed inset-0 z-[240] flex items-center justify-center bg-black/60"
       onClick={onCancel}
     >
       <div
-        className="bg-tagma-surface border border-tagma-border shadow-panel w-[520px] max-h-[80vh] flex flex-col animate-fade-in"
+        ref={modalRef}
+        className="bg-tagma-surface border border-tagma-border shadow-panel w-[min(520px,calc(100vw-32px))] max-h-[min(80vh,calc(100vh-48px))] flex flex-col animate-fade-in"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="plugin-upgrade-confirm-title"
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="panel-header">
-          <h2 className="panel-title">Upgrade plugins?</h2>
+          <h2 id="plugin-upgrade-confirm-title" className="panel-title">
+            Upgrade plugins?
+          </h2>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
           <div className="text-[11px] text-tagma-warning leading-relaxed">
@@ -839,6 +849,7 @@ function UninstallConfirmDialog({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const modalRef = useModalFocusTrap<HTMLDivElement>();
   const byFile = useMemo(() => {
     const map = new Map<string, typeof impact.impacts>();
     for (const entry of impact.impacts) {
@@ -861,11 +872,18 @@ function UninstallConfirmDialog({
       onClick={onCancel}
     >
       <div
-        className="bg-tagma-surface border border-tagma-border shadow-panel w-[480px] max-h-[80vh] flex flex-col animate-fade-in"
+        ref={modalRef}
+        className="bg-tagma-surface border border-tagma-border shadow-panel w-[min(480px,calc(100vw-32px))] max-h-[min(80vh,calc(100vh-48px))] flex flex-col animate-fade-in"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="plugin-uninstall-confirm-title"
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="panel-header">
-          <h2 className="panel-title">Uninstall plugin?</h2>
+          <h2 id="plugin-uninstall-confirm-title" className="panel-title">
+            Uninstall plugin?
+          </h2>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
           <div className="text-[11px] text-tagma-text">

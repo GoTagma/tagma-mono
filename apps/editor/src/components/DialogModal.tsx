@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { AlertCircle, CheckCircle2, X as XIcon } from 'lucide-react';
+import { useModalFocusTrap } from '../hooks/use-modal-focus-trap';
 
 export type DialogInfo = { type: 'error' | 'success'; title: string; details: string[] };
 
@@ -9,6 +10,8 @@ interface DialogModalProps {
 }
 
 export function DialogModal({ info, onClose }: DialogModalProps) {
+  const modalRef = useModalFocusTrap<HTMLDivElement>();
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -23,10 +26,12 @@ export function DialogModal({ info, onClose }: DialogModalProps) {
       onClick={onClose}
     >
       <div
-        className="bg-tagma-surface border border-tagma-border shadow-panel w-[480px] max-h-[60vh] flex flex-col animate-fade-in"
+        ref={modalRef}
+        className="bg-tagma-surface border border-tagma-border shadow-panel w-[min(480px,calc(100vw-32px))] max-h-[min(60vh,calc(100vh-48px))] flex flex-col animate-fade-in"
         role="dialog"
         aria-modal="true"
         aria-labelledby="dialog-modal-title"
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="panel-header">

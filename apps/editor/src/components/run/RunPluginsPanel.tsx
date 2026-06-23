@@ -10,6 +10,7 @@ import { X, Package, Cpu, Zap, CheckCircle2, Layers } from 'lucide-react';
 import { usePipelineStore } from '../../store/pipeline-store';
 import type { RawPipelineConfig } from '../../api/client';
 import { viewportH } from '../../utils/zoom';
+import { useModalFocusTrap } from '../../hooks/use-modal-focus-trap';
 
 interface RunPluginsPanelProps {
   config: RawPipelineConfig;
@@ -65,6 +66,7 @@ export function RunPluginsPanel({ config, onClose }: RunPluginsPanelProps) {
 
   const declaredPlugins = useMemo(() => config.plugins ?? [], [config.plugins]);
   const maxH = useMemo(() => Math.floor(viewportH() * 0.8), []);
+  const modalRef = useModalFocusTrap<HTMLDivElement>();
 
   return (
     <div
@@ -72,14 +74,21 @@ export function RunPluginsPanel({ config, onClose }: RunPluginsPanelProps) {
       onClick={onClose}
     >
       <div
-        className="bg-tagma-surface border border-tagma-border shadow-panel w-[560px] flex flex-col animate-fade-in"
+        ref={modalRef}
+        className="bg-tagma-surface border border-tagma-border shadow-panel w-[min(560px,calc(100vw-32px))] flex flex-col animate-fade-in"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="run-plugins-panel-title"
+        tabIndex={-1}
         style={{ maxHeight: maxH }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="panel-header">
           <div className="flex items-center gap-2">
             <Package size={14} className="text-tagma-accent" />
-            <h2 className="panel-title">Plugins (read-only)</h2>
+            <h2 id="run-plugins-panel-title" className="panel-title">
+              Plugins (read-only)
+            </h2>
           </div>
           <button
             onClick={onClose}

@@ -27,6 +27,7 @@ import {
   isCurrentCustomProviderProbeRequest,
 } from './custom-provider-probe-request';
 import { classifyModelStability } from '../../../shared/opencode-model-stability.js';
+import { useModalFocusTrap } from '../../hooks/use-modal-focus-trap';
 
 /**
  * Sentinel apiKey value the renderer writes when the user leaves the API key
@@ -475,6 +476,7 @@ export function CustomProviderModal({
   const [verifyMsg, setVerifyMsg] = useState<{ kind: 'ok' | 'warn'; text: string } | null>(null);
 
   const idInputRef = useRef<HTMLInputElement>(null);
+  const modalRef = useModalFocusTrap<HTMLDivElement>();
   const nameInputRef = useRef<HTMLInputElement>(null);
   const modalRunRef = useRef(0);
   const latestFormRef = useRef(form);
@@ -781,10 +783,13 @@ export function CustomProviderModal({
       onClick={onClose}
     >
       <div
-        className="bg-tagma-surface border border-tagma-border shadow-panel w-[640px] max-w-[94vw] max-h-[88vh] flex flex-col animate-fade-in"
+        ref={modalRef}
+        className="bg-tagma-surface border border-tagma-border shadow-panel w-[min(640px,calc(100vw-32px))] max-h-[min(88vh,calc(100vh-48px))] flex flex-col animate-fade-in"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-label={isEdit ? 'Edit custom provider' : 'Add custom provider'}
+        aria-modal="true"
+        tabIndex={-1}
       >
         <div className="panel-header">
           <div className="flex items-center gap-2 min-w-0">

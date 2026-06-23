@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type React from 'react';
 import { Folder, FileText, ChevronUp, HardDrive, X, FolderPlus } from 'lucide-react';
 import { api } from '../api/client';
-import type { FsEntry } from '../api/client';
+import type { FsCapabilityPurpose, FsEntry } from '../api/client';
+import { useModalFocusTrap } from '../hooks/use-modal-focus-trap';
 
 export type FileExplorerMode = 'open' | 'save' | 'directory';
 
@@ -26,10 +27,10 @@ interface FileExplorerProps {
    */
   multiple?: boolean;
   allowDirectorySelection?: boolean;
-  capabilityPurpose?: 'import-plugin';
+  capabilityPurpose?: FsCapabilityPurpose;
   onConfirm: (path: string) => void;
   onConfirmWithCapability?: (path: string, capabilityToken: string | null) => void;
-  onConfirmMany?: (paths: string[]) => void;
+  onConfirmMany?: (paths: string[], capabilityTokens: Record<string, string>) => void;
   onCancel: () => void;
 }
 
@@ -57,15 +58,17 @@ export function FileExplorer({
   const [error, setError] = useState<string | null>(null);
   const [newFolderName, setNewFolderName] = useState<string | null>(null);
   const [capabilityToken, setCapabilityToken] = useState<string | null>(null);
+  const [pickerMkdirCapabilityToken, setPickerMkdirCapabilityToken] = useState<string | null>(null);
   const [entryCapabilityTokens, setEntryCapabilityTokens] = useState<Record<string, string>>({});
   // Multi-select bookkeeping. `selected` holds picked file paths (preserves
   // click order, which becomes import order). `anchorPath` is the last single-
-  // clicked path — Shift-click extends a range from it through the click target
+  // clicked path. Shift-click extends a range from it through the click target
   // using the current `entries` order.
   const [selected, setSelected] = useState<string[]>([]);
   const [anchorPath, setAnchorPath] = useState<string | null>(null);
   const fileNameRef = useRef<HTMLInputElement>(null);
   const newFolderRef = useRef<HTMLInputElement>(null);
+  const modalRef = useModalFocusTrap<HTMLDivElement>();
   const multi = multiple && mode === 'open';
 
   const defaultTitle =
@@ -96,6 +99,7 @@ export function FileExplorer({
         setParentPath(result.parent);
         setPathInput(result.path);
         setCapabilityToken(result.capabilityToken ?? null);
+        setPickerMkdirCapabilityToken(result.pickerMkdirCapabilityToken ?? null);
         setEntryCapabilityTokens(result.entryCapabilityTokens ?? {});
 
         let filtered = result.entries;
@@ -151,7 +155,7 @@ export function FileExplorer({
       }
       // Multi-select mode. Shift-click = range extend from the anchor through
       // this entry (within the visible `entries` order). Plain click toggles
-      // this one path and resets the anchor — Ctrl behaves the same as plain
+      // this one path and resets the anchor. Ctrl behaves the same as plain
       // click here, since "click = toggle" is already the multi-select default.
       if (e?.shiftKey && anchorPath) {
         const filePaths = entries.filter((x) => x.type !== 'directory').map((x) => x.path);
@@ -209,13 +213,13 @@ export function FileExplorer({
     const sep = currentPath.includes('/') ? '/' : '\\';
     const fullPath = currentPath + sep + newFolderName.trim();
     try {
-      await api.mkdir(fullPath, { picker });
+      await api.mkdir(fullPath, { picker, capabilityToken: pickerMkdirCapabilityToken });
       setNewFolderName(null);
       loadDir(currentPath);
     } catch (e: unknown) {
       setError((e instanceof Error ? e.message : null) ?? 'Failed to create folder');
     }
-  }, [newFolderName, currentPath, loadDir, picker]);
+  }, [newFolderName, currentPath, loadDir, picker, pickerMkdirCapabilityToken]);
 
   const handleEntryDblClick = useCallback(
     (entry: FsEntry) => {
@@ -242,12 +246,19 @@ export function FileExplorer({
       onClick={onCancel}
     >
       <div
-        className="bg-tagma-surface border border-tagma-border shadow-panel w-[560px] h-[50vh] max-h-[calc(100vh-48px)] flex flex-col overflow-hidden animate-fade-in"
+        ref={modalRef}
+        className="bg-tagma-surface border border-tagma-border shadow-panel w-[min(560px,calc(100vw-32px))] h-[min(50vh,calc(100vh-48px))] flex flex-col overflow-hidden animate-fade-in"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="file-explorer-title"
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="panel-header">
-          <h2 className="panel-title">{title ?? defaultTitle}</h2>
+          <h2 id="file-explorer-title" className="panel-title">
+            {title ?? defaultTitle}
+          </h2>
           <button
             onClick={onCancel}
             className="p-1 text-tagma-muted hover:text-tagma-text"
@@ -324,7 +335,7 @@ export function FileExplorer({
                   if (e.key === 'Enter') handleCreateFolder();
                   if (e.key === 'Escape') setNewFolderName(null);
                 }}
-                onBlur={handleCreateFolder}
+                onBlur={() => setNewFolderName(null)}
                 className="flex-1 text-[11px] font-mono bg-tagma-bg border border-tagma-accent/40 px-2 py-0.5 text-tagma-text"
                 placeholder="New folder name..."
                 autoFocus
@@ -412,7 +423,7 @@ export function FileExplorer({
             {multi && (
               <span className="text-[10px] text-tagma-muted mr-auto">
                 {selected.length === 0
-                  ? 'Click to select · Shift-click for range · double-click to open one'
+                  ? 'Click to select; Shift-click for range; double-click to open one'
                   : `${selected.length} selected`}
               </span>
             )}
@@ -422,7 +433,14 @@ export function FileExplorer({
             {mode === 'open' ? (
               multi ? (
                 <button
-                  onClick={() => onConfirmMany?.(selected)}
+                  onClick={() => {
+                    const tokens: Record<string, string> = {};
+                    for (const path of selected) {
+                      const token = entryCapabilityTokens[path];
+                      if (token) tokens[path] = token;
+                    }
+                    onConfirmMany?.(selected, tokens);
+                  }}
                   disabled={selected.length === 0}
                   className="btn-primary disabled:opacity-40 disabled:cursor-not-allowed"
                 >

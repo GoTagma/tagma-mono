@@ -3,6 +3,7 @@ import { Loader2, X as XIcon, ShieldCheck } from 'lucide-react';
 import type { PlatformExportStage, PlatformExportTarget } from '../api/client';
 import { useUIStore } from '../store/ui-store';
 import { ConfirmModal } from './ConfirmModal';
+import { useModalFocusTrap } from '../hooks/use-modal-focus-trap';
 
 export const PLATFORM_EXPORT_TARGETS: readonly PlatformExportTarget[] = ['windows', 'linux', 'mac'];
 
@@ -119,6 +120,8 @@ export function UnsavedChangesModal({
   onDiscard: () => void | Promise<void>;
   onCancel: () => void;
 }) {
+  const modalRef = useModalFocusTrap<HTMLDivElement>();
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onCancel();
@@ -133,10 +136,12 @@ export function UnsavedChangesModal({
       onClick={onCancel}
     >
       <div
-        className="bg-tagma-surface border border-tagma-border shadow-panel w-[460px] max-h-[60vh] flex flex-col animate-fade-in"
+        ref={modalRef}
+        className="bg-tagma-surface border border-tagma-border shadow-panel w-[min(460px,calc(100vw-32px))] max-h-[min(60vh,calc(100vh-48px))] flex flex-col animate-fade-in"
         role="dialog"
         aria-modal="true"
         aria-labelledby="unsaved-changes-modal-title"
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="panel-header">

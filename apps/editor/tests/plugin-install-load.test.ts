@@ -12,7 +12,7 @@ import {
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as tar from 'tar';
 import type { DriverPlugin, TriggerPlugin } from '@tagma/types';
 import { S } from '../server/state';
@@ -42,6 +42,7 @@ import {
   loadPluginFromWorkDir,
   unloadPluginFromRegistry,
 } from '../server/plugins/loader';
+import { loadPluginWorker } from '../server/plugins/worker-runtime';
 
 const tempDirs: string[] = [];
 let restoreSpawn: (() => void) | null = null;
@@ -395,7 +396,7 @@ afterEach(() => {
 });
 
 describe('plugin install/import hardening', () => {
-  test('autoLoadInstalledPlugins imports declared installed plugin code', async () => {
+  test('autoLoadInstalledPlugins loads declared plugin code only on explicit refresh', async () => {
     const workDir = makeTempDir('workspace-autoload-declared');
     S.workDir = workDir;
     S.config = {
@@ -409,7 +410,12 @@ describe('plugin install/import hardening', () => {
       tagmaPlugin: { category: 'drivers', type: 'test' },
     });
 
-    await expect(autoLoadInstalledPlugins(S)).resolves.toEqual(['@scope/plugin-under-test']);
+    await expect(autoLoadInstalledPlugins(S)).resolves.toEqual([]);
+    expect(S.loadedPluginMeta.has('@scope/plugin-under-test')).toBe(false);
+
+    await expect(autoLoadInstalledPlugins(S, { includeDeclared: true })).resolves.toEqual([
+      '@scope/plugin-under-test',
+    ]);
     expect(S.loadedPluginMeta.has('@scope/plugin-under-test')).toBe(true);
   });
 
@@ -461,7 +467,13 @@ describe('plugin install/import hardening', () => {
       restoreBun?.();
     };
 
-    await expect(autoLoadInstalledPlugins(S)).resolves.toEqual([]);
+    await expect(
+      autoLoadInstalledPlugins(S, {
+        includeDeclared: true,
+        allowAutoInstallDeclared: true,
+        includeDiscovered: true,
+      }),
+    ).resolves.toEqual([]);
 
     expect(S.loadedPluginMeta.has('@scope/plugin-under-test')).toBe(false);
     expect(existsSync(pluginStoreRoot(workDir))).toBe(false);
@@ -1668,6 +1680,22 @@ describe('plugin loader cache busting', () => {
     }
   });
 
+  test('plugin worker refuses entrypoints outside the import root', async () => {
+    const allowedRoot = makeTempDir('plugin-worker-allowed-root');
+    const outsideRoot = makeTempDir('plugin-worker-outside-root');
+    const outsideEntry = join(outsideRoot, 'index.js');
+    writeFileSync(
+      outsideEntry,
+      `export default { name: 'outside', capabilities: { drivers: {} } };\n`,
+      'utf-8',
+    );
+
+    await expect(
+      loadPluginWorker(pathToFileURL(outsideEntry).href, 1_000, undefined, {
+        importRootUrl: pathToFileURL(allowedRoot).href,
+      }),
+    ).rejects.toThrow(/outside the isolated plugin import root/);
+  });
   test('loadPluginFromWorkDir reloads changed code from paths with spaces and #', async () => {
     const workDir = makeTempDir('workspace path #special');
     const pluginDir = pluginStorePackageDir(workDir);

@@ -107,13 +107,82 @@ function mergeRuntimeEnv(
   return { ...runtimeEnv, ...(specEnv ?? {}) };
 }
 
-export function runtimeWithInjectedEnv(runtimeEnv: Readonly<Record<string, string>>): TagmaRuntime {
+const REDACTED_SECRET = '[redacted secret]';
+type OutputStreamName = 'stdout' | 'stderr';
+type OutputRedactor = NonNullable<RuntimeRunOptions['outputRedactor']>;
+
+function replaceAllSecrets(text: string, secrets: readonly string[]): string {
+  let out = text;
+  for (const secret of secrets) out = out.split(secret).join(REDACTED_SECRET);
+  return out;
+}
+
+export function createSecretOutputRedactor(
+  values: readonly string[],
+): RuntimeRunOptions['outputRedactor'] | undefined {
+  const secrets = [...new Set(values.filter((value) => value.length > 0))].sort(
+    (a, b) => b.length - a.length,
+  );
+  if (secrets.length === 0) return undefined;
+
+  const maxSecretLength = Math.max(...secrets.map((secret) => secret.length));
+  const states: Record<OutputStreamName, { carry: string }> = {
+    stdout: { carry: '' },
+    stderr: { carry: '' },
+  };
+
+  return (stream, text, final = false) => {
+    const state = states[stream];
+    const combined = state.carry + text;
+    let safeLength = final ? combined.length : Math.max(0, combined.length - maxSecretLength + 1);
+
+    if (!final && safeLength > 0) {
+      for (const secret of secrets) {
+        let idx = combined.indexOf(secret, Math.max(0, safeLength - secret.length + 1));
+        while (idx !== -1) {
+          const end = idx + secret.length;
+          if (idx < safeLength && end > safeLength) safeLength = idx;
+          idx = combined.indexOf(secret, idx + 1);
+        }
+      }
+    }
+
+    const emit = combined.slice(0, safeLength);
+    state.carry = final ? '' : combined.slice(safeLength);
+    return replaceAllSecrets(emit, secrets);
+  };
+}
+
+function withOutputRedactor(
+  opts: RuntimeRunOptions,
+  redactor: RuntimeRunOptions['outputRedactor'] | undefined,
+): RuntimeRunOptions {
+  if (!redactor) return opts;
+  const existing = opts.outputRedactor;
+  if (!existing) return { ...opts, outputRedactor: redactor };
+  return {
+    ...opts,
+    outputRedactor(stream, text, final) {
+      return redactor(stream, existing(stream, text, final), final);
+    },
+  };
+}
+
+export function runtimeWithInjectedEnv(
+  runtimeEnv: Readonly<Record<string, string>>,
+  secretValues: readonly string[] = [],
+): TagmaRuntime {
   const base = bunRuntime();
-  if (Object.keys(runtimeEnv).length === 0) return base;
+  const redactor = createSecretOutputRedactor(secretValues);
+  if (Object.keys(runtimeEnv).length === 0 && !redactor) return base;
   return {
     ...base,
     runSpawn(spec: SpawnSpec, driver: DriverPlugin | null, opts: RuntimeRunOptions = {}) {
-      return base.runSpawn({ ...spec, env: mergeRuntimeEnv(spec.env, runtimeEnv) }, driver, opts);
+      return base.runSpawn(
+        { ...spec, env: mergeRuntimeEnv(spec.env, runtimeEnv) },
+        driver,
+        withOutputRedactor(opts, redactor),
+      );
     },
     runCommand(command: CommandConfig, cwd: string, opts: RuntimeRunOptions = {}) {
       return base.runSpawn(
@@ -122,12 +191,11 @@ export function runtimeWithInjectedEnv(runtimeEnv: Readonly<Record<string, strin
           env: mergeRuntimeEnv(undefined, runtimeEnv),
         },
         null,
-        opts,
+        withOutputRedactor(opts, redactor),
       );
     },
   };
 }
-
 function isPromptTaskShape(task: { prompt?: unknown; command?: unknown }): boolean {
   return task.prompt !== undefined && task.command === undefined;
 }

@@ -581,6 +581,7 @@ export async function loadPluginFromWorkDir(
       ? stagedModulePath
       : await bundleStagedPluginEntryForImport(stagedRoot, stagedModulePath, name);
     const fileUrl = pathToFileURL(importModulePath).href;
+    const importRootUrl = pathToFileURL(stagedRoot).href;
 
     // R11: evaluate plugin code outside the sidecar isolate. A hung import or
     // long-running capability call terminates the worker instead of pinning
@@ -594,6 +595,7 @@ export async function loadPluginFromWorkDir(
     // makes a stale callback a no-op.
     let thisWorker: Awaited<ReturnType<typeof loadPluginWorker>> | null = null;
     worker = await loadPluginWorker(fileUrl, PLUGIN_IMPORT_TIMEOUT_MS, fallbackManifest, {
+      importRootUrl,
       methodTimeoutMs: options.methodTimeoutMs,
       onUnexpectedTerminate: () => {
         const liveMeta = ws.loadedPluginMeta.get(name);
@@ -1287,28 +1289,39 @@ export function discoverWorkspaceDeclaredPlugins(ws: WorkspaceState): string[] {
   return ws.workspaceDeclaredPluginsCache;
 }
 
+export interface AutoLoadInstalledPluginsOptions {
+  /** Include plugin names declared in the open YAML/workspace YAML scan. */
+  includeDeclared?: boolean;
+  /** Honor autoInstallDeclaredPlugins for missing declared packages. */
+  allowAutoInstallDeclared?: boolean;
+  /** Include installed packages found on disk without a manifest entry. */
+  includeDiscovered?: boolean;
+}
+
 /**
- * Auto-load all installed plugins into the registry.
- * Sources: node_modules scan + manifest + workspace YAML scan + in-memory config.plugins.
- * Skips already-loaded plugins. Errors are recorded in `ws.lastAutoLoadErrors`
- * so the UI can surface them via /api/plugins instead of dropping silently.
- *
- * When the workspace's editor settings opt into `autoInstallDeclaredPlugins`,
- * any plugin that is declared anywhere in the workspace's YAMLs but missing
- * from node_modules is fetched from the npm registry first, then loaded.
- * Plugins that aren't declared (only present in the manifest or discovered on
- * disk) are never installed — this keeps the auto-install scope tied to the
- * workspace's YAMLs, not arbitrary on-disk packages.
+ * Auto-load trusted installed plugins into the registry.
+ * Default workspace-open callers load only the persistent manifest. YAML
+ * declarations are included only for explicit user refresh flows, which keeps
+ * opening/importing a workspace from turning `pipeline.plugins[]` into code
+ * execution or npm install by itself.
  */
-export async function autoLoadInstalledPlugins(ws: WorkspaceState): Promise<string[]> {
+export async function autoLoadInstalledPlugins(
+  ws: WorkspaceState,
+  options: AutoLoadInstalledPluginsOptions = {},
+): Promise<string[]> {
   const manifest = readPluginManifest(ws);
   const declaredFromConfig = (ws.config.plugins ?? []).filter(isValidPluginName);
   const declaredFromWorkspace = discoverWorkspaceDeclaredPlugins(ws);
   const declared = [...new Set([...declaredFromConfig, ...declaredFromWorkspace])];
   const declaredSet = new Set(declared);
-  const discovered = discoverInstalledPlugins(ws);
-  const candidates = [...new Set([...discovered, ...manifest, ...declared])];
+  const discovered = options.includeDiscovered ? discoverInstalledPlugins(ws) : [];
+  const baseCandidates = [...new Set([...discovered, ...manifest])];
+  const candidates = options.includeDeclared
+    ? [...new Set([...baseCandidates, ...declared])]
+    : baseCandidates;
   const settings = readEditorSettings(ws);
+  const canAutoInstallDeclared =
+    options.allowAutoInstallDeclared === true && settings.autoInstallDeclaredPlugins;
   // User-uninstalled deny list — honored for BOTH install and load so a
   // pipeline switch never resurrects a plugin the user just removed.
   // Loading an on-disk blocked plugin is also skipped so dangling copies
@@ -1327,10 +1340,8 @@ export async function autoLoadInstalledPlugins(ws: WorkspaceState): Promise<stri
     let autoInstallOutcome: Awaited<ReturnType<typeof installPackageWithRollbackSnapshot>> | null =
       null;
     if (!info.installed) {
-      // Only auto-install plugins that are explicitly declared in the YAML —
-      // the manifest/discovered sources can carry stale entries from a
-      // previous workspace state, and we don't want to silently re-pull them.
-      if (!settings.autoInstallDeclaredPlugins || !declaredSet.has(name)) continue;
+      // Only explicit refresh flows may auto-install YAML-declared plugins.
+      if (!canAutoInstallDeclared || !declaredSet.has(name)) continue;
       try {
         autoInstallOutcome = await installPackageWithRollbackSnapshot(ws, name);
         addToPluginManifest(ws, name);

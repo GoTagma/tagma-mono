@@ -53,7 +53,7 @@ mock.module('../src/api/client', () => ({
       openFileCalls += 1;
       return nextOpenFileState;
     },
-    importFile: async (_sourcePath: string) => {
+    importFile: async (_sourcePath: string, _capabilityToken: string) => {
       importFileCalls += 1;
       return nextImportFileState;
     },
@@ -322,7 +322,7 @@ describe('pipeline store plugin registry sync', () => {
       middlewares: [],
     };
 
-    await usePipelineStore.getState().importFile('D:/downloads/imported.yaml');
+    await usePipelineStore.getState().importFile('D:/downloads/imported.yaml', 'test-import-token');
 
     const state = usePipelineStore.getState();
     expect(importFileCalls).toBe(1);

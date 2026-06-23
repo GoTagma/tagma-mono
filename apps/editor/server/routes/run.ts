@@ -115,6 +115,19 @@ function publicPipelineGraphResult(result: PipelineGraphResult): unknown {
   };
 }
 
+function collectDeclaredSecretNames(config: RawPipelineConfig): string[] {
+  const names = new Set<string>();
+  const add = (items: readonly string[] | undefined): void => {
+    if (!items) return;
+    for (const item of items) names.add(item);
+  };
+  add(config.secrets);
+  for (const track of config.tracks ?? []) {
+    add(track.secrets);
+    for (const task of track.tasks ?? []) add(task.secrets);
+  }
+  return [...names];
+}
 interface RunHistoryEntry {
   runId: string;
   path: string;
@@ -690,6 +703,18 @@ export function registerRunRoutes(app: express.Express): void {
         }
       }
 
+      const declaredSecretNames = collectDeclaredSecretNames(pipelineConfig);
+      const redactionSecretNames = [...new Set([...requirementsEnvKeys, ...declaredSecretNames])];
+      let redactionSecretEnv: Record<string, string> = {};
+      if (fromRunId === null && ws.yamlPath && redactionSecretNames.length > 0) {
+        try {
+          redactionSecretEnv = buildPipelineSecretEnv(cwd, ws.yamlPath, redactionSecretNames);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          return res.status(400).json({ error: `Secret manager error: ${message}` });
+        }
+      }
+
       const yamlRunVersion =
         fromRunId === null && ws.yamlPath ? incrementYamlRunVersion(cwd, ws.yamlPath) : undefined;
       const runId = generateRunId();
@@ -715,6 +740,10 @@ export function registerRunRoutes(app: express.Express): void {
       };
 
       const injectedRunEnv = { ...pythonRunEnv, ...secretRunEnv };
+      const secretRedactionValues = Object.values({
+        ...redactionSecretEnv,
+        ...secretRunEnv,
+      }).filter((value) => value.length > 0);
       const secretResolver: SecretResolver | undefined =
         fromRunId === null && ws.yamlPath
           ? (names) => buildPipelineSecretEnv(cwd, ws.yamlPath!, names)
@@ -722,7 +751,7 @@ export function registerRunRoutes(app: express.Express): void {
       const tagma = createTagma({
         registry: ws.registry,
         builtins: false,
-        runtime: runtimeWithInjectedEnv(injectedRunEnv),
+        runtime: runtimeWithInjectedEnv(injectedRunEnv, secretRedactionValues),
       });
       tagma
         .run(pipelineConfig, {

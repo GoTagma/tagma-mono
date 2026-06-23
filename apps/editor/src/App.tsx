@@ -1577,11 +1577,11 @@ export function App() {
           ],
           run: () => {
             clearWorkflowReturnPathForNavigation('import-file');
-            return importFile(path);
+            return importFile(path, capabilityToken ?? '');
           },
         });
       } else if (explorer.purpose === 'export') {
-        const destPath = await exportFile(path);
+        const destPath = await exportFile(path, capabilityToken ?? '');
         setExplorer(null);
         if (destPath) {
           setDialog({
@@ -1624,6 +1624,7 @@ export function App() {
             targetPlatform,
             useChatStore.getState().model,
             onProgress,
+            capabilityToken ?? '',
           );
         } finally {
           setPlatformExportProgress(null);
@@ -1690,7 +1691,7 @@ export function App() {
   // the one they want open). Earlier files remain in `.tagma/` and show up in
   // the history list, ready to be opened.
   const handleExplorerConfirmMany = useCallback(
-    async (paths: string[]) => {
+    async (paths: string[], capabilityTokens: Record<string, string> = {}) => {
       if (!explorer || paths.length === 0) return;
       if (paths.length === 1) {
         setExplorer(null);
@@ -1702,7 +1703,7 @@ export function App() {
           ],
           run: () => {
             clearWorkflowReturnPathForNavigation('import-file');
-            return importFile(paths[0]);
+            return importFile(paths[0], capabilityTokens[paths[0]] ?? '');
           },
         });
         return;
@@ -1719,7 +1720,7 @@ export function App() {
           const failures: { path: string; error: string }[] = [];
           for (const p of paths) {
             try {
-              await importFile(p);
+              await importFile(p, capabilityTokens[p] ?? '');
             } catch (e: unknown) {
               failures.push({
                 path: p,
@@ -2663,10 +2664,23 @@ export function App() {
             explorer.purpose === 'export' ||
             explorer.purpose === 'export-platform'
           }
-          capabilityPurpose={explorer.purpose === 'plugin-import' ? 'import-plugin' : undefined}
+          capabilityPurpose={
+            explorer.purpose === 'plugin-import'
+              ? 'import-plugin'
+              : explorer.purpose === 'import'
+                ? 'import-file'
+                : explorer.purpose === 'export' || explorer.purpose === 'export-platform'
+                  ? 'export-file'
+                  : undefined
+          }
           onConfirm={handleExplorerConfirm}
           onConfirmWithCapability={
-            explorer.purpose === 'plugin-import' ? handleExplorerConfirm : undefined
+            explorer.purpose === 'plugin-import' ||
+            explorer.purpose === 'import' ||
+            explorer.purpose === 'export' ||
+            explorer.purpose === 'export-platform'
+              ? handleExplorerConfirm
+              : undefined
           }
           allowDirectorySelection={explorer.purpose === 'plugin-import'}
           multiple={explorer.purpose === 'import'}

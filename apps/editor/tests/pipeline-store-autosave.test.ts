@@ -195,7 +195,7 @@ describe('saveFile boolean return + lastAutosaveAt', () => {
 
   test('lastAutosaveAt resets to null on importFile', async () => {
     usePipelineStore.setState({ lastAutosaveAt: 12345 });
-    await usePipelineStore.getState().importFile('/tmp/src.yaml');
+    await usePipelineStore.getState().importFile('/tmp/src.yaml', 'test-import-token');
     expect(usePipelineStore.getState().lastAutosaveAt).toBeNull();
   });
 
