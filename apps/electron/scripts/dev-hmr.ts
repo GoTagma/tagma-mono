@@ -45,6 +45,18 @@ export function buildDesktopHmrEnv(
   };
 }
 
+function nodeExecPath(): string {
+  return process.env.NODE ?? 'node';
+}
+
+function viteCliPath(): string {
+  return resolve(editorRoot, 'node_modules', 'vite', 'bin', 'vite.js');
+}
+
+export function desktopHmrViteArgs(): string[] {
+  return [nodeExecPath(), viteCliPath(), '--host', RENDERER_HOST, '--strictPort'];
+}
+
 function listenOnTcpPort(host: string, port: number): Promise<ReturnType<typeof createServer>> {
   const server = createServer();
 
@@ -188,7 +200,7 @@ export async function runDesktopHmr(): Promise<void> {
     const hmrEnv = buildDesktopHmrEnv(process.env, sidecarPort, rendererPort);
 
     const vite = track(
-      Bun.spawn([process.execPath, 'run', 'dev:client:desktop'], {
+      Bun.spawn(desktopHmrViteArgs(), {
         cwd: editorRoot,
         stdin: 'inherit',
         stdout: 'inherit',

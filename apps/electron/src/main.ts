@@ -148,6 +148,7 @@ const byWindow = new Map<number, WindowSession>();
  * one-sidecar-per-window design was the root cause of version/manifest
  * drift across windows; sharing state in a single process eliminates it.
  */
+const startingSidecarProcesses = new Set<ChildProcess>();
 let sharedSidecar: SidecarHandle | null = null;
 let sharedSidecarPromise: Promise<SidecarHandle> | null = null;
 let recoveringSidecarPromise: Promise<void> | null = null;
@@ -314,11 +315,19 @@ async function terminateSidecar(handle: SidecarHandle): Promise<void> {
 function shutdownSharedSidecar(): Promise<void> | null {
   if (sidecarShutdownPromise) return sidecarShutdownPromise;
   const handle = sharedSidecar;
-  if (!handle) return null;
+  const pending = [...startingSidecarProcesses];
+  if (!handle && pending.length === 0) return null;
   sharedSidecar = null;
   sharedSidecarPromise = null;
   sidecarShutdownComplete = false;
-  sidecarShutdownPromise = terminateSidecar(handle).finally(() => {
+  for (const proc of pending) startingSidecarProcesses.delete(proc);
+  sidecarShutdownPromise = (async () => {
+    if (handle) await terminateSidecar(handle);
+    for (const proc of pending) forceKillProcessTree(proc);
+    await Promise.allSettled(
+      pending.map((proc) => waitForProcessExit(proc, SIDECAR_FORCE_EXIT_TIMEOUT_MS)),
+    );
+  })().finally(() => {
     sidecarShutdownComplete = true;
     sidecarShutdownPromise = null;
   });
@@ -343,6 +352,7 @@ function launchSidecar(runtime: RuntimePaths): Promise<SidecarHandle> {
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     });
+    startingSidecarProcesses.add(proc);
 
     let settled = false;
     let forceKillTimer: ReturnType<typeof setTimeout> | null = null;
@@ -363,6 +373,7 @@ function launchSidecar(runtime: RuntimePaths): Promise<SidecarHandle> {
       forceKillTimer.unref?.();
     };
     const cleanupStartupListeners = (keepOutputLoggers: boolean) => {
+      startingSidecarProcesses.delete(proc);
       clearTimeout(timeout);
       if (forceKillTimer) {
         clearTimeout(forceKillTimer);

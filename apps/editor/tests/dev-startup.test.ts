@@ -3,7 +3,12 @@ import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { describe, expect, test } from 'bun:test';
 
-import { waitForTcpPort } from '../scripts/dev';
+import {
+  editorDevScriptArgs,
+  viteCliPath,
+  waitForTcpPort,
+  windowsTaskkillArgs,
+} from '../scripts/dev';
 
 const editorRoot = join(import.meta.dir, '..');
 
@@ -29,6 +34,25 @@ describe('editor dev startup scripts', () => {
       "const desktopSidecarPort = process.env.TAGMA_DESKTOP_SIDECAR_PORT ?? '3001';",
     );
     expect(viteConfig).toContain("'/api': `http://127.0.0.1:${desktopSidecarPort}`");
+  });
+
+  test('tracks real long-running dev processes instead of bun run wrappers', () => {
+    expect(editorDevScriptArgs('ensure:opencode')).toEqual([
+      process.execPath,
+      '../electron/scripts/fetch-opencode.mjs',
+    ]);
+    expect(editorDevScriptArgs('dev:server:watch')).toEqual([
+      process.execPath,
+      '--watch',
+      'server/index.ts',
+    ]);
+    expect(editorDevScriptArgs('dev:client')).toEqual([process.env.NODE ?? 'node', viteCliPath()]);
+    expect(editorDevScriptArgs('dev:client')).not.toContain('run');
+  });
+
+  test('stops full child process trees on Windows', () => {
+    expect(windowsTaskkillArgs(1234, false)).toEqual(['/T', '/PID', '1234']);
+    expect(windowsTaskkillArgs(1234, true)).toEqual(['/F', '/T', '/PID', '1234']);
   });
 
   test('waits for a TCP port before continuing startup', async () => {

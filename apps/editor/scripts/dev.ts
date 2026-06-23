@@ -7,6 +7,7 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const editorRoot = resolve(scriptDir, '..');
 
 type Subprocess = ReturnType<typeof Bun.spawn>;
+type EditorDevScript = 'ensure:opencode' | 'dev:server:watch' | 'dev:client';
 
 export type WaitForTcpPortOptions = {
   host: string;
@@ -78,8 +79,27 @@ export async function waitForTcpPort({
   throw new Error(`Timed out waiting for ${host}:${port}.${suffix}`);
 }
 
-function spawnBunScript(script: string): Subprocess {
-  return Bun.spawn([process.execPath, 'run', script], {
+function nodeExecPath(): string {
+  return process.env.NODE ?? 'node';
+}
+
+export function viteCliPath(): string {
+  return resolve(editorRoot, 'node_modules', 'vite', 'bin', 'vite.js');
+}
+
+export function editorDevScriptArgs(script: EditorDevScript): string[] {
+  switch (script) {
+    case 'ensure:opencode':
+      return [process.execPath, '../electron/scripts/fetch-opencode.mjs'];
+    case 'dev:server:watch':
+      return [process.execPath, '--watch', 'server/index.ts'];
+    case 'dev:client':
+      return [nodeExecPath(), viteCliPath()];
+  }
+}
+
+function spawnEditorDevScript(script: EditorDevScript): Subprocess {
+  return Bun.spawn(editorDevScriptArgs(script), {
     cwd: editorRoot,
     stdin: 'inherit',
     stdout: 'inherit',
@@ -88,32 +108,48 @@ function spawnBunScript(script: string): Subprocess {
   });
 }
 
-async function runBunScript(script: string): Promise<void> {
-  const child = spawnBunScript(script);
+async function runEditorDevScript(script: EditorDevScript): Promise<void> {
+  const child = spawnEditorDevScript(script);
   const code = await child.exited;
   if (code !== 0) {
-    throw new Error(`[dev] bun run ${script} exited with code ${code}`);
+    throw new Error(`[dev] ${script} exited with code ${code}`);
+  }
+}
+
+export function windowsTaskkillArgs(pid: number, force: boolean): string[] {
+  return [...(force ? ['/F'] : []), '/T', '/PID', String(pid)];
+}
+
+function killSubprocess(child: Subprocess, force: boolean): void {
+  if (process.platform === 'win32' && child.pid) {
+    try {
+      Bun.spawnSync(['taskkill', ...windowsTaskkillArgs(child.pid, force)], {
+        stdout: 'ignore',
+        stderr: 'ignore',
+      });
+    } catch {
+      /* already exited */
+    }
+    return;
+  }
+
+  try {
+    child.kill(force ? 'SIGKILL' : 'SIGTERM');
+  } catch {
+    /* already exited */
   }
 }
 
 async function stopChildren(children: Set<Subprocess>): Promise<void> {
   const snapshot = [...children];
   for (const child of snapshot) {
-    try {
-      child.kill('SIGTERM');
-    } catch {
-      /* already exited */
-    }
+    killSubprocess(child, false);
   }
 
   await Promise.race([Promise.allSettled(snapshot.map((child) => child.exited)), delay(5_000)]);
 
   for (const child of snapshot) {
-    try {
-      child.kill('SIGKILL');
-    } catch {
-      /* already exited */
-    }
+    killSubprocess(child, true);
   }
 }
 
@@ -141,9 +177,9 @@ export async function runDev(): Promise<void> {
   process.once('SIGTERM', () => void stopAndExit(143));
 
   try {
-    await runBunScript('ensure:opencode');
+    await runEditorDevScript('ensure:opencode');
 
-    const server = track(spawnBunScript('dev:server:watch'));
+    const server = track(spawnEditorDevScript('dev:server:watch'));
     const serverExit = server.exited.then((code) => ({ name: 'server', code }));
 
     const readyOrExit = await Promise.race([
@@ -162,7 +198,7 @@ export async function runDev(): Promise<void> {
 
     console.log(`[dev] server ready on http://${host}:${port}; starting Vite client`);
 
-    const client = track(spawnBunScript('dev:client'));
+    const client = track(spawnEditorDevScript('dev:client'));
     const clientExit = client.exited.then((code) => ({ name: 'client', code }));
     const exit = await Promise.race([serverExit, clientExit]);
 

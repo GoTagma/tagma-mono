@@ -7,6 +7,7 @@ import {
   desktopHmrRendererUrl,
   desktopHmrSidecarPort,
   desktopHmrUserDataDir,
+  desktopHmrViteArgs,
   selectAvailableTcpPort,
   windowsTaskkillArgs,
 } from '../scripts/dev-hmr';
@@ -38,6 +39,15 @@ describe('desktop HMR scripts', () => {
     };
 
     expect(pkg.scripts['dev:client:desktop']).toBe('vite --host 127.0.0.1 --strictPort');
+  });
+
+  test('launcher tracks the real Vite renderer process instead of a bun run wrapper', () => {
+    const args = desktopHmrViteArgs();
+
+    expect(args[0]).toBe(process.env.NODE ?? 'node');
+    expect(args[1]).toBe(resolve(editorRoot, 'node_modules', 'vite', 'bin', 'vite.js'));
+    expect(args.slice(2)).toEqual(['--host', '127.0.0.1', '--strictPort']);
+    expect(args).not.toContain('run');
   });
 
   test('launcher pins Electron to the Vite renderer and matching sidecar proxy port', () => {
@@ -112,9 +122,11 @@ describe('desktop HMR scripts', () => {
     const mainSource = readFileSync(join(electronRoot, 'src', 'main.ts'), 'utf-8');
 
     expect(mainSource).toContain('function shutdownSharedSidecar(): Promise<void> | null');
+    expect(mainSource).toContain('const startingSidecarProcesses = new Set<ChildProcess>();');
+    expect(mainSource).toContain('if (!handle && pending.length === 0) return null;');
     expect(mainSource).toContain('event.preventDefault();');
     expect(mainSource).toContain(
-      'await waitForProcessExit(handle.proc, SIDECAR_FORCE_EXIT_TIMEOUT_MS);',
+      'pending.map((proc) => waitForProcessExit(proc, SIDECAR_FORCE_EXIT_TIMEOUT_MS)),',
     );
   });
 
