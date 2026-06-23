@@ -119,7 +119,7 @@ function replaceAllSecrets(text: string, secrets: readonly string[]): string {
 
 export function createSecretOutputRedactor(
   values: readonly string[],
-): RuntimeRunOptions['outputRedactor'] | undefined {
+): OutputRedactor | undefined {
   const secrets = [...new Set(values.filter((value) => value.length > 0))].sort(
     (a, b) => b.length - a.length,
   );
@@ -155,7 +155,7 @@ export function createSecretOutputRedactor(
 
 function withOutputRedactor(
   opts: RuntimeRunOptions,
-  redactor: RuntimeRunOptions['outputRedactor'] | undefined,
+  redactor: OutputRedactor | undefined,
 ): RuntimeRunOptions {
   if (!redactor) return opts;
   const existing = opts.outputRedactor;
