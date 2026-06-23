@@ -117,9 +117,7 @@ function replaceAllSecrets(text: string, secrets: readonly string[]): string {
   return out;
 }
 
-export function createSecretOutputRedactor(
-  values: readonly string[],
-): OutputRedactor | undefined {
+export function createSecretOutputRedactor(values: readonly string[]): OutputRedactor | undefined {
   const secrets = [...new Set(values.filter((value) => value.length > 0))].sort(
     (a, b) => b.length - a.length,
   );
