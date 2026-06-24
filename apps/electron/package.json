@@ -1,7 +1,7 @@
 {
   "name": "tagma-desktop",
   "private": true,
-  "version": "0.8.36",
+  "version": "0.8.37",
   "description": "Electron desktop shell for Tagma Editor",
   "author": {
     "name": "Tagma",
