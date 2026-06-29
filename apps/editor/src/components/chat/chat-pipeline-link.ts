@@ -4,13 +4,12 @@ import { hasLocalEditorChanges } from '../../utils/chat-dirty-conflict';
 import { getLastLocalFieldEditAt } from '../../hooks/use-local-field';
 import type { ChatYamlSessionResult } from '../../store/chat-store';
 
-export type ChatPipelineLinkTarget = Pick<
-  ChatYamlSessionResult,
-  'path' | 'name' | 'pipelineName'
->;
+export type ChatPipelineLinkTarget = Pick<ChatYamlSessionResult, 'path' | 'name' | 'pipelineName'>;
 
 export function chatPipelineDisplayName(target: ChatPipelineLinkTarget): string {
-  return target.pipelineName?.trim() || target.name || target.path.split(/[/\\]/).pop() || target.path;
+  return (
+    target.pipelineName?.trim() || target.name || target.path.split(/[/\\]/).pop() || target.path
+  );
 }
 
 export function selectVisibleChatCompletionResults({

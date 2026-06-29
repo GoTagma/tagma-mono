@@ -536,16 +536,10 @@ function sanitizeEmbeddedConfig(raw: RawConfig): RawConfig {
     $schema: OPENCODE_SCHEMA_URL,
     plugin: [],
   };
-  if (
-    typeof raw.model === 'string' &&
-    raw.model.trim()
-  ) {
+  if (typeof raw.model === 'string' && raw.model.trim()) {
     out.model = raw.model;
   }
-  if (
-    typeof raw.small_model === 'string' &&
-    raw.small_model.trim()
-  ) {
+  if (typeof raw.small_model === 'string' && raw.small_model.trim()) {
     out.small_model = raw.small_model;
   }
   if (Object.keys(provider).length > 0) out.provider = provider;

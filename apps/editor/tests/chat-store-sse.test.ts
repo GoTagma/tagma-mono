@@ -589,9 +589,9 @@ test('allows sending from another conversation while a hidden conversation is st
     await useChatStore.getState().send('also edit pipeline b');
 
     const state = useChatStore.getState();
-    expect(requests.some((request) => request.url.endsWith('/session/session-b/prompt_async'))).toBe(
-      true,
-    );
+    expect(
+      requests.some((request) => request.url.endsWith('/session/session-b/prompt_async')),
+    ).toBe(true);
     expect(state.sendError).toBeNull();
     expect(state.currentSessionId).toBe('session-b');
     expect(state.sending).toBe(true);

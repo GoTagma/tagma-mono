@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
-import {
-  buildConversationFlowSteps,
-  ChatPanel,
-} from '../src/components/chat/ChatPanel';
+import { buildConversationFlowSteps, ChatPanel } from '../src/components/chat/ChatPanel';
 import { useChatStore } from '../src/store/chat-store';
 import {
   chatPipelineDisplayName,
@@ -123,12 +120,12 @@ describe('ChatPanel export affordance', () => {
     } as never);
 
     const html = renderToStaticMarkup(<ChatPanel />);
-    const exportIndex = html.indexOf('title=\"Export conversation\"');
+    const exportIndex = html.indexOf('title="Export conversation"');
     const flowIndex = html.indexOf('Conversation flow');
 
     expect(exportIndex).toBeGreaterThan(-1);
     expect(flowIndex).toBeGreaterThan(exportIndex);
-    expect(html).toContain('role=\"progressbar\"');
+    expect(html).toContain('role="progressbar"');
     expect(html).toContain('Intent');
     expect(html).toContain('Context');
     expect(html).toContain('Work');

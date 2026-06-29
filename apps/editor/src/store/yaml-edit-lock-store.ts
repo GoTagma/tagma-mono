@@ -155,9 +155,9 @@ async function refreshHeldLock(reason: string, lease: ChatYamlEditLockLease): Pr
     lease.workspaceKey,
   );
   if (localLock?.id !== lock.id || localLock.workspaceKey !== lease.workspaceKey) return;
-      localLock = { id: result.lock.id, workspaceKey: lease.workspaceKey };
-      setRawLock(result.lock, lease.workspaceKey, true);
-    }
+  localLock = { id: result.lock.id, workspaceKey: lease.workspaceKey };
+  setRawLock(result.lock, lease.workspaceKey, true);
+}
 
 function startHeartbeat(reason: string, lease: ChatYamlEditLockLease): void {
   clearHeartbeat();
