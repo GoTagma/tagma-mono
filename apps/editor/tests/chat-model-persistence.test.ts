@@ -2,7 +2,6 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test
 import type { Provider, ProviderModelCatalogV2Snapshot, Session } from '../src/api/opencode-chat';
 import {
   buildProvidersFromV2Catalog,
-  filterProviderCatalogEntriesForStableModels,
   reconcileModelPick,
 } from '../src/store/chat-provider-catalog';
 
@@ -44,10 +43,12 @@ const oauthAuthorizeRequests: string[] = [];
 const customProviderRequests: Array<{ method: string; workspace: string }> = [];
 const restartRequests: string[] = [];
 const promptAsyncRequests: string[] = [];
+const promptAsyncBodies: Array<Record<string, unknown>> = [];
 const sessionDeleteRequests: string[] = [];
 const sessionCreateRequests: Array<{ url: string; body: Record<string, unknown> }> = [];
 const sessionUpdateRequests: Array<{ url: string; body: Record<string, unknown> }> = [];
 let editorSettingsModel: { providerID: string; modelID: string } | null = null;
+let editorSettingsReasoningEffort: 'low' | 'medium' | 'high' = 'medium';
 let providersShouldFail = false;
 let sessionCreateShouldFail = false;
 const originalFetch = globalThis.fetch;
@@ -131,7 +132,16 @@ beforeAll(() => {
       const patch = JSON.parse(String(init?.body ?? '{}'));
       editorSettingsPatches.push(patch);
       editorSettingsPatchHeaders.push((init?.headers as Record<string, string> | undefined) ?? {});
-      editorSettingsModel = patch.opencodeChatModel ?? null;
+      if (Object.prototype.hasOwnProperty.call(patch, 'opencodeChatModel')) {
+        editorSettingsModel = patch.opencodeChatModel ?? null;
+      }
+      if (
+        patch.opencodeChatReasoningEffort === 'low' ||
+        patch.opencodeChatReasoningEffort === 'medium' ||
+        patch.opencodeChatReasoningEffort === 'high'
+      ) {
+        editorSettingsReasoningEffort = patch.opencodeChatReasoningEffort;
+      }
       return Promise.resolve(
         jsonResponse({ ...makeEditorSettings(editorSettingsModel), revision: 1 }),
       );
@@ -248,7 +258,9 @@ beforeAll(() => {
       );
     }
     if (url.includes('/prompt_async')) {
+      const body = await jsonRequestBody(request, init);
       promptAsyncRequests.push(url);
+      promptAsyncBodies.push(body);
       return Promise.resolve(jsonResponse({ ok: true }));
     }
     if (url === 'http://opencode.test/session/existing/message') {
@@ -274,6 +286,7 @@ function makeEditorSettings(opencodeChatModel: { providerID: string; modelID: st
       configuredAt: null,
     },
     opencodeChatModel,
+    opencodeChatReasoningEffort: editorSettingsReasoningEffort,
     chatContextLimitEnabled: false,
     chatContextRounds: 0,
   };
@@ -435,10 +448,12 @@ afterEach(() => {
   customProviderRequests.length = 0;
   restartRequests.length = 0;
   promptAsyncRequests.length = 0;
+  promptAsyncBodies.length = 0;
   sessionDeleteRequests.length = 0;
   sessionCreateRequests.length = 0;
   sessionUpdateRequests.length = 0;
   editorSettingsModel = null;
+  editorSettingsReasoningEffort = 'medium';
   providersShouldFail = false;
   sessionCreateShouldFail = false;
   setClientWorkspace(null);
@@ -450,6 +465,7 @@ afterEach(() => {
     providers: [],
     agents: [],
     model: null,
+    reasoningEffort: 'medium',
     sessions: [],
     currentSessionId: null,
     messages: [],
@@ -534,7 +550,7 @@ describe('chat model persistence', () => {
     expect(Object.keys(providers[0]?.models ?? {})).toEqual(['claude-sonnet']);
   });
 
-  test('filters disabled v2 providers and models from picker options', () => {
+  test('keeps v2 providers and models even when the catalog marks them disabled', () => {
     const providers = buildProvidersFromV2Catalog({
       providers: [v2Provider('anthropic'), v2Provider('openai', true)],
       models: [
@@ -544,11 +560,12 @@ describe('chat model persistence', () => {
       ],
     });
 
-    expect(providers.map((provider) => provider.id)).toEqual(['anthropic']);
-    expect(Object.keys(providers[0]?.models ?? {})).toEqual(['enabled-model']);
+    expect(providers.map((provider) => provider.id)).toEqual(['anthropic', 'openai']);
+    expect(Object.keys(providers[0]?.models ?? {})).toEqual(['enabled-model', 'disabled-model']);
+    expect(Object.keys(providers[1]?.models ?? {})).toEqual(['gpt-disabled-provider']);
   });
 
-  test('filters unstable OpenAI-compatible model paths from picker options', () => {
+  test('keeps OpenAI-compatible model paths in picker options', () => {
     const providers = buildProvidersFromV2Catalog({
       providers: [
         v2Provider('proxyllm'),
@@ -565,52 +582,8 @@ describe('chat model persistence', () => {
     });
 
     expect(providers.map((provider) => provider.id)).toEqual(['proxyllm', 'deepseek-anthropic']);
-    expect(Object.keys(providers[0]?.models ?? {})).toEqual(['safe-coder']);
+    expect(Object.keys(providers[0]?.models ?? {})).toEqual(['deepseek-v4-pro', 'safe-coder']);
     expect(Object.keys(providers[1]?.models ?? {})).toEqual(['deepseek-v4-pro']);
-  });
-
-  test('filters providers with only blocked models from the connect catalog', () => {
-    const catalog = [
-      { id: 'deepseek', name: 'DeepSeek', env: [], connected: false, methods: [] },
-      { id: 'proxyllm', name: 'Proxy LLM', env: [], connected: false, methods: [] },
-      { id: 'anthropic', name: 'Anthropic', env: [], connected: false, methods: [] },
-    ];
-
-    const providers = filterProviderCatalogEntriesForStableModels(
-      catalog,
-      {
-        providers: [v2Provider('deepseek'), v2Provider('proxyllm'), v2Provider('anthropic')],
-        models: [
-          withAiSdkPackage(v2Model('deepseek', 'deepseek-v4-pro'), '@ai-sdk/openai-compatible'),
-          withAiSdkPackage(v2Model('proxyllm', 'deepseek-v4-pro'), '@ai-sdk/openai-compatible'),
-          withAiSdkPackage(v2Model('proxyllm', 'safe-coder'), '@ai-sdk/openai-compatible'),
-          v2Model('anthropic', 'claude-sonnet'),
-        ],
-      },
-      [],
-    );
-
-    expect(providers.map((provider) => provider.id)).toEqual(['proxyllm', 'anthropic']);
-  });
-
-  test('keeps connect catalog providers that are not covered by v2 or legacy models', () => {
-    const catalog = [
-      { id: 'deepseek', name: 'DeepSeek', env: [], connected: false, methods: [] },
-      { id: 'opencode-zen', name: 'OpenCode Zen', env: [], connected: false, methods: [] },
-    ];
-
-    const providers = filterProviderCatalogEntriesForStableModels(
-      catalog,
-      {
-        providers: [v2Provider('deepseek')],
-        models: [
-          withAiSdkPackage(v2Model('deepseek', 'deepseek-v4-pro'), '@ai-sdk/openai-compatible'),
-        ],
-      },
-      [],
-    );
-
-    expect(providers.map((provider) => provider.id)).toEqual(['opencode-zen']);
   });
 
   test('marks OpenAI Responses endpoints as reasoning capable', () => {
@@ -703,6 +676,32 @@ describe('chat model persistence', () => {
     expect(editorSettingsPatchHeaders[0]?.['X-Tagma-Workspace']).toBe('C:/repo-a');
   });
 
+  test('persists the selected reasoning effort per workspace', () => {
+    setClientWorkspace('C:/repo-a');
+    useChatStore.getState().setReasoningEffort('high');
+    setClientWorkspace('C:/repo-b');
+    useChatStore.getState().setReasoningEffort('low');
+
+    const raw = storage.getItem('tagma.chat.v2');
+    expect(raw).toBeTruthy();
+    const persisted = JSON.parse(raw ?? '{}') as {
+      workspaces?: Record<string, { reasoningEffort?: string }>;
+    };
+
+    expect(persisted.workspaces?.['C:/repo-a']?.reasoningEffort).toBe('high');
+    expect(persisted.workspaces?.['C:/repo-b']?.reasoningEffort).toBe('low');
+  });
+
+  test('mirrors the selected reasoning effort to workspace editor settings', async () => {
+    setClientWorkspace('C:/repo-a');
+
+    useChatStore.getState().setReasoningEffort('high');
+    await Promise.resolve();
+
+    expect(editorSettingsPatches).toEqual([{ opencodeChatReasoningEffort: 'high' }]);
+    expect(editorSettingsPatchHeaders[0]?.['X-Tagma-Workspace']).toBe('C:/repo-a');
+  });
+
   test('does not change models while an OpenCode turn is in flight', async () => {
     setClientWorkspace('C:/repo-a');
     useChatStore.getState().setModel({ providerID: 'anthropic', modelID: 'claude' });
@@ -725,7 +724,7 @@ describe('chat model persistence', () => {
     expect(storage.getItem('tagma.chat.v2')).not.toContain('"modelID":"gpt-5"');
   });
 
-  test('does not change models or sessions while an OpenCode turn is queued', async () => {
+  test('blocks model changes while queued but allows starting another session', async () => {
     setClientWorkspace('C:/repo-a');
     useChatStore.getState().setModel({ providerID: 'anthropic', modelID: 'claude' });
     await Promise.resolve();
@@ -738,14 +737,21 @@ describe('chat model persistence', () => {
     } as never);
 
     useChatStore.getState().setModel({ providerID: 'openai', modelID: 'gpt-5' });
+    expect(useChatStore.getState().sendError).toContain('Wait for the current OpenCode chat');
+
     await useChatStore.getState().newSession();
 
-    expect(useChatStore.getState().model).toEqual({
+    const state = useChatStore.getState();
+    expect(state.model).toEqual({
       providerID: 'anthropic',
       modelID: 'claude',
     });
-    expect(useChatStore.getState().currentSessionId).toBe('existing');
-    expect(useChatStore.getState().sendError).toContain('Wait for the current OpenCode chat');
+    expect(state.currentSessionId).toBe('new-session');
+    expect(state.sessionStates['existing']?.queuedMessages.map((message) => message.text)).toEqual([
+      'queued prompt',
+    ]);
+    expect(state.sendError).toBeNull();
+    expect(sessionCreateRequests).toHaveLength(1);
     expect(editorSettingsPatches).toEqual([]);
     expect(storage.getItem('tagma.chat.v2')).toContain('"modelID":"claude"');
     expect(storage.getItem('tagma.chat.v2')).not.toContain('"modelID":"gpt-5"');
@@ -786,6 +792,39 @@ describe('chat model persistence', () => {
     setClientWorkspace(repoB);
     heldEnsureA.resolve(jsonResponse({ baseUrl: 'http://opencode-preflight-a.test' }));
     await firstSend;
+  });
+
+  test('sends selected high reasoning effort as opencode variant for reasoning models', async () => {
+    const repo = 'C:/reasoning-repo';
+    const baseUrl = 'http://opencode-reasoning.test';
+    workspaceBaseUrls.set(repo, baseUrl);
+    setClientWorkspace(repo);
+    useChatStore.setState({
+      providers: [
+        {
+          id: 'openai',
+          name: 'OpenAI',
+          source: 'api',
+          env: [],
+          options: {},
+          models: {
+            'gpt-5': {
+              ...modelDef('gpt-5'),
+              capabilities: { reasoning: true },
+            },
+          },
+        } as unknown as Provider,
+      ],
+      model: { providerID: 'openai', modelID: 'gpt-5' },
+      reasoningEffort: 'high',
+      agent: 'tagma-router',
+      currentSessionId: 'existing',
+    } as never);
+
+    await useChatStore.getState().send('think harder');
+
+    expect(promptAsyncRequests).toEqual([`${baseUrl}/session/existing/prompt_async`]);
+    expect(promptAsyncBodies[0]?.variant).toBe('high');
   });
 
   test('restores the selected model from workspace editor settings when browser storage is empty', async () => {

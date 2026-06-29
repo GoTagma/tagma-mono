@@ -259,7 +259,7 @@ test('embedded opencode runtime normalizes existing uppercase provider ids', () 
   expect(workspaceConfig.provider as Record<string, unknown>).not.toHaveProperty('Alibaba');
 });
 
-test('embedded opencode runtime filters unstable OpenAI-compatible model paths', () => {
+test('embedded opencode runtime keeps OpenAI-compatible model paths', () => {
   const paths = resolveOpencodeRuntimePaths(tagmaCwd);
   writeJson(paths.workspaceConfigPath, {
     model: 'proxyllm/deepseek-v4-pro',
@@ -277,9 +277,12 @@ test('embedded opencode runtime filters unstable OpenAI-compatible model paths',
     provider?: Record<string, { models?: Record<string, unknown> }>;
   };
 
-  expect(injectedConfig.model).toBeUndefined();
+  expect(injectedConfig.model).toBe('proxyllm/deepseek-v4-pro');
   expect(injectedConfig.small_model).toBe('proxyllm/safe-coder');
-  expect(Object.keys(injectedConfig.provider?.proxyllm?.models ?? {})).toEqual(['safe-coder']);
+  expect(Object.keys(injectedConfig.provider?.proxyllm?.models ?? {})).toEqual([
+    'deepseek-v4-pro',
+    'safe-coder',
+  ]);
   expect(Object.keys(injectedConfig.provider?.deepseekanthropic?.models ?? {})).toEqual([
     'deepseek-v4-pro',
   ]);

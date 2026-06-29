@@ -19,6 +19,7 @@ import { createEmptyPipeline, upsertTrack, upsertTask } from '@tagma/sdk/config'
 import { parseYaml, serializePipeline } from '@tagma/sdk/yaml';
 import { parseWorkflowYaml, serializeWorkflow, validateRawWorkflow } from '@tagma/sdk/workflow';
 import type {
+  PipelineGraphPipelineLifecycle,
   PipelineGraphStopWhen,
   TagmaSdkRequirements,
   WorkflowDocumentKind,
@@ -72,6 +73,7 @@ import {
   invalidatePluginCache,
   isValidChatDirtyConflictPolicy,
   isValidEditorViewMode,
+  isValidOpenCodeChatReasoningEffort,
   parseOpenCodeChatModelSelection,
   parsePythonAgentSettings,
   type EditorSettings,
@@ -231,6 +233,9 @@ export function parseEditorSettingsPatch(body: unknown): Partial<EditorSettings>
       patch.opencodeChatModel = opencodeChatModel;
     }
   }
+  if (isValidOpenCodeChatReasoningEffort(raw.opencodeChatReasoningEffort)) {
+    patch.opencodeChatReasoningEffort = raw.opencodeChatReasoningEffort;
+  }
   return patch;
 }
 
@@ -324,7 +329,7 @@ function describeWorkflowEntry(absPath: string, basenameValue: string): Record<s
     path: string;
     depends_on: string[];
     position?: { x: number; y: number };
-    lifecycle?: { max_runs?: number; stop_when?: PipelineGraphStopWhen };
+    lifecycle?: PipelineGraphPipelineLifecycle;
   }> = [];
   if (canReadYaml) {
     try {
@@ -376,13 +381,16 @@ function readWorkflowPosition(value: unknown): { x: number; y: number } | undefi
   return { x, y };
 }
 
-function readWorkflowLifecycle(
-  value: unknown,
-): { max_runs?: number; stop_when?: PipelineGraphStopWhen } | undefined {
+function readWorkflowLifecycle(value: unknown): PipelineGraphPipelineLifecycle | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
   const raw = value as { max_runs?: unknown; stop_when?: unknown };
-  const lifecycle: { max_runs?: number; stop_when?: PipelineGraphStopWhen } = {};
-  if (Number.isInteger(raw.max_runs) && (raw.max_runs as number) > 0) {
+  const lifecycle: {
+    max_runs?: PipelineGraphPipelineLifecycle['max_runs'];
+    stop_when?: PipelineGraphStopWhen;
+  } = {};
+  if (raw.max_runs === 'infinite') {
+    lifecycle.max_runs = 'infinite';
+  } else if (Number.isInteger(raw.max_runs) && (raw.max_runs as number) > 0) {
     lifecycle.max_runs = raw.max_runs as number;
   }
   if (raw.stop_when === 'success' || raw.stop_when === 'failure' || raw.stop_when === 'always') {
@@ -421,7 +429,7 @@ function normalizeWorkflowGraphPipelinesInput(
   path: string;
   depends_on?: string[];
   position?: { x: number; y: number };
-  lifecycle?: { max_runs?: number; stop_when?: PipelineGraphStopWhen };
+  lifecycle?: PipelineGraphPipelineLifecycle;
 }> {
   if (!Array.isArray(value)) {
     throw new Error('pipelines must be an array');
@@ -480,18 +488,26 @@ function normalizeWorkflowGraphPipelinesInput(
 function normalizeWorkflowLifecycleInput(
   value: unknown,
   pipelineIndex: number,
-): { max_runs?: number; stop_when?: PipelineGraphStopWhen } | undefined {
+): PipelineGraphPipelineLifecycle | undefined {
   if (value === undefined) return undefined;
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`pipelines[${pipelineIndex}].lifecycle must be an object`);
   }
   const raw = value as Record<string, unknown>;
-  const lifecycle: { max_runs?: number; stop_when?: PipelineGraphStopWhen } = {};
+  const lifecycle: {
+    max_runs?: PipelineGraphPipelineLifecycle['max_runs'];
+    stop_when?: PipelineGraphStopWhen;
+  } = {};
   if (raw.max_runs !== undefined) {
-    if (!Number.isInteger(raw.max_runs) || (raw.max_runs as number) < 1) {
-      throw new Error(`pipelines[${pipelineIndex}].lifecycle.max_runs must be a positive integer`);
+    if (raw.max_runs === 'infinite') {
+      lifecycle.max_runs = 'infinite';
+    } else if (!Number.isInteger(raw.max_runs) || (raw.max_runs as number) < 1) {
+      throw new Error(
+        `pipelines[${pipelineIndex}].lifecycle.max_runs must be a positive integer or "infinite"`,
+      );
+    } else {
+      lifecycle.max_runs = raw.max_runs as number;
     }
-    lifecycle.max_runs = raw.max_runs as number;
   }
   if (raw.stop_when !== undefined) {
     if (raw.stop_when !== 'success' && raw.stop_when !== 'failure' && raw.stop_when !== 'always') {
@@ -515,7 +531,7 @@ function serializeWorkflowGraphForEditor(config: {
     path: string;
     depends_on?: string[];
     position?: { x: number; y: number };
-    lifecycle?: { max_runs?: number; stop_when?: PipelineGraphStopWhen };
+    lifecycle?: PipelineGraphPipelineLifecycle;
   }>;
 }): string {
   return serializeWorkflow({

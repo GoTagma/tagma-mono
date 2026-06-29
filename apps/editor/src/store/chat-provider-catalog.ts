@@ -19,7 +19,6 @@ import {
 } from '../api/opencode-chat';
 import type { Provider } from '../api/opencode-chat';
 import { savePersisted, type ModelPick } from './chat-persist';
-import { filterBlockedProviderModels } from '../../shared/opencode-model-stability.js';
 
 export interface ProviderCatalogEntry {
   id: string;
@@ -38,7 +37,7 @@ export async function fetchProviderCatalog(
   workspaceKey = getOpencodeWorkspaceKey(),
 ): Promise<ProviderCatalogEntry[]> {
   const client = await getOpencodeClient(workspaceKey);
-  const [listRes, authRes, legacyLoad, v2Load] = await Promise.all([
+  const [listRes, authRes] = await Promise.all([
     unwrap(client.provider.list()).catch((err) => {
       console.error('[chat] provider.list failed:', err);
       return {
@@ -51,15 +50,9 @@ export async function fetchProviderCatalog(
       console.error('[chat] provider.auth failed:', err);
       return {} as Record<string, ProviderAuthMethod[]>;
     }),
-    unwrap(client.config.providers())
-      .then((value) => ({ ok: true as const, value }))
-      .catch((error) => ({ ok: false as const, error })),
-    fetchProviderModelCatalogV2(workspaceKey)
-      .then((value) => ({ ok: true as const, value }))
-      .catch((error) => ({ ok: false as const, error })),
   ]);
   const connectedSet = new Set(listRes.connected);
-  const entries = listRes.all.map((p) => {
+  return listRes.all.map((p) => {
     const registered = authRes[p.id];
     const methods: ProviderAuthMethod[] =
       registered && registered.length > 0 ? registered : [{ type: 'api', label: 'API Key' }];
@@ -71,46 +64,6 @@ export async function fetchProviderCatalog(
       methods,
     };
   });
-  return filterProviderCatalogEntriesForStableModels(
-    entries,
-    v2Load.ok ? v2Load.value : null,
-    legacyLoad.ok ? legacyLoad.value.providers : [],
-  );
-}
-
-export function filterProviderCatalogEntriesForStableModels(
-  entries: ProviderCatalogEntry[],
-  v2Catalog: ProviderModelCatalogV2Snapshot | null,
-  legacyProviders: Provider[],
-): ProviderCatalogEntry[] {
-  const filteredIds = filteredCatalogProviderIds(v2Catalog, legacyProviders);
-  if (!filteredIds) return entries;
-  return entries.filter(
-    (entry) => !filteredIds.known.has(entry.id) || filteredIds.visible.has(entry.id),
-  );
-}
-
-function filteredCatalogProviderIds(
-  v2Catalog: ProviderModelCatalogV2Snapshot | null,
-  legacyProviders: Provider[],
-): { known: Set<string>; visible: Set<string> } | null {
-  if (!v2Catalog) {
-    if (legacyProviders.length === 0) return null;
-    return {
-      known: new Set(legacyProviders.map((provider) => provider.id)),
-      visible: new Set(filterBlockedProviderModels(legacyProviders).map((provider) => provider.id)),
-    };
-  }
-  const known = new Set([
-    ...v2Catalog.providers.map((provider) => provider.id),
-    ...legacyProviders.map((provider) => provider.id),
-  ]);
-  return {
-    known,
-    visible: new Set(
-      buildProvidersFromV2Catalog(v2Catalog, legacyProviders).map((provider) => provider.id),
-    ),
-  };
 }
 
 export async function fetchConfiguredProviderModels(
@@ -145,10 +98,7 @@ export async function fetchConfiguredProviderModels(
   }
 
   if (legacyLoad.ok) {
-    return {
-      ...legacyLoad.value,
-      providers: filterBlockedProviderModels(legacyLoad.value.providers),
-    };
+    return legacyLoad.value;
   }
   if (!v2Load.ok) throw v2Load.error;
   return { providers: [], default: {} };
@@ -160,15 +110,11 @@ export function buildProvidersFromV2Catalog(
 ): Provider[] {
   const legacyById = new Map(legacyProviders.map((provider) => [provider.id, provider]));
   const v2ProviderIds = new Set(catalog.providers.map((provider) => provider.id));
-  const v2ProviderById = new Map(
-    catalog.providers
-      .filter((provider) => provider.disabled !== true)
-      .map((provider) => [provider.id, provider]),
-  );
+  const v2ProviderById = new Map(catalog.providers.map((provider) => [provider.id, provider]));
   const modelsByProvider = new Map<string, Provider['models']>();
 
   for (const model of catalog.models) {
-    if (model.enabled === false || !v2ProviderById.has(model.providerID)) continue;
+    if (!v2ProviderById.has(model.providerID)) continue;
     const providerModels = modelsByProvider.get(model.providerID) ?? {};
     const legacyModel = legacyById.get(model.providerID)?.models?.[model.id];
     providerModels[model.id] = {
@@ -206,7 +152,6 @@ export function buildProvidersFromV2Catalog(
   }
 
   const providers = catalog.providers.flatMap((provider) => {
-    if (provider.disabled === true) return [];
     const models = modelsByProvider.get(provider.id);
     if (!models || Object.keys(models).length === 0) return [];
     const legacyProvider = legacyById.get(provider.id);
@@ -229,7 +174,7 @@ export function buildProvidersFromV2Catalog(
     providers.push(legacyProvider);
   }
 
-  return filterBlockedProviderModels(providers);
+  return providers;
 }
 
 function mediaCapabilities(values: string[]): Provider['models'][string]['capabilities']['input'] {

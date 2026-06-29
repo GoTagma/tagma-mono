@@ -520,44 +520,89 @@ test('hidden in-flight conversation error clears its running state and marks it 
   expect(state.completedUnreadSessionIds).toEqual(['session-a']);
 });
 
-test('blocks sending from another conversation while a hidden conversation is still updating YAML', async () => {
-  useChatStore.setState({
-    currentSessionId: 'session-b',
-    sessions: [makeSession('session-a'), makeSession('session-b')],
-    sessionStates: {
-      'session-a': {
-        messages: [],
-        sending: true,
-        pendingUserText: 'edit pipeline a',
-        queuedMessages: [],
-        flushing: false,
-        pendingPermissions: [],
-        turnStartedAt: Date.now() - 1_000,
-        turnAssistantMessageIds: [],
-        lastActivityAt: Date.now() - 500,
-        sessionStatus: null,
-        turnHealth: null,
-        pendingActivity: [],
-        yamlSnapshotBeforeSend: null,
-        postChatYamlAction: null,
+test('allows sending from another conversation while a hidden conversation is still updating YAML', async () => {
+  const requests: Array<{ url: string; method: string }> = [];
+  let releaseEventStream: () => void = () => {};
+  const eventStreamGate = new Promise<void>((resolve) => {
+    releaseEventStream = resolve;
+  });
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : null;
+    const url = request?.url ?? String(input);
+    const method = init?.method ?? request?.method ?? 'GET';
+    requests.push({ url, method });
+    if (url === '/api/opencode/chat/ensure') {
+      return Promise.resolve(jsonResponse({ baseUrl: 'http://opencode.test' }));
+    }
+    if (new URL(url, 'http://local.test').pathname === '/event') {
+      return Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            async start(controller) {
+              await eventStreamGate;
+              controller.close();
+            },
+          }),
+          { headers: { 'content-type': 'text/event-stream' } },
+        ),
+      );
+    }
+    if (url === 'http://opencode.test/session/session-b' && method === 'PATCH') {
+      return Promise.resolve(jsonResponse({ id: 'session-b' }));
+    }
+    if (url === 'http://opencode.test/session/session-b/prompt_async') {
+      return Promise.resolve(jsonResponse({ ok: true }));
+    }
+    return Promise.reject(new Error(`unexpected fetch ${method} ${url}`));
+  }) as typeof fetch;
+  setClientWorkspace('C:/parallel-chat-repo');
+  resetOpencodeClient();
+
+  try {
+    useChatStore.setState({
+      currentSessionId: 'session-b',
+      sessions: [makeSession('session-a'), makeSession('session-b')],
+      sessionStates: {
+        'session-a': {
+          messages: [],
+          sending: true,
+          pendingUserText: 'edit pipeline a',
+          queuedMessages: [],
+          flushing: false,
+          pendingPermissions: [],
+          turnStartedAt: Date.now() - 1_000,
+          turnAssistantMessageIds: [],
+          lastActivityAt: Date.now() - 500,
+          sessionStatus: null,
+          turnHealth: null,
+          pendingActivity: [],
+          yamlSnapshotBeforeSend: null,
+          postChatYamlAction: null,
+        },
       },
-    },
-    model: { providerID: 'openai', modelID: 'gpt-test' },
-    agent: 'tagma-router',
-    sending: false,
-    queuedMessages: [],
-  } as never);
+      model: { providerID: 'openai', modelID: 'gpt-test' },
+      agent: 'tagma-router',
+      sending: false,
+      queuedMessages: [],
+    } as never);
 
-  await expect(useChatStore.getState().send('also edit pipeline a')).rejects.toThrow(
-    /current OpenCode chat update/i,
-  );
+    await useChatStore.getState().send('also edit pipeline b');
 
-  const state = useChatStore.getState();
-  expect(state.sendError).toContain('current OpenCode chat update');
-  expect(state.currentSessionId).toBe('session-b');
-  expect(state.sending).toBe(false);
-  expect(state.pendingUserText).toBe(null);
-  expect(state.sessionStates['session-a']?.sending).toBe(true);
+    const state = useChatStore.getState();
+    expect(requests.some((request) => request.url.endsWith('/session/session-b/prompt_async'))).toBe(
+      true,
+    );
+    expect(state.sendError).toBeNull();
+    expect(state.currentSessionId).toBe('session-b');
+    expect(state.sending).toBe(true);
+    expect(state.pendingUserText).toBe('also edit pipeline b');
+    expect(state.sessionStates['session-a']?.sending).toBe(true);
+  } finally {
+    releaseEventStream();
+    setClientWorkspace(null);
+    resetOpencodeClient();
+    globalThis.fetch = rejectFetch;
+  }
 });
 
 test('chat context limit supports unlimited, bounded, and stateless modes', () => {

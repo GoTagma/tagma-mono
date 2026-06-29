@@ -6,9 +6,12 @@ import {
   disconnectWorkflowPipelines,
   moveWorkflowPipeline,
   setWorkflowPipelineLoopCount,
+  setWorkflowPipelineInfiniteLoop,
   resolveWorkflowPipelineEditorPath,
   removeWorkflowPipeline,
   workflowPipelineLoopCount,
+  workflowPipelineLoopIsInfinite,
+  workflowPipelineRunLimit,
   workflowDragPositionFromPointer,
   workflowNodePointerOffset,
 } from '../src/components/workflow/workflow-graph-model';
@@ -139,6 +142,20 @@ describe('workflow graph model', () => {
       setWorkflowPipelineLoopCount(pipelines, 'deploy', 1).find((p) => p.id === 'deploy')
         ?.lifecycle,
     ).toBeUndefined();
+  });
+
+  test('stores graph infinite loop as an infinite lifecycle', () => {
+    const pipelines: WorkflowPipelineEntry[] = [
+      { id: 'build', path: '.tagma/build/build.yaml', depends_on: [] },
+    ];
+
+    const infinite = setWorkflowPipelineInfiniteLoop(pipelines, 'build', true);
+
+    expect(infinite[0]?.lifecycle).toEqual({ max_runs: 'infinite', stop_when: 'always' });
+    expect(workflowPipelineLoopIsInfinite(infinite[0]!)).toBe(true);
+    expect(workflowPipelineLoopCount(infinite[0]!)).toBe(1);
+    expect(workflowPipelineRunLimit(infinite[0]!)).toBeNull();
+    expect(setWorkflowPipelineInfiniteLoop(infinite, 'build', false)[0]?.lifecycle).toBeUndefined();
   });
 
   test('converts pointer movement into canvas-relative node positions', () => {

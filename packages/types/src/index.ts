@@ -366,6 +366,7 @@ export interface RawPipelineConfig {
 export type WorkflowFailurePolicy = 'stop_all' | 'continue_independent';
 export type WorkflowDocumentKind = 'workflow' | 'graph';
 export type PipelineGraphStopWhen = 'success' | 'failure' | 'always';
+export type PipelineGraphMaxRuns = number | 'infinite';
 
 export interface WorkflowPipelinePosition {
   readonly x: number;
@@ -373,7 +374,7 @@ export interface WorkflowPipelinePosition {
 }
 
 export interface PipelineGraphPipelineLifecycle {
-  readonly max_runs?: number;
+  readonly max_runs?: PipelineGraphMaxRuns;
   readonly stop_when?: PipelineGraphStopWhen;
 }
 
@@ -446,7 +447,7 @@ export interface PipelineGraphNodeState {
   readonly status: PipelineGraphNodeStatus;
   readonly runId: string | null;
   readonly runCount: number;
-  readonly maxRuns: number;
+  readonly maxRuns: number | null;
   readonly attempts: readonly PipelineGraphPipelineAttemptState[];
   readonly startedAt: string | null;
   readonly finishedAt: string | null;
@@ -1249,7 +1250,7 @@ export type PipelineGraphEventPayload =
       readonly status: PipelineGraphNodeStatus;
       readonly runId?: string | null;
       readonly runCount?: number;
-      readonly maxRuns?: number;
+      readonly maxRuns?: number | null;
       readonly startedAt?: string | null;
       readonly finishedAt?: string | null;
       readonly error?: string | null;

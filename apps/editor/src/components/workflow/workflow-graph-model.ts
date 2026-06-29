@@ -1,5 +1,7 @@
 import type { WorkflowPipelineEntry, WorkspaceYamlEntry } from '../../api/client';
 
+export const WORKFLOW_INFINITE_LOOP = 'infinite' as const;
+
 export interface WorkflowGraphPosition {
   x: number;
   y: number;
@@ -147,6 +149,14 @@ export function workflowPipelineLoopCount(pipeline: WorkflowPipelineEntry): numb
   return typeof count === 'number' && Number.isInteger(count) && count > 1 ? count : 1;
 }
 
+export function workflowPipelineLoopIsInfinite(pipeline: WorkflowPipelineEntry): boolean {
+  return pipeline.lifecycle?.max_runs === WORKFLOW_INFINITE_LOOP;
+}
+
+export function workflowPipelineRunLimit(pipeline: WorkflowPipelineEntry): number | null {
+  return workflowPipelineLoopIsInfinite(pipeline) ? null : workflowPipelineLoopCount(pipeline);
+}
+
 export function setWorkflowPipelineLoopCount(
   pipelines: readonly WorkflowPipelineEntry[],
   pipelineId: string,
@@ -160,6 +170,22 @@ export function setWorkflowPipelineLoopCount(
     return {
       ...rest,
       lifecycle: { max_runs: count, stop_when: 'always' },
+    };
+  });
+}
+
+export function setWorkflowPipelineInfiniteLoop(
+  pipelines: readonly WorkflowPipelineEntry[],
+  pipelineId: string,
+  infinite: boolean,
+): WorkflowPipelineEntry[] {
+  if (!infinite) return setWorkflowPipelineLoopCount(pipelines, pipelineId, 1);
+  return pipelines.map((pipeline) => {
+    if (pipeline.id !== pipelineId) return pipeline;
+    const { lifecycle: _lifecycle, ...rest } = pipeline;
+    return {
+      ...rest,
+      lifecycle: { max_runs: WORKFLOW_INFINITE_LOOP, stop_when: 'always' },
     };
   });
 }

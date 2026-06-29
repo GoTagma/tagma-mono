@@ -36,7 +36,10 @@ import type {
   PipelineGraphEventPayload,
   PipelineGraphAbortReason,
   PipelineGraphNodeState,
+  PipelineGraphPipelineLifecycle,
+  WorkflowConfig,
 } from '@tagma/sdk';
+import { serializeWorkflow } from '@tagma/sdk/workflow';
 import { atomicWriteFileSync, isPathWithin } from '../path-utils.js';
 import type { WorkspaceState } from '../workspace-state.js';
 import { readYamlRunVersion } from '../yaml-run-version.js';
@@ -238,22 +241,28 @@ export function normalizeRunTargetTaskIds(
 
 function publicPipelineGraphResultFromEndEvent(
   event: Extract<PipelineGraphEventPayload, { type: 'graph_end' }>,
-): unknown {
+): PublicPipelineGraphResult {
   return {
-    graphRunId: event.graphRunId,
+    graphRunId: normalizeGraphRunId(event.graphRunId),
     success: event.success,
     abortReason: event.abortReason,
-    pipelines: event.pipelines,
+    pipelines: cloneWorkflowPipelines(event.pipelines),
   };
+}
+
+export function normalizeGraphRunId(graphRunId: string): string {
+  return graphRunId.startsWith('graph_') ? graphRunId : graphRunId.replace(/^run_/, 'graph_');
 }
 
 function cloneWorkflowPipelines(
   pipelines: readonly PipelineGraphNodeState[],
 ): PipelineGraphNodeState[] {
-  return pipelines.map((pipeline) => ({
+  return pipelines.map((pipeline: PipelineGraphNodeState) => ({
     ...pipeline,
     dependsOn: [...pipeline.dependsOn],
-    attempts: pipeline.attempts.map((attempt) => ({ ...attempt })),
+    attempts: pipeline.attempts.map((attempt: PipelineGraphNodeState['attempts'][number]) => ({
+      ...attempt,
+    })),
   }));
 }
 
@@ -268,7 +277,7 @@ function applyWorkflowPipelineUpdate(
       status: event.status,
       runId: 'runId' in event ? (event.runId ?? null) : pipeline.runId,
       runCount: 'runCount' in event ? (event.runCount ?? pipeline.runCount) : pipeline.runCount,
-      maxRuns: 'maxRuns' in event ? (event.maxRuns ?? pipeline.maxRuns) : pipeline.maxRuns,
+      maxRuns: 'maxRuns' in event && event.maxRuns !== undefined ? event.maxRuns : pipeline.maxRuns,
       startedAt: 'startedAt' in event ? (event.startedAt ?? null) : pipeline.startedAt,
       finishedAt: 'finishedAt' in event ? (event.finishedAt ?? null) : pipeline.finishedAt,
       error: 'error' in event ? (event.error ?? null) : pipeline.error,
@@ -323,8 +332,59 @@ import { PipelineGraphRunner } from '@tagma/sdk';
 
 export type WorkflowRunSessionEvent = PipelineGraphEventPayload & { readonly seq: number };
 
+export interface PublicPipelineGraphResult {
+  graphRunId: string;
+  success: boolean;
+  abortReason: PipelineGraphAbortReason;
+  pipelines: PipelineGraphNodeState[];
+}
+
+export interface WorkflowRunPipelineCounts {
+  total: number;
+  success: number;
+  failed: number;
+  skipped: number;
+  aborted: number;
+  running: number;
+  waiting: number;
+}
+
+export interface WorkflowRunHistoryWorkflow {
+  name: string;
+  path: string;
+  workflowName: string | null;
+  contentHash: string;
+  mtimeMs: number;
+  size: number;
+  pipelines: Array<{
+    id: string;
+    path: string;
+    depends_on: string[];
+    position?: { x: number; y: number };
+    lifecycle?: PipelineGraphPipelineLifecycle;
+  }>;
+}
+
+export interface WorkflowRunHistorySummary {
+  kind: 'graph';
+  runId: string;
+  graphRunId: string;
+  workflowName: string;
+  workflowPath: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+  success: boolean;
+  running?: boolean;
+  error: string | null;
+  result: PublicPipelineGraphResult | null;
+  events: WorkflowRunSessionEvent[];
+  workflow: WorkflowRunHistoryWorkflow;
+  pipelineCounts: WorkflowRunPipelineCounts;
+}
+
 export class WorkflowRunSession {
   readonly graphRunId: string;
+  private readonly sourceGraphRunId: string;
   readonly startedAt: string;
   readonly events: WorkflowRunSessionEvent[] = [];
   private latestPipelines: PipelineGraphNodeState[] = [];
@@ -336,13 +396,20 @@ export class WorkflowRunSession {
   constructor(
     readonly runner: PipelineGraphRunner,
     readonly abort: AbortController,
+    readonly workflow: WorkflowConfig | null = null,
+    readonly workflowPath: string | null = null,
   ) {
-    this.graphRunId = runner.graphRunId;
+    this.sourceGraphRunId = runner.graphRunId;
+    this.graphRunId = normalizeGraphRunId(runner.graphRunId);
     this.startedAt = new Date().toISOString();
   }
 
   ingest(event: PipelineGraphEventPayload): WorkflowRunSessionEvent {
-    const stamped = { ...event, seq: ++this.seqCounter } as WorkflowRunSessionEvent;
+    const normalizedEvent =
+      event.graphRunId === this.sourceGraphRunId
+        ? { ...event, graphRunId: this.graphRunId }
+        : event;
+    const stamped = { ...normalizedEvent, seq: ++this.seqCounter } as WorkflowRunSessionEvent;
     if (stamped.type === 'graph_start' || stamped.type === 'graph_end') {
       this.latestPipelines = cloneWorkflowPipelines(stamped.pipelines);
     } else if (stamped.type === 'pipeline_update') {
@@ -375,6 +442,63 @@ export class WorkflowRunSession {
 
   replayAfter(seq: number): WorkflowRunSessionEvent[] {
     return this.events.filter((event) => event.seq > seq);
+  }
+
+  buildHistoryEntry(cwd: string): RunHistoryEntry {
+    const summary = this.buildHistorySummary();
+    return {
+      kind: 'graph',
+      runId: this.graphRunId,
+      path: safeGraphRunLogDir(cwd, this.graphRunId),
+      startedAt: summary.startedAt,
+      sizeBytes: 0,
+      pipelineName: summary.workflowName,
+      success: this.done ? summary.success : undefined,
+      running: !this.done,
+      finishedAt: summary.finishedAt ?? undefined,
+      pipelineCounts: summary.pipelineCounts,
+    };
+  }
+
+  buildHistorySummary(): WorkflowRunHistorySummary {
+    const result = this.publicResult();
+    const pipelines = result?.pipelines ?? this.latestPipelines;
+    const finishedAt = this.done
+      ? (latestWorkflowFinishedAt(pipelines) ?? new Date().toISOString())
+      : null;
+    const workflowSnapshot = workflowHistorySnapshot(
+      this.workflow,
+      this.workflowPath,
+      this.startedAt,
+    );
+    return {
+      kind: 'graph',
+      runId: this.graphRunId,
+      graphRunId: this.graphRunId,
+      workflowName: workflowSnapshot.workflowName ?? workflowSnapshot.name,
+      workflowPath: this.workflowPath,
+      startedAt: this.startedAt,
+      finishedAt,
+      success: result?.success ?? false,
+      running: !this.done,
+      error: this.error,
+      result,
+      events: this.allBuffered(),
+      workflow: workflowSnapshot,
+      pipelineCounts: computeWorkflowPipelineCounts(pipelines),
+    };
+  }
+
+  private publicResult(): PublicPipelineGraphResult | null {
+    if (!this.result || typeof this.result !== 'object') return null;
+    const result = this.result as Partial<PublicPipelineGraphResult>;
+    if (typeof result.graphRunId !== 'string' || !Array.isArray(result.pipelines)) return null;
+    return {
+      graphRunId: normalizeGraphRunId(result.graphRunId),
+      success: result.success === true,
+      abortReason: result.abortReason ?? null,
+      pipelines: cloneWorkflowPipelines(result.pipelines),
+    };
   }
 }
 
@@ -510,6 +634,7 @@ export interface RunSummary {
 }
 
 interface RunHistoryEntry {
+  kind?: 'pipeline' | 'graph';
   runId: string;
   path: string;
   startedAt: string;
@@ -531,6 +656,7 @@ interface RunHistoryEntry {
     waiting: number;
     idle: number;
   };
+  pipelineCounts?: WorkflowRunPipelineCounts;
 }
 
 // ═══ Approval wire conversion ═══════════════════════════════════════════
@@ -963,6 +1089,129 @@ export function persistRunSummary(
   );
 }
 
+function workflowHistorySnapshot(
+  workflow: WorkflowConfig | null,
+  workflowPath: string | null,
+  startedAt: string,
+): WorkflowRunHistoryWorkflow {
+  const serialized = workflow ? serializeWorkflow(workflow) : '';
+  const name =
+    workflowPath?.split(/[\\/]/).pop() ??
+    (workflow?.name ? `${workflow.name}.workflow.yaml` : 'workflow.workflow.yaml');
+  const mtimeMs = new Date(startedAt).getTime();
+  return {
+    name,
+    path: workflowPath ?? '',
+    workflowName: workflow?.name ?? null,
+    contentHash: serialized ? String(Buffer.byteLength(serialized, 'utf-8')) : '',
+    mtimeMs: Number.isFinite(mtimeMs) ? mtimeMs : Date.now(),
+    size: Buffer.byteLength(serialized, 'utf-8'),
+    pipelines: (workflow?.pipelines ?? []).map((pipeline: WorkflowConfig['pipelines'][number]) => {
+      const lifecycle = pipeline.lifecycle
+        ? {
+            ...(pipeline.lifecycle.max_runs !== undefined
+              ? { max_runs: pipeline.lifecycle.max_runs }
+              : {}),
+            ...(pipeline.lifecycle.stop_when ? { stop_when: pipeline.lifecycle.stop_when } : {}),
+          }
+        : undefined;
+      return {
+        id: pipeline.id,
+        path: pipeline.path,
+        depends_on: [...(pipeline.depends_on ?? [])],
+        ...(pipeline.position ? { position: { ...pipeline.position } } : {}),
+        ...(lifecycle ? { lifecycle } : {}),
+      };
+    }),
+  };
+}
+
+function latestWorkflowFinishedAt(pipelines: readonly PipelineGraphNodeState[]): string | null {
+  let latest: string | null = null;
+  for (const pipeline of pipelines) {
+    for (const value of [
+      pipeline.finishedAt,
+      ...pipeline.attempts.map((attempt) => attempt.finishedAt),
+    ]) {
+      if (value && (latest === null || value > latest)) latest = value;
+    }
+  }
+  return latest;
+}
+
+export function computeWorkflowPipelineCounts(
+  pipelines: readonly Pick<PipelineGraphNodeState, 'status'>[],
+): WorkflowRunPipelineCounts {
+  const counts: WorkflowRunPipelineCounts = {
+    total: pipelines.length,
+    success: 0,
+    failed: 0,
+    skipped: 0,
+    aborted: 0,
+    running: 0,
+    waiting: 0,
+  };
+  for (const pipeline of pipelines) {
+    switch (pipeline.status) {
+      case 'success':
+        counts.success += 1;
+        break;
+      case 'failed':
+        counts.failed += 1;
+        break;
+      case 'skipped':
+        counts.skipped += 1;
+        break;
+      case 'aborted':
+        counts.aborted += 1;
+        break;
+      case 'running':
+        counts.running += 1;
+        break;
+      case 'waiting':
+        counts.waiting += 1;
+        break;
+    }
+  }
+  return counts;
+}
+
+export function persistWorkflowRunHistory(cwd: string, session: WorkflowRunSession): void {
+  const logsDir = safeGraphRunLogDir(cwd, session.graphRunId);
+  if (!existsSync(logsDir)) {
+    mkdirSync(logsDir, { recursive: true });
+  }
+  if (session.workflow) {
+    try {
+      atomicWriteFileSync(join(logsDir, 'workflow.yaml'), serializeWorkflow(session.workflow));
+    } catch (e) {
+      console.warn('[run] failed to snapshot workflow.yaml:', e);
+    }
+  }
+  atomicWriteFileSync(
+    join(logsDir, 'workflow-run.json'),
+    JSON.stringify(session.buildHistorySummary(), null, 2),
+  );
+}
+
+export function readWorkflowRunHistory(
+  cwd: string,
+  graphRunId: string,
+): WorkflowRunHistorySummary | null {
+  let summaryPath: string;
+  try {
+    summaryPath = safeGraphRunHistoryFile(cwd, graphRunId, 'workflow-run.json');
+  } catch {
+    return null;
+  }
+  if (!existsSync(summaryPath)) return null;
+  try {
+    return JSON.parse(readFileSync(summaryPath, 'utf-8')) as WorkflowRunHistorySummary;
+  } catch {
+    return null;
+  }
+}
+
 export function readRunSummary(cwd: string, runId: string): RunSummary | null {
   let summaryPath: string;
   try {
@@ -1056,12 +1305,23 @@ export function safeRunLogDir(cwd: string, runId: string): string {
   if (!/^run_[A-Za-z0-9_-]+$/.test(runId)) {
     throw new Error('invalid runId');
   }
+  return safeHistoryLogDir(cwd, runId);
+}
+
+export function safeGraphRunLogDir(cwd: string, graphRunId: string): string {
+  if (!/^graph_[A-Za-z0-9_-]+$/.test(graphRunId)) {
+    throw new Error('invalid graphRunId');
+  }
+  return safeHistoryLogDir(cwd, graphRunId);
+}
+
+function safeHistoryLogDir(cwd: string, historyId: string): string {
   const tagmaDir = join(cwd, '.tagma');
   const logsRoot = join(tagmaDir, 'logs');
-  const runDir = join(logsRoot, runId);
+  const runDir = join(logsRoot, historyId);
   assertNotSymlink(tagmaDir, '.tagma');
   assertNotSymlink(logsRoot, '.tagma/logs');
-  assertNotSymlink(runDir, `run history directory ${runId}`);
+  assertNotSymlink(runDir, `run history directory ${historyId}`);
   return runDir;
 }
 
@@ -1069,6 +1329,13 @@ export function safeRunHistoryFile(cwd: string, runId: string, fileName: string)
   const runDir = safeRunLogDir(cwd, runId);
   const filePath = join(runDir, fileName);
   assertNotSymlink(filePath, `run history file ${runId}/${fileName}`);
+  return filePath;
+}
+
+export function safeGraphRunHistoryFile(cwd: string, graphRunId: string, fileName: string): string {
+  const runDir = safeGraphRunLogDir(cwd, graphRunId);
+  const filePath = join(runDir, fileName);
+  assertNotSymlink(filePath, `graph run history file ${graphRunId}/${fileName}`);
   return filePath;
 }
 

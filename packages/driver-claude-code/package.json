@@ -1,6 +1,6 @@
 {
   "name": "@tagma/driver-claude-code",
-  "version": "0.3.37",
+  "version": "0.3.38",
   "description": "Claude Code CLI driver for tagma-sdk pipelines",
   "license": "MIT",
   "repository": {

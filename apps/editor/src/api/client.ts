@@ -611,6 +611,8 @@ export interface OpenCodeChatModelSelection {
   modelID: string;
 }
 
+export type OpenCodeChatReasoningEffort = 'low' | 'medium' | 'high';
+
 export interface EditorSettings {
   /**
    * When true, opening a workspace will auto-install plugins declared in
@@ -631,6 +633,8 @@ export interface EditorSettings {
   pythonAgent: PythonAgentSettings;
   /** Last OpenCode chat provider/model selection for this workspace. */
   opencodeChatModel: OpenCodeChatModelSelection | null;
+  /** Last OpenCode chat reasoning effort selection for this workspace. */
+  opencodeChatReasoningEffort: OpenCodeChatReasoningEffort;
   /**
    * Disabled means unlimited. Enabled with 0 rounds means stateless.
    */
@@ -1232,6 +1236,33 @@ export interface WorkflowRunStatus {
   events: WorkflowGraphEvent[];
 }
 
+export interface WorkflowRunPipelineCounts {
+  total: number;
+  success: number;
+  failed: number;
+  skipped: number;
+  aborted: number;
+  running: number;
+  waiting: number;
+}
+
+export interface WorkflowRunHistoryDetail {
+  kind: 'graph';
+  runId: string;
+  graphRunId: string;
+  workflowName: string;
+  workflowPath: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+  success: boolean;
+  running?: boolean;
+  error: string | null;
+  result: WorkflowRunResult | null;
+  events: WorkflowGraphEvent[];
+  workflow: WorkflowYamlEntry;
+  pipelineCounts: WorkflowRunPipelineCounts;
+}
+
 export interface StartRunResult {
   ok: boolean;
   runId?: string;
@@ -1288,6 +1319,7 @@ export interface RunHistoryTaskCounts {
 }
 
 export interface RunHistoryEntry {
+  kind?: 'pipeline' | 'graph';
   runId: string;
   path: string;
   startedAt: string;
@@ -1300,6 +1332,7 @@ export interface RunHistoryEntry {
   /** Source runId when this run was launched via Replay (one level only). */
   replayedFromRunId?: string;
   taskCounts?: RunHistoryTaskCounts;
+  pipelineCounts?: WorkflowRunPipelineCounts;
 }
 
 export interface RunSummaryTask {
@@ -1926,6 +1959,9 @@ export const api = {
 
   getRunSummary: (runId: string) =>
     request<RunSummary>(`/run/history/${encodeURIComponent(runId)}/summary`),
+
+  getWorkflowRunHistory: (graphRunId: string) =>
+    request<WorkflowRunHistoryDetail>(`/run/history/${encodeURIComponent(graphRunId)}/workflow`),
 
   /** Fetch a past task's full stdout/stderr. Resolves `null` when the run
    *  recorded no such stream (404) so callers can render an empty state

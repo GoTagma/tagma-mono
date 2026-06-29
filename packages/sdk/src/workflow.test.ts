@@ -193,6 +193,23 @@ describe('workflow YAML model', () => {
     expect(serializeWorkflow(raw)).toContain('max_runs: 3');
     expect(serializeWorkflow(raw)).toContain('stop_when: success');
 
+    const infinite = parseWorkflowYaml(`workflow:
+  name: release-flow
+  pipelines:
+    - id: loop_forever
+      path: .tagma/build/build.yaml
+      lifecycle:
+        max_runs: infinite
+        stop_when: always
+`);
+
+    expect(validateRawWorkflow(infinite)).toEqual([]);
+    expect(infinite.pipelines[0]?.lifecycle).toEqual({
+      max_runs: 'infinite',
+      stop_when: 'always',
+    });
+    expect(serializeWorkflow(infinite)).toContain('max_runs: infinite');
+
     const invalid = parseWorkflowYaml(`workflow:
   name: bad
   pipelines:
@@ -602,6 +619,59 @@ describe('PipelineGraphRunner', () => {
         'success',
         'success',
       ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('runs an infinite pipeline loop until the graph is aborted', async () => {
+    const dir = makeDir();
+    const abort = new AbortController();
+    let attempts = 0;
+    const maxRunsUpdates: Array<number | null> = [];
+    try {
+      const result = await runPipelineGraph(
+        {
+          name: 'release-flow',
+          pipelines: [
+            {
+              id: 'loop',
+              config: commandPipeline('Loop', 'loop-command'),
+              cwd: dir,
+              lifecycle: { max_runs: 'infinite', stop_when: 'always' },
+            },
+          ],
+        },
+        dir,
+        {
+          signal: abort.signal,
+          registry: registry(),
+          runtime: fakeRuntime(async () => {
+            attempts += 1;
+            if (attempts === 3) abort.abort();
+            return taskResult(`attempt ${attempts}\n`);
+          }),
+          skipPluginLoading: true,
+          onEvent: (event) => {
+            if (event.type === 'pipeline_update' && event.maxRuns !== undefined) {
+              maxRunsUpdates.push(event.maxRuns);
+            }
+          },
+        },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.abortReason).toBe('external');
+      expect(attempts).toBe(3);
+      expect(result.pipelines[0]?.status).toBe('aborted');
+      expect(result.pipelines[0]?.runCount).toBe(3);
+      expect(result.pipelines[0]?.maxRuns).toBeNull();
+      expect(result.pipelines[0]?.attempts.map((attempt) => attempt.status)).toEqual([
+        'success',
+        'success',
+        'aborted',
+      ]);
+      expect(maxRunsUpdates).toContain(null);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

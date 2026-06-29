@@ -15,6 +15,7 @@ import type {
   PipelineGraphEventPayload,
   PipelineGraphNodeState,
   PipelineGraphNodeStatus,
+  PipelineGraphMaxRuns,
   PipelineGraphPipelineAttemptState,
   PipelineGraphPipelineConfig,
   PipelineGraphPipelineLifecycle,
@@ -41,6 +42,7 @@ export type {
   PipelineGraphEventPayload,
   PipelineGraphNodeState,
   PipelineGraphNodeStatus,
+  PipelineGraphMaxRuns,
   PipelineGraphPipelineAttemptState,
   PipelineGraphPipelineConfig,
   PipelineGraphPipelineLifecycle,
@@ -77,12 +79,17 @@ interface MutableNodeState {
   status: PipelineGraphNodeStatus;
   runId: string | null;
   runCount: number;
-  maxRuns: number;
+  maxRuns: number | null;
   attempts: PipelineGraphPipelineAttemptState[];
   startedAt: string | null;
   finishedAt: string | null;
   error: string | null;
   result: EngineResult | null;
+}
+
+interface NormalizedPipelineLifecycle {
+  readonly max_runs: number | null;
+  readonly stop_when: PipelineGraphStopWhen;
 }
 
 const VALID_FAILURE_POLICIES: ReadonlySet<WorkflowFailurePolicy> = new Set([
@@ -287,7 +294,7 @@ export class PipelineGraphRunner {
     const diagnostics = validatePipelineGraphConfig(config);
     diagnostics.push(...validateGraphPipelineConfigs(config, workDir));
     if (diagnostics.length > 0) throw new WorkflowValidationError(diagnostics);
-    this.graphRunId = generateRunId();
+    this.graphRunId = generateRunId().replace(/^run_/, 'graph_');
     this.order = topologicalPipelineOrder(config.pipelines);
 
     for (const pipeline of config.pipelines) {
@@ -300,7 +307,7 @@ export class PipelineGraphRunner {
         status: 'waiting',
         runId: null,
         runCount: 0,
-        maxRuns: lifecycle.max_runs ?? 1,
+        maxRuns: lifecycle.max_runs,
         attempts: [],
         startedAt: null,
         finishedAt: null,
@@ -406,11 +413,11 @@ export class PipelineGraphRunner {
   private async runOnePipeline(pipelineId: string): Promise<void> {
     const pipeline = this.nodeConfigs.get(pipelineId)!;
     const lifecycle = normalizePipelineLifecycle(pipeline.lifecycle);
-    const maxRuns = lifecycle.max_runs ?? 1;
+    const maxRuns = lifecycle.max_runs;
     const stopWhen = lifecycle.stop_when ?? 'success';
     const { signal: _graphSignal, onEvent: _graphOnEvent, ...pipelineOptions } = this.options;
 
-    for (let attempt = 1; attempt <= maxRuns; attempt++) {
+    for (let attempt = 1; maxRuns === null || attempt <= maxRuns; attempt++) {
       if (this.aborted) {
         const finishedAt = new Date().toISOString();
         this.updateNode(pipelineId, {
@@ -516,13 +523,13 @@ export class PipelineGraphRunner {
     status: PipelineGraphNodeStatus,
     stopWhen: PipelineGraphStopWhen,
     attempt: number,
-    maxRuns: number,
+    maxRuns: number | null,
   ): boolean {
     if (status === 'aborted' || status === 'skipped') return true;
-    if (stopWhen === 'always') return attempt >= maxRuns;
+    if (stopWhen === 'always') return maxRuns !== null && attempt >= maxRuns;
     if (stopWhen === 'success' && status === 'success') return true;
     if (stopWhen === 'failure' && status === 'failed') return true;
-    return attempt >= maxRuns;
+    return maxRuns !== null && attempt >= maxRuns;
   }
 
   private patchAttempt(
@@ -960,11 +967,12 @@ function validatePipelineLifecycle(
   );
   if (
     lifecycle.max_runs !== undefined &&
+    lifecycle.max_runs !== 'infinite' &&
     (!Number.isInteger(lifecycle.max_runs) || lifecycle.max_runs < 1)
   ) {
     errors.push({
       path: `${basePath}.lifecycle.max_runs`,
-      message: 'lifecycle.max_runs must be a positive integer',
+      message: 'lifecycle.max_runs must be a positive integer or "infinite"',
     });
   }
   if (lifecycle.stop_when !== undefined && !VALID_PIPELINE_STOP_WHEN.has(lifecycle.stop_when)) {
@@ -977,11 +985,16 @@ function validatePipelineLifecycle(
 
 function normalizePipelineLifecycle(
   lifecycle: PipelineGraphPipelineLifecycle | undefined,
-): Required<PipelineGraphPipelineLifecycle> {
+): NormalizedPipelineLifecycle {
   return {
-    max_runs: lifecycle?.max_runs ?? 1,
+    max_runs: normalizeMaxRuns(lifecycle?.max_runs),
     stop_when: lifecycle?.stop_when ?? 'success',
   };
+}
+
+function normalizeMaxRuns(value: PipelineGraphMaxRuns | undefined): number | null {
+  if (value === 'infinite') return null;
+  return value ?? 1;
 }
 
 function stripDefaultLifecycle(

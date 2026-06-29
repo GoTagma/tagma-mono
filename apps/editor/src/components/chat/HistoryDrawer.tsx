@@ -1,9 +1,10 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { History, Loader2, Trash2, X } from 'lucide-react';
+import { FileText, History, Loader2, Trash2, X } from 'lucide-react';
 import { getOpencodeWorkspaceKey } from '../../api/opencode-chat';
 import { useChatStore } from '../../store/chat-store';
 import { useYamlEditLockStore } from '../../store/yaml-edit-lock-store';
 import { useUIStore } from '../../store/ui-store';
+import { chatPipelineDisplayName, useOpenChatPipelineTarget } from './chat-pipeline-link';
 
 export function HistoryDrawer() {
   const historyOpen = useChatStore((s) => s.historyOpen);
@@ -12,6 +13,7 @@ export function HistoryDrawer() {
   const currentSessionId = useChatStore((s) => s.currentSessionId);
   const sessionStates = useChatStore((s) => s.sessionStates);
   const completedUnreadSessionIds = useChatStore((s) => s.completedUnreadSessionIds);
+  const sessionYamlResults = useChatStore((s) => s.sessionYamlResults);
   const selectSession = useChatStore((s) => s.selectSession);
   const deleteSession = useChatStore((s) => s.deleteSession);
   const sending = useChatStore((s) => s.sending);
@@ -21,6 +23,7 @@ export function HistoryDrawer() {
   const flushing = useChatStore((s) => s.flushing);
   const yamlEditLocked = useYamlEditLockStore((s) => s.active);
   const requestConfirm = useUIStore((s) => s.requestConfirm);
+  const openPipelineTarget = useOpenChatPipelineTarget();
   const hiddenTurnActive = Object.entries(sessionStates).some(
     ([sessionId, runtime]) =>
       sessionId !== currentSessionId &&
@@ -103,6 +106,8 @@ export function HistoryDrawer() {
                     runtime.queuedMessages.length > 0 ||
                     runtime.flushing);
               const completedUnread = !running && completedUnreadSessionIds.includes(s.id);
+              const result = sessionYamlResults[s.id] ?? null;
+              const pipelineName = result ? chatPipelineDisplayName(result) : null;
               return (
                 <div
                   key={s.id}
@@ -136,6 +141,20 @@ export function HistoryDrawer() {
                       <div className="text-[9px] font-mono text-tagma-muted/60">
                         {new Date(s.time.updated).toLocaleString()}
                       </div>
+                    )}
+                    {result && pipelineName && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void openPipelineTarget(result);
+                        }}
+                        className="mt-1 flex max-w-full items-center gap-1 text-[9px] font-mono text-tagma-muted/80 hover:text-tagma-text transition-colors"
+                        title={`Open ${pipelineName}`}
+                      >
+                        <FileText size={10} className="shrink-0" />
+                        <span className="truncate">{pipelineName}</span>
+                      </button>
                     )}
                   </div>
                   <button

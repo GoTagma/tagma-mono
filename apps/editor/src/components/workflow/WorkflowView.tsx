@@ -49,12 +49,15 @@ import {
   connectWorkflowPipelines,
   disconnectWorkflowPipelines,
   moveWorkflowPipeline,
+  setWorkflowPipelineInfiniteLoop,
   removeWorkflowPipeline,
   setWorkflowPipelineLoopCount,
   workflowDragPositionFromPointer,
   workflowNodePointerOffset,
   workflowPathEquals,
   workflowPipelineLoopCount,
+  workflowPipelineLoopIsInfinite,
+  workflowPipelineRunLimit,
   type WorkflowGraphPosition,
 } from './workflow-graph-model';
 
@@ -75,11 +78,11 @@ interface WorkflowViewProps {
   onEditPipeline: (path: string, workflowPath: string | null) => void;
 }
 
-interface PipelineRuntimeState {
+export interface PipelineRuntimeState {
   status: WorkflowGraphNodeStatus;
   runId: string | null;
   runCount: number;
-  maxRuns: number;
+  maxRuns: number | null;
   attempts: Array<{
     attempt: number;
     runId: string | null;
@@ -249,7 +252,7 @@ export function buildWorkflowTaskSnapshots(
   return out;
 }
 
-function buildRuntimeStateByPipeline(
+export function buildRuntimeStateByPipeline(
   workflow: WorkflowYamlEntry | undefined,
   events: readonly WorkflowGraphEvent[],
   result: WorkflowRunResult | null | undefined,
@@ -260,7 +263,7 @@ function buildRuntimeStateByPipeline(
       status: 'waiting',
       runId: null,
       runCount: 0,
-      maxRuns: workflowPipelineLoopCount(pipeline),
+      maxRuns: workflowPipelineRunLimit(pipeline),
       attempts: [],
       startedAt: null,
       finishedAt: null,
@@ -294,7 +297,7 @@ function buildRuntimeStateByPipeline(
       runId: node.runId !== undefined ? node.runId : prev.runId,
       runCount:
         node.runCount !== undefined && node.runCount !== null ? node.runCount : prev.runCount,
-      maxRuns: node.maxRuns !== undefined && node.maxRuns !== null ? node.maxRuns : prev.maxRuns,
+      maxRuns: node.maxRuns !== undefined ? node.maxRuns : prev.maxRuns,
       attempts: node.attempts !== undefined ? node.attempts : prev.attempts,
       startedAt: node.startedAt !== undefined ? node.startedAt : prev.startedAt,
       finishedAt: node.finishedAt !== undefined ? node.finishedAt : prev.finishedAt,
@@ -359,6 +362,15 @@ function formatWorkflowRunTime(value: string | null | undefined): string {
   return new Date(value).toLocaleTimeString();
 }
 
+function formatWorkflowRunLimit(maxRuns: number | null): string {
+  return maxRuns === null ? 'infinite' : String(maxRuns);
+}
+
+function formatWorkflowRunProgress(runCount: number, maxRuns: number | null): string {
+  const limit = formatWorkflowRunLimit(maxRuns);
+  return runCount > 0 ? `Run ${runCount}/${limit}` : `0/${limit}`;
+}
+
 const WORKFLOW_LOOP_COUNT_DRAFT_RE = /^\d+$/;
 
 export function parseWorkflowLoopCountDraft(value: string): number | null {
@@ -370,9 +382,11 @@ export function parseWorkflowLoopCountDraft(value: string): number | null {
 
 function WorkflowLoopCountInput({
   value,
+  infinite,
   onCommit,
 }: {
   value: number;
+  infinite: boolean;
   onCommit: (count: number) => void;
 }) {
   const [draft, setDraft] = useState(() => String(value));
@@ -380,14 +394,21 @@ function WorkflowLoopCountInput({
   const [pendingValue, setPendingValue] = useState<number | null>(null);
 
   useEffect(() => {
+    if (infinite) {
+      setDraft('infinite');
+      setEditing(false);
+      setPendingValue(null);
+      return;
+    }
     if (pendingValue !== null) {
       if (pendingValue === value) setPendingValue(null);
       return;
     }
     if (!editing) setDraft(String(value));
-  }, [editing, pendingValue, value]);
+  }, [editing, infinite, pendingValue, value]);
 
   const commitDraft = () => {
+    if (infinite) return;
     const parsed = parseWorkflowLoopCountDraft(draft) ?? 1;
     setDraft(String(parsed));
     setEditing(false);
@@ -409,14 +430,15 @@ function WorkflowLoopCountInput({
     <input
       id="workflow-loop-count"
       type="text"
-      inputMode="numeric"
-      pattern="[0-9]*"
+      inputMode={infinite ? undefined : 'numeric'}
+      pattern={infinite ? undefined : '[0-9]*'}
       value={draft}
+      disabled={infinite}
       onFocus={() => setEditing(true)}
       onChange={(e) => setDraft(e.currentTarget.value)}
       onBlur={commitDraft}
       onKeyDown={handleKeyDown}
-      className="w-full bg-tagma-surface border border-tagma-border px-2 py-1 text-[11px] font-mono text-tagma-text"
+      className="w-full bg-tagma-surface border border-tagma-border px-2 py-1 text-[11px] font-mono text-tagma-text disabled:text-tagma-muted disabled:cursor-not-allowed"
       aria-label="Loop count"
     />
   );
@@ -535,8 +557,11 @@ export function WorkflowView({
     : [];
   const selectedTasks = selectedPipelineId ? (taskSnapshots[selectedPipelineId] ?? []) : [];
   const selectedLoopCount = selectedPipeline ? workflowPipelineLoopCount(selectedPipeline) : 1;
+  const selectedLoopInfinite = selectedPipeline
+    ? workflowPipelineLoopIsInfinite(selectedPipeline)
+    : false;
   const selectedLoopCountInputKey = selectedPipeline
-    ? `${selectedWorkflowPath ?? ''}:${selectedPipeline.id}`
+    ? `${selectedWorkflowPath ?? ''}:${selectedPipeline.id}:${selectedLoopInfinite ? 'infinite' : 'count'}`
     : 'none';
   const graphRunId = result?.graphRunId ?? graphRunIdFromEvents(events);
   const hasRunActivity = running || !!result || events.length > 0;
@@ -768,9 +793,17 @@ export function WorkflowView({
 
   const updateSelectedLoopCount = (rawCount: number) => {
     if (!selectedWorkflow || !selectedPipeline) return;
-    if (rawCount === selectedLoopCount) return;
+    if (!selectedLoopInfinite && rawCount === selectedLoopCount) return;
     void savePipelines(
       setWorkflowPipelineLoopCount(selectedWorkflow.pipelines, selectedPipeline.id, rawCount),
+    );
+  };
+
+  const updateSelectedInfiniteLoop = (infinite: boolean) => {
+    if (!selectedWorkflow || !selectedPipeline) return;
+    if (infinite === selectedLoopInfinite) return;
+    void savePipelines(
+      setWorkflowPipelineInfiniteLoop(selectedWorkflow.pipelines, selectedPipeline.id, infinite),
     );
   };
 
@@ -1152,8 +1185,9 @@ export function WorkflowView({
                       const targetSlotActive = hoveredConnectionTargetId === pipeline.id;
                       const display = workflowPipelineDisplayInfo(pipeline, workspacePipelines);
                       const loopCount = workflowPipelineLoopCount(pipeline);
+                      const infiniteLoop = workflowPipelineLoopIsInfinite(pipeline);
                       const runCount = state?.runCount ?? 0;
-                      const maxRuns = state?.maxRuns ?? loopCount;
+                      const maxRuns = state ? state.maxRuns : workflowPipelineRunLimit(pipeline);
                       return (
                         <div
                           key={pipeline.id}
@@ -1245,11 +1279,13 @@ export function WorkflowView({
                             <div className="min-w-0 flex items-center gap-2 text-[9px] font-mono text-tagma-muted-dim">
                               <span>{pipeline.depends_on.length} upstream</span>
                               <span>{downstream.length} downstream</span>
-                              {loopCount > 1 && <span>Loop x{loopCount}</span>}
+                              {infiniteLoop ? (
+                                <span>Loop infinite</span>
+                              ) : (
+                                loopCount > 1 && <span>Loop x{loopCount}</span>
+                              )}
                               {runCount > 0 && (
-                                <span>
-                                  Run {runCount}/{maxRuns}
-                                </span>
+                                <span>{formatWorkflowRunProgress(runCount, maxRuns)}</span>
                               )}
                             </div>
                             <div className="flex items-center gap-1">
@@ -1360,10 +1396,26 @@ export function WorkflowView({
                   <WorkflowLoopCountInput
                     key={selectedLoopCountInputKey}
                     value={selectedLoopCount}
+                    infinite={selectedLoopInfinite}
                     onCommit={updateSelectedLoopCount}
                   />
+                  <label
+                    className="mt-2 flex items-center gap-2 text-[11px] text-tagma-text cursor-pointer"
+                    htmlFor="workflow-loop-infinite"
+                  >
+                    <input
+                      id="workflow-loop-infinite"
+                      type="checkbox"
+                      checked={selectedLoopInfinite}
+                      onChange={(e) => updateSelectedInfiniteLoop(e.currentTarget.checked)}
+                      className="accent-tagma-accent"
+                      aria-label="Infinite loop"
+                    />
+                    <span>Infinite loop</span>
+                  </label>
                   <div className="mt-1 text-[10px] font-mono text-tagma-muted-dim">
                     1 runs once. Values above 1 repeat this pipeline exactly that many times.
+                    Infinite loop repeats until the graph run is aborted.
                   </div>
                 </div>
 
@@ -1526,7 +1578,7 @@ function workflowRuntimeCounts(states: readonly PipelineRuntimeState[]): {
   return { total: states.length, completed, failed, running };
 }
 
-function WorkflowRunPage({
+export function WorkflowRunPage({
   workflow,
   workspacePipelines,
   runtimeByPipeline,
@@ -1547,9 +1599,9 @@ function WorkflowRunPage({
   result: WorkflowRunResult | null;
   running: boolean;
   graphRunId: string | null;
-  onEditGraph: () => void;
-  onRunAgain: () => void;
-  onAbort: () => void;
+  onEditGraph?: () => void;
+  onRunAgain?: () => void;
+  onAbort?: () => void;
 }) {
   const pipelineStates = workflow.pipelines.map(
     (pipeline) =>
@@ -1557,7 +1609,7 @@ function WorkflowRunPage({
         status: 'waiting' as WorkflowGraphNodeStatus,
         runId: null,
         runCount: 0,
-        maxRuns: workflowPipelineLoopCount(pipeline),
+        maxRuns: workflowPipelineRunLimit(pipeline),
         attempts: [],
         startedAt: null,
         finishedAt: null,
@@ -1604,42 +1656,46 @@ function WorkflowRunPage({
               {graphRunId ? ` · ${graphRunId}` : ''}
             </div>
           </div>
-          <div className="shrink-0 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onEditGraph}
-              className="h-7 px-2 flex items-center gap-1 border border-tagma-border text-[11px] text-tagma-muted hover:text-tagma-text"
-              title="Edit graph"
-              aria-label="Edit graph"
-            >
-              <Workflow size={11} />
-              <span>Edit graph</span>
-            </button>
-            {running ? (
-              <button
-                type="button"
-                onClick={onAbort}
-                className="h-7 px-2 flex items-center gap-1 border border-tagma-error/40 text-[11px] text-tagma-error hover:bg-tagma-error/10"
-                title="Abort workflow"
-                aria-label="Abort workflow"
-              >
-                <Ban size={11} />
-                <span>Abort</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={onRunAgain}
-                disabled={workflow.pipelines.length === 0}
-                className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Run selected workflow"
-                aria-label="Run selected workflow"
-              >
-                <Play size={11} />
-                <span>Run again</span>
-              </button>
-            )}
-          </div>
+          {(onEditGraph || onRunAgain || (running && onAbort)) && (
+            <div className="shrink-0 flex items-center gap-2">
+              {onEditGraph && (
+                <button
+                  type="button"
+                  onClick={onEditGraph}
+                  className="h-7 px-2 flex items-center gap-1 border border-tagma-border text-[11px] text-tagma-muted hover:text-tagma-text"
+                  title="Edit graph"
+                  aria-label="Edit graph"
+                >
+                  <Workflow size={11} />
+                  <span>Edit graph</span>
+                </button>
+              )}
+              {running && onAbort ? (
+                <button
+                  type="button"
+                  onClick={onAbort}
+                  className="h-7 px-2 flex items-center gap-1 border border-tagma-error/40 text-[11px] text-tagma-error hover:bg-tagma-error/10"
+                  title="Abort workflow"
+                  aria-label="Abort workflow"
+                >
+                  <Ban size={11} />
+                  <span>Abort</span>
+                </button>
+              ) : onRunAgain ? (
+                <button
+                  type="button"
+                  onClick={onRunAgain}
+                  disabled={workflow.pipelines.length === 0}
+                  className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Run selected workflow"
+                  aria-label="Run selected workflow"
+                >
+                  <Play size={11} />
+                  <span>Run again</span>
+                </button>
+              ) : null}
+            </div>
+          )}
         </div>
       </div>
 
@@ -1678,9 +1734,7 @@ function WorkflowRunPage({
                     <div className="border border-tagma-border/60 bg-tagma-bg/60 px-2 py-1.5">
                       <div className="text-tagma-muted-dim">Run</div>
                       <div className="text-tagma-text">
-                        {state.runCount > 0
-                          ? `Run ${state.runCount}/${state.maxRuns}`
-                          : `0/${state.maxRuns}`}
+                        {formatWorkflowRunProgress(state.runCount, state.maxRuns)}
                       </div>
                     </div>
                     <div className="border border-tagma-border/60 bg-tagma-bg/60 px-2 py-1.5">

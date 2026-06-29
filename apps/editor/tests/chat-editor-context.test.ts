@@ -91,6 +91,7 @@ describe('chat editor context', () => {
         configuredAt: '2026-06-18T00:00:00.000Z',
       },
       opencodeChatModel: null,
+      opencodeChatReasoningEffort: 'medium',
       chatContextLimitEnabled: false,
       chatContextRounds: 0,
     } as never);

@@ -27,7 +27,6 @@ import type {
   WireRunEvent,
   EngineResult,
   RawPipelineConfig,
-  PipelineGraphEventPayload,
   PipelineGraphResult,
 } from '@tagma/sdk';
 import { assertSafePluginName } from '../plugin-safety.js';
@@ -64,12 +63,17 @@ import {
   RunSession,
   WorkflowRunSession,
   type WorkflowRunSessionEvent,
+  type WorkflowRunHistorySummary,
+  type PublicPipelineGraphResult,
+  normalizeGraphRunId,
   runtimeWithInjectedEnv,
   normalizeRunTargetTaskIds,
   shouldMirrorEngineResult,
   shouldResolveStartResponse,
   persistRunSummary,
+  persistWorkflowRunHistory,
   readRunSummary,
+  readWorkflowRunHistory,
   safeRunHistoryFile,
   safeRunTaskOutputFile,
   buildRunHistoryAskAiContext,
@@ -106,9 +110,9 @@ function isSafeTaskOutputId(taskId: string): boolean {
   return taskId.length > 0 && /^[A-Za-z0-9._-]+$/.test(taskId);
 }
 
-function publicPipelineGraphResult(result: PipelineGraphResult): unknown {
+function publicPipelineGraphResult(result: PipelineGraphResult): PublicPipelineGraphResult {
   return {
-    graphRunId: result.graphRunId,
+    graphRunId: normalizeGraphRunId(result.graphRunId),
     success: result.success,
     abortReason: result.abortReason,
     pipelines: result.pipelines.map(({ result: _engineResult, ...pipeline }) => pipeline),
@@ -129,6 +133,7 @@ function collectDeclaredSecretNames(config: RawPipelineConfig): string[] {
   return [...names];
 }
 interface RunHistoryEntry {
+  kind?: 'pipeline' | 'graph';
   runId: string;
   path: string;
   startedAt: string;
@@ -150,6 +155,7 @@ interface RunHistoryEntry {
     waiting: number;
     idle: number;
   };
+  pipelineCounts?: WorkflowRunHistorySummary['pipelineCounts'];
 }
 
 // ═══ Session accessors ══════════════════════════════════════════════════
@@ -418,13 +424,13 @@ export function registerRunRoutes(app: express.Express): void {
             }
           },
         });
-        const session = new WorkflowRunSession(runner, abort);
+        const session = new WorkflowRunSession(runner, abort, workflow, workflowPath);
         sessionRef.current = session;
         ws.workflowRunSession = session;
         runner
           .start()
           .then((result) => {
-            session.result = publicPipelineGraphResult(result);
+            session.result = session.result ?? publicPipelineGraphResult(result);
           })
           .catch((err: unknown) => {
             const message = errorMessage(err) || 'Failed to run workflow';
@@ -442,6 +448,11 @@ export function registerRunRoutes(app: express.Express): void {
           })
           .finally(() => {
             session.done = true;
+            try {
+              persistWorkflowRunHistory(ws.workDir!, session);
+            } catch (persistErr) {
+              console.error('[run] failed to persist workflow run history:', persistErr);
+            }
             clearWorkflowSessionLater(ws, session);
             if (resolveStartResponse) {
               resolveStartResponse();
@@ -462,15 +473,26 @@ export function registerRunRoutes(app: express.Express): void {
           events: session.allBuffered(),
         });
       }
-      const events: PipelineGraphEventPayload[] = [];
+      const abort = new AbortController();
       const runner = new PipelineGraphRunner(workflow, ws.workDir, {
         registry: ws.registry,
         runtime: bunRuntime(),
         maxLogRuns: MAX_LOG_RUNS,
-        onEvent: (event) => events.push(event),
+        signal: abort.signal,
+      });
+      const session = new WorkflowRunSession(runner, abort, workflow, workflowPath);
+      runner.subscribe((event) => {
+        session.ingest(event);
       });
       const result = await runner.start();
-      res.json({ ok: true, result: publicPipelineGraphResult(result), events });
+      session.result = session.result ?? publicPipelineGraphResult(result);
+      session.done = true;
+      try {
+        persistWorkflowRunHistory(ws.workDir, session);
+      } catch (persistErr) {
+        console.error('[run] failed to persist workflow run history:', persistErr);
+      }
+      res.json({ ok: true, result: session.result, events: session.allBuffered() });
     } catch (err: unknown) {
       res.status(400).json({ error: errorMessage(err) || 'Failed to run workflow' });
     } finally {
@@ -927,12 +949,33 @@ export function registerRunRoutes(app: express.Express): void {
       if (existsSync(logsDir)) {
         assertNotSymlink(logsDir, '.tagma/logs');
         entries = readdirSync(logsDir)
-          .filter((name) => name.startsWith('run_'))
+          .filter((name) => name.startsWith('run_') || name.startsWith('graph_'))
           .map((name): RunHistoryEntry | null => {
             const full = join(logsDir, name);
             try {
               const st = lstatSync(full);
               if (!st.isDirectory()) return null;
+              if (name.startsWith('graph_')) {
+                const summary = readWorkflowRunHistory(cwd, name);
+                if (!summary) return null;
+                const summaryFile = join(full, 'workflow-run.json');
+                const summaryStat =
+                  existsSync(summaryFile) && !lstatSync(summaryFile).isSymbolicLink()
+                    ? statSync(summaryFile)
+                    : null;
+                return {
+                  kind: 'graph',
+                  runId: name,
+                  path: full,
+                  startedAt: summary.startedAt ?? st.mtime.toISOString(),
+                  sizeBytes: summaryStat?.size ?? 0,
+                  pipelineName: summary.workflowName,
+                  success: summary.success,
+                  running: summary.running === true,
+                  finishedAt: summary.finishedAt ?? undefined,
+                  pipelineCounts: summary.pipelineCounts,
+                };
+              }
               const logFile = join(full, 'pipeline.log');
               const logStat =
                 existsSync(logFile) && !lstatSync(logFile).isSymbolicLink()
@@ -940,6 +983,7 @@ export function registerRunRoutes(app: express.Express): void {
                   : null;
               const summary = readRunSummary(cwd, name);
               return {
+                kind: 'pipeline',
                 runId: name,
                 path: full,
                 startedAt: summary?.startedAt ?? st.mtime.toISOString(),
@@ -959,6 +1003,13 @@ export function registerRunRoutes(app: express.Express): void {
       }
       for (const session of listSessions(ws)) {
         const liveEntry = session.buildLiveHistoryEntry(cwd);
+        const existing = entries.findIndex((entry) => entry.runId === liveEntry.runId);
+        if (existing >= 0) entries[existing] = { ...entries[existing], ...liveEntry };
+        else entries.push(liveEntry);
+      }
+      const workflowSession = getWorkflowSession(ws);
+      if (workflowSession) {
+        const liveEntry = workflowSession.buildHistoryEntry(cwd);
         const existing = entries.findIndex((entry) => entry.runId === liveEntry.runId);
         if (existing >= 0) entries[existing] = { ...entries[existing], ...liveEntry };
         else entries.push(liveEntry);
@@ -1030,6 +1081,25 @@ export function registerRunRoutes(app: express.Express): void {
       return res.status(404).json({ error: 'summary not found' });
     }
     res.json(summary);
+  });
+
+  app.get('/api/run/history/:runId/workflow', (req, res) => {
+    const ws = requireWorkspace(req, res);
+    if (!ws) return;
+    const { runId } = req.params;
+    if (!/^graph_[A-Za-z0-9_-]+$/.test(runId)) {
+      return res.status(400).json({ error: 'invalid graphRunId' });
+    }
+    const session = getWorkflowSession(ws);
+    if (session?.graphRunId === runId) {
+      return res.json(session.buildHistorySummary());
+    }
+    const cwd = ws.workDir || process.cwd();
+    const summary = readWorkflowRunHistory(cwd, runId);
+    if (!summary) {
+      return res.status(404).json({ error: 'workflow run history not found' });
+    }
+    res.json({ ...summary, running: false });
   });
 
   // On-demand reader for a single task's full stdout/stderr from a past

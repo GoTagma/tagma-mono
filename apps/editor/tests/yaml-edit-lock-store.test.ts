@@ -362,6 +362,35 @@ describe('YAML edit lock store workspace routing', () => {
     });
   });
 
+  test('keeps a shared local chat lock until every local lease is released', async () => {
+    setClientWorkspace('C:/repo-a');
+    useYamlEditLockStore.getState().syncActiveYamlPath('C:/repo-a/.tagma/alpha/alpha.yaml');
+
+    const first = await acquireChatYamlEditLock('first turn');
+    const second = await acquireChatYamlEditLock('second turn');
+
+    expect(first).toEqual(second);
+    expect(requests[0]).toMatchObject({ method: 'POST', workspace: 'C:/repo-a' });
+    expect(requests[1]).toMatchObject({
+      method: 'POST',
+      workspace: 'C:/repo-a',
+      body: { id: 'lock-a' },
+    });
+
+    await releaseChatYamlEditLock(first);
+
+    expect(requests.filter((request) => request.method === 'DELETE')).toHaveLength(0);
+    expect(useYamlEditLockStore.getState()).toMatchObject({
+      active: true,
+      local: true,
+      lockWorkspaceKey: 'C:/repo-a',
+    });
+
+    await releaseChatYamlEditLock(second);
+
+    expect(requests[2]).toMatchObject({ method: 'DELETE', workspace: 'C:/repo-a' });
+  });
+
   test('stale heartbeat failure does not clear a newer workspace lock', async () => {
     const heartbeats: Array<() => void> = [];
     const heldHeartbeatA = deferred<Response>();

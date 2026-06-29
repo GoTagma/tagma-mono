@@ -729,6 +729,12 @@ describe('workspace route validation', () => {
               lifecycle: { max_runs: 3, stop_when: 'success' },
               position: { x: 40, y: 50 },
             },
+            {
+              id: 'build_forever',
+              path: yamlPath,
+              lifecycle: { max_runs: 'infinite', stop_when: 'always' },
+              position: { x: 300, y: 50 },
+            },
           ],
         },
       },
@@ -741,15 +747,30 @@ describe('workspace route validation', () => {
     expect(saved).toContain('kind: graph');
     expect(saved).toContain('max_runs: 3');
     expect(saved).toContain('stop_when: success');
+    expect(saved).toContain('max_runs: infinite');
+    expect(saved).toContain('stop_when: always');
     expect(
       (
         res.body as {
           workflow?: {
-            pipelines?: Array<{ lifecycle?: { max_runs?: number; stop_when?: string } }>;
+            pipelines?: Array<{
+              lifecycle?: { max_runs?: number | 'infinite'; stop_when?: string };
+            }>;
           };
         }
       ).workflow?.pipelines?.[0]?.lifecycle,
     ).toEqual({ max_runs: 3, stop_when: 'success' });
+    expect(
+      (
+        res.body as {
+          workflow?: {
+            pipelines?: Array<{
+              lifecycle?: { max_runs?: number | 'infinite'; stop_when?: string };
+            }>;
+          };
+        }
+      ).workflow?.pipelines?.[1]?.lifecycle,
+    ).toEqual({ max_runs: 'infinite', stop_when: 'always' });
   });
 
   test('PATCH /api/workspace/workflows allows repeated pipeline paths as separate graph instances', () => {

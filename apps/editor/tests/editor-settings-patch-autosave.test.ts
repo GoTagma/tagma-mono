@@ -159,6 +159,24 @@ describe('parseEditorSettingsPatch', () => {
     ).toEqual({});
   });
 
+  test('accepts opencode chat reasoning effort patches', () => {
+    expect(parseEditorSettingsPatch({ opencodeChatReasoningEffort: 'low' })).toEqual({
+      opencodeChatReasoningEffort: 'low',
+    });
+    expect(parseEditorSettingsPatch({ opencodeChatReasoningEffort: 'medium' })).toEqual({
+      opencodeChatReasoningEffort: 'medium',
+    });
+    expect(parseEditorSettingsPatch({ opencodeChatReasoningEffort: 'high' })).toEqual({
+      opencodeChatReasoningEffort: 'high',
+    });
+  });
+
+  test('rejects malformed opencode chat reasoning effort patches', () => {
+    expect(parseEditorSettingsPatch({ opencodeChatReasoningEffort: null })).toEqual({});
+    expect(parseEditorSettingsPatch({ opencodeChatReasoningEffort: 'max' })).toEqual({});
+    expect(parseEditorSettingsPatch({ opencodeChatReasoningEffort: 1 })).toEqual({});
+  });
+
   test('returns empty patch when body is an array', () => {
     expect(parseEditorSettingsPatch([])).toEqual({});
     expect(parseEditorSettingsPatch([{ autoSaveEnabled: false }])).toEqual({});

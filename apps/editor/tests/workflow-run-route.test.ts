@@ -262,7 +262,11 @@ test('POST /api/run/workflow/start runs a workspace workflow graph', async () =>
     const res = await postJsonReq(url, '/api/run/workflow/start', { path: workflowPath });
     const body = JSON.parse(res.body) as {
       ok?: boolean;
-      result?: { success?: boolean; pipelines?: Array<{ pipelineId: string; status: string }> };
+      result?: {
+        graphRunId?: string;
+        success?: boolean;
+        pipelines?: Array<{ pipelineId: string; status: string }>;
+      };
       events?: Array<{ type: string }>;
       error?: string;
     };
@@ -275,6 +279,43 @@ test('POST /api/run/workflow/start runs a workspace workflow graph', async () =>
       ['p2', 'success'],
     ]);
     expect(body.events?.some((event) => event.type === 'pipeline_event')).toBe(true);
+
+    const graphRunId = body.result?.graphRunId;
+    expect(typeof graphRunId).toBe('string');
+    if (!graphRunId) throw new Error('missing graphRunId');
+
+    const historyRes = await getReq(url, '/api/run/history');
+    const history = JSON.parse(historyRes.body) as {
+      runs?: Array<{
+        kind?: string;
+        runId: string;
+        pipelineName?: string;
+        success?: boolean;
+        pipelineCounts?: { total: number; success: number };
+      }>;
+    };
+    const graphEntry = history.runs?.find((run) => run.runId === graphRunId);
+    expect(graphEntry).toMatchObject({
+      kind: 'graph',
+      runId: graphRunId,
+      pipelineName: 'release-flow',
+      success: true,
+      pipelineCounts: { total: 2, success: 2 },
+    });
+
+    const detailRes = await getReq(url, `/api/run/history/${graphRunId}/workflow`);
+    const detail = JSON.parse(detailRes.body) as {
+      graphRunId?: string;
+      workflow?: { workflowName?: string | null; pipelines?: Array<{ id: string }> };
+      events?: Array<{ type: string }>;
+      result?: { success?: boolean };
+    };
+    expect(detailRes.status).toBe(200);
+    expect(detail.graphRunId).toBe(graphRunId);
+    expect(detail.workflow?.workflowName).toBe('release-flow');
+    expect(detail.workflow?.pipelines?.map((pipeline) => pipeline.id)).toEqual(['p1', 'p2']);
+    expect(detail.events?.some((event) => event.type === 'graph_start')).toBe(true);
+    expect(detail.result?.success).toBe(true);
   } finally {
     await close();
   }

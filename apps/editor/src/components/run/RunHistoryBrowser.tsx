@@ -16,6 +16,7 @@ import {
   Terminal,
   Play,
   Search,
+  Workflow,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import type {
@@ -24,12 +25,19 @@ import type {
   RunSummary,
   RunSummaryTask,
   TaskStatus,
+  WorkflowRunHistoryDetail,
+  WorkspaceYamlEntry,
 } from '../../api/client';
 import { HistoryFlowView } from './HistoryFlowView';
 import { useRunStore } from '../../store/run-store';
 import { usePipelineStore, type TaskPosition } from '../../store/pipeline-store';
 import { CopyButton } from './CopyButton';
 import { RunCanvasView } from './RunCanvasView';
+import {
+  WorkflowRunPage,
+  buildRuntimeStateByPipeline,
+  buildWorkflowTaskSnapshots,
+} from '../workflow/WorkflowView';
 
 const STATUS_ICON: Record<TaskStatus, React.ReactNode> = {
   idle: <Clock size={9} className="text-tagma-muted/50" />,
@@ -66,11 +74,28 @@ export function isRunHistoryEntryRunning(run: Pick<RunHistoryEntry, 'running'>):
   return run.running === true;
 }
 
+export function runHistoryEntryKind(
+  run: Pick<RunHistoryEntry, 'kind' | 'runId'>,
+): 'pipeline' | 'graph' {
+  return run.kind ?? (run.runId.startsWith('graph_') ? 'graph' : 'pipeline');
+}
+
 export function hasRunningRunEntries(runs: readonly Pick<RunHistoryEntry, 'running'>[]): boolean {
   return runs.some(isRunHistoryEntryRunning);
 }
 
-export function formatRunProgressLabel(run: Pick<RunHistoryEntry, 'taskCounts'>): string | null {
+export function formatRunProgressLabel(
+  run: Pick<RunHistoryEntry, 'taskCounts' | 'pipelineCounts'>,
+): string | null {
+  const pipelineCounts = run.pipelineCounts;
+  if (pipelineCounts && pipelineCounts.total > 0) {
+    const completed =
+      pipelineCounts.success +
+      pipelineCounts.failed +
+      pipelineCounts.skipped +
+      pipelineCounts.aborted;
+    return `${completed}/${pipelineCounts.total}`;
+  }
   const counts = run.taskCounts;
   if (!counts || counts.total <= 0) return null;
   const completed = counts.success + counts.failed + counts.timeout + counts.skipped;
@@ -89,7 +114,13 @@ export function filterRunHistoryEntries(
     if (outcome === 'failed' && (isRunHistoryEntryRunning(r) || r.success !== false)) {
       return false;
     }
-    if (q && !(r.pipelineName ?? '').toLowerCase().includes(q)) return false;
+    if (
+      q &&
+      !(r.pipelineName ?? '').toLowerCase().includes(q) &&
+      !r.runId.toLowerCase().includes(q)
+    ) {
+      return false;
+    }
     return true;
   });
 }
@@ -129,6 +160,7 @@ export function applyFocusedRunningRunToHistory(
     running: true,
     success: undefined,
     finishedAt: undefined,
+    kind: focused.runId.startsWith('graph_') ? 'graph' : (existing?.kind ?? 'pipeline'),
     pipelineName: focused.pipelineName ?? existing?.pipelineName,
   };
   return [liveEntry, ...runs.filter((run) => run.runId !== focused.runId)];
@@ -433,6 +465,10 @@ export function RunHistoryBrowser({
   const [summary, setSummary] = useState<RunSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [graphDetail, setGraphDetail] = useState<WorkflowRunHistoryDetail | null>(null);
+  const [graphDetailLoading, setGraphDetailLoading] = useState(false);
+  const [graphDetailError, setGraphDetailError] = useState<string | null>(null);
+  const [workspacePipelines, setWorkspacePipelines] = useState<WorkspaceYamlEntry[]>([]);
   const [logContent, setLogContent] = useState<string>('');
   const [logLoading, setLogLoading] = useState(false);
   const [yamlContent, setYamlContent] = useState<string | null>(null);
@@ -497,11 +533,14 @@ export function RunHistoryBrowser({
       const preserveCurrent = options.preserveCurrent && selectedRunIdRef.current === runId;
       selectedRunIdRef.current = runId;
       setSelectedRunId(runId);
+      const graphRun = runId.startsWith('graph_');
       if (!preserveCurrent) {
         setSummary(null);
+        setGraphDetail(null);
         setLogContent('');
         setYamlContent(null);
         setSummaryError(null);
+        setGraphDetailError(null);
       }
       // Invalidate Log / Yaml caches so the effect below re-fetches for
       // the new run — also covers re-selecting the same runId (e.g. after
@@ -513,11 +552,37 @@ export function RunHistoryBrowser({
       // B3: Do NOT force viewMode back to 'flow' here — keep whatever the
       // user last chose so switching between runs doesn't disrupt a
       // comparison session (e.g. side-by-side yaml inspection).
+      if (graphRun) {
+        if (!preserveCurrent) setGraphDetailLoading(true);
+        try {
+          const [detail, pipelines] = await Promise.all([
+            api.getWorkflowRunHistory(runId),
+            api.listWorkspaceYamls().catch(() => ({ entries: [] as WorkspaceYamlEntry[] })),
+          ]);
+          if (selectedRunIdRef.current !== runId) return null;
+          setGraphDetail(detail);
+          setWorkspacePipelines(pipelines.entries);
+          setGraphDetailError(null);
+        } catch (e: unknown) {
+          if (selectedRunIdRef.current !== runId) return null;
+          if (!preserveCurrent) {
+            setGraphDetailError(
+              e instanceof Error ? e.message : 'No graph run detail available for this run',
+            );
+          }
+        } finally {
+          if (!preserveCurrent && selectedRunIdRef.current === runId) {
+            setGraphDetailLoading(false);
+          }
+        }
+        return null;
+      }
       if (!preserveCurrent) setSummaryLoading(true);
       try {
         const s = await api.getRunSummary(runId);
         if (selectedRunIdRef.current !== runId) return null; // superseded
         setSummary(s);
+        setGraphDetail(null);
         setSummaryError(null);
         return s;
       } catch (e: unknown) {
@@ -573,6 +638,7 @@ export function RunHistoryBrowser({
   // Yaml on the same run doesn't re-fetch already-cached text.
   useEffect(() => {
     if (!selectedRunId) return;
+    if (selectedRunId.startsWith('graph_')) return;
     if (viewMode === 'log' && logLoadedForRef.current !== selectedRunId) {
       logLoadedForRef.current = selectedRunId;
       loadLog(selectedRunId);
@@ -634,6 +700,13 @@ export function RunHistoryBrowser({
     () => runs.find((run) => run.runId === selectedRunId) ?? null,
     [runs, selectedRunId],
   );
+  const selectedRunKind = selectedRun
+    ? runHistoryEntryKind(selectedRun)
+    : selectedRunId?.startsWith('graph_')
+      ? 'graph'
+      : selectedRunId
+        ? 'pipeline'
+        : null;
   const liveRunCanvasEdges = useMemo(
     () =>
       summary
@@ -670,6 +743,37 @@ export function RunHistoryBrowser({
 
   useEffect(() => {
     if (!focusedHistoryRunId || selectedRunIdRef.current === focusedHistoryRunId) return;
+    if (focusedHistoryRunId.startsWith('graph_')) {
+      selectedRunIdRef.current = focusedHistoryRunId;
+      setSelectedRunId(focusedHistoryRunId);
+      setSummary(null);
+      setSummaryError(null);
+      setGraphDetail(null);
+      setGraphDetailError(null);
+      setOutcome('running');
+      setRuns((current) =>
+        applyFocusedRunningRunToHistory(current, {
+          runId: focusedHistoryRunId,
+          pipelineName: null,
+          startedAt: new Date().toISOString(),
+        }),
+      );
+      void (async () => {
+        const loadedRuns = await loadHistory();
+        setRuns(
+          applyFocusedRunningRunToHistory(loadedRuns, {
+            runId: focusedHistoryRunId,
+            pipelineName:
+              loadedRuns.find((run) => run.runId === focusedHistoryRunId)?.pipelineName ?? null,
+            startedAt:
+              loadedRuns.find((run) => run.runId === focusedHistoryRunId)?.startedAt ??
+              new Date().toISOString(),
+          }),
+        );
+        await loadRun(focusedHistoryRunId);
+      })();
+      return;
+    }
     const terminalFocus =
       focusedHistoryRunId === runStoreRunId
         ? terminalRunFocusForStatus(runStatus, focusedHistoryRunId)
@@ -748,14 +852,15 @@ export function RunHistoryBrowser({
     summary?.running,
   ]);
 
-  const primaryAction = selectedRunId
-    ? getHistoryRunPrimaryAction({
-        selectedRun,
-        summary,
-        replayBusy,
-        stopBusy: stopLoading,
-      })
-    : null;
+  const primaryAction =
+    selectedRunId && selectedRunKind === 'pipeline'
+      ? getHistoryRunPrimaryAction({
+          selectedRun,
+          summary,
+          replayBusy,
+          stopBusy: stopLoading,
+        })
+      : null;
 
   const handleReplay = useCallback(
     async (runId: string) => {
@@ -900,41 +1005,58 @@ export function RunHistoryBrowser({
         </div>
 
         <section className="flex-1 min-h-0 overflow-hidden flex flex-col">
-          <DetailPane
-            selectedRunId={selectedRunId}
-            summary={summary}
-            summaryLoading={summaryLoading}
-            summaryError={summaryError}
-            logContent={logContent}
-            logLoading={logLoading}
-            yamlContent={yamlContent}
-            yamlLoading={yamlLoading}
-            viewMode={viewMode}
-            onViewMode={(mode) => {
-              setViewMode(mode);
-              if (mode === 'log' && selectedRunId && !logContent && !logLoading) {
-                loadLog(selectedRunId);
+          {selectedRunKind === 'graph' ? (
+            <GraphRunDetailPane
+              selectedRunId={selectedRunId}
+              detail={graphDetail}
+              loading={graphDetailLoading}
+              error={graphDetailError}
+              workspacePipelines={workspacePipelines}
+              onAbort={
+                selectedRunId && graphDetail?.running === true
+                  ? () => {
+                      void api.abortWorkflowRun(selectedRunId);
+                    }
+                  : undefined
               }
-              if (mode === 'yaml' && selectedRunId && yamlContent === null && !yamlLoading) {
-                loadYaml(selectedRunId);
+            />
+          ) : (
+            <DetailPane
+              selectedRunId={selectedRunId}
+              summary={summary}
+              summaryLoading={summaryLoading}
+              summaryError={summaryError}
+              logContent={logContent}
+              logLoading={logLoading}
+              yamlContent={yamlContent}
+              yamlLoading={yamlLoading}
+              viewMode={viewMode}
+              onViewMode={(mode) => {
+                setViewMode(mode);
+                if (mode === 'log' && selectedRunId && !logContent && !logLoading) {
+                  loadLog(selectedRunId);
+                }
+                if (mode === 'yaml' && selectedRunId && yamlContent === null && !yamlLoading) {
+                  loadYaml(selectedRunId);
+                }
+              }}
+              primaryAction={primaryAction}
+              onPrimaryAction={
+                selectedRunId && primaryAction
+                  ? primaryAction.kind === 'stop'
+                    ? () => handleStopSelectedRun(selectedRunId)
+                    : () => handleReplay(selectedRunId)
+                  : undefined
               }
-            }}
-            primaryAction={primaryAction}
-            onPrimaryAction={
-              selectedRunId && primaryAction
-                ? primaryAction.kind === 'stop'
-                  ? () => handleStopSelectedRun(selectedRunId)
-                  : () => handleReplay(selectedRunId)
-                : undefined
-            }
-            actionError={stopError ?? replayError}
-            onOpenSource={(sourceRunId) => loadRun(sourceRunId)}
-            tasksByTrack={tasksByTrack}
-            showLiveRunCanvas={showLiveRunCanvas}
-            liveSnapshot={liveSnapshot}
-            liveRunCanvasEdges={liveRunCanvasEdges}
-            liveRunCanvasPositions={liveRunCanvasPositions}
-          />
+              actionError={stopError ?? replayError}
+              onOpenSource={(sourceRunId) => loadRun(sourceRunId)}
+              tasksByTrack={tasksByTrack}
+              showLiveRunCanvas={showLiveRunCanvas}
+              liveSnapshot={liveSnapshot}
+              liveRunCanvasEdges={liveRunCanvasEdges}
+              liveRunCanvasPositions={liveRunCanvasPositions}
+            />
+          )}
         </section>
       </div>
     </div>
@@ -1052,7 +1174,20 @@ function RunListItem({
   onClick: () => void;
 }) {
   const running = isRunHistoryEntryRunning(run);
+  const kind = runHistoryEntryKind(run);
   const progressLabel = running ? formatRunProgressLabel(run) : null;
+  const kindChip =
+    kind === 'graph' ? (
+      <span className="shrink-0 inline-flex items-center gap-0.5 px-1 py-px text-[8px] font-mono uppercase tracking-wider border border-tagma-ready/40 text-tagma-ready/90 bg-tagma-ready/5">
+        <Workflow size={7} />
+        graph
+      </span>
+    ) : (
+      <span className="shrink-0 inline-flex items-center gap-0.5 px-1 py-px text-[8px] font-mono uppercase tracking-wider border border-tagma-muted/25 text-tagma-muted/80 bg-tagma-muted/5">
+        <GitBranch size={7} />
+        pipeline
+      </span>
+    );
   const statusIcon = running ? (
     <Loader2 size={11} className="text-tagma-ready shrink-0 animate-spin" />
   ) : run.success == null ? (
@@ -1075,7 +1210,9 @@ function RunListItem({
     >
       {selected && (
         <span
-          className="absolute left-0 top-1 bottom-1 w-[2px] bg-tagma-accent"
+          className={`absolute left-0 top-1 bottom-1 w-[2px] ${
+            kind === 'graph' ? 'bg-tagma-ready' : 'bg-tagma-accent'
+          }`}
           aria-hidden="true"
         />
       )}
@@ -1096,6 +1233,7 @@ function RunListItem({
             replay
           </span>
         )}
+        {kindChip}
         <span className="text-[9px] font-mono tabular-nums text-tagma-muted-dim shrink-0">
           {running
             ? progressLabel
@@ -1196,6 +1334,91 @@ function EmptyRunList({
         <>No runs available.</>
       )}
     </div>
+  );
+}
+
+function GraphRunDetailPane({
+  selectedRunId,
+  detail,
+  loading,
+  error,
+  workspacePipelines,
+  onAbort,
+}: {
+  selectedRunId: string | null;
+  detail: WorkflowRunHistoryDetail | null;
+  loading: boolean;
+  error: string | null;
+  workspacePipelines: WorkspaceYamlEntry[];
+  onAbort?: () => void;
+}) {
+  const runtimeByPipeline = useMemo(
+    () =>
+      detail
+        ? buildRuntimeStateByPipeline(detail.workflow, detail.events, detail.result)
+        : new Map(),
+    [detail],
+  );
+  const taskSnapshots = useMemo(
+    () => (detail ? buildWorkflowTaskSnapshots(detail.events) : {}),
+    [detail],
+  );
+
+  if (!selectedRunId) {
+    return (
+      <div className="flex-1 flex flex-col overflow-hidden bg-tagma-bg">
+        <div className="px-5 py-6 text-[11px] text-tagma-muted-dim leading-relaxed max-w-md">
+          Select a run from the list to see its execution detail.
+        </div>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex flex-col overflow-hidden bg-tagma-bg">
+        <div className="px-6 py-10 text-[11px] text-tagma-muted-dim">
+          <Loader2 size={12} className="animate-spin inline mr-2" />
+          Loading graph run...
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex-1 flex flex-col overflow-hidden bg-tagma-bg">
+        <div className="px-6 py-5">
+          <div className="p-3 bg-tagma-warning/5 border border-tagma-warning/20 text-[10px] text-tagma-warning font-mono leading-relaxed">
+            {error}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!detail) {
+    return (
+      <div className="flex-1 flex flex-col overflow-hidden bg-tagma-bg">
+        <div className="px-6 py-10 text-[11px] text-tagma-muted-dim">
+          No graph run detail available.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <WorkflowRunPage
+      workflow={detail.workflow}
+      workspacePipelines={workspacePipelines}
+      runtimeByPipeline={runtimeByPipeline}
+      taskSnapshots={taskSnapshots}
+      events={detail.events}
+      result={detail.result}
+      running={detail.running === true}
+      graphRunId={detail.graphRunId}
+      onAbort={onAbort}
+    />
   );
 }
 

@@ -52,13 +52,21 @@ import { renderAskAiContext } from '../utils/ask-ai-context';
 import type { ChatYamlSnapshot, ChatYamlTarget } from '../utils/chat-yaml-reconcile';
 import {
   acquireChatYamlEditLock,
+  isLocalYamlEditLockHeldForWorkspace,
   isYamlEditLocked,
   releaseChatYamlEditLock,
   YAML_EDIT_LOCK_MESSAGE,
   type ChatYamlEditLockLease,
 } from './yaml-edit-lock-store';
 import { describeToolPartForActivity } from '../utils/chat-tool-display';
-import { loadPersisted, savePersisted, sameModelPick, type ModelPick } from './chat-persist';
+import {
+  isChatReasoningEffort,
+  loadPersisted,
+  savePersisted,
+  sameModelPick,
+  type ChatReasoningEffort,
+  type ModelPick,
+} from './chat-persist';
 import { buildEditorContext } from './chat-editor-context';
 import { buildTagmaSessionMetadata } from '../../shared/opencode-session-metadata.js';
 
@@ -111,6 +119,21 @@ export type ChatYamlPostAction = ChatYamlTarget & {
   compile: Pick<YamlCompileResult, 'success' | 'summary' | 'validation'>;
 };
 
+export type ChatYamlSessionResult = ChatYamlTarget & {
+  sessionId: string;
+  status: 'ready' | 'failed';
+  compile: Pick<YamlCompileResult, 'success' | 'summary' | 'validation'>;
+  completedAt: number;
+};
+
+export interface ChatFinishedTurn {
+  id: string;
+  sessionId: string | null;
+  endedAt: number;
+  hidden: boolean;
+  yamlSnapshotBeforeSend: ChatYamlSnapshot | null;
+}
+
 export type ChatTurnHealth = {
   status: 'checking' | 'ok' | 'degraded';
   checkedAt: number;
@@ -158,6 +181,8 @@ interface ChatStore {
 
   model: ModelPick | null;
   setModel: (m: ModelPick) => void;
+  reasoningEffort: ChatReasoningEffort;
+  setReasoningEffort: (effort: ChatReasoningEffort) => void;
 
   /**
    * Hard-wired to the `tagma-router` custom agent defined in
@@ -172,6 +197,10 @@ interface ChatStore {
   sessions: Session[];
   sessionStates: Record<string, ChatSessionRuntimeState>;
   completedUnreadSessionIds: string[];
+  sessionYamlResults: Record<string, ChatYamlSessionResult>;
+  dismissedSessionYamlResultToastIds: string[];
+  lastFinishedTurn: ChatFinishedTurn | null;
+  finishedTurnQueue: ChatFinishedTurn[];
   currentSessionId: string | null;
   messages: OpencodeThreadEntry[];
   sending: boolean;
@@ -266,6 +295,9 @@ interface ChatStore {
   postChatYamlAction: ChatYamlPostAction | null;
   setPostChatYamlAction: (action: ChatYamlPostAction | null) => void;
   clearPostChatYamlAction: () => void;
+  setSessionYamlResult: (result: ChatYamlSessionResult) => void;
+  dismissSessionYamlResultToast: (sessionId: string) => void;
+  acknowledgeFinishedTurn: (turnId: string) => void;
   /** Last send error — rendered as a dismissable banner above the composer. */
   sendError: string | null;
   dismissSendError: () => void;
@@ -449,10 +481,35 @@ interface SessionCreateBodyWithMetadata {
 
 const FORCED_CHAT_AGENT = 'tagma-router';
 const DESKTOP_CHAT_TITLE_MAX_LENGTH = 80;
+const DEFAULT_CHAT_REASONING_EFFORT: ChatReasoningEffort = 'medium';
+const CHAT_REASONING_EFFORT_TO_VARIANT: Record<ChatReasoningEffort, string | null> = {
+  low: 'minimal',
+  medium: null,
+  high: 'high',
+};
+let finishedTurnSeq = 0;
 // Editable instruction seeded into the composer when error/bug context is
 // attached via "Ask AI" and the composer is empty. The user can edit or
 // clear it before sending.
 const DEFAULT_BUG_INSTRUCTION = 'Fix this bug.';
+
+function makeFinishedTurn(input: Omit<ChatFinishedTurn, 'id'>): ChatFinishedTurn {
+  finishedTurnSeq += 1;
+  return { ...input, id: `finished_${input.endedAt}_${finishedTurnSeq}` };
+}
+
+function selectedModelSupportsReasoning(
+  model: ModelPick | null,
+  providers: readonly Provider[],
+): boolean {
+  if (!model) return false;
+  const provider = providers.find((entry) => entry.id === model.providerID);
+  return provider?.models?.[model.modelID]?.capabilities?.reasoning === true;
+}
+
+function chatReasoningEffortToVariant(effort: ChatReasoningEffort): string | null {
+  return CHAT_REASONING_EFFORT_TO_VARIANT[effort];
+}
 
 function desktopChatTitleFromPrompt(text: string): string | null {
   const normalized = text.replace(/\s+/g, ' ').trim();
@@ -537,6 +594,17 @@ function persistModelToEditorSettings(model: ModelPick | null): void {
     })
     .catch((err) => {
       console.warn('[chat] failed to persist selected opencode model:', err);
+    });
+}
+
+function persistReasoningEffortToEditorSettings(effort: ChatReasoningEffort): void {
+  void api
+    .updateEditorSettings({ opencodeChatReasoningEffort: effort })
+    .then((settings) => {
+      useEditorSettingsStore.getState().updateLocal(settings);
+    })
+    .catch((err) => {
+      console.warn('[chat] failed to persist selected opencode reasoning effort:', err);
     });
 }
 
@@ -1375,18 +1443,28 @@ function finishChatTurn(set: ChatSet, patch: Partial<ChatStore> = {}): void {
   // would keep ticking forever after the turn was over.
   set((prev) => {
     const messages = sealCurrentTurnActivity(prev);
+    const endedAt = Date.now();
+    const finishedTurn = makeFinishedTurn({
+      sessionId: prev.currentSessionId,
+      endedAt,
+      hidden: false,
+      yamlSnapshotBeforeSend: prev.yamlSnapshotBeforeSend,
+    });
     return {
       ...patch,
       messages,
       sending: false,
       pendingUserText: null,
-      lastSendingEndedAt: Date.now(),
+      lastSendingEndedAt: endedAt,
+      lastFinishedTurn: finishedTurn,
+      finishedTurnQueue: [...prev.finishedTurnQueue, finishedTurn],
       turnStartedAt: null,
       turnAssistantMessageIds: [],
       lastActivityAt: null,
       sessionStatus: null,
       turnHealth: null,
       pendingActivity: [],
+      yamlSnapshotBeforeSend: null,
     };
   });
 }
@@ -1989,6 +2067,12 @@ function finishHiddenSession(
     if (!runtime.sending && !runtime.pendingUserText) return {};
     if (!canFinish(runtime)) return {};
     const endedAt = Date.now();
+    const finishedTurn = makeFinishedTurn({
+      sessionId,
+      endedAt,
+      hidden: true,
+      yamlSnapshotBeforeSend: runtime.yamlSnapshotBeforeSend,
+    });
     const next = finishSessionRuntime(runtime);
     finished = true;
     return {
@@ -2001,7 +2085,8 @@ function finishHiddenSession(
         sessionId,
       ),
       lastSendingEndedAt: endedAt,
-      yamlSnapshotBeforeSend: runtime.yamlSnapshotBeforeSend,
+      lastFinishedTurn: finishedTurn,
+      finishedTurnQueue: [...prev.finishedTurnQueue, finishedTurn],
     };
   });
   return finished;
@@ -2256,12 +2341,9 @@ function chatTurnBlocksSessionMutation(
   );
 }
 
-function chatTurnBlocksNewPrompt(
-  state: Pick<ChatStore, 'sessionStates' | 'currentSessionId' | 'reconciling' | 'flushing'>,
-): boolean {
-  return (
-    hasHiddenActiveChatTurn(state) || state.reconciling || state.flushing || isYamlEditLocked()
-  );
+function chatTurnBlocksNewPrompt(state: Pick<ChatStore, 'reconciling' | 'flushing'>): boolean {
+  const blockedByYamlLock = isYamlEditLocked() && !isLocalYamlEditLockHeldForWorkspace();
+  return state.reconciling || state.flushing || blockedByYamlLock;
 }
 
 function chatTurnBlockedMessage(): string {
@@ -2327,7 +2409,7 @@ async function promptOpencode(
   opts: { internal?: boolean; context?: string } = {},
 ): Promise<void> {
   const workspaceKeyAtStart = getOpencodeWorkspaceKey();
-  const { model, agent } = get();
+  const { model, agent, providers, reasoningEffort } = get();
   const sessionIdAtDispatch = get().currentSessionId;
   const promptTitle = opts.internal ? null : desktopChatTitleFromPrompt(text);
   let optimisticTurnStartedAt: number | null = null;
@@ -2491,26 +2573,37 @@ async function promptOpencode(
       shouldApplyPromptTitle ? promptTitle : undefined,
     );
 
+    const reasoningVariant = selectedModelSupportsReasoning(model, providers)
+      ? chatReasoningEffortToVariant(reasoningEffort)
+      : null;
+    const promptBody: {
+      model: ModelPick;
+      agent?: string;
+      variant?: string;
+      parts: Array<{ type: 'text'; text: string }>;
+    } = {
+      model,
+      ...(agent ? { agent } : {}),
+      ...(reasoningVariant ? { variant: reasoningVariant } : {}),
+      parts: [
+        {
+          type: 'text',
+          text:
+            buildEditorContext({
+              userText: text,
+              workspaceYamlFilePaths: preSendSnapshot?.entries.map((entry) => entry.path),
+            }) +
+            (opts.context ?? '') +
+            text,
+        },
+      ],
+    };
+
     markTurnAcceptedForWatchdog(get, set);
     await unwrap(
       client.session.promptAsync({
         path: { id: sessionId },
-        body: {
-          model,
-          ...(agent ? { agent } : {}),
-          parts: [
-            {
-              type: 'text',
-              text:
-                buildEditorContext({
-                  userText: text,
-                  workspaceYamlFilePaths: preSendSnapshot?.entries.map((entry) => entry.path),
-                }) +
-                (opts.context ?? '') +
-                text,
-            },
-          ],
-        },
+        body: promptBody,
       }),
     );
     if (getOpencodeWorkspaceKey() === workspaceKeyAtStart) {
@@ -2988,6 +3081,13 @@ export function applySseEvent(event: OpencodeEvent, get: () => ChatStore, set: C
           state.completedUnreadSessionIds,
           deletedId,
         ),
+        sessionYamlResults: Object.fromEntries(
+          Object.entries(state.sessionYamlResults).filter(([sessionId]) => sessionId !== deletedId),
+        ),
+        dismissedSessionYamlResultToastIds: state.dismissedSessionYamlResultToastIds.filter(
+          (sessionId) => sessionId !== deletedId,
+        ),
+        finishedTurnQueue: state.finishedTurnQueue.filter((turn) => turn.sessionId !== deletedId),
       };
       if (state.currentSessionId === deletedId) {
         clearTurnWatchdog();
@@ -3085,6 +3185,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   agents: [],
 
   model: persisted.model ?? null,
+  reasoningEffort: isChatReasoningEffort(persisted.reasoningEffort)
+    ? persisted.reasoningEffort
+    : DEFAULT_CHAT_REASONING_EFFORT,
   setModel: (m) => {
     if (chatTurnBlocksSessionMutation(get())) {
       set({ sendError: chatTurnBlockedMessage() });
@@ -3093,6 +3196,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({ model: m });
     savePersisted(getOpencodeWorkspaceKey(), { model: m });
     persistModelToEditorSettings(m);
+  },
+  setReasoningEffort: (effort) => {
+    if (chatTurnBlocksSessionMutation(get())) {
+      set({ sendError: chatTurnBlockedMessage() });
+      return;
+    }
+    set({ reasoningEffort: effort });
+    savePersisted(getOpencodeWorkspaceKey(), { reasoningEffort: effort });
+    persistReasoningEffortToEditorSettings(effort);
   },
 
   // Initial value — bootstrap() will overwrite this with 'tagma-router' once
@@ -3103,6 +3215,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   sessions: [],
   sessionStates: {},
   completedUnreadSessionIds: [],
+  sessionYamlResults: {},
+  dismissedSessionYamlResultToastIds: [],
+  lastFinishedTurn: null,
+  finishedTurnQueue: [],
   currentSessionId: null,
   messages: [],
   sending: false,
@@ -3123,6 +3239,28 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   pendingPermissions: [],
   setPostChatYamlAction: (action) => set({ postChatYamlAction: action }),
   clearPostChatYamlAction: () => set({ postChatYamlAction: null }),
+  setSessionYamlResult: (result) =>
+    set((prev) => ({
+      sessionYamlResults: {
+        ...prev.sessionYamlResults,
+        [result.sessionId]: result,
+      },
+      dismissedSessionYamlResultToastIds: prev.dismissedSessionYamlResultToastIds.filter(
+        (sessionId) => sessionId !== result.sessionId,
+      ),
+    })),
+  dismissSessionYamlResultToast: (sessionId) =>
+    set((prev) => ({
+      dismissedSessionYamlResultToastIds: prev.dismissedSessionYamlResultToastIds.includes(
+        sessionId,
+      )
+        ? prev.dismissedSessionYamlResultToastIds
+        : [...prev.dismissedSessionYamlResultToastIds, sessionId],
+    })),
+  acknowledgeFinishedTurn: (turnId) =>
+    set((prev) => ({
+      finishedTurnQueue: prev.finishedTurnQueue.filter((turn) => turn.id !== turnId),
+    })),
   sendError: null,
   dismissSendError: () => set({ sendError: null }),
   composerDraft: '',
@@ -3345,6 +3483,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               sessions: [],
               sessionStates: {},
               completedUnreadSessionIds: [],
+              sessionYamlResults: {},
+              dismissedSessionYamlResultToastIds: [],
+              lastFinishedTurn: null,
+              finishedTurnQueue: [],
               currentSessionId: null,
               messages: [],
               sending: false,
@@ -3365,6 +3507,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               providerCatalog: [],
               customProviders: [],
               model: null,
+              reasoningEffort: DEFAULT_CHAT_REASONING_EFFORT,
               agent: null,
             }
           : {}),
@@ -3389,12 +3532,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       return;
     }
     const earlySettingsModel = earlySettings?.opencodeChatModel ?? null;
+    const earlySettingsReasoningEffort =
+      earlySettings?.opencodeChatReasoningEffort ?? DEFAULT_CHAT_REASONING_EFFORT;
     const earlyModel =
       earlyPersisted.model !== undefined ? (earlyPersisted.model ?? null) : earlySettingsModel;
+    const earlyReasoningEffort = isChatReasoningEffort(earlyPersisted.reasoningEffort)
+      ? earlyPersisted.reasoningEffort
+      : earlySettingsReasoningEffort;
     const hasEarlyModel = earlyPersisted.model !== undefined || earlySettingsModel !== null;
-    if (hasEarlyModel || earlyPersisted.agent !== undefined) {
+    const hasEarlyReasoningEffort =
+      earlyPersisted.reasoningEffort !== undefined || earlySettings !== null;
+    if (hasEarlyModel || earlyPersisted.agent !== undefined || hasEarlyReasoningEffort) {
       set({
         ...(hasEarlyModel ? { model: earlyModel } : {}),
+        ...(hasEarlyReasoningEffort ? { reasoningEffort: earlyReasoningEffort } : {}),
         ...(earlyPersisted.agent !== undefined
           ? {
               agent: earlyPersisted.agent === FORCED_CHAT_AGENT ? earlyPersisted.agent : null,
@@ -3480,11 +3631,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       earlySettings && workspaceKey === wsKeyEarly
         ? earlySettingsModel
         : (useEditorSettingsStore.getState().settings?.opencodeChatModel ?? null);
+    const settingsReasoningEffort =
+      earlySettings && workspaceKey === wsKeyEarly
+        ? earlySettingsReasoningEffort
+        : (useEditorSettingsStore.getState().settings?.opencodeChatReasoningEffort ??
+          DEFAULT_CHAT_REASONING_EFFORT);
     const persistedModel =
       wsPersisted.model !== undefined ? (wsPersisted.model ?? null) : settingsModel;
+    const persistedReasoningEffort = isChatReasoningEffort(wsPersisted.reasoningEffort)
+      ? wsPersisted.reasoningEffort
+      : settingsReasoningEffort;
     const nextModel = providersLoad.ok
       ? reconcileModelPick(providers, providersRes.default ?? {}, persistedModel)
       : persistedModel;
+    const nextReasoningEffort = persistedReasoningEffort;
     if (providersLoad.ok) {
       if (!sameModelPick(nextModel, wsPersisted.model)) {
         savePersisted(workspaceKey, { model: nextModel });
@@ -3492,6 +3652,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       if (!sameModelPick(nextModel, settingsModel)) {
         persistModelToEditorSettings(nextModel);
       }
+    }
+    if (wsPersisted.reasoningEffort !== nextReasoningEffort) {
+      savePersisted(workspaceKey, { reasoningEffort: nextReasoningEffort });
+    }
+    if (settingsReasoningEffort !== nextReasoningEffort) {
+      persistReasoningEffortToEditorSettings(nextReasoningEffort);
     }
 
     // Agent is hard-wired to the `tagma-router` custom agent
@@ -3512,6 +3678,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         providerCatalog,
         customProviders,
         model: nextModel,
+        reasoningEffort: nextReasoningEffort,
         agent: null,
         bootstrapStatus: 'error',
         bootstrapError: msg,
@@ -3530,6 +3697,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       providerCatalog,
       customProviders,
       model: nextModel,
+      reasoningEffort: nextReasoningEffort,
       agent: nextAgent,
       bootstrapStatus: 'ready',
       bootstrapError: null,
@@ -3572,10 +3740,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   async newSession() {
-    if (chatTurnBlocksSessionMutation(get())) {
-      set({ sendError: chatTurnBlockedMessage(), historyOpen: false });
-      return;
-    }
     const workspaceKey = getOpencodeWorkspaceKey();
     set((prev) => ({ sessionStates: saveCurrentSessionRuntime(prev) }));
     clearTurnWatchdog();
@@ -3617,6 +3781,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         Object.entries(prev.sessionStates).filter(([sessionId]) => sessionId !== id),
       ),
       completedUnreadSessionIds: clearSessionCompletedUnread(prev.completedUnreadSessionIds, id),
+      sessionYamlResults: Object.fromEntries(
+        Object.entries(prev.sessionYamlResults).filter(([sessionId]) => sessionId !== id),
+      ),
+      dismissedSessionYamlResultToastIds: prev.dismissedSessionYamlResultToastIds.filter(
+        (sessionId) => sessionId !== id,
+      ),
+      finishedTurnQueue: prev.finishedTurnQueue.filter((turn) => turn.sessionId !== id),
       sessions: prev.sessions.filter((s) => s.id !== id),
       currentSessionId: prev.currentSessionId === id ? null : prev.currentSessionId,
       messages: prev.currentSessionId === id ? [] : prev.messages,

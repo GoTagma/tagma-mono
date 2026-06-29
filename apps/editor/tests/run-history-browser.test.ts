@@ -11,6 +11,7 @@ import {
   formatRunProgressLabel,
   getHistoryRunPrimaryAction,
   hasRunningRunEntries,
+  runHistoryEntryKind,
   shouldRenderLiveRunCanvas,
   summaryDagEdgesForRunCanvas,
   terminalRunFocusForStatus,
@@ -69,6 +70,36 @@ describe('run history browser helpers', () => {
     ]);
     expect(filterRunHistoryEntries(runs, 'running', 'api')).toEqual([runs[0]]);
     expect(filterRunHistoryEntries(runs, 'running', 'web')).toEqual([]);
+  });
+
+  test('graph history entries are identifiable and searchable', () => {
+    const runs = [
+      entry({
+        kind: 'graph',
+        runId: 'graph_release',
+        running: true,
+        pipelineName: 'Release Flow',
+        pipelineCounts: {
+          total: 3,
+          success: 1,
+          failed: 0,
+          skipped: 0,
+          aborted: 0,
+          running: 1,
+          waiting: 1,
+        },
+      }),
+      entry({ kind: 'pipeline', runId: 'run_build', success: true, pipelineName: 'Build Web' }),
+    ];
+
+    expect(runHistoryEntryKind(runs[0])).toBe('graph');
+    expect(formatRunProgressLabel(runs[0])).toBe('1/3');
+    expect(filterRunHistoryEntries(runs, 'running', 'release').map((run) => run.runId)).toEqual([
+      'graph_release',
+    ]);
+    expect(filterRunHistoryEntries(runs, 'all', 'graph_release').map((run) => run.runId)).toEqual([
+      'graph_release',
+    ]);
   });
 
   test('a selected running row gets Stop instead of Replay', () => {

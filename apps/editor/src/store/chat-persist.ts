@@ -3,8 +3,8 @@
  *
  * Scoped per workspace (key = absolute workspace path) so a user with
  * Anthropic configured for repo A and OpenAI for repo B sees each workspace's
- * own pick. Only `model` and `agent` are persisted — messages and sessions
- * are always re-hydrated from opencode on demand.
+ * own pick. Only chat preferences are persisted — messages and sessions are
+ * always re-hydrated from opencode on demand.
  */
 
 const STORAGE_KEY = 'tagma.chat.v2';
@@ -14,9 +14,12 @@ export interface ModelPick {
   modelID: string;
 }
 
+export type ChatReasoningEffort = 'low' | 'medium' | 'high';
+
 export interface WorkspacePersistedShape {
   model?: ModelPick | null;
   agent?: string | null;
+  reasoningEffort?: ChatReasoningEffort | null;
 }
 
 interface PersistedShape {
@@ -50,6 +53,10 @@ export function savePersisted(workspaceKey: string, patch: WorkspacePersistedSha
   } catch {
     /* quota / disabled — fine, just won't persist */
   }
+}
+
+export function isChatReasoningEffort(value: unknown): value is ChatReasoningEffort {
+  return value === 'low' || value === 'medium' || value === 'high';
 }
 
 /** Compare two model picks for structural equality. */

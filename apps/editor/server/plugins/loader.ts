@@ -897,6 +897,8 @@ export interface OpenCodeChatModelSelection {
   modelID: string;
 }
 
+export type OpenCodeChatReasoningEffort = 'low' | 'medium' | 'high';
+
 export function parseOpenCodeChatModelSelection(value: unknown): OpenCodeChatModelSelection | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const raw = value as Record<string, unknown>;
@@ -904,6 +906,12 @@ export function parseOpenCodeChatModelSelection(value: unknown): OpenCodeChatMod
   const modelID = cleanOptionalString(raw.modelID);
   if (!providerID || !modelID) return null;
   return { providerID, modelID };
+}
+
+export function isValidOpenCodeChatReasoningEffort(
+  value: unknown,
+): value is OpenCodeChatReasoningEffort {
+  return value === 'low' || value === 'medium' || value === 'high';
 }
 
 export function parsePythonAgentSettings(value: unknown): PythonAgentSettings | null {
@@ -961,6 +969,7 @@ export interface EditorSettings {
   viewMode: EditorViewMode;
   pythonAgent: PythonAgentSettings;
   opencodeChatModel: OpenCodeChatModelSelection | null;
+  opencodeChatReasoningEffort: OpenCodeChatReasoningEffort;
   /** Disabled means unlimited. Enabled with 0 rounds means stateless. */
   chatContextLimitEnabled: boolean;
   /**
@@ -985,6 +994,7 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   viewMode: 'production',
   pythonAgent: DEFAULT_PYTHON_AGENT_SETTINGS,
   opencodeChatModel: null,
+  opencodeChatReasoningEffort: 'medium',
   chatContextLimitEnabled: false,
   chatContextRounds: 0,
 };
@@ -1030,6 +1040,11 @@ export function readEditorSettings(ws: WorkspaceState): EditorSettings {
         : DEFAULT_EDITOR_SETTINGS.viewMode,
       pythonAgent: parsePythonAgentSettings(raw.pythonAgent) ?? DEFAULT_EDITOR_SETTINGS.pythonAgent,
       opencodeChatModel: parseOpenCodeChatModelSelection(raw.opencodeChatModel),
+      opencodeChatReasoningEffort: isValidOpenCodeChatReasoningEffort(
+        raw.opencodeChatReasoningEffort,
+      )
+        ? raw.opencodeChatReasoningEffort
+        : DEFAULT_EDITOR_SETTINGS.opencodeChatReasoningEffort,
       chatContextLimitEnabled:
         typeof raw.chatContextLimitEnabled === 'boolean'
           ? raw.chatContextLimitEnabled
@@ -1092,6 +1107,9 @@ export function writeEditorSettings(
   }
   if (patch.opencodeChatModel !== undefined) {
     next.opencodeChatModel = patch.opencodeChatModel;
+  }
+  if (patch.opencodeChatReasoningEffort !== undefined) {
+    next.opencodeChatReasoningEffort = patch.opencodeChatReasoningEffort;
   }
   if (patch.chatContextLimitEnabled !== undefined) {
     next.chatContextLimitEnabled = patch.chatContextLimitEnabled;

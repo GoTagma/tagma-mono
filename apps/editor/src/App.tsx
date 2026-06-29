@@ -56,7 +56,7 @@ import {
   type PlatformExportProgressState,
   type UnsavedAction,
 } from './components/AppOverlays';
-import { ChatPanel } from './components/chat/ChatPanel';
+import { ChatCompletionToast, ChatPanel } from './components/chat/ChatPanel';
 import { useChatStore, isChatDrivenEditLikely } from './store/chat-store';
 import { useEditorSettingsStore } from './store/editor-settings-store';
 import { RightDock, useRightDock } from './components/RightDock';
@@ -858,7 +858,7 @@ export function App() {
   // want it as the only source of truth.
   //
   // Runs every time `session.idle` / `session.error` / `session.status:idle`
-  // advances `lastSendingEndedAt`:
+  // records a session-bound finished turn:
   //   1. diff the post-turn `.tagma/*.yaml` list against the pre-turn snapshot
   //      captured in `send()`. Any path that appeared is a pipeline opencode
   //      just created — save the current canvas if dirty, then switch to the
@@ -866,19 +866,23 @@ export function App() {
   //   2. if no new file appeared, force-refetch the current YAML from disk so
   //      any in-place edit the watcher silently missed is still reflected.
   //      Skipped when the canvas is dirty — that would clobber in-progress
-  //      user edits with disk state they haven't reconciled yet.
-  const lastSendingEndedAt = useChatStore((s) => s.lastSendingEndedAt);
+  //      user edits with disk state they haven't reconciled yet. Hidden-session
+  //      completions only record a result link/toast; they never switch the
+  //      user's current canvas without a click.
+  const finishedTurnQueue = useChatStore((s) => s.finishedTurnQueue);
   useEffect(() => {
-    if (!lastSendingEndedAt) return; // initial mount — no turn has ended yet
+    const finishedTurn = finishedTurnQueue[0];
+    if (!finishedTurn) return; // initial mount — no turn has ended yet
     let cancelled = false;
     void (async () => {
       let keepYamlLockForRepair = false;
       useChatStore.getState().setReconciling(true);
       try {
-        // Pull-and-clear in one read so a future turn doesn't diff against a
-        // stale baseline if reconcile here bails out before consuming it.
-        const snapshot = useChatStore.getState().yamlSnapshotBeforeSend;
-        useChatStore.setState({ yamlSnapshotBeforeSend: null });
+        const snapshot = finishedTurn.yamlSnapshotBeforeSend;
+        const finishedSessionId = finishedTurn.sessionId;
+        const currentChatSessionId = useChatStore.getState().currentSessionId;
+        const finishedSessionVisible =
+          !!finishedSessionId && finishedSessionId === currentChatSessionId;
 
         const entries = await refreshWorkspaceYamls();
         if (cancelled) return;
@@ -887,9 +891,9 @@ export function App() {
           usePipelineStore.getState();
         let target =
           snapshot && snapshot.workDir === currentWorkDirForChat
-            ? detectChatYamlTarget(snapshot, entries, currentYamlForChat)
+            ? detectChatYamlTarget(snapshot, entries, snapshot.activePath)
             : null;
-        if (!target && !snapshot && currentYamlForChat) {
+        if (!target && !snapshot && !finishedTurn.hidden && currentYamlForChat) {
           const currentEntry = entries.find((entry) => entry.path === currentYamlForChat);
           if (currentEntry) {
             target = {
@@ -905,9 +909,24 @@ export function App() {
         const compile = await api.compileWorkspaceYaml(target.path);
         if (cancelled) return;
 
+        const recordSessionResult = (status: 'ready' | 'failed') => {
+          if (!finishedSessionId || !target) return;
+          useChatStore.getState().setSessionYamlResult({
+            ...target,
+            sessionId: finishedSessionId,
+            status,
+            compile,
+            completedAt: finishedTurn.endedAt,
+          });
+        };
+
         const attempts = repairAttemptsRef.current.get(target.path) ?? 0;
         const maxAttempts = 2;
         if (shouldAutoRepairCompileResult(compile, attempts, maxAttempts)) {
+          if (!finishedSessionVisible) {
+            recordSessionResult('failed');
+            return;
+          }
           const nextAttempt = attempts + 1;
           repairAttemptsRef.current.set(target.path, nextAttempt);
           useChatStore.getState().setPostChatYamlAction({
@@ -928,6 +947,7 @@ export function App() {
 
         if (compile.success) repairAttemptsRef.current.delete(target.path);
         if (!compile.success) {
+          recordSessionResult('failed');
           useChatStore.getState().setPostChatYamlAction({
             ...target,
             status: 'failed',
@@ -935,6 +955,9 @@ export function App() {
           });
           return;
         }
+        recordSessionResult('ready');
+
+        if (!finishedSessionVisible) return;
 
         const policy = useEditorSettingsStore.getState().settings?.chatDirtyConflictPolicy ?? 'ask';
         if (target.kind === 'open-created') {
@@ -1015,6 +1038,9 @@ export function App() {
         console.error('[chat] post-chat YAML reconcile failed', err);
       } finally {
         useChatStore.getState().setReconciling(false);
+        if (!cancelled) {
+          useChatStore.getState().acknowledgeFinishedTurn(finishedTurn.id);
+        }
         if (!keepYamlLockForRepair) {
           await releaseChatYamlEditLock();
         }
@@ -1023,7 +1049,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [lastSendingEndedAt, refreshWorkspaceYamls, openFile, saveFile]);
+  }, [finishedTurnQueue, refreshWorkspaceYamls, openFile, saveFile]);
 
   const handleOpenWorkspaceFile = useCallback(
     (path: string) => {
@@ -1826,45 +1852,53 @@ export function App() {
     void refreshWorkflowRunStatus();
   }, [refreshWorkflowRunStatus, refreshWorkflowYamls, workDir]);
 
-  const handleWorkflowStart = useCallback(async (path: string) => {
-    setWorkflowRunning(true);
-    setWorkflowGraphRunId(null);
-    setWorkflowEvents([]);
-    setWorkflowRunResult(null);
-    workflowEventsUnsubscribeRef.current?.();
-    workflowEventsUnsubscribeRef.current = null;
-    try {
-      const response = await api.startWorkflowRun(path);
-      const graphRunId = response.graphRunId ?? response.result?.graphRunId ?? null;
-      setWorkflowGraphRunId(graphRunId);
-      setWorkflowEvents(response.events.reduce<WorkflowGraphEvent[]>(appendWorkflowEvent, []));
-      setWorkflowRunResult(response.result);
-      if (!response.running) {
-        setWorkflowRunning(false);
-        return;
-      }
-      workflowEventsUnsubscribeRef.current = api.subscribeWorkflowEvents((event) => {
-        if (graphRunId && event.graphRunId !== graphRunId) return;
-        setWorkflowEvents((prev) => appendWorkflowEvent(prev, event));
-        if (!isWorkflowTerminalEvent(event)) return;
-        const result = workflowResultFromGraphEnd(event);
-        if (result) {
-          setWorkflowRunResult(result);
+  const handleWorkflowStart = useCallback(
+    async (path: string) => {
+      setWorkflowRunning(true);
+      setWorkflowGraphRunId(null);
+      setWorkflowEvents([]);
+      setWorkflowRunResult(null);
+      workflowEventsUnsubscribeRef.current?.();
+      workflowEventsUnsubscribeRef.current = null;
+      try {
+        const response = await api.startWorkflowRun(path);
+        const graphRunId = response.graphRunId ?? response.result?.graphRunId ?? null;
+        setWorkflowGraphRunId(graphRunId);
+        setWorkflowEvents(response.events.reduce<WorkflowGraphEvent[]>(appendWorkflowEvent, []));
+        setWorkflowRunResult(response.result);
+        if (graphRunId) {
+          setWorkflowViewActive(false);
+          setPipelinePickerActive(false);
+          showRunHistory(graphRunId);
         }
+        if (!response.running) {
+          setWorkflowRunning(false);
+          return;
+        }
+        workflowEventsUnsubscribeRef.current = api.subscribeWorkflowEvents((event) => {
+          if (graphRunId && event.graphRunId !== graphRunId) return;
+          setWorkflowEvents((prev) => appendWorkflowEvent(prev, event));
+          if (!isWorkflowTerminalEvent(event)) return;
+          const result = workflowResultFromGraphEnd(event);
+          if (result) {
+            setWorkflowRunResult(result);
+          }
+          setWorkflowRunning(false);
+          setWorkflowGraphRunId(null);
+          workflowEventsUnsubscribeRef.current?.();
+          workflowEventsUnsubscribeRef.current = null;
+        });
+      } catch (err: unknown) {
+        setDialog({
+          type: 'error',
+          title: 'Workflow run failed',
+          details: [err instanceof Error ? err.message : String(err)],
+        });
         setWorkflowRunning(false);
-        setWorkflowGraphRunId(null);
-        workflowEventsUnsubscribeRef.current?.();
-        workflowEventsUnsubscribeRef.current = null;
-      });
-    } catch (err: unknown) {
-      setDialog({
-        type: 'error',
-        title: 'Workflow run failed',
-        details: [err instanceof Error ? err.message : String(err)],
-      });
-      setWorkflowRunning(false);
-    }
-  }, []);
+      }
+    },
+    [showRunHistory],
+  );
 
   const handleWorkflowAbort = useCallback(async () => {
     if (!workflowRunning) return;
@@ -2606,6 +2640,7 @@ export function App() {
               <PlatformExportProgressToast progress={platformExportProgress} />
             )}
             <ErrorToast />
+            <ChatCompletionToast />
           </motion.div>
         )}
       </AnimatePresence>

@@ -12,8 +12,10 @@ import {
   Check,
   Download,
   FileText,
+  Brain,
 } from 'lucide-react';
-import { useChatStore } from '../../store/chat-store';
+import { useChatStore, type ChatYamlSessionResult } from '../../store/chat-store';
+import type { ChatReasoningEffort } from '../../store/chat-persist';
 import { usePipelineStore } from '../../store/pipeline-store';
 import { useYamlEditLockStore } from '../../store/yaml-edit-lock-store';
 import { useEditorSettingsStore } from '../../store/editor-settings-store';
@@ -22,7 +24,7 @@ import { shouldShowForcePush } from '../../utils/chat-queue';
 import { hasLocalEditorChanges, resolveDirtyDiskChange } from '../../utils/chat-dirty-conflict';
 import { getLastLocalFieldEditAt } from '../../hooks/use-local-field';
 import { api } from '../../api/client';
-import type { OpencodeThreadEntry } from '../../api/opencode-chat';
+import type { ActivityEvent, OpencodeThreadEntry } from '../../api/opencode-chat';
 import { ProviderConnectDialog } from './ProviderConnectDialog';
 import { PermissionBubble } from './PermissionBubble';
 import { TurnActivityPanel } from './ActivityPanel';
@@ -32,6 +34,11 @@ import { MessageBubble } from './MessageBubble';
 import { BotBridgeStatusBadge } from './BotBridgeStatusBadge';
 import { FloatingPanel } from './FloatingPanel';
 import { ModelPickerDropdown } from './ModelPickerDropdown';
+import {
+  chatPipelineDisplayName,
+  selectVisibleChatCompletionResults,
+  useOpenChatPipelineTarget,
+} from './chat-pipeline-link';
 import {
   buildConversationExport,
   conversationExportFilename,
@@ -52,6 +59,7 @@ export function ChatPanel() {
   return (
     <div className="h-full flex flex-col bg-tagma-bg">
       <ChatHeader />
+      <ConversationFlowBar />
       <div className="flex-1 min-h-0 relative overflow-hidden">
         <ChatMessages />
         <HistoryDrawer />
@@ -67,6 +75,324 @@ export function ChatPanel() {
       <ProviderConnectDialog />
     </div>
   );
+}
+
+type FlowStepStatus = 'pending' | 'active' | 'complete' | 'error';
+
+interface FlowStep {
+  key: string;
+  label: string;
+  detail?: string;
+  status: FlowStepStatus;
+}
+
+function ConversationFlowBar() {
+  const messages = useChatStore((s) => s.messages);
+  const sending = useChatStore((s) => s.sending);
+  const pendingUserText = useChatStore((s) => s.pendingUserText);
+  const queuedMessages = useChatStore((s) => s.queuedMessages);
+  const pendingActivity = useChatStore((s) => s.pendingActivity);
+  const pendingPermissions = useChatStore((s) => s.pendingPermissions);
+  const turnStartedAt = useChatStore((s) => s.turnStartedAt);
+  const turnAssistantMessageIds = useChatStore((s) => s.turnAssistantMessageIds);
+  const reconciling = useChatStore((s) => s.reconciling);
+  const flushing = useChatStore((s) => s.flushing);
+  const postChatYamlAction = useChatStore((s) => s.postChatYamlAction);
+  const sendError = useChatStore((s) => s.sendError);
+
+  const activity = useMemo(
+    () =>
+      currentTurnActivity({
+        messages,
+        pendingActivity,
+        turnAssistantMessageIds,
+        turnStartedAt,
+      }),
+    [messages, pendingActivity, turnAssistantMessageIds, turnStartedAt],
+  );
+  const steps = useMemo(
+    () =>
+      buildConversationFlowSteps({
+        activity,
+        sending,
+        pendingUserText,
+        queuedCount: queuedMessages.length,
+        pendingPermissionCount: pendingPermissions.length,
+        reconciling,
+        flushing,
+        postChatYamlAction,
+        sendError,
+      }),
+    [
+      activity,
+      sending,
+      pendingUserText,
+      queuedMessages.length,
+      pendingPermissions.length,
+      reconciling,
+      flushing,
+      postChatYamlAction,
+      sendError,
+    ],
+  );
+
+  if (steps.length === 0) return null;
+
+  const activeStep =
+    steps.find((step) => step.status === 'error') ??
+    steps.find((step) => step.status === 'active') ??
+    steps[steps.length - 1];
+  const progressValue = steps.reduce((total, step) => {
+    if (step.status === 'complete') return total + 1;
+    if (step.status === 'active') return total + 0.55;
+    if (step.status === 'error') return total + 0.35;
+    return total;
+  }, 0);
+  const percent = Math.min(100, Math.max(0, (progressValue / steps.length) * 100));
+  const statusText = activeStep.detail
+    ? `${activeStep.label}: ${activeStep.detail}`
+    : activeStep.label;
+
+  return (
+    <section className="shrink-0 border-b border-tagma-border bg-tagma-bg px-3 py-2">
+      <div className="flex items-center gap-2 text-[10px] font-mono text-tagma-muted min-w-0">
+        <span className="shrink-0 text-tagma-muted/80">Conversation flow</span>
+        <span className="min-w-0 flex-1 truncate text-tagma-text" title={statusText}>
+          {statusText}
+        </span>
+        {queuedMessages.length > 0 && (
+          <span className="shrink-0 text-tagma-muted/70 tabular-nums">
+            +{queuedMessages.length} queued
+          </span>
+        )}
+      </div>
+      <div
+        role="progressbar"
+        aria-label="Conversation flow progress"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(percent)}
+        className="mt-1.5 h-1 w-full bg-tagma-border/45 overflow-hidden"
+      >
+        <div
+          className={`h-full transition-[width] duration-300 ${
+            activeStep.status === 'error' ? 'bg-tagma-error' : 'bg-tagma-ready'
+          }`}
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+      <div className="mt-1.5 grid grid-cols-5 gap-1 text-[9px] font-mono">
+        {steps.map((step) => (
+          <div key={step.key} className="min-w-0 flex items-center gap-1">
+            <span
+              className={`size-1.5 shrink-0 rounded-full ${flowStepDotClass(step.status)}`}
+              aria-hidden="true"
+            />
+            <span
+              className={`min-w-0 truncate ${flowStepTextClass(step.status)}`}
+              title={step.detail ? `${step.label}: ${step.detail}` : step.label}
+            >
+              {step.label}
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function currentTurnActivity({
+  messages,
+  pendingActivity,
+  turnAssistantMessageIds,
+  turnStartedAt,
+}: {
+  messages: OpencodeThreadEntry[];
+  pendingActivity: ActivityEvent[];
+  turnAssistantMessageIds: string[];
+  turnStartedAt: number | null;
+}): ActivityEvent[] {
+  if (pendingActivity.length > 0) return pendingActivity;
+  if (turnStartedAt === null) return [];
+
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const entry = messages[i];
+    if (entry.info.role !== 'assistant') continue;
+    if (isAbortErrorEntry(entry)) continue;
+    if (turnAssistantMessageIds.includes(entry.info.id)) return entry.activity ?? [];
+    const created = entry.info.time?.created;
+    const completed = entry.info.time?.completed;
+    if (typeof completed === 'number' && completed >= turnStartedAt) return entry.activity ?? [];
+    if (typeof created === 'number' && created >= turnStartedAt) return entry.activity ?? [];
+  }
+  return [];
+}
+
+export function buildConversationFlowSteps({
+  activity,
+  sending,
+  pendingUserText,
+  queuedCount,
+  pendingPermissionCount,
+  reconciling,
+  flushing,
+  postChatYamlAction,
+  sendError,
+}: {
+  activity: ActivityEvent[];
+  sending: boolean;
+  pendingUserText: string | null;
+  queuedCount: number;
+  pendingPermissionCount: number;
+  reconciling: boolean;
+  flushing: boolean;
+  postChatYamlAction: ReturnType<typeof useChatStore.getState>['postChatYamlAction'];
+  sendError: string | null;
+}): FlowStep[] {
+  const active = sending || reconciling || flushing || !!postChatYamlAction;
+  const hasPrompt = !!pendingUserText || activity.length > 0 || active || queuedCount > 0;
+  if (!hasPrompt && !sendError) {
+    return [
+      { key: 'intent', label: 'Intent', detail: 'ready', status: 'active' },
+      { key: 'context', label: 'Context', status: 'pending' },
+      { key: 'work', label: 'Work', status: 'pending' },
+      { key: 'response', label: 'Response', status: 'pending' },
+      { key: 'sync', label: 'Finish', status: 'pending' },
+    ];
+  }
+
+  const latest = activity.length > 0 ? activity[activity.length - 1] : null;
+  const hasAssistantStarted = activity.some((event) => event.kind === 'assistant-started');
+  const hasReasoning = activity.some((event) => event.kind === 'thinking');
+  const hasTool = activity.some(
+    (event) =>
+      event.kind === 'tool-running' ||
+      event.kind === 'tool-completed' ||
+      event.kind === 'tool-error',
+  );
+  const hasAnswer = activity.some((event) => event.kind === 'streaming-answer');
+  const hasRetry = activity.some((event) => event.kind === 'retry');
+  const hasTerminalError =
+    !!sendError || latest?.kind === 'tool-error' || postChatYamlAction?.status === 'failed';
+  const latestTool = [...activity]
+    .reverse()
+    .find(
+      (event) =>
+        event.kind === 'tool-running' ||
+        event.kind === 'tool-completed' ||
+        event.kind === 'tool-error',
+    );
+
+  const intentComplete =
+    hasAssistantStarted ||
+    hasReasoning ||
+    hasTool ||
+    hasAnswer ||
+    reconciling ||
+    !!postChatYamlAction;
+  const contextComplete =
+    hasTool ||
+    hasAnswer ||
+    reconciling ||
+    !!postChatYamlAction ||
+    (!sending && activity.length > 1);
+  const workComplete = hasAnswer || reconciling || !!postChatYamlAction || (!sending && hasTool);
+  const responseComplete =
+    (!sending && activity.length > 0 && !postChatYamlAction) || !!postChatYamlAction;
+
+  return [
+    {
+      key: 'intent',
+      label: 'Intent',
+      detail:
+        sendError && !intentComplete ? sendError : pendingUserText ? 'request received' : undefined,
+      status: sendError && !intentComplete ? 'error' : intentComplete ? 'complete' : 'active',
+    },
+    {
+      key: 'context',
+      label: 'Context',
+      detail: hasRetry ? 'provider retry' : hasReasoning ? 'reasoning' : undefined,
+      status:
+        sendError && intentComplete && !contextComplete
+          ? 'error'
+          : contextComplete
+            ? 'complete'
+            : intentComplete
+              ? 'active'
+              : 'pending',
+    },
+    {
+      key: 'work',
+      label: 'Work',
+      detail:
+        pendingPermissionCount > 0
+          ? 'awaiting permission'
+          : latestTool?.detail
+            ? latestTool.detail
+            : undefined,
+      status:
+        latest?.kind === 'tool-error'
+          ? 'error'
+          : workComplete
+            ? 'complete'
+            : hasTool || hasReasoning
+              ? 'active'
+              : 'pending',
+    },
+    {
+      key: 'response',
+      label: 'Response',
+      detail: hasAnswer ? 'streaming update' : undefined,
+      status:
+        sendError && workComplete && !responseComplete
+          ? 'error'
+          : responseComplete
+            ? 'complete'
+            : hasAnswer
+              ? 'active'
+              : 'pending',
+    },
+    {
+      key: 'sync',
+      label: postChatYamlAction ? 'Sync YAML' : 'Finish',
+      detail:
+        postChatYamlAction?.status === 'repairing'
+          ? 'validating'
+          : postChatYamlAction?.status === 'failed'
+            ? 'repair needed'
+            : postChatYamlAction
+              ? postChatYamlAction.kind === 'open-created'
+                ? 'open created file'
+                : 'refresh pipeline'
+              : flushing
+                ? 'sending queued'
+                : undefined,
+      status:
+        postChatYamlAction?.status === 'failed'
+          ? 'error'
+          : postChatYamlAction || reconciling || flushing
+            ? 'active'
+            : hasTerminalError
+              ? 'error'
+              : !sending && activity.length > 0
+                ? 'complete'
+                : 'pending',
+    },
+  ];
+}
+
+function flowStepDotClass(status: FlowStepStatus): string {
+  if (status === 'complete') return 'bg-tagma-ready';
+  if (status === 'active') return 'bg-tagma-accent animate-pulse';
+  if (status === 'error') return 'bg-tagma-error';
+  return 'bg-tagma-border';
+}
+
+function flowStepTextClass(status: FlowStepStatus): string {
+  if (status === 'complete') return 'text-tagma-muted/80';
+  if (status === 'active') return 'text-tagma-text';
+  if (status === 'error') return 'text-tagma-error';
+  return 'text-tagma-muted/45';
 }
 
 /**
@@ -175,6 +501,7 @@ function ChatHeader() {
     <header className="relative z-20 flex items-center gap-1 px-2 h-7 border-b border-tagma-border bg-tagma-surface shrink-0">
       <div className="flex items-center gap-1 min-w-0 flex-1">
         <ModelPicker disabled={providerBlocked} />
+        <ReasoningEffortPicker disabled={providerBlocked} />
       </div>
       <BotBridgeStatusBadge />
       <button
@@ -298,12 +625,94 @@ function ModelPicker({ disabled = false }: { disabled?: boolean }) {
   );
 }
 
+const REASONING_EFFORT_OPTIONS: Array<{
+  value: ChatReasoningEffort;
+  label: string;
+  hint: string;
+}> = [
+  { value: 'low', label: 'Low', hint: 'Minimal reasoning' },
+  { value: 'medium', label: 'Medium', hint: 'Default reasoning' },
+  { value: 'high', label: 'High', hint: 'More reasoning' },
+];
+
+function ReasoningEffortPicker({ disabled = false }: { disabled?: boolean }) {
+  const providers = useChatStore((s) => s.providers);
+  const model = useChatStore((s) => s.model);
+  const reasoningEffort = useChatStore((s) => s.reasoningEffort);
+  const setReasoningEffort = useChatStore((s) => s.setReasoningEffort);
+  const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
+  const supportsReasoning = useMemo(() => {
+    if (!model) return false;
+    const provider = providers.find((entry) => entry.id === model.providerID);
+    return provider?.models?.[model.modelID]?.capabilities?.reasoning === true;
+  }, [model, providers]);
+  if (!supportsReasoning) return null;
+
+  const selected =
+    REASONING_EFFORT_OPTIONS.find((option) => option.value === reasoningEffort) ??
+    REASONING_EFFORT_OPTIONS[1];
+
+  return (
+    <>
+      <button
+        ref={setAnchor}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
+        title={`Reasoning effort: ${selected.label}`}
+        aria-label="Select reasoning effort"
+        className="shrink-0 flex items-center gap-1 px-1.5 h-[22px] border border-tagma-border/70 text-[10px] font-mono text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-tagma-muted disabled:hover:border-tagma-border/70 transition-colors"
+      >
+        <Brain size={10} className="shrink-0" />
+        <span>{selected.label}</span>
+        <ChevronDown size={10} className="shrink-0" />
+      </button>
+      <FloatingPanel
+        anchor={anchor}
+        open={open && !disabled}
+        onClose={() => setOpen(false)}
+        width={180}
+        maxHeight={160}
+      >
+        <div className="py-1">
+          {REASONING_EFFORT_OPTIONS.map((option) => {
+            const active = option.value === reasoningEffort;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => {
+                  setReasoningEffort(option.value);
+                  setOpen(false);
+                }}
+                className={`w-full flex items-center gap-1.5 px-2 py-1.5 text-left text-[10px] font-mono hover:bg-tagma-border/30 transition-colors ${
+                  active ? 'text-tagma-text bg-tagma-border/20' : 'text-tagma-muted'
+                }`}
+                title={option.hint}
+              >
+                <Check
+                  size={10}
+                  className={`shrink-0 ${active ? 'text-tagma-ready' : 'text-transparent'}`}
+                />
+                <span className="w-12 shrink-0">{option.label}</span>
+                <span className="min-w-0 flex-1 truncate text-tagma-muted/60">{option.hint}</span>
+              </button>
+            );
+          })}
+        </div>
+      </FloatingPanel>
+    </>
+  );
+}
+
 function ChatMessages() {
   const messages = useChatStore((s) => s.messages);
   const sending = useChatStore((s) => s.sending);
   const pendingUserText = useChatStore((s) => s.pendingUserText);
   const queuedMessages = useChatStore((s) => s.queuedMessages);
   const sessionId = useChatStore((s) => s.currentSessionId);
+  const sessionYamlResults = useChatStore((s) => s.sessionYamlResults);
   const postChatYamlAction = useChatStore((s) => s.postChatYamlAction);
   const pendingPermissions = useChatStore((s) => s.pendingPermissions);
   const turnStartedAt = useChatStore((s) => s.turnStartedAt);
@@ -311,6 +720,7 @@ function ChatMessages() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  const sessionYamlResult = sessionId ? (sessionYamlResults[sessionId] ?? null) : null;
 
   // Expanded-state for activity panels lives at this layer (not as
   // component-local useState in MessageBubble) because the bubble unmounts
@@ -484,6 +894,9 @@ function ChatMessages() {
           {queuedMessages.map((item, idx) => (
             <QueuedUserBubble key={item.id} id={item.id} text={item.text} position={idx + 1} />
           ))}
+          {sessionYamlResult && !postChatYamlAction && !sending && (
+            <SessionYamlResultBubble result={sessionYamlResult} />
+          )}
           {postChatYamlAction && !sending && <YamlActionBubble />}
           {pendingPermissions.map((p) => (
             <PermissionBubble key={`${p.workspaceKey}:${p.sessionID}:${p.id}`} permission={p} />
@@ -510,6 +923,135 @@ function ChatMessages() {
 
 function isAbortErrorEntry(entry: OpencodeThreadEntry): boolean {
   return entry.info.role === 'assistant' && entry.info.error?.name === 'MessageAbortedError';
+}
+
+function SessionYamlResultBubble({ result }: { result: ChatYamlSessionResult }) {
+  const openTarget = useOpenChatPipelineTarget();
+  const name = chatPipelineDisplayName(result);
+  const ok = result.status === 'ready';
+  const verb = result.kind === 'open-created' ? 'Created pipeline' : 'Updated pipeline';
+  const summary = result.compile.summary || (ok ? 'Compile succeeded.' : 'Compile still failing.');
+
+  return (
+    <div className="flex flex-col gap-1 items-start">
+      <div className="text-[9px] font-mono uppercase tracking-wide text-tagma-muted/60">
+        pipeline result
+      </div>
+      <div className="max-w-[90%] min-w-0 flex flex-col gap-2 px-2.5 py-2 text-[10px] font-mono border border-tagma-border bg-tagma-bg text-tagma-muted">
+        <div className="flex items-center gap-1.5 min-w-0">
+          {ok ? (
+            <CheckCircle2 size={12} className="text-tagma-ready shrink-0" />
+          ) : (
+            <AlertTriangle size={12} className="text-tagma-error shrink-0" />
+          )}
+          <span className="shrink-0 text-tagma-muted/80">{verb}</span>
+          <span className="truncate text-tagma-text" title={name}>
+            {name}
+          </span>
+        </div>
+        <div className="select-text text-tagma-muted/80 break-words">{summary}</div>
+        <button
+          type="button"
+          onClick={() => {
+            void openTarget(result);
+          }}
+          className="self-start flex items-center gap-1 px-2 py-1 border border-tagma-border text-[10px] text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 transition-colors"
+          title={`Open ${name}`}
+        >
+          <FileText size={11} />
+          <span>Open pipeline</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function ChatCompletionToast() {
+  const currentSessionId = useChatStore((s) => s.currentSessionId);
+  const sessions = useChatStore((s) => s.sessions);
+  const results = useChatStore((s) => s.sessionYamlResults);
+  const completedUnreadSessionIds = useChatStore((s) => s.completedUnreadSessionIds);
+  const dismissedIds = useChatStore((s) => s.dismissedSessionYamlResultToastIds);
+  const dismiss = useChatStore((s) => s.dismissSessionYamlResultToast);
+  const selectSession = useChatStore((s) => s.selectSession);
+  const openTarget = useOpenChatPipelineTarget();
+
+  const visibleResults = useMemo(
+    () =>
+      selectVisibleChatCompletionResults({
+        results,
+        completedUnreadSessionIds,
+        dismissedIds,
+        currentSessionId,
+      }),
+    [completedUnreadSessionIds, currentSessionId, dismissedIds, results],
+  );
+
+  if (visibleResults.length === 0) return null;
+
+  return (
+    <div className="fixed bottom-4 right-4 z-[260] flex max-w-[360px] flex-col gap-2">
+      {visibleResults.map((result) => {
+        const pipelineName = chatPipelineDisplayName(result);
+        const sessionTitle =
+          sessions.find((session) => session.id === result.sessionId)?.title ??
+          result.sessionId.slice(0, 8);
+        const ok = result.status === 'ready';
+        return (
+          <div
+            key={result.sessionId}
+            role="status"
+            aria-live="polite"
+            className="bg-tagma-surface border border-tagma-border shadow-panel animate-fade-in overflow-hidden"
+          >
+            <div className="flex items-start gap-2.5 px-3 py-2.5">
+              <div
+                className={`w-[3px] self-stretch shrink-0 ${ok ? 'bg-tagma-ready' : 'bg-tagma-error'}`}
+              />
+              {ok ? (
+                <CheckCircle2 size={14} className="text-tagma-ready shrink-0 mt-0.5" />
+              ) : (
+                <AlertTriangle size={14} className="text-tagma-error shrink-0 mt-0.5" />
+              )}
+              <div className="min-w-0 flex-1 font-mono">
+                <div className="text-[11px] text-tagma-text truncate" title={pipelineName}>
+                  {pipelineName}
+                </div>
+                <div
+                  className="mt-0.5 text-[9px] text-tagma-muted/70 truncate"
+                  title={sessionTitle}
+                >
+                  {sessionTitle}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void openTarget(result);
+                    void selectSession(result.sessionId).catch(() => {
+                      /* best effort */
+                    });
+                  }}
+                  className="mt-2 inline-flex items-center gap-1 border border-tagma-border px-2 py-1 text-[10px] text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 transition-colors"
+                  title={`Open ${pipelineName}`}
+                >
+                  <FileText size={11} />
+                  <span>Open pipeline</span>
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => dismiss(result.sessionId)}
+                className="p-1 text-tagma-muted hover:text-tagma-text shrink-0"
+                aria-label="Dismiss completion"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function YamlActionBubble() {

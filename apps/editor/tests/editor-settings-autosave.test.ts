@@ -33,6 +33,7 @@ describe('EditorSettings autosave + viewMode fields', () => {
     expect(DEFAULT_EDITOR_SETTINGS.viewMode).toBe('production');
     expect(DEFAULT_EDITOR_SETTINGS.pythonAgent.enabled).toBe(false);
     expect(DEFAULT_EDITOR_SETTINGS.opencodeChatModel).toBe(null);
+    expect(DEFAULT_EDITOR_SETTINGS.opencodeChatReasoningEffort).toBe('medium');
     expect(DEFAULT_EDITOR_SETTINGS.chatContextLimitEnabled).toBe(false);
     expect(DEFAULT_EDITOR_SETTINGS.chatContextRounds).toBe(0);
   });
@@ -44,6 +45,7 @@ describe('EditorSettings autosave + viewMode fields', () => {
     expect(s.viewMode).toBe('production');
     expect(s.pythonAgent.enabled).toBe(false);
     expect(s.opencodeChatModel).toBe(null);
+    expect(s.opencodeChatReasoningEffort).toBe('medium');
     expect(s.chatContextLimitEnabled).toBe(false);
     expect(s.chatContextRounds).toBe(0);
   });
@@ -67,6 +69,7 @@ describe('EditorSettings autosave + viewMode fields', () => {
           providerID: 'anthropic',
           modelID: 'claude-sonnet-4-5',
         },
+        opencodeChatReasoningEffort: 'high',
         chatContextLimitEnabled: true,
         chatContextRounds: 0,
       }),
@@ -87,6 +90,7 @@ describe('EditorSettings autosave + viewMode fields', () => {
       providerID: 'anthropic',
       modelID: 'claude-sonnet-4-5',
     });
+    expect(s.opencodeChatReasoningEffort).toBe('high');
     expect(s.chatContextLimitEnabled).toBe(true);
     expect(s.chatContextRounds).toBe(0);
   });
@@ -110,6 +114,7 @@ describe('EditorSettings autosave + viewMode fields', () => {
           providerID: '',
           modelID: 123,
         },
+        opencodeChatReasoningEffort: 'extreme',
         chatContextLimitEnabled: 'yes',
         chatContextRounds: -1,
       }),
@@ -120,6 +125,7 @@ describe('EditorSettings autosave + viewMode fields', () => {
     expect(s.viewMode).toBe('production');
     expect(s.pythonAgent).toEqual(DEFAULT_EDITOR_SETTINGS.pythonAgent);
     expect(s.opencodeChatModel).toBe(null);
+    expect(s.opencodeChatReasoningEffort).toBe('medium');
     expect(s.chatContextLimitEnabled).toBe(false);
     expect(s.chatContextRounds).toBe(0);
   });
@@ -153,6 +159,7 @@ describe('EditorSettings autosave + viewMode fields', () => {
         providerID: 'anthropic',
         modelID: 'claude-sonnet-4-5',
       },
+      opencodeChatReasoningEffort: 'low',
       chatContextLimitEnabled: true,
       chatContextRounds: 12,
     });
@@ -165,6 +172,7 @@ describe('EditorSettings autosave + viewMode fields', () => {
       providerID: 'anthropic',
       modelID: 'claude-sonnet-4-5',
     });
+    expect(next.opencodeChatReasoningEffort).toBe('low');
     expect(next.chatContextLimitEnabled).toBe(true);
     expect(next.chatContextRounds).toBe(12);
     const onDisk = JSON.parse(
@@ -178,6 +186,7 @@ describe('EditorSettings autosave + viewMode fields', () => {
       providerID: 'anthropic',
       modelID: 'claude-sonnet-4-5',
     });
+    expect(onDisk.opencodeChatReasoningEffort).toBe('low');
     expect(onDisk.chatContextLimitEnabled).toBe(true);
     expect(onDisk.chatContextRounds).toBe(12);
   });

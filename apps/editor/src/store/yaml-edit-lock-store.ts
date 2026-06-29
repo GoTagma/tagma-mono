@@ -47,6 +47,7 @@ interface StoredYamlEditLock {
 let activeYamlPath: string | null = null;
 const rawLocksByWorkspace = new Map<WorkspaceKey, StoredYamlEditLock>();
 let localLock: ChatYamlEditLockLease | null = null;
+let localLockRefCount = 0;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let expiryTimer: ReturnType<typeof setTimeout> | null = null;
 const acquireInFlightByWorkspace = new Map<WorkspaceKey, Promise<ChatYamlEditLockLease>>();
@@ -108,6 +109,7 @@ function expireLocks(): void {
     rawLocksByWorkspace.delete(workspaceKey);
     if (localLock?.workspaceKey === workspaceKey) {
       localLock = null;
+      localLockRefCount = 0;
       clearHeartbeat();
     }
   }
@@ -153,9 +155,9 @@ async function refreshHeldLock(reason: string, lease: ChatYamlEditLockLease): Pr
     lease.workspaceKey,
   );
   if (localLock?.id !== lock.id || localLock.workspaceKey !== lease.workspaceKey) return;
-  localLock = { id: result.lock.id, workspaceKey: lease.workspaceKey };
-  setRawLock(result.lock, lease.workspaceKey, true);
-}
+      localLock = { id: result.lock.id, workspaceKey: lease.workspaceKey };
+      setRawLock(result.lock, lease.workspaceKey, true);
+    }
 
 function startHeartbeat(reason: string, lease: ChatYamlEditLockLease): void {
   clearHeartbeat();
@@ -163,6 +165,7 @@ function startHeartbeat(reason: string, lease: ChatYamlEditLockLease): void {
     void refreshHeldLock(reason, lease).catch(() => {
       if (localLock?.id !== lease.id || localLock.workspaceKey !== lease.workspaceKey) return;
       localLock = null;
+      localLockRefCount = 0;
       clearHeartbeat();
       setRawLock(null, lease.workspaceKey, false);
     });
@@ -191,6 +194,7 @@ export const useYamlEditLockStore = create<YamlEditLockStore>(() => ({
     if (!stored?.local) return;
     if (localLock?.workspaceKey === workspaceKey) {
       localLock = null;
+      localLockRefCount = 0;
       clearHeartbeat();
     }
     setRawLock(null, workspaceKey, false);
@@ -212,6 +216,13 @@ export function isLocalYamlEditLockActive(): boolean {
   return s.local && s.active && (s.expiresAt === null || s.expiresAt > Date.now());
 }
 
+export function isLocalYamlEditLockHeldForWorkspace(
+  workspaceKey: WorkspaceKey = getClientWorkspace(),
+): boolean {
+  const stored = rawLocksByWorkspace.get(workspaceKey);
+  return !!stored?.local && localLock?.workspaceKey === workspaceKey && localLockRefCount > 0;
+}
+
 export function getLocalYamlEditLockId(): string | null {
   return isLocalYamlEditLockActive() ? (localLock?.id ?? null) : null;
 }
@@ -225,7 +236,14 @@ export async function acquireChatYamlEditLock(
   const wsKeyAtAcquire = getClientWorkspace();
   const mapKey = wsKeyAtAcquire;
   const existing = acquireInFlightByWorkspace.get(mapKey);
-  if (existing) return existing;
+  if (existing) {
+    return existing.then((lease) => {
+      if (localLock?.id === lease.id && localLock.workspaceKey === lease.workspaceKey) {
+        localLockRefCount += 1;
+      }
+      return lease;
+    });
+  }
 
   const acquireToken = Symbol('chat-yaml-edit-lock-acquire');
   latestAcquireToken = acquireToken;
@@ -254,7 +272,10 @@ export async function acquireChatYamlEditLock(
       );
       const lease = { id: result.lock.id, workspaceKey: wsKeyAtAcquire };
       if (latestAcquireToken === acquireToken) {
+        const extendsCurrentLock =
+          localLock?.id === lease.id && localLock.workspaceKey === lease.workspaceKey;
         localLock = lease;
+        localLockRefCount = extendsCurrentLock ? localLockRefCount + 1 : 1;
         setRawLock(result.lock, wsKeyAtAcquire, true);
         startHeartbeat(reason, lease);
       }
@@ -262,6 +283,7 @@ export async function acquireChatYamlEditLock(
     } catch (err) {
       if (latestAcquireToken === acquireToken) {
         localLock = null;
+        localLockRefCount = 0;
         clearHeartbeat();
         setRawLock(null, wsKeyAtAcquire, false);
       }
@@ -285,8 +307,13 @@ export async function releaseChatYamlEditLock(lease?: ChatYamlEditLockLease): Pr
     !!target &&
     !!stored?.local &&
     (releasingLocal || localLock?.workspaceKey !== target.workspaceKey);
+  if (releasingLocal && localLockRefCount > 1) {
+    localLockRefCount -= 1;
+    return;
+  }
   if (releasingLocal) {
     localLock = null;
+    localLockRefCount = 0;
     clearHeartbeat();
   }
   if (releasingStoredLocal) {

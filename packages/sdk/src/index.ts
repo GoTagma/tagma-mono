@@ -69,6 +69,7 @@ export type {
   PipelineGraphAbortReason,
   PipelineGraphConfig,
   PipelineGraphEventPayload,
+  PipelineGraphMaxRuns,
   PipelineGraphNodeState,
   PipelineGraphNodeStatus,
   PipelineGraphPipelineAttemptState,

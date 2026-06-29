@@ -356,13 +356,9 @@ async function fetchProviderModelCatalogV2(
 }
 
 function v2ModelPicks(catalog: ProviderModelCatalogV2Snapshot): PlatformExportModelPick[] {
-  const enabledProviders = new Set(
-    catalog.providers
-      .filter((provider) => provider.disabled !== true)
-      .map((provider) => provider.id),
-  );
+  const providerIds = new Set(catalog.providers.map((provider) => provider.id));
   return catalog.models
-    .filter((model) => model.enabled !== false && enabledProviders.has(model.providerID))
+    .filter((model) => providerIds.has(model.providerID))
     .map((model) => ({ providerID: model.providerID, modelID: model.id }));
 }
 

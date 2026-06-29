@@ -38,6 +38,7 @@ export {
 } from './workflow';
 export type {
   PipelineGraphPipelineLifecycle,
+  PipelineGraphMaxRuns,
   PipelineGraphStopWhen,
   RawWorkflowConfig,
   RawWorkflowPipelineConfig,

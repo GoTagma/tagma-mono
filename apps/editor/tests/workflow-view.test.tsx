@@ -24,7 +24,12 @@ const workflows: WorkflowYamlEntry[] = [
         position: { x: 320, y: 96 },
         lifecycle: { max_runs: 2, stop_when: 'always' },
       },
-      { id: 'p3', path: '.tagma/p3/p3.yaml', depends_on: ['p1'] },
+      {
+        id: 'p3',
+        path: '.tagma/p3/p3.yaml',
+        depends_on: ['p1'],
+        lifecycle: { max_runs: 'infinite', stop_when: 'always' },
+      },
     ],
   },
   {
@@ -213,10 +218,13 @@ describe('WorkflowView', () => {
     expect(html).toContain('top:96px');
     expect(html).toContain('Loop Count');
     expect(html).toContain('id="workflow-loop-count"');
+    expect(html).toContain('id="workflow-loop-infinite"');
+    expect(html).toContain('Infinite loop');
     expect(html).toContain('type="text"');
     expect(html).toContain('inputMode="numeric"');
     expect(html).toContain('value="1"');
     expect(html).toContain('Loop x2');
+    expect(html).toContain('Loop infinite');
     expect(html).toContain('Build');
     expect(html).toContain('success');
   });
@@ -330,6 +338,7 @@ describe('WorkflowView', () => {
     expect(html).toContain('Pipeline Runtime');
     expect(html).toContain('Pipeline Two');
     expect(html).toContain('Run 2/2');
+    expect(html).toContain('0/infinite');
     expect(html).toContain('Edit graph');
   });
 
