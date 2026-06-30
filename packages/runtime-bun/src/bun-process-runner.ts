@@ -196,7 +196,8 @@ async function collectStream(
 
   const chunks: Uint8Array[] = [];
   let tailBytes = 0;
-  let totalBytes = 0;
+  let storedBytes = 0;
+  let childBytes = 0;
   let streamError: Error | null = null;
 
   const redactPiece = (text: string, final: boolean): string => {
@@ -213,7 +214,7 @@ async function collectStream(
 
   const appendChunk = async (chunk: Uint8Array, liveText?: string): Promise<void> => {
     if (chunk.length === 0) return;
-    totalBytes += chunk.length;
+    storedBytes += chunk.length;
 
     // Live side-channel: surface this chunk to the caller before the
     // process exits. Best-effort -- a throwing sink must not abort the
@@ -279,6 +280,7 @@ async function collectStream(
     // proc.exited and a task that the OS considered successful doesn't get
     // marked failed over a runtime stream glitch.
     for await (const value of stream as AsyncIterable<Uint8Array>) {
+      childBytes += value.length;
       if (outputRedactor && redactorDecoder && redactorEncoder) {
         const piece = redactorDecoder.decode(value, { stream: true });
         if (piece.length > 0) {
@@ -328,8 +330,8 @@ async function collectStream(
   for (const c of chunks) text += decoder.decode(c, { stream: true });
   text += decoder.decode();
 
-  if (totalBytes > tailBytes) {
-    const dropped = totalBytes - tailBytes;
+  if (storedBytes > tailBytes) {
+    const dropped = storedBytes - tailBytes;
     const pathHint = filePath
       ? diskWriteFailed
         ? `${filePath} (partial; disk write failed mid-stream)`
@@ -344,7 +346,7 @@ async function collectStream(
 
   return {
     text,
-    totalBytes,
+    totalBytes: childBytes,
     // Return the path even on partial-write failure so operators can still
     // inspect the head bytes we managed to persist.
     path: filePath ?? null,

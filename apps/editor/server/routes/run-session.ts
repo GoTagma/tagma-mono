@@ -174,15 +174,15 @@ export function runtimeWithInjectedEnv(
   secretValues: readonly string[] = [],
 ): TagmaRuntime {
   const base = bunRuntime();
-  const redactor = createSecretOutputRedactor(secretValues);
-  if (Object.keys(runtimeEnv).length === 0 && !redactor) return base;
+  const hasSecretValues = secretValues.some((value) => value.length > 0);
+  if (Object.keys(runtimeEnv).length === 0 && !hasSecretValues) return base;
   return {
     ...base,
     runSpawn(spec: SpawnSpec, driver: DriverPlugin | null, opts: RuntimeRunOptions = {}) {
       return base.runSpawn(
         { ...spec, env: mergeRuntimeEnv(spec.env, runtimeEnv) },
         driver,
-        withOutputRedactor(opts, redactor),
+        withOutputRedactor(opts, createSecretOutputRedactor(secretValues)),
       );
     },
     runCommand(command: CommandConfig, cwd: string, opts: RuntimeRunOptions = {}) {
@@ -192,7 +192,7 @@ export function runtimeWithInjectedEnv(
           env: mergeRuntimeEnv(undefined, runtimeEnv),
         },
         null,
-        withOutputRedactor(opts, redactor),
+        withOutputRedactor(opts, createSecretOutputRedactor(secretValues)),
       );
     },
   };

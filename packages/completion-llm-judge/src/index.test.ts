@@ -77,6 +77,61 @@ describe('completion-llm-judge plugin shape', () => {
     }
   });
 
+  test('timeout 0 disables the judge request timer', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (_url, init) => {
+      const signal = init?.signal as AbortSignal | undefined;
+      if (signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, 10);
+        signal?.addEventListener(
+          'abort',
+          () => {
+            clearTimeout(timer);
+            reject(new DOMException('The operation was aborted.', 'AbortError'));
+          },
+          { once: true },
+        );
+      });
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: 'PASS\nlooks good' } }] }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        },
+      );
+    }) as typeof fetch;
+
+    try {
+      await expect(
+        LlmJudgeCompletion.check(
+          {
+            rubric: 'must pass',
+            endpoint: 'http://localhost:11434/v1/chat/completions',
+            timeout: 0,
+          },
+          {
+            exitCode: 0,
+            stdout: 'ok',
+            stderr: '',
+            stdoutPath: null,
+            stderrPath: null,
+            durationMs: 1,
+            sessionId: null,
+            normalizedOutput: null,
+            failureKind: null,
+          },
+          {
+            workDir: '/tmp',
+            runtime: {} as never,
+          },
+        ),
+      ).resolves.toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test('rejects malformed timeout before calling the judge endpoint', async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async () => {

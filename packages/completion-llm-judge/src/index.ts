@@ -129,7 +129,7 @@ async function callJudge(
   externalSignal: AbortSignal | undefined,
 ): Promise<string> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;
 
   const onExternalAbort = (): void => controller.abort();
   if (externalSignal) {
@@ -176,7 +176,7 @@ async function callJudge(
     }
     return stripThinking(content);
   } finally {
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
     if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
   }
 }

@@ -26,6 +26,30 @@ describe('run secret output redaction', () => {
     expect(redact?.('stdout', 'def', true)).toBe('[redacted secret]');
   });
 
+  test('isolates split-secret carry state between concurrent processes', async () => {
+    const dir = makeTempDir();
+    const runtime = runtimeWithInjectedEnv({}, ['SECRET']);
+    const prefixRun = runtime.runSpawn(
+      {
+        args: [process.execPath, '-e', "process.stdout.write('SEC'); setTimeout(() => {}, 150);"],
+        cwd: dir,
+      },
+      null,
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const suffixRun = await runtime.runSpawn(
+      { args: [process.execPath, '-e', "process.stdout.write('RET');"], cwd: dir },
+      null,
+    );
+    const prefixResult = await prefixRun;
+
+    expect(prefixResult.exitCode).toBe(0);
+    expect(suffixRun.exitCode).toBe(0);
+    expect(prefixResult.stdout).toBe('SEC');
+    expect(suffixRun.stdout).toBe('RET');
+  });
+
   test('redacts injected secret values from live chunks, tails, and persisted logs', async () => {
     const dir = makeTempDir();
     const secret = 'SECRET_VALUE_FOR_REDACTION_12345';

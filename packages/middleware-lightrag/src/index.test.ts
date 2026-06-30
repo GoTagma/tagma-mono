@@ -96,6 +96,44 @@ describe('middleware-lightrag plugin shape', () => {
     }
   });
 
+  test('timeout 0 disables the LightRAG request timer', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (_url, init) => {
+      const signal = init?.signal as AbortSignal | undefined;
+      if (signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, 10);
+        signal?.addEventListener(
+          'abort',
+          () => {
+            clearTimeout(timer);
+            reject(new DOMException('The operation was aborted.', 'AbortError'));
+          },
+          { once: true },
+        );
+      });
+      return new Response(JSON.stringify({ response: 'retrieved context' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+
+    try {
+      await expect(
+        LightRAGMiddleware.enhanceDoc(
+          { contexts: [], task: 'explain tagma' },
+          { endpoint: 'http://localhost:9621', required: true, timeout: 0 },
+          { task: {} as never, track: {} as never, workDir: process.cwd() },
+        ),
+      ).resolves.toEqual({
+        contexts: [{ label: 'Knowledge Graph Context', content: 'retrieved context' }],
+        task: 'explain tagma',
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test('rejects malformed timeout before querying LightRAG', async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async () => {

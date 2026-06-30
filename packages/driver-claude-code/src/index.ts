@@ -15,6 +15,7 @@ import type {
 // Claude Code CLI reference: https://code.claude.com/docs/en/cli-reference
 
 const DEFAULT_MODEL = 'sonnet';
+const DEFAULT_PERMISSIONS: Permissions = { read: true, write: false, execute: false };
 
 function windowsPathEnv(): string {
   return process.env.Path ?? process.env.PATH ?? '';
@@ -161,7 +162,7 @@ export const ClaudeCodeDriver: DriverPlugin = {
   resolveTools,
 
   async buildCommand(task: TaskConfig, track: TrackConfig, ctx: DriverContext): Promise<SpawnSpec> {
-    const permissions = task.permissions ?? track.permissions!;
+    const permissions = task.permissions ?? track.permissions ?? DEFAULT_PERMISSIONS;
     const model = task.model ?? track.model ?? DEFAULT_MODEL;
     // SDK schema layer already resolved task → track → pipeline inheritance.
     // Pass any non-empty effort string through to the CLI so provider-specific

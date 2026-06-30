@@ -49,6 +49,29 @@ describe('driver-claude-code plugin shape', () => {
     }
   });
 
+  test('buildCommand defaults to read-only permissions when permissions are omitted', async () => {
+    const task = {
+      id: 't1',
+      name: 't1',
+      prompt: 'hello',
+    } as unknown as Parameters<typeof plugin.buildCommand>[0];
+    const track = { id: 'k', name: 'k', tasks: [] } as unknown as Parameters<
+      typeof plugin.buildCommand
+    >[1];
+    const ctx = {
+      workDir: process.cwd(),
+      normalizedMap: new Map(),
+      sessionMap: new Map(),
+      sessionDriverMap: new Map(),
+    } as unknown as Parameters<typeof plugin.buildCommand>[2];
+
+    const spec = await ClaudeCodeDriver.buildCommand(task, track, ctx);
+
+    expect(spec.args).toContain('--allowedTools');
+    expect(spec.args[spec.args.indexOf('--allowedTools') + 1]).toBe('Grep,Glob,Read');
+    expect(spec.args[spec.args.indexOf('--permission-mode') + 1]).toBe('dontAsk');
+  });
+
   test('passes an existing CLAUDE_CODE_GIT_BASH_PATH through to the child env on Windows', async () => {
     if (process.platform !== 'win32') return;
 

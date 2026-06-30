@@ -134,7 +134,7 @@ async function queryLightRAG(
   const url = endpoint.replace(/\/+$/, '') + '/query';
   const controller = new AbortController();
   const unlinkAbort = signal ? linkAbort(signal, () => controller.abort(signal.reason)) : null;
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;
   try {
     const res = await fetch(url, {
       method: 'POST',
@@ -164,7 +164,7 @@ async function queryLightRAG(
     return (payload.response ?? '').toString();
   } finally {
     unlinkAbort?.();
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
   }
 }
 

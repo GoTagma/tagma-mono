@@ -45,6 +45,22 @@ test('runSpawn falls back to bounded tail caps for non-finite values', async () 
   expect(result.stdout.length).toBeLessThan(DEFAULT_STDOUT_TAIL_BYTES + 1024);
 });
 
+test('runSpawn reports child output bytes before redaction', async () => {
+  const result = await runSpawn(
+    { args: nodeArg('process.stdout.write("secret"); process.stderr.write("secret")') },
+    null,
+    {
+      outputRedactor: (_stream, text) => text.replaceAll('secret', 'x'),
+    },
+  );
+
+  expect(result.exitCode).toBe(0);
+  expect(result.stdout).toBe('x');
+  expect(result.stderr).toBe('x');
+  expect(result.stdoutBytes).toBe('secret'.length);
+  expect(result.stderrBytes).toBe('secret'.length);
+});
+
 test('runSpawn reports pre-spawn aborts as aborted', async () => {
   const controller = new AbortController();
   controller.abort();
