@@ -1,9 +1,14 @@
 #!/usr/bin/env node
-// Stage the compiled sidecar into apps/editor/desktop-dist-<arch>/ so that
-// electron-builder's extraResources entry ("../editor/desktop-dist-${arch}")
-// finds a sidecar for every arch it's packaging. The ${arch} template is
-// substituted per electron-builder build, so each .dmg / .exe / .AppImage
-// gets the matching-arch binary instead of whatever the host produced.
+// Stage the sidecar binary that has already been built into
+// apps/editor/desktop-dist-<arch>/ so electron-builder's extraResources entry
+// ("../editor/desktop-dist-${arch}") can resolve one sidecar directory per
+// packaged architecture.
+//
+// This script does not choose or change the Bun compile target. The release
+// workflow and local dist scripts must build apps/editor/desktop-dist/ with the
+// correct target first; win/linux x64 installers use Bun's baseline portable
+// targets. stage-sidecar only refreshes the per-arch copy when the default
+// build is newer.
 //
 // Contract:
 //   - apps/editor/desktop-dist/ may exist (default build:sidecar output). If
@@ -14,8 +19,8 @@
 //   - Idempotent: running twice without a newer source is a no-op.
 //
 // Usage: `node scripts/stage-sidecar.mjs <arch1> [<arch2> ...]`. Arches
-// default to process.arch so a plain invocation Just Works for local
-// single-arch dev builds.
+// default to process.arch so a plain invocation works for local single-arch
+// dev builds.
 import { cpSync, existsSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';

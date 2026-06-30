@@ -33,4 +33,15 @@ test('editor serial runner discovers test files deterministically', async () => 
     '--timeout',
     '10000',
   ]);
+  assert.deepEqual(buildBunTestArgs('tests/workflow-integration.test.ts'), [
+    'test',
+    'tests/workflow-integration.test.ts',
+    '--timeout',
+    '30000',
+  ]);
+  assert.deepEqual(buildBunTestArgs('tests/workflow-integration.test.ts', ['--timeout=45000']), [
+    'test',
+    'tests/workflow-integration.test.ts',
+    '--timeout=45000',
+  ]);
 });

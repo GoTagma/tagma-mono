@@ -10,12 +10,16 @@
 import { join } from 'node:path';
 import { collectExportTargets } from './lib/exports-targets.mjs';
 import { describePublishTargetStatus, formatPublishTargetFailure } from './lib/publish-targets.mjs';
+import { findExtensionlessRelativeEsmSpecifiersInDir } from './lib/esm-specifiers.mjs';
+import { checkPublishTargetImport, isImportablePublishTarget } from './lib/publish-imports.mjs';
 import { reportGate, workspacePackages } from './lib/repo.mjs';
 
 const failures = [];
 const notes = [];
 let checkedPkgs = 0;
 let checkedTargets = 0;
+let checkedEsmSpecifiers = 0;
+let checkedImportTargets = 0;
 
 for (const { name, manifest, dir } of workspacePackages()) {
   if (manifest.private === true) continue;
@@ -36,12 +40,31 @@ for (const { name, manifest, dir } of workspacePackages()) {
   }
   for (const t of collectExportTargets(manifest.exports)) targets.push(['exports', t]);
 
+  const importTargets = new Map();
   for (const [field, rel] of targets) {
     if (typeof rel !== 'string' || rel.includes('*')) continue; // skip wildcard subpaths
     checkedTargets += 1;
     const status = describePublishTargetStatus(join(dir, rel));
     const failure = formatPublishTargetFailure(name, field, rel, status);
     if (failure) failures.push(failure);
+    if (isImportablePublishTarget(field, rel)) {
+      importTargets.set(`${field}\0${rel}`, [field, rel]);
+    }
+  }
+
+  for (const [field, rel] of importTargets.values()) {
+    checkedImportTargets += 1;
+    const failure = await checkPublishTargetImport(name, field, dir, rel);
+    if (failure) failures.push(failure);
+  }
+
+  const esmSpecifierFindings = findExtensionlessRelativeEsmSpecifiersInDir(join(dir, 'dist'));
+  checkedEsmSpecifiers += esmSpecifierFindings.length;
+  for (const finding of esmSpecifierFindings) {
+    failures.push(
+      `${name}: dist/${finding.relFile} imports "${finding.specifier}" without a file extension` +
+        (finding.replacement ? ` (expected "${finding.replacement}")` : ''),
+    );
   }
 }
 
@@ -49,5 +72,5 @@ for (const note of notes) console.log(`[publish-check] note: ${note}`);
 reportGate(
   'publish-check',
   failures,
-  `clean (${checkedPkgs} publishable packages, ${checkedTargets} entrypoint targets resolve)`,
+  `clean (${checkedPkgs} publishable packages, ${checkedTargets} entrypoint targets resolve, ${checkedImportTargets} importable targets load, ${checkedEsmSpecifiers} extensionless ESM specifiers)`,
 );

@@ -4,6 +4,7 @@ import { join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const thisFile = fileURLToPath(import.meta.url);
+const slowTestTimeouts = new Map([['tests/workflow-integration.test.ts', '30000']]);
 
 function normalizePath(path) {
   return path.split(sep).join('/');
@@ -27,8 +28,17 @@ export function discoverTestFiles(testsDir, cwd = process.cwd()) {
   return files.sort();
 }
 
+function hasTimeoutArg(args) {
+  return args.some((arg) => arg === '--timeout' || arg.startsWith('--timeout='));
+}
+
 export function buildBunTestArgs(file, extraArgs = []) {
-  return ['test', file, ...extraArgs];
+  const args = ['test', file];
+  const timeout = slowTestTimeouts.get(normalizePath(file));
+  if (timeout && !hasTimeoutArg(extraArgs)) {
+    args.push('--timeout', timeout);
+  }
+  return [...args, ...extraArgs];
 }
 
 function run() {

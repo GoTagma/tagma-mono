@@ -6,6 +6,7 @@ import { rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { formatBuildCleanupFailure } from './lib/build-package-message.mjs';
+import { rewriteDistEsmSpecifiers } from './lib/esm-specifiers.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const tscBin = resolve(repoRoot, 'node_modules', 'typescript', 'bin', 'tsc');
@@ -29,3 +30,5 @@ execFileSync(process.execPath, [tscBin, '-p', 'tsconfig.json'], {
   cwd: packageDir,
   stdio: 'inherit',
 });
+
+rewriteDistEsmSpecifiers(distDir);

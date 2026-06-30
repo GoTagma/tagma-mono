@@ -15,16 +15,14 @@ const outDir = outDirRaw ? resolve(packageDir, outDirRaw) : join(packageDir, 'de
 const outfile = join(outDir, `tagma-editor-server${process.platform === 'win32' ? '.exe' : ''}`);
 
 // Pick a Bun compile target that runs on the widest set of end-user CPUs.
-// Without an explicit target Bun bakes in the host runner's "modern" runtime
-// variant (CI uses a recent Azure VM with AVX2). End-user CPUs that lack AVX2
-// — older Intel/AMD chips, many VMs, virtualized desktops — then crash on
-// launch with STATUS_ILLEGAL_INSTRUCTION (0xC000001D = 3221225501), which
-// surfaces in main.ts as "Sidecar exited before ready (code 3221225501)".
+// Without an explicit target, Bun can bake in the host runner's modern runtime
+// variant. End-user CPUs that lack AVX2 then crash on launch with
+// STATUS_ILLEGAL_INSTRUCTION (0xC000001D = 3221225501), which surfaces in
+// main.ts as "Sidecar exited before ready (code 3221225501)".
 //
-// Only a release/CI build needs the portable baseline variant — cross-variant
-// compile requires downloading the target runtime, which is flaky on dev
-// machines behind corporate networks / regional CDNs. Locally we just reuse
-// the host runtime, which is guaranteed to match the dev's own CPU.
+// CI auto-selects portable release targets. Local dist scripts also pass
+// TAGMA_BUN_COMPILE_TARGET explicitly so installer builds are portable, while
+// plain local build:sidecar / pack workflows keep using the host runtime.
 //
 // Override via TAGMA_BUN_COMPILE_TARGET to force a specific variant (or
 // `none`/`off`/`host`/`skip` to force host runtime even in CI).

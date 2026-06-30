@@ -28,8 +28,8 @@
     "fetch:opencode": "bun ./scripts/fetch-opencode.mjs",
     "fetch:bun": "bun ./scripts/fetch-bun.mjs",
     "pack": "bun run build:all && bun run fetch:opencode && bun run fetch:bun && node ./scripts/stage-sidecar.mjs && electron-builder --dir",
-    "dist:win": "bun run build:all && bun ./scripts/fetch-opencode.mjs --platform=win32 --arch=x64 && bun ./scripts/fetch-bun.mjs --platform=win32 --arch=x64 && node ./scripts/stage-sidecar.mjs x64 && electron-builder --win",
-    "dist:linux": "bun run build:all && bun ./scripts/fetch-opencode.mjs --platform=linux --arch=x64 && bun ./scripts/fetch-bun.mjs --platform=linux --arch=x64 && node ./scripts/stage-sidecar.mjs x64 && electron-builder --linux",
+    "dist:win": "TAGMA_BUN_COMPILE_TARGET=bun-windows-x64-baseline bun run build:all && bun ./scripts/fetch-opencode.mjs --platform=win32 --arch=x64 && bun ./scripts/fetch-bun.mjs --platform=win32 --arch=x64 && node ./scripts/stage-sidecar.mjs x64 && electron-builder --win",
+    "dist:linux": "TAGMA_BUN_COMPILE_TARGET=bun-linux-x64-baseline bun run build:all && bun ./scripts/fetch-opencode.mjs --platform=linux --arch=x64 && bun ./scripts/fetch-bun.mjs --platform=linux --arch=x64 && node ./scripts/stage-sidecar.mjs x64 && electron-builder --linux",
     "dist:mac": "bun run build:all && node ./scripts/build-mac-sidecars.mjs && bun ./scripts/fetch-opencode.mjs --platform=darwin --arch=arm64 && bun ./scripts/fetch-opencode.mjs --platform=darwin --arch=x64 && bun ./scripts/fetch-bun.mjs --platform=darwin --arch=arm64 && bun ./scripts/fetch-bun.mjs --platform=darwin --arch=x64 && node ./scripts/stage-sidecar.mjs arm64 x64 && electron-builder --mac --arm64 --x64"
   },
   "dependencies": {

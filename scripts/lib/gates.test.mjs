@@ -2,9 +2,17 @@
 // detection cores. Auto-run by the `scripts` gate
 // (node --test "scripts/**/*.test.mjs").
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { test } from 'node:test';
+import { join, resolve } from 'node:path';
 import { formatBuildCleanupFailure } from './build-package-message.mjs';
 import { collectExportTargets } from './exports-targets.mjs';
+import {
+  findExtensionlessRelativeEsmSpecifiers,
+  rewriteExtensionlessRelativeEsmSpecifiers,
+} from './esm-specifiers.mjs';
+import { checkPublishTargetImport, isImportablePublishTarget } from './publish-imports.mjs';
 import { formatFrozenInstallFailure } from './deps-check-message.mjs';
 import { findCycles } from './graph-cycles.mjs';
 import { isBuiltin, pkgNameOf, specifiersOf } from './import-spec.mjs';
@@ -104,6 +112,52 @@ test('publish: collectExportTargets flattens nested conditions', () => {
   assert.deepEqual(collectExportTargets('./dist/index.js'), ['./dist/index.js']);
 });
 
+test('publish: ESM specifier scan catches and rewrites extensionless relative imports', () => {
+  const file = resolve('pkg/dist/index.js');
+  const existing = new Set([resolve('pkg/dist/local.js'), resolve('pkg/dist/nested/index.js')]);
+  const exists = (path) => existing.has(resolve(path));
+  const source = [
+    "import local from './local';",
+    "export { value } from './already.js';",
+    "const nested = await import('./nested');",
+    "import external from '@tagma/core';",
+  ].join('\n');
+
+  const findings = findExtensionlessRelativeEsmSpecifiers(file, source, exists);
+  assert.deepEqual(
+    findings.map((finding) => [finding.specifier, finding.replacement]),
+    [
+      ['./local', './local.js'],
+      ['./nested', './nested/index.js'],
+    ],
+  );
+
+  const rewritten = rewriteExtensionlessRelativeEsmSpecifiers(file, source, exists);
+  assert.match(rewritten, /from '\.\/local\.js'/);
+  assert.match(rewritten, /import\('\.\/nested\/index\.js'\)/);
+  assert.match(rewritten, /from '\.\/already\.js'/);
+  assert.match(rewritten, /from '@tagma\/core'/);
+});
+test('publish: import check loads public JS targets and reports broken exports', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-publish-import-'));
+  try {
+    mkdirSync(join(root, 'dist'), { recursive: true });
+    writeFileSync(join(root, 'dist', 'ok.js'), 'export const ok = true;\n', 'utf8');
+    writeFileSync(join(root, 'dist', 'bad.js'), "import './missing.js';\n", 'utf8');
+
+    assert.equal(isImportablePublishTarget('exports', './dist/ok.js'), true);
+    assert.equal(isImportablePublishTarget('main', './dist/index.cjs'), true);
+    assert.equal(isImportablePublishTarget('exports', './dist/index.d.ts'), false);
+    assert.equal(isImportablePublishTarget('bin.tagma', './dist/cli.js'), false);
+    assert.equal(await checkPublishTargetImport('pkg', 'exports', root, './dist/ok.js'), null);
+    assert.match(
+      await checkPublishTargetImport('pkg', 'exports', root, './dist/bad.js'),
+      /pkg: exports "\.\/dist\/bad\.js" failed to import:/,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 test('publish: target status distinguishes inaccessible files from missing files', () => {
   assert.deepEqual(
     describePublishTargetStatus('dist/index.js', () => ({})),
