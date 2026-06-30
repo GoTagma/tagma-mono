@@ -52,8 +52,7 @@ const DURATION_RE = /^(\d*\.?\d+)\s*(s|m|h|d)$/;
 const MAX_TIMER_DURATION_MS = 2_147_483_647;
 
 type DurationValidation =
-  | { readonly ok: true }
-  | { readonly ok: false; readonly reason: 'format' | 'range' };
+  { readonly ok: true } | { readonly ok: false; readonly reason: 'format' | 'range' };
 
 function validateDuration(input: unknown): DurationValidation {
   if (typeof input !== 'string') return { ok: false, reason: 'format' };

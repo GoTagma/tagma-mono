@@ -69,9 +69,7 @@ function parseHead(raw: Buffer): ParsedHead | null {
 }
 
 type BodyMode =
-  | { kind: 'length'; remaining: number }
-  | { kind: 'chunked' }
-  | { kind: 'until-close' };
+  { kind: 'length'; remaining: number } | { kind: 'chunked' } | { kind: 'until-close' };
 
 /**
  * Incremental dechunker for `Transfer-Encoding: chunked`. Fed arbitrary byte

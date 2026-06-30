@@ -17,9 +17,7 @@
 export const JSON_PRETTY_MAX_BYTES = 262_144;
 
 export type JsonishParse =
-  | { kind: 'json'; value: unknown }
-  | { kind: 'ndjson'; values: unknown[] }
-  | { kind: 'none' };
+  { kind: 'json'; value: unknown } | { kind: 'ndjson'; values: unknown[] } | { kind: 'none' };
 
 function tryParse(s: string): { ok: true; value: unknown } | { ok: false } {
   try {

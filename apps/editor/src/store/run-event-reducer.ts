@@ -145,7 +145,9 @@ export function foldRunEvent(state: RunFoldState, event: RunEvent): RunFoldState
   // (runId, seq) discrimination. If we're adopting a different run, the
   // prior high-water mark is meaningless — reset and adopt the new
   // runId so the fold below sees a fresh baseline keyed to the incoming
-  // event's run. The event itself is then applied below.
+  // event's run. Same-run events must dedupe before any lifecycle branch
+  // runs, because reconnect / POST replay can resend older run_start or
+  // run_snapshot events after fresher SSE events have already folded.
   if (state.runId === null) {
     state = { ...state, runId: event.runId };
   } else if (event.runId !== state.runId) {
@@ -154,6 +156,8 @@ export function foldRunEvent(state: RunFoldState, event: RunEvent): RunFoldState
       runId: event.runId,
       pendingApprovals: state.pendingApprovals,
     };
+  } else if (event.seq <= state.lastEventSeq) {
+    return state;
   }
 
   if (event.type === 'run_start' || event.type === 'run_snapshot') {
@@ -179,11 +183,6 @@ export function foldRunEvent(state: RunFoldState, event: RunEvent): RunFoldState
         : replaceApprovalsForRun(state.pendingApprovals, event.runId, event.pendingApprovals),
       lastEventSeq: event.seq,
     };
-  }
-
-  // Same-runId dedup.
-  if (event.seq <= state.lastEventSeq) {
-    return state;
   }
 
   let next: RunFoldState = state;

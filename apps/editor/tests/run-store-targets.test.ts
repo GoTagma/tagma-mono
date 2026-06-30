@@ -7,6 +7,8 @@ let lastAbortRunId: string | undefined = undefined;
 let runEventListener: ((event: RunEvent) => void) | null = null;
 let emitRunStartBeforeStartResponse = false;
 let emitStaleRunErrorBeforeStartResponse = false;
+let emitOldSnapshotOnSubscribe = false;
+let abortRunShouldFail = false;
 let mockClientWorkspace: string | null = null;
 const mockWorkspaceListeners = new Set<(key: string | null) => void>();
 
@@ -19,13 +21,16 @@ mock.module('../src/api/client', () => ({
   api: {
     startRun: async (opts?: unknown) => {
       lastStartOpts = opts;
+      const events: RunEvent[] = [];
       if (emitRunStartBeforeStartResponse) {
-        runEventListener?.({
+        const event = {
           type: 'run_start',
           runId: 'run_1',
           tasks: [],
           seq: 1,
-        } as RunEvent);
+        } as RunEvent;
+        runEventListener?.(event);
+        events.push(event);
       }
       if (emitStaleRunErrorBeforeStartResponse) {
         runEventListener?.({
@@ -35,16 +40,27 @@ mock.module('../src/api/client', () => ({
           error: 'old run failed late',
         } as RunEvent);
       }
-      return { ok: true, runId: 'run_1', events: [] };
+      return { ok: true, runId: 'run_1', events };
     },
     subscribeRunEvents: (listener: (event: RunEvent) => void) => {
       runEventListener = listener;
+      if (emitOldSnapshotOnSubscribe) {
+        listener({
+          type: 'run_snapshot',
+          runId: 'run_old',
+          tasks: [],
+          pendingApprovals: [],
+          pipelineLogs: [],
+          seq: 42,
+        } as RunEvent);
+      }
       return () => {
         if (runEventListener === listener) runEventListener = null;
       };
     },
     abortRun: async (runId?: string) => {
       lastAbortRunId = runId;
+      if (abortRunShouldFail) throw new Error('runId is required when multiple runs are live');
       return { ok: true };
     },
     resolveApproval: async () => ({ ok: true }),
@@ -96,6 +112,8 @@ beforeEach(() => {
   runEventListener = null;
   emitRunStartBeforeStartResponse = false;
   emitStaleRunErrorBeforeStartResponse = false;
+  emitOldSnapshotOnSubscribe = false;
+  abortRunShouldFail = false;
   mockClientWorkspace = null;
   for (const listener of mockWorkspaceListeners) listener(null);
   useRunStore.getState().reset();
@@ -166,6 +184,30 @@ describe('run store target task ids', () => {
     expect(state.historySelectedRunId).toBe('run_1');
   });
 
+  test('starting a new run clears old focus before SSE replay can steal it', async () => {
+    useRunStore.setState({
+      runId: 'run_old',
+      status: 'running',
+      historySelectedRunId: 'run_old',
+      lastEventSeq: 41,
+    });
+    emitOldSnapshotOnSubscribe = true;
+
+    const runId = await useRunStore.getState().startRun(config);
+    const state = useRunStore.getState() as unknown as {
+      runId: string | null;
+      status: string;
+      error: string | null;
+      historySelectedRunId: string | null;
+    };
+
+    expect(runId).toBe('run_1');
+    expect(state.runId).toBe('run_1');
+    expect(state.status).toBe('starting');
+    expect(state.error).toBeNull();
+    expect(state.historySelectedRunId).toBe('run_1');
+  });
+
   test('reopening an active run returns to history focused on the running instance', () => {
     useRunStore.setState({
       active: false,
@@ -190,6 +232,27 @@ describe('run store target task ids', () => {
     await useRunStore.getState().abortRun('run_2');
 
     expect(lastAbortRunId).toBe('run_2');
+  });
+
+  test('aborts the focused live run when no explicit run id is passed', async () => {
+    useRunStore.setState({ runId: 'run_1', status: 'running' });
+
+    await useRunStore.getState().abortRun();
+
+    expect(lastAbortRunId).toBe('run_1');
+    expect(useRunStore.getState().status).toBe('aborted');
+  });
+
+  test('does not mark the focused run aborted when the abort request fails', async () => {
+    useRunStore.setState({ runId: 'run_1', status: 'running', error: null });
+    abortRunShouldFail = true;
+
+    await useRunStore.getState().abortRun();
+
+    const state = useRunStore.getState();
+    expect(lastAbortRunId).toBe('run_1');
+    expect(state.status).toBe('running');
+    expect(state.error).toContain('runId is required');
   });
 
   test('opening history ignores click event objects instead of treating them as run ids', () => {

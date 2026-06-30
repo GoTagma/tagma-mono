@@ -169,8 +169,7 @@ function foldGlobalApprovals(
 }
 
 function isFocusedRunEvent(state: RunFoldState, event: RunEvent): boolean {
-  if (state.runId !== null) return state.runId === event.runId;
-  return event.type === 'run_start' || event.type === 'run_snapshot';
+  return state.runId !== null && state.runId === event.runId;
 }
 
 export const useRunStore = create<RunStoreState>((set, get) => {
@@ -278,6 +277,7 @@ export const useRunStore = create<RunStoreState>((set, get) => {
       set({
         active: true,
         viewMode: 'history',
+        runId: null,
         status: 'starting',
         tasks: new Map(),
         logs: [],
@@ -315,15 +315,11 @@ export const useRunStore = create<RunStoreState>((set, get) => {
           Object.keys(startOpts).length > 0 ? startOpts : undefined,
         );
         if (result.runId) {
-          // SSE run_start may have already set runId before this POST
-          // response arrives — that race is normal and harmless for runId
-          // itself (the reducer folds the same value). But
-          // historySelectedRunId lives outside the reducer, so it MUST be
-          // set here regardless, or the history browser won't auto-select
-          // the just-launched run.
-          const currentRunId = get().runId;
+          // The POST response is the authoritative focus for this start.
+          // SSE may have replayed other live workspace runs before the
+          // response arrived; those must not keep or steal focus.
           set({
-            ...(currentRunId === null ? { runId: result.runId } : {}),
+            runId: result.runId,
             historySelectedRunId: result.runId,
           });
         }
@@ -432,12 +428,17 @@ export const useRunStore = create<RunStoreState>((set, get) => {
     },
 
     abortRun: async (runId) => {
+      const targetRunId = runId ?? get().runId ?? undefined;
       try {
-        await api.abortRun(runId);
-      } catch {
-        // Intentionally swallow — abort is best-effort; state is finalized below.
+        await api.abortRun(targetRunId);
+      } catch (e: unknown) {
+        if (targetRunId && targetRunId === get().runId) {
+          const message = e instanceof Error ? e.message : 'Failed to abort run';
+          set({ error: message });
+        }
+        return;
       }
-      if (!runId || runId === get().runId) set({ status: 'aborted' });
+      if (targetRunId && targetRunId === get().runId) set({ status: 'aborted', error: null });
     },
 
     selectTask: (taskId) => set({ selectedTaskId: taskId, selectedTrackId: null }),

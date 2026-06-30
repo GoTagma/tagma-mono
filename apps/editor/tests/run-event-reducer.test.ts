@@ -146,11 +146,13 @@ test('SSE reconnect replay with seq dedupe: duplicates are dropped', () => {
 
   // Simulated reconnect replay: server replays seq 1 and 2 again.
   const replayedStart = foldRunEvent(state, runStart(1));
-  // run_start ALWAYS resets (it's the contract). So it rebuilds tasks.
-  // After run_start the lastEventSeq resets to the start's seq (1).
-  expect(replayedStart.lastEventSeq).toBe(1);
+  // Lifecycle events are still replays when their seq is at or below the
+  // same-run high-water mark. Re-applying run_start here would roll the
+  // task map and lastEventSeq backward.
+  expect(replayedStart).toBe(state);
+  expect(replayedStart.lastEventSeq).toBe(2);
 
-  // But for a non-start event with the same seq, dedupe should kick in.
+  // Non-start events with the same seq dedupe the same way.
   // seq <= lastEventSeq should be dropped (no-op) — same reference returned.
   const replayedEv2 = foldRunEvent(state, ev2);
   expect(replayedEv2).toBe(state);
@@ -170,6 +172,32 @@ test('SSE reconnect replay with seq dedupe: duplicates are dropped', () => {
   expect(after3).not.toBe(state);
   expect(after3.tasks.get('track_a.task_1')!.status).toBe('success');
   expect(after3.lastEventSeq).toBe(3);
+});
+
+test('stale run_snapshot does not roll same-run state backward', () => {
+  let state = foldRunEvent(initialRunFoldState(), runStart(1));
+  state = foldRunEvent(state, {
+    type: 'task_update',
+    runId: 'run_test',
+    taskId: 'track_a.task_1',
+    status: 'running',
+    stdout: 'newer live output',
+    seq: 3,
+  });
+
+  const afterStaleSnapshot = foldRunEvent(state, {
+    type: 'run_snapshot',
+    runId: 'run_test',
+    tasks: [makeTask({ status: 'waiting', stdout: 'older snapshot' })],
+    pendingApprovals: [],
+    pipelineLogs: [],
+    seq: 2,
+  });
+
+  expect(afterStaleSnapshot).toBe(state);
+  expect(afterStaleSnapshot.lastEventSeq).toBe(3);
+  expect(afterStaleSnapshot.tasks.get('track_a.task_1')?.status).toBe('running');
+  expect(afterStaleSnapshot.tasks.get('track_a.task_1')?.stdout).toBe('newer live output');
 });
 
 test('events whose runId mismatches the active run trigger a state reset', () => {

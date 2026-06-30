@@ -835,8 +835,7 @@ export interface ReleaseUpdateResult {
 export type HotupdateKind = 'editor' | 'sidecar' | 'opencode' | 'release';
 
 export type HotupdateStatus =
-  | { active: false }
-  | { active: true; kind: HotupdateKind; startedAt: string };
+  { active: false } | { active: true; kind: HotupdateKind; startedAt: string };
 
 /**
  * Read-only snapshot of plugins declared anywhere in the current workspace
@@ -1003,12 +1002,7 @@ export interface PluginInfo {
 
 /** Coarse server-side error classification — mirrors PluginManager's ErrorKind. */
 export type PluginErrorKind =
-  | 'network'
-  | 'permission'
-  | 'version'
-  | 'notfound'
-  | 'invalid'
-  | 'unknown';
+  'network' | 'permission' | 'version' | 'notfound' | 'invalid' | 'unknown';
 
 export interface PluginActionResult {
   plugin: PluginInfo;
@@ -1189,9 +1183,7 @@ interface PlatformExportErrorEvent {
 }
 
 type PlatformExportStreamEvent =
-  | PlatformExportProgressEvent
-  | PlatformExportDoneEvent
-  | PlatformExportErrorEvent;
+  PlatformExportProgressEvent | PlatformExportDoneEvent | PlatformExportErrorEvent;
 
 // ── Run types ──
 //
