@@ -148,6 +148,24 @@ describe('workflow YAML model', () => {
     expect(validateRawWorkflow(raw)).toEqual([]);
   });
 
+  test('loads and serializes empty workflow graphs', async () => {
+    const dir = makeDir();
+    try {
+      const raw = parseWorkflowYaml(`workflow:
+  name: empty-flow
+  pipelines: []
+`);
+
+      expect(validateRawWorkflow(raw)).toEqual([]);
+      expect(serializeWorkflow(raw)).toContain('pipelines: []');
+
+      const workflow = await loadWorkflow(serializeWorkflow(raw), dir);
+      expect(workflow.name).toBe('empty-flow');
+      expect(workflow.pipelines).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
   test('validates and serializes workflow node positions', () => {
     const raw = parseWorkflowYaml(`workflow:
   name: release-flow
@@ -369,6 +387,56 @@ describe('workflow YAML model', () => {
     }
   });
 
+  test('loads child pipeline cwd relative to the child YAML directory', async () => {
+    const dir = makeDir();
+    const seenCwds: string[] = [];
+    try {
+      const childPath = join(dir, '.tagma', 'nested', 'child.yaml');
+      const childDir = dirname(childPath);
+      mkdirSync(childDir, { recursive: true });
+      writeFileSync(
+        childPath,
+        `pipeline:
+  name: Child
+  tracks:
+    - id: main
+      name: Main
+      cwd: childwd
+      tasks:
+        - id: task
+          command: child
+`,
+        'utf8',
+      );
+
+      const workflow = await loadWorkflow(
+        `workflow:
+  name: release-flow
+  pipelines:
+    - id: child
+      path: .tagma/nested/child.yaml
+`,
+        dir,
+      );
+
+      expect(workflow.pipelines[0]?.cwd).toBe(childDir);
+      expect(workflow.pipelines[0]?.config.tracks[0]?.cwd).toBe(join(childDir, 'childwd'));
+
+      const result = await runPipelineGraph(workflow, dir, {
+        registry: registry(),
+        runtime: fakeRuntime(async (command, cwd) => {
+          seenCwds.push(cwd);
+          return taskResult(String(command));
+        }),
+        skipPluginLoading: true,
+      });
+
+      expect(result.success).toBe(true);
+      expect(seenCwds).toEqual([join(childDir, 'childwd')]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
   test('reports missing referenced pipeline files as workflow diagnostics', async () => {
     const dir = makeDir();
     try {
@@ -461,6 +529,33 @@ describe('PipelineGraphRunner', () => {
     ).rejects.toThrow(/workDir must be a non-empty string/);
   });
 
+  test('runs an empty workflow graph as a no-op success', async () => {
+    const dir = makeDir();
+    const events: string[] = [];
+    try {
+      const result = await runPipelineGraph(
+        {
+          name: 'empty-flow',
+          pipelines: [],
+        },
+        dir,
+        {
+          registry: registry(),
+          runtime: fakeRuntime(async () => {
+            throw new Error('empty graph should not run pipeline commands');
+          }),
+          skipPluginLoading: true,
+          onEvent: (event) => events.push(event.type),
+        },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.pipelines).toEqual([]);
+      expect(events).toEqual(['graph_start', 'graph_end']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
   test('runs dependent pipelines after their upstream and fans out within max_concurrency', async () => {
     const dir = makeDir();
     const started: string[] = [];

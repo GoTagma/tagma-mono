@@ -97,10 +97,19 @@ export interface RunPipelineOptions {
    */
   readonly onEvent?: (event: RunEventPayload) => void;
   /**
-   * Skip the engine's built-in `loadPlugins(config.plugins)` call.
-   * Use this when the host has already pre-loaded plugins from a custom
-   * resolution path (e.g. a user workspace's node_modules) so the engine
-   * doesn't re-resolve them via Node's default cwd-based import.
+   * Import and register packages named in `config.plugins` before preflight.
+   *
+   * Loading plugin packages executes their top-level module code. Leave this
+   * false unless the host has made an explicit trust decision for the pipeline
+   * YAML and its declared plugins.
+   */
+  readonly loadDeclaredPlugins?: boolean;
+  /**
+   * Legacy opt-out for the old implicit plugin-loading path. The safe default
+   * is now to skip YAML-declared plugin imports unless `loadDeclaredPlugins`
+   * is true. Passing `skipPluginLoading: false` is still treated as an
+   * explicit opt-in for compatibility with existing hosts that deliberately
+   * enabled this behavior.
    */
   readonly skipPluginLoading?: boolean;
   /**
@@ -254,12 +263,12 @@ async function runPipelineInner(
   const runtime = options.runtime;
   const approvalGateway = scopeApprovalGateway(rootApprovalGateway, runId);
 
-  // Load any plugins declared in the pipeline config before preflight so that
-  // drivers, completions, and middlewares referenced in YAML are registered.
-  // Hosts that pre-load plugins from a custom path (e.g. the editor loading
-  // from the user's workspace node_modules) pass skipPluginLoading: true so
-  // we don't re-resolve via Node's cwd-based default import.
-  if (!options.skipPluginLoading && config.plugins?.length) {
+  // Loading YAML-declared plugins imports package code, so it must be an
+  // explicit host/user decision. Editors usually pre-load trusted installed
+  // plugins into the registry and leave this off for open/import safety.
+  const shouldLoadDeclaredPlugins =
+    options.loadDeclaredPlugins === true || options.skipPluginLoading === false;
+  if (shouldLoadDeclaredPlugins && config.plugins?.length) {
     await registry.loadPlugins(config.plugins, workDir);
   }
 

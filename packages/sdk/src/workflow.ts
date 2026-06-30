@@ -1,6 +1,6 @@
 import yaml from 'js-yaml';
 import { readFileSync } from 'node:fs';
-import { isAbsolute, resolve } from 'node:path';
+import { dirname, isAbsolute, resolve } from 'node:path';
 import {
   generateRunId,
   isValidTaskId,
@@ -67,9 +67,23 @@ export interface PipelineGraphResult {
   readonly pipelines: readonly PipelineGraphPipelineResult[];
 }
 
+export type PipelineGraphPipelineRunOptions = Partial<
+  Omit<RunPipelineOptions, 'signal' | 'onEvent'>
+>;
+
+export interface PipelineGraphPipelineRunContext {
+  readonly pipelineId: string;
+  readonly workDir: string;
+  readonly attempt: number;
+}
+
 export interface PipelineGraphRunnerOptions extends Omit<RunPipelineOptions, 'signal' | 'onEvent'> {
   readonly signal?: AbortSignal;
   readonly onEvent?: (event: PipelineGraphEventPayload) => void;
+  readonly resolvePipelineOptions?: (
+    pipeline: PipelineGraphPipelineConfig,
+    context: PipelineGraphPipelineRunContext,
+  ) => PipelineGraphPipelineRunOptions | undefined;
 }
 
 interface MutableNodeState {
@@ -201,10 +215,6 @@ export function validateRawWorkflow(config: RawWorkflowConfig): ValidationError[
     errors.push({ path: 'pipelines', message: 'workflow.pipelines must be an array' });
     return errors;
   }
-  if (config.pipelines.length === 0) {
-    errors.push({ path: 'pipelines', message: 'At least one pipeline is required' });
-    return errors;
-  }
 
   validatePipelineNodes(config.pipelines, errors, true);
   errors.push(...detectPipelineCycles(config.pipelines));
@@ -224,12 +234,13 @@ export async function loadWorkflow(content: string, workDir: string): Promise<Wo
     const pipeline = raw.pipelines[index]!;
     try {
       const resolved = validatePath(pipeline.path, workDir);
+      const pipelineWorkDir = dirname(resolved);
       const pipelineYaml = readFileSync(resolved, 'utf8');
-      const config = await loadPipeline(pipelineYaml, workDir);
+      const config = await loadPipeline(pipelineYaml, pipelineWorkDir);
       pipelines.push({
         id: pipeline.id,
         path: pipeline.path,
-        cwd: workDir,
+        cwd: pipelineWorkDir,
         depends_on: pipeline.depends_on,
         position: pipeline.position,
         lifecycle: pipeline.lifecycle,
@@ -415,7 +426,12 @@ export class PipelineGraphRunner {
     const lifecycle = normalizePipelineLifecycle(pipeline.lifecycle);
     const maxRuns = lifecycle.max_runs;
     const stopWhen = lifecycle.stop_when ?? 'success';
-    const { signal: _graphSignal, onEvent: _graphOnEvent, ...pipelineOptions } = this.options;
+    const {
+      signal: _graphSignal,
+      onEvent: _graphOnEvent,
+      resolvePipelineOptions,
+      ...pipelineOptions
+    } = this.options;
 
     for (let attempt = 1; maxRuns === null || attempt <= maxRuns; attempt++) {
       if (this.aborted) {
@@ -446,29 +462,30 @@ export class PipelineGraphRunner {
       });
 
       try {
-        const result = await runPipeline(
-          pipeline.config,
-          graphPipelineWorkDir(pipeline.cwd, this.workDir),
-          {
-            ...pipelineOptions,
-            signal: controller.signal,
-            onEvent: (event) => {
-              if (event.type === 'run_start') {
-                this.updateNode(pipelineId, {
-                  runId: event.runId,
-                  attempts: this.patchAttempt(pipelineId, attempt, { runId: event.runId }),
-                });
-              }
-              this.emit({
-                type: 'pipeline_event',
-                graphRunId: this.graphRunId,
-                pipelineId,
-                attempt,
-                event,
+        const pipelineWorkDir = graphPipelineWorkDir(pipeline.cwd, this.workDir);
+        const specificOptions =
+          resolvePipelineOptions?.(pipeline, { pipelineId, workDir: pipelineWorkDir, attempt }) ??
+          {};
+        const result = await runPipeline(pipeline.config, pipelineWorkDir, {
+          ...pipelineOptions,
+          ...specificOptions,
+          signal: controller.signal,
+          onEvent: (event) => {
+            if (event.type === 'run_start') {
+              this.updateNode(pipelineId, {
+                runId: event.runId,
+                attempts: this.patchAttempt(pipelineId, attempt, { runId: event.runId }),
               });
-            },
+            }
+            this.emit({
+              type: 'pipeline_event',
+              graphRunId: this.graphRunId,
+              pipelineId,
+              attempt,
+              event,
+            });
           },
-        );
+        });
 
         const status: PipelineGraphNodeStatus = controller.signal.aborted
           ? 'aborted'
@@ -722,10 +739,6 @@ function validatePipelineGraphConfig(config: PipelineGraphConfig): ValidationErr
   validateGraphHeader(config, errors);
   if (!Array.isArray(config.pipelines)) {
     errors.push({ path: 'pipelines', message: 'workflow.pipelines must be an array' });
-    return errors;
-  }
-  if (config.pipelines.length === 0) {
-    errors.push({ path: 'pipelines', message: 'At least one pipeline is required' });
     return errors;
   }
   validatePipelineNodes(config.pipelines, errors, false);
@@ -1028,8 +1041,7 @@ function validateWorkflowPath(value: unknown, basePath: string, errors: Validati
 
 function detectPipelineCycles(pipelines: readonly unknown[]): ValidationError[] {
   const pipelineNodes = pipelines.filter(isRecord) as unknown as readonly (
-    | RawWorkflowPipelineConfig
-    | PipelineGraphPipelineConfig
+    RawWorkflowPipelineConfig | PipelineGraphPipelineConfig
   )[];
   const ids = new Set(
     pipelineNodes

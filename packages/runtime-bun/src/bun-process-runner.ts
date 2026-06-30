@@ -430,17 +430,32 @@ function unwrapCmdShim(wrapperPath: string): readonly string[] {
   return [nodeExe, jsEntry];
 }
 
+function hasPathSeparator(value: string): boolean {
+  return value.includes('\\') || value.includes('/');
+}
+
+function resolveWindowsExeCandidate(candidate: string): readonly string[] | null {
+  try {
+    if (existsSync(candidate) && statSync(candidate).isFile()) return unwrapCmdShim(candidate);
+  } catch {
+    /* stat race - skip */
+  }
+  return null;
+}
+
 function resolveWindowsExe(
   args: readonly string[],
   envPath: string,
   pathext: string = WINDOWS_DEFAULT_PATHEXT,
+  cwd?: string,
 ): readonly string[] {
   if (process.platform !== 'win32' || args.length === 0) return args;
   const cmd = args[0]!;
-  // Already a full path or has an extension → trust caller. We still attempt
+  const hasExtension = /\.[a-z0-9]+$/i.test(cmd);
+  // Already a full path or has an extension -> trust caller. We still attempt
   // shim unwrapping when the caller handed us a bare .cmd/.bat so drivers
   // that resolve the shim themselves still benefit from the cmd.exe bypass.
-  if (isAbsolute(cmd) || /\.[a-z0-9]+$/i.test(cmd)) {
+  if (isAbsolute(cmd) || hasExtension) {
     if (/\.(cmd|bat)$/i.test(cmd) && existsSync(cmd)) {
       const unwrapped = unwrapCmdShim(cmd);
       if (unwrapped.length === 2) return [...unwrapped, ...args.slice(1)];
@@ -448,28 +463,45 @@ function resolveWindowsExe(
     return args;
   }
 
+  const exts = pathext.split(';').filter(Boolean);
+
+  if (hasPathSeparator(cmd)) {
+    const basePath = pathResolve(cwd ?? process.cwd(), cmd);
+    const cacheKey = `path:${basePath}\x00${pathext}`;
+    if (resolvedExeCache.has(cacheKey)) {
+      const cached = resolvedExeCache.get(cacheKey) ?? null;
+      return cached !== null ? [...cached, ...args.slice(1)] : args;
+    }
+
+    for (const ext of exts) {
+      const head = resolveWindowsExeCandidate(basePath + ext);
+      if (head !== null) {
+        evictIfFull();
+        resolvedExeCache.set(cacheKey, head);
+        return [...head, ...args.slice(1)];
+      }
+    }
+    evictIfFull();
+    resolvedExeCache.set(cacheKey, null);
+    return args;
+  }
+
   const cacheKey = `${cmd}\x00${envPath}\x00${pathext}`;
   if (resolvedExeCache.has(cacheKey)) {
-    // ?? null coerces undefined→null so the subsequent guard narrows cleanly.
+    // ?? null coerces undefined->null so the subsequent guard narrows cleanly.
     const cached = resolvedExeCache.get(cacheKey) ?? null;
     return cached !== null ? [...cached, ...args.slice(1)] : args;
   }
 
-  const exts = pathext.split(';').filter(Boolean);
   const dirs = envPath.split(';').filter(Boolean);
 
   for (const dir of dirs) {
     for (const ext of exts) {
-      const candidate = join(dir, cmd + ext);
-      try {
-        if (existsSync(candidate) && statSync(candidate).isFile()) {
-          const head = unwrapCmdShim(candidate);
-          evictIfFull();
-          resolvedExeCache.set(cacheKey, head);
-          return [...head, ...args.slice(1)];
-        }
-      } catch {
-        /* stat race — skip */
+      const head = resolveWindowsExeCandidate(join(dir, cmd + ext));
+      if (head !== null) {
+        evictIfFull();
+        resolvedExeCache.set(cacheKey, head);
+        return [...head, ...args.slice(1)];
       }
     }
   }
@@ -564,9 +596,10 @@ function preflightMissingBinary(
   if (originalArgs.length === 0) return null;
   const cmd = originalArgs[0]!;
   // `resolveWindowsExe` short-circuits when the caller already supplied an
-  // absolute path or a file extension — in those cases we have no PATH-lookup
-  // signal, so leave detection to the post-spawn error pattern match.
-  if (isAbsolute(cmd) || /\.[a-z0-9]+$/i.test(cmd)) return null;
+  // absolute path, a path-like command, or a file extension. In those cases we
+  // have no PATH-lookup signal, so leave detection to the post-spawn error
+  // pattern match.
+  if (isAbsolute(cmd) || hasPathSeparator(cmd) || /\.[a-z0-9]+$/i.test(cmd)) return null;
   // resolveWindowsExe returns the SAME reference when PATH+PATHEXT scan
   // failed, and a freshly-spread array when it succeeded — so reference
   // equality is a reliable "not found" signal for bare commands.
@@ -648,6 +681,7 @@ export async function runSpawn(
     spec.args,
     readPathEnv(mergedEnv),
     mergedEnv.PATHEXT ?? process.env.PATHEXT ?? WINDOWS_DEFAULT_PATHEXT,
+    spec.cwd,
   );
 
   // Windows pre-flight: if PATH+PATHEXT scan turned up nothing for a bare

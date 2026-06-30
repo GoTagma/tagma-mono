@@ -1,4 +1,7 @@
 import { expect, test } from 'bun:test';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { runSpawn } from './bun-process-runner';
 
 const DEFAULT_STDOUT_TAIL_BYTES = 8 * 1024 * 1024;
@@ -6,6 +9,25 @@ const DEFAULT_STDOUT_TAIL_BYTES = 8 * 1024 * 1024;
 function nodeArg(script: string): string[] {
   return ['node', '-e', script];
 }
+
+test('runSpawn resolves relative Windows executables with PATHEXT against cwd', async () => {
+  if (process.platform !== 'win32') return;
+  const dir = mkdtempSync(join(tmpdir(), 'tagma-pathext-'));
+  try {
+    writeFileSync(join(dir, 'reltool.cmd'), '@echo off\r\necho relative-ok\r\n');
+
+    const result = await runSpawn(
+      { args: ['.\\reltool'], cwd: dir, env: { PATHEXT: '.CMD' } },
+      null,
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.failureKind).toBe(null);
+    expect(result.stdout).toContain('relative-ok');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test('runSpawn falls back to bounded tail caps for non-finite values', async () => {
   const totalBytes = DEFAULT_STDOUT_TAIL_BYTES + 1024 * 1024;

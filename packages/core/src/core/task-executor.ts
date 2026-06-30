@@ -19,7 +19,7 @@ import {
 } from '../types';
 import { isCommandTaskConfig, isPromptTaskConfig } from '../types';
 import type { PluginRegistry } from '../registry';
-import { parseDuration, nowISO } from '../utils';
+import { parseDuration, nowISO, validatePath } from '../utils';
 import { commandLabel, commandToSpawnSpec } from '../command';
 import {
   promptDocumentFromString,
@@ -193,6 +193,7 @@ async function blockTaskBeforeExecution(
   taskId: string,
   log: Logger,
   reason: string,
+  hookCwd: string,
 ): Promise<void> {
   const state = ctx.states.get(taskId)!;
   log.error(`[task:${taskId}]`, `blocked - ${reason}`);
@@ -213,7 +214,7 @@ async function blockTaskBeforeExecution(
   state.finishedAt = nowISO();
   ctx.setTaskStatus(taskId, 'blocked');
   try {
-    await ctx.fireHook(taskId, 'task_failure', log);
+    await ctx.fireHook(taskId, 'task_failure', log, hookCwd);
   } catch (hookErr) {
     log.error(
       `[task:${taskId}]`,
@@ -285,7 +286,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
   // loadPipeline) actually honored track-level cwd; SDK callers that pass a
   // RawPipelineConfig with track.cwd set saw it silently dropped at every
   // execution context except the resolved-debug-log line below.
-  const resolvedCwd = task.cwd ?? track.cwd ?? workDir;
+  const resolvedCwd = validatePath(task.cwd ?? track.cwd ?? workDir, workDir);
 
   // Per-task timeout: explicit task.timeout wins, then ctx.defaultTaskTimeoutMs
   // (set by the editor to DEFAULT_TASK_TIMEOUT_MS = 30 min), then undefined
@@ -450,7 +451,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
         ctx.setTaskStatus(taskId, 'failed');
       }
       try {
-        await ctx.fireHook(taskId, 'task_failure', log);
+        await ctx.fireHook(taskId, 'task_failure', log, resolvedCwd);
       } catch (hookErr) {
         log.error(
           `[task:${taskId}]`,
@@ -476,7 +477,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
           ctx.buildTaskInfoObj(taskId),
         ),
         ctx.runtime,
-        workDir,
+        resolvedCwd,
         signal,
         log,
         ctx.envPolicy,
@@ -510,7 +511,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       isDeadlineTimeout ? 'timeout' : ctx.abortReason !== null ? 'skipped' : 'failed',
     );
     try {
-      await ctx.fireHook(taskId, 'task_failure', log);
+      await ctx.fireHook(taskId, 'task_failure', log, resolvedCwd);
     } catch (hookErr) {
       log.error(
         `[task:${taskId}]`,
@@ -530,7 +531,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
     state.finishedAt = nowISO();
     ctx.setTaskStatus(taskId, 'blocked');
     try {
-      await ctx.fireHook(taskId, 'task_failure', log);
+      await ctx.fireHook(taskId, 'task_failure', log, resolvedCwd);
     } catch (hookErr) {
       log.error(
         `[task:${taskId}]`,
@@ -579,7 +580,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
     state.finishedAt = nowISO();
     ctx.setTaskStatus(taskId, 'blocked');
     try {
-      await ctx.fireHook(taskId, 'task_failure', log);
+      await ctx.fireHook(taskId, 'task_failure', log, resolvedCwd);
     } catch (hookErr) {
       log.error(
         `[task:${taskId}]`,
@@ -613,7 +614,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
     state.finishedAt = nowISO();
     ctx.setTaskStatus(taskId, 'blocked');
     try {
-      await ctx.fireHook(taskId, 'task_failure', log);
+      await ctx.fireHook(taskId, 'task_failure', log, resolvedCwd);
     } catch (hookErr) {
       log.error(
         `[task:${taskId}]`,
@@ -657,7 +658,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       state.finishedAt = nowISO();
       ctx.setTaskStatus(taskId, 'blocked');
       try {
-        await ctx.fireHook(taskId, 'task_failure', log);
+        await ctx.fireHook(taskId, 'task_failure', log, resolvedCwd);
       } catch (hookErr) {
         log.error(
           `[task:${taskId}]`,
@@ -686,7 +687,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
   const secretNames = collectTaskSecretNames(config, track, task);
   const secretResolution = await resolveTaskSecretEnv(ctx, taskId, track, task, secretNames);
   if (secretResolution.kind === 'blocked') {
-    await blockTaskBeforeExecution(ctx, taskId, log, secretResolution.reason);
+    await blockTaskBeforeExecution(ctx, taskId, log, secretResolution.reason, resolvedCwd);
     return;
   }
   const secretEnv = secretResolution.env;
@@ -802,7 +803,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
         state.finishedAt = nowISO();
         ctx.setTaskStatus(taskId, 'blocked');
         try {
-          await ctx.fireHook(taskId, 'task_failure', log);
+          await ctx.fireHook(taskId, 'task_failure', log, resolvedCwd);
         } catch (hookErr) {
           log.error(
             `[task:${taskId}]`,
@@ -945,8 +946,10 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
             `but no resolvedContinueFrom. buildDag should have qualified it.`,
         );
       }
+      const enrichedTrack = track.cwd ? { ...track, cwd: validatePath(track.cwd, workDir) } : track;
       const enrichedTask: TaskConfig = {
         ...task,
+        cwd: resolvedCwd,
         prompt,
         continue_from: node.resolvedContinueFrom,
       };
@@ -967,7 +970,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
         inputs: resolvedInputs,
       });
       const spec = await withTaskDeadline(`driver "${driverName}" buildCommand`, (signal) =>
-        driver.buildCommand(enrichedTask, track, buildDriverCtx(signal)),
+        driver.buildCommand(enrichedTask, enrichedTrack, buildDriverCtx(signal)),
       );
       const spawnSpec =
         Object.keys(secretEnv).length > 0
@@ -1180,7 +1183,12 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
   // 7. Fire hooks
   const finalStatus: TaskStatus = state.status;
   try {
-    await ctx.fireHook(taskId, finalStatus === 'success' ? 'task_success' : 'task_failure', log);
+    await ctx.fireHook(
+      taskId,
+      finalStatus === 'success' ? 'task_success' : 'task_failure',
+      log,
+      resolvedCwd,
+    );
   } catch (hookErr) {
     log.error(
       `[task:${taskId}]`,

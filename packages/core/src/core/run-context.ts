@@ -235,6 +235,7 @@ export class RunContext {
     taskId: string,
     event: 'task_success' | 'task_failure',
     log?: Logger,
+    cwd: string = this.workDir,
   ): Promise<void> {
     await executeHook(
       this.config.hooks,
@@ -246,7 +247,7 @@ export class RunContext {
         this.buildTaskInfoObj(taskId),
       ),
       this.runtime,
-      this.workDir,
+      cwd,
       this.abortController.signal,
       log,
       this.envPolicy,

@@ -526,7 +526,8 @@ Options:
   - `approval_request` / `approval_resolved` - bridged from the approval gateway so hosts see approvals on the same channel as task updates, without separately subscribing to the gateway.
 - `runId` -- caller-supplied run ID. Must match `run_[A-Za-z0-9_-]{1,128}`. When provided the engine uses this instead of generating its own, keeping the caller and the SDK log directories aligned on the same ID
 - `maxLogRuns` -- number of per-run log directories to keep under `<workDir>/.tagma/logs/` (default: 20)
-- `skipPluginLoading` -- skip the engine's built-in `loadPlugins(config.plugins)` call. Set this when the host has already pre-loaded plugins from a custom resolution path (e.g. the editor loading from the user's workspace `node_modules`) so the engine doesn't re-resolve them via Node's default cwd-based import.
+- `loadDeclaredPlugins` -- explicitly import and register packages named in `config.plugins`. Loading plugin packages executes their top-level module code, so the safe default is `false`; hosts should set this only after making a trust decision for the YAML and its declared plugins.
+- `skipPluginLoading` -- legacy compatibility flag for the old implicit plugin-loading path. The safe default now behaves as if plugin loading is skipped unless `loadDeclaredPlugins: true` is set. Passing `skipPluginLoading: false` is still treated as an explicit opt-in for existing hosts.
 - `envPolicy` -- controls child process environment inheritance. Defaults to a minimal environment (`PATH`, home/user/temp/system keys). Use `{ mode: 'allowlist', keys: [...] }` or `{ mode: 'inherit' }` only when the host deliberately wants to expose more env vars.
 - `logPrompt` -- when `true`, writes the final middleware-expanded prompt to the run log. Defaults to `false`.
 

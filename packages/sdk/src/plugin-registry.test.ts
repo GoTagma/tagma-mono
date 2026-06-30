@@ -573,6 +573,63 @@ describe('runPipeline - options.registry isolation', () => {
       rmSync(tmp, { recursive: true, force: true });
     }
   });
+  test('runPipeline does not import YAML-declared plugins by default', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'tagma-workdir-plugin-default-safe-'));
+    const pluginDir = join(tmp, 'node_modules', 'tagma-plugin-workspace-driver');
+    mkdirSync(pluginDir, { recursive: true });
+    writeFileSync(
+      join(pluginDir, 'package.json'),
+      JSON.stringify({
+        name: 'tagma-plugin-workspace-driver',
+        version: '1.0.0',
+        type: 'module',
+        main: './index.js',
+      }),
+      'utf-8',
+    );
+    writeFileSync(
+      join(pluginDir, 'index.js'),
+      [
+        'const driver = {',
+        "  name: 'workspace-driver',",
+        '  capabilities: { sessionResume: false, systemPrompt: false, outputFormat: false },',
+        "  async buildCommand() { return { args: ['echo', 'workspace'] }; },",
+        '};',
+        'export default {',
+        "  name: 'tagma-plugin-workspace-driver',",
+        '  capabilities: { drivers: { workspace: driver } },',
+        '};',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+
+    const reg = new PluginRegistry();
+    const config: PipelineConfig = {
+      name: 'workdir-plugin-safe-default',
+      driver: 'workspace',
+      plugins: ['tagma-plugin-workspace-driver'],
+      tracks: [
+        {
+          id: 't',
+          name: 'T',
+          tasks: [{ id: 'x', name: 'x', prompt: 'hello' }],
+        },
+      ],
+    };
+
+    try {
+      await expect(
+        runPipeline(config, tmp, {
+          registry: reg,
+          runtime: fakeRuntime(),
+        }),
+      ).rejects.toThrow(/driver "workspace" not registered/);
+      expect(reg.hasHandler('drivers', 'workspace')).toBe(false);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
   test('runPipeline resolves pipeline plugins from the workspace workDir', async () => {
     const tmp = mkdtempSync(join(tmpdir(), 'tagma-workdir-plugin-'));
     const pluginDir = join(tmp, 'node_modules', 'tagma-plugin-workspace-driver');
@@ -622,6 +679,7 @@ describe('runPipeline - options.registry isolation', () => {
       const result = await runPipeline(config, tmp, {
         registry: reg,
         runtime: fakeRuntime(),
+        loadDeclaredPlugins: true,
       });
 
       expect(result.success).toBe(true);

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PluginRegistry, runPipeline } from './index';
 import type {
+  DriverPlugin,
   PipelineConfig,
   RunEventPayload,
   TagmaRuntime,
@@ -127,6 +128,195 @@ describe('targeted pipeline runs', () => {
     }
   });
 
+  test('resolves relative programmatic track and task cwd from the pipeline workDir', async () => {
+    const dir = makeDir();
+    const seen: Array<{ command: string; cwd: string }> = [];
+    try {
+      const result = await runPipeline(
+        {
+          name: 'programmatic-cwd',
+          tracks: [
+            {
+              id: 'main',
+              name: 'Main',
+              cwd: 'trackwd',
+              tasks: [
+                { id: 'track', command: 'track-cwd' },
+                { id: 'task', command: 'task-cwd', cwd: 'taskwd', depends_on: ['track'] },
+              ],
+            },
+          ],
+        },
+        dir,
+        {
+          registry: new PluginRegistry(),
+          runtime: {
+            ...fakeRuntime([]),
+            async runCommand(command, cwd) {
+              const text =
+                typeof command === 'string'
+                  ? command
+                  : 'shell' in command
+                    ? command.shell
+                    : command.argv.join(' ');
+              seen.push({ command: text, cwd });
+              return taskResult(text);
+            },
+          },
+          skipPluginLoading: true,
+        },
+      );
+
+      expect(result.success).toBe(true);
+      expect(seen).toEqual([
+        { command: 'track-cwd', cwd: join(dir, 'trackwd') },
+        { command: 'task-cwd', cwd: join(dir, 'taskwd') },
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  test('prompt drivers receive absolute effective cwd values', async () => {
+    const dir = makeDir();
+    const seen: Array<{
+      taskCwd: string | undefined;
+      trackCwd: string | undefined;
+      ctxWorkDir: string;
+    }> = [];
+    const registry = new PluginRegistry();
+    const driver: DriverPlugin = {
+      name: 'mock',
+      capabilities: { sessionResume: false, systemPrompt: false, outputFormat: false },
+      async buildCommand(task, track, ctx) {
+        seen.push({ taskCwd: task.cwd, trackCwd: track.cwd, ctxWorkDir: ctx.workDir });
+        return { args: ['mock'], cwd: task.cwd ?? ctx.workDir };
+      },
+    };
+    registry.registerPlugin('drivers', 'mock', driver);
+
+    try {
+      const result = await runPipeline(
+        {
+          name: 'prompt-cwd',
+          tracks: [
+            {
+              id: 'main',
+              name: 'Main',
+              cwd: 'trackwd',
+              tasks: [
+                { id: 'track', prompt: 'track prompt', driver: 'mock' },
+                {
+                  id: 'task',
+                  prompt: 'task prompt',
+                  driver: 'mock',
+                  cwd: 'taskwd',
+                  depends_on: ['track'],
+                },
+              ],
+            },
+          ],
+        },
+        dir,
+        {
+          registry,
+          runtime: {
+            ...fakeRuntime([]),
+            async runSpawn() {
+              return taskResult('ok');
+            },
+          },
+          skipPluginLoading: true,
+        },
+      );
+
+      expect(result.success).toBe(true);
+      expect(seen.length).toBe(2);
+      expect(seen).toEqual(
+        expect.arrayContaining([
+          {
+            taskCwd: join(dir, 'trackwd'),
+            trackCwd: join(dir, 'trackwd'),
+            ctxWorkDir: join(dir, 'trackwd'),
+          },
+          {
+            taskCwd: join(dir, 'taskwd'),
+            trackCwd: join(dir, 'trackwd'),
+            ctxWorkDir: join(dir, 'taskwd'),
+          },
+        ]),
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  test('task hooks run in the task effective cwd', async () => {
+    const dir = makeDir();
+    const seen: Array<{ kind: 'hook' | 'task'; command: string; cwd: string | undefined }> = [];
+    try {
+      const result = await runPipeline(
+        {
+          name: 'hook-cwd',
+          hooks: {
+            task_start: 'hook-start',
+            task_success: 'hook-success',
+            task_failure: 'hook-failure',
+          },
+          tracks: [
+            {
+              id: 'main',
+              name: 'Main',
+              cwd: 'trackwd',
+              tasks: [
+                { id: 'track', command: 'track-command' },
+                { id: 'task', command: 'fail-command', cwd: 'taskwd', depends_on: ['track'] },
+              ],
+            },
+          ],
+        },
+        dir,
+        {
+          registry: new PluginRegistry(),
+          runtime: {
+            ...fakeRuntime([]),
+            async runSpawn(spec) {
+              const command = spec.args[spec.args.length - 1] ?? '';
+              seen.push({ kind: 'hook', command, cwd: spec.cwd });
+              return taskResult(command);
+            },
+            async runCommand(command, cwd) {
+              const text =
+                typeof command === 'string'
+                  ? command
+                  : 'shell' in command
+                    ? command.shell
+                    : command.argv.join(' ');
+              seen.push({ kind: 'task', command: text, cwd });
+              return {
+                ...taskResult(text),
+                exitCode: text === 'fail-command' ? 1 : 0,
+                stderr: text === 'fail-command' ? 'failed' : '',
+                stderrBytes: text === 'fail-command' ? 'failed'.length : 0,
+                failureKind: text === 'fail-command' ? 'exit_nonzero' : null,
+              };
+            },
+          },
+          skipPluginLoading: true,
+        },
+      );
+
+      expect(result.success).toBe(false);
+      expect(seen).toEqual([
+        { kind: 'hook', command: 'hook-start', cwd: join(dir, 'trackwd') },
+        { kind: 'task', command: 'track-command', cwd: join(dir, 'trackwd') },
+        { kind: 'hook', command: 'hook-success', cwd: join(dir, 'trackwd') },
+        { kind: 'hook', command: 'hook-start', cwd: join(dir, 'taskwd') },
+        { kind: 'task', command: 'fail-command', cwd: join(dir, 'taskwd') },
+        { kind: 'hook', command: 'hook-failure', cwd: join(dir, 'taskwd') },
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
   test('dependency-skipped tasks carry terminal TaskResult metadata', async () => {
     const dir = makeDir();
     const seenCommands: string[] = [];

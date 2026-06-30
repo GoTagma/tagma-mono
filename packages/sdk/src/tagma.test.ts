@@ -652,6 +652,96 @@ describe('createTagma', () => {
     }
   });
 
+  test('runYaml does not import YAML-declared plugins without explicit opt-in', async () => {
+    const runtime: TagmaRuntime = {
+      async runCommand() {
+        throw new Error('runCommand should not be called for driver tasks');
+      },
+      async runSpawn() {
+        return {
+          exitCode: 0,
+          stdout: 'driver-ok\n',
+          stderr: '',
+          stdoutPath: null,
+          stderrPath: null,
+          stdoutBytes: 10,
+          stderrBytes: 0,
+          durationMs: 1,
+          sessionId: null,
+          normalizedOutput: 'driver-ok',
+          failureKind: null,
+        };
+      },
+      async ensureDir() {},
+      async fileExists() {
+        return false;
+      },
+      async *watch() {},
+      logStore: memoryLogStore(),
+      now() {
+        return new Date('2026-05-23T00:00:00.000Z');
+      },
+      sleep() {
+        return Promise.resolve();
+      },
+    };
+    const tagma = createTagma({ builtins: false, runtime });
+    const dir = makeDir('tagma-yaml-plugin-safe-default-');
+    const pluginDir = join(dir, 'node_modules', 'tagma-plugin-workspace-driver');
+    mkdirSync(pluginDir, { recursive: true });
+    writeFileSync(
+      join(pluginDir, 'package.json'),
+      JSON.stringify({
+        name: 'tagma-plugin-workspace-driver',
+        version: '1.0.0',
+        type: 'module',
+        main: './index.js',
+      }),
+      'utf-8',
+    );
+    writeFileSync(
+      join(pluginDir, 'index.js'),
+      [
+        'const driver = {',
+        "  name: 'workspace-driver',",
+        '  capabilities: { sessionResume: false, systemPrompt: false, outputFormat: false },',
+        "  async buildCommand() { return { args: ['echo', 'workspace'] }; },",
+        '};',
+        'export default {',
+        "  name: 'tagma-plugin-workspace-driver',",
+        '  capabilities: { drivers: { workspace: driver } },',
+        '};',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+    const yaml = `pipeline:
+  name: Plugin Pipeline
+  driver: workspace
+  plugins:
+    - tagma-plugin-workspace-driver
+  tracks:
+    - id: main
+      name: Main
+      tasks:
+        - id: task
+          prompt: hello
+`;
+
+    try {
+      await expect(tagma.runYaml(yaml, { cwd: dir })).rejects.toThrow(
+        /driver "workspace" not registered/,
+      );
+      expect(tagma.registry.hasHandler('drivers', 'workspace')).toBe(false);
+
+      const result = await tagma.runYaml(yaml, { cwd: dir, loadDeclaredPlugins: true });
+      expect(result.kind).toBe('pipeline');
+      expect(result.result.success).toBe(true);
+      expect(tagma.registry.hasHandler('drivers', 'workspace')).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
   test('runYaml detects and runs either pipeline or workflow YAML documents', async () => {
     const calls: string[] = [];
     const runtime: TagmaRuntime = {

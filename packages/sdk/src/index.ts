@@ -60,6 +60,8 @@ export {
 export type {
   CreatePipelineGroupOptions,
   PipelineGraphPipelineResult,
+  PipelineGraphPipelineRunContext,
+  PipelineGraphPipelineRunOptions,
   PipelineGraphResult,
   PipelineGraphRunnerOptions,
   PipelineGroupAddOptions,
