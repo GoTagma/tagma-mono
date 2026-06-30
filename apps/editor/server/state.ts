@@ -942,6 +942,9 @@ export function lenientParseYaml(content: string, fallbackName: string): RawPipe
 export function beginWatching(ws: WorkspaceState, path: string, content: string): void {
   try {
     const mtime = existsSync(path) ? statSync(path).mtimeMs : null;
+    // beginWatching refreshes the optimistic-lock baseline whenever the editor
+    // binds a YAML path after open/save/import/new/migration.
+    ws.yamlVersion = getFileVersion(path);
     // Pass both raw disk bytes (for spurious-event / self-save detection)
     // and the canonical re-serialize of `ws.config` (for dirty detection).
     // Without the canonical baseline, any user-formatted YAML comments,

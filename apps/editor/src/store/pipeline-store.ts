@@ -337,6 +337,7 @@ interface PipelineState {
   saveFile: (opts?: YamlLockBypassOptions) => Promise<boolean>;
   saveFileAs: (path: string, opts?: YamlLockBypassOptions) => Promise<boolean>;
   syncLocalStateToServerMemory: (opts?: YamlLockBypassOptions) => Promise<boolean>;
+  flushPendingLocalEdits: () => Promise<void>;
   restoreDraft: (config: RawPipelineConfig) => Promise<void>;
   newPipeline: (name?: string) => Promise<void>;
   importFile: (sourcePath: string, capabilityToken: string) => Promise<void>;
@@ -877,6 +878,11 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     while (inFlight.size > 0) {
       await Promise.allSettled(Array.from(inFlight));
     }
+  };
+
+  const flushPendingLocalEdits = async (): Promise<void> => {
+    flushAllLocalFields();
+    await drainInFlight();
   };
 
   /**
@@ -2021,13 +2027,12 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
           // in-memory config includes the user's latest keystrokes. This
           // synchronously dispatches updateTask/etc. through fire(), which
           // registers their promises in `inFlight`.
-          flushAllLocalFields();
+          await flushPendingLocalEdits();
           // P0-C3: Drain any in-flight mutations (the just-flushed commits
           // above, plus any earlier undo/redo replaceConfig still on the wire)
           // BEFORE we send /api/save. Otherwise saveFile can race ahead of an
           // unresolved mutation and either persist a stale config to disk or
           // fail with a 409 because lastRevision hasn't caught up.
-          await drainInFlight();
           // Flush layout last so the layout file lands on disk alongside the
           // YAML. Awaiting surfaces any layout error before we commit the save.
           await flushLayout();
@@ -2075,7 +2080,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     syncLocalStateToServerMemory: async (opts) => {
       return withOptionalYamlEditLockBypass(opts, async () => {
         if (blockIfYamlEditLocked()) return false;
-        flushAllLocalFields();
+        await flushPendingLocalEdits();
         const current = _get();
         const localConfig = current.config;
         const localPositions = new Map(current.positions);
@@ -2204,6 +2209,8 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     exportFile: async (destDir, capabilityToken) => {
       if (blockIfYamlEditLocked()) return null;
       try {
+        await flushPendingLocalEdits();
+        await flushLayout();
         const result = await api.exportFile(destDir, capabilityToken);
         return result.path;
       } catch (e) {
@@ -2215,6 +2222,8 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     exportPlatformFile: async (destDir, targetPlatform, model, onProgress, capabilityToken) => {
       if (blockIfYamlEditLocked()) return null;
       try {
+        await flushPendingLocalEdits();
+        await flushLayout();
         const result = await api.exportPlatformFile(
           destDir,
           targetPlatform,
@@ -2228,6 +2237,8 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
         return null;
       }
     },
+
+    flushPendingLocalEdits,
 
     exportYaml: () => api.exportYaml(),
 

@@ -51,6 +51,7 @@ import {
   moveWorkflowPipeline,
   setWorkflowPipelineInfiniteLoop,
   removeWorkflowPipeline,
+  resolveWorkflowPipelineEditorPath,
   setWorkflowPipelineLoopCount,
   workflowDragPositionFromPointer,
   workflowNodePointerOffset,
@@ -64,6 +65,7 @@ import {
 interface WorkflowViewProps {
   workflows: WorkflowYamlEntry[];
   selectedPath: string | null;
+  workDir: string;
   workspacePipelines: WorkspaceYamlEntry[];
   events: WorkflowGraphEvent[];
   result?: WorkflowRunResult | null;
@@ -327,24 +329,24 @@ function displayPipelineName(entry: WorkspaceYamlEntry): string {
   return entry.pipelineName && entry.pipelineName.trim() ? entry.pipelineName : entry.name;
 }
 
-function normalizeWorkflowDisplayPath(path: string): string {
-  return path.replace(/\\/g, '/').replace(/^\.\//, '').toLocaleLowerCase();
-}
-
-function workflowPathMatchesPipelineEntry(workflowPath: string, entryPath: string): boolean {
-  if (workflowPathEquals(workflowPath, entryPath)) return true;
-  const workflowNorm = normalizeWorkflowDisplayPath(workflowPath);
-  const entryNorm = normalizeWorkflowDisplayPath(entryPath);
-  return entryNorm.endsWith(`/${workflowNorm}`) || workflowNorm.endsWith(`/${entryNorm}`);
+function workflowPathMatchesPipelineEntry(
+  workDir: string,
+  workflowPath: string,
+  entryPath: string,
+): boolean {
+  const resolvedWorkflowPath = resolveWorkflowPipelineEditorPath(workDir, workflowPath);
+  const resolvedEntryPath = resolveWorkflowPipelineEditorPath(workDir, entryPath);
+  return workflowPathEquals(resolvedWorkflowPath, resolvedEntryPath);
 }
 
 function workflowPipelineDisplayInfo(
+  workDir: string,
   pipeline: WorkflowPipelineEntry,
   workspacePipelines: readonly WorkspaceYamlEntry[],
 ): { title: string; subtitle: string; pathLabel: string } {
   const entry =
     workspacePipelines.find((candidate) =>
-      workflowPathMatchesPipelineEntry(pipeline.path, candidate.path),
+      workflowPathMatchesPipelineEntry(workDir, pipeline.path, candidate.path),
     ) ?? null;
   return {
     title: entry ? displayPipelineName(entry) : pipeline.id,
@@ -447,6 +449,7 @@ function WorkflowLoopCountInput({
 export function WorkflowView({
   workflows,
   selectedPath,
+  workDir,
   workspacePipelines,
   events,
   result,
@@ -547,7 +550,7 @@ export function WorkflowView({
   const selectedPipeline =
     selectedWorkflow?.pipelines.find((pipeline) => pipeline.id === selectedPipelineId) ?? null;
   const selectedPipelineDisplay = selectedPipeline
-    ? workflowPipelineDisplayInfo(selectedPipeline, workspacePipelines)
+    ? workflowPipelineDisplayInfo(workDir, selectedPipeline, workspacePipelines)
     : null;
   const selectedState = selectedPipeline
     ? (runtimeByPipeline.get(selectedPipeline.id) ?? null)
@@ -896,6 +899,7 @@ export function WorkflowView({
       {runPageVisible && selectedWorkflow ? (
         <WorkflowRunPage
           workflow={selectedWorkflow}
+          workDir={workDir}
           workspacePipelines={workspacePipelines}
           runtimeByPipeline={runtimeByPipeline}
           taskSnapshots={taskSnapshots}
@@ -977,7 +981,7 @@ export function WorkflowView({
                 {workspacePipelines.map((pipeline) => {
                   const inGraph = Boolean(
                     selectedWorkflow?.pipelines.some((p) =>
-                      workflowPathEquals(p.path, pipeline.path),
+                      workflowPathMatchesPipelineEntry(workDir, p.path, pipeline.path),
                     ),
                   );
                   return (
@@ -1183,7 +1187,11 @@ export function WorkflowView({
                       const selected = pipeline.id === selectedPipelineId;
                       const downstream = downstreamByPipeline.get(pipeline.id) ?? [];
                       const targetSlotActive = hoveredConnectionTargetId === pipeline.id;
-                      const display = workflowPipelineDisplayInfo(pipeline, workspacePipelines);
+                      const display = workflowPipelineDisplayInfo(
+                        workDir,
+                        pipeline,
+                        workspacePipelines,
+                      );
                       const loopCount = workflowPipelineLoopCount(pipeline);
                       const infiniteLoop = workflowPipelineLoopIsInfinite(pipeline);
                       const runCount = state?.runCount ?? 0;
@@ -1580,6 +1588,7 @@ function workflowRuntimeCounts(states: readonly PipelineRuntimeState[]): {
 
 export function WorkflowRunPage({
   workflow,
+  workDir,
   workspacePipelines,
   runtimeByPipeline,
   taskSnapshots,
@@ -1592,6 +1601,7 @@ export function WorkflowRunPage({
   onAbort,
 }: {
   workflow: WorkflowYamlEntry;
+  workDir: string;
   workspacePipelines: WorkspaceYamlEntry[];
   runtimeByPipeline: Map<string, PipelineRuntimeState>;
   taskSnapshots: Record<string, RunTaskState[]>;
@@ -1709,7 +1719,7 @@ export function WorkflowRunPage({
               const state = pipelineStates[index]!;
               const meta = STATUS_META[state.status];
               const Icon = meta.icon;
-              const display = workflowPipelineDisplayInfo(pipeline, workspacePipelines);
+              const display = workflowPipelineDisplayInfo(workDir, pipeline, workspacePipelines);
               const tasks = taskSnapshots[pipeline.id] ?? [];
               return (
                 <div key={pipeline.id} className={`border ${meta.border} ${meta.bg} p-3`}>

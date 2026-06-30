@@ -14,6 +14,7 @@ import { FieldHelpButton } from './FieldHelpButton';
 import { CopyableField } from './CopyableField';
 import { InspectorModelField, isBuiltinOpencodeDriver } from './InspectorModelField';
 import { buildTrackTaskListGroups, type TrackTaskListSort } from '../../utils/track-task-list';
+import { normalizePortableCwd } from '../../utils/portable-cwd';
 
 interface TrackConfigPanelProps {
   track: RawTrackConfig;
@@ -47,6 +48,7 @@ export function TrackConfigPanel({
   // chain (track → pipeline). App.tsx doesn't need to thread anything new.
   const pipelineConfig = usePipelineStore((s) => s.config);
   const savedConfig = usePipelineStore((s) => s.savedConfig);
+  const workDir = usePipelineStore((s) => s.workDir);
   const selectTask = usePipelineStore((s) => s.selectTask);
   const savedTrack = useMemo(() => findSavedTrack(savedConfig, track.id), [savedConfig, track.id]);
   const isFieldModified = useCallback(
@@ -102,9 +104,14 @@ export function TrackConfigPanel({
     track.agent_profile ?? '',
     (v) => commit({ agent_profile: v || undefined }),
   );
-  const [cwd, setCwd, blurCwd] = useLocalField(track.cwd ?? '', (v) =>
-    commit({ cwd: v || undefined }),
+  const normalizeCwdValue = useCallback(
+    (value: string) => normalizePortableCwd(value, workDir),
+    [workDir],
   );
+  const [cwd, setCwd, blurCwd] = useLocalField(track.cwd ?? '', (v) => {
+    const next = normalizeCwdValue(v);
+    commit({ cwd: next || undefined });
+  });
   const [model, setModel, blurModel] = useLocalField(track.model ?? '', (v) =>
     commit({ model: v || undefined }),
   );

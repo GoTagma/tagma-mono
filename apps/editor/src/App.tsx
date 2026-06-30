@@ -229,6 +229,7 @@ export function App() {
     setWorkDir,
     saveFile,
     saveFileAs,
+    flushPendingLocalEdits,
     newPipeline,
     importFile,
     exportFile,
@@ -1434,23 +1435,30 @@ export function App() {
       });
       return;
     }
-    if (blockingValidationErrors.length > 0) {
+    await flushPendingLocalEdits();
+    const latest = usePipelineStore.getState();
+    const latestBlockingValidationErrors = latest.validationErrors.filter(
+      (e) => e.severity !== 'warning',
+    );
+    if (latestBlockingValidationErrors.length > 0) {
       setDialog({
         type: 'error',
-        title: `Cannot run: ${blockingValidationErrors.length} validation error(s)`,
-        details: blockingValidationErrors.map((e) => `[${e.path}] ${e.message}`),
+        title: `Cannot run: ${latestBlockingValidationErrors.length} validation error(s)`,
+        details: latestBlockingValidationErrors.map((e) => `[${e.path}] ${e.message}`),
       });
       return;
     }
-    if (!yamlPath || isDirty) {
+    if (!latest.yamlPath || latest.isDirty) {
       setPendingRun(true);
       await saveFile();
       return;
     }
-    resetYamlPreviewBaseline(config);
+    resetYamlPreviewBaseline(latest.config);
     startRun(
-      config,
-      selectedTaskIds.length > 0 ? { yamlPath, targetTaskIds: [...selectedTaskIds] } : { yamlPath },
+      latest.config,
+      latest.selectedTaskIds.length > 0
+        ? { yamlPath: latest.yamlPath, targetTaskIds: [...latest.selectedTaskIds] }
+        : { yamlPath: latest.yamlPath },
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -1460,6 +1468,7 @@ export function App() {
     yamlPath,
     validationErrors,
     isDirty,
+    flushPendingLocalEdits,
     saveFile,
     config,
     selectedTaskIds,
@@ -2349,6 +2358,7 @@ export function App() {
               <WorkflowView
                 workflows={workspaceWorkflows}
                 selectedPath={selectedWorkflowPath}
+                workDir={workDir}
                 workspacePipelines={workspaceYamls}
                 events={workflowEvents}
                 result={workflowRunResult}

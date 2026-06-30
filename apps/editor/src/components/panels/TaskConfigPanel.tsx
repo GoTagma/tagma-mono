@@ -63,6 +63,7 @@ import {
 } from './completion-defaults';
 import { FileExplorer } from '../FileExplorer';
 import type { FileExplorerMode } from '../FileExplorer';
+import { normalizePortableCwd } from '../../utils/portable-cwd';
 
 function commandToEditorText(command: CommandConfig | undefined): string {
   if (!command) return '';
@@ -212,6 +213,7 @@ export function TaskConfigPanel({
   // `isTaskFieldModified` helper handles by treating any populated value
   // as modified.
   const savedConfig = usePipelineStore((s) => s.savedConfig);
+  const workDir = usePipelineStore((s) => s.workDir);
   const savedTask = useMemo(
     () => findSavedTask(savedConfig, trackId, task.id),
     [savedConfig, trackId, task.id],
@@ -404,9 +406,14 @@ export function TaskConfigPanel({
     task.agent_profile ?? '',
     (v) => commitField({ agent_profile: v || undefined }),
   );
-  const [cwd, setCwd, blurCwd] = useLocalField(task.cwd ?? '', (v) =>
-    commitField({ cwd: v || undefined }),
+  const normalizeCwdValue = useCallback(
+    (value: string) => normalizePortableCwd(value, workDir),
+    [workDir],
   );
+  const [cwd, setCwd, blurCwd] = useLocalField(task.cwd ?? '', (v) => {
+    const next = normalizeCwdValue(v);
+    commitField({ cwd: next || undefined });
+  });
   const [model, setModel, blurModel] = useLocalField(task.model ?? '', (v) =>
     commitField({ model: v || undefined }),
   );
@@ -933,7 +940,13 @@ export function TaskConfigPanel({
             </CopyableField>
             <button
               type="button"
-              onClick={() => openFileBrowser('directory', cwd, (path) => setCwd(path))}
+              onClick={() =>
+                openFileBrowser('directory', cwd, (path) => {
+                  const next = normalizeCwdValue(path);
+                  setCwd(next);
+                  commitField({ cwd: next || undefined });
+                })
+              }
               className="shrink-0 p-1.5 border border-tagma-border text-tagma-muted hover:text-tagma-accent hover:border-tagma-accent/40 transition-colors"
               title="Browse..."
               aria-label="Browse for working directory"

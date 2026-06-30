@@ -604,6 +604,38 @@ export function deletePipelineSecretBindings(
   return removed.length;
 }
 
+export function rebindPipelineSecretBindings(
+  workDir: string,
+  fromYamlPath: string,
+  toYamlPath: string,
+): number {
+  const manifest = readManifest(workDir, false);
+  if (!manifest.workspaceId || manifest.entries.length === 0) return 0;
+  const fromPipelinePath = workspaceRelativePath(
+    workDir,
+    assertPipelineYamlPath(workDir, fromYamlPath, 'Secret pipeline binding'),
+  );
+  const toPipelinePath = workspaceRelativePath(
+    workDir,
+    assertPipelineYamlPath(workDir, toYamlPath, 'Secret pipeline binding'),
+  );
+  if (fromPipelinePath === toPipelinePath) return 0;
+  const now = new Date().toISOString();
+  let changed = 0;
+  manifest.entries = manifest.entries.map((entry) => {
+    if (entry.pipelinePath !== fromPipelinePath) return entry;
+    changed += 1;
+    return {
+      ...entry,
+      scope: 'pipeline',
+      pipelinePath: toPipelinePath,
+      updatedAt: now,
+    };
+  });
+  if (changed === 0) return 0;
+  writeManifest(workDir, manifest);
+  return changed;
+}
 function secretAppliesToPipeline(entry: SecretEntry, pipelinePath: string): boolean {
   return entry.scope === 'workspace' || entry.pipelinePath === pipelinePath;
 }

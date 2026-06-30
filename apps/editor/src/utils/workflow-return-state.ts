@@ -19,8 +19,13 @@ export function shouldClearWorkflowReturnPathForNavigation(
   return navigation !== 'workflow-graph-edit';
 }
 
+function isWindowsWorkflowPath(path: string): boolean {
+  return /\\/.test(path) || /^[A-Za-z]:[\\/]/.test(path) || path.startsWith('\\\\');
+}
+
 function normalizeWorkflowPath(path: string): string {
-  return path.replace(/\\/g, '/').toLocaleLowerCase();
+  const normalized = path.replace(/\\/g, '/');
+  return isWindowsWorkflowPath(path) ? normalized.toLocaleLowerCase() : normalized;
 }
 
 export function didOpenWorkflowPipelineFromGraph({

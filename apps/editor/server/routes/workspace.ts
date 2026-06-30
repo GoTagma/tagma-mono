@@ -12,7 +12,7 @@ import {
   renameSync,
   appendFileSync,
 } from 'node:fs';
-import { resolve, dirname, basename, join, relative } from 'node:path';
+import { resolve, dirname, basename, join, relative, isAbsolute } from 'node:path';
 import { createHash } from 'node:crypto';
 import yaml from 'js-yaml';
 import { createEmptyPipeline, upsertTrack, upsertTask } from '@tagma/sdk/config';
@@ -24,6 +24,7 @@ import type {
   TagmaSdkRequirements,
   WorkflowDocumentKind,
   WorkflowFailurePolicy,
+  RawPipelineConfig,
 } from '@tagma/types';
 import {
   getState,
@@ -40,6 +41,7 @@ import {
 } from '../state.js';
 import { errorMessage, atomicWriteFileSync } from '../path-utils.js';
 import { runCompileAndWriteLog } from '../compile-log.js';
+import { requirementsPath, runRequirementsSync } from '../requirements-sync.js';
 import {
   buildYamlSkeletonFromManifest,
   pipelineManifestPath,
@@ -129,7 +131,9 @@ import {
   isUnmigratableFlatYaml,
   migrateFlatPipelinesToFolders,
 } from '../workspace-migrate.js';
-import { deletePipelineSecretBindings } from '../secrets.js';
+import { deletePipelineSecretBindings, rebindPipelineSecretBindings } from '../secrets.js';
+import { copyDeclaredPluginStoresForExport } from '../plugin-store-export.js';
+import type { WorkspaceState } from '../workspace-state.js';
 
 const MAX_FS_LIST_ENTRIES = 1_000;
 const MAX_YAML_FILE_BYTES = 5 * 1024 * 1024;
@@ -152,6 +156,52 @@ const MAX_LAYOUT_TRACK_IDS = 10_000;
 const MAX_WORKFLOW_GRAPH_COORD = 100_000;
 function isPluginArchiveName(name: string): boolean {
   return /\.tgz$|\.tar\.gz$/i.test(name);
+}
+
+function normalizePortableCwdForWorkspace(
+  workDir: string,
+  cwd: string | undefined,
+): string | undefined {
+  if (!cwd || !workDir || !isAbsolute(cwd)) return cwd;
+  const abs = resolve(cwd);
+  if (!isPathWithin(abs, workDir)) return cwd;
+  const portable = relative(workDir, abs).replace(/\\/g, '/');
+  return portable || '.';
+}
+
+function normalizePipelineCwdsForWorkspace(
+  config: RawPipelineConfig,
+  workDir: string,
+): RawPipelineConfig {
+  if (!workDir) return config;
+  let changed = false;
+  const tracks = config.tracks.map((track) => {
+    const trackCwd = normalizePortableCwdForWorkspace(workDir, track.cwd);
+    const tasks = track.tasks.map((task) => {
+      const taskCwd = normalizePortableCwdForWorkspace(workDir, task.cwd);
+      if (taskCwd === task.cwd) return task;
+      changed = true;
+      return { ...task, cwd: taskCwd };
+    });
+    if (trackCwd === track.cwd && tasks === track.tasks) return track;
+    if (trackCwd !== track.cwd) changed = true;
+    return { ...track, cwd: trackCwd, tasks };
+  });
+  return changed ? { ...config, tracks } : config;
+}
+
+function serializePortablePipeline(ws: WorkspaceState): string {
+  ws.config = normalizePipelineCwdsForWorkspace(ws.config, ws.workDir);
+  return serializePipeline(ws.config);
+}
+
+function syncExportedRequirements(sourceYamlPath: string, destYamlPath: string): void {
+  const sourceRequirements = requirementsPath(sourceYamlPath);
+  const destRequirements = requirementsPath(destYamlPath);
+  if (existsSync(sourceRequirements)) {
+    atomicWriteFileSync(destRequirements, readFileSync(sourceRequirements, 'utf-8'));
+  }
+  runRequirementsSync(destYamlPath);
 }
 
 function clipString(value: unknown, max = MAX_USAGE_STRING_LEN): string {
@@ -1411,7 +1461,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       // debounced check() can't fire between writeFileSync and beginWatching,
       // which would falsely detect our own write as an external change.
       ws.watcher.stopWatching();
-      const content = serializePipeline(ws.config);
+      const content = serializePortablePipeline(ws);
       atomicWriteFileSync(savePath, content);
       ws.yamlPath = savePath;
       ws.yamlVersion = getFileVersion(savePath);
@@ -1419,6 +1469,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       beginWatching(ws, savePath, content);
       runCompileAndWriteLog(savePath, ws.registry);
       runPipelineManifestSync(savePath);
+      runRequirementsSync(savePath);
       res.json(getState(ws));
     } catch (err: unknown) {
       res.status(500).json({ error: errorMessage(err) || 'Failed to save file' });
@@ -1441,18 +1492,24 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       const msg = err instanceof Error ? err.message : 'Path is outside the workspace directory';
       return res.status(403).json({ error: msg });
     }
+    const previousYamlPath = ws.yamlPath;
     try {
       mkdirSync(dirname(absPath), { recursive: true });
       // B4: Stop watcher before write to prevent false external-change detection.
       ws.watcher.stopWatching();
-      const yaml = serializePipeline(ws.config);
+      const yaml = serializePortablePipeline(ws);
       atomicWriteFileSync(absPath, yaml);
+      if (previousYamlPath) {
+        rebindPipelineSecretBindings(ws.workDir, previousYamlPath, absPath);
+      }
       ws.yamlPath = absPath;
+      ws.yamlVersion = getFileVersion(absPath);
       ws.manualNewPipelineYamlPath = null;
       saveLayout(ws);
       beginWatching(ws, absPath, yaml);
       runCompileAndWriteLog(absPath, ws.registry);
       runPipelineManifestSync(absPath);
+      runRequirementsSync(absPath);
       res.json(getState(ws));
     } catch (err: unknown) {
       res.status(500).json({ error: errorMessage(err) || 'Failed to save file' });
@@ -1487,10 +1544,11 @@ export function registerWorkspaceRoutes(app: express.Express): void {
     ws.yamlPath = yamlAbsPath;
     ws.manualNewPipelineYamlPath = yamlAbsPath;
     ws.layout = { positions: {} };
-    const content = serializePipeline(ws.config);
+    const content = serializePortablePipeline(ws);
     mkdirSync(dirname(yamlAbsPath), { recursive: true });
     atomicWriteFileSync(yamlAbsPath, content);
     runPipelineManifestSync(yamlAbsPath);
+    runRequirementsSync(yamlAbsPath);
     beginWatching(ws, yamlAbsPath, content);
     runCompileAndWriteLog(yamlAbsPath, ws.registry);
     res.json(getState(ws));
@@ -1604,6 +1662,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       // stay consistent. The agent's original manifest may have been a
       // planning document; the regenerated one reflects the actual YAML.
       runPipelineManifestSync(yamlAbsPath);
+      runRequirementsSync(yamlAbsPath);
       beginWatching(ws, yamlAbsPath, skeleton);
       runCompileAndWriteLog(yamlAbsPath, ws.registry);
       res.json(getState(ws));
@@ -1758,6 +1817,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       await withWorkspacePluginMutationLock(ws, () => autoLoadInstalledPlugins(ws));
       runCompileAndWriteLog(destPath, ws.registry);
       runPipelineManifestSync(destPath);
+      runRequirementsSync(destPath);
       // Warn when imported YAML asks for local code or shell execution.
       const hasCommandTasks = ws.config.tracks.some((t) => t.tasks.some((task) => task.command));
       const hasPlugins = (ws.config.plugins ?? []).length > 0;
@@ -1804,9 +1864,11 @@ export function registerWorkspaceRoutes(app: express.Express): void {
     }
     try {
       consumeFsCapability(capabilityToken, absDestDir, 'export-file', ws);
-      const content = serializePipeline(ws.config);
+      const content = serializePortablePipeline(ws);
       atomicWriteFileSync(ws.yamlPath, content);
+      ws.yamlVersion = getFileVersion(ws.yamlPath);
       runPipelineManifestSync(ws.yamlPath);
+      runRequirementsSync(ws.yamlPath);
       // Keep the source-of-truth layout in sync on disk before copying.
       saveLayout(ws);
       // Mirror the per-pipeline folder layout at the destination too:
@@ -1828,7 +1890,9 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       if (existsSync(sourceManifestFile)) {
         atomicWriteFileSync(destManifestFile, readFileSync(sourceManifestFile, 'utf-8'));
       }
-      res.json({ ok: true, path: destPath });
+      syncExportedRequirements(ws.yamlPath, destPath);
+      const pluginsCopied = copyDeclaredPluginStoresForExport(ws, absDestDir);
+      res.json({ ok: true, path: destPath, pluginsCopied });
     } catch (err: unknown) {
       res.status(500).json({ error: errorMessage(err) || 'Failed to export file' });
     }
@@ -1887,10 +1951,12 @@ export function registerWorkspaceRoutes(app: express.Express): void {
 
     try {
       sendProgress({ stage: 'preparing', detail: 'Preparing platform export' });
-      const content = serializePipeline(ws.config);
+      const content = serializePortablePipeline(ws);
       sendProgress({ stage: 'syncing', detail: 'Saving current pipeline and layout' });
       atomicWriteFileSync(ws.yamlPath, content);
+      ws.yamlVersion = getFileVersion(ws.yamlPath);
       runPipelineManifestSync(ws.yamlPath);
+      runRequirementsSync(ws.yamlPath);
       saveLayout(ws);
 
       sendProgress({ stage: 'opencode', detail: 'Preparing .tagma OpenCode workspace' });
@@ -1939,7 +2005,11 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       const destLayoutFile = companionLayoutPath(destPath);
       atomicWriteFileSync(destLayoutFile, JSON.stringify(ws.layout, null, 2));
       runPipelineManifestSync(destPath);
-      res.write(`${JSON.stringify({ type: 'done', ok: true, path: destPath, targetPlatform })}\n`);
+      syncExportedRequirements(ws.yamlPath, destPath);
+      const pluginsCopied = copyDeclaredPluginStoresForExport(ws, absDestDir);
+      res.write(
+        `${JSON.stringify({ type: 'done', ok: true, path: destPath, targetPlatform, pluginsCopied })}\n`,
+      );
     } catch (err: unknown) {
       if (!res.writableEnded) {
         res.write(
@@ -2010,6 +2080,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
           sameFilesystemPath(dirname(ws.manualNewPipelineYamlPath), absFolderPath));
       if (wasCurrent || folderHostsCurrentYaml) {
         ws.yamlPath = null;
+        ws.yamlVersion = null;
         ws.manualNewPipelineYamlPath = null;
         ws.config = createEmptyPipeline('Untitled Pipeline');
         ws.layout = { positions: {} };

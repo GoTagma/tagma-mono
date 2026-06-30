@@ -14,6 +14,7 @@ import {
   workflowPipelineRunLimit,
   workflowDragPositionFromPointer,
   workflowNodePointerOffset,
+  workflowPathEquals,
 } from '../src/components/workflow/workflow-graph-model';
 
 const workspacePipeline: WorkspaceYamlEntry = {
@@ -29,6 +30,15 @@ const workspacePipeline: WorkspaceYamlEntry = {
 };
 
 describe('workflow graph model', () => {
+  test('workflowPathEquals keeps POSIX paths case-sensitive and Windows paths case-insensitive', () => {
+    expect(workflowPathEquals('/repo/.tagma/Foo/Foo.yaml', '/repo/.tagma/foo/foo.yaml')).toBe(
+      false,
+    );
+    expect(
+      workflowPathEquals('E:/Repo/.tagma/Foo/Foo.yaml', 'e:\\repo\\.tagma\\foo\\foo.yaml'),
+    ).toBe(true);
+    expect(workflowPathEquals('\\\\Server\\Share\\Foo.yaml', '//server/share/foo.yaml')).toBe(true);
+  });
   test('adds a workspace pipeline with a stable unique id and drop position', () => {
     const pipelines: WorkflowPipelineEntry[] = [
       { id: 'build', path: '.tagma/old/build.yaml', depends_on: [] },

@@ -690,6 +690,7 @@ export function RunHistoryBrowser({
     return earliest;
   });
   const editorPositions = usePipelineStore((s) => s.positions);
+  const workDir = usePipelineStore((s) => s.workDir);
   const hasActiveStoreRun = runStatus === 'starting' || runStatus === 'running';
   const [replayLoading, setReplayLoading] = useState(false);
   const [stopLoading, setStopLoading] = useState(false);
@@ -1011,6 +1012,7 @@ export function RunHistoryBrowser({
               detail={graphDetail}
               loading={graphDetailLoading}
               error={graphDetailError}
+              workDir={workDir}
               workspacePipelines={workspacePipelines}
               onAbort={
                 selectedRunId && graphDetail?.running === true
@@ -1342,6 +1344,7 @@ function GraphRunDetailPane({
   detail,
   loading,
   error,
+  workDir,
   workspacePipelines,
   onAbort,
 }: {
@@ -1349,6 +1352,7 @@ function GraphRunDetailPane({
   detail: WorkflowRunHistoryDetail | null;
   loading: boolean;
   error: string | null;
+  workDir: string;
   workspacePipelines: WorkspaceYamlEntry[];
   onAbort?: () => void;
 }) {
@@ -1410,6 +1414,7 @@ function GraphRunDetailPane({
   return (
     <WorkflowRunPage
       workflow={detail.workflow}
+      workDir={workDir}
       workspacePipelines={workspacePipelines}
       runtimeByPipeline={runtimeByPipeline}
       taskSnapshots={taskSnapshots}

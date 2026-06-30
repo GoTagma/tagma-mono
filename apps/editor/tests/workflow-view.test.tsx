@@ -67,6 +67,17 @@ const workspacePipelines: WorkspaceYamlEntry[] = [
     size: 120,
   },
   {
+    name: 'deploy.yaml',
+    path: 'E:/repo/.tagma/deploy/deploy.yaml',
+    pipelineName: 'Deploy Pipeline',
+    contentHash: 'deploy',
+    layoutHash: null,
+    layoutMtimeMs: null,
+    layoutSize: null,
+    mtimeMs: 1,
+    size: 120,
+  },
+  {
     name: 'lint.yaml',
     path: 'E:/repo/.tagma/lint/lint.yaml',
     pipelineName: 'Lint',
@@ -167,6 +178,7 @@ describe('WorkflowView', () => {
         <WorkflowView
           workflows={workflows}
           selectedPath={workflows[0]!.path}
+          workDir="E:/repo"
           workspacePipelines={workspacePipelines}
           events={events}
           running={false}
@@ -194,6 +206,7 @@ describe('WorkflowView', () => {
       <WorkflowView
         workflows={workflows}
         selectedPath={workflows[0]!.path}
+        workDir="E:/repo"
         workspacePipelines={workspacePipelines}
         events={events}
         running={false}
@@ -234,6 +247,7 @@ describe('WorkflowView', () => {
       <WorkflowView
         workflows={workflows}
         selectedPath={workflows[1]!.path}
+        workDir="E:/repo"
         workspacePipelines={workspacePipelines}
         events={[]}
         running={false}
@@ -250,6 +264,7 @@ describe('WorkflowView', () => {
     expect(html).toContain('Workflow Graphs');
     expect(html).toContain('New Graph');
     expect(html).toContain('Workspace Pipelines');
+    expect(html).toContain('In graph');
     expect(html).toContain('draggable="true"');
     expect(html).toContain('Lint');
     expect(html).toContain('deploy-flow');
@@ -272,11 +287,86 @@ describe('WorkflowView', () => {
     expect(html).toContain('Edit deploy in pipeline editor');
   });
 
+  test('matches workflow pipeline display by workspace-resolved path, not suffix', () => {
+    const workflow: WorkflowYamlEntry = {
+      name: 'ambiguous.workflow.yaml',
+      path: 'E:/repo/.tagma/workflows/ambiguous.workflow.yaml',
+      workflowName: 'ambiguous-flow',
+      contentHash: 'amb',
+      mtimeMs: 1,
+      size: 120,
+      pipelines: [{ id: 'target', path: '.tagma/foo/bar.yaml', depends_on: [] }],
+    };
+    const wrongEntry: WorkspaceYamlEntry = {
+      name: 'bar.yaml',
+      path: 'E:/other/.tagma/foo/bar.yaml',
+      pipelineName: 'Wrong Suffix Pipeline',
+      contentHash: 'wrong',
+      layoutHash: null,
+      layoutMtimeMs: null,
+      layoutSize: null,
+      mtimeMs: 1,
+      size: 120,
+    };
+    const correctEntry: WorkspaceYamlEntry = {
+      name: 'bar.yaml',
+      path: 'E:/repo/.tagma/foo/bar.yaml',
+      pipelineName: 'Correct Workspace Pipeline',
+      contentHash: 'right',
+      layoutHash: null,
+      layoutMtimeMs: null,
+      layoutSize: null,
+      mtimeMs: 1,
+      size: 120,
+    };
+
+    const html = renderToStaticMarkup(
+      <WorkflowView
+        workflows={[workflow]}
+        selectedPath={workflow.path}
+        workDir="E:/repo"
+        workspacePipelines={[wrongEntry, correctEntry]}
+        events={[]}
+        result={{
+          graphRunId: 'graph_suffix',
+          success: true,
+          abortReason: null,
+          pipelines: [
+            {
+              pipelineId: 'target',
+              path: '.tagma/foo/bar.yaml',
+              dependsOn: [],
+              status: 'success',
+              runId: 'run_target',
+              runCount: 1,
+              maxRuns: 1,
+              attempts: [],
+              startedAt: null,
+              finishedAt: null,
+              error: null,
+            },
+          ],
+        }}
+        running={false}
+        onSelectWorkflow={() => {}}
+        onBack={() => {}}
+        onRefresh={() => {}}
+        onStart={() => {}}
+        onCreateWorkflow={() => {}}
+        onSaveWorkflow={async () => {}}
+        onEditPipeline={() => {}}
+      />,
+    );
+
+    expect(html).toContain('Correct Workspace Pipeline');
+    expect(html).not.toContain('Wrong Suffix Pipeline');
+  });
   test('renders a workflow graph run result page with runtime counts', () => {
     const html = renderToStaticMarkup(
       <WorkflowView
         workflows={workflows}
         selectedPath={workflows[0]!.path}
+        workDir="E:/repo"
         workspacePipelines={workspacePipelines}
         events={events}
         result={{
@@ -347,6 +437,7 @@ describe('WorkflowView', () => {
       <WorkflowView
         workflows={workflows}
         selectedPath={workflows[0]!.path}
+        workDir="E:/repo"
         workspacePipelines={workspacePipelines}
         events={[]}
         running={true}
@@ -370,6 +461,7 @@ describe('WorkflowView', () => {
       <WorkflowView
         workflows={workflows}
         selectedPath={workflows[0]!.path}
+        workDir="E:/repo"
         workspacePipelines={workspacePipelines}
         events={events}
         running={false}
@@ -401,6 +493,7 @@ describe('WorkflowView', () => {
       <WorkflowView
         workflows={workflows}
         selectedPath={workflows[0]!.path}
+        workDir="E:/repo"
         workspacePipelines={workspacePipelines}
         events={events}
         running={false}
@@ -439,6 +532,7 @@ describe('WorkflowView', () => {
       <WorkflowView
         workflows={workflows}
         selectedPath={workflows[0]!.path}
+        workDir="E:/repo"
         workspacePipelines={workspacePipelines}
         events={events}
         running={false}
@@ -469,6 +563,7 @@ describe('WorkflowView', () => {
       <WorkflowView
         workflows={workflows}
         selectedPath={workflows[0]!.path}
+        workDir="E:/repo"
         workspacePipelines={workspacePipelines}
         events={events}
         running={false}
@@ -491,6 +586,7 @@ describe('WorkflowView', () => {
       <WorkflowView
         workflows={workflows}
         selectedPath={workflows[0]!.path}
+        workDir="E:/repo"
         workspacePipelines={workspacePipelines}
         events={events}
         running={false}

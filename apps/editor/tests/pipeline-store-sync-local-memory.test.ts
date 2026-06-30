@@ -52,6 +52,7 @@ let updateTaskStarted: string[] = [];
 let updateTaskActiveCalls = 0;
 let updateTaskMaxActiveCalls = 0;
 let flushCalls = 0;
+let exportFileCalls = 0;
 let observedClientRevision: number | null = null;
 let mockClientWorkspace: string | null = null;
 const mockWorkspaceListeners = new Set<(key: string | null) => void>();
@@ -102,6 +103,14 @@ mock.module('../src/api/client', () => ({
       return replaceConfigImpl(config, layout);
     },
     saveLayout: async () => ({}),
+    exportFile: async () => {
+      exportFileCalls += 1;
+      return { ok: true, path: 'C:/export/p.yaml' };
+    },
+    exportPlatformFile: async () => {
+      exportFileCalls += 1;
+      return { ok: true, path: 'C:/export/p.windows.yaml' };
+    },
     acquireYamlEditLock: async (
       opts?: { id?: string; reason?: string; ttlMs?: number; yamlPath?: string | null },
       workspaceKeyOverride?: string | null,
@@ -185,6 +194,7 @@ beforeEach(() => {
   updateTaskActiveCalls = 0;
   updateTaskMaxActiveCalls = 0;
   flushCalls = 0;
+  exportFileCalls = 0;
   observedClientRevision = null;
   usePipelineStore.setState({
     config: makeConfig(),
@@ -260,6 +270,38 @@ describe('syncLocalStateToServerMemory', () => {
     expect(usePipelineStore.getState().config.tracks[0]?.tasks[0]?.prompt).toBe('second');
   });
 
+  test('exportFile waits for pending local-field mutations before exporting', async () => {
+    usePipelineStore.getState().updateTask('track', 'task', { prompt: 'queued export edit' });
+    await flushQueuedMutations();
+    expect(updateTaskStarted).toEqual(['queued export edit']);
+
+    const exported = usePipelineStore.getState().exportFile('C:/dest', 'cap-token');
+    await flushQueuedMutations();
+
+    expect(flushCalls).toBe(1);
+    expect(exportFileCalls).toBe(0);
+
+    updateTaskResolvers.shift()?.(
+      makeState({
+        config: {
+          ...makeConfig(),
+          tracks: [
+            {
+              ...makeConfig().tracks[0]!,
+              tasks: [{ id: 'task', name: 'Task', prompt: 'queued export edit' }],
+            },
+          ],
+        },
+        revision: 2,
+      }),
+    );
+
+    await expect(exported).resolves.toBe('C:/export/p.yaml');
+    expect(exportFileCalls).toBe(1);
+    expect(usePipelineStore.getState().config.tracks[0]?.tasks[0]?.prompt).toBe(
+      'queued export edit',
+    );
+  });
   test('adopted server state refreshes the client revision baseline', () => {
     usePipelineStore.getState().applyState(makeState({ revision: 7 }));
     expect(observedClientRevision).toBe(7);
@@ -391,6 +433,7 @@ describe('syncLocalStateToServerMemory', () => {
       });
 
     const preserve = usePipelineStore.getState().syncLocalStateToServerMemory();
+    await flushQueuedMutations();
     const agentState = makeState({ config: makeConfig('Agent Pipeline'), revision: 3 });
 
     usePipelineStore.getState().adoptDiskState(agentState, 'chat');

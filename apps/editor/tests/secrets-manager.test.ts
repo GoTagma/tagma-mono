@@ -7,6 +7,7 @@ import {
   deletePipelineSecretBindings,
   deleteSecret,
   listSecrets,
+  rebindPipelineSecretBindings,
   upsertSecret,
   type CredentialBackend,
   type CredentialBackendInfo,
@@ -238,6 +239,23 @@ test('deleteSecret removes metadata and credential value', () => {
   expect([...backend.values.values()]).toEqual([]);
 });
 
+test('rebindPipelineSecretBindings moves pipeline-scoped metadata without copying values', () => {
+  const buildYaml = writePipeline('build');
+  const releaseYaml = writePipeline('release');
+
+  upsertSecret(
+    root,
+    { envName: 'API_TOKEN', value: 'build-token', pipelinePath: '.tagma/build/build.yaml' },
+    backend,
+  );
+
+  expect(rebindPipelineSecretBindings(root, buildYaml, releaseYaml)).toBe(1);
+  expect(buildPipelineSecretEnv(root, buildYaml, ['API_TOKEN'], backend)).toEqual({});
+  expect(buildPipelineSecretEnv(root, releaseYaml, ['API_TOKEN'], backend)).toEqual({
+    API_TOKEN: 'build-token',
+  });
+  expect(listSecrets(root, backend).secrets[0]?.pipelinePath).toBe('.tagma/release/release.yaml');
+});
 test('deletePipelineSecretBindings removes only secrets bound to the deleted pipeline', () => {
   const buildYaml = writePipeline('build');
   const deployYaml = writePipeline('deploy');

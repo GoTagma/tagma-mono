@@ -1,16 +1,30 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createEmptyPipeline } from '@tagma/sdk/config';
-import { TAGMA_SDK_VERSION, YAML_REQUIRES_FIELD_MIN_SDK } from '@tagma/sdk/yaml';
+import { parseYaml, TAGMA_SDK_VERSION, YAML_REQUIRES_FIELD_MIN_SDK } from '@tagma/sdk/yaml';
 import { parseWorkflowYaml } from '@tagma/sdk/workflow';
+import {
+  parseRequirementsMd,
+  requirementsPath,
+  serializeRequirementsMd,
+} from '../server/requirements-sync';
 import { registerWorkspaceRoutes } from '../server/routes/workspace';
 import { S } from '../server/state';
 import {
   _resetFsCapabilities,
   consumeFsCapability,
   consumeFsCapabilityForChild,
+  issueFsCapability,
 } from '../server/fs-capability';
 
 type Req = {
@@ -101,6 +115,302 @@ afterEach(() => {
 });
 
 describe('workspace route validation', () => {
+  test('POST /api/save serializes absolute workspace cwd values as portable relative paths', () => {
+    const workDir = makeTempDir();
+    const yamlDir = join(workDir, '.tagma', 'portable');
+    const yamlPath = join(yamlDir, 'portable.yaml');
+    mkdirSync(yamlDir, { recursive: true });
+    S.workDir = workDir;
+    S.yamlPath = yamlPath;
+    S.config = {
+      name: 'Portable CWD',
+      tracks: [
+        {
+          id: 'main',
+          name: 'Main',
+          cwd: join(workDir, 'src'),
+          tasks: [
+            {
+              id: 'task',
+              name: 'Task',
+              prompt: 'Hello',
+              cwd: join(workDir, 'src', 'task'),
+            },
+          ],
+        },
+      ],
+    };
+
+    const res = makeRes();
+    createRouteHarness().post('/api/save')({ workspace: S, body: {} }, res);
+
+    expect(res.statusCode).toBe(200);
+    const saved = parseYaml(readFileSync(yamlPath, 'utf-8'));
+    expect(saved.tracks[0]?.cwd).toBe('src');
+    expect(saved.tracks[0]?.tasks[0]?.cwd).toBe('src/task');
+    expect(readFileSync(yamlPath, 'utf-8')).not.toContain(workDir);
+  });
+
+  test('POST /api/save syncs requirements frontmatter from the saved YAML', () => {
+    const workDir = makeTempDir();
+    const yamlDir = join(workDir, '.tagma', 'requirements');
+    const yamlPath = join(yamlDir, 'requirements.yaml');
+    mkdirSync(yamlDir, { recursive: true });
+    S.workDir = workDir;
+    S.yamlPath = yamlPath;
+    S.config = {
+      name: 'Requirements Sync',
+      tracks: [
+        {
+          id: 'main',
+          name: 'Main',
+          tasks: [{ id: 'status', name: 'Status', command: 'git status' }],
+        },
+      ],
+    };
+
+    const res = makeRes();
+    createRouteHarness().post('/api/save')({ workspace: S, body: {} }, res);
+
+    expect(res.statusCode).toBe(200);
+    const parsed = parseRequirementsMd(readFileSync(requirementsPath(yamlPath), 'utf-8'));
+    expect(parsed.frontmatter?.generatedFor).toBe('requirements.yaml');
+    expect(parsed.frontmatter?.binaries.map((binary) => binary.name)).toEqual(['git']);
+    expect(parsed.frontmatter?.binaries[0]?.usedBy).toEqual(['main.status']);
+  });
+  test('POST /api/import-file refreshes yamlVersion for the copied YAML', () => {
+    S.workDir = makeTempDir();
+    const sourceDir = makeTempDir();
+    const sourcePath = join(sourceDir, 'imported.yaml');
+    writeFileSync(sourcePath, 'pipeline:\n  name: Imported\n  tracks: []\n', 'utf-8');
+    S.yamlVersion = { mtime: 1, size: 1 };
+    const { token } = issueFsCapability(sourcePath, 'import-file', S);
+
+    const res = makeRes();
+    createRouteHarness().post('/api/import-file')(
+      { workspace: S, body: { sourcePath, capabilityToken: token } },
+      res,
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(S.yamlPath).toBe(join(S.workDir, '.tagma', 'imported', 'imported.yaml'));
+    const stat = statSync(S.yamlPath!);
+    expect(S.yamlVersion).toMatchObject({ size: stat.size, mtime: stat.mtimeMs });
+  });
+  test('POST /api/export-file refreshes yamlVersion after saving the source YAML', () => {
+    const workDir = makeTempDir();
+    const yamlDir = join(workDir, '.tagma', 'versioned');
+    const yamlPath = join(yamlDir, 'versioned.yaml');
+    const destDir = makeTempDir();
+    mkdirSync(yamlDir, { recursive: true });
+    writeFileSync(yamlPath, 'pipeline:\n  name: Old\n  tracks: []\n', 'utf-8');
+    S.workDir = workDir;
+    S.yamlPath = yamlPath;
+    S.yamlVersion = { mtime: 1, size: 1 };
+    S.config = {
+      name: 'Versioned Export',
+      tracks: [{ id: 'main', name: 'Main', tasks: [{ id: 'task', prompt: 'Hello' }] }],
+    };
+    const { token } = issueFsCapability(destDir, 'export-file', S);
+
+    const res = makeRes();
+    createRouteHarness().post('/api/export-file')(
+      { workspace: S, body: { destDir, capabilityToken: token } },
+      res,
+    );
+
+    expect(res.statusCode).toBe(200);
+    const stat = statSync(yamlPath);
+    expect(S.yamlVersion).toMatchObject({ size: stat.size, mtime: stat.mtimeMs });
+  });
+  test('POST /api/export-file writes portable cwd values to the exported YAML', () => {
+    const workDir = makeTempDir();
+    const yamlDir = join(workDir, '.tagma', 'portable');
+    const yamlPath = join(yamlDir, 'portable.yaml');
+    const destDir = makeTempDir();
+    mkdirSync(yamlDir, { recursive: true });
+    S.workDir = workDir;
+    S.yamlPath = yamlPath;
+    S.config = {
+      name: 'Portable Export',
+      tracks: [
+        {
+          id: 'main',
+          name: 'Main',
+          cwd: join(workDir, 'src'),
+          tasks: [{ id: 'task', name: 'Task', prompt: 'Hello', cwd: join(workDir, 'src', 'task') }],
+        },
+      ],
+    };
+
+    const listRes = makeRes();
+    createRouteHarness().get('/api/fs/list')(
+      {
+        workspace: S,
+        headers: {},
+        query: { picker: '1', path: destDir, capabilityPurpose: 'export-file' },
+      },
+      listRes,
+    );
+    const capabilityToken = (listRes.body as { capabilityToken?: string }).capabilityToken;
+
+    const exportRes = makeRes();
+    createRouteHarness().post('/api/export-file')(
+      { workspace: S, body: { destDir, capabilityToken } },
+      exportRes,
+    );
+
+    expect(exportRes.statusCode).toBe(200);
+    const exportedPath = (exportRes.body as { path?: string }).path;
+    expect(typeof exportedPath).toBe('string');
+    const exported = parseYaml(readFileSync(exportedPath!, 'utf-8'));
+    expect(exported.tracks[0]?.cwd).toBe('src');
+    expect(exported.tracks[0]?.tasks[0]?.cwd).toBe('src/task');
+    expect(readFileSync(exportedPath!, 'utf-8')).not.toContain(workDir);
+  });
+
+  test('POST /api/export-file includes the requirements document', () => {
+    const workDir = makeTempDir();
+    const yamlDir = join(workDir, '.tagma', 'export-req');
+    const yamlPath = join(yamlDir, 'export-req.yaml');
+    const destDir = makeTempDir();
+    mkdirSync(yamlDir, { recursive: true });
+    S.workDir = workDir;
+    S.yamlPath = yamlPath;
+    S.config = {
+      name: 'Export Requirements',
+      tracks: [
+        {
+          id: 'main',
+          name: 'Main',
+          tasks: [{ id: 'status', name: 'Status', command: 'git status' }],
+        },
+      ],
+    };
+    writeFileSync(
+      requirementsPath(yamlPath),
+      serializeRequirementsMd({
+        frontmatter: {
+          schemaVersion: 1,
+          generatedFor: 'export-req.yaml',
+          generatedAt: '2026-05-20T00:00:00.000Z',
+          binaries: [],
+          env: [{ name: 'API_TOKEN', required: true, description: 'Used by deployment' }],
+          services: [{ name: 'Example API' }],
+        },
+        body: '# Custom requirements\n\nKeep these install notes.\n',
+      }),
+      'utf-8',
+    );
+    const { token } = issueFsCapability(destDir, 'export-file', S);
+
+    const res = makeRes();
+    createRouteHarness().post('/api/export-file')(
+      { workspace: S, body: { destDir, capabilityToken: token } },
+      res,
+    );
+
+    expect(res.statusCode).toBe(200);
+    const exportedYaml = (res.body as { path: string }).path;
+    const exportedRequirements = requirementsPath(exportedYaml);
+    expect(existsSync(exportedRequirements)).toBe(true);
+    const parsed = parseRequirementsMd(readFileSync(exportedRequirements, 'utf-8'));
+    expect(parsed.frontmatter?.generatedFor).toBe('export-req.yaml');
+    expect(parsed.frontmatter?.binaries.map((binary) => binary.name)).toEqual(['git']);
+    expect(parsed.frontmatter?.env).toEqual([
+      { name: 'API_TOKEN', required: true, description: 'Used by deployment' },
+    ]);
+    expect(parsed.frontmatter?.services).toEqual([{ name: 'Example API' }]);
+    expect(parsed.body).toContain('Keep these install notes.');
+  });
+  test('POST /api/export-file includes declared plugin stores', () => {
+    const workDir = makeTempDir();
+    const yamlDir = join(workDir, '.tagma', 'plugin-export');
+    const yamlPath = join(yamlDir, 'plugin-export.yaml');
+    const destDir = makeTempDir();
+    const pluginName = '@scope/local-driver';
+    const pluginStoreName = pluginName.replace(/[\\/]/g, '__');
+    const pluginPackageDir = join(
+      workDir,
+      '.tagma',
+      'plugin-store',
+      pluginStoreName,
+      'node_modules',
+      '@scope',
+      'local-driver',
+    );
+    mkdirSync(yamlDir, { recursive: true });
+    mkdirSync(pluginPackageDir, { recursive: true });
+    writeFileSync(
+      join(workDir, '.tagma', 'plugin-store', pluginStoreName, 'package.json'),
+      JSON.stringify(
+        {
+          name: 'tagma-plugin-store-local-driver',
+          private: true,
+          dependencies: { [pluginName]: 'file:C:/local/plugin' },
+        },
+        null,
+        2,
+      ) + '\n',
+      'utf-8',
+    );
+    writeFileSync(
+      join(pluginPackageDir, 'package.json'),
+      JSON.stringify(
+        {
+          name: pluginName,
+          version: '1.0.0',
+          type: 'module',
+          main: './index.js',
+          tagmaPlugin: { category: 'drivers', type: 'local' },
+        },
+        null,
+        2,
+      ) + '\n',
+      'utf-8',
+    );
+    writeFileSync(join(pluginPackageDir, 'index.js'), 'export default {};\n', 'utf-8');
+    S.workDir = workDir;
+    S.yamlPath = yamlPath;
+    S.config = {
+      name: 'Plugin Export',
+      plugins: [pluginName],
+      tracks: [{ id: 'main', name: 'Main', tasks: [{ id: 'task', prompt: 'Hello' }] }],
+    };
+
+    const listRes = makeRes();
+    createRouteHarness().get('/api/fs/list')(
+      {
+        workspace: S,
+        headers: {},
+        query: { picker: '1', path: destDir, capabilityPurpose: 'export-file' },
+      },
+      listRes,
+    );
+    const capabilityToken = (listRes.body as { capabilityToken?: string }).capabilityToken;
+
+    const exportRes = makeRes();
+    createRouteHarness().post('/api/export-file')(
+      { workspace: S, body: { destDir, capabilityToken } },
+      exportRes,
+    );
+
+    expect(exportRes.statusCode).toBe(200);
+    expect((exportRes.body as { pluginsCopied?: string[] }).pluginsCopied).toEqual([pluginName]);
+    expect(
+      existsSync(
+        join(
+          destDir,
+          'plugin-store',
+          pluginStoreName,
+          'node_modules',
+          '@scope',
+          'local-driver',
+          'package.json',
+        ),
+      ),
+    ).toBe(true);
+  });
   test('GET /api/fs/list picker mode can issue an import-plugin capability for the selected directory', () => {
     S.workDir = makeTempDir();
     const pluginDir = makeTempDir();
@@ -488,6 +798,54 @@ describe('workspace route validation', () => {
     expect(String((res.body as { error?: unknown }).error)).toContain('requires.sdk');
   });
 
+  test('POST /api/save-as rebinds pipeline-scoped secret metadata to the new YAML path', () => {
+    S.workDir = makeTempDir();
+    const sourceDir = join(S.workDir, '.tagma', 'build');
+    const sourceYaml = join(sourceDir, 'build.yaml');
+    const targetYaml = join(S.workDir, '.tagma', 'release', 'release.yaml');
+    mkdirSync(sourceDir, { recursive: true });
+    const sourceContent = 'pipeline:\n  name: Build\n  tracks: []\n';
+    writeFileSync(sourceYaml, sourceContent, 'utf-8');
+    S.yamlPath = sourceYaml;
+    S.config = parseYaml(sourceContent);
+    const manifestPath = join(S.workDir, '.tagma', 'secrets.json');
+    writeFileSync(
+      manifestPath,
+      JSON.stringify(
+        {
+          version: 1,
+          workspaceId: 'route-save-as-workspace',
+          entries: [
+            {
+              id: '123e4567-e89b-12d3-a456-426614174000',
+              envName: 'API_TOKEN',
+              scope: 'pipeline',
+              pipelinePath: '.tagma/build/build.yaml',
+              description: null,
+              createdAt: '2026-05-15T00:00:00.000Z',
+              updatedAt: '2026-05-15T00:00:00.000Z',
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+      'utf-8',
+    );
+
+    const handler = createRouteHarness().post('/api/save-as');
+    const res = makeRes();
+    handler({ workspace: S, body: { path: targetYaml } }, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(S.yamlPath).toBe(targetYaml);
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8')) as {
+      entries: Array<{ pipelinePath: string | null }>;
+    };
+    expect(manifest.entries.map((entry) => entry.pipelinePath)).toEqual([
+      '.tagma/release/release.yaml',
+    ]);
+  });
   test('POST /api/delete-file removes pipeline-scoped secret bindings with the pipeline', () => {
     S.workDir = makeTempDir();
     const pipelineDir = join(S.workDir, '.tagma', 'build');

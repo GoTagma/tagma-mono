@@ -152,6 +152,33 @@ describe('detectChatYamlTarget', () => {
     ).toBeNull();
   });
 
+  test('matches changed Windows paths across slash and case differences', () => {
+    const windowsBefore: WorkspaceYamlEntry = {
+      ...before,
+      name: 'Current.yaml',
+      path: 'C:\\W\\.tagma\\Current\\Current.yaml',
+      pipelineName: 'Current',
+    };
+    const windowsChanged: WorkspaceYamlEntry = {
+      ...windowsBefore,
+      path: 'c:/w/.tagma/current/current.yaml',
+      contentHash: 'changed',
+      mtimeMs: 2,
+    };
+
+    expect(
+      detectChatYamlTarget(
+        snapshot([windowsBefore], windowsBefore.path),
+        [windowsChanged],
+        'c:/w/.tagma/current/current.yaml',
+      ),
+    ).toEqual({
+      kind: 'refresh-current',
+      path: windowsChanged.path,
+      name: windowsChanged.name,
+      pipelineName: windowsChanged.pipelineName,
+    });
+  });
   test('preserves POSIX path case when checking whether the user switched pipelines', () => {
     const posixBefore: WorkspaceYamlEntry = {
       ...before,

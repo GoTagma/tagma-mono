@@ -41,11 +41,11 @@ export function detectChatYamlTarget(
   }
   const before = new Map(
     snapshot.entries.map((entry) => [
-      entry.path,
+      pathKey(entry.path),
       { contentHash: entry.contentHash, layoutHash: entry.layoutHash },
     ]),
   );
-  const created = entries.filter((entry) => !before.has(entry.path));
+  const created = entries.filter((entry) => !before.has(pathKey(entry.path)));
   if (created.length > 0) {
     const entry = created.sort((a, b) => a.path.localeCompare(b.path))[created.length - 1]!;
     return {
@@ -57,12 +57,13 @@ export function detectChatYamlTarget(
   }
 
   const changed = entries.filter((entry) => {
-    const old = before.get(entry.path);
+    const old = before.get(pathKey(entry.path));
     return old && (entry.contentHash !== old.contentHash || entry.layoutHash !== old.layoutHash);
   });
 
-  if (currentPath) {
-    const entry = changed.find((candidate) => candidate.path === currentPath);
+  const currentKey = normalizePath(currentPath);
+  if (currentKey) {
+    const entry = changed.find((candidate) => pathKey(candidate.path) === currentKey);
     if (entry) {
       return {
         kind: 'refresh-current',
@@ -84,6 +85,10 @@ export function detectChatYamlTarget(
   }
 
   return null;
+}
+
+function pathKey(path: string): string {
+  return normalizePath(path) ?? path;
 }
 
 function normalizePath(path: string | null | undefined): string | null {

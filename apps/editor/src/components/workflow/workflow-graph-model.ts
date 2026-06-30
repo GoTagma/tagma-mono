@@ -83,10 +83,17 @@ function uniquePipelineId(base: string, pipelines: readonly WorkflowPipelineEntr
   return candidate;
 }
 
+function isWindowsWorkflowPath(path: string): boolean {
+  return /\\/.test(path) || /^[A-Za-z]:[\\/]/.test(path) || path.startsWith('\\\\');
+}
+
+function normalizeComparableWorkflowPath(path: string): string {
+  const normalized = path.replace(/\\/g, '/');
+  return isWindowsWorkflowPath(path) ? normalized.toLocaleLowerCase() : normalized;
+}
+
 export function workflowPathEquals(left: string, right: string): boolean {
-  return (
-    left.replace(/\\/g, '/').toLocaleLowerCase() === right.replace(/\\/g, '/').toLocaleLowerCase()
-  );
+  return normalizeComparableWorkflowPath(left) === normalizeComparableWorkflowPath(right);
 }
 
 function isAbsoluteWorkflowPath(path: string): boolean {

@@ -9,6 +9,7 @@ export function importRawYamlIntoWorkspace(
 ): void {
   ws.config = normalize(parseYaml(yaml));
   ws.yamlPath = null;
+  ws.yamlVersion = null;
   ws.manualNewPipelineYamlPath = null;
   ws.layout = { positions: {} };
   ws.watcher.stopWatching();

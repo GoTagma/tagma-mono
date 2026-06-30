@@ -43,6 +43,25 @@ describe('workflow return state helpers', () => {
     ).toBe(false);
   });
 
+  test('keeps POSIX workflow paths case-sensitive while preserving Windows matching', () => {
+    expect(
+      didOpenWorkflowPipelineFromGraph({
+        expectedPath: '/repo/.tagma/Foo/Foo.yaml',
+        yamlPath: '/repo/.tagma/foo/foo.yaml',
+        errorBefore: null,
+        errorAfter: null,
+      }),
+    ).toBe(false);
+
+    expect(
+      didOpenWorkflowPipelineFromGraph({
+        expectedPath: 'D:/repo/.tagma/Foo/Foo.yaml',
+        yamlPath: 'd:\\repo\\.tagma\\foo\\foo.yaml',
+        errorBefore: null,
+        errorAfter: null,
+      }),
+    ).toBe(true);
+  });
   test('editor or workspace replacement navigation clears graph return state', () => {
     expect(shouldClearWorkflowReturnPathForNavigation('workflow-graph-edit')).toBe(false);
 
