@@ -7,6 +7,7 @@ import type { AddressInfo } from 'node:net';
 import { connect as netConnect } from 'node:net';
 import { buildFatalWorkflowGraphEndEvent, registerRunRoutes } from '../server/routes/run';
 import { WorkflowRunSession } from '../server/routes/run-session';
+import { requirementsPath, serializeRequirementsMd } from '../server/requirements-sync';
 import { WorkspaceState } from '../server/workspace-state';
 
 let tempDir: string;
@@ -319,8 +320,123 @@ test('POST /api/run/workflow/start runs a workspace workflow graph', async () =>
   } finally {
     await close();
   }
-});
+}, 10_000);
 
+test('POST /api/run/workflow/start enforces child pipeline requirements preflight', async () => {
+  const workflowPath = join(tempDir, '.tagma', 'workflows', 'release.workflow.yaml');
+  const p1Path = join(tempDir, '.tagma', 'p1', 'p1.yaml');
+  const missingEnv = 'TAGMA_WORKFLOW_PREFLIGHT_DEFINITELY_UNSET';
+  const previous = process.env[missingEnv];
+  delete process.env[missingEnv];
+  writeFileSync(
+    requirementsPath(p1Path),
+    serializeRequirementsMd({
+      frontmatter: {
+        schemaVersion: 1,
+        generatedFor: 'p1.yaml',
+        generatedAt: new Date().toISOString(),
+        binaries: [],
+        env: [{ name: missingEnv, required: true, description: 'workflow route test' }],
+        services: [],
+      },
+      body: '# workflow preflight\n',
+    }),
+    'utf-8',
+  );
+
+  const { url, close } = await startApp(buildApp());
+  try {
+    const res = await postJsonReq(url, '/api/run/workflow/start', { path: workflowPath });
+    const body = JSON.parse(res.body) as {
+      error?: string;
+      pipelineId?: string;
+      missing?: { envs?: string[]; binaries?: string[] };
+      requirementsPath?: string | null;
+    };
+
+    expect(res.status).toBe(400);
+    expect(body.error).toBe('requirements_missing');
+    expect(body.pipelineId).toBe('p1');
+    expect(body.missing?.envs).toEqual([missingEnv]);
+    expect(body.missing?.binaries).toEqual([]);
+    expect(body.requirementsPath).toBe(requirementsPath(p1Path));
+  } finally {
+    if (previous === undefined) delete process.env[missingEnv];
+    else process.env[missingEnv] = previous;
+    await close();
+  }
+});
+test('POST /api/run/workflow/start isolates child pipeline requirements env', async () => {
+  const workflowPath = join(tempDir, '.tagma', 'workflows', 'release.workflow.yaml');
+  const p1Path = join(tempDir, '.tagma', 'p1', 'p1.yaml');
+  const p2Path = join(tempDir, '.tagma', 'p2', 'p2.yaml');
+  const envName = 'TAGMA_WORKFLOW_LEAK_MARKER';
+  const previous = process.env[envName];
+  process.env[envName] = 'visible';
+  writeFileSync(
+    p1Path,
+    `pipeline:
+  name: P1
+  tracks:
+    - id: main
+      name: Main
+      tasks:
+        - id: task
+          command: >-
+            node -e "process.exit(process.env.${envName} === 'visible' ? 0 : 1)"
+`,
+    'utf-8',
+  );
+  writeFileSync(
+    p2Path,
+    `pipeline:
+  name: P2
+  tracks:
+    - id: main
+      name: Main
+      tasks:
+        - id: task
+          command: >-
+            node -e "process.exit(process.env.${envName} ? 1 : 0)"
+`,
+    'utf-8',
+  );
+  writeFileSync(
+    requirementsPath(p1Path),
+    serializeRequirementsMd({
+      frontmatter: {
+        schemaVersion: 1,
+        generatedFor: 'p1.yaml',
+        generatedAt: new Date().toISOString(),
+        binaries: [],
+        env: [{ name: envName, required: true, description: 'workflow isolation test' }],
+        services: [],
+      },
+      body: '# workflow env isolation\n',
+    }),
+    'utf-8',
+  );
+
+  const { url, close } = await startApp(buildApp());
+  try {
+    const res = await postJsonReq(url, '/api/run/workflow/start', { path: workflowPath });
+    const body = JSON.parse(res.body) as {
+      result?: { success?: boolean; pipelines?: Array<{ pipelineId: string; status: string }> };
+      error?: string;
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.result?.success).toBe(true);
+    expect(body.result?.pipelines?.map((p) => [p.pipelineId, p.status])).toEqual([
+      ['p1', 'success'],
+      ['p2', 'success'],
+    ]);
+  } finally {
+    if (previous === undefined) delete process.env[envName];
+    else process.env[envName] = previous;
+    await close();
+  }
+}, 10_000);
 test('POST /api/run/workflow/start honors workflow pipeline lifecycle attempts', async () => {
   const workflowPath = join(tempDir, '.tagma', 'workflows', 'release.workflow.yaml');
   writeFileSync(

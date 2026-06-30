@@ -15,9 +15,10 @@ import {
   DEFAULT_TASK_TIMEOUT_MS,
   RUN_PROTOCOL_VERSION,
   PipelineGraphRunner,
-  bunRuntime,
   loadWorkflow,
+  parseWorkflowYaml,
 } from '@tagma/sdk';
+import { InMemoryApprovalGateway } from '@tagma/sdk/approval';
 import { serializePipeline, loadPipeline, validateConfig, parseYaml } from '@tagma/sdk/yaml';
 import { buildRawDag } from '@tagma/sdk/config';
 import { generateRunId } from '@tagma/sdk/utils';
@@ -28,6 +29,8 @@ import type {
   EngineResult,
   RawPipelineConfig,
   PipelineGraphResult,
+  PipelineGraphRunnerOptions,
+  WorkflowConfig,
 } from '@tagma/sdk';
 import { assertSafePluginName } from '../plugin-safety.js';
 import { errorMessage } from '../path-utils.js';
@@ -119,7 +122,15 @@ function publicPipelineGraphResult(result: PipelineGraphResult): PublicPipelineG
   };
 }
 
-function collectDeclaredSecretNames(config: RawPipelineConfig): string[] {
+interface SecretBearingPipelineConfig {
+  readonly secrets?: readonly string[];
+  readonly tracks?: readonly {
+    readonly secrets?: readonly string[];
+    readonly tasks?: readonly { readonly secrets?: readonly string[] }[];
+  }[];
+}
+
+function collectDeclaredSecretNames(config: SecretBearingPipelineConfig): string[] {
   const names = new Set<string>();
   const add = (items: readonly string[] | undefined): void => {
     if (!items) return;
@@ -131,6 +142,218 @@ function collectDeclaredSecretNames(config: RawPipelineConfig): string[] {
     for (const task of track.tasks ?? []) add(task.secrets);
   }
   return [...names];
+}
+
+class RouteJsonError extends Error {
+  constructor(
+    readonly status: number,
+    readonly body: Record<string, unknown>,
+  ) {
+    super(typeof body.error === 'string' ? body.error : 'Route error');
+  }
+}
+
+function routeJsonError(status: number, body: Record<string, unknown>): RouteJsonError {
+  return new RouteJsonError(status, body);
+}
+
+interface WorkflowPipelineHostInput {
+  readonly id: string;
+  readonly yamlPath: string;
+  readonly rawConfig: RawPipelineConfig;
+}
+
+interface WorkflowHostPolicy {
+  readonly runtime: PipelineGraphRunnerOptions['runtime'];
+  readonly resolvePipelineOptions: NonNullable<
+    PipelineGraphRunnerOptions['resolvePipelineOptions']
+  >;
+  readonly skipPluginLoading: true;
+  readonly defaultTaskTimeoutMs: number;
+}
+
+function uniqueStrings(values: readonly string[]): string[] {
+  return [...new Set(values)];
+}
+
+function readWorkflowPipelineHostInputs(
+  workDir: string,
+  workflowContent: string,
+): WorkflowPipelineHostInput[] {
+  const rawWorkflow = parseWorkflowYaml(workflowContent);
+  const inputs: WorkflowPipelineHostInput[] = [];
+  for (const pipeline of rawWorkflow.pipelines) {
+    const label = `workflow pipeline "${pipeline.id}"`;
+    const yamlPath = assertPipelineYamlPath(workDir, resolve(workDir, pipeline.path), label);
+    if (!existsSync(yamlPath)) throw routeJsonError(404, { error: `File not found: ${yamlPath}` });
+    let rawConfig: RawPipelineConfig;
+    try {
+      rawConfig = parseYaml(readFileSync(yamlPath, 'utf-8'));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw routeJsonError(400, { error: `Configuration error: ${message}` });
+    }
+    inputs.push({ id: pipeline.id, yamlPath, rawConfig });
+  }
+  return inputs;
+}
+
+async function preloadWorkspacePluginsForRun(
+  ws: WorkspaceState,
+  plugins: readonly string[],
+): Promise<void> {
+  const pluginsToLoad = uniqueStrings(plugins.filter((name) => name.length > 0));
+  if (pluginsToLoad.length === 0) return;
+  for (const name of pluginsToLoad) {
+    try {
+      assertSafePluginName(name);
+    } catch (err: unknown) {
+      const { message } = classifyServerError(err);
+      throw routeJsonError(400, { error: `Plugin load error: ${message}` });
+    }
+  }
+  const preloadError = await withWorkspacePluginMutationLock(ws, async () => {
+    const newlyLoaded: string[] = [];
+    for (const name of pluginsToLoad) {
+      if (ws.loadedPluginMeta.has(name)) continue;
+      if (isPluginBlocked(ws, name)) {
+        return {
+          message: `Plugin "${name}" was explicitly uninstalled. Install it again before running this pipeline.`,
+        };
+      }
+      try {
+        await loadPluginFromWorkDir(ws, name);
+        newlyLoaded.push(name);
+      } catch (err: unknown) {
+        for (const loadedName of newlyLoaded) {
+          unloadPluginFromRegistry(ws, loadedName, { removeStageDir: true });
+        }
+        const { message } = classifyServerError(err);
+        return { message };
+      }
+    }
+    return null;
+  });
+  if (preloadError) {
+    throw routeJsonError(400, { error: `Plugin load error: ${preloadError.message}` });
+  }
+}
+
+function prepareWorkflowHostPolicy(
+  ws: WorkspaceState,
+  workflow: WorkflowConfig,
+  hostInputs: readonly WorkflowPipelineHostInput[],
+  skipPreflight: boolean,
+): WorkflowHostPolicy {
+  const cwd = ws.workDir || process.cwd();
+  const hostInputById = new Map(hostInputs.map((input) => [input.id, input]));
+  const pipelineContexts = workflow.pipelines.map((pipeline) => ({
+    pipeline,
+    yamlPath:
+      hostInputById.get(pipeline.id)?.yamlPath ??
+      assertPipelineYamlPath(
+        cwd,
+        resolve(cwd, pipeline.path),
+        `workflow pipeline "${pipeline.id}"`,
+      ),
+  }));
+
+  const pythonSettings = readEditorSettings(ws).pythonAgent;
+  const pythonRunEnv = buildPythonAgentRunEnv(cwd, pythonSettings);
+  const pythonPreflightOptions =
+    Object.keys(pythonRunEnv).length > 0
+      ? {
+          extraPathDirs: [pythonAgentVenvBinDir(cwd)],
+          extraEnv: pythonRunEnv,
+        }
+      : {};
+
+  const requirementsEnvKeysByYamlPath = new Map<string, string[]>();
+  const secretRunEnvByYamlPath = new Map<string, Record<string, string>>();
+  try {
+    for (const { pipeline, yamlPath } of pipelineContexts) {
+      const preflight = runPreflight(yamlPath, pythonPreflightOptions);
+      const envKeys = [...preflight.envKeys];
+      requirementsEnvKeysByYamlPath.set(yamlPath, envKeys);
+
+      let pipelineSecretRunEnv: Record<string, string> = {};
+      try {
+        pipelineSecretRunEnv = buildPipelineSecretEnv(cwd, yamlPath, envKeys);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw routeJsonError(400, { error: `Secret manager error: ${message}` });
+      }
+      secretRunEnvByYamlPath.set(yamlPath, pipelineSecretRunEnv);
+
+      const missingAfterSecrets = {
+        binaries: preflight.missing.binaries,
+        envs: preflight.missing.envs.filter((name) => !pipelineSecretRunEnv[name]),
+      };
+      if (
+        !skipPreflight &&
+        !preflight.skipped &&
+        (missingAfterSecrets.binaries.length > 0 || missingAfterSecrets.envs.length > 0)
+      ) {
+        throw routeJsonError(400, {
+          error: 'requirements_missing',
+          missing: missingAfterSecrets,
+          requirementsPath: preflight.requirementsPath,
+          pipelineId: pipeline.id,
+        });
+      }
+    }
+  } catch (err) {
+    if (err instanceof RouteJsonError) throw err;
+    console.warn('[run] workflow preflight failed, continuing:', err);
+  }
+
+  let redactionSecretEnv: Record<string, string> = {};
+  for (const { pipeline, yamlPath } of pipelineContexts) {
+    const redactionSecretNames = uniqueStrings([
+      ...(requirementsEnvKeysByYamlPath.get(yamlPath) ?? []),
+      ...collectDeclaredSecretNames(pipeline.config),
+    ]);
+    if (redactionSecretNames.length === 0) continue;
+    try {
+      redactionSecretEnv = {
+        ...redactionSecretEnv,
+        ...buildPipelineSecretEnv(cwd, yamlPath, redactionSecretNames),
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw routeJsonError(400, { error: `Secret manager error: ${message}` });
+    }
+  }
+
+  const yamlPathByPipelineId = new Map(
+    pipelineContexts.map(({ pipeline, yamlPath }) => [pipeline.id, yamlPath] as const),
+  );
+  const secretRedactionValues = [
+    ...Object.values(redactionSecretEnv),
+    ...[...secretRunEnvByYamlPath.values()].flatMap((env) => Object.values(env)),
+  ].filter((value) => value.length > 0);
+
+  return {
+    runtime: runtimeWithInjectedEnv(pythonRunEnv, secretRedactionValues),
+    resolvePipelineOptions: (pipeline) => {
+      const yamlPath = yamlPathByPipelineId.get(pipeline.id);
+      if (!yamlPath) {
+        throw new Error(`No workflow pipeline YAML found for pipeline ${pipeline.id}`);
+      }
+      const envKeys = requirementsEnvKeysByYamlPath.get(yamlPath) ?? [];
+      const injectedRunEnv = {
+        ...pythonRunEnv,
+        ...(secretRunEnvByYamlPath.get(yamlPath) ?? {}),
+      };
+      return {
+        runtime: runtimeWithInjectedEnv(injectedRunEnv, secretRedactionValues),
+        secretResolver: (names: readonly string[]) => buildPipelineSecretEnv(cwd, yamlPath, names),
+        ...(envKeys.length > 0 ? { envPolicy: { mode: 'allowlist' as const, keys: envKeys } } : {}),
+      };
+    },
+    skipPluginLoading: true,
+    defaultTaskTimeoutMs: DEFAULT_TASK_TIMEOUT_MS,
+  };
 }
 interface RunHistoryEntry {
   kind?: 'pipeline' | 'graph';
@@ -206,11 +429,17 @@ function removeSession(ws: WorkspaceState, s: RunSession): void {
   getSessions(ws).delete(s.runId);
 }
 
-function findSessionForApproval(ws: WorkspaceState, requestId: string): RunSession | null {
-  return (
-    listSessions(ws).find((session) => session.gateway.pending().some((p) => p.id === requestId)) ??
-    null
+function findSessionForApproval(
+  ws: WorkspaceState,
+  requestId: string,
+): RunSession | WorkflowRunSession | null {
+  const pipelineSession = listSessions(ws).find((session) =>
+    session.gateway.pending().some((p) => p.id === requestId),
   );
+  if (pipelineSession) return pipelineSession;
+  const workflowSession = getWorkflowSession(ws);
+  if (workflowSession?.gateway.pending().some((p) => p.id === requestId)) return workflowSession;
+  return null;
 }
 
 // ═══ SSE broadcast ══════════════════════════════════════════════════════
@@ -400,17 +629,31 @@ export function registerRunRoutes(app: express.Express): void {
     if (startToken === null) return res.status(409).json({ error: 'A run is starting' });
     let startTokenEnded = false;
     try {
-      const workflow = await loadWorkflow(readFileSync(workflowPath, 'utf-8'), ws.workDir);
+      const workflowContent = readFileSync(workflowPath, 'utf-8');
+      const hostInputs = readWorkflowPipelineHostInputs(ws.workDir, workflowContent);
+      await preloadWorkspacePluginsForRun(
+        ws,
+        hostInputs.flatMap((input) => input.rawConfig.plugins ?? []),
+      );
+      const workflow = await loadWorkflow(workflowContent, ws.workDir);
+      const hostPolicy = prepareWorkflowHostPolicy(
+        ws,
+        workflow,
+        hostInputs,
+        (req.body ?? {}).skipPreflight === true,
+      );
       if ((req.body ?? {}).live === true) {
         let resolveStartResponse: (() => void) | null = null;
         const startResponseReady = new Promise<void>((resolve) => {
           resolveStartResponse = resolve;
         });
         const abort = new AbortController();
+        const approvalGateway = new InMemoryApprovalGateway();
         const sessionRef: { current: WorkflowRunSession | null } = { current: null };
         const runner = new PipelineGraphRunner(workflow, ws.workDir, {
           registry: ws.registry,
-          runtime: bunRuntime(),
+          ...hostPolicy,
+          approvalGateway,
           maxLogRuns: MAX_LOG_RUNS,
           signal: abort.signal,
           onEvent: (event) => {
@@ -424,7 +667,13 @@ export function registerRunRoutes(app: express.Express): void {
             }
           },
         });
-        const session = new WorkflowRunSession(runner, abort, workflow, workflowPath);
+        const session = new WorkflowRunSession(
+          runner,
+          abort,
+          workflow,
+          workflowPath,
+          approvalGateway,
+        );
         sessionRef.current = session;
         ws.workflowRunSession = session;
         runner
@@ -447,6 +696,9 @@ export function registerRunRoutes(app: express.Express): void {
             }
           })
           .finally(() => {
+            if (session.gateway.pending().length > 0) {
+              session.gateway.abortAll('workflow run finished');
+            }
             session.done = true;
             try {
               persistWorkflowRunHistory(ws.workDir!, session);
@@ -474,32 +726,52 @@ export function registerRunRoutes(app: express.Express): void {
         });
       }
       const abort = new AbortController();
+      const approvalGateway = new InMemoryApprovalGateway();
       const runner = new PipelineGraphRunner(workflow, ws.workDir, {
         registry: ws.registry,
-        runtime: bunRuntime(),
+        ...hostPolicy,
+        approvalGateway,
         maxLogRuns: MAX_LOG_RUNS,
         signal: abort.signal,
       });
-      const session = new WorkflowRunSession(runner, abort, workflow, workflowPath);
+      const session = new WorkflowRunSession(
+        runner,
+        abort,
+        workflow,
+        workflowPath,
+        approvalGateway,
+      );
+      ws.workflowRunSession = session;
       runner.subscribe((event) => {
-        session.ingest(event);
+        const stamped = session.ingest(event);
+        broadcastWorkflowToClients(ws, stamped);
       });
-      const result = await runner.start();
-      session.result = session.result ?? publicPipelineGraphResult(result);
-      session.done = true;
       try {
-        persistWorkflowRunHistory(ws.workDir, session);
-      } catch (persistErr) {
-        console.error('[run] failed to persist workflow run history:', persistErr);
+        const result = await runner.start();
+        session.result = session.result ?? publicPipelineGraphResult(result);
+        session.done = true;
+        try {
+          persistWorkflowRunHistory(ws.workDir, session);
+        } catch (persistErr) {
+          console.error('[run] failed to persist workflow run history:', persistErr);
+        }
+        res.json({ ok: true, result: session.result, events: session.allBuffered() });
+      } finally {
+        if (session.gateway.pending().length > 0) {
+          session.gateway.abortAll('workflow run finished');
+        }
+        session.done = true;
+        clearWorkflowSessionLater(ws, session);
       }
-      res.json({ ok: true, result: session.result, events: session.allBuffered() });
     } catch (err: unknown) {
+      if (err instanceof RouteJsonError) {
+        return res.status(err.status).json(err.body);
+      }
       res.status(400).json({ error: errorMessage(err) || 'Failed to run workflow' });
     } finally {
       if (!startTokenEnded) endRunSessionStart(ws, startToken);
     }
   });
-
   app.post('/api/run/workflow/abort', (req, res) => {
     const ws = requireWorkspace(req, res);
     if (!ws) return;

@@ -58,12 +58,11 @@ export interface ParsedRequirements {
 
 /**
  * Maps a Tagma driver name to the binary the runtime spawns. `null` means
- * "no preflight needed" (e.g. the built-in `opencode` driver runs against the
- * editor-bundled opencode binary, not the user's PATH). Unknown drivers fall
- * back to the driver name itself.
+ * "no preflight needed" for drivers that do not shell out to a host binary.
+ * Unknown drivers fall back to the driver name itself.
  */
 export const DRIVER_BINARIES: Readonly<Record<string, string | null>> = {
-  opencode: null,
+  opencode: 'opencode',
   'claude-code': 'claude',
   codex: 'codex',
 };

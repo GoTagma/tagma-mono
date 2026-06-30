@@ -131,8 +131,12 @@ test('extractBinariesFromYaml maps prompt-task drivers via DRIVER_BINARIES', () 
   const names = binaries!.map((b) => b.name);
   expect(names).toContain('claude');
   expect(names).toContain('codex');
-  // opencode is bundled with the editor — must not appear.
-  expect(names).not.toContain('opencode');
+  // SDK/CLI runs still execute `opencode run`, so exported pipelines must declare it.
+  expect(names).toContain('opencode');
+
+  const opencode = binaries!.find((b) => b.name === 'opencode')!;
+  expect(opencode.fromDriver).toBe('opencode');
+  expect(opencode.usedBy).toEqual(['review.builtin']);
 
   const claude = binaries!.find((b) => b.name === 'claude')!;
   expect(claude.fromDriver).toBe('claude-code');

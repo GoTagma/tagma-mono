@@ -386,6 +386,7 @@ export class WorkflowRunSession {
   readonly graphRunId: string;
   private readonly sourceGraphRunId: string;
   readonly startedAt: string;
+  readonly gateway: InMemoryApprovalGateway;
   readonly events: WorkflowRunSessionEvent[] = [];
   private latestPipelines: PipelineGraphNodeState[] = [];
   private seqCounter = 0;
@@ -398,10 +399,12 @@ export class WorkflowRunSession {
     readonly abort: AbortController,
     readonly workflow: WorkflowConfig | null = null,
     readonly workflowPath: string | null = null,
+    gateway: InMemoryApprovalGateway = new InMemoryApprovalGateway(),
   ) {
     this.sourceGraphRunId = runner.graphRunId;
     this.graphRunId = normalizeGraphRunId(runner.graphRunId);
     this.startedAt = new Date().toISOString();
+    this.gateway = gateway;
   }
 
   ingest(event: PipelineGraphEventPayload): WorkflowRunSessionEvent {
