@@ -304,9 +304,13 @@ export const useRunStore = create<RunStoreState>((set, get) => {
           skipPreflight?: boolean;
           targetTaskIds?: readonly string[];
           yamlPath?: string | null;
+          configSnapshot?: RawPipelineConfig;
         } = {};
         if (overrides?.fromRunId) startOpts.fromRunId = overrides.fromRunId;
-        if (!overrides?.fromRunId && overrides?.yamlPath) startOpts.yamlPath = overrides.yamlPath;
+        if (!overrides?.fromRunId) {
+          startOpts.configSnapshot = config;
+          if (overrides?.yamlPath) startOpts.yamlPath = overrides.yamlPath;
+        }
         if (overrides?.targetTaskIds && overrides.targetTaskIds.length > 0) {
           startOpts.targetTaskIds = overrides.targetTaskIds;
         }

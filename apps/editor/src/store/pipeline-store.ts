@@ -1993,7 +1993,6 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
 
     openFile: async (path, opts) => {
       await withOptionalYamlEditLockBypass(opts, async () => {
-        if (blockIfYamlEditLocked()) return;
         try {
           const state = await api.openFile(path);
           const registry = await fetchRegistrySnapshot();
@@ -2149,7 +2148,6 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
       }
     },
     newPipeline: async (name) => {
-      if (blockIfYamlEditLocked()) return;
       try {
         set({
           selectedTaskId: null,
@@ -2181,7 +2179,6 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     },
 
     importFile: async (sourcePath, capabilityToken) => {
-      if (blockIfYamlEditLocked()) return;
       try {
         const state = await api.importFile(sourcePath, capabilityToken);
         const registry = await fetchRegistrySnapshot();

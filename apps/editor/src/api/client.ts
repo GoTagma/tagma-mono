@@ -127,6 +127,12 @@ export interface WorkspaceYamlEntry {
   size: number;
 }
 
+export interface ChatPipelineCopyResult {
+  entry: WorkspaceYamlEntry;
+  revision: number;
+  restoredOriginal: boolean;
+}
+
 export interface WorkflowPipelineEntry {
   id: string;
   path: string;
@@ -1267,6 +1273,7 @@ export interface StartRunOptions {
   skipPreflight?: boolean;
   targetTaskIds?: readonly string[];
   yamlPath?: string | null;
+  configSnapshot?: RawPipelineConfig;
 }
 
 export function buildStartRunRequestBody(
@@ -1280,6 +1287,9 @@ export function buildStartRunRequestBody(
   }
   if (typeof opts?.yamlPath === 'string' && opts.yamlPath.trim().length > 0) {
     body.yamlPath = opts.yamlPath;
+  }
+  if (opts?.configSnapshot) {
+    body.configSnapshot = opts.configSnapshot;
   }
   return Object.keys(body).length > 0 ? body : undefined;
 }
@@ -1518,6 +1528,19 @@ export const api = {
     request<YamlCompileResult>('/workspace/compile', {
       method: 'POST',
       body: jsonBody({ path }),
+    }),
+
+  copyChatResultPipeline: (body: {
+    sourcePath: string;
+    restoreOriginal?: {
+      path: string;
+      yaml: string;
+      layout: unknown;
+    };
+  }) =>
+    request<ChatPipelineCopyResult>('/workspace/chat-result-copy', {
+      method: 'POST',
+      body: jsonBody(body),
     }),
 
   listUsage: () => request<{ records: UsageRecord[] }>('/workspace/usage'),

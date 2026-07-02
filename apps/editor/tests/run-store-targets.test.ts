@@ -123,7 +123,7 @@ describe('run store target task ids', () => {
   test('forwards target task ids to the run start API', async () => {
     await useRunStore.getState().startRun(config, { targetTaskIds: ['main.test'] });
 
-    expect(lastStartOpts).toEqual({ targetTaskIds: ['main.test'] });
+    expect(lastStartOpts).toEqual({ configSnapshot: config, targetTaskIds: ['main.test'] });
   });
 
   test('forwards the current yaml path to the run start API', async () => {
@@ -131,7 +131,10 @@ describe('run store target task ids', () => {
       .getState()
       .startRun(config, { yamlPath: 'C:/repo/.tagma/pipeline/pipeline.yaml' });
 
-    expect(lastStartOpts).toEqual({ yamlPath: 'C:/repo/.tagma/pipeline/pipeline.yaml' });
+    expect(lastStartOpts).toEqual({
+      configSnapshot: config,
+      yamlPath: 'C:/repo/.tagma/pipeline/pipeline.yaml',
+    });
   });
 
   test('opens history focused on the new running instance after starting', async () => {

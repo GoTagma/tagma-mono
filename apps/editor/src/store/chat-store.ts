@@ -35,7 +35,13 @@ import {
 } from '../api/custom-providers';
 import { usePipelineStore } from './pipeline-store';
 import { useEditorSettingsStore } from './editor-settings-store';
-import { api, type EditorSettings, type UsageRecord, type YamlCompileResult } from '../api/client';
+import {
+  api,
+  getClientRevision,
+  type EditorSettings,
+  type UsageRecord,
+  type YamlCompileResult,
+} from '../api/client';
 import {
   upsertPermission,
   removePermission,
@@ -2539,10 +2545,23 @@ async function promptOpencode(
     let preSendSnapshot: ChatYamlSnapshot | null = null;
     if (preSendWorkDir) {
       try {
+        const latestPipeline = usePipelineStore.getState();
+        const activePath = latestPipeline.yamlPath;
+        const activeYaml = activePath ? await api.exportYaml().catch(() => null) : null;
+        const activeLayout = activePath
+          ? {
+              positions: Object.fromEntries(latestPipeline.positions),
+              folders: structuredClone(latestPipeline.folders),
+              trackHeights: Object.fromEntries(latestPipeline.trackHeights),
+            }
+          : null;
         const { entries } = await api.listWorkspaceYamls();
         preSendSnapshot = {
           workDir: preSendWorkDir,
-          activePath: pipeline.yamlPath,
+          activePath,
+          revision: getClientRevision(),
+          activeYaml,
+          activeLayout,
           entries: entries.map((entry) => ({
             path: entry.path,
             contentHash: entry.contentHash,

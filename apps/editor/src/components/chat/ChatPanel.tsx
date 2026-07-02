@@ -925,7 +925,7 @@ function isAbortErrorEntry(entry: OpencodeThreadEntry): boolean {
   return entry.info.role === 'assistant' && entry.info.error?.name === 'MessageAbortedError';
 }
 
-function SessionYamlResultBubble({ result }: { result: ChatYamlSessionResult }) {
+export function SessionYamlResultBubble({ result }: { result: ChatYamlSessionResult }) {
   const openTarget = useOpenChatPipelineTarget();
   const name = chatPipelineDisplayName(result);
   const ok = result.status === 'ready';

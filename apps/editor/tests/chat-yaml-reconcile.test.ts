@@ -25,6 +25,9 @@ function snapshot(
   return {
     workDir: 'C:/w',
     activePath,
+    revision: 1,
+    activeYaml: activePath ? 'pipeline:\n  name: Current\n' : null,
+    activeLayout: activePath ? { positions: {}, folders: [], trackHeights: {} } : null,
     entries: entries.map((entry) => ({
       path: entry.path,
       contentHash: entry.contentHash,
@@ -111,7 +114,7 @@ describe('detectChatYamlTarget', () => {
     expect(detectChatYamlTarget(snapshot(), [before], before.path)).toBeNull();
   });
 
-  test('returns null when the user has switched away from the pipeline chat started on', () => {
+  test('still detects chat output when the user has switched away from the started pipeline', () => {
     const other: WorkspaceYamlEntry = {
       name: 'other.yaml',
       path: 'C:/w/.tagma/other.yaml',
@@ -142,14 +145,40 @@ describe('detectChatYamlTarget', () => {
         [before, other, created],
         other.path,
       ),
-    ).toBeNull();
+    ).toEqual({
+      kind: 'open-created',
+      path: created.path,
+      name: created.name,
+      pipelineName: created.pipelineName,
+    });
     expect(
       detectChatYamlTarget(
         snapshot([before, other], before.path),
         [changedStartedPipeline, other],
         other.path,
       ),
-    ).toBeNull();
+    ).toEqual({
+      kind: 'refresh-current',
+      path: before.path,
+      name: before.name,
+      pipelineName: before.pipelineName,
+    });
+  });
+
+  test('does not mistake the current editor pipeline for a chat-created pipeline', () => {
+    const userCreated: WorkspaceYamlEntry = {
+      name: 'mine.yaml',
+      path: 'C:/w/.tagma/mine.yaml',
+      pipelineName: 'Mine',
+      contentHash: 'mine-hash',
+      layoutHash: 'mine-layout-hash',
+      layoutMtimeMs: 2,
+      layoutSize: 30,
+      mtimeMs: 2,
+      size: 20,
+    };
+
+    expect(detectChatYamlTarget(snapshot(), [before, userCreated], userCreated.path)).toBeNull();
   });
 
   test('matches changed Windows paths across slash and case differences', () => {
@@ -179,22 +208,24 @@ describe('detectChatYamlTarget', () => {
       pipelineName: windowsChanged.pipelineName,
     });
   });
-  test('preserves POSIX path case when checking whether the user switched pipelines', () => {
-    const posixBefore: WorkspaceYamlEntry = {
+  test('preserves POSIX path case when excluding the current editor pipeline from created files', () => {
+    const posixCreated: WorkspaceYamlEntry = {
       ...before,
       name: 'Build.yaml',
       path: '/ws/.tagma/Build/Build.yaml',
       pipelineName: 'Build',
+      contentHash: 'created',
+      mtimeMs: 2,
     };
-    const posixChanged = { ...posixBefore, contentHash: 'changed', mtimeMs: 2 };
 
     expect(
-      detectChatYamlTarget(
-        snapshot([posixBefore], posixBefore.path),
-        [posixChanged],
-        '/ws/.tagma/build/build.yaml',
-      ),
-    ).toBeNull();
+      detectChatYamlTarget(snapshot([], null), [posixCreated], '/ws/.tagma/build/build.yaml'),
+    ).toEqual({
+      kind: 'open-created',
+      path: posixCreated.path,
+      name: posixCreated.name,
+      pipelineName: posixCreated.pipelineName,
+    });
   });
 });
 

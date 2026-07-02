@@ -23,17 +23,19 @@ const config: RawPipelineConfig = {
 };
 
 describe('run target task ids', () => {
-  test('client includes selected target task ids in the run start body', () => {
+  test('client includes selected target task ids and config snapshot in the run start body', () => {
     expect(
       buildStartRunRequestBody({
         yamlPath: 'C:/repo/.tagma/p/chat-created.yaml',
         targetTaskIds: ['main.test', 'ship.deploy'],
         skipPreflight: true,
+        configSnapshot: config,
       }),
     ).toEqual({
       yamlPath: 'C:/repo/.tagma/p/chat-created.yaml',
       targetTaskIds: ['main.test', 'ship.deploy'],
       skipPreflight: true,
+      configSnapshot: config,
     });
   });
 

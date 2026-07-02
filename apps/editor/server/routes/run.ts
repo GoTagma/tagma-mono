@@ -355,6 +355,13 @@ function prepareWorkflowHostPolicy(
     defaultTaskTimeoutMs: DEFAULT_TASK_TIMEOUT_MS,
   };
 }
+function normalizeRunConfigSnapshot(
+  value: unknown,
+): { config: RawPipelineConfig; content: string } | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const content = serializePipeline(withDefaultTrackColors(value as RawPipelineConfig));
+  return { config: withDefaultTrackColors(parseYaml(content)), content };
+}
 interface RunHistoryEntry {
   kind?: 'pipeline' | 'graph';
   runId: string;
@@ -814,6 +821,18 @@ export function registerRunRoutes(app: express.Express): void {
         req.body.yamlPath.trim().length > 0
           ? req.body.yamlPath
           : null;
+      let requestedConfigSnapshot: { config: RawPipelineConfig; content: string } | null = null;
+      if (fromRunId === null && req.body?.configSnapshot !== undefined) {
+        try {
+          requestedConfigSnapshot = normalizeRunConfigSnapshot(req.body.configSnapshot);
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : String(err);
+          return res.status(400).json({ error: `Configuration snapshot error: ${message}` });
+        }
+        if (!requestedConfigSnapshot) {
+          return res.status(400).json({ error: 'configSnapshot must be a pipeline config object' });
+        }
+      }
 
       let effectiveConfig: RawPipelineConfig;
       let content: string;
@@ -866,25 +885,35 @@ export function registerRunRoutes(app: express.Express): void {
           if (!existsSync(runYamlPath)) {
             return res.status(404).json({ error: `File not found: ${runYamlPath}` });
           }
-          let diskYaml: string;
-          try {
-            diskYaml = readFileSync(runYamlPath, 'utf-8');
-            effectiveConfig = withDefaultTrackColors(parseYaml(diskYaml));
-          } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : String(err);
-            return res.status(400).json({ error: `Configuration error: ${message}` });
+          if (requestedConfigSnapshot) {
+            effectiveConfig = requestedConfigSnapshot.config;
+            content = requestedConfigSnapshot.content;
+            yamlOverride = requestedConfigSnapshot.content;
+          } else {
+            let diskYaml: string;
+            try {
+              diskYaml = readFileSync(runYamlPath, 'utf-8');
+              effectiveConfig = withDefaultTrackColors(parseYaml(diskYaml));
+            } catch (err: unknown) {
+              const message = err instanceof Error ? err.message : String(err);
+              return res.status(400).json({ error: `Configuration error: ${message}` });
+            }
+            content = serializePipeline(effectiveConfig);
+            ws.config = effectiveConfig;
+            ws.yamlPath = runYamlPath;
+            ws.yamlVersion = getFileVersion(runYamlPath);
+            if (sameFilesystemPath(ws.manualNewPipelineYamlPath, runYamlPath)) {
+              ws.manualNewPipelineYamlPath = null;
+            }
+            loadLayout(ws);
+            syncLayoutWatcherFromDisk(ws);
+            ws.watcher.markSynced(diskYaml, statSync(runYamlPath).mtimeMs, content);
+            invalidatePluginCache(ws);
           }
-          content = serializePipeline(effectiveConfig);
-          ws.config = effectiveConfig;
-          ws.yamlPath = runYamlPath;
-          ws.yamlVersion = getFileVersion(runYamlPath);
-          if (sameFilesystemPath(ws.manualNewPipelineYamlPath, runYamlPath)) {
-            ws.manualNewPipelineYamlPath = null;
-          }
-          loadLayout(ws);
-          syncLayoutWatcherFromDisk(ws);
-          ws.watcher.markSynced(diskYaml, statSync(runYamlPath).mtimeMs, content);
-          invalidatePluginCache(ws);
+        } else if (requestedConfigSnapshot) {
+          effectiveConfig = requestedConfigSnapshot.config;
+          content = requestedConfigSnapshot.content;
+          yamlOverride = requestedConfigSnapshot.content;
         } else {
           effectiveConfig = ws.config;
           content = serializePipeline(effectiveConfig);

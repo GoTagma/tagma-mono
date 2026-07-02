@@ -369,6 +369,123 @@ function describeYamlEntry(
   return entry;
 }
 
+function pipelineCopyName(
+  baseName: string | null,
+  copyNumber: number,
+  fallbackStem: string,
+): string {
+  const base = baseName && baseName.trim() ? baseName.trim() : fallbackStem.replace(/[-_]/g, ' ');
+  return `${base} Copy ${copyNumber}`;
+}
+
+function nextPipelineCopyTarget(
+  workDir: string,
+  sourceYamlPath: string,
+): {
+  copyNumber: number;
+  stem: string;
+  yamlPath: string;
+} {
+  const sourceStem = stemFromYamlBasename(basename(sourceYamlPath));
+  for (let copyNumber = 1; copyNumber < 1000; copyNumber += 1) {
+    const stem = sanitizePipelineStem(`${sourceStem}-copy-${copyNumber}`);
+    const yamlPath = pipelineYamlPath(workDir, stem);
+    if (!existsSync(dirname(yamlPath))) return { copyNumber, stem, yamlPath };
+  }
+  throw new Error(`Too many copies already exist for ${sourceStem}`);
+}
+
+function readPipelineNameFromYaml(content: string): string | null {
+  try {
+    const doc = yaml.load(content) as Record<string, unknown> | null;
+    const pipeline =
+      doc && typeof doc === 'object' && 'pipeline' in doc
+        ? (doc.pipeline as Record<string, unknown>)
+        : null;
+    const candidate =
+      (pipeline && typeof pipeline.name === 'string' && pipeline.name) ||
+      (doc && typeof doc.name === 'string' && doc.name) ||
+      null;
+    return candidate && String(candidate).trim() ? String(candidate).trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+function yamlWithPipelineName(content: string, nextName: string): string {
+  try {
+    const config = withDefaultTrackColors(parseYaml(content));
+    return serializePipeline({ ...config, name: nextName });
+  } catch {
+    return content;
+  }
+}
+
+function copyPipelineAsNumberedCopy(
+  ws: WorkspaceState,
+  sourceYamlPath: string,
+): { yamlPath: string; entry: Record<string, unknown> } {
+  const sourceStem = stemFromYamlBasename(basename(sourceYamlPath));
+  const sourceYaml = readFileSync(sourceYamlPath, 'utf-8');
+  const sourceName = readPipelineNameFromYaml(sourceYaml);
+  const target = nextPipelineCopyTarget(ws.workDir, sourceYamlPath);
+  const targetFolder = dirname(target.yamlPath);
+  const nextName = pipelineCopyName(sourceName, target.copyNumber, sourceStem);
+  mkdirSync(targetFolder, { recursive: true });
+
+  atomicWriteFileSync(target.yamlPath, yamlWithPipelineName(sourceYaml, nextName));
+
+  const sourceLayoutPath = companionLayoutPath(sourceYamlPath);
+  if (existsSync(sourceLayoutPath)) {
+    assertFileSizeAtMost(sourceLayoutPath, MAX_LAYOUT_FILE_BYTES, 'source layout');
+    atomicWriteFileSync(
+      companionLayoutPath(target.yamlPath),
+      readFileSync(sourceLayoutPath, 'utf-8'),
+    );
+  }
+
+  runPipelineManifestSync(target.yamlPath);
+  runRequirementsSync(target.yamlPath);
+  runCompileAndWriteLog(target.yamlPath, ws.registry);
+
+  return {
+    yamlPath: target.yamlPath,
+    entry: describeYamlEntry(
+      target.yamlPath,
+      basename(target.yamlPath),
+      companionLayoutPath(target.yamlPath),
+      false,
+    ),
+  };
+}
+
+function restorePipelineSnapshot(
+  ws: WorkspaceState,
+  restore: { path: string; yaml: string; layout?: unknown },
+): void {
+  const restorePath = assertPipelineYamlPath(ws.workDir, resolve(restore.path), 'restore target');
+  if (Buffer.byteLength(restore.yaml, 'utf-8') > MAX_YAML_FILE_BYTES) {
+    throw new Error('restore YAML is too large');
+  }
+  atomicWriteFileSync(restorePath, restore.yaml);
+  if (restore.layout && typeof restore.layout === 'object' && !Array.isArray(restore.layout)) {
+    const layoutContent = JSON.stringify(restore.layout, null, 2);
+    if (Buffer.byteLength(layoutContent, 'utf-8') > MAX_LAYOUT_FILE_BYTES) {
+      throw new Error('restore layout is too large');
+    }
+    atomicWriteFileSync(companionLayoutPath(restorePath), layoutContent);
+  }
+  runPipelineManifestSync(restorePath);
+  runRequirementsSync(restorePath);
+  runCompileAndWriteLog(restorePath, ws.registry);
+
+  if (ws.yamlPath && sameFilesystemPath(ws.yamlPath, restorePath)) {
+    ws.config = withDefaultTrackColors(parseYaml(restore.yaml));
+    ws.yamlVersion = getFileVersion(restorePath);
+    loadLayout(ws);
+    beginWatching(ws, restorePath, restore.yaml);
+  }
+}
 function describeWorkflowEntry(absPath: string, basenameValue: string): Record<string, unknown> {
   const stat = statSync(absPath);
   const canReadYaml = stat.size <= MAX_YAML_FILE_BYTES;
@@ -1269,6 +1386,62 @@ export function registerWorkspaceRoutes(app: express.Express): void {
     }
   });
 
+  app.post('/api/workspace/chat-result-copy', (req, res) => {
+    const ws = requireWorkspace(req, res);
+    if (!ws) return;
+    if (!ws.workDir) return res.status(400).json({ error: 'Workspace directory is not set' });
+    const body = (req.body ?? {}) as {
+      sourcePath?: unknown;
+      restoreOriginal?: unknown;
+    };
+    if (typeof body.sourcePath !== 'string' || body.sourcePath.trim().length === 0) {
+      return res.status(400).json({ error: 'sourcePath is required' });
+    }
+
+    let sourcePath: string;
+    try {
+      sourcePath = assertPipelineYamlPath(
+        ws.workDir,
+        resolve(body.sourcePath),
+        'chat result source',
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Path is outside the workspace directory';
+      return res.status(403).json({ error: msg });
+    }
+    if (!existsSync(sourcePath)) {
+      return res.status(404).json({ error: `File not found: ${sourcePath}` });
+    }
+
+    try {
+      assertFileSizeAtMost(sourcePath, MAX_YAML_FILE_BYTES, 'source YAML');
+      const copied = copyPipelineAsNumberedCopy(ws, sourcePath);
+      let restoredOriginal = false;
+      const restore = body.restoreOriginal;
+      if (restore && typeof restore === 'object' && !Array.isArray(restore)) {
+        const raw = restore as Record<string, unknown>;
+        if (typeof raw.path === 'string' && typeof raw.yaml === 'string') {
+          const restorePath = assertPipelineYamlPath(
+            ws.workDir,
+            resolve(raw.path),
+            'chat result restore target',
+          );
+          if (!sameFilesystemPath(restorePath, sourcePath)) {
+            return res.status(400).json({ error: 'restoreOriginal.path must match sourcePath' });
+          }
+          restorePipelineSnapshot(ws, {
+            path: restorePath,
+            yaml: raw.yaml,
+            layout: raw.layout,
+          });
+          restoredOriginal = true;
+        }
+      }
+      res.json({ entry: copied.entry, revision: ws.stateRevision, restoredOriginal });
+    } catch (err: unknown) {
+      res.status(500).json({ error: errorMessage(err) || 'Failed to copy chat result' });
+    }
+  });
   app.get('/api/fs/roots', (_req, res) => {
     // Workspace-agnostic — no requireWorkspace needed. Welcome page uses
     // this to enumerate candidate workspace roots.

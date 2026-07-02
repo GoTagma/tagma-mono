@@ -13,6 +13,13 @@ export interface WorkspaceYamlEntry {
 export interface ChatYamlSnapshot {
   workDir: string;
   activePath: string | null;
+  revision: number | null;
+  activeYaml: string | null;
+  activeLayout: {
+    positions?: Record<string, { x: number; y?: number }>;
+    folders?: unknown[];
+    trackHeights?: Record<string, number>;
+  } | null;
   entries: ReadonlyArray<Pick<WorkspaceYamlEntry, 'path' | 'contentHash' | 'layoutHash'>>;
 }
 
@@ -36,16 +43,39 @@ export function detectChatYamlTarget(
   currentPath: string | null,
 ): ChatYamlTarget | null {
   if (!snapshot) return null;
-  if (snapshot.activePath && normalizePath(snapshot.activePath) !== normalizePath(currentPath)) {
-    return null;
-  }
+  const snapshotActiveKey = normalizePath(snapshot.activePath);
+  const currentKey = normalizePath(currentPath);
   const before = new Map(
     snapshot.entries.map((entry) => [
       pathKey(entry.path),
       { contentHash: entry.contentHash, layoutHash: entry.layoutHash },
     ]),
   );
-  const created = entries.filter((entry) => !before.has(pathKey(entry.path)));
+
+  const changed = entries.filter((entry) => {
+    const old = before.get(pathKey(entry.path));
+    return old && (entry.contentHash !== old.contentHash || entry.layoutHash !== old.layoutHash);
+  });
+
+  if (snapshotActiveKey) {
+    const entry = changed.find((candidate) => pathKey(candidate.path) === snapshotActiveKey);
+    if (entry) {
+      return {
+        kind: 'refresh-current',
+        path: entry.path,
+        name: entry.name,
+        pipelineName: entry.pipelineName,
+      };
+    }
+  }
+
+  const created = entries.filter((entry) => {
+    if (before.has(pathKey(entry.path))) return false;
+    // If the user created a new pipeline while chat was still running, that
+    // file becomes the current editor path. Do not mistake it for a
+    // chat-created pipeline.
+    return !currentKey || pathKey(entry.path) !== currentKey;
+  });
   if (created.length > 0) {
     const entry = created.sort((a, b) => a.path.localeCompare(b.path))[created.length - 1]!;
     return {
@@ -56,12 +86,6 @@ export function detectChatYamlTarget(
     };
   }
 
-  const changed = entries.filter((entry) => {
-    const old = before.get(pathKey(entry.path));
-    return old && (entry.contentHash !== old.contentHash || entry.layoutHash !== old.layoutHash);
-  });
-
-  const currentKey = normalizePath(currentPath);
   if (currentKey) {
     const entry = changed.find((candidate) => pathKey(candidate.path) === currentKey);
     if (entry) {

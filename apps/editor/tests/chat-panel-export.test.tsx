@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { buildConversationFlowSteps, ChatPanel } from '../src/components/chat/ChatPanel';
+import {
+  buildConversationFlowSteps,
+  ChatPanel,
+  SessionYamlResultBubble,
+} from '../src/components/chat/ChatPanel';
 import { useChatStore } from '../src/store/chat-store';
 import {
   chatPipelineDisplayName,
@@ -78,6 +82,29 @@ describe('ChatPanel export affordance', () => {
     ).toBe('fallback.yaml');
   });
 
+  test('renders an open pipeline button after a session pipeline result', () => {
+    const result: ChatYamlSessionResult = {
+      sessionId: 's1',
+      kind: 'open-created',
+      path: '/workspace/.tagma/build-copy-1/build-copy-1.yaml',
+      name: 'build-copy-1.yaml',
+      pipelineName: 'Build Copy 1',
+      status: 'ready',
+      compile: {
+        success: true,
+        summary: 'Compile succeeded.',
+        validation: { errors: [], warnings: [] },
+      } as never,
+      completedAt: 1_000,
+    };
+
+    const html = renderToStaticMarkup(<SessionYamlResultBubble result={result} />);
+
+    expect(html).toContain('pipeline result');
+    expect(html).toContain('Created pipeline');
+    expect(html).toContain('Build Copy 1');
+    expect(html).toContain('Open pipeline');
+  });
   test('selects visible hidden completion toast results', () => {
     const makeResult = (sessionId: string, completedAt: number): ChatYamlSessionResult => ({
       sessionId,

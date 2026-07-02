@@ -15,6 +15,7 @@ import { WelcomePage } from './components/WelcomePage';
 import { PipelinePicker } from './components/PipelinePicker';
 import {
   api,
+  getClientRevision,
   type ServerState,
   type ServerStateEvent,
   type WorkspaceYamlEntry,
@@ -99,6 +100,22 @@ export function workflowEventSignature(event: WorkflowGraphEvent): string {
   return seq === null ? JSON.stringify(event) : `${event.graphRunId}:${seq}`;
 }
 
+function normalizedEditorPath(path: string | null | undefined): string | null {
+  if (typeof path !== 'string') return null;
+  const trimmed = path.trim();
+  if (!trimmed) return null;
+  const normalized = trimmed.replace(/\\/g, '/').replace(/\/+$/, '');
+  return /^[A-Za-z]:\//.test(normalized) || normalized.startsWith('//')
+    ? normalized.toLowerCase()
+    : normalized;
+}
+
+function sameEditorPath(a: string | null | undefined, b: string | null | undefined): boolean {
+  const left = normalizedEditorPath(a);
+  const right = normalizedEditorPath(b);
+  return !!left && !!right && left === right;
+}
+
 export function appendWorkflowEvent(
   events: WorkflowGraphEvent[],
   event: WorkflowGraphEvent,
@@ -166,11 +183,10 @@ function isMissingWorkflowRunError(err: unknown): boolean {
 }
 
 export function yamlEditLockRunBlockMessage(
-  yamlEditLocked: boolean,
-  yamlEditLockReason: string | null,
+  _yamlEditLocked: boolean,
+  _yamlEditLockReason: string | null,
 ): string | null {
-  if (!yamlEditLocked) return null;
-  return yamlEditLockReason || YAML_EDIT_LOCK_MESSAGE;
+  return null;
 }
 
 export function App() {
@@ -892,7 +908,7 @@ export function App() {
           usePipelineStore.getState();
         let target =
           snapshot && snapshot.workDir === currentWorkDirForChat
-            ? detectChatYamlTarget(snapshot, entries, snapshot.activePath)
+            ? detectChatYamlTarget(snapshot, entries, currentYamlForChat)
             : null;
         if (!target && !snapshot && !finishedTurn.hidden && currentYamlForChat) {
           const currentEntry = entries.find((entry) => entry.path === currentYamlForChat);
@@ -906,6 +922,23 @@ export function App() {
           }
         }
         if (!target) return;
+
+        const editorStateBeforeCompile = usePipelineStore.getState();
+        const currentRevisionBeforeCompile = getClientRevision();
+        const snapshotActivePath = snapshot?.activePath ?? null;
+        const revisionChangedSinceSend =
+          typeof snapshot?.revision === 'number' &&
+          typeof currentRevisionBeforeCompile === 'number' &&
+          snapshot.revision !== currentRevisionBeforeCompile;
+        const pathMovedSinceSend =
+          !!snapshotActivePath &&
+          !sameEditorPath(snapshotActivePath, editorStateBeforeCompile.yamlPath);
+        const chatEditedOriginalTarget =
+          target.kind === 'refresh-current' &&
+          !!snapshotActivePath &&
+          sameEditorPath(target.path, snapshotActivePath);
+        const editorNoLongerMatchesChatTarget =
+          chatEditedOriginalTarget && (pathMovedSinceSend || revisionChangedSinceSend);
 
         const compile = await api.compileWorkspaceYaml(target.path);
         if (cancelled) return;
@@ -956,9 +989,38 @@ export function App() {
           });
           return;
         }
+
+        if (editorNoLongerMatchesChatTarget && snapshotActivePath && snapshot?.activeYaml) {
+          const copied = await api.copyChatResultPipeline({
+            sourcePath: target.path,
+            restoreOriginal: {
+              path: snapshotActivePath,
+              yaml: snapshot.activeYaml,
+              layout: snapshot.activeLayout,
+            },
+          });
+          if (cancelled) return;
+          target = {
+            kind: 'open-created',
+            path: copied.entry.path,
+            name: copied.entry.name,
+            pipelineName: copied.entry.pipelineName,
+          };
+          await refreshWorkspaceYamls();
+          if (cancelled) return;
+        }
+
         recordSessionResult('ready');
 
         if (!finishedSessionVisible) return;
+        if (editorNoLongerMatchesChatTarget) {
+          useChatStore.getState().setPostChatYamlAction({
+            ...target,
+            status: 'ready',
+            compile,
+          });
+          return;
+        }
 
         const policy = useEditorSettingsStore.getState().settings?.chatDirtyConflictPolicy ?? 'ask';
         if (target.kind === 'open-created') {
@@ -1425,16 +1487,6 @@ export function App() {
 
   const handleRun = useCallback(async () => {
     if (!requireWorkspace('run')) return;
-    const lockMessage = yamlEditLockRunBlockMessage(yamlEditLocked, yamlEditLockReason);
-    if (lockMessage) {
-      setPendingRun(false);
-      setDialog({
-        type: 'error',
-        title: 'Cannot run while OpenCode chat is editing',
-        details: [lockMessage],
-      });
-      return;
-    }
     await flushPendingLocalEdits();
     const latest = usePipelineStore.getState();
     const latestBlockingValidationErrors = latest.validationErrors.filter(
@@ -1448,7 +1500,12 @@ export function App() {
       });
       return;
     }
-    if (!latest.yamlPath || latest.isDirty) {
+    if (!latest.yamlPath) {
+      setPendingRun(true);
+      await saveFile();
+      return;
+    }
+    if (latest.isDirty && !yamlEditLocked) {
       setPendingRun(true);
       await saveFile();
       return;
@@ -1464,7 +1521,6 @@ export function App() {
   }, [
     requireWorkspace,
     yamlEditLocked,
-    yamlEditLockReason,
     yamlPath,
     validationErrors,
     isDirty,
@@ -1805,10 +1861,9 @@ export function App() {
   }, [requireWorkspace, newPipeline, guardUnsavedChanges, clearWorkflowReturnPathForNavigation]);
 
   const handleImport = useCallback(() => {
-    if (yamlEditLocked) return;
     if (!requireWorkspace('import')) return;
     setExplorer({ mode: 'open', purpose: 'import' });
-  }, [yamlEditLocked, requireWorkspace]);
+  }, [requireWorkspace]);
 
   const handleExport = useCallback(() => {
     if (yamlEditLocked) return;
@@ -2106,7 +2161,6 @@ export function App() {
           {
             label: 'Import Pipeline...',
             shortcut: 'Ctrl+O',
-            disabled: yamlEditLocked,
             onAction: handleImport,
           },
           {
