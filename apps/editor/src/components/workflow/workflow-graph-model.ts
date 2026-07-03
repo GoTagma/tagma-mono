@@ -89,7 +89,7 @@ function isWindowsWorkflowPath(path: string): boolean {
 
 function normalizeComparableWorkflowPath(path: string): string {
   const normalized = path.replace(/\\/g, '/');
-  return isWindowsWorkflowPath(path) ? normalized.toLocaleLowerCase() : normalized;
+  return isWindowsWorkflowPath(path) ? normalized.toLowerCase() : normalized;
 }
 
 export function workflowPathEquals(left: string, right: string): boolean {

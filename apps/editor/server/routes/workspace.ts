@@ -13,7 +13,7 @@ import {
   appendFileSync,
 } from 'node:fs';
 import { resolve, dirname, basename, join, relative, isAbsolute } from 'node:path';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import yaml from 'js-yaml';
 import { createEmptyPipeline, upsertTrack, upsertTask } from '@tagma/sdk/config';
 import { parseYaml, serializePipeline } from '@tagma/sdk/yaml';
@@ -195,6 +195,56 @@ function serializePortablePipeline(ws: WorkspaceState): string {
   return serializePipeline(ws.config);
 }
 
+function resolveWorkspaceInputPath(workDir: string, input: string): string {
+  return isAbsolute(input) ? resolve(input) : resolve(workDir, input);
+}
+
+function assertYamlUnchangedForWrite(
+  filePath: string,
+  expectedVersion: ReturnType<typeof getFileVersion>,
+): void {
+  if (expectedVersion && existsSync(filePath)) {
+    assertFileUnchanged(filePath, expectedVersion);
+  }
+}
+
+function restoreYamlWatcherFromDisk(ws: WorkspaceState, path: string | null): void {
+  if (!path || !existsSync(path)) return;
+  try {
+    beginWatching(ws, path, readFileSync(path, 'utf-8'));
+  } catch {
+    /* best effort: the request will still report the original write failure */
+  }
+}
+
+function withStoppedYamlWatcher<T>(ws: WorkspaceState, write: () => T): T {
+  const previous = ws.watcher.currentlyWatching();
+  let rebound = false;
+  ws.watcher.stopWatching();
+  try {
+    const result = write();
+    rebound = true;
+    return result;
+  } finally {
+    if (!rebound) restoreYamlWatcherFromDisk(ws, previous);
+  }
+}
+
+function syncSourceYamlForExport(ws: WorkspaceState): string {
+  if (!ws.yamlPath) throw new Error('No pipeline file to export');
+  assertYamlUnchangedForWrite(ws.yamlPath, ws.yamlVersion);
+  return withStoppedYamlWatcher(ws, () => {
+    const content = serializePortablePipeline(ws);
+    const sourcePath = ws.yamlPath!;
+    atomicWriteFileSync(sourcePath, content);
+    runPipelineManifestSync(sourcePath);
+    runRequirementsSync(sourcePath);
+    ws.yamlVersion = getFileVersion(sourcePath);
+    saveLayout(ws);
+    beginWatching(ws, sourcePath, content);
+    return content;
+  });
+}
 function syncExportedRequirements(sourceYamlPath: string, destYamlPath: string): void {
   const sourceRequirements = requirementsPath(sourceYamlPath);
   const destRequirements = requirementsPath(destYamlPath);
@@ -459,28 +509,89 @@ function copyPipelineAsNumberedCopy(
   };
 }
 
+type RestorePipelineSnapshotTestHooks = {
+  afterRestoreLayoutWrite?: (context: { restorePath: string; layoutPath: string }) => void;
+  beforeDeleteStagedFolder?: (context: {
+    originalFolderPath: string;
+    stagedFolderPath: string;
+  }) => void;
+};
+
+export const __workspaceRouteTestHooks: RestorePipelineSnapshotTestHooks = {};
+
+function pipelineDeleteTombstonePath(absFolderPath: string): string {
+  return join(
+    dirname(absFolderPath),
+    `.${basename(absFolderPath)}.deleting-${process.pid}-${Date.now()}-${randomUUID()}`,
+  );
+}
+
+function clearDeletedPipelineState(
+  ws: WorkspaceState,
+  wasCurrent: boolean,
+  folderHostsCurrentYaml: boolean,
+  deletingManualNewDraft: boolean,
+): void {
+  if (wasCurrent || folderHostsCurrentYaml) {
+    ws.yamlPath = null;
+    ws.yamlVersion = null;
+    ws.manualNewPipelineYamlPath = null;
+    ws.config = createEmptyPipeline('Untitled Pipeline');
+    ws.layout = { positions: {} };
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  } else if (deletingManualNewDraft) {
+    ws.manualNewPipelineYamlPath = null;
+  }
+}
+
 function restorePipelineSnapshot(
   ws: WorkspaceState,
   restore: { path: string; yaml: string; layout?: unknown },
 ): void {
-  const restorePath = assertPipelineYamlPath(ws.workDir, resolve(restore.path), 'restore target');
+  const restorePath = assertPipelineYamlPath(
+    ws.workDir,
+    resolveWorkspaceInputPath(ws.workDir, restore.path),
+    'restore target',
+  );
   if (Buffer.byteLength(restore.yaml, 'utf-8') > MAX_YAML_FILE_BYTES) {
     throw new Error('restore YAML is too large');
   }
-  atomicWriteFileSync(restorePath, restore.yaml);
+  const nextConfig = withDefaultTrackColors(parseYaml(restore.yaml));
+  let layoutContent: string | null = null;
   if (restore.layout && typeof restore.layout === 'object' && !Array.isArray(restore.layout)) {
-    const layoutContent = JSON.stringify(restore.layout, null, 2);
+    layoutContent = JSON.stringify(restore.layout, null, 2);
     if (Buffer.byteLength(layoutContent, 'utf-8') > MAX_LAYOUT_FILE_BYTES) {
       throw new Error('restore layout is too large');
     }
-    atomicWriteFileSync(companionLayoutPath(restorePath), layoutContent);
   }
-  runPipelineManifestSync(restorePath);
-  runRequirementsSync(restorePath);
-  runCompileAndWriteLog(restorePath, ws.registry);
+
+  const layoutPath = companionLayoutPath(restorePath);
+  const previousYaml = existsSync(restorePath) ? readFileSync(restorePath, 'utf-8') : null;
+  const previousLayout = existsSync(layoutPath) ? readFileSync(layoutPath, 'utf-8') : null;
+  try {
+    atomicWriteFileSync(restorePath, restore.yaml);
+    if (layoutContent !== null) {
+      atomicWriteFileSync(layoutPath, layoutContent);
+      __workspaceRouteTestHooks.afterRestoreLayoutWrite?.({ restorePath, layoutPath });
+    }
+    runPipelineManifestSync(restorePath);
+    runRequirementsSync(restorePath);
+    runCompileAndWriteLog(restorePath, ws.registry);
+  } catch (err) {
+    try {
+      if (previousYaml !== null) atomicWriteFileSync(restorePath, previousYaml);
+      if (previousLayout !== null) atomicWriteFileSync(layoutPath, previousLayout);
+      else if (layoutContent !== null && existsSync(layoutPath))
+        rmSync(layoutPath, { force: true });
+    } catch {
+      /* best-effort rollback */
+    }
+    throw err;
+  }
 
   if (ws.yamlPath && sameFilesystemPath(ws.yamlPath, restorePath)) {
-    ws.config = withDefaultTrackColors(parseYaml(restore.yaml));
+    ws.config = nextConfig;
     ws.yamlVersion = getFileVersion(restorePath);
     loadLayout(ws);
     beginWatching(ws, restorePath, restore.yaml);
@@ -956,7 +1067,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       // it unboundedly.
       if (existsSync(usageFile)) {
         const sz = statSync(usageFile).size;
-        if (sz + line.length > MAX_USAGE_FILE_BYTES) {
+        if (sz + Buffer.byteLength(line, 'utf-8') > MAX_USAGE_FILE_BYTES) {
           try {
             if (existsSync(rotatedFile)) rmSync(rotatedFile, { force: true });
             // Best-effort rename — if it fails (e.g. concurrent reader on
@@ -980,8 +1091,12 @@ export function registerWorkspaceRoutes(app: express.Express): void {
     const ws = requireWorkspace(req, res);
     if (!ws) return;
     if (!ws.workDir) return res.json({ records: [], totalRecords: 0, hasMore: false });
-    const usageFile = join(ws.workDir, '.tagma', '.usage', 'usage.jsonl');
-    if (!existsSync(usageFile)) return res.json({ records: [], totalRecords: 0, hasMore: false });
+    const usageDir = join(ws.workDir, '.tagma', '.usage');
+    const usageFile = join(usageDir, 'usage.jsonl');
+    const rotatedFile = join(usageDir, 'usage.1.jsonl');
+    if (!existsSync(usageFile) && !existsSync(rotatedFile)) {
+      return res.json({ records: [], totalRecords: 0, hasMore: false });
+    }
     // Pagination: `limit` caps page size; `before` skips records with `ts >=
     // before`, supporting "load older" infinite scroll. Both are optional —
     // the default returns the most recent page, which is what every existing
@@ -994,32 +1109,37 @@ export function registerWorkspaceRoutes(app: express.Express): void {
     const rawBefore = Number(req.query.before);
     const before = Number.isFinite(rawBefore) ? rawBefore : null;
     try {
-      const { text, truncated } = readJsonlTailText(usageFile, MAX_USAGE_FILE_BYTES);
-      const lines = text.split('\n');
-      // Iterate newest-first by walking from the end. We don't sort by `ts`
-      // because the file is append-only; insertion order tracks creation
-      // time for any reasonable producer.
+      const usageFiles = [usageFile, rotatedFile].filter((file) => existsSync(file));
       const records: unknown[] = [];
       let total = 0;
-      for (let i = lines.length - 1; i >= 0; i--) {
-        const trimmed = lines[i]!.trim();
-        if (!trimmed) continue;
-        let parsed: Record<string, unknown> | null = null;
-        try {
-          const obj = JSON.parse(trimmed) as unknown;
-          if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
-            parsed = obj as Record<string, unknown>;
+      let truncated = false;
+      for (const file of usageFiles) {
+        const tail = readJsonlTailText(file, MAX_USAGE_FILE_BYTES);
+        truncated = truncated || tail.truncated;
+        const lines = tail.text.split('\n');
+        // Iterate newest-first within each generation. `usage.jsonl` is newer
+        // than `usage.1.jsonl`, so walking files in that order preserves
+        // append order across the one retained rotation.
+        for (let i = lines.length - 1; i >= 0; i--) {
+          const trimmed = lines[i]!.trim();
+          if (!trimmed) continue;
+          let parsed: Record<string, unknown> | null = null;
+          try {
+            const obj = JSON.parse(trimmed) as unknown;
+            if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+              parsed = obj as Record<string, unknown>;
+            }
+          } catch {
+            continue;
           }
-        } catch {
-          continue;
+          if (!parsed) continue;
+          total += 1;
+          if (before !== null) {
+            const ts = typeof parsed.ts === 'number' ? parsed.ts : Number.NaN;
+            if (Number.isFinite(ts) && ts >= before) continue;
+          }
+          if (records.length < limit) records.push(parsed);
         }
-        if (!parsed) continue;
-        total += 1;
-        if (before !== null) {
-          const ts = typeof parsed.ts === 'number' ? parsed.ts : Number.NaN;
-          if (Number.isFinite(ts) && ts >= before) continue;
-        }
-        if (records.length < limit) records.push(parsed);
       }
       // hasMore must reflect "is there more we couldn't return", not "is
       // total > returned". With `before=X`, total counts every parsed record
@@ -1365,7 +1485,11 @@ export function registerWorkspaceRoutes(app: express.Express): void {
     }
     let absPath: string;
     try {
-      absPath = assertPipelineYamlPath(ws.workDir, resolve(filePath), 'YAML to compile');
+      absPath = assertPipelineYamlPath(
+        ws.workDir,
+        resolveWorkspaceInputPath(ws.workDir, filePath),
+        'YAML to compile',
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Path is outside the workspace directory';
       return res.status(403).json({ error: msg });
@@ -1402,7 +1526,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
     try {
       sourcePath = assertPipelineYamlPath(
         ws.workDir,
-        resolve(body.sourcePath),
+        resolveWorkspaceInputPath(ws.workDir, body.sourcePath),
         'chat result source',
       );
     } catch (err) {
@@ -1423,7 +1547,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
         if (typeof raw.path === 'string' && typeof raw.yaml === 'string') {
           const restorePath = assertPipelineYamlPath(
             ws.workDir,
-            resolve(raw.path),
+            resolveWorkspaceInputPath(ws.workDir, raw.path),
             'chat result restore target',
           );
           if (!sameFilesystemPath(restorePath, sourcePath)) {
@@ -1565,7 +1689,11 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       // Refusing flat / non-pipeline paths server-side closes the
       // CSRF/path-traversal door (e.g. a malicious page asking us to parse
       // and stash arbitrary files into `config`).
-      absPath = assertPipelineYamlPath(ws.workDir, resolve(filePath), 'file to open');
+      absPath = assertPipelineYamlPath(
+        ws.workDir,
+        resolveWorkspaceInputPath(ws.workDir, filePath),
+        'file to open',
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Path is outside the workspace directory';
       return res.status(403).json({ error: msg });
@@ -1619,32 +1747,25 @@ export function registerWorkspaceRoutes(app: express.Express): void {
 
       // F12: Optimistic locking - check if file has been modified externally
       // since we last loaded it. This prevents overwriting external edits.
-      if (ws.yamlVersion && existsSync(savePath)) {
-        try {
-          assertFileUnchanged(savePath, ws.yamlVersion);
-        } catch (err) {
-          if (err instanceof OptimisticLockConflictError) {
-            return res.status(409).json(buildConflictResponse(err));
-          }
-          throw err;
-        }
-      }
+      assertYamlUnchangedForWrite(savePath, ws.yamlVersion);
+      const targetSavePath = savePath;
 
-      // B4: Stop the existing watcher BEFORE writing so the old watcher's
-      // debounced check() can't fire between writeFileSync and beginWatching,
-      // which would falsely detect our own write as an external change.
-      ws.watcher.stopWatching();
-      const content = serializePortablePipeline(ws);
-      atomicWriteFileSync(savePath, content);
-      ws.yamlPath = savePath;
-      ws.yamlVersion = getFileVersion(savePath);
-      saveLayout(ws);
-      beginWatching(ws, savePath, content);
-      runCompileAndWriteLog(savePath, ws.registry);
-      runPipelineManifestSync(savePath);
-      runRequirementsSync(savePath);
+      withStoppedYamlWatcher(ws, () => {
+        const content = serializePortablePipeline(ws);
+        atomicWriteFileSync(targetSavePath, content);
+        runCompileAndWriteLog(targetSavePath, ws.registry);
+        runPipelineManifestSync(targetSavePath);
+        runRequirementsSync(targetSavePath);
+        ws.yamlPath = targetSavePath;
+        ws.yamlVersion = getFileVersion(targetSavePath);
+        saveLayout(ws);
+        beginWatching(ws, targetSavePath, content);
+      });
       res.json(getState(ws));
     } catch (err: unknown) {
+      if (err instanceof OptimisticLockConflictError) {
+        return res.status(409).json(buildConflictResponse(err));
+      }
       res.status(500).json({ error: errorMessage(err) || 'Failed to save file' });
     }
   });
@@ -1652,7 +1773,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
   app.post('/api/save-as', (req, res) => {
     const ws = requireWorkspace(req, res);
     if (!ws) return;
-    const { path: filePath } = req.body;
+    const { path: filePath, overwrite } = req.body;
     if (!filePath) return res.status(400).json({ error: 'path is required' });
     let absPath: string;
     try {
@@ -1660,29 +1781,40 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       // enforces that shape so Save As cannot be used as an arbitrary YAML
       // writer by a page in another browser tab. Reserved stems and bad
       // characters get rejected here before any write.
-      absPath = assertPipelineYamlPath(ws.workDir, resolve(filePath), 'save target');
+      absPath = assertPipelineYamlPath(
+        ws.workDir,
+        resolveWorkspaceInputPath(ws.workDir, filePath),
+        'save target',
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Path is outside the workspace directory';
       return res.status(403).json({ error: msg });
     }
     const previousYamlPath = ws.yamlPath;
+    if (existsSync(absPath) && overwrite !== true) {
+      return res.status(409).json({
+        error: `Pipeline already exists: ${absPath}`,
+        code: 'PIPELINE_EXISTS',
+        path: absPath,
+      });
+    }
     try {
       mkdirSync(dirname(absPath), { recursive: true });
-      // B4: Stop watcher before write to prevent false external-change detection.
-      ws.watcher.stopWatching();
-      const yaml = serializePortablePipeline(ws);
-      atomicWriteFileSync(absPath, yaml);
-      if (previousYamlPath) {
-        rebindPipelineSecretBindings(ws.workDir, previousYamlPath, absPath);
-      }
-      ws.yamlPath = absPath;
-      ws.yamlVersion = getFileVersion(absPath);
-      ws.manualNewPipelineYamlPath = null;
-      saveLayout(ws);
-      beginWatching(ws, absPath, yaml);
-      runCompileAndWriteLog(absPath, ws.registry);
-      runPipelineManifestSync(absPath);
-      runRequirementsSync(absPath);
+      withStoppedYamlWatcher(ws, () => {
+        const yaml = serializePortablePipeline(ws);
+        atomicWriteFileSync(absPath, yaml);
+        runCompileAndWriteLog(absPath, ws.registry);
+        runPipelineManifestSync(absPath);
+        runRequirementsSync(absPath);
+        if (previousYamlPath) {
+          rebindPipelineSecretBindings(ws.workDir, previousYamlPath, absPath);
+        }
+        ws.yamlPath = absPath;
+        ws.yamlVersion = getFileVersion(absPath);
+        ws.manualNewPipelineYamlPath = null;
+        saveLayout(ws);
+        beginWatching(ws, absPath, yaml);
+      });
       res.json(getState(ws));
     } catch (err: unknown) {
       res.status(500).json({ error: errorMessage(err) || 'Failed to save file' });
@@ -2037,13 +2169,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
     }
     try {
       consumeFsCapability(capabilityToken, absDestDir, 'export-file', ws);
-      const content = serializePortablePipeline(ws);
-      atomicWriteFileSync(ws.yamlPath, content);
-      ws.yamlVersion = getFileVersion(ws.yamlPath);
-      runPipelineManifestSync(ws.yamlPath);
-      runRequirementsSync(ws.yamlPath);
-      // Keep the source-of-truth layout in sync on disk before copying.
-      saveLayout(ws);
+      const content = syncSourceYamlForExport(ws);
       // Mirror the per-pipeline folder layout at the destination too:
       //   destDir/<stem>/<stem>.yaml
       //   destDir/<stem>/<stem>.layout.json
@@ -2067,6 +2193,9 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       const pluginsCopied = copyDeclaredPluginStoresForExport(ws, absDestDir);
       res.json({ ok: true, path: destPath, pluginsCopied });
     } catch (err: unknown) {
+      if (err instanceof OptimisticLockConflictError) {
+        return res.status(409).json(buildConflictResponse(err));
+      }
       res.status(500).json({ error: errorMessage(err) || 'Failed to export file' });
     }
   });
@@ -2106,6 +2235,16 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       return res.status(500).json({ error: errorMessage(err) || 'Failed to export platform file' });
     }
 
+    let sourceContent: string;
+    try {
+      sourceContent = syncSourceYamlForExport(ws);
+    } catch (err: unknown) {
+      if (err instanceof OptimisticLockConflictError) {
+        return res.status(409).json(buildConflictResponse(err));
+      }
+      return res.status(500).json({ error: errorMessage(err) || 'Failed to export platform file' });
+    }
+
     res.status(200);
     res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -2124,13 +2263,8 @@ export function registerWorkspaceRoutes(app: express.Express): void {
 
     try {
       sendProgress({ stage: 'preparing', detail: 'Preparing platform export' });
-      const content = serializePortablePipeline(ws);
-      sendProgress({ stage: 'syncing', detail: 'Saving current pipeline and layout' });
-      atomicWriteFileSync(ws.yamlPath, content);
-      ws.yamlVersion = getFileVersion(ws.yamlPath);
-      runPipelineManifestSync(ws.yamlPath);
-      runRequirementsSync(ws.yamlPath);
-      saveLayout(ws);
+      const content = sourceContent;
+      sendProgress({ stage: 'syncing', detail: 'Source pipeline and layout are synced' });
 
       sendProgress({ stage: 'opencode', detail: 'Preparing .tagma OpenCode workspace' });
       const tagmaCwd = ensureRealTagmaDirectory(ws.workDir);
@@ -2216,7 +2350,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
     let boundYamlPath: string | null = null;
     let absFolderPath: string;
     try {
-      const candidate = resolve(filePath);
+      const candidate = resolveWorkspaceInputPath(ws.workDir, filePath);
       if (/\.ya?ml$/i.test(candidate)) {
         absYamlPath = assertPipelineYamlPath(ws.workDir, candidate, 'file to delete');
         boundYamlPath = absYamlPath;
@@ -2241,37 +2375,51 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       const msg = err instanceof Error ? err.message : 'Path is outside the workspace directory';
       return res.status(403).json({ error: msg });
     }
+    const wasCurrent =
+      absYamlPath !== null && ws.yamlPath !== null && sameFilesystemPath(ws.yamlPath, absYamlPath);
+    const folderHostsCurrentYaml =
+      ws.yamlPath !== null && sameFilesystemPath(dirname(ws.yamlPath), absFolderPath);
+    const deletingManualNewDraft =
+      sameFilesystemPath(ws.manualNewPipelineYamlPath, absYamlPath) ||
+      (ws.manualNewPipelineYamlPath !== null &&
+        sameFilesystemPath(dirname(ws.manualNewPipelineYamlPath), absFolderPath));
+    let stagedFolderPath: string | null = null;
     try {
-      // Mirror the in-memory state reset BEFORE removing the folder so that
-      // a partial-rm doesn't leave the editor pointing at a half-deleted YAML.
-      const wasCurrent =
-        absYamlPath !== null && ws.yamlPath !== null && ws.yamlPath === absYamlPath;
-      const folderHostsCurrentYaml = ws.yamlPath !== null && dirname(ws.yamlPath) === absFolderPath;
-      const deletingManualNewDraft =
-        sameFilesystemPath(ws.manualNewPipelineYamlPath, absYamlPath) ||
-        (ws.manualNewPipelineYamlPath !== null &&
-          sameFilesystemPath(dirname(ws.manualNewPipelineYamlPath), absFolderPath));
-      if (wasCurrent || folderHostsCurrentYaml) {
-        ws.yamlPath = null;
-        ws.yamlVersion = null;
-        ws.manualNewPipelineYamlPath = null;
-        ws.config = createEmptyPipeline('Untitled Pipeline');
-        ws.layout = { positions: {} };
-        ws.watcher.stopWatching();
-        ws.layoutWatcher.stopWatching();
-      } else if (deletingManualNewDraft) {
-        ws.manualNewPipelineYamlPath = null;
+      if (existsSync(absFolderPath)) {
+        stagedFolderPath = pipelineDeleteTombstonePath(absFolderPath);
+        renameSync(absFolderPath, stagedFolderPath);
       }
       if (boundYamlPath) {
         deletePipelineSecretBindings(ws.workDir, boundYamlPath);
       }
-      // Recursive rm so siblings (layout/compile/requirements + any future
-      // per-pipeline files the agent might add) all go in one step.
-      if (existsSync(absFolderPath)) {
-        rmSync(absFolderPath, { recursive: true, force: true });
+      if (stagedFolderPath && existsSync(stagedFolderPath)) {
+        try {
+          __workspaceRouteTestHooks.beforeDeleteStagedFolder?.({
+            originalFolderPath: absFolderPath,
+            stagedFolderPath,
+          });
+          rmSync(stagedFolderPath, { recursive: true, force: true });
+        } catch (cleanupErr) {
+          console.warn(
+            `[workspace] failed to remove staged deleted pipeline ${stagedFolderPath}:`,
+            cleanupErr,
+          );
+        }
       }
+      clearDeletedPipelineState(ws, wasCurrent, folderHostsCurrentYaml, deletingManualNewDraft);
       res.json(getState(ws));
     } catch (err: unknown) {
+      if (stagedFolderPath && existsSync(stagedFolderPath) && !existsSync(absFolderPath)) {
+        try {
+          renameSync(stagedFolderPath, absFolderPath);
+        } catch (rollbackErr) {
+          console.warn(
+            `[workspace] failed to restore staged pipeline ${stagedFolderPath} -> ${absFolderPath}:`,
+            rollbackErr,
+          );
+        }
+      }
+      if (wasCurrent || folderHostsCurrentYaml) restoreYamlWatcherFromDisk(ws, ws.yamlPath);
       res.status(500).json({ error: errorMessage(err) || 'Failed to delete pipeline' });
     }
   });

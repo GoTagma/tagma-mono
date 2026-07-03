@@ -1,4 +1,4 @@
-import { statSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 
 /**
@@ -41,9 +41,11 @@ export interface FileVersion {
 export function getFileVersion(filePath: string): FileVersion | null {
   try {
     const stats = statSync(filePath);
+    const content = readFileSync(filePath);
     return {
       mtime: stats.mtimeMs,
       size: stats.size,
+      hash: createHash('sha256').update(content).digest('hex'),
     };
   } catch {
     return null;
@@ -70,12 +72,13 @@ export function hasFileChanged(filePath: string, expectedVersion: FileVersion | 
     return true;
   }
 
-  // If both have hashes, compare them for exact match
+  // Compare hashes as a final exact check. This catches same-size writes that
+  // land inside the filesystem timestamp granularity window.
   if (expectedVersion.hash && currentVersion.hash) {
     return expectedVersion.hash !== currentVersion.hash;
   }
 
-  // Same mtime and size, assume unchanged
+  // Same mtime and size with no hash on either side is the legacy fallback.
   return false;
 }
 

@@ -1027,6 +1027,14 @@ export function attachFileWatcherBridge(ws: WorkspaceState): void {
   // positions changed; that work is wasted and can produce spurious
   // compile-log churn. Just refresh ws.layout from disk and broadcast.
   ws.layoutWatcher.onChange((event) => {
+    if (event.type === 'external-delete') {
+      broadcastStateEvent(ws, {
+        type: 'external-conflict',
+        path: event.path,
+        deleted: true,
+      });
+      return;
+    }
     if (event.type === 'external-conflict') {
       broadcastStateEvent(ws, {
         type: 'external-conflict',
@@ -1046,6 +1054,11 @@ export function attachFileWatcherBridge(ws: WorkspaceState): void {
     });
   });
   ws.watcher.onFileWatcherEvent((event) => {
+    if (event.type === 'external-delete') {
+      invalidatePluginCache(ws);
+      broadcastStateEvent(ws, { type: 'external-conflict', path: event.path, deleted: true });
+      return;
+    }
     // M6: Invalidate plugin caches on any external YAML change so discovery
     // re-scans on the next request.
     invalidatePluginCache(ws);

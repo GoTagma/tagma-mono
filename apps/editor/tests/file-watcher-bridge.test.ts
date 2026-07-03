@@ -320,3 +320,26 @@ test('bridge is idempotent: re-creating an existing workspace does not double-su
     workspaceRegistry.drop(key);
   }
 });
+
+test('non-default workspace: external YAML delete is forwarded as deleted conflict', () => {
+  const key = uniqueKey('delete');
+  const ws = workspaceRegistry.getOrCreate(key);
+  const chunks: string[] = [];
+  ws.stateEventClients.add({ res: mockResponse(chunks) });
+
+  try {
+    emitWatcherEvent(ws, {
+      type: 'external-delete',
+      path: `${key}/.tagma/pipeline/pipeline.yaml`,
+    });
+
+    expect(chunks.length).toBe(1);
+    const sse = chunks[0]!;
+    expect(sse).toContain('"type":"external-conflict"');
+    expect(sse).toContain('"deleted":true');
+    expect(sse).toContain(`${key}/.tagma/pipeline/pipeline.yaml`);
+  } finally {
+    ws.stateEventClients.clear();
+    workspaceRegistry.drop(key);
+  }
+});

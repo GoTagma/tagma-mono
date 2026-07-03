@@ -30,7 +30,7 @@
 // repeated PATCH /api/workspace calls can re-trigger migration while a
 // workspace is already bound, and we never want a stale yamlPath to dangle.
 
-import { existsSync, lstatSync, mkdirSync, renameSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, renameSync, rmdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { beginWatching, loadLayout, syncLayoutWatcherFromDisk } from './state.js';
 import {
@@ -87,23 +87,42 @@ function hasExistingPipelineFolder(workDir: string, stem: string): boolean {
   }
 }
 
-function moveCompanion(srcPath: string, destPath: string, movedSinks: string[]): void {
+function moveCompanion(
+  srcPath: string,
+  destPath: string,
+  movedSinks: string[],
+  movedPairs: Array<{ from: string; to: string }>,
+): void {
   if (!existsSync(srcPath)) return;
-  try {
-    // Reject symlinks — rename across a symlink would silently move the link,
-    // not the target. The flat layout never produced symlinked companions
-    // legitimately, so refusing is safe and prevents surprises.
-    if (lstatSync(srcPath).isSymbolicLink()) {
-      console.warn(`[workspace-migrate] skipping symlinked sibling ${srcPath}`);
-      return;
+  const srcStat = lstatSync(srcPath);
+  if (srcStat.isSymbolicLink()) {
+    throw new Error(`Refusing to migrate symlinked sibling ${srcPath}`);
+  }
+  if (!srcStat.isFile()) {
+    throw new Error(`Refusing to migrate non-file sibling ${srcPath}`);
+  }
+  renameSync(srcPath, destPath);
+  movedSinks.push(destPath);
+  movedPairs.push({ from: srcPath, to: destPath });
+}
+
+function rollbackMigrationMoves(movedPairs: Array<{ from: string; to: string }>): void {
+  for (const move of movedPairs.slice().reverse()) {
+    try {
+      if (existsSync(move.to) && !existsSync(move.from)) renameSync(move.to, move.from);
+    } catch (err) {
+      console.warn(`[workspace-migrate] failed to roll back ${move.to} -> ${move.from}:`, err);
     }
-    renameSync(srcPath, destPath);
-    movedSinks.push(destPath);
-  } catch (err) {
-    console.warn(`[workspace-migrate] failed to move sibling ${srcPath} → ${destPath}:`, err);
   }
 }
 
+function removeEmptyMigrationFolder(folder: string): void {
+  try {
+    if (existsSync(folder)) rmdirSync(folder);
+  } catch (err) {
+    console.warn(`[workspace-migrate] failed to remove empty migration folder ${folder}:`, err);
+  }
+}
 /**
  * Move every flat-layout pipeline into a `<stem>/` folder. Returns a structured
  * report so callers can surface unmigratable items to the UI instead of
@@ -198,11 +217,13 @@ function migrateOne(workDir: string, entry: FlatPipelineEntry): MigrationOutcome
   const newYamlPath = pipelineYamlPath(workDir, stem);
   const folder = pipelineFolderPath(workDir, stem);
   const moved: string[] = [];
+  const movedPairs: Array<{ from: string; to: string }> = [];
   try {
     mkdirSync(folder, { recursive: true });
-    // YAML first — if this rename fails we don't want orphan siblings inside
+    // YAML first: if this rename fails we don't want orphan siblings inside
     // a new folder pointing at nothing.
     if (lstatSync(oldYamlPath).isSymbolicLink()) {
+      removeEmptyMigrationFolder(folder);
       return {
         stem,
         oldYamlPath,
@@ -214,7 +235,9 @@ function migrateOne(workDir: string, entry: FlatPipelineEntry): MigrationOutcome
     }
     renameSync(oldYamlPath, newYamlPath);
     moved.push(newYamlPath);
+    movedPairs.push({ from: oldYamlPath, to: newYamlPath });
   } catch (err) {
+    removeEmptyMigrationFolder(folder);
     return {
       stem,
       oldYamlPath,
@@ -225,12 +248,24 @@ function migrateOne(workDir: string, entry: FlatPipelineEntry): MigrationOutcome
     };
   }
 
-  for (const deriveSiblingPath of COMPANION_EXTENSIONS) {
-    const srcCompanion = deriveSiblingPath(oldYamlPath);
-    const destCompanion = deriveSiblingPath(newYamlPath);
-    moveCompanion(srcCompanion, destCompanion, moved);
+  try {
+    for (const deriveSiblingPath of COMPANION_EXTENSIONS) {
+      const srcCompanion = deriveSiblingPath(oldYamlPath);
+      const destCompanion = deriveSiblingPath(newYamlPath);
+      moveCompanion(srcCompanion, destCompanion, moved, movedPairs);
+    }
+  } catch (err) {
+    rollbackMigrationMoves(movedPairs);
+    removeEmptyMigrationFolder(folder);
+    return {
+      stem,
+      oldYamlPath,
+      newYamlPath: null,
+      movedSiblings: [],
+      reason: 'error',
+      detail: `Failed to move companion file: ${(err as Error).message}`,
+    };
   }
-
   return {
     stem,
     oldYamlPath,

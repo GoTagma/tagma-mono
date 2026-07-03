@@ -173,4 +173,43 @@ describe('YAML edit lock', () => {
     expect(isYamlEditLockProtectedMutation('/api/plugins/install')).toBe(false);
     expect(isYamlEditLockProtectedMutation('/api/plugins/uninstall')).toBe(false);
   });
+  test('chat-result-copy is protected when source or restore target hits the locked YAML', () => {
+    const lock = {
+      id: 'turn-1',
+      owner: 'chat' as const,
+      reason: 'chat updating YAML',
+      acquiredAt: Date.now(),
+      expiresAt: Date.now() + 30_000,
+      yamlPath: '/ws/.tagma/current/current.yaml',
+    };
+
+    expect(isYamlEditLockProtectedMutation('/api/workspace/chat-result-copy')).toBe(true);
+    expect(
+      shouldBlockYamlEditLockMutation(lock, {
+        path: '/api/workspace/chat-result-copy',
+        body: { sourcePath: '.tagma/current/current.yaml' },
+        currentYamlPath: '/ws/.tagma/other/other.yaml',
+        workDir: '/ws',
+      }),
+    ).toBe(true);
+    expect(
+      shouldBlockYamlEditLockMutation(lock, {
+        path: '/api/workspace/chat-result-copy',
+        body: {
+          sourcePath: '.tagma/other/other.yaml',
+          restoreOriginal: { path: '.tagma/current/current.yaml' },
+        },
+        currentYamlPath: '/ws/.tagma/other/other.yaml',
+        workDir: '/ws',
+      }),
+    ).toBe(true);
+    expect(
+      shouldBlockYamlEditLockMutation(lock, {
+        path: '/api/workspace/chat-result-copy',
+        body: { sourcePath: '.tagma/other/other.yaml' },
+        currentYamlPath: '/ws/.tagma/other/other.yaml',
+        workDir: '/ws',
+      }),
+    ).toBe(false);
+  });
 });

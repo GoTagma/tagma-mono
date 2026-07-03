@@ -68,6 +68,20 @@ function bodyPipelinePaths(body: unknown): string[] {
     : [];
 }
 
+function bodySourcePath(body: unknown): string | null {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const value = (body as { sourcePath?: unknown }).sourcePath;
+  return typeof value === 'string' ? value : null;
+}
+
+function bodyRestoreOriginalPath(body: unknown): string | null {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const restore = (body as { restoreOriginal?: unknown }).restoreOriginal;
+  if (!restore || typeof restore !== 'object' || Array.isArray(restore)) return null;
+  const value = (restore as { path?: unknown }).path;
+  return typeof value === 'string' ? value : null;
+}
+
 function resolveCandidatePath(candidate: string | null, workDir?: string | null): string | null {
   if (typeof candidate !== 'string') return null;
   const trimmed = candidate.trim();
@@ -119,6 +133,11 @@ export function shouldBlockYamlEditLockMutation(
         pathHitsLockedYaml(context.currentYamlPath ?? null, lockedYamlPath, context.workDir) ||
         pathHitsLockedYaml(bodyPath(context.body), lockedYamlPath, context.workDir)
       );
+    case '/api/workspace/chat-result-copy':
+      return (
+        pathHitsLockedYaml(bodySourcePath(context.body), lockedYamlPath, context.workDir) ||
+        pathHitsLockedYaml(bodyRestoreOriginalPath(context.body), lockedYamlPath, context.workDir)
+      );
     case '/api/workspace/workflows':
       return (
         pathHitsLockedYaml(context.currentYamlPath ?? null, lockedYamlPath, context.workDir) ||
@@ -143,6 +162,7 @@ export function isYamlEditLockProtectedMutation(path: string): boolean {
     '/api/export-file',
     '/api/export-file/platform',
     '/api/delete-file',
+    '/api/workspace/chat-result-copy',
     '/api/demo',
     '/api/config/replace',
     '/api/workspace/workflows',

@@ -4,11 +4,13 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   statSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createEmptyPipeline } from '@tagma/sdk/config';
 import { parseYaml, TAGMA_SDK_VERSION, YAML_REQUIRES_FIELD_MIN_SDK } from '@tagma/sdk/yaml';
@@ -18,7 +20,8 @@ import {
   requirementsPath,
   serializeRequirementsMd,
 } from '../server/requirements-sync';
-import { registerWorkspaceRoutes } from '../server/routes/workspace';
+import { getFileVersion, hasFileChanged } from '../server/optimistic-lock';
+import { __workspaceRouteTestHooks, registerWorkspaceRoutes } from '../server/routes/workspace';
 import { S } from '../server/state';
 import {
   _resetFsCapabilities,
@@ -107,6 +110,8 @@ afterEach(() => {
   S.layout = { positions: {} };
   S.yamlEditLock = null;
   S.stateRevision = 0;
+  delete __workspaceRouteTestHooks.afterRestoreLayoutWrite;
+  delete __workspaceRouteTestHooks.beforeDeleteStagedFolder;
   S.stateEventSeq = 0;
   _resetFsCapabilities();
   for (const dir of tempDirs.splice(0)) {
@@ -206,7 +211,7 @@ describe('workspace route validation', () => {
     writeFileSync(yamlPath, 'pipeline:\n  name: Old\n  tracks: []\n', 'utf-8');
     S.workDir = workDir;
     S.yamlPath = yamlPath;
-    S.yamlVersion = { mtime: 1, size: 1 };
+    S.yamlVersion = getFileVersion(yamlPath);
     S.config = {
       name: 'Versioned Export',
       tracks: [{ id: 'main', name: 'Main', tasks: [{ id: 'task', prompt: 'Hello' }] }],
@@ -887,6 +892,125 @@ describe('workspace route validation', () => {
     expect(manifest.entries).toEqual([]);
   });
 
+  test('POST /api/delete-file leaves the pipeline intact when secret cleanup fails', () => {
+    S.workDir = makeTempDir();
+    const pipelineDir = join(S.workDir, '.tagma', 'badsecret');
+    const yamlPath = join(pipelineDir, 'badsecret.yaml');
+    mkdirSync(pipelineDir, { recursive: true });
+    writeFileSync(yamlPath, 'pipeline:\n  name: Bad Secret\n  tracks: []\n', 'utf-8');
+    writeFileSync(join(S.workDir, '.tagma', 'secrets.json'), '{not valid json', 'utf-8');
+    S.yamlPath = yamlPath;
+    S.config = createEmptyPipeline('Bad Secret');
+
+    const handler = createRouteHarness().post('/api/delete-file');
+    const res = makeRes();
+    handler({ workspace: S, body: { path: yamlPath } }, res);
+
+    expect(res.statusCode).toBe(500);
+    expect(existsSync(pipelineDir)).toBe(true);
+    expect(existsSync(yamlPath)).toBe(true);
+    expect(S.yamlPath).toBe(yamlPath);
+    expect(S.config.name).toBe('Bad Secret');
+  });
+
+  test('POST /api/delete-file stages the folder before deleting secret bindings', () => {
+    S.workDir = makeTempDir();
+    const pipelineDir = join(S.workDir, '.tagma', 'stagedrm');
+    const yamlPath = join(pipelineDir, 'stagedrm.yaml');
+    mkdirSync(pipelineDir, { recursive: true });
+    writeFileSync(yamlPath, 'pipeline:\n  name: Staged Remove\n  tracks: []\n', 'utf-8');
+    const manifestPath = join(S.workDir, '.tagma', 'secrets.json');
+    writeFileSync(
+      manifestPath,
+      JSON.stringify(
+        {
+          version: 1,
+          workspaceId: 'route-delete-staged-workspace',
+          entries: [
+            {
+              id: '123e4567-e89b-12d3-a456-426614174001',
+              envName: 'API_TOKEN',
+              scope: 'pipeline',
+              pipelinePath: '.tagma/stagedrm/stagedrm.yaml',
+              description: null,
+              createdAt: '2026-05-15T00:00:00.000Z',
+              updatedAt: '2026-05-15T00:00:00.000Z',
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+      'utf-8',
+    );
+    S.yamlPath = yamlPath;
+    S.config = createEmptyPipeline('Staged Remove');
+    let stagedFolderPath = '';
+    __workspaceRouteTestHooks.beforeDeleteStagedFolder = (context) => {
+      stagedFolderPath = context.stagedFolderPath;
+      throw new Error('synthetic staged cleanup failure');
+    };
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      const handler = createRouteHarness().post('/api/delete-file');
+      const res = makeRes();
+      handler({ workspace: S, body: { path: yamlPath } }, res);
+
+      expect(res.statusCode).toBe(200);
+      expect(existsSync(pipelineDir)).toBe(false);
+      expect(existsSync(yamlPath)).toBe(false);
+      expect(stagedFolderPath).not.toBe('');
+      expect(existsSync(stagedFolderPath)).toBe(true);
+      expect(basename(stagedFolderPath).startsWith('.stagedrm.deleting-')).toBe(true);
+      expect(readdirSync(join(S.workDir, '.tagma')).some((name) => name === 'stagedrm')).toBe(
+        false,
+      );
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8')) as { entries: unknown[] };
+      expect(manifest.entries).toEqual([]);
+      expect(S.yamlPath).toBeNull();
+      expect(S.config.name).toBe('Untitled Pipeline');
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  test('POST /api/workspace/chat-result-copy removes newly-created restore layout on failure', () => {
+    S.workDir = makeTempDir();
+    const pipelineDir = join(S.workDir, '.tagma', 'chat');
+    const yamlPath = join(pipelineDir, 'chat.yaml');
+    const layoutPath = join(pipelineDir, 'chat.layout.json');
+    const originalYaml = 'pipeline:\n  name: Chat\n  tracks: []\n';
+    mkdirSync(pipelineDir, { recursive: true });
+    writeFileSync(yamlPath, originalYaml, 'utf-8');
+    S.yamlPath = yamlPath;
+    S.config = createEmptyPipeline('Chat');
+    __workspaceRouteTestHooks.afterRestoreLayoutWrite = () => {
+      throw new Error('synthetic restore failure');
+    };
+
+    const handler = createRouteHarness().post('/api/workspace/chat-result-copy');
+    const res = makeRes();
+    handler(
+      {
+        workspace: S,
+        body: {
+          sourcePath: yamlPath,
+          restoreOriginal: {
+            path: yamlPath,
+            yaml: originalYaml,
+            layout: { positions: { 'main.task': { x: 10, y: 20 } } },
+          },
+        },
+      },
+      res,
+    );
+
+    expect(res.statusCode).toBe(500);
+    expect(readFileSync(yamlPath, 'utf-8')).toBe(originalYaml);
+    expect(existsSync(layoutPath)).toBe(false);
+  });
+
   test('POST /api/workspace/workflows creates a workflow from the current pipeline', () => {
     S.workDir = makeTempDir();
     const pipelineDir = join(S.workDir, '.tagma', 'build');
@@ -1182,5 +1306,87 @@ describe('workspace route validation', () => {
     expect(res.statusCode).toBe(400);
     expect(String((res.body as { error?: unknown }).error)).toContain('outside the workspace');
     expect(S.yamlEditLock).toBeNull();
+  });
+  test('optimistic file versions detect same-size same-mtime YAML edits by hash', () => {
+    const workDir = makeTempDir();
+    const yamlPath = join(workDir, '.tagma', 'hash', 'hash.yaml');
+    mkdirSync(join(workDir, '.tagma', 'hash'), { recursive: true });
+    writeFileSync(yamlPath, 'pipeline:\n  name: AAAA\n  tracks: []\n', 'utf-8');
+    const version = getFileVersion(yamlPath);
+    const mtime = statSync(yamlPath).mtime;
+
+    writeFileSync(yamlPath, 'pipeline:\n  name: BBBB\n  tracks: []\n', 'utf-8');
+    utimesSync(yamlPath, mtime, mtime);
+
+    expect(hasFileChanged(yamlPath, version)).toBe(true);
+  });
+
+  test('POST /api/save-as refuses to overwrite an existing pipeline without confirmation', () => {
+    const workDir = makeTempDir();
+    const sourcePath = join(workDir, '.tagma', 'source', 'source.yaml');
+    const targetPath = join(workDir, '.tagma', 'target', 'target.yaml');
+    mkdirSync(join(workDir, '.tagma', 'source'), { recursive: true });
+    mkdirSync(join(workDir, '.tagma', 'target'), { recursive: true });
+    writeFileSync(targetPath, 'pipeline:\n  name: Keep Me\n  tracks: []\n', 'utf-8');
+    S.workDir = workDir;
+    S.yamlPath = sourcePath;
+    S.config = createEmptyPipeline('New Content');
+
+    const handler = createRouteHarness().post('/api/save-as');
+    const res = makeRes();
+    handler({ workspace: S, body: { path: targetPath } }, res);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toMatchObject({ code: 'PIPELINE_EXISTS', path: targetPath });
+    expect(readFileSync(targetPath, 'utf-8')).toContain('Keep Me');
+  });
+
+  test('POST /api/export-file rejects stale source YAML instead of overwriting it', () => {
+    const workDir = makeTempDir();
+    const destDir = makeTempDir();
+    const yamlPath = join(workDir, '.tagma', 'exported', 'exported.yaml');
+    mkdirSync(dirname(yamlPath), { recursive: true });
+    writeFileSync(yamlPath, 'pipeline:\n  name: Original\n  tracks: []\n', 'utf-8');
+    S.workDir = workDir;
+    S.yamlPath = yamlPath;
+    S.yamlVersion = getFileVersion(yamlPath);
+    S.config = createEmptyPipeline('In Memory');
+    writeFileSync(yamlPath, 'pipeline:\n  name: External\n  tracks: []\n', 'utf-8');
+    const { token } = issueFsCapability(destDir, 'export-file', S);
+
+    const handler = createRouteHarness().post('/api/export-file');
+    const res = makeRes();
+    handler({ workspace: S, body: { destDir, capabilityToken: token } }, res);
+
+    expect(res.statusCode).toBe(409);
+    expect((res.body as { code?: string }).code).toBe('CONFLICT');
+    expect(readFileSync(yamlPath, 'utf-8')).toContain('External');
+  });
+
+  test('GET /api/workspace/usage reads current and rotated usage generations', () => {
+    const workDir = makeTempDir();
+    const usageDir = join(workDir, '.tagma', '.usage');
+    mkdirSync(usageDir, { recursive: true });
+    writeFileSync(
+      join(usageDir, 'usage.1.jsonl'),
+      `${JSON.stringify({ ts: 1, messageID: 'old' })}\n`,
+      'utf-8',
+    );
+    writeFileSync(
+      join(usageDir, 'usage.jsonl'),
+      `${JSON.stringify({ ts: 2, messageID: 'current' })}\n`,
+      'utf-8',
+    );
+    S.workDir = workDir;
+
+    const handler = createRouteHarness().get('/api/workspace/usage');
+    const res = makeRes();
+    handler({ workspace: S, query: {} }, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(
+      (res.body as { records: Array<{ messageID: string }> }).records.map((r) => r.messageID),
+    ).toEqual(['current', 'old']);
+    expect((res.body as { totalRecords: number }).totalRecords).toBe(2);
   });
 });

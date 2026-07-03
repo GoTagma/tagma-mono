@@ -38,7 +38,8 @@ import { createHash } from 'node:crypto';
 
 export type ExternalChangeEvent =
   | { type: 'external-change'; path: string; content: string }
-  | { type: 'external-conflict'; path: string };
+  | { type: 'external-conflict'; path: string }
+  | { type: 'external-delete'; path: string };
 
 type Listener = (event: ExternalChangeEvent) => void;
 
@@ -181,7 +182,11 @@ export class FileWatcher {
     const check = () => {
       handle.debounce = null;
       if (this.current !== handle) return; // superseded
-      if (!existsSync(filePath)) return;
+      if (!existsSync(filePath)) {
+        this.emit({ type: 'external-delete', path: filePath });
+        this.stopWatching();
+        return;
+      }
       let content: string;
       let mtimeMs: number;
       try {
@@ -267,6 +272,10 @@ export class FileWatcher {
 //     writing or every save will echo back as an external event.
 
 export type LayoutChangeEvent =
+  | {
+      type: 'external-delete';
+      path: string;
+    }
   | {
       type?: 'external-change';
       path: string;
@@ -365,7 +374,11 @@ export class LayoutFileWatcher {
     const check = () => {
       handle.debounce = null;
       if (this.current !== handle) return; // superseded
-      if (!existsSync(filePath)) return;
+      if (!existsSync(filePath)) {
+        this.emit({ type: 'external-delete', path: filePath });
+        this.stopWatching();
+        return;
+      }
       let content: string;
       let mtimeMs: number;
       try {

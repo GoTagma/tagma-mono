@@ -68,6 +68,28 @@ describe('migrateFlatPipelinesToFolders', () => {
     expect(second.errors).toHaveLength(0);
   });
 
+  test('removes the created folder after companion migration fails', () => {
+    const { workDir, ws } = makeWorkspace();
+    const tagmaDir = join(workDir, '.tagma');
+    const folder = join(tagmaDir, 'broken');
+    writeFileSync(join(tagmaDir, 'broken.yaml'), 'pipeline:\n  name: Broken\n');
+    mkdirSync(join(tagmaDir, 'broken.layout.json'));
+
+    const report = migrateFlatPipelinesToFolders(ws);
+    expect(report.migrated).toHaveLength(0);
+    expect(report.conflicts).toHaveLength(0);
+    expect(report.errors).toHaveLength(1);
+    expect(report.errors[0]?.detail).toContain('non-file sibling');
+    expect(existsSync(join(tagmaDir, 'broken.yaml'))).toBe(true);
+    expect(existsSync(folder)).toBe(false);
+
+    const retry = migrateFlatPipelinesToFolders(ws);
+    expect(retry.conflicts).toHaveLength(0);
+    expect(retry.errors).toHaveLength(1);
+    expect(retry.errors[0]?.detail).toContain('non-file sibling');
+    expect(existsSync(folder)).toBe(false);
+  });
+
   test('reports conflict when both .tagma/foo.yaml and .tagma/foo/foo.yaml exist', () => {
     const { workDir, ws } = makeWorkspace();
     const tagmaDir = join(workDir, '.tagma');
