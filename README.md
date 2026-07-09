@@ -82,6 +82,8 @@ tasks:
 bun install
 # If proxy is blocking:
 $env:HTTP_PROXY=''; $env:HTTPS_PROXY=''; bun install --force
+# Desktop development also needs the Electron runtime binary:
+bun run --filter tagma-desktop ensure:electron
 ```
 
 ### Local Development
@@ -90,7 +92,7 @@ $env:HTTP_PROXY=''; $env:HTTPS_PROXY=''; bun install --force
 bun run dev:editor     # Start editor (server + client concurrently)
 bun run dev:server     # Start server only (watch mode)
 bun run dev:client     # Start Vite client only
-bun run dev:desktop    # Build the desktop chain and launch the Electron shell
+bun run dev:desktop    # Ensure Electron runtime, build the desktop chain, and launch the Electron shell
 ```
 
 ### Build

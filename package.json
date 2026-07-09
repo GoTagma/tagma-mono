@@ -56,7 +56,7 @@
     "dev:server": "bun run --filter tagma-editor dev:server",
     "dev:client": "bun run --filter tagma-editor dev:client",
     "dev:desktop:hmr": "bun run --filter tagma-desktop dev:hmr",
-    "dev:desktop": "bun run build:desktop && bun run --filter tagma-desktop start",
+    "dev:desktop": "bun run --filter tagma-desktop ensure:electron && bun run build:desktop && bun run --filter tagma-desktop start",
     "pack:desktop": "bun run build:desktop && bun run --filter tagma-desktop pack",
     "dist:desktop:win": "bun run build:desktop && bun run --filter tagma-desktop dist:win",
     "dist:desktop:linux": "bun run build:desktop && bun run --filter tagma-desktop dist:linux",

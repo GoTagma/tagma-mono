@@ -19,7 +19,7 @@ Electron shell that wraps the [tagma-editor](../editor) into a packaged desktop 
 From the repo root:
 
 ```bash
-bun run dev:desktop      # full chain build, then launch electron .
+bun run dev:desktop      # ensure Electron runtime, full chain build, then launch the shell
 bun run pack:desktop     # electron-builder --dir (unpacked, no installer)
 ```
 
@@ -31,13 +31,16 @@ bun run build:deps       # rebuild the editor client + sidecar in apps/editor (s
 bun run build:all        # build:deps + build (editor + sidecar + main)
 bun run check            # tsc --noEmit on the Electron main/preload sources
 bun run test             # bun test (Electron-side tests only)
-bun run dev              # bun run build && electron .  (rebuild main, then launch)
-bun run start            # launch electron against the existing build
+bun run ensure:electron  # verify/download the local Electron runtime binary
+bun run dev              # rebuild main, then launch through the Electron runtime guard
+bun run start            # launch Electron against the existing build through the runtime guard
 bun run fetch:opencode   # download the bundled opencode binary into build/opencode/
 bun run pack             # build:all + fetch:opencode + stage sidecar + electron-builder --dir
 ```
 
 The unpacked output lives at `release/` (electron-builder default).
+
+If `ensure:electron` fails with a download `fetch failed` or timeout, check proxy environment variables first. A dead local proxy such as `HTTP_PROXY=http://127.0.0.1:7890` can make Electron's binary download fail before the app starts. Clear the proxy for the retry or set a working `HTTPS_PROXY` / `ELECTRON_MIRROR`, then run `bun run --filter tagma-desktop ensure:electron` again.
 
 ## Packaging
 
