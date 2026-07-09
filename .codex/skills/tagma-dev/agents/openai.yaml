@@ -1,0 +1,5 @@
+interface:
+  display_name: "Tagma Dev"
+  short_description: "Tagma product development guardrails."
+  default_prompt: "Use $tagma-dev when making Tagma monorepo implementation, refactor, frontend, schema, test, or release changes."
+
