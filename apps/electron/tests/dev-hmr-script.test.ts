@@ -111,6 +111,15 @@ describe('desktop HMR scripts', () => {
     expect(windowsTaskkillArgs(1234, true)).toEqual(['/F', '/T', '/PID', '1234']);
   });
 
+  test('launcher cleans up children for console close and process exit paths', () => {
+    const source = readFileSync(join(electronRoot, 'scripts', 'dev-hmr.ts'), 'utf-8');
+
+    expect(source).toContain("'SIGBREAK'");
+    expect(source).toContain("'SIGHUP'");
+    expect(source).toContain("process.once('exit'");
+    expect(source).toContain('killTrackedChildrenSync(children)');
+  });
+
   test('main process exits HMR when the last desktop window closes', () => {
     const mainSource = readFileSync(join(electronRoot, 'src', 'main.ts'), 'utf-8');
 

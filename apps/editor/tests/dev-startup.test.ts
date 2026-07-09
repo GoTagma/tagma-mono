@@ -55,6 +55,22 @@ describe('editor dev startup scripts', () => {
     expect(windowsTaskkillArgs(1234, true)).toEqual(['/F', '/T', '/PID', '1234']);
   });
 
+  test('launcher cleans up children for console close and process exit paths', () => {
+    const source = readFileSync(join(editorRoot, 'scripts', 'dev.ts'), 'utf-8');
+
+    expect(source).toContain("'SIGBREAK'");
+    expect(source).toContain("'SIGHUP'");
+    expect(source).toContain("process.once('exit'");
+    expect(source).toContain('killTrackedChildrenSync(children)');
+  });
+
+  test('server handles Windows console close signals during graceful shutdown', () => {
+    const source = readFileSync(join(editorRoot, 'server', 'index.ts'), 'utf-8');
+
+    expect(source).toContain("process.on('SIGBREAK', gracefulShutdown);");
+    expect(source).toContain("process.on('SIGHUP', gracefulShutdown);");
+  });
+
   test('waits for a TCP port before continuing startup', async () => {
     const server = createServer();
     await new Promise<void>((resolve) => {

@@ -509,3 +509,5 @@ function gracefulShutdown() {
 
 process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
+process.on('SIGBREAK', gracefulShutdown);
+process.on('SIGHUP', gracefulShutdown);

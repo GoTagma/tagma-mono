@@ -153,6 +153,42 @@ async function stopChildren(children: Set<Subprocess>): Promise<void> {
   }
 }
 
+function killTrackedChildrenSync(children: Set<Subprocess>): void {
+  for (const child of [...children]) {
+    killSubprocess(child, true);
+  }
+}
+
+const DEV_EXIT_SIGNALS = new Map<NodeJS.Signals, number>([
+  ['SIGINT', 130],
+  ['SIGTERM', 143],
+  ['SIGBREAK', 131],
+  ['SIGHUP', 129],
+]);
+
+function installDevExitHandlers(
+  children: Set<Subprocess>,
+  stopAndExit: (code: number) => Promise<void>,
+): () => void {
+  const onExit = () => {
+    killTrackedChildrenSync(children);
+  };
+  process.once('exit', onExit);
+
+  const signalHandlers = [...DEV_EXIT_SIGNALS].map(([signal, code]) => {
+    const handler = () => void stopAndExit(code);
+    process.once(signal, handler);
+    return { signal, handler };
+  });
+
+  return () => {
+    process.off('exit', onExit);
+    for (const { signal, handler } of signalHandlers) {
+      process.off(signal, handler);
+    }
+  };
+}
+
 export async function runDesktopHmr(): Promise<void> {
   const children = new Set<Subprocess>();
   let stopping = false;
@@ -170,8 +206,7 @@ export async function runDesktopHmr(): Promise<void> {
     process.exit(code);
   };
 
-  process.once('SIGINT', () => void stopAndExit(130));
-  process.once('SIGTERM', () => void stopAndExit(143));
+  const uninstallExitHandlers = installDevExitHandlers(children, stopAndExit);
 
   try {
     const rendererPort = await selectAvailableTcpPort({
@@ -242,11 +277,13 @@ export async function runDesktopHmr(): Promise<void> {
     );
     const electronExit = electron.exited.then((code) => ({ name: 'electron', code }));
     const exit = await Promise.race([viteExit, electronExit]);
+    if (stopping) return;
 
     if (exit.code !== 0) {
       throw new Error(`[desktop:hmr] ${exit.name} exited with code ${exit.code}`);
     }
   } finally {
+    uninstallExitHandlers();
     if (!stopping) {
       stopping = true;
       await stopChildren(children);
