@@ -83,11 +83,28 @@ export function restoreComposerDraftAfterSendFailure(
   if (!state.composerDraft) state.setComposerDraft(submittedText);
 }
 
+export function getChatComposerAvailability(input: {
+  hasContent: boolean;
+  hasModel: boolean;
+  ready: boolean;
+  sending: boolean;
+  reconciling: boolean;
+  flushing: boolean;
+  yamlEditLocked: boolean;
+  yamlEditLockLocal: boolean;
+}): { blockedByAnotherChatUpdate: boolean; canSend: boolean } {
+  const blockedByAnotherChatUpdate =
+    !input.sending &&
+    (input.reconciling || input.flushing || (input.yamlEditLocked && !input.yamlEditLockLocal));
+  return {
+    blockedByAnotherChatUpdate,
+    canSend: input.hasContent && input.hasModel && input.ready && !blockedByAnotherChatUpdate,
+  };
+}
+
 export function ChatComposer() {
   const send = useChatStore((s) => s.send);
   const abort = useChatStore((s) => s.abort);
-  const currentSessionId = useChatStore((s) => s.currentSessionId);
-  const sessionStates = useChatStore((s) => s.sessionStates);
   const sending = useChatStore((s) => s.sending);
   const reconciling = useChatStore((s) => s.reconciling);
   const flushing = useChatStore((s) => s.flushing);
@@ -96,6 +113,7 @@ export function ChatComposer() {
   const text = useChatStore((s) => s.composerDraft);
   const setText = useChatStore((s) => s.setComposerDraft);
   const yamlEditLocked = useYamlEditLockStore((s) => s.active);
+  const yamlEditLockLocal = useYamlEditLockStore((s) => s.local);
   // Attachments can carry a message on their own (the instruction is optional
   // once context is attached), so the send affordance keys off either signal.
   const hasAttachments = useChatStore((s) => s.composerAttachments.length > 0);
@@ -112,18 +130,16 @@ export function ChatComposer() {
     el.style.height = `${next}px`;
   }, [text]);
 
-  const hiddenTurnActive = Object.entries(sessionStates).some(
-    ([sessionId, runtime]) =>
-      sessionId !== currentSessionId &&
-      (runtime.sending ||
-        !!runtime.pendingUserText ||
-        runtime.queuedMessages.length > 0 ||
-        runtime.flushing),
-  );
-  const blockedByAnotherChatUpdate =
-    !sending && (hiddenTurnActive || reconciling || flushing || yamlEditLocked);
-  const canSend =
-    (text.trim().length > 0 || hasAttachments) && !!model && ready && !blockedByAnotherChatUpdate;
+  const { blockedByAnotherChatUpdate, canSend } = getChatComposerAvailability({
+    hasContent: text.trim().length > 0 || hasAttachments,
+    hasModel: !!model,
+    ready,
+    sending,
+    reconciling,
+    flushing,
+    yamlEditLocked,
+    yamlEditLockLocal,
+  });
 
   const submit = () => {
     if (!canSend) return;

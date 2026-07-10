@@ -525,6 +525,10 @@ function desktopChatTitleFromPrompt(text: string): string | null {
   return clipped ? `${clipped}...` : normalized.slice(0, DESKTOP_CHAT_TITLE_MAX_LENGTH);
 }
 
+function newDesktopChatSessionTitle(now = new Date()): string {
+  return `New session - ${now.toLocaleString()}`;
+}
+
 function isDefaultDesktopChatSessionTitle(title: string | null | undefined): boolean {
   const value = title?.trim() ?? '';
   return value.length === 0 || /^New Session\b/i.test(value);
@@ -3763,7 +3767,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set((prev) => ({ sessionStates: saveCurrentSessionRuntime(prev) }));
     clearTurnWatchdog();
     await getOpencodeClient(workspaceKey);
+    const title = newDesktopChatSessionTitle();
     const s = await createDesktopChatSessionWithMetadata(workspaceKey, {
+      title,
       metadata: buildDesktopChatSessionMetadata(workspaceKey, 'manual-new-session', get().model),
     });
     if (getOpencodeWorkspaceKey() !== workspaceKey) return;

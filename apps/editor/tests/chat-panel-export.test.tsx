@@ -12,6 +12,7 @@ import {
 } from '../src/components/chat/chat-pipeline-link';
 import type { ChatYamlSessionResult } from '../src/store/chat-store';
 import type { ActivityEvent, OpencodeThreadEntry } from '../src/api/opencode-chat';
+import { getChatComposerAvailability } from '../src/components/chat/ChatComposer';
 
 const visibleThread: OpencodeThreadEntry = {
   info: { id: 'm1', sessionID: 's1', role: 'assistant' },
@@ -63,6 +64,43 @@ describe('ChatPanel export affordance', () => {
 
     expect(historyIndex).toBeGreaterThan(-1);
     expect(exportIndex).toBeGreaterThan(historyIndex);
+  });
+
+  test('keeps send enabled in a new conversation while another conversation is running', () => {
+    const availability = getChatComposerAvailability({
+      hasContent: true,
+      hasModel: true,
+      ready: true,
+      sending: false,
+      reconciling: false,
+      flushing: false,
+      // A background conversation owns this window's shared YAML lease.
+      yamlEditLocked: true,
+      yamlEditLockLocal: true,
+    });
+
+    expect(availability).toEqual({
+      blockedByAnotherChatUpdate: false,
+      canSend: true,
+    });
+  });
+
+  test('keeps send blocked for a YAML lease owned outside this window', () => {
+    expect(
+      getChatComposerAvailability({
+        hasContent: true,
+        hasModel: true,
+        ready: true,
+        sending: false,
+        reconciling: false,
+        flushing: false,
+        yamlEditLocked: true,
+        yamlEditLockLocal: false,
+      }),
+    ).toEqual({
+      blockedByAnotherChatUpdate: true,
+      canSend: false,
+    });
   });
 
   test('prefers the pipeline display name for completion links', () => {

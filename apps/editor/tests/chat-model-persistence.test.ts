@@ -757,6 +757,28 @@ describe('chat model persistence', () => {
     expect(storage.getItem('tagma.chat.v2')).not.toContain('"modelID":"gpt-5"');
   });
 
+  test('titles a manually created session with the renderer local time', async () => {
+    setClientWorkspace('C:/local-time-title-repo');
+
+    const beforeCreate = new Date();
+    await useChatStore.getState().newSession();
+    const afterCreate = new Date();
+
+    expect(sessionCreateRequests).toHaveLength(1);
+    const createdTitle = sessionCreateRequests[0]?.body.title;
+    expect(typeof createdTitle).toBe('string');
+    if (typeof createdTitle !== 'string') throw new Error('manual session title was not a string');
+    expect(createdTitle).toStartWith('New session - ');
+    expect(
+      new Set([beforeCreate.toLocaleString(), afterCreate.toLocaleString()]).has(
+        createdTitle.slice('New session - '.length),
+      ),
+    ).toBe(true);
+    expect(createdTitle).not.toContain('T');
+    expect(createdTitle).not.toContain('Z');
+    expect(useChatStore.getState().sessions[0]?.title).toBe(createdTitle);
+  });
+
   test('blocks model changes and queues follow-up messages during send preflight', async () => {
     const repoA = 'C:/preflight-repo-a';
     const repoB = 'C:/preflight-repo-b';

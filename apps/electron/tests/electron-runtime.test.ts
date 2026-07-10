@@ -33,7 +33,7 @@ describe('electron runtime launcher', () => {
 
       expect(status.ok).toBe(false);
       expect(status.reason).toBe('missing-path-file');
-      expect(status.binaryPath).toEndWith('dist\\electron.exe');
+      expect(status.binaryPath).toEndWith(join('dist', 'electron.exe'));
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -51,7 +51,7 @@ describe('electron runtime launcher', () => {
 
       expect(status.ok).toBe(true);
       expect(status.reason).toBe('runtime-present');
-      expect(status.binaryPath).toEndWith('dist\\electron.exe');
+      expect(status.binaryPath).toEndWith(join('dist', 'electron.exe'));
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
