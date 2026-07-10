@@ -25,7 +25,14 @@
 // ═══ Task Status ═══
 
 export type TaskStatus =
-  'idle' | 'waiting' | 'running' | 'success' | 'failed' | 'timeout' | 'skipped' | 'blocked';
+  | 'idle'
+  | 'waiting'
+  | 'running'
+  | 'success'
+  | 'failed'
+  | 'timeout'
+  | 'skipped'
+  | 'blocked';
 
 /**
  * What to do when a task in this track fails.
@@ -417,7 +424,12 @@ export interface WorkflowConfig extends PipelineGraphConfig {
 }
 
 export type PipelineGraphNodeStatus =
-  'waiting' | 'running' | 'success' | 'failed' | 'skipped' | 'aborted';
+  | 'waiting'
+  | 'running'
+  | 'success'
+  | 'failed'
+  | 'skipped'
+  | 'aborted';
 
 export interface PipelineGraphPipelineAttemptState {
   readonly attempt: number;

@@ -22,9 +22,7 @@ test('desktop dev startup ensures the Electron runtime before building', () => {
 });
 
 test('local Electron launch scripts use the runtime guard instead of lazy CLI download', () => {
-  expect(packageJson.scripts['ensure:electron']).toBe(
-    'node ./scripts/electron-runtime.mjs ensure',
-  );
+  expect(packageJson.scripts['ensure:electron']).toBe('node ./scripts/electron-runtime.mjs ensure');
   expect(packageJson.scripts['start']).toBe('node ./scripts/electron-runtime.mjs start .');
   expect(packageJson.scripts['dev']).toBe(
     'bun run build && node ./scripts/electron-runtime.mjs start .',

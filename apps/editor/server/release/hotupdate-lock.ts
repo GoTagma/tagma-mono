@@ -1,7 +1,8 @@
 export type HotupdateKind = 'editor' | 'sidecar' | 'opencode' | 'release';
 
 export type HotupdateStatus =
-  { active: false } | { active: true; kind: HotupdateKind; startedAt: string };
+  | { active: false }
+  | { active: true; kind: HotupdateKind; startedAt: string };
 
 let activeHotupdate: {
   kind: HotupdateKind;

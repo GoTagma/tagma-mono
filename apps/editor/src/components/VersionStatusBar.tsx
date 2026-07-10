@@ -27,7 +27,9 @@ import { ZoomControls } from './board/ZoomControls';
 type Popover = 'tagma' | 'opencode' | null;
 
 type EditorFetch =
-  { kind: 'loading' } | { kind: 'loaded'; info: EditorInfo } | { kind: 'error'; message: string };
+  | { kind: 'loading' }
+  | { kind: 'loaded'; info: EditorInfo }
+  | { kind: 'error'; message: string };
 
 type EditorApply =
   | { kind: 'idle' }
@@ -37,7 +39,9 @@ type EditorApply =
   | { kind: 'error'; message: string };
 
 type SidecarFetch =
-  { kind: 'loading' } | { kind: 'loaded'; info: SidecarInfo } | { kind: 'error'; message: string };
+  | { kind: 'loading' }
+  | { kind: 'loaded'; info: SidecarInfo }
+  | { kind: 'error'; message: string };
 
 type SidecarApply =
   | { kind: 'idle' }
@@ -47,7 +51,9 @@ type SidecarApply =
   | { kind: 'error'; message: string };
 
 type OpencodeFetch =
-  { kind: 'loading' } | { kind: 'loaded'; info: OpencodeInfo } | { kind: 'error'; message: string };
+  | { kind: 'loading' }
+  | { kind: 'loaded'; info: OpencodeInfo }
+  | { kind: 'error'; message: string };
 
 type BundleApply =
   | { kind: 'idle' }

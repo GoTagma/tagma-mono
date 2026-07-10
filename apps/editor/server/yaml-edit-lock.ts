@@ -181,7 +181,8 @@ export function isYamlEditLockProtectedMutation(path: string): boolean {
 }
 
 export type AcquireYamlEditLockResult =
-  { ok: true; lock: YamlEditLock; refreshed: boolean } | { ok: false; lock: YamlEditLock };
+  | { ok: true; lock: YamlEditLock; refreshed: boolean }
+  | { ok: false; lock: YamlEditLock };
 
 export function acquireYamlEditLock(
   ws: WorkspaceState,

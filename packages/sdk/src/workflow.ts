@@ -1041,7 +1041,8 @@ function validateWorkflowPath(value: unknown, basePath: string, errors: Validati
 
 function detectPipelineCycles(pipelines: readonly unknown[]): ValidationError[] {
   const pipelineNodes = pipelines.filter(isRecord) as unknown as readonly (
-    RawWorkflowPipelineConfig | PipelineGraphPipelineConfig
+    | RawWorkflowPipelineConfig
+    | PipelineGraphPipelineConfig
   )[];
   const ids = new Set(
     pipelineNodes
