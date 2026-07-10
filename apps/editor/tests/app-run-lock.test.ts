@@ -19,8 +19,7 @@ describe('App run lock helpers', () => {
 
   test('allows pipeline runs when the YAML edit lock is inactive', () => {
     const helper = (AppHelpers as Record<string, unknown>).yamlEditLockRunBlockMessage as
-      | ((locked: boolean, reason: string | null) => string | null)
-      | undefined;
+      ((locked: boolean, reason: string | null) => string | null) | undefined;
 
     expect(helper?.(false, 'Chat is editing build.yaml')).toBeNull();
   });

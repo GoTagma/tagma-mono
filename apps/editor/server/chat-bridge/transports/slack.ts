@@ -155,8 +155,7 @@ export const SLACK_INBOUND_DOWN_HINT =
   'then reconnect.';
 
 export type SlackAuthOutcome =
-  | { kind: 'ok'; username: string | null }
-  | { kind: 'error'; message: string };
+  { kind: 'ok'; username: string | null } | { kind: 'error'; message: string };
 
 /**
  * Pure probe decision. Inbound (Socket Mode) liveness gates everything: a

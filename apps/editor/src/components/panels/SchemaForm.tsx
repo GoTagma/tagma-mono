@@ -26,13 +26,7 @@ import { CopyableField } from './CopyableField';
 // ── Schema types ────────────────────────────────────────────────────────────
 
 export type SchemaFieldType =
-  | 'string'
-  | 'number'
-  | 'boolean'
-  | 'enum'
-  | 'path'
-  | 'duration'
-  | 'number-or-list';
+  'string' | 'number' | 'boolean' | 'enum' | 'path' | 'duration' | 'number-or-list';
 
 export interface SchemaField {
   readonly key: string;

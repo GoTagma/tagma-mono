@@ -1273,9 +1273,7 @@ export function discoverWorkspaceDeclaredPlugins(ws: WorkspaceState): string[] {
     scannedCount += 1;
     try {
       const doc = yaml.load(readFileSync(absPath, 'utf-8')) as
-        | { pipeline?: { plugins?: unknown }; plugins?: unknown }
-        | null
-        | undefined;
+        { pipeline?: { plugins?: unknown }; plugins?: unknown } | null | undefined;
       // Accept both `pipeline.plugins` (canonical) and a top-level `plugins`
       // (some hand-written YAMLs use the flat shape).
       const list =
@@ -1426,12 +1424,7 @@ export async function autoLoadInstalledPlugins(
  * Keeps the wire format symmetric with PluginManager.classifyError.
  */
 export type PluginErrorKind =
-  | 'network'
-  | 'permission'
-  | 'version'
-  | 'notfound'
-  | 'invalid'
-  | 'unknown';
+  'network' | 'permission' | 'version' | 'notfound' | 'invalid' | 'unknown';
 
 export function classifyServerError(err: unknown): { message: string; kind: PluginErrorKind } {
   const message = err instanceof Error ? err.message : String(err);
