@@ -4,6 +4,7 @@ import {
   isAllowedEditorUrl,
   normalizeDevRendererUrl,
   reloadSessionsForRecoveredSidecar,
+  SidecarRestartGuard,
   type ReloadableWindowSession,
 } from '../src/sidecar-recovery';
 
@@ -27,6 +28,25 @@ function session(
 }
 
 describe('sidecar recovery helpers', () => {
+  test('opens a restart circuit after repeated ready-time exits in one window', () => {
+    const guard = new SidecarRestartGuard(3, 30_000);
+
+    expect(guard.tryAcquire(1_000)).toBe(true);
+    expect(guard.tryAcquire(2_000)).toBe(true);
+    expect(guard.tryAcquire(3_000)).toBe(true);
+    expect(guard.tryAcquire(4_000)).toBe(false);
+    expect(guard.tryAcquire(31_001)).toBe(true);
+  });
+
+  test('reset clears restart circuit history for a new window lifecycle', () => {
+    const guard = new SidecarRestartGuard(1, 30_000);
+
+    expect(guard.tryAcquire(1_000)).toBe(true);
+    expect(guard.tryAcquire(2_000)).toBe(false);
+    guard.reset();
+    expect(guard.tryAcquire(2_000)).toBe(true);
+  });
+
   test('builds renderer URLs with workspace query and auth fragment', () => {
     expect(buildEditorRenderUrl(8123, 'C:/Work Space', 'secret token')).toBe(
       'http://127.0.0.1:8123/?ws=C%3A%2FWork+Space#auth=secret%20token',

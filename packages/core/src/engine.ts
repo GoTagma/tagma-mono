@@ -144,6 +144,34 @@ const POLL_INTERVAL_MS = 50;
 
 const liveRunIdsByWorkDir = new Map<string, Set<string>>();
 
+function isolateRunEventObserver(
+  observer: ((event: RunEventPayload) => void) | undefined,
+): ((event: RunEventPayload) => void) | undefined {
+  if (!observer) return undefined;
+  let reportedFailure = false;
+  const reportFailure = (err: unknown): void => {
+    if (reportedFailure) return;
+    reportedFailure = true;
+    console.error(
+      `[tagma] onEvent observer threw; pipeline execution will continue: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  };
+  return (event) => {
+    try {
+      const outcome = (observer as (value: RunEventPayload) => unknown)(event);
+      if (
+        outcome !== null &&
+        (typeof outcome === 'object' || typeof outcome === 'function') &&
+        typeof (outcome as { then?: unknown }).then === 'function'
+      ) {
+        void Promise.resolve(outcome).catch(reportFailure);
+      }
+    } catch (err) {
+      reportFailure(err);
+    }
+  };
+}
+
 function markRunLive(workDir: string, runId: string): void {
   const existing = liveRunIdsByWorkDir.get(workDir);
   if (existing) {
@@ -227,6 +255,8 @@ export async function runPipeline(
   workDir: string,
   options: RunPipelineOptions,
 ): Promise<EngineResult> {
+  const isolatedOnEvent = isolateRunEventObserver(options.onEvent);
+  const isolatedOptions = isolatedOnEvent ? { ...options, onEvent: isolatedOnEvent } : options;
   const approvalGateway = options.approvalGateway ?? new InMemoryApprovalGateway();
   const maxLogRuns = options.maxLogRuns ?? 20;
   const registry = options.registry;
@@ -240,9 +270,16 @@ export async function runPipeline(
   validatePipelineCwds(config, workDir);
 
   try {
-    return await runPipelineInner(config, workDir, options, approvalGateway, runId, maxLogRuns);
+    return await runPipelineInner(
+      config,
+      workDir,
+      isolatedOptions,
+      approvalGateway,
+      runId,
+      maxLogRuns,
+    );
   } catch (err) {
-    options.onEvent?.({
+    isolatedOnEvent?.({
       type: 'run_error',
       runId,
       error: err instanceof Error ? (err.stack ?? err.message) : String(err),
@@ -541,17 +578,30 @@ async function runPipelineInner(
     const finishedAt = nowISO();
     const durationMs = new Date(finishedAt).getTime() - new Date(startedAt).getTime();
 
-    if (ctx.abortReason !== null) {
+    const allSuccess =
+      ctx.abortReason === null &&
+      summary.failed === 0 &&
+      summary.timeout === 0 &&
+      summary.blocked === 0;
+
+    if (!allSuccess) {
       const reasonText =
         ctx.abortReason === 'timeout'
           ? 'Pipeline timeout exceeded'
           : ctx.abortReason === 'stop_all'
             ? 'Pipeline stopped (on_failure: stop_all)'
-            : 'Pipeline aborted by host';
+            : ctx.abortReason === 'external'
+              ? 'Pipeline aborted by host'
+              : 'Pipeline completed with task errors';
       await executeHook(
         config.hooks,
         'pipeline_error',
-        buildPipelineErrorContext(pipelineInfo, reasonText, undefined, ctx.abortReason),
+        buildPipelineErrorContext(
+          pipelineInfo,
+          reasonText,
+          undefined,
+          ctx.abortReason ?? undefined,
+        ),
         runtime,
         workDir,
         undefined,
@@ -573,12 +623,6 @@ async function runPipelineInner(
         options.envPolicy,
       );
     }
-
-    const allSuccess =
-      ctx.abortReason === null &&
-      summary.failed === 0 &&
-      summary.timeout === 0 &&
-      summary.blocked === 0;
 
     log.section('Pipeline summary');
     log.quiet(

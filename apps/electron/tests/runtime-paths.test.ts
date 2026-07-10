@@ -5,11 +5,19 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import {
+  compareVersions,
   detectVersionSkew,
   discardUserReleaseOverride,
   executableName,
   resolveRuntimePaths,
 } from '../src/runtime-paths';
+
+test('version comparison preserves integer precision beyond Number.MAX_SAFE_INTEGER', () => {
+  expect(compareVersions('9007199254740993.0.0', '9007199254740992.0.0')).toBeGreaterThan(0);
+  expect(
+    compareVersions('1.0.0-alpha.9007199254740993', '1.0.0-alpha.9007199254740992'),
+  ).toBeGreaterThan(0);
+});
 
 // These cases simulate a Windows sidecar (D:/... paths, platform: 'win32'),
 // so expected values must be built with path.win32 — otherwise on a Linux CI

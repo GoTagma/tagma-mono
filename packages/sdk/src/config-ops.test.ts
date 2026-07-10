@@ -2,6 +2,16 @@ import { describe, expect, test } from 'bun:test';
 import { removeTask, removeTrack, transferTask } from './config-ops';
 import type { RawPipelineConfig } from '@tagma/types';
 
+function bindingsWithProto<T extends Record<string, unknown>>(entries: T): T {
+  Object.defineProperty(entries, '__proto__', {
+    configurable: true,
+    enumerable: true,
+    value: { value: 'keep-me', type: 'string' },
+    writable: true,
+  });
+  return entries;
+}
+
 describe('transferTask', () => {
   test('does not remove the source task when the target track is missing', () => {
     const config: RawPipelineConfig = {
@@ -93,10 +103,10 @@ describe('transferTask', () => {
               id: 'consumer',
               command: 'echo {{inputs.result}} {{inputs.code}}',
               depends_on: ['move_me'],
-              inputs: {
+              inputs: bindingsWithProto({
                 result: { from: 'move_me.outputs.result', type: 'string' },
                 code: { from: 'move_me.exitCode', type: 'number' },
-              },
+              }),
             },
           ],
         },
@@ -110,6 +120,8 @@ describe('transferTask', () => {
     expect(consumer?.depends_on).toEqual(['b.move_me']);
     expect(consumer?.inputs?.result?.from).toBe('b.move_me.outputs.result');
     expect(consumer?.inputs?.code?.from).toBe('b.move_me.exitCode');
+    expect(Object.prototype.hasOwnProperty.call(consumer?.inputs, '__proto__')).toBe(true);
+    expect(consumer?.inputs?.['__proto__']).toEqual({ value: 'keep-me', type: 'string' });
   });
 });
 
@@ -175,7 +187,7 @@ describe('removeTask', () => {
               id: 'consume',
               command: 'echo {{inputs.city}} {{inputs.raw}}',
               depends_on: ['produce'],
-              inputs: {
+              inputs: bindingsWithProto({
                 city: {
                   from: 'produce.outputs.city',
                   type: 'string',
@@ -184,7 +196,7 @@ describe('removeTask', () => {
                 },
                 raw: { from: 'produce.stdout' },
                 matched: { from: 'outputs.city' },
-              },
+              }),
             },
           ],
         },
@@ -202,5 +214,7 @@ describe('removeTask', () => {
     });
     expect(consume?.inputs?.raw).toEqual({});
     expect(consume?.inputs?.matched?.from).toBe('outputs.city');
+    expect(Object.prototype.hasOwnProperty.call(consume?.inputs, '__proto__')).toBe(true);
+    expect(consume?.inputs?.['__proto__']).toEqual({ value: 'keep-me', type: 'string' });
   });
 });

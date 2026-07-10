@@ -69,6 +69,40 @@ function isTriggerTimeoutError(err: unknown): boolean {
   );
 }
 
+function triggerErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (
+    err &&
+    typeof err === 'object' &&
+    typeof (err as { message?: unknown }).message === 'string'
+  ) {
+    return (err as { message: string }).message;
+  }
+  return String(err);
+}
+
+function triggerFailureResult(
+  message: string,
+  failureKind: 'timeout' | 'spawn_error',
+  durationMs: number,
+): TaskResult {
+  const stderr = `[trigger] ${message}`;
+  return {
+    exitCode: -1,
+    stdout: '',
+    stderr,
+    stdoutPath: null,
+    stderrPath: null,
+    stdoutBytes: 0,
+    stderrBytes: new TextEncoder().encode(stderr).byteLength,
+    durationMs,
+    sessionId: null,
+    normalizedOutput: null,
+    failureKind,
+    outputs: null,
+  };
+}
+
 function substituteCommandInputs(
   command: CommandConfig,
   inputs: Readonly<Record<string, unknown>>,
@@ -204,7 +238,7 @@ async function blockTaskBeforeExecution(
     stdoutPath: null,
     stderrPath: null,
     stdoutBytes: 0,
-    stderrBytes: reason.length,
+    stderrBytes: new TextEncoder().encode(`[engine] ${reason}`).byteLength,
     durationMs: 0,
     sessionId: null,
     normalizedOutput: null,
@@ -431,6 +465,8 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       // If pipeline was aborted while we were still waiting for the trigger,
       // this task never entered running state → skipped, not timeout.
       state.finishedAt = nowISO();
+      const triggerMessage = triggerErrorMessage(err);
+      const triggerDurationMs = Math.max(0, Date.now() - taskDeadlineStartedAtMs);
       if (ctx.abortReason !== null) {
         if (!isTerminal(state.status)) {
           state.result = skippedTaskResult(
@@ -439,15 +475,18 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
           ctx.setTaskStatus(taskId, 'skipped');
         }
       } else if (isTriggerBlockedError(err)) {
+        state.result = triggerFailureResult(triggerMessage, 'spawn_error', triggerDurationMs);
         ctx.setTaskStatus(taskId, 'blocked'); // user/policy rejection
       } else if (isTriggerTimeoutError(err)) {
+        state.result = triggerFailureResult(triggerMessage, 'timeout', triggerDurationMs);
         ctx.setTaskStatus(taskId, 'timeout'); // genuine trigger wait timeout
       } else {
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = triggerMessage;
         log.warn(
           `[task:${taskId}]`,
           `trigger "${task.trigger.type}" threw an untyped error; treating as failed: ${msg}`,
         );
+        state.result = triggerFailureResult(msg, 'spawn_error', triggerDurationMs);
         ctx.setTaskStatus(taskId, 'failed');
       }
       try {
@@ -495,7 +534,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       stdoutPath: null,
       stderrPath: null,
       stdoutBytes: 0,
-      stderrBytes: errMsg.length,
+      stderrBytes: new TextEncoder().encode(errMsg).byteLength,
       durationMs: 0,
       sessionId: null,
       normalizedOutput: null,
@@ -1164,7 +1203,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       stdoutPath: null,
       stderrPath: null,
       stdoutBytes: 0,
-      stderrBytes: errMsg.length,
+      stderrBytes: new TextEncoder().encode(errMsg).byteLength,
       durationMs: 0,
       sessionId: null,
       normalizedOutput: null,

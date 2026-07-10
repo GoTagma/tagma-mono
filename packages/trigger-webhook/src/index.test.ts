@@ -93,6 +93,46 @@ describe('trigger-webhook plugin shape', () => {
 });
 
 describe('trigger-webhook hardening', () => {
+  test('shares one listener across different paths on the same host and port', async () => {
+    const port = unusedPort();
+    const first = WebhookTrigger.watch({ port, path: '/first', timeout: '5s' }, triggerContext());
+    let second: ReturnType<typeof WebhookTrigger.watch> | null = null;
+
+    try {
+      second = WebhookTrigger.watch({ port, path: '/second', timeout: '5s' }, triggerContext());
+      const secondResponse = await rawPost(port, '/second', 'two');
+      expect(secondResponse.status).toBe(202);
+      await expect(second.fired).resolves.toBe('two');
+
+      const firstResponse = await rawPost(port, '/first', 'one');
+      expect(firstResponse.status).toBe(202);
+      await expect(first.fired).resolves.toBe('one');
+    } finally {
+      await first.dispose('test cleanup');
+      await second?.dispose('test cleanup');
+      await Promise.allSettled([first.fired, ...(second ? [second.fired] : [])]);
+    }
+  });
+
+  test('can immediately reuse a port after the final waiter fires', async () => {
+    const port = unusedPort();
+
+    for (let index = 0; index < 5; index += 1) {
+      const handle = WebhookTrigger.watch(
+        { port, path: `/round-${index}`, timeout: '5s' },
+        triggerContext(),
+      );
+      try {
+        const response = await rawPost(port, `/round-${index}`, String(index));
+        expect(response.status).toBe(202);
+        await expect(handle.fired).resolves.toBe(String(index));
+      } finally {
+        await handle.dispose('test cleanup');
+        await Promise.allSettled([handle.fired]);
+      }
+    }
+  });
+
   test('port must be an integer before the listener starts', () => {
     expect(() =>
       WebhookTrigger.watch(

@@ -15,6 +15,7 @@ import {
   isAllowedEditorUrl,
   normalizeDevRendererUrl,
   reloadSessionsForRecoveredSidecar,
+  SidecarRestartGuard,
 } from './sidecar-recovery';
 import { createSidecarReadyParser } from './sidecar-stdout';
 
@@ -66,6 +67,8 @@ const DEV_RENDERER_URL = normalizeDevRendererUrl(process.env.TAGMA_DESKTOP_RENDE
 const DESKTOP_HMR = process.env.TAGMA_DESKTOP_HMR === '1';
 const SIDECAR_SHUTDOWN_TIMEOUT_MS = 3000;
 const SIDECAR_FORCE_EXIT_TIMEOUT_MS = 1000;
+const SIDECAR_RESTART_LIMIT = 3;
+const SIDECAR_RESTART_WINDOW_MS = 30_000;
 
 function applyDevHardwareAccelerationFlag(): void {
   if (app.isPackaged || process.env.TAGMA_DESKTOP_DISABLE_GPU !== '1') return;
@@ -155,6 +158,10 @@ let recoveringSidecarPromise: Promise<void> | null = null;
 let sidecarShutdownPromise: Promise<void> | null = null;
 let sidecarShutdownComplete = false;
 let isAppQuitting = false;
+const sidecarRestartGuard = new SidecarRestartGuard(
+  SIDECAR_RESTART_LIMIT,
+  SIDECAR_RESTART_WINDOW_MS,
+);
 
 function ensureSidecar(): Promise<SidecarHandle> {
   if (sharedSidecar) return Promise.resolve(sharedSidecar);
@@ -190,6 +197,20 @@ function handleSharedSidecarExit(
     sharedSidecarPromise = null;
   }
   if (!wasShared || isAppQuitting || byWindow.size === 0) return;
+
+  if (!sidecarRestartGuard.tryAcquire()) {
+    const message =
+      `[sidecar] restart circuit opened after ${SIDECAR_RESTART_LIMIT} exits ` +
+      `within ${SIDECAR_RESTART_WINDOW_MS / 1_000}s; automatic restart stopped\n`;
+    process.stderr.write(message);
+    logSidecar('stderr', Buffer.from(message));
+    dialog.showErrorBox(
+      'Tagma backend repeatedly stopped',
+      'The embedded editor backend exited repeatedly, so automatic restart was stopped. ' +
+        'Close and reopen Tagma after checking the sidecar log.',
+    );
+    return;
+  }
 
   const detail = `[sidecar] exited after ready (${sidecarExitDetail(
     code,
@@ -313,6 +334,7 @@ async function terminateSidecar(handle: SidecarHandle): Promise<void> {
 }
 
 function shutdownSharedSidecar(): Promise<void> | null {
+  sidecarRestartGuard.reset();
   if (sidecarShutdownPromise) return sidecarShutdownPromise;
   const handle = sharedSidecar;
   const pending = [...startingSidecarProcesses];

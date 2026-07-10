@@ -85,6 +85,7 @@ export async function performBundleUpdate(input: BundleUpdateInput): Promise<Bun
       opencodeVersion: opencodeActivation.version,
     };
   } catch (err) {
+    discardSidecarStaging(sidecarStaged);
     if (editorActivation) rollbackEditorDistActivation(editorActivation);
     if (opencodeActivation) rollbackOpencodeActivation(opencodeActivation);
     throw err;

@@ -38,6 +38,19 @@
 import type { PortDef, PortType, TaskInputBindings, TaskOutputBindings, TaskPorts } from './types';
 import { shellQuoteForActiveShell } from './utils';
 
+function hasOwn(record: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(record, key);
+}
+
+function setOwn(record: Record<string, unknown>, key: string, value: unknown): void {
+  Object.defineProperty(record, key, {
+    configurable: true,
+    enumerable: true,
+    value,
+    writable: true,
+  });
+}
+
 // ─── Template substitution ────────────────────────────────────────────
 
 /**
@@ -114,7 +127,7 @@ export function substituteInputs(
   const unresolved = new Set<string>();
   const unknownFilters: { name: string; filter: string }[] = [];
   const out = text.replace(PLACEHOLDER_RE, (_full, name: string, filter: string | undefined) => {
-    if (!(name in inputs)) {
+    if (!hasOwn(inputs, name)) {
       unresolved.add(name);
       return '';
     }
@@ -251,7 +264,7 @@ export function resolveTaskInputs(
       typeErrors.push({ port: port.name, reason: coerced.reason });
       continue;
     }
-    inputs[port.name] = coerced.value;
+    setOwn(inputs, port.name, coerced.value);
   }
 
   if (missingRequired.length > 0 || ambiguous.length > 0 || typeErrors.length > 0) {
@@ -328,7 +341,7 @@ export function resolveTaskBindingInputs(
     let value: unknown;
     let present = false;
 
-    if ('value' in binding) {
+    if (hasOwn(binding, 'value')) {
       value = binding.value;
       present = true;
     } else if (binding.from) {
@@ -353,12 +366,12 @@ export function resolveTaskBindingInputs(
       }
     }
 
-    if (!present && 'default' in binding) {
+    if (!present && hasOwn(binding, 'default')) {
       value = binding.default;
       present = true;
     }
 
-    if (!present || value === undefined || value === null) {
+    if (!present || value === undefined || (value === null && binding.type !== 'json')) {
       if (binding.required === true) {
         missingRequired.push(name);
       } else {
@@ -373,7 +386,7 @@ export function resolveTaskBindingInputs(
       continue;
     }
 
-    inputs[name] = coerced.value;
+    setOwn(inputs, name, coerced.value);
   }
 
   if (missingRequired.length > 0 || ambiguous.length > 0 || typeErrors.length > 0) {
@@ -454,7 +467,7 @@ function findOutputOnProducer(
   if (resolved.kind === 'ambiguous') return { kind: 'ambiguous', producers: resolved.producers };
   if (resolved.kind === 'miss') return { kind: 'miss' };
   const upstream = upstreamData.get(resolved.producer);
-  if (upstream?.outputs && outputName in upstream.outputs) {
+  if (upstream?.outputs && hasOwn(upstream.outputs, outputName)) {
     return {
       kind: 'hit',
       producer: resolved.producer,
@@ -472,7 +485,7 @@ function findOutputByName(
   const hits: { producer: string; value: unknown }[] = [];
   for (const upstreamId of dependsOn) {
     const upstream = upstreamData.get(upstreamId);
-    if (upstream?.outputs && name in upstream.outputs) {
+    if (upstream?.outputs && hasOwn(upstream.outputs, name)) {
       hits.push({ producer: upstreamId, value: upstream.outputs[name] });
     }
   }
@@ -517,7 +530,7 @@ function findUpstreamValue(
   const hits: { producer: string; value: unknown }[] = [];
   for (const upstreamId of dependsOn) {
     const upstream = upstreamOutputs.get(upstreamId);
-    if (upstream && key in upstream) {
+    if (upstream && hasOwn(upstream, key)) {
       hits.push({ producer: upstreamId, value: upstream[key] });
     }
   }
@@ -536,7 +549,7 @@ function findOutputPortOnProducer(
   if (resolved.kind === 'ambiguous') return { kind: 'ambiguous', producers: resolved.producers };
   if (resolved.kind === 'miss') return { kind: 'miss' };
   const upstream = upstreamOutputs.get(resolved.producer);
-  if (upstream && portName in upstream) {
+  if (upstream && hasOwn(upstream, portName)) {
     return { kind: 'hit', producer: resolved.producer, value: upstream[portName] };
   }
   return { kind: 'miss' };
@@ -570,7 +583,7 @@ function findUpstreamOutputByName(
   const hits: { producer: string; value: unknown }[] = [];
   for (const upstreamId of dependsOn) {
     const upstream = upstreamOutputs.get(upstreamId);
-    if (upstream && name in upstream) {
+    if (upstream && hasOwn(upstream, name)) {
       hits.push({ producer: upstreamId, value: upstream[name] });
     }
   }
@@ -582,6 +595,44 @@ function findUpstreamOutputByName(
 // ─── Type coercion ────────────────────────────────────────────────────
 
 type Coercion = { kind: 'ok'; value: unknown } | { kind: 'error'; reason: string };
+
+function isJsonValue(value: unknown, ancestors = new Set<object>()): boolean {
+  if (value === null) return true;
+  if (typeof value === 'string' || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value) && !Object.is(value, -0);
+  if (typeof value !== 'object') return false;
+  if (ancestors.has(value)) return false;
+
+  ancestors.add(value);
+  try {
+    if (Array.isArray(value)) {
+      let indexCount = 0;
+      for (const key of Reflect.ownKeys(value)) {
+        if (key === 'length') continue;
+        if (typeof key !== 'string' || !/^(0|[1-9]\d*)$/.test(key)) return false;
+        const index = Number(key);
+        if (!Number.isSafeInteger(index) || index >= value.length) return false;
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        if (!descriptor || !('value' in descriptor)) return false;
+        if (!isJsonValue(descriptor.value, ancestors)) return false;
+        indexCount += 1;
+      }
+      return indexCount === value.length;
+    }
+
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return false;
+    for (const key of Reflect.ownKeys(value)) {
+      if (typeof key !== 'string') return false;
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor?.enumerable || !('value' in descriptor)) return false;
+      if (!isJsonValue(descriptor.value, ancestors)) return false;
+    }
+    return true;
+  } finally {
+    ancestors.delete(value);
+  }
+}
 
 function coerceValue(port: PortDef, raw: unknown): Coercion {
   switch (port.type) {
@@ -620,10 +671,18 @@ function coerceValue(port: PortDef, raw: unknown): Coercion {
       return { kind: 'ok', value: asStr };
     }
     case 'json':
-      // 'json' accepts anything that survives JSON round-trip. We don't
-      // validate deeply — users opt into `json` precisely because they
-      // want a free-form payload.
-      return { kind: 'ok', value: raw };
+      // Keep the runtime contract honest: free-form still means a real JSON
+      // value tree because task events and persisted outputs cross that
+      // boundary. JSON.stringify silently drops nested undefined/function/
+      // symbol fields and rewrites NaN/Infinity or array holes to null, so a
+      // mere no-throw check would let execution observe a different value
+      // than downstream consumers and the wire protocol.
+      try {
+        if (isJsonValue(raw)) return { kind: 'ok', value: raw };
+      } catch {
+        /* handled by the structured coercion error below */
+      }
+      return { kind: 'error', reason: `expected a lossless JSON value, got ${describe(raw)}` };
     default: {
       // Exhaustiveness — TypeScript won't let us reach here unless a
       // new PortType is added without updating this switch. The return
@@ -714,7 +773,7 @@ export function extractTaskOutputs(
   const outputs: Record<string, unknown> = {};
   const warnings: string[] = [];
   for (const port of decl) {
-    if (!(port.name in record)) {
+    if (!hasOwn(record, port.name)) {
       warnings.push(`missing key "${port.name}"`);
       continue;
     }
@@ -723,7 +782,7 @@ export function extractTaskOutputs(
       warnings.push(`"${port.name}": ${coerced.reason}`);
       continue;
     }
-    outputs[port.name] = coerced.value;
+    setOwn(outputs, port.name, coerced.value);
   }
 
   const diagnostic = warnings.length > 0 ? `outputs: ${warnings.join('; ')}` : null;
@@ -748,7 +807,7 @@ export function extractTaskBindingOutputs(
     let value: unknown;
     let present = false;
 
-    if ('value' in binding) {
+    if (hasOwn(binding, 'value')) {
       value = binding.value;
       present = true;
     } else {
@@ -770,19 +829,19 @@ export function extractTaskBindingOutputs(
           record = parseJsonTail(jsonSource);
         }
         const key = source.slice('json.'.length);
-        if (record && key in record) {
+        if (record && hasOwn(record, key)) {
           value = record[key];
           present = true;
         }
       }
     }
 
-    if (!present && 'default' in binding) {
+    if (!present && hasOwn(binding, 'default')) {
       value = binding.default;
       present = true;
     }
 
-    if (!present || value === undefined || value === null) {
+    if (!present || value === undefined || (value === null && binding.type !== 'json')) {
       missing.push(name);
       continue;
     }
@@ -793,7 +852,7 @@ export function extractTaskBindingOutputs(
       continue;
     }
 
-    outputs[name] = coerced.value;
+    setOwn(outputs, name, coerced.value);
   }
 
   return {

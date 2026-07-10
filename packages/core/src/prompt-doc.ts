@@ -76,7 +76,7 @@ export function renderInputsBlock(
   if (!inputsDecl || inputsDecl.length === 0) return null;
   const lines: string[] = [];
   for (const port of inputsDecl) {
-    if (!(port.name in values)) continue;
+    if (!Object.prototype.hasOwnProperty.call(values, port.name)) continue;
     const raw = values[port.name];
     const rendered = renderInputValue(raw);
     const descr = port.description?.trim();
@@ -136,26 +136,35 @@ function buildExampleObject(outputsDecl: readonly PortDef[]): Record<string, unk
   const example: Record<string, unknown> = {};
   for (const port of outputsDecl) {
     if (port.default !== undefined) {
-      example[port.name] = port.default;
+      defineExampleValue(example, port.name, port.default);
       continue;
     }
     switch (port.type) {
       case 'string':
-        example[port.name] = '...';
+        defineExampleValue(example, port.name, '...');
         break;
       case 'number':
-        example[port.name] = 0;
+        defineExampleValue(example, port.name, 0);
         break;
       case 'boolean':
-        example[port.name] = false;
+        defineExampleValue(example, port.name, false);
         break;
       case 'enum':
-        example[port.name] = port.enum?.[0] ?? '...';
+        defineExampleValue(example, port.name, port.enum?.[0] ?? '...');
         break;
       case 'json':
       default:
-        example[port.name] = null;
+        defineExampleValue(example, port.name, null);
     }
   }
   return example;
+}
+
+function defineExampleValue(example: Record<string, unknown>, name: string, value: unknown): void {
+  Object.defineProperty(example, name, {
+    configurable: true,
+    enumerable: true,
+    value,
+    writable: true,
+  });
 }

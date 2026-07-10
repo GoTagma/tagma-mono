@@ -381,6 +381,19 @@ interface ParsedInputSourceRef {
   replaceRef(ref: string): string;
 }
 
+function defineInputBinding(
+  inputs: Record<string, TaskInputBinding>,
+  name: string,
+  binding: TaskInputBinding,
+): void {
+  Object.defineProperty(inputs, name, {
+    configurable: true,
+    enumerable: true,
+    value: binding,
+    writable: true,
+  });
+}
+
 function parseInputSourceRef(source: string): ParsedInputSourceRef | null {
   if (source.startsWith('outputs.')) return null;
 
@@ -426,25 +439,25 @@ function rewriteInputBindingRefs(
   const next: Record<string, TaskInputBinding> = {};
   for (const [name, binding] of Object.entries(inputs)) {
     if (!binding || typeof binding !== 'object' || Array.isArray(binding)) {
-      next[name] = binding as TaskInputBinding;
+      defineInputBinding(next, name, binding as TaskInputBinding);
       continue;
     }
 
     const source = binding.from;
     const parsed = typeof source === 'string' ? parseInputSourceRef(source) : null;
     if (!parsed) {
-      next[name] = binding;
+      defineInputBinding(next, name, binding);
       continue;
     }
 
     const rewrittenRef = rewrite(parsed.ref);
     const rewrittenSource = parsed.replaceRef(rewrittenRef);
     if (rewrittenSource === source) {
-      next[name] = binding;
+      defineInputBinding(next, name, binding);
       continue;
     }
 
-    next[name] = { ...binding, from: rewrittenSource };
+    defineInputBinding(next, name, { ...binding, from: rewrittenSource });
     changed = true;
   }
 
@@ -461,19 +474,19 @@ function cleanInputBindingRefs(
   const next: Record<string, TaskInputBinding> = {};
   for (const [name, binding] of Object.entries(inputs)) {
     if (!binding || typeof binding !== 'object' || Array.isArray(binding)) {
-      next[name] = binding as TaskInputBinding;
+      defineInputBinding(next, name, binding as TaskInputBinding);
       continue;
     }
 
     const source = binding.from;
     const parsed = typeof source === 'string' ? parseInputSourceRef(source) : null;
     if (!parsed || !isRemoved(parsed.ref)) {
-      next[name] = binding;
+      defineInputBinding(next, name, binding);
       continue;
     }
 
     const { from: _from, ...rest } = binding;
-    next[name] = rest;
+    defineInputBinding(next, name, rest);
     changed = true;
   }
 

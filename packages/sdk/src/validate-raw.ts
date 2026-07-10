@@ -954,6 +954,13 @@ export function validateRaw(
 
       //  continue_from reference check
       if (isNonEmptyString(task.continue_from)) {
+        const continueFromIsPromptTask = isPromptTaskConfig(task);
+        if (!continueFromIsPromptTask) {
+          errors.push({
+            path: `${taskPath}.continue_from`,
+            message: `Task ${task.id}: continue_from is only valid on prompt tasks`,
+          });
+        }
         const resolved = resolveTaskRef(task.continue_from, track.id, index);
         if (resolved.kind === 'not_found') {
           errors.push({
@@ -964,6 +971,13 @@ export function validateRaw(
           errors.push({
             path: `${taskPath}.continue_from`,
             message: `Task "${task.id}": continue_from "${task.continue_from}" is ambiguous  - multiple tracks have a task with this id. Use the fully-qualified form "trackId.${task.continue_from}".`,
+          });
+        } else if (!continueFromIsPromptTask) {
+          // The task-kind error above is the actionable diagnostic.
+        } else if (!isPromptTaskConfig(qidIndex.get(resolved.qid)?.task ?? {})) {
+          errors.push({
+            path: `${taskPath}.continue_from`,
+            message: `Task ${task.id}: continue_from must reference a prompt task`,
           });
         } else if (
           deps.length === 0 ||
@@ -1244,7 +1258,8 @@ function validateInputBindingSources(
     }
 
     const upstreamId = sourceResolution.qid;
-    const deps = dependencyRefs(task);
+    const deps = [...dependencyRefs(task)];
+    if (isNonEmptyString(task.continue_from)) deps.push(task.continue_from);
     const isDirectDep = deps.some((dep) => {
       const resolved = resolveTaskRef(dep, trackId, index);
       return resolved.kind === 'resolved' && resolved.qid === upstreamId;

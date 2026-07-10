@@ -200,6 +200,10 @@ describe('hot-update manifest helpers', () => {
     expect(compareVersions('1.2.3', '1.2.3-alpha.2')).toBeGreaterThan(0);
     expect(compareVersions('1.2.3-alpha.1', '1.2.3')).toBeLessThan(0);
     expect(compareVersions('1.2.3-alpha.1', '1.2.3-alpha.1')).toBe(0);
+    expect(compareVersions('9007199254740993.0.0', '9007199254740992.0.0')).toBeGreaterThan(0);
+    expect(
+      compareVersions('1.0.0-alpha.9007199254740993', '1.0.0-alpha.9007199254740992'),
+    ).toBeGreaterThan(0);
   });
 
   test('rejects unsafe versions and non-HTTPS network assets', () => {
@@ -302,6 +306,38 @@ describe('hot-update manifest helpers', () => {
       await expect(fetchHotupdateManifest('file:///tmp/manifest.json', true)).rejects.toThrow(
         /manifest.*too large|exceeds/i,
       );
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+
+  test('cancels an oversized chunked manifest before buffering the full response', async () => {
+    const previousFetch = globalThis.fetch;
+    const chunk = new TextEncoder().encode('x'.repeat(300 * 1024));
+    let pulls = 0;
+    let cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1;
+        if (pulls <= 8) controller.enqueue(chunk);
+        else controller.close();
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    globalThis.fetch = (async () =>
+      new Response(stream, {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })) as unknown as typeof fetch;
+
+    try {
+      await expect(fetchHotupdateManifest('file:///tmp/chunked.json', true)).rejects.toThrow(
+        /manifest.*too large|exceeds/i,
+      );
+      expect(cancelled).toBe(true);
+      expect(pulls).toBeLessThan(8);
     } finally {
       globalThis.fetch = previousFetch;
     }

@@ -12,6 +12,36 @@ export interface ReloadableWindowSession {
 
 const LOOPBACK_RENDERER_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
 
+export class SidecarRestartGuard {
+  private restartTimestamps: number[] = [];
+
+  constructor(
+    private readonly maxRestarts: number,
+    private readonly windowMs: number,
+  ) {
+    if (!Number.isSafeInteger(maxRestarts) || maxRestarts < 1) {
+      throw new Error('maxRestarts must be a positive safe integer');
+    }
+    if (!Number.isFinite(windowMs) || windowMs <= 0) {
+      throw new Error('windowMs must be a positive finite number');
+    }
+  }
+
+  tryAcquire(now = Date.now()): boolean {
+    const cutoff = now - this.windowMs;
+    this.restartTimestamps = this.restartTimestamps.filter(
+      (timestamp) => timestamp > cutoff && timestamp <= now,
+    );
+    if (this.restartTimestamps.length >= this.maxRestarts) return false;
+    this.restartTimestamps.push(now);
+    return true;
+  }
+
+  reset(): void {
+    this.restartTimestamps = [];
+  }
+}
+
 export function normalizeDevRendererUrl(rawUrl: string | null | undefined): string | null {
   if (!rawUrl?.trim()) return null;
   try {

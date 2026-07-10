@@ -29,7 +29,7 @@ export function skippedTaskResult(reason: string): TaskResult {
     stdoutPath: null,
     stderrPath: null,
     stdoutBytes: 0,
-    stderrBytes: stderr.length,
+    stderrBytes: new TextEncoder().encode(stderr).byteLength,
     durationMs: 0,
     sessionId: null,
     normalizedOutput: null,

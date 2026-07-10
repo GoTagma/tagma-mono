@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
@@ -264,6 +272,17 @@ describe('performBundleUpdate', () => {
       'old-opencode',
     );
     writeFileSync(join(opencodeUserDir, 'version.txt'), '1.14.19\n');
+    const sidecarExecutable =
+      process.platform === 'win32' ? 'tagma-editor-server.exe' : 'tagma-editor-server';
+    const oldSidecarBody = Buffer.from('old-sidecar');
+    const oldSidecarSha = createHash('sha256').update(oldSidecarBody).digest('hex');
+    const oldSidecarDir = join(sidecarUserDir, 'versions', '9.9.9');
+    mkdirSync(oldSidecarDir, { recursive: true });
+    writeFileSync(join(oldSidecarDir, sidecarExecutable), oldSidecarBody);
+    writeFileSync(
+      join(sidecarUserDir, 'current.json'),
+      JSON.stringify({ version: '9.9.9', sha256: oldSidecarSha }),
+    );
     mkdirSync(join(sidecarUserDir, 'current.json.staging'), { recursive: true });
 
     const manifest: HotupdateManifest = withOpencode(
@@ -295,7 +314,13 @@ describe('performBundleUpdate', () => {
       '<html>old</html>',
     );
     expect(existsSync(join(editorUserDir, 'dist.previous'))).toBe(false);
-    expect(existsSync(join(sidecarUserDir, 'current.json'))).toBe(false);
+    expect(readFileSync(join(oldSidecarDir, sidecarExecutable)).toString()).toBe('old-sidecar');
+    expect(JSON.parse(readFileSync(join(sidecarUserDir, 'current.json'), 'utf-8')).sha256).toBe(
+      oldSidecarSha,
+    );
+    expect(readdirSync(join(sidecarUserDir, 'versions')).some((name) => name.startsWith('.'))).toBe(
+      false,
+    );
     expect(readFileSync(join(opencodeUserDir, 'version.txt'), 'utf-8').trim()).toBe('1.14.19');
     expect(
       readFileSync(

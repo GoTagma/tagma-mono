@@ -66,12 +66,12 @@ await tagma.registry.loadPlugins(['@tagma/trigger-webhook'], process.cwd());
 
 ## Behavior
 
-- A single `Bun.serve` listener is created per unique `(host, port, path)` triple and shared across all tasks that watch it. The same endpoint cannot be reused with a different `secret_env` in the same process. Multiple tasks on the same endpoint form a FIFO waiter queue; the next POST wakes one waiter.
+- A single `Bun.serve` listener is created per `(host, port)` pair. Different paths share that listener; each endpoint may have its own `secret_env` and `max_body_bytes`. Reusing the same path with conflicting settings is rejected. Multiple tasks on one endpoint form a FIFO waiter queue; the next POST wakes one waiter.
 - Default bind is `127.0.0.1` so the endpoint is only reachable from the local machine. A non-loopback `host` without `secret_env` is refused.
 - If `secret_env` is set, the referenced environment variable must exist before the listener starts.
 - Request bodies are capped by `max_body_bytes` for both `Content-Length` and streamed bodies.
 - Signature header format: `x-tagma-signature: sha256=<hex>`, HMAC-SHA256 of the raw request body using the secret. Verification is constant-time.
-- JSON bodies (`content-type: application/json`) are parsed and handed to the task as the trigger payload. A malformed JSON body under that content-type returns `400 invalid JSON body`. Other content-types are passed through as raw strings.
+- JSON bodies (`content-type: application/json`) are parsed before the gate fires, and malformed JSON returns `400 invalid JSON body`. Trigger resolution is currently gate-only in the core engine: the request body is not injected into task inputs or prompts. Other content-types are accepted as raw strings by the plugin waiter.
 - Successful delivery responds `202 ok`. A POST arriving while no task is waiting is rejected with `409 no waiting task` so the caller can retry once a pipeline is up. Non-matching paths return `404`, non-POST methods return `405`.
 - The listener is reference-counted by waiting tasks. When the last waiter resolves, aborts, or times out, the plugin closes the `Bun.serve` instance and frees the port.
 

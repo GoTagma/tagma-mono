@@ -30,7 +30,14 @@ function redactInputsForEvent(
 ): Readonly<Record<string, unknown>> | null {
   if (!inputs) return null;
   const redacted: Record<string, unknown> = {};
-  for (const key of Object.keys(inputs)) redacted[key] = REDACTED_INPUT_VALUE;
+  for (const key of Object.keys(inputs)) {
+    Object.defineProperty(redacted, key, {
+      configurable: true,
+      enumerable: true,
+      value: REDACTED_INPUT_VALUE,
+      writable: true,
+    });
+  }
   return redacted;
 }
 

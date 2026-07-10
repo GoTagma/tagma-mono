@@ -1,4 +1,4 @@
-import { isAbsolute, resolve } from 'node:path';
+import { isAbsolute, posix, resolve, win32 } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { WorkspaceState, YamlEditLock, YamlEditLockPublic } from './workspace-state.js';
 
@@ -46,8 +46,15 @@ function normalizeLockPath(path: string | null | undefined): string | null {
   if (typeof path !== 'string') return null;
   const trimmed = path.trim();
   if (!trimmed) return null;
-  const normalized = trimmed.replace(/\\/g, '/').replace(/\/+$/, '');
-  return isWindowsStylePath(normalized) ? normalized.toLowerCase() : normalized;
+  const slashed = trimmed.replace(/\\/g, '/');
+  const windowsStyle = isWindowsStylePath(slashed);
+  let normalized = windowsStyle
+    ? win32.normalize(slashed).replace(/\\/g, '/')
+    : posix.normalize(slashed);
+  if (normalized !== '/' && !/^[A-Za-z]:\/$/.test(normalized)) {
+    normalized = normalized.replace(/\/+$/, '');
+  }
+  return windowsStyle ? normalized.toLowerCase() : normalized;
 }
 
 function isWindowsStylePath(path: string): boolean {
@@ -104,7 +111,8 @@ function pathHitsLockedYaml(
   const normalized = normalizeLockPath(resolveCandidatePath(candidate, workDir));
   if (!normalized) return false;
   if (normalized === lockedYamlPath) return true;
-  return lockedYamlPath.startsWith(`${normalized}/`);
+  const directoryPrefix = normalized.endsWith('/') ? normalized : `${normalized}/`;
+  return lockedYamlPath.startsWith(directoryPrefix);
 }
 
 export function shouldBlockYamlEditLockMutation(

@@ -35,6 +35,12 @@ export interface SidecarStagingResult {
    * this hash before launch to detect tamper of the userData binary.
    */
   sha256: string;
+  /** Whether this staging call created/replaced versions/<v> and may remove it on rollback. */
+  ownsVersionDir: boolean;
+  /** Existing same-version directory retained until activate/discard resolves the transaction. */
+  displacedVersionDir: string | null;
+  /** Prevents a completed activation from being discarded by a later cleanup path. */
+  settled: boolean;
 }
 
 function sidecarCurrentFile(userDir: string): string {
@@ -162,6 +168,9 @@ export async function stageSidecarBinary(
           userDir,
           binaryPath,
           sha256: target.sha256.toLowerCase(),
+          ownsVersionDir: false,
+          displacedVersionDir: null,
+          settled: false,
         };
       }
     } catch {
@@ -231,19 +240,14 @@ export async function stageSidecarBinary(
       throw err;
     }
 
-    if (displacedDir) {
-      try {
-        rmSync(displacedDir, { recursive: true, force: true });
-      } catch {
-        /* best-effort — sweepStaleStagingDirs catches it next call */
-      }
-    }
-
     return {
       version: manifest.version,
       userDir,
       binaryPath,
       sha256: actualSha.toLowerCase(),
+      ownsVersionDir: true,
+      displacedVersionDir: displacedDir,
+      settled: false,
     };
   } finally {
     if (!stagingMoved && existsSync(stagingDir)) {
@@ -270,6 +274,9 @@ export function activateSidecarBinary(staged: SidecarStagingResult): {
   version: string;
   path: string;
 } {
+  if (staged.settled) {
+    throw new Error('activateSidecarBinary: staging transaction is already settled.');
+  }
   if (!existsSync(staged.binaryPath)) {
     throw new Error(
       `activateSidecarBinary: no staged binary at ${staged.binaryPath}. Call stageSidecarBinary first.`,
@@ -284,16 +291,33 @@ export function activateSidecarBinary(staged: SidecarStagingResult): {
   };
   writeFileSync(stagingFile, JSON.stringify(pointer, null, 2) + '\n', 'utf-8');
   renameSync(stagingFile, currentFile);
+  staged.settled = true;
+  if (staged.displacedVersionDir && existsSync(staged.displacedVersionDir)) {
+    try {
+      rmSync(staged.displacedVersionDir, { recursive: true, force: true });
+    } catch {
+      /* best-effort — sweepStaleStagingDirs catches it next call */
+    }
+  }
   return { version: staged.version, path: staged.binaryPath };
 }
 
 /** Discard a staged sidecar (removes `versions/<v>/`). Best-effort. */
 export function discardSidecarStaging(staged: SidecarStagingResult): void {
+  if (staged.settled) return;
+  if (!staged.ownsVersionDir) {
+    staged.settled = true;
+    return;
+  }
   try {
     const versionDir = sidecarVersionDir(staged.userDir, staged.version);
     if (existsSync(versionDir)) {
       rmSync(versionDir, { recursive: true, force: true });
     }
+    if (staged.displacedVersionDir && existsSync(staged.displacedVersionDir)) {
+      renameSync(staged.displacedVersionDir, versionDir);
+    }
+    staged.settled = true;
   } catch {
     /* best-effort */
   }

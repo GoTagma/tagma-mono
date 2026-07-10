@@ -114,11 +114,11 @@ function buildSidecarPath(
   return existing ? `${layers.join(sep)}${sep}${existing}` : layers.join(sep);
 }
 
-function compareVersions(a: string, b: string): number {
+export function compareVersions(a: string, b: string): number {
   const pa = parseComparableSemver(a);
   const pb = parseComparableSemver(b);
   for (const key of ['major', 'minor', 'patch'] as const) {
-    const delta = pa[key] - pb[key];
+    const delta = compareNumericIdentifier(pa[key], pb[key]);
     if (delta !== 0) return delta;
   }
   if (pa.prerelease.length === 0 && pb.prerelease.length === 0) return 0;
@@ -137,18 +137,18 @@ function compareVersions(a: string, b: string): number {
 }
 
 function parseComparableSemver(version: string): {
-  major: number;
-  minor: number;
-  patch: number;
+  major: string;
+  minor: string;
+  patch: string;
   prerelease: string[];
 } {
   const withoutBuild = version.split('+', 1)[0] ?? '';
   const dash = withoutBuild.indexOf('-');
   const core = dash === -1 ? withoutBuild : withoutBuild.slice(0, dash);
   const prerelease = dash === -1 ? '' : withoutBuild.slice(dash + 1);
-  const [major = 0, minor = 0, patch = 0] = core
+  const [major = '0', minor = '0', patch = '0'] = core
     .split('.')
-    .map((part) => Number.parseInt(part, 10) || 0);
+    .map((part) => (/^\d+$/.test(part) ? part : '0'));
   return {
     major,
     minor,
@@ -161,10 +161,20 @@ function comparePrereleaseIdentifier(a: string, b: string): number {
   if (a === b) return 0;
   const aNumeric = /^\d+$/.test(a);
   const bNumeric = /^\d+$/.test(b);
-  if (aNumeric && bNumeric) return Number(a) - Number(b);
+  if (aNumeric && bNumeric) return compareNumericIdentifier(a, b);
   if (aNumeric) return -1;
   if (bNumeric) return 1;
   return a < b ? -1 : 1;
+}
+
+function compareNumericIdentifier(a: string, b: string): number {
+  const normalizedA = a.replace(/^0+(?=\d)/, '');
+  const normalizedB = b.replace(/^0+(?=\d)/, '');
+  if (normalizedA.length !== normalizedB.length) {
+    return normalizedA.length < normalizedB.length ? -1 : 1;
+  }
+  if (normalizedA === normalizedB) return 0;
+  return normalizedA < normalizedB ? -1 : 1;
 }
 
 const SIDECAR_VERSION_RE =

@@ -71,7 +71,7 @@ directly only when you need lower-level package boundaries.
 
 - **Multi-track DAG execution** -- tasks run in parallel across tracks, respecting `depends_on` ordering
 - **Driver plugins** -- built-in `opencode` driver; install `@tagma/driver-codex` or `@tagma/driver-claude-code` for other agents
-- **Session handoff** -- `continue_from` passes context between tasks (session resume or text injection)
+- **Session handoff** -- `continue_from` passes context between prompt tasks (session resume or text injection)
 - **Approval gates** -- trigger-based approval with stdin and WebSocket adapters
 - **Lifecycle hooks** -- `pipeline_start`, `task_start`, `task_success`, `task_failure`, `pipeline_complete`, `pipeline_error`
 - **Middleware** -- enrich prompts before execution (e.g. inject static context)
@@ -196,25 +196,25 @@ Each hook value can be a single command string or an array of commands.
 
 ### Task Fields
 
-| Field           | Type                 | Required | Default              | Description                                                                                            |
-| --------------- | -------------------- | -------- | -------------------- | ------------------------------------------------------------------------------------------------------ |
-| `id`            | `string`             | Yes      | -                    | Unique task identifier within its track. Cross-track refs use `trackId.taskId`                         |
-| `name`          | `string`             | No       | -                    | Display name                                                                                           |
-| `prompt`        | `string`             | No\*     | -                    | AI prompt to send to the driver. \*Mutually exclusive with `command`                                   |
-| `command`       | `string`             | No\*     | -                    | Shell command to execute directly. \*Mutually exclusive with `prompt`                                  |
-| `depends_on`    | `string[]`           | No       | -                    | Task IDs that must complete before this task runs. Cross-track refs use `trackId.taskId`               |
-| `continue_from` | `string`             | No       | -                    | Task ID whose output/session to continue from (session handoff). Cross-track refs use `trackId.taskId` |
-| `driver`        | `string`             | No       | Inherited from track | Driver override for this task                                                                          |
-| `model`         | `string`             | No       | Inherited from track | Model name override for this task                                                                      |
-| `agent_profile` | `string`             | No       | Inherited from track | Agent profile override                                                                                 |
-| `cwd`           | `string`             | No       | Inherited from track | Working directory override (relative path)                                                             |
-| `timeout`       | `string`             | No       | -                    | Task-level timeout. Format: `"30s"`, `"5m"`, `"2h"`                                                    |
-| `permissions`   | `Permissions`        | No       | Inherited from track | Permission override (see Permissions)                                                                  |
-| `middlewares`   | `MiddlewareConfig[]` | No       | Inherited from track | Middleware override. Set `[]` to disable inherited middlewares                                         |
-| `trigger`       | `TriggerConfig`      | No       | -                    | Gate that must resolve before the task runs (see Triggers)                                             |
-| `completion`    | `CompletionConfig`   | No       | -                    | Post-execution check to validate task output (see Completions)                                         |
-| `inputs`        | `TaskInputBindings`  | No       | -                    | Task input bindings for `{{inputs.<name>}}`; optional `type` enables coercion/validation               |
-| `outputs`       | `TaskOutputBindings` | No       | -                    | Named outputs published after success; optional `type` enables coercion/validation                     |
+| Field           | Type                 | Required | Default              | Description                                                                                                                          |
+| --------------- | -------------------- | -------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `id`            | `string`             | Yes      | -                    | Unique task identifier within its track. Cross-track refs use `trackId.taskId`                                                       |
+| `name`          | `string`             | No       | -                    | Display name                                                                                                                         |
+| `prompt`        | `string`             | No\*     | -                    | AI prompt to send to the driver. \*Mutually exclusive with `command`                                                                 |
+| `command`       | `string`             | No\*     | -                    | Shell command to execute directly. \*Mutually exclusive with `prompt`                                                                |
+| `depends_on`    | `string[]`           | No       | -                    | Task IDs that must complete before this task runs. Cross-track refs use `trackId.taskId`                                             |
+| `continue_from` | `string`             | No       | -                    | Prompt-only reference to an upstream prompt task whose session/output context should continue. Cross-track refs use `trackId.taskId` |
+| `driver`        | `string`             | No       | Inherited from track | Driver override for this task                                                                                                        |
+| `model`         | `string`             | No       | Inherited from track | Model name override for this task                                                                                                    |
+| `agent_profile` | `string`             | No       | Inherited from track | Agent profile override                                                                                                               |
+| `cwd`           | `string`             | No       | Inherited from track | Working directory override (relative path)                                                                                           |
+| `timeout`       | `string`             | No       | -                    | Task-level timeout. Format: `"30s"`, `"5m"`, `"2h"`                                                                                  |
+| `permissions`   | `Permissions`        | No       | Inherited from track | Permission override (see Permissions)                                                                                                |
+| `middlewares`   | `MiddlewareConfig[]` | No       | Inherited from track | Middleware override. Set `[]` to disable inherited middlewares                                                                       |
+| `trigger`       | `TriggerConfig`      | No       | -                    | Gate that must resolve before the task runs (see Triggers)                                                                           |
+| `completion`    | `CompletionConfig`   | No       | -                    | Post-execution check to validate task output (see Completions)                                                                       |
+| `inputs`        | `TaskInputBindings`  | No       | -                    | Task input bindings for `{{inputs.<name>}}`; optional `type` enables coercion/validation                                             |
+| `outputs`       | `TaskOutputBindings` | No       | -                    | Named outputs published after success; optional `type` enables coercion/validation                                                   |
 
 ### Permissions
 

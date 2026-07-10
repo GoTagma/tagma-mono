@@ -2,13 +2,40 @@ import { expect, test } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runSpawn } from './bun-process-runner';
+import { isBinaryMissingError, runSpawn } from './bun-process-runner';
 
 const DEFAULT_STDOUT_TAIL_BYTES = 8 * 1024 * 1024;
 
 function nodeArg(script: string): string[] {
   return ['node', '-e', script];
 }
+
+test('binary-missing detection does not confuse generic posix_spawn failures with ENOENT', () => {
+  expect(
+    isBinaryMissingError(
+      Object.assign(new Error('posix_spawn failed: Permission denied'), { code: 'EACCES' }),
+    ),
+  ).toBe(false);
+  expect(
+    isBinaryMissingError(
+      Object.assign(new Error('posix_spawn failed: No such file or directory'), {
+        code: 'ENOENT',
+      }),
+    ),
+  ).toBe(true);
+});
+
+test('runSpawn reports a missing cwd as a spawn error instead of a missing executable', async () => {
+  const missingCwd = mkdtempSync(join(tmpdir(), 'tagma-missing-cwd-'));
+  rmSync(missingCwd, { recursive: true, force: true });
+
+  const result = await runSpawn({ args: nodeArg(''), cwd: missingCwd }, null);
+
+  expect(result.failureKind).toBe('spawn_error');
+  expect(result.missingBinary).toBeUndefined();
+  expect(result.stderr).toContain('working directory');
+  expect(result.stderr).toContain(missingCwd);
+});
 
 test('runSpawn resolves relative Windows executables with PATHEXT against cwd', async () => {
   if (process.platform !== 'win32') return;

@@ -5,10 +5,9 @@
 // `x-tagma-signature: sha256=<hex>` header protects against unauthenticated
 // callers when the secret env var is set.
 //
-// Multiple tasks sharing the same `(port, path)` pair hit the same listener
-// instance and are enqueued as waiters — the next inbound request wakes one
-// waiter (FIFO). This keeps the plugin lightweight even when a pipeline has
-// many webhook-triggered tasks.
+// Tasks on the same `(host, port)` share one listener. Each path owns a FIFO
+// waiter queue, so different webhook routes can coexist without attempting to
+// bind the same TCP port more than once.
 //
 // Usage in pipeline.yaml:
 //   plugins: ["@tagma/trigger-webhook"]
@@ -35,23 +34,29 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 
 type Resolver = (payload: unknown) => void;
 
-interface WebhookServerState {
-  readonly key: string;
-  readonly port: number;
+interface WebhookEndpointState {
+  readonly serverState: WebhookServerState;
   readonly path: string;
   readonly secretEnv: string | undefined;
   readonly maxBodyBytes: number;
-  readonly server: ReturnType<typeof Bun.serve>;
   readonly waiters: Resolver[];
 }
 
-// Module-level so concurrent tasks on the same (port, path) share one
-// listener. Bun.serve refuses to bind a port twice, so this sharing is
-// required — not just an optimization.
+interface WebhookServerState {
+  readonly key: string;
+  readonly port: number;
+  readonly hostname: string;
+  readonly server: ReturnType<typeof Bun.serve>;
+  readonly endpoints: Map<string, WebhookEndpointState>;
+}
+
+// Module-level so concurrent tasks on the same (host, port) share one
+// listener. Bun.serve refuses to bind a port twice, so path routing belongs
+// inside the shared server rather than in the server-map key.
 const servers = new Map<string, WebhookServerState>();
 
-function serverKey(port: number, path: string, hostname: string): string {
-  return `${hostname}::${port}::${path}`;
+function serverKey(port: number, hostname: string): string {
+  return `${hostname}::${port}`;
 }
 
 const DEFAULT_WEBHOOK_HOST = '127.0.0.1';
@@ -141,9 +146,10 @@ function ensureServer(
   secretEnv: string | undefined,
   hostname: string,
   maxBodyBytes: number,
-): WebhookServerState {
-  const key = serverKey(port, path, hostname);
-  const existing = servers.get(key);
+): WebhookEndpointState {
+  const key = serverKey(port, hostname);
+  const existingServer = servers.get(key);
+  const existing = existingServer?.endpoints.get(path);
   if (existing) {
     if (existing.secretEnv !== secretEnv) {
       throw new Error(
@@ -156,6 +162,17 @@ function ensureServer(
       );
     }
     return existing;
+  }
+  if (existingServer) {
+    const endpoint: WebhookEndpointState = {
+      serverState: existingServer,
+      path,
+      secretEnv,
+      maxBodyBytes,
+      waiters: [],
+    };
+    existingServer.endpoints.set(path, endpoint);
+    return endpoint;
   }
 
   // Bun.serve callbacks need to close over the state object before the server
@@ -172,23 +189,24 @@ function ensureServer(
     hostname,
     async fetch(req) {
       const url = new URL(req.url);
-      if (url.pathname !== path) {
+      const endpoint = state.endpoints.get(url.pathname);
+      if (!endpoint) {
         return new Response('not found', { status: 404 });
       }
       if (req.method !== 'POST') {
         return new Response('method not allowed', { status: 405 });
       }
 
-      const bodyResult = await readRequestTextWithLimit(req, state.maxBodyBytes);
+      const bodyResult = await readRequestTextWithLimit(req, endpoint.maxBodyBytes);
       if (!bodyResult.ok) return bodyResult.response;
       const rawBody = bodyResult.text;
 
       // HMAC gate — bypassed when no secret env is configured, which is
       // acceptable for loopback dev but should always be set in production.
-      const secret = state.secretEnv ? process.env[state.secretEnv] : undefined;
-      if (state.secretEnv) {
+      const secret = endpoint.secretEnv ? process.env[endpoint.secretEnv] : undefined;
+      if (endpoint.secretEnv) {
         if (!secret) {
-          return new Response(`env var ${state.secretEnv} not set`, { status: 500 });
+          return new Response(`env var ${endpoint.secretEnv} not set`, { status: 500 });
         }
         const sigHeader = req.headers.get('x-tagma-signature') ?? '';
         if (!verifySignature(rawBody, sigHeader, secret)) {
@@ -196,7 +214,11 @@ function ensureServer(
         }
       }
 
-      // Decode JSON if possible so downstream tasks get structured data.
+      // Decode JSON so a sender that explicitly declares application/json
+      // receives an immediate 400 for malformed data instead of firing the
+      // gate with an invalid body. The core trigger contract currently uses
+      // the resolved value only as a gate signal; it does not inject payloads
+      // into task inputs or prompts.
       //
       // D22: when the sender explicitly declared `application/json`, a parse
       // failure is a contract violation — silently falling through to the
@@ -216,7 +238,7 @@ function ensureServer(
         }
       }
 
-      const waiter = state.waiters.shift();
+      const waiter = endpoint.waiters.shift();
       if (waiter) {
         waiter(payload);
         return new Response('ok', { status: 202 });
@@ -226,7 +248,7 @@ function ensureServer(
       return new Response('no waiting task', { status: 409 });
     },
     error(err) {
-      console.error(`[webhook] server error on :${port}${path}:`, err);
+      console.error(`[webhook] server error on ${hostname}:${port}:`, err);
       return new Response('internal error', { status: 500 });
     },
   });
@@ -234,21 +256,33 @@ function ensureServer(
   state = {
     key,
     port,
+    hostname,
+    server,
+    endpoints: new Map(),
+  };
+  const endpoint: WebhookEndpointState = {
+    serverState: state,
     path,
     secretEnv,
     maxBodyBytes,
-    server,
     waiters: [],
   };
+  state.endpoints.set(path, endpoint);
   servers.set(key, state);
-  return state;
+  return endpoint;
 }
 
-function closeServerIfIdle(state: WebhookServerState): void {
-  if (state.waiters.length > 0) return;
+function closeServerIfIdle(endpoint: WebhookEndpointState): void {
+  if (endpoint.waiters.length > 0) return;
+  const state = endpoint.serverState;
+  if (state.endpoints.get(endpoint.path) !== endpoint) return;
+  state.endpoints.delete(endpoint.path);
+  if (state.endpoints.size > 0) return;
   if (servers.get(state.key) !== state) return;
   servers.delete(state.key);
-  state.server.stop(true);
+  // Do not force-close the POST that just consumed the final waiter. The
+  // handler still has to flush its 202 response after onFire runs cleanup.
+  void state.server.stop(false);
 }
 
 export const WebhookTrigger: TriggerPlugin = {

@@ -145,6 +145,40 @@ describe('YAML edit lock', () => {
     ).toBe(false);
   });
 
+  test('POSIX dot-segment aliases cannot bypass a path-scoped lock', () => {
+    const lock = {
+      id: 'turn-1',
+      owner: 'chat' as const,
+      reason: 'chat updating YAML',
+      acquiredAt: Date.now(),
+      expiresAt: Date.now() + 30_000,
+      yamlPath: '/ws/.tagma/current/current.yaml',
+    };
+
+    expect(
+      shouldBlockYamlEditLockMutation(lock, {
+        path: '/api/open',
+        body: { path: '.tagma/current/../current/current.yaml' },
+        workDir: '/ws',
+      }),
+    ).toBe(true);
+    expect(
+      shouldBlockYamlEditLockMutation(lock, {
+        path: '/api/delete-file',
+        body: { path: '/ws/.tagma/current/../current' },
+        workDir: '/ws',
+      }),
+    ).toBe(true);
+    expect(
+      shouldBlockYamlEditLockMutation(lock, {
+        path: '/api/workspace/workflows',
+        body: { pipelinePaths: ['.tagma/other/../current/current.yaml'] },
+        currentYamlPath: '/ws/.tagma/other/other.yaml',
+        workDir: '/ws',
+      }),
+    ).toBe(true);
+  });
+
   test('path-scoped lock comparison remains case-insensitive for Windows drive paths', () => {
     const lock = {
       id: 'turn-1',
@@ -160,6 +194,29 @@ describe('YAML edit lock', () => {
         path: '/api/save',
         currentYamlPath: 'c:/ws/.tagma/build/build.yaml',
       }),
+    ).toBe(true);
+  });
+
+  test('deleting a filesystem root that contains the locked YAML is blocked', () => {
+    const baseLock = {
+      id: 'turn-root',
+      owner: 'chat' as const,
+      reason: 'chat updating YAML',
+      acquiredAt: Date.now(),
+      expiresAt: Date.now() + 30_000,
+    };
+
+    expect(
+      shouldBlockYamlEditLockMutation(
+        { ...baseLock, yamlPath: '/ws/.tagma/current/current.yaml' },
+        { path: '/api/delete-file', body: { path: '/' }, workDir: '/ws' },
+      ),
+    ).toBe(true);
+    expect(
+      shouldBlockYamlEditLockMutation(
+        { ...baseLock, yamlPath: 'C:\\ws\\.tagma\\current\\current.yaml' },
+        { path: '/api/delete-file', body: { path: 'C:\\' }, workDir: 'C:\\ws' },
+      ),
     ).toBe(true);
   });
 

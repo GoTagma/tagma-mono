@@ -534,7 +534,7 @@ function failResult(
     stdoutPath: null,
     stderrPath: null,
     stdoutBytes: 0,
-    stderrBytes: stderr.length,
+    stderrBytes: new TextEncoder().encode(stderr).byteLength,
     durationMs,
     sessionId: null,
     normalizedOutput: null,
@@ -547,17 +547,17 @@ function failResult(
  * Pattern-match an error string to decide if a spawn failure is a
  * "binary not found" case versus a real spawn failure (permission denied,
  * bad cwd, etc.). Bun's spawn surfaces ENOENT differently across platforms
- * and Bun versions — POSIX prefixes with `posix_spawn`, Windows mentions
- * `CreateProcess`, both can include the literal `ENOENT`. Match defensively.
+ * and Bun versions — POSIX may prefix a concrete errno with `posix_spawn`,
+ * while Windows mentions `CreateProcess`. The syscall name alone is not
+ * evidence of ENOENT: EACCES and bad executable formats use it too.
  */
-function isBinaryMissingError(err: unknown): boolean {
+export function isBinaryMissingError(err: unknown): boolean {
   if (err && typeof err === 'object' && (err as { code?: unknown }).code === 'ENOENT') {
     return true;
   }
   const m = String(err).toLowerCase();
   return (
     m.includes('enoent') ||
-    m.includes('posix_spawn') ||
     m.includes('no such file or directory') ||
     m.includes('command not found') ||
     m.includes('the system cannot find the file') ||
@@ -678,6 +678,19 @@ export async function runSpawn(
     return failResult(validationError, elapsed());
   }
 
+  if (spec.cwd !== undefined) {
+    try {
+      if (!statSync(spec.cwd).isDirectory()) {
+        return failResult(`Spawn working directory is not a directory: ${spec.cwd}`, elapsed());
+      }
+    } catch (err) {
+      return failResult(
+        `Spawn working directory is unavailable: ${spec.cwd} (${err instanceof Error ? err.message : String(err)})`,
+        elapsed(),
+      );
+    }
+  }
+
   const mergedEnv = buildChildEnv(spec.env, opts.envPolicy);
   const resolvedArgs = resolveWindowsExe(
     spec.args,
@@ -723,20 +736,7 @@ export async function runSpawn(
     return failResult(message, elapsed());
   }
 
-  // ── 2. Write stdin ─────────────────────────────────────────────────────
-  // Child may exit before reading (e.g. quick-fail commands that don't
-  // touch stdin) → swallow EPIPE rather than surfacing it as an
-  // engine-level error.
-  if (spec.stdin && proc.stdin && typeof proc.stdin !== 'number') {
-    try {
-      await proc.stdin.write(spec.stdin);
-      await proc.stdin.end();
-    } catch {
-      /* ignore EPIPE / closed-pipe errors */
-    }
-  }
-
-  // ── 3. Timeout & abort handling ────────────────────────────────────────
+  // ── 2. Timeout & abort handling ────────────────────────────────────────
   let killReason: 'timeout' | 'aborted' | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let forceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -798,36 +798,52 @@ export async function runSpawn(
     }
   }
 
-  // ── 4. Collect output & wait ──────────────────────────────────────────
-  // Both streams are drained concurrently with `proc.exited` to avoid the
-  // classic pipe-buffer deadlock (child blocks on a full stdout pipe, parent
-  // is blocked waiting on exit which the child can't reach). Each stream is
-  // persisted to disk via `collectStream` as it arrives so we never hold the
-  // full output in memory — only the bounded tail.
+  // ── 3. Start output drains ──────────────────────────────────────────────
+  // Start both readers before writing stdin. A child is allowed to fill
+  // stdout before it begins reading stdin; draining only after stdin.write()
+  // resolves can otherwise form a bidirectional pipe deadlock.
   const stdoutStream = typeof proc.stdout === 'object' ? proc.stdout : undefined;
   const stderrStream = typeof proc.stderr === 'object' ? proc.stderr : undefined;
   const stdoutCap = normalizeTailLimit(opts.maxStdoutTailBytes, DEFAULT_STDOUT_TAIL_BYTES);
   const stderrCap = normalizeTailLimit(opts.maxStderrTailBytes, DEFAULT_STDERR_TAIL_BYTES);
-
   const sink = opts.onOutputChunk;
+  const stdoutPromise = collectStream(
+    stdoutStream,
+    opts.stdoutPath,
+    stdoutCap,
+    'stdout',
+    sink ? (text) => sink('stdout', text) : undefined,
+    opts.outputRedactor,
+  );
+  const stderrPromise = collectStream(
+    stderrStream,
+    opts.stderrPath,
+    stderrCap,
+    'stderr',
+    sink ? (text) => sink('stderr', text) : undefined,
+    opts.outputRedactor,
+  );
+  const exitPromise = proc.exited;
+
+  // ── 4. Write stdin ─────────────────────────────────────────────────────
+  // Cancellation and output draining must already be armed here: a child
+  // that never reads stdin can backpressure this write until it exits. Child
+  // processes may also exit before reading, so closed-pipe errors remain
+  // intentionally non-fatal.
+  if (spec.stdin && proc.stdin && typeof proc.stdin !== 'number') {
+    try {
+      await proc.stdin.write(spec.stdin);
+      await proc.stdin.end();
+    } catch {
+      /* ignore EPIPE / closed-pipe errors */
+    }
+  }
+
+  // ── 5. Collect output & wait ────────────────────────────────────────────
   const [exitCode, stdoutResult, stderrResult] = await Promise.all([
-    proc.exited,
-    collectStream(
-      stdoutStream,
-      opts.stdoutPath,
-      stdoutCap,
-      'stdout',
-      sink ? (text) => sink('stdout', text) : undefined,
-      opts.outputRedactor,
-    ),
-    collectStream(
-      stderrStream,
-      opts.stderrPath,
-      stderrCap,
-      'stderr',
-      sink ? (text) => sink('stderr', text) : undefined,
-      opts.outputRedactor,
-    ),
+    exitPromise,
+    stdoutPromise,
+    stderrPromise,
   ]);
   const stdout = stdoutResult.text;
   const stderr = stderrResult.text;
@@ -836,7 +852,7 @@ export async function runSpawn(
   const stdoutBytes = stdoutResult.totalBytes;
   const stderrBytes = stderrResult.totalBytes;
 
-  // ── 5. Cleanup timers & listeners ──────────────────────────────────────
+  // ── 6. Cleanup timers & listeners ──────────────────────────────────────
   if (timer) clearTimeout(timer);
   if (forceTimer) clearTimeout(forceTimer);
   if (signal) signal.removeEventListener('abort', onAbort);
@@ -867,7 +883,7 @@ export async function runSpawn(
     };
   }
 
-  // ── 6. Let driver extract metadata ─────────────────────────────────────
+  // ── 7. Let driver extract metadata ─────────────────────────────────────
   // R1: parseResult is third-party code — wrap it in try/catch so a buggy
   // extractor doesn't discard a perfectly good spawn result. R5: even on
   // success, type-guard sessionId/normalizedOutput so a mistyped return

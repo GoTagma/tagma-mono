@@ -4,7 +4,11 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import type { HotupdateManifest } from '../server/update-manifest';
-import { activateSidecarBinary, stageSidecarBinary } from '../server/release/sidecar-staging';
+import {
+  activateSidecarBinary,
+  discardSidecarStaging,
+  stageSidecarBinary,
+} from '../server/release/sidecar-staging';
 
 function buildBinary(
   destDir: string,
@@ -175,6 +179,37 @@ describe('sidecar-staging', () => {
     expect(readFileSync(second.binaryPath).toString()).toBe('CACHED-BODY');
   });
 
+  test('discarding a reused same-version stage preserves the active binary', async () => {
+    const bin = buildBinary(serverDir, Buffer.from('ACTIVE-BODY'));
+    const manifest: HotupdateManifest = {
+      version: '9.9.9',
+      channel: 'alpha',
+      dist: { url: 'https://ignored', sha256: 'a'.repeat(64), size: 1 },
+      sidecar: {
+        targets: [
+          {
+            platform: process.platform,
+            arch: process.arch,
+            url: `file://${bin.path}`,
+            sha256: bin.sha256,
+            size: bin.size,
+          },
+        ],
+      },
+    };
+
+    const installed = await stageSidecarBinary(manifest, userDir);
+    activateSidecarBinary(installed);
+    rmSync(bin.path);
+
+    const reused = await stageSidecarBinary(manifest, userDir);
+    discardSidecarStaging(reused);
+
+    expect(existsSync(installed.binaryPath)).toBe(true);
+    expect(readFileSync(installed.binaryPath).toString()).toBe('ACTIVE-BODY');
+    expect(JSON.parse(readFileSync(join(userDir, 'current.json'), 'utf-8')).version).toBe('9.9.9');
+  });
+
   test('stageSidecarBinary replaces an existing same-version dir when content hash diverges', async () => {
     // First stage installs body A under versions/9.9.9/.
     const binA = buildBinary(serverDir, Buffer.from('OLD-BODY'));
@@ -216,6 +251,53 @@ describe('sidecar-staging', () => {
     };
     const replaced = await stageSidecarBinary(manifestB, userDir);
     expect(readFileSync(replaced.binaryPath).toString()).toBe('REPUBLISHED-BODY');
+  });
+
+  test('discard restores an active same-version directory replaced during staging', async () => {
+    const binA = buildBinary(serverDir, Buffer.from('ACTIVE-OLD-BODY'));
+    const manifestA: HotupdateManifest = {
+      version: '9.9.9',
+      channel: 'alpha',
+      dist: { url: 'https://ignored', sha256: 'a'.repeat(64), size: 1 },
+      sidecar: {
+        targets: [
+          {
+            platform: process.platform,
+            arch: process.arch,
+            url: `file://${binA.path}`,
+            sha256: binA.sha256,
+            size: binA.size,
+          },
+        ],
+      },
+    };
+    const active = await stageSidecarBinary(manifestA, userDir);
+    activateSidecarBinary(active);
+
+    const binB = buildBinary(serverDir, Buffer.from('STAGED-NEW-BODY'));
+    const manifestB: HotupdateManifest = {
+      ...manifestA,
+      sidecar: {
+        targets: [
+          {
+            platform: process.platform,
+            arch: process.arch,
+            url: `file://${binB.path}`,
+            sha256: binB.sha256,
+            size: binB.size,
+          },
+        ],
+      },
+    };
+
+    const staged = await stageSidecarBinary(manifestB, userDir);
+    expect(readFileSync(staged.binaryPath).toString()).toBe('STAGED-NEW-BODY');
+    discardSidecarStaging(staged);
+
+    expect(readFileSync(active.binaryPath).toString()).toBe('ACTIVE-OLD-BODY');
+    expect(JSON.parse(readFileSync(join(userDir, 'current.json'), 'utf-8')).sha256).toBe(
+      binA.sha256,
+    );
   });
 
   test('stageSidecarBinary throws when no target matches platform/arch', async () => {
