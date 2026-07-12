@@ -29,12 +29,12 @@ export function ConfirmDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60"
+      className="modal-viewport-backdrop fixed inset-0 z-[60] flex items-center justify-center bg-black/60"
       onClick={onCancel}
     >
       <div
         ref={modalRef}
-        className="bg-tagma-surface border border-tagma-border shadow-panel w-[min(420px,calc(100vw-32px))] max-h-[min(60vh,calc(100vh-48px))] flex flex-col animate-fade-in"
+        className="modal-viewport-shell flex w-full max-w-[420px] flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
         role="dialog"
         aria-modal="true"
         aria-labelledby="panel-confirm-dialog-title"
@@ -55,10 +55,10 @@ export function ConfirmDialog({
             <X size={14} />
           </button>
         </div>
-        <div className="px-5 py-4 text-[12px] text-tagma-text space-y-2 overflow-y-auto">
+        <div className="modal-viewport-body space-y-2 px-5 py-4 text-[12px] text-tagma-text">
           {message}
         </div>
-        <div className="px-5 py-3 border-t border-tagma-border flex justify-end gap-2">
+        <div className="modal-viewport-footer flex justify-end gap-2 border-t border-tagma-border px-5 py-3">
           <button
             type="button"
             onClick={onCancel}

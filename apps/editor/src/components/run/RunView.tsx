@@ -34,6 +34,9 @@ import { ApprovalDialog } from './ApprovalDialog';
 import { RunHistoryBrowser } from './RunHistoryBrowser';
 import { DesktopWindowControls } from '../DesktopWindowControls';
 import { ProductLogo } from '../ProductLogo';
+
+export const RUN_SEARCH_OVERLAY_CLASSES =
+  'fixed inset-x-2 top-12 z-[150] max-h-[calc(100dvh-3.5rem)] max-w-[calc(100vw-1rem)] overflow-y-auto border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in sm:left-auto sm:right-4 sm:top-14 sm:w-[340px] sm:max-w-[calc(100vw-2rem)]';
 import { hasDesktopBridge, toggleMaximizeDesktopWindow } from '../../desktop';
 import type {
   RawPipelineConfig,
@@ -517,7 +520,7 @@ export function RunView({
       {/* Header — height matches the editor Toolbar (h-9) so switching
           between the two views doesn't shift the canvas. */}
       <header
-        className={`h-9 bg-tagma-surface border-b border-tagma-border flex items-stretch pl-2 shrink-0 ${hasDesktopBridge() ? 'app-drag-region pr-0' : 'pr-2'}`}
+        className={`relative z-[40] h-9 overflow-visible bg-tagma-surface border-b border-tagma-border flex items-stretch pl-2 shrink-0 ${hasDesktopBridge() ? 'app-drag-region pr-0' : 'pr-2'}`}
         onDoubleClick={(e) => {
           if (!hasDesktopBridge()) return;
           if (e.target === e.currentTarget) void toggleMaximizeDesktopWindow();
@@ -536,7 +539,7 @@ export function RunView({
           </button>
           <div className="w-px h-5 bg-tagma-border shrink-0" />
 
-          <div className="flex items-center gap-1.5 px-2 min-w-0 shrink">
+          <div className="hidden items-center gap-1.5 px-2 min-w-0 shrink sm:flex">
             <ProductLogo size={14} />
             <span className="text-xs font-medium text-tagma-text truncate max-w-[160px]">
               {config.name}
@@ -565,37 +568,54 @@ export function RunView({
 
           {!showHistory && (
             <>
-              <div className="w-px h-5 bg-tagma-border" />
+              <div className="hidden w-px h-5 bg-tagma-border sm:block" />
 
               {/* Run status */}
               <div className="flex items-center gap-2 text-[10px] font-medium">
                 {status === 'running' && (
-                  <span className="chip-sm gap-1.5 px-2 bg-tagma-ready/10 border-tagma-ready/20 text-tagma-ready">
+                  <span
+                    className="chip-sm gap-1.5 px-2 bg-tagma-ready/10 border-tagma-ready/20 text-tagma-ready"
+                    aria-label="Run status: Running"
+                    title="Running"
+                  >
                     <Loader2 size={10} className="animate-spin" />
-                    Running
+                    <span className="hidden sm:inline">Running</span>
                   </span>
                 )}
                 {status === 'done' && (
-                  <span className="chip-sm gap-1.5 px-2 bg-tagma-success/10 border-tagma-success/20 text-tagma-success">
+                  <span
+                    className="chip-sm gap-1.5 px-2 bg-tagma-success/10 border-tagma-success/20 text-tagma-success"
+                    aria-label="Run status: Completed"
+                    title="Completed"
+                  >
                     <Check size={10} />
-                    Completed
+                    <span className="hidden sm:inline">Completed</span>
                   </span>
                 )}
                 {(status === 'error' || status === 'aborted' || status === 'failed') && (
-                  <span className="chip-sm gap-1.5 px-2 bg-tagma-error/10 border-tagma-error/20 text-tagma-error">
+                  <span
+                    className="chip-sm gap-1.5 px-2 bg-tagma-error/10 border-tagma-error/20 text-tagma-error"
+                    aria-label={`Run status: ${RUN_STATUS_LABEL[status] ?? status}`}
+                    title={RUN_STATUS_LABEL[status] ?? status}
+                  >
                     <X size={10} />
-                    {RUN_STATUS_LABEL[status] ?? status}
+                    <span className="hidden sm:inline">{RUN_STATUS_LABEL[status] ?? status}</span>
                   </span>
                 )}
                 {status === 'starting' && (
-                  <span className="chip-sm gap-1.5 px-2 bg-tagma-muted/8 border-tagma-muted/15 text-tagma-muted">
-                    {RUN_STATUS_LABEL[status] ?? status}
+                  <span
+                    className="chip-sm gap-1.5 px-2 bg-tagma-muted/8 border-tagma-muted/15 text-tagma-muted"
+                    aria-label={`Run status: ${RUN_STATUS_LABEL[status] ?? status}`}
+                    title={RUN_STATUS_LABEL[status] ?? status}
+                  >
+                    <Loader2 size={10} className="animate-spin" />
+                    <span className="hidden sm:inline">{RUN_STATUS_LABEL[status] ?? status}</span>
                   </span>
                 )}
               </div>
 
               {tasks.size > 0 && (
-                <div className="flex items-center gap-1">
+                <div className="hidden items-center gap-1 lg:flex">
                   {counts.success != null && counts.success > 0 && (
                     <span className="chip-sm bg-tagma-success/10 border-tagma-success/20 text-tagma-success">
                       <Check size={9} />
@@ -645,7 +665,9 @@ export function RunView({
                 <span className="chip-sm bg-tagma-warning/10 border-tagma-warning/20 text-tagma-warning">
                   <AlertCircle size={9} className="animate-pulse-slow" />
                   <span className="tabular-nums">{pendingApprovals.size}</span>
-                  approval{pendingApprovals.size === 1 ? '' : 's'}
+                  <span className="hidden sm:inline">
+                    approval{pendingApprovals.size === 1 ? '' : 's'}
+                  </span>
                 </span>
               )}
 
@@ -654,7 +676,7 @@ export function RunView({
               {/* Plugins (read-only) */}
               <button
                 onClick={() => setShowPlugins(true)}
-                className="flex items-center gap-1.5 px-2 py-1 text-xs text-tagma-muted hover:text-tagma-text transition-colors"
+                className="flex shrink-0 items-center gap-1.5 px-2 py-1 text-xs text-tagma-muted hover:text-tagma-text transition-colors"
                 title="View loaded plugins (read-only)"
                 aria-label="View loaded plugins"
               >
@@ -664,7 +686,7 @@ export function RunView({
               {/* Search */}
               <button
                 onClick={() => setSearchVisible(true)}
-                className="flex items-center gap-1.5 px-2 py-1 text-xs text-tagma-muted hover:text-tagma-text transition-colors"
+                className="flex shrink-0 items-center gap-1.5 px-2 py-1 text-xs text-tagma-muted hover:text-tagma-text transition-colors"
                 title="Search tasks (Ctrl+F)"
                 aria-label="Search tasks"
               >
@@ -677,13 +699,14 @@ export function RunView({
                   onClick={handleAbortClick}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-tagma-error border border-tagma-error/20 hover:bg-tagma-error/10 transition-colors mr-1 shrink-0"
                   title="Abort run"
+                  aria-label="Abort run"
                 >
                   <Square size={10} />
                   <span className="hidden md:inline">Abort</span>
                 </button>
               )}
               {showAbortConfirm && (
-                <div className="flex items-center gap-2 mr-1 px-2 py-1 bg-tagma-error/5 border border-tagma-error/20">
+                <div className="absolute right-2 top-full z-[120] flex max-w-[calc(100vw-1rem)] flex-wrap items-center gap-2 border border-tagma-error/20 bg-tagma-surface px-2 py-1 shadow-panel sm:static sm:mr-1 sm:bg-tagma-error/5 sm:shadow-none">
                   <span className="text-[10px] font-medium text-tagma-error">Stop all?</span>
                   <button
                     onClick={handleAbortConfirm}
@@ -719,9 +742,10 @@ export function RunView({
             onClick={handleAskChatForRunError}
             className="mr-3 flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-tagma-error border border-tagma-error/20 hover:bg-tagma-error/10 transition-colors shrink-0"
             title="Ask AI to diagnose this run error"
+            aria-label="Ask AI to diagnose this run error"
           >
             <MessageSquare size={11} />
-            <span>Ask AI</span>
+            <span className="hidden sm:inline">Ask AI</span>
           </button>
         </div>
       )}
@@ -758,7 +782,7 @@ export function RunView({
       )}
 
       {/* Main area */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="relative flex-1 flex overflow-hidden">
         {showHistory ? (
           <div className="flex-1 overflow-hidden">
             <RunHistoryBrowser
@@ -993,7 +1017,7 @@ export function RunView({
 
       {/* Search overlay — read-only, navigates selection on click */}
       {searchVisible && (
-        <div className="fixed top-14 right-4 z-[150] w-[340px] bg-tagma-surface border border-tagma-border shadow-panel animate-fade-in">
+        <div className={RUN_SEARCH_OVERLAY_CLASSES}>
           <div className="flex items-center gap-2 px-3 py-2 border-b border-tagma-border">
             <input
               autoFocus
@@ -1020,7 +1044,7 @@ export function RunView({
               <X size={12} />
             </button>
           </div>
-          <div className="max-h-[240px] overflow-y-auto">
+          <div className="max-h-[min(240px,calc(100dvh-7rem))] overflow-y-auto">
             {searchQuery.trim() === '' && (
               <div className="px-3 py-2 text-[10px] font-mono text-tagma-muted/60">
                 Type to search tasks

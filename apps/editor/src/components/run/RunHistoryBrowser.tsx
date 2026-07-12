@@ -976,8 +976,8 @@ export function RunHistoryBrowser({
         hasLiveRuns={hasLiveRuns}
       />
 
-      <div className="flex-1 min-h-0 flex">
-        <div className="w-72 shrink-0 border-r border-tagma-border flex flex-col bg-tagma-surface/25 overflow-hidden">
+      <div className="flex-1 min-h-0 flex flex-col md:flex-row">
+        <div className="max-h-[min(16rem,40%)] w-full shrink-0 border-b border-tagma-border flex flex-col bg-tagma-surface/25 overflow-hidden md:max-h-none md:w-72 md:border-b-0 md:border-r">
           <div className="shrink-0 h-11 px-5 flex items-center justify-between border-b border-tagma-border/60">
             <span className="text-[9px] tracking-[0.22em] uppercase text-tagma-muted-dim">
               Runs
@@ -1086,8 +1086,8 @@ function HistoryHeader({
 }) {
   return (
     <header className="shrink-0 bg-tagma-surface/60 border-b border-tagma-border">
-      <div className="px-6 pt-2">
-        <div className="flex items-end gap-7 -mb-px">
+      <div className="px-3 pt-2 sm:px-6">
+        <div className="-mb-px flex flex-wrap items-end gap-x-4 gap-y-2 sm:gap-x-7">
           {OUTCOME_TABS.map((t) => (
             <HeaderTab
               key={t.key}
@@ -1107,11 +1107,11 @@ function HistoryHeader({
               label={t.label}
             />
           ))}
-          <div className="flex-1" />
+          <div className="hidden flex-1 sm:block" />
           {/* Mirrors the PluginsPage header search: 256px input pinned to
               the right of the outcome tabs, with bottom padding that lines
               its baseline up with the tabs' underline row. */}
-          <div className="pb-2 w-64">
+          <div className="order-last w-full pb-2 sm:order-none sm:w-64">
             <div className="relative">
               <Search
                 size={12}
@@ -1497,11 +1497,11 @@ function DetailPane({
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-tagma-bg">
-      <div className="shrink-0 h-11 flex items-center gap-2 px-5 border-b border-tagma-border/60">
+      <div className="min-h-11 shrink-0 flex flex-wrap items-center gap-2 border-b border-tagma-border/60 px-3 py-2 sm:px-5">
         <div className="text-[9px] tracking-[0.22em] uppercase text-tagma-muted-dim">
           Run Detail
         </div>
-        <div className="flex-1" />
+        <div className="flex-1 min-w-[8px]" />
         <FileText size={12} className="text-tagma-muted-dim shrink-0" />
         <span
           className="text-[11px] font-mono text-tagma-muted truncate max-w-[360px] select-text"
@@ -1512,7 +1512,7 @@ function DetailPane({
         {selectedRunId && <CopyButton value={selectedRunId} title="Copy run ID" />}
         {selectedRunId && (
           <>
-            <div className="flex items-stretch border border-tagma-border ml-2">
+            <div className="max-w-full overflow-x-auto flex items-stretch border border-tagma-border sm:ml-2">
               <button
                 type="button"
                 className={`px-2.5 py-0.5 text-[9px] font-mono uppercase tracking-wider flex items-center justify-center ${

@@ -117,7 +117,7 @@ export function PipelineConfigPanel({
             );
           })()}
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label className="field-label">
               Default Timeout
@@ -135,7 +135,7 @@ export function PipelineConfigPanel({
               />
             </CopyableField>
           </div>
-          <div className="col-span-2">
+          <div className="sm:col-span-2">
             <label className="field-label">
               Default Driver
               <FieldHelpButton field="Default Driver" scope="pipeline" />
@@ -156,8 +156,8 @@ export function PipelineConfigPanel({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="sm:col-span-2">
             <label className="field-label">
               Default Model
               <FieldHelpButton field="Default Model" scope="pipeline" />
@@ -179,7 +179,7 @@ export function PipelineConfigPanel({
               Exact model name passed to the driver CLI. Inherited by tracks and tasks.
             </p>
           </div>
-          <div className="col-span-2">
+          <div className="sm:col-span-2">
             <label className="field-label">
               Reasoning Effort
               <FieldHelpButton field="Reasoning Effort" scope="pipeline" />

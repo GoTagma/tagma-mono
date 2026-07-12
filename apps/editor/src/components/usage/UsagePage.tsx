@@ -275,7 +275,7 @@ export function UsagePage({ onBack }: UsagePageProps) {
         </div>
       </header>
 
-      <div className="flex-1 min-h-0 flex flex-col gap-3 px-4 pt-3 pb-3 overflow-hidden">
+      <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-y-auto px-2 pb-3 pt-3 sm:px-4">
         {error && (
           <div className="border border-tagma-accent/40 bg-tagma-accent/8 px-3 py-2 text-[11px] font-mono text-tagma-text shrink-0">
             {error}
@@ -283,7 +283,7 @@ export function UsagePage({ onBack }: UsagePageProps) {
         )}
 
         {/* ── Summary cards: full-width strip ─────────────────────────────── */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 shrink-0">
+        <div className="grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4">
           <SummaryCard
             icon={<MessageSquare size={13} />}
             label="Turns"
@@ -312,9 +312,9 @@ export function UsagePage({ onBack }: UsagePageProps) {
         <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-3 shrink-0">
           <section className="border border-tagma-border bg-tagma-surface/30 flex flex-col min-w-0">
             <div className="flex items-center justify-between px-3 h-9 border-b border-tagma-border/60 shrink-0">
-              <div className="flex items-center gap-2">
+              <div className="flex min-w-0 items-center gap-2">
                 <BarChart3 size={12} className="text-tagma-muted" />
-                <span className="text-[11px] font-mono text-tagma-muted uppercase tracking-wider">
+                <span className="truncate text-[11px] font-mono text-tagma-muted uppercase tracking-wider">
                   Tokens over time
                 </span>
               </div>
@@ -331,7 +331,7 @@ export function UsagePage({ onBack }: UsagePageProps) {
                 />
               </div>
             </div>
-            <div className="h-[280px] p-2">
+            <div className="h-[clamp(180px,32vh,280px)] p-2">
               {chartData.length === 0 ? (
                 <EmptyChart loading={loading} />
               ) : (
@@ -386,7 +386,7 @@ export function UsagePage({ onBack }: UsagePageProps) {
           </section>
 
           {/* ── Per-model breakdown panel ──────────────────────────────── */}
-          <section className="border border-tagma-border bg-tagma-surface/30 flex flex-col min-w-0">
+          <section className="max-h-[280px] min-w-0 border border-tagma-border bg-tagma-surface/30 flex flex-col xl:max-h-none">
             <div className="flex items-center px-3 h-9 border-b border-tagma-border/60 shrink-0">
               <span className="text-[11px] font-mono text-tagma-muted uppercase tracking-wider">
                 By model
@@ -442,7 +442,7 @@ export function UsagePage({ onBack }: UsagePageProps) {
         </div>
 
         {/* ── Records table: fills remaining height with sticky header ─── */}
-        <section className="flex-1 min-h-0 border border-tagma-border bg-tagma-surface/30 flex flex-col">
+        <section className="flex min-h-[220px] flex-1 flex-col border border-tagma-border bg-tagma-surface/30">
           <div className="flex items-center justify-between px-3 h-9 border-b border-tagma-border/60 shrink-0">
             <span className="text-[11px] font-mono text-tagma-muted uppercase tracking-wider">
               Records ({visibleRecords.length})
@@ -551,7 +551,9 @@ function SummaryCard({
         <span className="text-[10px] font-mono uppercase tracking-wider">{label}</span>
       </div>
       <div className="mt-1 text-lg font-medium text-tagma-text">{value}</div>
-      {hint && <div className="text-[10px] font-mono text-tagma-muted-dim mt-0.5">{hint}</div>}
+      {hint && (
+        <div className="mt-0.5 break-words text-[10px] font-mono text-tagma-muted-dim">{hint}</div>
+      )}
     </div>
   );
 }

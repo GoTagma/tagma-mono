@@ -39,14 +39,14 @@ export function PipelinePicker({
 
   return (
     <motion.div
-      className="h-full w-full flex items-center justify-center bg-tagma-bg overflow-y-auto py-8"
+      className="h-full w-full flex items-center justify-center bg-tagma-bg overflow-y-auto py-4 sm:py-8"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
     >
-      <div className="w-full max-w-[640px] px-8 my-auto">
+      <div className="w-full max-w-[640px] px-4 sm:px-8 my-auto">
         {/* Header */}
-        <div className="flex items-center gap-3 mb-10">
+        <div className="mb-6 flex items-center gap-3 sm:mb-10">
           <div className="w-9 h-9 flex items-center justify-center">
             <ProductLogo size={32} />
           </div>
@@ -63,9 +63,10 @@ export function PipelinePicker({
             onClick={onSwitchWorkspace}
             className="group flex items-center gap-1.5 px-2 py-1 text-tagma-muted hover:text-tagma-accent transition-colors shrink-0"
             title="Return to workspace selection"
+            aria-label="Switch workspace"
           >
             <ArrowLeft size={11} />
-            <span className="text-[10px] font-mono uppercase tracking-widest">
+            <span className="hidden text-[10px] font-mono uppercase tracking-widest sm:inline">
               Switch Workspace
             </span>
           </button>
@@ -81,7 +82,7 @@ export function PipelinePicker({
 
         {/* List — scrolls inside its own bounded box when the workspace
             holds many pipelines, so the header and footer stay visible. */}
-        <ul className="flex flex-col border border-tagma-border divide-y divide-tagma-border/60 max-h-[55vh] overflow-y-auto">
+        <ul className="flex max-h-[min(55dvh,20rem)] flex-col divide-y divide-tagma-border/60 overflow-y-auto border border-tagma-border">
           {sorted.map((y) => {
             const primary =
               y.pipelineName && y.pipelineName.trim() ? y.pipelineName.trim() : y.name;
@@ -144,7 +145,7 @@ export function PipelinePicker({
         </button>
 
         {/* Footer hint */}
-        <div className="mt-10 text-center">
+        <div className="mt-6 text-center sm:mt-10">
           <p className="text-[10px] font-mono text-tagma-muted-dim/70 tracking-wide">
             Pipelines stored in <span className="text-tagma-muted-dim">{wsRoot}/.tagma/</span>
           </p>

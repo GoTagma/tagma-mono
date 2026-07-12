@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { Loader2, X as XIcon, ShieldCheck } from 'lucide-react';
 import type { PlatformExportStage, PlatformExportTarget } from '../api/client';
 import { useUIStore } from '../store/ui-store';
@@ -48,10 +48,19 @@ export type UnsavedAction = {
   run: () => void | Promise<void>;
 };
 
+export const VIEWPORT_NOTIFICATION_STACK_CLASSES =
+  'pointer-events-none fixed inset-x-2 bottom-2 z-[310] flex max-h-[calc(100dvh-1rem)] flex-col gap-2 overflow-y-auto overscroll-contain sm:inset-x-auto sm:bottom-4 sm:right-4 sm:w-[420px] sm:max-h-[calc(100dvh-2rem)]';
+
+export function ViewportNotificationStack({ children }: { children: ReactNode }) {
+  return <div className={VIEWPORT_NOTIFICATION_STACK_CLASSES}>{children}</div>;
+}
+
 export function PlatformExportProgressToast({
   progress,
+  contained = false,
 }: {
   progress: PlatformExportProgressState;
+  contained?: boolean;
 }) {
   const stageIndex = Math.max(0, PLATFORM_EXPORT_STAGES.indexOf(progress.stage));
   const width = `${Math.round(((stageIndex + 1) / PLATFORM_EXPORT_STAGES.length) * 100)}%`;
@@ -62,7 +71,11 @@ export function PlatformExportProgressToast({
     <div
       role="status"
       aria-live="polite"
-      className="fixed bottom-4 right-4 z-[290] w-[380px] max-w-[calc(100vw-2rem)] bg-tagma-surface border border-tagma-border shadow-panel animate-fade-in"
+      className={
+        contained
+          ? 'pointer-events-auto max-h-[min(18rem,45dvh)] w-full shrink-0 overflow-x-hidden overflow-y-auto border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in'
+          : 'fixed inset-x-2 bottom-2 z-[290] max-h-[calc(100dvh-1rem)] overflow-x-hidden overflow-y-auto border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in sm:inset-x-auto sm:bottom-4 sm:right-4 sm:w-[380px] sm:max-h-[calc(100dvh-2rem)]'
+      }
     >
       <div className="flex items-start gap-2.5 px-3 py-2.5">
         <Loader2 size={15} className="mt-0.5 shrink-0 text-tagma-accent animate-spin" />
@@ -73,7 +86,7 @@ export function PlatformExportProgressToast({
               {stageIndex + 1}/{PLATFORM_EXPORT_STAGES.length}
             </span>
           </div>
-          <div className="mt-1 text-[10px] font-mono text-tagma-muted">
+          <div className="mt-1 break-words text-[10px] font-mono text-tagma-muted">
             <span className="text-tagma-text">{stageLabel}</span>
             {progress.detail ? ` - ${progress.detail}` : ''}
           </div>
@@ -132,12 +145,12 @@ export function UnsavedChangesModal({
 
   return (
     <div
-      className="fixed inset-0 z-[215] flex items-center justify-center bg-black/60"
+      className="modal-viewport-backdrop fixed inset-0 z-[215] flex items-center justify-center bg-black/60"
       onClick={onCancel}
     >
       <div
         ref={modalRef}
-        className="bg-tagma-surface border border-tagma-border shadow-panel w-[min(460px,calc(100vw-32px))] max-h-[min(60vh,calc(100vh-48px))] flex flex-col animate-fade-in"
+        className="modal-viewport-shell w-full max-w-[460px] flex flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
         role="dialog"
         aria-modal="true"
         aria-labelledby="unsaved-changes-modal-title"
@@ -159,7 +172,7 @@ export function UnsavedChangesModal({
             <XIcon size={14} />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto">
+        <div className="modal-viewport-body">
           {action.details.map((detail, i) => (
             <div
               key={i}
@@ -169,7 +182,7 @@ export function UnsavedChangesModal({
             </div>
           ))}
         </div>
-        <div className="px-4 py-3 border-t border-tagma-border flex justify-end gap-2">
+        <div className="modal-viewport-footer px-4 py-3 border-t border-tagma-border flex justify-end gap-2">
           <button
             onClick={onCancel}
             className="min-w-[96px] px-3 py-1 text-[11px] text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 transition-colors text-center"

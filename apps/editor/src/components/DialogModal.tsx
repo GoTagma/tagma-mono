@@ -22,12 +22,12 @@ export function DialogModal({ info, onClose }: DialogModalProps) {
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60"
+      className="modal-viewport-backdrop fixed inset-0 z-[200] flex items-center justify-center bg-black/60"
       onClick={onClose}
     >
       <div
         ref={modalRef}
-        className="bg-tagma-surface border border-tagma-border shadow-panel w-[min(480px,calc(100vw-32px))] max-h-[min(60vh,calc(100vh-48px))] flex flex-col animate-fade-in"
+        className="modal-viewport-shell w-full max-w-[480px] flex flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
         role="dialog"
         aria-modal="true"
         aria-labelledby="dialog-modal-title"
@@ -56,7 +56,7 @@ export function DialogModal({ info, onClose }: DialogModalProps) {
             <XIcon size={14} />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto">
+        <div className="modal-viewport-body">
           {info.details.map((detail, i) => (
             <div
               key={i}
@@ -73,7 +73,7 @@ export function DialogModal({ info, onClose }: DialogModalProps) {
             </div>
           ))}
         </div>
-        <div className="px-4 py-3 border-t border-tagma-border flex justify-end">
+        <div className="modal-viewport-footer px-4 py-3 border-t border-tagma-border flex justify-end">
           <button onClick={onClose} className="btn-primary">
             OK
           </button>

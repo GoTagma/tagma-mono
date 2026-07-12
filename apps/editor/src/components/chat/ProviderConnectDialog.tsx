@@ -157,12 +157,12 @@ export function ProviderConnectDialog() {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[210] flex items-center justify-center bg-black/60"
+      className="modal-viewport-backdrop fixed inset-0 z-[210] flex items-center justify-center bg-black/60"
       onClick={close}
     >
       <div
         ref={modalRef}
-        className="bg-tagma-surface border border-tagma-border shadow-panel w-[min(600px,calc(100vw-32px))] max-h-[min(80vh,calc(100vh-48px))] flex flex-col animate-fade-in"
+        className="modal-viewport-shell flex w-full max-w-[600px] flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-label="Connect providers"
@@ -234,7 +234,7 @@ export function ProviderConnectDialog() {
           </div>
         )}
 
-        <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="modal-viewport-body">
           {isEmptyCatalog && (
             <div className="px-4 py-10 flex flex-col items-center gap-2 text-tagma-muted-dim">
               <Plug size={24} className="opacity-40" />
@@ -299,7 +299,7 @@ export function ProviderConnectDialog() {
           )}
         </div>
 
-        <div className="px-4 py-3 border-t border-tagma-border flex items-center justify-between gap-3">
+        <div className="modal-viewport-footer flex items-center justify-between gap-3 border-t border-tagma-border px-4 py-3">
           <div className="text-[10px] font-mono text-tagma-muted-dim truncate">
             Stored locally by opencode. No restart required.
           </div>

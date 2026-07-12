@@ -36,6 +36,7 @@ import { formatTaskErrorAttachment } from '../../utils/format-error-prompt';
 import { CopyButton } from './CopyButton';
 import { MissingBinaryHelp } from './MissingBinaryHelp';
 import { JsonOutputView } from './JsonOutputView';
+import { RUN_INSPECTOR_PANEL_CLASSES } from './run-layout';
 
 interface RunTaskPanelProps {
   task: RunTaskState;
@@ -244,7 +245,7 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
   }, [task, config]);
 
   return (
-    <div className="w-80 h-full bg-tagma-surface border-l border-tagma-border flex flex-col animate-slide-in-right">
+    <div className={RUN_INSPECTOR_PANEL_CLASSES}>
       <div className="panel-header-sm">
         <h2 className="panel-title-sm truncate">{task.taskName}</h2>
         <button

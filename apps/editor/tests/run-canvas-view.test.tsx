@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { RunCanvasView } from '../src/components/run/RunCanvasView';
+import { RunTaskPanel } from '../src/components/run/RunTaskPanel';
+import { TrackInfoPanel } from '../src/components/run/TrackInfoPanel';
 import type { RawPipelineConfig, RunTaskState } from '../src/api/client';
 import { useRunStore } from '../src/store/run-store';
 
@@ -78,5 +80,23 @@ describe('RunCanvasView', () => {
     expect(html).toContain('data-task-id="main.build"');
     expect(html).toContain('Build');
     expect(html).toContain('minimap');
+    expect(html).toContain('flex-1 min-h-0 min-w-0 flex overflow-hidden relative');
+
+    const panel = renderToStaticMarkup(
+      <RunTaskPanel task={runningTask()} config={config} onClose={() => {}} />,
+    );
+    expect(panel).toContain('absolute inset-y-0 right-0 z-30');
+    expect(panel).toContain('w-[calc(100%-1rem)]');
+    expect(panel).toContain('md:relative');
+  });
+
+  test('uses the same compact overlay contract for track details', () => {
+    const html = renderToStaticMarkup(
+      <TrackInfoPanel track={config.tracks[0]!} config={config} onClose={() => {}} />,
+    );
+
+    expect(html).toContain('absolute inset-y-0 right-0 z-30');
+    expect(html).toContain('w-[calc(100%-1rem)]');
+    expect(html).toContain('Main');
   });
 });

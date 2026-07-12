@@ -508,7 +508,7 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
           when they open/close, so scrollLeft/Top stay valid and the view
           doesn't jerk. */}
       {selectedTask && (
-        <div className="absolute right-0 top-0 bottom-0 z-20">
+        <div className="absolute inset-y-0 right-0 z-20 w-[calc(100%-1rem)] max-w-[18rem]">
           <HistoryTaskPanel
             summary={summary}
             task={selectedTask}
@@ -521,7 +521,7 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
       )}
 
       {!selectedTask && selectedTrack && (
-        <div className="absolute right-0 top-0 bottom-0 z-20">
+        <div className="absolute inset-y-0 right-0 z-20 w-[calc(100%-1rem)] max-w-[18rem]">
           <HistoryTrackPanel
             track={selectedTrack}
             onClose={() => {
@@ -548,7 +548,7 @@ function HistoryTaskPanel({
   const cfg = STATUS_CFG[task.status];
   const Icon = cfg.icon;
   return (
-    <div className="w-72 h-full bg-tagma-surface border-l border-tagma-border flex flex-col animate-slide-in-right">
+    <div className="w-full h-full bg-tagma-surface border-l border-tagma-border flex flex-col animate-slide-in-right">
       <div className="panel-header-sm">
         <h2 className="panel-title-sm truncate">{task.taskName}</h2>
         <button
@@ -693,7 +693,7 @@ function HistoryTrackPanel({ track, onClose }: { track: TrackGroup; onClose: () 
   const skippedCount = track.tasks.filter((t) => t.status === 'skipped').length;
   const totalMs = track.tasks.reduce((sum, t) => sum + (t.durationMs ?? 0), 0);
   return (
-    <div className="w-72 h-full bg-tagma-surface border-l border-tagma-border flex flex-col animate-slide-in-right">
+    <div className="w-full h-full bg-tagma-surface border-l border-tagma-border flex flex-col animate-slide-in-right">
       <div className="panel-header-sm">
         <h2 className="panel-title-sm truncate">{track.name}</h2>
         <button

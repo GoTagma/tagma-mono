@@ -38,7 +38,9 @@ describe('computeSecretsManagerBounds', () => {
         }),
       );
 
-      expect(html).toContain('flex-1 min-h-0 overflow-y-auto px-5 py-4 flex flex-col gap-4');
+      expect(html).toContain('modal-viewport-body');
+      expect(html).toContain('flex flex-col gap-4');
+      expect(html).toContain('grid grid-cols-1 gap-3 sm:grid-cols-2');
     } finally {
       g.window = prevWindow;
       g.document = prevDocument;

@@ -29,6 +29,9 @@ export interface SubmenuConfig {
 
 export type MenuEntry = MenuItem | MenuSeparator | SubMenuItem;
 
+export const CONTEXT_MENU_VIEWPORT_CLASSES =
+  'max-h-[calc(100dvh-0.5rem)] max-w-[calc(100vw-0.5rem)] overflow-y-auto';
+
 function isSeparator(entry: MenuEntry): entry is MenuSeparator {
   return 'separator' in entry;
 }
@@ -75,17 +78,13 @@ function SubmenuPanel({
     const pTop = parentRect.top / z;
     const rW = rect.width / z;
     const rH = rect.height / z;
-    // Horizontal: prefer right, fall back to left
-    if (pRight + rW > vw) {
-      el.style.left = `${pLeft - rW}px`;
-    } else {
-      el.style.left = `${pRight}px`;
-    }
-    el.style.top = `${pTop}px`;
-    // Vertical: clamp bottom
-    if (pTop + rH > vh) {
-      el.style.top = `${Math.max(4, vh - rH - 4)}px`;
-    }
+    const horizontalMargin = Math.min(4, vw / 2);
+    const verticalMargin = Math.min(4, vh / 2);
+    const preferredLeft = pRight + rW > vw - horizontalMargin ? pLeft - rW : pRight;
+    const maxLeft = Math.max(horizontalMargin, vw - rW - horizontalMargin);
+    const maxTop = Math.max(verticalMargin, vh - rH - verticalMargin);
+    el.style.left = `${Math.min(Math.max(preferredLeft, horizontalMargin), maxLeft)}px`;
+    el.style.top = `${Math.min(Math.max(pTop, verticalMargin), maxTop)}px`;
   }, [parentRect]);
 
   const filtered = config.items.filter((entry) => {
@@ -100,7 +99,7 @@ function SubmenuPanel({
   return (
     <div
       ref={ref}
-      className="fixed z-[101] bg-tagma-surface border border-tagma-border shadow-panel py-1 min-w-[180px] animate-fade-in"
+      className={`fixed z-[101] min-w-[min(180px,calc(100vw-0.5rem))] border border-tagma-border bg-tagma-surface py-1 shadow-panel animate-fade-in ${CONTEXT_MENU_VIEWPORT_CLASSES}`}
       style={{ left: parentRect.right / getZoom(), top: parentRect.top / getZoom() }}
       onContextMenu={(e) => e.preventDefault()}
     >
@@ -293,12 +292,14 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
     const vh = viewportH();
     const rW = rect.width / z;
     const rH = rect.height / z;
-    if (logicalX + rW > vw) {
-      el.style.left = `${logicalX - rW}px`;
-    }
-    if (logicalY + rH > vh) {
-      el.style.top = `${logicalY - rH}px`;
-    }
+    const horizontalMargin = Math.min(4, vw / 2);
+    const verticalMargin = Math.min(4, vh / 2);
+    const preferredLeft = logicalX + rW > vw - horizontalMargin ? logicalX - rW : logicalX;
+    const preferredTop = logicalY + rH > vh - verticalMargin ? logicalY - rH : logicalY;
+    const maxLeft = Math.max(horizontalMargin, vw - rW - horizontalMargin);
+    const maxTop = Math.max(verticalMargin, vh - rH - verticalMargin);
+    el.style.left = `${Math.min(Math.max(preferredLeft, horizontalMargin), maxLeft)}px`;
+    el.style.top = `${Math.min(Math.max(preferredTop, verticalMargin), maxTop)}px`;
   }, [logicalX, logicalY]);
 
   const handleSubmenuEnter = useCallback((index: number) => {
@@ -324,7 +325,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
   return (
     <div
       ref={ref}
-      className="fixed z-[100] bg-tagma-surface border border-tagma-border shadow-panel py-1 min-w-[160px] animate-fade-in"
+      className={`fixed z-[100] min-w-[min(160px,calc(100vw-0.5rem))] border border-tagma-border bg-tagma-surface py-1 shadow-panel animate-fade-in ${CONTEXT_MENU_VIEWPORT_CLASSES}`}
       style={{ left: logicalX, top: logicalY }}
       onContextMenu={(e) => e.preventDefault()}
     >

@@ -151,7 +151,7 @@ function BindingSection<T extends TaskInputBinding | TaskOutputBinding>({
                     }
                   />
                 </CopyableField>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <CopyableField value={formatValue(binding.value)} label={`Copy ${kind} value`}>
                     <input
                       className="field-input text-xs"

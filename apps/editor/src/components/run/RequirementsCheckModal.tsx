@@ -128,12 +128,12 @@ export function RequirementsCheckModal({
 
   return (
     <div
-      className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60"
+      className="modal-viewport-backdrop fixed inset-0 z-[220] flex items-center justify-center bg-black/60"
       onClick={onCancel}
     >
       <div
         ref={modalRef}
-        className="bg-tagma-surface border border-tagma-border shadow-panel w-[min(640px,calc(100vw-32px))] max-h-[min(80vh,calc(100vh-48px))] flex flex-col animate-fade-in"
+        className="modal-viewport-shell flex w-full max-w-[640px] flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
         role="dialog"
         aria-modal="true"
         aria-labelledby="requirements-check-modal-title"
@@ -159,7 +159,7 @@ export function RequirementsCheckModal({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+        <div className="modal-viewport-body space-y-3 px-4 py-3">
           <p className="text-[11px] text-tagma-text/80 leading-relaxed">
             Tagma checked this pipeline against its{' '}
             <code className="font-mono text-tagma-muted">.requirements.md</code> file before
@@ -224,7 +224,7 @@ export function RequirementsCheckModal({
           </button>
         </div>
 
-        <div className="px-4 py-3 border-t border-tagma-border flex justify-end gap-2">
+        <div className="modal-viewport-footer flex justify-end gap-2 border-t border-tagma-border px-4 py-3">
           <button
             onClick={onCancel}
             className="min-w-[96px] px-3 py-1 text-[11px] text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 transition-colors text-center"

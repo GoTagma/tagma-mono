@@ -828,7 +828,7 @@ export function WorkflowView({
         >
           <ArrowLeft size={14} />
         </button>
-        <Workflow size={14} className="text-tagma-accent" />
+        <Workflow size={14} className="hidden shrink-0 text-tagma-accent sm:block" />
         <div className="min-w-0 flex-1">
           <div className="text-[12px] font-semibold truncate">
             {selectedWorkflow?.workflowName ?? selectedWorkflow?.name ?? 'Pipeline Graph'}
@@ -854,7 +854,7 @@ export function WorkflowView({
           title="New Graph"
         >
           <Plus size={12} />
-          <span>New Graph</span>
+          <span className="hidden sm:inline">New Graph</span>
         </button>
         {selectedWorkflow && hasRunActivity && (
           <button
@@ -865,7 +865,7 @@ export function WorkflowView({
             title={runPageVisible ? 'Edit graph' : 'Show graph run'}
           >
             {runPageVisible ? <Workflow size={11} /> : <Play size={11} />}
-            <span>{runPageVisible ? 'Edit graph' : 'Graph run'}</span>
+            <span className="hidden md:inline">{runPageVisible ? 'Edit graph' : 'Graph run'}</span>
           </button>
         )}
         {selectedWorkflow && !running && (
@@ -878,7 +878,7 @@ export function WorkflowView({
             className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Play size={11} />
-            <span>Run selected workflow</span>
+            <span className="hidden md:inline">Run selected workflow</span>
           </button>
         )}
         {selectedWorkflow && running && (
@@ -890,7 +890,7 @@ export function WorkflowView({
             className="h-7 px-2 flex items-center gap-1 border border-tagma-error/40 text-[11px] text-tagma-error hover:bg-tagma-error/10"
           >
             <Ban size={11} />
-            <span>Abort workflow</span>
+            <span className="hidden md:inline">Abort workflow</span>
           </button>
         )}
         {isDesktop && <DesktopWindowControls />}
@@ -912,8 +912,8 @@ export function WorkflowView({
           onAbort={onAbort}
         />
       ) : (
-        <div className="flex-1 min-h-0 grid grid-cols-[260px_minmax(420px,1fr)_360px] overflow-hidden">
-          <aside className="border-r border-tagma-border bg-tagma-surface/70 min-h-0 overflow-auto p-3">
+        <div className="flex-1 min-h-0 grid grid-cols-1 grid-rows-[minmax(12rem,auto)_minmax(24rem,1fr)_minmax(16rem,auto)] overflow-y-auto xl:grid-cols-[260px_minmax(420px,1fr)_360px] xl:grid-rows-1 xl:overflow-hidden">
+          <aside className="max-h-[18rem] min-h-0 overflow-auto border-b border-tagma-border bg-tagma-surface/70 p-3 xl:max-h-none xl:border-b-0 xl:border-r">
             <div className="flex items-center justify-between gap-2 mb-2">
               <div className="text-[10px] font-mono uppercase tracking-wide text-tagma-muted">
                 Workflow Graphs
@@ -1016,7 +1016,7 @@ export function WorkflowView({
             )}
           </aside>
 
-          <main className="min-w-0 min-h-0 flex flex-col overflow-hidden">
+          <main className="min-h-[24rem] min-w-0 flex flex-col overflow-hidden border-b border-tagma-border xl:min-h-0 xl:border-b-0">
             {!selectedWorkflow ? (
               <div className="flex-1 flex items-center justify-center text-[12px] font-mono text-tagma-muted">
                 No workflow graph selected.
@@ -1342,7 +1342,7 @@ export function WorkflowView({
             )}
           </main>
 
-          <aside className="border-l border-tagma-border bg-tagma-surface min-h-0 overflow-auto p-3">
+          <aside className="max-h-[20rem] min-h-0 overflow-auto bg-tagma-surface p-3 xl:max-h-none xl:border-l xl:border-tagma-border">
             <div className="text-[10px] font-mono uppercase tracking-wide text-tagma-muted mb-2">
               Pipeline Detail
             </div>
@@ -1427,7 +1427,7 @@ export function WorkflowView({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <div className="border border-tagma-border bg-tagma-bg p-2">
                     <div className="field-label">Upstream</div>
                     <div className="space-y-1">
@@ -1634,12 +1634,12 @@ export function WorkflowRunPage({
   return (
     <main className="flex-1 min-h-0 overflow-auto bg-tagma-bg">
       <div className="border-b border-tagma-border bg-tagma-surface/70 px-5 py-4">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
           <div className="min-w-0">
             <div className="text-[10px] font-mono uppercase tracking-[0.22em] text-tagma-muted-dim">
               Graph Run
             </div>
-            <div className="mt-1 flex items-center gap-2">
+            <div className="mt-1 flex flex-wrap items-center gap-2">
               <OutcomeIcon
                 size={16}
                 className={`${outcomeMeta.text} ${running ? 'animate-spin' : ''}`}
@@ -1667,7 +1667,7 @@ export function WorkflowRunPage({
             </div>
           </div>
           {(onEditGraph || onRunAgain || (running && onAbort)) && (
-            <div className="shrink-0 flex items-center gap-2">
+            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0 sm:justify-end">
               {onEditGraph && (
                 <button
                   type="button"
@@ -1709,8 +1709,8 @@ export function WorkflowRunPage({
         </div>
       </div>
 
-      <div className="grid grid-cols-[minmax(420px,1fr)_360px] gap-0 min-h-[calc(100%-80px)]">
-        <section className="min-w-0 border-r border-tagma-border p-4">
+      <div className="grid min-h-[calc(100%-80px)] grid-cols-1 gap-0 xl:grid-cols-[minmax(420px,1fr)_360px]">
+        <section className="min-w-0 border-b border-tagma-border p-3 sm:p-4 xl:border-b-0 xl:border-r">
           <div className="mb-3 text-[10px] font-mono uppercase tracking-wide text-tagma-muted">
             Pipeline Runtime
           </div>
@@ -1740,7 +1740,7 @@ export function WorkflowRunPage({
                       {meta.label}
                     </div>
                   </div>
-                  <div className="mt-3 grid grid-cols-3 gap-2 text-[10px] font-mono">
+                  <div className="mt-3 grid grid-cols-1 gap-2 text-[10px] font-mono sm:grid-cols-3">
                     <div className="border border-tagma-border/60 bg-tagma-bg/60 px-2 py-1.5">
                       <div className="text-tagma-muted-dim">Run</div>
                       <div className="text-tagma-text">
@@ -1799,7 +1799,7 @@ export function WorkflowRunPage({
           </div>
         </section>
 
-        <aside className="min-w-0 bg-tagma-surface/70 p-4">
+        <aside className="min-w-0 bg-tagma-surface/70 p-3 sm:p-4">
           <div className="mb-3 text-[10px] font-mono uppercase tracking-wide text-tagma-muted">
             Execution Timeline
           </div>

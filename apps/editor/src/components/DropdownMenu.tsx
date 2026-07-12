@@ -65,7 +65,7 @@ export function DropdownMenu({ items, onClose, anchorClassName, anchorStyle }: D
   return (
     <div
       ref={ref}
-      className={`${anchorClassName ?? ''} bg-tagma-surface border border-tagma-border/80 shadow-xl py-1 min-w-[240px] max-w-[360px] overflow-y-auto animate-fade-in`}
+      className={`${anchorClassName ?? ''} min-w-[min(240px,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] overflow-y-auto border border-tagma-border/80 bg-tagma-surface py-1 shadow-xl animate-fade-in`}
       style={{
         maxHeight: 'min(560px, calc(100vh - 64px))',
         overscrollBehavior: 'contain',

@@ -285,6 +285,11 @@ describe('WorkflowView', () => {
     expect(html).toContain('cursor-grab');
     expect(html).toContain('cursor-crosshair');
     expect(html).toContain('Edit deploy in pipeline editor');
+    expect(html).toContain('grid-cols-1');
+    expect(html).toContain('xl:grid-cols-[260px_minmax(420px,1fr)_360px]');
+    expect(html).toContain('grid-rows-[minmax(12rem,auto)_minmax(24rem,1fr)_minmax(16rem,auto)]');
+    expect(html).toContain('overflow-y-auto');
+    expect(html).toContain('xl:overflow-hidden');
   });
 
   test('matches workflow pipeline display by workspace-resolved path, not suffix', () => {
@@ -486,6 +491,7 @@ describe('WorkflowView', () => {
     expect(html).toContain('data-edge-delete="p1-&gt;p2"');
     expect(html).toContain('workflow-edge-delete-button');
     expect(html).toContain('bg-tagma-surface');
+    expect(html).toContain('grid grid-cols-1 gap-2 sm:grid-cols-2');
   });
 
   test('renders edge delete affordance with a tight square box around the icon', () => {

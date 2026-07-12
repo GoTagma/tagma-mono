@@ -9,7 +9,6 @@ import { useMemo } from 'react';
 import { X, Package, Cpu, Zap, CheckCircle2, Layers } from 'lucide-react';
 import { usePipelineStore } from '../../store/pipeline-store';
 import type { RawPipelineConfig } from '../../api/client';
-import { viewportH } from '../../utils/zoom';
 import { useModalFocusTrap } from '../../hooks/use-modal-focus-trap';
 
 interface RunPluginsPanelProps {
@@ -65,22 +64,20 @@ export function RunPluginsPanel({ config, onClose }: RunPluginsPanelProps) {
   const registry = usePipelineStore((s) => s.registry);
 
   const declaredPlugins = useMemo(() => config.plugins ?? [], [config.plugins]);
-  const maxH = useMemo(() => Math.floor(viewportH() * 0.8), []);
   const modalRef = useModalFocusTrap<HTMLDivElement>();
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      className="modal-viewport-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/50"
       onClick={onClose}
     >
       <div
         ref={modalRef}
-        className="bg-tagma-surface border border-tagma-border shadow-panel w-[min(560px,calc(100vw-32px))] flex flex-col animate-fade-in"
+        className="modal-viewport-shell flex w-full max-w-[560px] flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
         role="dialog"
         aria-modal="true"
         aria-labelledby="run-plugins-panel-title"
         tabIndex={-1}
-        style={{ maxHeight: maxH }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="panel-header">
@@ -99,7 +96,7 @@ export function RunPluginsPanel({ config, onClose }: RunPluginsPanelProps) {
           </button>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-5">
+        <div className="modal-viewport-body space-y-5 px-5 py-4">
           {/* Declared (from config.plugins) */}
           <div>
             <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-tagma-muted/70 mb-1.5">

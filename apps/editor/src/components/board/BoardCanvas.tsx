@@ -2055,11 +2055,11 @@ export function BoardCanvas({
       {/* Inline name input */}
       {inlineAdd && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
+          className="modal-viewport-backdrop fixed inset-0 z-50 flex items-center justify-center"
           onClick={() => setInlineAdd(null)}
         >
           <div
-            className="bg-tagma-surface border border-tagma-border shadow-panel p-3 animate-fade-in w-64"
+            className="modal-viewport-shell w-full max-w-64 border border-tagma-border bg-tagma-surface p-3 shadow-panel animate-fade-in"
             onClick={(e) => e.stopPropagation()}
           >
             <label className="text-[10px] font-mono text-tagma-muted uppercase tracking-wider mb-1.5 block">

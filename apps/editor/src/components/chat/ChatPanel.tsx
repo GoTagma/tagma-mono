@@ -402,44 +402,46 @@ function flowStepTextClass(status: FlowStepStatus): string {
  * to a broken install, which users interpret as "nothing loaded, close and
  * reopen" — the very workaround that masks the real startup wait.
  */
-function BootstrapOverlay() {
+export function BootstrapOverlay() {
   const status = useChatStore((s) => s.bootstrapStatus);
   const error = useChatStore((s) => s.bootstrapError);
   const retry = useChatStore((s) => s.retryBootstrap);
 
   const isError = status === 'error';
   return (
-    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-tagma-bg/95 px-6 text-center">
-      {isError ? (
-        <>
-          <AlertTriangle size={18} className="text-tagma-error" />
-          <div className="text-[11px] font-mono text-tagma-text">Couldn't start OpenCode.</div>
-          {error && (
-            <div className="text-[10px] font-mono text-tagma-muted/90 break-words max-w-full">
-              {error}
+    <div className="absolute inset-0 z-10 overflow-y-auto bg-tagma-bg/95">
+      <div className="min-h-full flex flex-col items-center justify-center gap-2 px-6 py-4 text-center">
+        {isError ? (
+          <>
+            <AlertTriangle size={18} className="text-tagma-error" />
+            <div className="text-[11px] font-mono text-tagma-text">Couldn't start OpenCode.</div>
+            {error && (
+              <div className="text-[10px] font-mono text-tagma-muted/90 break-words max-w-full">
+                {error}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                retry().catch(() => {
+                  /* error already surfaced via bootstrapError */
+                });
+              }}
+              className="mt-1 px-2 py-1 border border-tagma-border text-[10px] font-mono text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 transition-colors"
+            >
+              Retry
+            </button>
+          </>
+        ) : (
+          <>
+            <Loader2 size={16} className="text-tagma-muted animate-spin" />
+            <div className="text-[11px] font-mono text-tagma-text">Starting OpenCode…</div>
+            <div className="text-[10px] font-mono text-tagma-muted/70">
+              First launch can take a few seconds.
             </div>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              retry().catch(() => {
-                /* error already surfaced via bootstrapError */
-              });
-            }}
-            className="mt-1 px-2 py-1 border border-tagma-border text-[10px] font-mono text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 transition-colors"
-          >
-            Retry
-          </button>
-        </>
-      ) : (
-        <>
-          <Loader2 size={16} className="text-tagma-muted animate-spin" />
-          <div className="text-[11px] font-mono text-tagma-text">Starting OpenCode…</div>
-          <div className="text-[10px] font-mono text-tagma-muted/70">
-            First launch can take a few seconds.
-          </div>
-        </>
-      )}
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -966,7 +968,10 @@ export function SessionYamlResultBubble({ result }: { result: ChatYamlSessionRes
   );
 }
 
-export function ChatCompletionToast() {
+export const CHAT_COMPLETION_TOAST_VIEWPORT_CLASSES =
+  'fixed inset-x-2 bottom-2 z-[260] flex max-h-[calc(100dvh-1rem)] max-w-[calc(100vw-1rem)] flex-col gap-2 overflow-y-auto sm:inset-x-auto sm:bottom-4 sm:right-4 sm:w-[360px] sm:max-h-[calc(100dvh-2rem)] sm:max-w-[calc(100vw-2rem)]';
+
+export function ChatCompletionToast({ contained = false }: { contained?: boolean } = {}) {
   const currentSessionId = useChatStore((s) => s.currentSessionId);
   const sessions = useChatStore((s) => s.sessions);
   const results = useChatStore((s) => s.sessionYamlResults);
@@ -990,7 +995,13 @@ export function ChatCompletionToast() {
   if (visibleResults.length === 0) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-[260] flex max-w-[360px] flex-col gap-2">
+    <div
+      className={
+        contained
+          ? 'pointer-events-auto flex max-h-[min(18rem,45dvh)] w-full shrink-0 flex-col gap-2 overflow-y-auto'
+          : CHAT_COMPLETION_TOAST_VIEWPORT_CLASSES
+      }
+    >
       {visibleResults.map((result) => {
         const pipelineName = chatPipelineDisplayName(result);
         const sessionTitle =

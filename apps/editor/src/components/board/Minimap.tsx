@@ -7,10 +7,31 @@ import type { RawPipelineConfig, TrackFolder } from '../../api/client';
 import type { TaskPosition } from '../../store/pipeline-store';
 import { buildRenderPlan, trackTopYInPlan } from './render-plan';
 
-// Floating minimap footprint — fixed so it doesn't react to sidebar resize.
+// Preferred floating minimap footprint. The actual map shrinks with its canvas
+// viewport and disappears when even the compact floor would obscure the work.
 const MAP_W = 240;
 const MAP_H = 140;
+const MIN_MAP_W = 136;
+const MIN_MAP_H = 80;
+const MIN_CANVAS_W = 170;
+const MIN_CANVAS_H = 130;
 const PAD = 4;
+
+export function resolveMinimapViewport(
+  viewportWidth: number,
+  viewportHeight: number,
+): { hidden: boolean; width: number; height: number } {
+  if (viewportWidth < MIN_CANVAS_W || viewportHeight < MIN_CANVAS_H) {
+    return { hidden: true, width: 0, height: 0 };
+  }
+  return {
+    hidden: false,
+    // Reserve room around the full card, including its border, padding, and
+    // title rail—not just around the inner SVG dimensions.
+    width: Math.max(MIN_MAP_W, Math.min(MAP_W, Math.floor(viewportWidth - 38))),
+    height: Math.max(MIN_MAP_H, Math.min(MAP_H, Math.floor(viewportHeight - 56))),
+  };
+}
 
 interface MinimapProps {
   /**
@@ -70,6 +91,7 @@ export function Minimap({
   const [scrollTick, setScrollTick] = useState(0);
   const [contentW, setContentW] = useState(1);
   const [contentH, setContentH] = useState(1);
+  const [canvasViewport, setCanvasViewport] = useState({ width: MAP_W + 24, height: MAP_H + 42 });
   const svgRef = useRef<SVGSVGElement>(null);
 
   // Use the real canvas scroll extents so task positions, viewport rect, and
@@ -83,19 +105,27 @@ export function Minimap({
     const ch = Math.max(el.scrollHeight, 1);
     setContentW((prev) => (prev === cw ? prev : cw));
     setContentH((prev) => (prev === ch ? prev : ch));
+    const nextViewport = { width: el.clientWidth, height: el.clientHeight };
+    setCanvasViewport((prev) =>
+      prev.width === nextViewport.width && prev.height === nextViewport.height
+        ? prev
+        : nextViewport,
+    );
   }, [scrollTick, tracks, positions, scrollElementId]);
+
+  const mapLayout = resolveMinimapViewport(canvasViewport.width, canvasViewport.height);
 
   // Scale to fit content inside map with padding.
   const { scale, offsetX, offsetY } = useMemo(() => {
-    const availW = MAP_W - PAD * 2;
-    const availH = MAP_H - PAD * 2;
+    const availW = mapLayout.width - PAD * 2;
+    const availH = mapLayout.height - PAD * 2;
     const sX = availW / Math.max(contentW, 1);
     const sY = availH / Math.max(contentH, 1);
     const s = Math.min(sX, sY);
     const oX = PAD + (availW - contentW * s) / 2;
     const oY = PAD + (availH - contentH * s) / 2;
     return { scale: s, offsetX: oX, offsetY: oY };
-  }, [contentW, contentH]);
+  }, [contentW, contentH, mapLayout.height, mapLayout.width]);
 
   // Subscribe to canvas scroll + size changes so the minimap stays live.
   useEffect(() => {
@@ -213,6 +243,7 @@ export function Minimap({
   }, [tracks, renderPlan, positions, scale, offsetX, offsetY]);
 
   if (!config || tracks.length === 0) return null;
+  if (mapLayout.hidden) return null;
 
   if (!visible) {
     return (
@@ -253,8 +284,8 @@ export function Minimap({
       <div className="p-1.5">
         <svg
           ref={svgRef}
-          width={MAP_W}
-          height={MAP_H}
+          width={mapLayout.width}
+          height={mapLayout.height}
           onPointerDown={handlePointerDown}
           style={{ cursor: 'crosshair', display: 'block' }}
         >

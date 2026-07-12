@@ -242,12 +242,12 @@ export function FileExplorer({
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60"
+      className="modal-viewport-backdrop fixed inset-0 z-[200] flex items-center justify-center bg-black/60"
       onClick={onCancel}
     >
       <div
         ref={modalRef}
-        className="bg-tagma-surface border border-tagma-border shadow-panel w-[min(560px,calc(100vw-32px))] h-[min(50vh,calc(100vh-48px))] flex flex-col overflow-hidden animate-fade-in"
+        className="modal-viewport-shell h-[min(32rem,calc(100dvh-1rem))] w-full max-w-[560px] flex flex-col overflow-hidden border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in sm:h-[min(32rem,calc(100dvh-2rem))]"
         role="dialog"
         aria-modal="true"
         aria-labelledby="file-explorer-title"
@@ -322,7 +322,7 @@ export function FileExplorer({
             its content size so `overflow-y-auto` can scroll. Without it,
             the list would force the dialog to grow and its footer would
             spill past the dialog box on short viewports. */}
-        <div className="flex-1 overflow-y-auto min-h-0">
+        <div className="modal-viewport-body">
           {newFolderName !== null && (
             <div className="flex items-center gap-2 px-3 py-1.5 bg-tagma-elevated/50">
               <Folder size={13} className="text-tagma-accent shrink-0" />
@@ -394,7 +394,7 @@ export function FileExplorer({
         </div>
 
         {/* Footer */}
-        <div className="px-3 py-2.5 border-t border-tagma-border space-y-2">
+        <div className="modal-viewport-footer space-y-2 border-t border-tagma-border px-3 py-2.5">
           {mode === 'save' && (
             <div className="flex items-center gap-2">
               <label className="text-[10px] text-tagma-muted uppercase tracking-wider shrink-0">
@@ -419,7 +419,7 @@ export function FileExplorer({
               </div>
             </div>
           )}
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {multi && (
               <span className="text-[10px] text-tagma-muted mr-auto">
                 {selected.length === 0

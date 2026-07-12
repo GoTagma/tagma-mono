@@ -34,6 +34,8 @@ const ALL_TABS: RightTab[] = ['inspector', 'yaml', 'chat'];
 const TAB_WIDTH_MIN = 360;
 const TAB_WIDTH_DEFAULT = 360;
 const TAB_WIDTH_MAX = 720;
+const ACTIVITY_RAIL_WIDTH = 32;
+export const RIGHT_DOCK_COMPACT_BREAKPOINT = 960;
 const LAYOUT_KEY = 'tagma.right-dock.v2';
 const WIDTH_KEY = 'tagma.right-dock.widths.v1';
 const DRAG_MIME = 'application/x-tagma-tab';
@@ -111,6 +113,43 @@ interface PersistedWidths {
 function clampWidth(w: unknown): number {
   if (typeof w !== 'number' || !Number.isFinite(w)) return TAB_WIDTH_DEFAULT;
   return Math.max(TAB_WIDTH_MIN, Math.min(TAB_WIDTH_MAX, Math.round(w)));
+}
+
+export function resolveRightDockViewportLayout(
+  viewportWidth: number,
+  desiredPanelWidth: number,
+): { compact: boolean; panelWidth: number } {
+  const safeViewportWidth = Number.isFinite(viewportWidth)
+    ? Math.max(0, Math.floor(viewportWidth))
+    : RIGHT_DOCK_COMPACT_BREAKPOINT;
+  const compact = safeViewportWidth < RIGHT_DOCK_COMPACT_BREAKPOINT;
+  const desired = clampWidth(desiredPanelWidth);
+  return {
+    compact,
+    panelWidth: compact
+      ? Math.min(desired, Math.max(0, safeViewportWidth - ACTIVITY_RAIL_WIDTH))
+      : desired,
+  };
+}
+
+export function resolveVisibleDockState(
+  attached: readonly RightTab[],
+  activeTab: RightTab | null,
+  detachedTab: RightTab | null,
+  compact: boolean,
+): { tabs: RightTab[]; activeTab: RightTab | null; detachedTab: RightTab | null } {
+  if (!compact) {
+    return { tabs: [...attached], activeTab, detachedTab };
+  }
+
+  const tabs = [...attached];
+  if (detachedTab && !tabs.includes(detachedTab)) tabs.push(detachedTab);
+  const resolvedActive =
+    (activeTab && tabs.includes(activeTab) ? activeTab : null) ??
+    (detachedTab && tabs.includes(detachedTab) ? detachedTab : null) ??
+    tabs[tabs.length - 1] ??
+    null;
+  return { tabs, activeTab: resolvedActive, detachedTab: null };
 }
 
 function loadWidths(): PersistedWidths {
@@ -319,6 +358,15 @@ export function RightDock({
   const [dockWidth, setDockWidth] = useState<number>(() => loadWidths().dock);
   const [detachedWidth, setDetachedWidth] = useState<number>(() => loadWidths().detached);
   const [isResizing, setIsResizing] = useState(false);
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    typeof window === 'undefined' ? RIGHT_DOCK_COMPACT_BREAKPOINT : window.innerWidth,
+  );
+
+  useEffect(() => {
+    const syncViewportWidth = () => setViewportWidth(window.innerWidth);
+    window.addEventListener('resize', syncViewportWidth);
+    return () => window.removeEventListener('resize', syncViewportWidth);
+  }, []);
 
   useEffect(() => {
     saveWidths({ dock: dockWidth, detached: detachedWidth });
@@ -423,11 +471,23 @@ export function RightDock({
   // The drop-to-detach zone only makes sense while dragging the dock's active
   // tab — dragging something already detached has nowhere else to go.
   const showDetachDropZone = draggingTab !== null && draggingTab !== detachedTab;
+  const compactDesiredWidth = attached.length > 0 ? dockWidth : detachedWidth;
+  const viewportLayout = resolveRightDockViewportLayout(viewportWidth, compactDesiredWidth);
+  const compact = viewportLayout.compact;
+  const visibleDockState = resolveVisibleDockState(attached, activeTab, detachedTab, compact);
+  const visibleDockWidth = compact ? viewportLayout.panelWidth : dockWidth;
+  const selectVisibleTab = (tab: RightTab) => {
+    if (compact && tab === detachedTab) {
+      reattach();
+      return;
+    }
+    selectTab(tab);
+  };
 
   return (
     <>
       <AnimatePresence initial={false}>
-        {showDetachDropZone && (
+        {!compact && showDetachDropZone && (
           <motion.div
             key="detach-drop"
             initial={{ width: 0, opacity: 0 }}
@@ -451,7 +511,7 @@ export function RightDock({
       </AnimatePresence>
 
       <AnimatePresence initial={false}>
-        {detachedTab && (
+        {!compact && detachedTab && (
           <motion.aside
             key={`detached-${detachedTab}`}
             initial={{ width: 0, opacity: 0 }}
@@ -477,33 +537,38 @@ export function RightDock({
       </AnimatePresence>
 
       <AnimatePresence initial={false}>
-        {attached.length > 0 && (
+        {visibleDockState.tabs.length > 0 && (
           <motion.aside
             key="dock"
             initial={{ width: 0, opacity: 0 }}
-            animate={{ width: dockWidth, opacity: 1 }}
+            animate={{ width: visibleDockWidth, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
             transition={isResizing ? { duration: 0 } : { duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-            className="relative shrink-0 overflow-hidden border-l border-tagma-border bg-tagma-bg"
+            className={
+              compact
+                ? 'absolute inset-y-0 right-8 z-40 max-w-[calc(100%-32px)] overflow-hidden border-l border-tagma-border bg-tagma-bg shadow-panel'
+                : 'relative shrink-0 overflow-hidden border-l border-tagma-border bg-tagma-bg'
+            }
             onDragOver={handleDragOverReattach}
             onDrop={handleDropReattach}
           >
-            <div className="h-full flex flex-col" style={{ width: dockWidth }}>
+            <div className="h-full flex flex-col" style={{ width: visibleDockWidth }}>
               <DockTabStrip
-                tabs={attached}
-                activeTab={activeTab}
+                tabs={visibleDockState.tabs}
+                activeTab={visibleDockState.activeTab}
                 draggingTab={draggingTab}
-                onSelect={selectTab}
+                onSelect={selectVisibleTab}
                 onClose={closeTab}
                 onDetach={detachTab}
                 onDragStart={handleDragStart}
                 onDragEnd={handleDragEnd}
+                canDetach={!compact}
               />
               <div className="flex-1 min-h-0 overflow-hidden">
-                {activeTab ? renderContent(activeTab) : null}
+                {visibleDockState.activeTab ? renderContent(visibleDockState.activeTab) : null}
               </div>
             </div>
-            <ResizeHandle onPointerDown={startResize('dock')} />
+            {!compact && <ResizeHandle onPointerDown={startResize('dock')} />}
           </motion.aside>
         )}
       </AnimatePresence>
@@ -532,6 +597,7 @@ function DockTabStrip({
   onDetach,
   onDragStart,
   onDragEnd,
+  canDetach,
 }: {
   tabs: RightTab[];
   activeTab: RightTab | null;
@@ -541,6 +607,7 @@ function DockTabStrip({
   onDetach: (tab: RightTab) => void;
   onDragStart: (tab: RightTab) => (e: ReactDragEvent<HTMLElement>) => void;
   onDragEnd: () => void;
+  canDetach: boolean;
 }) {
   return (
     <div className="flex items-stretch h-9 border-b border-tagma-border bg-tagma-surface/40 shrink-0">
@@ -552,20 +619,20 @@ function DockTabStrip({
         return (
           <div
             key={tab}
-            draggable
-            onDragStart={onDragStart(tab)}
+            draggable={canDetach}
+            onDragStart={canDetach ? onDragStart(tab) : undefined}
             onDragEnd={onDragEnd}
             onClick={() => onSelect(tab)}
-            title={`${meta.label} — drag left of the dock to detach`}
-            className={`group relative flex items-center gap-1.5 px-2.5 text-[10px] font-mono border-r border-tagma-border/60 cursor-pointer select-none transition-colors ${
+            title={canDetach ? `${meta.label} — drag left of the dock to detach` : meta.label}
+            className={`group relative flex min-w-0 items-center gap-1.5 px-2.5 text-[10px] font-mono border-r border-tagma-border/60 cursor-pointer select-none transition-colors ${
               isActive
                 ? 'bg-tagma-bg text-tagma-text'
                 : 'text-tagma-muted hover:text-tagma-text hover:bg-tagma-surface'
             } ${isDragging ? 'opacity-50' : ''}`}
           >
             <Icon size={11} />
-            <span>{meta.label}</span>
-            {isActive && (
+            <span className="truncate">{meta.label}</span>
+            {isActive && canDetach && (
               <button
                 type="button"
                 onClick={(e) => {

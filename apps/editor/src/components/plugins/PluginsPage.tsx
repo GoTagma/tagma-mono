@@ -679,7 +679,7 @@ export function PluginsPage({
         }
       />
 
-      <div className="flex-1 min-h-0 flex">
+      <div className="flex-1 min-h-0 flex flex-col md:flex-row">
         <CategorySidebar active={category} counts={categoryCounts} onSelect={setCategory} />
 
         <section className="flex-1 min-h-0 overflow-hidden">
@@ -770,12 +770,12 @@ function UpgradeConfirmDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[240] flex items-center justify-center bg-black/60"
+      className="modal-viewport-backdrop fixed inset-0 z-[240] flex items-center justify-center bg-black/60"
       onClick={onCancel}
     >
       <div
         ref={modalRef}
-        className="bg-tagma-surface border border-tagma-border shadow-panel w-[min(520px,calc(100vw-32px))] max-h-[min(80vh,calc(100vh-48px))] flex flex-col animate-fade-in"
+        className="modal-viewport-shell flex w-full max-w-[520px] flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
         role="dialog"
         aria-modal="true"
         aria-labelledby="plugin-upgrade-confirm-title"
@@ -787,7 +787,7 @@ function UpgradeConfirmDialog({
             Upgrade plugins?
           </h2>
         </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+        <div className="modal-viewport-body space-y-3 px-5 py-4">
           <div className="text-[11px] text-tagma-warning leading-relaxed">
             This upgrade will resolve each plugin inside its own isolated dependency store.
           </div>
@@ -821,7 +821,7 @@ function UpgradeConfirmDialog({
             </div>
           )}
         </div>
-        <div className="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-tagma-border">
+        <div className="modal-viewport-footer flex items-center justify-end gap-2 border-t border-tagma-border px-5 py-3">
           <button
             onClick={onCancel}
             className="text-[11px] px-3 py-1 border border-tagma-border text-tagma-muted hover:text-tagma-text hover:border-tagma-accent transition-colors"
@@ -868,12 +868,12 @@ function UninstallConfirmDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[240] flex items-center justify-center bg-black/60"
+      className="modal-viewport-backdrop fixed inset-0 z-[240] flex items-center justify-center bg-black/60"
       onClick={onCancel}
     >
       <div
         ref={modalRef}
-        className="bg-tagma-surface border border-tagma-border shadow-panel w-[min(480px,calc(100vw-32px))] max-h-[min(80vh,calc(100vh-48px))] flex flex-col animate-fade-in"
+        className="modal-viewport-shell flex w-full max-w-[480px] flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
         role="dialog"
         aria-modal="true"
         aria-labelledby="plugin-uninstall-confirm-title"
@@ -885,7 +885,7 @@ function UninstallConfirmDialog({
             Uninstall plugin?
           </h2>
         </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+        <div className="modal-viewport-body space-y-3 px-5 py-4">
           <div className="text-[11px] text-tagma-text">
             <span className="font-mono text-tagma-accent">{impact.name}</span>
             {impact.category && impact.type && (
@@ -928,7 +928,7 @@ function UninstallConfirmDialog({
             ))}
           </div>
         </div>
-        <div className="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-tagma-border">
+        <div className="modal-viewport-footer flex items-center justify-end gap-2 border-t border-tagma-border px-5 py-3">
           <button
             onClick={onCancel}
             className="text-[11px] px-3 py-1 border border-tagma-border text-tagma-muted hover:text-tagma-text hover:border-tagma-accent transition-colors"
@@ -964,11 +964,11 @@ function CategorySidebar({
   onSelect: (category: CategoryFilter) => void;
 }) {
   return (
-    <aside className="w-48 shrink-0 border-r border-tagma-border bg-tagma-surface/25 py-5">
-      <div className="px-5 pb-3 text-[9px] tracking-[0.22em] uppercase text-tagma-muted-dim">
+    <aside className="w-full shrink-0 border-b border-tagma-border bg-tagma-surface/25 py-2 md:w-48 md:border-b-0 md:border-r md:py-5">
+      <div className="hidden px-5 pb-3 text-[9px] tracking-[0.22em] uppercase text-tagma-muted-dim md:block">
         Categories
       </div>
-      <nav className="flex flex-col">
+      <nav className="flex overflow-x-auto md:flex-col md:overflow-x-visible">
         {CATEGORY_TABS.map((c, i) => {
           const isActive = active === c.key;
           const count = counts[c.key];
@@ -976,7 +976,7 @@ function CategorySidebar({
             <button
               key={c.key}
               onClick={() => onSelect(c.key)}
-              className={`group relative flex items-baseline gap-3 py-2 pl-5 pr-4 text-left transition-colors ${
+              className={`group relative flex min-w-[9rem] shrink-0 items-baseline gap-3 py-2 pl-5 pr-4 text-left transition-colors md:w-full md:min-w-0 ${
                 isActive
                   ? 'text-tagma-text bg-tagma-surface/80'
                   : 'text-tagma-muted hover:text-tagma-text hover:bg-tagma-surface/40'
@@ -1086,8 +1086,8 @@ function PluginsHeader({
         {isDesktop && <DesktopWindowControls />}
       </div>
 
-      <div className="px-6 pt-2">
-        <div className="flex items-end gap-7 -mb-px">
+      <div className="px-3 pt-2 sm:px-6">
+        <div className="-mb-px flex flex-wrap items-end gap-x-4 gap-y-2 sm:gap-x-7">
           <HeaderTab
             active={tab === 'local'}
             onClick={() => onTab('local')}
@@ -1100,9 +1100,9 @@ function PluginsHeader({
             icon={<Store size={13} />}
             label="Marketplace"
           />
-          <div className="flex-1" />
+          <div className="hidden flex-1 sm:block" />
           {onSearchQueryChange && (
-            <div className="pb-2 w-64">
+            <div className="order-last w-full pb-2 sm:order-none sm:w-64">
               <div className="relative">
                 <Search
                   size={12}

@@ -287,12 +287,12 @@ export function SecretsManagerPanel({
   return (
     <>
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+        className="modal-viewport-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/50"
         onClick={onClose}
       >
         <div
           ref={modalRef}
-          className="bg-tagma-surface border border-tagma-border shadow-panel flex flex-col animate-fade-in"
+          className="modal-viewport-shell flex max-w-full flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
           style={{ width: bounds.width, height: bounds.height, maxHeight: bounds.height }}
           role="dialog"
           aria-modal="true"
@@ -316,7 +316,7 @@ export function SecretsManagerPanel({
             </button>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 flex flex-col gap-4">
+          <div className="modal-viewport-body flex flex-col gap-4 px-5 py-4">
             {!workDir && <WarnBox>Open a workspace before configuring pipeline secrets.</WarnBox>}
 
             {data && (
@@ -351,7 +351,7 @@ export function SecretsManagerPanel({
             {status.kind === 'done' && <SuccessBox>{status.message}</SuccessBox>}
 
             <div className="border border-tagma-border bg-tagma-bg p-3 space-y-3">
-              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <div className="field-label">Variable</div>
                   <input
@@ -378,7 +378,7 @@ export function SecretsManagerPanel({
                   />
                 </div>
                 <div
-                  className="relative col-span-2"
+                  className="relative sm:col-span-2"
                   onBlur={(e) => {
                     const next = e.relatedTarget;
                     if (!(next instanceof Node) || !e.currentTarget.contains(next)) {
@@ -483,7 +483,7 @@ export function SecretsManagerPanel({
                   )}
                 </div>
 
-                <div className="col-span-2">
+                <div className="sm:col-span-2">
                   <div className="field-label">Note</div>
                   <input
                     id="secret-description"

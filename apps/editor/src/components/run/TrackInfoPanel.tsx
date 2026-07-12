@@ -5,6 +5,7 @@
 
 import { X, ShieldAlert, SkipForward, Ban, Layers } from 'lucide-react';
 import type { RawTrackConfig, RawPipelineConfig, Permissions } from '../../api/client';
+import { RUN_INSPECTOR_PANEL_CLASSES } from './run-layout';
 
 interface TrackInfoPanelProps {
   track: RawTrackConfig;
@@ -62,7 +63,7 @@ export function TrackInfoPanel({ track, config, onClose }: TrackInfoPanelProps) 
   const middlewares = track.middlewares ?? [];
 
   return (
-    <div className="w-80 h-full bg-tagma-surface border-l border-tagma-border flex flex-col animate-slide-in-right">
+    <div className={RUN_INSPECTOR_PANEL_CLASSES}>
       <div className="panel-header-sm">
         <div className="flex items-center gap-2 min-w-0">
           {track.color && (

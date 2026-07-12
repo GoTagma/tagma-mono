@@ -24,7 +24,7 @@ import type { PluginCategory } from '../../api/client';
 // narrower panels. `auto-rows-fr` keeps siblings at matched heights so
 // meta rows and action buttons line up across a row.
 export const PLUGIN_CARD_GRID_CLASSES =
-  'grid grid-cols-[repeat(auto-fill,minmax(440px,1fr))] auto-rows-fr gap-3';
+  'grid grid-cols-[repeat(auto-fill,minmax(min(100%,440px),1fr))] auto-rows-fr gap-3';
 
 // ── Category glyph ──
 //

@@ -40,12 +40,12 @@ export function ConfirmModal({ info, onClose }: ConfirmModalProps) {
 
   return (
     <div
-      className="fixed inset-0 z-[210] flex items-center justify-center bg-black/60"
+      className="modal-viewport-backdrop fixed inset-0 z-[210] flex items-center justify-center bg-black/60"
       onClick={handleDismiss}
     >
       <div
         ref={modalRef}
-        className="bg-tagma-surface border border-tagma-border shadow-panel w-[min(440px,calc(100vw-32px))] max-h-[min(60vh,calc(100vh-48px))] flex flex-col animate-fade-in"
+        className="modal-viewport-shell w-full max-w-[440px] flex flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-modal-title"
@@ -73,7 +73,7 @@ export function ConfirmModal({ info, onClose }: ConfirmModalProps) {
             <XIcon size={14} />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto">
+        <div className="modal-viewport-body">
           {info.details.map((detail, i) => (
             <div
               key={i}
@@ -83,7 +83,7 @@ export function ConfirmModal({ info, onClose }: ConfirmModalProps) {
             </div>
           ))}
         </div>
-        <div className="px-4 py-3 border-t border-tagma-border flex justify-end gap-2">
+        <div className="modal-viewport-footer px-4 py-3 border-t border-tagma-border flex justify-end gap-2">
           <button
             onClick={handleDismiss}
             className="min-w-[120px] px-3 py-1 text-[11px] text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 transition-colors text-center"

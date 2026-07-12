@@ -55,6 +55,44 @@ body,
   height: 100%;
 }
 
+/* Shared containment contract for dialogs. Individual components keep their
+   own width and z-index, while these classes guarantee that high zoom and
+   very short viewports never push the header/footer outside the window. */
+.modal-viewport-backdrop {
+  overflow-y: auto;
+  padding: 0.5rem;
+}
+.modal-viewport-shell {
+  min-height: 0;
+  max-height: calc(100dvh - 1rem);
+}
+.modal-viewport-body {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+.modal-viewport-footer {
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+@media (min-width: 640px) {
+  .modal-viewport-backdrop {
+    padding: 1rem;
+  }
+  .modal-viewport-shell {
+    max-height: calc(100dvh - 2rem);
+  }
+}
+@media (max-height: 320px) {
+  .modal-viewport-shell > .panel-header {
+    height: 2.5rem;
+  }
+  .modal-viewport-footer {
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.5rem !important;
+  }
+}
+
 /* Custom-drawn title bar support. The Electron shell uses frame:false;
    the renderer paints its own title strip. Anything with this class is a
    drag region — buttons/inputs inside it opt out automatically. */

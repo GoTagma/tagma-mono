@@ -8,7 +8,7 @@ interface PipelineSummaryBarProps {
 /* Uniform icon+label chip */
 function InfoChip({ icon, label, color }: { icon: React.ReactNode; label: string; color: string }) {
   return (
-    <div className="inline-flex items-center gap-1.5 h-[16px] px-1.5 bg-tagma-elevated/60 border border-tagma-border/50 min-w-0 overflow-hidden">
+    <div className="inline-flex h-[16px] min-w-0 shrink-0 items-center gap-1.5 overflow-hidden border border-tagma-border/50 bg-tagma-elevated/60 px-1.5">
       <span className={`inline-flex items-center justify-center shrink-0 ${color}`}>{icon}</span>
       <span className="text-[9px] font-mono text-tagma-muted/80 whitespace-nowrap">{label}</span>
     </div>
@@ -69,10 +69,11 @@ export function PipelineSummaryBar({ config }: PipelineSummaryBarProps) {
     );
 
   return (
-    <div className="flex items-center h-[26px] px-[44px] bg-tagma-bg border-b border-tagma-border/30 shrink-0">
-      <div className="flex items-center gap-1.5 h-full">{chips}</div>
-      <span className="flex-1" />
-      <span className="text-[9px] font-mono text-tagma-muted/30 tracking-wide">
+    <div className="flex h-[26px] min-w-0 shrink-0 items-center border-b border-tagma-border/30 bg-tagma-bg px-2 sm:px-[44px]">
+      <div className="hide-scrollbar flex h-full min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
+        {chips}
+      </div>
+      <span className="hidden sm:inline shrink-0 pl-2 text-[9px] font-mono tracking-wide text-tagma-muted/30">
         {config.tracks.length} track{config.tracks.length !== 1 ? 's' : ''}
         {' · '}
         {totalTasks} task{totalTasks !== 1 ? 's' : ''}

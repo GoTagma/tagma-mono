@@ -54,6 +54,7 @@ import {
   PLATFORM_EXPORT_TARGETS,
   PlatformExportProgressToast,
   UnsavedChangesModal,
+  ViewportNotificationStack,
   type PlatformExportProgressState,
   type UnsavedAction,
 } from './components/AppOverlays';
@@ -2550,7 +2551,7 @@ export function App() {
               </div>
             )}
 
-            <div className="flex-1 flex overflow-hidden">
+            <div className="relative flex-1 flex overflow-hidden">
               <div className="flex-1 min-w-0 overflow-hidden">
                 <BoardCanvas
                   config={config}
@@ -2700,11 +2701,13 @@ export function App() {
 
             {showTrackIO && <TrackIODialog config={config} onClose={() => setShowTrackIO(false)} />}
 
-            {platformExportProgress && (
-              <PlatformExportProgressToast progress={platformExportProgress} />
-            )}
-            <ErrorToast />
-            <ChatCompletionToast />
+            <ViewportNotificationStack>
+              <ErrorToast contained />
+              {platformExportProgress && (
+                <PlatformExportProgressToast progress={platformExportProgress} contained />
+              )}
+              <ChatCompletionToast contained />
+            </ViewportNotificationStack>
           </motion.div>
         )}
       </AnimatePresence>

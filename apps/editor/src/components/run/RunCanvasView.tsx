@@ -254,7 +254,7 @@ export function RunCanvasView({
   }, []);
 
   return (
-    <>
+    <div className="flex-1 min-h-0 min-w-0 flex overflow-hidden relative">
       <div className="flex-1 flex overflow-hidden relative">
         <div
           ref={headerRef}
@@ -447,6 +447,6 @@ export function RunCanvasView({
           if (!track) return null;
           return <TrackInfoPanel track={track} config={config} onClose={() => selectTrack(null)} />;
         })()}
-    </>
+    </div>
   );
 }

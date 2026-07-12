@@ -2,6 +2,53 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { getZoom, viewportW, viewportH } from '../../utils/zoom';
 
+interface FloatingPanelPlacementInput {
+  anchor: Pick<DOMRect, 'left' | 'top' | 'right' | 'bottom'>;
+  viewportWidth: number;
+  viewportHeight: number;
+  requestedWidth: number;
+  requestedMaxHeight: number;
+  zoom?: number;
+}
+
+export function computeFloatingPanelPlacement({
+  anchor,
+  viewportWidth,
+  viewportHeight,
+  requestedWidth,
+  requestedMaxHeight,
+  zoom = 1,
+}: FloatingPanelPlacementInput): { left: number; top: number; width: number; maxHeight: number } {
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  const vw = Number.isFinite(viewportWidth) ? Math.max(0, viewportWidth) : 0;
+  const vh = Number.isFinite(viewportHeight) ? Math.max(0, viewportHeight) : 0;
+  const horizontalMargin = Math.min(6, vw / 2);
+  const verticalMargin = Math.min(6, vh / 2);
+  const width = Math.max(
+    0,
+    Math.min(
+      Number.isFinite(requestedWidth) ? Math.max(0, requestedWidth) : 0,
+      Math.max(0, vw - horizontalMargin * 2),
+    ),
+  );
+  const maxLeft = Math.max(horizontalMargin, vw - width - horizontalMargin);
+  const anchorLeft = anchor.left / safeZoom;
+  const left = Math.min(Math.max(anchorLeft, horizontalMargin), maxLeft);
+
+  const anchorTop = anchor.top / safeZoom;
+  const anchorBottom = anchor.bottom / safeZoom;
+  const below = Math.max(0, vh - anchorBottom - verticalMargin);
+  const above = Math.max(0, anchorTop - verticalMargin);
+  const heightCap = Number.isFinite(requestedMaxHeight) ? Math.max(0, requestedMaxHeight) : 0;
+  const preferBelow = below >= Math.min(heightCap, 200) || below >= above;
+  const maxHeight = Math.min(heightCap, preferBelow ? below : above);
+  const rawTop = preferBelow ? anchorBottom + 4 : anchorTop - maxHeight - 4;
+  const maxTop = Math.max(verticalMargin, vh - maxHeight - verticalMargin);
+  const top = Math.min(Math.max(rawTop, verticalMargin), maxTop);
+
+  return { left, top, width, maxHeight };
+}
+
 /**
  * Floating menu anchored to a trigger. Rendered via a portal into document.body
  * and positioned with `position: fixed`, so it escapes any scroll-clipped or
@@ -37,7 +84,12 @@ export function FloatingPanel({
   const panelRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
-  const [pos, setPos] = useState<{ left: number; top: number; maxHeight: number } | null>(null);
+  const [pos, setPos] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    maxHeight: number;
+  } | null>(null);
 
   useLayoutEffect(() => {
     if (!open || !anchor) return;
@@ -49,30 +101,16 @@ export function FloatingPanel({
       // visible at any zoom != 100%, exact at 100%.
       const z = getZoom();
       const r = anchor.getBoundingClientRect();
-      const rLeft = r.left / z;
-      const rTop = r.top / z;
-      const rBottom = r.bottom / z;
-      const vw = viewportW();
-      const vh = viewportH();
-      const margin = 6;
-      let left = rLeft;
-      if (left + width > vw - margin) left = vw - width - margin;
-      if (left < margin) left = margin;
-      const below = vh - rBottom - margin;
-      const above = rTop - margin;
-      // Prefer below unless there isn't room for a reasonable panel and above
-      // has more space. 200px is "useful enough" — above that we stop flipping.
-      const preferBelow = below >= Math.min(maxHeight, 200) || below >= above;
-      let top: number;
-      let mh: number;
-      if (preferBelow) {
-        top = rBottom + 4;
-        mh = Math.min(maxHeight, below);
-      } else {
-        mh = Math.min(maxHeight, above);
-        top = rTop - mh - 4;
-      }
-      setPos({ left, top, maxHeight: mh });
+      setPos(
+        computeFloatingPanelPlacement({
+          anchor: r,
+          viewportWidth: viewportW(),
+          viewportHeight: viewportH(),
+          requestedWidth: width,
+          requestedMaxHeight: maxHeight,
+          zoom: z,
+        }),
+      );
     };
     compute();
     // Reposition on resize AND on any scroll (capture, since inner scrolls
@@ -150,7 +188,7 @@ export function FloatingPanel({
         position: 'fixed',
         left: pos.left,
         top: pos.top,
-        width,
+        width: pos.width,
         maxHeight: pos.maxHeight,
       }}
       className="flex flex-col bg-tagma-bg border border-tagma-border shadow-lg z-[100] overflow-hidden"

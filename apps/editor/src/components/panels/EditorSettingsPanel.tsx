@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { X, AlertTriangle, Loader2, CheckCircle2, RefreshCw, Terminal } from 'lucide-react';
 import {
   api,
@@ -13,7 +13,6 @@ import {
 } from '../../api/client';
 import { restartOpencodeForConfig } from '../../api/opencode-chat';
 import { useEditorSettingsStore } from '../../store/editor-settings-store';
-import { viewportH } from '../../utils/zoom';
 import { useModalFocusTrap } from '../../hooks/use-modal-focus-trap';
 
 interface EditorSettingsPanelProps {
@@ -57,7 +56,6 @@ export function EditorSettingsPanel({
   const [installVersion, setInstallVersion] = useState('3.13');
   const [installPlan, setInstallPlan] = useState<PythonInstallPlan | null>(null);
   const [pythonStatus, setPythonStatus] = useState<PythonWizardStatus>({ kind: 'idle' });
-  const maxH = useMemo(() => Math.floor(viewportH() * 0.8), []);
   const modalRef = useModalFocusTrap<HTMLDivElement>();
 
   const hasWorkspace = workDir.length > 0;
@@ -293,13 +291,12 @@ export function EditorSettingsPanel({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      className="modal-viewport-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/50"
       onClick={onClose}
     >
       <div
         ref={modalRef}
-        className="bg-tagma-surface border border-tagma-border shadow-panel w-[min(480px,calc(100vw-32px))] flex flex-col animate-fade-in"
-        style={{ maxHeight: maxH }}
+        className="modal-viewport-shell flex w-full max-w-[480px] flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
         role="dialog"
         aria-modal="true"
         aria-labelledby="editor-settings-title"
@@ -319,7 +316,7 @@ export function EditorSettingsPanel({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        <div className="modal-viewport-body space-y-4 px-5 py-4">
           {!hasWorkspace && (
             <WarnBox>
               Open a workspace first — editor settings are stored per workspace in{' '}
@@ -607,12 +604,12 @@ function PythonAgentWizard({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
+      className="modal-viewport-backdrop fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
       onClick={(e) => e.stopPropagation()}
     >
       <div
         ref={wizardModalRef}
-        className="bg-tagma-surface border border-tagma-border shadow-panel w-[min(520px,calc(100vw-32px))] max-h-[min(82vh,calc(100vh-48px))] flex flex-col"
+        className="modal-viewport-shell flex w-full max-w-[520px] flex-col border border-tagma-border bg-tagma-surface shadow-panel"
         role="dialog"
         aria-modal="true"
         aria-labelledby="python-agent-wizard-title"
@@ -631,7 +628,7 @@ function PythonAgentWizard({
             <X size={14} />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        <div className="modal-viewport-body space-y-4 px-5 py-4">
           <RadioGroupRow<PythonChoice>
             label="Is Python already installed on this device?"
             description={

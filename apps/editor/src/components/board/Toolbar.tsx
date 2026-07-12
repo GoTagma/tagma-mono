@@ -13,6 +13,7 @@ import {
   Workflow,
   GitBranch,
   ArrowLeft,
+  Menu as MenuIcon,
 } from 'lucide-react';
 import { MenuBar } from '../MenuBar';
 import { DropdownMenu, type DropdownItem } from '../DropdownMenu';
@@ -61,6 +62,63 @@ interface ToolbarProps {
   onSelectSearchMatch: (match: TaskSearchMatch) => void;
 }
 
+interface CompactToolbarItemsOptions {
+  menus: { label: string; items: DropdownItem[] }[];
+  workspaceItems?: DropdownItem[];
+  workDir: string;
+  onSelectPipeline: () => void;
+  onRenamePipeline?: () => void;
+  onShowTrackIO: () => void;
+  onShowHistory: () => void;
+  onShowWorkflowGraph?: () => void;
+  onReturnToWorkflowGraph?: () => void;
+}
+
+export function buildCompactToolbarItems({
+  menus,
+  workspaceItems = [],
+  workDir,
+  onSelectPipeline,
+  onRenamePipeline,
+  onShowTrackIO,
+  onShowHistory,
+  onShowWorkflowGraph,
+  onReturnToWorkflowGraph,
+}: CompactToolbarItemsOptions): DropdownItem[] {
+  const result: DropdownItem[] = [];
+  const separator = () => {
+    if (result.length > 0 && !('separator' in result[result.length - 1]!)) {
+      result.push({ separator: true });
+    }
+  };
+  const appendGroup = (prefix: string, items: readonly DropdownItem[]) => {
+    if (items.length === 0) return;
+    separator();
+    for (const item of items) {
+      if ('separator' in item) {
+        separator();
+      } else {
+        result.push({ ...item, label: `${prefix} · ${item.label}` });
+      }
+    }
+  };
+
+  for (const menu of menus) appendGroup(menu.label, menu.items);
+  appendGroup('Workspace', workspaceItems);
+  separator();
+  result.push({ label: 'Inspect Pipeline', onAction: onSelectPipeline });
+  if (onRenamePipeline) result.push({ label: 'Rename Pipeline', onAction: onRenamePipeline });
+  result.push({ label: 'Track I/O', onAction: onShowTrackIO });
+  if (workDir) result.push({ label: 'History', onAction: onShowHistory });
+  if (workDir && onShowWorkflowGraph) {
+    result.push({ label: 'Graph', onAction: onShowWorkflowGraph });
+  }
+  if (onReturnToWorkflowGraph) {
+    result.push({ label: 'Go Back', onAction: onReturnToWorkflowGraph });
+  }
+  return result;
+}
+
 export function Toolbar({
   pipelineName,
   yamlPath,
@@ -91,6 +149,7 @@ export function Toolbar({
   const [editName, setEditName] = useState(pipelineName);
   const [wdMenuOpen, setWdMenuOpen] = useState(false);
   const [searchModeMenuOpen, setSearchModeMenuOpen] = useState(false);
+  const [compactMenuOpen, setCompactMenuOpen] = useState(false);
   const searchContainerRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const isDesktop = hasDesktopBridge();
@@ -130,6 +189,23 @@ export function Toolbar({
     if (!searchOpen) setSearchModeMenuOpen(false);
   }, [searchOpen]);
 
+  const openRenameEditor = useCallback(() => {
+    setEditName(pipelineName);
+    setIsEditing(true);
+  }, [pipelineName]);
+
+  const compactMenuItems = buildCompactToolbarItems({
+    menus,
+    workspaceItems,
+    workDir,
+    onSelectPipeline,
+    onRenamePipeline: openRenameEditor,
+    onShowTrackIO,
+    onShowHistory,
+    onShowWorkflowGraph,
+    onReturnToWorkflowGraph,
+  });
+
   return (
     <header
       className={`h-9 bg-tagma-surface border-b border-tagma-border flex items-stretch pl-0 shrink-0 overflow-visible relative z-[50] ${isDesktop ? 'app-drag-region pr-0' : 'pr-2.5'}`}
@@ -143,17 +219,39 @@ export function Toolbar({
           window controls are never pushed past the viewport. */}
       <div className="flex items-center flex-1 min-w-0 h-full">
         {/* Left: Logo + Menus */}
-        <div className="flex items-center shrink-0 h-full">
+        <div className="hidden items-center shrink-0 h-full sm:flex">
           <div className="w-10 h-full flex items-center justify-center shrink-0">
             <ProductLogo size={18} />
           </div>
           <MenuBar menus={menus} />
         </div>
 
-        <div className="w-px h-4 bg-tagma-border/60 mx-2 shrink-0" />
+        <div className="relative flex h-full shrink-0 items-center sm:hidden no-drag">
+          <button
+            type="button"
+            onClick={() => setCompactMenuOpen((open) => !open)}
+            className="flex h-7 w-7 items-center justify-center text-tagma-muted hover:bg-tagma-elevated hover:text-tagma-text"
+            title="Application menu"
+            aria-label="Open application menu"
+            aria-expanded={compactMenuOpen}
+          >
+            <MenuIcon size={14} />
+          </button>
+          {compactMenuOpen && (
+            <DropdownMenu
+              items={compactMenuItems}
+              onClose={() => setCompactMenuOpen(false)}
+              anchorClassName="absolute left-0 top-full z-[180]"
+            />
+          )}
+        </div>
+
+        <div className="hidden w-px h-4 bg-tagma-border/60 mx-2 shrink-0 lg:block" />
 
         {/* Pipeline name + file + status */}
-        <div className="flex items-center gap-2 min-w-0 shrink">
+        <div
+          className={`${isEditing ? 'flex' : 'hidden lg:flex'} items-center gap-2 min-w-0 shrink`}
+        >
           {isEditing ? (
             <div
               className="flex items-center gap-1.5 shrink-0"
@@ -167,7 +265,7 @@ export function Toolbar({
                   if (e.key === 'Enter') handleSaveName();
                   if (e.key === 'Escape') handleCancel();
                 }}
-                className="text-[11px] font-semibold tracking-wide bg-tagma-bg border border-tagma-accent/40 px-2 py-0.5 text-tagma-text focus:border-tagma-accent w-full max-w-[12rem]"
+                className="w-[clamp(80px,24vw,192px)] min-w-0 text-[11px] font-semibold tracking-wide bg-tagma-bg border border-tagma-accent/40 px-2 py-0.5 text-tagma-text focus:border-tagma-accent"
                 autoFocus
               />
               <button
@@ -252,7 +350,7 @@ export function Toolbar({
 
         {/* Status badges — separated from path to prevent overlap */}
         {yamlPath && (isDirty || errorCount > 0) && (
-          <div className="flex items-center gap-1.5 shrink-0 ml-1">
+          <div className="hidden items-center gap-1.5 shrink-0 ml-1 xl:flex">
             {isDirty && (
               <span className="text-[9px] font-medium tracking-wider uppercase text-tagma-warning/80 bg-tagma-warning/8 px-1.5 py-px">
                 modified
@@ -269,11 +367,11 @@ export function Toolbar({
 
         {/* Flexible drag area so the user can move the window by dragging
           the empty middle of the toolbar in desktop mode. */}
-        <div className="flex-1 min-w-[32px]" />
+        <div className="flex-1 min-w-0 sm:min-w-[8px]" />
 
         <div
           ref={searchContainerRef}
-          className="relative flex items-center shrink-0 h-full no-drag"
+          className={`${isEditing ? 'hidden md:flex' : 'flex'} relative items-center shrink-0 h-full no-drag`}
           onClick={(e) => e.stopPropagation()}
           onBlur={(e) => {
             if (searchOpen && shouldCloseTaskSearchOnFocusLeave(e.currentTarget, e.relatedTarget)) {
@@ -283,7 +381,7 @@ export function Toolbar({
         >
           {searchOpen ? (
             <>
-              <div className="flex items-center gap-1.5 h-[24px] w-[clamp(200px,26vw,320px)] border border-tagma-border bg-tagma-bg/80 pl-1.5 pr-2 text-tagma-muted focus-within:border-tagma-accent transition-colors">
+              <div className="flex items-center gap-1.5 h-[24px] w-[clamp(140px,26vw,320px)] border border-tagma-border bg-tagma-bg/80 pl-1.5 pr-2 text-tagma-muted focus-within:border-tagma-accent transition-colors">
                 <div className="relative shrink-0">
                   <button
                     type="button"
@@ -386,23 +484,25 @@ export function Toolbar({
         </div>
 
         {/* Right section */}
-        <div className="flex items-center gap-2 shrink-0 h-full ml-2">
+        <div
+          className={`${searchOpen || isEditing ? 'hidden md:flex' : 'flex'} items-center gap-2 shrink-0 h-full ml-2`}
+        >
           {onReturnToWorkflowGraph && (
             <button
               type="button"
               onClick={onReturnToWorkflowGraph}
-              className="flex items-center justify-center gap-1 h-[24px] px-2 text-[10px] border border-tagma-accent/40 text-tagma-accent hover:bg-tagma-accent/10 transition-colors shrink-0"
+              className="hidden sm:flex items-center justify-center gap-1 h-[24px] px-2 text-[10px] border border-tagma-accent/40 text-tagma-accent hover:bg-tagma-accent/10 transition-colors shrink-0"
               title="Go back to Pipeline Graph"
               aria-label="Go back to Pipeline Graph"
             >
               <ArrowLeft size={11} />
-              <span>Go Back</span>
+              <span className="hidden xl:inline">Go Back</span>
             </button>
           )}
 
           <button
             onClick={onShowTrackIO}
-            className="flex items-center justify-center gap-1 h-[24px] w-[24px] xl:w-auto xl:px-2 text-[10px] border border-tagma-border text-tagma-muted hover:text-tagma-text hover:border-tagma-accent/30 transition-colors shrink-0"
+            className="hidden sm:flex items-center justify-center gap-1 h-[24px] w-[24px] xl:w-auto xl:px-2 text-[10px] border border-tagma-border text-tagma-muted hover:text-tagma-text hover:border-tagma-accent/30 transition-colors shrink-0"
             title="View track / pipeline I/O"
           >
             <Workflow size={11} />
@@ -412,7 +512,7 @@ export function Toolbar({
           {workDir && (
             <button
               onClick={() => onShowHistory()}
-              className="flex items-center justify-center gap-1 h-[24px] w-[24px] xl:w-auto xl:px-2 text-[10px] border border-tagma-border text-tagma-muted hover:text-tagma-text hover:border-tagma-accent/30 transition-colors shrink-0"
+              className="hidden sm:flex items-center justify-center gap-1 h-[24px] w-[24px] xl:w-auto xl:px-2 text-[10px] border border-tagma-border text-tagma-muted hover:text-tagma-text hover:border-tagma-accent/30 transition-colors shrink-0"
               title="View run history"
             >
               <History size={11} />
@@ -423,7 +523,7 @@ export function Toolbar({
           {workDir && onShowWorkflowGraph && (
             <button
               onClick={onShowWorkflowGraph}
-              className="flex items-center justify-center gap-1 h-[24px] w-[24px] xl:w-auto xl:px-2 text-[10px] border border-tagma-border text-tagma-muted hover:text-tagma-text hover:border-tagma-accent/30 transition-colors shrink-0"
+              className="hidden sm:flex items-center justify-center gap-1 h-[24px] w-[24px] xl:w-auto xl:px-2 text-[10px] border border-tagma-border text-tagma-muted hover:text-tagma-text hover:border-tagma-accent/30 transition-colors shrink-0"
               title="Open Pipeline Graph"
               aria-label="Open Pipeline Graph"
             >
@@ -434,11 +534,16 @@ export function Toolbar({
 
           <button
             onClick={onRun}
-            className="btn-primary group shrink-0"
+            className="btn-primary group shrink-0 px-2 lg:px-3"
             title={runTargetCount > 0 ? `Run ${runTargetCount} selected task(s)` : 'Run'}
+            aria-label={
+              runTargetCount > 0 ? `Run ${runTargetCount} selected task(s)` : 'Run pipeline'
+            }
           >
             <Play size={11} className="group-hover:scale-110 transition-transform" />
-            <span>{runTargetCount > 0 ? `Run Selected (${runTargetCount})` : 'Run'}</span>
+            <span className="hidden lg:inline">
+              {runTargetCount > 0 ? `Run Selected (${runTargetCount})` : 'Run'}
+            </span>
           </button>
         </div>
       </div>

@@ -665,6 +665,9 @@ interface PopoverShellProps {
   children: ReactNode;
 }
 
+export const VERSION_STATUS_POPOVER_CLASSES =
+  'fixed inset-x-2 bottom-8 z-[90] max-h-[calc(100dvh-3rem)] overflow-x-hidden overflow-y-auto border border-tagma-border/80 bg-tagma-surface p-3 shadow-xl animate-fade-in sm:absolute sm:inset-x-auto sm:left-0 sm:bottom-full sm:mb-1 sm:w-max sm:min-w-[320px] sm:max-w-[min(640px,calc(100vw-1rem))]';
+
 function PopoverShell({ title, onClose, children }: PopoverShellProps) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -691,10 +694,7 @@ function PopoverShell({ title, onClose, children }: PopoverShellProps) {
   }, [onClose]);
 
   return (
-    <div
-      ref={ref}
-      className="absolute left-0 bottom-full mb-1 z-[90] w-max min-w-[320px] max-w-[640px] bg-tagma-surface border border-tagma-border/80 shadow-xl p-3 animate-fade-in"
-    >
+    <div ref={ref} className={VERSION_STATUS_POPOVER_CLASSES}>
       <div className="text-[11px] font-sans text-tagma-text mb-2">{title}</div>
       {children}
     </div>
@@ -780,22 +780,22 @@ function TagmaBundleBody(props: TagmaBundleBodyProps) {
 
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-[auto_1fr_1fr] gap-x-3 gap-y-1 text-[10px] font-mono [&>span]:whitespace-nowrap">
-        <span className="text-tagma-muted">Component</span>
+      <div className="grid grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] gap-x-3 gap-y-1 text-[10px] font-mono">
+        <span className="whitespace-nowrap text-tagma-muted">Component</span>
         <span className="text-tagma-muted">Running</span>
         <span className="text-tagma-muted">Latest</span>
         {rows.map((row) => (
           <Fragment key={row.label}>
-            <span className="text-tagma-text">{row.label}</span>
-            <span className="text-tagma-text">
+            <span className="whitespace-nowrap text-tagma-text">{row.label}</span>
+            <span className="min-w-0 break-all text-tagma-text">
               {row.running ?? <span className="text-tagma-warning">not found</span>}
             </span>
             <span
-              className={
+              className={`min-w-0 break-all ${
                 row.latest && row.running && row.latest !== row.running
                   ? 'text-tagma-accent'
                   : 'text-tagma-muted-dim'
-              }
+              }`}
             >
               {row.latest ?? '—'}
             </span>
@@ -813,7 +813,7 @@ function TagmaBundleBody(props: TagmaBundleBodyProps) {
         />
       )}
 
-      <div className="flex items-center gap-2 pt-1">
+      <div className="flex flex-wrap items-center gap-2 pt-1">
         <button
           onClick={onBundleUpdate}
           disabled={!bundleCanUpdate || !bundleUpdateAvailable || updating}
@@ -927,23 +927,25 @@ function OpencodeInfoBody({ info, onRefresh }: OpencodeInfoBodyProps) {
 
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[10px] font-mono [&>span]:whitespace-nowrap">
-        <span className="text-tagma-muted">Running</span>
-        <span className="text-tagma-text">
+      <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-[10px] font-mono">
+        <span className="whitespace-nowrap text-tagma-muted">Running</span>
+        <span className="min-w-0 break-all text-tagma-text">
           {activeVersion ?? <span className="text-tagma-warning">not found</span>}
         </span>
-        <span className="text-tagma-muted">Bundled</span>
-        <span className="text-tagma-muted-dim">
+        <span className="whitespace-nowrap text-tagma-muted">Bundled</span>
+        <span className="min-w-0 break-all text-tagma-muted-dim">
           {info.bundledVersion ?? '(dev mode - none shipped)'}
         </span>
         {info.userInstalledVersion && (
           <>
-            <span className="text-tagma-muted">User override</span>
-            <span className="text-tagma-muted-dim">{info.userInstalledVersion}</span>
+            <span className="whitespace-nowrap text-tagma-muted">User override</span>
+            <span className="min-w-0 break-all text-tagma-muted-dim">
+              {info.userInstalledVersion}
+            </span>
           </>
         )}
-        <span className="text-tagma-muted">Target</span>
-        <span className="text-tagma-muted-dim">
+        <span className="whitespace-nowrap text-tagma-muted">Target</span>
+        <span className="min-w-0 break-all text-tagma-muted-dim">
           {info.platform}/{info.arch}
         </span>
       </div>
@@ -958,7 +960,7 @@ function OpencodeInfoBody({ info, onRefresh }: OpencodeInfoBodyProps) {
         </div>
       </div>
 
-      <div className="flex items-center gap-2 pt-1">
+      <div className="flex flex-wrap items-center gap-2 pt-1">
         <button
           onClick={onRefresh}
           className="btn-ghost whitespace-nowrap"

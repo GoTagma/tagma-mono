@@ -49,13 +49,13 @@ export function WelcomePage({ onOpenWorkspace, onSelectRecent }: WelcomePageProp
 
   return (
     <motion.div
-      className="h-full w-full flex items-center justify-center bg-tagma-bg"
+      className="h-full w-full flex items-center justify-center overflow-y-auto bg-tagma-bg py-4 sm:py-8"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
     >
-      <div className="w-full max-w-[560px] px-8">
-        <div className="flex items-center gap-3 mb-10">
+      <div className="my-auto w-full max-w-[560px] px-4 sm:px-8">
+        <div className="mb-6 flex items-center gap-3 sm:mb-10">
           <div className="w-9 h-9 flex items-center justify-center">
             <ProductLogo size={32} />
           </div>
@@ -70,7 +70,7 @@ export function WelcomePage({ onOpenWorkspace, onSelectRecent }: WelcomePageProp
         <button
           type="button"
           onClick={onOpenWorkspace}
-          className="group w-full flex items-center gap-3 px-4 py-3 mb-8 border border-tagma-border hover:border-tagma-accent/60 bg-tagma-elevated/30 hover:bg-tagma-accent/5 transition-all"
+          className="group mb-5 flex w-full items-center gap-3 border border-tagma-border bg-tagma-elevated/30 px-4 py-3 transition-all hover:border-tagma-accent/60 hover:bg-tagma-accent/5 sm:mb-8"
         >
           <FolderOpen size={16} className="text-tagma-accent shrink-0" />
           <div className="flex-1 text-left min-w-0">
@@ -115,7 +115,7 @@ export function WelcomePage({ onOpenWorkspace, onSelectRecent }: WelcomePageProp
               No recent workspaces.
             </div>
           ) : (
-            <ul className="flex flex-col border border-tagma-border divide-y divide-tagma-border/60">
+            <ul className="flex max-h-[min(55dvh,20rem)] flex-col divide-y divide-tagma-border/60 overflow-y-auto border border-tagma-border">
               {recent.map((entry) => {
                 const name = basename(entry.path);
                 const disabled = !entry.exists;
@@ -179,7 +179,7 @@ export function WelcomePage({ onOpenWorkspace, onSelectRecent }: WelcomePageProp
           )}
         </div>
 
-        <div className="mt-10 text-center">
+        <div className="mt-6 text-center sm:mt-10">
           <p className="text-[10px] font-mono text-tagma-muted-dim/70 tracking-wide">
             Config stored in{' '}
             <span className="text-tagma-muted-dim">~/.tagma/recent-workspaces.json</span>

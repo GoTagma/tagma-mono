@@ -732,12 +732,12 @@ export function CustomProviderModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[230] flex items-center justify-center bg-black/60"
+      className="modal-viewport-backdrop fixed inset-0 z-[230] flex items-center justify-center bg-black/60"
       onClick={onClose}
     >
       <div
         ref={modalRef}
-        className="bg-tagma-surface border border-tagma-border shadow-panel w-[min(640px,calc(100vw-32px))] max-h-[min(88vh,calc(100vh-48px))] flex flex-col animate-fade-in"
+        className="modal-viewport-shell flex w-full max-w-[640px] flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-label={isEdit ? 'Edit custom provider' : 'Add custom provider'}
@@ -760,7 +760,7 @@ export function CustomProviderModal({
           </button>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-4">
+        <div className="modal-viewport-body space-y-4 px-4 py-3">
           {!isEdit && (
             <div className="flex items-center gap-2">
               <span className="field-label !mb-0">Template</span>
@@ -780,7 +780,7 @@ export function CustomProviderModal({
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="field-label">Provider ID</label>
               <input
@@ -947,7 +947,7 @@ export function CustomProviderModal({
 
           <div>
             <label className="field-label">Scope</label>
-            <div className="flex gap-1.5">
+            <div className="flex flex-col gap-1.5 sm:flex-row">
               <ScopeButton
                 active={form.scope === 'global'}
                 onClick={() => updateField('scope', 'global')}
@@ -1119,7 +1119,7 @@ export function CustomProviderModal({
           )}
         </div>
 
-        <div className="px-4 py-3 border-t border-tagma-border flex items-center justify-end gap-2 shrink-0">
+        <div className="modal-viewport-footer flex items-center justify-end gap-2 border-t border-tagma-border px-4 py-3">
           <button
             type="button"
             onClick={onClose}

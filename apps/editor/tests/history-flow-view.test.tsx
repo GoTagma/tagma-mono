@@ -81,4 +81,12 @@ describe('HistoryFlowView', () => {
 
     expect(html).toContain('animate-spin');
   });
+
+  test('bounds history inspectors to the available narrow viewport', async () => {
+    const source = await Bun.file(
+      new URL('../src/components/run/HistoryFlowView.tsx', import.meta.url),
+    ).text();
+    expect(source).toContain('w-[calc(100%-1rem)] max-w-[18rem]');
+    expect(source).toContain('w-full h-full bg-tagma-surface');
+  });
 });

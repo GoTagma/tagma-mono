@@ -74,83 +74,97 @@ export function ApprovalDialog({ request, onApprove, onReject, config }: Approva
   const modalRef = useModalFocusTrap<HTMLDivElement>();
 
   return (
-    <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/40 p-4">
+    <div className="modal-viewport-backdrop absolute inset-0 z-30 flex items-center justify-center bg-black/40">
       <div
         ref={modalRef}
-        className="w-[min(480px,100%)] max-h-[min(82vh,calc(100vh-48px))] bg-tagma-surface border border-tagma-border shadow-xl flex flex-col"
+        className="modal-viewport-shell flex w-full max-w-[480px] flex-col border border-tagma-border bg-tagma-surface shadow-xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="approval-dialog-title"
         tabIndex={-1}
       >
-        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-tagma-border bg-tagma-elevated">
-          <ShieldCheck size={14} className="text-tagma-warning" />
-          <span id="approval-dialog-title" className="text-xs font-medium text-tagma-text flex-1">
+        <div className="flex shrink-0 min-w-0 items-center gap-2 border-b border-tagma-border bg-tagma-elevated px-4 py-2.5">
+          <ShieldCheck size={14} className="shrink-0 text-tagma-warning" />
+          <span
+            id="approval-dialog-title"
+            className="min-w-0 flex-1 truncate text-xs font-medium text-tagma-text"
+          >
             Approval Required
           </span>
-          <span className="text-[10px] font-mono text-tagma-muted">{request.taskId}</span>
+          <span
+            className="max-w-[45%] shrink-0 truncate text-[10px] font-mono text-tagma-muted"
+            title={request.taskId}
+          >
+            {request.taskId}
+          </span>
         </div>
 
-        {/* Task context row — surfaces the task's human-readable identity so
+        <div className="modal-viewport-body">
+          {/* Task context row — surfaces the task's human-readable identity so
             the reviewer can decide without context-switching back to the
             canvas. Only shown when the snapshot resolves the task. */}
-        {taskContext && (
-          <div className="px-4 py-2.5 border-b border-tagma-border/60 bg-tagma-bg/40">
-            <div className="flex items-center gap-2 min-w-0">
-              {taskContext.isCommand ? (
-                <Terminal size={11} className="text-tagma-ready shrink-0" />
-              ) : (
-                <MessageSquare size={11} className="text-tagma-muted/70 shrink-0" />
-              )}
-              <span className="text-[12px] font-medium text-tagma-text truncate flex-1">
-                {taskContext.taskName}
-              </span>
-              <span className="text-[9px] font-mono text-tagma-muted shrink-0 truncate max-w-[140px]">
-                {taskContext.trackName}
-              </span>
-            </div>
-            {(taskContext.driver || taskContext.model) && !taskContext.isCommand && (
-              <div className="flex items-center gap-2 mt-1 text-[9px] font-mono">
-                {taskContext.driver && (
-                  <span className="text-tagma-accent/80">driver: {taskContext.driver}</span>
+          {taskContext && (
+            <div className="px-4 py-2.5 border-b border-tagma-border/60 bg-tagma-bg/40">
+              <div className="flex items-center gap-2 min-w-0">
+                {taskContext.isCommand ? (
+                  <Terminal size={11} className="text-tagma-ready shrink-0" />
+                ) : (
+                  <MessageSquare size={11} className="text-tagma-muted/70 shrink-0" />
                 )}
-                {taskContext.model && (
-                  <span className="text-tagma-muted">model: {taskContext.model}</span>
-                )}
+                <span className="text-[12px] font-medium text-tagma-text truncate flex-1">
+                  {taskContext.taskName}
+                </span>
+                <span className="text-[9px] font-mono text-tagma-muted shrink-0 truncate max-w-[140px]">
+                  {taskContext.trackName}
+                </span>
               </div>
-            )}
-            {promptPreview && (
-              <pre className="mt-2 text-[10px] font-mono text-tagma-muted/90 bg-tagma-bg border border-tagma-border/60 px-2 py-1.5 max-h-[100px] overflow-auto whitespace-pre-wrap break-words">
-                {promptPreview}
-              </pre>
-            )}
-          </div>
-        )}
-
-        <div className="px-4 py-3 space-y-3 overflow-y-auto">
-          <div>
-            <label className="field-label">Message</label>
-            <div className="text-[12px] text-tagma-text whitespace-pre-wrap break-words">
-              {request.message || '(no message)'}
-            </div>
-          </div>
-
-          {request.metadata && Object.keys(request.metadata).length > 0 && (
-            <div>
-              <label className="field-label">Metadata</label>
-              <pre className="text-[10px] font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2 py-1.5 overflow-auto max-h-[140px]">
-                {JSON.stringify(request.metadata, null, 2)}
-              </pre>
+              {(taskContext.driver || taskContext.model) && !taskContext.isCommand && (
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-[9px] font-mono">
+                  {taskContext.driver && (
+                    <span className="min-w-0 break-all text-tagma-accent/80">
+                      driver: {taskContext.driver}
+                    </span>
+                  )}
+                  {taskContext.model && (
+                    <span className="min-w-0 break-all text-tagma-muted">
+                      model: {taskContext.model}
+                    </span>
+                  )}
+                </div>
+              )}
+              {promptPreview && (
+                <pre className="mt-2 text-[10px] font-mono text-tagma-muted/90 bg-tagma-bg border border-tagma-border/60 px-2 py-1.5 max-h-[100px] overflow-auto whitespace-pre-wrap break-words">
+                  {promptPreview}
+                </pre>
+              )}
             </div>
           )}
 
-          <div className="text-[10px] font-mono text-tagma-muted">
-            Timeout: {Math.round(request.timeoutMs / 1000)}s · Created{' '}
-            {new Date(request.createdAt).toLocaleTimeString()}
+          <div className="px-4 py-3 space-y-3">
+            <div>
+              <label className="field-label">Message</label>
+              <div className="text-[12px] text-tagma-text whitespace-pre-wrap break-words">
+                {request.message || '(no message)'}
+              </div>
+            </div>
+
+            {request.metadata && Object.keys(request.metadata).length > 0 && (
+              <div>
+                <label className="field-label">Metadata</label>
+                <pre className="text-[10px] font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2 py-1.5 overflow-auto max-h-[140px]">
+                  {JSON.stringify(request.metadata, null, 2)}
+                </pre>
+              </div>
+            )}
+
+            <div className="text-[10px] font-mono text-tagma-muted">
+              Timeout: {Math.round(request.timeoutMs / 1000)}s · Created{' '}
+              {new Date(request.createdAt).toLocaleTimeString()}
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-tagma-border bg-tagma-elevated">
+        <div className="modal-viewport-footer flex items-center justify-end gap-2 border-t border-tagma-border bg-tagma-elevated px-4 py-2.5">
           <button
             type="button"
             onClick={() => onReject()}

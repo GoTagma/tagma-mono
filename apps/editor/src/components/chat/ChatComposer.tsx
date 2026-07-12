@@ -53,7 +53,7 @@ function AttachmentChips() {
       {attachments.map((a) => (
         <div
           key={a.id}
-          className="flex items-center gap-1 min-w-0 max-w-[260px] border border-tagma-border bg-tagma-bg/60 px-1.5 py-0.5 text-[10px] font-mono text-tagma-muted"
+          className="flex min-w-0 max-w-full items-center gap-1 border border-tagma-border bg-tagma-bg/60 px-1.5 py-0.5 text-[10px] font-mono text-tagma-muted sm:max-w-[260px]"
         >
           <Paperclip size={10} className="shrink-0 text-tagma-muted/70" />
           <span className="truncate" title={a.label}>
@@ -173,7 +173,7 @@ export function ChatComposer() {
   return (
     <div className="border-t border-tagma-border p-2 shrink-0 flex flex-col gap-2">
       <AttachmentChips />
-      <div className="flex items-end gap-2">
+      <div className="flex min-w-0 items-end gap-2">
         <textarea
           ref={textareaRef}
           value={text}
@@ -188,13 +188,13 @@ export function ChatComposer() {
           rows={2}
           disabled={!ready || !model}
           style={{ maxHeight: COMPOSER_MAX_HEIGHT }}
-          className="flex-1 resize-none overflow-y-auto bg-transparent border border-tagma-border px-2 py-1 text-[11px] font-mono text-tagma-text focus:outline-none focus:border-tagma-muted/80 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="min-w-0 flex-1 resize-none overflow-y-auto bg-transparent border border-tagma-border px-2 py-1 text-[11px] font-mono text-tagma-text focus:outline-none focus:border-tagma-muted/80 disabled:opacity-40 disabled:cursor-not-allowed"
         />
         <button
           type="button"
           onClick={submit}
           disabled={!canSend}
-          className="p-1.5 border border-tagma-border text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="shrink-0 p-1.5 border border-tagma-border text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           title={sendLabel}
           aria-label={sendLabel}
         >
@@ -208,7 +208,7 @@ export function ChatComposer() {
                 /* already surfaced via sendError */
               });
             }}
-            className="p-1.5 border border-tagma-error/60 text-tagma-error hover:border-tagma-error hover:bg-tagma-error/10 transition-colors"
+            className="shrink-0 p-1.5 border border-tagma-error/60 text-tagma-error hover:border-tagma-error hover:bg-tagma-error/10 transition-colors"
             title="Stop generating"
             aria-label="Stop generating"
           >
