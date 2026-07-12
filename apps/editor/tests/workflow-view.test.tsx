@@ -286,10 +286,15 @@ describe('WorkflowView', () => {
     expect(html).toContain('cursor-crosshair');
     expect(html).toContain('Edit deploy in pipeline editor');
     expect(html).toContain('grid-cols-1');
+    expect(html).toContain('lg:grid-cols-[220px_minmax(360px,1fr)_320px]');
     expect(html).toContain('xl:grid-cols-[260px_minmax(420px,1fr)_360px]');
     expect(html).toContain('grid-rows-[minmax(12rem,auto)_minmax(24rem,1fr)_minmax(16rem,auto)]');
     expect(html).toContain('overflow-y-auto');
-    expect(html).toContain('xl:overflow-hidden');
+    expect(html).toContain('lg:grid-rows-1');
+    expect(html).toContain('lg:overflow-hidden');
+    expect(html).toContain('lg:max-h-none lg:border-b-0 lg:border-r');
+    expect(html).toContain('lg:min-h-0 lg:border-b-0');
+    expect(html).toContain('lg:max-h-none lg:border-l lg:border-tagma-border');
   });
 
   test('matches workflow pipeline display by workspace-resolved path, not suffix', () => {

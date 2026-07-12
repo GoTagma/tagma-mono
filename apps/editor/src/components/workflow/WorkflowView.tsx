@@ -912,8 +912,8 @@ export function WorkflowView({
           onAbort={onAbort}
         />
       ) : (
-        <div className="flex-1 min-h-0 grid grid-cols-1 grid-rows-[minmax(12rem,auto)_minmax(24rem,1fr)_minmax(16rem,auto)] overflow-y-auto xl:grid-cols-[260px_minmax(420px,1fr)_360px] xl:grid-rows-1 xl:overflow-hidden">
-          <aside className="max-h-[18rem] min-h-0 overflow-auto border-b border-tagma-border bg-tagma-surface/70 p-3 xl:max-h-none xl:border-b-0 xl:border-r">
+        <div className="flex-1 min-h-0 grid grid-cols-1 grid-rows-[minmax(12rem,auto)_minmax(24rem,1fr)_minmax(16rem,auto)] overflow-y-auto lg:grid-cols-[220px_minmax(360px,1fr)_320px] lg:grid-rows-1 lg:overflow-hidden xl:grid-cols-[260px_minmax(420px,1fr)_360px]">
+          <aside className="max-h-[18rem] min-h-0 overflow-auto border-b border-tagma-border bg-tagma-surface/70 p-3 lg:max-h-none lg:border-b-0 lg:border-r">
             <div className="flex items-center justify-between gap-2 mb-2">
               <div className="text-[10px] font-mono uppercase tracking-wide text-tagma-muted">
                 Workflow Graphs
@@ -1016,7 +1016,7 @@ export function WorkflowView({
             )}
           </aside>
 
-          <main className="min-h-[24rem] min-w-0 flex flex-col overflow-hidden border-b border-tagma-border xl:min-h-0 xl:border-b-0">
+          <main className="min-h-[24rem] min-w-0 flex flex-col overflow-hidden border-b border-tagma-border lg:min-h-0 lg:border-b-0">
             {!selectedWorkflow ? (
               <div className="flex-1 flex items-center justify-center text-[12px] font-mono text-tagma-muted">
                 No workflow graph selected.
@@ -1342,7 +1342,7 @@ export function WorkflowView({
             )}
           </main>
 
-          <aside className="max-h-[20rem] min-h-0 overflow-auto bg-tagma-surface p-3 xl:max-h-none xl:border-l xl:border-tagma-border">
+          <aside className="max-h-[20rem] min-h-0 overflow-auto bg-tagma-surface p-3 lg:max-h-none lg:border-l lg:border-tagma-border">
             <div className="text-[10px] font-mono uppercase tracking-wide text-tagma-muted mb-2">
               Pipeline Detail
             </div>
