@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import {
   detectChatYamlTarget,
+  shouldAdoptChatYamlTargetOnCurrentCanvas,
+  shouldForkChatYamlResult,
   shouldAutoRepairCompileResult,
   type ChatYamlSnapshot,
   type WorkspaceYamlEntry,
@@ -234,5 +236,94 @@ describe('shouldAutoRepairCompileResult', () => {
     expect(shouldAutoRepairCompileResult({ success: false }, 0, 2)).toBe(true);
     expect(shouldAutoRepairCompileResult({ success: false }, 2, 2)).toBe(false);
     expect(shouldAutoRepairCompileResult({ success: true }, 0, 2)).toBe(false);
+  });
+});
+
+describe('shouldForkChatYamlResult', () => {
+  test('forks a changed current pipeline when the user edited it during the turn', () => {
+    expect(
+      shouldForkChatYamlResult({
+        snapshot: { ...snapshot(), localEditRevision: 7 },
+        target: {
+          kind: 'refresh-current',
+          path: before.path,
+          name: before.name,
+          pipelineName: before.pipelineName,
+        },
+        currentPath: before.path,
+        currentRevision: 1,
+        currentLocalEditRevision: 8,
+        hasLocalChanges: true,
+      }),
+    ).toBe(true);
+  });
+
+  test('does not fork merely because the agent wrote repeatedly during the turn', () => {
+    expect(
+      shouldForkChatYamlResult({
+        snapshot: { ...snapshot(), localEditRevision: 7 },
+        target: {
+          kind: 'refresh-current',
+          path: before.path,
+          name: before.name,
+          pipelineName: before.pipelineName,
+        },
+        currentPath: before.path,
+        currentRevision: 1,
+        currentLocalEditRevision: 7,
+        hasLocalChanges: false,
+      }),
+    ).toBe(false);
+  });
+
+  test('never forks a newly-created pipeline just because the current canvas is dirty', () => {
+    expect(
+      shouldForkChatYamlResult({
+        snapshot: { ...snapshot(), localEditRevision: 7 },
+        target: {
+          kind: 'open-created',
+          path: 'C:/w/.tagma/new/new.yaml',
+          name: 'new.yaml',
+          pipelineName: 'New',
+        },
+        currentPath: before.path,
+        currentRevision: 2,
+        currentLocalEditRevision: 8,
+        hasLocalChanges: true,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe('shouldAdoptChatYamlTargetOnCurrentCanvas', () => {
+  const changedTarget = {
+    kind: 'refresh-current' as const,
+    path: before.path,
+    name: before.name,
+    pipelineName: before.pipelineName,
+  };
+
+  test('adopts only an unchanged result that targets the open canvas', () => {
+    expect(
+      shouldAdoptChatYamlTargetOnCurrentCanvas({
+        target: changedTarget,
+        currentPath: 'c:/w/.tagma/current.yaml',
+        forked: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldAdoptChatYamlTargetOnCurrentCanvas({
+        target: changedTarget,
+        currentPath: 'C:/w/.tagma/other.yaml',
+        forked: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldAdoptChatYamlTargetOnCurrentCanvas({
+        target: changedTarget,
+        currentPath: before.path,
+        forked: true,
+      }),
+    ).toBe(false);
   });
 });

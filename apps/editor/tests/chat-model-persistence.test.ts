@@ -467,6 +467,7 @@ afterEach(() => {
     model: null,
     reasoningEffort: 'medium',
     sessions: [],
+    sessionStates: {},
     currentSessionId: null,
     messages: [],
     sending: false,
@@ -755,6 +756,58 @@ describe('chat model persistence', () => {
     expect(editorSettingsPatches).toEqual([]);
     expect(storage.getItem('tagma.chat.v2')).toContain('"modelID":"claude"');
     expect(storage.getItem('tagma.chat.v2')).not.toContain('"modelID":"gpt-5"');
+  });
+
+  test('allows model and reasoning changes after opening a new conversation', async () => {
+    setClientWorkspace('C:/repo-a');
+    useChatStore.setState({
+      currentSessionId: 'running-session',
+      sessions: [{ id: 'running-session' } as Session],
+      model: { providerID: 'anthropic', modelID: 'claude' },
+      reasoningEffort: 'medium',
+      sendError: null,
+      sending: true,
+      pendingUserText: 'background prompt',
+      queuedMessages: [],
+      flushing: false,
+    } as never);
+
+    await useChatStore.getState().newSession();
+    useChatStore.getState().setModel({ providerID: 'openai', modelID: 'gpt-5' });
+    useChatStore.getState().setReasoningEffort('high');
+
+    const state = useChatStore.getState();
+    expect(state.currentSessionId).toBe('new-session');
+    expect(state.sessionStates['running-session']?.sending).toBe(true);
+    expect(state.model).toEqual({ providerID: 'openai', modelID: 'gpt-5' });
+    expect(state.reasoningEffort).toBe('high');
+    expect(state.sendError).toBeNull();
+  });
+
+  test('allows model and reasoning changes after opening idle history', async () => {
+    setClientWorkspace('C:/repo-a');
+    useChatStore.setState({
+      currentSessionId: 'running-session',
+      sessions: [{ id: 'running-session' } as Session, { id: 'existing' } as Session],
+      model: { providerID: 'anthropic', modelID: 'claude' },
+      reasoningEffort: 'medium',
+      sendError: null,
+      sending: true,
+      pendingUserText: 'background prompt',
+      queuedMessages: [],
+      flushing: false,
+    } as never);
+
+    await useChatStore.getState().selectSession('existing');
+    useChatStore.getState().setModel({ providerID: 'openai', modelID: 'gpt-5' });
+    useChatStore.getState().setReasoningEffort('high');
+
+    const state = useChatStore.getState();
+    expect(state.currentSessionId).toBe('existing');
+    expect(state.sessionStates['running-session']?.sending).toBe(true);
+    expect(state.model).toEqual({ providerID: 'openai', modelID: 'gpt-5' });
+    expect(state.reasoningEffort).toBe('high');
+    expect(state.sendError).toBeNull();
   });
 
   test('titles a manually created session with the renderer local time', async () => {

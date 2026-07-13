@@ -101,6 +101,29 @@ test('extractBinariesFromYaml scans shell command chains without treating builti
   expect(binaries!.find((b) => b.name === 'git')!.usedBy).toEqual(['main.chained']);
 });
 
+test('extractBinariesFromYaml ignores Tagma input placeholder filters', () => {
+  const { tagmaDir } = makeWorkspace();
+  const yamlPath = writeYaml(
+    tagmaDir,
+    'input-placeholders.yaml',
+    [
+      'pipeline:',
+      '  name: input placeholders',
+      '  tracks:',
+      '    - id: main',
+      '      name: Main',
+      '      tasks:',
+      '        - id: fetch',
+      '          command: "powershell -File helper.ps1 -Description {{inputs.description | shellquote}} -Limit {{inputs.limit}}"',
+      '',
+    ].join('\n'),
+  );
+
+  const binaries = extractBinariesFromYaml(yamlPath);
+  expect(binaries).not.toBeNull();
+  expect(binaries!.map((binary) => binary.name)).toEqual(['powershell']);
+});
+
 test('extractBinariesFromYaml maps prompt-task drivers via DRIVER_BINARIES', () => {
   const { tagmaDir } = makeWorkspace();
   const yamlPath = writeYaml(

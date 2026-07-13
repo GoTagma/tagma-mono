@@ -33,7 +33,7 @@ import {
   type CustomProviderDef,
   type CustomProviderEntry,
 } from '../api/custom-providers';
-import { usePipelineStore } from './pipeline-store';
+import { getLocalPipelineEditRevision, usePipelineStore } from './pipeline-store';
 import { useEditorSettingsStore } from './editor-settings-store';
 import {
   api,
@@ -58,6 +58,7 @@ import { renderAskAiContext } from '../utils/ask-ai-context';
 import type { ChatYamlSnapshot, ChatYamlTarget } from '../utils/chat-yaml-reconcile';
 import {
   acquireChatYamlEditLock,
+  getLocalChatYamlEditLockLease,
   isLocalYamlEditLockHeldForWorkspace,
   isYamlEditLocked,
   releaseChatYamlEditLock,
@@ -75,6 +76,7 @@ import {
 } from './chat-persist';
 import { buildEditorContext } from './chat-editor-context';
 import { buildTagmaSessionMetadata } from '../../shared/opencode-session-metadata.js';
+import { serializePreviewYaml } from '../utils/yaml-preview-diff';
 
 // Re-export for backward compatibility — tests and other consumers import this
 // from chat-store.
@@ -441,6 +443,7 @@ interface ChatStore {
     result: YamlCompileResult,
     attempt: number,
     maxAttempts: number,
+    snapshot?: ChatYamlSnapshot | null,
   ) => Promise<void>;
   /**
    * Ask opencode to stop generating on the current session. Safe to call any
@@ -1433,9 +1436,14 @@ function dispatchNextQueuedPrompt(get: () => ChatStore, set: ChatSet): boolean {
   set({ queuedMessages: [] });
   // Attachments were already cleared at enqueue time; the context rides on
   // the queued messages, so just forward it (no clearAttachmentIds needed).
-  void promptOpencode(get, set, combined, { context: combinedContext })
+  void promptOpencode(get, set, combined, {
+    context: combinedContext,
+    reuseLogicalTurn: true,
+  })
     .catch(() => {
-      /* promptOpencode already surfaced sendError and reset sending state */
+      // The previous assistant work still needs one final reconciliation even
+      // when the queued continuation fails before OpenCode accepts it.
+      finishChatTurn(set, {}, true);
     })
     .finally(() => {
       queuedPromptDispatchInFlight = false;
@@ -1443,7 +1451,7 @@ function dispatchNextQueuedPrompt(get: () => ChatStore, set: ChatSet): boolean {
   return true;
 }
 
-function finishChatTurn(set: ChatSet, patch: Partial<ChatStore> = {}): void {
+function finishChatTurn(set: ChatSet, patch: Partial<ChatStore> = {}, force = false): void {
   clearTurnWatchdog();
   clearSseIdleTimer();
   sseLastEventAt = null;
@@ -1452,6 +1460,10 @@ function finishChatTurn(set: ChatSet, patch: Partial<ChatStore> = {}): void {
   // we left them as `endedAt: null`, the rendered "Working… (live counter)"
   // would keep ticking forever after the turn was over.
   set((prev) => {
+    // Two terminal confirmations can race (for example session.idle plus a
+    // status poll). Only the first one owns the logical turn and may enqueue
+    // reconciliation; later confirmations may still contribute their patch.
+    if (!force && !prev.sending && !prev.pendingUserText) return patch;
     const messages = sealCurrentTurnActivity(prev);
     const endedAt = Date.now();
     const finishedTurn = makeFinishedTurn({
@@ -2327,6 +2339,22 @@ function hasHiddenActiveChatTurn(
   );
 }
 
+export function isChatModelSelectionBlocked(state: {
+  sending: boolean;
+  pendingUserText: string | null;
+  queuedMessages: readonly unknown[];
+  reconciling: boolean;
+  flushing: boolean;
+}): boolean {
+  return (
+    state.sending ||
+    !!state.pendingUserText ||
+    state.queuedMessages.length > 0 ||
+    state.reconciling ||
+    state.flushing
+  );
+}
+
 function chatTurnBlocksSessionMutation(
   state: Pick<
     ChatStore,
@@ -2383,6 +2411,15 @@ export function shouldStartFreshChatSessionForContextLimit(opts: {
   return opts.userTurns >= rounds;
 }
 
+export function chatPipelinePreflightMode(args: {
+  hasInheritedSnapshot: boolean;
+  hasDirtyPipeline: boolean;
+  diskBranchAlreadyOwned: boolean;
+}): 'none' | 'save-disk' | 'sync-memory' {
+  if (args.hasInheritedSnapshot || !args.hasDirtyPipeline) return 'none';
+  return args.diskBranchAlreadyOwned ? 'sync-memory' : 'save-disk';
+}
+
 /**
  * Last-resort path for `abort()` when opencode never acks the cancel — see
  * `abort()` for the full Ollama / @ai-sdk/openai-compatible context. Kills
@@ -2416,7 +2453,12 @@ async function promptOpencode(
   get: () => ChatStore,
   set: ChatSet,
   text: string,
-  opts: { internal?: boolean; context?: string } = {},
+  opts: {
+    internal?: boolean;
+    context?: string;
+    reuseLogicalTurn?: boolean;
+    continuationSnapshot?: ChatYamlSnapshot | null;
+  } = {},
 ): Promise<void> {
   const workspaceKeyAtStart = getOpencodeWorkspaceKey();
   const { model, agent, providers, reasoningEffort } = get();
@@ -2435,7 +2477,32 @@ async function promptOpencode(
 
   const pipeline = usePipelineStore.getState();
   const preSendWorkDir = pipeline.workDir;
+  const inheritedSnapshot =
+    opts.continuationSnapshot ??
+    (opts.reuseLogicalTurn || opts.internal ? get().yamlSnapshotBeforeSend : null);
+  // Capture the renderer branch synchronously at dispatch. The async lock,
+  // save, client bootstrap, and session setup below can all take long enough
+  // for the user to make another edit; those edits belong to the concurrent
+  // user branch and must not silently move the turn baseline.
+  const initialEditorBaseline =
+    !inheritedSnapshot && preSendWorkDir
+      ? {
+          workDir: preSendWorkDir,
+          activePath: pipeline.yamlPath,
+          activeYaml: pipeline.yamlPath ? serializePreviewYaml(pipeline.config) : null,
+          activeLayout: pipeline.yamlPath
+            ? {
+                positions: Object.fromEntries(pipeline.positions),
+                folders: structuredClone(pipeline.folders),
+                trackHeights: Object.fromEntries(pipeline.trackHeights),
+              }
+            : null,
+          localEditRevision: getLocalPipelineEditRevision(),
+        }
+      : null;
   let lockLease: ChatYamlEditLockLease | null = null;
+  let acquiredLockLeaseHere = false;
+  let diskBranchAlreadyOwned = false;
   try {
     const turnStartedAt = Date.now();
     optimisticTurnStartedAt = turnStartedAt;
@@ -2448,6 +2515,18 @@ async function promptOpencode(
       endedAt: null,
       count: 1,
     };
+    if (!opts.internal && !opts.reuseLogicalTurn && sessionIdAtDispatch) {
+      set((prev) => ({
+        sessionYamlResults: Object.fromEntries(
+          Object.entries(prev.sessionYamlResults).filter(([resultSessionId]) => {
+            return resultSessionId !== sessionIdAtDispatch;
+          }),
+        ),
+        dismissedSessionYamlResultToastIds: prev.dismissedSessionYamlResultToastIds.filter(
+          (resultSessionId) => resultSessionId !== sessionIdAtDispatch,
+        ),
+      }));
+    }
     set({
       sending: true,
       sendError: null,
@@ -2458,20 +2537,37 @@ async function promptOpencode(
       sessionStatus: null,
       turnHealth: null,
       pendingActivity: [requestSent],
-      yamlSnapshotBeforeSend: null,
+      yamlSnapshotBeforeSend: inheritedSnapshot,
       ...(opts.internal ? {} : { postChatYamlAction: null }),
     });
 
     if (preSendWorkDir) {
-      lockLease = await acquireChatYamlEditLock(YAML_EDIT_LOCK_MESSAGE);
+      const continuingLogicalTurn = opts.reuseLogicalTurn || opts.internal;
+      const existingLease = getLocalChatYamlEditLockLease();
+      diskBranchAlreadyOwned = !!existingLease;
+      if (continuingLogicalTurn) {
+        lockLease = existingLease;
+      }
+      if (!lockLease) {
+        lockLease = await acquireChatYamlEditLock(YAML_EDIT_LOCK_MESSAGE);
+        acquiredLockLeaseHere = !continuingLogicalTurn;
+      }
       assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
     }
-    if (preSendWorkDir && (pipeline.isDirty || pipeline.layoutDirty)) {
-      const saved = await pipeline.saveFile({ allowDuringYamlEditLock: true });
+    const pipelinePreflight = chatPipelinePreflightMode({
+      hasInheritedSnapshot: !!inheritedSnapshot,
+      hasDirtyPipeline: !!preSendWorkDir && (pipeline.isDirty || pipeline.layoutDirty),
+      diskBranchAlreadyOwned,
+    });
+    if (pipelinePreflight !== 'none') {
+      const saved =
+        pipelinePreflight === 'sync-memory'
+          ? await pipeline.syncLocalStateToServerMemory({ allowDuringYamlEditLock: true })
+          : await pipeline.saveFile({ allowDuringYamlEditLock: true });
       assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
       if (!saved) {
         const msg =
-          'Save failed, so chat was not started. Save or discard local YAML/layout edits first.';
+          'Local pipeline preservation failed, so chat was not started. Save or discard local YAML/layout edits first.';
         set({ sendError: msg });
         throw new Error(msg);
       }
@@ -2546,26 +2642,17 @@ async function promptOpencode(
     await waitForSseReadyWithTimeout(ensureSseReadyPromise());
     assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
 
-    let preSendSnapshot: ChatYamlSnapshot | null = null;
-    if (preSendWorkDir) {
+    let preSendSnapshot: ChatYamlSnapshot | null = inheritedSnapshot;
+    if (!preSendSnapshot && initialEditorBaseline) {
       try {
-        const latestPipeline = usePipelineStore.getState();
-        const activePath = latestPipeline.yamlPath;
-        const activeYaml = activePath ? await api.exportYaml().catch(() => null) : null;
-        const activeLayout = activePath
-          ? {
-              positions: Object.fromEntries(latestPipeline.positions),
-              folders: structuredClone(latestPipeline.folders),
-              trackHeights: Object.fromEntries(latestPipeline.trackHeights),
-            }
-          : null;
         const { entries } = await api.listWorkspaceYamls();
         preSendSnapshot = {
-          workDir: preSendWorkDir,
-          activePath,
+          workDir: initialEditorBaseline.workDir,
+          activePath: initialEditorBaseline.activePath,
           revision: getClientRevision(),
-          activeYaml,
-          activeLayout,
+          localEditRevision: initialEditorBaseline.localEditRevision,
+          activeYaml: initialEditorBaseline.activeYaml,
+          activeLayout: initialEditorBaseline.activeLayout,
           entries: entries.map((entry) => ({
             path: entry.path,
             contentHash: entry.contentHash,
@@ -2578,6 +2665,18 @@ async function promptOpencode(
     }
     assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
 
+    if (!opts.internal && !opts.reuseLogicalTurn) {
+      set((prev) => ({
+        sessionYamlResults: Object.fromEntries(
+          Object.entries(prev.sessionYamlResults).filter(([resultSessionId]) => {
+            return resultSessionId !== sessionId;
+          }),
+        ),
+        dismissedSessionYamlResultToastIds: prev.dismissedSessionYamlResultToastIds.filter(
+          (resultSessionId) => resultSessionId !== sessionId,
+        ),
+      }));
+    }
     applyRuntimePatchToSession(get, set, sessionId, { yamlSnapshotBeforeSend: preSendSnapshot });
 
     const shouldApplyPromptTitle =
@@ -2634,7 +2733,7 @@ async function promptOpencode(
     }
   } catch (err) {
     clearTurnWatchdog();
-    if (lockLease) {
+    if (lockLease && acquiredLockLeaseHere) {
       await releaseChatYamlEditLock(lockLease);
     }
     const resetRuntime: Partial<ChatSessionRuntimeState> = {
@@ -3212,7 +3311,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     ? persisted.reasoningEffort
     : DEFAULT_CHAT_REASONING_EFFORT,
   setModel: (m) => {
-    if (chatTurnBlocksSessionMutation(get())) {
+    if (isChatModelSelectionBlocked(get())) {
       set({ sendError: chatTurnBlockedMessage() });
       return;
     }
@@ -3221,7 +3320,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     persistModelToEditorSettings(m);
   },
   setReasoningEffort: (effort) => {
-    if (chatTurnBlocksSessionMutation(get())) {
+    if (isChatModelSelectionBlocked(get())) {
       set({ sendError: chatTurnBlockedMessage() });
       return;
     }
@@ -3872,7 +3971,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }));
   },
 
-  async sendInternalRepairPrompt(target, result, attempt, maxAttempts) {
+  async sendInternalRepairPrompt(target, result, attempt, maxAttempts, snapshot) {
     const repairText = [
       '<tagma-internal>',
       `Automatic YAML compile repair attempt ${attempt}/${maxAttempts}.`,
@@ -3886,7 +3985,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       '</compile-result>',
       '</tagma-internal>',
     ].join('\n');
-    return promptOpencode(get, set, repairText, { internal: true });
+    return promptOpencode(get, set, repairText, {
+      internal: true,
+      reuseLogicalTurn: true,
+      continuationSnapshot: snapshot ?? null,
+    });
   },
 
   async flushQueueNow() {

@@ -126,6 +126,10 @@ export function buildEditorContext(options: EditorContextOptions = {}): string {
       ...workspaceYamlFolders.flatMap(formatWorkspaceYamlFolderEntry),
       '  </workspace-yaml-folders>',
     );
+  } else if (options.workspaceYamlFilePaths !== undefined) {
+    lines.push('  <workspace-yaml-folders empty="true" />');
+  } else {
+    lines.push('  <workspace-yaml-folders unavailable="true" />');
   }
   const currentFileRunning =
     (run.status === 'starting' || run.status === 'running') && sameChatPath(run.yamlPath, yamlPath);

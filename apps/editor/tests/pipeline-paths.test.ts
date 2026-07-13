@@ -189,6 +189,22 @@ describe('assertPipelineYamlPath', () => {
     expect(() => assertPipelineYamlPath(workDir, target, 'target')).not.toThrow();
   });
 
+  test('accepts equivalent Windows paths with alternate separators and drive casing', () => {
+    if (process.platform !== 'win32') return;
+
+    const workDir = makeWorkDir();
+    const target = pipelineYamlPath(workDir, 'foo');
+    mkdirSync(join(workDir, '.tagma', 'foo'), { recursive: true });
+    writeFileSync(target, 'pipeline:\n  name: Foo\n', 'utf-8');
+
+    const drive = target[0]!;
+    const alternateDrive =
+      drive === drive.toUpperCase() ? drive.toLowerCase() : drive.toUpperCase();
+    const alternatePath = `${alternateDrive}${target.slice(1)}`.replace(/\\/g, '/');
+
+    expect(() => assertPipelineYamlPath(workDir, alternatePath, 'target')).not.toThrow();
+  });
+
   test('rejects flat top-level YAMLs', () => {
     const workDir = makeWorkDir();
     const flat = join(workDir, '.tagma', 'foo.yaml');

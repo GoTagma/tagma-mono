@@ -144,6 +144,97 @@ test('external YAML adoption refreshes optimistic save version', () => {
   }
 });
 
+test('active chat lock defers YAML adoption and preserves the editor branch until turn end', () => {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-chat-yaml-branch-'));
+  const pipelineDir = join(root, '.tagma', 'current');
+  const yamlPath = join(pipelineDir, 'current.yaml');
+  mkdirSync(pipelineDir, { recursive: true });
+  const localConfig = createEmptyPipeline('User Branch');
+  const agentConfig = createEmptyPipeline('Agent Branch');
+  const agentContent = serializePipeline(agentConfig);
+  writeFileSync(yamlPath, agentContent, 'utf-8');
+
+  const ws = workspaceRegistry.getOrCreate(root);
+  ws.workDir = root;
+  ws.yamlPath = yamlPath;
+  ws.config = localConfig;
+  ws.yamlEditLock = {
+    id: 'chat-lock',
+    owner: 'chat',
+    reason: 'chat turn',
+    acquiredAt: Date.now(),
+    expiresAt: Date.now() + 60_000,
+    yamlPath,
+  };
+  const chunks: string[] = [];
+  ws.stateEventClients.add({ res: mockResponse(chunks) });
+
+  try {
+    emitWatcherEvent(ws, { type: 'external-change', path: yamlPath, content: agentContent });
+
+    expect(ws.config.name).toBe('User Branch');
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0]).toContain('\u0022type\u0022:\u0022external-conflict\u0022');
+    expect(chunks[0]).toContain('\u0022deferredByYamlEditLock\u0022:true');
+  } finally {
+    ws.stateEventClients.clear();
+    ws.yamlEditLock = null;
+    workspaceRegistry.drop(root);
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('active chat lock defers layout adoption and preserves user positions until turn end', () => {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-chat-layout-branch-'));
+  const pipelineDir = join(root, '.tagma', 'current');
+  const yamlPath = join(pipelineDir, 'current.yaml');
+  const layoutPath = join(pipelineDir, 'current.layout.json');
+  mkdirSync(pipelineDir, { recursive: true });
+  const config = {
+    name: 'Layout Branch',
+    tracks: [
+      {
+        id: 'main',
+        name: 'Main',
+        tasks: [{ id: 'task', name: 'Task', prompt: 'Hi' }],
+      },
+    ],
+  } satisfies WorkspaceState['config'];
+  writeFileSync(yamlPath, serializePipeline(config), 'utf-8');
+  const agentLayout = JSON.stringify({ positions: { 'main.task': { x: 900 } } }, null, 2);
+  writeFileSync(layoutPath, agentLayout, 'utf-8');
+
+  const ws = workspaceRegistry.getOrCreate(root);
+  ws.workDir = root;
+  ws.yamlPath = yamlPath;
+  ws.config = config;
+  ws.layout = { positions: { 'main.task': { x: 100 } } };
+  ws.yamlEditLock = {
+    id: 'chat-lock',
+    owner: 'chat',
+    reason: 'chat turn',
+    acquiredAt: Date.now(),
+    expiresAt: Date.now() + 60_000,
+    yamlPath,
+  };
+  const chunks: string[] = [];
+  ws.stateEventClients.add({ res: mockResponse(chunks) });
+
+  try {
+    emitLayoutEvent(ws, { path: layoutPath, content: agentLayout });
+
+    expect(ws.layout.positions['main.task']).toEqual({ x: 100 });
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0]).toContain('\u0022type\u0022:\u0022external-conflict\u0022');
+    expect(chunks[0]).toContain('\u0022deferredByYamlEditLock\u0022:true');
+  } finally {
+    ws.stateEventClients.clear();
+    ws.yamlEditLock = null;
+    workspaceRegistry.drop(root);
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('non-default workspace: external-conflict is forwarded verbatim', () => {
   const key = uniqueKey('conflict');
   const ws = workspaceRegistry.getOrCreate(key);

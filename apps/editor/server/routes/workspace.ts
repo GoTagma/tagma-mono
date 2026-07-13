@@ -481,32 +481,66 @@ function copyPipelineAsNumberedCopy(
   const target = nextPipelineCopyTarget(ws.workDir, sourceYamlPath);
   const targetFolder = dirname(target.yamlPath);
   const nextName = pipelineCopyName(sourceName, target.copyNumber, sourceStem);
-  mkdirSync(targetFolder, { recursive: true });
+  try {
+    mkdirSync(targetFolder, { recursive: true });
+    atomicWriteFileSync(target.yamlPath, yamlWithPipelineName(sourceYaml, nextName));
 
-  atomicWriteFileSync(target.yamlPath, yamlWithPipelineName(sourceYaml, nextName));
+    const sourceLayoutPath = companionLayoutPath(sourceYamlPath);
+    if (existsSync(sourceLayoutPath)) {
+      assertFileSizeAtMost(sourceLayoutPath, MAX_LAYOUT_FILE_BYTES, 'source layout');
+      atomicWriteFileSync(
+        companionLayoutPath(target.yamlPath),
+        readFileSync(sourceLayoutPath, 'utf-8'),
+      );
+    }
 
-  const sourceLayoutPath = companionLayoutPath(sourceYamlPath);
-  if (existsSync(sourceLayoutPath)) {
-    assertFileSizeAtMost(sourceLayoutPath, MAX_LAYOUT_FILE_BYTES, 'source layout');
-    atomicWriteFileSync(
-      companionLayoutPath(target.yamlPath),
-      readFileSync(sourceLayoutPath, 'utf-8'),
-    );
+    runPipelineManifestSync(target.yamlPath);
+    runRequirementsSync(target.yamlPath);
+    runCompileAndWriteLog(target.yamlPath, ws.registry);
+
+    return {
+      yamlPath: target.yamlPath,
+      entry: describeYamlEntry(
+        target.yamlPath,
+        basename(target.yamlPath),
+        companionLayoutPath(target.yamlPath),
+        false,
+      ),
+    };
+  } catch (err) {
+    try {
+      rmSync(targetFolder, { recursive: true, force: true });
+    } catch {
+      /* best-effort rollback of a folder created exclusively for this copy */
+    }
+    throw err;
   }
+}
 
-  runPipelineManifestSync(target.yamlPath);
-  runRequirementsSync(target.yamlPath);
-  runCompileAndWriteLog(target.yamlPath, ws.registry);
+interface ChatResultCopyCacheEntry {
+  sourcePath: string;
+  entry: Record<string, unknown>;
+  restoredOriginal: boolean;
+}
 
-  return {
-    yamlPath: target.yamlPath,
-    entry: describeYamlEntry(
-      target.yamlPath,
-      basename(target.yamlPath),
-      companionLayoutPath(target.yamlPath),
-      false,
-    ),
-  };
+const chatResultCopyCache = new WeakMap<WorkspaceState, Map<string, ChatResultCopyCacheEntry>>();
+const MAX_CHAT_RESULT_COPY_CACHE_ENTRIES = 128;
+
+function rememberChatResultCopy(
+  ws: WorkspaceState,
+  idempotencyKey: string,
+  result: ChatResultCopyCacheEntry,
+): void {
+  let cache = chatResultCopyCache.get(ws);
+  if (!cache) {
+    cache = new Map();
+    chatResultCopyCache.set(ws, cache);
+  }
+  if (cache.size >= MAX_CHAT_RESULT_COPY_CACHE_ENTRIES) {
+    const oldest = cache.keys().next().value as string | undefined;
+    if (oldest) cache.delete(oldest);
+  }
+  cache.set(idempotencyKey, result);
 }
 
 type RestorePipelineSnapshotTestHooks = {
@@ -1515,9 +1549,15 @@ export function registerWorkspaceRoutes(app: express.Express): void {
     if (!ws) return;
     if (!ws.workDir) return res.status(400).json({ error: 'Workspace directory is not set' });
     const body = (req.body ?? {}) as {
+      idempotencyKey?: unknown;
       sourcePath?: unknown;
       restoreOriginal?: unknown;
     };
+    const idempotencyKey =
+      typeof body.idempotencyKey === 'string' ? body.idempotencyKey.trim() : '';
+    if (idempotencyKey.length > 200) {
+      return res.status(400).json({ error: 'idempotencyKey is too long' });
+    }
     if (typeof body.sourcePath !== 'string' || body.sourcePath.trim().length === 0) {
       return res.status(400).json({ error: 'sourcePath is required' });
     }
@@ -1537,31 +1577,75 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       return res.status(404).json({ error: `File not found: ${sourcePath}` });
     }
 
+    if (idempotencyKey) {
+      const cached = chatResultCopyCache.get(ws)?.get(idempotencyKey);
+      if (cached) {
+        if (!sameFilesystemPath(cached.sourcePath, sourcePath)) {
+          return res
+            .status(409)
+            .json({ error: 'idempotencyKey was already used for another path' });
+        }
+        return res.json({
+          entry: cached.entry,
+          revision: ws.stateRevision,
+          restoredOriginal: cached.restoredOriginal,
+        });
+      }
+    }
+
+    let restoreOriginal:
+      | {
+          path: string;
+          yaml: string;
+          layout?: unknown;
+        }
+      | undefined;
+    const restore = body.restoreOriginal;
+    if (restore !== undefined) {
+      if (!restore || typeof restore !== 'object' || Array.isArray(restore)) {
+        return res.status(400).json({ error: 'restoreOriginal must be an object' });
+      }
+      const raw = restore as Record<string, unknown>;
+      if (typeof raw.path !== 'string' || typeof raw.yaml !== 'string') {
+        return res.status(400).json({ error: 'restoreOriginal.path and yaml are required' });
+      }
+      let restorePath: string;
+      try {
+        restorePath = assertPipelineYamlPath(
+          ws.workDir,
+          resolveWorkspaceInputPath(ws.workDir, raw.path),
+          'chat result restore target',
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Restore path is outside the workspace';
+        return res.status(403).json({ error: msg });
+      }
+      if (!sameFilesystemPath(restorePath, sourcePath)) {
+        return res.status(400).json({ error: 'restoreOriginal.path must match sourcePath' });
+      }
+      restoreOriginal = { path: restorePath, yaml: raw.yaml, layout: raw.layout };
+    }
+
     try {
       assertFileSizeAtMost(sourcePath, MAX_YAML_FILE_BYTES, 'source YAML');
       const copied = copyPipelineAsNumberedCopy(ws, sourcePath);
       let restoredOriginal = false;
-      const restore = body.restoreOriginal;
-      if (restore && typeof restore === 'object' && !Array.isArray(restore)) {
-        const raw = restore as Record<string, unknown>;
-        if (typeof raw.path === 'string' && typeof raw.yaml === 'string') {
-          const restorePath = assertPipelineYamlPath(
-            ws.workDir,
-            resolveWorkspaceInputPath(ws.workDir, raw.path),
-            'chat result restore target',
-          );
-          if (!sameFilesystemPath(restorePath, sourcePath)) {
-            return res.status(400).json({ error: 'restoreOriginal.path must match sourcePath' });
-          }
-          restorePipelineSnapshot(ws, {
-            path: restorePath,
-            yaml: raw.yaml,
-            layout: raw.layout,
-          });
+      try {
+        if (restoreOriginal) {
+          restorePipelineSnapshot(ws, restoreOriginal);
           restoredOriginal = true;
         }
+      } catch (err) {
+        try {
+          rmSync(dirname(copied.yamlPath), { recursive: true, force: true });
+        } catch {
+          /* best-effort rollback; the original restore has its own rollback */
+        }
+        throw err;
       }
-      res.json({ entry: copied.entry, revision: ws.stateRevision, restoredOriginal });
+      const result = { sourcePath, entry: copied.entry, restoredOriginal };
+      if (idempotencyKey) rememberChatResultCopy(ws, idempotencyKey, result);
+      res.json({ entry: result.entry, revision: ws.stateRevision, restoredOriginal });
     } catch (err: unknown) {
       res.status(500).json({ error: errorMessage(err) || 'Failed to copy chat result' });
     }

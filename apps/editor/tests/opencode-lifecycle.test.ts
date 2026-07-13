@@ -3,18 +3,24 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { ensureOpencode, stopOpencodeProcesses } from '../server/opencode-lifecycle';
+import {
+  ensureOpencode,
+  resolveOpencodePathFallback,
+  stopOpencodeProcesses,
+} from '../server/opencode-lifecycle';
 
 type BunLike = typeof Bun & {
   listen: typeof Bun.listen;
   connect: typeof Bun.connect;
   spawn: typeof Bun.spawn;
+  which: typeof Bun.which;
 };
 
 const realBun = {
   listen: Bun.listen,
   connect: Bun.connect,
   spawn: Bun.spawn,
+  which: Bun.which,
 };
 const realDateNow = Date.now;
 
@@ -37,6 +43,7 @@ afterEach(async () => {
   (Bun as BunLike).listen = realBun.listen;
   (Bun as BunLike).connect = realBun.connect;
   (Bun as BunLike).spawn = realBun.spawn;
+  (Bun as BunLike).which = realBun.which;
   Date.now = realDateNow;
   rmSync(tempRoot, { recursive: true, force: true });
 });
@@ -90,5 +97,15 @@ describe('ensureOpencode health probing', () => {
     await expect(ensureOpencode(join(tempRoot, '.tagma'))).resolves.toMatchObject({
       baseUrl: 'http://127.0.0.1:45123',
     });
+  });
+});
+
+describe('OpenCode PATH fallback', () => {
+  test('resolves a Windows command shim before passing it to Bun.spawn', () => {
+    const shim = 'D:\\tools\\opencode.cmd';
+    (Bun as BunLike).which = ((command: string) =>
+      command === 'opencode' ? shim : null) as typeof Bun.which;
+
+    expect(resolveOpencodePathFallback()).toBe(shim);
   });
 });

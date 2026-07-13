@@ -287,6 +287,46 @@ describe('pipeline store plugin registry sync', () => {
     expect(usePipelineStore.getState().errorMessage).toContain('YAML/layout files');
   });
 
+  test('folder and canvas layout edits stay enabled for the window that owns the chat lock', () => {
+    usePipelineStore.setState({
+      config: {
+        name: 'Initial Pipeline',
+        tracks: [
+          {
+            id: 'track',
+            name: 'Track',
+            color: '#3b82f6',
+            tasks: [{ id: 'task', name: 'Task', prompt: 'Hello' }],
+          },
+        ],
+      },
+      folders: [
+        {
+          id: 'folder',
+          name: 'Folder',
+          trackIds: ['track'],
+          collapsed: false,
+        },
+      ],
+      positions: new Map(),
+      errorMessage: null,
+    });
+    useYamlEditLockStore.setState({
+      active: true,
+      owner: 'chat',
+      reason: 'OpenCode chat is updating YAML/layout files',
+      expiresAt: Date.now() + 60_000,
+      local: true,
+    });
+
+    usePipelineStore.getState().toggleFolderCollapsed('folder');
+    usePipelineStore.getState().setTaskPosition('track.task', 320, 140);
+
+    expect(usePipelineStore.getState().folders[0]?.collapsed).toBe(true);
+    expect(usePipelineStore.getState().positions.get('track.task')).toEqual({ x: 320, y: 140 });
+    expect(usePipelineStore.getState().errorMessage).toBeNull();
+  });
+
   test('openFile replaces any stale registry snapshot with the freshly loaded plugin registry', async () => {
     nextOpenFileState = makeState({
       workDir: 'D:/workspace-a',

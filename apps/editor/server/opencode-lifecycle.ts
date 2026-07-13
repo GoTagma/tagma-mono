@@ -248,6 +248,10 @@ export function buildOpencodeEnv(
  * absolute path to the pre-extracted Bun single-file executable avoids the
  * shim entirely and makes startup / signals behave predictably.
  */
+export function resolveOpencodePathFallback(): string {
+  return Bun.which('opencode') ?? 'opencode';
+}
+
 export function resolveOpencodeBinary(): string {
   const exe = process.platform === 'win32' ? 'opencode.exe' : 'opencode';
   const userRuntimeDir =
@@ -295,7 +299,10 @@ export function resolveOpencodeBinary(): string {
     );
   }
 
-  return 'opencode';
+  // Bun.spawn does not resolve bare Windows commands through PATHEXT. Resolve
+  // the fallback up front so npm/bun opencode.cmd shims work in headless dev
+  // setups that intentionally skipped the bundled-binary ensure step.
+  return resolveOpencodePathFallback();
 }
 
 async function pickFreePort(): Promise<number> {

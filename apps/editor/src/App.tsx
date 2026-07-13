@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { usePipelineStore } from './store/pipeline-store';
+import { getLocalPipelineEditRevision, usePipelineStore } from './store/pipeline-store';
 import { BoardCanvas } from './components/board/BoardCanvas';
 import { Toolbar } from './components/board/Toolbar';
 import { TaskConfigPanel } from './components/panels/TaskConfigPanel';
@@ -16,6 +16,7 @@ import { PipelinePicker } from './components/PipelinePicker';
 import {
   api,
   getClientRevision,
+  withYamlEditLockRequestBypass,
   type ServerState,
   type ServerStateEvent,
   type WorkspaceYamlEntry,
@@ -62,7 +63,12 @@ import { ChatCompletionToast, ChatPanel } from './components/chat/ChatPanel';
 import { useChatStore, isChatDrivenEditLikely } from './store/chat-store';
 import { useEditorSettingsStore } from './store/editor-settings-store';
 import { RightDock, useRightDock } from './components/RightDock';
-import { detectChatYamlTarget, shouldAutoRepairCompileResult } from './utils/chat-yaml-reconcile';
+import {
+  detectChatYamlTarget,
+  shouldAdoptChatYamlTargetOnCurrentCanvas,
+  shouldAutoRepairCompileResult,
+  shouldForkChatYamlResult,
+} from './utils/chat-yaml-reconcile';
 import {
   hasLocalEditorChanges,
   resolveDirtyDiskChange,
@@ -80,10 +86,12 @@ import {
   type WorkflowReturnPathNavigation,
 } from './utils/workflow-return-state';
 import {
+  getLocalYamlEditLockId,
   releaseChatYamlEditLock,
   useYamlEditLockStore,
   YAML_EDIT_LOCK_MESSAGE,
 } from './store/yaml-edit-lock-store';
+import { serializePreviewYaml } from './utils/yaml-preview-diff';
 
 type ExplorerIntent = {
   mode: FileExplorerMode;
@@ -566,6 +574,11 @@ export function App() {
         if (!currentWorkDir) return;
         if (event.newState?.workDir !== currentWorkDir) return;
         syncYamlEditLock(event.newState);
+        // While this renderer owns the chat lease, the server keeps the
+        // agent's disk writes separate from the user's in-memory canvas.
+        // Older sidecars may still emit external-change instead of the newer
+        // deferred conflict marker, so preserve the branch client-side too.
+        if (useYamlEditLockStore.getState().local && isChatDrivenEditLikely()) return;
         {
           const pendingAdopt = diskAdoptRef.current;
           if (pendingAdopt) {
@@ -638,6 +651,7 @@ export function App() {
           return;
         }
       } else if (event.type === 'external-conflict') {
+        if (event.deferredByYamlEditLock) return;
         // Two paths share the same reload primitive:
         //   1. Chat-driven conflict — the user just told the agent to edit
         //      this file. Resolution follows `chatDirtyConflictPolicy`:
@@ -846,6 +860,7 @@ export function App() {
       if (document.visibilityState !== 'visible') return;
       const live = usePipelineStore.getState();
       if (!live.workDir) return;
+      if (useYamlEditLockStore.getState().active) return;
       void refreshWorkspaceYamls();
       if (!live.yamlPath) return;
       if (live.isDirty || live.layoutDirty) return;
@@ -865,28 +880,11 @@ export function App() {
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
   }, [refreshWorkspaceYamls]);
 
-  // Chat-driven workspace reconcile.
-  //
-  // The file-watcher only fires for the YAML we currently have open. That
-  // covers "opencode edited the open file" via `external-change`, but a
-  // freshly-written sibling pipeline (the agent's "create a new pipeline"
-  // path) produces *no* server event at all — the watcher filters it out by
-  // filename. And even for the open-file case, Windows `fs.watch` has been
-  // observed to drop notifications from cross-process writers, so we don't
-  // want it as the only source of truth.
-  //
-  // Runs every time `session.idle` / `session.error` / `session.status:idle`
-  // records a session-bound finished turn:
-  //   1. diff the post-turn `.tagma/*.yaml` list against the pre-turn snapshot
-  //      captured in `send()`. Any path that appeared is a pipeline opencode
-  //      just created — save the current canvas if dirty, then switch to the
-  //      new file (newest-by-name wins if multiple appeared).
-  //   2. if no new file appeared, force-refetch the current YAML from disk so
-  //      any in-place edit the watcher silently missed is still reflected.
-  //      Skipped when the canvas is dirty — that would clobber in-progress
-  //      user edits with disk state they haven't reconciled yet. Hidden-session
-  //      completions only record a result link/toast; they never switch the
-  //      user's current canvas without a click.
+  // Reconcile OpenCode's disk branch once at the end of a logical turn.
+  // During the turn, WorkspaceState remains the renderer's editable user
+  // branch. A conflict creates one numbered agent-result copy and atomically
+  // restores the latest user branch. No result is auto-opened, and the chat
+  // link is published only after repair continuations and reconciliation end.
   const finishedTurnQueue = useChatStore((s) => s.finishedTurnQueue);
   useEffect(() => {
     const finishedTurn = finishedTurnQueue[0];
@@ -924,23 +922,6 @@ export function App() {
         }
         if (!target) return;
 
-        const editorStateBeforeCompile = usePipelineStore.getState();
-        const currentRevisionBeforeCompile = getClientRevision();
-        const snapshotActivePath = snapshot?.activePath ?? null;
-        const revisionChangedSinceSend =
-          typeof snapshot?.revision === 'number' &&
-          typeof currentRevisionBeforeCompile === 'number' &&
-          snapshot.revision !== currentRevisionBeforeCompile;
-        const pathMovedSinceSend =
-          !!snapshotActivePath &&
-          !sameEditorPath(snapshotActivePath, editorStateBeforeCompile.yamlPath);
-        const chatEditedOriginalTarget =
-          target.kind === 'refresh-current' &&
-          !!snapshotActivePath &&
-          sameEditorPath(target.path, snapshotActivePath);
-        const editorNoLongerMatchesChatTarget =
-          chatEditedOriginalTarget && (pathMovedSinceSend || revisionChangedSinceSend);
-
         const compile = await api.compileWorkspaceYaml(target.path);
         if (cancelled) return;
 
@@ -957,11 +938,10 @@ export function App() {
 
         const attempts = repairAttemptsRef.current.get(target.path) ?? 0;
         const maxAttempts = 2;
-        if (shouldAutoRepairCompileResult(compile, attempts, maxAttempts)) {
-          if (!finishedSessionVisible) {
-            recordSessionResult('failed');
-            return;
-          }
+        if (
+          shouldAutoRepairCompileResult(compile, attempts, maxAttempts) &&
+          finishedSessionVisible
+        ) {
           const nextAttempt = attempts + 1;
           repairAttemptsRef.current.set(target.path, nextAttempt);
           useChatStore.getState().setPostChatYamlAction({
@@ -972,148 +952,163 @@ export function App() {
           try {
             await useChatStore
               .getState()
-              .sendInternalRepairPrompt(target, compile, nextAttempt, maxAttempts);
+              .sendInternalRepairPrompt(target, compile, nextAttempt, maxAttempts, snapshot);
             keepYamlLockForRepair = true;
+            return;
           } catch (err) {
             console.error('[chat] internal YAML repair failed', err);
           }
-          return;
         }
 
         if (compile.success) repairAttemptsRef.current.delete(target.path);
-        if (!compile.success) {
-          recordSessionResult('failed');
-          useChatStore.getState().setPostChatYamlAction({
-            ...target,
-            status: 'failed',
-            compile,
-          });
-          return;
-        }
+        const forkAgentResult = async (force = false): Promise<boolean> => {
+          if (!snapshot?.activePath || !snapshot.activeYaml || target?.kind !== 'refresh-current') {
+            return false;
+          }
+          const beforeFlush = usePipelineStore.getState();
+          const userStillOnStartedPipeline = sameEditorPath(
+            snapshot.activePath,
+            beforeFlush.yamlPath,
+          );
+          if (userStillOnStartedPipeline) {
+            await beforeFlush.flushPendingLocalEdits();
+          }
+          const editorState = usePipelineStore.getState();
+          const mustFork =
+            force ||
+            shouldForkChatYamlResult({
+              snapshot,
+              target,
+              currentPath: editorState.yamlPath,
+              currentRevision: getClientRevision(),
+              currentLocalEditRevision: getLocalPipelineEditRevision(),
+              hasLocalChanges: editorState.isDirty || editorState.layoutDirty,
+            });
+          if (!mustFork) return false;
 
-        if (editorNoLongerMatchesChatTarget && snapshotActivePath && snapshot?.activeYaml) {
-          const copied = await api.copyChatResultPipeline({
-            sourcePath: target.path,
-            restoreOriginal: {
-              path: snapshotActivePath,
-              yaml: snapshot.activeYaml,
-              layout: snapshot.activeLayout,
-            },
-          });
-          if (cancelled) return;
+          let restoreYaml = snapshot.activeYaml;
+          let restoreLayout = snapshot.activeLayout;
+          if (userStillOnStartedPipeline) {
+            const latest = usePipelineStore.getState();
+            if (sameEditorPath(snapshot.activePath, latest.yamlPath)) {
+              restoreYaml = serializePreviewYaml(latest.config);
+              restoreLayout = {
+                positions: Object.fromEntries(latest.positions),
+                folders: structuredClone(latest.folders),
+                trackHeights: Object.fromEntries(latest.trackHeights),
+              };
+            }
+          }
+
+          const lockId = getLocalYamlEditLockId();
+          if (!lockId) throw new Error('The local OpenCode YAML lock lease was lost.');
+          const copyOnce = () =>
+            withYamlEditLockRequestBypass(lockId, () =>
+              api.copyChatResultPipeline({
+                idempotencyKey: finishedTurn.id,
+                sourcePath: target!.path,
+                restoreOriginal: {
+                  path: snapshot.activePath!,
+                  yaml: restoreYaml,
+                  layout: restoreLayout,
+                },
+              }),
+            );
+          let copied: Awaited<ReturnType<typeof api.copyChatResultPipeline>> | null = null;
+          let copyError: unknown;
+          for (let attempt = 0; attempt < 2 && !copied; attempt += 1) {
+            try {
+              copied = await copyOnce();
+            } catch (err) {
+              copyError = err;
+            }
+          }
+          if (!copied) throw copyError ?? new Error('Failed to copy the OpenCode result.');
+
           target = {
             kind: 'open-created',
             path: copied.entry.path,
             name: copied.entry.name,
             pipelineName: copied.entry.pipelineName,
           };
-          await refreshWorkspaceYamls();
+          try {
+            await refreshWorkspaceYamls();
+          } catch (err) {
+            console.warn('[chat] result copy created but pipeline list refresh failed', err);
+          }
+
+          const latest = usePipelineStore.getState();
+          if (userStillOnStartedPipeline && sameEditorPath(snapshot.activePath, latest.yamlPath)) {
+            await latest.syncLocalStateToServerMemory({ allowDuringYamlEditLock: true });
+            await usePipelineStore.getState().saveFile({ allowDuringYamlEditLock: true });
+          }
+          return true;
+        };
+
+        let forked = await forkAgentResult(!compile.success);
+        if (cancelled) return;
+        if (
+          compile.success &&
+          shouldAdoptChatYamlTargetOnCurrentCanvas({
+            target,
+            currentPath: usePipelineStore.getState().yamlPath,
+            forked,
+          })
+        ) {
+          forked = await forkAgentResult();
           if (cancelled) return;
-        }
-
-        recordSessionResult('ready');
-
-        if (!finishedSessionVisible) return;
-        if (editorNoLongerMatchesChatTarget) {
-          useChatStore.getState().setPostChatYamlAction({
-            ...target,
-            status: 'ready',
-            compile,
-          });
-          return;
-        }
-
-        const policy = useEditorSettingsStore.getState().settings?.chatDirtyConflictPolicy ?? 'ask';
-        if (target.kind === 'open-created') {
-          const {
-            isDirty: dirty,
-            layoutDirty: dirtyLayout,
-            yamlPath: current,
-          } = usePipelineStore.getState();
-          if ((dirty || dirtyLayout) && current) {
-            try {
-              await saveFile({ allowDuringYamlEditLock: true });
-            } catch {
-              // saveFile surfaces the error via the store; still open the file so
-              // the chat-created pipeline is not left hidden in the sidebar.
+          if (!forked) {
+            const localRevisionBeforeReload = getLocalPipelineEditRevision();
+            const lockId = getLocalYamlEditLockId();
+            const reload = () => api.reloadFromDisk();
+            const newState = lockId
+              ? await withYamlEditLockRequestBypass(lockId, reload)
+              : await reload();
+            if (cancelled) return;
+            if (getLocalPipelineEditRevision() !== localRevisionBeforeReload) {
+              await forkAgentResult(true);
+              if (cancelled) return;
+            } else {
+              const s = usePipelineStore.getState();
+              s.adoptDiskState(newState, 'chat');
+              // Lock is still held until the finally block releases it; opt into
+              // the lock-owner bypass so the per-binding fire() calls inside
+              // autoSyncAllBindings don't trip blockIfYamlEditLocked and surface
+              // a stale "chat is updating YAML" toast at turn end.
+              await s.autoSyncAllBindings('chat', { allowDuringYamlEditLock: true });
+              const afterSync = usePipelineStore.getState();
+              if (afterSync.isDirty || afterSync.layoutDirty) {
+                await afterSync.saveFile({ allowDuringYamlEditLock: true });
+              }
             }
           }
-          if (!cancelled) {
-            await openFile(target.path, { allowDuringYamlEditLock: true });
-            useChatStore.getState().clearPostChatYamlAction();
-          }
-          return;
         }
-
-        const currentEditorState = usePipelineStore.getState();
-        const hasLocalChanges = hasLocalEditorChanges({
-          isDirty: currentEditorState.isDirty,
-          layoutDirty: currentEditorState.layoutDirty,
-          lastLocalFieldEditAt: getLastLocalFieldEditAt(),
-          includeRecentLocalFieldEdits: false,
-        });
-        if (target.path !== currentEditorState.yamlPath) {
-          if (!hasLocalChanges) {
-            await openFile(target.path, { allowDuringYamlEditLock: true });
-            useChatStore.getState().clearPostChatYamlAction();
-            return;
-          }
-          void usePipelineStore
-            .getState()
-            .syncLocalStateToServerMemory({ allowDuringYamlEditLock: true });
-          useChatStore.getState().setPostChatYamlAction({
-            ...target,
-            status: 'ready',
-            compile,
-          });
-          return;
-        }
-        const decision = resolveDirtyDiskChange({
-          source: 'chat',
-          policy,
-          hasLocalChanges,
-        });
-        if (decision === 'preserve-local' || decision === 'prompt') {
-          void usePipelineStore
-            .getState()
-            .syncLocalStateToServerMemory({ allowDuringYamlEditLock: true });
-          useChatStore.getState().setPostChatYamlAction({
-            ...target,
-            status: 'ready',
-            compile,
-          });
-          return;
-        }
-
-        const newState = await api.reloadFromDisk();
-        if (cancelled) return;
-        const s = usePipelineStore.getState();
-        s.adoptDiskState(newState, 'chat');
-        // Lock is still held until the finally block releases it; opt into
-        // the lock-owner bypass so the per-binding fire() calls inside
-        // autoSyncAllBindings don't trip blockIfYamlEditLocked and surface
-        // a stale "chat is updating YAML" toast at turn end.
-        void s.autoSyncAllBindings('chat', { allowDuringYamlEditLock: true }).catch(() => {
-          /* fire() already surfaces errors via errorMessage */
-        });
         useChatStore.getState().clearPostChatYamlAction();
-        return;
+        recordSessionResult(compile.success ? 'ready' : 'failed');
       } catch (err) {
         console.error('[chat] post-chat YAML reconcile failed', err);
+        usePipelineStore.setState({
+          errorMessage:
+            'OpenCode finished, but its pipeline result could not be reconciled safely: ' +
+            (err instanceof Error ? err.message : String(err)),
+        });
       } finally {
-        useChatStore.getState().setReconciling(false);
-        if (!cancelled) {
-          useChatStore.getState().acknowledgeFinishedTurn(finishedTurn.id);
-        }
-        if (!keepYamlLockForRepair) {
-          await releaseChatYamlEditLock();
+        try {
+          if (!keepYamlLockForRepair) {
+            await releaseChatYamlEditLock();
+          }
+        } finally {
+          useChatStore.getState().setReconciling(false);
+          if (!cancelled) {
+            useChatStore.getState().acknowledgeFinishedTurn(finishedTurn.id);
+          }
         }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [finishedTurnQueue, refreshWorkspaceYamls, openFile, saveFile]);
+  }, [finishedTurnQueue, refreshWorkspaceYamls]);
 
   const handleOpenWorkspaceFile = useCallback(
     (path: string) => {

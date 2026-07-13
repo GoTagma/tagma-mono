@@ -90,6 +90,16 @@ const EMPTY_REGISTRY: PluginRegistry = {
   middlewares: [],
 };
 
+let localPipelineEditRevision = 0;
+
+export function getLocalPipelineEditRevision(): number {
+  return localPipelineEditRevision;
+}
+
+function noteLocalPipelineEdit(): void {
+  localPipelineEditRevision += 1;
+}
+
 interface YamlLockBypassOptions {
   allowDuringYamlEditLock?: boolean;
 }
@@ -1046,11 +1056,27 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     }
   };
 
+  const withLocalChatBranchRequestBypass = async <T>(op: () => Promise<T>): Promise<T> => {
+    const lockId = getLocalYamlEditLockId();
+    if (!lockId) return op();
+    yamlEditLockBypassDepth += 1;
+    try {
+      return await withYamlEditLockRequestBypass(lockId, op);
+    } finally {
+      yamlEditLockBypassDepth -= 1;
+    }
+  };
+
   const blockIfYamlEditLocked = (): boolean => {
     if (!isYamlEditLocked()) return false;
     if (yamlEditLockBypassDepth > 0 && isLocalYamlEditLockActive()) return false;
     set({ errorMessage: YAML_EDIT_LOCK_MESSAGE });
     return true;
+  };
+
+  const blockIfYamlEditLockedForBranchMutation = (): boolean => {
+    if (isLocalYamlEditLockActive()) return false;
+    return blockIfYamlEditLocked();
   };
 
   /**
@@ -1081,7 +1107,8 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
       previewSource?: YamlPreviewChangeSource | null;
     },
   ) => {
-    if (blockIfYamlEditLocked()) return Promise.resolve();
+    if (blockIfYamlEditLockedForBranchMutation()) return Promise.resolve();
+    if (opts?.previewSource !== 'chat') noteLocalPipelineEdit();
     const queuedGeneration = mutationGeneration;
     // Capture pre-mutation snapshot for history. Reuse `opts.snapshot` when
     // provided (it's already a pre-mutation snapshot captured by the caller
@@ -1102,7 +1129,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
       if (queuedGeneration !== mutationGeneration) return;
       const myEpoch = ++fireEpoch;
       try {
-        const state = await fn();
+        const state = await withLocalChatBranchRequestBypass(fn);
         if (myEpoch !== fireEpoch) return; // a newer request superseded us
         const suppressPreview = opts?.previewSource === null;
         if (scope !== 'positions' && !suppressPreview) {
@@ -1219,7 +1246,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     adoptDiskState,
     resetYamlPreviewBaseline,
     revertYamlPreviewBlock: async (blockId) => {
-      if (blockIfYamlEditLocked()) return false;
+      if (blockIfYamlEditLockedForBranchMutation()) return false;
       await drainInFlight();
 
       const s = _get();
@@ -1238,6 +1265,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
 
       const preSnapshot = takeSnapshot();
       const pushHandle = pushHistory(snapshotToHistory(preSnapshot, undefined, 'config'));
+      noteLocalPipelineEdit();
       set({ isDirty: true });
 
       try {
@@ -1245,11 +1273,13 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
         const nextPositions = block.layoutChanged
           ? clonePositionsObj(block.layoutBefore)
           : positionsToObj(preSnapshot.positions);
-        const state = await api.replaceConfig(nextConfig, {
-          positions: nextPositions,
-          folders: structuredClone(_get().folders),
-          trackHeights: trackHeightsToObj(_get().trackHeights),
-        });
+        const state = await withLocalChatBranchRequestBypass(() =>
+          api.replaceConfig(nextConfig, {
+            positions: nextPositions,
+            folders: structuredClone(_get().folders),
+            trackHeights: trackHeightsToObj(_get().trackHeights),
+          }),
+        );
         const afterPositions = new Map<string, TaskPosition>();
         for (const [k, v] of Object.entries(nextPositions)) {
           afterPositions.set(k, v.y === undefined ? { x: v.x } : { x: v.x, y: v.y });
@@ -1379,7 +1409,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
       const id = generateConfigId();
       const targetFolderId = opts?.folderId;
       if (targetFolderId) {
-        if (blockIfYamlEditLocked()) return;
+        if (blockIfYamlEditLockedForBranchMutation()) return;
         const snap = takeSnapshot();
         const s = _get();
         const track: RawTrackConfig = { id, name, color, tasks: [] };
@@ -1452,7 +1482,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     },
 
     moveTrackTo: (trackId, toIndex) => {
-      if (blockIfYamlEditLocked()) return;
+      if (blockIfYamlEditLockedForBranchMutation()) return;
       const snapshot = takeSnapshot();
       const s = _get();
       const nextConfig = configWithTrackAt(s.config, trackId, toIndex);
@@ -1651,7 +1681,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     // next save flushes them. No immediate API call — flushLayout handles
     // it on save (or autosave).
     createFolder: (opts) => {
-      if (blockIfYamlEditLocked()) return '';
+      if (blockIfYamlEditLockedForBranchMutation()) return '';
       const s = _get();
       const snap = takeSnapshot();
       const id = `f_${generateConfigId()}`;
@@ -1671,18 +1701,20 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
         trackIds,
         collapsed: false,
       };
+      noteLocalPipelineEdit();
       set({ folders: [...stripped, folder], isDirty: true, layoutDirty: true });
       pushHistory(snapshotToHistory(snap, undefined, 'positions'));
       return id;
     },
 
     deleteFolder: (folderId) => {
-      if (blockIfYamlEditLocked()) return;
+      if (blockIfYamlEditLockedForBranchMutation()) return;
       const s = _get();
       if (!s.folders.some((f) => f.id === folderId)) return;
       const snap = takeSnapshot();
       // Tracks fall back to the top level — no need to relocate them, just
       // drop the folder. Their order in `config.tracks` is preserved.
+      noteLocalPipelineEdit();
       set({
         folders: s.folders.filter((f) => f.id !== folderId),
         isDirty: true,
@@ -1692,12 +1724,13 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     },
 
     renameFolder: (folderId, name) => {
-      if (blockIfYamlEditLocked()) return;
+      if (blockIfYamlEditLockedForBranchMutation()) return;
       const s = _get();
       const folder = s.folders.find((f) => f.id === folderId);
       const trimmed = name.trim() || 'Folder';
       if (!folder || folder.name === trimmed) return;
       const snap = takeSnapshot();
+      noteLocalPipelineEdit();
       set({
         folders: s.folders.map((f) => (f.id === folderId ? { ...f, name: trimmed } : f)),
         isDirty: true,
@@ -1707,13 +1740,14 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     },
 
     setFolderColor: (folderId, color) => {
-      if (blockIfYamlEditLocked()) return;
+      if (blockIfYamlEditLockedForBranchMutation()) return;
       const s = _get();
       const folder = s.folders.find((f) => f.id === folderId);
       if (!folder) return;
       const next = color || undefined;
       if ((folder.color ?? undefined) === next) return;
       const snap = takeSnapshot();
+      noteLocalPipelineEdit();
       set({
         folders: s.folders.map((f) => (f.id === folderId ? { ...f, color: next } : f)),
         isDirty: true,
@@ -1723,11 +1757,12 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     },
 
     toggleFolderCollapsed: (folderId) => {
-      if (blockIfYamlEditLocked()) return;
+      if (blockIfYamlEditLockedForBranchMutation()) return;
       const s = _get();
       const folder = s.folders.find((f) => f.id === folderId);
       if (!folder) return;
       const snap = takeSnapshot();
+      noteLocalPipelineEdit();
       set({
         folders: s.folders.map((f) => (f.id === folderId ? { ...f, collapsed: !f.collapsed } : f)),
         isDirty: true,
@@ -1737,7 +1772,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     },
 
     moveTrackToFolder: (trackId, folderId, atIndex) => {
-      if (blockIfYamlEditLocked()) return;
+      if (blockIfYamlEditLockedForBranchMutation()) return;
       const s = _get();
       const snap = takeSnapshot();
       const validTrackIds = new Set(s.config.tracks.map((t) => t.id));
@@ -1749,12 +1784,13 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
         atIndex,
       );
       if (!nextFolders) return;
+      noteLocalPipelineEdit();
       set({ folders: nextFolders, isDirty: true, layoutDirty: true });
       pushHistory(snapshotToHistory(snap, undefined, 'positions'));
     },
 
     moveTrackToRoot: (trackId, toIndex) => {
-      if (blockIfYamlEditLocked()) return;
+      if (blockIfYamlEditLockedForBranchMutation()) return;
       const snap = takeSnapshot();
       const s = _get();
       const validTrackIds = new Set(s.config.tracks.map((t) => t.id));
@@ -1771,7 +1807,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     },
 
     reorderFolder: (folderId, toIndex) => {
-      if (blockIfYamlEditLocked()) return;
+      if (blockIfYamlEditLockedForBranchMutation()) return;
       const s = _get();
       const fromIndex = s.folders.findIndex((f) => f.id === folderId);
       if (fromIndex < 0) return;
@@ -1781,6 +1817,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
       const next = [...s.folders];
       const [moved] = next.splice(fromIndex, 1);
       next.splice(clamped, 0, moved);
+      noteLocalPipelineEdit();
       set({ folders: next, isDirty: true, layoutDirty: true });
       pushHistory(snapshotToHistory(snap, undefined, 'positions'));
     },
@@ -1868,7 +1905,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     },
 
     setTaskPosition: (qualifiedId, x, y) => {
-      if (blockIfYamlEditLocked()) return;
+      if (blockIfYamlEditLockedForBranchMutation()) return;
       const s = _get();
       // Skip no-op writes so dead-clicks don't bloat history.
       const current = s.positions.get(qualifiedId);
@@ -1876,6 +1913,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
       // Capture pre-mutation snapshot BEFORE the set() so the history entry
       // represents the state before this (and any coalesced) drag began.
       const snap = takeSnapshot();
+      noteLocalPipelineEdit();
       set((s) => {
         const positions = new Map(s.positions);
         positions.set(qualifiedId, y === undefined ? { x } : { x, y });
@@ -1889,11 +1927,12 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     },
 
     setTrackHeight: (trackId, height) => {
-      if (blockIfYamlEditLocked()) return;
+      if (blockIfYamlEditLockedForBranchMutation()) return;
       const s = _get();
       if (!s.config.tracks.some((track) => track.id === trackId)) return;
       if (s.trackHeights.get(trackId) === height) return;
       const snap = takeSnapshot();
+      noteLocalPipelineEdit();
       set((s) => {
         const trackHeights = new Map(s.trackHeights);
         trackHeights.set(trackId, height);
@@ -2117,11 +2156,14 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     },
 
     restoreDraft: async (draftConfig) => {
-      if (blockIfYamlEditLocked()) return;
+      if (blockIfYamlEditLockedForBranchMutation()) return;
       try {
         await drainInFlight();
         const s = _get();
-        const state = await api.replaceConfig(draftConfig, layoutPayload(s.positions, s.folders));
+        noteLocalPipelineEdit();
+        const state = await withLocalChatBranchRequestBypass(() =>
+          api.replaceConfig(draftConfig, layoutPayload(s.positions, s.folders)),
+        );
         applyState(state);
         set({
           isDirty: true,
@@ -2295,7 +2337,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     canRedo: () => _get().future.length > 0,
 
     undo: async () => {
-      if (blockIfYamlEditLocked()) return;
+      if (blockIfYamlEditLockedForBranchMutation()) return;
       // P0-C3: wait for any fire() in flight to settle so the past stack
       // reflects every committed mutation before we pop from it.
       await drainInFlight();
@@ -2378,59 +2420,60 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
       // state so the wire format is uniform regardless of scope — server
       // gets a consistent snapshot of {config, positions, folders} every time.
       const restored = _get();
+      noteLocalPipelineEdit();
       const myEpoch = ++fireEpoch;
-      const promise = api
-        .replaceConfig(restored.config, layoutPayload(restored.positions, restored.folders))
-        .then(
-          (state) => {
+      const promise = withLocalChatBranchRequestBypass(() =>
+        api.replaceConfig(restored.config, layoutPayload(restored.positions, restored.folders)),
+      ).then(
+        (state) => {
+          if (myEpoch !== fireEpoch) return;
+          applyState(state);
+        },
+        (e) => {
+          // C6: same epoch-guarded conflict handling as fire() — see the
+          // comment in fire() for the race-condition rationale.
+          if (e instanceof RevisionConflictError) {
             if (myEpoch !== fireEpoch) return;
-            applyState(state);
-          },
-          (e) => {
-            // C6: same epoch-guarded conflict handling as fire() — see the
-            // comment in fire() for the race-condition rationale.
-            if (e instanceof RevisionConflictError) {
-              if (myEpoch !== fireEpoch) return;
-              applyStateWithLayout(e.currentState);
-              set({
-                isDirty: false,
-                layoutDirty: false,
-                past: [],
-                future: [],
-                errorMessage: REVISION_CONFLICT_MESSAGE,
-                savedConfig: structuredClone(e.currentState.config),
-              });
-              return;
-            }
-
-            if (myEpoch !== fireEpoch) return;
-            // Scoped rollback — restore only the slices we actually changed.
-            set(() => {
-              const rb: Partial<PipelineState> = {
-                past: preUndoPast,
-                future: preUndoFuture,
-                errorMessage: 'Failed to undo: ' + errorToMessage(e),
-              };
-              if (restoreConfig && completedDiff.config.newConfig !== null) {
-                rb.config = completedDiff.config.newConfig;
-                rb.dagEdges = completedDiff.config.newDagEdges ?? [];
-                rb.validationErrors = completedDiff.config.newValidationErrors ?? [];
-              }
-              if (restorePositions && completedDiff.positions.newPositions !== null) {
-                rb.positions = new Map(completedDiff.positions.newPositions);
-                rb.folders = structuredClone(completedDiff.positions.newFolders ?? []);
-                rb.trackHeights = new Map(completedDiff.positions.newTrackHeights ?? []);
-              }
-              return rb;
+            applyStateWithLayout(e.currentState);
+            set({
+              isDirty: false,
+              layoutDirty: false,
+              past: [],
+              future: [],
+              errorMessage: REVISION_CONFLICT_MESSAGE,
+              savedConfig: structuredClone(e.currentState.config),
             });
-          },
-        );
+            return;
+          }
+
+          if (myEpoch !== fireEpoch) return;
+          // Scoped rollback — restore only the slices we actually changed.
+          set(() => {
+            const rb: Partial<PipelineState> = {
+              past: preUndoPast,
+              future: preUndoFuture,
+              errorMessage: 'Failed to undo: ' + errorToMessage(e),
+            };
+            if (restoreConfig && completedDiff.config.newConfig !== null) {
+              rb.config = completedDiff.config.newConfig;
+              rb.dagEdges = completedDiff.config.newDagEdges ?? [];
+              rb.validationErrors = completedDiff.config.newValidationErrors ?? [];
+            }
+            if (restorePositions && completedDiff.positions.newPositions !== null) {
+              rb.positions = new Map(completedDiff.positions.newPositions);
+              rb.folders = structuredClone(completedDiff.positions.newFolders ?? []);
+              rb.trackHeights = new Map(completedDiff.positions.newTrackHeights ?? []);
+            }
+            return rb;
+          });
+        },
+      );
       trackInFlight(promise);
       await promise;
     },
 
     redo: async () => {
-      if (blockIfYamlEditLocked()) return;
+      if (blockIfYamlEditLockedForBranchMutation()) return;
       // P0-C3: same drain-then-apply discipline as undo().
       await drainInFlight();
 
@@ -2525,51 +2568,52 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
         return patch;
       });
       const restored = _get();
+      noteLocalPipelineEdit();
       const myEpoch = ++fireEpoch;
-      const promise = api
-        .replaceConfig(restored.config, layoutPayload(restored.positions, restored.folders))
-        .then(
-          (state) => {
+      const promise = withLocalChatBranchRequestBypass(() =>
+        api.replaceConfig(restored.config, layoutPayload(restored.positions, restored.folders)),
+      ).then(
+        (state) => {
+          if (myEpoch !== fireEpoch) return;
+          applyState(state);
+        },
+        (e) => {
+          // C6: same epoch-guarded conflict handling as fire().
+          if (e instanceof RevisionConflictError) {
             if (myEpoch !== fireEpoch) return;
-            applyState(state);
-          },
-          (e) => {
-            // C6: same epoch-guarded conflict handling as fire().
-            if (e instanceof RevisionConflictError) {
-              if (myEpoch !== fireEpoch) return;
-              applyStateWithLayout(e.currentState);
-              set({
-                isDirty: false,
-                layoutDirty: false,
-                past: [],
-                future: [],
-                errorMessage: REVISION_CONFLICT_MESSAGE,
-                savedConfig: structuredClone(e.currentState.config),
-              });
-              return;
-            }
-
-            if (myEpoch !== fireEpoch) return;
-            set(() => {
-              const rb: Partial<PipelineState> = {
-                past: preRedoPast,
-                future: preRedoFuture,
-                errorMessage: 'Failed to redo: ' + errorToMessage(e),
-              };
-              if (restoreConfig && completedDiff.config.oldConfig !== null) {
-                rb.config = completedDiff.config.oldConfig;
-                rb.dagEdges = completedDiff.config.oldDagEdges ?? [];
-                rb.validationErrors = completedDiff.config.oldValidationErrors ?? [];
-              }
-              if (restorePositions && completedDiff.positions.oldPositions !== null) {
-                rb.positions = new Map(completedDiff.positions.oldPositions);
-                rb.folders = structuredClone(completedDiff.positions.oldFolders ?? []);
-                rb.trackHeights = new Map(completedDiff.positions.oldTrackHeights ?? []);
-              }
-              return rb;
+            applyStateWithLayout(e.currentState);
+            set({
+              isDirty: false,
+              layoutDirty: false,
+              past: [],
+              future: [],
+              errorMessage: REVISION_CONFLICT_MESSAGE,
+              savedConfig: structuredClone(e.currentState.config),
             });
-          },
-        );
+            return;
+          }
+
+          if (myEpoch !== fireEpoch) return;
+          set(() => {
+            const rb: Partial<PipelineState> = {
+              past: preRedoPast,
+              future: preRedoFuture,
+              errorMessage: 'Failed to redo: ' + errorToMessage(e),
+            };
+            if (restoreConfig && completedDiff.config.oldConfig !== null) {
+              rb.config = completedDiff.config.oldConfig;
+              rb.dagEdges = completedDiff.config.oldDagEdges ?? [];
+              rb.validationErrors = completedDiff.config.oldValidationErrors ?? [];
+            }
+            if (restorePositions && completedDiff.positions.oldPositions !== null) {
+              rb.positions = new Map(completedDiff.positions.oldPositions);
+              rb.folders = structuredClone(completedDiff.positions.oldFolders ?? []);
+              rb.trackHeights = new Map(completedDiff.positions.oldTrackHeights ?? []);
+            }
+            return rb;
+          });
+        },
+      );
       trackInFlight(promise);
       await promise;
     },
@@ -2605,7 +2649,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     },
 
     pasteClipboard: () => {
-      if (blockIfYamlEditLocked()) return false;
+      if (blockIfYamlEditLockedForBranchMutation()) return false;
       const s = _get();
       const clip = s.clipboard;
       if (!clip) return false;
@@ -2649,20 +2693,24 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
         }));
         const myEpoch = ++fireEpoch;
         const preSnapshot = takeSnapshot();
+        noteLocalPipelineEdit();
         set({ isDirty: true });
         // P1-C1: push the history entry SYNCHRONOUSLY (matching fire()'s
         // contract) so a paste appears in the undo stack at the moment the
         // user triggered it, not after the loop of addTask calls finishes.
         // Track the push handle so we can roll back if the paste fails.
         const pushHandle = pushHistory(snapshotToHistory(preSnapshot, undefined, 'config'));
-        const pasteTrackPromise = api
-          .addTrack(newTrackId, newName, clip.track.color)
+        const pasteTrackPromise = withLocalChatBranchRequestBypass(() =>
+          api.addTrack(newTrackId, newName, clip.track.color),
+        )
           .then(async (state) => {
             if (myEpoch !== fireEpoch) return;
             applyState(state);
             for (const task of tasksToClone) {
               try {
-                const next = await api.addTask(newTrackId, task);
+                const next = await withLocalChatBranchRequestBypass(() =>
+                  api.addTask(newTrackId, task),
+                );
                 if (myEpoch !== fireEpoch) return;
                 applyState(next);
               } catch (e) {
@@ -2702,7 +2750,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     },
 
     duplicateSelection: () => {
-      if (blockIfYamlEditLocked()) return false;
+      if (blockIfYamlEditLockedForBranchMutation()) return false;
       // Ctrl+D = copy + paste in place, without disturbing the clipboard.
       const s = _get();
       if (s.selectedTaskId) {

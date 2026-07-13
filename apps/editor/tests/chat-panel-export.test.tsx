@@ -3,7 +3,11 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import {
   buildConversationFlowSteps,
   ChatPanel,
+  ConversationFlowBarView,
+  selectConversationFlowActivity,
   SessionYamlResultBubble,
+  shouldShowChatCompletionToast,
+  shouldShowSessionYamlResult,
 } from '../src/components/chat/ChatPanel';
 import { useChatStore } from '../src/store/chat-store';
 import {
@@ -143,6 +147,24 @@ describe('ChatPanel export affordance', () => {
     expect(html).toContain('Build Copy 1');
     expect(html).toContain('Open pipeline');
   });
+  test('shows the pipeline link only after the whole turn reconcile is finished', () => {
+    expect(
+      shouldShowSessionYamlResult({
+        hasResult: true,
+        sending: false,
+        reconciling: true,
+        hasPostChatAction: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldShowSessionYamlResult({
+        hasResult: true,
+        sending: false,
+        reconciling: false,
+        hasPostChatAction: false,
+      }),
+    ).toBe(true);
+  });
   test('selects visible hidden completion toast results', () => {
     const makeResult = (sessionId: string, completedAt: number): ChatYamlSessionResult => ({
       sessionId,
@@ -175,31 +197,68 @@ describe('ChatPanel export affordance', () => {
     ).toEqual(['newest', 'old']);
   });
 
-  test('renders the conversation flow bar under the chat actions', () => {
+  test('does not show a completion toast until reconciliation releases the turn', () => {
+    expect(shouldShowChatCompletionToast({ reconciling: true, visibleResultCount: 1 })).toBe(false);
+    expect(shouldShowChatCompletionToast({ reconciling: false, visibleResultCount: 1 })).toBe(true);
+  });
+
+  test('hides the conversation flow before the first prompt starts', () => {
+    const steps = buildConversationFlowSteps({
+      activity: [],
+      sending: false,
+      pendingUserText: null,
+      queuedCount: 0,
+      pendingPermissionCount: 0,
+      reconciling: false,
+      flushing: false,
+      postChatYamlAction: null,
+      sendError: null,
+    });
     useChatStore.setState({
       bootstrapStatus: 'ready',
-      currentSessionId: 's1',
-      messages: [visibleThread],
-      sessions: [{ id: 's1', title: 'Current chat' }] as never,
+      currentSessionId: null,
+      messages: [],
+      sessions: [],
       historyOpen: false,
     } as never);
 
     const html = renderToStaticMarkup(<ChatPanel />);
-    const exportIndex = html.indexOf('title="Export conversation"');
-    const flowIndex = html.indexOf('Conversation flow');
 
-    expect(exportIndex).toBeGreaterThan(-1);
-    expect(flowIndex).toBeGreaterThan(exportIndex);
-    expect(html).toContain('role="progressbar"');
-    expect(html).toContain('Intent');
-    expect(html).toContain('Context');
-    expect(html).toContain('Work');
+    expect(steps).toEqual([]);
+    expect(html).not.toContain('Conversation flow');
   });
 
-  test('marks tool work as the active conversation flow step', () => {
+  test('renders the conversation flow bar under the chat actions after a prompt starts', () => {
     const activity: ActivityEvent[] = [
       { kind: 'request-sent', startedAt: 1_000, endedAt: 1_100, count: 1 },
-      { kind: 'assistant-started', startedAt: 1_100, endedAt: 1_500, count: 1 },
+      { kind: 'assistant-started', startedAt: 1_100, endedAt: null, count: 1 },
+    ];
+    const steps = buildConversationFlowSteps({
+      activity,
+      sending: true,
+      pendingUserText: 'Create a pipeline',
+      queuedCount: 0,
+      pendingPermissionCount: 0,
+      reconciling: false,
+      flushing: false,
+      postChatYamlAction: null,
+      sendError: null,
+    });
+    const html = renderToStaticMarkup(<ConversationFlowBarView steps={steps} queuedCount={0} />);
+
+    expect(html).toContain('Conversation flow');
+    expect(html).toContain('role="progressbar"');
+    expect(html).toContain('Request');
+    expect(html).toContain('Model');
+    expect(html).not.toContain('Intent');
+    expect(html).not.toContain('Context');
+  });
+
+  test('generates conversation flow steps from actual OpenCode activity', () => {
+    const activity: ActivityEvent[] = [
+      { kind: 'request-sent', startedAt: 1_000, endedAt: 1_100, count: 1 },
+      { kind: 'assistant-started', startedAt: 1_100, endedAt: 1_300, count: 1 },
+      { kind: 'thinking', startedAt: 1_300, endedAt: 1_500, count: 3 },
       {
         kind: 'tool-running',
         startedAt: 1_500,
@@ -221,13 +280,72 @@ describe('ChatPanel export affordance', () => {
       sendError: null,
     });
 
-    expect(steps.find((step) => step.key === 'intent')?.status).toBe('complete');
-    expect(steps.find((step) => step.key === 'context')?.status).toBe('complete');
-    expect(steps.find((step) => step.key === 'work')).toEqual({
-      key: 'work',
-      label: 'Work',
-      detail: 'write',
+    expect(steps.map((step) => step.label)).toEqual(['Request', 'Model', 'Thinking', 'write']);
+    expect(steps.at(-1)).toMatchObject({
+      label: 'write',
+      detail: 'Tool running',
       status: 'active',
     });
+    expect(steps.some((step) => step.label === 'Context')).toBe(false);
+    expect(steps.some((step) => step.label === 'Finish')).toBe(false);
+  });
+
+  test('waits for the next reported event after a terminal model step', () => {
+    const steps = buildConversationFlowSteps({
+      activity: [
+        { kind: 'request-sent', startedAt: 1_000, endedAt: 1_100, count: 1 },
+        { kind: 'step-finish', startedAt: 1_100, endedAt: null, count: 1 },
+      ],
+      sending: true,
+      pendingUserText: null,
+      queuedCount: 0,
+      pendingPermissionCount: 0,
+      reconciling: false,
+      flushing: false,
+      postChatYamlAction: null,
+      sendError: null,
+    });
+
+    expect(steps.at(-2)).toMatchObject({ label: 'Step done', status: 'complete' });
+    expect(steps.at(-1)).toMatchObject({ label: 'Waiting', status: 'active' });
+  });
+
+  test('keeps the latest generated flow visible after the turn finishes', () => {
+    const activity: ActivityEvent[] = [
+      { kind: 'request-sent', startedAt: 1_000, endedAt: 1_100, count: 1 },
+      { kind: 'assistant-started', startedAt: 1_100, endedAt: 1_300, count: 1 },
+      {
+        kind: 'tool-completed',
+        startedAt: 1_300,
+        endedAt: 1_500,
+        count: 2,
+        detail: 'write',
+      },
+      { kind: 'streaming-answer', startedAt: 1_500, endedAt: 1_700, count: 4 },
+    ];
+    const selectedActivity = selectConversationFlowActivity({
+      messages: [{ ...visibleThread, activity }],
+      pendingActivity: [],
+      turnAssistantMessageIds: [],
+      turnStartedAt: null,
+    });
+    const steps = buildConversationFlowSteps({
+      activity: selectedActivity,
+      sending: false,
+      pendingUserText: null,
+      queuedCount: 0,
+      pendingPermissionCount: 0,
+      reconciling: false,
+      flushing: false,
+      postChatYamlAction: null,
+      sendError: null,
+    });
+    const html = renderToStaticMarkup(<ConversationFlowBarView steps={steps} queuedCount={0} />);
+
+    expect(selectedActivity).toEqual(activity);
+    expect(html).toContain('Conversation flow');
+    expect(html).toContain('write');
+    expect(html).toContain('Response');
+    expect(html).not.toContain('Intent');
   });
 });

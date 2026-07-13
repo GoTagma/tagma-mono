@@ -7,7 +7,7 @@ import {
 } from '../api/client';
 
 export const YAML_EDIT_LOCK_MESSAGE =
-  'OpenCode chat is updating YAML/layout files. Editing is temporarily locked to avoid conflicts.';
+  'OpenCode chat is updating YAML/layout files. Conflicting results stay isolated until the turn finishes.';
 
 const LOCK_TTL_MS = 2 * 60 * 1000;
 const HEARTBEAT_MS = 30 * 1000;
@@ -225,6 +225,11 @@ export function isLocalYamlEditLockHeldForWorkspace(
 
 export function getLocalYamlEditLockId(): string | null {
   return isLocalYamlEditLockActive() ? (localLock?.id ?? null) : null;
+}
+
+export function getLocalChatYamlEditLockLease(): ChatYamlEditLockLease | null {
+  if (!isLocalYamlEditLockActive() || !localLock) return null;
+  return { ...localLock };
 }
 
 export async function acquireChatYamlEditLock(

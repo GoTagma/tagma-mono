@@ -70,6 +70,23 @@ describe('chat editor context', () => {
     expect(context).toContain('Enable Python AI Agent in Editor Settings');
   });
 
+  test('marks a workflow request as create-new and makes an empty pipeline inventory explicit', () => {
+    usePipelineStore.setState({
+      workDir: 'C:/repo',
+      yamlPath: null,
+      registry: { drivers: [], triggers: [], completions: [], middlewares: [] },
+    } as never);
+
+    const context = buildEditorContext({
+      userText:
+        'can you make me a workflow when triggered, fetches the news with links from Financial Times',
+      workspaceYamlFilePaths: [],
+    });
+
+    expect(context).toContain('<requested-action kind="create-new-pipeline">');
+    expect(context).toContain('<workspace-yaml-folders empty="true" />');
+  });
+
   test('includes configured Python agent interpreter and venv', () => {
     usePipelineStore.setState({
       workDir: 'C:/repo',

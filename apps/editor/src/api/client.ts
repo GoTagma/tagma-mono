@@ -1414,6 +1414,8 @@ export type ServerStateEvent =
       error?: string;
       layoutHash?: string;
       layoutMtimeMs?: number | null;
+      /** Chat owns the disk branch; keep renderer memory unchanged until turn reconciliation. */
+      deferredByYamlEditLock?: boolean;
     }
   | { type: 'state_sync'; newState: ServerState; seq: number };
 
@@ -1531,6 +1533,7 @@ export const api = {
     }),
 
   copyChatResultPipeline: (body: {
+    idempotencyKey?: string;
     sourcePath: string;
     restoreOriginal?: {
       path: string;

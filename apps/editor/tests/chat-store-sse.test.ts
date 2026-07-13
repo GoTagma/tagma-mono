@@ -3,6 +3,7 @@ import {
   useChatStore,
   applySseEvent,
   canEndCurrentTurnFromConfirmedIdle,
+  chatPipelinePreflightMode,
   subscribeEventStreamWithReadinessTimeout,
   waitForSseReadyWithTimeout,
   shouldStartFreshChatSessionForContextLimit,
@@ -41,6 +42,8 @@ const RESET = {
   currentSessionId: null,
   sessionStates: {},
   completedUnreadSessionIds: [],
+  lastFinishedTurn: null,
+  finishedTurnQueue: [],
   messages: [],
   sessions: [],
   sending: false,
@@ -620,6 +623,30 @@ test('chat context limit supports unlimited, bounded, and stateless modes', () =
   ).toBe(true);
 });
 
+test('dirty chat preflight preserves an existing agent disk branch in memory', () => {
+  expect(
+    chatPipelinePreflightMode({
+      hasInheritedSnapshot: false,
+      hasDirtyPipeline: true,
+      diskBranchAlreadyOwned: false,
+    }),
+  ).toBe('save-disk');
+  expect(
+    chatPipelinePreflightMode({
+      hasInheritedSnapshot: false,
+      hasDirtyPipeline: true,
+      diskBranchAlreadyOwned: true,
+    }),
+  ).toBe('sync-memory');
+  expect(
+    chatPipelinePreflightMode({
+      hasInheritedSnapshot: true,
+      hasDirtyPipeline: true,
+      diskBranchAlreadyOwned: true,
+    }),
+  ).toBe('none');
+});
+
 const makeRunningToolPart = (id: string, sessionID: string, messageID: string, tool: string) => ({
   id,
   sessionID,
@@ -1033,6 +1060,28 @@ describe('applySseEvent — turn lifecycle', () => {
     expect(state.sending).toBe(false);
     expect(state.pendingUserText).toBe(null);
     expect(state.lastSendingEndedAt).toBeGreaterThan(0);
+  });
+
+  test('6a. racing terminal confirmations enqueue one finished logical turn', () => {
+    useChatStore.setState({
+      currentSessionId: 's1',
+      sending: true,
+      pendingUserText: 'pending...',
+      queuedMessages: [],
+      finishedTurnQueue: [],
+      lastFinishedTurn: null,
+    } as never);
+
+    dispatch({ type: 'session.idle', properties: { sessionID: 's1' } });
+    dispatch({
+      type: 'session.status',
+      properties: { sessionID: 's1', status: { type: 'idle' } },
+    });
+
+    expect(useChatStore.getState().finishedTurnQueue).toHaveLength(1);
+    expect(useChatStore.getState().lastFinishedTurn?.id).toBe(
+      useChatStore.getState().finishedTurnQueue[0]?.id,
+    );
   });
 
   test('7. session.status{idle} acts as a fallback when session.idle is missing', () => {
@@ -2142,7 +2191,7 @@ describe('applySseEvent — turn lifecycle', () => {
   // file could observe the flag still true and short-circuit out of
   // dispatchNextQueuedPrompt — masking real regressions in other event
   // handlers. Keeping this last avoids the ordering trap.
-  test('10. session.idle drains queued prompts in priority over finishChatTurn', () => {
+  test('10. a failed queued continuation still finishes one logical turn', async () => {
     const turnStartedAt = Date.now() - 100;
     const completedEntry: OpencodeThreadEntry = {
       info: {
@@ -2174,6 +2223,7 @@ describe('applySseEvent — turn lifecycle', () => {
       turnStartedAt,
       lastActivityAt: turnStartedAt + 20,
       messages: [completedEntry],
+      finishedTurnQueue: [],
     } as never);
 
     dispatch({
@@ -2185,5 +2235,10 @@ describe('applySseEvent — turn lifecycle', () => {
     expect(state.queuedMessages).toEqual([]);
     expect(state.sending).toBe(true);
     expect(state.pendingUserText).toBe('next prompt');
+
+    await flushAsyncWork();
+
+    expect(useChatStore.getState().sending).toBe(false);
+    expect(useChatStore.getState().finishedTurnQueue).toHaveLength(1);
   });
 });

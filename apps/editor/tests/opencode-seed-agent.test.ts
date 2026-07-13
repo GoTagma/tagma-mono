@@ -52,6 +52,15 @@ test('router prompt stays compact with the history comparison lane', () => {
   expect(buildTagmaRouterAgent().length).toBeLessThan(3000);
 });
 
+test('router has one bounded implementation handoff and never delegates discovery separately', () => {
+  const doc = buildTagmaRouterAgent();
+
+  expect(doc).toContain('steps: 2');
+  expect(doc).toContain('Never delegate preliminary inspection or workspace discovery');
+  expect(doc).toContain('one specialist call owns both lookup and implementation');
+  expect(doc).toContain('Do not add implementation choices that the user did not provide');
+});
+
 test('tagma-pipeline agent stays compact and keeps schema detail out of the base prompt', () => {
   const doc = buildTagmaPipelineAgent('Windows');
 
@@ -61,6 +70,20 @@ test('tagma-pipeline agent stays compact and keeps schema detail out of the base
   expect(doc).toContain('YAML Contract Quick Reference');
   expect(doc).not.toContain('### 12. Typed task bindings');
   expect(doc).not.toContain('#### Port types and coercion');
+});
+
+test('routine pipeline authoring stays in one worker model without nested task fanout', () => {
+  const doc = buildTagmaPipelineAgent('Windows');
+
+  expect(doc).toContain('task: false');
+  expect(doc).toContain('Author YAML, layout, requirements, and host-native helper files directly');
+  expect(doc).toContain(
+    'Do not call the task tool for planning, command evidence, safety, or review',
+  );
+  expect(doc).toContain('make the smallest safe, reversible implementation choice');
+  expect(doc).not.toContain('## Subagent Dispatch');
+  expect(doc).not.toContain('## Manifest Step Implementation Protocol');
+  expect(doc).not.toContain('## Review Agent Loop');
 });
 
 test('merged tagma-pipeline agent is a hidden subagent handling create + edit', () => {
@@ -102,7 +125,7 @@ test('tagma-pipeline agent documents edit/create modes and mandatory compile loo
     'Read the same-folder `<stem>.manifest.json` before reading or editing YAML',
   );
   expect(doc).toContain('preserve every unselected section');
-  expect(doc).toContain('For **create new**: write the manifest first');
+  expect(doc).toContain('For **create new**, write the manifest');
   expect(doc).toContain('Bypass the manifest only when it is missing, unreadable, stale');
   expect(doc).toContain('compile.log');
   expect(doc).toContain('Never finish after a YAML write');
@@ -182,7 +205,7 @@ test('tagma-pipeline agent allows workspace reads while restricting writes to .t
   expect(doc).toContain('Read / Write Boundary');
   expect(doc).toContain('You may read under the workspace root');
   expect(doc).toContain('only paths that resolve inside `<workspace>/.tagma/`');
-  expect(doc).toContain('Never invent `npm test`');
+  expect(doc).toContain('Never guess unrelated project scripts');
   expect(doc).toContain('Strip a leading `.tagma/`');
 });
 
@@ -198,36 +221,30 @@ test('tagma-pipeline agent allows external file and directory trigger watch path
   expect(contractSkill).toContain('file/directory trigger watch paths may be absolute');
 });
 
-test('tagma-pipeline agent exposes focused skills and read-only native subagents', () => {
+test('tagma-pipeline agent exposes direct tools and focused skills without advisor fanout', () => {
   const doc = buildTagmaPipelineAgent('Windows');
 
-  expect(doc).toContain('task: true');
+  expect(doc).toContain('task: false');
   expect(doc).toContain('skill: true');
+  expect(doc).toContain('webfetch: true');
+  expect(doc).toContain('webfetch: allow');
+  expect(doc).toContain('websearch: allow');
   expect(doc).toContain('tagma_yaml_skeleton: true');
   expect(doc).toContain('tagma_yaml_skeleton: allow');
   expect(doc).toContain('tagma_placement_plan: true');
   expect(doc).toContain('tagma_placement_plan: allow');
-  expect(doc).toContain('explore: "allow"');
-  expect(doc).toContain('scout: "allow"');
-  expect(doc).toContain('tagma-pipeline-planner: "allow"');
-  expect(doc).toContain('tagma-command-evidence: "allow"');
-  expect(doc).toContain('tagma-runtime-guard: "allow"');
-  expect(doc).toContain('tagma-context-packager: "allow"');
   expect(doc).toContain('tagma-python-tools: "deny"');
   expect(doc).toContain('tagma-yaml-contract: "allow"');
-  expect(doc).toContain('Load `tagma-yaml-contract` before any create');
+  expect(doc).toContain('do not front-load the full schema for a routine create');
   expect(doc).toContain('tagma-native-primitives: "allow"');
   expect(doc).toContain('tagma-trigger-strategy: "allow"');
-  expect(doc).toContain('Native OpenCode Orchestration');
-  expect(doc).toContain('Subagent Dispatch');
-  expect(doc).toContain('Call `tagma-pipeline-planner`');
-  expect(doc).toContain('Call `tagma-command-evidence`');
-  expect(doc).toContain('Call `tagma-runtime-guard`');
-  expect(doc).toContain('Call `tagma-context-packager`');
-  expect(doc).toContain(
-    'Merge specialist findings into the smallest YAML/layout/requirements change',
-  );
-  expect(doc).toContain('Delegate YAML/layout/requirements sections only');
+  expect(doc).toContain('## Single-Worker Authoring');
+  expect(doc).not.toContain('tagma-pipeline-planner: "allow"');
+  expect(doc).not.toContain('tagma-command-evidence: "allow"');
+  expect(doc).not.toContain('tagma-runtime-guard: "allow"');
+  expect(doc).not.toContain('tagma-context-packager: "allow"');
+  expect(doc).not.toContain('tagma-yaml-review: "allow"');
+  expect(doc).not.toContain('tagma-pipeline-section-builder: "allow"');
 });
 
 test('specialized Tagma advisor subagents are hidden, read-only, and task-focused', () => {
@@ -273,27 +290,22 @@ test('specialized Tagma advisor subagents are hidden, read-only, and task-focuse
   expect(context).toContain('memory');
 });
 
-test('tagma-pipeline agent runs a read-only review subagent before finishing YAML work', () => {
+test('tagma-pipeline agent self-reviews once without another model turn', () => {
   const doc = buildTagmaPipelineAgent('Windows');
 
-  expect(doc).toContain('tagma-yaml-review: "allow"');
-  expect(doc).toContain('## Review Agent Loop');
-  expect(doc).toContain('After each section step and before the final answer');
-  expect(doc).toContain('Pass the review findings back into your own adjustment loop');
-  expect(doc).toContain('Report unfixable issues plainly');
+  expect(doc).toContain('## Self-Review');
+  expect(doc).toContain('Fix actionable findings directly; do not delegate review');
+  expect(doc).not.toContain('tagma-yaml-review: "allow"');
+  expect(doc).not.toContain('## Review Agent Loop');
 });
 
-test('tagma-pipeline agent delegates manifest sections to a builder and reviews each step', () => {
+test('tagma-pipeline agent authors manifest sections directly', () => {
   const doc = buildTagmaPipelineAgent('Windows');
 
-  expect(doc).toContain('tagma-pipeline-section-builder: "allow"');
-  expect(doc).toContain('## Manifest Step Implementation Protocol');
-  expect(doc).toContain(
-    'delegate exactly one manifest section at a time to `tagma-pipeline-section-builder`',
-  );
-  expect(doc).toContain('After each section-builder handoff, call `tagma-yaml-review`');
-  expect(doc).toContain('The builder and reviewer must be different agents');
-  expect(doc).toContain('Do not start the next section until the review step passes');
+  expect(doc).toContain('fill all selected sections yourself');
+  expect(doc).toContain('patch only selected sections plus forced dependents');
+  expect(doc).not.toContain('tagma-pipeline-section-builder: "allow"');
+  expect(doc).not.toContain('## Manifest Step Implementation Protocol');
 });
 
 test('tagma-pipeline-section-builder is a write-capable bounded implementer, not a reviewer', () => {
@@ -334,17 +346,18 @@ test('tagma-pipeline agent prefers host-native commands before Python glue', () 
 
   expect(doc).toContain('The editor host OS is `Windows`');
   expect(doc).toContain('Use Python only when host-native commands would be bulky');
-  expect(doc).toContain('stateless CLI');
-  expect(doc).toContain('webhooks, warm processing, shared state');
   expect(doc).toContain('enabled="false"');
   expect(doc).toContain('Enable Python AI Agent in Editor Settings');
   expect(doc).toContain('<python-agent enabled="true">');
-  expect(doc).toContain('include that interpreter/venv block in the handoff');
+  expect(doc).toContain('Prefer a host-native implementation');
+  expect(doc).toContain('host-native helper files directly');
   expect(doc).toContain('tagma-python-tools');
 });
 
 test('tagma-pipeline agent grants python tools only when workspace settings enable them', () => {
+  expect(buildTagmaPipelineAgent('Windows')).toContain('task: false');
   expect(buildTagmaPipelineAgent('Windows')).toContain('tagma-python-tools: "deny"');
+  expect(buildTagmaPipelineAgent('Windows', { pythonToolsEnabled: true })).toContain('task: true');
   expect(buildTagmaPipelineAgent('Windows', { pythonToolsEnabled: true })).toContain(
     'tagma-python-tools: "allow"',
   );

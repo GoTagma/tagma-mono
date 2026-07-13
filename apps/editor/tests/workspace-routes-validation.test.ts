@@ -1009,6 +1009,127 @@ describe('workspace route validation', () => {
     expect(res.statusCode).toBe(500);
     expect(readFileSync(yamlPath, 'utf-8')).toBe(originalYaml);
     expect(existsSync(layoutPath)).toBe(false);
+    expect(
+      readdirSync(join(S.workDir, '.tagma')).filter((name) => name.startsWith('chat-copy-')),
+    ).toEqual([]);
+  });
+
+  test('POST /api/workspace/chat-result-copy is idempotent for one finished turn', () => {
+    S.workDir = makeTempDir();
+    const pipelineDir = join(S.workDir, '.tagma', 'chat');
+    const yamlPath = join(pipelineDir, 'chat.yaml');
+    const layoutPath = join(pipelineDir, 'chat.layout.json');
+    const agentYaml = 'pipeline:\n  name: Agent Result\n  tracks: []\n';
+    const userYaml = 'pipeline:\n  name: User Branch\n  tracks: []\n';
+    const agentLayout = { positions: { 'main.task': { x: 900 } } };
+    const userLayout = { positions: { 'main.task': { x: 100 } } };
+    mkdirSync(pipelineDir, { recursive: true });
+    writeFileSync(yamlPath, agentYaml, 'utf-8');
+    writeFileSync(layoutPath, JSON.stringify(agentLayout), 'utf-8');
+    S.yamlPath = yamlPath;
+    S.config = createEmptyPipeline('User Branch');
+
+    const handler = createRouteHarness().post('/api/workspace/chat-result-copy');
+    const body = {
+      idempotencyKey: 'finished-turn-1',
+      sourcePath: yamlPath,
+      restoreOriginal: {
+        path: yamlPath,
+        yaml: userYaml,
+        layout: userLayout,
+      },
+    };
+    const first = makeRes();
+    const second = makeRes();
+    const otherDir = join(S.workDir, '.tagma', 'other-agent-result');
+    const otherPath = join(otherDir, 'other-agent-result.yaml');
+    mkdirSync(otherDir, { recursive: true });
+    writeFileSync(otherPath, agentYaml, 'utf-8');
+
+    handler({ workspace: S, body }, first);
+    handler({ workspace: S, body }, second);
+    const mismatchedReplay = makeRes();
+    handler(
+      {
+        workspace: S,
+        body: { ...body, sourcePath: otherPath, restoreOriginal: undefined },
+      },
+      mismatchedReplay,
+    );
+
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(200);
+    expect(mismatchedReplay.statusCode).toBe(409);
+    expect((second.body as { entry: { path: string } }).entry.path).toBe(
+      (first.body as { entry: { path: string } }).entry.path,
+    );
+    expect(
+      readdirSync(join(S.workDir, '.tagma')).filter((name) => name.startsWith('chat-copy-')),
+    ).toEqual(['chat-copy-1']);
+    const copyPath = (first.body as { entry: { path: string } }).entry.path;
+    expect(readFileSync(copyPath, 'utf-8')).toContain('Agent Result Copy 1');
+    expect(
+      JSON.parse(readFileSync(copyPath.replace(/\.ya?ml$/i, '.layout.json'), 'utf-8')),
+    ).toEqual(agentLayout);
+    expect(readFileSync(yamlPath, 'utf-8')).toBe(userYaml);
+    expect(JSON.parse(readFileSync(layoutPath, 'utf-8'))).toEqual(userLayout);
+  });
+
+  test('POST /api/workspace/chat-result-copy validates restore target before creating a copy', () => {
+    S.workDir = makeTempDir();
+    const pipelineDir = join(S.workDir, '.tagma', 'chat');
+    const yamlPath = join(pipelineDir, 'chat.yaml');
+    mkdirSync(pipelineDir, { recursive: true });
+    writeFileSync(yamlPath, 'pipeline:\n  name: Agent Result\n  tracks: []\n', 'utf-8');
+
+    const handler = createRouteHarness().post('/api/workspace/chat-result-copy');
+    const res = makeRes();
+    handler(
+      {
+        workspace: S,
+        body: {
+          idempotencyKey: 'finished-turn-mismatch',
+          sourcePath: yamlPath,
+          restoreOriginal: {
+            path: join(S.workDir, '.tagma', 'other', 'other.yaml'),
+            yaml: 'pipeline:\n  name: User Branch\n  tracks: []\n',
+            layout: { positions: {} },
+          },
+        },
+      },
+      res,
+    );
+
+    expect(res.statusCode).toBe(400);
+    expect(
+      readdirSync(join(S.workDir, '.tagma')).filter((name) => name.startsWith('chat-copy-')),
+    ).toEqual([]);
+  });
+
+  test('POST /api/workspace/chat-result-copy rejects an incomplete restore before copying', () => {
+    S.workDir = makeTempDir();
+    const pipelineDir = join(S.workDir, '.tagma', 'chat');
+    const yamlPath = join(pipelineDir, 'chat.yaml');
+    mkdirSync(pipelineDir, { recursive: true });
+    writeFileSync(yamlPath, 'pipeline:\n  name: Agent Result\n  tracks: []\n', 'utf-8');
+
+    const handler = createRouteHarness().post('/api/workspace/chat-result-copy');
+    const res = makeRes();
+    handler(
+      {
+        workspace: S,
+        body: {
+          sourcePath: yamlPath,
+          restoreOriginal: { path: yamlPath },
+        },
+      },
+      res,
+    );
+
+    expect(res.statusCode).toBe(400);
+    expect(
+      readdirSync(join(S.workDir, '.tagma')).filter((name) => name.startsWith('chat-copy-')),
+    ).toEqual([]);
   });
 
   test('POST /api/workspace/workflows creates a workflow from the current pipeline', () => {

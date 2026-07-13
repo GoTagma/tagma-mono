@@ -31,7 +31,11 @@ import { defaultWorkspace, workspaceRegistry } from './workspace-registry.js';
 import type { TrackFolder, WorkspaceState } from './workspace-state.js';
 import { runCompileAndWriteLog } from './compile-log.js';
 import { runPipelineManifestSync } from './pipeline-manifest.js';
-import { getActiveYamlEditLock, publicYamlEditLock } from './yaml-edit-lock.js';
+import {
+  getActiveYamlEditLock,
+  publicYamlEditLock,
+  yamlEditLockProtectsPath,
+} from './yaml-edit-lock.js';
 import { readYamlRunVersion } from './yaml-run-version.js';
 import { getFileVersion } from './optimistic-lock.js';
 
@@ -1027,11 +1031,17 @@ export function attachFileWatcherBridge(ws: WorkspaceState): void {
   // positions changed; that work is wasted and can produce spurious
   // compile-log churn. Just refresh ws.layout from disk and broadcast.
   ws.layoutWatcher.onChange((event) => {
+    const deferredByYamlEditLock = yamlEditLockProtectsPath(
+      getActiveYamlEditLock(ws),
+      ws.yamlPath,
+      ws.workDir,
+    );
     if (event.type === 'external-delete') {
       broadcastStateEvent(ws, {
         type: 'external-conflict',
         path: event.path,
         deleted: true,
+        ...(deferredByYamlEditLock ? { deferredByYamlEditLock: true } : {}),
       });
       return;
     }
@@ -1041,6 +1051,15 @@ export function attachFileWatcherBridge(ws: WorkspaceState): void {
         path: event.path,
         layoutHash: event.hash,
         layoutMtimeMs: event.mtimeMs,
+        ...(deferredByYamlEditLock ? { deferredByYamlEditLock: true } : {}),
+      });
+      return;
+    }
+    if (deferredByYamlEditLock) {
+      broadcastStateEvent(ws, {
+        type: 'external-conflict',
+        path: event.path,
+        deferredByYamlEditLock: true,
       });
       return;
     }
@@ -1054,15 +1073,36 @@ export function attachFileWatcherBridge(ws: WorkspaceState): void {
     });
   });
   ws.watcher.onFileWatcherEvent((event) => {
+    const deferredByYamlEditLock = yamlEditLockProtectsPath(
+      getActiveYamlEditLock(ws),
+      event.path,
+      ws.workDir,
+    );
     if (event.type === 'external-delete') {
       invalidatePluginCache(ws);
-      broadcastStateEvent(ws, { type: 'external-conflict', path: event.path, deleted: true });
+      broadcastStateEvent(ws, {
+        type: 'external-conflict',
+        path: event.path,
+        deleted: true,
+        ...(deferredByYamlEditLock ? { deferredByYamlEditLock: true } : {}),
+      });
       return;
     }
     // M6: Invalidate plugin caches on any external YAML change so discovery
     // re-scans on the next request.
     invalidatePluginCache(ws);
     if (event.type === 'external-change') {
+      if (deferredByYamlEditLock) {
+        ws.watcher.markSynced(event.content, null, serializePipeline(ws.config));
+        runCompileAndWriteLog(event.path, ws.registry);
+        runPipelineManifestSync(event.path);
+        broadcastStateEvent(ws, {
+          type: 'external-conflict',
+          path: event.path,
+          deferredByYamlEditLock: true,
+        });
+        return;
+      }
       try {
         ws.config = withDefaultTrackColors(parseYaml(event.content));
       } catch {
@@ -1100,7 +1140,11 @@ export function attachFileWatcherBridge(ws: WorkspaceState): void {
       runPipelineManifestSync(event.path);
       broadcastStateEvent(ws, { type: 'external-change', newState: getState(ws) });
     } else if (event.type === 'external-conflict') {
-      broadcastStateEvent(ws, { type: 'external-conflict', path: event.path });
+      broadcastStateEvent(ws, {
+        type: 'external-conflict',
+        path: event.path,
+        ...(deferredByYamlEditLock ? { deferredByYamlEditLock: true } : {}),
+      });
     }
   });
 }

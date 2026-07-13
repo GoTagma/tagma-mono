@@ -115,6 +115,17 @@ function pathHitsLockedYaml(
   return lockedYamlPath.startsWith(directoryPrefix);
 }
 
+export function yamlEditLockProtectsPath(
+  lock: YamlEditLock | null | undefined,
+  candidate: string | null,
+  workDir?: string | null,
+): boolean {
+  if (!lock) return false;
+  const lockedYamlPath = normalizeLockPath(lock.yamlPath);
+  if (!lockedYamlPath) return true;
+  return pathHitsLockedYaml(candidate, lockedYamlPath, workDir);
+}
+
 export function shouldBlockYamlEditLockMutation(
   lock: YamlEditLock | null | undefined,
   context: {

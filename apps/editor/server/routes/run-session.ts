@@ -41,6 +41,7 @@ import type {
 } from '@tagma/sdk';
 import { serializeWorkflow } from '@tagma/sdk/workflow';
 import { atomicWriteFileSync, isPathWithin } from '../path-utils.js';
+import { resolveOpencodeBinary } from '../opencode-lifecycle.js';
 import type { WorkspaceState } from '../workspace-state.js';
 import { readYamlRunVersion } from '../yaml-run-version.js';
 
@@ -169,23 +170,32 @@ function withOutputRedactor(
   };
 }
 
-export function runtimeWithInjectedEnv(
+function resolveEditorDriverSpawnSpec(spec: SpawnSpec, driver: DriverPlugin | null): SpawnSpec {
+  if (driver?.name !== 'opencode' || spec.args[0] !== 'opencode') return spec;
+  const binary = resolveOpencodeBinary();
+  if (binary === spec.args[0]) return spec;
+  return { ...spec, args: [binary, ...spec.args.slice(1)] };
+}
+
+export function runtimeWithInjectedEnvFromBase(
+  base: TagmaRuntime,
   runtimeEnv: Readonly<Record<string, string>>,
   secretValues: readonly string[] = [],
 ): TagmaRuntime {
-  const base = bunRuntime();
-  const hasSecretValues = secretValues.some((value) => value.length > 0);
-  if (Object.keys(runtimeEnv).length === 0 && !hasSecretValues) return base;
+  const needsCommandWrapper =
+    Object.keys(runtimeEnv).length > 0 || secretValues.some((value) => value.length > 0);
   return {
     ...base,
     runSpawn(spec: SpawnSpec, driver: DriverPlugin | null, opts: RuntimeRunOptions = {}) {
+      const resolvedSpec = resolveEditorDriverSpawnSpec(spec, driver);
       return base.runSpawn(
-        { ...spec, env: mergeRuntimeEnv(spec.env, runtimeEnv) },
+        { ...resolvedSpec, env: mergeRuntimeEnv(resolvedSpec.env, runtimeEnv) },
         driver,
         withOutputRedactor(opts, createSecretOutputRedactor(secretValues)),
       );
     },
     runCommand(command: CommandConfig, cwd: string, opts: RuntimeRunOptions = {}) {
+      if (!needsCommandWrapper) return base.runCommand(command, cwd, opts);
       return base.runSpawn(
         {
           ...commandToSpawnSpecForRunRoute(command, cwd),
@@ -196,6 +206,13 @@ export function runtimeWithInjectedEnv(
       );
     },
   };
+}
+
+export function runtimeWithInjectedEnv(
+  runtimeEnv: Readonly<Record<string, string>>,
+  secretValues: readonly string[] = [],
+): TagmaRuntime {
+  return runtimeWithInjectedEnvFromBase(bunRuntime(), runtimeEnv, secretValues);
 }
 function isPromptTaskShape(task: { prompt?: unknown; command?: unknown }): boolean {
   return task.prompt !== undefined && task.command === undefined;

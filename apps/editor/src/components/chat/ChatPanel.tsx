@@ -14,7 +14,11 @@ import {
   FileText,
   Brain,
 } from 'lucide-react';
-import { useChatStore, type ChatYamlSessionResult } from '../../store/chat-store';
+import {
+  isChatModelSelectionBlocked,
+  useChatStore,
+  type ChatYamlSessionResult,
+} from '../../store/chat-store';
 import type { ChatReasoningEffort } from '../../store/chat-persist';
 import { usePipelineStore } from '../../store/pipeline-store';
 import { useYamlEditLockStore } from '../../store/yaml-edit-lock-store';
@@ -77,9 +81,9 @@ export function ChatPanel() {
   );
 }
 
-type FlowStepStatus = 'pending' | 'active' | 'complete' | 'error';
+export type FlowStepStatus = 'pending' | 'active' | 'complete' | 'error';
 
-interface FlowStep {
+export interface FlowStep {
   key: string;
   label: string;
   detail?: string;
@@ -102,7 +106,7 @@ function ConversationFlowBar() {
 
   const activity = useMemo(
     () =>
-      currentTurnActivity({
+      selectConversationFlowActivity({
         messages,
         pendingActivity,
         turnAssistantMessageIds,
@@ -136,12 +140,20 @@ function ConversationFlowBar() {
     ],
   );
 
+  return <ConversationFlowBarView steps={steps} queuedCount={queuedMessages.length} />;
+}
+
+export function ConversationFlowBarView({
+  steps,
+  queuedCount,
+}: {
+  steps: FlowStep[];
+  queuedCount: number;
+}) {
   if (steps.length === 0) return null;
 
   const activeStep =
-    steps.find((step) => step.status === 'error') ??
-    steps.find((step) => step.status === 'active') ??
-    steps[steps.length - 1];
+    [...steps].reverse().find((step) => step.status === 'active') ?? steps[steps.length - 1];
   const progressValue = steps.reduce((total, step) => {
     if (step.status === 'complete') return total + 1;
     if (step.status === 'active') return total + 0.55;
@@ -152,6 +164,8 @@ function ConversationFlowBar() {
   const statusText = activeStep.detail
     ? `${activeStep.label}: ${activeStep.detail}`
     : activeStep.label;
+  const visibleSteps = steps.slice(-8);
+  const hiddenStepCount = steps.length - visibleSteps.length;
 
   return (
     <section className="shrink-0 border-b border-tagma-border bg-tagma-bg px-3 py-2">
@@ -160,10 +174,8 @@ function ConversationFlowBar() {
         <span className="min-w-0 flex-1 truncate text-tagma-text" title={statusText}>
           {statusText}
         </span>
-        {queuedMessages.length > 0 && (
-          <span className="shrink-0 text-tagma-muted/70 tabular-nums">
-            +{queuedMessages.length} queued
-          </span>
+        {queuedCount > 0 && (
+          <span className="shrink-0 text-tagma-muted/70 tabular-nums">+{queuedCount} queued</span>
         )}
       </div>
       <div
@@ -181,15 +193,26 @@ function ConversationFlowBar() {
           style={{ width: `${percent}%` }}
         />
       </div>
-      <div className="mt-1.5 grid grid-cols-5 gap-1 text-[9px] font-mono">
-        {steps.map((step) => (
-          <div key={step.key} className="min-w-0 flex items-center gap-1">
+      <div
+        className="mt-1.5 flex items-center gap-2 overflow-x-auto pb-0.5 text-[9px] font-mono"
+        aria-label="Conversation flow steps"
+      >
+        {hiddenStepCount > 0 && (
+          <span className="shrink-0 text-tagma-muted/50">+{hiddenStepCount} earlier</span>
+        )}
+        {visibleSteps.map((step, index) => (
+          <div key={step.key} className="flex shrink-0 items-center gap-1">
+            {(index > 0 || hiddenStepCount > 0) && (
+              <span className="text-tagma-muted/35" aria-hidden="true">
+                ›
+              </span>
+            )}
             <span
               className={`size-1.5 shrink-0 rounded-full ${flowStepDotClass(step.status)}`}
               aria-hidden="true"
             />
             <span
-              className={`min-w-0 truncate ${flowStepTextClass(step.status)}`}
+              className={`max-w-[9rem] truncate ${flowStepTextClass(step.status)}`}
               title={step.detail ? `${step.label}: ${step.detail}` : step.label}
             >
               {step.label}
@@ -201,7 +224,13 @@ function ConversationFlowBar() {
   );
 }
 
-function currentTurnActivity({
+/**
+ * A turn can span several assistant envelopes (for example, tool use followed
+ * by a final answer). While a turn is live, collect every tracked envelope;
+ * after it finishes, use the latest user-message boundary so the generated
+ * flow remains visible instead of snapping back to an empty placeholder.
+ */
+export function selectConversationFlowActivity({
   messages,
   pendingActivity,
   turnAssistantMessageIds,
@@ -212,22 +241,52 @@ function currentTurnActivity({
   turnAssistantMessageIds: string[];
   turnStartedAt: number | null;
 }): ActivityEvent[] {
-  if (pendingActivity.length > 0) return pendingActivity;
-  if (turnStartedAt === null) return [];
+  const activity = turnStartedAt === null ? [] : pendingActivity.slice();
+  const relevantMessages =
+    turnStartedAt === null
+      ? latestCompletedTurnMessages(messages)
+      : messages.filter((entry) => {
+          if (entry.info.role !== 'assistant' || isAbortErrorEntry(entry)) return false;
+          if (turnAssistantMessageIds.includes(entry.info.id)) return true;
+          const created = entry.info.time?.created;
+          const completed = entry.info.time?.completed;
+          return (
+            (typeof completed === 'number' && completed >= turnStartedAt) ||
+            (typeof created === 'number' && created >= turnStartedAt)
+          );
+        });
+
+  for (const entry of relevantMessages) {
+    if (entry.info.role !== 'assistant' || isAbortErrorEntry(entry)) continue;
+    activity.push(...(entry.activity ?? []));
+  }
+
+  return activity.sort((left, right) => left.startedAt - right.startedAt);
+}
+
+function latestCompletedTurnMessages(messages: OpencodeThreadEntry[]): OpencodeThreadEntry[] {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].info.role === 'user') return messages.slice(i + 1);
+  }
 
   for (let i = messages.length - 1; i >= 0; i--) {
     const entry = messages[i];
-    if (entry.info.role !== 'assistant') continue;
-    if (isAbortErrorEntry(entry)) continue;
-    if (turnAssistantMessageIds.includes(entry.info.id)) return entry.activity ?? [];
-    const created = entry.info.time?.created;
-    const completed = entry.info.time?.completed;
-    if (typeof completed === 'number' && completed >= turnStartedAt) return entry.activity ?? [];
-    if (typeof created === 'number' && created >= turnStartedAt) return entry.activity ?? [];
+    if (
+      entry.info.role === 'assistant' &&
+      !isAbortErrorEntry(entry) &&
+      (entry.activity?.length ?? 0) > 0
+    ) {
+      return [entry];
+    }
   }
   return [];
 }
 
+/**
+ * Build only stages that OpenCode or the editor actually reported. Future
+ * stages are deliberately not guessed, so tool names, retries, permissions,
+ * and YAML follow-up work appear in the order they really happen.
+ */
 export function buildConversationFlowSteps({
   activity,
   sending,
@@ -249,136 +308,176 @@ export function buildConversationFlowSteps({
   postChatYamlAction: ReturnType<typeof useChatStore.getState>['postChatYamlAction'];
   sendError: string | null;
 }): FlowStep[] {
-  const active = sending || reconciling || flushing || !!postChatYamlAction;
-  const hasPrompt = !!pendingUserText || activity.length > 0 || active || queuedCount > 0;
-  if (!hasPrompt && !sendError) {
-    return [
-      { key: 'intent', label: 'Intent', detail: 'ready', status: 'active' },
-      { key: 'context', label: 'Context', status: 'pending' },
-      { key: 'work', label: 'Work', status: 'pending' },
-      { key: 'response', label: 'Response', status: 'pending' },
-      { key: 'sync', label: 'Finish', status: 'pending' },
-    ];
+  const hasConversation =
+    activity.length > 0 ||
+    !!pendingUserText ||
+    sending ||
+    queuedCount > 0 ||
+    pendingPermissionCount > 0 ||
+    reconciling ||
+    flushing ||
+    !!postChatYamlAction ||
+    !!sendError;
+  if (!hasConversation) return [];
+
+  const hasRuntimeStage =
+    pendingPermissionCount > 0 || reconciling || flushing || !!postChatYamlAction || !!sendError;
+  const steps = activity.map((event, index) =>
+    conversationFlowStepFromActivity(
+      event,
+      index,
+      sending && !hasRuntimeStage && index === activity.length - 1,
+    ),
+  );
+
+  if (steps.length === 0 && (pendingUserText || sending)) {
+    steps.push({
+      key: 'request',
+      label: 'Request',
+      detail: pendingUserText ? 'request received' : undefined,
+      status: 'active',
+    });
   }
 
-  const latest = activity.length > 0 ? activity[activity.length - 1] : null;
-  const hasAssistantStarted = activity.some((event) => event.kind === 'assistant-started');
-  const hasReasoning = activity.some((event) => event.kind === 'thinking');
-  const hasTool = activity.some(
-    (event) =>
-      event.kind === 'tool-running' ||
-      event.kind === 'tool-completed' ||
-      event.kind === 'tool-error',
-  );
-  const hasAnswer = activity.some((event) => event.kind === 'streaming-answer');
-  const hasRetry = activity.some((event) => event.kind === 'retry');
-  const hasTerminalError =
-    !!sendError || latest?.kind === 'tool-error' || postChatYamlAction?.status === 'failed';
-  const latestTool = [...activity]
-    .reverse()
-    .find(
-      (event) =>
-        event.kind === 'tool-running' ||
-        event.kind === 'tool-completed' ||
-        event.kind === 'tool-error',
-    );
+  if (pendingPermissionCount > 0) {
+    appendConversationFlowStep(steps, {
+      key: 'permission',
+      label: 'Permission',
+      detail:
+        pendingPermissionCount === 1
+          ? 'awaiting approval'
+          : pendingPermissionCount + ' approvals waiting',
+      status: 'active',
+    });
+  }
 
-  const intentComplete =
-    hasAssistantStarted ||
-    hasReasoning ||
-    hasTool ||
-    hasAnswer ||
-    reconciling ||
-    !!postChatYamlAction;
-  const contextComplete =
-    hasTool ||
-    hasAnswer ||
-    reconciling ||
-    !!postChatYamlAction ||
-    (!sending && activity.length > 1);
-  const workComplete = hasAnswer || reconciling || !!postChatYamlAction || (!sending && hasTool);
-  const responseComplete =
-    (!sending && activity.length > 0 && !postChatYamlAction) || !!postChatYamlAction;
+  if (
+    sending &&
+    activity.length > 0 &&
+    !hasRuntimeStage &&
+    !steps.some((step) => step.status === 'active' || step.status === 'error')
+  ) {
+    appendConversationFlowStep(steps, {
+      key: 'waiting',
+      label: 'Waiting',
+      detail: 'next OpenCode event',
+      status: 'active',
+    });
+  }
 
-  return [
-    {
-      key: 'intent',
-      label: 'Intent',
+  if (reconciling) {
+    appendConversationFlowStep(steps, {
+      key: 'reconcile',
+      label: 'Check changes',
+      detail: 'refreshing workspace',
+      status: 'active',
+    });
+  }
+
+  if (postChatYamlAction) {
+    appendConversationFlowStep(steps, {
+      key: 'yaml-action',
+      label:
+        postChatYamlAction.status === 'repairing'
+          ? 'Validate YAML'
+          : postChatYamlAction.status === 'failed'
+            ? 'Repair YAML'
+            : postChatYamlAction.kind === 'open-created'
+              ? 'Open YAML'
+              : 'Refresh YAML',
       detail:
-        sendError && !intentComplete ? sendError : pendingUserText ? 'request received' : undefined,
-      status: sendError && !intentComplete ? 'error' : intentComplete ? 'complete' : 'active',
-    },
-    {
-      key: 'context',
-      label: 'Context',
-      detail: hasRetry ? 'provider retry' : hasReasoning ? 'reasoning' : undefined,
-      status:
-        sendError && intentComplete && !contextComplete
-          ? 'error'
-          : contextComplete
-            ? 'complete'
-            : intentComplete
-              ? 'active'
-              : 'pending',
-    },
-    {
-      key: 'work',
-      label: 'Work',
-      detail:
-        pendingPermissionCount > 0
-          ? 'awaiting permission'
-          : latestTool?.detail
-            ? latestTool.detail
-            : undefined,
-      status:
-        latest?.kind === 'tool-error'
-          ? 'error'
-          : workComplete
-            ? 'complete'
-            : hasTool || hasReasoning
-              ? 'active'
-              : 'pending',
-    },
-    {
-      key: 'response',
-      label: 'Response',
-      detail: hasAnswer ? 'streaming update' : undefined,
-      status:
-        sendError && workComplete && !responseComplete
-          ? 'error'
-          : responseComplete
-            ? 'complete'
-            : hasAnswer
-              ? 'active'
-              : 'pending',
-    },
-    {
-      key: 'sync',
-      label: postChatYamlAction ? 'Sync YAML' : 'Finish',
-      detail:
-        postChatYamlAction?.status === 'repairing'
-          ? 'validating'
-          : postChatYamlAction?.status === 'failed'
-            ? 'repair needed'
-            : postChatYamlAction
-              ? postChatYamlAction.kind === 'open-created'
-                ? 'open created file'
-                : 'refresh pipeline'
-              : flushing
-                ? 'sending queued'
-                : undefined,
-      status:
-        postChatYamlAction?.status === 'failed'
-          ? 'error'
-          : postChatYamlAction || reconciling || flushing
-            ? 'active'
-            : hasTerminalError
-              ? 'error'
-              : !sending && activity.length > 0
-                ? 'complete'
-                : 'pending',
-    },
-  ];
+        postChatYamlAction.status === 'repairing'
+          ? 'checking generated pipeline'
+          : postChatYamlAction.status === 'failed'
+            ? 'compile failed'
+            : postChatYamlAction.compile.summary,
+      status: postChatYamlAction.status === 'failed' ? 'error' : 'active',
+    });
+  }
+
+  if (flushing) {
+    appendConversationFlowStep(steps, {
+      key: 'flush',
+      label: 'Send queued',
+      detail: queuedCount > 0 ? queuedCount + ' messages' : undefined,
+      status: 'active',
+    });
+  } else if (queuedCount > 0 && steps.length === 0) {
+    steps.push({
+      key: 'queued',
+      label: 'Queued',
+      detail: queuedCount + ' messages',
+      status: 'pending',
+    });
+  }
+
+  if (sendError) {
+    appendConversationFlowStep(steps, {
+      key: 'error',
+      label: 'Error',
+      detail: sendError,
+      status: 'error',
+    });
+  }
+
+  return steps;
+}
+
+function conversationFlowStepFromActivity(
+  event: ActivityEvent,
+  index: number,
+  canBeActive: boolean,
+): FlowStep {
+  const toolKind =
+    event.kind === 'tool-running' || event.kind === 'tool-completed' || event.kind === 'tool-error';
+  const label = toolKind
+    ? event.detail || 'Tool'
+    : event.kind === 'request-sent'
+      ? 'Request'
+      : event.kind === 'assistant-started'
+        ? 'Model'
+        : event.kind === 'thinking'
+          ? 'Thinking'
+          : event.kind === 'streaming-answer'
+            ? 'Response'
+            : event.kind === 'step-start'
+              ? 'Step'
+              : event.kind === 'step-finish'
+                ? 'Step done'
+                : event.kind === 'retry'
+                  ? 'Retry'
+                  : 'Compact history';
+  const detail = toolKind
+    ? event.kind === 'tool-running'
+      ? 'Tool running'
+      : event.kind === 'tool-completed'
+        ? 'Tool completed'
+        : 'Tool failed'
+    : event.kind === 'assistant-started' || event.kind === 'retry'
+      ? event.detail
+      : undefined;
+  const terminalActivity = event.kind === 'tool-completed' || event.kind === 'step-finish';
+
+  return {
+    key: 'activity:' + index + ':' + (event.key ?? event.startedAt),
+    label,
+    detail,
+    status:
+      event.kind === 'tool-error'
+        ? 'error'
+        : canBeActive && !terminalActivity && event.endedAt === null
+          ? 'active'
+          : 'complete',
+  };
+}
+
+function appendConversationFlowStep(steps: FlowStep[], step: FlowStep): void {
+  if (step.status === 'active' || step.status === 'error') {
+    for (const existing of steps) {
+      if (existing.status === 'active') existing.status = 'complete';
+    }
+  }
+  steps.push(step);
 }
 
 function flowStepDotClass(status: FlowStepStatus): string {
@@ -446,6 +545,35 @@ export function BootstrapOverlay() {
   );
 }
 
+export function chatHeaderControlLocks(state: {
+  ready: boolean;
+  hiddenTurnActive: boolean;
+  sending: boolean;
+  pendingUserText: string | null;
+  queuedMessages: readonly unknown[];
+  reconciling: boolean;
+  flushing: boolean;
+  yamlEditLocked: boolean;
+}): {
+  modelSelectionBlocked: boolean;
+  providerBlocked: boolean;
+  navigationBlocked: boolean;
+} {
+  return {
+    modelSelectionBlocked: !state.ready || isChatModelSelectionBlocked(state),
+    providerBlocked:
+      !state.ready ||
+      state.hiddenTurnActive ||
+      state.sending ||
+      !!state.pendingUserText ||
+      state.queuedMessages.length > 0 ||
+      state.reconciling ||
+      state.flushing ||
+      state.yamlEditLocked,
+    navigationBlocked: !state.ready,
+  };
+}
+
 function ChatHeader() {
   const newSession = useChatStore((s) => s.newSession);
   const openHistory = useChatStore((s) => s.openHistory);
@@ -470,16 +598,16 @@ function ChatHeader() {
         runtime.queuedMessages.length > 0 ||
         runtime.flushing),
   );
-  const providerBlocked =
-    !ready ||
-    hiddenTurnActive ||
-    sending ||
-    !!pendingUserText ||
-    queuedMessages.length > 0 ||
-    reconciling ||
-    flushing ||
-    yamlEditLocked;
-  const navigationBlocked = !ready;
+  const { modelSelectionBlocked, providerBlocked, navigationBlocked } = chatHeaderControlLocks({
+    ready,
+    hiddenTurnActive,
+    sending,
+    pendingUserText,
+    queuedMessages,
+    reconciling,
+    flushing,
+    yamlEditLocked,
+  });
   const currentSessionTitle =
     sessions.find((session) => session.id === currentSessionId)?.title ?? currentSessionId;
 
@@ -502,8 +630,8 @@ function ChatHeader() {
   return (
     <header className="relative z-20 flex items-center gap-1 px-2 h-7 border-b border-tagma-border bg-tagma-surface shrink-0">
       <div className="flex items-center gap-1 min-w-0 flex-1">
-        <ModelPicker disabled={providerBlocked} />
-        <ReasoningEffortPicker disabled={providerBlocked} />
+        <ModelPicker disabled={modelSelectionBlocked} />
+        <ReasoningEffortPicker disabled={modelSelectionBlocked} />
       </div>
       <BotBridgeStatusBadge />
       <button
@@ -711,6 +839,7 @@ function ReasoningEffortPicker({ disabled = false }: { disabled?: boolean }) {
 function ChatMessages() {
   const messages = useChatStore((s) => s.messages);
   const sending = useChatStore((s) => s.sending);
+  const reconciling = useChatStore((s) => s.reconciling);
   const pendingUserText = useChatStore((s) => s.pendingUserText);
   const queuedMessages = useChatStore((s) => s.queuedMessages);
   const sessionId = useChatStore((s) => s.currentSessionId);
@@ -896,9 +1025,13 @@ function ChatMessages() {
           {queuedMessages.map((item, idx) => (
             <QueuedUserBubble key={item.id} id={item.id} text={item.text} position={idx + 1} />
           ))}
-          {sessionYamlResult && !postChatYamlAction && !sending && (
-            <SessionYamlResultBubble result={sessionYamlResult} />
-          )}
+          {shouldShowSessionYamlResult({
+            hasResult: !!sessionYamlResult,
+            sending,
+            reconciling,
+            hasPostChatAction: !!postChatYamlAction,
+          }) &&
+            sessionYamlResult && <SessionYamlResultBubble result={sessionYamlResult} />}
           {postChatYamlAction && !sending && <YamlActionBubble />}
           {pendingPermissions.map((p) => (
             <PermissionBubble key={`${p.workspaceKey}:${p.sessionID}:${p.id}`} permission={p} />
@@ -921,6 +1054,15 @@ function ChatMessages() {
       )}
     </>
   );
+}
+
+export function shouldShowSessionYamlResult(args: {
+  hasResult: boolean;
+  sending: boolean;
+  reconciling: boolean;
+  hasPostChatAction: boolean;
+}): boolean {
+  return args.hasResult && !args.sending && !args.reconciling && !args.hasPostChatAction;
 }
 
 function isAbortErrorEntry(entry: OpencodeThreadEntry): boolean {
@@ -971,8 +1113,16 @@ export function SessionYamlResultBubble({ result }: { result: ChatYamlSessionRes
 export const CHAT_COMPLETION_TOAST_VIEWPORT_CLASSES =
   'fixed inset-x-2 bottom-2 z-[260] flex max-h-[calc(100dvh-1rem)] max-w-[calc(100vw-1rem)] flex-col gap-2 overflow-y-auto sm:inset-x-auto sm:bottom-4 sm:right-4 sm:w-[360px] sm:max-h-[calc(100dvh-2rem)] sm:max-w-[calc(100vw-2rem)]';
 
+export function shouldShowChatCompletionToast(args: {
+  reconciling: boolean;
+  visibleResultCount: number;
+}): boolean {
+  return !args.reconciling && args.visibleResultCount > 0;
+}
+
 export function ChatCompletionToast({ contained = false }: { contained?: boolean } = {}) {
   const currentSessionId = useChatStore((s) => s.currentSessionId);
+  const reconciling = useChatStore((s) => s.reconciling);
   const sessions = useChatStore((s) => s.sessions);
   const results = useChatStore((s) => s.sessionYamlResults);
   const completedUnreadSessionIds = useChatStore((s) => s.completedUnreadSessionIds);
@@ -992,7 +1142,14 @@ export function ChatCompletionToast({ contained = false }: { contained?: boolean
     [completedUnreadSessionIds, currentSessionId, dismissedIds, results],
   );
 
-  if (visibleResults.length === 0) return null;
+  if (
+    !shouldShowChatCompletionToast({
+      reconciling,
+      visibleResultCount: visibleResults.length,
+    })
+  ) {
+    return null;
+  }
 
   return (
     <div

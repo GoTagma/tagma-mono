@@ -28,6 +28,12 @@ import { existsSync, lstatSync, readdirSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { isPathWithin } from './path-utils.js';
 
+function sameResolvedPath(leftPath: string, rightPath: string): boolean {
+  const left = resolve(leftPath);
+  const right = resolve(rightPath);
+  return process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right;
+}
+
 /** Directory names under `.tagma/` that are NOT pipelines. */
 export const RESERVED_TAGMA_NAMES: ReadonlySet<string> = new Set([
   'logs',
@@ -310,7 +316,7 @@ export function assertPipelineYamlPath(workDir: string, absPath: string, label: 
   if (!isPathWithin(resolved, tagmaDir)) {
     throw new Error(`${label} must be inside the workspace .tagma directory.`);
   }
-  if (resolve(tagmaDir) === resolved) {
+  if (sameResolvedPath(tagmaDir, resolved)) {
     throw new Error(`${label} cannot be the .tagma directory itself.`);
   }
   if (!/\.ya?ml$/i.test(resolved)) {
@@ -323,7 +329,7 @@ export function assertPipelineYamlPath(workDir: string, absPath: string, label: 
   const parentDir = dirname(resolved);
   const parentName = basename(parentDir);
   // Exactly one level under .tagma/. Grand-parent must equal tagmaDir.
-  if (resolve(dirname(parentDir)) !== resolve(tagmaDir)) {
+  if (!sameResolvedPath(dirname(parentDir), tagmaDir)) {
     throw new Error(`${label} must sit one level under .tagma/ (as .tagma/<stem>/<stem>.yaml).`);
   }
   if (parentName !== fileStem) {
@@ -341,10 +347,10 @@ export function assertPipelineYamlPath(workDir: string, absPath: string, label: 
       }
       // If parent/file exist already, also ensure parentDir is actually a
       // directory and the yaml is a regular file.
-      if (segment === parentDir && !st.isDirectory()) {
+      if (sameResolvedPath(segment, parentDir) && !st.isDirectory()) {
         throw new Error(`${label} parent must be a directory.`);
       }
-      if (segment === resolved && !st.isFile()) {
+      if (sameResolvedPath(segment, resolved) && !st.isFile()) {
         throw new Error(`${label} must be a regular file.`);
       }
     } catch (err) {
@@ -373,10 +379,10 @@ export function assertPipelineFolderPath(
   if (!isPathWithin(resolved, tagmaDir)) {
     throw new Error(`${label} must be inside the workspace .tagma directory.`);
   }
-  if (resolve(tagmaDir) === resolved) {
+  if (sameResolvedPath(tagmaDir, resolved)) {
     throw new Error(`${label} cannot be the .tagma directory itself.`);
   }
-  if (resolve(dirname(resolved)) !== resolve(tagmaDir)) {
+  if (!sameResolvedPath(dirname(resolved), tagmaDir)) {
     throw new Error(`${label} must sit one level under .tagma/.`);
   }
   const stem = basename(resolved);

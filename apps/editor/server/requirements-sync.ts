@@ -116,9 +116,9 @@ function isMultilineScript(s: string): boolean {
 
 /**
  * Split a shell-style string on whitespace, respecting matched single / double
- * quotes. Backslash escapes and `$()` / backtick subshells are NOT honored —
- * Tagma never substitutes inside `command:` values, so the literal first token
- * is what the OS shell will pass to execve / CreateProcess.
+ * quotes. Backslash escapes and `$()` / backtick subshells are NOT honored.
+ * Tagma input placeholders are masked before scanning so a filter separator in
+ * `{{inputs.value | shellquote}}` cannot look like a shell pipeline.
  */
 function splitShellTokens(s: string): string[] {
   const out: string[] = [];
@@ -163,6 +163,9 @@ function splitShellTokens(s: string): string[] {
 }
 
 const COMMAND_SEPARATORS = new Set([';', '&&', '||', '|']);
+const TAGMA_INPUT_PLACEHOLDER_RE =
+  /\{\{\s*inputs\.[A-Za-z_][A-Za-z0-9_]*(?:\s*\|\s*[A-Za-z_][A-Za-z0-9_]*)?\s*\}\}/g;
+const TAGMA_INPUT_SENTINEL = '__tagma_input__';
 const GROUP_OPENERS = new Set(['(', '{']);
 const CONTROL_WORDS = new Set([
   'do',
@@ -257,7 +260,8 @@ function shellCommandTokens(s: string): string[] {
   let expectingCommand = true;
   let inEnvWrapper = false;
 
-  for (const rawTok of splitShellTokens(s.trim())) {
+  const command = s.trim().replace(TAGMA_INPUT_PLACEHOLDER_RE, TAGMA_INPUT_SENTINEL);
+  for (const rawTok of splitShellTokens(command)) {
     const tok = rawTok.trim();
     if (!tok) continue;
     if (COMMAND_SEPARATORS.has(tok)) {
@@ -272,6 +276,11 @@ function shellCommandTokens(s: string): string[] {
       continue;
     }
     if (isEnvAssignmentToken(tok)) {
+      continue;
+    }
+    if (tok === TAGMA_INPUT_SENTINEL) {
+      expectingCommand = false;
+      inEnvWrapper = false;
       continue;
     }
     if (inEnvWrapper && tok.startsWith('-')) {

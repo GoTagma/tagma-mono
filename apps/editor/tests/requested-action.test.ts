@@ -15,6 +15,16 @@ describe('requested action detection', () => {
     expect(isCreateNewPipelineRequest('请创建一个新的 deploy pipeline')).toBe(true);
   });
 
+  test('marks user-facing workflow wording as new pipeline creation', () => {
+    expect(
+      isCreateNewPipelineRequest(
+        'can you make me a workflow when triggered, fetches the news with links from Financial Times',
+      ),
+    ).toBe(true);
+    expect(isCreateNewPipelineRequest('build a workflow that saves a daily report')).toBe(true);
+    expect(isCreateNewPipelineRequest('add a task to the existing workflow')).toBe(false);
+  });
+
   test('does not mark pipeline subobject creation as new pipeline creation', () => {
     expect(isCreateNewPipelineRequest('create a pipeline task')).toBe(false);
     expect(isCreateNewPipelineRequest('create a new pipeline task')).toBe(false);

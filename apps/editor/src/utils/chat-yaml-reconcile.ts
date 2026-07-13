@@ -14,6 +14,8 @@ export interface ChatYamlSnapshot {
   workDir: string;
   activePath: string | null;
   revision: number | null;
+  /** Renderer-local edit sequence captured before this logical chat turn. */
+  localEditRevision?: number | null;
   activeYaml: string | null;
   activeLayout: {
     positions?: Record<string, { x: number; y?: number }>;
@@ -36,6 +38,47 @@ export type ChatYamlTarget =
       name: string;
       pipelineName: string | null;
     };
+
+export function shouldForkChatYamlResult(args: {
+  snapshot: ChatYamlSnapshot | null;
+  target: ChatYamlTarget;
+  currentPath: string | null;
+  currentRevision: number | null;
+  currentLocalEditRevision: number;
+  hasLocalChanges: boolean;
+}): boolean {
+  const startedPath = normalizePath(args.snapshot?.activePath);
+  if (
+    args.target.kind !== 'refresh-current' ||
+    !startedPath ||
+    normalizePath(args.target.path) !== startedPath
+  ) {
+    return false;
+  }
+
+  const pathMoved = normalizePath(args.currentPath) !== startedPath;
+  const serverRevisionChanged =
+    typeof args.snapshot?.revision === 'number' &&
+    typeof args.currentRevision === 'number' &&
+    args.snapshot.revision !== args.currentRevision;
+  const localRevisionChanged =
+    typeof args.snapshot?.localEditRevision === 'number' &&
+    args.snapshot.localEditRevision !== args.currentLocalEditRevision;
+
+  return pathMoved || serverRevisionChanged || localRevisionChanged || args.hasLocalChanges;
+}
+
+export function shouldAdoptChatYamlTargetOnCurrentCanvas(args: {
+  target: ChatYamlTarget;
+  currentPath: string | null;
+  forked: boolean;
+}): boolean {
+  return (
+    !args.forked &&
+    args.target.kind === 'refresh-current' &&
+    normalizePath(args.target.path) === normalizePath(args.currentPath)
+  );
+}
 
 export function detectChatYamlTarget(
   snapshot: ChatYamlSnapshot | null,

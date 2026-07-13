@@ -1,8 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 const { setClientWorkspace } = await import('../src/api/client');
-const { acquireChatYamlEditLock, releaseChatYamlEditLock, useYamlEditLockStore } =
-  await import('../src/store/yaml-edit-lock-store');
+const {
+  acquireChatYamlEditLock,
+  getLocalChatYamlEditLockLease,
+  releaseChatYamlEditLock,
+  useYamlEditLockStore,
+} = await import('../src/store/yaml-edit-lock-store');
 
 const originalFetch = globalThis.fetch;
 const originalSetInterval = globalThis.setInterval;
@@ -389,6 +393,23 @@ describe('YAML edit lock store workspace routing', () => {
     await releaseChatYamlEditLock(second);
 
     expect(requests[2]).toMatchObject({ method: 'DELETE', workspace: 'C:/repo-a' });
+  });
+
+  test('reuses the current lease for a logical-turn continuation without incrementing it', async () => {
+    setClientWorkspace('C:/repo-a');
+    useYamlEditLockStore.getState().syncActiveYamlPath('C:/repo-a/.tagma/alpha/alpha.yaml');
+
+    const acquired = await acquireChatYamlEditLock('initial turn');
+    const continued = getLocalChatYamlEditLockLease();
+
+    expect(continued).toEqual(acquired);
+    if (!continued) throw new Error('expected the active chat lease');
+    expect(requests.filter((request) => request.method === 'POST')).toHaveLength(1);
+
+    await releaseChatYamlEditLock(continued);
+
+    expect(requests.filter((request) => request.method === 'DELETE')).toHaveLength(1);
+    expect(useYamlEditLockStore.getState().local).toBe(false);
   });
 
   test('stale heartbeat failure does not clear a newer workspace lock', async () => {
