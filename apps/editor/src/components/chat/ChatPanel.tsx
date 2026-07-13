@@ -91,6 +91,36 @@ export interface FlowStep {
   status: FlowStepStatus;
 }
 
+export function resolveConversationFlowWheelScroll({
+  scrollLeft,
+  scrollWidth,
+  clientWidth,
+  deltaX,
+  deltaY,
+  deltaMode = 0,
+}: {
+  scrollLeft: number;
+  scrollWidth: number;
+  clientWidth: number;
+  deltaX: number;
+  deltaY: number;
+  deltaMode?: number;
+}): { scrollLeft: number; consumed: boolean } {
+  const maxScrollLeft = Math.max(0, scrollWidth - clientWidth);
+  const currentScrollLeft = Math.min(maxScrollLeft, Math.max(0, scrollLeft));
+  const wheelDelta = Math.abs(deltaX) > Math.abs(deltaY) ? deltaX : deltaY;
+  const deltaScale = deltaMode === 1 ? 16 : deltaMode === 2 ? clientWidth : 1;
+  const nextScrollLeft = Math.min(
+    maxScrollLeft,
+    Math.max(0, currentScrollLeft + wheelDelta * deltaScale),
+  );
+
+  return {
+    scrollLeft: nextScrollLeft,
+    consumed: nextScrollLeft !== currentScrollLeft,
+  };
+}
+
 function ConversationFlowBar() {
   const messages = useChatStore((s) => s.messages);
   const sending = useChatStore((s) => s.sending);
@@ -151,7 +181,33 @@ export function ConversationFlowBarView({
   steps: FlowStep[];
   queuedCount: number;
 }) {
-  if (steps.length === 0) return null;
+  const hasSteps = steps.length > 0;
+  const stepsScrollerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const scroller = stepsScrollerRef.current;
+    if (!scroller) return;
+
+    const handleWheel = (event: WheelEvent) => {
+      const next = resolveConversationFlowWheelScroll({
+        scrollLeft: scroller.scrollLeft,
+        scrollWidth: scroller.scrollWidth,
+        clientWidth: scroller.clientWidth,
+        deltaX: event.deltaX,
+        deltaY: event.deltaY,
+        deltaMode: event.deltaMode,
+      });
+      if (!next.consumed) return;
+
+      event.preventDefault();
+      scroller.scrollLeft = next.scrollLeft;
+    };
+
+    scroller.addEventListener('wheel', handleWheel, { passive: false });
+    return () => scroller.removeEventListener('wheel', handleWheel);
+  }, [hasSteps]);
+
+  if (!hasSteps) return null;
 
   const activeStep =
     [...steps].reverse().find((step) => step.status === 'active') ?? steps[steps.length - 1];
@@ -195,6 +251,7 @@ export function ConversationFlowBarView({
         />
       </div>
       <div
+        ref={stepsScrollerRef}
         className="mt-1.5 flex items-center gap-2 overflow-x-auto pb-0.5 text-[9px] font-mono"
         aria-label="Conversation flow steps"
       >

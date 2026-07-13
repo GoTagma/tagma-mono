@@ -4,6 +4,7 @@ import {
   buildConversationFlowSteps,
   ChatPanel,
   ConversationFlowBarView,
+  resolveConversationFlowWheelScroll,
   selectConversationFlowActivity,
   SessionYamlResultBubble,
   shouldShowChatCompletionToast,
@@ -252,6 +253,48 @@ describe('ChatPanel export affordance', () => {
     expect(html).toContain('Model');
     expect(html).not.toContain('Intent');
     expect(html).not.toContain('Context');
+  });
+
+  test('turns a vertical wheel gesture into horizontal conversation flow movement', () => {
+    expect(
+      resolveConversationFlowWheelScroll({
+        scrollLeft: 40,
+        scrollWidth: 320,
+        clientWidth: 120,
+        deltaX: 0,
+        deltaY: 36,
+      }),
+    ).toEqual({ scrollLeft: 76, consumed: true });
+    expect(
+      resolveConversationFlowWheelScroll({
+        scrollLeft: 40,
+        scrollWidth: 320,
+        clientWidth: 120,
+        deltaX: 0,
+        deltaY: -24,
+      }),
+    ).toEqual({ scrollLeft: 16, consumed: true });
+  });
+
+  test('lets page scrolling continue when the flow strip cannot move farther', () => {
+    expect(
+      resolveConversationFlowWheelScroll({
+        scrollLeft: 200,
+        scrollWidth: 320,
+        clientWidth: 120,
+        deltaX: 0,
+        deltaY: 36,
+      }),
+    ).toEqual({ scrollLeft: 200, consumed: false });
+    expect(
+      resolveConversationFlowWheelScroll({
+        scrollLeft: 0,
+        scrollWidth: 120,
+        clientWidth: 120,
+        deltaX: 0,
+        deltaY: -24,
+      }),
+    ).toEqual({ scrollLeft: 0, consumed: false });
   });
 
   test('generates conversation flow steps from actual OpenCode activity', () => {
