@@ -32,6 +32,8 @@
   command itself invokes `opencode`.
 - When the managed layers are intentionally absent in headless development, resolve the system
   fallback with `Bun.which('opencode')` before spawning so Windows `.cmd` shims work.
+- OpenCode reserves an agent's configured final `steps` iteration for a forced text-only summary.
+  A primary router that makes one `task` call needs `steps: 3`: delegate, relay the result, then cap.
 
 ## Windows Pipeline Paths
 

@@ -52,10 +52,15 @@ test('router prompt stays compact with the history comparison lane', () => {
   expect(buildTagmaRouterAgent().length).toBeLessThan(3000);
 });
 
-test('router has one bounded implementation handoff and never delegates discovery separately', () => {
+test('router reserves a normal synthesis step after its one bounded implementation handoff', () => {
   const doc = buildTagmaRouterAgent();
 
-  expect(doc).toContain('steps: 2');
+  // OpenCode treats the configured final step as a forced text-only
+  // max-steps summary. The router needs one model step to delegate and a
+  // second normal step to relay the completed specialist result, so the cap
+  // must leave a third step in reserve.
+  expect(doc).toContain('steps: 3');
+  expect(doc).not.toContain('steps: 2');
   expect(doc).toContain('Never delegate preliminary inspection or workspace discovery');
   expect(doc).toContain('one specialist call owns both lookup and implementation');
   expect(doc).toContain('Do not add implementation choices that the user did not provide');
@@ -435,6 +440,7 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
 
   expect(existsSync(routerAgent)).toBe(true);
   expect(readFileSync(routerAgent, 'utf8')).toContain('mode: primary');
+  expect(readFileSync(routerAgent, 'utf8')).toContain('steps: 3');
   expect(readFileSync(routerAgent, 'utf8')).toContain('tagma-pipeline');
   expect(existsSync(pipelineAgent)).toBe(true);
   expect(readFileSync(pipelineAgent, 'utf8')).toContain('name: tagma-pipeline');
@@ -527,6 +533,16 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
     'Prefer CLI-style helpers for stateless, idempotent work',
   );
   expect(seedOpencodeArtifacts(dir)).toBe(false);
+
+  // Existing workspaces receive the corrected router budget on their next
+  // chat bootstrap instead of retaining the stale two-step seed forever.
+  writeFileSync(
+    routerAgent,
+    readFileSync(routerAgent, 'utf8').replace('steps: 3', 'steps: 2'),
+    'utf8',
+  );
+  expect(seedOpencodeArtifacts(dir)).toBe(true);
+  expect(readFileSync(routerAgent, 'utf8')).toContain('steps: 3');
 });
 
 test('seedOpencodeArtifacts rewrites the pipeline agent when Python tools are enabled', () => {

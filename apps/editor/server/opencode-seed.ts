@@ -38,10 +38,14 @@ export const TAGMA_CONTEXT_PACKAGER_AGENT = 'tagma-context-packager';
 export const TAGMA_PIPELINE_SECTION_BUILDER_AGENT = 'tagma-pipeline-section-builder';
 
 export function buildTagmaRouterAgent(): string {
+  // OpenCode reserves the configured final step for its forced text-only
+  // max-steps summary. Keep one step for delegation, one for the specialist
+  // result, and a third as the cap so the normal result is not mislabeled as
+  // an exhausted task.
   return `---
 description: Classify Tagma chat turns and delegate to the responsible specialist.
 mode: primary
-steps: 2
+steps: 3
 permission:
   read: deny
   glob: deny
