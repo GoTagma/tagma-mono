@@ -14,12 +14,18 @@ export interface ModelPick {
   modelID: string;
 }
 
-export type ChatReasoningEffort = 'low' | 'medium' | 'high';
+/**
+ * OpenCode model variant id. The historical field name is kept in persisted
+ * settings for compatibility, but values are model-provided (for example
+ * `minimal`, `xhigh`, `max`, or a custom variant), not a fixed Tagma enum.
+ * `null` means to omit `variant` and use the model/provider default.
+ */
+export type ChatReasoningEffort = string | null;
 
 export interface WorkspacePersistedShape {
   model?: ModelPick | null;
   agent?: string | null;
-  reasoningEffort?: ChatReasoningEffort | null;
+  reasoningEffort?: ChatReasoningEffort;
 }
 
 interface PersistedShape {
@@ -56,7 +62,9 @@ export function savePersisted(workspaceKey: string, patch: WorkspacePersistedSha
 }
 
 export function isChatReasoningEffort(value: unknown): value is ChatReasoningEffort {
-  return value === 'low' || value === 'medium' || value === 'high';
+  return (
+    value === null || (typeof value === 'string' && value.trim().length > 0 && value.length <= 256)
+  );
 }
 
 /** Compare two model picks for structural equality. */

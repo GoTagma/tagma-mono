@@ -18,7 +18,7 @@ import {
   type ProviderAuthMethod,
 } from '../api/opencode-chat';
 import type { Provider } from '../api/opencode-chat';
-import { savePersisted, type ModelPick } from './chat-persist';
+import { savePersisted, type ChatReasoningEffort, type ModelPick } from './chat-persist';
 
 export interface ProviderCatalogEntry {
   id: string;
@@ -147,6 +147,12 @@ export function buildProvidersFromV2Catalog(
       status: model.status,
       options: legacyModel?.options ?? modelRequestOptions(model),
       headers: legacyModel?.headers ?? model.request.headers,
+      variants: Object.fromEntries(
+        (model.variants ?? []).map(({ id, ...variant }) => [
+          id,
+          variant as Record<string, unknown>,
+        ]),
+      ),
     };
     modelsByProvider.set(model.providerID, providerModels);
   }
@@ -285,6 +291,28 @@ function modelPickExists(providers: Provider[], pick: ModelPick): boolean {
   );
 }
 
+/** Return the selected model's variants in OpenCode's catalog order. */
+export function modelVariantIds(providers: readonly Provider[], model: ModelPick | null): string[] {
+  if (!model) return [];
+  const provider = providers.find((entry) => entry.id === model.providerID);
+  const variants = provider?.models?.[model.modelID]?.variants;
+  if (!variants) return [];
+  return Object.keys(variants).filter((variant) => variant.trim().length > 0);
+}
+
+/**
+ * Keep a selected variant only when the current model advertises it. `null`
+ * means OpenCode should use the model/provider default and is always valid.
+ */
+export function reconcileModelVariant(
+  providers: readonly Provider[],
+  model: ModelPick | null,
+  variant: ChatReasoningEffort,
+): ChatReasoningEffort {
+  if (variant === null) return null;
+  return modelVariantIds(providers, model).includes(variant) ? variant : null;
+}
+
 /**
  * Re-fetch `config.providers()` + the provider catalog after a successful
  * write (setAuth / oauth callback). Updating both in lockstep keeps the
@@ -294,11 +322,12 @@ function modelPickExists(providers: Provider[], pick: ModelPick): boolean {
  * install) auto-lands on a real model the instant they finish connecting.
  */
 export async function refreshProvidersAndAuth(
-  get: () => { model: ModelPick | null },
+  get: () => { model: ModelPick | null; reasoningEffort: ChatReasoningEffort },
   set: (patch: {
     providers: Provider[];
     providerCatalog: ProviderCatalogEntry[];
     model?: ModelPick | null;
+    reasoningEffort?: ChatReasoningEffort;
   }) => void,
   expectedWorkspaceKey = getOpencodeWorkspaceKey(),
 ): Promise<void> {
@@ -312,10 +341,12 @@ export async function refreshProvidersAndAuth(
   if (getOpencodeWorkspaceKey() !== expectedWorkspaceKey) return;
   const providers = providersRes.providers;
   const nextModel = reconcileModelPick(providers, providersRes.default ?? {}, get().model);
+  const nextReasoningEffort = reconcileModelVariant(providers, nextModel, get().reasoningEffort);
   const patch: {
     providers: Provider[];
     providerCatalog: ProviderCatalogEntry[];
     model?: ModelPick | null;
+    reasoningEffort?: ChatReasoningEffort;
   } = { providers, providerCatalog };
   if (
     nextModel?.providerID !== get().model?.providerID ||
@@ -323,6 +354,10 @@ export async function refreshProvidersAndAuth(
   ) {
     patch.model = nextModel;
     if (nextModel) savePersisted(expectedWorkspaceKey, { model: nextModel });
+  }
+  if (nextReasoningEffort !== get().reasoningEffort) {
+    patch.reasoningEffort = nextReasoningEffort;
+    savePersisted(expectedWorkspaceKey, { reasoningEffort: nextReasoningEffort });
   }
   set(patch);
 }

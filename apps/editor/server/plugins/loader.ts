@@ -897,7 +897,11 @@ export interface OpenCodeChatModelSelection {
   modelID: string;
 }
 
-export type OpenCodeChatReasoningEffort = 'low' | 'medium' | 'high';
+/**
+ * OpenCode model variant id. Kept under the historical reasoning-effort
+ * settings key for compatibility; `null` delegates to the model default.
+ */
+export type OpenCodeChatReasoningEffort = string | null;
 
 export function parseOpenCodeChatModelSelection(value: unknown): OpenCodeChatModelSelection | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -911,7 +915,9 @@ export function parseOpenCodeChatModelSelection(value: unknown): OpenCodeChatMod
 export function isValidOpenCodeChatReasoningEffort(
   value: unknown,
 ): value is OpenCodeChatReasoningEffort {
-  return value === 'low' || value === 'medium' || value === 'high';
+  return (
+    value === null || (typeof value === 'string' && value.trim().length > 0 && value.length <= 256)
+  );
 }
 
 export function parsePythonAgentSettings(value: unknown): PythonAgentSettings | null {
@@ -994,7 +1000,7 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   viewMode: 'production',
   pythonAgent: DEFAULT_PYTHON_AGENT_SETTINGS,
   opencodeChatModel: null,
-  opencodeChatReasoningEffort: 'medium',
+  opencodeChatReasoningEffort: null,
   chatContextLimitEnabled: false,
   chatContextRounds: 0,
 };

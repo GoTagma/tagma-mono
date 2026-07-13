@@ -28,8 +28,10 @@ import {
 import type {
   Agent as SdkAgent,
   Message,
+  Model as SdkModel,
   Part,
   ApiAuth as SdkApiAuth,
+  Provider as SdkProvider,
   ProviderAuthMethod as SdkProviderAuthMethod,
 } from '@opencode-ai/sdk/client';
 import { getClientAuthToken, getClientWorkspace } from './client';
@@ -45,6 +47,20 @@ import { describeOpencodeError, toOpencodeError } from '../../shared/opencode-er
  * blocklists — and picks up any future hidden agents automatically.
  */
 export type Agent = SdkAgent & { hidden?: boolean };
+
+/**
+ * The legacy SDK's `config.providers()` model omits variants, while the v2
+ * model catalog exposes the exact provider/model-specific variant set. Keep
+ * that metadata on the shared picker shape so callers do not have to fall
+ * back to a fixed reasoning-effort enum.
+ */
+export type Model = SdkModel & {
+  variants?: Record<string, Record<string, unknown>>;
+};
+
+export type Provider = Omit<SdkProvider, 'models'> & {
+  models: Record<string, Model>;
+};
 
 /**
  * Auth-method prompt shape. Opencode 1.14.x extended `/provider/auth` to let a
@@ -116,8 +132,6 @@ export interface SubtaskPart {
 }
 
 export type {
-  Provider,
-  Model,
   Session,
   Message,
   UserMessage,

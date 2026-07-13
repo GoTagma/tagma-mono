@@ -38,6 +38,7 @@ import { MessageBubble } from './MessageBubble';
 import { BotBridgeStatusBadge } from './BotBridgeStatusBadge';
 import { FloatingPanel } from './FloatingPanel';
 import { ModelPickerDropdown } from './ModelPickerDropdown';
+import { modelVariantIds, reconcileModelVariant } from '../../store/chat-provider-catalog';
 import {
   chatPipelineDisplayName,
   selectVisibleChatCompletionResults,
@@ -631,7 +632,7 @@ function ChatHeader() {
     <header className="relative z-20 flex items-center gap-1 px-2 h-7 border-b border-tagma-border bg-tagma-surface shrink-0">
       <div className="flex items-center gap-1 min-w-0 flex-1">
         <ModelPicker disabled={modelSelectionBlocked} />
-        <ReasoningEffortPicker disabled={modelSelectionBlocked} />
+        <ModelVariantPicker disabled={modelSelectionBlocked} />
       </div>
       <BotBridgeStatusBadge />
       <button
@@ -755,33 +756,25 @@ function ModelPicker({ disabled = false }: { disabled?: boolean }) {
   );
 }
 
-const REASONING_EFFORT_OPTIONS: Array<{
-  value: ChatReasoningEffort;
-  label: string;
-  hint: string;
-}> = [
-  { value: 'low', label: 'Low', hint: 'Minimal reasoning' },
-  { value: 'medium', label: 'Medium', hint: 'Default reasoning' },
-  { value: 'high', label: 'High', hint: 'More reasoning' },
-];
-
-function ReasoningEffortPicker({ disabled = false }: { disabled?: boolean }) {
+function ModelVariantPicker({ disabled = false }: { disabled?: boolean }) {
   const providers = useChatStore((s) => s.providers);
   const model = useChatStore((s) => s.model);
   const reasoningEffort = useChatStore((s) => s.reasoningEffort);
   const setReasoningEffort = useChatStore((s) => s.setReasoningEffort);
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
-  const supportsReasoning = useMemo(() => {
-    if (!model) return false;
-    const provider = providers.find((entry) => entry.id === model.providerID);
-    return provider?.models?.[model.modelID]?.capabilities?.reasoning === true;
-  }, [model, providers]);
-  if (!supportsReasoning) return null;
+  const variants = useMemo(() => modelVariantIds(providers, model), [model, providers]);
+  if (variants.length === 0) return null;
 
-  const selected =
-    REASONING_EFFORT_OPTIONS.find((option) => option.value === reasoningEffort) ??
-    REASONING_EFFORT_OPTIONS[1];
+  const selectedVariant = reconcileModelVariant(providers, model, reasoningEffort);
+  const options: Array<{ value: ChatReasoningEffort; label: string }> = [
+    { value: null, label: 'Default' },
+    ...variants.map((variant) => ({
+      value: variant,
+      label: variant,
+    })),
+  ];
+  const selected = options.find((option) => option.value === selectedVariant) ?? options[0];
 
   return (
     <>
@@ -790,8 +783,8 @@ function ReasoningEffortPicker({ disabled = false }: { disabled?: boolean }) {
         type="button"
         onClick={() => setOpen((v) => !v)}
         disabled={disabled}
-        title={`Reasoning effort: ${selected.label}`}
-        aria-label="Select reasoning effort"
+        title={`Model variant: ${selected.label}`}
+        aria-label="Select model variant"
         className="shrink-0 flex items-center gap-1 px-1.5 h-[22px] border border-tagma-border/70 text-[10px] font-mono text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-tagma-muted disabled:hover:border-tagma-border/70 transition-colors"
       >
         <Brain size={10} className="shrink-0" />
@@ -802,15 +795,15 @@ function ReasoningEffortPicker({ disabled = false }: { disabled?: boolean }) {
         anchor={anchor}
         open={open && !disabled}
         onClose={() => setOpen(false)}
-        width={180}
-        maxHeight={160}
+        width={200}
+        maxHeight={240}
       >
         <div className="py-1">
-          {REASONING_EFFORT_OPTIONS.map((option) => {
-            const active = option.value === reasoningEffort;
+          {options.map((option) => {
+            const active = option.value === selectedVariant;
             return (
               <button
-                key={option.value}
+                key={option.value === null ? 'default:null' : `variant:${option.value}`}
                 type="button"
                 onClick={() => {
                   setReasoningEffort(option.value);
@@ -819,14 +812,20 @@ function ReasoningEffortPicker({ disabled = false }: { disabled?: boolean }) {
                 className={`w-full flex items-center gap-1.5 px-2 py-1.5 text-left text-[10px] font-mono hover:bg-tagma-border/30 transition-colors ${
                   active ? 'text-tagma-text bg-tagma-border/20' : 'text-tagma-muted'
                 }`}
-                title={option.hint}
+                title={
+                  option.value === null
+                    ? 'Use the model default'
+                    : `Use OpenCode variant ${option.value}`
+                }
               >
                 <Check
                   size={10}
                   className={`shrink-0 ${active ? 'text-tagma-ready' : 'text-transparent'}`}
                 />
-                <span className="w-12 shrink-0">{option.label}</span>
-                <span className="min-w-0 flex-1 truncate text-tagma-muted/60">{option.hint}</span>
+                <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                {option.value === null && (
+                  <span className="shrink-0 text-tagma-muted/60">model default</span>
+                )}
               </button>
             );
           })}

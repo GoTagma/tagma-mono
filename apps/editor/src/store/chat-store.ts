@@ -85,6 +85,7 @@ import {
   fetchConfiguredProviderModels,
   fetchProviderCatalog,
   reconcileModelPick,
+  reconcileModelVariant,
   refreshProvidersAndAuth,
   type ProviderCatalogEntry,
 } from './chat-provider-catalog';
@@ -490,12 +491,7 @@ interface SessionCreateBodyWithMetadata {
 
 const FORCED_CHAT_AGENT = 'tagma-router';
 const DESKTOP_CHAT_TITLE_MAX_LENGTH = 80;
-const DEFAULT_CHAT_REASONING_EFFORT: ChatReasoningEffort = 'medium';
-const CHAT_REASONING_EFFORT_TO_VARIANT: Record<ChatReasoningEffort, string | null> = {
-  low: 'minimal',
-  medium: null,
-  high: 'high',
-};
+const DEFAULT_CHAT_REASONING_EFFORT: ChatReasoningEffort = null;
 let finishedTurnSeq = 0;
 // Editable instruction seeded into the composer when error/bug context is
 // attached via "Ask AI" and the composer is empty. The user can edit or
@@ -505,19 +501,6 @@ const DEFAULT_BUG_INSTRUCTION = 'Fix this bug.';
 function makeFinishedTurn(input: Omit<ChatFinishedTurn, 'id'>): ChatFinishedTurn {
   finishedTurnSeq += 1;
   return { ...input, id: `finished_${input.endedAt}_${finishedTurnSeq}` };
-}
-
-function selectedModelSupportsReasoning(
-  model: ModelPick | null,
-  providers: readonly Provider[],
-): boolean {
-  if (!model) return false;
-  const provider = providers.find((entry) => entry.id === model.providerID);
-  return provider?.models?.[model.modelID]?.capabilities?.reasoning === true;
-}
-
-function chatReasoningEffortToVariant(effort: ChatReasoningEffort): string | null {
-  return CHAT_REASONING_EFFORT_TO_VARIANT[effort];
 }
 
 function desktopChatTitleFromPrompt(text: string): string | null {
@@ -599,25 +582,18 @@ async function loadEditorSettingsForChat(): Promise<EditorSettings | null> {
   return useEditorSettingsStore.getState().load();
 }
 
-function persistModelToEditorSettings(model: ModelPick | null): void {
-  void api
-    .updateEditorSettings({ opencodeChatModel: model })
-    .then((settings) => {
-      useEditorSettingsStore.getState().updateLocal(settings);
-    })
-    .catch((err) => {
-      console.warn('[chat] failed to persist selected opencode model:', err);
-    });
-}
+type ChatSelectionSettingsPatch = Partial<
+  Pick<EditorSettings, 'opencodeChatModel' | 'opencodeChatReasoningEffort'>
+>;
 
-function persistReasoningEffortToEditorSettings(effort: ChatReasoningEffort): void {
+function persistChatSelectionToEditorSettings(patch: ChatSelectionSettingsPatch): void {
   void api
-    .updateEditorSettings({ opencodeChatReasoningEffort: effort })
+    .updateEditorSettings(patch)
     .then((settings) => {
       useEditorSettingsStore.getState().updateLocal(settings);
     })
     .catch((err) => {
-      console.warn('[chat] failed to persist selected opencode reasoning effort:', err);
+      console.warn('[chat] failed to persist selected opencode model/variant:', err);
     });
 }
 
@@ -2695,9 +2671,7 @@ async function promptOpencode(
       shouldApplyPromptTitle ? promptTitle : undefined,
     );
 
-    const reasoningVariant = selectedModelSupportsReasoning(model, providers)
-      ? chatReasoningEffortToVariant(reasoningEffort)
-      : null;
+    const reasoningVariant = reconcileModelVariant(providers, model, reasoningEffort);
     const promptBody: {
       model: ModelPick;
       agent?: string;
@@ -3315,18 +3289,34 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       set({ sendError: chatTurnBlockedMessage() });
       return;
     }
-    set({ model: m });
-    savePersisted(getOpencodeWorkspaceKey(), { model: m });
-    persistModelToEditorSettings(m);
+    const current = get();
+    const nextReasoningEffort = reconcileModelVariant(
+      current.providers,
+      m,
+      current.reasoningEffort,
+    );
+    set({ model: m, reasoningEffort: nextReasoningEffort });
+    savePersisted(getOpencodeWorkspaceKey(), {
+      model: m,
+      reasoningEffort: nextReasoningEffort,
+    });
+    persistChatSelectionToEditorSettings({
+      opencodeChatModel: m,
+      ...(nextReasoningEffort !== current.reasoningEffort
+        ? { opencodeChatReasoningEffort: nextReasoningEffort }
+        : {}),
+    });
   },
   setReasoningEffort: (effort) => {
     if (isChatModelSelectionBlocked(get())) {
       set({ sendError: chatTurnBlockedMessage() });
       return;
     }
-    set({ reasoningEffort: effort });
-    savePersisted(getOpencodeWorkspaceKey(), { reasoningEffort: effort });
-    persistReasoningEffortToEditorSettings(effort);
+    const state = get();
+    const nextReasoningEffort = reconcileModelVariant(state.providers, state.model, effort);
+    set({ reasoningEffort: nextReasoningEffort });
+    savePersisted(getOpencodeWorkspaceKey(), { reasoningEffort: nextReasoningEffort });
+    persistChatSelectionToEditorSettings({ opencodeChatReasoningEffort: nextReasoningEffort });
   },
 
   // Initial value — bootstrap() will overwrite this with 'tagma-router' once
@@ -3766,20 +3756,26 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const nextModel = providersLoad.ok
       ? reconcileModelPick(providers, providersRes.default ?? {}, persistedModel)
       : persistedModel;
-    const nextReasoningEffort = persistedReasoningEffort;
+    const nextReasoningEffort = providersLoad.ok
+      ? reconcileModelVariant(providers, nextModel, persistedReasoningEffort)
+      : persistedReasoningEffort;
+    const editorSettingsPatch: ChatSelectionSettingsPatch = {};
     if (providersLoad.ok) {
       if (!sameModelPick(nextModel, wsPersisted.model)) {
         savePersisted(workspaceKey, { model: nextModel });
       }
       if (!sameModelPick(nextModel, settingsModel)) {
-        persistModelToEditorSettings(nextModel);
+        editorSettingsPatch.opencodeChatModel = nextModel;
       }
     }
     if (wsPersisted.reasoningEffort !== nextReasoningEffort) {
       savePersisted(workspaceKey, { reasoningEffort: nextReasoningEffort });
     }
     if (settingsReasoningEffort !== nextReasoningEffort) {
-      persistReasoningEffortToEditorSettings(nextReasoningEffort);
+      editorSettingsPatch.opencodeChatReasoningEffort = nextReasoningEffort;
+    }
+    if (Object.keys(editorSettingsPatch).length > 0) {
+      persistChatSelectionToEditorSettings(editorSettingsPatch);
     }
 
     // Agent is hard-wired to the `tagma-router` custom agent

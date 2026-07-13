@@ -9,6 +9,9 @@
   pending prompt, queue, reconciliation, or flush may still block them.
 - Provider connection and OpenCode runtime mutations use the broader lock and must remain
   blocked while any conversation is active.
+- Chat model-variant choices come from each model's v2 OpenCode `variants` catalog. Preserve
+  those ids through the legacy provider adapter; `null` means model default. Do not restore a
+  fixed cross-model reasoning-effort enum.
 
 ## Chat YAML Branch Isolation
 

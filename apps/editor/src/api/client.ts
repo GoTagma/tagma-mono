@@ -617,7 +617,8 @@ export interface OpenCodeChatModelSelection {
   modelID: string;
 }
 
-export type OpenCodeChatReasoningEffort = 'low' | 'medium' | 'high';
+/** OpenCode model variant id; null delegates to the model/provider default. */
+export type OpenCodeChatReasoningEffort = string | null;
 
 export interface EditorSettings {
   /**

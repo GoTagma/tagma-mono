@@ -2,7 +2,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test
 import type { Provider, ProviderModelCatalogV2Snapshot, Session } from '../src/api/opencode-chat';
 import {
   buildProvidersFromV2Catalog,
+  modelVariantIds,
   reconcileModelPick,
+  reconcileModelVariant,
 } from '../src/store/chat-provider-catalog';
 
 class MemoryStorage {
@@ -48,7 +50,7 @@ const sessionDeleteRequests: string[] = [];
 const sessionCreateRequests: Array<{ url: string; body: Record<string, unknown> }> = [];
 const sessionUpdateRequests: Array<{ url: string; body: Record<string, unknown> }> = [];
 let editorSettingsModel: { providerID: string; modelID: string } | null = null;
-let editorSettingsReasoningEffort: 'low' | 'medium' | 'high' = 'medium';
+let editorSettingsReasoningEffort: string | null = null;
 let providersShouldFail = false;
 let sessionCreateShouldFail = false;
 const originalFetch = globalThis.fetch;
@@ -136,9 +138,10 @@ beforeAll(() => {
         editorSettingsModel = patch.opencodeChatModel ?? null;
       }
       if (
-        patch.opencodeChatReasoningEffort === 'low' ||
-        patch.opencodeChatReasoningEffort === 'medium' ||
-        patch.opencodeChatReasoningEffort === 'high'
+        Object.prototype.hasOwnProperty.call(patch, 'opencodeChatReasoningEffort') &&
+        (patch.opencodeChatReasoningEffort === null ||
+          (typeof patch.opencodeChatReasoningEffort === 'string' &&
+            patch.opencodeChatReasoningEffort.length > 0))
       ) {
         editorSettingsReasoningEffort = patch.opencodeChatReasoningEffort;
       }
@@ -324,6 +327,23 @@ function modelDef(id: string) {
   };
 }
 
+function providerWithVariants(providerID: string, modelID: string, variants: string[]): Provider {
+  return {
+    id: providerID,
+    name: providerID,
+    source: 'api',
+    env: [],
+    options: {},
+    models: {
+      [modelID]: {
+        ...modelDef(modelID),
+        providerID,
+        variants: Object.fromEntries(variants.map((variant) => [variant, {}])),
+      },
+    },
+  } as unknown as Provider;
+}
+
 function v2CatalogBody<T>(baseUrl: string, data: T) {
   return {
     location: {
@@ -453,7 +473,7 @@ afterEach(() => {
   sessionCreateRequests.length = 0;
   sessionUpdateRequests.length = 0;
   editorSettingsModel = null;
-  editorSettingsReasoningEffort = 'medium';
+  editorSettingsReasoningEffort = null;
   providersShouldFail = false;
   sessionCreateShouldFail = false;
   setClientWorkspace(null);
@@ -465,7 +485,7 @@ afterEach(() => {
     providers: [],
     agents: [],
     model: null,
-    reasoningEffort: 'medium',
+    reasoningEffort: null,
     sessions: [],
     sessionStates: {},
     currentSessionId: null,
@@ -510,6 +530,45 @@ describe('chat model persistence', () => {
       },
       limit: { context: 200_000, output: 8_192 },
     });
+  });
+
+  test('preserves each models own OpenCode variants from the v2 catalog', () => {
+    const openaiModel = {
+      ...v2Model('openai', 'gpt-5'),
+      variants: [
+        { id: 'minimal', headers: {}, body: { reasoningEffort: 'minimal' } },
+        { id: 'xhigh', headers: {}, body: { reasoningEffort: 'xhigh' } },
+      ],
+    };
+    const anthropicModel = {
+      ...v2Model('anthropic', 'claude-opus'),
+      variants: [
+        { id: 'high', headers: {}, body: { thinking: { type: 'enabled' } } },
+        { id: 'max', headers: {}, body: { thinking: { type: 'enabled' } } },
+      ],
+    };
+    const providers = buildProvidersFromV2Catalog({
+      providers: [v2Provider('openai'), v2Provider('anthropic')],
+      models: [openaiModel, anthropicModel],
+    });
+
+    expect(modelVariantIds(providers, { providerID: 'openai', modelID: 'gpt-5' })).toEqual([
+      'minimal',
+      'xhigh',
+    ]);
+    expect(modelVariantIds(providers, { providerID: 'anthropic', modelID: 'claude-opus' })).toEqual(
+      ['high', 'max'],
+    );
+    expect(
+      reconcileModelVariant(
+        providers,
+        { providerID: 'anthropic', modelID: 'claude-opus' },
+        'xhigh',
+      ),
+    ).toBeNull();
+    expect(
+      reconcileModelVariant(providers, { providerID: 'anthropic', modelID: 'claude-opus' }, 'max'),
+    ).toBe('max');
   });
 
   test('keeps configured providers that are only present in the legacy catalog', () => {
@@ -678,6 +737,10 @@ describe('chat model persistence', () => {
   });
 
   test('persists the selected reasoning effort per workspace', () => {
+    useChatStore.setState({
+      providers: [providerWithVariants('openai', 'gpt-5', ['low', 'high'])],
+      model: { providerID: 'openai', modelID: 'gpt-5' },
+    } as never);
     setClientWorkspace('C:/repo-a');
     useChatStore.getState().setReasoningEffort('high');
     setClientWorkspace('C:/repo-b');
@@ -694,6 +757,10 @@ describe('chat model persistence', () => {
   });
 
   test('mirrors the selected reasoning effort to workspace editor settings', async () => {
+    useChatStore.setState({
+      providers: [providerWithVariants('openai', 'gpt-5', ['high'])],
+      model: { providerID: 'openai', modelID: 'gpt-5' },
+    } as never);
     setClientWorkspace('C:/repo-a');
 
     useChatStore.getState().setReasoningEffort('high');
@@ -701,6 +768,29 @@ describe('chat model persistence', () => {
 
     expect(editorSettingsPatches).toEqual([{ opencodeChatReasoningEffort: 'high' }]);
     expect(editorSettingsPatchHeaders[0]?.['X-Tagma-Workspace']).toBe('C:/repo-a');
+  });
+
+  test('falls back to the model default when switching to a model without the selected variant', async () => {
+    setClientWorkspace('C:/repo-a');
+    useChatStore.setState({
+      providers: [
+        providerWithVariants('openai', 'gpt-5', ['low', 'xhigh']),
+        providerWithVariants('anthropic', 'claude-opus', ['high', 'max']),
+      ],
+      model: { providerID: 'openai', modelID: 'gpt-5' },
+      reasoningEffort: 'xhigh',
+    } as never);
+
+    useChatStore.getState().setModel({ providerID: 'anthropic', modelID: 'claude-opus' });
+    await Promise.resolve();
+
+    expect(useChatStore.getState().reasoningEffort).toBeNull();
+    expect(editorSettingsPatches).toEqual([
+      {
+        opencodeChatModel: { providerID: 'anthropic', modelID: 'claude-opus' },
+        opencodeChatReasoningEffort: null,
+      },
+    ]);
   });
 
   test('does not change models while an OpenCode turn is in flight', async () => {
@@ -763,8 +853,12 @@ describe('chat model persistence', () => {
     useChatStore.setState({
       currentSessionId: 'running-session',
       sessions: [{ id: 'running-session' } as Session],
+      providers: [
+        providerWithVariants('anthropic', 'claude', ['high', 'max']),
+        providerWithVariants('openai', 'gpt-5', ['low', 'high', 'xhigh']),
+      ],
       model: { providerID: 'anthropic', modelID: 'claude' },
-      reasoningEffort: 'medium',
+      reasoningEffort: null,
       sendError: null,
       sending: true,
       pendingUserText: 'background prompt',
@@ -789,8 +883,12 @@ describe('chat model persistence', () => {
     useChatStore.setState({
       currentSessionId: 'running-session',
       sessions: [{ id: 'running-session' } as Session, { id: 'existing' } as Session],
+      providers: [
+        providerWithVariants('anthropic', 'claude', ['high', 'max']),
+        providerWithVariants('openai', 'gpt-5', ['low', 'high', 'xhigh']),
+      ],
       model: { providerID: 'anthropic', modelID: 'claude' },
-      reasoningEffort: 'medium',
+      reasoningEffort: null,
       sendError: null,
       sending: true,
       pendingUserText: 'background prompt',
@@ -869,7 +967,7 @@ describe('chat model persistence', () => {
     await firstSend;
   });
 
-  test('sends selected high reasoning effort as opencode variant for reasoning models', async () => {
+  test('sends the selected model-provided OpenCode variant without a fixed effort map', async () => {
     const repo = 'C:/reasoning-repo';
     const baseUrl = 'http://opencode-reasoning.test';
     workspaceBaseUrls.set(repo, baseUrl);
@@ -877,29 +975,48 @@ describe('chat model persistence', () => {
     useChatStore.setState({
       providers: [
         {
-          id: 'openai',
-          name: 'OpenAI',
+          id: 'anthropic',
+          name: 'Anthropic',
           source: 'api',
           env: [],
           options: {},
           models: {
-            'gpt-5': {
-              ...modelDef('gpt-5'),
-              capabilities: { reasoning: true },
+            'claude-opus': {
+              ...modelDef('claude-opus'),
+              variants: { high: {}, max: {} },
             },
           },
         } as unknown as Provider,
       ],
-      model: { providerID: 'openai', modelID: 'gpt-5' },
-      reasoningEffort: 'high',
+      model: { providerID: 'anthropic', modelID: 'claude-opus' },
+      reasoningEffort: 'max',
       agent: 'tagma-router',
       currentSessionId: 'existing',
     } as never);
 
-    await useChatStore.getState().send('think harder');
+    await useChatStore.getState().send('think as hard as possible');
 
     expect(promptAsyncRequests).toEqual([`${baseUrl}/session/existing/prompt_async`]);
-    expect(promptAsyncBodies[0]?.variant).toBe('high');
+    expect(promptAsyncBodies[0]?.variant).toBe('max');
+  });
+
+  test('omits a persisted variant that the selected model does not advertise', async () => {
+    const repo = 'C:/stale-variant-repo';
+    const baseUrl = 'http://opencode-stale-variant.test';
+    workspaceBaseUrls.set(repo, baseUrl);
+    setClientWorkspace(repo);
+    useChatStore.setState({
+      providers: [providerWithVariants('anthropic', 'claude-opus', ['high', 'max'])],
+      model: { providerID: 'anthropic', modelID: 'claude-opus' },
+      reasoningEffort: 'xhigh',
+      agent: 'tagma-router',
+      currentSessionId: 'existing',
+    } as never);
+
+    await useChatStore.getState().send('use the safe default');
+
+    expect(promptAsyncRequests).toEqual([`${baseUrl}/session/existing/prompt_async`]);
+    expect(promptAsyncBodies[0]).not.toHaveProperty('variant');
   });
 
   test('restores the selected model from workspace editor settings when browser storage is empty', async () => {
