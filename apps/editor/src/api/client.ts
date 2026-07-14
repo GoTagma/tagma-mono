@@ -127,6 +127,55 @@ export interface WorkspaceYamlEntry {
   size: number;
 }
 
+export interface ChatYamlStageEntry extends WorkspaceYamlEntry {
+  stagedPath: string;
+  relativePath: string;
+  sourcePath: string | null;
+  requirementsHash: string | null;
+}
+
+export interface ChatYamlStageDescriptor {
+  id: string;
+  rootDir: string;
+  baseWorkspaceDir: string;
+  agentWorkspaceDir: string;
+  agentTagmaDir: string;
+  activeRelativePath: string | null;
+  activeStagedPath: string | null;
+  entries: ChatYamlStageEntry[];
+}
+
+export type ChatYamlStageConflict =
+  | 'local-branch-changed'
+  | 'source-changed-on-disk'
+  | 'path-moved'
+  | 'compile-failed'
+  | 'destination-exists';
+
+export interface ChatYamlStageFinalizeInput {
+  stageId: string;
+  relativePath: string;
+  localBranch?: {
+    sourcePath: string;
+    yaml: string;
+    layout?: EditorLayout | null;
+    changed: boolean;
+  } | null;
+  forceFork?: boolean;
+  forceForkReason?: 'path-moved' | 'compile-failed';
+  allowInvalid?: boolean;
+}
+
+export interface ChatYamlStageFinalizeResult {
+  outcome: 'unchanged' | 'adopted' | 'forked' | 'created';
+  entry: ChatYamlStageEntry | null;
+  conflicts: ChatYamlStageConflict[];
+  localBranchPersisted: boolean;
+  compile: YamlCompileResult;
+  revision: number;
+  state: ServerState;
+}
+
 export interface ChatPipelineCopyResult {
   entry: WorkspaceYamlEntry;
   revision: number;
@@ -1512,6 +1561,60 @@ export const api = {
   },
 
   listWorkspaceYamls: () => request<{ entries: WorkspaceYamlEntry[] }>('/workspace/yamls'),
+
+  startChatYamlStage: (activePath?: string | null, workspaceKeyOverride?: string | null) =>
+    request<ChatYamlStageDescriptor>(
+      '/workspace/chat-yaml-stage/start',
+      {
+        method: 'POST',
+        body: jsonBody({ activePath: activePath ?? null }),
+      },
+      workspaceKeyOverride,
+    ),
+
+  listChatYamlStage: (stageId: string, workspaceKeyOverride?: string | null) =>
+    request<ChatYamlStageDescriptor>(
+      '/workspace/chat-yaml-stage/list',
+      {
+        method: 'POST',
+        body: jsonBody({ stageId }),
+      },
+      workspaceKeyOverride,
+    ),
+
+  compileChatYamlStage: (
+    stageId: string,
+    relativePath: string,
+    workspaceKeyOverride?: string | null,
+  ) =>
+    request<YamlCompileResult>(
+      '/workspace/chat-yaml-stage/compile',
+      {
+        method: 'POST',
+        body: jsonBody({ stageId, relativePath }),
+      },
+      workspaceKeyOverride,
+    ),
+
+  finalizeChatYamlStage: (body: ChatYamlStageFinalizeInput, workspaceKeyOverride?: string | null) =>
+    request<ChatYamlStageFinalizeResult>(
+      '/workspace/chat-yaml-stage/finalize',
+      {
+        method: 'POST',
+        body: jsonBody(body),
+      },
+      workspaceKeyOverride,
+    ),
+
+  discardChatYamlStage: (stageId: string, workspaceKeyOverride?: string | null) =>
+    request<{ discarded: boolean }>(
+      '/workspace/chat-yaml-stage/discard',
+      {
+        method: 'POST',
+        body: jsonBody({ stageId }),
+      },
+      workspaceKeyOverride,
+    ),
 
   listWorkflowYamls: () => request<{ entries: WorkflowYamlEntry[] }>('/workspace/workflows'),
 

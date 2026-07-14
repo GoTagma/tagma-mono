@@ -15,13 +15,25 @@
 
 ## Chat YAML Branch Isolation
 
-- While a local chat YAML lease is active, file watchers observe OpenCode disk writes but must
-  not adopt them into the editable renderer branch in `WorkspaceState`.
-- Capture one YAML/layout snapshot per logical turn. Queued prompts and automatic repair prompts
-  reuse that snapshot and lease; reconciliation runs only from the finished-turn queue.
-- If the user edited the current pipeline too, create one idempotent numbered result copy, restore
-  the latest renderer branch to the original, never auto-open the result, and publish its link only
-  after reconciliation and lease release finish.
+- Start every workspace-backed logical chat turn with an isolated
+  `.tagma/.chat-staging/<id>/` branch. Copy each pipeline's YAML, layout, requirements,
+  manifest, and compile log into separate base and agent workspaces; bind OpenCode's prompt
+  directory and all advertised pipeline paths to the agent `.tagma/` root. Live pipeline paths
+  remain read-only source material for the agent.
+- Capture YAML/layout/requirements hashes from the base copy in server-owned stage metadata.
+  Queued prompts and bounded automatic repairs reuse the same stage, snapshot, and YAML lease;
+  reconciliation runs only from the finished-turn queue.
+- Finalize under the active chat YAML lease with a server-side three-way comparison:
+  base hashes versus the current live artifacts, the renderer-local YAML/layout branch, and the
+  agent branch. A global workspace revision is never a conflict signal for staged turns.
+- If the agent branch is unchanged, discard it. If the live and renderer branches still match
+  base and the staged result compiles, adopt the agent result in place. Preserve any local,
+  external, path-move, or compile-failure branch and publish the agent result as one numbered
+  copy. A genuinely new staged pipeline is created normally unless its destination already
+  exists.
+- Only a successful finalize may mutate the live workspace or advance its revision. Finalize is
+  idempotent after response loss, artifact writes roll back together on failure, and abandoned
+  or expired stages must stop their compile watcher and be removed.
 
 ## Managed OpenCode Execution
 

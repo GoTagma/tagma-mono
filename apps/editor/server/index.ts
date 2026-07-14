@@ -30,6 +30,7 @@ import { registerSidecarRoutes } from './routes/sidecar.js';
 import { registerReleaseRoutes } from './routes/release.js';
 import { registerHotupdateRoutes } from './routes/hotupdate.js';
 import { registerChatBridgeRoutes } from './routes/chat-bridge.js';
+import { registerChatYamlStagingRoutes } from './routes/chat-yaml-staging.js';
 import {
   shouldAutoStartBotBridgeOnBoot,
   startConfiguredBotBridge,
@@ -392,6 +393,7 @@ const servedDistDir = existsSync(distDir) ? distDir : null;
 registerPipelineRoutes(app);
 registerPluginRoutes(app);
 registerWorkspaceRoutes(app);
+registerChatYamlStagingRoutes(app);
 registerRunRoutes(app);
 registerRecentRoutes(app);
 registerOpencodeRoutes(app);

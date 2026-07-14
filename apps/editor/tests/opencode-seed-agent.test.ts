@@ -214,6 +214,17 @@ test('tagma-pipeline agent allows workspace reads while restricting writes to .t
   expect(doc).toContain('Strip a leading `.tagma/`');
 });
 
+test('tagma-pipeline agent treats chat staging as the only writable pipeline root', () => {
+  const doc = buildTagmaPipelineAgent('Windows');
+
+  expect(doc).toContain('it is the authoritative write boundary');
+  expect(doc).toContain('only under its `<agent-root>`');
+  expect(doc).toContain('live pipeline folders outside `<agent-root>` are read-only');
+  expect(doc).toContain('Never translate them back');
+  expect(doc).toContain('your cwd is exactly `<agent-root>`');
+  expect(doc).toContain('paths are already relative to it');
+});
+
 test('tagma-pipeline agent allows external file and directory trigger watch paths', () => {
   const pipelineDoc = buildTagmaPipelineAgent('Windows');
   const triggerSkill = buildTagmaTriggerStrategySkill();

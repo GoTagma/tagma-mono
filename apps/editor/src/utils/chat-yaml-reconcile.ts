@@ -23,6 +23,25 @@ export interface ChatYamlSnapshot {
     trackHeights?: Record<string, number>;
   } | null;
   entries: ReadonlyArray<Pick<WorkspaceYamlEntry, 'path' | 'contentHash' | 'layoutHash'>>;
+  staging?: ChatYamlStagingSnapshot | null;
+}
+
+export interface ChatYamlStageSnapshotEntry extends Pick<
+  WorkspaceYamlEntry,
+  'name' | 'pipelineName' | 'contentHash' | 'layoutHash'
+> {
+  stagedPath: string;
+  relativePath: string;
+  sourcePath: string | null;
+  requirementsHash: string | null;
+}
+
+export interface ChatYamlStagingSnapshot {
+  id: string;
+  agentTagmaDir: string;
+  activeRelativePath: string | null;
+  activeStagedPath: string | null;
+  entries: ReadonlyArray<ChatYamlStageSnapshotEntry>;
 }
 
 export type ChatYamlTarget =
@@ -38,6 +57,11 @@ export type ChatYamlTarget =
       name: string;
       pipelineName: string | null;
     };
+
+export type ChatStagedYamlTarget = ChatYamlTarget & {
+  relativePath: string;
+  sourcePath: string | null;
+};
 
 export function shouldForkChatYamlResult(args: {
   snapshot: ChatYamlSnapshot | null;
@@ -152,6 +176,60 @@ export function detectChatYamlTarget(
   }
 
   return null;
+}
+
+export function detectChatStagedYamlTarget(
+  snapshot: ChatYamlSnapshot | null,
+  entries: readonly ChatYamlStageSnapshotEntry[],
+): ChatStagedYamlTarget | null {
+  const staging = snapshot?.staging;
+  if (!staging) return null;
+  const before = new Map(
+    staging.entries.map((entry) => [
+      pathKey(entry.relativePath),
+      {
+        contentHash: entry.contentHash,
+        layoutHash: entry.layoutHash,
+        requirementsHash: entry.requirementsHash,
+      },
+    ]),
+  );
+  const changed = entries.filter((entry) => {
+    const old = before.get(pathKey(entry.relativePath));
+    return (
+      old &&
+      (entry.contentHash !== old.contentHash ||
+        entry.layoutHash !== old.layoutHash ||
+        entry.requirementsHash !== old.requirementsHash)
+    );
+  });
+
+  const activeKey = normalizePath(staging.activeRelativePath);
+  if (activeKey) {
+    const active = changed.find((entry) => pathKey(entry.relativePath) === activeKey);
+    if (active) return stagedTarget(active);
+  }
+
+  const created = entries
+    .filter((entry) => !before.has(pathKey(entry.relativePath)))
+    .sort((left, right) => left.relativePath.localeCompare(right.relativePath));
+  if (created.length > 0) return stagedTarget(created[created.length - 1]!);
+
+  const entry = changed.sort((left, right) => left.relativePath.localeCompare(right.relativePath))[
+    changed.length - 1
+  ];
+  return entry ? stagedTarget(entry) : null;
+}
+
+function stagedTarget(entry: ChatYamlStageSnapshotEntry): ChatStagedYamlTarget {
+  return {
+    kind: entry.sourcePath ? 'refresh-current' : 'open-created',
+    path: entry.stagedPath,
+    name: entry.name,
+    pipelineName: entry.pipelineName,
+    relativePath: entry.relativePath,
+    sourcePath: entry.sourcePath,
+  };
 }
 
 function pathKey(path: string): string {

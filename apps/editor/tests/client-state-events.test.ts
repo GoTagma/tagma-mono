@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 const originalEventSource = globalThis.EventSource;
+const originalFetch = globalThis.fetch;
 
 class MockEventSource {
   static instances: MockEventSource[] = [];
@@ -29,6 +30,7 @@ class MockEventSource {
 
 async function resetClientState(): Promise<void> {
   globalThis.EventSource = originalEventSource;
+  globalThis.fetch = originalFetch;
   MockEventSource.instances = [];
   const client = await import('../src/api/client');
   client.setClientWorkspace(null);
@@ -59,5 +61,35 @@ describe('state event revision adoption', () => {
 
     expect(client.getClientRevision()).toBe(1);
     expect(seen).toHaveLength(1);
+  });
+
+  test('adopts the top-level revision returned by staged YAML finalize', async () => {
+    const client = await import('../src/api/client');
+    client.setClientWorkspace('E:/repo');
+    client.setClientRevision(3);
+    let sentIfMatch: string | null = null;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      sentIfMatch = new Headers(init?.headers).get('If-Match');
+      return new Response(
+        JSON.stringify({
+          outcome: 'unchanged',
+          entry: null,
+          conflicts: [],
+          localBranchPersisted: false,
+          compile: { success: true },
+          revision: 7,
+          state: { workDir: 'E:/repo', revision: 7 },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }) as typeof fetch;
+
+    await client.api.finalizeChatYamlStage({
+      stageId: '00000000-0000-4000-8000-000000000001',
+      relativePath: 'pipeline/pipeline.yaml',
+    });
+
+    expect(sentIfMatch as string | null).toBe('3');
+    expect(client.getClientRevision()).toBe(7);
   });
 });

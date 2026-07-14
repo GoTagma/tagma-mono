@@ -38,6 +38,7 @@ import { useEditorSettingsStore } from './editor-settings-store';
 import {
   api,
   getClientRevision,
+  withYamlEditLockRequestBypass,
   type EditorSettings,
   type UsageRecord,
   type YamlCompileResult,
@@ -2479,6 +2480,7 @@ async function promptOpencode(
   let lockLease: ChatYamlEditLockLease | null = null;
   let acquiredLockLeaseHere = false;
   let diskBranchAlreadyOwned = false;
+  let createdStageHere: { id: string; workspaceKey: string | null } | null = null;
   try {
     const turnStartedAt = Date.now();
     optimisticTurnStartedAt = turnStartedAt;
@@ -2620,24 +2622,42 @@ async function promptOpencode(
 
     let preSendSnapshot: ChatYamlSnapshot | null = inheritedSnapshot;
     if (!preSendSnapshot && initialEditorBaseline) {
-      try {
-        const { entries } = await api.listWorkspaceYamls();
-        preSendSnapshot = {
-          workDir: initialEditorBaseline.workDir,
-          activePath: initialEditorBaseline.activePath,
-          revision: getClientRevision(),
-          localEditRevision: initialEditorBaseline.localEditRevision,
-          activeYaml: initialEditorBaseline.activeYaml,
-          activeLayout: initialEditorBaseline.activeLayout,
-          entries: entries.map((entry) => ({
-            path: entry.path,
+      if (!lockLease) throw new Error('The OpenCode YAML lock was lost before staging.');
+      const stage = await withYamlEditLockRequestBypass(lockLease.id, () =>
+        api.startChatYamlStage(initialEditorBaseline.activePath, lockLease!.workspaceKey),
+      );
+      createdStageHere = { id: stage.id, workspaceKey: lockLease.workspaceKey };
+      preSendSnapshot = {
+        workDir: initialEditorBaseline.workDir,
+        activePath: initialEditorBaseline.activePath,
+        revision: getClientRevision(),
+        localEditRevision: initialEditorBaseline.localEditRevision,
+        activeYaml: initialEditorBaseline.activeYaml,
+        activeLayout: initialEditorBaseline.activeLayout,
+        entries: stage.entries
+          .filter((entry) => entry.sourcePath)
+          .map((entry) => ({
+            path: entry.sourcePath!,
             contentHash: entry.contentHash,
             layoutHash: entry.layoutHash,
           })),
-        };
-      } catch {
-        preSendSnapshot = null;
-      }
+        staging: {
+          id: stage.id,
+          agentTagmaDir: stage.agentTagmaDir,
+          activeRelativePath: stage.activeRelativePath,
+          activeStagedPath: stage.activeStagedPath,
+          entries: stage.entries.map((entry) => ({
+            name: entry.name,
+            stagedPath: entry.stagedPath,
+            relativePath: entry.relativePath,
+            sourcePath: entry.sourcePath,
+            pipelineName: entry.pipelineName,
+            contentHash: entry.contentHash,
+            layoutHash: entry.layoutHash,
+            requirementsHash: entry.requirementsHash,
+          })),
+        },
+      };
     }
     assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
 
@@ -2672,6 +2692,7 @@ async function promptOpencode(
     );
 
     const reasoningVariant = reconcileModelVariant(providers, model, reasoningEffort);
+    const chatStage = preSendSnapshot?.staging ?? null;
     const promptBody: {
       model: ModelPick;
       agent?: string;
@@ -2687,7 +2708,13 @@ async function promptOpencode(
           text:
             buildEditorContext({
               userText: text,
-              workspaceYamlFilePaths: preSendSnapshot?.entries.map((entry) => entry.path),
+              currentYamlPath: chatStage ? chatStage.activeStagedPath : undefined,
+              workspaceYamlFilePaths: chatStage
+                ? chatStage.entries.map((entry) => entry.stagedPath)
+                : preSendSnapshot?.entries.map((entry) => entry.path),
+              chatYamlStage: chatStage
+                ? { id: chatStage.id, agentTagmaDir: chatStage.agentTagmaDir }
+                : null,
             }) +
             (opts.context ?? '') +
             text,
@@ -2699,6 +2726,7 @@ async function promptOpencode(
     await unwrap(
       client.session.promptAsync({
         path: { id: sessionId },
+        ...(chatStage ? { query: { directory: chatStage.agentTagmaDir } } : {}),
         body: promptBody,
       }),
     );
@@ -2707,6 +2735,15 @@ async function promptOpencode(
     }
   } catch (err) {
     clearTurnWatchdog();
+    if (createdStageHere && lockLease) {
+      try {
+        await withYamlEditLockRequestBypass(lockLease.id, () =>
+          api.discardChatYamlStage(createdStageHere!.id, createdStageHere!.workspaceKey),
+        );
+      } catch (discardErr) {
+        console.warn('[chat] failed to discard abandoned YAML stage:', discardErr);
+      }
+    }
     if (lockLease && acquiredLockLeaseHere) {
       await releaseChatYamlEditLock(lockLease);
     }

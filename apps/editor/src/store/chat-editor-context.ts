@@ -50,19 +50,25 @@ interface WorkspaceYamlFolderEntry {
 }
 
 function workspaceRelativeYamlFolderEntries(
-  workDir: string,
+  pipelineRoot: string,
   absPaths: readonly string[] | undefined,
+  directPipelineRoot = false,
 ): WorkspaceYamlFolderEntry[] {
   if (!absPaths?.length) return [];
   const seen = new Set<string>();
   const entries: WorkspaceYamlFolderEntry[] = [];
   for (const absPath of absPaths) {
-    const rel = workspaceRelativePath(workDir, absPath);
+    const rel = workspaceRelativePath(pipelineRoot, absPath);
     if (!rel || !/\.ya?ml$/i.test(rel)) continue;
     const parts = rel.split('/');
     let folder: string;
     let legacyFlat = false;
-    if (parts.length >= 3) {
+    if (directPipelineRoot && parts.length >= 2) {
+      folder = parts.slice(0, -1).join('/');
+    } else if (directPipelineRoot && parts.length === 1) {
+      folder = '.';
+      legacyFlat = true;
+    } else if (parts.length >= 3) {
       folder = parts.slice(0, -1).join('/');
     } else if (parts.length === 2 && parts[0] === '.tagma') {
       folder = parts[0];
@@ -97,6 +103,11 @@ function formatWorkspaceYamlFolderEntry(entry: WorkspaceYamlFolderEntry): string
 export interface EditorContextOptions {
   workspaceYamlFilePaths?: readonly string[];
   userText?: string;
+  currentYamlPath?: string | null;
+  chatYamlStage?: {
+    id: string;
+    agentTagmaDir: string;
+  } | null;
 }
 
 export function buildEditorContext(options: EditorContextOptions = {}): string {
@@ -106,19 +117,34 @@ export function buildEditorContext(options: EditorContextOptions = {}): string {
   const pythonAgent = useEditorSettingsStore.getState().settings?.pythonAgent;
   if (!workDir) return '';
   const lines = [`  <workspace>${workDir}</workspace>`];
+  const contextYamlPath =
+    options.currentYamlPath === undefined ? yamlPath : options.currentYamlPath;
   const requestContext = {
     currentPipelineIsManualNewDraft: sameChatPath(manualNewPipelineYamlPath, yamlPath),
   };
   lines.push(...fillManualNewPipelineRequestedActionLines(options.userText, requestContext));
   lines.push(...createNewPipelineRequestedActionLines(options.userText, requestContext));
-  if (yamlPath) {
-    const rel = workspaceRelativePath(workDir, yamlPath);
+  if (options.chatYamlStage) {
+    const agentRoot = options.chatYamlStage.agentTagmaDir.replace(/\\/g, '/');
+    lines.push(`  <chat-staging id="${options.chatYamlStage.id}">`);
+    lines.push(`    <agent-root>${agentRoot}</agent-root>`);
+    lines.push(
+      '    <write-policy>Write pipeline artifacts only inside agent-root. Live .tagma pipeline paths are read-only source material.</write-policy>',
+      '  </chat-staging>',
+    );
+  }
+  if (contextYamlPath) {
+    const rel = workspaceRelativePath(
+      options.chatYamlStage?.agentTagmaDir ?? workDir,
+      contextYamlPath,
+    );
     if (rel) lines.push(`  <current-file>${rel}</current-file>`);
     lines.push(`  <yaml-run-version>${yamlRunVersion ?? 0}</yaml-run-version>`);
   }
   const workspaceYamlFolders = workspaceRelativeYamlFolderEntries(
-    workDir,
+    options.chatYamlStage?.agentTagmaDir ?? workDir,
     options.workspaceYamlFilePaths,
+    !!options.chatYamlStage,
   );
   if (workspaceYamlFolders.length) {
     lines.push(

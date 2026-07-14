@@ -154,6 +154,35 @@ describe('chat editor context', () => {
     expect(context).not.toContain('ignored.yaml');
   });
 
+  test('replaces live YAML targets with the isolated chat staging branch', () => {
+    usePipelineStore.setState({
+      workDir: 'C:/repo',
+      yamlPath: 'C:/repo/.tagma/build/build.yaml',
+      registry: { drivers: [], triggers: [], completions: [], middlewares: [] },
+    } as never);
+    const agentRoot =
+      'C:/repo/.tagma/.chat-staging/00000000-0000-4000-8000-000000000001/agent-workspace/.tagma';
+    const stagedYaml = `${agentRoot}/build/build.yaml`;
+
+    const context = buildEditorContext({
+      currentYamlPath: stagedYaml,
+      workspaceYamlFilePaths: [stagedYaml],
+      chatYamlStage: {
+        id: '00000000-0000-4000-8000-000000000001',
+        agentTagmaDir: agentRoot,
+      },
+    });
+
+    expect(context).toContain('<chat-staging id="00000000-0000-4000-8000-000000000001">');
+    expect(context).toContain(
+      '<agent-root>C:/repo/.tagma/.chat-staging/00000000-0000-4000-8000-000000000001/agent-workspace/.tagma</agent-root>',
+    );
+    expect(context).toContain('<current-file>build/build.yaml</current-file>');
+    expect(context).toContain('<folder>build</folder>');
+    expect(context).toContain('<yaml>build/build.yaml</yaml>');
+    expect(context).not.toContain('<current-file>.tagma/build/build.yaml</current-file>');
+  });
+
   test('marks explicit create-pipeline requests so existing yaml names are collision context only', () => {
     usePipelineStore.setState({
       workDir: 'C:/repo',

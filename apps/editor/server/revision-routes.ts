@@ -17,6 +17,9 @@ const REVISION_BYPASS_PREFIXES = [
   '/api/workspace/drop',
   '/api/workspace/workflows',
   '/api/workspace/yaml-edit-lock',
+  // Chat stages are an isolated branch. Only a successful finalize mutates
+  // the live workspace, and that service advances revision itself.
+  '/api/workspace/chat-yaml-stage/',
   // Export copies the current pipeline + layout to an external directory.
   // It does not change the editor's in-memory pipeline/layout, so collaborators
   // should not see a revision bump for it.

@@ -1,10 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  detectChatStagedYamlTarget,
   detectChatYamlTarget,
   shouldAdoptChatYamlTargetOnCurrentCanvas,
   shouldForkChatYamlResult,
   shouldAutoRepairCompileResult,
   type ChatYamlSnapshot,
+  type ChatYamlStageSnapshotEntry,
   type WorkspaceYamlEntry,
 } from '../src/utils/chat-yaml-reconcile';
 
@@ -228,6 +230,75 @@ describe('detectChatYamlTarget', () => {
       name: posixCreated.name,
       pipelineName: posixCreated.pipelineName,
     });
+  });
+});
+
+describe('detectChatStagedYamlTarget', () => {
+  const stagedBefore: ChatYamlStageSnapshotEntry = {
+    name: 'current.yaml',
+    stagedPath: 'C:/w/.tagma/.chat-staging/turn/agent-workspace/.tagma/current/current.yaml',
+    relativePath: 'current/current.yaml',
+    sourcePath: 'C:/w/.tagma/current/current.yaml',
+    pipelineName: 'Current',
+    contentHash: 'base',
+    layoutHash: 'layout-base',
+    requirementsHash: null,
+  };
+
+  function stagedSnapshot(): ChatYamlSnapshot {
+    return {
+      ...snapshot(),
+      staging: {
+        id: 'stage-id',
+        agentTagmaDir: 'C:/w/.tagma/.chat-staging/turn/agent-workspace/.tagma',
+        activeRelativePath: stagedBefore.relativePath,
+        activeStagedPath: stagedBefore.stagedPath,
+        entries: [stagedBefore],
+      },
+    };
+  }
+
+  test('selects the changed active staged file without consulting live workspace revision', () => {
+    const changed = { ...stagedBefore, contentHash: 'agent-result' };
+    expect(detectChatStagedYamlTarget(stagedSnapshot(), [changed])).toEqual({
+      kind: 'refresh-current',
+      path: changed.stagedPath,
+      name: changed.name,
+      pipelineName: changed.pipelineName,
+      relativePath: changed.relativePath,
+      sourcePath: changed.sourcePath,
+    });
+  });
+
+  test('classifies a new staged pipeline as created instead of a conflict copy', () => {
+    const created: ChatYamlStageSnapshotEntry = {
+      ...stagedBefore,
+      name: 'created.yaml',
+      stagedPath: 'C:/w/.tagma/.chat-staging/turn/agent-workspace/.tagma/created/created.yaml',
+      relativePath: 'created/created.yaml',
+      sourcePath: null,
+      pipelineName: 'Created',
+      contentHash: 'created',
+    };
+    expect(detectChatStagedYamlTarget(stagedSnapshot(), [stagedBefore, created])).toEqual({
+      kind: 'open-created',
+      path: created.stagedPath,
+      name: created.name,
+      pipelineName: created.pipelineName,
+      relativePath: created.relativePath,
+      sourcePath: null,
+    });
+  });
+
+  test('returns null when the isolated agent branch is unchanged', () => {
+    expect(detectChatStagedYamlTarget(stagedSnapshot(), [stagedBefore])).toBeNull();
+  });
+
+  test('detects a requirements-only change on the isolated branch', () => {
+    const changed = { ...stagedBefore, requirementsHash: 'requirements-changed' };
+    expect(detectChatStagedYamlTarget(stagedSnapshot(), [changed])?.relativePath).toBe(
+      stagedBefore.relativePath,
+    );
   });
 });
 

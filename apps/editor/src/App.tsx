@@ -64,6 +64,7 @@ import { useChatStore, isChatDrivenEditLikely } from './store/chat-store';
 import { useEditorSettingsStore } from './store/editor-settings-store';
 import { RightDock, useRightDock } from './components/RightDock';
 import {
+  detectChatStagedYamlTarget,
   detectChatYamlTarget,
   shouldAdoptChatYamlTargetOnCurrentCanvas,
   shouldAutoRepairCompileResult,
@@ -900,6 +901,190 @@ export function App() {
         const finishedSessionVisible =
           !!finishedSessionId && finishedSessionId === currentChatSessionId;
 
+        if (snapshot?.staging) {
+          const currentWorkDir = usePipelineStore.getState().workDir;
+          if (snapshot.workDir !== currentWorkDir) {
+            throw new Error(
+              'The editor workspace changed before the staged YAML could be finalized.',
+            );
+          }
+          const lockId = getLocalYamlEditLockId();
+          if (!lockId) throw new Error('The local OpenCode YAML lock lease was lost.');
+          const underChatLock = <T,>(op: () => Promise<T>) =>
+            withYamlEditLockRequestBypass(lockId, op);
+          const stage = await underChatLock(() =>
+            api.listChatYamlStage(snapshot.staging!.id, snapshot.workDir),
+          );
+          if (cancelled) return;
+          const stagedTarget = detectChatStagedYamlTarget(snapshot, stage.entries);
+          if (!stagedTarget) {
+            await underChatLock(() =>
+              api.discardChatYamlStage(snapshot.staging!.id, snapshot.workDir),
+            );
+            useChatStore.getState().clearPostChatYamlAction();
+            return;
+          }
+
+          let compile = await underChatLock(() =>
+            api.compileChatYamlStage(
+              snapshot.staging!.id,
+              stagedTarget.relativePath,
+              snapshot.workDir,
+            ),
+          );
+          if (cancelled) return;
+
+          const attemptKey = `${snapshot.staging.id}:${stagedTarget.relativePath}`;
+          const attempts = repairAttemptsRef.current.get(attemptKey) ?? 0;
+          const maxAttempts = 2;
+          if (
+            shouldAutoRepairCompileResult(compile, attempts, maxAttempts) &&
+            finishedSessionVisible
+          ) {
+            const nextAttempt = attempts + 1;
+            repairAttemptsRef.current.set(attemptKey, nextAttempt);
+            useChatStore.getState().setPostChatYamlAction({
+              ...stagedTarget,
+              status: 'repairing',
+              compile,
+            });
+            try {
+              await useChatStore
+                .getState()
+                .sendInternalRepairPrompt(
+                  stagedTarget,
+                  compile,
+                  nextAttempt,
+                  maxAttempts,
+                  snapshot,
+                );
+              keepYamlLockForRepair = true;
+              return;
+            } catch (err) {
+              console.error('[chat] internal staged YAML repair failed', err);
+            }
+          }
+          if (compile.success) repairAttemptsRef.current.delete(attemptKey);
+
+          const targetsStartedPipeline =
+            !!snapshot.activePath &&
+            !!stagedTarget.sourcePath &&
+            sameEditorPath(snapshot.activePath, stagedTarget.sourcePath);
+          const beforeFlush = usePipelineStore.getState();
+          const userStillOnStartedPipeline =
+            targetsStartedPipeline && sameEditorPath(snapshot.activePath, beforeFlush.yamlPath);
+          if (userStillOnStartedPipeline) {
+            await beforeFlush.flushPendingLocalEdits();
+          }
+          const editorState = usePipelineStore.getState();
+          const pathMoved =
+            targetsStartedPipeline && !sameEditorPath(snapshot.activePath, editorState.yamlPath);
+          const localRevisionChanged =
+            targetsStartedPipeline &&
+            typeof snapshot.localEditRevision === 'number' &&
+            snapshot.localEditRevision !== getLocalPipelineEditRevision();
+          const localBranch =
+            userStillOnStartedPipeline &&
+            snapshot.activePath &&
+            sameEditorPath(snapshot.activePath, editorState.yamlPath)
+              ? {
+                  sourcePath: snapshot.activePath,
+                  yaml: serializePreviewYaml(editorState.config),
+                  layout: {
+                    positions: Object.fromEntries(editorState.positions),
+                    folders: structuredClone(editorState.folders),
+                    trackHeights: Object.fromEntries(editorState.trackHeights),
+                  },
+                  changed: localRevisionChanged || editorState.isDirty || editorState.layoutDirty,
+                }
+              : null;
+          const forceForkReason = !compile.success
+            ? ('compile-failed' as const)
+            : pathMoved
+              ? ('path-moved' as const)
+              : undefined;
+          const finalizeOnce = () =>
+            underChatLock(() =>
+              api.finalizeChatYamlStage(
+                {
+                  stageId: snapshot.staging!.id,
+                  relativePath: stagedTarget.relativePath,
+                  localBranch,
+                  forceFork: pathMoved || !compile.success,
+                  ...(forceForkReason ? { forceForkReason } : {}),
+                  allowInvalid: !compile.success,
+                },
+                snapshot.workDir,
+              ),
+            );
+          let finalized: Awaited<ReturnType<typeof api.finalizeChatYamlStage>> | null = null;
+          let finalizeError: unknown;
+          for (let attempt = 0; attempt < 2 && !finalized; attempt += 1) {
+            try {
+              finalized = await finalizeOnce();
+            } catch (err) {
+              finalizeError = err;
+            }
+          }
+          if (!finalized) {
+            throw finalizeError ?? new Error('Failed to finalize the staged YAML result.');
+          }
+          compile = finalized.compile;
+          if (cancelled) return;
+          const finalEntry = finalized.entry;
+          if (!finalEntry) {
+            useChatStore.getState().clearPostChatYamlAction();
+            return;
+          }
+          const finalTarget = {
+            kind:
+              finalized.outcome === 'forked' || finalized.outcome === 'created'
+                ? ('open-created' as const)
+                : ('refresh-current' as const),
+            path: finalEntry.path,
+            name: finalEntry.name,
+            pipelineName: finalEntry.pipelineName,
+          };
+
+          try {
+            await refreshWorkspaceYamls();
+          } catch (err) {
+            console.warn('[chat] staged result published but pipeline list refresh failed', err);
+          }
+          if (cancelled) return;
+
+          const current = usePipelineStore.getState();
+          const finalStateBelongsOnCanvas =
+            sameEditorPath(current.yamlPath, finalized.state.yamlPath) &&
+            ((finalized.outcome === 'adopted' &&
+              sameEditorPath(current.yamlPath, finalEntry.path)) ||
+              finalized.localBranchPersisted);
+          if (finalStateBelongsOnCanvas) {
+            current.adoptDiskState(finalized.state, 'chat');
+            if (finalized.outcome === 'adopted' && compile.success) {
+              await usePipelineStore
+                .getState()
+                .autoSyncAllBindings('chat', { allowDuringYamlEditLock: true });
+              const afterSync = usePipelineStore.getState();
+              if (afterSync.isDirty || afterSync.layoutDirty) {
+                await afterSync.saveFile({ allowDuringYamlEditLock: true });
+              }
+            }
+          }
+
+          useChatStore.getState().clearPostChatYamlAction();
+          if (finishedSessionId) {
+            useChatStore.getState().setSessionYamlResult({
+              ...finalTarget,
+              sessionId: finishedSessionId,
+              status: compile.success ? 'ready' : 'failed',
+              compile,
+              completedAt: finishedTurn.endedAt,
+            });
+          }
+          return;
+        }
+
         const entries = await refreshWorkspaceYamls();
         if (cancelled) return;
 
@@ -1087,6 +1272,20 @@ export function App() {
         recordSessionResult(compile.success ? 'ready' : 'failed');
       } catch (err) {
         console.error('[chat] post-chat YAML reconcile failed', err);
+        const abandonedStage = finishedTurn.yamlSnapshotBeforeSend?.staging;
+        const lockId = getLocalYamlEditLockId();
+        if (abandonedStage && lockId) {
+          try {
+            await withYamlEditLockRequestBypass(lockId, () =>
+              api.discardChatYamlStage(
+                abandonedStage.id,
+                finishedTurn.yamlSnapshotBeforeSend!.workDir,
+              ),
+            );
+          } catch (discardErr) {
+            console.warn('[chat] failed to discard unreconciled YAML stage', discardErr);
+          }
+        }
         usePipelineStore.setState({
           errorMessage:
             'OpenCode finished, but its pipeline result could not be reconciled safely: ' +
