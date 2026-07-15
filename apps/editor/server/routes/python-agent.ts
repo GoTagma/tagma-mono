@@ -9,6 +9,7 @@ import {
   validatePythonInterpreter,
   type PythonInstallPlan,
 } from '../python-agent.js';
+import { getActiveYamlEditLock, publicYamlEditLock } from '../yaml-edit-lock.js';
 
 function parseStringArray(value: unknown): string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string') ? value : [];
@@ -90,6 +91,13 @@ export function registerPythonAgentRoutes(app: express.Express): void {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw) || typeof raw.command !== 'string') {
       return res.status(400).json({ error: 'Python command is required' });
     }
+    const activeYamlLock = getActiveYamlEditLock(ws);
+    if (activeYamlLock) {
+      return res.status(423).json({
+        error: 'YAML/layout editing is locked while OpenCode chat is updating this workspace.',
+        lock: publicYamlEditLock(activeYamlLock),
+      });
+    }
     try {
       const interpreter = await validatePythonInterpreter({
         command: raw.command,
@@ -135,6 +143,13 @@ export function registerPythonAgentRoutes(app: express.Express): void {
     const ws = requireWorkspace(req, res);
     if (!ws) return;
     if (!ws.workDir) return res.status(400).json({ error: 'Set a working directory first' });
+    const activeYamlLock = getActiveYamlEditLock(ws);
+    if (activeYamlLock) {
+      return res.status(423).json({
+        error: 'YAML/layout editing is locked while OpenCode chat is updating this workspace.',
+        lock: publicYamlEditLock(activeYamlLock),
+      });
+    }
     try {
       const current = readEditorSettings(ws).pythonAgent;
       const settings = writeEditorSettings(ws, {

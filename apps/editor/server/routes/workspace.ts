@@ -1041,6 +1041,15 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       return res.status(400).json({ error: 'Set a working directory first' });
     }
     const patch = parseEditorSettingsPatch(req.body);
+    if (patch.pythonAgent !== undefined) {
+      const activeYamlLock = getActiveYamlEditLock(ws);
+      if (activeYamlLock) {
+        return res.status(423).json({
+          error: 'YAML/layout editing is locked while OpenCode chat is updating this workspace.',
+          lock: publicYamlEditLock(activeYamlLock),
+        });
+      }
+    }
     try {
       const next = writeEditorSettings(ws, patch);
       res.json({ ...next, revision: ws.stateRevision });

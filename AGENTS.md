@@ -15,3 +15,11 @@ When an agent creates a git commit in this repository:
 If one task creates commits in multiple related repositories, such as this repository and a nested `apps` repository, create one combined changelog file in this repository root only. Name it after this repository's final commit id, and include all related commit messages from that task in the same file, including both the nested repository commit message and the parent repository commit message.
 
 Do not amend the same commit to include these files after naming them with the commit id. Amending changes the commit id and makes the filenames stale. If these summary files need to be committed, make a separate explicit follow-up commit.
+
+## Repository Verification Invariants
+
+- Keep the root `.gitattributes` LF policy. It prevents Windows checkout line endings from making
+  Prettier report unchanged JSON and source files as dirty.
+- `bun run check:deps` must compare every workspace package's path, name, and version with its
+  `bun.lock` workspace entry. A successful frozen install alone does not prove that Bun's
+  workspace metadata is current.

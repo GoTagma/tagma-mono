@@ -241,6 +241,10 @@ export class UnsafeShellQuoteError extends Error {
 
 /** Quote a single argument for inclusion in a shell command string. */
 function quoteArg(arg: string, kind: ShellKind): string {
+  if (arg.length === 0) {
+    return kind === 'cmd' ? '\u0022\u0022' : '\u0027\u0027';
+  }
+
   // Inputs with no shell-active characters need no quoting on any shell:
   // `hello` is `hello` under cmd, PowerShell, and sh alike. Skipping the
   // cmd-refuses branch for these keeps innocuous values working even on

@@ -61,6 +61,7 @@ import {
 } from './components/AppOverlays';
 import { ChatCompletionToast, ChatPanel } from './components/chat/ChatPanel';
 import { useChatStore, isChatDrivenEditLikely } from './store/chat-store';
+import { selectFinishedTurnQueueHead } from './store/finished-turn-selector';
 import { useEditorSettingsStore } from './store/editor-settings-store';
 import { RightDock, useRightDock } from './components/RightDock';
 import {
@@ -886,9 +887,8 @@ export function App() {
   // branch. A conflict creates one numbered agent-result copy and atomically
   // restores the latest user branch. No result is auto-opened, and the chat
   // link is published only after repair continuations and reconciliation end.
-  const finishedTurnQueue = useChatStore((s) => s.finishedTurnQueue);
+  const finishedTurn = useChatStore(selectFinishedTurnQueueHead);
   useEffect(() => {
-    const finishedTurn = finishedTurnQueue[0];
     if (!finishedTurn) return; // initial mount — no turn has ended yet
     let cancelled = false;
     void (async () => {
@@ -1307,7 +1307,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [finishedTurnQueue, refreshWorkspaceYamls]);
+  }, [finishedTurn, refreshWorkspaceYamls]);
 
   const handleOpenWorkspaceFile = useCallback(
     (path: string) => {

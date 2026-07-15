@@ -5,8 +5,17 @@
 // at the corresponding GitHub Release assets so the manifest and payloads are
 // versioned together and never drift.
 
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { sign as signEd25519 } from 'node:crypto';
+import { createHash, sign as signEd25519 } from 'node:crypto';
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -64,6 +73,21 @@ function readSha256File(assetPath) {
   }
 }
 
+function calculateSha256(assetPath) {
+  const hash = createHash('sha256');
+  const file = openSync(assetPath, 'r');
+  const buffer = Buffer.allocUnsafe(1024 * 1024);
+  try {
+    let bytesRead;
+    while ((bytesRead = readSync(file, buffer, 0, buffer.length, null)) > 0) {
+      hash.update(buffer.subarray(0, bytesRead));
+    }
+  } finally {
+    closeSync(file);
+  }
+  return hash.digest('hex');
+}
+
 function readRequiredAsset(assetsDir, filename) {
   const assetPath = join(assetsDir, filename);
   let size;
@@ -72,11 +96,17 @@ function readRequiredAsset(assetsDir, filename) {
   } catch {
     throw new Error(`missing ${filename} in ${assetsDir}`);
   }
-  const sha = readSha256File(assetPath);
+  const sha = readSha256File(assetPath).toLowerCase();
   if (!/^[0-9a-f]{64}$/i.test(sha)) {
     throw new Error(`bad sha256 in ${assetPath}.sha256: ${sha}`);
   }
-  return { filename, size, sha: sha.toLowerCase() };
+  const calculatedSha = calculateSha256(assetPath);
+  if (calculatedSha !== sha) {
+    throw new Error(
+      `checksum mismatch for ${filename}: expected ${sha}, calculated ${calculatedSha}`,
+    );
+  }
+  return { filename, size, sha };
 }
 
 function readOptionalAsset(assetsDir, filename) {

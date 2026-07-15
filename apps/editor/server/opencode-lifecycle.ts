@@ -56,6 +56,21 @@ export function ensureRealTagmaDirectory(workspaceRoot: string): string {
 const handles = new Map<string, OpencodeHandle>();
 const children = new Map<string, ReturnType<typeof Bun.spawn>>();
 const starting = new Map<string, Promise<OpencodeHandle>>();
+type OpencodeStartAttempt = {
+  canceledByRestart: boolean;
+  rawPromise: Promise<OpencodeHandle> | null;
+  sharedPromise: Promise<OpencodeHandle> | null;
+  replacementPromise: Promise<OpencodeHandle> | null;
+};
+type OpencodeRestartCoordinator = {
+  promise: Promise<OpencodeHandle>;
+  requestedGeneration: number;
+  lifecycleGeneration: number;
+  resolve: (handle: OpencodeHandle) => void;
+  reject: (reason: unknown) => void;
+};
+const startAttempts = new Map<string, OpencodeStartAttempt>();
+const restarting = new Map<string, OpencodeRestartCoordinator>();
 const authByCwd = new Map<string, OpencodeServerAuth>();
 let lifecycleGeneration = 0;
 
@@ -506,14 +521,18 @@ async function waitForHealth(
   );
 }
 
-export async function ensureOpencode(cwd: string): Promise<OpencodeHandle> {
-  const existing = handles.get(cwd);
-  if (existing) return existing;
-  const inFlight = starting.get(cwd);
-  if (inFlight) return inFlight;
-
+function createOpencodeStartAttempt(cwd: string): OpencodeStartAttempt {
+  const attempt: OpencodeStartAttempt = {
+    canceledByRestart: false,
+    rawPromise: null,
+    sharedPromise: null,
+    replacementPromise: null,
+  };
   const startGeneration = lifecycleGeneration;
   const assertStartStillCurrent = () => {
+    if (attempt.canceledByRestart) {
+      throw new Error('opencode startup canceled by restart');
+    }
     if (startGeneration !== lifecycleGeneration) {
       throw new Error('opencode startup canceled by shutdown/update');
     }
@@ -620,30 +639,152 @@ export async function ensureOpencode(cwd: string): Promise<OpencodeHandle> {
       ]);
     } catch (err) {
       await terminateOpencodeProcess(proc, cwd, 'failed startup', 3_000);
-      children.delete(cwd);
+      if (children.get(cwd) === proc) children.delete(cwd);
       throw err;
     }
 
     if (healthResult.kind === 'exited') {
       const tail = stderrTail.trim();
-      children.delete(cwd);
+      if (children.get(cwd) === proc) children.delete(cwd);
       throw new Error(
         `opencode exited with code=${healthResult.exitCode} before becoming healthy.` +
           (tail ? ` Last stderr:\n${tail}` : ' (no stderr captured)'),
       );
     }
 
+    assertStartStillCurrent();
     const h: OpencodeHandle = { baseUrl, pid: proc.pid ?? -1, cwd, auth };
     handles.set(cwd, h);
     return h;
   })();
 
-  starting.set(cwd, startPromise);
-  try {
-    return await startPromise;
-  } finally {
-    starting.delete(cwd);
+  attempt.rawPromise = startPromise;
+  const sharedPromise = (async () => {
+    try {
+      const handle = await startPromise;
+      const replacement = attempt.replacementPromise;
+      return replacement ? await replacement : handle;
+    } catch (err) {
+      const replacement = attempt.replacementPromise;
+      if (replacement) return await replacement;
+      throw err;
+    } finally {
+      if (starting.get(cwd) === attempt.sharedPromise) {
+        starting.delete(cwd);
+      }
+      if (startAttempts.get(cwd) === attempt) {
+        startAttempts.delete(cwd);
+      }
+    }
+  })();
+  attempt.sharedPromise = sharedPromise;
+  startAttempts.set(cwd, attempt);
+  starting.set(cwd, sharedPromise);
+  return attempt;
+}
+
+function beginOpencodeStart(cwd: string): Promise<OpencodeHandle> {
+  return createOpencodeStartAttempt(cwd).sharedPromise!;
+}
+
+export async function ensureOpencode(cwd: string): Promise<OpencodeHandle> {
+  const restart = restarting.get(cwd);
+  if (restart) return restart.promise;
+
+  const existing = handles.get(cwd);
+  if (existing) {
+    await Promise.resolve();
+    const replacement = restarting.get(cwd);
+    return replacement ? await replacement.promise : existing;
   }
+
+  const inFlight = starting.get(cwd);
+  const handle = await (inFlight ?? beginOpencodeStart(cwd));
+  const replacement = restarting.get(cwd);
+  return replacement ? await replacement.promise : handle;
+}
+
+function redirectStartAttemptToRestart(
+  attempt: OpencodeStartAttempt,
+  coordinator: OpencodeRestartCoordinator,
+): void {
+  attempt.canceledByRestart = true;
+  attempt.replacementPromise = coordinator.promise;
+}
+
+function startRestartWorker(cwd: string, coordinator: OpencodeRestartCoordinator): void {
+  void (async () => {
+    try {
+      while (true) {
+        const previousAttempt = startAttempts.get(cwd);
+        if (previousAttempt) {
+          redirectStartAttemptToRestart(previousAttempt, coordinator);
+        }
+        const previousProcess = children.get(cwd);
+        if (previousProcess) {
+          await terminateOpencodeProcess(previousProcess, cwd, 'restart', 3_000);
+        }
+
+        const previousRawStart = previousAttempt?.rawPromise;
+        if (previousRawStart) {
+          try {
+            await previousRawStart;
+          } catch {
+            // Cancellation and failed superseded starts both proceed.
+          }
+        }
+
+        if (coordinator.lifecycleGeneration !== lifecycleGeneration) {
+          throw new Error('opencode restart canceled by shutdown/update');
+        }
+        if (previousProcess && children.get(cwd) === previousProcess) {
+          children.delete(cwd);
+        }
+        handles.delete(cwd);
+
+        const spawnGeneration = coordinator.requestedGeneration;
+        const replacementAttempt = createOpencodeStartAttempt(cwd);
+        const replacementRawStart = replacementAttempt.rawPromise;
+        if (!replacementRawStart) {
+          throw new Error('opencode replacement startup was not initialized');
+        }
+        // Ensure only the coordinator consumes worker failures. During a
+        // superseding restart the shared promise redirects to the coordinator,
+        // while the worker awaits the raw attempt to avoid a promise cycle.
+        void replacementAttempt.sharedPromise?.catch(() => {});
+
+        let handle: OpencodeHandle;
+        try {
+          handle = await replacementRawStart;
+        } catch (err) {
+          if (coordinator.lifecycleGeneration !== lifecycleGeneration) {
+            throw new Error('opencode restart canceled by shutdown/update');
+          }
+          if (coordinator.requestedGeneration !== spawnGeneration) {
+            continue;
+          }
+          throw err;
+        }
+
+        if (coordinator.lifecycleGeneration !== lifecycleGeneration) {
+          throw new Error('opencode restart canceled by shutdown/update');
+        }
+        if (coordinator.requestedGeneration !== spawnGeneration) {
+          continue;
+        }
+        if (restarting.get(cwd) === coordinator) {
+          restarting.delete(cwd);
+        }
+        coordinator.resolve(handle);
+        return;
+      }
+    } catch (err) {
+      if (restarting.get(cwd) === coordinator) {
+        restarting.delete(cwd);
+      }
+      coordinator.reject(err);
+    }
+  })();
 }
 
 /**
@@ -658,16 +799,37 @@ export async function ensureOpencode(cwd: string): Promise<OpencodeHandle> {
  * disk, so killing opencode only loses the in-flight HTTP response (if any).
  * SSE consumers reconnect automatically via chat-store's subscribe loop.
  */
-export async function restartOpencode(cwd: string): Promise<OpencodeHandle> {
-  const proc = children.get(cwd);
-  if (proc) {
-    await terminateOpencodeProcess(proc, cwd, 'restart', 3_000);
-    // onExit clears these, but clear defensively in case ensureOpencode runs
-    // before the onExit callback fires.
-    handles.delete(cwd);
-    children.delete(cwd);
+export function restartOpencode(cwd: string): Promise<OpencodeHandle> {
+  const existingRestart = restarting.get(cwd);
+  if (existingRestart) {
+    existingRestart.requestedGeneration += 1;
+    const attempt = startAttempts.get(cwd);
+    if (attempt) {
+      redirectStartAttemptToRestart(attempt, existingRestart);
+    }
+    const proc = children.get(cwd);
+    if (proc) {
+      requestOpencodeTermination(proc, cwd, 'queued restart');
+    }
+    return existingRestart.promise;
   }
-  return ensureOpencode(cwd);
+
+  let resolveRestart!: (handle: OpencodeHandle) => void;
+  let rejectRestart!: (reason: unknown) => void;
+  const restartPromise = new Promise<OpencodeHandle>((resolve, reject) => {
+    resolveRestart = resolve;
+    rejectRestart = reject;
+  });
+  const coordinator: OpencodeRestartCoordinator = {
+    promise: restartPromise,
+    requestedGeneration: 1,
+    lifecycleGeneration,
+    resolve: resolveRestart,
+    reject: rejectRestart,
+  };
+  restarting.set(cwd, coordinator);
+  startRestartWorker(cwd, coordinator);
+  return restartPromise;
 }
 
 export async function stopOpencodeProcesses(timeoutMs = 3_000): Promise<void> {

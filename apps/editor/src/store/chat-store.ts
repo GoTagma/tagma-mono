@@ -60,6 +60,7 @@ import type { ChatYamlSnapshot, ChatYamlTarget } from '../utils/chat-yaml-reconc
 import {
   acquireChatYamlEditLock,
   getLocalChatYamlEditLockLease,
+  getLocalChatYamlEditLockLeaseForWorkspace,
   isLocalYamlEditLockHeldForWorkspace,
   isYamlEditLocked,
   releaseChatYamlEditLock,
@@ -2411,12 +2412,17 @@ async function forceStopHungTurn(
   workspaceKey: string,
 ): Promise<void> {
   try {
-    await restartOpencodeForConfig(workspaceKey);
+    const lockLease = getLocalChatYamlEditLockLeaseForWorkspace(workspaceKey);
+    await restartOpencodeForConfig(workspaceKey, {
+      forceStop: true,
+      yamlEditLockId: lockLease?.id ?? null,
+    });
   } catch (err) {
     console.error('[chat] forced opencode restart failed:', err);
     if (getOpencodeWorkspaceKey() === workspaceKey) {
       set({ sendError: `Couldn't stop: ${describeError(err)}` });
     }
+    return;
   }
   if (getOpencodeWorkspaceKey() !== workspaceKey) return;
   lastAbortAcked = true;

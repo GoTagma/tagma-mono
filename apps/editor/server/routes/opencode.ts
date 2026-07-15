@@ -27,7 +27,11 @@ import { startChatCompileWatcher } from '../chat-compile-watcher.js';
 import { requireWorkspace } from '../require-workspace.js';
 import { cancelHotupdate, endHotupdate, tryBeginHotupdate } from '../release/hotupdate-lock.js';
 import { S } from '../state.js';
-import { getActiveYamlEditLock, publicYamlEditLock } from '../yaml-edit-lock.js';
+import {
+  canBypassYamlEditLock,
+  getActiveYamlEditLock,
+  publicYamlEditLock,
+} from '../yaml-edit-lock.js';
 
 /**
  * OpenCode CLI bundle + update API.
@@ -531,12 +535,17 @@ export function registerOpencodeRoutes(app: express.Express): void {
       // `.tagma/` on first save.
       const workspaceRoot = ws.workDir;
       const tagmaCwd = ensureRealTagmaDirectory(workspaceRoot);
-      const seedChanged = seedOpencodeArtifacts(tagmaCwd, buildOpencodeSeedOptions(ws));
+      const activeYamlLock = getActiveYamlEditLock(ws);
+      const seedChanged = activeYamlLock
+        ? false
+        : seedOpencodeArtifacts(tagmaCwd, buildOpencodeSeedOptions(ws));
       startChatCompileWatcher(tagmaCwd, ws.registry);
       console.log('[opencode] ensure called, cwd =', tagmaCwd);
-      const { baseUrl, auth } = seedChanged
-        ? await restartOpencode(tagmaCwd)
-        : await ensureOpencode(tagmaCwd);
+      const { baseUrl, auth } = activeYamlLock
+        ? await ensureOpencode(tagmaCwd)
+        : seedChanged
+          ? await restartOpencode(tagmaCwd)
+          : await ensureOpencode(tagmaCwd);
       console.log('[opencode] ensure resolved, baseUrl =', baseUrl);
       res.json({ ok: true, baseUrl, authHeader: auth.authorization });
     } catch (err) {
@@ -559,6 +568,13 @@ export function registerOpencodeRoutes(app: express.Express): void {
     if (!ws) return;
     if (!ws.workDir) {
       return res.status(400).json({ error: 'Workspace directory is not set' });
+    }
+    const activeYamlLock = getActiveYamlEditLock(ws);
+    if (activeYamlLock && !canBypassYamlEditLock(activeYamlLock, req.get('X-Tagma-Yaml-Lock-Id'))) {
+      return res.status(423).json({
+        error: 'YAML/layout editing is locked while OpenCode chat is updating this workspace.',
+        lock: publicYamlEditLock(activeYamlLock),
+      });
     }
     try {
       const workspaceRoot = ws.workDir;

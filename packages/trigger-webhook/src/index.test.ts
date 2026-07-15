@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import plugin, { WebhookTrigger } from './index';
 import type { TriggerContext } from '@tagma/types';
+import { createHmac } from 'node:crypto';
 import { connect } from 'node:net';
 import manifest from '../package.json' with { type: 'json' };
 
@@ -30,12 +31,17 @@ function unusedPort(): number {
 function rawPost(
   port: number,
   path: string,
-  body: string,
+  body: string | Uint8Array,
+  options: {
+    readonly contentType?: string;
+    readonly headers?: Readonly<Record<string, string>>;
+  } = {},
 ): Promise<{ readonly status: number; readonly text: string }> {
   return new Promise((resolve, reject) => {
     const socket = connect({ host: '127.0.0.1', port });
     let settled = false;
     let data = '';
+    const bodyBytes = typeof body === 'string' ? Buffer.from(body) : Buffer.from(body);
 
     const finish = () => {
       if (settled) return;
@@ -45,17 +51,17 @@ function rawPost(
     };
 
     socket.on('connect', () => {
-      socket.write(
-        [
-          `POST ${path} HTTP/1.1`,
-          `Host: 127.0.0.1:${port}`,
-          'Content-Type: text/plain',
-          `Content-Length: ${Buffer.byteLength(body)}`,
-          'Connection: close',
-          '',
-          body,
-        ].join('\r\n'),
-      );
+      const requestHead = [
+        `POST ${path} HTTP/1.1`,
+        `Host: 127.0.0.1:${port}`,
+        `Content-Type: ${options.contentType ?? 'text/plain'}`,
+        `Content-Length: ${bodyBytes.byteLength}`,
+        ...Object.entries(options.headers ?? {}).map(([name, value]) => `${name}: ${value}`),
+        'Connection: close',
+        '',
+        '',
+      ].join('\r\n');
+      socket.write(Buffer.concat([Buffer.from(requestHead), bodyBytes]));
     });
     socket.on('data', (chunk) => {
       data += chunk.toString('utf8');
@@ -209,6 +215,66 @@ describe('trigger-webhook hardening', () => {
     try {
       const res = await rawPost(port, '/limit', '12345');
       expect(res.status).toBe(413);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(fired).toBe(false);
+    } finally {
+      await handle.dispose('test cleanup');
+      await observed;
+      controller.abort();
+    }
+  });
+
+  test('verifies HMAC signatures against the exact raw request bytes', async () => {
+    const controller = new AbortController();
+    const port = unusedPort();
+    const path = '/signed-bytes';
+    const envName = `TAGMA_TEST_WEBHOOK_SECRET_${Date.now()}`;
+    const secret = 'raw-byte-secret';
+    process.env[envName] = secret;
+    const handle = WebhookTrigger.watch(
+      {
+        port,
+        path,
+        secret_env: envName,
+      },
+      triggerContext(controller.signal),
+    );
+    const body = Uint8Array.from([0xef, 0xbb, 0xbf, ...Buffer.from('hello')]);
+    const signature = 'sha256=' + createHmac('sha256', secret).update(body).digest('hex');
+
+    try {
+      const response = await rawPost(port, path, body, {
+        headers: { 'x-tagma-signature': signature },
+      });
+      expect(response.status).toBe(202);
+      await expect(handle.fired).resolves.toBe('hello');
+    } finally {
+      await handle.dispose('test cleanup');
+      await Promise.allSettled([handle.fired]);
+      delete process.env[envName];
+      controller.abort();
+    }
+  });
+
+  test('rejects malformed JSON for a case-insensitive application/json media type', async () => {
+    const controller = new AbortController();
+    const port = unusedPort();
+    const path = '/json-media-type';
+    const handle = WebhookTrigger.watch({ port, path }, triggerContext(controller.signal));
+    let fired = false;
+    const observed = handle.fired
+      .then(() => {
+        fired = true;
+      })
+      .catch(() => {
+        /* disposed at test cleanup */
+      });
+
+    try {
+      const response = await rawPost(port, path, '{bad json', {
+        contentType: 'Application/JSON; Charset=UTF-8',
+      });
+      expect(response.status).toBe(400);
       await new Promise((resolve) => setTimeout(resolve, 20));
       expect(fired).toBe(false);
     } finally {

@@ -4,6 +4,7 @@ const { setClientWorkspace } = await import('../src/api/client');
 const {
   acquireChatYamlEditLock,
   getLocalChatYamlEditLockLease,
+  getLocalChatYamlEditLockLeaseForWorkspace,
   releaseChatYamlEditLock,
   useYamlEditLockStore,
 } = await import('../src/store/yaml-edit-lock-store');
@@ -99,6 +100,59 @@ afterEach(async () => {
 });
 
 describe('YAML edit lock store workspace routing', () => {
+  test('reports a workspace lock when another YAML in the current workspace is locked', () => {
+    setClientWorkspace('C:/repo-a');
+    useYamlEditLockStore.getState().syncActiveYamlPath('C:/repo-a/.tagma/alpha/alpha.yaml');
+    useYamlEditLockStore.getState().syncFromServer(
+      {
+        owner: 'chat',
+        reason: 'beta chat lock',
+        acquiredAt: Date.now(),
+        expiresAt: Date.now() + 120_000,
+        yamlPath: 'C:/repo-a/.tagma/beta/beta.yaml',
+      },
+      'C:/repo-a',
+    );
+
+    expect(useYamlEditLockStore.getState()).toMatchObject({
+      active: false,
+      workspaceActive: true,
+      lockWorkspaceKey: 'C:/repo-a',
+      yamlPath: 'C:/repo-a/.tagma/beta/beta.yaml',
+    });
+  });
+
+  test('stops reporting the workspace lock as soon as it expires', () => {
+    const originalNow = Date.now;
+    let now = 1_000_000;
+    Date.now = () => now;
+    try {
+      setClientWorkspace('C:/repo-a');
+      useYamlEditLockStore.getState().syncActiveYamlPath('C:/repo-a/.tagma/alpha/alpha.yaml');
+      useYamlEditLockStore.getState().syncFromServer(
+        {
+          owner: 'chat',
+          reason: 'beta chat lock',
+          acquiredAt: now,
+          expiresAt: now + 100,
+          yamlPath: 'C:/repo-a/.tagma/beta/beta.yaml',
+        },
+        'C:/repo-a',
+      );
+      expect(useYamlEditLockStore.getState().workspaceActive).toBe(true);
+
+      now += 101;
+      useYamlEditLockStore.getState().syncActiveYamlPath('C:/repo-a/.tagma/alpha/alpha.yaml');
+
+      expect(useYamlEditLockStore.getState()).toMatchObject({
+        active: false,
+        workspaceActive: false,
+      });
+    } finally {
+      Date.now = originalNow;
+    }
+  });
+
   test('refreshes and releases chat locks against the workspace where the lock was acquired', async () => {
     setClientWorkspace('C:/repo-a');
     useYamlEditLockStore.getState().syncActiveYamlPath('C:/repo-a/.tagma/alpha/alpha.yaml');
@@ -410,6 +464,22 @@ describe('YAML edit lock store workspace routing', () => {
 
     expect(requests.filter((request) => request.method === 'DELETE')).toHaveLength(1);
     expect(useYamlEditLockStore.getState().local).toBe(false);
+  });
+
+  test('finds the local lease by workspace after the active YAML changes', async () => {
+    setClientWorkspace('C:/repo-a');
+    useYamlEditLockStore.getState().syncActiveYamlPath('C:/repo-a/.tagma/alpha/alpha.yaml');
+
+    const acquired = await acquireChatYamlEditLock('initial turn');
+    useYamlEditLockStore.getState().syncActiveYamlPath('C:/repo-a/.tagma/beta/beta.yaml');
+
+    expect(useYamlEditLockStore.getState()).toMatchObject({
+      active: false,
+      workspaceActive: true,
+    });
+    expect(getLocalChatYamlEditLockLease()).toBeNull();
+    expect(getLocalChatYamlEditLockLeaseForWorkspace('C:/repo-a')).toEqual(acquired);
+    expect(getLocalChatYamlEditLockLeaseForWorkspace('C:/repo-b')).toBeNull();
   });
 
   test('stale heartbeat failure does not clear a newer workspace lock', async () => {

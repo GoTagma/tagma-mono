@@ -65,10 +65,10 @@ const DEFAULT_WEBHOOK_TIMEOUT_LABEL = '30m';
 const DEFAULT_WEBHOOK_TIMEOUT_MS = 30 * 60 * 1000;
 
 type BodyReadResult =
-  | { readonly ok: true; readonly text: string }
+  | { readonly ok: true; readonly bytes: Uint8Array; readonly text: string }
   | { readonly ok: false; readonly response: Response };
 
-function verifySignature(rawBody: string, header: string, secret: string): boolean {
+function verifySignature(rawBody: Uint8Array, header: string, secret: string): boolean {
   const expected = 'sha256=' + createHmac('sha256', secret).update(rawBody).digest('hex');
   const a = Buffer.from(header);
   const b = Buffer.from(expected);
@@ -102,7 +102,7 @@ async function readRequestTextWithLimit(
     }
   }
 
-  if (!req.body) return { ok: true, text: '' };
+  if (!req.body) return { ok: true, bytes: new Uint8Array(), text: '' };
 
   const reader = req.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -137,7 +137,7 @@ async function readRequestTextWithLimit(
     body.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  return { ok: true, text: new TextDecoder().decode(body) };
+  return { ok: true, bytes: body, text: new TextDecoder().decode(body) };
 }
 
 function ensureServer(
@@ -209,7 +209,7 @@ function ensureServer(
           return new Response(`env var ${endpoint.secretEnv} not set`, { status: 500 });
         }
         const sigHeader = req.headers.get('x-tagma-signature') ?? '';
-        if (!verifySignature(rawBody, sigHeader, secret)) {
+        if (!verifySignature(bodyResult.bytes, sigHeader, secret)) {
           return new Response('invalid signature', { status: 401 });
         }
       }
@@ -229,7 +229,8 @@ function ensureServer(
       // untouched, which preserves the "any POST body" escape hatch.
       let payload: unknown = rawBody;
       const contentType = req.headers.get('content-type') ?? '';
-      if (contentType.includes('application/json')) {
+      const mediaType = contentType.split(';', 1)[0]?.trim().toLowerCase();
+      if (mediaType === 'application/json') {
         try {
           payload = JSON.parse(rawBody);
         } catch (err) {

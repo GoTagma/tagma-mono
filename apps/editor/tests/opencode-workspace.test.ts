@@ -212,6 +212,48 @@ test('opencode update is rejected while YAML edit lock is active', async () => {
   }
 });
 
+test('opencode chat restart is rejected while YAML edit lock is active', async () => {
+  const app = express();
+  app.use(express.json());
+  app.use((req, _res, next) => {
+    req.workspace = S;
+    next();
+  });
+  registerOpencodeRoutes(app);
+  const previousWorkDir = S.workDir;
+  const previousLock = S.yamlEditLock;
+  S.workDir = tempCwd;
+  S.yamlEditLock = {
+    id: 'turn-restart',
+    owner: 'chat',
+    reason: 'chat updating YAML',
+    yamlPath: join(tempCwd, '.tagma', 'pipeline', 'pipeline.yaml'),
+    acquiredAt: Date.now(),
+    expiresAt: Date.now() + 60_000,
+  };
+  // If the route reaches lifecycle setup, this file makes the request fail
+  // with 500 instead of the required lock response without spawning OpenCode.
+  writeFileSync(join(tempCwd, '.tagma'), 'not a directory');
+  const { port, close } = await startApp(app);
+  try {
+    const res = await postJson(port, '/api/opencode/chat/restart');
+    expect(res.status).toBe(423);
+    const body = JSON.parse(res.body) as {
+      error?: string;
+      lock?: { reason?: string; yamlPath?: string | null };
+    };
+    expect(body.error).toContain('YAML/layout editing is locked');
+    expect(body.lock).toMatchObject({
+      reason: 'chat updating YAML',
+      yamlPath: join(tempCwd, '.tagma', 'pipeline', 'pipeline.yaml'),
+    });
+  } finally {
+    S.workDir = previousWorkDir;
+    S.yamlEditLock = previousLock;
+    await close();
+  }
+});
+
 test('opencode update is disabled when OpenCode is pinned to the Tagma release', async () => {
   process.env.TAGMA_OPENCODE_BUNDLED_VERSION = '1.15.13';
   process.env.TAGMA_OPENCODE_USER_DIR = join(tempCwd, 'opencode-user');

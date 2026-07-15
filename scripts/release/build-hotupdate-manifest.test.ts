@@ -95,6 +95,25 @@ describe('build-hotupdate-manifest', () => {
     });
   });
 
+  test('rejects a checksum file that does not match its release asset', () => {
+    const dir = withTempDir();
+    const distName = 'editor-dist-0.2.2.tar.gz';
+    writeAsset(dir, distName, 'editor-dist');
+    writeAllSidecarAssets(dir, '0.2.2');
+    writeAllOpencodeAssets(dir, '1.15.13');
+    writeFileSync(path.join(dir, `${distName}.sha256`), `${'0'.repeat(64)}  ${distName}\n`);
+
+    expect(() =>
+      buildHotupdateManifest({
+        version: '0.2.2',
+        channel: 'alpha',
+        assetsDir: dir,
+        repoSlug: 'GoTagma/tagma-mono',
+        opencodeVersion: '1.15.13',
+      }),
+    ).toThrow(/checksum mismatch.*editor-dist-0\.2\.2\.tar\.gz/i);
+  });
+
   test('throws when sidecar assets are missing without --allow-partial-sidecars', () => {
     // Default behaviour: a release that ships zero sidecar binaries (or even
     // just one platform short) is almost certainly a CI mistake, so the

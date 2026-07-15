@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { isAbsolute, relative, dirname, join } from 'node:path';
+import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import type {
   DriverPlugin,
   DriverCapabilities,
@@ -57,7 +57,7 @@ function resolvePermissionMode(permissions: Permissions): string {
 // Returns true if `sub` is inside `root` (or equal to it).
 function isInside(root: string, sub: string): boolean {
   const rel = relative(root, sub);
-  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+  return rel === '' || (rel !== '..' && !rel.startsWith('..' + sep) && !isAbsolute(rel));
 }
 
 // Claude Code requires CLAUDE_CODE_GIT_BASH_PATH on Windows pointing to

@@ -14,16 +14,18 @@ const HEARTBEAT_MS = 30 * 1000;
 type WorkspaceKey = string | null;
 
 interface YamlEditLockStore {
-  // True iff a lock is currently held AND its workspace matches the
-  // window's active workspace. UI components read only this; chat running
-  // in workspace A no longer locks the picker/menu in workspace B.
+  // True iff a lock is currently held AND its workspace and YAML match the
+  // window's active selection. YAML-specific mutation gates use this signal.
   active: boolean;
+  // True iff the current workspace has an unexpired lock, regardless of
+  // which YAML is active. Workspace-scoped runtime mutations use this signal.
+  workspaceActive: boolean;
   owner: 'chat' | null;
   reason: string | null;
   expiresAt: number | null;
   local: boolean;
   // Workspace key (= absolute workspace path) the lock belongs to. Useful
-  // for diagnostics; UI gates should use `active`.
+  // for diagnostics; YAML gates use active and runtime gates use workspaceActive.
   lockWorkspaceKey: string | null;
   yamlPath: string | null;
   syncActiveYamlPath: (yamlPath: string | null) => void;
@@ -91,8 +93,10 @@ function recompute(): void {
   const workspaceKey = getClientWorkspace();
   const stored = rawLocksByWorkspace.get(workspaceKey) ?? null;
   const here = lockMatchesCurrentWorkspace();
+  const workspaceHere = !!stored && (!stored.lock.expiresAt || stored.lock.expiresAt > Date.now());
   useYamlEditLockStore.setState({
     active: here,
+    workspaceActive: workspaceHere,
     owner: here && stored ? stored.lock.owner : null,
     reason: here && stored ? (stored.lock.reason ?? null) : null,
     expiresAt: here && stored ? (stored.lock.expiresAt ?? null) : null,
@@ -174,6 +178,7 @@ function startHeartbeat(reason: string, lease: ChatYamlEditLockLease): void {
 
 export const useYamlEditLockStore = create<YamlEditLockStore>(() => ({
   active: false,
+  workspaceActive: false,
   owner: null,
   reason: null,
   expiresAt: null,
@@ -229,6 +234,22 @@ export function getLocalYamlEditLockId(): string | null {
 
 export function getLocalChatYamlEditLockLease(): ChatYamlEditLockLease | null {
   if (!isLocalYamlEditLockActive() || !localLock) return null;
+  return { ...localLock };
+}
+
+export function getLocalChatYamlEditLockLeaseForWorkspace(
+  workspaceKey: WorkspaceKey = getClientWorkspace(),
+): ChatYamlEditLockLease | null {
+  const stored = rawLocksByWorkspace.get(workspaceKey);
+  if (
+    !stored?.local ||
+    !localLock ||
+    localLock.workspaceKey !== workspaceKey ||
+    localLockRefCount <= 0 ||
+    (stored.lock.expiresAt !== null && stored.lock.expiresAt <= Date.now())
+  ) {
+    return null;
+  }
   return { ...localLock };
 }
 

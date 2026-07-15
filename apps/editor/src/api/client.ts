@@ -1784,6 +1784,18 @@ export const api = {
 
   getOpencodeInfo: () => request<OpencodeInfo>('/opencode/info'),
 
+  restartOpencodeChat: (workspaceKeyOverride?: string | null, yamlEditLockId?: string | null) =>
+    request<{ ok: true; baseUrl: string; authHeader?: string }>(
+      '/opencode/chat/restart',
+      {
+        method: 'POST',
+        ...(yamlEditLockId?.trim()
+          ? { headers: { 'X-Tagma-Yaml-Lock-Id': yamlEditLockId.trim() } }
+          : {}),
+      },
+      workspaceKeyOverride,
+    ),
+
   updateOpencode: (version?: string) =>
     request<{ ok: true; version: string; path: string }>('/opencode/update', {
       method: 'POST',

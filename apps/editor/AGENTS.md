@@ -50,6 +50,22 @@
   A primary router that makes one `task` call still needs the minimum 3 iterations: delegate,
   relay the result, then cap. An exiting process may clear lifecycle maps only when it is still
   the tracked child for that cwd, or a stale exit callback can detach its replacement.
+- Treat runtime/config mutations as workspace-wide: switching to another pipeline in the same
+  workspace does not make them safe. A hung-turn force stop may bypass the runtime restart guard
+  only with the matching YAML-lock lease capability; ordinary settings changes must never use
+  that bypass.
+- If a restart overlaps startup, cancel the superseded attempt and coalesce restart callers onto
+  the final healthy replacement. No successful caller may receive a handle that the restart has
+  already killed. While a YAML chat lock is active, chat bootstrap may reuse/recover the current
+  runtime but must not reseed and implicitly restart it.
+
+## Focused Editor Tests
+
+- `bun scripts/test-serial.mjs` intentionally runs each test file in a separate serial Bun process
+  because editor tests share module mocks, ports, and process globals. Keep that isolation as the
+  default.
+- For fast regressions, pass repeatable unique selectors such as
+  `bun scripts/test-serial.mjs --file tests/chat-yaml-staging.test.ts --file tests/opencode-lifecycle.test.ts`.
 
 ## Windows Pipeline Paths
 

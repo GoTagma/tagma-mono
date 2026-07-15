@@ -50,6 +50,7 @@ const STAGE_TTL_MS = 24 * 60 * 60 * 1000;
 
 export const __chatYamlStagingTestHooks: {
   afterDestinationYamlWrite?: (destinationYamlPath: string) => void;
+  beforeFinalizeResultWrite?: (resultPath: string) => void;
 } = {};
 
 type ChatYamlStageConflict =
@@ -141,6 +142,12 @@ interface StagePaths {
   resultPath: string;
 }
 
+interface FinalizeArtifactSnapshot {
+  yamlPath: string;
+  directoryExisted: boolean;
+  artifacts: Array<{ path: string; content: string | null }>;
+}
+
 function sha1(content: string): string {
   return createHash('sha1').update(content).digest('hex');
 }
@@ -193,13 +200,21 @@ function sameArtifactHashes(
   );
 }
 
+export function samePipelineRelativePath(
+  left: string,
+  right: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  return platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right;
+}
+
 function baseEntryFor(
   metadata: ChatYamlStageMetadata,
   relativePath: string,
 ): ChatYamlStageBaseEntry | null {
   return (
-    metadata.baseEntries.find(
-      (entry) => entry.relativePath.toLowerCase() === relativePath.toLowerCase(),
+    metadata.baseEntries.find((entry) =>
+      samePipelineRelativePath(entry.relativePath, relativePath),
     ) ?? null
   );
 }
@@ -435,8 +450,8 @@ function describeStageEntry(
     ? sha1(assertRegularTextFile(requirementsPath, 'staged requirements'))
     : null;
   const relativePath = portableRelative(paths.agentTagmaDir, stagedPath);
-  const isSource = metadata.sourceRelativePaths.some(
-    (candidate) => candidate.toLowerCase() === relativePath.toLowerCase(),
+  const isSource = metadata.sourceRelativePaths.some((candidate) =>
+    samePipelineRelativePath(candidate, relativePath),
   );
   const sourcePath = isSource ? resolveRelativeInside(tagmaDirOf(ws.workDir), relativePath) : null;
   return {
@@ -479,8 +494,8 @@ function descriptor(
 ): ChatYamlStageDescriptor {
   const entries = listStageEntries(ws, paths, metadata);
   const active = metadata.activeRelativePath
-    ? entries.find(
-        (entry) => entry.relativePath.toLowerCase() === metadata.activeRelativePath!.toLowerCase(),
+    ? entries.find((entry) =>
+        samePipelineRelativePath(entry.relativePath, metadata.activeRelativePath!),
       )
     : null;
   return {
@@ -719,15 +734,97 @@ function withPipelineArtifactTransaction<T>(yamlPath: string, op: () => T): T {
   }
 }
 
+function captureFinalizeArtifactSnapshot(yamlPath: string): FinalizeArtifactSnapshot {
+  return {
+    yamlPath,
+    directoryExisted: existsSync(dirname(yamlPath)),
+    artifacts: pipelineArtifacts(yamlPath).map((path) => ({
+      path,
+      content: existsSync(path) ? assertRegularTextFile(path, basename(path)) : null,
+    })),
+  };
+}
+
+function restoreFinalizeArtifactSnapshot(snapshot: FinalizeArtifactSnapshot): void {
+  let firstError: unknown = null;
+  for (const artifact of snapshot.artifacts) {
+    try {
+      if (artifact.content === null) {
+        rmSync(artifact.path, { force: true });
+      } else {
+        mkdirSync(dirname(artifact.path), { recursive: true });
+        atomicWriteFileSync(artifact.path, artifact.content);
+      }
+    } catch (err) {
+      firstError ??= err;
+      console.error('[chat-yaml-staging] failed to roll back', artifact.path, err);
+    }
+  }
+  if (!snapshot.directoryExisted) {
+    try {
+      rmSync(dirname(snapshot.yamlPath), { recursive: true, force: true });
+    } catch (err) {
+      firstError ??= err;
+      console.error(
+        '[chat-yaml-staging] failed to remove rolled-back pipeline directory',
+        dirname(snapshot.yamlPath),
+        err,
+      );
+    }
+  }
+  if (firstError) throw firstError;
+}
+
+function withFinalizeMutationTransaction<T>(
+  ws: WorkspaceState,
+  op: (trackPipeline: (yamlPath: string) => void) => T,
+): T {
+  const snapshots: FinalizeArtifactSnapshot[] = [];
+  const initialConfig = ws.config;
+  const initialLayout = ws.layout;
+  const initialYamlVersion = ws.yamlVersion;
+  const initialRevision = ws.stateRevision;
+  const trackPipeline = (yamlPath: string): void => {
+    if (snapshots.some((snapshot) => samePath(snapshot.yamlPath, yamlPath))) return;
+    snapshots.push(captureFinalizeArtifactSnapshot(yamlPath));
+  };
+
+  try {
+    return op(trackPipeline);
+  } catch (err) {
+    let rollbackError: unknown = null;
+    for (const snapshot of [...snapshots].reverse()) {
+      try {
+        restoreFinalizeArtifactSnapshot(snapshot);
+      } catch (restoreErr) {
+        rollbackError ??= restoreErr;
+      }
+    }
+    ws.config = initialConfig;
+    ws.layout = initialLayout;
+    ws.yamlVersion = initialYamlVersion;
+    ws.stateRevision = initialRevision;
+    if (ws.yamlPath && existsSync(ws.yamlPath)) {
+      beginWatching(ws, ws.yamlPath, assertRegularTextFile(ws.yamlPath, 'rolled-back YAML'));
+    }
+    if (rollbackError) {
+      console.error('[chat-yaml-staging] finalize rollback was incomplete', rollbackError);
+    }
+    throw err;
+  }
+}
+
 function copyStagedAsNumberedPipeline(
   ws: WorkspaceState,
   stagedYamlPath: string,
   sourceIdentityPath: string,
+  beforeWrite?: (destinationYamlPath: string) => void,
 ): string {
   const target = nextPipelineCopyTarget(ws.workDir, sourceIdentityPath);
   const sourceStem = stemFromYamlBasename(basename(sourceIdentityPath));
   const stagedName = pipelineNameFromYaml(readFileSync(stagedYamlPath, 'utf-8'));
   const nextName = pipelineCopyName(stagedName, target.copyNumber, sourceStem);
+  beforeWrite?.(target.yamlPath);
   try {
     writeStagedArtifactsToDestination(ws, stagedYamlPath, target.yamlPath, {
       pipelineName: nextName,
@@ -812,10 +909,23 @@ function describeRealEntry(ws: WorkspaceState, yamlPath: string): ChatYamlStageE
 }
 
 function persistFinalizeResult(paths: StagePaths, result: ChatYamlStageFinalizeResult): void {
+  __chatYamlStagingTestHooks.beforeFinalizeResultWrite?.(paths.resultPath);
   atomicWriteFileSync(paths.resultPath, JSON.stringify(result, null, 2) + '\n');
-  stopChatCompileWatcher(paths.agentTagmaDir);
-  rmSync(paths.agentWorkspaceDir, { recursive: true, force: true });
-  rmSync(paths.baseWorkspaceDir, { recursive: true, force: true });
+}
+
+function cleanupFinalizedStage(paths: StagePaths): void {
+  try {
+    stopChatCompileWatcher(paths.agentTagmaDir);
+  } catch (err) {
+    console.error('[chat-yaml-staging] failed to stop finalized compile watcher', err);
+  }
+  for (const workspaceDir of [paths.agentWorkspaceDir, paths.baseWorkspaceDir]) {
+    try {
+      rmSync(workspaceDir, { recursive: true, force: true });
+    } catch (err) {
+      console.error('[chat-yaml-staging] failed to clean finalized workspace', workspaceDir, err);
+    }
+  }
 }
 
 function readFinalizeResult(paths: StagePaths): ChatYamlStageFinalizeResult | null {
@@ -832,6 +942,7 @@ export function finalizeChatYamlStage(
   const { paths, metadata } = readMetadata(ws, input.stageId);
   const previousResult = readFinalizeResult(paths);
   if (previousResult) {
+    cleanupFinalizedStage(paths);
     const state = getState(ws);
     return { ...previousResult, revision: state.revision, state };
   }
@@ -845,8 +956,8 @@ export function finalizeChatYamlStage(
     throw new Error('Staged YAML did not compile successfully.');
   }
 
-  const sourceRelativePath = metadata.sourceRelativePaths.find(
-    (candidate) => candidate.toLowerCase() === relativePath.toLowerCase(),
+  const sourceRelativePath = metadata.sourceRelativePaths.find((candidate) =>
+    samePipelineRelativePath(candidate, relativePath),
   );
   const sourcePath = sourceRelativePath
     ? resolveRelativeInside(tagmaDirOf(ws.workDir), sourceRelativePath)
@@ -862,6 +973,7 @@ export function finalizeChatYamlStage(
       state: getState(ws),
     };
     persistFinalizeResult(paths, result);
+    cleanupFinalizedStage(paths);
     return result;
   }
 
@@ -869,86 +981,84 @@ export function finalizeChatYamlStage(
   if (input.forceForkReason) conflicts.push(input.forceForkReason);
   if (!compile.success && !conflicts.includes('compile-failed')) conflicts.push('compile-failed');
 
-  let outcome: ChatYamlStageFinalizeResult['outcome'];
-  let destinationPath: string;
-  let localBranchPersisted = false;
+  const committed = withFinalizeMutationTransaction(ws, (trackPipeline) => {
+    let outcome: ChatYamlStageFinalizeResult['outcome'];
+    let destinationPath: string;
+    let localBranchPersisted = false;
 
-  if (!sourcePath) {
-    const desiredPath = assertPipelineYamlPath(
-      ws.workDir,
-      resolveRelativeInside(tagmaDirOf(ws.workDir), relativePath),
-      'new staged pipeline destination',
-    );
-    if (!existsSync(dirname(desiredPath))) {
-      try {
-        writeStagedArtifactsToDestination(ws, stagedPath, desiredPath);
-      } catch (err) {
-        rmSync(dirname(desiredPath), { recursive: true, force: true });
-        throw err;
-      }
-      destinationPath = desiredPath;
-      outcome = 'created';
-    } else {
-      conflicts.push('destination-exists');
-      destinationPath = copyStagedAsNumberedPipeline(ws, stagedPath, desiredPath);
-      outcome = 'forked';
-    }
-  } else {
-    let localBranchChanged = false;
-    if (input.localBranch) {
-      if (!samePath(input.localBranch.sourcePath, sourcePath)) {
-        throw new Error('Local branch path does not match the staged source pipeline.');
-      }
-      localBranchChanged = localBranchDiffersFromBase(
-        paths,
-        metadata,
-        relativePath,
-        input.localBranch,
+    if (!sourcePath) {
+      const desiredPath = assertPipelineYamlPath(
+        ws.workDir,
+        resolveRelativeInside(tagmaDirOf(ws.workDir), relativePath),
+        'new staged pipeline destination',
       );
-      if (localBranchChanged) conflicts.push('local-branch-changed');
-    }
-    const diskMatchesBase = sourceMatchesBase(metadata, sourcePath, relativePath);
-    if (!diskMatchesBase) conflicts.push('source-changed-on-disk');
-    const mustFork = Boolean(input.forceFork) || conflicts.length > 0;
-    if (!mustFork) {
-      writeStagedArtifactsToDestination(ws, stagedPath, sourcePath);
-      refreshCurrentWorkspaceState(ws, sourcePath);
-      destinationPath = sourcePath;
-      outcome = 'adopted';
+      if (!existsSync(dirname(desiredPath))) {
+        trackPipeline(desiredPath);
+        writeStagedArtifactsToDestination(ws, stagedPath, desiredPath);
+        destinationPath = desiredPath;
+        outcome = 'created';
+      } else {
+        conflicts.push('destination-exists');
+        destinationPath = copyStagedAsNumberedPipeline(ws, stagedPath, desiredPath, trackPipeline);
+        outcome = 'forked';
+      }
     } else {
-      destinationPath = copyStagedAsNumberedPipeline(ws, stagedPath, sourcePath);
-      if (input.localBranch && localBranchChanged && diskMatchesBase) {
-        try {
+      let localBranchChanged = false;
+      if (input.localBranch) {
+        if (!samePath(input.localBranch.sourcePath, sourcePath)) {
+          throw new Error('Local branch path does not match the staged source pipeline.');
+        }
+        localBranchChanged = localBranchDiffersFromBase(
+          paths,
+          metadata,
+          relativePath,
+          input.localBranch,
+        );
+        if (localBranchChanged) conflicts.push('local-branch-changed');
+      }
+      const diskMatchesBase = sourceMatchesBase(metadata, sourcePath, relativePath);
+      if (!diskMatchesBase) conflicts.push('source-changed-on-disk');
+      const mustFork = Boolean(input.forceFork) || conflicts.length > 0;
+      if (!mustFork) {
+        trackPipeline(sourcePath);
+        writeStagedArtifactsToDestination(ws, stagedPath, sourcePath);
+        refreshCurrentWorkspaceState(ws, sourcePath);
+        destinationPath = sourcePath;
+        outcome = 'adopted';
+      } else {
+        destinationPath = copyStagedAsNumberedPipeline(ws, stagedPath, sourcePath, trackPipeline);
+        if (input.localBranch && localBranchChanged && diskMatchesBase) {
+          trackPipeline(sourcePath);
           writeLocalBranch(ws, input.localBranch);
           localBranchPersisted = true;
-        } catch (err) {
-          rmSync(dirname(destinationPath), { recursive: true, force: true });
-          throw err;
         }
+        outcome = 'forked';
       }
-      outcome = 'forked';
     }
-  }
 
-  bumpRevision(ws);
-  const state = getState(ws);
+    bumpRevision(ws);
+    const state = getState(ws);
+    const result: ChatYamlStageFinalizeResult = {
+      outcome,
+      entry: describeRealEntry(ws, destinationPath),
+      conflicts: [...new Set(conflicts)],
+      localBranchPersisted,
+      compile,
+      revision: state.revision,
+      state,
+    };
+    persistFinalizeResult(paths, result);
+    return { destinationPath, result, state };
+  });
+
+  cleanupFinalizedStage(paths);
   if (
     ws.yamlPath &&
-    (samePath(ws.yamlPath, sourcePath) || samePath(ws.yamlPath, destinationPath))
+    (samePath(ws.yamlPath, sourcePath) || samePath(ws.yamlPath, committed.destinationPath))
   ) {
-    broadcastStateEvent(ws, { type: 'external-change', newState: state });
+    broadcastStateEvent(ws, { type: 'external-change', newState: committed.state });
   }
-  const result: ChatYamlStageFinalizeResult = {
-    outcome,
-    entry: describeRealEntry(ws, destinationPath),
-    conflicts: [...new Set(conflicts)],
-    localBranchPersisted,
-    compile,
-    revision: state.revision,
-    state,
-  };
-  persistFinalizeResult(paths, result);
-  return result;
+  return committed.result;
 }
 
 export function discardChatYamlStage(ws: WorkspaceState, stageId: string): boolean {

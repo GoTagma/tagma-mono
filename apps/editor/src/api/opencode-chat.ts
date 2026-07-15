@@ -34,7 +34,7 @@ import type {
   Provider as SdkProvider,
   ProviderAuthMethod as SdkProviderAuthMethod,
 } from '@opencode-ai/sdk/client';
-import { getClientAuthToken, getClientWorkspace } from './client';
+import { api, getClientAuthToken, getClientWorkspace } from './client';
 import { describeOpencodeError, toOpencodeError } from '../../shared/opencode-errors.js';
 
 /**
@@ -507,33 +507,18 @@ export function resetOpencodeClient(): void {
  * cached bootstrap over to the returned baseUrl so subsequent
  * `getOpencodeClient()` callers get a client pointed at the fresh process.
  */
+export interface RestartOpencodeForConfigOptions {
+  forceStop?: boolean;
+  yamlEditLockId?: string | null;
+}
+
 export async function restartOpencodeForConfig(
   workspaceKey = currentWorkspaceKey(),
+  options: RestartOpencodeForConfigOptions = {},
 ): Promise<void> {
   const key = workspaceKey;
-  const headers: Record<string, string> = {};
-  const workspaceHeader = opencodeWorkspaceHeaderValue(key);
-  if (workspaceHeader) headers['X-Tagma-Workspace'] = workspaceHeader;
-  const authToken = getClientAuthToken();
-  if (authToken) headers.Authorization = `Bearer ${authToken}`;
-  const res = await fetch('/api/opencode/chat/restart', { method: 'POST', headers });
-  if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      const errBody = (await res.json()) as { error?: unknown };
-      if (typeof errBody.error === 'string') detail = errBody.error;
-      else if (
-        errBody.error &&
-        typeof errBody.error === 'object' &&
-        'message' in (errBody.error as object)
-      )
-        detail = String((errBody.error as { message: unknown }).message);
-    } catch {
-      /* best-effort */
-    }
-    throw new Error(`Failed to restart opencode (${res.status}): ${detail}`);
-  }
-  const body = (await res.json()) as { baseUrl?: string; authHeader?: unknown };
+  const lockId = options.forceStop ? options.yamlEditLockId?.trim() : null;
+  const body = await api.restartOpencodeChat(key, lockId);
   if (!body.baseUrl) throw new Error('opencode restart response missing baseUrl');
   const authHeader = typeof body.authHeader === 'string' ? body.authHeader : undefined;
   // Overwrite the cached bootstrap with a client bound to the new port so

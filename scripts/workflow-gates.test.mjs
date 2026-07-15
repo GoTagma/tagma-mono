@@ -97,6 +97,14 @@ test('test:scripts runs both node mjs tests and Bun TypeScript script tests', ()
   assert.match(script, /scripts\/\*\*\/\*\.test\.ts/);
 });
 
+test('repository pins formatted text to LF across Windows checkouts', () => {
+  const attributes = readFileSync(new URL('../.gitattributes', import.meta.url), 'utf8');
+
+  assert.match(attributes, /^\* text=auto eol=lf$/m);
+  assert.match(attributes, /^\*\.bat text eol=crlf$/m);
+  assert.match(attributes, /^\*\.cmd text eol=crlf$/m);
+});
+
 test('release-desktop stages OpenCode for every hot-update manifest target', () => {
   const block = stepBlock(
     releaseDesktopWorkflow,

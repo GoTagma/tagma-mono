@@ -1510,4 +1510,72 @@ describe('workspace route validation', () => {
     ).toEqual(['current', 'old']);
     expect((res.body as { totalRecords: number }).totalRecords).toBe(2);
   });
+
+  test('PATCH /api/editor-settings rejects a parsed pythonAgent patch before writing', () => {
+    const workDir = makeTempDir();
+    const settingsPath = join(workDir, '.tagma', 'editor-settings.json');
+    mkdirSync(join(workDir, '.tagma'), { recursive: true });
+    S.workDir = workDir;
+    S.yamlEditLock = {
+      id: 'private-settings-lock-id',
+      owner: 'chat',
+      reason: 'chat updating YAML',
+      yamlPath: join(workDir, '.tagma', 'pipeline', 'pipeline.yaml'),
+      acquiredAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+    };
+
+    const res = makeRes();
+    createRouteHarness().patch('/api/editor-settings')(
+      {
+        workspace: S,
+        body: {
+          autoSaveEnabled: false,
+          pythonAgent: {
+            enabled: true,
+            interpreterCommand: 'python',
+            interpreterArgs: [],
+            interpreterVersion: '3.13',
+            venvPath: '.tagma/.python-agent/venv',
+            configuredAt: null,
+          },
+        },
+      },
+      res,
+    );
+
+    expect(res.statusCode).toBe(423);
+    expect(res.body).toMatchObject({
+      error: expect.stringContaining('YAML/layout editing is locked'),
+      lock: { owner: 'chat', reason: 'chat updating YAML' },
+    });
+    expect((res.body as { lock?: { id?: string } }).lock?.id).toBeUndefined();
+    expect(existsSync(settingsPath)).toBe(false);
+  });
+
+  test('PATCH /api/editor-settings permits a non-runtime patch when invalid pythonAgent input is parsed out', () => {
+    const workDir = makeTempDir();
+    const settingsPath = join(workDir, '.tagma', 'editor-settings.json');
+    mkdirSync(join(workDir, '.tagma'), { recursive: true });
+    S.workDir = workDir;
+    S.yamlEditLock = {
+      id: 'private-settings-lock-id',
+      owner: 'chat',
+      reason: 'chat updating YAML',
+      yamlPath: join(workDir, '.tagma', 'pipeline', 'pipeline.yaml'),
+      acquiredAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+    };
+
+    const res = makeRes();
+    createRouteHarness().patch('/api/editor-settings')(
+      { workspace: S, body: { autoSaveEnabled: false, pythonAgent: true } },
+      res,
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(readFileSync(settingsPath, 'utf-8'))).toMatchObject({
+      autoSaveEnabled: false,
+    });
+  });
 });

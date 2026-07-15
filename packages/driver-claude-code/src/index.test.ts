@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { join } from 'node:path';
 import plugin, { ClaudeCodeDriver } from './index';
 import manifest from '../package.json' with { type: 'json' };
 
@@ -70,6 +71,32 @@ describe('driver-claude-code plugin shape', () => {
     expect(spec.args).toContain('--allowedTools');
     expect(spec.args[spec.args.indexOf('--allowedTools') + 1]).toBe('Grep,Glob,Read');
     expect(spec.args[spec.args.indexOf('--permission-mode') + 1]).toBe('dontAsk');
+  });
+
+  test('grants the project root to a child directory whose name starts with two dots', async () => {
+    const workDir = join(process.cwd(), 'workspace-root');
+    const taskCwd = join(workDir, '..cache');
+    const task = {
+      id: 't1',
+      name: 't1',
+      prompt: 'hello',
+      cwd: taskCwd,
+    } as unknown as Parameters<typeof plugin.buildCommand>[0];
+    const track = { id: 'k', name: 'k', tasks: [] } as unknown as Parameters<
+      typeof plugin.buildCommand
+    >[1];
+    const ctx = {
+      workDir,
+      normalizedMap: new Map(),
+      sessionMap: new Map(),
+      sessionDriverMap: new Map(),
+    } as unknown as Parameters<typeof plugin.buildCommand>[2];
+
+    const spec = await ClaudeCodeDriver.buildCommand(task, track, ctx);
+    const addDirIndex = spec.args.indexOf('--add-dir');
+
+    expect(addDirIndex).toBeGreaterThan(-1);
+    expect(spec.args[addDirIndex + 1]).toBe(workDir);
   });
 
   test('passes an existing CLAUDE_CODE_GIT_BASH_PATH through to the child env on Windows', async () => {

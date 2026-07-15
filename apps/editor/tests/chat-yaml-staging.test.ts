@@ -10,13 +10,16 @@ import {
   discardChatYamlStage,
   finalizeChatYamlStage,
   listChatYamlStage,
+  samePipelineRelativePath,
 } from '../server/chat-yaml-staging';
 import { getFileVersion } from '../server/optimistic-lock';
 import {
+  pipelineCompileLogPath,
   pipelineLayoutPath,
   pipelineRequirementsPath,
   pipelineYamlPath,
 } from '../server/pipeline-paths';
+import { pipelineManifestPath } from '../server/pipeline-manifest';
 import { WorkspaceState } from '../server/workspace-state';
 
 const roots: string[] = [];
@@ -83,12 +86,25 @@ function stopWorkspace(ws: WorkspaceState): void {
 
 afterEach(() => {
   delete __chatYamlStagingTestHooks.afterDestinationYamlWrite;
+  delete __chatYamlStagingTestHooks.beforeFinalizeResultWrite;
   for (const root of roots.splice(0)) {
     rmSync(root, { recursive: true, force: true });
   }
 });
 
 describe('chat YAML staging', () => {
+  test('keeps POSIX pipeline path identity case-sensitive', () => {
+    expect(
+      samePipelineRelativePath('pipeline/pipeline.yaml', 'Pipeline/Pipeline.yaml', 'linux'),
+    ).toBe(false);
+  });
+
+  test('keeps Windows pipeline path identity case-insensitive', () => {
+    expect(
+      samePipelineRelativePath('pipeline/pipeline.yaml', 'Pipeline/Pipeline.yaml', 'win32'),
+    ).toBe(true);
+  });
+
   test('isolates agent writes and adopts them only when the source still matches base', () => {
     const { ws, sourcePath, baseYaml } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
@@ -366,6 +382,92 @@ describe('chat YAML staging', () => {
       JSON.parse(layoutFor(20)),
     );
     expect(discardChatYamlStage(ws, stage.id)).toBe(true);
+    stopWorkspace(ws);
+  });
+
+  test('rolls back publication when the finalize result record cannot be written', () => {
+    const { ws, sourcePath, baseYaml } = setupWorkspace();
+    const initialLayout = structuredClone(ws.layout);
+    const initialYamlVersion = ws.yamlVersion;
+    const initialRevision = ws.stateRevision;
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    writeFileSync(staged.stagedPath, yamlFor('Agent Pipeline', 'agent'), 'utf-8');
+    writeFileSync(pipelineLayoutPath(staged.stagedPath), layoutFor(90), 'utf-8');
+    __chatYamlStagingTestHooks.beforeFinalizeResultWrite = () => {
+      throw new Error('injected finalize result write failure');
+    };
+
+    expect(() =>
+      finalizeChatYamlStage(ws, {
+        stageId: stage.id,
+        relativePath: staged.relativePath,
+      }),
+    ).toThrow('injected finalize result write failure');
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
+    expect(JSON.parse(readFileSync(pipelineLayoutPath(sourcePath), 'utf-8'))).toEqual(
+      JSON.parse(layoutFor(20)),
+    );
+    expect(ws.config).toEqual(parseYaml(baseYaml));
+    expect(ws.layout).toEqual(initialLayout);
+    expect(ws.yamlVersion).toEqual(getFileVersion(sourcePath));
+    expect(ws.yamlVersion).toMatchObject({
+      size: initialYamlVersion?.size,
+      hash: initialYamlVersion?.hash,
+    });
+    expect(ws.stateRevision).toBe(initialRevision);
+    expect(existsSync(pipelineRequirementsPath(sourcePath))).toBe(false);
+    expect(existsSync(pipelineManifestPath(sourcePath))).toBe(false);
+    expect(existsSync(pipelineCompileLogPath(sourcePath))).toBe(false);
+    expect(existsSync(join(stage.rootDir, 'finalized.json'))).toBe(false);
+
+    delete __chatYamlStagingTestHooks.beforeFinalizeResultWrite;
+    const firstRetry = finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+    });
+    const stableRetry = finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+    });
+
+    expect(firstRetry.outcome).toBe('adopted');
+    expect(firstRetry.entry?.path).toBe(sourcePath);
+    expect(stableRetry).toEqual(firstRetry);
+    expect(existsSync(pipelineYamlPath(ws.workDir, 'pipeline-copy-1'))).toBe(false);
+    stopWorkspace(ws);
+  });
+
+  test('reuses the first copy number after a fork result record rolls back', () => {
+    const { ws, sourcePath, baseYaml } = setupWorkspace();
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const copyPath = pipelineYamlPath(ws.workDir, 'pipeline-copy-1');
+    writeFileSync(staged.stagedPath, yamlFor('Agent Pipeline', 'agent'), 'utf-8');
+    __chatYamlStagingTestHooks.beforeFinalizeResultWrite = () => {
+      throw new Error('injected fork result write failure');
+    };
+
+    const input = {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+      forceFork: true,
+      forceForkReason: 'path-moved',
+    } as const;
+    expect(() => finalizeChatYamlStage(ws, input)).toThrow('injected fork result write failure');
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
+    expect(existsSync(copyPath)).toBe(false);
+
+    delete __chatYamlStagingTestHooks.beforeFinalizeResultWrite;
+    const firstRetry = finalizeChatYamlStage(ws, input);
+    const stableRetry = finalizeChatYamlStage(ws, input);
+
+    expect(firstRetry.outcome).toBe('forked');
+    expect(firstRetry.entry?.path).toBe(copyPath);
+    expect(readFileSync(copyPath, 'utf-8')).toContain('prompt: agent');
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
+    expect(stableRetry).toEqual(firstRetry);
+    expect(existsSync(pipelineYamlPath(ws.workDir, 'pipeline-copy-2'))).toBe(false);
     stopWorkspace(ws);
   });
 });

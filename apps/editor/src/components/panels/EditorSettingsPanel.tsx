@@ -14,6 +14,7 @@ import {
 } from '../../api/client';
 import { restartOpencodeForConfig } from '../../api/opencode-chat';
 import { useEditorSettingsStore } from '../../store/editor-settings-store';
+import { useYamlEditLockStore } from '../../store/yaml-edit-lock-store';
 import { useModalFocusTrap } from '../../hooks/use-modal-focus-trap';
 import {
   DEFAULT_OPENCODE_AGENT_MAX_STEPS,
@@ -43,6 +44,15 @@ type PythonWizardStatus =
   | { kind: 'error'; message: string }
   | { kind: 'installed'; message: string };
 
+const OPENCODE_SETTINGS_LOCK_MESSAGE =
+  'Wait for the active OpenCode chat to finish before changing OpenCode settings.';
+
+export function getOpencodeSettingsMutationBlockMessage(lockState: {
+  workspaceActive: boolean;
+}): string | null {
+  return lockState.workspaceActive ? OPENCODE_SETTINGS_LOCK_MESSAGE : null;
+}
+
 export function EditorSettingsPanel({
   workDir,
   onRegistryUpdate,
@@ -67,8 +77,12 @@ export function EditorSettingsPanel({
   const [installPlan, setInstallPlan] = useState<PythonInstallPlan | null>(null);
   const [pythonStatus, setPythonStatus] = useState<PythonWizardStatus>({ kind: 'idle' });
   const modalRef = useModalFocusTrap<HTMLDivElement>();
+  const opencodeSettingsMutationBlockMessage = useYamlEditLockStore(
+    getOpencodeSettingsMutationBlockMessage,
+  );
 
   const hasWorkspace = workDir.length > 0;
+  const opencodeSettingsMutationBlocked = opencodeSettingsMutationBlockMessage !== null;
 
   const refreshDeclared = useCallback(async () => {
     if (!hasWorkspace) return;
@@ -162,6 +176,10 @@ export function EditorSettingsPanel({
     parsedAgentMaxSteps !== globalSettings.opencodeAgentMaxSteps;
 
   const saveGlobalAgentMaxSteps = async () => {
+    if (opencodeSettingsMutationBlockMessage) {
+      setError(opencodeSettingsMutationBlockMessage);
+      return;
+    }
     if (!globalSettings || !agentMaxStepsDraftValid) {
       setError(
         `Agent max steps must be a whole number from ${MIN_OPENCODE_AGENT_MAX_STEPS} to ${MAX_OPENCODE_AGENT_MAX_STEPS}.`,
@@ -240,6 +258,10 @@ export function EditorSettingsPanel({
   }, [hasWorkspace]);
 
   const handlePythonToggle = async (enabled: boolean) => {
+    if (opencodeSettingsMutationBlockMessage) {
+      setError(opencodeSettingsMutationBlockMessage);
+      return;
+    }
     if (enabled) {
       await openPythonWizard();
       return;
@@ -295,6 +317,10 @@ export function EditorSettingsPanel({
   }, [installVersion, pythonChoice, pythonWizardOpen, pythonDetection?.packageManager]);
 
   const configurePython = async () => {
+    if (opencodeSettingsMutationBlockMessage) {
+      setPythonStatus({ kind: 'error', message: opencodeSettingsMutationBlockMessage });
+      return;
+    }
     if (!settings) return;
     const command = pythonChoice === 'yes' ? (selectedPython?.command ?? manualPythonPath) : '';
     const args = pythonChoice === 'yes' ? (selectedPython?.args ?? []) : [];
@@ -417,13 +443,18 @@ export function EditorSettingsPanel({
                     max={MAX_OPENCODE_AGENT_MAX_STEPS}
                     step={1}
                     value={agentMaxStepsDraft}
-                    disabled={globalSaving}
+                    disabled={globalSaving || opencodeSettingsMutationBlocked}
                     onChange={(event) => {
                       setAgentMaxStepsDraft(event.target.value);
                       setAgentMaxStepsSaved(false);
                     }}
                     onKeyDown={(event) => {
-                      if (event.key === 'Enter' && agentMaxStepsChanged && !globalSaving) {
+                      if (
+                        event.key === 'Enter' &&
+                        agentMaxStepsChanged &&
+                        !globalSaving &&
+                        !opencodeSettingsMutationBlocked
+                      ) {
                         event.preventDefault();
                         void saveGlobalAgentMaxSteps();
                       } else if (event.key === 'Escape') {
@@ -436,7 +467,9 @@ export function EditorSettingsPanel({
                   <button
                     type="button"
                     onClick={() => void saveGlobalAgentMaxSteps()}
-                    disabled={globalSaving || !agentMaxStepsChanged}
+                    disabled={
+                      globalSaving || opencodeSettingsMutationBlocked || !agentMaxStepsChanged
+                    }
                     className="flex items-center gap-1.5 border border-tagma-accent/50 px-2.5 py-1 text-[11px] text-tagma-accent transition-colors hover:bg-tagma-accent/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
                   >
                     {globalSaving && <Loader2 size={11} className="animate-spin" />}
@@ -444,21 +477,23 @@ export function EditorSettingsPanel({
                   </button>
                 </div>
                 <div className="min-h-4 text-[9px] text-tagma-muted">
-                  {!agentMaxStepsDraftValid
-                    ? 'Enter a whole number from ' +
-                      MIN_OPENCODE_AGENT_MAX_STEPS +
-                      ' to ' +
-                      MAX_OPENCODE_AGENT_MAX_STEPS +
-                      '.'
-                    : agentMaxStepsSaved
-                      ? 'Saved globally.'
-                      : 'Default ' +
-                        DEFAULT_OPENCODE_AGENT_MAX_STEPS +
-                        '; range ' +
+                  {opencodeSettingsMutationBlockMessage
+                    ? opencodeSettingsMutationBlockMessage
+                    : !agentMaxStepsDraftValid
+                      ? 'Enter a whole number from ' +
                         MIN_OPENCODE_AGENT_MAX_STEPS +
-                        '-' +
+                        ' to ' +
                         MAX_OPENCODE_AGENT_MAX_STEPS +
-                        '.'}
+                        '.'
+                      : agentMaxStepsSaved
+                        ? 'Saved globally.'
+                        : 'Default ' +
+                          DEFAULT_OPENCODE_AGENT_MAX_STEPS +
+                          '; range ' +
+                          MIN_OPENCODE_AGENT_MAX_STEPS +
+                          '-' +
+                          MAX_OPENCODE_AGENT_MAX_STEPS +
+                          '.'}
                 </div>
               </div>
             </div>
@@ -536,7 +571,7 @@ export function EditorSettingsPanel({
                   label="Enable Python AI Agent"
                   description="Configures a workspace-local Python environment for helper tools. Pipeline authoring still prefers native commands first; Python is used only when it keeps the workflow simpler."
                   checked={settings.pythonAgent.enabled}
-                  disabled={!hasWorkspace || saving}
+                  disabled={!hasWorkspace || saving || opencodeSettingsMutationBlocked}
                   onChange={(v) => void handlePythonToggle(v)}
                 />
                 {settings.pythonAgent.enabled && (
@@ -550,7 +585,7 @@ export function EditorSettingsPanel({
                     </div>
                     <button
                       onClick={() => void openPythonWizard()}
-                      disabled={!hasWorkspace || saving}
+                      disabled={!hasWorkspace || saving || opencodeSettingsMutationBlocked}
                       className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 border border-tagma-border text-tagma-text hover:bg-tagma-surface disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                     >
                       <Terminal size={11} />
@@ -679,6 +714,7 @@ export function EditorSettingsPanel({
           installVersion={installVersion}
           installPlan={installPlan}
           status={pythonStatus}
+          opencodeSettingsMutationBlockMessage={opencodeSettingsMutationBlockMessage}
           onChoice={setPythonChoice}
           onSelectedId={setSelectedPythonId}
           onManualPath={setManualPythonPath}
@@ -703,6 +739,7 @@ interface PythonAgentWizardProps {
   installVersion: string;
   installPlan: PythonInstallPlan | null;
   status: PythonWizardStatus;
+  opencodeSettingsMutationBlockMessage: string | null;
   onChoice: (choice: PythonChoice) => void;
   onSelectedId: (id: string) => void;
   onManualPath: (path: string) => void;
@@ -720,6 +757,7 @@ function PythonAgentWizard({
   installVersion,
   installPlan,
   status,
+  opencodeSettingsMutationBlockMessage,
   onChoice,
   onSelectedId,
   onManualPath,
@@ -767,6 +805,9 @@ function PythonAgentWizard({
           </button>
         </div>
         <div className="modal-viewport-body space-y-4 px-5 py-4">
+          {opencodeSettingsMutationBlockMessage && (
+            <WarnBox>{opencodeSettingsMutationBlockMessage}</WarnBox>
+          )}
           <RadioGroupRow<PythonChoice>
             label="Is Python already installed on this device?"
             description={
@@ -829,7 +870,11 @@ function PythonAgentWizard({
               )}
               <button
                 onClick={onConfigure}
-                disabled={busy || (!selected && manualPath.trim().length === 0)}
+                disabled={
+                  busy ||
+                  !!opencodeSettingsMutationBlockMessage ||
+                  (!selected && manualPath.trim().length === 0)
+                }
                 className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 border border-tagma-accent/50 text-tagma-accent hover:bg-tagma-accent/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 {status.kind === 'configuring' ? (

@@ -12,7 +12,7 @@ const slowTestTimeouts = new Map([
 ]);
 
 function normalizePath(path) {
-  return path.split(sep).join('/');
+  return path.replaceAll('\\', '/').split(sep).join('/');
 }
 
 export function discoverTestFiles(testsDir, cwd = process.cwd()) {
@@ -46,20 +46,75 @@ export function buildBunTestArgs(file, extraArgs = []) {
   return [...args, ...extraArgs];
 }
 
+export function parseRunnerArgs(args) {
+  const fileSelectors = [];
+  const bunArgs = [];
+
+  function addFileSelector(selector) {
+    if (!selector || selector.startsWith('--')) {
+      throw new Error('--file requires a test file path');
+    }
+    fileSelectors.push(selector);
+  }
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === '--file') {
+      addFileSelector(args[index + 1]);
+      index += 1;
+    } else if (arg.startsWith('--file=')) {
+      addFileSelector(arg.slice('--file='.length));
+    } else {
+      bunArgs.push(arg);
+    }
+  }
+
+  return { fileSelectors, bunArgs };
+}
+
+export function selectTestFiles(testFiles, fileSelectors) {
+  if (fileSelectors.length === 0) {
+    return testFiles;
+  }
+
+  const selectors = fileSelectors.map((selector) => normalizePath(selector).replace(/^\.\/+/, ''));
+  const matchesSelector = (file, selector) => {
+    const normalizedFile = normalizePath(file);
+    return normalizedFile === selector || normalizedFile.endsWith(`/${selector}`);
+  };
+
+  const selectedFiles = new Set();
+  for (const selector of selectors) {
+    const matches = testFiles.filter((file) => matchesSelector(file, selector));
+    if (matches.length === 0) {
+      throw new Error(`No editor test file matched --file: ${selector}`);
+    }
+    if (matches.length > 1) {
+      throw new Error(
+        `Ambiguous editor test file selector --file: ${selector} (matches: ${matches.join(', ')})`,
+      );
+    }
+    selectedFiles.add(matches[0]);
+  }
+
+  return testFiles.filter((file) => selectedFiles.has(file));
+}
+
 function run() {
   const cwd = process.cwd();
-  const testFiles = discoverTestFiles(join(cwd, 'tests'), cwd);
-  if (testFiles.length === 0) {
+  const discoveredFiles = discoverTestFiles(join(cwd, 'tests'), cwd);
+  if (discoveredFiles.length === 0) {
     console.error('No editor test files found under tests/.');
     process.exit(1);
   }
 
-  const extraArgs = process.argv.slice(2);
+  const { fileSelectors, bunArgs } = parseRunnerArgs(process.argv.slice(2));
+  const testFiles = selectTestFiles(discoveredFiles, fileSelectors);
   let failures = 0;
 
   for (const file of testFiles) {
     console.log(`\n::group::${file}`);
-    const result = spawnSync(process.execPath, buildBunTestArgs(file, extraArgs), {
+    const result = spawnSync(process.execPath, buildBunTestArgs(file, bunArgs), {
       cwd,
       env: process.env,
       stdio: 'inherit',

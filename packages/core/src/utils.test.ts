@@ -62,6 +62,25 @@ test('shellQuoteForActiveShell escapes single quotes per the active shell', () =
   }
 });
 
+test('shellQuoteForActiveShell preserves an empty input as one shell argument', () => {
+  const previousShell = process.env.PIPELINE_SHELL;
+  try {
+    process.env.PIPELINE_SHELL = 'sh';
+    expect(shellQuoteForActiveShell('')).toBe(`''`);
+    process.env.PIPELINE_SHELL = 'powershell';
+    expect(shellQuoteForActiveShell('')).toBe(`''`);
+    process.env.PIPELINE_SHELL = 'cmd';
+    expect(shellQuoteForActiveShell('')).toBe(String.fromCharCode(34, 34));
+  } finally {
+    if (previousShell === undefined) {
+      delete process.env.PIPELINE_SHELL;
+    } else {
+      process.env.PIPELINE_SHELL = previousShell;
+    }
+    _resetShellCache();
+  }
+});
+
 test('PIPELINE_SHELL override is evaluated per call instead of cached', () => {
   const previousShell = process.env.PIPELINE_SHELL;
   try {
