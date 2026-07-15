@@ -109,6 +109,7 @@ import {
   restartOpencode,
 } from '../opencode-lifecycle.js';
 import { seedOpencodeArtifacts } from '../opencode-seed.js';
+import { buildOpencodeSeedOptions } from '../opencode-seed-options.js';
 import { startChatCompileWatcher } from '../chat-compile-watcher.js';
 import {
   assertPipelineFolderPath,
@@ -2353,7 +2354,7 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       sendProgress({ stage: 'opencode', detail: 'Preparing .tagma OpenCode workspace' });
       const tagmaCwd = ensureRealTagmaDirectory(ws.workDir);
       sendProgress({ stage: 'opencode', detail: 'Seeding OpenCode agent and runtime artifacts' });
-      const seedChanged = seedOpencodeArtifacts(tagmaCwd);
+      const seedChanged = seedOpencodeArtifacts(tagmaCwd, buildOpencodeSeedOptions(ws));
       sendProgress({
         stage: 'opencode',
         detail: 'Starting YAML compile watcher for OpenCode edits',

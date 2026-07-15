@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import {
   ensureOpencode,
   resolveOpencodePathFallback,
+  restartOpencode,
   stopOpencodeProcesses,
 } from '../server/opencode-lifecycle';
 
@@ -97,6 +98,82 @@ describe('ensureOpencode health probing', () => {
     await expect(ensureOpencode(join(tempRoot, '.tagma'))).resolves.toMatchObject({
       baseUrl: 'http://127.0.0.1:45123',
     });
+  });
+
+  test('a stale exit callback cannot detach a newly restarted process', async () => {
+    const cwd = join(tempRoot, '.tagma');
+    mkdirSync(cwd, { recursive: true });
+    let nextPort = 45130;
+    let spawnCount = 0;
+    const onExitCallbacks: Array<() => void> = [];
+    let releaseSecondHealth!: () => void;
+    let markSecondProbeReady!: () => void;
+    const secondProbeReady = new Promise<void>((resolve) => {
+      markSecondProbeReady = resolve;
+    });
+
+    (Bun as BunLike).listen = (() =>
+      ({
+        port: nextPort++,
+        stop() {},
+      }) as unknown as ReturnType<typeof Bun.listen>) as unknown as typeof Bun.listen;
+
+    (Bun as BunLike).spawn = ((
+      _command: unknown,
+      options: { onExit?: (...args: unknown[]) => void },
+    ) => {
+      spawnCount += 1;
+      let resolveExit!: (code: number) => void;
+      const proc = {
+        // Omit a fake Windows pid so lifecycle termination uses this mock's
+        // kill() instead of invoking the real taskkill executable.
+        pid: undefined,
+        stdout: closedStream(),
+        stderr: closedStream(),
+        exited: new Promise<number>((resolve) => {
+          resolveExit = resolve;
+        }),
+        kill() {
+          resolveExit(143);
+        },
+      } as unknown as ReturnType<typeof Bun.spawn>;
+      onExitCallbacks.push(() => options.onExit?.(proc, 143, null, undefined));
+      return proc;
+    }) as typeof Bun.spawn;
+
+    (Bun as BunLike).connect = ((options: Parameters<typeof Bun.connect>[0]) => {
+      const respond = () => {
+        const socket = {
+          write() {
+            options.socket.data?.(
+              socket as never,
+              Buffer.from(
+                'HTTP/1.1 200 OK\r\nContent-Length: 36\r\nConnection: keep-alive\r\n\r\n{"healthy":true,"version":"1.14.41"}',
+              ),
+            );
+          },
+          end() {},
+        };
+        options.socket.open?.(socket as never);
+      };
+      if (spawnCount === 2 && !releaseSecondHealth) {
+        releaseSecondHealth = () => queueMicrotask(respond);
+        markSecondProbeReady();
+      } else {
+        queueMicrotask(respond);
+      }
+      return Promise.resolve({} as Awaited<ReturnType<typeof Bun.connect>>);
+    }) as typeof Bun.connect;
+
+    await ensureOpencode(cwd);
+    const firstRestart = restartOpencode(cwd);
+    await secondProbeReady;
+    onExitCallbacks[0]();
+    releaseSecondHealth();
+    await firstRestart;
+
+    await restartOpencode(cwd);
+    expect(spawnCount).toBe(3);
   });
 });
 

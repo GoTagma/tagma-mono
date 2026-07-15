@@ -30,6 +30,7 @@ import { ensureOpencode, ensureRealTagmaDirectory } from '../opencode-lifecycle.
 import { createStreamingLoopbackFetch } from '../loopback-fetch.js';
 import { workspaceRegistry } from '../workspace-registry.js';
 import { seedOpencodeArtifacts, TAGMA_ROUTER_AGENT } from '../opencode-seed.js';
+import { buildOpencodeSeedOptions } from '../opencode-seed-options.js';
 import { errorMessage } from '../path-utils.js';
 import { readEditorSettings } from '../plugins/loader.js';
 import { enumerateFlatPipelineYamls, enumeratePipelineYamls } from '../pipeline-paths.js';
@@ -62,13 +63,6 @@ let runtimeHooksForTests: OpencodeRuntimeHooksForTests | null = null;
 export function _setOpencodeRuntimeHooksForTests(hooks: OpencodeRuntimeHooksForTests | null): void {
   runtimeHooksForTests = hooks;
   if (!hooks) clientCache.clear();
-}
-
-function pythonToolsEnabledForWorkspace(workspaceKey: string): boolean {
-  const ws = workspaceRegistry.get(workspaceKey);
-  if (!ws?.workDir) return false;
-  const pythonAgent = readEditorSettings(ws).pythonAgent;
-  return Boolean(pythonAgent.enabled && pythonAgent.interpreterCommand && pythonAgent.venvPath);
 }
 
 type EventSubscribeOptions = Parameters<OpencodeClient['event']['subscribe']>[0];
@@ -248,7 +242,7 @@ async function getClientEntryFor(workspaceKey: string): Promise<ClientCacheEntry
   const seedArtifacts = runtimeHooksForTests?.seedOpencodeArtifacts ?? seedOpencodeArtifacts;
   const ensureRuntime = runtimeHooksForTests?.ensureOpencode ?? ensureOpencode;
   const tagmaCwd = realTagmaDirectory(ws.workDir);
-  seedArtifacts(tagmaCwd, { pythonToolsEnabled: pythonToolsEnabledForWorkspace(workspaceKey) });
+  seedArtifacts(tagmaCwd, buildOpencodeSeedOptions(ws));
   const { baseUrl, auth } = await ensureRuntime(tagmaCwd);
   const authHeader = auth.authorization;
   const cached = clientCache.get(workspaceKey);

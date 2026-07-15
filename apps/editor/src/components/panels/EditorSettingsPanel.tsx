@@ -5,6 +5,7 @@ import {
   type ChatDirtyConflictPolicy,
   type EditorSettings,
   type EditorViewMode,
+  type GlobalSettings,
   type PluginDeclaredResult,
   type PluginRefreshResult,
   type PluginRegistry,
@@ -14,6 +15,11 @@ import {
 import { restartOpencodeForConfig } from '../../api/opencode-chat';
 import { useEditorSettingsStore } from '../../store/editor-settings-store';
 import { useModalFocusTrap } from '../../hooks/use-modal-focus-trap';
+import {
+  DEFAULT_OPENCODE_AGENT_MAX_STEPS,
+  MAX_OPENCODE_AGENT_MAX_STEPS,
+  MIN_OPENCODE_AGENT_MAX_STEPS,
+} from '../../../shared/opencode-agent-step-limit.js';
 
 interface EditorSettingsPanelProps {
   workDir: string;
@@ -42,6 +48,10 @@ export function EditorSettingsPanel({
   onRegistryUpdate,
   onClose,
 }: EditorSettingsPanelProps) {
+  const [globalSettings, setGlobalSettings] = useState<GlobalSettings | null>(null);
+  const [agentMaxStepsDraft, setAgentMaxStepsDraft] = useState('');
+  const [globalSaving, setGlobalSaving] = useState(false);
+  const [agentMaxStepsSaved, setAgentMaxStepsSaved] = useState(false);
   const [settings, setSettings] = useState<EditorSettings | null>(null);
   const [declared, setDeclared] = useState<PluginDeclaredResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -70,15 +80,25 @@ export function EditorSettingsPanel({
     }
   }, [hasWorkspace]);
 
-  // Initial load: fetch settings + declared snapshot in parallel so the
-  // panel can render the toggle and the workspace-wide preview in one shot.
+  // Initial load: fetch global settings, workspace settings, and the declared
+  // plugin snapshot in parallel so the panel paints in one shot.
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    Promise.allSettled([api.getEditorSettings(), api.getDeclaredPlugins()])
-      .then(([settingsRes, declaredRes]) => {
+    Promise.allSettled([api.getGlobalSettings(), api.getEditorSettings(), api.getDeclaredPlugins()])
+      .then(([globalRes, settingsRes, declaredRes]) => {
         if (cancelled) return;
+        if (globalRes.status === 'fulfilled') {
+          setGlobalSettings(globalRes.value);
+          setAgentMaxStepsDraft(String(globalRes.value.opencodeAgentMaxSteps));
+        } else {
+          setError(
+            globalRes.reason instanceof Error
+              ? globalRes.reason.message
+              : 'Failed to load global settings',
+          );
+        }
         if (settingsRes.status === 'fulfilled') {
           setSettings(settingsRes.value);
           // Mirror into the shared store so the App-level chat-conflict
@@ -127,6 +147,53 @@ export function EditorSettingsPanel({
       setError(e instanceof Error ? e.message : 'Failed to save editor settings');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const parsedAgentMaxSteps =
+    agentMaxStepsDraft.trim().length > 0 ? Number(agentMaxStepsDraft) : Number.NaN;
+  const agentMaxStepsDraftValid =
+    Number.isInteger(parsedAgentMaxSteps) &&
+    parsedAgentMaxSteps >= MIN_OPENCODE_AGENT_MAX_STEPS &&
+    parsedAgentMaxSteps <= MAX_OPENCODE_AGENT_MAX_STEPS;
+  const agentMaxStepsChanged =
+    agentMaxStepsDraftValid &&
+    globalSettings !== null &&
+    parsedAgentMaxSteps !== globalSettings.opencodeAgentMaxSteps;
+
+  const saveGlobalAgentMaxSteps = async () => {
+    if (!globalSettings || !agentMaxStepsDraftValid) {
+      setError(
+        `Agent max steps must be a whole number from ${MIN_OPENCODE_AGENT_MAX_STEPS} to ${MAX_OPENCODE_AGENT_MAX_STEPS}.`,
+      );
+      return;
+    }
+
+    setGlobalSaving(true);
+    setAgentMaxStepsSaved(false);
+    setError(null);
+    try {
+      const saved = await api.updateGlobalSettings({
+        opencodeAgentMaxSteps: parsedAgentMaxSteps,
+      });
+      setGlobalSettings(saved);
+      setAgentMaxStepsDraft(String(saved.opencodeAgentMaxSteps));
+      setAgentMaxStepsSaved(true);
+      if (hasWorkspace) {
+        try {
+          await restartOpencodeForConfig();
+        } catch (restartError) {
+          setError(
+            restartError instanceof Error
+              ? `Step limit saved globally, but OpenCode restart failed: ${restartError.message}`
+              : 'Step limit saved globally, but OpenCode restart failed.',
+          );
+        }
+      }
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Failed to save global settings');
+    } finally {
+      setGlobalSaving(false);
     }
   };
 
@@ -332,6 +399,71 @@ export function EditorSettingsPanel({
             </div>
           )}
 
+          {globalSettings && (
+            <div>
+              <label className="field-label">OpenCode agents</label>
+              <div className="space-y-2 border border-tagma-border bg-tagma-bg px-2.5 py-2">
+                <div className="text-[11px] text-tagma-text">Agent max steps</div>
+                <p className="text-[10px] leading-relaxed text-tagma-muted">
+                  Machine-wide upper limit for every Tagma-managed agent. Agents that finish early
+                  stop immediately; this value does not force extra work. Applying a change restarts
+                  OpenCode for the current workspace.
+                </p>
+                <div className="flex items-center gap-2">
+                  <input
+                    aria-label="Agent max steps"
+                    type="number"
+                    min={MIN_OPENCODE_AGENT_MAX_STEPS}
+                    max={MAX_OPENCODE_AGENT_MAX_STEPS}
+                    step={1}
+                    value={agentMaxStepsDraft}
+                    disabled={globalSaving}
+                    onChange={(event) => {
+                      setAgentMaxStepsDraft(event.target.value);
+                      setAgentMaxStepsSaved(false);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && agentMaxStepsChanged && !globalSaving) {
+                        event.preventDefault();
+                        void saveGlobalAgentMaxSteps();
+                      } else if (event.key === 'Escape') {
+                        setAgentMaxStepsDraft(String(globalSettings.opencodeAgentMaxSteps));
+                        setAgentMaxStepsSaved(false);
+                      }
+                    }}
+                    className="w-20 px-1.5 py-1 bg-tagma-surface border border-tagma-border text-tagma-text"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void saveGlobalAgentMaxSteps()}
+                    disabled={globalSaving || !agentMaxStepsChanged}
+                    className="flex items-center gap-1.5 border border-tagma-accent/50 px-2.5 py-1 text-[11px] text-tagma-accent transition-colors hover:bg-tagma-accent/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+                  >
+                    {globalSaving && <Loader2 size={11} className="animate-spin" />}
+                    Apply
+                  </button>
+                </div>
+                <div className="min-h-4 text-[9px] text-tagma-muted">
+                  {!agentMaxStepsDraftValid
+                    ? 'Enter a whole number from ' +
+                      MIN_OPENCODE_AGENT_MAX_STEPS +
+                      ' to ' +
+                      MAX_OPENCODE_AGENT_MAX_STEPS +
+                      '.'
+                    : agentMaxStepsSaved
+                      ? 'Saved globally.'
+                      : 'Default ' +
+                        DEFAULT_OPENCODE_AGENT_MAX_STEPS +
+                        '; range ' +
+                        MIN_OPENCODE_AGENT_MAX_STEPS +
+                        '-' +
+                        MAX_OPENCODE_AGENT_MAX_STEPS +
+                        '.'}
+                </div>
+              </div>
+            </div>
+          )}
+
           {settings && (
             <>
               <div>
@@ -526,9 +658,15 @@ export function EditorSettingsPanel({
 
           <div className="border-t border-tagma-border" />
 
-          <div className="text-[10px] text-tagma-muted font-mono">
-            Stored in <code>.tagma/editor-settings.json</code>
-            {saving ? ' · saving…' : ''}
+          <div className="space-y-0.5 text-[10px] text-tagma-muted font-mono">
+            <div>
+              Global: <code>~/.tagma/global-settings.json</code>
+              {globalSaving ? ' · saving…' : ''}
+            </div>
+            <div>
+              Workspace: <code>.tagma/editor-settings.json</code>
+              {saving ? ' · saving…' : ''}
+            </div>
           </div>
         </div>
       </div>

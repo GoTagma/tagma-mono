@@ -22,12 +22,11 @@ import {
   stopOpencodeProcesses,
 } from '../opencode-lifecycle.js';
 import { seedOpencodeArtifacts } from '../opencode-seed.js';
+import { buildOpencodeSeedOptions } from '../opencode-seed-options.js';
 import { startChatCompileWatcher } from '../chat-compile-watcher.js';
 import { requireWorkspace } from '../require-workspace.js';
-import { readEditorSettings } from '../plugins/loader.js';
 import { cancelHotupdate, endHotupdate, tryBeginHotupdate } from '../release/hotupdate-lock.js';
 import { S } from '../state.js';
-import type { WorkspaceState } from '../workspace-state.js';
 import { getActiveYamlEditLock, publicYamlEditLock } from '../yaml-edit-lock.js';
 
 /**
@@ -150,11 +149,6 @@ function independentOpencodeUpdatesAllowed(): boolean {
 
 function userOpencodeRuntimeEnabled(): boolean {
   return process.env.TAGMA_OPENCODE_SKIP_USER_DIR !== '1';
-}
-
-function pythonToolsEnabledForWorkspace(ws: WorkspaceState): boolean {
-  const pythonAgent = readEditorSettings(ws).pythonAgent;
-  return Boolean(pythonAgent.enabled && pythonAgent.interpreterCommand && pythonAgent.venvPath);
 }
 
 function mergeSignalWithTimeout(timeoutMs: number, externalSignal?: AbortSignal): AbortSignal {
@@ -537,9 +531,7 @@ export function registerOpencodeRoutes(app: express.Express): void {
       // `.tagma/` on first save.
       const workspaceRoot = ws.workDir;
       const tagmaCwd = ensureRealTagmaDirectory(workspaceRoot);
-      const seedChanged = seedOpencodeArtifacts(tagmaCwd, {
-        pythonToolsEnabled: pythonToolsEnabledForWorkspace(ws),
-      });
+      const seedChanged = seedOpencodeArtifacts(tagmaCwd, buildOpencodeSeedOptions(ws));
       startChatCompileWatcher(tagmaCwd, ws.registry);
       console.log('[opencode] ensure called, cwd =', tagmaCwd);
       const { baseUrl, auth } = seedChanged
@@ -571,9 +563,7 @@ export function registerOpencodeRoutes(app: express.Express): void {
     try {
       const workspaceRoot = ws.workDir;
       const tagmaCwd = ensureRealTagmaDirectory(workspaceRoot);
-      seedOpencodeArtifacts(tagmaCwd, {
-        pythonToolsEnabled: pythonToolsEnabledForWorkspace(ws),
-      });
+      seedOpencodeArtifacts(tagmaCwd, buildOpencodeSeedOptions(ws));
       console.log('[opencode] restart called, cwd =', tagmaCwd);
       const { baseUrl, auth } = await restartOpencode(tagmaCwd);
       console.log('[opencode] restart resolved, baseUrl =', baseUrl);

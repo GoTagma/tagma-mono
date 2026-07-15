@@ -669,6 +669,11 @@ export interface OpenCodeChatModelSelection {
 /** OpenCode model variant id; null delegates to the model/provider default. */
 export type OpenCodeChatReasoningEffort = string | null;
 
+export interface GlobalSettings {
+  /** Machine-wide upper bound for every Tagma-managed OpenCode agent. */
+  opencodeAgentMaxSteps: number;
+}
+
 export interface EditorSettings {
   /**
    * When true, opening a workspace will auto-install plugins declared in
@@ -1717,6 +1722,11 @@ export const api = {
       method: 'DELETE',
       body: jsonBody({ path }),
     }),
+
+  getGlobalSettings: () => request<GlobalSettings>('/global-settings'),
+
+  updateGlobalSettings: (patch: Partial<GlobalSettings>) =>
+    request<GlobalSettings>('/global-settings', { method: 'PATCH', body: jsonBody(patch) }),
 
   getEditorSettings: () => request<EditorSettings>('/editor-settings'),
 

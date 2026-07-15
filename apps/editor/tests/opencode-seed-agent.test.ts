@@ -52,15 +52,9 @@ test('router prompt stays compact with the history comparison lane', () => {
   expect(buildTagmaRouterAgent().length).toBeLessThan(3000);
 });
 
-test('router reserves a normal synthesis step after its one bounded implementation handoff', () => {
+test('router keeps one bounded implementation handoff before result synthesis', () => {
   const doc = buildTagmaRouterAgent();
 
-  // OpenCode treats the configured final step as a forced text-only
-  // max-steps summary. The router needs one model step to delegate and a
-  // second normal step to relay the completed specialist result, so the cap
-  // must leave a third step in reserve.
-  expect(doc).toContain('steps: 3');
-  expect(doc).not.toContain('steps: 2');
   expect(doc).toContain('Never delegate preliminary inspection or workspace discovery');
   expect(doc).toContain('one specialist call owns both lookup and implementation');
   expect(doc).toContain('Do not add implementation choices that the user did not provide');
@@ -383,7 +377,6 @@ test('tagma-python-tools refuses to run without configured Python handoff', () =
   const doc = buildTagmaPythonToolsAgent('Windows');
 
   expect(doc).toContain('## Preflight hard stop');
-  expect(doc).toContain('steps: 8');
   expect(doc).toContain('<python-agent enabled="true">');
   expect(doc).toContain('<interpreter>');
   expect(doc).toContain('<venv>');
@@ -440,6 +433,19 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   const contextPackagerAgent = join(agentsDir, 'tagma-context-packager.md');
   const sectionBuilderAgent = join(agentsDir, 'tagma-pipeline-section-builder.md');
   const pythonAgent = join(agentsDir, 'tagma-python-tools.md');
+  const managedAgents = [
+    routerAgent,
+    pipelineAgent,
+    generalAgent,
+    historyAgent,
+    reviewAgent,
+    plannerAgent,
+    commandEvidenceAgent,
+    runtimeGuardAgent,
+    contextPackagerAgent,
+    sectionBuilderAgent,
+    pythonAgent,
+  ];
   const skeletonTool = join(dir, '.opencode', 'tools', 'tagma_yaml_skeleton.ts');
   const placementTool = join(dir, '.opencode', 'tools', 'tagma_placement_plan.ts');
   const blockToolNames = [
@@ -451,7 +457,6 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
 
   expect(existsSync(routerAgent)).toBe(true);
   expect(readFileSync(routerAgent, 'utf8')).toContain('mode: primary');
-  expect(readFileSync(routerAgent, 'utf8')).toContain('steps: 3');
   expect(readFileSync(routerAgent, 'utf8')).toContain('tagma-pipeline');
   expect(existsSync(pipelineAgent)).toBe(true);
   expect(readFileSync(pipelineAgent, 'utf8')).toContain('name: tagma-pipeline');
@@ -486,7 +491,6 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   expect(existsSync(pythonAgent)).toBe(true);
   expect(readFileSync(pythonAgent, 'utf8')).toContain('name: tagma-python-tools');
   expect(readFileSync(pythonAgent, 'utf8')).toContain('hidden: true');
-  expect(readFileSync(pythonAgent, 'utf8')).toContain('steps: 8');
   expect(readFileSync(pythonAgent, 'utf8')).toContain('function-oriented Python helpers');
   expect(readFileSync(pythonAgent, 'utf8')).toContain('PYTHON_HELPER_BLOCKED');
   expect(readFileSync(pipelineAgent, 'utf8')).toContain('tagma-python-tools: "deny"');
@@ -543,17 +547,49 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   expect(readFileSync(localToolsSkill, 'utf8')).toContain(
     'Prefer CLI-style helpers for stateless, idempotent work',
   );
+  for (const agentPath of managedAgents) {
+    expect(readFileSync(agentPath, 'utf8')).toContain('steps: 25');
+  }
   expect(seedOpencodeArtifacts(dir)).toBe(false);
 
-  // Existing workspaces receive the corrected router budget on their next
-  // chat bootstrap instead of retaining the stale two-step seed forever.
+  // Existing workspaces receive the global default on their next bootstrap
+  // instead of retaining a stale per-agent limit forever.
   writeFileSync(
     routerAgent,
-    readFileSync(routerAgent, 'utf8').replace('steps: 3', 'steps: 2'),
+    readFileSync(routerAgent, 'utf8').replace('steps: 25', 'steps: 2'),
     'utf8',
   );
   expect(seedOpencodeArtifacts(dir)).toBe(true);
-  expect(readFileSync(routerAgent, 'utf8')).toContain('steps: 3');
+  expect(readFileSync(routerAgent, 'utf8')).toContain('steps: 25');
+});
+
+test('seedOpencodeArtifacts applies repeated global step-limit changes to every managed agent', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tagma-opencode-step-limit-'));
+  const agentsDir = join(dir, '.opencode', 'agents');
+  const filenames = [
+    'tagma-router.md',
+    'tagma-pipeline.md',
+    'tagma-general-discussion.md',
+    'tagma-history-compare.md',
+    'tagma-yaml-review.md',
+    'tagma-pipeline-planner.md',
+    'tagma-command-evidence.md',
+    'tagma-runtime-guard.md',
+    'tagma-context-packager.md',
+    'tagma-pipeline-section-builder.md',
+    'tagma-python-tools.md',
+  ];
+
+  expect(seedOpencodeArtifacts(dir, { agentMaxSteps: 40 })).toBe(true);
+  for (const filename of filenames) {
+    expect(readFileSync(join(agentsDir, filename), 'utf8')).toContain('steps: 40');
+  }
+
+  expect(seedOpencodeArtifacts(dir, { agentMaxSteps: 12 })).toBe(true);
+  for (const filename of filenames) {
+    expect(readFileSync(join(agentsDir, filename), 'utf8')).toContain('steps: 12');
+  }
+  expect(seedOpencodeArtifacts(dir, { agentMaxSteps: 12 })).toBe(false);
 });
 
 test('seedOpencodeArtifacts rewrites the pipeline agent when Python tools are enabled', () => {

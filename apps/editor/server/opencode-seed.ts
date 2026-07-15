@@ -1,5 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import {
+  DEFAULT_OPENCODE_AGENT_MAX_STEPS,
+  clampOpencodeAgentMaxSteps,
+} from '../shared/opencode-agent-step-limit.js';
 
 /**
  * Editor-shipped opencode artifacts.
@@ -38,14 +42,9 @@ export const TAGMA_CONTEXT_PACKAGER_AGENT = 'tagma-context-packager';
 export const TAGMA_PIPELINE_SECTION_BUILDER_AGENT = 'tagma-pipeline-section-builder';
 
 export function buildTagmaRouterAgent(): string {
-  // OpenCode reserves the configured final step for its forced text-only
-  // max-steps summary. Keep one step for delegation, one for the specialist
-  // result, and a third as the cap so the normal result is not mislabeled as
-  // an exhausted task.
   return `---
 description: Classify Tagma chat turns and delegate to the responsible specialist.
 mode: primary
-steps: 3
 permission:
   read: deny
   glob: deny
@@ -657,7 +656,6 @@ name: tagma-python-tools
 description: Write and test function-oriented Python helpers for Tagma pipelines.
 mode: subagent
 hidden: true
-steps: 8
 tools:
   bash: true
   webfetch: false
@@ -1345,8 +1343,35 @@ const STALE_AGENT_FILES = [
   'tagma-yaml.md',
 ] as const;
 
-function seedAgentFile(tagmaCwd: string, filename: string, content: string): boolean {
-  return seedFile(join(tagmaCwd, '.opencode', 'agents'), filename, content);
+export function applyOpencodeAgentMaxSteps(content: string, requestedSteps: number): string {
+  const steps = Number.isFinite(requestedSteps)
+    ? clampOpencodeAgentMaxSteps(requestedSteps)
+    : DEFAULT_OPENCODE_AGENT_MAX_STEPS;
+  if (!content.startsWith('---\n')) {
+    throw new Error('OpenCode agent document must start with YAML frontmatter');
+  }
+  const closingFrontmatter = content.indexOf('\n---', 4);
+  if (closingFrontmatter < 0) {
+    throw new Error('OpenCode agent document is missing closing YAML frontmatter');
+  }
+  const frontmatter = content.slice(0, closingFrontmatter);
+  const withSteps = /^steps:\s*.*$/mu.test(frontmatter)
+    ? frontmatter.replace(/^steps:\s*.*$/mu, 'steps: ' + steps)
+    : frontmatter + '\nsteps: ' + steps;
+  return withSteps + content.slice(closingFrontmatter);
+}
+
+function seedAgentFile(
+  tagmaCwd: string,
+  filename: string,
+  content: string,
+  agentMaxSteps: number,
+): boolean {
+  return seedFile(
+    join(tagmaCwd, '.opencode', 'agents'),
+    filename,
+    applyOpencodeAgentMaxSteps(content, agentMaxSteps),
+  );
 }
 
 function pruneStaleAgentFiles(tagmaCwd: string): boolean {
@@ -1374,61 +1399,41 @@ function pruneStaleAgentFiles(tagmaCwd: string): boolean {
   return changed;
 }
 
-export type SeedOpencodeArtifactsOptions = TagmaPipelineAgentOptions;
+export type SeedOpencodeArtifactsOptions = TagmaPipelineAgentOptions & {
+  /** Upper bound for every editor-managed OpenCode agent. */
+  agentMaxSteps?: number;
+};
 
 export function seedOpencodeArtifacts(
   tagmaCwd: string,
   options: SeedOpencodeArtifactsOptions = {},
 ): boolean {
   const hostOs = hostOsLabel();
-  let changed = seedAgentFile(tagmaCwd, `${TAGMA_ROUTER_AGENT}.md`, buildTagmaRouterAgent());
+  const agentMaxSteps = options.agentMaxSteps ?? DEFAULT_OPENCODE_AGENT_MAX_STEPS;
+  const seedAgent = (filename: string, content: string): boolean =>
+    seedAgentFile(tagmaCwd, filename, content, agentMaxSteps);
+  let changed = seedAgent(`${TAGMA_ROUTER_AGENT}.md`, buildTagmaRouterAgent());
   changed =
-    seedAgentFile(
-      tagmaCwd,
-      `${TAGMA_PIPELINE_AGENT}.md`,
-      buildTagmaPipelineAgent(hostOs, options),
-    ) || changed;
+    seedAgent(`${TAGMA_PIPELINE_AGENT}.md`, buildTagmaPipelineAgent(hostOs, options)) || changed;
   changed =
-    seedAgentFile(
-      tagmaCwd,
-      `${TAGMA_GENERAL_DISCUSSION_AGENT}.md`,
-      buildTagmaGeneralDiscussionAgent(),
-    ) || changed;
-  changed =
-    seedAgentFile(tagmaCwd, `${TAGMA_HISTORY_COMPARE_AGENT}.md`, buildTagmaHistoryCompareAgent()) ||
+    seedAgent(`${TAGMA_GENERAL_DISCUSSION_AGENT}.md`, buildTagmaGeneralDiscussionAgent()) ||
     changed;
   changed =
-    seedAgentFile(tagmaCwd, `${TAGMA_YAML_REVIEW_AGENT}.md`, buildTagmaYamlReviewAgent()) ||
-    changed;
+    seedAgent(`${TAGMA_HISTORY_COMPARE_AGENT}.md`, buildTagmaHistoryCompareAgent()) || changed;
+  changed = seedAgent(`${TAGMA_YAML_REVIEW_AGENT}.md`, buildTagmaYamlReviewAgent()) || changed;
   changed =
-    seedAgentFile(
-      tagmaCwd,
-      `${TAGMA_PIPELINE_PLANNER_AGENT}.md`,
-      buildTagmaPipelinePlannerAgent(),
-    ) || changed;
+    seedAgent(`${TAGMA_PIPELINE_PLANNER_AGENT}.md`, buildTagmaPipelinePlannerAgent()) || changed;
   changed =
-    seedAgentFile(
-      tagmaCwd,
-      `${TAGMA_COMMAND_EVIDENCE_AGENT}.md`,
-      buildTagmaCommandEvidenceAgent(),
-    ) || changed;
+    seedAgent(`${TAGMA_COMMAND_EVIDENCE_AGENT}.md`, buildTagmaCommandEvidenceAgent()) || changed;
+  changed = seedAgent(`${TAGMA_RUNTIME_GUARD_AGENT}.md`, buildTagmaRuntimeGuardAgent()) || changed;
   changed =
-    seedAgentFile(tagmaCwd, `${TAGMA_RUNTIME_GUARD_AGENT}.md`, buildTagmaRuntimeGuardAgent()) ||
-    changed;
+    seedAgent(`${TAGMA_CONTEXT_PACKAGER_AGENT}.md`, buildTagmaContextPackagerAgent()) || changed;
   changed =
-    seedAgentFile(
-      tagmaCwd,
-      `${TAGMA_CONTEXT_PACKAGER_AGENT}.md`,
-      buildTagmaContextPackagerAgent(),
-    ) || changed;
-  changed =
-    seedAgentFile(
-      tagmaCwd,
+    seedAgent(
       `${TAGMA_PIPELINE_SECTION_BUILDER_AGENT}.md`,
       buildTagmaPipelineSectionBuilderAgent(hostOs),
     ) || changed;
-  changed =
-    seedAgentFile(tagmaCwd, 'tagma-python-tools.md', buildTagmaPythonToolsAgent(hostOs)) || changed;
+  changed = seedAgent('tagma-python-tools.md', buildTagmaPythonToolsAgent(hostOs)) || changed;
   changed =
     seedFile(
       join(tagmaCwd, '.opencode', 'tools'),

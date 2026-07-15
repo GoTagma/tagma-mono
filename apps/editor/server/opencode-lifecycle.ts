@@ -554,8 +554,13 @@ export async function ensureOpencode(cwd: string): Promise<OpencodeHandle> {
       env: buildOpencodeEnv(cwd, auth),
       stdout: 'pipe',
       stderr: 'pipe',
-      onExit(_p, exitCode, signalCode) {
+      onExit(exitedProcess, exitCode, signalCode) {
         console.log(`[opencode] exited code=${exitCode} signal=${signalCode} cwd=${cwd}`);
+        // A restart may spawn and register the replacement before this older
+        // process's exit callback runs. Only the currently tracked child may
+        // clear the cwd maps; otherwise the stale callback detaches the new
+        // process and later restarts incorrectly reuse its cached handle.
+        if (children.get(cwd) !== exitedProcess) return;
         handles.delete(cwd);
         children.delete(cwd);
       },
