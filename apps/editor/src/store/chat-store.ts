@@ -76,7 +76,7 @@ import {
   type ChatReasoningEffort,
   type ModelPick,
 } from './chat-persist';
-import { buildEditorContext } from './chat-editor-context';
+import { buildEditorContext, type ChatYamlReconcileSummary } from './chat-editor-context';
 import { buildTagmaSessionMetadata } from '../../shared/opencode-session-metadata.js';
 import { serializePreviewYaml } from '../utils/yaml-preview-diff';
 
@@ -132,10 +132,37 @@ export type ChatYamlPostAction = ChatYamlTarget & {
 
 export type ChatYamlSessionResult = ChatYamlTarget & {
   sessionId: string;
+  /** Workspace owning this result. Optional so older in-memory/persisted shapes stay readable. */
+  workspaceKey?: string;
   status: 'ready' | 'failed';
   compile: Pick<YamlCompileResult, 'success' | 'summary' | 'validation'>;
+  /** Host-side publish/fork facts made available to the next user turn in this session. */
+  reconcile?: ChatYamlReconcileSummary;
   completedAt: number;
 };
+
+export function selectPreviousChatYamlReconcileForPrompt(input: {
+  resultAtDispatch: ChatYamlSessionResult | null | undefined;
+  workspaceKeyAtDispatch: string;
+  sessionIdAtDispatch: string | null;
+  sessionIdForPrompt: string | null;
+  internal: boolean;
+  reuseLogicalTurn: boolean;
+}): ChatYamlReconcileSummary | null {
+  const {
+    resultAtDispatch,
+    workspaceKeyAtDispatch,
+    sessionIdAtDispatch,
+    sessionIdForPrompt,
+    internal,
+    reuseLogicalTurn,
+  } = input;
+  if (internal || reuseLogicalTurn || !sessionIdAtDispatch) return null;
+  if (sessionIdForPrompt !== sessionIdAtDispatch) return null;
+  if (resultAtDispatch?.sessionId !== sessionIdAtDispatch) return null;
+  if (resultAtDispatch.workspaceKey !== workspaceKeyAtDispatch) return null;
+  return resultAtDispatch.reconcile ?? null;
+}
 
 export interface ChatFinishedTurn {
   id: string;
@@ -2446,6 +2473,12 @@ async function promptOpencode(
   const workspaceKeyAtStart = getOpencodeWorkspaceKey();
   const { model, agent, providers, reasoningEffort } = get();
   const sessionIdAtDispatch = get().currentSessionId;
+  // Snapshot before the normal-send reducers remove the completed result bubble.
+  // Internal repairs and logical-turn continuations are filtered at prompt build
+  // time and leave the stored result untouched for the next real user turn.
+  const sessionYamlResultAtDispatch = sessionIdAtDispatch
+    ? get().sessionYamlResults[sessionIdAtDispatch]
+    : null;
   const promptTitle = opts.internal ? null : desktopChatTitleFromPrompt(text);
   let optimisticTurnStartedAt: number | null = null;
   if (!model) {
@@ -2499,18 +2532,6 @@ async function promptOpencode(
       endedAt: null,
       count: 1,
     };
-    if (!opts.internal && !opts.reuseLogicalTurn && sessionIdAtDispatch) {
-      set((prev) => ({
-        sessionYamlResults: Object.fromEntries(
-          Object.entries(prev.sessionYamlResults).filter(([resultSessionId]) => {
-            return resultSessionId !== sessionIdAtDispatch;
-          }),
-        ),
-        dismissedSessionYamlResultToastIds: prev.dismissedSessionYamlResultToastIds.filter(
-          (resultSessionId) => resultSessionId !== sessionIdAtDispatch,
-        ),
-      }));
-    }
     set({
       sending: true,
       sendError: null,
@@ -2721,6 +2742,14 @@ async function promptOpencode(
               chatYamlStage: chatStage
                 ? { id: chatStage.id, agentTagmaDir: chatStage.agentTagmaDir }
                 : null,
+              previousChatYamlReconcile: selectPreviousChatYamlReconcileForPrompt({
+                resultAtDispatch: sessionYamlResultAtDispatch,
+                workspaceKeyAtDispatch: workspaceKeyAtStart,
+                sessionIdAtDispatch,
+                sessionIdForPrompt: sessionId,
+                internal: opts.internal ?? false,
+                reuseLogicalTurn: opts.reuseLogicalTurn ?? false,
+              }),
             }) +
             (opts.context ?? '') +
             text,

@@ -23,6 +23,10 @@
 - Capture YAML/layout/requirements hashes from the base copy in server-owned stage metadata.
   Queued prompts and bounded automatic repairs reuse the same stage, snapshot, and YAML lease;
   reconciliation runs only from the finished-turn queue.
+- Attaching the compile watcher to a pre-populated chat stage must not compile the copied
+  baseline YAML or regenerate timestamped companions. Actual later YAML writes and pipeline
+  folders created after watcher startup must still trigger compile, requirements, and manifest
+  synchronization.
 - Finalize under the active chat YAML lease with a server-side three-way comparison:
   base hashes versus the current live artifacts, the renderer-local YAML/layout branch, and the
   agent branch. A global workspace revision is never a conflict signal for staged turns.
@@ -34,6 +38,10 @@
 - Only a successful finalize may mutate the live workspace or advance its revision. Finalize is
   idempotent after response loss, artifact writes roll back together on failure, and abandoned
   or expired stages must stop their compile watcher and be removed.
+- Preserve the host finalize outcome, conflicts, destination path, compile status, and local-branch
+  decision for the next real user turn in the same chat session and workspace. Do not inject or
+  consume that evidence in hidden repairs, logical-turn continuations, fresh sessions, or another
+  workspace.
 
 ## Managed OpenCode Execution
 
@@ -50,6 +58,10 @@
   A primary router that makes one `task` call still needs the minimum 3 iterations: delegate,
   relay the result, then cap. An exiting process may clear lifecycle maps only when it is still
   the tracked child for that cwd, or a stale exit callback can detach its replacement.
+- Route concrete pipeline inspection, explanation, review, and why/how questions without an
+  explicit file-mutation request to the read-only pipeline diagnosis agent. Keep an independent
+  mutation-authorization gate in the write-capable pipeline agent so a router mistake cannot
+  silently authorize edits.
 - Treat runtime/config mutations as workspace-wide: switching to another pipeline in the same
   workspace does not make them safe. A hung-turn force stop may bypass the runtime restart guard
   only with the matching YAML-lock lease capability; ordinary settings changes must never use

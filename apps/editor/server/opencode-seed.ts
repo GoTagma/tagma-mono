@@ -15,12 +15,13 @@ import {
  * read-workspace/write-.tagma boundary the chat UI promises the user.
  *
  * The primary chat agent (`tagma-router`) is intentionally tiny: it classifies
- * each turn as `pipeline_work` or `general_discussion` and delegates to one of
- * two subagents. The pipeline worker carries only the stable operating
- * contract; detailed YAML guidance is pulled through focused skills and the
- * compile log, so conceptual questions and simple turns do not pay for a
- * schema manual. Mechanical layout placement is exposed as a deterministic
- * custom tool instead of prose the model has to re-derive.
+ * each turn into an explicitly authorized pipeline mutation, a read-only
+ * pipeline diagnosis, or general discussion and delegates to the matching
+ * subagent. The pipeline worker carries only the stable operating contract;
+ * detailed YAML guidance is pulled through focused skills and the compile log,
+ * so conceptual questions and simple turns do not pay for a schema manual.
+ * Mechanical layout placement is exposed as a deterministic custom tool
+ * instead of prose the model has to re-derive.
  *
  * Treat the agents as editor-shipped infrastructure: prompt bug fixes should
  * propagate to existing workspaces on next chat-open, so we overwrite when
@@ -32,6 +33,7 @@ import {
 
 export const TAGMA_ROUTER_AGENT = 'tagma-router';
 export const TAGMA_PIPELINE_AGENT = 'tagma-pipeline';
+export const TAGMA_PIPELINE_DIAGNOSIS_AGENT = 'tagma-pipeline-diagnosis';
 export const TAGMA_GENERAL_DISCUSSION_AGENT = 'tagma-general-discussion';
 export const TAGMA_HISTORY_COMPARE_AGENT = 'tagma-history-compare';
 export const TAGMA_YAML_REVIEW_AGENT = 'tagma-yaml-review';
@@ -61,6 +63,7 @@ permission:
   task:
     "*": "deny"
     ${TAGMA_PIPELINE_AGENT}: "allow"
+    ${TAGMA_PIPELINE_DIAGNOSIS_AGENT}: "allow"
     ${TAGMA_GENERAL_DISCUSSION_AGENT}: "allow"
     ${TAGMA_HISTORY_COMPARE_AGENT}: "allow"
 ---
@@ -70,10 +73,11 @@ Classify the latest turn. Do not inspect files or design YAML. Except for \`gene
 ## Categories
 
 - \`history_comparison\` -> \`${TAGMA_HISTORY_COMPARE_AGENT}\`: the latest turn includes \`<history-version-compare>\`, or the user is following up on a selected run-history version, snapshot, or task output comparison.
-- \`pipeline_work\` -> \`${TAGMA_PIPELINE_AGENT}\`: the user wants to create, change, fix, debug, rename, extend, or explain a problem in a pipeline / YAML / layout / requirements file.
-- \`general_discussion\` -> \`${TAGMA_GENERAL_DISCUSSION_AGENT}\`: a conceptual question, product behavior, comparison, or advice with no requested file change.
+- \`pipeline_work\` -> \`${TAGMA_PIPELINE_AGENT}\`: the user explicitly asks to create, change, edit, apply, implement, rename, extend, delete, or fix pipeline files (YAML / layout / requirements).
+- \`pipeline_diagnosis\` -> \`${TAGMA_PIPELINE_DIAGNOSIS_AGENT}\`: inspect, debug, explain, or answer why/how questions about a concrete pipeline, YAML, layout, requirements file, compile failure, or prior reconcile result, with no explicit request to change files.
+- \`general_discussion\` -> \`${TAGMA_GENERAL_DISCUSSION_AGENT}\`: a conceptual question, product behavior, comparison, or advice with no concrete pipeline artifact to inspect and no requested file change.
 
-Mixed file-change turns are \`pipeline_work\`. After \`ROUTE_MISMATCH\`, report and stop; never make a second task call.
+Route by the action the user authorized, not merely by error words. Debug, explain, review, and "how can I fix this?" do not authorize edits; "fix it", "apply that change", and equivalent explicit mutation requests do. A conceptual question about Tagma product behavior with no concrete artifact to inspect is \`general_discussion\`. Mixed turns containing an explicit file-change request are \`pipeline_work\`. After \`ROUTE_MISMATCH\`, report and stop; never make a second task call.
 
 For \`general_discussion\`, first make a \`general_direct_answer\` check: if the latest question is answerable from durable facts already visible in this conversation or \`<editor-context>\`, answer directly before delegation. If current information is missing, uncertain, or requires repository lookup, delegate to \`${TAGMA_GENERAL_DISCUSSION_AGENT}\`.
 
@@ -85,11 +89,74 @@ When delegating, read the \`<editor-context>\` in the latest user message and pa
 - Do not add implementation choices that the user did not provide. Preserve ambiguity for the specialist to resolve with safe host-native defaults.
 - If present, preserve \`<requested-action kind="create-new-pipeline">\`; do not rewrite a create/new pipeline request into an edit target.
 - If present, preserve \`<requested-action kind="fill-manual-new-pipeline">\`; keep \`<current-file>\` as the target.
+- If the user asks about a prior Copy or finalize/reconcile outcome and \`<previous-chat-yaml-reconcile>\` is present, route the concrete incident as \`pipeline_diagnosis\` and pass the complete block unchanged.
 - \`${TAGMA_HISTORY_COMPARE_AGENT}\`: pass \`<history-version-compare>\`; include relevant prior comparison facts in follow-ups because it is stateless.
 - \`${TAGMA_PIPELINE_AGENT}\`: at most 2 prior routed outcomes for the same pipeline; let it re-read files as source of truth.
+- \`${TAGMA_PIPELINE_DIAGNOSIS_AGENT}\`: pass concrete artifact paths, compile evidence, and relevant prior routed outcomes for the same pipeline.
 - \`${TAGMA_GENERAL_DISCUSSION_AGENT}\`: at most 2 factual summaries. Do not include YAML schema guidance unless the question asks for it.
 
 Never forward raw full transcript excerpts. Summarize durable facts as short bullets.
+`;
+}
+
+export function buildTagmaPipelineDiagnosisAgent(): string {
+  return `---
+name: ${TAGMA_PIPELINE_DIAGNOSIS_AGENT}
+description: Diagnose concrete Tagma pipeline artifacts and compile or reconciliation outcomes without changing files.
+mode: subagent
+hidden: true
+tools:
+  read: true
+  glob: true
+  grep: true
+  list: true
+  edit: false
+  patch: false
+  write: false
+  bash: false
+  webfetch: false
+  task: true
+  skill: true
+permission:
+  read: allow
+  glob: allow
+  grep: allow
+  list: allow
+  lsp: deny
+  bash: deny
+  webfetch: deny
+  websearch: deny
+  question: deny
+  todowrite: deny
+  edit: deny
+  task:
+    "*": "deny"
+    explore: "allow"
+    scout: "allow"
+  skill:
+    "*": "deny"
+    tagma-yaml-contract: "allow"
+    tagma-native-primitives: "allow"
+---
+
+You are the Tagma pipeline diagnosis agent. Investigate a concrete pipeline, YAML, layout, requirements, compile, or reconciliation question without changing files.
+
+## Evidence Boundary
+
+- Read only the smallest relevant set of supplied or discovered pipeline artifacts: YAML, manifest, layout, requirements, and \`.compile.log\`. Use paths from \`<current-file>\` and \`<workspace-yaml-folders>\` exactly as supplied.
+- Use \`explore\` or \`scout\` only for read-only workspace lookup when direct artifact reads are insufficient. Load only the two allowed read-only skills when their contract guidance is necessary.
+- Treat a supplied \`<previous-chat-yaml-reconcile>\` block as host evidence. Use its outcome, conflicts, compile result, and destination path to explain a prior Copy or finalize decision; distinguish facts in the block from your inferences.
+- Never write, edit, patch, create, rename, delete, or run commands. Never modify \`.compile.log\` or any generated companion artifact.
+
+## Routing Boundary
+
+- If the latest user text explicitly asks you to change pipeline files, stop and return \`ROUTE_MISMATCH: pipeline_work\` with one sentence naming the requested mutation. Do not perform it.
+- If the question is only conceptual product behavior and no concrete artifact or reconcile evidence needs inspection, return \`ROUTE_MISMATCH: general_discussion\`.
+- Debug, explain, review, and why/how questions remain read-only unless the latest user text separately and explicitly requests a file change.
+
+## Answer
+
+State what the artifacts prove, the likely cause, and the next safe action. Cite concrete artifact paths and compile/reconcile fields. If required evidence is absent, name exactly what is missing instead of guessing.
 `;
 }
 
@@ -507,6 +574,13 @@ permission:
 ---
 
 You are the Tagma YAML assistant. Your cwd is the active pipeline root: normally workspace \`.tagma/\`, or \`<chat-staging><agent-root>\` for a staged turn. Maintain runnable Tagma pipeline YAML, layout, and requirements. Keep context small: read targeted files, load relevant skills, and let compile.log be the schema source of truth.
+
+## Mutation Authorization Gate
+
+- The latest user text must explicitly request a file change before any write: create, change, edit, apply, implement, rename, extend, delete, or "fix it". Host create/fill \`<requested-action>\` markers also count.
+- Debug, inspect, explain, review, and why/how questions are read-only; "what is wrong?" and "how can I fix this?" do not authorize implementation.
+- Without explicit mutation authorization, do not write, create, rename, or delete anything. Return \`ROUTE_MISMATCH: pipeline_diagnosis\` and include a concise read-only answer when the available evidence supports one, or \`ROUTE_MISMATCH: general_discussion\` for a conceptual product question.
+- Apply this gate before target selection or editing. \`<chat-staging>\` supplies containment, not mutation authorization.
 
 ## Read / Write Boundary
 
@@ -1323,6 +1397,7 @@ function seedFile(targetDir: string, filename: string, content: string): boolean
 const ACTIVE_AGENT_FILES = [
   `${TAGMA_ROUTER_AGENT}.md`,
   `${TAGMA_PIPELINE_AGENT}.md`,
+  `${TAGMA_PIPELINE_DIAGNOSIS_AGENT}.md`,
   `${TAGMA_GENERAL_DISCUSSION_AGENT}.md`,
   `${TAGMA_HISTORY_COMPARE_AGENT}.md`,
   `${TAGMA_YAML_REVIEW_AGENT}.md`,
@@ -1415,6 +1490,9 @@ export function seedOpencodeArtifacts(
   let changed = seedAgent(`${TAGMA_ROUTER_AGENT}.md`, buildTagmaRouterAgent());
   changed =
     seedAgent(`${TAGMA_PIPELINE_AGENT}.md`, buildTagmaPipelineAgent(hostOs, options)) || changed;
+  changed =
+    seedAgent(`${TAGMA_PIPELINE_DIAGNOSIS_AGENT}.md`, buildTagmaPipelineDiagnosisAgent()) ||
+    changed;
   changed =
     seedAgent(`${TAGMA_GENERAL_DISCUSSION_AGENT}.md`, buildTagmaGeneralDiscussionAgent()) ||
     changed;

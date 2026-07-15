@@ -61,6 +61,7 @@ import {
 } from './components/AppOverlays';
 import { ChatCompletionToast, ChatPanel } from './components/chat/ChatPanel';
 import { useChatStore, isChatDrivenEditLikely } from './store/chat-store';
+import type { ChatYamlReconcileSummary } from './store/chat-editor-context';
 import { selectFinishedTurnQueueHead } from './store/finished-turn-selector';
 import { useEditorSettingsStore } from './store/editor-settings-store';
 import { RightDock, useRightDock } from './components/RightDock';
@@ -1077,8 +1078,16 @@ export function App() {
             useChatStore.getState().setSessionYamlResult({
               ...finalTarget,
               sessionId: finishedSessionId,
+              workspaceKey: snapshot.workDir,
               status: compile.success ? 'ready' : 'failed',
               compile,
+              reconcile: {
+                outcome: finalized.outcome,
+                conflicts: finalized.conflicts,
+                localBranchPersisted: finalized.localBranchPersisted,
+                resultPath: finalEntry.path,
+                compileSuccess: compile.success,
+              },
               completedAt: finishedTurn.endedAt,
             });
           }
@@ -1110,13 +1119,16 @@ export function App() {
         const compile = await api.compileWorkspaceYaml(target.path);
         if (cancelled) return;
 
+        let legacyReconcile: ChatYamlReconcileSummary | null = null;
         const recordSessionResult = (status: 'ready' | 'failed') => {
           if (!finishedSessionId || !target) return;
           useChatStore.getState().setSessionYamlResult({
             ...target,
             sessionId: finishedSessionId,
+            ...(currentWorkDirForChat ? { workspaceKey: currentWorkDirForChat } : {}),
             status,
             compile,
+            ...(legacyReconcile ? { reconcile: legacyReconcile } : {}),
             completedAt: finishedTurn.endedAt,
           });
         };
@@ -1215,6 +1227,13 @@ export function App() {
             path: copied.entry.path,
             name: copied.entry.name,
             pipelineName: copied.entry.pipelineName,
+          };
+          legacyReconcile = {
+            outcome: 'forked',
+            conflicts: compile.success ? [] : ['compile-failed'],
+            localBranchPersisted: copied.restoredOriginal,
+            resultPath: copied.entry.path,
+            compileSuccess: compile.success,
           };
           try {
             await refreshWorkspaceYamls();

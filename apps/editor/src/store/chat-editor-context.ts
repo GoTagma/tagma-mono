@@ -12,6 +12,7 @@
 import { usePipelineStore } from './pipeline-store';
 import { useRunStore } from './run-store';
 import { useEditorSettingsStore } from './editor-settings-store';
+import type { ChatYamlStageConflict } from '../api/client';
 import {
   createNewPipelineRequestedActionLines,
   fillManualNewPipelineRequestedActionLines,
@@ -47,6 +48,50 @@ interface WorkspaceYamlFolderEntry {
   readonly yaml: string;
   readonly manifest: string;
   readonly legacyFlat?: boolean;
+}
+
+export interface ChatYamlReconcileSummary {
+  readonly outcome: 'unchanged' | 'adopted' | 'forked' | 'created';
+  readonly conflicts: readonly ChatYamlStageConflict[];
+  readonly localBranchPersisted: boolean;
+  readonly resultPath: string | null;
+  readonly compileSuccess: boolean;
+}
+
+function escapeEditorContextValue(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function previousChatYamlReconcileLines(summary: ChatYamlReconcileSummary): string[] {
+  const lines = [
+    '  <previous-chat-yaml-reconcile>',
+    `    <outcome>${escapeEditorContextValue(summary.outcome)}</outcome>`,
+  ];
+  if (summary.conflicts.length) {
+    lines.push(
+      '    <conflicts>',
+      ...summary.conflicts.map(
+        (conflict) => `      <conflict>${escapeEditorContextValue(conflict)}</conflict>`,
+      ),
+      '    </conflicts>',
+    );
+  } else {
+    lines.push('    <conflicts empty="true" />');
+  }
+  lines.push(
+    `    <local-branch-persisted>${summary.localBranchPersisted}</local-branch-persisted>`,
+    summary.resultPath
+      ? `    <result-path>${escapeEditorContextValue(summary.resultPath)}</result-path>`
+      : '    <result-path unavailable="true" />',
+    `    <compile-success>${summary.compileSuccess}</compile-success>`,
+    '  </previous-chat-yaml-reconcile>',
+  );
+  return lines;
 }
 
 function workspaceRelativeYamlFolderEntries(
@@ -108,6 +153,7 @@ export interface EditorContextOptions {
     id: string;
     agentTagmaDir: string;
   } | null;
+  previousChatYamlReconcile?: ChatYamlReconcileSummary | null;
 }
 
 export function buildEditorContext(options: EditorContextOptions = {}): string {
@@ -132,6 +178,9 @@ export function buildEditorContext(options: EditorContextOptions = {}): string {
       '    <write-policy>Write pipeline artifacts only inside agent-root. Live .tagma pipeline paths are read-only source material.</write-policy>',
       '  </chat-staging>',
     );
+  }
+  if (options.previousChatYamlReconcile) {
+    lines.push(...previousChatYamlReconcileLines(options.previousChatYamlReconcile));
   }
   if (contextYamlPath) {
     const rel = workspaceRelativePath(

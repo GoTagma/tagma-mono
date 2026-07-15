@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
 import type { Provider, ProviderModelCatalogV2Snapshot, Session } from '../src/api/opencode-chat';
+import type { ChatYamlSessionResult } from '../src/store/chat-store';
 import {
   buildProvidersFromV2Catalog,
   modelVariantIds,
@@ -63,8 +64,11 @@ Object.defineProperty(globalThis, 'localStorage', {
 
 const { getClientWorkspace, setClientWorkspace } = await import('../src/api/client');
 const { resetOpencodeClient, updateOpencodeSessionV2 } = await import('../src/api/opencode-chat');
-const { useChatStore } = await import('../src/store/chat-store');
+const { selectPreviousChatYamlReconcileForPrompt, useChatStore } =
+  await import('../src/store/chat-store');
 const { useEditorSettingsStore } = await import('../src/store/editor-settings-store');
+const { usePipelineStore } = await import('../src/store/pipeline-store');
+const { releaseChatYamlEditLock } = await import('../src/store/yaml-edit-lock-store');
 
 const jsonResponse = (data: unknown): Response =>
   new Response(JSON.stringify(data), {
@@ -172,6 +176,54 @@ beforeAll(() => {
       });
       return Promise.resolve(
         jsonResponse({ providers: [], paths: { global: null, workspace: null } }),
+      );
+    }
+    if (
+      url === '/api/workspace/yaml-edit-lock' &&
+      method === 'POST' &&
+      headerValue(init?.headers, 'X-Tagma-Workspace') === 'C:/previous-reconcile-repo'
+    ) {
+      const workspace = headerValue(init?.headers, 'X-Tagma-Workspace') ?? '__default__';
+      return Promise.resolve(
+        jsonResponse({
+          lock: {
+            id: 'previous-reconcile-test-lock',
+            owner: 'chat',
+            reason: 'OpenCode is updating pipeline YAML',
+            acquiredAt: Date.now(),
+            expiresAt: Date.now() + 60_000,
+            yamlPath: null,
+            workspace,
+          },
+        }),
+      );
+    }
+    if (
+      url === '/api/workspace/yaml-edit-lock' &&
+      method === 'DELETE' &&
+      headerValue(init?.headers, 'X-Tagma-Workspace') === 'C:/previous-reconcile-repo'
+    ) {
+      return Promise.resolve(jsonResponse({ ok: true, released: true }));
+    }
+    if (
+      url === '/api/workspace/chat-yaml-stage/start' &&
+      method === 'POST' &&
+      headerValue(init?.headers, 'X-Tagma-Workspace') === 'C:/previous-reconcile-repo'
+    ) {
+      const workspace = headerValue(init?.headers, 'X-Tagma-Workspace') ?? 'C:/repo';
+      const rootDir = `${workspace}/.tagma/.chat-staging/previous-reconcile-test-stage`;
+      const agentWorkspaceDir = `${rootDir}/agent-workspace`;
+      return Promise.resolve(
+        jsonResponse({
+          id: 'previous-reconcile-test-stage',
+          rootDir,
+          baseWorkspaceDir: `${rootDir}/base-workspace`,
+          agentWorkspaceDir,
+          agentTagmaDir: `${agentWorkspaceDir}/.tagma`,
+          activeRelativePath: null,
+          activeStagedPath: null,
+          entries: [],
+        }),
       );
     }
     for (const baseUrl of workspaceBaseUrls.values()) {
@@ -488,6 +540,8 @@ afterEach(() => {
     reasoningEffort: null,
     sessions: [],
     sessionStates: {},
+    sessionYamlResults: {},
+    dismissedSessionYamlResultToastIds: [],
     currentSessionId: null,
     messages: [],
     sending: false,
@@ -496,6 +550,8 @@ afterEach(() => {
     queuedMessages: [],
     flushing: false,
     pendingPermissions: [],
+    yamlSnapshotBeforeSend: null,
+    postChatYamlAction: null,
     sendError: null,
   } as never);
 });
@@ -998,6 +1054,174 @@ describe('chat model persistence', () => {
 
     expect(promptAsyncRequests).toEqual([`${baseUrl}/session/existing/prompt_async`]);
     expect(promptAsyncBodies[0]?.variant).toBe('max');
+  });
+
+  test('injects the previous same-session YAML reconcile after clearing its result bubble', async () => {
+    const repo = 'C:/previous-reconcile-repo';
+    const baseUrl = 'http://opencode-previous-reconcile.test';
+    workspaceBaseUrls.set(repo, baseUrl);
+    setClientWorkspace(repo);
+    usePipelineStore.setState({
+      workDir: repo,
+      yamlPath: null,
+      manualNewPipelineYamlPath: null,
+      isDirty: false,
+      layoutDirty: false,
+      registry: { drivers: [], triggers: [], completions: [], middlewares: [] },
+    } as never);
+    useChatStore.setState({
+      model: { providerID: 'anthropic', modelID: 'claude' },
+      agent: 'tagma-router',
+      currentSessionId: 'existing',
+      sessionYamlResults: {
+        existing: {
+          sessionId: 'existing',
+          workspaceKey: repo,
+          kind: 'open-created',
+          path: `${repo}/.tagma/build-copy-1/build-copy-1.yaml`,
+          name: 'build-copy-1.yaml',
+          pipelineName: 'Build Copy 1',
+          status: 'failed',
+          compile: {
+            success: false,
+            summary: 'Compile failed.',
+            validation: { errors: [], warnings: [] },
+          },
+          reconcile: {
+            outcome: 'forked',
+            conflicts: ['compile-failed'],
+            localBranchPersisted: false,
+            resultPath: `${repo}/.tagma/build-copy-1/build-copy-1.yaml`,
+            compileSuccess: false,
+          },
+          completedAt: 1_000,
+        },
+      },
+    } as never);
+
+    try {
+      await useChatStore.getState().send('why was a copy created?');
+
+      expect(useChatStore.getState().sessionYamlResults.existing).toBeUndefined();
+      const parts = promptAsyncBodies[0]?.parts as Array<{ type: string; text: string }>;
+      expect(parts[0]?.text).toContain('<previous-chat-yaml-reconcile>');
+      expect(parts[0]?.text).toContain('<outcome>forked</outcome>');
+      expect(parts[0]?.text).toContain('<conflict>compile-failed</conflict>');
+      expect(parts[0]?.text).toContain(
+        `<result-path>${repo}/.tagma/build-copy-1/build-copy-1.yaml</result-path>`,
+      );
+      expect(parts[0]?.text).toContain('<compile-success>false</compile-success>');
+    } finally {
+      await releaseChatYamlEditLock();
+      usePipelineStore.setState({
+        workDir: null,
+        yamlPath: null,
+        manualNewPipelineYamlPath: null,
+      } as never);
+    }
+  });
+
+  test('keeps previous reconcile evidence when the context limit rolls into a fresh session', async () => {
+    const repo = 'C:/context-rollover-reconcile-repo';
+    const baseUrl = 'http://opencode-context-rollover-reconcile.test';
+    const previousResult: ChatYamlSessionResult = {
+      sessionId: 'existing',
+      workspaceKey: repo,
+      kind: 'open-created',
+      path: `${repo}/.tagma/build-copy-1/build-copy-1.yaml`,
+      name: 'build-copy-1.yaml',
+      pipelineName: 'Build Copy 1',
+      status: 'failed',
+      compile: {
+        success: false,
+        summary: 'Compile failed.',
+        validation: { errors: [], warnings: [] },
+      },
+      reconcile: {
+        outcome: 'forked',
+        conflicts: ['compile-failed'],
+        localBranchPersisted: false,
+        resultPath: `${repo}/.tagma/build-copy-1/build-copy-1.yaml`,
+        compileSuccess: false,
+      },
+      completedAt: 1_000,
+    };
+    workspaceBaseUrls.set(repo, baseUrl);
+    setClientWorkspace(repo);
+    usePipelineStore.setState({
+      workDir: null,
+      yamlPath: null,
+      manualNewPipelineYamlPath: null,
+    } as never);
+    useEditorSettingsStore.getState().updateLocal({
+      ...makeEditorSettings(null),
+      chatContextLimitEnabled: true,
+      chatContextRounds: 1,
+    } as never);
+    useChatStore.setState({
+      model: { providerID: 'anthropic', modelID: 'claude' },
+      agent: 'tagma-router',
+      currentSessionId: 'existing',
+      messages: [
+        {
+          info: { id: 'user-1', sessionID: 'existing', role: 'user' },
+          parts: [],
+        },
+      ] as never,
+      sessionYamlResults: { existing: previousResult },
+    } as never);
+
+    await useChatStore.getState().send('start the next bounded context');
+
+    expect(useChatStore.getState().currentSessionId).toBe('new-session');
+    expect(useChatStore.getState().sessionYamlResults.existing).toEqual(previousResult);
+    expect(promptAsyncRequests).toEqual([`${baseUrl}/session/new-session/prompt_async`]);
+    const parts = promptAsyncBodies[0]?.parts as Array<{ type: string; text: string }>;
+    expect(parts[0]?.text).not.toContain('<previous-chat-yaml-reconcile>');
+  });
+
+  test('does not leak previous reconcile context into repairs, fresh sessions, or workspaces', () => {
+    const reconcile = {
+      outcome: 'forked',
+      conflicts: ['compile-failed'],
+      localBranchPersisted: false,
+      resultPath: 'C:/repo-a/.tagma/build-copy-1/build-copy-1.yaml',
+      compileSuccess: false,
+    } as const;
+    const result = {
+      sessionId: 'existing',
+      workspaceKey: 'C:/repo-a',
+      reconcile,
+    } as never;
+    const base = {
+      resultAtDispatch: result,
+      workspaceKeyAtDispatch: 'C:/repo-a',
+      sessionIdAtDispatch: 'existing',
+      sessionIdForPrompt: 'existing',
+      internal: false,
+      reuseLogicalTurn: false,
+    };
+
+    expect(selectPreviousChatYamlReconcileForPrompt(base)).toEqual(reconcile);
+    expect(selectPreviousChatYamlReconcileForPrompt({ ...base, internal: true })).toBeNull();
+    expect(
+      selectPreviousChatYamlReconcileForPrompt({ ...base, reuseLogicalTurn: true }),
+    ).toBeNull();
+    expect(
+      selectPreviousChatYamlReconcileForPrompt({ ...base, sessionIdForPrompt: 'fresh-session' }),
+    ).toBeNull();
+    expect(
+      selectPreviousChatYamlReconcileForPrompt({
+        ...base,
+        workspaceKeyAtDispatch: 'C:/repo-b',
+      }),
+    ).toBeNull();
+    expect(
+      selectPreviousChatYamlReconcileForPrompt({
+        ...base,
+        resultAtDispatch: { sessionId: 'existing' } as never,
+      }),
+    ).toBeNull();
   });
 
   test('omits a persisted variant that the selected model does not advertise', async () => {

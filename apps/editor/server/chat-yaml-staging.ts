@@ -549,7 +549,9 @@ export function createChatYamlStage(
       baseEntries,
     };
     writeMetadata(paths, metadata);
-    startChatCompileWatcher(paths.agentTagmaDir, ws.registry);
+    startChatCompileWatcher(paths.agentTagmaDir, ws.registry, undefined, {
+      compileExistingYaml: false,
+    });
     return descriptor(ws, paths, metadata);
   } catch (err) {
     stopChatCompileWatcher(paths.agentTagmaDir);

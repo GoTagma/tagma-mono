@@ -8,6 +8,7 @@ import {
   buildTagmaGeneralDiscussionAgent,
   buildTagmaHistoryCompareAgent,
   buildTagmaPipelineAgent,
+  buildTagmaPipelineDiagnosisAgent,
   buildTagmaPipelinePlannerAgent,
   buildTagmaPipelineSectionBuilderAgent,
   buildTagmaPlacementTool,
@@ -28,8 +29,10 @@ test('tagma-router delegates history comparisons without read/edit powers', () =
   expect(doc).toContain('stateless');
   expect(doc).toContain('<history-version-compare>');
   expect(doc).toContain('pipeline_work');
+  expect(doc).toContain('pipeline_diagnosis');
   expect(doc).toContain('general_discussion');
   expect(doc).toContain('tagma-pipeline');
+  expect(doc).toContain('tagma-pipeline-diagnosis');
   expect(doc).toContain('tagma-general-discussion');
   // create/edit are merged — the router must not know those agents anymore.
   expect(doc).not.toContain('tagma-pipeline-create');
@@ -47,9 +50,59 @@ test('tagma-router delegates history comparisons without read/edit powers', () =
   expect(doc).toContain('edit: deny');
 });
 
-test('router prompt stays compact with the history comparison lane', () => {
-  // Keep classification overhead bounded even after adding the history lane.
-  expect(buildTagmaRouterAgent().length).toBeLessThan(3000);
+test('tagma-router separates concrete read-only diagnosis from authorized pipeline mutation', () => {
+  const doc = buildTagmaRouterAgent();
+
+  expect(doc).toContain(
+    '`pipeline_work` -> `tagma-pipeline`: the user explicitly asks to create, change, edit, apply, implement, rename, extend, delete, or fix pipeline files',
+  );
+  expect(doc).toContain(
+    '`pipeline_diagnosis` -> `tagma-pipeline-diagnosis`: inspect, debug, explain, or answer why/how questions about a concrete pipeline',
+  );
+  expect(doc).toContain('with no explicit request to change files');
+  expect(doc).toContain('Debug, explain, review, and "how can I fix this?" do not authorize edits');
+  expect(doc).toContain(
+    'A conceptual question about Tagma product behavior with no concrete artifact to inspect is `general_discussion`',
+  );
+});
+
+test('tagma-router preserves host reconciliation evidence for Copy and finalize diagnosis', () => {
+  const doc = buildTagmaRouterAgent();
+
+  expect(doc).toContain('<previous-chat-yaml-reconcile>');
+  expect(doc).toContain('Copy or finalize/reconcile outcome');
+  expect(doc).toContain('pass the complete block unchanged');
+  expect(doc).toContain('pipeline_diagnosis');
+});
+
+test('tagma-pipeline-diagnosis is read-only but can inspect pipeline artifacts and compile logs', () => {
+  const doc = buildTagmaPipelineDiagnosisAgent();
+
+  expect(doc).toContain('name: tagma-pipeline-diagnosis');
+  expect(doc).toContain('mode: subagent');
+  expect(doc).toContain('hidden: true');
+  expect(doc).toContain('read: allow');
+  expect(doc).toContain('glob: allow');
+  expect(doc).toContain('grep: allow');
+  expect(doc).toContain('list: allow');
+  expect(doc).toContain('edit: deny');
+  expect(doc).toContain('bash: deny');
+  expect(doc).toContain('webfetch: deny');
+  expect(doc).toContain('websearch: deny');
+  expect(doc).toContain('explore: "allow"');
+  expect(doc).toContain('scout: "allow"');
+  expect(doc).toContain('tagma-yaml-contract: "allow"');
+  expect(doc).toContain('tagma-native-primitives: "allow"');
+  expect(doc).toContain('YAML, manifest, layout, requirements, and `.compile.log`');
+  expect(doc).toContain('<previous-chat-yaml-reconcile>');
+  expect(doc).toContain('ROUTE_MISMATCH: pipeline_work');
+  expect(doc).not.toContain('tagma_yaml_skeleton: allow');
+  expect(doc).not.toContain('tagma_placement_plan: allow');
+});
+
+test('router prompt stays compact with the read-only diagnosis lane', () => {
+  // Keep classification overhead bounded even after adding the diagnosis lane.
+  expect(buildTagmaRouterAgent().length).toBeLessThan(4000);
 });
 
 test('router keeps one bounded implementation handoff before result synthesis', () => {
@@ -63,7 +116,7 @@ test('router keeps one bounded implementation handoff before result synthesis', 
 test('tagma-pipeline agent stays compact and keeps schema detail out of the base prompt', () => {
   const doc = buildTagmaPipelineAgent('Windows');
 
-  expect(doc.length).toBeLessThan(15_000);
+  expect(doc.length).toBeLessThan(16_000);
   expect(doc).toContain('Keep context small');
   expect(doc).toContain('schema source of truth');
   expect(doc).toContain('YAML Contract Quick Reference');
@@ -87,6 +140,7 @@ test('routine pipeline authoring stays in one worker model without nested task f
 
 test('merged tagma-pipeline agent is a hidden subagent handling create + edit', () => {
   const pipeline = buildTagmaPipelineAgent('Windows');
+  const diagnosis = buildTagmaPipelineDiagnosisAgent();
   const general = buildTagmaGeneralDiscussionAgent();
   const history = buildTagmaHistoryCompareAgent();
 
@@ -97,6 +151,9 @@ test('merged tagma-pipeline agent is a hidden subagent handling create + edit', 
   expect(pipeline).not.toContain('Routed specialization');
   expect(pipeline).not.toContain('ROUTE_MISMATCH: modify_pipeline');
   expect(pipeline).not.toContain('ROUTE_MISMATCH: create_pipeline');
+
+  expect(diagnosis).toContain('name: tagma-pipeline-diagnosis');
+  expect(diagnosis).toContain('without changing files');
 
   expect(general).toContain('mode: subagent');
   expect(general).toContain('hidden: true');
@@ -110,6 +167,19 @@ test('merged tagma-pipeline agent is a hidden subagent handling create + edit', 
   expect(history).toContain('hidden: true');
   expect(history).toContain('stateless');
   expect(history).toContain('ROUTE_MISMATCH: pipeline_work');
+});
+
+test('tagma-pipeline requires explicit mutation authorization before any write', () => {
+  const doc = buildTagmaPipelineAgent('Windows');
+
+  expect(doc).toContain('## Mutation Authorization Gate');
+  expect(doc).toContain('The latest user text must explicitly request a file change');
+  expect(doc).toContain('Debug, inspect, explain, review, and why/how questions are read-only');
+  expect(doc).toContain('do not write, create, rename, or delete anything');
+  expect(doc).toContain('ROUTE_MISMATCH: pipeline_diagnosis');
+  expect(doc).toContain(
+    'include a concise read-only answer when the available evidence supports one',
+  );
 });
 
 test('tagma-pipeline agent documents edit/create modes and mandatory compile loop', () => {
@@ -424,6 +494,7 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   const agentsDir = join(dir, '.opencode', 'agents');
   const routerAgent = join(agentsDir, 'tagma-router.md');
   const pipelineAgent = join(agentsDir, 'tagma-pipeline.md');
+  const diagnosisAgent = join(agentsDir, 'tagma-pipeline-diagnosis.md');
   const generalAgent = join(agentsDir, 'tagma-general-discussion.md');
   const historyAgent = join(agentsDir, 'tagma-history-compare.md');
   const reviewAgent = join(agentsDir, 'tagma-yaml-review.md');
@@ -436,6 +507,7 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   const managedAgents = [
     routerAgent,
     pipelineAgent,
+    diagnosisAgent,
     generalAgent,
     historyAgent,
     reviewAgent,
@@ -460,6 +532,9 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   expect(readFileSync(routerAgent, 'utf8')).toContain('tagma-pipeline');
   expect(existsSync(pipelineAgent)).toBe(true);
   expect(readFileSync(pipelineAgent, 'utf8')).toContain('name: tagma-pipeline');
+  expect(existsSync(diagnosisAgent)).toBe(true);
+  expect(readFileSync(diagnosisAgent, 'utf8')).toContain('name: tagma-pipeline-diagnosis');
+  expect(readFileSync(diagnosisAgent, 'utf8')).toContain('edit: deny');
   expect(existsSync(generalAgent)).toBe(true);
   expect(existsSync(historyAgent)).toBe(true);
   expect(readFileSync(historyAgent, 'utf8')).toContain('stateless');
@@ -569,6 +644,7 @@ test('seedOpencodeArtifacts applies repeated global step-limit changes to every 
   const filenames = [
     'tagma-router.md',
     'tagma-pipeline.md',
+    'tagma-pipeline-diagnosis.md',
     'tagma-general-discussion.md',
     'tagma-history-compare.md',
     'tagma-yaml-review.md',
@@ -613,6 +689,7 @@ test('seedOpencodeArtifacts prunes stale agents left by an older editor', () => 
   mkdirSync(singularDir, { recursive: true });
   mkdirSync(pluralDir, { recursive: true });
   writeFileSync(join(singularDir, 'tagma-router.md'), 'stale', 'utf8');
+  writeFileSync(join(singularDir, 'tagma-pipeline-diagnosis.md'), 'stale', 'utf8');
   writeFileSync(join(singularDir, 'tagma-pipeline-planner.md'), 'stale', 'utf8');
   writeFileSync(join(singularDir, 'tagma-yaml.md'), 'stale', 'utf8');
   writeFileSync(join(pluralDir, 'tagma-pipeline-create.md'), 'stale', 'utf8');
@@ -622,6 +699,7 @@ test('seedOpencodeArtifacts prunes stale agents left by an older editor', () => 
   seedOpencodeArtifacts(dir);
 
   expect(existsSync(join(singularDir, 'tagma-router.md'))).toBe(false);
+  expect(existsSync(join(singularDir, 'tagma-pipeline-diagnosis.md'))).toBe(false);
   expect(existsSync(join(singularDir, 'tagma-pipeline-planner.md'))).toBe(false);
   expect(existsSync(join(singularDir, 'tagma-yaml.md'))).toBe(false);
   expect(existsSync(join(pluralDir, 'tagma-pipeline-create.md'))).toBe(false);
@@ -630,5 +708,6 @@ test('seedOpencodeArtifacts prunes stale agents left by an older editor', () => 
   // The real agents are written to the plural dir.
   expect(existsSync(join(pluralDir, 'tagma-router.md'))).toBe(true);
   expect(existsSync(join(pluralDir, 'tagma-pipeline.md'))).toBe(true);
+  expect(existsSync(join(pluralDir, 'tagma-pipeline-diagnosis.md'))).toBe(true);
   expect(existsSync(join(pluralDir, 'tagma-pipeline-planner.md'))).toBe(true);
 });

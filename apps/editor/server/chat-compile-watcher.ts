@@ -34,6 +34,15 @@ import { isReservedTagmaName, isValidPipelineStem } from './pipeline-paths.js';
 
 type CompileYamlFile = (yamlPath: string, registry?: PluginRegistry) => unknown;
 
+interface StartChatCompileWatcherOptions {
+  /**
+   * Compile matching YAML files that already exist when their folder watcher
+   * is first attached. Disable this for pre-populated staging snapshots: those
+   * files are the turn baseline, not chat writes.
+   */
+  compileExistingYaml?: boolean;
+}
+
 interface FolderWatcher {
   /** Absolute path of the pipeline folder, e.g. `<wd>/.tagma/foo`. */
   folderPath: string;
@@ -100,7 +109,11 @@ function scheduleCompile(handle: WorkspaceWatchHandle, yamlPath: string): void {
 }
 
 /** Attach an fs.watch to one pipeline folder. Idempotent. */
-function attachFolderWatcher(handle: WorkspaceWatchHandle, folderPath: string): void {
+function attachFolderWatcher(
+  handle: WorkspaceWatchHandle,
+  folderPath: string,
+  compileExistingYaml: boolean,
+): void {
   const absFolder = resolve(folderPath);
   if (handle.folders.has(absFolder)) return;
   const stem = basename(absFolder);
@@ -137,6 +150,7 @@ function attachFolderWatcher(handle: WorkspaceWatchHandle, folderPath: string): 
     console.error(`[chat-compile-watcher] folder watcher error on ${absFolder}:`, err);
   });
   handle.folders.set(absFolder, { folderPath: absFolder, stem, watcher });
+  if (!compileExistingYaml) return;
   // Race fix: the agent could have written the YAML before this watcher was
   // attached (new-pipeline flow on a still-empty folder is fine; new-pipeline
   // flow that landed the .yaml first is the case we protect here). Trigger a
@@ -172,7 +186,7 @@ function detachFolderWatcher(handle: WorkspaceWatchHandle, folderPath: string): 
 
 /** Reconcile the set of folder watchers against the current on-disk state.
  *  Adds watchers for new pipeline folders, drops watchers for removed ones. */
-function reconcileFolderWatchers(handle: WorkspaceWatchHandle): void {
+function reconcileFolderWatchers(handle: WorkspaceWatchHandle, compileExistingYaml = true): void {
   const tagmaDir = handle.tagmaDir;
   const present = new Set<string>();
   try {
@@ -183,7 +197,7 @@ function reconcileFolderWatchers(handle: WorkspaceWatchHandle): void {
       if (!isValidPipelineStem(entry.name)) continue;
       const folderPath = join(tagmaDir, entry.name);
       present.add(folderPath);
-      attachFolderWatcher(handle, folderPath);
+      attachFolderWatcher(handle, folderPath, compileExistingYaml);
     }
   } catch (err) {
     console.warn(`[chat-compile-watcher] reconcile failed for ${tagmaDir}:`, err);
@@ -204,6 +218,7 @@ export function startChatCompileWatcher(
   tagmaDir: string,
   registry?: PluginRegistry,
   compileYamlFile?: CompileYamlFile,
+  options: StartChatCompileWatcherOptions = {},
 ): void {
   const dir = resolve(tagmaDir);
   const existing = handles.get(dir);
@@ -213,7 +228,7 @@ export function startChatCompileWatcher(
     // Pick up any folders created after the last call (e.g. user opened a
     // workspace with pre-existing pipelines after the watcher was started
     // empty by an earlier code path).
-    reconcileFolderWatchers(existing);
+    reconcileFolderWatchers(existing, options.compileExistingYaml ?? true);
     return;
   }
   if (!existsSync(dir) || !statSync(dir).isDirectory()) return;
@@ -249,11 +264,11 @@ export function startChatCompileWatcher(
   };
   handles.set(dir, handle);
 
-  // Attach initial folder watchers. `reconcileFolderWatchers` reads the
-  // current set of pipeline folders off disk and calls `attachFolderWatcher`
-  // for each one, which itself runs the race-fix compile pass for any
-  // already-present YAML.
-  reconcileFolderWatchers(handle);
+  // Attach initial folder watchers. Ordinary workspaces retain the race-fix
+  // compile pass for already-present YAML. Pre-populated chat stages opt out:
+  // their copied artifacts are the base snapshot, while later writes and new
+  // folders are still observed by the attached watchers.
+  reconcileFolderWatchers(handle, options.compileExistingYaml ?? true);
 }
 
 export function stopChatCompileWatcher(tagmaDir: string): void {

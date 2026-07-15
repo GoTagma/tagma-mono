@@ -20,6 +20,7 @@ import {
   pipelineYamlPath,
 } from '../server/pipeline-paths';
 import { pipelineManifestPath } from '../server/pipeline-manifest';
+import { runRequirementsSync } from '../server/requirements-sync';
 import { WorkspaceState } from '../server/workspace-state';
 
 const roots: string[] = [];
@@ -57,7 +58,7 @@ function layoutFor(x: number): string {
   );
 }
 
-function setupWorkspace(): {
+function setupWorkspace(baseYaml = yamlFor('Base Pipeline', 'base')): {
   root: string;
   ws: WorkspaceState;
   sourcePath: string;
@@ -65,7 +66,6 @@ function setupWorkspace(): {
 } {
   const root = makeRoot();
   const sourcePath = pipelineYamlPath(root, 'pipeline');
-  const baseYaml = yamlFor('Base Pipeline', 'base');
   mkdirSync(dirname(sourcePath), { recursive: true });
   writeFileSync(sourcePath, baseYaml, 'utf-8');
   writeFileSync(pipelineLayoutPath(sourcePath), layoutFor(20), 'utf-8');
@@ -269,6 +269,61 @@ describe('chat YAML staging', () => {
     expect(result.outcome).toBe('unchanged');
     expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
     expect(existsSync(stage.agentWorkspaceDir)).toBe(false);
+    stopWorkspace(ws);
+  });
+
+  test('does not treat watcher initialization as an agent edit to an existing pipeline', async () => {
+    const invalidYaml = yamlFor('Invalid Pipeline', '');
+    const { ws, sourcePath } = setupWorkspace(invalidYaml);
+    runRequirementsSync(sourcePath);
+    const liveRequirements = readFileSync(pipelineRequirementsPath(sourcePath), 'utf-8');
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const baselineHashes = {
+      contentHash: staged.contentHash,
+      layoutHash: staged.layoutHash,
+      requirementsHash: staged.requirementsHash,
+    };
+
+    // The watcher debounces for 150ms. With zero agent writes, waiting beyond
+    // that boundary must not compile the pre-copied pipeline or refresh the
+    // generatedAt timestamp in its requirements document.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    const listed = listChatYamlStage(ws, stage.id);
+    const unchanged = listed.entries.find((entry) => entry.relativePath === staged.relativePath)!;
+    const observedHashes = {
+      contentHash: unchanged.contentHash,
+      layoutHash: unchanged.layoutHash,
+      requirementsHash: unchanged.requirementsHash,
+    };
+    const stagedRequirements = readFileSync(
+      pipelineRequirementsPath(unchanged.stagedPath),
+      'utf-8',
+    );
+
+    // allowInvalid matches the chat reconciliation path for preserving a
+    // compile-failing agent branch. The untouched invalid source must still be
+    // recognized as unchanged, never published as a visible numbered copy.
+    const result = finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+      allowInvalid: true,
+    });
+
+    expect({
+      ...observedHashes,
+      outcome: result.outcome,
+      conflicts: result.conflicts,
+      copyExists: existsSync(pipelineYamlPath(ws.workDir, 'pipeline-copy-1')),
+    }).toEqual({
+      ...baselineHashes,
+      outcome: 'unchanged',
+      conflicts: [],
+      copyExists: false,
+    });
+    expect(stagedRequirements).toBe(liveRequirements);
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(invalidYaml);
     stopWorkspace(ws);
   });
 

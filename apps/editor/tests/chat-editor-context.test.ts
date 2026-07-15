@@ -183,6 +183,48 @@ describe('chat editor context', () => {
     expect(context).not.toContain('<current-file>.tagma/build/build.yaml</current-file>');
   });
 
+  test('includes the previous host YAML reconcile result and escapes its values', () => {
+    usePipelineStore.setState({
+      workDir: 'C:/repo',
+      yamlPath: 'C:/repo/.tagma/build/build.yaml',
+      registry: { drivers: [], triggers: [], completions: [], middlewares: [] },
+    } as never);
+
+    const context = buildEditorContext({
+      previousChatYamlReconcile: {
+        outcome: 'forked',
+        conflicts: ['source-changed-on-disk', 'future<&conflict'] as never,
+        localBranchPersisted: true,
+        resultPath: 'C:/repo/.tagma/build-<copy&1>/build-<copy&1>.yaml',
+        compileSuccess: false,
+      },
+    });
+
+    expect(context).toContain('<previous-chat-yaml-reconcile>');
+    expect(context).toContain('<outcome>forked</outcome>');
+    expect(context).toContain('<conflict>source-changed-on-disk</conflict>');
+    expect(context).toContain('<conflict>future&lt;&amp;conflict</conflict>');
+    expect(context).toContain('<local-branch-persisted>true</local-branch-persisted>');
+    expect(context).toContain(
+      '<result-path>C:/repo/.tagma/build-&lt;copy&amp;1&gt;/build-&lt;copy&amp;1&gt;.yaml</result-path>',
+    );
+    expect(context).toContain('<compile-success>false</compile-success>');
+    expect(context).toContain('</previous-chat-yaml-reconcile>');
+  });
+
+  test('omits previous reconcile context when no compatible result is available', () => {
+    usePipelineStore.setState({
+      workDir: 'C:/repo',
+      yamlPath: 'C:/repo/.tagma/build/build.yaml',
+      registry: { drivers: [], triggers: [], completions: [], middlewares: [] },
+    } as never);
+
+    expect(buildEditorContext({ previousChatYamlReconcile: null })).not.toContain(
+      '<previous-chat-yaml-reconcile>',
+    );
+    expect(buildEditorContext()).not.toContain('<previous-chat-yaml-reconcile>');
+  });
+
   test('marks explicit create-pipeline requests so existing yaml names are collision context only', () => {
     usePipelineStore.setState({
       workDir: 'C:/repo',
