@@ -627,6 +627,32 @@ describe('chat model persistence', () => {
     ).toBe('max');
   });
 
+  test('merges OpenCode runtime variants when the v2 catalog omits some of them', () => {
+    const legacyProvider = providerWithVariants('opencode', 'deepseek-v4-flash', ['high', 'max']);
+    legacyProvider.models['deepseek-v4-flash']!.variants!.disabled = { disabled: true };
+    const v2DeepSeekModel = {
+      ...v2Model('opencode', 'deepseek-v4-flash'),
+      variants: [{ id: 'high', headers: {}, body: { reasoningEffort: 'high' } }],
+    };
+    const providers = buildProvidersFromV2Catalog(
+      {
+        providers: [v2Provider('opencode')],
+        models: [v2DeepSeekModel],
+      },
+      [legacyProvider],
+    );
+
+    expect(
+      modelVariantIds(providers, {
+        providerID: 'opencode',
+        modelID: 'deepseek-v4-flash',
+      }),
+    ).toEqual(['high', 'max']);
+    expect(providers[0]?.models['deepseek-v4-flash']?.variants?.high).toMatchObject({
+      body: { reasoningEffort: 'high' },
+    });
+  });
+
   test('keeps configured providers that are only present in the legacy catalog', () => {
     const legacyCustomProvider = {
       id: 'ollama',

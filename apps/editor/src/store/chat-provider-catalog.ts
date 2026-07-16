@@ -117,6 +117,12 @@ export function buildProvidersFromV2Catalog(
     if (!v2ProviderById.has(model.providerID)) continue;
     const providerModels = modelsByProvider.get(model.providerID) ?? {};
     const legacyModel = legacyById.get(model.providerID)?.models?.[model.id];
+    const v2Variants = Object.fromEntries(
+      (model.variants ?? [])
+        .filter(({ id }) => id.trim().length > 0)
+        .map(({ id, ...variant }) => [id, variant as Record<string, unknown>]),
+    );
+    const runtimeVariants = enabledRuntimeVariants(legacyModel?.variants);
     providerModels[model.id] = {
       ...(legacyModel ?? {}),
       id: model.id,
@@ -147,12 +153,10 @@ export function buildProvidersFromV2Catalog(
       status: model.status,
       options: legacyModel?.options ?? modelRequestOptions(model),
       headers: legacyModel?.headers ?? model.request.headers,
-      variants: Object.fromEntries(
-        (model.variants ?? []).map(({ id, ...variant }) => [
-          id,
-          variant as Record<string, unknown>,
-        ]),
-      ),
+      // OpenCode's v2 model catalog can omit provider-generated variants that
+      // are still present in its runtime provider catalog. Merge both live
+      // catalogs and let v2 metadata win when they describe the same variant.
+      variants: { ...runtimeVariants, ...v2Variants },
     };
     modelsByProvider.set(model.providerID, providerModels);
   }
@@ -181,6 +185,14 @@ export function buildProvidersFromV2Catalog(
   }
 
   return providers;
+}
+
+function enabledRuntimeVariants(
+  variants: Provider['models'][string]['variants'],
+): NonNullable<Provider['models'][string]['variants']> {
+  return Object.fromEntries(
+    Object.entries(variants ?? {}).filter(([, variant]) => variant['disabled'] !== true),
+  );
 }
 
 function mediaCapabilities(values: string[]): Provider['models'][string]['capabilities']['input'] {
