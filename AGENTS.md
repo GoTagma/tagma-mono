@@ -23,3 +23,13 @@ Do not amend the same commit to include these files after naming them with the c
 - `bun run check:deps` must compare every workspace package's path, name, and version with its
   `bun.lock` workspace entry. A successful frozen install alone does not prove that Bun's
   workspace metadata is current.
+
+## Workflow Self-Repair Invariants
+
+- Persist self-repair only as a finite, success-conditioned lifecycle:
+  `{ max_runs: <integer >= 2>, stop_when: success, repair: true }`.
+- A failed non-final attempt feeds bounded, redacted task evidence into the next prompt run and
+  may resume only the same task's prior driver session. Ordinary repeat and infinite modes must
+  not enable repair.
+- Completion plugins may return a boolean or `{ passed, feedback? }`; failed structured feedback
+  becomes task diagnostics and must remain available to the next repair attempt.

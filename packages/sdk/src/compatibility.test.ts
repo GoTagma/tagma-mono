@@ -3,6 +3,7 @@ import yaml from 'js-yaml';
 import type { RawPipelineConfig, RawWorkflowConfig } from '@tagma/types';
 import {
   TAGMA_SDK_VERSION,
+  YAML_FEATURE_MIN_SDK,
   YAML_REQUIRES_FIELD_MIN_SDK,
   inferPipelineCompatibility,
   inferYamlCompatibility,
@@ -171,5 +172,44 @@ pipeline:
       path: 'requires.sdk',
       message: `This workflow requires @tagma/sdk >=99.0.0, current is ${TAGMA_SDK_VERSION}.`,
     });
+  });
+
+  test('raises workflow compatibility when self-repair is enabled', () => {
+    const serialized = serializeWorkflow({
+      kind: 'graph',
+      name: 'Repair Flow',
+      pipelines: [
+        {
+          id: 'repair',
+          path: '.tagma/repair/repair.yaml',
+          lifecycle: { max_runs: 3, stop_when: 'success', repair: true },
+        },
+      ],
+    });
+    const parsed = parseSerializedWorkflow(serialized);
+    const compatibility = inferYamlCompatibility(serialized);
+
+    expect(YAML_FEATURE_MIN_SDK.workflow_self_repair).toBe('0.7.52');
+    expect(parsed.requires).toEqual({ sdk: '>=0.7.52' });
+    expect(compatibility.features.map((feature) => feature.id)).toContain('workflow_self_repair');
+  });
+
+  test('raises workflow compatibility when the repair field is explicitly disabled', () => {
+    const serialized = serializeWorkflow({
+      kind: 'graph',
+      name: 'Explicit Repair Default',
+      pipelines: [
+        {
+          id: 'once',
+          path: '.tagma/once/once.yaml',
+          lifecycle: { max_runs: 1, repair: false },
+        },
+      ],
+    });
+
+    expect(parseSerializedWorkflow(serialized).requires).toEqual({ sdk: '>=0.7.52' });
+    expect(inferYamlCompatibility(serialized).features.map((feature) => feature.id)).toContain(
+      'workflow_self_repair',
+    );
   });
 });

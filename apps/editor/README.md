@@ -79,6 +79,15 @@ curl -fsSL https://bun.sh/install | bash
 | `bun run ensure:opencode`  | Download the bundled OpenCode binary into `../electron/build/opencode/`               |
 | `bun run install:clean`    | Wipe `node_modules` + `bun.lock` + Bun's pm cache, then reinstall                     |
 
+## Workflow editor and run behavior
+
+Pipeline Detail exposes four run modes: run once, retry until success, repeat a fixed count, or
+repeat until aborted. Retry until success is bounded by an editable maximum attempt count
+(default 3) and feeds failed-attempt evidence into the next agent attempt. Pipeline success is the
+gate, so use a final command task such as `pytest` or `bun test`, or configure a task Completion
+Check, to verify the generated result. Run details keep the existing Run N/M and task snapshots and
+show repair feedback in a compact expandable section when a failed attempt is retried.
+
 ## In-app update surfaces
 
 Several features are designed for the desktop wrapper ([tagma-desktop](../electron/README.md)) but also work in dev when the matching env vars are set.

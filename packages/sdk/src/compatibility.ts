@@ -60,6 +60,7 @@ export const YAML_FEATURE_MIN_SDK = {
   requires: YAML_REQUIRES_FIELD_MIN_SDK,
   workflow: '0.7.0',
   workflow_lifecycle: '0.7.0',
+  workflow_self_repair: '0.7.52',
   task_bindings: '0.7.0',
 } as const;
 
@@ -67,6 +68,7 @@ const FEATURE_DESCRIPTIONS: Record<keyof typeof YAML_FEATURE_MIN_SDK, string> = 
   requires: 'YAML declares SDK compatibility metadata with requires.sdk',
   workflow: 'YAML uses the workflow graph document format',
   workflow_lifecycle: 'Workflow pipeline declares lifecycle retry policy',
+  workflow_self_repair: 'Workflow pipeline retries with prior failure context',
   task_bindings: 'Pipeline tasks declare inputs/outputs bindings or input placeholders',
 };
 
@@ -287,6 +289,13 @@ function collectWorkflowFeatures(
   for (const pipeline of pipelines) {
     if (isRecord(pipeline) && pipeline.lifecycle !== undefined) {
       addFeature(features, 'workflow_lifecycle');
+    }
+    if (
+      isRecord(pipeline) &&
+      isRecord(pipeline.lifecycle) &&
+      Object.prototype.hasOwnProperty.call(pipeline.lifecycle, 'repair')
+    ) {
+      addFeature(features, 'workflow_self_repair');
     }
     if (isRecord(pipeline) && isRecord(pipeline.config)) {
       for (const feature of collectPipelineFeatures(pipeline.config as unknown as PipelineConfig)) {

@@ -696,10 +696,11 @@ function readWorkflowPosition(value: unknown): { x: number; y: number } | undefi
 
 function readWorkflowLifecycle(value: unknown): PipelineGraphPipelineLifecycle | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
-  const raw = value as { max_runs?: unknown; stop_when?: unknown };
+  const raw = value as { max_runs?: unknown; stop_when?: unknown; repair?: unknown };
   const lifecycle: {
     max_runs?: PipelineGraphPipelineLifecycle['max_runs'];
     stop_when?: PipelineGraphStopWhen;
+    repair?: boolean;
   } = {};
   if (raw.max_runs === 'infinite') {
     lifecycle.max_runs = 'infinite';
@@ -709,6 +710,7 @@ function readWorkflowLifecycle(value: unknown): PipelineGraphPipelineLifecycle |
   if (raw.stop_when === 'success' || raw.stop_when === 'failure' || raw.stop_when === 'always') {
     lifecycle.stop_when = raw.stop_when;
   }
+  if (typeof raw.repair === 'boolean') lifecycle.repair = raw.repair;
   return Object.keys(lifecycle).length > 0 ? lifecycle : undefined;
 }
 
@@ -810,6 +812,7 @@ function normalizeWorkflowLifecycleInput(
   const lifecycle: {
     max_runs?: PipelineGraphPipelineLifecycle['max_runs'];
     stop_when?: PipelineGraphStopWhen;
+    repair?: boolean;
   } = {};
   if (raw.max_runs !== undefined) {
     if (raw.max_runs === 'infinite') {
@@ -829,6 +832,28 @@ function normalizeWorkflowLifecycleInput(
       );
     }
     lifecycle.stop_when = raw.stop_when;
+  }
+  if (raw.repair !== undefined) {
+    if (typeof raw.repair !== 'boolean') {
+      throw new Error(`pipelines[${pipelineIndex}].lifecycle.repair must be a boolean`);
+    }
+    lifecycle.repair = raw.repair;
+  }
+  if (lifecycle.repair === true) {
+    if (
+      typeof lifecycle.max_runs !== 'number' ||
+      !Number.isFinite(lifecycle.max_runs) ||
+      lifecycle.max_runs < 2
+    ) {
+      throw new Error(
+        `pipelines[${pipelineIndex}].lifecycle.repair requires a finite max_runs of at least 2`,
+      );
+    }
+    if (lifecycle.stop_when !== undefined && lifecycle.stop_when !== 'success') {
+      throw new Error(
+        `pipelines[${pipelineIndex}].lifecycle.repair requires stop_when to be success`,
+      );
+    }
   }
   return Object.keys(lifecycle).length > 0 ? lifecycle : undefined;
 }

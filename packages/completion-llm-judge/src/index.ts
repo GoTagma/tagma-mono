@@ -30,6 +30,7 @@
 import {
   parseOptionalPluginTimeout,
   type TagmaPlugin,
+  type CompletionCheckResult,
   type CompletionPlugin,
   type CompletionContext,
   type TaskResult,
@@ -233,7 +234,7 @@ export const LlmJudgeCompletion: CompletionPlugin = {
     config: Record<string, unknown>,
     result: TaskResult,
     ctx: CompletionContext,
-  ): Promise<boolean> {
+  ): Promise<boolean | CompletionCheckResult> {
     const rubric = config.rubric as string | undefined;
     if (!rubric) throw new Error('llm_judge completion: "rubric" is required');
 
@@ -289,15 +290,21 @@ export const LlmJudgeCompletion: CompletionPlugin = {
         console.warn(
           `[llm_judge] verdict=${firstLine || '<empty>'} — full judge response:\n${content}`,
         );
+        return {
+          passed: false,
+          feedback:
+            `llm_judge verdict=${firstLine || '<empty>'}\n` +
+            truncateForJudge(content, DEFAULT_MAX_OUTPUT_CHARS),
+        };
       }
-      return passed;
+      return true;
     } catch (err) {
       // Treat judge failures as FAIL: a completion gate that errors open
       // is worse than one that errors closed. Operators can re-run the
       // task once the judge endpoint is healthy again.
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`[llm_judge] judge call failed, marking task as not-complete: ${msg}`);
-      return false;
+      return { passed: false, feedback: `llm_judge request failed: ${msg}` };
     }
   },
 };

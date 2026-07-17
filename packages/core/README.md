@@ -24,6 +24,17 @@ published package is runtime-agnostic orchestration code; concrete Bun-only
 process execution, file watching, and CLI convenience behavior live in
 `@tagma/runtime-bun` and `@tagma/sdk`.
 
+## Retry Host Context
+
+Low-level hosts can pass `taskPromptContexts` and `taskContinuations` in
+`RunPipelineOptions`, keyed by fully qualified task ID (`track.task`). Prompt
+contexts are appended after middleware enrichment. Continuation seeds carry a
+prior same-task session ID, driver, and normalized output so drivers can resume
+the session when supported and fall back to text context otherwise.
+
+The SDK workflow runner uses these options for finite self-repair lifecycles;
+ordinary single-pipeline runs are unchanged when the options are omitted.
+
 ## Publishing
 
 `@tagma/core` is a public npm dependency of `@tagma/runtime-bun` and `@tagma/sdk`. Publish it after `@tagma/types` and before runtime or SDK packages.

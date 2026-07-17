@@ -3,7 +3,13 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { PluginRegistry } from '@tagma/core';
-import type { PipelineConfig, PipelineGraphConfig, TaskResult, TagmaRuntime } from '@tagma/types';
+import type {
+  DriverPlugin,
+  PipelineConfig,
+  PipelineGraphConfig,
+  TaskResult,
+  TagmaRuntime,
+} from '@tagma/types';
 import { bootstrapBuiltins } from './bootstrap';
 import { YAML_REQUIRES_FIELD_MIN_SDK } from './compatibility';
 import {
@@ -32,6 +38,57 @@ function commandPipeline(name: string, command: string): PipelineConfig {
       },
     ],
   };
+}
+
+function promptPipeline(name = 'Repair'): PipelineConfig {
+  const permissions = { read: true, write: true, execute: true };
+  return {
+    name,
+    driver: 'repair-test',
+    permissions,
+    tracks: [
+      {
+        id: 'main',
+        name: 'Main',
+        permissions,
+        tasks: [
+          {
+            id: 'fix',
+            name: 'Fix',
+            prompt: 'Implement and verify the requested change.',
+            permissions,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+interface PromptObservation {
+  readonly prompt: string;
+  readonly sessionId: string | null;
+  readonly sessionDriver: string | null;
+  readonly normalizedOutput: string | null;
+}
+
+function repairRegistry(observations: PromptObservation[]): PluginRegistry {
+  const reg = registry();
+  const driver: DriverPlugin = {
+    name: 'repair-test',
+    capabilities: { sessionResume: true, systemPrompt: true, outputFormat: true },
+    async buildCommand(task, _track, context) {
+      const continuation = task.continue_from;
+      observations.push({
+        prompt: task.prompt ?? '',
+        sessionId: continuation ? (context.sessionMap.get(continuation) ?? null) : null,
+        sessionDriver: continuation ? (context.sessionDriverMap.get(continuation) ?? null) : null,
+        normalizedOutput: continuation ? (context.normalizedMap.get(continuation) ?? null) : null,
+      });
+      return { args: ['repair-test'], stdin: task.prompt ?? '' };
+    },
+  };
+  reg.registerPlugin('drivers', 'repair-test', driver);
+  return reg;
 }
 
 function pipelineYaml(name: string, command: string): string {
@@ -241,6 +298,74 @@ describe('workflow YAML model', () => {
       expect.arrayContaining([
         'pipelines[0].lifecycle.max_runs',
         'pipelines[0].lifecycle.stop_when',
+      ]),
+    );
+  });
+
+  test('validates and serializes workflow self-repair lifecycle controls', () => {
+    const raw = parseWorkflowYaml(`workflow:
+  name: repair-flow
+  pipelines:
+    - id: repair
+      path: .tagma/repair/repair.yaml
+      lifecycle:
+        max_runs: 3
+        stop_when: success
+        repair: true
+`);
+
+    expect(validateRawWorkflow(raw)).toEqual([]);
+    expect(raw.pipelines[0]?.lifecycle).toEqual({
+      max_runs: 3,
+      stop_when: 'success',
+      repair: true,
+    });
+    expect(serializeWorkflow(raw)).toContain('repair: true');
+  });
+
+  test('rejects invalid workflow self-repair lifecycle controls', () => {
+    const raw = parseWorkflowYaml(`workflow:
+  name: invalid-repair-flow
+  pipelines:
+    - id: non_boolean
+      path: .tagma/repair/repair.yaml
+      lifecycle: { max_runs: 2, repair: yes }
+    - id: missing_runs
+      path: .tagma/repair/repair.yaml
+      lifecycle: { repair: true }
+    - id: single_run
+      path: .tagma/repair/repair.yaml
+      lifecycle: { max_runs: 1, repair: true }
+    - id: infinite_runs
+      path: .tagma/repair/repair.yaml
+      lifecycle: { max_runs: infinite, repair: true }
+    - id: wrong_stop
+      path: .tagma/repair/repair.yaml
+      lifecycle: { max_runs: 2, stop_when: always, repair: true }
+`);
+
+    expect(validateRawWorkflow(raw)).toEqual(
+      expect.arrayContaining([
+        {
+          path: 'pipelines[0].lifecycle.repair',
+          message: 'lifecycle.repair must be a boolean',
+        },
+        {
+          path: 'pipelines[1].lifecycle.max_runs',
+          message: 'lifecycle.repair requires a finite max_runs of at least 2',
+        },
+        {
+          path: 'pipelines[2].lifecycle.max_runs',
+          message: 'lifecycle.repair requires a finite max_runs of at least 2',
+        },
+        {
+          path: 'pipelines[3].lifecycle.max_runs',
+          message: 'lifecycle.repair requires a finite max_runs of at least 2',
+        },
+        {
+          path: 'pipelines[4].lifecycle.stop_when',
+          message: 'lifecycle.repair requires stop_when to be success when specified',
+        },
       ]),
     );
   });
@@ -679,6 +804,196 @@ describe('PipelineGraphRunner', () => {
     }
   });
 
+  test('repairs a failed prompt task with failure feedback and its prior session', async () => {
+    const dir = makeDir();
+    const observations: PromptObservation[] = [];
+    let attempts = 0;
+    const continuationOutput =
+      'previous normalized output api_key=continuation-secret ' +
+      'x'.repeat(6_000) +
+      ' final context';
+    const failedStdout =
+      'first stdout ' + JSON.stringify({ api_key: 'json-secret' }) + ' --token cli-secret';
+    const failedStderr =
+      'Authorization: ' +
+      String.fromCharCode(34) +
+      'Bearer header-secret' +
+      String.fromCharCode(34) +
+      ' failure';
+    try {
+      const runtime: TagmaRuntime = {
+        ...fakeRuntime(),
+        async runSpawn() {
+          attempts += 1;
+          if (attempts === 1) {
+            return {
+              ...taskResult(failedStdout),
+              exitCode: 1,
+              stderr: failedStderr,
+              stderrBytes: new TextEncoder().encode(failedStderr).byteLength,
+              sessionId: 'session-one',
+              normalizedOutput: continuationOutput,
+              failureKind: 'exit_nonzero',
+            };
+          }
+          return taskResult('fixed');
+        },
+      };
+      const result = await runPipelineGraph(
+        {
+          name: 'repair-flow',
+          pipelines: [
+            {
+              id: 'repair',
+              config: promptPipeline(),
+              cwd: dir,
+              lifecycle: { max_runs: 3, stop_when: 'success', repair: true },
+            },
+          ],
+        },
+        dir,
+        {
+          registry: repairRegistry(observations),
+          runtime,
+          skipPluginLoading: true,
+          taskPromptContexts: {
+            'main.fix': [{ label: 'Host context', content: 'base host value' }],
+          },
+          resolvePipelineOptions: () => ({
+            taskPromptContexts: {
+              'main.fix': [{ label: 'Resolved context', content: 'resolved host value' }],
+            },
+          }),
+        },
+      );
+
+      expect(result.success).toBe(true);
+      expect(attempts).toBe(2);
+      expect(result.pipelines[0]?.attempts.map((attempt) => attempt.status)).toEqual([
+        'failed',
+        'success',
+      ]);
+      expect(result.pipelines[0]?.attempts[0]?.repairFeedback).toContain('main.fix');
+      expect(observations[1]?.prompt).toContain('[Previous attempt failure]');
+      expect(observations[0]?.prompt).toContain('[Host context]');
+      expect(observations[0]?.prompt).toContain('[Resolved context]');
+      expect(observations[1]?.prompt).toContain('[Host context]');
+      expect(observations[1]?.prompt).toContain('[Resolved context]');
+      expect(observations[1]?.prompt).toContain('failureKind: exit_nonzero');
+      expect(observations[1]?.prompt).toContain('first stdout');
+      expect(observations[1]?.prompt).not.toContain('json-secret');
+      expect(observations[1]?.prompt).not.toContain('cli-secret');
+      expect(observations[1]?.prompt).not.toContain('header-secret');
+      expect(observations[1]).toMatchObject({
+        sessionId: 'session-one',
+        sessionDriver: 'repair-test',
+      });
+      const retryOutput = observations[1]?.normalizedOutput ?? '';
+      expect(retryOutput).toContain('previous normalized output');
+      expect(retryOutput).toContain('final context');
+      expect(retryOutput).not.toContain('continuation-secret');
+      expect(new TextEncoder().encode(retryOutput).byteLength).toBeLessThanOrEqual(4 * 1024);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('feeds a caught attempt error into the next repair prompt', async () => {
+    const dir = makeDir();
+    const observations: PromptObservation[] = [];
+    try {
+      const runtime: TagmaRuntime = {
+        ...fakeRuntime(),
+        async runSpawn() {
+          return taskResult('fixed');
+        },
+      };
+      const result = await runPipelineGraph(
+        {
+          name: 'repair-flow',
+          pipelines: [
+            {
+              id: 'repair',
+              config: promptPipeline(),
+              cwd: dir,
+              lifecycle: { max_runs: 2, stop_when: 'success', repair: true },
+            },
+          ],
+        },
+        dir,
+        {
+          registry: repairRegistry(observations),
+          runtime,
+          skipPluginLoading: true,
+          resolvePipelineOptions: (_pipeline, context) => {
+            if (context.attempt === 1) throw new Error('api_key=private-key unavailable');
+            return {};
+          },
+        },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.pipelines[0]?.attempts[0]?.repairFeedback).toContain(
+        'threw before producing a result',
+      );
+      expect(result.pipelines[0]?.attempts[0]?.repairFeedback).not.toContain('private-key');
+      expect(observations[0]?.prompt).toContain('[Previous attempt failure]');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('clears a stale pipeline result when the final repair attempt throws', async () => {
+    const dir = makeDir();
+    let runs = 0;
+    try {
+      const runtime = fakeRuntime(async () => {
+        runs += 1;
+        return {
+          ...taskResult('first result'),
+          exitCode: 1,
+          stderr: 'first attempt failed',
+          stderrBytes: 20,
+          failureKind: 'exit_nonzero',
+        };
+      });
+      const result = await runPipelineGraph(
+        {
+          name: 'repair-flow',
+          pipelines: [
+            {
+              id: 'repair',
+              config: commandPipeline('Repair', 'repair-command'),
+              cwd: dir,
+              lifecycle: { max_runs: 2, stop_when: 'success', repair: true },
+            },
+          ],
+        },
+        dir,
+        {
+          registry: registry(),
+          runtime,
+          skipPluginLoading: true,
+          resolvePipelineOptions: (_pipeline, context) => {
+            if (context.attempt === 2) throw new Error('final attempt setup failed');
+            return {};
+          },
+        },
+      );
+
+      expect(runs).toBe(1);
+      expect(result.success).toBe(false);
+      expect(result.pipelines[0]?.attempts.map((attempt) => attempt.status)).toEqual([
+        'failed',
+        'failed',
+      ]);
+      expect(result.pipelines[0]?.error).toContain('final attempt setup failed');
+      expect(result.pipelines[0]?.result).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('runs a fixed-count pipeline loop when stop_when is always', async () => {
     const dir = makeDir();
     let attempts = 0;
@@ -772,7 +1087,7 @@ describe('PipelineGraphRunner', () => {
     }
   });
 
-  test('marks a pipeline failed after exhausting success-conditioned retries', async () => {
+  test('marks a self-repair pipeline failed after exhausting its attempts', async () => {
     const dir = makeDir();
     let attempts = 0;
     try {
@@ -784,7 +1099,7 @@ describe('PipelineGraphRunner', () => {
               id: 'flaky',
               config: commandPipeline('Flaky', 'flaky-command'),
               cwd: dir,
-              lifecycle: { max_runs: 2, stop_when: 'success' },
+              lifecycle: { max_runs: 2, stop_when: 'success', repair: true },
             },
           ],
         },
@@ -806,6 +1121,8 @@ describe('PipelineGraphRunner', () => {
         'failed',
         'failed',
       ]);
+      expect(result.pipelines[0]?.attempts[0]?.repairFeedback).toContain('main.task');
+      expect(result.pipelines[0]?.attempts[1]?.repairFeedback).toBeNull();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -1150,7 +1467,14 @@ describe('PipelineGraphRunner', () => {
       const runner = new PipelineGraphRunner(
         {
           name: 'release-flow',
-          pipelines: [{ id: 'p1', config: commandPipeline('P1', 'p1'), cwd: dir }],
+          pipelines: [
+            {
+              id: 'p1',
+              config: commandPipeline('P1', 'p1'),
+              cwd: dir,
+              lifecycle: { max_runs: 3, stop_when: 'success', repair: true },
+            },
+          ],
         },
         dir,
         {
@@ -1190,6 +1514,7 @@ describe('PipelineGraphRunner', () => {
       expect(result.success).toBe(false);
       expect(result.abortReason).toBe('external');
       expect(result.pipelines[0]?.status).toBe('aborted');
+      expect(result.pipelines[0]?.runCount).toBe(1);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -1,6 +1,11 @@
 import type { WorkflowPipelineEntry, WorkspaceYamlEntry } from '../../api/client';
 
 export const WORKFLOW_INFINITE_LOOP = 'infinite' as const;
+export const WORKFLOW_DEFAULT_RETRY_MAX_RUNS = 3;
+export const WORKFLOW_DEFAULT_REPEAT_COUNT = 2;
+
+export type WorkflowPipelineRunMode =
+  'run-once' | 'retry-success' | 'repeat-count' | 'repeat-infinite' | 'custom';
 
 export interface WorkflowGraphPosition {
   x: number;
@@ -164,21 +169,111 @@ export function workflowPipelineRunLimit(pipeline: WorkflowPipelineEntry): numbe
   return workflowPipelineLoopIsInfinite(pipeline) ? null : workflowPipelineLoopCount(pipeline);
 }
 
+function finiteWorkflowRunCount(pipeline: WorkflowPipelineEntry): number | null {
+  const count = pipeline.lifecycle?.max_runs;
+  return typeof count === 'number' && Number.isInteger(count) && count >= 2 ? count : null;
+}
+
+export function workflowPipelineRunMode(pipeline: WorkflowPipelineEntry): WorkflowPipelineRunMode {
+  const lifecycle = pipeline.lifecycle;
+  if (!lifecycle) return 'run-once';
+
+  const stopWhen = lifecycle.stop_when ?? 'success';
+  const finiteRuns = finiteWorkflowRunCount(pipeline);
+  if (
+    lifecycle.max_runs === WORKFLOW_INFINITE_LOOP &&
+    stopWhen === 'always' &&
+    lifecycle.repair !== true
+  ) {
+    return 'repeat-infinite';
+  }
+  if (finiteRuns !== null && stopWhen === 'success' && lifecycle.repair === true) {
+    return 'retry-success';
+  }
+  if (finiteRuns !== null && stopWhen === 'always' && lifecycle.repair !== true) {
+    return 'repeat-count';
+  }
+  if (
+    (lifecycle.max_runs === undefined || lifecycle.max_runs === 1) &&
+    stopWhen === 'success' &&
+    lifecycle.repair !== true
+  ) {
+    return 'run-once';
+  }
+  return 'custom';
+}
+
+export function setWorkflowPipelineRunMode(
+  pipelines: readonly WorkflowPipelineEntry[],
+  pipelineId: string,
+  mode: Exclude<WorkflowPipelineRunMode, 'custom'>,
+): WorkflowPipelineEntry[] {
+  return pipelines.map((pipeline) => {
+    if (pipeline.id !== pipelineId) return pipeline;
+    const { lifecycle: _lifecycle, ...rest } = pipeline;
+    if (mode === 'run-once') return rest;
+
+    const currentRuns = finiteWorkflowRunCount(pipeline);
+    if (mode === 'retry-success') {
+      return {
+        ...rest,
+        lifecycle: {
+          max_runs: currentRuns ?? WORKFLOW_DEFAULT_RETRY_MAX_RUNS,
+          stop_when: 'success',
+          repair: true,
+        },
+      };
+    }
+    if (mode === 'repeat-count') {
+      return {
+        ...rest,
+        lifecycle: {
+          max_runs: currentRuns ?? WORKFLOW_DEFAULT_REPEAT_COUNT,
+          stop_when: 'always',
+        },
+      };
+    }
+    return {
+      ...rest,
+      lifecycle: { max_runs: WORKFLOW_INFINITE_LOOP, stop_when: 'always' },
+    };
+  });
+}
+
+export function setWorkflowPipelineMaxAttempts(
+  pipelines: readonly WorkflowPipelineEntry[],
+  pipelineId: string,
+  rawCount: number,
+): WorkflowPipelineEntry[] {
+  const count = Number.isFinite(rawCount) ? Math.max(2, Math.round(rawCount)) : 2;
+  return pipelines.map((pipeline) => {
+    if (pipeline.id !== pipelineId) return pipeline;
+    const mode = workflowPipelineRunMode(pipeline);
+    if (mode === 'retry-success') {
+      return {
+        ...pipeline,
+        lifecycle: { max_runs: count, stop_when: 'success', repair: true },
+      };
+    }
+    if (mode === 'repeat-count') {
+      return { ...pipeline, lifecycle: { max_runs: count, stop_when: 'always' } };
+    }
+    return pipeline;
+  });
+}
+
 export function setWorkflowPipelineLoopCount(
   pipelines: readonly WorkflowPipelineEntry[],
   pipelineId: string,
   rawCount: number,
 ): WorkflowPipelineEntry[] {
   const count = Number.isFinite(rawCount) ? Math.max(1, Math.round(rawCount)) : 1;
-  return pipelines.map((pipeline) => {
-    if (pipeline.id !== pipelineId) return pipeline;
-    const { lifecycle: _lifecycle, ...rest } = pipeline;
-    if (count <= 1) return rest;
-    return {
-      ...rest,
-      lifecycle: { max_runs: count, stop_when: 'always' },
-    };
-  });
+  if (count <= 1) return setWorkflowPipelineRunMode(pipelines, pipelineId, 'run-once');
+  return pipelines.map((pipeline) =>
+    pipeline.id === pipelineId
+      ? { ...pipeline, lifecycle: { max_runs: count, stop_when: 'always' } }
+      : pipeline,
+  );
 }
 
 export function setWorkflowPipelineInfiniteLoop(
@@ -187,14 +282,7 @@ export function setWorkflowPipelineInfiniteLoop(
   infinite: boolean,
 ): WorkflowPipelineEntry[] {
   if (!infinite) return setWorkflowPipelineLoopCount(pipelines, pipelineId, 1);
-  return pipelines.map((pipeline) => {
-    if (pipeline.id !== pipelineId) return pipeline;
-    const { lifecycle: _lifecycle, ...rest } = pipeline;
-    return {
-      ...rest,
-      lifecycle: { max_runs: WORKFLOW_INFINITE_LOOP, stop_when: 'always' },
-    };
-  });
+  return setWorkflowPipelineRunMode(pipelines, pipelineId, 'repeat-infinite');
 }
 
 function hasAncestor(

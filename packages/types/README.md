@@ -34,6 +34,9 @@ import type {
 - `PipelineConfig` / `RawPipelineConfig` -- top-level pipeline definition
 - `TrackConfig` / `RawTrackConfig` -- parallel execution track
 - `TaskConfig` / `RawTaskConfig` -- individual task (AI prompt or shell command). Task-level `inputs` / `outputs` are the unified dataflow model; optional `type` metadata turns a binding into a strict, validated contract
+- `PipelineGraphConfig` / `RawWorkflowConfig` -- workflow graph definition that connects persisted pipeline files or resolved pipeline configs
+- `PipelineGraphPipelineLifecycle` -- per-pipeline retry policy. `repair: true` feeds failed-attempt evidence into the next prompt run and requires a finite `max_runs >= 2` with `stop_when: success`
+- `PipelineGraphPipelineAttemptState` -- one workflow attempt, including bounded `repairFeedback` when another repair attempt will follow
 - `HooksConfig` / `HookCommand` -- lifecycle hook commands
 - `OnFailure` -- track failure strategy: `'ignore' | 'skip_downstream' | 'stop_all'`
 - `Permissions` -- `{ read, write, execute }` capability flags
@@ -49,7 +52,7 @@ import type {
 
 - `DriverPlugin` -- translates a task into a spawn spec (`buildCommand`, optional `parseResult` / `resolveModel` / `resolveTools`). `parseResult` receives `stdout` and an optional `stderr` parameter
 - `TriggerPlugin` / `TriggerWatchHandle` -- starts a pre-task watcher and returns `{ fired, dispose }` so the engine can release resources on success, failure, timeout, or abort
-- `CompletionPlugin` -- validates task output (`check`)
+- `CompletionPlugin` -- validates task output (`check`) by returning a boolean or `CompletionCheckResult`; structured failure feedback is appended to task diagnostics so workflow repair can act on verifier evidence
 - `MiddlewarePlugin` -- enriches prompts before execution through `enhanceDoc(doc, config, ctx)`, operating on a structured `PromptDocument`
 - `PluginManifest` -- shape of the `tagmaPlugin` field a plugin package declares in its `package.json` (`{ category, type, minEditorVersion?, minDesktopVersion? }`). Hosts use this for auto-discovery without importing the module. `minEditorVersion` is the `tagma-editor` package version; `minDesktopVersion` is the packaged desktop shell version.
 - `TagmaPlugin` / `PluginCapabilities` -- package-level plugin shape for one package that can provide one or more drivers, triggers, completions, or middlewares
@@ -66,11 +69,12 @@ import type {
 
 - `TaskStatus` -- `'idle' | 'waiting' | 'running' | 'success' | 'failed' | 'timeout' | 'skipped' | 'blocked'`
 - `TaskResult` -- exit code, bounded `stdout`/`stderr` tails, on-disk `stdoutPath`/`stderrPath`, total `stdoutBytes`/`stderrBytes`, duration, session ID, normalized output, failure kind, and the published `outputs` map when a task declares output bindings
-- `TaskFailureKind` -- distinguishes _why_ a task didn't return exit 0: `'timeout' | 'aborted' | 'spawn_error' | 'exit_nonzero' | 'parse_error' | 'output_error' | null`. `'aborted'` covers external abort and `on_failure: stop_all`; `'parse_error'` covers driver `parseResult` failures; `'output_error'` covers post-success output-extraction failures
+- `TaskFailureKind` -- distinguishes _why_ a task failed: `'timeout' | 'aborted' | 'spawn_error' | 'binary_missing' | 'exit_nonzero' | 'parse_error' | 'output_error' | 'completion_failed' | null`. `'aborted'` covers external abort and `on_failure: stop_all`; `'parse_error'` covers driver `parseResult` failures; `'output_error'` covers post-success output-extraction failures; `'completion_failed'` means the process ran but its Completion Check rejected the result
 - `TaskState` -- mutable engine state for a running task (config, status, result, timestamps)
 - `SpawnSpec` -- args, stdin, cwd, env returned by a driver
 - `DriverCapabilities` -- declares session resume, system prompt, output format support
 - `DriverContext` / `DriverResultMeta` -- inputs and result metadata exchanged between driver and engine. `DriverContext.promptDoc` exposes the structured post-middleware prompt; `DriverContext.inputs` is the resolved lightweight binding values plus typed/coerced port input map (drivers that wrap the prompt in a custom envelope can re-substitute placeholders themselves); `DriverResultMeta.forceFailure` lets a driver mark a task failed even when the CLI exited 0 (e.g. an error-JSON payload)
+- `TaskContinuationSeed` -- prior same-task session ID, driver, and normalized output supplied by a host so a repair attempt can resume the agent session when possible and fall back to text context otherwise
 - `ApprovalGateway` / `ApprovalRequestHandle` / `ApprovalRequest` / `ApprovalDecision` / `ApprovalEvent` / `ApprovalListener` / `ApprovalOutcome` / `ApprovalRequestInfo` -- approval flow types (`ApprovalRequestInfo` is the wire alias for `ApprovalRequest`)
 - `TriggerContext` / `CompletionContext` / `MiddlewareContext` -- contexts passed to plugin methods
 - `OnFailure`, `HooksConfig`, `HookCommand` -- failure strategy and lifecycle hook types

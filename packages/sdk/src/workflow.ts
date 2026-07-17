@@ -21,12 +21,14 @@ import type {
   PipelineGraphPipelineLifecycle,
   PipelineGraphStopWhen,
   PipelineConfig,
+  PromptContextBlock,
   RawWorkflowConfig,
   RawWorkflowPipelineConfig,
   WorkflowConfig,
   WorkflowDocumentKind,
   WorkflowFailurePolicy,
   WorkflowPipelineConfig,
+  TaskContinuationSeed,
 } from '@tagma/types';
 import { PipelineValidationError, loadPipeline, validateConfigDiagnostics } from './schema';
 import type { ValidationError } from './validate-raw';
@@ -104,7 +106,16 @@ interface MutableNodeState {
 interface NormalizedPipelineLifecycle {
   readonly max_runs: number | null;
   readonly stop_when: PipelineGraphStopWhen;
+  readonly repair: boolean;
 }
+
+interface RepairRetryContext {
+  readonly feedback: string;
+  readonly continuations: Readonly<Record<string, TaskContinuationSeed>>;
+}
+
+const REPAIR_STREAM_MAX_BYTES = 4 * 1024;
+const REPAIR_FEEDBACK_MAX_BYTES = 16 * 1024;
 
 const VALID_FAILURE_POLICIES: ReadonlySet<WorkflowFailurePolicy> = new Set([
   'stop_all',
@@ -141,7 +152,7 @@ const GRAPH_PIPELINE_FIELDS: ReadonlySet<string> = new Set([
   'lifecycle',
 ]);
 const WORKFLOW_POSITION_FIELDS: ReadonlySet<string> = new Set(['x', 'y']);
-const PIPELINE_LIFECYCLE_FIELDS: ReadonlySet<string> = new Set(['max_runs', 'stop_when']);
+const PIPELINE_LIFECYCLE_FIELDS: ReadonlySet<string> = new Set(['max_runs', 'stop_when', 'repair']);
 const WORKFLOW_YAML_DUMP_OPTIONS = {
   lineWidth: 120,
   indent: 2,
@@ -426,6 +437,8 @@ export class PipelineGraphRunner {
     const lifecycle = normalizePipelineLifecycle(pipeline.lifecycle);
     const maxRuns = lifecycle.max_runs;
     const stopWhen = lifecycle.stop_when ?? 'success';
+    const repair = lifecycle.repair;
+    let retryContext: RepairRetryContext | null = null;
     const {
       signal: _graphSignal,
       onEvent: _graphOnEvent,
@@ -452,9 +465,18 @@ export class PipelineGraphRunner {
         runId: null,
         runCount: attempt,
         maxRuns,
+        result: null,
         attempts: [
           ...this.nodes.get(pipelineId)!.attempts,
-          { attempt, runId: null, status: 'running', startedAt, finishedAt: null, error: null },
+          {
+            attempt,
+            runId: null,
+            status: 'running',
+            startedAt,
+            finishedAt: null,
+            error: null,
+            repairFeedback: null,
+          },
         ],
         startedAt,
         finishedAt: null,
@@ -466,9 +488,14 @@ export class PipelineGraphRunner {
         const specificOptions =
           resolvePipelineOptions?.(pipeline, { pipelineId, workDir: pipelineWorkDir, attempt }) ??
           {};
+        const mergedOptions = mergePipelineRunOptions(
+          pipelineOptions,
+          specificOptions,
+          pipeline.config,
+          retryContext,
+        );
         const result = await runPipeline(pipeline.config, pipelineWorkDir, {
-          ...pipelineOptions,
-          ...specificOptions,
+          ...mergedOptions,
           signal: controller.signal,
           onEvent: (event) => {
             if (event.type === 'run_start') {
@@ -494,12 +521,27 @@ export class PipelineGraphRunner {
             : 'failed';
         const finishedAt = new Date().toISOString();
         const error = status === 'failed' ? 'Pipeline failed' : null;
+        const shouldFinish = this.shouldFinishLifecycle(status, stopWhen, attempt, maxRuns);
+        const repairFeedback =
+          repair && status === 'failed' && !shouldFinish ? buildRepairFeedback(result) : null;
         this.updateNode(pipelineId, {
           result,
-          attempts: this.patchAttempt(pipelineId, attempt, { status, finishedAt, error }),
+          attempts: this.patchAttempt(pipelineId, attempt, {
+            status,
+            finishedAt,
+            error,
+            repairFeedback,
+          }),
         });
 
-        if (this.shouldFinishLifecycle(status, stopWhen, attempt, maxRuns)) {
+        if (repairFeedback) {
+          retryContext = {
+            feedback: repairFeedback,
+            continuations: buildRepairContinuations(result, pipeline.config),
+          };
+        }
+
+        if (shouldFinish) {
           this.updateNode(pipelineId, {
             status,
             result,
@@ -515,10 +557,21 @@ export class PipelineGraphRunner {
         const status: PipelineGraphNodeStatus = controller.signal.aborted ? 'aborted' : 'failed';
         const error = errorMessage(err);
         const finishedAt = new Date().toISOString();
+        const shouldFinish = this.shouldFinishLifecycle(status, stopWhen, attempt, maxRuns);
+        const repairFeedback =
+          repair && status === 'failed' && !shouldFinish ? buildCaughtRepairFeedback(error) : null;
         this.updateNode(pipelineId, {
-          attempts: this.patchAttempt(pipelineId, attempt, { status, finishedAt, error }),
+          attempts: this.patchAttempt(pipelineId, attempt, {
+            status,
+            finishedAt,
+            error,
+            repairFeedback,
+          }),
         });
-        if (this.shouldFinishLifecycle(status, stopWhen, attempt, maxRuns)) {
+        if (repairFeedback) {
+          retryContext = { feedback: repairFeedback, continuations: {} };
+        }
+        if (shouldFinish) {
           this.updateNode(pipelineId, {
             status,
             error,
@@ -673,6 +726,131 @@ export class PipelineGraphRunner {
       }
     }
   }
+}
+
+function mergePipelineRunOptions(
+  base: Omit<RunPipelineOptions, 'signal' | 'onEvent'>,
+  specific: PipelineGraphPipelineRunOptions,
+  config: PipelineConfig,
+  retry: RepairRetryContext | null,
+): Omit<RunPipelineOptions, 'signal' | 'onEvent'> {
+  const taskPromptContexts: Record<string, PromptContextBlock[]> = {};
+  for (const source of [base.taskPromptContexts, specific.taskPromptContexts]) {
+    if (!source) continue;
+    for (const [taskId, blocks] of Object.entries(source)) {
+      taskPromptContexts[taskId] = [...(taskPromptContexts[taskId] ?? []), ...blocks];
+    }
+  }
+  if (retry) {
+    for (const track of config.tracks) {
+      for (const task of track.tasks) {
+        if (typeof task.prompt !== 'string') continue;
+        const taskId = `${track.id}.${task.id}`;
+        taskPromptContexts[taskId] = [
+          ...(taskPromptContexts[taskId] ?? []),
+          { label: 'Previous attempt failure', content: retry.feedback },
+        ];
+      }
+    }
+  }
+
+  const taskContinuations: Record<string, TaskContinuationSeed> = {};
+  for (const source of [base.taskContinuations, specific.taskContinuations, retry?.continuations]) {
+    if (!source) continue;
+    for (const [taskId, seed] of Object.entries(source)) {
+      taskContinuations[taskId] = { ...(taskContinuations[taskId] ?? {}), ...seed };
+    }
+  }
+
+  return {
+    ...base,
+    ...specific,
+    taskPromptContexts,
+    taskContinuations,
+  };
+}
+
+function buildRepairFeedback(result: EngineResult): string {
+  const sections = [
+    'The previous pipeline attempt failed. Preserve the existing workspace edits, fix the failures below, and verify the result again.',
+  ];
+  for (const [taskId, state] of result.states) {
+    if (state.status !== 'failed' && state.status !== 'timeout' && state.status !== 'blocked') {
+      continue;
+    }
+    const lines = [`Task ${taskId}`, `status: ${state.status}`];
+    if (state.result) {
+      lines.push(`exitCode: ${state.result.exitCode}`);
+      lines.push(`failureKind: ${state.result.failureKind ?? 'unknown'}`);
+      const stdout = boundedRepairText(state.result.stdout, REPAIR_STREAM_MAX_BYTES);
+      const stderr = boundedRepairText(state.result.stderr, REPAIR_STREAM_MAX_BYTES);
+      if (stdout) lines.push(`stdout:\n${stdout}`);
+      if (stderr) lines.push(`stderr:\n${stderr}`);
+    } else {
+      lines.push('No task result was produced.');
+    }
+    sections.push(lines.join('\n'));
+  }
+  if (sections.length === 1) {
+    sections.push('The pipeline reported failure without a failed task result.');
+  }
+  return boundedRepairText(sections.join('\n\n'), REPAIR_FEEDBACK_MAX_BYTES);
+}
+
+function buildCaughtRepairFeedback(error: string): string {
+  return boundedRepairText(
+    `The previous pipeline attempt threw before producing a result.\nerror: ${error}`,
+    REPAIR_FEEDBACK_MAX_BYTES,
+  );
+}
+
+function buildRepairContinuations(
+  result: EngineResult,
+  config: PipelineConfig,
+): Readonly<Record<string, TaskContinuationSeed>> {
+  const continuations: Record<string, TaskContinuationSeed> = {};
+  for (const [taskId, state] of result.states) {
+    if (typeof state.config.prompt !== 'string' || !state.result) continue;
+    const { sessionId, normalizedOutput } = state.result;
+    if (sessionId === null && normalizedOutput === null) continue;
+    const driver = state.config.driver ?? state.trackConfig.driver ?? config.driver ?? 'opencode';
+    continuations[taskId] = {
+      ...(sessionId !== null ? { sessionId } : {}),
+      driver,
+      ...(normalizedOutput !== null
+        ? { normalizedOutput: boundedRepairText(normalizedOutput, REPAIR_STREAM_MAX_BYTES) }
+        : {}),
+    };
+  }
+  return continuations;
+}
+
+function boundedRepairText(text: string, maxBytes: number): string {
+  const redacted = redactRepairText(text);
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(redacted);
+  if (bytes.length <= maxBytes) return redacted;
+
+  const marker = '\n…[truncated]…\n';
+  const markerBytes = encoder.encode(marker);
+  const contentBudget = Math.max(0, maxBytes - markerBytes.length);
+  const headBudget = Math.floor(contentBudget / 3);
+  const tailBudget = contentBudget - headBudget;
+  const decoder = new TextDecoder();
+  return (
+    decoder.decode(bytes.slice(0, headBudget)) +
+    marker +
+    decoder.decode(bytes.slice(bytes.length - tailBudget))
+  );
+}
+
+function redactRepairText(text: string): string {
+  return text
+    .replace(/(authorization\s*:\s*bearer\s+)[^\s,;]+/gi, '$1[REDACTED]')
+    .replace(
+      /((?:api[_-]?key|apikey|token|secret|password|session[_-]?id|sessionid)\s*[:=]\s*)[^\s,;]+/gi,
+      '$1[REDACTED]',
+    );
 }
 
 export interface CreatePipelineGroupOptions {
@@ -994,6 +1172,30 @@ function validatePipelineLifecycle(
       message: 'lifecycle.stop_when must be "success", "failure", or "always"',
     });
   }
+  if (lifecycle.repair !== undefined && typeof lifecycle.repair !== 'boolean') {
+    errors.push({
+      path: `${basePath}.lifecycle.repair`,
+      message: 'lifecycle.repair must be a boolean',
+    });
+  }
+  if (lifecycle.repair === true) {
+    if (
+      typeof lifecycle.max_runs !== 'number' ||
+      !Number.isFinite(lifecycle.max_runs) ||
+      lifecycle.max_runs < 2
+    ) {
+      errors.push({
+        path: `${basePath}.lifecycle.max_runs`,
+        message: 'lifecycle.repair requires a finite max_runs of at least 2',
+      });
+    }
+    if (lifecycle.stop_when !== undefined && lifecycle.stop_when !== 'success') {
+      errors.push({
+        path: `${basePath}.lifecycle.stop_when`,
+        message: 'lifecycle.repair requires stop_when to be success when specified',
+      });
+    }
+  }
 }
 
 function normalizePipelineLifecycle(
@@ -1002,6 +1204,7 @@ function normalizePipelineLifecycle(
   return {
     max_runs: normalizeMaxRuns(lifecycle?.max_runs),
     stop_when: lifecycle?.stop_when ?? 'success',
+    repair: lifecycle?.repair ?? false,
   };
 }
 
@@ -1016,6 +1219,7 @@ function stripDefaultLifecycle(
   return {
     ...(lifecycle.max_runs !== undefined ? { max_runs: lifecycle.max_runs } : {}),
     ...(lifecycle.stop_when !== undefined ? { stop_when: lifecycle.stop_when } : {}),
+    ...(lifecycle.repair !== undefined ? { repair: lifecycle.repair } : {}),
   };
 }
 

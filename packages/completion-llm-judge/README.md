@@ -78,6 +78,7 @@ await tagma.registry.loadPlugins(['@tagma/completion-llm-judge'], process.cwd())
 ## Behavior
 
 - **Verdict format**: the judge is instructed to answer `PASS` or `FAIL` on the first line. Missing or ambiguous answers are treated as FAIL — a judge that errs open defeats the purpose of the gate.
+- **Repair feedback**: a FAIL verdict returns the bounded judge explanation as structured completion feedback, so a workflow with `lifecycle.repair: true` can act on the unmet rubric in its next attempt.
 - **Reasoning-model support**: `<think>...</think>` and `<thinking>...</thinking>` blocks are stripped from the response before verdict parsing, so qwen3, DeepSeek-R1, and other thinkers work without any extra config.
 - **Truncation**: task stdout longer than `max_output_chars` is truncated head-and-tail (70/30 split) with a marker in the middle, so the judge still sees the task's intent and its final summary.
 - **Error handling**: network errors, auth errors, timeout, or malformed responses all mark the task as not-complete and log a warning with the judge's verbatim response (if any).

@@ -540,7 +540,7 @@ Workflow graph YAML wraps multiple pipeline YAML files and lets the SDK execute 
 ```yaml
 workflow:
   requires:
-    sdk: '>=0.7.40'
+    sdk: '>=0.7.52'
   kind: graph
   name: release-flow
   max_concurrency: 2
@@ -551,12 +551,17 @@ workflow:
       lifecycle:
         max_runs: 3
         stop_when: success
+        repair: true
     - id: deploy
       path: .tagma/deploy/deploy.yaml
       depends_on: [build]
 ```
 
 Per-pipeline `lifecycle.max_runs` defaults to `1`. `lifecycle.stop_when` defaults to `success`; supported values are `success` (retry until the first successful run or the max is reached), `failure` (run until the first failed run or the max is reached), and `always` (run exactly `max_runs` attempts unless aborted). Graph results include `runCount`, `maxRuns`, and per-attempt state on each pipeline node.
+
+Set `lifecycle.repair: true` for a finite, success-conditioned repair loop. Repair requires a numeric `max_runs` of at least `2` and either omits `stop_when` or sets it to `success`; `max_runs: infinite`, `stop_when: failure`, and `stop_when: always` are rejected. After a failed non-final attempt, the next attempt receives bounded, redacted task status, exit-code, failure-kind, stdout, and stderr evidence in a `[Previous attempt failure]` block on every prompt task. The SDK also seeds each prompt task with its own previous session and driver when available, allowing native session resume; normalized output is retained as fallback context.
+
+The retry gate is the referenced pipeline's success result, so make the expected result executable. A final command task can run any language or toolchain (`python -m pytest`, `cargo test`, `go test ./...`, `bun test`, or a project-specific script). A prompt task can instead use a Completion Check such as `completion: { type: output_check, check: 'python scripts/verify.py' }`; a non-zero verifier exit marks the task failed and its verifier output becomes repair evidence for the next attempt.
 
 `createTagma().run(graphConfig, options)` runs a programmatic `PipelineGraphConfig`. `createTagma().runYaml(content, options)` detects either top-level `pipeline:` or `workflow:` YAML and returns `{ kind: 'pipeline' | 'workflow', result }`, so CLI hosts can route one file path through one SDK call.
 

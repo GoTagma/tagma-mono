@@ -1329,13 +1329,13 @@ describe('workspace route validation', () => {
             {
               id: 'build',
               path: yamlPath,
-              lifecycle: { max_runs: 3, stop_when: 'success' },
+              lifecycle: { max_runs: 3, stop_when: 'success', repair: true },
               position: { x: 40, y: 50 },
             },
             {
               id: 'build_forever',
               path: yamlPath,
-              lifecycle: { max_runs: 'infinite', stop_when: 'always' },
+              lifecycle: { max_runs: 'infinite', stop_when: 'always', repair: false },
               position: { x: 300, y: 50 },
             },
           ],
@@ -1350,30 +1350,92 @@ describe('workspace route validation', () => {
     expect(saved).toContain('kind: graph');
     expect(saved).toContain('max_runs: 3');
     expect(saved).toContain('stop_when: success');
+    expect(saved).toContain('repair: true');
     expect(saved).toContain('max_runs: infinite');
     expect(saved).toContain('stop_when: always');
+    expect(saved).toContain('repair: false');
     expect(
       (
         res.body as {
           workflow?: {
             pipelines?: Array<{
-              lifecycle?: { max_runs?: number | 'infinite'; stop_when?: string };
+              lifecycle?: {
+                max_runs?: number | 'infinite';
+                stop_when?: string;
+                repair?: boolean;
+              };
             }>;
           };
         }
       ).workflow?.pipelines?.[0]?.lifecycle,
-    ).toEqual({ max_runs: 3, stop_when: 'success' });
+    ).toEqual({ max_runs: 3, stop_when: 'success', repair: true });
     expect(
       (
         res.body as {
           workflow?: {
             pipelines?: Array<{
-              lifecycle?: { max_runs?: number | 'infinite'; stop_when?: string };
+              lifecycle?: {
+                max_runs?: number | 'infinite';
+                stop_when?: string;
+                repair?: boolean;
+              };
             }>;
           };
         }
       ).workflow?.pipelines?.[1]?.lifecycle,
-    ).toEqual({ max_runs: 'infinite', stop_when: 'always' });
+    ).toEqual({ max_runs: 'infinite', stop_when: 'always', repair: false });
+  });
+
+  test('PATCH /api/workspace/workflows rejects invalid self-repair lifecycle combinations', () => {
+    S.workDir = makeTempDir();
+    const pipelineDir = join(S.workDir, '.tagma', 'build');
+    const yamlPath = join(pipelineDir, 'build.yaml');
+    const workflowDir = join(S.workDir, '.tagma', 'workflows');
+    const workflowPath = join(workflowDir, 'repair.workflow.yaml');
+    mkdirSync(pipelineDir, { recursive: true });
+    mkdirSync(workflowDir, { recursive: true });
+    writeFileSync(yamlPath, 'pipeline:\n  name: Build\n  tracks: []\n', 'utf-8');
+    writeFileSync(
+      workflowPath,
+      'workflow:\n  name: repair\n  pipelines:\n    - id: build\n      path: .tagma/build/build.yaml\n',
+      'utf-8',
+    );
+
+    const handler = createRouteHarness().patch('/api/workspace/workflows');
+    const cases = [
+      {
+        lifecycle: { stop_when: 'success', repair: true },
+        error: 'requires a finite max_runs of at least 2',
+      },
+      {
+        lifecycle: { max_runs: 1, stop_when: 'success', repair: true },
+        error: 'requires a finite max_runs of at least 2',
+      },
+      {
+        lifecycle: { max_runs: 'infinite', stop_when: 'success', repair: true },
+        error: 'requires a finite max_runs of at least 2',
+      },
+      {
+        lifecycle: { max_runs: 3, stop_when: 'always', repair: true },
+        error: 'requires stop_when to be success',
+      },
+    ];
+
+    for (const invalid of cases) {
+      const res = makeRes();
+      handler(
+        {
+          workspace: S,
+          body: {
+            path: workflowPath,
+            pipelines: [{ id: 'build', path: yamlPath, lifecycle: invalid.lifecycle }],
+          },
+        },
+        res,
+      );
+      expect(res.statusCode).toBe(400);
+      expect((res.body as { error?: string }).error).toContain(invalid.error);
+    }
   });
 
   test('PATCH /api/workspace/workflows allows repeated pipeline paths as separate graph instances', () => {

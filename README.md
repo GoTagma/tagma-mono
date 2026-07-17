@@ -74,6 +74,37 @@ tasks:
 
 ---
 
+## Finite Self-Repair Workflows
+
+A workflow can rerun a failed pipeline with the previous failure fed back to its AI prompt tasks:
+
+```yaml
+workflow:
+  kind: graph
+  name: repair-until-verified
+  pipelines:
+    - id: implement
+      path: .tagma/implement/pipeline.yaml
+      lifecycle:
+        max_runs: 3
+        stop_when: success
+        repair: true
+```
+
+Self-repair stops on the first successful attempt or after `max_runs`. It must use a finite
+`max_runs` of at least 2 and `stop_when: success`. Before each retry, Tagma adds bounded,
+redacted task status, exit-code, failure-kind, stdout, and stderr evidence to every prompt task.
+When the driver and prior result support it, each prompt task also continues its own previous
+agent session; otherwise the prior normalized output remains available as fallback context.
+
+Define success explicitly in the referenced pipeline with a final verifier command task, or add
+a Completion Check such as `completion: { type: output_check, check: 'python verify.py' }` to a
+prompt task. Verifier commands are language-agnostic: they can run Python tests, `cargo test`,
+`go test ./...`, `bun test`, or any project-specific checker whose non-zero exit should trigger
+another repair attempt.
+
+---
+
 ## Common Commands
 
 ### Install Dependencies

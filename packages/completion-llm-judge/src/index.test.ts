@@ -132,6 +132,45 @@ describe('completion-llm-judge plugin shape', () => {
     }
   });
 
+  test('returns judge reasoning as completion feedback when the rubric fails', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: 'FAIL\nExpected at least three verified tests.' } }],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )) as typeof fetch;
+
+    try {
+      const outcome = await LlmJudgeCompletion.check(
+        {
+          rubric: 'must include three verified tests',
+          endpoint: 'http://localhost:11434/v1/chat/completions',
+        },
+        {
+          exitCode: 0,
+          stdout: 'Only one test passed.',
+          stderr: '',
+          stdoutPath: null,
+          stderrPath: null,
+          durationMs: 1,
+          sessionId: null,
+          normalizedOutput: null,
+          failureKind: null,
+        },
+        { workDir: '/tmp', runtime: {} as never },
+      );
+
+      expect(outcome).toEqual({
+        passed: false,
+        feedback: expect.stringContaining('Expected at least three verified tests.'),
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test('rejects malformed timeout before calling the judge endpoint', async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async () => {

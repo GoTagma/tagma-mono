@@ -369,6 +369,11 @@ export interface WorkflowPipelinePosition {
 export interface PipelineGraphPipelineLifecycle {
   readonly max_runs?: PipelineGraphMaxRuns;
   readonly stop_when?: PipelineGraphStopWhen;
+  /**
+   * Feed a failed attempt back into prompt tasks before the next retry.
+   * Self-repair policies are intentionally finite and success-conditioned.
+   */
+  readonly repair?: boolean;
 }
 
 export interface RawWorkflowPipelineConfig {
@@ -426,6 +431,8 @@ export interface PipelineGraphPipelineAttemptState {
   readonly startedAt: string | null;
   readonly finishedAt: string | null;
   readonly error: string | null;
+  /** Bounded failure evidence injected into the following repair attempt. */
+  readonly repairFeedback?: string | null;
 }
 
 export interface PipelineGraphNodeState {
@@ -665,6 +672,13 @@ export interface DriverContext {
   readonly inputs: Readonly<Record<string, unknown>>;
 }
 
+/** Prior prompt-task state supplied by a host when continuing a failed attempt. */
+export interface TaskContinuationSeed {
+  readonly sessionId?: string | null;
+  readonly driver?: string | null;
+  readonly normalizedOutput?: string | null;
+}
+
 // ═══ Driver Plugin ═══
 
 export interface DriverPlugin {
@@ -814,6 +828,12 @@ export interface CompletionContext {
   readonly envPolicy?: EnvPolicy;
 }
 
+export interface CompletionCheckResult {
+  readonly passed: boolean;
+  /** Bounded human-readable evidence for a failed success criterion. */
+  readonly feedback?: string;
+}
+
 export interface CompletionPlugin {
   readonly name: string;
   readonly schema?: PluginSchema;
@@ -821,7 +841,7 @@ export interface CompletionPlugin {
     config: Record<string, unknown>,
     result: TaskResult,
     ctx: CompletionContext,
-  ): Promise<boolean>;
+  ): Promise<boolean | CompletionCheckResult>;
 }
 
 // ═══ Middleware Plugin ═══
@@ -886,6 +906,7 @@ export type TaskFailureKind =
   | 'exit_nonzero'
   | 'parse_error'
   | 'output_error'
+  | 'completion_failed'
   | null;
 
 export interface TaskResult {

@@ -42,3 +42,4 @@ docs/
 .superpowers/
 changelog/
 .cursor/
+scripts/auto-git-sync.ps1

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
   WorkflowView,
+  WorkflowRunModeControls,
   buildWorkflowTaskSnapshots,
   parseWorkflowLoopCountDraft,
 } from '../src/components/workflow/WorkflowView';
@@ -164,6 +165,37 @@ function setElectronApi(enabled: boolean): void {
 }
 
 describe('WorkflowView', () => {
+  test('renders explicit pipeline run modes and retry-until-success guidance', () => {
+    const html = renderToStaticMarkup(
+      <WorkflowRunModeControls
+        pipeline={{
+          id: 'repair',
+          path: '.tagma/p1/p1.yaml',
+          depends_on: [],
+          lifecycle: { max_runs: 4, stop_when: 'success', repair: true },
+        }}
+        onModeChange={() => {}}
+        onMaxAttemptsChange={() => {}}
+      />,
+    );
+
+    for (const label of [
+      'Run once',
+      'Retry until success',
+      'Repeat fixed count',
+      'Infinite until aborted',
+    ]) {
+      expect(html).toContain(label);
+    }
+    expect(html).toMatch(/value=.retry-success. selected=..>Retry until success/);
+    expect(html).toContain('Maximum attempts');
+    expect(html).toMatch(/aria-label=.Maximum attempts. value=.4./);
+    expect(html).toContain('whole pipeline succeeds');
+    expect(html).toContain('pytest or bun test');
+    expect(html).toContain('Completion Check');
+    expect(html).toContain('Failed output is fed to the next agent attempt');
+  });
+
   test('parses loop count drafts without forcing empty edits back to one', () => {
     expect(parseWorkflowLoopCountDraft('')).toBeNull();
     expect(parseWorkflowLoopCountDraft('21')).toBe(21);
@@ -229,15 +261,13 @@ describe('WorkflowView', () => {
     expect(html).toContain('p1 -&gt; p3');
     expect(html).toContain('left:320px');
     expect(html).toContain('top:96px');
-    expect(html).toContain('Loop Count');
-    expect(html).toContain('id="workflow-loop-count"');
-    expect(html).toContain('id="workflow-loop-infinite"');
-    expect(html).toContain('Infinite loop');
-    expect(html).toContain('type="text"');
-    expect(html).toContain('inputMode="numeric"');
-    expect(html).toContain('value="1"');
-    expect(html).toContain('Loop x2');
-    expect(html).toContain('Loop infinite');
+    expect(html).toContain('Run Mode');
+    expect(html).toContain('workflow-run-mode');
+    expect(html).toContain('Run once');
+    expect(html).toContain('Repeat fixed count');
+    expect(html).toContain('Infinite until aborted');
+    expect(html).toContain('Repeat x2');
+    expect(html).toContain('Repeat infinite');
     expect(html).toContain('Build');
     expect(html).toContain('success');
   });
@@ -390,16 +420,26 @@ describe('WorkflowView', () => {
               dependsOn: [],
               status: 'success',
               runId: 'run_p1',
-              runCount: 1,
-              maxRuns: 1,
+              runCount: 2,
+              maxRuns: 3,
               attempts: [
                 {
                   attempt: 1,
                   runId: 'run_p1',
-                  status: 'success',
+                  status: 'failed',
                   startedAt: '2026-05-22T08:00:00.000Z',
                   finishedAt: '2026-05-22T08:00:01.000Z',
+                  error: 'Pipeline failed',
+                  repairFeedback: 'main.task failed: expected generated output did not match',
+                },
+                {
+                  attempt: 2,
+                  runId: 'run_p1_retry',
+                  status: 'success',
+                  startedAt: '2026-05-22T08:00:01.000Z',
+                  finishedAt: '2026-05-22T08:00:02.000Z',
                   error: null,
+                  repairFeedback: null,
                 },
               ],
               startedAt: '2026-05-22T08:00:00.000Z',
@@ -437,8 +477,16 @@ describe('WorkflowView', () => {
     expect(html).toContain('graph_1');
     expect(html).toContain('Pipeline Runtime');
     expect(html).toContain('Pipeline Two');
+    expect(html).toContain('Run 2/3');
     expect(html).toContain('Run 2/2');
     expect(html).toContain('0/infinite');
+    expect(html).toContain('Attempt 1');
+    expect(html).toContain('Repair feedback');
+    expect(html).toContain('main.task failed: expected generated output did not match');
+    expect(html).toContain('whitespace-pre-wrap');
+    expect(html).toContain('max-h-40');
+    expect(html).toContain('Task Events');
+    expect(html).toContain('Build');
     expect(html).toContain('Edit graph');
   });
 

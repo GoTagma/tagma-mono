@@ -5,6 +5,8 @@ import {
   connectWorkflowPipelines,
   disconnectWorkflowPipelines,
   moveWorkflowPipeline,
+  setWorkflowPipelineMaxAttempts,
+  setWorkflowPipelineRunMode,
   setWorkflowPipelineLoopCount,
   setWorkflowPipelineInfiniteLoop,
   resolveWorkflowPipelineEditorPath,
@@ -12,6 +14,7 @@ import {
   workflowPipelineLoopCount,
   workflowPipelineLoopIsInfinite,
   workflowPipelineRunLimit,
+  workflowPipelineRunMode,
   workflowDragPositionFromPointer,
   workflowNodePointerOffset,
   workflowPathEquals,
@@ -166,6 +169,53 @@ describe('workflow graph model', () => {
     expect(workflowPipelineLoopCount(infinite[0]!)).toBe(1);
     expect(workflowPipelineRunLimit(infinite[0]!)).toBeNull();
     expect(setWorkflowPipelineInfiniteLoop(infinite, 'build', false)[0]?.lifecycle).toBeUndefined();
+  });
+
+  test('persists the four workflow run modes with retry repair defaults', () => {
+    const pipelines: WorkflowPipelineEntry[] = [
+      { id: 'build', path: '.tagma/build/build.yaml', depends_on: [] },
+    ];
+
+    const retry = setWorkflowPipelineRunMode(pipelines, 'build', 'retry-success');
+    expect(retry[0]?.lifecycle).toEqual({
+      max_runs: 3,
+      stop_when: 'success',
+      repair: true,
+    });
+    expect(workflowPipelineRunMode(retry[0]!)).toBe('retry-success');
+
+    const fiveAttempts = setWorkflowPipelineMaxAttempts(retry, 'build', 5);
+    expect(fiveAttempts[0]?.lifecycle).toEqual({
+      max_runs: 5,
+      stop_when: 'success',
+      repair: true,
+    });
+
+    const repeat = setWorkflowPipelineRunMode(fiveAttempts, 'build', 'repeat-count');
+    expect(repeat[0]?.lifecycle).toEqual({ max_runs: 5, stop_when: 'always' });
+    expect(workflowPipelineRunMode(repeat[0]!)).toBe('repeat-count');
+
+    const infinite = setWorkflowPipelineRunMode(repeat, 'build', 'repeat-infinite');
+    expect(infinite[0]?.lifecycle).toEqual({ max_runs: 'infinite', stop_when: 'always' });
+    expect(workflowPipelineRunMode(infinite[0]!)).toBe('repeat-infinite');
+
+    const once = setWorkflowPipelineRunMode(infinite, 'build', 'run-once');
+    expect(once[0]?.lifecycle).toBeUndefined();
+    expect(workflowPipelineRunMode(once[0]!)).toBe('run-once');
+  });
+
+  test('preserves hand-authored lifecycle policies until a built-in mode is selected', () => {
+    const pipelines: WorkflowPipelineEntry[] = [
+      {
+        id: 'custom',
+        path: '.tagma/custom/custom.yaml',
+        depends_on: [],
+        lifecycle: { max_runs: 4, stop_when: 'failure', repair: false },
+      },
+    ];
+
+    expect(workflowPipelineRunMode(pipelines[0]!)).toBe('custom');
+    expect(setWorkflowPipelineMaxAttempts(pipelines, 'custom', 7)).toEqual(pipelines);
   });
 
   test('converts pointer movement into canvas-relative node positions', () => {

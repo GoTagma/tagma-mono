@@ -1,7 +1,9 @@
 import type {
   EnvPolicy,
   PipelineConfig,
+  PromptContextBlock,
   SecretResolver,
+  TaskContinuationSeed,
   TaskState,
   RunEventPayload,
   RunTaskState,
@@ -81,6 +83,19 @@ export interface RunPipelineOptions {
   readonly secretResolver?: SecretResolver;
   readonly logPrompt?: boolean;
   readonly maxConcurrency?: number;
+  /**
+   * Host-supplied prompt context keyed by fully-qualified task id. These
+   * blocks are appended after middleware enrichment, immediately before the
+   * task instruction in the default prompt serialization.
+   */
+  readonly taskPromptContexts?: Readonly<Record<string, readonly PromptContextBlock[]>>;
+  /**
+   * Prior attempt state keyed by fully-qualified task id. Prompt drivers
+   * receive each seed through their existing continue_from maps, allowing
+   * native session resume when possible and normalized-text fallback
+   * otherwise.
+   */
+  readonly taskContinuations?: Readonly<Record<string, TaskContinuationSeed>>;
   /**
    * Fully-qualified task ids to run. The engine executes these targets plus
    * all upstream prerequisites; tasks outside that closure are marked skipped.
@@ -374,6 +389,8 @@ async function runPipelineInner(
       envPolicy: options.envPolicy,
       secretResolver: options.secretResolver,
       logPrompt: options.logPrompt ?? false,
+      taskPromptContexts: options.taskPromptContexts,
+      taskContinuations: options.taskContinuations,
       defaultTaskTimeoutMs: options.defaultTaskTimeoutMs,
       ...(activeTaskIds ? { activeTaskIds } : {}),
     });

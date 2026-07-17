@@ -37,6 +37,74 @@ import { extractSuccessfulOutputs, inferEffectivePorts } from './dataflow';
 import { isTerminal, skippedTaskResult } from './run-state';
 
 const MAX_NORMALIZED_BYTES = 1_000_000;
+const MAX_COMPLETION_FEEDBACK_CHARS = 16_000;
+
+function normalizeCompletionOutcome(
+  value: unknown,
+  completionType: string,
+): { readonly passed: boolean; readonly feedback?: string } {
+  if (typeof value === 'boolean') return { passed: value };
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const outcome = value as Record<string, unknown>;
+    const validKeys = Object.keys(outcome).every((key) => key === 'passed' || key === 'feedback');
+    if (
+      validKeys &&
+      typeof outcome.passed === 'boolean' &&
+      (outcome.feedback === undefined || typeof outcome.feedback === 'string')
+    ) {
+      if (typeof outcome.feedback !== 'string' || outcome.feedback.trim().length === 0) {
+        return { passed: outcome.passed };
+      }
+      const trimmed = outcome.feedback.trim();
+      const feedback =
+        trimmed.length <= MAX_COMPLETION_FEEDBACK_CHARS
+          ? trimmed
+          : trimmed.slice(-MAX_COMPLETION_FEEDBACK_CHARS);
+      return { passed: outcome.passed, feedback };
+    }
+  }
+  throw new Error(
+    'completion ' +
+      completionType +
+      '.check() must return boolean or { passed: boolean, feedback?: string }',
+  );
+}
+
+function seedTaskContinuation(ctx: RunContext, taskId: string): string | undefined {
+  if (!Object.prototype.hasOwnProperty.call(ctx.taskContinuations, taskId)) return undefined;
+
+  const seed = ctx.taskContinuations[taskId]!;
+  if (
+    (seed.sessionId === null || seed.sessionId === undefined) &&
+    (seed.driver === null || seed.driver === undefined) &&
+    (seed.normalizedOutput === null || seed.normalizedOutput === undefined)
+  ) {
+    return undefined;
+  }
+  const baseKey = '@tagma/continue_from/' + taskId;
+  let syntheticKey = baseKey;
+  let suffix = 1;
+  while (
+    ctx.dag.nodes.has(syntheticKey) ||
+    ctx.sessionMap.has(syntheticKey) ||
+    ctx.sessionDriverMap.has(syntheticKey) ||
+    ctx.normalizedMap.has(syntheticKey)
+  ) {
+    syntheticKey = baseKey + '/' + suffix;
+    suffix += 1;
+  }
+
+  if (seed.sessionId !== null && seed.sessionId !== undefined) {
+    ctx.sessionMap.set(syntheticKey, seed.sessionId);
+  }
+  if (seed.driver !== null && seed.driver !== undefined) {
+    ctx.sessionDriverMap.set(syntheticKey, seed.driver);
+  }
+  if (seed.normalizedOutput !== null && seed.normalizedOutput !== undefined) {
+    ctx.normalizedMap.set(syntheticKey, seed.normalizedOutput);
+  }
+  return syntheticKey;
+}
 
 class TaskDeadlineExceededError extends Error {
   constructor(message: string) {
@@ -960,6 +1028,10 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
           );
         }
       }
+      const hostContextBlocks = ctx.taskPromptContexts[taskId];
+      if (hostContextBlocks && hostContextBlocks.length > 0) {
+        doc = { contexts: [...doc.contexts, ...hostContextBlocks], task: doc.task };
+      }
       const prompt = serializePromptDocument(doc);
       log.debug(
         `[task:${taskId}]`,
@@ -985,12 +1057,15 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
             `but no resolvedContinueFrom. buildDag should have qualified it.`,
         );
       }
+      const seededContinueFrom = node.resolvedContinueFrom
+        ? undefined
+        : seedTaskContinuation(ctx, taskId);
       const enrichedTrack = track.cwd ? { ...track, cwd: validatePath(track.cwd, workDir) } : track;
       const enrichedTask: TaskConfig = {
         ...task,
         cwd: resolvedCwd,
         prompt,
-        continue_from: node.resolvedContinueFrom,
+        continue_from: seededContinueFrom ?? node.resolvedContinueFrom,
       };
       const buildDriverCtx = (signal: AbortSignal): DriverContext => ({
         sessionMap: ctx.sessionMap,
@@ -1046,20 +1121,31 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
         runtime: ctx.runtime,
         envPolicy: ctx.envPolicy,
       };
-      const passed = await withTaskDeadline(`completion "${task.completion.type}"`, (signal) =>
+      const rawOutcome = await withTaskDeadline(`completion "${task.completion.type}"`, (signal) =>
         plugin.check(task.completion as Record<string, unknown>, result, {
           ...completionCtxBase,
           signal,
         }),
       );
-      // R4: strict boolean check. Truthy strings/numbers used to be coerced
-      // to success — a check returning "ok" would let a failing task pass.
-      if (typeof passed !== 'boolean') {
-        throw new Error(
-          `completion "${task.completion.type}".check() returned ${passed === null ? 'null' : typeof passed}, expected boolean`,
-        );
+      // R4: only literal booleans or the exact structured shape are valid.
+      const outcome = normalizeCompletionOutcome(rawOutcome, task.completion.type);
+      terminalStatus = outcome.passed ? 'success' : 'failed';
+      if (!outcome.passed) {
+        const feedbackNote = outcome.feedback ? '[completion] ' + outcome.feedback : '';
+        const feedbackSuffix = feedbackNote
+          ? (result.stderr.length > 0 ? '\n' : '') + feedbackNote
+          : '';
+        const stderr = result.stderr + feedbackSuffix;
+        const stderrBytes =
+          (result.stderrBytes ?? new TextEncoder().encode(result.stderr).byteLength) +
+          new TextEncoder().encode(feedbackSuffix).byteLength;
+        result = {
+          ...result,
+          stderr,
+          stderrBytes,
+          failureKind: 'completion_failed',
+        };
       }
-      terminalStatus = passed ? 'success' : 'failed';
     } else {
       terminalStatus = result.exitCode === 0 ? 'success' : 'failed';
     }

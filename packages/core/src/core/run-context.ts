@@ -2,9 +2,11 @@ import type {
   AbortReason,
   OnFailure,
   PipelineConfig,
+  PromptContextBlock,
   RunEventPayload,
   EnvPolicy,
   SecretResolver,
+  TaskContinuationSeed,
   TaskState,
   TaskStatus,
 } from '../types';
@@ -53,6 +55,8 @@ export interface RunContextOptions {
   readonly secretResolver?: SecretResolver;
   readonly logPrompt: boolean;
   readonly activeTaskIds?: ReadonlySet<string>;
+  readonly taskPromptContexts?: Readonly<Record<string, readonly PromptContextBlock[]>>;
+  readonly taskContinuations?: Readonly<Record<string, TaskContinuationSeed>>;
   /**
    * Fallback per-task timeout (ms) when a task has no explicit `timeout`.
    * Undefined means no default — tasks run until completion or pipeline abort.
@@ -79,6 +83,8 @@ export class RunContext {
   readonly secretResolver?: SecretResolver;
   readonly logPrompt: boolean;
   readonly activeTaskIds: ReadonlySet<string> | null;
+  readonly taskPromptContexts: Readonly<Record<string, readonly PromptContextBlock[]>>;
+  readonly taskContinuations: Readonly<Record<string, TaskContinuationSeed>>;
   /**
    * Fallback per-task timeout (ms) when a task has no explicit `timeout`.
    * Undefined means no default safety net — tasks run until completion or
@@ -109,6 +115,8 @@ export class RunContext {
     this.secretResolver = options.secretResolver;
     this.logPrompt = options.logPrompt;
     this.activeTaskIds = options.activeTaskIds ?? null;
+    this.taskPromptContexts = options.taskPromptContexts ?? {};
+    this.taskContinuations = options.taskContinuations ?? {};
     this.defaultTaskTimeoutMs = options.defaultTaskTimeoutMs;
 
     for (const [id, node] of this.dag.nodes) {

@@ -85,3 +85,9 @@
 - Treat resolved pipeline paths as case-insensitively equivalent on Windows before enforcing the
   `.tagma/<stem>/<stem>.yaml` shape. Drive-letter casing and `/` versus `\\` are aliases;
   POSIX path comparisons remain case-sensitive.
+
+## Workflow Self-Repair
+
+- Persisted workflow self-repair is finite and success-conditioned. The editor UI and workspace
+  route must preserve `{ max_runs >= 2, stop_when: 'success', repair: true }` and must not
+  collapse that policy into an ordinary fixed-count or infinite repeat mode.

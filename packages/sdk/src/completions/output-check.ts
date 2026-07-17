@@ -1,8 +1,22 @@
-import type { CommandConfig, CompletionPlugin, CompletionContext, TaskResult } from '@tagma/types';
+import type {
+  CommandConfig,
+  CompletionCheckResult,
+  CompletionPlugin,
+  CompletionContext,
+  TaskResult,
+} from '@tagma/types';
 import { commandLabel, commandToSpawnSpec } from '@tagma/core';
 import { parseOptionalPluginTimeout } from '../duration';
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+const MAX_FEEDBACK_STREAM_CHARS = 8_000;
+
+function tailForFeedback(value: string): string {
+  if (value.length <= MAX_FEEDBACK_STREAM_CHARS) return value;
+  return `…[truncated ${value.length - MAX_FEEDBACK_STREAM_CHARS} characters]…\n${value.slice(
+    -MAX_FEEDBACK_STREAM_CHARS,
+  )}`;
+}
 
 export const OutputCheckCompletion: CompletionPlugin = {
   name: 'output_check',
@@ -30,7 +44,7 @@ export const OutputCheckCompletion: CompletionPlugin = {
     config: Record<string, unknown>,
     result: TaskResult,
     ctx: CompletionContext,
-  ): Promise<boolean> {
+  ): Promise<boolean | CompletionCheckResult> {
     const checkCmd = config.check;
     if (
       typeof checkCmd !== 'string' &&
@@ -74,6 +88,21 @@ export const OutputCheckCompletion: CompletionPlugin = {
       );
     }
 
-    return checkResult.exitCode === 0 && checkResult.failureKind === null;
+    if (checkResult.exitCode === 0 && checkResult.failureKind === null) return true;
+
+    const feedback = [
+      `output_check command=${commandLabel(command)} exit=${checkResult.exitCode}`,
+      checkResult.failureKind ? `failureKind=${checkResult.failureKind}` : null,
+      checkResult.stdout.trim()
+        ? `[verifier stdout]\n${tailForFeedback(checkResult.stdout.trim())}`
+        : null,
+      checkResult.stderr.trim()
+        ? `[verifier stderr]\n${tailForFeedback(checkResult.stderr.trim())}`
+        : null,
+    ]
+      .filter((line): line is string => line !== null)
+      .join('\n');
+
+    return { passed: false, feedback };
   },
 };

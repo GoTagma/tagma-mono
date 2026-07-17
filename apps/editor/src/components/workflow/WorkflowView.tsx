@@ -49,17 +49,18 @@ import {
   connectWorkflowPipelines,
   disconnectWorkflowPipelines,
   moveWorkflowPipeline,
-  setWorkflowPipelineInfiniteLoop,
+  setWorkflowPipelineMaxAttempts,
+  setWorkflowPipelineRunMode,
   removeWorkflowPipeline,
   resolveWorkflowPipelineEditorPath,
-  setWorkflowPipelineLoopCount,
   workflowDragPositionFromPointer,
   workflowNodePointerOffset,
   workflowPathEquals,
   workflowPipelineLoopCount,
-  workflowPipelineLoopIsInfinite,
   workflowPipelineRunLimit,
+  workflowPipelineRunMode,
   type WorkflowGraphPosition,
+  type WorkflowPipelineRunMode,
 } from './workflow-graph-model';
 
 interface WorkflowViewProps {
@@ -92,6 +93,7 @@ export interface PipelineRuntimeState {
     startedAt: string | null;
     finishedAt: string | null;
     error: string | null;
+    repairFeedback?: string | null;
   }>;
   startedAt: string | null;
   finishedAt: string | null;
@@ -385,10 +387,16 @@ export function parseWorkflowLoopCountDraft(value: string): number | null {
 function WorkflowLoopCountInput({
   value,
   infinite,
+  minimum = 1,
+  inputId = 'workflow-loop-count',
+  ariaLabel = 'Loop count',
   onCommit,
 }: {
   value: number;
   infinite: boolean;
+  minimum?: number;
+  inputId?: string;
+  ariaLabel?: string;
   onCommit: (count: number) => void;
 }) {
   const [draft, setDraft] = useState(() => String(value));
@@ -411,7 +419,7 @@ function WorkflowLoopCountInput({
 
   const commitDraft = () => {
     if (infinite) return;
-    const parsed = parseWorkflowLoopCountDraft(draft) ?? 1;
+    const parsed = Math.max(minimum, parseWorkflowLoopCountDraft(draft) ?? minimum);
     setDraft(String(parsed));
     setEditing(false);
     if (parsed === value) {
@@ -430,7 +438,7 @@ function WorkflowLoopCountInput({
 
   return (
     <input
-      id="workflow-loop-count"
+      id={inputId}
       type="text"
       inputMode={infinite ? undefined : 'numeric'}
       pattern={infinite ? undefined : '[0-9]*'}
@@ -441,8 +449,80 @@ function WorkflowLoopCountInput({
       onBlur={commitDraft}
       onKeyDown={handleKeyDown}
       className="w-full bg-tagma-surface border border-tagma-border px-2 py-1 text-[11px] font-mono text-tagma-text disabled:text-tagma-muted disabled:cursor-not-allowed"
-      aria-label="Loop count"
+      aria-label={ariaLabel}
     />
+  );
+}
+
+export function WorkflowRunModeControls({
+  pipeline,
+  onModeChange,
+  onMaxAttemptsChange,
+}: {
+  pipeline: WorkflowPipelineEntry;
+  onModeChange: (mode: Exclude<WorkflowPipelineRunMode, 'custom'>) => void;
+  onMaxAttemptsChange: (count: number) => void;
+}) {
+  const mode = workflowPipelineRunMode(pipeline);
+  const maxAttempts =
+    typeof pipeline.lifecycle?.max_runs === 'number' ? pipeline.lifecycle.max_runs : 3;
+
+  return (
+    <div className="border border-tagma-border bg-tagma-bg p-2">
+      <label className="field-label flex items-center gap-1" htmlFor="workflow-run-mode">
+        <RefreshCw size={9} />
+        Run Mode
+      </label>
+      <select
+        id="workflow-run-mode"
+        value={mode}
+        onChange={(event) =>
+          onModeChange(event.currentTarget.value as Exclude<WorkflowPipelineRunMode, 'custom'>)
+        }
+        aria-label="Pipeline run mode"
+        className="w-full border border-tagma-border bg-tagma-surface px-2 py-1 text-[11px] text-tagma-text"
+      >
+        {mode === 'custom' && (
+          <option value="custom" disabled>
+            Custom lifecycle (YAML)
+          </option>
+        )}
+        <option value="run-once">Run once</option>
+        <option value="retry-success">Retry until success</option>
+        <option value="repeat-count">Repeat fixed count</option>
+        <option value="repeat-infinite">Infinite until aborted</option>
+      </select>
+      {(mode === 'retry-success' || mode === 'repeat-count') && (
+        <div className="mt-2">
+          <label
+            className="field-label"
+            htmlFor={mode === 'retry-success' ? 'workflow-max-attempts' : 'workflow-repeat-count'}
+          >
+            {mode === 'retry-success' ? 'Maximum attempts' : 'Run count'}
+          </label>
+          <WorkflowLoopCountInput
+            key={mode}
+            value={maxAttempts}
+            infinite={false}
+            minimum={2}
+            inputId={mode === 'retry-success' ? 'workflow-max-attempts' : 'workflow-repeat-count'}
+            ariaLabel={mode === 'retry-success' ? 'Maximum attempts' : 'Run count'}
+            onCommit={onMaxAttemptsChange}
+          />
+        </div>
+      )}
+      <div className="mt-1 text-[10px] font-mono text-tagma-muted-dim">
+        {mode === 'run-once' && 'Runs this pipeline once.'}
+        {mode === 'retry-success' &&
+          'Pipeline success is the gate: the whole pipeline succeeds before retries stop. Add a final command task (for example pytest or bun test) or a task Completion Check. Failed output is fed to the next agent attempt.'}
+        {mode === 'repeat-count' &&
+          'Runs this pipeline exactly the selected number of times without repair feedback.'}
+        {mode === 'repeat-infinite' &&
+          'Repeats this pipeline until the workflow run is aborted, without repair feedback.'}
+        {mode === 'custom' &&
+          'This hand-authored lifecycle is preserved until you choose one of the modes above.'}
+      </div>
+    </div>
   );
 }
 
@@ -559,13 +639,6 @@ export function WorkflowView({
     ? (downstreamByPipeline.get(selectedPipeline.id) ?? [])
     : [];
   const selectedTasks = selectedPipelineId ? (taskSnapshots[selectedPipelineId] ?? []) : [];
-  const selectedLoopCount = selectedPipeline ? workflowPipelineLoopCount(selectedPipeline) : 1;
-  const selectedLoopInfinite = selectedPipeline
-    ? workflowPipelineLoopIsInfinite(selectedPipeline)
-    : false;
-  const selectedLoopCountInputKey = selectedPipeline
-    ? `${selectedWorkflowPath ?? ''}:${selectedPipeline.id}:${selectedLoopInfinite ? 'infinite' : 'count'}`
-    : 'none';
   const graphRunId = result?.graphRunId ?? graphRunIdFromEvents(events);
   const hasRunActivity = running || !!result || events.length > 0;
   const isDesktop = hasDesktopBridge();
@@ -794,19 +867,17 @@ export function WorkflowView({
     void savePipelines(removeWorkflowPipeline(selectedWorkflow.pipelines, selectedPipeline.id));
   };
 
-  const updateSelectedLoopCount = (rawCount: number) => {
+  const updateSelectedRunMode = (mode: Exclude<WorkflowPipelineRunMode, 'custom'>) => {
     if (!selectedWorkflow || !selectedPipeline) return;
-    if (!selectedLoopInfinite && rawCount === selectedLoopCount) return;
     void savePipelines(
-      setWorkflowPipelineLoopCount(selectedWorkflow.pipelines, selectedPipeline.id, rawCount),
+      setWorkflowPipelineRunMode(selectedWorkflow.pipelines, selectedPipeline.id, mode),
     );
   };
 
-  const updateSelectedInfiniteLoop = (infinite: boolean) => {
+  const updateSelectedMaxAttempts = (count: number) => {
     if (!selectedWorkflow || !selectedPipeline) return;
-    if (infinite === selectedLoopInfinite) return;
     void savePipelines(
-      setWorkflowPipelineInfiniteLoop(selectedWorkflow.pipelines, selectedPipeline.id, infinite),
+      setWorkflowPipelineMaxAttempts(selectedWorkflow.pipelines, selectedPipeline.id, count),
     );
   };
 
@@ -1193,7 +1264,7 @@ export function WorkflowView({
                         workspacePipelines,
                       );
                       const loopCount = workflowPipelineLoopCount(pipeline);
-                      const infiniteLoop = workflowPipelineLoopIsInfinite(pipeline);
+                      const runMode = workflowPipelineRunMode(pipeline);
                       const runCount = state?.runCount ?? 0;
                       const maxRuns = state ? state.maxRuns : workflowPipelineRunLimit(pipeline);
                       return (
@@ -1287,11 +1358,15 @@ export function WorkflowView({
                             <div className="min-w-0 flex items-center gap-2 text-[9px] font-mono text-tagma-muted-dim">
                               <span>{pipeline.depends_on.length} upstream</span>
                               <span>{downstream.length} downstream</span>
-                              {infiniteLoop ? (
-                                <span>Loop infinite</span>
-                              ) : (
-                                loopCount > 1 && <span>Loop x{loopCount}</span>
+                              {runMode === 'retry-success' && (
+                                <span>
+                                  Retry {'\u2264'}
+                                  {loopCount}
+                                </span>
                               )}
+                              {runMode === 'repeat-count' && <span>Repeat x{loopCount}</span>}
+                              {runMode === 'repeat-infinite' && <span>Repeat infinite</span>}
+                              {runMode === 'custom' && <span>Custom lifecycle</span>}
                               {runCount > 0 && (
                                 <span>{formatWorkflowRunProgress(runCount, maxRuns)}</span>
                               )}
@@ -1393,39 +1468,12 @@ export function WorkflowView({
                   )}
                 </div>
 
-                <div className="border border-tagma-border bg-tagma-bg p-2">
-                  <label
-                    className="field-label flex items-center gap-1"
-                    htmlFor="workflow-loop-count"
-                  >
-                    <RefreshCw size={9} />
-                    Loop Count
-                  </label>
-                  <WorkflowLoopCountInput
-                    key={selectedLoopCountInputKey}
-                    value={selectedLoopCount}
-                    infinite={selectedLoopInfinite}
-                    onCommit={updateSelectedLoopCount}
-                  />
-                  <label
-                    className="mt-2 flex items-center gap-2 text-[11px] text-tagma-text cursor-pointer"
-                    htmlFor="workflow-loop-infinite"
-                  >
-                    <input
-                      id="workflow-loop-infinite"
-                      type="checkbox"
-                      checked={selectedLoopInfinite}
-                      onChange={(e) => updateSelectedInfiniteLoop(e.currentTarget.checked)}
-                      className="accent-tagma-accent"
-                      aria-label="Infinite loop"
-                    />
-                    <span>Infinite loop</span>
-                  </label>
-                  <div className="mt-1 text-[10px] font-mono text-tagma-muted-dim">
-                    1 runs once. Values above 1 repeat this pipeline exactly that many times.
-                    Infinite loop repeats until the graph run is aborted.
-                  </div>
-                </div>
+                <WorkflowRunModeControls
+                  key={`${selectedWorkflowPath ?? ''}:${selectedPipeline.id}`}
+                  pipeline={selectedPipeline}
+                  onModeChange={updateSelectedRunMode}
+                  onMaxAttemptsChange={updateSelectedMaxAttempts}
+                />
 
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <div className="border border-tagma-border bg-tagma-bg p-2">
@@ -1485,6 +1533,8 @@ export function WorkflowView({
                     </div>
                   </div>
                 )}
+
+                {selectedState && <WorkflowAttemptHistory attempts={selectedState.attempts} />}
 
                 <div className="pt-2">
                   <div className="text-[10px] font-mono uppercase tracking-wide text-tagma-muted mb-2">
@@ -1584,6 +1634,43 @@ function workflowRuntimeCounts(states: readonly PipelineRuntimeState[]): {
     if (state.status === 'running') running += 1;
   }
   return { total: states.length, completed, failed, running };
+}
+
+function WorkflowAttemptHistory({ attempts }: { attempts: PipelineRuntimeState['attempts'] }) {
+  if (attempts.length === 0) return null;
+  return (
+    <div className="mt-3 border-t border-tagma-border/50 pt-2">
+      <div className="mb-1.5 text-[9px] font-mono uppercase tracking-wide text-tagma-muted-dim">
+        Attempts
+      </div>
+      <div className="space-y-1">
+        {attempts.map((attempt) => {
+          const meta = STATUS_META[attempt.status];
+          return (
+            <div
+              key={attempt.attempt}
+              className="border border-tagma-border/60 bg-tagma-bg/50 px-2 py-1.5 text-[10px] font-mono"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-tagma-text">Attempt {attempt.attempt}</span>
+                <span className={meta.text}>{meta.label}</span>
+              </div>
+              {attempt.status === 'failed' && attempt.repairFeedback && (
+                <details className="mt-1 border-t border-tagma-border/50 pt-1">
+                  <summary className="cursor-pointer select-none text-tagma-muted hover:text-tagma-text">
+                    Repair feedback
+                  </summary>
+                  <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words border border-tagma-border/50 bg-tagma-surface p-2 text-[10px] leading-relaxed text-tagma-text select-text">
+                    {attempt.repairFeedback}
+                  </pre>
+                </details>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export function WorkflowRunPage({
@@ -1770,6 +1857,7 @@ export function WorkflowRunPage({
                       {state.error}
                     </div>
                   )}
+                  <WorkflowAttemptHistory attempts={state.attempts} />
                   {tasks.length > 0 && (
                     <div className="mt-3 border-t border-tagma-border/50 pt-2">
                       <div className="mb-1.5 text-[9px] font-mono uppercase tracking-wide text-tagma-muted-dim">
