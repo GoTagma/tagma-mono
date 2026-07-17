@@ -6,11 +6,10 @@ import { api, type EditorSettings } from '../api/client';
  * these values:
  *
  *   1. `EditorSettingsPanel` (reads on open, writes on toggle change).
- *   2. `App.tsx`'s chat-driven conflict resolver, which picks between silent
- *      adopt / preserve-canvas / prompt per the `chatDirtyConflictPolicy`
- *      field on every `external-conflict` SSE event. That handler runs
- *      outside the panel lifecycle, so it needs a persistent in-memory copy
- *      to avoid round-tripping `/api/editor-settings` on every event.
+ *   2. `App.tsx`'s chat reconciliation, which uses the conflict policy and the
+ *      optional pipeline trial-run preference outside the panel lifecycle.
+ *      Keeping a persistent in-memory copy avoids round-tripping
+ *      `/api/editor-settings` while a finished turn is being reconciled.
  *
  * The store is intentionally thin — `load()` re-fetches on workspace bind,
  * and `updateLocal()` lets callers (the panel's optimistic save) push the

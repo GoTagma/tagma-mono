@@ -687,6 +687,10 @@ Ask only when the missing choice would authorize an external side effect, paid s
 
 Success is a pipeline the editor can compile and the user can plausibly run, not merely valid-looking YAML.
 
+## Trial Run
+
+Host performs a bounded trial run before release when enabled in Editor Settings. Never claim it passed without host evidence. \`<tagma-internal>\` trial-run failure evidence is the same authorized logical turn: repair and recompile. Never remove or weaken a manual approval or safety boundary to pass; preserve and report prerequisites.
+
 ## Self-Review
 
 Before finishing, check user intent, target selection, compile success, YAML/layout/requirements consistency, command grounding, trigger and secret safety, path containment, and whether a simpler native design would work. Fix actionable findings directly; do not delegate review.

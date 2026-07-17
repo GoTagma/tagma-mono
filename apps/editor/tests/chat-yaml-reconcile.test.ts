@@ -5,6 +5,8 @@ import {
   shouldAdoptChatYamlTargetOnCurrentCanvas,
   shouldForkChatYamlResult,
   shouldAutoRepairCompileResult,
+  chatPipelineVerificationSucceeded,
+  shouldTrialRunChatPipeline,
   type ChatYamlSnapshot,
   type ChatYamlStageSnapshotEntry,
   type WorkspaceYamlEntry,
@@ -307,6 +309,49 @@ describe('shouldAutoRepairCompileResult', () => {
     expect(shouldAutoRepairCompileResult({ success: false }, 0, 2)).toBe(true);
     expect(shouldAutoRepairCompileResult({ success: false }, 2, 2)).toBe(false);
     expect(shouldAutoRepairCompileResult({ success: true }, 0, 2)).toBe(false);
+  });
+});
+
+describe('optional OpenCode Chat pipeline trial run', () => {
+  test('runs only after compile success when the workspace setting is enabled', () => {
+    expect(shouldTrialRunChatPipeline({ compileSuccess: true, trialRunEnabled: true })).toBe(true);
+    expect(shouldTrialRunChatPipeline({ compileSuccess: false, trialRunEnabled: true })).toBe(
+      false,
+    );
+    expect(shouldTrialRunChatPipeline({ compileSuccess: true, trialRunEnabled: false })).toBe(
+      false,
+    );
+  });
+
+  test('requires trial success when enabled and accepts compile success when disabled', () => {
+    expect(
+      chatPipelineVerificationSucceeded({
+        compileSuccess: true,
+        trialRunEnabled: true,
+        trialRunSuccess: true,
+      }),
+    ).toBe(true);
+    expect(
+      chatPipelineVerificationSucceeded({
+        compileSuccess: true,
+        trialRunEnabled: true,
+        trialRunSuccess: false,
+      }),
+    ).toBe(false);
+    expect(
+      chatPipelineVerificationSucceeded({
+        compileSuccess: true,
+        trialRunEnabled: false,
+        trialRunSuccess: null,
+      }),
+    ).toBe(true);
+    expect(
+      chatPipelineVerificationSucceeded({
+        compileSuccess: false,
+        trialRunEnabled: false,
+        trialRunSuccess: null,
+      }),
+    ).toBe(false);
   });
 });
 

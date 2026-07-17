@@ -8,6 +8,7 @@ import {
   listChatYamlStage,
   type ChatYamlStageFinalizeInput,
 } from '../chat-yaml-staging.js';
+import { trialRunChatYamlStage } from '../chat-pipeline-trial-run.js';
 import { errorMessage } from '../path-utils.js';
 import { requireWorkspace } from '../require-workspace.js';
 import {
@@ -74,9 +75,10 @@ function parseFinalizeInput(value: unknown): ChatYamlStageFinalizeInput {
   if (
     forceForkReason !== undefined &&
     forceForkReason !== 'path-moved' &&
-    forceForkReason !== 'compile-failed'
+    forceForkReason !== 'compile-failed' &&
+    forceForkReason !== 'trial-run-failed'
   ) {
-    throw new Error('forceForkReason must be path-moved or compile-failed.');
+    throw new Error('forceForkReason must be path-moved, compile-failed, or trial-run-failed.');
   }
   return {
     stageId: body.stageId.trim(),
@@ -173,6 +175,36 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
     }
     try {
       return res.json(compileChatYamlStage(ws, body.stageId.trim(), body.relativePath.trim()));
+    } catch (err) {
+      return respondStageError(res, err);
+    }
+  });
+
+  app.post('/api/workspace/chat-yaml-stage/trial-run', async (req, res) => {
+    const ws = requireWorkspace(req, res);
+    if (!ws || !requireChatYamlStageLock(req, res, ws)) return;
+    const body = (req.body ?? {}) as {
+      stageId?: unknown;
+      relativePath?: unknown;
+      trialId?: unknown;
+    };
+    if (typeof body.stageId !== 'string' || !body.stageId.trim()) {
+      return res.status(400).json({ error: 'stageId is required.' });
+    }
+    if (typeof body.relativePath !== 'string' || !body.relativePath.trim()) {
+      return res.status(400).json({ error: 'relativePath is required.' });
+    }
+    if (typeof body.trialId !== 'string' || !body.trialId.trim()) {
+      return res.status(400).json({ error: 'trialId is required.' });
+    }
+    try {
+      return res.json(
+        await trialRunChatYamlStage(ws, {
+          stageId: body.stageId.trim(),
+          relativePath: body.relativePath.trim(),
+          trialId: body.trialId.trim(),
+        }),
+      );
     } catch (err) {
       return respondStageError(res, err);
     }

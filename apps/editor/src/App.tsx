@@ -68,9 +68,11 @@ import { RightDock, useRightDock } from './components/RightDock';
 import {
   detectChatStagedYamlTarget,
   detectChatYamlTarget,
+  chatPipelineVerificationSucceeded,
   shouldAdoptChatYamlTargetOnCurrentCanvas,
   shouldAutoRepairCompileResult,
   shouldForkChatYamlResult,
+  shouldTrialRunChatPipeline,
 } from './utils/chat-yaml-reconcile';
 import {
   hasLocalEditorChanges,
@@ -954,7 +956,7 @@ export function App() {
                 .getState()
                 .sendInternalRepairPrompt(
                   stagedTarget,
-                  compile,
+                  { kind: 'compile', result: compile },
                   nextAttempt,
                   maxAttempts,
                   snapshot,
@@ -965,7 +967,77 @@ export function App() {
               console.error('[chat] internal staged YAML repair failed', err);
             }
           }
-          if (compile.success) repairAttemptsRef.current.delete(attemptKey);
+
+          const settings = useEditorSettingsStore.getState().settings;
+          const trialRunEnabled = settings?.opencodeChatTrialRunEnabled ?? true;
+          let trialRun: Awaited<ReturnType<typeof api.trialRunChatYamlStage>> | null = null;
+          if (
+            shouldTrialRunChatPipeline({
+              compileSuccess: compile.success,
+              trialRunEnabled,
+            })
+          ) {
+            const trialOnce = () =>
+              underChatLock(() =>
+                api.trialRunChatYamlStage(
+                  snapshot.staging!.id,
+                  stagedTarget.relativePath,
+                  finishedTurn.id,
+                  snapshot.workDir,
+                ),
+              );
+            let trialError: unknown;
+            for (let attempt = 0; attempt < 2 && !trialRun; attempt += 1) {
+              try {
+                trialRun = await trialOnce();
+              } catch (err) {
+                trialError = err;
+              }
+            }
+            if (!trialRun) {
+              throw trialError ?? new Error('Failed to trial-run the staged pipeline.');
+            }
+            if (cancelled) return;
+
+            const trialAttempts = repairAttemptsRef.current.get(attemptKey) ?? 0;
+            if (
+              shouldAutoRepairCompileResult(trialRun, trialAttempts, maxAttempts) &&
+              finishedSessionVisible
+            ) {
+              const nextAttempt = trialAttempts + 1;
+              repairAttemptsRef.current.set(attemptKey, nextAttempt);
+              useChatStore.getState().setPostChatYamlAction({
+                ...stagedTarget,
+                status: 'repairing',
+                compile,
+                trial: trialRun,
+              });
+              try {
+                await useChatStore
+                  .getState()
+                  .sendInternalRepairPrompt(
+                    stagedTarget,
+                    { kind: 'trial-run', result: trialRun },
+                    nextAttempt,
+                    maxAttempts,
+                    snapshot,
+                  );
+                keepYamlLockForRepair = true;
+                return;
+              } catch (err) {
+                console.error('[chat] internal staged pipeline trial repair failed', err);
+              }
+            }
+          }
+          if (
+            chatPipelineVerificationSucceeded({
+              compileSuccess: compile.success,
+              trialRunEnabled,
+              trialRunSuccess: trialRun?.success,
+            })
+          ) {
+            repairAttemptsRef.current.delete(attemptKey);
+          }
 
           const targetsStartedPipeline =
             !!snapshot.activePath &&
@@ -1001,9 +1073,11 @@ export function App() {
               : null;
           const forceForkReason = !compile.success
             ? ('compile-failed' as const)
-            : pathMoved
-              ? ('path-moved' as const)
-              : undefined;
+            : trialRun && !trialRun.success
+              ? ('trial-run-failed' as const)
+              : pathMoved
+                ? ('path-moved' as const)
+                : undefined;
           const finalizeOnce = () =>
             underChatLock(() =>
               api.finalizeChatYamlStage(
@@ -1011,7 +1085,8 @@ export function App() {
                   stageId: snapshot.staging!.id,
                   relativePath: stagedTarget.relativePath,
                   localBranch,
-                  forceFork: pathMoved || !compile.success,
+                  forceFork:
+                    pathMoved || !compile.success || (trialRun ? !trialRun.success : false),
                   ...(forceForkReason ? { forceForkReason } : {}),
                   allowInvalid: !compile.success,
                 },
@@ -1075,18 +1150,25 @@ export function App() {
 
           useChatStore.getState().clearPostChatYamlAction();
           if (finishedSessionId) {
+            const verificationSucceeded = chatPipelineVerificationSucceeded({
+              compileSuccess: compile.success,
+              trialRunEnabled,
+              trialRunSuccess: trialRun?.success,
+            });
             useChatStore.getState().setSessionYamlResult({
               ...finalTarget,
               sessionId: finishedSessionId,
               workspaceKey: snapshot.workDir,
-              status: compile.success ? 'ready' : 'failed',
+              status: verificationSucceeded ? 'ready' : 'failed',
               compile,
+              ...(trialRun ? { trial: trialRun } : {}),
               reconcile: {
                 outcome: finalized.outcome,
                 conflicts: finalized.conflicts,
                 localBranchPersisted: finalized.localBranchPersisted,
                 resultPath: finalEntry.path,
                 compileSuccess: compile.success,
+                ...(trialRun ? { trialRunSuccess: trialRun.success } : {}),
               },
               completedAt: finishedTurn.endedAt,
             });
@@ -1149,7 +1231,13 @@ export function App() {
           try {
             await useChatStore
               .getState()
-              .sendInternalRepairPrompt(target, compile, nextAttempt, maxAttempts, snapshot);
+              .sendInternalRepairPrompt(
+                target,
+                { kind: 'compile', result: compile },
+                nextAttempt,
+                maxAttempts,
+                snapshot,
+              );
             keepYamlLockForRepair = true;
             return;
           } catch (err) {

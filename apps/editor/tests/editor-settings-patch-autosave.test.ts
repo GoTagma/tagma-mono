@@ -84,6 +84,17 @@ describe('parseEditorSettingsPatch', () => {
     expect(parseEditorSettingsPatch({ chatContextLimitEnabled: 'yes' })).toEqual({});
   });
 
+  test('accepts only boolean opencodeChatTrialRunEnabled', () => {
+    expect(parseEditorSettingsPatch({ opencodeChatTrialRunEnabled: true })).toEqual({
+      opencodeChatTrialRunEnabled: true,
+    });
+    expect(parseEditorSettingsPatch({ opencodeChatTrialRunEnabled: false })).toEqual({
+      opencodeChatTrialRunEnabled: false,
+    });
+    expect(parseEditorSettingsPatch({ opencodeChatTrialRunEnabled: 'yes' })).toEqual({});
+    expect(parseEditorSettingsPatch({ opencodeChatTrialRunEnabled: 1 })).toEqual({});
+  });
+
   test('keeps existing fields working', () => {
     expect(parseEditorSettingsPatch({ autoInstallDeclaredPlugins: true })).toEqual({
       autoInstallDeclaredPlugins: true,

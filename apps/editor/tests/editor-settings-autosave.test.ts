@@ -34,6 +34,7 @@ describe('EditorSettings autosave + viewMode fields', () => {
     expect(DEFAULT_EDITOR_SETTINGS.pythonAgent.enabled).toBe(false);
     expect(DEFAULT_EDITOR_SETTINGS.opencodeChatModel).toBe(null);
     expect(DEFAULT_EDITOR_SETTINGS.opencodeChatReasoningEffort).toBeNull();
+    expect(DEFAULT_EDITOR_SETTINGS.opencodeChatTrialRunEnabled).toBe(true);
     expect(DEFAULT_EDITOR_SETTINGS.chatContextLimitEnabled).toBe(false);
     expect(DEFAULT_EDITOR_SETTINGS.chatContextRounds).toBe(0);
   });
@@ -46,6 +47,7 @@ describe('EditorSettings autosave + viewMode fields', () => {
     expect(s.pythonAgent.enabled).toBe(false);
     expect(s.opencodeChatModel).toBe(null);
     expect(s.opencodeChatReasoningEffort).toBeNull();
+    expect(s.opencodeChatTrialRunEnabled).toBe(true);
     expect(s.chatContextLimitEnabled).toBe(false);
     expect(s.chatContextRounds).toBe(0);
   });
@@ -70,6 +72,7 @@ describe('EditorSettings autosave + viewMode fields', () => {
           modelID: 'claude-sonnet-4-5',
         },
         opencodeChatReasoningEffort: 'max',
+        opencodeChatTrialRunEnabled: false,
         chatContextLimitEnabled: true,
         chatContextRounds: 0,
       }),
@@ -91,6 +94,7 @@ describe('EditorSettings autosave + viewMode fields', () => {
       modelID: 'claude-sonnet-4-5',
     });
     expect(s.opencodeChatReasoningEffort).toBe('max');
+    expect(s.opencodeChatTrialRunEnabled).toBe(false);
     expect(s.chatContextLimitEnabled).toBe(true);
     expect(s.chatContextRounds).toBe(0);
   });
@@ -115,6 +119,7 @@ describe('EditorSettings autosave + viewMode fields', () => {
           modelID: 123,
         },
         opencodeChatReasoningEffort: '   ',
+        opencodeChatTrialRunEnabled: 'no',
         chatContextLimitEnabled: 'yes',
         chatContextRounds: -1,
       }),
@@ -126,6 +131,7 @@ describe('EditorSettings autosave + viewMode fields', () => {
     expect(s.pythonAgent).toEqual(DEFAULT_EDITOR_SETTINGS.pythonAgent);
     expect(s.opencodeChatModel).toBe(null);
     expect(s.opencodeChatReasoningEffort).toBeNull();
+    expect(s.opencodeChatTrialRunEnabled).toBe(true);
     expect(s.chatContextLimitEnabled).toBe(false);
     expect(s.chatContextRounds).toBe(0);
   });
@@ -160,6 +166,7 @@ describe('EditorSettings autosave + viewMode fields', () => {
         modelID: 'claude-sonnet-4-5',
       },
       opencodeChatReasoningEffort: 'xhigh',
+      opencodeChatTrialRunEnabled: false,
       chatContextLimitEnabled: true,
       chatContextRounds: 12,
     });
@@ -173,6 +180,7 @@ describe('EditorSettings autosave + viewMode fields', () => {
       modelID: 'claude-sonnet-4-5',
     });
     expect(next.opencodeChatReasoningEffort).toBe('xhigh');
+    expect(next.opencodeChatTrialRunEnabled).toBe(false);
     expect(next.chatContextLimitEnabled).toBe(true);
     expect(next.chatContextRounds).toBe(12);
     const onDisk = JSON.parse(
@@ -187,6 +195,7 @@ describe('EditorSettings autosave + viewMode fields', () => {
       modelID: 'claude-sonnet-4-5',
     });
     expect(onDisk.opencodeChatReasoningEffort).toBe('xhigh');
+    expect(onDisk.opencodeChatTrialRunEnabled).toBe(false);
     expect(onDisk.chatContextLimitEnabled).toBe(true);
     expect(onDisk.chatContextRounds).toBe(12);
   });

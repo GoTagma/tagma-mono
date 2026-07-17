@@ -100,6 +100,7 @@ test('shutdownRunForWorkspace aborts a live run and closes run SSE clients', () 
   let runAborts = 0;
   let runSseEnds = 0;
   let workflowAborts = 0;
+  let chatTrialAborts = 0;
   let workflowSseEnds = 0;
   ws.runSessions.set('run_test', {
     abort: {
@@ -115,6 +116,11 @@ test('shutdownRunForWorkspace aborts a live run and closes run SSE clients', () 
       },
     },
   };
+  const chatTrialAbort = new AbortController();
+  chatTrialAbort.signal.addEventListener('abort', () => {
+    chatTrialAborts += 1;
+  });
+  ws.chatPipelineTrialAbort = chatTrialAbort;
   ws.runSessionStarting = true;
   ws.runSseClients.add({
     end: () => {
@@ -133,9 +139,11 @@ test('shutdownRunForWorkspace aborts a live run and closes run SSE clients', () 
     expect(runAborts).toBe(1);
     expect(runSseEnds).toBe(1);
     expect(workflowAborts).toBe(1);
+    expect(chatTrialAborts).toBe(1);
     expect(workflowSseEnds).toBe(1);
     expect(ws.runSessions.size).toBe(0);
     expect(ws.workflowRunSession).toBe(null);
+    expect(ws.chatPipelineTrialAbort).toBeNull();
     expect(ws.runSessionStarting).toBe(false);
     expect(ws.runSseClients.size).toBe(0);
     expect(ws.workflowSseClients.size).toBe(0);

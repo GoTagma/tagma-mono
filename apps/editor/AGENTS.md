@@ -36,6 +36,14 @@
   external, path-move, or compile-failure branch and publish the agent result as one numbered
   copy. A genuinely new staged pipeline is created normally unless its destination already
   exists.
+- After a changed staged pipeline compiles, trial-run its staged YAML against the real workspace
+  before finalize when the workspace `opencodeChatTrialRunEnabled` setting is enabled (the
+  default). When disabled, compile success is sufficient for finalization; do not fabricate trial
+  evidence. Keep trial requests idempotent across response retries, bound and redact task evidence,
+  and never auto-approve a manual trigger or weaken another safety/prerequisite gate.
+- A failed trial may feed one of the existing bounded hidden repair continuations back into the
+  same OpenCode session, stage, snapshot, and YAML lease. Adopt into the live pipeline only after
+  both compile and trial succeed; preserve a still-failing trial result as a numbered copy.
 - Only a successful finalize may mutate the live workspace or advance its revision. Finalize is
   idempotent after response loss, artifact writes roll back together on failure, and abandoned
   or expired stages must stop their compile watcher and be removed.

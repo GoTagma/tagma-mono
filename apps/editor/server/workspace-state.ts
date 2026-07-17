@@ -194,6 +194,9 @@ export class WorkspaceState {
   /** Live workflow graph run for this workspace, if one is active. */
   workflowRunSession: unknown;
 
+  /** Host-managed staged Chat trial run, aborted when the workspace is dropped. */
+  chatPipelineTrialAbort: AbortController | null;
+
   /** Workflow graph SSE subscribers for this workspace. */
   readonly workflowSseClients: Set<express.Response>;
 
@@ -230,6 +233,7 @@ export class WorkspaceState {
     this.runSessionStartToken = null;
     this.runSseClients = new Set<express.Response>();
     this.workflowRunSession = null;
+    this.chatPipelineTrialAbort = null;
     this.workflowSseClients = new Set<express.Response>();
   }
 }

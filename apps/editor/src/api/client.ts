@@ -145,11 +145,43 @@ export interface ChatYamlStageDescriptor {
   entries: ChatYamlStageEntry[];
 }
 
+export type ChatPipelineTrialRunKind =
+  | 'passed'
+  | 'failed'
+  | 'compile-failed'
+  | 'preflight-failed'
+  | 'setup-failed'
+  | 'timed-out'
+  | 'busy';
+
+export interface ChatPipelineTrialTaskResult {
+  taskId: string;
+  status: string;
+  exitCode: number | null;
+  failureKind: string | null;
+  stdout: string;
+  stderr: string;
+}
+
+export interface ChatPipelineTrialRunResult {
+  version: 1;
+  success: boolean;
+  kind: ChatPipelineTrialRunKind;
+  ran: boolean;
+  runId: string | null;
+  summary: string;
+  durationMs: number;
+  totalTaskCount: number;
+  omittedTaskCount: number;
+  tasks: ChatPipelineTrialTaskResult[];
+}
+
 export type ChatYamlStageConflict =
   | 'local-branch-changed'
   | 'source-changed-on-disk'
   | 'path-moved'
   | 'compile-failed'
+  | 'trial-run-failed'
   | 'destination-exists';
 
 export interface ChatYamlStageFinalizeInput {
@@ -162,7 +194,7 @@ export interface ChatYamlStageFinalizeInput {
     changed: boolean;
   } | null;
   forceFork?: boolean;
-  forceForkReason?: 'path-moved' | 'compile-failed';
+  forceForkReason?: 'path-moved' | 'compile-failed' | 'trial-run-failed';
   allowInvalid?: boolean;
 }
 
@@ -696,6 +728,8 @@ export interface EditorSettings {
   opencodeChatModel: OpenCodeChatModelSelection | null;
   /** Last OpenCode chat reasoning effort selection for this workspace. */
   opencodeChatReasoningEffort: OpenCodeChatReasoningEffort;
+  /** Trial-run changed OpenCode Chat pipelines before finalization. Default true. */
+  opencodeChatTrialRunEnabled: boolean;
   /**
    * Disabled means unlimited. Enabled with 0 rounds means stateless.
    */
@@ -1597,6 +1631,21 @@ export const api = {
       {
         method: 'POST',
         body: jsonBody({ stageId, relativePath }),
+      },
+      workspaceKeyOverride,
+    ),
+
+  trialRunChatYamlStage: (
+    stageId: string,
+    relativePath: string,
+    trialId: string,
+    workspaceKeyOverride?: string | null,
+  ) =>
+    request<ChatPipelineTrialRunResult>(
+      '/workspace/chat-yaml-stage/trial-run',
+      {
+        method: 'POST',
+        body: jsonBody({ stageId, relativePath, trialId }),
       },
       workspaceKeyOverride,
     ),

@@ -56,6 +56,7 @@ export interface ChatYamlReconcileSummary {
   readonly localBranchPersisted: boolean;
   readonly resultPath: string | null;
   readonly compileSuccess: boolean;
+  readonly trialRunSuccess?: boolean;
 }
 
 function escapeEditorContextValue(value: string): string {
@@ -89,8 +90,11 @@ function previousChatYamlReconcileLines(summary: ChatYamlReconcileSummary): stri
       ? `    <result-path>${escapeEditorContextValue(summary.resultPath)}</result-path>`
       : '    <result-path unavailable="true" />',
     `    <compile-success>${summary.compileSuccess}</compile-success>`,
-    '  </previous-chat-yaml-reconcile>',
   );
+  if (typeof summary.trialRunSuccess === 'boolean') {
+    lines.push(`    <trial-run-success>${summary.trialRunSuccess}</trial-run-success>`);
+  }
+  lines.push('  </previous-chat-yaml-reconcile>');
   return lines;
 }
 

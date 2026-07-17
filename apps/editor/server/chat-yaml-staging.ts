@@ -58,6 +58,7 @@ type ChatYamlStageConflict =
   | 'source-changed-on-disk'
   | 'path-moved'
   | 'compile-failed'
+  | 'trial-run-failed'
   | 'destination-exists';
 
 interface ChatYamlStageMetadata {
@@ -118,7 +119,10 @@ export interface ChatYamlStageFinalizeInput {
   relativePath: string;
   localBranch?: ChatYamlStageLocalBranch | null;
   forceFork?: boolean;
-  forceForkReason?: Extract<ChatYamlStageConflict, 'path-moved' | 'compile-failed'>;
+  forceForkReason?: Extract<
+    ChatYamlStageConflict,
+    'path-moved' | 'compile-failed' | 'trial-run-failed'
+  >;
   allowInvalid?: boolean;
 }
 

@@ -976,6 +976,11 @@ export interface EditorSettings {
   pythonAgent: PythonAgentSettings;
   opencodeChatModel: OpenCodeChatModelSelection | null;
   opencodeChatReasoningEffort: OpenCodeChatReasoningEffort;
+  /**
+   * When true (default), changed pipelines authored through OpenCode Chat are
+   * trial-run in the real workspace after compiling and before finalization.
+   */
+  opencodeChatTrialRunEnabled: boolean;
   /** Disabled means unlimited. Enabled with 0 rounds means stateless. */
   chatContextLimitEnabled: boolean;
   /**
@@ -1001,6 +1006,7 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   pythonAgent: DEFAULT_PYTHON_AGENT_SETTINGS,
   opencodeChatModel: null,
   opencodeChatReasoningEffort: null,
+  opencodeChatTrialRunEnabled: true,
   chatContextLimitEnabled: false,
   chatContextRounds: 0,
 };
@@ -1051,6 +1057,10 @@ export function readEditorSettings(ws: WorkspaceState): EditorSettings {
       )
         ? raw.opencodeChatReasoningEffort
         : DEFAULT_EDITOR_SETTINGS.opencodeChatReasoningEffort,
+      opencodeChatTrialRunEnabled:
+        typeof raw.opencodeChatTrialRunEnabled === 'boolean'
+          ? raw.opencodeChatTrialRunEnabled
+          : DEFAULT_EDITOR_SETTINGS.opencodeChatTrialRunEnabled,
       chatContextLimitEnabled:
         typeof raw.chatContextLimitEnabled === 'boolean'
           ? raw.chatContextLimitEnabled
@@ -1116,6 +1126,9 @@ export function writeEditorSettings(
   }
   if (patch.opencodeChatReasoningEffort !== undefined) {
     next.opencodeChatReasoningEffort = patch.opencodeChatReasoningEffort;
+  }
+  if (patch.opencodeChatTrialRunEnabled !== undefined) {
+    next.opencodeChatTrialRunEnabled = patch.opencodeChatTrialRunEnabled;
   }
   if (patch.chatContextLimitEnabled !== undefined) {
     next.chatContextLimitEnabled = patch.chatContextLimitEnabled;

@@ -255,3 +255,18 @@ export function shouldAutoRepairCompileResult(
 ): boolean {
   return !result.success && attemptCount < maxAttempts;
 }
+
+export function shouldTrialRunChatPipeline(args: {
+  compileSuccess: boolean;
+  trialRunEnabled: boolean;
+}): boolean {
+  return args.compileSuccess && args.trialRunEnabled;
+}
+
+export function chatPipelineVerificationSucceeded(args: {
+  compileSuccess: boolean;
+  trialRunEnabled: boolean;
+  trialRunSuccess: boolean | null | undefined;
+}): boolean {
+  return args.compileSuccess && (!args.trialRunEnabled || args.trialRunSuccess === true);
+}

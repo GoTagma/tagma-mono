@@ -205,6 +205,18 @@ test('tagma-pipeline agent documents edit/create modes and mandatory compile loo
   expect(doc).toContain('never call secret-manager APIs');
 });
 
+test('tagma-pipeline agent cooperates with optional host trial-run repair before the logical turn ends', () => {
+  const doc = buildTagmaPipelineAgent('Windows');
+
+  expect(doc).toContain(
+    'Host performs a bounded trial run before release when enabled in Editor Settings',
+  );
+  expect(doc).toContain('trial-run failure evidence');
+  expect(doc).toContain('same authorized logical turn');
+  expect(doc).toContain('Never remove or weaken a manual approval');
+  expect(doc).toContain('Never claim it passed without host evidence');
+});
+
 test('tagma-pipeline agent treats explicit creation as higher priority than existing name matches', () => {
   const router = buildTagmaRouterAgent();
   const pipeline = buildTagmaPipelineAgent('Windows');

@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test
 import {
   useChatStore,
   applySseEvent,
+  buildChatYamlRepairPrompt,
   canEndCurrentTurnFromConfirmedIdle,
   chatPipelinePreflightMode,
   subscribeEventStreamWithReadinessTimeout,
@@ -72,6 +73,51 @@ afterEach(() => {
 
 const dispatch = (event: unknown): void =>
   applySseEvent(event as never, useChatStore.getState, useChatStore.setState as never);
+
+test('trial-run repair prompt keeps bounded host evidence in the same internal repair contract', () => {
+  const prompt = buildChatYamlRepairPrompt(
+    {
+      kind: 'refresh-current',
+      path: 'C:/repo/.tagma/build/build.yaml',
+      name: 'build.yaml',
+      pipelineName: 'Build',
+    },
+    {
+      kind: 'trial-run',
+      result: {
+        version: 1,
+        success: false,
+        kind: 'failed',
+        ran: true,
+        runId: 'run_trial',
+        summary: 'Task main.test failed.',
+        durationMs: 12,
+        totalTaskCount: 1,
+        omittedTaskCount: 0,
+        tasks: [
+          {
+            taskId: 'main.test',
+            status: 'failed',
+            exitCode: 7,
+            failureKind: 'exit_nonzero',
+            stdout: '',
+            stderr: 'assertion failed',
+          },
+        ],
+      },
+    },
+    1,
+    2,
+  );
+
+  expect(prompt).toContain('<tagma-internal>');
+  expect(prompt).toContain('Automatic pipeline trial-run repair attempt 1/2.');
+  expect(prompt).toContain('<trial-run-result>');
+  expect(prompt).toContain('main.test');
+  expect(prompt).toContain('assertion failed');
+  expect(prompt).toContain('Preserve legitimate manual approvals');
+  expect(prompt).toContain('keep the safe configuration');
+});
 
 const jsonResponse = (data: unknown): Response =>
   new Response(JSON.stringify(data), {

@@ -115,8 +115,8 @@ export function EditorSettingsPanel({
         }
         if (settingsRes.status === 'fulfilled') {
           setSettings(settingsRes.value);
-          // Mirror into the shared store so the App-level chat-conflict
-          // resolver sees the freshest value without a second fetch.
+          // Mirror into the shared store so App-level chat reconciliation sees
+          // the freshest workspace preferences without a second fetch.
           useEditorSettingsStore.getState().updateLocal(settingsRes.value);
         } else {
           setError(
@@ -151,10 +151,10 @@ export function EditorSettingsPanel({
     try {
       const saved = await api.updateEditorSettings({ [key]: value } as Partial<EditorSettings>);
       setSettings(saved);
-      // Keep the shared cache in lockstep with the server's response so the
-      // App-level chat-conflict resolver doesn't need to round-trip for the
-      // new value. The panel is the only place that mutates settings, so a
-      // direct mirror is sufficient — no refetch needed.
+      // Keep the shared cache in lockstep with the server's response so
+      // App-level chat reconciliation doesn't need another round-trip. The
+      // panel is the only place that mutates settings, so a direct mirror is
+      // sufficient — no refetch needed.
       useEditorSettingsStore.getState().updateLocal(saved);
     } catch (e) {
       setSettings(previous);
@@ -528,6 +528,13 @@ export function EditorSettingsPanel({
                   ]}
                 />
                 <div className="mt-2 space-y-2 border border-tagma-border bg-tagma-bg px-2.5 py-2">
+                  <ToggleRow
+                    label="Trial-run Chat pipeline changes"
+                    description="On runs changed pipelines in the real workspace after they compile and before applying them. Off skips only the run; compilation, staging isolation, and conflict-safe finalization stay active."
+                    checked={settings.opencodeChatTrialRunEnabled}
+                    disabled={!hasWorkspace || saving}
+                    onChange={(v) => updateField('opencodeChatTrialRunEnabled', v)}
+                  />
                   <ToggleRow
                     label="Limit chat memory"
                     description="Off keeps unlimited conversation history in the active OpenCode session. On starts fresh sessions according to the round limit below."

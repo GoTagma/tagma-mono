@@ -19,6 +19,12 @@ export function shutdownRunForWorkspace(ws: WorkspaceState): void {
   } catch {
     /* best-effort */
   }
+  try {
+    ws.chatPipelineTrialAbort?.abort('workspace shutdown');
+  } catch {
+    /* best-effort */
+  }
+  ws.chatPipelineTrialAbort = null;
   ws.runSessions.clear();
   ws.workflowRunSession = null;
   ws.runSessionStarting = false;

@@ -148,6 +148,84 @@ describe('ChatPanel export affordance', () => {
     expect(html).toContain('Build Copy 1');
     expect(html).toContain('Open pipeline');
   });
+
+  test('renders host trial-run evidence in the final pipeline result', () => {
+    const result: ChatYamlSessionResult = {
+      sessionId: 's1',
+      kind: 'open-created',
+      path: '/workspace/.tagma/build-copy-1/build-copy-1.yaml',
+      name: 'build-copy-1.yaml',
+      pipelineName: 'Build Copy 1',
+      status: 'failed',
+      compile: {
+        success: true,
+        summary: 'Compile succeeded.',
+        validation: { errors: [], warnings: [] },
+      } as never,
+      trial: {
+        version: 1,
+        success: false,
+        kind: 'failed',
+        ran: true,
+        runId: 'run_trial',
+        summary: 'Trial run failed: main.test exited 7.',
+        durationMs: 12,
+        totalTaskCount: 1,
+        omittedTaskCount: 0,
+        tasks: [],
+      },
+      completedAt: 1_000,
+    };
+
+    const html = renderToStaticMarkup(<SessionYamlResultBubble result={result} />);
+
+    expect(html).toContain('Trial run failed: main.test exited 7.');
+    expect(html).toContain('Open pipeline');
+  });
+
+  test('shows failed trial repair as the active conversation-flow phase', () => {
+    const steps = buildConversationFlowSteps({
+      activity: [],
+      sending: false,
+      pendingUserText: null,
+      queuedCount: 0,
+      pendingPermissionCount: 0,
+      reconciling: true,
+      flushing: false,
+      postChatYamlAction: {
+        sessionId: 's1',
+        kind: 'refresh-current',
+        path: '/workspace/.tagma/build/build.yaml',
+        name: 'build.yaml',
+        pipelineName: 'Build',
+        status: 'repairing',
+        compile: {
+          success: true,
+          summary: 'Compile succeeded.',
+          validation: { errors: [], warnings: [] },
+        },
+        trial: {
+          version: 1,
+          success: false,
+          kind: 'failed',
+          ran: true,
+          runId: 'run_trial',
+          summary: 'Trial run failed.',
+          durationMs: 12,
+          totalTaskCount: 1,
+          omittedTaskCount: 0,
+          tasks: [],
+        },
+      } as never,
+      sendError: null,
+    });
+
+    expect(steps.at(-1)).toMatchObject({
+      label: 'Trial run',
+      detail: 'repairing failed trial run',
+      status: 'active',
+    });
+  });
   test('shows the pipeline link only after the whole turn reconcile is finished', () => {
     expect(
       shouldShowSessionYamlResult({

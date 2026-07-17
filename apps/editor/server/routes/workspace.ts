@@ -319,6 +319,9 @@ export function parseEditorSettingsPatch(body: unknown): Partial<EditorSettings>
   if (typeof raw.chatContextLimitEnabled === 'boolean') {
     patch.chatContextLimitEnabled = raw.chatContextLimitEnabled;
   }
+  if (typeof raw.opencodeChatTrialRunEnabled === 'boolean') {
+    patch.opencodeChatTrialRunEnabled = raw.opencodeChatTrialRunEnabled;
+  }
   if (isValidEditorViewMode(raw.viewMode)) {
     patch.viewMode = raw.viewMode;
   }

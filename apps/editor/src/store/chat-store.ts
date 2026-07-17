@@ -40,6 +40,7 @@ import {
   getClientRevision,
   withYamlEditLockRequestBypass,
   type EditorSettings,
+  type ChatPipelineTrialRunResult,
   type UsageRecord,
   type YamlCompileResult,
 } from '../api/client';
@@ -128,6 +129,7 @@ export type ChatBootstrapStatus = 'idle' | 'booting' | 'ready' | 'error';
 export type ChatYamlPostAction = ChatYamlTarget & {
   status: 'ready' | 'repairing' | 'failed';
   compile: Pick<YamlCompileResult, 'success' | 'summary' | 'validation'>;
+  trial?: ChatPipelineTrialRunResult;
 };
 
 export type ChatYamlSessionResult = ChatYamlTarget & {
@@ -136,6 +138,7 @@ export type ChatYamlSessionResult = ChatYamlTarget & {
   workspaceKey?: string;
   status: 'ready' | 'failed';
   compile: Pick<YamlCompileResult, 'success' | 'summary' | 'validation'>;
+  trial?: ChatPipelineTrialRunResult;
   /** Host-side publish/fork facts made available to the next user turn in this session. */
   reconcile?: ChatYamlReconcileSummary;
   completedAt: number;
@@ -171,6 +174,10 @@ export interface ChatFinishedTurn {
   hidden: boolean;
   yamlSnapshotBeforeSend: ChatYamlSnapshot | null;
 }
+
+export type ChatYamlRepairEvidence =
+  | { kind: 'compile'; result: YamlCompileResult }
+  | { kind: 'trial-run'; result: ChatPipelineTrialRunResult };
 
 export type ChatTurnHealth = {
   status: 'checking' | 'ok' | 'degraded';
@@ -470,7 +477,7 @@ interface ChatStore {
   flushQueueNow: () => Promise<void>;
   sendInternalRepairPrompt: (
     target: ChatYamlTarget,
-    result: YamlCompileResult,
+    evidence: ChatYamlRepairEvidence,
     attempt: number,
     maxAttempts: number,
     snapshot?: ChatYamlSnapshot | null,
@@ -530,6 +537,33 @@ const DEFAULT_BUG_INSTRUCTION = 'Fix this bug.';
 function makeFinishedTurn(input: Omit<ChatFinishedTurn, 'id'>): ChatFinishedTurn {
   finishedTurnSeq += 1;
   return { ...input, id: `finished_${input.endedAt}_${finishedTurnSeq}` };
+}
+
+export function buildChatYamlRepairPrompt(
+  target: ChatYamlTarget,
+  evidence: ChatYamlRepairEvidence,
+  attempt: number,
+  maxAttempts: number,
+): string {
+  const trialRun = evidence.kind === 'trial-run';
+  const resultTag = trialRun ? 'trial-run-result' : 'compile-result';
+  return [
+    '<tagma-internal>',
+    `Automatic pipeline ${trialRun ? 'trial-run' : 'compile'} repair attempt ${attempt}/${maxAttempts}.`,
+    `Target file: ${target.path}`,
+    '',
+    trialRun
+      ? 'The staged YAML compiled, but its host trial run did not pass. Use the task evidence below to repair only supported pipeline defects, then read the sibling .compile.log again.'
+      : 'The last compile failed. Edit only the target YAML file, then read its sibling .compile.log again.',
+    trialRun
+      ? 'Preserve legitimate manual approvals, destructive-operation guards, triggers, secrets, and external prerequisites. If the failure is an external/manual boundary rather than a pipeline defect, keep the safe configuration and report that limitation precisely.'
+      : 'Do not ask the user a follow-up question. Do not stop until the compile log reports success: true or you have made the best concrete repair you can.',
+    '',
+    `<${resultTag}>`,
+    JSON.stringify(evidence.result, null, 2),
+    `</${resultTag}>`,
+    '</tagma-internal>',
+  ].join('\n');
 }
 
 function desktopChatTitleFromPrompt(text: string): string | null {
@@ -4039,20 +4073,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }));
   },
 
-  async sendInternalRepairPrompt(target, result, attempt, maxAttempts, snapshot) {
-    const repairText = [
-      '<tagma-internal>',
-      `Automatic YAML compile repair attempt ${attempt}/${maxAttempts}.`,
-      `Target file: ${target.path}`,
-      '',
-      'The last compile failed. Edit only the target YAML file, then read its sibling .compile.log again.',
-      'Do not ask the user a follow-up question. Do not stop until the compile log reports success: true or you have made the best concrete repair you can.',
-      '',
-      '<compile-result>',
-      JSON.stringify(result, null, 2),
-      '</compile-result>',
-      '</tagma-internal>',
-    ].join('\n');
+  async sendInternalRepairPrompt(target, evidence, attempt, maxAttempts, snapshot) {
+    const repairText = buildChatYamlRepairPrompt(target, evidence, attempt, maxAttempts);
     return promptOpencode(get, set, repairText, {
       internal: true,
       reuseLogicalTurn: true,

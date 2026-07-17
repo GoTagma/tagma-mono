@@ -437,7 +437,9 @@ export function buildConversationFlowSteps({
       key: 'yaml-action',
       label:
         postChatYamlAction.status === 'repairing'
-          ? 'Validate YAML'
+          ? postChatYamlAction.trial
+            ? 'Trial run'
+            : 'Validate YAML'
           : postChatYamlAction.status === 'failed'
             ? 'Repair YAML'
             : postChatYamlAction.kind === 'open-created'
@@ -445,7 +447,9 @@ export function buildConversationFlowSteps({
               : 'Refresh YAML',
       detail:
         postChatYamlAction.status === 'repairing'
-          ? 'checking generated pipeline'
+          ? postChatYamlAction.trial
+            ? 'repairing failed trial run'
+            : 'checking generated pipeline'
           : postChatYamlAction.status === 'failed'
             ? 'compile failed'
             : postChatYamlAction.compile.summary,
@@ -1130,7 +1134,10 @@ export function SessionYamlResultBubble({ result }: { result: ChatYamlSessionRes
   const name = chatPipelineDisplayName(result);
   const ok = result.status === 'ready';
   const verb = result.kind === 'open-created' ? 'Created pipeline' : 'Updated pipeline';
-  const summary = result.compile.summary || (ok ? 'Compile succeeded.' : 'Compile still failing.');
+  const summary =
+    result.trial?.summary ||
+    result.compile.summary ||
+    (ok ? 'Compile and trial run succeeded.' : 'Pipeline verification failed.');
 
   return (
     <div className="flex flex-col gap-1 items-start">
@@ -1294,7 +1301,9 @@ function YamlActionBubble() {
   const label = isOpen || action.path !== currentYamlPath ? 'Open YAML' : 'Refresh current YAML';
   const title =
     action.status === 'repairing'
-      ? 'Validating YAML...'
+      ? action.trial
+        ? 'Repairing failed trial run...'
+        : 'Validating YAML...'
       : action.status === 'failed'
         ? 'Compile still failing'
         : action.compile.summary;
