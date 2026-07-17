@@ -31,6 +31,8 @@ Low-level hosts can pass `taskPromptContexts` and `taskContinuations` in
 contexts are appended after middleware enrichment. Continuation seeds carry a
 prior same-task session ID, driver, and normalized output so drivers can resume
 the session when supported and fall back to text context otherwise.
+An authored task `continue_from` remains authoritative; hosts do not replace its
+current upstream handoff with same-task retry state.
 
 The SDK workflow runner uses these options for finite self-repair lifecycles;
 ordinary single-pipeline runs are unchanged when the options are omitted.

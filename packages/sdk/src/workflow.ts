@@ -846,9 +846,12 @@ function boundedRepairText(text: string, maxBytes: number): string {
 
 function redactRepairText(text: string): string {
   return text
-    .replace(/(authorization\s*:\s*bearer\s+)[^\s,;]+/gi, '$1[REDACTED]')
     .replace(
-      /((?:api[_-]?key|apikey|token|secret|password|session[_-]?id|sessionid)\s*[:=]\s*)[^\s,;]+/gi,
+      /((?:[\x22']?authorization[\x22']?)\s*:\s*[\x22']?\s*bearer\s+)[^\x22'\s,;&}\]]+/gi,
+      '$1[REDACTED]',
+    )
+    .replace(
+      /((?:(?:[\x22']|--)?(?:api[_-]?key|apikey|token|secret|password|session[_-]?id|sessionid)(?:[\x22'])?)\s*(?::|=|\s)\s*[\x22']?)[^\x22'\s,;&}\]]+/gi,
       '$1[REDACTED]',
     );
 }

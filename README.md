@@ -95,7 +95,8 @@ Self-repair stops on the first successful attempt or after `max_runs`. It must u
 `max_runs` of at least 2 and `stop_when: success`. Before each retry, Tagma adds bounded,
 redacted task status, exit-code, failure-kind, stdout, and stderr evidence to every prompt task.
 When the driver and prior result support it, each prompt task also continues its own previous
-agent session; otherwise the prior normalized output remains available as fallback context.
+agent session; otherwise a bounded, redacted copy of the prior normalized output remains available
+as fallback context. An authored `continue_from` handoff keeps priority over same-task retry state.
 
 Define success explicitly in the referenced pipeline with a final verifier command task, or add
 a Completion Check such as `completion: { type: output_check, check: 'python verify.py' }` to a
