@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { PluginRegistry } from '@tagma/core';
 import type {
+  CompletionPlugin,
   DriverPlugin,
   PipelineConfig,
   PipelineGraphConfig,
@@ -801,6 +802,105 @@ describe('PipelineGraphRunner', () => {
       );
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('self-repair succeeds where an ordinary retry repeats the same verifier failure', async () => {
+    const root = makeDir();
+    const controlDir = join(root, 'control');
+    const repairDir = join(root, 'repair');
+    mkdirSync(controlDir, { recursive: true });
+    mkdirSync(repairDir, { recursive: true });
+
+    const permissions = { read: true, write: true, execute: true };
+    const config: PipelineConfig = {
+      name: 'Verifier-driven repair',
+      driver: 'repair-test',
+      permissions,
+      tracks: [
+        {
+          id: 'main',
+          name: 'Main',
+          tasks: [
+            {
+              id: 'fix',
+              name: 'Fix',
+              prompt: 'Produce the requested value.',
+              completion: { type: 'expected-answer' },
+            },
+          ],
+        },
+      ],
+    };
+
+    const runVariant = async (workDir: string, repair: boolean) => {
+      const observations: PromptObservation[] = [];
+      const reg = repairRegistry(observations);
+      reg.registerPlugin('completions', 'expected-answer', {
+        name: 'expected-answer',
+        async check(_completionConfig, result) {
+          return result.stdout === 'teal'
+            ? true
+            : { passed: false, feedback: 'expected value is teal' };
+        },
+      } satisfies CompletionPlugin);
+      const runtime: TagmaRuntime = {
+        ...fakeRuntime(),
+        async runSpawn(spec) {
+          const receivedVerifierFeedback = spec.stdin?.includes('expected value is teal') ?? false;
+          return taskResult(receivedVerifierFeedback ? 'teal' : 'TODO');
+        },
+      };
+      const result = await runPipelineGraph(
+        {
+          name: repair ? 'repair' : 'control',
+          failure_policy: 'continue_independent',
+          pipelines: [
+            {
+              id: 'candidate',
+              cwd: workDir,
+              config,
+              lifecycle: {
+                max_runs: 2,
+                stop_when: 'success',
+                ...(repair ? { repair: true } : {}),
+              },
+            },
+          ],
+        },
+        workDir,
+        { registry: reg, runtime, skipPluginLoading: true },
+      );
+      return { result, observations };
+    };
+
+    try {
+      const control = await runVariant(controlDir, false);
+      const repaired = await runVariant(repairDir, true);
+
+      expect(control.result.success).toBe(false);
+      expect(control.result.pipelines[0]?.attempts.map((attempt) => attempt.status)).toEqual([
+        'failed',
+        'failed',
+      ]);
+      expect(control.observations).toHaveLength(2);
+      expect(
+        control.observations.every(({ prompt }) => !prompt.includes('expected value is teal')),
+      ).toBe(true);
+
+      expect(repaired.result.success).toBe(true);
+      expect(repaired.result.pipelines[0]?.attempts.map((attempt) => attempt.status)).toEqual([
+        'failed',
+        'success',
+      ]);
+      expect(repaired.result.pipelines[0]?.attempts[0]?.repairFeedback).toContain(
+        'expected value is teal',
+      );
+      expect(repaired.observations[0]?.prompt).not.toContain('expected value is teal');
+      expect(repaired.observations[1]?.prompt).toContain('[Previous attempt failure]');
+      expect(repaired.observations[1]?.prompt).toContain('expected value is teal');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 
