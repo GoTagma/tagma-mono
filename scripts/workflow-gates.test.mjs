@@ -139,3 +139,40 @@ test('release-desktop does not publish linux arm64 sidecar-only hot-update asset
     'linux/arm64 sidecars must not be produced without a matching published OpenCode target',
   );
 });
+
+test('release-desktop commits a validated bun.lock with the desktop version bump', () => {
+  const setupBun = stepIndex(
+    releaseDesktopWorkflow,
+    'Set up Bun for lockfile synchronization',
+  );
+  const commitStep = stepIndex(
+    releaseDesktopWorkflow,
+    'Commit desktop bump, tag, push to tagma-mono',
+  );
+  const block = stepBlock(
+    releaseDesktopWorkflow,
+    'Commit desktop bump, tag, push to tagma-mono',
+    'Create GitHub Release',
+  );
+  const applyPackage = block.indexOf('cp overlay/package.json apps/electron/package.json');
+  const refreshLock = block.indexOf('bun install --lockfile-only --ignore-scripts');
+  const validateLock = block.indexOf('bun run check:deps');
+  const stageLock = block.indexOf('git add bun.lock');
+  const commit = block.indexOf('git commit -m');
+
+  assert(setupBun < commitStep, 'finalize must install the pinned Bun before updating bun.lock');
+  assert.notEqual(applyPackage, -1, 'finalize must apply the released package.json first');
+  assert(
+    applyPackage < refreshLock,
+    'finalize must refresh bun.lock after applying the released package.json',
+  );
+  assert(
+    refreshLock < validateLock,
+    'finalize must validate dependency metadata after refreshing bun.lock',
+  );
+  assert(
+    validateLock < stageLock,
+    'finalize must validate bun.lock before staging the release transaction',
+  );
+  assert(stageLock < commit, 'bun.lock must be staged in the same release commit');
+});

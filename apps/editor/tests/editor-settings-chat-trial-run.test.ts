@@ -34,6 +34,7 @@ describe('Editor Settings OpenCode Chat trial-run controls', () => {
     expect(source).toContain('DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS');
     expect(source).toContain('shouldTrialRunChatPipeline({');
     expect(source).toContain('chatPipelineVerificationSucceeded({');
+    expect(source.match(/\{ repairAttempts: completedRepairAttempts \}/g)).toHaveLength(2);
     expect(source).not.toContain('const maxAttempts = 2;');
   });
 });

@@ -199,6 +199,7 @@ jobs:
           cp overlay/package.json apps/electron/package.json
           mkdir -p apps/electron/CHANGELOG
           cp overlay/CHANGELOG/*.md apps/electron/CHANGELOG/
+
           version=$(node -p "require('./apps/electron/package.json').version")
           echo "overlay applied; apps/electron version = $version"
 
@@ -937,6 +938,11 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
           fetch-depth: 0
 
+      - name: Set up Bun for lockfile synchronization
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+
       - uses: actions/download-artifact@v7
         with:
           name: prepared
@@ -976,7 +982,13 @@ jobs:
           mkdir -p apps/electron/CHANGELOG
           cp overlay/CHANGELOG/*.md apps/electron/CHANGELOG/
 
-          git add apps/electron/package.json "apps/electron/CHANGELOG/${version}.md"
+          # A frozen install does not reject stale workspace version metadata.
+          # Refresh the lock after applying the released manifest, then enforce
+          # the stronger repository invariant before creating a commit or tag.
+          bun install --lockfile-only --ignore-scripts
+          bun run check:deps
+          git add bun.lock
+          git add apps/electron/package.json apps/electron/CHANGELOG/${version}.md
           if git diff --cached --quiet; then
             echo "desktop version already staged in main; tagging current HEAD"
             target_sha=$(git rev-parse HEAD)
