@@ -44,6 +44,8 @@
 - A failed trial may feed one of the existing bounded hidden repair continuations back into the
   same OpenCode session, stage, snapshot, and YAML lease. Adopt into the live pipeline only after
   both compile and trial succeed; preserve a still-failing trial result as a numbered copy.
+  This includes newly staged pipelines: leave the requested primary path absent and publish only
+  the numbered copy when final verification still fails.
 - Keep the shared compile/trial hidden-repair budget in the workspace Editor setting
   `opencodeChatPipelineRepairMaxAttempts`: default `2`, allowed range `0-20`, with `0` disabling
   automatic repair. The settings panel keeps it beside the trial-run toggle.

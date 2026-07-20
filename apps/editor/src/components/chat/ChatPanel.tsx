@@ -1129,15 +1129,59 @@ function isAbortErrorEntry(entry: OpencodeThreadEntry): boolean {
   return entry.info.role === 'assistant' && entry.info.error?.name === 'MessageAbortedError';
 }
 
+export function describeSessionYamlResult(result: ChatYamlSessionResult): {
+  verb: string;
+  outcome: string;
+  detail: string | null;
+} {
+  const name = chatPipelineDisplayName(result);
+  const attempts = Math.max(0, Math.trunc(result.repairAttempts ?? 0));
+  const attemptLabel = `${attempts} attempt${attempts === 1 ? '' : 's'}`;
+  const detail = result.trial?.summary || result.compile.summary || null;
+
+  if (result.status === 'ready') {
+    const passed = result.trial ? 'Compile and trial run passed.' : 'Compile passed.';
+    const outcome =
+      attempts > 0 ? `Automatic repair succeeded after ${attemptLabel}. ${passed}` : passed;
+    const verb =
+      result.reconcile?.outcome === 'unchanged'
+        ? 'Pipeline unchanged'
+        : result.reconcile?.outcome === 'forked'
+          ? 'Saved pipeline copy'
+          : result.kind === 'open-created'
+            ? 'Created pipeline'
+            : 'Updated pipeline';
+    return { verb, outcome, detail };
+  }
+
+  const failed =
+    attempts > 0
+      ? `Automatic repair did not succeed after ${attemptLabel}.`
+      : 'Pipeline verification failed.';
+  if (result.reconcile?.outcome === 'forked') {
+    return {
+      verb: 'Saved failed draft',
+      outcome: `${failed} No live pipeline was overwritten. The unverified draft was saved as ${name}.`,
+      detail,
+    };
+  }
+  return {
+    verb: 'Pipeline verification failed',
+    outcome: `${failed} No pipeline changes were published.`,
+    detail,
+  };
+}
+
 export function SessionYamlResultBubble({ result }: { result: ChatYamlSessionResult }) {
   const openTarget = useOpenChatPipelineTarget();
   const name = chatPipelineDisplayName(result);
   const ok = result.status === 'ready';
-  const verb = result.kind === 'open-created' ? 'Created pipeline' : 'Updated pipeline';
+  const presentation = describeSessionYamlResult(result);
+  const verb = presentation.verb;
   const summary =
-    result.trial?.summary ||
-    result.compile.summary ||
-    (ok ? 'Compile and trial run succeeded.' : 'Pipeline verification failed.');
+    presentation.detail && presentation.detail !== presentation.outcome
+      ? `${presentation.outcome} ${presentation.detail}`
+      : presentation.outcome;
 
   return (
     <div className="flex flex-col gap-1 items-start">
@@ -1228,6 +1272,7 @@ export function ChatCompletionToast({ contained = false }: { contained?: boolean
           sessions.find((session) => session.id === result.sessionId)?.title ??
           result.sessionId.slice(0, 8);
         const ok = result.status === 'ready';
+        const presentation = describeSessionYamlResult(result);
         return (
           <div
             key={result.sessionId}
@@ -1253,6 +1298,9 @@ export function ChatCompletionToast({ contained = false }: { contained?: boolean
                   title={sessionTitle}
                 >
                   {sessionTitle}
+                </div>
+                <div className="mt-1 text-[9px] text-tagma-muted/80 break-words">
+                  {presentation.outcome}
                 </div>
                 <button
                   type="button"

@@ -968,7 +968,7 @@ export function finalizeChatYamlStage(
   const sourcePath = sourceRelativePath
     ? resolveRelativeInside(tagmaDirOf(ws.workDir), sourceRelativePath)
     : null;
-  if (!changed && sourcePath) {
+  if (!changed && sourcePath && !input.forceFork && !input.forceForkReason) {
     const result: ChatYamlStageFinalizeResult = {
       outcome: 'unchanged',
       entry: describeRealEntry(ws, sourcePath),
@@ -998,13 +998,15 @@ export function finalizeChatYamlStage(
         resolveRelativeInside(tagmaDirOf(ws.workDir), relativePath),
         'new staged pipeline destination',
       );
-      if (!existsSync(dirname(desiredPath))) {
+      const destinationExists = existsSync(dirname(desiredPath));
+      if (destinationExists) conflicts.push('destination-exists');
+      const mustFork = Boolean(input.forceFork) || conflicts.length > 0;
+      if (!mustFork) {
         trackPipeline(desiredPath);
         writeStagedArtifactsToDestination(ws, stagedPath, desiredPath);
         destinationPath = desiredPath;
         outcome = 'created';
       } else {
-        conflicts.push('destination-exists');
         destinationPath = copyStagedAsNumberedPipeline(ws, stagedPath, desiredPath, trackPipeline);
         outcome = 'forked';
       }

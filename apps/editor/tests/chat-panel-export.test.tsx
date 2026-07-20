@@ -211,7 +211,7 @@ describe('ChatPanel export affordance', () => {
       trial: {
         version: 1,
         success: true,
-        kind: 'succeeded',
+        kind: 'passed',
         ran: true,
         runId: 'run_trial',
         summary: 'Trial run succeeded.',

@@ -299,6 +299,27 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
+  test('honors a failed trial fork even when an existing staged pipeline is unchanged', () => {
+    const { ws, sourcePath, baseYaml } = setupWorkspace();
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const copyPath = pipelineYamlPath(ws.workDir, 'pipeline-copy-1');
+
+    const result = finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+      forceFork: true,
+      forceForkReason: 'trial-run-failed',
+    });
+
+    expect(result.outcome).toBe('forked');
+    expect(result.conflicts).toContain('trial-run-failed');
+    expect(result.entry?.path).toBe(copyPath);
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
+    expect(readFileSync(copyPath, 'utf-8')).toContain('name: Base Pipeline Copy 1');
+    stopWorkspace(ws);
+  });
+
   test('does not treat watcher initialization as an agent edit to an existing pipeline', async () => {
     const invalidYaml = yamlFor('Invalid Pipeline', '');
     const { ws, sourcePath } = setupWorkspace(invalidYaml);

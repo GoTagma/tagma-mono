@@ -139,6 +139,8 @@ export type ChatYamlSessionResult = ChatYamlTarget & {
   status: 'ready' | 'failed';
   compile: Pick<YamlCompileResult, 'success' | 'summary' | 'validation'>;
   trial?: ChatPipelineTrialRunResult;
+  /** Hidden compile/trial repair continuations completed before this final result. */
+  repairAttempts?: number;
   /** Host-side publish/fork facts made available to the next user turn in this session. */
   reconcile?: ChatYamlReconcileSummary;
   completedAt: number;

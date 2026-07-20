@@ -943,12 +943,14 @@ export function App() {
 
           const attemptKey = `${snapshot.staging.id}:${stagedTarget.relativePath}`;
           const attempts = repairAttemptsRef.current.get(attemptKey) ?? 0;
+          let completedRepairAttempts = attempts;
           if (
             shouldAutoRepairCompileResult(compile, attempts, maxAttempts) &&
             finishedSessionVisible
           ) {
             const nextAttempt = attempts + 1;
             repairAttemptsRef.current.set(attemptKey, nextAttempt);
+            completedRepairAttempts = nextAttempt;
             useChatStore.getState().setPostChatYamlAction({
               ...stagedTarget,
               status: 'repairing',
@@ -1002,12 +1004,14 @@ export function App() {
             if (cancelled) return;
 
             const trialAttempts = repairAttemptsRef.current.get(attemptKey) ?? 0;
+            completedRepairAttempts = trialAttempts;
             if (
               shouldAutoRepairCompileResult(trialRun, trialAttempts, maxAttempts) &&
               finishedSessionVisible
             ) {
               const nextAttempt = trialAttempts + 1;
               repairAttemptsRef.current.set(attemptKey, nextAttempt);
+              completedRepairAttempts = nextAttempt;
               useChatStore.getState().setPostChatYamlAction({
                 ...stagedTarget,
                 status: 'repairing',
@@ -1164,6 +1168,7 @@ export function App() {
               status: verificationSucceeded ? 'ready' : 'failed',
               compile,
               ...(trialRun ? { trial: trialRun } : {}),
+              ...(completedRepairAttempts > 0 ? { repairAttempts: completedRepairAttempts } : {}),
               reconcile: {
                 outcome: finalized.outcome,
                 conflicts: finalized.conflicts,
@@ -1203,6 +1208,8 @@ export function App() {
         const compile = await api.compileWorkspaceYaml(target.path);
         if (cancelled) return;
 
+        const attempts = repairAttemptsRef.current.get(target.path) ?? 0;
+        let completedRepairAttempts = attempts;
         let legacyReconcile: ChatYamlReconcileSummary | null = null;
         const recordSessionResult = (status: 'ready' | 'failed') => {
           if (!finishedSessionId || !target) return;
@@ -1212,18 +1219,19 @@ export function App() {
             ...(currentWorkDirForChat ? { workspaceKey: currentWorkDirForChat } : {}),
             status,
             compile,
+            ...(completedRepairAttempts > 0 ? { repairAttempts: completedRepairAttempts } : {}),
             ...(legacyReconcile ? { reconcile: legacyReconcile } : {}),
             completedAt: finishedTurn.endedAt,
           });
         };
 
-        const attempts = repairAttemptsRef.current.get(target.path) ?? 0;
         if (
           shouldAutoRepairCompileResult(compile, attempts, maxAttempts) &&
           finishedSessionVisible
         ) {
           const nextAttempt = attempts + 1;
           repairAttemptsRef.current.set(target.path, nextAttempt);
+          completedRepairAttempts = nextAttempt;
           useChatStore.getState().setPostChatYamlAction({
             ...target,
             status: 'repairing',
