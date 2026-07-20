@@ -141,10 +141,7 @@ test('release-desktop does not publish linux arm64 sidecar-only hot-update asset
 });
 
 test('release-desktop commits a validated bun.lock with the desktop version bump', () => {
-  const setupBun = stepIndex(
-    releaseDesktopWorkflow,
-    'Set up Bun for lockfile synchronization',
-  );
+  const setupBun = stepIndex(releaseDesktopWorkflow, 'Set up Bun for lockfile synchronization');
   const commitStep = stepIndex(
     releaseDesktopWorkflow,
     'Commit desktop bump, tag, push to tagma-mono',
