@@ -174,13 +174,69 @@ describe('ChatPanel export affordance', () => {
         omittedTaskCount: 0,
         tasks: [],
       },
+      repairAttempts: 2,
+      reconcile: {
+        outcome: 'forked',
+        conflicts: ['trial-run-failed'],
+        localBranchPersisted: false,
+        resultPath: '/workspace/.tagma/build-copy-1/build-copy-1.yaml',
+        compileSuccess: true,
+        trialRunSuccess: false,
+      },
       completedAt: 1_000,
     };
 
     const html = renderToStaticMarkup(<SessionYamlResultBubble result={result} />);
 
+    expect(html).toContain('Saved failed draft');
+    expect(html).toContain('Automatic repair did not succeed after 2 attempts.');
+    expect(html).toContain('No live pipeline was overwritten.');
     expect(html).toContain('Trial run failed: main.test exited 7.');
     expect(html).toContain('Open pipeline');
+  });
+
+  test('explicitly reports when automatic repair makes compile and trial run pass', () => {
+    const result: ChatYamlSessionResult = {
+      sessionId: 's1',
+      kind: 'refresh-current',
+      path: '/workspace/.tagma/build/build.yaml',
+      name: 'build.yaml',
+      pipelineName: 'Build',
+      status: 'ready',
+      compile: {
+        success: true,
+        summary: 'Compile succeeded.',
+        validation: { errors: [], warnings: [] },
+      } as never,
+      trial: {
+        version: 1,
+        success: true,
+        kind: 'succeeded',
+        ran: true,
+        runId: 'run_trial',
+        summary: 'Trial run succeeded.',
+        durationMs: 12,
+        totalTaskCount: 1,
+        omittedTaskCount: 0,
+        tasks: [],
+      },
+      repairAttempts: 1,
+      reconcile: {
+        outcome: 'adopted',
+        conflicts: [],
+        localBranchPersisted: false,
+        resultPath: '/workspace/.tagma/build/build.yaml',
+        compileSuccess: true,
+        trialRunSuccess: true,
+      },
+      completedAt: 1_000,
+    };
+
+    const html = renderToStaticMarkup(<SessionYamlResultBubble result={result} />);
+
+    expect(html).toContain('Updated pipeline');
+    expect(html).toContain('Automatic repair succeeded after 1 attempt.');
+    expect(html).toContain('Compile and trial run passed.');
   });
 
   test('shows failed trial repair as the active conversation-flow phase', () => {

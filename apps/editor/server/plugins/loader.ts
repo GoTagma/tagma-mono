@@ -988,7 +988,7 @@ export interface EditorSettings {
   opencodeChatTrialRunEnabled: boolean;
   /**
    * Maximum hidden repair continuations shared by compile and trial-run
-   * failures for one OpenCode Chat pipeline change. Default 2; range 0-10.
+   * failures for one OpenCode Chat pipeline change. Default 2; range 0-20.
    * Zero disables automatic repair while preserving compile/trial evidence.
    */
   opencodeChatPipelineRepairMaxAttempts: number;

@@ -218,7 +218,7 @@ describe('EditorSettings autosave + viewMode fields', () => {
     const aboveRange = writeEditorSettings(ws as unknown as WorkspaceState, {
       opencodeChatPipelineRepairMaxAttempts: 99,
     });
-    expect(aboveRange.opencodeChatPipelineRepairMaxAttempts).toBe(10);
+    expect(aboveRange.opencodeChatPipelineRepairMaxAttempts).toBe(20);
 
     const fractional = writeEditorSettings(ws as unknown as WorkspaceState, {
       opencodeChatPipelineRepairMaxAttempts: 3.9,

@@ -730,7 +730,7 @@ export interface EditorSettings {
   opencodeChatReasoningEffort: OpenCodeChatReasoningEffort;
   /** Trial-run changed OpenCode Chat pipelines before finalization. Default true. */
   opencodeChatTrialRunEnabled: boolean;
-  /** Shared compile/trial repair budget. Default 2; 0 disables; server clamps to [0, 10]. */
+  /** Shared compile/trial repair budget. Default 2; 0 disables; server clamps to [0, 20]. */
   opencodeChatPipelineRepairMaxAttempts: number;
   /**
    * Disabled means unlimited. Enabled with 0 rounds means stateless.

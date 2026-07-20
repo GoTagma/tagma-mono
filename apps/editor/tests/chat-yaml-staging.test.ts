@@ -256,6 +256,33 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
+  test('keeps a failed new pipeline out of the primary path and saves a numbered copy', () => {
+    const { ws, sourcePath } = setupWorkspace();
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const relativePath = 'created/created.yaml';
+    const stagedPath = join(stage.agentTagmaDir, 'created', 'created.yaml');
+    const primaryPath = pipelineYamlPath(ws.workDir, 'created');
+    const copyPath = pipelineYamlPath(ws.workDir, 'created-copy-1');
+    mkdirSync(dirname(stagedPath), { recursive: true });
+    writeFileSync(stagedPath, yamlFor('Created Pipeline', 'created'), 'utf-8');
+    writeFileSync(pipelineLayoutPath(stagedPath), layoutFor(20), 'utf-8');
+
+    const result = finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath,
+      forceFork: true,
+      forceForkReason: 'trial-run-failed',
+    });
+
+    expect(result.outcome).toBe('forked');
+    expect(result.conflicts).toContain('trial-run-failed');
+    expect(result.entry?.path).toBe(copyPath);
+    expect(existsSync(primaryPath)).toBe(false);
+    expect(readFileSync(copyPath, 'utf-8')).toContain('name: Created Pipeline Copy 1');
+    expect(readFileSync(copyPath, 'utf-8')).toContain('prompt: created');
+    stopWorkspace(ws);
+  });
+
   test('returns unchanged and removes the writable stage when the agent did not edit YAML or layout', () => {
     const { ws, sourcePath, baseYaml } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
