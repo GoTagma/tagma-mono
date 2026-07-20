@@ -95,6 +95,30 @@ describe('parseEditorSettingsPatch', () => {
     expect(parseEditorSettingsPatch({ opencodeChatTrialRunEnabled: 1 })).toEqual({});
   });
 
+  test('passes finite opencodeChatPipelineRepairMaxAttempts through for loader clamping', () => {
+    expect(parseEditorSettingsPatch({ opencodeChatPipelineRepairMaxAttempts: 4 })).toEqual({
+      opencodeChatPipelineRepairMaxAttempts: 4,
+    });
+    expect(parseEditorSettingsPatch({ opencodeChatPipelineRepairMaxAttempts: -1 })).toEqual({
+      opencodeChatPipelineRepairMaxAttempts: -1,
+    });
+    expect(parseEditorSettingsPatch({ opencodeChatPipelineRepairMaxAttempts: 99 })).toEqual({
+      opencodeChatPipelineRepairMaxAttempts: 99,
+    });
+  });
+
+  test('ignores non-finite opencodeChatPipelineRepairMaxAttempts', () => {
+    expect(parseEditorSettingsPatch({ opencodeChatPipelineRepairMaxAttempts: '4' })).toEqual({});
+    expect(parseEditorSettingsPatch({ opencodeChatPipelineRepairMaxAttempts: Number.NaN })).toEqual(
+      {},
+    );
+    expect(
+      parseEditorSettingsPatch({
+        opencodeChatPipelineRepairMaxAttempts: Number.POSITIVE_INFINITY,
+      }),
+    ).toEqual({});
+  });
+
   test('keeps existing fields working', () => {
     expect(parseEditorSettingsPatch({ autoInstallDeclaredPlugins: true })).toEqual({
       autoInstallDeclaredPlugins: true,

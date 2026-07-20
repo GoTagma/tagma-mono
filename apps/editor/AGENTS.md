@@ -44,6 +44,9 @@
 - A failed trial may feed one of the existing bounded hidden repair continuations back into the
   same OpenCode session, stage, snapshot, and YAML lease. Adopt into the live pipeline only after
   both compile and trial succeed; preserve a still-failing trial result as a numbered copy.
+- Keep the shared compile/trial hidden-repair budget in the workspace Editor setting
+  `opencodeChatPipelineRepairMaxAttempts`: default `2`, allowed range `0-10`, with `0` disabling
+  automatic repair. The settings panel keeps it beside the trial-run toggle.
 - Only a successful finalize may mutate the live workspace or advance its revision. Finalize is
   idempotent after response loss, artifact writes roll back together on failure, and abandoned
   or expired stages must stop their compile watcher and be removed.

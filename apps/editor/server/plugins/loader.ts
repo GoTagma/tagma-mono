@@ -42,6 +42,11 @@ import {
 } from './install.js';
 import { loadPluginWorker } from './worker-runtime.js';
 import { atomicWriteFileSync, readContainedTextFileSync } from '../path-utils.js';
+import {
+  clampChatPipelineRepairAttempts,
+  DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS,
+  isValidChatPipelineRepairAttempts,
+} from '../../shared/chat-pipeline-repair-limit.js';
 
 /**
  * Map of plugin package name → which (category, type) pair it occupies in the
@@ -981,6 +986,12 @@ export interface EditorSettings {
    * trial-run in the real workspace after compiling and before finalization.
    */
   opencodeChatTrialRunEnabled: boolean;
+  /**
+   * Maximum hidden repair continuations shared by compile and trial-run
+   * failures for one OpenCode Chat pipeline change. Default 2; range 0-10.
+   * Zero disables automatic repair while preserving compile/trial evidence.
+   */
+  opencodeChatPipelineRepairMaxAttempts: number;
   /** Disabled means unlimited. Enabled with 0 rounds means stateless. */
   chatContextLimitEnabled: boolean;
   /**
@@ -1007,6 +1018,7 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   opencodeChatModel: null,
   opencodeChatReasoningEffort: null,
   opencodeChatTrialRunEnabled: true,
+  opencodeChatPipelineRepairMaxAttempts: DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS,
   chatContextLimitEnabled: false,
   chatContextRounds: 0,
 };
@@ -1061,6 +1073,11 @@ export function readEditorSettings(ws: WorkspaceState): EditorSettings {
         typeof raw.opencodeChatTrialRunEnabled === 'boolean'
           ? raw.opencodeChatTrialRunEnabled
           : DEFAULT_EDITOR_SETTINGS.opencodeChatTrialRunEnabled,
+      opencodeChatPipelineRepairMaxAttempts: isValidChatPipelineRepairAttempts(
+        raw.opencodeChatPipelineRepairMaxAttempts,
+      )
+        ? raw.opencodeChatPipelineRepairMaxAttempts
+        : DEFAULT_EDITOR_SETTINGS.opencodeChatPipelineRepairMaxAttempts,
       chatContextLimitEnabled:
         typeof raw.chatContextLimitEnabled === 'boolean'
           ? raw.chatContextLimitEnabled
@@ -1129,6 +1146,11 @@ export function writeEditorSettings(
   }
   if (patch.opencodeChatTrialRunEnabled !== undefined) {
     next.opencodeChatTrialRunEnabled = patch.opencodeChatTrialRunEnabled;
+  }
+  if (patch.opencodeChatPipelineRepairMaxAttempts !== undefined) {
+    next.opencodeChatPipelineRepairMaxAttempts = clampChatPipelineRepairAttempts(
+      patch.opencodeChatPipelineRepairMaxAttempts,
+    );
   }
   if (patch.chatContextLimitEnabled !== undefined) {
     next.chatContextLimitEnabled = patch.chatContextLimitEnabled;

@@ -97,6 +97,7 @@ import {
   YAML_EDIT_LOCK_MESSAGE,
 } from './store/yaml-edit-lock-store';
 import { serializePreviewYaml } from './utils/yaml-preview-diff';
+import { DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS } from '../shared/chat-pipeline-repair-limit.js';
 
 type ExplorerIntent = {
   mode: FileExplorerMode;
@@ -903,6 +904,9 @@ export function App() {
         const currentChatSessionId = useChatStore.getState().currentSessionId;
         const finishedSessionVisible =
           !!finishedSessionId && finishedSessionId === currentChatSessionId;
+        const settings = useEditorSettingsStore.getState().settings;
+        const maxAttempts =
+          settings?.opencodeChatPipelineRepairMaxAttempts ?? DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS;
 
         if (snapshot?.staging) {
           const currentWorkDir = usePipelineStore.getState().workDir;
@@ -939,7 +943,6 @@ export function App() {
 
           const attemptKey = `${snapshot.staging.id}:${stagedTarget.relativePath}`;
           const attempts = repairAttemptsRef.current.get(attemptKey) ?? 0;
-          const maxAttempts = 2;
           if (
             shouldAutoRepairCompileResult(compile, attempts, maxAttempts) &&
             finishedSessionVisible
@@ -968,7 +971,6 @@ export function App() {
             }
           }
 
-          const settings = useEditorSettingsStore.getState().settings;
           const trialRunEnabled = settings?.opencodeChatTrialRunEnabled ?? true;
           let trialRun: Awaited<ReturnType<typeof api.trialRunChatYamlStage>> | null = null;
           if (
@@ -1216,7 +1218,6 @@ export function App() {
         };
 
         const attempts = repairAttemptsRef.current.get(target.path) ?? 0;
-        const maxAttempts = 2;
         if (
           shouldAutoRepairCompileResult(compile, attempts, maxAttempts) &&
           finishedSessionVisible

@@ -322,6 +322,12 @@ export function parseEditorSettingsPatch(body: unknown): Partial<EditorSettings>
   if (typeof raw.opencodeChatTrialRunEnabled === 'boolean') {
     patch.opencodeChatTrialRunEnabled = raw.opencodeChatTrialRunEnabled;
   }
+  if (
+    typeof raw.opencodeChatPipelineRepairMaxAttempts === 'number' &&
+    Number.isFinite(raw.opencodeChatPipelineRepairMaxAttempts)
+  ) {
+    patch.opencodeChatPipelineRepairMaxAttempts = raw.opencodeChatPipelineRepairMaxAttempts;
+  }
   if (isValidEditorViewMode(raw.viewMode)) {
     patch.viewMode = raw.viewMode;
   }

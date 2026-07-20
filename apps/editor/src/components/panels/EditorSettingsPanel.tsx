@@ -21,6 +21,11 @@ import {
   MAX_OPENCODE_AGENT_MAX_STEPS,
   MIN_OPENCODE_AGENT_MAX_STEPS,
 } from '../../../shared/opencode-agent-step-limit.js';
+import {
+  DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS,
+  MAX_CHAT_PIPELINE_REPAIR_ATTEMPTS,
+  MIN_CHAT_PIPELINE_REPAIR_ATTEMPTS,
+} from '../../../shared/chat-pipeline-repair-limit.js';
 
 interface EditorSettingsPanelProps {
   workDir: string;
@@ -535,6 +540,35 @@ export function EditorSettingsPanel({
                     disabled={!hasWorkspace || saving}
                     onChange={(v) => updateField('opencodeChatTrialRunEnabled', v)}
                   />
+                  <div className="flex items-center gap-2 text-[11px]">
+                    <label htmlFor="chat-pipeline-repair-attempts" className="text-tagma-muted">
+                      Automatic repair attempts:
+                    </label>
+                    <input
+                      id="chat-pipeline-repair-attempts"
+                      type="number"
+                      min={MIN_CHAT_PIPELINE_REPAIR_ATTEMPTS}
+                      max={MAX_CHAT_PIPELINE_REPAIR_ATTEMPTS}
+                      step={1}
+                      value={settings.opencodeChatPipelineRepairMaxAttempts}
+                      disabled={!hasWorkspace || saving}
+                      onChange={(e) => {
+                        const n = Number.parseInt(e.target.value, 10);
+                        if (Number.isFinite(n)) {
+                          const clamped = Math.max(
+                            MIN_CHAT_PIPELINE_REPAIR_ATTEMPTS,
+                            Math.min(MAX_CHAT_PIPELINE_REPAIR_ATTEMPTS, n),
+                          );
+                          void updateField('opencodeChatPipelineRepairMaxAttempts', clamped);
+                        }
+                      }}
+                      className="w-16 px-1 py-0.5 bg-tagma-surface border border-tagma-border text-tagma-text disabled:opacity-50"
+                    />
+                    <span className="text-tagma-muted/70">
+                      0 = off; default {DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS}; shared by compile
+                      and trial run
+                    </span>
+                  </div>
                   <ToggleRow
                     label="Limit chat memory"
                     description="Off keeps unlimited conversation history in the active OpenCode session. On starts fresh sessions according to the round limit below."
