@@ -18,6 +18,10 @@ export const TRACK_MAX_H = 480;
  */
 export const FOLDER_H = 16;
 export const CANVAS_PAD_RIGHT = 300;
+export const CANVAS_MIN_HEIGHT = 200;
+// The run minimap is 184px tall. Keep another 16px below it so the last
+// track can be panned fully clear while a details panel narrows the canvas.
+export const CANVAS_PAD_BOTTOM = 184 + 16;
 
 // Scroll container id used by Minimap to sample canvas scroll extents.
 // Both the editor BoardCanvas and the read-only RunView mount their

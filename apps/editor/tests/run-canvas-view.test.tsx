@@ -80,6 +80,9 @@ describe('RunCanvasView', () => {
     expect(html).toContain('data-task-id="main.build"');
     expect(html).toContain('Build');
     expect(html).toContain('minimap');
+    expect(html).toContain('data-canvas-pan-surface');
+    expect(html).toContain('data-canvas-bottom-spacer');
+    expect(html).toContain('min-height:264px');
     expect(html).toContain('flex-1 min-h-0 min-w-0 flex overflow-hidden relative');
 
     const panel = renderToStaticMarkup(

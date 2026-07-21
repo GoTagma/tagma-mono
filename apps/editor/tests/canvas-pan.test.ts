@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  resolveCanvasBottomSpacer,
   resolveCanvasContentHeight,
   resolveCanvasPan,
 } from '../src/components/board/canvas-pan';
@@ -26,8 +27,20 @@ describe('canvas background panning', () => {
     ).toEqual({ didDrag: true, scrollLeft: 400, scrollTop: 120 });
   });
 
+  test('clamps panning at the top-left canvas boundary', () => {
+    expect(
+      resolveCanvasPan(
+        { clientX: 100, clientY: 100, scrollLeft: 5, scrollTop: 10 },
+        { clientX: 140, clientY: 140 },
+        1,
+      ),
+    ).toEqual({ didDrag: true, scrollLeft: 0, scrollTop: 0 });
+  });
+
   test('adds enough bottom scroll range to move the last row clear of the minimap', () => {
-    expect(resolveCanvasContentHeight(64)).toBe(CANVAS_MIN_HEIGHT + CANVAS_PAD_BOTTOM);
+    expect(resolveCanvasContentHeight(0)).toBe(CANVAS_MIN_HEIGHT);
+    expect(resolveCanvasContentHeight(64)).toBe(64 + CANVAS_PAD_BOTTOM);
     expect(resolveCanvasContentHeight(640)).toBe(640 + CANVAS_PAD_BOTTOM);
+    expect(resolveCanvasBottomSpacer(64)).toBe(CANVAS_PAD_BOTTOM);
   });
 });

@@ -57,6 +57,11 @@ import {
   PAD_LEFT,
   CANVAS_PAD_RIGHT,
 } from '../board/layout-constants';
+import {
+  resolveCanvasBottomSpacer,
+  resolveCanvasContentHeight,
+  resolveCanvasPan,
+} from '../board/canvas-pan';
 import { usePipelineStore } from '../../store/pipeline-store';
 import { buildRenderPlan, planTotalHeight, trackTopYInPlan } from '../board/render-plan';
 
@@ -194,23 +199,23 @@ export function RunView({
     e.preventDefault();
     const el = contentRef.current;
     if (!el) return;
-    const startX = e.clientX,
-      startY = e.clientY;
-    const startSL = el.scrollLeft,
-      startST = el.scrollTop;
+    const panStart = {
+      clientX: e.clientX,
+      clientY: e.clientY,
+      scrollLeft: el.scrollLeft,
+      scrollTop: el.scrollTop,
+    };
     let started = false;
     panDidDragRef.current = false;
     const onMove = (ev: MouseEvent) => {
-      const dx = ev.clientX - startX,
-        dy = ev.clientY - startY;
+      const next = resolveCanvasPan(panStart, ev, getZoom(), started);
       if (!started) {
-        if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+        if (!next.didDrag) return;
         started = true;
         panDidDragRef.current = true;
       }
-      const z = getZoom();
-      el.scrollLeft = startSL - dx / z;
-      el.scrollTop = startST - dy / z;
+      el.scrollLeft = next.scrollLeft;
+      el.scrollTop = next.scrollTop;
     };
     const onUp = () => {
       document.removeEventListener('mousemove', onMove);
@@ -321,7 +326,9 @@ export function RunView({
     return Math.max(maxX + CANVAS_PAD_RIGHT, 2000);
   }, [taskPositions]);
 
-  const canvasHeight = Math.max(planTotalHeight(renderPlan), 200);
+  const planHeight = planTotalHeight(renderPlan);
+  const canvasHeight = resolveCanvasContentHeight(planHeight);
+  const canvasBottomSpacer = resolveCanvasBottomSpacer(planHeight);
 
   // Per-track parallel warning flag. Editor BoardCanvas computes this
   // from dagEdges; we do the same so the Run view's TrackLane shows the
@@ -864,12 +871,19 @@ export function RunView({
                   }
                   return out;
                 })()}
+                <div
+                  aria-hidden
+                  data-canvas-bottom-spacer={canvasBottomSpacer}
+                  className={'pointer-events-none'}
+                  style={{ height: canvasBottomSpacer }}
+                />
               </div>
 
               {/* Task canvas */}
               <div
                 ref={contentRef}
                 id={RUN_SCROLL_ID}
+                data-canvas-pan-surface={true}
                 className="flex-1 min-w-0 overflow-auto timeline-grid hide-scrollbar"
                 onScroll={syncScroll}
                 onMouseDown={handlePanMouseDown}
@@ -912,7 +926,6 @@ export function RunView({
                           key={`bg-${row.trackId}`}
                           className={`absolute left-0 right-0 border-b border-tagma-border/40 cursor-grab active:cursor-grabbing ${zebra % 2 === 0 ? 'track-row-even' : 'track-row-odd'}`}
                           style={{ top: yAcc, height: row.height }}
-                          onMouseDown={handlePanMouseDown}
                           onClick={() => {
                             if (!panDidDragRef.current) selectTask(null);
                           }}
