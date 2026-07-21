@@ -47,7 +47,7 @@
   This includes newly staged pipelines: leave the requested primary path absent and publish only
   the numbered copy when final verification still fails.
 - Keep the shared compile/trial hidden-repair budget in the workspace Editor setting
-  `opencodeChatPipelineRepairMaxAttempts`: default `2`, allowed range `0-20`, with `0` disabling
+  `opencodeChatPipelineRepairMaxAttempts`: default `25`, allowed range `0-50`, with `0` disabling
   automatic repair. The settings panel keeps it beside the trial-run toggle.
 - Only a successful finalize may mutate the live workspace or advance its revision. Finalize is
   idempotent after response loss, artifact writes roll back together on failure, and abandoned

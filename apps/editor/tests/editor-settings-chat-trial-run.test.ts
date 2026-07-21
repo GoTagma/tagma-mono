@@ -26,7 +26,7 @@ describe('Editor Settings OpenCode Chat trial-run controls', () => {
     expect(source).toContain("updateField('opencodeChatTrialRunEnabled', v)");
   });
 
-  test('gates trial runs and uses the configured shared repair budget with default two', () => {
+  test('gates trial runs and uses the configured shared repair budget with default 25', () => {
     const source = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf8');
 
     expect(source).toContain('settings?.opencodeChatTrialRunEnabled ?? true');
