@@ -93,6 +93,14 @@
 - For fast regressions, pass repeatable unique selectors such as
   `bun scripts/test-serial.mjs --file tests/chat-yaml-staging.test.ts --file tests/opencode-lifecycle.test.ts`.
 
+## Run Canvas Panning
+
+- Keep blank-surface drag panning aligned between the main `RunView` and the live-history
+  `RunCanvasView`; read-only task cards and the minimap must remain separate interaction targets.
+- The floating minimap requires bottom scroll clearance so the final task row can pan above it.
+  Mirror that clearance with an equal spacer in the track-header column or vertical scrolling will
+  misalign track headers and task rows.
+
 ## Windows Pipeline Paths
 
 - Treat resolved pipeline paths as case-insensitively equivalent on Windows before enforcing the
