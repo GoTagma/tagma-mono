@@ -43,4 +43,15 @@ describe('canvas background panning', () => {
     expect(resolveCanvasContentHeight(640)).toBe(640 + CANVAS_PAD_BOTTOM);
     expect(resolveCanvasBottomSpacer(64)).toBe(CANVAS_PAD_BOTTOM);
   });
+
+  test('cleans up the shared drag session on mouseup, window blur, and unmount', async () => {
+    const source = await Bun.file(
+      new URL('../src/components/board/use-canvas-pan.ts', import.meta.url),
+    ).text();
+
+    expect(source).toContain(`document.addEventListener('mouseup', cleanup)`);
+    expect(source).toContain(`window.addEventListener('blur', cleanup)`);
+    expect(source).toContain(`window.removeEventListener('blur', cleanup)`);
+    expect(source).toContain('useEffect(() => () => cleanupRef.current?.(), [])');
+  });
 });

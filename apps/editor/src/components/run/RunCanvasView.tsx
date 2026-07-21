@@ -9,7 +9,6 @@ import type {
 } from '../../api/client';
 import { usePipelineStore, type TaskPosition } from '../../store/pipeline-store';
 import { useRunStore } from '../../store/run-store';
-import { getZoom } from '../../utils/zoom';
 import { TaskCard } from '../board/TaskCard';
 import { TrackLane } from '../board/TrackLane';
 import { Minimap } from '../board/Minimap';
@@ -22,11 +21,8 @@ import {
   PAD_LEFT,
   CANVAS_PAD_RIGHT,
 } from '../board/layout-constants';
-import {
-  resolveCanvasBottomSpacer,
-  resolveCanvasContentHeight,
-  resolveCanvasPan,
-} from '../board/canvas-pan';
+import { resolveCanvasBottomSpacer, resolveCanvasContentHeight } from '../board/canvas-pan';
+import { useCanvasPan } from '../board/use-canvas-pan';
 import { buildRenderPlan, planTotalHeight, trackTopYInPlan } from '../board/render-plan';
 import { RunTaskPanel } from './RunTaskPanel';
 import { TrackInfoPanel } from './TrackInfoPanel';
@@ -65,7 +61,8 @@ export function RunCanvasView({
 
   const headerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const panDidDragRef = useRef(false);
+  const { didDragRef: panDidDragRef, handleMouseDown: handlePanMouseDown } =
+    useCanvasPan(contentRef);
 
   const liveFolders = usePipelineStore((s) => s.folders);
   const liveTrackHeights = usePipelineStore((s) => s.trackHeights);
@@ -223,41 +220,6 @@ export function RunCanvasView({
     if (headerRef.current && contentRef.current) {
       headerRef.current.scrollTop = contentRef.current.scrollTop;
     }
-  }, []);
-
-  const handlePanMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    const el = contentRef.current;
-    if (!el) return;
-    const panStart = {
-      clientX: e.clientX,
-      clientY: e.clientY,
-      scrollLeft: el.scrollLeft,
-      scrollTop: el.scrollTop,
-    };
-    let started = false;
-    panDidDragRef.current = false;
-    const onMove = (ev: MouseEvent) => {
-      const next = resolveCanvasPan(panStart, ev, getZoom(), started);
-      if (!started) {
-        if (!next.didDrag) return;
-        started = true;
-        panDidDragRef.current = true;
-      }
-      el.scrollLeft = next.scrollLeft;
-      el.scrollTop = next.scrollTop;
-    };
-    const onUp = () => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-    document.body.style.cursor = 'grabbing';
-    document.body.style.userSelect = 'none';
   }, []);
 
   return (

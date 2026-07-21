@@ -57,11 +57,8 @@ import {
   PAD_LEFT,
   CANVAS_PAD_RIGHT,
 } from '../board/layout-constants';
-import {
-  resolveCanvasBottomSpacer,
-  resolveCanvasContentHeight,
-  resolveCanvasPan,
-} from '../board/canvas-pan';
+import { resolveCanvasBottomSpacer, resolveCanvasContentHeight } from '../board/canvas-pan';
+import { useCanvasPan } from '../board/use-canvas-pan';
 import { usePipelineStore } from '../../store/pipeline-store';
 import { buildRenderPlan, planTotalHeight, trackTopYInPlan } from '../board/render-plan';
 
@@ -186,47 +183,12 @@ export function RunView({
   // aligned while the canvas scrolls vertically.
   const headerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const { didDragRef: panDidDragRef, handleMouseDown: handlePanMouseDown } =
+    useCanvasPan(contentRef);
   const syncScroll = useCallback(() => {
     if (headerRef.current && contentRef.current) {
       headerRef.current.scrollTop = contentRef.current.scrollTop;
     }
-  }, []);
-
-  // Canvas pan: drag background to scroll (same as BoardCanvas).
-  const panDidDragRef = useRef(false);
-  const handlePanMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    const el = contentRef.current;
-    if (!el) return;
-    const panStart = {
-      clientX: e.clientX,
-      clientY: e.clientY,
-      scrollLeft: el.scrollLeft,
-      scrollTop: el.scrollTop,
-    };
-    let started = false;
-    panDidDragRef.current = false;
-    const onMove = (ev: MouseEvent) => {
-      const next = resolveCanvasPan(panStart, ev, getZoom(), started);
-      if (!started) {
-        if (!next.didDrag) return;
-        started = true;
-        panDidDragRef.current = true;
-      }
-      el.scrollLeft = next.scrollLeft;
-      el.scrollTop = next.scrollTop;
-    };
-    const onUp = () => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-    document.body.style.cursor = 'grabbing';
-    document.body.style.userSelect = 'none';
   }, []);
 
   // First pending approval (FIFO by Map iteration order).
