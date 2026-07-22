@@ -142,7 +142,12 @@ const inFlightByCachePath = new Map<string, Promise<ChatPipelineTrialRunResult>>
 const activeTrialByWorkspace = new Map<string, string>();
 const activeTrialIdentityByWorkspace = new Map<
   string,
-  { stageId: string; trialId: string; controller: AbortController }
+  {
+    stageId: string;
+    trialId: string;
+    controller: AbortController;
+    abortState: { timedOut: boolean; userAborted: boolean };
+  }
 >();
 
 export function cancelChatPipelineTrial(
@@ -153,6 +158,7 @@ export function cancelChatPipelineTrial(
   if (!active || active.stageId !== input.stageId || active.trialId !== input.trialId) {
     return false;
   }
+  active.abortState.userAborted = true;
   active.controller.abort('user stopped chat trial run');
   return true;
 }
@@ -1095,8 +1101,8 @@ export async function trialRunChatYamlStage(
   }
 
   const controller = new AbortController();
-  const activeIdentity = { stageId: input.stageId, trialId, controller };
-  const abortState = { timedOut: false };
+  const abortState = { timedOut: false, userAborted: false };
+  const activeIdentity = { stageId: input.stageId, trialId, controller, abortState };
   const timeout = setTimeout(() => {
     abortState.timedOut = true;
     controller.abort('chat trial run timeout');
@@ -1109,7 +1115,10 @@ export async function trialRunChatYamlStage(
   const promise = (async () => {
     try {
       let result = await executeTrial(ws, stage, entry, planRead.plan, controller, abortState);
-      if (controller.signal.aborted && !abortState.timedOut) {
+      if (
+        abortState.userAborted ||
+        (controller.signal.aborted && !abortState.timedOut)
+      ) {
         result = resultForAborted(result, startedAt);
       }
       if (result.kind !== 'aborted') writeCachedTrial(cachePath, verificationHash, result);

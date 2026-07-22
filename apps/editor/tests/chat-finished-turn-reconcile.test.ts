@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { selectFinishedTurnQueueHead } from '../src/store/finished-turn-selector';
 import { useChatStore, type ChatFinishedTurn } from '../src/store/chat-store';
+import { createChatYamlLifecycleCancellationGuard } from '../src/utils/chat-yaml-lifecycle';
 
 const originalQueue = useChatStore.getState().finishedTurnQueue;
 
@@ -86,5 +87,54 @@ describe('finished chat turn reconciliation', () => {
     expect(appSource).toContain('beginChatYamlLifecycle');
     expect(appSource).toContain('discardCancelledStage');
     expect(appSource).toContain('completeChatYamlLifecycle(finishedTurn.id)');
+  });
+
+  test('late host-trial completion still performs stopped cleanup once and never continues', async () => {
+    let cancellationRequested = false;
+    let discardCalls = 0;
+    let clearCalls = 0;
+    let planCalls = 0;
+    let repairCalls = 0;
+    let finalizeCalls = 0;
+    let releaseCalls = 0;
+    let acknowledgeCalls = 0;
+    let releaseTrial!: () => void;
+    const trial = new Promise<void>((resolve) => {
+      releaseTrial = resolve;
+    });
+    const guard = createChatYamlLifecycleCancellationGuard({
+      isCancellationRequested: () => cancellationRequested,
+      discardStage: async () => {
+        discardCalls += 1;
+      },
+      clearPostChatAction: () => {
+        clearCalls += 1;
+      },
+    });
+
+    const reconcile = (async () => {
+      try {
+        await trial;
+        if (await guard.stopIfRequested()) return;
+        planCalls += 1;
+        repairCalls += 1;
+        finalizeCalls += 1;
+      } finally {
+        releaseCalls += 1;
+        acknowledgeCalls += 1;
+      }
+    })();
+    cancellationRequested = true;
+    releaseTrial();
+    await reconcile;
+    await guard.stopIfRequested();
+
+    expect(discardCalls).toBe(1);
+    expect(clearCalls).toBe(1);
+    expect(planCalls).toBe(0);
+    expect(repairCalls).toBe(0);
+    expect(finalizeCalls).toBe(0);
+    expect(releaseCalls).toBe(1);
+    expect(acknowledgeCalls).toBe(1);
   });
 });

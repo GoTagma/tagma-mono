@@ -154,8 +154,9 @@ export function ChatComposer() {
   });
   const stopMode = getChatComposerStopMode({
     sending,
-    hasActiveChatYamlLifecycle: activeChatYamlLifecycle !== null,
+    hasActiveChatYamlLifecycle: activeChatYamlLifecycle?.hostTrialActive === true,
   });
+  const stopLabel = stopMode === 'verification' ? 'Stop verification' : 'Stop generating';
 
   const submit = () => {
     if (!canSend) return;
@@ -226,9 +227,13 @@ export function ChatComposer() {
                 /* already surfaced via sendError */
               });
             }}
+            disabled={
+              stopMode === 'verification' &&
+              activeChatYamlLifecycle?.cancellationRequested === true
+            }
             className="shrink-0 p-1.5 border border-tagma-error/60 text-tagma-error hover:border-tagma-error hover:bg-tagma-error/10 transition-colors"
-            title="Stop generating"
-            aria-label="Stop generating"
+            title={stopLabel}
+            aria-label={stopLabel}
           >
             <Square size={14} />
           </button>

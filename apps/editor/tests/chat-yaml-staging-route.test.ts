@@ -855,10 +855,15 @@ describe('chat YAML staging routes', () => {
       request(ws, { stageId: stage.id, relativePath: entry.relativePath, trialId }, 'chat-lock'),
       firstRes,
     );
-    for (let attempt = 0; attempt < 100 && !existsSync(counterPath); attempt += 1) {
+    for (
+      let attempt = 0;
+      attempt < 100 && (!existsSync(counterPath) || !ws.chatPipelineTrialAbort);
+      attempt += 1
+    ) {
       await Bun.sleep(10);
     }
     expect(existsSync(counterPath)).toBe(true);
+    expect(ws.chatPipelineTrialAbort).not.toBeNull();
 
     const staleCancelRes = makeRes();
     await getRoute('/api/workspace/chat-yaml-stage/trial-run/cancel')(
@@ -883,7 +888,7 @@ describe('chat YAML staging routes', () => {
       secondRes,
     );
     expect(secondRes.body).toMatchObject({ success: true, kind: 'passed' });
-    expect(readFileSync(counterPath, 'utf-8')).toBe('2');
+    expect(readFileSync(counterPath, 'utf-8')).toBe('3');
 
     discardStage(getRoute, ws, stage.id);
     ws.watcher.stopWatching();

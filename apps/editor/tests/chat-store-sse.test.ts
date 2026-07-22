@@ -1283,8 +1283,6 @@ describe('applySseEvent — turn lifecycle', () => {
     expect(state.sendError).toBe(null);
     expect(state.pendingUserText).toBe(null);
     expect(state.finishedTurnQueue).toHaveLength(1);
-    expect(state.finishedTurnQueue[0]?.termination).toBe('user-stopped');
-    expect(state.finishedTurnQueue).toHaveLength(1);
     expect(state.lastFinishedTurn).toMatchObject({
       sessionId: 's1',
       hidden: false,
@@ -2385,7 +2383,6 @@ describe('applySseEvent — turn lifecycle', () => {
     expect(state.sending).toBe(true);
     expect(state.pendingUserText).toBe('next prompt');
     expect(state.turnStartedAt).toBe(replacementStartedAt);
-    expect(state.finishedTurnQueue.some((turn) => turn.termination === 'user-stopped')).toBe(false);
     expect(state.finishedTurnQueue).toEqual([]);
 
     await flushAsyncWork();

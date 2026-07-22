@@ -74,6 +74,7 @@ import {
   shouldForkChatYamlResult,
   shouldTrialRunChatPipeline,
 } from './utils/chat-yaml-reconcile';
+import { createChatYamlLifecycleCancellationGuard } from './utils/chat-yaml-lifecycle';
 import {
   hasLocalEditorChanges,
   resolveDirtyDiskChange,
@@ -900,6 +901,12 @@ export function App() {
     let cancelled = false;
     void (async () => {
       let keepYamlLockForRepair = false;
+      let lifecycleCancellationGuard: ReturnType<
+        typeof createChatYamlLifecycleCancellationGuard
+      > | null = null;
+      let hostTrialAborted = false;
+      const discardCancelledStage = async () =>
+        lifecycleCancellationGuard ? lifecycleCancellationGuard.stopIfRequested() : false;
       useChatStore.getState().setReconciling(true);
       try {
         const snapshot = finishedTurn.yamlSnapshotBeforeSend;
@@ -922,10 +929,32 @@ export function App() {
           if (!lockId) throw new Error('The local OpenCode YAML lock lease was lost.');
           const underChatLock = <T,>(op: () => Promise<T>) =>
             withYamlEditLockRequestBypass(lockId, op);
+          useChatStore.getState().beginChatYamlLifecycle({
+            turnId: finishedTurn.id,
+            stageId: snapshot.staging.id,
+            workspaceKey: snapshot.workDir,
+            hostTrialActive: false,
+            cancellationRequested: finishedTurn.termination === 'user-stopped',
+          });
+          lifecycleCancellationGuard = createChatYamlLifecycleCancellationGuard({
+            isCancellationRequested: () => {
+              const active = useChatStore.getState().activeChatYamlLifecycle;
+              return (
+                hostTrialAborted ||
+                (active?.turnId === finishedTurn.id && active.cancellationRequested === true)
+              );
+            },
+            discardStage: () =>
+              underChatLock(() =>
+                api.discardChatYamlStage(snapshot.staging!.id, snapshot.workDir),
+              ).then(() => undefined),
+            clearPostChatAction: () => useChatStore.getState().clearPostChatYamlAction(),
+          });
+          if (await discardCancelledStage()) return;
           const stage = await underChatLock(() =>
             api.listChatYamlStage(snapshot.staging!.id, snapshot.workDir),
           );
-          if (cancelled) return;
+          if (cancelled || (await discardCancelledStage())) return;
           const stagedTarget = detectChatStagedYamlTarget(snapshot, stage.entries);
           if (!stagedTarget) {
             await underChatLock(() =>
@@ -942,7 +971,7 @@ export function App() {
               snapshot.workDir,
             ),
           );
-          if (cancelled) return;
+          if (cancelled || (await discardCancelledStage())) return;
 
           const attemptKey = `${snapshot.staging.id}:${stagedTarget.relativePath}`;
           const attempts = repairAttemptsRef.current.get(attemptKey) ?? 0;
@@ -959,6 +988,7 @@ export function App() {
               status: 'repairing',
               compile,
             });
+            if (await discardCancelledStage()) return;
             try {
               await useChatStore
                 .getState()
@@ -994,17 +1024,25 @@ export function App() {
                 ),
               );
             let trialError: unknown;
-            for (let attempt = 0; attempt < 2 && !trialRun; attempt += 1) {
-              try {
-                trialRun = await trialOnce();
-              } catch (err) {
-                trialError = err;
+            useChatStore.getState().setChatYamlHostTrialActive(finishedTurn.id, true);
+            try {
+              for (let attempt = 0; attempt < 2 && !trialRun; attempt += 1) {
+                if (await discardCancelledStage()) return;
+                try {
+                  trialRun = await trialOnce();
+                } catch (err) {
+                  trialError = err;
+                }
+                if (cancelled || (await discardCancelledStage())) return;
               }
+            } finally {
+              useChatStore.getState().setChatYamlHostTrialActive(finishedTurn.id, false);
             }
             if (!trialRun) {
               throw trialError ?? new Error('Failed to trial-run the staged pipeline.');
             }
-            if (cancelled) return;
+            hostTrialAborted = trialRun.kind === 'aborted';
+            if (cancelled || (await discardCancelledStage())) return;
 
             if (trialRun.kind === 'plan-required' && trialRun.planRequest) {
               const planAttemptKey = `${attemptKey}:${trialRun.planRequest.pipelineHash}`;
@@ -1028,6 +1066,7 @@ export function App() {
                   compile,
                   trial: trialRun,
                 });
+                if (await discardCancelledStage()) return;
                 try {
                   await useChatStore
                     .getState()
@@ -1050,6 +1089,7 @@ export function App() {
             completedRepairAttempts = trialAttempts;
             if (
               trialRun.kind !== 'plan-required' &&
+              trialRun.kind !== 'aborted' &&
               shouldAutoRepairCompileResult(trialRun, trialAttempts, maxAttempts) &&
               finishedSessionVisible
             ) {
@@ -1062,6 +1102,7 @@ export function App() {
                 compile,
                 trial: trialRun,
               });
+              if (await discardCancelledStage()) return;
               try {
                 await useChatStore
                   .getState()
@@ -1091,6 +1132,7 @@ export function App() {
           ) {
             repairAttemptsRef.current.delete(attemptKey);
           }
+          if (await discardCancelledStage()) return;
 
           const targetsStartedPipeline =
             !!snapshot.activePath &&
@@ -1101,6 +1143,7 @@ export function App() {
             targetsStartedPipeline && sameEditorPath(snapshot.activePath, beforeFlush.yamlPath);
           if (userStillOnStartedPipeline) {
             await beforeFlush.flushPendingLocalEdits();
+            if (cancelled || (await discardCancelledStage())) return;
           }
           const editorState = usePipelineStore.getState();
           const pathMoved =
@@ -1149,17 +1192,19 @@ export function App() {
           let finalized: Awaited<ReturnType<typeof api.finalizeChatYamlStage>> | null = null;
           let finalizeError: unknown;
           for (let attempt = 0; attempt < 2 && !finalized; attempt += 1) {
+            if (await discardCancelledStage()) return;
             try {
               finalized = await finalizeOnce();
             } catch (err) {
               finalizeError = err;
             }
+            if (cancelled || (await discardCancelledStage())) return;
           }
           if (!finalized) {
             throw finalizeError ?? new Error('Failed to finalize the staged YAML result.');
           }
           compile = finalized.compile;
-          if (cancelled) return;
+          if (cancelled || (await discardCancelledStage())) return;
           const finalEntry = finalized.entry;
           if (!finalEntry) {
             useChatStore.getState().clearPostChatYamlAction();
@@ -1180,7 +1225,7 @@ export function App() {
           } catch (err) {
             console.warn('[chat] staged result published but pipeline list refresh failed', err);
           }
-          if (cancelled) return;
+          if (cancelled || (await discardCancelledStage())) return;
 
           const current = usePipelineStore.getState();
           const finalStateBelongsOnCanvas =
@@ -1194,9 +1239,11 @@ export function App() {
               await usePipelineStore
                 .getState()
                 .autoSyncAllBindings('chat', { allowDuringYamlEditLock: true });
+              if (cancelled || (await discardCancelledStage())) return;
               const afterSync = usePipelineStore.getState();
               if (afterSync.isDirty || afterSync.layoutDirty) {
                 await afterSync.saveFile({ allowDuringYamlEditLock: true });
+                if (cancelled || (await discardCancelledStage())) return;
               }
             }
           }
@@ -1434,10 +1481,23 @@ export function App() {
         useChatStore.getState().clearPostChatYamlAction();
         recordSessionResult(compile.success ? 'ready' : 'failed');
       } catch (err) {
+        const activeLifecycle = useChatStore.getState().activeChatYamlLifecycle;
+        const stoppedByUser =
+          activeLifecycle?.turnId === finishedTurn.id &&
+          activeLifecycle.cancellationRequested === true;
+        if (stoppedByUser) {
+          try {
+            await discardCancelledStage();
+          } catch (discardErr) {
+            console.warn('[chat] failed to discard user-stopped YAML stage', discardErr);
+          }
+          useChatStore.getState().clearPostChatYamlAction();
+          return;
+        }
         console.error('[chat] post-chat YAML reconcile failed', err);
         const abandonedStage = finishedTurn.yamlSnapshotBeforeSend?.staging;
         const lockId = getLocalYamlEditLockId();
-        if (abandonedStage && lockId) {
+        if (abandonedStage && lockId && !lifecycleCancellationGuard?.cleanupStarted()) {
           try {
             await withYamlEditLockRequestBypass(lockId, () =>
               api.discardChatYamlStage(
@@ -1461,6 +1521,7 @@ export function App() {
           }
         } finally {
           useChatStore.getState().setReconciling(false);
+          useChatStore.getState().completeChatYamlLifecycle(finishedTurn.id);
           if (!cancelled) {
             useChatStore.getState().acknowledgeFinishedTurn(finishedTurn.id);
           }
