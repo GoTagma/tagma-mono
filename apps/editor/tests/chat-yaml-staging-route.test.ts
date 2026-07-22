@@ -812,6 +812,84 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
+  test('cancels only the matching host trial and does not cache the aborted result', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    const counterPath = join(ws.workDir, 'cancel-trial-counter.txt');
+    const script = [
+      `const fs = require('node:fs');`,
+      `const path = ${JSON.stringify(counterPath)};`,
+      `const count = fs.existsSync(path) ? Number(fs.readFileSync(path, 'utf8')) : 0;`,
+      `fs.writeFileSync(path, String(count + 1));`,
+      `if (count === 0) setTimeout(() => {}, 30_000);`,
+    ].join(' ');
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Cancelable Trial Pipeline',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [{ id: 'wait', command: { argv: [process.execPath, '-e', script] } }],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    writePassingTrialPlan(entry.stagedPath, 'main.wait');
+
+    const trialId = 'cancel_trial_1';
+    const firstRes = makeRes();
+    const firstRun = getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(ws, { stageId: stage.id, relativePath: entry.relativePath, trialId }, 'chat-lock'),
+      firstRes,
+    );
+    for (let attempt = 0; attempt < 100 && !existsSync(counterPath); attempt += 1) {
+      await Bun.sleep(10);
+    }
+    expect(existsSync(counterPath)).toBe(true);
+
+    const staleCancelRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run/cancel')(
+      request(ws, { stageId: stage.id, trialId: 'older_trial' }, 'chat-lock'),
+      staleCancelRes,
+    );
+    expect(staleCancelRes.body).toEqual({ cancelled: false });
+
+    const cancelRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run/cancel')(
+      request(ws, { stageId: stage.id, trialId }, 'chat-lock'),
+      cancelRes,
+    );
+    expect(cancelRes.body).toEqual({ cancelled: true });
+    await firstRun;
+    expect(firstRes.body).toMatchObject({ success: false, kind: 'aborted' });
+    expect(ws.chatPipelineTrialAbort).toBeNull();
+
+    const secondRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(ws, { stageId: stage.id, relativePath: entry.relativePath, trialId }, 'chat-lock'),
+      secondRes,
+    );
+    expect(secondRes.body).toMatchObject({ success: true, kind: 'passed' });
+    expect(readFileSync(counterPath, 'utf-8')).toBe('2');
+
+    discardStage(getRoute, ws, stage.id);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
   test('returns bounded redacted evidence, caches identical trials, and invalidates on plan edits', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();

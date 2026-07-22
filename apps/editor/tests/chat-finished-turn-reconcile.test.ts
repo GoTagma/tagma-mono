@@ -7,7 +7,7 @@ import { useChatStore, type ChatFinishedTurn } from '../src/store/chat-store';
 const originalQueue = useChatStore.getState().finishedTurnQueue;
 
 afterEach(() => {
-  useChatStore.setState({ finishedTurnQueue: originalQueue });
+  useChatStore.setState({ finishedTurnQueue: originalQueue, activeChatYamlLifecycle: null });
 });
 
 function finishedTurn(id: string): ChatFinishedTurn {
@@ -16,6 +16,7 @@ function finishedTurn(id: string): ChatFinishedTurn {
     sessionId: 'session-1',
     endedAt: Date.now(),
     hidden: false,
+    termination: 'completed',
     yamlSnapshotBeforeSend: null,
   };
 }
@@ -53,5 +54,37 @@ describe('finished chat turn reconciliation', () => {
   test('wires App reconciliation to the tested queue-head selector', () => {
     const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
     expect(appSource).toContain('const finishedTurn = useChatStore(selectFinishedTurnQueueHead);');
+  });
+
+  test('requests lifecycle cancellation without replacing the queue-head owner', async () => {
+    const head = finishedTurn('head');
+    useChatStore.setState({
+      finishedTurnQueue: [head],
+      activeChatYamlLifecycle: {
+        turnId: head.id,
+        stageId: 'stage-1',
+        workspaceKey: 'C:/repo',
+        hostTrialActive: false,
+        cancellationRequested: false,
+      },
+    });
+
+    const selectedBefore = selectFinishedTurnQueueHead(useChatStore.getState());
+    await useChatStore.getState().requestChatYamlLifecycleCancellation();
+
+    expect(selectFinishedTurnQueueHead(useChatStore.getState())).toBe(selectedBefore);
+    expect(useChatStore.getState().activeChatYamlLifecycle).toMatchObject({
+      turnId: head.id,
+      cancellationRequested: true,
+    });
+  });
+
+  test('wires user-stopped reconciliation through the original effect owner', () => {
+    const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
+    expect(appSource).toContain('finishedTurn.termination');
+    expect(appSource).toContain('user-stopped');
+    expect(appSource).toContain('beginChatYamlLifecycle');
+    expect(appSource).toContain('discardCancelledStage');
+    expect(appSource).toContain('completeChatYamlLifecycle(finishedTurn.id)');
   });
 });

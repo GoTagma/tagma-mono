@@ -1261,7 +1261,7 @@ describe('applySseEvent — message + part state', () => {
 });
 
 describe('applySseEvent — turn lifecycle', () => {
-  test('4. session.error{MessageAbortedError} clears sending without surfacing an error', () => {
+  test('4. session.error{MessageAbortedError} records a user-stopped finished turn without surfacing an error', () => {
     useChatStore.setState({
       currentSessionId: 's1',
       sending: true,
@@ -1282,6 +1282,19 @@ describe('applySseEvent — turn lifecycle', () => {
     expect(state.sending).toBe(false);
     expect(state.sendError).toBe(null);
     expect(state.pendingUserText).toBe(null);
+    expect(state.finishedTurnQueue).toHaveLength(1);
+    expect(state.finishedTurnQueue[0]?.termination).toBe('user-stopped');
+    expect(state.finishedTurnQueue).toHaveLength(1);
+    expect(state.lastFinishedTurn).toMatchObject({
+      sessionId: 's1',
+      hidden: false,
+      termination: 'user-stopped',
+    });
+    expect(state.finishedTurnQueue[0]).toMatchObject({
+      sessionId: 's1',
+      hidden: false,
+      termination: 'user-stopped',
+    });
   });
 
   test('6. session.idle with empty queue runs finishChatTurn', () => {
@@ -2358,6 +2371,7 @@ describe('applySseEvent — turn lifecycle', () => {
     expect(useChatStore.getState().pendingUserText).toBe('next prompt');
     expect(replacementStartedAt).not.toBeNull();
     expect(replacementStartedAt as number).toBeGreaterThan(turnStartedAt);
+    expect(useChatStore.getState().finishedTurnQueue).toEqual([]);
 
     dispatch({
       type: 'session.error',
@@ -2371,6 +2385,8 @@ describe('applySseEvent — turn lifecycle', () => {
     expect(state.sending).toBe(true);
     expect(state.pendingUserText).toBe('next prompt');
     expect(state.turnStartedAt).toBe(replacementStartedAt);
+    expect(state.finishedTurnQueue.some((turn) => turn.termination === 'user-stopped')).toBe(false);
+    expect(state.finishedTurnQueue).toEqual([]);
 
     await flushAsyncWork();
   });

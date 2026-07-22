@@ -17,7 +17,7 @@ import {
 } from '../src/components/chat/chat-pipeline-link';
 import type { ChatYamlSessionResult } from '../src/store/chat-store';
 import type { ActivityEvent, OpencodeThreadEntry } from '../src/api/opencode-chat';
-import { getChatComposerAvailability } from '../src/components/chat/ChatComposer';
+import { ChatComposer, getChatComposerAvailability } from '../src/components/chat/ChatComposer';
 
 const visibleThread: OpencodeThreadEntry = {
   info: { id: 'm1', sessionID: 's1', role: 'assistant' },
@@ -47,6 +47,7 @@ afterEach(() => {
     postChatYamlAction: null,
     sendError: null,
     reconciling: false,
+    activeChatYamlLifecycle: null,
     historyOpen: false,
   } as never);
 });
@@ -88,6 +89,25 @@ describe('ChatPanel export affordance', () => {
       blockedByAnotherChatUpdate: false,
       canSend: true,
     });
+  });
+
+  test('shows Stop while a staged host trial is reconciling', () => {
+    useChatStore.setState({
+      bootstrapStatus: 'ready',
+      model: 'provider/model',
+      sending: false,
+      reconciling: true,
+      activeChatYamlLifecycle: {
+        turnId: 'turn-1',
+        stageId: 'stage-1',
+        workspaceKey: 'C:/repo',
+        hostTrialActive: true,
+        cancellationRequested: false,
+      },
+    });
+
+    const html = renderToStaticMarkup(<ChatComposer />);
+    expect(html).toContain('Stop verification');
   });
 
   test('keeps send blocked for a YAML lease owned outside this window', () => {
