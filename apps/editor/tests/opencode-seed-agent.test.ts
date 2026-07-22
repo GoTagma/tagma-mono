@@ -469,6 +469,24 @@ test('trial-plan tool binds structured edge cases to the final YAML hash', () =>
   expect(() => new Bun.Transpiler({ loader: 'ts' }).transformSync(doc)).not.toThrow();
 });
 
+test('trial-plan tool resolves paths from the host-provided workspace root', () => {
+  const doc = buildTagmaTrialPlanTool();
+
+  expect(doc).toContain('async execute(args, context)');
+  expect(doc).toContain('const root = resolve(context.directory)');
+  expect(doc).toContain('resolvePipelinePath(args.pipeline_path, root)');
+  expect(doc).toContain('path: relative(root, planPath)');
+  expect(doc).not.toContain('process.cwd()');
+});
+
+test('tagma-pipeline agent instructs host trial-plan failure handling for live .tagma safety', () => {
+  const doc = buildTagmaPipelineAgent('Windows');
+
+  expect(doc).toContain('If `tagma_trial_plan` fails');
+  expect(doc).toContain('do not use symlinks, junctions, copies, or writes to live `.tagma`');
+  expect(doc).toContain('briefly report the host/tool error and end the physical turn');
+});
+
 test('tagma-pipeline agent prefers host-native commands before Python glue', () => {
   const doc = buildTagmaPipelineAgent('Windows');
 

@@ -271,7 +271,7 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
     if (panDidDragRef.current) return;
     setSelectedTaskId(null);
     setSelectedTrackId(null);
-  }, []);
+  }, [panDidDragRef]);
 
   const selectedTask = useMemo(() => {
     if (!selectedTaskId) return null;
