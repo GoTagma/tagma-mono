@@ -87,7 +87,17 @@ function headerValue(headers: HeadersInit | undefined, name: string): string | n
 }
 
 function endpointBase(url: string, suffix: string): string | null {
+  const parsed = parseAbsoluteUrl(url);
+  if (parsed?.pathname === suffix) return parsed.origin;
   return url.endsWith(suffix) ? url.slice(0, -suffix.length) : null;
+}
+
+function parseAbsoluteUrl(url: string): URL | null {
+  try {
+    return new URL(url);
+  } catch {
+    return null;
+  }
 }
 
 async function jsonRequestBody(
@@ -273,16 +283,16 @@ beforeAll(() => {
     if (endpointBase(url, '/agent')) {
       return Promise.resolve(jsonResponse([]));
     }
-    const sessionUrl = new URL(url);
-    const sessionBase = sessionUrl.pathname === '/session' ? sessionUrl.origin : null;
+    const sessionUrl = parseAbsoluteUrl(url);
+    const sessionBase = sessionUrl?.pathname === '/session' ? sessionUrl.origin : null;
     if (sessionBase && method === 'GET') {
       sessionListRequests.push(url);
       return Promise.resolve(jsonResponse(sessionListsByBaseUrl.get(sessionBase) ?? []));
     }
-    if (method === 'PATCH' && /\/session\/[^/]+$/.test(new URL(url).pathname)) {
+    if (method === 'PATCH' && sessionUrl && /\/session\/[^/]+$/.test(sessionUrl.pathname)) {
       const body = await jsonRequestBody(request, init);
       sessionUpdateRequests.push({ url, body });
-      const id = new URL(url).pathname.split('/').pop() ?? 'updated-session';
+      const id = sessionUrl.pathname.split('/').pop() ?? 'updated-session';
       return Promise.resolve(jsonResponse({ id, metadata: body.metadata }));
     }
     for (const baseUrl of workspaceBaseUrls.values()) {
@@ -579,38 +589,47 @@ describe('chat model persistence', () => {
     sessionListsByBaseUrl.set(baseUrl, [
       {
         id: 'tagma-desktop',
-        directory,
+        directory: 'c:\\HISTORY-REPO\\.tagma\\',
         metadata: {
-          tagma: { schema: 1, source: 'desktop-chat', workspacePath: repo },
+          tagma: {
+            schema: 1,
+            source: 'desktop-chat',
+            workspacePath: 'c:\\HISTORY-REPO\\',
+          },
         },
-      } as Session,
+      } as unknown as Session,
       {
         id: 'tagma-bot',
         directory,
         metadata: {
           tagma: { schema: 1, source: 'bot-bridge', workspacePath: repo },
         },
-      } as Session,
-      { id: 'legacy-tagma', directory } as Session,
+      } as unknown as Session,
+      { id: 'legacy-tagma', directory } as unknown as Session,
       {
         id: 'external-cli',
         directory: repo,
         title: 'Saved in the OpenCode CLI',
-      } as Session,
+      } as unknown as Session,
       {
         id: 'other-workspace',
         directory,
         metadata: {
           tagma: { schema: 1, source: 'desktop-chat', workspacePath: otherRepo },
         },
-      } as Session,
+      } as unknown as Session,
       {
         id: 'temporary-export',
         directory,
         metadata: {
           tagma: { schema: 1, source: 'platform-export' },
         },
-      } as Session,
+      } as unknown as Session,
+      {
+        id: 'malformed-tagma-marker',
+        directory,
+        metadata: { tagma: null },
+      } as unknown as Session,
       {
         id: 'child-session',
         directory,
@@ -618,7 +637,7 @@ describe('chat model persistence', () => {
         metadata: {
           tagma: { schema: 1, source: 'desktop-chat', workspacePath: repo },
         },
-      } as Session,
+      } as unknown as Session,
     ]);
 
     ensureResponsesByWorkspace.set(repo, Promise.resolve(jsonResponse({ baseUrl, directory })));

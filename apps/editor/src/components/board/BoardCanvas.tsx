@@ -1755,7 +1755,7 @@ export function BoardCanvas({
         <div
           aria-hidden
           data-canvas-bottom-spacer
-          className=pointer-events-none
+          className="pointer-events-none"
           style={{ height: canvasBottomSpacerHeight }}
         />
       </div>

@@ -72,6 +72,12 @@
 
 ## Managed OpenCode Execution
 
+- Tagma may share OpenCode's user-level data and session database with the standalone CLI.
+  Pin browser SDK clients and history listing to the server-returned canonical
+  `<workspace>/.tagma` directory, then defensively require an exact normalized
+  `session.directory` match. Treat Tagma metadata as defense in depth: preserve untagged
+  same-directory legacy chats, exclude foreign-workspace and platform-export markers, and admit
+  SSE-created history rows only for marked desktop-chat or bot-bridge sessions.
 - Pipeline prompt tasks using the built-in `opencode` driver must resolve the executable through
   `resolveOpencodeBinary()`, using the same user-runtime, bundled, dev-staged, then PATH precedence
   as Chat. Do not let editor-owned AI runs silently select a different global OpenCode version.

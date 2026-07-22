@@ -984,6 +984,46 @@ describe('applySseEvent — message + part state', () => {
     expect(useChatStore.getState().sessions).toEqual([]);
   });
 
+  test('2c.2 legacy same-directory sessions can update but cannot be created by SSE', () => {
+    useChatStore.setState({
+      currentSessionId: 'legacy-tagma',
+      sessions: [
+        {
+          id: 'legacy-tagma',
+          directory: 'C:/repo/.tagma',
+          title: 'Legacy title',
+        },
+      ],
+      messages: [],
+    } as never);
+
+    dispatch({
+      type: 'session.updated',
+      properties: {
+        info: {
+          id: 'legacy-tagma',
+          directory: 'c:\\REPO\\.tagma\\',
+          title: 'Updated legacy title',
+        },
+      },
+    });
+    dispatch({
+      type: 'session.created',
+      properties: {
+        info: {
+          id: 'external-same-directory',
+          directory: 'C:/repo/.tagma',
+          title: 'Created outside Tagma',
+        },
+      },
+    });
+
+    expect(useChatStore.getState().sessions.map((session) => session.id)).toEqual([
+      'legacy-tagma',
+    ]);
+    expect(useChatStore.getState().sessions[0]?.title).toBe('Updated legacy title');
+  });
+
   test('2d. current bot session starts a live remote turn on the next bot message', () => {
     const now = Date.now();
     useChatStore.setState({

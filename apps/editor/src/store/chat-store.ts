@@ -2017,6 +2017,15 @@ function isTagmaChatSessionEvent(session: Session): boolean {
   return !tagma.workspacePath || sameSessionPath(tagma.workspacePath, getOpencodeWorkspaceKey());
 }
 
+function isKnownSameDirectorySessionUpdate(session: Session, sessions: Session[]): boolean {
+  const fields = session as Session & SessionOwnershipFields;
+  if (fields.parentID || hasTagmaSessionMarker(fields.metadata)) return false;
+  const existing = sessions.find((candidate) => candidate.id === session.id) as
+    | (Session & SessionOwnershipFields)
+    | undefined;
+  return !!existing && sameSessionPath(fields.directory, existing.directory);
+}
+
 function userVisibleSessions(
   sessions: Session[],
   directory: string | null,
@@ -3457,7 +3466,12 @@ export function applySseEvent(event: OpencodeEvent, get: () => ChatStore, set: C
     }
     case 'session.updated': {
       const info = event.properties.info;
-      if (!isTagmaChatSessionEvent(info)) return;
+      if (
+        !isTagmaChatSessionEvent(info) &&
+        !isKnownSameDirectorySessionUpdate(info, state.sessions)
+      ) {
+        return;
+      }
       set({ sessions: upsertSession(state.sessions, info) });
       return;
     }
