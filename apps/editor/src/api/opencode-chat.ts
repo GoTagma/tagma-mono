@@ -574,9 +574,7 @@ export async function restartOpencodeForConfig(
   bootstraps.set(
     key,
     Promise.resolve({
-      client: createOpencodeClient(
-        buildOpencodeClientConfig(body.baseUrl, authHeader, directory),
-      ),
+      client: createOpencodeClient(buildOpencodeClientConfig(body.baseUrl, authHeader, directory)),
       v2Client: createOpencodeV2Client(
         buildOpencodeV2ClientConfig(body.baseUrl, authHeader, directory),
       ),

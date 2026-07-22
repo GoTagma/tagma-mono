@@ -655,9 +655,9 @@ describe('chat model persistence', () => {
       'tagma-bot',
       'legacy-tagma',
     ]);
-    expect(new URL(sessionListRequests.at(-1) ?? 'http://missing.test').searchParams.get('directory')).toBe(
-      directory,
-    );
+    expect(
+      new URL(sessionListRequests.at(-1) ?? 'http://missing.test').searchParams.get('directory'),
+    ).toBe(directory);
   });
 
   test('maps v2 provider/model catalog into the existing picker provider shape', () => {

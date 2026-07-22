@@ -59,7 +59,9 @@ describe('OpenCode session metadata', () => {
       workspacePath: 'C:/repo',
     });
     expect(parseTagmaSessionMetadata({ tagma: { schema: 1, source: 'external-cli' } })).toBeNull();
-    expect(parseTagmaSessionMetadata({ tagma: { schema: '1', source: 'desktop-chat' } })).toBeNull();
+    expect(
+      parseTagmaSessionMetadata({ tagma: { schema: '1', source: 'desktop-chat' } }),
+    ).toBeNull();
     expect(hasTagmaSessionMarker({ tagma: null })).toBe(true);
     expect(hasTagmaSessionMarker({ other: true })).toBe(false);
   });

@@ -2021,8 +2021,7 @@ function isKnownSameDirectorySessionUpdate(session: Session, sessions: Session[]
   const fields = session as Session & SessionOwnershipFields;
   if (fields.parentID || hasTagmaSessionMarker(fields.metadata)) return false;
   const existing = sessions.find((candidate) => candidate.id === session.id) as
-    | (Session & SessionOwnershipFields)
-    | undefined;
+    (Session & SessionOwnershipFields) | undefined;
   return !!existing && sameSessionPath(fields.directory, existing.directory);
 }
 

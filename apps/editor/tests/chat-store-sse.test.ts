@@ -1018,9 +1018,7 @@ describe('applySseEvent — message + part state', () => {
       },
     });
 
-    expect(useChatStore.getState().sessions.map((session) => session.id)).toEqual([
-      'legacy-tagma',
-    ]);
+    expect(useChatStore.getState().sessions.map((session) => session.id)).toEqual(['legacy-tagma']);
     expect(useChatStore.getState().sessions[0]?.title).toBe('Updated legacy title');
   });
 
