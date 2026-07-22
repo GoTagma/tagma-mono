@@ -102,11 +102,23 @@ export function getChatComposerAvailability(input: {
   };
 }
 
+export function getChatComposerStopMode(input: {
+  sending: boolean;
+  hasActiveChatYamlLifecycle: boolean;
+}): 'generation' | 'verification' | null {
+  if (input.sending) return 'generation';
+  return input.hasActiveChatYamlLifecycle ? 'verification' : null;
+}
+
 export function ChatComposer() {
   const send = useChatStore((s) => s.send);
   const abort = useChatStore((s) => s.abort);
+  const requestChatYamlLifecycleCancellation = useChatStore(
+    (s) => s.requestChatYamlLifecycleCancellation,
+  );
   const sending = useChatStore((s) => s.sending);
   const reconciling = useChatStore((s) => s.reconciling);
+  const activeChatYamlLifecycle = useChatStore((s) => s.activeChatYamlLifecycle);
   const flushing = useChatStore((s) => s.flushing);
   const model = useChatStore((s) => s.model);
   const ready = useChatStore((s) => s.bootstrapStatus === 'ready');
@@ -139,6 +151,10 @@ export function ChatComposer() {
     flushing,
     yamlEditLocked,
     yamlEditLockLocal,
+  });
+  const stopMode = getChatComposerStopMode({
+    sending,
+    hasActiveChatYamlLifecycle: activeChatYamlLifecycle !== null,
   });
 
   const submit = () => {
@@ -200,11 +216,13 @@ export function ChatComposer() {
         >
           <Send size={14} />
         </button>
-        {sending && (
+        {stopMode && (
           <button
             type="button"
             onClick={() => {
-              abort().catch(() => {
+              const stop =
+                stopMode === 'generation' ? abort : requestChatYamlLifecycleCancellation;
+              stop().catch(() => {
                 /* already surfaced via sendError */
               });
             }}

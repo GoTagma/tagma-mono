@@ -69,6 +69,7 @@ export type ChatPipelineTrialRunKind =
   | 'compile-failed'
   | 'preflight-failed'
   | 'setup-failed'
+  | 'aborted'
   | 'timed-out'
   | 'busy';
 
@@ -139,6 +140,22 @@ interface CachedTrialResult {
 
 const inFlightByCachePath = new Map<string, Promise<ChatPipelineTrialRunResult>>();
 const activeTrialByWorkspace = new Map<string, string>();
+const activeTrialIdentityByWorkspace = new Map<
+  string,
+  { stageId: string; trialId: string; controller: AbortController }
+>();
+
+export function cancelChatPipelineTrial(
+  ws: WorkspaceState,
+  input: { stageId: string; trialId: string },
+): boolean {
+  const active = activeTrialIdentityByWorkspace.get(ws.key);
+  if (!active || active.stageId !== input.stageId || active.trialId !== input.trialId) {
+    return false;
+  }
+  active.controller.abort('user stopped chat trial run');
+  return true;
+}
 
 function validateTrialId(value: string): string {
   const trialId = value.trim();
@@ -247,6 +264,19 @@ function resultForSetupFailure(
     omittedTaskCount: 0,
     tasks: [],
     cases: [],
+  };
+}
+
+function resultForAborted(
+  result: ChatPipelineTrialRunResult,
+  startedAt: number,
+): ChatPipelineTrialRunResult {
+  return {
+    ...result,
+    success: false,
+    kind: 'aborted',
+    summary: boundedTrialText('Trial run stopped by the user.'),
+    durationMs: Math.max(0, Date.now() - startedAt),
   };
 }
 
@@ -830,6 +860,8 @@ async function executeTrial(
   stage: ReturnType<typeof listChatYamlStage>,
   entry: ReturnType<typeof listChatYamlStage>['entries'][number],
   plan: ChatPipelineTrialPlan,
+  controller: AbortController,
+  abortState: { timedOut: boolean },
 ): Promise<ChatPipelineTrialRunResult> {
   const startedAt = Date.now();
   let pipelineConfig;
@@ -918,14 +950,6 @@ async function executeTrial(
       reason: 'Chat trial runs never auto-approve manual safety gates.',
     });
   });
-  const controller = new AbortController();
-  ws.chatPipelineTrialAbort = controller;
-  let timedOut = false;
-  const timeout = setTimeout(() => {
-    timedOut = true;
-    controller.abort('chat trial run timeout');
-  }, CHAT_PIPELINE_TRIAL_TIMEOUT_MS);
-  timeout.unref?.();
   const runId = generateRunId();
 
   try {
@@ -968,7 +992,7 @@ async function executeTrial(
     }
     const success =
       baseline.success &&
-      !timedOut &&
+      !abortState.timedOut &&
       cases.length === plan.cases.length &&
       cases.every((item) => item.success);
     const allVisibleTasks = [
@@ -984,12 +1008,12 @@ async function executeTrial(
     return {
       version: TRIAL_CACHE_VERSION,
       success,
-      kind: timedOut ? 'timed-out' : success ? 'passed' : 'failed',
+      kind: abortState.timedOut ? 'timed-out' : success ? 'passed' : 'failed',
       ran: true,
       runId,
       summary: buildPlannedTrialSummary(
         baseline.success,
-        timedOut,
+        abortState.timedOut,
         baselineEvidence.tasks,
         baselineEvidence.omittedTaskCount,
         baselineEvidence.countText,
@@ -1006,11 +1030,11 @@ async function executeTrial(
     return {
       version: TRIAL_CACHE_VERSION,
       success: false,
-      kind: timedOut ? 'timed-out' : 'failed',
+      kind: abortState.timedOut ? 'timed-out' : 'failed',
       ran: true,
       runId,
       summary: boundedTrialText(
-        timedOut
+        abortState.timedOut
           ? `Trial run timed out after ${CHAT_PIPELINE_TRIAL_TIMEOUT_MS}ms.`
           : `Trial run crashed: ${errorMessage(err)}`,
       ),
@@ -1022,8 +1046,6 @@ async function executeTrial(
       cases: [],
     };
   } finally {
-    clearTimeout(timeout);
-    if (ws.chatPipelineTrialAbort === controller) ws.chatPipelineTrialAbort = null;
     unsubscribeApproval();
     approvalGateway.abortAll('chat trial run finished');
   }
@@ -1072,14 +1094,33 @@ export async function trialRunChatYamlStage(
     );
   }
 
+  const controller = new AbortController();
+  const activeIdentity = { stageId: input.stageId, trialId, controller };
+  const abortState = { timedOut: false };
+  const timeout = setTimeout(() => {
+    abortState.timedOut = true;
+    controller.abort('chat trial run timeout');
+  }, CHAT_PIPELINE_TRIAL_TIMEOUT_MS);
+  timeout.unref?.();
+  activeTrialByWorkspace.set(ws.key, cachePath);
+  activeTrialIdentityByWorkspace.set(ws.key, activeIdentity);
+  ws.chatPipelineTrialAbort = controller;
+
   const promise = (async () => {
-    activeTrialByWorkspace.set(ws.key, cachePath);
     try {
-      const result = await executeTrial(ws, stage, entry, planRead.plan);
-      writeCachedTrial(cachePath, verificationHash, result);
+      let result = await executeTrial(ws, stage, entry, planRead.plan, controller, abortState);
+      if (controller.signal.aborted && !abortState.timedOut) {
+        result = resultForAborted(result, startedAt);
+      }
+      if (result.kind !== 'aborted') writeCachedTrial(cachePath, verificationHash, result);
       return result;
     } finally {
+      clearTimeout(timeout);
       if (activeTrialByWorkspace.get(ws.key) === cachePath) activeTrialByWorkspace.delete(ws.key);
+      if (activeTrialIdentityByWorkspace.get(ws.key) === activeIdentity) {
+        activeTrialIdentityByWorkspace.delete(ws.key);
+      }
+      if (ws.chatPipelineTrialAbort === controller) ws.chatPipelineTrialAbort = null;
       inFlightByCachePath.delete(cachePath);
     }
   })();

@@ -8,7 +8,10 @@ import {
   listChatYamlStage,
   type ChatYamlStageFinalizeInput,
 } from '../chat-yaml-staging.js';
-import { trialRunChatYamlStage } from '../chat-pipeline-trial-run.js';
+import {
+  cancelChatPipelineTrial,
+  trialRunChatYamlStage,
+} from '../chat-pipeline-trial-run.js';
 import { errorMessage } from '../path-utils.js';
 import { requireWorkspace } from '../require-workspace.js';
 import {
@@ -208,6 +211,24 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
     } catch (err) {
       return respondStageError(res, err);
     }
+  });
+
+  app.post('/api/workspace/chat-yaml-stage/trial-run/cancel', (req, res) => {
+    const ws = requireWorkspace(req, res);
+    if (!ws || !requireChatYamlStageLock(req, res, ws)) return;
+    const body = (req.body ?? {}) as { stageId?: unknown; trialId?: unknown };
+    if (typeof body.stageId !== 'string' || !body.stageId.trim()) {
+      return res.status(400).json({ error: 'stageId is required.' });
+    }
+    if (typeof body.trialId !== 'string' || !body.trialId.trim()) {
+      return res.status(400).json({ error: 'trialId is required.' });
+    }
+    return res.json({
+      cancelled: cancelChatPipelineTrial(ws, {
+        stageId: body.stageId.trim(),
+        trialId: body.trialId.trim(),
+      }),
+    });
   });
 
   app.post('/api/workspace/chat-yaml-stage/finalize', (req, res) => {

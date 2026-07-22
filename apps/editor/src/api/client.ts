@@ -153,6 +153,7 @@ export type ChatPipelineTrialRunKind =
   | 'compile-failed'
   | 'preflight-failed'
   | 'setup-failed'
+  | 'aborted'
   | 'timed-out'
   | 'busy';
 
@@ -1719,6 +1720,20 @@ export const api = {
       {
         method: 'POST',
         body: jsonBody({ stageId, relativePath, trialId }),
+      },
+      workspaceKeyOverride,
+    ),
+
+  cancelChatYamlStageTrial: (
+    stageId: string,
+    trialId: string,
+    workspaceKeyOverride?: string | null,
+  ) =>
+    request<{ cancelled: boolean }>(
+      '/workspace/chat-yaml-stage/trial-run/cancel',
+      {
+        method: 'POST',
+        body: jsonBody({ stageId, trialId }),
       },
       workspaceKeyOverride,
     ),

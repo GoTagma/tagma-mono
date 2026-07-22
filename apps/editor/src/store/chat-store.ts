@@ -180,7 +180,16 @@ export interface ChatFinishedTurn {
   sessionId: string | null;
   endedAt: number;
   hidden: boolean;
+  termination: 'completed' | 'user-stopped';
   yamlSnapshotBeforeSend: ChatYamlSnapshot | null;
+}
+
+export interface ActiveChatYamlLifecycle {
+  turnId: string;
+  stageId: string;
+  workspaceKey: string | null;
+  hostTrialActive: boolean;
+  cancellationRequested: boolean;
 }
 
 export type ChatYamlRepairEvidence =
@@ -259,6 +268,11 @@ interface ChatStore {
   sending: boolean;
   reconciling: boolean;
   setReconciling: (value: boolean) => void;
+  activeChatYamlLifecycle: ActiveChatYamlLifecycle | null;
+  beginChatYamlLifecycle: (lifecycle: ActiveChatYamlLifecycle) => void;
+  setChatYamlHostTrialActive: (turnId: string, active: boolean) => void;
+  requestChatYamlLifecycleCancellation: () => Promise<void>;
+  completeChatYamlLifecycle: (turnId: string) => void;
   /**
    * Text the user just submitted, rendered as an optimistic user bubble while
    * the server is still processing the prompt. Without this, "…thinking"
@@ -1638,7 +1652,12 @@ function dispatchNextQueuedPrompt(get: () => ChatStore, set: ChatSet): boolean {
   return true;
 }
 
-function finishChatTurn(set: ChatSet, patch: Partial<ChatStore> = {}, force = false): void {
+function finishChatTurn(
+  set: ChatSet,
+  patch: Partial<ChatStore> = {},
+  force = false,
+  termination: ChatFinishedTurn['termination'] = 'completed',
+): void {
   clearTurnWatchdog();
   clearSseIdleTimer();
   sseLastEventAt = null;
@@ -1657,6 +1676,7 @@ function finishChatTurn(set: ChatSet, patch: Partial<ChatStore> = {}, force = fa
       sessionId: prev.currentSessionId,
       endedAt,
       hidden: false,
+      termination,
       yamlSnapshotBeforeSend: prev.yamlSnapshotBeforeSend,
     });
     return {
@@ -2328,6 +2348,7 @@ function finishHiddenSession(
       sessionId,
       endedAt,
       hidden: true,
+      termination: 'completed',
       yamlSnapshotBeforeSend: runtime.yamlSnapshotBeforeSend,
     });
     const next = finishSessionRuntime(runtime);
@@ -2686,7 +2707,7 @@ async function forceStopHungTurn(
   activeAbortAck = null;
   if (!get().sending) return;
   if (dispatchNextQueuedPrompt(get, set)) return;
-  finishChatTurn(set);
+  finishChatTurn(set, {}, false, 'user-stopped');
 }
 
 async function promptOpencode(
@@ -3389,7 +3410,7 @@ export function applySseEvent(event: OpencodeEvent, get: () => ChatStore, set: C
           trackedAbortAck = true;
         }
         if (dispatchNextQueuedPrompt(get, set)) return;
-        finishChatTurn(set);
+        finishChatTurn(set, {}, false, 'user-stopped');
         if (trackedAbortAck) activeAbortAck = null;
         return;
       }
@@ -3645,6 +3666,51 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   sending: false,
   reconciling: false,
   setReconciling: (value) => set({ reconciling: value }),
+  activeChatYamlLifecycle: null,
+  beginChatYamlLifecycle: (lifecycle) => set({ activeChatYamlLifecycle: lifecycle }),
+  setChatYamlHostTrialActive: (turnId, active) =>
+    set((prev) =>
+      prev.activeChatYamlLifecycle?.turnId === turnId
+        ? {
+            activeChatYamlLifecycle: {
+              ...prev.activeChatYamlLifecycle,
+              hostTrialActive: active,
+            },
+          }
+        : {},
+    ),
+  requestChatYamlLifecycleCancellation: async () => {
+    const active = get().activeChatYamlLifecycle;
+    if (!active) return;
+    set((prev) =>
+      prev.activeChatYamlLifecycle?.turnId === active.turnId
+        ? {
+            activeChatYamlLifecycle: {
+              ...prev.activeChatYamlLifecycle,
+              cancellationRequested: true,
+            },
+          }
+        : {},
+    );
+    if (!active.hostTrialActive) return;
+    try {
+      const lease = getLocalChatYamlEditLockLeaseForWorkspace(active.workspaceKey);
+      if (!lease) throw new Error('The local OpenCode YAML lock lease was lost.');
+      await withYamlEditLockRequestBypass(lease.id, () =>
+        api.cancelChatYamlStageTrial(active.stageId, active.turnId, active.workspaceKey),
+      );
+    } catch (err) {
+      const message = `Could not stop pipeline verification: ${describeError(err)}`;
+      set({ sendError: message });
+      throw err instanceof Error ? err : new Error(message);
+    }
+  },
+  completeChatYamlLifecycle: (turnId) =>
+    set((prev) =>
+      prev.activeChatYamlLifecycle?.turnId === turnId
+        ? { activeChatYamlLifecycle: null }
+        : {},
+    ),
   pendingUserText: null,
   queuedMessages: [],
   flushing: false,
