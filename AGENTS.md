@@ -23,6 +23,8 @@ Do not amend the same commit to include these files after naming them with the c
 - `bun run check:deps` must compare every workspace package's path, name, and version with its
   `bun.lock` workspace entry. A successful frozen install alone does not prove that Bun's
   workspace metadata is current.
+- Repository version commands must refresh the root `bun.lock` after changing workspace package
+  versions. Dry runs must remain non-mutating, and CI dependency checks must remain read-only.
 - Desktop release finalization must refresh the root `bun.lock` after applying the released
   `apps/electron/package.json`, run `bun run check:deps`, and commit both files atomically.
 

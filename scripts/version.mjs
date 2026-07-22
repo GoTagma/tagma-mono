@@ -12,6 +12,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { refreshBunLock } from './lib/version-lock.mjs';
+
 const PACKAGES = [
   { alias: 'types', path: 'packages/types/package.json' },
   { alias: 'core', path: 'packages/core/package.json' },
@@ -48,7 +50,9 @@ function usage() {
   console.error('Package aliases:');
   for (const pkg of loadPackages()) {
     const aliases = [
-      ...new Set(PACKAGES.filter((spec) => spec.path === pkg.relativePath).map((spec) => spec.alias)),
+      ...new Set(
+        PACKAGES.filter((spec) => spec.path === pkg.relativePath).map((spec) => spec.alias),
+      ),
     ];
     console.error(`  ${aliases.join(', ').padEnd(34)} ${pkg.json.name}`);
   }
@@ -69,7 +73,10 @@ function bumpVersion(current, bump) {
 }
 
 function normalizeTarget(value) {
-  return value.replaceAll('\\', '/').replace(/\/package\.json$/, '').toLowerCase();
+  return value
+    .replaceAll('\\', '/')
+    .replace(/\/package\.json$/, '')
+    .toLowerCase();
 }
 
 function loadPackages() {
@@ -160,6 +167,17 @@ if (!dryRun) {
   for (const change of changes) {
     change.json.version = change.next;
     writeFileSync(change.path, JSON.stringify(change.json, null, 2) + '\n');
+  }
+
+  console.log('Refreshing bun.lock...');
+  try {
+    refreshBunLock({ cwd: repoRoot });
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    console.error(
+      'Package versions were updated, but bun.lock was not. Fix the error and run `bun install --lockfile-only --ignore-scripts`.',
+    );
+    process.exit(1);
   }
 }
 

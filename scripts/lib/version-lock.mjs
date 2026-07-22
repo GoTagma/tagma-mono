@@ -6,11 +6,7 @@ function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function refreshBunLock({
-  cwd,
-  platform = process.platform,
-  spawnSyncFn = spawnSync,
-} = {}) {
+export function refreshBunLock({ cwd, platform = process.platform, spawnSyncFn = spawnSync } = {}) {
   if (!cwd) {
     throw new TypeError('refreshBunLock requires a repository directory');
   }

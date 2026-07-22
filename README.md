@@ -239,7 +239,7 @@ bun run version all patch      # +0.0.1 on each public package's current version
 bun run version @tagma/sdk 0.8.0
 ```
 
-The version script only updates package `version` fields; commit and push the change yourself. The CI workflow keys off version diffs in `packages/*/package.json`, not on git tags.
+The version script updates package `version` fields and then refreshes the root `bun.lock` with `bun install --lockfile-only --ignore-scripts`. A `--dry-run` updates neither file. Commit and push the package manifest and lockfile changes together. The CI workflow keys off version diffs in `packages/*/package.json`, not on git tags.
 
 ### 2. Push To `main`
 
