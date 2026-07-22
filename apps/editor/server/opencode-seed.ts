@@ -554,11 +554,13 @@ tools:
   skill: true
   tagma_yaml_skeleton: true
   tagma_placement_plan: true
+  tagma_trial_plan: true
 permission:
   webfetch: allow
   websearch: allow
   tagma_yaml_skeleton: allow
   tagma_placement_plan: allow
+  tagma_trial_plan: allow
   task:
     "*": "deny"
     tagma-python-tools: "${pythonToolsPermission}"
@@ -581,6 +583,7 @@ You are the Tagma YAML assistant. Your cwd is the active pipeline root: normally
 - Debug, inspect, explain, review, and why/how questions are read-only; "what is wrong?" and "how can I fix this?" do not authorize implementation.
 - Without explicit mutation authorization, do not write, create, rename, or delete anything. Return \`ROUTE_MISMATCH: pipeline_diagnosis\` and include a concise read-only answer when the available evidence supports one, or \`ROUTE_MISMATCH: general_discussion\` for a conceptual product question.
 - Apply this gate before target selection or editing. \`<chat-staging>\` supplies containment, not mutation authorization.
+- A host-authored \`<tagma-internal>\` trial-plan request preserves the same authorized logical turn, but authorizes only calling \`tagma_trial_plan\`; do not edit YAML during that planning continuation.
 
 ## Read / Write Boundary
 
@@ -674,22 +677,31 @@ When implementation details are unspecified, make the smallest safe, reversible 
 
 Ask only when the missing choice would authorize an external side effect, paid service, credential use, destructive action, unavailable plugin, or materially different product behavior. If a requested plugin is absent, use an installed/native alternative when one genuinely satisfies the request; otherwise report that precise limitation after creating every still-valid part.
 
+## Behavior And Edge-Case Plan
+
+Before writing, turn the request into a compact behavior contract: input classes and cardinality, output identity and naming, preservation rules, failure behavior, and observable acceptance checks. Do not design only for the happy-path example.
+
+Explicitly decide whether each applies: multiple inputs, duplicate input names in different folders, multi-paragraph or multiline content, output collisions, repeated runs, empty content, and special characters/Unicode. In particular, never let one fixed output filename silently overwrite results from distinct inputs or runs, and never assume a text file is one line or one paragraph unless the user required that restriction.
+
+After the final YAML compile succeeds, call \`tagma_trial_plan\` with targeted isolated cases and host-checkable expectations. A covered dimension must name its case; a genuinely irrelevant dimension must say why. Record a blocking finding when the current implementation contradicts the behavior contract instead of inventing a passing case. The plan is transient trial evidence, not a live pipeline artifact.
+
 ## Operating Loop
 
 1. Read \`<editor-context>\`; classify as fill current manual-New draft, edit current, edit named, or create new. An explicit empty workspace inventory is authoritative; do not rediscover editor runtime folders.
 2. Read only the target artifacts and command/path evidence needed for the requested change.
-3. Design the smallest runnable graph in this model: tasks, dependencies, prompt-vs-command split, trigger, inputs/outputs, permissions, layout, and requirements impact.
+3. Write the behavior and edge-case contract, then design the smallest runnable graph in this model: tasks, dependencies, prompt-vs-command split, trigger, inputs/outputs, permissions, layout, and requirements impact.
 4. For **create new**, write the manifest, call \`tagma_yaml_skeleton\`, write the YAML, and fill all selected sections yourself.
 5. For **edits**, resolve the target \`<pipeline>\` entry from the user and inventory, read its manifest first, and patch only selected sections plus forced dependents.
 6. Keep YAML, layout, requirements, and any host-native helper synchronized. The editor regenerates the manifest from YAML.
 7. Read \`.compile.log\` after every YAML write. Repair until \`success: true\` or only explicitly accepted warnings.
-8. Run the Self-Review checklist once, then answer with files changed, assumptions, run instructions, and genuine limitations.
+8. Call \`tagma_trial_plan\` only after the final YAML compile succeeds; include executable fixtures and assertions for applicable boundary classes.
+9. Run the Self-Review checklist once, then answer with files changed, assumptions, run instructions, and genuine limitations.
 
 Success is a pipeline the editor can compile and the user can plausibly run, not merely valid-looking YAML.
 
 ## Trial Run
 
-Host performs a bounded trial run before release when enabled in Editor Settings. Never claim it passed without host evidence. \`<tagma-internal>\` trial-run failure evidence is the same authorized logical turn: repair and recompile. Never remove or weaken a manual approval or safety boundary to pass; preserve and report prerequisites.
+Host first requires the hash-bound trial plan, then performs the existing real-workspace baseline plus its targeted cases in isolated workspaces when enabled in Editor Settings. Never claim it passed without host evidence. A \`<tagma-internal>\` plan request is read-only except for \`tagma_trial_plan\`; trial-run failure evidence is the same authorized logical turn: repair and recompile. Never remove or weaken a manual approval or safety boundary to pass; preserve and report prerequisites.
 
 ## Self-Review
 
@@ -1356,6 +1368,140 @@ export default tool({
   },
   async execute(args) {
     return JSON.stringify(computePlacement(args), null, 2);
+  },
+});
+`;
+}
+
+export function buildTagmaTrialPlanTool(): string {
+  return `import { createHash, randomUUID } from "node:crypto";
+import { lstatSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { basename, dirname, relative, resolve } from "node:path";
+import { tool } from "@opencode-ai/plugin";
+
+const REQUIRED_COVERAGE = [
+  "multiple-inputs",
+  "duplicate-input-names",
+  "multiline-content",
+  "output-collision",
+  "repeat-run",
+  "empty-content",
+  "special-characters",
+];
+
+function resolvePipelinePath(input) {
+  const normalized = String(input || "").trim().replace(/\\\\/g, "/").replace(/^\\.\\//, "");
+  const parts = normalized.split("/");
+  if (parts.length !== 2 || parts.some((part) => !part || part === "." || part === "..")) {
+    throw new Error("pipeline_path must be <stem>/<stem>.yaml inside the active pipeline root");
+  }
+  const yamlName = parts[1];
+  const stem = yamlName.replace(/\\.ya?ml$/i, "");
+  if (!/\\.ya?ml$/i.test(yamlName) || parts[0] !== stem) {
+    throw new Error("pipeline_path folder and YAML stem must match");
+  }
+  const root = resolve(process.cwd());
+  const yamlPath = resolve(root, ...parts);
+  const rel = relative(root, yamlPath);
+  if (!rel || rel === ".." || rel.startsWith("../") || rel.startsWith("..\\\\")) {
+    throw new Error("pipeline_path escaped the active pipeline root");
+  }
+  const stat = lstatSync(yamlPath);
+  if (stat.isSymbolicLink() || !stat.isFile()) throw new Error("pipeline_path must be a regular file");
+  if (basename(dirname(yamlPath)) !== stem) throw new Error("pipeline_path has an invalid folder");
+  return yamlPath;
+}
+
+function validateCoverage(coverage, cases) {
+  const caseIds = new Set(cases.map((item) => item.id));
+  const seen = new Set();
+  for (const item of coverage) {
+    if (!REQUIRED_COVERAGE.includes(item.dimension)) {
+      throw new Error("unsupported coverage dimension: " + item.dimension);
+    }
+    if (seen.has(item.dimension)) throw new Error("duplicate coverage dimension: " + item.dimension);
+    seen.add(item.dimension);
+    if (item.status === "covered") {
+      if (!item.caseIds || item.caseIds.length === 0) {
+        throw new Error("covered dimension must reference a case: " + item.dimension);
+      }
+      for (const caseId of item.caseIds) {
+        if (!caseIds.has(caseId)) throw new Error("coverage references unknown case: " + caseId);
+      }
+    }
+  }
+  for (const dimension of REQUIRED_COVERAGE) {
+    if (!seen.has(dimension)) throw new Error("missing coverage dimension: " + dimension);
+  }
+}
+
+export default tool({
+  description: "Write a hash-bound targeted trial plan after the final YAML compile succeeds.",
+  args: {
+    pipeline_path: tool.schema.string().describe("Relative <stem>/<stem>.yaml path"),
+    summary: tool.schema.string(),
+    goals: tool.schema.array(tool.schema.string()),
+    coverage: tool.schema.array(
+      tool.schema.object({
+        dimension: tool.schema.string(),
+        status: tool.schema.string(),
+        caseIds: tool.schema.array(tool.schema.string()),
+        rationale: tool.schema.string(),
+      }),
+    ),
+    findings: tool.schema.array(
+      tool.schema.object({
+        severity: tool.schema.string(),
+        summary: tool.schema.string(),
+        evidence: tool.schema.string(),
+      }),
+    ),
+    cases: tool.schema.array(
+      tool.schema.object({
+        id: tool.schema.string(),
+        title: tool.schema.string(),
+        objective: tool.schema.string(),
+        runs: tool.schema.number().optional(),
+        targetTaskIds: tool.schema.array(tool.schema.string()).optional(),
+        fixtures: tool.schema.array(
+          tool.schema.object({ path: tool.schema.string(), content: tool.schema.string() }),
+        ),
+        expectations: tool.schema.array(
+          tool.schema.object({
+            type: tool.schema.string(),
+            path: tool.schema.string().optional(),
+            text: tool.schema.string().optional(),
+            suffix: tool.schema.string().optional(),
+            min: tool.schema.number().optional(),
+            max: tool.schema.number().optional(),
+            taskId: tool.schema.string().optional(),
+            status: tool.schema.string().optional(),
+          }),
+        ),
+      }),
+    ),
+  },
+  async execute(args) {
+    if (!Array.isArray(args.cases) || args.cases.length === 0 || args.cases.length > 8) {
+      throw new Error("trial plan requires 1-8 targeted cases");
+    }
+    validateCoverage(args.coverage, args.cases);
+    const yamlPath = resolvePipelinePath(args.pipeline_path);
+    const yamlHash = createHash("sha1").update(readFileSync(yamlPath, "utf8")).digest("hex");
+    const planPath = yamlPath.replace(/\\.ya?ml$/i, ".trial-plan.json");
+    const plan = {
+      version: 1,
+      yamlHash,
+      summary: args.summary,
+      goals: args.goals,
+      coverage: args.coverage,
+      findings: args.findings,
+      cases: args.cases,
+    };
+    const tempPath = planPath + "." + randomUUID() + ".tmp";
+    writeFileSync(tempPath, JSON.stringify(plan, null, 2) + "\\n", "utf8");
+    renameSync(tempPath, planPath);
+    return JSON.stringify({ path: relative(process.cwd(), planPath).replace(/\\\\/g, "/"), yamlHash }, null, 2);
   },
 });
 `;

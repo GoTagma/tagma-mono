@@ -1,11 +1,21 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import {
+  copyFileSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+} from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
 
 import {
   createTagma,
   DEFAULT_TASK_TIMEOUT_MS,
   type EngineResult,
+  type PipelineConfig,
   type RawPipelineConfig,
 } from '@tagma/sdk';
 import { InMemoryApprovalGateway, type ApprovalEvent } from '@tagma/sdk/approval';
@@ -17,6 +27,13 @@ import {
   listChatYamlStage,
   samePipelineRelativePath,
 } from './chat-yaml-staging.js';
+import {
+  readChatPipelineTrialPlan,
+  type ChatPipelineTrialExpectation,
+  type ChatPipelineTrialPlan,
+  type ChatPipelineTrialPlanCase,
+  type ChatPipelineTrialPlanRequest,
+} from './chat-pipeline-trial-plan.js';
 import { buildPythonAgentRunEnv, pythonAgentVenvBinDir } from './python-agent.js';
 import { runPreflight } from './preflight-requirements.js';
 import { assertSafePluginName } from './plugin-safety.js';
@@ -28,22 +45,27 @@ import {
   unloadPluginFromRegistry,
 } from './plugins/loader.js';
 import { withWorkspacePluginMutationLock } from './plugins/locks.js';
-import { atomicWriteFileSync, errorMessage } from './path-utils.js';
+import { atomicWriteFileSync, errorMessage, isPathWithin } from './path-utils.js';
 import { buildPipelineSecretEnv } from './secrets.js';
 import { MAX_LOG_RUNS } from './state.js';
-import { runtimeWithInjectedEnv } from './routes/run-session.js';
+import { normalizeRunTargetTaskIds, runtimeWithInjectedEnv } from './routes/run-session.js';
 import type { WorkspaceState } from './workspace-state.js';
 
-const TRIAL_CACHE_VERSION = 1;
+const TRIAL_CACHE_VERSION = 2;
 const CHAT_PIPELINE_TRIAL_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_TRIAL_STREAM_BYTES = 4 * 1024;
 const MAX_TRIAL_SUMMARY_BYTES = 32 * 1024;
 const MAX_TRIAL_TASK_RESULTS = 32;
+const MAX_TRIAL_CASE_COPY_BYTES = 16 * 1024 * 1024;
+const MAX_TRIAL_CASE_COPY_FILES = 256;
+const MAX_TRIAL_ASSERTION_FILE_BYTES = 2 * 1024 * 1024;
 const TRIAL_ID_RE = /^[A-Za-z0-9_-]{1,160}$/;
 
 export type ChatPipelineTrialRunKind =
   | 'passed'
   | 'failed'
+  | 'plan-required'
+  | 'plan-failed'
   | 'compile-failed'
   | 'preflight-failed'
   | 'setup-failed'
@@ -51,12 +73,38 @@ export type ChatPipelineTrialRunKind =
   | 'busy';
 
 export interface ChatPipelineTrialTaskResult {
+  caseId: string | null;
+  runNumber: number;
   taskId: string;
   status: string;
   exitCode: number | null;
   failureKind: string | null;
   stdout: string;
   stderr: string;
+}
+
+export interface ChatPipelineTrialExpectationResult {
+  type: ChatPipelineTrialExpectation['type'] | 'case-execution';
+  passed: boolean;
+  detail: string;
+}
+
+export interface ChatPipelineTrialCaseResult {
+  id: string;
+  title: string;
+  objective: string;
+  success: boolean;
+  runIds: string[];
+  tasks: ChatPipelineTrialTaskResult[];
+  expectations: ChatPipelineTrialExpectationResult[];
+}
+
+export interface ChatPipelineTrialPlanSummary {
+  summary: string;
+  goals: string[];
+  coverage: ChatPipelineTrialPlan['coverage'];
+  findings: ChatPipelineTrialPlan['findings'];
+  cases: Array<Pick<ChatPipelineTrialPlanCase, 'id' | 'title' | 'objective' | 'runs' | 'targetTaskIds'>>;
 }
 
 export interface ChatPipelineTrialRunResult {
@@ -70,6 +118,9 @@ export interface ChatPipelineTrialRunResult {
   totalTaskCount: number;
   omittedTaskCount: number;
   tasks: ChatPipelineTrialTaskResult[];
+  planRequest?: ChatPipelineTrialPlanRequest;
+  plan?: ChatPipelineTrialPlanSummary;
+  cases: ChatPipelineTrialCaseResult[];
 }
 
 export interface ChatPipelineTrialRunInput {
@@ -99,10 +150,10 @@ function trialCachePath(
   rootDir: string,
   trialId: string,
   relativePath: string,
-  contentHash: string,
+  verificationHash: string,
 ) {
   const digest = createHash('sha256')
-    .update(`${trialId}\0${relativePath}\0${contentHash}`)
+    .update(`${trialId}\0${relativePath}\0${verificationHash}`)
     .digest('hex');
   return join(rootDir, '.trial-runs', `${digest}.json`);
 }
@@ -175,7 +226,10 @@ function redactTrialText(value: string): string {
 }
 
 function resultForSetupFailure(
-  kind: Exclude<ChatPipelineTrialRunKind, 'passed' | 'failed' | 'timed-out'>,
+  kind: Exclude<
+    ChatPipelineTrialRunKind,
+    'passed' | 'failed' | 'timed-out' | 'plan-required' | 'plan-failed'
+  >,
   message: string,
   startedAt: number,
 ): ChatPipelineTrialRunResult {
@@ -190,6 +244,223 @@ function resultForSetupFailure(
     totalTaskCount: 0,
     omittedTaskCount: 0,
     tasks: [],
+    cases: [],
+  };
+}
+
+function trialPlanSummary(plan: ChatPipelineTrialPlan): ChatPipelineTrialPlanSummary {
+  return {
+    summary: plan.summary,
+    goals: [...plan.goals],
+    coverage: plan.coverage.map((item) => ({ ...item, caseIds: [...item.caseIds] })),
+    findings: plan.findings.map((item) => ({ ...item })),
+    cases: plan.cases.map((item) => ({
+      id: item.id,
+      title: item.title,
+      objective: item.objective,
+      runs: item.runs,
+      targetTaskIds: [...item.targetTaskIds],
+    })),
+  };
+}
+
+function resultForPlanRequest(
+  request: ChatPipelineTrialPlanRequest,
+  startedAt: number,
+): ChatPipelineTrialRunResult {
+  return {
+    version: TRIAL_CACHE_VERSION,
+    success: false,
+    kind: 'plan-required',
+    ran: false,
+    runId: null,
+    summary: boundedTrialText(`Targeted trial plan required: ${request.message}`),
+    durationMs: Math.max(0, Date.now() - startedAt),
+    totalTaskCount: 0,
+    omittedTaskCount: 0,
+    tasks: [],
+    planRequest: request,
+    cases: [],
+  };
+}
+
+function resultForPlanFailure(
+  plan: ChatPipelineTrialPlan,
+  diagnostics: readonly string[],
+  startedAt: number,
+): ChatPipelineTrialRunResult {
+  return {
+    version: TRIAL_CACHE_VERSION,
+    success: false,
+    kind: 'plan-failed',
+    ran: false,
+    runId: null,
+    summary: boundedTrialText(
+      ['Trial plan found pipeline defects or blocked coverage before execution.', ...diagnostics]
+        .filter(Boolean)
+        .join('\n'),
+    ),
+    durationMs: Math.max(0, Date.now() - startedAt),
+    totalTaskCount: 0,
+    omittedTaskCount: 0,
+    tasks: [],
+    plan: trialPlanSummary(plan),
+    cases: [],
+  };
+}
+
+function planBlockingDiagnostics(plan: ChatPipelineTrialPlan): string[] {
+  return [
+    ...plan.findings
+      .filter((item) => item.severity === 'blocking')
+      .map((item) => `${item.summary}: ${item.evidence}`),
+    ...plan.coverage
+      .filter((item) => item.status === 'blocked')
+      .map((item) => `${item.dimension} is blocked: ${item.rationale}`),
+  ];
+}
+
+function casePath(workDir: string, relativePath: string): string {
+  const path = resolve(workDir, ...relativePath.split('/'));
+  if (!isPathWithin(path, workDir)) throw new Error('Trial case path escaped its workspace.');
+  return path;
+}
+
+interface CopyBudget {
+  files: number;
+  bytes: number;
+}
+
+function copyTrialPipelineTree(sourceDir: string, destinationDir: string, budget: CopyBudget): void {
+  mkdirSync(destinationDir, { recursive: true });
+  for (const entry of readdirSync(sourceDir, { withFileTypes: true })) {
+    if (entry.name.endsWith('.trial-plan.json')) continue;
+    const source = join(sourceDir, entry.name);
+    const destination = join(destinationDir, entry.name);
+    const stat = lstatSync(source);
+    if (stat.isSymbolicLink()) throw new Error('Trial pipeline helpers must not contain symlinks.');
+    if (stat.isDirectory()) {
+      copyTrialPipelineTree(source, destination, budget);
+      continue;
+    }
+    if (!stat.isFile()) throw new Error('Trial pipeline helpers must be regular files.');
+    budget.files += 1;
+    budget.bytes += stat.size;
+    if (budget.files > MAX_TRIAL_CASE_COPY_FILES || budget.bytes > MAX_TRIAL_CASE_COPY_BYTES) {
+      throw new Error('Trial pipeline helper copy exceeds the isolated-case limit.');
+    }
+    mkdirSync(dirname(destination), { recursive: true });
+    copyFileSync(source, destination);
+  }
+}
+
+function prepareTrialCaseWorkspace(
+  stageRoot: string,
+  stagedYamlPath: string,
+  testCase: ChatPipelineTrialPlanCase,
+): { rootDir: string; workDir: string } {
+  const casesDir = join(stageRoot, '.trial-cases');
+  mkdirSync(casesDir, { recursive: true });
+  const rootDir = mkdtempSync(join(casesDir, `${testCase.id}-`));
+  const workDir = join(rootDir, 'workspace');
+  mkdirSync(workDir, { recursive: true });
+  const pipelineFolder = dirname(stagedYamlPath);
+  const stagedTagmaDir = join(workDir, '.tagma');
+  copyTrialPipelineTree(
+    pipelineFolder,
+    join(stagedTagmaDir, basename(pipelineFolder)),
+    { files: 0, bytes: 0 },
+  );
+  for (const fixture of testCase.fixtures) {
+    const path = casePath(workDir, fixture.path);
+    mkdirSync(dirname(path), { recursive: true });
+    atomicWriteFileSync(path, fixture.content);
+  }
+  return { rootDir, workDir };
+}
+
+function lstatOrNull(path: string) {
+  try {
+    return lstatSync(path);
+  } catch {
+    return null;
+  }
+}
+
+function evaluateTrialExpectation(
+  workDir: string,
+  expectation: ChatPipelineTrialExpectation,
+  lastResult: EngineResult | null,
+): ChatPipelineTrialExpectationResult {
+  if (expectation.type === 'task-status') {
+    const actual = lastResult?.states.get(expectation.taskId)?.status ?? 'missing';
+    const passed = actual === expectation.status;
+    return {
+      type: expectation.type,
+      passed,
+      detail: `${expectation.taskId} expected ${expectation.status}, received ${actual}.`,
+    };
+  }
+
+  const path = casePath(workDir, expectation.path);
+  const stat = lstatOrNull(path);
+  if (expectation.type === 'path-exists' || expectation.type === 'path-not-exists') {
+    const exists = !!stat && !stat.isSymbolicLink();
+    const passed = expectation.type === 'path-exists' ? exists : !exists;
+    return {
+      type: expectation.type,
+      passed,
+      detail: `${expectation.path} ${exists ? 'exists' : 'does not exist'}.`,
+    };
+  }
+  if (expectation.type === 'file-contains' || expectation.type === 'file-not-contains') {
+    if (!stat || stat.isSymbolicLink() || !stat.isFile()) {
+      return {
+        type: expectation.type,
+        passed: false,
+        detail: `${expectation.path} is not a regular file.`,
+      };
+    }
+    if (stat.size > MAX_TRIAL_ASSERTION_FILE_BYTES) {
+      return {
+        type: expectation.type,
+        passed: false,
+        detail: `${expectation.path} exceeds the assertion read limit.`,
+      };
+    }
+    const contains = readFileSync(path, 'utf-8').includes(expectation.text);
+    const passed = expectation.type === 'file-contains' ? contains : !contains;
+    return {
+      type: expectation.type,
+      passed,
+      detail: `${expectation.path} ${contains ? 'contains' : 'does not contain'} the expected marker.`,
+    };
+  }
+  if (!stat || stat.isSymbolicLink() || !stat.isDirectory()) {
+    return {
+      type: expectation.type,
+      passed: false,
+      detail: `${expectation.path} is not a directory.`,
+    };
+  }
+  const count = readdirSync(path, { withFileTypes: true }).filter(
+    (entry) =>
+      !entry.isSymbolicLink() &&
+      (!expectation.suffix || entry.name.toLowerCase().endsWith(expectation.suffix.toLowerCase())),
+  ).length;
+  const passed =
+    (expectation.min === null || count >= expectation.min) &&
+    (expectation.max === null || count <= expectation.max);
+  const range = [
+    expectation.min === null ? null : `min=${expectation.min}`,
+    expectation.max === null ? null : `max=${expectation.max}`,
+  ]
+    .filter(Boolean)
+    .join(', ');
+  return {
+    type: expectation.type,
+    passed,
+    detail: `${expectation.path} contains ${count} matching entries; expected ${range}.`,
   };
 }
 
@@ -238,7 +509,11 @@ async function ensureTrialPluginsLoaded(
   });
 }
 
-function trialTaskResults(result: EngineResult): {
+function trialTaskResults(
+  result: EngineResult,
+  caseId: string | null,
+  runNumber: number,
+): {
   tasks: ChatPipelineTrialTaskResult[];
   totalTaskCount: number;
   omittedTaskCount: number;
@@ -254,6 +529,8 @@ function trialTaskResults(result: EngineResult): {
     counts.set(state.status, (counts.get(state.status) ?? 0) + 1);
   }
   const tasks = entries.slice(0, MAX_TRIAL_TASK_RESULTS).map(([taskId, state]) => ({
+    caseId,
+    runNumber,
     taskId,
     status: state.status,
     exitCode: state.result?.exitCode ?? null,
@@ -304,21 +581,192 @@ function buildTrialSummary(
   return new TextDecoder().decode(bytes.slice(0, MAX_TRIAL_SUMMARY_BYTES)) + '\n…[truncated]…';
 }
 
-async function executeTrial(
-  ws: WorkspaceState,
-  stageId: string,
-  entry: ReturnType<typeof listChatYamlStage>['entries'][number],
-): Promise<ChatPipelineTrialRunResult> {
-  const startedAt = Date.now();
-  const compile = compileChatYamlStage(ws, stageId, entry.relativePath);
-  if (!compile.success) {
-    return resultForSetupFailure(
-      'compile-failed',
-      `Trial run was skipped because YAML compilation failed: ${compile.summary}\n${JSON.stringify(compile.validation)}`,
-      startedAt,
-    );
+function buildCasePromptContexts(
+  config: PipelineConfig,
+  testCase: ChatPipelineTrialPlanCase,
+  workDir: string,
+): Record<string, Array<{ label: string; content: string }>> {
+  const fixturePaths = testCase.fixtures.map((fixture) => fixture.path).join(', ') || 'none';
+  const content = [
+    `Case: ${testCase.id} — ${testCase.title}`,
+    `Objective: ${testCase.objective}`,
+    `Isolated workspace: ${workDir}`,
+    `Fixture paths: ${fixturePaths}`,
+    'Use only this isolated workspace for the case. Preserve full file contents, including blank lines.',
+  ].join('\n');
+  const contexts: Record<string, Array<{ label: string; content: string }>> = {};
+  for (const track of config.tracks) {
+    for (const task of track.tasks) {
+      if (task.prompt === undefined || task.command !== undefined) continue;
+      contexts[`${track.id}.${task.id}`] = [{ label: 'Targeted Trial Case', content }];
+    }
+  }
+  return contexts;
+}
+
+interface RunTrialPipelineInput {
+  ws: WorkspaceState;
+  pipelineConfig: PipelineConfig;
+  workDir: string;
+  logicalYamlPath: string;
+  approvalGateway: InMemoryApprovalGateway;
+  controller: AbortController;
+  pythonRunEnv: Record<string, string>;
+  allSecretEnv: Record<string, string>;
+  secretValues: string[];
+  preflightEnvKeys: readonly string[];
+  runId: string;
+  targetTaskIds?: string[];
+  testCase?: ChatPipelineTrialPlanCase;
+}
+
+async function runTrialPipelineOnce(input: RunTrialPipelineInput): Promise<EngineResult> {
+  const trialEnv: Record<string, string> = input.testCase
+    ? {
+        TAGMA_TRIAL_CASE_ID: input.testCase.id,
+        TAGMA_TRIAL_CASE_DIR: input.workDir,
+        TAGMA_TRIAL_WORKSPACE: input.workDir,
+      }
+    : {};
+  const tagma = createTagma({
+    registry: input.ws.registry,
+    builtins: false,
+    runtime: runtimeWithInjectedEnv(
+      { ...input.pythonRunEnv, ...input.allSecretEnv, ...trialEnv },
+      input.secretValues,
+    ),
+  });
+  return tagma.run(input.pipelineConfig, {
+    cwd: input.workDir,
+    approvalGateway: input.approvalGateway,
+    signal: input.controller.signal,
+    maxLogRuns: MAX_LOG_RUNS,
+    runId: input.runId,
+    skipPluginLoading: true,
+    defaultTaskTimeoutMs: Math.min(DEFAULT_TASK_TIMEOUT_MS, CHAT_PIPELINE_TRIAL_TIMEOUT_MS),
+    secretResolver: (names: readonly string[]) =>
+      buildPipelineSecretEnv(input.ws.workDir, input.logicalYamlPath, names),
+    ...(input.preflightEnvKeys.length > 0
+      ? { envPolicy: { mode: 'allowlist' as const, keys: input.preflightEnvKeys } }
+      : {}),
+    ...(input.targetTaskIds ? { targetTaskIds: input.targetTaskIds } : {}),
+    ...(input.testCase
+      ? { taskPromptContexts: buildCasePromptContexts(input.pipelineConfig, input.testCase, input.workDir) }
+      : {}),
+  });
+}
+
+async function executeTargetedTrialCase(
+  input: Omit<RunTrialPipelineInput, 'workDir' | 'runId' | 'targetTaskIds' | 'testCase'> & {
+    stageRoot: string;
+    stagedYamlPath: string;
+    testCase: ChatPipelineTrialPlanCase;
+    targetTaskIds?: string[];
+  },
+): Promise<{ result: ChatPipelineTrialCaseResult; totalTaskCount: number }> {
+  let caseWorkspace: { rootDir: string; workDir: string } | null = null;
+  const runIds: string[] = [];
+  const tasks: ChatPipelineTrialTaskResult[] = [];
+  let totalTaskCount = 0;
+  let lastResult: EngineResult | null = null;
+  let executionError: string | null = null;
+  try {
+    caseWorkspace = prepareTrialCaseWorkspace(input.stageRoot, input.stagedYamlPath, input.testCase);
+    for (let runNumber = 1; runNumber <= input.testCase.runs; runNumber += 1) {
+      const runId = generateRunId();
+      runIds.push(runId);
+      lastResult = await runTrialPipelineOnce({
+        ...input,
+        workDir: caseWorkspace.workDir,
+        runId,
+        targetTaskIds: input.targetTaskIds,
+        testCase: input.testCase,
+      });
+      const evidence = trialTaskResults(lastResult, input.testCase.id, runNumber);
+      totalTaskCount += evidence.totalTaskCount;
+      tasks.push(...evidence.tasks);
+      if (input.controller.signal.aborted) break;
+    }
+  } catch (err) {
+    executionError = `Case execution crashed: ${errorMessage(err)}`;
   }
 
+  const expectations: ChatPipelineTrialExpectationResult[] = [];
+  if (executionError) {
+    expectations.push({ type: 'case-execution', passed: false, detail: executionError });
+  } else if (caseWorkspace) {
+    for (const expectation of input.testCase.expectations) {
+      try {
+        expectations.push(
+          evaluateTrialExpectation(caseWorkspace.workDir, expectation, lastResult),
+        );
+      } catch (err) {
+        expectations.push({
+          type: expectation.type,
+          passed: false,
+          detail: `Expectation crashed: ${errorMessage(err)}`,
+        });
+      }
+    }
+  }
+  const success =
+    !!lastResult &&
+    lastResult.success &&
+    runIds.length === input.testCase.runs &&
+    expectations.every((item) => item.passed);
+  if (caseWorkspace) rmSync(caseWorkspace.rootDir, { recursive: true, force: true });
+  return {
+    result: {
+      id: input.testCase.id,
+      title: input.testCase.title,
+      objective: input.testCase.objective,
+      success,
+      runIds,
+      tasks: tasks.slice(0, MAX_TRIAL_TASK_RESULTS),
+      expectations,
+    },
+    totalTaskCount,
+  };
+}
+
+function buildPlannedTrialSummary(
+  baselineSuccess: boolean,
+  timedOut: boolean,
+  baselineTasks: readonly ChatPipelineTrialTaskResult[],
+  baselineOmitted: number,
+  baselineCountText: string,
+  cases: readonly ChatPipelineTrialCaseResult[],
+): string {
+  const lines = [
+    buildTrialSummary(
+      baselineSuccess && cases.every((item) => item.success),
+      timedOut,
+      baselineTasks,
+      baselineOmitted,
+      baselineCountText,
+    ),
+    '',
+    `Targeted cases: ${cases.filter((item) => item.success).length}/${cases.length} passed.`,
+  ];
+  for (const testCase of cases) {
+    lines.push(`Case ${testCase.id}: ${testCase.success ? 'passed' : 'failed'} — ${testCase.objective}`);
+    for (const expectation of testCase.expectations) {
+      if (!expectation.passed) lines.push(`  ${expectation.type}: ${expectation.detail}`);
+    }
+  }
+  const summary = redactTrialText(lines.join('\n'));
+  const bytes = new TextEncoder().encode(summary);
+  if (bytes.length <= MAX_TRIAL_SUMMARY_BYTES) return summary;
+  return new TextDecoder().decode(bytes.slice(0, MAX_TRIAL_SUMMARY_BYTES)) + '\n…[truncated]…';
+}
+
+async function executeTrial(
+  ws: WorkspaceState,
+  stage: ReturnType<typeof listChatYamlStage>,
+  entry: ReturnType<typeof listChatYamlStage>['entries'][number],
+  plan: ChatPipelineTrialPlan,
+): Promise<ChatPipelineTrialRunResult> {
+  const startedAt = Date.now();
   let pipelineConfig;
   try {
     pipelineConfig = await loadPipeline(readFileSync(entry.stagedPath, 'utf-8'), ws.workDir);
@@ -336,6 +784,24 @@ async function executeTrial(
       `Trial run configuration error: ${configErrors.join('; ')}`,
       startedAt,
     );
+  }
+
+  const targetTaskIdsByCase = new Map<string, string[] | undefined>();
+  const planDiagnostics = planBlockingDiagnostics(plan);
+  for (const testCase of plan.cases) {
+    try {
+      targetTaskIdsByCase.set(
+        testCase.id,
+        testCase.targetTaskIds.length > 0
+          ? normalizeRunTargetTaskIds(testCase.targetTaskIds, pipelineConfig)
+          : undefined,
+      );
+    } catch (err) {
+      planDiagnostics.push(`${testCase.id}: ${errorMessage(err)}`);
+    }
+  }
+  if (planDiagnostics.length > 0) {
+    return resultForPlanFailure(plan, planDiagnostics, startedAt);
   }
 
   const pluginError = await ensureTrialPluginsLoaded(ws, pipelineConfig.plugins ?? []);
@@ -399,44 +865,73 @@ async function executeTrial(
 
   try {
     const secretValues = Object.values(allSecretEnv).filter(Boolean);
-    const tagma = createTagma({
-      registry: ws.registry,
-      builtins: false,
-      runtime: runtimeWithInjectedEnv({ ...pythonRunEnv, ...allSecretEnv }, secretValues),
-    });
-    const result = await tagma.run(pipelineConfig, {
-      cwd: ws.workDir,
+    const baseline = await runTrialPipelineOnce({
+      ws,
+      pipelineConfig,
+      workDir: ws.workDir,
+      logicalYamlPath,
       approvalGateway,
-      signal: controller.signal,
-      maxLogRuns: MAX_LOG_RUNS,
+      controller,
+      pythonRunEnv,
+      allSecretEnv,
+      secretValues,
+      preflightEnvKeys: preflight.envKeys,
       runId,
-      skipPluginLoading: true,
-      defaultTaskTimeoutMs: Math.min(DEFAULT_TASK_TIMEOUT_MS, CHAT_PIPELINE_TRIAL_TIMEOUT_MS),
-      secretResolver: (names: readonly string[]) =>
-        buildPipelineSecretEnv(ws.workDir, logicalYamlPath, names),
-      ...(preflight.envKeys.length > 0
-        ? { envPolicy: { mode: 'allowlist' as const, keys: preflight.envKeys } }
-        : {}),
     });
-    const taskEvidence = trialTaskResults(result);
-    const success = result.success && !timedOut;
+    const baselineEvidence = trialTaskResults(baseline, null, 1);
+    const cases: ChatPipelineTrialCaseResult[] = [];
+    let totalTaskCount = baselineEvidence.totalTaskCount;
+    for (const testCase of plan.cases) {
+      if (controller.signal.aborted) break;
+      const caseExecution = await executeTargetedTrialCase({
+        ws,
+        pipelineConfig,
+        logicalYamlPath,
+        approvalGateway,
+        controller,
+        pythonRunEnv,
+        allSecretEnv,
+        secretValues,
+        preflightEnvKeys: preflight.envKeys,
+        stageRoot: stage.rootDir,
+        stagedYamlPath: entry.stagedPath,
+        testCase,
+        targetTaskIds: targetTaskIdsByCase.get(testCase.id),
+      });
+      cases.push(caseExecution.result);
+      totalTaskCount += caseExecution.totalTaskCount;
+    }
+    const success =
+      baseline.success &&
+      !timedOut &&
+      cases.length === plan.cases.length &&
+      cases.every((item) => item.success);
+    const allVisibleTasks = [
+      ...baselineEvidence.tasks,
+      ...cases.flatMap((item) => item.tasks),
+    ].sort((left, right) => Number(left.status === 'success') - Number(right.status === 'success'));
+    const visibleTasks = allVisibleTasks.slice(0, MAX_TRIAL_TASK_RESULTS);
+    const omittedTaskCount = Math.max(0, totalTaskCount - visibleTasks.length);
     return {
       version: TRIAL_CACHE_VERSION,
       success,
       kind: timedOut ? 'timed-out' : success ? 'passed' : 'failed',
       ran: true,
       runId,
-      summary: buildTrialSummary(
-        success,
+      summary: buildPlannedTrialSummary(
+        baseline.success,
         timedOut,
-        taskEvidence.tasks,
-        taskEvidence.omittedTaskCount,
-        taskEvidence.countText,
+        baselineEvidence.tasks,
+        baselineEvidence.omittedTaskCount,
+        baselineEvidence.countText,
+        cases,
       ),
       durationMs: Math.max(0, Date.now() - startedAt),
-      totalTaskCount: taskEvidence.totalTaskCount,
-      omittedTaskCount: taskEvidence.omittedTaskCount,
-      tasks: taskEvidence.tasks,
+      totalTaskCount,
+      omittedTaskCount,
+      tasks: visibleTasks,
+      plan: trialPlanSummary(plan),
+      cases,
     };
   } catch (err) {
     return {
@@ -454,6 +949,8 @@ async function executeTrial(
       totalTaskCount: 0,
       omittedTaskCount: 0,
       tasks: [],
+      plan: trialPlanSummary(plan),
+      cases: [],
     };
   } finally {
     clearTimeout(timeout);
@@ -473,8 +970,28 @@ export async function trialRunChatYamlStage(
     samePipelineRelativePath(candidate.relativePath, input.relativePath),
   );
   if (!entry) throw new Error(`Staged YAML not found: ${input.relativePath}`);
-  const cachePath = trialCachePath(stage.rootDir, trialId, entry.relativePath, entry.contentHash);
-  const cached = readCachedTrial(cachePath, entry.contentHash);
+  const startedAt = Date.now();
+  const compile = compileChatYamlStage(ws, input.stageId, entry.relativePath);
+  if (!compile.success) {
+    return resultForSetupFailure(
+      'compile-failed',
+      `Trial run was skipped because YAML compilation failed: ${compile.summary}\n${JSON.stringify(compile.validation)}`,
+      startedAt,
+    );
+  }
+  const planRead = readChatPipelineTrialPlan(
+    entry.stagedPath,
+    entry.relativePath,
+    entry.contentHash,
+  );
+  if (planRead.status === 'required') {
+    return resultForPlanRequest(planRead.request, startedAt);
+  }
+  const verificationHash = createHash('sha256')
+    .update(`${entry.contentHash}\0${planRead.planHash}`)
+    .digest('hex');
+  const cachePath = trialCachePath(stage.rootDir, trialId, entry.relativePath, verificationHash);
+  const cached = readCachedTrial(cachePath, verificationHash);
   if (cached) return cached;
   const existing = inFlightByCachePath.get(cachePath);
   if (existing) return existing;
@@ -489,8 +1006,8 @@ export async function trialRunChatYamlStage(
   const promise = (async () => {
     activeTrialByWorkspace.set(ws.key, cachePath);
     try {
-      const result = await executeTrial(ws, input.stageId, entry);
-      writeCachedTrial(cachePath, entry.contentHash, result);
+      const result = await executeTrial(ws, stage, entry, planRead.plan);
+      writeCachedTrial(cachePath, verificationHash, result);
       return result;
     } finally {
       if (activeTrialByWorkspace.get(ws.key) === cachePath) activeTrialByWorkspace.delete(ws.key);
