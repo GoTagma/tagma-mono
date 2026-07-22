@@ -221,15 +221,13 @@ export function ChatComposer() {
           <button
             type="button"
             onClick={() => {
-              const stop =
-                stopMode === 'generation' ? abort : requestChatYamlLifecycleCancellation;
+              const stop = stopMode === 'generation' ? abort : requestChatYamlLifecycleCancellation;
               stop().catch(() => {
                 /* already surfaced via sendError */
               });
             }}
             disabled={
-              stopMode === 'verification' &&
-              activeChatYamlLifecycle?.cancellationRequested === true
+              stopMode === 'verification' && activeChatYamlLifecycle?.cancellationRequested === true
             }
             className="shrink-0 p-1.5 border border-tagma-error/60 text-tagma-error hover:border-tagma-error hover:bg-tagma-error/10 transition-colors"
             title={stopLabel}

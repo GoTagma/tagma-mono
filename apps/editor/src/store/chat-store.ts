@@ -3707,9 +3707,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
   completeChatYamlLifecycle: (turnId) =>
     set((prev) =>
-      prev.activeChatYamlLifecycle?.turnId === turnId
-        ? { activeChatYamlLifecycle: null }
-        : {},
+      prev.activeChatYamlLifecycle?.turnId === turnId ? { activeChatYamlLifecycle: null } : {},
     ),
   pendingUserText: null,
   queuedMessages: [],

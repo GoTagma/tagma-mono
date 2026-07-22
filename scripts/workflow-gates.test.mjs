@@ -27,20 +27,36 @@ function stepBlock(text, name, nextName) {
   return text.slice(start, end);
 }
 
-test('publish-npm validates package selection and runs gates before npm auth', () => {
+test('publish-npm validates only public npm packages before npm auth', () => {
+  const selection = stepIndex(workflow, 'Validate package selection');
+  const validation = stepIndex(workflow, 'Validate npm packages');
   const auth = stepIndex(workflow, 'Configure npm auth');
-  const requiredSteps = [
-    'Validate package selection',
-    'Text hygiene',
-    'Type check',
-    'Test',
-    'Lint',
-    'Publish metadata check',
+  const validationBlock = workflow.slice(validation, auth);
+  const requiredCommands = [
+    'bun run check:deps',
+    'bun run check:public',
+    'bun run test:public',
+    'bun run lint:public',
+    'bun run check:publish',
   ];
 
-  for (const step of requiredSteps) {
-    assert(stepIndex(workflow, step) < auth, `${step} must run before npm auth is configured`);
+  assert(selection < validation, 'package selection must be validated before npm package gates');
+  assert(validation < auth, 'npm package gates must run before npm auth is configured');
+
+  let previous = -1;
+  for (const command of requiredCommands) {
+    const index = validationBlock.indexOf(command);
+    assert.notEqual(index, -1, `missing npm validation command: ${command}`);
+    assert(previous < index, `${command} must run in npm validation order`);
+    previous = index;
   }
+
+  assert.doesNotMatch(validationBlock, /^\s*bun run (?:check|test|lint)\s*$/m);
+  assert.doesNotMatch(validationBlock, /tagma-editor|tagma-desktop/);
+  assert.doesNotMatch(
+    workflow,
+    /^\s*- name: (?:Install dependencies|Text hygiene|Type check|Test|Lint|Publish metadata check)\s*$/m,
+  );
 });
 
 test('publish-npm rejects a missing token before writing npm auth files', () => {

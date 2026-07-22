@@ -1115,10 +1115,7 @@ export async function trialRunChatYamlStage(
   const promise = (async () => {
     try {
       let result = await executeTrial(ws, stage, entry, planRead.plan, controller, abortState);
-      if (
-        abortState.userAborted ||
-        (controller.signal.aborted && !abortState.timedOut)
-      ) {
+      if (abortState.userAborted || (controller.signal.aborted && !abortState.timedOut)) {
         result = resultForAborted(result, startedAt);
       }
       if (result.kind !== 'aborted') writeCachedTrial(cachePath, verificationHash, result);

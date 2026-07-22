@@ -8,10 +8,7 @@ import {
   listChatYamlStage,
   type ChatYamlStageFinalizeInput,
 } from '../chat-yaml-staging.js';
-import {
-  cancelChatPipelineTrial,
-  trialRunChatYamlStage,
-} from '../chat-pipeline-trial-run.js';
+import { cancelChatPipelineTrial, trialRunChatYamlStage } from '../chat-pipeline-trial-run.js';
 import { errorMessage } from '../path-utils.js';
 import { requireWorkspace } from '../require-workspace.js';
 import {
