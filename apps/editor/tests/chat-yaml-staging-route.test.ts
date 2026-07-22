@@ -812,7 +812,7 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
-  test('returns bounded redacted task evidence and does not execute the same trial twice', async () => {
+  test('returns bounded redacted evidence, caches identical trials, and invalidates on plan edits', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();
     const startRes = makeRes();
@@ -897,6 +897,17 @@ describe('chat YAML staging routes', () => {
     expect(JSON.stringify(first.body)).not.toContain('json-secret');
     expect(JSON.stringify(first.body)).not.toContain('cli-secret');
     expect(readFileSync(counterPath, 'utf-8')).toBe('1');
+
+    const planPath = entry.stagedPath.replace(/\.ya?ml$/i, '.trial-plan.json');
+    const revisedPlan = JSON.parse(readFileSync(planPath, 'utf-8')) as {
+      summary: string;
+    };
+    revisedPlan.summary += ' Revised targeted rationale.';
+    writeFileSync(planPath, JSON.stringify(revisedPlan, null, 2) + '\n', 'utf-8');
+    const third = await runTrial();
+
+    expect(third.body).not.toEqual(first.body);
+    expect(readFileSync(counterPath, 'utf-8')).toBe('2');
     expect(readFileSync(sourcePath, 'utf-8')).toContain('prompt: base');
     expect(ws.stateRevision).toBe(0);
 

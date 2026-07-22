@@ -41,8 +41,8 @@
   default). When disabled, compile success is sufficient for finalization; do not fabricate trial
   evidence. Keep trial requests idempotent across response retries, bound and redact task evidence,
   and never auto-approve a manual trigger or weaken another safety/prerequisite gate.
-- Before an enabled trial executes, require a transient <stem>.trial-plan.json authored from the
-  final compiled YAML and bound to its SHA-1. Missing, stale, or invalid plans trigger a hidden
+- Before an enabled trial executes, require a transient sibling trial-plan JSON file authored
+  from the final compiled YAML and bound to its SHA-1. Missing, stale, or invalid plans trigger a hidden
   same-turn planning continuation that may only call tagma_trial_plan and may not edit pipeline
   artifacts. Allow at most two attempts for one YAML hash and keep the total planning lifecycle
   finite across repair revisions. Never finalize or publish the plan file as a live artifact.

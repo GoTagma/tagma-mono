@@ -451,7 +451,7 @@ export function buildConversationFlowSteps({
         postChatYamlAction.status === 'repairing'
           ? postChatYamlAction.trial
             ? postChatYamlAction.trial.kind === 'plan-required'
-              ? 'planning edge-case cases'
+              ? 'planning targeted edge cases'
               : 'repairing failed trial run'
             : 'checking generated pipeline'
           : postChatYamlAction.status === 'failed'
