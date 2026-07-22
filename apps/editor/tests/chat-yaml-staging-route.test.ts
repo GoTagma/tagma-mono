@@ -176,10 +176,7 @@ function discardStage(
   stageId: string,
 ): void {
   const res = makeRes();
-  getRoute('/api/workspace/chat-yaml-stage/discard')(
-    request(ws, { stageId }, 'chat-lock'),
-    res,
-  );
+  getRoute('/api/workspace/chat-yaml-stage/discard')(request(ws, { stageId }, 'chat-lock'), res);
   expect(res.statusCode).toBe(200);
 }
 
@@ -360,7 +357,7 @@ describe('chat YAML staging routes', () => {
         {
           severity: 'blocking',
           summary: 'Fixed output filename overwrites prior inputs',
-          evidence: 'Every input writes outputs/result.txt.',
+          evidence: 'Every input writes outputs/result.txt. token=plan-secret',
         },
       ],
       cases: [
@@ -391,12 +388,16 @@ describe('chat YAML staging routes', () => {
       kind: 'plan-failed',
       ran: false,
       plan: {
-        findings: [{ severity: 'blocking', summary: 'Fixed output filename overwrites prior inputs' }],
+        findings: [
+          { severity: 'blocking', summary: 'Fixed output filename overwrites prior inputs' },
+        ],
       },
     });
     expect((trialRes.body as { summary: string }).summary).toContain(
       'Every input writes outputs/result.txt.',
     );
+    expect(JSON.stringify(trialRes.body)).not.toContain('plan-secret');
+    expect(JSON.stringify(trialRes.body)).toContain('[REDACTED]');
     expect(existsSync(markerPath)).toBe(false);
     discardStage(getRoute, ws, stage.id);
     ws.watcher.stopWatching();
@@ -582,16 +583,16 @@ describe('chat YAML staging routes', () => {
               max: 3,
             },
             {
-              type: 'file-contains',
+              type: 'file-equals',
               path: 'outputs/a-report.txt',
-              text: 'Symbols: [x] & % 中文',
+              text: 'FIRST_A\n\nSECOND_PARAGRAPH_A\nSymbols: [x] & % 中文\n',
             },
             {
-              type: 'file-contains',
+              type: 'file-equals',
               path: 'outputs/b-report.txt',
-              text: 'SECOND_PARAGRAPH_B',
+              text: 'FIRST_B\n\nSECOND_PARAGRAPH_B\n',
             },
-            { type: 'path-exists', path: 'outputs/c-empty.txt' },
+            { type: 'file-equals', path: 'outputs/c-empty.txt', text: '' },
             { type: 'task-status', taskId: 'main.process', status: 'success' },
           ],
         },
@@ -614,9 +615,9 @@ describe('chat YAML staging routes', () => {
       ran: true,
       cases: [{ id: 'all-file-boundaries', success: true }],
     });
-    expect(
-      (trialRes.body as { cases: Array<{ runIds: string[] }> }).cases[0]?.runIds,
-    ).toHaveLength(2);
+    expect((trialRes.body as { cases: Array<{ runIds: string[] }> }).cases[0]?.runIds).toHaveLength(
+      2,
+    );
     expect(existsSync(join(ws.workDir, 'inputs', 'a', 'report.txt'))).toBe(false);
     expect(existsSync(join(ws.workDir, 'outputs', 'a-report.txt'))).toBe(false);
 

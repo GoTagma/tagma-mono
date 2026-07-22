@@ -233,6 +233,8 @@ test('tagma-pipeline plans edge-case verification before host trial execution', 
   expect(doc).toContain('empty content');
   expect(doc).toContain('special characters');
   expect(doc).toContain('repeated runs');
+  expect(doc).toContain('Use file-equals when exact text preservation matters');
+  expect(doc).toContain('an empty expected string for empty-content cases');
   expect(doc).toContain('Call `tagma_trial_plan` only after the final YAML compile succeeds');
 });
 
@@ -464,6 +466,7 @@ test('trial-plan tool binds structured edge cases to the final YAML hash', () =>
   expect(doc).toContain('repeat-run');
   expect(doc).toContain('.trial-plan.json');
   expect(doc).toContain('yamlHash');
+  expect(() => new Bun.Transpiler({ loader: 'ts' }).transformSync(doc)).not.toThrow();
 });
 
 test('tagma-pipeline agent prefers host-native commands before Python glue', () => {
@@ -635,9 +638,7 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
     'Compute deterministic Tagma .layout.json positions',
   );
   expect(existsSync(trialPlanTool)).toBe(true);
-  expect(readFileSync(trialPlanTool, 'utf8')).toContain(
-    'Write a hash-bound targeted trial plan',
-  );
+  expect(readFileSync(trialPlanTool, 'utf8')).toContain('Write a hash-bound targeted trial plan');
   for (const toolName of blockToolNames) {
     expect(existsSync(join(dir, '.opencode', 'tools', toolName))).toBe(false);
   }

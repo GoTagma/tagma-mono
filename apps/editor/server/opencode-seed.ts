@@ -687,6 +687,8 @@ Explicitly decide whether each applies: multiple inputs, duplicate input names i
 
 After the final YAML compile succeeds, call \`tagma_trial_plan\` with targeted isolated cases and host-checkable expectations. A covered dimension must name its case; a genuinely irrelevant dimension must say why. Record a blocking finding when the current implementation contradicts the behavior contract instead of inventing a passing case. The plan is transient trial evidence, not a live pipeline artifact.
 
+Use file-equals when exact text preservation matters, including an empty expected string for empty-content cases. Use later-paragraph markers or exact text so a first-line-only implementation cannot pass.
+
 ## Operating Loop
 
 1. Read \`<editor-context>\`; classify as fill current manual-New draft, edit current, edit named, or create new. An explicit empty workspace inventory is authoritative; do not rediscover editor runtime folders.

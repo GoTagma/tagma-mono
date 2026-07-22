@@ -45,9 +45,17 @@ function completePlan(): Record<string, unknown> {
             min: 3,
             max: 3,
           },
-          { type: 'file-contains', path: 'outputs/a-report.txt', text: 'second [x] 中文' },
-          { type: 'file-contains', path: 'outputs/b-report.txt', text: 'later' },
-          { type: 'path-exists', path: 'outputs/c-empty.txt' },
+          {
+            type: 'file-equals',
+            path: 'outputs/a-report.txt',
+            text: ['first', '', 'second [x] 中文'].join(String.fromCharCode(10)),
+          },
+          {
+            type: 'file-equals',
+            path: 'outputs/b-report.txt',
+            text: ['other', '', 'later'].join(String.fromCharCode(10)),
+          },
+          { type: 'file-equals', path: 'outputs/c-empty.txt', text: '' },
           { type: 'task-status', taskId: 'main.process', status: 'success' },
         ],
       },
@@ -104,6 +112,15 @@ describe('chat pipeline trial plan', () => {
 
     expect(() => parseChatPipelineTrialPlan(candidate)).toThrow(
       'marks repeat-run covered without concrete linked-case evidence',
+    );
+  });
+
+  test('requires at least one explicit behavior goal', () => {
+    const candidate = structuredClone(completePlan());
+    candidate.goals = [];
+
+    expect(() => parseChatPipelineTrialPlan(candidate)).toThrow(
+      'goals must contain at least one behavior goal',
     );
   });
 });

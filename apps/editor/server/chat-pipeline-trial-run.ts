@@ -104,7 +104,9 @@ export interface ChatPipelineTrialPlanSummary {
   goals: string[];
   coverage: ChatPipelineTrialPlan['coverage'];
   findings: ChatPipelineTrialPlan['findings'];
-  cases: Array<Pick<ChatPipelineTrialPlanCase, 'id' | 'title' | 'objective' | 'runs' | 'targetTaskIds'>>;
+  cases: Array<
+    Pick<ChatPipelineTrialPlanCase, 'id' | 'title' | 'objective' | 'runs' | 'targetTaskIds'>
+  >;
 }
 
 export interface ChatPipelineTrialRunResult {
@@ -339,7 +341,11 @@ interface CopyBudget {
   bytes: number;
 }
 
-function copyTrialPipelineTree(sourceDir: string, destinationDir: string, budget: CopyBudget): void {
+function copyTrialPipelineTree(
+  sourceDir: string,
+  destinationDir: string,
+  budget: CopyBudget,
+): void {
   mkdirSync(destinationDir, { recursive: true });
   for (const entry of readdirSync(sourceDir, { withFileTypes: true })) {
     if (entry.name.endsWith('.trial-plan.json')) continue;
@@ -371,20 +377,24 @@ function prepareTrialCaseWorkspace(
   mkdirSync(casesDir, { recursive: true });
   const rootDir = mkdtempSync(join(casesDir, `${testCase.id}-`));
   const workDir = join(rootDir, 'workspace');
-  mkdirSync(workDir, { recursive: true });
-  const pipelineFolder = dirname(stagedYamlPath);
-  const stagedTagmaDir = join(workDir, '.tagma');
-  copyTrialPipelineTree(
-    pipelineFolder,
-    join(stagedTagmaDir, basename(pipelineFolder)),
-    { files: 0, bytes: 0 },
-  );
-  for (const fixture of testCase.fixtures) {
-    const path = casePath(workDir, fixture.path);
-    mkdirSync(dirname(path), { recursive: true });
-    atomicWriteFileSync(path, fixture.content);
+  try {
+    mkdirSync(workDir, { recursive: true });
+    const pipelineFolder = dirname(stagedYamlPath);
+    const stagedTagmaDir = join(workDir, '.tagma');
+    copyTrialPipelineTree(pipelineFolder, join(stagedTagmaDir, basename(pipelineFolder)), {
+      files: 0,
+      bytes: 0,
+    });
+    for (const fixture of testCase.fixtures) {
+      const path = casePath(workDir, fixture.path);
+      mkdirSync(dirname(path), { recursive: true });
+      atomicWriteFileSync(path, fixture.content);
+    }
+    return { rootDir, workDir };
+  } catch (err) {
+    rmSync(rootDir, { recursive: true, force: true });
+    throw err;
   }
-  return { rootDir, workDir };
 }
 
 function lstatOrNull(path: string) {
@@ -421,7 +431,11 @@ function evaluateTrialExpectation(
       detail: `${expectation.path} ${exists ? 'exists' : 'does not exist'}.`,
     };
   }
-  if (expectation.type === 'file-contains' || expectation.type === 'file-not-contains') {
+  if (
+    expectation.type === 'file-contains' ||
+    expectation.type === 'file-not-contains' ||
+    expectation.type === 'file-equals'
+  ) {
     if (!stat || stat.isSymbolicLink() || !stat.isFile()) {
       return {
         type: expectation.type,
@@ -436,7 +450,19 @@ function evaluateTrialExpectation(
         detail: `${expectation.path} exceeds the assertion read limit.`,
       };
     }
-    const contains = readFileSync(path, 'utf-8').includes(expectation.text);
+    const content = readFileSync(path, 'utf-8');
+    if (expectation.type === 'file-equals') {
+      return {
+        type: expectation.type,
+        passed: content === expectation.text,
+        detail:
+          expectation.path +
+          (content === expectation.text
+            ? ' exactly matches the expected text.'
+            : ' does not exactly match the expected text.'),
+      };
+    }
+    const contains = content.includes(expectation.text);
     const passed = expectation.type === 'file-contains' ? contains : !contains;
     return {
       type: expectation.type,
@@ -659,7 +685,13 @@ async function runTrialPipelineOnce(input: RunTrialPipelineInput): Promise<Engin
       : {}),
     ...(input.targetTaskIds ? { targetTaskIds: input.targetTaskIds } : {}),
     ...(input.testCase
-      ? { taskPromptContexts: buildCasePromptContexts(input.pipelineConfig, input.testCase, input.workDir) }
+      ? {
+          taskPromptContexts: buildCasePromptContexts(
+            input.pipelineConfig,
+            input.testCase,
+            input.workDir,
+          ),
+        }
       : {}),
   });
 }
@@ -680,7 +712,11 @@ async function executeTargetedTrialCase(
   let allRunsSucceeded = true;
   let executionError: string | null = null;
   try {
-    caseWorkspace = prepareTrialCaseWorkspace(input.stageRoot, input.stagedYamlPath, input.testCase);
+    caseWorkspace = prepareTrialCaseWorkspace(
+      input.stageRoot,
+      input.stagedYamlPath,
+      input.testCase,
+    );
     const casePipelineConfig = await loadPipeline(
       readFileSync(input.stagedYamlPath, 'utf-8'),
       caseWorkspace.workDir,
@@ -716,9 +752,7 @@ async function executeTargetedTrialCase(
   } else if (caseWorkspace) {
     for (const expectation of input.testCase.expectations) {
       try {
-        expectations.push(
-          evaluateTrialExpectation(caseWorkspace.workDir, expectation, lastResult),
-        );
+        expectations.push(evaluateTrialExpectation(caseWorkspace.workDir, expectation, lastResult));
       } catch (err) {
         expectations.push({
           type: expectation.type,
@@ -728,12 +762,22 @@ async function executeTargetedTrialCase(
       }
     }
   }
+  if (caseWorkspace) {
+    try {
+      rmSync(caseWorkspace.rootDir, { recursive: true, force: true });
+    } catch (err) {
+      expectations.push({
+        type: 'case-execution',
+        passed: false,
+        detail: `Case cleanup failed: ${errorMessage(err)}`,
+      });
+    }
+  }
   const success =
     !!lastResult &&
     allRunsSucceeded &&
     runIds.length === input.testCase.runs &&
     expectations.every((item) => item.passed);
-  if (caseWorkspace) rmSync(caseWorkspace.rootDir, { recursive: true, force: true });
   return {
     result: {
       id: input.testCase.id,
@@ -768,7 +812,9 @@ function buildPlannedTrialSummary(
     `Targeted cases: ${cases.filter((item) => item.success).length}/${cases.length} passed.`,
   ];
   for (const testCase of cases) {
-    lines.push(`Case ${testCase.id}: ${testCase.success ? 'passed' : 'failed'} — ${testCase.objective}`);
+    lines.push(
+      `Case ${testCase.id}: ${testCase.success ? 'passed' : 'failed'} — ${testCase.objective}`,
+    );
     for (const expectation of testCase.expectations) {
       if (!expectation.passed) lines.push(`  ${expectation.type}: ${expectation.detail}`);
     }

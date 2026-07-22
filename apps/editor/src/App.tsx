@@ -1009,10 +1009,7 @@ export function App() {
             if (trialRun.kind === 'plan-required' && trialRun.planRequest) {
               const planAttemptKey = `${attemptKey}:${trialRun.planRequest.pipelineHash}`;
               const planAttempts = trialPlanAttemptsRef.current.get(planAttemptKey) ?? 0;
-              const maxPlanAttemptsForTurn = Math.max(
-                MAX_CHAT_TRIAL_PLAN_PROMPTS,
-                maxAttempts + 1,
-              );
+              const maxPlanAttemptsForTurn = Math.max(MAX_CHAT_TRIAL_PLAN_PROMPTS, maxAttempts + 1);
               const totalPlanAttemptsForTurn = [...trialPlanAttemptsRef.current.entries()].reduce(
                 (count, [key, attemptsForHash]) =>
                   key.startsWith(attemptKey + ':') ? count + attemptsForHash : count,

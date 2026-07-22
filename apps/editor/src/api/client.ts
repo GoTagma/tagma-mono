@@ -190,6 +190,7 @@ export interface ChatPipelineTrialExpectationResult {
     | 'path-not-exists'
     | 'file-contains'
     | 'file-not-contains'
+    | 'file-equals'
     | 'directory-entry-count'
     | 'task-status'
     | 'case-execution';

@@ -123,6 +123,85 @@ test('trial-run repair prompt keeps bounded host evidence in the same internal r
   expect(prompt).toContain('keep the safe configuration');
 });
 
+test('trial-run repair prompt globally bounds expanded case and task evidence', () => {
+  const largeText = 'diagnostic-'.repeat(2_000);
+  const prompt = buildChatYamlRepairPrompt(
+    {
+      kind: 'refresh-current',
+      path: 'C:/repo/.tagma/build/build.yaml',
+      name: 'build.yaml',
+      pipelineName: 'Build',
+    },
+    {
+      kind: 'trial-run',
+      result: {
+        version: 2,
+        success: false,
+        kind: 'failed',
+        ran: true,
+        runId: 'run_large',
+        summary: largeText,
+        durationMs: 12,
+        totalTaskCount: 256,
+        omittedTaskCount: 0,
+        tasks: Array.from({ length: 32 }, (_, index) => ({
+          caseId: 'case-' + (index % 8),
+          runNumber: 1,
+          taskId: 'main.task-' + index,
+          status: 'failed',
+          exitCode: 7,
+          failureKind: 'exit_nonzero',
+          stdout: largeText,
+          stderr: largeText,
+        })),
+        plan: {
+          summary: largeText,
+          goals: [largeText],
+          coverage: [
+            {
+              dimension: 'multiple-inputs',
+              status: 'blocked',
+              caseIds: [],
+              rationale: largeText,
+            },
+          ],
+          findings: Array.from({ length: 16 }, () => ({
+            severity: 'warning',
+            summary: largeText,
+            evidence: largeText,
+          })),
+          cases: Array.from({ length: 8 }, (_, index) => ({
+            id: 'case-' + index,
+            title: largeText,
+            objective: largeText,
+            runs: 1,
+            targetTaskIds: ['main.task-' + index],
+          })),
+        },
+        cases: Array.from({ length: 8 }, (_, index) => ({
+          id: 'case-' + index,
+          title: largeText,
+          objective: largeText,
+          success: false,
+          runIds: ['run-case-' + index],
+          tasks: [],
+          expectations: Array.from({ length: 32 }, () => ({
+            type: 'case-execution',
+            passed: false,
+            detail: largeText,
+          })),
+        })),
+      } as never,
+    },
+    1,
+    25,
+  );
+
+  const evidence = prompt.split('<trial-run-result>')[1]!.split('</trial-run-result>')[0]!.trim();
+  expect(new TextEncoder().encode(evidence).length).toBeLessThanOrEqual(64 * 1024);
+  expect(evidence).toContain('…[truncated]');
+});
+
 test('trial planning prompt forces behavior-first edge-case design without authoring edits', () => {
   const prompt = buildChatYamlTrialPlanPrompt(
     {
@@ -157,6 +236,8 @@ test('trial planning prompt forces behavior-first edge-case design without autho
   expect(prompt).toContain('same-basename inputs in different folders');
   expect(prompt).toContain('multi-paragraph text with a blank line');
   expect(prompt).toContain('Assert distinct outputs');
+  expect(prompt).toContain('Use file-equals for exact text preservation');
+  expect(prompt).toContain('empty expected string');
   expect(prompt).toContain('blocking findings');
   expect(prompt).toContain('a'.repeat(40));
   expect(prompt.length).toBeLessThan(4_000);

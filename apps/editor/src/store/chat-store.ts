@@ -549,6 +549,112 @@ function makeFinishedTurn(input: Omit<ChatFinishedTurn, 'id'>): ChatFinishedTurn
   return { ...input, id: `finished_${input.endedAt}_${finishedTurnSeq}` };
 }
 
+const MAX_CHAT_TRIAL_REPAIR_EVIDENCE_BYTES = 64 * 1024;
+
+function clipChatTrialRepairText(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  return value.slice(0, Math.max(0, maxLength - 16)) + '…[truncated]';
+}
+
+function compactChatTrialRepairResult(result: ChatPipelineTrialRunResult) {
+  const failedTasks = result.tasks.filter((task) => task.status !== 'success').slice(0, 6);
+  const failedCases = result.cases.filter((item) => !item.success).slice(0, 8);
+  return {
+    version: result.version,
+    success: result.success,
+    kind: result.kind,
+    ran: result.ran,
+    runId: result.runId,
+    summary: clipChatTrialRepairText(result.summary, 8_000),
+    durationMs: result.durationMs,
+    totalTaskCount: result.totalTaskCount,
+    omittedTaskCount:
+      result.omittedTaskCount + Math.max(0, result.tasks.length - failedTasks.length),
+    tasks: failedTasks.map((task) => ({
+      ...task,
+      stdout: clipChatTrialRepairText(task.stdout, 1_000),
+      stderr: clipChatTrialRepairText(task.stderr, 1_000),
+    })),
+    plan: result.plan
+      ? {
+          summary: clipChatTrialRepairText(result.plan.summary, 1_000),
+          coverage: result.plan.coverage.map((item) => ({
+            ...item,
+            rationale: clipChatTrialRepairText(item.rationale, 300),
+          })),
+          findings: result.plan.findings.slice(0, 6).map((item) => ({
+            ...item,
+            summary: clipChatTrialRepairText(item.summary, 250),
+            evidence: clipChatTrialRepairText(item.evidence, 600),
+          })),
+          cases: result.plan.cases.map((item) => ({
+            ...item,
+            objective: clipChatTrialRepairText(item.objective, 300),
+          })),
+        }
+      : undefined,
+    cases: failedCases.map((item) => ({
+      id: item.id,
+      title: clipChatTrialRepairText(item.title, 200),
+      objective: clipChatTrialRepairText(item.objective, 300),
+      success: item.success,
+      runIds: item.runIds,
+      expectations: item.expectations
+        .filter((expectation) => !expectation.passed)
+        .slice(0, 4)
+        .map((expectation) => ({
+          ...expectation,
+          detail: clipChatTrialRepairText(expectation.detail, 400),
+        })),
+    })),
+  };
+}
+
+function serializeChatYamlRepairEvidence(evidence: ChatYamlRepairEvidence): string {
+  if (evidence.kind !== 'trial-run') return JSON.stringify(evidence.result, null, 2);
+  const compact = compactChatTrialRepairResult(evidence.result);
+  const encoded = JSON.stringify(compact, null, 2);
+  if (new TextEncoder().encode(encoded).length <= MAX_CHAT_TRIAL_REPAIR_EVIDENCE_BYTES) {
+    return encoded;
+  }
+  const fallback = JSON.stringify(
+    {
+      version: evidence.result.version,
+      success: evidence.result.success,
+      kind: evidence.result.kind,
+      ran: evidence.result.ran,
+      summary: clipChatTrialRepairText(evidence.result.summary, 4_000),
+      planFindings: evidence.result.plan?.findings.slice(0, 2).map((item) => ({
+        severity: item.severity,
+        summary: clipChatTrialRepairText(item.summary, 200),
+        evidence: clipChatTrialRepairText(item.evidence, 400),
+      })),
+      failedTasks: compact.tasks.slice(0, 2),
+      failedCases: compact.cases.slice(0, 4).map((item) => ({
+        ...item,
+        expectations: item.expectations.slice(0, 2),
+      })),
+      evidenceTruncated: true,
+    },
+    null,
+    2,
+  );
+  if (new TextEncoder().encode(fallback).length <= MAX_CHAT_TRIAL_REPAIR_EVIDENCE_BYTES) {
+    return fallback;
+  }
+  return JSON.stringify(
+    {
+      version: evidence.result.version,
+      success: evidence.result.success,
+      kind: evidence.result.kind,
+      summary: clipChatTrialRepairText(evidence.result.summary, 2_000),
+      evidenceTruncated: true,
+    },
+    null,
+    2,
+  );
+}
+
 export function buildChatYamlRepairPrompt(
   target: ChatYamlTarget,
   evidence: ChatYamlRepairEvidence,
@@ -570,7 +676,7 @@ export function buildChatYamlRepairPrompt(
       : 'Do not ask the user a follow-up question. Do not stop until the compile log reports success: true or you have made the best concrete repair you can.',
     '',
     `<${resultTag}>`,
-    JSON.stringify(evidence.result, null, 2),
+    serializeChatYamlRepairEvidence(evidence),
     `</${resultTag}>`,
     '</tagma-internal>',
   ].join('\n');
@@ -595,6 +701,7 @@ export function buildChatYamlTrialPlanPrompt(
     'Create 1-8 small isolated cases with concrete fixtures and host-checkable expectations. Prefer the smallest targetTaskIds closure that exercises the behavior.',
     'Explicitly cover or justify as not applicable: multiple inputs, duplicate input names, multiline content, output collisions, repeated runs, empty content, and special characters.',
     'For file workflows, include same-basename inputs in different folders and multi-paragraph text with a blank line. Assert distinct outputs and a marker from a later paragraph so fixed output names and single-line parsing fail visibly.',
+    'Use file-equals for exact text preservation and an empty expected string when empty-content is covered.',
     'Use blocking findings for contradictions already visible in the implementation. Do not invent passing expectations, remove legitimate prerequisites, or weaken manual approvals/safety gates.',
     '',
     `Required coverage dimensions: ${request.requiredCoverage.join(', ')}`,
@@ -4119,12 +4226,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   async sendInternalTrialPlanPrompt(target, request, attempt, maxAttempts, snapshot) {
-    const planningText = buildChatYamlTrialPlanPrompt(
-      target,
-      request,
-      attempt,
-      maxAttempts,
-    );
+    const planningText = buildChatYamlTrialPlanPrompt(target, request, attempt, maxAttempts);
     return promptOpencode(get, set, planningText, {
       internal: true,
       reuseLogicalTurn: true,

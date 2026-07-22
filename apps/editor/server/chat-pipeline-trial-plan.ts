@@ -11,8 +11,7 @@ const MAX_TOTAL_FIXTURE_BYTES = 256 * 1024;
 const MAX_TEXT_EXPECTATION_BYTES = 16 * 1024;
 const PLAN_ID_RE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 const QUALIFIED_TASK_ID_RE = /^[A-Za-z_][A-Za-z0-9_-]*\.[A-Za-z_][A-Za-z0-9_-]*$/;
-const WINDOWS_RESERVED_CASE_SEGMENT_RE =
-  /^(con|prn|aux|nul|com[1-9]|lpt[1-9])($|[.])/i;
+const WINDOWS_RESERVED_CASE_SEGMENT_RE = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])($|[.])/i;
 
 export const CHAT_PIPELINE_TRIAL_COVERAGE_DIMENSIONS = [
   'multiple-inputs',
@@ -51,6 +50,7 @@ export type ChatPipelineTrialExpectation =
   | { type: 'path-not-exists'; path: string }
   | { type: 'file-contains'; path: string; text: string }
   | { type: 'file-not-contains'; path: string; text: string }
+  | { type: 'file-equals'; path: string; text: string }
   | {
       type: 'directory-entry-count';
       path: string;
@@ -167,6 +167,19 @@ function parseExpectation(value: unknown, label: string): ChatPipelineTrialExpec
   const type = asString(raw.type, `${label}.type`, 64);
   if (type === 'path-exists' || type === 'path-not-exists') {
     return { type, path: normalizeRelativeCasePath(raw.path, `${label}.path`) };
+  }
+  if (type === 'file-equals') {
+    if (typeof raw.text !== 'string') {
+      throw new Error(label + '.text must be a string.');
+    }
+    if (new TextEncoder().encode(raw.text).length > MAX_TEXT_EXPECTATION_BYTES) {
+      throw new Error(label + '.text exceeds the expectation byte limit.');
+    }
+    return {
+      type,
+      path: normalizeRelativeCasePath(raw.path, label + '.path'),
+      text: raw.text,
+    };
   }
   if (type === 'file-contains' || type === 'file-not-contains') {
     const text = asString(raw.text, `${label}.text`, MAX_TEXT_EXPECTATION_BYTES);
@@ -286,7 +299,11 @@ function hasDistinctOutputExpectation(cases: ChatPipelineTrialPlanCase[]): boole
       ) {
         return true;
       }
-      if (expectation.type === 'path-exists' || expectation.type === 'file-contains') {
+      if (
+        expectation.type === 'path-exists' ||
+        expectation.type === 'file-contains' ||
+        expectation.type === 'file-equals'
+      ) {
         positivePaths.add(expectation.path.toLowerCase());
       }
     }
@@ -318,8 +335,12 @@ function validateCoveredCaseEvidence(
     } else if (entry.dimension === 'repeat-run') {
       evidenced = linkedCases.some((item) => item.runs >= 2);
     } else if (entry.dimension === 'empty-content') {
-      evidenced = linkedCases.some((item) =>
-        item.fixtures.some((fixture) => fixture.content.length === 0),
+      evidenced = linkedCases.some(
+        (item) =>
+          item.fixtures.some((fixture) => fixture.content.length === 0) &&
+          item.expectations.some(
+            (expectation) => expectation.type === 'file-equals' && expectation.text.length === 0,
+          ),
       );
     } else if (entry.dimension === 'special-characters') {
       evidenced = linkedCases.some((item) =>
@@ -327,8 +348,7 @@ function validateCoveredCaseEvidence(
           [...fixture.content].some((character) => {
             const codePoint = character.codePointAt(0) ?? 0;
             return (
-              codePoint > 127 ||
-              (character.trim().length > 0 && !/[A-Za-z0-9]/.test(character))
+              codePoint > 127 || (character.trim().length > 0 && !/[A-Za-z0-9]/.test(character))
             );
           }),
         ),
@@ -351,6 +371,9 @@ export function parseChatPipelineTrialPlan(value: unknown): ChatPipelineTrialPla
   }
   const yamlHash = asString(raw.yamlHash, 'trial plan yamlHash', 40);
   if (!/^[0-9a-f]{40}$/i.test(yamlHash)) throw new Error('trial plan yamlHash must be SHA-1.');
+  if (!Array.isArray(raw.goals) || raw.goals.length === 0) {
+    throw new Error('trial plan goals must contain at least one behavior goal.');
+  }
 
   const cases = asArray(raw.cases, 'trial plan cases', MAX_CASES).map(parseCase);
   if (cases.length === 0) throw new Error('trial plan cases must contain at least one case.');
