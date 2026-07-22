@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -19,6 +20,61 @@ type MockRequest = {
 type RouteHandler = (req: MockRequest, res: MockResponse) => void | Promise<void>;
 
 const roots: string[] = [];
+
+const REQUIRED_TRIAL_COVERAGE = [
+  'multiple-inputs',
+  'duplicate-input-names',
+  'multiline-content',
+  'output-collision',
+  'repeat-run',
+  'empty-content',
+  'special-characters',
+] as const;
+
+function writeTrialPlan(
+  stagedPath: string,
+  input: {
+    cases?: unknown[];
+    findings?: unknown[];
+    coveredBy?: Partial<Record<(typeof REQUIRED_TRIAL_COVERAGE)[number], string>>;
+  } = {},
+): string {
+  const yamlHash = createHash('sha1').update(readFileSync(stagedPath, 'utf-8')).digest('hex');
+  const planPath = stagedPath.replace(/\.ya?ml$/i, '.trial-plan.json');
+  const coveredBy = input.coveredBy ?? {};
+  writeFileSync(
+    planPath,
+    JSON.stringify(
+      {
+        version: 1,
+        yamlHash,
+        summary: 'Exercise baseline behavior and boundary-sensitive file handling.',
+        goals: ['Preserve every logical input without silently overwriting output.'],
+        coverage: REQUIRED_TRIAL_COVERAGE.map((dimension) =>
+          coveredBy[dimension]
+            ? {
+                dimension,
+                status: 'covered',
+                caseIds: [coveredBy[dimension]],
+                rationale: `Covered by ${coveredBy[dimension]}.`,
+              }
+            : {
+                dimension,
+                status: 'not-applicable',
+                caseIds: [],
+                rationale: 'Not applicable to this focused test pipeline.',
+              },
+        ),
+        findings: input.findings ?? [],
+        cases: input.cases ?? [],
+      },
+      null,
+      2,
+    ) + '\n',
+    'utf-8',
+  );
+  return planPath;
+}
 
 function yamlFor(name: string, prompt: string): string {
   return [
@@ -105,6 +161,180 @@ afterEach(() => {
 });
 
 describe('chat YAML staging routes', () => {
+  test('requires an AI-authored hash-bound test plan before executing a staged pipeline', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Plan First',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              {
+                id: 'should_not_run_yet',
+                command: {
+                  argv: [
+                    process.execPath,
+                    '-e',
+                    `require('node:fs').writeFileSync('ran-before-plan.txt', 'bad')`,
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'plan_first' },
+        'chat-lock',
+      ),
+      trialRes,
+    );
+
+    expect(trialRes.statusCode).toBe(200);
+    expect(trialRes.body).toMatchObject({
+      success: false,
+      kind: 'plan-required',
+      ran: false,
+      planRequest: {
+        reason: 'missing',
+        relativePlanPath: entry.relativePath.replace(/\.ya?ml$/i, '.trial-plan.json'),
+      },
+    });
+    expect(existsSync(join(ws.workDir, 'ran-before-plan.txt'))).toBe(false);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('uses isolated duplicate-name and multi-paragraph cases to catch output overwrites', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    const overwriteScript = [
+      `const fs = require('node:fs');`,
+      `const inputs = ['inputs/a/report.txt', 'inputs/b/report.txt'].filter(fs.existsSync);`,
+      `if (inputs.length > 0) fs.mkdirSync('outputs', { recursive: true });`,
+      `for (const input of inputs) fs.writeFileSync('outputs/result.txt', fs.readFileSync(input, 'utf8'));`,
+    ].join(' ');
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Naive Text Processor',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              {
+                id: 'process',
+                command: { argv: [process.execPath, '-e', overwriteScript] },
+              },
+            ],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    writeTrialPlan(entry.stagedPath, {
+      coveredBy: {
+        'multiple-inputs': 'duplicate-multiline-files',
+        'duplicate-input-names': 'duplicate-multiline-files',
+        'multiline-content': 'duplicate-multiline-files',
+        'output-collision': 'duplicate-multiline-files',
+      },
+      cases: [
+        {
+          id: 'duplicate-multiline-files',
+          title: 'Two same-named multi-paragraph inputs remain distinct',
+          objective: 'Detect fixed output names and single-paragraph assumptions.',
+          runs: 1,
+          targetTaskIds: ['main.process'],
+          fixtures: [
+            {
+              path: 'inputs/a/report.txt',
+              content: 'FIRST_A\n\nSECOND_PARAGRAPH_A\n',
+            },
+            {
+              path: 'inputs/b/report.txt',
+              content: 'FIRST_B\n\nSECOND_PARAGRAPH_B\n',
+            },
+          ],
+          expectations: [
+            {
+              type: 'directory-entry-count',
+              path: 'outputs',
+              suffix: '.txt',
+              min: 2,
+            },
+            { type: 'file-contains', path: 'outputs/a-report.txt', text: 'SECOND_PARAGRAPH_A' },
+            { type: 'file-contains', path: 'outputs/b-report.txt', text: 'SECOND_PARAGRAPH_B' },
+          ],
+        },
+      ],
+    });
+
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'edge_cases' },
+        'chat-lock',
+      ),
+      trialRes,
+    );
+
+    expect(trialRes.statusCode).toBe(200);
+    expect(trialRes.body).toMatchObject({
+      success: false,
+      kind: 'failed',
+      ran: true,
+      cases: [
+        {
+          id: 'duplicate-multiline-files',
+          success: false,
+        },
+      ],
+    });
+    const result = trialRes.body as {
+      summary: string;
+      cases: Array<{ expectations: Array<{ passed: boolean; detail: string }> }>;
+    };
+    expect(result.summary).toContain('duplicate-multiline-files');
+    expect(result.cases[0]?.expectations.some((item) => !item.passed)).toBe(true);
+    expect(existsSync(join(ws.workDir, 'inputs', 'a', 'report.txt'))).toBe(false);
+    expect(existsSync(join(ws.workDir, 'outputs', 'result.txt'))).toBe(false);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
   test('requires the active chat lock id and bypasses the global revision middleware', () => {
     const { ws, sourcePath } = makeWorkspace();
     const route = createHarness()('/api/workspace/chat-yaml-stage/start');

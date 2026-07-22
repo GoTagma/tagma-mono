@@ -15,6 +15,7 @@ import {
   buildTagmaPythonToolsAgent,
   buildTagmaRuntimeGuardAgent,
   buildTagmaRouterAgent,
+  buildTagmaTrialPlanTool,
   buildTagmaTriggerStrategySkill,
   buildTagmaYamlContractSkill,
   seedOpencodeArtifacts,
@@ -215,6 +216,21 @@ test('tagma-pipeline agent cooperates with optional host trial-run repair before
   expect(doc).toContain('same authorized logical turn');
   expect(doc).toContain('Never remove or weaken a manual approval');
   expect(doc).toContain('Never claim it passed without host evidence');
+});
+
+test('tagma-pipeline plans edge-case verification before host trial execution', () => {
+  const doc = buildTagmaPipelineAgent('Windows');
+
+  expect(doc).toContain('tagma_trial_plan: true');
+  expect(doc).toContain('tagma_trial_plan: allow');
+  expect(doc).toContain('## Behavior And Edge-Case Plan');
+  expect(doc).toContain('duplicate input names');
+  expect(doc).toContain('output collisions');
+  expect(doc).toContain('multi-paragraph');
+  expect(doc).toContain('empty content');
+  expect(doc).toContain('special characters');
+  expect(doc).toContain('repeated runs');
+  expect(doc).toContain('Call `tagma_trial_plan` only after the final YAML compile succeeds');
 });
 
 test('tagma-pipeline agent treats explicit creation as higher priority than existing name matches', () => {
@@ -433,6 +449,20 @@ test('placement tool is generated as an OpenCode custom tool module', () => {
   expect(doc).toContain('computePlacement(args)');
 });
 
+test('trial-plan tool binds structured edge cases to the final YAML hash', () => {
+  const doc = buildTagmaTrialPlanTool();
+
+  expect(doc).toContain('import { createHash } from node:crypto');
+  expect(doc).toContain('export default tool');
+  expect(doc).toContain('pipeline_path: tool.schema.string()');
+  expect(doc).toContain('duplicate-input-names');
+  expect(doc).toContain('multiline-content');
+  expect(doc).toContain('output-collision');
+  expect(doc).toContain('repeat-run');
+  expect(doc).toContain('.trial-plan.json');
+  expect(doc).toContain('yamlHash');
+});
+
 test('tagma-pipeline agent prefers host-native commands before Python glue', () => {
   const doc = buildTagmaPipelineAgent('Windows');
 
@@ -532,6 +562,7 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   ];
   const skeletonTool = join(dir, '.opencode', 'tools', 'tagma_yaml_skeleton.ts');
   const placementTool = join(dir, '.opencode', 'tools', 'tagma_placement_plan.ts');
+  const trialPlanTool = join(dir, '.opencode', 'tools', 'tagma_trial_plan.ts');
   const blockToolNames = [
     'tagma_read_block.ts',
     'tagma_upsert_block.ts',
@@ -599,6 +630,10 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   );
   expect(readFileSync(placementTool, 'utf8')).toContain(
     'Compute deterministic Tagma .layout.json positions',
+  );
+  expect(existsSync(trialPlanTool)).toBe(true);
+  expect(readFileSync(trialPlanTool, 'utf8')).toContain(
+    'Write a hash-bound targeted trial plan',
   );
   for (const toolName of blockToolNames) {
     expect(existsSync(join(dir, '.opencode', 'tools', toolName))).toBe(false);
