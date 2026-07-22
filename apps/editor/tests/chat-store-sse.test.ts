@@ -3,6 +3,7 @@ import {
   useChatStore,
   applySseEvent,
   buildChatYamlRepairPrompt,
+  buildChatYamlTrialPlanPrompt,
   canEndCurrentTurnFromConfirmedIdle,
   chatPipelinePreflightMode,
   subscribeEventStreamWithReadinessTimeout,
@@ -85,7 +86,7 @@ test('trial-run repair prompt keeps bounded host evidence in the same internal r
     {
       kind: 'trial-run',
       result: {
-        version: 1,
+        version: 2,
         success: false,
         kind: 'failed',
         ran: true,
@@ -96,6 +97,8 @@ test('trial-run repair prompt keeps bounded host evidence in the same internal r
         omittedTaskCount: 0,
         tasks: [
           {
+            caseId: null,
+            runNumber: 1,
             taskId: 'main.test',
             status: 'failed',
             exitCode: 7,
@@ -104,6 +107,7 @@ test('trial-run repair prompt keeps bounded host evidence in the same internal r
             stderr: 'assertion failed',
           },
         ],
+        cases: [],
       },
     },
     1,
@@ -117,6 +121,45 @@ test('trial-run repair prompt keeps bounded host evidence in the same internal r
   expect(prompt).toContain('assertion failed');
   expect(prompt).toContain('Preserve legitimate manual approvals');
   expect(prompt).toContain('keep the safe configuration');
+});
+
+test('trial planning prompt forces behavior-first edge-case design without authoring edits', () => {
+  const prompt = buildChatYamlTrialPlanPrompt(
+    {
+      kind: 'refresh-current',
+      path: 'C:/repo/.tagma/build/build.yaml',
+      name: 'build.yaml',
+      pipelineName: 'Build',
+    },
+    {
+      reason: 'missing',
+      relativePlanPath: 'build/build.trial-plan.json',
+      pipelineHash: 'a'.repeat(40),
+      message: 'No trial plan was written.',
+      requiredCoverage: [
+        'multiple-inputs',
+        'duplicate-input-names',
+        'multiline-content',
+        'output-collision',
+        'repeat-run',
+        'empty-content',
+        'special-characters',
+      ],
+    },
+    1,
+    2,
+  );
+
+  expect(prompt).toContain('<tagma-internal>');
+  expect(prompt).toContain('Targeted trial planning attempt 1/2.');
+  expect(prompt).toContain('Do not edit YAML');
+  expect(prompt).toContain('Call tagma_trial_plan exactly once');
+  expect(prompt).toContain('same-basename inputs in different folders');
+  expect(prompt).toContain('multi-paragraph text with a blank line');
+  expect(prompt).toContain('Assert distinct outputs');
+  expect(prompt).toContain('blocking findings');
+  expect(prompt).toContain('a'.repeat(40));
+  expect(prompt.length).toBeLessThan(4_000);
 });
 
 const jsonResponse = (data: unknown): Response =>

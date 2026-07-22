@@ -240,6 +240,153 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
+  test('rejects a stale test plan after the staged YAML changes', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    const markerPath = join(ws.workDir, 'stale-plan-ran.txt');
+    const pipeline = (name: string) =>
+      serializePipeline({
+        name,
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              {
+                id: 'verify',
+                command: {
+                  argv: [
+                    process.execPath,
+                    '-e',
+                    `require('node:fs').writeFileSync(${JSON.stringify(markerPath)}, 'ran')`,
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      });
+    writeFileSync(entry.stagedPath, pipeline('Before Plan'), 'utf-8');
+    writePassingTrialPlan(entry.stagedPath, 'main.verify');
+    writeFileSync(entry.stagedPath, pipeline('After Plan'), 'utf-8');
+
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'stale_plan' },
+        'chat-lock',
+      ),
+      trialRes,
+    );
+
+    expect(trialRes.body).toMatchObject({
+      success: false,
+      kind: 'plan-required',
+      ran: false,
+      planRequest: { reason: 'stale' },
+    });
+    expect(existsSync(markerPath)).toBe(false);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('turns blocking design findings into repair evidence without running the pipeline', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    const markerPath = join(ws.workDir, 'blocking-finding-ran.txt');
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Known Output Collision',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              {
+                id: 'process',
+                command: {
+                  argv: [
+                    process.execPath,
+                    '-e',
+                    `require('node:fs').writeFileSync(${JSON.stringify(markerPath)}, 'ran')`,
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    writeTrialPlan(entry.stagedPath, {
+      findings: [
+        {
+          severity: 'blocking',
+          summary: 'Fixed output filename overwrites prior inputs',
+          evidence: 'Every input writes outputs/result.txt.',
+        },
+      ],
+      cases: [
+        {
+          id: 'collision-probe',
+          title: 'Collision probe',
+          objective: 'Verify separate outputs once the design flaw is repaired.',
+          runs: 1,
+          targetTaskIds: ['main.process'],
+          fixtures: [],
+          expectations: [{ type: 'task-status', taskId: 'main.process', status: 'success' }],
+        },
+      ],
+    });
+
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'blocking_finding' },
+        'chat-lock',
+      ),
+      trialRes,
+    );
+
+    expect(trialRes.body).toMatchObject({
+      success: false,
+      kind: 'plan-failed',
+      ran: false,
+      plan: {
+        findings: [{ severity: 'blocking', summary: 'Fixed output filename overwrites prior inputs' }],
+      },
+    });
+    expect((trialRes.body as { summary: string }).summary).toContain(
+      'Every input writes outputs/result.txt.',
+    );
+    expect(existsSync(markerPath)).toBe(false);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
   test('uses isolated duplicate-name and multi-paragraph cases to catch output overwrites', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();
@@ -346,6 +493,123 @@ describe('chat YAML staging routes', () => {
     expect(result.cases[0]?.expectations.some((item) => !item.passed)).toBe(true);
     expect(existsSync(join(ws.workDir, 'inputs', 'a', 'report.txt'))).toBe(false);
     expect(existsSync(join(ws.workDir, 'outputs', 'result.txt'))).toBe(false);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('passes a collision-safe implementation against repeated multi-paragraph edge cases', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    const safeScript = [
+      `const fs = require('node:fs');`,
+      `const path = require('node:path');`,
+      `const inputs = ['inputs/a/report.txt', 'inputs/b/report.txt', 'inputs/c/empty.txt'].filter(fs.existsSync);`,
+      `if (inputs.length > 0) fs.mkdirSync('outputs', { recursive: true });`,
+      `for (const input of inputs) {`,
+      `  const output = path.join('outputs', path.basename(path.dirname(input)) + '-' + path.basename(input));`,
+      `  fs.writeFileSync(output, fs.readFileSync(input));`,
+      `}`,
+    ].join(' ');
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Collision Safe Text Processor',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [{ id: 'process', command: { argv: [process.execPath, '-e', safeScript] } }],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    writeTrialPlan(entry.stagedPath, {
+      coveredBy: Object.fromEntries(
+        REQUIRED_TRIAL_COVERAGE.map((dimension) => [dimension, 'all-file-boundaries']),
+      ) as Record<(typeof REQUIRED_TRIAL_COVERAGE)[number], string>,
+      cases: [
+        {
+          id: 'all-file-boundaries',
+          title: 'Repeated duplicate-name, multiline, empty, and special-character inputs',
+          objective: 'Preserve every logical input and remain stable on a second run.',
+          runs: 2,
+          targetTaskIds: ['main.process'],
+          fixtures: [
+            {
+              path: 'inputs/a/report.txt',
+              content: 'FIRST_A\n\nSECOND_PARAGRAPH_A\nSymbols: [x] & % 中文\n',
+            },
+            {
+              path: 'inputs/b/report.txt',
+              content: 'FIRST_B\n\nSECOND_PARAGRAPH_B\n',
+            },
+            { path: 'inputs/c/empty.txt', content: '' },
+          ],
+          expectations: [
+            {
+              type: 'directory-entry-count',
+              path: 'outputs',
+              suffix: '.txt',
+              min: 3,
+              max: 3,
+            },
+            {
+              type: 'file-contains',
+              path: 'outputs/a-report.txt',
+              text: 'Symbols: [x] & % 中文',
+            },
+            {
+              type: 'file-contains',
+              path: 'outputs/b-report.txt',
+              text: 'SECOND_PARAGRAPH_B',
+            },
+            { type: 'path-exists', path: 'outputs/c-empty.txt' },
+            { type: 'task-status', taskId: 'main.process', status: 'success' },
+          ],
+        },
+      ],
+    });
+
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'safe_edge_cases' },
+        'chat-lock',
+      ),
+      trialRes,
+    );
+
+    expect(trialRes.body).toMatchObject({
+      success: true,
+      kind: 'passed',
+      ran: true,
+      cases: [{ id: 'all-file-boundaries', success: true }],
+    });
+    expect(
+      (trialRes.body as { cases: Array<{ runIds: string[] }> }).cases[0]?.runIds,
+    ).toHaveLength(2);
+    expect(existsSync(join(ws.workDir, 'inputs', 'a', 'report.txt'))).toBe(false);
+    expect(existsSync(join(ws.workDir, 'outputs', 'a-report.txt'))).toBe(false);
+
+    const finalizeRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/finalize')(
+      request(ws, { stageId: stage.id, relativePath: entry.relativePath }, 'chat-lock'),
+      finalizeRes,
+    );
+    expect((finalizeRes.body as { outcome: string }).outcome).toBe('adopted');
+    expect(existsSync(sourcePath.replace(/\.ya?ml$/i, '.trial-plan.json'))).toBe(false);
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });
@@ -511,11 +775,13 @@ describe('chat YAML staging routes', () => {
       success: true,
       kind: 'passed',
       ran: true,
-      tasks: [{ taskId: 'main.cwd', status: 'success' }],
     });
-    expect((trialRes.body as { tasks: Array<{ stdout: string }> }).tasks[0]?.stdout).toBe(
-      ws.workDir,
-    );
+    const baselineTask = (
+      trialRes.body as {
+        tasks: Array<{ caseId: string | null; taskId: string; status: string; stdout: string }>;
+      }
+    ).tasks.find((task) => task.caseId === null && task.taskId === 'main.cwd');
+    expect(baselineTask).toMatchObject({ status: 'success', stdout: ws.workDir });
     expect(readFileSync(sourcePath, 'utf-8')).toContain('prompt: base');
     expect(ws.stateRevision).toBe(0);
 
@@ -591,15 +857,24 @@ describe('chat YAML staging routes', () => {
       success: false,
       kind: 'failed',
       ran: true,
-      tasks: [
-        {
-          taskId: 'main.verify',
-          status: 'failed',
-          exitCode: 7,
-          failureKind: 'exit_nonzero',
-          stderr: 'trial assertion failed',
-        },
-      ],
+    });
+    const failedBaselineTask = (
+      first.body as {
+        tasks: Array<{
+          caseId: string | null;
+          taskId: string;
+          status: string;
+          exitCode: number | null;
+          failureKind: string | null;
+          stderr: string;
+        }>;
+      }
+    ).tasks.find((task) => task.caseId === null && task.taskId === 'main.verify');
+    expect(failedBaselineTask).toMatchObject({
+      status: 'failed',
+      exitCode: 7,
+      failureKind: 'exit_nonzero',
+      stderr: 'trial assertion failed',
     });
     expect(JSON.stringify(first.body)).not.toContain('json-secret');
     expect(JSON.stringify(first.body)).not.toContain('cli-secret');
@@ -675,13 +950,20 @@ describe('chat YAML staging routes', () => {
     expect(trialRes.body).toMatchObject({
       success: false,
       kind: 'failed',
-      tasks: [
-        {
-          taskId: 'main.gated',
-          status: 'blocked',
-          stderr: expect.stringContaining('never auto-approve manual safety gates'),
-        },
-      ],
+    });
+    const gatedBaselineTask = (
+      trialRes.body as {
+        tasks: Array<{
+          caseId: string | null;
+          taskId: string;
+          status: string;
+          stderr: string;
+        }>;
+      }
+    ).tasks.find((task) => task.caseId === null && task.taskId === 'main.gated');
+    expect(gatedBaselineTask).toMatchObject({
+      status: 'blocked',
+      stderr: expect.stringContaining('never auto-approve manual safety gates'),
     });
     expect(existsSync(sideEffectPath)).toBe(false);
 

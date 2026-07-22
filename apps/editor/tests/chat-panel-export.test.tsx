@@ -163,7 +163,7 @@ describe('ChatPanel export affordance', () => {
         validation: { errors: [], warnings: [] },
       } as never,
       trial: {
-        version: 1,
+        version: 2,
         success: false,
         kind: 'failed',
         ran: true,
@@ -173,6 +173,7 @@ describe('ChatPanel export affordance', () => {
         totalTaskCount: 1,
         omittedTaskCount: 0,
         tasks: [],
+        cases: [],
       },
       repairAttempts: 2,
       reconcile: {
@@ -209,7 +210,7 @@ describe('ChatPanel export affordance', () => {
         validation: { errors: [], warnings: [] },
       } as never,
       trial: {
-        version: 1,
+        version: 2,
         success: true,
         kind: 'passed',
         ran: true,
@@ -219,6 +220,7 @@ describe('ChatPanel export affordance', () => {
         totalTaskCount: 1,
         omittedTaskCount: 0,
         tasks: [],
+        cases: [],
       },
       repairAttempts: 1,
       reconcile: {
@@ -261,7 +263,7 @@ describe('ChatPanel export affordance', () => {
           validation: { errors: [], warnings: [] },
         },
         trial: {
-          version: 1,
+          version: 2,
           success: false,
           kind: 'failed',
           ran: true,
@@ -271,6 +273,7 @@ describe('ChatPanel export affordance', () => {
           totalTaskCount: 1,
           omittedTaskCount: 0,
           tasks: [],
+          cases: [],
         },
       } as never,
       sendError: null,
