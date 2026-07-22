@@ -55,3 +55,18 @@ export function resolveCanvasContentHeight(planHeight: number): number {
 export function resolveCanvasBottomSpacer(planHeight: number): number {
   return Math.max(0, resolveCanvasContentHeight(planHeight) - planHeight);
 }
+
+/**
+ * A short pipeline still needs room below the visible viewport or a vertical
+ * background drag has nowhere to scroll. Keep the content at least one
+ * viewport plus the normal bottom clearance while retaining the fixed height
+ * used for taller pipelines.
+ */
+export function resolveCanvasScrollableMinHeight(planHeight: number): string {
+  return `max(${resolveCanvasContentHeight(planHeight)}px, calc(100% + ${CANVAS_PAD_BOTTOM}px))`;
+}
+
+/** Keep the header column's scroll extent identical to the task canvas. */
+export function resolveCanvasBottomSpacerHeight(planHeight: number): string {
+  return `max(${resolveCanvasBottomSpacer(planHeight)}px, calc(100% + ${CANVAS_PAD_BOTTOM}px - ${planHeight}px))`;
+}

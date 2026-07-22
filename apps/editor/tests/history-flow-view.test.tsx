@@ -82,6 +82,14 @@ describe('HistoryFlowView', () => {
     expect(html).toContain('animate-spin');
   });
 
+  test('reserves viewport-relative blank space for two-dimensional drag panning', () => {
+    const html = renderToStaticMarkup(<HistoryFlowView summary={summary()} />);
+
+    expect(html).toContain('data-canvas-pan-surface');
+    expect(html).toContain('data-canvas-bottom-spacer');
+    expect(html).toContain('min-height:max(264px, calc(100% + 200px))');
+  });
+
   test('bounds history inspectors to the available narrow viewport', async () => {
     const source = await Bun.file(
       new URL('../src/components/run/HistoryFlowView.tsx', import.meta.url),

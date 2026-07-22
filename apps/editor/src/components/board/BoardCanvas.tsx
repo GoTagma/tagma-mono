@@ -49,6 +49,12 @@ import {
   visibleTracksFromPlan,
   type RenderRow,
 } from './render-plan';
+import {
+  resolveCanvasBottomSpacerHeight,
+  resolveCanvasContentHeight,
+  resolveCanvasScrollableMinHeight,
+} from './canvas-pan';
+import { useCanvasPan } from './use-canvas-pan';
 
 const DRAG_THRESHOLD = 4;
 
@@ -695,54 +701,22 @@ export function BoardCanvas({
       headerRef.current.scrollTop = contentRef.current.scrollTop;
   }, []);
 
-  const { contentW, contentH } = useMemo(() => {
+  const { contentW, planHeight } = useMemo(() => {
     let maxX = 0;
     for (const [, pos] of positionsMap) {
       if (pos.x + TASK_W > maxX) maxX = pos.x + TASK_W;
     }
     return {
       contentW: Math.max(maxX + CANVAS_PAD_RIGHT, 2000),
-      contentH: Math.max(planTotalHeight(renderPlan), 200),
+      planHeight: planTotalHeight(renderPlan),
     };
   }, [positionsMap, renderPlan]);
 
-  const panDidDragRef = useRef(false);
-
-  const handleBackgroundPanMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    const el = contentRef.current;
-    if (!el) return;
-    const startX = e.clientX,
-      startY = e.clientY;
-    const startSL = el.scrollLeft,
-      startST = el.scrollTop;
-    let started = false;
-    panDidDragRef.current = false;
-
-    const onMove = (ev: MouseEvent) => {
-      const dx = ev.clientX - startX,
-        dy = ev.clientY - startY;
-      if (!started) {
-        if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
-        started = true;
-        panDidDragRef.current = true;
-      }
-      const z = getZoom();
-      el.scrollLeft = startSL - dx / z;
-      el.scrollTop = startST - dy / z;
-    };
-    const onUp = () => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-    document.body.style.cursor = 'grabbing';
-    document.body.style.userSelect = 'none';
-  }, []);
+  const contentH = resolveCanvasContentHeight(planHeight);
+  const canvasMinHeight = resolveCanvasScrollableMinHeight(planHeight);
+  const canvasBottomSpacerHeight = resolveCanvasBottomSpacerHeight(planHeight);
+  const { didDragRef: panDidDragRef, handleMouseDown: handleBackgroundPanMouseDown } =
+    useCanvasPan(contentRef);
 
   // ── Task drag (supports multi-select) ──
   const selectedIdsRef = useRef(selectedTaskIds);
@@ -1778,12 +1752,19 @@ export function BoardCanvas({
             </div>
           );
         })}
+        <div
+          aria-hidden
+          data-canvas-bottom-spacer
+          className=pointer-events-none
+          style={{ height: canvasBottomSpacerHeight }}
+        />
       </div>
 
       {/* Right: Timeline canvas */}
       <div
         ref={contentRef}
         id={BOARD_SCROLL_ID}
+        data-canvas-pan-surface={true}
         className="flex-1 min-w-0 overflow-auto timeline-grid hide-scrollbar"
         onScroll={syncScroll}
         onContextMenu={handleCanvasContextMenu}
@@ -1798,7 +1779,7 @@ export function BoardCanvas({
       >
         <div
           className="relative w-full cursor-grab active:cursor-grabbing"
-          style={{ minWidth: contentW, minHeight: contentH }}
+          style={{ minWidth: contentW, minHeight: canvasMinHeight }}
         >
           {/* Row backgrounds — folder bars get a subtle dashed band so the
               canvas mirrors the sidebar's folder header at the same Y. */}
@@ -1827,7 +1808,6 @@ export function BoardCanvas({
                 key={`bg-${track.id}`}
                 className={`absolute left-0 right-0 border-b border-tagma-border/40 cursor-grab active:cursor-grabbing ${zebra} ${isSelectedTrack ? 'selected-track-row' : ''}`}
                 style={{ top: row.top, height: row.height }}
-                onMouseDown={handleBackgroundPanMouseDown}
                 onClick={() => {
                   if (!panDidDragRef.current) {
                     onSelectTask(null);

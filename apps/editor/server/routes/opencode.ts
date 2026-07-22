@@ -547,7 +547,7 @@ export function registerOpencodeRoutes(app: express.Express): void {
           ? await restartOpencode(tagmaCwd)
           : await ensureOpencode(tagmaCwd);
       console.log('[opencode] ensure resolved, baseUrl =', baseUrl);
-      res.json({ ok: true, baseUrl, authHeader: auth.authorization });
+      res.json({ ok: true, baseUrl, directory: tagmaCwd, authHeader: auth.authorization });
     } catch (err) {
       console.error('[opencode] ensure FAILED:', err);
       res.status(500).json({ error: errorMessage(err) });
@@ -583,7 +583,7 @@ export function registerOpencodeRoutes(app: express.Express): void {
       console.log('[opencode] restart called, cwd =', tagmaCwd);
       const { baseUrl, auth } = await restartOpencode(tagmaCwd);
       console.log('[opencode] restart resolved, baseUrl =', baseUrl);
-      res.json({ ok: true, baseUrl, authHeader: auth.authorization });
+      res.json({ ok: true, baseUrl, directory: tagmaCwd, authHeader: auth.authorization });
     } catch (err) {
       console.error('[opencode] restart FAILED:', err);
       res.status(500).json({ error: errorMessage(err) });

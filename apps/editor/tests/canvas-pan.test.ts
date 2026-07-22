@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  resolveCanvasBottomSpacerHeight,
   resolveCanvasBottomSpacer,
   resolveCanvasContentHeight,
+  resolveCanvasScrollableMinHeight,
   resolveCanvasPan,
 } from '../src/components/board/canvas-pan';
 import { CANVAS_MIN_HEIGHT, CANVAS_PAD_BOTTOM } from '../src/components/board/layout-constants';
@@ -44,6 +46,15 @@ describe('canvas background panning', () => {
     expect(resolveCanvasBottomSpacer(64)).toBe(CANVAS_PAD_BOTTOM);
   });
 
+  test('keeps viewport-relative vertical panning room when the pipeline is short', () => {
+    expect(resolveCanvasScrollableMinHeight(64)).toBe(
+      `max(264px, calc(100% + ${CANVAS_PAD_BOTTOM}px))`,
+    );
+    expect(resolveCanvasBottomSpacerHeight(64)).toBe(
+      `max(200px, calc(100% + ${CANVAS_PAD_BOTTOM}px - 64px))`,
+    );
+  });
+
   test('cleans up the shared drag session on mouseup, window blur, and unmount', async () => {
     const source = await Bun.file(
       new URL('../src/components/board/use-canvas-pan.ts', import.meta.url),
@@ -53,5 +64,19 @@ describe('canvas background panning', () => {
     expect(source).toContain(`window.addEventListener('blur', cleanup)`);
     expect(source).toContain(`window.removeEventListener('blur', cleanup)`);
     expect(source).toContain('useEffect(() => () => cleanupRef.current?.(), [])');
+  });
+
+  test('wires shared panning and viewport-relative height into every editable canvas', async () => {
+    const sources = await Promise.all([
+      Bun.file(new URL('../src/components/board/BoardCanvas.tsx', import.meta.url)).text(),
+      Bun.file(new URL('../src/components/run/HistoryFlowView.tsx', import.meta.url)).text(),
+    ]);
+
+    for (const source of sources) {
+      expect(source).toContain('useCanvasPan(contentRef)');
+      expect(source).toContain('resolveCanvasScrollableMinHeight');
+      expect(source).toContain('resolveCanvasBottomSpacerHeight');
+      expect(source).toContain('data-canvas-pan-surface');
+    }
   });
 });

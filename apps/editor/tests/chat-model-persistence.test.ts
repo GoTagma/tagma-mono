@@ -1407,8 +1407,12 @@ describe('chat model persistence', () => {
       ],
       default: { openai: 'gpt-5' },
     });
-    sessionListsByBaseUrl.set(baseA, [{ id: 'session-a' } as Session]);
-    sessionListsByBaseUrl.set(baseB, [{ id: 'session-b' } as Session]);
+    sessionListsByBaseUrl.set(baseA, [
+      { id: 'session-a', directory: `${repoA}/.tagma` } as Session,
+    ]);
+    sessionListsByBaseUrl.set(baseB, [
+      { id: 'session-b', directory: `${repoB}/.tagma` } as Session,
+    ]);
 
     const originalConsoleError = console.error;
     console.error = () => {};

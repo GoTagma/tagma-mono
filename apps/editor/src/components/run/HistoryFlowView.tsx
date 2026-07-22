@@ -24,6 +24,12 @@ import {
   TRACK_H,
   CANVAS_PAD_RIGHT,
 } from '../board/layout-constants';
+import {
+  resolveCanvasBottomSpacerHeight,
+  resolveCanvasContentHeight,
+  resolveCanvasScrollableMinHeight,
+} from '../board/canvas-pan';
+import { useCanvasPan } from '../board/use-canvas-pan';
 import { CopyButton } from './CopyButton';
 
 const HISTORY_COMPARE_INSTRUCTION =
@@ -168,6 +174,8 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
+  const { didDragRef: panDidDragRef, handleMouseDown: handlePanMouseDown } =
+    useCanvasPan(contentRef);
 
   const tracksMeta = useMemo(() => {
     if (summary.tracks?.length) return summary.tracks;
@@ -248,51 +256,15 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
     return Math.max(maxX + CANVAS_PAD_RIGHT, 2000);
   }, [taskPositions]);
 
-  const canvasHeight = Math.max(trackGroups.length * TRACK_H, 200);
+  const planHeight = trackGroups.length * TRACK_H;
+  const canvasHeight = resolveCanvasContentHeight(planHeight);
+  const canvasMinHeight = resolveCanvasScrollableMinHeight(planHeight);
+  const canvasBottomSpacerHeight = resolveCanvasBottomSpacerHeight(planHeight);
 
   const syncScroll = useCallback(() => {
     if (headerRef.current && contentRef.current) {
       headerRef.current.scrollTop = contentRef.current.scrollTop;
     }
-  }, []);
-
-  // Drag-to-pan (matches BoardCanvas / RunView). Document-level listeners
-  // keep the drag alive even when the cursor leaves the canvas element,
-  // and `panDidDragRef` lets the subsequent click skip deselection when
-  // the gesture was actually a pan.
-  const panDidDragRef = useRef(false);
-  const handlePanMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    const el = contentRef.current;
-    if (!el) return;
-    const startX = e.clientX,
-      startY = e.clientY;
-    const startSL = el.scrollLeft,
-      startST = el.scrollTop;
-    let started = false;
-    panDidDragRef.current = false;
-    const onMove = (ev: MouseEvent) => {
-      const dx = ev.clientX - startX,
-        dy = ev.clientY - startY;
-      if (!started) {
-        if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
-        started = true;
-        panDidDragRef.current = true;
-      }
-      el.scrollLeft = startSL - dx;
-      el.scrollTop = startST - dy;
-    };
-    const onUp = () => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-    document.body.style.cursor = 'grabbing';
-    document.body.style.userSelect = 'none';
   }, []);
 
   const clearSelection = useCallback(() => {
@@ -377,17 +349,24 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
             </div>
           );
         })}
+        <div
+          aria-hidden
+          data-canvas-bottom-spacer
+          className="pointer-events-none"
+          style={{ height: canvasBottomSpacerHeight }}
+        />
       </div>
 
       <div
         ref={contentRef}
+        data-canvas-pan-surface={true}
         className="flex-1 min-w-0 overflow-auto timeline-grid hide-scrollbar cursor-grab active:cursor-grabbing"
         onScroll={syncScroll}
         onMouseDown={handlePanMouseDown}
       >
         <div
           className="relative w-full"
-          style={{ minWidth: canvasWidth, minHeight: Math.max(canvasHeight, 0) }}
+          style={{ minWidth: canvasWidth, minHeight: canvasMinHeight }}
           onClick={clearSelection}
         >
           {trackGroups.map((tg, i) => (
@@ -395,7 +374,6 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
               key={tg.id}
               className={`absolute left-0 right-0 border-b border-tagma-border/40 cursor-grab active:cursor-grabbing ${i % 2 === 0 ? 'track-row-even' : 'track-row-odd'}`}
               style={{ top: i * TRACK_H, height: TRACK_H }}
-              onMouseDown={handlePanMouseDown}
               onClick={clearSelection}
             />
           ))}

@@ -127,7 +127,10 @@ describe('OpenCode routes under a workspace YAML lock', () => {
       await postHandler('/api/opencode/chat/ensure')(request(ws, '/api/opencode/chat/ensure'), res);
 
       expect(res.statusCode).toBe(200);
-      expect(res.body).toMatchObject({ baseUrl: 'http://restarted-opencode.test' });
+      expect(res.body).toMatchObject({
+        baseUrl: 'http://restarted-opencode.test',
+        directory: join(workDir, '.tagma'),
+      });
       expect({ seedCalls, ensureCalls, restartCalls, watcherCalls }).toEqual({
         seedCalls: 1,
         ensureCalls: 0,
@@ -152,6 +155,7 @@ describe('OpenCode routes under a workspace YAML lock', () => {
       expect(res.body).toEqual({
         ok: true,
         baseUrl: 'http://existing-opencode.test',
+        directory: join(workDir, '.tagma'),
         authHeader: 'Bearer existing',
       });
       expect({ seedCalls, ensureCalls, restartCalls, watcherCalls }).toEqual({
@@ -200,6 +204,7 @@ describe('OpenCode routes under a workspace YAML lock', () => {
       expect(ownerRes.body).toMatchObject({
         ok: true,
         baseUrl: 'http://restarted-opencode.test',
+        directory: join(workDir, '.tagma'),
       });
       expect({ seedCalls, restartCalls }).toEqual({ seedCalls: 1, restartCalls: 1 });
     } finally {

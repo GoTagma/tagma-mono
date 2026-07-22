@@ -1997,8 +1997,8 @@ type SessionOwnershipFields = {
 
 function normalizeSessionPath(path: unknown): string | null {
   if (typeof path !== 'string' || !path.trim()) return null;
-  const normalized = path.trim().replace(/\/g, '/').replace(//+$/, '');
-  return /^[A-Za-z]://.test(normalized) || normalized.startsWith('//')
+  const normalized = path.trim().replace(/\\/g, '/').replace(/\/+$/, '');
+  return /^[A-Za-z]:\//.test(normalized) || normalized.startsWith('//')
     ? normalized.toLowerCase()
     : normalized;
 }
