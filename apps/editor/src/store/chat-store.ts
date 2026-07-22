@@ -10,6 +10,7 @@ import {
   getOpencodeBaseUrl,
   buildOpencodeRequestHeaders,
   getOpencodeWorkspaceKey,
+  listOpencodeSessions,
   resetOpencodeClient,
   restartOpencodeForConfig,
   updateOpencodeSessionV2,
@@ -79,7 +80,11 @@ import {
   type ModelPick,
 } from './chat-persist';
 import { buildEditorContext, type ChatYamlReconcileSummary } from './chat-editor-context';
-import { buildTagmaSessionMetadata } from '../../shared/opencode-session-metadata.js';
+import {
+  buildTagmaSessionMetadata,
+  hasTagmaSessionMarker,
+  parseTagmaSessionMetadata,
+} from '../../shared/opencode-session-metadata.js';
 import { serializePreviewYaml } from '../utils/yaml-preview-diff';
 
 // Re-export for backward compatibility — tests and other consumers import this
@@ -1984,8 +1989,48 @@ function retitleDesktopChatSession(
   return sessions.map((session) => (session.id === sessionId ? { ...session, title } : session));
 }
 
-function userVisibleSessions(sessions: Session[]): Session[] {
-  return sessions.filter((session) => !(session as Session & { parentID?: string }).parentID);
+type SessionOwnershipFields = {
+  directory?: unknown;
+  metadata?: unknown;
+  parentID?: unknown;
+};
+
+function normalizeSessionPath(path: unknown): string | null {
+  if (typeof path !== 'string' || !path.trim()) return null;
+  const normalized = path.trim().replace(/\/g, '/').replace(//+$/, '');
+  return /^[A-Za-z]://.test(normalized) || normalized.startsWith('//')
+    ? normalized.toLowerCase()
+    : normalized;
+}
+
+function sameSessionPath(left: unknown, right: unknown): boolean {
+  const normalizedLeft = normalizeSessionPath(left);
+  const normalizedRight = normalizeSessionPath(right);
+  return !!normalizedLeft && !!normalizedRight && normalizedLeft === normalizedRight;
+}
+
+function isTagmaChatSessionEvent(session: Session): boolean {
+  const fields = session as Session & SessionOwnershipFields;
+  if (fields.parentID || !hasTagmaSessionMarker(fields.metadata)) return false;
+  const tagma = parseTagmaSessionMetadata(fields.metadata);
+  if (!tagma || (tagma.source !== 'desktop-chat' && tagma.source !== 'bot-bridge')) return false;
+  return !tagma.workspacePath || sameSessionPath(tagma.workspacePath, getOpencodeWorkspaceKey());
+}
+
+function userVisibleSessions(
+  sessions: Session[],
+  directory: string | null,
+  workspaceKey: string,
+): Session[] {
+  if (!directory) return [];
+  return sessions.filter((session) => {
+    const fields = session as Session & SessionOwnershipFields;
+    if (fields.parentID || !sameSessionPath(fields.directory, directory)) return false;
+    if (!hasTagmaSessionMarker(fields.metadata)) return true;
+    const tagma = parseTagmaSessionMetadata(fields.metadata);
+    if (!tagma || (tagma.source !== 'desktop-chat' && tagma.source !== 'bot-bridge')) return false;
+    return !tagma.workspacePath || sameSessionPath(tagma.workspacePath, workspaceKey);
+  });
 }
 
 function idleSessionRuntimeState(messages: OpencodeThreadEntry[] = []): ChatSessionRuntimeState {
@@ -3406,11 +3451,13 @@ export function applySseEvent(event: OpencodeEvent, get: () => ChatStore, set: C
     }
     case 'session.created': {
       const info = event.properties.info;
+      if (!isTagmaChatSessionEvent(info)) return;
       set({ sessions: upsertSession(state.sessions, info) });
       return;
     }
     case 'session.updated': {
       const info = event.properties.info;
+      if (!isTagmaChatSessionEvent(info)) return;
       set({ sessions: upsertSession(state.sessions, info) });
       return;
     }
@@ -3954,9 +4001,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           console.error('[chat] agents failed:', err);
           return [] as Agent[];
         }),
-        unwrap(client.session.list()).catch((err) => {
+        listOpencodeSessions(workspaceKeyAtStart).catch((err) => {
           console.error('[chat] sessions failed:', err);
-          return [] as Session[];
+          return { sessions: [] as Session[], directory: null };
         }),
         fetchProviderCatalog(workspaceKeyAtStart),
         apiListCustomProviders(workspaceKeyAtStart).catch((err) => {
@@ -4041,7 +4088,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       set({
         providers,
         agents,
-        sessions: userVisibleSessions(sessions),
+        sessions: userVisibleSessions(sessions.sessions, sessions.directory, workspaceKey),
         providerCatalog,
         customProviders,
         model: nextModel,
@@ -4060,7 +4107,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({
       providers,
       agents,
-      sessions: userVisibleSessions(sessions),
+      sessions: userVisibleSessions(sessions.sessions, sessions.directory, workspaceKey),
       providerCatalog,
       customProviders,
       model: nextModel,
@@ -4074,10 +4121,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   async refreshSessions() {
     const workspaceKey = getOpencodeWorkspaceKey();
-    const client = await getOpencodeClient(workspaceKey);
-    const sessions = await unwrap(client.session.list()).catch(() => [] as Session[]);
+    const { sessions, directory } = await listOpencodeSessions(workspaceKey).catch(() => ({
+      sessions: [] as Session[],
+      directory: null,
+    }));
     if (getOpencodeWorkspaceKey() !== workspaceKey) return;
-    set({ sessions: userVisibleSessions(sessions) });
+    set({ sessions: userVisibleSessions(sessions, directory, workspaceKey) });
   },
 
   async selectSession(id) {

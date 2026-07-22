@@ -444,6 +444,7 @@ const makeSession = (id: string, parentID?: string) =>
     title: id,
     version: '1',
     time: { created: 1, updated: 1 },
+    metadata: { tagma: { schema: 1, source: 'desktop-chat' } },
     ...(parentID ? { parentID } : {}),
   }) as never;
 
@@ -460,6 +461,7 @@ const botSession = (id: string, title = 'Slack - @alice - repo') => ({
   title,
   version: '1',
   time: { created: Date.now() - 100, updated: Date.now() },
+  metadata: { tagma: { schema: 1, source: 'bot-bridge' } },
 });
 
 const makeTextPart = (id: string, sessionID: string, messageID: string, text: string) => ({
@@ -949,6 +951,37 @@ describe('applySseEvent — message + part state', () => {
     const state = useChatStore.getState();
     expect(state.currentSessionId).toBe('desktop-session');
     expect(state.messages).toEqual([]);
+  });
+
+  test('2c.1 external CLI session events never enter Tagma chat history', () => {
+    useChatStore.setState({
+      currentSessionId: 'desktop-session',
+      sessions: [],
+      messages: [],
+    } as never);
+
+    dispatch({
+      type: 'session.created',
+      properties: {
+        info: {
+          id: 'external-cli',
+          directory: '/repo',
+          title: 'Saved in the OpenCode CLI',
+        },
+      },
+    });
+    dispatch({
+      type: 'session.updated',
+      properties: {
+        info: {
+          id: 'external-cli',
+          directory: '/repo',
+          title: 'Renamed in the OpenCode CLI',
+        },
+      },
+    });
+
+    expect(useChatStore.getState().sessions).toEqual([]);
   });
 
   test('2d. current bot session starts a live remote turn on the next bot message', () => {

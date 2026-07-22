@@ -38,6 +38,7 @@ const providerBodiesByBaseUrl = new Map<
   { providers: unknown[]; default: Record<string, string> }
 >();
 const sessionListsByBaseUrl = new Map<string, Session[]>();
+const sessionListRequests: string[] = [];
 const authSetResponsesByBaseUrl = new Map<string, Promise<Response>>();
 const oauthAuthorizeResponsesByBaseUrl = new Map<string, Promise<Response>>();
 const ensureRequests: string[] = [];
@@ -272,8 +273,10 @@ beforeAll(() => {
     if (endpointBase(url, '/agent')) {
       return Promise.resolve(jsonResponse([]));
     }
-    const sessionBase = endpointBase(url, '/session');
+    const sessionUrl = new URL(url);
+    const sessionBase = sessionUrl.pathname === '/session' ? sessionUrl.origin : null;
     if (sessionBase && method === 'GET') {
+      sessionListRequests.push(url);
       return Promise.resolve(jsonResponse(sessionListsByBaseUrl.get(sessionBase) ?? []));
     }
     if (method === 'PATCH' && /\/session\/[^/]+$/.test(new URL(url).pathname)) {
@@ -512,6 +515,7 @@ afterEach(() => {
   ensureResponsesByWorkspace.clear();
   providerBodiesByBaseUrl.clear();
   sessionListsByBaseUrl.clear();
+  sessionListRequests.length = 0;
   authSetResponsesByBaseUrl.clear();
   oauthAuthorizeResponsesByBaseUrl.clear();
   ensureRequests.length = 0;
@@ -566,6 +570,77 @@ afterAll(() => {
 });
 
 describe('chat model persistence', () => {
+  test('history excludes OpenCode CLI sessions outside the managed Tagma directory', async () => {
+    const repo = 'C:/history-repo';
+    const otherRepo = 'C:/other-repo';
+    const directory = 'C:/history-repo/.tagma';
+    const baseUrl = 'http://opencode-history.test';
+    workspaceBaseUrls.set(repo, baseUrl);
+    sessionListsByBaseUrl.set(baseUrl, [
+      {
+        id: 'tagma-desktop',
+        directory,
+        metadata: {
+          tagma: { schema: 1, source: 'desktop-chat', workspacePath: repo },
+        },
+      } as Session,
+      {
+        id: 'tagma-bot',
+        directory,
+        metadata: {
+          tagma: { schema: 1, source: 'bot-bridge', workspacePath: repo },
+        },
+      } as Session,
+      { id: 'legacy-tagma', directory } as Session,
+      {
+        id: 'external-cli',
+        directory: repo,
+        title: 'Saved in the OpenCode CLI',
+      } as Session,
+      {
+        id: 'other-workspace',
+        directory,
+        metadata: {
+          tagma: { schema: 1, source: 'desktop-chat', workspacePath: otherRepo },
+        },
+      } as Session,
+      {
+        id: 'temporary-export',
+        directory,
+        metadata: {
+          tagma: { schema: 1, source: 'platform-export' },
+        },
+      } as Session,
+      {
+        id: 'child-session',
+        directory,
+        parentID: 'tagma-desktop',
+        metadata: {
+          tagma: { schema: 1, source: 'desktop-chat', workspacePath: repo },
+        },
+      } as Session,
+    ]);
+
+    ensureResponsesByWorkspace.set(repo, Promise.resolve(jsonResponse({ baseUrl, directory })));
+    setClientWorkspace(repo);
+    const originalConsoleError = console.error;
+    console.error = () => {};
+    try {
+      await useChatStore.getState().bootstrap();
+    } finally {
+      console.error = originalConsoleError;
+    }
+
+    expect(useChatStore.getState().sessions.map((session) => session.id)).toEqual([
+      'tagma-desktop',
+      'tagma-bot',
+      'legacy-tagma',
+    ]);
+    expect(new URL(sessionListRequests.at(-1) ?? 'http://missing.test').searchParams.get('directory')).toBe(
+      directory,
+    );
+  });
+
   test('maps v2 provider/model catalog into the existing picker provider shape', () => {
     const providers = buildProvidersFromV2Catalog({
       providers: [v2Provider('anthropic')],

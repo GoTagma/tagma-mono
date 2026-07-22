@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test';
-import { buildTagmaSessionMetadata } from '../shared/opencode-session-metadata';
+import {
+  buildTagmaSessionMetadata,
+  hasTagmaSessionMarker,
+  parseTagmaSessionMetadata,
+} from '../shared/opencode-session-metadata';
 
 describe('OpenCode session metadata', () => {
   test('builds compact Tagma metadata for desktop chat sessions', () => {
@@ -38,5 +42,25 @@ describe('OpenCode session metadata', () => {
         bot: { platform: 'slack' },
       },
     });
+  });
+
+  test('parses valid ownership metadata and rejects malformed markers', () => {
+    expect(
+      parseTagmaSessionMetadata({
+        tagma: {
+          schema: 1,
+          source: 'desktop-chat',
+          workspacePath: ' C:/repo ',
+        },
+      }),
+    ).toEqual({
+      schema: 1,
+      source: 'desktop-chat',
+      workspacePath: 'C:/repo',
+    });
+    expect(parseTagmaSessionMetadata({ tagma: { schema: 1, source: 'external-cli' } })).toBeNull();
+    expect(parseTagmaSessionMetadata({ tagma: { schema: '1', source: 'desktop-chat' } })).toBeNull();
+    expect(hasTagmaSessionMarker({ tagma: null })).toBe(true);
+    expect(hasTagmaSessionMarker({ other: true })).toBe(false);
   });
 });

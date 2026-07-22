@@ -23,6 +23,40 @@ export interface TagmaSessionMetadataInput {
   } | null;
 }
 
+export interface TagmaSessionMetadata {
+  schema: number;
+  source: TagmaSessionSource;
+  workspacePath?: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+export function hasTagmaSessionMarker(metadata: unknown): boolean {
+  return isRecord(metadata) && Object.prototype.hasOwnProperty.call(metadata, 'tagma');
+}
+
+export function parseTagmaSessionMetadata(metadata: unknown): TagmaSessionMetadata | null {
+  if (!isRecord(metadata) || !isRecord(metadata.tagma)) return null;
+  const tagma = metadata.tagma;
+  const schema = tagma.schema;
+  const source = tagma.source;
+  if (
+    typeof schema !== 'number' ||
+    !Number.isInteger(schema) ||
+    schema < 1 ||
+    (source !== 'desktop-chat' && source !== 'bot-bridge' && source !== 'platform-export')
+  ) {
+    return null;
+  }
+  const workspacePath =
+    typeof tagma.workspacePath === 'string' && tagma.workspacePath.trim()
+      ? tagma.workspacePath.trim()
+      : undefined;
+  return { schema, source, ...(workspacePath ? { workspacePath } : {}) };
+}
+
 function putString(target: Record<string, unknown>, key: string, value: string | null | undefined) {
   const trimmed = typeof value === 'string' ? value.trim() : '';
   if (trimmed) target[key] = trimmed;
