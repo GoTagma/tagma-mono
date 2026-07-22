@@ -76,6 +76,22 @@ function writeTrialPlan(
   return planPath;
 }
 
+function writePassingTrialPlan(stagedPath: string, taskId: string): void {
+  writeTrialPlan(stagedPath, {
+    cases: [
+      {
+        id: 'isolated-probe',
+        title: 'Isolated task probe',
+        objective: 'Confirm the selected safe task succeeds in an isolated workspace.',
+        runs: 1,
+        targetTaskIds: [taskId],
+        fixtures: [],
+        expectations: [{ type: 'task-status', taskId, status: 'success' }],
+      },
+    ],
+  });
+}
+
 function yamlFor(name: string, prompt: string): string {
   return [
     'pipeline:',
@@ -199,7 +215,6 @@ describe('chat YAML staging routes', () => {
       }),
       'utf-8',
     );
-
     const trialRes = makeRes();
     await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
       request(
@@ -479,6 +494,7 @@ describe('chat YAML staging routes', () => {
       }),
       'utf-8',
     );
+    writePassingTrialPlan(entry.stagedPath, 'main.cwd');
 
     const trialRes = makeRes();
     await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
@@ -543,12 +559,16 @@ describe('chat YAML staging routes', () => {
           {
             id: 'main',
             name: 'Main',
-            tasks: [{ id: 'verify', command: { argv: [process.execPath, '-e', script] } }],
+            tasks: [
+              { id: 'verify', command: { argv: [process.execPath, '-e', script] } },
+              { id: 'case_probe', command: { argv: [process.execPath, '-e', 'process.exit(0)'] } },
+            ],
           },
         ],
       }),
       'utf-8',
     );
+    writePassingTrialPlan(entry.stagedPath, 'main.case_probe');
 
     const runTrial = async () => {
       const res = makeRes();
@@ -630,12 +650,17 @@ describe('chat YAML staging routes', () => {
                 },
                 trigger: { type: 'manual', message: 'Approve the side effect' },
               },
+              {
+                id: 'case_probe',
+                command: { argv: [process.execPath, '-e', 'process.exit(0)'] },
+              },
             ],
           },
         ],
       }),
       'utf-8',
     );
+    writePassingTrialPlan(entry.stagedPath, 'main.case_probe');
 
     const trialRes = makeRes();
     await getRoute('/api/workspace/chat-yaml-stage/trial-run')(

@@ -438,7 +438,9 @@ export function buildConversationFlowSteps({
       label:
         postChatYamlAction.status === 'repairing'
           ? postChatYamlAction.trial
-            ? 'Trial run'
+            ? postChatYamlAction.trial.kind === 'plan-required'
+              ? 'Test plan'
+              : 'Trial run'
             : 'Validate YAML'
           : postChatYamlAction.status === 'failed'
             ? 'Repair YAML'
@@ -448,7 +450,9 @@ export function buildConversationFlowSteps({
       detail:
         postChatYamlAction.status === 'repairing'
           ? postChatYamlAction.trial
-            ? 'repairing failed trial run'
+            ? postChatYamlAction.trial.kind === 'plan-required'
+              ? 'planning edge-case cases'
+              : 'repairing failed trial run'
             : 'checking generated pipeline'
           : postChatYamlAction.status === 'failed'
             ? 'compile failed'
@@ -1350,7 +1354,9 @@ function YamlActionBubble() {
   const title =
     action.status === 'repairing'
       ? action.trial
-        ? 'Repairing failed trial run...'
+        ? action.trial.kind === 'plan-required'
+          ? 'Planning targeted edge-case trial...'
+          : 'Repairing failed trial run...'
         : 'Validating YAML...'
       : action.status === 'failed'
         ? 'Compile still failing'

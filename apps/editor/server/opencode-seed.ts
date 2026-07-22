@@ -701,7 +701,7 @@ Success is a pipeline the editor can compile and the user can plausibly run, not
 
 ## Trial Run
 
-Host first requires the hash-bound trial plan, then performs the existing real-workspace baseline plus its targeted cases in isolated workspaces when enabled in Editor Settings. Never claim it passed without host evidence. A \`<tagma-internal>\` plan request is read-only except for \`tagma_trial_plan\`; trial-run failure evidence is the same authorized logical turn: repair and recompile. Never remove or weaken a manual approval or safety boundary to pass; preserve and report prerequisites.
+Host performs a bounded trial run before release when enabled in Editor Settings. It first requires the hash-bound trial plan, then runs the existing real-workspace baseline plus targeted cases in isolated workspaces. Never claim it passed without host evidence. A \`<tagma-internal>\` plan request is read-only except for \`tagma_trial_plan\`; trial-run failure evidence is the same authorized logical turn: repair and recompile. Never remove or weaken a manual approval or safety boundary to pass; preserve and report prerequisites.
 
 ## Self-Review
 
@@ -1673,6 +1673,12 @@ export function seedOpencodeArtifacts(
       join(tagmaCwd, '.opencode', 'tools'),
       'tagma_placement_plan.ts',
       buildTagmaPlacementTool(),
+    ) || changed;
+  changed =
+    seedFile(
+      join(tagmaCwd, '.opencode', 'tools'),
+      'tagma_trial_plan.ts',
+      buildTagmaTrialPlanTool(),
     ) || changed;
   for (const [name, build] of TAGMA_OPENCODE_SKILLS) {
     changed = seedFile(join(tagmaCwd, '.opencode', 'skills', name), 'SKILL.md', build()) || changed;

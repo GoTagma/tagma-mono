@@ -117,7 +117,7 @@ test('router keeps one bounded implementation handoff before result synthesis', 
 test('tagma-pipeline agent stays compact and keeps schema detail out of the base prompt', () => {
   const doc = buildTagmaPipelineAgent('Windows');
 
-  expect(doc.length).toBeLessThan(16_000);
+  expect(doc.length).toBeLessThan(18_000);
   expect(doc).toContain('Keep context small');
   expect(doc).toContain('schema source of truth');
   expect(doc).toContain('YAML Contract Quick Reference');
@@ -452,7 +452,7 @@ test('placement tool is generated as an OpenCode custom tool module', () => {
 test('trial-plan tool binds structured edge cases to the final YAML hash', () => {
   const doc = buildTagmaTrialPlanTool();
 
-  expect(doc).toContain('import { createHash } from node:crypto');
+  expect(doc).toContain('createHash, randomUUID');
   expect(doc).toContain('export default tool');
   expect(doc).toContain('pipeline_path: tool.schema.string()');
   expect(doc).toContain('duplicate-input-names');

@@ -148,6 +148,8 @@ export interface ChatYamlStageDescriptor {
 export type ChatPipelineTrialRunKind =
   | 'passed'
   | 'failed'
+  | 'plan-required'
+  | 'plan-failed'
   | 'compile-failed'
   | 'preflight-failed'
   | 'setup-failed'
@@ -155,6 +157,8 @@ export type ChatPipelineTrialRunKind =
   | 'busy';
 
 export interface ChatPipelineTrialTaskResult {
+  caseId: string | null;
+  runNumber: number;
   taskId: string;
   status: string;
   exitCode: number | null;
@@ -163,8 +167,71 @@ export interface ChatPipelineTrialTaskResult {
   stderr: string;
 }
 
+export type ChatPipelineTrialCoverageDimension =
+  | 'multiple-inputs'
+  | 'duplicate-input-names'
+  | 'multiline-content'
+  | 'output-collision'
+  | 'repeat-run'
+  | 'empty-content'
+  | 'special-characters';
+
+export interface ChatPipelineTrialPlanRequest {
+  reason: 'missing' | 'stale' | 'invalid';
+  relativePlanPath: string;
+  pipelineHash: string;
+  message: string;
+  requiredCoverage: ChatPipelineTrialCoverageDimension[];
+}
+
+export interface ChatPipelineTrialExpectationResult {
+  type:
+    | 'path-exists'
+    | 'path-not-exists'
+    | 'file-contains'
+    | 'file-not-contains'
+    | 'directory-entry-count'
+    | 'task-status'
+    | 'case-execution';
+  passed: boolean;
+  detail: string;
+}
+
+export interface ChatPipelineTrialCaseResult {
+  id: string;
+  title: string;
+  objective: string;
+  success: boolean;
+  runIds: string[];
+  tasks: ChatPipelineTrialTaskResult[];
+  expectations: ChatPipelineTrialExpectationResult[];
+}
+
+export interface ChatPipelineTrialPlanSummary {
+  summary: string;
+  goals: string[];
+  coverage: Array<{
+    dimension: ChatPipelineTrialCoverageDimension;
+    status: 'covered' | 'not-applicable' | 'blocked';
+    caseIds: string[];
+    rationale: string;
+  }>;
+  findings: Array<{
+    severity: 'blocking' | 'warning';
+    summary: string;
+    evidence: string;
+  }>;
+  cases: Array<{
+    id: string;
+    title: string;
+    objective: string;
+    runs: number;
+    targetTaskIds: string[];
+  }>;
+}
+
 export interface ChatPipelineTrialRunResult {
-  version: 1;
+  version: 2;
   success: boolean;
   kind: ChatPipelineTrialRunKind;
   ran: boolean;
@@ -174,6 +241,9 @@ export interface ChatPipelineTrialRunResult {
   totalTaskCount: number;
   omittedTaskCount: number;
   tasks: ChatPipelineTrialTaskResult[];
+  planRequest?: ChatPipelineTrialPlanRequest;
+  plan?: ChatPipelineTrialPlanSummary;
+  cases: ChatPipelineTrialCaseResult[];
 }
 
 export type ChatYamlStageConflict =

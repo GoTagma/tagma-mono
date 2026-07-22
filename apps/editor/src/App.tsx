@@ -99,6 +99,8 @@ import {
 import { serializePreviewYaml } from './utils/yaml-preview-diff';
 import { DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS } from '../shared/chat-pipeline-repair-limit.js';
 
+const MAX_CHAT_TRIAL_PLAN_PROMPTS = 2;
+
 type ExplorerIntent = {
   mode: FileExplorerMode;
 } & (
@@ -333,6 +335,7 @@ export function App() {
   const afterWorkspaceRef = useRef<'new' | 'import' | 'save' | 'run' | null>(null);
   const workflowEventsUnsubscribeRef = useRef<(() => void) | null>(null);
   const repairAttemptsRef = useRef<Map<string, number>>(new Map());
+  const trialPlanAttemptsRef = useRef<Map<string, number>>(new Map());
   const diskAdoptRef = useRef<{ source: 'chat' | 'external'; token: number } | null>(null);
 
   useEffect(
@@ -1003,9 +1006,40 @@ export function App() {
             }
             if (cancelled) return;
 
+            if (trialRun.kind === 'plan-required' && trialRun.planRequest) {
+              const planAttemptKey = `${attemptKey}:${trialRun.planRequest.pipelineHash}`;
+              const planAttempts = trialPlanAttemptsRef.current.get(planAttemptKey) ?? 0;
+              if (planAttempts < MAX_CHAT_TRIAL_PLAN_PROMPTS && finishedSessionVisible) {
+                const nextPlanAttempt = planAttempts + 1;
+                trialPlanAttemptsRef.current.set(planAttemptKey, nextPlanAttempt);
+                useChatStore.getState().setPostChatYamlAction({
+                  ...stagedTarget,
+                  status: 'repairing',
+                  compile,
+                  trial: trialRun,
+                });
+                try {
+                  await useChatStore
+                    .getState()
+                    .sendInternalTrialPlanPrompt(
+                      stagedTarget,
+                      trialRun.planRequest,
+                      nextPlanAttempt,
+                      MAX_CHAT_TRIAL_PLAN_PROMPTS,
+                      snapshot,
+                    );
+                  keepYamlLockForRepair = true;
+                  return;
+                } catch (err) {
+                  console.error('[chat] internal staged pipeline trial planning failed', err);
+                }
+              }
+            }
+
             const trialAttempts = repairAttemptsRef.current.get(attemptKey) ?? 0;
             completedRepairAttempts = trialAttempts;
             if (
+              trialRun.kind !== 'plan-required' &&
               shouldAutoRepairCompileResult(trialRun, trialAttempts, maxAttempts) &&
               finishedSessionVisible
             ) {
@@ -1034,6 +1068,9 @@ export function App() {
                 console.error('[chat] internal staged pipeline trial repair failed', err);
               }
             }
+          }
+          for (const key of trialPlanAttemptsRef.current.keys()) {
+            if (key.startsWith(`${attemptKey}:`)) trialPlanAttemptsRef.current.delete(key);
           }
           if (
             chatPipelineVerificationSucceeded({

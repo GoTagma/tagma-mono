@@ -669,19 +669,30 @@ async function executeTargetedTrialCase(
   const tasks: ChatPipelineTrialTaskResult[] = [];
   let totalTaskCount = 0;
   let lastResult: EngineResult | null = null;
+  let allRunsSucceeded = true;
   let executionError: string | null = null;
   try {
     caseWorkspace = prepareTrialCaseWorkspace(input.stageRoot, input.stagedYamlPath, input.testCase);
+    const casePipelineConfig = await loadPipeline(
+      readFileSync(input.stagedYamlPath, 'utf-8'),
+      caseWorkspace.workDir,
+    );
+    const caseConfigErrors = validateConfig(casePipelineConfig);
+    if (caseConfigErrors.length > 0) {
+      throw new Error(`Isolated case configuration error: ${caseConfigErrors.join('; ')}`);
+    }
     for (let runNumber = 1; runNumber <= input.testCase.runs; runNumber += 1) {
       const runId = generateRunId();
       runIds.push(runId);
       lastResult = await runTrialPipelineOnce({
         ...input,
+        pipelineConfig: casePipelineConfig,
         workDir: caseWorkspace.workDir,
         runId,
         targetTaskIds: input.targetTaskIds,
         testCase: input.testCase,
       });
+      allRunsSucceeded = allRunsSucceeded && lastResult.success;
       const evidence = trialTaskResults(lastResult, input.testCase.id, runNumber);
       totalTaskCount += evidence.totalTaskCount;
       tasks.push(...evidence.tasks);
@@ -711,7 +722,7 @@ async function executeTargetedTrialCase(
   }
   const success =
     !!lastResult &&
-    lastResult.success &&
+    allRunsSucceeded &&
     runIds.length === input.testCase.runs &&
     expectations.every((item) => item.passed);
   if (caseWorkspace) rmSync(caseWorkspace.rootDir, { recursive: true, force: true });

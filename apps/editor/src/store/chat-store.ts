@@ -40,6 +40,7 @@ import {
   getClientRevision,
   withYamlEditLockRequestBypass,
   type EditorSettings,
+  type ChatPipelineTrialPlanRequest,
   type ChatPipelineTrialRunResult,
   type UsageRecord,
   type YamlCompileResult,
@@ -484,6 +485,13 @@ interface ChatStore {
     maxAttempts: number,
     snapshot?: ChatYamlSnapshot | null,
   ) => Promise<void>;
+  sendInternalTrialPlanPrompt: (
+    target: ChatYamlTarget,
+    request: ChatPipelineTrialPlanRequest,
+    attempt: number,
+    maxAttempts: number,
+    snapshot?: ChatYamlSnapshot | null,
+  ) => Promise<void>;
   /**
    * Ask opencode to stop generating on the current session. Safe to call any
    * time; the in-flight `send()` promise resolves shortly after the server
@@ -564,6 +572,32 @@ export function buildChatYamlRepairPrompt(
     `<${resultTag}>`,
     JSON.stringify(evidence.result, null, 2),
     `</${resultTag}>`,
+    '</tagma-internal>',
+  ].join('\n');
+}
+
+export function buildChatYamlTrialPlanPrompt(
+  target: ChatYamlTarget,
+  request: ChatPipelineTrialPlanRequest,
+  attempt: number,
+  maxAttempts: number,
+): string {
+  return [
+    '<tagma-internal>',
+    `Targeted trial planning attempt ${attempt}/${maxAttempts}.`,
+    `Target YAML: ${target.path}`,
+    `Plan path: ${request.relativePlanPath}`,
+    `Current YAML hash: ${request.pipelineHash}`,
+    `Reason: ${request.reason} — ${request.message}`,
+    '',
+    'This is the planning phase of the same user-authorized logical turn. Read the final YAML, its manifest, and the original user intent. Do not edit YAML, layout, requirements, helpers, or compile.log in this continuation.',
+    'Think through observable behavior before testing. Call tagma_trial_plan exactly once; it is the only write authorized here and binds the plan to the current YAML hash.',
+    'Create 1-8 small isolated cases with concrete fixtures and host-checkable expectations. Prefer the smallest targetTaskIds closure that exercises the behavior.',
+    'Explicitly cover or justify as not applicable: multiple inputs, duplicate input names, multiline content, output collisions, repeated runs, empty content, and special characters.',
+    'For file workflows, include same-basename inputs in different folders and multi-paragraph text with a blank line. Assert distinct outputs and a marker from a later paragraph so fixed output names and single-line parsing fail visibly.',
+    'Use blocking findings for contradictions already visible in the implementation. Do not invent passing expectations, remove legitimate prerequisites, or weaken manual approvals/safety gates.',
+    '',
+    `Required coverage dimensions: ${request.requiredCoverage.join(', ')}`,
     '</tagma-internal>',
   ].join('\n');
 }
@@ -4078,6 +4112,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   async sendInternalRepairPrompt(target, evidence, attempt, maxAttempts, snapshot) {
     const repairText = buildChatYamlRepairPrompt(target, evidence, attempt, maxAttempts);
     return promptOpencode(get, set, repairText, {
+      internal: true,
+      reuseLogicalTurn: true,
+      continuationSnapshot: snapshot ?? null,
+    });
+  },
+
+  async sendInternalTrialPlanPrompt(target, request, attempt, maxAttempts, snapshot) {
+    const planningText = buildChatYamlTrialPlanPrompt(
+      target,
+      request,
+      attempt,
+      maxAttempts,
+    );
+    return promptOpencode(get, set, planningText, {
       internal: true,
       reuseLogicalTurn: true,
       continuationSnapshot: snapshot ?? null,
