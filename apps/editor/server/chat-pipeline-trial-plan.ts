@@ -11,6 +11,8 @@ const MAX_TOTAL_FIXTURE_BYTES = 256 * 1024;
 const MAX_TEXT_EXPECTATION_BYTES = 16 * 1024;
 const PLAN_ID_RE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 const QUALIFIED_TASK_ID_RE = /^[A-Za-z_][A-Za-z0-9_-]*\.[A-Za-z_][A-Za-z0-9_-]*$/;
+const WINDOWS_RESERVED_CASE_SEGMENT_RE =
+  /^(con|prn|aux|nul|com[1-9]|lpt[1-9])($|[.])/i;
 
 export const CHAT_PIPELINE_TRIAL_COVERAGE_DIMENSIONS = [
   'multiple-inputs',
@@ -142,7 +144,17 @@ function normalizeRelativeCasePath(value: unknown, label: string): string {
   if (
     path.startsWith('/') ||
     /^[A-Za-z]:\//.test(path) ||
-    parts.some((part) => part.length === 0 || part === '.' || part === '..') ||
+    parts.some(
+      (part) =>
+        part.length === 0 ||
+        part === '.' ||
+        part === '..' ||
+        part.endsWith('.') ||
+        part.endsWith(' ') ||
+        /[<>:"|?*]/.test(part) ||
+        [...part].some((character) => character.charCodeAt(0) < 32) ||
+        WINDOWS_RESERVED_CASE_SEGMENT_RE.test(part),
+    ) ||
     parts[0]?.toLowerCase() === '.tagma'
   ) {
     throw new Error(`${label} must stay inside the isolated case workspace and outside .tagma.`);
@@ -222,6 +234,10 @@ function parseCase(value: unknown, index: number): ChatPipelineTrialPlanCase {
       };
     },
   );
+  const fixturePaths = fixtures.map((fixture) => fixture.path.toLowerCase());
+  if (new Set(fixturePaths).size !== fixturePaths.length) {
+    throw new Error(label + '.fixtures must not write the same path twice.');
+  }
   const expectations = asArray(
     raw.expectations,
     `${label}.expectations`,
@@ -248,6 +264,84 @@ function parseCase(value: unknown, index: number): ChatPipelineTrialPlanCase {
     fixtures,
     expectations,
   };
+}
+
+function hasDuplicateFixtureBasenames(cases: ChatPipelineTrialPlanCase[]): boolean {
+  return cases.some((item) => {
+    const basenames = item.fixtures.map(
+      (fixture) => fixture.path.split('/').at(-1)?.toLowerCase() ?? '',
+    );
+    return new Set(basenames).size !== basenames.length;
+  });
+}
+
+function hasDistinctOutputExpectation(cases: ChatPipelineTrialPlanCase[]): boolean {
+  return cases.some((item) => {
+    const positivePaths = new Set<string>();
+    for (const expectation of item.expectations) {
+      if (
+        expectation.type === 'directory-entry-count' &&
+        expectation.min !== null &&
+        expectation.min >= 2
+      ) {
+        return true;
+      }
+      if (expectation.type === 'path-exists' || expectation.type === 'file-contains') {
+        positivePaths.add(expectation.path.toLowerCase());
+      }
+    }
+    return positivePaths.size >= 2;
+  });
+}
+
+function validateCoveredCaseEvidence(
+  coverage: ChatPipelineTrialPlanCoverage[],
+  cases: ChatPipelineTrialPlanCase[],
+): void {
+  const casesById = new Map(cases.map((item) => [item.id, item]));
+  for (const entry of coverage) {
+    if (entry.status !== 'covered') continue;
+    const linkedCases = entry.caseIds
+      .map((caseId) => casesById.get(caseId))
+      .filter((item): item is ChatPipelineTrialPlanCase => !!item);
+    let evidenced = true;
+    if (entry.dimension === 'multiple-inputs') {
+      evidenced = linkedCases.some((item) => item.fixtures.length >= 2);
+    } else if (entry.dimension === 'duplicate-input-names') {
+      evidenced = hasDuplicateFixtureBasenames(linkedCases);
+    } else if (entry.dimension === 'multiline-content') {
+      evidenced = linkedCases.some((item) =>
+        item.fixtures.some((fixture) => fixture.content.includes(String.fromCharCode(10))),
+      );
+    } else if (entry.dimension === 'output-collision') {
+      evidenced = hasDistinctOutputExpectation(linkedCases);
+    } else if (entry.dimension === 'repeat-run') {
+      evidenced = linkedCases.some((item) => item.runs >= 2);
+    } else if (entry.dimension === 'empty-content') {
+      evidenced = linkedCases.some((item) =>
+        item.fixtures.some((fixture) => fixture.content.length === 0),
+      );
+    } else if (entry.dimension === 'special-characters') {
+      evidenced = linkedCases.some((item) =>
+        item.fixtures.some((fixture) =>
+          [...fixture.content].some((character) => {
+            const codePoint = character.codePointAt(0) ?? 0;
+            return (
+              codePoint > 127 ||
+              (character.trim().length > 0 && !/[A-Za-z0-9]/.test(character))
+            );
+          }),
+        ),
+      );
+    }
+    if (!evidenced) {
+      throw new Error(
+        'trial plan coverage marks ' +
+          entry.dimension +
+          ' covered without concrete linked-case evidence.',
+      );
+    }
+  }
 }
 
 export function parseChatPipelineTrialPlan(value: unknown): ChatPipelineTrialPlan {
@@ -313,6 +407,7 @@ export function parseChatPipelineTrialPlan(value: unknown): ChatPipelineTrialPla
   if (coverageDimensions.size !== coverage.length) {
     throw new Error('trial plan coverage dimensions must not be duplicated.');
   }
+  validateCoveredCaseEvidence(coverage, cases);
 
   const findings = asArray(raw.findings ?? [], 'trial plan findings', 16).map(
     (item, index): ChatPipelineTrialPlanFinding => {

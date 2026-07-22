@@ -1009,7 +1009,20 @@ export function App() {
             if (trialRun.kind === 'plan-required' && trialRun.planRequest) {
               const planAttemptKey = `${attemptKey}:${trialRun.planRequest.pipelineHash}`;
               const planAttempts = trialPlanAttemptsRef.current.get(planAttemptKey) ?? 0;
-              if (planAttempts < MAX_CHAT_TRIAL_PLAN_PROMPTS && finishedSessionVisible) {
+              const maxPlanAttemptsForTurn = Math.max(
+                MAX_CHAT_TRIAL_PLAN_PROMPTS,
+                maxAttempts + 1,
+              );
+              const totalPlanAttemptsForTurn = [...trialPlanAttemptsRef.current.entries()].reduce(
+                (count, [key, attemptsForHash]) =>
+                  key.startsWith(attemptKey + ':') ? count + attemptsForHash : count,
+                0,
+              );
+              if (
+                planAttempts < MAX_CHAT_TRIAL_PLAN_PROMPTS &&
+                totalPlanAttemptsForTurn < maxPlanAttemptsForTurn &&
+                finishedSessionVisible
+              ) {
                 const nextPlanAttempt = planAttempts + 1;
                 trialPlanAttemptsRef.current.set(planAttemptKey, nextPlanAttempt);
                 useChatStore.getState().setPostChatYamlAction({

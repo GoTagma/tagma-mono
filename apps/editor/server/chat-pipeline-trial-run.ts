@@ -250,14 +250,22 @@ function resultForSetupFailure(
 
 function trialPlanSummary(plan: ChatPipelineTrialPlan): ChatPipelineTrialPlanSummary {
   return {
-    summary: plan.summary,
-    goals: [...plan.goals],
-    coverage: plan.coverage.map((item) => ({ ...item, caseIds: [...item.caseIds] })),
-    findings: plan.findings.map((item) => ({ ...item })),
+    summary: boundedTrialText(plan.summary),
+    goals: plan.goals.map((goal) => boundedTrialText(goal)),
+    coverage: plan.coverage.map((item) => ({
+      ...item,
+      caseIds: [...item.caseIds],
+      rationale: boundedTrialText(item.rationale),
+    })),
+    findings: plan.findings.map((item) => ({
+      ...item,
+      summary: boundedTrialText(item.summary),
+      evidence: boundedTrialText(item.evidence),
+    })),
     cases: plan.cases.map((item) => ({
       id: item.id,
-      title: item.title,
-      objective: item.objective,
+      title: boundedTrialText(item.title),
+      objective: boundedTrialText(item.objective),
       runs: item.runs,
       targetTaskIds: [...item.targetTaskIds],
     })),
@@ -729,8 +737,8 @@ async function executeTargetedTrialCase(
   return {
     result: {
       id: input.testCase.id,
-      title: input.testCase.title,
-      objective: input.testCase.objective,
+      title: boundedTrialText(input.testCase.title),
+      objective: boundedTrialText(input.testCase.objective),
       success,
       runIds,
       tasks: tasks.slice(0, MAX_TRIAL_TASK_RESULTS),
@@ -923,6 +931,10 @@ async function executeTrial(
     ].sort((left, right) => Number(left.status === 'success') - Number(right.status === 'success'));
     const visibleTasks = allVisibleTasks.slice(0, MAX_TRIAL_TASK_RESULTS);
     const omittedTaskCount = Math.max(0, totalTaskCount - visibleTasks.length);
+    const visibleCases = cases.map((item) => ({
+      ...item,
+      tasks: visibleTasks.filter((task) => task.caseId === item.id),
+    }));
     return {
       version: TRIAL_CACHE_VERSION,
       success,
@@ -942,7 +954,7 @@ async function executeTrial(
       omittedTaskCount,
       tasks: visibleTasks,
       plan: trialPlanSummary(plan),
-      cases,
+      cases: visibleCases,
     };
   } catch (err) {
     return {

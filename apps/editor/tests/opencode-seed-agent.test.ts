@@ -46,6 +46,9 @@ test('tagma-router delegates history comparisons without read/edit powers', () =
   expect(doc).toContain('Do not include YAML schema guidance unless the question asks for it');
   expect(doc).toContain('general_direct_answer');
   expect(doc).toContain('answer directly before delegation');
+  expect(doc).toContain('Host <tagma-internal> trial-plan/repair');
+  expect(doc).toContain('authorized pipeline_work');
+  expect(doc).toContain('pass it unchanged');
   expect(doc).toContain('Never forward raw full transcript excerpts');
   expect(doc).toContain('read: deny');
   expect(doc).toContain('edit: deny');

@@ -170,6 +170,19 @@ function makeRes() {
   };
 }
 
+function discardStage(
+  getRoute: ReturnType<typeof createHarness>,
+  ws: WorkspaceState,
+  stageId: string,
+): void {
+  const res = makeRes();
+  getRoute('/api/workspace/chat-yaml-stage/discard')(
+    request(ws, { stageId }, 'chat-lock'),
+    res,
+  );
+  expect(res.statusCode).toBe(200);
+}
+
 afterEach(() => {
   for (const root of roots.splice(0)) {
     rmSync(root, { recursive: true, force: true });
@@ -236,6 +249,7 @@ describe('chat YAML staging routes', () => {
       },
     });
     expect(existsSync(join(ws.workDir, 'ran-before-plan.txt'))).toBe(false);
+    discardStage(getRoute, ws, stage.id);
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });
@@ -297,6 +311,7 @@ describe('chat YAML staging routes', () => {
       planRequest: { reason: 'stale' },
     });
     expect(existsSync(markerPath)).toBe(false);
+    discardStage(getRoute, ws, stage.id);
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });
@@ -383,6 +398,7 @@ describe('chat YAML staging routes', () => {
       'Every input writes outputs/result.txt.',
     );
     expect(existsSync(markerPath)).toBe(false);
+    discardStage(getRoute, ws, stage.id);
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });
@@ -493,6 +509,7 @@ describe('chat YAML staging routes', () => {
     expect(result.cases[0]?.expectations.some((item) => !item.passed)).toBe(true);
     expect(existsSync(join(ws.workDir, 'inputs', 'a', 'report.txt'))).toBe(false);
     expect(existsSync(join(ws.workDir, 'outputs', 'result.txt'))).toBe(false);
+    discardStage(getRoute, ws, stage.id);
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });

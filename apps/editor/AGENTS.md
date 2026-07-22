@@ -41,6 +41,19 @@
   default). When disabled, compile success is sufficient for finalization; do not fabricate trial
   evidence. Keep trial requests idempotent across response retries, bound and redact task evidence,
   and never auto-approve a manual trigger or weaken another safety/prerequisite gate.
+- Before an enabled trial executes, require a transient <stem>.trial-plan.json authored from the
+  final compiled YAML and bound to its SHA-1. Missing, stale, or invalid plans trigger a hidden
+  same-turn planning continuation that may only call tagma_trial_plan and may not edit pipeline
+  artifacts. Allow at most two attempts for one YAML hash and keep the total planning lifecycle
+  finite across repair revisions. Never finalize or publish the plan file as a live artifact.
+- Every plan must account for multiple inputs, duplicate input names, multiline content, output
+  collisions, repeated runs, empty content, and special characters. A dimension marked covered
+  must have concrete linked fixtures/assertions; blocked coverage or a blocking design finding
+  fails before execution and becomes repair evidence.
+- Preserve the existing real-workspace baseline run, then execute each targeted case in a fresh
+  stage-owned temporary workspace with bounded helpers/fixtures, contained portable paths,
+  selected task targets, repeated-run support, and host-evaluated assertions. Case workspaces
+  must be removed afterward and their fixtures/outputs must never leak into the live workspace.
 - A failed trial may feed one of the existing bounded hidden repair continuations back into the
   same OpenCode session, stage, snapshot, and YAML lease. Adopt into the live pipeline only after
   both compile and trial succeed; preserve a still-failing trial result as a numbered copy.
