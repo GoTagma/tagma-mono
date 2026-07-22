@@ -705,7 +705,7 @@ Success is a pipeline the editor can compile and the user can plausibly run, not
 
 ## Trial Run
 
-Host performs a bounded trial run before release when enabled in Editor Settings. It first requires the hash-bound trial plan, then runs the existing real-workspace baseline plus targeted cases in isolated workspaces. Never claim it passed without host evidence. A \`<tagma-internal>\` plan request is read-only except for \`tagma_trial_plan\`; trial-run failure evidence is the same authorized logical turn: repair and recompile. Never remove or weaken a manual approval or safety boundary to pass; preserve and report prerequisites.
+Host performs a bounded trial run before release when enabled in Editor Settings. Use a hash-bound plan, the real-workspace baseline, and isolated cases. Never claim it passed without host evidence. \`<tagma-internal>\` planning is read-only except for \`tagma_trial_plan\`; trial-run failure evidence remains the same authorized logical turn. If \`tagma_trial_plan\` fails, do not use symlinks, junctions, copies, or writes to live \`.tagma\`; briefly report the host/tool error and end the physical turn. Never remove or weaken a manual approval or safety boundary. Report prerequisites.
 
 ## Self-Review
 
@@ -1393,7 +1393,7 @@ const REQUIRED_COVERAGE = [
   "special-characters",
 ];
 
-function resolvePipelinePath(input) {
+function resolvePipelinePath(input, root) {
   const normalized = String(input || "").trim().replace(/\\\\/g, "/").replace(/^\\.\\//, "");
   const parts = normalized.split("/");
   if (parts.length !== 2 || parts.some((part) => !part || part === "." || part === "..")) {
@@ -1404,7 +1404,6 @@ function resolvePipelinePath(input) {
   if (!/\\.ya?ml$/i.test(yamlName) || parts[0] !== stem) {
     throw new Error("pipeline_path folder and YAML stem must match");
   }
-  const root = resolve(process.cwd());
   const yamlPath = resolve(root, ...parts);
   const rel = relative(root, yamlPath);
   if (!rel || rel === ".." || rel.startsWith("../") || rel.startsWith("..\\\\")) {
@@ -1485,12 +1484,13 @@ export default tool({
       }),
     ),
   },
-  async execute(args) {
+  async execute(args, context) {
     if (!Array.isArray(args.cases) || args.cases.length === 0 || args.cases.length > 8) {
       throw new Error("trial plan requires 1-8 targeted cases");
     }
     validateCoverage(args.coverage, args.cases);
-    const yamlPath = resolvePipelinePath(args.pipeline_path);
+    const root = resolve(context.directory);
+    const yamlPath = resolvePipelinePath(args.pipeline_path, root);
     const yamlHash = createHash("sha1").update(readFileSync(yamlPath, "utf8")).digest("hex");
     const planPath = yamlPath.replace(/\\.ya?ml$/i, ".trial-plan.json");
     const plan = {
@@ -1505,7 +1505,7 @@ export default tool({
     const tempPath = planPath + "." + randomUUID() + ".tmp";
     writeFileSync(tempPath, JSON.stringify(plan, null, 2) + "\\n", "utf8");
     renameSync(tempPath, planPath);
-    return JSON.stringify({ path: relative(process.cwd(), planPath).replace(/\\\\/g, "/"), yamlHash }, null, 2);
+    return JSON.stringify({ path: relative(root, planPath).replace(/\\\\/g, "/"), yamlHash }, null, 2);
   },
 });
 `;

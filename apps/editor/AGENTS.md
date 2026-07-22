@@ -59,6 +59,7 @@
   both compile and trial succeed; preserve a still-failing trial result as a numbered copy.
   This includes newly staged pipelines: leave the requested primary path absent and publish only
   the numbered copy when final verification still fails.
+- Treat Stop as cancellation of the entire staged logical chat lifecycle, not only the current OpenCode physical turn: a user-stopped finished turn or host-trial cancellation must abort the active host trial, discard the stage, clear post-chat action, release the YAML lease, and acknowledge exactly once, without planning, repair, trial retry, or finalize. Keep queued force-push continuation semantics unchanged.
 - Keep the shared compile/trial hidden-repair budget in the workspace Editor setting
   `opencodeChatPipelineRepairMaxAttempts`: default `25`, allowed range `0-50`, with `0` disabling
   automatic repair. The settings panel keeps it beside the trial-run toggle.
@@ -78,6 +79,7 @@
   `session.directory` match. Treat Tagma metadata as defense in depth: preserve untagged
   same-directory legacy chats, exclude foreign-workspace and platform-export markers, and admit
   SSE-created history rows only for marked desktop-chat or bot-bridge sessions.
+- OpenCode custom tools must resolve session-relative pipeline and companion paths from `ToolContext.directory`, never `process.cwd()`; staged chats depend on it to keep `.tagma/.chat-staging/<id>/.../agent-workspace/.tagma` as the authoritative root.
 - Pipeline prompt tasks using the built-in `opencode` driver must resolve the executable through
   `resolveOpencodeBinary()`, using the same user-runtime, bundled, dev-staged, then PATH precedence
   as Chat. Do not let editor-owned AI runs silently select a different global OpenCode version.
