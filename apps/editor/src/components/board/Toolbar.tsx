@@ -8,10 +8,7 @@ import {
   FolderOpen,
   ExternalLink,
   ChevronDown,
-  History,
   Search,
-  Workflow,
-  GitBranch,
   ArrowLeft,
   Menu as MenuIcon,
 } from 'lucide-react';
@@ -40,17 +37,7 @@ interface ToolbarProps {
   onSelectPipeline: () => void;
   onRun: () => void;
   runTargetCount?: number;
-  /** Open run history, including any live instances under the Running tab. */
-  onShowHistory: () => void;
-  onShowWorkflowGraph?: () => void;
   onReturnToWorkflowGraph?: () => void;
-  /**
-   * Opens the Track I/O dialog — a read-only summary of which task ports
-   * cross the pipeline boundary (All mode) or the boundary of a chosen
-   * track (By Track mode). Ports that stay inside the chosen scope are
-   * filtered out.
-   */
-  onShowTrackIO: () => void;
   searchQuery: string;
   searchOpen: boolean;
   searchMatches: TaskSearchMatch[];
@@ -65,24 +52,16 @@ interface ToolbarProps {
 interface CompactToolbarItemsOptions {
   menus: { label: string; items: DropdownItem[] }[];
   workspaceItems?: DropdownItem[];
-  workDir: string;
   onSelectPipeline: () => void;
   onRenamePipeline?: () => void;
-  onShowTrackIO: () => void;
-  onShowHistory: () => void;
-  onShowWorkflowGraph?: () => void;
   onReturnToWorkflowGraph?: () => void;
 }
 
 export function buildCompactToolbarItems({
   menus,
   workspaceItems = [],
-  workDir,
   onSelectPipeline,
   onRenamePipeline,
-  onShowTrackIO,
-  onShowHistory,
-  onShowWorkflowGraph,
   onReturnToWorkflowGraph,
 }: CompactToolbarItemsOptions): DropdownItem[] {
   const result: DropdownItem[] = [];
@@ -108,11 +87,6 @@ export function buildCompactToolbarItems({
   separator();
   result.push({ label: 'Inspect Pipeline', onAction: onSelectPipeline });
   if (onRenamePipeline) result.push({ label: 'Rename Pipeline', onAction: onRenamePipeline });
-  result.push({ label: 'Track I/O', onAction: onShowTrackIO });
-  if (workDir) result.push({ label: 'History', onAction: onShowHistory });
-  if (workDir && onShowWorkflowGraph) {
-    result.push({ label: 'Graph', onAction: onShowWorkflowGraph });
-  }
   if (onReturnToWorkflowGraph) {
     result.push({ label: 'Go Back', onAction: onReturnToWorkflowGraph });
   }
@@ -131,10 +105,7 @@ export function Toolbar({
   onSelectPipeline,
   onRun,
   runTargetCount = 0,
-  onShowHistory,
-  onShowWorkflowGraph,
   onReturnToWorkflowGraph,
-  onShowTrackIO,
   searchQuery,
   searchOpen,
   searchMatches,
@@ -197,12 +168,8 @@ export function Toolbar({
   const compactMenuItems = buildCompactToolbarItems({
     menus,
     workspaceItems,
-    workDir,
     onSelectPipeline,
     onRenamePipeline: openRenameEditor,
-    onShowTrackIO,
-    onShowHistory,
-    onShowWorkflowGraph,
     onReturnToWorkflowGraph,
   });
 
@@ -501,40 +468,8 @@ export function Toolbar({
           )}
 
           <button
-            onClick={onShowTrackIO}
-            className="hidden sm:flex items-center justify-center gap-1 h-[24px] w-[24px] xl:w-auto xl:px-2 text-[10px] border border-tagma-border text-tagma-muted hover:text-tagma-text hover:border-tagma-accent/30 transition-colors shrink-0"
-            title="View track / pipeline I/O"
-          >
-            <Workflow size={11} />
-            <span className="hidden xl:inline">Track I/O</span>
-          </button>
-
-          {workDir && (
-            <button
-              onClick={() => onShowHistory()}
-              className="hidden sm:flex items-center justify-center gap-1 h-[24px] w-[24px] xl:w-auto xl:px-2 text-[10px] border border-tagma-border text-tagma-muted hover:text-tagma-text hover:border-tagma-accent/30 transition-colors shrink-0"
-              title="View run history"
-            >
-              <History size={11} />
-              <span className="hidden xl:inline">History</span>
-            </button>
-          )}
-
-          {workDir && onShowWorkflowGraph && (
-            <button
-              onClick={onShowWorkflowGraph}
-              className="hidden sm:flex items-center justify-center gap-1 h-[24px] w-[24px] xl:w-auto xl:px-2 text-[10px] border border-tagma-border text-tagma-muted hover:text-tagma-text hover:border-tagma-accent/30 transition-colors shrink-0"
-              title="Open Pipeline Graph"
-              aria-label="Open Pipeline Graph"
-            >
-              <GitBranch size={11} />
-              <span className="hidden xl:inline">Graph</span>
-            </button>
-          )}
-
-          <button
             onClick={onRun}
-            className="btn-primary group shrink-0 px-2 lg:px-3"
+            className="btn-primary group h-[24px] shrink-0 px-2 lg:px-3"
             title={runTargetCount > 0 ? `Run ${runTargetCount} selected task(s)` : 'Run'}
             aria-label={
               runTargetCount > 0 ? `Run ${runTargetCount} selected task(s)` : 'Run pipeline'

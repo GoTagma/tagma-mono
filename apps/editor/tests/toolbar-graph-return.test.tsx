@@ -5,6 +5,39 @@ import { Toolbar } from '../src/components/board/Toolbar';
 const noop = () => {};
 
 describe('Toolbar graph return control', () => {
+  test('uses the same fixed height for Search and Run Selected', () => {
+    const html = renderToStaticMarkup(
+      <Toolbar
+        pipelineName="Build"
+        yamlPath="E:/repo/.tagma/build/build.yaml"
+        workDir="E:/repo"
+        isDirty={false}
+        errorCount={0}
+        menus={[]}
+        workspaceItems={[]}
+        onUpdateName={noop}
+        onSelectPipeline={noop}
+        onRun={noop}
+        runTargetCount={2}
+        searchQuery=""
+        searchOpen={false}
+        searchMatches={[]}
+        searchMode="name"
+        onSearchOpen={noop}
+        onSearchClose={noop}
+        onSearchQueryChange={noop}
+        onSearchModeChange={noop}
+        onSelectSearchMatch={noop}
+      />,
+    );
+
+    const searchButton = html.match(/<button[^>]*aria-label="Search tasks"[^>]*>/)?.[0];
+    const runButton = html.match(/<button[^>]*aria-label="Run 2 selected task\(s\)"[^>]*>/)?.[0];
+
+    expect(searchButton).toContain('h-[24px]');
+    expect(runButton).toContain('h-[24px]');
+  });
+
   test('keeps Search in the toolbar without duplicating menu-owned views', () => {
     const html = renderToStaticMarkup(
       <Toolbar
@@ -18,9 +51,6 @@ describe('Toolbar graph return control', () => {
         onUpdateName={noop}
         onSelectPipeline={noop}
         onRun={noop}
-        onShowHistory={noop}
-        onShowWorkflowGraph={noop}
-        onShowTrackIO={noop}
         searchQuery=""
         searchOpen={false}
         searchMatches={[]}
@@ -52,9 +82,6 @@ describe('Toolbar graph return control', () => {
         onUpdateName={noop}
         onSelectPipeline={noop}
         onRun={noop}
-        onShowHistory={noop}
-        onShowWorkflowGraph={noop}
-        onShowTrackIO={noop}
         searchQuery=""
         searchOpen={false}
         searchMatches={[]}

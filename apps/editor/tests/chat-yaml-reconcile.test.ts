@@ -3,6 +3,7 @@ import {
   detectChatStagedYamlTarget,
   detectChatYamlTarget,
   shouldAdoptChatYamlTargetOnCurrentCanvas,
+  shouldAdoptFinalizedChatStateOnCurrentCanvas,
   shouldForkChatYamlResult,
   shouldAutoRepairCompileResult,
   chatPipelineVerificationSucceeded,
@@ -439,6 +440,36 @@ describe('shouldAdoptChatYamlTargetOnCurrentCanvas', () => {
         target: changedTarget,
         currentPath: before.path,
         forked: true,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe('shouldAdoptFinalizedChatStateOnCurrentCanvas', () => {
+  test('adopts when the finalized state still targets the current canvas and no later local edit landed', () => {
+    expect(
+      shouldAdoptFinalizedChatStateOnCurrentCanvas({
+        currentPath: 'c:/w/.tagma/current.yaml',
+        finalizedStatePath: before.path,
+        finalEntryPath: before.path,
+        finalizedOutcome: 'adopted',
+        localBranchPersisted: false,
+        localEditRevisionBeforeFinalize: 11,
+        currentLocalEditRevision: 11,
+      }),
+    ).toBe(true);
+  });
+
+  test('blocks adoption when a newer same-window local edit landed while finalize was in flight', () => {
+    expect(
+      shouldAdoptFinalizedChatStateOnCurrentCanvas({
+        currentPath: before.path,
+        finalizedStatePath: before.path,
+        finalEntryPath: before.path,
+        finalizedOutcome: 'adopted',
+        localBranchPersisted: false,
+        localEditRevisionBeforeFinalize: 11,
+        currentLocalEditRevision: 12,
       }),
     ).toBe(false);
   });

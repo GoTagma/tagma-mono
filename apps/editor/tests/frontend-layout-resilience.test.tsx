@@ -208,11 +208,7 @@ describe('frontend layout resilience', () => {
           items: [{ label: 'Open Pipeline Graph', onAction: noop }],
         },
       ],
-      workDir: '/workspace',
       onSelectPipeline: noop,
-      onShowTrackIO: noop,
-      onShowHistory: noop,
-      onShowWorkflowGraph: noop,
       onReturnToWorkflowGraph: noop,
     });
     const labels = compactItems.flatMap((item) => ('separator' in item ? [] : [item.label]));
@@ -237,10 +233,7 @@ describe('frontend layout resilience', () => {
         onUpdateName={noop}
         onSelectPipeline={noop}
         onRun={noop}
-        onShowHistory={noop}
-        onShowWorkflowGraph={noop}
         onReturnToWorkflowGraph={noop}
-        onShowTrackIO={noop}
         searchQuery=""
         searchOpen
         searchMatches={[]}

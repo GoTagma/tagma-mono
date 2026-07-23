@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
   buildConversationFlowSteps,
+  ChatCompletionToast,
   ChatPanel,
   ConversationFlowBarView,
   resolveConversationFlowWheelScroll,
@@ -22,6 +23,7 @@ import {
   getChatComposerAvailability,
   getChatComposerStopMode,
 } from '../src/components/chat/ChatComposer';
+import { HistoryPipelineLink } from '../src/components/chat/HistoryDrawer';
 
 const visibleThread: OpencodeThreadEntry = {
   info: { id: 'm1', sessionID: 's1', role: 'assistant' },
@@ -279,6 +281,49 @@ describe('ChatPanel export affordance', () => {
     expect(isChatPipelineDeployed(result)).toBe(false);
   });
 
+  test('exposes a history link only for a deployed pipeline result', () => {
+    const result: ChatYamlSessionResult = {
+      sessionId: 's1',
+      kind: 'open-created',
+      path: '/workspace/.tagma/failed-draft/failed-draft.yaml',
+      name: 'failed-draft.yaml',
+      pipelineName: 'Failed Draft',
+      status: 'failed',
+      compile: {
+        success: false,
+        summary: 'Compile failed.',
+        validation: { errors: [], warnings: [] },
+      } as never,
+      reconcile: {
+        outcome: 'forked',
+        conflicts: ['compile-failed'],
+        localBranchPersisted: false,
+        resultPath: '/workspace/.tagma/failed-draft/failed-draft.yaml',
+        compileSuccess: false,
+      },
+      completedAt: 1_000,
+    };
+    const failedHtml = renderToStaticMarkup(<HistoryPipelineLink result={result} />);
+    const deployedHtml = renderToStaticMarkup(
+      <HistoryPipelineLink
+        result={{
+          ...result,
+          status: 'ready',
+          pipelineName: 'Deployed Pipeline',
+          compile: { ...result.compile, success: true },
+          reconcile: {
+            ...result.reconcile!,
+            outcome: 'created',
+            compileSuccess: true,
+          },
+        }}
+      />,
+    );
+
+    expect(failedHtml).not.toContain('Open Failed Draft');
+    expect(deployedHtml).toContain('Open Deployed Pipeline');
+  });
+
   test('explicitly reports when automatic repair makes compile and trial run pass', () => {
     const result: ChatYamlSessionResult = {
       sessionId: 's1',
@@ -474,6 +519,58 @@ describe('ChatPanel export affordance', () => {
   test('does not show a completion toast until reconciliation releases the turn', () => {
     expect(shouldShowChatCompletionToast({ reconciling: true, visibleResultCount: 1 })).toBe(false);
     expect(shouldShowChatCompletionToast({ reconciling: false, visibleResultCount: 1 })).toBe(true);
+  });
+
+  test('keeps background completion navigation deployed-only', () => {
+    const base: ChatYamlSessionResult = {
+      sessionId: 'completed',
+      kind: 'open-created',
+      path: '/workspace/.tagma/result/result.yaml',
+      name: 'result.yaml',
+      pipelineName: 'Result',
+      status: 'failed',
+      compile: {
+        success: false,
+        summary: 'Compile failed.',
+        validation: { errors: [], warnings: [] },
+      } as never,
+      reconcile: {
+        outcome: 'forked',
+        conflicts: ['compile-failed'],
+        localBranchPersisted: false,
+        resultPath: '/workspace/.tagma/result/result.yaml',
+        compileSuccess: false,
+      },
+      completedAt: 1_000,
+    };
+    useChatStore.setState({
+      currentSessionId: 'current',
+      sessions: [{ id: 'completed', title: 'Completed chat' }],
+      sessionYamlResults: { completed: base },
+      completedUnreadSessionIds: ['completed'],
+      dismissedSessionYamlResultToastIds: [],
+      reconciling: false,
+    } as never);
+    const failedHtml = renderToStaticMarkup(<ChatCompletionToast />);
+
+    useChatStore.setState({
+      sessionYamlResults: {
+        completed: {
+          ...base,
+          status: 'ready',
+          compile: { ...base.compile, success: true },
+          reconcile: {
+            ...base.reconcile!,
+            outcome: 'created',
+            compileSuccess: true,
+          },
+        },
+      },
+    } as never);
+    const deployedHtml = renderToStaticMarkup(<ChatCompletionToast />);
+
+    expect(failedHtml).not.toContain('Open pipeline');
+    expect(deployedHtml).toContain('Open pipeline');
   });
 
   test('hides the conversation flow before the first prompt starts', () => {

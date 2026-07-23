@@ -66,6 +66,10 @@
 - Only a successful finalize may mutate the live workspace or advance its revision. Finalize is
   idempotent after response loss, artifact writes roll back together on failure, and abandoned
   or expired stages must stop their compile watcher and be removed.
+- Capture the renderer-local pipeline edit revision immediately before staged finalize starts, and
+  only adopt the returned finalized state onto the current canvas if that revision still matches
+  at the synchronous adoption point. Later same-window edits stay local; genuine multi-window
+  conflicts still depend on the live-workspace finalize outcome instead of this guard.
 - Preserve the host finalize outcome, conflicts, destination path, compile status, and local-branch
   decision for the next real user turn in the same chat session and workspace. Do not inject or
   consume that evidence in hidden repairs, logical-turn continuations, fresh sessions, or another
@@ -122,6 +126,14 @@
   default.
 - For fast regressions, pass repeatable unique selectors such as
   `bun scripts/test-serial.mjs --file tests/chat-yaml-staging.test.ts --file tests/opencode-lifecycle.test.ts`.
+
+## Editor Settings Mutations
+
+- Keep ordinary per-workspace settings controls responsive while persistence is in flight. Serialize
+  their PATCHes, coalesce pending values, rebase them on each server response, and roll back only
+  failed fields that have not been superseded by a newer edit.
+- Keep restart-backed global and Python settings mutations mutually exclusive with each other and
+  with pending workspace settings saves.
 
 ## Canvas Panning
 

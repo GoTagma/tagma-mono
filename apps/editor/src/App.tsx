@@ -69,6 +69,7 @@ import {
   detectChatStagedYamlTarget,
   detectChatYamlTarget,
   chatPipelineVerificationSucceeded,
+  shouldAdoptFinalizedChatStateOnCurrentCanvas,
   shouldAdoptChatYamlTargetOnCurrentCanvas,
   shouldAutoRepairCompileResult,
   shouldForkChatYamlResult,
@@ -1171,6 +1172,7 @@ export function App() {
               : pathMoved
                 ? ('path-moved' as const)
                 : undefined;
+          const localEditRevisionBeforeFinalize = getLocalPipelineEditRevision();
           const finalizeOnce = () =>
             underChatLock(() =>
               api.finalizeChatYamlStage(
@@ -1236,11 +1238,15 @@ export function App() {
           if (cancelled || (await discardCancelledStage())) return;
 
           const current = usePipelineStore.getState();
-          const finalStateBelongsOnCanvas =
-            sameEditorPath(current.yamlPath, finalized.state.yamlPath) &&
-            ((finalized.outcome === 'adopted' &&
-              sameEditorPath(current.yamlPath, finalEntry.path)) ||
-              finalized.localBranchPersisted);
+          const finalStateBelongsOnCanvas = shouldAdoptFinalizedChatStateOnCurrentCanvas({
+            currentPath: current.yamlPath,
+            finalizedStatePath: finalized.state.yamlPath,
+            finalEntryPath: finalEntry.path,
+            finalizedOutcome: finalized.outcome,
+            localBranchPersisted: finalized.localBranchPersisted,
+            localEditRevisionBeforeFinalize,
+            currentLocalEditRevision: getLocalPipelineEditRevision(),
+          });
           if (finalStateBelongsOnCanvas) {
             current.adoptDiskState(finalized.state, 'chat');
             if (finalized.outcome === 'adopted' && compile.success) {
@@ -2597,6 +2603,13 @@ export function App() {
         ],
       },
       {
+        label: 'View',
+        items: [
+          { label: 'Track I/O', onAction: () => setShowTrackIO(true) },
+          { label: 'Run History', disabled: !workDir, onAction: () => showRunHistory() },
+        ],
+      },
+      {
         label: 'Graph',
         items: [
           {
@@ -2636,6 +2649,7 @@ export function App() {
     handleSave,
     handleSaveAs,
     handleShowWorkflows,
+    showRunHistory,
     workspaceItems,
     workDir,
   ]);
@@ -2947,12 +2961,9 @@ export function App() {
                 onSelectPipeline={handleSelectPipeline}
                 onRun={handleRun}
                 runTargetCount={selectedTaskIds.length}
-                onShowHistory={showRunHistory}
-                onShowWorkflowGraph={handleShowWorkflows}
                 onReturnToWorkflowGraph={
                   workflowReturnPath ? handleReturnToWorkflowGraph : undefined
                 }
-                onShowTrackIO={() => setShowTrackIO(true)}
                 searchQuery={searchQuery}
                 searchOpen={searchVisible}
                 searchMatches={searchMatches}

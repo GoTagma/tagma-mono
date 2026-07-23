@@ -104,6 +104,25 @@ export function shouldAdoptChatYamlTargetOnCurrentCanvas(args: {
   );
 }
 
+export function shouldAdoptFinalizedChatStateOnCurrentCanvas(args: {
+  currentPath: string | null;
+  finalizedStatePath: string | null;
+  finalEntryPath: string;
+  finalizedOutcome: 'adopted' | 'created' | 'forked' | 'unchanged';
+  localBranchPersisted: boolean;
+  localEditRevisionBeforeFinalize: number;
+  currentLocalEditRevision: number;
+}): boolean {
+  const finalizedStateBelongsOnCanvas =
+    samePath(args.currentPath, args.finalizedStatePath) &&
+    ((args.finalizedOutcome === 'adopted' && samePath(args.currentPath, args.finalEntryPath)) ||
+      args.localBranchPersisted);
+  return (
+    finalizedStateBelongsOnCanvas &&
+    args.currentLocalEditRevision === args.localEditRevisionBeforeFinalize
+  );
+}
+
 export function detectChatYamlTarget(
   snapshot: ChatYamlSnapshot | null,
   entries: readonly WorkspaceYamlEntry[],
@@ -242,6 +261,10 @@ function normalizePath(path: string | null | undefined): string | null {
   if (!trimmed) return null;
   const normalized = trimmed.replace(/\\/g, '/').replace(/\/+$/, '');
   return isWindowsStylePath(normalized) ? normalized.toLowerCase() : normalized;
+}
+
+function samePath(a: string | null | undefined, b: string | null | undefined): boolean {
+  return normalizePath(a) !== null && normalizePath(a) === normalizePath(b);
 }
 
 function isWindowsStylePath(path: string): boolean {
