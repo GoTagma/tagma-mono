@@ -322,59 +322,23 @@ describe('state event revision adoption', () => {
     expect(client.getClientRevision()).toBe(4);
     client.setClientRevision(3);
     expect(client.getClientRevision()).toBe(4);
+    client.setClientRevision(null);
+    client.setClientRevision(1);
+    expect(client.getClientRevision()).toBe(1);
   });
 
-  test('keeps the newest post-reset revision when pre-reset reads arrive late', async () => {
+  test('accepts a lower state revision only after an explicit client reset', async () => {
     const client = await import('../src/api/client');
     client.setClientWorkspace('E:/repo');
     client.setClientRevision(7);
-
-    const firstStateResponse = deferred<Response>();
-    const secondStateResponse = deferred<Response>();
-    let stateReadCount = 0;
-    globalThis.fetch = (async (input: RequestInfo | URL) => {
-      const path = String(input);
-      if (path.endsWith('/state')) {
-        stateReadCount += 1;
-        return stateReadCount === 1 ? firstStateResponse.promise : secondStateResponse.promise;
-      }
-      return new Response(
-        JSON.stringify({
-          outcome: 'adopted',
-          entry: null,
-          conflicts: [],
-          localBranchPersisted: false,
-          compile: { success: true },
-          revision: 2,
-          state: { workDir: 'E:/repo', revision: 2 },
-        }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      );
-    }) as typeof fetch;
-
-    const olderPostResetRead = client.api.getState();
-    const stalePreResetRead = client.api.getState();
-    await Promise.resolve();
-    await client.api.finalizeChatYamlStage({
-      stageId: '00000000-0000-4000-8000-000000000001',
-      relativePath: 'pipeline/pipeline.yaml',
-    });
-    expect(client.getClientRevision()).toBe(2);
-
-    firstStateResponse.resolve(
-      new Response(JSON.stringify({ workDir: 'E:/repo', revision: 1 }), {
+    client.setClientRevision(null);
+    globalThis.fetch = (async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      new Response(JSON.stringify({ workDir: 'E:/repo', revision: 2 }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
-      }),
-    );
-    await olderPostResetRead;
-    secondStateResponse.resolve(
-      new Response(JSON.stringify({ workDir: 'E:/repo', revision: 7 }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
-    );
-    await stalePreResetRead;
+      })) as typeof fetch;
+
+    await client.api.getState();
 
     expect(client.getClientRevision()).toBe(2);
   });

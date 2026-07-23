@@ -378,31 +378,6 @@ function adoptNewerWorkspaceRevision(key: string | null, rev: number | undefined
   if (current === null || rev >= current) setWorkspaceRevision(key, rev);
 }
 
-function adoptWorkspaceRevisionFromResponse(
-  key: string | null,
-  rev: number | undefined,
-  revisionAtDispatch: number | null,
-): void {
-  if (typeof rev !== 'number' || !Number.isFinite(rev)) return;
-  const current = getWorkspaceRevision(key);
-  // Revisions are monotonic for a live workspace. A response older than a
-  // value adopted while it was in flight must not roll the client backward.
-  // If a lower response already established a restarted server's new revision
-  // sequence, accept only later responses that stay below the old baseline and
-  // move forward within the new sequence.
-  if (revisionAtDispatch !== null && current !== null && current < revisionAtDispatch) {
-    if (rev < revisionAtDispatch && rev >= current) setWorkspaceRevision(key, rev);
-    return;
-  }
-  // The first response below its dispatch baseline is authoritative evidence
-  // that the server restarted/reset this workspace.
-  if (revisionAtDispatch !== null && rev < revisionAtDispatch) {
-    setWorkspaceRevision(key, rev);
-    return;
-  }
-  adoptNewerWorkspaceRevision(key, rev);
-}
-
 export function getClientRevision(): number | null {
   return getWorkspaceRevision(workspaceKey);
 }
@@ -665,7 +640,6 @@ async function performRequest<T>(
   options: RequestInit | undefined,
   context: JsonRequestContext,
 ): Promise<T> {
-  const revisionAtDispatch = getWorkspaceRevision(context.workspaceKey);
   const headers = buildJsonRequestHeaders(options, context);
 
   const res = await fetch(`${BASE}${path}`, { ...options, headers });
@@ -680,11 +654,7 @@ async function performRequest<T>(
       currentState?: ServerState;
     } | null;
     if (payload?.currentState) {
-      adoptWorkspaceRevisionFromResponse(
-        context.workspaceKey,
-        payload.currentState.revision,
-        revisionAtDispatch,
-      );
+      adoptNewerWorkspaceRevision(context.workspaceKey, payload.currentState.revision);
       throw new RevisionConflictError(
         payload.currentState,
         typeof payload.expected === 'number' ? payload.expected : null,
@@ -708,11 +678,7 @@ async function performRequest<T>(
     'revision' in data &&
     typeof (data as { revision?: unknown }).revision === 'number'
   ) {
-    adoptWorkspaceRevisionFromResponse(
-      context.workspaceKey,
-      (data as { revision: number }).revision,
-      revisionAtDispatch,
-    );
+    adoptNewerWorkspaceRevision(context.workspaceKey, (data as { revision: number }).revision);
   }
   return data;
 }

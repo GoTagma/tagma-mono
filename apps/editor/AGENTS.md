@@ -73,6 +73,8 @@
 - Serialize every live-workspace revision-advancing request per workspace, including bypass routes
   that advance revision themselves. Capture the workspace and YAML-lock bypass token when the API
   call is made, and never let a late read or state event roll the cached revision backward.
+- Keep global metadata and side-log writes such as recent workspaces, global settings, and chat
+  usage outside live-workspace revision middleware; they neither mutate nor return pipeline state.
 - Preserve the host finalize outcome, conflicts, destination path, compile status, and local-branch
   decision for the next real user turn in the same chat session and workspace. Do not inject or
   consume that evidence in hidden repairs, logical-turn continuations, fresh sessions, or another
