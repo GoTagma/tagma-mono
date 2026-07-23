@@ -257,6 +257,8 @@ interface ChatStore {
   agent: string | null;
 
   sessions: Session[];
+  /** Child/subagent session id -> parent session id for the active workspace. */
+  sessionParentById: Record<string, string>;
   sessionStates: Record<string, ChatSessionRuntimeState>;
   completedUnreadSessionIds: string[];
   sessionYamlResults: Record<string, ChatYamlSessionResult>;
@@ -2064,6 +2066,131 @@ function userVisibleSessions(
   });
 }
 
+function sessionParentId(session: Session): string | null {
+  const parentID = (session as Session & SessionOwnershipFields).parentID;
+  return typeof parentID === 'string' && parentID.trim() ? parentID.trim() : null;
+}
+
+function updateSessionParentIndex(
+  index: Record<string, string>,
+  session: Session,
+): Record<string, string> {
+  const parentID = sessionParentId(session);
+  if (parentID) {
+    if (index[session.id] === parentID) return index;
+    return { ...index, [session.id]: parentID };
+  }
+  if (!(session.id in index)) return index;
+  const next = { ...index };
+  delete next[session.id];
+  return next;
+}
+
+function collectSessionParentIndex(
+  sessions: Session[],
+  directory: string | null,
+): Record<string, string> {
+  if (!directory) return {};
+  const index: Record<string, string> = {};
+  for (const session of sessions) {
+    const parentID = sessionParentId(session);
+    const fields = session as Session & SessionOwnershipFields;
+    if (!parentID || !sameSessionPath(fields.directory, directory)) continue;
+    index[session.id] = parentID;
+  }
+  return index;
+}
+
+function permissionOwnerSessionId(state: ChatStore, sessionID: string): string | null {
+  const seen = new Set<string>();
+  let candidate = sessionID;
+  while (!seen.has(candidate)) {
+    seen.add(candidate);
+    if (
+      candidate === state.currentSessionId ||
+      candidate in state.sessionStates ||
+      state.sessions.some((session) => session.id === candidate) ||
+      isKnownBotBridgeSession(state.sessions, candidate)
+    ) {
+      return candidate;
+    }
+    const parentID = state.sessionParentById[candidate];
+    if (!parentID) return null;
+    candidate = parentID;
+  }
+  return null;
+}
+
+function sessionSubtreeIds(index: Record<string, string>, sessionID: string): Set<string> {
+  const ids = new Set([sessionID]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [childID, parentID] of Object.entries(index)) {
+      if (ids.has(parentID) && !ids.has(childID)) {
+        ids.add(childID);
+        changed = true;
+      }
+    }
+  }
+  return ids;
+}
+
+function removeSessionSubtreeFromIndex(
+  index: Record<string, string>,
+  removed: ReadonlySet<string>,
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(index).filter(
+      ([childID, parentID]) => !removed.has(childID) && !removed.has(parentID),
+    ),
+  );
+}
+
+function removePermissionsForSessions(
+  permissions: readonly PendingPermission[],
+  removed: ReadonlySet<string>,
+): PendingPermission[] {
+  return permissions.filter((permission) => !removed.has(permission.sessionID));
+}
+
+function removePermissionsForSessionsFromRuntimeStates(
+  sessionStates: Record<string, ChatSessionRuntimeState>,
+  removed: ReadonlySet<string>,
+): Record<string, ChatSessionRuntimeState> {
+  return Object.fromEntries(
+    Object.entries(sessionStates).map(([sessionID, runtime]) => [
+      sessionID,
+      {
+        ...runtime,
+        pendingPermissions: removePermissionsForSessions(runtime.pendingPermissions, removed),
+      },
+    ]),
+  );
+}
+
+function removePermissionFromRuntimeStates(
+  sessionStates: Record<string, ChatSessionRuntimeState>,
+  permissionID: string,
+  sessionID: string,
+  workspaceKey: string,
+): Record<string, ChatSessionRuntimeState> {
+  return Object.fromEntries(
+    Object.entries(sessionStates).map(([ownerSessionID, runtime]) => [
+      ownerSessionID,
+      {
+        ...runtime,
+        pendingPermissions: removePermission(
+          runtime.pendingPermissions,
+          permissionID,
+          sessionID,
+          workspaceKey,
+        ),
+      },
+    ]),
+  );
+}
+
 function idleSessionRuntimeState(messages: OpencodeThreadEntry[] = []): ChatSessionRuntimeState {
   return {
     messages,
@@ -2181,6 +2308,23 @@ function updateHiddenSessionRuntime(
     };
   });
   return updated;
+}
+
+function upsertHiddenSessionRuntime(
+  set: ChatSet,
+  sessionId: string,
+  updater: (runtime: ChatSessionRuntimeState) => ChatSessionRuntimeState,
+): void {
+  set((prev) => {
+    if (prev.currentSessionId === sessionId) return {};
+    const current = prev.sessionStates[sessionId] ?? idleSessionRuntimeState();
+    return {
+      sessionStates: {
+        ...prev.sessionStates,
+        [sessionId]: updater(current),
+      },
+    };
+  });
 }
 
 function applyHiddenMessageUpdated(
@@ -3483,42 +3627,66 @@ export function applySseEvent(event: OpencodeEvent, get: () => ChatStore, set: C
     }
     case 'session.created': {
       const info = event.properties.info;
-      if (!isTagmaChatSessionEvent(info)) return;
-      set({ sessions: upsertSession(state.sessions, info) });
+      const sessionParentById = updateSessionParentIndex(state.sessionParentById, info);
+      if (!isTagmaChatSessionEvent(info)) {
+        if (sessionParentById !== state.sessionParentById) set({ sessionParentById });
+        return;
+      }
+      set({ sessionParentById, sessions: upsertSession(state.sessions, info) });
       return;
     }
     case 'session.updated': {
       const info = event.properties.info;
+      const sessionParentById = updateSessionParentIndex(state.sessionParentById, info);
       if (
         !isTagmaChatSessionEvent(info) &&
         !isKnownSameDirectorySessionUpdate(info, state.sessions)
       ) {
+        if (sessionParentById !== state.sessionParentById) set({ sessionParentById });
         return;
       }
-      set({ sessions: upsertSession(state.sessions, info) });
+      set({ sessionParentById, sessions: upsertSession(state.sessions, info) });
       return;
     }
     case 'session.deleted': {
       const deletedId = event.properties.info.id;
-      clearPendingPartsForSession(deletedId);
+      const deletedSessionIds = sessionSubtreeIds(state.sessionParentById, deletedId);
+      for (const sessionID of deletedSessionIds) clearPendingPartsForSession(sessionID);
+      const sessionStatesWithPermissionsRemoved = removePermissionsForSessionsFromRuntimeStates(
+        state.sessionStates,
+        deletedSessionIds,
+      );
       const patch: Partial<ChatStore> = {
-        sessions: state.sessions.filter((s) => s.id !== deletedId),
-        sessionStates: Object.fromEntries(
-          Object.entries(state.sessionStates).filter(([sessionId]) => sessionId !== deletedId),
+        sessionParentById: removeSessionSubtreeFromIndex(
+          state.sessionParentById,
+          deletedSessionIds,
         ),
-        completedUnreadSessionIds: clearSessionCompletedUnread(
-          state.completedUnreadSessionIds,
-          deletedId,
+        sessions: state.sessions.filter((session) => !deletedSessionIds.has(session.id)),
+        sessionStates: Object.fromEntries(
+          Object.entries(sessionStatesWithPermissionsRemoved).filter(
+            ([sessionId]) => !deletedSessionIds.has(sessionId),
+          ),
+        ),
+        completedUnreadSessionIds: state.completedUnreadSessionIds.filter(
+          (sessionID) => !deletedSessionIds.has(sessionID),
         ),
         sessionYamlResults: Object.fromEntries(
-          Object.entries(state.sessionYamlResults).filter(([sessionId]) => sessionId !== deletedId),
+          Object.entries(state.sessionYamlResults).filter(
+            ([sessionId]) => !deletedSessionIds.has(sessionId),
+          ),
         ),
         dismissedSessionYamlResultToastIds: state.dismissedSessionYamlResultToastIds.filter(
-          (sessionId) => sessionId !== deletedId,
+          (sessionId) => !deletedSessionIds.has(sessionId),
         ),
-        finishedTurnQueue: state.finishedTurnQueue.filter((turn) => turn.sessionId !== deletedId),
+        finishedTurnQueue: state.finishedTurnQueue.filter(
+          (turn) => !turn.sessionId || !deletedSessionIds.has(turn.sessionId),
+        ),
+        pendingPermissions: removePermissionsForSessions(
+          state.pendingPermissions,
+          deletedSessionIds,
+        ),
       };
-      if (state.currentSessionId === deletedId) {
+      if (state.currentSessionId && deletedSessionIds.has(state.currentSessionId)) {
         clearTurnWatchdog();
         void releaseChatYamlEditLock();
         patch.currentSessionId = null;
@@ -3540,17 +3708,15 @@ export function applySseEvent(event: OpencodeEvent, get: () => ChatStore, set: C
     case 'permission.updated': {
       const perm = event.properties;
       const turnStartedAt = perm.time?.created ?? Date.now();
+      let ownerSessionID = permissionOwnerSessionId(state, perm.sessionID);
+      if (!ownerSessionID) return;
       if (
-        perm.sessionID !== currentSessionId &&
-        !adoptBotSessionIfNeeded(perm.sessionID, turnStartedAt)
+        ownerSessionID !== currentSessionId &&
+        isKnownBotBridgeSession(state.sessions, ownerSessionID)
       ) {
-        return;
+        adoptBotSessionIfNeeded(ownerSessionID, turnStartedAt);
       }
-      startCurrentBotSessionTurnIfNeeded(perm.sessionID, turnStartedAt);
-      // opencode emits permission.updated on both initial request and on
-      // server-side state changes. Treat it as source of truth: upsert the
-      // entry keyed by id. Terminal clears come from permission.replied.
-      const next = upsertPermission(state.pendingPermissions, {
+      const pendingPermission: PendingPermission = {
         workspaceKey: getOpencodeWorkspaceKey(),
         id: perm.id,
         sessionID: perm.sessionID,
@@ -3558,23 +3724,54 @@ export function applySseEvent(event: OpencodeEvent, get: () => ChatStore, set: C
         tool: perm.type,
         metadata: perm.metadata,
         createdAt: perm.time?.created ?? Date.now(),
+      };
+      ownerSessionID = permissionOwnerSessionId(state, perm.sessionID);
+      if (!ownerSessionID) return;
+      if (ownerSessionID !== currentSessionId) {
+        upsertHiddenSessionRuntime(set, ownerSessionID, (runtime) => ({
+          ...runtime,
+          sending: true,
+          pendingPermissions: upsertPermission(runtime.pendingPermissions, pendingPermission),
+          turnStartedAt: runtime.turnStartedAt ?? pendingPermission.createdAt,
+          lastActivityAt: Math.max(runtime.lastActivityAt ?? 0, pendingPermission.createdAt),
+        }));
+        return;
+      }
+      startCurrentBotSessionTurnIfNeeded(ownerSessionID, turnStartedAt);
+      // opencode emits permission.updated on both initial request and on
+      // server-side state changes. Treat it as source of truth: upsert the
+      // entry keyed by id. Terminal clears come from permission.replied.
+      const next = upsertPermission(state.pendingPermissions, pendingPermission);
+      set({
+        sending: true,
+        pendingPermissions: next,
+        turnStartedAt: state.turnStartedAt ?? pendingPermission.createdAt,
+        lastActivityAt: Math.max(state.lastActivityAt ?? 0, pendingPermission.createdAt),
       });
-      set({ pendingPermissions: next });
+      markTurnAcceptedForWatchdog(get, set);
       return;
     }
     case 'permission.replied': {
       const { sessionID, permissionID } = event.properties;
-      if (sessionID !== currentSessionId) return;
       // Any client (this panel, a parallel CLI) replying resolves the prompt.
-      // Remove regardless of who replied so the bubble disappears.
-      set({
+      // Remove the exact child-session prompt from the visible root and every
+      // cached root runtime. The ancestry entry may already have been removed
+      // by a concurrent session.deleted event, so cleanup must not re-resolve it.
+      const workspaceKey = getOpencodeWorkspaceKey();
+      set((prev) => ({
         pendingPermissions: removePermission(
-          state.pendingPermissions,
+          prev.pendingPermissions,
           permissionID,
           sessionID,
-          getOpencodeWorkspaceKey(),
+          workspaceKey,
         ),
-      });
+        sessionStates: removePermissionFromRuntimeStates(
+          prev.sessionStates,
+          permissionID,
+          sessionID,
+          workspaceKey,
+        ),
+      }));
       return;
     }
     default:
@@ -3658,6 +3855,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   agent: persisted.agent === FORCED_CHAT_AGENT ? persisted.agent : null,
 
   sessions: [],
+  sessionParentById: {},
   sessionStates: {},
   completedUnreadSessionIds: [],
   sessionYamlResults: {},
@@ -3969,6 +4167,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               providers: [],
               agents: [],
               sessions: [],
+              sessionParentById: {},
               sessionStates: {},
               completedUnreadSessionIds: [],
               sessionYamlResults: {},
@@ -4102,6 +4301,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const providers = providersRes.providers;
     const agents = agentsRes;
     const customProviders = customProvidersRes.providers;
+    const visibleSessions = userVisibleSessions(
+      sessions.sessions,
+      sessions.directory,
+      workspaceKeyAtStart,
+    );
+    const sessionParentById = collectSessionParentIndex(sessions.sessions, sessions.directory);
 
     // Honor a persisted model pick if it still exists; otherwise fall back
     // to opencode's own default (config.providers returns `default` as a
@@ -4168,7 +4373,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       set({
         providers,
         agents,
-        sessions: userVisibleSessions(sessions.sessions, sessions.directory, workspaceKey),
+        sessions: visibleSessions,
+        sessionParentById,
         providerCatalog,
         customProviders,
         model: nextModel,
@@ -4187,7 +4393,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({
       providers,
       agents,
-      sessions: userVisibleSessions(sessions.sessions, sessions.directory, workspaceKey),
+      sessions: visibleSessions,
+      sessionParentById,
       providerCatalog,
       customProviders,
       model: nextModel,
@@ -4206,7 +4413,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       directory: null,
     }));
     if (getOpencodeWorkspaceKey() !== workspaceKey) return;
-    set({ sessions: userVisibleSessions(sessions, directory, workspaceKey) });
+    set({
+      sessions: userVisibleSessions(sessions, directory, workspaceKey),
+      sessionParentById: collectSessionParentIndex(sessions, directory),
+    });
   },
 
   async selectSession(id) {
@@ -4274,26 +4484,50 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       /* best effort — surface nothing; session list re-sync is cosmetic */
     }
     if (getOpencodeWorkspaceKey() !== workspaceKey) return;
-    set((prev) => ({
-      sessionStates: Object.fromEntries(
-        Object.entries(prev.sessionStates).filter(([sessionId]) => sessionId !== id),
-      ),
-      completedUnreadSessionIds: clearSessionCompletedUnread(prev.completedUnreadSessionIds, id),
-      sessionYamlResults: Object.fromEntries(
-        Object.entries(prev.sessionYamlResults).filter(([sessionId]) => sessionId !== id),
-      ),
-      dismissedSessionYamlResultToastIds: prev.dismissedSessionYamlResultToastIds.filter(
-        (sessionId) => sessionId !== id,
-      ),
-      finishedTurnQueue: prev.finishedTurnQueue.filter((turn) => turn.sessionId !== id),
-      sessions: prev.sessions.filter((s) => s.id !== id),
-      currentSessionId: prev.currentSessionId === id ? null : prev.currentSessionId,
-      messages: prev.currentSessionId === id ? [] : prev.messages,
-      queuedMessages: prev.currentSessionId === id ? [] : prev.queuedMessages,
-      pendingPermissions: prev.currentSessionId === id ? [] : prev.pendingPermissions,
-      turnAssistantMessageIds: prev.currentSessionId === id ? [] : prev.turnAssistantMessageIds,
-      turnHealth: prev.currentSessionId === id ? null : prev.turnHealth,
-    }));
+    set((prev) => {
+      const deletedSessionIds = sessionSubtreeIds(prev.sessionParentById, id);
+      const sessionStatesWithPermissionsRemoved = removePermissionsForSessionsFromRuntimeStates(
+        prev.sessionStates,
+        deletedSessionIds,
+      );
+      const deletedCurrentSession =
+        !!prev.currentSessionId && deletedSessionIds.has(prev.currentSessionId);
+      return {
+        sessionParentById: removeSessionSubtreeFromIndex(
+          prev.sessionParentById,
+          deletedSessionIds,
+        ),
+        sessionStates: Object.fromEntries(
+          Object.entries(sessionStatesWithPermissionsRemoved).filter(
+            ([sessionId]) => !deletedSessionIds.has(sessionId),
+          ),
+        ),
+        completedUnreadSessionIds: prev.completedUnreadSessionIds.filter(
+          (sessionId) => !deletedSessionIds.has(sessionId),
+        ),
+        sessionYamlResults: Object.fromEntries(
+          Object.entries(prev.sessionYamlResults).filter(
+            ([sessionId]) => !deletedSessionIds.has(sessionId),
+          ),
+        ),
+        dismissedSessionYamlResultToastIds: prev.dismissedSessionYamlResultToastIds.filter(
+          (sessionId) => !deletedSessionIds.has(sessionId),
+        ),
+        finishedTurnQueue: prev.finishedTurnQueue.filter(
+          (turn) => !turn.sessionId || !deletedSessionIds.has(turn.sessionId),
+        ),
+        sessions: prev.sessions.filter((session) => !deletedSessionIds.has(session.id)),
+        currentSessionId: deletedCurrentSession ? null : prev.currentSessionId,
+        messages: deletedCurrentSession ? [] : prev.messages,
+        queuedMessages: deletedCurrentSession ? [] : prev.queuedMessages,
+        pendingPermissions: removePermissionsForSessions(
+          prev.pendingPermissions,
+          deletedSessionIds,
+        ),
+        turnAssistantMessageIds: deletedCurrentSession ? [] : prev.turnAssistantMessageIds,
+        turnHealth: deletedCurrentSession ? null : prev.turnHealth,
+      };
+    });
   },
 
   async send(text) {

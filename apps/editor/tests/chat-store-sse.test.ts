@@ -48,6 +48,7 @@ const RESET = {
   finishedTurnQueue: [],
   messages: [],
   sessions: [],
+  sessionParentById: {},
   sending: false,
   pendingUserText: null,
   queuedMessages: [],
@@ -491,6 +492,67 @@ test('session history hides delegated child agent sessions', () => {
   });
 
   expect(useChatStore.getState().sessions.map((s) => s.id)).toEqual(['parent']);
+});
+
+test('routes delegated child permission prompts to the current parent session', () => {
+  const now = Date.now();
+  useChatStore.setState({
+    currentSessionId: 'parent',
+    sessions: [makeSession('parent')],
+    sending: true,
+    pendingPermissions: [],
+  } as never);
+
+  dispatch({
+    type: 'session.created',
+    properties: { info: makeSession('child', 'parent') },
+  });
+  dispatch({
+    type: 'permission.updated',
+    properties: {
+      id: 'child-permission',
+      sessionID: 'child',
+      messageID: 'child-message',
+      type: 'external_directory',
+      title: 'Read F:/repo/.tag',
+      metadata: {},
+      time: { created: now },
+    },
+  });
+
+  let state = useChatStore.getState();
+  expect(state.currentSessionId).toBe('parent');
+  expect(state.sessions.map((session) => session.id)).toEqual(['parent']);
+  expect(state.pendingPermissions.map((permission) => [permission.id, permission.sessionID])).toEqual(
+    [['child-permission', 'child']],
+  );
+
+  dispatch({
+    type: 'permission.replied',
+    properties: { sessionID: 'child', permissionID: 'child-permission' },
+  });
+
+  state = useChatStore.getState();
+  expect(state.pendingPermissions).toEqual([]);
+
+  dispatch({
+    type: 'session.created',
+    properties: { info: makeSession('unrelated-child', 'another-parent') },
+  });
+  dispatch({
+    type: 'permission.updated',
+    properties: {
+      id: 'unrelated-permission',
+      sessionID: 'unrelated-child',
+      messageID: 'unrelated-message',
+      type: 'external_directory',
+      title: 'Read outside another chat',
+      metadata: {},
+      time: { created: now + 1 },
+    },
+  });
+
+  expect(useChatStore.getState().pendingPermissions).toEqual([]);
 });
 
 test('can switch away from an in-flight conversation and restore its live state later', async () => {
