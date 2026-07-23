@@ -523,9 +523,9 @@ test('routes delegated child permission prompts to the current parent session', 
   let state = useChatStore.getState();
   expect(state.currentSessionId).toBe('parent');
   expect(state.sessions.map((session) => session.id)).toEqual(['parent']);
-  expect(state.pendingPermissions.map((permission) => [permission.id, permission.sessionID])).toEqual(
-    [['child-permission', 'child']],
-  );
+  expect(
+    state.pendingPermissions.map((permission) => [permission.id, permission.sessionID]),
+  ).toEqual([['child-permission', 'child']]);
 
   dispatch({
     type: 'permission.replied',

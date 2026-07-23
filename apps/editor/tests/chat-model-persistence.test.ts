@@ -732,9 +732,11 @@ describe('chat model persistence', () => {
       useChatStore.setState as never,
     );
     expect(
-      useChatStore.getState().sessionStates['tagma-desktop']?.pendingPermissions.map(
-        (permission) => permission.sessionID,
-      ),
+      useChatStore
+        .getState()
+        .sessionStates['tagma-desktop']?.pendingPermissions.map(
+          (permission) => permission.sessionID,
+        ),
     ).toEqual(['grandchild-session']);
     const sessionListUrls = sessionListRequests.map((request) => new URL(request));
     const requestedDirectories = sessionListUrls.map((request) =>

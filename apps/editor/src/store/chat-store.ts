@@ -4582,10 +4582,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const deletedCurrentSession =
         !!prev.currentSessionId && deletedSessionIds.has(prev.currentSessionId);
       return {
-        sessionParentById: removeSessionSubtreeFromIndex(
-          prev.sessionParentById,
-          deletedSessionIds,
-        ),
+        sessionParentById: removeSessionSubtreeFromIndex(prev.sessionParentById, deletedSessionIds),
         sessionStates: Object.fromEntries(
           Object.entries(sessionStatesWithPermissionsRemoved).filter(
             ([sessionId]) => !deletedSessionIds.has(sessionId),
