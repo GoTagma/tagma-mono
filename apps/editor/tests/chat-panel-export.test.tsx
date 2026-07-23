@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
   buildConversationFlowSteps,
-  ChatCompletionToast,
+  ChatCompletionToastCard,
   ChatPanel,
   ConversationFlowBarView,
   resolveConversationFlowWheelScroll,
@@ -485,8 +485,13 @@ describe('ChatPanel export affordance', () => {
     ).toBe(true);
   });
   test('selects visible hidden completion toast results', () => {
-    const makeResult = (sessionId: string, completedAt: number): ChatYamlSessionResult => ({
+    const makeResult = (
+      sessionId: string,
+      completedAt: number,
+      workspaceKey = '/workspace',
+    ): ChatYamlSessionResult => ({
       sessionId,
+      workspaceKey,
       kind: 'open-created',
       path: `/workspace/.tagma/${sessionId}.yaml`,
       name: `${sessionId}.yaml`,
@@ -504,14 +509,16 @@ describe('ChatPanel export affordance', () => {
       dismissed: makeResult('dismissed', 2_000),
       old: makeResult('old', 1_000),
       newest: makeResult('newest', 4_000),
+      foreign: makeResult('foreign', 5_000, '/other-workspace'),
     };
 
     expect(
       selectVisibleChatCompletionResults({
         results,
-        completedUnreadSessionIds: ['current', 'dismissed', 'old', 'newest'],
+        completedUnreadSessionIds: ['current', 'dismissed', 'old', 'newest', 'foreign'],
         dismissedIds: ['dismissed'],
         currentSessionId: 'current',
+        activeWorkspaceKey: '/workspace',
       }).map((result) => result.sessionId),
     ).toEqual(['newest', 'old']);
   });
@@ -543,31 +550,22 @@ describe('ChatPanel export affordance', () => {
       },
       completedAt: 1_000,
     };
-    useChatStore.setState({
-      currentSessionId: 'current',
-      sessions: [{ id: 'completed', title: 'Completed chat' }],
-      sessionYamlResults: { completed: base },
-      completedUnreadSessionIds: ['completed'],
-      dismissedSessionYamlResultToastIds: [],
-      reconciling: false,
-    } as never);
-    const failedHtml = renderToStaticMarkup(<ChatCompletionToast />);
-
-    useChatStore.setState({
-      sessionYamlResults: {
-        completed: {
-          ...base,
-          status: 'ready',
-          compile: { ...base.compile, success: true },
-          reconcile: {
-            ...base.reconcile!,
-            outcome: 'created',
-            compileSuccess: true,
-          },
-        },
+    const deployed: ChatYamlSessionResult = {
+      ...base,
+      status: 'ready',
+      compile: { ...base.compile, success: true },
+      reconcile: {
+        ...base.reconcile!,
+        outcome: 'created',
+        compileSuccess: true,
       },
-    } as never);
-    const deployedHtml = renderToStaticMarkup(<ChatCompletionToast />);
+    };
+    const failedHtml = renderToStaticMarkup(
+      <ChatCompletionToastCard result={base} sessionTitle="Completed chat" />,
+    );
+    const deployedHtml = renderToStaticMarkup(
+      <ChatCompletionToastCard result={deployed} sessionTitle="Completed chat" />,
+    );
 
     expect(failedHtml).not.toContain('Open pipeline');
     expect(deployedHtml).toContain('Open pipeline');

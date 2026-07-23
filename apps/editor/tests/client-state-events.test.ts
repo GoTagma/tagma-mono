@@ -123,7 +123,8 @@ describe('state event revision adoption', () => {
       if (path.endsWith('/workspace/chat-yaml-stage/finalize')) {
         return finalizeResponse.promise;
       }
-      return new Response(JSON.stringify({ workDir: 'E:/repo', revision: 8 }), {
+      const expectedRevision = Number(new Headers(init?.headers).get('If-Match'));
+      return new Response(JSON.stringify({ workDir: 'E:/repo', revision: expectedRevision + 1 }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       });
@@ -133,7 +134,9 @@ describe('state event revision adoption', () => {
       stageId: '00000000-0000-4000-8000-000000000001',
       relativePath: 'pipeline/pipeline.yaml',
     });
-    const edit = client.api.updateTask('track', 'task', { prompt: 'latest edit' });
+    const firstEdit = client.api.updateTask('track', 'task', { prompt: 'first edit' });
+    const replace = client.api.replaceConfig({ name: 'Replacement', tracks: [] });
+    const latestEdit = client.api.updateTask('track', 'task', { prompt: 'latest edit' });
     await Promise.resolve();
 
     try {
@@ -155,10 +158,118 @@ describe('state event revision adoption', () => {
           { status: 200, headers: { 'content-type': 'application/json' } },
         ),
       );
-      await Promise.allSettled([finalize, edit]);
+      await Promise.allSettled([finalize, firstEdit, replace, latestEdit]);
     }
 
-    expect(requests.map((request) => request.ifMatch)).toEqual(['3', '7']);
-    expect(client.getClientRevision()).toBe(8);
+    expect(requests.map((request) => request.ifMatch)).toEqual(['3', '7', '8', '9']);
+    expect(requests.map((request) => request.path)).toEqual([
+      '/api/workspace/chat-yaml-stage/finalize',
+      '/api/tasks/track/task',
+      '/api/config/replace',
+      '/api/tasks/track/task',
+    ]);
+    expect(client.getClientRevision()).toBe(10);
+  });
+
+  test('preserves the YAML lock token captured by each queued mutation', async () => {
+    const client = await import('../src/api/client');
+    client.setClientWorkspace('E:/repo');
+    client.setClientRevision(3);
+
+    const firstResponse = deferred<Response>();
+    const seenLocks: Array<string | null> = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      seenLocks.push(headers.get('X-Tagma-Yaml-Lock-Id'));
+      if (seenLocks.length === 1) return firstResponse.promise;
+      const expectedRevision = Number(headers.get('If-Match'));
+      return new Response(JSON.stringify({ workDir: 'E:/repo', revision: expectedRevision + 1 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+
+    const first = client.withYamlEditLockRequestBypass('lock-a', () =>
+      client.api.updateTask('track', 'task', { prompt: 'first' }),
+    );
+    await Promise.resolve();
+    const second = client.withYamlEditLockRequestBypass('lock-b', () =>
+      client.api.updateTask('track', 'task', { prompt: 'second' }),
+    );
+    await Promise.resolve();
+
+    expect(seenLocks).toEqual(['lock-a']);
+    firstResponse.resolve(
+      new Response(JSON.stringify({ workDir: 'E:/repo', revision: 4 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    await Promise.all([first, second]);
+
+    expect(seenLocks).toEqual(['lock-a', 'lock-b']);
+    expect(client.getClientRevision()).toBe(5);
+  });
+
+  test('keeps revision responses bound to the workspace that issued the request', async () => {
+    const client = await import('../src/api/client');
+    client.setClientWorkspace('E:/repo-a');
+    client.setClientRevision(3);
+
+    const finalizeResponse = deferred<Response>();
+    const requests: Array<{
+      workspace: string | null;
+      ifMatch: string | null;
+    }> = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      requests.push({
+        workspace: headers.get('X-Tagma-Workspace'),
+        ifMatch: headers.get('If-Match'),
+      });
+      if (String(input).endsWith('/workspace/chat-yaml-stage/finalize')) {
+        return finalizeResponse.promise;
+      }
+      return new Response(JSON.stringify({ workDir: 'E:/repo-b', revision: 21 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+
+    const finalize = client.api.finalizeChatYamlStage(
+      {
+        stageId: '00000000-0000-4000-8000-000000000001',
+        relativePath: 'pipeline/pipeline.yaml',
+      },
+      'E:/repo-a',
+    );
+    await Promise.resolve();
+
+    client.setClientWorkspace('E:/repo-b');
+    client.setClientRevision(20);
+    await client.api.updateTask('track', 'task', { prompt: 'workspace b' });
+    expect(client.getClientRevision()).toBe(21);
+
+    finalizeResponse.resolve(
+      new Response(
+        JSON.stringify({
+          outcome: 'adopted',
+          entry: null,
+          conflicts: [],
+          localBranchPersisted: false,
+          compile: { success: true },
+          revision: 7,
+          state: { workDir: 'E:/repo-a', revision: 7 },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    await finalize;
+
+    expect(requests).toEqual([
+      { workspace: 'E:/repo-a', ifMatch: '3' },
+      { workspace: 'E:/repo-b', ifMatch: '20' },
+    ]);
+    expect(client.getClientRevision()).toBe(21);
   });
 });

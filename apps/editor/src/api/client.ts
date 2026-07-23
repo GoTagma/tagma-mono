@@ -41,6 +41,7 @@ import type {
   TaskInputBindings as SdkTaskInputBindings,
   TaskOutputBindings as SdkTaskOutputBindings,
 } from '@tagma/types';
+import { participatesInWorkspaceRevisionSequence } from '../../shared/revision-routes.js';
 
 // Recursively strip `readonly` from object fields and array element
 // wrappers. Primitives, unions of primitives, and untyped index
@@ -351,18 +352,32 @@ function jsonBody(obj: unknown): string {
 // NOTE: pipeline-store is owned by a different refactor group and must NOT be
 // touched in this cycle. The client support lives here so the store can
 // consume it in a follow-up cycle.
-let lastRevision: number | null = null;
+const UNBOUND_REVISION_WORKSPACE = '\u0000';
+const workspaceRevisions = new Map<string, number>();
+
+function revisionWorkspaceKey(key: string | null): string {
+  return key ?? UNBOUND_REVISION_WORKSPACE;
+}
+
+function getWorkspaceRevision(key: string | null): number | null {
+  return workspaceRevisions.get(revisionWorkspaceKey(key)) ?? null;
+}
+
+function setWorkspaceRevision(key: string | null, rev: number | null | undefined): void {
+  const mapKey = revisionWorkspaceKey(key);
+  if (rev === null) {
+    workspaceRevisions.delete(mapKey);
+    return;
+  }
+  if (typeof rev === 'number' && Number.isFinite(rev)) workspaceRevisions.set(mapKey, rev);
+}
 
 export function getClientRevision(): number | null {
-  return lastRevision;
+  return getWorkspaceRevision(workspaceKey);
 }
 
 export function setClientRevision(rev: number | null | undefined): void {
-  if (rev === null) {
-    lastRevision = null;
-    return;
-  }
-  if (typeof rev === 'number' && Number.isFinite(rev)) lastRevision = rev;
+  setWorkspaceRevision(workspaceKey, rev);
 }
 
 // ── Workspace header (multi-window sidecar routing) ──
@@ -377,6 +392,47 @@ let workspaceKey: string | null = null;
 const AUTH_STORAGE_KEY = 'tagma.authToken';
 const AUTH_COOKIE_NAME = 'tagma_auth';
 const yamlEditLockBypassStack: string[] = [];
+const revisionMutationTails = new Map<string, Promise<void>>();
+
+interface JsonRequestContext {
+  workspaceKey: string | null;
+  yamlEditLockBypassId: string | null;
+}
+
+function normalizeWorkspaceKey(key: string | null | undefined): string | null {
+  return typeof key === 'string' && key.trim().length > 0 ? key.trim() : null;
+}
+
+function captureJsonRequestContext(
+  workspaceKeyOverride?: string | null,
+): JsonRequestContext {
+  return {
+    workspaceKey:
+      workspaceKeyOverride === undefined
+        ? workspaceKey
+        : normalizeWorkspaceKey(workspaceKeyOverride),
+    yamlEditLockBypassId:
+      yamlEditLockBypassStack[yamlEditLockBypassStack.length - 1] ?? null,
+  };
+}
+
+function enqueueRevisionMutation<T>(
+  targetWorkspaceKey: string | null,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const key = revisionWorkspaceKey(targetWorkspaceKey);
+  const previous = revisionMutationTails.get(key) ?? Promise.resolve();
+  const result = previous.then(operation, operation);
+  const tail = result.then(
+    () => {},
+    () => {},
+  );
+  revisionMutationTails.set(key, tail);
+  void tail.then(() => {
+    if (revisionMutationTails.get(key) === tail) revisionMutationTails.delete(key);
+  });
+  return result;
+}
 
 function writeAuthCookie(token: string | null): void {
   if (typeof document === 'undefined') return;
@@ -452,14 +508,14 @@ export function subscribeClientWorkspace(listener: WorkspaceListener): () => voi
 }
 
 export function setClientWorkspace(key: string | null | undefined): void {
-  const next = typeof key === 'string' && key.trim().length > 0 ? key : null;
+  const next = normalizeWorkspaceKey(key);
   if (next === workspaceKey) return;
   // `lastRevision` is per-workspace on the server (C6). When the client
   // switches workspaces we MUST drop the cached baseline — a fresh
   // WorkspaceState starts at revision 0 on the server, but if we keep the
   // previous workspace's lastRevision around the next mutation's If-Match
   // header will 409 on the very first switch-then-edit round trip.
-  lastRevision = null;
+  setWorkspaceRevision(next, null);
   workspaceKey = next;
   for (const listener of workspaceListeners) {
     try {
@@ -529,27 +585,25 @@ function isMutation(options?: RequestInit): boolean {
 
 function buildJsonRequestHeaders(
   options?: RequestInit,
-  workspaceKeyOverride?: string | null,
+  context: JsonRequestContext = captureJsonRequestContext(),
 ): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options?.headers as Record<string, string> | undefined),
   };
   // Attach If-Match on mutations when we have a known revision.
-  if (isMutation(options) && lastRevision !== null) {
-    headers['If-Match'] = String(lastRevision);
+  const revision = getWorkspaceRevision(context.workspaceKey);
+  if (isMutation(options) && revision !== null) {
+    headers['If-Match'] = String(revision);
   }
   // Multi-window sidecar: route every fetch to the current workspace. Omitted
   // when no workspace is bound (welcome page, pre-open), which the server
   // treats as "no workspace" — endpoints that need one will 400 explicitly.
-  const targetWorkspaceKey =
-    workspaceKeyOverride === undefined ? workspaceKey : workspaceKeyOverride;
-  if (targetWorkspaceKey) {
-    headers['X-Tagma-Workspace'] = targetWorkspaceKey;
+  if (context.workspaceKey) {
+    headers['X-Tagma-Workspace'] = context.workspaceKey;
   }
-  const yamlEditLockBypassId = yamlEditLockBypassStack[yamlEditLockBypassStack.length - 1];
-  if (isMutation(options) && yamlEditLockBypassId) {
-    headers['X-Tagma-Yaml-Lock-Id'] = yamlEditLockBypassId;
+  if (isMutation(options) && context.yamlEditLockBypassId) {
+    headers['X-Tagma-Yaml-Lock-Id'] = context.yamlEditLockBypassId;
   }
   if (authToken) {
     headers.Authorization = `Bearer ${authToken}`;
@@ -574,12 +628,12 @@ async function throwApiResponseError(res: Response): Promise<never> {
   throw apiErr;
 }
 
-async function request<T>(
+async function performRequest<T>(
   path: string,
-  options?: RequestInit,
-  workspaceKeyOverride?: string | null,
+  options: RequestInit | undefined,
+  context: JsonRequestContext,
 ): Promise<T> {
-  const headers = buildJsonRequestHeaders(options, workspaceKeyOverride);
+  const headers = buildJsonRequestHeaders(options, context);
 
   const res = await fetch(`${BASE}${path}`, { ...options, headers });
 
@@ -593,7 +647,7 @@ async function request<T>(
       currentState?: ServerState;
     } | null;
     if (payload?.currentState) {
-      setClientRevision(payload.currentState.revision);
+      setWorkspaceRevision(context.workspaceKey, payload.currentState.revision);
       throw new RevisionConflictError(
         payload.currentState,
         typeof payload.expected === 'number' ? payload.expected : null,
@@ -617,9 +671,22 @@ async function request<T>(
     'revision' in data &&
     typeof (data as { revision?: unknown }).revision === 'number'
   ) {
-    setClientRevision((data as { revision: number }).revision);
+    setWorkspaceRevision(context.workspaceKey, (data as { revision: number }).revision);
   }
   return data;
+}
+
+function request<T>(
+  path: string,
+  options?: RequestInit,
+  workspaceKeyOverride?: string | null,
+): Promise<T> {
+  const context = captureJsonRequestContext(workspaceKeyOverride);
+  const operation = () => performRequest<T>(path, options, context);
+  if (participatesInWorkspaceRevisionSequence(`${BASE}${path}`, options?.method)) {
+    return enqueueRevisionMutation(context.workspaceKey, operation);
+  }
+  return operation();
 }
 
 export function buildInstallPluginRequest(

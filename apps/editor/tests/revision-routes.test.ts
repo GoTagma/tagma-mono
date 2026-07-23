@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 
-import { bypassesRevisionCheck } from '../server/revision-routes';
+import {
+  bypassesRevisionCheck,
+  participatesInWorkspaceRevisionSequence,
+} from '../server/revision-routes';
 
 describe('revision route bypass', () => {
   test('bypasses all hot-update mutation endpoints', () => {
@@ -42,5 +45,27 @@ describe('revision route bypass', () => {
     expect(bypassesRevisionCheck('/api/chat-bridge/status')).toBe(true);
     expect(bypassesRevisionCheck('/api/chat-bridge/pair/new')).toBe(true);
     expect(bypassesRevisionCheck('/api/chat-bridge/token')).toBe(true);
+  });
+
+  test('sequences checked mutations and bypass routes that manually advance revision', () => {
+    expect(participatesInWorkspaceRevisionSequence('/api/tasks/track/task', 'PATCH')).toBe(true);
+    expect(
+      participatesInWorkspaceRevisionSequence(
+        '/api/workspace/chat-yaml-stage/finalize',
+        'POST',
+      ),
+    ).toBe(true);
+    expect(participatesInWorkspaceRevisionSequence('/api/state/reload', 'POST')).toBe(true);
+    expect(participatesInWorkspaceRevisionSequence('/api/plugins/import-local', 'POST')).toBe(true);
+  });
+
+  test('keeps revision-neutral chat work and reads outside the mutation sequence', () => {
+    expect(
+      participatesInWorkspaceRevisionSequence(
+        '/api/workspace/chat-yaml-stage/trial-run',
+        'POST',
+      ),
+    ).toBe(false);
+    expect(participatesInWorkspaceRevisionSequence('/api/state', 'GET')).toBe(false);
   });
 });

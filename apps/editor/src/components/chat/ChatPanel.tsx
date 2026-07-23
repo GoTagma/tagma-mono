@@ -43,6 +43,7 @@ import {
   chatPipelineDeploymentTarget,
   chatPipelineDisplayName,
   selectVisibleChatCompletionResults,
+  type ChatPipelineLinkTarget,
   useOpenChatPipelineTarget,
 } from './chat-pipeline-link';
 import {
@@ -1235,6 +1236,72 @@ export function shouldShowChatCompletionToast(args: {
   return !args.reconciling && args.visibleResultCount > 0;
 }
 
+export function ChatCompletionToastCard({
+  result,
+  sessionTitle,
+  onOpen,
+  onDismiss,
+}: {
+  result: ChatYamlSessionResult;
+  sessionTitle: string;
+  onOpen?: (target: ChatPipelineLinkTarget) => void;
+  onDismiss?: () => void;
+}) {
+  const pipelineName = chatPipelineDisplayName(result);
+  const deploymentTarget = chatPipelineDeploymentTarget(result);
+  const ok = result.status === 'ready';
+  const presentation = describeSessionYamlResult(result);
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="bg-tagma-surface border border-tagma-border shadow-panel animate-fade-in overflow-hidden"
+    >
+      <div className="flex items-start gap-2.5 px-3 py-2.5">
+        <div
+          className={`w-[3px] self-stretch shrink-0 ${ok ? 'bg-tagma-ready' : 'bg-tagma-error'}`}
+        />
+        {ok ? (
+          <CheckCircle2 size={14} className="text-tagma-ready shrink-0 mt-0.5" />
+        ) : (
+          <AlertTriangle size={14} className="text-tagma-error shrink-0 mt-0.5" />
+        )}
+        <div className="min-w-0 flex-1 font-mono">
+          <div className="text-[11px] text-tagma-text truncate" title={pipelineName}>
+            {pipelineName}
+          </div>
+          <div className="mt-0.5 text-[9px] text-tagma-muted/70 truncate" title={sessionTitle}>
+            {sessionTitle}
+          </div>
+          <div className="mt-1 text-[9px] text-tagma-muted/80 break-words">
+            {presentation.outcome}
+          </div>
+          {deploymentTarget && (
+            <button
+              type="button"
+              onClick={() => onOpen?.(deploymentTarget)}
+              className="mt-2 inline-flex items-center gap-1 border border-tagma-border px-2 py-1 text-[10px] text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 transition-colors"
+              title={`Open ${pipelineName}`}
+            >
+              <FileText size={11} />
+              <span>Open pipeline</span>
+            </button>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="p-1 text-tagma-muted hover:text-tagma-text shrink-0"
+          aria-label="Dismiss completion"
+        >
+          <X size={12} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function ChatCompletionToast({ contained = false }: { contained?: boolean } = {}) {
   const currentSessionId = useChatStore((s) => s.currentSessionId);
   const reconciling = useChatStore((s) => s.reconciling);
@@ -1274,72 +1341,23 @@ export function ChatCompletionToast({ contained = false }: { contained?: boolean
           : CHAT_COMPLETION_TOAST_VIEWPORT_CLASSES
       }
     >
-      {visibleResults.map((result) => {
-        const pipelineName = chatPipelineDisplayName(result);
-        const deploymentTarget = chatPipelineDeploymentTarget(result);
-        const sessionTitle =
-          sessions.find((session) => session.id === result.sessionId)?.title ??
-          result.sessionId.slice(0, 8);
-        const ok = result.status === 'ready';
-        const presentation = describeSessionYamlResult(result);
-        return (
-          <div
-            key={result.sessionId}
-            role="status"
-            aria-live="polite"
-            className="bg-tagma-surface border border-tagma-border shadow-panel animate-fade-in overflow-hidden"
-          >
-            <div className="flex items-start gap-2.5 px-3 py-2.5">
-              <div
-                className={`w-[3px] self-stretch shrink-0 ${ok ? 'bg-tagma-ready' : 'bg-tagma-error'}`}
-              />
-              {ok ? (
-                <CheckCircle2 size={14} className="text-tagma-ready shrink-0 mt-0.5" />
-              ) : (
-                <AlertTriangle size={14} className="text-tagma-error shrink-0 mt-0.5" />
-              )}
-              <div className="min-w-0 flex-1 font-mono">
-                <div className="text-[11px] text-tagma-text truncate" title={pipelineName}>
-                  {pipelineName}
-                </div>
-                <div
-                  className="mt-0.5 text-[9px] text-tagma-muted/70 truncate"
-                  title={sessionTitle}
-                >
-                  {sessionTitle}
-                </div>
-                <div className="mt-1 text-[9px] text-tagma-muted/80 break-words">
-                  {presentation.outcome}
-                </div>
-                {deploymentTarget && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void openTarget(deploymentTarget);
-                      void selectSession(result.sessionId).catch(() => {
-                        /* best effort */
-                      });
-                    }}
-                    className="mt-2 inline-flex items-center gap-1 border border-tagma-border px-2 py-1 text-[10px] text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 transition-colors"
-                    title={`Open ${pipelineName}`}
-                  >
-                    <FileText size={11} />
-                    <span>Open pipeline</span>
-                  </button>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => dismiss(result.sessionId)}
-                className="p-1 text-tagma-muted hover:text-tagma-text shrink-0"
-                aria-label="Dismiss completion"
-              >
-                <X size={12} />
-              </button>
-            </div>
-          </div>
-        );
-      })}
+      {visibleResults.map((result) => (
+        <ChatCompletionToastCard
+          key={result.sessionId}
+          result={result}
+          sessionTitle={
+            sessions.find((session) => session.id === result.sessionId)?.title ??
+            result.sessionId.slice(0, 8)
+          }
+          onOpen={(target) => {
+            void openTarget(target);
+            void selectSession(result.sessionId).catch(() => {
+              /* best effort */
+            });
+          }}
+          onDismiss={() => dismiss(result.sessionId)}
+        />
+      ))}
     </div>
   );
 }

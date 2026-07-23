@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   detectChatStagedYamlTarget,
   detectChatYamlTarget,
@@ -472,5 +474,23 @@ describe('shouldAdoptFinalizedChatStateOnCurrentCanvas', () => {
         currentLocalEditRevision: 12,
       }),
     ).toBe(false);
+  });
+});
+
+describe('staged finalize adoption wiring', () => {
+  test('captures the pre-finalize local edit revision and gates adoptDiskState on the helper', () => {
+    const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
+
+    expect(appSource).toMatch(
+      /const localEditRevisionBeforeFinalize = getLocalPipelineEditRevision\(\);[\s\S]*const finalizeOnce = \(\) =>/,
+    );
+    expect(appSource).toContain(
+      'const finalStateBelongsOnCanvas = shouldAdoptFinalizedChatStateOnCurrentCanvas({',
+    );
+    expect(appSource).toContain('localEditRevisionBeforeFinalize,');
+    expect(appSource).toContain('currentLocalEditRevision: getLocalPipelineEditRevision(),');
+    expect(appSource).toMatch(
+      /const finalStateBelongsOnCanvas = shouldAdoptFinalizedChatStateOnCurrentCanvas\([\s\S]*current\.adoptDiskState\(finalized\.state, 'chat'\);/,
+    );
   });
 });
