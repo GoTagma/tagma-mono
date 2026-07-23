@@ -77,6 +77,24 @@ describe('state event revision adoption', () => {
     expect(seen).toHaveLength(1);
   });
 
+  test('does not let an older state event roll back the current workspace revision', async () => {
+    globalThis.EventSource = MockEventSource as unknown as typeof EventSource;
+    const client = await import('../src/api/client');
+    client.setClientWorkspace('E:/repo');
+    client.setClientRevision(7);
+
+    const seen: unknown[] = [];
+    const unsubscribe = client.api.subscribeStateEvents((event) => seen.push(event));
+    MockEventSource.instances.at(-1)!.emit('state_event', {
+      type: 'external-change',
+      newState: { workDir: 'E:/repo', revision: 6 },
+    });
+    unsubscribe();
+
+    expect(client.getClientRevision()).toBe(7);
+    expect(seen).toHaveLength(1);
+  });
+
   test('adopts the top-level revision returned by staged YAML finalize', async () => {
     const client = await import('../src/api/client');
     client.setClientWorkspace('E:/repo');
@@ -271,5 +289,36 @@ describe('state event revision adoption', () => {
       { workspace: 'E:/repo-b', ifMatch: '20' },
     ]);
     expect(client.getClientRevision()).toBe(21);
+  });
+
+  test('does not let a stale state read roll back a newer mutation revision', async () => {
+    const client = await import('../src/api/client');
+    client.setClientWorkspace('E:/repo');
+    client.setClientRevision(3);
+
+    const stateResponse = deferred<Response>();
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/state')) return stateResponse.promise;
+      const expectedRevision = Number(new Headers(init?.headers).get('If-Match'));
+      return new Response(JSON.stringify({ workDir: 'E:/repo', revision: expectedRevision + 1 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+
+    const staleRead = client.api.getState();
+    await Promise.resolve();
+    await client.api.updateTask('track', 'task', { prompt: 'newer edit' });
+    expect(client.getClientRevision()).toBe(4);
+
+    stateResponse.resolve(
+      new Response(JSON.stringify({ workDir: 'E:/repo', revision: 3 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    await staleRead;
+
+    expect(client.getClientRevision()).toBe(4);
   });
 });

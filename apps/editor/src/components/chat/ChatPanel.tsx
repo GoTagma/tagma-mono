@@ -1304,6 +1304,7 @@ export function ChatCompletionToastCard({
 
 export function ChatCompletionToast({ contained = false }: { contained?: boolean } = {}) {
   const currentSessionId = useChatStore((s) => s.currentSessionId);
+  const activeWorkspaceKey = usePipelineStore((s) => s.workDir || null);
   const reconciling = useChatStore((s) => s.reconciling);
   const sessions = useChatStore((s) => s.sessions);
   const results = useChatStore((s) => s.sessionYamlResults);
@@ -1320,8 +1321,9 @@ export function ChatCompletionToast({ contained = false }: { contained?: boolean
         completedUnreadSessionIds,
         dismissedIds,
         currentSessionId,
+        activeWorkspaceKey,
       }),
-    [completedUnreadSessionIds, currentSessionId, dismissedIds, results],
+    [activeWorkspaceKey, completedUnreadSessionIds, currentSessionId, dismissedIds, results],
   );
 
   if (

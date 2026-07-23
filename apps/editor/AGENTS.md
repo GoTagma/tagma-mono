@@ -70,6 +70,9 @@
   only adopt the returned finalized state onto the current canvas if that revision still matches
   at the synchronous adoption point. Later same-window edits stay local; genuine multi-window
   conflicts still depend on the live-workspace finalize outcome instead of this guard.
+- Serialize every live-workspace revision-advancing request per workspace, including bypass routes
+  that advance revision themselves. Capture the workspace and YAML-lock bypass token when the API
+  call is made, and never let a late read or state event roll the cached revision backward.
 - Preserve the host finalize outcome, conflicts, destination path, compile status, and local-branch
   decision for the next real user turn in the same chat session and workspace. Do not inject or
   consume that evidence in hidden repairs, logical-turn continuations, fresh sessions, or another
@@ -81,6 +84,9 @@
   before publishing the completion result, then re-list with an explicit workspace key. Route SSE
   and ordinary list refreshes through the same sequence-guarded refresh path so a late response
   cannot restore a stale pipeline name in the toolbar.
+- If the active workspace changes while finalize is in flight, do not publish that result or clear
+  the new workspace's post-chat action; completion-result selectors must also reject explicit
+  workspace mismatches before exposing navigation.
 
 ## Managed OpenCode Execution
 

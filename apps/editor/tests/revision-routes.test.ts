@@ -50,10 +50,7 @@ describe('revision route bypass', () => {
   test('sequences checked mutations and bypass routes that manually advance revision', () => {
     expect(participatesInWorkspaceRevisionSequence('/api/tasks/track/task', 'PATCH')).toBe(true);
     expect(
-      participatesInWorkspaceRevisionSequence(
-        '/api/workspace/chat-yaml-stage/finalize',
-        'POST',
-      ),
+      participatesInWorkspaceRevisionSequence('/api/workspace/chat-yaml-stage/finalize', 'POST'),
     ).toBe(true);
     expect(participatesInWorkspaceRevisionSequence('/api/state/reload', 'POST')).toBe(true);
     expect(participatesInWorkspaceRevisionSequence('/api/plugins/import-local', 'POST')).toBe(true);
@@ -61,10 +58,7 @@ describe('revision route bypass', () => {
 
   test('keeps revision-neutral chat work and reads outside the mutation sequence', () => {
     expect(
-      participatesInWorkspaceRevisionSequence(
-        '/api/workspace/chat-yaml-stage/trial-run',
-        'POST',
-      ),
+      participatesInWorkspaceRevisionSequence('/api/workspace/chat-yaml-stage/trial-run', 'POST'),
     ).toBe(false);
     expect(participatesInWorkspaceRevisionSequence('/api/state', 'GET')).toBe(false);
   });

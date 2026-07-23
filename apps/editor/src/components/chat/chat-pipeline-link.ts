@@ -1,6 +1,7 @@
 import { usePipelineStore } from '../../store/pipeline-store';
 import { useUIStore } from '../../store/ui-store';
 import { hasLocalEditorChanges } from '../../utils/chat-dirty-conflict';
+import { isChatYamlResultInActiveWorkspace } from '../../utils/chat-result-workspace';
 import { getLastLocalFieldEditAt } from '../../hooks/use-local-field';
 import type { ChatYamlSessionResult } from '../../store/chat-store';
 
@@ -36,17 +37,23 @@ export function selectVisibleChatCompletionResults({
   completedUnreadSessionIds,
   dismissedIds,
   currentSessionId,
+  activeWorkspaceKey,
   limit = 3,
 }: {
   results: Record<string, ChatYamlSessionResult>;
   completedUnreadSessionIds: string[];
   dismissedIds: string[];
   currentSessionId: string | null;
+  activeWorkspaceKey: string | null;
   limit?: number;
 }): ChatYamlSessionResult[] {
   return Object.values(results)
     .filter(
       (result) =>
+        isChatYamlResultInActiveWorkspace({
+          resultWorkspaceKey: result.workspaceKey,
+          activeWorkspaceKey,
+        }) &&
         result.sessionId !== currentSessionId &&
         completedUnreadSessionIds.includes(result.sessionId) &&
         !dismissedIds.includes(result.sessionId),

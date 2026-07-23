@@ -372,6 +372,29 @@ function setWorkspaceRevision(key: string | null, rev: number | null | undefined
   if (typeof rev === 'number' && Number.isFinite(rev)) workspaceRevisions.set(mapKey, rev);
 }
 
+function adoptNewerWorkspaceRevision(key: string | null, rev: number | undefined): void {
+  if (typeof rev !== 'number' || !Number.isFinite(rev)) return;
+  const current = getWorkspaceRevision(key);
+  if (current === null || rev >= current) setWorkspaceRevision(key, rev);
+}
+
+function adoptWorkspaceRevisionFromResponse(
+  key: string | null,
+  rev: number | undefined,
+  revisionAtDispatch: number | null,
+): void {
+  if (typeof rev !== 'number' || !Number.isFinite(rev)) return;
+  // Revisions are monotonic for a live workspace. A response older than a
+  // value adopted while it was in flight must not roll the client backward.
+  // The one valid decrease is a restarted/reset server, which is observable
+  // when the response itself is already below the dispatch baseline.
+  if (revisionAtDispatch !== null && rev < revisionAtDispatch) {
+    setWorkspaceRevision(key, rev);
+    return;
+  }
+  adoptNewerWorkspaceRevision(key, rev);
+}
+
 export function getClientRevision(): number | null {
   return getWorkspaceRevision(workspaceKey);
 }
@@ -403,16 +426,13 @@ function normalizeWorkspaceKey(key: string | null | undefined): string | null {
   return typeof key === 'string' && key.trim().length > 0 ? key.trim() : null;
 }
 
-function captureJsonRequestContext(
-  workspaceKeyOverride?: string | null,
-): JsonRequestContext {
+function captureJsonRequestContext(workspaceKeyOverride?: string | null): JsonRequestContext {
   return {
     workspaceKey:
       workspaceKeyOverride === undefined
         ? workspaceKey
         : normalizeWorkspaceKey(workspaceKeyOverride),
-    yamlEditLockBypassId:
-      yamlEditLockBypassStack[yamlEditLockBypassStack.length - 1] ?? null,
+    yamlEditLockBypassId: yamlEditLockBypassStack[yamlEditLockBypassStack.length - 1] ?? null,
   };
 }
 
@@ -633,6 +653,7 @@ async function performRequest<T>(
   options: RequestInit | undefined,
   context: JsonRequestContext,
 ): Promise<T> {
+  const revisionAtDispatch = getWorkspaceRevision(context.workspaceKey);
   const headers = buildJsonRequestHeaders(options, context);
 
   const res = await fetch(`${BASE}${path}`, { ...options, headers });
@@ -647,7 +668,11 @@ async function performRequest<T>(
       currentState?: ServerState;
     } | null;
     if (payload?.currentState) {
-      setWorkspaceRevision(context.workspaceKey, payload.currentState.revision);
+      adoptWorkspaceRevisionFromResponse(
+        context.workspaceKey,
+        payload.currentState.revision,
+        revisionAtDispatch,
+      );
       throw new RevisionConflictError(
         payload.currentState,
         typeof payload.expected === 'number' ? payload.expected : null,
@@ -671,7 +696,11 @@ async function performRequest<T>(
     'revision' in data &&
     typeof (data as { revision?: unknown }).revision === 'number'
   ) {
-    setWorkspaceRevision(context.workspaceKey, (data as { revision: number }).revision);
+    adoptWorkspaceRevisionFromResponse(
+      context.workspaceKey,
+      (data as { revision: number }).revision,
+      revisionAtDispatch,
+    );
   }
   return data;
 }
@@ -2396,7 +2425,7 @@ export const api = {
           event.newState?.revision !== undefined &&
           eventMatchesWorkspace
         ) {
-          setClientRevision(event.newState.revision);
+          adoptNewerWorkspaceRevision(workspaceKey, event.newState.revision);
         }
         onEvent(event);
       } catch {

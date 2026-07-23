@@ -488,7 +488,7 @@ describe('ChatPanel export affordance', () => {
     const makeResult = (
       sessionId: string,
       completedAt: number,
-      workspaceKey = '/workspace',
+      workspaceKey = 'D:\\Workspace',
     ): ChatYamlSessionResult => ({
       sessionId,
       workspaceKey,
@@ -509,7 +509,7 @@ describe('ChatPanel export affordance', () => {
       dismissed: makeResult('dismissed', 2_000),
       old: makeResult('old', 1_000),
       newest: makeResult('newest', 4_000),
-      foreign: makeResult('foreign', 5_000, '/other-workspace'),
+      foreign: makeResult('foreign', 5_000, 'D:\\OtherWorkspace'),
     };
 
     expect(
@@ -518,7 +518,7 @@ describe('ChatPanel export affordance', () => {
         completedUnreadSessionIds: ['current', 'dismissed', 'old', 'newest', 'foreign'],
         dismissedIds: ['dismissed'],
         currentSessionId: 'current',
-        activeWorkspaceKey: '/workspace',
+        activeWorkspaceKey: 'd:/workspace/',
       }).map((result) => result.sessionId),
     ).toEqual(['newest', 'old']);
   });

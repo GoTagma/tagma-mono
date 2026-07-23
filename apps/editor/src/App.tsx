@@ -99,6 +99,7 @@ import {
   YAML_EDIT_LOCK_MESSAGE,
 } from './store/yaml-edit-lock-store';
 import { serializePreviewYaml } from './utils/yaml-preview-diff';
+import { isChatYamlResultInActiveWorkspace } from './utils/chat-result-workspace';
 import { upsertWorkspaceYamlEntry } from './utils/workspace-yaml-list';
 import { DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS } from '../shared/chat-pipeline-repair-limit.js';
 
@@ -1226,13 +1227,17 @@ export function App() {
           const deployedLive =
             verificationSucceeded &&
             (finalized.outcome === 'adopted' || finalized.outcome === 'created');
-          const resultWorkspaceVisible = usePipelineStore.getState().workDir === snapshot.workDir;
+          const resultWorkspaceVisible = () =>
+            isChatYamlResultInActiveWorkspace({
+              resultWorkspaceKey: snapshot.workDir,
+              activeWorkspaceKey: usePipelineStore.getState().workDir,
+            });
 
-          if (deployedLive && resultWorkspaceVisible) {
+          if (deployedLive && resultWorkspaceVisible()) {
             setWorkspaceYamls((entries) => upsertWorkspaceYamlEntry(entries, finalEntry));
           }
 
-          if (resultWorkspaceVisible) {
+          if (resultWorkspaceVisible()) {
             await refreshWorkspaceYamls({ preserveOnError: deployedLive });
           }
           if (cancelled || (await discardCancelledStage())) return;
@@ -1262,26 +1267,28 @@ export function App() {
             }
           }
 
-          useChatStore.getState().clearPostChatYamlAction();
-          if (finishedSessionId) {
-            useChatStore.getState().setSessionYamlResult({
-              ...finalTarget,
-              sessionId: finishedSessionId,
-              workspaceKey: snapshot.workDir,
-              status: verificationSucceeded ? 'ready' : 'failed',
-              compile,
-              ...(trialRun ? { trial: trialRun } : {}),
-              ...(completedRepairAttempts > 0 ? { repairAttempts: completedRepairAttempts } : {}),
-              reconcile: {
-                outcome: finalized.outcome,
-                conflicts: finalized.conflicts,
-                localBranchPersisted: finalized.localBranchPersisted,
-                resultPath: finalEntry.path,
-                compileSuccess: compile.success,
-                ...(trialRun ? { trialRunSuccess: trialRun.success } : {}),
-              },
-              completedAt: finishedTurn.endedAt,
-            });
+          if (resultWorkspaceVisible()) {
+            useChatStore.getState().clearPostChatYamlAction();
+            if (finishedSessionId) {
+              useChatStore.getState().setSessionYamlResult({
+                ...finalTarget,
+                sessionId: finishedSessionId,
+                workspaceKey: snapshot.workDir,
+                status: verificationSucceeded ? 'ready' : 'failed',
+                compile,
+                ...(trialRun ? { trial: trialRun } : {}),
+                ...(completedRepairAttempts > 0 ? { repairAttempts: completedRepairAttempts } : {}),
+                reconcile: {
+                  outcome: finalized.outcome,
+                  conflicts: finalized.conflicts,
+                  localBranchPersisted: finalized.localBranchPersisted,
+                  resultPath: finalEntry.path,
+                  compileSuccess: compile.success,
+                  ...(trialRun ? { trialRunSuccess: trialRun.success } : {}),
+                },
+                completedAt: finishedTurn.endedAt,
+              });
+            }
           }
           return;
         }
