@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { X, AlertTriangle, Loader2, CheckCircle2, RefreshCw, Terminal } from 'lucide-react';
 import {
   api,
@@ -26,6 +26,11 @@ import {
   MAX_CHAT_PIPELINE_REPAIR_ATTEMPTS,
   MIN_CHAT_PIPELINE_REPAIR_ATTEMPTS,
 } from '../../../shared/chat-pipeline-repair-limit.js';
+
+import {
+  createEditorSettingsSaveQueue,
+  type EditorSettingsSaveQueue,
+} from './editor-settings-save-queue';
 
 interface EditorSettingsPanelProps {
   workDir: string;
@@ -71,6 +76,7 @@ export function EditorSettingsPanel({
   const [declared, setDeclared] = useState<PluginDeclaredResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [pythonSaving, setPythonSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [applyStatus, setApplyStatus] = useState<ApplyStatus>({ kind: 'idle' });
   const [pythonWizardOpen, setPythonWizardOpen] = useState(false);
@@ -81,6 +87,28 @@ export function EditorSettingsPanel({
   const [installVersion, setInstallVersion] = useState('3.13');
   const [installPlan, setInstallPlan] = useState<PythonInstallPlan | null>(null);
   const [pythonStatus, setPythonStatus] = useState<PythonWizardStatus>({ kind: 'idle' });
+  const mountedRef = useRef(true);
+  const settingsSaveQueueRef = useRef<EditorSettingsSaveQueue<EditorSettings> | null>(null);
+  if (!settingsSaveQueueRef.current) {
+    settingsSaveQueueRef.current = createEditorSettingsSaveQueue<EditorSettings>({
+      persist: (patch) => api.updateEditorSettings(patch),
+      onValue: (next) => {
+        useEditorSettingsStore.getState().updateLocal(next);
+        if (mountedRef.current) setSettings(next);
+      },
+      onSavingChange: (nextSaving) => {
+        if (mountedRef.current) setSaving(nextSaving);
+      },
+      onError: (saveError) => {
+        if (mountedRef.current) {
+          setError(
+            saveError instanceof Error ? saveError.message : 'Failed to save editor settings',
+          );
+        }
+      },
+    });
+  }
+  const settingsSaveQueue = settingsSaveQueueRef.current;
   const modalRef = useModalFocusTrap<HTMLDivElement>();
   const opencodeSettingsMutationBlockMessage = useYamlEditLockStore(
     getOpencodeSettingsMutationBlockMessage,
@@ -88,6 +116,7 @@ export function EditorSettingsPanel({
 
   const hasWorkspace = workDir.length > 0;
   const opencodeSettingsMutationBlocked = opencodeSettingsMutationBlockMessage !== null;
+  const settingsInputsDisabled = !hasWorkspace || pythonSaving;
 
   const refreshDeclared = useCallback(async () => {
     if (!hasWorkspace) return;
@@ -103,6 +132,7 @@ export function EditorSettingsPanel({
   // plugin snapshot in parallel so the panel paints in one shot.
   useEffect(() => {
     let cancelled = false;
+    mountedRef.current = true;
     setLoading(true);
     setError(null);
     Promise.allSettled([api.getGlobalSettings(), api.getEditorSettings(), api.getDeclaredPlugins()])
@@ -119,10 +149,7 @@ export function EditorSettingsPanel({
           );
         }
         if (settingsRes.status === 'fulfilled') {
-          setSettings(settingsRes.value);
-          // Mirror into the shared store so App-level chat reconciliation sees
-          // the freshest workspace preferences without a second fetch.
-          useEditorSettingsStore.getState().updateLocal(settingsRes.value);
+          settingsSaveQueue.reset(settingsRes.value);
         } else {
           setError(
             settingsRes.reason instanceof Error
@@ -139,34 +166,18 @@ export function EditorSettingsPanel({
       });
     return () => {
       cancelled = true;
+      mountedRef.current = false;
     };
   }, []);
 
-  const updateField = async <K extends keyof EditorSettings>(key: K, value: EditorSettings[K]) => {
+  const updateField = <K extends keyof EditorSettings>(key: K, value: EditorSettings[K]) => {
     if (!settings) return;
     if (!hasWorkspace) {
       setError('Open a workspace before changing editor settings.');
       return;
     }
-    const previous = settings;
-    const next = { ...settings, [key]: value };
-    setSettings(next);
-    setSaving(true);
     setError(null);
-    try {
-      const saved = await api.updateEditorSettings({ [key]: value } as Partial<EditorSettings>);
-      setSettings(saved);
-      // Keep the shared cache in lockstep with the server's response so
-      // App-level chat reconciliation doesn't need another round-trip. The
-      // panel is the only place that mutates settings, so a direct mirror is
-      // sufficient — no refetch needed.
-      useEditorSettingsStore.getState().updateLocal(saved);
-    } catch (e) {
-      setSettings(previous);
-      setError(e instanceof Error ? e.message : 'Failed to save editor settings');
-    } finally {
-      setSaving(false);
-    }
+    settingsSaveQueue.update(key, value);
   };
 
   const parsedAgentMaxSteps =
@@ -275,12 +286,12 @@ export function EditorSettingsPanel({
     const previous = settings;
     const next = { ...settings, pythonAgent: { ...settings.pythonAgent, enabled: false } };
     setSettings(next);
-    setSaving(true);
+    useEditorSettingsStore.getState().updateLocal(next);
+    setPythonSaving(true);
     setError(null);
     try {
       const result = await api.disablePythonAgent();
-      setSettings(result.settings);
-      useEditorSettingsStore.getState().updateLocal(result.settings);
+      settingsSaveQueue.reset(result.settings);
       try {
         await restartOpencodeForConfig();
       } catch (e) {
@@ -291,10 +302,10 @@ export function EditorSettingsPanel({
         );
       }
     } catch (e) {
-      setSettings(previous);
+      settingsSaveQueue.reset(previous);
       setError(e instanceof Error ? e.message : 'Failed to disable Python AI Agent');
     } finally {
-      setSaving(false);
+      setPythonSaving(false);
     }
   };
 
@@ -336,8 +347,7 @@ export function EditorSettingsPanel({
     setPythonStatus({ kind: 'configuring' });
     try {
       const result = await api.configurePythonAgent(command.trim(), args);
-      setSettings(result.settings);
-      useEditorSettingsStore.getState().updateLocal(result.settings);
+      settingsSaveQueue.reset(result.settings);
       try {
         await restartOpencodeForConfig();
       } catch (e) {
@@ -394,7 +404,7 @@ export function EditorSettingsPanel({
     >
       <div
         ref={modalRef}
-        className="modal-viewport-shell flex w-full max-w-[480px] flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
+        className="modal-viewport-shell flex w-full max-w-[680px] flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
         role="dialog"
         aria-modal="true"
         aria-labelledby="editor-settings-title"
@@ -448,7 +458,7 @@ export function EditorSettingsPanel({
                     max={MAX_OPENCODE_AGENT_MAX_STEPS}
                     step={1}
                     value={agentMaxStepsDraft}
-                    disabled={globalSaving || opencodeSettingsMutationBlocked}
+                    disabled={globalSaving || pythonSaving || opencodeSettingsMutationBlocked}
                     onChange={(event) => {
                       setAgentMaxStepsDraft(event.target.value);
                       setAgentMaxStepsSaved(false);
@@ -458,6 +468,7 @@ export function EditorSettingsPanel({
                         event.key === 'Enter' &&
                         agentMaxStepsChanged &&
                         !globalSaving &&
+                        !pythonSaving &&
                         !opencodeSettingsMutationBlocked
                       ) {
                         event.preventDefault();
@@ -473,7 +484,10 @@ export function EditorSettingsPanel({
                     type="button"
                     onClick={() => void saveGlobalAgentMaxSteps()}
                     disabled={
-                      globalSaving || opencodeSettingsMutationBlocked || !agentMaxStepsChanged
+                      globalSaving ||
+                      pythonSaving ||
+                      opencodeSettingsMutationBlocked ||
+                      !agentMaxStepsChanged
                     }
                     className="flex items-center gap-1.5 border border-tagma-accent/50 px-2.5 py-1 text-[11px] text-tagma-accent transition-colors hover:bg-tagma-accent/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
                   >
@@ -512,7 +526,7 @@ export function EditorSettingsPanel({
                   label="When the agent edits a file you have unsaved changes to"
                   description="Chat-driven edits land on disk immediately. If the canvas has unsaved changes at the same time, this picks how to resolve the collision. Applies only when the file-watcher catches the conflict; the fallback path (Windows fs.watch drop) always preserves your canvas unless you set Prefer agent here."
                   value={settings.chatDirtyConflictPolicy}
-                  disabled={!hasWorkspace || saving}
+                  disabled={settingsInputsDisabled}
                   onChange={(v) => updateField('chatDirtyConflictPolicy', v)}
                   options={[
                     {
@@ -537,7 +551,7 @@ export function EditorSettingsPanel({
                     label="Trial-run Chat pipeline changes"
                     description="On runs changed pipelines in the real workspace after they compile and before applying them. Off skips only the run; compilation, staging isolation, and conflict-safe finalization stay active."
                     checked={settings.opencodeChatTrialRunEnabled}
-                    disabled={!hasWorkspace || saving}
+                    disabled={settingsInputsDisabled}
                     onChange={(v) => updateField('opencodeChatTrialRunEnabled', v)}
                   />
                   <div className="flex items-center gap-2 text-[11px]">
@@ -551,7 +565,7 @@ export function EditorSettingsPanel({
                       max={MAX_CHAT_PIPELINE_REPAIR_ATTEMPTS}
                       step={1}
                       value={settings.opencodeChatPipelineRepairMaxAttempts}
-                      disabled={!hasWorkspace || saving}
+                      disabled={settingsInputsDisabled}
                       onChange={(e) => {
                         const n = Number.parseInt(e.target.value, 10);
                         if (Number.isFinite(n)) {
@@ -573,7 +587,7 @@ export function EditorSettingsPanel({
                     label="Limit chat memory"
                     description="Off keeps unlimited conversation history in the active OpenCode session. On starts fresh sessions according to the round limit below."
                     checked={settings.chatContextLimitEnabled}
-                    disabled={!hasWorkspace || saving}
+                    disabled={settingsInputsDisabled}
                     onChange={(v) => updateField('chatContextLimitEnabled', v)}
                   />
                   <div className="flex items-center gap-2 text-[11px]">
@@ -587,7 +601,7 @@ export function EditorSettingsPanel({
                       max={200}
                       step={1}
                       value={settings.chatContextRounds}
-                      disabled={!hasWorkspace || saving || !settings.chatContextLimitEnabled}
+                      disabled={settingsInputsDisabled || !settings.chatContextLimitEnabled}
                       onChange={(e) => {
                         const n = Number.parseInt(e.target.value, 10);
                         if (Number.isFinite(n)) {
@@ -612,7 +626,12 @@ export function EditorSettingsPanel({
                   label="Enable Python AI Agent"
                   description="Configures a workspace-local Python environment for helper tools. Pipeline authoring still prefers native commands first; Python is used only when it keeps the workflow simpler."
                   checked={settings.pythonAgent.enabled}
-                  disabled={!hasWorkspace || saving || opencodeSettingsMutationBlocked}
+                  disabled={
+                    settingsInputsDisabled ||
+                    saving ||
+                    globalSaving ||
+                    opencodeSettingsMutationBlocked
+                  }
                   onChange={(v) => void handlePythonToggle(v)}
                 />
                 {settings.pythonAgent.enabled && (
@@ -626,7 +645,12 @@ export function EditorSettingsPanel({
                     </div>
                     <button
                       onClick={() => void openPythonWizard()}
-                      disabled={!hasWorkspace || saving || opencodeSettingsMutationBlocked}
+                      disabled={
+                        settingsInputsDisabled ||
+                        saving ||
+                        globalSaving ||
+                        opencodeSettingsMutationBlocked
+                      }
                       className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 border border-tagma-border text-tagma-text hover:bg-tagma-surface disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                     >
                       <Terminal size={11} />
@@ -642,7 +666,7 @@ export function EditorSettingsPanel({
                   label="Auto-install declared plugins"
                   description="When opening this workspace, automatically install plugins listed in any of its YAML files (.tagma/*.yaml → pipeline.plugins) if they aren't already in node_modules. Off by default — auto-pulling npm packages is convenient for trusted personal workspaces but a security smell elsewhere."
                   checked={settings.autoInstallDeclaredPlugins}
-                  disabled={!hasWorkspace || saving}
+                  disabled={settingsInputsDisabled}
                   onChange={(v) => updateField('autoInstallDeclaredPlugins', v)}
                 />
                 <div className="mt-2 border border-tagma-border bg-tagma-bg p-2.5 space-y-2">
@@ -679,7 +703,7 @@ export function EditorSettingsPanel({
                   label="View mode"
                   description="Production hides debug aids and infrastructure plumbing across Track, Task, and Pipeline inspectors — best for day-to-day pipeline operation. Debug surfaces every field while you're building or troubleshooting the pipeline."
                   value={settings.viewMode}
-                  disabled={!hasWorkspace || saving}
+                  disabled={settingsInputsDisabled}
                   onChange={(v) => updateField('viewMode', v)}
                   options={[
                     {
@@ -702,7 +726,7 @@ export function EditorSettingsPanel({
                   label="Enable autosave"
                   description="Periodically write the flowchart to its YAML file. Saves are skipped while a run is active, while there is no file to save to, and within 2 seconds of your last keystroke."
                   checked={settings.autoSaveEnabled}
-                  disabled={!hasWorkspace || saving}
+                  disabled={settingsInputsDisabled}
                   onChange={(v) => updateField('autoSaveEnabled', v)}
                 />
                 <div className="mt-2 flex items-center gap-2 text-[11px]">
@@ -716,7 +740,7 @@ export function EditorSettingsPanel({
                     max={600}
                     step={5}
                     value={settings.autoSaveIntervalSec}
-                    disabled={!hasWorkspace || saving || !settings.autoSaveEnabled}
+                    disabled={settingsInputsDisabled || !settings.autoSaveEnabled}
                     onChange={(e) => {
                       const n = Number.parseInt(e.target.value, 10);
                       if (Number.isFinite(n)) {
@@ -741,7 +765,7 @@ export function EditorSettingsPanel({
             </div>
             <div>
               Workspace: <code>.tagma/editor-settings.json</code>
-              {saving ? ' · saving…' : ''}
+              {saving || pythonSaving ? ' · saving…' : ''}
             </div>
           </div>
         </div>

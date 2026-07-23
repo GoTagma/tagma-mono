@@ -1673,7 +1673,8 @@ export const api = {
     return request<FsListResult>(`/fs/list${qs ? `?${qs}` : ''}`);
   },
 
-  listWorkspaceYamls: () => request<{ entries: WorkspaceYamlEntry[] }>('/workspace/yamls'),
+  listWorkspaceYamls: (workspaceKeyOverride?: string | null) =>
+    request<{ entries: WorkspaceYamlEntry[] }>('/workspace/yamls', undefined, workspaceKeyOverride),
 
   startChatYamlStage: (activePath?: string | null, workspaceKeyOverride?: string | null) =>
     request<ChatYamlStageDescriptor>(

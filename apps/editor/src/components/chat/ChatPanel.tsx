@@ -1209,15 +1209,15 @@ export function SessionYamlResultBubble({ result }: { result: ChatYamlSessionRes
         <div className="select-text text-tagma-muted/80 break-words">{summary}</div>
         {deploymentTarget && (
           <button
-          type="button"
-          onClick={() => {
-            void openTarget(deploymentTarget);
-          }}
-          className="self-start flex items-center gap-1 px-2 py-1 border border-tagma-border text-[10px] text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 transition-colors"
-          title={`Open ${name}`}
-        >
-          <FileText size={11} />
-          <span>Open pipeline</span>
+            type="button"
+            onClick={() => {
+              void openTarget(deploymentTarget);
+            }}
+            className="self-start flex items-center gap-1 px-2 py-1 border border-tagma-border text-[10px] text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 transition-colors"
+            title={`Open ${name}`}
+          >
+            <FileText size={11} />
+            <span>Open pipeline</span>
           </button>
         )}
       </div>
@@ -1313,18 +1313,18 @@ export function ChatCompletionToast({ contained = false }: { contained?: boolean
                 </div>
                 {deploymentTarget && (
                   <button
-                  type="button"
-                  onClick={() => {
-                    void openTarget(deploymentTarget);
-                    void selectSession(result.sessionId).catch(() => {
-                      /* best effort */
-                    });
-                  }}
-                  className="mt-2 inline-flex items-center gap-1 border border-tagma-border px-2 py-1 text-[10px] text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 transition-colors"
-                  title={`Open ${pipelineName}`}
-                >
-                  <FileText size={11} />
-                  <span>Open pipeline</span>
+                    type="button"
+                    onClick={() => {
+                      void openTarget(deploymentTarget);
+                      void selectSession(result.sessionId).catch(() => {
+                        /* best effort */
+                      });
+                    }}
+                    className="mt-2 inline-flex items-center gap-1 border border-tagma-border px-2 py-1 text-[10px] text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 transition-colors"
+                    title={`Open ${pipelineName}`}
+                  >
+                    <FileText size={11} />
+                    <span>Open pipeline</span>
                   </button>
                 )}
               </div>

@@ -98,6 +98,7 @@ import {
   YAML_EDIT_LOCK_MESSAGE,
 } from './store/yaml-edit-lock-store';
 import { serializePreviewYaml } from './utils/yaml-preview-diff';
+import { upsertWorkspaceYamlEntry } from './utils/workspace-yaml-list';
 import { DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS } from '../shared/chat-pipeline-repair-limit.js';
 
 const MAX_CHAT_TRIAL_PLAN_PROMPTS = 2;
@@ -338,6 +339,38 @@ export function App() {
   const repairAttemptsRef = useRef<Map<string, number>>(new Map());
   const trialPlanAttemptsRef = useRef<Map<string, number>>(new Map());
   const diskAdoptRef = useRef<{ source: 'chat' | 'external'; token: number } | null>(null);
+  const refreshSeqRef = useRef(0);
+  const refreshWorkspaceYamls = useCallback(
+    async (options: { preserveOnError?: boolean } = {}): Promise<WorkspaceYamlEntry[]> => {
+      // Read from the store at call time. Workspace selection calls
+      // setWorkDir() and then bootstraps in the same event turn, before React
+      // has rendered a new closure with the updated workDir.
+      const reqWorkDir = usePipelineStore.getState().workDir;
+      if (!reqWorkDir) {
+        refreshSeqRef.current += 1;
+        setWorkspaceYamls([]);
+        return [];
+      }
+      const seq = ++refreshSeqRef.current;
+      try {
+        const result = await api.listWorkspaceYamls(reqWorkDir);
+        if (seq !== refreshSeqRef.current) return [];
+        if (usePipelineStore.getState().workDir !== reqWorkDir) return [];
+        setWorkspaceYamls(result.entries);
+        return result.entries;
+      } catch {
+        if (
+          !options.preserveOnError &&
+          seq === refreshSeqRef.current &&
+          usePipelineStore.getState().workDir === reqWorkDir
+        ) {
+          setWorkspaceYamls([]);
+        }
+        return [];
+      }
+    },
+    [],
+  );
 
   useEffect(
     () => () => {
@@ -485,12 +518,7 @@ export function App() {
   // Depending on `workDir` achieves that via the effect cleanup path.
   useEffect(() => {
     const refreshYamlList = () => {
-      api
-        .listWorkspaceYamls()
-        .then((result) => setWorkspaceYamls(result.entries))
-        .catch(() => {
-          /* transient — the next workspace/file change will re-fetch */
-        });
+      void refreshWorkspaceYamls();
     };
     const unsubscribe = api.subscribeStateEvents((event: ServerStateEvent) => {
       // Multi-window sidecar: the SSE stream is resubscribed whenever
@@ -764,7 +792,7 @@ export function App() {
       }
     });
     return unsubscribe;
-  }, [workDir]);
+  }, [refreshWorkspaceYamls, workDir]);
 
   // C2: Warn on browser close when there are unsaved changes.
   // Skip under Electron — preventDefault on beforeunload silently cancels
@@ -780,37 +808,6 @@ export function App() {
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, [isDirty]);
-
-  // Sequence guard for refreshWorkspaceYamls: rapid workspace switches can
-  // leave older listWorkspaceYamls() promises in flight. Without this, the
-  // late-arriving response for workspace A would overwrite the freshly
-  // applied list for workspace B. Each call bumps the seq; only the
-  // most-recent call's result is allowed to write to state.
-  const refreshSeqRef = useRef(0);
-  const refreshWorkspaceYamls = useCallback(async (): Promise<WorkspaceYamlEntry[]> => {
-    // Read from the store at call time. Workspace selection calls
-    // setWorkDir() and then bootstraps in the same event turn, before React
-    // has rendered a new closure with the updated workDir.
-    const reqWorkDir = usePipelineStore.getState().workDir;
-    if (!reqWorkDir) {
-      refreshSeqRef.current += 1;
-      setWorkspaceYamls([]);
-      return [];
-    }
-    const seq = ++refreshSeqRef.current;
-    try {
-      const result = await api.listWorkspaceYamls();
-      if (seq !== refreshSeqRef.current) return [];
-      if (usePipelineStore.getState().workDir !== reqWorkDir) return [];
-      setWorkspaceYamls(result.entries);
-      return result.entries;
-    } catch {
-      if (seq === refreshSeqRef.current && usePipelineStore.getState().workDir === reqWorkDir) {
-        setWorkspaceYamls([]);
-      }
-      return [];
-    }
-  }, []);
 
   const refreshWorkflowYamls = useCallback(async (): Promise<WorkflowYamlEntry[]> => {
     const reqWorkDir = usePipelineStore.getState().workDir;
@@ -1219,11 +1216,22 @@ export function App() {
             name: finalEntry.name,
             pipelineName: finalEntry.pipelineName,
           };
+          const verificationSucceeded = chatPipelineVerificationSucceeded({
+            compileSuccess: compile.success,
+            trialRunEnabled,
+            trialRunSuccess: trialRun?.success,
+          });
+          const deployedLive =
+            verificationSucceeded &&
+            (finalized.outcome === 'adopted' || finalized.outcome === 'created');
+          const resultWorkspaceVisible = usePipelineStore.getState().workDir === snapshot.workDir;
 
-          try {
-            await refreshWorkspaceYamls();
-          } catch (err) {
-            console.warn('[chat] staged result published but pipeline list refresh failed', err);
+          if (deployedLive && resultWorkspaceVisible) {
+            setWorkspaceYamls((entries) => upsertWorkspaceYamlEntry(entries, finalEntry));
+          }
+
+          if (resultWorkspaceVisible) {
+            await refreshWorkspaceYamls({ preserveOnError: deployedLive });
           }
           if (cancelled || (await discardCancelledStage())) return;
 
@@ -1250,11 +1258,6 @@ export function App() {
 
           useChatStore.getState().clearPostChatYamlAction();
           if (finishedSessionId) {
-            const verificationSucceeded = chatPipelineVerificationSucceeded({
-              compileSuccess: compile.success,
-              trialRunEnabled,
-              trialRunSuccess: trialRun?.success,
-            });
             useChatStore.getState().setSessionYamlResult({
               ...finalTarget,
               sessionId: finishedSessionId,

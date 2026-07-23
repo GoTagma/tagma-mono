@@ -194,7 +194,20 @@ describe('frontend layout resilience', () => {
   test('keeps editor toolbar actions reachable in compact widths', () => {
     const noop = () => {};
     const compactItems = buildCompactToolbarItems({
-      menus: [{ label: 'File', items: [{ label: 'New', onAction: noop }] }],
+      menus: [
+        { label: 'File', items: [{ label: 'New', onAction: noop }] },
+        {
+          label: 'View',
+          items: [
+            { label: 'Track I/O', onAction: noop },
+            { label: 'Run History', onAction: noop },
+          ],
+        },
+        {
+          label: 'Graph',
+          items: [{ label: 'Open Pipeline Graph', onAction: noop }],
+        },
+      ],
       workDir: '/workspace',
       onSelectPipeline: noop,
       onShowTrackIO: noop,
@@ -205,10 +218,10 @@ describe('frontend layout resilience', () => {
     const labels = compactItems.flatMap((item) => ('separator' in item ? [] : [item.label]));
     expect(labels).toEqual([
       'File · New',
+      'View · Track I/O',
+      'View · Run History',
+      'Graph · Open Pipeline Graph',
       'Inspect Pipeline',
-      'Track I/O',
-      'History',
-      'Graph',
       'Go Back',
     ]);
 

@@ -70,6 +70,13 @@
   decision for the next real user turn in the same chat session and workspace. Do not inject or
   consume that evidence in hidden repairs, logical-turn continuations, fresh sessions, or another
   workspace.
+- Treat only verified `adopted` and `created` finalize outcomes as live chat deployments. Final
+  chat navigation must use the authoritative reconcile result path; `forked`, `unchanged`, and
+  failed results may still be described but must not expose a live-pipeline link.
+- After a verified live finalize, merge the returned live entry into the workspace pipeline list
+  before publishing the completion result, then re-list with an explicit workspace key. Route SSE
+  and ordinary list refreshes through the same sequence-guarded refresh path so a late response
+  cannot restore a stale pipeline name in the toolbar.
 
 ## Managed OpenCode Execution
 

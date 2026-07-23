@@ -28,6 +28,20 @@ class MockEventSource {
   close(): void {}
 }
 
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (error?: unknown) => void;
+} {
+  let resolve!: (value: T) => void;
+  let reject!: (error?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 async function resetClientState(): Promise<void> {
   globalThis.EventSource = originalEventSource;
   globalThis.fetch = originalFetch;
@@ -91,5 +105,60 @@ describe('state event revision adoption', () => {
 
     expect(sentIfMatch as string | null).toBe('3');
     expect(client.getClientRevision()).toBe(7);
+  });
+
+  test('serializes a staged YAML finalize before the next revision-guarded edit', async () => {
+    const client = await import('../src/api/client');
+    client.setClientWorkspace('E:/repo');
+    client.setClientRevision(3);
+
+    const finalizeResponse = deferred<Response>();
+    const requests: Array<{ path: string; ifMatch: string | null }> = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      requests.push({
+        path,
+        ifMatch: new Headers(init?.headers).get('If-Match'),
+      });
+      if (path.endsWith('/workspace/chat-yaml-stage/finalize')) {
+        return finalizeResponse.promise;
+      }
+      return new Response(JSON.stringify({ workDir: 'E:/repo', revision: 8 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+
+    const finalize = client.api.finalizeChatYamlStage({
+      stageId: '00000000-0000-4000-8000-000000000001',
+      relativePath: 'pipeline/pipeline.yaml',
+    });
+    const edit = client.api.updateTask('track', 'task', { prompt: 'latest edit' });
+    await Promise.resolve();
+
+    try {
+      expect(requests.map((request) => request.path)).toEqual([
+        '/api/workspace/chat-yaml-stage/finalize',
+      ]);
+    } finally {
+      finalizeResponse.resolve(
+        new Response(
+          JSON.stringify({
+            outcome: 'adopted',
+            entry: null,
+            conflicts: [],
+            localBranchPersisted: false,
+            compile: { success: true },
+            revision: 7,
+            state: { workDir: 'E:/repo', revision: 7 },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+      await Promise.allSettled([finalize, edit]);
+    }
+
+    expect(requests.map((request) => request.ifMatch)).toEqual(['3', '7']);
+    expect(client.getClientRevision()).toBe(8);
   });
 });
