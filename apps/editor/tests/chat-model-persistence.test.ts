@@ -295,19 +295,19 @@ beforeAll(() => {
       const requestedDirectory = normalizedSessionDirectory(
         sessionUrl.searchParams.get('directory'),
       );
+      const requestedLimit = Number(sessionUrl.searchParams.get('limit'));
+      const limit =
+        Number.isSafeInteger(requestedLimit) && requestedLimit > 0 ? requestedLimit : 100;
       const sessions = sessionListsByBaseUrl.get(sessionBase) ?? [];
-      return Promise.resolve(
-        jsonResponse(
-          requestedDirectory
-            ? sessions.filter(
-                (session) =>
-                  normalizedSessionDirectory(
-                    (session as Session & { directory?: unknown }).directory,
-                  ) === requestedDirectory,
-              )
-            : sessions,
-        ),
-      );
+      const eligible = requestedDirectory
+        ? sessions.filter(
+            (session) =>
+              normalizedSessionDirectory(
+                (session as Session & { directory?: unknown }).directory,
+              ) === requestedDirectory,
+          )
+        : sessions;
+      return Promise.resolve(jsonResponse(eligible.slice(0, limit)));
     }
     if (method === 'PATCH' && sessionUrl && /\/session\/[^/]+$/.test(sessionUrl.pathname)) {
       const body = await jsonRequestBody(request, init);
@@ -607,6 +607,14 @@ describe('chat model persistence', () => {
     const baseUrl = 'http://opencode-history.test';
     workspaceBaseUrls.set(repo, baseUrl);
     sessionListsByBaseUrl.set(baseUrl, [
+      ...Array.from(
+        { length: 101 },
+        (_, index) =>
+          ({
+            id: `recent-external-cli-${index}`,
+            directory: repo,
+          }) as unknown as Session,
+      ),
       {
         id: 'tagma-desktop',
         directory: 'c:\\HISTORY-REPO\\.tagma\\',
@@ -693,11 +701,17 @@ describe('chat model persistence', () => {
       'tagma-before-canonical-directory',
       'tagma-legacy-flat-marker',
     ]);
-    const requestedDirectories = sessionListRequests.map((request) =>
-      new URL(request).searchParams.get('directory'),
+    const sessionListUrls = sessionListRequests.map((request) => new URL(request));
+    const requestedDirectories = sessionListUrls.map((request) =>
+      request.searchParams.get('directory'),
     );
     expect(requestedDirectories).toContain(directory);
     expect(requestedDirectories).toContain(null);
+    const discoveryRequest = sessionListUrls.find(
+      (request) => request.searchParams.get('directory') === null,
+    );
+    expect(discoveryRequest?.searchParams.get('roots')).toBe('true');
+    expect(Number(discoveryRequest?.searchParams.get('limit'))).toBeGreaterThan(100);
   });
 
   test('maps v2 provider/model catalog into the existing picker provider shape', () => {

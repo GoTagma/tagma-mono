@@ -254,7 +254,7 @@ export interface OpencodeThreadEntry {
 
 interface ClientBootstrap {
   client: OpencodeClient;
-  historyClient: OpencodeClient;
+  historyClient: OpencodeV2Client;
   v2Client: OpencodeV2Client;
   baseUrl: string;
   directory: string | null;
@@ -272,6 +272,7 @@ interface ClientBootstrap {
 // chat panel shouldn't be reachable there, but guarding avoids a null-key
 // crash if something triggers bootstrap early.
 const NO_WORKSPACE_KEY = '__no_workspace__';
+const HISTORY_DISCOVERY_LIMIT = 10_000;
 const bootstraps = new Map<string, Promise<ClientBootstrap>>();
 
 function currentWorkspaceKey(): string {
@@ -377,7 +378,9 @@ async function bootstrap(workspaceKey: string): Promise<ClientBootstrap> {
   const client = createOpencodeClient(
     buildOpencodeClientConfig(body.baseUrl, authHeader, directory),
   );
-  const historyClient = createOpencodeClient(buildOpencodeClientConfig(body.baseUrl, authHeader));
+  const historyClient = createOpencodeV2Client(
+    buildOpencodeV2ClientConfig(body.baseUrl, authHeader),
+  );
   const v2Client = createOpencodeV2Client(
     buildOpencodeV2ClientConfig(body.baseUrl, authHeader, directory),
   );
@@ -406,13 +409,23 @@ export async function listOpencodeSessions(
 
   const [scoped, discovered] = await Promise.all([
     unwrap(bootstrap.client.session.list({ query: { directory: bootstrap.directory } })),
-    unwrap(bootstrap.historyClient.session.list()).catch((err) => {
-      // Compatibility discovery must never erase the canonical directory
-      // result. The caller can still render current history when the older
-      // unscoped endpoint is unavailable.
-      console.warn('[chat] legacy session discovery failed:', err);
-      return [] as SdkSession[];
-    }),
+    unwrap(
+      bootstrap.historyClient.session.list({
+        roots: true,
+        limit: HISTORY_DISCOVERY_LIMIT,
+      }),
+    )
+      // Both SDK generations decode the same `/session` payload, but their
+      // generated `summary.diffs` declarations differ. History only consumes
+      // the shared session and ownership fields.
+      .then((sessions) => sessions as unknown as SdkSession[])
+      .catch((err) => {
+        // Compatibility discovery must never erase the canonical directory
+        // result. The caller can still render current history when the older
+        // unscoped endpoint is unavailable.
+        console.warn('[chat] legacy session discovery failed:', err);
+        return [] as SdkSession[];
+      }),
   ]);
   const seen = new Set<string>();
   const sessions = [...discovered, ...scoped].filter((session) => {
@@ -591,7 +604,7 @@ export async function restartOpencodeForConfig(
     key,
     Promise.resolve({
       client: createOpencodeClient(buildOpencodeClientConfig(body.baseUrl, authHeader, directory)),
-      historyClient: createOpencodeClient(buildOpencodeClientConfig(body.baseUrl, authHeader)),
+      historyClient: createOpencodeV2Client(buildOpencodeV2ClientConfig(body.baseUrl, authHeader)),
       v2Client: createOpencodeV2Client(
         buildOpencodeV2ClientConfig(body.baseUrl, authHeader, directory),
       ),
