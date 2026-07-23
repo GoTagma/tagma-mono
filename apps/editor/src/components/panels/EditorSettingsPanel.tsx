@@ -168,7 +168,7 @@ export function EditorSettingsPanel({
       cancelled = true;
       mountedRef.current = false;
     };
-  }, []);
+  }, [settingsSaveQueue]);
 
   const updateField = <K extends keyof EditorSettings>(key: K, value: EditorSettings[K]) => {
     if (!settings) return;
