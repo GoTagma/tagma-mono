@@ -4,6 +4,8 @@ const REVISION_BYPASS_PREFIXES = [
   '/api/state/events',
   '/api/state/reload',
   '/api/opencode/',
+  '/api/global-settings',
+  '/api/recent-workspaces',
   '/api/python-agent/detect',
   '/api/python-agent/install-plan',
   '/api/python-agent/validate',
@@ -16,6 +18,7 @@ const REVISION_BYPASS_PREFIXES = [
   '/api/workspace/compile',
   '/api/workspace/drop',
   '/api/workspace/workflows',
+  '/api/workspace/usage',
   '/api/workspace/yaml-edit-lock',
   // Chat stages are an isolated branch. Only a successful finalize mutates
   // the live workspace, and that service advances revision itself.

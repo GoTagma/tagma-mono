@@ -384,10 +384,18 @@ function adoptWorkspaceRevisionFromResponse(
   revisionAtDispatch: number | null,
 ): void {
   if (typeof rev !== 'number' || !Number.isFinite(rev)) return;
+  const current = getWorkspaceRevision(key);
   // Revisions are monotonic for a live workspace. A response older than a
   // value adopted while it was in flight must not roll the client backward.
-  // The one valid decrease is a restarted/reset server, which is observable
-  // when the response itself is already below the dispatch baseline.
+  // If a lower response already established a restarted server's new revision
+  // sequence, accept only later responses that stay below the old baseline and
+  // move forward within the new sequence.
+  if (revisionAtDispatch !== null && current !== null && current < revisionAtDispatch) {
+    if (rev < revisionAtDispatch && rev >= current) setWorkspaceRevision(key, rev);
+    return;
+  }
+  // The first response below its dispatch baseline is authoritative evidence
+  // that the server restarted/reset this workspace.
   if (revisionAtDispatch !== null && rev < revisionAtDispatch) {
     setWorkspaceRevision(key, rev);
     return;
@@ -400,7 +408,11 @@ export function getClientRevision(): number | null {
 }
 
 export function setClientRevision(rev: number | null | undefined): void {
-  setWorkspaceRevision(workspaceKey, rev);
+  if (rev === null) {
+    setWorkspaceRevision(workspaceKey, null);
+    return;
+  }
+  adoptNewerWorkspaceRevision(workspaceKey, rev);
 }
 
 // ── Workspace header (multi-window sidecar routing) ──

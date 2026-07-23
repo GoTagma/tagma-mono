@@ -62,4 +62,18 @@ describe('revision route bypass', () => {
     ).toBe(false);
     expect(participatesInWorkspaceRevisionSequence('/api/state', 'GET')).toBe(false);
   });
+
+  test('bypasses metadata writes that do not mutate or return live workspace state', () => {
+    const routes = [
+      ['/api/workspace/usage/append', 'POST'],
+      ['/api/recent-workspaces', 'POST'],
+      ['/api/recent-workspaces', 'DELETE'],
+      ['/api/global-settings', 'PATCH'],
+    ] as const;
+
+    for (const [path, method] of routes) {
+      expect(bypassesRevisionCheck(path)).toBe(true);
+      expect(participatesInWorkspaceRevisionSequence(path, method)).toBe(false);
+    }
+  });
 });
