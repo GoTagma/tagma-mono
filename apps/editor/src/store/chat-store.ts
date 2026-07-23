@@ -2897,10 +2897,10 @@ function forceStopHungTurn(
     () => {
       if (forcedRestartRecoveries.get(workspaceKey) !== recovery) return;
       forcedRestartRecoveries.delete(workspaceKey);
-      if (abortSeq !== abortFallbackSeq) return;
       const current = get();
       if (current.abortRecovery !== token) return;
       set({ abortRecovery: null });
+      if (abortSeq !== abortFallbackSeq) return;
       if (
         getOpencodeWorkspaceKey() !== workspaceKey ||
         current.currentSessionId !== sessionId ||
@@ -2914,9 +2914,16 @@ function forceStopHungTurn(
       console.error('[chat] forced opencode restart failed:', err);
       if (forcedRestartRecoveries.get(workspaceKey) !== recovery) return;
       forcedRestartRecoveries.delete(workspaceKey);
-      if (abortSeq !== abortFallbackSeq) return;
+      // The cache still points at the pre-restart port when the restart route
+      // fails. Drop that exact workspace entry so a manual retry goes through
+      // sidecar ensure instead of immediately talking to the wedged process.
+      resetOpencodeClient(workspaceKey);
       const current = get();
       if (current.abortRecovery !== token) return;
+      if (abortSeq !== abortFallbackSeq) {
+        set({ abortRecovery: null });
+        return;
+      }
       if (getOpencodeWorkspaceKey() === workspaceKey && !current.sending) {
         set({
           abortRecovery: null,
@@ -4701,6 +4708,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // kill the wrong workspace's process. The original (still-hung) one
     // gets cleaned up when its app session ends.
     const workspaceAtAbort = getOpencodeWorkspaceKey();
+    // The first forced fallback already owns process recovery. A duplicate
+    // Stop must not advance the abort generation and strand that recovery's
+    // store token while the sidecar health check is still pending.
+    if (forcedRestartRecoveries.has(workspaceAtAbort)) return;
     const turnKeyAtAbort = currentTurnKey(get());
     const seq = ++abortFallbackSeq;
     lastAbortAcked = false;

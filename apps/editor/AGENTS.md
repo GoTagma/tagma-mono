@@ -126,6 +126,16 @@
   the final healthy replacement. No successful caller may receive a handle that the restart has
   already killed. While a YAML chat lock is active, chat bootstrap may reuse/recover the current
   runtime but must not reseed and implicitly restart it.
+- Keep delegated OpenCode sessions hidden from chat history but retain their raw parent ancestry
+  per workspace from bootstrap and SSE. Route descendant permission prompts to the owning root
+  runtime while replying with the real child session id; clear exact workspace/session/permission
+  tuples and prune/reset ancestry with session deletion and workspace changes.
+- Managed Windows command strings run under PowerShell by default. Author PowerShell syntax for
+  plain command/shell tasks; invoke CMD-only syntax explicitly through argv with cmd.exe.
+- A hung-turn force stop must finish the visible turn before waiting for restart health. Keep an
+  exact workspace/session/turn recovery barrier so sends stay queued and runtime/session mutation
+  stays blocked until the replacement is healthy; late recovery failures must not overwrite a new
+  workspace, and must invalidate the failed workspace client cache.
 
 ## Focused Editor Tests
 

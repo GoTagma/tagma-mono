@@ -560,13 +560,13 @@ export async function getOpencodeAuthHeader(
 }
 
 /**
- * Drop the cached bootstrap for the current workspace so the next
+ * Drop the cached bootstrap for a selected workspace so the next
  * `getOpencodeClient()` call re-attempts `/api/opencode/chat/ensure`. Called
- * from the store's `retryBootstrap` — no other path should reset the cache,
+ * from explicit store retry/recovery paths. Routine remounts should not reset the cache,
  * or we'd re-introduce the "every remount spawns opencode again" behavior.
  */
-export function resetOpencodeClient(): void {
-  bootstraps.delete(currentWorkspaceKey());
+export function resetOpencodeClient(workspaceKey = currentWorkspaceKey()): void {
+  bootstraps.delete(workspaceKey);
 }
 
 /**
