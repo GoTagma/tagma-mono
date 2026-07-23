@@ -40,6 +40,7 @@ import { FloatingPanel } from './FloatingPanel';
 import { ModelPickerDropdown } from './ModelPickerDropdown';
 import { modelVariantIds, reconcileModelVariant } from '../../store/chat-provider-catalog';
 import {
+  chatPipelineDeploymentTarget,
   chatPipelineDisplayName,
   selectVisibleChatCompletionResults,
   useOpenChatPipelineTarget,
@@ -1179,6 +1180,7 @@ export function describeSessionYamlResult(result: ChatYamlSessionResult): {
 export function SessionYamlResultBubble({ result }: { result: ChatYamlSessionResult }) {
   const openTarget = useOpenChatPipelineTarget();
   const name = chatPipelineDisplayName(result);
+  const deploymentTarget = chatPipelineDeploymentTarget(result);
   const ok = result.status === 'ready';
   const presentation = describeSessionYamlResult(result);
   const verb = presentation.verb;
@@ -1205,17 +1207,19 @@ export function SessionYamlResultBubble({ result }: { result: ChatYamlSessionRes
           </span>
         </div>
         <div className="select-text text-tagma-muted/80 break-words">{summary}</div>
-        <button
+        {deploymentTarget && (
+          <button
           type="button"
           onClick={() => {
-            void openTarget(result);
+            void openTarget(deploymentTarget);
           }}
           className="self-start flex items-center gap-1 px-2 py-1 border border-tagma-border text-[10px] text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 transition-colors"
           title={`Open ${name}`}
         >
           <FileText size={11} />
           <span>Open pipeline</span>
-        </button>
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1272,6 +1276,7 @@ export function ChatCompletionToast({ contained = false }: { contained?: boolean
     >
       {visibleResults.map((result) => {
         const pipelineName = chatPipelineDisplayName(result);
+        const deploymentTarget = chatPipelineDeploymentTarget(result);
         const sessionTitle =
           sessions.find((session) => session.id === result.sessionId)?.title ??
           result.sessionId.slice(0, 8);
@@ -1306,10 +1311,11 @@ export function ChatCompletionToast({ contained = false }: { contained?: boolean
                 <div className="mt-1 text-[9px] text-tagma-muted/80 break-words">
                   {presentation.outcome}
                 </div>
-                <button
+                {deploymentTarget && (
+                  <button
                   type="button"
                   onClick={() => {
-                    void openTarget(result);
+                    void openTarget(deploymentTarget);
                     void selectSession(result.sessionId).catch(() => {
                       /* best effort */
                     });
@@ -1319,7 +1325,8 @@ export function ChatCompletionToast({ contained = false }: { contained?: boolean
                 >
                   <FileText size={11} />
                   <span>Open pipeline</span>
-                </button>
+                  </button>
+                )}
               </div>
               <button
                 type="button"

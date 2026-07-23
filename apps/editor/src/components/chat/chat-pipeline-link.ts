@@ -6,6 +6,25 @@ import type { ChatYamlSessionResult } from '../../store/chat-store';
 
 export type ChatPipelineLinkTarget = Pick<ChatYamlSessionResult, 'path' | 'name' | 'pipelineName'>;
 
+export function chatPipelineDeploymentTarget(
+  result: ChatYamlSessionResult,
+): ChatPipelineLinkTarget | null {
+  const outcome = result.reconcile?.outcome;
+  const resultPath = result.reconcile?.resultPath?.trim();
+  if (
+    result.status !== 'ready' ||
+    (outcome !== 'adopted' && outcome !== 'created') ||
+    !resultPath
+  ) {
+    return null;
+  }
+  return { ...result, path: resultPath };
+}
+
+export function isChatPipelineDeployed(result: ChatYamlSessionResult): boolean {
+  return chatPipelineDeploymentTarget(result) !== null;
+}
+
 export function chatPipelineDisplayName(target: ChatPipelineLinkTarget): string {
   return (
     target.pipelineName?.trim() || target.name || target.path.split(/[/\\]/).pop() || target.path

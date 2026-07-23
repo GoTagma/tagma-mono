@@ -13,6 +13,7 @@ import {
 import { useChatStore } from '../src/store/chat-store';
 import {
   chatPipelineDisplayName,
+  isChatPipelineDeployed,
   selectVisibleChatCompletionResults,
 } from '../src/components/chat/chat-pipeline-link';
 import type { ChatYamlSessionResult } from '../src/store/chat-store';
@@ -151,6 +152,13 @@ describe('ChatPanel export affordance', () => {
         summary: 'Compile succeeded.',
         validation: { errors: [], warnings: [] },
       } as never,
+      reconcile: {
+        outcome: 'created',
+        conflicts: [],
+        localBranchPersisted: false,
+        resultPath: '/workspace/.tagma/build-copy-1/build-copy-1.yaml',
+        compileSuccess: true,
+      },
       completedAt: 1_000,
     };
 
@@ -160,6 +168,7 @@ describe('ChatPanel export affordance', () => {
     expect(html).toContain('Created pipeline');
     expect(html).toContain('Build Copy 1');
     expect(html).toContain('Open pipeline');
+    expect(isChatPipelineDeployed(result)).toBe(true);
   });
 
   test('renders host trial-run evidence in the final pipeline result', () => {
@@ -206,7 +215,68 @@ describe('ChatPanel export affordance', () => {
     expect(html).toContain('Automatic repair did not succeed after 2 attempts.');
     expect(html).toContain('No live pipeline was overwritten.');
     expect(html).toContain('Trial run failed: main.test exited 7.');
-    expect(html).toContain('Open pipeline');
+    expect(html).not.toContain('Open pipeline');
+    expect(isChatPipelineDeployed(result)).toBe(false);
+  });
+
+  test('does not link an unchanged pipeline that was not deployed from staging', () => {
+    const result: ChatYamlSessionResult = {
+      sessionId: 's1',
+      kind: 'refresh-current',
+      path: '/workspace/.tagma/build/build.yaml',
+      name: 'build.yaml',
+      pipelineName: 'Build',
+      status: 'ready',
+      compile: {
+        success: true,
+        summary: 'Compile succeeded.',
+        validation: { errors: [], warnings: [] },
+      } as never,
+      reconcile: {
+        outcome: 'unchanged',
+        conflicts: [],
+        localBranchPersisted: false,
+        resultPath: '/workspace/.tagma/build/build.yaml',
+        compileSuccess: true,
+      },
+      completedAt: 1_000,
+    };
+
+    const html = renderToStaticMarkup(<SessionYamlResultBubble result={result} />);
+
+    expect(html).toContain('Pipeline unchanged');
+    expect(html).not.toContain('Open pipeline');
+    expect(isChatPipelineDeployed(result)).toBe(false);
+  });
+
+  test('does not link a verified fork that was saved as a copy instead of deployed live', () => {
+    const result: ChatYamlSessionResult = {
+      sessionId: 's1',
+      kind: 'open-created',
+      path: '/workspace/.tagma/build-copy-1/build-copy-1.yaml',
+      name: 'build-copy-1.yaml',
+      pipelineName: 'Build Copy 1',
+      status: 'ready',
+      compile: {
+        success: true,
+        summary: 'Compile succeeded.',
+        validation: { errors: [], warnings: [] },
+      } as never,
+      reconcile: {
+        outcome: 'forked',
+        conflicts: ['local-branch-changed'],
+        localBranchPersisted: true,
+        resultPath: '/workspace/.tagma/build-copy-1/build-copy-1.yaml',
+        compileSuccess: true,
+      },
+      completedAt: 1_000,
+    };
+
+    const html = renderToStaticMarkup(<SessionYamlResultBubble result={result} />);
+
+    expect(html).toContain('Saved pipeline copy');
+    expect(html).not.toContain('Open pipeline');
+    expect(isChatPipelineDeployed(result)).toBe(false);
   });
 
   test('explicitly reports when automatic repair makes compile and trial run pass', () => {
