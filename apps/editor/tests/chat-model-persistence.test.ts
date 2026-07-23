@@ -290,7 +290,7 @@ beforeAll(() => {
     }
     const sessionUrl = parseAbsoluteUrl(url);
     const sessionBase = sessionUrl?.pathname === '/session' ? sessionUrl.origin : null;
-    if (sessionBase && method === 'GET') {
+    if (sessionUrl && sessionBase && method === 'GET') {
       sessionListRequests.push(url);
       const requestedDirectory = normalizedSessionDirectory(
         sessionUrl.searchParams.get('directory'),

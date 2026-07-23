@@ -377,9 +377,7 @@ async function bootstrap(workspaceKey: string): Promise<ClientBootstrap> {
   const client = createOpencodeClient(
     buildOpencodeClientConfig(body.baseUrl, authHeader, directory),
   );
-  const historyClient = createOpencodeClient(
-    buildOpencodeClientConfig(body.baseUrl, authHeader),
-  );
+  const historyClient = createOpencodeClient(buildOpencodeClientConfig(body.baseUrl, authHeader));
   const v2Client = createOpencodeV2Client(
     buildOpencodeV2ClientConfig(body.baseUrl, authHeader, directory),
   );

@@ -74,11 +74,13 @@
 ## Managed OpenCode Execution
 
 - Tagma may share OpenCode's user-level data and session database with the standalone CLI.
-  Pin browser SDK clients and history listing to the server-returned canonical
-  `<workspace>/.tagma` directory, then defensively require an exact normalized
-  `session.directory` match. Treat Tagma metadata as defense in depth: preserve untagged
-  same-directory legacy chats, exclude foreign-workspace and platform-export markers, and admit
-  SSE-created history rows only for marked desktop-chat or bot-bridge sessions.
+  Pin operational browser SDK clients and the primary history query to the server-returned
+  canonical `<workspace>/.tagma` directory. Also use an unscoped discovery query to recover
+  Tagma-marked legacy sessions that predate canonical directory pinning; accept those only when
+  their metadata names the active workspace. Preserve untagged exact-directory legacy chats,
+  recognize the early flat `tagmaSurface`/`tagmaWorkspace` ownership shape, exclude
+  foreign-workspace and platform-export markers, and admit SSE-created history rows only for
+  marked desktop-chat or bot-bridge sessions.
 - OpenCode custom tools must resolve session-relative pipeline and companion paths from `ToolContext.directory`, never `process.cwd()`; staged chats depend on it to keep `.tagma/.chat-staging/<id>/.../agent-workspace/.tagma` as the authoritative root.
 - Pipeline prompt tasks using the built-in `opencode` driver must resolve the executable through
   `resolveOpencodeBinary()`, using the same user-runtime, bundled, dev-staged, then PATH precedence
