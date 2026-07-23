@@ -606,6 +606,49 @@ test('routes nested permissions and clears only the replied child tuple', () => 
   ).toEqual(['sibling']);
 });
 
+test('routes a reparented descendant permission to its new root session', () => {
+  const now = Date.now();
+  useChatStore.setState({
+    currentSessionId: 'new-root',
+    sessions: [makeSession('old-root'), makeSession('new-root')],
+    sending: false,
+    pendingPermissions: [],
+    sessionStates: {},
+  } as never);
+
+  dispatch({
+    type: 'session.created',
+    properties: { info: makeSession('child', 'old-root') },
+  });
+  dispatch({
+    type: 'session.created',
+    properties: { info: makeSession('grandchild', 'child') },
+  });
+  dispatch({
+    type: 'session.updated',
+    properties: { info: makeSession('child', 'new-root') },
+  });
+  dispatch({
+    type: 'permission.updated',
+    properties: {
+      id: 'reparented-permission',
+      sessionID: 'grandchild',
+      messageID: 'reparented-message',
+      type: 'external_directory',
+      title: 'Read outside after reparenting',
+      metadata: {},
+      time: { created: now },
+    },
+  });
+
+  const state = useChatStore.getState();
+  expect(state.sessionParentById).toEqual({ child: 'new-root', grandchild: 'child' });
+  expect(state.pendingPermissions.map((permission) => permission.sessionID)).toEqual([
+    'grandchild',
+  ]);
+  expect(state.sessionStates['old-root']?.pendingPermissions ?? []).toEqual([]);
+});
+
 test('stores descendant permissions on an unselected root and clears them while hidden', () => {
   const now = Date.now();
   useChatStore.setState({

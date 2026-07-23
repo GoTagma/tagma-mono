@@ -184,6 +184,13 @@ export interface ChatFinishedTurn {
   yamlSnapshotBeforeSend: ChatYamlSnapshot | null;
 }
 
+export interface ChatAbortRecovery {
+  workspaceKey: string;
+  sessionId: string;
+  turnKey: string | null;
+  abortSeq: number;
+}
+
 export interface ActiveChatYamlLifecycle {
   turnId: string;
   stageId: string;
@@ -268,6 +275,8 @@ interface ChatStore {
   currentSessionId: string | null;
   messages: OpencodeThreadEntry[];
   sending: boolean;
+  /** Background process recovery after a hung turn was force-stopped. */
+  abortRecovery: ChatAbortRecovery | null;
   reconciling: boolean;
   setReconciling: (value: boolean) => void;
   activeChatYamlLifecycle: ActiveChatYamlLifecycle | null;
@@ -936,6 +945,11 @@ let turnWatchdogInFlight = false;
 let turnWatchdogAcceptedKey: string | null = null;
 let turnWatchdogAcceptedAt = 0;
 let abortFallbackSeq = 0;
+interface ForcedRestartRecovery {
+  token: ChatAbortRecovery;
+  promise: Promise<void>;
+}
+const forcedRestartRecoveries = new Map<string, ForcedRestartRecovery>();
 // Abort acknowledgements are session-scoped, not turn-scoped. During
 // force-push a queued replacement turn can start before duplicate/late abort
 // errors from the old turn arrive, so we remember which turn initiated abort.
@@ -1629,6 +1643,11 @@ function clearPendingPartsForSession(sessionID: string | null): void {
 
 function dispatchNextQueuedPrompt(get: () => ChatStore, set: ChatSet): boolean {
   if (queuedPromptDispatchInFlight) return true;
+  // A forced restart has already ended the visible turn, but its replacement
+  // OpenCode process may still be inside the sidecar health check. Keep queued
+  // prompts parked until the new client is ready instead of sending them to
+  // the killed process's cached port.
+  if (forcedRestartRecoveries.has(getOpencodeWorkspaceKey())) return true;
   // Drain the whole queue into a single prompt: messages the user typed while
   // OpenCode was busy are merged with `\n\n` and sent in one round-trip rather
   // than dispatched one-by-one — fewer turns, fewer context-prefixes, and the
@@ -2748,13 +2767,15 @@ export function isChatModelSelectionBlocked(state: {
   queuedMessages: readonly unknown[];
   reconciling: boolean;
   flushing: boolean;
+  abortRecovery?: ChatAbortRecovery | null;
 }): boolean {
   return (
     state.sending ||
     !!state.pendingUserText ||
     state.queuedMessages.length > 0 ||
     state.reconciling ||
-    state.flushing
+    state.flushing ||
+    !!state.abortRecovery
   );
 }
 
@@ -2766,6 +2787,7 @@ function chatTurnBlocksSessionMutation(
     | 'queuedMessages'
     | 'reconciling'
     | 'flushing'
+    | 'abortRecovery'
     | 'sessionStates'
     | 'currentSessionId'
   >,
@@ -2778,6 +2800,7 @@ function chatTurnBlocksSessionMutation(
     state.queuedMessages.length > 0 ||
     state.reconciling ||
     state.flushing ||
+    !!state.abortRecovery ||
     isYamlEditLocked()
   );
 }
@@ -2785,6 +2808,10 @@ function chatTurnBlocksSessionMutation(
 function chatTurnBlocksNewPrompt(state: Pick<ChatStore, 'reconciling' | 'flushing'>): boolean {
   const blockedByYamlLock = isYamlEditLocked() && !isLocalYamlEditLockHeldForWorkspace();
   return state.reconciling || state.flushing || blockedByYamlLock;
+}
+
+function chatAbortRecoveryBlocksRuntimeMutation(state: Pick<ChatStore, 'abortRecovery'>): boolean {
+  return !!state.abortRecovery || forcedRestartRecoveries.has(getOpencodeWorkspaceKey());
 }
 
 function chatTurnBlockedMessage(): string {
@@ -2826,35 +2853,80 @@ export function chatPipelinePreflightMode(args: {
 /**
  * Last-resort path for `abort()` when opencode never acks the cancel — see
  * `abort()` for the full Ollama / @ai-sdk/openai-compatible context. Kills
- * and respawns the opencode process for the current workspace, then mirrors
- * the SSE `MessageAbortedError` branch (drain queue if any, else end the
- * turn) by hand because the killed opencode never emits that event for the
- * severed in-flight session.
+ * and starts respawning the opencode process for the current workspace. The
+ * visible turn ends immediately; the sidecar's potentially long health check
+ * continues in the background. Queued prompts resume only after that check
+ * succeeds because the killed opencode never emits the normal abort event.
  */
-async function forceStopHungTurn(
+function forceStopHungTurn(
   get: () => ChatStore,
   set: ChatSet,
   workspaceKey: string,
-): Promise<void> {
-  try {
-    const lockLease = getLocalChatYamlEditLockLeaseForWorkspace(workspaceKey);
-    await restartOpencodeForConfig(workspaceKey, {
-      forceStop: true,
-      yamlEditLockId: lockLease?.id ?? null,
-    });
-  } catch (err) {
-    console.error('[chat] forced opencode restart failed:', err);
-    if (getOpencodeWorkspaceKey() === workspaceKey) {
-      set({ sendError: `Couldn't stop: ${describeError(err)}` });
-    }
+  turnKey: string | null,
+  abortSeq: number,
+): void {
+  const state = get();
+  if (
+    abortSeq !== abortFallbackSeq ||
+    getOpencodeWorkspaceKey() !== workspaceKey ||
+    currentTurnKey(state) !== turnKey ||
+    !state.sending
+  ) {
     return;
   }
-  if (getOpencodeWorkspaceKey() !== workspaceKey) return;
+
+  const lockLease = getLocalChatYamlEditLockLeaseForWorkspace(workspaceKey);
+  const sessionId = state.currentSessionId;
+  if (!sessionId) return;
+  const promise = restartOpencodeForConfig(workspaceKey, {
+    forceStop: true,
+    yamlEditLockId: lockLease?.id ?? null,
+  });
+  const token: ChatAbortRecovery = { workspaceKey, sessionId, turnKey, abortSeq };
+  const recovery: ForcedRestartRecovery = { token, promise };
+  forcedRestartRecoveries.set(workspaceKey, recovery);
+  set({ abortRecovery: token });
+
+  // The restart route can spend minutes waiting for process health. Stop owns
+  // the renderer lifecycle now, so acknowledge it synchronously and let YAML
+  // reconciliation/release proceed while recovery continues in the background.
   lastAbortAcked = true;
-  activeAbortAck = null;
-  if (!get().sending) return;
-  if (dispatchNextQueuedPrompt(get, set)) return;
   finishChatTurn(set, {}, false, 'user-stopped');
+
+  void promise.then(
+    () => {
+      if (forcedRestartRecoveries.get(workspaceKey) !== recovery) return;
+      forcedRestartRecoveries.delete(workspaceKey);
+      if (abortSeq !== abortFallbackSeq) return;
+      const current = get();
+      if (current.abortRecovery !== token) return;
+      set({ abortRecovery: null });
+      if (
+        getOpencodeWorkspaceKey() !== workspaceKey ||
+        current.currentSessionId !== sessionId ||
+        current.sending
+      ) {
+        return;
+      }
+      dispatchNextQueuedPrompt(get, set);
+    },
+    (err) => {
+      console.error('[chat] forced opencode restart failed:', err);
+      if (forcedRestartRecoveries.get(workspaceKey) !== recovery) return;
+      forcedRestartRecoveries.delete(workspaceKey);
+      if (abortSeq !== abortFallbackSeq) return;
+      const current = get();
+      if (current.abortRecovery !== token) return;
+      if (getOpencodeWorkspaceKey() === workspaceKey && !current.sending) {
+        set({
+          abortRecovery: null,
+          sendError: `The turn stopped, but OpenCode recovery failed: ${describeError(err)}`,
+        });
+      } else {
+        set({ abortRecovery: null });
+      }
+    },
+  );
 }
 
 async function promptOpencode(
@@ -3865,6 +3937,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   currentSessionId: null,
   messages: [],
   sending: false,
+  abortRecovery: null,
   reconciling: false,
   setReconciling: (value) => set({ reconciling: value }),
   activeChatYamlLifecycle: null,
@@ -4177,6 +4250,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               currentSessionId: null,
               messages: [],
               sending: false,
+              abortRecovery: null,
               reconciling: false,
               pendingUserText: null,
               queuedMessages: [],
@@ -4420,6 +4494,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   async selectSession(id) {
+    if (chatAbortRecoveryBlocksRuntimeMutation(get())) {
+      set({ sendError: chatTurnBlockedMessage(), historyOpen: false });
+      return;
+    }
     const workspaceKey = getOpencodeWorkspaceKey();
     set((prev) => ({ sessionStates: saveCurrentSessionRuntime(prev) }));
     clearTurnWatchdog();
@@ -4446,6 +4524,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   async newSession() {
+    if (chatAbortRecoveryBlocksRuntimeMutation(get())) {
+      set({ sendError: chatTurnBlockedMessage(), historyOpen: false });
+      return;
+    }
     const workspaceKey = getOpencodeWorkspaceKey();
     set((prev) => ({ sessionStates: saveCurrentSessionRuntime(prev) }));
     clearTurnWatchdog();
@@ -4534,6 +4616,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const state = get();
     const attachments = state.composerAttachments;
     const context = renderAskAiContext(attachments);
+    const forceStopRecoveryPending = forcedRestartRecoveries.has(getOpencodeWorkspaceKey());
     if (!state.sending && chatTurnBlocksNewPrompt(state)) {
       const msg = chatTurnBlockedMessage();
       set({ sendError: msg });
@@ -4541,7 +4624,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
     if (
       shouldQueueOutgoingMessage({
-        sending: state.sending,
+        sending: state.sending || forceStopRecoveryPending,
         queuedCount: state.queuedMessages.length,
       })
     ) {
@@ -4553,7 +4636,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         sendError: null,
         postChatYamlAction: null,
       }));
-      if (!state.sending) dispatchNextQueuedPrompt(get, set);
+      if (!state.sending && !forceStopRecoveryPending) dispatchNextQueuedPrompt(get, set);
       return;
     }
     // Immediate: clear the chips up front (mirrors how the composer clears the
@@ -4631,7 +4714,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       if (getOpencodeWorkspaceKey() !== workspaceAtAbort) return;
       if (currentTurnKey(get()) !== turnKeyAtAbort) return;
       if (!get().sending) return;
-      void forceStopHungTurn(get, set, workspaceAtAbort);
+      forceStopHungTurn(get, set, workspaceAtAbort, turnKeyAtAbort, seq);
     }, STUCK_ABORT_TIMEOUT_MS);
     unrefTimerForTests(timer);
     void (async () => {

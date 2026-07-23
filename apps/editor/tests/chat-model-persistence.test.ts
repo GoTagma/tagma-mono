@@ -1517,9 +1517,19 @@ describe('chat model persistence', () => {
     });
     sessionListsByBaseUrl.set(baseA, [
       { id: 'session-a', directory: `${repoA}/.tagma` } as Session,
+      {
+        id: 'child-a',
+        parentID: 'session-a',
+        directory: `${repoA}/.tagma`,
+      } as Session,
     ]);
     sessionListsByBaseUrl.set(baseB, [
       { id: 'session-b', directory: `${repoB}/.tagma` } as Session,
+      {
+        id: 'child-b',
+        parentID: 'session-b',
+        directory: `${repoB}/.tagma`,
+      } as Session,
     ]);
 
     const originalConsoleError = console.error;
@@ -1537,6 +1547,7 @@ describe('chat model persistence', () => {
 
       expect(useChatStore.getState().providers.map((provider) => provider.id)).toEqual(['openai']);
       expect(useChatStore.getState().sessions.map((session) => session.id)).toEqual(['session-b']);
+      expect(useChatStore.getState().sessionParentById).toEqual({ 'child-b': 'session-b' });
       expect(useChatStore.getState().model).toEqual({ providerID: 'openai', modelID: 'gpt-5' });
       expect(useChatStore.getState().composerAttachments).toEqual([]);
 
@@ -1546,6 +1557,7 @@ describe('chat model persistence', () => {
       expect(getClientWorkspace()).toBe(repoB);
       expect(useChatStore.getState().providers.map((provider) => provider.id)).toEqual(['openai']);
       expect(useChatStore.getState().sessions.map((session) => session.id)).toEqual(['session-b']);
+      expect(useChatStore.getState().sessionParentById).toEqual({ 'child-b': 'session-b' });
       expect(useChatStore.getState().model).toEqual({ providerID: 'openai', modelID: 'gpt-5' });
     } finally {
       console.error = originalConsoleError;
