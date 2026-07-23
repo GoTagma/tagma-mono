@@ -2053,11 +2053,14 @@ function userVisibleSessions(
   if (!directory) return [];
   return sessions.filter((session) => {
     const fields = session as Session & SessionOwnershipFields;
-    if (fields.parentID || !sameSessionPath(fields.directory, directory)) return false;
-    if (!hasTagmaSessionMarker(fields.metadata)) return true;
+    if (fields.parentID) return false;
+    const inManagedDirectory = sameSessionPath(fields.directory, directory);
+    if (!hasTagmaSessionMarker(fields.metadata)) return inManagedDirectory;
     const tagma = parseTagmaSessionMetadata(fields.metadata);
     if (!tagma || (tagma.source !== 'desktop-chat' && tagma.source !== 'bot-bridge')) return false;
-    return !tagma.workspacePath || sameSessionPath(tagma.workspacePath, workspaceKey);
+    return tagma.workspacePath
+      ? sameSessionPath(tagma.workspacePath, workspaceKey)
+      : inManagedDirectory;
   });
 }
 

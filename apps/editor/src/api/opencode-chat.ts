@@ -254,6 +254,7 @@ export interface OpencodeThreadEntry {
 
 interface ClientBootstrap {
   client: OpencodeClient;
+  historyClient: OpencodeClient;
   v2Client: OpencodeV2Client;
   baseUrl: string;
   directory: string | null;
@@ -376,10 +377,13 @@ async function bootstrap(workspaceKey: string): Promise<ClientBootstrap> {
   const client = createOpencodeClient(
     buildOpencodeClientConfig(body.baseUrl, authHeader, directory),
   );
+  const historyClient = createOpencodeClient(
+    buildOpencodeClientConfig(body.baseUrl, authHeader),
+  );
   const v2Client = createOpencodeV2Client(
     buildOpencodeV2ClientConfig(body.baseUrl, authHeader, directory),
   );
-  return { client, v2Client, baseUrl: body.baseUrl, directory, authHeader };
+  return { client, historyClient, v2Client, baseUrl: body.baseUrl, directory, authHeader };
 }
 
 export async function getOpencodeClient(
@@ -401,9 +405,23 @@ export async function listOpencodeSessions(
 ): Promise<{ sessions: SdkSession[]; directory: string | null }> {
   const bootstrap = await getClientBootstrap(workspaceKey);
   if (!bootstrap.directory) return { sessions: [], directory: null };
-  const sessions = await unwrap(
-    bootstrap.client.session.list({ query: { directory: bootstrap.directory } }),
-  );
+
+  const [scoped, discovered] = await Promise.all([
+    unwrap(bootstrap.client.session.list({ query: { directory: bootstrap.directory } })),
+    unwrap(bootstrap.historyClient.session.list()).catch((err) => {
+      // Compatibility discovery must never erase the canonical directory
+      // result. The caller can still render current history when the older
+      // unscoped endpoint is unavailable.
+      console.warn('[chat] legacy session discovery failed:', err);
+      return [] as SdkSession[];
+    }),
+  ]);
+  const seen = new Set<string>();
+  const sessions = [...discovered, ...scoped].filter((session) => {
+    if (seen.has(session.id)) return false;
+    seen.add(session.id);
+    return true;
+  });
   return { sessions, directory: bootstrap.directory };
 }
 
@@ -575,6 +593,7 @@ export async function restartOpencodeForConfig(
     key,
     Promise.resolve({
       client: createOpencodeClient(buildOpencodeClientConfig(body.baseUrl, authHeader, directory)),
+      historyClient: createOpencodeClient(buildOpencodeClientConfig(body.baseUrl, authHeader)),
       v2Client: createOpencodeV2Client(
         buildOpencodeV2ClientConfig(body.baseUrl, authHeader, directory),
       ),

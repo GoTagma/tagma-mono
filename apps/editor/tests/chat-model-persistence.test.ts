@@ -100,6 +100,11 @@ function parseAbsoluteUrl(url: string): URL | null {
   }
 }
 
+function normalizedSessionDirectory(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  return value.trim().replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+}
+
 async function jsonRequestBody(
   request: Request | null,
   init: RequestInit | undefined,
@@ -287,7 +292,22 @@ beforeAll(() => {
     const sessionBase = sessionUrl?.pathname === '/session' ? sessionUrl.origin : null;
     if (sessionBase && method === 'GET') {
       sessionListRequests.push(url);
-      return Promise.resolve(jsonResponse(sessionListsByBaseUrl.get(sessionBase) ?? []));
+      const requestedDirectory = normalizedSessionDirectory(
+        sessionUrl.searchParams.get('directory'),
+      );
+      const sessions = sessionListsByBaseUrl.get(sessionBase) ?? [];
+      return Promise.resolve(
+        jsonResponse(
+          requestedDirectory
+            ? sessions.filter(
+                (session) =>
+                  normalizedSessionDirectory(
+                    (session as Session & { directory?: unknown }).directory,
+                  ) === requestedDirectory,
+              )
+            : sessions,
+        ),
+      );
     }
     if (method === 'PATCH' && sessionUrl && /\/session\/[^/]+$/.test(sessionUrl.pathname)) {
       const body = await jsonRequestBody(request, init);
@@ -580,7 +600,7 @@ afterAll(() => {
 });
 
 describe('chat model persistence', () => {
-  test('history excludes OpenCode CLI sessions outside the managed Tagma directory', async () => {
+  test('history discovers legacy Tagma sessions without restoring external CLI sessions', async () => {
     const repo = 'C:/history-repo';
     const otherRepo = 'C:/other-repo';
     const directory = 'C:/history-repo/.tagma';
@@ -610,6 +630,22 @@ describe('chat model persistence', () => {
         id: 'external-cli',
         directory: repo,
         title: 'Saved in the OpenCode CLI',
+      } as unknown as Session,
+      {
+        id: 'tagma-before-canonical-directory',
+        directory: repo,
+        metadata: {
+          tagma: { schema: 1, source: 'desktop-chat', workspacePath: repo },
+        },
+      } as unknown as Session,
+      {
+        id: 'tagma-legacy-flat-marker',
+        directory: repo + '/legacy-chat-root',
+        metadata: {
+          tagmaSurface: 'desktop-chat',
+          tagmaWorkspace: repo,
+          tagmaModel: 'openai/gpt-5',
+        },
       } as unknown as Session,
       {
         id: 'other-workspace',
@@ -654,10 +690,14 @@ describe('chat model persistence', () => {
       'tagma-desktop',
       'tagma-bot',
       'legacy-tagma',
+      'tagma-before-canonical-directory',
+      'tagma-legacy-flat-marker',
     ]);
-    expect(
-      new URL(sessionListRequests.at(-1) ?? 'http://missing.test').searchParams.get('directory'),
-    ).toBe(directory);
+    const requestedDirectories = sessionListRequests.map((request) =>
+      new URL(request).searchParams.get('directory'),
+    );
+    expect(requestedDirectories).toContain(directory);
+    expect(requestedDirectories).toContain(null);
   });
 
   test('maps v2 provider/model catalog into the existing picker provider shape', () => {

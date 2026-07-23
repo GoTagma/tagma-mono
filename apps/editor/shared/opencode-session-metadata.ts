@@ -33,28 +33,56 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
+function hasOwn(record: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(record, key);
+}
+
+function isTagmaSessionSource(value: unknown): value is TagmaSessionSource {
+  return value === 'desktop-chat' || value === 'bot-bridge' || value === 'platform-export';
+}
+
 export function hasTagmaSessionMarker(metadata: unknown): boolean {
-  return isRecord(metadata) && Object.prototype.hasOwnProperty.call(metadata, 'tagma');
+  return (
+    isRecord(metadata) &&
+    (hasOwn(metadata, 'tagma') ||
+      hasOwn(metadata, 'tagmaSurface') ||
+      hasOwn(metadata, 'tagmaWorkspace'))
+  );
 }
 
 export function parseTagmaSessionMetadata(metadata: unknown): TagmaSessionMetadata | null {
-  if (!isRecord(metadata) || !isRecord(metadata.tagma)) return null;
-  const tagma = metadata.tagma;
-  const schema = tagma.schema;
-  const source = tagma.source;
-  if (
-    typeof schema !== 'number' ||
-    !Number.isInteger(schema) ||
-    schema < 1 ||
-    (source !== 'desktop-chat' && source !== 'bot-bridge' && source !== 'platform-export')
-  ) {
-    return null;
+  if (!isRecord(metadata)) return null;
+
+  if (hasOwn(metadata, 'tagma')) {
+    if (!isRecord(metadata.tagma)) return null;
+    const tagma = metadata.tagma;
+    const schema = tagma.schema;
+    const source = tagma.source;
+    if (
+      typeof schema !== 'number' ||
+      !Number.isInteger(schema) ||
+      schema < 1 ||
+      !isTagmaSessionSource(source)
+    ) {
+      return null;
+    }
+    const workspacePath =
+      typeof tagma.workspacePath === 'string' && tagma.workspacePath.trim()
+        ? tagma.workspacePath.trim()
+        : undefined;
+    return { schema, source, ...(workspacePath ? { workspacePath } : {}) };
   }
+
+  // Early desktop builds stored ownership fields flat on `metadata`.
+  // Schema 0 is an in-memory compatibility marker; new writes always use
+  // the nested schema-1 envelope built by buildTagmaSessionMetadata().
+  const source = metadata.tagmaSurface;
+  if (!isTagmaSessionSource(source)) return null;
   const workspacePath =
-    typeof tagma.workspacePath === 'string' && tagma.workspacePath.trim()
-      ? tagma.workspacePath.trim()
+    typeof metadata.tagmaWorkspace === 'string' && metadata.tagmaWorkspace.trim()
+      ? metadata.tagmaWorkspace.trim()
       : undefined;
-  return { schema, source, ...(workspacePath ? { workspacePath } : {}) };
+  return { schema: 0, source, ...(workspacePath ? { workspacePath } : {}) };
 }
 
 function putString(target: Record<string, unknown>, key: string, value: string | null | undefined) {

@@ -44,6 +44,21 @@ describe('OpenCode session metadata', () => {
     });
   });
 
+  test('parses legacy flat Tagma chat ownership metadata', () => {
+    const metadata = {
+      tagmaSurface: 'desktop-chat',
+      tagmaWorkspace: 'C:/repo',
+      tagmaModel: 'openai/gpt-5',
+    };
+
+    expect(hasTagmaSessionMarker(metadata)).toBe(true);
+    expect(parseTagmaSessionMetadata(metadata)).toEqual({
+      schema: 0,
+      source: 'desktop-chat',
+      workspacePath: 'C:/repo',
+    });
+  });
+
   test('parses valid ownership metadata and rejects malformed markers', () => {
     expect(
       parseTagmaSessionMetadata({
