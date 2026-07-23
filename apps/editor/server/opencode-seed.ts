@@ -538,6 +538,20 @@ export interface TagmaPipelineAgentOptions {
   pythonToolsEnabled?: boolean;
 }
 
+const WINDOWS_COMMAND_AUTHORING_CONTRACT = [
+  '- On Windows, plain `command` strings and `{ shell: ... }` commands run under Windows PowerShell by default.',
+  '- Use one shell dialect: prefer PowerShell forms such as `Get-ChildItem -Recurse -File`, `2>$null`, and `$env:NAME`.',
+  '- Do not write bare CMD-only syntax such as `dir /s /b /a-d`, `2>nul`, `%VAR%`, or `set NAME=value` in a PowerShell command.',
+  '- If CMD is required, use the `argv` form with `cmd.exe`, `/d`, `/s`, and `/c` instead of a bare shell string.',
+].join('\n');
+
+function hostCommandAuthoringContract(hostOs: string): string {
+  if (hostOs.trim().toLowerCase() === 'windows') {
+    return '- Windows plain `command` strings run under Windows PowerShell by default. Use `2>$null`; bare CMD `dir /s /b /a-d`, `2>nul`, and `%VAR%` require explicit `argv` invoking `cmd.exe`.';
+  }
+  return '- On macOS and Linux, plain `command` strings and `{ shell: ... }` commands run under `sh -c` by default. Use POSIX shell syntax unless `PIPELINE_SHELL` is explicitly part of the environment contract.';
+}
+
 export function buildTagmaPipelineAgent(
   hostOs: string,
   options: TagmaPipelineAgentOptions = {},
@@ -604,7 +618,9 @@ Every pipeline lives in exactly one folder directly under \`.tagma/\`: \`<stem>/
 
 ## Host And Editor Context
 
-The editor host OS is \`${hostOs}\`. Prefer PowerShell/cmd on \`windows\`, sh/bash on \`darwin\` or \`linux\`. Use Python only when host-native commands would be bulky, fragile, insufficient, or explicitly requested.
+The editor host OS is \`${hostOs}\`.
+${hostCommandAuthoringContract(hostOs)}
+Use Python only when host-native commands would be bulky, fragile, insufficient, or explicitly requested.
 
 Every turn may include \`<editor-context>\`; re-read it.
 
@@ -728,7 +744,7 @@ Rely on \`tagma-yaml-contract\`, \`tagma-native-primitives\`, and compile.log fo
 
 ## Runnable Command Policy
 
-A \`command\` task must be grounded in the user request or workspace evidence. User-requested deterministic behavior is evidence for ordinary host-native shell code and a same-pipeline helper file. Never guess unrelated project scripts, third-party CLI syntax, deploy, migration, publish, or delete commands. If those need evidence you cannot find, use a prompt task, safe native alternative, or report the precise limitation.
+Ground \`command\` tasks in the user request or workspace evidence. Never guess unrelated project scripts, third-party CLI syntax, deploy, migration, publish, or delete commands; use a prompt task, safe native alternative, or report missing evidence.
 
 ## Layout
 
@@ -855,6 +871,9 @@ Use Tagma YAML fields before helper scripts or custom tool creation:
 ## Command tasks
 
 - Use command for deterministic shell work where the exact command is known.
+- Match the command dialect to Tagma's actual host shell contract:
+${WINDOWS_COMMAND_AUTHORING_CONTRACT}
+- On macOS and Linux, plain \`command\` strings and \`{ shell: ... }\` commands run under \`sh -c\` by default; use POSIX shell syntax unless the user explicitly configures \`PIPELINE_SHELL\`.
 - Ground every command in user input, existing YAML, package scripts, README or CI docs, or another workspace file you read.
 - Do not wrap deterministic shell work in a prompt task.
 - Do not invent npm test, bun test, pytest, cargo test, deploy, migration, or release commands from general knowledge.

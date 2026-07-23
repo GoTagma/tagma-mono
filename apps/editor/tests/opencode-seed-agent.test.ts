@@ -7,6 +7,7 @@ import {
   buildTagmaContextPackagerAgent,
   buildTagmaGeneralDiscussionAgent,
   buildTagmaHistoryCompareAgent,
+  buildTagmaNativePrimitivesSkill,
   buildTagmaPipelineAgent,
   buildTagmaPipelineDiagnosisAgent,
   buildTagmaPipelinePlannerAgent,
@@ -498,6 +499,22 @@ test('tagma-pipeline agent prefers host-native commands before Python glue', () 
   expect(doc).toContain('Prefer a host-native implementation');
   expect(doc).toContain('host-native helper files directly');
   expect(doc).toContain('tagma-python-tools');
+});
+
+test('Windows pipeline authoring uses PowerShell unless CMD is explicit argv', () => {
+  const documents = [buildTagmaPipelineAgent('Windows'), buildTagmaNativePrimitivesSkill()];
+
+  for (const doc of documents) {
+    expect(doc).toContain('run under Windows PowerShell by default');
+    expect(doc).toContain('`2>$null`');
+    expect(doc).toContain('`dir /s /b /a-d`');
+    expect(doc).toContain('`2>nul`');
+    expect(doc).toContain('`%VAR%`');
+    expect(doc).toContain('`cmd.exe`');
+    expect(doc).toContain('`argv`');
+  }
+
+  expect(buildTagmaPipelineAgent('Windows')).not.toContain('Prefer PowerShell/cmd');
 });
 
 test('tagma-pipeline agent grants python tools only when workspace settings enable them', () => {

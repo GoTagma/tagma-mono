@@ -555,6 +555,164 @@ test('routes delegated child permission prompts to the current parent session', 
   expect(useChatStore.getState().pendingPermissions).toEqual([]);
 });
 
+test('routes nested permissions and clears only the replied child tuple', () => {
+  const now = Date.now();
+  useChatStore.setState({
+    currentSessionId: 'parent',
+    sessions: [makeSession('parent')],
+    sending: true,
+    pendingPermissions: [],
+  } as never);
+
+  dispatch({
+    type: 'session.created',
+    properties: { info: makeSession('child', 'parent') },
+  });
+  dispatch({
+    type: 'session.created',
+    properties: { info: makeSession('grandchild', 'child') },
+  });
+  dispatch({
+    type: 'session.created',
+    properties: { info: makeSession('sibling', 'parent') },
+  });
+
+  for (const sessionID of ['grandchild', 'sibling']) {
+    dispatch({
+      type: 'permission.updated',
+      properties: {
+        id: 'shared-permission-id',
+        sessionID,
+        messageID: `${sessionID}-message`,
+        type: 'external_directory',
+        title: `Read outside from ${sessionID}`,
+        metadata: {},
+        time: { created: now },
+      },
+    });
+  }
+
+  expect(
+    useChatStore.getState().pendingPermissions.map((permission) => permission.sessionID),
+  ).toEqual(['grandchild', 'sibling']);
+
+  dispatch({
+    type: 'permission.replied',
+    properties: { sessionID: 'grandchild', permissionID: 'shared-permission-id' },
+  });
+
+  expect(
+    useChatStore.getState().pendingPermissions.map((permission) => permission.sessionID),
+  ).toEqual(['sibling']);
+});
+
+test('stores descendant permissions on an unselected root and clears them while hidden', () => {
+  const now = Date.now();
+  useChatStore.setState({
+    currentSessionId: 'visible-root',
+    sessions: [makeSession('visible-root'), makeSession('hidden-root')],
+    sending: false,
+    pendingPermissions: [],
+    sessionStates: {},
+  } as never);
+
+  dispatch({
+    type: 'session.created',
+    properties: { info: makeSession('hidden-child', 'hidden-root') },
+  });
+  dispatch({
+    type: 'permission.updated',
+    properties: {
+      id: 'hidden-permission',
+      sessionID: 'hidden-child',
+      messageID: 'hidden-message',
+      type: 'external_directory',
+      title: 'Read outside from a hidden chat',
+      metadata: {},
+      time: { created: now },
+    },
+  });
+
+  let state = useChatStore.getState();
+  expect(state.currentSessionId).toBe('visible-root');
+  expect(state.pendingPermissions).toEqual([]);
+  expect(state.sessionStates['hidden-root']?.sending).toBe(true);
+  expect(
+    state.sessionStates['hidden-root']?.pendingPermissions.map(
+      (permission) => permission.sessionID,
+    ),
+  ).toEqual(['hidden-child']);
+
+  dispatch({
+    type: 'permission.replied',
+    properties: { sessionID: 'hidden-child', permissionID: 'hidden-permission' },
+  });
+
+  state = useChatStore.getState();
+  expect(state.sessionStates['hidden-root']?.pendingPermissions).toEqual([]);
+});
+
+test('deleting a child or root prunes descendant permissions and ancestry', () => {
+  const now = Date.now();
+  useChatStore.setState({
+    currentSessionId: 'root',
+    sessions: [makeSession('root')],
+    sending: true,
+    pendingPermissions: [],
+  } as never);
+
+  dispatch({
+    type: 'session.created',
+    properties: { info: makeSession('child', 'root') },
+  });
+  dispatch({
+    type: 'session.created',
+    properties: { info: makeSession('grandchild', 'child') },
+  });
+  dispatch({
+    type: 'permission.updated',
+    properties: {
+      id: 'grandchild-permission',
+      sessionID: 'grandchild',
+      messageID: 'grandchild-message',
+      type: 'external_directory',
+      title: 'Read outside from grandchild',
+      metadata: {},
+      time: { created: now },
+    },
+  });
+
+  dispatch({ type: 'session.deleted', properties: { info: { id: 'child' } } });
+  let state = useChatStore.getState();
+  expect(state.currentSessionId).toBe('root');
+  expect(state.pendingPermissions).toEqual([]);
+  expect(state.sessionParentById).toEqual({});
+
+  dispatch({
+    type: 'permission.updated',
+    properties: {
+      id: 'stale-permission',
+      sessionID: 'grandchild',
+      messageID: 'stale-message',
+      type: 'external_directory',
+      title: 'Stale descendant prompt',
+      metadata: {},
+      time: { created: now + 1 },
+    },
+  });
+  expect(useChatStore.getState().pendingPermissions).toEqual([]);
+
+  dispatch({
+    type: 'session.created',
+    properties: { info: makeSession('replacement-child', 'root') },
+  });
+  dispatch({ type: 'session.deleted', properties: { info: { id: 'root' } } });
+  state = useChatStore.getState();
+  expect(state.currentSessionId).toBeNull();
+  expect(state.sessions).toEqual([]);
+  expect(state.sessionParentById).toEqual({});
+});
+
 test('can switch away from an in-flight conversation and restore its live state later', async () => {
   const turnStartedAt = Date.now() - 1_000;
   const sessionBMessage: OpencodeThreadEntry = {

@@ -65,7 +65,7 @@ Object.defineProperty(globalThis, 'localStorage', {
 
 const { getClientWorkspace, setClientWorkspace } = await import('../src/api/client');
 const { resetOpencodeClient, updateOpencodeSessionV2 } = await import('../src/api/opencode-chat');
-const { selectPreviousChatYamlReconcileForPrompt, useChatStore } =
+const { applySseEvent, selectPreviousChatYamlReconcileForPrompt, useChatStore } =
   await import('../src/store/chat-store');
 const { useEditorSettingsStore } = await import('../src/store/editor-settings-store');
 const { usePipelineStore } = await import('../src/store/pipeline-store');
@@ -573,6 +573,7 @@ afterEach(() => {
     model: null,
     reasoningEffort: null,
     sessions: [],
+    sessionParentById: {},
     sessionStates: {},
     sessionYamlResults: {},
     dismissedSessionYamlResultToastIds: [],
@@ -675,6 +676,14 @@ describe('chat model persistence', () => {
         metadata: { tagma: null },
       } as unknown as Session,
       {
+        id: 'grandchild-session',
+        directory,
+        parentID: 'child-session',
+        metadata: {
+          tagma: { schema: 1, source: 'desktop-chat', workspacePath: repo },
+        },
+      } as unknown as Session,
+      {
         id: 'child-session',
         directory,
         parentID: 'tagma-desktop',
@@ -701,6 +710,32 @@ describe('chat model persistence', () => {
       'tagma-before-canonical-directory',
       'tagma-legacy-flat-marker',
     ]);
+    expect(useChatStore.getState().sessionParentById).toEqual({
+      'grandchild-session': 'child-session',
+      'child-session': 'tagma-desktop',
+    });
+
+    applySseEvent(
+      {
+        type: 'permission.updated',
+        properties: {
+          id: 'restored-child-permission',
+          sessionID: 'grandchild-session',
+          messageID: 'grandchild-message',
+          type: 'external_directory',
+          title: 'Read outside after reconnect',
+          metadata: {},
+          time: { created: Date.now() },
+        },
+      } as never,
+      useChatStore.getState,
+      useChatStore.setState as never,
+    );
+    expect(
+      useChatStore.getState().sessionStates['tagma-desktop']?.pendingPermissions.map(
+        (permission) => permission.sessionID,
+      ),
+    ).toEqual(['grandchild-session']);
     const sessionListUrls = sessionListRequests.map((request) => new URL(request));
     const requestedDirectories = sessionListUrls.map((request) =>
       request.searchParams.get('directory'),

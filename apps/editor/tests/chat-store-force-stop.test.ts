@@ -67,7 +67,7 @@ afterEach(async () => {
   globalThis.setTimeout = originalSetTimeout;
 });
 
-async function exerciseForceStop(restartStatus: number): Promise<string | null> {
+async function exerciseForceStop(restartStatus: number | null): Promise<string | null> {
   let restartHeader: string | null = null;
   let restartSeen = false;
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
@@ -97,6 +97,7 @@ async function exerciseForceStop(restartStatus: number): Promise<string | null> 
     if (url === '/api/opencode/chat/restart') {
       restartSeen = true;
       restartHeader = requestHeader(init, request, 'X-Tagma-Yaml-Lock-Id');
+      if (restartStatus === null) return new Promise<Response>(() => {});
       return Promise.resolve(
         restartStatus === 200
           ? jsonResponse({ ok: true, baseUrl: 'http://force-stop-restarted.test' })
@@ -128,11 +129,13 @@ async function exerciseForceStop(restartStatus: number): Promise<string | null> 
   if (!runAbortFallback) throw new Error('abort fallback was not scheduled');
   runAbortFallback();
   await waitFor(() => restartSeen);
-  await waitFor(() =>
-    restartStatus === 200
-      ? !useChatStore.getState().sending
-      : useChatStore.getState().sendError !== null,
-  );
+  if (restartStatus !== null) {
+    await waitFor(() =>
+      restartStatus === 200
+        ? !useChatStore.getState().sending
+        : useChatStore.getState().sendError !== null,
+    );
+  }
   return restartHeader;
 }
 
@@ -141,8 +144,14 @@ test('force-stop presents the workspace lease after switching to another YAML', 
   expect(useChatStore.getState().sending).toBe(false);
 });
 
-test('failed force-stop keeps the turn live instead of pretending the process stopped', async () => {
+test('force-stop ends the UI turn before restart health completes', async () => {
+  expect(await exerciseForceStop(null)).toBe('force-stop-lease');
+  expect(useChatStore.getState().sending).toBe(false);
+  expect(useChatStore.getState().lastFinishedTurn?.termination).toBe('user-stopped');
+});
+
+test('failed force-stop stays stopped and reports the background recovery error', async () => {
   expect(await exerciseForceStop(423)).toBe('force-stop-lease');
-  expect(useChatStore.getState().sending).toBe(true);
+  expect(useChatStore.getState().sending).toBe(false);
   expect(useChatStore.getState().sendError).toContain('restart remained locked');
 });
