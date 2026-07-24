@@ -1997,7 +1997,13 @@ export const api = {
   getOpencodeInfo: () => request<OpencodeInfo>('/opencode/info'),
 
   restartOpencodeChat: (workspaceKeyOverride?: string | null, yamlEditLockId?: string | null) =>
-    request<{ ok: true; baseUrl: string; directory?: string; authHeader?: string }>(
+    request<{
+      ok: true;
+      baseUrl: string;
+      proxyBaseUrl?: string;
+      directory?: string;
+      authHeader?: string;
+    }>(
       '/opencode/chat/restart',
       {
         method: 'POST',

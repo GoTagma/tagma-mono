@@ -7,6 +7,7 @@ import {
   createOpencodeSessionV2,
   getOpencodeClient,
   getOpencodeAuthHeader,
+  getOpencodeWorkspaceHeader,
   getOpencodeBaseUrl,
   buildOpencodeRequestHeaders,
   getOpencodeWorkspaceKey,
@@ -1386,10 +1387,18 @@ async function pollStalledTurn(get: () => ChatStore, set: ChatSet): Promise<void
       // Process health check: ping /global/health to verify the opencode
       // process is alive. This catches cases where opencode itself has
       // crashed or hung, separate from upstream model slowness.
-      Promise.all([getOpencodeBaseUrl(workspaceKey), getOpencodeAuthHeader(workspaceKey)])
-        .then(async ([baseUrl, authHeader]) => {
+      Promise.all([
+        getOpencodeBaseUrl(workspaceKey),
+        getOpencodeAuthHeader(workspaceKey),
+        getOpencodeWorkspaceHeader(workspaceKey),
+      ])
+        .then(async ([baseUrl, authHeader, workspaceHeader]) => {
           const res = await fetch(`${baseUrl}/global/health`, {
-            headers: buildOpencodeRequestHeaders(authHeader),
+            headers: buildOpencodeRequestHeaders(
+              authHeader,
+              undefined,
+              workspaceHeader,
+            ),
             signal: AbortSignal.timeout(5000),
           });
           return res.ok;
@@ -4195,13 +4204,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   async removeProviderAuth(providerId) {
     if (chatTurnBlocksSessionMutation(get())) throw new Error(chatTurnBlockedMessage());
     const workspaceKey = getOpencodeWorkspaceKey();
-    const [baseUrl, authHeader] = await Promise.all([
+    const [baseUrl, authHeader, workspaceHeader] = await Promise.all([
       getOpencodeBaseUrl(workspaceKey),
       getOpencodeAuthHeader(workspaceKey),
+      getOpencodeWorkspaceHeader(workspaceKey),
     ]);
     const res = await fetch(
       `${baseUrl.replace(/\/+$/, '')}/auth/${encodeURIComponent(providerId)}`,
-      { method: 'DELETE', headers: buildOpencodeRequestHeaders(authHeader) },
+      {
+        method: 'DELETE',
+        headers: buildOpencodeRequestHeaders(authHeader, undefined, workspaceHeader),
+      },
     );
     if (!res.ok) {
       let detail = res.statusText;

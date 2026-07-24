@@ -531,6 +531,48 @@ export function registerOpencodeRoutes(app: express.Express): void {
   // workspace's cwd and hands its loopback URL to the renderer; every
   // subsequent chat request bypasses this server entirely.
 
+  // Renderer requests stay on the sidecar origin. The sidecar replaces its
+  // own Bearer credential with OpenCode's Basic credential, then uses the raw
+  // loopback transport so machine-level proxy settings cannot intercept it.
+  app.use(OPENCODE_PROXY_BASE_PATH, async (req, res) => {
+    const ws = requireWorkspace(req, res);
+    if (!ws) return;
+    if (!ws.workDir) {
+      return res.status(400).json({ error: 'Workspace directory is not set' });
+    }
+
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    const abortIfOpen = () => {
+      if (!res.writableEnded) controller.abort();
+    };
+    req.once('aborted', abort);
+    res.once('close', abortIfOpen);
+    try {
+      const tagmaCwd = ensureRealTagmaDirectory(ws.workDir);
+      const { baseUrl, auth } = await ensureOpencode(tagmaCwd);
+      const response = await fetchOpencodeProxy({
+        baseUrl,
+        authorization: auth.authorization,
+        requestUrl: req.url,
+        method: req.method,
+        headers: new Headers(req.headers as HeadersInit),
+        body: parsedProxyBody(req),
+        signal: controller.signal,
+      });
+      await pipeOpencodeProxyResponse(response, res);
+    } catch (err) {
+      if (res.headersSent) {
+        res.destroy(err instanceof Error ? err : undefined);
+        return;
+      }
+      res.status(502).json({ error: `OpenCode proxy failed: ${errorMessage(err)}` });
+    } finally {
+      req.off('aborted', abort);
+      res.off('close', abortIfOpen);
+    }
+  });
+
   app.post('/api/opencode/chat/ensure', async (req, res) => {
     const ws = requireWorkspace(req, res);
     if (!ws) return;
@@ -560,7 +602,13 @@ export function registerOpencodeRoutes(app: express.Express): void {
           ? await restartOpencode(tagmaCwd)
           : await ensureOpencode(tagmaCwd);
       console.log('[opencode] ensure resolved, baseUrl =', baseUrl);
-      res.json({ ok: true, baseUrl, directory: tagmaCwd, authHeader: auth.authorization });
+      res.json({
+        ok: true,
+        baseUrl,
+        proxyBaseUrl: OPENCODE_PROXY_BASE_PATH,
+        directory: tagmaCwd,
+        authHeader: auth.authorization,
+      });
     } catch (err) {
       console.error('[opencode] ensure FAILED:', err);
       res.status(500).json({ error: errorMessage(err) });
@@ -596,7 +644,13 @@ export function registerOpencodeRoutes(app: express.Express): void {
       console.log('[opencode] restart called, cwd =', tagmaCwd);
       const { baseUrl, auth } = await restartOpencode(tagmaCwd);
       console.log('[opencode] restart resolved, baseUrl =', baseUrl);
-      res.json({ ok: true, baseUrl, directory: tagmaCwd, authHeader: auth.authorization });
+      res.json({
+        ok: true,
+        baseUrl,
+        proxyBaseUrl: OPENCODE_PROXY_BASE_PATH,
+        directory: tagmaCwd,
+        authHeader: auth.authorization,
+      });
     } catch (err) {
       console.error('[opencode] restart FAILED:', err);
       res.status(500).json({ error: errorMessage(err) });

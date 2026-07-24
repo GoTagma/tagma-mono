@@ -54,6 +54,7 @@ const sessionUpdateRequests: Array<{ url: string; body: Record<string, unknown> 
 let editorSettingsModel: { providerID: string; modelID: string } | null = null;
 let editorSettingsReasoningEffort: string | null = null;
 let providersShouldFail = false;
+let agentsShouldFail = false;
 let sessionCreateShouldFail = false;
 const originalFetch = globalThis.fetch;
 const originalLocalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
@@ -286,6 +287,9 @@ beforeAll(() => {
       return Promise.resolve(jsonResponse(v2CatalogBody(v2ModelBase, v2ModelsBody(v2ModelBase))));
     }
     if (endpointBase(url, '/agent')) {
+      if (agentsShouldFail) {
+        return Promise.reject(new Error('agent catalog unavailable'));
+      }
       return Promise.resolve(jsonResponse([]));
     }
     const sessionUrl = parseAbsoluteUrl(url);
@@ -561,6 +565,7 @@ afterEach(() => {
   editorSettingsModel = null;
   editorSettingsReasoningEffort = null;
   providersShouldFail = false;
+  agentsShouldFail = false;
   sessionCreateShouldFail = false;
   setClientWorkspace(null);
   resetOpencodeClient();
@@ -601,6 +606,29 @@ afterAll(() => {
 });
 
 describe('chat model persistence', () => {
+  test('reports an agent request failure instead of claiming the router file is missing', async () => {
+    const repo = 'C:/agent-failure-repo';
+    const directory = `${repo}/.tagma`;
+    const baseUrl = 'http://opencode-agent-failure.test';
+    workspaceBaseUrls.set(repo, baseUrl);
+    ensureResponsesByWorkspace.set(repo, Promise.resolve(jsonResponse({ baseUrl, directory })));
+    agentsShouldFail = true;
+    setClientWorkspace(repo);
+
+    const originalConsoleError = console.error;
+    console.error = () => {};
+    try {
+      await useChatStore.getState().bootstrap();
+    } finally {
+      console.error = originalConsoleError;
+    }
+
+    expect(useChatStore.getState().bootstrapStatus).toBe('error');
+    expect(useChatStore.getState().bootstrapError).toContain('Failed to load OpenCode agents');
+    expect(useChatStore.getState().bootstrapError).toContain('agent catalog unavailable');
+    expect(useChatStore.getState().bootstrapError).not.toContain('is missing');
+  });
+
   test('history discovers legacy Tagma sessions without restoring external CLI sessions', async () => {
     const repo = 'C:/history-repo';
     const otherRepo = 'C:/other-repo';

@@ -259,6 +259,7 @@ interface ClientBootstrap {
   baseUrl: string;
   directory: string | null;
   authHeader?: string;
+  workspaceHeader?: string;
 }
 
 // One client per workspace. The sidecar runs a separate `opencode serve` per
@@ -290,12 +291,59 @@ export function opencodeWorkspaceHeaderValue(
   return workspaceKey;
 }
 
+export interface OpencodeEndpointResponse {
+  baseUrl?: unknown;
+  proxyBaseUrl?: unknown;
+  authHeader?: unknown;
+}
+
+export interface ResolvedOpencodeBrowserEndpoint {
+  baseUrl: string;
+  authHeader?: string;
+  workspaceHeader?: string;
+}
+
+export function resolveOpencodeBrowserEndpoint(
+  response: OpencodeEndpointResponse,
+  workspaceKey: string,
+  sidecarAuthToken: string | null | undefined,
+  browserOrigin: string,
+): ResolvedOpencodeBrowserEndpoint {
+  if (typeof response.baseUrl !== 'string' || !response.baseUrl.trim()) {
+    throw new Error('opencode response missing baseUrl');
+  }
+
+  const direct = {
+    baseUrl: response.baseUrl.trim().replace(/\/+$/, ''),
+    ...(typeof response.authHeader === 'string'
+      ? { authHeader: response.authHeader }
+      : {}),
+  };
+  if (typeof response.proxyBaseUrl !== 'string' || !response.proxyBaseUrl.trim()) {
+    return direct;
+  }
+
+  const origin = new URL(browserOrigin);
+  const proxy = new URL(response.proxyBaseUrl, origin);
+  if (proxy.origin !== origin.origin || proxy.search || proxy.hash) {
+    throw new Error('opencode proxyBaseUrl must be a same-origin path');
+  }
+  const workspaceHeader = opencodeWorkspaceHeaderValue(workspaceKey);
+  return {
+    baseUrl: proxy.toString().replace(/\/+$/, ''),
+    ...(sidecarAuthToken ? { authHeader: `Bearer ${sidecarAuthToken}` } : {}),
+    ...(workspaceHeader ? { workspaceHeader } : {}),
+  };
+}
+
 export function buildOpencodeRequestHeaders(
   authHeader: string | undefined,
   directory?: string | null,
+  workspaceHeader?: string,
 ): Record<string, string> {
   return {
     ...(authHeader ? { Authorization: authHeader } : {}),
+    ...(workspaceHeader ? { 'X-Tagma-Workspace': workspaceHeader } : {}),
     ...(directory ? { 'x-opencode-directory': encodeURIComponent(directory) } : {}),
   };
 }
@@ -304,10 +352,11 @@ export function buildOpencodeClientConfig(
   baseUrl: string,
   authHeader: string | undefined,
   directory?: string | null,
+  workspaceHeader?: string,
 ): Parameters<typeof createOpencodeClient>[0] {
   return {
     baseUrl,
-    headers: buildOpencodeRequestHeaders(authHeader),
+    headers: buildOpencodeRequestHeaders(authHeader, undefined, workspaceHeader),
     ...(directory ? { directory } : {}),
     throwOnError: true,
   };
@@ -317,13 +366,18 @@ export function buildOpencodeV2ClientConfig(
   baseUrl: string,
   authHeader: string | undefined,
   directory?: string | null,
+  workspaceHeader?: string,
 ): Parameters<typeof createOpencodeV2Client>[0] {
   return {
     baseUrl,
-    headers: buildOpencodeRequestHeaders(authHeader),
+    headers: buildOpencodeRequestHeaders(authHeader, undefined, workspaceHeader),
     ...(directory ? { directory } : {}),
     throwOnError: true,
   };
+}
+
+function currentBrowserOrigin(): string {
+  return typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
 }
 
 function fallbackOpencodeDirectory(workspaceKey: string): string | null {
@@ -366,25 +420,45 @@ async function bootstrap(workspaceKey: string): Promise<ClientBootstrap> {
   }
   const body = (await res.json()) as {
     baseUrl?: string;
+    proxyBaseUrl?: unknown;
     directory?: unknown;
     authHeader?: unknown;
   };
-  if (!body.baseUrl) throw new Error('opencode ensure response missing baseUrl');
-  const authHeader = typeof body.authHeader === 'string' ? body.authHeader : undefined;
+  const endpoint = resolveOpencodeBrowserEndpoint(
+    body,
+    workspaceKey,
+    authToken,
+    currentBrowserOrigin(),
+  );
   const directory =
     typeof body.directory === 'string' && body.directory.trim()
       ? body.directory.trim()
       : fallbackOpencodeDirectory(workspaceKey);
   const client = createOpencodeClient(
-    buildOpencodeClientConfig(body.baseUrl, authHeader, directory),
+    buildOpencodeClientConfig(
+      endpoint.baseUrl,
+      endpoint.authHeader,
+      directory,
+      endpoint.workspaceHeader,
+    ),
   );
   const historyClient = createOpencodeV2Client(
-    buildOpencodeV2ClientConfig(body.baseUrl, authHeader),
+    buildOpencodeV2ClientConfig(
+      endpoint.baseUrl,
+      endpoint.authHeader,
+      undefined,
+      endpoint.workspaceHeader,
+    ),
   );
   const v2Client = createOpencodeV2Client(
-    buildOpencodeV2ClientConfig(body.baseUrl, authHeader, directory),
+    buildOpencodeV2ClientConfig(
+      endpoint.baseUrl,
+      endpoint.authHeader,
+      directory,
+      endpoint.workspaceHeader,
+    ),
   );
-  return { client, historyClient, v2Client, baseUrl: body.baseUrl, directory, authHeader };
+  return { client, historyClient, v2Client, directory, ...endpoint };
 }
 
 export async function getOpencodeClient(
@@ -491,10 +565,15 @@ async function requestOpencodeJson<T>(
   method: string,
   body: unknown,
 ): Promise<T> {
-  const response = await fetch(new URL(path, bootstrap.baseUrl), {
+  const url = `${bootstrap.baseUrl.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
+  const response = await fetch(url, {
     method,
     headers: {
-      ...buildOpencodeRequestHeaders(bootstrap.authHeader, bootstrap.directory),
+      ...buildOpencodeRequestHeaders(
+        bootstrap.authHeader,
+        bootstrap.directory,
+        bootstrap.workspaceHeader,
+      ),
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
@@ -559,6 +638,13 @@ export async function getOpencodeAuthHeader(
   return authHeader;
 }
 
+export async function getOpencodeWorkspaceHeader(
+  workspaceKey = currentWorkspaceKey(),
+): Promise<string | undefined> {
+  const { workspaceHeader } = await getClientBootstrap(workspaceKey);
+  return workspaceHeader;
+}
+
 /**
  * Drop the cached bootstrap for a selected workspace so the next
  * `getOpencodeClient()` call re-attempts `/api/opencode/chat/ensure`. Called
@@ -591,8 +677,12 @@ export async function restartOpencodeForConfig(
   const key = workspaceKey;
   const lockId = options.forceStop ? options.yamlEditLockId?.trim() : null;
   const body = await api.restartOpencodeChat(key, lockId);
-  if (!body.baseUrl) throw new Error('opencode restart response missing baseUrl');
-  const authHeader = typeof body.authHeader === 'string' ? body.authHeader : undefined;
+  const endpoint = resolveOpencodeBrowserEndpoint(
+    body,
+    key,
+    getClientAuthToken(),
+    currentBrowserOrigin(),
+  );
   const directory =
     typeof body.directory === 'string' && body.directory.trim()
       ? body.directory.trim()
@@ -603,14 +693,32 @@ export async function restartOpencodeForConfig(
   bootstraps.set(
     key,
     Promise.resolve({
-      client: createOpencodeClient(buildOpencodeClientConfig(body.baseUrl, authHeader, directory)),
-      historyClient: createOpencodeV2Client(buildOpencodeV2ClientConfig(body.baseUrl, authHeader)),
-      v2Client: createOpencodeV2Client(
-        buildOpencodeV2ClientConfig(body.baseUrl, authHeader, directory),
+      client: createOpencodeClient(
+        buildOpencodeClientConfig(
+          endpoint.baseUrl,
+          endpoint.authHeader,
+          directory,
+          endpoint.workspaceHeader,
+        ),
       ),
-      baseUrl: body.baseUrl,
+      historyClient: createOpencodeV2Client(
+        buildOpencodeV2ClientConfig(
+          endpoint.baseUrl,
+          endpoint.authHeader,
+          undefined,
+          endpoint.workspaceHeader,
+        ),
+      ),
+      v2Client: createOpencodeV2Client(
+        buildOpencodeV2ClientConfig(
+          endpoint.baseUrl,
+          endpoint.authHeader,
+          directory,
+          endpoint.workspaceHeader,
+        ),
+      ),
       directory,
-      authHeader,
+      ...endpoint,
     }),
   );
 }
