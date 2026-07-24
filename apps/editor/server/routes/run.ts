@@ -82,6 +82,7 @@ import {
   buildRunHistoryAskAiContext,
   computeTaskCounts,
   positionsForSession,
+  trackHeightsForSession,
 } from './run-session.js';
 
 // Re-export for backward compatibility — other modules that imported these
@@ -1160,7 +1161,11 @@ export function registerRunRoutes(app: express.Express): void {
               ws,
               cwd,
               runId,
-              session.buildSummary(new Date().toISOString(), persistedPositions),
+              session.buildSummary(
+                new Date().toISOString(),
+                persistedPositions,
+                trackHeightsForSession(ws, cwd, session),
+              ),
               effectiveConfig,
               yamlOverride,
             );
@@ -1375,7 +1380,12 @@ export function registerRunRoutes(app: express.Express): void {
     const cwd = ws.workDir || process.cwd();
     const session = getSession(ws, runId);
     if (session) {
-      return res.json(session.buildLiveSummary(positionsForSession(ws, cwd, session)));
+      return res.json(
+        session.buildLiveSummary(
+          positionsForSession(ws, cwd, session),
+          trackHeightsForSession(ws, cwd, session),
+        ),
+      );
     }
     const summary = readRunSummary(cwd, runId);
     if (!summary) {

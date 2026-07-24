@@ -137,7 +137,11 @@ describe('composer error-context attachments', () => {
     expect(queued).toHaveLength(1);
     expect(queued[0].text).toBe('Fix this bug.');
     expect(queued[0].context).toBe(
-      '<ask-ai-context>\n<attachment>\nstderr tail\n</attachment>\n</ask-ai-context>\n\n',
+      '<ask-ai-context>\n' +
+        '<attachment label="Run failed">\n' +
+        'stderr tail\n' +
+        '</attachment>\n' +
+        '</ask-ai-context>\n\n',
     );
     expect(useChatStore.getState().composerAttachments).toHaveLength(0);
   });

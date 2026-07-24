@@ -317,6 +317,7 @@ test('history lists the active run even before a persisted summary exists', asyn
 });
 
 test('history summary for the active run reflects the live task mirror', async () => {
+  ws.layout.trackHeights = { main: 132 };
   const { port, close } = await startApp(buildApp());
   try {
     const res = await getReq(port, '/api/run/history/run_live/summary');
@@ -326,6 +327,7 @@ test('history summary for the active run reflects the live task mirror', async (
       running?: boolean;
       finishedAt: string | null;
       tasks: Array<{ taskId: string; status: string; startedAt: string | null }>;
+      trackHeights?: Record<string, number>;
     };
     expect(summary.runId).toBe('run_live');
     expect(summary.running).toBe(true);
@@ -336,6 +338,7 @@ test('history summary for the active run reflects the live task mirror', async (
       status: 'running',
       startedAt: '2026-05-22T08:00:00.000Z',
     });
+    expect(summary.trackHeights).toEqual({ main: 132 });
   } finally {
     await close();
     await removeTempDir();
@@ -392,6 +395,76 @@ test('run start accepts a new instance while another run is live', async () => {
     const body = JSON.parse(res.body) as { runId?: string };
     expect(body.runId).toMatch(/^run_/);
     await waitForSessionDone(body.runId!);
+  } finally {
+    await close();
+    await removeTempDir();
+  }
+});
+
+test('completed history summary preserves the editor lane heights', async () => {
+  ws.config = {
+    name: 'Persisted Layout Pipeline',
+    tracks: [
+      {
+        id: 'main',
+        name: 'Main',
+        tasks: [{ id: 'echo', name: 'Echo', command: 'echo ok' }],
+      },
+    ],
+  } satisfies RawPipelineConfig;
+  ws.layout.trackHeights = { main: 132 };
+
+  const { port, close } = await startApp(buildApp());
+  try {
+    const start = await postJsonReq(port, '/api/run/start', {});
+    expect(start.status).toBe(200);
+    const { runId } = JSON.parse(start.body) as { runId?: string };
+    expect(runId).toMatch(/^run_/);
+    await waitForSessionDone(runId!);
+
+    const history = await getReq(port, `/api/run/history/${runId}/summary`);
+    expect(history.status).toBe(200);
+    const persisted = JSON.parse(history.body) as {
+      finishedAt: string | null;
+      trackHeights?: Record<string, number>;
+    };
+    expect(persisted.finishedAt).not.toBeNull();
+    expect(persisted.trackHeights).toEqual({ main: 132 });
+  } finally {
+    await close();
+    await removeTempDir();
+  }
+});
+
+test('failed history summary preserves the editor lane heights', async () => {
+  ws.config = {
+    name: 'Failed Layout Pipeline',
+    tracks: [
+      {
+        id: 'main',
+        name: 'Main',
+        tasks: [{ id: 'fail', name: 'Fail', command: 'exit 7' }],
+      },
+    ],
+  } satisfies RawPipelineConfig;
+  ws.layout.trackHeights = { main: 132 };
+
+  const { port, close } = await startApp(buildApp());
+  try {
+    const start = await postJsonReq(port, '/api/run/start', {});
+    expect(start.status).toBe(200);
+    const { runId } = JSON.parse(start.body) as { runId?: string };
+    expect(runId).toMatch(/^run_/);
+    await waitForSessionDone(runId!);
+
+    const history = await getReq(port, `/api/run/history/${runId}/summary`);
+    expect(history.status).toBe(200);
+    const persisted = JSON.parse(history.body) as {
+      success: boolean;
+      trackHeights?: Record<string, number>;
+    };
+    expect(persisted.success).toBe(false);
+    expect(persisted.trackHeights).toEqual({ main: 132 });
   } finally {
     await close();
     await removeTempDir();

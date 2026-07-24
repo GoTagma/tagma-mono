@@ -649,6 +649,7 @@ export interface RunSummary {
   tasks: RunSummaryTask[];
   tracks: RunSummaryTrack[];
   positions?: Record<string, { x: number; y?: number }>;
+  trackHeights?: Record<string, number>;
   hasYamlSnapshot?: boolean;
   replayedFromRunId?: string;
 }
@@ -876,7 +877,11 @@ export class RunSession {
     return [...this.buffer];
   }
 
-  buildSummary(endedAt: string, positions: Record<string, { x: number; y?: number }>): RunSummary {
+  buildSummary(
+    endedAt: string,
+    positions: Record<string, { x: number; y?: number }>,
+    trackHeights: Record<string, number> = {},
+  ): RunSummary {
     return {
       runId: this.runId,
       pipelineName: this.effectiveConfig.name,
@@ -892,11 +897,15 @@ export class RunSession {
         color: tr.color,
       })),
       positions,
+      trackHeights,
       ...(this.fromRunId !== null ? { replayedFromRunId: this.fromRunId } : {}),
     };
   }
 
-  buildLiveSummary(positions: Record<string, { x: number; y?: number }>): RunSummary {
+  buildLiveSummary(
+    positions: Record<string, { x: number; y?: number }>,
+    trackHeights: Record<string, number>,
+  ): RunSummary {
     return {
       runId: this.runId,
       pipelineName: this.effectiveConfig.name,
@@ -913,6 +922,7 @@ export class RunSession {
         color: tr.color,
       })),
       positions,
+      trackHeights,
       hasYamlSnapshot: false,
       ...(this.fromRunId !== null ? { replayedFromRunId: this.fromRunId } : {}),
     };
@@ -1677,4 +1687,14 @@ export function positionsForSession(
   if (session.fromRunId === null) return { ...ws.layout.positions };
   const priorSummary = readRunSummary(cwd, session.fromRunId);
   return priorSummary?.positions ? { ...priorSummary.positions } : {};
+}
+
+export function trackHeightsForSession(
+  ws: WorkspaceState,
+  cwd: string,
+  session: RunSession,
+): Record<string, number> {
+  if (session.fromRunId === null) return { ...(ws.layout.trackHeights ?? {}) };
+  const priorSummary = readRunSummary(cwd, session.fromRunId);
+  return priorSummary?.trackHeights ? { ...priorSummary.trackHeights } : {};
 }

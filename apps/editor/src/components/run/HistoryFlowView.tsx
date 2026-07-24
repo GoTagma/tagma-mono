@@ -158,7 +158,6 @@ interface TrackGroup {
   name: string;
   color?: string;
   tasks: RunSummaryTask[];
-  index: number;
 }
 
 interface TaskPos {
@@ -191,9 +190,8 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
 
   const trackGroups = useMemo((): TrackGroup[] => {
     const groups = new Map<string, TrackGroup>();
-    for (let i = 0; i < tracksMeta.length; i++) {
-      const tr = tracksMeta[i];
-      groups.set(tr.id, { id: tr.id, name: tr.name, color: tr.color, tasks: [], index: i });
+    for (const tr of tracksMeta) {
+      groups.set(tr.id, { id: tr.id, name: tr.name, color: tr.color, tasks: [] });
     }
     for (const t of summary.tasks) {
       const g = groups.get(t.trackId);
@@ -239,8 +237,7 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
       for (const t of tg.tasks) {
         const count = taskCountPerTrack.get(tg.id) ?? 0;
         const stored = snapshot?.[t.taskId];
-        const x =
-          typeof stored?.x === 'number' ? stored.x : PAD_LEFT + count * (TASK_W + TASK_GAP);
+        const x = typeof stored?.x === 'number' ? stored.x : PAD_LEFT + count * (TASK_W + TASK_GAP);
         const innerY =
           stored?.y === undefined
             ? (trackLayout.height - TASK_H) / 2
@@ -340,7 +337,11 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
               className={`relative border-b border-tagma-border/60 overflow-hidden cursor-pointer transition-colors ${
                 isSelected ? 'bg-tagma-accent/6' : ''
               } ${i % 2 === 0 ? 'track-row-even' : 'track-row-odd'}`}
-              style={{ height: TRACK_H, width: HEADER_W, boxSizing: 'border-box' }}
+              style={{
+                height: trackLayouts.get(tg.id)?.height ?? TRACK_H,
+                width: HEADER_W,
+                boxSizing: 'border-box',
+              }}
               onClick={(e) => {
                 e.stopPropagation();
                 setSelectedTaskId(null);
@@ -400,7 +401,10 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
             <div
               key={tg.id}
               className={`absolute left-0 right-0 border-b border-tagma-border/40 cursor-grab active:cursor-grabbing ${i % 2 === 0 ? 'track-row-even' : 'track-row-odd'}`}
-              style={{ top: i * TRACK_H, height: TRACK_H }}
+              style={{
+                top: trackLayouts.get(tg.id)?.top ?? i * TRACK_H,
+                height: trackLayouts.get(tg.id)?.height ?? TRACK_H,
+              }}
               onClick={clearSelection}
             />
           ))}
