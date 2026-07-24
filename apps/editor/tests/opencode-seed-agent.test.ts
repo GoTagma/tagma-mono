@@ -1,7 +1,15 @@
-import { expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { expect, mock, test } from 'bun:test';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import {
   buildTagmaCommandEvidenceAgent,
   buildTagmaContextPackagerAgent,
@@ -21,6 +29,148 @@ import {
   buildTagmaYamlContractSkill,
   seedOpencodeArtifacts,
 } from '../server/opencode-seed';
+import { parseChatPipelineTrialPlan } from '../server/chat-pipeline-trial-plan';
+
+type GeneratedTrialPlanTool = {
+  execute(args: Record<string, unknown>, context: { directory: string }): Promise<string>;
+};
+
+function fakeSchemaNode(): Record<string, (...args: unknown[]) => unknown> {
+  const node: Record<string, (...args: unknown[]) => unknown> = {};
+  for (const method of ['describe', 'optional', 'int', 'min', 'max']) {
+    node[method] = () => node;
+  }
+  return node;
+}
+
+const fakeSchema = new Proxy<Record<string, (...args: unknown[]) => unknown>>(
+  {},
+  {
+    get: () => () => fakeSchemaNode(),
+  },
+);
+const fakeTool = Object.assign((definition: unknown) => definition, { schema: fakeSchema });
+
+mock.module('@opencode-ai/plugin', () => ({ tool: fakeTool }));
+
+async function loadGeneratedTrialPlanTool(): Promise<{
+  tool: GeneratedTrialPlanTool;
+  cleanup: () => void;
+}> {
+  const dir = mkdtempSync(join(tmpdir(), 'tagma-generated-trial-tool-'));
+  const path = join(dir, 'tagma_trial_plan.ts');
+  writeFileSync(path, buildTagmaTrialPlanTool(), 'utf8');
+  const loaded = (await import(`${pathToFileURL(path).href}?test=${Date.now()}`)) as {
+    default: GeneratedTrialPlanTool;
+  };
+  return {
+    tool: loaded.default,
+    cleanup: () => rmSync(dir, { recursive: true, force: true }),
+  };
+}
+
+function makeTrialPlanStage(): {
+  root: string;
+  liveTagmaDir: string;
+  agentTagmaDir: string;
+  yamlPath: string;
+  planPath: string;
+  cleanup: () => void;
+} {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-trial-tool-stage-'));
+  const liveTagmaDir = join(root, '.tagma');
+  const agentTagmaDir = join(
+    liveTagmaDir,
+    '.chat-staging',
+    '12345678-1234-1234-1234-123456789abc',
+    'agent-workspace',
+    '.tagma',
+  );
+  const pipelineDir = join(agentTagmaDir, 'sample');
+  mkdirSync(pipelineDir, { recursive: true });
+  const yamlPath = join(pipelineDir, 'sample.yaml');
+  writeFileSync(
+    yamlPath,
+    ['pipeline:', '  name: Sample', '  tracks:', '    - id: main', '      tasks: []', ''].join(
+      '\n',
+    ),
+    'utf8',
+  );
+  return {
+    root,
+    liveTagmaDir,
+    agentTagmaDir,
+    yamlPath,
+    planPath: join(pipelineDir, 'sample.trial-plan.json'),
+    cleanup: () => rmSync(root, { recursive: true, force: true }),
+  };
+}
+
+function completeTrialPlanToolArgs(pipelinePath: string): Record<string, unknown> {
+  const caseId = 'all-file-boundaries';
+  const coverageDimensions = [
+    'multiple-inputs',
+    'duplicate-input-names',
+    'multiline-content',
+    'output-collision',
+    'repeat-run',
+    'empty-content',
+    'special-characters',
+  ];
+  return {
+    pipeline_path: pipelinePath,
+    summary: 'Exercise observable file-processing boundaries.',
+    goals: ['Preserve every logical input and its complete content.'],
+    coverage: coverageDimensions.map((dimension) => ({
+      dimension,
+      status: 'covered',
+      caseIds: [caseId],
+      rationale: 'Covered by isolated fixtures and host assertions.',
+    })),
+    findings: [],
+    cases: [
+      {
+        id: caseId,
+        title: 'All file boundaries',
+        objective: 'Keep duplicate names distinct across repeated runs.',
+        runs: 2,
+        targetTaskIds: ['main.process'],
+        fixtures: [
+          {
+            path: 'inputs/a/report.txt',
+            content: ['first', '', 'second [x] 中文'].join('\n'),
+          },
+          {
+            path: 'inputs/b/report.txt',
+            content: ['other', '', 'later'].join('\n'),
+          },
+          { path: 'inputs/c/empty.txt', content: '' },
+        ],
+        expectations: [
+          {
+            type: 'directory-entry-count',
+            path: 'outputs',
+            suffix: '.txt',
+            min: 3,
+            max: 3,
+          },
+          {
+            type: 'file-equals',
+            path: 'outputs/a-report.txt',
+            text: ['first', '', 'second [x] 中文'].join('\n'),
+          },
+          {
+            type: 'file-equals',
+            path: 'outputs/b-report.txt',
+            text: ['other', '', 'later'].join('\n'),
+          },
+          { type: 'file-equals', path: 'outputs/c-empty.txt', text: '' },
+          { type: 'task-status', taskId: 'main.process', status: 'success' },
+        ],
+      },
+    ],
+  };
+}
 
 test('tagma-router delegates history comparisons without read/edit powers', () => {
   const doc = buildTagmaRouterAgent();
@@ -467,15 +617,89 @@ test('trial-plan tool binds structured edge cases to the final YAML hash', () =>
   expect(doc).toContain('repeat-run');
   expect(doc).toContain('.trial-plan.json');
   expect(doc).toContain('yamlHash');
+  expect(doc).toContain('tool.schema.discriminatedUnion("type"');
+  expect(doc).toContain('type: tool.schema.literal("file-contains")');
+  expect(doc).toContain('type: tool.schema.literal("task-status")');
+  expect(doc).toContain('dimension: tool.schema.enum(REQUIRED_COVERAGE)');
+  expect(doc).toContain('severity: tool.schema.enum(FINDING_SEVERITIES)');
+  expect(doc).toContain('assertValidPlan(plan)');
   expect(() => new Bun.Transpiler({ loader: 'ts' }).transformSync(doc)).not.toThrow();
+});
+
+test('trial-plan tool rejects host-invalid plans before writing any file', async () => {
+  const generated = await loadGeneratedTrialPlanTool();
+  const stage = makeTrialPlanStage();
+  try {
+    const args = completeTrialPlanToolArgs('sample/sample.yaml');
+    const firstExpectation = (
+      args.cases as Array<{ expectations: Array<{ type: string }> }>
+    )[0]!.expectations[0]!;
+    firstExpectation.type = 'text_contains';
+
+    await expect(
+      generated.tool.execute(args, { directory: stage.agentTagmaDir }),
+    ).rejects.toThrow('expectations[0].type is unsupported');
+    expect(existsSync(stage.planPath)).toBe(false);
+  } finally {
+    stage.cleanup();
+    generated.cleanup();
+  }
+});
+
+test('trial-plan tool writes plans that the authoritative host parser accepts', async () => {
+  const generated = await loadGeneratedTrialPlanTool();
+  const stage = makeTrialPlanStage();
+  try {
+    const result = JSON.parse(
+      await generated.tool.execute(completeTrialPlanToolArgs('sample/sample.yaml'), {
+        directory: stage.agentTagmaDir,
+      }),
+    ) as { path: string; yamlHash: string };
+
+    expect(result.path).toBe('sample/sample.trial-plan.json');
+    const parsed = parseChatPipelineTrialPlan(JSON.parse(readFileSync(stage.planPath, 'utf8')));
+    expect(parsed.yamlHash).toBe(result.yamlHash);
+    expect(parsed.cases[0]).toMatchObject({
+      id: 'all-file-boundaries',
+      runs: 2,
+      targetTaskIds: ['main.process'],
+    });
+  } finally {
+    stage.cleanup();
+    generated.cleanup();
+  }
+});
+
+test('trial-plan tool uses an exact staged target and refuses live .tagma writes', async () => {
+  const generated = await loadGeneratedTrialPlanTool();
+  const stage = makeTrialPlanStage();
+  try {
+    await generated.tool.execute(completeTrialPlanToolArgs(stage.yamlPath), {
+      directory: stage.liveTagmaDir,
+    });
+    expect(existsSync(stage.planPath)).toBe(true);
+
+    rmSync(stage.planPath);
+    await expect(
+      generated.tool.execute(completeTrialPlanToolArgs('sample/sample.yaml'), {
+        directory: stage.liveTagmaDir,
+      }),
+    ).rejects.toThrow('host-owned chat staging');
+    expect(existsSync(join(stage.liveTagmaDir, 'sample', 'sample.trial-plan.json'))).toBe(false);
+  } finally {
+    stage.cleanup();
+    generated.cleanup();
+  }
 });
 
 test('trial-plan tool resolves paths from the host-provided workspace root', () => {
   const doc = buildTagmaTrialPlanTool();
 
   expect(doc).toContain('async execute(args, context)');
-  expect(doc).toContain('const root = resolve(context.directory)');
-  expect(doc).toContain('resolvePipelinePath(args.pipeline_path, root)');
+  expect(doc).toContain(
+    'resolvePipelineTarget(args.pipeline_path, context.directory)',
+  );
+  expect(doc).toContain('assertStagedAgentRoot');
   expect(doc).toContain('path: relative(root, planPath)');
   expect(doc).not.toContain('process.cwd()');
 });
