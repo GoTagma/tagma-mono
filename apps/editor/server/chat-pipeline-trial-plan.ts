@@ -45,8 +45,7 @@ const MAX_FIXTURES_PER_CASE = CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.fixturesP
 const MAX_EXPECTATIONS_PER_CASE = CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.expectationsPerCase;
 const MAX_FIXTURE_BYTES = CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.fixtureBytes;
 const MAX_TOTAL_FIXTURE_BYTES = CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.totalFixtureBytes;
-const MAX_TEXT_EXPECTATION_BYTES =
-  CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.textExpectationBytes;
+const MAX_TEXT_EXPECTATION_BYTES = CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.textExpectationBytes;
 const PLAN_ID_RE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 const QUALIFIED_TASK_ID_RE = /^[A-Za-z_][A-Za-z0-9_-]*\.[A-Za-z_][A-Za-z0-9_-]*$/;
 const WINDOWS_RESERVED_CASE_SEGMENT_RE = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])($|[.])/i;
@@ -59,8 +58,7 @@ export const CHAT_PIPELINE_TRIAL_FINDING_SEVERITIES =
   CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.findingSeverities;
 export const CHAT_PIPELINE_TRIAL_EXPECTATION_TYPES =
   CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.expectationTypes;
-export const CHAT_PIPELINE_TRIAL_TASK_STATUSES =
-  CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.taskStatuses;
+export const CHAT_PIPELINE_TRIAL_TASK_STATUSES = CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.taskStatuses;
 
 export type ChatPipelineTrialCoverageDimension =
   (typeof CHAT_PIPELINE_TRIAL_COVERAGE_DIMENSIONS)[number];
@@ -476,21 +474,19 @@ export function parseChatPipelineTrialPlan(value: unknown): ChatPipelineTrialPla
     raw.findings ?? [],
     'trial plan findings',
     CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.findings,
-  ).map(
-    (item, index): ChatPipelineTrialPlanFinding => {
-      const label = `findings[${index}]`;
-      const finding = asRecord(item, label);
-      const severity = asString(finding.severity, `${label}.severity`, 32);
-      if (!CHAT_PIPELINE_TRIAL_FINDING_SEVERITIES.includes(severity as never)) {
-        throw new Error(`${label}.severity is invalid.`);
-      }
-      return {
-        severity,
-        summary: asString(finding.summary, `${label}.summary`, 500),
-        evidence: asString(finding.evidence, `${label}.evidence`, 2_000),
-      };
-    },
-  );
+  ).map((item, index): ChatPipelineTrialPlanFinding => {
+    const label = `findings[${index}]`;
+    const finding = asRecord(item, label);
+    const severity = asString(finding.severity, `${label}.severity`, 32);
+    if (!CHAT_PIPELINE_TRIAL_FINDING_SEVERITIES.includes(severity as never)) {
+      throw new Error(`${label}.severity is invalid.`);
+    }
+    return {
+      severity,
+      summary: asString(finding.summary, `${label}.summary`, 500),
+      evidence: asString(finding.evidence, `${label}.evidence`, 2_000),
+    };
+  });
 
   return {
     version: TRIAL_PLAN_VERSION,

@@ -14,6 +14,14 @@
   v2 metadata wins for duplicate ids. `null` means model default. Do not restore a fixed
   cross-model reasoning-effort enum.
 
+## Binding Autosync
+
+- Auto-synced command input bindings must retain the concrete upstream task identity even when an
+  output name currently has one producer. Do not materialize a unique candidate as
+  `from: outputs.<name>`: prompt-output inference treats that loose form as prompt-owned in mixed
+  command/prompt fan-in. Upgrade legacy editor-authored loose sources to the concrete producer
+  while preserving user-authored specific sources.
+
 ## Chat YAML Branch Isolation
 
 - Start every workspace-backed logical chat turn with an isolated

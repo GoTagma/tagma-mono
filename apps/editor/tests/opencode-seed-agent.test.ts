@@ -1,12 +1,5 @@
 import { expect, mock, test } from 'bun:test';
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -632,14 +625,13 @@ test('trial-plan tool rejects host-invalid plans before writing any file', async
   const stage = makeTrialPlanStage();
   try {
     const args = completeTrialPlanToolArgs('sample/sample.yaml');
-    const firstExpectation = (
-      args.cases as Array<{ expectations: Array<{ type: string }> }>
-    )[0]!.expectations[0]!;
+    const firstExpectation = (args.cases as Array<{ expectations: Array<{ type: string }> }>)[0]!
+      .expectations[0]!;
     firstExpectation.type = 'text_contains';
 
-    await expect(
-      generated.tool.execute(args, { directory: stage.agentTagmaDir }),
-    ).rejects.toThrow('expectations[0].type is unsupported');
+    await expect(generated.tool.execute(args, { directory: stage.agentTagmaDir })).rejects.toThrow(
+      'expectations[0].type is unsupported',
+    );
     expect(existsSync(stage.planPath)).toBe(false);
   } finally {
     stage.cleanup();
@@ -689,9 +681,7 @@ test('trial-plan tool rejects semantic coverage gaps and unsupported findings be
     emptyExpectation!.text = 'unexpected content';
     await expect(
       generated.tool.execute(emptyContentArgs, { directory: stage.agentTagmaDir }),
-    ).rejects.toThrow(
-      'coverage marks empty-content covered without concrete linked-case evidence',
-    );
+    ).rejects.toThrow('coverage marks empty-content covered without concrete linked-case evidence');
     expect(existsSync(stage.planPath)).toBe(false);
 
     const unsupportedFindingArgs = completeTrialPlanToolArgs('sample/sample.yaml');
@@ -762,9 +752,7 @@ test('trial-plan tool resolves paths from the host-provided workspace root', () 
   const doc = buildTagmaTrialPlanTool();
 
   expect(doc).toContain('async execute(args, context)');
-  expect(doc).toContain(
-    'resolvePipelineTarget(args.pipeline_path, context.directory)',
-  );
+  expect(doc).toContain('resolvePipelineTarget(args.pipeline_path, context.directory)');
   expect(doc).toContain('assertStagedAgentRoot');
   expect(doc).toContain('path: relative(root, planPath)');
   expect(doc).not.toContain('process.cwd()');

@@ -385,13 +385,16 @@ export function diffPortShape(input: PortDef, output: PortDef): string[] {
  * Build the fresh `ports.inputs` array the editor should write when the
  * user clicks "sync from upstream". Behaviour:
  *   - Every upstream output name that has a unique producer is added as
- *     an input (copied shape: type, description, enum).
+ *     an input (copied shape: type, description, enum) with a source that
+ *     retains the producer task identity.
  *   - Names exported by multiple upstreams become inputs with an
  *     explicit `from: "upstreamQid.name"` pointing at whichever producer
  *     declared it first, so the runtime doesn't block on ambiguity.
  *     The user can switch producers by editing `from` afterwards.
+ *   - Legacy editor-authored `from: "outputs.name"` sources are upgraded
+ *     to a concrete producer so mixed command/prompt fan-in stays attributable.
  *   - If the downstream already declared inputs under these names,
- *     existing settings (required, default, explicit from) are preserved
+ *     existing settings (required, default, specific from) are preserved
  *     — sync is idempotent and non-destructive for user edits.
  *
  * Returns `undefined` when the resulting inputs array is empty so the
@@ -416,6 +419,8 @@ export function computeSyncedInputs(
   for (const [name, list] of byName) {
     const existingPort = existingByName.get(name);
     const producer = list[0]!;
+    const existingSpecificSource =
+      existingPort?.from && existingPort.from !== `outputs.${name}` ? existingPort.from : undefined;
     const copied: PortDef = {
       name,
       type: producer.port.type as PortType,
@@ -425,9 +430,7 @@ export function computeSyncedInputs(
         ? { required: existingPort.required }
         : { required: true }),
       ...(existingPort?.default !== undefined ? { default: existingPort.default } : {}),
-      from:
-        existingPort?.from ??
-        (list.length > 1 ? sourceForCandidate(producer, candidates) : `outputs.${name}`),
+      from: existingSpecificSource ?? sourceForCandidate(producer, candidates),
     };
     nextByName.set(name, copied);
   }
