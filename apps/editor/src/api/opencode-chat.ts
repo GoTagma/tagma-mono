@@ -315,9 +315,7 @@ export function resolveOpencodeBrowserEndpoint(
 
   const direct = {
     baseUrl: response.baseUrl.trim().replace(/\/+$/, ''),
-    ...(typeof response.authHeader === 'string'
-      ? { authHeader: response.authHeader }
-      : {}),
+    ...(typeof response.authHeader === 'string' ? { authHeader: response.authHeader } : {}),
   };
   if (typeof response.proxyBaseUrl !== 'string' || !response.proxyBaseUrl.trim()) {
     return direct;

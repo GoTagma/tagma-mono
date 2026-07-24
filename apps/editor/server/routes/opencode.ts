@@ -523,13 +523,8 @@ export function registerOpencodeRoutes(app: express.Express): void {
   });
 
   // ─── Chat bootstrap endpoint ────────────────────────────────────────────
-  //
-  // The browser-side opencode SDK (`createOpencodeClient({ baseUrl })`) talks
-  // directly to the spawned `opencode serve` process over CORS-enabled HTTP
-  // (see opencode-lifecycle.ts — --cors flags are set from ALLOWED_ORIGINS).
-  // This single endpoint lazily spawns opencode scoped to the active
-  // workspace's cwd and hands its loopback URL to the renderer; every
-  // subsequent chat request bypasses this server entirely.
+  // Bootstrap seeds and starts the workspace runtime before publishing the
+  // stable same-origin proxy base URL to the renderer.
 
   // Renderer requests stay on the sidecar origin. The sidecar replaces its
   // own Bearer credential with OpenCode's Basic credential, then uses the raw
@@ -621,9 +616,9 @@ export function registerOpencodeRoutes(app: express.Express): void {
   // to auth.json (PUT/DELETE /auth/{id}) update disk but don't invalidate the
   // cache — so a fresh API key or a disconnect doesn't take effect until the
   // process restarts. The renderer calls this after any provider auth change
-  // to kill + respawn opencode scoped to the active workspace. Returns the
-  // new loopback URL so the browser can swap its SDK client over without a
-  // full app restart.
+  // to kill + respawn opencode scoped to the active workspace. The direct URL
+  // remains in the response for hot-update compatibility, while current
+  // renderers keep using the stable same-origin proxy.
   app.post('/api/opencode/chat/restart', async (req, res) => {
     const ws = requireWorkspace(req, res);
     if (!ws) return;

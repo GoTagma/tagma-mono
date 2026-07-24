@@ -67,11 +67,7 @@ describe('opencode browser client auth', () => {
       workspaceHeader: 'C:/repo',
     });
     expect(
-      buildOpencodeRequestHeaders(
-        endpoint.authHeader,
-        'C:/repo/.tagma',
-        endpoint.workspaceHeader,
-      ),
+      buildOpencodeRequestHeaders(endpoint.authHeader, 'C:/repo/.tagma', endpoint.workspaceHeader),
     ).toEqual({
       Authorization: 'Bearer sidecar-secret',
       'X-Tagma-Workspace': 'C:/repo',

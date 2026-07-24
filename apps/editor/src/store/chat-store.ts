@@ -1394,11 +1394,7 @@ async function pollStalledTurn(get: () => ChatStore, set: ChatSet): Promise<void
       ])
         .then(async ([baseUrl, authHeader, workspaceHeader]) => {
           const res = await fetch(`${baseUrl}/global/health`, {
-            headers: buildOpencodeRequestHeaders(
-              authHeader,
-              undefined,
-              workspaceHeader,
-            ),
+            headers: buildOpencodeRequestHeaders(authHeader, undefined, workspaceHeader),
             signal: AbortSignal.timeout(5000),
           });
           return res.ok;
@@ -4360,7 +4356,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // "no options" instead of crashing. The provider catalog is joined in here
     // so the Connect dialog has data the moment it's opened without a separate
     // round-trip.
-    const [providersLoad, agentsRes, sessions, providerCatalog, customProvidersRes] =
+    const [providersLoad, agentsLoad, sessions, providerCatalog, customProvidersRes] =
       await Promise.all([
         fetchConfiguredProviderModels(workspaceKeyAtStart)
           .then((value) => ({ ok: true as const, value }))
@@ -4371,10 +4367,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               value: { providers: [] as Provider[], default: {} as Record<string, string> },
             };
           }),
-        unwrap(client.app.agents()).catch((err) => {
-          console.error('[chat] agents failed:', err);
-          return [] as Agent[];
-        }),
+        unwrap(client.app.agents())
+          .then((value) => ({ ok: true as const, value }))
+          .catch((err) => {
+            console.error('[chat] agents failed:', err);
+            return {
+              ok: false as const,
+              value: [] as Agent[],
+              error: err instanceof Error ? err.message : String(err),
+            };
+          }),
         listOpencodeSessions(workspaceKeyAtStart).catch((err) => {
           console.error('[chat] sessions failed:', err);
           return { sessions: [] as Session[], directory: null };
@@ -4394,7 +4396,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
     const providersRes = providersLoad.value;
     const providers = providersRes.providers;
-    const agents = agentsRes;
+    const agents = agentsLoad.value;
     const customProviders = customProvidersRes.providers;
     const visibleSessions = userVisibleSessions(
       sessions.sessions,
@@ -4460,7 +4462,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // built-in default is not scoped to `.tagma/`.
     const tagmaAgent = agents.find((a) => a.name === FORCED_CHAT_AGENT);
     if (!tagmaAgent) {
-      const msg = `OpenCode agent "${FORCED_CHAT_AGENT}" is missing. Check .opencode/agents/${FORCED_CHAT_AGENT}.md or retry workspace bootstrap.`;
+      const msg = agentsLoad.ok
+        ? `OpenCode agent "${FORCED_CHAT_AGENT}" is missing. Check .opencode/agents/${FORCED_CHAT_AGENT}.md or retry workspace bootstrap.`
+        : `Failed to load OpenCode agents: ${agentsLoad.error}`;
       console.error(`[chat] ${msg}`);
       savePersisted(workspaceKey, { agent: null });
       appliedBootstrapWorkspaceKey = workspaceKey;
