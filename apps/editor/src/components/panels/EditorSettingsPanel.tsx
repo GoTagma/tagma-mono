@@ -579,8 +579,10 @@ export function EditorSettingsPanel({
                       className="w-16 px-1 py-0.5 bg-tagma-surface border border-tagma-border text-tagma-text disabled:opacity-50"
                     />
                     <span className="text-tagma-muted/70">
-                      0 = off; default {DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS}; shared by compile
-                      and trial run
+                      0 = off; default {DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS}; compile and
+                      executed-trial repair budget; it does not run the pipeline this many
+                      times. Trial-plan authoring is separately limited to two attempts per YAML
+                      revision.
                     </span>
                   </div>
                   <ToggleRow

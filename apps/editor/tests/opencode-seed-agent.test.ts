@@ -610,7 +610,8 @@ test('trial-plan tool binds structured edge cases to the final YAML hash', () =>
 
   expect(doc).toContain('createHash, randomUUID');
   expect(doc).toContain('export default tool');
-  expect(doc).toContain('pipeline_path: tool.schema.string()');
+  expect(doc).toContain('pipeline_path: tool.schema');
+  expect(doc).toContain('Exact staged Target YAML path');
   expect(doc).toContain('duplicate-input-names');
   expect(doc).toContain('multiline-content');
   expect(doc).toContain('output-collision');
@@ -639,6 +640,71 @@ test('trial-plan tool rejects host-invalid plans before writing any file', async
     await expect(
       generated.tool.execute(args, { directory: stage.agentTagmaDir }),
     ).rejects.toThrow('expectations[0].type is unsupported');
+    expect(existsSync(stage.planPath)).toBe(false);
+  } finally {
+    stage.cleanup();
+    generated.cleanup();
+  }
+});
+
+test('trial-plan tool rejects semantic coverage gaps and unsupported findings before writing', async () => {
+  const generated = await loadGeneratedTrialPlanTool();
+  const stage = makeTrialPlanStage();
+  try {
+    const outputCollisionArgs = completeTrialPlanToolArgs('sample/sample.yaml');
+    const outputCollisionCase = (
+      outputCollisionArgs.cases as Array<{
+        expectations: Array<Record<string, unknown>>;
+      }>
+    )[0]!;
+    outputCollisionCase.expectations = [
+      {
+        type: 'file-equals',
+        path: 'outputs/single.txt',
+        text: 'one',
+      },
+      {
+        type: 'task-status',
+        taskId: 'main.process',
+        status: 'success',
+      },
+    ];
+    await expect(
+      generated.tool.execute(outputCollisionArgs, { directory: stage.agentTagmaDir }),
+    ).rejects.toThrow(
+      'coverage marks output-collision covered without concrete linked-case evidence',
+    );
+    expect(existsSync(stage.planPath)).toBe(false);
+
+    const emptyContentArgs = completeTrialPlanToolArgs('sample/sample.yaml');
+    const emptyContentCase = (
+      emptyContentArgs.cases as Array<{
+        expectations: Array<Record<string, unknown>>;
+      }>
+    )[0]!;
+    const emptyExpectation = emptyContentCase.expectations.find(
+      (item) => item.type === 'file-equals' && item.path === 'outputs/c-empty.txt',
+    );
+    expect(emptyExpectation).toBeDefined();
+    emptyExpectation!.text = 'unexpected content';
+    await expect(
+      generated.tool.execute(emptyContentArgs, { directory: stage.agentTagmaDir }),
+    ).rejects.toThrow(
+      'coverage marks empty-content covered without concrete linked-case evidence',
+    );
+    expect(existsSync(stage.planPath)).toBe(false);
+
+    const unsupportedFindingArgs = completeTrialPlanToolArgs('sample/sample.yaml');
+    unsupportedFindingArgs.findings = [
+      {
+        severity: 'info',
+        summary: 'Informational only',
+        evidence: 'The host contract does not support informational findings.',
+      },
+    ];
+    await expect(
+      generated.tool.execute(unsupportedFindingArgs, { directory: stage.agentTagmaDir }),
+    ).rejects.toThrow('findings[0].severity is invalid');
     expect(existsSync(stage.planPath)).toBe(false);
   } finally {
     stage.cleanup();
@@ -900,7 +966,9 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
     'Compute deterministic Tagma .layout.json positions',
   );
   expect(existsSync(trialPlanTool)).toBe(true);
-  expect(readFileSync(trialPlanTool, 'utf8')).toContain('Write a hash-bound targeted trial plan');
+  expect(readFileSync(trialPlanTool, 'utf8')).toContain(
+    'Write a fully validated, hash-bound targeted trial plan',
+  );
   for (const toolName of blockToolNames) {
     expect(existsSync(join(dir, '.opencode', 'tools', toolName))).toBe(false);
   }

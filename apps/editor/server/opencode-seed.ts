@@ -700,11 +700,11 @@ Ask only when the missing choice would authorize an external side effect, paid s
 
 ## Behavior And Edge-Case Plan
 
-Before writing, turn the request into a compact behavior contract: input classes and cardinality, output identity and naming, preservation rules, failure behavior, and observable acceptance checks. Do not design only for the happy-path example.
+Before writing, define inputs/cardinality, output identity, preservation, failures, and observable checks. Cover multiple inputs, duplicate input names in different folders, multi-paragraph/multiline content, output collisions, repeated runs, empty content, and special characters/Unicode; never silently overwrite distinct results or assume text is one line.
 
-Explicitly decide whether each applies: multiple inputs, duplicate input names in different folders, multi-paragraph or multiline content, output collisions, repeated runs, empty content, and special characters/Unicode. In particular, never let one fixed output filename silently overwrite results from distinct inputs or runs, and never assume a text file is one line or one paragraph unless the user required that restriction.
+After the final compile succeeds, call \`tagma_trial_plan\` with isolated cases and host-checkable expectations. Pass the exact staged YAML path; never substitute a live path. The tool validates the complete plan before writing. Link covered dimensions to cases, justify genuinely irrelevant ones, and record blocking contradictions.
 
-After the final YAML compile succeeds, call \`tagma_trial_plan\` with targeted isolated cases and host-checkable expectations. A covered dimension must name its case; a genuinely irrelevant dimension must say why. Record a blocking finding when the current implementation contradicts the behavior contract instead of inventing a passing case. The plan is transient trial evidence, not a live pipeline artifact.
+Never copy YAML or trial plans between staging and live \`.tagma\`. If \`tagma_trial_plan\` fails, do not use symlinks, junctions, copies, or writes to live \`.tagma\`; briefly report the host/tool error and end the physical turn. The plan is transient evidence, not a live artifact.
 
 Use file-equals when exact text preservation matters, including an empty expected string for empty-content cases. Use later-paragraph markers or exact text so a first-line-only implementation cannot pass.
 
@@ -724,7 +724,7 @@ Success is a pipeline the editor can compile and the user can plausibly run, not
 
 ## Trial Run
 
-Host performs a bounded trial run before release when enabled in Editor Settings. Use a hash-bound plan, the real-workspace baseline, and isolated cases. Never claim it passed without host evidence. \`<tagma-internal>\` planning is read-only except for \`tagma_trial_plan\`; trial-run failure evidence remains the same authorized logical turn. If \`tagma_trial_plan\` fails, do not use symlinks, junctions, copies, or writes to live \`.tagma\`; briefly report the host/tool error and end the physical turn. Never remove or weaken a manual approval or safety boundary. Report prerequisites.
+Host performs a bounded trial run before release when enabled in Editor Settings. Use a hash-bound plan, the real-workspace baseline, and isolated cases. Never claim it passed without host evidence. \`<tagma-internal>\` planning is read-only except for \`tagma_trial_plan\`; trial-run failure evidence remains the same authorized logical turn. Never remove or weaken a manual approval or safety boundary. Report prerequisites.
 
 ## Self-Review
 
@@ -1394,140 +1394,6 @@ export default tool({
   },
   async execute(args) {
     return JSON.stringify(computePlacement(args), null, 2);
-  },
-});
-`;
-}
-
-export function buildLegacyTagmaTrialPlanTool(): string {
-  return `import { createHash, randomUUID } from "node:crypto";
-import { lstatSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { basename, dirname, relative, resolve } from "node:path";
-import { tool } from "@opencode-ai/plugin";
-
-const REQUIRED_COVERAGE = [
-  "multiple-inputs",
-  "duplicate-input-names",
-  "multiline-content",
-  "output-collision",
-  "repeat-run",
-  "empty-content",
-  "special-characters",
-];
-
-function resolvePipelinePath(input, root) {
-  const normalized = String(input || "").trim().replace(/\\\\/g, "/").replace(/^\\.\\//, "");
-  const parts = normalized.split("/");
-  if (parts.length !== 2 || parts.some((part) => !part || part === "." || part === "..")) {
-    throw new Error("pipeline_path must be <stem>/<stem>.yaml inside the active pipeline root");
-  }
-  const yamlName = parts[1];
-  const stem = yamlName.replace(/\\.ya?ml$/i, "");
-  if (!/\\.ya?ml$/i.test(yamlName) || parts[0] !== stem) {
-    throw new Error("pipeline_path folder and YAML stem must match");
-  }
-  const yamlPath = resolve(root, ...parts);
-  const rel = relative(root, yamlPath);
-  if (!rel || rel === ".." || rel.startsWith("../") || rel.startsWith("..\\\\")) {
-    throw new Error("pipeline_path escaped the active pipeline root");
-  }
-  const stat = lstatSync(yamlPath);
-  if (stat.isSymbolicLink() || !stat.isFile()) throw new Error("pipeline_path must be a regular file");
-  if (basename(dirname(yamlPath)) !== stem) throw new Error("pipeline_path has an invalid folder");
-  return yamlPath;
-}
-
-function validateCoverage(coverage, cases) {
-  const caseIds = new Set(cases.map((item) => item.id));
-  const seen = new Set();
-  for (const item of coverage) {
-    if (!REQUIRED_COVERAGE.includes(item.dimension)) {
-      throw new Error("unsupported coverage dimension: " + item.dimension);
-    }
-    if (seen.has(item.dimension)) throw new Error("duplicate coverage dimension: " + item.dimension);
-    seen.add(item.dimension);
-    if (item.status === "covered") {
-      if (!item.caseIds || item.caseIds.length === 0) {
-        throw new Error("covered dimension must reference a case: " + item.dimension);
-      }
-      for (const caseId of item.caseIds) {
-        if (!caseIds.has(caseId)) throw new Error("coverage references unknown case: " + caseId);
-      }
-    }
-  }
-  for (const dimension of REQUIRED_COVERAGE) {
-    if (!seen.has(dimension)) throw new Error("missing coverage dimension: " + dimension);
-  }
-}
-
-export default tool({
-  description: "Write a hash-bound targeted trial plan after the final YAML compile succeeds.",
-  args: {
-    pipeline_path: tool.schema.string().describe("Relative <stem>/<stem>.yaml path"),
-    summary: tool.schema.string(),
-    goals: tool.schema.array(tool.schema.string()),
-    coverage: tool.schema.array(
-      tool.schema.object({
-        dimension: tool.schema.string(),
-        status: tool.schema.string(),
-        caseIds: tool.schema.array(tool.schema.string()),
-        rationale: tool.schema.string(),
-      }),
-    ),
-    findings: tool.schema.array(
-      tool.schema.object({
-        severity: tool.schema.string(),
-        summary: tool.schema.string(),
-        evidence: tool.schema.string(),
-      }),
-    ),
-    cases: tool.schema.array(
-      tool.schema.object({
-        id: tool.schema.string(),
-        title: tool.schema.string(),
-        objective: tool.schema.string(),
-        runs: tool.schema.number().optional(),
-        targetTaskIds: tool.schema.array(tool.schema.string()).optional(),
-        fixtures: tool.schema.array(
-          tool.schema.object({ path: tool.schema.string(), content: tool.schema.string() }),
-        ),
-        expectations: tool.schema.array(
-          tool.schema.object({
-            type: tool.schema.string(),
-            path: tool.schema.string().optional(),
-            text: tool.schema.string().optional(),
-            suffix: tool.schema.string().optional(),
-            min: tool.schema.number().optional(),
-            max: tool.schema.number().optional(),
-            taskId: tool.schema.string().optional(),
-            status: tool.schema.string().optional(),
-          }),
-        ),
-      }),
-    ),
-  },
-  async execute(args, context) {
-    if (!Array.isArray(args.cases) || args.cases.length === 0 || args.cases.length > 8) {
-      throw new Error("trial plan requires 1-8 targeted cases");
-    }
-    validateCoverage(args.coverage, args.cases);
-    const root = resolve(context.directory);
-    const yamlPath = resolvePipelinePath(args.pipeline_path, root);
-    const yamlHash = createHash("sha1").update(readFileSync(yamlPath, "utf8")).digest("hex");
-    const planPath = yamlPath.replace(/\\.ya?ml$/i, ".trial-plan.json");
-    const plan = {
-      version: 1,
-      yamlHash,
-      summary: args.summary,
-      goals: args.goals,
-      coverage: args.coverage,
-      findings: args.findings,
-      cases: args.cases,
-    };
-    const tempPath = planPath + "." + randomUUID() + ".tmp";
-    writeFileSync(tempPath, JSON.stringify(plan, null, 2) + "\\n", "utf8");
-    renameSync(tempPath, planPath);
-    return JSON.stringify({ path: relative(root, planPath).replace(/\\\\/g, "/"), yamlHash }, null, 2);
   },
 });
 `;

@@ -46,6 +46,10 @@
   same-turn planning continuation that may only call tagma_trial_plan and may not edit pipeline
   artifacts. Allow at most two attempts for one YAML hash and keep the total planning lifecycle
   finite across repair revisions. Never finalize or publish the plan file as a live artifact.
+  Generate the tool's enums and limits from the authoritative host contract, expose discriminated
+  expectation schemas, and run the complete semantic validator before the atomic write. The tool
+  must accept the exact staged Target YAML path when OpenCode reports a different session directory,
+  reject live `.tagma` destinations, and never rely on the agent to copy staging artifacts.
 - Every plan must account for multiple inputs, duplicate input names, multiline content, output
   collisions, repeated runs, empty content, and special characters. A dimension marked covered
   must have concrete linked fixtures/assertions; blocked coverage or a blocking design finding
