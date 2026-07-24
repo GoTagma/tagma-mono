@@ -1046,6 +1046,118 @@ test('allows sending from another conversation while a hidden conversation is st
   }
 });
 
+test('hidden trial-plan continuation stays with its owning conversation', async () => {
+  const requests: Array<{ url: string; method: string }> = [];
+  let releaseEventStream: () => void = () => {};
+  const eventStreamGate = new Promise<void>((resolve) => {
+    releaseEventStream = resolve;
+  });
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : null;
+    const url = request?.url ?? String(input);
+    const method = init?.method ?? request?.method ?? 'GET';
+    requests.push({ url, method });
+    if (url === '/api/opencode/chat/ensure') {
+      return Promise.resolve(jsonResponse({ baseUrl: 'http://opencode.test' }));
+    }
+    if (new URL(url, 'http://local.test').pathname === '/event') {
+      return Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            async start(controller) {
+              await eventStreamGate;
+              controller.close();
+            },
+          }),
+          { headers: { 'content-type': 'text/event-stream' } },
+        ),
+      );
+    }
+    if (url === 'http://opencode.test/session/session-a' && method === 'PATCH') {
+      return Promise.resolve(jsonResponse({ id: 'session-a' }));
+    }
+    if (url === 'http://opencode.test/session/session-a/prompt_async') {
+      return Promise.resolve(jsonResponse({ ok: true }));
+    }
+    return Promise.reject(new Error(`unexpected fetch ${method} ${url}`));
+  }) as typeof fetch;
+  setClientWorkspace('C:/background-plan-repo');
+  resetOpencodeClient();
+
+  const visibleMessage: OpencodeThreadEntry = {
+    info: makeUserInfo('b-user', 'session-b') as never,
+    parts: [makeTextPart('b-text', 'session-b', 'b-user', 'visible chat') as never],
+  };
+
+  try {
+    useChatStore.setState({
+      currentSessionId: 'session-b',
+      sessions: [makeSession('session-a'), makeSession('session-b')],
+      sessionStates: {
+        'session-a': {
+          messages: [],
+          sending: false,
+          pendingUserText: null,
+          queuedMessages: [],
+          flushing: false,
+          pendingPermissions: [],
+          turnStartedAt: null,
+          turnAssistantMessageIds: [],
+          lastActivityAt: null,
+          sessionStatus: null,
+          turnHealth: null,
+          pendingActivity: [],
+          yamlSnapshotBeforeSend: null,
+          postChatYamlAction: null,
+        },
+      },
+      messages: [visibleMessage],
+      model: { providerID: 'openai', modelID: 'gpt-test' },
+      agent: 'tagma-router',
+      sending: false,
+      queuedMessages: [],
+    } as never);
+
+    await useChatStore.getState().sendInternalTrialPlanPrompt(
+      {
+        kind: 'refresh-current',
+        path: 'C:/background-plan-repo/.tagma/pipeline-a/pipeline.yaml',
+        name: 'pipeline.yaml',
+        pipelineName: 'Pipeline A',
+      },
+      {
+        reason: 'missing',
+        relativePlanPath: 'pipeline-a/pipeline.trial-plan.json',
+        pipelineHash: 'a'.repeat(40),
+        message: 'No trial plan was written.',
+        requiredCoverage: ['multiple-inputs', 'duplicate-input-names'],
+      },
+      1,
+      2,
+      null,
+      'session-a',
+    );
+
+    const state = useChatStore.getState();
+    expect(
+      requests.some((request) => request.url.endsWith('/session/session-a/prompt_async')),
+    ).toBe(true);
+    expect(
+      requests.some((request) => request.url.endsWith('/session/session-b/prompt_async')),
+    ).toBe(false);
+    expect(state.currentSessionId).toBe('session-b');
+    expect(state.sending).toBe(false);
+    expect(state.messages.map((message) => message.info.id)).toEqual(['b-user']);
+    expect(state.sessionStates['session-a']?.sending).toBe(true);
+    expect(state.sessionStates['session-a']?.turnStartedAt).not.toBeNull();
+  } finally {
+    releaseEventStream();
+    setClientWorkspace(null);
+    resetOpencodeClient();
+    globalThis.fetch = rejectFetch;
+  }
+});
+
 test('chat context limit supports unlimited, bounded, and stateless modes', () => {
   expect(
     shouldStartFreshChatSessionForContextLimit({ enabled: false, rounds: 0, userTurns: 100 }),

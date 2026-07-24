@@ -86,14 +86,35 @@ describe('HistoryFlowView', () => {
     const html = renderToStaticMarkup(
       <HistoryFlowView
         summary={summary({
-          positions: { 'main.cmd': { x: 120, y: 24 } },
-          trackHeights: { main: 132 },
+          tasks: [
+            task({}),
+            task({
+              taskId: 'verify.check',
+              trackId: 'verify',
+              trackName: 'Verify',
+              taskName: 'Check',
+              status: 'success',
+              exitCode: 0,
+              stderrPath: null,
+            }),
+          ],
+          tracks: [
+            { id: 'main', name: 'Main' },
+            { id: 'verify', name: 'Verify' },
+          ],
+          positions: {
+            'main.cmd': { x: 120, y: 24 },
+            'verify.check': { x: 320, y: 10 },
+          },
+          trackHeights: { main: 132, verify: 96 },
         })}
       />,
     );
 
     expect(html).toContain('height:132px');
     expect(html).toContain('left:120px;top:24px;width:176px;height:52px');
+    expect(html).toContain('top:132px;height:96px');
+    expect(html).toContain('left:320px;top:142px;width:176px;height:52px');
   });
 
   test('reserves viewport-relative blank space for two-dimensional drag panning', () => {
@@ -102,6 +123,7 @@ describe('HistoryFlowView', () => {
     expect(html).toContain('data-canvas-pan-surface');
     expect(html).toContain('data-canvas-bottom-spacer');
     expect(html).toContain('min-height:max(264px, calc(100% + 200px))');
+    expect(html).toContain('height:64px');
   });
 
   test('bounds history inspectors to the available narrow viewport', async () => {

@@ -515,6 +515,7 @@ interface ChatStore {
     attempt: number,
     maxAttempts: number,
     snapshot?: ChatYamlSnapshot | null,
+    targetSessionId?: string,
   ) => Promise<void>;
   sendInternalTrialPlanPrompt: (
     target: ChatYamlTarget,
@@ -522,6 +523,7 @@ interface ChatStore {
     attempt: number,
     maxAttempts: number,
     snapshot?: ChatYamlSnapshot | null,
+    targetSessionId?: string,
   ) => Promise<void>;
   /**
    * Ask opencode to stop generating on the current session. Safe to call any
@@ -2295,6 +2297,17 @@ function applyRuntimePatchToSession(
   });
 }
 
+export function canContinueChatSession(
+  sessionId: string | null,
+  currentSessionId: string | null,
+  sessionStates: Readonly<Record<string, unknown>>,
+): sessionId is string {
+  return (
+    !!sessionId &&
+    (sessionId === currentSessionId || Object.prototype.hasOwnProperty.call(sessionStates, sessionId))
+  );
+}
+
 function saveCurrentSessionRuntime(state: ChatStore): Record<string, ChatSessionRuntimeState> {
   if (!state.currentSessionId) return state.sessionStates;
   return {
@@ -2951,11 +2964,31 @@ async function promptOpencode(
     context?: string;
     reuseLogicalTurn?: boolean;
     continuationSnapshot?: ChatYamlSnapshot | null;
+    targetSessionId?: string;
   } = {},
 ): Promise<void> {
   const workspaceKeyAtStart = getOpencodeWorkspaceKey();
   const { model, agent, providers, reasoningEffort } = get();
-  const sessionIdAtDispatch = get().currentSessionId;
+  const sessionIdAtDispatch = opts.targetSessionId ?? get().currentSessionId;
+  if (
+    opts.targetSessionId &&
+    !canContinueChatSession(
+      opts.targetSessionId,
+      get().currentSessionId,
+      get().sessionStates,
+    )
+  ) {
+    throw new Error('The owning chat session is no longer available for an internal continuation.');
+  }
+  const dispatchSessionIsVisible = () =>
+    !sessionIdAtDispatch || get().currentSessionId === sessionIdAtDispatch;
+  const setSendErrorForDispatch = (message: string) => {
+    if (dispatchSessionIsVisible()) set({ sendError: message });
+  };
+  const dispatchRuntimeAtStart =
+    sessionIdAtDispatch && get().currentSessionId !== sessionIdAtDispatch
+      ? get().sessionStates[sessionIdAtDispatch]
+      : get();
   // Snapshot before the normal-send reducers remove the completed result bubble.
   // Internal repairs and logical-turn continuations are filtered at prompt build
   // time and leave the stored result untouched for the next real user turn.
@@ -2965,12 +2998,12 @@ async function promptOpencode(
   const promptTitle = opts.internal ? null : desktopChatTitleFromPrompt(text);
   let optimisticTurnStartedAt: number | null = null;
   if (!model) {
-    set({ sendError: 'No model selected - pick one from the header dropdown.' });
+    setSendErrorForDispatch('No model selected - pick one from the header dropdown.');
     throw new Error('No model selected');
   }
   if (!agent) {
     const msg = `The ${FORCED_CHAT_AGENT} OpenCode agent is not available. Repair the OpenCode seed before sending.`;
-    set({ sendError: msg });
+    setSendErrorForDispatch(msg);
     throw new Error(msg);
   }
 
@@ -2978,7 +3011,9 @@ async function promptOpencode(
   const preSendWorkDir = pipeline.workDir;
   const inheritedSnapshot =
     opts.continuationSnapshot ??
-    (opts.reuseLogicalTurn || opts.internal ? get().yamlSnapshotBeforeSend : null);
+    (opts.reuseLogicalTurn || opts.internal
+      ? (dispatchRuntimeAtStart?.yamlSnapshotBeforeSend ?? null)
+      : null);
   // Capture the renderer branch synchronously at dispatch. The async lock,
   // save, client bootstrap, and session setup below can all take long enough
   // for the user to make another edit; those edits belong to the concurrent
@@ -3015,9 +3050,8 @@ async function promptOpencode(
       endedAt: null,
       count: 1,
     };
-    set({
+    const startedRuntime: Partial<ChatSessionRuntimeState> = {
       sending: true,
-      sendError: null,
       pendingUserText: opts.internal ? null : text,
       turnStartedAt,
       turnAssistantMessageIds: [],
@@ -3027,7 +3061,9 @@ async function promptOpencode(
       pendingActivity: [requestSent],
       yamlSnapshotBeforeSend: inheritedSnapshot,
       ...(opts.internal ? {} : { postChatYamlAction: null }),
-    });
+    };
+    if (dispatchSessionIsVisible()) set({ sendError: null });
+    applyRuntimePatchToSession(get, set, sessionIdAtDispatch, startedRuntime);
 
     if (preSendWorkDir) {
       const continuingLogicalTurn = opts.reuseLogicalTurn || opts.internal;
@@ -3056,7 +3092,7 @@ async function promptOpencode(
       if (!saved) {
         const msg =
           'Local pipeline preservation failed, so chat was not started. Save or discard local YAML/layout edits first.';
-        set({ sendError: msg });
+        setSendErrorForDispatch(msg);
         throw new Error(msg);
       }
     }
@@ -3084,7 +3120,7 @@ async function promptOpencode(
         }));
       } catch (err) {
         const msg = `Couldn't start a new session: ${describeError(err)}`;
-        set({ sendError: msg });
+        setSendErrorForDispatch(msg);
         throw err instanceof Error ? err : new Error(msg);
       }
     }
@@ -3240,7 +3276,9 @@ async function promptOpencode(
       ],
     };
 
-    markTurnAcceptedForWatchdog(get, set);
+    if (get().currentSessionId === sessionId) {
+      markTurnAcceptedForWatchdog(get, set);
+    }
     await unwrap(
       client.session.promptAsync({
         path: { id: sessionId },
@@ -3258,11 +3296,19 @@ async function promptOpencode(
         body: promptBody,
       }),
     );
-    if (getOpencodeWorkspaceKey() === workspaceKeyAtStart) {
+    if (
+      getOpencodeWorkspaceKey() === workspaceKeyAtStart &&
+      get().currentSessionId === sessionId
+    ) {
       markTurnAcceptedForWatchdog(get, set);
     }
   } catch (err) {
-    clearTurnWatchdog();
+    if (
+      !opts.targetSessionId ||
+      turnWatchdogAcceptedKey?.startsWith(`${opts.targetSessionId}:`)
+    ) {
+      clearTurnWatchdog();
+    }
     if (createdStageHere && lockLease) {
       try {
         await withYamlEditLockRequestBypass(lockLease.id, () =>
@@ -3305,7 +3351,7 @@ async function promptOpencode(
     }
     if (sessionIdAtDispatch && get().currentSessionId !== sessionIdAtDispatch) {
       applyRuntimePatchToSession(get, set, sessionIdAtDispatch, resetRuntime);
-      set({ sendError: describeError(err), lastSendingEndedAt: Date.now() });
+      set({ lastSendingEndedAt: Date.now() });
       throw err instanceof Error ? err : new Error(describeError(err));
     }
     set({
@@ -4694,21 +4740,37 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }));
   },
 
-  async sendInternalRepairPrompt(target, evidence, attempt, maxAttempts, snapshot) {
+  async sendInternalRepairPrompt(
+    target,
+    evidence,
+    attempt,
+    maxAttempts,
+    snapshot,
+    targetSessionId,
+  ) {
     const repairText = buildChatYamlRepairPrompt(target, evidence, attempt, maxAttempts);
     return promptOpencode(get, set, repairText, {
       internal: true,
       reuseLogicalTurn: true,
       continuationSnapshot: snapshot ?? null,
+      targetSessionId,
     });
   },
 
-  async sendInternalTrialPlanPrompt(target, request, attempt, maxAttempts, snapshot) {
+  async sendInternalTrialPlanPrompt(
+    target,
+    request,
+    attempt,
+    maxAttempts,
+    snapshot,
+    targetSessionId,
+  ) {
     const planningText = buildChatYamlTrialPlanPrompt(target, request, attempt, maxAttempts);
     return promptOpencode(get, set, planningText, {
       internal: true,
       reuseLogicalTurn: true,
       continuationSnapshot: snapshot ?? null,
+      targetSessionId,
     });
   },
 

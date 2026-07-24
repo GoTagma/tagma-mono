@@ -186,6 +186,10 @@
 - The floating minimap requires bottom scroll clearance so the final task row can pan above it.
   Mirror the same computed clearance in the track-header column or vertical scrolling will
   misalign track headers and task rows.
+- Keep pipeline run-history layout summaries self-contained: live and persisted summaries carry
+  task `positions` and `trackHeights` together, including replay-derived runs.
+  Completed-run rendering must use the shared render-plan height/clamping rules; summaries from
+  older releases without `trackHeights` fall back to the default lane height.
 
 ## Windows Pipeline Paths
 
