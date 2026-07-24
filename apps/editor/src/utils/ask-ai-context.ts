@@ -5,8 +5,9 @@
  * task's stderr tail) alongside the user's editable instruction. On send,
  * `renderAskAiContext` serializes them into an `<ask-ai-context>` block that
  * is prepended to the outgoing message — same "hidden context" pattern as
- * `buildEditorContext()`. `stripAskAiContext` is the matching reader the chat
- * history uses so the raw block never surfaces in a message bubble.
+ * `buildEditorContext()`. The attachment label is persisted on the wire so
+ * chat history can restore the reference chip while keeping the raw context
+ * hidden from the message bubble.
  *
  * Render and strip MUST stay in lockstep — that's why they live together.
  */
@@ -72,10 +73,58 @@ export function buildModifyTargetAttachment(input: ModifyTargetInput): ModifyTar
   };
 }
 
-export function renderAskAiContext(attachments: readonly { content: string }[]): string {
+export interface AskAiContextReference {
+  label: string;
+}
+
+const DEFAULT_ATTACHMENT_LABEL = 'Attached context';
+
+function escapeXmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function decodeXmlAttribute(value: string): string {
+  const entities: Record<string, string> = {
+    amp: '&',
+    apos: "'",
+    gt: '>',
+    lt: '<',
+    quot: '"',
+  };
+  return value.replace(/&(amp|apos|gt|lt|quot);/g, (_, entity: string) => entities[entity]);
+}
+
+export function renderAskAiContext(
+  attachments: readonly { label?: string; content: string }[],
+): string {
   if (attachments.length === 0) return '';
-  const body = attachments.map((a) => `<attachment>\n${a.content}\n</attachment>`).join('\n');
+  const body = attachments
+    .map((attachment) => {
+      const label = attachment.label?.trim();
+      const labelAttribute = label ? ` label="${escapeXmlAttribute(label)}"` : '';
+      return `<attachment${labelAttribute}>\n${attachment.content}\n</attachment>`;
+    })
+    .join('\n');
   return `<ask-ai-context>\n${body}\n</ask-ai-context>\n\n`;
+}
+
+const ASK_AI_CONTEXT_BLOCK_RE = /<ask-ai-context>([\s\S]*?)<\/ask-ai-context>/g;
+const ASK_AI_ATTACHMENT_OPEN_RE = /<attachment(?:\s+label="([^"]*)")?\s*>/g;
+
+export function extractAskAiContextReferences(text: string): AskAiContextReference[] {
+  const references: AskAiContextReference[] = [];
+  for (const block of text.matchAll(ASK_AI_CONTEXT_BLOCK_RE)) {
+    for (const attachment of block[1].matchAll(ASK_AI_ATTACHMENT_OPEN_RE)) {
+      const label = attachment[1] ? decodeXmlAttribute(attachment[1]).trim() : '';
+      references.push({ label: label || DEFAULT_ATTACHMENT_LABEL });
+    }
+  }
+  return references;
 }
 
 // Non-greedy + global so multiple concatenated blocks (the queued-drain case,

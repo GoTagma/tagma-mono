@@ -30,6 +30,7 @@ import {
   resolveCanvasScrollableMinHeight,
 } from '../board/canvas-pan';
 import { useCanvasPan } from '../board/use-canvas-pan';
+import { buildRenderPlan, planTotalHeight } from '../board/render-plan';
 import { CopyButton } from './CopyButton';
 
 const HISTORY_COMPARE_INSTRUCTION =
@@ -201,6 +202,30 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
     return Array.from(groups.values());
   }, [summary.tasks, tracksMeta]);
 
+  const renderPlan = useMemo(
+    () =>
+      buildRenderPlan(
+        tracksMeta.map((track) => ({
+          id: track.id,
+          name: track.name,
+          color: track.color,
+          tasks: [],
+        })),
+        [],
+        new Map(Object.entries(summary.trackHeights ?? {})),
+      ),
+    [summary.trackHeights, tracksMeta],
+  );
+  const trackLayouts = useMemo(() => {
+    const layouts = new Map<string, { top: number; height: number }>();
+    let top = 0;
+    for (const row of renderPlan) {
+      if (row.kind === 'track') layouts.set(row.trackId, { top, height: row.height });
+      top += row.height;
+    }
+    return layouts;
+  }, [renderPlan]);
+
   const { taskPositions, edges } = useMemo(() => {
     const positions = new Map<string, TaskPos>();
     // Prefer the snapshotted editor layout so the history flowchart rebuilds
@@ -209,18 +234,20 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
     const snapshot = summary.positions;
     const taskCountPerTrack = new Map<string, number>();
     for (const tg of trackGroups) {
+      const trackLayout = trackLayouts.get(tg.id);
+      if (!trackLayout) continue;
       for (const t of tg.tasks) {
-        const y = tg.index * TRACK_H + (TRACK_H - TASK_H) / 2;
-        const snapX = snapshot?.[t.taskId]?.x;
-        let x: number;
-        if (typeof snapX === 'number') {
-          x = snapX;
-        } else {
-          const count = taskCountPerTrack.get(tg.id) ?? 0;
-          x = PAD_LEFT + count * (TASK_W + TASK_GAP);
-          taskCountPerTrack.set(tg.id, count + 1);
-        }
+        const count = taskCountPerTrack.get(tg.id) ?? 0;
+        const stored = snapshot?.[t.taskId];
+        const x =
+          typeof stored?.x === 'number' ? stored.x : PAD_LEFT + count * (TASK_W + TASK_GAP);
+        const innerY =
+          stored?.y === undefined
+            ? (trackLayout.height - TASK_H) / 2
+            : Math.max(0, Math.min(Math.max(0, trackLayout.height - TASK_H), stored.y));
+        const y = trackLayout.top + innerY;
         positions.set(t.taskId, { x, y });
+        taskCountPerTrack.set(tg.id, count + 1);
       }
     }
 
@@ -244,7 +271,7 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
     }
 
     return { taskPositions: positions, edges: edgeList };
-  }, [trackGroups, summary.tasks, summary.positions]);
+  }, [trackGroups, summary.tasks, summary.positions, trackLayouts]);
 
   const canvasWidth = useMemo(() => {
     let maxX = 0;
@@ -256,7 +283,7 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
     return Math.max(maxX + CANVAS_PAD_RIGHT, 2000);
   }, [taskPositions]);
 
-  const planHeight = trackGroups.length * TRACK_H;
+  const planHeight = planTotalHeight(renderPlan);
   const canvasHeight = resolveCanvasContentHeight(planHeight);
   const canvasMinHeight = resolveCanvasScrollableMinHeight(planHeight);
   const canvasBottomSpacerHeight = resolveCanvasBottomSpacerHeight(planHeight);

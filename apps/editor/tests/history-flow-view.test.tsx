@@ -82,6 +82,20 @@ describe('HistoryFlowView', () => {
     expect(html).toContain('animate-spin');
   });
 
+  test('restores snapshotted track heights and task y positions after the run finishes', () => {
+    const html = renderToStaticMarkup(
+      <HistoryFlowView
+        summary={summary({
+          positions: { 'main.cmd': { x: 120, y: 24 } },
+          trackHeights: { main: 132 },
+        })}
+      />,
+    );
+
+    expect(html).toContain('height:132px');
+    expect(html).toContain('left:120px;top:24px;width:176px;height:52px');
+  });
+
   test('reserves viewport-relative blank space for two-dimensional drag panning', () => {
     const html = renderToStaticMarkup(<HistoryFlowView summary={summary()} />);
 

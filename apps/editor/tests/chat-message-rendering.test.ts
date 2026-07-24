@@ -176,3 +176,65 @@ describe('assistant response controls', () => {
     }
   });
 });
+
+describe('user attachment references', () => {
+  test('renders the persisted attachment label without exposing its hidden context', () => {
+    const entry = {
+      info: {
+        id: 'msg-user-with-reference',
+        role: 'user',
+      },
+      parts: [
+        {
+          id: 'part-user-with-reference',
+          sessionID: 'session',
+          messageID: 'msg-user-with-reference',
+          type: 'text',
+          text:
+            '<ask-ai-context>\n' +
+            '<attachment label="Run failed">\n' +
+            'stderr tail\n' +
+            '</attachment>\n' +
+            '</ask-ai-context>\n\n' +
+            'Fix this bug.',
+        },
+      ],
+    } as unknown as OpencodeThreadEntry;
+
+    const html = renderToStaticMarkup(createElement(MessageBubble, { entry }));
+
+    expect(html).toContain('Run failed');
+    expect(html).toContain('Fix this bug.');
+    expect(html).not.toContain('stderr tail');
+    expect(html).not.toContain('ask-ai-context');
+  });
+
+  test('keeps an attachment-only message visible without rendering an empty text bubble', () => {
+    const entry = {
+      info: {
+        id: 'msg-user-reference-only',
+        role: 'user',
+      },
+      parts: [
+        {
+          id: 'part-user-reference-only',
+          sessionID: 'session',
+          messageID: 'msg-user-reference-only',
+          type: 'text',
+          text:
+            '<ask-ai-context>\n' +
+            '<attachment label="Run failed">\n' +
+            'stderr tail\n' +
+            '</attachment>\n' +
+            '</ask-ai-context>\n\n',
+        },
+      ],
+    } as unknown as OpencodeThreadEntry;
+
+    const html = renderToStaticMarkup(createElement(MessageBubble, { entry }));
+
+    expect(html).toContain('Run failed');
+    expect(html).not.toContain('stderr tail');
+    expect(html).not.toContain('border-tagma-ready/40');
+  });
+});

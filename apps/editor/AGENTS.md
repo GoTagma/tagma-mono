@@ -14,6 +14,13 @@
   v2 metadata wins for duplicate ids. `null` means model default. Do not restore a fixed
   cross-model reasoning-effort enum.
 
+## Chat Context Attachments
+
+- Persist composer attachment display labels on each `<attachment label="...">` inside the
+  `<ask-ai-context>` wire block. User-message history must restore those labels as read-only
+  reference chips while keeping attachment content hidden; accept legacy unlabeled attachments
+  with a generic label, including multiple concatenated blocks produced by queued sends.
+
 ## Binding Autosync
 
 - Auto-synced command input bindings must retain the concrete upstream task identity even when an

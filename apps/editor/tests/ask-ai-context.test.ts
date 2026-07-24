@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import {
   buildModifyTargetAttachment,
+  extractAskAiContextReferences,
   renderAskAiContext,
   stripAskAiContext,
 } from '../src/utils/ask-ai-context';
@@ -23,6 +24,40 @@ describe('renderAskAiContext', () => {
         '<attachment>\nsecond\n</attachment>\n' +
         '</ask-ai-context>\n\n',
     );
+  });
+
+  test('persists an attachment label for chat history rendering', () => {
+    const attachments = [{ label: 'Run failed', content: 'stderr tail' }];
+
+    expect(renderAskAiContext(attachments)).toBe(
+      '<ask-ai-context>\n' +
+        '<attachment label="Run failed">\n' +
+        'stderr tail\n' +
+        '</attachment>\n' +
+        '</ask-ai-context>\n\n',
+    );
+  });
+});
+
+describe('extractAskAiContextReferences', () => {
+  test('restores escaped labels across queued blocks and supports legacy unlabeled context', () => {
+    const wire =
+      renderAskAiContext([
+        { label: 'Run "quoted" & <selected>', content: 'first' },
+        { label: 'Task build.test', content: 'second' },
+      ]) + renderAskAiContext([{ content: 'legacy' }]);
+
+    expect(extractAskAiContextReferences(wire)).toEqual([
+      { label: 'Run "quoted" & <selected>' },
+      { label: 'Task build.test' },
+      { label: 'Attached context' },
+    ]);
+  });
+
+  test('ignores attachment-like text outside an ask-ai-context block', () => {
+    expect(
+      extractAskAiContextReferences('<attachment label="Not a reference">plain text</attachment>'),
+    ).toEqual([]);
   });
 });
 

@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import type React from 'react';
-import { Brain, Check, CheckCircle2, Copy, Loader2, Wrench, XCircle } from 'lucide-react';
+import {
+  Brain,
+  Check,
+  CheckCircle2,
+  Copy,
+  Loader2,
+  Paperclip,
+  Wrench,
+  XCircle,
+} from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { extractSkillNameFromToolState } from '../../utils/chat-tool-display';
@@ -35,7 +44,11 @@ import {
 import { getRenderableMessageParts, shouldRenderMessageBubble } from './message-rendering';
 import { TurnActivityPanel } from './ActivityPanel';
 import { useChatStore } from '../../store/chat-store';
-import { stripAskAiContext } from '../../utils/ask-ai-context';
+import {
+  extractAskAiContextReferences,
+  stripAskAiContext,
+  type AskAiContextReference,
+} from '../../utils/ask-ai-context';
 
 export function MessageBubble({
   entry,
@@ -53,6 +66,12 @@ export function MessageBubble({
   surfaceActivitySummary?: boolean;
 }) {
   const role = entry.info.role;
+  const attachmentReferences =
+    role === 'user'
+      ? entry.parts.flatMap((part) =>
+          part.type === 'text' ? extractAskAiContextReferences(part.text) : [],
+        )
+      : [];
   if (
     role === 'user' &&
     entry.parts.some(
@@ -65,10 +84,9 @@ export function MessageBubble({
   ) {
     return null;
   }
-  // Attachment-only send with no instruction: everything strips away, so a
-  // rendered bubble would be an empty box. Suppress it (the assistant reply
-  // still arrives normally).
-  if (isContextOnlyUserMessage(role, entry.parts)) {
+  // Suppress malformed/empty hidden-context messages only when there is no
+  // attachment reference that can be restored as visible history.
+  if (isContextOnlyUserMessage(role, entry.parts) && attachmentReferences.length === 0) {
     return null;
   }
   // Hide non-user-visible SDK bookkeeping parts before rendering.
@@ -80,7 +98,11 @@ export function MessageBubble({
   const renderableParts = getRenderableMessageParts(entry.parts);
 
   const hasActivity = role === 'assistant' && (entry.activity?.length ?? 0) > 0;
-  if (!shouldRenderMessageBubble({ info: entry.info, parts: renderableParts }) && !hasActivity) {
+  if (
+    !shouldRenderMessageBubble({ info: entry.info, parts: renderableParts }) &&
+    !hasActivity &&
+    attachmentReferences.length === 0
+  ) {
     return null;
   }
 
@@ -106,17 +128,24 @@ export function MessageBubble({
           role === 'user' ? 'items-end' : 'items-start'
         }`}
       >
-        {renderableParts.map((part) => (
+        {attachmentReferences.length > 0 && (
+          <AttachmentReferences references={attachmentReferences} />
+        )}
+        {renderableParts.map((part) =>
           // Wrap each part so flex sizing propagates the bubble's 90% cap.
           // Default flex `min-width: auto` lets a long URL / hash / path
           // inside a part blow the bubble out; `min-w-0` lets the wrapper
           // shrink below its content's intrinsic width, and `max-w-full`
           // pins it to the bubble. No `overflow-hidden` — long tokens are
           // wrapped via `break-*` on the leaves, not clipped.
-          <div key={part.id} className="min-w-0 max-w-full">
-            <PartRenderer part={part} role={role} streaming={streaming} />
-          </div>
-        ))}
+          role === 'user' &&
+          part.type === 'text' &&
+          stripAskAiContext(part.text.replace(EDITOR_CONTEXT_RE, '')).trim().length === 0 ? null : (
+            <div key={part.id} className="min-w-0 max-w-full">
+              <PartRenderer part={part} role={role} streaming={streaming} />
+            </div>
+          ),
+        )}
         {role === 'assistant' && <AssistantMessageFooter info={entry.info as AssistantMessage} />}
         {role === 'assistant' && (
           <AssistantResponseControls info={entry.info as AssistantMessage} text={copyableText} />
@@ -131,6 +160,24 @@ export function MessageBubble({
           />
         )}
       </div>
+    </div>
+  );
+}
+
+function AttachmentReferences({ references }: { references: readonly AskAiContextReference[] }) {
+  return (
+    <div className="flex max-w-full flex-wrap justify-end gap-1.5">
+      {references.map((reference, index) => (
+        <div
+          key={`${reference.label}-${index}`}
+          className="flex min-w-0 max-w-full items-center gap-1 border border-tagma-border bg-tagma-bg/60 px-1.5 py-0.5 text-[10px] font-mono text-tagma-muted sm:max-w-[260px]"
+        >
+          <Paperclip size={10} className="shrink-0 text-tagma-muted/70" />
+          <span className="truncate" title={reference.label}>
+            {reference.label}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
