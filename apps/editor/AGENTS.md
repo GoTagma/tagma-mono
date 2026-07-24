@@ -9,6 +9,9 @@
   pending prompt, queue, reconciliation, or flush may still block them.
 - Provider connection and OpenCode runtime mutations use the broader lock and must remain
   blocked while any conversation is active.
+- Post-turn planning and repair continuations belong to the finished turn's root session even
+  after the user switches conversations. Address that cached session explicitly; never fall back
+  to the mutable visible session or clear the visible turn's progress/error/watchdog state.
 - Chat model-variant choices come from OpenCode's model catalogs. Merge a model's enabled
   runtime/legacy variants with its v2 `variants` because v2 can omit provider-generated choices;
   v2 metadata wins for duplicate ids. `null` means model default. Do not restore a fixed

@@ -5,6 +5,7 @@ import {
   buildChatYamlRepairPrompt,
   buildChatYamlTrialPlanPrompt,
   canEndCurrentTurnFromConfirmedIdle,
+  canContinueChatSession,
   chatPipelinePreflightMode,
   subscribeEventStreamWithReadinessTimeout,
   waitForSseReadyWithTimeout,
@@ -1088,6 +1089,7 @@ test('hidden trial-plan continuation stays with its owning conversation', async 
     info: makeUserInfo('b-user', 'session-b') as never,
     parts: [makeTextPart('b-text', 'session-b', 'b-user', 'visible chat') as never],
   };
+  const visibleTurnStartedAt = Date.now() - 500;
 
   try {
     useChatStore.setState({
@@ -1114,9 +1116,27 @@ test('hidden trial-plan continuation stays with its owning conversation', async 
       messages: [visibleMessage],
       model: { providerID: 'openai', modelID: 'gpt-test' },
       agent: 'tagma-router',
-      sending: false,
+      sending: true,
+      pendingUserText: 'visible turn',
+      turnStartedAt: visibleTurnStartedAt,
+      lastActivityAt: visibleTurnStartedAt,
       queuedMessages: [],
     } as never);
+
+    expect(
+      canContinueChatSession(
+        'session-a',
+        useChatStore.getState().currentSessionId,
+        useChatStore.getState().sessionStates,
+      ),
+    ).toBe(true);
+    expect(
+      canContinueChatSession(
+        'deleted-session',
+        useChatStore.getState().currentSessionId,
+        useChatStore.getState().sessionStates,
+      ),
+    ).toBe(false);
 
     await useChatStore.getState().sendInternalTrialPlanPrompt(
       {
@@ -1146,7 +1166,9 @@ test('hidden trial-plan continuation stays with its owning conversation', async 
       requests.some((request) => request.url.endsWith('/session/session-b/prompt_async')),
     ).toBe(false);
     expect(state.currentSessionId).toBe('session-b');
-    expect(state.sending).toBe(false);
+    expect(state.sending).toBe(true);
+    expect(state.pendingUserText).toBe('visible turn');
+    expect(state.turnStartedAt).toBe(visibleTurnStartedAt);
     expect(state.messages.map((message) => message.info.id)).toEqual(['b-user']);
     expect(state.sessionStates['session-a']?.sending).toBe(true);
     expect(state.sessionStates['session-a']?.turnStartedAt).not.toBeNull();

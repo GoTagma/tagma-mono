@@ -2304,7 +2304,8 @@ export function canContinueChatSession(
 ): sessionId is string {
   return (
     !!sessionId &&
-    (sessionId === currentSessionId || Object.prototype.hasOwnProperty.call(sessionStates, sessionId))
+    (sessionId === currentSessionId ||
+      Object.prototype.hasOwnProperty.call(sessionStates, sessionId))
   );
 }
 
@@ -2972,11 +2973,7 @@ async function promptOpencode(
   const sessionIdAtDispatch = opts.targetSessionId ?? get().currentSessionId;
   if (
     opts.targetSessionId &&
-    !canContinueChatSession(
-      opts.targetSessionId,
-      get().currentSessionId,
-      get().sessionStates,
-    )
+    !canContinueChatSession(opts.targetSessionId, get().currentSessionId, get().sessionStates)
   ) {
     throw new Error('The owning chat session is no longer available for an internal continuation.');
   }
@@ -3296,17 +3293,11 @@ async function promptOpencode(
         body: promptBody,
       }),
     );
-    if (
-      getOpencodeWorkspaceKey() === workspaceKeyAtStart &&
-      get().currentSessionId === sessionId
-    ) {
+    if (getOpencodeWorkspaceKey() === workspaceKeyAtStart && get().currentSessionId === sessionId) {
       markTurnAcceptedForWatchdog(get, set);
     }
   } catch (err) {
-    if (
-      !opts.targetSessionId ||
-      turnWatchdogAcceptedKey?.startsWith(`${opts.targetSessionId}:`)
-    ) {
+    if (!opts.targetSessionId || turnWatchdogAcceptedKey?.startsWith(`${opts.targetSessionId}:`)) {
       clearTurnWatchdog();
     }
     if (createdStageHere && lockLease) {

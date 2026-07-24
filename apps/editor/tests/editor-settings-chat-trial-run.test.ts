@@ -45,6 +45,9 @@ describe('Editor Settings OpenCode Chat trial-run controls', () => {
     expect(source).toContain('planAttempts < MAX_CHAT_TRIAL_PLAN_PROMPTS');
     expect(source).toContain('totalPlanAttemptsForTurn < maxPlanAttemptsForTurn');
     expect(source).toContain('maxAttempts + 1');
+    expect(source).toContain('const finishedSessionCanContinue = canContinueChatSession(');
+    expect(source).not.toContain('finishedSessionVisible');
+    expect(source.match(/finishedSessionId [?][?] undefined/g)).toHaveLength(4);
     expect(source).toContain("trialRun.kind !== 'plan-required'");
     expect(source).not.toContain('const maxAttempts = 2;');
   });

@@ -60,7 +60,7 @@ import {
   type UnsavedAction,
 } from './components/AppOverlays';
 import { ChatCompletionToast, ChatPanel } from './components/chat/ChatPanel';
-import { useChatStore, isChatDrivenEditLikely } from './store/chat-store';
+import { canContinueChatSession, isChatDrivenEditLikely, useChatStore } from './store/chat-store';
 import type { ChatYamlReconcileSummary } from './store/chat-editor-context';
 import { selectFinishedTurnQueueHead } from './store/finished-turn-selector';
 import { useEditorSettingsStore } from './store/editor-settings-store';
@@ -910,9 +910,12 @@ export function App() {
       try {
         const snapshot = finishedTurn.yamlSnapshotBeforeSend;
         const finishedSessionId = finishedTurn.sessionId;
-        const currentChatSessionId = useChatStore.getState().currentSessionId;
-        const finishedSessionVisible =
-          !!finishedSessionId && finishedSessionId === currentChatSessionId;
+        const currentChatState = useChatStore.getState();
+        const finishedSessionCanContinue = canContinueChatSession(
+          finishedSessionId,
+          currentChatState.currentSessionId,
+          currentChatState.sessionStates,
+        );
         const settings = useEditorSettingsStore.getState().settings;
         const maxAttempts =
           settings?.opencodeChatPipelineRepairMaxAttempts ?? DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS;
@@ -977,7 +980,7 @@ export function App() {
           let completedRepairAttempts = attempts;
           if (
             shouldAutoRepairCompileResult(compile, attempts, maxAttempts) &&
-            finishedSessionVisible
+            finishedSessionCanContinue
           ) {
             const nextAttempt = attempts + 1;
             repairAttemptsRef.current.set(attemptKey, nextAttempt);
@@ -997,6 +1000,7 @@ export function App() {
                   nextAttempt,
                   maxAttempts,
                   snapshot,
+                  finishedSessionId ?? undefined,
                 );
               keepYamlLockForRepair = true;
               return;
@@ -1055,7 +1059,7 @@ export function App() {
               if (
                 planAttempts < MAX_CHAT_TRIAL_PLAN_PROMPTS &&
                 totalPlanAttemptsForTurn < maxPlanAttemptsForTurn &&
-                finishedSessionVisible
+                finishedSessionCanContinue
               ) {
                 const nextPlanAttempt = planAttempts + 1;
                 trialPlanAttemptsRef.current.set(planAttemptKey, nextPlanAttempt);
@@ -1075,6 +1079,7 @@ export function App() {
                       nextPlanAttempt,
                       MAX_CHAT_TRIAL_PLAN_PROMPTS,
                       snapshot,
+                      finishedSessionId ?? undefined,
                     );
                   keepYamlLockForRepair = true;
                   return;
@@ -1090,7 +1095,7 @@ export function App() {
               trialRun.kind !== 'plan-required' &&
               trialRun.kind !== 'aborted' &&
               shouldAutoRepairCompileResult(trialRun, trialAttempts, maxAttempts) &&
-              finishedSessionVisible
+              finishedSessionCanContinue
             ) {
               const nextAttempt = trialAttempts + 1;
               repairAttemptsRef.current.set(attemptKey, nextAttempt);
@@ -1111,6 +1116,7 @@ export function App() {
                     nextAttempt,
                     maxAttempts,
                     snapshot,
+                    finishedSessionId ?? undefined,
                   );
                 keepYamlLockForRepair = true;
                 return;
@@ -1337,7 +1343,7 @@ export function App() {
 
         if (
           shouldAutoRepairCompileResult(compile, attempts, maxAttempts) &&
-          finishedSessionVisible
+          finishedSessionCanContinue
         ) {
           const nextAttempt = attempts + 1;
           repairAttemptsRef.current.set(target.path, nextAttempt);
@@ -1356,6 +1362,7 @@ export function App() {
                 nextAttempt,
                 maxAttempts,
                 snapshot,
+                finishedSessionId ?? undefined,
               );
             keepYamlLockForRepair = true;
             return;
