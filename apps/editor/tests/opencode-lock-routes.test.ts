@@ -66,6 +66,7 @@ function postHandler(path: string): Handler {
   const handlers = new Map<string, Handler>();
   const app = {
     get() {},
+    use() {},
     post(route: string, handler: Handler) {
       handlers.set(route, handler);
     },
@@ -155,6 +156,7 @@ describe('OpenCode routes under a workspace YAML lock', () => {
       expect(res.body).toEqual({
         ok: true,
         baseUrl: 'http://existing-opencode.test',
+        proxyBaseUrl: '/api/opencode/chat/proxy',
         directory: join(workDir, '.tagma'),
         authHeader: 'Bearer existing',
       });

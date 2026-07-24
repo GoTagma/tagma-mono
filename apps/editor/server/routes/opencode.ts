@@ -21,6 +21,11 @@ import {
   restartOpencode,
   stopOpencodeProcesses,
 } from '../opencode-lifecycle.js';
+import {
+  fetchOpencodeProxy,
+  OPENCODE_PROXY_BASE_PATH,
+  pipeOpencodeProxyResponse,
+} from '../opencode-proxy.js';
 import { seedOpencodeArtifacts } from '../opencode-seed.js';
 import { buildOpencodeSeedOptions } from '../opencode-seed-options.js';
 import { startChatCompileWatcher } from '../chat-compile-watcher.js';
@@ -414,6 +419,14 @@ async function performUpdate(
       /* best-effort */
     }
   }
+}
+
+function parsedProxyBody(req: express.Request): BodyInit | undefined {
+  const method = req.method.toUpperCase();
+  if (method === 'GET' || method === 'HEAD' || req.body === undefined) return undefined;
+  if (typeof req.body === 'string') return req.body;
+  if (Buffer.isBuffer(req.body)) return new Uint8Array(req.body);
+  return JSON.stringify(req.body);
 }
 
 export function registerOpencodeRoutes(app: express.Express): void {
