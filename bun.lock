@@ -73,7 +73,7 @@
     },
     "packages/completion-llm-judge": {
       "name": "@tagma/completion-llm-judge",
-      "version": "0.2.48",
+      "version": "0.2.49",
       "dependencies": {
         "@tagma/types": "workspace:*",
       },
@@ -83,14 +83,14 @@
     },
     "packages/core": {
       "name": "@tagma/core",
-      "version": "0.1.53",
+      "version": "0.1.54",
       "dependencies": {
         "@tagma/types": "workspace:*",
       },
     },
     "packages/driver-claude-code": {
       "name": "@tagma/driver-claude-code",
-      "version": "0.3.48",
+      "version": "0.3.49",
       "dependencies": {
         "@tagma/types": "workspace:*",
       },
@@ -100,7 +100,7 @@
     },
     "packages/driver-codex": {
       "name": "@tagma/driver-codex",
-      "version": "0.2.48",
+      "version": "0.2.49",
       "dependencies": {
         "@tagma/types": "workspace:*",
       },
@@ -110,7 +110,7 @@
     },
     "packages/middleware-lightrag": {
       "name": "@tagma/middleware-lightrag",
-      "version": "0.2.49",
+      "version": "0.2.50",
       "dependencies": {
         "@tagma/types": "workspace:*",
       },
@@ -120,7 +120,7 @@
     },
     "packages/runtime-bun": {
       "name": "@tagma/runtime-bun",
-      "version": "0.1.43",
+      "version": "0.1.44",
       "dependencies": {
         "@tagma/core": "workspace:*",
         "chokidar": "^4.0.0",
@@ -128,7 +128,7 @@
     },
     "packages/sdk": {
       "name": "@tagma/sdk",
-      "version": "0.7.57",
+      "version": "0.7.58",
       "dependencies": {
         "@tagma/core": "workspace:*",
         "@tagma/runtime-bun": "workspace:*",
@@ -138,7 +138,7 @@
     },
     "packages/trigger-webhook": {
       "name": "@tagma/trigger-webhook",
-      "version": "0.2.49",
+      "version": "0.2.50",
       "dependencies": {
         "@tagma/types": "workspace:*",
       },
@@ -148,7 +148,7 @@
     },
     "packages/types": {
       "name": "@tagma/types",
-      "version": "0.4.60",
+      "version": "0.4.61",
     },
   },
   "packages": {
