@@ -3244,7 +3244,17 @@ async function promptOpencode(
     await unwrap(
       client.session.promptAsync({
         path: { id: sessionId },
-        ...(chatStage ? { query: { directory: chatStage.agentTagmaDir } } : {}),
+        ...(chatStage
+          ? {
+              query: { directory: chatStage.agentTagmaDir },
+              // The OpenCode SDK keeps the client's canonical workspace in
+              // x-opencode-directory on POST requests. A query override alone
+              // therefore still executes the prompt (and delegated tasks) in
+              // the live .tagma directory. Override both transports so the
+              // staged branch is the only writable prompt workspace.
+              headers: buildOpencodeRequestHeaders(undefined, chatStage.agentTagmaDir),
+            }
+          : {}),
         body: promptBody,
       }),
     );

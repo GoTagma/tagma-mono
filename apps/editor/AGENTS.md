@@ -29,6 +29,10 @@
   manifest, and compile log into separate base and agent workspaces; bind OpenCode's prompt
   directory and all advertised pipeline paths to the agent `.tagma/` root. Live pipeline paths
   remain read-only source material for the agent.
+- For staged OpenCode prompt POSTs, override both the `directory` query and the
+  `x-opencode-directory` header with the agent `.tagma` root. The SDK keeps its client-level
+  canonical workspace header on POST requests; a query-only override lets that live-directory
+  header win and makes delegated sessions edit the real workspace.
 - Capture YAML/layout/requirements hashes from the base copy in server-owned stage metadata.
   Queued prompts and bounded automatic repairs reuse the same stage, snapshot, and YAML lease;
   reconciliation runs only from the finished-turn queue.
