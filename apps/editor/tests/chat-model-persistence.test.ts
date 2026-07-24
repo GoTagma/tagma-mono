@@ -1369,8 +1369,7 @@ describe('chat model persistence', () => {
     const repo = 'C:/staged-prompt-repo';
     const baseUrl = 'http://opencode-staged-prompt.test';
     const sourcePath = `${repo}/.tagma/sample/sample.yaml`;
-    const agentTagmaDir =
-      `${repo}/.tagma/.chat-staging/staged-prompt-test-stage/agent-workspace/.tagma`;
+    const agentTagmaDir = `${repo}/.tagma/.chat-staging/staged-prompt-test-stage/agent-workspace/.tagma`;
     workspaceBaseUrls.set(repo, baseUrl);
     setClientWorkspace(repo);
     usePipelineStore.setState({
@@ -1405,9 +1404,9 @@ describe('chat model persistence', () => {
 
       expect(promptAsyncRequests).toHaveLength(1);
       expect(new URL(promptAsyncRequests[0]!).searchParams.get('directory')).toBe(agentTagmaDir);
-      expect(
-        decodeURIComponent(promptAsyncHeaders[0]?.get('x-opencode-directory') ?? ''),
-      ).toBe(agentTagmaDir);
+      expect(decodeURIComponent(promptAsyncHeaders[0]?.get('x-opencode-directory') ?? '')).toBe(
+        agentTagmaDir,
+      );
     } finally {
       await releaseChatYamlEditLock();
       usePipelineStore.setState({
