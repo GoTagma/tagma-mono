@@ -559,6 +559,64 @@ test('routes delegated child permission prompts to the current parent session', 
   expect(useChatStore.getState().pendingPermissions).toEqual([]);
 });
 
+test('routes OpenCode 1.17.8 permission.asked prompts and clears requestID replies', () => {
+  useChatStore.setState({
+    currentSessionId: 'parent',
+    sessions: [makeSession('parent')],
+    sending: true,
+    pendingPermissions: [],
+  } as never);
+
+  dispatch({
+    type: 'session.created',
+    properties: { info: makeSession('child', 'parent') },
+  });
+  dispatch({
+    type: 'permission.asked',
+    properties: {
+      id: 'child-permission',
+      sessionID: 'child',
+      permission: 'external_directory',
+      patterns: ['F:\\test0723\\*'],
+      metadata: {},
+      always: ['F:\\test0723\\*'],
+      tool: {
+        messageID: 'child-message',
+        callID: 'child-call',
+      },
+    },
+  });
+
+  let state = useChatStore.getState();
+  expect(
+    state.pendingPermissions.map((permission) => ({
+      id: permission.id,
+      sessionID: permission.sessionID,
+      tool: permission.tool,
+      title: permission.title,
+    })),
+  ).toEqual([
+    {
+      id: 'child-permission',
+      sessionID: 'child',
+      tool: 'external_directory',
+      title: 'F:\\test0723\\*',
+    },
+  ]);
+
+  dispatch({
+    type: 'permission.replied',
+    properties: {
+      sessionID: 'child',
+      requestID: 'child-permission',
+      reply: 'once',
+    },
+  });
+
+  state = useChatStore.getState();
+  expect(state.pendingPermissions).toEqual([]);
+});
+
 test('routes nested permissions and clears only the replied child tuple', () => {
   const now = Date.now();
   useChatStore.setState({

@@ -153,9 +153,11 @@
   already killed. While a YAML chat lock is active, chat bootstrap may reuse/recover the current
   runtime but must not reseed and implicitly restart it.
 - Keep delegated OpenCode sessions hidden from chat history but retain their raw parent ancestry
-  per workspace from bootstrap and SSE. Route descendant permission prompts to the owning root
-  runtime while replying with the real child session id; clear exact workspace/session/permission
-  tuples and prune/reset ancestry with session deletion and workspace changes.
+  per workspace from bootstrap and SSE. Normalize current `permission.asked` / `requestID` events
+  and legacy `permission.updated` / `permissionID` events before routing descendant permission
+  prompts to the owning root runtime. Reply with the real child session id; clear exact
+  workspace/session/permission tuples and prune/reset ancestry with session deletion and workspace
+  changes.
 - Managed Windows command strings run under PowerShell by default. Author PowerShell syntax for
   plain command/shell tasks; invoke CMD-only syntax explicitly through argv with cmd.exe.
 - A hung-turn force stop must finish the visible turn before waiting for restart health. Keep an

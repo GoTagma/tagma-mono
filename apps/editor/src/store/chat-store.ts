@@ -3,6 +3,41 @@ import type {
   Event as OpencodeEvent,
   SessionStatus as OpencodeSessionStatus,
 } from '@opencode-ai/sdk/client';
+
+type OpenCodePermissionAskedEvent = {
+  type: 'permission.asked';
+  properties: {
+    id: string;
+    sessionID: string;
+    permission: string;
+    patterns: string[];
+    metadata: Record<string, unknown>;
+    always: string[];
+    tool?: {
+      messageID: string;
+      callID: string;
+    };
+  };
+};
+
+type OpenCodePermissionRepliedEvent = {
+  type: 'permission.replied';
+  properties: { sessionID: string } & (
+    | {
+        requestID: string;
+        reply: 'once' | 'always' | 'reject';
+      }
+    | {
+        permissionID: string;
+        response: string;
+      }
+  );
+};
+
+type ChatOpencodeEvent =
+  | Exclude<OpencodeEvent, { type: 'permission.replied' }>
+  | OpenCodePermissionAskedEvent
+  | OpenCodePermissionRepliedEvent;
 import {
   createOpencodeSessionV2,
   getOpencodeClient,
@@ -533,8 +568,9 @@ interface ChatStore {
   abort: () => Promise<void>;
   /**
    * Pending permission prompts from opencode. Each entry is one tool-call
-   * the agent wants confirmed. Populated by `permission.updated` SSE events
-   * (see applySseEvent); cleared by `permission.replied`, session switch,
+   * the agent wants confirmed. Populated by current `permission.asked` and
+   * legacy `permission.updated` SSE events (see applySseEvent); cleared by
+   * `permission.replied`, session switch,
    * and session deletion.
    */
   pendingPermissions: PendingPermission[];
@@ -3397,7 +3433,7 @@ async function ensureSseSubscription(get: () => ChatStore, set: ChatSet): Promis
           }
           sseLastEventAt = Date.now();
           armSseIdleTimer(get, set);
-          applySseEvent(event as OpencodeEvent, get, set);
+          applySseEvent(event as ChatOpencodeEvent, get, set);
         }
         sseConnected = false;
         clearSseIdleTimer();
@@ -3459,7 +3495,7 @@ async function ensureSseSubscription(get: () => ChatStore, set: ChatSet): Promis
  * accumulated value (not just a delta), so we overwrite by id without
  * tracking incremental append state.
  */
-export function applySseEvent(event: OpencodeEvent, get: () => ChatStore, set: ChatSet): void {
+export function applySseEvent(event: ChatOpencodeEvent, get: () => ChatStore, set: ChatSet): void {
   let state = get();
   let currentSessionId = state.currentSessionId;
   scheduleTurnWatchdogSoon(get, set);
@@ -3484,6 +3520,38 @@ export function applySseEvent(event: OpencodeEvent, get: () => ChatStore, set: C
     state = { ...state, ...patch } as ChatStore;
     markTurnAcceptedForWatchdog(get, set);
     return true;
+  };
+
+  const routePendingPermission = (pendingPermission: PendingPermission): void => {
+    const turnStartedAt = pendingPermission.createdAt;
+    let ownerSessionID = permissionOwnerSessionId(state, pendingPermission.sessionID);
+    if (!ownerSessionID) return;
+    if (
+      ownerSessionID !== currentSessionId &&
+      isKnownBotBridgeSession(state.sessions, ownerSessionID)
+    ) {
+      adoptBotSessionIfNeeded(ownerSessionID, turnStartedAt);
+    }
+    ownerSessionID = permissionOwnerSessionId(state, pendingPermission.sessionID);
+    if (!ownerSessionID) return;
+    if (ownerSessionID !== currentSessionId) {
+      upsertHiddenSessionRuntime(set, ownerSessionID, (runtime) => ({
+        ...runtime,
+        sending: true,
+        pendingPermissions: upsertPermission(runtime.pendingPermissions, pendingPermission),
+        turnStartedAt: runtime.turnStartedAt ?? pendingPermission.createdAt,
+        lastActivityAt: Math.max(runtime.lastActivityAt ?? 0, pendingPermission.createdAt),
+      }));
+      return;
+    }
+    startCurrentBotSessionTurnIfNeeded(ownerSessionID, turnStartedAt);
+    set({
+      sending: true,
+      pendingPermissions: upsertPermission(state.pendingPermissions, pendingPermission),
+      turnStartedAt: state.turnStartedAt ?? pendingPermission.createdAt,
+      lastActivityAt: Math.max(state.lastActivityAt ?? 0, pendingPermission.createdAt),
+    });
+    markTurnAcceptedForWatchdog(get, set);
   };
 
   switch (event.type) {
@@ -3837,54 +3905,41 @@ export function applySseEvent(event: OpencodeEvent, get: () => ChatStore, set: C
       set(patch);
       return;
     }
+    case 'permission.asked': {
+      const perm = event.properties;
+      const patterns = perm.patterns.filter((pattern) => pattern.trim().length > 0);
+      const createdAt = Date.now();
+      routePendingPermission({
+        workspaceKey: getOpencodeWorkspaceKey(),
+        id: perm.id,
+        sessionID: perm.sessionID,
+        title: patterns.join(', ') || perm.permission,
+        tool: perm.permission,
+        metadata: perm.metadata,
+        createdAt,
+      });
+      return;
+    }
     case 'permission.updated': {
       const perm = event.properties;
-      const turnStartedAt = perm.time?.created ?? Date.now();
-      let ownerSessionID = permissionOwnerSessionId(state, perm.sessionID);
-      if (!ownerSessionID) return;
-      if (
-        ownerSessionID !== currentSessionId &&
-        isKnownBotBridgeSession(state.sessions, ownerSessionID)
-      ) {
-        adoptBotSessionIfNeeded(ownerSessionID, turnStartedAt);
-      }
-      const pendingPermission: PendingPermission = {
+      const createdAt = perm.time?.created ?? Date.now();
+      routePendingPermission({
         workspaceKey: getOpencodeWorkspaceKey(),
         id: perm.id,
         sessionID: perm.sessionID,
         title: perm.title,
         tool: perm.type,
         metadata: perm.metadata,
-        createdAt: perm.time?.created ?? Date.now(),
-      };
-      ownerSessionID = permissionOwnerSessionId(state, perm.sessionID);
-      if (!ownerSessionID) return;
-      if (ownerSessionID !== currentSessionId) {
-        upsertHiddenSessionRuntime(set, ownerSessionID, (runtime) => ({
-          ...runtime,
-          sending: true,
-          pendingPermissions: upsertPermission(runtime.pendingPermissions, pendingPermission),
-          turnStartedAt: runtime.turnStartedAt ?? pendingPermission.createdAt,
-          lastActivityAt: Math.max(runtime.lastActivityAt ?? 0, pendingPermission.createdAt),
-        }));
-        return;
-      }
-      startCurrentBotSessionTurnIfNeeded(ownerSessionID, turnStartedAt);
-      // opencode emits permission.updated on both initial request and on
-      // server-side state changes. Treat it as source of truth: upsert the
-      // entry keyed by id. Terminal clears come from permission.replied.
-      const next = upsertPermission(state.pendingPermissions, pendingPermission);
-      set({
-        sending: true,
-        pendingPermissions: next,
-        turnStartedAt: state.turnStartedAt ?? pendingPermission.createdAt,
-        lastActivityAt: Math.max(state.lastActivityAt ?? 0, pendingPermission.createdAt),
+        createdAt,
       });
-      markTurnAcceptedForWatchdog(get, set);
       return;
     }
     case 'permission.replied': {
-      const { sessionID, permissionID } = event.properties;
+      const { sessionID } = event.properties;
+      const permissionID =
+        'requestID' in event.properties
+          ? event.properties.requestID
+          : event.properties.permissionID;
       // Any client (this panel, a parallel CLI) replying resolves the prompt.
       // Remove the exact child-session prompt from the visible root and every
       // cached root runtime. The ancestry entry may already have been removed
