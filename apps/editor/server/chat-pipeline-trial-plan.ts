@@ -482,7 +482,7 @@ export function parseChatPipelineTrialPlan(value: unknown): ChatPipelineTrialPla
       throw new Error(`${label}.severity is invalid.`);
     }
     return {
-      severity,
+      severity: severity as ChatPipelineTrialPlanFinding['severity'],
       summary: asString(finding.summary, `${label}.summary`, 500),
       evidence: asString(finding.evidence, `${label}.evidence`, 2_000),
     };
