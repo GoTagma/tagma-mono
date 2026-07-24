@@ -48,6 +48,7 @@ const customProviderRequests: Array<{ method: string; workspace: string }> = [];
 const restartRequests: string[] = [];
 const promptAsyncRequests: string[] = [];
 const promptAsyncBodies: Array<Record<string, unknown>> = [];
+const promptAsyncHeaders: Headers[] = [];
 const sessionDeleteRequests: string[] = [];
 const sessionCreateRequests: Array<{ url: string; body: Record<string, unknown> }> = [];
 const sessionUpdateRequests: Array<{ url: string; body: Record<string, unknown> }> = [];
@@ -217,8 +218,35 @@ beforeAll(() => {
     }
     if (
       url === '/api/workspace/yaml-edit-lock' &&
+      method === 'POST' &&
+      headerValue(init?.headers, 'X-Tagma-Workspace') === 'C:/staged-prompt-repo'
+    ) {
+      const workspace = headerValue(init?.headers, 'X-Tagma-Workspace') ?? '__default__';
+      return Promise.resolve(
+        jsonResponse({
+          lock: {
+            id: 'staged-prompt-test-lock',
+            owner: 'chat',
+            reason: 'OpenCode is updating pipeline YAML',
+            acquiredAt: Date.now(),
+            expiresAt: Date.now() + 60_000,
+            yamlPath: `${workspace}/.tagma/sample/sample.yaml`,
+            workspace,
+          },
+        }),
+      );
+    }
+    if (
+      url === '/api/workspace/yaml-edit-lock' &&
       method === 'DELETE' &&
       headerValue(init?.headers, 'X-Tagma-Workspace') === 'C:/previous-reconcile-repo'
+    ) {
+      return Promise.resolve(jsonResponse({ ok: true, released: true }));
+    }
+    if (
+      url === '/api/workspace/yaml-edit-lock' &&
+      method === 'DELETE' &&
+      headerValue(init?.headers, 'X-Tagma-Workspace') === 'C:/staged-prompt-repo'
     ) {
       return Promise.resolve(jsonResponse({ ok: true, released: true }));
     }
@@ -240,6 +268,46 @@ beforeAll(() => {
           activeRelativePath: null,
           activeStagedPath: null,
           entries: [],
+        }),
+      );
+    }
+    if (
+      url === '/api/workspace/chat-yaml-stage/start' &&
+      method === 'POST' &&
+      headerValue(init?.headers, 'X-Tagma-Workspace') === 'C:/staged-prompt-repo'
+    ) {
+      const workspace = headerValue(init?.headers, 'X-Tagma-Workspace') ?? 'C:/staged-prompt-repo';
+      const rootDir = `${workspace}/.tagma/.chat-staging/staged-prompt-test-stage`;
+      const agentWorkspaceDir = `${rootDir}/agent-workspace`;
+      const agentTagmaDir = `${agentWorkspaceDir}/.tagma`;
+      const sourcePath = `${workspace}/.tagma/sample/sample.yaml`;
+      const stagedPath = `${agentTagmaDir}/sample/sample.yaml`;
+      return Promise.resolve(
+        jsonResponse({
+          id: 'staged-prompt-test-stage',
+          rootDir,
+          baseWorkspaceDir: `${rootDir}/base-workspace`,
+          agentWorkspaceDir,
+          agentTagmaDir,
+          activeRelativePath: 'sample/sample.yaml',
+          activeStagedPath: stagedPath,
+          entries: [
+            {
+              name: 'sample.yaml',
+              path: sourcePath,
+              stagedPath,
+              relativePath: 'sample/sample.yaml',
+              sourcePath,
+              pipelineName: 'Sample',
+              contentHash: 'source-hash',
+              layoutHash: null,
+              layoutMtimeMs: null,
+              layoutSize: null,
+              requirementsHash: null,
+              mtimeMs: 1,
+              size: 1,
+            },
+          ],
         }),
       );
     }
@@ -353,6 +421,7 @@ beforeAll(() => {
       const body = await jsonRequestBody(request, init);
       promptAsyncRequests.push(url);
       promptAsyncBodies.push(body);
+      promptAsyncHeaders.push(new Headers(init?.headers ?? request?.headers));
       return Promise.resolve(jsonResponse({ ok: true }));
     }
     if (url === 'http://opencode.test/session/existing/message') {
@@ -559,6 +628,7 @@ afterEach(() => {
   restartRequests.length = 0;
   promptAsyncRequests.length = 0;
   promptAsyncBodies.length = 0;
+  promptAsyncHeaders.length = 0;
   sessionDeleteRequests.length = 0;
   sessionCreateRequests.length = 0;
   sessionUpdateRequests.length = 0;
@@ -1293,6 +1363,59 @@ describe('chat model persistence', () => {
 
     expect(promptAsyncRequests).toEqual([`${baseUrl}/session/existing/prompt_async`]);
     expect(promptAsyncBodies[0]?.variant).toBe('max');
+  });
+
+  test('routes a staged chat prompt through the agent staging directory on POST', async () => {
+    const repo = 'C:/staged-prompt-repo';
+    const baseUrl = 'http://opencode-staged-prompt.test';
+    const sourcePath = `${repo}/.tagma/sample/sample.yaml`;
+    const agentTagmaDir =
+      `${repo}/.tagma/.chat-staging/staged-prompt-test-stage/agent-workspace/.tagma`;
+    workspaceBaseUrls.set(repo, baseUrl);
+    setClientWorkspace(repo);
+    usePipelineStore.setState({
+      workDir: repo,
+      yamlPath: sourcePath,
+      manualNewPipelineYamlPath: null,
+      config: {
+        name: 'Sample',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [{ id: 'task', name: 'Task', command: 'echo sample' }],
+          },
+        ],
+      },
+      positions: new Map(),
+      folders: [],
+      trackHeights: new Map(),
+      isDirty: false,
+      layoutDirty: false,
+      registry: { drivers: [], triggers: [], completions: [], middlewares: [] },
+    } as never);
+    useChatStore.setState({
+      model: { providerID: 'anthropic', modelID: 'claude' },
+      agent: 'tagma-router',
+      currentSessionId: 'existing',
+    } as never);
+
+    try {
+      await useChatStore.getState().send('update the current pipeline');
+
+      expect(promptAsyncRequests).toHaveLength(1);
+      expect(new URL(promptAsyncRequests[0]!).searchParams.get('directory')).toBe(agentTagmaDir);
+      expect(
+        decodeURIComponent(promptAsyncHeaders[0]?.get('x-opencode-directory') ?? ''),
+      ).toBe(agentTagmaDir);
+    } finally {
+      await releaseChatYamlEditLock();
+      usePipelineStore.setState({
+        workDir: null,
+        yamlPath: null,
+        manualNewPipelineYamlPath: null,
+      } as never);
+    }
   });
 
   test('injects the previous same-session YAML reconcile after clearing its result bubble', async () => {
