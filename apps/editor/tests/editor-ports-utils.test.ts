@@ -323,8 +323,17 @@ describe('computeSyncedInputs', () => {
       name: 'city',
       type: 'string',
       description: 'Target city',
-      from: 'outputs.city',
+      from: 'up.city',
     });
+  });
+
+  test('upgrades a legacy loose auto source to the concrete upstream producer', () => {
+    const existing: PortDef[] = [
+      { name: 'city', type: 'string', required: true, from: 'outputs.city' },
+    ];
+    const out = computeSyncedInputs(existing, [cand('t.up', 'city')])!;
+
+    expect(out[0]!.from).toBe('up.city');
   });
 
   test('default-imports as required: true', () => {

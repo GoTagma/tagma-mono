@@ -385,4 +385,74 @@ describe('extractSuccessfulOutputs', () => {
     expect(extracted.bindingDiagnostic).toBeNull();
     expect(extracted.portDiagnostic).toBeNull();
   });
+
+  test('does not require upstream command inputs to be repeated as prompt outputs', () => {
+    const config: PipelineConfig = {
+      name: 'p',
+      tracks: [
+        {
+          id: 't',
+          name: 'T',
+          tasks: [
+            {
+              id: 'source',
+              name: 'Source',
+              command: 'echo',
+              outputs: {
+                inventory_path: { type: 'string' },
+                file_count: { type: 'number' },
+                skipped_count: { type: 'number' },
+              },
+            },
+            {
+              id: 'prompt',
+              name: 'Prompt',
+              prompt: 'count={{inputs.file_count}}',
+              depends_on: ['source'],
+              inputs: {
+                file_count: {
+                  from: 't.source.outputs.file_count',
+                  type: 'number',
+                  required: true,
+                },
+              },
+              outputs: { report_path: { type: 'string' } },
+            },
+            {
+              id: 'down',
+              name: 'Down',
+              command: 'echo',
+              depends_on: ['prompt', 'source'],
+              inputs: {
+                report_path: {
+                  from: 't.prompt.outputs.report_path',
+                  type: 'string',
+                  required: true,
+                },
+                file_count: {
+                  from: 't.source.outputs.file_count',
+                  type: 'number',
+                  required: true,
+                },
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const ctx = makeContext(config);
+    const inferred = inferEffectivePorts(ctx, 't.prompt');
+    expect(inferred.kind).toBe('ready');
+    if (inferred.kind !== 'ready') return;
+    const node = ctx.dag.nodes.get('t.prompt')!;
+    const extracted = extractSuccessfulOutputs({
+      task: node.task,
+      effectivePorts: inferred.effectivePorts,
+      result: result('{"report_path":"output/report.md"}'),
+    });
+
+    expect(extracted.outputs).toEqual({ report_path: 'output/report.md' });
+    expect(extracted.bindingDiagnostic).toBeNull();
+    expect(extracted.portDiagnostic).toBeNull();
+  });
 });
