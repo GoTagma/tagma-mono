@@ -1,31 +1,71 @@
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
 
-const TRIAL_PLAN_VERSION = 1;
-const MAX_PLAN_BYTES = 256 * 1024;
-const MAX_CASES = 8;
-const MAX_FIXTURES_PER_CASE = 24;
-const MAX_EXPECTATIONS_PER_CASE = 32;
-const MAX_FIXTURE_BYTES = 64 * 1024;
-const MAX_TOTAL_FIXTURE_BYTES = 256 * 1024;
-const MAX_TEXT_EXPECTATION_BYTES = 16 * 1024;
+export const CHAT_PIPELINE_TRIAL_PLAN_CONTRACT = {
+  version: 1,
+  limits: {
+    planBytes: 256 * 1024,
+    cases: 8,
+    fixturesPerCase: 24,
+    expectationsPerCase: 32,
+    fixtureBytes: 64 * 1024,
+    totalFixtureBytes: 256 * 1024,
+    textExpectationBytes: 16 * 1024,
+    findings: 16,
+    goals: 16,
+    runs: 3,
+  },
+  coverageDimensions: [
+    'multiple-inputs',
+    'duplicate-input-names',
+    'multiline-content',
+    'output-collision',
+    'repeat-run',
+    'empty-content',
+    'special-characters',
+  ],
+  coverageStatuses: ['covered', 'not-applicable', 'blocked'],
+  findingSeverities: ['blocking', 'warning'],
+  expectationTypes: [
+    'path-exists',
+    'path-not-exists',
+    'file-contains',
+    'file-not-contains',
+    'file-equals',
+    'directory-entry-count',
+    'task-status',
+  ],
+  taskStatuses: ['success', 'failed', 'skipped', 'timeout', 'blocked'],
+} as const;
+
+const TRIAL_PLAN_VERSION = CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.version;
+const MAX_PLAN_BYTES = CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.planBytes;
+const MAX_CASES = CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.cases;
+const MAX_FIXTURES_PER_CASE = CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.fixturesPerCase;
+const MAX_EXPECTATIONS_PER_CASE = CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.expectationsPerCase;
+const MAX_FIXTURE_BYTES = CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.fixtureBytes;
+const MAX_TOTAL_FIXTURE_BYTES = CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.totalFixtureBytes;
+const MAX_TEXT_EXPECTATION_BYTES =
+  CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.textExpectationBytes;
 const PLAN_ID_RE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 const QUALIFIED_TASK_ID_RE = /^[A-Za-z_][A-Za-z0-9_-]*\.[A-Za-z_][A-Za-z0-9_-]*$/;
 const WINDOWS_RESERVED_CASE_SEGMENT_RE = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])($|[.])/i;
 
-export const CHAT_PIPELINE_TRIAL_COVERAGE_DIMENSIONS = [
-  'multiple-inputs',
-  'duplicate-input-names',
-  'multiline-content',
-  'output-collision',
-  'repeat-run',
-  'empty-content',
-  'special-characters',
-] as const;
+export const CHAT_PIPELINE_TRIAL_COVERAGE_DIMENSIONS =
+  CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.coverageDimensions;
+export const CHAT_PIPELINE_TRIAL_COVERAGE_STATUSES =
+  CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.coverageStatuses;
+export const CHAT_PIPELINE_TRIAL_FINDING_SEVERITIES =
+  CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.findingSeverities;
+export const CHAT_PIPELINE_TRIAL_EXPECTATION_TYPES =
+  CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.expectationTypes;
+export const CHAT_PIPELINE_TRIAL_TASK_STATUSES =
+  CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.taskStatuses;
 
 export type ChatPipelineTrialCoverageDimension =
   (typeof CHAT_PIPELINE_TRIAL_COVERAGE_DIMENSIONS)[number];
-export type ChatPipelineTrialCoverageStatus = 'covered' | 'not-applicable' | 'blocked';
+export type ChatPipelineTrialCoverageStatus =
+  (typeof CHAT_PIPELINE_TRIAL_COVERAGE_STATUSES)[number];
 
 export interface ChatPipelineTrialPlanCoverage {
   dimension: ChatPipelineTrialCoverageDimension;
@@ -213,7 +253,7 @@ function parseExpectation(value: unknown, label: string): ChatPipelineTrialExpec
       throw new Error(`${label}.taskId must be a qualified track.task id.`);
     }
     const status = asString(raw.status, `${label}.status`, 32);
-    if (!['success', 'failed', 'skipped', 'timeout', 'blocked'].includes(status)) {
+    if (!CHAT_PIPELINE_TRIAL_TASK_STATUSES.includes(status as never)) {
       throw new Error(`${label}.status is invalid.`);
     }
     return {
@@ -402,7 +442,7 @@ export function parseChatPipelineTrialPlan(value: unknown): ChatPipelineTrialPla
       throw new Error(`${label}.dimension is unsupported.`);
     }
     const status = asString(entry.status, `${label}.status`, 32);
-    if (!['covered', 'not-applicable', 'blocked'].includes(status)) {
+    if (!CHAT_PIPELINE_TRIAL_COVERAGE_STATUSES.includes(status as never)) {
       throw new Error(`${label}.status is invalid.`);
     }
     const linkedCaseIds = asArray(entry.caseIds ?? [], `${label}.caseIds`, MAX_CASES).map(
@@ -432,12 +472,16 @@ export function parseChatPipelineTrialPlan(value: unknown): ChatPipelineTrialPla
   }
   validateCoveredCaseEvidence(coverage, cases);
 
-  const findings = asArray(raw.findings ?? [], 'trial plan findings', 16).map(
+  const findings = asArray(
+    raw.findings ?? [],
+    'trial plan findings',
+    CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.findings,
+  ).map(
     (item, index): ChatPipelineTrialPlanFinding => {
       const label = `findings[${index}]`;
       const finding = asRecord(item, label);
       const severity = asString(finding.severity, `${label}.severity`, 32);
-      if (severity !== 'blocking' && severity !== 'warning') {
+      if (!CHAT_PIPELINE_TRIAL_FINDING_SEVERITIES.includes(severity as never)) {
         throw new Error(`${label}.severity is invalid.`);
       }
       return {

@@ -14,6 +14,10 @@ describe('Editor Settings OpenCode Chat trial-run controls', () => {
     expect(source).toContain('Automatic repair attempts:');
     expect(source).toContain('value={settings.opencodeChatPipelineRepairMaxAttempts}');
     expect(source).toContain("updateField('opencodeChatPipelineRepairMaxAttempts', clamped)");
+    expect(source).toContain('does not run the pipeline this many times');
+    expect(source).toContain(
+      'Trial-plan authoring is separately limited to two attempts per YAML revision.',
+    );
 
     const toggleIndex = source.indexOf('checked={settings.opencodeChatTrialRunEnabled}');
     const repairLimitIndex = source.indexOf(

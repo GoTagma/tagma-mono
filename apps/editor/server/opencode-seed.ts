@@ -5,6 +5,9 @@ import {
   clampOpencodeAgentMaxSteps,
 } from '../shared/opencode-agent-step-limit.js';
 
+import { buildTagmaTrialPlanTool } from './opencode-trial-plan-tool.js';
+
+export { buildTagmaTrialPlanTool };
 /**
  * Editor-shipped opencode artifacts.
  *
@@ -1396,7 +1399,7 @@ export default tool({
 `;
 }
 
-export function buildTagmaTrialPlanTool(): string {
+export function buildLegacyTagmaTrialPlanTool(): string {
   return `import { createHash, randomUUID } from "node:crypto";
 import { lstatSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, relative, resolve } from "node:path";

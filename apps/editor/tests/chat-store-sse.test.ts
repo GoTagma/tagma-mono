@@ -234,6 +234,9 @@ test('trial planning prompt forces behavior-first edge-case design without autho
   expect(prompt).toContain('Targeted trial planning attempt 1/2.');
   expect(prompt).toContain('Do not edit YAML');
   expect(prompt).toContain('Call tagma_trial_plan exactly once');
+  expect(prompt).toContain('Pass the exact staged Target YAML path');
+  expect(prompt).toContain('Never copy YAML or plan files');
+  expect(prompt).toContain('tool validates the complete plan before writing');
   expect(prompt).toContain('same-basename inputs in different folders');
   expect(prompt).toContain('multi-paragraph text with a blank line');
   expect(prompt).toContain('Assert distinct outputs');
