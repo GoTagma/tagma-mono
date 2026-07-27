@@ -13,16 +13,29 @@ import type { WorkspaceState } from './workspace-state.js';
 const TRIAL_HOST_WITNESS_VERSION = 1;
 const MAX_WORKSPACE_WITNESS_FILES = 4_000;
 const MAX_WORKSPACE_WITNESS_BYTES = 64 * 1024 * 1024;
-const MAX_FILE_HASH_BYTES = 32 * 1024 * 1024;
+const MAX_FILE_HASH_BYTES = MAX_WORKSPACE_WITNESS_BYTES;
 const MAX_BINARY_HASH_BYTES = 64 * 1024 * 1024;
 const SKIPPED_TAGMA_WITNESS_DIRS = new Set([
   '.chat-staging',
   'logs',
   '.usage',
   '.opencode-runtime',
-  'plugin-runtime',
-  '.python-agent',
 ]);
+const TRIAL_MINIMAL_ENV_KEYS = [
+  'PATH',
+  'Path',
+  'HOME',
+  'USER',
+  'USERNAME',
+  'SHELL',
+  'TMPDIR',
+  'TEMP',
+  'TMP',
+  'SystemRoot',
+  'WINDIR',
+  'COMSPEC',
+  'PATHEXT',
+] as const;
 
 interface TrialRequirementWitnessConfig {
   binaryNames: string[];
@@ -63,6 +76,7 @@ export interface TrialHostWitness {
   version: typeof TRIAL_HOST_WITNESS_VERSION;
   workspace: TrialHostWorkspaceWitness;
   binaries: TrialHostBinaryWitness[];
+  minimalEnv: TrialWitnessValueHash[];
   requiredEnv: TrialWitnessValueHash[];
   secrets: TrialWitnessValueHash[];
   python: TrialHostPythonWitness | null;
@@ -86,7 +100,6 @@ function compareNames(left: { name: string }, right: { name: string }): number {
 }
 
 function shouldSkipWorkspaceWitnessDir(relativePath: string, name: string): boolean {
-  if (name === '.git' || name === '.hg' || name === '.svn' || name === 'node_modules') return true;
   const segments = relativePath.split('/').filter(Boolean);
   if (segments[0] !== '.tagma') return false;
   if (segments.length < 2) return false;
@@ -140,7 +153,12 @@ function fileIdentity(path: string, maxHashBytes: number): TrialWitnessFileIdent
     path: resolvedPath,
     size: stat.size,
     mtimeMs: stat.mtimeMs,
-    sha256: stat.size <= maxHashBytes ? sha256(readFileSync(resolvedPath)) : null,
+    sha256: (() => {
+      if (stat.size > maxHashBytes) {
+        throw new Error(`Witness file exceeds ${maxHashBytes} bytes: ${resolvedPath}`);
+      }
+      return sha256(readFileSync(resolvedPath));
+    })(),
   };
 }
 
@@ -176,10 +194,8 @@ function workspaceWitness(workDir: string): TrialHostWorkspaceWitness {
       if (totalBytes > MAX_WORKSPACE_WITNESS_BYTES) {
         throw new Error(`Workspace witness exceeds ${MAX_WORKSPACE_WITNESS_BYTES} bytes.`);
       }
-      const contentHash = stat.size <= MAX_FILE_HASH_BYTES ? sha256(readFileSync(absolutePath)) : null;
-      hash.update(
-        `file\0${relativePath}\0${stat.size}\0${contentHash ?? `mtime:${stat.mtimeMs}`}\0`,
-      );
+      const contentHash = sha256(readFileSync(absolutePath));
+      hash.update(`file\0${relativePath}\0${stat.size}\0${contentHash}\0`);
     }
   };
   visit(resolvedRoot, '');
@@ -243,6 +259,18 @@ function hashedValues(entries: Iterable<readonly [string, string]>): TrialWitnes
     .map(([name, value]) => ({ name, sha256: sha256(value) }));
 }
 
+function minimalEnvWitnessEntries(
+  secretEnv: Readonly<Record<string, string>>,
+  pythonEnv: Readonly<Record<string, string>>,
+): TrialWitnessValueHash[] {
+  const entries: Array<readonly [string, string]> = [];
+  for (const key of TRIAL_MINIMAL_ENV_KEYS) {
+    const value = resolveExecutionEnvValue(key, secretEnv, pythonEnv);
+    if (value !== null) entries.push([key, value] as const);
+  }
+  return hashedValues(entries);
+}
+
 function pythonWitness(
   pythonEnv: Readonly<Record<string, string>>,
 ): TrialHostPythonWitness | null {
@@ -298,6 +326,7 @@ export function captureTrialHostWitness(
     version: TRIAL_HOST_WITNESS_VERSION,
     workspace: workspaceWitness(ws.workDir),
     binaries: binaryWitnesses(prepared.binaryNames, prepared.pythonEnv),
+    minimalEnv: minimalEnvWitnessEntries(prepared.secretEnv, prepared.pythonEnv),
     requiredEnv: hashedValues(requiredEnvEntries),
     secrets: hashedValues(Object.entries(prepared.secretEnv)),
     python: pythonWitness(prepared.pythonEnv),

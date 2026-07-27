@@ -725,7 +725,7 @@ function buildCasePromptContexts(
 ): Record<string, Array<{ label: string; content: string }>> {
   const fixturePaths = testCase.fixtures.map((fixture) => fixture.path).join(', ') || 'none';
   const content = [
-    `Case: ${testCase.id} 闂?${testCase.title}`,
+    `Case: ${testCase.id} — ${testCase.title}`,
     `Objective: ${testCase.objective}`,
     `Isolated workspace: ${workDir}`,
     `Fixture paths: ${fixturePaths}`,
@@ -930,7 +930,7 @@ function buildPlannedTrialSummary(
   ];
   for (const testCase of cases) {
     lines.push(
-      `Case ${testCase.id}: ${testCase.success ? 'passed' : 'failed'} 闂?${testCase.objective}`,
+      `Case ${testCase.id}: ${testCase.success ? 'passed' : 'failed'} — ${testCase.objective}`,
     );
     for (const expectation of testCase.expectations) {
       if (!expectation.passed) lines.push(`  ${expectation.type}: ${expectation.detail}`);
@@ -1237,7 +1237,18 @@ export async function trialRunChatYamlStage(
           result = resultForAborted(result, startedAt);
         }
         if (result.kind !== 'aborted' && result.success) {
-          const postWitness = safeCaptureTrialHostWitness(ws, prepared.prepared!);
+          const postPrepared = safePrepareTrialHostWitnessInputs(ws, {
+            relativePath: entry.relativePath,
+            sourcePath: entry.sourcePath,
+            stagedYamlPath: entry.stagedPath,
+          });
+          if (!postPrepared.prepared) {
+            return resultForHostWitnessFailure(
+              result,
+              postPrepared.reason ?? 'unknown witness setup failure',
+            );
+          }
+          const postWitness = safeCaptureTrialHostWitness(ws, postPrepared.prepared);
           if (!postWitness.witness) {
             return resultForHostWitnessFailure(result, postWitness.reason ?? 'unknown witness failure');
           }
