@@ -6,13 +6,15 @@ import {
   lstatSync,
   openSync,
   readFileSync,
+  readlinkSync,
   readSync,
   readdirSync,
+  realpathSync,
   statSync,
 } from 'node:fs';
 
 import type { Stats } from 'node:fs';
-import { extname, join, resolve } from 'node:path';
+import { extname, join, relative, resolve } from 'node:path';
 
 import { errorMessage, isPathWithin } from './path-utils.js';
 import { requirementsPath, parseRequirementsMd } from './requirements-sync.js';
@@ -115,9 +117,19 @@ interface TrialHostWorkspaceFileMetadata {
   ino: number;
 }
 
-interface TrialHostWorkspaceManifestEntry extends TrialHostWorkspaceFileMetadata {
+interface TrialHostWorkspaceFileManifestEntry extends TrialHostWorkspaceFileMetadata {
+  kind: 'file';
   sha256: string;
 }
+
+interface TrialHostWorkspaceSymlinkManifestEntry extends TrialHostWorkspaceFileMetadata {
+  kind: 'symlink';
+  rawTargetSize: number;
+  rawTargetSha256: string;
+}
+
+type TrialHostWorkspaceManifestEntry =
+  TrialHostWorkspaceFileManifestEntry | TrialHostWorkspaceSymlinkManifestEntry;
 
 interface TrialHostWorkspaceManifestCache {
   root: string;
@@ -270,14 +282,14 @@ function fileIdentity(path: string): TrialWitnessFileIdentity {
 
 function workspaceWitness(ws: WorkspaceState): TrialHostWorkspaceWitness {
   if (!ws.workDir) throw new Error('Workspace directory is not set.');
-  const resolvedRoot = resolve(ws.workDir);
+  const resolvedRoot = realpathSync.native(resolve(ws.workDir));
   const existingCache = workspaceManifestCaches.get(ws);
   const previousEntries =
     existingCache?.root === resolvedRoot
       ? existingCache.entries
       : new Map<string, TrialHostWorkspaceManifestEntry>();
   const nextEntries = new Map<string, TrialHostWorkspaceManifestEntry>();
-  const fileHashBuffer = Buffer.allocUnsafe(FILE_HASH_BUFFER_BYTES);
+  let fileHashBuffer: Buffer | undefined;
   const hash = createHash('sha256');
   const stats: TrialHostWorkspaceManifestCacheStats = {
     fileCount: 0,
@@ -291,12 +303,66 @@ function workspaceWitness(ws: WorkspaceState): TrialHostWorkspaceWitness {
     for (const entry of entries) {
       const absolutePath = join(directory, entry.name);
       const relativePath = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
-      if (!isPathWithin(absolutePath, resolvedRoot)) {
-        throw new Error(`Workspace witness path escaped the workspace: ${absolutePath}`);
-      }
       const stat = lstatSync(absolutePath);
       if (stat.isSymbolicLink()) {
-        throw new Error(`Workspace witness does not allow symlinks: ${relativePath}`);
+        let canonicalTarget: string;
+        try {
+          canonicalTarget = realpathSync.native(absolutePath);
+        } catch {
+          throw new Error(`Workspace witness symlink target is unavailable: ${relativePath}`);
+        }
+        if (!isPathWithin(canonicalTarget, resolvedRoot)) {
+          throw new Error(
+            `Workspace witness symlink target is outside the workspace: ${relativePath}`,
+          );
+        }
+        const canonicalTargetRelative = relative(resolvedRoot, canonicalTarget).replaceAll(
+          '\\',
+          '/',
+        );
+        if (shouldSkipWorkspaceWitnessDir(canonicalTargetRelative, '')) {
+          throw new Error(
+            `Workspace witness symlink points into an excluded workspace path: ${relativePath}`,
+          );
+        }
+        const targetStat = lstatSync(canonicalTarget);
+        if (!targetStat.isFile() && !targetStat.isDirectory()) {
+          throw new Error(
+            `Workspace witness symlink target is not a regular path: ${relativePath}`,
+          );
+        }
+
+        const metadata = fileMetadata(stat);
+        const cached = previousEntries.get(relativePath);
+        let rawTargetSize: number;
+        let rawTargetSha256: string;
+        if (cached?.kind === 'symlink' && sameFileMetadata(cached, metadata)) {
+          stats.reusedFileCount += 1;
+          rawTargetSize = cached.rawTargetSize;
+          rawTargetSha256 = cached.rawTargetSha256;
+        } else {
+          const rawTarget = readlinkSync(absolutePath, { encoding: 'buffer' });
+          stats.hashedFileCount += 1;
+          stats.hashedBytes += rawTarget.byteLength;
+          rawTargetSize = rawTarget.byteLength;
+          rawTargetSha256 = sha256(rawTarget);
+        }
+        const canonicalTargetBytes = Buffer.from(canonicalTarget, 'utf-8');
+        stats.fileCount += 1;
+        stats.totalBytes += rawTargetSize;
+        nextEntries.set(relativePath, {
+          ...metadata,
+          kind: 'symlink',
+          rawTargetSize,
+          rawTargetSha256,
+        });
+        hash.update(
+          `symlink\0${relativePath}\0${rawTargetSize}\0${rawTargetSha256}\0${canonicalTargetBytes.byteLength}\0${sha256(canonicalTargetBytes)}\0`,
+        );
+        continue;
+      }
+      if (!isPathWithin(absolutePath, resolvedRoot)) {
+        throw new Error(`Workspace witness path escaped the workspace: ${absolutePath}`);
       }
       if (stat.isDirectory()) {
         if (shouldSkipWorkspaceWitnessDir(relativePath, entry.name)) continue;
@@ -309,7 +375,7 @@ function workspaceWitness(ws: WorkspaceState): TrialHostWorkspaceWitness {
       const metadata = fileMetadata(stat);
       const cached = previousEntries.get(relativePath);
       const contentHash =
-        cached && sameFileMetadata(cached, metadata)
+        cached?.kind === 'file' && sameFileMetadata(cached, metadata)
           ? (() => {
               stats.reusedFileCount += 1;
               return cached.sha256;
@@ -317,11 +383,16 @@ function workspaceWitness(ws: WorkspaceState): TrialHostWorkspaceWitness {
           : (() => {
               stats.hashedFileCount += 1;
               stats.hashedBytes += stat.size;
-              return streamFileSha256(absolutePath, stat, true, fileHashBuffer);
+              return streamFileSha256(
+                absolutePath,
+                stat,
+                true,
+                (fileHashBuffer ??= Buffer.allocUnsafe(FILE_HASH_BUFFER_BYTES)),
+              );
             })();
       stats.fileCount += 1;
       stats.totalBytes += stat.size;
-      nextEntries.set(relativePath, { ...metadata, sha256: contentHash });
+      nextEntries.set(relativePath, { ...metadata, kind: 'file', sha256: contentHash });
       hash.update(`file\0${relativePath}\0${stat.size}\0${contentHash}\0`);
     }
   };

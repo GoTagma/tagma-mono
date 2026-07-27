@@ -40,6 +40,7 @@ import {
 import {
   safeCaptureTrialHostWitness,
   safePrepareTrialHostWitnessInputs,
+  type PreparedTrialHostWitnessInputs,
   type TrialHostWitness,
 } from './chat-pipeline-trial-witness.js';
 import { buildPythonAgentRunEnv, pythonAgentVenvBinDir } from './python-agent.js';
@@ -747,6 +748,16 @@ interface RunTrialPipelineInput {
   testCase?: ChatPipelineTrialPlanCase;
 }
 
+function captureTrialWorkspaceDigest(
+  ws: WorkspaceState,
+  prepared: PreparedTrialHostWitnessInputs,
+): { digest: string | null; reason: string | null } {
+  const captured = safeCaptureTrialHostWitness(ws, prepared);
+  return {
+    digest: captured.witness?.workspace.digest ?? null,
+    reason: captured.reason,
+  };
+}
 function resultForHostWitnessFailure(
   result: ChatPipelineTrialRunResult,
   reason: string,
@@ -938,6 +949,7 @@ async function executeTrial(
   entry: ReturnType<typeof listChatYamlStage>['entries'][number],
   snapshot: TrialPipelineSnapshot,
   plan: ChatPipelineTrialPlan,
+  hostWitnessInputs: PreparedTrialHostWitnessInputs,
   controller: AbortController,
   abortState: { timedOut: boolean },
 ): Promise<ChatPipelineTrialRunResult> {
@@ -1061,8 +1073,28 @@ async function executeTrial(
     const baselineEvidence = trialTaskResults(baseline, null, 1);
     const cases: ChatPipelineTrialCaseResult[] = [];
     let totalTaskCount = baselineEvidence.totalTaskCount;
+    const baselineWorkspace = captureTrialWorkspaceDigest(ws, hostWitnessInputs);
+    let expectedWorkspaceDigest = baselineWorkspace.digest;
+    let pendingWorkspaceWitnessFailure = baselineWorkspace.digest
+      ? null
+      : `Could not seal the real workspace after baseline: ${baselineWorkspace.reason ?? 'unknown witness failure'}.`;
     for (const testCase of plan.cases) {
       if (controller.signal.aborted) break;
+      const workspaceFailures: string[] = [];
+      if (pendingWorkspaceWitnessFailure) {
+        workspaceFailures.push(pendingWorkspaceWitnessFailure);
+        pendingWorkspaceWitnessFailure = null;
+      }
+      const beforeCase = captureTrialWorkspaceDigest(ws, hostWitnessInputs);
+      if (!beforeCase.digest) {
+        workspaceFailures.push(
+          `Could not capture the real workspace before case ${testCase.id}: ${beforeCase.reason ?? 'unknown witness failure'}.`,
+        );
+      } else if (expectedWorkspaceDigest && beforeCase.digest !== expectedWorkspaceDigest) {
+        workspaceFailures.push(
+          `The real workspace changed between baseline/cases before case ${testCase.id}.`,
+        );
+      }
       const caseExecution = await executeTargetedTrialCase({
         ws,
         pipelineConfig,
@@ -1078,7 +1110,33 @@ async function executeTrial(
         testCase,
         targetTaskIds: targetTaskIdsByCase.get(testCase.id),
       });
-      cases.push(caseExecution.result);
+      const afterCase = captureTrialWorkspaceDigest(ws, hostWitnessInputs);
+      if (!afterCase.digest) {
+        workspaceFailures.push(
+          `Could not capture the real workspace after case ${testCase.id}: ${afterCase.reason ?? 'unknown witness failure'}.`,
+        );
+      } else if (beforeCase.digest && afterCase.digest !== beforeCase.digest) {
+        workspaceFailures.push(
+          `Isolated case ${testCase.id} modified the real workspace; case fixtures and outputs must remain isolated.`,
+        );
+      }
+      expectedWorkspaceDigest = afterCase.digest ?? beforeCase.digest ?? expectedWorkspaceDigest;
+      const caseResult =
+        workspaceFailures.length === 0
+          ? caseExecution.result
+          : {
+              ...caseExecution.result,
+              success: false,
+              expectations: [
+                ...caseExecution.result.expectations,
+                ...workspaceFailures.map((detail) => ({
+                  type: 'case-execution' as const,
+                  passed: false,
+                  detail: boundedTrialText(detail),
+                })),
+              ],
+            };
+      cases.push(caseResult);
       totalTaskCount += caseExecution.totalTaskCount;
     }
     const success =
@@ -1195,7 +1253,8 @@ export async function trialRunChatYamlStage(
         startedAt,
       );
     }
-    const currentWitness = safeCaptureTrialHostWitness(ws, prepared.prepared);
+    const hostWitnessInputs = prepared.prepared;
+    const currentWitness = safeCaptureTrialHostWitness(ws, hostWitnessInputs);
     if (!currentWitness.witness) {
       return resultForSetupFailure(
         'setup-failed',
@@ -1253,6 +1312,7 @@ export async function trialRunChatYamlStage(
           entry,
           executionSnapshot,
           planRead.plan,
+          hostWitnessInputs,
           controller,
           abortState,
         );

@@ -789,6 +789,87 @@ describe('chat YAML staging routes', () => {
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });
+  test('fails an isolated case that writes a persistent artifact into the real workspace', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    const leakedPath = join(ws.workDir, 'case-leaked-into-real-workspace.txt');
+    const script = [
+      "const fs = require('node:fs');",
+      `if (process.env.TAGMA_TRIAL_CASE_ID) fs.writeFileSync(${JSON.stringify(leakedPath)}, 'leak');`,
+    ].join(' ');
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Case Workspace Leak Guard',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [{ id: 'probe', command: { argv: [process.execPath, '-e', script] } }],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
+    writeTrialPlan(entry.stagedPath, {
+      cases: [
+        {
+          id: 'leak-probe',
+          title: 'Attempt an absolute real-workspace write',
+          objective: 'Reject persistent writes escaping the isolated case workspace.',
+          runs: 1,
+          targetTaskIds: ['main.probe'],
+          fixtures: [],
+          expectations: [{ type: 'task-status', taskId: 'main.probe', status: 'success' }],
+        },
+      ],
+    });
+
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'case_workspace_leak' },
+        'chat-lock',
+      ),
+      trialRes,
+    );
+
+    expect(trialRes.body).toMatchObject({
+      success: false,
+      kind: 'failed',
+      cases: [
+        {
+          id: 'leak-probe',
+          success: false,
+          expectations: [
+            { type: 'task-status', passed: true },
+            {
+              type: 'case-execution',
+              passed: false,
+              detail: expect.stringContaining('modified the real workspace'),
+            },
+          ],
+        },
+      ],
+    });
+    expect(readFileSync(leakedPath, 'utf-8')).toBe('leak');
+
+    discardStage(getRoute, ws, stage.id);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
   test('forces a numbered copy when trial-run verification is missing while trial-run is enabled', () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();
