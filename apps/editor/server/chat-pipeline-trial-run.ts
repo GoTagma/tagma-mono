@@ -720,7 +720,7 @@ function buildCasePromptContexts(
 ): Record<string, Array<{ label: string; content: string }>> {
   const fixturePaths = testCase.fixtures.map((fixture) => fixture.path).join(', ') || 'none';
   const content = [
-    `Case: ${testCase.id} 鈥?${testCase.title}`,
+    `Case: ${testCase.id} — ${testCase.title}`,
     `Objective: ${testCase.objective}`,
     `Isolated workspace: ${workDir}`,
     `Fixture paths: ${fixturePaths}`,
@@ -925,7 +925,7 @@ function buildPlannedTrialSummary(
   ];
   for (const testCase of cases) {
     lines.push(
-      `Case ${testCase.id}: ${testCase.success ? 'passed' : 'failed'} 鈥?${testCase.objective}`,
+      `Case ${testCase.id}: ${testCase.success ? 'passed' : 'failed'} — ${testCase.objective}`,
     );
     for (const expectation of testCase.expectations) {
       if (!expectation.passed) lines.push(`  ${expectation.type}: ${expectation.detail}`);
@@ -1192,9 +1192,10 @@ export async function trialRunChatYamlStage(
         startedAt,
       );
     }
+    const preWitness = currentWitness.witness;
     const verificationHash = buildChatPipelineTrialVerificationHash({
       inputHash,
-      hostWitnessDigest: currentWitness.witness.digest,
+      hostWitnessDigest: preWitness.digest,
     });
     const inFlightKey = `${cachePath}\0${verificationHash}`;
     const cached = readCachedTrial(cachePath, inputHash, verificationHash);
@@ -1237,28 +1238,34 @@ export async function trialRunChatYamlStage(
         if (abortState.userAborted || (controller.signal.aborted && !abortState.timedOut)) {
           result = resultForAborted(result, startedAt);
         }
-        if (result.kind !== 'aborted' && result.success) {
+        if (result.kind !== 'aborted') {
           const postPrepared = safePrepareTrialHostWitnessInputs(ws, {
             relativePath: entry.relativePath,
             sourcePath: entry.sourcePath,
             stagedYamlPath: entry.stagedPath,
           });
           if (!postPrepared.prepared) {
-            return resultForHostWitnessFailure(
-              result,
-              postPrepared.reason ?? 'unknown witness setup failure',
-            );
+            if (result.success) {
+              return resultForHostWitnessFailure(
+                result,
+                postPrepared.reason ?? 'unknown witness setup failure',
+              );
+            }
+            return result;
           }
           const postWitness = safeCaptureTrialHostWitness(ws, postPrepared.prepared);
           if (!postWitness.witness) {
-            return resultForHostWitnessFailure(
-              result,
-              postWitness.reason ?? 'unknown witness failure',
-            );
+            if (result.success) {
+              return resultForHostWitnessFailure(
+                result,
+                postWitness.reason ?? 'unknown witness failure',
+              );
+            }
+            return result;
           }
           if (
-            currentWitness.witness.prerequisiteDigest !==
-            postWitness.witness.prerequisiteDigest
+            result.success &&
+            preWitness.prerequisiteDigest !== postWitness.witness.prerequisiteDigest
           ) {
             return resultForHostWitnessFailure(
               result,

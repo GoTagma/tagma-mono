@@ -15,12 +15,7 @@ const MAX_WORKSPACE_WITNESS_FILES = 4_000;
 const MAX_WORKSPACE_WITNESS_BYTES = 64 * 1024 * 1024;
 const MAX_FILE_HASH_BYTES = MAX_WORKSPACE_WITNESS_BYTES;
 const MAX_BINARY_HASH_BYTES = 64 * 1024 * 1024;
-const SKIPPED_TAGMA_WITNESS_DIRS = new Set([
-  '.chat-staging',
-  'logs',
-  '.usage',
-  '.opencode-runtime',
-]);
+const SKIPPED_TAGMA_WITNESS_DIRS = new Set(['.chat-staging', 'logs', '.usage']);
 const TRIAL_MINIMAL_ENV_KEYS = [
   'PATH',
   'Path',
@@ -55,7 +50,6 @@ export interface TrialWitnessFileIdentity {
 }
 
 export interface TrialHostWorkspaceWitness {
-  prerequisiteDigest: string;
   digest: string;
   fileCount: number;
   totalBytes: number;
@@ -81,6 +75,7 @@ export interface TrialHostWitness {
   requiredEnv: TrialWitnessValueHash[];
   secrets: TrialWitnessValueHash[];
   python: TrialHostPythonWitness | null;
+  prerequisiteDigest: string;
   digest: string;
 }
 
@@ -118,7 +113,9 @@ function readRequirementsWitnessConfig(stagedYamlPath: string): TrialRequirement
     return { binaryNames: [], requiredEnvNames: [] };
   }
   const binaryNames = Array.isArray(frontmatter.binaries)
-    ? [...new Set(frontmatter.binaries.flatMap((entry) => (entry?.name ? [entry.name] : [])))].sort()
+    ? [
+        ...new Set(frontmatter.binaries.flatMap((entry) => (entry?.name ? [entry.name] : []))),
+      ].sort()
     : [];
   const requiredEnvNames = Array.isArray(frontmatter.env)
     ? [
@@ -223,7 +220,9 @@ function resolveBinaryPath(name: string, env: NodeJS.ProcessEnv): string | null 
     process.platform === 'win32'
       ? (env.Path ?? env.PATH ?? process.env.Path ?? process.env.PATH ?? '')
       : (env.PATH ?? process.env.PATH ?? '');
-  const pathEntries = [...new Set(pathValue.split(process.platform === 'win32' ? ';' : ':').filter(Boolean))];
+  const pathEntries = [
+    ...new Set(pathValue.split(process.platform === 'win32' ? ';' : ':').filter(Boolean)),
+  ];
   const candidates = process.platform === 'win32' ? windowsBinaryCandidates(name, env) : [name];
   for (const directory of pathEntries) {
     for (const candidate of candidates) {
@@ -273,19 +272,22 @@ function minimalEnvWitnessEntries(
 }
 
 function buildTrialHostPrerequisiteDigest(
-  input: Pick<TrialHostWitness, 'version' | 'binaries' | 'minimalEnv' | 'requiredEnv' | 'secrets' | 'python'>,
+  input: Pick<
+    TrialHostWitness,
+    'version' | 'binaries' | 'minimalEnv' | 'requiredEnv' | 'secrets' | 'python'
+  >,
 ): string {
   return sha256(JSON.stringify(input));
 }
 
-function pythonWitness(
-  pythonEnv: Readonly<Record<string, string>>,
-): TrialHostPythonWitness | null {
+function pythonWitness(pythonEnv: Readonly<Record<string, string>>): TrialHostPythonWitness | null {
   if (Object.keys(pythonEnv).length === 0) return null;
   const venvPath = pythonEnv.TAGMA_PYTHON_AGENT_VENV ?? pythonEnv.VIRTUAL_ENV;
   const interpreterPath = pythonEnv.TAGMA_PYTHON_AGENT_PYTHON;
   if (!venvPath || !interpreterPath) {
-    throw new Error('Python witness requires both TAGMA_PYTHON_AGENT_VENV and TAGMA_PYTHON_AGENT_PYTHON.');
+    throw new Error(
+      'Python witness requires both TAGMA_PYTHON_AGENT_VENV and TAGMA_PYTHON_AGENT_PYTHON.',
+    );
   }
   const resolvedVenvPath = resolve(venvPath);
   const interpreter = fileIdentity(interpreterPath, MAX_BINARY_HASH_BYTES);

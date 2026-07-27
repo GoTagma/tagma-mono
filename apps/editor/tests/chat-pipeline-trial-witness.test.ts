@@ -10,6 +10,7 @@ import {
   safeCaptureTrialHostWitness,
   type PreparedTrialHostWitnessInputs,
 } from '../server/chat-pipeline-trial-witness';
+import { hashChatPipelineTrialTree } from '../server/chat-yaml-staging';
 import { WorkspaceState } from '../server/workspace-state';
 
 const roots: string[] = [];
@@ -115,6 +116,109 @@ describe('chat pipeline trial host witness', () => {
     });
     expect(captured.requiredEnv).toEqual([{ name: envName, sha256: sha256(secretValue) }]);
     expect(JSON.stringify(captured)).not.toContain(secretValue);
+  });
+
+  test('hashes requirements execution semantics while ignoring generated metadata', () => {
+    const root = makeRoot('requirements-hash');
+    const yamlPath = join(root, 'pipeline.yaml');
+    const requirementsPath = join(root, 'pipeline.requirements.md');
+    writeFileSync(yamlPath, 'pipeline:\n  name: Requirements Hash\n  tracks: []\n', 'utf-8');
+    const requirements = (generatedAt: string, envName: string) =>
+      [
+        '---',
+        'schemaVersion: 1',
+        'generatedFor: pipeline.yaml',
+        `generatedAt: ${generatedAt}`,
+        'binaries: []',
+        'env:',
+        `  - name: ${envName}`,
+        '    required: true',
+        'services: []',
+        '---',
+        '',
+        '# Runtime requirements',
+        '',
+      ].join('\n');
+
+    writeFileSync(
+      requirementsPath,
+      requirements('2026-07-27T00:00:00.000Z', 'FIRST_REQUIRED_ENV'),
+      'utf-8',
+    );
+    const first = hashChatPipelineTrialTree(root);
+    writeFileSync(
+      requirementsPath,
+      requirements('2026-07-27T00:00:01.000Z', 'FIRST_REQUIRED_ENV'),
+      'utf-8',
+    );
+    const metadataOnly = hashChatPipelineTrialTree(root);
+    expect(metadataOnly).toBe(first);
+
+    writeFileSync(
+      requirementsPath,
+      requirements('2026-07-27T00:00:02.000Z', 'SECOND_REQUIRED_ENV'),
+      'utf-8',
+    );
+    const envChanged = hashChatPipelineTrialTree(root);
+    expect(envChanged).not.toBe(first);
+
+    writeFileSync(
+      requirementsPath,
+      [
+        '---',
+        'schemaVersion: 1',
+        'generatedFor: pipeline.yaml',
+        'generatedAt: 2026-07-27T00:00:03.000Z',
+        'binaries:',
+        '  - name: bun',
+        '    usedBy: [main.task]',
+        'env:',
+        '  - name: SECOND_REQUIRED_ENV',
+        '    required: true',
+        'services: []',
+        '---',
+        '',
+        '# Runtime requirements',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+    const binariesChanged = hashChatPipelineTrialTree(root);
+    expect(binariesChanged).not.toBe(envChanged);
+
+    writeFileSync(
+      requirementsPath,
+      [
+        '---',
+        'schemaVersion: 1',
+        'generatedFor: pipeline.yaml',
+        'generatedAt: 2026-07-27T00:00:04.000Z',
+        'binaries:',
+        '  - name: bun',
+        '    usedBy: [main.task]',
+        'env:',
+        '  - name: SECOND_REQUIRED_ENV',
+        '    required: true',
+        'services: []',
+        '---',
+        '',
+        '# Runtime requirements',
+        '',
+        'Body changed.',
+      ].join('\n'),
+      'utf-8',
+    );
+    expect(hashChatPipelineTrialTree(root)).not.toBe(binariesChanged);
+  });
+
+  test('hashes non-requirements files by raw bytes instead of UTF-8-decoded text', () => {
+    const root = makeRoot('raw-bytes-hash');
+    const helperPath = join(root, 'helper.bin');
+    writeFileSync(helperPath, Buffer.from([0xc3, 0x28]));
+    const first = hashChatPipelineTrialTree(root);
+    writeFileSync(helperPath, Buffer.from([0xe2, 0x28]));
+    const second = hashChatPipelineTrialTree(root);
+    expect(second).not.toBe(first);
   });
 
   test('changes for workspace-root inputs but ignores transient Tagma runtime logs', () => {

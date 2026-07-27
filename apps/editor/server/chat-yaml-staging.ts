@@ -35,7 +35,7 @@ import {
   tagmaDirOf,
 } from './pipeline-paths.js';
 import { pipelineManifestPath, runPipelineManifestSync } from './pipeline-manifest.js';
-import { runRequirementsSync } from './requirements-sync.js';
+import { parseRequirementsMd, runRequirementsSync } from './requirements-sync.js';
 import { runCompileAndWriteLog } from './compile-log.js';
 import {
   beginWatching,
@@ -175,6 +175,22 @@ function shouldHashTrialTreeEntry(name: string): boolean {
   return !/\.(?:compile\.log|manifest\.json|layout\.json|trial-plan\.json)$/i.test(name);
 }
 
+function hashTrialRequirementsContent(content: string): string {
+  const parsed = parseRequirementsMd(content);
+  const frontmatter = parsed.frontmatter;
+  if (!frontmatter || typeof frontmatter !== 'object') return sha1(content);
+  const stableFrontmatter = { ...frontmatter } as Record<string, unknown>;
+  delete stableFrontmatter.generatedAt;
+  const normalized = yaml.dump(stableFrontmatter, { lineWidth: 120 }).trimEnd();
+  return sha1(`---\n${normalized}\n---\n\n${parsed.body.replace(/^\n+/, '')}`);
+}
+
+function hashTrialTreeFile(path: string): string {
+  return path.toLowerCase().endsWith('.requirements.md')
+    ? hashTrialRequirementsContent(readFileSync(path, 'utf-8'))
+    : sha1(readFileSync(path));
+}
+
 function isSha1(value: unknown): value is string {
   return typeof value === 'string' && /^[0-9a-f]{40}$/i.test(value);
 }
@@ -227,7 +243,7 @@ export function hashChatPipelineTrialTree(rootDir: string | null): string | null
         continue;
       }
       if (entry.isFile()) {
-        hash.update(`file\0${relativePath}\0${sha1(readFileSync(absolutePath))}\0`);
+        hash.update(`file\0${relativePath}\0${hashTrialTreeFile(absolutePath)}\0`);
         continue;
       }
       hash.update(`${entry.isSymbolicLink() ? 'symlink' : 'other'}\0${relativePath}\0`);

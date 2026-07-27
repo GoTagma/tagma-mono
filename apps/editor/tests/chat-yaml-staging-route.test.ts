@@ -180,6 +180,20 @@ function discardStage(
   expect(res.statusCode).toBe(200);
 }
 
+function compileStage(
+  getRoute: ReturnType<typeof createHarness>,
+  ws: WorkspaceState,
+  stageId: string,
+  relativePath: string,
+): void {
+  const res = makeRes();
+  getRoute('/api/workspace/chat-yaml-stage/compile')(
+    request(ws, { stageId, relativePath }, 'chat-lock'),
+    res,
+  );
+  expect(res.statusCode).toBe(200);
+}
+
 afterEach(() => {
   for (const root of roots.splice(0)) {
     rmSync(root, { recursive: true, force: true });
@@ -288,6 +302,7 @@ describe('chat YAML staging routes', () => {
         ],
       });
     writeFileSync(entry.stagedPath, pipeline('Before Plan'), 'utf-8');
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
     writePassingTrialPlan(entry.stagedPath, 'main.verify');
     writeFileSync(entry.stagedPath, pipeline('After Plan'), 'utf-8');
 
@@ -352,6 +367,7 @@ describe('chat YAML staging routes', () => {
       }),
       'utf-8',
     );
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
     writeTrialPlan(entry.stagedPath, {
       findings: [
         {
@@ -442,6 +458,7 @@ describe('chat YAML staging routes', () => {
       }),
       'utf-8',
     );
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
     writeTrialPlan(entry.stagedPath, {
       coveredBy: {
         'multiple-inputs': 'duplicate-multiline-files',
@@ -552,6 +569,7 @@ describe('chat YAML staging routes', () => {
       }),
       'utf-8',
     );
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
     writeTrialPlan(entry.stagedPath, {
       coveredBy: Object.fromEntries(
         REQUIRED_TRIAL_COVERAGE.map((dimension) => [dimension, 'all-file-boundaries']),
@@ -686,6 +704,7 @@ describe('chat YAML staging routes', () => {
         'utf-8',
       );
     writeTrialYaml(initialScript);
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
     writeTrialPlan(entry.stagedPath, {
       cases: [
         {
@@ -940,6 +959,7 @@ describe('chat YAML staging routes', () => {
       }),
       'utf-8',
     );
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
     writePassingTrialPlan(entry.stagedPath, 'main.cwd');
 
     const trialRes = makeRes();
@@ -1011,6 +1031,7 @@ describe('chat YAML staging routes', () => {
       }),
       'utf-8',
     );
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
     writePassingTrialPlan(entry.stagedPath, 'main.wait');
 
     const trialId = 'cancel_trial_1';
@@ -1099,6 +1120,7 @@ describe('chat YAML staging routes', () => {
       }),
       'utf-8',
     );
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
     writePassingTrialPlan(entry.stagedPath, 'main.case_probe');
 
     const runTrial = async () => {
@@ -1212,6 +1234,7 @@ describe('chat YAML staging routes', () => {
       }),
       'utf-8',
     );
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
     writePassingTrialPlan(entry.stagedPath, 'main.case_probe');
 
     const runTrial = async () => {
@@ -1291,6 +1314,7 @@ describe('chat YAML staging routes', () => {
       }),
       'utf-8',
     );
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
     writePassingTrialPlan(entry.stagedPath, 'main.case_probe');
 
     const trialRes = makeRes();
@@ -1370,6 +1394,7 @@ describe('chat YAML staging routes', () => {
       }),
       'utf-8',
     );
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
     writePassingTrialPlan(entry.stagedPath, 'main.case_probe');
 
     const trialRes = makeRes();
@@ -1452,6 +1477,7 @@ describe('chat YAML staging routes', () => {
       }),
       'utf-8',
     );
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
     writePassingTrialPlan(entry.stagedPath, 'main.case_probe');
 
     const trialRes = makeRes();
