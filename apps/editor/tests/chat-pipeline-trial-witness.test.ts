@@ -7,6 +7,7 @@ import {
   renameSync,
   rmSync,
   statSync,
+  symlinkSync,
   truncateSync,
   unlinkSync,
   utimesSync,
@@ -281,6 +282,58 @@ describe('chat pipeline trial host witness', () => {
     renameSync(renamedPath, originalPath);
     const restored = captureTrialHostWitness(ws, prepared(root));
     expect(restored.workspace).toEqual(original.workspace);
+  });
+
+  test('witnesses internal file and directory symlinks and invalidates retargets', () => {
+    const { root, ws } = makeWorkspace();
+    const firstTargetRoot = join(root, 'target-a');
+    const secondTargetRoot = join(root, 'target-b');
+    mkdirSync(firstTargetRoot, { recursive: true });
+    mkdirSync(secondTargetRoot, { recursive: true });
+    const firstFile = join(firstTargetRoot, 'same.txt');
+    const secondFile = join(secondTargetRoot, 'same.txt');
+    writeFileSync(firstFile, 'same content\n', 'utf-8');
+    writeFileSync(secondFile, 'same content\n', 'utf-8');
+    const fileLink = join(root, 'file-link.txt');
+    const directoryLink = join(root, 'directory-link');
+    symlinkSync(firstFile, fileLink, 'file');
+    symlinkSync(firstTargetRoot, directoryLink, process.platform === 'win32' ? 'junction' : 'dir');
+
+    const first = captureTrialHostWitness(ws, prepared(root));
+    unlinkSync(fileLink);
+    rmSync(directoryLink, { force: true });
+    symlinkSync(secondFile, fileLink, 'file');
+    symlinkSync(secondTargetRoot, directoryLink, process.platform === 'win32' ? 'junction' : 'dir');
+    const second = captureTrialHostWitness(ws, prepared(root));
+    expect(second.workspace.digest).not.toBe(first.workspace.digest);
+  });
+
+  test('rejects external, broken, and transient-target workspace symlinks', () => {
+    const { root, ws } = makeWorkspace();
+    const linkPath = join(root, 'unsafe-link');
+    const externalRoot = makeRoot('external-link-target');
+    const externalFile = join(externalRoot, 'outside.txt');
+    writeFileSync(externalFile, 'outside\n', 'utf-8');
+
+    symlinkSync(externalFile, linkPath, 'file');
+    const external = safeCaptureTrialHostWitness(ws, prepared(root));
+    expect(external.witness).toBeNull();
+    expect(external.reason).toContain('outside the workspace');
+    unlinkSync(linkPath);
+
+    symlinkSync(join(root, 'missing.txt'), linkPath, 'file');
+    const broken = safeCaptureTrialHostWitness(ws, prepared(root));
+    expect(broken.witness).toBeNull();
+    expect(broken.reason).toContain('target is unavailable');
+    unlinkSync(linkPath);
+
+    const excludedTarget = join(root, '.tagma', 'logs');
+    mkdirSync(excludedTarget, { recursive: true });
+    writeFileSync(join(excludedTarget, 'trial.log'), 'transient\n', 'utf-8');
+    symlinkSync(excludedTarget, linkPath, process.platform === 'win32' ? 'junction' : 'dir');
+    const excluded = safeCaptureTrialHostWitness(ws, prepared(root));
+    expect(excluded.witness).toBeNull();
+    expect(excluded.reason).toContain('excluded workspace path');
   });
 
   test('reuses unchanged workspace content hashes from the in-process manifest cache', () => {

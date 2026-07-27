@@ -57,6 +57,7 @@ import { atomicWriteFileSync, errorMessage, isPathWithin } from './path-utils.js
 import { buildPipelineSecretEnv } from './secrets.js';
 import { MAX_LOG_RUNS } from './state.js';
 import { normalizeRunTargetTaskIds, runtimeWithInjectedEnv } from './routes/run-session.js';
+import { beginRunSessionStart, endRunSessionStart } from './routes/run.js';
 import type { WorkspaceState } from './workspace-state.js';
 
 const TRIAL_CACHE_VERSION = 4;
@@ -195,18 +196,14 @@ function trialCachePath(rootDir: string, trialId: string, relativePath: string, 
   return join(rootDir, '.trial-runs', `${digest}.json`);
 }
 
-function readCachedTrial(
-  path: string,
-  inputHash: string,
-  verificationHash: string,
-): ChatPipelineTrialRunResult | null {
+function readCachedTrial(path: string, inputHash: string): ChatPipelineTrialRunResult | null {
   if (!existsSync(path)) return null;
   try {
     const parsed = JSON.parse(readFileSync(path, 'utf-8')) as Partial<CachedTrialResult>;
     if (
       parsed.version !== TRIAL_CACHE_VERSION ||
       parsed.inputHash !== inputHash ||
-      parsed.verificationHash !== verificationHash ||
+      typeof parsed.verificationHash !== 'string' ||
       typeof parsed.hostWitness?.digest !== 'string' ||
       !parsed.result ||
       parsed.result.version !== TRIAL_CACHE_VERSION
@@ -278,10 +275,8 @@ function createTrialPipelineSnapshot(
   }
 }
 
-function isWorkspaceRunBusy(ws: WorkspaceState): boolean {
-  if (ws.runSessionStarting || ws.runSessionStartToken !== null || ws.runSessions.size > 0) {
-    return true;
-  }
+function hasActiveWorkspaceRun(ws: WorkspaceState): boolean {
+  if (ws.runSessions.size > 0) return true;
   const workflow = ws.workflowRunSession as { done?: boolean } | null;
   return !!workflow && workflow.done !== true;
 }
@@ -744,7 +739,7 @@ interface RunTrialPipelineInput {
   approvalGateway: InMemoryApprovalGateway;
   controller: AbortController;
   pythonRunEnv: Record<string, string>;
-  allSecretEnv: Record<string, string>;
+  requirementsSecretEnv: Record<string, string>;
   secretValues: string[];
   preflightEnvKeys: readonly string[];
   runId: string;
@@ -778,7 +773,7 @@ async function runTrialPipelineOnce(input: RunTrialPipelineInput): Promise<Engin
     registry: input.ws.registry,
     builtins: false,
     runtime: runtimeWithInjectedEnv(
-      { ...input.pythonRunEnv, ...input.allSecretEnv, ...trialEnv },
+      { ...input.pythonRunEnv, ...input.requirementsSecretEnv, ...trialEnv },
       input.secretValues,
     ),
   });
@@ -998,13 +993,11 @@ async function executeTrial(
           extraEnv: pythonRunEnv,
         }
       : {};
-  const preflight = runPreflight(entry.stagedPath, pythonPreflightOptions);
+  const preflight = runPreflight(snapshot.yamlPath, pythonPreflightOptions);
   const logicalYamlPath = entry.sourcePath ?? resolve(ws.workDir, '.tagma', entry.relativePath);
-  const declaredSecretNames = collectDeclaredSecretNames(pipelineConfig);
-  const allSecretNames = [...new Set([...preflight.envKeys, ...declaredSecretNames])];
-  let allSecretEnv: Record<string, string> = {};
+  let requirementsSecretEnv: Record<string, string> = {};
   try {
-    allSecretEnv = buildPipelineSecretEnv(ws.workDir, logicalYamlPath, allSecretNames);
+    requirementsSecretEnv = buildPipelineSecretEnv(ws.workDir, logicalYamlPath, preflight.envKeys);
   } catch (err) {
     return resultForSetupFailure(
       'setup-failed',
@@ -1014,12 +1007,25 @@ async function executeTrial(
   }
   const missing = {
     binaries: preflight.missing.binaries,
-    envs: preflight.missing.envs.filter((name) => !allSecretEnv[name]),
+    envs: preflight.missing.envs.filter((name) => !requirementsSecretEnv[name]),
   };
   if (missing.binaries.length > 0 || missing.envs.length > 0) {
     return resultForSetupFailure(
       'preflight-failed',
       `Trial run requirements are missing. binaries=${missing.binaries.join(', ') || 'none'}; env=${missing.envs.join(', ') || 'none'}. Preserve legitimate requirements and safety gates; do not invent or remove them merely to make the trial pass.`,
+      startedAt,
+    );
+  }
+
+  const declaredSecretNames = collectDeclaredSecretNames(pipelineConfig);
+  const redactionSecretNames = [...new Set([...preflight.envKeys, ...declaredSecretNames])];
+  let redactionSecretEnv: Record<string, string> = {};
+  try {
+    redactionSecretEnv = buildPipelineSecretEnv(ws.workDir, logicalYamlPath, redactionSecretNames);
+  } catch (err) {
+    return resultForSetupFailure(
+      'setup-failed',
+      `Secret manager error: ${errorMessage(err)}`,
       startedAt,
     );
   }
@@ -1036,7 +1042,9 @@ async function executeTrial(
   const runId = generateRunId();
 
   try {
-    const secretValues = Object.values(allSecretEnv).filter(Boolean);
+    const secretValues = Object.values({ ...redactionSecretEnv, ...requirementsSecretEnv }).filter(
+      Boolean,
+    );
     const baseline = await runTrialPipelineOnce({
       ws,
       pipelineConfig,
@@ -1045,7 +1053,7 @@ async function executeTrial(
       approvalGateway,
       controller,
       pythonRunEnv,
-      allSecretEnv,
+      requirementsSecretEnv,
       secretValues,
       preflightEnvKeys: preflight.envKeys,
       runId,
@@ -1062,7 +1070,7 @@ async function executeTrial(
         approvalGateway,
         controller,
         pythonRunEnv,
-        allSecretEnv,
+        requirementsSecretEnv,
         secretValues,
         preflightEnvKeys: preflight.envKeys,
         stageRoot: stage.rootDir,
@@ -1158,6 +1166,7 @@ export async function trialRunChatYamlStage(
     entry.stagedPath,
     entry.relativePath,
   );
+  let pendingRunReservation: ReturnType<typeof beginRunSessionStart> = null;
   try {
     const planRead = readChatPipelineTrialPlan(
       snapshot.yamlPath,
@@ -1172,10 +1181,12 @@ export async function trialRunChatYamlStage(
       planHash: planRead.planHash,
     });
     const cachePath = trialCachePath(stage.rootDir, trialId, entry.relativePath, inputHash);
+    const cached = readCachedTrial(cachePath, inputHash);
+    if (cached) return cached;
     const prepared = safePrepareTrialHostWitnessInputs(ws, {
       relativePath: entry.relativePath,
       sourcePath: entry.sourcePath,
-      stagedYamlPath: entry.stagedPath,
+      stagedYamlPath: snapshot.yamlPath,
     });
     if (!prepared.prepared) {
       return resultForSetupFailure(
@@ -1198,11 +1209,19 @@ export async function trialRunChatYamlStage(
       hostWitnessDigest: preWitness.digest,
     });
     const inFlightKey = `${cachePath}\0${verificationHash}`;
-    const cached = readCachedTrial(cachePath, inputHash, verificationHash);
-    if (cached) return cached;
     const existing = inFlightByVerificationKey.get(inFlightKey);
     if (existing) return existing;
-    if (isWorkspaceRunBusy(ws) || activeTrialByWorkspace.has(ws.key)) {
+    pendingRunReservation = beginRunSessionStart(ws);
+    if (pendingRunReservation === null) {
+      return resultForSetupFailure(
+        'busy',
+        'Trial run was skipped because another pipeline or workflow run is active in this workspace.',
+        Date.now(),
+      );
+    }
+    if (hasActiveWorkspaceRun(ws) || activeTrialByWorkspace.has(ws.key)) {
+      endRunSessionStart(ws, pendingRunReservation);
+      pendingRunReservation = null;
       return resultForSetupFailure(
         'busy',
         'Trial run was skipped because another pipeline or workflow run is active in this workspace.',
@@ -1224,6 +1243,8 @@ export async function trialRunChatYamlStage(
 
     const executionSnapshot = snapshot;
     snapshot = null;
+    const runReservation = pendingRunReservation;
+    pendingRunReservation = null;
     const promise = (async () => {
       try {
         let result = await executeTrial(
@@ -1242,7 +1263,7 @@ export async function trialRunChatYamlStage(
           const postPrepared = safePrepareTrialHostWitnessInputs(ws, {
             relativePath: entry.relativePath,
             sourcePath: entry.sourcePath,
-            stagedYamlPath: entry.stagedPath,
+            stagedYamlPath: executionSnapshot.yamlPath,
           });
           if (!postPrepared.prepared) {
             if (result.success) {
@@ -1287,6 +1308,7 @@ export async function trialRunChatYamlStage(
           activeTrialIdentityByWorkspace.delete(ws.key);
         }
         if (ws.chatPipelineTrialAbort === controller) ws.chatPipelineTrialAbort = null;
+        endRunSessionStart(ws, runReservation);
         inFlightByVerificationKey.delete(inFlightKey);
         cleanupTrialPipelineSnapshot(executionSnapshot);
       }
@@ -1294,6 +1316,7 @@ export async function trialRunChatYamlStage(
     inFlightByVerificationKey.set(inFlightKey, promise);
     return promise;
   } finally {
+    if (pendingRunReservation !== null) endRunSessionStart(ws, pendingRunReservation);
     cleanupTrialPipelineSnapshot(snapshot);
   }
 }

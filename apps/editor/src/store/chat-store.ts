@@ -2315,11 +2315,21 @@ function updateSessionParentIndex(
 function isManagedSessionPath(path: unknown, directory: string): boolean {
   const normalizedPath = normalizeSessionPath(path);
   const normalizedDirectory = normalizeSessionPath(directory);
+  if (!normalizedPath || !normalizedDirectory) return false;
+  if (normalizedPath === normalizedDirectory) return true;
+
+  const stagingPrefix = `${normalizedDirectory}/.chat-staging/`;
+  if (!normalizedPath.startsWith(stagingPrefix)) return false;
+  const [stageId, workspaceKind, stagedTagmaDir, ...extra] = normalizedPath
+    .slice(stagingPrefix.length)
+    .split('/');
   return (
-    !!normalizedPath &&
-    !!normalizedDirectory &&
-    (normalizedPath === normalizedDirectory ||
-      normalizedPath.startsWith(`${normalizedDirectory}/.chat-staging/`))
+    !!stageId &&
+    stageId !== '.' &&
+    stageId !== '..' &&
+    workspaceKind === 'agent-workspace' &&
+    stagedTagmaDir === '.tagma' &&
+    extra.length === 0
   );
 }
 

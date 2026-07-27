@@ -215,7 +215,12 @@ function sameFileMetadata(
   );
 }
 
-function streamFileSha256(path: string, expectedStat: Stats, disallowSymlinks: boolean): string {
+function streamFileSha256(
+  path: string,
+  expectedStat: Stats,
+  disallowSymlinks: boolean,
+  buffer = Buffer.allocUnsafe(FILE_HASH_BUFFER_BYTES),
+): string {
   const expectedMetadata = fileMetadata(expectedStat);
   const fd = openSync(path, 'r');
   try {
@@ -226,7 +231,6 @@ function streamFileSha256(path: string, expectedStat: Stats, disallowSymlinks: b
     }
 
     const hash = createHash('sha256');
-    const buffer = Buffer.allocUnsafe(FILE_HASH_BUFFER_BYTES);
     let totalRead = 0;
     while (true) {
       const bytesRead = readSync(fd, buffer, 0, buffer.length, null);
@@ -273,6 +277,7 @@ function workspaceWitness(ws: WorkspaceState): TrialHostWorkspaceWitness {
       ? existingCache.entries
       : new Map<string, TrialHostWorkspaceManifestEntry>();
   const nextEntries = new Map<string, TrialHostWorkspaceManifestEntry>();
+  const fileHashBuffer = Buffer.allocUnsafe(FILE_HASH_BUFFER_BYTES);
   const hash = createHash('sha256');
   const stats: TrialHostWorkspaceManifestCacheStats = {
     fileCount: 0,
@@ -312,7 +317,7 @@ function workspaceWitness(ws: WorkspaceState): TrialHostWorkspaceWitness {
           : (() => {
               stats.hashedFileCount += 1;
               stats.hashedBytes += stat.size;
-              return streamFileSha256(absolutePath, stat, true);
+              return streamFileSha256(absolutePath, stat, true, fileHashBuffer);
             })();
       stats.fileCount += 1;
       stats.totalBytes += stat.size;

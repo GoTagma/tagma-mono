@@ -441,17 +441,16 @@ const makeAssistantInfo = (id: string, sessionID: string) => ({
   role: 'assistant' as const,
 });
 
-const makeSession = (id: string, parentID?: string) =>
-  ({
-    id,
-    projectID: 'project',
-    directory: '/repo',
-    title: id,
-    version: '1',
-    time: { created: 1, updated: 1 },
-    metadata: { tagma: { schema: 1, source: 'desktop-chat' } },
-    ...(parentID ? { parentID } : {}),
-  }) as never;
+const makeSession = (id: string, parentID?: string, directory = '/repo') => ({
+  id,
+  projectID: 'project',
+  directory,
+  title: id,
+  version: '1',
+  time: { created: 1, updated: 1 },
+  metadata: { tagma: { schema: 1, source: 'desktop-chat' } },
+  ...(parentID ? { parentID } : {}),
+});
 
 const makeUserInfo = (id: string, sessionID: string) => ({
   id,
@@ -620,16 +619,28 @@ test('routes OpenCode 1.17.8 permission.asked prompts and clears requestID repli
 test('keeps staged child ancestry through bootstrap and refresh for permission routing', async () => {
   const workspace = 'C:/staged-ancestry-repo';
   const directory = `${workspace}/.tagma`;
-  const stagedDirectory = `${directory}/.chat-staging/stage-1/agent-workspace/.tagma`;
+  const stagedDirectory =
+    'c:\\STAGED-ANCESTRY-REPO\\.tagma\\.chat-staging\\stage-1\\agent-workspace\\.tagma\\';
   const baseUrl = 'http://opencode-staged-ancestry.test';
-  const rootSession = {
-    ...makeSession('visible-root'),
-    directory,
-  };
-  const stagedChildSession = {
-    ...makeSession('staged-child', 'visible-root'),
-    directory: stagedDirectory,
-  };
+  const rootSession = makeSession('visible-root', undefined, directory);
+  const stagedChildSession = makeSession('staged-child', 'visible-root', stagedDirectory);
+  const stagedPathLookalikes = [
+    makeSession(
+      'base-workspace-child',
+      'visible-root',
+      `${directory}/.chat-staging/stage-1/base-workspace/.tagma`,
+    ),
+    makeSession(
+      'nested-directory-child',
+      'visible-root',
+      `${directory}/.chat-staging/stage-1/agent-workspace/.tagma/nested`,
+    ),
+    makeSession(
+      'cross-workspace-child',
+      'visible-root',
+      'C:/other-repo/.tagma/.chat-staging/stage-1/agent-workspace/.tagma',
+    ),
+  ];
   let includeStagedChild = true;
 
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
@@ -647,7 +658,9 @@ test('keeps staged child ancestry through bootstrap and refresh for permission r
       }
     })();
     if (parsed?.origin === baseUrl && parsed.pathname === '/session' && method === 'GET') {
-      const sessions = includeStagedChild ? [rootSession, stagedChildSession] : [rootSession];
+      const sessions = includeStagedChild
+        ? [rootSession, stagedChildSession, ...stagedPathLookalikes]
+        : [rootSession];
       const requestedDirectory = parsed.searchParams.get('directory');
       return Promise.resolve(
         jsonResponse(
