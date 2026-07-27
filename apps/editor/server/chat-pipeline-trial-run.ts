@@ -707,7 +707,7 @@ function buildCasePromptContexts(
 ): Record<string, Array<{ label: string; content: string }>> {
   const fixturePaths = testCase.fixtures.map((fixture) => fixture.path).join(', ') || 'none';
   const content = [
-    `Case: ${testCase.id} 闁?${testCase.title}`,
+    `Case: ${testCase.id} — ${testCase.title}`,
     `Objective: ${testCase.objective}`,
     `Isolated workspace: ${workDir}`,
     `Fixture paths: ${fixturePaths}`,
@@ -898,7 +898,7 @@ function buildPlannedTrialSummary(
   ];
   for (const testCase of cases) {
     lines.push(
-      `Case ${testCase.id}: ${testCase.success ? 'passed' : 'failed'} 闁?${testCase.objective}`,
+      `Case ${testCase.id}: ${testCase.success ? 'passed' : 'failed'} — ${testCase.objective}`,
     );
     for (const expectation of testCase.expectations) {
       if (!expectation.passed) lines.push(`  ${expectation.type}: ${expectation.detail}`);

@@ -1,4 +1,4 @@
-﻿import { expect, test } from 'bun:test';
+import { expect, test } from 'bun:test';
 import { buildChatYamlRepairPrompt } from '../src/store/chat-store';
 
 const TARGET = {
