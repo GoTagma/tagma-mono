@@ -849,6 +849,83 @@ describe('chat model persistence', () => {
     expect(Number(discoveryRequest?.searchParams.get('limit'))).toBeGreaterThan(100);
   });
 
+  test('scoped canonical sessions override stale discovery duplicates while keeping compatibility-only roots', async () => {
+    const repo = 'C:/session-dedupe-repo';
+    const directory = `${repo}/.tagma`;
+    const baseUrl = 'http://opencode-session-dedupe.test';
+    workspaceBaseUrls.set(repo, baseUrl);
+    sessionListsByBaseUrl.set(baseUrl, [
+      {
+        id: 'tagma-desktop',
+        directory: repo,
+        parentID: 'legacy-parent',
+        title: 'Stale discovery payload',
+        metadata: {
+          tagma: {
+            schema: 1,
+            source: 'desktop-chat',
+            workspacePath: repo,
+            reason: 'stale-discovery',
+          },
+        },
+      } as unknown as Session,
+      {
+        id: 'tagma-desktop',
+        directory,
+        title: 'Canonical scoped payload',
+        metadata: {
+          tagma: {
+            schema: 1,
+            source: 'desktop-chat',
+            workspacePath: `${repo}/`,
+            reason: 'canonical-scoped',
+          },
+        },
+      } as unknown as Session,
+      {
+        id: 'compatibility-only-root',
+        directory: repo,
+        title: 'Pre-canonical legacy session',
+        metadata: {
+          tagma: {
+            schema: 1,
+            source: 'desktop-chat',
+            workspacePath: repo,
+            reason: 'compatibility-only',
+          },
+        },
+      } as unknown as Session,
+    ]);
+
+    ensureResponsesByWorkspace.set(repo, Promise.resolve(jsonResponse({ baseUrl, directory })));
+    setClientWorkspace(repo);
+    const originalConsoleError = console.error;
+    console.error = () => {};
+    try {
+      await useChatStore.getState().bootstrap();
+    } finally {
+      console.error = originalConsoleError;
+    }
+
+    expect(useChatStore.getState().sessions.map((session) => session.id)).toEqual([
+      'tagma-desktop',
+      'compatibility-only-root',
+    ]);
+    expect(useChatStore.getState().sessions[0]).toMatchObject({
+      id: 'tagma-desktop',
+      directory,
+      title: 'Canonical scoped payload',
+      metadata: {
+        tagma: {
+          source: 'desktop-chat',
+          workspacePath: `${repo}/`,
+          reason: 'canonical-scoped',
+        },
+      },
+    });
+    expect(useChatStore.getState().sessionParentById).toEqual({});
+  });
+
   test('maps v2 provider/model catalog into the existing picker provider shape', () => {
     const providers = buildProvidersFromV2Catalog({
       providers: [v2Provider('anthropic')],

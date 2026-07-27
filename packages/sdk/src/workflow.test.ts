@@ -1043,6 +1043,79 @@ describe('PipelineGraphRunner', () => {
     }
   });
 
+  test('retains the last repair continuation after a non-final retry throws', async () => {
+    const dir = makeDir();
+    const observations: PromptObservation[] = [];
+    let attempts = 0;
+    try {
+      const runtime: TagmaRuntime = {
+        ...fakeRuntime(),
+        async runSpawn() {
+          attempts += 1;
+          if (attempts === 1) {
+            return {
+              ...taskResult('initial failure'),
+              exitCode: 1,
+              stderr: 'first repair attempt failed',
+              stderrBytes: 27,
+              sessionId: 'session-one',
+              normalizedOutput: 'previous normalized output api_key=continuation-secret',
+              failureKind: 'exit_nonzero',
+            };
+          }
+          return taskResult('fixed');
+        },
+      };
+      const result = await runPipelineGraph(
+        {
+          name: 'repair-flow',
+          pipelines: [
+            {
+              id: 'repair',
+              config: promptPipeline(),
+              cwd: dir,
+              lifecycle: { max_runs: 3, stop_when: 'success', repair: true },
+            },
+          ],
+        },
+        dir,
+        {
+          registry: repairRegistry(observations),
+          runtime,
+          skipPluginLoading: true,
+          resolvePipelineOptions: (_pipeline, context) => {
+            if (context.attempt === 2) throw new Error('api_key=private-key unavailable');
+            return {};
+          },
+        },
+      );
+
+      expect(result.success).toBe(true);
+      expect(attempts).toBe(2);
+      expect(result.pipelines[0]?.attempts.map((attempt) => attempt.status)).toEqual([
+        'failed',
+        'failed',
+        'success',
+      ]);
+      expect(result.pipelines[0]?.attempts[0]?.repairFeedback).toContain('main.fix');
+      expect(result.pipelines[0]?.attempts[1]?.repairFeedback).toContain(
+        'threw before producing a result',
+      );
+      expect(result.pipelines[0]?.attempts[1]?.repairFeedback).not.toContain('private-key');
+      expect(observations).toHaveLength(2);
+      expect(observations[1]?.prompt).toContain('[Previous attempt failure]');
+      expect(observations[1]?.prompt).toContain('threw before producing a result');
+      expect(observations[1]?.prompt).not.toContain('private-key');
+      expect(observations[1]).toMatchObject({
+        sessionId: 'session-one',
+        sessionDriver: 'repair-test',
+      });
+      expect(observations[1]?.normalizedOutput).toContain('previous normalized output');
+      expect(observations[1]?.normalizedOutput).not.toContain('continuation-secret');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
   test('clears a stale pipeline result when the final repair attempt throws', async () => {
     const dir = makeDir();
     let runs = 0;
@@ -1640,3 +1713,4 @@ describe('PipelineGraphRunner', () => {
     }
   });
 });
+

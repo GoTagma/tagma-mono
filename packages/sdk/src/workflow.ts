@@ -569,7 +569,10 @@ export class PipelineGraphRunner {
           }),
         });
         if (repairFeedback) {
-          retryContext = { feedback: repairFeedback, continuations: {} };
+          retryContext = {
+            feedback: repairFeedback,
+            continuations: retryContext?.continuations ?? {},
+          };
         }
         if (shouldFinish) {
           this.updateNode(pipelineId, {
@@ -1352,3 +1355,4 @@ function errorMessage(err: unknown): string {
 export function resolveWorkflowPipelinePath(workDir: string, path: string): string {
   return resolve(validatePath(path, workDir));
 }
+
