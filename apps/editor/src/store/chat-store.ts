@@ -679,9 +679,117 @@ function compactChatTrialRepairResult(result: ChatPipelineTrialRunResult) {
   };
 }
 
+function redactChatCompileRepairText(value: string): string {
+  return value
+    .replace(
+      /((?:api[_-]?key|api[_-]?token|token|secret|session(?:[_-]?token)?|password|credential|authorization)\s*[:=]\s*)([^\s"'`,;]+)/gi,
+      '$1[redacted secret]',
+    )
+    .replace(/\b(Bearer)\s+[A-Za-z0-9._-]{8,}\b/gi, '$1 [redacted token]')
+    .replace(/\b(?:sk|sess|ghp|xox[baprs])[-_][A-Za-z0-9._-]{6,}\b/g, '[redacted token]');
+}
+
+function clipChatCompileRepairText(value: string, maxLength: number): string {
+  const redacted = redactChatCompileRepairText(value);
+  if (redacted.length <= maxLength) return redacted;
+  return redacted.slice(0, Math.max(0, maxLength - 16)) + '...[truncated]';
+}
+
+function compactChatCompileRepairResult(result: YamlCompileResult) {
+  const errors = result.validation.errors.slice(0, 12).map((item) => ({
+    path: clipChatCompileRepairText(item.path, 240),
+    message: clipChatCompileRepairText(item.message, 1_200),
+  }));
+  const warnings = result.validation.warnings.slice(0, 8).map((item) => ({
+    path: clipChatCompileRepairText(item.path, 240),
+    message: clipChatCompileRepairText(item.message, 800),
+  }));
+  const sourceName = clipChatCompileRepairText(result.sourceName, 200);
+  const summary = clipChatCompileRepairText(result.summary, 6_000);
+  const omittedErrorCount = Math.max(0, result.validation.errors.length - errors.length);
+  const omittedWarningCount = Math.max(0, result.validation.warnings.length - warnings.length);
+  const evidenceTruncated =
+    sourceName !== result.sourceName ||
+    summary !== redactChatCompileRepairText(result.summary) ||
+    omittedErrorCount > 0 ||
+    omittedWarningCount > 0 ||
+    errors.some((item, index) => {
+      const original = result.validation.errors[index];
+      return (
+        item.path !== redactChatCompileRepairText(original?.path ?? '') ||
+        item.message !== redactChatCompileRepairText(original?.message ?? '')
+      );
+    }) ||
+    warnings.some((item, index) => {
+      const original = result.validation.warnings[index];
+      return (
+        item.path !== redactChatCompileRepairText(original?.path ?? '') ||
+        item.message !== redactChatCompileRepairText(original?.message ?? '')
+      );
+    });
+  return {
+    timestamp: result.timestamp,
+    sourceName,
+    success: result.success,
+    parseOk: result.parseOk,
+    summary,
+    validation: {
+      errors,
+      warnings,
+      omittedErrorCount,
+      omittedWarningCount,
+    },
+    evidenceTruncated,
+  };
+}
+
+function serializeChatYamlCompileRepairEvidence(result: YamlCompileResult): string {
+  const compact = compactChatCompileRepairResult(result);
+  const encoded = JSON.stringify(compact, null, 2);
+  if (new TextEncoder().encode(encoded).length <= MAX_CHAT_TRIAL_REPAIR_EVIDENCE_BYTES) {
+    return encoded;
+  }
+  const fallback = JSON.stringify(
+    {
+      timestamp: result.timestamp,
+      sourceName: clipChatCompileRepairText(result.sourceName, 120),
+      success: result.success,
+      parseOk: result.parseOk,
+      summary: clipChatCompileRepairText(result.summary, 2_000),
+      validation: {
+        errors: compact.validation.errors.slice(0, 2),
+        warnings: compact.validation.warnings.slice(0, 1),
+        omittedErrorCount: Math.max(0, result.validation.errors.length - 2),
+        omittedWarningCount: Math.max(0, result.validation.warnings.length - 1),
+      },
+      evidenceTruncated: true,
+    },
+    null,
+    2,
+  );
+  if (new TextEncoder().encode(fallback).length <= MAX_CHAT_TRIAL_REPAIR_EVIDENCE_BYTES) {
+    return fallback;
+  }
+  return JSON.stringify(
+    {
+      timestamp: result.timestamp,
+      sourceName: clipChatCompileRepairText(result.sourceName, 120),
+      success: result.success,
+      parseOk: result.parseOk,
+      summary: clipChatCompileRepairText(result.summary, 1_000),
+      validationSummary: {
+        errorCount: result.validation.errors.length,
+        warningCount: result.validation.warnings.length,
+      },
+      evidenceTruncated: true,
+    },
+    null,
+    2,
+  );
+}
+
 function serializeChatYamlRepairEvidence(evidence: ChatYamlRepairEvidence): string {
-  if (evidence.kind !== 'trial-run') return JSON.stringify(evidence.result, null, 2);
-  const compact = compactChatTrialRepairResult(evidence.result);
+  if (evidence.kind !== 'trial-run') return serializeChatYamlCompileRepairEvidence(evidence.result);  const compact = compactChatTrialRepairResult(evidence.result);
   const encoded = JSON.stringify(compact, null, 2);
   if (new TextEncoder().encode(encoded).length <= MAX_CHAT_TRIAL_REPAIR_EVIDENCE_BYTES) {
     return encoded;

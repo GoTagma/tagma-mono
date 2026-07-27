@@ -60,6 +60,16 @@ function parseLocalBranch(value: unknown): FinalizeLocalBranch | null | undefine
   };
 }
 
+function optionalTrialId(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'string' || !value.trim()) throw new Error('trialId must be a string.');
+  const trialId = value.trim();
+  if (!/^[A-Za-z0-9_-]{1,160}$/.test(trialId)) {
+    throw new Error('trialId must contain only letters, digits, underscores, or hyphens.');
+  }
+  return trialId;
+}
+
 function parseFinalizeInput(value: unknown): ChatYamlStageFinalizeInput {
   const body = asRequestRecord(value);
   if (typeof body.stageId !== 'string' || !body.stageId.trim()) {
@@ -71,6 +81,7 @@ function parseFinalizeInput(value: unknown): ChatYamlStageFinalizeInput {
   const forceFork = optionalBoolean(body.forceFork, 'forceFork');
   const allowInvalid = optionalBoolean(body.allowInvalid, 'allowInvalid');
   const localBranch = parseLocalBranch(body.localBranch);
+  const trialId = optionalTrialId(body.trialId);
   const forceForkReason = body.forceForkReason;
   if (
     forceForkReason !== undefined &&
@@ -86,6 +97,7 @@ function parseFinalizeInput(value: unknown): ChatYamlStageFinalizeInput {
     ...(localBranch !== undefined ? { localBranch } : {}),
     ...(forceFork !== undefined ? { forceFork } : {}),
     ...(forceForkReason !== undefined ? { forceForkReason } : {}),
+    ...(trialId !== undefined ? { trialId } : {}),
     ...(allowInvalid !== undefined ? { allowInvalid } : {}),
   };
 }

@@ -632,6 +632,163 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
+  test('pins one staged YAML snapshot for baseline and targeted cases within a single trial request', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    const baselineStartedPath = join(ws.workDir, 'trial-snapshot-baseline-started.txt');
+    const initialScript = [
+      `const fs = require('node:fs');`,
+      `const started = ${JSON.stringify(baselineStartedPath)};`,
+      `if (!process.env.TAGMA_TRIAL_CASE_ID) {`,
+      `  fs.writeFileSync(started, 'baseline');`,
+      `  setTimeout(() => process.exit(0), 200);`,
+      `} else {`,
+      `  process.exit(1);`,
+      `}`,
+    ].join(' ');
+    const mutatedScript = [
+      `const fs = require('node:fs');`,
+      `const started = ${JSON.stringify(baselineStartedPath)};`,
+      `if (!process.env.TAGMA_TRIAL_CASE_ID) {`,
+      `  fs.writeFileSync(started, 'baseline');`,
+      `  setTimeout(() => process.exit(0), 200);`,
+      `} else {`,
+      `  process.exit(0);`,
+      `}`,
+    ].join(' ');
+    const writeTrialYaml = (script: string) =>
+      writeFileSync(
+        entry.stagedPath,
+        serializePipeline({
+          name: 'Pinned Trial Snapshot',
+          tracks: [
+            {
+              id: 'main',
+              name: 'Main',
+              tasks: [{ id: 'verify', command: { argv: [process.execPath, '-e', script] } }],
+            },
+          ],
+        }),
+        'utf-8',
+      );
+    writeTrialYaml(initialScript);
+    writeTrialPlan(entry.stagedPath, {
+      coveredBy: Object.fromEntries(
+        REQUIRED_TRIAL_COVERAGE.map((dimension) => [dimension, 'snapshot-case']),
+      ) as Record<(typeof REQUIRED_TRIAL_COVERAGE)[number], string>,
+      cases: [
+        {
+          id: 'snapshot-case',
+          title: 'The case must reuse the same YAML snapshot as baseline',
+          objective: 'A mid-baseline staged YAML edit must not swap the case pipeline.',
+          runs: 1,
+          targetTaskIds: ['main.verify'],
+          fixtures: [],
+          expectations: [{ type: 'task-status', taskId: 'main.verify', status: 'success' }],
+        },
+      ],
+    });
+    const trialRes = makeRes();
+    const trialPromise = getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'pinned_trial_snapshot' },
+        'chat-lock',
+      ),
+      trialRes,
+    );
+    for (let attempt = 0; attempt < 100 && !existsSync(baselineStartedPath); attempt += 1) {
+      await Bun.sleep(10);
+    }
+    expect(existsSync(baselineStartedPath)).toBe(true);
+    writeTrialYaml(mutatedScript);
+    await trialPromise;
+    expect(trialRes.statusCode).toBe(200);
+    expect(trialRes.body).toMatchObject({
+      success: false,
+      kind: 'failed',
+      ran: true,
+      cases: [{ id: 'snapshot-case', success: false }],
+    });
+    discardStage(getRoute, ws, stage.id);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+  test('forces a numbered copy when trial-run verification is missing while trial-run is enabled', () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    writeFileSync(entry.stagedPath, yamlFor('Verified Trial Required', 'agent'), 'utf-8');
+    const finalizeRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/finalize')(
+      request(ws, { stageId: stage.id, relativePath: entry.relativePath }, 'chat-lock'),
+      finalizeRes,
+    );
+    expect(finalizeRes.statusCode).toBe(200);
+    expect(finalizeRes.body).toMatchObject({
+      outcome: 'forked',
+      conflicts: ['trial-run-failed'],
+    });
+    expect(readFileSync(sourcePath, 'utf-8')).toContain('prompt: base');
+    expect((finalizeRes.body as { entry: { path: string } }).entry.path).toContain(
+      'pipeline-copy-1',
+    );
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+  test('still allows live finalize without any trial identity when trial-run is disabled', () => {
+    const { ws, sourcePath } = makeWorkspace();
+    mkdirSync(join(ws.workDir, '.tagma'), { recursive: true });
+    writeFileSync(
+      join(ws.workDir, '.tagma', 'editor-settings.json'),
+      JSON.stringify({ opencodeChatTrialRunEnabled: false }, null, 2) + '\n',
+      'utf-8',
+    );
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    writeFileSync(entry.stagedPath, yamlFor('Trial Disabled', 'agent'), 'utf-8');
+    const finalizeRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/finalize')(
+      request(ws, { stageId: stage.id, relativePath: entry.relativePath }, 'chat-lock'),
+      finalizeRes,
+    );
+    expect(finalizeRes.statusCode).toBe(200);
+    expect(finalizeRes.body).toMatchObject({
+      outcome: 'adopted',
+      conflicts: [],
+    });
+    expect(readFileSync(sourcePath, 'utf-8')).toContain('prompt: agent');
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
   test('requires the active chat lock id and bypasses the global revision middleware', () => {
     const { ws, sourcePath } = makeWorkspace();
     const route = createHarness()('/api/workspace/chat-yaml-stage/start');

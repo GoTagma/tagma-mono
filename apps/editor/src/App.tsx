@@ -1190,6 +1190,7 @@ export function App() {
                   forceFork:
                     pathMoved || !compile.success || (trialRun ? !trialRun.success : false),
                   ...(forceForkReason ? { forceForkReason } : {}),
+                  trialId: finishedTurn.id,
                   allowInvalid: !compile.success,
                 },
                 snapshot.workDir,

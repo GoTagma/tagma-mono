@@ -1,0 +1,55 @@
+import { expect, test } from 'bun:test';
+import { buildChatYamlRepairPrompt } from '../src/store/chat-store';
+
+test('compile repair prompt bounds and redacts compile evidence', () => {
+  const secret = 'sk-live-secret-1234567890abcdefghijklmnop';
+  const sessionToken = 'sess_live_super_secret_token_value';
+  const bearer = 'Bearer ghp_compile_secret_token_value';
+  const credential = 'password=compile-secret-password';
+  const largeMessage = [
+    'apiToken=' + secret,
+    'session=' + sessionToken,
+    'authorization=' + bearer,
+    credential,
+    'compile-diagnostic-'.repeat(1_200),
+  ].join('\n');
+  const prompt = buildChatYamlRepairPrompt(
+    {
+      kind: 'refresh-current',
+      path: 'C:/repo/.tagma/build/build.yaml',
+      name: 'build.yaml',
+      pipelineName: 'Build',
+    },
+    {
+      kind: 'compile',
+      result: {
+        timestamp: '2026-07-27T00:00:00.000Z',
+        sourceName: 'build.yaml',
+        success: false,
+        parseOk: false,
+        validation: {
+          errors: Array.from({ length: 40 }, (_, index) => ({
+            path: '/tasks/' + index + '/command',
+            message: largeMessage + '\nline=' + index,
+          })),
+          warnings: Array.from({ length: 20 }, (_, index) => ({
+            path: '/tasks/' + index + '/env',
+            message: largeMessage + '\nwarning=' + index,
+          })),
+        },
+        summary: largeMessage.repeat(8),
+      },
+    },
+    1,
+    3,
+  );
+
+  const evidence = prompt.split('<compile-result>')[1]!.split('</compile-result>')[0]!.trim();
+  expect(new TextEncoder().encode(evidence).length).toBeLessThanOrEqual(64 * 1024);
+  expect(evidence).toContain('evidenceTruncated');
+  expect(evidence).toContain('[redacted');
+  expect(evidence).not.toContain(secret);
+  expect(evidence).not.toContain(sessionToken);
+  expect(evidence).not.toContain(bearer);
+  expect(evidence).not.toContain(credential);
+});

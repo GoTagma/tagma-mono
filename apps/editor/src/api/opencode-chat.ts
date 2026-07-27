@@ -499,12 +499,17 @@ export async function listOpencodeSessions(
         return [] as SdkSession[];
       }),
   ]);
-  const seen = new Set<string>();
-  const sessions = [...discovered, ...scoped].filter((session) => {
-    if (seen.has(session.id)) return false;
-    seen.add(session.id);
-    return true;
-  });
+  const sessionsById = new Map<string, SdkSession>();
+  for (const session of discovered) {
+    sessionsById.set(session.id, session);
+  }
+  for (const session of scoped) {
+    // Scoped `.tagma` results are the canonical payload for duplicate ids.
+    // Keep discovery-only sessions for legacy compatibility, but let the
+    // scoped directory win when both queries surface the same session.
+    sessionsById.set(session.id, session);
+  }
+  const sessions = [...sessionsById.values()];
   return { sessions, directory: bootstrap.directory };
 }
 

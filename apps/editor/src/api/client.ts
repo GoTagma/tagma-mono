@@ -268,6 +268,7 @@ export interface ChatYamlStageFinalizeInput {
   } | null;
   forceFork?: boolean;
   forceForkReason?: 'path-moved' | 'compile-failed' | 'trial-run-failed';
+  trialId?: string;
   allowInvalid?: boolean;
 }
 

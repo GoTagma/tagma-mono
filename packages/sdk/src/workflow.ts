@@ -834,7 +834,7 @@ function boundedRepairText(text: string, maxBytes: number): string {
   const bytes = encoder.encode(redacted);
   if (bytes.length <= maxBytes) return redacted;
 
-  const marker = '\n…[truncated]…\n';
+  const marker = '\n鈥truncated]鈥n';
   const markerBytes = encoder.encode(marker);
   const contentBudget = Math.max(0, maxBytes - markerBytes.length);
   const headBudget = Math.floor(contentBudget / 3);
