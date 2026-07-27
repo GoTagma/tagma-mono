@@ -623,7 +623,11 @@ describe('chat YAML staging routes', () => {
 
     const finalizeRes = makeRes();
     getRoute('/api/workspace/chat-yaml-stage/finalize')(
-      request(ws, { stageId: stage.id, relativePath: entry.relativePath }, 'chat-lock'),
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'safe_edge_cases' },
+        'chat-lock',
+      ),
       finalizeRes,
     );
     expect((finalizeRes.body as { outcome: string }).outcome).toBe('adopted');
@@ -683,9 +687,6 @@ describe('chat YAML staging routes', () => {
       );
     writeTrialYaml(initialScript);
     writeTrialPlan(entry.stagedPath, {
-      coveredBy: Object.fromEntries(
-        REQUIRED_TRIAL_COVERAGE.map((dimension) => [dimension, 'snapshot-case']),
-      ) as Record<(typeof REQUIRED_TRIAL_COVERAGE)[number], string>,
       cases: [
         {
           id: 'snapshot-case',
@@ -806,6 +807,12 @@ describe('chat YAML staging routes', () => {
 
   test('keeps start and compile revision-neutral and advances revision on publish', () => {
     const { ws, sourcePath } = makeWorkspace();
+    mkdirSync(join(ws.workDir, '.tagma'), { recursive: true });
+    writeFileSync(
+      join(ws.workDir, '.tagma', 'editor-settings.json'),
+      JSON.stringify({ opencodeChatTrialRunEnabled: false }, null, 2) + '\n',
+      'utf-8',
+    );
     const getRoute = createHarness();
     const startRes = makeRes();
     getRoute('/api/workspace/chat-yaml-stage/start')(

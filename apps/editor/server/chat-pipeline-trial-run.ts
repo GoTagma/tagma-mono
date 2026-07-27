@@ -138,6 +138,12 @@ interface CachedTrialResult {
   result: ChatPipelineTrialRunResult;
 }
 
+interface TrialPipelineSnapshot {
+  rootDir: string;
+  yamlPath: string;
+  contentHash: string;
+}
+
 const inFlightByCachePath = new Map<string, Promise<ChatPipelineTrialRunResult>>();
 const activeTrialByWorkspace = new Map<string, string>();
 const activeTrialIdentityByWorkspace = new Map<
@@ -215,6 +221,37 @@ function writeCachedTrial(
       result,
     } satisfies CachedTrialResult) + '\n',
   );
+}
+
+function cleanupTrialPipelineSnapshot(snapshot: TrialPipelineSnapshot | null): void {
+  if (!snapshot) return;
+  rmSync(snapshot.rootDir, { recursive: true, force: true });
+}
+
+function createTrialPipelineSnapshot(
+  stageRoot: string,
+  stagedYamlPath: string,
+  relativePath: string,
+): TrialPipelineSnapshot {
+  const snapshotsDir = join(stageRoot, '.trial-snapshots');
+  mkdirSync(snapshotsDir, { recursive: true });
+  const rootDir = mkdtempSync(join(snapshotsDir, 'run-'));
+  try {
+    const snapshotYamlPath = join(rootDir, '.tagma', ...relativePath.split('/'));
+    copyTrialPipelineTree(dirname(stagedYamlPath), dirname(snapshotYamlPath), {
+      files: 0,
+      bytes: 0,
+    }, { includeTrialPlan: true });
+    const snapshotYaml = readFileSync(snapshotYamlPath, 'utf-8');
+    return {
+      rootDir,
+      yamlPath: snapshotYamlPath,
+      contentHash: createHash('sha1').update(snapshotYaml).digest('hex'),
+    };
+  } catch (err) {
+    rmSync(rootDir, { recursive: true, force: true });
+    throw err;
+  }
 }
 
 function isWorkspaceRunBusy(ws: WorkspaceState): boolean {
@@ -381,16 +418,17 @@ function copyTrialPipelineTree(
   sourceDir: string,
   destinationDir: string,
   budget: CopyBudget,
+  options: { includeTrialPlan?: boolean } = {},
 ): void {
   mkdirSync(destinationDir, { recursive: true });
   for (const entry of readdirSync(sourceDir, { withFileTypes: true })) {
-    if (entry.name.endsWith('.trial-plan.json')) continue;
+    if (!options.includeTrialPlan && entry.name.endsWith('.trial-plan.json')) continue;
     const source = join(sourceDir, entry.name);
     const destination = join(destinationDir, entry.name);
     const stat = lstatSync(source);
     if (stat.isSymbolicLink()) throw new Error('Trial pipeline helpers must not contain symlinks.');
     if (stat.isDirectory()) {
-      copyTrialPipelineTree(source, destination, budget);
+      copyTrialPipelineTree(source, destination, budget, options);
       continue;
     }
     if (!stat.isFile()) throw new Error('Trial pipeline helpers must be regular files.');
@@ -865,6 +903,7 @@ async function executeTrial(
   ws: WorkspaceState,
   stage: ReturnType<typeof listChatYamlStage>,
   entry: ReturnType<typeof listChatYamlStage>['entries'][number],
+  snapshot: TrialPipelineSnapshot,
   plan: ChatPipelineTrialPlan,
   controller: AbortController,
   abortState: { timedOut: boolean },
@@ -872,7 +911,7 @@ async function executeTrial(
   const startedAt = Date.now();
   let pipelineConfig;
   try {
-    pipelineConfig = await loadPipeline(readFileSync(entry.stagedPath, 'utf-8'), ws.workDir);
+    pipelineConfig = await loadPipeline(readFileSync(snapshot.yamlPath, 'utf-8'), ws.workDir);
   } catch (err) {
     return resultForSetupFailure(
       'setup-failed',
@@ -989,7 +1028,7 @@ async function executeTrial(
         secretValues,
         preflightEnvKeys: preflight.envKeys,
         stageRoot: stage.rootDir,
-        stagedYamlPath: entry.stagedPath,
+        stagedYamlPath: snapshot.yamlPath,
         testCase,
         targetTaskIds: targetTaskIdsByCase.get(testCase.id),
       });
@@ -1076,31 +1115,37 @@ export async function trialRunChatYamlStage(
       startedAt,
     );
   }
-  const planRead = readChatPipelineTrialPlan(
+  let snapshot: TrialPipelineSnapshot | null = createTrialPipelineSnapshot(
+    stage.rootDir,
     entry.stagedPath,
     entry.relativePath,
-    entry.contentHash,
   );
-  if (planRead.status === 'required') {
-    return resultForPlanRequest(planRead.request, startedAt);
-  }
-  const verificationHash = createHash('sha256')
-    .update(`${entry.contentHash}\0${planRead.planHash}`)
-    .digest('hex');
-  const cachePath = trialCachePath(stage.rootDir, trialId, entry.relativePath, verificationHash);
-  const cached = readCachedTrial(cachePath, verificationHash);
-  if (cached) return cached;
-  const existing = inFlightByCachePath.get(cachePath);
-  if (existing) return existing;
-  if (isWorkspaceRunBusy(ws) || activeTrialByWorkspace.has(ws.key)) {
-    return resultForSetupFailure(
-      'busy',
-      'Trial run was skipped because another pipeline or workflow run is active in this workspace.',
-      Date.now(),
+  try {
+    const planRead = readChatPipelineTrialPlan(
+      snapshot.yamlPath,
+      entry.relativePath,
+      snapshot.contentHash,
     );
-  }
+    if (planRead.status === 'required') {
+      return resultForPlanRequest(planRead.request, startedAt);
+    }
+    const verificationHash = createHash('sha256')
+      .update(`${snapshot.contentHash}\0${planRead.planHash}`)
+      .digest('hex');
+    const cachePath = trialCachePath(stage.rootDir, trialId, entry.relativePath, verificationHash);
+    const cached = readCachedTrial(cachePath, verificationHash);
+    if (cached) return cached;
+    const existing = inFlightByCachePath.get(cachePath);
+    if (existing) return existing;
+    if (isWorkspaceRunBusy(ws) || activeTrialByWorkspace.has(ws.key)) {
+      return resultForSetupFailure(
+        'busy',
+        'Trial run was skipped because another pipeline or workflow run is active in this workspace.',
+        Date.now(),
+      );
+    }
 
-  const controller = new AbortController();
+    const controller = new AbortController();
   const abortState = { timedOut: false, userAborted: false };
   const activeIdentity = { stageId: input.stageId, trialId, controller, abortState };
   const timeout = setTimeout(() => {
@@ -1112,24 +1157,38 @@ export async function trialRunChatYamlStage(
   activeTrialIdentityByWorkspace.set(ws.key, activeIdentity);
   ws.chatPipelineTrialAbort = controller;
 
-  const promise = (async () => {
-    try {
-      let result = await executeTrial(ws, stage, entry, planRead.plan, controller, abortState);
-      if (abortState.userAborted || (controller.signal.aborted && !abortState.timedOut)) {
-        result = resultForAborted(result, startedAt);
+    const executionSnapshot = snapshot;
+    snapshot = null;
+    const promise = (async () => {
+      try {
+        let result = await executeTrial(
+          ws,
+          stage,
+          entry,
+          executionSnapshot,
+          planRead.plan,
+          controller,
+          abortState,
+        );
+        if (abortState.userAborted || (controller.signal.aborted && !abortState.timedOut)) {
+          result = resultForAborted(result, startedAt);
+        }
+        if (result.kind !== 'aborted') writeCachedTrial(cachePath, verificationHash, result);
+        return result;
+      } finally {
+        clearTimeout(timeout);
+        if (activeTrialByWorkspace.get(ws.key) === cachePath) activeTrialByWorkspace.delete(ws.key);
+        if (activeTrialIdentityByWorkspace.get(ws.key) === activeIdentity) {
+          activeTrialIdentityByWorkspace.delete(ws.key);
+        }
+        if (ws.chatPipelineTrialAbort === controller) ws.chatPipelineTrialAbort = null;
+        inFlightByCachePath.delete(cachePath);
+        cleanupTrialPipelineSnapshot(executionSnapshot);
       }
-      if (result.kind !== 'aborted') writeCachedTrial(cachePath, verificationHash, result);
-      return result;
-    } finally {
-      clearTimeout(timeout);
-      if (activeTrialByWorkspace.get(ws.key) === cachePath) activeTrialByWorkspace.delete(ws.key);
-      if (activeTrialIdentityByWorkspace.get(ws.key) === activeIdentity) {
-        activeTrialIdentityByWorkspace.delete(ws.key);
-      }
-      if (ws.chatPipelineTrialAbort === controller) ws.chatPipelineTrialAbort = null;
-      inFlightByCachePath.delete(cachePath);
-    }
-  })();
-  inFlightByCachePath.set(cachePath, promise);
-  return promise;
+    })();
+    inFlightByCachePath.set(cachePath, promise);
+    return promise;
+  } finally {
+    cleanupTrialPipelineSnapshot(snapshot);
+  }
 }

@@ -682,7 +682,12 @@ function compactChatTrialRepairResult(result: ChatPipelineTrialRunResult) {
 function redactChatCompileRepairText(value: string): string {
   return value
     .replace(
-      /((?:api[_-]?key|api[_-]?token|token|secret|session(?:[_-]?token)?|password|credential|authorization)\s*[:=]\s*)([^\s"'`,;]+)/gi,
+      /((?:(?:"(?:api[_-]?key|api[_-]?token|token|secret|session(?:[_-]?token)?|password|credential|authorization)")|(?:api[_-]?key|api[_-]?token|token|secret|session(?:[_-]?token)?|password|credential|authorization))\s*:\s*)("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/gi,
+      (_match, prefix: string, quotedValue: string) =>
+        prefix + quotedValue[0] + '[redacted secret]' + quotedValue[0],
+    )
+    .replace(
+      /((?:api[_-]?key|api[_-]?token|token|secret|session(?:[_-]?token)?|password|credential|authorization)\s*[:=]\s*)([^\s"';,]+)/gi,
       '$1[redacted secret]',
     )
     .replace(/\b(Bearer)\s+[A-Za-z0-9._-]{8,}\b/gi, '$1 [redacted token]')
@@ -693,6 +698,19 @@ function clipChatCompileRepairText(value: string, maxLength: number): string {
   const redacted = redactChatCompileRepairText(value);
   if (redacted.length <= maxLength) return redacted;
   return redacted.slice(0, Math.max(0, maxLength - 16)) + '...[truncated]';
+}
+
+function clipChatCompileRepairTextByBytes(value: string, maxBytes: number): string {
+  const redacted = redactChatCompileRepairText(value);
+  const suffix = '...[truncated]';
+  if (new TextEncoder().encode(redacted).length <= maxBytes) return redacted;
+  let end = redacted.length;
+  while (end > 0) {
+    const candidate = redacted.slice(0, end) + suffix;
+    if (new TextEncoder().encode(candidate).length <= maxBytes) return candidate;
+    end -= 1;
+  }
+  return suffix;
 }
 
 function compactChatCompileRepairResult(result: YamlCompileResult) {
@@ -770,13 +788,36 @@ function serializeChatYamlCompileRepairEvidence(result: YamlCompileResult): stri
   if (new TextEncoder().encode(fallback).length <= MAX_CHAT_TRIAL_REPAIR_EVIDENCE_BYTES) {
     return fallback;
   }
+  let summaryByteBudget = 4_096;
+  while (summaryByteBudget >= 32) {
+    const finalFallback = JSON.stringify(
+      {
+        timestamp: result.timestamp,
+        sourceName: clipChatCompileRepairText(result.sourceName, 120),
+        success: result.success,
+        parseOk: result.parseOk,
+        summary: clipChatCompileRepairTextByBytes(result.summary, summaryByteBudget),
+        validationSummary: {
+          errorCount: result.validation.errors.length,
+          warningCount: result.validation.warnings.length,
+        },
+        evidenceTruncated: true,
+      },
+      null,
+      2,
+    );
+    if (new TextEncoder().encode(finalFallback).length <= MAX_CHAT_TRIAL_REPAIR_EVIDENCE_BYTES) {
+      return finalFallback;
+    }
+    summaryByteBudget = Math.floor(summaryByteBudget / 2);
+  }
   return JSON.stringify(
     {
       timestamp: result.timestamp,
       sourceName: clipChatCompileRepairText(result.sourceName, 120),
       success: result.success,
       parseOk: result.parseOk,
-      summary: clipChatCompileRepairText(result.summary, 1_000),
+      summary: '...[truncated]',
       validationSummary: {
         errorCount: result.validation.errors.length,
         warningCount: result.validation.warnings.length,
@@ -789,7 +830,8 @@ function serializeChatYamlCompileRepairEvidence(result: YamlCompileResult): stri
 }
 
 function serializeChatYamlRepairEvidence(evidence: ChatYamlRepairEvidence): string {
-  if (evidence.kind !== 'trial-run') return serializeChatYamlCompileRepairEvidence(evidence.result);  const compact = compactChatTrialRepairResult(evidence.result);
+  if (evidence.kind !== 'trial-run') return serializeChatYamlCompileRepairEvidence(evidence.result);
+  const compact = compactChatTrialRepairResult(evidence.result);
   const encoded = JSON.stringify(compact, null, 2);
   if (new TextEncoder().encode(encoded).length <= MAX_CHAT_TRIAL_REPAIR_EVIDENCE_BYTES) {
     return encoded;

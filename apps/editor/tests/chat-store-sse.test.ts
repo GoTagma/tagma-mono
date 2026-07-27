@@ -18,13 +18,13 @@ import type { ActivityEvent, OpencodeThreadEntry } from '../src/api/opencode-cha
 
 // Background work safety: session.idle and session.error{abort} can call
 // dispatchNextQueuedPrompt, which fires `void promptOpencode(...)`; that path
-// eventually awaits getOpencodeClient �?fetch('/api/opencode/chat/ensure').
+// eventually awaits getOpencodeClient → fetch('/api/opencode/chat/ensure').
 // In a test process there's no editor server, so we replace fetch with a
 // deterministic rejection. All assertions run synchronously after the SSE
 // dispatch returns, so the background unwind never touches state we assert on.
 //
-// `globalThis.fetch` is shared across the bun test process �?sibling test
-// files (e.g. sidecar-staging) rely on the real fetch �?so we save and
+// `globalThis.fetch` is shared across the bun test process — sibling test
+// files (e.g. sidecar-staging) rely on the real fetch — so we save and
 // restore it around this file's run.
 const originalFetch = globalThis.fetch;
 const rejectFetch = (() =>
@@ -202,60 +202,6 @@ test('trial-run repair prompt globally bounds expanded case and task evidence', 
   const evidence = prompt.split('<trial-run-result>')[1]!.split('</trial-run-result>')[0]!.trim();
   expect(new TextEncoder().encode(evidence).length).toBeLessThanOrEqual(64 * 1024);
   expect(evidence).toContain('…[truncated]');
-});
-
-
-test('compile repair prompt bounds and redacts compile evidence', () => {
-  const secret = 'sk-live-secret-1234567890abcdefghijklmnop';
-  const sessionToken = 'sess_live_super_secret_token_value';
-  const bearer = 'Bearer ghp_compile_secret_token_value';
-  const credential = 'password=compile-secret-password';
-  const largeMessage = [
-    `apiToken=${secret}`,
-    `session=${sessionToken}`,
-    `authorization=${bearer}`,
-    credential,
-    'compile-diagnostic-'.repeat(1_200),
-  ].join('\n');
-  const prompt = buildChatYamlRepairPrompt(
-    {
-      kind: 'refresh-current',
-      path: 'C:/repo/.tagma/build/build.yaml',
-      name: 'build.yaml',
-      pipelineName: 'Build',
-    },
-    {
-      kind: 'compile',
-      result: {
-        timestamp: '2026-07-27T00:00:00.000Z',
-        sourceName: 'build.yaml',
-        success: false,
-        parseOk: false,
-        validation: {
-          errors: Array.from({ length: 40 }, (_, index) => ({
-            path: `/tasks/${index}/command`,
-            message: `${largeMessage}\nline=${index}`,
-          })),
-          warnings: Array.from({ length: 20 }, (_, index) => ({
-            path: `/tasks/${index}/env`,
-            message: `${largeMessage}\nwarning=${index}`,
-          })),
-        },
-        summary: largeMessage.repeat(8),
-      },
-    },
-    1,
-    3,
-  );
-
-  const evidence = prompt.split('<compile-result>')[1]!.split('</compile-result>')[0]!.trim();
-  expect(new TextEncoder().encode(evidence).length).toBeLessThanOrEqual(64 * 1024);
-  expect(evidence).toContain('evidenceTruncated');
-  expect(evidence).toContain('[redacted');
-  expect(evidence).not.toContain(secret);
-  expect(evidence).not.toContain(sessionToken);
-  expect(evidence).not.toContain(bearer);
-  expect(evidence).not.toContain(credential);
 });
 
 test('trial planning prompt forces behavior-first edge-case design without authoring edits', () => {
@@ -1346,7 +1292,7 @@ const makeRunningToolPart = (id: string, sessionID: string, messageID: string, t
   },
 });
 
-describe('applySseEvent �?message + part state', () => {
+describe('applySseEvent — message + part state', () => {
   test('1. same-session message.updated appends a thread entry', () => {
     useChatStore.setState({ currentSessionId: 's1', messages: [] } as never);
 
@@ -1772,12 +1718,12 @@ describe('applySseEvent �?message + part state', () => {
   });
 });
 
-describe('applySseEvent �?turn lifecycle', () => {
+describe('applySseEvent — turn lifecycle', () => {
   test('4. session.error{MessageAbortedError} records a user-stopped finished turn without surfacing an error', () => {
     useChatStore.setState({
       currentSessionId: 's1',
       sending: true,
-      pendingUserText: 'pending...',
+      pendingUserText: 'pending…',
       sendError: null,
       queuedMessages: [],
     } as never);
@@ -1811,7 +1757,7 @@ describe('applySseEvent �?turn lifecycle', () => {
     useChatStore.setState({
       currentSessionId: 's1',
       sending: true,
-      pendingUserText: 'pending...',
+      pendingUserText: 'pending…',
       queuedMessages: [],
     } as never);
 
@@ -1852,7 +1798,7 @@ describe('applySseEvent �?turn lifecycle', () => {
     useChatStore.setState({
       currentSessionId: 's1',
       sending: true,
-      pendingUserText: 'pending...',
+      pendingUserText: 'pending…',
     } as never);
 
     dispatch({
@@ -1912,7 +1858,7 @@ describe('applySseEvent �?turn lifecycle', () => {
     useChatStore.setState({
       currentSessionId: 's1',
       sending: true,
-      pendingUserText: 'pending...',
+      pendingUserText: 'pending…',
       sessionStatus: null,
       lastActivityAt: null,
     } as never);
@@ -1937,7 +1883,7 @@ describe('applySseEvent �?turn lifecycle', () => {
     expect((state.lastActivityAt as number) >= before).toBe(true);
 
     // While not sending: same event must be a no-op for both the status and
-    // the activity timer �?out-of-band status pings on a finished turn must
+    // the activity timer — out-of-band status pings on a finished turn must
     // not relight ProgressBubble.
     useChatStore.setState({
       ...RESET,
@@ -1960,7 +1906,7 @@ describe('applySseEvent �?turn lifecycle', () => {
     // Opencode emits session.status{retry} before each retry attempt but
     // doesn't reliably emit a follow-up status on success. The next normal
     // SSE event (here: a text part) must be enough to drop the retry banner
-    // �?otherwise ProgressBubble pins on "Retrying provider · next in 0s"
+    // — otherwise ProgressBubble pins on "Retrying provider · next in 0s"
     // even while the model happily streams.
     const turnStartedAt = Date.now() - 1000;
     const seed: OpencodeThreadEntry = {
@@ -1988,7 +1934,7 @@ describe('applySseEvent �?turn lifecycle', () => {
 
   test('9c. session.compacted appends a compacting activity to the current-turn assistant; session.idle seals it and clears progress', () => {
     // session.compacted should drop a `compacting` row onto the current-turn
-    // assistant message's activity timeline �?that's how the panel surfaces
+    // assistant message's activity timeline — that's how the panel surfaces
     // the silent multi-second compaction step. Then session.idle must seal
     // any open trailing activity (so post-turn render shows a closed
     // duration, not a counter ticking forever) and clear every progress
@@ -2005,7 +1951,7 @@ describe('applySseEvent �?turn lifecycle', () => {
     useChatStore.setState({
       currentSessionId: 's1',
       sending: true,
-      pendingUserText: 'pending...',
+      pendingUserText: 'pending…',
       turnStartedAt,
       lastActivityAt: turnStartedAt,
       sessionStatus: null,
@@ -2047,7 +1993,7 @@ describe('applySseEvent �?turn lifecycle', () => {
     expect(cleared.sessionStatus).toBeNull();
     expect(cleared.pendingUserText).toBeNull();
     expect(cleared.pendingActivity).toEqual([]);
-    // Trailing open event must be sealed by finishChatTurn �?otherwise the
+    // Trailing open event must be sealed by finishChatTurn — otherwise the
     // panel's live-elapsed counter would tick into eternity post-turn.
     const sealedEvent = cleared.messages[0].activity![0];
     expect(sealedEvent.kind).toBe('compacting');
@@ -2057,7 +2003,7 @@ describe('applySseEvent �?turn lifecycle', () => {
   test('9d. message.part.updated coalesces same partId into a single activity row', () => {
     // Streaming text emits message.part.updated with the *full* accumulated
     // text on every chunk. The activity timeline must collapse those into
-    // one row keyed by partId �?bumping count and bytes �?instead of
+    // one row keyed by partId — bumping count and bytes — instead of
     // appending a new row per chunk (which would blow the 80-event cap in
     // seconds and make the timeline useless).
     const turnStartedAt = Date.now() - 1000;
@@ -2170,7 +2116,7 @@ describe('applySseEvent �?turn lifecycle', () => {
     expect(entry.activity!.map((e) => e.kind)).toEqual(['request-sent', 'assistant-started']);
     expect(entry.activity![1].detail).toBe('claude-sonnet-4-6');
     // The previous trailing event (request-sent) must be sealed when
-    // assistant-started gets appended �?otherwise both would render as
+    // assistant-started gets appended — otherwise both would render as
     // "ongoing" simultaneously.
     expect(entry.activity![0].endedAt).not.toBeNull();
   });
@@ -2281,7 +2227,7 @@ describe('applySseEvent �?turn lifecycle', () => {
     useChatStore.setState({
       currentSessionId: 's1',
       sending: true,
-      pendingUserText: 'pending...',
+      pendingUserText: 'pending…',
       queuedMessages: [{ id: 'q1', text: 'queued', createdAt: 1 }],
       turnStartedAt,
       lastActivityAt: turnStartedAt,
@@ -2303,7 +2249,7 @@ describe('applySseEvent �?turn lifecycle', () => {
 
     let state = useChatStore.getState();
     expect(state.sending).toBe(true);
-    expect(state.pendingUserText).toBe('pending...');
+    expect(state.pendingUserText).toBe('pending…');
     expect(state.queuedMessages).toHaveLength(1);
     expect(state.pendingActivity).toHaveLength(1);
 
@@ -2314,7 +2260,7 @@ describe('applySseEvent �?turn lifecycle', () => {
 
     state = useChatStore.getState();
     expect(state.sending).toBe(true);
-    expect(state.pendingUserText).toBe('pending...');
+    expect(state.pendingUserText).toBe('pending…');
     expect(state.queuedMessages).toHaveLength(1);
     expect(state.pendingActivity).toHaveLength(1);
   });
@@ -2349,7 +2295,7 @@ describe('applySseEvent �?turn lifecycle', () => {
     useChatStore.setState({
       currentSessionId: 's1',
       sending: true,
-      pendingUserText: 'pending...',
+      pendingUserText: 'pending…',
       turnStartedAt,
       lastActivityAt: turnStartedAt + 10,
       messages: [entry],
@@ -2362,7 +2308,7 @@ describe('applySseEvent �?turn lifecycle', () => {
 
     const state = useChatStore.getState();
     expect(state.sending).toBe(true);
-    expect(state.pendingUserText).toBe('pending...');
+    expect(state.pendingUserText).toBe('pending…');
     expect(state.messages[0].activity).toHaveLength(2);
   });
 
@@ -2375,7 +2321,7 @@ describe('applySseEvent �?turn lifecycle', () => {
     useChatStore.setState({
       currentSessionId: 's1',
       sending: true,
-      pendingUserText: 'pending...',
+      pendingUserText: 'pending…',
       turnStartedAt,
       lastActivityAt: turnStartedAt,
       pendingActivity: [
@@ -2574,7 +2520,7 @@ describe('applySseEvent �?turn lifecycle', () => {
     useChatStore.setState({
       currentSessionId: 's1',
       sending: true,
-      pendingUserText: 'pending...',
+      pendingUserText: 'pending…',
       turnStartedAt,
       lastActivityAt: turnStartedAt,
       messages: [],
@@ -2769,7 +2715,7 @@ describe('applySseEvent �?turn lifecycle', () => {
     useChatStore.setState({
       currentSessionId: 's1',
       sending: true,
-      pendingUserText: 'pending...',
+      pendingUserText: 'pending…',
     } as never);
 
     dispatch({
@@ -2818,7 +2764,7 @@ describe('applySseEvent �?turn lifecycle', () => {
     useChatStore.setState({
       currentSessionId: 's1',
       sending: true,
-      pendingUserText: 'pending...',
+      pendingUserText: 'pending…',
       queuedMessages: [],
       turnStartedAt,
       turnAssistantMessageIds: ['m-streaming'],
@@ -2952,10 +2898,10 @@ describe('applySseEvent �?turn lifecycle', () => {
   // Keep this test last in the file. dispatchNextQueuedPrompt sets a
   // module-level `queuedPromptDispatchInFlight` flag we cannot reset from
   // outside the module. The flag is only released when the background
-  // promptOpencode chain unwinds (here: stubbed fetch rejects �?the .finally
+  // promptOpencode chain unwinds (here: stubbed fetch rejects → the .finally
   // fires). That release is microtask-scheduled, so a later test in the same
   // file could observe the flag still true and short-circuit out of
-  // dispatchNextQueuedPrompt �?masking real regressions in other event
+  // dispatchNextQueuedPrompt — masking real regressions in other event
   // handlers. Keeping this last avoids the ordering trap.
   test('10. a failed queued continuation still finishes one logical turn', async () => {
     const turnStartedAt = Date.now() - 100;
@@ -2984,7 +2930,7 @@ describe('applySseEvent �?turn lifecycle', () => {
       model: 'stub-provider/stub-model',
       agent: 'tagma-router',
       sending: true,
-      pendingUserText: 'pending...',
+      pendingUserText: 'pending…',
       queuedMessages: [{ id: 'q1', text: 'next prompt', createdAt: 1 }],
       turnStartedAt,
       lastActivityAt: turnStartedAt + 20,

@@ -93,7 +93,7 @@ describe('OpenCode sidecar proxy', () => {
       expect(
         decodeURIComponent(
           sanitizeForwardedOpencodeDirectory(
-            encodeURIComponent(stagedDir.replaceAll('\\', '/')),
+            encodeURIComponent(stagedDir.replace(/\\/g, '/')),
             tagmaDir,
           ) ?? '',
         ),
@@ -102,7 +102,7 @@ describe('OpenCode sidecar proxy', () => {
       expect(
         decodeURIComponent(
           sanitizeForwardedOpencodeDirectory(
-            encodeURIComponent(tagmaDir.replaceAll('\\', '/')),
+            encodeURIComponent(tagmaDir.replace(/\\/g, '/')),
             tagmaDir,
           ) ?? '',
         ),
@@ -122,7 +122,7 @@ describe('OpenCode sidecar proxy', () => {
 
       expect(() =>
         sanitizeForwardedOpencodeDirectory(
-          encodeURIComponent(outsideDir.replaceAll('\\', '/')),
+          encodeURIComponent(outsideDir.replace(/\\/g, '/')),
           tagmaDir,
         ),
       ).toThrow('workspace .tagma directory');
@@ -144,7 +144,7 @@ describe('OpenCode sidecar proxy', () => {
 
       expect(() =>
         sanitizeForwardedOpencodeDirectory(
-          encodeURIComponent(join(escapeLink, 'child').replaceAll('\\', '/')),
+          encodeURIComponent(join(escapeLink, 'child').replace(/\\/g, '/')),
           tagmaDir,
         ),
       ).toThrow('workspace .tagma directory');

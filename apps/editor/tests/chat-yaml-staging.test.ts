@@ -69,6 +69,11 @@ function setupWorkspace(baseYaml = yamlFor('Base Pipeline', 'base')): {
   mkdirSync(dirname(sourcePath), { recursive: true });
   writeFileSync(sourcePath, baseYaml, 'utf-8');
   writeFileSync(pipelineLayoutPath(sourcePath), layoutFor(20), 'utf-8');
+  writeFileSync(
+    join(root, '.tagma', 'editor-settings.json'),
+    JSON.stringify({ opencodeChatTrialRunEnabled: false }, null, 2) + '\n',
+    'utf-8',
+  );
 
   const ws = new WorkspaceState(root);
   ws.workDir = root;

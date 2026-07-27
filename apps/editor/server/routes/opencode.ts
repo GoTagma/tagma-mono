@@ -25,6 +25,7 @@ import {
   fetchOpencodeProxy,
   OPENCODE_PROXY_BASE_PATH,
   pipeOpencodeProxyResponse,
+  sanitizeForwardedOpencodeDirectory,
 } from '../opencode-proxy.js';
 import { seedOpencodeArtifacts } from '../opencode-seed.js';
 import { buildOpencodeSeedOptions } from '../opencode-seed-options.js';
@@ -545,12 +546,22 @@ export function registerOpencodeRoutes(app: express.Express): void {
     try {
       const tagmaCwd = ensureRealTagmaDirectory(ws.workDir);
       const { baseUrl, auth } = await ensureOpencode(tagmaCwd);
+      const headers = new Headers(req.headers as HeadersInit);
+      const forwardedDirectory = sanitizeForwardedOpencodeDirectory(
+        headers.get('x-opencode-directory'),
+        tagmaCwd,
+      );
+      if (forwardedDirectory === null) {
+        headers.delete('x-opencode-directory');
+      } else {
+        headers.set('x-opencode-directory', forwardedDirectory);
+      }
       const response = await fetchOpencodeProxy({
         baseUrl,
         authorization: auth.authorization,
         requestUrl: req.url,
         method: req.method,
-        headers: new Headers(req.headers as HeadersInit),
+        headers,
         body: parsedProxyBody(req),
         signal: controller.signal,
       });
@@ -590,7 +601,7 @@ export function registerOpencodeRoutes(app: express.Express): void {
         : seedOpencodeArtifacts(tagmaCwd, buildOpencodeSeedOptions(ws));
       startChatCompileWatcher(tagmaCwd, ws.registry);
       console.log('[opencode] ensure called, cwd =', tagmaCwd);
-      const { baseUrl, auth } = activeYamlLock
+      const { baseUrl } = activeYamlLock
         ? await ensureOpencode(tagmaCwd)
         : seedChanged
           ? await restartOpencode(tagmaCwd)
@@ -601,7 +612,6 @@ export function registerOpencodeRoutes(app: express.Express): void {
         baseUrl,
         proxyBaseUrl: OPENCODE_PROXY_BASE_PATH,
         directory: tagmaCwd,
-        authHeader: auth.authorization,
       });
     } catch (err) {
       console.error('[opencode] ensure FAILED:', err);
@@ -643,7 +653,6 @@ export function registerOpencodeRoutes(app: express.Express): void {
         baseUrl,
         proxyBaseUrl: OPENCODE_PROXY_BASE_PATH,
         directory: tagmaCwd,
-        authHeader: auth.authorization,
       });
     } catch (err) {
       console.error('[opencode] restart FAILED:', err);
@@ -651,4 +660,5 @@ export function registerOpencodeRoutes(app: express.Express): void {
     }
   });
 }
+
 

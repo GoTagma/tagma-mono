@@ -12,6 +12,9 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import yaml from 'js-yaml';
 import { parseYaml, serializePipeline } from '@tagma/sdk/yaml';
 
+import { readChatPipelineTrialPlan } from './chat-pipeline-trial-plan.js';
+import { readEditorSettings } from './plugins/loader.js';
+
 import type { EditorLayout, WorkspaceState } from './workspace-state.js';
 import { atomicWriteFileSync, isPathWithin } from './path-utils.js';
 import {
@@ -47,6 +50,8 @@ const STAGE_RESULT_FILE = 'finalized.json';
 const STAGE_VERSION = 2;
 const MAX_ARTIFACT_BYTES = 5 * 1024 * 1024;
 const STAGE_TTL_MS = 24 * 60 * 60 * 1000;
+const TRIAL_CACHE_VERSION = 2;
+const FINALIZE_TRIAL_ID_RE = /^[A-Za-z0-9_-]{1,160}$/;
 
 export const __chatYamlStagingTestHooks: {
   afterDestinationYamlWrite?: (destinationYamlPath: string) => void;
@@ -123,6 +128,7 @@ export interface ChatYamlStageFinalizeInput {
     ChatYamlStageConflict,
     'path-moved' | 'compile-failed' | 'trial-run-failed'
   >;
+  trialId?: string;
   allowInvalid?: boolean;
 }
 
@@ -941,6 +947,70 @@ function readFinalizeResult(paths: StagePaths): ChatYamlStageFinalizeResult | nu
   ) as ChatYamlStageFinalizeResult;
 }
 
+interface CachedTrialFinalizeRecord {
+  version: typeof TRIAL_CACHE_VERSION;
+  contentHash: string;
+  result: {
+    version: typeof TRIAL_CACHE_VERSION;
+    success: boolean;
+  };
+}
+
+function normalizeFinalizeTrialId(value: string | undefined): string | null {
+  if (value === undefined) return null;
+  const trialId = value.trim();
+  if (!FINALIZE_TRIAL_ID_RE.test(trialId)) {
+    throw new Error('trialId must contain only letters, digits, underscores, or hyphens.');
+  }
+  return trialId;
+}
+
+function trialFinalizeCachePath(
+  paths: StagePaths,
+  trialId: string,
+  relativePath: string,
+  verificationHash: string,
+): string {
+  const digest = createHash('sha256')
+    .update(`${trialId}\0${relativePath}\0${verificationHash}`)
+    .digest('hex');
+  return join(paths.rootDir, '.trial-runs', `${digest}.json`);
+}
+
+function hasSuccessfulVerifiedTrial(
+  ws: WorkspaceState,
+  paths: StagePaths,
+  stagedPath: string,
+  relativePath: string,
+  trialId: string | undefined,
+): boolean {
+  if (readEditorSettings(ws).opencodeChatTrialRunEnabled === false) return true;
+  const normalizedTrialId = normalizeFinalizeTrialId(trialId);
+  if (!normalizedTrialId) return false;
+  const contentHash = sha1(assertRegularTextFile(stagedPath, 'staged YAML'));
+  const planRead = readChatPipelineTrialPlan(stagedPath, relativePath, contentHash);
+  if (planRead.status === 'required') return false;
+  const verificationHash = createHash('sha256')
+    .update(`${contentHash}\0${planRead.planHash}`)
+    .digest('hex');
+  const cachePath = trialFinalizeCachePath(paths, normalizedTrialId, relativePath, verificationHash);
+  if (!existsSync(cachePath)) return false;
+  try {
+    const cached = JSON.parse(
+      assertRegularTextFile(cachePath, 'chat YAML trial cache'),
+    ) as Partial<CachedTrialFinalizeRecord>;
+    return (
+      cached.version === TRIAL_CACHE_VERSION &&
+      cached.contentHash === verificationHash &&
+      !!cached.result &&
+      cached.result.version === TRIAL_CACHE_VERSION &&
+      cached.result.success === true
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function finalizeChatYamlStage(
   ws: WorkspaceState,
   input: ChatYamlStageFinalizeInput,
@@ -983,9 +1053,15 @@ export function finalizeChatYamlStage(
     return result;
   }
 
+  const trialVerificationSucceeded =
+    !compile.success || hasSuccessfulVerifiedTrial(ws, paths, stagedPath, relativePath, input.trialId);
+
   const conflicts: ChatYamlStageConflict[] = [];
   if (input.forceForkReason) conflicts.push(input.forceForkReason);
   if (!compile.success && !conflicts.includes('compile-failed')) conflicts.push('compile-failed');
+  if (!trialVerificationSucceeded && !conflicts.includes('trial-run-failed')) {
+    conflicts.push('trial-run-failed');
+  }
 
   const committed = withFinalizeMutationTransaction(ws, (trackPipeline) => {
     let outcome: ChatYamlStageFinalizeResult['outcome'];
