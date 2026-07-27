@@ -1,4 +1,4 @@
-﻿import type express from 'express';
+import type express from 'express';
 import {
   existsSync,
   mkdtempSync,
@@ -49,15 +49,16 @@ import {
  * layer so in-app updates land in userData and win over the signed bundle.
  *
  * Endpoints:
- *   GET  /api/opencode/info   鈥?what's shipped, what's running, what's latest
- *   POST /api/opencode/update 鈥?fetch `opencode-ai@<target>` for the current
+ *   GET  /api/opencode/info   —what's shipped, what's running, what's latest
+ *   POST /api/opencode/update —fetch `opencode-ai@<target>` for the current
  *                               platform/arch and extract the binary into
  *                               userData/opencode/bin/. Next spawn picks it
  *                               up automatically via the already-prepended
  *                               PATH layer; no app restart required.
  *
  * Why re-implement fetch/verify/extract here instead of reusing
- * server/plugins/install.ts? That module's MAX_TARBALL_BYTES is 50 MB 鈥? * opencode platform tarballs are 100鈥?50 MB because they ship a
+ * server/plugins/install.ts? That module's MAX_TARBALL_BYTES is 50 MB —
+ * opencode platform tarballs are 100–150 MB because they ship a
  * self-contained Bun single-file executable. Duplicating the minimal logic
  * keeps the plugin installer's tight cap intact while letting the opencode
  * path run under a larger (but still bounded) ceiling.
@@ -305,16 +306,16 @@ function verifyIntegrity(
     }
     return;
   }
-  // Same SHA1 fallback rejection as the plugin installer 鈥?see
+  // Same SHA1 fallback rejection as the plugin installer —see
   // server/plugins/install.ts for the rationale.
   throw new Error(
     `Registry response for ${pkgName} did not include a sha256/sha384/sha512 integrity hash. ` +
-      `Refusing to install 鈥?SHA1 \`shasum\` fallback is not accepted.`,
+      `Refusing to install —SHA1 \`shasum\` fallback is not accepted.`,
   );
 }
 
 function extractBinary(tgzPath: string, destFile: string, isWindows: boolean): void {
-  // Same Bun+tar-v7 workaround as server/plugins/install.ts 鈥?stream entries
+  // Same Bun+tar-v7 workaround as server/plugins/install.ts —stream entries
   // manually because tar.x() silently drops file contents under Bun.
   const wantRelPath = isWindows ? 'bin/opencode.exe' : 'bin/opencode';
   let written = false;
@@ -344,7 +345,7 @@ function extractBinary(tgzPath: string, destFile: string, isWindows: boolean): v
     },
   });
   if (!written) {
-    throw new Error(`Did not find ${wantRelPath} in tarball 鈥?opencode layout may have changed.`);
+    throw new Error(`Did not find ${wantRelPath} in tarball —opencode layout may have changed.`);
   }
 }
 
@@ -364,7 +365,7 @@ async function performUpdate(
       'OpenCode updates require a writable userData directory. This is only available when running under the desktop app.',
     );
   }
-  // Strict semver 鈥?no dist-tags, no path-traversal characters, no
+  // Strict semver —no dist-tags, no path-traversal characters, no
   // arbitrary registry strings. The version becomes part of the registry
   // URL ({pkgName}/{version}) so any laxity here is also a URL-injection
   // surface.
@@ -392,7 +393,7 @@ async function performUpdate(
     if (existsSync(stagingBinary)) rmSync(stagingBinary, { force: true });
     mkdirSync(binDir, { recursive: true });
     // Extract straight to stagingBinary by temporarily renaming the target
-    // path the extractor is asked to write 鈥?avoids ripping out the currently
+    // path the extractor is asked to write —avoids ripping out the currently
     // running binary (Windows locks an in-use .exe against deletion).
     extractBinary(tgzPath, stagingBinary, process.platform === 'win32');
     if (existsSync(destBinary)) {
@@ -522,7 +523,7 @@ export function registerOpencodeRoutes(app: express.Express): void {
     res.json({ ok: true });
   });
 
-  // 鈹€鈹€鈹€ Chat bootstrap endpoint 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ─── Chat bootstrap endpoint ────────────────────────────────────────────
   // Bootstrap seeds and starts the workspace runtime before publishing the
   // stable same-origin proxy base URL to the renderer.
 
@@ -586,7 +587,7 @@ export function registerOpencodeRoutes(app: express.Express): void {
     }
     try {
       // Scope opencode's view of the world to the workspace's `.tagma/`
-      // subdirectory 鈥?that's where pipeline YAML lives, and the chat
+      // subdirectory —that's where pipeline YAML lives, and the chat
       // pipeline agent may only write inside it. The agent may read `..` for
       // workspace context, but writes must stay rooted here. Setting cwd
       // here makes YAML-relative paths resolve there and matches what the agent's
@@ -619,11 +620,11 @@ export function registerOpencodeRoutes(app: express.Express): void {
     }
   });
 
-  // 鈹€鈹€鈹€ Chat opencode restart endpoint 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ─── Chat opencode restart endpoint ─────────────────────────────────────
   //
   // opencode 1.14.x caches /config/providers and /provider in memory. Writes
   // to auth.json (PUT/DELETE /auth/{id}) update disk but don't invalidate the
-  // cache 鈥?so a fresh API key or a disconnect doesn't take effect until the
+  // cache —so a fresh API key or a disconnect doesn't take effect until the
   // process restarts. The renderer calls this after any provider auth change
   // to kill + respawn opencode scoped to the active workspace. The direct URL
   // remains in the response for hot-update compatibility, while current
@@ -660,5 +661,3 @@ export function registerOpencodeRoutes(app: express.Express): void {
     }
   });
 }
-
-

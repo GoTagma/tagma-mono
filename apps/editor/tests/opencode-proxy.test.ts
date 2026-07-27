@@ -1,12 +1,9 @@
-﻿import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import {
-  fetchOpencodeProxy,
-  sanitizeForwardedOpencodeDirectory,
-} from '../server/opencode-proxy';
+import { fetchOpencodeProxy, sanitizeForwardedOpencodeDirectory } from '../server/opencode-proxy';
 
 describe('OpenCode sidecar proxy', () => {
   test('forwards path, query, and JSON while replacing renderer credentials', async () => {
