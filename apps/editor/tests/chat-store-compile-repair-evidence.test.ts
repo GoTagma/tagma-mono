@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+﻿import { expect, test } from 'bun:test';
 import { buildChatYamlRepairPrompt } from '../src/store/chat-store';
 
 const TARGET = {
@@ -14,12 +14,20 @@ test('compile repair prompt bounds and redacts compile evidence', () => {
   const bearer = 'Bearer ghp_compile_secret_token_value';
   const credential = 'password=compile-secret-password';
   const jsonSecret = '{"password":"hunter2","apiKey":"plain-secret"}';
+  const providerAssignmentSecret = 'openai_api_key=sk-provider-assignment-secret-1234567890';
+  const providerQuotedJsonSecret =
+    '{"openai_api_key":"sk-provider-json-secret-1234567890","anthropic_api_key":"sk-provider-anthropic-secret-1234567890"}';
+  const providerQuotedObjectSecret =
+    "{ 'azure_openai_api_key': 'sk-provider-azure-secret-1234567890' }";
   const largeMessage = [
     'apiToken=' + secret,
     'session=' + sessionToken,
     'authorization=' + bearer,
     credential,
     jsonSecret,
+    providerAssignmentSecret,
+    providerQuotedJsonSecret,
+    providerQuotedObjectSecret,
     'compile-diagnostic-'.repeat(1_200),
   ].join('\n');
   const prompt = buildChatYamlRepairPrompt(
@@ -58,8 +66,15 @@ test('compile repair prompt bounds and redacts compile evidence', () => {
   expect(evidence).not.toContain(credential);
   expect(evidence).not.toContain('hunter2');
   expect(evidence).not.toContain('plain-secret');
+  expect(evidence).not.toContain('sk-provider-assignment-secret-1234567890');
+  expect(evidence).not.toContain('sk-provider-json-secret-1234567890');
+  expect(evidence).not.toContain('sk-provider-anthropic-secret-1234567890');
+  expect(evidence).not.toContain('sk-provider-azure-secret-1234567890');
   expect(evidence).toContain('\\"password\\":\\"[redacted secret]\\"');
   expect(evidence).toContain('\\"apiKey\\":\\"[redacted secret]\\"');
+  expect(evidence).toContain('\\"openai_api_key\\":\\"[redacted secret]\\"');
+  expect(evidence).toContain('\\"anthropic_api_key\\":\\"[redacted secret]\\"');
+  expect(evidence).toContain("{ 'azure_openai_api_key': '[redacted secret]' }");
 });
 
 test('compile repair prompt keeps multibyte fallback evidence byte-bounded', () => {

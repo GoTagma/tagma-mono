@@ -566,7 +566,7 @@ describe('chat YAML staging routes', () => {
           fixtures: [
             {
               path: 'inputs/a/report.txt',
-              content: 'FIRST_A\n\nSECOND_PARAGRAPH_A\nSymbols: [x] & % 中文\n',
+              content: 'FIRST_A\n\nSECOND_PARAGRAPH_A\nSymbols: [x] & % 涓枃\n',
             },
             {
               path: 'inputs/b/report.txt',
@@ -585,7 +585,7 @@ describe('chat YAML staging routes', () => {
             {
               type: 'file-equals',
               path: 'outputs/a-report.txt',
-              text: 'FIRST_A\n\nSECOND_PARAGRAPH_A\nSymbols: [x] & % 中文\n',
+              text: 'FIRST_A\n\nSECOND_PARAGRAPH_A\nSymbols: [x] & % 涓枃\n',
             },
             {
               type: 'file-equals',
@@ -1163,6 +1163,168 @@ describe('chat YAML staging routes', () => {
       request(ws, { stageId: stage.id }, 'chat-lock'),
       discardRes,
     );
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('invalidates cached trial success when a live helper under the pipeline folder changes', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    const counterPath = join(ws.workDir, 'trial-success-counter.txt');
+    const helperPath = join(dirname(sourcePath), 'helper.js');
+    const writeHelper = (version: string) =>
+      writeFileSync(
+        helperPath,
+        [
+          "const fs = require('node:fs');",
+          `const counterPath = ${JSON.stringify(counterPath)};`,
+          "const count = fs.existsSync(counterPath) ? Number(fs.readFileSync(counterPath, 'utf8')) : 0;",
+          'fs.writeFileSync(counterPath, String(count + 1));',
+          `process.stdout.write(${JSON.stringify(version)});`,
+        ].join(' '),
+        'utf-8',
+      );
+    writeHelper('helper-v1');
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Live Helper Cache',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              { id: 'verify_live_helper', command: { argv: [process.execPath, helperPath] } },
+              { id: 'case_probe', command: { argv: [process.execPath, '-e', 'process.exit(0)'] } },
+            ],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    writePassingTrialPlan(entry.stagedPath, 'main.case_probe');
+
+    const runTrial = async () => {
+      const res = makeRes();
+      await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+        request(
+          ws,
+          { stageId: stage.id, relativePath: entry.relativePath, trialId: 'finished_turn_helper' },
+          'chat-lock',
+        ),
+        res,
+      );
+      return res;
+    };
+
+    const first = await runTrial();
+    const second = await runTrial();
+    expect(first.body).toMatchObject({ success: true, kind: 'passed', ran: true });
+    expect(second.body).toEqual(first.body);
+    expect(readFileSync(counterPath, 'utf-8')).toBe('1');
+
+    writeHelper('helper-v2');
+    const third = await runTrial();
+    expect(third.body).toMatchObject({ success: true, kind: 'passed', ran: true });
+    expect(third.body).not.toEqual(first.body);
+    expect(readFileSync(counterPath, 'utf-8')).toBe('2');
+    const helperTask = (
+      third.body as {
+        tasks: Array<{ caseId: string | null; taskId: string; stdout: string; status: string }>;
+      }
+    ).tasks.find((task) => task.caseId === null && task.taskId === 'main.verify_live_helper');
+    expect(helperTask).toMatchObject({ status: 'success', stdout: 'helper-v2' });
+
+    discardStage(getRoute, ws, stage.id);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('rejects stale finalize reuse after live pipeline-folder inputs change since the last trial', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    const helperInputPath = join(dirname(sourcePath), 'helper-input.txt');
+    const helperPath = join(dirname(sourcePath), 'verify-input.js');
+    writeFileSync(helperInputPath, 'alpha\n', 'utf-8');
+    writeFileSync(
+      helperPath,
+      [
+        "const fs = require('node:fs');",
+        `process.stdout.write(fs.readFileSync(${JSON.stringify(helperInputPath)}, 'utf8').trim());`,
+      ].join(' '),
+      'utf-8',
+    );
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Finalize Input Guard',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              { id: 'verify_live_input', command: { argv: [process.execPath, helperPath] } },
+              { id: 'case_probe', command: { argv: [process.execPath, '-e', 'process.exit(0)'] } },
+            ],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    writePassingTrialPlan(entry.stagedPath, 'main.case_probe');
+
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'finished_turn_finalize' },
+        'chat-lock',
+      ),
+      trialRes,
+    );
+    expect(trialRes.body).toMatchObject({ success: true, kind: 'passed', ran: true });
+
+    writeFileSync(helperInputPath, 'beta\n', 'utf-8');
+    const finalizeRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/finalize')(
+      request(
+        ws,
+        {
+          stageId: stage.id,
+          relativePath: entry.relativePath,
+          trialId: 'finished_turn_finalize',
+        },
+        'chat-lock',
+      ),
+      finalizeRes,
+    );
+    expect(finalizeRes.statusCode).toBe(200);
+    expect(finalizeRes.body).toMatchObject({
+      outcome: 'forked',
+      conflicts: ['trial-run-failed'],
+    });
+
+    discardStage(getRoute, ws, stage.id);
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });
