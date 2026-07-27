@@ -167,7 +167,9 @@ function compareManifestEntryNames(left: { name: string }, right: { name: string
 }
 
 function shouldHashTrialTreeEntry(name: string): boolean {
-  return !/\.(?:compile\\.log|manifest\\.json|layout\\.json|requirements\\.md|trial-plan\\.json)$/i.test(name);
+  return !/\.(?:compile\.log|manifest\.json|layout\.json|requirements\.md|trial-plan\.json)$/i.test(
+    name,
+  );
 }
 
 function isSha1(value: unknown): value is string {
@@ -1043,7 +1045,12 @@ function hasSuccessfulVerifiedTrial(
     planHash: planRead.planHash,
     liveTreeHash: hashChatPipelineTrialTree(sourcePath ? dirname(sourcePath) : null),
   });
-  const cachePath = trialFinalizeCachePath(paths, normalizedTrialId, relativePath, verificationHash);
+  const cachePath = trialFinalizeCachePath(
+    paths,
+    normalizedTrialId,
+    relativePath,
+    verificationHash,
+  );
   if (!existsSync(cachePath)) return false;
   try {
     const cached = JSON.parse(
@@ -1104,7 +1111,8 @@ export function finalizeChatYamlStage(
   }
 
   const trialVerificationSucceeded =
-    !compile.success || hasSuccessfulVerifiedTrial(ws, paths, stagedPath, relativePath, sourcePath, input.trialId);
+    !compile.success ||
+    hasSuccessfulVerifiedTrial(ws, paths, stagedPath, relativePath, sourcePath, input.trialId);
 
   const conflicts: ChatYamlStageConflict[] = [];
   if (input.forceForkReason) conflicts.push(input.forceForkReason);

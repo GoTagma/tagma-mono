@@ -241,10 +241,15 @@ function createTrialPipelineSnapshot(
   const rootDir = mkdtempSync(join(snapshotsDir, 'run-'));
   try {
     const snapshotYamlPath = join(rootDir, '.tagma', ...relativePath.split('/'));
-    copyTrialPipelineTree(dirname(stagedYamlPath), dirname(snapshotYamlPath), {
-      files: 0,
-      bytes: 0,
-    }, { includeTrialPlan: true });
+    copyTrialPipelineTree(
+      dirname(stagedYamlPath),
+      dirname(snapshotYamlPath),
+      {
+        files: 0,
+        bytes: 0,
+      },
+      { includeTrialPlan: true },
+    );
     const snapshotYaml = readFileSync(snapshotYamlPath, 'utf-8');
     const treeHash = hashChatPipelineTrialTree(dirname(snapshotYamlPath));
     if (!treeHash) throw new Error('Trial snapshot tree hash is missing.');
@@ -1154,16 +1159,16 @@ export async function trialRunChatYamlStage(
     }
 
     const controller = new AbortController();
-  const abortState = { timedOut: false, userAborted: false };
-  const activeIdentity = { stageId: input.stageId, trialId, controller, abortState };
-  const timeout = setTimeout(() => {
-    abortState.timedOut = true;
-    controller.abort('chat trial run timeout');
-  }, CHAT_PIPELINE_TRIAL_TIMEOUT_MS);
-  timeout.unref?.();
-  activeTrialByWorkspace.set(ws.key, cachePath);
-  activeTrialIdentityByWorkspace.set(ws.key, activeIdentity);
-  ws.chatPipelineTrialAbort = controller;
+    const abortState = { timedOut: false, userAborted: false };
+    const activeIdentity = { stageId: input.stageId, trialId, controller, abortState };
+    const timeout = setTimeout(() => {
+      abortState.timedOut = true;
+      controller.abort('chat trial run timeout');
+    }, CHAT_PIPELINE_TRIAL_TIMEOUT_MS);
+    timeout.unref?.();
+    activeTrialByWorkspace.set(ws.key, cachePath);
+    activeTrialIdentityByWorkspace.set(ws.key, activeIdentity);
+    ws.chatPipelineTrialAbort = controller;
 
     const executionSnapshot = snapshot;
     snapshot = null;
