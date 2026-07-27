@@ -14,6 +14,11 @@ import { parseYaml, serializePipeline } from '@tagma/sdk/yaml';
 
 import { readChatPipelineTrialPlan } from './chat-pipeline-trial-plan.js';
 import { readEditorSettings } from './plugins/loader.js';
+import {
+  safeCaptureTrialHostWitness,
+  safePrepareTrialHostWitnessInputs,
+  type TrialHostWitness,
+} from './chat-pipeline-trial-witness.js';
 
 import type { EditorLayout, WorkspaceState } from './workspace-state.js';
 import { atomicWriteFileSync, isPathWithin } from './path-utils.js';
@@ -50,7 +55,7 @@ const STAGE_RESULT_FILE = 'finalized.json';
 const STAGE_VERSION = 2;
 const MAX_ARTIFACT_BYTES = 5 * 1024 * 1024;
 const STAGE_TTL_MS = 24 * 60 * 60 * 1000;
-const TRIAL_CACHE_VERSION = 3;
+const TRIAL_CACHE_VERSION = 4;
 const FINALIZE_TRIAL_ID_RE = /^[A-Za-z0-9_-]{1,160}$/;
 
 export const __chatYamlStagingTestHooks: {
@@ -167,9 +172,7 @@ function compareManifestEntryNames(left: { name: string }, right: { name: string
 }
 
 function shouldHashTrialTreeEntry(name: string): boolean {
-  return !/\.(?:compile\.log|manifest\.json|layout\.json|requirements\.md|trial-plan\.json)$/i.test(
-    name,
-  );
+  return !/\.(?:compile\.log|manifest\.json|layout\.json|trial-plan\.json)$/i.test(name);
 }
 
 function isSha1(value: unknown): value is string {
@@ -234,13 +237,21 @@ export function hashChatPipelineTrialTree(rootDir: string | null): string | null
   return hash.digest('hex');
 }
 
-export function buildChatPipelineTrialVerificationHash(input: {
+export function buildChatPipelineTrialInputHash(input: {
   stagedTreeHash: string;
   planHash: string;
-  liveTreeHash: string | null;
 }): string {
   return createHash('sha256')
-    .update(`${input.stagedTreeHash}\0${input.planHash}\0${input.liveTreeHash ?? 'missing'}`)
+    .update(`${input.stagedTreeHash}\0${input.planHash}`)
+    .digest('hex');
+}
+
+export function buildChatPipelineTrialVerificationHash(input: {
+  inputHash: string;
+  hostWitnessDigest: string;
+}): string {
+  return createHash('sha256')
+    .update(`${input.inputHash}\0${input.hostWitnessDigest}`)
     .digest('hex');
 }
 
@@ -996,7 +1007,9 @@ function readFinalizeResult(paths: StagePaths): ChatYamlStageFinalizeResult | nu
 
 interface CachedTrialFinalizeRecord {
   version: typeof TRIAL_CACHE_VERSION;
-  contentHash: string;
+  inputHash: string;
+  verificationHash: string;
+  hostWitness: TrialHostWitness;
   result: {
     version: typeof TRIAL_CACHE_VERSION;
     success: boolean;
@@ -1016,10 +1029,10 @@ function trialFinalizeCachePath(
   paths: StagePaths,
   trialId: string,
   relativePath: string,
-  verificationHash: string,
+  inputHash: string,
 ): string {
   const digest = createHash('sha256')
-    .update(`${trialId}\0${relativePath}\0${verificationHash}`)
+    .update(`${trialId}\0${relativePath}\0${inputHash}`)
     .digest('hex');
   return join(paths.rootDir, '.trial-runs', `${digest}.json`);
 }
@@ -1040,25 +1053,33 @@ function hasSuccessfulVerifiedTrial(
   if (planRead.status === 'required') return false;
   const stagedTreeHash = hashChatPipelineTrialTree(dirname(stagedPath));
   if (!stagedTreeHash) return false;
-  const verificationHash = buildChatPipelineTrialVerificationHash({
+  const inputHash = buildChatPipelineTrialInputHash({
     stagedTreeHash,
     planHash: planRead.planHash,
-    liveTreeHash: hashChatPipelineTrialTree(sourcePath ? dirname(sourcePath) : null),
   });
-  const cachePath = trialFinalizeCachePath(
-    paths,
-    normalizedTrialId,
-    relativePath,
-    verificationHash,
-  );
+  const cachePath = trialFinalizeCachePath(paths, normalizedTrialId, relativePath, inputHash);
   if (!existsSync(cachePath)) return false;
+  const prepared = safePrepareTrialHostWitnessInputs(ws, {
+    relativePath,
+    sourcePath,
+    stagedYamlPath: stagedPath,
+  });
+  if (!prepared.prepared) return false;
+  const witness = safeCaptureTrialHostWitness(ws, prepared.prepared);
+  if (!witness.witness) return false;
+  const verificationHash = buildChatPipelineTrialVerificationHash({
+    inputHash,
+    hostWitnessDigest: witness.witness.digest,
+  });
   try {
     const cached = JSON.parse(
       assertRegularTextFile(cachePath, 'chat YAML trial cache'),
     ) as Partial<CachedTrialFinalizeRecord>;
     return (
       cached.version === TRIAL_CACHE_VERSION &&
-      cached.contentHash === verificationHash &&
+      cached.inputHash === inputHash &&
+      cached.verificationHash === verificationHash &&
+      cached.hostWitness?.digest === witness.witness.digest &&
       !!cached.result &&
       cached.result.version === TRIAL_CACHE_VERSION &&
       cached.result.success === true

@@ -23,6 +23,7 @@ import { loadPipeline, validateConfig } from '@tagma/sdk/yaml';
 import { generateRunId } from '@tagma/sdk/utils';
 
 import {
+  buildChatPipelineTrialInputHash,
   buildChatPipelineTrialVerificationHash,
   compileChatYamlStage,
   hashChatPipelineTrialTree,
@@ -36,6 +37,11 @@ import {
   type ChatPipelineTrialPlanCase,
   type ChatPipelineTrialPlanRequest,
 } from './chat-pipeline-trial-plan.js';
+import {
+  safeCaptureTrialHostWitness,
+  safePrepareTrialHostWitnessInputs,
+  type TrialHostWitness,
+} from './chat-pipeline-trial-witness.js';
 import { buildPythonAgentRunEnv, pythonAgentVenvBinDir } from './python-agent.js';
 import { runPreflight } from './preflight-requirements.js';
 import { assertSafePluginName } from './plugin-safety.js';
@@ -53,7 +59,7 @@ import { MAX_LOG_RUNS } from './state.js';
 import { normalizeRunTargetTaskIds, runtimeWithInjectedEnv } from './routes/run-session.js';
 import type { WorkspaceState } from './workspace-state.js';
 
-const TRIAL_CACHE_VERSION = 3;
+const TRIAL_CACHE_VERSION = 4;
 const CHAT_PIPELINE_TRIAL_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_TRIAL_STREAM_BYTES = 4 * 1024;
 const MAX_TRIAL_SUMMARY_BYTES = 32 * 1024;
@@ -136,7 +142,9 @@ export interface ChatPipelineTrialRunInput {
 
 interface CachedTrialResult {
   version: typeof TRIAL_CACHE_VERSION;
-  contentHash: string;
+  inputHash: string;
+  verificationHash: string;
+  hostWitness: TrialHostWitness;
   result: ChatPipelineTrialRunResult;
 }
 
@@ -184,21 +192,27 @@ function trialCachePath(
   rootDir: string,
   trialId: string,
   relativePath: string,
-  verificationHash: string,
+  inputHash: string,
 ) {
   const digest = createHash('sha256')
-    .update(`${trialId}\0${relativePath}\0${verificationHash}`)
+    .update(`${trialId}\0${relativePath}\0${inputHash}`)
     .digest('hex');
   return join(rootDir, '.trial-runs', `${digest}.json`);
 }
 
-function readCachedTrial(path: string, contentHash: string): ChatPipelineTrialRunResult | null {
+function readCachedTrial(
+  path: string,
+  inputHash: string,
+  verificationHash: string,
+): ChatPipelineTrialRunResult | null {
   if (!existsSync(path)) return null;
   try {
     const parsed = JSON.parse(readFileSync(path, 'utf-8')) as Partial<CachedTrialResult>;
     if (
       parsed.version !== TRIAL_CACHE_VERSION ||
-      parsed.contentHash !== contentHash ||
+      parsed.inputHash !== inputHash ||
+      parsed.verificationHash !== verificationHash ||
+      typeof parsed.hostWitness?.digest !== 'string' ||
       !parsed.result ||
       parsed.result.version !== TRIAL_CACHE_VERSION
     ) {
@@ -212,7 +226,9 @@ function readCachedTrial(path: string, contentHash: string): ChatPipelineTrialRu
 
 function writeCachedTrial(
   path: string,
-  contentHash: string,
+  inputHash: string,
+  verificationHash: string,
+  hostWitness: TrialHostWitness,
   result: ChatPipelineTrialRunResult,
 ): void {
   mkdirSync(dirname(path), { recursive: true });
@@ -220,7 +236,9 @@ function writeCachedTrial(
     path,
     JSON.stringify({
       version: TRIAL_CACHE_VERSION,
-      contentHash,
+      inputHash,
+      verificationHash,
+      hostWitness,
       result,
     } satisfies CachedTrialResult) + '\n',
   );
@@ -707,7 +725,7 @@ function buildCasePromptContexts(
 ): Record<string, Array<{ label: string; content: string }>> {
   const fixturePaths = testCase.fixtures.map((fixture) => fixture.path).join(', ') || 'none';
   const content = [
-    `Case: ${testCase.id} — ${testCase.title}`,
+    `Case: ${testCase.id} 闂?${testCase.title}`,
     `Objective: ${testCase.objective}`,
     `Isolated workspace: ${workDir}`,
     `Fixture paths: ${fixturePaths}`,
@@ -737,6 +755,20 @@ interface RunTrialPipelineInput {
   runId: string;
   targetTaskIds?: string[];
   testCase?: ChatPipelineTrialPlanCase;
+}
+
+function resultForHostWitnessFailure(
+  result: ChatPipelineTrialRunResult,
+  reason: string,
+): ChatPipelineTrialRunResult {
+  return {
+    ...result,
+    success: false,
+    kind: 'failed',
+    summary: boundedTrialText(`${result.summary}
+
+Trial authorization witness failed: ${reason}`),
+  };
 }
 
 async function runTrialPipelineOnce(input: RunTrialPipelineInput): Promise<EngineResult> {
@@ -898,7 +930,7 @@ function buildPlannedTrialSummary(
   ];
   for (const testCase of cases) {
     lines.push(
-      `Case ${testCase.id}: ${testCase.success ? 'passed' : 'failed'} — ${testCase.objective}`,
+      `Case ${testCase.id}: ${testCase.success ? 'passed' : 'failed'} 闂?${testCase.objective}`,
     );
     for (const expectation of testCase.expectations) {
       if (!expectation.passed) lines.push(`  ${expectation.type}: ${expectation.detail}`);
@@ -1140,13 +1172,31 @@ export async function trialRunChatYamlStage(
     if (planRead.status === 'required') {
       return resultForPlanRequest(planRead.request, startedAt);
     }
-    const verificationHash = buildChatPipelineTrialVerificationHash({
+    const inputHash = buildChatPipelineTrialInputHash({
       stagedTreeHash: snapshot.treeHash,
       planHash: planRead.planHash,
-      liveTreeHash: hashChatPipelineTrialTree(entry.sourcePath ? dirname(entry.sourcePath) : null),
     });
-    const cachePath = trialCachePath(stage.rootDir, trialId, entry.relativePath, verificationHash);
-    const cached = readCachedTrial(cachePath, verificationHash);
+    const cachePath = trialCachePath(stage.rootDir, trialId, entry.relativePath, inputHash);
+    const prepared = safePrepareTrialHostWitnessInputs(ws, {
+      relativePath: entry.relativePath,
+      sourcePath: entry.sourcePath,
+      stagedYamlPath: entry.stagedPath,
+    });
+    if (!prepared.prepared) {
+      return resultForSetupFailure(
+        'setup-failed',
+        `Trial host witness setup failed: ${prepared.reason}`,
+        startedAt,
+      );
+    }
+    const currentWitness = safeCaptureTrialHostWitness(ws, prepared.prepared);
+    const verificationHash = currentWitness.witness
+      ? buildChatPipelineTrialVerificationHash({
+          inputHash,
+          hostWitnessDigest: currentWitness.witness.digest,
+        })
+      : null;
+    const cached = verificationHash ? readCachedTrial(cachePath, inputHash, verificationHash) : null;
     if (cached) return cached;
     const existing = inFlightByCachePath.get(cachePath);
     if (existing) return existing;
@@ -1186,7 +1236,23 @@ export async function trialRunChatYamlStage(
         if (abortState.userAborted || (controller.signal.aborted && !abortState.timedOut)) {
           result = resultForAborted(result, startedAt);
         }
-        if (result.kind !== 'aborted') writeCachedTrial(cachePath, verificationHash, result);
+        if (result.kind !== 'aborted' && result.success) {
+          const postWitness = safeCaptureTrialHostWitness(ws, prepared.prepared!);
+          if (!postWitness.witness) {
+            return resultForHostWitnessFailure(result, postWitness.reason ?? 'unknown witness failure');
+          }
+          const postVerificationHash = buildChatPipelineTrialVerificationHash({
+            inputHash,
+            hostWitnessDigest: postWitness.witness.digest,
+          });
+          writeCachedTrial(
+            cachePath,
+            inputHash,
+            postVerificationHash,
+            postWitness.witness,
+            result,
+          );
+        }
         return result;
       } finally {
         clearTimeout(timeout);
