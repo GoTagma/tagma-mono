@@ -617,6 +617,104 @@ test('routes OpenCode 1.17.8 permission.asked prompts and clears requestID repli
   expect(state.pendingPermissions).toEqual([]);
 });
 
+test('keeps staged child ancestry through bootstrap and refresh for permission routing', async () => {
+  const workspace = 'C:/staged-ancestry-repo';
+  const directory = `${workspace}/.tagma`;
+  const stagedDirectory = `${directory}/.chat-staging/stage-1/agent-workspace/.tagma`;
+  const baseUrl = 'http://opencode-staged-ancestry.test';
+  const rootSession = {
+    ...makeSession('visible-root'),
+    directory,
+  };
+  const stagedChildSession = {
+    ...makeSession('staged-child', 'visible-root'),
+    directory: stagedDirectory,
+  };
+  let includeStagedChild = true;
+
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : null;
+    const url = request?.url ?? String(input);
+    const method = init?.method ?? request?.method ?? 'GET';
+    if (url === '/api/opencode/chat/ensure') {
+      return Promise.resolve(jsonResponse({ baseUrl, directory }));
+    }
+    const parsed = (() => {
+      try {
+        return new URL(url);
+      } catch {
+        return null;
+      }
+    })();
+    if (parsed?.origin === baseUrl && parsed.pathname === '/session' && method === 'GET') {
+      const sessions = includeStagedChild ? [rootSession, stagedChildSession] : [rootSession];
+      const requestedDirectory = parsed.searchParams.get('directory');
+      return Promise.resolve(
+        jsonResponse(
+          requestedDirectory
+            ? sessions.filter((session) => session.directory === requestedDirectory)
+            : sessions,
+        ),
+      );
+    }
+    return Promise.resolve(new Response('not found', { status: 404 }));
+  }) as typeof fetch;
+  setClientWorkspace(workspace);
+  resetOpencodeClient();
+  const originalConsoleError = console.error;
+  const originalConsoleWarn = console.warn;
+  console.error = () => {};
+  console.warn = () => {};
+
+  try {
+    await useChatStore.getState().bootstrap();
+    expect(useChatStore.getState().sessions.map((session) => session.id)).toEqual(['visible-root']);
+    expect(useChatStore.getState().sessionParentById).toEqual({
+      'staged-child': 'visible-root',
+    });
+
+    includeStagedChild = false;
+    await useChatStore.getState().refreshSessions();
+    expect(useChatStore.getState().sessionParentById).toEqual({
+      'staged-child': 'visible-root',
+    });
+
+    useChatStore.setState({
+      currentSessionId: 'visible-root',
+      sending: false,
+      pendingPermissions: [],
+    } as never);
+    dispatch({
+      type: 'permission.asked',
+      properties: {
+        id: 'staged-child-permission',
+        sessionID: 'staged-child',
+        permission: 'external_directory',
+        patterns: ['F:\\outside\\*'],
+        metadata: {},
+        always: [],
+        tool: {
+          messageID: 'staged-child-message',
+          callID: 'staged-child-call',
+        },
+      },
+    });
+
+    expect(
+      useChatStore.getState().pendingPermissions.map((permission) => ({
+        id: permission.id,
+        sessionID: permission.sessionID,
+      })),
+    ).toEqual([{ id: 'staged-child-permission', sessionID: 'staged-child' }]);
+  } finally {
+    console.error = originalConsoleError;
+    console.warn = originalConsoleWarn;
+    setClientWorkspace(null);
+    resetOpencodeClient();
+    globalThis.fetch = rejectFetch;
+    useChatStore.setState({ bootstrapStatus: 'idle', bootstrapError: null } as never);
+  }
+});
 test('routes nested permissions and clears only the replied child tuple', () => {
   const now = Date.now();
   useChatStore.setState({

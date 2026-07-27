@@ -2312,17 +2312,30 @@ function updateSessionParentIndex(
   return next;
 }
 
+function isManagedSessionPath(path: unknown, directory: string): boolean {
+  const normalizedPath = normalizeSessionPath(path);
+  const normalizedDirectory = normalizeSessionPath(directory);
+  return (
+    !!normalizedPath &&
+    !!normalizedDirectory &&
+    (normalizedPath === normalizedDirectory ||
+      normalizedPath.startsWith(`${normalizedDirectory}/.chat-staging/`))
+  );
+}
+
 function collectSessionParentIndex(
   sessions: Session[],
   directory: string | null,
+  previousIndex: Record<string, string>,
 ): Record<string, string> {
-  if (!directory) return {};
-  const index: Record<string, string> = {};
+  if (!directory) return { ...previousIndex };
+  const index = { ...previousIndex };
   for (const session of sessions) {
-    const parentID = sessionParentId(session);
     const fields = session as Session & SessionOwnershipFields;
-    if (!parentID || !sameSessionPath(fields.directory, directory)) continue;
-    index[session.id] = parentID;
+    if (!isManagedSessionPath(fields.directory, directory)) continue;
+    const parentID = sessionParentId(session);
+    if (parentID) index[session.id] = parentID;
+    else delete index[session.id];
   }
   return index;
 }
@@ -4668,7 +4681,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       sessions.directory,
       workspaceKeyAtStart,
     );
-    const sessionParentById = collectSessionParentIndex(sessions.sessions, sessions.directory);
+    const sessionParentById = collectSessionParentIndex(
+      sessions.sessions,
+      sessions.directory,
+      get().sessionParentById,
+    );
 
     // Honor a persisted model pick if it still exists; otherwise fall back
     // to opencode's own default (config.providers returns `default` as a
@@ -4777,10 +4794,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       directory: null,
     }));
     if (getOpencodeWorkspaceKey() !== workspaceKey) return;
-    set({
-      sessions: userVisibleSessions(sessions, directory, workspaceKey),
-      sessionParentById: collectSessionParentIndex(sessions, directory),
-    });
+    const visibleSessions = userVisibleSessions(sessions, directory, workspaceKey);
+    set((prev) => ({
+      sessions: visibleSessions,
+      sessionParentById: collectSessionParentIndex(sessions, directory, prev.sessionParentById),
+    }));
   },
 
   async selectSession(id) {

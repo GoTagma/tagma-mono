@@ -13,8 +13,25 @@ describe('Editor Settings panel responsiveness', () => {
   });
 
   test('does not disable ordinary settings while their save request is pending', () => {
-    expect(source).toContain('const settingsInputsDisabled = !hasWorkspace || pythonSaving;');
+    expect(source).toContain(
+      'const settingsInputsDisabled = !hasWorkspace || pythonSaving || globalSaving;',
+    );
     expect(source).not.toContain('disabled={!hasWorkspace || saving}');
     expect(source).toContain('disabled={settingsInputsDisabled}');
+  });
+
+  test('keeps global and workspace settings saves mutually exclusive', () => {
+    expect(source).toContain(
+      'const globalSettingsInputsDisabled =\n' +
+        '    globalSaving || pythonSaving || saving || opencodeSettingsMutationBlocked;',
+    );
+    expect(source).toContain('disabled={globalSettingsInputsDisabled}');
+    expect(source).toContain('!globalSettingsInputsDisabled');
+    expect(source).toContain('globalSettingsInputsDisabled || !agentMaxStepsChanged');
+    expect(source).toContain('workspaceSavingRef.current = nextSaving;');
+    expect(source).toContain(
+      'if (globalSavingRef.current || workspaceSavingRef.current || pythonSaving) return;',
+    );
+    expect(source).toContain('if (!settings || globalSavingRef.current) return;');
   });
 });

@@ -88,6 +88,8 @@ export function EditorSettingsPanel({
   const [installPlan, setInstallPlan] = useState<PythonInstallPlan | null>(null);
   const [pythonStatus, setPythonStatus] = useState<PythonWizardStatus>({ kind: 'idle' });
   const mountedRef = useRef(true);
+  const globalSavingRef = useRef(false);
+  const workspaceSavingRef = useRef(false);
   const settingsSaveQueueRef = useRef<EditorSettingsSaveQueue<EditorSettings> | null>(null);
   if (!settingsSaveQueueRef.current) {
     settingsSaveQueueRef.current = createEditorSettingsSaveQueue<EditorSettings>({
@@ -97,6 +99,7 @@ export function EditorSettingsPanel({
         if (mountedRef.current) setSettings(next);
       },
       onSavingChange: (nextSaving) => {
+        workspaceSavingRef.current = nextSaving;
         if (mountedRef.current) setSaving(nextSaving);
       },
       onError: (saveError) => {
@@ -116,7 +119,9 @@ export function EditorSettingsPanel({
 
   const hasWorkspace = workDir.length > 0;
   const opencodeSettingsMutationBlocked = opencodeSettingsMutationBlockMessage !== null;
-  const settingsInputsDisabled = !hasWorkspace || pythonSaving;
+  const settingsInputsDisabled = !hasWorkspace || pythonSaving || globalSaving;
+  const globalSettingsInputsDisabled =
+    globalSaving || pythonSaving || saving || opencodeSettingsMutationBlocked;
 
   const refreshDeclared = useCallback(async () => {
     if (!hasWorkspace) return;
@@ -171,7 +176,7 @@ export function EditorSettingsPanel({
   }, [settingsSaveQueue]);
 
   const updateField = <K extends keyof EditorSettings>(key: K, value: EditorSettings[K]) => {
-    if (!settings) return;
+    if (!settings || globalSavingRef.current) return;
     if (!hasWorkspace) {
       setError('Open a workspace before changing editor settings.');
       return;
@@ -192,6 +197,7 @@ export function EditorSettingsPanel({
     parsedAgentMaxSteps !== globalSettings.opencodeAgentMaxSteps;
 
   const saveGlobalAgentMaxSteps = async () => {
+    if (globalSavingRef.current || workspaceSavingRef.current || pythonSaving) return;
     if (opencodeSettingsMutationBlockMessage) {
       setError(opencodeSettingsMutationBlockMessage);
       return;
@@ -203,6 +209,7 @@ export function EditorSettingsPanel({
       return;
     }
 
+    globalSavingRef.current = true;
     setGlobalSaving(true);
     setAgentMaxStepsSaved(false);
     setError(null);
@@ -227,6 +234,7 @@ export function EditorSettingsPanel({
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Failed to save global settings');
     } finally {
+      globalSavingRef.current = false;
       setGlobalSaving(false);
     }
   };
@@ -458,7 +466,7 @@ export function EditorSettingsPanel({
                     max={MAX_OPENCODE_AGENT_MAX_STEPS}
                     step={1}
                     value={agentMaxStepsDraft}
-                    disabled={globalSaving || pythonSaving || opencodeSettingsMutationBlocked}
+                    disabled={globalSettingsInputsDisabled}
                     onChange={(event) => {
                       setAgentMaxStepsDraft(event.target.value);
                       setAgentMaxStepsSaved(false);
@@ -467,9 +475,7 @@ export function EditorSettingsPanel({
                       if (
                         event.key === 'Enter' &&
                         agentMaxStepsChanged &&
-                        !globalSaving &&
-                        !pythonSaving &&
-                        !opencodeSettingsMutationBlocked
+                        !globalSettingsInputsDisabled
                       ) {
                         event.preventDefault();
                         void saveGlobalAgentMaxSteps();
@@ -483,12 +489,7 @@ export function EditorSettingsPanel({
                   <button
                     type="button"
                     onClick={() => void saveGlobalAgentMaxSteps()}
-                    disabled={
-                      globalSaving ||
-                      pythonSaving ||
-                      opencodeSettingsMutationBlocked ||
-                      !agentMaxStepsChanged
-                    }
+                    disabled={globalSettingsInputsDisabled || !agentMaxStepsChanged}
                     className="flex items-center gap-1.5 border border-tagma-accent/50 px-2.5 py-1 text-[11px] text-tagma-accent transition-colors hover:bg-tagma-accent/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
                   >
                     {globalSaving && <Loader2 size={11} className="animate-spin" />}

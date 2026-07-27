@@ -1,11 +1,23 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  truncateSync,
+  unlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import {
   captureTrialHostWitness,
+  getTrialHostWorkspaceManifestCacheStatsForTests,
   prepareTrialHostWitnessInputs,
   safeCaptureTrialHostWitness,
   type PreparedTrialHostWitnessInputs,
@@ -35,6 +47,7 @@ function prepared(
   return {
     logicalYamlPath: join(root, '.tagma', 'pipeline', 'pipeline.yaml'),
     binaryNames: [],
+    driverNames: [],
     requiredEnvNames: [],
     secretEnv: {},
     pythonEnv: {},
@@ -230,7 +243,9 @@ describe('chat pipeline trial host witness', () => {
     writeFileSync(logPath, 'first transient log\n', 'utf-8');
 
     const first = captureTrialHostWitness(ws, prepared(root));
+    const originalStat = statSync(inputPath);
     writeFileSync(inputPath, 'beta\n', 'utf-8');
+    utimesSync(inputPath, originalStat.atime, originalStat.mtime);
     const second = captureTrialHostWitness(ws, prepared(root));
     expect(second.workspace.digest).not.toBe(first.workspace.digest);
     expect(second.digest).not.toBe(first.digest);
@@ -239,6 +254,60 @@ describe('chat pipeline trial host witness', () => {
     const third = captureTrialHostWitness(ws, prepared(root));
     expect(third.workspace).toEqual(second.workspace);
     expect(third.digest).toBe(second.digest);
+  });
+
+  test('tracks add, delete, and rename operations across cached workspace manifests', () => {
+    const { root, ws } = makeWorkspace();
+    const originalPath = join(root, 'original.txt');
+    const renamedPath = join(root, 'renamed.txt');
+    const addedPath = join(root, 'added.txt');
+    writeFileSync(originalPath, 'original\n', 'utf-8');
+
+    const original = captureTrialHostWitness(ws, prepared(root));
+    renameSync(originalPath, renamedPath);
+    const renamed = captureTrialHostWitness(ws, prepared(root));
+    expect(renamed.workspace.digest).not.toBe(original.workspace.digest);
+    expect(renamed.workspace.fileCount).toBe(original.workspace.fileCount);
+
+    writeFileSync(addedPath, 'added\n', 'utf-8');
+    const added = captureTrialHostWitness(ws, prepared(root));
+    expect(added.workspace.digest).not.toBe(renamed.workspace.digest);
+    expect(added.workspace.fileCount).toBe(renamed.workspace.fileCount + 1);
+
+    unlinkSync(addedPath);
+    const deleted = captureTrialHostWitness(ws, prepared(root));
+    expect(deleted.workspace).toEqual(renamed.workspace);
+
+    renameSync(renamedPath, originalPath);
+    const restored = captureTrialHostWitness(ws, prepared(root));
+    expect(restored.workspace).toEqual(original.workspace);
+  });
+
+  test('reuses unchanged workspace content hashes from the in-process manifest cache', () => {
+    const { root, ws } = makeWorkspace();
+    writeFileSync(join(root, 'first.txt'), 'first\n', 'utf-8');
+    writeFileSync(join(root, 'second.txt'), 'second\n', 'utf-8');
+
+    const first = captureTrialHostWitness(ws, prepared(root));
+    const coldStats = getTrialHostWorkspaceManifestCacheStatsForTests(ws);
+    expect(coldStats).toEqual({
+      fileCount: first.workspace.fileCount,
+      totalBytes: first.workspace.totalBytes,
+      hashedFileCount: first.workspace.fileCount,
+      hashedBytes: first.workspace.totalBytes,
+      reusedFileCount: 0,
+    });
+
+    const second = captureTrialHostWitness(ws, prepared(root));
+    const warmStats = getTrialHostWorkspaceManifestCacheStatsForTests(ws);
+    expect(second.workspace).toEqual(first.workspace);
+    expect(warmStats).toEqual({
+      fileCount: second.workspace.fileCount,
+      totalBytes: second.workspace.totalBytes,
+      hashedFileCount: 0,
+      hashedBytes: 0,
+      reusedFileCount: second.workspace.fileCount,
+    });
   });
 
   test('fingerprints minimal environment values and resolved binary contents', () => {
@@ -287,6 +356,56 @@ describe('chat pipeline trial host witness', () => {
     }
   });
 
+  test('fingerprints the actual editor OpenCode driver binary in addition to PATH lookup', () => {
+    const { root, ws } = makeWorkspace();
+    const pathRoot = makeRoot('opencode-path');
+    const bundledRoot = makeRoot('opencode-bundled');
+    const executableName = process.platform === 'win32' ? 'opencode.exe' : 'opencode';
+    const pathBinary = join(pathRoot, executableName);
+    const bundledBinary = join(bundledRoot, 'bin', executableName);
+    mkdirSync(dirname(bundledBinary), { recursive: true });
+    writeFileSync(pathBinary, 'path-opencode\n', 'utf-8');
+    writeFileSync(bundledBinary, 'bundled-opencode-v1\n', 'utf-8');
+
+    const pathKey =
+      process.platform === 'win32' && process.env.Path !== undefined ? 'Path' : 'PATH';
+    const originalPath = process.env[pathKey];
+    const originalBundledDir = process.env.TAGMA_OPENCODE_BUNDLED_DIR;
+    const originalSkipUserDir = process.env.TAGMA_OPENCODE_SKIP_USER_DIR;
+    process.env[pathKey] = pathRoot;
+    process.env.TAGMA_OPENCODE_BUNDLED_DIR = bundledRoot;
+    process.env.TAGMA_OPENCODE_SKIP_USER_DIR = '1';
+    try {
+      const first = captureTrialHostWitness(
+        ws,
+        prepared(root, { binaryNames: ['opencode'], driverNames: ['opencode'] }),
+      );
+      const pathWitness = first.binaries.find((entry) => entry.name === 'opencode');
+      const driverWitness = first.binaries.find((entry) => entry.name === 'driver:opencode');
+      expect(pathWitness?.identity.path.toLowerCase()).toBe(pathBinary.toLowerCase());
+      expect(driverWitness?.identity.path.toLowerCase()).toBe(bundledBinary.toLowerCase());
+
+      writeFileSync(bundledBinary, 'bundled-opencode-v2\n', 'utf-8');
+      const second = captureTrialHostWitness(
+        ws,
+        prepared(root, { binaryNames: ['opencode'], driverNames: ['opencode'] }),
+      );
+      expect(second.binaries.find((entry) => entry.name === 'opencode')?.identity.sha256).toBe(
+        pathWitness?.identity.sha256,
+      );
+      expect(
+        second.binaries.find((entry) => entry.name === 'driver:opencode')?.identity.sha256,
+      ).not.toBe(driverWitness?.identity.sha256);
+      expect(second.prerequisiteDigest).not.toBe(first.prerequisiteDigest);
+    } finally {
+      if (originalPath === undefined) delete process.env[pathKey];
+      else process.env[pathKey] = originalPath;
+      if (originalBundledDir === undefined) delete process.env.TAGMA_OPENCODE_BUNDLED_DIR;
+      else process.env.TAGMA_OPENCODE_BUNDLED_DIR = originalBundledDir;
+      if (originalSkipUserDir === undefined) delete process.env.TAGMA_OPENCODE_SKIP_USER_DIR;
+      else process.env.TAGMA_OPENCODE_SKIP_USER_DIR = originalSkipUserDir;
+    }
+  });
   test('fingerprints Python interpreter and virtual-environment configuration contents', () => {
     const { root, ws } = makeWorkspace();
     const venvRoot = makeRoot('venv');
@@ -313,14 +432,45 @@ describe('chat pipeline trial host witness', () => {
     expect(third.digest).not.toBe(second.digest);
   });
 
-  test('fails closed when the bounded workspace witness exceeds its byte limit', () => {
+  test('streams workspaces above the former file-count and byte limits', () => {
     const { root, ws } = makeWorkspace();
+    const manyFilesRoot = join(root, 'many-files');
+    mkdirSync(manyFilesRoot, { recursive: true });
+    for (let index = 0; index <= 4_000; index += 1) {
+      writeFileSync(join(manyFilesRoot, `${String(index).padStart(4, '0')}.txt`), '');
+    }
     const oversizedPath = join(root, 'oversized.bin');
     writeFileSync(oversizedPath, '', 'utf-8');
     truncateSync(oversizedPath, 64 * 1024 * 1024 + 1);
 
-    const result = safeCaptureTrialHostWitness(ws, prepared(root));
-    expect(result.witness).toBeNull();
-    expect(result.reason).toContain('Workspace witness exceeds 67108864 bytes');
+    const witness = captureTrialHostWitness(ws, prepared(root));
+    expect(witness.workspace.fileCount).toBeGreaterThan(4_000);
+    expect(witness.workspace.totalBytes).toBeGreaterThan(64 * 1024 * 1024);
+    expect(witness.workspace.digest).toHaveLength(64);
+  }, 30_000);
+
+  test('streams binary identities above the former 64 MiB limit', () => {
+    const { root, ws } = makeWorkspace();
+    const binRoot = makeRoot('large-bin');
+    const binaryName = `tagma-large-witness-tool-${process.pid}`;
+    const binaryPath = join(
+      binRoot,
+      process.platform === 'win32' ? `${binaryName}.cmd` : binaryName,
+    );
+    writeFileSync(binaryPath, '');
+    truncateSync(binaryPath, 64 * 1024 * 1024 + 1);
+
+    const pathKey =
+      process.platform === 'win32' && process.env.Path !== undefined ? 'Path' : 'PATH';
+    const originalPath = process.env[pathKey];
+    process.env[pathKey] = binRoot;
+    try {
+      const witness = captureTrialHostWitness(ws, prepared(root, { binaryNames: [binaryName] }));
+      expect(witness.binaries[0]?.identity.size).toBe(64 * 1024 * 1024 + 1);
+      expect(witness.binaries[0]?.identity.sha256).toHaveLength(64);
+    } finally {
+      if (originalPath === undefined) delete process.env[pathKey];
+      else process.env[pathKey] = originalPath;
+    }
   });
 });
