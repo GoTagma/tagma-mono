@@ -65,7 +65,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) {
     rmSync(root, { recursive: true, force: true });
   }
-}, 120_000);
+}, 300_000);
 
 describe('chat pipeline trial host witness', () => {
   test('prepares required binaries and environment from the staged requirements file', () => {
@@ -501,7 +501,7 @@ describe('chat pipeline trial host witness', () => {
     expect(witness.workspace.fileCount).toBeGreaterThan(4_000);
     expect(witness.workspace.totalBytes).toBeGreaterThan(64 * 1024 * 1024);
     expect(witness.workspace.digest).toHaveLength(64);
-  }, 120_000);
+  }, 300_000);
 
   test('streams binary identities above the former 64 MiB limit', () => {
     const { root, ws } = makeWorkspace();

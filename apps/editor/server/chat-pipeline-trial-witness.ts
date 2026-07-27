@@ -365,6 +365,22 @@ function workspaceWitness(ws: WorkspaceState): TrialHostWorkspaceWitness {
           rawTargetSize = rawTarget.byteLength;
           rawTargetSha256 = sha256(rawTarget);
         }
+        const symlinkAfter = lstatSync(absolutePath);
+        if (
+          !symlinkAfter.isSymbolicLink() ||
+          !sameFileMetadata(metadata, fileMetadata(symlinkAfter))
+        ) {
+          throw new Error(`Workspace witness symlink changed while hashing: ${relativePath}`);
+        }
+        let canonicalTargetAfter: string;
+        try {
+          canonicalTargetAfter = realpathSync.native(absolutePath);
+        } catch {
+          throw new Error(`Workspace witness symlink target is unavailable: ${relativePath}`);
+        }
+        if (canonicalTargetAfter !== canonicalTarget) {
+          throw new Error(`Workspace witness symlink changed while hashing: ${relativePath}`);
+        }
         const canonicalTargetBytes = Buffer.from(canonicalTarget, 'utf-8');
         stats.fileCount += 1;
         stats.totalBytes += rawTargetSize;

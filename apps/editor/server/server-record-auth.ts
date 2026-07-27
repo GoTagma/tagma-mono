@@ -1,11 +1,17 @@
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import {
+  chmodSync,
+  closeSync,
+  constants,
   existsSync,
+  fsyncSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readFileSync,
   realpathSync,
   statSync,
+  writeSync,
 } from 'node:fs';
 import { basename, dirname, isAbsolute, join, parse, relative, resolve } from 'node:path';
 
@@ -15,7 +21,7 @@ const SERVER_RECORD_AUTH_VERSION = 1;
 const SERVER_RECORD_AUTH_ALGORITHM = 'hmac-sha256';
 const SERVER_RECORD_AUTH_FIELD = '__tagmaServerAuth';
 const MAX_SERVER_RECORD_BYTES = 5 * 1024 * 1024;
-const serverRecordAuthKey = randomBytes(32);
+let cachedServerRecordKey: { source: string; key: Buffer } | null = null;
 
 type JsonObject = Record<string, unknown>;
 
@@ -70,6 +76,143 @@ function assertNoSymlinkComponents(root: string, target: string): void {
   }
 }
 
+function assertNoSymlinksFromFilesystemRoot(target: string, label: string): void {
+  const resolvedTarget = resolve(target);
+  const filesystemRoot = parse(resolvedTarget).root;
+  const parts = relative(filesystemRoot, resolvedTarget)
+    .split(/[\\/]+/)
+    .filter(Boolean);
+  let current = filesystemRoot;
+  for (let index = 0; index < parts.length; index += 1) {
+    current = join(current, parts[index]!);
+    if (!existsSync(current)) continue;
+    const stat = lstatSync(current);
+    if (stat.isSymbolicLink()) {
+      throw new Error(`Refusing ${label} through symbolic link: ${current}`);
+    }
+    if (index < parts.length - 1 && !stat.isDirectory()) {
+      throw new Error(`${label} ancestor is not a directory: ${current}`);
+    }
+  }
+}
+
+function configuredServerRecordKeyFile(): string | null {
+  const explicitPath = process.env.TAGMA_STAGE_RECORD_KEY_FILE?.trim();
+  if (explicitPath) {
+    if (!isAbsolute(explicitPath)) {
+      throw new Error('TAGMA_STAGE_RECORD_KEY_FILE must be an absolute path.');
+    }
+    return resolve(explicitPath);
+  }
+  const editorUserDir = process.env.TAGMA_EDITOR_USER_DIR?.trim();
+  if (!editorUserDir) return null;
+  if (!isAbsolute(editorUserDir)) {
+    throw new Error('TAGMA_EDITOR_USER_DIR must be an absolute path.');
+  }
+  const stableUserDataDir = dirname(resolve(editorUserDir));
+  if (!existsSync(stableUserDataDir)) {
+    throw new Error('TAGMA_EDITOR_USER_DIR parent was not found.');
+  }
+  assertNoSymlinksFromFilesystemRoot(stableUserDataDir, 'server record key root');
+  const stableRootStat = lstatSync(stableUserDataDir);
+  if (!stableRootStat.isDirectory()) {
+    throw new Error('TAGMA_EDITOR_USER_DIR parent is not a directory.');
+  }
+  return join(stableUserDataDir, 'server-control', 'stage-record-hmac.key');
+}
+
+function canonicalPersistentKeyPath(keyPath: string): string {
+  const resolvedKeyPath = resolve(keyPath);
+  const keyDir = dirname(resolvedKeyPath);
+  assertNoSymlinksFromFilesystemRoot(keyDir, 'server record key path');
+  mkdirSync(keyDir, { recursive: true, mode: 0o700 });
+  assertNoSymlinksFromFilesystemRoot(resolvedKeyPath, 'server record key path');
+  const keyDirStat = lstatSync(keyDir);
+  if (keyDirStat.isSymbolicLink() || !keyDirStat.isDirectory()) {
+    throw new Error('Server record key directory must be a regular directory.');
+  }
+  if (process.platform !== 'win32') chmodSync(keyDir, 0o700);
+  return join(realpathSync.native(keyDir), basename(resolvedKeyPath));
+}
+
+function readPersistentKey(keyPath: string): Buffer | null {
+  if (!existsSync(keyPath)) return null;
+  const stat = lstatSync(keyPath);
+  if (stat.isSymbolicLink() || !stat.isFile()) {
+    throw new Error('Server record key must be a regular file, not a symbolic link.');
+  }
+  const key = readFileSync(keyPath);
+  if (key.length !== 32) {
+    throw new Error('Server record key must contain exactly 32 bytes.');
+  }
+  if (process.platform !== 'win32') chmodSync(keyPath, 0o600);
+  return Buffer.from(key);
+}
+
+function loadOrCreatePersistentKey(keyPath: string): Buffer {
+  const canonicalPath = canonicalPersistentKeyPath(keyPath);
+  const existing = readPersistentKey(canonicalPath);
+  if (existing) return existing;
+
+  const generated = randomBytes(32);
+  let descriptor: number | null = null;
+  try {
+    descriptor = openSync(
+      canonicalPath,
+      constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY,
+      0o600,
+    );
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+    const waitArray = new Int32Array(new SharedArrayBuffer(4));
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const racedKey = readPersistentKey(canonicalPath);
+      if (racedKey) return racedKey;
+      Atomics.wait(waitArray, 0, 0, 5);
+    }
+    throw new Error('Server record key creation did not complete.');
+  }
+
+  try {
+    let offset = 0;
+    while (offset < generated.length) {
+      offset += writeSync(descriptor, generated, offset, generated.length - offset, offset);
+    }
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
+  if (process.platform !== 'win32') chmodSync(canonicalPath, 0o600);
+  return generated;
+}
+
+function getServerRecordAuthKey(): Buffer {
+  const keyFile = configuredServerRecordKeyFile();
+  if (keyFile) {
+    const source = `file:${resolve(keyFile)}`;
+    if (cachedServerRecordKey?.source === source) return cachedServerRecordKey.key;
+    const key = loadOrCreatePersistentKey(keyFile);
+    cachedServerRecordKey = { source, key };
+    return key;
+  }
+
+  const editorAuthToken = process.env.TAGMA_EDITOR_AUTH_TOKEN;
+  if (editorAuthToken) {
+    const key = createHash('sha256')
+      .update('tagma-stage-record-auth\0')
+      .update(editorAuthToken)
+      .digest();
+    const source = `token:${key.toString('hex')}`;
+    if (cachedServerRecordKey?.source === source) return cachedServerRecordKey.key;
+    cachedServerRecordKey = { source, key };
+    return key;
+  }
+
+  if (cachedServerRecordKey?.source === 'process-random') return cachedServerRecordKey.key;
+  const key = randomBytes(32);
+  cachedServerRecordKey = { source: 'process-random', key };
+  return key;
+}
 function ensureWorkspaceTagmaDirectory(workspaceTagmaDir: string, forWrite: boolean): void {
   if (basename(workspaceTagmaDir).toLowerCase() !== '.tagma') {
     throw new Error('Server record workspace root must be the workspace .tagma directory.');
@@ -157,11 +300,11 @@ function resolveAuthenticatedRecordPath(
   return join(realParent, basename(target));
 }
 
-function normalizeJsonObject(value: JsonObject): JsonObject {
+function normalizeJsonObject(value: object): JsonObject {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('Server record payload must be a JSON object.');
   }
-  if (Object.hasOwn(value, SERVER_RECORD_AUTH_FIELD)) {
+  if (Object.prototype.hasOwnProperty.call(value, SERVER_RECORD_AUTH_FIELD)) {
     throw new Error(`Server record payload may not contain ${SERVER_RECORD_AUTH_FIELD}.`);
   }
   const serialized = JSON.stringify(value);
@@ -174,6 +317,7 @@ function normalizeJsonObject(value: JsonObject): JsonObject {
 }
 
 function canonicalJson(value: unknown): string {
+  if (value === undefined) throw new Error('Server record payload is not canonical JSON.');
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
   const object = value as JsonObject;
@@ -198,7 +342,7 @@ function signingInput(
 }
 
 function sign(canonicalPath: string, context: ServerRecordContext, payload: JsonObject): string {
-  return createHmac('sha256', serverRecordAuthKey)
+  return createHmac('sha256', getServerRecordAuthKey())
     .update(signingInput(canonicalPath, context, payload))
     .digest('hex');
 }
@@ -217,7 +361,7 @@ function isValidAuth(value: unknown): value is ServerRecordAuth {
 export function writeAuthenticatedServerRecordSync(
   recordPath: string,
   context: ServerRecordContext,
-  payload: JsonObject,
+  payload: object,
 ): void {
   const canonicalPath = resolveAuthenticatedRecordPath(recordPath, context, true);
   const normalizedPayload = normalizeJsonObject(payload);
@@ -233,7 +377,7 @@ export function writeAuthenticatedServerRecordSync(
   resolveAuthenticatedRecordPath(recordPath, context, false);
 }
 
-export function readAuthenticatedServerRecordSync<T extends JsonObject>(
+export function readAuthenticatedServerRecordSync<T extends object>(
   recordPath: string,
   context: ServerRecordContext,
 ): T {
@@ -258,3 +402,17 @@ export function readAuthenticatedServerRecordSync<T extends JsonObject>(
   }
   return payload as T;
 }
+
+export function ensureServerRecordControlRootSync(context: ServerRecordContext): void {
+  resolveAuthenticatedRecordPath(
+    join(context.controlRoot, '.server-record-boundary'),
+    context,
+    true,
+  );
+}
+
+export const __serverRecordAuthTestHooks = {
+  resetKeyCache(): void {
+    cachedServerRecordKey = null;
+  },
+};

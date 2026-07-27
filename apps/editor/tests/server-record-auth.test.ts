@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import {
   copyFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -13,6 +14,7 @@ import { dirname, join } from 'node:path';
 import { parseYaml } from '@tagma/sdk/yaml';
 
 import {
+  __serverRecordAuthTestHooks,
   readAuthenticatedServerRecordSync,
   writeAuthenticatedServerRecordSync,
   type ServerRecordContext,
@@ -28,6 +30,14 @@ import { pipelineYamlPath } from '../server/pipeline-paths';
 import { WorkspaceState } from '../server/workspace-state';
 
 const roots: string[] = [];
+const savedStageRecordKeyFile = process.env.TAGMA_STAGE_RECORD_KEY_FILE;
+const savedEditorUserDir = process.env.TAGMA_EDITOR_USER_DIR;
+const savedEditorAuthToken = process.env.TAGMA_EDITOR_AUTH_TOKEN;
+
+function restoreEnv(name: string, value: string | undefined): void {
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
+}
 
 function makeRoot(prefix = 'tagma-server-record-'): string {
   const root = mkdtempSync(join(tmpdir(), prefix));
@@ -39,7 +49,7 @@ function recordContext(
   workspaceTagmaDir: string,
   stageId: string,
   controlRoot: string,
-  kind = 'trial-cache',
+  kind: ServerRecordContext['kind'] = 'trial-cache',
 ): ServerRecordContext {
   return { workspaceTagmaDir, stageId, controlRoot, kind };
 }
@@ -88,12 +98,62 @@ function stopWorkspace(ws: WorkspaceState): void {
 }
 
 afterEach(() => {
+  restoreEnv('TAGMA_STAGE_RECORD_KEY_FILE', savedStageRecordKeyFile);
+  restoreEnv('TAGMA_EDITOR_USER_DIR', savedEditorUserDir);
+  restoreEnv('TAGMA_EDITOR_AUTH_TOKEN', savedEditorAuthToken);
+  __serverRecordAuthTestHooks.resetKeyCache();
   for (const root of roots.splice(0)) {
     rmSync(root, { recursive: true, force: true });
   }
 });
 
 describe('server-authenticated control records', () => {
+  test('keeps signatures valid across key reloads and rejects a different persistent key', () => {
+    const root = makeRoot();
+    const workspaceTagmaDir = join(root, 'workspace', '.tagma');
+    const stageId = '00000000-0000-4000-8000-000000000001';
+    const controlRoot = join(workspaceTagmaDir, '.chat-staging', stageId);
+    const recordPath = join(controlRoot, 'stage.json');
+    const keyPath = join(root, 'control', 'stage-record-hmac.key');
+    mkdirSync(dirname(workspaceTagmaDir), { recursive: true });
+    process.env.TAGMA_STAGE_RECORD_KEY_FILE = keyPath;
+    delete process.env.TAGMA_EDITOR_USER_DIR;
+    delete process.env.TAGMA_EDITOR_AUTH_TOKEN;
+    __serverRecordAuthTestHooks.resetKeyCache();
+    const context = recordContext(workspaceTagmaDir, stageId, controlRoot, 'stage-metadata');
+    const payload = { version: 2, id: stageId, createdAt: 1 };
+
+    writeAuthenticatedServerRecordSync(recordPath, context, payload);
+    __serverRecordAuthTestHooks.resetKeyCache();
+    expect(readAuthenticatedServerRecordSync(recordPath, context)).toEqual(payload);
+
+    process.env.TAGMA_STAGE_RECORD_KEY_FILE = join(root, 'other-control', 'other.key');
+    __serverRecordAuthTestHooks.resetKeyCache();
+    expect(() => readAuthenticatedServerRecordSync(recordPath, context)).toThrow(/authentication/i);
+  });
+
+  test('stores the production key beside the editor layer, not inside its release directory', () => {
+    const userDataDir = makeRoot('tagma-user-data-');
+    const editorUserDir = join(userDataDir, 'editor');
+    const workspaceRoot = makeRoot('tagma-key-workspace-');
+    const workspaceTagmaDir = join(workspaceRoot, '.tagma');
+    const stageId = '00000000-0000-4000-8000-000000000002';
+    const controlRoot = join(workspaceTagmaDir, '.chat-staging', stageId);
+    mkdirSync(editorUserDir);
+    delete process.env.TAGMA_STAGE_RECORD_KEY_FILE;
+    process.env.TAGMA_EDITOR_USER_DIR = editorUserDir;
+    delete process.env.TAGMA_EDITOR_AUTH_TOKEN;
+    __serverRecordAuthTestHooks.resetKeyCache();
+
+    writeAuthenticatedServerRecordSync(
+      join(controlRoot, 'stage.json'),
+      recordContext(workspaceTagmaDir, stageId, controlRoot, 'stage-metadata'),
+      { version: 2, id: stageId },
+    );
+
+    expect(existsSync(join(userDataDir, 'server-control', 'stage-record-hmac.key'))).toBe(true);
+    expect(existsSync(join(editorUserDir, 'server-control', 'stage-record-hmac.key'))).toBe(false);
+  });
   test('round-trips a signed record while preserving the existing top-level payload', () => {
     const root = makeRoot();
     const workspaceTagmaDir = join(root, '.tagma');
@@ -130,15 +190,9 @@ describe('server-authenticated control records', () => {
     };
     tampered.result.success = false;
     writeFileSync(signedPath, JSON.stringify(tampered), 'utf-8');
-    writeFileSync(
-      unsignedPath,
-      JSON.stringify({ version: 4, result: { success: true } }),
-      'utf-8',
-    );
+    writeFileSync(unsignedPath, JSON.stringify({ version: 4, result: { success: true } }), 'utf-8');
 
-    expect(() => readAuthenticatedServerRecordSync(signedPath, context)).toThrow(
-      /authentication/i,
-    );
+    expect(() => readAuthenticatedServerRecordSync(signedPath, context)).toThrow(/authentication/i);
     expect(() => readAuthenticatedServerRecordSync(unsignedPath, context)).toThrow(
       /authentication/i,
     );

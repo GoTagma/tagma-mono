@@ -23,6 +23,12 @@ import {
 import type { EditorLayout, WorkspaceState } from './workspace-state.js';
 import { atomicWriteFileSync, isPathWithin } from './path-utils.js';
 import {
+  ensureServerRecordControlRootSync,
+  readAuthenticatedServerRecordSync,
+  writeAuthenticatedServerRecordSync,
+  type ServerRecordContext,
+} from './server-record-auth.js';
+import {
   assertPipelineYamlPath,
   enumerateFlatPipelineYamls,
   enumeratePipelineYamls,
@@ -148,6 +154,8 @@ export interface ChatYamlStageFinalizeResult {
 }
 
 interface StagePaths {
+  id: string;
+  workspaceTagmaDir: string;
   rootDir: string;
   baseWorkspaceDir: string;
   baseTagmaDir: string;
@@ -257,9 +265,7 @@ export function buildChatPipelineTrialInputHash(input: {
   stagedTreeHash: string;
   planHash: string;
 }): string {
-  return createHash('sha256')
-    .update(`${input.stagedTreeHash}\0${input.planHash}`)
-    .digest('hex');
+  return createHash('sha256').update(`${input.stagedTreeHash}\0${input.planHash}`).digest('hex');
 }
 
 export function buildChatPipelineTrialVerificationHash(input: {
@@ -321,10 +327,13 @@ function assertStageId(stageId: string): string {
 
 function stagePaths(workDir: string, stageId: string): StagePaths {
   const id = assertStageId(stageId);
-  const rootDir = join(tagmaDirOf(workDir), STAGING_DIR_NAME, id);
+  const workspaceTagmaDir = tagmaDirOf(workDir);
+  const rootDir = join(workspaceTagmaDir, STAGING_DIR_NAME, id);
   const baseWorkspaceDir = join(rootDir, 'base-workspace');
   const agentWorkspaceDir = join(rootDir, 'agent-workspace');
   return {
+    id,
+    workspaceTagmaDir,
     rootDir,
     baseWorkspaceDir,
     baseTagmaDir: tagmaDirOf(baseWorkspaceDir),
@@ -335,6 +344,18 @@ function stagePaths(workDir: string, stageId: string): StagePaths {
   };
 }
 
+function stageRecordContext(
+  paths: StagePaths,
+  kind: ServerRecordContext['kind'],
+  controlRoot = paths.rootDir,
+): ServerRecordContext {
+  return {
+    workspaceTagmaDir: paths.workspaceTagmaDir,
+    controlRoot,
+    stageId: paths.id,
+    kind,
+  };
+}
 function assertPortableRelativePath(relativePath: string): string {
   if (typeof relativePath !== 'string' || relativePath.trim().length === 0) {
     throw new Error('A staged YAML relative path is required.');
@@ -407,8 +428,11 @@ function copyPipelineArtifacts(
 }
 
 function writeMetadata(paths: StagePaths, metadata: ChatYamlStageMetadata): void {
-  mkdirSync(paths.rootDir, { recursive: true });
-  atomicWriteFileSync(paths.metadataPath, JSON.stringify(metadata, null, 2) + '\n');
+  writeAuthenticatedServerRecordSync(
+    paths.metadataPath,
+    stageRecordContext(paths, 'stage-metadata'),
+    metadata,
+  );
 }
 
 function readMetadata(
@@ -421,9 +445,10 @@ function readMetadata(
   if (!ws.workDir) throw new Error('Workspace directory is not set.');
   const paths = stagePaths(ws.workDir, stageId);
   if (!existsSync(paths.metadataPath)) throw new Error('Chat YAML stage was not found.');
-  const raw = JSON.parse(
-    assertRegularTextFile(paths.metadataPath, 'chat YAML stage metadata'),
-  ) as Partial<ChatYamlStageMetadata> | null;
+  const raw = readAuthenticatedServerRecordSync<Partial<ChatYamlStageMetadata>>(
+    paths.metadataPath,
+    stageRecordContext(paths, 'stage-metadata'),
+  );
   if (
     !raw ||
     raw.version !== STAGE_VERSION ||
@@ -457,6 +482,8 @@ function readMetadata(
 function cleanupExpiredStages(workDir: string, now = Date.now()): void {
   const stagingHome = join(tagmaDirOf(workDir), STAGING_DIR_NAME);
   if (!existsSync(stagingHome)) return;
+  const stagingStat = lstatSync(stagingHome);
+  if (stagingStat.isSymbolicLink() || !stagingStat.isDirectory()) return;
   let entries;
   try {
     entries = readdirSync(stagingHome, { withFileTypes: true });
@@ -473,9 +500,10 @@ function cleanupExpiredStages(workDir: string, now = Date.now()): void {
     }
     let createdAt = 0;
     try {
-      const parsed = JSON.parse(readFileSync(paths.metadataPath, 'utf-8')) as {
-        createdAt?: unknown;
-      };
+      const parsed = readAuthenticatedServerRecordSync<{ createdAt?: unknown }>(
+        paths.metadataPath,
+        stageRecordContext(paths, 'stage-metadata'),
+      );
       if (typeof parsed.createdAt === 'number') createdAt = parsed.createdAt;
     } catch {
       try {
@@ -611,6 +639,7 @@ export function createChatYamlStage(
   const baseEntries: ChatYamlStageBaseEntry[] = [];
   let activeRelativePath: string | null = null;
   try {
+    ensureServerRecordControlRootSync(stageRecordContext(paths, 'stage-metadata'));
     mkdirSync(paths.baseTagmaDir, { recursive: true });
     mkdirSync(paths.agentTagmaDir, { recursive: true });
     for (const source of sourceEntries) {
@@ -646,7 +675,7 @@ export function createChatYamlStage(
 
 export function listChatYamlStage(ws: WorkspaceState, stageId: string): ChatYamlStageDescriptor {
   const { paths, metadata } = readMetadata(ws, stageId);
-  if (existsSync(paths.resultPath)) throw new Error('Chat YAML stage is already finalized.');
+  if (readFinalizeResult(paths)) throw new Error('Chat YAML stage is already finalized.');
   return descriptor(ws, paths, metadata);
 }
 
@@ -656,7 +685,7 @@ export function compileChatYamlStage(
   relativePath: string,
 ): ReturnType<typeof runCompileAndWriteLog> {
   const { paths } = readMetadata(ws, stageId);
-  if (existsSync(paths.resultPath)) throw new Error('Chat YAML stage is already finalized.');
+  if (readFinalizeResult(paths)) throw new Error('Chat YAML stage is already finalized.');
   const stagedPath = resolveStagedYamlPath(paths, relativePath);
   if (!existsSync(stagedPath)) throw new Error('Staged YAML file was not found.');
   const result = runCompileAndWriteLog(stagedPath, ws.registry);
@@ -996,7 +1025,11 @@ function describeRealEntry(ws: WorkspaceState, yamlPath: string): ChatYamlStageE
 
 function persistFinalizeResult(paths: StagePaths, result: ChatYamlStageFinalizeResult): void {
   __chatYamlStagingTestHooks.beforeFinalizeResultWrite?.(paths.resultPath);
-  atomicWriteFileSync(paths.resultPath, JSON.stringify(result, null, 2) + '\n');
+  writeAuthenticatedServerRecordSync(
+    paths.resultPath,
+    stageRecordContext(paths, 'finalized'),
+    result,
+  );
 }
 
 function cleanupFinalizedStage(paths: StagePaths): void {
@@ -1016,9 +1049,10 @@ function cleanupFinalizedStage(paths: StagePaths): void {
 
 function readFinalizeResult(paths: StagePaths): ChatYamlStageFinalizeResult | null {
   if (!existsSync(paths.resultPath)) return null;
-  return JSON.parse(
-    assertRegularTextFile(paths.resultPath, 'chat YAML finalize result'),
-  ) as ChatYamlStageFinalizeResult;
+  return readAuthenticatedServerRecordSync<ChatYamlStageFinalizeResult>(
+    paths.resultPath,
+    stageRecordContext(paths, 'finalized'),
+  );
 }
 
 interface CachedTrialFinalizeRecord {
@@ -1088,9 +1122,10 @@ function hasSuccessfulVerifiedTrial(
     hostWitnessDigest: witness.witness.digest,
   });
   try {
-    const cached = JSON.parse(
-      assertRegularTextFile(cachePath, 'chat YAML trial cache'),
-    ) as Partial<CachedTrialFinalizeRecord>;
+    const cached = readAuthenticatedServerRecordSync<Partial<CachedTrialFinalizeRecord>>(
+      cachePath,
+      stageRecordContext(paths, 'trial-cache', dirname(cachePath)),
+    );
     return (
       cached.version === TRIAL_CACHE_VERSION &&
       cached.inputHash === inputHash &&
@@ -1242,9 +1277,10 @@ export function finalizeChatYamlStage(
 
 export function discardChatYamlStage(ws: WorkspaceState, stageId: string): boolean {
   if (!ws.workDir) return false;
-  const paths = stagePaths(ws.workDir, stageId);
-  if (!existsSync(paths.rootDir)) return false;
-  if (existsSync(paths.resultPath)) return false;
+  const unresolvedPaths = stagePaths(ws.workDir, stageId);
+  if (!existsSync(unresolvedPaths.rootDir)) return false;
+  const { paths } = readMetadata(ws, stageId);
+  if (readFinalizeResult(paths)) return false;
   stopChatCompileWatcher(paths.agentTagmaDir);
   rmSync(paths.rootDir, { recursive: true, force: true });
   return true;
