@@ -55,6 +55,7 @@ export interface TrialWitnessFileIdentity {
 }
 
 export interface TrialHostWorkspaceWitness {
+  prerequisiteDigest: string;
   digest: string;
   fileCount: number;
   totalBytes: number;
@@ -271,6 +272,12 @@ function minimalEnvWitnessEntries(
   return hashedValues(entries);
 }
 
+function buildTrialHostPrerequisiteDigest(
+  input: Pick<TrialHostWitness, 'version' | 'binaries' | 'minimalEnv' | 'requiredEnv' | 'secrets' | 'python'>,
+): string {
+  return sha256(JSON.stringify(input));
+}
+
 function pythonWitness(
   pythonEnv: Readonly<Record<string, string>>,
 ): TrialHostPythonWitness | null {
@@ -322,7 +329,7 @@ export function captureTrialHostWitness(
     }
     return [name, value] as const;
   });
-  const payload: Omit<TrialHostWitness, 'digest'> = {
+  const payload: Omit<TrialHostWitness, 'prerequisiteDigest' | 'digest'> = {
     version: TRIAL_HOST_WITNESS_VERSION,
     workspace: workspaceWitness(ws.workDir),
     binaries: binaryWitnesses(prepared.binaryNames, prepared.pythonEnv),
@@ -331,9 +338,18 @@ export function captureTrialHostWitness(
     secrets: hashedValues(Object.entries(prepared.secretEnv)),
     python: pythonWitness(prepared.pythonEnv),
   };
+  const prerequisiteDigest = buildTrialHostPrerequisiteDigest({
+    version: payload.version,
+    binaries: payload.binaries,
+    minimalEnv: payload.minimalEnv,
+    requiredEnv: payload.requiredEnv,
+    secrets: payload.secrets,
+    python: payload.python,
+  });
   return {
     ...payload,
-    digest: sha256(JSON.stringify(payload)),
+    prerequisiteDigest,
+    digest: sha256(JSON.stringify({ ...payload, prerequisiteDigest })),
   };
 }
 

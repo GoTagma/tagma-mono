@@ -1329,6 +1329,85 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
+  test('rejects stale finalize reuse after a workspace-root input changes since the last trial', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    const externalInputPath = join(ws.workDir, 'workspace-input.txt');
+    const helperPath = join(dirname(sourcePath), 'verify-workspace-input.js');
+    writeFileSync(externalInputPath, 'alpha\n', 'utf-8');
+    writeFileSync(
+      helperPath,
+      [
+        "const fs = require('node:fs');",
+        `process.stdout.write(fs.readFileSync(${JSON.stringify(externalInputPath)}, 'utf8').trim());`,
+      ].join(' '),
+      'utf-8',
+    );
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Workspace Input Finalize Guard',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              { id: 'verify_workspace_input', command: { argv: [process.execPath, helperPath] } },
+              { id: 'case_probe', command: { argv: [process.execPath, '-e', 'process.exit(0)'] } },
+            ],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    writePassingTrialPlan(entry.stagedPath, 'main.case_probe');
+
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'workspace_finalize' },
+        'chat-lock',
+      ),
+      trialRes,
+    );
+    expect(trialRes.body).toMatchObject({ success: true, kind: 'passed', ran: true });
+
+    writeFileSync(externalInputPath, 'beta\n', 'utf-8');
+    const finalizeRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/finalize')(
+      request(
+        ws,
+        {
+          stageId: stage.id,
+          relativePath: entry.relativePath,
+          trialId: 'workspace_finalize',
+        },
+        'chat-lock',
+      ),
+      finalizeRes,
+    );
+    expect(finalizeRes.statusCode).toBe(200);
+    expect(finalizeRes.body).toMatchObject({
+      outcome: 'forked',
+      conflicts: ['trial-run-failed'],
+    });
+
+    discardStage(getRoute, ws, stage.id);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
   test('never auto-approves manual gates during a chat trial run', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();

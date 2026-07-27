@@ -155,7 +155,7 @@ interface TrialPipelineSnapshot {
   treeHash: string;
 }
 
-const inFlightByCachePath = new Map<string, Promise<ChatPipelineTrialRunResult>>();
+const inFlightByVerificationKey = new Map<string, Promise<ChatPipelineTrialRunResult>>();
 const activeTrialByWorkspace = new Map<string, string>();
 const activeTrialIdentityByWorkspace = new Map<
   string,
@@ -188,12 +188,7 @@ function validateTrialId(value: string): string {
   return trialId;
 }
 
-function trialCachePath(
-  rootDir: string,
-  trialId: string,
-  relativePath: string,
-  inputHash: string,
-) {
+function trialCachePath(rootDir: string, trialId: string, relativePath: string, inputHash: string) {
   const digest = createHash('sha256')
     .update(`${trialId}\0${relativePath}\0${inputHash}`)
     .digest('hex');
@@ -725,7 +720,7 @@ function buildCasePromptContexts(
 ): Record<string, Array<{ label: string; content: string }>> {
   const fixturePaths = testCase.fixtures.map((fixture) => fixture.path).join(', ') || 'none';
   const content = [
-    `Case: ${testCase.id} — ${testCase.title}`,
+    `Case: ${testCase.id} 鈥?${testCase.title}`,
     `Objective: ${testCase.objective}`,
     `Isolated workspace: ${workDir}`,
     `Fixture paths: ${fixturePaths}`,
@@ -930,7 +925,7 @@ function buildPlannedTrialSummary(
   ];
   for (const testCase of cases) {
     lines.push(
-      `Case ${testCase.id}: ${testCase.success ? 'passed' : 'failed'} — ${testCase.objective}`,
+      `Case ${testCase.id}: ${testCase.success ? 'passed' : 'failed'} 鈥?${testCase.objective}`,
     );
     for (const expectation of testCase.expectations) {
       if (!expectation.passed) lines.push(`  ${expectation.type}: ${expectation.detail}`);
@@ -1190,15 +1185,21 @@ export async function trialRunChatYamlStage(
       );
     }
     const currentWitness = safeCaptureTrialHostWitness(ws, prepared.prepared);
-    const verificationHash = currentWitness.witness
-      ? buildChatPipelineTrialVerificationHash({
-          inputHash,
-          hostWitnessDigest: currentWitness.witness.digest,
-        })
-      : null;
-    const cached = verificationHash ? readCachedTrial(cachePath, inputHash, verificationHash) : null;
+    if (!currentWitness.witness) {
+      return resultForSetupFailure(
+        'setup-failed',
+        `Trial host witness capture failed: ${currentWitness.reason}`,
+        startedAt,
+      );
+    }
+    const verificationHash = buildChatPipelineTrialVerificationHash({
+      inputHash,
+      hostWitnessDigest: currentWitness.witness.digest,
+    });
+    const inFlightKey = `${cachePath}\0${verificationHash}`;
+    const cached = readCachedTrial(cachePath, inputHash, verificationHash);
     if (cached) return cached;
-    const existing = inFlightByCachePath.get(cachePath);
+    const existing = inFlightByVerificationKey.get(inFlightKey);
     if (existing) return existing;
     if (isWorkspaceRunBusy(ws) || activeTrialByWorkspace.has(ws.key)) {
       return resultForSetupFailure(
@@ -1216,7 +1217,7 @@ export async function trialRunChatYamlStage(
       controller.abort('chat trial run timeout');
     }, CHAT_PIPELINE_TRIAL_TIMEOUT_MS);
     timeout.unref?.();
-    activeTrialByWorkspace.set(ws.key, cachePath);
+    activeTrialByWorkspace.set(ws.key, inFlightKey);
     activeTrialIdentityByWorkspace.set(ws.key, activeIdentity);
     ws.chatPipelineTrialAbort = controller;
 
@@ -1250,33 +1251,40 @@ export async function trialRunChatYamlStage(
           }
           const postWitness = safeCaptureTrialHostWitness(ws, postPrepared.prepared);
           if (!postWitness.witness) {
-            return resultForHostWitnessFailure(result, postWitness.reason ?? 'unknown witness failure');
+            return resultForHostWitnessFailure(
+              result,
+              postWitness.reason ?? 'unknown witness failure',
+            );
+          }
+          if (
+            currentWitness.witness.prerequisiteDigest !==
+            postWitness.witness.prerequisiteDigest
+          ) {
+            return resultForHostWitnessFailure(
+              result,
+              'Host prerequisites changed during trial execution; rerun is required before finalize.',
+            );
           }
           const postVerificationHash = buildChatPipelineTrialVerificationHash({
             inputHash,
             hostWitnessDigest: postWitness.witness.digest,
           });
-          writeCachedTrial(
-            cachePath,
-            inputHash,
-            postVerificationHash,
-            postWitness.witness,
-            result,
-          );
+          writeCachedTrial(cachePath, inputHash, postVerificationHash, postWitness.witness, result);
         }
         return result;
       } finally {
         clearTimeout(timeout);
-        if (activeTrialByWorkspace.get(ws.key) === cachePath) activeTrialByWorkspace.delete(ws.key);
+        if (activeTrialByWorkspace.get(ws.key) === inFlightKey)
+          activeTrialByWorkspace.delete(ws.key);
         if (activeTrialIdentityByWorkspace.get(ws.key) === activeIdentity) {
           activeTrialIdentityByWorkspace.delete(ws.key);
         }
         if (ws.chatPipelineTrialAbort === controller) ws.chatPipelineTrialAbort = null;
-        inFlightByCachePath.delete(cachePath);
+        inFlightByVerificationKey.delete(inFlightKey);
         cleanupTrialPipelineSnapshot(executionSnapshot);
       }
     })();
-    inFlightByCachePath.set(cachePath, promise);
+    inFlightByVerificationKey.set(inFlightKey, promise);
     return promise;
   } finally {
     cleanupTrialPipelineSnapshot(snapshot);
