@@ -7,10 +7,11 @@ import { requirementsPath, parseRequirementsMd } from './requirements-sync.js';
 import { buildPipelineSecretEnv } from './secrets.js';
 import { readEditorSettings } from './plugins/loader.js';
 import { buildPythonAgentRunEnv } from './python-agent.js';
+import { resolveOpencodeBinary } from './opencode-lifecycle.js';
 
 import type { WorkspaceState } from './workspace-state.js';
 
-const TRIAL_HOST_WITNESS_VERSION = 1;
+const TRIAL_HOST_WITNESS_VERSION = 2;
 const MAX_WORKSPACE_WITNESS_FILES = 4_000;
 const MAX_WORKSPACE_WITNESS_BYTES = 64 * 1024 * 1024;
 const MAX_FILE_HASH_BYTES = MAX_WORKSPACE_WITNESS_BYTES;
@@ -34,6 +35,7 @@ const TRIAL_MINIMAL_ENV_KEYS = [
 
 interface TrialRequirementWitnessConfig {
   binaryNames: string[];
+  driverNames: string[];
   requiredEnvNames: string[];
 }
 
@@ -82,6 +84,7 @@ export interface TrialHostWitness {
 export interface PreparedTrialHostWitnessInputs {
   logicalYamlPath: string;
   binaryNames: string[];
+  driverNames: string[];
   requiredEnvNames: string[];
   secretEnv: Record<string, string>;
   pythonEnv: Record<string, string>;
@@ -105,16 +108,27 @@ function shouldSkipWorkspaceWitnessDir(relativePath: string, name: string): bool
 function readRequirementsWitnessConfig(stagedYamlPath: string): TrialRequirementWitnessConfig {
   const path = requirementsPath(stagedYamlPath);
   if (!existsSync(path)) {
-    return { binaryNames: [], requiredEnvNames: [] };
+    return { binaryNames: [], driverNames: [], requiredEnvNames: [] };
   }
   const parsed = parseRequirementsMd(readFileSync(path, 'utf-8'));
   const frontmatter = parsed.frontmatter;
   if (!frontmatter) {
-    return { binaryNames: [], requiredEnvNames: [] };
+    return { binaryNames: [], driverNames: [], requiredEnvNames: [] };
   }
   const binaryNames = Array.isArray(frontmatter.binaries)
     ? [
         ...new Set(frontmatter.binaries.flatMap((entry) => (entry?.name ? [entry.name] : []))),
+      ].sort()
+    : [];
+  const driverNames = Array.isArray(frontmatter.binaries)
+    ? [
+        ...new Set(
+          frontmatter.binaries.flatMap((entry) =>
+            typeof entry?.fromDriver === 'string' && entry.fromDriver
+              ? [entry.fromDriver]
+              : [],
+          ),
+        ),
       ].sort()
     : [];
   const requiredEnvNames = Array.isArray(frontmatter.env)
@@ -126,7 +140,7 @@ function readRequirementsWitnessConfig(stagedYamlPath: string): TrialRequirement
         ),
       ].sort()
     : [];
-  return { binaryNames, requiredEnvNames };
+  return { binaryNames, driverNames, requiredEnvNames };
 }
 
 function resolveExecutionEnvValue(
@@ -253,6 +267,25 @@ function binaryWitnesses(
   });
 }
 
+function editorDriverBinaryWitnesses(
+  names: readonly string[],
+  pythonEnv: Readonly<Record<string, string>>,
+): TrialHostBinaryWitness[] {
+  const env = { ...process.env, ...pythonEnv };
+  return names.flatMap((name) => {
+    if (name !== 'opencode') return [];
+    const configuredPath = resolveOpencodeBinary();
+    const resolvedPath =
+      configuredPath.includes('/') || configuredPath.includes('\\')
+        ? configuredPath
+        : resolveBinaryPath(configuredPath, env);
+    if (!resolvedPath) {
+      throw new Error(`Editor driver witness could not resolve ${name}.`);
+    }
+    return [{ name: `driver:${name}`, identity: fileIdentity(resolvedPath, MAX_BINARY_HASH_BYTES) }];
+  });
+}
+
 function hashedValues(entries: Iterable<readonly [string, string]>): TrialWitnessValueHash[] {
   return [...entries]
     .sort((left, right) => left[0].localeCompare(right[0]))
@@ -313,6 +346,7 @@ export function prepareTrialHostWitnessInputs(
   return {
     logicalYamlPath,
     binaryNames: requirements.binaryNames,
+    driverNames: requirements.driverNames,
     requiredEnvNames: requirements.requiredEnvNames,
     secretEnv,
     pythonEnv,
@@ -334,7 +368,10 @@ export function captureTrialHostWitness(
   const payload: Omit<TrialHostWitness, 'prerequisiteDigest' | 'digest'> = {
     version: TRIAL_HOST_WITNESS_VERSION,
     workspace: workspaceWitness(ws.workDir),
-    binaries: binaryWitnesses(prepared.binaryNames, prepared.pythonEnv),
+    binaries: [
+      ...binaryWitnesses(prepared.binaryNames, prepared.pythonEnv),
+      ...editorDriverBinaryWitnesses(prepared.driverNames, prepared.pythonEnv),
+    ].sort(compareNames),
     minimalEnv: minimalEnvWitnessEntries(prepared.secretEnv, prepared.pythonEnv),
     requiredEnv: hashedValues(requiredEnvEntries),
     secrets: hashedValues(Object.entries(prepared.secretEnv)),
