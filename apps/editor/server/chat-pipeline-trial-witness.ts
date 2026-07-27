@@ -14,9 +14,9 @@ import {
 } from 'node:fs';
 
 import type { Stats } from 'node:fs';
-import { extname, join, relative, resolve } from 'node:path';
+import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
-import { errorMessage, isPathWithin } from './path-utils.js';
+import { errorMessage } from './path-utils.js';
 import { requirementsPath, parseRequirementsMd } from './requirements-sync.js';
 import { buildPipelineSecretEnv } from './secrets.js';
 import { readEditorSettings } from './plugins/loader.js';
@@ -147,6 +147,14 @@ function compareNames(left: { name: string }, right: { name: string }): number {
   return left.name < right.name ? -1 : left.name > right.name ? 1 : 0;
 }
 
+function isCanonicalPathWithin(child: string, root: string): boolean {
+  const relativePath = relative(root, child);
+  return (
+    relativePath === '' ||
+    (!isAbsolute(relativePath) && relativePath !== '..' && !relativePath.startsWith(`..${sep}`))
+  );
+}
+
 function shouldSkipWorkspaceWitnessDir(relativePath: string, name: string): boolean {
   const segments = relativePath.split('/').filter(Boolean);
   if (segments[0] !== '.tagma') return false;
@@ -231,7 +239,7 @@ function streamFileSha256(
   path: string,
   expectedStat: Stats,
   disallowSymlinks: boolean,
-  buffer = Buffer.allocUnsafe(FILE_HASH_BUFFER_BYTES),
+  buffer: Buffer<ArrayBufferLike> = Buffer.allocUnsafe(FILE_HASH_BUFFER_BYTES),
 ): string {
   const expectedMetadata = fileMetadata(expectedStat);
   const fd = openSync(path, 'r');
@@ -299,6 +307,17 @@ function workspaceWitness(ws: WorkspaceState): TrialHostWorkspaceWitness {
     reusedFileCount: 0,
   };
   const visit = (directory: string, relativeDir: string): void => {
+    const directoryBefore = lstatSync(directory);
+    if (directoryBefore.isSymbolicLink() || !directoryBefore.isDirectory()) {
+      throw new Error(
+        `Workspace witness directory changed before traversal: ${relativeDir || '.'}`,
+      );
+    }
+    const canonicalDirectoryBefore = realpathSync.native(directory);
+    if (!isCanonicalPathWithin(canonicalDirectoryBefore, resolvedRoot)) {
+      throw new Error(`Workspace witness directory escaped the workspace: ${relativeDir || '.'}`);
+    }
+    const directoryMetadataBefore = fileMetadata(directoryBefore);
     const entries = readdirSync(directory, { withFileTypes: true }).sort(compareNames);
     for (const entry of entries) {
       const absolutePath = join(directory, entry.name);
@@ -311,15 +330,14 @@ function workspaceWitness(ws: WorkspaceState): TrialHostWorkspaceWitness {
         } catch {
           throw new Error(`Workspace witness symlink target is unavailable: ${relativePath}`);
         }
-        if (!isPathWithin(canonicalTarget, resolvedRoot)) {
+        if (!isCanonicalPathWithin(canonicalTarget, resolvedRoot)) {
           throw new Error(
             `Workspace witness symlink target is outside the workspace: ${relativePath}`,
           );
         }
-        const canonicalTargetRelative = relative(resolvedRoot, canonicalTarget).replaceAll(
-          '\\',
-          '/',
-        );
+        const canonicalTargetRelative = relative(resolvedRoot, canonicalTarget)
+          .split(sep)
+          .join('/');
         if (shouldSkipWorkspaceWitnessDir(canonicalTargetRelative, '')) {
           throw new Error(
             `Workspace witness symlink points into an excluded workspace path: ${relativePath}`,
@@ -361,9 +379,6 @@ function workspaceWitness(ws: WorkspaceState): TrialHostWorkspaceWitness {
         );
         continue;
       }
-      if (!isPathWithin(absolutePath, resolvedRoot)) {
-        throw new Error(`Workspace witness path escaped the workspace: ${absolutePath}`);
-      }
       if (stat.isDirectory()) {
         if (shouldSkipWorkspaceWitnessDir(relativePath, entry.name)) continue;
         hash.update(`dir\0${relativePath}\0`);
@@ -395,6 +410,23 @@ function workspaceWitness(ws: WorkspaceState): TrialHostWorkspaceWitness {
       nextEntries.set(relativePath, { ...metadata, kind: 'file', sha256: contentHash });
       hash.update(`file\0${relativePath}\0${stat.size}\0${contentHash}\0`);
     }
+
+    const directoryAfter = lstatSync(directory);
+    if (
+      directoryAfter.isSymbolicLink() ||
+      !directoryAfter.isDirectory() ||
+      !sameFileMetadata(directoryMetadataBefore, fileMetadata(directoryAfter))
+    ) {
+      throw new Error(
+        `Workspace witness directory changed while traversing: ${relativeDir || '.'}`,
+      );
+    }
+    const canonicalDirectoryAfter = realpathSync.native(directory);
+    if (canonicalDirectoryAfter !== canonicalDirectoryBefore) {
+      throw new Error(
+        `Workspace witness directory changed while traversing: ${relativeDir || '.'}`,
+      );
+    }
   };
   visit(resolvedRoot, '');
   workspaceManifestCaches.set(ws, {
@@ -414,6 +446,17 @@ export function getTrialHostWorkspaceManifestCacheStatsForTests(
 ): TrialHostWorkspaceManifestCacheStats | null {
   const stats = workspaceManifestCaches.get(ws)?.lastStats;
   return stats ? { ...stats } : null;
+}
+
+export function safeCaptureTrialWorkspaceWitness(ws: WorkspaceState): {
+  witness: TrialHostWorkspaceWitness | null;
+  reason: string | null;
+} {
+  try {
+    return { witness: workspaceWitness(ws), reason: null };
+  } catch (err) {
+    return { witness: null, reason: errorMessage(err) };
+  }
 }
 function windowsBinaryCandidates(name: string, env: NodeJS.ProcessEnv): string[] {
   const lower = name.toLowerCase();

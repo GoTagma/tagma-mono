@@ -80,6 +80,12 @@
   stage-owned temporary workspace with bounded helpers/fixtures, contained portable paths,
   selected task targets, repeated-run support, and host-evaluated assertions. Case workspaces
   must be removed afterward and their fixtures/outputs must never leak into the live workspace.
+- Pin Trial YAML and requirements to one immutable execution snapshot, and hold the shared
+  per-workspace run reservation for the entire host Trial. A completed response retry is keyed by
+  stage, trial id, path, and input hash even if the host later drifts; finalize must still verify
+  the current host witness. Inject only requirements secrets globally, keep task/track secrets
+  scoped through the runtime resolver, and fail on persistent real-workspace drift after any
+  isolated case.
 - A failed trial may feed one of the existing bounded hidden repair continuations back into the
   same OpenCode session, stage, snapshot, and YAML lease. Adopt into the live pipeline only after
   both compile and trial succeed; preserve a still-failing trial result as a numbered copy.

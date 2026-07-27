@@ -39,8 +39,8 @@ import {
 } from './chat-pipeline-trial-plan.js';
 import {
   safeCaptureTrialHostWitness,
+  safeCaptureTrialWorkspaceWitness,
   safePrepareTrialHostWitnessInputs,
-  type PreparedTrialHostWitnessInputs,
   type TrialHostWitness,
 } from './chat-pipeline-trial-witness.js';
 import { buildPythonAgentRunEnv, pythonAgentVenvBinDir } from './python-agent.js';
@@ -748,13 +748,13 @@ interface RunTrialPipelineInput {
   testCase?: ChatPipelineTrialPlanCase;
 }
 
-function captureTrialWorkspaceDigest(
-  ws: WorkspaceState,
-  prepared: PreparedTrialHostWitnessInputs,
-): { digest: string | null; reason: string | null } {
-  const captured = safeCaptureTrialHostWitness(ws, prepared);
+function captureTrialWorkspaceDigest(ws: WorkspaceState): {
+  digest: string | null;
+  reason: string | null;
+} {
+  const captured = safeCaptureTrialWorkspaceWitness(ws);
   return {
-    digest: captured.witness?.workspace.digest ?? null,
+    digest: captured.witness?.digest ?? null,
     reason: captured.reason,
   };
 }
@@ -949,7 +949,6 @@ async function executeTrial(
   entry: ReturnType<typeof listChatYamlStage>['entries'][number],
   snapshot: TrialPipelineSnapshot,
   plan: ChatPipelineTrialPlan,
-  hostWitnessInputs: PreparedTrialHostWitnessInputs,
   controller: AbortController,
   abortState: { timedOut: boolean },
 ): Promise<ChatPipelineTrialRunResult> {
@@ -1073,7 +1072,7 @@ async function executeTrial(
     const baselineEvidence = trialTaskResults(baseline, null, 1);
     const cases: ChatPipelineTrialCaseResult[] = [];
     let totalTaskCount = baselineEvidence.totalTaskCount;
-    const baselineWorkspace = captureTrialWorkspaceDigest(ws, hostWitnessInputs);
+    const baselineWorkspace = captureTrialWorkspaceDigest(ws);
     let expectedWorkspaceDigest = baselineWorkspace.digest;
     let pendingWorkspaceWitnessFailure = baselineWorkspace.digest
       ? null
@@ -1085,16 +1084,7 @@ async function executeTrial(
         workspaceFailures.push(pendingWorkspaceWitnessFailure);
         pendingWorkspaceWitnessFailure = null;
       }
-      const beforeCase = captureTrialWorkspaceDigest(ws, hostWitnessInputs);
-      if (!beforeCase.digest) {
-        workspaceFailures.push(
-          `Could not capture the real workspace before case ${testCase.id}: ${beforeCase.reason ?? 'unknown witness failure'}.`,
-        );
-      } else if (expectedWorkspaceDigest && beforeCase.digest !== expectedWorkspaceDigest) {
-        workspaceFailures.push(
-          `The real workspace changed between baseline/cases before case ${testCase.id}.`,
-        );
-      }
+
       const caseExecution = await executeTargetedTrialCase({
         ws,
         pipelineConfig,
@@ -1110,17 +1100,17 @@ async function executeTrial(
         testCase,
         targetTaskIds: targetTaskIdsByCase.get(testCase.id),
       });
-      const afterCase = captureTrialWorkspaceDigest(ws, hostWitnessInputs);
+      const afterCase = captureTrialWorkspaceDigest(ws);
       if (!afterCase.digest) {
         workspaceFailures.push(
           `Could not capture the real workspace after case ${testCase.id}: ${afterCase.reason ?? 'unknown witness failure'}.`,
         );
-      } else if (beforeCase.digest && afterCase.digest !== beforeCase.digest) {
+      } else if (expectedWorkspaceDigest && afterCase.digest !== expectedWorkspaceDigest) {
         workspaceFailures.push(
           `Isolated case ${testCase.id} modified the real workspace; case fixtures and outputs must remain isolated.`,
         );
       }
-      expectedWorkspaceDigest = afterCase.digest ?? beforeCase.digest ?? expectedWorkspaceDigest;
+      expectedWorkspaceDigest = afterCase.digest ?? expectedWorkspaceDigest;
       const caseResult =
         workspaceFailures.length === 0
           ? caseExecution.result
@@ -1138,6 +1128,7 @@ async function executeTrial(
             };
       cases.push(caseResult);
       totalTaskCount += caseExecution.totalTaskCount;
+      if (workspaceFailures.length > 0) break;
     }
     const success =
       baseline.success &&
@@ -1312,7 +1303,6 @@ export async function trialRunChatYamlStage(
           entry,
           executionSnapshot,
           planRead.plan,
-          hostWitnessInputs,
           controller,
           abortState,
         );

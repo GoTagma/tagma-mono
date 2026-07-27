@@ -1238,14 +1238,17 @@ describe('chat YAML staging routes', () => {
           {
             id: 'main',
             name: 'Main',
-            tasks: [{ id: 'wait', command: { argv: [process.execPath, '-e', script] } }],
+            tasks: [
+              { id: 'wait', command: { argv: [process.execPath, '-e', script] } },
+              { id: 'case_probe', command: { argv: [process.execPath, '-e', 'process.exit(0)'] } },
+            ],
           },
         ],
       }),
       'utf-8',
     );
     compileStage(getRoute, ws, stage.id, entry.relativePath);
-    writePassingTrialPlan(entry.stagedPath, 'main.wait');
+    writePassingTrialPlan(entry.stagedPath, 'main.case_probe');
 
     const trialId = 'cancel_trial_1';
     const firstRes = makeRes();
@@ -1286,7 +1289,7 @@ describe('chat YAML staging routes', () => {
       secondRes,
     );
     expect(secondRes.body).toMatchObject({ success: true, kind: 'passed' });
-    expect(readFileSync(counterPath, 'utf-8')).toBe('3');
+    expect(readFileSync(counterPath, 'utf-8')).toBe('2');
 
     discardStage(getRoute, ws, stage.id);
     ws.watcher.stopWatching();
