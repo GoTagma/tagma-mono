@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand';
+import { create } from 'zustand';
 import type {
   Event as OpencodeEvent,
   SessionStatus as OpencodeSessionStatus,
@@ -123,7 +123,7 @@ import {
 } from '../../shared/opencode-session-metadata.js';
 import { serializePreviewYaml } from '../utils/yaml-preview-diff';
 
-// Re-export for backward compatibility 鈥?tests and other consumers import this
+// Re-export for backward compatibility — tests and other consumers import this
 // from chat-store.
 export { buildEditorContext } from './chat-editor-context';
 import {
@@ -135,7 +135,7 @@ import {
   type ProviderCatalogEntry,
 } from './chat-provider-catalog';
 
-// Re-export for backward compatibility 鈥?external consumers (ProviderConnectDialog, etc.)
+// Re-export for backward compatibility — external consumers (ProviderConnectDialog, etc.)
 // import this type from chat-store.
 export type { ProviderCatalogEntry } from './chat-provider-catalog';
 
@@ -156,7 +156,7 @@ export interface ComposerAttachment {
  * "opencode is still spinning up" from "opencode is up but has no data".
  *
  * - `idle`    : panel has never mounted / bootstrap hasn't been kicked off.
- * - `booting` : initial bootstrap in progress (usually the 2鈥?0 s it takes
+ * - `booting` : initial bootstrap in progress (usually the 2–30 s it takes
  *               to spawn `opencode serve` and wait for health). Panel shows
  *               a loading overlay instead of the misleading "No providers
  *               configured" empty state.
@@ -243,12 +243,12 @@ export type ChatTurnHealth = {
   status: 'checking' | 'ok' | 'degraded';
   checkedAt: number;
   detail?: string;
-  /** SSE connection liveness 鈥?'connected' if events are flowing, 'idle' if
+  /** SSE connection liveness — 'connected' if events are flowing, 'idle' if
    *  no events for a while, 'reconnecting' if the stream dropped. Helps
    *  distinguish "model is thinking" (connected but no events) from "SSE
    *  connection died" (reconnecting). */
   sseState?: 'connected' | 'idle' | 'reconnecting';
-  /** opencode process health 鈥?whether /global/health responds. */
+  /** opencode process health — whether /global/health responds. */
   processAlive?: boolean;
   /** Last time an SSE event arrived (ms since epoch). Null if no events yet
    *  this turn. Used by the UI to show "Xs since last update". */
@@ -291,7 +291,7 @@ interface ChatStore {
 
   /**
    * Hard-wired to the `tagma-router` custom agent defined in
-   * `.opencode/agents/tagma-router.md`. Users can't change this 鈥?the chat panel
+   * `.opencode/agents/tagma-router.md`. Users can't change this — the chat panel
    * routes each turn to a scoped Tagma specialist. Held as state (not a
    * constant) so send() reads it uniformly, and so we can surface `null` if the
    * agent file is missing (in which case opencode falls back to its own built-in
@@ -322,7 +322,7 @@ interface ChatStore {
   completeChatYamlLifecycle: (turnId: string) => void;
   /**
    * Text the user just submitted, rendered as an optimistic user bubble while
-   * the server is still processing the prompt. Without this, "鈥hinking"
+   * the server is still processing the prompt. Without this, "…thinking"
    * appears before the user's own message, because `messages` is only updated
    * after the server responds or an SSE refetch fires. The renderer drops
    * this once a real user message containing the same text shows up in
@@ -345,9 +345,9 @@ interface ChatStore {
    */
   lastSendingEndedAt: number;
   /**
-   * Wall-clock when the *current* turn started 鈥?set in promptOpencode at the
+   * Wall-clock when the *current* turn started — set in promptOpencode at the
    * same moment `sending` flips true, cleared by finishChatTurn. Drives the
-   * "Sending request鈥?(Xs)" / "Waiting for first token鈥?(Xs)" elapsed counter
+   * "Sending request… (Xs)" / "Waiting for first token… (Xs)" elapsed counter
    * in ProgressBubble; null whenever `sending` is false.
    */
   turnStartedAt: number | null;
@@ -362,14 +362,14 @@ interface ChatStore {
    * / part update for the current session, plus session.status and
    * session.compacted). Drives the activity panel's "no activity for Xs"
    * highlight when the model goes silent mid-turn. Deliberately does NOT
-   * include LSP / VCS / file-watcher events 鈥?those would falsely reset the
+   * include LSP / VCS / file-watcher events — those would falsely reset the
    * timer when the user is actively editing while the model is stuck. Cleared
    * on turn end and on session switch/new/delete.
    */
   lastActivityAt: number | null;
   /**
    * Latest non-idle `session.status` payload. Today the only payload we
-   * surface is `{type:"retry", attempt, message, next}` 鈥?opencode emits this
+   * surface is `{type:"retry", attempt, message, next}` — opencode emits this
    * when a provider returns 5xx / 429 and the SDK is about to retry, and
    * without surfacing it the UI looks frozen for the full retry delay. Cleared
    * by finishChatTurn and by the next normal activity (see appendOrCoalesce).
@@ -383,7 +383,7 @@ interface ChatStore {
   turnHealth: ChatTurnHealth | null;
   /**
    * Activity events that fire BEFORE the assistant message envelope arrives
-   * 鈥?`request-sent` and any retry/compacting that lands during the slow
+   * — `request-sent` and any retry/compacting that lands during the slow
    * TTFT window. Flushed onto the assistant message's own `activity` array
    * the moment its envelope shows up, then cleared. Empty in the steady
    * state. Lives on the store rather than being attached to the user
@@ -395,13 +395,14 @@ interface ChatStore {
    * Snapshot of workspace `.tagma/*.yaml` paths captured at `send()` dispatch,
    * tagged with the workDir it was taken against. The App-level end-of-turn
    * reconcile diffs this against the post-turn list to detect pipelines
-   * opencode *created* during the turn 鈥?the server's file-watcher only
+   * opencode *created* during the turn — the server's file-watcher only
    * watches the currently-open YAML, so a newly-written sibling file would
    * otherwise leave the sidebar and canvas silently stale. The `workDir` tag
    * guards against the rare race where the user switches workspace mid-turn;
    * reconcile skips the diff if the tag no longer matches.
    *
-   * `null` = no baseline (workDir unset or the listing request failed) 鈫?   * reconcile falls back to "refresh the current file only", which is the
+   * `null` = no baseline (workDir unset or the listing request failed) →
+   * reconcile falls back to "refresh the current file only", which is the
    * right behavior when we can't tell what's new.
    */
   yamlSnapshotBeforeSend: ChatYamlSnapshot | null;
@@ -411,7 +412,7 @@ interface ChatStore {
   setSessionYamlResult: (result: ChatYamlSessionResult) => void;
   dismissSessionYamlResultToast: (sessionId: string) => void;
   acknowledgeFinishedTurn: (turnId: string) => void;
-  /** Last send error 鈥?rendered as a dismissable banner above the composer. */
+  /** Last send error — rendered as a dismissable banner above the composer. */
   sendError: string | null;
   dismissSendError: () => void;
   composerDraft: string;
@@ -428,7 +429,7 @@ interface ChatStore {
   /**
    * Attach error/bug context as a chip and open chat. Seeds the editable
    * composer with the default "Fix this bug." instruction ONLY when the
-   * draft is empty 鈥?never clobbers text the user is already typing.
+   * draft is empty — never clobbers text the user is already typing.
    */
   attachErrorContext: (attachment: { label: string; content: string }) => void;
   attachComposerContext: (
@@ -437,21 +438,21 @@ interface ChatStore {
   ) => void;
   removeComposerAttachment: (id: string) => void;
 
-  // 鈹€鈹€ Provider connect (the "/connect" dialog) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Provider connect (the "/connect" dialog) ─────────────────────────────
   /** Dialog open state. The dialog lives inside ChatPanel so it tears down
    *  with the right dock. */
   connectOpen: boolean;
   openConnect: () => void;
   closeConnect: () => void;
   /**
-   * Full provider catalog for the Connect dialog 鈥?one entry per provider
+   * Full provider catalog for the Connect dialog — one entry per provider
    * opencode knows about.
    *
    * Built by merging two opencode endpoints:
-   *   - `GET /provider` 鈫?`all[]` (the full models.dev universe, including
+   *   - `GET /provider` → `all[]` (the full models.dev universe, including
    *     opencode-zen + custom providers declared in config) and `connected[]`
    *     (IDs with credentials already stored).
-   *   - `GET /provider/auth` 鈫?per-provider method list for providers with
+   *   - `GET /provider/auth` → per-provider method list for providers with
    *     *special* flows (OAuth, well-known). Most providers aren't in there;
    *     for those we synthesize a generic API-key method.
    *
@@ -463,7 +464,7 @@ interface ChatStore {
   providerCatalog: ProviderCatalogEntry[];
   refreshProviderCatalog: () => Promise<void>;
   /** Write an API-key credential for a provider. `metadata` carries answers
-   *  to the method's `prompts[]` (e.g. Cloudflare `accountId`) 鈥?stored as a
+   *  to the method's `prompts[]` (e.g. Cloudflare `accountId`) — stored as a
    *  string map on the ApiAuth envelope. Re-fetches providers + auth-methods
    *  so the ModelPicker immediately reflects the new models. */
   setProviderApiKey: (
@@ -472,9 +473,9 @@ interface ChatStore {
     metadata?: Record<string, string>,
   ) => Promise<void>;
   /** Start an OAuth flow. `promptAnswers` carries answers to the method's
-   *  `prompts[]` 鈥?the server accepts them flat alongside `method` in the
+   *  `prompts[]` — the server accepts them flat alongside `method` in the
    *  authorize body (e.g. `{method:0, deploymentType:"enterprise",
-   *  enterpriseUrl:"鈥?}` for GitHub Copilot Enterprise). Returns the
+   *  enterpriseUrl:"…"}` for GitHub Copilot Enterprise). Returns the
    *  authorize envelope (URL + whether the browser can autocomplete or the
    *  user must paste a code), or null if the workspace changed while the
    *  authorization request was in flight. The caller is responsible for
@@ -491,7 +492,7 @@ interface ChatStore {
   /**
    * Re-fetch providers + auth-methods after an external-browser OAuth flow
    * completed without us seeing the callback (opencode's "auto" mode captures
-   * the redirect in its own loopback listener 鈥?we can't observe it). Called
+   * the redirect in its own loopback listener — we can't observe it). Called
    * from the Connect dialog's "I've completed sign-in" button.
    */
   refreshProvidersAfterExternalAuth: () => Promise<void>;
@@ -500,7 +501,7 @@ interface ChatStore {
    *  is scoped to MCP servers. Same refresh semantics as setProviderApiKey. */
   removeProviderAuth: (providerId: string) => Promise<void>;
 
-  // 鈹€鈹€ Custom providers (write to opencode.json directly) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Custom providers (write to opencode.json directly) ──────────────────
   /**
    * Provider entries defined under `provider:` in either the embedded runtime
    * (`<workDir>/.tagma/.opencode-runtime/...`) or workspace
@@ -508,7 +509,7 @@ interface ChatStore {
    * and refreshed after every Connect-dialog save/delete.
    *
    * These overlap with `providerCatalog` because opencode merges the same
-   * `provider:` entries into `client.provider.list()` 鈥?the catalog renders
+   * `provider:` entries into `client.provider.list()` — the catalog renders
    * them as ordinary connected providers. This list exists so the dialog
    * knows *which* of those rows it can edit/delete in place (vs. the
    * built-in models.dev catalog where edits would be meaningless).
@@ -540,7 +541,7 @@ interface ChatStore {
    * Abort the current opencode turn so the queued messages take over as
    * the next turn. No-ops if not sending or the queue is empty. Drain
    * itself happens via the existing `session.idle` / `session.error`
-   * (MessageAbortedError) handlers 鈥?this action only kicks off the abort.
+   * (MessageAbortedError) handlers — this action only kicks off the abort.
    */
   flushQueueNow: () => Promise<void>;
   sendInternalRepairPrompt: (
@@ -577,7 +578,7 @@ interface ChatStore {
    * Reply to a pending permission. Calls
    * POST /session/{id}/permissions/{permissionID}. `sessionID` should come
    * from the permission event; if omitted we fall back to the pending entry.
-   * No optimistic mutation 鈥?server's subsequent `permission.replied` event
+   * No optimistic mutation — server's subsequent `permission.replied` event
    * clears the entry.
    */
   replyPermission: (
@@ -621,7 +622,7 @@ const MAX_CHAT_TRIAL_REPAIR_EVIDENCE_BYTES = 64 * 1024;
 
 function clipChatTrialRepairText(value: string, maxLength: number): string {
   if (value.length <= maxLength) return value;
-  return value.slice(0, Math.max(0, maxLength - 16)) + '鈥truncated]';
+  return value.slice(0, Math.max(0, maxLength - 16)) + '…[truncated]';
 }
 
 function compactChatTrialRepairResult(result: ChatPipelineTrialRunResult) {
@@ -678,30 +679,16 @@ function compactChatTrialRepairResult(result: ChatPipelineTrialRunResult) {
   };
 }
 
-const CHAT_COMPILE_REPAIR_SECRET_SUFFIX_PATTERN = String.raw`(?:api[_-]?key|api[_-]?token|token|secret|session(?:[_-]?token)?|password|credential|authorization)`;
-const CHAT_COMPILE_REPAIR_SECRET_KEY_PATTERN = String.raw`(?:[a-z][a-z0-9]*(?:[_-][a-z0-9]+)*[_-])?${CHAT_COMPILE_REPAIR_SECRET_SUFFIX_PATTERN}`;
-const CHAT_COMPILE_REPAIR_QUOTED_KEY_SECRET_RE = new RegExp(
-  String.raw`((?:"${CHAT_COMPILE_REPAIR_SECRET_KEY_PATTERN}"|'${CHAT_COMPILE_REPAIR_SECRET_KEY_PATTERN}')\s*:\s*)("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')`,
-  'gi',
-);
-const CHAT_COMPILE_REPAIR_BARE_KEY_SECRET_RE = new RegExp(
-  String.raw`(\b${CHAT_COMPILE_REPAIR_SECRET_KEY_PATTERN}\b\s*[:=]\s*)("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s"';,}]+)`,
-  'gi',
-);
-
-function redactChatCompileRepairValue(prefix: string, rawValue: string): string {
-  const quote = rawValue[0];
-  if (quote === '"' || quote === "'") return prefix + quote + '[redacted secret]' + quote;
-  return prefix + '[redacted secret]';
-}
-
 function redactChatCompileRepairText(value: string): string {
   return value
-    .replace(CHAT_COMPILE_REPAIR_QUOTED_KEY_SECRET_RE, (_match, prefix: string, rawValue: string) =>
-      redactChatCompileRepairValue(prefix, rawValue),
+    .replace(
+      /((?:(?:"(?:api[_-]?key|api[_-]?token|token|secret|session(?:[_-]?token)?|password|credential|authorization)")|(?:api[_-]?key|api[_-]?token|token|secret|session(?:[_-]?token)?|password|credential|authorization))\s*:\s*)("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/gi,
+      (_match, prefix: string, quotedValue: string) =>
+        prefix + quotedValue[0] + '[redacted secret]' + quotedValue[0],
     )
-    .replace(CHAT_COMPILE_REPAIR_BARE_KEY_SECRET_RE, (_match, prefix: string, rawValue: string) =>
-      redactChatCompileRepairValue(prefix, rawValue),
+    .replace(
+      /((?:api[_-]?key|api[_-]?token|token|secret|session(?:[_-]?token)?|password|credential|authorization)\s*[:=]\s*)([^\s"';,]+)/gi,
+      '$1[redacted secret]',
     )
     .replace(/\b(Bearer)\s+[A-Za-z0-9._-]{8,}\b/gi, '$1 [redacted token]')
     .replace(/\b(?:sk|sess|ghp|xox[baprs])[-_][A-Za-z0-9._-]{6,}\b/g, '[redacted token]');
@@ -926,7 +913,7 @@ export function buildChatYamlTrialPlanPrompt(
     `Target YAML: ${target.path}`,
     `Plan path: ${request.relativePlanPath}`,
     `Current YAML hash: ${request.pipelineHash}`,
-    `Reason: ${request.reason} 鈥?${request.message}`,
+    `Reason: ${request.reason} — ${request.message}`,
     '',
     'This is the planning phase of the same user-authorized logical turn. Read the final YAML, its manifest, and the original user intent. Do not edit YAML, layout, requirements, helpers, or compile.log in this continuation.',
     'Think through observable behavior before testing. Call tagma_trial_plan exactly once; it is the only write authorized here and binds the plan to the current YAML hash. Pass the exact staged Target YAML path shown above, even if the OpenCode session directory points elsewhere.',
@@ -1006,15 +993,15 @@ async function createDesktopChatSessionWithMetadata(
   return session as unknown as Session;
 }
 
-// 鈹€鈹€鈹€ SSE plumbing 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ─── SSE plumbing ───────────────────────────────────────────────────────────
 // opencode emits granular events as generation progresses: envelope updates,
 // per-part deltas, session idle/error markers. We subscribe once per page
-// load and apply patches directly to the store 鈥?no full message refetch, so
+// load and apply patches directly to the store — no full message refetch, so
 // the UI keeps pace with streaming tokens instead of snapshotting every ~120ms.
 //
 // send() uses /session/{id}/prompt_async which returns 204 immediately, so
 // the `sending` flag MUST be cleared by SSE (session.idle / session.error).
-// If the subscription never starts, the stop button is the only escape 鈥?we
+// If the subscription never starts, the stop button is the only escape — we
 // guard against that by awaiting `sseReady` before dispatching a prompt.
 
 async function loadEditorSettingsForChat(): Promise<EditorSettings | null> {
@@ -1054,7 +1041,7 @@ const PENDING_PART_MESSAGE_LIMIT = 80;
  * been appended to `<workDir>/.tagma/.usage/usage.jsonl`. The SSE stream emits
  * `message.updated` many times per turn (envelope creation, then each
  * post-token bump on the AssistantMessage's tokens/cost fields), so we need a
- * cheap dedupe key 鈥?`info.id` is stable across those updates. Reset is
+ * cheap dedupe key — `info.id` is stable across those updates. Reset is
  * unnecessary: a new turn always produces a new message ID.
  */
 const recordedUsageMessageIDs = new Set<string>();
@@ -1078,7 +1065,7 @@ function recordAssistantUsageIfReady(info: import('@opencode-ai/sdk/client').Mes
   if (info.role !== 'assistant') return;
   if (recordedUsageMessageIDs.has(info.id)) return;
   // `time.completed` is the server's signal that the AssistantMessage is
-  // sealed 鈥?tokens / cost are stable from this point on. Recording earlier
+  // sealed — tokens / cost are stable from this point on. Recording earlier
   // would risk persisting a partial total that subsequent updates overwrite.
   if (typeof info.time?.completed !== 'number') return;
   const tokens = info.tokens;
@@ -1122,8 +1109,8 @@ const STALLED_TURN_POLL_AFTER_MS = 3_000;
 const STALLED_TURN_POLL_INTERVAL_MS = 2_000;
 // SSE idle detection: if no SSE events arrive within this window while a turn
 // is in flight, flag the SSE connection as 'idle'. This doesn't mean the
-// model is stuck 鈥?reasoning models can think for minutes without producing
-// output 鈥?but it does mean the SSE connection itself is quiet. The UI uses
+// model is stuck — reasoning models can think for minutes without producing
+// output — but it does mean the SSE connection itself is quiet. The UI uses
 // this to show "SSE connected but idle" vs "SSE reconnecting".
 const SSE_IDLE_WARN_MS = 120_000; // 2 minutes without any SSE event
 const SSE_READY_TIMEOUT_MS = 15_000;
@@ -1137,7 +1124,8 @@ const SSE_READY_PROMPT_TIMEOUT_MS = SSE_READY_TIMEOUT_MS + 1_000;
 const MESSAGE_TIMESTAMP_SKEW_TOLERANCE_MS = 10_000;
 // Flipped to `true` whenever opencode emits `MessageAbortedError` on the SSE
 // stream. `abort()` clears it before issuing the request and the deferred
-// fallback only fires when the flag is still `false` after the timeout 鈥?// i.e. opencode never told us the abort actually took effect. Module-level
+// fallback only fires when the flag is still `false` after the timeout —
+// i.e. opencode never told us the abort actually took effect. Module-level
 // because the SSE handler is also module-level; safe per renderer process
 // since chat-store is a singleton there.
 let lastAbortAcked = true;
@@ -1162,7 +1150,7 @@ let activeAbortAck: {
 
 // SSE idle detection state. The idle timer fires when no SSE events arrive
 // for SSE_IDLE_WARN_MS while a turn is in flight. It doesn't abort the stream
-// 鈥?it just updates turnHealth so the UI can show "SSE idle" vs "SSE
+// — it just updates turnHealth so the UI can show "SSE idle" vs "SSE
 // reconnecting" vs "SSE connected". The timer is managed inside
 // ensureSseSubscription and cleared on every event or stream end.
 let sseIdleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1189,7 +1177,7 @@ function armSseIdleTimer(get: () => ChatStore, set: ChatSet): void {
     sseIdleTimer = null;
     const state = get();
     if (!state.sending) return;
-    // Only update turnHealth 鈥?don't touch anything else. The watchdog poll
+    // Only update turnHealth — don't touch anything else. The watchdog poll
     // will pick this up on its next cycle and include it in the health
     // summary.
     set({
@@ -1222,7 +1210,7 @@ function resetSseReadyPromise(): void {
 
 function markSseReady(): void {
   // Resolve on first successful connect so awaiting callers (send()) stop
-  // blocking. Subsequent reconnects don't need to churn the promise 鈥?it's
+  // blocking. Subsequent reconnects don't need to churn the promise — it's
   // already fulfilled and later awaits resolve synchronously.
   if (sseReadyResolve) {
     sseReadyResolve();
@@ -1459,7 +1447,7 @@ function describePolledTurnHealth(
     const ago = Math.round((Date.now() - lastSseEventAt) / 1000);
     parts.push(`SSE idle ${ago}s`);
   }
-  return parts.join(' 路 ');
+  return parts.join(' · ');
 }
 
 function provisionalAssistantMessageFromPart(
@@ -1856,7 +1844,7 @@ function dispatchNextQueuedPrompt(get: () => ChatStore, set: ChatSet): boolean {
   if (forcedRestartRecoveries.has(getOpencodeWorkspaceKey())) return true;
   // Drain the whole queue into a single prompt: messages the user typed while
   // OpenCode was busy are merged with `\n\n` and sent in one round-trip rather
-  // than dispatched one-by-one 鈥?fewer turns, fewer context-prefixes, and the
+  // than dispatched one-by-one — fewer turns, fewer context-prefixes, and the
   // model sees the user's intent as one coherent block.
   const { combined, combinedContext } = drainQueuedMessages(get().queuedMessages);
   if (combined === null) return false;
@@ -1890,7 +1878,7 @@ function finishChatTurn(
   sseLastEventAt = null;
   // Seal any open activity event on the current-turn assistant message so
   // the timeline shows a closed [start, end] for every row in history; if
-  // we left them as `endedAt: null`, the rendered "Working鈥?(live counter)"
+  // we left them as `endedAt: null`, the rendered "Working… (live counter)"
   // would keep ticking forever after the turn was over.
   set((prev) => {
     // Two terminal confirmations can race (for example session.idle plus a
@@ -1936,8 +1924,8 @@ function finishChatTurn(
  *
  * Auto-clears `sessionStatus: retry` because opencode emits the retry
  * status before each attempt but doesn't reliably emit a follow-up
- * `busy`/`idle` on success 鈥?without this, the UI would stay pinned on
- * "Retrying provider 路 next in 0 s" forever once content resumed.
+ * `busy`/`idle` on success — without this, the UI would stay pinned on
+ * "Retrying provider · next in 0 s" forever once content resumed.
  */
 function timestampPatch(
   state: Pick<ChatStore, 'sending' | 'sessionStatus'>,
@@ -1955,11 +1943,11 @@ function timestampPatch(
 
 /**
  * Append (or coalesce-into) an activity event. Same-`key` entries collapse
- * into a single row regardless of time gap 鈥?so a text part that streams
+ * into a single row regardless of time gap — so a text part that streams
  * over 30 s renders as one "Streaming answer (3.1k chars)" row, not 60.
  * Coalesced merges keep the original `startedAt` and bump `endedAt`,
  * `count`, and (overwriting, not summing) `bytes`. Tool kind transitions
- * (`running` 鈫?`completed`/`error`) are merged the same way: same partId,
+ * (`running` → `completed`/`error`) are merged the same way: same partId,
  * same row, latest kind wins.
  *
  * When a new (non-coalesced) event is appended, the previous trailing
@@ -1967,7 +1955,7 @@ function timestampPatch(
  * of closed intervals with at most one open event at the tail.
  *
  * Cap is 80 events: when full, drops the second-oldest (preserving the
- * very first as a turn anchor 鈥?usually `request-sent`). Older middle
+ * very first as a turn anchor — usually `request-sent`). Older middle
  * detail loss is acceptable; v1 doesn't render a truncation marker.
  */
 function appendOrCoalesce(
@@ -2019,7 +2007,7 @@ function appendOrCoalesce(
 
 /**
  * Seal any open trailing activity event on every current-turn assistant
- * message 鈥?`endedAt: null` becomes the wall-clock at turn end. Called from
+ * message — `endedAt: null` becomes the wall-clock at turn end. Called from
  * finishChatTurn so post-turn rendering shows a closed duration for every
  * row instead of a counter that would otherwise tick into perpetuity.
  */
@@ -2923,12 +2911,12 @@ function messagesWithActivityForMessage(
  * Map an SDK `Part` to its activity-timeline representation, or null for
  * parts that don't deserve a timeline row (synthetic editor-context, file
  * snapshots, etc). The `key` ties multiple updates of the same part into
- * a single row 鈥?without it, a streaming text part would emit 30+ rows.
+ * a single row — without it, a streaming text part would emit 30+ rows.
  */
 function activityFromPart(part: Part): ActivityInput | null {
   switch (part.type) {
     case 'text': {
-      // Synthetic prefix carries the editor-context block 鈥?never user-visible
+      // Synthetic prefix carries the editor-context block — never user-visible
       // and not worth a timeline row.
       if ((part as unknown as { synthetic?: boolean }).synthetic) return null;
       return {
@@ -2949,7 +2937,7 @@ function activityFromPart(part: Part): ActivityInput | null {
       if (status === 'running') return { kind: 'tool-running', detail, key: `part:${part.id}` };
       if (status === 'completed') return { kind: 'tool-completed', detail, key: `part:${part.id}` };
       if (status === 'error') return { kind: 'tool-error', detail, key: `part:${part.id}` };
-      // pending / unknown 鈥?skip until it actually starts running.
+      // pending / unknown — skip until it actually starts running.
       return null;
     }
     case 'step-start':
@@ -2960,7 +2948,7 @@ function activityFromPart(part: Part): ActivityInput | null {
       return { kind: 'retry', detail: `attempt ${part.attempt}` };
     // `compaction` part is a historical record. The live event we surface in
     // the timeline is `session.compacted` (one-shot, fires when the
-    // compaction actually happens) 鈥?adding the part too would duplicate it.
+    // compaction actually happens) — adding the part too would duplicate it.
     default:
       return null;
   }
@@ -3069,7 +3057,7 @@ export function chatPipelinePreflightMode(args: {
 }
 
 /**
- * Last-resort path for `abort()` when opencode never acks the cancel 鈥?see
+ * Last-resort path for `abort()` when opencode never acks the cancel — see
  * `abort()` for the full Ollama / @ai-sdk/openai-compatible context. Kills
  * and starts respawning the opencode process for the current workspace. The
  * visible turn ends immediately; the sidecar's potentially long health check
@@ -3324,7 +3312,7 @@ async function promptOpencode(
     // current session has already accumulated that many user turns. When it
     // has, transparently start a fresh session so the model's effective
     // context window stays bounded. Internal prompts (repair, bot-bridge
-    // retries) are exempt 鈥?they're part of the same logical turn.
+    // retries) are exempt — they're part of the same logical turn.
     if (!opts.internal) {
       const chatSettings = useEditorSettingsStore.getState().settings;
       const contextLimitEnabled = chatSettings?.chatContextLimitEnabled ?? false;
@@ -3650,7 +3638,7 @@ async function ensureSseSubscription(get: () => ChatStore, set: ChatSet): Promis
 
 /**
  * Apply a single SSE event to the store. Only events for the *current*
- * session touch `messages` 鈥?a stale idle/part event for a session the user
+ * session touch `messages` — a stale idle/part event for a session the user
  * has already switched away from would otherwise clobber the new thread.
  *
  * All handlers are patch-style: message and part payloads carry the full
@@ -3854,7 +3842,7 @@ export function applySseEvent(event: ChatOpencodeEvent, get: () => ChatStore, se
       // Append the part's activity row (coalesced by partId so streaming
       // text doesn't generate one row per token), then bump the timestamp
       // and clear any stale retry. Guard messagesWithActivity by reading
-      // post-parts state 鈥?it walks `messages` looking for the current-turn
+      // post-parts state — it walks `messages` looking for the current-turn
       // assistant entry, which is the message we just updated.
       const isTurnRelevantPart = isCurrentTurnAssistantEntry(messages[msgIdx], state);
       const ts = isTurnRelevantPart ? timestampPatch(state) : {};
@@ -3908,7 +3896,7 @@ export function applySseEvent(event: ChatOpencodeEvent, get: () => ChatStore, se
       // fall through to the normal "turn ended" reset. Mark the abort as
       // acked here (vs. once per turn elsewhere) so abort()'s wedged-stream
       // fallback can tell "opencode honored the cancel" from "opencode never
-      // came back" 鈥?see STUCK_ABORT_TIMEOUT_MS.
+      // came back" — see STUCK_ABORT_TIMEOUT_MS.
       if (err && err.name === 'MessageAbortedError') {
         lastAbortAcked = true;
         let trackedAbortAck = false;
@@ -3947,7 +3935,7 @@ export function applySseEvent(event: ChatOpencodeEvent, get: () => ChatStore, se
       // session.idle envelope and only emit session.status{idle}. Treat a
       // matching idle status the same as session.idle so `sending` still
       // flips off. The busy branch is intentionally not used to set sending
-      // 鈥?that's send()'s optimistic responsibility.
+      // — that's send()'s optimistic responsibility.
       const status = event.properties.status;
       if (event.properties.sessionID !== currentSessionId) {
         if (status.type === 'idle') finishHiddenSessionIfEndable(set, event.properties.sessionID);
@@ -3959,7 +3947,7 @@ export function applySseEvent(event: ChatOpencodeEvent, get: () => ChatStore, se
       }
       if (!state.sending) return;
       // Non-idle: surface the current status (busy / retry) so the activity
-      // panel can show "Retrying provider 路 attempt N 路 next in Xs" instead
+      // panel can show "Retrying provider · attempt N · next in Xs" instead
       // of a silent stall. Plain busy heartbeats are intentionally *not* treated
       // as stream activity: if content SSE gets stuck while status heartbeats
       // continue, the watchdog must still poll session.messages() and refresh
@@ -3977,8 +3965,8 @@ export function applySseEvent(event: ChatOpencodeEvent, get: () => ChatStore, se
     }
     case 'session.compacted': {
       // History compaction can take several seconds during which no parts
-      // stream 鈥?surface it as a timeline row so the panel summary can
-      // briefly highlight "Compacting history鈥? and a user expanding later
+      // stream — surface it as a timeline row so the panel summary can
+      // briefly highlight "Compacting history…" and a user expanding later
       // can see when it happened. Doesn't end the turn.
       if (event.properties.sessionID !== currentSessionId) return;
       if (!state.sending) return;
@@ -4124,17 +4112,17 @@ export function applySseEvent(event: ChatOpencodeEvent, get: () => ChatStore, se
       return;
     }
     default:
-      // Ignore installation/LSP/pty/tui/vcs/file-watcher events 鈥?they're
+      // Ignore installation/LSP/pty/tui/vcs/file-watcher events — they're
       // not surfaced in this panel. Leaving them as a no-op keeps the
       // dispatcher forward-compatible with SDK versions that add new events.
       return;
   }
 }
 
-// 鈹€鈹€鈹€ Store 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ─── Store ──────────────────────────────────────────────────────────────────
 
 // At module load the workspace key is usually __no_workspace__ (welcome
-// screen) 鈥?chat is gated behind workDir, so the meaningful load happens in
+// screen) — chat is gated behind workDir, so the meaningful load happens in
 // bootstrap() once the workspace is bound. Reading here keeps the field a
 // plain literal for the create() call rather than introducing an undefined
 // transient state, and is harmless for the no-workspace case (returns {}).
@@ -4198,7 +4186,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     persistChatSelectionToEditorSettings({ opencodeChatReasoningEffort: nextReasoningEffort });
   },
 
-  // Initial value 鈥?bootstrap() will overwrite this with 'tagma-router' once
+  // Initial value — bootstrap() will overwrite this with 'tagma-router' once
   // the agent catalog is fetched. Reading the persisted value first avoids a
   // brief "no agent" flash on reload for users whose last session used it.
   agent: persisted.agent === FORCED_CHAT_AGENT ? persisted.agent : null,
@@ -4362,7 +4350,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     await apiSaveCustomProvider(id, scope, def, workspaceKey);
     // Single restart so opencode re-reads the merged config + the renderer's
     // SDK client points at the fresh process. Then refresh providers, auth,
-    // and the custom-providers list in one shot 鈥?keeps the dialog in sync
+    // and the custom-providers list in one shot — keeps the dialog in sync
     // without staggered repaints between the catalog and the editable list.
     await restartOpencodeForConfig(workspaceKey);
     if (getOpencodeWorkspaceKey() !== workspaceKey) return;
@@ -4391,7 +4379,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const workspaceKey = getOpencodeWorkspaceKey();
     const client = await getOpencodeClient(workspaceKey);
     // `metadata` lives on the 1.14.x `ApiAuth` but isn't in the generated SDK
-    // types 鈥?cast down to the SDK's ApiAuth so the body type-checks. The
+    // types — cast down to the SDK's ApiAuth so the body type-checks. The
     // server accepts the extra field and persists it to auth.json.
     const body: ApiAuth = {
       type: 'api',
@@ -4407,7 +4395,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // opencode 1.14.x caches /config/providers in memory; PUT /auth/{id}
     // writes auth.json to disk but leaves the cache stale, so the new key
     // wouldn't take effect until the app restarted. Restarting the opencode
-    // process forces a fresh read of auth.json 鈥?the refresh below then
+    // process forces a fresh read of auth.json — the refresh below then
     // reflects reality in the picker without a full app restart.
     await restartOpencodeForConfig(workspaceKey);
     if (getOpencodeWorkspaceKey() !== workspaceKey) return;
@@ -4418,7 +4406,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     if (chatTurnBlocksSessionMutation(get())) throw new Error(chatTurnBlockedMessage());
     const workspaceKey = getOpencodeWorkspaceKey();
     const client = await getOpencodeClient(workspaceKey);
-    // Prompt answers are spread flat into the body alongside `method` 鈥?the
+    // Prompt answers are spread flat into the body alongside `method` — the
     // 1.14.x authorize endpoint reads them directly (e.g. `deploymentType`,
     // `enterpriseUrl`, `accountId`). Cast because the generated SDK body type
     // only declares `{method: number}`.
@@ -4491,7 +4479,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // Opencode 1.14.x quirk: DELETE /auth/{id} updates auth.json on disk but
     // doesn't invalidate the server's in-memory cache for /provider or
     // /config/providers. Restart the opencode process so the next refresh
-    // reads fresh state from disk 鈥?otherwise the disconnected row would
+    // reads fresh state from disk — otherwise the disconnected row would
     // stay green until the app was restarted. `refreshProvidersAndAuth`
     // reconciles the active model pick if the removed provider was selected.
     await restartOpencodeForConfig(workspaceKey);
@@ -4615,7 +4603,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       if (bootstrappingWorkspaceKey === workspaceKeyAtStart) bootstrappingWorkspaceKey = null;
       return;
     }
-    // Fire catalog queries in parallel 鈥?they're independent and each survives
+    // Fire catalog queries in parallel — they're independent and each survives
     // the others failing. Default all to empty on error so UI pickers render
     // "no options" instead of crashing. The provider catalog is joined in here
     // so the Connect dialog has data the moment it's opened without a separate
@@ -4852,7 +4840,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const client = await getOpencodeClient(workspaceKey);
       await unwrap(client.session.delete({ path: { id } }));
     } catch {
-      /* best effort 鈥?surface nothing; session list re-sync is cosmetic */
+      /* best effort — surface nothing; session list re-sync is cosmetic */
     }
     if (getOpencodeWorkspaceKey() !== workspaceKey) return;
     set((prev) => {
@@ -4928,7 +4916,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // Immediate: clear the chips up front (mirrors how the composer clears the
     // draft text on submit) so a follow-up message fired while this turn is in
     // flight doesn't re-attach the same context. Restore them if the send
-    // fails 鈥?concatenated after any chips attached during the in-flight
+    // fails — concatenated after any chips attached during the in-flight
     // window (distinct ids), so nothing the user did meanwhile is lost.
     if (attachments.length > 0) set({ composerAttachments: [] });
     try {
@@ -4999,7 +4987,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     if (!sessionId) return;
     // Snapshot the workspace at abort time. The fallback below re-targets
     // opencode for the *current* workspace, so if the user switches
-    // workspaces while waiting we must skip the restart 鈥?otherwise we'd
+    // workspaces while waiting we must skip the restart — otherwise we'd
     // kill the wrong workspace's process. The original (still-hung) one
     // gets cleaned up when its app session ends.
     const workspaceAtAbort = getOpencodeWorkspaceKey();
@@ -5029,7 +5017,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         await unwrap(client.session.abort({ path: { id: sessionId } }));
       } catch (err) {
         // Don't surface yet. opencode can be wedged on a hung upstream stream
-        // (most often Ollama via @ai-sdk/openai-compatible 鈥?the AbortSignal
+        // (most often Ollama via @ai-sdk/openai-compatible — the AbortSignal
         // doesn't propagate to its fetch), in which case the abort POST itself
         // returns slow or rejects. The timeout fallback kills the whole
         // process, which is more reliable than a soft retry.
@@ -5039,7 +5027,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // Custom OpenAI-compatible providers (Ollama in particular) frequently
     // don't honor the AbortSignal that opencode forwards into ai-sdk, so
     // opencode never emits the `session.error{MessageAbortedError}` event
-    // the SSE handler relies on, and the UI sits on "thinking鈥? forever.
+    // the SSE handler relies on, and the UI sits on "thinking…" forever.
     // If we haven't seen the ack within STUCK_ABORT_TIMEOUT_MS, force-kill
     // and respawn the opencode process for this workspace to sever the
     // upstream connection at the TCP level. The SSE subscribe loop
