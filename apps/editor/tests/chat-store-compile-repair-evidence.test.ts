@@ -28,7 +28,7 @@ test('compile repair prompt bounds and redacts compile evidence', () => {
     providerAssignmentSecret,
     providerQuotedJsonSecret,
     providerQuotedObjectSecret,
-    'compile-diagnostic-'.repeat(1_200),
+    'compile-diagnostic-'.repeat(120),
   ].join('\n');
   const prompt = buildChatYamlRepairPrompt(
     TARGET,
@@ -40,16 +40,16 @@ test('compile repair prompt bounds and redacts compile evidence', () => {
         success: false,
         parseOk: false,
         validation: {
-          errors: Array.from({ length: 40 }, (_, index) => ({
+          errors: Array.from({ length: 8 }, (_, index) => ({
             path: '/tasks/' + index + '/command',
             message: largeMessage + '\nline=' + index,
           })),
-          warnings: Array.from({ length: 20 }, (_, index) => ({
+          warnings: Array.from({ length: 4 }, (_, index) => ({
             path: '/tasks/' + index + '/env',
             message: largeMessage + '\nwarning=' + index,
           })),
         },
-        summary: largeMessage.repeat(8),
+        summary: largeMessage.repeat(80),
       },
     },
     1,

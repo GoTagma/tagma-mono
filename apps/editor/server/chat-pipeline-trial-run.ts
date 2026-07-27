@@ -23,7 +23,9 @@ import { loadPipeline, validateConfig } from '@tagma/sdk/yaml';
 import { generateRunId } from '@tagma/sdk/utils';
 
 import {
+  buildChatPipelineTrialVerificationHash,
   compileChatYamlStage,
+  hashChatPipelineTrialTree,
   listChatYamlStage,
   samePipelineRelativePath,
 } from './chat-yaml-staging.js';
@@ -51,7 +53,7 @@ import { MAX_LOG_RUNS } from './state.js';
 import { normalizeRunTargetTaskIds, runtimeWithInjectedEnv } from './routes/run-session.js';
 import type { WorkspaceState } from './workspace-state.js';
 
-const TRIAL_CACHE_VERSION = 2;
+const TRIAL_CACHE_VERSION = 3;
 const CHAT_PIPELINE_TRIAL_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_TRIAL_STREAM_BYTES = 4 * 1024;
 const MAX_TRIAL_SUMMARY_BYTES = 32 * 1024;
@@ -142,6 +144,7 @@ interface TrialPipelineSnapshot {
   rootDir: string;
   yamlPath: string;
   contentHash: string;
+  treeHash: string;
 }
 
 const inFlightByCachePath = new Map<string, Promise<ChatPipelineTrialRunResult>>();
@@ -243,10 +246,13 @@ function createTrialPipelineSnapshot(
       bytes: 0,
     }, { includeTrialPlan: true });
     const snapshotYaml = readFileSync(snapshotYamlPath, 'utf-8');
+    const treeHash = hashChatPipelineTrialTree(dirname(snapshotYamlPath));
+    if (!treeHash) throw new Error('Trial snapshot tree hash is missing.');
     return {
       rootDir,
       yamlPath: snapshotYamlPath,
       contentHash: createHash('sha1').update(snapshotYaml).digest('hex'),
+      treeHash,
     };
   } catch (err) {
     rmSync(rootDir, { recursive: true, force: true });
@@ -266,7 +272,7 @@ function boundedTrialText(value: string): string {
   const redacted = redactTrialText(value);
   const bytes = new TextEncoder().encode(redacted);
   if (bytes.length <= MAX_TRIAL_STREAM_BYTES) return redacted;
-  const marker = '\n…[truncated]…\n';
+  const marker = '\n[truncated]\n';
   const markerBytes = new TextEncoder().encode(marker);
   const budget = Math.max(0, MAX_TRIAL_STREAM_BYTES - markerBytes.length);
   const head = Math.floor(budget / 3);
@@ -686,7 +692,7 @@ function buildTrialSummary(
   const summary = redactTrialText(lines.join('\n'));
   const bytes = new TextEncoder().encode(summary);
   if (bytes.length <= MAX_TRIAL_SUMMARY_BYTES) return summary;
-  return new TextDecoder().decode(bytes.slice(0, MAX_TRIAL_SUMMARY_BYTES)) + '\n…[truncated]…';
+  return new TextDecoder().decode(bytes.slice(0, MAX_TRIAL_SUMMARY_BYTES)) + '\n[truncated]';
 }
 
 function buildCasePromptContexts(
@@ -696,7 +702,7 @@ function buildCasePromptContexts(
 ): Record<string, Array<{ label: string; content: string }>> {
   const fixturePaths = testCase.fixtures.map((fixture) => fixture.path).join(', ') || 'none';
   const content = [
-    `Case: ${testCase.id} — ${testCase.title}`,
+    `Case: ${testCase.id} 闁?${testCase.title}`,
     `Objective: ${testCase.objective}`,
     `Isolated workspace: ${workDir}`,
     `Fixture paths: ${fixturePaths}`,
@@ -887,7 +893,7 @@ function buildPlannedTrialSummary(
   ];
   for (const testCase of cases) {
     lines.push(
-      `Case ${testCase.id}: ${testCase.success ? 'passed' : 'failed'} — ${testCase.objective}`,
+      `Case ${testCase.id}: ${testCase.success ? 'passed' : 'failed'} 闁?${testCase.objective}`,
     );
     for (const expectation of testCase.expectations) {
       if (!expectation.passed) lines.push(`  ${expectation.type}: ${expectation.detail}`);
@@ -896,7 +902,7 @@ function buildPlannedTrialSummary(
   const summary = redactTrialText(lines.join('\n'));
   const bytes = new TextEncoder().encode(summary);
   if (bytes.length <= MAX_TRIAL_SUMMARY_BYTES) return summary;
-  return new TextDecoder().decode(bytes.slice(0, MAX_TRIAL_SUMMARY_BYTES)) + '\n…[truncated]…';
+  return new TextDecoder().decode(bytes.slice(0, MAX_TRIAL_SUMMARY_BYTES)) + '\n[truncated]';
 }
 
 async function executeTrial(
@@ -1129,9 +1135,11 @@ export async function trialRunChatYamlStage(
     if (planRead.status === 'required') {
       return resultForPlanRequest(planRead.request, startedAt);
     }
-    const verificationHash = createHash('sha256')
-      .update(`${snapshot.contentHash}\0${planRead.planHash}`)
-      .digest('hex');
+    const verificationHash = buildChatPipelineTrialVerificationHash({
+      stagedTreeHash: snapshot.treeHash,
+      planHash: planRead.planHash,
+      liveTreeHash: hashChatPipelineTrialTree(entry.sourcePath ? dirname(entry.sourcePath) : null),
+    });
     const cachePath = trialCachePath(stage.rootDir, trialId, entry.relativePath, verificationHash);
     const cached = readCachedTrial(cachePath, verificationHash);
     if (cached) return cached;

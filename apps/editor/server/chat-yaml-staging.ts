@@ -50,7 +50,7 @@ const STAGE_RESULT_FILE = 'finalized.json';
 const STAGE_VERSION = 2;
 const MAX_ARTIFACT_BYTES = 5 * 1024 * 1024;
 const STAGE_TTL_MS = 24 * 60 * 60 * 1000;
-const TRIAL_CACHE_VERSION = 2;
+const TRIAL_CACHE_VERSION = 3;
 const FINALIZE_TRIAL_ID_RE = /^[A-Za-z0-9_-]{1,160}$/;
 
 export const __chatYamlStagingTestHooks: {
@@ -158,8 +158,16 @@ interface FinalizeArtifactSnapshot {
   artifacts: Array<{ path: string; content: string | null }>;
 }
 
-function sha1(content: string): string {
+function sha1(content: string | Uint8Array): string {
   return createHash('sha1').update(content).digest('hex');
+}
+
+function compareManifestEntryNames(left: { name: string }, right: { name: string }): number {
+  return left.name < right.name ? -1 : left.name > right.name ? 1 : 0;
+}
+
+function shouldHashTrialTreeEntry(name: string): boolean {
+  return !/\.(?:compile\\.log|manifest\\.json|layout\\.json|requirements\\.md|trial-plan\\.json)$/i.test(name);
 }
 
 function isSha1(value: unknown): value is string {
@@ -195,6 +203,43 @@ function pipelineArtifactHashes(yamlPath: string): ChatYamlStageArtifactHashes |
       'pipeline requirements',
     ),
   };
+}
+
+export function hashChatPipelineTrialTree(rootDir: string | null): string | null {
+  if (!rootDir) return null;
+  const resolvedRoot = resolve(rootDir);
+  if (!existsSync(resolvedRoot)) return null;
+  const hash = createHash('sha256');
+  const visit = (directory: string, relativeDir: string) => {
+    if (relativeDir) hash.update(`dir\0${relativeDir}\0`);
+    const entries = readdirSync(directory, { withFileTypes: true }).sort(compareManifestEntryNames);
+    for (const entry of entries) {
+      if (!shouldHashTrialTreeEntry(entry.name)) continue;
+      const absolutePath = join(directory, entry.name);
+      const relativePath = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        visit(absolutePath, relativePath);
+        continue;
+      }
+      if (entry.isFile()) {
+        hash.update(`file\0${relativePath}\0${sha1(readFileSync(absolutePath))}\0`);
+        continue;
+      }
+      hash.update(`${entry.isSymbolicLink() ? 'symlink' : 'other'}\0${relativePath}\0`);
+    }
+  };
+  visit(resolvedRoot, '');
+  return hash.digest('hex');
+}
+
+export function buildChatPipelineTrialVerificationHash(input: {
+  stagedTreeHash: string;
+  planHash: string;
+  liveTreeHash: string | null;
+}): string {
+  return createHash('sha256')
+    .update(`${input.stagedTreeHash}\0${input.planHash}\0${input.liveTreeHash ?? 'missing'}`)
+    .digest('hex');
 }
 
 function sameArtifactHashes(
@@ -982,6 +1027,7 @@ function hasSuccessfulVerifiedTrial(
   paths: StagePaths,
   stagedPath: string,
   relativePath: string,
+  sourcePath: string | null,
   trialId: string | undefined,
 ): boolean {
   if (readEditorSettings(ws).opencodeChatTrialRunEnabled === false) return true;
@@ -990,9 +1036,13 @@ function hasSuccessfulVerifiedTrial(
   const contentHash = sha1(assertRegularTextFile(stagedPath, 'staged YAML'));
   const planRead = readChatPipelineTrialPlan(stagedPath, relativePath, contentHash);
   if (planRead.status === 'required') return false;
-  const verificationHash = createHash('sha256')
-    .update(`${contentHash}\0${planRead.planHash}`)
-    .digest('hex');
+  const stagedTreeHash = hashChatPipelineTrialTree(dirname(stagedPath));
+  if (!stagedTreeHash) return false;
+  const verificationHash = buildChatPipelineTrialVerificationHash({
+    stagedTreeHash,
+    planHash: planRead.planHash,
+    liveTreeHash: hashChatPipelineTrialTree(sourcePath ? dirname(sourcePath) : null),
+  });
   const cachePath = trialFinalizeCachePath(paths, normalizedTrialId, relativePath, verificationHash);
   if (!existsSync(cachePath)) return false;
   try {
@@ -1054,7 +1104,7 @@ export function finalizeChatYamlStage(
   }
 
   const trialVerificationSucceeded =
-    !compile.success || hasSuccessfulVerifiedTrial(ws, paths, stagedPath, relativePath, input.trialId);
+    !compile.success || hasSuccessfulVerifiedTrial(ws, paths, stagedPath, relativePath, sourcePath, input.trialId);
 
   const conflicts: ChatYamlStageConflict[] = [];
   if (input.forceForkReason) conflicts.push(input.forceForkReason);

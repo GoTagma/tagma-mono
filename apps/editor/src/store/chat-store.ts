@@ -678,16 +678,35 @@ function compactChatTrialRepairResult(result: ChatPipelineTrialRunResult) {
   };
 }
 
+const CHAT_COMPILE_REPAIR_SECRET_SUFFIX_PATTERN =
+  String.raw`(?:api[_-]?key|api[_-]?token|token|secret|session(?:[_-]?token)?|password|credential|authorization)`;
+const CHAT_COMPILE_REPAIR_SECRET_KEY_PATTERN =
+  String.raw`(?:[a-z][a-z0-9]*(?:[_-][a-z0-9]+)*[_-])?${CHAT_COMPILE_REPAIR_SECRET_SUFFIX_PATTERN}`;
+const CHAT_COMPILE_REPAIR_QUOTED_KEY_SECRET_RE = new RegExp(
+  String.raw`((?:"${CHAT_COMPILE_REPAIR_SECRET_KEY_PATTERN}"|'${CHAT_COMPILE_REPAIR_SECRET_KEY_PATTERN}')\s*:\s*)("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')`,
+  'gi',
+);
+const CHAT_COMPILE_REPAIR_BARE_KEY_SECRET_RE = new RegExp(
+  String.raw`(\b${CHAT_COMPILE_REPAIR_SECRET_KEY_PATTERN}\b\s*[:=]\s*)("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s"';,}]+)`,
+  'gi',
+);
+
+function redactChatCompileRepairValue(prefix: string, rawValue: string): string {
+  const quote = rawValue[0];
+  if (quote === '"' || quote === "'") return prefix + quote + '[redacted secret]' + quote;
+  return prefix + '[redacted secret]';
+}
+
 function redactChatCompileRepairText(value: string): string {
   return value
     .replace(
-      /((?:(?:"(?:(?:[a-z][a-z0-9]*(?:[_-][a-z0-9]+)*[_-])?(?:api[_-]?key|api[_-]?token|token|secret|session(?:[_-]?token)?|password|credential|authorization))")|(?:'(?:(?:[a-z][a-z0-9]*(?:[_-][a-z0-9]+)*[_-])?(?:api[_-]?key|api[_-]?token|token|secret|session(?:[_-]?token)?|password|credential|authorization))')|(?:(?:[a-z][a-z0-9]*(?:[_-][a-z0-9]+)*[_-])?(?:api[_-]?key|api[_-]?token|token|secret|session(?:[_-]?token)?|password|credential|authorization)))\s*:\s*)("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/gi,
-      (_match, prefix: string, quotedValue: string) =>
-        prefix + quotedValue[0] + '[redacted secret]' + quotedValue[0],
+      CHAT_COMPILE_REPAIR_QUOTED_KEY_SECRET_RE,
+      (_match, prefix: string, rawValue: string) =>
+        redactChatCompileRepairValue(prefix, rawValue),
     )
     .replace(
-      /(((?:[a-z][a-z0-9]*(?:[_-][a-z0-9]+)*[_-])?(?:api[_-]?key|api[_-]?token|token|secret|session(?:[_-]?token)?|password|credential|authorization))\s*[:=]\s*)([^\s"';,]+)/gi,
-      '$1[redacted secret]',
+      CHAT_COMPILE_REPAIR_BARE_KEY_SECRET_RE,
+      (_match, prefix: string, rawValue: string) => redactChatCompileRepairValue(prefix, rawValue),
     )
     .replace(/\b(Bearer)\s+[A-Za-z0-9._-]{8,}\b/gi, '$1 [redacted token]')
     .replace(/\b(?:sk|sess|ghp|xox[baprs])[-_][A-Za-z0-9._-]{6,}\b/g, '[redacted token]');
@@ -5085,5 +5104,4 @@ function describeError(err: unknown): string {
   if (typeof err === 'string') return err;
   return 'Unknown error';
 }
-
 
