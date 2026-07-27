@@ -1,4 +1,8 @@
+﻿import { existsSync, lstatSync, realpathSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { createStreamingLoopbackFetch } from './loopback-fetch.js';
+import { isPathWithin } from './path-utils.js';
 
 export const OPENCODE_PROXY_BASE_PATH = '/api/opencode/chat/proxy';
 
@@ -20,6 +24,40 @@ export interface OpencodeProxyRequest {
   headers: Headers;
   body?: BodyInit | null;
   signal?: AbortSignal;
+}
+
+export function sanitizeForwardedOpencodeDirectory(
+  headerValue: string | null | undefined,
+  tagmaRoot: string,
+): string | null {
+  if (headerValue == null) return null;
+
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(headerValue);
+  } catch {
+    throw new Error('OpenCode directory header must be a valid encoded path');
+  }
+  if (!decoded.trim()) {
+    throw new Error('OpenCode directory header must not be empty');
+  }
+
+  const resolvedRequested = resolve(decoded);
+  if (!existsSync(resolvedRequested)) {
+    throw new Error('OpenCode directory header must resolve to an existing directory');
+  }
+  const requestedStat = lstatSync(resolvedRequested);
+  if (!requestedStat.isDirectory()) {
+    throw new Error('OpenCode directory header must resolve to a directory');
+  }
+
+  const canonicalRoot = realpathSync.native(resolve(tagmaRoot));
+  const canonicalRequested = realpathSync.native(resolvedRequested);
+  if (!isPathWithin(canonicalRequested, canonicalRoot)) {
+    throw new Error('OpenCode directory header must stay within the workspace .tagma directory');
+  }
+
+  return encodeURIComponent(canonicalRequested);
 }
 
 /**

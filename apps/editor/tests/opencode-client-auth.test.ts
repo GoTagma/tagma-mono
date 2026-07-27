@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+﻿import { describe, expect, test } from 'bun:test';
 
 import {
   buildOpencodeClientConfig,
@@ -53,7 +53,6 @@ describe('opencode browser client auth', () => {
     const endpoint = resolveOpencodeBrowserEndpoint(
       {
         baseUrl: 'http://127.0.0.1:4096',
-        authHeader: 'Basic opencode-secret',
         proxyBaseUrl: '/api/opencode/chat/proxy',
       },
       'C:/repo',

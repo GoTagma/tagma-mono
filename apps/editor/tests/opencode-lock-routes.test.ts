@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+﻿import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -130,8 +130,10 @@ describe('OpenCode routes under a workspace YAML lock', () => {
       expect(res.statusCode).toBe(200);
       expect(res.body).toMatchObject({
         baseUrl: 'http://restarted-opencode.test',
+        proxyBaseUrl: '/api/opencode/chat/proxy',
         directory: join(workDir, '.tagma'),
       });
+      expect(res.body).not.toHaveProperty('authHeader');
       expect({ seedCalls, ensureCalls, restartCalls, watcherCalls }).toEqual({
         seedCalls: 1,
         ensureCalls: 0,
@@ -158,7 +160,6 @@ describe('OpenCode routes under a workspace YAML lock', () => {
         baseUrl: 'http://existing-opencode.test',
         proxyBaseUrl: '/api/opencode/chat/proxy',
         directory: join(workDir, '.tagma'),
-        authHeader: 'Bearer existing',
       });
       expect({ seedCalls, ensureCalls, restartCalls, watcherCalls }).toEqual({
         seedCalls: 0,
@@ -206,8 +207,10 @@ describe('OpenCode routes under a workspace YAML lock', () => {
       expect(ownerRes.body).toMatchObject({
         ok: true,
         baseUrl: 'http://restarted-opencode.test',
+        proxyBaseUrl: '/api/opencode/chat/proxy',
         directory: join(workDir, '.tagma'),
       });
+      expect(ownerRes.body).not.toHaveProperty('authHeader');
       expect({ seedCalls, restartCalls }).toEqual({ seedCalls: 1, restartCalls: 1 });
     } finally {
       rmSync(workDir, { recursive: true, force: true });

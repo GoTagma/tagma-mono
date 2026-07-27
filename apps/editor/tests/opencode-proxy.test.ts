@@ -1,6 +1,12 @@
-import { describe, expect, test } from 'bun:test';
+﻿import { describe, expect, test } from 'bun:test';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-import { fetchOpencodeProxy } from '../server/opencode-proxy';
+import {
+  fetchOpencodeProxy,
+  sanitizeForwardedOpencodeDirectory,
+} from '../server/opencode-proxy';
 
 describe('OpenCode sidecar proxy', () => {
   test('forwards path, query, and JSON while replacing renderer credentials', async () => {
@@ -75,5 +81,75 @@ describe('OpenCode sidecar proxy', () => {
         headers: new Headers(),
       }),
     ).rejects.toThrow('relative path');
+  });
+
+  test('canonicalizes the forwarded OpenCode directory to the real .tagma root', () => {
+    const workDir = mkdtempSync(join(tmpdir(), 'tagma-opencode-proxy-'));
+    try {
+      const tagmaDir = join(workDir, '.tagma');
+      const stagedDir = join(tagmaDir, '.chat-staging', 'turn', 'agent-workspace', '.tagma');
+      mkdirSync(stagedDir, { recursive: true });
+
+      expect(
+        decodeURIComponent(
+          sanitizeForwardedOpencodeDirectory(
+            encodeURIComponent(stagedDir.replaceAll('\\', '/')),
+            tagmaDir,
+          ) ?? '',
+        ),
+      ).toBe(realpathSync.native(stagedDir));
+
+      expect(
+        decodeURIComponent(
+          sanitizeForwardedOpencodeDirectory(
+            encodeURIComponent(tagmaDir.replaceAll('\\', '/')),
+            tagmaDir,
+          ) ?? '',
+        ),
+      ).toBe(realpathSync.native(tagmaDir));
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+
+  test('rejects forwarded OpenCode directories outside the workspace .tagma tree', () => {
+    const workDir = mkdtempSync(join(tmpdir(), 'tagma-opencode-proxy-'));
+    try {
+      const tagmaDir = join(workDir, '.tagma');
+      const outsideDir = join(workDir, 'outside');
+      mkdirSync(tagmaDir, { recursive: true });
+      mkdirSync(outsideDir, { recursive: true });
+
+      expect(() =>
+        sanitizeForwardedOpencodeDirectory(
+          encodeURIComponent(outsideDir.replaceAll('\\', '/')),
+          tagmaDir,
+        ),
+      ).toThrow('workspace .tagma directory');
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+
+  test('rejects forwarded OpenCode directories that escape through a symlinked child', () => {
+    const workDir = mkdtempSync(join(tmpdir(), 'tagma-opencode-proxy-'));
+    try {
+      const tagmaDir = join(workDir, '.tagma');
+      const outsideDir = join(workDir, 'outside');
+      const outsideChild = join(outsideDir, 'child');
+      const escapeLink = join(tagmaDir, 'escape');
+      mkdirSync(tagmaDir, { recursive: true });
+      mkdirSync(outsideChild, { recursive: true });
+      symlinkSync(outsideDir, escapeLink, process.platform === 'win32' ? 'junction' : 'dir');
+
+      expect(() =>
+        sanitizeForwardedOpencodeDirectory(
+          encodeURIComponent(join(escapeLink, 'child').replaceAll('\\', '/')),
+          tagmaDir,
+        ),
+      ).toThrow('workspace .tagma directory');
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
   });
 });
