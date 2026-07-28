@@ -219,7 +219,7 @@ export function ChatComposer() {
         ? 'Waiting for the current chat update to finish...'
         : queueOnSend
           ? 'Queue a follow-up for this chat... (Enter to send)'
-        : 'Message opencode... (Enter to send)'
+          : 'Message opencode... (Enter to send)'
       : 'Pick a model first';
   const sendLabel = blockedByAnotherChatUpdate
     ? 'Waiting for current chat update'

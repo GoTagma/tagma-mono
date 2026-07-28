@@ -89,8 +89,11 @@
   binaries, minimal environment, and Python identity. Use a full filesystem witness outside an
   exact Git root, and never reuse an in-process manifest cache across a fresh `WorkspaceState`.
 - Keep full-filesystem Trial witness capture off the sidecar main thread. Trial timeout and
-  cancellation must cover pre-run, post-run, case-seal, and finalize witness capture; dispose the
-  per-workspace worker and cache with its `WorkspaceState`.
+  cancellation must cover pre-run, post-run, and case-seal capture; finalize must use the same
+  asynchronous worker path. Dispose the per-workspace worker and cache with its `WorkspaceState`.
+- Exact Git-root workspaces must fail closed when git cannot be resolved or the repository layout
+  cannot be inspected. Do not fall back to filesystem witness capture just because a `.git`
+  marker exists.
 - Git objects and ignored dependency/generated trees are intentionally outside the byte-hash
   scope; lockfiles/manifests and declared runtime identities represent those prerequisites.
   During isolated cases, a recursive same-process mutation monitor must fail closed on writes

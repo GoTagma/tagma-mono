@@ -14,7 +14,10 @@ import { parseYaml, serializePipeline } from '@tagma/sdk/yaml';
 
 import { readChatPipelineTrialPlan } from './chat-pipeline-trial-plan.js';
 import { readEditorSettings } from './plugins/loader.js';
-import type { PreparedTrialHostWitnessInputs, TrialHostWitness } from './chat-pipeline-trial-witness.js';
+import type {
+  PreparedTrialHostWitnessInputs,
+  TrialHostWitness,
+} from './chat-pipeline-trial-witness.js';
 import {
   safeCaptureTrialHostWitnessAsync,
   safePrepareTrialHostWitnessInputs,
@@ -1108,7 +1111,7 @@ async function hasSuccessfulVerifiedTrial(
   relativePath: string,
   sourcePath: string | null,
   trialId: string | undefined,
-) : Promise<boolean> {
+): Promise<boolean> {
   if (readEditorSettings(ws).opencodeChatTrialRunEnabled === false) return true;
   const normalizedTrialId = normalizeFinalizeTrialId(trialId);
   if (!normalizedTrialId) return false;

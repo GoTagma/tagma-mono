@@ -330,7 +330,7 @@ interface ChatStore {
    * after the server responds or an SSE refetch fires. The renderer drops
    * this once a real user message containing the same text shows up in
    * `messages`, and `send()` clears it unconditionally in its finally block.
-  */
+   */
   pendingUserText: string | null;
   queuedMessages: ChatQueuedMessage[];
   queuedDispatchMode: ChatQueuedDispatchMode | null;
@@ -1922,7 +1922,12 @@ function hasExternalChatPromptBarrier(): boolean {
 function canDispatchFreshQueuedPrompt(
   state: Pick<
     ChatStore,
-    'sending' | 'pendingUserText' | 'reconciling' | 'flushing' | 'activeChatYamlLifecycle' | 'abortRecovery'
+    | 'sending'
+    | 'pendingUserText'
+    | 'reconciling'
+    | 'flushing'
+    | 'activeChatYamlLifecycle'
+    | 'abortRecovery'
   >,
 ): boolean {
   return (

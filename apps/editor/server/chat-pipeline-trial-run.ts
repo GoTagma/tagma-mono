@@ -196,7 +196,9 @@ const activeTrialIdentityByWorkspace = new Map<
 >();
 
 type TrialHostWitnessResult = Awaited<ReturnType<typeof safeCaptureTrialHostWitnessAsync>>;
-type TrialWorkspaceWitnessResult = Awaited<ReturnType<typeof safeCaptureTrialWorkspaceWitnessAsync>>;
+type TrialWorkspaceWitnessResult = Awaited<
+  ReturnType<typeof safeCaptureTrialWorkspaceWitnessAsync>
+>;
 
 export const __chatPipelineTrialRunTestHooks: {
   captureHostWitnessAsync?: (
@@ -399,10 +401,7 @@ function redactTrialText(value: string): string {
 }
 
 function resultForSetupFailure(
-  kind: Exclude<
-    ChatPipelineTrialRunKind,
-    'passed' | 'failed' | 'plan-required' | 'plan-failed'
-  >,
+  kind: Exclude<ChatPipelineTrialRunKind, 'passed' | 'failed' | 'plan-required' | 'plan-failed'>,
   message: string,
   startedAt: number,
 ): ChatPipelineTrialRunResult {

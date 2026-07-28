@@ -1338,7 +1338,7 @@ describe('chat YAML staging routes', () => {
 
     expect(trialRes.body).toMatchObject({
       success: false,
-      kind: 'failed',
+      kind: 'witness-failed',
       cases: [
         {
           id: 'must-not-run',

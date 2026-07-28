@@ -10,12 +10,12 @@ import {
   __chatPipelineTrialRunTestHooks,
   type ChatPipelineTrialRunResult,
 } from '../server/chat-pipeline-trial-run';
-import {
-  __chatYamlStagingTestHooks,
-  discardChatYamlStage,
-} from '../server/chat-yaml-staging';
+import { __chatYamlStagingTestHooks, discardChatYamlStage } from '../server/chat-yaml-staging';
 import { registerChatYamlStagingRoutes } from '../server/routes/chat-yaml-staging';
-import { disposeTrialWitnessWorker, safeCaptureTrialHostWitness } from '../server/chat-pipeline-trial-witness';
+import {
+  disposeTrialWitnessWorker,
+  safeCaptureTrialHostWitnessAsync,
+} from '../server/chat-pipeline-trial-witness';
 import { pipelineYamlPath } from '../server/pipeline-paths';
 import { WorkspaceState } from '../server/workspace-state';
 import { __workspaceRegistryTestHooks, workspaceRegistry } from '../server/workspace-registry';
@@ -95,7 +95,11 @@ function createHarness() {
   };
 }
 
-function request(ws: WorkspaceState, body: Record<string, unknown>, lockId = 'chat-lock'): MockRequest {
+function request(
+  ws: WorkspaceState,
+  body: Record<string, unknown>,
+  lockId = 'chat-lock',
+): MockRequest {
   return {
     body,
     workspace: ws,
@@ -230,7 +234,11 @@ describe('chat YAML staging async witness ordering', () => {
       ],
     });
     __chatPipelineTrialRunTestHooks.timeoutMsOverride = 10;
-    __chatPipelineTrialRunTestHooks.captureHostWitnessAsync = async (_candidate, _prepared, signal) => {
+    __chatPipelineTrialRunTestHooks.captureHostWitnessAsync = async (
+      _candidate,
+      _prepared,
+      signal,
+    ) => {
       await new Promise<void>((resolve) => {
         if (signal?.aborted) return resolve();
         signal?.addEventListener('abort', () => resolve(), { once: true });
@@ -240,7 +248,11 @@ describe('chat YAML staging async witness ordering', () => {
 
     const trialRes = makeRes();
     await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
-      request(ws, { stageId: stage.id, relativePath: stage.relativePath, trialId: 'timeout_pre_witness' }),
+      request(ws, {
+        stageId: stage.id,
+        relativePath: stage.relativePath,
+        trialId: 'timeout_pre_witness',
+      }),
       trialRes,
     );
 
@@ -275,7 +287,11 @@ describe('chat YAML staging async witness ordering', () => {
       ],
     });
     let witnessStarted = false;
-    __chatPipelineTrialRunTestHooks.captureHostWitnessAsync = async (_candidate, _prepared, signal) => {
+    __chatPipelineTrialRunTestHooks.captureHostWitnessAsync = async (
+      _candidate,
+      _prepared,
+      signal,
+    ) => {
       witnessStarted = true;
       await new Promise<void>((resolve) => {
         if (signal?.aborted) return resolve();
@@ -369,7 +385,11 @@ describe('chat YAML staging async witness ordering', () => {
 
     const trialRes = makeRes();
     await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
-      request(ws, { stageId: stage.id, relativePath: stage.relativePath, trialId: 'workspace_leak' }),
+      request(ws, {
+        stageId: stage.id,
+        relativePath: stage.relativePath,
+        trialId: 'workspace_leak',
+      }),
       trialRes,
     );
 
@@ -378,9 +398,7 @@ describe('chat YAML staging async witness ordering', () => {
       kind: 'failed',
       ran: true,
     });
-    expect((trialRes.body as { summary: string }).summary).toContain(
-      'modified the real workspace',
-    );
+    expect((trialRes.body as { summary: string }).summary).toContain('modified the real workspace');
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });
@@ -397,7 +415,9 @@ describe('chat YAML staging async witness ordering', () => {
           {
             id: 'main',
             name: 'Main',
-            tasks: [{ id: 'verify', command: { argv: [process.execPath, '-e', 'process.exit(0)'] } }],
+            tasks: [
+              { id: 'verify', command: { argv: [process.execPath, '-e', 'process.exit(0)'] } },
+            ],
           },
         ],
       }),
@@ -419,7 +439,11 @@ describe('chat YAML staging async witness ordering', () => {
 
     const trialRes = makeRes();
     await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
-      request(ws, { stageId: stage.id, relativePath: stage.relativePath, trialId: 'finalize_async' }),
+      request(ws, {
+        stageId: stage.id,
+        relativePath: stage.relativePath,
+        trialId: 'finalize_async',
+      }),
       trialRes,
     );
     expect(trialRes.body).toMatchObject({ success: true, kind: 'passed' });
@@ -431,12 +455,16 @@ describe('chat YAML staging async witness ordering', () => {
       await new Promise<void>((resolve) => {
         releaseWitness.current = resolve;
       });
-      return safeCaptureTrialHostWitness(candidate, prepared);
+      return await safeCaptureTrialHostWitnessAsync(candidate, prepared);
     };
 
     const finalizeRes = makeRes();
     const finalizePromise = getRoute('/api/workspace/chat-yaml-stage/finalize')(
-      request(ws, { stageId: stage.id, relativePath: stage.relativePath, trialId: 'finalize_async' }),
+      request(ws, {
+        stageId: stage.id,
+        relativePath: stage.relativePath,
+        trialId: 'finalize_async',
+      }),
       finalizeRes,
     );
     for (let attempt = 0; attempt < 100 && witnessCalls === 0; attempt += 1) {
