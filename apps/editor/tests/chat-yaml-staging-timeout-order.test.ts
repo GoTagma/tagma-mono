@@ -532,14 +532,14 @@ describe('chat YAML staging async witness ordering', () => {
     expect(trialRes.body).toMatchObject({ success: true, kind: 'passed' });
 
     __chatYamlStagingTestHooks.finalizeWitnessTimeoutMsOverride = 10;
-    let releaseWitness: (() => void) | null = null;
+    const witnessGate: { release: (() => void) | null } = { release: null };
     __chatYamlStagingTestHooks.captureHostWitnessAsync = async (
       _candidate,
       _prepared,
       signal?: AbortSignal,
     ) => {
       await new Promise<void>((resolve) => {
-        releaseWitness = resolve;
+        witnessGate.release = resolve;
         if (signal?.aborted) return resolve();
         signal?.addEventListener('abort', () => resolve(), { once: true });
       });
@@ -560,7 +560,7 @@ describe('chat YAML staging async witness ordering', () => {
       Bun.sleep(250).then(() => 'deadline-missed' as const),
     ]);
     if (outcome === 'deadline-missed') {
-      releaseWitness?.();
+      witnessGate.release?.();
       await finalizePromise;
     }
 
@@ -622,7 +622,7 @@ describe('chat YAML staging async witness ordering', () => {
     expect(trialRes.body).toMatchObject({ success: true, kind: 'passed' });
 
     let witnessStarted = false;
-    let releaseWitness: (() => void) | null = null;
+    const witnessGate: { release: (() => void) | null } = { release: null };
     __chatYamlStagingTestHooks.captureHostWitnessAsync = async (
       _candidate,
       _prepared,
@@ -630,7 +630,7 @@ describe('chat YAML staging async witness ordering', () => {
     ) => {
       witnessStarted = true;
       await new Promise<void>((resolve) => {
-        releaseWitness = resolve;
+        witnessGate.release = resolve;
         if (signal?.aborted) return resolve();
         signal?.addEventListener('abort', () => resolve(), { once: true });
       });
@@ -656,7 +656,7 @@ describe('chat YAML staging async witness ordering', () => {
       request(ws, { stageId: stage.id, trialId: 'finalize_cancel' }),
       cancelRes,
     );
-    releaseWitness?.();
+    witnessGate.release?.();
     await finalizePromise;
 
     expect(cancelRes.body).toEqual({ cancelled: true });
