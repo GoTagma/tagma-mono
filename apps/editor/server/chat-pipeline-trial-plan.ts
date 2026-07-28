@@ -297,23 +297,27 @@ function parseCase(value: unknown, index: number): ChatPipelineTrialPlanCase {
     parseExpectation(item, `${label}.expectations[${expectationIndex}]`),
   );
   if (expectations.length === 0) throw new Error(`${label}.expectations must not be empty.`);
-  const targetTaskIds = asArray(raw.targetTaskIds ?? [], `${label}.targetTaskIds`, 32).map(
-    (item, taskIndex) => {
+  const targetTaskIds = [...new Set(
+    asArray(raw.targetTaskIds, `${label}.targetTaskIds`, 32).map((item, taskIndex) => {
       const taskId = asString(item, `${label}.targetTaskIds[${taskIndex}]`, 160);
       if (!QUALIFIED_TASK_ID_RE.test(taskId)) {
         throw new Error(`${label}.targetTaskIds[${taskIndex}] must be a qualified track.task id.`);
       }
       return taskId;
-    },
-  );
+    }),
+  )];
+  if (targetTaskIds.length === 0) {
+    throw new Error(`${label}.targetTaskIds must contain at least one qualified track.task id.`);
+  }
   return {
     id,
     title: asString(raw.title, `${label}.title`, 240),
     objective: asString(raw.objective, `${label}.objective`, 1_000),
     runs: raw.runs === undefined ? 1 : asInteger(raw.runs, `${label}.runs`, 1, 3),
-    targetTaskIds: [...new Set(targetTaskIds)],
+    targetTaskIds,
     fixtures,
     expectations,
+  };
   };
 }
 

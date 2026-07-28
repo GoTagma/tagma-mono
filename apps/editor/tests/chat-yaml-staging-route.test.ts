@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { bootstrapBuiltins } from '@tagma/sdk/plugins';
 import { parseYaml, serializePipeline } from '@tagma/sdk/yaml';
@@ -213,6 +213,25 @@ function compileStage(
     res,
   );
   expect(res.statusCode).toBe(200);
+}
+
+function onlyTrialCachePath(stageRootDir: string): string {
+  const trialCacheDir = join(stageRootDir, '.trial-runs');
+  const entries = readdirSync(trialCacheDir).filter((entry) => entry.endsWith('.json'));
+  expect(entries).toHaveLength(1);
+  return join(trialCacheDir, entries[0]!);
+}
+
+function trialCacheRecordPath(
+  stageRootDir: string,
+  trialId: string,
+  relativePath: string,
+  inputHash: string,
+): string {
+  const digest = createHash('sha256')
+    .update(${trialId}\0\0)
+    .digest('hex');
+  return join(stageRootDir, '.trial-runs', ${digest}.json);
 }
 
 afterEach(() => {
@@ -671,6 +690,195 @@ describe('chat YAML staging routes', () => {
     );
     expect((finalizeRes.body as { outcome: string }).outcome).toBe('adopted');
     expect(existsSync(sourcePath.replace(/\.ya?ml$/i, '.trial-plan.json'))).toBe(false);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('rejects a bit-flipped signed trial cache during finalize', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      rootDir: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Tampered Signed Trial Cache',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [{ id: 'case_probe', command: { argv: [process.execPath, '-e', 'process.exit(0)'] } }],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
+    writePassingTrialPlan(entry.stagedPath, 'main.case_probe');
+
+    const trialId = 'tampered_signature';
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(ws, { stageId: stage.id, relativePath: entry.relativePath, trialId }, 'chat-lock'),
+      trialRes,
+    );
+    expect(trialRes.body).toMatchObject({ success: true, kind: 'passed', ran: true });
+
+    const cachePath = onlyTrialCachePath(stage.rootDir);
+    const cached = JSON.parse(readFileSync(cachePath, 'utf-8')) as {
+      __tagmaServerAuth: { signature: string };
+    };
+    const firstHex = cached.__tagmaServerAuth.signature.startsWith('0') ? '1' : '0';
+    cached.__tagmaServerAuth.signature = ${firstHex};
+    writeFileSync(cachePath, JSON.stringify(cached, null, 2) + '\n', 'utf-8');
+
+    const finalizeRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/finalize')(
+      request(ws, { stageId: stage.id, relativePath: entry.relativePath, trialId }, 'chat-lock'),
+      finalizeRes,
+    );
+    expect(finalizeRes.statusCode).toBe(200);
+    expect(finalizeRes.body).toMatchObject({ outcome: 'forked', conflicts: ['trial-run-failed'] });
+
+    discardStage(getRoute, ws, stage.id);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('rejects an unsigned trial cache during finalize', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      rootDir: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Unsigned Trial Cache',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [{ id: 'case_probe', command: { argv: [process.execPath, '-e', 'process.exit(0)'] } }],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
+    writePassingTrialPlan(entry.stagedPath, 'main.case_probe');
+
+    const trialId = 'unsigned_cache';
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(ws, { stageId: stage.id, relativePath: entry.relativePath, trialId }, 'chat-lock'),
+      trialRes,
+    );
+    expect(trialRes.body).toMatchObject({ success: true, kind: 'passed', ran: true });
+
+    const cachePath = onlyTrialCachePath(stage.rootDir);
+    const cached = JSON.parse(readFileSync(cachePath, 'utf-8')) as Record<string, unknown>;
+    delete cached.__tagmaServerAuth;
+    writeFileSync(cachePath, JSON.stringify(cached, null, 2) + '\n', 'utf-8');
+
+    const finalizeRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/finalize')(
+      request(ws, { stageId: stage.id, relativePath: entry.relativePath, trialId }, 'chat-lock'),
+      finalizeRes,
+    );
+    expect(finalizeRes.statusCode).toBe(200);
+    expect(finalizeRes.body).toMatchObject({ outcome: 'forked', conflicts: ['trial-run-failed'] });
+
+    discardStage(getRoute, ws, stage.id);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('rejects a replayed signed trial cache at a different trial path during finalize', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      rootDir: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Replay Trial Cache',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [{ id: 'case_probe', command: { argv: [process.execPath, '-e', 'process.exit(0)'] } }],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
+    writePassingTrialPlan(entry.stagedPath, 'main.case_probe');
+
+    const originalTrialId = 'signed_source';
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: originalTrialId },
+        'chat-lock',
+      ),
+      trialRes,
+    );
+    expect(trialRes.body).toMatchObject({ success: true, kind: 'passed', ran: true });
+
+    const cachePath = onlyTrialCachePath(stage.rootDir);
+    const cacheText = readFileSync(cachePath, 'utf-8');
+    const cached = JSON.parse(cacheText) as { inputHash: string };
+    const replayTrialId = 'replayed_signed_trial';
+    const replayPath = trialCacheRecordPath(
+      stage.rootDir,
+      replayTrialId,
+      entry.relativePath,
+      cached.inputHash,
+    );
+    writeFileSync(replayPath, cacheText, 'utf-8');
+
+    const finalizeRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/finalize')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: replayTrialId },
+        'chat-lock',
+      ),
+      finalizeRes,
+    );
+    expect(finalizeRes.statusCode).toBe(200);
+    expect(finalizeRes.body).toMatchObject({ outcome: 'forked', conflicts: ['trial-run-failed'] });
+
+    discardStage(getRoute, ws, stage.id);
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });

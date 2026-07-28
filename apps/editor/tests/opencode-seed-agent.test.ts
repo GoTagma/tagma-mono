@@ -131,7 +131,7 @@ function completeTrialPlanToolArgs(pipelinePath: string): Record<string, unknown
         fixtures: [
           {
             path: 'inputs/a/report.txt',
-            content: ['first', '', 'second [x] 中文'].join('\n'),
+            content: ['first', '', 'second [x] \\u4e2d\\u6587'].join('\n'),
           },
           {
             path: 'inputs/b/report.txt',
@@ -150,7 +150,7 @@ function completeTrialPlanToolArgs(pipelinePath: string): Record<string, unknown
           {
             type: 'file-equals',
             path: 'outputs/a-report.txt',
-            text: ['first', '', 'second [x] 中文'].join('\n'),
+            text: ['first', '', 'second [x] \\u4e2d\\u6587'].join('\n'),
           },
           {
             type: 'file-equals',
@@ -179,7 +179,7 @@ test('tagma-router delegates history comparisons without read/edit powers', () =
   expect(doc).toContain('tagma-pipeline');
   expect(doc).toContain('tagma-pipeline-diagnosis');
   expect(doc).toContain('tagma-general-discussion');
-  // create/edit are merged — the router must not know those agents anymore.
+  // create/edit are merged 闂?the router must not know those agents anymore.
   expect(doc).not.toContain('tagma-pipeline-create');
   expect(doc).not.toContain('tagma-pipeline-edit');
   expect(doc).not.toContain('create_pipeline');
@@ -295,7 +295,7 @@ test('merged tagma-pipeline agent is a hidden subagent handling create + edit', 
   expect(pipeline).toContain('name: tagma-pipeline');
   expect(pipeline).toContain('mode: subagent');
   expect(pipeline).toContain('hidden: true');
-  // No routed-specialization split anymore — one worker, two modes.
+  // No routed-specialization split anymore 闂?one worker, two modes.
   expect(pipeline).not.toContain('Routed specialization');
   expect(pipeline).not.toContain('ROUTE_MISMATCH: modify_pipeline');
   expect(pipeline).not.toContain('ROUTE_MISMATCH: create_pipeline');
@@ -632,6 +632,30 @@ test('trial-plan tool rejects host-invalid plans before writing any file', async
     await expect(generated.tool.execute(args, { directory: stage.agentTagmaDir })).rejects.toThrow(
       'expectations[0].type is unsupported',
     );
+    expect(existsSync(stage.planPath)).toBe(false);
+  } finally {
+    stage.cleanup();
+    generated.cleanup();
+  }
+});
+
+
+test('trial-plan tool requires every case to include non-empty target task ids before writing', async () => {
+  const generated = await loadGeneratedTrialPlanTool();
+  const stage = makeTrialPlanStage();
+  try {
+    const missingTargetsArgs = completeTrialPlanToolArgs('sample/sample.yaml');
+    delete (missingTargetsArgs.cases as Array<Record<string, unknown>>)[0]!.targetTaskIds;
+    await expect(
+      generated.tool.execute(missingTargetsArgs, { directory: stage.agentTagmaDir }),
+    ).rejects.toThrow('targetTaskIds is required');
+    expect(existsSync(stage.planPath)).toBe(false);
+
+    const emptyTargetsArgs = completeTrialPlanToolArgs('sample/sample.yaml');
+    (emptyTargetsArgs.cases as Array<{ targetTaskIds: string[] }>)[0]!.targetTaskIds = [];
+    await expect(
+      generated.tool.execute(emptyTargetsArgs, { directory: stage.agentTagmaDir }),
+    ).rejects.toThrow('cases[0].targetTaskIds must contain at least one qualified track.task id.');
     expect(existsSync(stage.planPath)).toBe(false);
   } finally {
     stage.cleanup();

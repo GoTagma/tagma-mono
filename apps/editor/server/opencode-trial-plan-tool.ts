@@ -163,8 +163,11 @@ function validateCase(value, index) {
   if (expectations.length === 0) {
     throw new Error(label + ".expectations must not be empty.");
   }
-  const targetTaskIds = asArray(raw.targetTaskIds || [], label + ".targetTaskIds", 32).map(
-    (item, taskIndex) => {
+  if (!Object.prototype.hasOwnProperty.call(raw, "targetTaskIds")) {
+    throw new Error(label + ".targetTaskIds is required.");
+  }
+  const targetTaskIds = [...new Set(
+    asArray(raw.targetTaskIds, label + ".targetTaskIds", 32).map((item, taskIndex) => {
       const taskId = asString(item, label + ".targetTaskIds[" + taskIndex + "]", 160);
       if (!QUALIFIED_TASK_ID_RE.test(taskId)) {
         throw new Error(
@@ -172,8 +175,11 @@ function validateCase(value, index) {
         );
       }
       return taskId;
-    },
-  );
+    }),
+  )];
+  if (targetTaskIds.length === 0) {
+    throw new Error(label + ".targetTaskIds must contain at least one qualified track.task id.");
+  }
   return {
     ...raw,
     id,
@@ -181,7 +187,7 @@ function validateCase(value, index) {
       raw.runs === undefined
         ? 1
         : asInteger(raw.runs, label + ".runs", 1, CONTRACT.limits.runs),
-    targetTaskIds: [...new Set(targetTaskIds)],
+    targetTaskIds,
     fixtures,
     expectations,
   };
@@ -483,7 +489,7 @@ export default tool({
       )
       .max(CONTRACT.limits.findings),
     cases: tool.schema
-      .array(
+          targetTaskIds: tool.schema.array(tool.schema.string()).min(1).max(32),
         tool.schema.object({
           id: tool.schema.string(),
           title: tool.schema.string().min(1).max(240),
@@ -515,7 +521,7 @@ export default tool({
       version: CONTRACT.version,
       yamlHash,
       summary: args.summary,
-      goals: args.goals,
+        targetTaskIds: item.targetTaskIds,
       coverage: args.coverage,
       findings: args.findings,
       cases: args.cases.map((item) => ({

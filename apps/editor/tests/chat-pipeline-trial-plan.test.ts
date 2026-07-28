@@ -29,7 +29,7 @@ function completePlan(): Record<string, unknown> {
         fixtures: [
           {
             path: 'inputs/a/report.txt',
-            content: ['first', '', 'second [x] 中文'].join(String.fromCharCode(10)),
+            content: ['first', '', 'second [x] \\u4e2d\\u6587'].join(String.fromCharCode(10)),
           },
           {
             path: 'inputs/b/report.txt',
@@ -48,7 +48,7 @@ function completePlan(): Record<string, unknown> {
           {
             type: 'file-equals',
             path: 'outputs/a-report.txt',
-            text: ['first', '', 'second [x] 中文'].join(String.fromCharCode(10)),
+            text: ['first', '', 'second [x] \\u4e2d\\u6587'].join(String.fromCharCode(10)),
           },
           {
             type: 'file-equals',
@@ -73,6 +73,31 @@ describe('chat pipeline trial plan', () => {
       runs: 2,
       targetTaskIds: ['main.process'],
     });
+  });
+
+
+  test('requires every case to target at least one qualified task id', () => {
+    const missingTargets = structuredClone(completePlan());
+    delete (missingTargets.cases as Array<Record<string, unknown>>)[0]!.targetTaskIds;
+    expect(() => parseChatPipelineTrialPlan(missingTargets)).toThrow(
+      'cases[0].targetTaskIds must be an array.',
+    );
+
+    const emptyTargets = structuredClone(completePlan());
+    (emptyTargets.cases as Array<{ targetTaskIds: string[] }>)[0]!.targetTaskIds = [];
+    expect(() => parseChatPipelineTrialPlan(emptyTargets)).toThrow(
+      'cases[0].targetTaskIds must contain at least one qualified track.task id.',
+    );
+  });
+
+  test('deduplicates repeated target task ids after enforcing a non-empty target set', () => {
+    const candidate = structuredClone(completePlan());
+    (candidate.cases as Array<{ targetTaskIds: string[] }>)[0]!.targetTaskIds = [
+      'main.process',
+      'main.process',
+    ];
+
+    expect(parseChatPipelineTrialPlan(candidate).cases[0]?.targetTaskIds).toEqual(['main.process']);
   });
 
   test('rejects unsafe or non-portable fixture paths before any trial runs', () => {

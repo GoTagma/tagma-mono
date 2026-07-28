@@ -55,7 +55,13 @@ import {
 } from './plugins/loader.js';
 import { withWorkspacePluginMutationLock } from './plugins/locks.js';
 import { atomicWriteFileSync, errorMessage, isPathWithin } from './path-utils.js';
+import { tagmaDirOf } from './pipeline-paths.js';
 import { buildPipelineSecretEnv } from './secrets.js';
+import {
+  readAuthenticatedServerRecordSync,
+  writeAuthenticatedServerRecordSync,
+  type ServerRecordContext,
+} from './server-record-auth.js';
 import { MAX_LOG_RUNS } from './state.js';
 import { normalizeRunTargetTaskIds, runtimeWithInjectedEnv } from './routes/run-session.js';
 import { beginRunSessionStart, endRunSessionStart } from './routes/run.js';
@@ -197,10 +203,32 @@ function trialCachePath(rootDir: string, trialId: string, relativePath: string, 
   return join(rootDir, '.trial-runs', `${digest}.json`);
 }
 
-function readCachedTrial(path: string, inputHash: string): ChatPipelineTrialRunResult | null {
+function trialCacheRecordContext(
+  ws: WorkspaceState,
+  stageId: string,
+  path: string,
+): ServerRecordContext {
+  if (!ws.workDir) throw new Error('Workspace directory is not set.');
+  return {
+    workspaceTagmaDir: tagmaDirOf(ws.workDir),
+    controlRoot: dirname(path),
+    stageId,
+    kind: 'trial-cache',
+  };
+}
+
+function readCachedTrial(
+  ws: WorkspaceState,
+  stageId: string,
+  path: string,
+  inputHash: string,
+): ChatPipelineTrialRunResult | null {
   if (!existsSync(path)) return null;
   try {
-    const parsed = JSON.parse(readFileSync(path, 'utf-8')) as Partial<CachedTrialResult>;
+    const parsed = readAuthenticatedServerRecordSync<Partial<CachedTrialResult>>(
+      path,
+      trialCacheRecordContext(ws, stageId, path),
+    );
     if (
       parsed.version !== TRIAL_CACHE_VERSION ||
       parsed.inputHash !== inputHash ||
@@ -218,6 +246,8 @@ function readCachedTrial(path: string, inputHash: string): ChatPipelineTrialRunR
 }
 
 function writeCachedTrial(
+  ws: WorkspaceState,
+  stageId: string,
   path: string,
   inputHash: string,
   verificationHash: string,
@@ -225,16 +255,13 @@ function writeCachedTrial(
   result: ChatPipelineTrialRunResult,
 ): void {
   mkdirSync(dirname(path), { recursive: true });
-  atomicWriteFileSync(
-    path,
-    JSON.stringify({
-      version: TRIAL_CACHE_VERSION,
-      inputHash,
-      verificationHash,
-      hostWitness,
-      result,
-    } satisfies CachedTrialResult) + '\n',
-  );
+  writeAuthenticatedServerRecordSync(path, trialCacheRecordContext(ws, stageId, path), {
+    version: TRIAL_CACHE_VERSION,
+    inputHash,
+    verificationHash,
+    hostWitness,
+    result,
+  } satisfies CachedTrialResult);
 }
 
 function cleanupTrialPipelineSnapshot(snapshot: TrialPipelineSnapshot | null): void {
@@ -1230,7 +1257,7 @@ export async function trialRunChatYamlStage(
       planHash: planRead.planHash,
     });
     const cachePath = trialCachePath(stage.rootDir, trialId, entry.relativePath, inputHash);
-    const cached = readCachedTrial(cachePath, inputHash);
+    const cached = readCachedTrial(ws, stage.id, cachePath, inputHash);
     if (cached) return cached;
     const prepared = safePrepareTrialHostWitnessInputs(ws, {
       relativePath: entry.relativePath,
@@ -1347,7 +1374,15 @@ export async function trialRunChatYamlStage(
             inputHash,
             hostWitnessDigest: postWitness.witness.digest,
           });
-          writeCachedTrial(cachePath, inputHash, postVerificationHash, postWitness.witness, result);
+          writeCachedTrial(
+            ws,
+            stage.id,
+            cachePath,
+            inputHash,
+            postVerificationHash,
+            postWitness.witness,
+            result,
+          );
         }
         return result;
       } finally {
