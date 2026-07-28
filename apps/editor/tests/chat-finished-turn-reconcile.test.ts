@@ -89,6 +89,18 @@ describe('finished chat turn reconciliation', () => {
     expect(appSource).toContain('completeChatYamlLifecycle(finishedTurn.id)');
   });
 
+  test('keeps lifecycle cancellation routed to the server during finalize verification', () => {
+    const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
+    const finalizeStart = appSource.indexOf('const finalizeOnce = () =>');
+    const finalizeEnd = appSource.indexOf('compile = finalized.compile;', finalizeStart);
+    expect(finalizeStart).toBeGreaterThan(-1);
+    expect(finalizeEnd).toBeGreaterThan(finalizeStart);
+    const finalizeBlock = appSource.slice(finalizeStart, finalizeEnd);
+    expect(finalizeBlock).toContain('setChatYamlHostTrialActive(finishedTurn.id, true)');
+    expect(finalizeBlock).toContain('setChatYamlHostTrialActive(finishedTurn.id, false)');
+    expect(finalizeBlock).toContain('isChatYamlFinalizeWitnessFailure(err)');
+  });
+
   test('late host-trial completion still performs stopped cleanup once and never continues', async () => {
     let cancellationRequested = false;
     let discardCalls = 0;

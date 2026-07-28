@@ -215,6 +215,14 @@ function isMissingWorkflowRunError(err: unknown): boolean {
   );
 }
 
+function isChatYamlFinalizeWitnessFailure(err: unknown): boolean {
+  const kind =
+    err && typeof err === 'object' && 'kind' in err ? (err as { kind?: unknown }).kind : undefined;
+  return (
+    kind === 'chat-yaml-finalize-witness-timeout' || kind === 'chat-yaml-finalize-witness-aborted'
+  );
+}
+
 export function yamlEditLockRunBlockMessage(
   _yamlEditLocked: boolean,
   _yamlEditLockReason: string | null,
@@ -1322,17 +1330,25 @@ export function App() {
             );
           let finalized: Awaited<ReturnType<typeof api.finalizeChatYamlStage>> | null = null;
           let finalizeError: unknown;
-          for (let attempt = 0; attempt < 2 && !finalized; attempt += 1) {
-            if (await discardCancelledStage()) return;
-            try {
-              finalized = await finalizeOnce();
-            } catch (err) {
-              finalizeError = err;
+          useChatStore.getState().setChatYamlHostTrialActive(finishedTurn.id, true);
+          try {
+            for (let attempt = 0; attempt < 2 && !finalized; attempt += 1) {
+              if (await discardCancelledStage()) return;
+              let terminalWitnessFailure = false;
+              try {
+                finalized = await finalizeOnce();
+              } catch (err) {
+                finalizeError = err;
+                terminalWitnessFailure = isChatYamlFinalizeWitnessFailure(err);
+              }
+              if (cancelled || (await discardCancelledStage())) return;
+              if (terminalWitnessFailure) break;
             }
-            if (cancelled || (await discardCancelledStage())) return;
-          }
-          if (!finalized) {
-            throw finalizeError ?? new Error('Failed to finalize the staged YAML result.');
+            if (!finalized) {
+              throw finalizeError ?? new Error('Failed to finalize the staged YAML result.');
+            }
+          } finally {
+            useChatStore.getState().setChatYamlHostTrialActive(finishedTurn.id, false);
           }
           compile = finalized.compile;
           if (cancelled || (await discardCancelledStage())) return;

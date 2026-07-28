@@ -196,6 +196,7 @@ afterEach(() => {
   delete __chatPipelineTrialRunTestHooks.captureWorkspaceWitnessAsync;
   delete __chatPipelineTrialRunTestHooks.timeoutMsOverride;
   delete __chatYamlStagingTestHooks.captureHostWitnessAsync;
+  delete __chatYamlStagingTestHooks.finalizeWitnessTimeoutMsOverride;
   delete __workspaceRegistryTestHooks.disposeTrialWitnessWorker;
   for (const stage of stages.splice(0)) {
     try {
@@ -480,6 +481,191 @@ describe('chat YAML staging async witness ordering', () => {
 
     expect(finalizeRes.statusCode).toBe(200);
     expect(finalizeRes.body).toMatchObject({ outcome: 'adopted' });
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('times out final witness verification without publishing staged YAML', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const stage = await startStage(getRoute, ws, sourcePath);
+    const originalSource = readFileSync(sourcePath, 'utf-8');
+    writeFileSync(
+      stage.stagedPath,
+      serializePipeline({
+        name: 'Finalize Witness Timeout',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              { id: 'verify', command: { argv: [process.execPath, '-e', 'process.exit(0)'] } },
+            ],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    writeTrialPlan(stage.stagedPath, {
+      cases: [
+        {
+          id: 'case_probe',
+          title: 'Case probe',
+          objective: 'Confirms the isolated case succeeds before finalize verification.',
+          runs: 1,
+          targetTaskIds: ['main.verify'],
+          fixtures: [],
+          expectations: [{ type: 'task-status', taskId: 'main.verify', status: 'success' }],
+        },
+      ],
+    });
+
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(ws, {
+        stageId: stage.id,
+        relativePath: stage.relativePath,
+        trialId: 'finalize_timeout',
+      }),
+      trialRes,
+    );
+    expect(trialRes.body).toMatchObject({ success: true, kind: 'passed' });
+
+    __chatYamlStagingTestHooks.finalizeWitnessTimeoutMsOverride = 10;
+    let releaseWitness: (() => void) | null = null;
+    __chatYamlStagingTestHooks.captureHostWitnessAsync = async (
+      _candidate,
+      _prepared,
+      signal?: AbortSignal,
+    ) => {
+      await new Promise<void>((resolve) => {
+        releaseWitness = resolve;
+        if (signal?.aborted) return resolve();
+        signal?.addEventListener('abort', () => resolve(), { once: true });
+      });
+      return { witness: null, reason: String(signal?.reason ?? 'released') };
+    };
+
+    const finalizeRes = makeRes();
+    const finalizePromise = getRoute('/api/workspace/chat-yaml-stage/finalize')(
+      request(ws, {
+        stageId: stage.id,
+        relativePath: stage.relativePath,
+        trialId: 'finalize_timeout',
+      }),
+      finalizeRes,
+    );
+    const outcome = await Promise.race([
+      Promise.resolve(finalizePromise).then(() => 'finished' as const),
+      Bun.sleep(250).then(() => 'deadline-missed' as const),
+    ]);
+    if (outcome === 'deadline-missed') {
+      releaseWitness?.();
+      await finalizePromise;
+    }
+
+    expect(outcome).toBe('finished');
+    expect(finalizeRes.statusCode).toBe(504);
+    expect(finalizeRes.body).toMatchObject({
+      kind: 'chat-yaml-finalize-witness-timeout',
+    });
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(originalSource);
+    expect(existsSync(stage.stagedPath)).toBe(true);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('cancels final witness verification through the shared trial cancel route', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const stage = await startStage(getRoute, ws, sourcePath);
+    const originalSource = readFileSync(sourcePath, 'utf-8');
+    writeFileSync(
+      stage.stagedPath,
+      serializePipeline({
+        name: 'Finalize Witness Cancellation',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              { id: 'verify', command: { argv: [process.execPath, '-e', 'process.exit(0)'] } },
+            ],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    writeTrialPlan(stage.stagedPath, {
+      cases: [
+        {
+          id: 'case_probe',
+          title: 'Case probe',
+          objective: 'Confirms the isolated case succeeds before finalize verification.',
+          runs: 1,
+          targetTaskIds: ['main.verify'],
+          fixtures: [],
+          expectations: [{ type: 'task-status', taskId: 'main.verify', status: 'success' }],
+        },
+      ],
+    });
+
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(ws, {
+        stageId: stage.id,
+        relativePath: stage.relativePath,
+        trialId: 'finalize_cancel',
+      }),
+      trialRes,
+    );
+    expect(trialRes.body).toMatchObject({ success: true, kind: 'passed' });
+
+    let witnessStarted = false;
+    let releaseWitness: (() => void) | null = null;
+    __chatYamlStagingTestHooks.captureHostWitnessAsync = async (
+      _candidate,
+      _prepared,
+      signal?: AbortSignal,
+    ) => {
+      witnessStarted = true;
+      await new Promise<void>((resolve) => {
+        releaseWitness = resolve;
+        if (signal?.aborted) return resolve();
+        signal?.addEventListener('abort', () => resolve(), { once: true });
+      });
+      return { witness: null, reason: String(signal?.reason ?? 'released') };
+    };
+
+    const finalizeRes = makeRes();
+    const finalizePromise = getRoute('/api/workspace/chat-yaml-stage/finalize')(
+      request(ws, {
+        stageId: stage.id,
+        relativePath: stage.relativePath,
+        trialId: 'finalize_cancel',
+      }),
+      finalizeRes,
+    );
+    for (let attempt = 0; attempt < 100 && !witnessStarted; attempt += 1) {
+      await Bun.sleep(10);
+    }
+    expect(witnessStarted).toBe(true);
+
+    const cancelRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run/cancel')(
+      request(ws, { stageId: stage.id, trialId: 'finalize_cancel' }),
+      cancelRes,
+    );
+    releaseWitness?.();
+    await finalizePromise;
+
+    expect(cancelRes.body).toEqual({ cancelled: true });
+    expect(finalizeRes.statusCode).toBe(503);
+    expect(finalizeRes.body).toMatchObject({
+      kind: 'chat-yaml-finalize-witness-aborted',
+    });
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(originalSource);
+    expect(existsSync(stage.stagedPath)).toBe(true);
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });

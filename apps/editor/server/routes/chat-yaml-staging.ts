@@ -1,6 +1,8 @@
 import type express from 'express';
 
 import {
+  cancelChatYamlStageFinalize,
+  ChatYamlFinalizeWitnessError,
   compileChatYamlStage,
   createChatYamlStage,
   discardChatYamlStage,
@@ -119,6 +121,9 @@ function requireChatYamlStageLock(
 }
 
 function stageErrorStatus(err: unknown): number {
+  if (err instanceof ChatYamlFinalizeWitnessError) {
+    return err.kind === 'chat-yaml-finalize-witness-timeout' ? 504 : 503;
+  }
   const message = errorMessage(err).toLowerCase();
   if (message.includes('not found')) return 404;
   if (
@@ -135,7 +140,10 @@ function stageErrorStatus(err: unknown): number {
 }
 
 function respondStageError(res: express.Response, err: unknown): express.Response {
-  return res.status(stageErrorStatus(err)).json({ error: errorMessage(err) });
+  return res.status(stageErrorStatus(err)).json({
+    error: errorMessage(err),
+    ...(err instanceof ChatYamlFinalizeWitnessError ? { kind: err.kind } : {}),
+  });
 }
 
 export function registerChatYamlStagingRoutes(app: express.Express): void {
@@ -232,12 +240,13 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
     if (typeof body.trialId !== 'string' || !body.trialId.trim()) {
       return res.status(400).json({ error: 'trialId is required.' });
     }
-    return res.json({
-      cancelled: cancelChatPipelineTrial(ws, {
-        stageId: body.stageId.trim(),
-        trialId: body.trialId.trim(),
-      }),
-    });
+    const input = {
+      stageId: body.stageId.trim(),
+      trialId: body.trialId.trim(),
+    };
+    const trialCancelled = cancelChatPipelineTrial(ws, input);
+    const finalizeCancelled = cancelChatYamlStageFinalize(ws, input);
+    return res.json({ cancelled: trialCancelled || finalizeCancelled });
   });
 
   app.post('/api/workspace/chat-yaml-stage/finalize', async (req, res) => {

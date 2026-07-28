@@ -66,6 +66,33 @@ const MAX_ARTIFACT_BYTES = 5 * 1024 * 1024;
 const STAGE_TTL_MS = 24 * 60 * 60 * 1000;
 const TRIAL_CACHE_VERSION = 4;
 const FINALIZE_TRIAL_ID_RE = /^[A-Za-z0-9_-]{1,160}$/;
+const FINALIZE_WITNESS_TIMEOUT_MS = 10 * 60 * 1000;
+
+export type ChatYamlFinalizeWitnessFailureKind =
+  'chat-yaml-finalize-witness-timeout' | 'chat-yaml-finalize-witness-aborted';
+
+export class ChatYamlFinalizeWitnessError extends Error {
+  readonly kind: ChatYamlFinalizeWitnessFailureKind;
+
+  constructor(kind: ChatYamlFinalizeWitnessFailureKind) {
+    super(
+      kind === 'chat-yaml-finalize-witness-timeout'
+        ? 'Final staged YAML witness verification timed out before publish.'
+        : 'Final staged YAML witness verification was cancelled before publish.',
+    );
+    this.name = 'ChatYamlFinalizeWitnessError';
+    this.kind = kind;
+  }
+}
+
+interface ActiveFinalizeWitness {
+  stageId: string;
+  trialId: string;
+  controller: AbortController;
+  timedOut: boolean;
+}
+
+const activeFinalizeWitnessByWorkspace = new WeakMap<WorkspaceState, ActiveFinalizeWitness>();
 
 export const __chatYamlStagingTestHooks: {
   afterDestinationYamlWrite?: (destinationYamlPath: string) => void;
@@ -73,17 +100,80 @@ export const __chatYamlStagingTestHooks: {
   captureHostWitnessAsync?: (
     ws: WorkspaceState,
     prepared: PreparedTrialHostWitnessInputs,
+    signal?: AbortSignal,
   ) => Promise<Awaited<ReturnType<typeof safeCaptureTrialHostWitnessAsync>>>;
+  finalizeWitnessTimeoutMsOverride?: number;
 } = {};
 
 async function captureFinalizeHostWitnessAsync(
   ws: WorkspaceState,
   prepared: PreparedTrialHostWitnessInputs,
+  signal?: AbortSignal,
 ): Promise<Awaited<ReturnType<typeof safeCaptureTrialHostWitnessAsync>>> {
   if (__chatYamlStagingTestHooks.captureHostWitnessAsync) {
-    return await __chatYamlStagingTestHooks.captureHostWitnessAsync(ws, prepared);
+    return await __chatYamlStagingTestHooks.captureHostWitnessAsync(ws, prepared, signal);
   }
-  return await safeCaptureTrialHostWitnessAsync(ws, prepared);
+  return await safeCaptureTrialHostWitnessAsync(ws, prepared, signal);
+}
+
+function finalizeWitnessError(active: ActiveFinalizeWitness): ChatYamlFinalizeWitnessError {
+  return new ChatYamlFinalizeWitnessError(
+    active.timedOut ? 'chat-yaml-finalize-witness-timeout' : 'chat-yaml-finalize-witness-aborted',
+  );
+}
+
+async function captureFinalizeHostWitnessWithDeadline(
+  ws: WorkspaceState,
+  stageId: string,
+  trialId: string,
+  prepared: PreparedTrialHostWitnessInputs,
+): Promise<Awaited<ReturnType<typeof safeCaptureTrialHostWitnessAsync>>> {
+  if (activeFinalizeWitnessByWorkspace.has(ws)) {
+    throw new Error('Another staged YAML finalize witness verification is already active.');
+  }
+  const controller = new AbortController();
+  const active: ActiveFinalizeWitness = {
+    stageId,
+    trialId,
+    controller,
+    timedOut: false,
+  };
+  const timeoutMsOverride = __chatYamlStagingTestHooks.finalizeWitnessTimeoutMsOverride;
+  const timeoutMs =
+    typeof timeoutMsOverride === 'number'
+      ? Math.max(1, timeoutMsOverride)
+      : FINALIZE_WITNESS_TIMEOUT_MS;
+  const timeout = setTimeout(() => {
+    active.timedOut = true;
+    controller.abort('final staged YAML witness verification timeout');
+  }, timeoutMs);
+  if (timeoutMsOverride === undefined) timeout.unref?.();
+  activeFinalizeWitnessByWorkspace.set(ws, active);
+  try {
+    const witness = await captureFinalizeHostWitnessAsync(ws, prepared, controller.signal);
+    if (controller.signal.aborted) throw finalizeWitnessError(active);
+    return witness;
+  } catch (err) {
+    if (controller.signal.aborted) throw finalizeWitnessError(active);
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+    if (activeFinalizeWitnessByWorkspace.get(ws) === active) {
+      activeFinalizeWitnessByWorkspace.delete(ws);
+    }
+  }
+}
+
+export function cancelChatYamlStageFinalize(
+  ws: WorkspaceState,
+  input: { stageId: string; trialId: string },
+): boolean {
+  const active = activeFinalizeWitnessByWorkspace.get(ws);
+  if (!active || active.stageId !== input.stageId || active.trialId !== input.trialId) {
+    return false;
+  }
+  active.controller.abort('user stopped final staged YAML witness verification');
+  return true;
 }
 
 type ChatYamlStageConflict =
@@ -1132,7 +1222,12 @@ async function hasSuccessfulVerifiedTrial(
     stagedYamlPath: stagedPath,
   });
   if (!prepared.prepared) return false;
-  const witness = await captureFinalizeHostWitnessAsync(ws, prepared.prepared);
+  const witness = await captureFinalizeHostWitnessWithDeadline(
+    ws,
+    paths.id,
+    normalizedTrialId,
+    prepared.prepared,
+  );
   if (!witness.witness) return false;
   const verificationHash = buildChatPipelineTrialVerificationHash({
     inputHash,
