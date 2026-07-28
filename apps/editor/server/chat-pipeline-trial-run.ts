@@ -9,9 +9,10 @@ import {
   readdirSync,
   rmSync,
   watch,
+  writeFileSync,
   type FSWatcher,
 } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 
 import {
   createTagma,
@@ -79,6 +80,7 @@ const MAX_TRIAL_CASE_COPY_FILES = 256;
 const MAX_TRIAL_ASSERTION_FILE_BYTES = 2 * 1024 * 1024;
 const TRIAL_ID_RE = /^[A-Za-z0-9_-]{1,160}$/;
 const MAX_TRIAL_WORKSPACE_MONITOR_EVENTS = 10_000;
+const TRIAL_WORKSPACE_MONITOR_BARRIER_TIMEOUT_MS = 2_000;
 const TRIAL_WORKSPACE_MONITOR_IGNORED_TAGMA_DIRS = new Set([
   '.chat-staging',
   '.opencode',
@@ -818,6 +820,7 @@ interface TrialWorkspaceMutationState {
 
 interface TrialWorkspaceMutationMonitor {
   read(): TrialWorkspaceMutationState;
+  settle(): Promise<void>;
   close(): void;
 }
 
@@ -854,17 +857,54 @@ function ignoreTrialWorkspaceMutation(path: string): boolean {
   );
 }
 
-function startTrialWorkspaceMutationMonitor(ws: WorkspaceState): {
-  monitor: TrialWorkspaceMutationMonitor | null;
-  reason: string | null;
-} {
+function startTrialWorkspaceMutationMonitor(
+  ws: WorkspaceState,
+  barrierRoot: string,
+): { monitor: TrialWorkspaceMutationMonitor | null; reason: string | null } {
+  const resolvedWorkDir = resolve(ws.workDir);
+  const resolvedBarrierRoot = resolve(barrierRoot);
+  if (!isPathWithin(resolvedBarrierRoot, resolvedWorkDir)) {
+    return {
+      monitor: null,
+      reason: 'Workspace mutation monitor barrier escaped the workspace.',
+    };
+  }
+  const barrierRelativeRoot = relative(resolvedWorkDir, resolvedBarrierRoot).replace(/\\/gu, '/');
+  if (
+    !barrierRelativeRoot ||
+    !ignoreTrialWorkspaceMutation(`${barrierRelativeRoot}/barrier-probe`)
+  ) {
+    return {
+      monitor: null,
+      reason: 'Workspace mutation monitor barrier is not in a stage-owned runtime path.',
+    };
+  }
+  try {
+    mkdirSync(resolvedBarrierRoot, { recursive: true });
+  } catch (err) {
+    return {
+      monitor: null,
+      reason: `Workspace mutation monitor barrier could not be created: ${errorMessage(err)}`,
+    };
+  }
+
   let revision = 0;
   let healthy = true;
   let reason: string | null = null;
   let closing = false;
+  let barrierSequence = 0;
+  let pendingBarrierPath: string | null = null;
+  let finishBarrier: (() => void) | null = null;
+  const releaseBarrier = (): void => {
+    const finish = finishBarrier;
+    pendingBarrierPath = null;
+    finishBarrier = null;
+    finish?.();
+  };
   const fail = (message: string): void => {
     healthy = false;
     reason ??= message;
+    releaseBarrier();
   };
   let watcher: FSWatcher;
   try {
@@ -873,6 +913,13 @@ function startTrialWorkspaceMutationMonitor(ws: WorkspaceState): {
       if (!path) {
         fail('Workspace mutation monitor reported an unknown path.');
         return;
+      }
+      if (
+        pendingBarrierPath &&
+        (path === pendingBarrierPath ||
+          (process.platform === 'win32' && path.toLowerCase() === pendingBarrierPath.toLowerCase()))
+      ) {
+        releaseBarrier();
       }
       if (ignoreTrialWorkspaceMutation(path)) return;
       if (revision >= MAX_TRIAL_WORKSPACE_MONITOR_EVENTS) {
@@ -894,19 +941,72 @@ function startTrialWorkspaceMutationMonitor(ws: WorkspaceState): {
   return {
     monitor: {
       read: () => ({ revision, healthy, reason }),
+      settle: async () => {
+        if (!healthy) return;
+        if (pendingBarrierPath) {
+          fail('Workspace mutation monitor barriers overlapped.');
+          return;
+        }
+        barrierSequence += 1;
+        const markerName = `barrier-${process.pid}-${barrierSequence}.tmp`;
+        const markerPath = join(resolvedBarrierRoot, markerName);
+        const relativeMarkerPath = `${barrierRelativeRoot}/${markerName}`;
+        const observed = new Promise<void>((resolvePromise) => {
+          pendingBarrierPath = relativeMarkerPath;
+          finishBarrier = resolvePromise;
+        });
+        try {
+          writeFileSync(markerPath, String(barrierSequence), 'utf-8');
+        } catch (err) {
+          fail(`Workspace mutation monitor barrier write failed: ${errorMessage(err)}`);
+          return;
+        }
+        let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+        await Promise.race([
+          observed,
+          new Promise<void>((resolvePromise) => {
+            timeoutHandle = setTimeout(() => {
+              if (pendingBarrierPath === relativeMarkerPath) {
+                fail('Workspace mutation monitor did not observe its barrier event.');
+              }
+              resolvePromise();
+            }, TRIAL_WORKSPACE_MONITOR_BARRIER_TIMEOUT_MS);
+          }),
+        ]);
+        if (timeoutHandle !== null) clearTimeout(timeoutHandle);
+        await new Promise<void>((resolvePromise) => setImmediate(resolvePromise));
+      },
       close: () => {
         if (closing) return;
         closing = true;
+        releaseBarrier();
         watcher.close();
       },
     },
     reason: null,
   };
 }
-
-async function settleTrialWorkspaceMutationMonitor(): Promise<void> {
-  await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 25));
+function trialCaseForWorkspaceWitnessFailure(
+  testCase: ChatPipelineTrialPlanCase,
+  detail: string,
+): ChatPipelineTrialCaseResult {
+  return {
+    id: testCase.id,
+    title: testCase.title,
+    objective: testCase.objective,
+    success: false,
+    runIds: [],
+    tasks: [],
+    expectations: [
+      {
+        type: 'case-execution',
+        passed: false,
+        detail: boundedTrialText(detail),
+      },
+    ],
+  };
 }
+
 function resultForHostWitnessFailure(
   result: ChatPipelineTrialRunResult,
   reason: string,
@@ -1220,12 +1320,13 @@ async function executeTrial(
     const baselineEvidence = trialTaskResults(baseline, null, 1);
     const cases: ChatPipelineTrialCaseResult[] = [];
     let totalTaskCount = baselineEvidence.totalTaskCount;
-    const mutationMonitorStart = existsSync(join(ws.workDir, '.git'))
-      ? startTrialWorkspaceMutationMonitor(ws)
-      : { monitor: null, reason: null };
+    const mutationMonitorStart = startTrialWorkspaceMutationMonitor(
+      ws,
+      join(stage.rootDir, '.trial-workspace-monitor'),
+    );
     workspaceMutationMonitor = mutationMonitorStart.monitor;
+    if (workspaceMutationMonitor) await workspaceMutationMonitor.settle();
     const baselineWorkspace = captureTrialWorkspaceDigest(ws);
-    if (workspaceMutationMonitor) await settleTrialWorkspaceMutationMonitor();
     const baselineMutationState = workspaceMutationMonitor?.read() ?? null;
     let expectedWorkspaceDigest = baselineWorkspace.digest;
     let expectedWorkspaceMutationRevision = baselineMutationState?.revision ?? null;
@@ -1239,11 +1340,12 @@ async function executeTrial(
         : null;
     for (const testCase of plan.cases) {
       if (controller.signal.aborted) break;
-      const workspaceFailures: string[] = [];
       if (pendingWorkspaceWitnessFailure) {
-        workspaceFailures.push(pendingWorkspaceWitnessFailure);
+        cases.push(trialCaseForWorkspaceWitnessFailure(testCase, pendingWorkspaceWitnessFailure));
         pendingWorkspaceWitnessFailure = null;
+        break;
       }
+      const workspaceFailures: string[] = [];
 
       const caseExecution = await executeTargetedTrialCase({
         ws,
@@ -1260,9 +1362,9 @@ async function executeTrial(
         testCase,
         targetTaskIds: targetTaskIdsByCase.get(testCase.id),
       });
+      if (workspaceMutationMonitor) await workspaceMutationMonitor.settle();
       const afterCase = captureTrialWorkspaceDigest(ws);
       if (workspaceMutationMonitor) {
-        await settleTrialWorkspaceMutationMonitor();
         const mutationState = workspaceMutationMonitor.read();
         if (!mutationState.healthy) {
           workspaceFailures.push(
