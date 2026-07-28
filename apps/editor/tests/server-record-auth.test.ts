@@ -267,12 +267,12 @@ describe('authenticated chat YAML stage records', () => {
     stopWorkspace(ws);
   });
 
-  test('rejects a tampered finalized result instead of trusting forged idempotency', () => {
+  test('rejects a tampered finalized result instead of trusting forged idempotency', async () => {
     const { ws, sourcePath } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
     writeFileSync(staged.stagedPath, yamlFor('agent'), 'utf-8');
-    finalizeChatYamlStage(ws, {
+    await finalizeChatYamlStage(ws, {
       stageId: stage.id,
       relativePath: staged.relativePath,
     });
@@ -283,12 +283,12 @@ describe('authenticated chat YAML stage records', () => {
     finalized.outcome = 'created';
     writeFileSync(finalizedPath, JSON.stringify(finalized), 'utf-8');
 
-    expect(() =>
+    await expect(
       finalizeChatYamlStage(ws, {
         stageId: stage.id,
         relativePath: staged.relativePath,
       }),
-    ).toThrow(/authentication/i);
+    ).rejects.toThrow(/authentication/i);
     stopWorkspace(ws);
   });
 });

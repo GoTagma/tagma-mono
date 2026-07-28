@@ -279,6 +279,17 @@ export function shouldAutoRepairCompileResult(
   return !result.success && attemptCount < maxAttempts;
 }
 
+export function shouldAutoRepairTrialResult(
+  result: { success: boolean; kind: string },
+  attemptCount: number,
+  maxAttempts: number,
+): boolean {
+  if (result.kind === 'witness-failed' || result.kind === 'busy' || result.kind === 'aborted') {
+    return false;
+  }
+  return shouldAutoRepairCompileResult(result, attemptCount, maxAttempts);
+}
+
 export function shouldTrialRunChatPipeline(args: {
   compileSuccess: boolean;
   trialRunEnabled: boolean;

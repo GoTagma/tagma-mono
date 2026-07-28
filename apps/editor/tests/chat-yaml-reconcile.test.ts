@@ -8,6 +8,7 @@ import {
   shouldAdoptFinalizedChatStateOnCurrentCanvas,
   shouldForkChatYamlResult,
   shouldAutoRepairCompileResult,
+  shouldAutoRepairTrialResult,
   chatPipelineVerificationSucceeded,
   shouldTrialRunChatPipeline,
   type ChatYamlSnapshot,
@@ -312,6 +313,21 @@ describe('shouldAutoRepairCompileResult', () => {
     expect(shouldAutoRepairCompileResult({ success: false }, 0, 2)).toBe(true);
     expect(shouldAutoRepairCompileResult({ success: false }, 2, 2)).toBe(false);
     expect(shouldAutoRepairCompileResult({ success: true }, 0, 2)).toBe(false);
+  });
+
+  test('does not spend agent repair attempts on host-only trial failures', () => {
+    expect(shouldAutoRepairTrialResult({ success: false, kind: 'witness-failed' }, 0, 2)).toBe(
+      false,
+    );
+    expect(shouldAutoRepairTrialResult({ success: false, kind: 'busy' }, 0, 2)).toBe(false);
+    expect(shouldAutoRepairTrialResult({ success: false, kind: 'aborted' }, 0, 2)).toBe(false);
+  });
+
+  test('keeps bounded repair for pipeline-authored trial failures', () => {
+    expect(shouldAutoRepairTrialResult({ success: false, kind: 'failed' }, 0, 2)).toBe(true);
+    expect(shouldAutoRepairTrialResult({ success: false, kind: 'plan-failed' }, 1, 2)).toBe(true);
+    expect(shouldAutoRepairTrialResult({ success: false, kind: 'failed' }, 2, 2)).toBe(false);
+    expect(shouldAutoRepairTrialResult({ success: true, kind: 'passed' }, 0, 2)).toBe(false);
   });
 });
 

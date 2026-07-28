@@ -39,11 +39,11 @@ import {
   type ChatPipelineTrialPlanCase,
   type ChatPipelineTrialPlanRequest,
 } from './chat-pipeline-trial-plan.js';
-import {
-  safeCaptureTrialHostWitness,
-  safeCaptureTrialWorkspaceWitness,
-  safePrepareTrialHostWitnessInputs,
-  type TrialHostWitness,
+import * as trialWitness from './chat-pipeline-trial-witness.js';
+import type {
+  PreparedTrialHostWitnessInputs,
+  TrialHostWorkspaceWitness,
+  TrialHostWitness,
 } from './chat-pipeline-trial-witness.js';
 import { buildPythonAgentRunEnv, pythonAgentVenvBinDir } from './python-agent.js';
 import { runPreflight } from './preflight-requirements.js';
@@ -96,6 +96,7 @@ const TRIAL_WORKSPACE_MONITOR_IGNORED_TAGMA_DIRS = new Set([
 export type ChatPipelineTrialRunKind =
   | 'passed'
   | 'failed'
+  | 'witness-failed'
   | 'plan-required'
   | 'plan-failed'
   | 'compile-failed'
@@ -179,7 +180,7 @@ interface TrialPipelineSnapshot {
   treeHash: string;
 }
 
-const inFlightByVerificationKey = new Map<string, Promise<ChatPipelineTrialRunResult>>();
+const inFlightByCacheKey = new Map<string, Promise<ChatPipelineTrialRunResult>>();
 const activeTrialByWorkspace = new Map<string, string>();
 const activeTrialIdentityByWorkspace = new Map<
   string,
@@ -190,6 +191,76 @@ const activeTrialIdentityByWorkspace = new Map<
     abortState: { timedOut: boolean; userAborted: boolean };
   }
 >();
+
+type TrialHostWitnessResult = ReturnType<typeof trialWitness.safeCaptureTrialHostWitness>;
+type TrialWorkspaceWitnessResult = ReturnType<typeof trialWitness.safeCaptureTrialWorkspaceWitness>;
+type TrialWitnessAsyncModule = typeof trialWitness & {
+  safeCaptureTrialHostWitnessAsync?: (
+    ws: WorkspaceState,
+    prepared: PreparedTrialHostWitnessInputs,
+    signal?: AbortSignal,
+  ) => Promise<TrialHostWitnessResult>;
+  safeCaptureTrialWorkspaceWitnessAsync?: (
+    ws: WorkspaceState,
+    signal?: AbortSignal,
+  ) => Promise<TrialWorkspaceWitnessResult>;
+};
+
+const trialWitnessAsync = trialWitness as TrialWitnessAsyncModule;
+const { safePrepareTrialHostWitnessInputs } = trialWitness;
+
+export const __chatPipelineTrialRunTestHooks: {
+  captureHostWitnessAsync?: (
+    ws: WorkspaceState,
+    prepared: PreparedTrialHostWitnessInputs,
+    signal?: AbortSignal,
+  ) => Promise<TrialHostWitnessResult>;
+  captureWorkspaceWitnessAsync?: (
+    ws: WorkspaceState,
+    signal?: AbortSignal,
+  ) => Promise<TrialWorkspaceWitnessResult>;
+  timeoutMsOverride?: number;
+} = {};
+
+function abortReasonMessage(signal: AbortSignal): string {
+  const reason = signal.reason;
+  if (typeof reason === 'string' && reason.trim()) return reason;
+  if (reason instanceof Error && reason.message.trim()) return reason.message;
+  return 'chat trial run aborted';
+}
+
+async function captureTrialHostWitnessAsync(
+  ws: WorkspaceState,
+  prepared: PreparedTrialHostWitnessInputs,
+  signal?: AbortSignal,
+): Promise<TrialHostWitnessResult> {
+  if (__chatPipelineTrialRunTestHooks.captureHostWitnessAsync) {
+    return await __chatPipelineTrialRunTestHooks.captureHostWitnessAsync(ws, prepared, signal);
+  }
+  if (trialWitnessAsync.safeCaptureTrialHostWitnessAsync) {
+    return await trialWitnessAsync.safeCaptureTrialHostWitnessAsync(ws, prepared, signal);
+  }
+  if (signal?.aborted) {
+    return { witness: null, reason: abortReasonMessage(signal) };
+  }
+  return trialWitness.safeCaptureTrialHostWitness(ws, prepared);
+}
+
+async function captureTrialWorkspaceWitnessAsync(
+  ws: WorkspaceState,
+  signal?: AbortSignal,
+): Promise<TrialWorkspaceWitnessResult> {
+  if (__chatPipelineTrialRunTestHooks.captureWorkspaceWitnessAsync) {
+    return await __chatPipelineTrialRunTestHooks.captureWorkspaceWitnessAsync(ws, signal);
+  }
+  if (trialWitnessAsync.safeCaptureTrialWorkspaceWitnessAsync) {
+    return await trialWitnessAsync.safeCaptureTrialWorkspaceWitnessAsync(ws, signal);
+  }
+  if (signal?.aborted) {
+    return { witness: null, reason: abortReasonMessage(signal) };
+  }
+  return trialWitness.safeCaptureTrialWorkspaceWitness(ws);
+}
 
 export function cancelChatPipelineTrial(
   ws: WorkspaceState,
@@ -353,7 +424,7 @@ function redactTrialText(value: string): string {
 function resultForSetupFailure(
   kind: Exclude<
     ChatPipelineTrialRunKind,
-    'passed' | 'failed' | 'timed-out' | 'plan-required' | 'plan-failed'
+    'passed' | 'failed' | 'plan-required' | 'plan-failed'
   >,
   message: string,
   startedAt: number,
@@ -373,6 +444,32 @@ function resultForSetupFailure(
   };
 }
 
+function resultForStoppedBeforeRun(
+  abortState: { timedOut: boolean },
+  startedAt: number,
+): ChatPipelineTrialRunResult {
+  if (abortState.timedOut) {
+    return resultForSetupFailure(
+      'timed-out',
+      `Trial run timed out after ${CHAT_PIPELINE_TRIAL_TIMEOUT_MS}ms.`,
+      startedAt,
+    );
+  }
+  return {
+    version: TRIAL_CACHE_VERSION,
+    success: false,
+    kind: 'aborted',
+    ran: false,
+    runId: null,
+    summary: boundedTrialText('Trial run stopped by the user.'),
+    durationMs: Math.max(0, Date.now() - startedAt),
+    totalTaskCount: 0,
+    omittedTaskCount: 0,
+    tasks: [],
+    cases: [],
+  };
+}
+
 function resultForAborted(
   result: ChatPipelineTrialRunResult,
   startedAt: number,
@@ -384,6 +481,23 @@ function resultForAborted(
     summary: boundedTrialText('Trial run stopped by the user.'),
     durationMs: Math.max(0, Date.now() - startedAt),
   };
+}
+
+function resultForStopped(
+  result: ChatPipelineTrialRunResult,
+  abortState: { timedOut: boolean },
+  startedAt: number,
+): ChatPipelineTrialRunResult {
+  if (abortState.timedOut) {
+    return {
+      ...result,
+      success: false,
+      kind: 'timed-out',
+      summary: boundedTrialText(`Trial run timed out after ${CHAT_PIPELINE_TRIAL_TIMEOUT_MS}ms.`),
+      durationMs: Math.max(0, Date.now() - startedAt),
+    };
+  }
+  return resultForAborted(result, startedAt);
 }
 
 function trialPlanSummary(plan: ChatPipelineTrialPlan): ChatPipelineTrialPlanSummary {
@@ -802,11 +916,14 @@ interface RunTrialPipelineInput {
   testCase?: ChatPipelineTrialPlanCase;
 }
 
-function captureTrialWorkspaceDigest(ws: WorkspaceState): {
+async function captureTrialWorkspaceDigest(
+  ws: WorkspaceState,
+  signal?: AbortSignal,
+): Promise<{
   digest: string | null;
   reason: string | null;
-} {
-  const captured = safeCaptureTrialWorkspaceWitness(ws);
+}> {
+  const captured = await captureTrialWorkspaceWitnessAsync(ws, signal);
   return {
     digest: captured.witness?.digest ?? null,
     reason: captured.reason,
@@ -959,7 +1076,7 @@ function resultForHostWitnessFailure(
   return {
     ...result,
     success: false,
-    kind: 'failed',
+    kind: 'witness-failed',
     summary: boundedTrialText(`${result.summary}
 
 Trial authorization witness failed: ${reason}`),
@@ -1244,6 +1361,7 @@ async function executeTrial(
   });
   const runId = generateRunId();
   let workspaceMutationMonitor: TrialWorkspaceMutationMonitor | null = null;
+  let hostWitnessFailure = false;
 
   try {
     const secretValues = Object.values({ ...redactionSecretEnv, ...requirementsSecretEnv }).filter(
@@ -1268,7 +1386,7 @@ async function executeTrial(
     const mutationMonitorStart = startTrialWorkspaceMutationMonitor(ws);
     workspaceMutationMonitor = mutationMonitorStart.monitor;
     if (workspaceMutationMonitor) await workspaceMutationMonitor.settle();
-    const baselineWorkspace = captureTrialWorkspaceDigest(ws);
+    const baselineWorkspace = await captureTrialWorkspaceDigest(ws, controller.signal);
     const baselineMutationState = workspaceMutationMonitor?.read() ?? null;
     let expectedWorkspaceMutationRevision = baselineMutationState?.revision ?? null;
     let pendingWorkspaceWitnessFailure = baselineWorkspace.digest
@@ -1279,6 +1397,7 @@ async function executeTrial(
       : baselineMutationState && !baselineMutationState.healthy
         ? `Could not verify that isolated cases left the real workspace unchanged: ${baselineMutationState.reason ?? 'workspace mutation monitor failed'}.`
         : null;
+    if (pendingWorkspaceWitnessFailure) hostWitnessFailure = true;
     for (const testCase of plan.cases) {
       if (controller.signal.aborted) break;
       if (pendingWorkspaceWitnessFailure) {
@@ -1337,16 +1456,20 @@ async function executeTrial(
             };
       cases.push(caseResult);
       totalTaskCount += caseExecution.totalTaskCount;
-      if (workspaceFailures.length > 0) break;
+      if (workspaceFailures.length > 0) {
+        hostWitnessFailure = true;
+        break;
+      }
     }
     if (baselineWorkspace.digest) {
-      const finalWorkspace = captureTrialWorkspaceDigest(ws);
+      const finalWorkspace = await captureTrialWorkspaceDigest(ws, controller.signal);
       const finalWorkspaceFailure = !finalWorkspace.digest
         ? `Could not capture the real workspace after isolated cases: ${finalWorkspace.reason ?? 'unknown witness failure'}.`
         : finalWorkspace.digest !== baselineWorkspace.digest
           ? 'Isolated cases modified the real workspace; case fixtures and outputs must remain isolated.'
           : null;
       if (finalWorkspaceFailure) {
+        hostWitnessFailure = true;
         const lastCaseIndex = cases.length - 1;
         const lastCase = cases[lastCaseIndex];
         if (lastCase) {
@@ -1388,7 +1511,13 @@ async function executeTrial(
     return {
       version: TRIAL_CACHE_VERSION,
       success,
-      kind: abortState.timedOut ? 'timed-out' : success ? 'passed' : 'failed',
+      kind: abortState.timedOut
+        ? 'timed-out'
+        : hostWitnessFailure
+          ? 'witness-failed'
+          : success
+            ? 'passed'
+            : 'failed',
       ran: true,
       runId,
       summary: buildPlannedTrialSummary(
@@ -1473,34 +1602,8 @@ export async function trialRunChatYamlStage(
     const cachePath = trialCachePath(stage.rootDir, trialId, entry.relativePath, inputHash);
     const cached = readCachedTrial(ws, stage.id, cachePath, inputHash);
     if (cached) return cached;
-    const prepared = safePrepareTrialHostWitnessInputs(ws, {
-      relativePath: entry.relativePath,
-      sourcePath: entry.sourcePath,
-      stagedYamlPath: snapshot.yamlPath,
-    });
-    if (!prepared.prepared) {
-      return resultForSetupFailure(
-        'setup-failed',
-        `Trial host witness setup failed: ${prepared.reason}`,
-        startedAt,
-      );
-    }
-    const hostWitnessInputs = prepared.prepared;
-    const currentWitness = safeCaptureTrialHostWitness(ws, hostWitnessInputs);
-    if (!currentWitness.witness) {
-      return resultForSetupFailure(
-        'setup-failed',
-        `Trial host witness capture failed: ${currentWitness.reason}`,
-        startedAt,
-      );
-    }
-    const preWitness = currentWitness.witness;
-    const verificationHash = buildChatPipelineTrialVerificationHash({
-      inputHash,
-      hostWitnessDigest: preWitness.digest,
-    });
-    const inFlightKey = `${cachePath}\0${verificationHash}`;
-    const existing = inFlightByVerificationKey.get(inFlightKey);
+    const inFlightKey = cachePath;
+    const existing = inFlightByCacheKey.get(inFlightKey);
     if (existing) return existing;
     pendingRunReservation = beginRunSessionStart(ws);
     if (pendingRunReservation === null) {
@@ -1523,10 +1626,13 @@ export async function trialRunChatYamlStage(
     const controller = new AbortController();
     const abortState = { timedOut: false, userAborted: false };
     const activeIdentity = { stageId: input.stageId, trialId, controller, abortState };
+    const timeoutMsOverride = __chatPipelineTrialRunTestHooks.timeoutMsOverride;
+    const timeoutMs =
+      typeof timeoutMsOverride === 'number' ? timeoutMsOverride : CHAT_PIPELINE_TRIAL_TIMEOUT_MS;
     const timeout = setTimeout(() => {
       abortState.timedOut = true;
       controller.abort('chat trial run timeout');
-    }, CHAT_PIPELINE_TRIAL_TIMEOUT_MS);
+    }, timeoutMs);
     timeout.unref?.();
     activeTrialByWorkspace.set(ws.key, inFlightKey);
     activeTrialIdentityByWorkspace.set(ws.key, activeIdentity);
@@ -1538,6 +1644,41 @@ export async function trialRunChatYamlStage(
     pendingRunReservation = null;
     const promise = (async () => {
       try {
+        if (controller.signal.aborted) {
+          return resultForStoppedBeforeRun(abortState, startedAt);
+        }
+        const prepared = safePrepareTrialHostWitnessInputs(ws, {
+          relativePath: entry.relativePath,
+          sourcePath: entry.sourcePath,
+          stagedYamlPath: executionSnapshot.yamlPath,
+        });
+        if (controller.signal.aborted) {
+          return resultForStoppedBeforeRun(abortState, startedAt);
+        }
+        if (!prepared.prepared) {
+          return resultForSetupFailure(
+            'witness-failed',
+            `Trial host witness setup failed: ${prepared.reason}`,
+            startedAt,
+          );
+        }
+        const hostWitnessInputs = prepared.prepared;
+        const currentWitness = await captureTrialHostWitnessAsync(
+          ws,
+          hostWitnessInputs,
+          controller.signal,
+        );
+        if (controller.signal.aborted) {
+          return resultForStoppedBeforeRun(abortState, startedAt);
+        }
+        if (!currentWitness.witness) {
+          return resultForSetupFailure(
+            'witness-failed',
+            `Trial host witness capture failed: ${currentWitness.reason}`,
+            startedAt,
+          );
+        }
+        const preWitness = currentWitness.witness;
         let result = await executeTrial(
           ws,
           stage,
@@ -1547,8 +1688,8 @@ export async function trialRunChatYamlStage(
           controller,
           abortState,
         );
-        if (abortState.userAborted || (controller.signal.aborted && !abortState.timedOut)) {
-          result = resultForAborted(result, startedAt);
+        if (controller.signal.aborted) {
+          return resultForStopped(result, abortState, startedAt);
         }
         if (result.kind !== 'aborted') {
           const postPrepared = safePrepareTrialHostWitnessInputs(ws, {
@@ -1556,6 +1697,9 @@ export async function trialRunChatYamlStage(
             sourcePath: entry.sourcePath,
             stagedYamlPath: executionSnapshot.yamlPath,
           });
+          if (controller.signal.aborted) {
+            return resultForStopped(result, abortState, startedAt);
+          }
           if (!postPrepared.prepared) {
             if (result.success) {
               return resultForHostWitnessFailure(
@@ -1565,7 +1709,14 @@ export async function trialRunChatYamlStage(
             }
             return result;
           }
-          const postWitness = safeCaptureTrialHostWitness(ws, postPrepared.prepared);
+          const postWitness = await captureTrialHostWitnessAsync(
+            ws,
+            postPrepared.prepared,
+            controller.signal,
+          );
+          if (controller.signal.aborted) {
+            return resultForStopped(result, abortState, startedAt);
+          }
           if (!postWitness.witness) {
             if (result.success) {
               return resultForHostWitnessFailure(
@@ -1608,11 +1759,11 @@ export async function trialRunChatYamlStage(
         }
         if (ws.chatPipelineTrialAbort === controller) ws.chatPipelineTrialAbort = null;
         endRunSessionStart(ws, runReservation);
-        inFlightByVerificationKey.delete(inFlightKey);
+        inFlightByCacheKey.delete(inFlightKey);
         cleanupTrialPipelineSnapshot(executionSnapshot);
       }
     })();
-    inFlightByVerificationKey.set(inFlightKey, promise);
+    inFlightByCacheKey.set(inFlightKey, promise);
     return promise;
   } finally {
     if (pendingRunReservation !== null) endRunSessionStart(ws, pendingRunReservation);

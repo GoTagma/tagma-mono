@@ -107,6 +107,26 @@ describe('ChatPanel export affordance', () => {
     expect(availability).toEqual({
       blockedByAnotherChatUpdate: false,
       canSend: true,
+      queueOnSend: false,
+    });
+  });
+
+  test('keeps send enabled and queues follow-ups while this chat is reconciling', () => {
+    expect(
+      getChatComposerAvailability({
+        hasContent: true,
+        hasModel: true,
+        ready: true,
+        sending: false,
+        reconciling: true,
+        flushing: false,
+        yamlEditLocked: true,
+        yamlEditLockLocal: true,
+      }),
+    ).toEqual({
+      blockedByAnotherChatUpdate: false,
+      canSend: true,
+      queueOnSend: true,
     });
   });
 
@@ -134,6 +154,7 @@ describe('ChatPanel export affordance', () => {
     ).toEqual({
       blockedByAnotherChatUpdate: true,
       canSend: false,
+      queueOnSend: false,
     });
   });
 

@@ -14,11 +14,8 @@ import { parseYaml, serializePipeline } from '@tagma/sdk/yaml';
 
 import { readChatPipelineTrialPlan } from './chat-pipeline-trial-plan.js';
 import { readEditorSettings } from './plugins/loader.js';
-import {
-  safeCaptureTrialHostWitness,
-  safePrepareTrialHostWitnessInputs,
-  type TrialHostWitness,
-} from './chat-pipeline-trial-witness.js';
+import * as trialWitness from './chat-pipeline-trial-witness.js';
+import type { PreparedTrialHostWitnessInputs, TrialHostWitness } from './chat-pipeline-trial-witness.js';
 
 import type { EditorLayout, WorkspaceState } from './workspace-state.js';
 import { atomicWriteFileSync, isPathWithin } from './path-utils.js';
@@ -67,7 +64,34 @@ const FINALIZE_TRIAL_ID_RE = /^[A-Za-z0-9_-]{1,160}$/;
 export const __chatYamlStagingTestHooks: {
   afterDestinationYamlWrite?: (destinationYamlPath: string) => void;
   beforeFinalizeResultWrite?: (resultPath: string) => void;
+  captureHostWitnessAsync?: (
+    ws: WorkspaceState,
+    prepared: PreparedTrialHostWitnessInputs,
+  ) => Promise<ReturnType<typeof trialWitness.safeCaptureTrialHostWitness>>;
 } = {};
+
+type TrialWitnessAsyncModule = typeof trialWitness & {
+  safeCaptureTrialHostWitnessAsync?: (
+    ws: WorkspaceState,
+    prepared: PreparedTrialHostWitnessInputs,
+  ) => Promise<ReturnType<typeof trialWitness.safeCaptureTrialHostWitness>>;
+};
+
+const trialWitnessAsync = trialWitness as TrialWitnessAsyncModule;
+const { safePrepareTrialHostWitnessInputs } = trialWitness;
+
+async function captureFinalizeHostWitnessAsync(
+  ws: WorkspaceState,
+  prepared: PreparedTrialHostWitnessInputs,
+): Promise<ReturnType<typeof trialWitness.safeCaptureTrialHostWitness>> {
+  if (__chatYamlStagingTestHooks.captureHostWitnessAsync) {
+    return await __chatYamlStagingTestHooks.captureHostWitnessAsync(ws, prepared);
+  }
+  if (trialWitnessAsync.safeCaptureTrialHostWitnessAsync) {
+    return await trialWitnessAsync.safeCaptureTrialHostWitnessAsync(ws, prepared);
+  }
+  return trialWitness.safeCaptureTrialHostWitness(ws, prepared);
+}
 
 type ChatYamlStageConflict =
   | 'local-branch-changed'
@@ -1087,14 +1111,14 @@ function trialFinalizeCachePath(
   return join(paths.rootDir, '.trial-runs', `${digest}.json`);
 }
 
-function hasSuccessfulVerifiedTrial(
+async function hasSuccessfulVerifiedTrial(
   ws: WorkspaceState,
   paths: StagePaths,
   stagedPath: string,
   relativePath: string,
   sourcePath: string | null,
   trialId: string | undefined,
-): boolean {
+) : Promise<boolean> {
   if (readEditorSettings(ws).opencodeChatTrialRunEnabled === false) return true;
   const normalizedTrialId = normalizeFinalizeTrialId(trialId);
   if (!normalizedTrialId) return false;
@@ -1115,7 +1139,7 @@ function hasSuccessfulVerifiedTrial(
     stagedYamlPath: stagedPath,
   });
   if (!prepared.prepared) return false;
-  const witness = safeCaptureTrialHostWitness(ws, prepared.prepared);
+  const witness = await captureFinalizeHostWitnessAsync(ws, prepared.prepared);
   if (!witness.witness) return false;
   const verificationHash = buildChatPipelineTrialVerificationHash({
     inputHash,
@@ -1140,10 +1164,10 @@ function hasSuccessfulVerifiedTrial(
   }
 }
 
-export function finalizeChatYamlStage(
+export async function finalizeChatYamlStage(
   ws: WorkspaceState,
   input: ChatYamlStageFinalizeInput,
-): ChatYamlStageFinalizeResult {
+): Promise<ChatYamlStageFinalizeResult> {
   const { paths, metadata } = readMetadata(ws, input.stageId);
   const previousResult = readFinalizeResult(paths);
   if (previousResult) {
@@ -1184,7 +1208,14 @@ export function finalizeChatYamlStage(
 
   const trialVerificationSucceeded =
     !compile.success ||
-    hasSuccessfulVerifiedTrial(ws, paths, stagedPath, relativePath, sourcePath, input.trialId);
+    (await hasSuccessfulVerifiedTrial(
+      ws,
+      paths,
+      stagedPath,
+      relativePath,
+      sourcePath,
+      input.trialId,
+    ));
 
   const conflicts: ChatYamlStageConflict[] = [];
   if (input.forceForkReason) conflicts.push(input.forceForkReason);

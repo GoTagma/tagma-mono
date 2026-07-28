@@ -126,13 +126,13 @@ export function getChatComposerAvailability(input: {
   flushing: boolean;
   yamlEditLocked: boolean;
   yamlEditLockLocal: boolean;
-}): { blockedByAnotherChatUpdate: boolean; canSend: boolean } {
-  const blockedByAnotherChatUpdate =
-    !input.sending &&
-    (input.reconciling || input.flushing || (input.yamlEditLocked && !input.yamlEditLockLocal));
+}): { blockedByAnotherChatUpdate: boolean; canSend: boolean; queueOnSend: boolean } {
+  const blockedByAnotherChatUpdate = input.yamlEditLocked && !input.yamlEditLockLocal;
+  const queueOnSend = input.sending || (!input.sending && (input.reconciling || input.flushing));
   return {
     blockedByAnotherChatUpdate,
     canSend: input.hasContent && input.hasModel && input.ready && !blockedByAnotherChatUpdate,
+    queueOnSend,
   };
 }
 
@@ -176,7 +176,7 @@ export function ChatComposer() {
     el.style.height = `${next}px`;
   }, [text]);
 
-  const { blockedByAnotherChatUpdate, canSend } = getChatComposerAvailability({
+  const { blockedByAnotherChatUpdate, canSend, queueOnSend } = getChatComposerAvailability({
     hasContent: text.trim().length > 0 || hasAttachments,
     hasModel: !!model,
     ready,
@@ -213,11 +213,13 @@ export function ChatComposer() {
     : model
       ? blockedByAnotherChatUpdate
         ? 'Waiting for the current chat update to finish...'
+        : queueOnSend
+          ? 'Queue a follow-up for this chat... (Enter to send)'
         : 'Message opencode... (Enter to send)'
       : 'Pick a model first';
   const sendLabel = blockedByAnotherChatUpdate
     ? 'Waiting for current chat update'
-    : sending
+    : queueOnSend
       ? 'Queue message'
       : 'Send';
 

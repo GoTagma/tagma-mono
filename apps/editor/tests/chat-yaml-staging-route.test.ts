@@ -688,7 +688,7 @@ describe('chat YAML staging routes', () => {
     expect(existsSync(join(ws.workDir, 'outputs', 'a-report.txt'))).toBe(false);
 
     const finalizeRes = makeRes();
-    getRoute('/api/workspace/chat-yaml-stage/finalize')(
+    await getRoute('/api/workspace/chat-yaml-stage/finalize')(
       request(
         ws,
         { stageId: stage.id, relativePath: entry.relativePath, trialId: 'safe_edge_cases' },
@@ -752,7 +752,7 @@ describe('chat YAML staging routes', () => {
     writeFileSync(cachePath, JSON.stringify(cached, null, 2) + '\n', 'utf-8');
 
     const finalizeRes = makeRes();
-    getRoute('/api/workspace/chat-yaml-stage/finalize')(
+    await getRoute('/api/workspace/chat-yaml-stage/finalize')(
       request(ws, { stageId: stage.id, relativePath: entry.relativePath, trialId }, 'chat-lock'),
       finalizeRes,
     );
@@ -811,7 +811,7 @@ describe('chat YAML staging routes', () => {
     writeFileSync(cachePath, JSON.stringify(cached, null, 2) + '\n', 'utf-8');
 
     const finalizeRes = makeRes();
-    getRoute('/api/workspace/chat-yaml-stage/finalize')(
+    await getRoute('/api/workspace/chat-yaml-stage/finalize')(
       request(ws, { stageId: stage.id, relativePath: entry.relativePath, trialId }, 'chat-lock'),
       finalizeRes,
     );
@@ -881,7 +881,7 @@ describe('chat YAML staging routes', () => {
     writeFileSync(replayPath, cacheText, 'utf-8');
 
     const finalizeRes = makeRes();
-    getRoute('/api/workspace/chat-yaml-stage/finalize')(
+    await getRoute('/api/workspace/chat-yaml-stage/finalize')(
       request(
         ws,
         { stageId: stage.id, relativePath: entry.relativePath, trialId: replayTrialId },
@@ -1355,7 +1355,7 @@ describe('chat YAML staging routes', () => {
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });
-  test('forces a numbered copy when trial-run verification is missing while trial-run is enabled', () => {
+  test('forces a numbered copy when trial-run verification is missing while trial-run is enabled', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();
     const startRes = makeRes();
@@ -1370,7 +1370,7 @@ describe('chat YAML staging routes', () => {
     const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
     writeFileSync(entry.stagedPath, yamlFor('Verified Trial Required', 'agent'), 'utf-8');
     const finalizeRes = makeRes();
-    getRoute('/api/workspace/chat-yaml-stage/finalize')(
+    await getRoute('/api/workspace/chat-yaml-stage/finalize')(
       request(ws, { stageId: stage.id, relativePath: entry.relativePath }, 'chat-lock'),
       finalizeRes,
     );
@@ -1386,7 +1386,7 @@ describe('chat YAML staging routes', () => {
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });
-  test('still allows live finalize without any trial identity when trial-run is disabled', () => {
+  test('still allows live finalize without any trial identity when trial-run is disabled', async () => {
     const { ws, sourcePath } = makeWorkspace();
     mkdirSync(join(ws.workDir, '.tagma'), { recursive: true });
     writeFileSync(
@@ -1407,7 +1407,7 @@ describe('chat YAML staging routes', () => {
     const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
     writeFileSync(entry.stagedPath, yamlFor('Trial Disabled', 'agent'), 'utf-8');
     const finalizeRes = makeRes();
-    getRoute('/api/workspace/chat-yaml-stage/finalize')(
+    await getRoute('/api/workspace/chat-yaml-stage/finalize')(
       request(ws, { stageId: stage.id, relativePath: entry.relativePath }, 'chat-lock'),
       finalizeRes,
     );
@@ -1420,7 +1420,7 @@ describe('chat YAML staging routes', () => {
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });
-  test('requires the active chat lock id and bypasses the global revision middleware', () => {
+  test('requires the active chat lock id and bypasses the global revision middleware', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const route = createHarness()('/api/workspace/chat-yaml-stage/start');
     const missing = makeRes();
@@ -1435,7 +1435,7 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
-  test('keeps start and compile revision-neutral and advances revision on publish', () => {
+  test('keeps start and compile revision-neutral and advances revision on publish', async () => {
     const { ws, sourcePath } = makeWorkspace();
     mkdirSync(join(ws.workDir, '.tagma'), { recursive: true });
     writeFileSync(
@@ -1467,7 +1467,7 @@ describe('chat YAML staging routes', () => {
     expect(ws.stateRevision).toBe(0);
 
     const finalizeRes = makeRes();
-    getRoute('/api/workspace/chat-yaml-stage/finalize')(
+    await getRoute('/api/workspace/chat-yaml-stage/finalize')(
       request(ws, { stageId: stage.id, relativePath: entry.relativePath }, 'chat-lock'),
       finalizeRes,
     );
@@ -1480,7 +1480,7 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
-  test('rejects malformed finalize conflict hints before touching the stage', () => {
+  test('rejects malformed finalize conflict hints before touching the stage', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();
     const startRes = makeRes();
@@ -1495,7 +1495,7 @@ describe('chat YAML staging routes', () => {
     const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
 
     const booleanRes = makeRes();
-    getRoute('/api/workspace/chat-yaml-stage/finalize')(
+    await getRoute('/api/workspace/chat-yaml-stage/finalize')(
       request(
         ws,
         {
@@ -1510,7 +1510,7 @@ describe('chat YAML staging routes', () => {
     expect(booleanRes.statusCode).toBe(400);
 
     const branchRes = makeRes();
-    getRoute('/api/workspace/chat-yaml-stage/finalize')(
+    await getRoute('/api/workspace/chat-yaml-stage/finalize')(
       request(
         ws,
         {
@@ -1961,7 +1961,7 @@ describe('chat YAML staging routes', () => {
     expect(readFileSync(counterPath, 'utf-8')).toBe('1');
 
     const finalizeRes = makeRes();
-    getRoute('/api/workspace/chat-yaml-stage/finalize')(
+    await getRoute('/api/workspace/chat-yaml-stage/finalize')(
       request(
         ws,
         { stageId: stage.id, relativePath: entry.relativePath, trialId: 'completed_retry' },
@@ -2036,7 +2036,7 @@ describe('chat YAML staging routes', () => {
 
     writeFileSync(helperInputPath, 'beta\n', 'utf-8');
     const finalizeRes = makeRes();
-    getRoute('/api/workspace/chat-yaml-stage/finalize')(
+    await getRoute('/api/workspace/chat-yaml-stage/finalize')(
       request(
         ws,
         {
@@ -2116,7 +2116,7 @@ describe('chat YAML staging routes', () => {
 
     writeFileSync(externalInputPath, 'beta\n', 'utf-8');
     const finalizeRes = makeRes();
-    getRoute('/api/workspace/chat-yaml-stage/finalize')(
+    await getRoute('/api/workspace/chat-yaml-stage/finalize')(
       request(
         ws,
         {

@@ -255,11 +255,14 @@ export type ChatTurnHealth = {
   lastSseEventAt?: number | null;
 };
 
+type ChatQueuedDispatchMode = 'reuse-logical-turn' | 'start-fresh';
+
 type ChatSessionRuntimeState = {
   messages: OpencodeThreadEntry[];
   sending: boolean;
   pendingUserText: string | null;
   queuedMessages: ChatQueuedMessage[];
+  queuedDispatchMode: ChatQueuedDispatchMode | null;
   flushing: boolean;
   pendingPermissions: PendingPermission[];
   turnStartedAt: number | null;
@@ -327,9 +330,10 @@ interface ChatStore {
    * after the server responds or an SSE refetch fires. The renderer drops
    * this once a real user message containing the same text shows up in
    * `messages`, and `send()` clears it unconditionally in its finally block.
-   */
+  */
   pendingUserText: string | null;
   queuedMessages: ChatQueuedMessage[];
+  queuedDispatchMode: ChatQueuedDispatchMode | null;
   /**
    * True while a force-push abort is in flight. Disables the force-push
    * button to prevent duplicate aborts. Reset by `flushQueueNow`'s finally
@@ -539,6 +543,7 @@ interface ChatStore {
   newSession: () => Promise<void>;
   deleteSession: (id: string, workspaceKey?: string) => Promise<void>;
   send: (text: string) => Promise<void>;
+  dispatchQueuedMessagesIfReady: () => boolean;
   cancelQueuedMessage: (id: string) => void;
   /**
    * Abort the current opencode turn so the queued messages take over as
@@ -1899,31 +1904,68 @@ function clearPendingPartsForSession(sessionID: string | null): void {
   }
 }
 
+function canQueueFreshPromptDuringBarrier(
+  state: Pick<ChatStore, 'reconciling' | 'flushing' | 'activeChatYamlLifecycle'>,
+): boolean {
+  return state.reconciling || state.flushing || !!state.activeChatYamlLifecycle;
+}
+
+function hasExternalChatPromptBarrier(): boolean {
+  return isYamlEditLocked() && !isLocalYamlEditLockHeldForWorkspace();
+}
+
+function canDispatchFreshQueuedPrompt(
+  state: Pick<
+    ChatStore,
+    'sending' | 'pendingUserText' | 'reconciling' | 'flushing' | 'activeChatYamlLifecycle' | 'abortRecovery'
+  >,
+): boolean {
+  return (
+    !state.sending &&
+    !state.pendingUserText &&
+    !state.reconciling &&
+    !state.flushing &&
+    !state.activeChatYamlLifecycle &&
+    !state.abortRecovery &&
+    !hasExternalChatPromptBarrier()
+  );
+}
+
 function dispatchNextQueuedPrompt(get: () => ChatStore, set: ChatSet): boolean {
+  const state = get();
+  const mode =
+    state.queuedDispatchMode ??
+    (state.queuedMessages.length > 0 ? ('reuse-logical-turn' as const) : null);
+  if (!mode) return false;
   if (queuedPromptDispatchInFlight) return true;
   // A forced restart has already ended the visible turn, but its replacement
   // OpenCode process may still be inside the sidecar health check. Keep queued
   // prompts parked until the new client is ready instead of sending them to
   // the killed process's cached port.
   if (forcedRestartRecoveries.has(getOpencodeWorkspaceKey())) return true;
+  if (mode === 'start-fresh' && !canDispatchFreshQueuedPrompt(state)) return false;
   // Drain the whole queue into a single prompt: messages the user typed while
   // OpenCode was busy are merged with `\n\n` and sent in one round-trip rather
   // than dispatched one-by-one — fewer turns, fewer context-prefixes, and the
   // model sees the user's intent as one coherent block.
-  const { combined, combinedContext } = drainQueuedMessages(get().queuedMessages);
-  if (combined === null) return false;
+  const { combined, combinedContext } = drainQueuedMessages(state.queuedMessages);
+  if (combined === null) {
+    set({ queuedDispatchMode: null });
+    return false;
+  }
   queuedPromptDispatchInFlight = true;
-  set({ queuedMessages: [] });
+  set({ queuedMessages: [], queuedDispatchMode: null });
   // Attachments were already cleared at enqueue time; the context rides on
   // the queued messages, so just forward it (no clearAttachmentIds needed).
+  const reuseLogicalTurn = mode === 'reuse-logical-turn';
   void promptOpencode(get, set, combined, {
     context: combinedContext,
-    reuseLogicalTurn: true,
+    ...(reuseLogicalTurn ? { reuseLogicalTurn: true } : {}),
   })
     .catch(() => {
       // The previous assistant work still needs one final reconciliation even
       // when the queued continuation fails before OpenCode accepts it.
-      finishChatTurn(set, {}, true);
+      if (reuseLogicalTurn) finishChatTurn(set, {}, true);
     })
     .finally(() => {
       queuedPromptDispatchInFlight = false;
@@ -2589,6 +2631,7 @@ function idleSessionRuntimeState(messages: OpencodeThreadEntry[] = []): ChatSess
     sending: false,
     pendingUserText: null,
     queuedMessages: [],
+    queuedDispatchMode: null,
     flushing: false,
     pendingPermissions: [],
     turnStartedAt: null,
@@ -2608,6 +2651,7 @@ function captureSessionRuntimeState(state: ChatStore): ChatSessionRuntimeState {
     sending: state.sending,
     pendingUserText: state.pendingUserText,
     queuedMessages: state.queuedMessages,
+    queuedDispatchMode: state.queuedDispatchMode,
     flushing: state.flushing,
     pendingPermissions: state.pendingPermissions,
     turnStartedAt: state.turnStartedAt,
@@ -2627,6 +2671,7 @@ function runtimePatch(runtime: ChatSessionRuntimeState): Partial<ChatStore> {
     sending: runtime.sending,
     pendingUserText: runtime.pendingUserText,
     queuedMessages: runtime.queuedMessages,
+    queuedDispatchMode: runtime.queuedDispatchMode,
     flushing: runtime.flushing,
     pendingPermissions: runtime.pendingPermissions,
     turnStartedAt: runtime.turnStartedAt,
@@ -2687,7 +2732,14 @@ function restoreCachedRuntime(
   fetchedMessages: OpencodeThreadEntry[],
 ): ChatSessionRuntimeState {
   if (!cached) return idleSessionRuntimeState(fetchedMessages);
-  if (cached.sending || cached.pendingUserText || cached.queuedMessages.length > 0) return cached;
+  if (
+    cached.sending ||
+    cached.pendingUserText ||
+    cached.queuedMessages.length > 0 ||
+    cached.queuedDispatchMode
+  ) {
+    return cached;
+  }
   if (cached.messages.length > 0 && fetchedMessages.length === 0) return cached;
   return { ...cached, messages: fetchedMessages };
 }
@@ -2872,6 +2924,7 @@ function finishSessionRuntime(
     sending: false,
     pendingUserText: null,
     queuedMessages: [],
+    queuedDispatchMode: null,
     flushing: false,
     turnStartedAt: null,
     turnAssistantMessageIds: [],
@@ -2942,6 +2995,7 @@ function botTurnPatch(turnStartedAt: number): Partial<ChatStore> {
     reconciling: false,
     pendingUserText: null,
     queuedMessages: [],
+    queuedDispatchMode: null,
     flushing: false,
     pendingPermissions: [],
     turnStartedAt,
@@ -3192,8 +3246,8 @@ function chatTurnBlocksSessionMutation(
 }
 
 function chatTurnBlocksNewPrompt(state: Pick<ChatStore, 'reconciling' | 'flushing'>): boolean {
-  const blockedByYamlLock = isYamlEditLocked() && !isLocalYamlEditLockHeldForWorkspace();
-  return state.reconciling || state.flushing || blockedByYamlLock;
+  void state;
+  return hasExternalChatPromptBarrier();
 }
 
 function chatAbortRecoveryBlocksRuntimeMutation(state: Pick<ChatStore, 'abortRecovery'>): boolean {
@@ -3682,6 +3736,7 @@ async function promptOpencode(
       sending: false,
       pendingUserText: null,
       queuedMessages: [],
+      queuedDispatchMode: null,
       flushing: false,
       turnStartedAt: null,
       turnAssistantMessageIds: [],
@@ -4212,6 +4267,7 @@ export function applySseEvent(event: ChatOpencodeEvent, get: () => ChatStore, se
         patch.reconciling = false;
         patch.pendingUserText = null;
         patch.queuedMessages = [];
+        patch.queuedDispatchMode = null;
         patch.flushing = false;
         patch.turnStartedAt = null;
         patch.turnAssistantMessageIds = [];
@@ -4417,6 +4473,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     ),
   pendingUserText: null,
   queuedMessages: [],
+  queuedDispatchMode: null,
   flushing: false,
   lastSendingEndedAt: 0,
   turnStartedAt: null,
@@ -4692,6 +4749,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               reconciling: false,
               pendingUserText: null,
               queuedMessages: [],
+              queuedDispatchMode: null,
               flushing: false,
               pendingPermissions: [],
               turnStartedAt: null,
@@ -5052,6 +5110,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         currentSessionId: deletedCurrentSession ? null : prev.currentSessionId,
         messages: deletedCurrentSession ? [] : prev.messages,
         queuedMessages: deletedCurrentSession ? [] : prev.queuedMessages,
+        queuedDispatchMode: deletedCurrentSession ? null : prev.queuedDispatchMode,
         pendingPermissions: removePermissionsForSessions(
           prev.pendingPermissions,
           deletedSessionIds,
@@ -5067,12 +5126,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const attachments = state.composerAttachments;
     const context = renderAskAiContext(attachments);
     const forceStopRecoveryPending = forcedRestartRecoveries.has(getOpencodeWorkspaceKey());
-    if (!state.sending && chatTurnBlocksNewPrompt(state)) {
+    const queueMode =
+      state.queuedDispatchMode ??
+      (state.queuedMessages.length > 0
+        ? ('reuse-logical-turn' as const)
+        : state.sending || forceStopRecoveryPending
+          ? ('reuse-logical-turn' as const)
+          : canQueueFreshPromptDuringBarrier(state)
+            ? ('start-fresh' as const)
+            : null);
+    if (!queueMode && !state.sending && chatTurnBlocksNewPrompt(state)) {
       const msg = chatTurnBlockedMessage();
       set({ sendError: msg });
       throw new Error(msg);
     }
     if (
+      queueMode ||
       shouldQueueOutgoingMessage({
         sending: state.sending || forceStopRecoveryPending,
         queuedCount: state.queuedMessages.length,
@@ -5082,12 +5151,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       // wait, and clear the chips now (the send is committed to the queue).
       set((prev) => ({
         queuedMessages: appendQueuedMessage(prev.queuedMessages, makeQueuedMessage(text, context)),
+        queuedDispatchMode: prev.queuedDispatchMode ?? queueMode ?? 'reuse-logical-turn',
         composerAttachments: [],
         sendError: null,
         completionWarning: null,
         postChatYamlAction: null,
       }));
-      if (!state.sending && !forceStopRecoveryPending) dispatchNextQueuedPrompt(get, set);
+      get().dispatchQueuedMessagesIfReady();
       return;
     }
     // Immediate: clear the chips up front (mirrors how the composer clears the
@@ -5107,10 +5177,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
   },
 
+  dispatchQueuedMessagesIfReady() {
+    return dispatchNextQueuedPrompt(get, set);
+  },
+
   cancelQueuedMessage(id) {
-    set((prev) => ({
-      queuedMessages: removeQueuedMessage(prev.queuedMessages, id),
-    }));
+    set((prev) => {
+      const queuedMessages = removeQueuedMessage(prev.queuedMessages, id);
+      return {
+        queuedMessages,
+        queuedDispatchMode: queuedMessages.length > 0 ? prev.queuedDispatchMode : null,
+      };
+    });
   },
 
   async sendInternalRepairPrompt(

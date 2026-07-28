@@ -240,11 +240,11 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
     });
   });
 
-  app.post('/api/workspace/chat-yaml-stage/finalize', (req, res) => {
+  app.post('/api/workspace/chat-yaml-stage/finalize', async (req, res) => {
     const ws = requireWorkspace(req, res);
     if (!ws || !requireChatYamlStageLock(req, res, ws)) return;
     try {
-      return res.json(finalizeChatYamlStage(ws, parseFinalizeInput(req.body)));
+      return res.json(await finalizeChatYamlStage(ws, parseFinalizeInput(req.body)));
     } catch (err) {
       return respondStageError(res, err);
     }

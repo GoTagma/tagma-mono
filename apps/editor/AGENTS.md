@@ -88,6 +88,9 @@
   Bind Git HEAD/index/status/flags/config/locks, ignored-root presence, the Git binary, declared
   binaries, minimal environment, and Python identity. Use a full filesystem witness outside an
   exact Git root, and never reuse an in-process manifest cache across a fresh `WorkspaceState`.
+- Keep full-filesystem Trial witness capture off the sidecar main thread. Trial timeout and
+  cancellation must cover pre-run, post-run, case-seal, and finalize witness capture; dispose the
+  per-workspace worker and cache with its `WorkspaceState`.
 - Git objects and ignored dependency/generated trees are intentionally outside the byte-hash
   scope; lockfiles/manifests and declared runtime identities represent those prerequisites.
   During isolated cases, a recursive same-process mutation monitor must fail closed on writes
@@ -164,6 +167,10 @@
   continuation, `length` is incomplete output, `content-filter` and `error` are errors, and
   `unknown` is indeterminate. Preserve partial output and finished-turn reconciliation; surface
   incomplete/indeterminate states as warnings instead of silently declaring success.
+- Accept user messages while the visible conversation is flushing, reconciling, or waiting on its
+  YAML lifecycle barrier. Preserve them in the queue without clearing lifecycle progress, then
+  dispatch them as a fresh logical turn after the barrier releases; messages queued during an
+  active physical turn continue in that turn's existing stage and logical lifecycle.
 - Do not infer model success from assistant `time.completed`: OpenCode writes it during processor
   cleanup even when no finish reason arrived. Require confirmed idle before ending that state and
   show an indeterminate warning. Surface future finish strings as protocol-compatibility warnings,

@@ -92,6 +92,7 @@ function stopWorkspace(ws: WorkspaceState): void {
 afterEach(() => {
   delete __chatYamlStagingTestHooks.afterDestinationYamlWrite;
   delete __chatYamlStagingTestHooks.beforeFinalizeResultWrite;
+  delete __chatYamlStagingTestHooks.captureHostWitnessAsync;
   for (const root of roots.splice(0)) {
     rmSync(root, { recursive: true, force: true });
   }
@@ -110,7 +111,7 @@ describe('chat YAML staging', () => {
     ).toBe(true);
   });
 
-  test('isolates agent writes and adopts them only when the source still matches base', () => {
+  test('isolates agent writes and adopts them only when the source still matches base', async () => {
     const { ws, sourcePath, baseYaml } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
@@ -122,7 +123,7 @@ describe('chat YAML staging', () => {
     writeFileSync(staged.stagedPath, agentYaml, 'utf-8');
     expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
 
-    const result = finalizeChatYamlStage(ws, {
+    const result = await finalizeChatYamlStage(ws, {
       stageId: stage.id,
       relativePath: staged.relativePath,
     });
@@ -134,14 +135,14 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
-  test('publishes an agent copy and persists the renderer branch when the user edited locally', () => {
+  test('publishes an agent copy and persists the renderer branch when the user edited locally', async () => {
     const { ws, sourcePath } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
     writeFileSync(staged.stagedPath, yamlFor('Agent Pipeline', 'agent'), 'utf-8');
 
     const localYaml = yamlFor('User Pipeline', 'user');
-    const result = finalizeChatYamlStage(ws, {
+    const result = await finalizeChatYamlStage(ws, {
       stageId: stage.id,
       relativePath: staged.relativePath,
       localBranch: {
@@ -162,13 +163,13 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
-  test('ignores stale client dirty hints and compares the local branch with base on the server', () => {
+  test('ignores stale client dirty hints and compares the local branch with base on the server', async () => {
     const { ws, sourcePath, baseYaml } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
     writeFileSync(staged.stagedPath, yamlFor('Agent Pipeline', 'agent'), 'utf-8');
 
-    const result = finalizeChatYamlStage(ws, {
+    const result = await finalizeChatYamlStage(ws, {
       stageId: stage.id,
       relativePath: staged.relativePath,
       localBranch: {
@@ -186,7 +187,7 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
-  test('never overwrites an external disk change and still publishes the agent result', () => {
+  test('never overwrites an external disk change and still publishes the agent result', async () => {
     const { ws, sourcePath } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
@@ -194,7 +195,7 @@ describe('chat YAML staging', () => {
     const externalYaml = yamlFor('External Pipeline', 'external');
     writeFileSync(sourcePath, externalYaml, 'utf-8');
 
-    const result = finalizeChatYamlStage(ws, {
+    const result = await finalizeChatYamlStage(ws, {
       stageId: stage.id,
       relativePath: staged.relativePath,
       localBranch: {
@@ -213,7 +214,7 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
-  test('uses captured base hashes even if the on-disk base snapshot is altered', () => {
+  test('uses captured base hashes even if the on-disk base snapshot is altered', async () => {
     const { ws, sourcePath } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
@@ -225,7 +226,7 @@ describe('chat YAML staging', () => {
     const baseYamlPath = join(stage.baseWorkspaceDir, '.tagma', ...staged.relativePath.split('/'));
     writeFileSync(baseYamlPath, externalYaml, 'utf-8');
 
-    const result = finalizeChatYamlStage(ws, {
+    const result = await finalizeChatYamlStage(ws, {
       stageId: stage.id,
       relativePath: staged.relativePath,
     });
@@ -237,7 +238,7 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
-  test('publishes a newly-created staged pipeline without treating it as a conflict copy', () => {
+  test('publishes a newly-created staged pipeline without treating it as a conflict copy', async () => {
     const { ws, sourcePath } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const relativePath = 'created/created.yaml';
@@ -250,7 +251,7 @@ describe('chat YAML staging', () => {
     const created = listed.entries.find((entry) => entry.relativePath === relativePath)!;
     expect(created.sourcePath).toBeNull();
 
-    const result = finalizeChatYamlStage(ws, {
+    const result = await finalizeChatYamlStage(ws, {
       stageId: stage.id,
       relativePath,
     });
@@ -261,7 +262,7 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
-  test('keeps a failed new pipeline out of the primary path and saves a numbered copy', () => {
+  test('keeps a failed new pipeline out of the primary path and saves a numbered copy', async () => {
     const { ws, sourcePath } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const relativePath = 'created/created.yaml';
@@ -272,7 +273,7 @@ describe('chat YAML staging', () => {
     writeFileSync(stagedPath, yamlFor('Created Pipeline', 'created'), 'utf-8');
     writeFileSync(pipelineLayoutPath(stagedPath), layoutFor(20), 'utf-8');
 
-    const result = finalizeChatYamlStage(ws, {
+    const result = await finalizeChatYamlStage(ws, {
       stageId: stage.id,
       relativePath,
       forceFork: true,
@@ -288,12 +289,12 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
-  test('returns unchanged and removes the writable stage when the agent did not edit YAML or layout', () => {
+  test('returns unchanged and removes the writable stage when the agent did not edit YAML or layout', async () => {
     const { ws, sourcePath, baseYaml } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
 
-    const result = finalizeChatYamlStage(ws, {
+    const result = await finalizeChatYamlStage(ws, {
       stageId: stage.id,
       relativePath: staged.relativePath,
     });
@@ -304,13 +305,13 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
-  test('honors a failed trial fork even when an existing staged pipeline is unchanged', () => {
+  test('honors a failed trial fork even when an existing staged pipeline is unchanged', async () => {
     const { ws, sourcePath, baseYaml } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
     const copyPath = pipelineYamlPath(ws.workDir, 'pipeline-copy-1');
 
-    const result = finalizeChatYamlStage(ws, {
+    const result = await finalizeChatYamlStage(ws, {
       stageId: stage.id,
       relativePath: staged.relativePath,
       forceFork: true,
@@ -358,7 +359,7 @@ describe('chat YAML staging', () => {
     // allowInvalid matches the chat reconciliation path for preserving a
     // compile-failing agent branch. The untouched invalid source must still be
     // recognized as unchanged, never published as a visible numbered copy.
-    const result = finalizeChatYamlStage(ws, {
+    const result = await finalizeChatYamlStage(ws, {
       stageId: stage.id,
       relativePath: staged.relativePath,
       allowInvalid: true,
@@ -380,7 +381,7 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
-  test('publishes a requirements-only agent edit through the same CAS boundary', () => {
+  test('publishes a requirements-only agent edit through the same CAS boundary', async () => {
     const { ws, sourcePath } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
@@ -394,7 +395,7 @@ describe('chat YAML staging', () => {
     expect(
       listed.entries.find((entry) => entry.relativePath === staged.relativePath)?.requirementsHash,
     ).not.toBeNull();
-    const result = finalizeChatYamlStage(ws, {
+    const result = await finalizeChatYamlStage(ws, {
       stageId: stage.id,
       relativePath: staged.relativePath,
     });
@@ -406,17 +407,17 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
-  test('finalize is idempotent after the writable stage has been cleaned', () => {
+  test('finalize is idempotent after the writable stage has been cleaned', async () => {
     const { ws, sourcePath } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
     writeFileSync(staged.stagedPath, yamlFor('Agent Pipeline', 'agent'), 'utf-8');
 
-    const first = finalizeChatYamlStage(ws, {
+    const first = await finalizeChatYamlStage(ws, {
       stageId: stage.id,
       relativePath: staged.relativePath,
     });
-    const second = finalizeChatYamlStage(ws, {
+    const second = await finalizeChatYamlStage(ws, {
       stageId: stage.id,
       relativePath: staged.relativePath,
     });
@@ -436,40 +437,40 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
-  test('rejects traversal targets without touching live files', () => {
+  test('rejects traversal targets without touching live files', async () => {
     const { ws, sourcePath, baseYaml } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
 
-    expect(() =>
+    await expect(
       finalizeChatYamlStage(ws, {
         stageId: stage.id,
         relativePath: '../pipeline/pipeline.yaml',
       }),
-    ).toThrow('stay inside the chat stage');
+    ).rejects.toThrow('stay inside the chat stage');
     expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
     expect(discardChatYamlStage(ws, stage.id)).toBe(true);
     stopWorkspace(ws);
   });
 
-  test('validates every staged artifact before replacing the live branch', () => {
+  test('validates every staged artifact before replacing the live branch', async () => {
     const { ws, sourcePath, baseYaml } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
     writeFileSync(staged.stagedPath, yamlFor('Agent Pipeline', 'agent'), 'utf-8');
     writeFileSync(pipelineLayoutPath(staged.stagedPath), '{not-json', 'utf-8');
 
-    expect(() =>
+    await expect(
       finalizeChatYamlStage(ws, {
         stageId: stage.id,
         relativePath: staged.relativePath,
       }),
-    ).toThrow();
+    ).rejects.toThrow();
     expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
     expect(discardChatYamlStage(ws, stage.id)).toBe(true);
     stopWorkspace(ws);
   });
 
-  test('rolls back the live pipeline when a finalize write fails partway through', () => {
+  test('rolls back the live pipeline when a finalize write fails partway through', async () => {
     const { ws, sourcePath, baseYaml } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
@@ -479,12 +480,12 @@ describe('chat YAML staging', () => {
       if (destinationPath === sourcePath) throw new Error('injected finalize failure');
     };
 
-    expect(() =>
+    await expect(
       finalizeChatYamlStage(ws, {
         stageId: stage.id,
         relativePath: staged.relativePath,
       }),
-    ).toThrow('injected finalize failure');
+    ).rejects.toThrow('injected finalize failure');
     expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
     expect(JSON.parse(readFileSync(pipelineLayoutPath(sourcePath), 'utf-8'))).toEqual(
       JSON.parse(layoutFor(20)),
@@ -493,7 +494,7 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
-  test('rolls back publication when the finalize result record cannot be written', () => {
+  test('rolls back publication when the finalize result record cannot be written', async () => {
     const { ws, sourcePath, baseYaml } = setupWorkspace();
     const initialLayout = structuredClone(ws.layout);
     const initialYamlVersion = ws.yamlVersion;
@@ -506,12 +507,12 @@ describe('chat YAML staging', () => {
       throw new Error('injected finalize result write failure');
     };
 
-    expect(() =>
+    await expect(
       finalizeChatYamlStage(ws, {
         stageId: stage.id,
         relativePath: staged.relativePath,
       }),
-    ).toThrow('injected finalize result write failure');
+    ).rejects.toThrow('injected finalize result write failure');
     expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
     expect(JSON.parse(readFileSync(pipelineLayoutPath(sourcePath), 'utf-8'))).toEqual(
       JSON.parse(layoutFor(20)),
@@ -530,11 +531,11 @@ describe('chat YAML staging', () => {
     expect(existsSync(join(stage.rootDir, 'finalized.json'))).toBe(false);
 
     delete __chatYamlStagingTestHooks.beforeFinalizeResultWrite;
-    const firstRetry = finalizeChatYamlStage(ws, {
+    const firstRetry = await finalizeChatYamlStage(ws, {
       stageId: stage.id,
       relativePath: staged.relativePath,
     });
-    const stableRetry = finalizeChatYamlStage(ws, {
+    const stableRetry = await finalizeChatYamlStage(ws, {
       stageId: stage.id,
       relativePath: staged.relativePath,
     });
@@ -546,7 +547,7 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
-  test('reuses the first copy number after a fork result record rolls back', () => {
+  test('reuses the first copy number after a fork result record rolls back', async () => {
     const { ws, sourcePath, baseYaml } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
@@ -562,13 +563,15 @@ describe('chat YAML staging', () => {
       forceFork: true,
       forceForkReason: 'path-moved',
     } as const;
-    expect(() => finalizeChatYamlStage(ws, input)).toThrow('injected fork result write failure');
+    await expect(finalizeChatYamlStage(ws, input)).rejects.toThrow(
+      'injected fork result write failure',
+    );
     expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
     expect(existsSync(copyPath)).toBe(false);
 
     delete __chatYamlStagingTestHooks.beforeFinalizeResultWrite;
-    const firstRetry = finalizeChatYamlStage(ws, input);
-    const stableRetry = finalizeChatYamlStage(ws, input);
+    const firstRetry = await finalizeChatYamlStage(ws, input);
+    const stableRetry = await finalizeChatYamlStage(ws, input);
 
     expect(firstRetry.outcome).toBe('forked');
     expect(firstRetry.entry?.path).toBe(copyPath);

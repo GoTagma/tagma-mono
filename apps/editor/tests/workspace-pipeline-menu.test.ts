@@ -154,7 +154,7 @@ describe('workspace pipeline menu', () => {
         },
         {
           stageId: target.stageId,
-          relativePath: target.relativePath,
+          stagedRelativePath: target.relativePath,
           outcome,
           entry: finalized,
         },

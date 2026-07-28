@@ -72,6 +72,7 @@ import {
   shouldAdoptFinalizedChatStateOnCurrentCanvas,
   shouldAdoptChatYamlTargetOnCurrentCanvas,
   shouldAutoRepairCompileResult,
+  shouldAutoRepairTrialResult,
   shouldForkChatYamlResult,
   shouldTrialRunChatPipeline,
 } from './utils/chat-yaml-reconcile';
@@ -278,7 +279,13 @@ export function App() {
   } = usePipelineStore();
 
   const yamlEditLocked = useYamlEditLockStore((s) => s.active);
+  const yamlEditLockLocal = useYamlEditLockStore((s) => s.local);
   const yamlEditLockReason = useYamlEditLockStore((s) => s.reason);
+  const queuedMessageCount = useChatStore((s) => s.queuedMessages.length);
+  const chatSending = useChatStore((s) => s.sending);
+  const chatReconciling = useChatStore((s) => s.reconciling);
+  const chatFlushing = useChatStore((s) => s.flushing);
+  const activeChatYamlLifecycle = useChatStore((s) => s.activeChatYamlLifecycle);
 
   const {
     active: runActive,
@@ -292,6 +299,21 @@ export function App() {
   useEffect(() => {
     useYamlEditLockStore.getState().syncActiveYamlPath(yamlPath);
   }, [yamlPath]);
+
+  useEffect(() => {
+    if (queuedMessageCount === 0) return;
+    if (chatSending || chatReconciling || chatFlushing || activeChatYamlLifecycle) return;
+    if (yamlEditLocked && !yamlEditLockLocal) return;
+    useChatStore.getState().dispatchQueuedMessagesIfReady();
+  }, [
+    activeChatYamlLifecycle,
+    chatFlushing,
+    chatReconciling,
+    chatSending,
+    queuedMessageCount,
+    yamlEditLockLocal,
+    yamlEditLocked,
+  ]);
 
   const [showEditorSettings, setShowEditorSettings] = useState(false);
   const [showSecretsManager, setShowSecretsManager] = useState(false);
@@ -1094,7 +1116,7 @@ export function App() {
             if (
               trialRun.kind !== 'plan-required' &&
               trialRun.kind !== 'aborted' &&
-              shouldAutoRepairCompileResult(trialRun, trialAttempts, maxAttempts) &&
+              shouldAutoRepairTrialResult(trialRun, trialAttempts, maxAttempts) &&
               finishedSessionCanContinue
             ) {
               const nextAttempt = trialAttempts + 1;

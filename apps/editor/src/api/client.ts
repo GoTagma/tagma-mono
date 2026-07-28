@@ -154,6 +154,7 @@ export type ChatPipelineTrialRunKind =
   | 'compile-failed'
   | 'preflight-failed'
   | 'setup-failed'
+  | 'witness-failed'
   | 'aborted'
   | 'timed-out'
   | 'busy';

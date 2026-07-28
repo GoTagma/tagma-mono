@@ -19,8 +19,11 @@ import { dirname, join } from 'node:path';
 
 import {
   captureTrialHostWitness,
+  captureTrialHostWitnessAsync,
+  disposeTrialWitnessWorker,
   getTrialHostWorkspaceManifestCacheStatsForTests,
   prepareTrialHostWitnessInputs,
+  safeCaptureTrialHostWitnessAsync,
   safeCaptureTrialHostWitness,
   type PreparedTrialHostWitnessInputs,
 } from '../server/chat-pipeline-trial-witness';
@@ -28,6 +31,7 @@ import { hashChatPipelineTrialTree } from '../server/chat-yaml-staging';
 import { WorkspaceState } from '../server/workspace-state';
 
 const roots: string[] = [];
+const workspaces: WorkspaceState[] = [];
 
 function makeRoot(label: string): string {
   const root = mkdtempSync(join(tmpdir(), `tagma-trial-witness-${label}-`));
@@ -39,6 +43,7 @@ function makeWorkspace(): { root: string; ws: WorkspaceState } {
   const root = makeRoot('workspace');
   const ws = new WorkspaceState(root);
   ws.workDir = root;
+  workspaces.push(ws);
   return { root, ws };
 }
 
@@ -61,6 +66,17 @@ function sha256(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
+function populateLargeWitnessWorkspace(root: string): void {
+  const manyFilesRoot = join(root, 'many-files');
+  mkdirSync(manyFilesRoot, { recursive: true });
+  for (let index = 0; index <= 4_000; index += 1) {
+    writeFileSync(join(manyFilesRoot, `${String(index).padStart(4, '0')}.txt`), 'payload\n');
+  }
+  const oversizedPath = join(root, 'oversized.bin');
+  writeFileSync(oversizedPath, '', 'utf-8');
+  truncateSync(oversizedPath, 64 * 1024 * 1024 + 1);
+}
+
 function runGit(root: string, ...args: string[]): void {
   const result = spawnSync('git', ['-C', root, ...args], {
     encoding: 'utf-8',
@@ -72,6 +88,9 @@ function runGit(root: string, ...args: string[]): void {
 }
 
 afterEach(() => {
+  for (const ws of workspaces.splice(0)) {
+    disposeTrialWitnessWorker(ws);
+  }
   for (const root of roots.splice(0)) {
     rmSync(root, { recursive: true, force: true });
   }
@@ -548,6 +567,68 @@ describe('chat pipeline trial host witness', () => {
       hashedFileCount: restarted.workspace.fileCount,
       hashedBytes: restarted.workspace.totalBytes,
       reusedFileCount: 0,
+    });
+  });
+
+  test('captures large host witnesses without blocking the main event loop', async () => {
+    const { root, ws } = makeWorkspace();
+    populateLargeWitnessWorkspace(root);
+
+    let settled = false;
+    const capturePromise = captureTrialHostWitnessAsync(ws, prepared(root)).finally(() => {
+      settled = true;
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(settled).toBeFalse();
+
+    const witness = await capturePromise;
+    expect(witness.workspace.fileCount).toBeGreaterThan(4_000);
+    expect(witness.workspace.totalBytes).toBeGreaterThan(64 * 1024 * 1024);
+  }, 300_000);
+
+  test('aborts async host witness capture and leaves no warm-cache residue', async () => {
+    const { root, ws } = makeWorkspace();
+    populateLargeWitnessWorkspace(root);
+
+    const controller = new AbortController();
+    const capturePromise = safeCaptureTrialHostWitnessAsync(ws, prepared(root), controller.signal);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    controller.abort();
+
+    const aborted = await capturePromise;
+    expect(aborted.witness).toBeNull();
+    expect(aborted.reason?.toLowerCase()).toContain('abort');
+    expect(getTrialHostWorkspaceManifestCacheStatsForTests(ws)).toBeNull();
+
+    const retried = await safeCaptureTrialHostWitnessAsync(ws, prepared(root));
+    expect(retried.witness?.workspace.fileCount).toBeGreaterThan(4_000);
+  }, 300_000);
+
+  test('reuses unchanged workspace content hashes across async worker captures', async () => {
+    const { root, ws } = makeWorkspace();
+    writeFileSync(join(root, 'first.txt'), 'first\n', 'utf-8');
+    writeFileSync(join(root, 'second.txt'), 'second\n', 'utf-8');
+
+    const first = await captureTrialHostWitnessAsync(ws, prepared(root));
+    const coldStats = getTrialHostWorkspaceManifestCacheStatsForTests(ws);
+    expect(coldStats).toEqual({
+      fileCount: first.workspace.fileCount,
+      totalBytes: first.workspace.totalBytes,
+      hashedFileCount: first.workspace.fileCount,
+      hashedBytes: first.workspace.totalBytes,
+      reusedFileCount: 0,
+    });
+
+    const second = await captureTrialHostWitnessAsync(ws, prepared(root));
+    const warmStats = getTrialHostWorkspaceManifestCacheStatsForTests(ws);
+    expect(second.workspace).toEqual(first.workspace);
+    expect(warmStats).toEqual({
+      fileCount: second.workspace.fileCount,
+      totalBytes: second.workspace.totalBytes,
+      hashedFileCount: 0,
+      hashedBytes: 0,
+      reusedFileCount: second.workspace.fileCount,
     });
   });
 
