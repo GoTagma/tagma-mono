@@ -1,7 +1,15 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { bootstrapBuiltins } from '@tagma/sdk/plugins';
 import { parseYaml, serializePipeline } from '@tagma/sdk/yaml';
@@ -716,7 +724,9 @@ describe('chat YAML staging routes', () => {
           {
             id: 'main',
             name: 'Main',
-            tasks: [{ id: 'case_probe', command: { argv: [process.execPath, '-e', 'process.exit(0)'] } }],
+            tasks: [
+              { id: 'case_probe', command: { argv: [process.execPath, '-e', 'process.exit(0)'] } },
+            ],
           },
         ],
       }),
@@ -776,7 +786,9 @@ describe('chat YAML staging routes', () => {
           {
             id: 'main',
             name: 'Main',
-            tasks: [{ id: 'case_probe', command: { argv: [process.execPath, '-e', 'process.exit(0)'] } }],
+            tasks: [
+              { id: 'case_probe', command: { argv: [process.execPath, '-e', 'process.exit(0)'] } },
+            ],
           },
         ],
       }),
@@ -833,7 +845,9 @@ describe('chat YAML staging routes', () => {
           {
             id: 'main',
             name: 'Main',
-            tasks: [{ id: 'case_probe', command: { argv: [process.execPath, '-e', 'process.exit(0)'] } }],
+            tasks: [
+              { id: 'case_probe', command: { argv: [process.execPath, '-e', 'process.exit(0)'] } },
+            ],
           },
         ],
       }),
