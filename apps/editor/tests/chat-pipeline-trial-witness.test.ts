@@ -7,7 +7,6 @@ import {
   readFileSync,
   renameSync,
   rmSync,
-  rmdirSync,
   statSync,
   symlinkSync,
   truncateSync,
@@ -467,7 +466,7 @@ describe('chat pipeline trial host witness', () => {
 
     const first = captureTrialHostWitness(ws, prepared(root));
     unlinkSync(fileLink);
-    rmdirSync(directoryLink);
+    unlinkSync(directoryLink);
     symlinkSync(secondFile, fileLink, 'file');
     symlinkSync(secondTargetRoot, directoryLink, process.platform === 'win32' ? 'junction' : 'dir');
     const second = captureTrialHostWitness(ws, prepared(root));
