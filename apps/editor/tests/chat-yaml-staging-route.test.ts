@@ -15,6 +15,7 @@ import { bootstrapBuiltins } from '@tagma/sdk/plugins';
 import { parseYaml, serializePipeline } from '@tagma/sdk/yaml';
 
 import { stopChatCompileWatcher } from '../server/chat-compile-watcher';
+import { disposeTrialWitnessWorker } from '../server/chat-pipeline-trial-witness';
 import { bypassesRevisionCheck } from '../server/revision-routes';
 import { registerChatYamlStagingRoutes } from '../server/routes/chat-yaml-staging';
 import { beginRunSessionStart, endRunSessionStart, registerRunRoutes } from '../server/routes/run';
@@ -30,6 +31,7 @@ type MockRequest = {
 type RouteHandler = (req: MockRequest, res: MockResponse) => void | Promise<void>;
 
 const roots: string[] = [];
+const workspaces: WorkspaceState[] = [];
 
 const REQUIRED_TRIAL_COVERAGE = [
   'multiple-inputs',
@@ -124,6 +126,7 @@ function makeWorkspace(): { ws: WorkspaceState; sourcePath: string } {
   mkdirSync(dirname(sourcePath), { recursive: true });
   writeFileSync(sourcePath, yaml, 'utf-8');
   const ws = new WorkspaceState(root);
+  workspaces.push(ws);
   ws.workDir = root;
   ws.yamlPath = sourcePath;
   ws.config = parseYaml(yaml);
@@ -243,6 +246,9 @@ function trialCacheRecordPath(
 }
 
 afterEach(() => {
+  for (const ws of workspaces.splice(0)) {
+    disposeTrialWitnessWorker(ws);
+  }
   for (const root of roots.splice(0)) {
     rmSync(root, { recursive: true, force: true });
   }

@@ -611,7 +611,13 @@ function gitWorkspaceSourceSnapshot(root: string): GitWorkspaceSourceSnapshot | 
   }
 
   const layout = readGitWorkspaceControlLayout(gitPath, root, hasGitMarker);
-  if (!layout || !sameCanonicalPath(layout.root, root)) return null;
+  if (!layout) return null;
+  if (!sameCanonicalPath(layout.root, root)) {
+    if (hasGitMarker) {
+      throw new Error('Git workspace witness requires an exact Git root workspace.');
+    }
+    return null;
+  }
   assertNoGitWorkspaceControlLocks(layout);
   const controlFilesBefore = gitControlFileIdentities(layout);
 

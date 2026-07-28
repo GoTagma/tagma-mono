@@ -343,9 +343,7 @@ export function App() {
   // Keep this derived collection strictly live-only. PipelinePicker and
   // WorkflowView must never receive paths inside .chat-staging.
   const workspaceYamls = workspaceStateVisible ? workspacePipelines.liveEntries : [];
-  const stagedWorkspacePipelines = workspaceStateVisible
-    ? workspacePipelines.stagedTargets
-    : [];
+  const stagedWorkspacePipelines = workspaceStateVisible ? workspacePipelines.stagedTargets : [];
   const [saveAsInput, setSaveAsInput] = useState<string | null>(null);
   const [newWorkflowInput, setNewWorkflowInput] = useState<string | null>(null);
   const [showTrackIO, setShowTrackIO] = useState(false);
@@ -386,6 +384,39 @@ export function App() {
   const trialPlanAttemptsRef = useRef<Map<string, number>>(new Map());
   const diskAdoptRef = useRef<{ source: 'chat' | 'external'; token: number } | null>(null);
   const refreshSeqRef = useRef(0);
+  const removeStagedWorkspacePipelines = useCallback((workspaceKey: string, stageId: string) => {
+    setWorkspacePipelines((current) => {
+      if (current.workspaceKey !== workspaceKey) return current;
+      const stagedTargets = current.stagedTargets.filter((target) => target.stageId !== stageId);
+      return stagedTargets.length === current.stagedTargets.length
+        ? current
+        : { ...current, stagedTargets };
+    });
+  }, []);
+  const upsertStagedWorkspacePipeline = useCallback(
+    (workspaceKey: string, target: ChatYamlStageEntry, stageId: string) => {
+      if (usePipelineStore.getState().workDir !== workspaceKey) return;
+      setWorkspacePipelines((current) => {
+        if (usePipelineStore.getState().workDir !== workspaceKey) return current;
+        const visibleCollection =
+          current.workspaceKey === workspaceKey
+            ? current
+            : {
+                workspaceKey,
+                liveEntries: [],
+                stagedTargets: [],
+              };
+        const stagedTargets = visibleCollection.stagedTargets.filter(
+          (entry) => entry.stageId !== stageId || entry.relativePath !== target.relativePath,
+        );
+        return {
+          ...visibleCollection,
+          stagedTargets: [...stagedTargets, { ...target, stageId }],
+        };
+      });
+    },
+    [],
+  );
   const refreshWorkspaceYamls = useCallback(
     async (options: { preserveOnError?: boolean } = {}): Promise<WorkspaceYamlEntry[]> => {
       // Read from the store at call time. Workspace selection calls
@@ -394,7 +425,11 @@ export function App() {
       const reqWorkDir = usePipelineStore.getState().workDir;
       if (!reqWorkDir) {
         refreshSeqRef.current += 1;
-        setWorkspaceYamls([]);
+        setWorkspacePipelines({
+          workspaceKey: null,
+          liveEntries: [],
+          stagedTargets: [],
+        });
         return [];
       }
       const seq = ++refreshSeqRef.current;
@@ -402,7 +437,11 @@ export function App() {
         const result = await api.listWorkspaceYamls(reqWorkDir);
         if (seq !== refreshSeqRef.current) return [];
         if (usePipelineStore.getState().workDir !== reqWorkDir) return [];
-        setWorkspaceYamls(result.entries);
+        setWorkspacePipelines((current) => ({
+          workspaceKey: reqWorkDir,
+          liveEntries: result.entries,
+          stagedTargets: current.workspaceKey === reqWorkDir ? current.stagedTargets : [],
+        }));
         return result.entries;
       } catch {
         if (
@@ -410,13 +449,34 @@ export function App() {
           seq === refreshSeqRef.current &&
           usePipelineStore.getState().workDir === reqWorkDir
         ) {
-          setWorkspaceYamls([]);
+          setWorkspacePipelines((current) =>
+            current.workspaceKey === reqWorkDir
+              ? { ...current, liveEntries: [] }
+              : {
+                  workspaceKey: reqWorkDir,
+                  liveEntries: [],
+                  stagedTargets: [],
+                },
+          );
         }
         return [];
       }
     },
     [],
   );
+
+  useEffect(() => {
+    const workspaceKey = workDir || null;
+    setWorkspacePipelines((current) =>
+      current.workspaceKey === workspaceKey
+        ? current
+        : {
+            workspaceKey,
+            liveEntries: [],
+            stagedTargets: [],
+          },
+    );
+  }, [workDir]);
 
   useEffect(
     () => () => {
@@ -971,6 +1031,11 @@ export function App() {
               'The editor workspace changed before the staged YAML could be finalized.',
             );
           }
+          const resultWorkspaceVisible = () =>
+            isChatYamlResultInActiveWorkspace({
+              resultWorkspaceKey: snapshot.workDir,
+              activeWorkspaceKey: usePipelineStore.getState().workDir,
+            });
           const lockId = getLocalYamlEditLockId();
           if (!lockId) throw new Error('The local OpenCode YAML lock lease was lost.');
           const underChatLock = <T,>(op: () => Promise<T>) =>
@@ -990,10 +1055,12 @@ export function App() {
                 (active?.turnId === finishedTurn.id && active.cancellationRequested === true)
               );
             },
-            discardStage: () =>
-              underChatLock(() =>
+            discardStage: () => {
+              removeStagedWorkspacePipelines(snapshot.workDir, snapshot.staging!.id);
+              return underChatLock(() =>
                 api.discardChatYamlStage(snapshot.staging!.id, snapshot.workDir),
-              ).then(() => undefined),
+              ).then(() => undefined);
+            },
             clearPostChatAction: () => useChatStore.getState().clearPostChatYamlAction(),
           });
           if (await discardCancelledStage()) return;
@@ -1003,11 +1070,24 @@ export function App() {
           if (cancelled || (await discardCancelledStage())) return;
           const stagedTarget = detectChatStagedYamlTarget(snapshot, stage.entries);
           if (!stagedTarget) {
+            removeStagedWorkspacePipelines(snapshot.workDir, snapshot.staging.id);
             await underChatLock(() =>
               api.discardChatYamlStage(snapshot.staging!.id, snapshot.workDir),
             );
             useChatStore.getState().clearPostChatYamlAction();
             return;
+          }
+          const authoritativeStagedTarget = stage.entries.find(
+            (entry) =>
+              entry.relativePath === stagedTarget.relativePath &&
+              sameEditorPath(entry.stagedPath, stagedTarget.path),
+          );
+          if (authoritativeStagedTarget?.sourcePath === null && resultWorkspaceVisible()) {
+            upsertStagedWorkspacePipeline(
+              snapshot.workDir,
+              authoritativeStagedTarget,
+              snapshot.staging.id,
+            );
           }
 
           let compile = await underChatLock(() =>
@@ -1258,6 +1338,7 @@ export function App() {
           if (cancelled || (await discardCancelledStage())) return;
           const finalEntry = finalized.entry;
           if (!finalEntry) {
+            removeStagedWorkspacePipelines(snapshot.workDir, snapshot.staging.id);
             useChatStore.getState().clearPostChatYamlAction();
             return;
           }
@@ -1275,21 +1356,29 @@ export function App() {
             trialRunEnabled,
             trialRunSuccess: trialRun?.success,
           });
-          const deployedLive =
-            verificationSucceeded &&
-            (finalized.outcome === 'adopted' || finalized.outcome === 'created');
-          const resultWorkspaceVisible = () =>
-            isChatYamlResultInActiveWorkspace({
-              resultWorkspaceKey: snapshot.workDir,
-              activeWorkspaceKey: usePipelineStore.getState().workDir,
-            });
-
-          if (deployedLive && resultWorkspaceVisible()) {
-            setWorkspaceYamls((entries) => upsertWorkspaceYamlEntry(entries, finalEntry));
-          }
 
           if (resultWorkspaceVisible()) {
-            await refreshWorkspaceYamls({ preserveOnError: deployedLive });
+            setWorkspacePipelines((current) => {
+              if (usePipelineStore.getState().workDir !== snapshot.workDir) return current;
+              const collection =
+                current.workspaceKey === snapshot.workDir
+                  ? current
+                  : { liveEntries: [], stagedTargets: [] };
+              const reconciled = reconcileFinalizedWorkspacePipelines(collection, {
+                stageId: snapshot.staging!.id,
+                stagedRelativePath: stagedTarget.relativePath,
+                outcome: finalized.outcome,
+                entry: finalEntry,
+              });
+              return {
+                workspaceKey: snapshot.workDir,
+                liveEntries: [...reconciled.liveEntries],
+                stagedTargets: [...reconciled.stagedTargets],
+              };
+            });
+            await refreshWorkspaceYamls({ preserveOnError: true });
+          } else {
+            removeStagedWorkspacePipelines(snapshot.workDir, snapshot.staging.id);
           }
           if (cancelled || (await discardCancelledStage())) return;
 
@@ -1554,6 +1643,10 @@ export function App() {
           activeLifecycle?.turnId === finishedTurn.id &&
           activeLifecycle.cancellationRequested === true;
         if (stoppedByUser) {
+          const stoppedSnapshot = finishedTurn.yamlSnapshotBeforeSend;
+          if (stoppedSnapshot?.staging) {
+            removeStagedWorkspacePipelines(stoppedSnapshot.workDir, stoppedSnapshot.staging.id);
+          }
           try {
             await discardCancelledStage();
           } catch (discardErr) {
@@ -1563,15 +1656,16 @@ export function App() {
           return;
         }
         console.error('[chat] post-chat YAML reconcile failed', err);
-        const abandonedStage = finishedTurn.yamlSnapshotBeforeSend?.staging;
+        const abandonedSnapshot = finishedTurn.yamlSnapshotBeforeSend;
+        const abandonedStage = abandonedSnapshot?.staging;
+        if (abandonedStage && abandonedSnapshot) {
+          removeStagedWorkspacePipelines(abandonedSnapshot.workDir, abandonedStage.id);
+        }
         const lockId = getLocalYamlEditLockId();
         if (abandonedStage && lockId && !lifecycleCancellationGuard?.cleanupStarted()) {
           try {
             await withYamlEditLockRequestBypass(lockId, () =>
-              api.discardChatYamlStage(
-                abandonedStage.id,
-                finishedTurn.yamlSnapshotBeforeSend!.workDir,
-              ),
+              api.discardChatYamlStage(abandonedStage.id, abandonedSnapshot!.workDir),
             );
           } catch (discardErr) {
             console.warn('[chat] failed to discard unreconciled YAML stage', discardErr);
@@ -1599,7 +1693,12 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [finishedTurn, refreshWorkspaceYamls]);
+  }, [
+    finishedTurn,
+    refreshWorkspaceYamls,
+    removeStagedWorkspacePipelines,
+    upsertStagedWorkspacePipeline,
+  ]);
 
   const handleOpenWorkspaceFile = useCallback(
     (path: string) => {
@@ -2578,31 +2677,27 @@ export function App() {
     deleteTitle?: string;
   };
 
-  const workspaceItems = useMemo<ActionItem[]>(() => {
-    if (!workDir) return [{ label: '(No workspace selected)', disabled: true, onAction: () => {} }];
-    if (workspaceYamls.length === 0)
-      return [{ label: '(No YAML files in .tagma)', disabled: true, onAction: () => {} }];
-    return workspaceYamls.map((y) => {
-      const isActive = y.name === activeYamlName;
-      const primary = y.pipelineName && y.pipelineName.trim() ? y.pipelineName : y.name;
-      const secondary = y.pipelineName && y.pipelineName.trim() ? y.name : undefined;
-      return {
-        label: isActive ? `● ${primary}` : `   ${primary}`,
-        subLabel: secondary,
-        disabled: false,
-        onAction: () => handleOpenWorkspaceFile(y.path),
-        onDelete: yamlEditLocked ? undefined : () => handleDeleteWorkspaceFile(y.path),
-        deleteTitle: `Remove the "${y.name}" pipeline folder (run history is preserved)`,
-      };
-    });
-  }, [
-    workDir,
-    workspaceYamls,
-    activeYamlName,
-    yamlEditLocked,
-    handleOpenWorkspaceFile,
-    handleDeleteWorkspaceFile,
-  ]);
+  const workspaceItems = useMemo<ActionItem[]>(
+    () =>
+      buildWorkspacePipelineMenuItems({
+        workDir,
+        liveEntries: workspaceYamls,
+        stagedTargets: stagedWorkspacePipelines,
+        activeYamlName,
+        yamlEditLocked,
+        onOpen: handleOpenWorkspaceFile,
+        onDelete: handleDeleteWorkspaceFile,
+      }),
+    [
+      workDir,
+      workspaceYamls,
+      stagedWorkspacePipelines,
+      activeYamlName,
+      yamlEditLocked,
+      handleOpenWorkspaceFile,
+      handleDeleteWorkspaceFile,
+    ],
+  );
 
   const platformExportItems = useMemo<ActionItem[]>(() => {
     const currentPlatform = hostPlatform;

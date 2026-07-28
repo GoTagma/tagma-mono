@@ -12,7 +12,7 @@ import {
 } from '../server/chat-pipeline-trial-run';
 import { __chatYamlStagingTestHooks } from '../server/chat-yaml-staging';
 import { registerChatYamlStagingRoutes } from '../server/routes/chat-yaml-staging';
-import { safeCaptureTrialHostWitness } from '../server/chat-pipeline-trial-witness';
+import { disposeTrialWitnessWorker, safeCaptureTrialHostWitness } from '../server/chat-pipeline-trial-witness';
 import { pipelineYamlPath } from '../server/pipeline-paths';
 import { WorkspaceState } from '../server/workspace-state';
 import { __workspaceRegistryTestHooks, workspaceRegistry } from '../server/workspace-registry';
@@ -26,6 +26,7 @@ type MockRequest = {
 type RouteHandler = (req: MockRequest, res: MockResponse) => void | Promise<void>;
 
 const roots: string[] = [];
+const workspaces: WorkspaceState[] = [];
 const REQUIRED_TRIAL_COVERAGE = [
   'multiple-inputs',
   'duplicate-input-names',
@@ -58,6 +59,7 @@ function makeWorkspace(): { ws: WorkspaceState; sourcePath: string } {
   mkdirSync(dirname(sourcePath), { recursive: true });
   writeFileSync(sourcePath, yaml, 'utf-8');
   const ws = new WorkspaceState(root);
+  workspaces.push(ws);
   ws.workDir = root;
   ws.yamlPath = sourcePath;
   ws.config = parseYaml(yaml);
@@ -181,6 +183,9 @@ afterEach(() => {
   delete __chatPipelineTrialRunTestHooks.timeoutMsOverride;
   delete __chatYamlStagingTestHooks.captureHostWitnessAsync;
   delete __workspaceRegistryTestHooks.disposeTrialWitnessWorker;
+  for (const ws of workspaces.splice(0)) {
+    disposeTrialWitnessWorker(ws);
+  }
   for (const root of roots.splice(0)) {
     workspaceRegistry.drop(root);
     rmSync(root, { recursive: true, force: true });

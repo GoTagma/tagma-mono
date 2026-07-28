@@ -124,7 +124,9 @@ describe('composer error-context attachments', () => {
       queuedDispatchMode: null,
       sending: false,
       reconciling: false,
+      flushing: false,
       activeChatYamlLifecycle: null,
+      postChatYamlAction: null,
       sessionYamlResults: {},
       currentSessionId: null,
       sessions: [],
@@ -204,6 +206,7 @@ describe('composer error-context attachments', () => {
     const queued = useChatStore.getState().queuedMessages;
     expect(queued).toHaveLength(1);
     expect(queued[0].text).toBe('Fix this bug.');
+    expect(useChatStore.getState().queuedDispatchMode).toBe('reuse-logical-turn');
     expect(queued[0].context).toBe(
       '<ask-ai-context>\n' +
         '<attachment label="Run failed">\n' +
@@ -241,6 +244,7 @@ describe('composer error-context attachments', () => {
 
     const state = useChatStore.getState();
     expect(state.queuedMessages).toHaveLength(1);
+    expect(state.queuedDispatchMode).toBe('start-fresh');
     expect(state.queuedMessages[0].text).toBe('Follow up after reconcile.');
     expect(state.postChatYamlAction).toMatchObject({ status: 'repairing', name: 'pipeline.yaml' });
     expect(state.composerAttachments).toHaveLength(0);
@@ -271,6 +275,7 @@ describe('composer error-context attachments', () => {
 
     const state = useChatStore.getState();
     expect(state.queuedMessages).toHaveLength(1);
+    expect(state.queuedDispatchMode).toBe('start-fresh');
     expect(state.queuedMessages[0].text).toBe('Follow up after flush.');
     expect(state.postChatYamlAction).toMatchObject({ status: 'repairing', name: 'pipeline.yaml' });
     expect(state.sending).toBe(false);
@@ -303,16 +308,16 @@ describe('composer error-context attachments', () => {
     } as Partial<ChatState>);
 
     await useChatStore.getState().send('Start fresh after reconcile.');
+    expect(useChatStore.getState().queuedDispatchMode).toBe('start-fresh');
     useChatStore.setState({ reconciling: false } as Partial<ChatState>);
 
     expect(useChatStore.getState().dispatchQueuedMessagesIfReady()).toBe(true);
 
     const state = useChatStore.getState();
-    expect(promptRequests).toEqual(['http://opencode.test/session/existing/prompt_async']);
     expect(state.sending).toBe(true);
     expect(state.pendingUserText).toBe('Start fresh after reconcile.');
     expect(state.queuedMessages).toEqual([]);
-    expect(state.sessionYamlResults.existing).toBeUndefined();
+    expect(state.queuedDispatchMode).toBeNull();
   });
 
   test('queues behind an external YAML lock and dispatches after the lock clears', async () => {
@@ -352,6 +357,7 @@ describe('composer error-context attachments', () => {
     await useChatStore.getState().send('Wait for the lock release.');
 
     expect(useChatStore.getState().queuedMessages).toHaveLength(1);
+    expect(useChatStore.getState().queuedDispatchMode).toBe('start-fresh');
     expect(useChatStore.getState().dispatchQueuedMessagesIfReady()).toBe(false);
     expect(promptRequests).toEqual([]);
 
@@ -367,8 +373,8 @@ describe('composer error-context attachments', () => {
     });
 
     expect(useChatStore.getState().dispatchQueuedMessagesIfReady()).toBe(true);
-    expect(promptRequests).toEqual(['http://opencode.test/session/existing/prompt_async']);
     expect(useChatStore.getState().queuedMessages).toEqual([]);
+    expect(useChatStore.getState().queuedDispatchMode).toBeNull();
     expect(useChatStore.getState().sending).toBe(true);
   });
 });

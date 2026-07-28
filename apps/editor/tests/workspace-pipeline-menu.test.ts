@@ -39,8 +39,7 @@ function stagedTarget(
   sourcePath: string | null = null,
 ): StagedTarget {
   const stagedPath =
-    `${WORK_DIR}/.tagma/.chat-staging/${stageId}` +
-    `/agent-workspace/.tagma/${stem}/${stem}.yaml`;
+    `${WORK_DIR}/.tagma/.chat-staging/${stageId}` + `/agent-workspace/.tagma/${stem}/${stem}.yaml`;
   return {
     ...liveEntry(stem, pipelineName, {
       path: stagedPath,
@@ -129,6 +128,26 @@ describe('workspace pipeline menu', () => {
     expect(menuText(items[0]!)).not.toContain('Temporary');
   });
 
+  test('shows one Temporary item when multiple stages target the same new pipeline', () => {
+    const items = buildWorkspacePipelineMenuItems({
+      workDir: WORK_DIR,
+      liveEntries: [],
+      stagedTargets: [
+        stagedTarget('stage-a', 'draft', 'First Draft'),
+        stagedTarget('stage-b', 'draft', 'Second Draft'),
+      ],
+      activeYamlName: null,
+      yamlEditLocked: false,
+      onOpen: () => {},
+      onDelete: () => {},
+    });
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ disabled: true });
+    expect(menuText(items[0]!)).toContain('First Draft');
+    expect(menuText(items[0]!)).toContain('Temporary');
+  });
+
   test('upserts finalized live metadata and removes only the matching temporary identity', () => {
     const outcomes: ChatYamlStageFinalizeResult['outcome'][] = [
       'created',
@@ -166,9 +185,7 @@ describe('workspace pipeline menu', () => {
         pipelineName: 'Final name',
         contentHash: `final-${outcome}`,
       });
-      expect(
-        next.stagedTargets.map((entry) => `${entry.stageId}:${entry.relativePath}`),
-      ).toEqual([
+      expect(next.stagedTargets.map((entry) => `${entry.stageId}:${entry.relativePath}`)).toEqual([
         `${sameRelativePathInAnotherStage.stageId}:${sameRelativePathInAnotherStage.relativePath}`,
         `${siblingInSameStage.stageId}:${siblingInSameStage.relativePath}`,
       ]);

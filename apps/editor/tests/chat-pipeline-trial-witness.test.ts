@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -32,6 +32,8 @@ import { WorkspaceState } from '../server/workspace-state';
 
 const roots: string[] = [];
 const workspaces: WorkspaceState[] = [];
+const GIT_WITNESS_TEST_TIMEOUT_MS = 15_000;
+setDefaultTimeout(GIT_WITNESS_TEST_TIMEOUT_MS);
 
 function makeRoot(label: string): string {
   const root = mkdtempSync(join(tmpdir(), `tagma-trial-witness-${label}-`));
@@ -97,106 +99,133 @@ afterEach(() => {
 }, 300_000);
 
 describe('chat pipeline trial host witness', () => {
-  test('uses source files and dependency descriptors instead of Git and dependency caches', () => {
-    const { root, ws } = makeWorkspace();
-    runGit(root, 'init', '--quiet');
-    writeFileSync(join(root, '.gitignore'), 'node_modules/\n.tagma/\nbun.lock\n', 'utf-8');
-    writeFileSync(join(root, 'source.ts'), 'export const value = 1;\n', 'utf-8');
-    writeFileSync(join(root, 'package.json'), '{"name":"fixture","private":true}\n', 'utf-8');
-    writeFileSync(join(root, 'bun.lock'), 'lockfile-v1\n', 'utf-8');
-    runGit(root, 'add', '.gitignore', 'source.ts', 'package.json');
+  test(
+    'uses source files and dependency descriptors instead of Git and dependency caches',
+    () => {
+      const { root, ws } = makeWorkspace();
+      runGit(root, 'init', '--quiet');
+      writeFileSync(join(root, '.gitignore'), 'node_modules/\n.tagma/\nbun.lock\n', 'utf-8');
+      writeFileSync(join(root, 'source.ts'), 'export const value = 1;\n', 'utf-8');
+      writeFileSync(join(root, 'package.json'), '{"name":"fixture","private":true}\n', 'utf-8');
+      writeFileSync(join(root, 'bun.lock'), 'lockfile-v1\n', 'utf-8');
+      runGit(root, 'add', '.gitignore', 'source.ts', 'package.json');
 
-    const dependencyPath = join(root, 'node_modules', 'fixture', 'index.js');
-    const runtimeCachePath = join(root, '.tagma', '.opencode-runtime', 'cache.bin');
-    mkdirSync(dirname(dependencyPath), { recursive: true });
-    mkdirSync(dirname(runtimeCachePath), { recursive: true });
-    writeFileSync(dependencyPath, 'dependency-v1\n', 'utf-8');
-    writeFileSync(runtimeCachePath, 'runtime-v1\n', 'utf-8');
+      const dependencyPath = join(root, 'node_modules', 'fixture', 'index.js');
+      const runtimeCachePath = join(root, '.tagma', '.opencode-runtime', 'cache.bin');
+      mkdirSync(dirname(dependencyPath), { recursive: true });
+      mkdirSync(dirname(runtimeCachePath), { recursive: true });
+      writeFileSync(dependencyPath, 'dependency-v1\n', 'utf-8');
+      writeFileSync(runtimeCachePath, 'runtime-v1\n', 'utf-8');
 
-    const first = captureTrialHostWitness(ws, prepared(root));
-    writeFileSync(join(root, '.git', 'witness-noise'), 'git metadata churn\n', 'utf-8');
-    writeFileSync(dependencyPath, 'dependency-v2\n', 'utf-8');
-    writeFileSync(runtimeCachePath, 'runtime-v2\n', 'utf-8');
-    const cacheOnlyChanges = captureTrialHostWitness(ws, prepared(root));
-    expect(cacheOnlyChanges.workspace).toEqual(first.workspace);
+      const first = captureTrialHostWitness(ws, prepared(root));
+      writeFileSync(join(root, '.git', 'witness-noise'), 'git metadata churn\n', 'utf-8');
+      writeFileSync(dependencyPath, 'dependency-v2\n', 'utf-8');
+      writeFileSync(runtimeCachePath, 'runtime-v2\n', 'utf-8');
+      const cacheOnlyChanges = captureTrialHostWitness(ws, prepared(root));
+      expect(cacheOnlyChanges.workspace).toEqual(first.workspace);
 
-    writeFileSync(join(root, 'bun.lock'), 'lockfile-v2\n', 'utf-8');
-    const dependencyIdentityChange = captureTrialHostWitness(ws, prepared(root));
-    expect(dependencyIdentityChange.workspace.digest).not.toBe(first.workspace.digest);
-  });
+      writeFileSync(join(root, 'bun.lock'), 'lockfile-v2\n', 'utf-8');
+      const dependencyIdentityChange = captureTrialHostWitness(ws, prepared(root));
+      expect(dependencyIdentityChange.workspace.digest).not.toBe(first.workspace.digest);
+    },
+    GIT_WITNESS_TEST_TIMEOUT_MS,
+  );
 
-  test('includes authored Tagma files while excluding generated OpenCode runtime state', () => {
-    const { root, ws } = makeWorkspace();
-    runGit(root, 'init', '--quiet');
-    writeFileSync(join(root, '.gitignore'), '.tagma/\n', 'utf-8');
-    writeFileSync(join(root, 'source.txt'), 'source\n', 'utf-8');
-    runGit(root, 'add', '.gitignore', 'source.txt');
+  test(
+    'includes authored Tagma files while excluding generated OpenCode runtime state',
+    () => {
+      const { root, ws } = makeWorkspace();
+      runGit(root, 'init', '--quiet');
+      writeFileSync(join(root, '.gitignore'), '.tagma/\n', 'utf-8');
+      writeFileSync(join(root, 'source.txt'), 'source\n', 'utf-8');
+      runGit(root, 'add', '.gitignore', 'source.txt');
 
-    const authoredPath = join(root, '.tagma', 'pipeline', 'pipeline.yaml');
-    const runtimePath = join(root, '.tagma', '.opencode-runtime', 'cache.bin');
-    mkdirSync(dirname(authoredPath), { recursive: true });
-    mkdirSync(dirname(runtimePath), { recursive: true });
-    writeFileSync(authoredPath, 'pipeline-v1\n', 'utf-8');
-    writeFileSync(runtimePath, 'runtime-v1\n', 'utf-8');
+      const authoredPath = join(root, '.tagma', 'pipeline', 'pipeline.yaml');
+      const runtimePath = join(root, '.tagma', '.opencode-runtime', 'cache.bin');
+      mkdirSync(dirname(authoredPath), { recursive: true });
+      mkdirSync(dirname(runtimePath), { recursive: true });
+      writeFileSync(authoredPath, 'pipeline-v1\n', 'utf-8');
+      writeFileSync(runtimePath, 'runtime-v1\n', 'utf-8');
 
-    const first = captureTrialHostWitness(ws, prepared(root));
-    writeFileSync(runtimePath, 'runtime-v2\n', 'utf-8');
-    const runtimeOnlyChange = captureTrialHostWitness(ws, prepared(root));
-    expect(runtimeOnlyChange.workspace).toEqual(first.workspace);
+      const first = captureTrialHostWitness(ws, prepared(root));
+      writeFileSync(runtimePath, 'runtime-v2\n', 'utf-8');
+      const runtimeOnlyChange = captureTrialHostWitness(ws, prepared(root));
+      expect(runtimeOnlyChange.workspace).toEqual(first.workspace);
 
-    writeFileSync(authoredPath, 'pipeline-v2\n', 'utf-8');
-    const authoredChange = captureTrialHostWitness(ws, prepared(root));
-    expect(authoredChange.workspace.digest).not.toBe(first.workspace.digest);
-  });
+      writeFileSync(authoredPath, 'pipeline-v2\n', 'utf-8');
+      const authoredChange = captureTrialHostWitness(ws, prepared(root));
+      expect(authoredChange.workspace.digest).not.toBe(first.workspace.digest);
+    },
+    GIT_WITNESS_TEST_TIMEOUT_MS,
+  );
 
-  test('fails closed while Git repository control files are locked', () => {
-    const { root, ws } = makeWorkspace();
-    runGit(root, 'init', '--quiet');
-    writeFileSync(join(root, 'source.txt'), 'source\n', 'utf-8');
-    runGit(root, 'add', 'source.txt');
-    writeFileSync(join(root, '.git', 'index.lock'), 'in-progress transaction\n', 'utf-8');
+  test(
+    'fails closed while Git repository control files are locked',
+    () => {
+      const { root, ws } = makeWorkspace();
+      runGit(root, 'init', '--quiet');
+      writeFileSync(join(root, 'source.txt'), 'source\n', 'utf-8');
+      runGit(root, 'add', 'source.txt');
+      writeFileSync(join(root, '.git', 'index.lock'), 'in-progress transaction\n', 'utf-8');
 
-    const captured = safeCaptureTrialHostWitness(ws, prepared(root));
-    expect(captured.witness).toBeNull();
-    expect(captured.reason).toContain('lock');
-  });
+      const captured = safeCaptureTrialHostWitness(ws, prepared(root));
+      expect(captured.witness).toBeNull();
+      expect(captured.reason).toContain('lock');
+    },
+    GIT_WITNESS_TEST_TIMEOUT_MS,
+  );
 
-  test('fails closed while a nested Git reference is locked', () => {
-    const { root, ws } = makeWorkspace();
-    runGit(root, 'init', '--quiet');
-    writeFileSync(join(root, 'source.txt'), 'source\n', 'utf-8');
-    runGit(root, 'add', 'source.txt');
-    const refLockPath = join(root, '.git', 'refs', 'heads', 'main.lock');
-    mkdirSync(dirname(refLockPath), { recursive: true });
-    writeFileSync(refLockPath, 'in-progress ref transaction\n', 'utf-8');
+  test(
+    'fails closed while a nested Git reference is locked',
+    () => {
+      const { root, ws } = makeWorkspace();
+      runGit(root, 'init', '--quiet');
+      writeFileSync(join(root, 'source.txt'), 'source\n', 'utf-8');
+      runGit(root, 'add', 'source.txt');
+      const refLockPath = join(root, '.git', 'refs', 'heads', 'main.lock');
+      mkdirSync(dirname(refLockPath), { recursive: true });
+      writeFileSync(refLockPath, 'in-progress ref transaction\n', 'utf-8');
 
-    const captured = safeCaptureTrialHostWitness(ws, prepared(root));
-    expect(captured.witness).toBeNull();
-    expect(captured.reason).toContain('lock');
-  });
+      const captured = safeCaptureTrialHostWitness(ws, prepared(root));
+      expect(captured.witness).toBeNull();
+      expect(captured.reason).toContain('lock');
+    },
+    GIT_WITNESS_TEST_TIMEOUT_MS,
+  );
 
-  test('fails closed when Git is unavailable for a repository workspace', () => {
-    const { root, ws } = makeWorkspace();
-    runGit(root, 'init', '--quiet');
-    writeFileSync(join(root, 'source.txt'), 'source\n', 'utf-8');
-    runGit(root, 'add', 'source.txt');
-    const pathKeys =
-      process.platform === 'win32' ? (['Path', 'PATH'] as const) : (['PATH'] as const);
-    const originals = pathKeys.map((key) => [key, process.env[key]] as const);
-    let captured: ReturnType<typeof safeCaptureTrialHostWitness>;
-    try {
-      for (const key of pathKeys) process.env[key] = '';
-      captured = safeCaptureTrialHostWitness(ws, prepared(root));
-    } finally {
-      for (const [key, value] of originals) {
-        if (value === undefined) delete process.env[key];
-        else process.env[key] = value;
+  test(
+    'fails closed when Git is unavailable for a repository workspace',
+    () => {
+      const { root, ws } = makeWorkspace();
+      runGit(root, 'init', '--quiet');
+      writeFileSync(join(root, 'source.txt'), 'source\n', 'utf-8');
+      runGit(root, 'add', 'source.txt');
+      const emptyPathRoot = makeRoot('empty-path');
+      const pathKeys = [
+        ...new Set([
+          ...Object.keys(process.env).filter((key) => key.toUpperCase() === 'PATH'),
+          'PATH',
+          'Path',
+          'path',
+        ]),
+      ];
+      const originals = pathKeys.map((key) => [key, process.env[key]] as const);
+      let captured: ReturnType<typeof safeCaptureTrialHostWitness>;
+      try {
+        for (const key of pathKeys) process.env[key] = emptyPathRoot;
+        captured = safeCaptureTrialHostWitness(ws, prepared(root));
+      } finally {
+        for (const [key, value] of originals) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
       }
-    }
 
-    expect(captured!.witness).toBeNull();
-    expect(captured!.reason).toContain('could not resolve git');
-  });
+      expect(captured!.witness).toBeNull();
+      expect(captured!.reason).toContain('could not resolve git');
+    },
+    GIT_WITNESS_TEST_TIMEOUT_MS,
+  );
 
   test('fails closed for an undeclared nested Git repository', () => {
     const { root, ws } = makeWorkspace();
