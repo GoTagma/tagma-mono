@@ -38,6 +38,39 @@ const SKIPPED_TAGMA_WITNESS_DIRS = new Set([
   'plugin-runtime',
   'plugin-store',
 ]);
+const ROOT_WORKSPACE_IDENTITY_FILES = new Set([
+  '.bunfig.toml',
+  '.npmrc',
+  '.python-version',
+  '.tool-versions',
+  '.yarnrc.yml',
+  'bun.lock',
+  'bun.lockb',
+  'bunfig.toml',
+  'Cargo.lock',
+  'Cargo.toml',
+  'composer.json',
+  'composer.lock',
+  'deno.json',
+  'deno.jsonc',
+  'deno.lock',
+  'Gemfile',
+  'Gemfile.lock',
+  'go.mod',
+  'go.sum',
+  'mise.toml',
+  'npm-shrinkwrap.json',
+  'package-lock.json',
+  'package.json',
+  'Pipfile',
+  'Pipfile.lock',
+  'pnpm-lock.yaml',
+  'poetry.lock',
+  'pyproject.toml',
+  'requirements.txt',
+  'uv.lock',
+  'yarn.lock',
+]);
 const TRIAL_MINIMAL_ENV_KEYS = [
   'PATH',
   'Path',
@@ -354,7 +387,13 @@ function successfulGitWitnessCommand(
 }
 
 function nullTerminatedGitRecords(output: Buffer, label: string): string[] {
-  const records = output.toString('utf-8').split('\0');
+  let decoded: string;
+  try {
+    decoded = new TextDecoder('utf-8', { fatal: true }).decode(output);
+  } catch {
+    throw new Error(`Git workspace witness ${label} output was not valid UTF-8.`);
+  }
+  const records = decoded.split('\0');
   if (records.pop() !== '') {
     throw new Error(`Git workspace witness ${label} output was not NUL-terminated.`);
   }
@@ -372,6 +411,20 @@ function assertGitWorkspacePath(root: string, path: string): string {
   return absolutePath;
 }
 
+
+function rootWorkspaceIdentityPaths(root: string): string[] {
+  return readdirSync(root, { withFileTypes: true })
+    .filter(
+      (entry) =>
+        (entry.isFile() || entry.isSymbolicLink()) &&
+        (ROOT_WORKSPACE_IDENTITY_FILES.has(entry.name) ||
+          entry.name === '.env' ||
+          entry.name.startsWith('.env.') ||
+          /^requirements(?:[-.][A-Za-z0-9_-]+)?\.(?:in|txt)$/iu.test(entry.name)),
+    )
+    .map((entry) => entry.name)
+    .sort();
+}
 function authoredTagmaWorkspacePaths(root: string): string[] {
   const tagmaRoot = join(root, '.tagma');
   if (!existsSync(tagmaRoot)) return [];
@@ -415,6 +468,56 @@ function authoredTagmaWorkspacePaths(root: string): string[] {
   return paths.sort();
 }
 
+
+const GIT_CONTROL_LOCK_NAMES = [
+  'index.lock',
+  'HEAD.lock',
+  'packed-refs.lock',
+  'config.lock',
+  'shallow.lock',
+] as const;
+
+function assertNoGitWorkspaceControlLocks(gitPath: string, root: string): void {
+  const args = ['rev-parse', '--path-format=absolute'];
+  for (const name of GIT_CONTROL_LOCK_NAMES) args.push('--git-path', name);
+  const output = successfulGitWitnessCommand(gitPath, root, args)
+    .toString('utf-8')
+    .split(/\r?\n/u)
+    .filter(Boolean);
+  for (let index = 0; index < output.length; index += 1) {
+    if (!existsSync(resolve(root, output[index]!))) continue;
+    throw new Error(
+      `Git workspace witness refused repository control lock: ${GIT_CONTROL_LOCK_NAMES[index] ?? 'unknown lock'}`,
+    );
+  }
+  const refsPath = successfulGitWitnessCommand(gitPath, root, [
+    'rev-parse',
+    '--path-format=absolute',
+    '--git-path',
+    'refs',
+  ])
+    .toString('utf-8')
+    .trim();
+  if (!existsSync(refsPath)) return;
+  let visitedEntries = 0;
+  const visitRefs = (directory: string): void => {
+    const stat = lstatSync(directory);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) {
+      throw new Error('Git workspace witness requires refs to be a regular directory tree.');
+    }
+    for (const entry of readdirSync(directory, { withFileTypes: true }).sort(compareNames)) {
+      visitedEntries += 1;
+      if (visitedEntries > 10_000) {
+        throw new Error('Git workspace witness refused an unexpectedly large refs tree.');
+      }
+      if (entry.name.endsWith('.lock')) {
+        throw new Error(`Git workspace witness refused repository reference lock: ${entry.name}`);
+      }
+      if (entry.isDirectory()) visitRefs(join(directory, entry.name));
+    }
+  };
+  visitRefs(refsPath);
+}
 function gitWorkspaceSourceSnapshot(root: string): GitWorkspaceSourceSnapshot | null {
   const gitPath = resolveBinaryPath('git', {});
   const hasGitMarker = existsSync(join(root, '.git'));
@@ -440,8 +543,10 @@ function gitWorkspaceSourceSnapshot(root: string): GitWorkspaceSourceSnapshot | 
     throw new Error('Git workspace witness repository root is unavailable.');
   }
   if (!sameCanonicalPath(gitRoot, root)) return null;
+  assertNoGitWorkspaceControlLocks(gitPath, root);
 
   const staged = successfulGitWitnessCommand(gitPath, root, ['ls-files', '--stage', '-z']);
+  const indexFlags = successfulGitWitnessCommand(gitPath, root, ['ls-files', '-v', '-z']);
   const untracked = successfulGitWitnessCommand(gitPath, root, [
     'ls-files',
     '--others',
@@ -455,8 +560,10 @@ function gitWorkspaceSourceSnapshot(root: string): GitWorkspaceSourceSnapshot | 
     '-z',
     '--untracked-files=all',
     '--ignore-submodules=none',
+    '--ignored=matching',
   ]);
   const authoredTagmaPaths = authoredTagmaWorkspacePaths(root);
+  const rootIdentityPaths = rootWorkspaceIdentityPaths(root);
   const paths = new Set<string>();
   for (const record of nullTerminatedGitRecords(staged, 'index')) {
     const separator = record.indexOf('\t');
@@ -465,11 +572,13 @@ function gitWorkspaceSourceSnapshot(root: string): GitWorkspaceSourceSnapshot | 
   }
   for (const path of nullTerminatedGitRecords(untracked, 'untracked files')) paths.add(path);
   for (const path of authoredTagmaPaths) paths.add(path);
+  for (const path of rootIdentityPaths) paths.add(path);
   const gitIdentity = fileIdentity(gitPath);
   const controlHash = createHash('sha256');
   controlHash.update(`git-binary\0${JSON.stringify(gitIdentity)}\0`);
   for (const [label, value] of [
     ['index', staged],
+    ['index-flags', indexFlags],
     ['status', status],
     ['untracked', untracked],
   ] as const) {
@@ -478,6 +587,9 @@ function gitWorkspaceSourceSnapshot(root: string): GitWorkspaceSourceSnapshot | 
   }
   controlHash.update(`authored-tagma\0${authoredTagmaPaths.length}\0`);
   controlHash.update(`${authoredTagmaPaths.join('\0')}\0`);
+  controlHash.update(`root-identities\0${rootIdentityPaths.length}\0`);
+  controlHash.update(`${rootIdentityPaths.join('\0')}\0`);
+  assertNoGitWorkspaceControlLocks(gitPath, root);
   return {
     controlDigest: controlHash.digest('hex'),
     paths: [...paths].sort(),
