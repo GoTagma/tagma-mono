@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import {
   closeSync,
   existsSync,
@@ -27,7 +28,16 @@ import type { WorkspaceState } from './workspace-state.js';
 
 const TRIAL_HOST_WITNESS_VERSION = 2;
 const FILE_HASH_BUFFER_BYTES = 1024 * 1024;
-const SKIPPED_TAGMA_WITNESS_DIRS = new Set(['.chat-staging', 'logs', '.usage']);
+const SKIPPED_TAGMA_WITNESS_DIRS = new Set([
+  '.chat-staging',
+  '.opencode',
+  '.opencode-runtime',
+  '.usage',
+  'logs',
+  'node_modules',
+  'plugin-runtime',
+  'plugin-store',
+]);
 const TRIAL_MINIMAL_ENV_KEYS = [
   'PATH',
   'Path',
@@ -288,7 +298,339 @@ function fileIdentity(path: string): TrialWitnessFileIdentity {
   };
 }
 
-function workspaceWitness(ws: WorkspaceState): TrialHostWorkspaceWitness {
+interface GitWorkspaceSourceSnapshot {
+  controlDigest: string;
+  paths: string[];
+}
+
+const GIT_WITNESS_MAX_BUFFER_BYTES = 32 * 1024 * 1024;
+
+function sameCanonicalPath(left: string, right: string): boolean {
+  return process.platform === 'win32'
+    ? left.toLowerCase() === right.toLowerCase()
+    : left === right;
+}
+
+function gitWitnessEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) {
+    if (key.toUpperCase().startsWith('GIT_')) delete env[key];
+  }
+  env.GIT_OPTIONAL_LOCKS = '0';
+  env.GIT_PAGER = 'cat';
+  return env;
+}
+
+function spawnGitWitness(
+  gitPath: string,
+  root: string,
+  args: readonly string[],
+): { status: number | null; stdout: Buffer; stderr: Buffer } {
+  const result = spawnSync(gitPath, ['-C', root, ...args], {
+    env: gitWitnessEnv(),
+    windowsHide: true,
+    maxBuffer: GIT_WITNESS_MAX_BUFFER_BYTES,
+  });
+  if (result.error) throw result.error;
+  return {
+    status: result.status,
+    stdout: Buffer.isBuffer(result.stdout) ? result.stdout : Buffer.from(result.stdout ?? ''),
+    stderr: Buffer.isBuffer(result.stderr) ? result.stderr : Buffer.from(result.stderr ?? ''),
+  };
+}
+
+function successfulGitWitnessCommand(
+  gitPath: string,
+  root: string,
+  args: readonly string[],
+): Buffer {
+  const result = spawnGitWitness(gitPath, root, args);
+  if (result.status !== 0) {
+    throw new Error(
+      `Git workspace witness command failed (${args.join(' ')}): ${result.stderr.toString('utf-8').trim() || `exit ${String(result.status)}`}`,
+    );
+  }
+  return result.stdout;
+}
+
+function nullTerminatedGitRecords(output: Buffer, label: string): string[] {
+  const records = output.toString('utf-8').split('\0');
+  if (records.pop() !== '') {
+    throw new Error(`Git workspace witness ${label} output was not NUL-terminated.`);
+  }
+  return records;
+}
+
+function assertGitWorkspacePath(root: string, path: string): string {
+  if (!path || path.includes('\0') || path.includes('\\') || isAbsolute(path)) {
+    throw new Error(`Git workspace witness returned an invalid path: ${path}`);
+  }
+  const absolutePath = resolve(root, ...path.split('/'));
+  if (!isCanonicalPathWithin(absolutePath, root)) {
+    throw new Error(`Git workspace witness path escaped the workspace: ${path}`);
+  }
+  return absolutePath;
+}
+
+function authoredTagmaWorkspacePaths(root: string): string[] {
+  const tagmaRoot = join(root, '.tagma');
+  if (!existsSync(tagmaRoot)) return [];
+  const rootStat = lstatSync(tagmaRoot);
+  if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) {
+    throw new Error('Git workspace witness requires .tagma to be a regular directory.');
+  }
+  const paths: string[] = [];
+  const visit = (directory: string, relativeDir: string): void => {
+    const directoryBefore = lstatSync(directory);
+    if (directoryBefore.isSymbolicLink() || !directoryBefore.isDirectory()) {
+      throw new Error(`Git workspace witness authored directory changed: ${relativeDir}`);
+    }
+    const canonicalDirectoryBefore = realpathSync.native(directory);
+    if (!isCanonicalPathWithin(canonicalDirectoryBefore, root)) {
+      throw new Error(`Git workspace witness authored directory escaped: ${relativeDir}`);
+    }
+    const metadataBefore = fileMetadata(directoryBefore);
+    for (const entry of readdirSync(directory, { withFileTypes: true }).sort(compareNames)) {
+      const relativePath = `${relativeDir}/${entry.name}`;
+      const absolutePath = join(directory, entry.name);
+      const stat = lstatSync(absolutePath);
+      if (stat.isDirectory()) {
+        if (shouldSkipWorkspaceWitnessDir(relativePath)) continue;
+        visit(absolutePath, relativePath);
+      } else if (stat.isFile() || stat.isSymbolicLink()) {
+        paths.push(relativePath);
+      }
+    }
+    const directoryAfter = lstatSync(directory);
+    if (
+      directoryAfter.isSymbolicLink() ||
+      !directoryAfter.isDirectory() ||
+      !sameFileMetadata(metadataBefore, fileMetadata(directoryAfter)) ||
+      realpathSync.native(directory) !== canonicalDirectoryBefore
+    ) {
+      throw new Error(`Git workspace witness authored directory changed: ${relativeDir}`);
+    }
+  };
+  visit(tagmaRoot, '.tagma');
+  return paths.sort();
+}
+
+function gitWorkspaceSourceSnapshot(root: string): GitWorkspaceSourceSnapshot | null {
+  const gitPath = resolveBinaryPath('git', {});
+  const hasGitMarker = existsSync(join(root, '.git'));
+  if (!gitPath) {
+    if (hasGitMarker) throw new Error('Git workspace witness could not resolve git from PATH.');
+    return null;
+  }
+
+  const rootResult = spawnGitWitness(gitPath, root, ['rev-parse', '--show-toplevel']);
+  if (rootResult.status !== 0) {
+    if (hasGitMarker) {
+      throw new Error(
+        `Git workspace witness could not inspect repository root: ${rootResult.stderr.toString('utf-8').trim() || `exit ${String(rootResult.status)}`}`,
+      );
+    }
+    return null;
+  }
+  const gitRootText = rootResult.stdout.toString('utf-8').trim();
+  let gitRoot: string;
+  try {
+    gitRoot = realpathSync.native(gitRootText);
+  } catch {
+    throw new Error('Git workspace witness repository root is unavailable.');
+  }
+  if (!sameCanonicalPath(gitRoot, root)) return null;
+
+  const staged = successfulGitWitnessCommand(gitPath, root, ['ls-files', '--stage', '-z']);
+  const untracked = successfulGitWitnessCommand(gitPath, root, [
+    'ls-files',
+    '--others',
+    '--exclude-standard',
+    '-z',
+  ]);
+  const status = successfulGitWitnessCommand(gitPath, root, [
+    'status',
+    '--porcelain=v2',
+    '--branch',
+    '-z',
+    '--untracked-files=all',
+    '--ignore-submodules=none',
+  ]);
+  const authoredTagmaPaths = authoredTagmaWorkspacePaths(root);
+  const paths = new Set<string>();
+  for (const record of nullTerminatedGitRecords(staged, 'index')) {
+    const separator = record.indexOf('\t');
+    if (separator < 0) throw new Error('Git workspace witness returned an invalid index record.');
+    paths.add(record.slice(separator + 1));
+  }
+  for (const path of nullTerminatedGitRecords(untracked, 'untracked files')) paths.add(path);
+  for (const path of authoredTagmaPaths) paths.add(path);
+  const gitIdentity = fileIdentity(gitPath);
+  const controlHash = createHash('sha256');
+  controlHash.update(`git-binary\0${JSON.stringify(gitIdentity)}\0`);
+  for (const [label, value] of [
+    ['index', staged],
+    ['status', status],
+    ['untracked', untracked],
+  ] as const) {
+    controlHash.update(`${label}\0${value.byteLength}\0`);
+    controlHash.update(value);
+  }
+  controlHash.update(`authored-tagma\0${authoredTagmaPaths.length}\0`);
+  controlHash.update(`${authoredTagmaPaths.join('\0')}\0`);
+  return {
+    controlDigest: controlHash.digest('hex'),
+    paths: [...paths].sort(),
+  };
+}
+
+function gitWorkspaceWitness(
+  ws: WorkspaceState,
+  resolvedRoot: string,
+): TrialHostWorkspaceWitness | null {
+  const before = gitWorkspaceSourceSnapshot(resolvedRoot);
+  if (!before) return null;
+  const existingCache = workspaceManifestCaches.get(ws);
+  const previousEntries =
+    existingCache?.root === resolvedRoot
+      ? existingCache.entries
+      : new Map<string, TrialHostWorkspaceManifestEntry>();
+  const nextEntries = new Map<string, TrialHostWorkspaceManifestEntry>();
+  let fileHashBuffer: Buffer | undefined;
+  const hash = createHash('sha256');
+  hash.update(`git-source-v1\0${before.controlDigest}\0`);
+  const stats: TrialHostWorkspaceManifestCacheStats = {
+    fileCount: 0,
+    totalBytes: 0,
+    hashedFileCount: 0,
+    hashedBytes: 0,
+    reusedFileCount: 0,
+  };
+  for (const relativePath of before.paths) {
+    const absolutePath = assertGitWorkspacePath(resolvedRoot, relativePath);
+    let stat: Stats;
+    try {
+      stat = lstatSync(absolutePath);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        hash.update(`missing\0${relativePath}\0`);
+        continue;
+      }
+      throw err;
+    }
+    if (stat.isDirectory()) {
+      throw new Error(`Git workspace witness does not support nested repositories: ${relativePath}`);
+    }
+    if (stat.isSymbolicLink()) {
+      let canonicalTarget: string;
+      try {
+        canonicalTarget = realpathSync.native(absolutePath);
+      } catch {
+        throw new Error(`Workspace witness symlink target is unavailable: ${relativePath}`);
+      }
+      if (!isCanonicalPathWithin(canonicalTarget, resolvedRoot)) {
+        throw new Error(`Workspace witness symlink target is outside the workspace: ${relativePath}`);
+      }
+      const canonicalTargetRelative = relative(resolvedRoot, canonicalTarget).split(sep).join('/');
+      if (shouldSkipWorkspaceWitnessDir(canonicalTargetRelative)) {
+        throw new Error(
+          `Workspace witness symlink points into an excluded workspace path: ${relativePath}`,
+        );
+      }
+      const targetStat = lstatSync(canonicalTarget);
+      if (!targetStat.isFile() && !targetStat.isDirectory()) {
+        throw new Error(`Workspace witness symlink target is not a regular path: ${relativePath}`);
+      }
+
+      const metadata = fileMetadata(stat);
+      const cached = previousEntries.get(relativePath);
+      let rawTargetSize: number;
+      let rawTargetSha256: string;
+      if (cached?.kind === 'symlink' && sameFileMetadata(cached, metadata)) {
+        stats.reusedFileCount += 1;
+        rawTargetSize = cached.rawTargetSize;
+        rawTargetSha256 = cached.rawTargetSha256;
+      } else {
+        const rawTarget = readlinkSync(absolutePath, { encoding: 'buffer' });
+        stats.hashedFileCount += 1;
+        stats.hashedBytes += rawTarget.byteLength;
+        rawTargetSize = rawTarget.byteLength;
+        rawTargetSha256 = sha256(rawTarget);
+      }
+      const symlinkAfter = lstatSync(absolutePath);
+      if (
+        !symlinkAfter.isSymbolicLink() ||
+        !sameFileMetadata(metadata, fileMetadata(symlinkAfter))
+      ) {
+        throw new Error(`Workspace witness symlink changed while hashing: ${relativePath}`);
+      }
+      let canonicalTargetAfter: string;
+      try {
+        canonicalTargetAfter = realpathSync.native(absolutePath);
+      } catch {
+        throw new Error(`Workspace witness symlink target is unavailable: ${relativePath}`);
+      }
+      if (canonicalTargetAfter !== canonicalTarget) {
+        throw new Error(`Workspace witness symlink changed while hashing: ${relativePath}`);
+      }
+      const canonicalTargetBytes = Buffer.from(canonicalTarget, 'utf-8');
+      stats.fileCount += 1;
+      stats.totalBytes += rawTargetSize;
+      nextEntries.set(relativePath, {
+        ...metadata,
+        kind: 'symlink',
+        rawTargetSize,
+        rawTargetSha256,
+      });
+      hash.update(
+        `symlink\0${relativePath}\0${rawTargetSize}\0${rawTargetSha256}\0${canonicalTargetBytes.byteLength}\0${sha256(canonicalTargetBytes)}\0`,
+      );
+      continue;
+    }
+    if (!stat.isFile()) continue;
+    const canonicalPath = realpathSync.native(absolutePath);
+    if (!isCanonicalPathWithin(canonicalPath, resolvedRoot)) {
+      throw new Error(`Git workspace witness file escaped the workspace: ${relativePath}`);
+    }
+    const canonicalRelativePath = relative(resolvedRoot, canonicalPath).split(sep).join('/');
+    if (shouldSkipWorkspaceWitnessDir(canonicalRelativePath)) {
+      throw new Error(
+        `Workspace witness symlink points into an excluded workspace path: ${relativePath}`,
+      );
+    }
+
+    const metadata = fileMetadata(stat);
+    const cached = previousEntries.get(relativePath);
+    const contentHash =
+      cached?.kind === 'file' && sameFileMetadata(cached, metadata)
+        ? (() => {
+            stats.reusedFileCount += 1;
+            return cached.sha256;
+          })()
+        : (() => {
+            stats.hashedFileCount += 1;
+            stats.hashedBytes += stat.size;
+            return streamFileSha256(
+              absolutePath,
+              stat,
+              true,
+              (fileHashBuffer ??= Buffer.allocUnsafe(FILE_HASH_BUFFER_BYTES)),
+            );
+          })();
+    stats.fileCount += 1;
+    stats.totalBytes += stat.size;
+    nextEntries.set(relativePath, { ...metadata, kind: 'file', sha256: contentHash });
+    hash.update(`file\0${relativePath}\0${stat.size}\0${contentHash}\0`);
+  }
+  const after = gitWorkspaceSourceSnapshot(resolvedRoot);
+  if (!after || after.controlDigest !== before.controlDigest) {
+    throw new Error('Git workspace source changed while hashing.');
+  }
+  workspaceManifestCaches.set(ws, { root: resolvedRoot, entries: nextEntries, lastStats: stats });
+  return { digest: hash.digest('hex'), fileCount: stats.fileCount, totalBytes: stats.totalBytes };
+}
+
+function filesystemWorkspaceWitness(ws: WorkspaceState): TrialHostWorkspaceWitness {
   if (!ws.workDir) throw new Error('Workspace directory is not set.');
   const resolvedRoot = realpathSync.native(resolve(ws.workDir));
   const existingCache = workspaceManifestCaches.get(ws);
@@ -455,6 +797,14 @@ function workspaceWitness(ws: WorkspaceState): TrialHostWorkspaceWitness {
     fileCount: stats.fileCount,
     totalBytes: stats.totalBytes,
   };
+}
+
+
+function workspaceWitness(ws: WorkspaceState): TrialHostWorkspaceWitness {
+  if (!ws.workDir) throw new Error('Workspace directory is not set.');
+  const resolvedRoot = realpathSync.native(resolve(ws.workDir));
+  const gitWitness = gitWorkspaceWitness(ws, resolvedRoot);
+  return gitWitness ?? filesystemWorkspaceWitness(ws);
 }
 
 export function getTrialHostWorkspaceManifestCacheStatsForTests(

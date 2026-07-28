@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   mkdirSync,
@@ -61,6 +62,16 @@ function sha256(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
+function runGit(root: string, ...args: string[]): void {
+  const result = spawnSync('git', ['-C', root, ...args], {
+    encoding: 'utf-8',
+    windowsHide: true,
+  });
+  if (result.status !== 0) {
+    throw new Error(result.stderr || `git ${args.join(' ')} failed`);
+  }
+}
+
 afterEach(() => {
   for (const root of roots.splice(0)) {
     rmSync(root, { recursive: true, force: true });
@@ -68,6 +79,58 @@ afterEach(() => {
 }, 300_000);
 
 describe('chat pipeline trial host witness', () => {
+  test('uses source files and dependency descriptors instead of Git and dependency caches', () => {
+    const { root, ws } = makeWorkspace();
+    runGit(root, 'init', '--quiet');
+    writeFileSync(join(root, '.gitignore'), 'node_modules/\n.tagma/\n', 'utf-8');
+    writeFileSync(join(root, 'source.ts'), 'export const value = 1;\n', 'utf-8');
+    writeFileSync(join(root, 'package.json'), '{"name":"fixture","private":true}\n', 'utf-8');
+    writeFileSync(join(root, 'bun.lock'), 'lockfile-v1\n', 'utf-8');
+    runGit(root, 'add', '.gitignore', 'source.ts', 'package.json', 'bun.lock');
+
+    const dependencyPath = join(root, 'node_modules', 'fixture', 'index.js');
+    const runtimeCachePath = join(root, '.tagma', '.opencode-runtime', 'cache.bin');
+    mkdirSync(dirname(dependencyPath), { recursive: true });
+    mkdirSync(dirname(runtimeCachePath), { recursive: true });
+    writeFileSync(dependencyPath, 'dependency-v1\n', 'utf-8');
+    writeFileSync(runtimeCachePath, 'runtime-v1\n', 'utf-8');
+
+    const first = captureTrialHostWitness(ws, prepared(root));
+    writeFileSync(join(root, '.git', 'witness-noise'), 'git metadata churn\n', 'utf-8');
+    writeFileSync(dependencyPath, 'dependency-v2\n', 'utf-8');
+    writeFileSync(runtimeCachePath, 'runtime-v2\n', 'utf-8');
+    const cacheOnlyChanges = captureTrialHostWitness(ws, prepared(root));
+    expect(cacheOnlyChanges.workspace).toEqual(first.workspace);
+
+    writeFileSync(join(root, 'bun.lock'), 'lockfile-v2\n', 'utf-8');
+    const dependencyIdentityChange = captureTrialHostWitness(ws, prepared(root));
+    expect(dependencyIdentityChange.workspace.digest).not.toBe(first.workspace.digest);
+  });
+
+  test('includes authored Tagma files while excluding generated OpenCode runtime state', () => {
+    const { root, ws } = makeWorkspace();
+    runGit(root, 'init', '--quiet');
+    writeFileSync(join(root, '.gitignore'), '.tagma/\n', 'utf-8');
+    writeFileSync(join(root, 'source.txt'), 'source\n', 'utf-8');
+    runGit(root, 'add', '.gitignore', 'source.txt');
+
+    const authoredPath = join(root, '.tagma', 'pipeline', 'pipeline.yaml');
+    const runtimePath = join(root, '.tagma', '.opencode-runtime', 'cache.bin');
+    mkdirSync(dirname(authoredPath), { recursive: true });
+    mkdirSync(dirname(runtimePath), { recursive: true });
+    writeFileSync(authoredPath, 'pipeline-v1\n', 'utf-8');
+    writeFileSync(runtimePath, 'runtime-v1\n', 'utf-8');
+
+    const first = captureTrialHostWitness(ws, prepared(root));
+    writeFileSync(runtimePath, 'runtime-v2\n', 'utf-8');
+    const runtimeOnlyChange = captureTrialHostWitness(ws, prepared(root));
+    expect(runtimeOnlyChange.workspace).toEqual(first.workspace);
+
+    writeFileSync(authoredPath, 'pipeline-v2\n', 'utf-8');
+    const authoredChange = captureTrialHostWitness(ws, prepared(root));
+    expect(authoredChange.workspace.digest).not.toBe(first.workspace.digest);
+  });
+
   test('prepares required binaries and environment from the staged requirements file', () => {
     const { root, ws } = makeWorkspace();
     const sourcePath = join(root, '.tagma', 'pipeline', 'pipeline.yaml');
@@ -287,6 +350,7 @@ describe('chat pipeline trial host witness', () => {
 
   test('witnesses internal file and directory symlinks and invalidates retargets', () => {
     const { root, ws } = makeWorkspace();
+    runGit(root, 'init', '--quiet');
     const firstTargetRoot = join(root, 'target-a');
     const secondTargetRoot = join(root, 'target-b');
     mkdirSync(firstTargetRoot, { recursive: true });
@@ -311,6 +375,7 @@ describe('chat pipeline trial host witness', () => {
 
   test('rejects external, broken, and transient-target workspace symlinks', () => {
     const { root, ws } = makeWorkspace();
+    runGit(root, 'init', '--quiet');
     const linkPath = join(root, 'unsafe-link');
     const externalRoot = makeRoot('external-link-target');
     const externalFile = join(externalRoot, 'outside.txt');
