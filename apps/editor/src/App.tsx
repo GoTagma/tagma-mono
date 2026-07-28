@@ -19,6 +19,7 @@ import {
   withYamlEditLockRequestBypass,
   type ServerState,
   type ServerStateEvent,
+  type ChatYamlStageEntry,
   type WorkspaceYamlEntry,
   type WorkflowGraphEvent,
   type WorkflowRunStatus,
@@ -101,7 +102,11 @@ import {
 } from './store/yaml-edit-lock-store';
 import { serializePreviewYaml } from './utils/yaml-preview-diff';
 import { isChatYamlResultInActiveWorkspace } from './utils/chat-result-workspace';
-import { upsertWorkspaceYamlEntry } from './utils/workspace-yaml-list';
+import {
+  buildWorkspacePipelineMenuItems,
+  reconcileFinalizedWorkspacePipelines,
+  type WorkspaceStagedPipeline,
+} from './utils/workspace-yaml-list';
 import { DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS } from '../shared/chat-pipeline-repair-limit.js';
 
 const MAX_CHAT_TRIAL_PLAN_PROMPTS = 2;
@@ -112,6 +117,12 @@ type ExplorerIntent = {
   | { purpose: 'import' | 'export' | 'workdir' | 'plugin-import' }
   | { purpose: 'export-platform'; targetPlatform: PlatformExportTarget }
 );
+
+type WorkspacePipelineListState = {
+  workspaceKey: string | null;
+  liveEntries: WorkspaceYamlEntry[];
+  stagedTargets: WorkspaceStagedPipeline[];
+};
 
 function workflowEventSeq(event: WorkflowGraphEvent): number | null {
   return typeof event.seq === 'number' && Number.isFinite(event.seq) ? event.seq : null;
@@ -323,7 +334,18 @@ export function App() {
   const [dialog, setDialog] = useState<DialogInfo | null>(null);
   const [confirmInfo, setConfirmInfo] = useState<ConfirmInfo | null>(null);
   const [unsavedAction, setUnsavedAction] = useState<UnsavedAction | null>(null);
-  const [workspaceYamls, setWorkspaceYamls] = useState<WorkspaceYamlEntry[]>([]);
+  const [workspacePipelines, setWorkspacePipelines] = useState<WorkspacePipelineListState>({
+    workspaceKey: workDir || null,
+    liveEntries: [],
+    stagedTargets: [],
+  });
+  const workspaceStateVisible = workspacePipelines.workspaceKey === (workDir || null);
+  // Keep this derived collection strictly live-only. PipelinePicker and
+  // WorkflowView must never receive paths inside .chat-staging.
+  const workspaceYamls = workspaceStateVisible ? workspacePipelines.liveEntries : [];
+  const stagedWorkspacePipelines = workspaceStateVisible
+    ? workspacePipelines.stagedTargets
+    : [];
   const [saveAsInput, setSaveAsInput] = useState<string | null>(null);
   const [newWorkflowInput, setNewWorkflowInput] = useState<string | null>(null);
   const [showTrackIO, setShowTrackIO] = useState(false);

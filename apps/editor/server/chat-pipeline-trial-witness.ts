@@ -182,7 +182,6 @@ export interface TrialHostWorkspaceManifestCache {
 
 export interface TrialHostWitnessWorkerBaseRequest {
   workspaceRoot: string;
-  previousCache: TrialHostWorkspaceManifestCache | null;
 }
 
 export interface TrialHostWitnessWorkerWorkspaceRequest extends TrialHostWitnessWorkerBaseRequest {
@@ -195,26 +194,28 @@ export interface TrialHostWitnessWorkerHostRequest extends TrialHostWitnessWorke
 }
 
 export type TrialHostWitnessWorkerRequest =
-  | TrialHostWitnessWorkerWorkspaceRequest
-  | TrialHostWitnessWorkerHostRequest;
+  TrialHostWitnessWorkerWorkspaceRequest | TrialHostWitnessWorkerHostRequest;
 
 export interface TrialHostWitnessWorkerWorkspaceResponse {
   kind: 'workspace';
   witness: TrialHostWorkspaceWitness;
-  cache: TrialHostWorkspaceManifestCache;
+  cacheStats: TrialHostWorkspaceManifestCacheStats;
 }
 
 export interface TrialHostWitnessWorkerHostResponse {
   kind: 'host';
   witness: TrialHostWitness;
-  cache: TrialHostWorkspaceManifestCache;
+  cacheStats: TrialHostWorkspaceManifestCacheStats;
 }
 
 export type TrialHostWitnessWorkerResponse =
-  | TrialHostWitnessWorkerWorkspaceResponse
-  | TrialHostWitnessWorkerHostResponse;
+  TrialHostWitnessWorkerWorkspaceResponse | TrialHostWitnessWorkerHostResponse;
 
 const workspaceManifestCaches = new WeakMap<WorkspaceState, TrialHostWorkspaceManifestCache>();
+const asyncWorkspaceManifestCacheStats = new WeakMap<
+  WorkspaceState,
+  TrialHostWorkspaceManifestCacheStats
+>();
 
 function sha256(content: string | Uint8Array): string {
   return createHash('sha256').update(content).digest('hex');
@@ -1020,23 +1021,31 @@ export function captureTrialWorkspaceWitnessForRoot(
   previousCache: TrialHostWorkspaceManifestCache | null,
 ): { witness: TrialHostWorkspaceWitness; cache: TrialHostWorkspaceManifestCache } {
   const resolvedRoot = realpathSync.native(resolve(workspaceRoot));
-  return gitWorkspaceWitness(resolvedRoot, previousCache) ??
-    filesystemWorkspaceWitness(resolvedRoot, previousCache);
+  return (
+    gitWorkspaceWitness(resolvedRoot, previousCache) ??
+    filesystemWorkspaceWitness(resolvedRoot, previousCache)
+  );
 }
 
-function captureTrialWorkspaceWitnessWithCache(
-  ws: WorkspaceState,
-): { witness: TrialHostWorkspaceWitness; cache: TrialHostWorkspaceManifestCache } {
+function captureTrialWorkspaceWitnessWithCache(ws: WorkspaceState): {
+  witness: TrialHostWorkspaceWitness;
+  cache: TrialHostWorkspaceManifestCache;
+} {
   if (!ws.workDir) throw new Error('Workspace directory is not set.');
-  const result = captureTrialWorkspaceWitnessForRoot(ws.workDir, workspaceManifestCaches.get(ws) ?? null);
+  const result = captureTrialWorkspaceWitnessForRoot(
+    ws.workDir,
+    workspaceManifestCaches.get(ws) ?? null,
+  );
   workspaceManifestCaches.set(ws, result.cache);
+  asyncWorkspaceManifestCacheStats.delete(ws);
   return result;
 }
 
 export function getTrialHostWorkspaceManifestCacheStatsForTests(
   ws: WorkspaceState,
 ): TrialHostWorkspaceManifestCacheStats | null {
-  const stats = workspaceManifestCaches.get(ws)?.lastStats;
+  const stats =
+    asyncWorkspaceManifestCacheStats.get(ws) ?? workspaceManifestCaches.get(ws)?.lastStats;
   return stats ? { ...stats } : null;
 }
 
@@ -1233,21 +1242,6 @@ export function captureTrialHostWitnessForRoot(
   };
 }
 
-export function runTrialHostWitnessWorkerRequest(
-  request: TrialHostWitnessWorkerRequest,
-): TrialHostWitnessWorkerResponse {
-  if (request.kind === 'workspace') {
-    const result = captureTrialWorkspaceWitnessForRoot(request.workspaceRoot, request.previousCache);
-    return { kind: 'workspace', witness: result.witness, cache: result.cache };
-  }
-  const result = captureTrialHostWitnessForRoot(
-    request.workspaceRoot,
-    request.prepared,
-    request.previousCache,
-  );
-  return { kind: 'host', witness: result.witness, cache: result.cache };
-}
-
 export function captureTrialHostWitness(
   ws: WorkspaceState,
   prepared: PreparedTrialHostWitnessInputs,
@@ -1259,6 +1253,7 @@ export function captureTrialHostWitness(
     workspaceManifestCaches.get(ws) ?? null,
   );
   workspaceManifestCaches.set(ws, result.cache);
+  asyncWorkspaceManifestCacheStats.delete(ws);
   return result.witness;
 }
 
@@ -1345,10 +1340,7 @@ function trialWitnessWorkerState(ws: WorkspaceState): TrialWitnessWorkerState {
   return state;
 }
 
-function terminateTrialWitnessWorker(
-  state: TrialWitnessWorkerState,
-  error: Error,
-): void {
+function terminateTrialWitnessWorker(state: TrialWitnessWorkerState, error: Error): void {
   const worker = state.worker;
   state.worker = null;
   if (worker) worker.terminate();
@@ -1358,13 +1350,14 @@ function terminateTrialWitnessWorker(
   state.pending.clear();
 }
 
-function ensureTrialWitnessWorker(
-  state: TrialWitnessWorkerState,
-): Worker {
+function ensureTrialWitnessWorker(state: TrialWitnessWorkerState): Worker {
   if (state.worker) return state.worker;
-  const worker = new Worker(new URL('./chat-pipeline-trial-witness-worker.js', import.meta.url).href, {
-    type: 'module',
-  });
+  const worker = new Worker(
+    new URL('./chat-pipeline-trial-witness-worker.js', import.meta.url).href,
+    {
+      type: 'module',
+    },
+  );
   worker.onmessage = (event: MessageEvent<TrialWitnessWorkerEnvelope>) => {
     const message = event.data;
     const pending = state.pending.get(message.id);
@@ -1405,10 +1398,15 @@ function queueTrialWitnessWorkerCall<T>(
   run: (state: TrialWitnessWorkerState) => Promise<T>,
 ): Promise<T> {
   const state = trialWitnessWorkerState(ws);
-  const task = state.queue.catch(() => undefined).then(async () => {
-    if (signal?.aborted) throw abortError(signal.reason);
-    return await run(state);
-  });
+  const task = state.queue
+    .catch(() => undefined)
+    .then(async () => {
+      if (signal?.aborted) {
+        asyncWorkspaceManifestCacheStats.delete(ws);
+        throw abortError(signal.reason);
+      }
+      return await run(state);
+    });
   state.queue = task.then(
     () => undefined,
     () => undefined,
@@ -1440,6 +1438,7 @@ function postTrialWitnessWorkerRequest(
         reject(error);
       };
       const onAbort = () => {
+        asyncWorkspaceManifestCacheStats.delete(ws);
         terminateTrialWitnessWorker(state, abortError(signal?.reason));
       };
       state.pending.set(requestId, { resolve: onResolve, reject: onReject });
@@ -1457,8 +1456,10 @@ function postTrialWitnessWorkerRequest(
 
 export function disposeTrialWitnessWorker(ws: WorkspaceState): void {
   const state = trialWitnessWorkerStates.get(ws);
+  asyncWorkspaceManifestCacheStats.delete(ws);
   if (!state) return;
   terminateTrialWitnessWorker(state, abortError('Trial witness worker disposed.'));
+  trialWitnessWorkerStates.delete(ws);
 }
 
 export async function captureTrialWorkspaceWitnessAsync(
@@ -1471,14 +1472,13 @@ export async function captureTrialWorkspaceWitnessAsync(
     {
       kind: 'workspace',
       workspaceRoot: ws.workDir,
-      previousCache: workspaceManifestCaches.get(ws) ?? null,
     },
     signal,
   );
   if (response.kind !== 'workspace') {
     throw new Error('Trial witness worker returned an unexpected workspace response.');
   }
-  workspaceManifestCaches.set(ws, response.cache);
+  asyncWorkspaceManifestCacheStats.set(ws, response.cacheStats);
   return response.witness;
 }
 
@@ -1505,14 +1505,13 @@ export async function captureTrialHostWitnessAsync(
       kind: 'host',
       workspaceRoot: ws.workDir,
       prepared,
-      previousCache: workspaceManifestCaches.get(ws) ?? null,
     },
     signal,
   );
   if (response.kind !== 'host') {
     throw new Error('Trial witness worker returned an unexpected host response.');
   }
-  workspaceManifestCaches.set(ws, response.cache);
+  asyncWorkspaceManifestCacheStats.set(ws, response.cacheStats);
   return response.witness;
 }
 

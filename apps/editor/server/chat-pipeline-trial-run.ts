@@ -39,11 +39,14 @@ import {
   type ChatPipelineTrialPlanCase,
   type ChatPipelineTrialPlanRequest,
 } from './chat-pipeline-trial-plan.js';
-import * as trialWitness from './chat-pipeline-trial-witness.js';
 import type {
   PreparedTrialHostWitnessInputs,
-  TrialHostWorkspaceWitness,
   TrialHostWitness,
+} from './chat-pipeline-trial-witness.js';
+import {
+  safeCaptureTrialHostWitnessAsync,
+  safeCaptureTrialWorkspaceWitnessAsync,
+  safePrepareTrialHostWitnessInputs,
 } from './chat-pipeline-trial-witness.js';
 import { buildPythonAgentRunEnv, pythonAgentVenvBinDir } from './python-agent.js';
 import { runPreflight } from './preflight-requirements.js';
@@ -192,22 +195,8 @@ const activeTrialIdentityByWorkspace = new Map<
   }
 >();
 
-type TrialHostWitnessResult = ReturnType<typeof trialWitness.safeCaptureTrialHostWitness>;
-type TrialWorkspaceWitnessResult = ReturnType<typeof trialWitness.safeCaptureTrialWorkspaceWitness>;
-type TrialWitnessAsyncModule = typeof trialWitness & {
-  safeCaptureTrialHostWitnessAsync?: (
-    ws: WorkspaceState,
-    prepared: PreparedTrialHostWitnessInputs,
-    signal?: AbortSignal,
-  ) => Promise<TrialHostWitnessResult>;
-  safeCaptureTrialWorkspaceWitnessAsync?: (
-    ws: WorkspaceState,
-    signal?: AbortSignal,
-  ) => Promise<TrialWorkspaceWitnessResult>;
-};
-
-const trialWitnessAsync = trialWitness as TrialWitnessAsyncModule;
-const { safePrepareTrialHostWitnessInputs } = trialWitness;
+type TrialHostWitnessResult = Awaited<ReturnType<typeof safeCaptureTrialHostWitnessAsync>>;
+type TrialWorkspaceWitnessResult = Awaited<ReturnType<typeof safeCaptureTrialWorkspaceWitnessAsync>>;
 
 export const __chatPipelineTrialRunTestHooks: {
   captureHostWitnessAsync?: (
@@ -237,13 +226,7 @@ async function captureTrialHostWitnessAsync(
   if (__chatPipelineTrialRunTestHooks.captureHostWitnessAsync) {
     return await __chatPipelineTrialRunTestHooks.captureHostWitnessAsync(ws, prepared, signal);
   }
-  if (trialWitnessAsync.safeCaptureTrialHostWitnessAsync) {
-    return await trialWitnessAsync.safeCaptureTrialHostWitnessAsync(ws, prepared, signal);
-  }
-  if (signal?.aborted) {
-    return { witness: null, reason: abortReasonMessage(signal) };
-  }
-  return trialWitness.safeCaptureTrialHostWitness(ws, prepared);
+  return await safeCaptureTrialHostWitnessAsync(ws, prepared, signal);
 }
 
 async function captureTrialWorkspaceWitnessAsync(
@@ -253,13 +236,7 @@ async function captureTrialWorkspaceWitnessAsync(
   if (__chatPipelineTrialRunTestHooks.captureWorkspaceWitnessAsync) {
     return await __chatPipelineTrialRunTestHooks.captureWorkspaceWitnessAsync(ws, signal);
   }
-  if (trialWitnessAsync.safeCaptureTrialWorkspaceWitnessAsync) {
-    return await trialWitnessAsync.safeCaptureTrialWorkspaceWitnessAsync(ws, signal);
-  }
-  if (signal?.aborted) {
-    return { witness: null, reason: abortReasonMessage(signal) };
-  }
-  return trialWitness.safeCaptureTrialWorkspaceWitness(ws);
+  return await safeCaptureTrialWorkspaceWitnessAsync(ws, signal);
 }
 
 export function cancelChatPipelineTrial(
@@ -450,8 +427,8 @@ function resultForStoppedBeforeRun(
 ): ChatPipelineTrialRunResult {
   if (abortState.timedOut) {
     return resultForSetupFailure(
-      'timed-out',
-      `Trial run timed out after ${CHAT_PIPELINE_TRIAL_TIMEOUT_MS}ms.`,
+      'witness-failed',
+      `Trial host witness timed out before task execution after ${CHAT_PIPELINE_TRIAL_TIMEOUT_MS}ms.`,
       startedAt,
     );
   }
@@ -1361,7 +1338,7 @@ async function executeTrial(
   });
   const runId = generateRunId();
   let workspaceMutationMonitor: TrialWorkspaceMutationMonitor | null = null;
-  let hostWitnessFailure = false;
+  let hostWitnessCaptureFailure = false;
 
   try {
     const secretValues = Object.values({ ...redactionSecretEnv, ...requirementsSecretEnv }).filter(
@@ -1397,7 +1374,9 @@ async function executeTrial(
       : baselineMutationState && !baselineMutationState.healthy
         ? `Could not verify that isolated cases left the real workspace unchanged: ${baselineMutationState.reason ?? 'workspace mutation monitor failed'}.`
         : null;
-    if (pendingWorkspaceWitnessFailure) hostWitnessFailure = true;
+    if (!baselineWorkspace.digest && pendingWorkspaceWitnessFailure) {
+      hostWitnessCaptureFailure = true;
+    }
     for (const testCase of plan.cases) {
       if (controller.signal.aborted) break;
       if (pendingWorkspaceWitnessFailure) {
@@ -1456,10 +1435,7 @@ async function executeTrial(
             };
       cases.push(caseResult);
       totalTaskCount += caseExecution.totalTaskCount;
-      if (workspaceFailures.length > 0) {
-        hostWitnessFailure = true;
-        break;
-      }
+      if (workspaceFailures.length > 0) break;
     }
     if (baselineWorkspace.digest) {
       const finalWorkspace = await captureTrialWorkspaceDigest(ws, controller.signal);
@@ -1469,7 +1445,7 @@ async function executeTrial(
           ? 'Isolated cases modified the real workspace; case fixtures and outputs must remain isolated.'
           : null;
       if (finalWorkspaceFailure) {
-        hostWitnessFailure = true;
+        if (!finalWorkspace.digest) hostWitnessCaptureFailure = true;
         const lastCaseIndex = cases.length - 1;
         const lastCase = cases[lastCaseIndex];
         if (lastCase) {
@@ -1513,7 +1489,7 @@ async function executeTrial(
       success,
       kind: abortState.timedOut
         ? 'timed-out'
-        : hostWitnessFailure
+        : hostWitnessCaptureFailure
           ? 'witness-failed'
           : success
             ? 'passed'

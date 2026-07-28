@@ -1,9 +1,53 @@
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { resetOpencodeClient } from '../src/api/opencode-chat';
 import { setClientWorkspace } from '../src/api/client';
 import { restoreComposerDraftAfterSendFailure } from '../src/components/chat/ChatComposer';
-import { useChatStore } from '../src/store/chat-store';
+import { useChatStore, type ChatYamlSessionResult } from '../src/store/chat-store';
+import { usePipelineStore } from '../src/store/pipeline-store';
+import { useYamlEditLockStore } from '../src/store/yaml-edit-lock-store';
 
 type ChatState = ReturnType<typeof useChatStore.getState>;
+const originalFetch = globalThis.fetch;
+
+function jsonResponse(body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+function previousResult(): ChatYamlSessionResult {
+  return {
+    sessionId: 'existing',
+    workspaceKey: 'C:/repo',
+    kind: 'refresh-current',
+    path: 'C:/repo/.tagma/pipeline.yaml',
+    name: 'pipeline.yaml',
+    pipelineName: 'Pipeline',
+    status: 'ready',
+    compile: {
+      success: true,
+      summary: 'Compile passed.',
+      validation: { errors: [], warnings: [] },
+    } as never,
+    reconcile: {
+      outcome: 'adopted',
+      conflicts: [],
+      localBranchPersisted: false,
+      resultPath: 'C:/repo/.tagma/pipeline.yaml',
+      compileSuccess: true,
+    },
+    completedAt: 1_000,
+  };
+}
+
+beforeEach(() => {
+  usePipelineStore.setState({ workDir: null, yamlPath: null } as never);
+});
+
+afterAll(() => {
+  globalThis.fetch = originalFetch;
+});
 
 describe('chat composer draft', () => {
   afterEach(() => {
@@ -12,6 +56,7 @@ describe('chat composer draft', () => {
       pendingChatOpenRequest: false,
       composerAttachments: [],
       queuedMessages: [],
+      queuedDispatchMode: null,
       sending: false,
     } as Partial<ChatState>);
     setClientWorkspace(null);
@@ -69,13 +114,36 @@ describe('chat composer draft', () => {
 
 describe('composer error-context attachments', () => {
   afterEach(() => {
+    globalThis.fetch = originalFetch;
+    resetOpencodeClient();
     useChatStore.setState({
       composerDraft: '',
       pendingChatOpenRequest: false,
       composerAttachments: [],
       queuedMessages: [],
+      queuedDispatchMode: null,
       sending: false,
+      reconciling: false,
+      activeChatYamlLifecycle: null,
+      sessionYamlResults: {},
+      currentSessionId: null,
+      sessions: [],
+      model: null,
+      agent: null,
+      pendingUserText: null,
+      sendError: null,
+      completionWarning: null,
     } as Partial<ChatState>);
+    useYamlEditLockStore.setState({
+      active: false,
+      workspaceActive: false,
+      owner: null,
+      reason: null,
+      expiresAt: null,
+      local: false,
+      lockWorkspaceKey: null,
+      yamlPath: null,
+    });
     setClientWorkspace(null);
   });
 
@@ -144,5 +212,163 @@ describe('composer error-context attachments', () => {
         '</ask-ai-context>\n\n',
     );
     expect(useChatStore.getState().composerAttachments).toHaveLength(0);
+  });
+
+  test('queues during reconcile without clearing the active YAML progress state', async () => {
+    useChatStore.setState({
+      currentSessionId: 'existing',
+      sessions: [{ id: 'existing', title: 'Named chat' }] as never,
+      model: { providerID: 'p', modelID: 'm' },
+      agent: 'tagma-router',
+      reconciling: true,
+      postChatYamlAction: {
+        kind: 'refresh-current',
+        path: 'C:/repo/.tagma/pipeline.yaml',
+        name: 'pipeline.yaml',
+        pipelineName: 'Pipeline',
+        status: 'repairing',
+        compile: {
+          success: false,
+          summary: 'Compile failed.',
+          validation: { errors: [], warnings: [] },
+        } as never,
+      },
+      sessionYamlResults: { existing: previousResult() },
+    } as Partial<ChatState>);
+    useChatStore.getState().attachErrorContext({ label: 'Run failed', content: 'stderr tail' });
+
+    await useChatStore.getState().send('Follow up after reconcile.');
+
+    const state = useChatStore.getState();
+    expect(state.queuedMessages).toHaveLength(1);
+    expect(state.queuedMessages[0].text).toBe('Follow up after reconcile.');
+    expect(state.postChatYamlAction).toMatchObject({ status: 'repairing', name: 'pipeline.yaml' });
+    expect(state.composerAttachments).toHaveLength(0);
+  });
+
+  test('queues during flush without clearing the active YAML progress state', async () => {
+    useChatStore.setState({
+      currentSessionId: 'existing',
+      sessions: [{ id: 'existing', title: 'Named chat' }] as never,
+      model: { providerID: 'p', modelID: 'm' },
+      agent: 'tagma-router',
+      flushing: true,
+      postChatYamlAction: {
+        kind: 'refresh-current',
+        path: 'C:/repo/.tagma/pipeline.yaml',
+        name: 'pipeline.yaml',
+        pipelineName: 'Pipeline',
+        status: 'repairing',
+        compile: {
+          success: false,
+          summary: 'Compile failed.',
+          validation: { errors: [], warnings: [] },
+        } as never,
+      },
+    } as Partial<ChatState>);
+
+    await useChatStore.getState().send('Follow up after flush.');
+
+    const state = useChatStore.getState();
+    expect(state.queuedMessages).toHaveLength(1);
+    expect(state.queuedMessages[0].text).toBe('Follow up after flush.');
+    expect(state.postChatYamlAction).toMatchObject({ status: 'repairing', name: 'pipeline.yaml' });
+    expect(state.sending).toBe(false);
+  });
+
+  test('starts a fresh prompt after reconcile releases the barrier', async () => {
+    const promptRequests: string[] = [];
+    globalThis.fetch = ((input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url === '/api/opencode/chat/ensure') {
+        return Promise.resolve(jsonResponse({ baseUrl: 'http://opencode.test' }));
+      }
+      if (url === 'http://opencode.test/session/existing') {
+        return Promise.resolve(jsonResponse({ id: 'existing' }));
+      }
+      if (url === 'http://opencode.test/session/existing/prompt_async') {
+        promptRequests.push(url);
+        return Promise.resolve(jsonResponse({ ok: true }));
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    }) as typeof fetch;
+
+    useChatStore.setState({
+      currentSessionId: 'existing',
+      sessions: [{ id: 'existing', title: 'Named chat' }] as never,
+      model: { providerID: 'p', modelID: 'm' },
+      agent: 'tagma-router',
+      reconciling: true,
+      sessionYamlResults: { existing: previousResult() },
+    } as Partial<ChatState>);
+
+    await useChatStore.getState().send('Start fresh after reconcile.');
+    useChatStore.setState({ reconciling: false } as Partial<ChatState>);
+
+    expect(useChatStore.getState().dispatchQueuedMessagesIfReady()).toBe(true);
+
+    const state = useChatStore.getState();
+    expect(promptRequests).toEqual(['http://opencode.test/session/existing/prompt_async']);
+    expect(state.sending).toBe(true);
+    expect(state.pendingUserText).toBe('Start fresh after reconcile.');
+    expect(state.queuedMessages).toEqual([]);
+    expect(state.sessionYamlResults.existing).toBeUndefined();
+  });
+
+  test('queues behind an external YAML lock and dispatches after the lock clears', async () => {
+    const promptRequests: string[] = [];
+    globalThis.fetch = ((input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url === '/api/opencode/chat/ensure') {
+        return Promise.resolve(jsonResponse({ baseUrl: 'http://opencode.test' }));
+      }
+      if (url === 'http://opencode.test/session/existing') {
+        return Promise.resolve(jsonResponse({ id: 'existing' }));
+      }
+      if (url === 'http://opencode.test/session/existing/prompt_async') {
+        promptRequests.push(url);
+        return Promise.resolve(jsonResponse({ ok: true }));
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    }) as typeof fetch;
+
+    useChatStore.setState({
+      currentSessionId: 'existing',
+      sessions: [{ id: 'existing', title: 'Named chat' }] as never,
+      model: { providerID: 'p', modelID: 'm' },
+      agent: 'tagma-router',
+    } as Partial<ChatState>);
+    useYamlEditLockStore.setState({
+      active: true,
+      workspaceActive: true,
+      owner: 'chat',
+      reason: 'other window',
+      expiresAt: Date.now() + 60_000,
+      local: false,
+      lockWorkspaceKey: 'C:/repo',
+      yamlPath: null,
+    });
+
+    await useChatStore.getState().send('Wait for the lock release.');
+
+    expect(useChatStore.getState().queuedMessages).toHaveLength(1);
+    expect(useChatStore.getState().dispatchQueuedMessagesIfReady()).toBe(false);
+    expect(promptRequests).toEqual([]);
+
+    useYamlEditLockStore.setState({
+      active: false,
+      workspaceActive: false,
+      owner: null,
+      reason: null,
+      expiresAt: null,
+      local: false,
+      lockWorkspaceKey: null,
+      yamlPath: null,
+    });
+
+    expect(useChatStore.getState().dispatchQueuedMessagesIfReady()).toBe(true);
+    expect(promptRequests).toEqual(['http://opencode.test/session/existing/prompt_async']);
+    expect(useChatStore.getState().queuedMessages).toEqual([]);
+    expect(useChatStore.getState().sending).toBe(true);
   });
 });

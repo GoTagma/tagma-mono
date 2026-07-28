@@ -18,18 +18,12 @@ import { bootstrapBuiltins } from '@tagma/sdk/plugins';
 import { normalizeWorkspaceKey } from '@tagma/types/workspace-key';
 import { WorkspaceState, createDefaultWorkspaceState } from './workspace-state.js';
 import { shutdownRunForWorkspace } from './run-shutdown.js';
-import * as trialWitness from './chat-pipeline-trial-witness.js';
+import { disposeTrialWitnessWorker } from './chat-pipeline-trial-witness.js';
 
 export { normalizeWorkspaceKey };
 
 /** Sentinel key for the legacy single-tenant workspace. */
 export const DEFAULT_WORKSPACE_KEY = '__default__';
-
-type TrialWitnessWorkerApi = typeof trialWitness & {
-  disposeTrialWitnessWorker?: (ws: WorkspaceState) => void;
-};
-
-const trialWitnessWorkerApi = trialWitness as TrialWitnessWorkerApi;
 
 export const __workspaceRegistryTestHooks: {
   disposeTrialWitnessWorker?: (ws: WorkspaceState) => void;
@@ -40,7 +34,7 @@ function disposeTrialWitnessWorkerForWorkspace(ws: WorkspaceState): void {
     __workspaceRegistryTestHooks.disposeTrialWitnessWorker(ws);
     return;
   }
-  trialWitnessWorkerApi.disposeTrialWitnessWorker?.(ws);
+  disposeTrialWitnessWorker(ws);
 }
 
 /**

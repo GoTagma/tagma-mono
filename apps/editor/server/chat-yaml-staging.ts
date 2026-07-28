@@ -14,8 +14,11 @@ import { parseYaml, serializePipeline } from '@tagma/sdk/yaml';
 
 import { readChatPipelineTrialPlan } from './chat-pipeline-trial-plan.js';
 import { readEditorSettings } from './plugins/loader.js';
-import * as trialWitness from './chat-pipeline-trial-witness.js';
 import type { PreparedTrialHostWitnessInputs, TrialHostWitness } from './chat-pipeline-trial-witness.js';
+import {
+  safeCaptureTrialHostWitnessAsync,
+  safePrepareTrialHostWitnessInputs,
+} from './chat-pipeline-trial-witness.js';
 
 import type { EditorLayout, WorkspaceState } from './workspace-state.js';
 import { atomicWriteFileSync, isPathWithin } from './path-utils.js';
@@ -67,30 +70,17 @@ export const __chatYamlStagingTestHooks: {
   captureHostWitnessAsync?: (
     ws: WorkspaceState,
     prepared: PreparedTrialHostWitnessInputs,
-  ) => Promise<ReturnType<typeof trialWitness.safeCaptureTrialHostWitness>>;
+  ) => Promise<Awaited<ReturnType<typeof safeCaptureTrialHostWitnessAsync>>>;
 } = {};
-
-type TrialWitnessAsyncModule = typeof trialWitness & {
-  safeCaptureTrialHostWitnessAsync?: (
-    ws: WorkspaceState,
-    prepared: PreparedTrialHostWitnessInputs,
-  ) => Promise<ReturnType<typeof trialWitness.safeCaptureTrialHostWitness>>;
-};
-
-const trialWitnessAsync = trialWitness as TrialWitnessAsyncModule;
-const { safePrepareTrialHostWitnessInputs } = trialWitness;
 
 async function captureFinalizeHostWitnessAsync(
   ws: WorkspaceState,
   prepared: PreparedTrialHostWitnessInputs,
-): Promise<ReturnType<typeof trialWitness.safeCaptureTrialHostWitness>> {
+): Promise<Awaited<ReturnType<typeof safeCaptureTrialHostWitnessAsync>>> {
   if (__chatYamlStagingTestHooks.captureHostWitnessAsync) {
     return await __chatYamlStagingTestHooks.captureHostWitnessAsync(ws, prepared);
   }
-  if (trialWitnessAsync.safeCaptureTrialHostWitnessAsync) {
-    return await trialWitnessAsync.safeCaptureTrialHostWitnessAsync(ws, prepared);
-  }
-  return trialWitness.safeCaptureTrialHostWitness(ws, prepared);
+  return await safeCaptureTrialHostWitnessAsync(ws, prepared);
 }
 
 type ChatYamlStageConflict =

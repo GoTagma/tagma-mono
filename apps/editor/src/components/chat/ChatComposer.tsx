@@ -127,8 +127,12 @@ export function getChatComposerAvailability(input: {
   yamlEditLocked: boolean;
   yamlEditLockLocal: boolean;
 }): { blockedByAnotherChatUpdate: boolean; canSend: boolean; queueOnSend: boolean } {
-  const blockedByAnotherChatUpdate = input.yamlEditLocked && !input.yamlEditLockLocal;
-  const queueOnSend = input.sending || (!input.sending && (input.reconciling || input.flushing));
+  const blockedByAnotherChatUpdate = false;
+  const queueOnSend =
+    input.sending ||
+    input.reconciling ||
+    input.flushing ||
+    (input.yamlEditLocked && !input.yamlEditLockLocal);
   return {
     blockedByAnotherChatUpdate,
     canSend: input.hasContent && input.hasModel && input.ready && !blockedByAnotherChatUpdate,

@@ -1907,7 +1907,12 @@ function clearPendingPartsForSession(sessionID: string | null): void {
 function canQueueFreshPromptDuringBarrier(
   state: Pick<ChatStore, 'reconciling' | 'flushing' | 'activeChatYamlLifecycle'>,
 ): boolean {
-  return state.reconciling || state.flushing || !!state.activeChatYamlLifecycle;
+  return (
+    state.reconciling ||
+    state.flushing ||
+    !!state.activeChatYamlLifecycle ||
+    hasExternalChatPromptBarrier()
+  );
 }
 
 function hasExternalChatPromptBarrier(): boolean {
@@ -3247,7 +3252,7 @@ function chatTurnBlocksSessionMutation(
 
 function chatTurnBlocksNewPrompt(state: Pick<ChatStore, 'reconciling' | 'flushing'>): boolean {
   void state;
-  return hasExternalChatPromptBarrier();
+  return false;
 }
 
 function chatAbortRecoveryBlocksRuntimeMutation(state: Pick<ChatStore, 'abortRecovery'>): boolean {
@@ -5155,9 +5160,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         composerAttachments: [],
         sendError: null,
         completionWarning: null,
-        postChatYamlAction: null,
       }));
-      get().dispatchQueuedMessagesIfReady();
+      if (!state.sending && !forceStopRecoveryPending) get().dispatchQueuedMessagesIfReady();
       return;
     }
     // Immediate: clear the chips up front (mirrors how the composer clears the

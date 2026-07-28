@@ -152,9 +152,9 @@ describe('ChatPanel export affordance', () => {
         yamlEditLockLocal: false,
       }),
     ).toEqual({
-      blockedByAnotherChatUpdate: true,
-      canSend: false,
-      queueOnSend: false,
+      blockedByAnotherChatUpdate: false,
+      canSend: true,
+      queueOnSend: true,
     });
   });
 
