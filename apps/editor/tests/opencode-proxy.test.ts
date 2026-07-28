@@ -80,12 +80,16 @@ describe('OpenCode sidecar proxy', () => {
     ).rejects.toThrow('relative path');
   });
 
-  test('canonicalizes the forwarded OpenCode directory to the real .tagma root', () => {
+  test('canonicalizes only the real .tagma root and exact staged agent .tagma root', () => {
     const workDir = mkdtempSync(join(tmpdir(), 'tagma-opencode-proxy-'));
     try {
       const tagmaDir = join(workDir, '.tagma');
       const stagedDir = join(tagmaDir, '.chat-staging', 'turn', 'agent-workspace', '.tagma');
+      const nestedRuntimeDir = join(tagmaDir, '.opencode-runtime');
+      const stagedNestedDir = join(stagedDir, 'nested');
       mkdirSync(stagedDir, { recursive: true });
+      mkdirSync(nestedRuntimeDir, { recursive: true });
+      mkdirSync(stagedNestedDir, { recursive: true });
 
       expect(
         decodeURIComponent(
@@ -104,6 +108,20 @@ describe('OpenCode sidecar proxy', () => {
           ) ?? '',
         ),
       ).toBe(realpathSync.native(tagmaDir));
+
+      expect(() =>
+        sanitizeForwardedOpencodeDirectory(
+          encodeURIComponent(nestedRuntimeDir.replace(/\\/g, '/')),
+          tagmaDir,
+        ),
+      ).toThrow('workspace .tagma root or exact staged agent .tagma directory');
+
+      expect(() =>
+        sanitizeForwardedOpencodeDirectory(
+          encodeURIComponent(stagedNestedDir.replace(/\\/g, '/')),
+          tagmaDir,
+        ),
+      ).toThrow('workspace .tagma root or exact staged agent .tagma directory');
     } finally {
       rmSync(workDir, { recursive: true, force: true });
     }

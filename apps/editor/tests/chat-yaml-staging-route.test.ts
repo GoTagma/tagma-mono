@@ -229,9 +229,9 @@ function trialCacheRecordPath(
   inputHash: string,
 ): string {
   const digest = createHash('sha256')
-    .update(${trialId}\0\0)
+    .update(`${trialId}\0${relativePath}\0${inputHash}`)
     .digest('hex');
-  return join(stageRootDir, '.trial-runs', ${digest}.json);
+  return join(stageRootDir, '.trial-runs', `${digest}.json`);
 }
 
 afterEach(() => {
@@ -738,7 +738,7 @@ describe('chat YAML staging routes', () => {
       __tagmaServerAuth: { signature: string };
     };
     const firstHex = cached.__tagmaServerAuth.signature.startsWith('0') ? '1' : '0';
-    cached.__tagmaServerAuth.signature = ${firstHex};
+    cached.__tagmaServerAuth.signature = `${firstHex}${cached.__tagmaServerAuth.signature.slice(1)}`;
     writeFileSync(cachePath, JSON.stringify(cached, null, 2) + '\n', 'utf-8');
 
     const finalizeRes = makeRes();

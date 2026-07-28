@@ -1,5 +1,5 @@
 import { existsSync, lstatSync, realpathSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { relative, resolve } from 'node:path';
 
 import { createStreamingLoopbackFetch } from './loopback-fetch.js';
 import { isPathWithin } from './path-utils.js';
@@ -55,6 +55,18 @@ export function sanitizeForwardedOpencodeDirectory(
   const canonicalRequested = realpathSync.native(resolvedRequested);
   if (!isPathWithin(canonicalRequested, canonicalRoot)) {
     throw new Error('OpenCode directory header must stay within the workspace .tagma directory');
+  }
+
+  const relativeRequested = relative(canonicalRoot, canonicalRequested);
+  const portableRelativeRequested = relativeRequested.split(/\\|\//).join('/');
+  const stagedTagmaDirPattern =
+    process.platform === 'win32'
+      ? /^\.chat-staging\/[^/]+\/agent-workspace\/\.tagma$/i
+      : /^\.chat-staging\/[^/]+\/agent-workspace\/\.tagma$/;
+  if (relativeRequested !== '' && !stagedTagmaDirPattern.test(portableRelativeRequested)) {
+    throw new Error(
+      'OpenCode directory header must resolve to the workspace .tagma root or exact staged agent .tagma directory',
+    );
   }
 
   return encodeURIComponent(canonicalRequested);

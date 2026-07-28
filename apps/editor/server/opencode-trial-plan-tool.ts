@@ -163,7 +163,7 @@ function validateCase(value, index) {
   if (expectations.length === 0) {
     throw new Error(label + ".expectations must not be empty.");
   }
-  if (!Object.prototype.hasOwnProperty.call(raw, "targetTaskIds")) {
+  if (raw.targetTaskIds === undefined) {
     throw new Error(label + ".targetTaskIds is required.");
   }
   const targetTaskIds = [...new Set(
@@ -489,13 +489,13 @@ export default tool({
       )
       .max(CONTRACT.limits.findings),
     cases: tool.schema
-          targetTaskIds: tool.schema.array(tool.schema.string()).min(1).max(32),
+      .array(
         tool.schema.object({
           id: tool.schema.string(),
           title: tool.schema.string().min(1).max(240),
           objective: tool.schema.string().min(1).max(1000),
           runs: tool.schema.number().int().min(1).max(CONTRACT.limits.runs).optional(),
-          targetTaskIds: tool.schema.array(tool.schema.string()).max(32).optional(),
+          targetTaskIds: tool.schema.array(tool.schema.string()).min(1).max(32),
           fixtures: tool.schema
             .array(
               tool.schema.object({
@@ -521,13 +521,13 @@ export default tool({
       version: CONTRACT.version,
       yamlHash,
       summary: args.summary,
-        targetTaskIds: item.targetTaskIds,
+      goals: args.goals,
       coverage: args.coverage,
       findings: args.findings,
       cases: args.cases.map((item) => ({
         ...item,
         runs: item.runs === undefined ? 1 : item.runs,
-        targetTaskIds: item.targetTaskIds || [],
+        targetTaskIds: item.targetTaskIds,
       })),
     };
     assertValidPlan(plan);

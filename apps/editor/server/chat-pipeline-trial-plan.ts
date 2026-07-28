@@ -318,7 +318,6 @@ function parseCase(value: unknown, index: number): ChatPipelineTrialPlanCase {
     fixtures,
     expectations,
   };
-  };
 }
 
 function hasDuplicateFixtureBasenames(cases: ChatPipelineTrialPlanCase[]): boolean {
