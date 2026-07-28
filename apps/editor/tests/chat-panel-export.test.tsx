@@ -5,7 +5,6 @@ import {
   ChatCompletionToastCard,
   ChatPanel,
   ConversationFlowBarView,
-  resolveConversationFlowWheelScroll,
   selectConversationFlowActivity,
   SessionYamlResultBubble,
   shouldShowChatCompletionToast,
@@ -617,52 +616,42 @@ describe('ChatPanel export affordance', () => {
 
     expect(html).toContain('Conversation flow');
     expect(html).toContain('role="progressbar"');
-    expect(html).toContain('Request');
-    expect(html).toContain('Model');
-    expect(html).not.toContain('Intent');
-    expect(html).not.toContain('Context');
+    expect(html).toContain('Working');
+    expect(html).not.toContain('Request');
+    expect(html).not.toContain('Model');
   });
 
-  test('turns a vertical wheel gesture into horizontal conversation flow movement', () => {
-    expect(
-      resolveConversationFlowWheelScroll({
-        scrollLeft: 40,
-        scrollWidth: 320,
-        clientWidth: 120,
-        deltaX: 0,
-        deltaY: 36,
-      }),
-    ).toEqual({ scrollLeft: 76, consumed: true });
-    expect(
-      resolveConversationFlowWheelScroll({
-        scrollLeft: 40,
-        scrollWidth: 320,
-        clientWidth: 120,
-        deltaX: 0,
-        deltaY: -24,
-      }),
-    ).toEqual({ scrollLeft: 16, consumed: true });
-  });
+  test('advances progress for small steps without rendering their text', () => {
+    const before = renderToStaticMarkup(
+      <ConversationFlowBarView
+        steps={[
+          { key: 'request', label: 'Request', status: 'complete' },
+          { key: 'model', label: 'Model', status: 'active' },
+          { key: 'thinking', label: 'Thinking', status: 'pending' },
+        ]}
+        queuedCount={0}
+      />,
+    );
+    const after = renderToStaticMarkup(
+      <ConversationFlowBarView
+        steps={[
+          { key: 'request', label: 'Request', status: 'complete' },
+          { key: 'model', label: 'Model', status: 'complete' },
+          { key: 'thinking', label: 'Thinking', status: 'active' },
+        ]}
+        queuedCount={0}
+      />,
+    );
 
-  test('lets page scrolling continue when the flow strip cannot move farther', () => {
-    expect(
-      resolveConversationFlowWheelScroll({
-        scrollLeft: 200,
-        scrollWidth: 320,
-        clientWidth: 120,
-        deltaX: 0,
-        deltaY: 36,
-      }),
-    ).toEqual({ scrollLeft: 200, consumed: false });
-    expect(
-      resolveConversationFlowWheelScroll({
-        scrollLeft: 0,
-        scrollWidth: 120,
-        clientWidth: 120,
-        deltaX: 0,
-        deltaY: -24,
-      }),
-    ).toEqual({ scrollLeft: 0, consumed: false });
+    expect(before).toMatch(/aria-valuenow=.52./);
+    expect(after).toMatch(/aria-valuenow=.85./);
+    for (const html of [before, after]) {
+      expect(html).toContain('Working');
+      expect(html).not.toContain('Request');
+      expect(html).not.toContain('Model');
+      expect(html).not.toContain('Thinking');
+      expect(html).not.toContain('Conversation flow steps');
+    }
   });
 
   test('generates conversation flow steps from actual OpenCode activity', () => {
@@ -755,8 +744,8 @@ describe('ChatPanel export affordance', () => {
 
     expect(selectedActivity).toEqual(activity);
     expect(html).toContain('Conversation flow');
-    expect(html).toContain('write');
-    expect(html).toContain('Response');
-    expect(html).not.toContain('Intent');
+    expect(html).toContain('Complete');
+    expect(html).not.toContain('write');
+    expect(html).not.toContain('Response');
   });
 });

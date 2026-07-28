@@ -93,36 +93,6 @@ export interface FlowStep {
   status: FlowStepStatus;
 }
 
-export function resolveConversationFlowWheelScroll({
-  scrollLeft,
-  scrollWidth,
-  clientWidth,
-  deltaX,
-  deltaY,
-  deltaMode = 0,
-}: {
-  scrollLeft: number;
-  scrollWidth: number;
-  clientWidth: number;
-  deltaX: number;
-  deltaY: number;
-  deltaMode?: number;
-}): { scrollLeft: number; consumed: boolean } {
-  const maxScrollLeft = Math.max(0, scrollWidth - clientWidth);
-  const currentScrollLeft = Math.min(maxScrollLeft, Math.max(0, scrollLeft));
-  const wheelDelta = Math.abs(deltaX) > Math.abs(deltaY) ? deltaX : deltaY;
-  const deltaScale = deltaMode === 1 ? 16 : deltaMode === 2 ? clientWidth : 1;
-  const nextScrollLeft = Math.min(
-    maxScrollLeft,
-    Math.max(0, currentScrollLeft + wheelDelta * deltaScale),
-  );
-
-  return {
-    scrollLeft: nextScrollLeft,
-    consumed: nextScrollLeft !== currentScrollLeft,
-  };
-}
-
 function ConversationFlowBar() {
   const messages = useChatStore((s) => s.messages);
   const sending = useChatStore((s) => s.sending);
@@ -184,30 +154,6 @@ export function ConversationFlowBarView({
   queuedCount: number;
 }) {
   const hasSteps = steps.length > 0;
-  const stepsScrollerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const scroller = stepsScrollerRef.current;
-    if (!scroller) return;
-
-    const handleWheel = (event: WheelEvent) => {
-      const next = resolveConversationFlowWheelScroll({
-        scrollLeft: scroller.scrollLeft,
-        scrollWidth: scroller.scrollWidth,
-        clientWidth: scroller.clientWidth,
-        deltaX: event.deltaX,
-        deltaY: event.deltaY,
-        deltaMode: event.deltaMode,
-      });
-      if (!next.consumed) return;
-
-      event.preventDefault();
-      scroller.scrollLeft = next.scrollLeft;
-    };
-
-    scroller.addEventListener('wheel', handleWheel, { passive: false });
-    return () => scroller.removeEventListener('wheel', handleWheel);
-  }, [hasSteps]);
 
   if (!hasSteps) return null;
 
@@ -220,18 +166,14 @@ export function ConversationFlowBarView({
     return total;
   }, 0);
   const percent = Math.min(100, Math.max(0, (progressValue / steps.length) * 100));
-  const statusText = activeStep.detail
-    ? `${activeStep.label}: ${activeStep.detail}`
-    : activeStep.label;
-  const visibleSteps = steps.slice(-8);
-  const hiddenStepCount = steps.length - visibleSteps.length;
+  const majorStage = conversationFlowMajorStage(steps, activeStep);
 
   return (
     <section className="shrink-0 border-b border-tagma-border bg-tagma-bg px-3 py-2">
       <div className="flex items-center gap-2 text-[10px] font-mono text-tagma-muted min-w-0">
         <span className="shrink-0 text-tagma-muted/80">Conversation flow</span>
-        <span className="min-w-0 flex-1 truncate text-tagma-text" title={statusText}>
-          {statusText}
+        <span className="min-w-0 flex-1 truncate text-tagma-text" title={majorStage}>
+          {majorStage}
         </span>
         {queuedCount > 0 && (
           <span className="shrink-0 text-tagma-muted/70 tabular-nums">+{queuedCount} queued</span>
@@ -247,38 +189,10 @@ export function ConversationFlowBarView({
       >
         <div
           className={`h-full transition-[width] duration-300 ${
-            activeStep.status === 'error' ? 'bg-tagma-error' : 'bg-tagma-ready'
+            steps.some((step) => step.status === 'error') ? 'bg-tagma-error' : 'bg-tagma-ready'
           }`}
           style={{ width: `${percent}%` }}
         />
-      </div>
-      <div
-        ref={stepsScrollerRef}
-        className="mt-1.5 flex items-center gap-2 overflow-x-auto pb-0.5 text-[9px] font-mono"
-        aria-label="Conversation flow steps"
-      >
-        {hiddenStepCount > 0 && (
-          <span className="shrink-0 text-tagma-muted/50">+{hiddenStepCount} earlier</span>
-        )}
-        {visibleSteps.map((step, index) => (
-          <div key={step.key} className="flex shrink-0 items-center gap-1">
-            {(index > 0 || hiddenStepCount > 0) && (
-              <span className="text-tagma-muted/35" aria-hidden="true">
-                ›
-              </span>
-            )}
-            <span
-              className={`size-1.5 shrink-0 rounded-full ${flowStepDotClass(step.status)}`}
-              aria-hidden="true"
-            />
-            <span
-              className={`max-w-[9rem] truncate ${flowStepTextClass(step.status)}`}
-              title={step.detail ? `${step.label}: ${step.detail}` : step.label}
-            >
-              {step.label}
-            </span>
-          </div>
-        ))}
       </div>
     </section>
   );
@@ -548,18 +462,18 @@ function appendConversationFlowStep(steps: FlowStep[], step: FlowStep): void {
   steps.push(step);
 }
 
-function flowStepDotClass(status: FlowStepStatus): string {
-  if (status === 'complete') return 'bg-tagma-ready';
-  if (status === 'active') return 'bg-tagma-accent animate-pulse';
-  if (status === 'error') return 'bg-tagma-error';
-  return 'bg-tagma-border';
-}
-
-function flowStepTextClass(status: FlowStepStatus): string {
-  if (status === 'complete') return 'text-tagma-muted/80';
-  if (status === 'active') return 'text-tagma-text';
-  if (status === 'error') return 'text-tagma-error';
-  return 'text-tagma-muted/45';
+function conversationFlowMajorStage(steps: FlowStep[], currentStep: FlowStep): string {
+  if (steps.some((step) => step.status === 'error')) return 'Needs attention';
+  if (steps.every((step) => step.status === 'complete')) return 'Complete';
+  if (currentStep.key === 'permission') return 'Waiting for approval';
+  if (currentStep.key === 'reconcile' || currentStep.key === 'yaml-action') {
+    return 'Finalizing changes';
+  }
+  if (currentStep.key === 'flush') return 'Sending queued messages';
+  if (currentStep.key === 'queued') return 'Queued';
+  if (currentStep.label === 'Request') return 'Starting';
+  if (currentStep.label === 'Response') return 'Responding';
+  return 'Working';
 }
 
 /**
