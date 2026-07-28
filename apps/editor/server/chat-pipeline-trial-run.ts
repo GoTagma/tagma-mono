@@ -1339,11 +1339,7 @@ async function executeTrial(
       totalTaskCount += caseExecution.totalTaskCount;
       if (workspaceFailures.length > 0) break;
     }
-    if (
-      baselineWorkspace.digest &&
-      cases.length === plan.cases.length &&
-      cases.every((item) => item.success)
-    ) {
+    if (baselineWorkspace.digest) {
       const finalWorkspace = captureTrialWorkspaceDigest(ws);
       const finalWorkspaceFailure = !finalWorkspace.digest
         ? `Could not capture the real workspace after isolated cases: ${finalWorkspace.reason ?? 'unknown witness failure'}.`
@@ -1366,6 +1362,11 @@ async function executeTrial(
               },
             ],
           };
+        } else {
+          const pendingCase = plan.cases[0];
+          if (pendingCase) {
+            cases.push(trialCaseForWorkspaceWitnessFailure(pendingCase, finalWorkspaceFailure));
+          }
         }
       }
     }

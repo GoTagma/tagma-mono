@@ -1099,6 +1099,97 @@ describe('chat YAML staging routes', () => {
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });
+  test('still verifies the final workspace digest after an unrelated case failure', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const gitInit = Bun.spawnSync(['git', '-C', ws.workDir, 'init', '--quiet']);
+    expect(gitInit.exitCode).toBe(0);
+    const gitConfigPath = join(ws.workDir, '.git', 'config');
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    const script = [
+      "const fs = require('node:fs');",
+      `if (process.env.TAGMA_TRIAL_CASE_ID) { fs.appendFileSync(${JSON.stringify(gitConfigPath)}, '\\n[tagma]\\n\\ttrial-drift = changed\\n'); process.exit(9); }`,
+    ].join(' ');
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Final Workspace Digest Guard',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [{ id: 'probe', command: { argv: [process.execPath, '-e', script] } }],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
+    writeTrialPlan(entry.stagedPath, {
+      cases: [
+        {
+          id: 'failed-case-with-git-drift',
+          title: 'Fail independently while mutating Git controls',
+          objective: 'Keep final workspace verification active after a case failure.',
+          runs: 1,
+          targetTaskIds: ['main.probe'],
+          fixtures: [],
+          expectations: [{ type: 'task-status', taskId: 'main.probe', status: 'success' }],
+        },
+      ],
+    });
+
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        {
+          stageId: stage.id,
+          relativePath: entry.relativePath,
+          trialId: 'final_digest_after_case_failure',
+        },
+        'chat-lock',
+      ),
+      trialRes,
+    );
+
+    expect(trialRes.body).toMatchObject({
+      success: false,
+      kind: 'failed',
+      cases: [{ id: 'failed-case-with-git-drift', success: false }],
+    });
+    const expectations = (
+      trialRes.body as {
+        cases: Array<{
+          expectations: Array<{ type: string; passed: boolean; detail: string }>;
+        }>;
+      }
+    ).cases[0]!.expectations;
+    expect(expectations).toContainEqual(
+      expect.objectContaining({ type: 'task-status', passed: false }),
+    );
+    expect(expectations).toContainEqual(
+      expect.objectContaining({
+        type: 'case-execution',
+        passed: false,
+        detail: expect.stringContaining('modified the real workspace'),
+      }),
+    );
+    expect(readFileSync(gitConfigPath, 'utf-8')).toContain('trial-drift = changed');
+
+    discardStage(getRoute, ws, stage.id);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
   test('detects a transient real-workspace write in a non-Git workspace', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const transientPath = join(ws.workDir, 'case-transient-leak.txt');
