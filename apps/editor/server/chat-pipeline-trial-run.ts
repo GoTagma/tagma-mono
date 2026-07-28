@@ -1609,7 +1609,7 @@ export async function trialRunChatYamlStage(
       abortState.timedOut = true;
       controller.abort('chat trial run timeout');
     }, timeoutMs);
-    timeout.unref?.();
+    if (timeoutMsOverride === undefined) timeout.unref?.();
     activeTrialByWorkspace.set(ws.key, inFlightKey);
     activeTrialIdentityByWorkspace.set(ws.key, activeIdentity);
     ws.chatPipelineTrialAbort = controller;

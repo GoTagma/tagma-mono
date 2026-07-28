@@ -1027,10 +1027,12 @@ export function captureTrialWorkspaceWitnessForRoot(
   previousCache: TrialHostWorkspaceManifestCache | null,
 ): { witness: TrialHostWorkspaceWitness; cache: TrialHostWorkspaceManifestCache } {
   const resolvedRoot = realpathSync.native(resolve(workspaceRoot));
-  return (
-    gitWorkspaceWitness(resolvedRoot, previousCache) ??
-    filesystemWorkspaceWitness(resolvedRoot, previousCache)
-  );
+  const gitWitness = gitWorkspaceWitness(resolvedRoot, previousCache);
+  if (gitWitness) return gitWitness;
+  if (existsSync(join(resolvedRoot, '.git'))) {
+    throw new Error('Git workspace witness could not resolve git from PATH.');
+  }
+  return filesystemWorkspaceWitness(resolvedRoot, previousCache);
 }
 
 function captureTrialWorkspaceWitnessWithCache(ws: WorkspaceState): {

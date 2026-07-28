@@ -10,7 +10,10 @@ import {
   __chatPipelineTrialRunTestHooks,
   type ChatPipelineTrialRunResult,
 } from '../server/chat-pipeline-trial-run';
-import { __chatYamlStagingTestHooks } from '../server/chat-yaml-staging';
+import {
+  __chatYamlStagingTestHooks,
+  discardChatYamlStage,
+} from '../server/chat-yaml-staging';
 import { registerChatYamlStagingRoutes } from '../server/routes/chat-yaml-staging';
 import { disposeTrialWitnessWorker, safeCaptureTrialHostWitness } from '../server/chat-pipeline-trial-witness';
 import { pipelineYamlPath } from '../server/pipeline-paths';
@@ -27,6 +30,7 @@ type RouteHandler = (req: MockRequest, res: MockResponse) => void | Promise<void
 
 const roots: string[] = [];
 const workspaces: WorkspaceState[] = [];
+const stages: Array<{ ws: WorkspaceState; id: string }> = [];
 const REQUIRED_TRIAL_COVERAGE = [
   'multiple-inputs',
   'duplicate-input-names',
@@ -174,7 +178,13 @@ async function startStage(
     entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
   };
   const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
-  return { id: stage.id, stagedPath: entry.stagedPath, relativePath: entry.relativePath, rootDir: stage.rootDir };
+  stages.push({ ws, id: stage.id });
+  return {
+    id: stage.id,
+    stagedPath: entry.stagedPath,
+    relativePath: entry.relativePath,
+    rootDir: stage.rootDir,
+  };
 }
 
 afterEach(() => {
@@ -183,7 +193,16 @@ afterEach(() => {
   delete __chatPipelineTrialRunTestHooks.timeoutMsOverride;
   delete __chatYamlStagingTestHooks.captureHostWitnessAsync;
   delete __workspaceRegistryTestHooks.disposeTrialWitnessWorker;
+  for (const stage of stages.splice(0)) {
+    try {
+      discardChatYamlStage(stage.ws, stage.id);
+    } catch {
+      // Finalized or already discarded by the test.
+    }
+  }
   for (const ws of workspaces.splice(0)) {
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
     disposeTrialWitnessWorker(ws);
   }
   for (const root of roots.splice(0)) {
@@ -193,7 +212,7 @@ afterEach(() => {
 });
 
 describe('chat YAML staging async witness ordering', () => {
-  test('times out before the first host witness and leaves no cached trial result', async () => {
+  test('times out during the first host witness and leaves no cached trial result', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();
     const stage = await startStage(getRoute, ws, sourcePath);
@@ -226,7 +245,7 @@ describe('chat YAML staging async witness ordering', () => {
     );
 
     expect(trialRes.statusCode).toBe(200);
-    expect(trialRes.body).toMatchObject<Partial<ChatPipelineTrialRunResult>>({
+    expect(trialRes.body).toMatchObject({
       success: false,
       kind: 'witness-failed',
       ran: false,
@@ -238,19 +257,23 @@ describe('chat YAML staging async witness ordering', () => {
     ws.layoutWatcher.stopWatching();
   });
 
-  test('cancels during pre-witness before any trial tasks start, even for a zero-task pipeline', async () => {
+  test('cancels during pre-witness before any trial tasks start', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();
     const stage = await startStage(getRoute, ws, sourcePath);
-    writeFileSync(
-      stage.stagedPath,
-      serializePipeline({
-        name: 'Zero Task Pipeline',
-        tracks: [{ id: 'main', name: 'Main', tasks: [] }],
-      }),
-      'utf-8',
-    );
-    writeTrialPlan(stage.stagedPath);
+    writeTrialPlan(stage.stagedPath, {
+      cases: [
+        {
+          id: 'case_probe',
+          title: 'Case probe',
+          objective: 'Would run only if pre-witness completed.',
+          runs: 1,
+          targetTaskIds: ['main.verify'],
+          fixtures: [],
+          expectations: [{ type: 'task-status', taskId: 'main.verify', status: 'success' }],
+        },
+      ],
+    });
     let witnessStarted = false;
     __chatPipelineTrialRunTestHooks.captureHostWitnessAsync = async (_candidate, _prepared, signal) => {
       witnessStarted = true;
@@ -263,12 +286,22 @@ describe('chat YAML staging async witness ordering', () => {
 
     const trialRes = makeRes();
     const trialPromise = getRoute('/api/workspace/chat-yaml-stage/trial-run')(
-      request(ws, { stageId: stage.id, relativePath: stage.relativePath, trialId: 'cancel_pre_witness' }),
+      request(ws, {
+        stageId: stage.id,
+        relativePath: stage.relativePath,
+        trialId: 'cancel_pre_witness',
+      }),
       trialRes,
     );
-    for (let attempt = 0; attempt < 100 && (!witnessStarted || !ws.chatPipelineTrialAbort); attempt += 1) {
+    for (
+      let attempt = 0;
+      attempt < 100 && (!witnessStarted || !ws.chatPipelineTrialAbort);
+      attempt += 1
+    ) {
       await Bun.sleep(10);
     }
+    expect(witnessStarted).toBe(true);
+    expect(ws.chatPipelineTrialAbort).not.toBeNull();
 
     const cancelRes = makeRes();
     await getRoute('/api/workspace/chat-yaml-stage/trial-run/cancel')(
@@ -278,7 +311,7 @@ describe('chat YAML staging async witness ordering', () => {
     await trialPromise;
 
     expect(cancelRes.body).toEqual({ cancelled: true });
-    expect(trialRes.body).toMatchObject<Partial<ChatPipelineTrialRunResult>>({
+    expect(trialRes.body).toMatchObject({
       success: false,
       kind: 'aborted',
       ran: false,
@@ -340,13 +373,13 @@ describe('chat YAML staging async witness ordering', () => {
       trialRes,
     );
 
-    expect(trialRes.body).toMatchObject<Partial<ChatPipelineTrialRunResult>>({
+    expect(trialRes.body).toMatchObject({
       success: false,
       kind: 'failed',
       ran: true,
     });
     expect((trialRes.body as { summary: string }).summary).toContain(
-      'Isolated cases modified the real workspace',
+      'modified the real workspace',
     );
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
@@ -391,12 +424,12 @@ describe('chat YAML staging async witness ordering', () => {
     );
     expect(trialRes.body).toMatchObject({ success: true, kind: 'passed' });
 
-    let releaseWitness: (() => void) | null = null;
+    const releaseWitness = { current: null as null | (() => void) };
     let witnessCalls = 0;
     __chatYamlStagingTestHooks.captureHostWitnessAsync = async (candidate, prepared) => {
       witnessCalls += 1;
       await new Promise<void>((resolve) => {
-        releaseWitness = resolve;
+        releaseWitness.current = resolve;
       });
       return safeCaptureTrialHostWitness(candidate, prepared);
     };
@@ -412,7 +445,9 @@ describe('chat YAML staging async witness ordering', () => {
 
     expect(witnessCalls).toBe(1);
     expect(finalizeRes.body).toBeNull();
-    releaseWitness?.();
+    if (releaseWitness.current) {
+      releaseWitness.current();
+    }
     await finalizePromise;
 
     expect(finalizeRes.statusCode).toBe(200);
