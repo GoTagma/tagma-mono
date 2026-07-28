@@ -75,7 +75,6 @@ describe('chat pipeline trial plan', () => {
     });
   });
 
-
   test('requires every case to target at least one qualified task id', () => {
     const missingTargets = structuredClone(completePlan());
     delete (missingTargets.cases as Array<Record<string, unknown>>)[0]!.targetTaskIds;

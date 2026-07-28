@@ -179,7 +179,7 @@ test('tagma-router delegates history comparisons without read/edit powers', () =
   expect(doc).toContain('tagma-pipeline');
   expect(doc).toContain('tagma-pipeline-diagnosis');
   expect(doc).toContain('tagma-general-discussion');
-  // create/edit are merged 闂?the router must not know those agents anymore.
+  // Create/edit are merged, so the router must not know those agents anymore.
   expect(doc).not.toContain('tagma-pipeline-create');
   expect(doc).not.toContain('tagma-pipeline-edit');
   expect(doc).not.toContain('create_pipeline');
@@ -295,7 +295,7 @@ test('merged tagma-pipeline agent is a hidden subagent handling create + edit', 
   expect(pipeline).toContain('name: tagma-pipeline');
   expect(pipeline).toContain('mode: subagent');
   expect(pipeline).toContain('hidden: true');
-  // No routed-specialization split anymore 闂?one worker, two modes.
+  // No routed-specialization split anymore: one worker, two modes.
   expect(pipeline).not.toContain('Routed specialization');
   expect(pipeline).not.toContain('ROUTE_MISMATCH: modify_pipeline');
   expect(pipeline).not.toContain('ROUTE_MISMATCH: create_pipeline');
@@ -638,7 +638,6 @@ test('trial-plan tool rejects host-invalid plans before writing any file', async
     generated.cleanup();
   }
 });
-
 
 test('trial-plan tool requires every case to include non-empty target task ids before writing', async () => {
   const generated = await loadGeneratedTrialPlanTool();

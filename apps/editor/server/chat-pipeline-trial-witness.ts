@@ -155,7 +155,7 @@ function isCanonicalPathWithin(child: string, root: string): boolean {
   );
 }
 
-function shouldSkipWorkspaceWitnessDir(relativePath: string, name: string): boolean {
+function shouldSkipWorkspaceWitnessDir(relativePath: string): boolean {
   const segments = relativePath.split('/').filter(Boolean);
   if (segments[0] !== '.tagma') return false;
   if (segments.length < 2) return false;
@@ -338,7 +338,7 @@ function workspaceWitness(ws: WorkspaceState): TrialHostWorkspaceWitness {
         const canonicalTargetRelative = relative(resolvedRoot, canonicalTarget)
           .split(sep)
           .join('/');
-        if (shouldSkipWorkspaceWitnessDir(canonicalTargetRelative, '')) {
+        if (shouldSkipWorkspaceWitnessDir(canonicalTargetRelative)) {
           throw new Error(
             `Workspace witness symlink points into an excluded workspace path: ${relativePath}`,
           );
@@ -396,7 +396,7 @@ function workspaceWitness(ws: WorkspaceState): TrialHostWorkspaceWitness {
         continue;
       }
       if (stat.isDirectory()) {
-        if (shouldSkipWorkspaceWitnessDir(relativePath, entry.name)) continue;
+        if (shouldSkipWorkspaceWitnessDir(relativePath)) continue;
         hash.update(`dir\0${relativePath}\0`);
         visit(absolutePath, relativePath);
         continue;
@@ -475,7 +475,6 @@ export function safeCaptureTrialWorkspaceWitness(ws: WorkspaceState): {
   }
 }
 function windowsBinaryCandidates(name: string, env: NodeJS.ProcessEnv): string[] {
-  const lower = name.toLowerCase();
   const pathext = (env.PATHEXT ?? process.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD')
     .split(';')
     .map((entry) => entry.trim())
