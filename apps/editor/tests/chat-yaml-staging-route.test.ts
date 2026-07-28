@@ -1180,6 +1180,90 @@ describe('chat YAML staging routes', () => {
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });
+  test('does not execute an isolated case when the workspace cannot be sealed', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const caseExecutedPath = join(ws.workDir, 'unsealed-case-executed.txt');
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    const script = [
+      "const fs = require('node:fs');",
+      "const path = require('node:path');",
+      `if (process.env.TAGMA_TRIAL_CASE_ID) fs.writeFileSync(${JSON.stringify(caseExecutedPath)}, 'ran');`,
+      `else fs.writeFileSync(path.join(${JSON.stringify(ws.workDir)}, '.git'), 'invalid git marker');`,
+    ].join(' ');
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Unsealed Workspace Guard',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [{ id: 'probe', command: { argv: [process.execPath, '-e', script] } }],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
+    writeTrialPlan(entry.stagedPath, {
+      cases: [
+        {
+          id: 'must-not-run',
+          title: 'Do not run without a sealed workspace',
+          objective: 'Fail before executing an unmonitored isolated case.',
+          runs: 1,
+          targetTaskIds: ['main.probe'],
+          fixtures: [],
+          expectations: [{ type: 'task-status', taskId: 'main.probe', status: 'success' }],
+        },
+      ],
+    });
+
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'unsealed_workspace' },
+        'chat-lock',
+      ),
+      trialRes,
+    );
+
+    expect(trialRes.body).toMatchObject({
+      success: false,
+      kind: 'failed',
+      cases: [
+        {
+          id: 'must-not-run',
+          success: false,
+          runIds: [],
+          tasks: [],
+          expectations: [
+            {
+              type: 'case-execution',
+              passed: false,
+              detail: expect.stringContaining('Could not seal the real workspace after baseline'),
+            },
+          ],
+        },
+      ],
+    });
+    expect(existsSync(caseExecutedPath)).toBe(false);
+
+    discardStage(getRoute, ws, stage.id);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
   test('forces a numbered copy when trial-run verification is missing while trial-run is enabled', () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();

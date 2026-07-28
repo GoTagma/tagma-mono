@@ -1270,7 +1270,6 @@ async function executeTrial(
     if (workspaceMutationMonitor) await workspaceMutationMonitor.settle();
     const baselineWorkspace = captureTrialWorkspaceDigest(ws);
     const baselineMutationState = workspaceMutationMonitor?.read() ?? null;
-    let expectedWorkspaceDigest = baselineWorkspace.digest;
     let expectedWorkspaceMutationRevision = baselineMutationState?.revision ?? null;
     let pendingWorkspaceWitnessFailure = baselineWorkspace.digest
       ? null
@@ -1305,7 +1304,6 @@ async function executeTrial(
         targetTaskIds: targetTaskIdsByCase.get(testCase.id),
       });
       if (workspaceMutationMonitor) await workspaceMutationMonitor.settle();
-      const afterCase = captureTrialWorkspaceDigest(ws);
       if (workspaceMutationMonitor) {
         const mutationState = workspaceMutationMonitor.read();
         if (!mutationState.healthy) {
@@ -1322,15 +1320,6 @@ async function executeTrial(
         }
         expectedWorkspaceMutationRevision = mutationState.revision;
       }
-      if (!afterCase.digest) {
-        workspaceFailures.push(
-          `Could not capture the real workspace after case ${testCase.id}: ${afterCase.reason ?? 'unknown witness failure'}.`,
-        );
-      } else if (expectedWorkspaceDigest && afterCase.digest !== expectedWorkspaceDigest) {
-        const detail = `Isolated case ${testCase.id} modified the real workspace; case fixtures and outputs must remain isolated.`;
-        if (!workspaceFailures.includes(detail)) workspaceFailures.push(detail);
-      }
-      expectedWorkspaceDigest = afterCase.digest ?? expectedWorkspaceDigest;
       const caseResult =
         workspaceFailures.length === 0
           ? caseExecution.result
@@ -1349,6 +1338,36 @@ async function executeTrial(
       cases.push(caseResult);
       totalTaskCount += caseExecution.totalTaskCount;
       if (workspaceFailures.length > 0) break;
+    }
+    if (
+      baselineWorkspace.digest &&
+      cases.length === plan.cases.length &&
+      cases.every((item) => item.success)
+    ) {
+      const finalWorkspace = captureTrialWorkspaceDigest(ws);
+      const finalWorkspaceFailure = !finalWorkspace.digest
+        ? `Could not capture the real workspace after isolated cases: ${finalWorkspace.reason ?? 'unknown witness failure'}.`
+        : finalWorkspace.digest !== baselineWorkspace.digest
+          ? 'Isolated cases modified the real workspace; case fixtures and outputs must remain isolated.'
+          : null;
+      if (finalWorkspaceFailure) {
+        const lastCaseIndex = cases.length - 1;
+        const lastCase = cases[lastCaseIndex];
+        if (lastCase) {
+          cases[lastCaseIndex] = {
+            ...lastCase,
+            success: false,
+            expectations: [
+              ...lastCase.expectations,
+              {
+                type: 'case-execution',
+                passed: false,
+                detail: boundedTrialText(finalWorkspaceFailure),
+              },
+            ],
+          };
+        }
+      }
     }
     const success =
       baseline.success &&
