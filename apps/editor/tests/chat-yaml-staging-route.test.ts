@@ -1013,6 +1013,14 @@ describe('chat YAML staging routes', () => {
   });
   test('fails an isolated case that writes a persistent artifact into the real workspace', async () => {
     const { ws, sourcePath } = makeWorkspace();
+    const gitInit = Bun.spawnSync(['git', '-C', ws.workDir, 'init', '--quiet']);
+    expect(gitInit.exitCode).toBe(0);
+    writeFileSync(join(ws.workDir, '.gitignore'), '.tagma/\ngenerated/\n', 'utf-8');
+    const ignoredRoot = join(ws.workDir, 'generated');
+    const leakedPath = join(ignoredRoot, 'case-leaked-into-real-workspace.txt');
+    mkdirSync(ignoredRoot, { recursive: true });
+    writeFileSync(leakedPath, 'before', 'utf-8');
+
     const getRoute = createHarness();
     const startRes = makeRes();
     getRoute('/api/workspace/chat-yaml-stage/start')(
@@ -1024,7 +1032,6 @@ describe('chat YAML staging routes', () => {
       entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
     };
     const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
-    const leakedPath = join(ws.workDir, 'case-leaked-into-real-workspace.txt');
     const script = [
       "const fs = require('node:fs');",
       `if (process.env.TAGMA_TRIAL_CASE_ID) fs.writeFileSync(${JSON.stringify(leakedPath)}, 'leak');`,

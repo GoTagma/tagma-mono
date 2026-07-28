@@ -342,7 +342,6 @@ interface GitWorkspaceControlLayout {
   refsPath: string;
 }
 
-
 const GIT_WITNESS_MAX_BUFFER_BYTES = 32 * 1024 * 1024;
 
 function sameCanonicalPath(left: string, right: string): boolean {
@@ -502,7 +501,6 @@ const GIT_CONTROL_LOCK_NAMES = [
   'shallow.lock',
 ] as const;
 
-
 function readGitWorkspaceControlLayout(
   gitPath: string,
   root: string,
@@ -522,8 +520,7 @@ function readGitWorkspaceControlLayout(
     return null;
   }
   const output = result.stdout.toString('utf-8').trimEnd().split(/\r?\n/u);
-  const expectedCount =
-    1 + GIT_CONTROL_IDENTITY_NAMES.length + GIT_CONTROL_LOCK_NAMES.length + 1;
+  const expectedCount = 1 + GIT_CONTROL_IDENTITY_NAMES.length + GIT_CONTROL_LOCK_NAMES.length + 1;
   if (output.length !== expectedCount) {
     throw new Error('Git workspace witness returned incomplete repository layout paths.');
   }
@@ -538,35 +535,19 @@ function readGitWorkspaceControlLayout(
   const refsIndex = lockStart + GIT_CONTROL_LOCK_NAMES.length;
   return {
     root: gitRoot,
-    identityPaths: output
-      .slice(identityStart, lockStart)
-      .map((path) => resolve(root, path)),
+    identityPaths: output.slice(identityStart, lockStart).map((path) => resolve(root, path)),
     lockPaths: output.slice(lockStart, refsIndex).map((path) => resolve(root, path)),
     refsPath: resolve(root, output[refsIndex]!),
   };
 }
-function assertNoGitWorkspaceControlLocks(gitPath: string, root: string): void {
-  const args = ['rev-parse', '--path-format=absolute'];
-  for (const name of GIT_CONTROL_LOCK_NAMES) args.push('--git-path', name);
-  const output = successfulGitWitnessCommand(gitPath, root, args)
-    .toString('utf-8')
-    .split(/\r?\n/u)
-    .filter(Boolean);
-  for (let index = 0; index < output.length; index += 1) {
-    if (!existsSync(resolve(root, output[index]!))) continue;
+function assertNoGitWorkspaceControlLocks(layout: GitWorkspaceControlLayout): void {
+  for (let index = 0; index < layout.lockPaths.length; index += 1) {
+    if (!existsSync(layout.lockPaths[index]!)) continue;
     throw new Error(
       `Git workspace witness refused repository control lock: ${GIT_CONTROL_LOCK_NAMES[index] ?? 'unknown lock'}`,
     );
   }
-  const refsPath = successfulGitWitnessCommand(gitPath, root, [
-    'rev-parse',
-    '--path-format=absolute',
-    '--git-path',
-    'refs',
-  ])
-    .toString('utf-8')
-    .trim();
-  if (!existsSync(refsPath)) return;
+  if (!existsSync(layout.refsPath)) return;
   let visitedEntries = 0;
   const visitRefs = (directory: string): void => {
     const stat = lstatSync(directory);
@@ -584,7 +565,7 @@ function assertNoGitWorkspaceControlLocks(gitPath: string, root: string): void {
       if (entry.isDirectory()) visitRefs(join(directory, entry.name));
     }
   };
-  visitRefs(refsPath);
+  visitRefs(layout.refsPath);
 }
 function gitWorkspaceSourceSnapshot(root: string): GitWorkspaceSourceSnapshot | null {
   const gitPath = resolveBinaryPath('git', {});
@@ -594,25 +575,10 @@ function gitWorkspaceSourceSnapshot(root: string): GitWorkspaceSourceSnapshot | 
     return null;
   }
 
-  const rootResult = spawnGitWitness(gitPath, root, ['rev-parse', '--show-toplevel']);
-  if (rootResult.status !== 0) {
-    if (hasGitMarker) {
-      throw new Error(
-        `Git workspace witness could not inspect repository root: ${rootResult.stderr.toString('utf-8').trim() || `exit ${String(rootResult.status)}`}`,
-      );
-    }
-    return null;
-  }
-  const gitRootText = rootResult.stdout.toString('utf-8').trim();
-  let gitRoot: string;
-  try {
-    gitRoot = realpathSync.native(gitRootText);
-  } catch {
-    throw new Error('Git workspace witness repository root is unavailable.');
-  }
-  if (!sameCanonicalPath(gitRoot, root)) return null;
-  assertNoGitWorkspaceControlLocks(gitPath, root);
-  const controlFilesBefore = gitControlFileIdentities(gitPath, root);
+  const layout = readGitWorkspaceControlLayout(gitPath, root, hasGitMarker);
+  if (!layout || !sameCanonicalPath(layout.root, root)) return null;
+  assertNoGitWorkspaceControlLocks(layout);
+  const controlFilesBefore = gitControlFileIdentities(layout);
 
   const staged = successfulGitWitnessCommand(gitPath, root, ['ls-files', '--stage', '-z']);
   const indexFlags = successfulGitWitnessCommand(gitPath, root, ['ls-files', '-v', '-z']);
@@ -662,11 +628,11 @@ function gitWorkspaceSourceSnapshot(root: string): GitWorkspaceSourceSnapshot | 
   controlHash.update(`${authoredTagmaPaths.join('\0')}\0`);
   controlHash.update(`root-identities\0${rootIdentityPaths.length}\0`);
   controlHash.update(`${rootIdentityPaths.join('\0')}\0`);
-  const controlFilesAfter = gitControlFileIdentities(gitPath, root);
+  const controlFilesAfter = gitControlFileIdentities(layout);
   if (JSON.stringify(controlFilesAfter) !== JSON.stringify(controlFilesBefore)) {
     throw new Error('Git workspace control files changed while hashing.');
   }
-  assertNoGitWorkspaceControlLocks(gitPath, root);
+  assertNoGitWorkspaceControlLocks(layout);
   return {
     controlDigest: controlHash.digest('hex'),
     paths: [...paths].sort(),

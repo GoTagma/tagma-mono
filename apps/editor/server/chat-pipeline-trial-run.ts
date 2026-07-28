@@ -8,6 +8,8 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  watch,
+  type FSWatcher,
 } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 
@@ -76,6 +78,17 @@ const MAX_TRIAL_CASE_COPY_BYTES = 16 * 1024 * 1024;
 const MAX_TRIAL_CASE_COPY_FILES = 256;
 const MAX_TRIAL_ASSERTION_FILE_BYTES = 2 * 1024 * 1024;
 const TRIAL_ID_RE = /^[A-Za-z0-9_-]{1,160}$/;
+const MAX_TRIAL_WORKSPACE_MONITOR_EVENTS = 10_000;
+const TRIAL_WORKSPACE_MONITOR_IGNORED_TAGMA_DIRS = new Set([
+  '.chat-staging',
+  '.opencode',
+  '.opencode-runtime',
+  '.usage',
+  'logs',
+  'node_modules',
+  'plugin-runtime',
+  'plugin-store',
+]);
 
 export type ChatPipelineTrialRunKind =
   | 'passed'
@@ -784,6 +797,107 @@ function captureTrialWorkspaceDigest(ws: WorkspaceState): {
     digest: captured.witness?.digest ?? null,
     reason: captured.reason,
   };
+}
+
+interface TrialWorkspaceMutationState {
+  revision: number;
+  healthy: boolean;
+  reason: string | null;
+}
+
+interface TrialWorkspaceMutationMonitor {
+  read(): TrialWorkspaceMutationState;
+  close(): void;
+}
+
+function trialWorkspaceMutationPath(filename: string | Buffer | null): string | null {
+  if (filename === null) return null;
+  let value: string;
+  try {
+    value =
+      typeof filename === 'string'
+        ? filename
+        : new TextDecoder('utf-8', { fatal: true }).decode(filename);
+  } catch {
+    return null;
+  }
+  const normalized = value.replaceAll('\\', '/').replace(/^\.\//u, '');
+  if (
+    !normalized ||
+    normalized.startsWith('/') ||
+    /^[A-Za-z]:/u.test(normalized) ||
+    normalized.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')
+  ) {
+    return null;
+  }
+  return normalized;
+}
+
+function ignoreTrialWorkspaceMutation(path: string): boolean {
+  const segments = path.split('/');
+  if (segments[0] === '.git') return true;
+  return (
+    segments[0] === '.tagma' &&
+    segments.length >= 2 &&
+    TRIAL_WORKSPACE_MONITOR_IGNORED_TAGMA_DIRS.has(segments[1]!)
+  );
+}
+
+function startTrialWorkspaceMutationMonitor(
+  ws: WorkspaceState,
+): { monitor: TrialWorkspaceMutationMonitor | null; reason: string | null } {
+  let revision = 0;
+  let healthy = true;
+  let reason: string | null = null;
+  let closing = false;
+  const fail = (message: string): void => {
+    healthy = false;
+    reason ??= message;
+  };
+  let watcher: FSWatcher;
+  try {
+    watcher = watch(
+      ws.workDir,
+      { persistent: false, recursive: true },
+      (_eventType, filename) => {
+        const path = trialWorkspaceMutationPath(filename);
+        if (!path) {
+          fail('Workspace mutation monitor reported an unknown path.');
+          return;
+        }
+        if (ignoreTrialWorkspaceMutation(path)) return;
+        if (revision >= MAX_TRIAL_WORKSPACE_MONITOR_EVENTS) {
+          fail('Workspace mutation monitor exceeded its bounded event capacity.');
+          return;
+        }
+        revision += 1;
+      },
+    );
+  } catch (err) {
+    return {
+      monitor: null,
+      reason: `Workspace mutation monitor could not start: ${errorMessage(err)}`,
+    };
+  }
+  watcher.on('error', (err) => fail(`Workspace mutation monitor failed: ${errorMessage(err)}`));
+  watcher.on('close', () => {
+    if (!closing) fail('Workspace mutation monitor closed unexpectedly.');
+  });
+  return {
+    monitor: {
+      read: () => ({ revision, healthy, reason }),
+      close: () => {
+        if (closing) return;
+        closing = true;
+        watcher.close();
+      },
+    },
+    reason: null,
+  };
+}
+
+async function settleTrialWorkspaceMutationMonitor(): Promise<void> {
+  await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 25));
 }
 function resultForHostWitnessFailure(
   result: ChatPipelineTrialRunResult,
