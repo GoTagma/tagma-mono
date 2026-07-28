@@ -821,7 +821,7 @@ function trialWorkspaceMutationPath(filename: string | Buffer | null): string | 
   } catch {
     return null;
   }
-  const normalized = value.replaceAll('\\', '/').replace(/^\.\//u, '');
+  const normalized = value.replace(/\\/gu, '/').replace(/^\.\//u, '');
   if (
     !normalized ||
     normalized.startsWith('/') ||
@@ -843,9 +843,10 @@ function ignoreTrialWorkspaceMutation(path: string): boolean {
   );
 }
 
-function startTrialWorkspaceMutationMonitor(
-  ws: WorkspaceState,
-): { monitor: TrialWorkspaceMutationMonitor | null; reason: string | null } {
+function startTrialWorkspaceMutationMonitor(ws: WorkspaceState): {
+  monitor: TrialWorkspaceMutationMonitor | null;
+  reason: string | null;
+} {
   let revision = 0;
   let healthy = true;
   let reason: string | null = null;
@@ -856,23 +857,19 @@ function startTrialWorkspaceMutationMonitor(
   };
   let watcher: FSWatcher;
   try {
-    watcher = watch(
-      ws.workDir,
-      { persistent: false, recursive: true },
-      (_eventType, filename) => {
-        const path = trialWorkspaceMutationPath(filename);
-        if (!path) {
-          fail('Workspace mutation monitor reported an unknown path.');
-          return;
-        }
-        if (ignoreTrialWorkspaceMutation(path)) return;
-        if (revision >= MAX_TRIAL_WORKSPACE_MONITOR_EVENTS) {
-          fail('Workspace mutation monitor exceeded its bounded event capacity.');
-          return;
-        }
-        revision += 1;
-      },
-    );
+    watcher = watch(ws.workDir, { persistent: false, recursive: true }, (_eventType, filename) => {
+      const path = trialWorkspaceMutationPath(filename);
+      if (!path) {
+        fail('Workspace mutation monitor reported an unknown path.');
+        return;
+      }
+      if (ignoreTrialWorkspaceMutation(path)) return;
+      if (revision >= MAX_TRIAL_WORKSPACE_MONITOR_EVENTS) {
+        fail('Workspace mutation monitor exceeded its bounded event capacity.');
+        return;
+      }
+      revision += 1;
+    });
   } catch (err) {
     return {
       monitor: null,
@@ -1192,6 +1189,7 @@ async function executeTrial(
     });
   });
   const runId = generateRunId();
+  let workspaceMutationMonitor: TrialWorkspaceMutationMonitor | null = null;
 
   try {
     const secretValues = Object.values({ ...redactionSecretEnv, ...requirementsSecretEnv }).filter(
@@ -1213,11 +1211,23 @@ async function executeTrial(
     const baselineEvidence = trialTaskResults(baseline, null, 1);
     const cases: ChatPipelineTrialCaseResult[] = [];
     let totalTaskCount = baselineEvidence.totalTaskCount;
+    const mutationMonitorStart = existsSync(join(ws.workDir, '.git'))
+      ? startTrialWorkspaceMutationMonitor(ws)
+      : { monitor: null, reason: null };
+    workspaceMutationMonitor = mutationMonitorStart.monitor;
     const baselineWorkspace = captureTrialWorkspaceDigest(ws);
+    if (workspaceMutationMonitor) await settleTrialWorkspaceMutationMonitor();
+    const baselineMutationState = workspaceMutationMonitor?.read() ?? null;
     let expectedWorkspaceDigest = baselineWorkspace.digest;
+    let expectedWorkspaceMutationRevision = baselineMutationState?.revision ?? null;
     let pendingWorkspaceWitnessFailure = baselineWorkspace.digest
       ? null
       : `Could not seal the real workspace after baseline: ${baselineWorkspace.reason ?? 'unknown witness failure'}.`;
+    pendingWorkspaceWitnessFailure ??= mutationMonitorStart.reason
+      ? `Could not verify that isolated cases left the real workspace unchanged: ${mutationMonitorStart.reason}`
+      : baselineMutationState && !baselineMutationState.healthy
+        ? `Could not verify that isolated cases left the real workspace unchanged: ${baselineMutationState.reason ?? 'workspace mutation monitor failed'}.`
+        : null;
     for (const testCase of plan.cases) {
       if (controller.signal.aborted) break;
       const workspaceFailures: string[] = [];
@@ -1242,14 +1252,30 @@ async function executeTrial(
         targetTaskIds: targetTaskIdsByCase.get(testCase.id),
       });
       const afterCase = captureTrialWorkspaceDigest(ws);
+      if (workspaceMutationMonitor) {
+        await settleTrialWorkspaceMutationMonitor();
+        const mutationState = workspaceMutationMonitor.read();
+        if (!mutationState.healthy) {
+          workspaceFailures.push(
+            `Could not verify that isolated cases left the real workspace unchanged: ${mutationState.reason ?? 'workspace mutation monitor failed'}.`,
+          );
+        } else if (
+          expectedWorkspaceMutationRevision !== null &&
+          mutationState.revision !== expectedWorkspaceMutationRevision
+        ) {
+          workspaceFailures.push(
+            `Isolated case ${testCase.id} modified the real workspace; case fixtures and outputs must remain isolated.`,
+          );
+        }
+        expectedWorkspaceMutationRevision = mutationState.revision;
+      }
       if (!afterCase.digest) {
         workspaceFailures.push(
           `Could not capture the real workspace after case ${testCase.id}: ${afterCase.reason ?? 'unknown witness failure'}.`,
         );
       } else if (expectedWorkspaceDigest && afterCase.digest !== expectedWorkspaceDigest) {
-        workspaceFailures.push(
-          `Isolated case ${testCase.id} modified the real workspace; case fixtures and outputs must remain isolated.`,
-        );
+        const detail = `Isolated case ${testCase.id} modified the real workspace; case fixtures and outputs must remain isolated.`;
+        if (!workspaceFailures.includes(detail)) workspaceFailures.push(detail);
       }
       expectedWorkspaceDigest = afterCase.digest ?? expectedWorkspaceDigest;
       const caseResult =
@@ -1327,6 +1353,7 @@ async function executeTrial(
       cases: [],
     };
   } finally {
+    workspaceMutationMonitor?.close();
     unsubscribeApproval();
     approvalGateway.abortAll('chat trial run finished');
   }

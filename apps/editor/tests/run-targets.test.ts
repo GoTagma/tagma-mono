@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { RawPipelineConfig } from '../src/api/client';
 import { buildStartRunRequestBody } from '../src/api/client';
+import { normalizeTrialCaseTargetTaskIdsForExecution } from '../server/chat-pipeline-trial-run';
 import { normalizeRunTargetTaskIds } from '../server/routes/run';
 
 const config: RawPipelineConfig = {
@@ -55,5 +56,9 @@ describe('run target task ids', () => {
     expect(() => normalizeRunTargetTaskIds([], config)).toThrow(/at least one/);
     expect(() => normalizeRunTargetTaskIds(['test'], config)).toThrow(/qualified task id/);
     expect(() => normalizeRunTargetTaskIds(['main.missing'], config)).toThrow(/not found/);
+  });
+
+  test('trial execution rejects forged empty targets instead of running the full pipeline', () => {
+    expect(() => normalizeTrialCaseTargetTaskIdsForExecution([], config)).toThrow(/at least one/);
   });
 });
