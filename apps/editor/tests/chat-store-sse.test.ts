@@ -55,6 +55,7 @@ const RESET = {
   queuedMessages: [],
   pendingPermissions: [],
   sendError: null,
+  completionWarning: null,
   reconciling: false,
   flushing: false,
   lastSendingEndedAt: 0,
@@ -1917,7 +1918,10 @@ describe('applySseEvent — turn lifecycle', () => {
       properties: { sessionID: 's1', status: { type: 'idle' } },
     });
 
-    expect(useChatStore.getState().sending).toBe(false);
+    const state = useChatStore.getState();
+    expect(state.sending).toBe(false);
+    expect(state.sendError).toBeNull();
+    expect(state.completionWarning).toBeNull();
   });
 
   test('7a. confirmed idle can end a turn with a stale running tool part after quiet window', () => {
@@ -2652,7 +2656,188 @@ describe('applySseEvent — turn lifecycle', () => {
       properties: { sessionID: 's1', status: { type: 'idle' } },
     });
 
-    expect(useChatStore.getState().sending).toBe(false);
+    const state = useChatStore.getState();
+    expect(state.sending).toBe(false);
+    expect(state.sendError).toBeNull();
+    expect(state.completionWarning).toBeNull();
+  });
+
+  test.each([
+    [
+      'length',
+      'The model reached its output token limit. The response may be truncated.',
+    ],
+    [
+      'unknown',
+      'OpenCode could not determine why the model stopped. The response may be incomplete.',
+    ],
+    [
+      'future-reason',
+      'OpenCode reported an unsupported finish reason (future-reason). The response may be incomplete.',
+    ],
+  ])('9k2. finish=%s ends with a specific completion warning', (finish, expectedWarning) => {
+    const turnStartedAt = Date.now() - 100;
+    useChatStore.setState({
+      currentSessionId: 's1',
+      sending: true,
+      pendingUserText: 'pending…',
+      turnStartedAt,
+      lastActivityAt: turnStartedAt,
+      messages: [],
+    } as never);
+
+    dispatch({
+      type: 'message.updated',
+      properties: {
+        info: {
+          ...makeAssistantInfo(`m-${finish}`, 's1'),
+          time: { created: turnStartedAt + 10, completed: turnStartedAt + 20 },
+          finish,
+        },
+      },
+    });
+    dispatch({
+      type: 'session.status',
+      properties: { sessionID: 's1', status: { type: 'idle' } },
+    });
+
+    const state = useChatStore.getState();
+    expect(state.sending).toBe(false);
+    expect(state.sendError).toBeNull();
+    expect(state.completionWarning).toBe(expectedWarning);
+  });
+
+  test.each([
+    [
+      'content-filter',
+      `The response was blocked by the provider's content filter.`,
+    ],
+    ['error', 'The model stopped because generation failed.'],
+  ])('9k3. finish=%s ends with a specific error', (finish, expectedError) => {
+    const turnStartedAt = Date.now() - 100;
+    useChatStore.setState({
+      currentSessionId: 's1',
+      sending: true,
+      pendingUserText: 'pending…',
+      turnStartedAt,
+      lastActivityAt: turnStartedAt,
+      messages: [],
+    } as never);
+
+    dispatch({
+      type: 'message.updated',
+      properties: {
+        info: {
+          ...makeAssistantInfo(`m-${finish}`, 's1'),
+          time: { created: turnStartedAt + 10, completed: turnStartedAt + 20 },
+          finish,
+        },
+      },
+    });
+    dispatch({
+      type: 'session.status',
+      properties: { sessionID: 's1', status: { type: 'idle' } },
+    });
+
+    const state = useChatStore.getState();
+    expect(state.sending).toBe(false);
+    expect(state.sendError).toBe(expectedError);
+    expect(state.completionWarning).toBeNull();
+  });
+
+  test('9k4. assistant error metadata survives a missed session.error event', () => {
+    const turnStartedAt = Date.now() - 100;
+    useChatStore.setState({
+      currentSessionId: 's1',
+      sending: true,
+      pendingUserText: 'pending…',
+      turnStartedAt,
+      lastActivityAt: turnStartedAt,
+      messages: [],
+    } as never);
+
+    dispatch({
+      type: 'message.updated',
+      properties: {
+        info: {
+          ...makeAssistantInfo('m-error-envelope', 's1'),
+          time: { created: turnStartedAt + 10, completed: turnStartedAt + 20 },
+          finish: 'error',
+          error: { name: 'UnknownError', data: { message: 'provider exploded' } },
+        },
+      },
+    });
+    dispatch({
+      type: 'session.status',
+      properties: { sessionID: 's1', status: { type: 'idle' } },
+    });
+
+    const state = useChatStore.getState();
+    expect(state.sending).toBe(false);
+    expect(state.sendError).toBe('provider exploded');
+    expect(state.completionWarning).toBeNull();
+  });
+
+  test('9k5. completed without finish waits for idle confirmation and warns', async () => {
+    const turnStartedAt = Date.now() - 100;
+    const completedEntry: OpencodeThreadEntry = {
+      info: {
+        ...makeAssistantInfo('m-completed-without-finish', 's1'),
+        time: { created: turnStartedAt + 10, completed: turnStartedAt + 20 },
+      } as never,
+      parts: [],
+    };
+    useChatStore.setState({
+      currentSessionId: 's1',
+      sending: true,
+      pendingUserText: 'pending…',
+      turnStartedAt,
+      lastActivityAt: turnStartedAt,
+      messages: [],
+    } as never);
+
+    const calls: string[] = [];
+    globalThis.fetch = ((input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : String(input);
+      calls.push(url);
+      if (url.endsWith('/api/opencode/chat/ensure')) {
+        return Promise.resolve(jsonResponse({ baseUrl: 'http://opencode.test' }));
+      }
+      if (url === 'http://opencode.test/session/status') {
+        return Promise.resolve(jsonResponse({ s1: { type: 'idle' } }));
+      }
+      if (url === 'http://opencode.test/session/s1/message') {
+        return Promise.resolve(jsonResponse([completedEntry]));
+      }
+      return Promise.resolve(new Response('not found', { status: 404 }));
+    }) as unknown as typeof fetch;
+    resetOpencodeClient();
+
+    try {
+      dispatch({
+        type: 'message.updated',
+        properties: { info: completedEntry.info },
+      });
+      expect(useChatStore.getState().sending).toBe(true);
+
+      dispatch({
+        type: 'session.status',
+        properties: { sessionID: 's1', status: { type: 'idle' } },
+      });
+      await flushAsyncWork();
+
+      const state = useChatStore.getState();
+      expect(calls).toContain('http://opencode.test/session/status');
+      expect(calls).toContain('http://opencode.test/session/s1/message');
+      expect(state.sending).toBe(false);
+      expect(state.sendError).toBeNull();
+      expect(state.completionWarning).toBe(
+        'OpenCode finished processing without reporting why the model stopped. The response may be incomplete.',
+      );
+    } finally {
+      resetOpencodeClient();
+      globalThis.fetch = rejectFetch;
+    }
   });
 
   test('9l. skewed assistant created timestamp still belongs to the live turn', () => {

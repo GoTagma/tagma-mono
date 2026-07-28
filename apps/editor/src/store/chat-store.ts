@@ -415,6 +415,9 @@ interface ChatStore {
   /** Last send error — rendered as a dismissable banner above the composer. */
   sendError: string | null;
   dismissSendError: () => void;
+  /** Non-error completion issue, such as truncation or an indeterminate finish reason. */
+  completionWarning: string | null;
+  dismissCompletionWarning: () => void;
   composerDraft: string;
   setComposerDraft: (text: string) => void;
   pendingChatOpenRequest: boolean;
@@ -1525,6 +1528,48 @@ function provisionalActivityForPart(
   return activity;
 }
 
+type AssistantTurnCompletion =
+  | { status: 'in-progress' | 'continuation' }
+  | { status: 'success' }
+  | { status: 'warning' | 'error'; message: string };
+
+const ASSISTANT_TURN_IN_PROGRESS: AssistantTurnCompletion = { status: 'in-progress' };
+const ASSISTANT_TURN_CONTINUATION: AssistantTurnCompletion = { status: 'continuation' };
+
+function completionFromAssistantError(error: unknown): AssistantTurnCompletion {
+  if (!error || typeof error !== 'object') {
+    return { status: 'error', message: 'Generation failed.' };
+  }
+  const record = error as { name?: unknown; data?: unknown };
+  if (record.name === 'MessageAbortedError') return ASSISTANT_TURN_IN_PROGRESS;
+  if (record.name === 'MessageOutputLengthError') {
+    return {
+      status: 'warning',
+      message: 'The model reached its output token limit. The response may be truncated.',
+    };
+  }
+  const data = record.data;
+  if (data && typeof data === 'object') {
+    const message = (data as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim()) {
+      return { status: 'error', message };
+    }
+  }
+  return { status: 'error', message: 'Generation failed.' };
+}
+
+function hasAssistantToolContinuation(entry: OpencodeThreadEntry): boolean {
+  return entry.parts.some((part) => {
+    if (part.type !== 'tool' || part.metadata?.providerExecuted === true) return false;
+    return !(part.state.status === 'error' && part.state.metadata?.interrupted === true);
+  });
+}
+
+function unsupportedFinishReason(reason: string): string {
+  const compact = reason.replace(/\s+/g, ' ').trim().slice(0, 64) || 'empty';
+  return `OpenCode reported an unsupported finish reason (${compact}). The response may be incomplete.`;
+}
+
 function hasCurrentTurnTerminalMessage(
   state: Pick<ChatStore, 'messages' | 'turnStartedAt' | 'turnAssistantMessageIds'>,
 ): boolean {
@@ -1532,9 +1577,7 @@ function hasCurrentTurnTerminalMessage(
   // turn finished. Tool parts can remain stuck at running/pending when their
   // final update is missed or stale in the transcript; do not let that stale
   // part keep the composer locked once a later final answer exists.
-  return state.messages.some(
-    (entry) => isCurrentTurnAssistantEntry(entry, state) && hasTurnFinalAssistantEnvelope(entry),
-  );
+  return isTerminalAssistantCompletion(currentTurnAssistantCompletion(state));
 }
 
 function isEndableTurnActivity(event: ActivityEvent): boolean {
@@ -2076,6 +2119,97 @@ function currentTurnAssistantIndex(
   return -1;
 }
 
+function assistantEntryCompletion(
+  entry: OpencodeThreadEntry,
+  confirmedIdle = false,
+): AssistantTurnCompletion {
+  const info = entry.info;
+  if (info.role !== 'assistant' || isAbortErrorMessageInfo(info)) {
+    return ASSISTANT_TURN_IN_PROGRESS;
+  }
+  if (info.error) return completionFromAssistantError(info.error);
+
+  const needsToolFollowUp = hasAssistantToolContinuation(entry);
+  const incompleteToolFollowUp = (): AssistantTurnCompletion => ({
+    status: 'warning',
+    message:
+      'OpenCode became idle before completing the tool-call follow-up. The response may be incomplete.',
+  });
+
+  switch (info.finish) {
+    case 'stop':
+      if (needsToolFollowUp) {
+        return confirmedIdle ? incompleteToolFollowUp() : ASSISTANT_TURN_CONTINUATION;
+      }
+      return { status: 'success' };
+    case 'tool-calls':
+      return confirmedIdle
+        ? {
+            status: 'warning',
+            message:
+              'OpenCode became idle after requesting tool calls, before a final response was available.',
+          }
+        : ASSISTANT_TURN_CONTINUATION;
+    case 'length':
+      if (needsToolFollowUp && !confirmedIdle) return ASSISTANT_TURN_CONTINUATION;
+      return {
+        status: 'warning',
+        message: 'The model reached its output token limit. The response may be truncated.',
+      };
+    case 'content-filter':
+      return {
+        status: 'error',
+        message: `The response was blocked by the provider's content filter.`,
+      };
+    case 'error':
+      return { status: 'error', message: 'The model stopped because generation failed.' };
+    case 'unknown':
+      if (needsToolFollowUp && !confirmedIdle) return ASSISTANT_TURN_CONTINUATION;
+      return {
+        status: 'warning',
+        message: 'OpenCode could not determine why the model stopped. The response may be incomplete.',
+      };
+    case undefined:
+      return confirmedIdle
+        ? {
+            status: 'warning',
+            message:
+              'OpenCode finished processing without reporting why the model stopped. The response may be incomplete.',
+          }
+        : ASSISTANT_TURN_IN_PROGRESS;
+    default:
+      if (needsToolFollowUp && !confirmedIdle) return ASSISTANT_TURN_CONTINUATION;
+      return { status: 'warning', message: unsupportedFinishReason(info.finish) };
+  }
+}
+
+function currentTurnAssistantCompletion(
+  state: Pick<ChatStore, 'messages' | 'turnStartedAt' | 'turnAssistantMessageIds'>,
+  confirmedIdle = false,
+): AssistantTurnCompletion {
+  const idx = currentTurnAssistantIndex(state);
+  return idx < 0
+    ? ASSISTANT_TURN_IN_PROGRESS
+    : assistantEntryCompletion(state.messages[idx], confirmedIdle);
+}
+
+function isTerminalAssistantCompletion(completion: AssistantTurnCompletion): boolean {
+  return completion.status === 'success' || completion.status === 'warning' || completion.status === 'error';
+}
+
+function completionPatch(completion: AssistantTurnCompletion): Partial<ChatStore> {
+  if (completion.status === 'warning') {
+    return { sendError: null, completionWarning: completion.message };
+  }
+  if (completion.status === 'error') {
+    return { sendError: completion.message, completionWarning: null };
+  }
+  if (completion.status === 'success') {
+    return { sendError: null, completionWarning: null };
+  }
+  return {};
+}
+
 function hasUnfinishedToolPart(entry: OpencodeThreadEntry): boolean {
   return entry.parts.some(
     (part) =>
@@ -2100,6 +2234,7 @@ function hasCurrentTurnEndableActivity(
   if (idx < 0) return false;
   const entry = state.messages[idx];
   if (hasTurnFinalAssistantEnvelope(entry)) return true;
+  if (entry.info.role === 'assistant' && typeof entry.info.time?.completed === 'number') return true;
   // A text/tool part proves the assistant has started, not that the turn has
   // ended. Late/replayed idle events can arrive while the part is still
   // streaming; keeping Stop visible until the terminal assistant envelope
@@ -2151,6 +2286,7 @@ function hasCurrentTurnRecoverableActivity(
   if (idx < 0) return false;
   const entry = state.messages[idx];
   if (hasTurnFinalAssistantEnvelope(entry)) return true;
+  if (entry.info.role === 'assistant' && typeof entry.info.time?.completed === 'number') return true;
   if (entry.activity?.some(isEndableTurnActivity)) {
     return true;
   }
@@ -2168,16 +2304,8 @@ function canEndCurrentTurnFromMissingStatus(
   return hasCurrentTurnRecoverableActivity(state);
 }
 
-function isFinalAssistantMessageInfo(info: OpencodeThreadEntry['info']): boolean {
-  if (info.role !== 'assistant') return false;
-  if (info.error) return true;
-  if (info.finish === 'tool-calls') return false;
-  if (typeof info.finish === 'string') return true;
-  return typeof info.time?.completed === 'number';
-}
-
 function hasTurnFinalAssistantEnvelope(entry: OpencodeThreadEntry): boolean {
-  return isFinalAssistantMessageInfo(entry.info);
+  return isTerminalAssistantCompletion(assistantEntryCompletion(entry));
 }
 
 function isBotBridgeSessionTitle(title: string | null | undefined): boolean {
@@ -2794,6 +2922,7 @@ function botTurnPatch(turnStartedAt: number): Partial<ChatStore> {
   const now = Date.now();
   return {
     sendError: null,
+    completionWarning: null,
     sending: true,
     reconciling: false,
     pendingUserText: null,
@@ -3281,7 +3410,7 @@ async function promptOpencode(
       yamlSnapshotBeforeSend: inheritedSnapshot,
       ...(opts.internal ? {} : { postChatYamlAction: null }),
     };
-    if (dispatchSessionIsVisible()) set({ sendError: null });
+    if (dispatchSessionIsVisible()) set({ sendError: null, completionWarning: null });
     applyRuntimePatchToSession(get, set, sessionIdAtDispatch, startedRuntime);
 
     if (preSendWorkDir) {
@@ -4323,6 +4452,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     })),
   sendError: null,
   dismissSendError: () => set({ sendError: null }),
+  completionWarning: null,
+  dismissCompletionWarning: () => set({ completionWarning: null }),
   composerDraft: '',
   setComposerDraft: (text) => set({ composerDraft: text }),
   pendingChatOpenRequest: false,
@@ -4834,6 +4965,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         ...runtimePatch(runtime),
         historyOpen: false,
         sendError: null,
+        completionWarning: null,
       };
     });
     if (get().currentSessionId === id && get().sending) {
@@ -4863,6 +4995,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       ...runtimePatch(idleSessionRuntimeState()),
       historyOpen: false,
       sendError: null,
+      completionWarning: null,
     }));
   },
 
@@ -4949,6 +5082,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         queuedMessages: appendQueuedMessage(prev.queuedMessages, makeQueuedMessage(text, context)),
         composerAttachments: [],
         sendError: null,
+        completionWarning: null,
         postChatYamlAction: null,
       }));
       if (!state.sending && !forceStopRecoveryPending) dispatchNextQueuedPrompt(get, set);
