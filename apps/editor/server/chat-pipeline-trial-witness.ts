@@ -335,13 +335,18 @@ interface GitWorkspaceSourceSnapshot {
   controlDigest: string;
   paths: string[];
 }
+interface GitWorkspaceControlLayout {
+  root: string;
+  identityPaths: string[];
+  lockPaths: string[];
+  refsPath: string;
+}
+
 
 const GIT_WITNESS_MAX_BUFFER_BYTES = 32 * 1024 * 1024;
 
 function sameCanonicalPath(left: string, right: string): boolean {
-  return process.platform === 'win32'
-    ? left.toLowerCase() === right.toLowerCase()
-    : left === right;
+  return process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right;
 }
 
 function gitWitnessEnv(): NodeJS.ProcessEnv {
@@ -411,7 +416,6 @@ function assertGitWorkspacePath(root: string, path: string): string {
   return absolutePath;
 }
 
-
 function rootWorkspaceIdentityPaths(root: string): string[] {
   return readdirSync(root, { withFileTypes: true })
     .filter(
@@ -468,7 +472,28 @@ function authoredTagmaWorkspacePaths(root: string): string[] {
   return paths.sort();
 }
 
+const GIT_CONTROL_IDENTITY_NAMES = [
+  'HEAD',
+  'index',
+  'config',
+  'config.worktree',
+  'info/exclude',
+  'info/sparse-checkout',
+  'packed-refs',
+  'shallow',
+  'commondir',
+] as const;
 
+function gitControlFileIdentities(layout: GitWorkspaceControlLayout): Array<{
+  name: (typeof GIT_CONTROL_IDENTITY_NAMES)[number];
+  identity: TrialWitnessFileIdentity;
+}> {
+  return GIT_CONTROL_IDENTITY_NAMES.flatMap((name, index) => {
+    const path = layout.identityPaths[index];
+    if (!path) throw new Error('Git workspace witness returned incomplete control-file paths.');
+    return existsSync(path) ? [{ name, identity: fileIdentity(path) }] : [];
+  });
+}
 const GIT_CONTROL_LOCK_NAMES = [
   'index.lock',
   'HEAD.lock',
@@ -477,6 +502,49 @@ const GIT_CONTROL_LOCK_NAMES = [
   'shallow.lock',
 ] as const;
 
+
+function readGitWorkspaceControlLayout(
+  gitPath: string,
+  root: string,
+  required: boolean,
+): GitWorkspaceControlLayout | null {
+  const args = ['rev-parse', '--path-format=absolute', '--show-toplevel'];
+  for (const name of GIT_CONTROL_IDENTITY_NAMES) args.push('--git-path', name);
+  for (const name of GIT_CONTROL_LOCK_NAMES) args.push('--git-path', name);
+  args.push('--git-path', 'refs');
+  const result = spawnGitWitness(gitPath, root, args);
+  if (result.status !== 0) {
+    if (required) {
+      throw new Error(
+        `Git workspace witness could not inspect repository layout: ${result.stderr.toString('utf-8').trim() || `exit ${String(result.status)}`}`,
+      );
+    }
+    return null;
+  }
+  const output = result.stdout.toString('utf-8').trimEnd().split(/\r?\n/u);
+  const expectedCount =
+    1 + GIT_CONTROL_IDENTITY_NAMES.length + GIT_CONTROL_LOCK_NAMES.length + 1;
+  if (output.length !== expectedCount) {
+    throw new Error('Git workspace witness returned incomplete repository layout paths.');
+  }
+  let gitRoot: string;
+  try {
+    gitRoot = realpathSync.native(output[0]!);
+  } catch {
+    throw new Error('Git workspace witness repository root is unavailable.');
+  }
+  const identityStart = 1;
+  const lockStart = identityStart + GIT_CONTROL_IDENTITY_NAMES.length;
+  const refsIndex = lockStart + GIT_CONTROL_LOCK_NAMES.length;
+  return {
+    root: gitRoot,
+    identityPaths: output
+      .slice(identityStart, lockStart)
+      .map((path) => resolve(root, path)),
+    lockPaths: output.slice(lockStart, refsIndex).map((path) => resolve(root, path)),
+    refsPath: resolve(root, output[refsIndex]!),
+  };
+}
 function assertNoGitWorkspaceControlLocks(gitPath: string, root: string): void {
   const args = ['rev-parse', '--path-format=absolute'];
   for (const name of GIT_CONTROL_LOCK_NAMES) args.push('--git-path', name);
@@ -544,6 +612,7 @@ function gitWorkspaceSourceSnapshot(root: string): GitWorkspaceSourceSnapshot | 
   }
   if (!sameCanonicalPath(gitRoot, root)) return null;
   assertNoGitWorkspaceControlLocks(gitPath, root);
+  const controlFilesBefore = gitControlFileIdentities(gitPath, root);
 
   const staged = successfulGitWitnessCommand(gitPath, root, ['ls-files', '--stage', '-z']);
   const indexFlags = successfulGitWitnessCommand(gitPath, root, ['ls-files', '-v', '-z']);
@@ -565,17 +634,21 @@ function gitWorkspaceSourceSnapshot(root: string): GitWorkspaceSourceSnapshot | 
   const authoredTagmaPaths = authoredTagmaWorkspacePaths(root);
   const rootIdentityPaths = rootWorkspaceIdentityPaths(root);
   const paths = new Set<string>();
+  const addSourcePath = (path: string): void => {
+    if (!shouldSkipWorkspaceWitnessDir(path)) paths.add(path);
+  };
   for (const record of nullTerminatedGitRecords(staged, 'index')) {
     const separator = record.indexOf('\t');
     if (separator < 0) throw new Error('Git workspace witness returned an invalid index record.');
-    paths.add(record.slice(separator + 1));
+    addSourcePath(record.slice(separator + 1));
   }
-  for (const path of nullTerminatedGitRecords(untracked, 'untracked files')) paths.add(path);
+  for (const path of nullTerminatedGitRecords(untracked, 'untracked files')) addSourcePath(path);
   for (const path of authoredTagmaPaths) paths.add(path);
   for (const path of rootIdentityPaths) paths.add(path);
   const gitIdentity = fileIdentity(gitPath);
   const controlHash = createHash('sha256');
   controlHash.update(`git-binary\0${JSON.stringify(gitIdentity)}\0`);
+  controlHash.update(`git-control-files\0${JSON.stringify(controlFilesBefore)}\0`);
   for (const [label, value] of [
     ['index', staged],
     ['index-flags', indexFlags],
@@ -589,6 +662,10 @@ function gitWorkspaceSourceSnapshot(root: string): GitWorkspaceSourceSnapshot | 
   controlHash.update(`${authoredTagmaPaths.join('\0')}\0`);
   controlHash.update(`root-identities\0${rootIdentityPaths.length}\0`);
   controlHash.update(`${rootIdentityPaths.join('\0')}\0`);
+  const controlFilesAfter = gitControlFileIdentities(gitPath, root);
+  if (JSON.stringify(controlFilesAfter) !== JSON.stringify(controlFilesBefore)) {
+    throw new Error('Git workspace control files changed while hashing.');
+  }
   assertNoGitWorkspaceControlLocks(gitPath, root);
   return {
     controlDigest: controlHash.digest('hex'),
@@ -602,6 +679,7 @@ function gitWorkspaceWitness(
 ): TrialHostWorkspaceWitness | null {
   const before = gitWorkspaceSourceSnapshot(resolvedRoot);
   if (!before) return null;
+  const sourcePaths = new Set(before.paths);
   const existingCache = workspaceManifestCaches.get(ws);
   const previousEntries =
     existingCache?.root === resolvedRoot
@@ -631,7 +709,9 @@ function gitWorkspaceWitness(
       throw err;
     }
     if (stat.isDirectory()) {
-      throw new Error(`Git workspace witness does not support nested repositories: ${relativePath}`);
+      throw new Error(
+        `Git workspace witness does not support nested repositories: ${relativePath}`,
+      );
     }
     if (stat.isSymbolicLink()) {
       let canonicalTarget: string;
@@ -641,7 +721,9 @@ function gitWorkspaceWitness(
         throw new Error(`Workspace witness symlink target is unavailable: ${relativePath}`);
       }
       if (!isCanonicalPathWithin(canonicalTarget, resolvedRoot)) {
-        throw new Error(`Workspace witness symlink target is outside the workspace: ${relativePath}`);
+        throw new Error(
+          `Workspace witness symlink target is outside the workspace: ${relativePath}`,
+        );
       }
       const canonicalTargetRelative = relative(resolvedRoot, canonicalTarget).split(sep).join('/');
       if (shouldSkipWorkspaceWitnessDir(canonicalTargetRelative)) {
@@ -652,6 +734,15 @@ function gitWorkspaceWitness(
       const targetStat = lstatSync(canonicalTarget);
       if (!targetStat.isFile() && !targetStat.isDirectory()) {
         throw new Error(`Workspace witness symlink target is not a regular path: ${relativePath}`);
+      }
+      const targetInSourceScope = targetStat.isFile()
+        ? sourcePaths.has(canonicalTargetRelative)
+        : canonicalTargetRelative === '' ||
+          before.paths.some((path) => path.startsWith(`${canonicalTargetRelative}/`));
+      if (!targetInSourceScope) {
+        throw new Error(
+          `Workspace witness symlink points into an excluded workspace path: ${relativePath}`,
+        );
       }
 
       const metadata = fileMetadata(stat);
@@ -705,7 +796,10 @@ function gitWorkspaceWitness(
       throw new Error(`Git workspace witness file escaped the workspace: ${relativePath}`);
     }
     const canonicalRelativePath = relative(resolvedRoot, canonicalPath).split(sep).join('/');
-    if (shouldSkipWorkspaceWitnessDir(canonicalRelativePath)) {
+    if (
+      shouldSkipWorkspaceWitnessDir(canonicalRelativePath) ||
+      !sourcePaths.has(canonicalRelativePath)
+    ) {
       throw new Error(
         `Workspace witness symlink points into an excluded workspace path: ${relativePath}`,
       );
@@ -910,7 +1004,6 @@ function filesystemWorkspaceWitness(ws: WorkspaceState): TrialHostWorkspaceWitne
     totalBytes: stats.totalBytes,
   };
 }
-
 
 function workspaceWitness(ws: WorkspaceState): TrialHostWorkspaceWitness {
   if (!ws.workDir) throw new Error('Workspace directory is not set.');

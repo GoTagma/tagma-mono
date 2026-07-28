@@ -157,6 +157,42 @@ describe('chat pipeline trial host witness', () => {
     expect(captured.reason).toContain('lock');
   });
 
+  test('fails closed when Git is unavailable for a repository workspace', () => {
+    const { root, ws } = makeWorkspace();
+    runGit(root, 'init', '--quiet');
+    writeFileSync(join(root, 'source.txt'), 'source\n', 'utf-8');
+    runGit(root, 'add', 'source.txt');
+    const pathKeys =
+      process.platform === 'win32' ? (['Path', 'PATH'] as const) : (['PATH'] as const);
+    const originals = pathKeys.map((key) => [key, process.env[key]] as const);
+    let captured: ReturnType<typeof safeCaptureTrialHostWitness>;
+    try {
+      for (const key of pathKeys) process.env[key] = '';
+      captured = safeCaptureTrialHostWitness(ws, prepared(root));
+    } finally {
+      for (const [key, value] of originals) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+
+    expect(captured!.witness).toBeNull();
+    expect(captured!.reason).toContain('could not resolve git');
+  });
+
+  test('fails closed for an undeclared nested Git repository', () => {
+    const { root, ws } = makeWorkspace();
+    runGit(root, 'init', '--quiet');
+    const nestedRoot = join(root, 'nested');
+    mkdirSync(nestedRoot, { recursive: true });
+    runGit(nestedRoot, 'init', '--quiet');
+    writeFileSync(join(nestedRoot, 'source.txt'), 'nested source\n', 'utf-8');
+
+    const captured = safeCaptureTrialHostWitness(ws, prepared(root));
+    expect(captured.witness).toBeNull();
+    expect(captured.reason).toContain('nested repositories');
+  });
+
   test('invalidates when Git skip-worktree state changes', () => {
     const { root, ws } = makeWorkspace();
     runGit(root, 'init', '--quiet');
@@ -168,6 +204,32 @@ describe('chat pipeline trial host witness', () => {
     const sparse = captureTrialHostWitness(ws, prepared(root));
     expect(sparse.workspace.digest).not.toBe(first.workspace.digest);
   });
+  test('invalidates when Git source-scope configuration changes', () => {
+    const { root, ws } = makeWorkspace();
+    runGit(root, 'init', '--quiet');
+    writeFileSync(join(root, 'source.txt'), 'source\n', 'utf-8');
+    runGit(root, 'add', 'source.txt');
+    const first = captureTrialHostWitness(ws, prepared(root));
+
+    writeFileSync(join(root, '.git', 'info', 'exclude'), 'future-only.tmp\n', 'utf-8');
+    const changedScope = captureTrialHostWitness(ws, prepared(root));
+    expect(changedScope.workspace.digest).not.toBe(first.workspace.digest);
+  });
+
+  test('distinguishes dirty and staged Git state for identical worktree bytes', () => {
+    const { root, ws } = makeWorkspace();
+    runGit(root, 'init', '--quiet');
+    writeFileSync(join(root, 'source.txt'), 'source-v1\n', 'utf-8');
+    runGit(root, 'add', 'source.txt');
+    writeFileSync(join(root, 'source.txt'), 'source-v2\n', 'utf-8');
+    const dirty = captureTrialHostWitness(ws, prepared(root));
+
+    runGit(root, 'add', 'source.txt');
+    const staged = captureTrialHostWitness(ws, prepared(root));
+    expect(staged.workspace.digest).not.toBe(dirty.workspace.digest);
+    expect(staged.workspace.fileCount).toBe(dirty.workspace.fileCount);
+  });
+
   test('prepares required binaries and environment from the staged requirements file', () => {
     const { root, ws } = makeWorkspace();
     const sourcePath = join(root, '.tagma', 'pipeline', 'pipeline.yaml');
@@ -465,6 +527,28 @@ describe('chat pipeline trial host witness', () => {
       hashedFileCount: 0,
       hashedBytes: 0,
       reusedFileCount: second.workspace.fileCount,
+    });
+  });
+
+  test('recomputes Git source contents for a fresh workspace state', () => {
+    const { root, ws } = makeWorkspace();
+    runGit(root, 'init', '--quiet');
+    writeFileSync(join(root, 'source.txt'), 'source\n', 'utf-8');
+    runGit(root, 'add', 'source.txt');
+    const first = captureTrialHostWitness(ws, prepared(root));
+
+    const restartedWs = new WorkspaceState(root);
+    restartedWs.workDir = root;
+    const restarted = captureTrialHostWitness(restartedWs, prepared(root));
+    const restartedStats = getTrialHostWorkspaceManifestCacheStatsForTests(restartedWs);
+
+    expect(restarted.workspace).toEqual(first.workspace);
+    expect(restartedStats).toEqual({
+      fileCount: restarted.workspace.fileCount,
+      totalBytes: restarted.workspace.totalBytes,
+      hashedFileCount: restarted.workspace.fileCount,
+      hashedBytes: restarted.workspace.totalBytes,
+      reusedFileCount: 0,
     });
   });
 
