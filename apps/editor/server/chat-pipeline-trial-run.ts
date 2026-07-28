@@ -463,6 +463,17 @@ function planBlockingDiagnostics(plan: ChatPipelineTrialPlan): string[] {
   ];
 }
 
+export function normalizeTrialCaseTargetTaskIdsForExecution(
+  raw: unknown,
+  pipelineConfig: RawPipelineConfig,
+): string[] {
+  const targetTaskIds = normalizeRunTargetTaskIds(raw, pipelineConfig);
+  if (!targetTaskIds) {
+    throw new Error('Trial case targetTaskIds must contain at least one task id');
+  }
+  return targetTaskIds;
+}
+
 function casePath(workDir: string, relativePath: string): string {
   const path = resolve(workDir, ...relativePath.split('/'));
   if (!isPathWithin(path, workDir)) throw new Error('Trial case path escaped its workspace.');
@@ -1110,15 +1121,13 @@ async function executeTrial(
     );
   }
 
-  const targetTaskIdsByCase = new Map<string, string[] | undefined>();
+  const targetTaskIdsByCase = new Map<string, string[]>();
   const planDiagnostics = planBlockingDiagnostics(plan);
   for (const testCase of plan.cases) {
     try {
       targetTaskIdsByCase.set(
         testCase.id,
-        testCase.targetTaskIds.length > 0
-          ? normalizeRunTargetTaskIds(testCase.targetTaskIds, pipelineConfig)
-          : undefined,
+        normalizeTrialCaseTargetTaskIdsForExecution(testCase.targetTaskIds, pipelineConfig),
       );
     } catch (err) {
       planDiagnostics.push(`${testCase.id}: ${errorMessage(err)}`);

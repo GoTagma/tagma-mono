@@ -80,6 +80,19 @@
   stage-owned temporary workspace with bounded helpers/fixtures, contained portable paths,
   selected task targets, repeated-run support, and host-evaluated assertions. Case workspaces
   must be removed afterward and their fixtures/outputs must never leak into the live workspace.
+- Treat each case's `targetTaskIds` as mandatory at the tool schema, persisted-plan parser, and
+  execution boundary. Never translate an empty or missing target list to `undefined`, because that
+  means a full-pipeline run.
+- For an exact Git-root workspace, witness actual bytes for tracked and non-ignored untracked
+  source files, authored `.tagma` files, and ignored root dependency/environment descriptors.
+  Bind Git HEAD/index/status/flags/config/locks, ignored-root presence, the Git binary, declared
+  binaries, minimal environment, and Python identity. Use a full filesystem witness outside an
+  exact Git root, and never reuse an in-process manifest cache across a fresh `WorkspaceState`.
+- Git objects and ignored dependency/generated trees are intentionally outside the byte-hash
+  scope; lockfiles/manifests and declared runtime identities represent those prerequisites.
+  During isolated cases, a recursive same-process mutation monitor must fail closed on writes
+  outside stage-owned/runtime paths, including ignored files. This is application-level
+  verification, not an OS sandbox.
 - Pin Trial YAML and requirements to one immutable execution snapshot, and hold the shared
   per-workspace run reservation for the entire host Trial. A completed response retry is keyed by
   stage, trial id, path, and input hash even if the host later drifts; finalize must still verify
