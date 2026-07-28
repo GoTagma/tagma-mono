@@ -32,6 +32,40 @@ export function ErrorBanner() {
   );
 }
 
+/** Completion warnings preserve partial output without labelling it as a provider failure. */
+export function CompletionWarningBannerView({
+  warning,
+  dismiss,
+}: {
+  warning: string | null;
+  dismiss: () => void;
+}) {
+  if (!warning) return null;
+  return (
+    <div className="shrink-0 flex items-start gap-2 border-t border-tagma-warning/40 bg-tagma-warning/8 px-3 py-2">
+      <AlertTriangle size={12} className="text-tagma-warning shrink-0 mt-0.5" />
+      <div className="flex-1 text-[10px] font-mono text-tagma-warning/90 break-words">
+        {warning}
+      </div>
+      <button
+        type="button"
+        onClick={dismiss}
+        className="p-0.5 text-tagma-warning/70 hover:text-tagma-warning transition-colors"
+        title="Dismiss"
+        aria-label="Dismiss completion warning"
+      >
+        <X size={12} />
+      </button>
+    </div>
+  );
+}
+
+export function CompletionWarningBanner() {
+  const warning = useChatStore((s) => s.completionWarning);
+  const dismiss = useChatStore((s) => s.dismissCompletionWarning);
+  return <CompletionWarningBannerView warning={warning} dismiss={dismiss} />;
+}
+
 // Composer textarea auto-grows with content up to this cap, then scrolls
 // internally. ~10 lines at the 11px mono line-height used below — big
 // enough for a paragraph, small enough that the composer never eats the

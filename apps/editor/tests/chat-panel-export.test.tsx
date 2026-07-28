@@ -19,6 +19,7 @@ import {
 import type { ChatYamlSessionResult } from '../src/store/chat-store';
 import type { ActivityEvent, OpencodeThreadEntry } from '../src/api/opencode-chat';
 import {
+  CompletionWarningBannerView,
   getChatComposerAvailability,
   getChatComposerStopMode,
 } from '../src/components/chat/ChatComposer';
@@ -51,6 +52,7 @@ afterEach(() => {
     pendingActivity: [],
     postChatYamlAction: null,
     sendError: null,
+    completionWarning: null,
     reconciling: false,
     activeChatYamlLifecycle: null,
     historyOpen: false,
@@ -58,6 +60,18 @@ afterEach(() => {
 });
 
 describe('ChatPanel export affordance', () => {
+  test('renders indeterminate completion as a warning instead of an error', () => {
+    const html = renderToStaticMarkup(
+      <CompletionWarningBannerView
+        warning="The response may be incomplete."
+        dismiss={() => undefined}
+      />,
+    );
+    expect(html).toContain('The response may be incomplete.');
+    expect(html).toContain('text-tagma-warning');
+    expect(html).not.toContain('text-tagma-error');
+  });
+
   test('renders the export control directly after the history control', () => {
     useChatStore.setState({
       bootstrapStatus: 'ready',

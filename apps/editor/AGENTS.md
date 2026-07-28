@@ -159,6 +159,16 @@
   A primary router that makes one `task` call still needs the minimum 3 iterations: delegate,
   relay the result, then cap. An exiting process may clear lifecycle maps only when it is still
   the tracked child for that cwd, or a stale exit callback can detach its replacement.
+- Treat assistant `finish` as a runtime protocol boundary even though the generated OpenCode SDK
+  types it as `string`. For pinned OpenCode 1.17.8, `stop` is normal completion, `tool-calls` is a
+  continuation, `length` is incomplete output, `content-filter` and `error` are errors, and
+  `unknown` is indeterminate. Preserve partial output and finished-turn reconciliation; surface
+  incomplete/indeterminate states as warnings instead of silently declaring success.
+- Do not infer model success from assistant `time.completed`: OpenCode writes it during processor
+  cleanup even when no finish reason arrived. Require confirmed idle before ending that state and
+  show an indeterminate warning. Surface future finish strings as protocol-compatibility warnings,
+  and keep waiting for OpenCode's follow-up whenever the assistant envelope has a runnable local
+  tool call, even if a provider reported `stop`, `length`, or `unknown`.
 - Route concrete pipeline inspection, explanation, review, and why/how questions without an
   explicit file-mutation request to the read-only pipeline diagnosis agent. Keep an independent
   mutation-authorization gate in the write-capable pipeline agent so a router mistake cannot

@@ -32,7 +32,7 @@ import type { ActivityEvent, OpencodeThreadEntry } from '../../api/opencode-chat
 import { ProviderConnectDialog } from './ProviderConnectDialog';
 import { PermissionBubble } from './PermissionBubble';
 import { TurnActivityPanel } from './ActivityPanel';
-import { ChatComposer, ErrorBanner } from './ChatComposer';
+import { ChatComposer, CompletionWarningBanner, ErrorBanner } from './ChatComposer';
 import { HistoryDrawer } from './HistoryDrawer';
 import { MessageBubble } from './MessageBubble';
 import { BotBridgeStatusBadge } from './BotBridgeStatusBadge';
@@ -77,6 +77,7 @@ export function ChatPanel() {
           bootstrapStatus === 'idle' ||
           bootstrapStatus === 'error') && <BootstrapOverlay />}
       </div>
+      <CompletionWarningBanner />
       <ErrorBanner />
       <ChatComposer />
       <ProviderConnectDialog />

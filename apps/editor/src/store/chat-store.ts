@@ -1709,7 +1709,11 @@ async function pollStalledTurn(get: () => ChatStore, set: ChatSet): Promise<void
 
     if (idleByStatus || idleByMissingStatus || terminalByMessage) {
       if (dispatchNextQueuedPrompt(get, set)) return;
-      finishChatTurn(set);
+      const completion = currentTurnAssistantCompletion(
+        stateForTurnEnd,
+        idleByStatus || idleByMissingStatus,
+      );
+      finishChatTurn(set, completionPatch(completion));
       return;
     }
   } catch (err) {
@@ -1756,7 +1760,7 @@ async function confirmIdleTurn(get: () => ChatStore, set: ChatSet): Promise<void
 
   if (hasCurrentTurnTerminalMessage(before)) {
     if (dispatchNextQueuedPrompt(get, set)) return;
-    finishChatTurn(set);
+    finishChatTurn(set, completionPatch(currentTurnAssistantCompletion(before)));
     return;
   }
 
@@ -1810,7 +1814,11 @@ async function confirmIdleTurn(get: () => ChatStore, set: ChatSet): Promise<void
 
     if (confirmedIdle || idleByMissingStatus || terminalByMessage) {
       if (dispatchNextQueuedPrompt(get, set)) return;
-      finishChatTurn(set);
+      const completion = currentTurnAssistantCompletion(
+        stateForTurnEnd,
+        confirmedIdle || idleByMissingStatus,
+      );
+      finishChatTurn(set, completionPatch(completion));
       return;
     }
 
@@ -2167,7 +2175,8 @@ function assistantEntryCompletion(
       if (needsToolFollowUp && !confirmedIdle) return ASSISTANT_TURN_CONTINUATION;
       return {
         status: 'warning',
-        message: 'OpenCode could not determine why the model stopped. The response may be incomplete.',
+        message:
+          'OpenCode could not determine why the model stopped. The response may be incomplete.',
       };
     case undefined:
       return confirmedIdle
@@ -2194,7 +2203,11 @@ function currentTurnAssistantCompletion(
 }
 
 function isTerminalAssistantCompletion(completion: AssistantTurnCompletion): boolean {
-  return completion.status === 'success' || completion.status === 'warning' || completion.status === 'error';
+  return (
+    completion.status === 'success' ||
+    completion.status === 'warning' ||
+    completion.status === 'error'
+  );
 }
 
 function completionPatch(completion: AssistantTurnCompletion): Partial<ChatStore> {
@@ -2234,7 +2247,8 @@ function hasCurrentTurnEndableActivity(
   if (idx < 0) return false;
   const entry = state.messages[idx];
   if (hasTurnFinalAssistantEnvelope(entry)) return true;
-  if (entry.info.role === 'assistant' && typeof entry.info.time?.completed === 'number') return true;
+  if (entry.info.role === 'assistant' && typeof entry.info.time?.completed === 'number')
+    return true;
   // A text/tool part proves the assistant has started, not that the turn has
   // ended. Late/replayed idle events can arrive while the part is still
   // streaming; keeping Stop visible until the terminal assistant envelope
@@ -2286,7 +2300,8 @@ function hasCurrentTurnRecoverableActivity(
   if (idx < 0) return false;
   const entry = state.messages[idx];
   if (hasTurnFinalAssistantEnvelope(entry)) return true;
-  if (entry.info.role === 'assistant' && typeof entry.info.time?.completed === 'number') return true;
+  if (entry.info.role === 'assistant' && typeof entry.info.time?.completed === 'number')
+    return true;
   if (entry.activity?.some(isEndableTurnActivity)) {
     return true;
   }
@@ -4076,23 +4091,10 @@ export function applySseEvent(event: ChatOpencodeEvent, get: () => ChatStore, se
         if (trackedAbortAck) activeAbortAck = null;
         return;
       }
-      // The server emits one of ProviderAuthError / UnknownError /
-      // MessageOutputLengthError / MessageAbortedError / ApiError. Every
-      // variant except MessageOutputLengthError carries a user-visible
-      // `.data.message`; for that one, fall back to a generic string.
-      let msg = 'Generation failed';
-      if (err) {
-        if (err.name === 'MessageOutputLengthError') {
-          msg = 'Model output was cut off by a length limit.';
-        } else if (
-          'data' in err &&
-          err.data &&
-          typeof (err.data as { message?: unknown }).message === 'string'
-        ) {
-          msg = (err.data as { message: string }).message;
-        }
-      }
-      finishChatTurn(set, { sendError: msg });
+      // Preserve the server's typed error message. Output-length termination
+      // is incomplete rather than a provider failure, so it uses the warning
+      // channel while all other non-abort errors remain errors.
+      finishChatTurn(set, completionPatch(completionFromAssistantError(err)));
       return;
     }
     case 'session.status': {

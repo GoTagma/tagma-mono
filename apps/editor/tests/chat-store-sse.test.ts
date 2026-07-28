@@ -2663,10 +2663,7 @@ describe('applySseEvent — turn lifecycle', () => {
   });
 
   test.each([
-    [
-      'length',
-      'The model reached its output token limit. The response may be truncated.',
-    ],
+    ['length', 'The model reached its output token limit. The response may be truncated.'],
     [
       'unknown',
       'OpenCode could not determine why the model stopped. The response may be incomplete.',
@@ -2708,10 +2705,7 @@ describe('applySseEvent — turn lifecycle', () => {
   });
 
   test.each([
-    [
-      'content-filter',
-      `The response was blocked by the provider's content filter.`,
-    ],
+    ['content-filter', `The response was blocked by the provider's content filter.`],
     ['error', 'The model stopped because generation failed.'],
   ])('9k3. finish=%s ends with a specific error', (finish, expectedError) => {
     const turnStartedAt = Date.now() - 100;
