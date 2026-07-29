@@ -258,7 +258,7 @@ function renderPipelineVerification(
     if (trial.plan.coverage.length > 0) {
       lines.push('', markdown ? '**Coverage**' : 'Coverage:');
       for (const coverage of trial.plan.coverage) {
-        const caseIds = coverage.caseIds.length > 0 ? coverage.caseIds.join(', ') : 'none';
+        const caseIds = formatRedactedList(coverage.caseIds, 'none');
         lines.push(
           exportBullet(
             markdown,
@@ -282,7 +282,7 @@ function renderPipelineVerification(
       lines.push('', markdown ? '**Cases**' : 'Cases:');
       for (const testCase of trial.plan.cases) {
         const id = formatCaseId(testCase.id, markdown);
-        const taskIds = testCase.targetTaskIds.length > 0 ? testCase.targetTaskIds.join(', ') : 'all';
+        const taskIds = formatRedactedList(testCase.targetTaskIds, 'all');
         lines.push(
           exportBullet(
             markdown,
@@ -352,6 +352,10 @@ function formatCaseId(id: string, markdown: boolean): string {
 function formatOptionalPass(value: boolean | undefined): string {
   if (value === undefined) return 'unavailable';
   return value ? 'passed' : 'failed';
+}
+
+function formatRedactedList(values: readonly string[], emptyValue: string): string {
+  return values.length > 0 ? values.map((value) => redactExportText(value)).join(', ') : emptyValue;
 }
 
 function redactExportText(value: string, maxLength = 4_000): string {

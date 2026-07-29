@@ -1,12 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import {
-  mkdirSync,
-  rmSync,
-  existsSync,
-  readFileSync,
-  readdirSync,
-  mkdtempSync,
-} from 'node:fs';
+import { mkdirSync, rmSync, existsSync, readFileSync, readdirSync, mkdtempSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 

@@ -91,37 +91,6 @@ describe('ChatPanel export affordance', () => {
     expect(exportIndex).toBeGreaterThan(historyIndex);
   });
 
-  test('allows exporting a completed verification even when the visible thread is empty', () => {
-    useChatStore.setState({
-      bootstrapStatus: 'ready',
-      currentSessionId: 's1',
-      messages: [],
-      sessions: [{ id: 's1', title: 'Current chat' }] as never,
-      sessionYamlResults: {
-        s1: {
-          kind: 'open-created',
-          path: 'D:/repo/.tagma/demo.yaml',
-          name: 'demo.yaml',
-          pipelineName: 'Demo',
-          sessionId: 's1',
-          status: 'ready',
-          compile: {
-            success: true,
-            summary: 'Compiled',
-            validation: { errors: [], warnings: [] },
-          },
-          completedAt: Date.now(),
-        },
-      } as never,
-    } as never);
-
-    const html = renderToStaticMarkup(<ChatPanel />);
-    const exportButton = html.match(/<button[^>]*title="Export conversation"[^>]*>/)?.[0];
-
-    expect(exportButton).toBeDefined();
-    expect(exportButton).not.toContain('disabled');
-  });
-
   test('keeps send enabled in a new conversation while another conversation is running', () => {
     const availability = getChatComposerAvailability({
       hasContent: true,

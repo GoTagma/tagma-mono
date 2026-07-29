@@ -24,9 +24,7 @@ describe('desktop sidecar build', () => {
       '__TAGMA_TRIAL_WITNESS_WORKER_SOURCE__: JSON.stringify(trialWitnessWorkerSource)',
     );
     expect(buildSource).toContain('verifyCompiledTrialWitnessWorker(outfile');
-    expect(serverSource).toContain(
-      "new Blob([embeddedSource], { type: 'text/javascript' })",
-    );
+    expect(serverSource).toContain("new Blob([embeddedSource], { type: 'text/javascript' })");
     expect(serverSource).toContain(
       "new URL('./chat-pipeline-trial-witness-worker.js', import.meta.url)",
     );

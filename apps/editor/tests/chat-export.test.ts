@@ -199,7 +199,7 @@ describe('chat conversation export', () => {
               {
                 dimension: 'multiple-inputs',
                 status: 'covered',
-                caseIds: ['basic-run'],
+                caseIds: ['basic-run', 'token=coverage-case-secret'],
                 rationale: 'Covered by credential=coverage-secret',
               },
             ],
@@ -216,7 +216,7 @@ describe('chat conversation export', () => {
                 title: 'Basic run',
                 objective: 'Create greeting.txt',
                 runs: 1,
-                targetTaskIds: ['write-output'],
+                targetTaskIds: ['write-output', 'secret=task-id-secret'],
               },
             ],
           },
@@ -263,8 +263,10 @@ describe('chat conversation export', () => {
     expect(exported.content).not.toContain('plan-secret');
     expect(exported.content).not.toContain('hunter2');
     expect(exported.content).not.toContain('coverage-secret');
+    expect(exported.content).not.toContain('coverage-case-secret');
     expect(exported.content).not.toContain('sess_evidence_secret');
     expect(exported.content).not.toContain('case-secret');
+    expect(exported.content).not.toContain('task-id-secret');
   });
 
   test('derives safe filenames for both export formats', () => {

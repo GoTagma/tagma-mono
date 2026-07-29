@@ -92,6 +92,9 @@
   cancellation must cover pre-run, post-run, and case-seal capture; finalize must use the same
   asynchronous worker path with its own bounded timeout and the shared Stop cancellation route.
   Dispose the per-workspace worker and cache with its `WorkspaceState`.
+- Desktop sidecar builds must embed the Trial witness worker with the compiled executable and,
+  for native host targets, smoke-run the final executable through a real worker capture before
+  accepting the build. Source-text or bundle-presence checks alone do not prove Worker loading.
 - Exact Git-root workspaces must fail closed when git cannot be resolved or the repository layout
   cannot be inspected. Do not fall back to filesystem witness capture just because a `.git`
   marker exists.
@@ -200,6 +203,12 @@
   changes.
 - Managed Windows command strings run under PowerShell by default. Author PowerShell syntax for
   plain command/shell tasks; invoke CMD-only syntax explicitly through argv with cmd.exe.
+- Treat YAML literal/folded command blocks as opaque scripts during requirements discovery even
+  when their parsed value contains only one command plus the block scalar's terminal newline;
+  PowerShell cmdlets in those blocks are not external binary requirements.
+- Conversation exports may continue to hide internal planning and repair turns, but must append
+  the durable current-session compile, redacted Trial Plan/case evidence, and final host
+  reconciliation result when those facts exist.
 - A hung-turn force stop must finish the visible turn before waiting for restart health. Keep an
   exact workspace/session/turn recovery barrier so sends stay queued and runtime/session mutation
   stays blocked until the replacement is healthy; late recovery failures must not overwrite a new
