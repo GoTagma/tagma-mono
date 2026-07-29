@@ -163,6 +163,110 @@ describe('chat conversation export', () => {
     expect(exported.content).toContain('Finish: length');
   });
 
+  test('appends redacted trial plan, case results, and final host verification', () => {
+    const exported = buildConversationExport({
+      format: 'md',
+      title: 'Verified pipeline',
+      exportedAt: new Date('2026-05-20T12:00:00.000Z'),
+      messages: [entry('assistant', 'a1', [textPart('a1p1', 'Pipeline drafted.')])],
+      pipelineVerification: {
+        kind: 'open-created',
+        path: 'D:/repo/.tagma/demo.yaml',
+        name: 'demo.yaml',
+        pipelineName: 'Demo',
+        sessionId: 's1',
+        status: 'failed',
+        compile: {
+          success: true,
+          summary: 'Compiled with token=ghp_compile_secret',
+          validation: { errors: [], warnings: [] },
+        },
+        trial: {
+          version: 2,
+          success: false,
+          kind: 'witness-failed',
+          ran: false,
+          runId: null,
+          summary: 'Witness failed with Authorization: Bearer trial-secret',
+          durationMs: 25,
+          totalTaskCount: 1,
+          omittedTaskCount: 0,
+          tasks: [],
+          plan: {
+            summary: 'Exercise the pipeline using api_key=plan-secret',
+            goals: ['Verify basic output password=hunter2'],
+            coverage: [
+              {
+                dimension: 'multiple-inputs',
+                status: 'covered',
+                caseIds: ['basic-run'],
+                rationale: 'Covered by credential=coverage-secret',
+              },
+            ],
+            findings: [
+              {
+                severity: 'blocking',
+                summary: 'Host witness unavailable',
+                evidence: 'session_id=sess_evidence_secret',
+              },
+            ],
+            cases: [
+              {
+                id: 'basic-run',
+                title: 'Basic run',
+                objective: 'Create greeting.txt',
+                runs: 1,
+                targetTaskIds: ['write-output'],
+              },
+            ],
+          },
+          cases: [
+            {
+              id: 'basic-run',
+              title: 'Basic run',
+              objective: 'Create greeting.txt',
+              success: false,
+              runIds: [],
+              tasks: [],
+              expectations: [
+                {
+                  type: 'case-execution',
+                  passed: false,
+                  detail: 'Not executed because secret=case-secret',
+                },
+              ],
+            },
+          ],
+        },
+        repairAttempts: 1,
+        reconcile: {
+          outcome: 'forked',
+          conflicts: ['trial-run-failed'],
+          localBranchPersisted: true,
+          resultPath: 'D:/repo/.tagma/demo.yaml',
+          compileSuccess: true,
+          trialRunSuccess: false,
+        },
+        completedAt: Date.parse('2026-05-20T12:00:01.000Z'),
+      },
+    });
+
+    expect(exported.content).toContain('## Pipeline Verification');
+    expect(exported.content).toContain('Host result: forked');
+    expect(exported.content).toContain('### Trial Plan');
+    expect(exported.content).toContain('`basic-run` — Basic run');
+    expect(exported.content).toContain('### Trial Case Results');
+    expect(exported.content).toContain('case-execution: failed');
+    expect(exported.content).toContain('[REDACTED]');
+    expect(exported.content).not.toContain('ghp_compile_secret');
+    expect(exported.content).not.toContain('trial-secret');
+    expect(exported.content).not.toContain('plan-secret');
+    expect(exported.content).not.toContain('hunter2');
+    expect(exported.content).not.toContain('coverage-secret');
+    expect(exported.content).not.toContain('sess_evidence_secret');
+    expect(exported.content).not.toContain('case-secret');
+  });
+
   test('derives safe filenames for both export formats', () => {
     expect(conversationExportFilename('Feature / Q&A?', 'md')).toBe('tagma-chat-feature-q-a.md');
     expect(conversationExportFilename('', 'txt')).toBe('tagma-chat-conversation.txt');

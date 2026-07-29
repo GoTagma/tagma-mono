@@ -599,6 +599,7 @@ function ChatHeader() {
   const currentSessionId = useChatStore((s) => s.currentSessionId);
   const sessions = useChatStore((s) => s.sessions);
   const sessionStates = useChatStore((s) => s.sessionStates);
+  const sessionYamlResults = useChatStore((s) => s.sessionYamlResults);
   const messages = useChatStore((s) => s.messages);
   const ready = useChatStore((s) => s.bootstrapStatus === 'ready');
   const sending = useChatStore((s) => s.sending);
@@ -627,6 +628,9 @@ function ChatHeader() {
   });
   const currentSessionTitle =
     sessions.find((session) => session.id === currentSessionId)?.title ?? currentSessionId;
+  const pipelineVerification = currentSessionId
+    ? (sessionYamlResults[currentSessionId] ?? null)
+    : null;
 
   const handleHistory = () => {
     refreshSessions().catch(() => {
@@ -679,8 +683,9 @@ function ChatHeader() {
         <History size={14} />
       </button>
       <ConversationExportButton
-        disabled={messages.length === 0}
+        disabled={messages.length === 0 && !pipelineVerification}
         messages={messages}
+        pipelineVerification={pipelineVerification}
         title={currentSessionTitle}
       />
     </header>
@@ -690,17 +695,24 @@ function ChatHeader() {
 function ConversationExportButton({
   disabled,
   messages,
+  pipelineVerification,
   title,
 }: {
   disabled: boolean;
   messages: OpencodeThreadEntry[];
+  pipelineVerification: ChatYamlSessionResult | null;
   title: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
 
   const exportAs = (format: ChatExportFormat) => {
-    const exported = buildConversationExport({ format, messages, title });
+    const exported = buildConversationExport({
+      format,
+      messages,
+      pipelineVerification,
+      title,
+    });
     downloadConversationExport(exported, conversationExportFilename(title, format));
     setOpen(false);
   };

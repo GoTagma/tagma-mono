@@ -285,6 +285,36 @@ test('extractBinariesFromYaml skips token extraction for multi-line command.shel
   expect(binaries!.map((b) => b.name)).toEqual([]);
 });
 
+test('extractBinariesFromYaml treats single-line YAML block scalars as opaque scripts', () => {
+  const { tagmaDir } = makeWorkspace();
+  const yamlPath = writeYaml(
+    tagmaDir,
+    'single-line-script-blocks.yaml',
+    [
+      'pipeline:',
+      '  name: single line script blocks',
+      '  tracks:',
+      '    - id: main',
+      '      name: Main',
+      '      tasks:',
+      '        - id: write',
+      '          command: |',
+      "            Set-Content -Path 'greeting.txt' -Value 'hello'",
+      '        - id: read',
+      '          command:',
+      '            shell: |',
+      "              Get-Content -Path 'greeting.txt'",
+      '        - id: external',
+      '          command: "git status"',
+      '',
+    ].join('\n'),
+  );
+
+  const binaries = extractBinariesFromYaml(yamlPath);
+  expect(binaries).not.toBeNull();
+  expect(binaries!.map((binary) => binary.name)).toEqual(['git']);
+});
+
 test('extractBinariesFromYaml returns null on YAML parse error so sync skips overwrite', () => {
   const { tagmaDir } = makeWorkspace();
   const yamlPath = writeYaml(tagmaDir, 'bad.yaml', 'pipeline: [unclosed');

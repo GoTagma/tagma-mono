@@ -1,4 +1,5 @@
 import type { AssistantMessage, OpencodeThreadEntry, Part } from '../api/opencode-chat';
+import type { ChatYamlSessionResult } from '../store/chat-store';
 import { stripAskAiContext } from './ask-ai-context';
 
 export type ChatExportFormat = 'md' | 'txt';
@@ -12,6 +13,7 @@ export interface ConversationExport {
 export interface BuildConversationExportOptions {
   format: ChatExportFormat;
   messages: readonly OpencodeThreadEntry[];
+  pipelineVerification?: ChatYamlSessionResult | null;
   title?: string | null;
   exportedAt?: Date;
 }
@@ -21,13 +23,17 @@ const EDITOR_CONTEXT_RE = /^<editor-context>[\s\S]*?<\/editor-context>\n*/;
 export function buildConversationExport({
   format,
   messages,
+  pipelineVerification,
   title,
   exportedAt = new Date(),
 }: BuildConversationExportOptions): ConversationExport {
   const heading = cleanTitle(title) || 'Chat Export';
-  const body = messages
+  const body: string[] = messages
     .map((entry) => renderEntry(entry, format))
     .filter((part): part is string => part !== null);
+  if (pipelineVerification) {
+    body.push(renderPipelineVerification(pipelineVerification, format));
+  }
 
   const content =
     format === 'md'
@@ -157,4 +163,211 @@ function isInternalUserEntry(parts: readonly Part[]): boolean {
 
 function stripUserHiddenContext(text: string): string {
   return stripAskAiContext(text.replace(EDITOR_CONTEXT_RE, ''));
+}
+
+function renderPipelineVerification(
+  result: ChatYamlSessionResult,
+  format: ChatExportFormat,
+): string {
+  const markdown = format === 'md';
+  const lines = [markdown ? '## Pipeline Verification' : 'Pipeline Verification:'];
+  const target = result.pipelineName || result.name;
+  lines.push(
+    exportBullet(markdown, `Target: ${redactExportText(target)}`),
+    exportBullet(markdown, `Final status: ${result.status}`),
+    exportBullet(
+      markdown,
+      `Compile: ${result.compile.success ? 'passed' : 'failed'} — ${redactExportText(result.compile.summary)}`,
+    ),
+  );
+
+  for (const error of result.compile.validation.errors) {
+    lines.push(
+      exportNestedBullet(
+        markdown,
+        `Compile error at ${redactExportText(error.path)}: ${redactExportText(error.message)}`,
+      ),
+    );
+  }
+  for (const warning of result.compile.validation.warnings) {
+    lines.push(
+      exportNestedBullet(
+        markdown,
+        `Compile warning at ${redactExportText(warning.path)}: ${redactExportText(warning.message)}`,
+      ),
+    );
+  }
+
+  const trial = result.trial;
+  if (trial) {
+    const runState = trial.ran ? 'ran' : 'not run';
+    lines.push(
+      exportBullet(
+        markdown,
+        `Trial: ${trial.success ? 'passed' : 'failed'} (${trial.kind}; ${runState}) — ${redactExportText(trial.summary)}`,
+      ),
+      exportBullet(
+        markdown,
+        `Trial tasks: ${trial.totalTaskCount}${trial.omittedTaskCount > 0 ? ` (${trial.omittedTaskCount} omitted)` : ''}`,
+      ),
+    );
+  } else {
+    lines.push(exportBullet(markdown, 'Trial: unavailable'));
+  }
+  lines.push(exportBullet(markdown, `Repair attempts: ${result.repairAttempts ?? 0}`));
+
+  if (result.reconcile) {
+    lines.push(
+      exportBullet(markdown, `Host result: ${result.reconcile.outcome}`),
+      exportNestedBullet(
+        markdown,
+        `Compile verified: ${result.reconcile.compileSuccess ? 'passed' : 'failed'}`,
+      ),
+      exportNestedBullet(
+        markdown,
+        `Trial verified: ${formatOptionalPass(result.reconcile.trialRunSuccess)}`,
+      ),
+      exportNestedBullet(
+        markdown,
+        `Local branch persisted: ${result.reconcile.localBranchPersisted ? 'yes' : 'no'}`,
+      ),
+      exportNestedBullet(
+        markdown,
+        `Conflicts: ${result.reconcile.conflicts.length > 0 ? result.reconcile.conflicts.join(', ') : 'none'}`,
+      ),
+      exportNestedBullet(
+        markdown,
+        `Result path: ${redactExportText(result.reconcile.resultPath ?? 'none')}`,
+      ),
+    );
+  } else {
+    lines.push(exportBullet(markdown, 'Host result: unavailable'));
+  }
+
+  if (!trial) return lines.join('\n');
+
+  lines.push('', markdown ? '### Trial Plan' : 'Trial Plan:');
+  if (trial.plan) {
+    lines.push(redactExportText(trial.plan.summary));
+    if (trial.plan.goals.length > 0) {
+      lines.push('', markdown ? '**Goals**' : 'Goals:');
+      for (const goal of trial.plan.goals) {
+        lines.push(exportBullet(markdown, redactExportText(goal)));
+      }
+    }
+    if (trial.plan.coverage.length > 0) {
+      lines.push('', markdown ? '**Coverage**' : 'Coverage:');
+      for (const coverage of trial.plan.coverage) {
+        const caseIds = coverage.caseIds.length > 0 ? coverage.caseIds.join(', ') : 'none';
+        lines.push(
+          exportBullet(
+            markdown,
+            `${coverage.dimension}: ${coverage.status}; cases: ${caseIds}; ${redactExportText(coverage.rationale)}`,
+          ),
+        );
+      }
+    }
+    if (trial.plan.findings.length > 0) {
+      lines.push('', markdown ? '**Findings**' : 'Findings:');
+      for (const finding of trial.plan.findings) {
+        lines.push(
+          exportBullet(
+            markdown,
+            `${finding.severity}: ${redactExportText(finding.summary)} — ${redactExportText(finding.evidence)}`,
+          ),
+        );
+      }
+    }
+    if (trial.plan.cases.length > 0) {
+      lines.push('', markdown ? '**Cases**' : 'Cases:');
+      for (const testCase of trial.plan.cases) {
+        const id = formatCaseId(testCase.id, markdown);
+        const taskIds = testCase.targetTaskIds.length > 0 ? testCase.targetTaskIds.join(', ') : 'all';
+        lines.push(
+          exportBullet(
+            markdown,
+            `${id} — ${redactExportText(testCase.title)}: ${redactExportText(testCase.objective)} (runs: ${testCase.runs}; tasks: ${taskIds})`,
+          ),
+        );
+      }
+    }
+  } else if (trial.planRequest) {
+    lines.push(
+      exportBullet(markdown, `Plan status: ${trial.planRequest.reason}`),
+      exportBullet(markdown, redactExportText(trial.planRequest.message)),
+      exportBullet(
+        markdown,
+        `Required coverage: ${trial.planRequest.requiredCoverage.join(', ') || 'none'}`,
+      ),
+    );
+  } else {
+    lines.push('No Trial Plan was recorded.');
+  }
+
+  lines.push('', markdown ? '### Trial Case Results' : 'Trial Case Results:');
+  if (trial.cases.length === 0) {
+    lines.push('No case results were recorded.');
+  }
+  for (const testCase of trial.cases) {
+    lines.push(
+      exportBullet(
+        markdown,
+        `${formatCaseId(testCase.id, markdown)} — ${redactExportText(testCase.title)}: ${testCase.success ? 'passed' : 'failed'}`,
+      ),
+      exportNestedBullet(markdown, `Objective: ${redactExportText(testCase.objective)}`),
+    );
+    for (const expectation of testCase.expectations) {
+      lines.push(
+        exportNestedBullet(
+          markdown,
+          `${expectation.type}: ${expectation.passed ? 'passed' : 'failed'} — ${redactExportText(expectation.detail)}`,
+        ),
+      );
+    }
+    for (const task of testCase.tasks) {
+      lines.push(
+        exportNestedBullet(
+          markdown,
+          `Task ${redactExportText(task.taskId)} run ${task.runNumber}: ${redactExportText(task.status)}; exit ${task.exitCode ?? 'none'}; failure ${redactExportText(task.failureKind ?? 'none')}`,
+        ),
+      );
+    }
+  }
+  return lines.join('\n');
+}
+
+function exportBullet(markdown: boolean, text: string): string {
+  return markdown ? `- ${text}` : `  ${text}`;
+}
+
+function exportNestedBullet(markdown: boolean, text: string): string {
+  return markdown ? `  - ${text}` : `    ${text}`;
+}
+
+function formatCaseId(id: string, markdown: boolean): string {
+  const clean = redactExportText(id);
+  return markdown ? `\`${clean.replace(/`/g, '')}\`` : clean;
+}
+
+function formatOptionalPass(value: boolean | undefined): string {
+  if (value === undefined) return 'unavailable';
+  return value ? 'passed' : 'failed';
+}
+
+function redactExportText(value: string, maxLength = 4_000): string {
+  const redacted = value
+    .replace(
+      /((?:["']?authorization["']?)\s*:\s*["']?\s*bearer\s+)[^"'\s,;&}\]]+/gi,
+      '$1[REDACTED]',
+    )
+    .replace(
+      /((?:(?:["']|--)?(?:api[_-]?key|apikey|token|secret|password|credential|session[_-]?id|sessionid)(?:["'])?)\s*(?::|=|\s)\s*["']?)[^"'\s,;&}\]]+/gi,
+      '$1[REDACTED]',
+    )
+    .replace(/\b(Bearer)\s+[A-Za-z0-9._-]{8,}\b/gi, '$1 [REDACTED]')
+    .replace(/\b(?:sk|sess|ghp|xox[baprs])[-_][A-Za-z0-9._-]{6,}\b/g, '[REDACTED]')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (redacted.length <= maxLength) return redacted;
+  return redacted.slice(0, Math.max(0, maxLength - 15)) + '...[truncated]';
 }

@@ -111,7 +111,7 @@ function extractBinariesFromCommand(cmd: unknown): string[] {
 }
 
 function isMultilineScript(s: string): boolean {
-  return /\r?\n/.test(s.trim());
+  return /\r?\n/.test(s);
 }
 
 /**
