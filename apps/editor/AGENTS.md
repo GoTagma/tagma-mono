@@ -172,6 +172,10 @@
   as Chat. They must also use Chat's `buildOpencodeEnv()` isolation rooted at the workspace
   `.tagma` directory so user-global plugins and config cannot enter editor-owned runs. Do not let
   editor-owned AI runs silently select a different global OpenCode version or environment.
+- Managed prompt CLI runs must print error-level OpenCode logs and terminate a hung child when the
+  pinned runtime reports `message="stream error" small=false mode=primary`; title-model
+  (`small=true`) and subagent errors remain recoverable. Keep Chat sidecar Basic Auth credentials
+  out of these one-shot child environments.
 - Command tasks remain host commands and must keep their normal PATH resolution, even when the
   command itself invokes `opencode`.
 - When the managed layers are intentionally absent in headless development, resolve the system

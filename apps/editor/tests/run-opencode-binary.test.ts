@@ -3,13 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { bunRuntime } from '@tagma/sdk';
-import type {
-  CommandConfig,
-  DriverPlugin,
-  RunOptions,
-  SpawnSpec,
-  TaskResult,
-} from '@tagma/types';
+import type { CommandConfig, DriverPlugin, RunOptions, SpawnSpec, TaskResult } from '@tagma/types';
 import { resolveOpencodeRuntimePaths } from '../server/opencode-config';
 import { runtimeWithInjectedEnvFromBase } from '../server/routes/run-session';
 
@@ -165,7 +159,9 @@ describe('editor OpenCode runtime selection', () => {
         options: RunOptions = {},
       ): Promise<TaskResult> {
         captured = spec;
-        options.onOutputChunk?.('stderr', fatalLine);
+        const splitAt = fatalLine.indexOf('small=false') + 5;
+        options.onOutputChunk?.('stderr', fatalLine.slice(0, splitAt));
+        options.onOutputChunk?.('stderr', fatalLine.slice(splitAt));
         return await new Promise<TaskResult>((resolve) => {
           const finish = () =>
             resolve(
@@ -206,6 +202,9 @@ describe('editor OpenCode runtime selection', () => {
     expect(outcome).not.toBe('still-running');
     expect(captured?.args).toContain('--print-logs');
     expect(captured?.args).toContain('--log-level');
+    const capturedArgs = captured?.args ?? [];
+    expect(capturedArgs.indexOf('--print-logs')).toBeLessThan(capturedArgs.indexOf('--'));
+    expect(capturedArgs[capturedArgs.indexOf('--log-level') + 1]).toBe('ERROR');
     if (outcome === 'still-running') return;
     expect(outcome.exitCode).toBe(1);
     expect(outcome.failureKind).toBe('exit_nonzero');

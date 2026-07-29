@@ -21,7 +21,7 @@ import {
 import { serializePipeline } from '@tagma/sdk/yaml';
 import { buildRawDag } from '@tagma/sdk/config';
 import { InMemoryApprovalGateway } from '@tagma/sdk/approval';
-import type { CommandConfig, DriverPlugin, SpawnSpec } from '@tagma/types';
+import type { CommandConfig, DriverPlugin, SpawnSpec, TaskResult } from '@tagma/types';
 import type {
   RunEventPayload,
   RunSnapshotPayload,
@@ -188,8 +188,6 @@ const MANAGED_OPENCODE_ISOLATION_ENV_KEYS = [
   'XDG_STATE_HOME',
   'XDG_CACHE_HOME',
   'OPENCODE_CONFIG_CONTENT',
-  'OPENCODE_SERVER_USERNAME',
-  'OPENCODE_SERVER_PASSWORD',
 ] as const;
 
 function isManagedOpencodeSpawn(spec: SpawnSpec, driver: DriverPlugin | null): boolean {
@@ -205,7 +203,83 @@ function mergeManagedOpencodeEnv(
   // Pipeline-scoped provider keys and PATH additions may override the managed
   // base environment, but runtime isolation must remain identical to Chat.
   for (const key of MANAGED_OPENCODE_ISOLATION_ENV_KEYS) env[key] = managedEnv[key];
+  // `opencode run` starts and owns its local transport. The long-lived Chat
+  // sidecar credentials are not needed here and must not enter task children.
+  delete env.OPENCODE_SERVER_USERNAME;
+  delete env.OPENCODE_SERVER_PASSWORD;
   return env;
+}
+
+const MANAGED_OPENCODE_ERROR_WINDOW_CHARS = 32_768;
+
+function withManagedOpencodeDiagnostics(spec: SpawnSpec): SpawnSpec {
+  const args = [...spec.args];
+  const diagnostics: string[] = [];
+  if (!args.includes('--print-logs')) diagnostics.push('--print-logs');
+  if (!args.includes('--log-level')) diagnostics.push('--log-level', 'ERROR');
+  if (diagnostics.length === 0) return spec;
+  const separator = args.indexOf('--');
+  args.splice(separator === -1 ? args.length : separator, 0, ...diagnostics);
+  return { ...spec, args };
+}
+
+function managedOpencodePrimaryStreamError(output: string): string | null {
+  for (const line of output.split(/\r?\n/u)) {
+    if (!line.includes('level=ERROR') || !line.includes('message="stream error"')) continue;
+    if (!/\bmode=primary\b/u.test(line) || !/\bsmall=false\b/u.test(line)) continue;
+    const error = line.match(/error\.error="((?:\\.|[^"])*)"/u)?.[1];
+    return error ?? 'OpenCode primary model stream failed.';
+  }
+  return null;
+}
+
+async function runManagedOpencodeSpawn(
+  base: TagmaRuntime,
+  spec: SpawnSpec,
+  driver: DriverPlugin | null,
+  opts: RuntimeRunOptions,
+): Promise<TaskResult> {
+  const controller = new AbortController();
+  const externalSignal = opts.signal;
+  const forwardExternalAbort = () => controller.abort(externalSignal?.reason);
+  if (externalSignal?.aborted) forwardExternalAbort();
+  else externalSignal?.addEventListener('abort', forwardExternalAbort, { once: true });
+
+  let stderrWindow = '';
+  let fatalError: string | null = null;
+  let result: TaskResult;
+  try {
+    result = await base.runSpawn(spec, driver, {
+      ...opts,
+      signal: controller.signal,
+      onOutputChunk(stream, text) {
+        if (stream === 'stderr' && fatalError === null) {
+          stderrWindow = (stderrWindow + text).slice(-MANAGED_OPENCODE_ERROR_WINDOW_CHARS);
+          fatalError = managedOpencodePrimaryStreamError(stderrWindow);
+          if (fatalError !== null) controller.abort(fatalError);
+        }
+        opts.onOutputChunk?.(stream, text);
+      },
+    });
+  } finally {
+    externalSignal?.removeEventListener('abort', forwardExternalAbort);
+  }
+
+  const detectedError = fatalError;
+  if (detectedError === null || externalSignal?.aborted) return result;
+  const note = `[editor] OpenCode primary model error: ${detectedError}`;
+  const stderr = result.stderr.includes(detectedError)
+    ? result.stderr
+    : [result.stderr, note].filter(Boolean).join('\n');
+  return {
+    ...result,
+    exitCode: 1,
+    stderr,
+    stderrBytes: new TextEncoder().encode(stderr).byteLength,
+    sessionId: null,
+    normalizedOutput: null,
+    failureKind: 'exit_nonzero',
+  };
 }
 
 export function runtimeWithInjectedEnvFromBase(
@@ -222,16 +296,16 @@ export function runtimeWithInjectedEnvFromBase(
       const managedOpencode = managedOpencodeCwd && isManagedOpencodeSpawn(spec, driver);
       const resolvedSpec = resolveEditorDriverSpawnSpec(spec, driver);
       const injectedEnv = mergeRuntimeEnv(resolvedSpec.env, runtimeEnv);
-      return base.runSpawn(
-        {
-          ...resolvedSpec,
-          env: managedOpencode
-            ? mergeManagedOpencodeEnv(injectedEnv, managedOpencodeCwd)
-            : injectedEnv,
-        },
-        driver,
-        withOutputRedactor(opts, createSecretOutputRedactor(secretValues)),
-      );
+      const spawnSpec = {
+        ...resolvedSpec,
+        env: managedOpencode
+          ? mergeManagedOpencodeEnv(injectedEnv, managedOpencodeCwd)
+          : injectedEnv,
+      };
+      const runOpts = withOutputRedactor(opts, createSecretOutputRedactor(secretValues));
+      return managedOpencode
+        ? runManagedOpencodeSpawn(base, withManagedOpencodeDiagnostics(spawnSpec), driver, runOpts)
+        : base.runSpawn(spawnSpec, driver, runOpts);
     },
     runCommand(command: CommandConfig, cwd: string, opts: RuntimeRunOptions = {}) {
       if (!needsCommandWrapper) return base.runCommand(command, cwd, opts);
