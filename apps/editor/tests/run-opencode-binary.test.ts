@@ -139,6 +139,42 @@ describe('editor OpenCode runtime selection', () => {
     expect(getCaptured()?.env).toEqual({ TAGMA_RUN_MARKER: 'present' });
   });
 
+  test('forces error-level diagnostics before the prompt separator', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tagma-run-opencode-diagnostics-'));
+    tempRoots.push(root);
+    const binary = join(root, 'bin', process.platform === 'win32' ? 'opencode.exe' : 'opencode');
+    mkdirSync(join(root, 'bin'), { recursive: true });
+    writeFileSync(binary, '', 'utf-8');
+    process.env.TAGMA_OPENCODE_BUNDLED_DIR = root;
+    process.env.TAGMA_OPENCODE_SKIP_USER_DIR = '1';
+
+    let captured: SpawnSpec | null = null;
+    const base = {
+      ...bunRuntime(),
+      async runSpawn(spec: SpawnSpec): Promise<TaskResult> {
+        captured = spec;
+        return taskResult();
+      },
+    };
+    const runtime = runtimeWithInjectedEnvFromBase(base, {}, [], join(root, '.tagma'));
+    const getCaptured = (): SpawnSpec | null => captured;
+
+    await runtime.runSpawn(
+      {
+        args: ['opencode', 'run', '--log-level', 'DEBUG', '--', 'Say hello'],
+        cwd: root,
+      },
+      { name: 'opencode' } as DriverPlugin,
+    );
+
+    const capturedArgs = getCaptured()?.args ?? [];
+    const separator = capturedArgs.indexOf('--');
+    const commandArgs = capturedArgs.slice(0, separator);
+    expect(commandArgs.filter((arg) => arg === '--log-level')).toHaveLength(1);
+    expect(commandArgs[commandArgs.indexOf('--log-level') + 1]).toBe('ERROR');
+    expect(capturedArgs.slice(separator + 1)).toEqual(['Say hello']);
+  });
+
   test('terminates a managed prompt when OpenCode reports a fatal primary stream error', async () => {
     const root = mkdtempSync(join(tmpdir(), 'tagma-run-opencode-error-'));
     tempRoots.push(root);
@@ -178,6 +214,7 @@ describe('editor OpenCode runtime selection', () => {
     };
     const runtime = runtimeWithInjectedEnvFromBase(base, {}, [], join(root, '.tagma'));
     const driver = { name: 'opencode' } as DriverPlugin;
+    const getCaptured = (): SpawnSpec | null => captured;
 
     const outcome = await Promise.race([
       runtime.runSpawn(
@@ -200,15 +237,52 @@ describe('editor OpenCode runtime selection', () => {
     ]);
 
     expect(outcome).not.toBe('still-running');
-    expect(captured?.args).toContain('--print-logs');
-    expect(captured?.args).toContain('--log-level');
-    const capturedArgs = captured?.args ?? [];
+    expect(getCaptured()?.args).toContain('--print-logs');
+    expect(getCaptured()?.args).toContain('--log-level');
+    const capturedArgs = getCaptured()?.args ?? [];
     expect(capturedArgs.indexOf('--print-logs')).toBeLessThan(capturedArgs.indexOf('--'));
     expect(capturedArgs[capturedArgs.indexOf('--log-level') + 1]).toBe('ERROR');
     if (outcome === 'still-running') return;
     expect(outcome.exitCode).toBe(1);
     expect(outcome.failureKind).toBe('exit_nonzero');
     expect(outcome.stderr).toContain('Rate limit exceeded');
+  });
+
+  test('preserves a runtime timeout even after detecting a fatal primary stream error', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tagma-run-opencode-timeout-'));
+    tempRoots.push(root);
+    const binary = join(root, 'bin', process.platform === 'win32' ? 'opencode.exe' : 'opencode');
+    mkdirSync(join(root, 'bin'), { recursive: true });
+    writeFileSync(binary, '', 'utf-8');
+    process.env.TAGMA_OPENCODE_BUNDLED_DIR = root;
+    process.env.TAGMA_OPENCODE_SKIP_USER_DIR = '1';
+
+    const fatalLine =
+      'timestamp=2026-07-29T08:27:10.799Z level=ERROR message="stream error" small=false mode=primary error.error="AI_APICallError: Rate limit exceeded."\n';
+    const base = {
+      ...bunRuntime(),
+      async runSpawn(
+        _spec: SpawnSpec,
+        _driver: DriverPlugin | null,
+        options: RunOptions = {},
+      ): Promise<TaskResult> {
+        options.onOutputChunk?.('stderr', fatalLine);
+        return taskResult({
+          exitCode: -1,
+          stderr: fatalLine,
+          failureKind: 'timeout',
+        });
+      },
+    };
+    const runtime = runtimeWithInjectedEnvFromBase(base, {}, [], join(root, '.tagma'));
+
+    const result = await runtime.runSpawn(
+      { args: ['opencode', 'run', '--', 'Say hello'], cwd: root },
+      { name: 'opencode' } as DriverPlugin,
+    );
+
+    expect(result.exitCode).toBe(-1);
+    expect(result.failureKind).toBe('timeout');
   });
 
   test('does not terminate a managed prompt for a recoverable title-model error', async () => {

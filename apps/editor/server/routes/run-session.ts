@@ -213,13 +213,23 @@ function mergeManagedOpencodeEnv(
 const MANAGED_OPENCODE_ERROR_WINDOW_CHARS = 32_768;
 
 function withManagedOpencodeDiagnostics(spec: SpawnSpec): SpawnSpec {
-  const args = [...spec.args];
-  const diagnostics: string[] = [];
-  if (!args.includes('--print-logs')) diagnostics.push('--print-logs');
-  if (!args.includes('--log-level')) diagnostics.push('--log-level', 'ERROR');
-  if (diagnostics.length === 0) return spec;
-  const separator = args.indexOf('--');
-  args.splice(separator === -1 ? args.length : separator, 0, ...diagnostics);
+  const separator = spec.args.indexOf('--');
+  const commandArgs = spec.args.slice(0, separator === -1 ? spec.args.length : separator);
+  const args: string[] = [];
+  let hasPrintLogs = false;
+  for (let index = 0; index < commandArgs.length; index += 1) {
+    const arg = commandArgs[index];
+    if (arg === '--log-level') {
+      if (commandArgs[index + 1] && !commandArgs[index + 1].startsWith('--')) index += 1;
+      continue;
+    }
+    if (arg.startsWith('--log-level=')) continue;
+    if (arg === '--print-logs') hasPrintLogs = true;
+    args.push(arg);
+  }
+  if (!hasPrintLogs) args.push('--print-logs');
+  args.push('--log-level', 'ERROR');
+  if (separator !== -1) args.push(...spec.args.slice(separator));
   return { ...spec, args };
 }
 
@@ -266,7 +276,9 @@ async function runManagedOpencodeSpawn(
   }
 
   const detectedError = fatalError;
-  if (detectedError === null || externalSignal?.aborted) return result;
+  if (detectedError === null || externalSignal?.aborted || result.failureKind !== 'aborted') {
+    return result;
+  }
   const note = `[editor] OpenCode primary model error: ${detectedError}`;
   const stderr = result.stderr.includes(detectedError)
     ? result.stderr
