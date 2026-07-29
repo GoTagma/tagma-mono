@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const thisFile = fileURLToPath(import.meta.url);
 const slowTestTimeouts = new Map([
+  ['tests/chat-yaml-staging-route.test.ts', '30000'],
   ['tests/editor-staging.test.ts', '30000'],
   ['tests/plugin-install-load.test.ts', '30000'],
   ['tests/workflow-integration.test.ts', '30000'],

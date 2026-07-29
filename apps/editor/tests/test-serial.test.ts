@@ -4,6 +4,7 @@ import { buildBunTestArgs } from '../scripts/test-serial.mjs';
 describe('editor serial test runner timeouts', () => {
   test('gives known process and disk integration files enough time under full-suite pressure', () => {
     for (const file of [
+      'tests/chat-yaml-staging-route.test.ts',
       'tests/editor-staging.test.ts',
       'tests/plugin-install-load.test.ts',
       'tests/workflow-integration.test.ts',

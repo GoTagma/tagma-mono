@@ -92,6 +92,11 @@
   cancellation must cover pre-run, post-run, and case-seal capture; finalize must use the same
   asynchronous worker path with its own bounded timeout and the shared Stop cancellation route.
   Dispose the per-workspace worker and cache with its `WorkspaceState`.
+- Set an explicit `trial-running` post-chat phase before awaiting the host Trial request; progress
+  labels must follow that current phase instead of inferring it from a stale plan or failure result.
+  Keep the per-task Trial timeout strictly below the overall 10-minute Trial budget (currently two
+  minutes) so one stalled prompt cannot consume the entire lifecycle; ordinary runs keep their
+  normal task timeout.
 - Desktop sidecar builds must embed the Trial witness worker with the compiled executable and,
   for native host targets, smoke-run the final executable through a real worker capture before
   accepting the build. Source-text or bundle-presence checks alone do not prove Worker loading.
