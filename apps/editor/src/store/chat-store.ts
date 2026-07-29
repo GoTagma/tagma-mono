@@ -78,6 +78,7 @@ import {
   withYamlEditLockRequestBypass,
   type EditorSettings,
   type ChatPipelineTrialPlanRequest,
+  type ChatPipelineTrialProgress,
   type ChatPipelineTrialRunResult,
   type UsageRecord,
   type YamlCompileResult,
@@ -176,6 +177,8 @@ export type ChatYamlPostAction = ChatYamlTarget & {
   /** Explicit lifecycle phase; optional so older in-memory shapes remain readable. */
   phase?: ChatYamlPostActionPhase;
   compile: Pick<YamlCompileResult, 'success' | 'summary' | 'validation'>;
+  /** Live, uncached host progress while phase is trial-running. */
+  progress?: ChatPipelineTrialProgress;
   trial?: ChatPipelineTrialRunResult;
 };
 

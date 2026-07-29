@@ -19,6 +19,7 @@ import {
   type EngineResult,
   type PipelineConfig,
   type RawPipelineConfig,
+  type RunEventPayload,
 } from '@tagma/sdk';
 import { InMemoryApprovalGateway, type ApprovalEvent } from '@tagma/sdk/approval';
 import { loadPipeline, validateConfig } from '@tagma/sdk/yaml';
@@ -169,6 +170,32 @@ export interface ChatPipelineTrialRunInput {
   trialId: string;
 }
 
+export type ChatPipelineTrialProgressPhase =
+  | 'preparing'
+  | 'capturing-host-witness'
+  | 'running-baseline'
+  | 'sealing-baseline'
+  | 'running-case'
+  | 'verifying-workspace'
+  | 'capturing-post-witness';
+
+export interface ChatPipelineTrialProgress {
+  stageId: string;
+  trialId: string;
+  phase: ChatPipelineTrialProgressPhase;
+  detail: string;
+  startedAt: number;
+  updatedAt: number;
+  caseId: string | null;
+  caseTitle: string | null;
+  caseIndex: number | null;
+  caseCount: number | null;
+  runNumber: number | null;
+  runCount: number | null;
+  taskId: string | null;
+  taskStatus: string | null;
+}
+
 interface CachedTrialResult {
   version: typeof TRIAL_CACHE_VERSION;
   inputHash: string;
@@ -186,6 +213,7 @@ interface TrialPipelineSnapshot {
 
 const inFlightByCacheKey = new Map<string, Promise<ChatPipelineTrialRunResult>>();
 const activeTrialByWorkspace = new Map<string, string>();
+const activeTrialProgressByIdentity = new Map<string, { value: ChatPipelineTrialProgress }>();
 const activeTrialIdentityByWorkspace = new Map<
   string,
   {
@@ -213,7 +241,99 @@ export const __chatPipelineTrialRunTestHooks: {
   ) => Promise<TrialWorkspaceWitnessResult>;
   timeoutMsOverride?: number;
   taskTimeoutMsOverride?: number;
+  onProgress?: (progress: ChatPipelineTrialProgress) => void;
 } = {};
+
+type ChatPipelineTrialProgressPatch = Partial<
+  Omit<ChatPipelineTrialProgress, 'stageId' | 'trialId' | 'startedAt' | 'updatedAt'>
+>;
+
+interface ChatPipelineTrialProgressReporter {
+  update(patch: ChatPipelineTrialProgressPatch): void;
+  clear(): void;
+}
+
+function trialProgressKey(
+  ws: WorkspaceState,
+  input: Pick<ChatPipelineTrialRunInput, 'stageId' | 'trialId'>,
+): string {
+  return `${ws.key}\0${input.stageId}\0${input.trialId}`;
+}
+
+function cloneTrialProgress(progress: ChatPipelineTrialProgress): ChatPipelineTrialProgress {
+  return { ...progress };
+}
+
+export function getChatPipelineTrialProgress(
+  ws: WorkspaceState,
+  input: Pick<ChatPipelineTrialRunInput, 'stageId' | 'trialId'>,
+): ChatPipelineTrialProgress | null {
+  const trialId = validateTrialId(input.trialId);
+  const active = activeTrialProgressByIdentity.get(
+    trialProgressKey(ws, { stageId: input.stageId, trialId }),
+  );
+  return active ? cloneTrialProgress(active.value) : null;
+}
+
+function createTrialProgressReporter(
+  ws: WorkspaceState,
+  input: Pick<ChatPipelineTrialRunInput, 'stageId' | 'trialId'>,
+): ChatPipelineTrialProgressReporter {
+  const key = trialProgressKey(ws, input);
+  const now = Date.now();
+  const active: { value: ChatPipelineTrialProgress } = {
+    value: {
+      stageId: input.stageId,
+      trialId: input.trialId,
+      phase: 'preparing',
+      detail: 'Preparing the targeted Trial.',
+      startedAt: now,
+      updatedAt: now,
+      caseId: null,
+      caseTitle: null,
+      caseIndex: null,
+      caseCount: null,
+      runNumber: null,
+      runCount: null,
+      taskId: null,
+      taskStatus: null,
+    },
+  };
+  activeTrialProgressByIdentity.set(key, active);
+  try {
+    __chatPipelineTrialRunTestHooks.onProgress?.(cloneTrialProgress(active.value));
+  } catch {
+    // Observability must never affect Trial execution.
+  }
+  return {
+    update(patch) {
+      if (activeTrialProgressByIdentity.get(key) !== active) return;
+      active.value = {
+        ...active.value,
+        ...patch,
+        updatedAt: Math.max(active.value.updatedAt, Date.now()),
+      };
+      try {
+        __chatPipelineTrialRunTestHooks.onProgress?.(cloneTrialProgress(active.value));
+      } catch {
+        // Observability must never affect Trial execution.
+      }
+    },
+    clear() {
+      if (activeTrialProgressByIdentity.get(key) === active) {
+        activeTrialProgressByIdentity.delete(key);
+      }
+    },
+  };
+}
+
+function updateTrialTaskProgress(
+  progress: ChatPipelineTrialProgressReporter,
+  event: RunEventPayload,
+): void {
+  if (event.type !== 'task_update') return;
+  progress.update({ taskId: event.taskId, taskStatus: event.status });
+}
 
 async function captureTrialHostWitnessAsync(
   ws: WorkspaceState,
@@ -885,6 +1005,7 @@ interface RunTrialPipelineInput {
   runId: string;
   targetTaskIds?: string[];
   testCase?: ChatPipelineTrialPlanCase;
+  onEvent?: (event: RunEventPayload) => void;
 }
 
 async function captureTrialWorkspaceDigest(
@@ -1095,15 +1216,22 @@ async function runTrialPipelineOnce(input: RunTrialPipelineInput): Promise<Engin
           ),
         }
       : {}),
+    ...(input.onEvent ? { onEvent: input.onEvent } : {}),
   });
 }
 
 async function executeTargetedTrialCase(
-  input: Omit<RunTrialPipelineInput, 'workDir' | 'runId' | 'targetTaskIds' | 'testCase'> & {
+  input: Omit<
+    RunTrialPipelineInput,
+    'workDir' | 'runId' | 'targetTaskIds' | 'testCase' | 'onEvent'
+  > & {
     stageRoot: string;
     stagedYamlPath: string;
     testCase: ChatPipelineTrialPlanCase;
     targetTaskIds?: string[];
+    caseIndex: number;
+    caseCount: number;
+    progress: ChatPipelineTrialProgressReporter;
   },
 ): Promise<{ result: ChatPipelineTrialCaseResult; totalTaskCount: number }> {
   let caseWorkspace: { rootDir: string; workDir: string } | null = null;
@@ -1128,6 +1256,18 @@ async function executeTargetedTrialCase(
       throw new Error(`Isolated case configuration error: ${caseConfigErrors.join('; ')}`);
     }
     for (let runNumber = 1; runNumber <= input.testCase.runs; runNumber += 1) {
+      input.progress.update({
+        phase: 'running-case',
+        detail: `Running targeted case ${input.caseIndex}/${input.caseCount}: ${input.testCase.title}.`,
+        caseId: input.testCase.id,
+        caseTitle: input.testCase.title,
+        caseIndex: input.caseIndex,
+        caseCount: input.caseCount,
+        runNumber,
+        runCount: input.testCase.runs,
+        taskId: null,
+        taskStatus: null,
+      });
       const runId = generateRunId();
       runIds.push(runId);
       lastResult = await runTrialPipelineOnce({
@@ -1137,6 +1277,7 @@ async function executeTargetedTrialCase(
         runId,
         targetTaskIds: input.targetTaskIds,
         testCase: input.testCase,
+        onEvent: (event) => updateTrialTaskProgress(input.progress, event),
       });
       allRunsSucceeded = allRunsSucceeded && lastResult.success;
       const evidence = trialTaskResults(lastResult, input.testCase.id, runNumber);
@@ -1235,6 +1376,7 @@ async function executeTrial(
   plan: ChatPipelineTrialPlan,
   controller: AbortController,
   abortState: { timedOut: boolean },
+  progress: ChatPipelineTrialProgressReporter,
 ): Promise<ChatPipelineTrialRunResult> {
   const startedAt = Date.now();
   let pipelineConfig;
@@ -1340,6 +1482,18 @@ async function executeTrial(
     const secretValues = Object.values({ ...redactionSecretEnv, ...requirementsSecretEnv }).filter(
       Boolean,
     );
+    progress.update({
+      phase: 'running-baseline',
+      detail: 'Running the real-workspace baseline.',
+      caseId: null,
+      caseTitle: null,
+      caseIndex: null,
+      caseCount: null,
+      runNumber: 1,
+      runCount: 1,
+      taskId: null,
+      taskStatus: null,
+    });
     const baseline = await runTrialPipelineOnce({
       ws,
       pipelineConfig,
@@ -1352,10 +1506,23 @@ async function executeTrial(
       secretValues,
       preflightEnvKeys: preflight.envKeys,
       runId,
+      onEvent: (event) => updateTrialTaskProgress(progress, event),
     });
     const baselineEvidence = trialTaskResults(baseline, null, 1);
     const cases: ChatPipelineTrialCaseResult[] = [];
     let totalTaskCount = baselineEvidence.totalTaskCount;
+    progress.update({
+      phase: 'sealing-baseline',
+      detail: 'Sealing the real workspace after the baseline.',
+      caseId: null,
+      caseTitle: null,
+      caseIndex: null,
+      caseCount: null,
+      runNumber: null,
+      runCount: null,
+      taskId: null,
+      taskStatus: null,
+    });
     const mutationMonitorStart = startTrialWorkspaceMutationMonitor(ws);
     workspaceMutationMonitor = mutationMonitorStart.monitor;
     if (workspaceMutationMonitor) await workspaceMutationMonitor.settle();
@@ -1373,7 +1540,7 @@ async function executeTrial(
     if (!baselineWorkspace.digest && pendingWorkspaceWitnessFailure) {
       hostWitnessCaptureFailure = true;
     }
-    for (const testCase of plan.cases) {
+    for (const [caseOffset, testCase] of plan.cases.entries()) {
       if (controller.signal.aborted) break;
       if (pendingWorkspaceWitnessFailure) {
         cases.push(trialCaseForWorkspaceWitnessFailure(testCase, pendingWorkspaceWitnessFailure));
@@ -1396,6 +1563,21 @@ async function executeTrial(
         stagedYamlPath: snapshot.yamlPath,
         testCase,
         targetTaskIds: targetTaskIdsByCase.get(testCase.id),
+        caseIndex: caseOffset + 1,
+        caseCount: plan.cases.length,
+        progress,
+      });
+      progress.update({
+        phase: 'verifying-workspace',
+        detail: `Verifying the real workspace after case ${caseOffset + 1}/${plan.cases.length}.`,
+        caseId: testCase.id,
+        caseTitle: testCase.title,
+        caseIndex: caseOffset + 1,
+        caseCount: plan.cases.length,
+        runNumber: null,
+        runCount: testCase.runs,
+        taskId: null,
+        taskStatus: null,
       });
       if (workspaceMutationMonitor) await workspaceMutationMonitor.settle();
       if (workspaceMutationMonitor) {
@@ -1434,6 +1616,18 @@ async function executeTrial(
       if (workspaceFailures.length > 0) break;
     }
     if (baselineWorkspace.digest) {
+      progress.update({
+        phase: 'verifying-workspace',
+        detail: 'Verifying the real workspace after all targeted cases.',
+        caseId: null,
+        caseTitle: null,
+        caseIndex: null,
+        caseCount: plan.cases.length,
+        runNumber: null,
+        runCount: null,
+        taskId: null,
+        taskStatus: null,
+      });
       const finalWorkspace = await captureTrialWorkspaceDigest(ws, controller.signal);
       const finalWorkspaceFailure = !finalWorkspace.digest
         ? `Could not capture the real workspace after isolated cases: ${finalWorkspace.reason ?? 'unknown witness failure'}.`
@@ -1597,7 +1791,7 @@ export async function trialRunChatYamlStage(
 
     const controller = new AbortController();
     const abortState = { timedOut: false, userAborted: false };
-    const activeIdentity = { stageId: input.stageId, trialId, controller, abortState };
+    const activeIdentity = { stageId: stage.id, trialId, controller, abortState };
     const timeoutMsOverride = __chatPipelineTrialRunTestHooks.timeoutMsOverride;
     const timeoutMs =
       typeof timeoutMsOverride === 'number' ? timeoutMsOverride : CHAT_PIPELINE_TRIAL_TIMEOUT_MS;
@@ -1609,6 +1803,7 @@ export async function trialRunChatYamlStage(
     activeTrialByWorkspace.set(ws.key, inFlightKey);
     activeTrialIdentityByWorkspace.set(ws.key, activeIdentity);
     ws.chatPipelineTrialAbort = controller;
+    const progress = createTrialProgressReporter(ws, { stageId: stage.id, trialId });
 
     const executionSnapshot = snapshot;
     snapshot = null;
@@ -1619,6 +1814,18 @@ export async function trialRunChatYamlStage(
         if (controller.signal.aborted) {
           return resultForStoppedBeforeRun(abortState, startedAt);
         }
+        progress.update({
+          phase: 'preparing',
+          detail: 'Preparing the Trial host witness inputs.',
+          caseId: null,
+          caseTitle: null,
+          caseIndex: null,
+          caseCount: null,
+          runNumber: null,
+          runCount: null,
+          taskId: null,
+          taskStatus: null,
+        });
         const prepared = safePrepareTrialHostWitnessInputs(ws, {
           relativePath: entry.relativePath,
           sourcePath: entry.sourcePath,
@@ -1635,6 +1842,18 @@ export async function trialRunChatYamlStage(
           );
         }
         const hostWitnessInputs = prepared.prepared;
+        progress.update({
+          phase: 'capturing-host-witness',
+          detail: 'Capturing the pre-run host witness.',
+          caseId: null,
+          caseTitle: null,
+          caseIndex: null,
+          caseCount: null,
+          runNumber: null,
+          runCount: null,
+          taskId: null,
+          taskStatus: null,
+        });
         const currentWitness = await captureTrialHostWitnessAsync(
           ws,
           hostWitnessInputs,
@@ -1659,11 +1878,24 @@ export async function trialRunChatYamlStage(
           planRead.plan,
           controller,
           abortState,
+          progress,
         );
         if (controller.signal.aborted) {
           return resultForStopped(result, abortState, startedAt);
         }
         if (result.kind !== 'aborted') {
+          progress.update({
+            phase: 'capturing-post-witness',
+            detail: 'Capturing the post-run host witness.',
+            caseId: null,
+            caseTitle: null,
+            caseIndex: null,
+            caseCount: null,
+            runNumber: null,
+            runCount: null,
+            taskId: null,
+            taskStatus: null,
+          });
           const postPrepared = safePrepareTrialHostWitnessInputs(ws, {
             relativePath: entry.relativePath,
             sourcePath: entry.sourcePath,
@@ -1724,6 +1956,7 @@ export async function trialRunChatYamlStage(
         return result;
       } finally {
         clearTimeout(timeout);
+        progress.clear();
         if (activeTrialByWorkspace.get(ws.key) === inFlightKey)
           activeTrialByWorkspace.delete(ws.key);
         if (activeTrialIdentityByWorkspace.get(ws.key) === activeIdentity) {

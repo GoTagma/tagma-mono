@@ -59,7 +59,7 @@ import type { WorkspaceState } from '../workspace-state.js';
 import { buildPythonAgentRunEnv, pythonAgentVenvBinDir } from '../python-agent.js';
 import { buildPipelineSecretEnv } from '../secrets.js';
 import { assertWorkflowYamlPath } from '../workflow-paths.js';
-import { assertPipelineYamlPath } from '../pipeline-paths.js';
+import { assertPipelineYamlPath, tagmaDirOf } from '../pipeline-paths.js';
 import { incrementYamlRunVersion } from '../yaml-run-version.js';
 import { getFileVersion } from '../optimistic-lock.js';
 import {
@@ -335,7 +335,7 @@ function prepareWorkflowHostPolicy(
   ].filter((value) => value.length > 0);
 
   return {
-    runtime: runtimeWithInjectedEnv(pythonRunEnv, secretRedactionValues),
+    runtime: runtimeWithInjectedEnv(pythonRunEnv, secretRedactionValues, tagmaDirOf(cwd)),
     resolvePipelineOptions: (pipeline) => {
       const yamlPath = yamlPathByPipelineId.get(pipeline.id);
       if (!yamlPath) {
@@ -347,7 +347,7 @@ function prepareWorkflowHostPolicy(
         ...(secretRunEnvByYamlPath.get(yamlPath) ?? {}),
       };
       return {
-        runtime: runtimeWithInjectedEnv(injectedRunEnv, secretRedactionValues),
+        runtime: runtimeWithInjectedEnv(injectedRunEnv, secretRedactionValues, tagmaDirOf(cwd)),
         secretResolver: (names: readonly string[]) => buildPipelineSecretEnv(cwd, yamlPath, names),
         ...(envKeys.length > 0 ? { envPolicy: { mode: 'allowlist' as const, keys: envKeys } } : {}),
       };
@@ -1075,7 +1075,7 @@ export function registerRunRoutes(app: express.Express): void {
       const tagma = createTagma({
         registry: ws.registry,
         builtins: false,
-        runtime: runtimeWithInjectedEnv(injectedRunEnv, secretRedactionValues),
+        runtime: runtimeWithInjectedEnv(injectedRunEnv, secretRedactionValues, tagmaDirOf(cwd)),
       });
       tagma
         .run(pipelineConfig, {

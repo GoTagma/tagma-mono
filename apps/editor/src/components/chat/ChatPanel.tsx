@@ -315,8 +315,8 @@ function chatYamlRepairPresentation(action: ChatYamlPostAction): {
     case 'trial-running':
       return {
         label: 'Trial run',
-        detail: 'running targeted host checks',
-        title: 'Running targeted edge-case trial...',
+        detail: action.progress?.detail ?? 'running targeted host checks',
+        title: action.progress?.detail ?? 'Running targeted edge-case trial...',
       };
     case 'trial-repair':
       return {
@@ -331,6 +331,33 @@ function chatYamlRepairPresentation(action: ChatYamlPostAction): {
         title: 'Validating YAML...',
       };
   }
+}
+
+export function chatTrialProgressSegments(
+  progress: NonNullable<ChatYamlPostAction['progress']>,
+): string[] {
+  const segments: string[] = [];
+  if (progress.caseIndex !== null && progress.caseCount !== null) {
+    segments.push('Case ' + progress.caseIndex + '/' + progress.caseCount);
+  }
+  if (progress.caseTitle) segments.push(progress.caseTitle);
+  else if (progress.caseId) segments.push(progress.caseId);
+  if (progress.runNumber !== null && progress.runCount !== null) {
+    segments.push('Run ' + progress.runNumber + '/' + progress.runCount);
+  }
+  if (progress.taskId) segments.push(progress.taskId);
+  if (progress.taskStatus) segments.push(progress.taskStatus);
+  return segments;
+}
+
+export function ChatTrialProgressView({
+  progress,
+}: {
+  progress: NonNullable<ChatYamlPostAction['progress']>;
+}) {
+  const segments = chatTrialProgressSegments(progress);
+  if (segments.length === 0) return null;
+  return <div className='select-text break-words text-[9px] text-tagma-muted/70'>{segments.join(' / ')}</div>;
 }
 
 /**
@@ -1520,6 +1547,9 @@ function YamlActionBubble() {
           <span className="truncate text-tagma-text">{action.name}</span>
         </div>
         <div className="select-text text-tagma-muted/80 break-words">{title}</div>
+        {action.status === 'repairing' && action.progress && (
+          <ChatTrialProgressView progress={action.progress} />
+        )}
         <button
           type="button"
           onClick={onClick}

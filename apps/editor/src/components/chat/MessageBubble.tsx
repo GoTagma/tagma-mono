@@ -365,13 +365,26 @@ function PartRenderer({
  * summary doesn't stay pinned to the top while the body extends past the
  * viewport.
  */
+// `<details>` also emits toggle events for React-driven `open` changes. Only a
+// trusted summary click proves user intent, including keyboard activation.
+export function isUserInitiatedDetailsToggle(isTrustedSummaryClick: boolean): boolean {
+  return isTrustedSummaryClick;
+}
+
+export function shouldScrollExpandedDetails(open: boolean, userInitiated: boolean): boolean {
+  return open && userInitiated;
+}
+
 function useExpandIntoView() {
-  return (e: React.SyntheticEvent<HTMLDetailsElement>) => {
-    const el = e.currentTarget;
-    if (!el.open) return;
-    const body = el.lastElementChild as HTMLElement | null;
+  return (e: React.MouseEvent<HTMLElement>) => {
+    const userInitiated = isUserInitiatedDetailsToggle(e.nativeEvent.isTrusted);
+    if (!userInitiated) return;
+    const details = e.currentTarget.closest('details') as HTMLDetailsElement | null;
+    if (!details) return;
     requestAnimationFrame(() => {
-      (body ?? el).scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      if (!shouldScrollExpandedDetails(details.open, userInitiated)) return;
+      const body = details.lastElementChild as HTMLElement | null;
+      (body ?? details).scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     });
   };
 }
@@ -395,13 +408,19 @@ function ReasoningPartView({ text, streaming }: { text: string; streaming: boole
     <details
       open={open}
       onToggle={(e) => {
-        userToggled.current = true;
         setOpen(e.currentTarget.open);
-        onExpandIntoView(e);
       }}
       className="w-full text-[10px] font-mono text-tagma-muted/80 border-l-2 border-tagma-muted/30 pl-2"
     >
-      <summary className="cursor-pointer flex items-center gap-1 select-none">
+      <summary
+        onClick={(e) => {
+          if (isUserInitiatedDetailsToggle(e.nativeEvent.isTrusted)) {
+            userToggled.current = true;
+          }
+          onExpandIntoView(e);
+        }}
+        className="cursor-pointer flex items-center gap-1 select-none"
+      >
         <Brain size={10} />
         <span>reasoning</span>
         {streaming && <Loader2 size={9} className="animate-spin text-tagma-muted/60" />}
@@ -439,10 +458,12 @@ function ToolPartView({ part }: { part: ToolPart }) {
   return (
     <details
       open={defaultOpen || undefined}
-      onToggle={onExpandIntoView}
       className="text-[10px] font-mono w-full border border-tagma-border/60 bg-tagma-surface/40"
     >
-      <summary className="cursor-pointer flex items-center gap-1.5 px-1.5 py-1 select-none hover:bg-tagma-border/20">
+      <summary
+        onClick={onExpandIntoView}
+        className="cursor-pointer flex items-center gap-1.5 px-1.5 py-1 select-none hover:bg-tagma-border/20"
+      >
         {icon}
         <span className="text-tagma-muted/80">{part.tool}</span>
         <span className="flex-1 truncate text-tagma-text">{title}</span>

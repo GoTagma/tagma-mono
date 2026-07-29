@@ -194,6 +194,7 @@ async function startStage(
 afterEach(() => {
   delete __chatPipelineTrialRunTestHooks.captureHostWitnessAsync;
   delete __chatPipelineTrialRunTestHooks.captureWorkspaceWitnessAsync;
+  delete __chatPipelineTrialRunTestHooks.onProgress;
   delete __chatPipelineTrialRunTestHooks.timeoutMsOverride;
   delete (
     __chatPipelineTrialRunTestHooks as typeof __chatPipelineTrialRunTestHooks & {
@@ -222,6 +223,223 @@ afterEach(() => {
 });
 
 describe('chat YAML staging async witness ordering', () => {
+  test('exposes lock-protected live Trial progress and clears it after cancellation', async () => {
+    const { ws, sourcePath } = makeWorkspace('setTimeout(() => {}, 10_000)');
+    const getRoute = createHarness();
+    const stage = await startStage(getRoute, ws, sourcePath);
+    writeTrialPlan(stage.stagedPath, {
+      cases: [
+        {
+          id: 'case_probe',
+          title: 'Case probe',
+          objective: 'Exercise the selected task after the real-workspace baseline.',
+          runs: 1,
+          targetTaskIds: ['main.verify'],
+          fixtures: [],
+          expectations: [{ type: 'task-status', taskId: 'main.verify', status: 'success' }],
+        },
+      ],
+    });
+
+    let releasePreWitness!: () => void;
+    const preWitnessGate = new Promise<void>((resolve) => {
+      releasePreWitness = resolve;
+    });
+    let witnessCalls = 0;
+    __chatPipelineTrialRunTestHooks.captureHostWitnessAsync = async () => {
+      witnessCalls += 1;
+      if (witnessCalls === 1) await preWitnessGate;
+      return {
+        witness: {
+          digest: 'stable-host',
+          prerequisiteDigest: 'stable-prerequisites',
+        } as never,
+        reason: null,
+      };
+    };
+    __chatPipelineTrialRunTestHooks.captureWorkspaceWitnessAsync = async () => ({
+      witness: { digest: 'stable-workspace' } as never,
+      reason: null,
+    });
+
+    const trialId = 'progress_probe';
+    const trialRes = makeRes();
+    const trialPromise = getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(ws, { stageId: stage.id, relativePath: stage.relativePath, trialId }),
+      trialRes,
+    );
+    for (let attempt = 0; attempt < 100 && witnessCalls === 0; attempt += 1) {
+      await Bun.sleep(10);
+    }
+    expect(witnessCalls).toBe(1);
+
+    const deniedRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run/progress')(
+      request(ws, { stageId: stage.id, trialId }, 'wrong-lock'),
+      deniedRes,
+    );
+    expect(deniedRes.statusCode).toBe(423);
+
+    const witnessProgressRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run/progress')(
+      request(ws, { stageId: stage.id, trialId }),
+      witnessProgressRes,
+    );
+    expect(witnessProgressRes.body).toMatchObject({
+      progress: {
+        stageId: stage.id,
+        trialId,
+        phase: 'capturing-host-witness',
+        caseId: null,
+        caseIndex: null,
+        runNumber: null,
+        taskId: null,
+      },
+    });
+
+    const unrelatedProgressRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run/progress')(
+      request(ws, { stageId: stage.id, trialId: 'another_trial' }),
+      unrelatedProgressRes,
+    );
+    expect(unrelatedProgressRes.body).toEqual({ progress: null });
+
+    releasePreWitness();
+    let runningProgress: Record<string, unknown> | null = null;
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      const progressRes = makeRes();
+      await getRoute('/api/workspace/chat-yaml-stage/trial-run/progress')(
+        request(ws, { stageId: stage.id, trialId }),
+        progressRes,
+      );
+      const progress = (progressRes.body as { progress?: Record<string, unknown> | null }).progress;
+      if (
+        progress?.phase === 'running-baseline' &&
+        progress.taskId === 'main.verify' &&
+        progress.taskStatus === 'running'
+      ) {
+        runningProgress = progress;
+        break;
+      }
+      await Bun.sleep(10);
+    }
+    expect(runningProgress).toMatchObject({
+      phase: 'running-baseline',
+      detail: 'Running the real-workspace baseline.',
+      runNumber: 1,
+      runCount: 1,
+      taskId: 'main.verify',
+      taskStatus: 'running',
+    });
+    expect(typeof runningProgress?.startedAt).toBe('number');
+    expect(typeof runningProgress?.updatedAt).toBe('number');
+
+    const cancelRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run/cancel')(
+      request(ws, { stageId: stage.id, trialId }),
+      cancelRes,
+    );
+    await trialPromise;
+    expect(cancelRes.body).toEqual({ cancelled: true });
+    expect(trialRes.body).toMatchObject({ success: false, kind: 'aborted' });
+
+    const completedProgressRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run/progress')(
+      request(ws, { stageId: stage.id, trialId }),
+      completedProgressRes,
+    );
+    expect(completedProgressRes.body).toEqual({ progress: null });
+  });
+
+  test('reports ordered baseline, case, verification, and post-witness progress', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const stage = await startStage(getRoute, ws, sourcePath);
+    writeTrialPlan(stage.stagedPath, {
+      cases: [
+        {
+          id: 'case_probe',
+          title: 'Case probe',
+          objective: 'Exercise the selected task in an isolated workspace.',
+          runs: 1,
+          targetTaskIds: ['main.verify'],
+          fixtures: [],
+          expectations: [{ type: 'task-status', taskId: 'main.verify', status: 'success' }],
+        },
+      ],
+    });
+    __chatPipelineTrialRunTestHooks.captureHostWitnessAsync = async () => ({
+      witness: {
+        digest: 'stable-host',
+        prerequisiteDigest: 'stable-prerequisites',
+      } as never,
+      reason: null,
+    });
+    __chatPipelineTrialRunTestHooks.captureWorkspaceWitnessAsync = async () => ({
+      witness: { digest: 'stable-workspace' } as never,
+      reason: null,
+    });
+    const progressUpdates: Array<{
+      phase: string;
+      startedAt: number;
+      updatedAt: number;
+      caseId: string | null;
+      caseTitle: string | null;
+      caseIndex: number | null;
+      caseCount: number | null;
+      runNumber: number | null;
+      runCount: number | null;
+      taskId: string | null;
+      taskStatus: string | null;
+    }> = [];
+    __chatPipelineTrialRunTestHooks.onProgress = (progress) => {
+      progressUpdates.push(progress);
+    };
+
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(ws, {
+        stageId: stage.id,
+        relativePath: stage.relativePath,
+        trialId: 'ordered_progress',
+      }),
+      trialRes,
+    );
+    expect(trialRes.body).toMatchObject({ success: true, kind: 'passed' });
+
+    const firstIndex = (phase: string) =>
+      progressUpdates.findIndex((progress) => progress.phase === phase);
+    expect(firstIndex('preparing')).toBe(0);
+    expect(firstIndex('capturing-host-witness')).toBeGreaterThan(firstIndex('preparing'));
+    expect(firstIndex('running-baseline')).toBeGreaterThan(firstIndex('capturing-host-witness'));
+    expect(firstIndex('sealing-baseline')).toBeGreaterThan(firstIndex('running-baseline'));
+    expect(firstIndex('running-case')).toBeGreaterThan(firstIndex('sealing-baseline'));
+    expect(firstIndex('verifying-workspace')).toBeGreaterThan(firstIndex('running-case'));
+    expect(firstIndex('capturing-post-witness')).toBeGreaterThan(firstIndex('verifying-workspace'));
+
+    const runningCaseTask = progressUpdates.find(
+      (progress) =>
+        progress.phase === 'running-case' &&
+        progress.taskId === 'main.verify' &&
+        progress.taskStatus === 'running',
+    );
+    expect(runningCaseTask).toMatchObject({
+      caseId: 'case_probe',
+      caseTitle: 'Case probe',
+      caseIndex: 1,
+      caseCount: 1,
+      runNumber: 1,
+      runCount: 1,
+    });
+    expect(
+      progressUpdates.every(
+        (progress) =>
+          progress.updatedAt >= progress.startedAt &&
+          progress.startedAt === progressUpdates[0]?.startedAt,
+      ),
+    ).toBe(true);
+  });
+
   test('times out during the first host witness and leaves no cached trial result', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();

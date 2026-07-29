@@ -4,6 +4,7 @@ import {
   buildConversationFlowSteps,
   ChatCompletionToastCard,
   ChatPanel,
+  ChatTrialProgressView,
   ConversationFlowBarView,
   selectConversationFlowActivity,
   SessionYamlResultBubble,
@@ -253,6 +254,35 @@ describe('ChatPanel export affordance', () => {
     expect(html).toContain('Trial run failed: main.test exited 7.');
     expect(html).not.toContain('Open pipeline');
     expect(isChatPipelineDeployed(result)).toBe(false);
+  });
+
+  test('renders the live trial case, run, and task while verification is active', () => {
+    const html = renderToStaticMarkup(
+      <ChatTrialProgressView
+        progress={{
+          stageId: 'stage-1',
+          trialId: 'trial-1',
+          phase: 'running-case',
+          detail: 'Running targeted trial case.',
+          startedAt: 1_000,
+          updatedAt: 1_500,
+          caseId: 'duplicate-inputs',
+          caseTitle: 'Duplicate input names',
+          caseIndex: 2,
+          caseCount: 3,
+          runNumber: 1,
+          runCount: 2,
+          taskId: 'main.prompt',
+          taskStatus: 'running',
+        }}
+      />,
+    );
+
+    expect(html).toContain('Case 2/3');
+    expect(html).toContain('Duplicate input names');
+    expect(html).toContain('Run 1/2');
+    expect(html).toContain('main.prompt');
+    expect(html).toContain('running');
   });
 
   test('does not link an unchanged pipeline that was not deployed from staging', () => {

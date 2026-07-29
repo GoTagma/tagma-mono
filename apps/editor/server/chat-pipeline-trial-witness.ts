@@ -15,7 +15,7 @@ import {
 } from 'node:fs';
 
 import type { Stats } from 'node:fs';
-import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { extname, isAbsolute, join, parse, relative, resolve, sep, win32 } from 'node:path';
 
 import { errorMessage } from './path-utils.js';
 import { requirementsPath, parseRequirementsMd } from './requirements-sync.js';
@@ -1025,6 +1025,20 @@ function filesystemWorkspaceWitness(
   };
 }
 
+export function trialWorkspaceWitnessScopeIssue(workspaceRoot: string): string | null {
+  const normalizedWindowsPath = win32.normalize(workspaceRoot);
+  const windowsRoot = win32.parse(normalizedWindowsPath).root;
+  const isWindowsRoot =
+    win32.isAbsolute(normalizedWindowsPath) &&
+    (normalizedWindowsPath.toLowerCase() === windowsRoot.toLowerCase() ||
+      /^\\\\\?\\UNC\\[^\\]+\\[^\\]+\\?$/iu.test(normalizedWindowsPath));
+  const resolvedNativePath = isAbsolute(workspaceRoot) ? resolve(workspaceRoot) : null;
+  const isNativeRoot =
+    resolvedNativePath !== null && parse(resolvedNativePath).root === resolvedNativePath;
+  if (!isWindowsRoot && !isNativeRoot) return null;
+  return `Trial host witness refused workspace root ${workspaceRoot} because a full-filesystem witness would have to scan the entire volume or network share. Select a narrower project directory and retry; Tagma will not silently narrow the witness scope.`;
+}
+
 export function captureTrialWorkspaceWitnessForRoot(
   workspaceRoot: string,
   previousCache: TrialHostWorkspaceManifestCache | null,
@@ -1035,6 +1049,8 @@ export function captureTrialWorkspaceWitnessForRoot(
   if (existsSync(join(resolvedRoot, '.git'))) {
     throw new Error('Git workspace witness could not resolve git from PATH.');
   }
+  const scopeIssue = trialWorkspaceWitnessScopeIssue(resolvedRoot);
+  if (scopeIssue) throw new Error(scopeIssue);
   return filesystemWorkspaceWitness(resolvedRoot, previousCache);
 }
 

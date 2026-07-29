@@ -25,6 +25,7 @@ import {
   prepareTrialHostWitnessInputs,
   safeCaptureTrialHostWitnessAsync,
   safeCaptureTrialHostWitness,
+  trialWorkspaceWitnessScopeIssue,
   type PreparedTrialHostWitnessInputs,
 } from '../server/chat-pipeline-trial-witness';
 import { hashChatPipelineTrialTree } from '../server/chat-yaml-staging';
@@ -99,6 +100,29 @@ afterEach(() => {
 }, 300_000);
 
 describe('chat pipeline trial host witness', () => {
+  test('refuses filesystem roots before a full-filesystem witness can recurse', () => {
+    for (const workspaceRoot of [
+      'F:\\',
+      'f:/',
+      '\\\\build-server\\workspace-share\\',
+      '\\\\?\\F:\\',
+      '\\\\?\\UNC\\build-server\\workspace-share\\',
+    ]) {
+      const issue = trialWorkspaceWitnessScopeIssue(workspaceRoot);
+      expect(issue).toContain(workspaceRoot);
+      expect(issue).toContain('entire volume or network share');
+      expect(issue).toContain('narrower project directory');
+    }
+  });
+
+  test('allows ordinary filesystem workspace directories without probing their contents', () => {
+    expect(trialWorkspaceWitnessScopeIssue('F:\\projects\\quick-demo')).toBeNull();
+    expect(
+      trialWorkspaceWitnessScopeIssue('\\\\build-server\\workspace-share\\quick-demo'),
+    ).toBeNull();
+    expect(trialWorkspaceWitnessScopeIssue(join(tmpdir(), 'tagma-project'))).toBeNull();
+  });
+
   test(
     'uses source files and dependency descriptors instead of Git and dependency caches',
     () => {

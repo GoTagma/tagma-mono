@@ -1173,6 +1173,41 @@ export function App() {
               compile,
             });
             useChatStore.getState().setChatYamlHostTrialActive(finishedTurn.id, true);
+            let stopTrialProgressPolling = false;
+            let trialProgressTimer: ReturnType<typeof setTimeout> | null = null;
+            const pollTrialProgress = async (): Promise<void> => {
+              try {
+                const { progress } = await underChatLock(() =>
+                  api.getChatYamlStageTrialProgress(
+                    snapshot.staging!.id,
+                    finishedTurn.id,
+                    snapshot.workDir,
+                  ),
+                );
+                if (stopTrialProgressPolling) return;
+                const current = useChatStore.getState().postChatYamlAction;
+                if (
+                  progress &&
+                  current?.phase === 'trial-running' &&
+                  current.path === stagedTarget.path &&
+                  progress.trialId === finishedTurn.id
+                ) {
+                  useChatStore.getState().setPostChatYamlAction({
+                    ...current,
+                    progress,
+                  });
+                }
+              } catch {
+                // The terminal trial request remains authoritative; a transient
+                // progress read may race startup, cancellation, or cleanup.
+              }
+              if (!stopTrialProgressPolling) {
+                trialProgressTimer = setTimeout(() => {
+                  void pollTrialProgress();
+                }, 500);
+              }
+            };
+            void pollTrialProgress();
             try {
               for (let attempt = 0; attempt < 2 && !trialRun; attempt += 1) {
                 if (await discardCancelledStage()) return;
@@ -1184,6 +1219,8 @@ export function App() {
                 if (cancelled || (await discardCancelledStage())) return;
               }
             } finally {
+              stopTrialProgressPolling = true;
+              if (trialProgressTimer !== null) clearTimeout(trialProgressTimer);
               useChatStore.getState().setChatYamlHostTrialActive(finishedTurn.id, false);
             }
             if (!trialRun) {

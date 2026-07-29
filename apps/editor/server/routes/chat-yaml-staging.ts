@@ -10,7 +10,11 @@ import {
   listChatYamlStage,
   type ChatYamlStageFinalizeInput,
 } from '../chat-yaml-staging.js';
-import { cancelChatPipelineTrial, trialRunChatYamlStage } from '../chat-pipeline-trial-run.js';
+import {
+  cancelChatPipelineTrial,
+  getChatPipelineTrialProgress,
+  trialRunChatYamlStage,
+} from '../chat-pipeline-trial-run.js';
 import { errorMessage } from '../path-utils.js';
 import { requireWorkspace } from '../require-workspace.js';
 import {
@@ -225,6 +229,28 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
           trialId: body.trialId.trim(),
         }),
       );
+    } catch (err) {
+      return respondStageError(res, err);
+    }
+  });
+
+  app.post('/api/workspace/chat-yaml-stage/trial-run/progress', (req, res) => {
+    const ws = requireWorkspace(req, res);
+    if (!ws || !requireChatYamlStageLock(req, res, ws)) return;
+    const body = (req.body ?? {}) as { stageId?: unknown; trialId?: unknown };
+    if (typeof body.stageId !== 'string' || !body.stageId.trim()) {
+      return res.status(400).json({ error: 'stageId is required.' });
+    }
+    if (typeof body.trialId !== 'string' || !body.trialId.trim()) {
+      return res.status(400).json({ error: 'trialId is required.' });
+    }
+    const stageId = body.stageId.trim();
+    const trialId = body.trialId.trim();
+    try {
+      listChatYamlStage(ws, stageId);
+      return res.json({
+        progress: getChatPipelineTrialProgress(ws, { stageId, trialId }),
+      });
     } catch (err) {
       return respondStageError(res, err);
     }

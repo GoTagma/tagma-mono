@@ -250,6 +250,33 @@ export interface ChatPipelineTrialRunResult {
   cases: ChatPipelineTrialCaseResult[];
 }
 
+export type ChatPipelineTrialProgressPhase =
+  | 'preparing'
+  | 'capturing-host-witness'
+  | 'running-baseline'
+  | 'sealing-baseline'
+  | 'running-case'
+  | 'verifying-workspace'
+  | 'capturing-post-witness';
+
+/** Transient host-side state for an in-flight staged pipeline trial. */
+export interface ChatPipelineTrialProgress {
+  stageId: string;
+  trialId: string;
+  phase: ChatPipelineTrialProgressPhase;
+  detail: string;
+  startedAt: number;
+  updatedAt: number;
+  caseId: string | null;
+  caseTitle: string | null;
+  caseIndex: number | null;
+  caseCount: number | null;
+  runNumber: number | null;
+  runCount: number | null;
+  taskId: string | null;
+  taskStatus: string | null;
+}
+
 export type ChatYamlStageConflict =
   | 'local-branch-changed'
   | 'source-changed-on-disk'
@@ -1797,6 +1824,20 @@ export const api = {
       {
         method: 'POST',
         body: jsonBody({ stageId, relativePath, trialId }),
+      },
+      workspaceKeyOverride,
+    ),
+
+  getChatYamlStageTrialProgress: (
+    stageId: string,
+    trialId: string,
+    workspaceKeyOverride?: string | null,
+  ) =>
+    request<{ progress: ChatPipelineTrialProgress | null }>(
+      '/workspace/chat-yaml-stage/trial-run/progress',
+      {
+        method: 'POST',
+        body: jsonBody({ stageId, trialId }),
       },
       workspaceKeyOverride,
     ),

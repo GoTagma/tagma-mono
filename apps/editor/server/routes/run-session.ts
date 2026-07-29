@@ -41,7 +41,7 @@ import type {
 } from '@tagma/sdk';
 import { serializeWorkflow } from '@tagma/sdk/workflow';
 import { atomicWriteFileSync, isPathWithin } from '../path-utils.js';
-import { resolveOpencodeBinary } from '../opencode-lifecycle.js';
+import { buildOpencodeEnv, resolveOpencodeBinary } from '../opencode-lifecycle.js';
 import type { WorkspaceState } from '../workspace-state.js';
 import { readYamlRunVersion } from '../yaml-run-version.js';
 
@@ -177,19 +177,58 @@ function resolveEditorDriverSpawnSpec(spec: SpawnSpec, driver: DriverPlugin | nu
   return { ...spec, args: [binary, ...spec.args.slice(1)] };
 }
 
+const MANAGED_OPENCODE_ISOLATION_ENV_KEYS = [
+  'HOME',
+  'USERPROFILE',
+  'APPDATA',
+  'LOCALAPPDATA',
+  'XDG_CONFIG_HOME',
+  'OPENCODE_CONFIG_DIR',
+  'XDG_DATA_HOME',
+  'XDG_STATE_HOME',
+  'XDG_CACHE_HOME',
+  'OPENCODE_CONFIG_CONTENT',
+  'OPENCODE_SERVER_USERNAME',
+  'OPENCODE_SERVER_PASSWORD',
+] as const;
+
+function isManagedOpencodeSpawn(spec: SpawnSpec, driver: DriverPlugin | null): boolean {
+  return driver?.name === 'opencode' && spec.args[0] === 'opencode';
+}
+
+function mergeManagedOpencodeEnv(
+  injectedEnv: Readonly<Record<string, string>> | undefined,
+  managedOpencodeCwd: string,
+): Record<string, string> {
+  const managedEnv = buildOpencodeEnv(managedOpencodeCwd);
+  const env = { ...managedEnv, ...(injectedEnv ?? {}) };
+  // Pipeline-scoped provider keys and PATH additions may override the managed
+  // base environment, but runtime isolation must remain identical to Chat.
+  for (const key of MANAGED_OPENCODE_ISOLATION_ENV_KEYS) env[key] = managedEnv[key];
+  return env;
+}
+
 export function runtimeWithInjectedEnvFromBase(
   base: TagmaRuntime,
   runtimeEnv: Readonly<Record<string, string>>,
   secretValues: readonly string[] = [],
+  managedOpencodeCwd?: string,
 ): TagmaRuntime {
   const needsCommandWrapper =
     Object.keys(runtimeEnv).length > 0 || secretValues.some((value) => value.length > 0);
   return {
     ...base,
     runSpawn(spec: SpawnSpec, driver: DriverPlugin | null, opts: RuntimeRunOptions = {}) {
+      const managedOpencode = managedOpencodeCwd && isManagedOpencodeSpawn(spec, driver);
       const resolvedSpec = resolveEditorDriverSpawnSpec(spec, driver);
+      const injectedEnv = mergeRuntimeEnv(resolvedSpec.env, runtimeEnv);
       return base.runSpawn(
-        { ...resolvedSpec, env: mergeRuntimeEnv(resolvedSpec.env, runtimeEnv) },
+        {
+          ...resolvedSpec,
+          env: managedOpencode
+            ? mergeManagedOpencodeEnv(injectedEnv, managedOpencodeCwd)
+            : injectedEnv,
+        },
         driver,
         withOutputRedactor(opts, createSecretOutputRedactor(secretValues)),
       );
@@ -211,8 +250,9 @@ export function runtimeWithInjectedEnvFromBase(
 export function runtimeWithInjectedEnv(
   runtimeEnv: Readonly<Record<string, string>>,
   secretValues: readonly string[] = [],
+  managedOpencodeCwd?: string,
 ): TagmaRuntime {
-  return runtimeWithInjectedEnvFromBase(bunRuntime(), runtimeEnv, secretValues);
+  return runtimeWithInjectedEnvFromBase(bunRuntime(), runtimeEnv, secretValues, managedOpencodeCwd);
 }
 function isPromptTaskShape(task: { prompt?: unknown; command?: unknown }): boolean {
   return task.prompt !== undefined && task.command === undefined;

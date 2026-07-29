@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { bunRuntime } from '@tagma/sdk';
 import type { CommandConfig, DriverPlugin, SpawnSpec, TaskResult } from '@tagma/types';
+import { resolveOpencodeRuntimePaths } from '../server/opencode-config';
 import { runtimeWithInjectedEnvFromBase } from '../server/routes/run-session';
 
 const tempRoots: string[] = [];
@@ -27,9 +28,10 @@ afterEach(() => {
 });
 
 describe('editor OpenCode runtime selection', () => {
-  test('uses the same managed OpenCode binary as Chat for prompt tasks', async () => {
+  test('uses the same managed OpenCode binary and isolated config as Chat for prompt tasks', async () => {
     const root = mkdtempSync(join(tmpdir(), 'tagma-run-opencode-'));
     tempRoots.push(root);
+    const tagmaCwd = join(root, '.tagma');
     const binary = join(root, 'bin', process.platform === 'win32' ? 'opencode.exe' : 'opencode');
     mkdirSync(join(root, 'bin'), { recursive: true });
     writeFileSync(binary, '', 'utf-8');
@@ -47,7 +49,7 @@ describe('editor OpenCode runtime selection', () => {
         return {} as TaskResult;
       },
     };
-    const runtime = runtimeWithInjectedEnvFromBase(base, {});
+    const runtime = runtimeWithInjectedEnvFromBase(base, {}, [], tagmaCwd);
     const driver = { name: 'opencode' } as DriverPlugin;
     const getCaptured = (): SpawnSpec | null => captured;
 
@@ -57,6 +59,13 @@ describe('editor OpenCode runtime selection', () => {
     );
 
     expect(getCaptured()?.args[0]).toBe(binary);
+    const env = getCaptured()?.env;
+    const paths = resolveOpencodeRuntimePaths(tagmaCwd);
+    expect(env?.HOME).toBe(paths.home);
+    expect(env?.USERPROFILE).toBe(paths.home);
+    expect(env?.OPENCODE_CONFIG_DIR).toBe(paths.configDir);
+    expect(env?.XDG_CONFIG_HOME).toBe(paths.configHome);
+    expect(JSON.parse(env?.OPENCODE_CONFIG_CONTENT ?? '{}')).toMatchObject({ plugin: [] });
   });
 
   test('leaves explicit command tasks on the host PATH', async () => {
@@ -76,5 +85,30 @@ describe('editor OpenCode runtime selection', () => {
     await runtime.runCommand({ argv: ['opencode', '--version'] }, root);
 
     expect(getCaptured()).toEqual({ argv: ['opencode', '--version'] });
+  });
+
+  test('does not inject managed OpenCode isolation into command task environments', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tagma-run-command-env-'));
+    tempRoots.push(root);
+    let captured: SpawnSpec | null = null;
+    const base = {
+      ...bunRuntime(),
+      async runSpawn(spec: SpawnSpec): Promise<TaskResult> {
+        captured = spec;
+        return {} as TaskResult;
+      },
+    };
+    const runtime = runtimeWithInjectedEnvFromBase(
+      base,
+      { TAGMA_RUN_MARKER: 'present' },
+      [],
+      join(root, '.tagma'),
+    );
+    const getCaptured = (): SpawnSpec | null => captured;
+
+    await runtime.runCommand({ argv: ['opencode', '--version'] }, root);
+
+    expect(getCaptured()?.args).toEqual(['opencode', '--version']);
+    expect(getCaptured()?.env).toEqual({ TAGMA_RUN_MARKER: 'present' });
   });
 });

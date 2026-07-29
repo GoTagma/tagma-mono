@@ -163,7 +163,9 @@
 - OpenCode custom tools must resolve session-relative pipeline and companion paths from `ToolContext.directory`, never `process.cwd()`; staged chats depend on it to keep `.tagma/.chat-staging/<id>/.../agent-workspace/.tagma` as the authoritative root.
 - Pipeline prompt tasks using the built-in `opencode` driver must resolve the executable through
   `resolveOpencodeBinary()`, using the same user-runtime, bundled, dev-staged, then PATH precedence
-  as Chat. Do not let editor-owned AI runs silently select a different global OpenCode version.
+  as Chat. They must also use Chat's `buildOpencodeEnv()` isolation rooted at the workspace
+  `.tagma` directory so user-global plugins and config cannot enter editor-owned runs. Do not let
+  editor-owned AI runs silently select a different global OpenCode version or environment.
 - Command tasks remain host commands and must keep their normal PATH resolution, even when the
   command itself invokes `opencode`.
 - When the managed layers are intentionally absent in headless development, resolve the system
