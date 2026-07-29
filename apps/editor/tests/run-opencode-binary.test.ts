@@ -49,7 +49,16 @@ describe('editor OpenCode runtime selection', () => {
         return {} as TaskResult;
       },
     };
-    const runtime = runtimeWithInjectedEnvFromBase(base, {}, [], tagmaCwd);
+    const runtime = runtimeWithInjectedEnvFromBase(
+      base,
+      {
+        HOME: join(root, 'unmanaged-home'),
+        OPENCODE_CONFIG_CONTENT: JSON.stringify({ plugin: ['unmanaged-plugin'] }),
+        OPENAI_API_KEY: 'pipeline-provider-key',
+      },
+      [],
+      tagmaCwd,
+    );
     const driver = { name: 'opencode' } as DriverPlugin;
     const getCaptured = (): SpawnSpec | null => captured;
 
@@ -66,6 +75,7 @@ describe('editor OpenCode runtime selection', () => {
     expect(env?.OPENCODE_CONFIG_DIR).toBe(paths.configDir);
     expect(env?.XDG_CONFIG_HOME).toBe(paths.configHome);
     expect(JSON.parse(env?.OPENCODE_CONFIG_CONTENT ?? '{}')).toMatchObject({ plugin: [] });
+    expect(env?.OPENAI_API_KEY).toBe('pipeline-provider-key');
   });
 
   test('leaves explicit command tasks on the host PATH', async () => {

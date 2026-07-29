@@ -16,6 +16,9 @@
   runtime/legacy variants with its v2 `variants` because v2 can omit provider-generated choices;
   v2 metadata wins for duplicate ids. `null` means model default. Do not restore a fixed
   cross-model reasoning-effort enum.
+- Streaming and default-open message details must not claim chat scroll ownership from a
+  programmatic `toggle`. Only a trusted user activation on the `summary` may request
+  `scrollIntoView`, and the next frame must confirm that the details remain open.
 
 ## Chat Context Attachments
 
@@ -88,6 +91,9 @@
   Bind Git HEAD/index/status/flags/config/locks, ignored-root presence, the Git binary, declared
   binaries, minimal environment, and Python identity. Use a full filesystem witness outside an
   exact Git root, and never reuse an in-process manifest cache across a fresh `WorkspaceState`.
+- When that fallback scope is a volume root or UNC share root, fail before recursive capture and
+  tell the user to select a narrower project directory. Do not silently narrow the witness; an
+  exact Git root must still get the Git witness attempt before this filesystem-root guard.
 - Keep full-filesystem Trial witness capture off the sidecar main thread. Trial timeout and
   cancellation must cover pre-run, post-run, and case-seal capture; finalize must use the same
   asynchronous worker path with its own bounded timeout and the shared Stop cancellation route.

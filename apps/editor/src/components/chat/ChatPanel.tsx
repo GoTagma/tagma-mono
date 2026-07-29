@@ -357,7 +357,11 @@ export function ChatTrialProgressView({
 }) {
   const segments = chatTrialProgressSegments(progress);
   if (segments.length === 0) return null;
-  return <div className='select-text break-words text-[9px] text-tagma-muted/70'>{segments.join(' / ')}</div>;
+  return (
+    <div className="select-text break-words text-[9px] text-tagma-muted/70">
+      {segments.join(' / ')}
+    </div>
+  );
 }
 
 /**

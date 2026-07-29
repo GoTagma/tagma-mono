@@ -1191,6 +1191,7 @@ async function runTrialPipelineOnce(input: RunTrialPipelineInput): Promise<Engin
     runtime: runtimeWithInjectedEnv(
       { ...input.pythonRunEnv, ...input.requirementsSecretEnv, ...trialEnv },
       input.secretValues,
+      tagmaDirOf(input.ws.workDir),
     ),
   });
   return tagma.run(input.pipelineConfig, {
@@ -1241,6 +1242,18 @@ async function executeTargetedTrialCase(
   let lastResult: EngineResult | null = null;
   let allRunsSucceeded = true;
   let executionError: string | null = null;
+  input.progress.update({
+    phase: 'running-case',
+    detail: `Preparing targeted case ${input.caseIndex}/${input.caseCount}: ${input.testCase.title}.`,
+    caseId: input.testCase.id,
+    caseTitle: input.testCase.title,
+    caseIndex: input.caseIndex,
+    caseCount: input.caseCount,
+    runNumber: null,
+    runCount: input.testCase.runs,
+    taskId: null,
+    taskStatus: null,
+  });
   try {
     caseWorkspace = prepareTrialCaseWorkspace(
       input.stageRoot,
@@ -1379,6 +1392,18 @@ async function executeTrial(
   progress: ChatPipelineTrialProgressReporter,
 ): Promise<ChatPipelineTrialRunResult> {
   const startedAt = Date.now();
+  progress.update({
+    phase: 'preparing',
+    detail: 'Preparing the real-workspace baseline.',
+    caseId: null,
+    caseTitle: null,
+    caseIndex: null,
+    caseCount: null,
+    runNumber: null,
+    runCount: null,
+    taskId: null,
+    taskStatus: null,
+  });
   let pipelineConfig;
   try {
     pipelineConfig = await loadPipeline(readFileSync(snapshot.yamlPath, 'utf-8'), ws.workDir);
