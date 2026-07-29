@@ -38,7 +38,10 @@ const REQUIRED_TRIAL_COVERAGE = [
   'special-characters',
 ] as const;
 
-function makeWorkspace(): { ws: WorkspaceState; sourcePath: string } {
+function makeWorkspace(commandScript = 'process.exit(0)'): {
+  ws: WorkspaceState;
+  sourcePath: string;
+} {
   const root = mkdtempSync(join(tmpdir(), 'tagma-chat-stage-timeout-'));
   roots.push(root);
   const sourcePath = pipelineYamlPath(root, 'pipeline');
@@ -51,7 +54,7 @@ function makeWorkspace(): { ws: WorkspaceState; sourcePath: string } {
         tasks: [
           {
             id: 'verify',
-            command: { argv: [process.execPath, '-e', 'process.exit(0)'] },
+            command: { argv: [process.execPath, '-e', commandScript] },
           },
         ],
       },
@@ -192,6 +195,11 @@ afterEach(() => {
   delete __chatPipelineTrialRunTestHooks.captureHostWitnessAsync;
   delete __chatPipelineTrialRunTestHooks.captureWorkspaceWitnessAsync;
   delete __chatPipelineTrialRunTestHooks.timeoutMsOverride;
+  delete (
+    __chatPipelineTrialRunTestHooks as typeof __chatPipelineTrialRunTestHooks & {
+      taskTimeoutMsOverride?: number;
+    }
+  ).taskTimeoutMsOverride;
   delete __chatYamlStagingTestHooks.captureHostWitnessAsync;
   delete __chatYamlStagingTestHooks.finalizeWitnessTimeoutMsOverride;
   delete __workspaceRegistryTestHooks.disposeTrialWitnessWorker;
@@ -263,6 +271,71 @@ describe('chat YAML staging async witness ordering', () => {
     });
     expect(ws.chatPipelineTrialAbort).toBeNull();
     expect(existsSync(join(stage.rootDir, '.trial-runs'))).toBe(false);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('times out an individual trial task before the whole trial budget expires', async () => {
+    const { ws, sourcePath } = makeWorkspace('setTimeout(() => {}, 10_000)');
+    const getRoute = createHarness();
+    const stage = await startStage(getRoute, ws, sourcePath);
+    writeTrialPlan(stage.stagedPath, {
+      cases: [
+        {
+          id: 'case_timeout',
+          title: 'Timeout probe',
+          objective: 'Confirm one stalled task cannot consume the whole host trial budget.',
+          runs: 1,
+          targetTaskIds: ['main.verify'],
+          fixtures: [],
+          expectations: [{ type: 'task-status', taskId: 'main.verify', status: 'success' }],
+        },
+      ],
+    });
+    __chatPipelineTrialRunTestHooks.timeoutMsOverride = 2_000;
+    (
+      __chatPipelineTrialRunTestHooks as typeof __chatPipelineTrialRunTestHooks & {
+        taskTimeoutMsOverride?: number;
+      }
+    ).taskTimeoutMsOverride = 25;
+    __chatPipelineTrialRunTestHooks.captureHostWitnessAsync = async () => ({
+      witness: {
+        digest: 'stable-host',
+        prerequisiteDigest: 'stable-prerequisites',
+      } as never,
+      reason: null,
+    });
+    __chatPipelineTrialRunTestHooks.captureWorkspaceWitnessAsync = async () => ({
+      witness: { digest: 'stable-workspace' } as never,
+      reason: null,
+    });
+
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(ws, {
+        stageId: stage.id,
+        relativePath: stage.relativePath,
+        trialId: 'bounded_task_timeout',
+      }),
+      trialRes,
+    );
+
+    expect(trialRes.statusCode).toBe(200);
+    expect(trialRes.body).toMatchObject({
+      success: false,
+      kind: 'failed',
+      ran: true,
+    });
+    const result = trialRes.body as {
+      tasks: Array<{ taskId: string; status: string; failureKind: string | null }>;
+    };
+    expect(result.tasks).toContainEqual(
+      expect.objectContaining({
+        taskId: 'main.verify',
+        status: 'timeout',
+      }),
+    );
+    expect(ws.chatPipelineTrialAbort).toBeNull();
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });

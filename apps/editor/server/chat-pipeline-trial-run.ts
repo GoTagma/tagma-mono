@@ -74,6 +74,7 @@ import type { WorkspaceState } from './workspace-state.js';
 
 const TRIAL_CACHE_VERSION = 4;
 const CHAT_PIPELINE_TRIAL_TIMEOUT_MS = 10 * 60 * 1000;
+const CHAT_PIPELINE_TRIAL_TASK_TIMEOUT_MS = 2 * 60 * 1000;
 const MAX_TRIAL_STREAM_BYTES = 4 * 1024;
 const MAX_TRIAL_SUMMARY_BYTES = 32 * 1024;
 const MAX_TRIAL_TASK_RESULTS = 32;
@@ -211,6 +212,7 @@ export const __chatPipelineTrialRunTestHooks: {
     signal?: AbortSignal,
   ) => Promise<TrialWorkspaceWitnessResult>;
   timeoutMsOverride?: number;
+  taskTimeoutMsOverride?: number;
 } = {};
 
 async function captureTrialHostWitnessAsync(
@@ -1053,6 +1055,8 @@ Trial authorization witness failed: ${reason}`),
 }
 
 async function runTrialPipelineOnce(input: RunTrialPipelineInput): Promise<EngineResult> {
+  const taskTimeoutMs =
+    __chatPipelineTrialRunTestHooks.taskTimeoutMsOverride ?? CHAT_PIPELINE_TRIAL_TASK_TIMEOUT_MS;
   const trialEnv: Record<string, string> = input.testCase
     ? {
         TAGMA_TRIAL_CASE_ID: input.testCase.id,
@@ -1075,7 +1079,7 @@ async function runTrialPipelineOnce(input: RunTrialPipelineInput): Promise<Engin
     maxLogRuns: MAX_LOG_RUNS,
     runId: input.runId,
     skipPluginLoading: true,
-    defaultTaskTimeoutMs: Math.min(DEFAULT_TASK_TIMEOUT_MS, CHAT_PIPELINE_TRIAL_TIMEOUT_MS),
+    defaultTaskTimeoutMs: Math.min(DEFAULT_TASK_TIMEOUT_MS, taskTimeoutMs),
     secretResolver: (names: readonly string[]) =>
       buildPipelineSecretEnv(input.ws.workDir, input.logicalYamlPath, names),
     ...(input.preflightEnvKeys.length > 0

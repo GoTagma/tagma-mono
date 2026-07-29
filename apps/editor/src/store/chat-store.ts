@@ -168,8 +168,13 @@ export interface ComposerAttachment {
  */
 export type ChatBootstrapStatus = 'idle' | 'booting' | 'ready' | 'error';
 
+export type ChatYamlPostActionPhase =
+  'compile-repair' | 'trial-planning' | 'trial-running' | 'trial-repair';
+
 export type ChatYamlPostAction = ChatYamlTarget & {
   status: 'ready' | 'repairing' | 'failed';
+  /** Explicit lifecycle phase; optional so older in-memory shapes remain readable. */
+  phase?: ChatYamlPostActionPhase;
   compile: Pick<YamlCompileResult, 'success' | 'summary' | 'validation'>;
   trial?: ChatPipelineTrialRunResult;
 };

@@ -1126,6 +1126,7 @@ export function App() {
             useChatStore.getState().setPostChatYamlAction({
               ...stagedTarget,
               status: 'repairing',
+              phase: 'compile-repair',
               compile,
             });
             if (await discardCancelledStage()) return;
@@ -1165,6 +1166,12 @@ export function App() {
                 ),
               );
             let trialError: unknown;
+            useChatStore.getState().setPostChatYamlAction({
+              ...stagedTarget,
+              status: 'repairing',
+              phase: 'trial-running',
+              compile,
+            });
             useChatStore.getState().setChatYamlHostTrialActive(finishedTurn.id, true);
             try {
               for (let attempt = 0; attempt < 2 && !trialRun; attempt += 1) {
@@ -1204,6 +1211,7 @@ export function App() {
                 useChatStore.getState().setPostChatYamlAction({
                   ...stagedTarget,
                   status: 'repairing',
+                  phase: 'trial-planning',
                   compile,
                   trial: trialRun,
                 });
@@ -1241,6 +1249,7 @@ export function App() {
               useChatStore.getState().setPostChatYamlAction({
                 ...stagedTarget,
                 status: 'repairing',
+                phase: 'trial-repair',
                 compile,
                 trial: trialRun,
               });
@@ -1507,6 +1516,7 @@ export function App() {
           useChatStore.getState().setPostChatYamlAction({
             ...target,
             status: 'repairing',
+            phase: 'compile-repair',
             compile,
           });
           try {

@@ -17,6 +17,7 @@ import {
 import {
   isChatModelSelectionBlocked,
   useChatStore,
+  type ChatYamlPostAction,
   type ChatYamlSessionResult,
 } from '../../store/chat-store';
 import type { ChatReasoningEffort } from '../../store/chat-persist';
@@ -291,6 +292,47 @@ function latestCompletedTurnMessages(messages: OpencodeThreadEntry[]): OpencodeT
   return [];
 }
 
+function chatYamlRepairPresentation(action: ChatYamlPostAction): {
+  label: string;
+  detail: string;
+  title: string;
+} {
+  const phase =
+    action.phase ??
+    (action.trial
+      ? action.trial.kind === 'plan-required'
+        ? 'trial-planning'
+        : 'trial-repair'
+      : 'compile-repair');
+
+  switch (phase) {
+    case 'trial-planning':
+      return {
+        label: 'Test plan',
+        detail: 'planning targeted edge cases',
+        title: 'Planning targeted edge-case trial...',
+      };
+    case 'trial-running':
+      return {
+        label: 'Trial run',
+        detail: 'running targeted host checks',
+        title: 'Running targeted edge-case trial...',
+      };
+    case 'trial-repair':
+      return {
+        label: 'Trial run',
+        detail: 'repairing failed trial run',
+        title: 'Repairing failed trial run...',
+      };
+    case 'compile-repair':
+      return {
+        label: 'Validate YAML',
+        detail: 'checking generated pipeline',
+        title: 'Validating YAML...',
+      };
+  }
+}
+
 /**
  * Build only stages that OpenCode or the editor actually reported. Future
  * stages are deliberately not guessed, so tool names, retries, permissions,
@@ -384,30 +426,24 @@ export function buildConversationFlowSteps({
   }
 
   if (postChatYamlAction) {
+    const repairPresentation =
+      postChatYamlAction.status === 'repairing'
+        ? chatYamlRepairPresentation(postChatYamlAction)
+        : null;
     appendConversationFlowStep(steps, {
       key: 'yaml-action',
-      label:
-        postChatYamlAction.status === 'repairing'
-          ? postChatYamlAction.trial
-            ? postChatYamlAction.trial.kind === 'plan-required'
-              ? 'Test plan'
-              : 'Trial run'
-            : 'Validate YAML'
-          : postChatYamlAction.status === 'failed'
-            ? 'Repair YAML'
-            : postChatYamlAction.kind === 'open-created'
-              ? 'Open YAML'
-              : 'Refresh YAML',
-      detail:
-        postChatYamlAction.status === 'repairing'
-          ? postChatYamlAction.trial
-            ? postChatYamlAction.trial.kind === 'plan-required'
-              ? 'planning targeted edge cases'
-              : 'repairing failed trial run'
-            : 'checking generated pipeline'
-          : postChatYamlAction.status === 'failed'
-            ? 'compile failed'
-            : postChatYamlAction.compile.summary,
+      label: repairPresentation
+        ? repairPresentation.label
+        : postChatYamlAction.status === 'failed'
+          ? 'Repair YAML'
+          : postChatYamlAction.kind === 'open-created'
+            ? 'Open YAML'
+            : 'Refresh YAML',
+      detail: repairPresentation
+        ? repairPresentation.detail
+        : postChatYamlAction.status === 'failed'
+          ? 'compile failed'
+          : postChatYamlAction.compile.summary,
       status: postChatYamlAction.status === 'failed' ? 'error' : 'active',
     });
   }
@@ -1341,11 +1377,7 @@ function YamlActionBubble() {
   const label = isOpen || action.path !== currentYamlPath ? 'Open YAML' : 'Refresh current YAML';
   const title =
     action.status === 'repairing'
-      ? action.trial
-        ? action.trial.kind === 'plan-required'
-          ? 'Planning targeted edge-case trial...'
-          : 'Repairing failed trial run...'
-        : 'Validating YAML...'
+      ? chatYamlRepairPresentation(action).title
       : action.status === 'failed'
         ? 'Compile still failing'
         : action.compile.summary;

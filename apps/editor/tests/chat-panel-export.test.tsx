@@ -500,6 +500,59 @@ describe('ChatPanel export affordance', () => {
     });
   });
 
+  test('shows the host trial as running even when the previous result required a plan', () => {
+    const steps = buildConversationFlowSteps({
+      activity: [],
+      sending: false,
+      pendingUserText: null,
+      queuedCount: 0,
+      pendingPermissionCount: 0,
+      reconciling: true,
+      flushing: false,
+      postChatYamlAction: {
+        sessionId: 's1',
+        kind: 'refresh-current',
+        path: '/workspace/.tagma/build/build.yaml',
+        name: 'build.yaml',
+        pipelineName: 'Build',
+        status: 'repairing',
+        phase: 'trial-running',
+        compile: {
+          success: true,
+          summary: 'Compile succeeded.',
+          validation: { errors: [], warnings: [] },
+        },
+        trial: {
+          version: 2,
+          success: false,
+          kind: 'plan-required',
+          ran: false,
+          runId: null,
+          summary: 'Targeted trial plan required.',
+          durationMs: 1,
+          totalTaskCount: 0,
+          omittedTaskCount: 0,
+          tasks: [],
+          planRequest: {
+            reason: 'missing',
+            relativePlanPath: 'build/build.trial-plan.json',
+            pipelineHash: 'a'.repeat(40),
+            message: 'No trial plan was written.',
+            requiredCoverage: [],
+          },
+          cases: [],
+        },
+      } as never,
+      sendError: null,
+    });
+
+    expect(steps.at(-1)).toMatchObject({
+      label: 'Trial run',
+      detail: 'running targeted host checks',
+      status: 'active',
+    });
+  });
+
   test('shows the pipeline link only after the whole turn reconcile is finished', () => {
     expect(
       shouldShowSessionYamlResult({
