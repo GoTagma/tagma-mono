@@ -23,6 +23,7 @@ import { buildPipelineSecretEnv } from './secrets.js';
 import { readEditorSettings } from './plugins/loader.js';
 import { buildPythonAgentRunEnv } from './python-agent.js';
 import { resolveOpencodeBinary } from './opencode-lifecycle.js';
+import { workspaceRegistry } from './workspace-registry.js';
 
 import type { WorkspaceState } from './workspace-state.js';
 
@@ -1469,6 +1470,8 @@ export function disposeTrialWitnessWorker(ws: WorkspaceState): void {
   terminateTrialWitnessWorker(state, abortError('Trial witness worker disposed.'));
   trialWitnessWorkerStates.delete(ws);
 }
+
+workspaceRegistry.setOnDrop(disposeTrialWitnessWorker);
 
 export async function captureTrialWorkspaceWitnessAsync(
   ws: WorkspaceState,

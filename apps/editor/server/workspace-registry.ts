@@ -18,7 +18,6 @@ import { bootstrapBuiltins } from '@tagma/sdk/plugins';
 import { normalizeWorkspaceKey } from '@tagma/types/workspace-key';
 import { WorkspaceState, createDefaultWorkspaceState } from './workspace-state.js';
 import { shutdownRunForWorkspace } from './run-shutdown.js';
-import { disposeTrialWitnessWorker } from './chat-pipeline-trial-witness.js';
 
 export { normalizeWorkspaceKey };
 
@@ -28,14 +27,6 @@ export const DEFAULT_WORKSPACE_KEY = '__default__';
 export const __workspaceRegistryTestHooks: {
   disposeTrialWitnessWorker?: (ws: WorkspaceState) => void;
 } = {};
-
-function disposeTrialWitnessWorkerForWorkspace(ws: WorkspaceState): void {
-  if (__workspaceRegistryTestHooks.disposeTrialWitnessWorker) {
-    __workspaceRegistryTestHooks.disposeTrialWitnessWorker(ws);
-    return;
-  }
-  disposeTrialWitnessWorker(ws);
-}
 
 /**
  * Cheap sanity check for workspace keys coming from the `X-Tagma-Workspace`
@@ -58,6 +49,7 @@ export function isValidWorkspaceKey(key: string): boolean {
 class WorkspaceRegistry {
   private readonly map = new Map<string, WorkspaceState>();
   private onCreate: ((ws: WorkspaceState) => void) | null = null;
+  private onDrop: ((ws: WorkspaceState) => void) | null = null;
 
   /** Return the live WorkspaceState for `key`, or `undefined` if absent. */
   get(key: string): WorkspaceState | undefined {
@@ -73,6 +65,15 @@ class WorkspaceRegistry {
    */
   setOnCreate(cb: (ws: WorkspaceState) => void): void {
     this.onCreate = cb;
+  }
+
+  /**
+   * Register the optional cleanup owned by higher-level workspace services.
+   * Keeping that service out of this module prevents the registry's import
+   * graph from cycling back through `state.ts` before this singleton exists.
+   */
+  setOnDrop(cb: (ws: WorkspaceState) => void): void {
+    this.onDrop = cb;
   }
 
   /**
@@ -133,7 +134,7 @@ class WorkspaceRegistry {
     }
     shutdownRunForWorkspace(ws);
     try {
-      disposeTrialWitnessWorkerForWorkspace(ws);
+      (__workspaceRegistryTestHooks.disposeTrialWitnessWorker ?? this.onDrop)?.(ws);
     } catch {
       /* best-effort */
     }
