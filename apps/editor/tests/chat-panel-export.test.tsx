@@ -656,8 +656,8 @@ describe('ChatPanel export affordance', () => {
     expect(html).not.toContain('Model');
   });
 
-  test('advances progress for small steps without rendering their text', () => {
-    const before = renderToStaticMarkup(
+  test('reserves most of the progress range for working and finalization', () => {
+    const enteringWorking = renderToStaticMarkup(
       <ConversationFlowBarView
         steps={[
           { key: 'request', label: 'Request', status: 'complete' },
@@ -667,20 +667,56 @@ describe('ChatPanel export affordance', () => {
         queuedCount={0}
       />,
     );
-    const after = renderToStaticMarkup(
+    const deepInWorking = renderToStaticMarkup(
       <ConversationFlowBarView
         steps={[
           { key: 'request', label: 'Request', status: 'complete' },
           { key: 'model', label: 'Model', status: 'complete' },
-          { key: 'thinking', label: 'Thinking', status: 'active' },
+          { key: 'thinking', label: 'Thinking', status: 'complete' },
+          { key: 'tool:read', label: 'read', status: 'complete' },
+          { key: 'tool:edit', label: 'edit', status: 'complete' },
+          { key: 'tool:test', label: 'test', status: 'active' },
+        ]}
+        queuedCount={0}
+      />,
+    );
+    const responding = renderToStaticMarkup(
+      <ConversationFlowBarView
+        steps={[
+          { key: 'request', label: 'Request', status: 'complete' },
+          { key: 'model', label: 'Model', status: 'complete' },
+          { key: 'response', label: 'Response', status: 'active' },
+        ]}
+        queuedCount={0}
+      />,
+    );
+    const waitingAfterResponse = renderToStaticMarkup(
+      <ConversationFlowBarView
+        steps={[
+          { key: 'request', label: 'Request', status: 'complete' },
+          { key: 'response', label: 'Response', status: 'complete' },
+          { key: 'waiting', label: 'Waiting', status: 'active' },
+        ]}
+        queuedCount={0}
+      />,
+    );
+    const finalizing = renderToStaticMarkup(
+      <ConversationFlowBarView
+        steps={[
+          { key: 'request', label: 'Request', status: 'complete' },
+          { key: 'response', label: 'Response', status: 'complete' },
+          { key: 'reconcile', label: 'Check changes', status: 'active' },
         ]}
         queuedCount={0}
       />,
     );
 
-    expect(before).toMatch(/aria-valuenow=.52./);
-    expect(after).toMatch(/aria-valuenow=.85./);
-    for (const html of [before, after]) {
+    expect(enteringWorking).toMatch(/aria-valuenow=.45./);
+    expect(deepInWorking).toMatch(/aria-valuenow=.45./);
+    expect(responding).toMatch(/aria-valuenow=.78./);
+    expect(waitingAfterResponse).toMatch(/aria-valuenow=.78./);
+    expect(finalizing).toMatch(/aria-valuenow=.90./);
+    for (const html of [enteringWorking, deepInWorking]) {
       expect(html).toContain('Working');
       expect(html).not.toContain('Request');
       expect(html).not.toContain('Model');
@@ -780,6 +816,7 @@ describe('ChatPanel export affordance', () => {
     expect(selectedActivity).toEqual(activity);
     expect(html).toContain('Conversation flow');
     expect(html).toContain('Complete');
+    expect(html).toMatch(/aria-valuenow=.100./);
     expect(html).not.toContain('write');
     expect(html).not.toContain('Response');
   });

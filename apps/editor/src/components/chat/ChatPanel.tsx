@@ -160,13 +160,7 @@ export function ConversationFlowBarView({
 
   const activeStep =
     [...steps].reverse().find((step) => step.status === 'active') ?? steps[steps.length - 1];
-  const progressValue = steps.reduce((total, step) => {
-    if (step.status === 'complete') return total + 1;
-    if (step.status === 'active') return total + 0.55;
-    if (step.status === 'error') return total + 0.35;
-    return total;
-  }, 0);
-  const percent = Math.min(100, Math.max(0, (progressValue / steps.length) * 100));
+  const percent = conversationFlowProgressPercent(steps);
   const majorStage = conversationFlowMajorStage(steps, activeStep);
 
   return (
@@ -197,6 +191,46 @@ export function ConversationFlowBarView({
       </div>
     </section>
   );
+}
+
+const CONVERSATION_FLOW_PROGRESS = {
+  queued: 5,
+  starting: 12,
+  working: 45,
+  approval: 62,
+  responding: 78,
+  finalizing: 90,
+  flushing: 96,
+  complete: 100,
+} as const;
+
+/**
+ * Report progress by durable lifecycle phase instead of counting activity
+ * events. OpenCode can emit an unknown number of thinking, tool, retry, and
+ * compaction events, so treating each event as an equal slice makes long
+ * Working phases appear almost complete. The fixed bands deliberately reserve
+ * most of the range between Starting and Responding for that variable work.
+ */
+export function conversationFlowProgressPercent(steps: FlowStep[]): number {
+  if (steps.every((step) => step.status === 'complete')) {
+    return CONVERSATION_FLOW_PROGRESS.complete;
+  }
+
+  const reportedSteps = steps.filter((step) => step.key !== 'error');
+  if (reportedSteps.length === 0) return CONVERSATION_FLOW_PROGRESS.starting;
+  return Math.max(...reportedSteps.map(conversationFlowStepProgress));
+}
+
+function conversationFlowStepProgress(step: FlowStep): number {
+  if (step.key === 'queued') return CONVERSATION_FLOW_PROGRESS.queued;
+  if (step.label === 'Request') return CONVERSATION_FLOW_PROGRESS.starting;
+  if (step.key === 'permission') return CONVERSATION_FLOW_PROGRESS.approval;
+  if (step.label === 'Response') return CONVERSATION_FLOW_PROGRESS.responding;
+  if (step.key === 'reconcile' || step.key === 'yaml-action') {
+    return CONVERSATION_FLOW_PROGRESS.finalizing;
+  }
+  if (step.key === 'flush') return CONVERSATION_FLOW_PROGRESS.flushing;
+  return CONVERSATION_FLOW_PROGRESS.working;
 }
 
 /**
