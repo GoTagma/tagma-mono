@@ -1,5 +1,13 @@
-import { mkdirSync, rmSync, existsSync, readFileSync, readdirSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { spawnSync } from 'node:child_process';
+import {
+  mkdirSync,
+  rmSync,
+  existsSync,
+  readFileSync,
+  readdirSync,
+  mkdtempSync,
+} from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const packageDir = resolve(import.meta.dir, '..');
@@ -121,15 +129,78 @@ function purgeCachedTargetRuntime(target: string): void {
   }
 }
 
+function canRunCompileTargetOnHost(target: string | undefined): boolean {
+  if (!target) return true;
+  const platform =
+    process.platform === 'win32'
+      ? 'windows'
+      : process.platform === 'darwin'
+        ? 'darwin'
+        : process.platform;
+  return target.startsWith(`bun-${platform}-${process.arch}`);
+}
+
+function verifyCompiledTrialWitnessWorker(
+  executablePath: string,
+  target: string | undefined,
+): void {
+  if (!canRunCompileTargetOnHost(target)) {
+    console.log(`Skipping sidecar worker smoke test for cross-compile target: ${target}`);
+    return;
+  }
+
+  const smokeRoot = mkdtempSync(join(tmpdir(), 'tagma-sidecar-trial-witness-'));
+  try {
+    const result = spawnSync(executablePath, ['--verify-trial-witness-worker', smokeRoot], {
+      encoding: 'utf-8',
+      windowsHide: true,
+      timeout: 60_000,
+    });
+    if (result.error) throw result.error;
+    if (result.status !== 0 || !result.stdout.includes('TAGMA_TRIAL_WITNESS_WORKER_OK')) {
+      throw new Error(
+        [
+          `Compiled sidecar could not start its Trial witness worker (status=${String(result.status)}).`,
+          result.stdout.trim(),
+          result.stderr.trim(),
+        ]
+          .filter(Boolean)
+          .join('\n'),
+      );
+    }
+    console.log('Verified compiled sidecar Trial witness worker.');
+  } finally {
+    rmSync(smokeRoot, { recursive: true, force: true });
+  }
+}
+
+async function buildTrialWitnessWorkerSource(): Promise<string> {
+  const result = await Bun.build({
+    entrypoints: [join(packageDir, 'server', 'chat-pipeline-trial-witness-worker.ts')],
+    target: 'bun',
+    format: 'esm',
+    define: {
+      __TAGMA_SDK_VERSION__: JSON.stringify(bundledSdkVersion),
+    },
+  });
+  if (!result.success || result.outputs.length !== 1) {
+    for (const log of result.logs) console.error(log);
+    throw new Error('Failed to bundle the Trial witness worker.');
+  }
+  return await result.outputs[0]!.text();
+}
+
 async function buildWithRetry(maxAttempts: number): Promise<void> {
   let lastError: unknown = null;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
+      const trialWitnessWorkerSource = await buildTrialWitnessWorkerSource();
       const result = await Bun.build({
         entrypoints: [join(packageDir, 'server', 'index.ts')],
         target: 'bun',
         define: {
           __TAGMA_SDK_VERSION__: JSON.stringify(bundledSdkVersion),
+          __TAGMA_TRIAL_WITNESS_WORKER_SOURCE__: JSON.stringify(trialWitnessWorkerSource),
         },
         compile: {
           outfile,
@@ -137,6 +208,7 @@ async function buildWithRetry(maxAttempts: number): Promise<void> {
         },
       });
       if (result.success) {
+        verifyCompiledTrialWitnessWorker(outfile, compileTarget);
         console.log(`Built desktop sidecar: ${outfile}`);
         return;
       }

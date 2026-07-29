@@ -51,6 +51,19 @@ import {
   publicYamlEditLock,
   shouldBlockYamlEditLockMutation,
 } from './yaml-edit-lock.js';
+import { verifyTrialWitnessWorkerForBuild } from './chat-pipeline-trial-witness.js';
+
+const VERIFY_TRIAL_WITNESS_WORKER_ARG = '--verify-trial-witness-worker';
+const verifyTrialWitnessWorkerArgIndex = process.argv.indexOf(VERIFY_TRIAL_WITNESS_WORKER_ARG);
+if (verifyTrialWitnessWorkerArgIndex >= 0) {
+  const rootDir = process.argv[verifyTrialWitnessWorkerArgIndex + 1];
+  if (!rootDir) {
+    throw new Error(`${VERIFY_TRIAL_WITNESS_WORKER_ARG} requires a workspace path.`);
+  }
+  await verifyTrialWitnessWorkerForBuild(rootDir);
+  process.stdout.write('TAGMA_TRIAL_WITNESS_WORKER_OK\n');
+  process.exit(0);
+}
 
 const app = express();
 // ── C2: Tighten CORS ──

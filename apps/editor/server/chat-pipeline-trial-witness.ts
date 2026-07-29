@@ -27,6 +27,8 @@ import { workspaceRegistry } from './workspace-registry.js';
 
 import type { WorkspaceState } from './workspace-state.js';
 
+declare const __TAGMA_TRIAL_WITNESS_WORKER_SOURCE__: string | undefined;
+
 const TRIAL_HOST_WITNESS_VERSION = 2;
 const FILE_HASH_BUFFER_BYTES = 1024 * 1024;
 const SKIPPED_TAGMA_WITNESS_DIRS = new Set([
@@ -1308,6 +1310,7 @@ interface TrialWitnessWorkerPendingRequest {
 
 interface TrialWitnessWorkerState {
   worker: Worker | null;
+  workerObjectUrl: string | null;
   nextRequestId: number;
   pending: Map<number, TrialWitnessWorkerPendingRequest>;
   queue: Promise<void>;
@@ -1340,6 +1343,7 @@ function trialWitnessWorkerState(ws: WorkspaceState): TrialWitnessWorkerState {
   if (!state) {
     state = {
       worker: null,
+      workerObjectUrl: null,
       nextRequestId: 1,
       pending: new Map(),
       queue: Promise.resolve(),
@@ -1351,8 +1355,11 @@ function trialWitnessWorkerState(ws: WorkspaceState): TrialWitnessWorkerState {
 
 function terminateTrialWitnessWorker(state: TrialWitnessWorkerState, error: Error): void {
   const worker = state.worker;
+  const workerObjectUrl = state.workerObjectUrl;
   state.worker = null;
+  state.workerObjectUrl = null;
   if (worker) worker.terminate();
+  if (workerObjectUrl) URL.revokeObjectURL(workerObjectUrl);
   for (const pending of state.pending.values()) {
     pending.reject(error);
   }
@@ -1361,12 +1368,24 @@ function terminateTrialWitnessWorker(state: TrialWitnessWorkerState, error: Erro
 
 function ensureTrialWitnessWorker(state: TrialWitnessWorkerState): Worker {
   if (state.worker) return state.worker;
-  const worker = new Worker(
-    new URL('./chat-pipeline-trial-witness-worker.js', import.meta.url).href,
-    {
-      type: 'module',
-    },
-  );
+  const embeddedSource =
+    typeof __TAGMA_TRIAL_WITNESS_WORKER_SOURCE__ === 'string'
+      ? __TAGMA_TRIAL_WITNESS_WORKER_SOURCE__
+      : '';
+  const workerObjectUrl = embeddedSource
+    ? URL.createObjectURL(new Blob([embeddedSource], { type: 'text/javascript' }))
+    : null;
+  let worker: Worker;
+  try {
+    worker = new Worker(
+      workerObjectUrl ?? new URL('./chat-pipeline-trial-witness-worker.js', import.meta.url),
+      { type: 'module' },
+    );
+  } catch (error) {
+    if (workerObjectUrl) URL.revokeObjectURL(workerObjectUrl);
+    throw error;
+  }
+  state.workerObjectUrl = workerObjectUrl;
   worker.onmessage = (event: MessageEvent<TrialWitnessWorkerEnvelope>) => {
     const message = event.data;
     const pending = state.pending.get(message.id);
@@ -1501,6 +1520,21 @@ export async function safeCaptureTrialWorkspaceWitnessAsync(
     return { witness: await captureTrialWorkspaceWitnessAsync(ws, signal), reason: null };
   } catch (err) {
     return { witness: null, reason: errorMessage(err) };
+  }
+}
+
+export async function verifyTrialWitnessWorkerForBuild(rootDir: string): Promise<void> {
+  const smokeWorkspace = { workDir: rootDir } as WorkspaceState;
+  try {
+    const witness = await captureTrialWorkspaceWitnessAsync(
+      smokeWorkspace,
+      AbortSignal.timeout(30_000),
+    );
+    if (!witness.digest) {
+      throw new Error('Trial witness worker returned an empty workspace digest.');
+    }
+  } finally {
+    disposeTrialWitnessWorker(smokeWorkspace);
   }
 }
 
