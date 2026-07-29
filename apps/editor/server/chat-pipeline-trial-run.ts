@@ -213,13 +213,6 @@ export const __chatPipelineTrialRunTestHooks: {
   timeoutMsOverride?: number;
 } = {};
 
-function abortReasonMessage(signal: AbortSignal): string {
-  const reason = signal.reason;
-  if (typeof reason === 'string' && reason.trim()) return reason;
-  if (reason instanceof Error && reason.message.trim()) return reason.message;
-  return 'chat trial run aborted';
-}
-
 async function captureTrialHostWitnessAsync(
   ws: WorkspaceState,
   prepared: PreparedTrialHostWitnessInputs,
@@ -1654,7 +1647,7 @@ export async function trialRunChatYamlStage(
           );
         }
         const preWitness = currentWitness.witness;
-        let result = await executeTrial(
+        const result = await executeTrial(
           ws,
           stage,
           entry,

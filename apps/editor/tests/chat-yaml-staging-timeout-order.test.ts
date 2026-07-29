@@ -6,10 +6,7 @@ import { tmpdir } from 'node:os';
 import { bootstrapBuiltins } from '@tagma/sdk/plugins';
 import { parseYaml, serializePipeline } from '@tagma/sdk/yaml';
 
-import {
-  __chatPipelineTrialRunTestHooks,
-  type ChatPipelineTrialRunResult,
-} from '../server/chat-pipeline-trial-run';
+import { __chatPipelineTrialRunTestHooks } from '../server/chat-pipeline-trial-run';
 import { __chatYamlStagingTestHooks, discardChatYamlStage } from '../server/chat-yaml-staging';
 import { registerChatYamlStagingRoutes } from '../server/routes/chat-yaml-staging';
 import {

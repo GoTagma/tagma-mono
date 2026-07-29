@@ -350,8 +350,14 @@ export function App() {
   const workspaceStateVisible = workspacePipelines.workspaceKey === (workDir || null);
   // Keep this derived collection strictly live-only. PipelinePicker and
   // WorkflowView must never receive paths inside .chat-staging.
-  const workspaceYamls = workspaceStateVisible ? workspacePipelines.liveEntries : [];
-  const stagedWorkspacePipelines = workspaceStateVisible ? workspacePipelines.stagedTargets : [];
+  const workspaceYamls = useMemo(
+    () => (workspaceStateVisible ? workspacePipelines.liveEntries : []),
+    [workspacePipelines.liveEntries, workspaceStateVisible],
+  );
+  const stagedWorkspacePipelines = useMemo(
+    () => (workspaceStateVisible ? workspacePipelines.stagedTargets : []),
+    [workspacePipelines.stagedTargets, workspaceStateVisible],
+  );
   const [saveAsInput, setSaveAsInput] = useState<string | null>(null);
   const [newWorkflowInput, setNewWorkflowInput] = useState<string | null>(null);
   const [showTrackIO, setShowTrackIO] = useState(false);
