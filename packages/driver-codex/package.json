@@ -1,6 +1,6 @@
 {
   "name": "@tagma/driver-codex",
-  "version": "0.2.55",
+  "version": "0.2.56",
   "description": "Codex CLI driver for tagma-sdk pipelines",
   "license": "MIT",
   "repository": {
