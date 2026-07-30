@@ -3,7 +3,7 @@ import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 
 export const CHAT_PIPELINE_TRIAL_PLAN_CONTRACT = {
-  version: 2,
+  version: 3,
   limits: {
     planBytes: 256 * 1024,
     cases: 8,
@@ -22,12 +22,14 @@ export const CHAT_PIPELINE_TRIAL_PLAN_CONTRACT = {
     'multiple-inputs',
     'duplicate-input-names',
     'multiline-content',
-    'output-collision',
+    'inter-task-output-collision',
+    'repeat-run-output-collision',
+    'concurrent-run-output-collision',
     'repeat-run',
     'empty-content',
     'special-characters',
   ],
-  coverageStatuses: ['covered', 'not-applicable', 'blocked'],
+  coverageStatuses: ['covered', 'accepted-risk', 'not-applicable', 'blocked'],
   findingSeverities: ['blocking', 'warning'],
   findingRepairScopes: ['pipeline-artifact', 'diagnostic-only'],
   expectationTypes: [
@@ -534,8 +536,18 @@ function validateCoveredCaseEvidence(
       evidenced = linkedCases.some((item) =>
         item.fixtures.some((fixture) => fixture.content.includes(String.fromCharCode(10))),
       );
-    } else if (entry.dimension === 'output-collision') {
-      evidenced = hasDistinctOutputExpectation(linkedCases);
+    } else if (entry.dimension === 'inter-task-output-collision') {
+      evidenced = linkedCases.some(
+        (item) => item.targetTaskIds.length >= 2 && hasDistinctOutputExpectation([item]),
+      );
+    } else if (entry.dimension === 'repeat-run-output-collision') {
+      evidenced = linkedCases.some(
+        (item) => item.runs >= 2 && hasDistinctOutputExpectation([item]),
+      );
+    } else if (entry.dimension === 'concurrent-run-output-collision') {
+      throw new Error(
+        'trial plan coverage concurrent-run-output-collision cannot be covered by the sequential trial harness; use accepted-risk, blocked, or not-applicable.',
+      );
     } else if (entry.dimension === 'repeat-run') {
       evidenced = linkedCases.some((item) => item.runs >= 2);
     } else if (entry.dimension === 'empty-content') {

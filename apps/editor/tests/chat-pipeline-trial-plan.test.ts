@@ -15,16 +15,25 @@ import {
 function completePlan(): Record<string, unknown> {
   const caseId = 'all-file-boundaries';
   return {
-    version: 2,
+    version: 3,
     yamlHash: 'a'.repeat(40),
     summary: 'Exercise observable file-processing boundaries.',
     goals: ['Preserve every logical input and its complete content.'],
-    coverage: CHAT_PIPELINE_TRIAL_COVERAGE_DIMENSIONS.map((dimension) => ({
-      dimension,
-      status: 'covered',
-      caseIds: [caseId],
-      rationale: 'Covered by concrete isolated fixtures and output assertions.',
-    })),
+    coverage: CHAT_PIPELINE_TRIAL_COVERAGE_DIMENSIONS.map((dimension) =>
+      dimension === 'concurrent-run-output-collision'
+        ? {
+            dimension,
+            status: 'accepted-risk',
+            caseIds: [],
+            rationale: 'The host harness is sequential; concurrent writes remain an explicit risk.',
+          }
+        : {
+            dimension,
+            status: 'covered',
+            caseIds: [caseId],
+            rationale: 'Covered by concrete isolated fixtures and output assertions.',
+          },
+    ),
     findings: [],
     cases: [
       {
@@ -32,7 +41,7 @@ function completePlan(): Record<string, unknown> {
         title: 'All file boundaries',
         objective: 'Keep duplicate names distinct across repeated runs.',
         runs: 2,
-        targetTaskIds: ['main.process'],
+        targetTaskIds: ['main.process', 'main.publish'],
         fixtures: [
           {
             path: 'inputs/a/report.txt',
@@ -74,12 +83,63 @@ describe('chat pipeline trial plan', () => {
   test('accepts concrete evidence for every required edge-case dimension', () => {
     const plan = parseChatPipelineTrialPlan(completePlan());
 
+    expect(CHAT_PIPELINE_TRIAL_COVERAGE_DIMENSIONS).toEqual([
+      'multiple-inputs',
+      'duplicate-input-names',
+      'multiline-content',
+      'inter-task-output-collision',
+      'repeat-run-output-collision',
+      'concurrent-run-output-collision',
+      'repeat-run',
+      'empty-content',
+      'special-characters',
+    ]);
     expect(plan.coverage).toHaveLength(CHAT_PIPELINE_TRIAL_COVERAGE_DIMENSIONS.length);
     expect(plan.cases[0]).toMatchObject({
       id: 'all-file-boundaries',
       runs: 2,
-      targetTaskIds: ['main.process'],
+      targetTaskIds: ['main.process', 'main.publish'],
     });
+    expect(plan.coverage.find((item) => item.dimension === 'concurrent-run-output-collision')).toMatchObject({
+      status: 'accepted-risk',
+      caseIds: [],
+    });
+  });
+
+  test('does not let a sequential harness claim concurrent-write coverage', () => {
+    const candidate = structuredClone(completePlan());
+    const concurrent = (
+      candidate.coverage as Array<{ dimension: string; status: string; caseIds: string[] }>
+    ).find((item) => item.dimension === 'concurrent-run-output-collision')!;
+    concurrent.status = 'covered';
+    concurrent.caseIds = ['all-file-boundaries'];
+
+    expect(() => parseChatPipelineTrialPlan(candidate)).toThrow(
+      'concurrent-run-output-collision cannot be covered by the sequential trial harness',
+    );
+  });
+
+  test('requires distinct tasks and outputs for inter-task collision coverage', () => {
+    const candidate = structuredClone(completePlan());
+    (candidate.cases as Array<{ targetTaskIds: string[] }>)[0]!.targetTaskIds = ['main.process'];
+
+    expect(() => parseChatPipelineTrialPlan(candidate)).toThrow(
+      'marks inter-task-output-collision covered without concrete linked-case evidence',
+    );
+  });
+
+  test('requires repeated execution and distinct outputs for repeat-run collision coverage', () => {
+    const candidate = structuredClone(completePlan());
+    (candidate.cases as Array<{ runs: number }>)[0]!.runs = 1;
+    const repeatRun = (
+      candidate.coverage as Array<{ dimension: string; status: string; caseIds: string[] }>
+    ).find((item) => item.dimension === 'repeat-run')!;
+    repeatRun.status = 'not-applicable';
+    repeatRun.caseIds = [];
+
+    expect(() => parseChatPipelineTrialPlan(candidate)).toThrow(
+      'marks repeat-run-output-collision covered without concrete linked-case evidence',
+    );
   });
 
   test('requires every case to target at least one qualified task id', () => {
@@ -102,6 +162,11 @@ describe('chat pipeline trial plan', () => {
       'main.process',
       'main.process',
     ];
+    const interTaskCollision = (
+      candidate.coverage as Array<{ dimension: string; status: string; caseIds: string[] }>
+    ).find((item) => item.dimension === 'inter-task-output-collision')!;
+    interTaskCollision.status = 'not-applicable';
+    interTaskCollision.caseIds = [];
 
     expect(parseChatPipelineTrialPlan(candidate).cases[0]?.targetTaskIds).toEqual(['main.process']);
   });
@@ -140,6 +205,11 @@ describe('chat pipeline trial plan', () => {
   test('rejects claimed coverage that has no concrete linked-case evidence', () => {
     const candidate = structuredClone(completePlan());
     (candidate.cases as Array<{ runs: number }>)[0]!.runs = 1;
+    const repeatCollision = (
+      candidate.coverage as Array<{ dimension: string; status: string; caseIds: string[] }>
+    ).find((item) => item.dimension === 'repeat-run-output-collision')!;
+    repeatCollision.status = 'not-applicable';
+    repeatCollision.caseIds = [];
 
     expect(() => parseChatPipelineTrialPlan(candidate)).toThrow(
       'marks repeat-run covered without concrete linked-case evidence',
