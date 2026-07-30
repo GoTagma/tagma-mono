@@ -163,6 +163,7 @@ export function ConversationFlowBarView({
     [...steps].reverse().find((step) => step.status === 'active') ?? steps[steps.length - 1];
   const percent = conversationFlowProgressPercent(steps);
   const majorStage = conversationFlowMajorStage(steps, activeStep);
+  const terminalStatus = conversationFlowTerminalStatus(steps, activeStep);
 
   return (
     <section className="shrink-0 border-b border-tagma-border bg-tagma-bg px-3 py-2">
@@ -185,7 +186,7 @@ export function ConversationFlowBarView({
       >
         <div
           className={`h-full transition-[width] duration-300 ${
-            steps.some((step) => step.status === 'error') ? 'bg-tagma-error' : 'bg-tagma-ready'
+            terminalStatus === 'error' ? 'bg-tagma-error' : 'bg-tagma-ready'
           }`}
           style={{ width: `${percent}%` }}
         />
@@ -213,7 +214,7 @@ const CONVERSATION_FLOW_PROGRESS = {
  * most of the range between Starting and Responding for that variable work.
  */
 export function conversationFlowProgressPercent(steps: FlowStep[]): number {
-  if (steps.every((step) => step.status === 'complete')) {
+  if (conversationFlowTerminalStatus(steps) === 'complete') {
     return CONVERSATION_FLOW_PROGRESS.complete;
   }
 
@@ -565,8 +566,9 @@ function appendConversationFlowStep(steps: FlowStep[], step: FlowStep): void {
 }
 
 function conversationFlowMajorStage(steps: FlowStep[], currentStep: FlowStep): string {
-  if (steps.some((step) => step.status === 'error')) return 'Needs attention';
-  if (steps.every((step) => step.status === 'complete')) return 'Complete';
+  const terminalStatus = conversationFlowTerminalStatus(steps, currentStep);
+  if (terminalStatus === 'error') return 'Needs attention';
+  if (terminalStatus === 'complete') return 'Complete';
   if (currentStep.key === 'permission') return 'Waiting for approval';
   if (currentStep.key === 'reconcile' || currentStep.key === 'yaml-action') {
     return 'Finalizing changes';
@@ -576,6 +578,15 @@ function conversationFlowMajorStage(steps: FlowStep[], currentStep: FlowStep): s
   if (currentStep.label === 'Request') return 'Starting';
   if (currentStep.label === 'Response') return 'Responding';
   return 'Working';
+}
+
+function conversationFlowTerminalStatus(
+  steps: FlowStep[],
+  currentStep = [...steps].reverse().find((step) => step.status === 'active') ?? steps.at(-1),
+): 'active' | 'complete' | 'error' {
+  if (!currentStep || currentStep.status === 'error') return 'error';
+  if (steps.some((step) => step.status === 'active' || step.status === 'pending')) return 'active';
+  return 'complete';
 }
 
 /**

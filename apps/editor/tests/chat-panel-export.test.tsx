@@ -903,4 +903,42 @@ describe('ChatPanel export affordance', () => {
     expect(html).not.toContain('write');
     expect(html).not.toContain('Response');
   });
+
+  test('shows a recovered tool failure as complete after later successful activity', () => {
+    const steps = buildConversationFlowSteps({
+      activity: [
+        { kind: 'request-sent', startedAt: 1_000, endedAt: 1_100, count: 1 },
+        {
+          kind: 'tool-error',
+          startedAt: 1_100,
+          endedAt: 1_200,
+          count: 1,
+          detail: 'tagma_trial_plan',
+        },
+        {
+          kind: 'tool-completed',
+          startedAt: 1_300,
+          endedAt: 1_400,
+          count: 1,
+          detail: 'tagma_trial_plan',
+        },
+        { kind: 'streaming-answer', startedAt: 1_400, endedAt: 1_500, count: 1 },
+      ],
+      sending: false,
+      pendingUserText: null,
+      queuedCount: 0,
+      pendingPermissionCount: 0,
+      reconciling: false,
+      flushing: false,
+      postChatYamlAction: null,
+      sendError: null,
+    });
+
+    const html = renderToStaticMarkup(<ConversationFlowBarView steps={steps} queuedCount={0} />);
+
+    expect(steps.some((step) => step.status === 'error')).toBe(true);
+    expect(html).toContain('Complete');
+    expect(html).toContain('bg-tagma-ready');
+    expect(html).not.toContain('Needs attention');
+  });
 });
