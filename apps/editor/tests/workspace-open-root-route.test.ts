@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { parse } from 'node:path';
 
 import { registerWorkspaceRoutes } from '../server/routes/workspace.js';
+import { normalizeWorkspaceKey } from '../server/workspace-registry.js';
 import { WORKSPACE_ROOT_SELECTION_ERROR } from '../shared/workspace-root-selection.js';
 
 type ResponseHarness = ReturnType<typeof makeResponse>;
@@ -61,6 +62,6 @@ test('PATCH /api/workspace rejects the filesystem root before creating workspace
   expect(response.statusCode).toBe(400);
   expect(response.body).toEqual({
     error: WORKSPACE_ROOT_SELECTION_ERROR,
-    workDir: root,
+    workDir: normalizeWorkspaceKey(root),
   });
 });

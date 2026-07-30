@@ -3440,6 +3440,7 @@ export function App() {
               : undefined
           }
           allowDirectorySelection={explorer.purpose === 'plugin-import'}
+          workspaceDirectory={explorer.purpose === 'workdir'}
           multiple={explorer.purpose === 'import'}
           onConfirmMany={explorer.purpose === 'import' ? handleExplorerConfirmMany : undefined}
           onCancel={() => {

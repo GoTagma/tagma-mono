@@ -268,6 +268,10 @@
   `.tagma/<stem>/<stem>.yaml` shape. Drive-letter casing and `/` versus `\\` are aliases;
   POSIX path comparisons remain case-sensitive.
 
+## Workspace Roots
+
+- Filesystem, Windows drive, and UNC share roots are navigation-only and must never be accepted as Tagma workspaces. Enforce this in both the workspace picker and the sidecar boundary; ordinary project directories beneath those roots remain valid.
+
 ## Workflow Self-Repair
 
 - Persisted workflow self-repair is finite and success-conditioned. The editor UI and workspace

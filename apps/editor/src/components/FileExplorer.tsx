@@ -4,6 +4,7 @@ import { Folder, FileText, ChevronUp, HardDrive, X, FolderPlus } from 'lucide-re
 import { api } from '../api/client';
 import type { FsCapabilityPurpose, FsEntry } from '../api/client';
 import { useModalFocusTrap } from '../hooks/use-modal-focus-trap';
+import { workspaceRootSelectionIssue } from '../../shared/workspace-root-selection.js';
 
 export type FileExplorerMode = 'open' | 'save' | 'directory';
 
@@ -27,6 +28,8 @@ interface FileExplorerProps {
    */
   multiple?: boolean;
   allowDirectorySelection?: boolean;
+  /** Treat filesystem roots as navigation-only workspace picker locations. */
+  workspaceDirectory?: boolean;
   capabilityPurpose?: FsCapabilityPurpose;
   onConfirm: (path: string) => void;
   onConfirmWithCapability?: (path: string, capabilityToken: string | null) => void;
@@ -42,6 +45,7 @@ export function FileExplorer({
   picker,
   multiple,
   allowDirectorySelection,
+  workspaceDirectory,
   capabilityPurpose,
   onConfirm,
   onConfirmWithCapability,
@@ -70,19 +74,27 @@ export function FileExplorer({
   const newFolderRef = useRef<HTMLInputElement>(null);
   const modalRef = useModalFocusTrap<HTMLDivElement>();
   const multi = multiple && mode === 'open';
+  const directorySelectionIssue = workspaceDirectory
+    ? workspaceRootSelectionIssue(currentPath)
+    : null;
 
   const defaultTitle =
     mode === 'open' ? 'Open File' : mode === 'save' ? 'Save As' : 'Select Directory';
 
   const confirmPath = useCallback(
     (path: string, token: string | null = null) => {
+      const selectionIssue = workspaceDirectory ? workspaceRootSelectionIssue(path) : null;
+      if (selectionIssue) {
+        setError(selectionIssue);
+        return;
+      }
       if (onConfirmWithCapability) {
         onConfirmWithCapability(path, token);
       } else {
         onConfirm(path);
       }
     },
-    [onConfirm, onConfirmWithCapability],
+    [onConfirm, onConfirmWithCapability, workspaceDirectory],
   );
 
   const loadDir = useCallback(
@@ -228,7 +240,7 @@ export function FileExplorer({
           if (capabilityPurpose) {
             loadDir(entry.path);
           } else {
-            onConfirm(entry.path);
+            confirmPath(entry.path);
           }
         } else {
           loadDir(entry.path);
@@ -237,7 +249,7 @@ export function FileExplorer({
         confirmPath(entry.path, entryCapabilityTokens[entry.path] ?? null);
       }
     },
-    [mode, loadDir, onConfirm, confirmPath, capabilityPurpose, entryCapabilityTokens],
+    [mode, loadDir, confirmPath, capabilityPurpose, entryCapabilityTokens],
   );
 
   return (
@@ -420,6 +432,11 @@ export function FileExplorer({
             </div>
           )}
           <div className="flex flex-wrap items-center justify-end gap-2">
+            {directorySelectionIssue && (
+              <span className="mr-auto max-w-[360px] text-[10px] text-tagma-error" role="status">
+                {directorySelectionIssue}
+              </span>
+            )}
             {multi && (
               <span className="text-[10px] text-tagma-muted mr-auto">
                 {selected.length === 0
@@ -447,7 +464,11 @@ export function FileExplorer({
                   {selected.length > 1 ? `Open ${selected.length} files` : 'Open'}
                 </button>
               ) : allowDirectorySelection ? (
-                <button onClick={handleConfirm} className="btn-primary">
+                <button
+                  onClick={handleConfirm}
+                  disabled={directorySelectionIssue !== null}
+                  className="btn-primary disabled:cursor-not-allowed disabled:opacity-40"
+                >
                   Select Directory
                 </button>
               ) : (
@@ -456,7 +477,11 @@ export function FileExplorer({
                 </span>
               )
             ) : (
-              <button onClick={handleConfirm} className="btn-primary">
+              <button
+                onClick={handleConfirm}
+                disabled={mode === 'directory' && directorySelectionIssue !== null}
+                className="btn-primary disabled:cursor-not-allowed disabled:opacity-40"
+              >
                 {mode === 'save' ? 'Save' : 'Select'}
               </button>
             )}

@@ -16,6 +16,7 @@ import { isAbsolute } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
 import { bootstrapBuiltins } from '@tagma/sdk/plugins';
 import { normalizeWorkspaceKey } from '@tagma/types/workspace-key';
+import { isFilesystemRootPath } from '../shared/workspace-root-selection.js';
 import { WorkspaceState, createDefaultWorkspaceState } from './workspace-state.js';
 import { shutdownRunForWorkspace } from './run-shutdown.js';
 
@@ -38,7 +39,7 @@ export const __workspaceRegistryTestHooks: {
  */
 export function isValidWorkspaceKey(key: string): boolean {
   if (key === DEFAULT_WORKSPACE_KEY) return true;
-  if (!key || !isAbsolute(key)) return false;
+  if (!key || !isAbsolute(key) || isFilesystemRootPath(key)) return false;
   try {
     return existsSync(key) && statSync(key).isDirectory();
   } catch {

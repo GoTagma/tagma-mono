@@ -83,6 +83,10 @@ import {
 import { recordWorkspaceOpen } from './recent.js';
 import { generateConfigId } from '../../shared/config-id.js';
 import {
+  WORKSPACE_ROOT_SELECTION_ERROR,
+  workspaceRootSelectionIssue,
+} from '../../shared/workspace-root-selection.js';
+import {
   CREATE_NEW_PIPELINE_ACTION_KIND,
   isCreateNewPipelineRequestedAction,
 } from '../../shared/requested-action.js';
@@ -1024,6 +1028,13 @@ export function registerWorkspaceRoutes(app: express.Express): void {
       return res.status(400).json({ error: 'workDir must be a non-empty string' });
     }
     const normalized = normalizeWorkspaceKey(wd);
+    if (workspaceRootSelectionIssue(normalized)) {
+      return res.status(400).json({
+        error: WORKSPACE_ROOT_SELECTION_ERROR,
+        workDir: normalized,
+      });
+    }
+
     // Refuse to materialize a WorkspaceState for a path that doesn't
     // resolve to an existing directory. Without this a typo in the client
     // (or a stale entry in the Recent list) would still spin up a

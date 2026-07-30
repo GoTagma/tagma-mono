@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync } from 'no
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 
+import { workspaceRootSelectionIssue } from '../../shared/workspace-root-selection.js';
 /**
  * Global recent-workspaces list lives in the user's home directory so it is
  * shared across every Tagma pipeline on this machine (unlike `<workDir>/.tagma`
@@ -53,6 +54,7 @@ function readRecent(): RecentFile {
       const p = (item as { path?: unknown }).path;
       const ts = (item as { openedAt?: unknown }).openedAt;
       if (typeof p !== 'string' || !p) continue;
+      if (workspaceRootSelectionIssue(p)) continue;
       cleaned.push({
         path: p,
         openedAt: typeof ts === 'number' && Number.isFinite(ts) ? ts : Date.now(),
@@ -87,6 +89,7 @@ function pathsEqual(a: string, b: string): boolean {
 export function recordWorkspaceOpen(absPath: string): void {
   if (!absPath) return;
   const normalized = resolve(absPath);
+  if (workspaceRootSelectionIssue(normalized)) return;
   const data = readRecent();
   const filtered = data.recent.filter((e) => !pathsEqual(e.path, normalized));
   const next: RecentEntry = { path: normalized, openedAt: Date.now() };
@@ -116,6 +119,10 @@ export function registerRecentRoutes(app: express.Express): void {
     const raw = (req.body ?? {}) as { path?: unknown };
     if (typeof raw.path !== 'string' || !raw.path) {
       return res.status(400).json({ error: 'path is required' });
+    }
+    const scopeIssue = workspaceRootSelectionIssue(raw.path);
+    if (scopeIssue) {
+      return res.status(400).json({ error: scopeIssue });
     }
     recordWorkspaceOpen(raw.path);
     const data = readRecent();
