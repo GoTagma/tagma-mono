@@ -103,7 +103,7 @@ import {
   type WorkflowReturnPathNavigation,
 } from './utils/workflow-return-state';
 import {
-  getLocalYamlEditLockId,
+  getLocalChatYamlEditLockLeaseForWorkspace,
   releaseChatYamlEditLock,
   useYamlEditLockStore,
   YAML_EDIT_LOCK_MESSAGE,
@@ -1033,6 +1033,10 @@ export function App() {
     let cancelled = false;
     void (async () => {
       let keepYamlLockForRepair = false;
+      const snapshot = finishedTurn.yamlSnapshotBeforeSend;
+      const chatYamlLockLease = snapshot
+        ? getLocalChatYamlEditLockLeaseForWorkspace(snapshot.workDir)
+        : null;
       let lifecycleCancellationGuard: ReturnType<
         typeof createChatYamlLifecycleCancellationGuard
       > | null = null;
@@ -1041,7 +1045,6 @@ export function App() {
         lifecycleCancellationGuard ? lifecycleCancellationGuard.stopIfRequested() : false;
       useChatStore.getState().setReconciling(true);
       try {
-        const snapshot = finishedTurn.yamlSnapshotBeforeSend;
         const finishedSessionId = finishedTurn.sessionId;
         const currentChatState = useChatStore.getState();
         const finishedSessionCanContinue = canContinueChatSession(
@@ -1065,10 +1068,11 @@ export function App() {
               resultWorkspaceKey: snapshot.workDir,
               activeWorkspaceKey: usePipelineStore.getState().workDir,
             });
-          const lockId = getLocalYamlEditLockId();
-          if (!lockId) throw new Error('The local OpenCode YAML lock lease was lost.');
+          if (!chatYamlLockLease) {
+            throw new Error('The local OpenCode YAML lock lease was lost.');
+          }
           const underChatLock = <T,>(op: () => Promise<T>) =>
-            withYamlEditLockRequestBypass(lockId, op);
+            withYamlEditLockRequestBypass(chatYamlLockLease.id, op);
           useChatStore.getState().beginChatYamlLifecycle({
             turnId: finishedTurn.id,
             stageId: snapshot.staging.id,
@@ -1678,10 +1682,11 @@ export function App() {
             }
           }
 
-          const lockId = getLocalYamlEditLockId();
-          if (!lockId) throw new Error('The local OpenCode YAML lock lease was lost.');
+          if (!chatYamlLockLease) {
+            throw new Error('The local OpenCode YAML lock lease was lost.');
+          }
           const copyOnce = () =>
-            withYamlEditLockRequestBypass(lockId, () =>
+            withYamlEditLockRequestBypass(chatYamlLockLease.id, () =>
               api.copyChatResultPipeline({
                 idempotencyKey: finishedTurn.id,
                 sourcePath: target!.path,
@@ -1744,10 +1749,9 @@ export function App() {
           if (cancelled) return;
           if (!forked) {
             const localRevisionBeforeReload = getLocalPipelineEditRevision();
-            const lockId = getLocalYamlEditLockId();
             const reload = () => api.reloadFromDisk();
-            const newState = lockId
-              ? await withYamlEditLockRequestBypass(lockId, reload)
+            const newState = chatYamlLockLease
+              ? await withYamlEditLockRequestBypass(chatYamlLockLease.id, reload)
               : await reload();
             if (cancelled) return;
             if (getLocalPipelineEditRevision() !== localRevisionBeforeReload) {
@@ -1794,10 +1798,9 @@ export function App() {
         if (abandonedStage && abandonedSnapshot) {
           removeStagedWorkspacePipelines(abandonedSnapshot.workDir, abandonedStage.id);
         }
-        const lockId = getLocalYamlEditLockId();
-        if (abandonedStage && lockId && !lifecycleCancellationGuard?.cleanupStarted()) {
+        if (abandonedStage && chatYamlLockLease && !lifecycleCancellationGuard?.cleanupStarted()) {
           try {
-            await withYamlEditLockRequestBypass(lockId, () =>
+            await withYamlEditLockRequestBypass(chatYamlLockLease.id, () =>
               api.discardChatYamlStage(abandonedStage.id, abandonedSnapshot!.workDir),
             );
           } catch (discardErr) {
@@ -1811,8 +1814,8 @@ export function App() {
         });
       } finally {
         try {
-          if (!keepYamlLockForRepair) {
-            await releaseChatYamlEditLock();
+          if (!keepYamlLockForRepair && chatYamlLockLease) {
+            await releaseChatYamlEditLock(chatYamlLockLease);
           }
         } finally {
           useChatStore.getState().setReconciling(false);

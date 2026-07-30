@@ -3504,7 +3504,9 @@ async function promptOpencode(
 
     if (preSendWorkDir) {
       const continuingLogicalTurn = opts.reuseLogicalTurn || opts.internal;
-      const existingLease = getLocalChatYamlEditLockLease();
+      const existingLease = continuingLogicalTurn
+        ? getLocalChatYamlEditLockLeaseForWorkspace(workspaceKeyAtStart)
+        : getLocalChatYamlEditLockLease();
       diskBranchAlreadyOwned = !!existingLease;
       if (continuingLogicalTurn) {
         lockLease = existingLease;

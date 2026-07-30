@@ -12,6 +12,9 @@
 - Post-turn planning and repair continuations belong to the finished turn's root session even
   after the user switches conversations. Address that cached session explicitly; never fall back
   to the mutable visible session or clear the visible turn's progress/error/watchdog state.
+- Resolve finished-turn reconciliation and logical-turn continuation leases by the turn's
+  workspace, not by the active YAML. Switching pipelines makes a valid path-scoped lease inactive
+  for UI mutation gates; finalize, cleanup, and release must still use that exact workspace lease.
 - Chat model-variant choices come from OpenCode's model catalogs. Merge a model's enabled
   runtime/legacy variants with its v2 `variants` because v2 can omit provider-generated choices;
   v2 metadata wins for duplicate ids. `null` means model default. Do not restore a fixed

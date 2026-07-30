@@ -57,6 +57,35 @@ describe('finished chat turn reconciliation', () => {
     expect(appSource).toContain('const finishedTurn = useChatStore(selectFinishedTurnQueueHead);');
   });
 
+  test('keeps finished-turn reconciliation on the workspace lease after the active pipeline changes', () => {
+    const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
+    const reconcileStart = appSource.indexOf('// Reconcile OpenCode');
+    const reconcileEnd = appSource.indexOf('const handleOpenWorkspaceFile', reconcileStart);
+    expect(reconcileStart).toBeGreaterThan(-1);
+    expect(reconcileEnd).toBeGreaterThan(reconcileStart);
+
+    const reconcileBlock = appSource.slice(reconcileStart, reconcileEnd);
+    expect(reconcileBlock).toContain('getLocalChatYamlEditLockLeaseForWorkspace(snapshot.workDir)');
+    expect(reconcileBlock).not.toContain('getLocalYamlEditLockId()');
+    expect(reconcileBlock).toContain('releaseChatYamlEditLock(chatYamlLockLease)');
+  });
+
+  test('reuses the workspace lease for a logical-turn continuation after a pipeline switch', () => {
+    const chatStoreSource = readFileSync(
+      join(import.meta.dir, '..', 'src', 'store', 'chat-store.ts'),
+      'utf-8',
+    );
+    const promptStart = chatStoreSource.indexOf('async function promptOpencode');
+    const promptEnd = chatStoreSource.indexOf('export const useChatStore', promptStart);
+    expect(promptStart).toBeGreaterThan(-1);
+    expect(promptEnd).toBeGreaterThan(promptStart);
+
+    const promptBlock = chatStoreSource.slice(promptStart, promptEnd);
+    expect(promptBlock).toMatch(
+      /const existingLease = continuingLogicalTurn\s*\? getLocalChatYamlEditLockLeaseForWorkspace\(workspaceKeyAtStart\)\s*:\s*getLocalChatYamlEditLockLease\(\);/,
+    );
+  });
+
   test('requests lifecycle cancellation without replacing the queue-head owner', async () => {
     const head = finishedTurn('head');
     useChatStore.setState({
