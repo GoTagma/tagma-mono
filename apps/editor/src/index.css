@@ -21,6 +21,23 @@
   --tagma-warning: 251 191 36;
   --tagma-info: 167 139 250;
   --tagma-ready: 103 232 249;
+
+  /* Elevation inputs for the shadow-raised / dropdown / modal scale in
+     tailwind.config.js. Dark mode casts pure black; the three intensities
+     are the contact shadow, the ambient spread, and the long modal cast. */
+  --tagma-shadow: 0 0 0;
+  --tagma-shadow-contact: 0.5;
+  --tagma-shadow-ambient: 0.45;
+  --tagma-shadow-cast: 0.6;
+
+  /* Shared motion vocabulary. One decelerating curve for everything that
+     settles (hover, panel entrances) and one snappy curve for presses, so
+     interactions across the app share a single rhythm instead of each
+     component picking its own ad-hoc `ease`. */
+  --tagma-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --tagma-ease-snap: cubic-bezier(0.4, 0, 0.2, 1);
+  --tagma-dur-fast: 110ms;
+  --tagma-dur-base: 170ms;
 }
 html.light {
   --tagma-bg: 245 245 247;
@@ -40,6 +57,15 @@ html.light {
   --tagma-warning: 180 83 9; /* amber-700 */
   --tagma-info: 109 40 217; /* violet-700 */
   --tagma-ready: 14 116 144; /* cyan-700 */
+
+  /* Light mode tints its shadows with the cool muted hue instead of black —
+     neutral black over near-white reads as dirty gray — and drops every
+     intensity well below the dark-mode values, since the same alpha that
+     reads as depth on #08080a reads as grime on #f5f5f7. */
+  --tagma-shadow: 82 89 100;
+  --tagma-shadow-contact: 0.1;
+  --tagma-shadow-ambient: 0.14;
+  --tagma-shadow-cast: 0.2;
 }
 
 /* Document zoom is driven by Electron's webContents.setZoomFactor (see
@@ -134,9 +160,13 @@ select,
   color: rgb(var(--tagma-text));
 }
 
+/* 4px was thin enough to be a drag target only by accident. 7px with a
+   transparent border gives the thumb a 5px visual body inside a padded
+   gutter — easier to grab, still visually quiet, and it no longer sits
+   flush against the content it scrolls. */
 ::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 7px;
+  height: 7px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
@@ -145,16 +175,30 @@ select,
    darker-tinted thumb since the original 15% cool-gray is nearly invisible
    against the near-white bg. */
 ::-webkit-scrollbar-thumb {
-  background: rgba(107, 114, 128, 0.15);
+  background: rgba(107, 114, 128, 0.22);
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  transition: background-color var(--tagma-dur-base) var(--tagma-ease);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(107, 114, 128, 0.3);
+  background: rgba(107, 114, 128, 0.42);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:active {
+  background: rgba(107, 114, 128, 0.6);
+  background-clip: padding-box;
 }
 html.light ::-webkit-scrollbar-thumb {
   background: rgb(var(--tagma-muted) / 0.3);
+  background-clip: padding-box;
 }
 html.light ::-webkit-scrollbar-thumb:hover {
   background: rgb(var(--tagma-muted) / 0.55);
+  background-clip: padding-box;
+}
+html.light ::-webkit-scrollbar-thumb:active {
+  background: rgb(var(--tagma-muted) / 0.7);
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-corner {
   background: transparent;
@@ -299,6 +343,24 @@ select:focus {
   box-shadow: 0 0 0 1px rgb(var(--tagma-accent) / 0.2);
 }
 
+/* Keyboard-only focus ring. Buttons previously had no visible focus state at
+   all, so tabbing through the toolbar or a dialog left no indication of
+   where you were. `:focus-visible` keeps mouse clicks ring-free, so this is
+   purely additive for keyboard users. Components that already paint their
+   own focus treatment opt out via `.focus-ring-none`. */
+button:focus-visible,
+[role='button']:focus-visible,
+[role='tab']:focus-visible,
+[tabindex]:not([tabindex='-1']):focus-visible,
+summary:focus-visible,
+a:focus-visible {
+  outline: 1px solid rgb(var(--tagma-accent) / 0.9);
+  outline-offset: 1px;
+}
+.focus-ring-none:focus-visible {
+  outline: none;
+}
+
 input[type='checkbox'] {
   accent-color: rgb(var(--tagma-accent));
 }
@@ -324,19 +386,56 @@ input[type='checkbox'] {
     @apply block text-[10px] font-medium text-tagma-muted uppercase tracking-wider mb-1;
   }
   .field-input {
-    @apply w-full text-[11px] bg-tagma-bg border border-tagma-border px-2.5 py-1.5 text-tagma-text placeholder:text-tagma-muted/50 transition-colors;
+    @apply w-full text-[11px] bg-tagma-bg border border-tagma-border px-2.5 py-1.5 text-tagma-text placeholder:text-tagma-muted/50;
+    transition:
+      border-color var(--tagma-dur-base) var(--tagma-ease),
+      box-shadow var(--tagma-dur-base) var(--tagma-ease),
+      background-color var(--tagma-dur-base) var(--tagma-ease);
   }
+  .field-input:hover:not(:focus):not(:disabled) {
+    border-color: rgb(var(--tagma-border) / 1);
+    background-color: rgb(var(--tagma-bg) / 0.6);
+  }
+  /* Buttons pick up a 1px translate on press. At this type scale a scale()
+     transform blurs the label mid-transition, whereas a whole-pixel shift
+     stays crisp and still reads as a physical push. */
   .btn-primary {
-    @apply flex items-center gap-1.5 px-3 py-1 text-[11px] font-medium tracking-wide bg-tagma-accent text-white hover:bg-tagma-accent/85 transition-all;
+    @apply flex items-center gap-1.5 px-3 py-1 text-[11px] font-medium tracking-wide bg-tagma-accent text-white hover:bg-tagma-accent/85;
+    transition:
+      background-color var(--tagma-dur-base) var(--tagma-ease),
+      box-shadow var(--tagma-dur-base) var(--tagma-ease),
+      transform var(--tagma-dur-fast) var(--tagma-ease-snap);
+  }
+  .btn-primary:hover:not(:disabled) {
+    box-shadow: 0 0 12px -4px rgb(var(--tagma-accent) / 0.55);
+  }
+  .btn-primary:active:not(:disabled) {
+    transform: translateY(1px);
+    box-shadow: none;
   }
   .btn-ghost {
-    @apply flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-tagma-muted hover:text-tagma-text hover:bg-tagma-elevated transition-colors;
+    @apply flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-tagma-muted hover:text-tagma-text hover:bg-tagma-elevated;
+    transition:
+      color var(--tagma-dur-fast) var(--tagma-ease),
+      background-color var(--tagma-dur-fast) var(--tagma-ease),
+      transform var(--tagma-dur-fast) var(--tagma-ease-snap);
+  }
+  .btn-ghost:active:not(:disabled) {
+    transform: translateY(1px);
   }
   .btn-danger {
-    @apply w-full px-3 py-1.5 text-xs text-tagma-error border border-tagma-error/20 transition-colors;
+    @apply w-full px-3 py-1.5 text-xs text-tagma-error border border-tagma-error/20;
+    transition:
+      background-color var(--tagma-dur-base) var(--tagma-ease),
+      border-color var(--tagma-dur-base) var(--tagma-ease),
+      transform var(--tagma-dur-fast) var(--tagma-ease-snap);
   }
   .btn-danger:hover {
     background-color: rgb(var(--tagma-error) / 0.08);
+    border-color: rgb(var(--tagma-error) / 0.4);
+  }
+  .btn-danger:active {
+    transform: translateY(1px);
   }
   .chip-xs {
     @apply inline-flex items-center gap-0.5 px-1 py-px text-[9px] font-mono font-semibold border;
@@ -346,6 +445,21 @@ input[type='checkbox'] {
   }
   .chip-md {
     @apply inline-flex items-center gap-2 px-2 py-1 text-[11px] font-medium border;
+  }
+}
+
+/* Respect the OS "reduce motion" setting. The app leans on entrance
+   animations and transitions throughout; without this, users who have asked
+   the system for less movement get all of it anyway. Transitions collapse to
+   ~1ms rather than 0 so transitionend listeners still fire. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
