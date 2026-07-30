@@ -3694,6 +3694,7 @@ async function promptOpencode(
           text:
             buildEditorContext({
               userText: text,
+              chatModel: model,
               currentYamlPath: chatStage ? chatStage.activeStagedPath : undefined,
               workspaceYamlFilePaths: chatStage
                 ? chatStage.entries.map((entry) => entry.stagedPath)

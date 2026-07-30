@@ -87,6 +87,33 @@ describe('chat editor context', () => {
     expect(context).toContain('<workspace-yaml-folders empty="true" />');
   });
 
+  test('exposes the selected OpenCode Chat model only while authoring a new pipeline', () => {
+    usePipelineStore.setState({
+      workDir: 'C:/repo',
+      yamlPath: 'C:/repo/.tagma/deploy/deploy.yaml',
+      registry: { drivers: [], triggers: [], completions: [], middlewares: [] },
+    } as never);
+    const chatModel = { providerID: 'deepseek', modelID: 'deepseek-v4-flash' };
+
+    const createContext = buildEditorContext({
+      userText: 'create a separate new reporting pipeline',
+      workspaceYamlFilePaths: ['C:/repo/.tagma/deploy/deploy.yaml'],
+      chatModel,
+    });
+    const editContext = buildEditorContext({
+      userText: 'add a prompt task to the current pipeline',
+      workspaceYamlFilePaths: ['C:/repo/.tagma/deploy/deploy.yaml'],
+      chatModel,
+    });
+
+    expect(createContext).toContain('<requested-action kind="create-new-pipeline">');
+    expect(createContext).toContain(
+      '<opencode-chat-model provider-id="deepseek" model-id="deepseek-v4-flash" />',
+    );
+    expect(editContext).not.toContain('<requested-action kind="create-new-pipeline">');
+    expect(editContext).not.toContain('<opencode-chat-model');
+  });
+
   test('includes configured Python agent interpreter and venv', () => {
     usePipelineStore.setState({
       workDir: 'C:/repo',

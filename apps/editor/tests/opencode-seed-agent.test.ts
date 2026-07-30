@@ -406,6 +406,24 @@ test('tagma-pipeline agent treats explicit creation as higher priority than exis
   expect(pipeline).toContain('write the returned YAML text');
 });
 
+test('tagma-pipeline applies Chat AI defaults only while creating a new pipeline', () => {
+  const doc = buildTagmaPipelineAgent('Windows');
+  const router = buildTagmaRouterAgent();
+
+  expect(doc).toContain('## New-Pipeline Prompt Defaults');
+  expect(doc).toContain('<requested-action kind="create-new-pipeline">');
+  expect(doc).toContain('<requested-action kind="fill-manual-new-pipeline">');
+  expect(doc).toContain('An explicit user CLI/driver choice wins');
+  expect(doc).toContain('Otherwise use the built-in `opencode` driver');
+  expect(doc).toContain('An explicit user provider/model choice wins');
+  expect(doc).toContain('persist `model: <provider-id>/<model-id>`');
+  expect(doc).toContain('Never copy the OpenCode Chat model to a non-`opencode` driver');
+  expect(doc).toContain('Do not apply these defaults while editing an existing pipeline');
+  expect(router).toContain(
+    'preserve `<opencode-chat-model provider-id="..." model-id="..." />` unchanged',
+  );
+});
+
 test('tagma-pipeline agent keeps manifest-first flow while enforcing section isolation', () => {
   const doc = buildTagmaPipelineAgent('Windows');
 

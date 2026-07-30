@@ -1442,7 +1442,7 @@ describe('chat model persistence', () => {
     expect(promptAsyncBodies[0]?.variant).toBe('max');
   });
 
-  test('routes a staged chat prompt through the agent staging directory on POST', async () => {
+  test('routes a manual-new prompt through staging with the selected Chat model snapshot', async () => {
     const repo = 'C:/staged-prompt-repo';
     const baseUrl = 'http://opencode-staged-prompt.test';
     const sourcePath = `${repo}/.tagma/sample/sample.yaml`;
@@ -1452,7 +1452,7 @@ describe('chat model persistence', () => {
     usePipelineStore.setState({
       workDir: repo,
       yamlPath: sourcePath,
-      manualNewPipelineYamlPath: null,
+      manualNewPipelineYamlPath: sourcePath,
       config: {
         name: 'Sample',
         tracks: [
@@ -1477,12 +1477,17 @@ describe('chat model persistence', () => {
     } as never);
 
     try {
-      await useChatStore.getState().send('update the current pipeline');
+      await useChatStore.getState().send('create a simple reporting pipeline');
 
       expect(promptAsyncRequests).toHaveLength(1);
       expect(new URL(promptAsyncRequests[0]!).searchParams.get('directory')).toBe(agentTagmaDir);
       expect(decodeURIComponent(promptAsyncHeaders[0]?.get('x-opencode-directory') ?? '')).toBe(
         agentTagmaDir,
+      );
+      const parts = promptAsyncBodies[0]?.parts as Array<{ type: string; text: string }>;
+      expect(parts[0]?.text).toContain('<requested-action kind="fill-manual-new-pipeline">');
+      expect(parts[0]?.text).toContain(
+        '<opencode-chat-model provider-id="anthropic" model-id="claude" />',
       );
     } finally {
       await releaseChatYamlEditLock();

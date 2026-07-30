@@ -153,6 +153,11 @@ export interface EditorContextOptions {
   workspaceYamlFilePaths?: readonly string[];
   userText?: string;
   currentYamlPath?: string | null;
+  chatModel?: {
+    readonly providerID: string;
+    readonly modelID: string;
+  } | null;
+
   chatYamlStage?: {
     id: string;
     agentTagmaDir: string;
@@ -172,8 +177,27 @@ export function buildEditorContext(options: EditorContextOptions = {}): string {
   const requestContext = {
     currentPipelineIsManualNewDraft: sameChatPath(manualNewPipelineYamlPath, yamlPath),
   };
-  lines.push(...fillManualNewPipelineRequestedActionLines(options.userText, requestContext));
-  lines.push(...createNewPipelineRequestedActionLines(options.userText, requestContext));
+  const fillManualNewPipelineAction = fillManualNewPipelineRequestedActionLines(
+    options.userText,
+    requestContext,
+  );
+  const createNewPipelineAction = createNewPipelineRequestedActionLines(
+    options.userText,
+    requestContext,
+  );
+  lines.push(...fillManualNewPipelineAction, ...createNewPipelineAction);
+  if (
+    (fillManualNewPipelineAction.length > 0 || createNewPipelineAction.length > 0) &&
+    options.chatModel
+  ) {
+    const providerID = options.chatModel.providerID.trim();
+    const modelID = options.chatModel.modelID.trim();
+    if (providerID && modelID) {
+      lines.push(
+        `  <opencode-chat-model provider-id="${escapeEditorContextValue(providerID)}" model-id="${escapeEditorContextValue(modelID)}" />`,
+      );
+    }
+  }
   if (options.chatYamlStage) {
     const agentRoot = options.chatYamlStage.agentTagmaDir.replace(/\\/g, '/');
     lines.push(`  <chat-staging id="${options.chatYamlStage.id}">`);

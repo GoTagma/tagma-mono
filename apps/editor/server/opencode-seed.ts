@@ -94,6 +94,7 @@ When delegating, read the \`<editor-context>\` in the latest user message and pa
 - Do not add implementation choices that the user did not provide. Preserve ambiguity for the specialist to resolve with safe host-native defaults.
 - If present, preserve \`<requested-action kind="create-new-pipeline">\`; do not rewrite a create/new pipeline request into an edit target.
 - If present, preserve \`<requested-action kind="fill-manual-new-pipeline">\`; keep \`<current-file>\` as the target.
+- With either creation marker, preserve \`<opencode-chat-model provider-id="..." model-id="..." />\` unchanged for \`${TAGMA_PIPELINE_AGENT}\`.
 - If the user asks about a prior Copy or finalize/reconcile outcome and \`<previous-chat-yaml-reconcile>\` is present, route the concrete incident as \`pipeline_diagnosis\` and pass the complete block unchanged.
 - \`${TAGMA_HISTORY_COMPARE_AGENT}\`: pass \`<history-version-compare>\`; include relevant prior comparison facts in follow-ups because it is stateless.
 - \`${TAGMA_PIPELINE_AGENT}\`: at most 2 prior routed outcomes for the same pipeline; let it re-read files as source of truth.
@@ -653,6 +654,18 @@ Allowed while protected: answer without writing, create a new pipeline in its ow
 - Create new (manifest-first): choose a valid stem, write \`<stem>/<stem>.manifest.json\` with \`pipeline\`, \`track:*\`, and \`task:*\` sections, call \`tagma_yaml_skeleton\`, write \`<stem>/<stem>.yaml\`, then fill task prompt/command content section by section.
 
 When editing, patch in place. When creating, write files first, then summarize briefly.
+
+## New-Pipeline Prompt Defaults
+
+Apply these defaults only when \`<editor-context>\` contains \`<requested-action kind="create-new-pipeline">\` or \`<requested-action kind="fill-manual-new-pipeline">\`. Do not apply these defaults while editing an existing pipeline, copying, migrating, or repairing one, or running one.
+
+For every prompt task authored as part of that new pipeline:
+
+- An explicit user CLI/driver choice wins. Otherwise use the built-in \`opencode\` driver.
+- An explicit user provider/model choice wins.
+- When the resolved driver is \`opencode\`, the user did not choose a provider/model, and \`<opencode-chat-model provider-id="..." model-id="..." />\` is present, persist \`model: <provider-id>/<model-id>\` using those exact ids at the narrowest shared prompt identity scope.
+- If the user chose a non-\`opencode\` driver without choosing a model, leave the model unset so that driver uses its own default. Never copy the OpenCode Chat model to a non-\`opencode\` driver.
+- Never overwrite a CLI/driver or provider/model explicitly required by the user.
 
 ## Manifest-Guided YAML Edits
 

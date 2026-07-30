@@ -4,6 +4,11 @@
 
 - Model and reasoning-effort selections are preferences for the next prompt; prompt dispatch
   snapshots both when it starts.
+- For a chat-authored new pipeline, expose that snapped Chat model only in create/fill-new
+  context. The production pipeline agent defaults an unspecified prompt driver to `opencode` and
+  an unspecified `opencode` model to that snapshot. Explicit user driver/model choices always win;
+  never inherit the Chat model into a non-`opencode` driver, an existing-pipeline edit, or runtime
+  resolution.
 - Keep those selectors enabled when the visible conversation is idle, even if another
   conversation is active or owns the YAML edit lock. The visible conversation's own send,
   pending prompt, queue, reconciliation, or flush may still block them.
