@@ -1,5 +1,12 @@
 import { expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -33,6 +40,26 @@ async function loadGeneratedTool(root: string) {
   };
 }
 
+function invalidPlanArgs(yamlPath: string): Record<string, unknown> {
+  return {
+    pipeline_path: yamlPath,
+    summary: 'Invalid only because required coverage is missing.',
+    goals: ['Exercise the command.'],
+    coverage: [],
+    findings: [],
+    cases: [
+      {
+        id: 'command',
+        title: 'Command',
+        objective: 'Run a command task.',
+        targetTaskIds: ['main.run'],
+        fixtures: [],
+        expectations: [{ type: 'task-status', taskId: 'main.run', status: 'success' }],
+      },
+    ],
+  };
+}
+
 test('generated trial plan tool bounds equivalent validator failures per stage and YAML hash', async () => {
   const root = mkdtempSync(join(tmpdir(), 'tagma-trial-budget-'));
   try {
@@ -48,23 +75,7 @@ test('generated trial plan tool bounds equivalent validator failures per stage a
     mkdirSync(dirname(yamlPath), { recursive: true });
     writeFileSync(yamlPath, ['pipeline:', '  name: demo', '  tracks: []', ''].join('\n'), 'utf8');
     const tool = await loadGeneratedTool(root);
-    const invalidArgs = {
-      pipeline_path: yamlPath,
-      summary: 'Invalid only because required coverage is missing.',
-      goals: ['Exercise the command.'],
-      coverage: [],
-      findings: [],
-      cases: [
-        {
-          id: 'command',
-          title: 'Command',
-          objective: 'Run a command task.',
-          targetTaskIds: ['main.run'],
-          fixtures: [],
-          expectations: [{ type: 'task-status', taskId: 'main.run', status: 'success' }],
-        },
-      ],
-    };
+    const invalidArgs = invalidPlanArgs(yamlPath);
 
     await expect(tool.execute(invalidArgs, { directory: agentTagmaDir })).rejects.toThrow(
       'trial plan coverage is missing multiple-inputs',
@@ -88,6 +99,37 @@ test('generated trial plan tool bounds equivalent validator failures per stage a
         },
       ],
     });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('generated trial plan tool fails closed when attempt telemetry has negative counters', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-trial-budget-corrupt-'));
+  try {
+    const stageRoot = join(root, '.tagma', '.chat-staging', 'stage-1');
+    const agentTagmaDir = join(stageRoot, 'agent-workspace', '.tagma');
+    const yamlPath = join(agentTagmaDir, 'demo', 'demo.yaml');
+    mkdirSync(dirname(yamlPath), { recursive: true });
+    writeFileSync(yamlPath, ['pipeline:', '  name: demo', '  tracks: []', ''].join('\n'), 'utf8');
+    const tool = await loadGeneratedTool(root);
+    const invalidArgs = invalidPlanArgs(yamlPath);
+    await expect(tool.execute(invalidArgs, { directory: agentTagmaDir })).rejects.toThrow(
+      'trial plan coverage is missing multiple-inputs',
+    );
+
+    const telemetryDir = join(stageRoot, '.trial-plan-telemetry');
+    const telemetryPath = join(
+      telemetryDir,
+      readdirSync(telemetryDir).find((entry) => entry.endsWith('.json'))!,
+    );
+    const telemetry = JSON.parse(readFileSync(telemetryPath, 'utf8')) as Record<string, unknown>;
+    telemetry.toolAttemptCount = -1;
+    writeFileSync(telemetryPath, JSON.stringify(telemetry), 'utf8');
+
+    await expect(tool.execute(invalidArgs, { directory: agentTagmaDir })).rejects.toThrow(
+      'trial plan attempt telemetry is invalid; discard this chat stage before retrying',
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

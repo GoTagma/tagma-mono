@@ -892,6 +892,7 @@ function serializeChatYamlRepairEvidence(evidence: ChatYamlRepairEvidence): stri
       summary: clipChatTrialRepairText(evidence.result.summary, 4_000),
       planFindings: evidence.result.plan?.findings.slice(0, 2).map((item) => ({
         severity: item.severity,
+        repairScope: item.repairScope,
         summary: clipChatTrialRepairText(item.summary, 200),
         evidence: clipChatTrialRepairText(item.evidence, 400),
       })),

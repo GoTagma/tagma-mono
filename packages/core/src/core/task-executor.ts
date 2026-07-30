@@ -813,17 +813,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
     : (task.driver ?? track.driver ?? config.driver ?? 'opencode');
 
   // File-only: execution metadata that actually governs this task type.
-  if (isCommandTaskConfig(task)) {
-    const commandSpec = commandToSpawnSpec(task.command, resolvedCwd);
-    const direct =
-      typeof task.command === 'object' && task.command !== null && 'argv' in task.command;
-    log.debug(
-      `[task:${taskId}]`,
-      direct
-        ? `executor: host-command direct=${commandSpec.args[0]} cwd=${resolvedCwd}`
-        : `executor: host-command shell=${commandSpec.args[0]} cwd=${resolvedCwd}`,
-    );
-  } else {
+  if (!isCommandTaskConfig(task)) {
     const resolvedModel = task.model ?? track.model ?? config.model ?? '(default)';
     const resolvedPerms = task.permissions ?? track.permissions ?? '(default)';
     log.debug(
@@ -940,10 +930,21 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
           `command placeholders rendered empty: ${unresolved.join(', ')}`,
         );
       }
+      const commandSpec = commandToSpawnSpec(expandedCommand, resolvedCwd);
+      const direct =
+        typeof expandedCommand === 'object' &&
+        expandedCommand !== null &&
+        'argv' in expandedCommand;
+      log.debug(
+        `[task:${taskId}]`,
+        direct
+          ? `executor: host-command direct=${commandSpec.args[0]} cwd=${resolvedCwd}`
+          : `executor: host-command shell=${commandSpec.args[0]} cwd=${resolvedCwd}`,
+      );
       log.debug(`[task:${taskId}]`, `command: ${commandLabel(expandedCommand)}`);
       if (Object.keys(secretEnv).length > 0) {
         result = await ctx.runtime.runSpawn(
-          { ...commandToSpawnSpec(expandedCommand, resolvedCwd), env: secretEnv },
+          { ...commandSpec, env: secretEnv },
           null,
           runOpts,
         );

@@ -138,3 +138,68 @@ test('trial repair prompt treats diagnostic-only evidence as non-authorizing con
   expect(prompt).toContain('must never be repaired by weakening or redirecting the pipeline');
   expect(prompt).toContain('update the sibling .requirements.md in the same continuation');
 });
+
+test('oversized trial repair fallback preserves every finding repair scope', () => {
+  const prompt = buildChatYamlRepairPrompt(
+    TARGET,
+    {
+      kind: 'trial-run',
+      result: {
+        version: 6,
+        success: false,
+        kind: 'plan-failed',
+        repairAuthorization: 'pipeline-change-allowed',
+        ran: false,
+        runId: null,
+        summary: 'Mixed repair and diagnostic evidence.',
+        durationMs: 1,
+        totalTaskCount: 6,
+        omittedTaskCount: 0,
+        tasks: Array.from({ length: 6 }, (_, index) => ({
+          caseId: null,
+          runNumber: 1,
+          taskId: `${'large-task-id-'.repeat(1_000)}${index}`,
+          status: 'failed',
+          exitCode: 1,
+          failureKind: 'exit_code',
+          stdout: '',
+          stderr: 'failed',
+        })),
+        plan: {
+          summary: 'Mixed evidence.',
+          goals: [],
+          coverage: [],
+          findings: [
+            {
+              severity: 'blocking',
+              repairScope: 'pipeline-artifact',
+              summary: 'Pipeline defect',
+              evidence: 'The staged command is invalid.',
+            },
+            {
+              severity: 'blocking',
+              repairScope: 'diagnostic-only',
+              summary: 'Harness limitation',
+              evidence: 'The harness cannot observe the external system.',
+            },
+          ],
+          cases: [],
+        },
+        cases: [],
+      },
+    },
+    1,
+    2,
+  );
+
+  const evidence = prompt.split('<trial-run-result>')[1]!.split('</trial-run-result>')[0]!.trim();
+  const parsed = JSON.parse(evidence) as {
+    evidenceTruncated?: boolean;
+    planFindings?: Array<{ repairScope?: string }>;
+  };
+  expect(parsed.evidenceTruncated).toBe(true);
+  expect(parsed.planFindings?.map((finding) => finding.repairScope)).toEqual([
+    'pipeline-artifact',
+    'diagnostic-only',
+  ]);
+});

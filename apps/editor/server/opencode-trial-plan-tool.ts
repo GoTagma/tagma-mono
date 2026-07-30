@@ -506,19 +506,53 @@ function newTrialPlanAttemptTelemetry(yamlHash, relativeYamlPath) {
   };
 }
 
+function isTelemetryInteger(value, max) {
+  return Number.isInteger(value) && value >= 0 && value <= max;
+}
+
+function isValidTrialPlanAttemptTelemetry(parsed, paths, yamlHash) {
+  if (
+    parsed.version !== TRIAL_PLAN_ATTEMPT_TELEMETRY_VERSION ||
+    parsed.yamlHash !== yamlHash ||
+    parsed.relativeYamlPath !== paths.relativeYamlPath ||
+    !isTelemetryInteger(parsed.toolAttemptCount, MAX_TOOL_ATTEMPTS_PER_YAML) ||
+    !isTelemetryInteger(parsed.validationRejectionCount, parsed.toolAttemptCount) ||
+    !isTelemetryInteger(parsed.repeatedValidationRejectionCount, parsed.validationRejectionCount) ||
+    !isTelemetryInteger(parsed.successfulWriteCount, parsed.toolAttemptCount) ||
+    parsed.validationRejectionCount + parsed.successfulWriteCount !== parsed.toolAttemptCount ||
+    !Array.isArray(parsed.rejections) ||
+    parsed.rejections.length > MAX_REJECTION_SUMMARIES
+  ) {
+    return false;
+  }
+  const timestampsValid =
+    parsed.toolAttemptCount === 0
+      ? parsed.firstAttemptAt === null && parsed.lastAttemptAt === null
+      : Number.isSafeInteger(parsed.firstAttemptAt) &&
+        parsed.firstAttemptAt >= 0 &&
+        Number.isSafeInteger(parsed.lastAttemptAt) &&
+        parsed.lastAttemptAt >= parsed.firstAttemptAt;
+  return (
+    timestampsValid &&
+    parsed.rejections.every(
+      (item) =>
+        item &&
+        typeof item === "object" &&
+        typeof item.fingerprint === "string" &&
+        /^[0-9a-f]{64}$/.test(item.fingerprint) &&
+        isTelemetryInteger(item.count, parsed.validationRejectionCount) &&
+        item.count > 0 &&
+        typeof item.message === "string" &&
+        item.message.length > 0 &&
+        item.message.length <= 500,
+    )
+  );
+}
+
 function readTrialPlanAttemptTelemetry(paths, yamlHash) {
   try {
     const parsed = JSON.parse(readFileSync(paths.telemetryPath, "utf8"));
-    if (
-      parsed.version !== TRIAL_PLAN_ATTEMPT_TELEMETRY_VERSION ||
-      parsed.yamlHash !== yamlHash ||
-      parsed.relativeYamlPath !== paths.relativeYamlPath ||
-      !Number.isInteger(parsed.toolAttemptCount) ||
-      !Number.isInteger(parsed.validationRejectionCount) ||
-      !Number.isInteger(parsed.repeatedValidationRejectionCount) ||
-      !Number.isInteger(parsed.successfulWriteCount) ||
-      !Array.isArray(parsed.rejections)
-    ) {
+    if (!isValidTrialPlanAttemptTelemetry(parsed, paths, yamlHash)) {
       throw new Error("invalid telemetry shape");
     }
     return parsed;

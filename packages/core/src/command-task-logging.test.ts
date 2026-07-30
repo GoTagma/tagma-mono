@@ -19,9 +19,8 @@ function successfulCommandResult(): TaskResult {
   };
 }
 
-test('command task logs describe host execution without inert AI configuration', async () => {
-  const lines: string[] = [];
-  const runtime: TagmaRuntime = {
+function runtimeForLogs(lines: string[]): TagmaRuntime {
+  return {
     async runCommand() {
       return successfulCommandResult();
     },
@@ -54,6 +53,11 @@ test('command task logs describe host execution without inert AI configuration',
     now: () => new Date('2026-07-30T00:00:00.000Z'),
     sleep: () => Promise.resolve(),
   };
+}
+
+test('command task logs describe host execution without inert AI configuration', async () => {
+  const lines: string[] = [];
+  const runtime = runtimeForLogs(lines);
   const config: PipelineConfig = {
     name: 'command-logging',
     driver: 'opencode',
@@ -79,4 +83,33 @@ test('command task logs describe host execution without inert AI configuration',
   expect(log).toContain('[task:main.command] DEBUG: executor: host-command shell=');
   expect(log).not.toContain('resolved: driver=');
   expect(log).not.toContain('permissions:');
+});
+
+test('invalid command spawn configuration is captured as a task failure', async () => {
+  const lines: string[] = [];
+  const result = await runPipeline(
+    {
+      name: 'invalid-command',
+      tracks: [
+        {
+          id: 'main',
+          name: 'Main',
+          tasks: [{ id: 'command', name: 'Command', command: { argv: [] } }],
+        },
+      ],
+    },
+    'C:\\workspace',
+    {
+      registry: new PluginRegistry(),
+      runtime: runtimeForLogs(lines),
+      skipPluginLoading: true,
+    },
+  );
+
+  expect(result.success).toBe(false);
+  expect(result.states.get('main.command')).toMatchObject({
+    status: 'failed',
+    result: { exitCode: -1, failureKind: 'spawn_error' },
+  });
+  expect(lines.join('\n')).toContain('failed before execution');
 });
