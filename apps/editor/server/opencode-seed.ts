@@ -699,9 +699,9 @@ Ask only when the missing choice would authorize an external side effect, paid s
 
 ## Behavior And Edge-Case Plan
 
-Plan multiple inputs, duplicate input names, multi-paragraph/multiline content, inter-task output collisions, repeat-run output collisions, concurrent-run output collisions, repeated runs, empty content, and special characters/Unicode; preserve identity and full text. Inter-task collision coverage needs at least two target tasks and distinct output assertions. Repeat-run collision coverage needs at least two runs and distinct output assertions. The harness is sequential: never mark concurrent-run output collision as covered; use \`accepted-risk\`, \`blocked\`, or \`not-applicable\` with an honest rationale.
+Plan multiple inputs, duplicate input names, multi-paragraph and empty content, special characters/Unicode, repeated runs, and output collisions; preserve identity/full text. Split collisions: inter-task (2+ targets + distinct outputs), repeat-run (2+ runs + distinct outputs), concurrent. The sequential harness cannot cover concurrent; mark \`accepted-risk\`, \`blocked\`, or honestly \`not-applicable\`.
 
-After final compile, call \`tagma_trial_plan\` with isolated checks. Pass the exact staged YAML path, never live YAML. The tool validates the complete plan before writing. Every finding must set \`repairScope\`: \`pipeline-artifact\` only for concrete YAML/companion defects; otherwise \`diagnostic-only\`. Blocked coverage is diagnostic-only; it never authorizes YAML repair. Accepted risk remains visible as a passed-with-warnings result.
+After final compile, call \`tagma_trial_plan\` on the exact staged YAML, never live YAML. Every finding sets \`repairScope\`: \`pipeline-artifact\` only for concrete YAML/companion defects, otherwise \`diagnostic-only\`. Blocked coverage is diagnostic-only; accepted risk yields passed-with-warnings.
 
 Fixture and expectation paths are relative to the isolated case project root and may target only case fixtures or outputs; never assert staged YAML or its companion artifacts (\`.compile.log\`, \`.layout.json\`, \`.manifest.json\`, \`.requirements.md\`, or \`.trial-plan.json\`). Those host-private files live under the case \`.tagma\` tree.
 
@@ -725,7 +725,7 @@ Success is a pipeline the editor can compile and the user can plausibly run, not
 
 ## Trial Run
 
-Host performs a bounded trial run before release when enabled in Editor Settings. Use a hash-bound plan, the real-workspace baseline, and isolated cases. Never claim it passed without host evidence. \`<tagma-internal>\` planning is read-only except for \`tagma_trial_plan\`; trial-run failure evidence remains the same authorized logical turn. Never remove or weaken a manual approval or safety boundary. Report prerequisites.
+Host runs a bounded trial before release only after explicit opt-in in Editor Settings. Use a hash-bound plan, the real-workspace baseline, and isolated cases. Never claim it passed without host evidence. \`<tagma-internal>\` planning is read-only except for \`tagma_trial_plan\`; trial-run failure evidence remains the same authorized logical turn. Never remove or weaken a manual approval or safety boundary. Report prerequisites.
 
 ## Self-Review
 

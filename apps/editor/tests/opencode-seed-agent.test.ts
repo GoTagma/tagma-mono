@@ -368,7 +368,7 @@ test('tagma-pipeline agent cooperates with optional host trial-run repair before
   const doc = buildTagmaPipelineAgent('Windows');
 
   expect(doc).toContain(
-    'Host performs a bounded trial run before release when enabled in Editor Settings',
+    'Host runs a bounded trial before release only after explicit opt-in in Editor Settings',
   );
   expect(doc).toContain('trial-run failure evidence');
   expect(doc).toContain('same authorized logical turn');

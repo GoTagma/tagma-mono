@@ -8,6 +8,7 @@ import {
   writeEditorSettings,
 } from '../server/plugins/loader.js';
 import type { WorkspaceState } from '../server/workspace-state.js';
+import { CHAT_PIPELINE_TRIAL_CONSENT_VERSION } from '../shared/chat-pipeline-trial-consent.js';
 
 interface MinimalWs {
   workDir: string;
@@ -34,7 +35,8 @@ describe('EditorSettings autosave + viewMode fields', () => {
     expect(DEFAULT_EDITOR_SETTINGS.pythonAgent.enabled).toBe(false);
     expect(DEFAULT_EDITOR_SETTINGS.opencodeChatModel).toBe(null);
     expect(DEFAULT_EDITOR_SETTINGS.opencodeChatReasoningEffort).toBeNull();
-    expect(DEFAULT_EDITOR_SETTINGS.opencodeChatTrialRunEnabled).toBe(true);
+    expect(DEFAULT_EDITOR_SETTINGS.opencodeChatTrialRunEnabled).toBe(false);
+    expect(DEFAULT_EDITOR_SETTINGS.opencodeChatTrialRunConsentVersion).toBe(0);
     expect(DEFAULT_EDITOR_SETTINGS.opencodeChatPipelineRepairMaxAttempts).toBe(25);
     expect(DEFAULT_EDITOR_SETTINGS.chatContextLimitEnabled).toBe(false);
     expect(DEFAULT_EDITOR_SETTINGS.chatContextRounds).toBe(0);
@@ -48,7 +50,8 @@ describe('EditorSettings autosave + viewMode fields', () => {
     expect(s.pythonAgent.enabled).toBe(false);
     expect(s.opencodeChatModel).toBe(null);
     expect(s.opencodeChatReasoningEffort).toBeNull();
-    expect(s.opencodeChatTrialRunEnabled).toBe(true);
+    expect(s.opencodeChatTrialRunEnabled).toBe(false);
+    expect(s.opencodeChatTrialRunConsentVersion).toBe(0);
     expect(s.opencodeChatPipelineRepairMaxAttempts).toBe(25);
     expect(s.chatContextLimitEnabled).toBe(false);
     expect(s.chatContextRounds).toBe(0);
@@ -136,7 +139,8 @@ describe('EditorSettings autosave + viewMode fields', () => {
     expect(s.pythonAgent).toEqual(DEFAULT_EDITOR_SETTINGS.pythonAgent);
     expect(s.opencodeChatModel).toBe(null);
     expect(s.opencodeChatReasoningEffort).toBeNull();
-    expect(s.opencodeChatTrialRunEnabled).toBe(true);
+    expect(s.opencodeChatTrialRunEnabled).toBe(false);
+    expect(s.opencodeChatTrialRunConsentVersion).toBe(0);
     expect(s.opencodeChatPipelineRepairMaxAttempts).toBe(25);
     expect(s.chatContextLimitEnabled).toBe(false);
     expect(s.chatContextRounds).toBe(0);
@@ -152,6 +156,43 @@ describe('EditorSettings autosave + viewMode fields', () => {
     );
     const s = readEditorSettings(ws as unknown as WorkspaceState);
     expect(s.viewMode).toBe('production');
+  });
+
+  test('legacy or stale enabled state does not authorize real-workspace trial execution', () => {
+    const settingsPath = resolve(tmp, '.tagma', 'editor-settings.json');
+    writeFileSync(settingsPath, JSON.stringify({ opencodeChatTrialRunEnabled: true }));
+    expect(readEditorSettings(ws as unknown as WorkspaceState)).toMatchObject({
+      opencodeChatTrialRunEnabled: false,
+      opencodeChatTrialRunConsentVersion: 0,
+    });
+
+    writeFileSync(
+      settingsPath,
+      JSON.stringify({
+        opencodeChatTrialRunEnabled: true,
+        opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION + 1,
+      }),
+    );
+    expect(readEditorSettings(ws as unknown as WorkspaceState)).toMatchObject({
+      opencodeChatTrialRunEnabled: false,
+      opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION + 1,
+    });
+  });
+
+  test('explicitly enabling trial execution stamps the current consent version', () => {
+    const next = writeEditorSettings(ws as unknown as WorkspaceState, {
+      opencodeChatTrialRunEnabled: true,
+    });
+    expect(next).toMatchObject({
+      opencodeChatTrialRunEnabled: true,
+      opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
+    });
+    expect(
+      JSON.parse(readFileSync(resolve(tmp, '.tagma', 'editor-settings.json'), 'utf-8')),
+    ).toMatchObject({
+      opencodeChatTrialRunEnabled: true,
+      opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
+    });
   });
 
   test('writeEditorSettings persists autosave fields and viewMode', () => {

@@ -21,6 +21,7 @@ import { registerChatYamlStagingRoutes } from '../server/routes/chat-yaml-stagin
 import { beginRunSessionStart, endRunSessionStart, registerRunRoutes } from '../server/routes/run';
 import { pipelineYamlPath } from '../server/pipeline-paths';
 import { WorkspaceState } from '../server/workspace-state';
+import { CHAT_PIPELINE_TRIAL_CONSENT_VERSION } from '../shared/chat-pipeline-trial-consent';
 
 type MockResponse = ReturnType<typeof makeRes>;
 type MockRequest = {
@@ -138,13 +139,23 @@ function yamlFor(name: string, prompt: string): string {
   ].join('\n');
 }
 
-function makeWorkspace(): { ws: WorkspaceState; sourcePath: string } {
+function makeWorkspace(authorizeTrial = true): { ws: WorkspaceState; sourcePath: string } {
   const root = mkdtempSync(join(tmpdir(), 'tagma-chat-stage-route-'));
   roots.push(root);
   const sourcePath = pipelineYamlPath(root, 'pipeline');
   const yaml = yamlFor('Pipeline', 'base');
   mkdirSync(dirname(sourcePath), { recursive: true });
   writeFileSync(sourcePath, yaml, 'utf-8');
+  if (authorizeTrial) {
+    writeFileSync(
+      join(root, '.tagma', 'editor-settings.json'),
+      JSON.stringify({
+        opencodeChatTrialRunEnabled: true,
+        opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
+      }),
+      'utf-8',
+    );
+  }
   const ws = new WorkspaceState(root);
   workspaces.push(ws);
   ws.workDir = root;
@@ -1617,6 +1628,71 @@ describe('chat YAML staging routes', () => {
       discardRes,
     );
     expect(discardRes.statusCode).toBe(200);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('refuses a real-workspace baseline without current explicit consent', async () => {
+    const { ws, sourcePath } = makeWorkspace(false);
+    const markerPath = join(ws.workDir, 'unconsented-trial-ran.txt');
+    writeFileSync(
+      join(ws.workDir, '.tagma', 'editor-settings.json'),
+      JSON.stringify({ opencodeChatTrialRunEnabled: true }),
+      'utf-8',
+    );
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Unconsented Trial',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              {
+                id: 'probe',
+                command: {
+                  argv: [
+                    process.execPath,
+                    '-e',
+                    `require('node:fs').writeFileSync(${JSON.stringify(markerPath)}, 'ran')`,
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
+    writePassingTrialPlan(entry.stagedPath, 'main.probe');
+
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'no_consent' },
+        'chat-lock',
+      ),
+      trialRes,
+    );
+
+    expect(trialRes.statusCode).toBe(400);
+    expect(trialRes.body).toMatchObject({ error: expect.stringContaining('Explicit consent') });
+    expect(existsSync(markerPath)).toBe(false);
+    discardStage(getRoute, ws, stage.id);
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });

@@ -922,8 +922,10 @@ export interface EditorSettings {
   opencodeChatModel: OpenCodeChatModelSelection | null;
   /** Last OpenCode chat reasoning effort selection for this workspace. */
   opencodeChatReasoningEffort: OpenCodeChatReasoningEffort;
-  /** Trial-run changed OpenCode Chat pipelines before finalization. Default true. */
+  /** Explicitly opt in to real-workspace trial execution. Default false. */
   opencodeChatTrialRunEnabled: boolean;
+  /** Server-stamped acknowledgement version for the real-workspace execution policy. */
+  opencodeChatTrialRunConsentVersion: number;
   /** Shared compile/trial repair budget. Default 25; 0 disables; server clamps to [0, 50]. */
   opencodeChatPipelineRepairMaxAttempts: number;
   /**

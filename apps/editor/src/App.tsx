@@ -125,6 +125,7 @@ import {
   type WorkspaceStagedPipeline,
 } from './utils/workspace-yaml-list';
 import { DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS } from '../shared/chat-pipeline-repair-limit.js';
+import { hasCurrentChatPipelineTrialConsent } from '../shared/chat-pipeline-trial-consent.js';
 
 const MAX_CHAT_TRIAL_PLAN_PROMPTS = 2;
 
@@ -1232,7 +1233,7 @@ export function App() {
             }
           }
 
-          const trialRunEnabled = settings?.opencodeChatTrialRunEnabled ?? true;
+          const trialRunEnabled = hasCurrentChatPipelineTrialConsent(settings);
           let trialRun: Awaited<ReturnType<typeof api.trialRunChatYamlStage>> | null =
             repairMadeNoProgress && pendingRepair?.evidence.kind === 'trial-run'
               ? pendingRepair.evidence.result

@@ -5,6 +5,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { bootstrapBuiltins } from '@tagma/sdk/plugins';
 import { parseYaml, serializePipeline } from '@tagma/sdk/yaml';
+import { CHAT_PIPELINE_TRIAL_CONSENT_VERSION } from '../shared/chat-pipeline-trial-consent';
 
 const SECRET_NAME = 'TAGMA_TRIAL_TASK_ONLY_SECRET';
 const SECRET_VALUE = 'trial-secret-must-not-leak';
@@ -87,6 +88,14 @@ test('Trial injects declared secrets only into their task and still redacts decl
   const sourceYaml = ['pipeline:', '  name: Base', '  tracks: []', ''].join('\n');
   mkdirSync(dirname(sourcePath), { recursive: true });
   writeFileSync(sourcePath, sourceYaml, 'utf-8');
+  writeFileSync(
+    join(root, '.tagma', 'editor-settings.json'),
+    JSON.stringify({
+      opencodeChatTrialRunEnabled: true,
+      opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
+    }),
+    'utf-8',
+  );
   const ws = new WorkspaceState(root);
   ws.workDir = root;
   ws.yamlPath = sourcePath;

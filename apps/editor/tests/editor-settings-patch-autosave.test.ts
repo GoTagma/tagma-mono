@@ -93,6 +93,7 @@ describe('parseEditorSettingsPatch', () => {
     });
     expect(parseEditorSettingsPatch({ opencodeChatTrialRunEnabled: 'yes' })).toEqual({});
     expect(parseEditorSettingsPatch({ opencodeChatTrialRunEnabled: 1 })).toEqual({});
+    expect(parseEditorSettingsPatch({ opencodeChatTrialRunConsentVersion: 1 })).toEqual({});
   });
 
   test('passes finite opencodeChatPipelineRepairMaxAttempts through for loader clamping', () => {

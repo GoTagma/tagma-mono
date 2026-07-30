@@ -10,6 +10,9 @@ describe('Editor Settings OpenCode Chat trial-run controls', () => {
     );
 
     expect(source).toContain('Trial-run Chat pipeline changes');
+    expect(source).toContain('AI-authored staged pipeline commands');
+    expect(source).toContain('normal host command authority');
+    expect(source).toContain('may modify files or external state');
     expect(source).toContain('checked={settings.opencodeChatTrialRunEnabled}');
     expect(source).toContain('Automatic repair attempts:');
     expect(source).toContain('value={settings.opencodeChatPipelineRepairMaxAttempts}');
@@ -34,7 +37,8 @@ describe('Editor Settings OpenCode Chat trial-run controls', () => {
   test('gates trial runs and uses the configured shared repair budget with default 25', () => {
     const source = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf8');
 
-    expect(source).toContain('settings?.opencodeChatTrialRunEnabled ?? true');
+    expect(source).toContain('hasCurrentChatPipelineTrialConsent(settings)');
+    expect(source).not.toContain('settings?.opencodeChatTrialRunEnabled ?? true');
     expect(source).toContain('settings?.opencodeChatPipelineRepairMaxAttempts ??');
     expect(source).toContain('DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS');
     expect(source).toContain('shouldTrialRunChatPipeline({');

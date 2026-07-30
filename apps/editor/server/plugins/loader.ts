@@ -47,6 +47,10 @@ import {
   DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS,
   isValidChatPipelineRepairAttempts,
 } from '../../shared/chat-pipeline-repair-limit.js';
+import {
+  CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
+  hasCurrentChatPipelineTrialConsent,
+} from '../../shared/chat-pipeline-trial-consent.js';
 
 /**
  * Map of plugin package name → which (category, type) pair it occupies in the
@@ -982,10 +986,12 @@ export interface EditorSettings {
   opencodeChatModel: OpenCodeChatModelSelection | null;
   opencodeChatReasoningEffort: OpenCodeChatReasoningEffort;
   /**
-   * When true (default), changed pipelines authored through OpenCode Chat are
-   * trial-run in the real workspace after compiling and before finalization.
+   * When true with the current consent version, changed pipelines authored
+   * through OpenCode Chat may be trial-run in the real workspace.
    */
   opencodeChatTrialRunEnabled: boolean;
+  /** Versioned acknowledgement of real-workspace host command execution. */
+  opencodeChatTrialRunConsentVersion: number;
   /**
    * Maximum hidden repair continuations shared by compile and trial-run
    * failures for one OpenCode Chat pipeline change. Default 25; range 0-50.
@@ -1017,7 +1023,8 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   pythonAgent: DEFAULT_PYTHON_AGENT_SETTINGS,
   opencodeChatModel: null,
   opencodeChatReasoningEffort: null,
-  opencodeChatTrialRunEnabled: true,
+  opencodeChatTrialRunEnabled: false,
+  opencodeChatTrialRunConsentVersion: 0,
   opencodeChatPipelineRepairMaxAttempts: DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS,
   chatContextLimitEnabled: false,
   chatContextRounds: 0,
@@ -1040,6 +1047,16 @@ export function readEditorSettings(ws: WorkspaceState): EditorSettings {
       return { ...DEFAULT_EDITOR_SETTINGS };
     }
     const raw = parsed as Record<string, unknown>;
+    const opencodeChatTrialRunConsentVersion =
+      typeof raw.opencodeChatTrialRunConsentVersion === 'number' &&
+      Number.isInteger(raw.opencodeChatTrialRunConsentVersion) &&
+      raw.opencodeChatTrialRunConsentVersion >= 0
+        ? raw.opencodeChatTrialRunConsentVersion
+        : DEFAULT_EDITOR_SETTINGS.opencodeChatTrialRunConsentVersion;
+    const opencodeChatTrialRunEnabled = hasCurrentChatPipelineTrialConsent({
+      opencodeChatTrialRunEnabled: raw.opencodeChatTrialRunEnabled === true,
+      opencodeChatTrialRunConsentVersion,
+    });
     return {
       autoInstallDeclaredPlugins:
         typeof raw.autoInstallDeclaredPlugins === 'boolean'
@@ -1069,10 +1086,8 @@ export function readEditorSettings(ws: WorkspaceState): EditorSettings {
       )
         ? raw.opencodeChatReasoningEffort
         : DEFAULT_EDITOR_SETTINGS.opencodeChatReasoningEffort,
-      opencodeChatTrialRunEnabled:
-        typeof raw.opencodeChatTrialRunEnabled === 'boolean'
-          ? raw.opencodeChatTrialRunEnabled
-          : DEFAULT_EDITOR_SETTINGS.opencodeChatTrialRunEnabled,
+      opencodeChatTrialRunEnabled,
+      opencodeChatTrialRunConsentVersion,
       opencodeChatPipelineRepairMaxAttempts: isValidChatPipelineRepairAttempts(
         raw.opencodeChatPipelineRepairMaxAttempts,
       )
@@ -1146,6 +1161,9 @@ export function writeEditorSettings(
   }
   if (patch.opencodeChatTrialRunEnabled !== undefined) {
     next.opencodeChatTrialRunEnabled = patch.opencodeChatTrialRunEnabled;
+    if (patch.opencodeChatTrialRunEnabled) {
+      next.opencodeChatTrialRunConsentVersion = CHAT_PIPELINE_TRIAL_CONSENT_VERSION;
+    }
   }
   if (patch.opencodeChatPipelineRepairMaxAttempts !== undefined) {
     next.opencodeChatPipelineRepairMaxAttempts = clampChatPipelineRepairAttempts(

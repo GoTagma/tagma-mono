@@ -550,7 +550,7 @@ export function EditorSettingsPanel({
                 <div className="mt-2 space-y-2 border border-tagma-border bg-tagma-bg px-2.5 py-2">
                   <ToggleRow
                     label="Trial-run Chat pipeline changes"
-                    description="On runs changed pipelines in the real workspace after they compile and before applying them. Off skips only the run; compilation, staging isolation, and conflict-safe finalization stay active."
+                    description="On runs AI-authored staged pipeline commands in your real workspace before finalization. They execute with normal host command authority and may modify files or external state. Off skips only execution; compilation, staging isolation, and conflict-safe finalization stay active."
                     checked={settings.opencodeChatTrialRunEnabled}
                     disabled={settingsInputsDisabled}
                     onChange={(v) => updateField('opencodeChatTrialRunEnabled', v)}

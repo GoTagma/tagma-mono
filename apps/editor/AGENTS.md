@@ -69,24 +69,30 @@
   external, path-move, or compile-failure branch and publish the agent result as one numbered
   copy. A genuinely new staged pipeline is created normally unless its destination already
   exists.
-- After a changed staged pipeline compiles, trial-run its staged YAML against the real workspace
-  before finalize when the workspace `opencodeChatTrialRunEnabled` setting is enabled (the
-  default). When disabled, compile success is sufficient for finalization; do not fabricate trial
-  evidence. Keep trial requests idempotent across response retries, bound and redact task evidence,
-  and never auto-approve a manual trigger or weaken another safety/prerequisite gate.
+- Real-workspace Trial is fail-closed and default-off. Run it only when
+  `opencodeChatTrialRunEnabled` is true and its server-stamped consent version matches the current
+  real-workspace command policy. Never inherit authorization from the legacy boolean alone; the
+  renderer and server entry point must both enforce versioned consent. Enabling the setting must
+  disclose that AI-authored commands execute with normal host authority and may change files or
+  external state. When disabled or unconsented, compile success is sufficient for finalization;
+  do not fabricate trial evidence.
 - Before an enabled trial executes, require a transient sibling trial-plan JSON file authored
   from the final compiled YAML and bound to its SHA-1. Missing, stale, or invalid plans trigger a hidden
   same-turn planning continuation that may only call tagma_trial_plan and may not edit pipeline
-  artifacts. Allow at most two attempts for one YAML hash and keep the total planning lifecycle
-  finite across repair revisions. Never finalize or publish the plan file as a live artifact.
+  artifacts. Enforce the two-call budget in the host tool per relative YAML plus YAML hash, not only
+  in prompt text; serialize concurrent attempts, fail closed on corrupt telemetry, and summarize
+  repeated equivalent rejections. Accumulate prompts, tool attempts, rejections, elapsed time, and
+  unique assistant token/cost evidence across repair revisions. Never publish the plan file.
   Generate the tool's enums and limits from the authoritative host contract, expose discriminated
   expectation schemas, and run the complete semantic validator before the atomic write. The tool
   must accept the exact staged Target YAML path when OpenCode reports a different session directory,
   reject live `.tagma` destinations, and never rely on the agent to copy staging artifacts.
-- Every plan must account for multiple inputs, duplicate input names, multiline content, output
-  collisions, repeated runs, empty content, and special characters. A dimension marked covered
-  must have concrete linked fixtures/assertions; blocked coverage or a blocking design finding
-  fails before execution and becomes repair evidence.
+- Every plan must account for multiple inputs, duplicate input names, multiline content,
+  inter-task, repeat-run, and concurrent-run output collisions, repeated runs, empty content, and
+  special characters. Inter-task coverage needs two target tasks plus distinct-output evidence;
+  repeat-run collision coverage needs two runs plus distinct-output evidence. The sequential
+  harness can never mark concurrent collision covered: use accepted-risk, blocked, or genuinely
+  not-applicable. Accepted risk and warning findings produce `passed-with-warnings`.
 - Preserve the existing real-workspace baseline run, then execute each targeted case in a fresh
   stage-owned temporary workspace with bounded helpers/fixtures, contained portable paths,
   selected task targets, repeated-run support, and host-evaluated assertions. Case workspaces
@@ -128,14 +134,24 @@
   the current host witness. Inject only requirements secrets globally, keep task/track secrets
   scoped through the runtime resolver, and fail on persistent real-workspace drift after any
   isolated case.
+- Trial execution and finalize verification must import one shared signed-cache protocol version.
+  Bump it whenever result semantics change so an older signed result cannot be reinterpreted under
+  a newer success, warning, or authorization policy.
 - A failed trial may feed one of the existing bounded hidden repair continuations back into the
-  same OpenCode session, stage, snapshot, and YAML lease. Adopt into the live pipeline only after
-  both compile and trial succeed; preserve a still-failing trial result as a numbered copy.
+  same OpenCode session, stage, snapshot, and YAML lease. Only a blocking finding explicitly scoped
+  `pipeline-artifact` authorizes YAML/companion mutation. Blocked coverage and environment, harness,
+  credential, external-service, manual-approval, or unsupported-observation findings remain
+  `diagnostic-only` and must not be repaired by weakening or redirecting the pipeline. Adopt into
+  live only after compile and required Trial succeed; preserve a failure as a numbered copy.
   This includes newly staged pipelines: leave the requested primary path absent and publish only
   the numbered copy when final verification still fails.
 - Recompile or rerun Trial after a hidden repair only when the staged YAML, layout, requirements,
   or transient trial-plan hash changed. A report-only/external-boundary response must reuse the
   prior failed evidence and end that repair chain instead of consuming another attempt.
+- Before publication, compare executable references removed from the immutable base YAML with the
+  staged agent-owned requirements body/frontmatter. Do not finalize while removed environment
+  names, PowerShell cmdlets, or external binaries remain documented; repair YAML and its sibling
+  requirements in the same continuation.
 - Trial-plan fixture and expectation paths are relative to the isolated case project root and may
   target only case fixtures or outputs. Reject plans that inspect the staged YAML or its
   host-private companion artifacts under the case `.tagma` tree before starting Trial.

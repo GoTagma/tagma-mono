@@ -34,6 +34,7 @@ import {
   samePipelineRelativePath,
 } from './chat-yaml-staging.js';
 import { CHAT_PIPELINE_TRIAL_CACHE_VERSION } from './chat-pipeline-trial-cache.js';
+import { hasCurrentChatPipelineTrialConsent } from '../shared/chat-pipeline-trial-consent.js';
 import {
   readChatPipelineTrialPlan,
   readChatPipelineTrialPlanToolTelemetry,
@@ -1811,6 +1812,11 @@ export async function trialRunChatYamlStage(
   input: ChatPipelineTrialRunInput,
 ): Promise<ChatPipelineTrialRunResult> {
   const trialId = validateTrialId(input.trialId);
+  if (!hasCurrentChatPipelineTrialConsent(readEditorSettings(ws))) {
+    throw new Error(
+      'Explicit consent is required in Editor Settings before Trial can run AI-authored commands in the real workspace.',
+    );
+  }
   const stage = listChatYamlStage(ws, input.stageId);
   const entry = stage.entries.find((candidate) =>
     samePipelineRelativePath(candidate.relativePath, input.relativePath),

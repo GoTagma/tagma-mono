@@ -16,6 +16,7 @@ import {
 import { pipelineYamlPath } from '../server/pipeline-paths';
 import { WorkspaceState } from '../server/workspace-state';
 import { __workspaceRegistryTestHooks, workspaceRegistry } from '../server/workspace-registry';
+import { CHAT_PIPELINE_TRIAL_CONSENT_VERSION } from '../shared/chat-pipeline-trial-consent';
 
 type MockResponse = ReturnType<typeof makeRes>;
 type MockRequest = {
@@ -64,6 +65,14 @@ function makeWorkspace(commandScript = 'process.exit(0)'): {
   });
   mkdirSync(dirname(sourcePath), { recursive: true });
   writeFileSync(sourcePath, yaml, 'utf-8');
+  writeFileSync(
+    join(root, '.tagma', 'editor-settings.json'),
+    JSON.stringify({
+      opencodeChatTrialRunEnabled: true,
+      opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
+    }),
+    'utf-8',
+  );
   const ws = new WorkspaceState(root);
   workspaces.push(ws);
   ws.workDir = root;
