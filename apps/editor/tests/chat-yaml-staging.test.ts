@@ -20,7 +20,11 @@ import {
   pipelineYamlPath,
 } from '../server/pipeline-paths';
 import { pipelineManifestPath } from '../server/pipeline-manifest';
-import { runRequirementsSync } from '../server/requirements-sync';
+import {
+  parseRequirementsMd,
+  runRequirementsSync,
+  serializeRequirementsMd,
+} from '../server/requirements-sync';
 import { WorkspaceState } from '../server/workspace-state';
 
 const roots: string[] = [];
@@ -404,6 +408,90 @@ describe('chat YAML staging', () => {
     expect(readFileSync(pipelineRequirementsPath(sourcePath), 'utf-8')).toContain(
       'Keep this guidance.',
     );
+    stopWorkspace(ws);
+  });
+
+  test('rejects a repaired YAML while its agent-owned requirements still describe removed dependencies', async () => {
+    const baseYaml = [
+      'pipeline:',
+      '  name: TEMP Report',
+      '  tracks:',
+      '    - id: main',
+      '      name: Main',
+      '      tasks:',
+      '        - id: write',
+      '          name: Write report',
+      '          command: |',
+      '            $target = Join-Path $env:TEMP "casual-demo-report.txt"',
+      '            if (Test-Path $target) { Remove-Item $target }',
+      "            Set-Content -Path $target -Value 'hello'",
+      '',
+    ].join('\n');
+    const repairedYaml = [
+      'pipeline:',
+      '  name: Relative Report',
+      '  tracks:',
+      '    - id: main',
+      '      name: Main',
+      '      tasks:',
+      '        - id: write',
+      '          name: Write report',
+      '          command: |',
+      "            Set-Content -Path 'casual-demo-report.txt' -Value 'hello'",
+      '',
+    ].join('\n');
+    const { ws, sourcePath } = setupWorkspace(baseYaml);
+    runRequirementsSync(sourcePath);
+    const liveRequirementsPath = pipelineRequirementsPath(sourcePath);
+    const generated = parseRequirementsMd(readFileSync(liveRequirementsPath, 'utf-8'));
+    writeFileSync(
+      liveRequirementsPath,
+      serializeRequirementsMd({
+        frontmatter: generated.frontmatter,
+        body: [
+          '# TEMP report requirements',
+          '',
+          'The pipeline uses `Join-Path` and `Test-Path` with `$env:TEMP`.',
+          '',
+        ].join('\n'),
+      }),
+      'utf-8',
+    );
+
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    writeFileSync(staged.stagedPath, repairedYaml, 'utf-8');
+    runRequirementsSync(staged.stagedPath);
+
+    await expect(
+      finalizeChatYamlStage(ws, {
+        stageId: stage.id,
+        relativePath: staged.relativePath,
+      }),
+    ).rejects.toThrow(
+      'requirements still reference removed pipeline dependencies: environment variable TEMP, PowerShell cmdlet Join-Path, PowerShell cmdlet Test-Path',
+    );
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
+
+    const stagedRequirementsPath = pipelineRequirementsPath(staged.stagedPath);
+    const stagedRequirements = parseRequirementsMd(
+      readFileSync(stagedRequirementsPath, 'utf-8'),
+    );
+    writeFileSync(
+      stagedRequirementsPath,
+      serializeRequirementsMd({
+        frontmatter: stagedRequirements.frontmatter,
+        body: '# Relative report requirements\n\nWrites only inside the run workspace.\n',
+      }),
+      'utf-8',
+    );
+
+    const result = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+    });
+    expect(result.outcome).toBe('adopted');
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(repairedYaml);
     stopWorkspace(ws);
   });
 

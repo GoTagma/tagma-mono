@@ -56,6 +56,11 @@ export interface ParsedRequirements {
   readonly body: string;
 }
 
+export interface PipelineRequirementReference {
+  readonly kind: 'environment variable' | 'PowerShell cmdlet' | 'binary';
+  readonly name: string;
+}
+
 /**
  * Maps a Tagma driver name to the binary the runtime spawns. `null` means
  * "no preflight needed" for drivers that do not shell out to a host binary.
@@ -453,6 +458,136 @@ export function serializeRequirementsMd(parsed: ParsedRequirements): string {
   });
   const body = parsed.body.replace(/^\n+/, '');
   return `---\n${fm.trimEnd()}\n---\n\n${body}`;
+}
+
+function commandText(value: unknown): string[] {
+  if (typeof value === 'string') return [value];
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+  const command = value as { argv?: unknown; shell?: unknown };
+  if (Array.isArray(command.argv)) {
+    return [command.argv.filter((item): item is string => typeof item === 'string').join(' ')];
+  }
+  return typeof command.shell === 'string' ? [command.shell] : [];
+}
+
+function executableCommandTextFromYaml(yamlPath: string): string[] | null {
+  let parsed: unknown;
+  try {
+    parsed = yaml.load(readFileSync(yamlPath, 'utf-8'));
+  } catch {
+    return null;
+  }
+  const pipeline = (parsed as { pipeline?: PartialPipeline } | null)?.pipeline;
+  if (!pipeline || typeof pipeline !== 'object') return [];
+  const commands: string[] = [];
+  for (const track of Array.isArray(pipeline.tracks) ? pipeline.tracks : []) {
+    if (!track || typeof track !== 'object') continue;
+    for (const task of Array.isArray(track.tasks) ? track.tasks : []) {
+      if (!task || typeof task !== 'object') continue;
+      commands.push(...commandText(task.command));
+      const completion = task.completion as { type?: unknown; check?: unknown } | null;
+      if (completion?.type === 'output_check') commands.push(...commandText(completion.check));
+    }
+  }
+  if (pipeline.hooks && typeof pipeline.hooks === 'object') {
+    for (const hook of Object.values(pipeline.hooks)) {
+      for (const value of Array.isArray(hook) ? hook : [hook]) {
+        commands.push(...commandText(value));
+      }
+    }
+  }
+  return commands;
+}
+
+function addRequirementReference(
+  references: Map<string, PipelineRequirementReference>,
+  kind: PipelineRequirementReference['kind'],
+  name: string,
+): void {
+  const normalizedName = name.trim();
+  if (!normalizedName) return;
+  const key = `${kind}:${normalizedName.toLowerCase()}`;
+  if (!references.has(key)) references.set(key, { kind, name: normalizedName });
+}
+
+function extractPipelineRequirementReferences(
+  yamlPath: string,
+): Map<string, PipelineRequirementReference> | null {
+  const commands = executableCommandTextFromYaml(yamlPath);
+  if (commands === null) return null;
+  const references = new Map<string, PipelineRequirementReference>();
+
+  for (const command of commands) {
+    for (const pattern of [
+      /\$env:([A-Za-z_][A-Za-z0-9_]*)/gi,
+      /%([A-Za-z_][A-Za-z0-9_]*)%/g,
+      /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g,
+      /(?<![A-Za-z0-9_:${])\$([A-Z][A-Z0-9_]*)\b/g,
+    ]) {
+      for (const match of command.matchAll(pattern)) {
+        addRequirementReference(references, 'environment variable', match[1] ?? '');
+      }
+    }
+  }
+  for (const command of commands) {
+    for (const match of command.matchAll(/\b([A-Za-z]+-[A-Za-z][A-Za-z0-9]*)\b/g)) {
+      addRequirementReference(references, 'PowerShell cmdlet', match[1] ?? '');
+    }
+  }
+  for (const binary of extractBinariesFromYaml(yamlPath) ?? []) {
+    addRequirementReference(references, 'binary', binary.name);
+  }
+  return references;
+}
+
+function bodyMentionsReference(body: string, name: string): boolean {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^A-Za-z0-9_])${escaped}([^A-Za-z0-9_]|$)`, 'i').test(body);
+}
+
+/**
+ * Finds dependency names removed from an existing YAML revision but still
+ * described by the staged agent-owned requirements fields/body.
+ */
+export function staleRequirementsReferencesForYamlChange(
+  baseYamlPath: string,
+  stagedYamlPath: string,
+): PipelineRequirementReference[] {
+  const requirementsFile = requirementsPath(stagedYamlPath);
+  if (!existsSync(requirementsFile)) return [];
+  const before = extractPipelineRequirementReferences(baseYamlPath);
+  const after = extractPipelineRequirementReferences(stagedYamlPath);
+  if (!before || !after) return [];
+  const requirements = parseRequirementsMd(readFileSync(requirementsFile, 'utf-8'));
+  const declaredEnv = new Set(
+    (requirements.frontmatter?.env ?? []).map((item) => item.name.toLowerCase()),
+  );
+
+  return [...before.entries()]
+    .filter(([key]) => !after.has(key))
+    .map(([, reference]) => reference)
+    .filter((reference) => {
+      if (
+        reference.kind === 'environment variable' &&
+        declaredEnv.has(reference.name.toLowerCase())
+      ) {
+        return true;
+      }
+      return bodyMentionsReference(requirements.body, reference.name);
+    });
+}
+
+export function assertRequirementsConsistentWithYamlChange(
+  baseYamlPath: string,
+  stagedYamlPath: string,
+): void {
+  const stale = staleRequirementsReferencesForYamlChange(baseYamlPath, stagedYamlPath);
+  if (stale.length === 0) return;
+  const labels = stale.map((reference) => `${reference.kind} ${reference.name}`);
+  throw new Error(
+    `Staged requirements still reference removed pipeline dependencies: ${labels.join(', ')}. ` +
+      'Update the agent-owned requirements env/services/body before finalizing.',
+  );
 }
 
 // ── Initial body template (used when the file doesn't exist yet) ───────────

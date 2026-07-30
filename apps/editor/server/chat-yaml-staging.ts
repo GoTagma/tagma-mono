@@ -13,6 +13,7 @@ import yaml from 'js-yaml';
 import { parseYaml, serializePipeline } from '@tagma/sdk/yaml';
 
 import { pipelineTrialPlanPath, readChatPipelineTrialPlan } from './chat-pipeline-trial-plan.js';
+import { CHAT_PIPELINE_TRIAL_CACHE_VERSION } from './chat-pipeline-trial-cache.js';
 import { readEditorSettings } from './plugins/loader.js';
 import type {
   PreparedTrialHostWitnessInputs,
@@ -44,7 +45,11 @@ import {
   tagmaDirOf,
 } from './pipeline-paths.js';
 import { pipelineManifestPath, runPipelineManifestSync } from './pipeline-manifest.js';
-import { parseRequirementsMd, runRequirementsSync } from './requirements-sync.js';
+import {
+  assertRequirementsConsistentWithYamlChange,
+  parseRequirementsMd,
+  runRequirementsSync,
+} from './requirements-sync.js';
 import { runCompileAndWriteLog } from './compile-log.js';
 import {
   beginWatching,
@@ -64,7 +69,7 @@ const STAGE_RESULT_FILE = 'finalized.json';
 const STAGE_VERSION = 2;
 const MAX_ARTIFACT_BYTES = 5 * 1024 * 1024;
 const STAGE_TTL_MS = 24 * 60 * 60 * 1000;
-const TRIAL_CACHE_VERSION = 4;
+const TRIAL_CACHE_VERSION = CHAT_PIPELINE_TRIAL_CACHE_VERSION;
 const FINALIZE_TRIAL_ID_RE = /^[A-Za-z0-9_-]{1,160}$/;
 const FINALIZE_WITNESS_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -1286,6 +1291,10 @@ export async function finalizeChatYamlStage(
   const sourcePath = sourceRelativePath
     ? resolveRelativeInside(tagmaDirOf(ws.workDir), sourceRelativePath)
     : null;
+  if (sourceRelativePath) {
+    const baseYamlPath = resolveRelativeInside(paths.baseTagmaDir, sourceRelativePath);
+    assertRequirementsConsistentWithYamlChange(baseYamlPath, stagedPath);
+  }
   if (!changed && sourcePath && !input.forceFork && !input.forceForkReason) {
     const result: ChatYamlStageFinalizeResult = {
       outcome: 'unchanged',

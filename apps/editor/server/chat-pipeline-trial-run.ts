@@ -33,6 +33,7 @@ import {
   listChatYamlStage,
   samePipelineRelativePath,
 } from './chat-yaml-staging.js';
+import { CHAT_PIPELINE_TRIAL_CACHE_VERSION } from './chat-pipeline-trial-cache.js';
 import {
   readChatPipelineTrialPlan,
   readChatPipelineTrialPlanToolTelemetry,
@@ -75,7 +76,7 @@ import { normalizeRunTargetTaskIds, runtimeWithInjectedEnv } from './routes/run-
 import { beginRunSessionStart, endRunSessionStart } from './routes/run.js';
 import type { WorkspaceState } from './workspace-state.js';
 
-const TRIAL_CACHE_VERSION = 5;
+const TRIAL_CACHE_VERSION = CHAT_PIPELINE_TRIAL_CACHE_VERSION;
 const CHAT_PIPELINE_TRIAL_TIMEOUT_MS = 10 * 60 * 1000;
 const CHAT_PIPELINE_TRIAL_TASK_TIMEOUT_MS = 2 * 60 * 1000;
 const MAX_TRIAL_STREAM_BYTES = 4 * 1024;
