@@ -809,15 +809,27 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
     isCommandTaskConfig(task) ? `running: ${commandLabel(task.command)}` : `running (driver task)`,
   );
 
-  // File-only: resolved config for this task
-  const resolvedDriver = task.driver ?? track.driver ?? config.driver ?? 'opencode';
-  const resolvedModel = task.model ?? track.model ?? config.model ?? '(default)';
-  const resolvedPerms = task.permissions ?? track.permissions ?? '(default)';
-  log.debug(
-    `[task:${taskId}]`,
-    `resolved: driver=${resolvedDriver} model=${resolvedModel} cwd=${resolvedCwd}`,
-  );
-  log.debug(`[task:${taskId}]`, `permissions: ${JSON.stringify(resolvedPerms)}`);
+  // File-only: execution metadata that actually governs this task type.
+  if (isCommandTaskConfig(task)) {
+    const commandSpec = commandToSpawnSpec(task.command, resolvedCwd);
+    const direct =
+      typeof task.command === 'object' && task.command !== null && 'argv' in task.command;
+    log.debug(
+      `[task:${taskId}]`,
+      direct
+        ? `executor: host-command direct=${commandSpec.args[0]} cwd=${resolvedCwd}`
+        : `executor: host-command shell=${commandSpec.args[0]} cwd=${resolvedCwd}`,
+    );
+  } else {
+    const resolvedDriver = task.driver ?? track.driver ?? config.driver ?? 'opencode';
+    const resolvedModel = task.model ?? track.model ?? config.model ?? '(default)';
+    const resolvedPerms = task.permissions ?? track.permissions ?? '(default)';
+    log.debug(
+      `[task:${taskId}]`,
+      `resolved: driver=${resolvedDriver} model=${resolvedModel} cwd=${resolvedCwd}`,
+    );
+    log.debug(`[task:${taskId}]`, `permissions: ${JSON.stringify(resolvedPerms)}`);
+  }
   if (task.continue_from) {
     log.debug(`[task:${taskId}]`, `continue_from: "${task.continue_from}"`);
   }

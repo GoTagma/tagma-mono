@@ -14,6 +14,8 @@ export const CHAT_PIPELINE_TRIAL_PLAN_CONTRACT = {
     findings: 16,
     goals: 16,
     runs: 3,
+    toolAttemptsPerYaml: 2,
+    rejectionSummaries: 4,
   },
   coverageDimensions: [
     'multiple-inputs',

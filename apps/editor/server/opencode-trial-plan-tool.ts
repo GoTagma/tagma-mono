@@ -9,8 +9,17 @@ import { CHAT_PIPELINE_TRIAL_PLAN_CONTRACT } from './chat-pipeline-trial-plan.js
 export function buildTagmaTrialPlanTool(): string {
   const contract = JSON.stringify(CHAT_PIPELINE_TRIAL_PLAN_CONTRACT);
   return `import { createHash, randomUUID } from "node:crypto";
-import { lstatSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
+import {
+  closeSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { tool } from "@opencode-ai/plugin";
 
 const CONTRACT = ${contract};
@@ -448,6 +457,147 @@ function resolvePipelineTarget(input, contextDirectory) {
   return { root, yamlPath };
 }
 
+const TRIAL_PLAN_ATTEMPT_TELEMETRY_VERSION = 1;
+const MAX_TOOL_ATTEMPTS_PER_YAML = CONTRACT.limits.toolAttemptsPerYaml;
+const MAX_REJECTION_SUMMARIES = CONTRACT.limits.rejectionSummaries;
+
+function trialPlanAttemptPaths(root, yamlPath, yamlHash) {
+  const stageRoot = dirname(dirname(root));
+  const relativeYamlPath = relative(root, yamlPath).replace(/\\\\/g, "/");
+  const key = createHash("sha256")
+    .update(relativeYamlPath + String.fromCharCode(0) + yamlHash)
+    .digest("hex");
+  const telemetryDir = join(stageRoot, ".trial-plan-telemetry");
+  return {
+    relativeYamlPath,
+    telemetryDir,
+    telemetryPath: join(telemetryDir, key + ".json"),
+    lockPath: join(telemetryDir, key + ".lock"),
+  };
+}
+
+function newTrialPlanAttemptTelemetry(yamlHash, relativeYamlPath) {
+  return {
+    version: TRIAL_PLAN_ATTEMPT_TELEMETRY_VERSION,
+    yamlHash,
+    relativeYamlPath,
+    toolAttemptCount: 0,
+    validationRejectionCount: 0,
+    repeatedValidationRejectionCount: 0,
+    successfulWriteCount: 0,
+    firstAttemptAt: null,
+    lastAttemptAt: null,
+    rejections: [],
+  };
+}
+
+function readTrialPlanAttemptTelemetry(paths, yamlHash) {
+  try {
+    const parsed = JSON.parse(readFileSync(paths.telemetryPath, "utf8"));
+    if (
+      parsed.version !== TRIAL_PLAN_ATTEMPT_TELEMETRY_VERSION ||
+      parsed.yamlHash !== yamlHash ||
+      parsed.relativeYamlPath !== paths.relativeYamlPath ||
+      !Number.isInteger(parsed.toolAttemptCount) ||
+      !Number.isInteger(parsed.validationRejectionCount) ||
+      !Number.isInteger(parsed.repeatedValidationRejectionCount) ||
+      !Number.isInteger(parsed.successfulWriteCount) ||
+      !Array.isArray(parsed.rejections)
+    ) {
+      throw new Error("invalid telemetry shape");
+    }
+    return parsed;
+  } catch (error) {
+    if (error && typeof error === "object" && error.code === "ENOENT") {
+      return newTrialPlanAttemptTelemetry(yamlHash, paths.relativeYamlPath);
+    }
+    throw new Error(
+      "trial plan attempt telemetry is invalid; discard this chat stage before retrying",
+    );
+  }
+}
+
+function writeTrialPlanAttemptTelemetry(paths, telemetry) {
+  const tempPath = paths.telemetryPath + "." + randomUUID() + ".tmp";
+  writeFileSync(tempPath, JSON.stringify(telemetry, null, 2) + "\\n", "utf8");
+  renameSync(tempPath, paths.telemetryPath);
+}
+
+function beginTrialPlanAttempt(root, yamlPath, yamlHash) {
+  const paths = trialPlanAttemptPaths(root, yamlPath, yamlHash);
+  mkdirSync(paths.telemetryDir, { recursive: true });
+  let locked = false;
+  try {
+    const lockFd = openSync(paths.lockPath, "wx");
+    closeSync(lockFd);
+    locked = true;
+    const telemetry = readTrialPlanAttemptTelemetry(paths, yamlHash);
+    if (telemetry.toolAttemptCount >= MAX_TOOL_ATTEMPTS_PER_YAML) {
+      throw new Error(
+        "trial plan tool attempt budget exhausted for this staged YAML revision",
+      );
+    }
+    const now = Date.now();
+    telemetry.toolAttemptCount += 1;
+    telemetry.firstAttemptAt = telemetry.firstAttemptAt || now;
+    telemetry.lastAttemptAt = now;
+    writeTrialPlanAttemptTelemetry(paths, telemetry);
+    return { paths, telemetry };
+  } catch (error) {
+    if (locked) rmSync(paths.lockPath, { force: true });
+    if (error && typeof error === "object" && error.code === "EEXIST") {
+      throw new Error("another trial plan tool attempt is already in progress");
+    }
+    throw error;
+  }
+}
+
+function rejectionSummary(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.replace(/\\s+/g, " ").trim().slice(0, 500) || "unknown validation rejection";
+}
+
+function recordTrialPlanRejection(attempt, error) {
+  try {
+    const message = rejectionSummary(error);
+    const fingerprint = createHash("sha256").update(message).digest("hex");
+    let rejection = attempt.telemetry.rejections.find(
+      (item) => item.fingerprint === fingerprint,
+    );
+    if (!rejection) {
+      rejection = { fingerprint, count: 0, message };
+      attempt.telemetry.rejections.push(rejection);
+      attempt.telemetry.rejections = attempt.telemetry.rejections.slice(
+        -MAX_REJECTION_SUMMARIES,
+      );
+    }
+    rejection.count += 1;
+    attempt.telemetry.validationRejectionCount += 1;
+    if (rejection.count > 1) attempt.telemetry.repeatedValidationRejectionCount += 1;
+    writeTrialPlanAttemptTelemetry(attempt.paths, attempt.telemetry);
+    if (rejection.count > 1) {
+      throw new Error(
+        "Repeated equivalent validation rejection (" +
+          rejection.count +
+          "x): " +
+          rejection.message,
+      );
+    }
+    throw error;
+  } finally {
+    rmSync(attempt.paths.lockPath, { force: true });
+  }
+}
+
+function recordTrialPlanSuccess(attempt) {
+  try {
+    attempt.telemetry.successfulWriteCount += 1;
+    writeTrialPlanAttemptTelemetry(attempt.paths, attempt.telemetry);
+  } finally {
+    rmSync(attempt.paths.lockPath, { force: true });
+  }
+}
+
 const expectationSchema = tool.schema.discriminatedUnion("type", [
   tool.schema.object({
     type: tool.schema.literal("path-exists"),
@@ -542,8 +692,10 @@ export default tool({
   async execute(args, context) {
     const { root, yamlPath } = resolvePipelineTarget(args.pipeline_path, context.directory);
     const yamlHash = createHash("sha1").update(readFileSync(yamlPath, "utf8")).digest("hex");
+    const attempt = beginTrialPlanAttempt(root, yamlPath, yamlHash);
     const planPath = yamlPath.replace(/\\.ya?ml$/i, ".trial-plan.json");
-    const plan = {
+    try {
+      const plan = {
       version: CONTRACT.version,
       yamlHash,
       summary: args.summary,
@@ -561,6 +713,10 @@ export default tool({
     const tempPath = planPath + "." + randomUUID() + ".tmp";
     writeFileSync(tempPath, JSON.stringify(plan, null, 2) + "\\n", "utf8");
     renameSync(tempPath, planPath);
+    } catch (error) {
+      return recordTrialPlanRejection(attempt, error);
+    }
+    recordTrialPlanSuccess(attempt);
     return JSON.stringify(
       { path: relative(root, planPath).replace(/\\\\/g, "/"), yamlHash },
       null,
