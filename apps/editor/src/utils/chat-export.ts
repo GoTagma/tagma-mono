@@ -214,7 +214,28 @@ function renderPipelineVerification(
   } else {
     lines.push(exportBullet(markdown, 'Trial: unavailable'));
   }
-  lines.push(exportBullet(markdown, `Repair attempts: ${result.repairAttempts ?? 0}`));
+  lines.push(exportBullet(markdown, `Pipeline repair cycles: ${result.repairAttempts ?? 0}`));
+  if (result.planningTelemetry) {
+    const telemetry = result.planningTelemetry;
+    const inputTokens = telemetry.inputTokens + telemetry.cacheReadTokens + telemetry.cacheWriteTokens;
+    const outputTokens = telemetry.outputTokens + telemetry.reasoningTokens;
+    lines.push(
+      exportBullet(markdown, `Trial planning prompts: ${telemetry.promptCount}`),
+      exportBullet(markdown, `Trial plan tool attempts: ${telemetry.toolAttemptCount}`),
+      exportBullet(
+        markdown,
+        `Planning validation rejections: ${telemetry.validationRejectionCount}` +
+          (telemetry.repeatedValidationRejectionCount > 0
+            ? ` (${telemetry.repeatedValidationRejectionCount} repeated)`
+            : ''),
+      ),
+      exportBullet(markdown, `Planning elapsed: ${(telemetry.elapsedMs / 1_000).toFixed(1)}s`),
+      exportBullet(
+        markdown,
+        `Planning token usage: ${formatTokens(inputTokens)} input, ${formatTokens(outputTokens)} output`,
+      ),
+    );
+  }
 
   if (result.reconcile) {
     lines.push(

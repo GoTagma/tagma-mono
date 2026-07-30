@@ -39,6 +39,7 @@ import { MessageBubble } from './MessageBubble';
 import { BotBridgeStatusBadge } from './BotBridgeStatusBadge';
 import { FloatingPanel } from './FloatingPanel';
 import { ModelPickerDropdown } from './ModelPickerDropdown';
+import { formatTokens } from './StructuredParts';
 import { modelVariantIds, reconcileModelVariant } from '../../store/chat-provider-catalog';
 import {
   chatPipelineDeploymentTarget,
@@ -1181,13 +1182,13 @@ export function describeSessionYamlResult(result: ChatYamlSessionResult): {
 } {
   const name = chatPipelineDisplayName(result);
   const attempts = Math.max(0, Math.trunc(result.repairAttempts ?? 0));
-  const attemptLabel = `${attempts} attempt${attempts === 1 ? '' : 's'}`;
+  const attemptLabel = `${attempts} cycle${attempts === 1 ? '' : 's'}`;
   const detail = result.trial?.summary || result.compile.summary || null;
 
   if (result.status === 'ready') {
     const passed = result.trial ? 'Compile and trial run passed.' : 'Compile passed.';
     const outcome =
-      attempts > 0 ? `Automatic repair succeeded after ${attemptLabel}. ${passed}` : passed;
+      attempts > 0 ? `Pipeline repair succeeded after ${attemptLabel}. ${passed}` : passed;
     const verb =
       result.reconcile?.outcome === 'unchanged'
         ? 'Pipeline unchanged'
@@ -1201,7 +1202,7 @@ export function describeSessionYamlResult(result: ChatYamlSessionResult): {
 
   const failed =
     attempts > 0
-      ? `Automatic repair did not succeed after ${attemptLabel}.`
+      ? `Pipeline repair did not succeed after ${attemptLabel}.`
       : 'Pipeline verification failed.';
   if (result.reconcile?.outcome === 'forked') {
     return {
@@ -1247,6 +1248,9 @@ export function SessionYamlResultBubble({ result }: { result: ChatYamlSessionRes
           </span>
         </div>
         <div className="select-text text-tagma-muted/80 break-words">{summary}</div>
+        {result.planningTelemetry && (
+          <TrialPlanningTelemetryDetails telemetry={result.planningTelemetry} />
+        )}
         {deploymentTarget && (
           <button
             type="button"
@@ -1262,6 +1266,33 @@ export function SessionYamlResultBubble({ result }: { result: ChatYamlSessionRes
         )}
       </div>
     </div>
+  );
+}
+
+function TrialPlanningTelemetryDetails({
+  telemetry,
+}: {
+  telemetry: NonNullable<ChatYamlSessionResult['planningTelemetry']>;
+}) {
+  const prompts = `${telemetry.promptCount} prompt${telemetry.promptCount === 1 ? '' : 's'}`;
+  const toolAttempts = `${telemetry.toolAttemptCount} tool attempt${telemetry.toolAttemptCount === 1 ? '' : 's'}`;
+  const rejections = `${telemetry.validationRejectionCount} validation rejection${telemetry.validationRejectionCount === 1 ? '' : 's'}`;
+  const inputTokens =
+    telemetry.inputTokens + telemetry.cacheReadTokens + telemetry.cacheWriteTokens;
+  const outputTokens = telemetry.outputTokens + telemetry.reasoningTokens;
+  return (
+    <details className="select-text border-t border-tagma-border/60 pt-1.5 text-[9px]">
+      <summary className="cursor-pointer text-tagma-muted/80">
+        Trial planning: {prompts} / {toolAttempts} / {rejections}
+      </summary>
+      <div className="mt-1 text-tagma-muted/70">
+        {formatTokens(inputTokens)} input tokens / {formatTokens(outputTokens)} output tokens /{' '}
+        {(telemetry.elapsedMs / 1_000).toFixed(1)}s
+        {telemetry.repeatedValidationRejectionCount > 0
+          ? ` / ${telemetry.repeatedValidationRejectionCount} repeated rejection${telemetry.repeatedValidationRejectionCount === 1 ? '' : 's'}`
+          : ''}
+      </div>
+    </details>
   );
 }
 

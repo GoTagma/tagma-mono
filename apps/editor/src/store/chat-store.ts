@@ -182,6 +182,20 @@ export type ChatYamlPostAction = ChatYamlTarget & {
   trial?: ChatPipelineTrialRunResult;
 };
 
+export interface ChatTrialPlanningTelemetry {
+  promptCount: number;
+  toolAttemptCount: number;
+  validationRejectionCount: number;
+  repeatedValidationRejectionCount: number;
+  elapsedMs: number;
+  inputTokens: number;
+  outputTokens: number;
+  reasoningTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  cost: number;
+}
+
 export type ChatYamlSessionResult = ChatYamlTarget & {
   sessionId: string;
   /** Workspace owning this result. Optional so older in-memory/persisted shapes stay readable. */
@@ -191,6 +205,8 @@ export type ChatYamlSessionResult = ChatYamlTarget & {
   trial?: ChatPipelineTrialRunResult;
   /** Hidden compile/trial repair continuations completed before this final result. */
   repairAttempts?: number;
+  /** Complete Trial planning lifecycle counters, kept separate from pipeline repair cycles. */
+  planningTelemetry?: ChatTrialPlanningTelemetry;
   /** Host-side publish/fork facts made available to the next user turn in this session. */
   reconcile?: ChatYamlReconcileSummary;
   completedAt: number;

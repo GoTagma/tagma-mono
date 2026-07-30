@@ -35,10 +35,12 @@ import {
 } from './chat-yaml-staging.js';
 import {
   readChatPipelineTrialPlan,
+  readChatPipelineTrialPlanToolTelemetry,
   type ChatPipelineTrialExpectation,
   type ChatPipelineTrialPlan,
   type ChatPipelineTrialPlanCase,
   type ChatPipelineTrialPlanRequest,
+  type ChatPipelineTrialPlanToolTelemetry,
 } from './chat-pipeline-trial-plan.js';
 import type {
   PreparedTrialHostWitnessInputs,
@@ -73,7 +75,7 @@ import { normalizeRunTargetTaskIds, runtimeWithInjectedEnv } from './routes/run-
 import { beginRunSessionStart, endRunSessionStart } from './routes/run.js';
 import type { WorkspaceState } from './workspace-state.js';
 
-const TRIAL_CACHE_VERSION = 4;
+const TRIAL_CACHE_VERSION = 5;
 const CHAT_PIPELINE_TRIAL_TIMEOUT_MS = 10 * 60 * 1000;
 const CHAT_PIPELINE_TRIAL_TASK_TIMEOUT_MS = 2 * 60 * 1000;
 const MAX_TRIAL_STREAM_BYTES = 4 * 1024;
@@ -159,6 +161,7 @@ export interface ChatPipelineTrialRunResult {
   totalTaskCount: number;
   omittedTaskCount: number;
   tasks: ChatPipelineTrialTaskResult[];
+  planTelemetry?: ChatPipelineTrialPlanToolTelemetry;
   planRequest?: ChatPipelineTrialPlanRequest;
   plan?: ChatPipelineTrialPlanSummary;
   cases: ChatPipelineTrialCaseResult[];
@@ -617,6 +620,7 @@ function trialPlanSummary(plan: ChatPipelineTrialPlan): ChatPipelineTrialPlanSum
 
 function resultForPlanRequest(
   request: ChatPipelineTrialPlanRequest,
+  planTelemetry: ChatPipelineTrialPlanToolTelemetry,
   startedAt: number,
 ): ChatPipelineTrialRunResult {
   return {
@@ -630,6 +634,7 @@ function resultForPlanRequest(
     totalTaskCount: 0,
     omittedTaskCount: 0,
     tasks: [],
+    planTelemetry,
     planRequest: request,
     cases: [],
   };
@@ -1778,13 +1783,14 @@ export async function trialRunChatYamlStage(
   );
   let pendingRunReservation: ReturnType<typeof beginRunSessionStart> = null;
   try {
+    const planTelemetry = readChatPipelineTrialPlanToolTelemetry(snapshot.yamlPath);
     const planRead = readChatPipelineTrialPlan(
       snapshot.yamlPath,
       entry.relativePath,
       snapshot.contentHash,
     );
     if (planRead.status === 'required') {
-      return resultForPlanRequest(planRead.request, startedAt);
+      return resultForPlanRequest(planRead.request, planTelemetry, startedAt);
     }
     const inputHash = buildChatPipelineTrialInputHash({
       stagedTreeHash: snapshot.treeHash,
@@ -1975,7 +1981,7 @@ export async function trialRunChatYamlStage(
             inputHash,
             postVerificationHash,
             postWitness.witness,
-            result,
+            { ...result, planTelemetry },
           );
         }
         return result;
@@ -1992,7 +1998,7 @@ export async function trialRunChatYamlStage(
         inFlightByCacheKey.delete(inFlightKey);
         cleanupTrialPipelineSnapshot(executionSnapshot);
       }
-    })();
+    })().then((result) => ({ ...result, planTelemetry }));
     inFlightByCacheKey.set(inFlightKey, promise);
     return promise;
   } finally {

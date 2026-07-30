@@ -239,6 +239,19 @@ describe('chat conversation export', () => {
           ],
         },
         repairAttempts: 1,
+        planningTelemetry: {
+          promptCount: 2,
+          toolAttemptCount: 2,
+          validationRejectionCount: 1,
+          repeatedValidationRejectionCount: 0,
+          elapsedMs: 4_200,
+          inputTokens: 1_200,
+          outputTokens: 80,
+          reasoningTokens: 20,
+          cacheReadTokens: 300,
+          cacheWriteTokens: 0,
+          cost: 0.01,
+        },
         reconcile: {
           outcome: 'forked',
           conflicts: ['trial-run-failed'],
@@ -253,6 +266,11 @@ describe('chat conversation export', () => {
 
     expect(exported.content).toContain('## Pipeline Verification');
     expect(exported.content).toContain('Host result: forked');
+    expect(exported.content).toContain('Pipeline repair cycles: 1');
+    expect(exported.content).toContain('Trial planning prompts: 2');
+    expect(exported.content).toContain('Trial plan tool attempts: 2');
+    expect(exported.content).toContain('Planning validation rejections: 1');
+    expect(exported.content).toContain('Planning token usage: 1.5k input, 100 output');
     expect(exported.content).toContain('### Trial Plan');
     expect(exported.content).toContain('`basic-run` — Basic run');
     expect(exported.content).toContain('### Trial Case Results');

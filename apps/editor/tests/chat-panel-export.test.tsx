@@ -249,7 +249,7 @@ describe('ChatPanel export affordance', () => {
     const html = renderToStaticMarkup(<SessionYamlResultBubble result={result} />);
 
     expect(html).toContain('Saved failed draft');
-    expect(html).toContain('Automatic repair did not succeed after 2 attempts.');
+    expect(html).toContain('Pipeline repair did not succeed after 2 cycles.');
     expect(html).toContain('No live pipeline was overwritten.');
     expect(html).toContain('Trial run failed: main.test exited 7.');
     expect(html).not.toContain('Open pipeline');
@@ -415,6 +415,19 @@ describe('ChatPanel export affordance', () => {
         cases: [],
       },
       repairAttempts: 1,
+      planningTelemetry: {
+        promptCount: 2,
+        toolAttemptCount: 2,
+        validationRejectionCount: 1,
+        repeatedValidationRejectionCount: 0,
+        elapsedMs: 4_200,
+        inputTokens: 1_200,
+        outputTokens: 80,
+        reasoningTokens: 20,
+        cacheReadTokens: 300,
+        cacheWriteTokens: 0,
+        cost: 0.01,
+      },
       reconcile: {
         outcome: 'adopted',
         conflicts: [],
@@ -429,8 +442,13 @@ describe('ChatPanel export affordance', () => {
     const html = renderToStaticMarkup(<SessionYamlResultBubble result={result} />);
 
     expect(html).toContain('Updated pipeline');
-    expect(html).toContain('Automatic repair succeeded after 1 attempt.');
+    expect(html).toContain('Pipeline repair succeeded after 1 cycle.');
     expect(html).toContain('Compile and trial run passed.');
+    expect(html).toContain('Trial planning');
+    expect(html).toContain('2 prompts');
+    expect(html).toContain('2 tool attempts');
+    expect(html).toContain('1 validation rejection');
+    expect(html).toContain('1.5k input tokens');
   });
 
   test('shows failed trial repair as the active conversation-flow phase', () => {

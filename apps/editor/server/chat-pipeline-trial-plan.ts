@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
+import { dirname, join, relative } from 'node:path';
 
 export const CHAT_PIPELINE_TRIAL_PLAN_CONTRACT = {
   version: 1,
@@ -142,6 +143,151 @@ export interface ChatPipelineTrialPlanRequest {
 export type ChatPipelineTrialPlanReadResult =
   | { status: 'ready'; plan: ChatPipelineTrialPlan; planHash: string }
   | { status: 'required'; request: ChatPipelineTrialPlanRequest };
+
+export interface ChatPipelineTrialPlanToolTelemetry {
+  version: 1;
+  yamlHash: string;
+  relativeYamlPath: string;
+  toolAttemptCount: number;
+  validationRejectionCount: number;
+  repeatedValidationRejectionCount: number;
+  successfulWriteCount: number;
+  firstAttemptAt: number | null;
+  lastAttemptAt: number | null;
+  elapsedMs: number;
+  rejections: Array<{ fingerprint: string; count: number; message: string }>;
+}
+
+const TRIAL_PLAN_TOOL_TELEMETRY_VERSION = 1;
+const MAX_TRIAL_PLAN_TOOL_TELEMETRY_BYTES = 32 * 1024;
+
+function emptyTrialPlanToolTelemetry(
+  yamlHash: string,
+  relativeYamlPath: string,
+): ChatPipelineTrialPlanToolTelemetry {
+  return {
+    version: TRIAL_PLAN_TOOL_TELEMETRY_VERSION,
+    yamlHash,
+    relativeYamlPath,
+    toolAttemptCount: 0,
+    validationRejectionCount: 0,
+    repeatedValidationRejectionCount: 0,
+    successfulWriteCount: 0,
+    firstAttemptAt: null,
+    lastAttemptAt: null,
+    elapsedMs: 0,
+    rejections: [],
+  };
+}
+
+function telemetryInteger(value: unknown, label: string, max: number): number {
+  if (!Number.isInteger(value) || (value as number) < 0 || (value as number) > max) {
+    throw new Error(`${label} is invalid.`);
+  }
+  return value as number;
+}
+
+export function readChatPipelineTrialPlanToolTelemetry(
+  stagedYamlPath: string,
+): ChatPipelineTrialPlanToolTelemetry {
+  const yamlHash = createHash('sha1').update(readFileSync(stagedYamlPath, 'utf8')).digest('hex');
+  const agentTagmaDir = dirname(dirname(stagedYamlPath));
+  const relativeYamlPath = relative(agentTagmaDir, stagedYamlPath).replace(/\\/g, '/');
+  const stageRoot = dirname(dirname(agentTagmaDir));
+  const key = createHash('sha256')
+    .update(relativeYamlPath + String.fromCharCode(0) + yamlHash)
+    .digest('hex');
+  const telemetryPath = join(stageRoot, '.trial-plan-telemetry', `${key}.json`);
+  if (!existsSync(telemetryPath)) {
+    return emptyTrialPlanToolTelemetry(yamlHash, relativeYamlPath);
+  }
+  const stat = lstatSync(telemetryPath);
+  if (stat.isSymbolicLink() || !stat.isFile() || stat.size > MAX_TRIAL_PLAN_TOOL_TELEMETRY_BYTES) {
+    throw new Error('Trial plan tool telemetry must be a small regular file.');
+  }
+  const raw = JSON.parse(readFileSync(telemetryPath, 'utf8')) as Record<string, unknown>;
+  if (
+    raw.version !== TRIAL_PLAN_TOOL_TELEMETRY_VERSION ||
+    raw.yamlHash !== yamlHash ||
+    raw.relativeYamlPath !== relativeYamlPath
+  ) {
+    throw new Error('Trial plan tool telemetry does not match the staged YAML revision.');
+  }
+  const maxAttempts = CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.toolAttemptsPerYaml;
+  const toolAttemptCount = telemetryInteger(
+    raw.toolAttemptCount,
+    'toolAttemptCount',
+    maxAttempts,
+  );
+  const validationRejectionCount = telemetryInteger(
+    raw.validationRejectionCount,
+    'validationRejectionCount',
+    toolAttemptCount,
+  );
+  const repeatedValidationRejectionCount = telemetryInteger(
+    raw.repeatedValidationRejectionCount,
+    'repeatedValidationRejectionCount',
+    validationRejectionCount,
+  );
+  const successfulWriteCount = telemetryInteger(
+    raw.successfulWriteCount,
+    'successfulWriteCount',
+    toolAttemptCount,
+  );
+  if (!Array.isArray(raw.rejections)) throw new Error('Trial plan rejection telemetry is invalid.');
+  const rejections = raw.rejections.map((value, index) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new Error(`Trial plan rejection telemetry ${index} is invalid.`);
+    }
+    const item = value as Record<string, unknown>;
+    if (
+      typeof item.fingerprint !== 'string' ||
+      !/^[0-9a-f]{64}$/.test(item.fingerprint) ||
+      typeof item.message !== 'string' ||
+      item.message.length === 0 ||
+      item.message.length > 500
+    ) {
+      throw new Error(`Trial plan rejection telemetry ${index} is invalid.`);
+    }
+    return {
+      fingerprint: item.fingerprint,
+      count: telemetryInteger(item.count, `rejections[${index}].count`, validationRejectionCount),
+      message: item.message,
+    };
+  });
+  if (rejections.length > CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.rejectionSummaries) {
+    throw new Error('Trial plan rejection telemetry exceeds its summary limit.');
+  }
+  const firstAttemptAt =
+    raw.firstAttemptAt === null
+      ? null
+      : telemetryInteger(raw.firstAttemptAt, 'firstAttemptAt', Number.MAX_SAFE_INTEGER);
+  const lastAttemptAt =
+    raw.lastAttemptAt === null
+      ? null
+      : telemetryInteger(raw.lastAttemptAt, 'lastAttemptAt', Number.MAX_SAFE_INTEGER);
+  if (
+    (toolAttemptCount === 0 && (firstAttemptAt !== null || lastAttemptAt !== null)) ||
+    (toolAttemptCount > 0 && (firstAttemptAt === null || lastAttemptAt === null)) ||
+    (firstAttemptAt !== null && lastAttemptAt !== null && firstAttemptAt > lastAttemptAt)
+  ) {
+    throw new Error('Trial plan tool telemetry timestamps are invalid.');
+  }
+  return {
+    version: TRIAL_PLAN_TOOL_TELEMETRY_VERSION,
+    yamlHash,
+    relativeYamlPath,
+    toolAttemptCount,
+    validationRejectionCount,
+    repeatedValidationRejectionCount,
+    successfulWriteCount,
+    firstAttemptAt,
+    lastAttemptAt,
+    elapsedMs:
+      firstAttemptAt === null || lastAttemptAt === null ? 0 : lastAttemptAt - firstAttemptAt,
+    rejections,
+  };
+}
 
 export function pipelineTrialPlanPath(yamlPath: string): string {
   return yamlPath.replace(/\.ya?ml$/i, '.trial-plan.json');

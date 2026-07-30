@@ -236,7 +236,7 @@ export interface ChatPipelineTrialPlanSummary {
 }
 
 export interface ChatPipelineTrialRunResult {
-  version: 2;
+  version: 2 | 3 | 4 | 5;
   success: boolean;
   kind: ChatPipelineTrialRunKind;
   ran: boolean;
@@ -246,6 +246,19 @@ export interface ChatPipelineTrialRunResult {
   totalTaskCount: number;
   omittedTaskCount: number;
   tasks: ChatPipelineTrialTaskResult[];
+  planTelemetry?: {
+    version: 1;
+    yamlHash: string;
+    relativeYamlPath: string;
+    toolAttemptCount: number;
+    validationRejectionCount: number;
+    repeatedValidationRejectionCount: number;
+    successfulWriteCount: number;
+    firstAttemptAt: number | null;
+    lastAttemptAt: number | null;
+    elapsedMs: number;
+    rejections: Array<{ fingerprint: string; count: number; message: string }>;
+  };
   planRequest?: ChatPipelineTrialPlanRequest;
   plan?: ChatPipelineTrialPlanSummary;
   cases: ChatPipelineTrialCaseResult[];
