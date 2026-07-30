@@ -699,11 +699,11 @@ Ask only when the missing choice would authorize an external side effect, paid s
 
 ## Behavior And Edge-Case Plan
 
-Plan multiple inputs, duplicate input names, multi-paragraph and empty content, special characters/Unicode, repeated runs, and output collisions; preserve identity/full text. Split collisions: inter-task (2+ targets + distinct outputs), repeat-run (2+ runs + distinct outputs), concurrent. The sequential harness cannot cover concurrent; mark \`accepted-risk\`, \`blocked\`, or honestly \`not-applicable\`.
+Plan multiple inputs, duplicate input names, multi-paragraph/empty content, special characters/Unicode, repeated runs, and output collisions; preserve identity/text. Inter-task collision needs 2+ targets and distinct outputs; repeat-run needs 2+ runs and distinct outputs. A sequential harness cannot cover concurrent; mark \`accepted-risk\`, \`blocked\`, or \`not-applicable\`.
 
-After final compile, call \`tagma_trial_plan\` on the exact staged YAML, never live YAML. Every finding sets \`repairScope\`: \`pipeline-artifact\` only for concrete YAML/companion defects, otherwise \`diagnostic-only\`. Blocked coverage is diagnostic-only; accepted risk yields passed-with-warnings.
+After final compile, call \`tagma_trial_plan\`. Pass the exact staged YAML path, never live YAML. The tool validates the complete plan before writing. Every finding must set \`repairScope\`: \`pipeline-artifact\` only for YAML/companion defects; else \`diagnostic-only\`. Blocked coverage is diagnostic-only; accepted risk yields passed-with-warnings.
 
-Fixture and expectation paths are relative to the isolated case project root and may target only case fixtures or outputs; never assert staged YAML or its companion artifacts (\`.compile.log\`, \`.layout.json\`, \`.manifest.json\`, \`.requirements.md\`, or \`.trial-plan.json\`). Those host-private files live under the case \`.tagma\` tree.
+Fixture and expectation paths are relative to the isolated case project root and may target only fixtures or outputs; never assert staged YAML or its companion artifacts (\`.compile.log\`, \`.layout.json\`, \`.manifest.json\`, \`.requirements.md\`, or \`.trial-plan.json\`). Host-private files live under case \`.tagma\`.
 
 Never copy YAML or trial plans between staging and live \`.tagma\`. If \`tagma_trial_plan\` fails, do not use symlinks, junctions, copies, or writes to live \`.tagma\`; briefly report the host/tool error and end the physical turn. The plan is transient evidence, not a live artifact.
 

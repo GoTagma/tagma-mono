@@ -220,11 +220,7 @@ export function readChatPipelineTrialPlanToolTelemetry(
     throw new Error('Trial plan tool telemetry does not match the staged YAML revision.');
   }
   const maxAttempts = CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.toolAttemptsPerYaml;
-  const toolAttemptCount = telemetryInteger(
-    raw.toolAttemptCount,
-    'toolAttemptCount',
-    maxAttempts,
-  );
+  const toolAttemptCount = telemetryInteger(raw.toolAttemptCount, 'toolAttemptCount', maxAttempts);
   const validationRejectionCount = telemetryInteger(
     raw.validationRejectionCount,
     'validationRejectionCount',

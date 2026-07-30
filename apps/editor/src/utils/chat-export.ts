@@ -223,7 +223,8 @@ function renderPipelineVerification(
   lines.push(exportBullet(markdown, `Pipeline repair cycles: ${result.repairAttempts ?? 0}`));
   if (result.planningTelemetry) {
     const telemetry = result.planningTelemetry;
-    const inputTokens = telemetry.inputTokens + telemetry.cacheReadTokens + telemetry.cacheWriteTokens;
+    const inputTokens =
+      telemetry.inputTokens + telemetry.cacheReadTokens + telemetry.cacheWriteTokens;
     const outputTokens = telemetry.outputTokens + telemetry.reasoningTokens;
     lines.push(
       exportBullet(markdown, `Trial planning prompts: ${telemetry.promptCount}`),

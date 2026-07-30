@@ -75,9 +75,7 @@ export function beginChatTrialPlanningPrompt(
   };
 }
 
-export function cancelChatTrialPlanningPrompt(
-  accumulator: ChatTrialPlanningAccumulator,
-): void {
+export function cancelChatTrialPlanningPrompt(accumulator: ChatTrialPlanningAccumulator): void {
   if (!accumulator.openPrompt) return;
   accumulator.openPrompt = null;
   accumulator.promptCount = Math.max(0, accumulator.promptCount - 1);
@@ -100,7 +98,8 @@ export function completeChatTrialPlanningPrompt(
     if (info.role !== 'assistant') continue;
     if (prompt.baselineMessageIds.has(info.id)) continue;
     if (accumulator.includedAssistantMessageIds.has(info.id)) continue;
-    if (typeof info.time?.completed !== 'number' || info.time.completed < prompt.startedAt) continue;
+    if (typeof info.time?.completed !== 'number' || info.time.completed < prompt.startedAt)
+      continue;
 
     accumulator.includedAssistantMessageIds.add(info.id);
     accumulator.inputTokens += boundedCounter(info.tokens?.input);

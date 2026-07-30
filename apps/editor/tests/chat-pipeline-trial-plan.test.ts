@@ -100,7 +100,9 @@ describe('chat pipeline trial plan', () => {
       runs: 2,
       targetTaskIds: ['main.process', 'main.publish'],
     });
-    expect(plan.coverage.find((item) => item.dimension === 'concurrent-run-output-collision')).toMatchObject({
+    expect(
+      plan.coverage.find((item) => item.dimension === 'concurrent-run-output-collision'),
+    ).toMatchObject({
       status: 'accepted-risk',
       caseIds: [],
     });

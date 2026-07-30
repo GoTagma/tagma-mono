@@ -354,9 +354,7 @@ describe('shouldAutoRepairCompileResult', () => {
         2,
       ),
     ).toBe(false);
-    expect(shouldAutoRepairTrialResult({ success: false, kind: 'plan-failed' }, 0, 2)).toBe(
-      false,
-    );
+    expect(shouldAutoRepairTrialResult({ success: false, kind: 'plan-failed' }, 0, 2)).toBe(false);
   });
 });
 

@@ -474,9 +474,7 @@ describe('chat YAML staging', () => {
     expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
 
     const stagedRequirementsPath = pipelineRequirementsPath(staged.stagedPath);
-    const stagedRequirements = parseRequirementsMd(
-      readFileSync(stagedRequirementsPath, 'utf-8'),
-    );
+    const stagedRequirements = parseRequirementsMd(readFileSync(stagedRequirementsPath, 'utf-8'));
     writeFileSync(
       stagedRequirementsPath,
       serializeRequirementsMd({

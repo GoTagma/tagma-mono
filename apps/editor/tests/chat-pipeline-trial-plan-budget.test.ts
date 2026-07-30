@@ -46,11 +46,7 @@ test('generated trial plan tool bounds equivalent validator failures per stage a
     );
     const yamlPath = join(agentTagmaDir, 'demo', 'demo.yaml');
     mkdirSync(dirname(yamlPath), { recursive: true });
-    writeFileSync(
-      yamlPath,
-      ['pipeline:', '  name: demo', '  tracks: []', ''].join('\n'),
-      'utf8',
-    );
+    writeFileSync(yamlPath, ['pipeline:', '  name: demo', '  tracks: []', ''].join('\n'), 'utf8');
     const tool = await loadGeneratedTool(root);
     const invalidArgs = {
       pipeline_path: yamlPath,

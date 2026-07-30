@@ -808,6 +808,9 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
     `[task:${taskId}]`,
     isCommandTaskConfig(task) ? `running: ${commandLabel(task.command)}` : `running (driver task)`,
   );
+  const resolvedDriver = isCommandTaskConfig(task)
+    ? null
+    : (task.driver ?? track.driver ?? config.driver ?? 'opencode');
 
   // File-only: execution metadata that actually governs this task type.
   if (isCommandTaskConfig(task)) {
@@ -821,7 +824,6 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
         : `executor: host-command shell=${commandSpec.args[0]} cwd=${resolvedCwd}`,
     );
   } else {
-    const resolvedDriver = task.driver ?? track.driver ?? config.driver ?? 'opencode';
     const resolvedModel = task.model ?? track.model ?? config.model ?? '(default)';
     const resolvedPerms = task.permissions ?? track.permissions ?? '(default)';
     log.debug(
@@ -1236,7 +1238,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
     // old "write full string after the fact" block is gone — that's what
     // the streaming rewrite fixed (unbounded in-memory buffering).
 
-    if (result.sessionId) {
+    if (result.sessionId && resolvedDriver) {
       // H1: qualified-only key.
       ctx.sessionMap.set(taskId, result.sessionId);
       ctx.sessionDriverMap.set(taskId, resolvedDriver);

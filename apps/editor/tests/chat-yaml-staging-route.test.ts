@@ -84,19 +84,19 @@ function writeTrialPlan(
                   caseIds: [],
                   rationale: acceptedRiskBy[dimension],
                 }
-            : blockedBy[dimension]
-              ? {
-                  dimension,
-                  status: 'blocked',
-                  caseIds: [],
-                  rationale: blockedBy[dimension],
-                }
-            : {
-                dimension,
-                status: 'not-applicable',
-                caseIds: [],
-                rationale: 'Not applicable to this focused test pipeline.',
-              },
+              : blockedBy[dimension]
+                ? {
+                    dimension,
+                    status: 'blocked',
+                    caseIds: [],
+                    rationale: blockedBy[dimension],
+                  }
+                : {
+                    dimension,
+                    status: 'not-applicable',
+                    caseIds: [],
+                    rationale: 'Not applicable to this focused test pipeline.',
+                  },
         ),
         findings: input.findings ?? [],
         cases: input.cases ?? [],
@@ -771,9 +771,7 @@ describe('chat YAML staging routes', () => {
       ran: true,
       cases: [{ id: 'all-file-boundaries', success: true }],
     });
-    expect((trialRes.body as { summary: string }).summary).toContain(
-      'passed with warnings',
-    );
+    expect((trialRes.body as { summary: string }).summary).toContain('passed with warnings');
     expect((trialRes.body as { summary: string }).summary).toContain(
       'concurrent-run-output-collision',
     );
