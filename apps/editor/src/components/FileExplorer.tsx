@@ -8,6 +8,35 @@ import { workspaceRootSelectionIssue } from '../../shared/workspace-root-selecti
 
 export type FileExplorerMode = 'open' | 'save' | 'directory';
 
+interface CreateAndEnterExplorerFolderInput {
+  currentPath: string;
+  folderName: string;
+  createFolder: (path: string) => Promise<{ path: string }>;
+  enterFolder: (path: string) => void | Promise<void>;
+}
+
+export async function createAndEnterExplorerFolder({
+  currentPath,
+  folderName,
+  createFolder,
+  enterFolder,
+}: CreateAndEnterExplorerFolderInput): Promise<string> {
+  const name = folderName.trim();
+  if (!name) throw new Error('Folder name is required.');
+
+  const separator = currentPath.includes('\\') && !currentPath.includes('/') ? '\\' : '/';
+  const basePath = currentPath.replace(/[\\/]+$/u, '');
+  const prefix =
+    basePath.length > 0
+      ? `${basePath}${separator}`
+      : currentPath.startsWith(separator)
+        ? separator
+        : '';
+  const created = await createFolder(`${prefix}${name}`);
+  await enterFolder(created.path);
+  return created.path;
+}
+
 interface FileExplorerProps {
   mode: FileExplorerMode;
   title?: string;
@@ -222,12 +251,15 @@ export function FileExplorer({
       setNewFolderName(null);
       return;
     }
-    const sep = currentPath.includes('/') ? '/' : '\\';
-    const fullPath = currentPath + sep + newFolderName.trim();
     try {
-      await api.mkdir(fullPath, { picker, capabilityToken: pickerMkdirCapabilityToken });
+      await createAndEnterExplorerFolder({
+        currentPath,
+        folderName: newFolderName,
+        createFolder: (path) =>
+          api.mkdir(path, { picker, capabilityToken: pickerMkdirCapabilityToken }),
+        enterFolder: loadDir,
+      });
       setNewFolderName(null);
-      loadDir(currentPath);
     } catch (e: unknown) {
       setError((e instanceof Error ? e.message : null) ?? 'Failed to create folder');
     }
