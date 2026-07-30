@@ -624,13 +624,23 @@ function DockTabStrip({
             onDragEnd={onDragEnd}
             onClick={() => onSelect(tab)}
             title={canDetach ? `${meta.label} — drag left of the dock to detach` : meta.label}
-            className={`group relative flex min-w-0 items-center gap-1.5 px-2.5 text-[10px] font-mono border-r border-tagma-border/60 cursor-pointer select-none transition-colors ${
+            className={`group relative flex min-w-0 items-center gap-1.5 px-2.5 text-[10px] font-mono border-r border-tagma-border/60 cursor-pointer select-none transition-colors duration-fast ease-smooth ${
               isActive
                 ? 'bg-tagma-bg text-tagma-text'
                 : 'text-tagma-muted hover:text-tagma-text hover:bg-tagma-surface'
             } ${isDragging ? 'opacity-50' : ''}`}
           >
-            <Icon size={11} />
+            {/* 2px accent cap on the active tab. Background alone had to carry
+                the active state, which is a ~4% luminance step between
+                tagma-bg and tagma-surface/40 — legible on a calibrated
+                display, invisible on a dim one. */}
+            {isActive && (
+              <span
+                className="pointer-events-none absolute inset-x-0 top-0 h-[2px] bg-tagma-accent"
+                aria-hidden="true"
+              />
+            )}
+            <Icon size={11} className={isActive ? 'text-tagma-accent' : undefined} />
             <span className="truncate">{meta.label}</span>
             {isActive && canDetach && (
               <button
@@ -737,8 +747,18 @@ function ResizeHandle({
       aria-orientation="vertical"
       onPointerDown={onPointerDown}
       title="Drag to resize"
-      className="absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize bg-transparent hover:bg-tagma-accent/60 active:bg-tagma-accent z-50 transition-colors isolate"
-    />
+      // The hit area is 7px wide and straddles the dock edge (-3px) so the
+      // pointer catches it slightly before the visual seam — a 4px target
+      // flush to the border meant repeated near-misses. The painted line
+      // stays a 2px hairline via the inner span, so the wider grab zone
+      // costs nothing visually.
+      className="group absolute -left-[3px] top-0 bottom-0 z-50 flex w-[7px] cursor-ew-resize items-stretch justify-center bg-transparent isolate"
+    >
+      <span
+        aria-hidden="true"
+        className="w-[2px] bg-transparent transition-colors duration-fast ease-smooth group-hover:bg-tagma-accent/60 group-active:bg-tagma-accent"
+      />
+    </div>
   );
 }
 
@@ -783,13 +803,25 @@ function ActivityRail({
             }
             aria-label={meta.label}
             aria-pressed={visible}
-            className={`relative flex items-center justify-center h-9 transition-colors ${
+            className={`group relative flex items-center justify-center h-9 transition-colors duration-fast ease-smooth ${
               visible
                 ? 'text-tagma-accent bg-tagma-accent/10'
                 : 'text-tagma-muted hover:text-tagma-text hover:bg-tagma-surface'
             }`}
           >
-            <Icon size={14} />
+            {/* Left accent bar marks the rail's open tabs. The rail sits at
+                the window edge where a tinted background is easy to miss, so
+                the state gets a hard edge as well as a fill. */}
+            {visible && (
+              <span
+                className="pointer-events-none absolute left-0 top-0 bottom-0 w-[2px] bg-tagma-accent"
+                aria-hidden="true"
+              />
+            )}
+            <Icon
+              size={14}
+              className="transition-transform duration-fast ease-smooth group-active:translate-y-px"
+            />
             {isDetached && (
               <span
                 className="absolute top-1 right-1 w-1.5 h-1.5 bg-tagma-accent"

@@ -672,7 +672,7 @@ export const TaskCard = memo(function TaskCard({
       className={`
         absolute border select-none flex flex-col justify-center pl-2.5 ${canModify ? 'pr-7' : 'pr-2.5'}
         ${borderColor} ${bgColor}
-        ${isDragging ? 'z-30 shadow-glow-accent' : ''}
+        ${isDragging ? 'z-30 shadow-glow-accent' : isSelected ? 'z-10 shadow-raised' : ''}
         ${cursorClass}
       `}
       style={{
@@ -680,8 +680,16 @@ export const TaskCard = memo(function TaskCard({
         top: y,
         width: w,
         height: h,
+        // Position animates but colour previously did not, so selecting or
+        // hovering a card snapped between palettes while the card itself
+        // glided. Colour and shadow now ease on the same curve. Both are
+        // dropped entirely while dragging: a transition on a pointer-driven
+        // property fights the pointer and makes the card feel like it is
+        // lagging behind the cursor.
         transition:
-          isDragging || isTrackDragging ? 'none' : 'left 100ms ease-out, top 100ms ease-out',
+          isDragging || isTrackDragging
+            ? 'none'
+            : 'left 100ms ease-out, top 100ms ease-out, border-color 140ms var(--tagma-ease), background-color 140ms var(--tagma-ease), box-shadow 140ms var(--tagma-ease)',
       }}
       onMouseDown={(e) => {
         // In read-only mode the parent canvas also listens for
