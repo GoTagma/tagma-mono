@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   CHAT_PIPELINE_TRIAL_COVERAGE_DIMENSIONS,
   parseChatPipelineTrialPlan,
+  validateChatPipelineTrialPlanTargetPaths,
 } from '../server/chat-pipeline-trial-plan';
 
 function completePlan(): Record<string, unknown> {
@@ -145,6 +146,24 @@ describe('chat pipeline trial plan', () => {
 
     expect(() => parseChatPipelineTrialPlan(candidate)).toThrow(
       'goals must contain at least one behavior goal',
+    );
+  });
+
+  test('rejects expectations that inspect staged pipeline artifacts outside the case root', () => {
+    const candidate = structuredClone(completePlan());
+    (
+      candidate.cases as Array<{
+        expectations: Array<Record<string, unknown>>;
+      }>
+    )[0]!.expectations.push({
+      type: 'file-contains',
+      path: 'sample/sample.yaml',
+      text: 'pipeline:',
+    });
+    const plan = parseChatPipelineTrialPlan(candidate);
+
+    expect(() => validateChatPipelineTrialPlanTargetPaths(plan, 'sample/sample.yaml')).toThrow(
+      'must target case fixtures or outputs, not staged pipeline artifacts',
     );
   });
 });

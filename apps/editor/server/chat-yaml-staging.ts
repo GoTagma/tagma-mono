@@ -12,7 +12,10 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import yaml from 'js-yaml';
 import { parseYaml, serializePipeline } from '@tagma/sdk/yaml';
 
-import { readChatPipelineTrialPlan } from './chat-pipeline-trial-plan.js';
+import {
+  pipelineTrialPlanPath,
+  readChatPipelineTrialPlan,
+} from './chat-pipeline-trial-plan.js';
 import { readEditorSettings } from './plugins/loader.js';
 import type {
   PreparedTrialHostWitnessInputs,
@@ -212,6 +215,7 @@ export interface ChatYamlStageEntry {
   contentHash: string;
   layoutHash: string | null;
   requirementsHash: string | null;
+  trialPlanHash: string | null;
   layoutMtimeMs: number | null;
   layoutSize: number | null;
   mtimeMs: number;
@@ -668,6 +672,10 @@ function describeStageEntry(
   const requirementsHash = existsSync(requirementsPath)
     ? sha1(assertRegularTextFile(requirementsPath, 'staged requirements'))
     : null;
+  const trialPlanHash = optionalArtifactHash(
+    pipelineTrialPlanPath(stagedPath),
+    'staged trial plan',
+  );
   const relativePath = portableRelative(paths.agentTagmaDir, stagedPath);
   const isSource = metadata.sourceRelativePaths.some((candidate) =>
     samePipelineRelativePath(candidate, relativePath),
@@ -683,6 +691,7 @@ function describeStageEntry(
     contentHash: sha1(content),
     layoutHash,
     requirementsHash,
+    trialPlanHash,
     layoutMtimeMs,
     layoutSize,
     mtimeMs: stat.mtimeMs,

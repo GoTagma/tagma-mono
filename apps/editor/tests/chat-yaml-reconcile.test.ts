@@ -9,8 +9,10 @@ import {
   shouldForkChatYamlResult,
   shouldAutoRepairCompileResult,
   shouldAutoRepairTrialResult,
+  shouldReverifyChatPipelineAfterRepair,
   chatPipelineVerificationSucceeded,
   shouldTrialRunChatPipeline,
+  type ChatPipelineRepairArtifactState,
   type ChatYamlSnapshot,
   type ChatYamlStageSnapshotEntry,
   type WorkspaceYamlEntry,
@@ -328,6 +330,34 @@ describe('shouldAutoRepairCompileResult', () => {
     expect(shouldAutoRepairTrialResult({ success: false, kind: 'plan-failed' }, 1, 2)).toBe(true);
     expect(shouldAutoRepairTrialResult({ success: false, kind: 'failed' }, 2, 2)).toBe(false);
     expect(shouldAutoRepairTrialResult({ success: true, kind: 'passed' }, 0, 2)).toBe(false);
+  });
+});
+
+describe('chat pipeline repair progress', () => {
+  const artifacts: ChatPipelineRepairArtifactState = {
+    contentHash: 'yaml-1',
+    layoutHash: 'layout-1',
+    requirementsHash: 'requirements-1',
+    trialPlanHash: 'plan-1',
+  };
+
+  test('does not re-run verification when a hidden repair changed no pipeline artifacts', () => {
+    expect(shouldReverifyChatPipelineAfterRepair(artifacts, { ...artifacts })).toBe(false);
+  });
+
+  test('re-runs verification after any supported repair artifact changes', () => {
+    for (const changed of [
+      { ...artifacts, contentHash: 'yaml-2' },
+      { ...artifacts, layoutHash: 'layout-2' },
+      { ...artifacts, requirementsHash: 'requirements-2' },
+      { ...artifacts, trialPlanHash: 'plan-2' },
+    ]) {
+      expect(shouldReverifyChatPipelineAfterRepair(artifacts, changed)).toBe(true);
+    }
+  });
+
+  test('runs initial verification when there is no pending repair checkpoint', () => {
+    expect(shouldReverifyChatPipelineAfterRepair(null, artifacts)).toBe(true);
   });
 });
 

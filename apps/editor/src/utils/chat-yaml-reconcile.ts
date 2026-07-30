@@ -34,6 +34,38 @@ export interface ChatYamlStageSnapshotEntry extends Pick<
   relativePath: string;
   sourcePath: string | null;
   requirementsHash: string | null;
+  trialPlanHash: string | null;
+}
+
+export interface ChatPipelineRepairArtifactState {
+  contentHash: string;
+  layoutHash: string | null;
+  requirementsHash: string | null;
+  trialPlanHash: string | null;
+}
+
+export function chatPipelineRepairArtifactState(
+  entry: ChatPipelineRepairArtifactState,
+): ChatPipelineRepairArtifactState {
+  return {
+    contentHash: entry.contentHash,
+    layoutHash: entry.layoutHash,
+    requirementsHash: entry.requirementsHash,
+    trialPlanHash: entry.trialPlanHash,
+  };
+}
+
+export function shouldReverifyChatPipelineAfterRepair(
+  previous: ChatPipelineRepairArtifactState | null,
+  current: ChatPipelineRepairArtifactState,
+): boolean {
+  if (!previous) return true;
+  return (
+    previous.contentHash !== current.contentHash ||
+    previous.layoutHash !== current.layoutHash ||
+    previous.requirementsHash !== current.requirementsHash ||
+    previous.trialPlanHash !== current.trialPlanHash
+  );
 }
 
 export interface ChatYamlStagingSnapshot {

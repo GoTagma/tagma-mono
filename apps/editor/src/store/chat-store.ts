@@ -3636,6 +3636,7 @@ async function promptOpencode(
             contentHash: entry.contentHash,
             layoutHash: entry.layoutHash,
             requirementsHash: entry.requirementsHash,
+            trialPlanHash: entry.trialPlanHash,
           })),
         },
       };

@@ -639,6 +639,31 @@ test('trial-plan tool rejects host-invalid plans before writing any file', async
   }
 });
 
+test('trial-plan tool rejects checks against staged YAML and companion files', async () => {
+  const generated = await loadGeneratedTrialPlanTool();
+  const stage = makeTrialPlanStage();
+  try {
+    const args = completeTrialPlanToolArgs('sample/sample.yaml');
+    (
+      args.cases as Array<{
+        expectations: Array<Record<string, unknown>>;
+      }>
+    )[0]!.expectations.push({
+      type: 'file-contains',
+      path: 'sample/sample.compile.log',
+      text: 'success: true',
+    });
+
+    await expect(generated.tool.execute(args, { directory: stage.agentTagmaDir })).rejects.toThrow(
+      'must target case fixtures or outputs, not staged pipeline artifacts',
+    );
+    expect(existsSync(stage.planPath)).toBe(false);
+  } finally {
+    stage.cleanup();
+    generated.cleanup();
+  }
+});
+
 test('trial-plan tool requires every case to include non-empty target task ids before writing', async () => {
   const generated = await loadGeneratedTrialPlanTool();
   const stage = makeTrialPlanStage();

@@ -36,6 +36,13 @@ export const CHAT_PIPELINE_TRIAL_PLAN_CONTRACT = {
     'task-status',
   ],
   taskStatuses: ['success', 'failed', 'skipped', 'timeout', 'blocked'],
+  pipelineCompanionSuffixes: [
+    '.compile.log',
+    '.layout.json',
+    '.manifest.json',
+    '.requirements.md',
+    '.trial-plan.json',
+  ],
 } as const;
 
 const TRIAL_PLAN_VERSION = CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.version;
@@ -508,6 +515,53 @@ export function parseChatPipelineTrialPlan(value: unknown): ChatPipelineTrialPla
   };
 }
 
+function reservedPipelineArtifactPaths(relativeYamlPath: string): Set<string> {
+  const normalized = relativeYamlPath.replace(/\\/g, '/').replace(/^\.\//, '');
+  const separator = normalized.lastIndexOf('/');
+  const directory = separator >= 0 ? normalized.slice(0, separator + 1) : '';
+  const yamlName = separator >= 0 ? normalized.slice(separator + 1) : normalized;
+  const stem = yamlName.replace(/\.ya?ml$/i, '');
+  return new Set(
+    [
+      normalized,
+      ...CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.pipelineCompanionSuffixes.map(
+        (suffix) => `${directory}${stem}${suffix}`,
+      ),
+    ].map((path) => path.toLowerCase()),
+  );
+}
+
+export function validateChatPipelineTrialPlanTargetPaths(
+  plan: ChatPipelineTrialPlan,
+  relativeYamlPath: string,
+): void {
+  const reserved = reservedPipelineArtifactPaths(relativeYamlPath);
+  for (const [caseIndex, testCase] of plan.cases.entries()) {
+    const paths = [
+      ...testCase.fixtures.map((fixture, index) => ({
+        label: `cases[${caseIndex}].fixtures[${index}].path`,
+        path: fixture.path,
+      })),
+      ...testCase.expectations.flatMap((expectation, index) =>
+        'path' in expectation
+          ? [
+              {
+                label: `cases[${caseIndex}].expectations[${index}].path`,
+                path: expectation.path,
+              },
+            ]
+          : [],
+      ),
+    ];
+    for (const item of paths) {
+      if (!reserved.has(item.path.toLowerCase())) continue;
+      throw new Error(
+        `${item.label} must target case fixtures or outputs, not staged pipeline artifacts (${item.path}).`,
+      );
+    }
+  }
+}
+
 function planRequest(
   reason: ChatPipelineTrialPlanRequest['reason'],
   relativeYamlPath: string,
@@ -568,6 +622,7 @@ export function readChatPipelineTrialPlan(
       );
     }
     const plan = parseChatPipelineTrialPlan(parsed);
+    validateChatPipelineTrialPlanTargetPaths(plan, relativeYamlPath);
     if (plan.yamlHash !== pipelineHash) {
       return planRequest(
         'stale',

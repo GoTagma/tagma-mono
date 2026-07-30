@@ -375,6 +375,32 @@ function assertValidPlan(value) {
   );
 }
 
+function assertTargetPaths(value, relativeYaml) {
+  const yaml = relativeYaml.replace(/\\\\/g, '/');
+  const slash = yaml.lastIndexOf('/');
+  const dir = slash < 0 ? '' : yaml.slice(0, slash + 1);
+  const name = slash < 0 ? yaml : yaml.slice(slash + 1);
+  const stem = name.replace(/\.ya?ml$/i, '');
+  const blocked = new Set(
+    [yaml, ...CONTRACT.pipelineCompanionSuffixes.map((suffix) => dir + stem + suffix)].map(
+      (path) => path.toLowerCase(),
+    ),
+  );
+  value.cases.forEach((testCase, caseIndex) => {
+    const items = [
+      ...testCase.fixtures.map((item, index) => ['fixtures', index, item.path]),
+      ...testCase.expectations
+        .map((item, index) => ['expectations', index, item.path])
+        .filter((item) => typeof item[2] === 'string'),
+    ];
+    for (const [kind, index, path] of items) {
+      if (blocked.has(path.toLowerCase())) {
+        throw new Error('cases[' + caseIndex + '].' + kind + '[' + index + '].path must target case fixtures or outputs, not staged pipeline artifacts (' + path + ').');
+      }
+    }
+  });
+}
+
 function portablePath(value) {
   return resolve(value).replace(/\\\\/g, "/");
 }
@@ -531,6 +557,7 @@ export default tool({
       })),
     };
     assertValidPlan(plan);
+    assertTargetPaths(plan, relative(root, yamlPath).replace(/\\\\/g, '/'));
     const tempPath = planPath + "." + randomUUID() + ".tmp";
     writeFileSync(tempPath, JSON.stringify(plan, null, 2) + "\\n", "utf8");
     renameSync(tempPath, planPath);

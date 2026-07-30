@@ -133,6 +133,7 @@ export interface ChatYamlStageEntry extends WorkspaceYamlEntry {
   relativePath: string;
   sourcePath: string | null;
   requirementsHash: string | null;
+  trialPlanHash: string | null;
 }
 
 export interface ChatYamlStageDescriptor {
