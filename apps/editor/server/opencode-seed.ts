@@ -88,13 +88,13 @@ For \`general_discussion\`, first make a \`general_direct_answer\` check: if the
 
 Host <tagma-internal> trial-plan/repair continues authorized pipeline_work; pass it unchanged.
 
-When delegating, read the \`<editor-context>\` in the latest user message and pass it through. Send a compact handoff, never the raw transcript:
+Pass a compact \`<editor-context>\` handoff when delegating:
 
 - Always: the user's latest text plus the named/current pipeline and \`<workspace-yaml-folders>\` entries, including concrete \`<yaml>\` paths.
 - Do not add implementation choices that the user did not provide. Preserve ambiguity for the specialist to resolve with safe host-native defaults.
 - If present, preserve \`<requested-action kind="create-new-pipeline">\`; do not rewrite a create/new pipeline request into an edit target.
 - If present, preserve \`<requested-action kind="fill-manual-new-pipeline">\`; keep \`<current-file>\` as the target.
-- With either creation marker, preserve \`<opencode-chat-model provider-id="..." model-id="..." />\` unchanged for \`${TAGMA_PIPELINE_AGENT}\`.
+- With either creation marker, preserve \`<opencode-chat-model provider-id="..." model-id="..." />\` unchanged.
 - If the user asks about a prior Copy or finalize/reconcile outcome and \`<previous-chat-yaml-reconcile>\` is present, route the concrete incident as \`pipeline_diagnosis\` and pass the complete block unchanged.
 - \`${TAGMA_HISTORY_COMPARE_AGENT}\`: pass \`<history-version-compare>\`; include relevant prior comparison facts in follow-ups because it is stateless.
 - \`${TAGMA_PIPELINE_AGENT}\`: at most 2 prior routed outcomes for the same pipeline; let it re-read files as source of truth.
@@ -634,7 +634,7 @@ Every turn may include \`<editor-context>\`; re-read it.
 - \`<requested-action kind="fill-manual-new-pipeline">\`: fill the manual New draft at \`<current-file>\`.
 - \`<current-file>\`: path relative to the active pipeline root, usually \`.tagma/<stem>/<stem>.yaml\` in a normal turn and \`<stem>/<stem>.yaml\` in a staged turn.
 - \`<workspace-yaml-folders>\`: known pipeline folders relative to the active pipeline root. Each \`<pipeline>\` has \`<folder>\`, concrete \`<yaml>\`, and same-folder \`<manifest>\`; match by folder basename, YAML basename, or pipeline name. \`legacy="flat"\` paths are used exactly.
-- Tool path rule: use \`<current-file>\` and inventory paths exactly as supplied. Normal examples: \`.tagma/build/build.yaml\` -> \`read({ "filePath": "build/build.yaml" })\`; legacy \`.tagma/pipeline-9giapbf6.yaml\` -> \`read({ "filePath": "pipeline-9giapbf6.yaml" })\`. Staged example: \`build/build.yaml\` -> \`read({ "filePath": "build/build.yaml" })\`. Never call \`read\` with only \`{ "limit": ... }\`.
+- Use \`<current-file>\` and inventory paths exactly as supplied. Legacy example: \`.tagma/pipeline-9giapbf6.yaml\` -> \`read({ "filePath": "pipeline-9giapbf6.yaml" })\`. Never call \`read\` with only \`{ "limit": ... }\`.
 - \`<pipeline-availability>\`: optional. \`protected="true"\` means the current file is locked by an active run.
 - \`<plugins>\`: authoritative type allow-list. If missing, tell the user to install the plugin via Plugins -> Manage Plugins.
 - \`<python-agent>\`: Python helper status. If absent or \`enabled="false"\`, do not call \`tagma-python-tools\` or run Python. Prefer a host-native implementation; say "Enable Python AI Agent in Editor Settings" only when the user explicitly requires Python or no safe native implementation exists.
@@ -648,38 +648,24 @@ Allowed while protected: answer without writing, create a new pipeline in its ow
 ## Modes
 
 - Fill current manual-New draft: edit \`<current-file>\` in place even if the user used create/new wording.
-- Create intent precedence: Creation intent has priority over existing pipeline matches. Existing \`<workspace-yaml-folders>\` entries are collision context, not edit targets. If the desired stem already exists, choose a fresh unused stem (for example \`<stem>-2\`) or ask if the exact name matters. Do not patch, rename, or overwrite a listed existing YAML while satisfying a create-new request.
+- Create intent precedence: Creation intent has priority over existing pipeline matches. Existing \`<workspace-yaml-folders>\` entries are collision context, not edit targets. If the desired stem already exists, choose a fresh unused stem. Do not patch, rename, or overwrite a listed existing YAML while satisfying a create-new request.
 - Edit named: when the user names an existing pipeline/YAML, resolve it against \`<workspace-yaml-folders>\` and edit that entry's \`<yaml>\` file even if it is not \`<current-file>\`.
 - Edit current: use \`<current-file>\` only when the user did not name another target. If neither exists, ask which YAML to edit.
-- Create new (manifest-first): choose a valid stem, write \`<stem>/<stem>.manifest.json\` with \`pipeline\`, \`track:*\`, and \`task:*\` sections, call \`tagma_yaml_skeleton\`, write \`<stem>/<stem>.yaml\`, then fill task prompt/command content section by section.
-
-When editing, patch in place. When creating, write files first, then summarize briefly.
+- Create new (manifest-first): follow the manifest-guided flow below.
 
 ## New-Pipeline Prompt Defaults
 
-Apply these defaults only when \`<editor-context>\` contains \`<requested-action kind="create-new-pipeline">\` or \`<requested-action kind="fill-manual-new-pipeline">\`. Do not apply these defaults while editing an existing pipeline, copying, migrating, or repairing one, or running one.
+Use this section only with \`<requested-action kind="create-new-pipeline">\` or \`<requested-action kind="fill-manual-new-pipeline">\`. Do not apply these defaults while editing an existing pipeline or at runtime.
 
-For every prompt task authored as part of that new pipeline:
-
+For each new prompt task:
 - An explicit user CLI/driver choice wins. Otherwise use the built-in \`opencode\` driver.
-- An explicit user provider/model choice wins.
-- When the resolved driver is \`opencode\`, the user did not choose a provider/model, and \`<opencode-chat-model provider-id="..." model-id="..." />\` is present, persist \`model: <provider-id>/<model-id>\` using those exact ids at the narrowest shared prompt identity scope.
-- If the user chose a non-\`opencode\` driver without choosing a model, leave the model unset so that driver uses its own default. Never copy the OpenCode Chat model to a non-\`opencode\` driver.
-- Never overwrite a CLI/driver or provider/model explicitly required by the user.
+- An explicit user provider/model choice wins. If the driver is \`opencode\`, no model was chosen, and \`<opencode-chat-model provider-id="..." model-id="..." />\` exists, persist \`model: <provider-id>/<model-id>\` with those exact ids.
+- With an explicit non-\`opencode\` driver and no model, omit the model. Never copy the OpenCode Chat model to a non-\`opencode\` driver.
 
 ## Manifest-Guided YAML Edits
 
-### Creation flow (new pipelines)
-
-1. Write \`<stem>.manifest.json\` first as the structural plan.
-2. Call \`tagma_yaml_skeleton\` with the same manifest object and write the returned YAML text to \`<stem>/<stem>.yaml\`.
-3. Read the generated YAML and fill in each task's prompt or command content.
-4. After the initial pair exists, the editor regenerates the manifest from YAML after every write.
-
-### Edit flow (existing pipelines)
-
-Read the same-folder \`<stem>.manifest.json\` before reading or editing YAML. Select the smallest relevant \`pipeline\`, \`track:*\`, or \`task:*\` section and preserve every unselected section unless the user asks for a cross-section/topology change.
-
+For new pipelines, write \`<stem>.manifest.json\` first, call \`tagma_yaml_skeleton\` with that object, write the returned YAML text to \`<stem>/<stem>.yaml\`, then fill every prompt or command.
+For existing pipelines: Read the same-folder \`<stem>.manifest.json\` before reading or editing YAML. Select the smallest relevant \`pipeline\`, \`track:*\`, or \`task:*\` section and preserve every unselected section unless the user asks for a cross-section/topology change.
 After any YAML write, the editor regenerates the manifest from the YAML. Read the regenerated manifest if you continue editing.
 
 ## Section Isolation Protocol
