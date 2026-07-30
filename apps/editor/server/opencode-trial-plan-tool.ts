@@ -250,8 +250,18 @@ function validateCoveredCaseEvidence(coverage, cases) {
       evidenced = linkedCases.some((item) =>
         item.fixtures.some((fixture) => fixture.content.includes(String.fromCharCode(10))),
       );
-    } else if (entry.dimension === "output-collision") {
-      evidenced = hasDistinctOutputExpectation(linkedCases);
+    } else if (entry.dimension === "inter-task-output-collision") {
+      evidenced = linkedCases.some(
+        (item) => item.targetTaskIds.length >= 2 && hasDistinctOutputExpectation([item]),
+      );
+    } else if (entry.dimension === "repeat-run-output-collision") {
+      evidenced = linkedCases.some(
+        (item) => item.runs >= 2 && hasDistinctOutputExpectation([item]),
+      );
+    } else if (entry.dimension === "concurrent-run-output-collision") {
+      throw new Error(
+        "trial plan coverage concurrent-run-output-collision cannot be covered by the sequential trial harness; use accepted-risk, blocked, or not-applicable.",
+      );
     } else if (entry.dimension === "repeat-run") {
       evidenced = linkedCases.some((item) => item.runs >= 2);
     } else if (entry.dimension === "empty-content") {

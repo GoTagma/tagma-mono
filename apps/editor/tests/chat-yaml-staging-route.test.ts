@@ -37,7 +37,9 @@ const REQUIRED_TRIAL_COVERAGE = [
   'multiple-inputs',
   'duplicate-input-names',
   'multiline-content',
-  'output-collision',
+  'inter-task-output-collision',
+  'repeat-run-output-collision',
+  'concurrent-run-output-collision',
   'repeat-run',
   'empty-content',
   'special-characters',
@@ -49,18 +51,20 @@ function writeTrialPlan(
     cases?: unknown[];
     findings?: unknown[];
     coveredBy?: Partial<Record<(typeof REQUIRED_TRIAL_COVERAGE)[number], string>>;
+    acceptedRiskBy?: Partial<Record<(typeof REQUIRED_TRIAL_COVERAGE)[number], string>>;
     blockedBy?: Partial<Record<(typeof REQUIRED_TRIAL_COVERAGE)[number], string>>;
   } = {},
 ): string {
   const yamlHash = createHash('sha1').update(readFileSync(stagedPath, 'utf-8')).digest('hex');
   const planPath = stagedPath.replace(/\.ya?ml$/i, '.trial-plan.json');
   const coveredBy = input.coveredBy ?? {};
+  const acceptedRiskBy = input.acceptedRiskBy ?? {};
   const blockedBy = input.blockedBy ?? {};
   writeFileSync(
     planPath,
     JSON.stringify(
       {
-        version: 2,
+        version: 3,
         yamlHash,
         summary: 'Exercise baseline behavior and boundary-sensitive file handling.',
         goals: ['Preserve every logical input without silently overwriting output.'],
@@ -72,6 +76,13 @@ function writeTrialPlan(
                 caseIds: [coveredBy[dimension]],
                 rationale: `Covered by ${coveredBy[dimension]}.`,
               }
+            : acceptedRiskBy[dimension]
+              ? {
+                  dimension,
+                  status: 'accepted-risk',
+                  caseIds: [],
+                  rationale: acceptedRiskBy[dimension],
+                }
             : blockedBy[dimension]
               ? {
                   dimension,
@@ -487,7 +498,7 @@ describe('chat YAML staging routes', () => {
 
     writeTrialPlan(entry.stagedPath, {
       blockedBy: {
-        'output-collision':
+        'concurrent-run-output-collision':
           'The isolated harness cannot observe an intentional external output directory.',
       },
       cases: [
@@ -571,7 +582,6 @@ describe('chat YAML staging routes', () => {
         'multiple-inputs': 'duplicate-multiline-files',
         'duplicate-input-names': 'duplicate-multiline-files',
         'multiline-content': 'duplicate-multiline-files',
-        'output-collision': 'duplicate-multiline-files',
       },
       cases: [
         {
@@ -678,9 +688,19 @@ describe('chat YAML staging routes', () => {
     );
     compileStage(getRoute, ws, stage.id, entry.relativePath);
     writeTrialPlan(entry.stagedPath, {
-      coveredBy: Object.fromEntries(
-        REQUIRED_TRIAL_COVERAGE.map((dimension) => [dimension, 'all-file-boundaries']),
-      ) as Record<(typeof REQUIRED_TRIAL_COVERAGE)[number], string>,
+      coveredBy: {
+        'multiple-inputs': 'all-file-boundaries',
+        'duplicate-input-names': 'all-file-boundaries',
+        'multiline-content': 'all-file-boundaries',
+        'repeat-run-output-collision': 'all-file-boundaries',
+        'repeat-run': 'all-file-boundaries',
+        'empty-content': 'all-file-boundaries',
+        'special-characters': 'all-file-boundaries',
+      },
+      acceptedRiskBy: {
+        'concurrent-run-output-collision':
+          'The host harness verifies repeated sequential writes but does not schedule concurrent writers.',
+      },
       cases: [
         {
           id: 'all-file-boundaries',
@@ -736,10 +756,16 @@ describe('chat YAML staging routes', () => {
 
     expect(trialRes.body).toMatchObject({
       success: true,
-      kind: 'passed',
+      kind: 'passed-with-warnings',
       ran: true,
       cases: [{ id: 'all-file-boundaries', success: true }],
     });
+    expect((trialRes.body as { summary: string }).summary).toContain(
+      'passed with warnings',
+    );
+    expect((trialRes.body as { summary: string }).summary).toContain(
+      'concurrent-run-output-collision',
+    );
     expect((trialRes.body as { cases: Array<{ runIds: string[] }> }).cases[0]?.runIds).toHaveLength(
       2,
     );

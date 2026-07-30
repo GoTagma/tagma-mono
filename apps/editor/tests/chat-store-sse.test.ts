@@ -225,7 +225,9 @@ test('trial planning prompt forces behavior-first edge-case design without autho
         'multiple-inputs',
         'duplicate-input-names',
         'multiline-content',
-        'output-collision',
+        'inter-task-output-collision',
+        'repeat-run-output-collision',
+        'concurrent-run-output-collision',
         'repeat-run',
         'empty-content',
         'special-characters',
@@ -249,7 +251,10 @@ test('trial planning prompt forces behavior-first edge-case design without autho
   expect(prompt).toContain('Assert distinct outputs');
   expect(prompt).toContain('Use file-equals for exact text preservation');
   expect(prompt).toContain('empty expected string');
-  expect(prompt).toContain('blocking findings');
+  expect(prompt).toContain('Inter-task collision coverage requires at least two target task ids');
+  expect(prompt).toContain('concurrent-run-output-collision must never be marked covered');
+  expect(prompt).toContain('accepted-risk');
+  expect(prompt).toContain('passed-with-warnings');
   expect(prompt).toContain('a'.repeat(40));
   expect(prompt.length).toBeLessThan(4_000);
 });

@@ -103,6 +103,7 @@ const TRIAL_WORKSPACE_MONITOR_IGNORED_TAGMA_DIRS = new Set([
 
 export type ChatPipelineTrialRunKind =
   | 'passed'
+  | 'passed-with-warnings'
   | 'failed'
   | 'witness-failed'
   | 'plan-required'
@@ -521,7 +522,10 @@ function redactTrialText(value: string): string {
 }
 
 function resultForSetupFailure(
-  kind: Exclude<ChatPipelineTrialRunKind, 'passed' | 'failed' | 'plan-required' | 'plan-failed'>,
+  kind: Exclude<
+    ChatPipelineTrialRunKind,
+    'passed' | 'passed-with-warnings' | 'failed' | 'plan-required' | 'plan-failed'
+  >,
   message: string,
   startedAt: number,
 ): ChatPipelineTrialRunResult {
@@ -693,6 +697,17 @@ function planBlockingDiagnostics(plan: ChatPipelineTrialPlan): TrialPlanBlocking
         scope: 'diagnostic-only' as const,
       })),
   ];
+}
+
+function planWarningDiagnostics(plan: ChatPipelineTrialPlan): string[] {
+  return [
+    ...plan.coverage
+      .filter((item) => item.status === 'accepted-risk')
+      .map((item) => `Accepted risk ${item.dimension}: ${item.rationale}`),
+    ...plan.findings
+      .filter((item) => item.severity === 'warning')
+      .map((item) => `Plan warning ${item.summary}: ${item.evidence}`),
+  ].map((message) => boundedTrialText(message));
 }
 
 export function normalizeTrialCaseTargetTaskIdsForExecution(
@@ -1379,15 +1394,20 @@ function buildPlannedTrialSummary(
   baselineOmitted: number,
   baselineCountText: string,
   cases: readonly ChatPipelineTrialCaseResult[],
+  warnings: readonly string[],
 ): string {
+  const allPassed = baselineSuccess && cases.every((item) => item.success);
+  const baseSummary = buildTrialSummary(
+    allPassed,
+    timedOut,
+    baselineTasks,
+    baselineOmitted,
+    baselineCountText,
+  );
   const lines = [
-    buildTrialSummary(
-      baselineSuccess && cases.every((item) => item.success),
-      timedOut,
-      baselineTasks,
-      baselineOmitted,
-      baselineCountText,
-    ),
+    allPassed && !timedOut && warnings.length > 0
+      ? baseSummary.replace('Trial run passed', 'Trial run passed with warnings')
+      : baseSummary,
     '',
     `Targeted cases: ${cases.filter((item) => item.success).length}/${cases.length} passed.`,
   ];
@@ -1398,6 +1418,9 @@ function buildPlannedTrialSummary(
     for (const expectation of testCase.expectations) {
       if (!expectation.passed) lines.push(`  ${expectation.type}: ${expectation.detail}`);
     }
+  }
+  if (warnings.length > 0) {
+    lines.push('', `Verification warnings: ${warnings.length}.`, ...warnings);
   }
   const summary = redactTrialText(lines.join('\n'));
   const bytes = new TextEncoder().encode(summary);
@@ -1716,6 +1739,7 @@ async function executeTrial(
       !abortState.timedOut &&
       cases.length === plan.cases.length &&
       cases.every((item) => item.success);
+    const planWarnings = planWarningDiagnostics(plan);
     const allVisibleTasks = [
       ...baselineEvidence.tasks,
       ...cases.flatMap((item) => item.tasks),
@@ -1734,7 +1758,9 @@ async function executeTrial(
         : hostWitnessCaptureFailure
           ? 'witness-failed'
           : success
-            ? 'passed'
+            ? planWarnings.length > 0
+              ? 'passed-with-warnings'
+              : 'passed'
             : 'failed',
       ran: true,
       runId,
@@ -1745,6 +1771,7 @@ async function executeTrial(
         baselineEvidence.omittedTaskCount,
         baselineEvidence.countText,
         cases,
+        planWarnings,
       ),
       durationMs: Math.max(0, Date.now() - startedAt),
       totalTaskCount,

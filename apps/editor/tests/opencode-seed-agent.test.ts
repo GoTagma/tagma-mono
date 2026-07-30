@@ -105,7 +105,9 @@ function completeTrialPlanToolArgs(pipelinePath: string): Record<string, unknown
     'multiple-inputs',
     'duplicate-input-names',
     'multiline-content',
-    'output-collision',
+    'inter-task-output-collision',
+    'repeat-run-output-collision',
+    'concurrent-run-output-collision',
     'repeat-run',
     'empty-content',
     'special-characters',
@@ -114,12 +116,21 @@ function completeTrialPlanToolArgs(pipelinePath: string): Record<string, unknown
     pipeline_path: pipelinePath,
     summary: 'Exercise observable file-processing boundaries.',
     goals: ['Preserve every logical input and its complete content.'],
-    coverage: coverageDimensions.map((dimension) => ({
-      dimension,
-      status: 'covered',
-      caseIds: [caseId],
-      rationale: 'Covered by isolated fixtures and host assertions.',
-    })),
+    coverage: coverageDimensions.map((dimension) =>
+      dimension === 'concurrent-run-output-collision'
+        ? {
+            dimension,
+            status: 'accepted-risk',
+            caseIds: [],
+            rationale: 'The sequential harness cannot exercise concurrent writers.',
+          }
+        : {
+            dimension,
+            status: 'covered',
+            caseIds: [caseId],
+            rationale: 'Covered by isolated fixtures and host assertions.',
+          },
+    ),
     findings: [],
     cases: [
       {
@@ -127,7 +138,7 @@ function completeTrialPlanToolArgs(pipelinePath: string): Record<string, unknown
         title: 'All file boundaries',
         objective: 'Keep duplicate names distinct across repeated runs.',
         runs: 2,
-        targetTaskIds: ['main.process'],
+        targetTaskIds: ['main.process', 'main.publish'],
         fixtures: [
           {
             path: 'inputs/a/report.txt',
@@ -625,7 +636,10 @@ test('trial-plan tool binds structured edge cases to the final YAML hash', () =>
   expect(doc).toContain('Exact staged Target YAML path');
   expect(doc).toContain('duplicate-input-names');
   expect(doc).toContain('multiline-content');
-  expect(doc).toContain('output-collision');
+  expect(doc).toContain('inter-task-output-collision');
+  expect(doc).toContain('repeat-run-output-collision');
+  expect(doc).toContain('concurrent-run-output-collision');
+  expect(doc).toContain('accepted-risk');
   expect(doc).toContain('repeat-run');
   expect(doc).toContain('.trial-plan.json');
   expect(doc).toContain('yamlHash');
@@ -730,7 +744,7 @@ test('trial-plan tool rejects semantic coverage gaps and unsupported findings be
     await expect(
       generated.tool.execute(outputCollisionArgs, { directory: stage.agentTagmaDir }),
     ).rejects.toThrow(
-      'coverage marks output-collision covered without concrete linked-case evidence',
+      'coverage marks inter-task-output-collision covered without concrete linked-case evidence',
     );
     expect(existsSync(stage.planPath)).toBe(false);
 
@@ -791,7 +805,7 @@ test('trial-plan tool writes plans that the authoritative host parser accepts', 
     expect(parsed.cases[0]).toMatchObject({
       id: 'all-file-boundaries',
       runs: 2,
-      targetTaskIds: ['main.process'],
+      targetTaskIds: ['main.process', 'main.publish'],
     });
   } finally {
     stage.cleanup();

@@ -32,7 +32,9 @@ const REQUIRED_TRIAL_COVERAGE = [
   'multiple-inputs',
   'duplicate-input-names',
   'multiline-content',
-  'output-collision',
+  'inter-task-output-collision',
+  'repeat-run-output-collision',
+  'concurrent-run-output-collision',
   'repeat-run',
   'empty-content',
   'special-characters',
@@ -137,7 +139,7 @@ function writeTrialPlan(
     stagedPath.replace(/\.ya?ml$/i, '.trial-plan.json'),
     JSON.stringify(
       {
-        version: 2,
+        version: 3,
         yamlHash,
         summary: 'Focused trial coverage for async witness ordering.',
         goals: ['Ensure trial authorization witness lifecycle behaves deterministically.'],

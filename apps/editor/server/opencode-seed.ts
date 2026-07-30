@@ -699,9 +699,9 @@ Ask only when the missing choice would authorize an external side effect, paid s
 
 ## Behavior And Edge-Case Plan
 
-Plan multiple inputs, duplicate input names, multi-paragraph/multiline content, output collisions, repeated runs, empty content, and special characters/Unicode; preserve identity and full text.
+Plan multiple inputs, duplicate input names, multi-paragraph/multiline content, inter-task output collisions, repeat-run output collisions, concurrent-run output collisions, repeated runs, empty content, and special characters/Unicode; preserve identity and full text. Inter-task collision coverage needs at least two target tasks and distinct output assertions. Repeat-run collision coverage needs at least two runs and distinct output assertions. The harness is sequential: never mark concurrent-run output collision as covered; use \`accepted-risk\`, \`blocked\`, or \`not-applicable\` with an honest rationale.
 
-After final compile, call \`tagma_trial_plan\` with isolated checks. Pass the exact staged YAML path, never live YAML. The tool validates the complete plan before writing. Every finding must set \`repairScope\`: \`pipeline-artifact\` only for concrete YAML/companion defects; otherwise \`diagnostic-only\`. Blocked coverage is diagnostic-only; it never authorizes YAML repair.
+After final compile, call \`tagma_trial_plan\` with isolated checks. Pass the exact staged YAML path, never live YAML. The tool validates the complete plan before writing. Every finding must set \`repairScope\`: \`pipeline-artifact\` only for concrete YAML/companion defects; otherwise \`diagnostic-only\`. Blocked coverage is diagnostic-only; it never authorizes YAML repair. Accepted risk remains visible as a passed-with-warnings result.
 
 Fixture and expectation paths are relative to the isolated case project root and may target only case fixtures or outputs; never assert staged YAML or its companion artifacts (\`.compile.log\`, \`.layout.json\`, \`.manifest.json\`, \`.requirements.md\`, or \`.trial-plan.json\`). Those host-private files live under the case \`.tagma\` tree.
 

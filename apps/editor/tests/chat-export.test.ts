@@ -288,6 +288,54 @@ describe('chat conversation export', () => {
     expect(exported.content).not.toContain('task-id-secret');
   });
 
+  test('labels a successful trial with accepted risk as passed with warnings', () => {
+    const exported = buildConversationExport({
+      format: 'txt',
+      title: 'Warning-aware verification',
+      exportedAt: new Date('2026-05-20T12:00:00.000Z'),
+      messages: [],
+      pipelineVerification: {
+        kind: 'refresh-current',
+        path: 'D:/repo/.tagma/demo/demo.yaml',
+        name: 'demo.yaml',
+        pipelineName: 'Demo',
+        sessionId: 's1',
+        status: 'ready',
+        compile: {
+          success: true,
+          summary: 'Compile passed.',
+          validation: { errors: [], warnings: [] },
+        },
+        trial: {
+          version: 6,
+          success: true,
+          kind: 'passed-with-warnings',
+          ran: true,
+          runId: 'run_warning',
+          summary: 'Accepted risk concurrent-run-output-collision.',
+          durationMs: 10,
+          totalTaskCount: 1,
+          omittedTaskCount: 0,
+          tasks: [],
+          cases: [],
+        },
+        repairAttempts: 0,
+        reconcile: {
+          outcome: 'adopted',
+          conflicts: [],
+          localBranchPersisted: false,
+          resultPath: 'D:/repo/.tagma/demo/demo.yaml',
+          compileSuccess: true,
+          trialRunSuccess: true,
+        },
+        completedAt: 1_000,
+      },
+    });
+
+    expect(exported.content).toContain('Trial: passed with warnings (passed-with-warnings; ran)');
+    expect(exported.content).not.toContain('Trial: passed (passed-with-warnings; ran)');
+  });
+
   test('derives safe filenames for both export formats', () => {
     expect(conversationExportFilename('Feature / Q&A?', 'md')).toBe('tagma-chat-feature-q-a.md');
     expect(conversationExportFilename('', 'txt')).toBe('tagma-chat-conversation.txt');

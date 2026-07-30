@@ -256,6 +256,58 @@ describe('ChatPanel export affordance', () => {
     expect(isChatPipelineDeployed(result)).toBe(false);
   });
 
+  test('renders accepted trial risk as a warning without treating the pipeline as failed', () => {
+    const result: ChatYamlSessionResult = {
+      sessionId: 's1',
+      kind: 'refresh-current',
+      path: '/workspace/.tagma/build/build.yaml',
+      name: 'build.yaml',
+      pipelineName: 'Build',
+      status: 'ready',
+      compile: {
+        success: true,
+        summary: 'Compile succeeded.',
+        validation: { errors: [], warnings: [] },
+      } as never,
+      trial: {
+        version: 6,
+        success: true,
+        kind: 'passed-with-warnings',
+        ran: true,
+        runId: 'run_trial_warning',
+        summary:
+          'Trial run passed with warnings. Accepted risk concurrent-run-output-collision: sequential harness only.',
+        durationMs: 12,
+        totalTaskCount: 1,
+        omittedTaskCount: 0,
+        tasks: [],
+        cases: [],
+      },
+      reconcile: {
+        outcome: 'adopted',
+        conflicts: [],
+        localBranchPersisted: false,
+        resultPath: '/workspace/.tagma/build/build.yaml',
+        compileSuccess: true,
+        trialRunSuccess: true,
+      },
+      completedAt: 1_000,
+    };
+
+    const bubbleHtml = renderToStaticMarkup(<SessionYamlResultBubble result={result} />);
+    const toastHtml = renderToStaticMarkup(
+      <ChatCompletionToastCard result={result} sessionTitle="Completed chat" />,
+    );
+
+    for (const html of [bubbleHtml, toastHtml]) {
+      expect(html).toContain('trial run passed with warnings');
+      expect(html).toContain('text-tagma-warning');
+      expect(html).not.toContain('text-tagma-error');
+    }
+    expect(bubbleHtml).toContain('Open pipeline');
+    expect(isChatPipelineDeployed(result)).toBe(true);
+  });
+
   test('renders the live trial case, run, and task while verification is active', () => {
     const html = renderToStaticMarkup(
       <ChatTrialProgressView

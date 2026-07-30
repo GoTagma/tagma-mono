@@ -201,10 +201,16 @@ function renderPipelineVerification(
   const trial = result.trial;
   if (trial) {
     const runState = trial.ran ? 'ran' : 'not run';
+    const trialOutcome =
+      trial.kind === 'passed-with-warnings'
+        ? 'passed with warnings'
+        : trial.success
+          ? 'passed'
+          : 'failed';
     lines.push(
       exportBullet(
         markdown,
-        `Trial: ${trial.success ? 'passed' : 'failed'} (${trial.kind}; ${runState}) — ${redactExportText(trial.summary)}`,
+        `Trial: ${trialOutcome} (${trial.kind}; ${runState}) — ${redactExportText(trial.summary)}`,
       ),
       exportBullet(
         markdown,

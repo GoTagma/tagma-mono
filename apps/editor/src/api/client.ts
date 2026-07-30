@@ -149,6 +149,7 @@ export interface ChatYamlStageDescriptor {
 
 export type ChatPipelineTrialRunKind =
   | 'passed'
+  | 'passed-with-warnings'
   | 'failed'
   | 'plan-required'
   | 'plan-failed'
@@ -175,7 +176,9 @@ export type ChatPipelineTrialCoverageDimension =
   | 'multiple-inputs'
   | 'duplicate-input-names'
   | 'multiline-content'
-  | 'output-collision'
+  | 'inter-task-output-collision'
+  | 'repeat-run-output-collision'
+  | 'concurrent-run-output-collision'
   | 'repeat-run'
   | 'empty-content'
   | 'special-characters';
@@ -217,7 +220,7 @@ export interface ChatPipelineTrialPlanSummary {
   goals: string[];
   coverage: Array<{
     dimension: ChatPipelineTrialCoverageDimension;
-    status: 'covered' | 'not-applicable' | 'blocked';
+    status: 'covered' | 'accepted-risk' | 'not-applicable' | 'blocked';
     caseIds: string[];
     rationale: string;
   }>;
@@ -237,7 +240,7 @@ export interface ChatPipelineTrialPlanSummary {
 }
 
 export interface ChatPipelineTrialRunResult {
-  version: 2 | 3 | 4 | 5;
+  version: 2 | 3 | 4 | 5 | 6;
   success: boolean;
   kind: ChatPipelineTrialRunKind;
   ran: boolean;

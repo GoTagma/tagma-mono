@@ -1186,7 +1186,11 @@ export function describeSessionYamlResult(result: ChatYamlSessionResult): {
   const detail = result.trial?.summary || result.compile.summary || null;
 
   if (result.status === 'ready') {
-    const passed = result.trial ? 'Compile and trial run passed.' : 'Compile passed.';
+    const passed = result.trial
+      ? result.trial.kind === 'passed-with-warnings'
+        ? 'Compile passed; trial run passed with warnings.'
+        : 'Compile and trial run passed.'
+      : 'Compile passed.';
     const outcome =
       attempts > 0 ? `Pipeline repair succeeded after ${attemptLabel}. ${passed}` : passed;
     const verb =
@@ -1223,6 +1227,7 @@ export function SessionYamlResultBubble({ result }: { result: ChatYamlSessionRes
   const name = chatPipelineDisplayName(result);
   const deploymentTarget = chatPipelineDeploymentTarget(result);
   const ok = result.status === 'ready';
+  const warning = ok && result.trial?.kind === 'passed-with-warnings';
   const presentation = describeSessionYamlResult(result);
   const verb = presentation.verb;
   const summary =
@@ -1237,7 +1242,9 @@ export function SessionYamlResultBubble({ result }: { result: ChatYamlSessionRes
       </div>
       <div className="max-w-[90%] min-w-0 flex flex-col gap-2 px-2.5 py-2 text-[10px] font-mono border border-tagma-border bg-tagma-bg text-tagma-muted">
         <div className="flex items-center gap-1.5 min-w-0">
-          {ok ? (
+          {warning ? (
+            <AlertTriangle size={12} className="text-tagma-warning shrink-0" />
+          ) : ok ? (
             <CheckCircle2 size={12} className="text-tagma-ready shrink-0" />
           ) : (
             <AlertTriangle size={12} className="text-tagma-error shrink-0" />
@@ -1320,6 +1327,7 @@ export function ChatCompletionToastCard({
   const pipelineName = chatPipelineDisplayName(result);
   const deploymentTarget = chatPipelineDeploymentTarget(result);
   const ok = result.status === 'ready';
+  const warning = ok && result.trial?.kind === 'passed-with-warnings';
   const presentation = describeSessionYamlResult(result);
 
   return (
@@ -1330,9 +1338,11 @@ export function ChatCompletionToastCard({
     >
       <div className="flex items-start gap-2.5 px-3 py-2.5">
         <div
-          className={`w-[3px] self-stretch shrink-0 ${ok ? 'bg-tagma-ready' : 'bg-tagma-error'}`}
+          className={`w-[3px] self-stretch shrink-0 ${warning ? 'bg-tagma-warning' : ok ? 'bg-tagma-ready' : 'bg-tagma-error'}`}
         />
-        {ok ? (
+        {warning ? (
+          <AlertTriangle size={14} className="text-tagma-warning shrink-0 mt-0.5" />
+        ) : ok ? (
           <CheckCircle2 size={14} className="text-tagma-ready shrink-0 mt-0.5" />
         ) : (
           <AlertTriangle size={14} className="text-tagma-error shrink-0 mt-0.5" />
