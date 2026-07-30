@@ -245,13 +245,17 @@ export function ChatComposer() {
           rows={2}
           disabled={!ready || !model}
           style={{ maxHeight: COMPOSER_MAX_HEIGHT }}
-          className="min-w-0 flex-1 resize-none overflow-y-auto bg-transparent border border-tagma-border px-2 py-1 text-[11px] font-mono text-tagma-text focus:outline-none focus:border-tagma-muted/80 disabled:opacity-40 disabled:cursor-not-allowed"
+          // `focus:border-tagma-muted/80` used to out-specify the global
+          // `textarea:focus` accent rule in index.css, leaving the composer as
+          // the one input in the app that focused grey. Dropping the override
+          // lets it inherit the shared accent border + ring.
+          className="min-w-0 flex-1 resize-none overflow-y-auto bg-transparent border border-tagma-border px-2 py-1 text-[11px] font-mono text-tagma-text transition-colors duration-base ease-smooth disabled:opacity-40 disabled:cursor-not-allowed"
         />
         <button
           type="button"
           onClick={submit}
           disabled={!canSend}
-          className="shrink-0 p-1.5 border border-tagma-border text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="shrink-0 p-1.5 border border-tagma-border text-tagma-muted transition-all duration-fast ease-smooth hover:text-tagma-accent hover:border-tagma-accent/50 active:translate-y-px disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-tagma-muted disabled:hover:border-tagma-border disabled:active:translate-y-0"
           title={sendLabel}
           aria-label={sendLabel}
         >
@@ -269,7 +273,7 @@ export function ChatComposer() {
             disabled={
               stopMode === 'verification' && activeChatYamlLifecycle?.cancellationRequested === true
             }
-            className="shrink-0 p-1.5 border border-tagma-error/60 text-tagma-error hover:border-tagma-error hover:bg-tagma-error/10 transition-colors"
+            className="shrink-0 p-1.5 border border-tagma-error/60 text-tagma-error transition-all duration-fast ease-smooth hover:border-tagma-error hover:bg-tagma-error/10 active:translate-y-px disabled:opacity-40 disabled:cursor-not-allowed disabled:active:translate-y-0"
             title={stopLabel}
             aria-label={stopLabel}
           >

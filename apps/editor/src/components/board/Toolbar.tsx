@@ -361,7 +361,7 @@ export function Toolbar({
                     <ChevronDown size={8} />
                   </button>
                   {searchModeMenuOpen && (
-                    <div className="absolute left-0 top-full mt-1 z-[170] min-w-[80px] bg-tagma-surface border border-tagma-border shadow-panel">
+                    <div className="absolute left-0 top-full mt-1 z-[170] min-w-[80px] origin-top bg-tagma-surface border border-tagma-border shadow-panel animate-scale-in">
                       {(['name', 'id'] as const).map((m) => (
                         <button
                           key={m}
@@ -404,7 +404,7 @@ export function Toolbar({
                   <X size={11} />
                 </button>
               </div>
-              <div className="absolute right-0 top-full mt-1 z-[160] w-[340px] max-w-[calc(100vw-24px)] bg-tagma-surface border border-tagma-border shadow-panel">
+              <div className="absolute right-0 top-full mt-1 z-[160] w-[340px] max-w-[calc(100vw-24px)] origin-top bg-tagma-surface border border-tagma-border shadow-panel animate-scale-in">
                 <div className="max-h-[240px] overflow-y-auto">
                   {searchQuery.trim() === '' ? (
                     <div className="px-3 py-2 text-[10px] font-mono text-tagma-muted/60">
@@ -419,7 +419,7 @@ export function Toolbar({
                       <button
                         key={match.qid}
                         type="button"
-                        className="w-full text-left px-3 py-2 border-b border-tagma-border/30 last:border-b-0 hover:bg-tagma-bg/60"
+                        className="w-full text-left px-3 py-2 border-b border-tagma-border/30 last:border-b-0 transition-colors duration-fast ease-smooth hover:bg-tagma-accent/10"
                         onClick={() => onSelectSearchMatch(match)}
                       >
                         <div className="text-[11px] font-mono text-tagma-text truncate">
@@ -440,7 +440,7 @@ export function Toolbar({
             <button
               type="button"
               onClick={onSearchOpen}
-              className="flex items-center justify-center gap-1 h-[24px] w-[24px] xl:w-auto xl:px-2 text-[10px] border border-tagma-border text-tagma-muted hover:text-tagma-text hover:border-tagma-accent/30 transition-colors"
+              className="flex items-center justify-center gap-1 h-[24px] w-[24px] xl:w-auto xl:px-2 text-[10px] border border-tagma-border text-tagma-muted transition-all duration-fast ease-smooth hover:text-tagma-text hover:border-tagma-accent/30 hover:bg-tagma-elevated/50 active:translate-y-px"
               title="Search tasks (Ctrl+F)"
               aria-label="Search tasks"
             >
@@ -458,7 +458,7 @@ export function Toolbar({
             <button
               type="button"
               onClick={onReturnToWorkflowGraph}
-              className="hidden sm:flex items-center justify-center gap-1 h-[24px] px-2 text-[10px] border border-tagma-accent/40 text-tagma-accent hover:bg-tagma-accent/10 transition-colors shrink-0"
+              className="hidden sm:flex items-center justify-center gap-1 h-[24px] px-2 text-[10px] border border-tagma-accent/40 text-tagma-accent transition-all duration-fast ease-smooth hover:bg-tagma-accent/10 hover:border-tagma-accent/70 active:translate-y-px shrink-0"
               title="Go back to Pipeline Graph"
               aria-label="Go back to Pipeline Graph"
             >

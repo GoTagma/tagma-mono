@@ -665,8 +665,11 @@ interface PopoverShellProps {
   children: ReactNode;
 }
 
+// `origin-bottom` matches the anchor: this popover opens upward out of the
+// status bar, so growing from its bottom edge makes it read as emerging from
+// the bar rather than materialising over it.
 export const VERSION_STATUS_POPOVER_CLASSES =
-  'fixed inset-x-2 bottom-8 z-[90] max-h-[calc(100dvh-3rem)] overflow-x-hidden overflow-y-auto border border-tagma-border/80 bg-tagma-surface p-3 shadow-xl animate-fade-in sm:absolute sm:inset-x-auto sm:left-0 sm:bottom-full sm:mb-1 sm:w-max sm:min-w-[320px] sm:max-w-[min(640px,calc(100vw-1rem))]';
+  'fixed inset-x-2 bottom-8 z-[90] max-h-[calc(100dvh-3rem)] origin-bottom overflow-x-hidden overflow-y-auto border border-tagma-border/80 bg-tagma-surface p-3 shadow-panel animate-scale-in sm:absolute sm:inset-x-auto sm:left-0 sm:bottom-full sm:mb-1 sm:w-max sm:min-w-[320px] sm:max-w-[min(640px,calc(100vw-1rem))]';
 
 function PopoverShell({ title, onClose, children }: PopoverShellProps) {
   const ref = useRef<HTMLDivElement>(null);
