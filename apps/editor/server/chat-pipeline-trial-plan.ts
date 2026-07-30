@@ -236,6 +236,9 @@ export function readChatPipelineTrialPlanToolTelemetry(
     'successfulWriteCount',
     toolAttemptCount,
   );
+  if (validationRejectionCount + successfulWriteCount !== toolAttemptCount) {
+    throw new Error('Trial plan tool telemetry counters are inconsistent.');
+  }
   if (!Array.isArray(raw.rejections)) throw new Error('Trial plan rejection telemetry is invalid.');
   const rejections = raw.rejections.map((value, index) => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {

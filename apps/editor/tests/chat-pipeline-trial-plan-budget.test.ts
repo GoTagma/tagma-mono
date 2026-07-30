@@ -1,12 +1,5 @@
 import { expect, test } from 'bun:test';
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -129,6 +122,37 @@ test('generated trial plan tool fails closed when attempt telemetry has negative
 
     await expect(tool.execute(invalidArgs, { directory: agentTagmaDir })).rejects.toThrow(
       'trial plan attempt telemetry is invalid; discard this chat stage before retrying',
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('host telemetry reader rejects counters that do not partition tool attempts', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-trial-budget-inconsistent-'));
+  try {
+    const stageRoot = join(root, '.tagma', '.chat-staging', 'stage-1');
+    const agentTagmaDir = join(stageRoot, 'agent-workspace', '.tagma');
+    const yamlPath = join(agentTagmaDir, 'demo', 'demo.yaml');
+    mkdirSync(dirname(yamlPath), { recursive: true });
+    writeFileSync(yamlPath, ['pipeline:', '  name: demo', '  tracks: []', ''].join('\n'), 'utf8');
+    const tool = await loadGeneratedTool(root);
+    const invalidArgs = invalidPlanArgs(yamlPath);
+    await expect(tool.execute(invalidArgs, { directory: agentTagmaDir })).rejects.toThrow(
+      'trial plan coverage is missing multiple-inputs',
+    );
+
+    const telemetryDir = join(stageRoot, '.trial-plan-telemetry');
+    const telemetryPath = join(
+      telemetryDir,
+      readdirSync(telemetryDir).find((entry) => entry.endsWith('.json'))!,
+    );
+    const telemetry = JSON.parse(readFileSync(telemetryPath, 'utf8')) as Record<string, unknown>;
+    telemetry.successfulWriteCount = 1;
+    writeFileSync(telemetryPath, JSON.stringify(telemetry), 'utf8');
+
+    expect(() => readChatPipelineTrialPlanToolTelemetry(yamlPath)).toThrow(
+      'Trial plan tool telemetry counters are inconsistent.',
     );
   } finally {
     rmSync(root, { recursive: true, force: true });

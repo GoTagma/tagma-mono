@@ -943,11 +943,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
       );
       log.debug(`[task:${taskId}]`, `command: ${commandLabel(expandedCommand)}`);
       if (Object.keys(secretEnv).length > 0) {
-        result = await ctx.runtime.runSpawn(
-          { ...commandSpec, env: secretEnv },
-          null,
-          runOpts,
-        );
+        result = await ctx.runtime.runSpawn({ ...commandSpec, env: secretEnv }, null, runOpts);
       } else {
         result = await ctx.runtime.runCommand(expandedCommand, resolvedCwd, runOpts);
       }
