@@ -1838,7 +1838,10 @@ export async function trialRunChatYamlStage(
   );
   let pendingRunReservation: ReturnType<typeof beginRunSessionStart> = null;
   try {
-    const planTelemetry = readChatPipelineTrialPlanToolTelemetry(snapshot.yamlPath);
+    const planTelemetry = readChatPipelineTrialPlanToolTelemetry(entry.stagedPath);
+    if (planTelemetry.yamlHash !== snapshot.contentHash) {
+      throw new Error('Staged YAML changed while Trial was preparing; retry the Trial run.');
+    }
     const planRead = readChatPipelineTrialPlan(
       snapshot.yamlPath,
       entry.relativePath,

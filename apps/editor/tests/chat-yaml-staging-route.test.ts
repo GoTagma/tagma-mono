@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import {
   existsSync,
   mkdirSync,
@@ -123,6 +123,34 @@ function writePassingTrialPlan(stagedPath: string, taskId: string): void {
       },
     ],
   });
+}
+
+function writeTrialPlanTelemetry(stagedPath: string): void {
+  const yamlHash = createHash('sha1').update(readFileSync(stagedPath, 'utf-8')).digest('hex');
+  const agentTagmaDir = dirname(dirname(stagedPath));
+  const relativeYamlPath = relative(agentTagmaDir, stagedPath).replace(/\\/g, '/');
+  const stageRoot = dirname(dirname(agentTagmaDir));
+  const key = createHash('sha256')
+    .update(relativeYamlPath + String.fromCharCode(0) + yamlHash)
+    .digest('hex');
+  const telemetryDir = join(stageRoot, '.trial-plan-telemetry');
+  mkdirSync(telemetryDir, { recursive: true });
+  writeFileSync(
+    join(telemetryDir, `${key}.json`),
+    JSON.stringify({
+      version: 1,
+      yamlHash,
+      relativeYamlPath,
+      toolAttemptCount: 2,
+      validationRejectionCount: 2,
+      repeatedValidationRejectionCount: 1,
+      successfulWriteCount: 0,
+      firstAttemptAt: 100,
+      lastAttemptAt: 250,
+      rejections: [{ fingerprint: 'a'.repeat(64), count: 2, message: 'invalid plan' }],
+    }),
+    'utf-8',
+  );
 }
 
 function yamlFor(name: string, prompt: string): string {
@@ -324,6 +352,7 @@ describe('chat YAML staging routes', () => {
       }),
       'utf-8',
     );
+    writeTrialPlanTelemetry(entry.stagedPath);
     const trialRes = makeRes();
     await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
       request(
@@ -342,6 +371,12 @@ describe('chat YAML staging routes', () => {
       planRequest: {
         reason: 'missing',
         relativePlanPath: entry.relativePath.replace(/\.ya?ml$/i, '.trial-plan.json'),
+      },
+      planTelemetry: {
+        toolAttemptCount: 2,
+        validationRejectionCount: 2,
+        repeatedValidationRejectionCount: 1,
+        elapsedMs: 150,
       },
     });
     expect(existsSync(join(ws.workDir, 'ran-before-plan.txt'))).toBe(false);
