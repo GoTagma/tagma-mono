@@ -812,6 +812,8 @@ test('tagma-pipeline agent instructs host trial-plan failure handling for live .
   expect(doc).toContain('If `tagma_trial_plan` fails');
   expect(doc).toContain('Pass the exact staged YAML path');
   expect(doc).toContain('The tool validates the complete plan before writing');
+  expect(doc).toContain('relative to the isolated case project root');
+  expect(doc).toContain('never assert staged YAML or its companion artifacts');
   expect(doc).toContain('Never copy YAML or trial plans between staging and live `.tagma`');
   expect(doc).toContain('do not use symlinks, junctions, copies, or writes to live `.tagma`');
   expect(doc).toContain('briefly report the host/tool error and end the physical turn');

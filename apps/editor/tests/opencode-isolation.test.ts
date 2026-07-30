@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import {
@@ -286,6 +294,22 @@ test('embedded opencode runtime keeps OpenAI-compatible model paths', () => {
   expect(Object.keys(injectedConfig.provider?.deepseekanthropic?.models ?? {})).toEqual([
     'deepseek-v4-pro',
   ]);
+});
+
+test('preparing an unchanged embedded runtime does not rewrite workspace config', () => {
+  const paths = resolveOpencodeRuntimePaths(tagmaCwd);
+  writeJson(paths.workspaceConfigPath, {
+    provider: { proxyllm: unstableOpenAICompatibleProviderDef },
+  });
+  prepareEmbeddedOpencodeRuntime(tagmaCwd);
+  const stableTime = new Date('2001-02-03T04:05:06.000Z');
+  utimesSync(paths.workspaceConfigPath, stableTime, stableTime);
+  const before = readFileSync(paths.workspaceConfigPath, 'utf-8');
+
+  prepareEmbeddedOpencodeRuntime(tagmaCwd);
+
+  expect(readFileSync(paths.workspaceConfigPath, 'utf-8')).toBe(before);
+  expect(statSync(paths.workspaceConfigPath).mtimeMs).toBe(stableTime.getTime());
 });
 
 test('embedded opencode server env enables Basic Auth with generated credentials', () => {

@@ -1132,6 +1132,7 @@ function describeRealEntry(ws: WorkspaceState, yamlPath: string): ChatYamlStageE
     contentHash: sha1(content),
     layoutHash,
     requirementsHash,
+    trialPlanHash: null,
     layoutMtimeMs,
     layoutSize,
     mtimeMs: stat.mtimeMs,

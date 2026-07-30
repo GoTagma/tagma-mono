@@ -704,6 +704,8 @@ Before writing, define inputs/cardinality, output identity, preservation, failur
 
 After the final compile succeeds, call \`tagma_trial_plan\` with isolated cases and host-checkable expectations. Pass the exact staged YAML path; never substitute a live path. The tool validates the complete plan before writing. Link covered dimensions to cases, justify genuinely irrelevant ones, and record blocking contradictions.
 
+Fixture and expectation paths are relative to the isolated case project root and may target only case fixtures or outputs; never assert staged YAML or its companion artifacts (\`.compile.log\`, \`.layout.json\`, \`.manifest.json\`, \`.requirements.md\`, or \`.trial-plan.json\`). Those host-private files live under the case \`.tagma\` tree.
+
 Never copy YAML or trial plans between staging and live \`.tagma\`. If \`tagma_trial_plan\` fails, do not use symlinks, junctions, copies, or writes to live \`.tagma\`; briefly report the host/tool error and end the physical turn. The plan is transient evidence, not a live artifact.
 
 Use file-equals when exact text preservation matters, including an empty expected string for empty-content cases. Use later-paragraph markers or exact text so a first-line-only implementation cannot pass.

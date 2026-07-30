@@ -517,7 +517,9 @@ function writeConfigAt(path: string, next: RawConfig): void {
     .sort();
   for (const k of keys) ordered[k] = next[k];
 
-  atomicWriteFileSync(path, JSON.stringify(ordered, null, 2) + '\n');
+  const content = JSON.stringify(ordered, null, 2) + '\n';
+  if (existsSync(path) && readFileSync(path, 'utf-8') === content) return;
+  atomicWriteFileSync(path, content);
 }
 
 function sanitizeEmbeddedConfig(raw: RawConfig): RawConfig {

@@ -524,6 +524,15 @@ describe('shouldAdoptFinalizedChatStateOnCurrentCanvas', () => {
 });
 
 describe('staged finalize adoption wiring', () => {
+  test('reuses prior compile and trial evidence after a report-only repair', () => {
+    const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
+
+    expect(appSource).toMatch(
+      /let compile =\s*repairMadeNoProgress && pendingRepair\s*\? pendingRepair\.compile\s*:\s*await underChatLock/,
+    );
+    expect(appSource).toContain('!skipUnchangedTrialRepair &&');
+  });
+
   test('captures the pre-finalize local edit revision and gates adoptDiskState on the helper', () => {
     const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
 

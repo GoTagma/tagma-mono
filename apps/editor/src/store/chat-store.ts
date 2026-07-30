@@ -922,6 +922,7 @@ export function buildChatYamlRepairPrompt(
     trialRun
       ? 'Preserve legitimate manual approvals, destructive-operation guards, triggers, secrets, and external prerequisites. If the failure is an external/manual boundary rather than a pipeline defect, keep the safe configuration and report that limitation precisely.'
       : 'Do not ask the user a follow-up question. Do not stop until the compile log reports success: true or you have made the best concrete repair you can.',
+    'The host runs another verification only after a material staged artifact change (YAML, layout, requirements, or trial plan). A report-only response with no such change ends this repair chain and preserves the failure instead of consuming another attempt.',
     '',
     `<${resultTag}>`,
     serializeChatYamlRepairEvidence(evidence),
@@ -948,6 +949,7 @@ export function buildChatYamlTrialPlanPrompt(
     'Think through observable behavior before testing. Call tagma_trial_plan exactly once; it is the only write authorized here and binds the plan to the current YAML hash. Pass the exact staged Target YAML path shown above, even if the OpenCode session directory points elsewhere.',
     'Never copy YAML or plan files between staging and live .tagma. The tool validates the complete plan before writing; fix a reported contract error in the tool arguments, not with filesystem copies.',
     'Create 1-8 small isolated cases with concrete fixtures and host-checkable expectations. Prefer the smallest targetTaskIds closure that exercises the behavior.',
+    'Fixture and expectation paths are relative to the isolated case project root and may target only case fixtures or outputs; never assert staged YAML or its companion artifacts (.compile.log, .layout.json, .manifest.json, .requirements.md, or .trial-plan.json). Those host-private files live under the case .tagma tree.',
     'Explicitly cover or justify as not applicable: multiple inputs, duplicate input names, multiline content, output collisions, repeated runs, empty content, and special characters.',
     'For file workflows, include same-basename inputs in different folders and multi-paragraph text with a blank line. Assert distinct outputs and a marker from a later paragraph so fixed output names and single-line parsing fail visibly.',
     'Use file-equals for exact text preservation and an empty expected string when empty-content is covered.',

@@ -124,6 +124,8 @@ test('trial-run repair prompt keeps bounded host evidence in the same internal r
   expect(prompt).toContain('assertion failed');
   expect(prompt).toContain('Preserve legitimate manual approvals');
   expect(prompt).toContain('keep the safe configuration');
+  expect(prompt).toContain('only after a material staged artifact change');
+  expect(prompt).toContain('ends this repair chain');
 });
 
 test('trial-run repair prompt globally bounds expanded case and task evidence', () => {
@@ -239,6 +241,8 @@ test('trial planning prompt forces behavior-first edge-case design without autho
   expect(prompt).toContain('Pass the exact staged Target YAML path');
   expect(prompt).toContain('Never copy YAML or plan files');
   expect(prompt).toContain('tool validates the complete plan before writing');
+  expect(prompt).toContain('relative to the isolated case project root');
+  expect(prompt).toContain('never assert staged YAML or its companion artifacts');
   expect(prompt).toContain('same-basename inputs in different folders');
   expect(prompt).toContain('multi-paragraph text with a blank line');
   expect(prompt).toContain('Assert distinct outputs');

@@ -134,6 +134,7 @@ type WorkspacePipelineListState = {
 
 type PendingChatPipelineRepair = {
   artifacts: ChatPipelineRepairArtifactState;
+  compile: Awaited<ReturnType<typeof api.compileChatYamlStage>>;
   evidence: ChatYamlRepairEvidence;
 };
 
@@ -1140,13 +1141,16 @@ export function App() {
             return chatPipelineRepairArtifactState(latestEntry);
           };
 
-          let compile = await underChatLock(() =>
-            api.compileChatYamlStage(
-              snapshot.staging!.id,
-              stagedTarget.relativePath,
-              snapshot.workDir,
-            ),
-          );
+          let compile =
+            repairMadeNoProgress && pendingRepair
+              ? pendingRepair.compile
+              : await underChatLock(() =>
+                  api.compileChatYamlStage(
+                    snapshot.staging!.id,
+                    stagedTarget.relativePath,
+                    snapshot.workDir,
+                  ),
+                );
           if (cancelled || (await discardCancelledStage())) return;
 
           const attempts = repairAttemptsRef.current.get(attemptKey) ?? 0;
@@ -1171,6 +1175,7 @@ export function App() {
             if (cancelled || (await discardCancelledStage())) return;
             repairCheckpointsRef.current.set(attemptKey, {
               artifacts: repairArtifacts,
+              compile,
               evidence,
             });
             try {
@@ -1345,6 +1350,7 @@ export function App() {
               if (cancelled || (await discardCancelledStage())) return;
               repairCheckpointsRef.current.set(attemptKey, {
                 artifacts: repairArtifacts,
+                compile,
                 evidence,
               });
               try {
