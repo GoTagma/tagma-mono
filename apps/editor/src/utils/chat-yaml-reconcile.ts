@@ -325,9 +325,7 @@ export function shouldAutoRepairTrialResult(
   if (result.kind === 'witness-failed' || result.kind === 'busy' || result.kind === 'aborted') {
     return false;
   }
-  if (result.kind === 'plan-failed' && result.repairAuthorization !== 'pipeline-change-allowed') {
-    return false;
-  }
+  if (result.repairAuthorization !== 'pipeline-change-allowed') return false;
   return shouldAutoRepairCompileResult(result, attemptCount, maxAttempts);
 }
 

@@ -326,7 +326,17 @@ describe('shouldAutoRepairCompileResult', () => {
   });
 
   test('keeps bounded repair for pipeline-authored trial failures', () => {
-    expect(shouldAutoRepairTrialResult({ success: false, kind: 'failed' }, 0, 2)).toBe(true);
+    expect(
+      shouldAutoRepairTrialResult(
+        {
+          success: false,
+          kind: 'failed',
+          repairAuthorization: 'pipeline-change-allowed',
+        },
+        0,
+        2,
+      ),
+    ).toBe(true);
     expect(
       shouldAutoRepairTrialResult(
         {
@@ -338,11 +348,21 @@ describe('shouldAutoRepairCompileResult', () => {
         2,
       ),
     ).toBe(true);
-    expect(shouldAutoRepairTrialResult({ success: false, kind: 'failed' }, 2, 2)).toBe(false);
+    expect(
+      shouldAutoRepairTrialResult(
+        {
+          success: false,
+          kind: 'failed',
+          repairAuthorization: 'pipeline-change-allowed',
+        },
+        2,
+        2,
+      ),
+    ).toBe(false);
     expect(shouldAutoRepairTrialResult({ success: true, kind: 'passed' }, 0, 2)).toBe(false);
   });
 
-  test('does not let blocked coverage or an untyped plan failure authorize pipeline changes', () => {
+  test('does not let diagnostic-only or untyped trial failures authorize pipeline changes', () => {
     expect(
       shouldAutoRepairTrialResult(
         {
@@ -355,6 +375,7 @@ describe('shouldAutoRepairCompileResult', () => {
       ),
     ).toBe(false);
     expect(shouldAutoRepairTrialResult({ success: false, kind: 'plan-failed' }, 0, 2)).toBe(false);
+    expect(shouldAutoRepairTrialResult({ success: false, kind: 'failed' }, 0, 2)).toBe(false);
   });
 });
 

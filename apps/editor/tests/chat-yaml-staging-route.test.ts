@@ -2038,6 +2038,7 @@ describe('chat YAML staging routes', () => {
     expect(first.body).toMatchObject({
       success: false,
       kind: 'failed',
+      repairAuthorization: 'pipeline-change-allowed',
       ran: true,
     });
     const failedBaselineTask = (

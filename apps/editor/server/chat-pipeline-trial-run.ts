@@ -534,6 +534,7 @@ function resultForSetupFailure(
     version: TRIAL_CACHE_VERSION,
     success: false,
     kind,
+    repairAuthorization: 'diagnostic-only',
     ran: false,
     runId: null,
     summary: boundedTrialText(message),
@@ -560,6 +561,7 @@ function resultForStoppedBeforeRun(
     version: TRIAL_CACHE_VERSION,
     success: false,
     kind: 'aborted',
+    repairAuthorization: 'diagnostic-only',
     ran: false,
     runId: null,
     summary: boundedTrialText('Trial run stopped by the user.'),
@@ -579,6 +581,7 @@ function resultForAborted(
     ...result,
     success: false,
     kind: 'aborted',
+    repairAuthorization: 'diagnostic-only',
     summary: boundedTrialText('Trial run stopped by the user.'),
     durationMs: Math.max(0, Date.now() - startedAt),
   };
@@ -594,6 +597,7 @@ function resultForStopped(
       ...result,
       success: false,
       kind: 'timed-out',
+      repairAuthorization: 'diagnostic-only',
       summary: boundedTrialText(`Trial run timed out after ${CHAT_PIPELINE_TRIAL_TIMEOUT_MS}ms.`),
       durationMs: Math.max(0, Date.now() - startedAt),
     };
@@ -1751,18 +1755,24 @@ async function executeTrial(
       ...item,
       tasks: visibleTasks.filter((task) => task.caseId === item.id),
     }));
+    const kind: ChatPipelineTrialRunKind = abortState.timedOut
+      ? 'timed-out'
+      : hostWitnessCaptureFailure
+        ? 'witness-failed'
+        : success
+          ? planWarnings.length > 0
+            ? 'passed-with-warnings'
+            : 'passed'
+          : 'failed';
     return {
       version: TRIAL_CACHE_VERSION,
       success,
-      kind: abortState.timedOut
-        ? 'timed-out'
-        : hostWitnessCaptureFailure
-          ? 'witness-failed'
-          : success
-            ? planWarnings.length > 0
-              ? 'passed-with-warnings'
-              : 'passed'
-            : 'failed',
+      kind,
+      ...(kind === 'failed'
+        ? { repairAuthorization: 'pipeline-change-allowed' as const }
+        : kind === 'timed-out' || kind === 'witness-failed'
+          ? { repairAuthorization: 'diagnostic-only' as const }
+          : {}),
       ran: true,
       runId,
       summary: buildPlannedTrialSummary(
@@ -1786,6 +1796,7 @@ async function executeTrial(
       version: TRIAL_CACHE_VERSION,
       success: false,
       kind: abortState.timedOut ? 'timed-out' : 'failed',
+      repairAuthorization: 'diagnostic-only',
       ran: true,
       runId,
       summary: boundedTrialText(

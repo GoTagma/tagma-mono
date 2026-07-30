@@ -138,11 +138,13 @@
   Bump it whenever result semantics change so an older signed result cannot be reinterpreted under
   a newer success, warning, or authorization policy.
 - A failed trial may feed one of the existing bounded hidden repair continuations back into the
-  same OpenCode session, stage, snapshot, and YAML lease. Only a blocking finding explicitly scoped
-  `pipeline-artifact` authorizes YAML/companion mutation. Blocked coverage and environment, harness,
-  credential, external-service, manual-approval, or unsupported-observation findings remain
-  `diagnostic-only` and must not be repaired by weakening or redirecting the pipeline. Adopt into
-  live only after compile and required Trial succeed; preserve a failure as a numbered copy.
+  same OpenCode session, stage, snapshot, and YAML lease. Mutation requires the exact top-level
+  `pipeline-change-allowed` authorization, derived only from a blocking `pipeline-artifact` finding
+  or a direct executable behavior/expectation failure. Untyped legacy results fail closed. Blocked
+  coverage and environment, harness, credential, external-service, manual-approval, timeout,
+  witness, or unsupported-observation failures remain `diagnostic-only` and must not be repaired by
+  weakening or redirecting the pipeline. Adopt into live only after compile and required Trial
+  succeed; preserve a failure as a numbered copy.
   This includes newly staged pipelines: leave the requested primary path absent and publish only
   the numbered copy when final verification still fails.
 - Recompile or rerun Trial after a hidden repair only when the staged YAML, layout, requirements,
