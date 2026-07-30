@@ -161,6 +161,7 @@ export interface ChatPipelineTrialRunResult {
   totalTaskCount: number;
   omittedTaskCount: number;
   tasks: ChatPipelineTrialTaskResult[];
+  repairAuthorization?: 'pipeline-change-allowed' | 'diagnostic-only';
   planTelemetry?: ChatPipelineTrialPlanToolTelemetry;
   planRequest?: ChatPipelineTrialPlanRequest;
   plan?: ChatPipelineTrialPlanSummary;
@@ -642,7 +643,7 @@ function resultForPlanRequest(
 
 function resultForPlanFailure(
   plan: ChatPipelineTrialPlan,
-  diagnostics: readonly string[],
+  diagnostics: readonly TrialPlanBlockingDiagnostic[],
   startedAt: number,
 ): ChatPipelineTrialRunResult {
   return {
@@ -652,7 +653,10 @@ function resultForPlanFailure(
     ran: false,
     runId: null,
     summary: boundedTrialText(
-      ['Trial plan found pipeline defects or blocked coverage before execution.', ...diagnostics]
+      [
+        'Trial plan found pipeline defects or blocked coverage before execution.',
+        ...diagnostics.map((item) => item.message),
+      ]
         .filter(Boolean)
         .join('\n'),
     ),
@@ -660,19 +664,33 @@ function resultForPlanFailure(
     totalTaskCount: 0,
     omittedTaskCount: 0,
     tasks: [],
+    repairAuthorization: diagnostics.some((item) => item.scope === 'pipeline-artifact')
+      ? 'pipeline-change-allowed'
+      : 'diagnostic-only',
     plan: trialPlanSummary(plan),
     cases: [],
   };
 }
 
-function planBlockingDiagnostics(plan: ChatPipelineTrialPlan): string[] {
+interface TrialPlanBlockingDiagnostic {
+  message: string;
+  scope: 'pipeline-artifact' | 'diagnostic-only';
+}
+
+function planBlockingDiagnostics(plan: ChatPipelineTrialPlan): TrialPlanBlockingDiagnostic[] {
   return [
     ...plan.findings
       .filter((item) => item.severity === 'blocking')
-      .map((item) => `${item.summary}: ${item.evidence}`),
+      .map((item) => ({
+        message: `${item.summary}: ${item.evidence}`,
+        scope: item.repairScope,
+      })),
     ...plan.coverage
       .filter((item) => item.status === 'blocked')
-      .map((item) => `${item.dimension} is blocked: ${item.rationale}`),
+      .map((item) => ({
+        message: `${item.dimension} is blocked: ${item.rationale}`,
+        scope: 'diagnostic-only' as const,
+      })),
   ];
 }
 
@@ -1437,7 +1455,10 @@ async function executeTrial(
         normalizeTrialCaseTargetTaskIdsForExecution(testCase.targetTaskIds, pipelineConfig),
       );
     } catch (err) {
-      planDiagnostics.push(`${testCase.id}: ${errorMessage(err)}`);
+      planDiagnostics.push({
+        message: `${testCase.id}: ${errorMessage(err)}`,
+        scope: 'pipeline-artifact',
+      });
     }
   }
   if (planDiagnostics.length > 0) {

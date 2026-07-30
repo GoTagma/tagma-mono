@@ -3,7 +3,7 @@ import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 
 export const CHAT_PIPELINE_TRIAL_PLAN_CONTRACT = {
-  version: 1,
+  version: 2,
   limits: {
     planBytes: 256 * 1024,
     cases: 8,
@@ -29,6 +29,7 @@ export const CHAT_PIPELINE_TRIAL_PLAN_CONTRACT = {
   ],
   coverageStatuses: ['covered', 'not-applicable', 'blocked'],
   findingSeverities: ['blocking', 'warning'],
+  findingRepairScopes: ['pipeline-artifact', 'diagnostic-only'],
   expectationTypes: [
     'path-exists',
     'path-not-exists',
@@ -66,6 +67,8 @@ export const CHAT_PIPELINE_TRIAL_COVERAGE_STATUSES =
   CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.coverageStatuses;
 export const CHAT_PIPELINE_TRIAL_FINDING_SEVERITIES =
   CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.findingSeverities;
+export const CHAT_PIPELINE_TRIAL_FINDING_REPAIR_SCOPES =
+  CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.findingRepairScopes;
 export const CHAT_PIPELINE_TRIAL_EXPECTATION_TYPES =
   CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.expectationTypes;
 export const CHAT_PIPELINE_TRIAL_TASK_STATUSES = CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.taskStatuses;
@@ -84,6 +87,7 @@ export interface ChatPipelineTrialPlanCoverage {
 
 export interface ChatPipelineTrialPlanFinding {
   severity: 'blocking' | 'warning';
+  repairScope: 'pipeline-artifact' | 'diagnostic-only';
   summary: string;
   evidence: string;
 }
@@ -643,8 +647,13 @@ export function parseChatPipelineTrialPlan(value: unknown): ChatPipelineTrialPla
     if (!CHAT_PIPELINE_TRIAL_FINDING_SEVERITIES.includes(severity as never)) {
       throw new Error(`${label}.severity is invalid.`);
     }
+    const repairScope = asString(finding.repairScope, `${label}.repairScope`, 32);
+    if (!CHAT_PIPELINE_TRIAL_FINDING_REPAIR_SCOPES.includes(repairScope as never)) {
+      throw new Error(`${label}.repairScope is invalid.`);
+    }
     return {
       severity: severity as ChatPipelineTrialPlanFinding['severity'],
+      repairScope: repairScope as ChatPipelineTrialPlanFinding['repairScope'],
       summary: asString(finding.summary, `${label}.summary`, 500),
       evidence: asString(finding.evidence, `${label}.evidence`, 2_000),
     };

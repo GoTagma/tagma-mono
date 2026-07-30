@@ -111,6 +111,15 @@ import {
 import { serializePreviewYaml } from './utils/yaml-preview-diff';
 import { isChatYamlResultInActiveWorkspace } from './utils/chat-result-workspace';
 import {
+  beginChatTrialPlanningPrompt,
+  cancelChatTrialPlanningPrompt,
+  completeChatTrialPlanningPrompt,
+  createChatTrialPlanningAccumulator,
+  mergeChatTrialPlanToolTelemetry,
+  snapshotChatTrialPlanningTelemetry,
+  type ChatTrialPlanningAccumulator,
+} from './utils/chat-trial-planning-telemetry';
+import {
   buildWorkspacePipelineMenuItems,
   reconcileFinalizedWorkspacePipelines,
   type WorkspaceStagedPipeline,
@@ -411,6 +420,7 @@ export function App() {
   const repairAttemptsRef = useRef<Map<string, number>>(new Map());
   const repairCheckpointsRef = useRef<Map<string, PendingChatPipelineRepair>>(new Map());
   const trialPlanAttemptsRef = useRef<Map<string, number>>(new Map());
+  const trialPlanningTelemetryRef = useRef<Map<string, ChatTrialPlanningAccumulator>>(new Map());
   const diskAdoptRef = useRef<{ source: 'chat' | 'external'; token: number } | null>(null);
   const refreshSeqRef = useRef(0);
   const removeStagedWorkspacePipelines = useCallback((workspaceKey: string, stageId: string) => {
@@ -1047,6 +1057,19 @@ export function App() {
       try {
         const finishedSessionId = finishedTurn.sessionId;
         const currentChatState = useChatStore.getState();
+        if (finishedSessionId) {
+          const finishedSessionMessages =
+            currentChatState.currentSessionId === finishedSessionId
+              ? currentChatState.messages
+              : (currentChatState.sessionStates[finishedSessionId]?.messages ?? []);
+          for (const accumulator of trialPlanningTelemetryRef.current.values()) {
+            completeChatTrialPlanningPrompt(accumulator, {
+              sessionId: finishedSessionId,
+              messages: finishedSessionMessages,
+              endedAt: finishedTurn.endedAt,
+            });
+          }
+        }
         const finishedSessionCanContinue = canContinueChatSession(
           finishedSessionId,
           currentChatState.currentSessionId,
@@ -1127,6 +1150,13 @@ export function App() {
           }
 
           const attemptKey = `${snapshot.staging.id}:${stagedTarget.relativePath}`;
+          const getPlanningAccumulator = (): ChatTrialPlanningAccumulator => {
+            const existing = trialPlanningTelemetryRef.current.get(attemptKey);
+            if (existing) return existing;
+            const created = createChatTrialPlanningAccumulator();
+            trialPlanningTelemetryRef.current.set(attemptKey, created);
+            return created;
+          };
           const pendingRepair = repairCheckpointsRef.current.get(attemptKey) ?? null;
           const repairMadeProgress = shouldReverifyChatPipelineAfterRepair(
             pendingRepair?.artifacts ?? null,
@@ -1288,7 +1318,14 @@ export function App() {
             hostTrialAborted = trialRun.kind === 'aborted';
             if (cancelled || (await discardCancelledStage())) return;
 
+            const planningAccumulator = trialPlanningTelemetryRef.current.get(attemptKey);
+            if (planningAccumulator) {
+              mergeChatTrialPlanToolTelemetry(planningAccumulator, trialRun.planTelemetry);
+            }
+
             if (trialRun.kind === 'plan-required' && trialRun.planRequest) {
+              const planningAccumulator = getPlanningAccumulator();
+              mergeChatTrialPlanToolTelemetry(planningAccumulator, trialRun.planTelemetry);
               const planAttemptKey = `${attemptKey}:${trialRun.planRequest.pipelineHash}`;
               const planAttempts = trialPlanAttemptsRef.current.get(planAttemptKey) ?? 0;
               const maxPlanAttemptsForTurn = Math.max(MAX_CHAT_TRIAL_PLAN_PROMPTS, maxAttempts + 1);
@@ -1312,6 +1349,16 @@ export function App() {
                   trial: trialRun,
                 });
                 if (await discardCancelledStage()) return;
+                const planningState = useChatStore.getState();
+                const planningMessages =
+                  planningState.currentSessionId === finishedSessionId
+                    ? planningState.messages
+                    : (planningState.sessionStates[finishedSessionId!]?.messages ?? []);
+                beginChatTrialPlanningPrompt(planningAccumulator, {
+                  sessionId: finishedSessionId!,
+                  messages: planningMessages,
+                  startedAt: Date.now(),
+                });
                 try {
                   await useChatStore
                     .getState()
@@ -1326,6 +1373,7 @@ export function App() {
                   keepYamlLockForRepair = true;
                   return;
                 } catch (err) {
+                  cancelChatTrialPlanningPrompt(planningAccumulator);
                   console.error('[chat] internal staged pipeline trial planning failed', err);
                 }
               }
@@ -1492,6 +1540,11 @@ export function App() {
             trialRunEnabled,
             trialRunSuccess: trialRun?.success,
           });
+          const planningAccumulator = trialPlanningTelemetryRef.current.get(attemptKey);
+          const planningTelemetry = planningAccumulator
+            ? snapshotChatTrialPlanningTelemetry(planningAccumulator, Date.now())
+            : null;
+          trialPlanningTelemetryRef.current.delete(attemptKey);
 
           if (resultWorkspaceVisible()) {
             setWorkspacePipelines((current) => {
@@ -1554,6 +1607,10 @@ export function App() {
                 compile,
                 ...(trialRun ? { trial: trialRun } : {}),
                 ...(completedRepairAttempts > 0 ? { repairAttempts: completedRepairAttempts } : {}),
+                ...(planningTelemetry &&
+                (planningTelemetry.promptCount > 0 || planningTelemetry.toolAttemptCount > 0)
+                  ? { planningTelemetry }
+                  : {}),
                 reconcile: {
                   outcome: finalized.outcome,
                   conflicts: finalized.conflicts,
@@ -1818,6 +1875,14 @@ export function App() {
             await releaseChatYamlEditLock(chatYamlLockLease);
           }
         } finally {
+          if (!keepYamlLockForRepair && snapshot?.staging) {
+            const planningKeyPrefix = `${snapshot.staging.id}:`;
+            for (const key of trialPlanningTelemetryRef.current.keys()) {
+              if (key.startsWith(planningKeyPrefix)) {
+                trialPlanningTelemetryRef.current.delete(key);
+              }
+            }
+          }
           useChatStore.getState().setReconciling(false);
           useChatStore.getState().completeChatYamlLifecycle(finishedTurn.id);
           if (!cancelled) {

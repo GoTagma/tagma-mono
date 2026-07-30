@@ -49,16 +49,18 @@ function writeTrialPlan(
     cases?: unknown[];
     findings?: unknown[];
     coveredBy?: Partial<Record<(typeof REQUIRED_TRIAL_COVERAGE)[number], string>>;
+    blockedBy?: Partial<Record<(typeof REQUIRED_TRIAL_COVERAGE)[number], string>>;
   } = {},
 ): string {
   const yamlHash = createHash('sha1').update(readFileSync(stagedPath, 'utf-8')).digest('hex');
   const planPath = stagedPath.replace(/\.ya?ml$/i, '.trial-plan.json');
   const coveredBy = input.coveredBy ?? {};
+  const blockedBy = input.blockedBy ?? {};
   writeFileSync(
     planPath,
     JSON.stringify(
       {
-        version: 1,
+        version: 2,
         yamlHash,
         summary: 'Exercise baseline behavior and boundary-sensitive file handling.',
         goals: ['Preserve every logical input without silently overwriting output.'],
@@ -70,6 +72,13 @@ function writeTrialPlan(
                 caseIds: [coveredBy[dimension]],
                 rationale: `Covered by ${coveredBy[dimension]}.`,
               }
+            : blockedBy[dimension]
+              ? {
+                  dimension,
+                  status: 'blocked',
+                  caseIds: [],
+                  rationale: blockedBy[dimension],
+                }
             : {
                 dimension,
                 status: 'not-applicable',
@@ -426,6 +435,7 @@ describe('chat YAML staging routes', () => {
       findings: [
         {
           severity: 'blocking',
+          repairScope: 'pipeline-artifact',
           summary: 'Fixed output filename overwrites prior inputs',
           evidence: 'Every input writes outputs/result.txt. token=plan-secret',
         },
@@ -457,9 +467,14 @@ describe('chat YAML staging routes', () => {
       success: false,
       kind: 'plan-failed',
       ran: false,
+      repairAuthorization: 'pipeline-change-allowed',
       plan: {
         findings: [
-          { severity: 'blocking', summary: 'Fixed output filename overwrites prior inputs' },
+          {
+            severity: 'blocking',
+            repairScope: 'pipeline-artifact',
+            summary: 'Fixed output filename overwrites prior inputs',
+          },
         ],
       },
     });
@@ -468,6 +483,44 @@ describe('chat YAML staging routes', () => {
     );
     expect(JSON.stringify(trialRes.body)).not.toContain('plan-secret');
     expect(JSON.stringify(trialRes.body)).toContain('[REDACTED]');
+    expect(existsSync(markerPath)).toBe(false);
+
+    writeTrialPlan(entry.stagedPath, {
+      blockedBy: {
+        'output-collision':
+          'The isolated harness cannot observe an intentional external output directory.',
+      },
+      cases: [
+        {
+          id: 'diagnostic-only-probe',
+          title: 'Diagnostic-only harness boundary',
+          objective: 'Document a limit without authorizing a pipeline rewrite.',
+          runs: 1,
+          targetTaskIds: ['main.process'],
+          fixtures: [],
+          expectations: [{ type: 'task-status', taskId: 'main.process', status: 'success' }],
+        },
+      ],
+    });
+    const diagnosticOnlyRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        {
+          stageId: stage.id,
+          relativePath: entry.relativePath,
+          trialId: 'diagnostic_only_coverage',
+        },
+        'chat-lock',
+      ),
+      diagnosticOnlyRes,
+    );
+    expect(diagnosticOnlyRes.body).toMatchObject({
+      success: false,
+      kind: 'plan-failed',
+      ran: false,
+      repairAuthorization: 'diagnostic-only',
+    });
     expect(existsSync(markerPath)).toBe(false);
     discardStage(getRoute, ws, stage.id);
     ws.watcher.stopWatching();

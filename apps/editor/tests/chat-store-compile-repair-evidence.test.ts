@@ -109,3 +109,32 @@ test('compile repair prompt keeps multibyte fallback evidence byte-bounded', () 
   expect(new TextEncoder().encode(evidence).length).toBeLessThanOrEqual(64 * 1024);
   expect(evidence).toContain('evidenceTruncated');
 });
+
+test('trial repair prompt treats diagnostic-only evidence as non-authorizing context', () => {
+  const prompt = buildChatYamlRepairPrompt(
+    TARGET,
+    {
+      kind: 'trial-run',
+      result: {
+        version: 5,
+        success: false,
+        kind: 'plan-failed',
+        repairAuthorization: 'pipeline-change-allowed',
+        ran: false,
+        runId: null,
+        summary: 'One repairable finding and one harness limitation.',
+        durationMs: 1,
+        totalTaskCount: 0,
+        omittedTaskCount: 0,
+        tasks: [],
+        cases: [],
+      },
+    },
+    1,
+    2,
+  );
+
+  expect(prompt).toContain('Items marked diagnostic-only are context, not mutation authority');
+  expect(prompt).toContain('must never be repaired by weakening or redirecting the pipeline');
+  expect(prompt).toContain('update the sibling .requirements.md in the same continuation');
+});

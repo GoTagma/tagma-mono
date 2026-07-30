@@ -26,6 +26,7 @@ const CONTRACT = ${contract};
 const REQUIRED_COVERAGE = [...CONTRACT.coverageDimensions];
 const COVERAGE_STATUSES = [...CONTRACT.coverageStatuses];
 const FINDING_SEVERITIES = [...CONTRACT.findingSeverities];
+const FINDING_REPAIR_SCOPES = [...CONTRACT.findingRepairScopes];
 const EXPECTATION_TYPES = [...CONTRACT.expectationTypes];
 const TASK_STATUSES = [...CONTRACT.taskStatuses];
 const PLAN_ID_RE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
@@ -378,6 +379,10 @@ function assertValidPlan(value) {
       if (!FINDING_SEVERITIES.includes(severity)) {
         throw new Error(label + ".severity is invalid.");
       }
+      const repairScope = asString(finding.repairScope, label + ".repairScope", 32);
+      if (!FINDING_REPAIR_SCOPES.includes(repairScope)) {
+        throw new Error(label + ".repairScope is invalid.");
+      }
       asString(finding.summary, label + ".summary", 500);
       asString(finding.evidence, label + ".evidence", 2000);
     },
@@ -659,6 +664,7 @@ export default tool({
       .array(
         tool.schema.object({
           severity: tool.schema.enum(FINDING_SEVERITIES),
+          repairScope: tool.schema.enum(FINDING_REPAIR_SCOPES),
           summary: tool.schema.string().min(1).max(500),
           evidence: tool.schema.string().min(1).max(2000),
         }),

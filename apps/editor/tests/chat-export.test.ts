@@ -206,6 +206,7 @@ describe('chat conversation export', () => {
             findings: [
               {
                 severity: 'blocking',
+                repairScope: 'diagnostic-only',
                 summary: 'Host witness unavailable',
                 evidence: 'session_id=sess_evidence_secret',
               },

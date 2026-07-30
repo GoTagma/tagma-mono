@@ -750,10 +750,17 @@ test('trial-plan tool rejects semantic coverage gaps and unsupported findings be
     ).rejects.toThrow('coverage marks empty-content covered without concrete linked-case evidence');
     expect(existsSync(stage.planPath)).toBe(false);
 
+    writeFileSync(
+      stage.yamlPath,
+      readFileSync(stage.yamlPath, 'utf8') + '# next semantic validation revision\n',
+      'utf8',
+    );
+
     const unsupportedFindingArgs = completeTrialPlanToolArgs('sample/sample.yaml');
     unsupportedFindingArgs.findings = [
       {
         severity: 'info',
+        repairScope: 'diagnostic-only',
         summary: 'Informational only',
         evidence: 'The host contract does not support informational findings.',
       },
@@ -835,6 +842,8 @@ test('tagma-pipeline agent instructs host trial-plan failure handling for live .
   expect(doc).toContain('Never copy YAML or trial plans between staging and live `.tagma`');
   expect(doc).toContain('do not use symlinks, junctions, copies, or writes to live `.tagma`');
   expect(doc).toContain('briefly report the host/tool error and end the physical turn');
+  expect(doc).toContain('Every finding must set `repairScope`');
+  expect(doc).toContain('Blocked coverage is diagnostic-only');
 });
 
 test('tagma-pipeline agent prefers host-native commands before Python glue', () => {

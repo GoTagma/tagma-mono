@@ -172,6 +172,7 @@ test('trial-run repair prompt globally bounds expanded case and task evidence', 
           ],
           findings: Array.from({ length: 16 }, () => ({
             severity: 'warning',
+            repairScope: 'diagnostic-only',
             summary: largeText,
             evidence: largeText,
           })),

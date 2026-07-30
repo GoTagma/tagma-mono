@@ -314,11 +314,21 @@ export function shouldAutoRepairCompileResult(
 }
 
 export function shouldAutoRepairTrialResult(
-  result: { success: boolean; kind: string },
+  result: {
+    success: boolean;
+    kind: string;
+    repairAuthorization?: 'pipeline-change-allowed' | 'diagnostic-only';
+  },
   attemptCount: number,
   maxAttempts: number,
 ): boolean {
   if (result.kind === 'witness-failed' || result.kind === 'busy' || result.kind === 'aborted') {
+    return false;
+  }
+  if (
+    result.kind === 'plan-failed' &&
+    result.repairAuthorization !== 'pipeline-change-allowed'
+  ) {
     return false;
   }
   return shouldAutoRepairCompileResult(result, attemptCount, maxAttempts);

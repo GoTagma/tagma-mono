@@ -15,7 +15,7 @@ import {
 function completePlan(): Record<string, unknown> {
   const caseId = 'all-file-boundaries';
   return {
-    version: 1,
+    version: 2,
     yamlHash: 'a'.repeat(40),
     summary: 'Exercise observable file-processing boundaries.',
     goals: ['Preserve every logical input and its complete content.'],
@@ -152,6 +152,34 @@ describe('chat pipeline trial plan', () => {
 
     expect(() => parseChatPipelineTrialPlan(candidate)).toThrow(
       'goals must contain at least one behavior goal',
+    );
+  });
+
+  test('requires every finding to declare whether it authorizes pipeline artifact repair', () => {
+    const candidate = structuredClone(completePlan());
+    candidate.findings = [
+      {
+        severity: 'blocking',
+        repairScope: 'diagnostic-only',
+        summary: 'The isolated harness cannot reach an external location.',
+        evidence: 'The path is intentionally outside the case workspace.',
+      },
+      {
+        severity: 'blocking',
+        repairScope: 'pipeline-artifact',
+        summary: 'The pipeline discards distinct input identities.',
+        evidence: 'Two input paths resolve to one fixed output path.',
+      },
+    ];
+
+    expect(parseChatPipelineTrialPlan(candidate).findings.map((item) => item.repairScope)).toEqual([
+      'diagnostic-only',
+      'pipeline-artifact',
+    ]);
+
+    delete (candidate.findings as Array<Record<string, unknown>>)[0]!.repairScope;
+    expect(() => parseChatPipelineTrialPlan(candidate)).toThrow(
+      'findings[0].repairScope must be a non-empty string',
     );
   });
 

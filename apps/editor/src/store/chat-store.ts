@@ -664,6 +664,7 @@ function compactChatTrialRepairResult(result: ChatPipelineTrialRunResult) {
     version: result.version,
     success: result.success,
     kind: result.kind,
+    repairAuthorization: result.repairAuthorization,
     ran: result.ran,
     runId: result.runId,
     summary: clipChatTrialRepairText(result.summary, 8_000),
@@ -886,6 +887,7 @@ function serializeChatYamlRepairEvidence(evidence: ChatYamlRepairEvidence): stri
       version: evidence.result.version,
       success: evidence.result.success,
       kind: evidence.result.kind,
+      repairAuthorization: evidence.result.repairAuthorization,
       ran: evidence.result.ran,
       summary: clipChatTrialRepairText(evidence.result.summary, 4_000),
       planFindings: evidence.result.plan?.findings.slice(0, 2).map((item) => ({
@@ -911,6 +913,7 @@ function serializeChatYamlRepairEvidence(evidence: ChatYamlRepairEvidence): stri
       version: evidence.result.version,
       success: evidence.result.success,
       kind: evidence.result.kind,
+      repairAuthorization: evidence.result.repairAuthorization,
       summary: clipChatTrialRepairText(evidence.result.summary, 2_000),
       evidenceTruncated: true,
     },
@@ -938,6 +941,10 @@ export function buildChatYamlRepairPrompt(
     trialRun
       ? 'Preserve legitimate manual approvals, destructive-operation guards, triggers, secrets, and external prerequisites. If the failure is an external/manual boundary rather than a pipeline defect, keep the safe configuration and report that limitation precisely.'
       : 'Do not ask the user a follow-up question. Do not stop until the compile log reports success: true or you have made the best concrete repair you can.',
+    trialRun
+      ? 'Items marked diagnostic-only are context, not mutation authority, and must never be repaired by weakening or redirecting the pipeline. Change only defects covered by pipeline-change-allowed evidence.'
+      : 'Keep the sibling requirements companion consistent with the repaired YAML.',
+    'If a YAML change adds, removes, or redirects environment variables, commands, tools, paths, services, or prerequisites, update the sibling .requirements.md in the same continuation.',
     'The host runs another verification only after a material staged artifact change (YAML, layout, requirements, or trial plan). A report-only response with no such change ends this repair chain and preserves the failure instead of consuming another attempt.',
     '',
     `<${resultTag}>`,
@@ -969,7 +976,8 @@ export function buildChatYamlTrialPlanPrompt(
     'Explicitly cover or justify as not applicable: multiple inputs, duplicate input names, multiline content, output collisions, repeated runs, empty content, and special characters.',
     'For file workflows, include same-basename inputs in different folders and multi-paragraph text with a blank line. Assert distinct outputs and a marker from a later paragraph so fixed output names and single-line parsing fail visibly.',
     'Use file-equals for exact text preservation and an empty expected string when empty-content is covered.',
-    'Use blocking findings for contradictions already visible in the implementation. Do not invent passing expectations, remove legitimate prerequisites, or weaken manual approvals/safety gates.',
+    'Every finding must set repairScope. Use pipeline-artifact only for a concrete defect in YAML or its agent-owned companion artifacts. Use diagnostic-only for harness, environment, external-service, credential, manual-approval, or unsupported-observation limits.',
+    'Blocked coverage is always diagnostic-only and never authorizes a later YAML repair. Do not relabel a harness limitation as a pipeline defect, invent passing expectations, remove legitimate prerequisites, or weaken manual approvals/safety gates.',
     '',
     `Required coverage dimensions: ${request.requiredCoverage.join(', ')}`,
     '</tagma-internal>',

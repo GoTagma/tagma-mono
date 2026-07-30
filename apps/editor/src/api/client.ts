@@ -223,6 +223,7 @@ export interface ChatPipelineTrialPlanSummary {
   }>;
   findings: Array<{
     severity: 'blocking' | 'warning';
+    repairScope: 'pipeline-artifact' | 'diagnostic-only';
     summary: string;
     evidence: string;
   }>;
@@ -246,6 +247,7 @@ export interface ChatPipelineTrialRunResult {
   totalTaskCount: number;
   omittedTaskCount: number;
   tasks: ChatPipelineTrialTaskResult[];
+  repairAuthorization?: 'pipeline-change-allowed' | 'diagnostic-only';
   planTelemetry?: {
     version: 1;
     yamlHash: string;
