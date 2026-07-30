@@ -125,6 +125,12 @@
   both compile and trial succeed; preserve a still-failing trial result as a numbered copy.
   This includes newly staged pipelines: leave the requested primary path absent and publish only
   the numbered copy when final verification still fails.
+- Recompile or rerun Trial after a hidden repair only when the staged YAML, layout, requirements,
+  or transient trial-plan hash changed. A report-only/external-boundary response must reuse the
+  prior failed evidence and end that repair chain instead of consuming another attempt.
+- Trial-plan fixture and expectation paths are relative to the isolated case project root and may
+  target only case fixtures or outputs. Reject plans that inspect the staged YAML or its
+  host-private companion artifacts under the case `.tagma` tree before starting Trial.
 - Treat Stop as cancellation of the entire staged logical chat lifecycle, not only the current OpenCode physical turn: a user-stopped finished turn or host-trial cancellation must abort the active host trial, discard the stage, clear post-chat action, release the YAML lease, and acknowledge exactly once, without planning, repair, trial retry, or finalize. Keep queued force-push continuation semantics unchanged.
 - Keep the shared compile/trial hidden-repair budget in the workspace Editor setting
   `opencodeChatPipelineRepairMaxAttempts`: default `25`, allowed range `0-50`, with `0` disabling
@@ -176,6 +182,9 @@
   pinned runtime reports `message="stream error" small=false mode=primary`; title-model
   (`small=true`) and subagent errors remain recoverable. Keep Chat sidecar Basic Auth credentials
   out of these one-shot child environments.
+- Preparing the embedded OpenCode runtime must not atomically rewrite an unchanged workspace
+  `.tagma/opencode.json`; that host-only event is inside Trial's real-workspace witness scope and
+  would be misclassified as an isolated case leak.
 - Command tasks remain host commands and must keep their normal PATH resolution, even when the
   command itself invokes `opencode`.
 - When the managed layers are intentionally absent in headless development, resolve the system

@@ -380,7 +380,7 @@ function assertTargetPaths(value, relativeYaml) {
   const slash = yaml.lastIndexOf('/');
   const dir = slash < 0 ? '' : yaml.slice(0, slash + 1);
   const name = slash < 0 ? yaml : yaml.slice(slash + 1);
-  const stem = name.replace(/\.ya?ml$/i, '');
+  const stem = name.replace(/\\.ya?ml$/i, '');
   const blocked = new Set(
     [yaml, ...CONTRACT.pipelineCompanionSuffixes.map((suffix) => dir + stem + suffix)].map(
       (path) => path.toLowerCase(),

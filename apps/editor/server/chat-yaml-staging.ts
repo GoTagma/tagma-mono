@@ -12,10 +12,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import yaml from 'js-yaml';
 import { parseYaml, serializePipeline } from '@tagma/sdk/yaml';
 
-import {
-  pipelineTrialPlanPath,
-  readChatPipelineTrialPlan,
-} from './chat-pipeline-trial-plan.js';
+import { pipelineTrialPlanPath, readChatPipelineTrialPlan } from './chat-pipeline-trial-plan.js';
 import { readEditorSettings } from './plugins/loader.js';
 import type {
   PreparedTrialHostWitnessInputs,

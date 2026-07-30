@@ -1137,7 +1137,8 @@ export function App() {
             const latestEntry = latestStage.entries.find(
               (entry) => entry.relativePath === stagedTarget.relativePath,
             );
-            if (!latestEntry) throw new Error('The staged pipeline target disappeared during repair.');
+            if (!latestEntry)
+              throw new Error('The staged pipeline target disappeared during repair.');
             return chatPipelineRepairArtifactState(latestEntry);
           };
 
