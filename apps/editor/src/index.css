@@ -118,6 +118,12 @@ body,
      harmlessly since both end at the same resting state. */
   animation: tagma-shell-in 0.19s cubic-bezier(0.22, 0.61, 0.36, 1) both;
 }
+/* Resting state is `transform: none`, not `translateY(0) scale(1)`. With
+   fill-mode `both` the final keyframe persists, and any lingering transform
+   makes the shell a containing block for `position: fixed` descendants —
+   which would silently anchor a future fixed child to the dialog instead of
+   the viewport. No dialog has such a child today; ending on `none` means one
+   added later still behaves. */
 @keyframes tagma-shell-in {
   from {
     opacity: 0;
@@ -125,7 +131,7 @@ body,
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: none;
   }
 }
 .modal-viewport-body {

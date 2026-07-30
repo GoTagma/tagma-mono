@@ -61,7 +61,12 @@ import {
   type UnsavedAction,
 } from './components/AppOverlays';
 import { ChatCompletionToast, ChatPanel } from './components/chat/ChatPanel';
-import { canContinueChatSession, isChatDrivenEditLikely, useChatStore } from './store/chat-store';
+import {
+  canContinueChatSession,
+  isChatDrivenEditLikely,
+  useChatStore,
+  type ChatYamlRepairEvidence,
+} from './store/chat-store';
 import type { ChatYamlReconcileSummary } from './store/chat-editor-context';
 import { selectFinishedTurnQueueHead } from './store/finished-turn-selector';
 import { useEditorSettingsStore } from './store/editor-settings-store';
@@ -70,12 +75,15 @@ import {
   detectChatStagedYamlTarget,
   detectChatYamlTarget,
   chatPipelineVerificationSucceeded,
+  chatPipelineRepairArtifactState,
   shouldAdoptFinalizedChatStateOnCurrentCanvas,
   shouldAdoptChatYamlTargetOnCurrentCanvas,
   shouldAutoRepairCompileResult,
   shouldAutoRepairTrialResult,
+  shouldReverifyChatPipelineAfterRepair,
   shouldForkChatYamlResult,
   shouldTrialRunChatPipeline,
+  type ChatPipelineRepairArtifactState,
 } from './utils/chat-yaml-reconcile';
 import { createChatYamlLifecycleCancellationGuard } from './utils/chat-yaml-lifecycle';
 import {
@@ -122,6 +130,11 @@ type WorkspacePipelineListState = {
   workspaceKey: string | null;
   liveEntries: WorkspaceYamlEntry[];
   stagedTargets: WorkspaceStagedPipeline[];
+};
+
+type PendingChatPipelineRepair = {
+  artifacts: ChatPipelineRepairArtifactState;
+  evidence: ChatYamlRepairEvidence;
 };
 
 function workflowEventSeq(event: WorkflowGraphEvent): number | null {
@@ -395,6 +408,7 @@ export function App() {
   const afterWorkspaceRef = useRef<'new' | 'import' | 'save' | 'run' | null>(null);
   const workflowEventsUnsubscribeRef = useRef<(() => void) | null>(null);
   const repairAttemptsRef = useRef<Map<string, number>>(new Map());
+  const repairCheckpointsRef = useRef<Map<string, PendingChatPipelineRepair>>(new Map());
   const trialPlanAttemptsRef = useRef<Map<string, number>>(new Map());
   const diskAdoptRef = useRef<{ source: 'chat' | 'external'; token: number } | null>(null);
   const refreshSeqRef = useRef(0);
@@ -1096,13 +1110,35 @@ export function App() {
               entry.relativePath === stagedTarget.relativePath &&
               sameEditorPath(entry.stagedPath, stagedTarget.path),
           );
-          if (authoritativeStagedTarget?.sourcePath === null && resultWorkspaceVisible()) {
+          if (!authoritativeStagedTarget) {
+            throw new Error('The staged pipeline target disappeared before verification.');
+          }
+          if (authoritativeStagedTarget.sourcePath === null && resultWorkspaceVisible()) {
             upsertStagedWorkspacePipeline(
               snapshot.workDir,
               authoritativeStagedTarget,
               snapshot.staging.id,
             );
           }
+
+          const attemptKey = `${snapshot.staging.id}:${stagedTarget.relativePath}`;
+          const pendingRepair = repairCheckpointsRef.current.get(attemptKey) ?? null;
+          const repairMadeProgress = shouldReverifyChatPipelineAfterRepair(
+            pendingRepair?.artifacts ?? null,
+            chatPipelineRepairArtifactState(authoritativeStagedTarget),
+          );
+          const repairMadeNoProgress = !!pendingRepair && !repairMadeProgress;
+          repairCheckpointsRef.current.delete(attemptKey);
+          const captureRepairArtifacts = async (): Promise<ChatPipelineRepairArtifactState> => {
+            const latestStage = await underChatLock(() =>
+              api.listChatYamlStage(snapshot.staging!.id, snapshot.workDir),
+            );
+            const latestEntry = latestStage.entries.find(
+              (entry) => entry.relativePath === stagedTarget.relativePath,
+            );
+            if (!latestEntry) throw new Error('The staged pipeline target disappeared during repair.');
+            return chatPipelineRepairArtifactState(latestEntry);
+          };
 
           let compile = await underChatLock(() =>
             api.compileChatYamlStage(
@@ -1113,10 +1149,10 @@ export function App() {
           );
           if (cancelled || (await discardCancelledStage())) return;
 
-          const attemptKey = `${snapshot.staging.id}:${stagedTarget.relativePath}`;
           const attempts = repairAttemptsRef.current.get(attemptKey) ?? 0;
           let completedRepairAttempts = attempts;
           if (
+            !repairMadeNoProgress &&
             shouldAutoRepairCompileResult(compile, attempts, maxAttempts) &&
             finishedSessionCanContinue
           ) {
@@ -1130,12 +1166,19 @@ export function App() {
               compile,
             });
             if (await discardCancelledStage()) return;
+            const evidence: ChatYamlRepairEvidence = { kind: 'compile', result: compile };
+            const repairArtifacts = await captureRepairArtifacts();
+            if (cancelled || (await discardCancelledStage())) return;
+            repairCheckpointsRef.current.set(attemptKey, {
+              artifacts: repairArtifacts,
+              evidence,
+            });
             try {
               await useChatStore
                 .getState()
                 .sendInternalRepairPrompt(
                   stagedTarget,
-                  { kind: 'compile', result: compile },
+                  evidence,
                   nextAttempt,
                   maxAttempts,
                   snapshot,
@@ -1144,13 +1187,19 @@ export function App() {
               keepYamlLockForRepair = true;
               return;
             } catch (err) {
+              repairCheckpointsRef.current.delete(attemptKey);
               console.error('[chat] internal staged YAML repair failed', err);
             }
           }
 
           const trialRunEnabled = settings?.opencodeChatTrialRunEnabled ?? true;
-          let trialRun: Awaited<ReturnType<typeof api.trialRunChatYamlStage>> | null = null;
+          let trialRun: Awaited<ReturnType<typeof api.trialRunChatYamlStage>> | null =
+            repairMadeNoProgress && pendingRepair?.evidence.kind === 'trial-run'
+              ? pendingRepair.evidence.result
+              : null;
+          const skipUnchangedTrialRepair = trialRun !== null;
           if (
+            !skipUnchangedTrialRepair &&
             shouldTrialRunChatPipeline({
               compileSuccess: compile.success,
               trialRunEnabled,
@@ -1291,12 +1340,19 @@ export function App() {
                 trial: trialRun,
               });
               if (await discardCancelledStage()) return;
+              const evidence: ChatYamlRepairEvidence = { kind: 'trial-run', result: trialRun };
+              const repairArtifacts = await captureRepairArtifacts();
+              if (cancelled || (await discardCancelledStage())) return;
+              repairCheckpointsRef.current.set(attemptKey, {
+                artifacts: repairArtifacts,
+                evidence,
+              });
               try {
                 await useChatStore
                   .getState()
                   .sendInternalRepairPrompt(
                     stagedTarget,
-                    { kind: 'trial-run', result: trialRun },
+                    evidence,
                     nextAttempt,
                     maxAttempts,
                     snapshot,
@@ -1305,6 +1361,7 @@ export function App() {
                 keepYamlLockForRepair = true;
                 return;
               } catch (err) {
+                repairCheckpointsRef.current.delete(attemptKey);
                 console.error('[chat] internal staged pipeline trial repair failed', err);
               }
             }

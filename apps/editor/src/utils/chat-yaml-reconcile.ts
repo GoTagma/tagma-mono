@@ -34,7 +34,7 @@ export interface ChatYamlStageSnapshotEntry extends Pick<
   relativePath: string;
   sourcePath: string | null;
   requirementsHash: string | null;
-  trialPlanHash: string | null;
+  trialPlanHash?: string | null;
 }
 
 export interface ChatPipelineRepairArtifactState {
@@ -45,13 +45,15 @@ export interface ChatPipelineRepairArtifactState {
 }
 
 export function chatPipelineRepairArtifactState(
-  entry: ChatPipelineRepairArtifactState,
+  entry: Omit<ChatPipelineRepairArtifactState, 'trialPlanHash'> & {
+    trialPlanHash?: string | null;
+  },
 ): ChatPipelineRepairArtifactState {
   return {
     contentHash: entry.contentHash,
     layoutHash: entry.layoutHash,
     requirementsHash: entry.requirementsHash,
-    trialPlanHash: entry.trialPlanHash,
+    trialPlanHash: entry.trialPlanHash ?? null,
   };
 }
 
