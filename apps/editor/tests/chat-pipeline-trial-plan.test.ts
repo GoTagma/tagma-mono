@@ -1,8 +1,14 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { describe, expect, test } from 'bun:test';
 
 import {
   CHAT_PIPELINE_TRIAL_COVERAGE_DIMENSIONS,
   parseChatPipelineTrialPlan,
+  pipelineTrialPlanPath,
+  readChatPipelineTrialPlan,
   validateChatPipelineTrialPlanTargetPaths,
 } from '../server/chat-pipeline-trial-plan';
 
@@ -165,5 +171,37 @@ describe('chat pipeline trial plan', () => {
     expect(() => validateChatPipelineTrialPlanTargetPaths(plan, 'sample/sample.yaml')).toThrow(
       'must target case fixtures or outputs, not staged pipeline artifacts',
     );
+  });
+
+  test('host reader rejects staged-artifact expectations before a trial can run', () => {
+    const root = mkdtempSync(join(tmpdir(), 'tagma-trial-plan-reader-'));
+    try {
+      const stagedYamlPath = join(root, 'sample.yaml');
+      const candidate = structuredClone(completePlan());
+      (
+        candidate.cases as Array<{
+          expectations: Array<Record<string, unknown>>;
+        }>
+      )[0]!.expectations.push({
+        type: 'file-contains',
+        path: 'sample/sample.compile.log',
+        text: 'Compilation successful',
+      });
+      writeFileSync(pipelineTrialPlanPath(stagedYamlPath), JSON.stringify(candidate), 'utf8');
+
+      expect(
+        readChatPipelineTrialPlan(stagedYamlPath, 'sample/sample.yaml', 'a'.repeat(40)),
+      ).toMatchObject({
+        status: 'required',
+        request: {
+          reason: 'invalid',
+          message: expect.stringContaining(
+            'must target case fixtures or outputs, not staged pipeline artifacts',
+          ),
+        },
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
