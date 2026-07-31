@@ -54,7 +54,6 @@ import {
 import { verifyTrialWitnessWorkerForBuild } from './chat-pipeline-trial-witness.js';
 import {
   diagnosticsHub,
-  installProcessDiagnosticsCapture,
   isDiagnosticsAgentPath,
 } from './diagnostics.js';
 import { registerDiagnosticsRoutes } from './routes/diagnostics.js';
@@ -70,8 +69,6 @@ if (verifyTrialWitnessWorkerArgIndex >= 0) {
   process.stdout.write('TAGMA_TRIAL_WITNESS_WORKER_OK\n');
   process.exit(0);
 }
-
-installProcessDiagnosticsCapture();
 
 const app = express();
 // ── C2: Tighten CORS ──

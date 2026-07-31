@@ -255,12 +255,11 @@ export function registerDiagnosticsRoutes(
         next: 'Use nextCursor as the next after value.',
       },
       coverage: [
-        'sidecar stdout/stderr',
-        'managed OpenCode stdout/stderr and runtime metadata',
+        'Electron launcher sidecar log tail, including managed OpenCode stdout/stderr',
+        'managed OpenCode runtime metadata',
         'workspace-scoped OpenCode session list and bounded message history',
         'renderer console/errors and transient OpenCode chat state',
         'current editor pipeline state and active run events',
-        'Electron launcher sidecar log tail when available',
       ],
       privacy:
         'Known credential fields and common token forms are redacted and payloads are bounded. User-authored text can still contain sensitive data; do not share diagnostics without review.',
@@ -274,7 +273,10 @@ export function registerDiagnosticsRoutes(
   app.get(`${DIAGNOSTICS_AGENT_BASE_PATH}/logs`, (req, res) => {
     const after = Number(req.query.after ?? 0);
     const limit = Number(req.query.limit ?? 500);
-    res.json(hub.readLogs(after, limit));
+    res.json({
+      ...hub.readLogs(after, limit),
+      desktopLogTail: readDesktopLogTail(),
+    });
   });
 
   app.get(`${DIAGNOSTICS_AGENT_BASE_PATH}/opencode/sessions`, async (_req, res) => {

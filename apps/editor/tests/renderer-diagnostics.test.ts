@@ -123,6 +123,10 @@ describe('coding-agent handoff', () => {
     expect(instructions).toContain('Authorization: Bearer debug-token');
     expect(instructions).toContain('GET http://127.0.0.1:43123/api/diagnostics/v1/manifest');
     expect(instructions).toContain('GET http://127.0.0.1:43123/api/diagnostics/v1/context');
+    expect(instructions).toContain(
+      'GET http://127.0.0.1:43123/api/diagnostics/v1/opencode/sessions',
+    );
+    expect(instructions).toContain('/opencode/sessions/<url-encoded-session-id>/messages?limit=100');
     expect(instructions).toContain('read-only');
     expect(instructions).not.toContain('?token=debug-token');
   });

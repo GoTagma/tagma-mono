@@ -118,17 +118,44 @@ function installRendererLogCapture(): () => void {
   };
 }
 
+function clearBridgeTimers(): void {
+  if (statusTimer) clearInterval(statusTimer);
+  if (reportTimer) clearInterval(reportTimer);
+  statusTimer = null;
+  reportTimer = null;
+}
+
+function setActiveSession(
+  nextSession: Extract<DiagnosticsSessionStatus, { enabled: true }> | null,
+): void {
+  const sessionChanged = nextSession?.sessionId !== activeSession?.sessionId;
+  if (sessionChanged) pendingLogs = [];
+  activeSession = nextSession;
+
+  if (!nextSession) {
+    stopCapture?.();
+    stopCapture = null;
+    clearBridgeTimers();
+    return;
+  }
+  stopCapture ??= installRendererLogCapture();
+  if (started && !statusTimer) {
+    statusTimer = setInterval(() => void refreshStatus(), STATUS_INTERVAL_MS);
+  }
+  if (started && !reportTimer) {
+    reportTimer = setInterval(() => void reportSnapshot(), REPORT_INTERVAL_MS);
+  }
+}
+
 async function refreshStatus(): Promise<void> {
   if (statusRequest) return statusRequest;
   statusRequest = (async () => {
     try {
       const status = await api.getDiagnosticsSession();
       const nextSession = diagnosticsActiveForCurrentWorkspace(status) ? status : null;
-      if (nextSession?.sessionId !== activeSession?.sessionId) pendingLogs = [];
-      activeSession = nextSession;
+      setActiveSession(nextSession);
     } catch {
-      activeSession = null;
-      pendingLogs = [];
+      setActiveSession(null);
     }
   })().finally(() => {
     statusRequest = null;
@@ -140,8 +167,7 @@ async function reportSnapshot(): Promise<void> {
   if (!activeSession || reportRequest) return reportRequest ?? Promise.resolve();
   const workspaceKey = getClientWorkspace();
   if (workspaceKey !== activeSession.workspaceKey) {
-    activeSession = null;
-    pendingLogs = [];
+    setActiveSession(null);
     return;
   }
 
@@ -169,7 +195,7 @@ async function reportSnapshot(): Promise<void> {
       pendingLogs.splice(0, sentLogs.length);
     })
     .catch(() => {
-      activeSession = null;
+      setActiveSession(null);
     })
     .finally(() => {
       reportRequest = null;
@@ -195,21 +221,11 @@ export async function refreshRendererDiagnosticsBridge(): Promise<void> {
 export function startRendererDiagnosticsBridge(): void {
   if (started || typeof window === 'undefined') return;
   started = true;
-  stopCapture = installRendererLogCapture();
   void refreshRendererDiagnosticsBridge();
-  statusTimer = setInterval(() => void refreshStatus(), STATUS_INTERVAL_MS);
-  reportTimer = setInterval(() => void reportSnapshot(), REPORT_INTERVAL_MS);
 }
 
 export function stopRendererDiagnosticsBridge(): void {
   if (!started) return;
   started = false;
-  if (statusTimer) clearInterval(statusTimer);
-  if (reportTimer) clearInterval(reportTimer);
-  statusTimer = null;
-  reportTimer = null;
-  stopCapture?.();
-  stopCapture = null;
-  activeSession = null;
-  pendingLogs = [];
+  setActiveSession(null);
 }

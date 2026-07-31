@@ -2,7 +2,10 @@ import { join } from 'node:path';
 
 import { redactDiagnosticText, sanitizeDiagnosticValue } from '../shared/diagnostics.js';
 import { getOpencodeHandle, type OpencodeHandle } from './opencode-lifecycle.js';
-import { fetchOpencodeProxy } from './opencode-proxy.js';
+import {
+  fetchOpencodeProxy,
+  type OpencodeProxyRequest,
+} from './opencode-proxy.js';
 import { workspaceRegistry } from './workspace-registry.js';
 
 const MAX_OPENCODE_DIAGNOSTICS_BYTES = 4 * 1024 * 1024;
@@ -11,6 +14,18 @@ export interface DiagnosticsOpencodeMessageOptions {
   limit: number;
   before?: string;
 }
+
+export interface DiagnosticsOpencodeDependencies {
+  getWorkspace: (workspaceKey: string) => { workDir: string } | null | undefined;
+  getHandle: (cwd: string) => OpencodeHandle | null;
+  fetchOpencode: (input: OpencodeProxyRequest) => Promise<Response>;
+}
+
+const DEFAULT_DEPENDENCIES: DiagnosticsOpencodeDependencies = {
+  getWorkspace: (workspaceKey) => workspaceRegistry.get(workspaceKey),
+  getHandle: getOpencodeHandle,
+  fetchOpencode: fetchOpencodeProxy,
+};
 
 export class DiagnosticsReadError extends Error {
   constructor(
@@ -22,15 +37,18 @@ export class DiagnosticsReadError extends Error {
   }
 }
 
-function requireLiveOpencode(workspaceKey: string | null): OpencodeHandle {
+function requireLiveOpencode(
+  workspaceKey: string | null,
+  dependencies: DiagnosticsOpencodeDependencies,
+): OpencodeHandle {
   if (!workspaceKey) {
     throw new DiagnosticsReadError(409, 'The diagnostics workspace is no longer open.');
   }
-  const workspace = workspaceRegistry.get(workspaceKey);
+  const workspace = dependencies.getWorkspace(workspaceKey);
   if (!workspace?.workDir) {
     throw new DiagnosticsReadError(409, 'The diagnostics workspace is no longer open.');
   }
-  const handle = getOpencodeHandle(join(workspace.workDir, '.tagma'));
+  const handle = dependencies.getHandle(join(workspace.workDir, '.tagma'));
   if (!handle) {
     throw new DiagnosticsReadError(
       409,
@@ -73,8 +91,12 @@ async function readBoundedText(response: Response): Promise<string> {
   return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)), total).toString('utf8');
 }
 
-async function requestOpencodeJson(handle: OpencodeHandle, requestUrl: string): Promise<unknown> {
-  const response = await fetchOpencodeProxy({
+async function requestOpencodeJson(
+  handle: OpencodeHandle,
+  requestUrl: string,
+  dependencies: DiagnosticsOpencodeDependencies,
+): Promise<unknown> {
+  const response = await dependencies.fetchOpencode({
     baseUrl: handle.baseUrl,
     authorization: handle.auth.authorization,
     requestUrl,
@@ -108,12 +130,18 @@ function unwrapArray(payload: unknown, label: string): unknown[] {
   throw new DiagnosticsReadError(502, `OpenCode returned an invalid ${label} payload.`);
 }
 
-async function listScopedSessions(handle: OpencodeHandle): Promise<unknown[]> {
+async function listScopedSessions(
+  handle: OpencodeHandle,
+  dependencies: DiagnosticsOpencodeDependencies,
+): Promise<unknown[]> {
   const query = new URLSearchParams({
     directory: handle.cwd,
     limit: '100',
   });
-  return unwrapArray(await requestOpencodeJson(handle, `/session?${query}`), 'session list');
+  return unwrapArray(
+    await requestOpencodeJson(handle, `/session?${query}`, dependencies),
+    'session list',
+  );
 }
 
 function sessionId(value: unknown): string | null {
@@ -124,9 +152,10 @@ function sessionId(value: unknown): string | null {
 
 export async function readDiagnosticsOpencodeSessions(
   workspaceKey: string | null,
+  dependencies: DiagnosticsOpencodeDependencies = DEFAULT_DEPENDENCIES,
 ): Promise<unknown> {
-  const handle = requireLiveOpencode(workspaceKey);
-  const sessions = await listScopedSessions(handle);
+  const handle = requireLiveOpencode(workspaceKey, dependencies);
+  const sessions = await listScopedSessions(handle, dependencies);
   return sanitizeDiagnosticValue(
     {
       workspaceKey,
@@ -146,9 +175,10 @@ export async function readDiagnosticsOpencodeMessages(
   workspaceKey: string | null,
   requestedSessionId: string,
   options: DiagnosticsOpencodeMessageOptions,
+  dependencies: DiagnosticsOpencodeDependencies = DEFAULT_DEPENDENCIES,
 ): Promise<unknown> {
-  const handle = requireLiveOpencode(workspaceKey);
-  const sessions = await listScopedSessions(handle);
+  const handle = requireLiveOpencode(workspaceKey, dependencies);
+  const sessions = await listScopedSessions(handle, dependencies);
   if (!sessions.some((session) => sessionId(session) === requestedSessionId)) {
     throw new DiagnosticsReadError(
       404,
@@ -165,6 +195,7 @@ export async function readDiagnosticsOpencodeMessages(
     await requestOpencodeJson(
       handle,
       `/session/${encodeURIComponent(requestedSessionId)}/message?${query}`,
+      dependencies,
     ),
     'message list',
   );

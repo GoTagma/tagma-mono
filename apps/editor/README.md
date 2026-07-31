@@ -88,6 +88,40 @@ gate, so use a final command task such as `pytest` or `bun test`, or configure a
 Check, to verify the generated result. Run details keep the existing Run N/M and task snapshots and
 show repair feedback in a compact expandable section when a failed attempt is retried.
 
+## Production diagnostics for coding agents
+
+Packaged Tagma builds include an opt-in, read-only diagnostics API for debugging the installed
+editor with Codex or another local coding agent. It is disabled by default and needs no separate
+CLI or developer build.
+
+1. Open the workspace that has the problem.
+2. Open **Editor Settings → Coding agent diagnostics**.
+3. Select **Enable diagnostics**.
+4. Select **Copy agent connection** and paste the copied instructions into the coding agent.
+5. Select **Disable** when the investigation is finished.
+
+The copied handoff contains the loopback URL, a temporary bearer token, and the requests the agent
+should make. Put the token in `Authorization: Bearer <temporary-diagnostics-token>`, never in a URL.
+
+| Read-only endpoint                                                     | Contents                                                                 |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `GET /api/diagnostics/v1/manifest`                                     | Protocol, coverage, privacy notes, and endpoint discovery                |
+| `GET /api/diagnostics/v1/context`                                      | Editor/workspace/run state, renderer snapshot, and OpenCode runtime info |
+| `GET /api/diagnostics/v1/logs?after=<cursor>&limit=<1-1000>`            | Cursor logs plus the Electron `sidecar.log` tail                         |
+| `GET /api/diagnostics/v1/opencode/sessions`                            | Sessions scoped to the workspace's existing OpenCode process             |
+| `GET /api/diagnostics/v1/opencode/sessions/<id>/messages?limit=<1-200>` | Bounded history after verifying session ownership                        |
+
+The diagnostics token is independent from the sidecar management token, rotates on every enable,
+authorizes only `GET` below `/api/diagnostics/v1`, and is revoked on disable or shutdown. OpenCode
+history reads never start, restart, prompt, or mutate OpenCode; they return `409` when it is not
+running. Renderer console/error capture exists only during the matching diagnostics session and is
+restored on disable. Release process output comes from Electron's existing `sidecar.log`, so normal
+process streams are not wrapped.
+
+Payloads are bounded, and known credential fields and common token formats are redacted. This is
+best-effort protection: prompts, messages, tool output, paths, and arbitrary user-authored text can
+still be sensitive. Review diagnostics before sharing them.
+
 ## In-app update surfaces
 
 Several features are designed for the desktop wrapper ([tagma-desktop](../electron/README.md)) but also work in dev when the matching env vars are set.

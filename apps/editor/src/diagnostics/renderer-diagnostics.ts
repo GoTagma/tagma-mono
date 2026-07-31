@@ -16,6 +16,7 @@ export interface RendererDiagnosticsSnapshotInput {
   chat: UnknownRecord;
   pipeline: UnknownRecord;
   run: UnknownRecord;
+  features?: Record<string, unknown>;
   capturedAt?: number;
 }
 
@@ -151,6 +152,7 @@ export function buildRendererDiagnosticsSnapshot(input: RendererDiagnosticsSnaps
         yamlPath: run.yamlPath ?? null,
         replayFromRunId: run.replayFromRunId ?? null,
       },
+      features: input.features ?? {},
     },
     {
       maxDepth: 10,
@@ -168,6 +170,7 @@ export function buildRendererDiagnosticsSnapshot(input: RendererDiagnosticsSnaps
     };
     pipeline: UnknownRecord;
     run: UnknownRecord;
+    features: Record<string, unknown>;
   };
 }
 
