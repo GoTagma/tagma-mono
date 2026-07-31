@@ -93,6 +93,11 @@ export function buildCompactToolbarItems({
   return result;
 }
 
+export function handleToolbarRunClick(event: { stopPropagation(): void }, onRun: () => void): void {
+  event.stopPropagation();
+  onRun();
+}
+
 export function Toolbar({
   pipelineName,
   yamlPath,
@@ -468,7 +473,7 @@ export function Toolbar({
           )}
 
           <button
-            onClick={onRun}
+            onClick={(event) => handleToolbarRunClick(event, onRun)}
             className="btn-primary group h-[24px] shrink-0 px-2 lg:px-3"
             title={runTargetCount > 0 ? `Run ${runTargetCount} selected task(s)` : 'Run'}
             aria-label={

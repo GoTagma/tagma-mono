@@ -305,6 +305,12 @@
 - For fast regressions, pass repeatable unique selectors such as
   `bun scripts/test-serial.mjs --file tests/chat-yaml-staging.test.ts --file tests/opencode-lifecycle.test.ts`.
 
+## Targeted Pipeline Runs
+
+- Run and Run Selected controls must not bubble into parent selection-clearing handlers before
+  the async run path snapshots its options. Preserve the selected qualified task ids and send
+  them as `targetTaskIds`; omitting that field intentionally means a full-pipeline run.
+
 ## Editor Settings Mutations
 
 - Keep ordinary per-workspace settings controls responsive while persistence is in flight. Serialize
