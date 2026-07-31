@@ -6,7 +6,6 @@ import { Toolbar } from './components/board/Toolbar';
 import { TaskConfigPanel } from './components/panels/TaskConfigPanel';
 import { TrackConfigPanel } from './components/panels/TrackConfigPanel';
 import { PipelineConfigPanel } from './components/panels/PipelineConfigPanel';
-import { EditorSettingsPanel } from './components/panels/EditorSettingsPanel';
 import { SecretsManagerPanel } from './components/panels/SecretsManagerPanel';
 import { PluginsPage } from './components/plugins/PluginsPage';
 import { UsagePage } from './components/usage/UsagePage';
@@ -358,7 +357,6 @@ export function App() {
     yamlEditLocked,
   ]);
 
-  const [showEditorSettings, setShowEditorSettings] = useState(false);
   const [showSecretsManager, setShowSecretsManager] = useState(false);
   const [pipelineInspectorSelected, setPipelineInspectorSelected] = useState(false);
   const [pipelineInspectorPinned, setPipelineInspectorPinned] = useState(false);
@@ -2988,10 +2986,6 @@ export function App() {
         label: 'Settings',
         items: [
           { label: 'Editor Settings', onAction: () => showSettingsPage() },
-          {
-            label: 'Editor Settings (Classic)...',
-            onAction: () => setShowEditorSettings(true),
-          },
           { label: 'Secrets Manager...', onAction: () => setShowSecretsManager(true) },
         ],
       },
@@ -3486,15 +3480,6 @@ export function App() {
             </div>
 
             <VersionStatusBar />
-
-            {/* Editor Settings modal */}
-            {showEditorSettings && (
-              <EditorSettingsPanel
-                workDir={workDir}
-                onRegistryUpdate={setRegistry}
-                onClose={() => setShowEditorSettings(false)}
-              />
-            )}
 
             {showSecretsManager && (
               <SecretsManagerPanel

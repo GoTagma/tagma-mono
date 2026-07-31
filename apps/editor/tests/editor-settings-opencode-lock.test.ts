@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { getOpencodeSettingsMutationBlockMessage } from '../src/components/panels/EditorSettingsPanel';
+import { getOpencodeSettingsMutationBlockMessage } from '../src/components/settings/use-editor-settings-controller';
 
 describe('Editor settings OpenCode runtime lock', () => {
   test('blocks restart-backed mutations for any unexpired lock in the current workspace', () => {

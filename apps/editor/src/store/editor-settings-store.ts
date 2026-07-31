@@ -5,9 +5,8 @@ import { api, type EditorSettings } from '../api/client';
  * Shared cache of the per-workspace `editor-settings.json`. Two surfaces need
  * these values:
  *
- *   1. The Editor Settings UI (the settings page and the classic panel, both
- *      driven by `useEditorSettingsController`) — reads on open, writes on
- *      toggle change.
+ *   1. The Editor Settings page (driven by `useEditorSettingsController`) —
+ *      reads on open, writes on toggle change.
  *   2. `App.tsx`'s chat reconciliation, which uses the conflict policy and the
  *      optional pipeline trial-run preference outside the panel lifecycle.
  *      Keeping a persistent in-memory copy avoids round-tripping

@@ -51,11 +51,9 @@ export function getOpencodeSettingsMutationBlockMessage(lockState: {
 }
 
 /**
- * Shared state/logic for the Editor Settings surfaces. Both the classic modal
- * (panels/EditorSettingsPanel.tsx) and the full-page settings view
- * (settings/EditorSettingsPage.tsx) drive the same controller so behaviour —
- * optimistic saves, OpenCode restart side effects, the Python wizard — stays
- * identical no matter which chrome renders it.
+ * Shared state/logic for the Editor Settings page
+ * (settings/EditorSettingsPage.tsx) — optimistic saves, OpenCode restart side
+ * effects, the Python wizard — so the page chrome stays a thin shell.
  */
 export function useEditorSettingsController(
   workDir: string,

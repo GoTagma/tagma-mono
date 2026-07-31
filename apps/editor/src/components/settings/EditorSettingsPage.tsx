@@ -19,10 +19,10 @@ interface EditorSettingsPageProps {
 }
 
 /**
- * Full-page Editor Settings — same controller and sections as the classic
- * modal (panels/EditorSettingsPanel.tsx), framed like the Plugins/Stats pages:
- * an h-9 utility header, a numbered category rail on the left, and the active
- * category's settings on the right (VS Code settings layout).
+ * Full-page Editor Settings — VS Code-style layout framed like the
+ * Plugins/Stats pages: an h-9 utility header, a numbered category rail on the
+ * left, and the active category's settings on the right. All state and
+ * sections come from the shared settings controller.
  */
 export function EditorSettingsPage({ workDir, onRegistryUpdate, onBack }: EditorSettingsPageProps) {
   const [category, setCategory] = useState<SettingsCategory>(SETTINGS_CATEGORIES[0].id);

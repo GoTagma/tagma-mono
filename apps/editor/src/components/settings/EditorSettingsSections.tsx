@@ -55,10 +55,9 @@ interface EditorSettingsSectionsProps {
 }
 
 /**
- * The settings form body shared by the classic modal and the full settings
- * page. Workspace/error/loading notices always render on top; each section is
- * gated by the `categories` filter so the page can show one category at a time
- * while the modal stacks them all.
+ * The settings form body for the Editor Settings page. Workspace/error/loading
+ * notices always render on top; each section is gated by the `categories`
+ * filter so the page can show one category at a time.
  */
 export function EditorSettingsSections({ controller, categories }: EditorSettingsSectionsProps) {
   const {

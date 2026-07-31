@@ -325,7 +325,7 @@ export function ProviderConnectDialog() {
 
 /**
  * Section grouping — matches the editor's typical "uppercase tracking-wider
- * muted" small-caps label used in panels (e.g. EditorSettingsPanel's
+ * muted" small-caps label used in panels (e.g. the Editor Settings sections'
  * WarnBox / success-box sections, DialogModal's detail groupings).
  */
 function Section({
