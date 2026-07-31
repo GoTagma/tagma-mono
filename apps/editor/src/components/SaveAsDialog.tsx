@@ -53,7 +53,7 @@ export function SaveAsDialog({
           </button>
         </div>
         <div className="modal-viewport-body px-4 py-4 flex flex-col gap-2">
-          <label className="text-[10px] font-mono text-tagma-muted uppercase tracking-wider">
+          <label className="field-label font-mono">
             {inputLabel}
           </label>
           <input

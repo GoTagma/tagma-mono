@@ -162,6 +162,8 @@ Because the channel is renderer-side and same-origin, no Electron IPC is involve
 
 The primary hot-update path. Stages both the editor frontend tarball and the sidecar binary first; if either stage fails (network, hash mismatch, signature failure), neither is activated and the previous build keeps running. Only after both stages succeed does the sidecar flip the live pointers (editor first, then sidecar). Two new builds always activate together, so a peer-window reload never picks up a half-applied update.
 
+The manifest release must be strictly newer than the highest valid bundled, active, or user-staged editor/sidecar version. `POST /api/release/update` enforces this before stopping OpenCode or staging any artifact and returns `409` with `kind: not-newer` when the version direction is invalid. The component recovery routes apply the same server-side rule.
+
 - Routes: `POST /api/release/update`, `POST /api/release/update/cancel` (`server/routes/release.ts`).
 - Status: `GET /api/hotupdate/status` reports the active update kind (`release` | `editor` | `sidecar` | `opencode`) so peer windows can show the in-flight indicator.
 - Manifest: pinned to the editor channel's manifest; editor and sidecar advertised together must agree on a single shell-compatible version.

@@ -231,7 +231,7 @@ function filterRows(
 function FilterField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="flex items-center gap-1.5">
-      <span className="text-[10px] font-mono uppercase tracking-wider text-tagma-muted">
+      <span className="field-label font-mono mb-0">
         {label}
       </span>
       {children}

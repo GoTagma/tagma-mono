@@ -583,7 +583,7 @@ export const TaskCard = memo(function TaskCard({
       <span
         key="modified"
         title="Unsaved change since last save"
-        className="inline-block h-[14px] px-[3px] bg-tagma-warning/15 text-tagma-warning/90 shrink-0 leading-[14px] text-[8px] font-mono font-bold tabular-nums whitespace-nowrap uppercase tracking-wider"
+        className="chip-mod"
       >
         mod
       </span>,

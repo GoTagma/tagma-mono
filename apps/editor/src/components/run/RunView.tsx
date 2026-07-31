@@ -790,7 +790,7 @@ export function RunView({
                               .length
                           }
                           height={row.height}
-                          onToggle={() => toggleFolderCollapsed(f.id)}
+                          onToggle={toggleFolderCollapsed}
                         />,
                       );
                       continue;

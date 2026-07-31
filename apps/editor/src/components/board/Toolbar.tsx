@@ -293,7 +293,7 @@ export function Toolbar({
                   <span className="text-[10px] font-mono text-tagma-muted/60 truncate">
                     {workDir}
                   </span>
-                  <ChevronDown size={8} className="text-tagma-muted/40 opacity-60 shrink-0" />
+                  <ChevronDown size={10} className="text-tagma-muted/40 opacity-60 shrink-0" />
                 </button>
                 <button
                   onClick={() => api.reveal(workDir).catch(() => {})}
@@ -358,7 +358,7 @@ export function Toolbar({
                     aria-label="Change search field"
                   >
                     <span>{searchMode === 'id' ? 'ID' : 'Name'}</span>
-                    <ChevronDown size={8} />
+                    <ChevronDown size={10} />
                   </button>
                   {searchModeMenuOpen && (
                     <div className="absolute left-0 top-full mt-1 z-[170] min-w-[80px] origin-top bg-tagma-surface border border-tagma-border shadow-panel animate-scale-in">

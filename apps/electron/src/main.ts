@@ -63,6 +63,27 @@ function readTagmaMetadata(): Record<string, unknown> {
   }
 }
 const TAGMA_META = readTagmaMetadata();
+
+function readInstallFingerprint(): string | undefined {
+  if (!app.isPackaged) return undefined;
+  const candidates = [path.join(process.resourcesPath, 'app.asar'), process.execPath];
+  for (const candidate of candidates) {
+    try {
+      const stat = fs.statSync(candidate);
+      return JSON.stringify({
+        size: stat.size,
+        ino: stat.ino,
+        birthtimeMs: stat.birthtimeMs,
+        ctimeMs: stat.ctimeMs,
+        mtimeMs: stat.mtimeMs,
+      });
+    } catch {
+      /* try the executable fallback */
+    }
+  }
+  return undefined;
+}
+
 const DEV_RENDERER_URL = normalizeDevRendererUrl(process.env.TAGMA_DESKTOP_RENDERER_URL);
 const DESKTOP_HMR = process.env.TAGMA_DESKTOP_HMR === '1';
 const SIDECAR_SHUTDOWN_TIMEOUT_MS = 3000;
@@ -470,6 +491,7 @@ async function spawnSidecar(): Promise<SidecarHandle> {
     desktopLogFile: path.join(app.getPath('logs'), 'sidecar.log'),
     tagmaMetadataJson: JSON.stringify(TAGMA_META),
     appVersion: app.getVersion(),
+    installFingerprint: readInstallFingerprint(),
   } as const;
 
   // Mint a per-launch bearer token in packaged mode so the sidecar's /api

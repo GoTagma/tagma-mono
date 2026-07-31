@@ -68,6 +68,12 @@ export interface RuntimePathOptions {
    * whether a hot update is available and to enforce minShellVersion gates.
    */
   appVersion?: string;
+  /**
+   * Stable identity for the files laid down by the current installer. It
+   * changes when an installer replaces the packaged app, including when the
+   * replacement has the same version number.
+   */
+  installFingerprint?: string;
   /** Durable Electron-side log mirrored from sidecar stdout/stderr. */
   desktopLogFile?: string;
   sidecarPreference?: 'auto' | 'bundled';
@@ -403,15 +409,31 @@ function discardUserReleaseOverrideWithPath(p: PathModule, userDataDir: string):
   return sidecarRemoved && !existsSync(editorDir);
 }
 
-function readReleaseBaseline(fsPath: PathModule, userDataDir: string | undefined): string | null {
+interface ReleaseBaseline {
+  bundledVersion: string;
+  installFingerprint: string | null;
+}
+
+function readReleaseBaseline(
+  fsPath: PathModule,
+  userDataDir: string | undefined,
+): ReleaseBaseline | null {
   if (!userDataDir) return null;
   try {
     const raw = JSON.parse(readFileSync(releaseBaselinePath(fsPath, userDataDir), 'utf-8')) as {
       bundledVersion?: unknown;
+      installFingerprint?: unknown;
     };
     if (typeof raw.bundledVersion !== 'string') return null;
     const version = raw.bundledVersion.trim();
-    return SIDECAR_VERSION_RE.test(version) ? version : null;
+    if (!SIDECAR_VERSION_RE.test(version)) return null;
+    const installFingerprint =
+      typeof raw.installFingerprint === 'string' &&
+      raw.installFingerprint.length > 0 &&
+      raw.installFingerprint.length <= 512
+        ? raw.installFingerprint
+        : null;
+    return { bundledVersion: version, installFingerprint };
   } catch {
     return null;
   }
@@ -421,13 +443,18 @@ function writeReleaseBaseline(
   fsPath: PathModule,
   userDataDir: string | undefined,
   bundledVersion: string | undefined,
+  installFingerprint?: string,
 ): void {
   if (!userDataDir || !bundledVersion || !SIDECAR_VERSION_RE.test(bundledVersion)) return;
   if (!fsPath.isAbsolute(userDataDir)) return;
   try {
     const baselinePath = releaseBaselinePath(fsPath, userDataDir);
     mkdirSync(fsPath.dirname(baselinePath), { recursive: true });
-    writeFileSync(baselinePath, JSON.stringify({ bundledVersion }) + '\n', 'utf-8');
+    const baseline = {
+      bundledVersion,
+      ...(installFingerprint ? { installFingerprint } : {}),
+    };
+    writeFileSync(baselinePath, JSON.stringify(baseline) + '\n', 'utf-8');
   } catch {
     /* best-effort */
   }
@@ -448,6 +475,8 @@ function readUserEditorVersion(fsPath: PathModule, userDataDir: string | undefin
 export interface InstallerReleaseTransitionInput {
   bundledVersion: string;
   previousBundledVersion: string | null;
+  installFingerprint?: string | null;
+  previousInstallFingerprint?: string | null;
   editorOverrideVersion: string | null;
   sidecarOverrideVersion: string | null;
   overrideRemovalSucceeded: boolean;
@@ -465,11 +494,20 @@ export function decideInstallerReleaseTransition(
   const installerDowngraded =
     !!input.previousBundledVersion &&
     compareVersions(input.bundledVersion, input.previousBundledVersion) < 0;
-  const overrideAhead = [input.editorOverrideVersion, input.sidecarOverrideVersion].some(
+  const editorOverrideAhead =
+    !!input.editorOverrideVersion &&
+    compareVersions(input.editorOverrideVersion, input.bundledVersion) > 0;
+  const anyOverrideAhead = [input.editorOverrideVersion, input.sidecarOverrideVersion].some(
     (version) => !!version && compareVersions(version, input.bundledVersion) > 0,
   );
+  const freshInstaller =
+    !!input.installFingerprint &&
+    !!input.previousInstallFingerprint &&
+    input.installFingerprint !== input.previousInstallFingerprint;
   const replaceUserRelease =
-    installerDowngraded || (!input.previousBundledVersion && overrideAhead);
+    installerDowngraded ||
+    (freshInstaller && anyOverrideAhead) ||
+    (!input.previousBundledVersion && editorOverrideAhead);
 
   return {
     replaceUserRelease,
@@ -482,15 +520,19 @@ function syncReleaseBaseline(
   fsPath: PathModule,
   userDataDir: string | undefined,
   bundledVersion: string | undefined,
+  installFingerprint?: string,
 ): boolean {
   if (!userDataDir || !bundledVersion || !SIDECAR_VERSION_RE.test(bundledVersion)) return false;
 
-  const previousBundledVersion = readReleaseBaseline(fsPath, userDataDir);
+  const previousBaseline = readReleaseBaseline(fsPath, userDataDir);
+  const previousBundledVersion = previousBaseline?.bundledVersion ?? null;
   const editorVersion = readUserEditorVersion(fsPath, userDataDir);
   const sidecarVersion = readUserSidecarPointer(fsPath, userDataDir)?.version ?? null;
   const initialDecision = decideInstallerReleaseTransition({
     bundledVersion,
     previousBundledVersion,
+    installFingerprint,
+    previousInstallFingerprint: previousBaseline?.installFingerprint ?? null,
     editorOverrideVersion: editorVersion,
     sidecarOverrideVersion: sidecarVersion,
     overrideRemovalSucceeded: false,
@@ -507,13 +549,15 @@ function syncReleaseBaseline(
   const decision = decideInstallerReleaseTransition({
     bundledVersion,
     previousBundledVersion,
+    installFingerprint,
+    previousInstallFingerprint: previousBaseline?.installFingerprint ?? null,
     editorOverrideVersion: editorVersion,
     sidecarOverrideVersion: sidecarVersion,
     overrideRemovalSucceeded,
   });
 
   if (decision.commitBundledBaseline) {
-    writeReleaseBaseline(fsPath, userDataDir, bundledVersion);
+    writeReleaseBaseline(fsPath, userDataDir, bundledVersion, installFingerprint);
   } else {
     console.warn(
       '[tagma] Could not fully remove a newer user release override. The installer release will be used and cleanup will retry on next launch.',
@@ -609,6 +653,7 @@ export function resolveRuntimePaths(options: RuntimePathOptions): RuntimePaths {
       fsPath,
       options.userDataDir,
       options.appVersion,
+      options.installFingerprint,
     );
     cleanupStaleUserSidecar(fsPath, options.userDataDir, options.appVersion);
     if (options.userDataDir) {

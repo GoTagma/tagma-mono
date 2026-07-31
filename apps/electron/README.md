@@ -91,6 +91,10 @@ The download is handled by the editor sidecar at `POST /api/opencode/update`; st
 
 Every desktop release ships both an `editor-dist-<version>.tar.gz` tarball and platform-matched sidecar binaries; the published manifest advertises them together. The running app polls a manifest URL on startup and offers an in-place update if a newer build is available — no installer reinstall required.
 
+Hot updates are upgrade-only: the manifest release must be strictly newer than every valid bundled, running, or already-staged editor/sidecar version. The server enforces this before stopping OpenCode or downloading artifacts, so a direct API call cannot use hot update to downgrade or reinstall the same version.
+
+A manually run installer is authoritative and may replace a higher release. Electron records both the bundled version and an installation fingerprint, removes higher editor/sidecar overrides from `userData`, and uses the bundled release for that launch. The baseline is updated only after removal is verified, so a locked or otherwise undeletable override is ignored immediately and cleanup retries on the next launch. This also covers re-running the same lower installer after the app was upgraded through hot update.
+
 The default in-app **Update Tagma** action drives an atomic bundle update through the sidecar's `POST /api/release/update` route — both artifacts stage first, and only when both stage cleanly does the sidecar flip the live pointers (editor first, then sidecar). Editor-only and sidecar-only routes (`/api/editor/update`, `/api/sidecar/update`) remain available as recovery escape hatches. See `apps/editor/README.md` for the runtime route surface.
 
 Four `package.json → tagma.*` fields drive the flow:
@@ -112,7 +116,7 @@ The same manifest may also advertise platform-specific sidecar binaries. When pr
 
 - Electron launch precedence: `userData/editor-sidecar/current.json` override → bundled `resources/editor-sidecar/`.
 - A broken user-installed sidecar is automatically discarded if it fails before `TAGMA_READY`, then the launcher falls back to the bundled copy.
-- Installer upgrades still win: if the bundled sidecar version is newer than the staged override, Electron clears the override root on startup.
+- Installer installs win in either direction: a newer bundled release clears stale lower overrides, while a manual downgrade/reinstall clears higher editor and sidecar overrides before launch.
 - Routes: `GET /api/sidecar/info`, `POST /api/sidecar/update`.
 
 ## Runtime and release configuration

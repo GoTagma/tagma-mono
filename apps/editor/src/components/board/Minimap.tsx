@@ -5,7 +5,7 @@ import { getZoom } from '../../utils/zoom';
 import { TASK_W, TASK_H, TASK_GAP, PAD_LEFT, BOARD_SCROLL_ID } from './layout-constants';
 import type { RawPipelineConfig, TrackFolder } from '../../api/client';
 import type { TaskPosition } from '../../store/pipeline-store';
-import { buildRenderPlan, trackTopYInPlan } from './render-plan';
+import { buildRenderPlan, trackTopYInPlan, type RenderRow } from './render-plan';
 
 // Preferred floating minimap footprint. The actual map shrinks with its canvas
 // viewport and disappears when even the compact floor would obscure the work.
@@ -214,12 +214,17 @@ export function Minimap({
 
   const rects = useMemo(() => {
     const out: { x: number; y: number; w: number; h: number; fill: string }[] = [];
+    // Index track rows by id once — a per-track find() in the loop is O(T²).
+    const rowByTrackId = new Map<string, Extract<RenderRow, { kind: 'track' }>>();
+    for (const entry of renderPlan) {
+      if (entry.kind === 'track') rowByTrackId.set(entry.trackId, entry);
+    }
     tracks.forEach((track) => {
       const trackTop = trackTopYInPlan(renderPlan, track.id);
       // Tracks inside a collapsed folder have no rendered position — skip
       // them so the minimap mirrors the canvas's hidden state.
       if (trackTop === null) return;
-      const row = renderPlan.find((entry) => entry.kind === 'track' && entry.trackId === track.id);
+      const row = rowByTrackId.get(track.id);
       const fill = track.color || '#64748b';
       track.tasks.forEach((task, taskIdx) => {
         const qid = `${track.id}.${task.id}`;

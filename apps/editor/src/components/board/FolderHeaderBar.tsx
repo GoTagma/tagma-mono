@@ -23,13 +23,13 @@ export const FolderHeaderBar = memo(function FolderHeaderBar({
   folder: TrackFolder;
   memberCount: number;
   height: number;
-  onToggle: () => void;
+  onToggle: (folderId: string) => void;
 }) {
   const accent = folder.color || 'rgb(var(--tagma-muted) / 0.7)';
   return (
     <div
       data-folder-id={folder.id}
-      onClick={onToggle}
+      onClick={() => onToggle(folder.id)}
       className="relative flex items-center gap-1.5 px-2 cursor-pointer select-none border-b hover:bg-tagma-muted/12 transition-colors"
       style={{
         height,

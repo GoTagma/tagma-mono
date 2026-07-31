@@ -37,13 +37,31 @@ describe('decideInstallerReleaseTransition', () => {
     });
   });
 
-  test('treats a sidecar-only newer legacy override as replacement state', () => {
+  test('does not mistake a sidecar-only legacy override for an installer replacement', () => {
     expect(
       decideInstallerReleaseTransition({
         bundledVersion: '1.0.0',
         previousBundledVersion: null,
         editorOverrideVersion: null,
         sidecarOverrideVersion: '2.1.0',
+        overrideRemovalSucceeded: true,
+      }),
+    ).toEqual({
+      replaceUserRelease: false,
+      forceBundledRelease: false,
+      commitBundledBaseline: true,
+    });
+  });
+
+  test('recognizes a fresh installer even when its bundled version matches the previous baseline', () => {
+    expect(
+      decideInstallerReleaseTransition({
+        bundledVersion: '1.0.0',
+        previousBundledVersion: '1.0.0',
+        installFingerprint: 'install-b-new',
+        previousInstallFingerprint: 'install-b-old',
+        editorOverrideVersion: '2.0.0',
+        sidecarOverrideVersion: '2.0.0',
         overrideRemovalSucceeded: true,
       }),
     ).toEqual({
@@ -730,30 +748,6 @@ describe('runtime path resolution', () => {
     ).toEqual({ bundledVersion: '0.0.1' });
   });
 
-  test('packaged mode discards a newer sidecar-only legacy override', () => {
-    const root = withTempDir();
-    const resourcesPath = hostPath.join(root, 'resources');
-    const userDataDir = hostPath.join(root, 'userData');
-    const bundledSidecarDir = hostPath.join(resourcesPath, 'editor-sidecar');
-    mkdirSync(bundledSidecarDir, { recursive: true });
-    const { editorDir, sidecarDir } = writeUserReleaseOverride(userDataDir, '2.0.0');
-    rmSync(editorDir, { recursive: true, force: true });
-
-    const paths = resolveRuntimePaths({
-      isPackaged: true,
-      compiledDir: hostPath.join(root, 'compiled'),
-      resourcesPath,
-      userDataDir,
-      platform: process.platform,
-      appVersion: '1.0.0',
-    });
-
-    expect(paths.command).toBe(hostPath.join(bundledSidecarDir, executableName()));
-    expect(paths.sidecarSource).toBe('bundled');
-    expect(paths.sidecarVersion).toBe('1.0.0');
-    expect(existsSync(sidecarDir)).toBe(false);
-  });
-
   test('manual installer downgrade replaces a higher installed release and its hot-update layer', () => {
     const root = withTempDir();
     const resourcesPath = hostPath.join(root, 'resources');
@@ -789,6 +783,48 @@ describe('runtime path resolution', () => {
     expect(
       JSON.parse(readFileSync(hostPath.join(userDataDir, releaseBaselineFile), 'utf-8')),
     ).toEqual({ bundledVersion: '1.0.0' });
+  });
+
+  test('re-running the same lower installer replaces a higher hot-update layer', () => {
+    const root = withTempDir();
+    const resourcesPath = hostPath.join(root, 'resources');
+    const userDataDir = hostPath.join(root, 'userData');
+    const bundledSidecarDir = hostPath.join(resourcesPath, 'editor-sidecar');
+    mkdirSync(bundledSidecarDir, { recursive: true });
+
+    resolveRuntimePaths({
+      isPackaged: true,
+      compiledDir: hostPath.join(root, 'compiled'),
+      resourcesPath,
+      userDataDir,
+      platform: process.platform,
+      appVersion: '1.0.0',
+      installFingerprint: 'install-b-original',
+    });
+    const { editorDir, sidecarDir } = writeUserReleaseOverride(userDataDir, '2.0.0');
+
+    const reinstalled = resolveRuntimePaths({
+      isPackaged: true,
+      compiledDir: hostPath.join(root, 'compiled'),
+      resourcesPath,
+      userDataDir,
+      platform: process.platform,
+      appVersion: '1.0.0',
+      installFingerprint: 'install-b-reinstalled',
+    });
+
+    expect(reinstalled.command).toBe(hostPath.join(bundledSidecarDir, executableName()));
+    expect(reinstalled.sidecarSource).toBe('bundled');
+    expect(reinstalled.sidecarVersion).toBe('1.0.0');
+    expect(reinstalled.env.TAGMA_EDITOR_USER_DIST_DIR).toBeUndefined();
+    expect(existsSync(editorDir)).toBe(false);
+    expect(existsSync(sidecarDir)).toBe(false);
+    expect(
+      JSON.parse(readFileSync(hostPath.join(userDataDir, releaseBaselineFile), 'utf-8')),
+    ).toEqual({
+      bundledVersion: '1.0.0',
+      installFingerprint: 'install-b-reinstalled',
+    });
   });
 
   test('packaged mode records the current installer baseline without clearing matching hot-update state', () => {

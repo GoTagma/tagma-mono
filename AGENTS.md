@@ -38,3 +38,14 @@ Do not amend the same commit to include these files after naming them with the c
   infinite modes must not enable repair.
 - Completion plugins may return a boolean or `{ passed, feedback? }`; failed structured feedback
   becomes task diagnostics and must remain available to the next repair attempt.
+
+## Desktop Release Version Direction
+
+- Every Tagma hot-update entry point must require the manifest release version to be strictly
+  greater than every valid bundled, active, and user-staged editor/sidecar version. UI checks are
+  advisory; the server-side gate is authoritative and must run before stopping processes or
+  staging artifacts.
+- A manually run desktop installer is authoritative even when it replaces a higher Tagma release.
+  On installer downgrade or a newly detected install instance, clear the editor and sidecar
+  userData overrides and force bundled runtime paths for that launch. Do not advance the persisted
+  installer baseline until override removal is verified, so failed cleanup retries next launch.

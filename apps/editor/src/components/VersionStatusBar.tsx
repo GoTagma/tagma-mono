@@ -817,8 +817,12 @@ function TagmaBundleBody(props: TagmaBundleBodyProps) {
         <WarnBox
           message={
             skew.kind === 'active'
-              ? `Version skew detected (editor ${skew.editorVersion} vs sidecar ${skew.sidecarVersion}). Run Update Tagma to realign.`
-              : `A previous Update Tagma did not complete (editor staged ${skew.editorVersion}, sidecar staged ${skew.sidecarVersion}). Run Update Tagma again to realign before the next launch.`
+              ? bundleUpdateAvailable
+                ? `Version skew detected (editor ${skew.editorVersion} vs sidecar ${skew.sidecarVersion}). Run Update Tagma to realign.`
+                : `Version skew detected (editor ${skew.editorVersion} vs sidecar ${skew.sidecarVersion}). Hot updates cannot downgrade either component; use an installer or wait for a newer release.`
+              : bundleUpdateAvailable
+                ? `A previous Update Tagma did not complete (editor staged ${skew.editorVersion}, sidecar staged ${skew.sidecarVersion}). Run Update Tagma again to realign before the next launch.`
+                : `A previous Update Tagma did not complete (editor staged ${skew.editorVersion}, sidecar staged ${skew.sidecarVersion}). Use an installer or wait for a release newer than both components.`
           }
         />
       )}
@@ -832,9 +836,11 @@ function TagmaBundleBody(props: TagmaBundleBodyProps) {
             !bundleCanUpdate
               ? 'Updates are only available when running under the desktop app.'
               : !bundleUpdateAvailable
-                ? pendingRestart
-                  ? 'Update downloaded. Close and reopen Tagma to apply.'
-                  : 'Tagma is already at the latest version.'
+                ? skew
+                  ? 'Hot updates must be newer than both local components. Use an installer or wait for a newer release.'
+                  : pendingRestart
+                    ? 'Update downloaded. Close and reopen Tagma to apply.'
+                    : 'Tagma is already at the latest version.'
                 : `Download editor and sidecar ${bundleLatestVersion}. Takes effect next time Tagma relaunches.`
           }
         >
@@ -843,9 +849,11 @@ function TagmaBundleBody(props: TagmaBundleBodyProps) {
             ? 'Updating...'
             : bundleUpdateAvailable && bundleLatestVersion
               ? `Update Tagma to ${bundleLatestVersion}`
-              : pendingRestart
-                ? 'Restart required'
-                : 'Up to date'}
+              : skew
+                ? 'Newer release required'
+                : pendingRestart
+                  ? 'Restart required'
+                  : 'Up to date'}
         </button>
         {updating && <CancelUpdateButton onCancel={onBundleCancel} />}
         <button

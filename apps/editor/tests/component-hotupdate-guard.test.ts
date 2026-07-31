@@ -6,16 +6,20 @@ import { connect as netConnect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registerEditorRoutes } from '../server/routes/editor';
+import { registerReleaseRoutes } from '../server/routes/release';
 import { registerSidecarRoutes } from '../server/routes/sidecar';
 
 const originalFetch = globalThis.fetch;
 const ENV_KEYS = [
   'TAGMA_EDITOR_USER_DIR',
   'TAGMA_SIDECAR_USER_DIR',
+  'TAGMA_OPENCODE_USER_DIR',
   'TAGMA_EDITOR_UPDATE_MANIFEST_BASE_URL',
   'TAGMA_EDITOR_UPDATE_CHANNEL',
+  'TAGMA_EDITOR_BUNDLED_VERSION',
   'TAGMA_SIDECAR_UPDATE_MANIFEST_BASE_URL',
   'TAGMA_SIDECAR_UPDATE_CHANNEL',
+  'TAGMA_SIDECAR_BUNDLED_VERSION',
   'TAGMA_UNSAFE_ALLOW_UNSIGNED_UPDATES',
   'TAGMA_UNSAFE_ALLOW_COMPONENT_HOTUPDATES',
 ] as const;
@@ -219,6 +223,99 @@ describe('component hot-update guard', () => {
     } finally {
       await close();
       rmSync(userDir, { recursive: true, force: true });
+    }
+  });
+
+  test('rejects an editor-only downgrade before fetching its asset', async () => {
+    const userDir = mkdtempSync(join(tmpdir(), 'component-editor-version-'));
+    process.env.TAGMA_EDITOR_USER_DIR = userDir;
+    process.env.TAGMA_EDITOR_BUNDLED_VERSION = '10.0.0';
+    process.env.TAGMA_EDITOR_UPDATE_MANIFEST_BASE_URL =
+      'https://updates.example.test/editor-version';
+    process.env.TAGMA_EDITOR_UPDATE_CHANNEL = 'alpha';
+    process.env.TAGMA_UNSAFE_ALLOW_UNSIGNED_UPDATES = '1';
+    process.env.TAGMA_UNSAFE_ALLOW_COMPONENT_HOTUPDATES = '1';
+    const fetches = installManifestFetch();
+
+    const app = express();
+    app.use(express.json());
+    registerEditorRoutes(app, null);
+    const { port, close } = await startApp(app);
+    try {
+      const res = await postJson(port, '/api/editor/update');
+      expect(res.status).toBe(409);
+      expect(JSON.parse(res.body)).toMatchObject({
+        kind: 'not-newer',
+        highestLocalVersion: '10.0.0',
+      });
+      expect(fetches.assetFetches()).toBe(0);
+    } finally {
+      await close();
+      rmSync(userDir, { recursive: true, force: true });
+    }
+  });
+
+  test('rejects a sidecar-only downgrade before fetching its asset', async () => {
+    const userDir = mkdtempSync(join(tmpdir(), 'component-sidecar-version-'));
+    process.env.TAGMA_SIDECAR_USER_DIR = userDir;
+    process.env.TAGMA_SIDECAR_BUNDLED_VERSION = '10.0.0';
+    process.env.TAGMA_SIDECAR_UPDATE_MANIFEST_BASE_URL =
+      'https://updates.example.test/sidecar-version';
+    process.env.TAGMA_SIDECAR_UPDATE_CHANNEL = 'alpha';
+    process.env.TAGMA_UNSAFE_ALLOW_UNSIGNED_UPDATES = '1';
+    process.env.TAGMA_UNSAFE_ALLOW_COMPONENT_HOTUPDATES = '1';
+    const fetches = installManifestFetch();
+
+    const app = express();
+    app.use(express.json());
+    registerSidecarRoutes(app);
+    const { port, close } = await startApp(app);
+    try {
+      const res = await postJson(port, '/api/sidecar/update');
+      expect(res.status).toBe(409);
+      expect(JSON.parse(res.body)).toMatchObject({
+        kind: 'not-newer',
+        highestLocalVersion: '10.0.0',
+      });
+      expect(fetches.assetFetches()).toBe(0);
+    } finally {
+      await close();
+      rmSync(userDir, { recursive: true, force: true });
+    }
+  });
+
+  test('rejects a bundle downgrade before stopping processes or fetching assets', async () => {
+    const editorUserDir = mkdtempSync(join(tmpdir(), 'release-editor-version-'));
+    const sidecarUserDir = mkdtempSync(join(tmpdir(), 'release-sidecar-version-'));
+    const opencodeUserDir = mkdtempSync(join(tmpdir(), 'release-opencode-version-'));
+    process.env.TAGMA_EDITOR_USER_DIR = editorUserDir;
+    process.env.TAGMA_SIDECAR_USER_DIR = sidecarUserDir;
+    process.env.TAGMA_OPENCODE_USER_DIR = opencodeUserDir;
+    process.env.TAGMA_EDITOR_BUNDLED_VERSION = '10.0.0';
+    process.env.TAGMA_SIDECAR_BUNDLED_VERSION = '10.0.0';
+    process.env.TAGMA_EDITOR_UPDATE_MANIFEST_BASE_URL =
+      'https://updates.example.test/release-version';
+    process.env.TAGMA_EDITOR_UPDATE_CHANNEL = 'alpha';
+    process.env.TAGMA_UNSAFE_ALLOW_UNSIGNED_UPDATES = '1';
+    const fetches = installManifestFetch();
+
+    const app = express();
+    app.use(express.json());
+    registerReleaseRoutes(app);
+    const { port, close } = await startApp(app);
+    try {
+      const res = await postJson(port, '/api/release/update');
+      expect(res.status).toBe(409);
+      expect(JSON.parse(res.body)).toMatchObject({
+        kind: 'not-newer',
+        highestLocalVersion: '10.0.0',
+      });
+      expect(fetches.assetFetches()).toBe(0);
+    } finally {
+      await close();
+      rmSync(editorUserDir, { recursive: true, force: true });
+      rmSync(sidecarUserDir, { recursive: true, force: true });
+      rmSync(opencodeUserDir, { recursive: true, force: true });
     }
   });
 });

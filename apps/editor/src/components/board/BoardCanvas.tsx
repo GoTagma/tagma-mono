@@ -1674,7 +1674,7 @@ export function BoardCanvas({
                 folder={f}
                 memberCount={f.trackIds.filter((tid) => tracks.some((t) => t.id === tid)).length}
                 height={row.height}
-                onToggle={() => toggleFolderCollapsed(f.id)}
+                onToggle={toggleFolderCollapsed}
               />
             );
           }
@@ -2032,7 +2032,7 @@ export function BoardCanvas({
             className="modal-viewport-shell w-full max-w-64 border border-tagma-border bg-tagma-surface p-3 shadow-panel animate-fade-in"
             onClick={(e) => e.stopPropagation()}
           >
-            <label className="text-[10px] font-mono text-tagma-muted uppercase tracking-wider mb-1.5 block">
+            <label className="field-label font-mono mb-1.5">
               {inlineAdd.type === 'task'
                 ? inlineAdd.kind === 'command'
                   ? 'New Command Task'

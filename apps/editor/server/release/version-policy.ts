@@ -1,9 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import {
-  compareVersions,
-  isValidHotupdateVersion,
-} from '../update-manifest.js';
+import { compareVersions, isValidHotupdateVersion } from '../update-manifest.js';
 
 export class HotupdateVersionPolicyError extends Error {
   readonly kind = 'not-newer';
@@ -20,12 +17,11 @@ export class HotupdateVersionPolicyError extends Error {
   }
 }
 
-export function highestLocalTagmaVersion(versions: readonly (string | null | undefined)[]):
-  | string
-  | null {
+export function highestLocalTagmaVersion(
+  versions: readonly (string | null | undefined)[],
+): string | null {
   const validVersions = versions.filter(
-    (version): version is string =>
-      typeof version === 'string' && isValidHotupdateVersion(version),
+    (version): version is string => typeof version === 'string' && isValidHotupdateVersion(version),
   );
   if (validVersions.length === 0) return null;
   return validVersions.reduce((highest, version) =>
@@ -38,10 +34,7 @@ export function assertHotupdateVersionUpgrade(
   localVersions: readonly (string | null | undefined)[],
 ): string {
   const highestLocalVersion = highestLocalTagmaVersion(localVersions);
-  if (
-    !highestLocalVersion ||
-    compareVersions(targetVersion, highestLocalVersion) <= 0
-  ) {
+  if (!highestLocalVersion || compareVersions(targetVersion, highestLocalVersion) <= 0) {
     throw new HotupdateVersionPolicyError(targetVersion, highestLocalVersion);
   }
   return highestLocalVersion;
@@ -88,8 +81,7 @@ export function collectLocalTagmaVersions(
     readUserEditorVersion(env.TAGMA_EDITOR_USER_DIR),
     readUserSidecarVersion(env.TAGMA_SIDECAR_USER_DIR, platform),
   ].filter(
-    (version): version is string =>
-      typeof version === 'string' && isValidHotupdateVersion(version),
+    (version): version is string => typeof version === 'string' && isValidHotupdateVersion(version),
   );
   return [...new Set(versions)];
 }

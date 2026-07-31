@@ -244,7 +244,7 @@ export const TrackLane = memo(function TrackLane({
         {trackIsModified && (
           <span
             title="Unsaved change since last save"
-            className="inline-block h-[14px] px-[3px] bg-tagma-warning/15 text-tagma-warning/90 shrink-0 leading-[14px] text-[8px] font-mono font-bold uppercase tracking-wider"
+            className="chip-mod"
           >
             mod
           </span>

@@ -97,8 +97,8 @@ async function performUpdate(signal?: AbortSignal): Promise<{ version: string; p
     );
   }
   const manifest = await fetchHotupdateManifest(manifestUrl, true, signal);
-  assertHotupdateVersionUpgrade(manifest.version, collectLocalTagmaVersions());
   assertComponentHotupdateAllowed(manifest, 'sidecar');
+  assertHotupdateVersionUpgrade(manifest.version, collectLocalTagmaVersions());
 
   // Note: no route-level "already on this version" short-circuit anymore —
   // it would only check `existsSync(binary)` and miss a corrupt or truncated

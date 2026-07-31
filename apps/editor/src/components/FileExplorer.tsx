@@ -441,7 +441,7 @@ export function FileExplorer({
         <div className="modal-viewport-footer space-y-2 border-t border-tagma-border px-3 py-2.5">
           {mode === 'save' && (
             <div className="flex items-center gap-2">
-              <label className="text-[10px] text-tagma-muted uppercase tracking-wider shrink-0">
+              <label className="field-label shrink-0 mb-0">
                 File name
               </label>
               <div className="flex-1 flex items-center bg-tagma-bg border border-tagma-border">

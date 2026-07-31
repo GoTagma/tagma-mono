@@ -29,7 +29,7 @@ export function MenuBar({ menus }: MenuBarProps) {
             }}
           >
             {menu.label}
-            <ChevronDown size={8} className="opacity-40" />
+            <ChevronDown size={10} className="opacity-40" />
           </button>
 
           {openIdx === mi && (

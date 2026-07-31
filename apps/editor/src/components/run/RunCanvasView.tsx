@@ -253,7 +253,7 @@ export function RunCanvasView({
                       f.trackIds.filter((tid) => config.tracks.some((t) => t.id === tid)).length
                     }
                     height={row.height}
-                    onToggle={() => toggleFolderCollapsed(f.id)}
+                    onToggle={toggleFolderCollapsed}
                   />,
                 );
                 continue;

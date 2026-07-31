@@ -488,6 +488,10 @@ input[type='checkbox'] {
   .chip-md {
     @apply inline-flex items-center gap-2 px-2 py-1 text-[11px] font-medium border;
   }
+  /* Unsaved-changes "mod" badge shared by TaskCard and TrackLane. */
+  .chip-mod {
+    @apply inline-block h-[14px] px-[3px] bg-tagma-warning/15 text-tagma-warning/90 shrink-0 leading-[14px] text-[8px] font-mono font-bold tabular-nums whitespace-nowrap uppercase tracking-wider;
+  }
 }
 
 /* Respect the OS "reduce motion" setting. The app leans on entrance

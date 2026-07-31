@@ -38,10 +38,14 @@ describe('collectLocalTagmaVersions', () => {
 
     const sidecarUserDir = join(root, 'editor-sidecar');
     const sidecarVersion = '2.0.5';
-    const executable = process.platform === 'win32' ? 'tagma-editor-server.exe' : 'tagma-editor-server';
+    const executable =
+      process.platform === 'win32' ? 'tagma-editor-server.exe' : 'tagma-editor-server';
     mkdirSync(join(sidecarUserDir, 'versions', sidecarVersion), { recursive: true });
     writeFileSync(join(sidecarUserDir, 'versions', sidecarVersion, executable), 'sidecar');
-    writeFileSync(join(sidecarUserDir, 'current.json'), JSON.stringify({ version: sidecarVersion }));
+    writeFileSync(
+      join(sidecarUserDir, 'current.json'),
+      JSON.stringify({ version: sidecarVersion }),
+    );
 
     expect(
       collectLocalTagmaVersions({
