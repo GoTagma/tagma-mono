@@ -1647,15 +1647,17 @@ function YamlActionBubble() {
  * flight. `showPending` in ChatMessages suppresses it the moment the real
  * message lands in `messages`, so there's never a duplicate on screen.
  */
-function PendingUserBubble({ text }: { text: string }) {
+export function PendingUserBubble({ text }: { text: string }) {
   return (
     <div className="flex flex-col gap-1 items-end">
       <div className="text-[9px] font-mono uppercase tracking-wide text-tagma-muted/60 flex items-center gap-2">
         <span>user</span>
       </div>
       <div className="max-w-[90%] min-w-0 flex flex-col gap-1.5 items-end">
-        <div className="select-text px-2.5 py-1.5 text-[11px] font-mono whitespace-pre-wrap break-words border border-tagma-ready/40 bg-tagma-ready/5 text-tagma-text opacity-80 animate-pulse">
-          {text}
+        <div className="min-w-0 max-w-full">
+          <div className="select-text px-2.5 py-1.5 text-[11px] font-mono whitespace-pre-wrap break-words border border-tagma-ready/40 bg-tagma-ready/5 text-tagma-text opacity-80 animate-pulse">
+            {text}
+          </div>
         </div>
       </div>
     </div>

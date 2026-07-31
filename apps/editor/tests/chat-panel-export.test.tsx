@@ -7,6 +7,7 @@ import {
   ChatTrialProgressView,
   ConversationFlowBarView,
   selectConversationFlowActivity,
+  PendingUserBubble,
   SessionYamlResultBubble,
   shouldShowChatCompletionToast,
   shouldShowSessionYamlResult,
@@ -90,6 +91,17 @@ describe('ChatPanel export affordance', () => {
 
     expect(historyIndex).toBeGreaterThan(-1);
     expect(exportIndex).toBeGreaterThan(historyIndex);
+  });
+
+  test('constrains a long optimistic user message before the server echoes it', () => {
+    const longToken = 'x'.repeat(512);
+    const html = renderToStaticMarkup(<PendingUserBubble text={longToken} />);
+    const messageIndex = html.indexOf(longToken);
+
+    expect(messageIndex).toBeGreaterThan(-1);
+    expect(html.slice(Math.max(0, messageIndex - 500), messageIndex)).toContain(
+      'class="min-w-0 max-w-full"',
+    );
   });
 
   test('keeps send enabled in a new conversation while another conversation is running', () => {

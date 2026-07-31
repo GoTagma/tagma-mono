@@ -28,6 +28,12 @@
   programmatic `toggle`. Only a trusted user activation on the `summary` may request
   `scrollIntoView`, and the next frame must confirm that the details remain open.
 
+## Chat Message Layout
+
+- Keep the optimistic user-message body behind the same `min-w-0 max-w-full` flex shrink layer as
+  persisted message parts. `break-words` alone does not constrain a flex item's intrinsic minimum
+  width, so a long unbroken token can widen the pending bubble until the server echo replaces it.
+
 ## Chat Context Attachments
 
 - Persist composer attachment display labels on each `<attachment label="...">` inside the
