@@ -99,7 +99,7 @@ export function PlatformExportProgressToast({
             aria-label="Platform export progress"
           >
             <div
-              className="h-full bg-tagma-accent transition-[width] duration-300"
+              className="h-full bg-tagma-accent transition-[width] duration-slow"
               style={{ width }}
             />
           </div>

@@ -255,7 +255,7 @@ export function ChatComposer() {
           type="button"
           onClick={submit}
           disabled={!canSend}
-          className="shrink-0 p-1.5 border border-tagma-border text-tagma-muted transition-all duration-fast ease-smooth hover:text-tagma-accent hover:border-tagma-accent/50 active:translate-y-px disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-tagma-muted disabled:hover:border-tagma-border disabled:active:translate-y-0"
+          className="shrink-0 p-1.5 border border-tagma-border text-tagma-muted transition-[color,border-color,transform,opacity] duration-fast ease-smooth hover:text-tagma-accent hover:border-tagma-accent/50 active:translate-y-px disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-tagma-muted disabled:hover:border-tagma-border disabled:active:translate-y-0"
           title={sendLabel}
           aria-label={sendLabel}
         >
@@ -273,7 +273,7 @@ export function ChatComposer() {
             disabled={
               stopMode === 'verification' && activeChatYamlLifecycle?.cancellationRequested === true
             }
-            className="shrink-0 p-1.5 border border-tagma-error/60 text-tagma-error transition-all duration-fast ease-smooth hover:border-tagma-error hover:bg-tagma-error/10 active:translate-y-px disabled:opacity-40 disabled:cursor-not-allowed disabled:active:translate-y-0"
+            className="shrink-0 p-1.5 border border-tagma-error/60 text-tagma-error transition-[background-color,border-color,transform,opacity] duration-fast ease-smooth hover:border-tagma-error hover:bg-tagma-error/10 active:translate-y-px disabled:opacity-40 disabled:cursor-not-allowed disabled:active:translate-y-0"
             title={stopLabel}
             aria-label={stopLabel}
           >

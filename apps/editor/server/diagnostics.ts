@@ -78,22 +78,26 @@ export class DiagnosticsHub {
     workspaceKey: string | null,
     origin: string,
   ): Extract<DiagnosticsSessionStatus, { enabled: true }> {
+    this.resetCapturedData();
     this.session = {
       id: this.idFactory(),
       token: this.tokenFactory(),
       enabledAt: Date.now(),
       workspaceKey,
     };
-    this.rendererReports.clear();
     this.recordLog('diagnostics', 'info', 'A temporary read-only diagnostics session was enabled.');
     return this.getStatus(origin) as Extract<DiagnosticsSessionStatus, { enabled: true }>;
   }
 
   disable(): void {
-    if (this.session) {
-      this.recordLog('diagnostics', 'info', 'The temporary diagnostics session was disabled.');
-    }
     this.session = null;
+    this.resetCapturedData();
+  }
+
+  private resetCapturedData(): void {
+    this.logs.length = 0;
+    this.logBytes = 0;
+    this.logCursor = 0;
     this.rendererReports.clear();
   }
 
@@ -139,6 +143,7 @@ export class DiagnosticsHub {
     message: string,
     timestamp = Date.now(),
   ): void {
+    if (!this.session) return;
     const redacted = redactDiagnosticText(message);
     const entry: DiagnosticLogEntry = {
       cursor: ++this.logCursor,

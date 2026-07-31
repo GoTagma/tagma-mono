@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Plus,
   Plug,
@@ -186,7 +186,7 @@ export function ConversationFlowBarView({
         className="mt-1.5 h-1 w-full bg-tagma-border/45 overflow-hidden"
       >
         <div
-          className={`h-full transition-[width] duration-300 ${
+          className={`h-full transition-[width] duration-slow ${
             terminalStatus === 'error' ? 'bg-tagma-error' : 'bg-tagma-ready'
           }`}
           style={{ width: `${percent}%` }}
@@ -679,7 +679,7 @@ function ChatHeader() {
   const sessions = useChatStore((s) => s.sessions);
   const sessionStates = useChatStore((s) => s.sessionStates);
   const sessionYamlResults = useChatStore((s) => s.sessionYamlResults);
-  const messages = useChatStore((s) => s.messages);
+  const hasMessages = useChatStore((s) => s.messages.length > 0);
   const ready = useChatStore((s) => s.bootstrapStatus === 'ready');
   const sending = useChatStore((s) => s.sending);
   const pendingUserText = useChatStore((s) => s.pendingUserText);
@@ -728,7 +728,7 @@ function ChatHeader() {
   // needs room to shrink (min-width-0 group) while the action buttons stay
   // `shrink-0` so they don't get pushed off the right edge by a long label.
   return (
-    <header className="relative z-20 flex items-center gap-1 px-2 h-7 border-b border-tagma-border bg-tagma-surface shrink-0">
+    <header className="relative z-20 flex items-center gap-1 px-3 h-7 border-b border-tagma-border bg-tagma-surface shrink-0">
       <div className="flex items-center gap-1 min-w-0 flex-1">
         <ModelPicker disabled={modelSelectionBlocked} />
         <ModelVariantPicker disabled={modelSelectionBlocked} />
@@ -762,8 +762,7 @@ function ChatHeader() {
         <History size={14} />
       </button>
       <ConversationExportButton
-        disabled={messages.length === 0 && !pipelineVerification}
-        messages={messages}
+        disabled={!hasMessages && !pipelineVerification}
         pipelineVerification={pipelineVerification}
         title={currentSessionTitle}
       />
@@ -773,12 +772,10 @@ function ChatHeader() {
 
 function ConversationExportButton({
   disabled,
-  messages,
   pipelineVerification,
   title,
 }: {
   disabled: boolean;
-  messages: OpencodeThreadEntry[];
   pipelineVerification: ChatYamlSessionResult | null;
   title: string | null;
 }) {
@@ -786,9 +783,12 @@ function ConversationExportButton({
   const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
 
   const exportAs = (format: ChatExportFormat) => {
+    // Read the transcript imperatively so the header can subscribe to a
+    // boolean (`messages.length > 0`) instead of re-rendering on every
+    // streaming chunk just to keep this click handler fed.
     const exported = buildConversationExport({
       format,
-      messages,
+      messages: useChatStore.getState().messages,
       pipelineVerification,
       title,
     });
@@ -960,19 +960,22 @@ function ChatMessages() {
   const sessionYamlResult = sessionId ? (sessionYamlResults[sessionId] ?? null) : null;
 
   // Expanded-state for activity panels lives at this layer (not as
-  // component-local useState in MessageBubble) because the bubble unmounts
-  // when scrolled offscreen and remounts on return — local state would be
-  // forgotten between scrolls. The Set of message IDs survives across
-  // remounts and only resets on session switch.
+  // component-local useState in MessageBubble) so the '__pending__'
+  // placeholder's expansion can be handed off to the real assistant message
+  // id and the whole Set can reset on session switch. Offscreen bubbles stay
+  // mounted — the wrapper's content-visibility (below) only skips their
+  // layout/paint — so this is about cross-message coordination, not
+  // surviving remounts. The callback is stable (useCallback) so memoized
+  // bubbles are not re-rendered just because ChatMessages re-rendered.
   const [expandedActivity, setExpandedActivity] = useState<Set<string>>(() => new Set());
-  const toggleExpandedActivity = (id: string): void => {
+  const toggleExpandedActivity = useCallback((id: string): void => {
     setExpandedActivity((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  };
+  }, []);
   useEffect(() => {
     setExpandedActivity(new Set());
   }, [sessionId]);
@@ -981,15 +984,18 @@ function ChatMessages() {
   // `messages` (either from an SSE refetch or the post-prompt fetch). The
   // editor-context block is prefixed to the text the server sees, so we
   // compare with `endsWith` on the raw text we submitted.
-  const showPending =
-    !!pendingUserText &&
-    !messages.some(
-      (m) =>
-        m.info.role === 'user' &&
-        m.parts.some(
-          (p) => p.type === 'text' && p.text.trimEnd().endsWith(pendingUserText.trimEnd()),
-        ),
-    );
+  const showPending = useMemo(
+    () =>
+      !!pendingUserText &&
+      !messages.some(
+        (m) =>
+          m.info.role === 'user' &&
+          m.parts.some(
+            (p) => p.type === 'text' && p.text.trimEnd().endsWith(pendingUserText.trimEnd()),
+          ),
+      ),
+    [messages, pendingUserText],
+  );
 
   // The current-turn assistant message is considered "streaming" while
   // `sending` is true. We derive it from turn ownership instead of the array
@@ -1107,15 +1113,24 @@ function ChatMessages() {
                 (typeof entry.info.time?.completed === 'number' &&
                   entry.info.time.completed >= turnStartedAt));
             return (
-              <MessageBubble
+              // content-visibility lets the browser skip layout/paint for
+              // offscreen bubbles in long conversations; contain-intrinsic-
+              // size keeps the scroll height stable via the last-rendered
+              // size ('auto'), falling back to a 120px estimate for bubbles
+              // that have never been on screen. Bubbles stay mounted.
+              <div
                 key={entry.info.id}
-                entry={entry}
-                streaming={sending && currentTurnAssistantId === entry.info.id}
-                activityExpanded={expandedActivity.has(entry.info.id)}
-                onToggleActivity={() => toggleExpandedActivity(entry.info.id)}
-                isCurrentTurn={sending && isCurrentTurnAssistant}
-                surfaceActivitySummary={sending && entry.info.id === currentTurnAssistantId}
-              />
+                style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 120px' }}
+              >
+                <MessageBubble
+                  entry={entry}
+                  streaming={sending && currentTurnAssistantId === entry.info.id}
+                  activityExpanded={expandedActivity.has(entry.info.id)}
+                  onToggleActivity={toggleExpandedActivity}
+                  isCurrentTurn={sending && isCurrentTurnAssistant}
+                  surfaceActivitySummary={sending && entry.info.id === currentTurnAssistantId}
+                />
+              </div>
             );
           })}
           {showPending && <PendingUserBubble text={pendingUserText!} />}
@@ -1153,7 +1168,7 @@ function ChatMessages() {
           }}
           title="Jump to latest"
           aria-label="Jump to latest"
-          className="absolute bottom-3 right-3 z-10 p-1.5 rounded-full bg-tagma-surface border border-tagma-border text-tagma-muted hover:text-tagma-text shadow-sm transition-colors"
+          className="absolute bottom-3 right-3 z-10 p-1.5 rounded-full bg-tagma-surface border border-tagma-border text-tagma-muted hover:text-tagma-text shadow-raised transition-colors"
         >
           <ChevronDown size={14} />
         </button>
@@ -1656,7 +1671,7 @@ function ForcePushButton() {
         type="button"
         onClick={() => void flushQueueNow()}
         disabled={flushing}
-        className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-mono uppercase tracking-wide border border-tagma-muted/30 bg-tagma-surface/40 text-tagma-muted hover:text-tagma-fg hover:border-tagma-muted/60 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-mono uppercase tracking-wide border border-tagma-muted/30 bg-tagma-surface/40 text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/60 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         title="Interrupt current turn and send queued messages now"
         aria-label="Interrupt current turn and send queued messages now"
       >

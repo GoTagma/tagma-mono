@@ -141,7 +141,7 @@ export function MetaBullet() {
 // like a real call-to-action instead of an afterthought buried in the
 // corner of a thin strip.
 const ACTION_BUTTON_BASE =
-  'inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium tracking-wide border transition-all disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap';
+  'inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium tracking-wide border transition-[color,background-color,border-color,opacity] disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap';
 
 const ACTION_BUTTON_VARIANTS = {
   primary:
@@ -263,7 +263,7 @@ export function PluginCardShell({
   actions,
 }: PluginCardShellProps) {
   return (
-    <div className="group relative flex gap-4 p-5 bg-tagma-surface/40 border border-tagma-border hover:bg-tagma-surface/70 hover:border-tagma-accent/40 transition-all duration-200 min-h-[148px]">
+    <div className="group relative flex gap-4 p-5 bg-tagma-surface/40 border border-tagma-border hover:bg-tagma-surface/70 hover:border-tagma-accent/40 transition-colors duration-base min-h-[148px]">
       {accent && (
         <span
           className="absolute left-0 top-0 bottom-0 w-[2px] bg-tagma-accent"

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import type React from 'react';
 import {
   Brain,
@@ -50,7 +50,13 @@ import {
   type AskAiContextReference,
 } from '../../utils/ask-ai-context';
 
-export function MessageBubble({
+// Memoized so streaming chunks (which produce a new `messages` array but
+// keep entry object identity for untouched messages) only re-render the one
+// bubble whose entry actually changed — re-parsing every bubble's markdown
+// per SSE chunk was the dominant streaming cost. ChatPanel passes stable
+// props: primitives plus a useCallback'd onToggleActivity keyed by message
+// id, and the store replaces (never mutates) the streaming entry.
+export const MessageBubble = memo(function MessageBubble({
   entry,
   streaming = false,
   activityExpanded = false,
@@ -61,7 +67,7 @@ export function MessageBubble({
   entry: OpencodeThreadEntry;
   streaming?: boolean;
   activityExpanded?: boolean;
-  onToggleActivity?: () => void;
+  onToggleActivity?: (messageId: string) => void;
   isCurrentTurn?: boolean;
   surfaceActivitySummary?: boolean;
 }) {
@@ -156,13 +162,13 @@ export function MessageBubble({
             isCurrentTurn={isCurrentTurn}
             surfaceSummary={surfaceActivitySummary}
             expanded={activityExpanded}
-            onToggle={onToggleActivity ?? (() => {})}
+            onToggle={() => onToggleActivity?.(entry.info.id)}
           />
         )}
       </div>
     </div>
   );
-}
+});
 
 function AttachmentReferences({ references }: { references: readonly AskAiContextReference[] }) {
   return (
@@ -275,6 +281,11 @@ function CopyButton({ text }: { text: string }) {
 // buildEditorContext() for the source side of this contract.
 const EDITOR_CONTEXT_RE = /^<editor-context>[\s\S]*?<\/editor-context>\n+/;
 
+// Hoisted to module scope: a fresh `[remarkGfm]` array per render makes
+// unified rebuild its plugin pipeline every time, negating ReactMarkdown's
+// internal caching (and this renders once per streaming chunk).
+const REMARK_PLUGINS = [remarkGfm];
+
 /**
  * A user message whose entire visible content is synthetic context — the
  * `<editor-context>` preamble and/or one or more `<ask-ai-context>` blocks —
@@ -321,7 +332,7 @@ function PartRenderer({
       }
       return (
         <div className="chat-markdown px-2.5 py-1.5 text-[11px] border border-tagma-border bg-tagma-bg text-tagma-text">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{text}</ReactMarkdown>
         </div>
       );
     }

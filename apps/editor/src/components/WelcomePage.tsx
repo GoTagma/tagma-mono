@@ -70,7 +70,7 @@ export function WelcomePage({ onOpenWorkspace, onSelectRecent }: WelcomePageProp
         <button
           type="button"
           onClick={onOpenWorkspace}
-          className="group mb-5 flex w-full items-center gap-3 border border-tagma-border bg-tagma-elevated/30 px-4 py-3 transition-all hover:border-tagma-accent/60 hover:bg-tagma-accent/5 sm:mb-8"
+          className="group mb-5 flex w-full items-center gap-3 border border-tagma-border bg-tagma-elevated/30 px-4 py-3 transition-colors hover:border-tagma-accent/60 hover:bg-tagma-accent/5 sm:mb-8"
         >
           <FolderOpen size={16} className="text-tagma-accent shrink-0" />
           <div className="flex-1 text-left min-w-0">
@@ -166,7 +166,7 @@ export function WelcomePage({ onOpenWorkspace, onSelectRecent }: WelcomePageProp
                     <button
                       type="button"
                       onClick={() => void handleRemove(entry.path)}
-                      className="px-2 text-tagma-muted-dim/40 hover:text-tagma-error opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-all shrink-0"
+                      className="px-2 text-tagma-muted-dim/40 hover:text-tagma-error opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-[opacity,color] shrink-0"
                       title="Remove from recent"
                       aria-label={`Remove ${name} from recent`}
                     >

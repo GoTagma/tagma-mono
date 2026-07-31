@@ -123,7 +123,7 @@ export function PipelinePicker({
                     onDeletePipeline(y.path);
                   }}
                   disabled={yamlEditLocked}
-                  className="p-1 text-tagma-muted-dim/40 hover:text-tagma-error opacity-0 group-hover:opacity-100 transition-all shrink-0 disabled:opacity-0"
+                  className="p-1 text-tagma-muted-dim/40 hover:text-tagma-error opacity-0 group-hover:opacity-100 transition-[opacity,color] shrink-0 disabled:opacity-0"
                   title={`Remove the "${y.name}" pipeline folder (run history is preserved)`}
                   aria-label={`Remove ${y.name}`}
                 >

@@ -235,7 +235,7 @@ function ErrorTooltip({
         overflow: 'hidden',
         zIndex: 9999,
         opacity: pos && visible ? 1 : 0,
-        transition: 'opacity 150ms ease-out',
+        transition: 'opacity var(--tagma-dur-base) var(--tagma-ease)',
       }}
     >
       <div className="px-3 py-1.5">
@@ -689,7 +689,7 @@ export const TaskCard = memo(function TaskCard({
         transition:
           isDragging || isTrackDragging
             ? 'none'
-            : 'left 100ms ease-out, top 100ms ease-out, border-color 140ms var(--tagma-ease), background-color 140ms var(--tagma-ease), box-shadow 140ms var(--tagma-ease)',
+            : 'left var(--tagma-dur-fast) var(--tagma-ease), top var(--tagma-dur-fast) var(--tagma-ease), border-color var(--tagma-dur-base) var(--tagma-ease), background-color var(--tagma-dur-base) var(--tagma-ease), box-shadow var(--tagma-dur-base) var(--tagma-ease)',
       }}
       onMouseDown={(e) => {
         // In read-only mode the parent canvas also listens for
@@ -750,7 +750,7 @@ export const TaskCard = memo(function TaskCard({
         <>
           <div className="absolute -left-[8px] top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center">
             <div
-              className={`w-2 h-2 border bg-tagma-bg transition-all duration-75
+              className={`w-2 h-2 border bg-tagma-bg transition-[background-color,border-color,transform] duration-fast
               ${isEdgeTarget ? 'border-tagma-accent bg-tagma-accent scale-125' : 'border-tagma-border hover:border-tagma-accent'}
             `}
             />
@@ -766,7 +766,7 @@ export const TaskCard = memo(function TaskCard({
           >
             <div
               className="w-2 h-2 border border-tagma-border bg-tagma-bg
-                hover:border-tagma-accent hover:bg-tagma-accent/20 transition-all duration-75"
+                hover:border-tagma-accent hover:bg-tagma-accent/20 transition-[background-color,border-color] duration-fast"
             />
           </div>
         </>

@@ -440,7 +440,7 @@ export function Toolbar({
             <button
               type="button"
               onClick={onSearchOpen}
-              className="flex items-center justify-center gap-1 h-[24px] w-[24px] xl:w-auto xl:px-2 text-[10px] border border-tagma-border text-tagma-muted transition-all duration-fast ease-smooth hover:text-tagma-text hover:border-tagma-accent/30 hover:bg-tagma-elevated/50 active:translate-y-px"
+              className="flex items-center justify-center gap-1 h-[24px] w-[24px] xl:w-auto xl:px-2 text-[10px] border border-tagma-border text-tagma-muted transition-[color,background-color,border-color,transform] duration-fast ease-smooth hover:text-tagma-text hover:border-tagma-accent/30 hover:bg-tagma-elevated/50 active:translate-y-px"
               title="Search tasks (Ctrl+F)"
               aria-label="Search tasks"
             >
@@ -458,7 +458,7 @@ export function Toolbar({
             <button
               type="button"
               onClick={onReturnToWorkflowGraph}
-              className="hidden sm:flex items-center justify-center gap-1 h-[24px] px-2 text-[10px] border border-tagma-accent/40 text-tagma-accent transition-all duration-fast ease-smooth hover:bg-tagma-accent/10 hover:border-tagma-accent/70 active:translate-y-px shrink-0"
+              className="hidden sm:flex items-center justify-center gap-1 h-[24px] px-2 text-[10px] border border-tagma-accent/40 text-tagma-accent transition-[background-color,border-color,transform] duration-fast ease-smooth hover:bg-tagma-accent/10 hover:border-tagma-accent/70 active:translate-y-px shrink-0"
               title="Go back to Pipeline Graph"
               aria-label="Go back to Pipeline Graph"
             >

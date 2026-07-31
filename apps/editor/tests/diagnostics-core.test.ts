@@ -104,26 +104,64 @@ describe('temporary diagnostics sessions', () => {
     expect(hub.getStatus('http://127.0.0.1:43123')).toEqual({ enabled: false });
   });
 
+  test('never carries captured data into a later workspace session', () => {
+    const tokens = ['workspace-a-token', 'workspace-b-token'];
+    const hub = new DiagnosticsHub({
+      tokenFactory: () => tokens.shift() ?? 'unexpected-token',
+    });
+
+    hub.enable('D:\\workspace-a', 'http://127.0.0.1:43123');
+    hub.recordLog('sidecar.stdout', 'info', 'workspace-a-only-marker');
+    expect(
+      hub.acceptRendererReport({
+        instanceId: 'workspace-a-window',
+        workspaceKey: 'D:\\workspace-a',
+        capturedAt: 123,
+        snapshot: { marker: 'workspace-a-only-marker' },
+        logs: [],
+      }),
+    ).toBe(true);
+
+    hub.disable();
+    hub.enable('D:\\workspace-b', 'http://127.0.0.1:43123');
+
+    expect(hub.getRendererReports()).toEqual([]);
+    expect(
+      hub.readLogs(0, 10).entries.map(({ cursor, source, message }) => ({
+        cursor,
+        source,
+        message,
+      })),
+    ).toEqual([
+      {
+        cursor: 1,
+        source: 'diagnostics',
+        message: 'A temporary read-only diagnostics session was enabled.',
+      },
+    ]);
+  });
+
   test('keeps a bounded, cursor-addressable log tail from sidecar, OpenCode, and renderer', () => {
     const hub = new DiagnosticsHub({
       maxLogEntries: 3,
       maxLogBytes: 10_000,
       tokenFactory: () => 'debug-token',
     });
+    hub.enable('D:\\repo', 'http://127.0.0.1:43123');
     hub.recordLog('sidecar.stdout', 'info', 'one');
     hub.recordLog('opencode.stderr', 'error', 'two password=secret');
     hub.recordLog('renderer.console', 'warn', 'three');
     hub.recordLog('sidecar.stdout', 'info', 'four');
 
-    const page = hub.readLogs(1, 10);
+    const page = hub.readLogs(2, 10);
     expect(page.entries.map((entry) => entry.message)).toEqual([
       'two password=[REDACTED]',
       'three',
       'four',
     ]);
     expect(page).toMatchObject({
-      oldestCursor: 2,
-      nextCursor: 4,
+      oldestCursor: 3,
+      nextCursor: 5,
       droppedBeforeCursor: false,
     });
     expect(hub.readLogs(0, 10).droppedBeforeCursor).toBe(true);

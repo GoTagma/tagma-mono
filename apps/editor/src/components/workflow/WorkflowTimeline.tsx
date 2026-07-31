@@ -264,7 +264,7 @@ export function WorkflowTimeline({ events, pipelineIds }: WorkflowTimelineProps)
               {/* Timeline bar */}
               <div className="relative h-6 bg-tagma-elevated rounded border border-tagma-border overflow-hidden">
                 <div
-                  className={`absolute top-1 bottom-1 rounded ${config.bgColor} border ${config.borderColor} transition-all ${
+                  className={`absolute top-1 bottom-1 rounded ${config.bgColor} border ${config.borderColor} transition-[opacity,background-color,border-color] ${
                     isRunning ? 'animate-pulse' : ''
                   }`}
                   style={{

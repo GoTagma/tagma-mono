@@ -618,6 +618,12 @@ export function WorkflowView({
     () => buildDownstreamByPipeline(selectedWorkflow?.pipelines ?? []),
     [selectedWorkflow],
   );
+  // Hoisted so WorkflowTimeline's useMemo([events, pipelineIds]) is not
+  // defeated by a fresh array identity on every render.
+  const timelinePipelineIds = useMemo(
+    () => (selectedWorkflow?.pipelines ?? []).map((pipeline) => pipeline.id),
+    [selectedWorkflow],
+  );
   const graphLayout = useMemo(
     () => buildWorkflowGraphLayout(renderedPipelines),
     [renderedPipelines],
@@ -1310,7 +1316,7 @@ export function WorkflowView({
                             aria-label={`Drop dependency on ${pipeline.id}`}
                             title={`Drop dependency on ${pipeline.id}`}
                             onClick={(e) => e.stopPropagation()}
-                            className={`absolute -left-2 top-1/2 h-4 w-4 -translate-y-1/2 border bg-tagma-bg transition-all duration-100 cursor-crosshair focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tagma-accent/70 hover:scale-125 hover:border-tagma-accent hover:bg-tagma-accent hover:shadow-glow-accent ${
+                            className={`absolute -left-2 top-1/2 h-4 w-4 -translate-y-1/2 border bg-tagma-bg transition-[transform,background-color,border-color,box-shadow] duration-fast cursor-crosshair focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tagma-accent/70 hover:scale-125 hover:border-tagma-accent hover:bg-tagma-accent hover:shadow-glow-accent ${
                               targetSlotActive
                                 ? 'scale-125 border-tagma-accent bg-tagma-accent shadow-glow-accent ring-2 ring-tagma-accent/40'
                                 : 'border-tagma-border'
@@ -1327,7 +1333,7 @@ export function WorkflowView({
                             onPointerUp={finishConnectionDrag}
                             onPointerCancel={cancelConnectionDrag}
                             onClick={(e) => e.stopPropagation()}
-                            className="absolute -right-2 top-1/2 h-4 w-4 -translate-y-1/2 border border-tagma-border bg-tagma-bg transition-all duration-100 cursor-grab active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tagma-accent/70 hover:scale-125 hover:border-tagma-accent hover:bg-tagma-accent hover:shadow-glow-accent"
+                            className="absolute -right-2 top-1/2 h-4 w-4 -translate-y-1/2 border border-tagma-border bg-tagma-bg transition-[transform,background-color,border-color,box-shadow] duration-fast cursor-grab active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tagma-accent/70 hover:scale-125 hover:border-tagma-accent hover:bg-tagma-accent hover:shadow-glow-accent"
                           />
                           <div className="flex items-center justify-between gap-2">
                             <div className="min-w-0 flex items-center gap-2">
@@ -1588,7 +1594,7 @@ export function WorkflowView({
                     {timelineExpanded && (
                       <WorkflowTimeline
                         events={events}
-                        pipelineIds={selectedWorkflow.pipelines.map((p) => p.id)}
+                        pipelineIds={timelinePipelineIds}
                       />
                     )}
                   </div>
@@ -1700,6 +1706,12 @@ export function WorkflowRunPage({
   onRunAgain?: () => void;
   onAbort?: () => void;
 }) {
+  // Hoisted so WorkflowTimeline's useMemo([events, pipelineIds]) is not
+  // defeated by a fresh array identity on every render.
+  const timelinePipelineIds = useMemo(
+    () => workflow.pipelines.map((pipeline) => pipeline.id),
+    [workflow],
+  );
   const pipelineStates = workflow.pipelines.map(
     (pipeline) =>
       runtimeByPipeline.get(pipeline.id) ?? {
@@ -1896,7 +1908,7 @@ export function WorkflowRunPage({
               No workflow events recorded yet.
             </div>
           ) : (
-            <WorkflowTimeline events={events} pipelineIds={workflow.pipelines.map((p) => p.id)} />
+            <WorkflowTimeline events={events} pipelineIds={timelinePipelineIds} />
           )}
         </aside>
       </div>

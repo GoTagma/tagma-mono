@@ -247,7 +247,7 @@ const EdgeLine = memo(function EdgeLine({
                 ? 'url(#ah-cont)'
                 : 'url(#ah)'
         }
-        className="transition-[stroke,stroke-width] duration-75"
+        className="transition-[stroke,stroke-width] duration-fast"
       />
       {selected && (
         <g
@@ -719,11 +719,28 @@ export function BoardCanvas({
   const selectedIdsRef = useRef(selectedTaskIds);
   selectedIdsRef.current = selectedTaskIds;
 
+  // Mirror per-frame-rebuilt values into refs so the pointer handlers passed
+  // to memo'd TaskCards keep a stable identity during track drag/resize
+  // (which rebuilds renderPlan/staticPositions/positionsMap every
+  // pointermove) while still reading the latest geometry at event time.
+  const renderPlanRef = useRef(renderPlan);
+  const staticPositionsRef = useRef(staticPositions);
+  const positionsMapRef = useRef(positionsMap);
+  const edgeDragRef = useRef(edgeDrag);
+  useEffect(() => {
+    renderPlanRef.current = renderPlan;
+    staticPositionsRef.current = staticPositions;
+    positionsMapRef.current = positionsMap;
+    edgeDragRef.current = edgeDrag;
+  }, [renderPlan, staticPositions, positionsMap, edgeDrag]);
+
   const handleTaskPointerDown = useCallback(
     (qid: string, e: React.PointerEvent) => {
       e.preventDefault();
       const el = contentRef.current;
       if (!el) return;
+      const renderPlan = renderPlanRef.current;
+      const staticPositions = staticPositionsRef.current;
       const isMultiKey = e.ctrlKey || e.metaKey;
       const ft = flatTaskByQid.get(qid);
       if (!ft) return;
@@ -829,8 +846,6 @@ export function BoardCanvas({
       document.body.style.userSelect = 'none';
     },
     [
-      staticPositions,
-      renderPlan,
       flatTaskByQid,
       onSelectTask,
       onToggleTaskSelection,
@@ -847,6 +862,7 @@ export function BoardCanvas({
       if (!el) return;
       const srcQid = qid;
       if (!flatTaskByQid.has(srcQid)) return;
+      const positionsMap = positionsMapRef.current;
 
       const onMove = (ev: PointerEvent) => {
         const cp = toContent(ev, el);
@@ -871,16 +887,17 @@ export function BoardCanvas({
       document.addEventListener('pointerup', onUp);
       document.body.style.cursor = 'crosshair';
     },
-    [flatTaskByQid, positionsMap, onAddDependency],
+    [flatTaskByQid, onAddDependency],
   );
 
   const handleTargetPointerUp = useCallback(
     (qid: string) => {
-      if (edgeDrag) {
-        if (flatTaskByQid.has(qid) && qid !== edgeDrag.srcQid) nearRef.current = qid;
+      const drag = edgeDragRef.current;
+      if (drag) {
+        if (flatTaskByQid.has(qid) && qid !== drag.srcQid) nearRef.current = qid;
       }
     },
-    [edgeDrag, flatTaskByQid],
+    [flatTaskByQid],
   );
 
   // ── Track drag ──
@@ -1684,17 +1701,12 @@ export function BoardCanvas({
             <div
               key={track.id}
               data-track-id={track.id}
-              className={`relative border-b border-tagma-border/60 overflow-hidden ${isDraggedTrack ? 'opacity-60 bg-tagma-accent/5' : ''} ${isSelectedTrack ? 'selected-track-row' : ''}`}
+              className={`relative border-b border-tagma-border/60 overflow-hidden ${isDraggedTrack ? 'opacity-60 bg-tagma-accent/5' : ''} ${isSelectedTrack ? 'selected-track-row' : ''} ${trackDrag && !isDraggedTrack ? 'transition-transform duration-base ease-smooth' : ''}`}
               style={{
                 height: row.height,
                 width: HEADER_W,
                 boxSizing: 'border-box',
                 transform: translateY ? `translateY(${translateY}px)` : undefined,
-                transition: trackDrag
-                  ? isDraggedTrack
-                    ? 'none'
-                    : 'transform 150ms ease-out'
-                  : undefined,
                 zIndex: isDraggedTrack ? 10 : 0,
                 position: 'relative',
                 // Subtle inset highlight on the left when this track lives in
