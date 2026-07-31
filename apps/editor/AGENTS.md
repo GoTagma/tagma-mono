@@ -30,9 +30,9 @@
 
 ## Chat Message Layout
 
-- Keep the optimistic user-message body behind the same `min-w-0 max-w-full` flex shrink layer as
-  persisted message parts. `break-words` alone does not constrain a flex item's intrinsic minimum
-  width, so a long unbroken token can widen the pending bubble until the server echo replaces it.
+- Keep optimistic and queued user-message bodies behind the same `min-w-0 max-w-full` flex shrink
+  layer as persisted message parts. `break-words` alone does not constrain a flex item's intrinsic
+  minimum width, so a long unbroken token can widen a transient bubble until its state changes.
 
 ## Chat Context Attachments
 

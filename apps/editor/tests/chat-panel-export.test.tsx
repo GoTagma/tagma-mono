@@ -8,6 +8,7 @@ import {
   ConversationFlowBarView,
   selectConversationFlowActivity,
   PendingUserBubble,
+  QueuedUserBubble,
   SessionYamlResultBubble,
   shouldShowChatCompletionToast,
   shouldShowSessionYamlResult,
@@ -96,6 +97,19 @@ describe('ChatPanel export affordance', () => {
   test('constrains a long optimistic user message before the server echoes it', () => {
     const longToken = 'x'.repeat(512);
     const html = renderToStaticMarkup(<PendingUserBubble text={longToken} />);
+    const messageIndex = html.indexOf(longToken);
+
+    expect(messageIndex).toBeGreaterThan(-1);
+    expect(html.slice(Math.max(0, messageIndex - 500), messageIndex)).toContain(
+      'class="min-w-0 max-w-full"',
+    );
+  });
+
+  test('constrains a long queued user message while another turn is active', () => {
+    const longToken = 'x'.repeat(512);
+    const html = renderToStaticMarkup(
+      <QueuedUserBubble id="queued-1" text={longToken} position={1} />,
+    );
     const messageIndex = html.indexOf(longToken);
 
     expect(messageIndex).toBeGreaterThan(-1);

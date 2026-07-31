@@ -1684,7 +1684,15 @@ function ForcePushButton() {
   );
 }
 
-function QueuedUserBubble({ id, text, position }: { id: string; text: string; position: number }) {
+export function QueuedUserBubble({
+  id,
+  text,
+  position,
+}: {
+  id: string;
+  text: string;
+  position: number;
+}) {
   const cancelQueuedMessage = useChatStore((s) => s.cancelQueuedMessage);
   return (
     <div className="flex flex-col gap-1 items-end">
@@ -1701,8 +1709,10 @@ function QueuedUserBubble({ id, text, position }: { id: string; text: string; po
         </button>
       </div>
       <div className="max-w-[90%] min-w-0 flex flex-col gap-1.5 items-end">
-        <div className="select-text px-2.5 py-1.5 text-[11px] font-mono whitespace-pre-wrap break-words border border-tagma-muted/30 bg-tagma-surface/40 text-tagma-muted">
-          {text}
+        <div className="min-w-0 max-w-full">
+          <div className="select-text px-2.5 py-1.5 text-[11px] font-mono whitespace-pre-wrap break-words border border-tagma-muted/30 bg-tagma-surface/40 text-tagma-muted">
+            {text}
+          </div>
         </div>
       </div>
     </div>
