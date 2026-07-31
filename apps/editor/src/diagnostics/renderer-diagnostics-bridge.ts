@@ -15,6 +15,7 @@ const REPORT_INTERVAL_MS = 1_000;
 const MAX_PENDING_LOGS = 500;
 
 type ConsoleMethod = 'debug' | 'info' | 'warn' | 'error';
+type ConsoleFunction = (...args: unknown[]) => void;
 
 let started = false;
 let activeSession: Extract<DiagnosticsSessionStatus, { enabled: true }> | null = null;
@@ -77,7 +78,11 @@ function recordRendererLog(level: DiagnosticLogLevel, args: unknown[]): void {
 
 function installRendererLogCapture(): () => void {
   const rendererConsole = console;
-  const originals = new Map<ConsoleMethod, (...args: unknown[]) => void>();
+  const installed = new Map<
+    ConsoleMethod,
+    { original: ConsoleFunction; wrapper: ConsoleFunction }
+  >();
+  let captureEnabled = true;
   const methods: ReadonlyArray<[ConsoleMethod, DiagnosticLogLevel]> = [
     ['debug', 'debug'],
     ['info', 'info'],
@@ -85,12 +90,13 @@ function installRendererLogCapture(): () => void {
     ['error', 'error'],
   ];
   for (const [method, level] of methods) {
-    const original = rendererConsole[method] as (...args: unknown[]) => void;
-    originals.set(method, original);
-    rendererConsole[method] = (...args: unknown[]) => {
+    const original = rendererConsole[method] as ConsoleFunction;
+    const wrapper: ConsoleFunction = (...args) => {
       Reflect.apply(original, rendererConsole, args);
-      recordRendererLog(level, args);
+      if (captureEnabled) recordRendererLog(level, args);
     };
+    installed.set(method, { original, wrapper });
+    rendererConsole[method] = wrapper;
   }
 
   const onWindowError = (event: ErrorEvent) => {
@@ -110,7 +116,10 @@ function installRendererLogCapture(): () => void {
   window.addEventListener('unhandledrejection', onUnhandledRejection);
 
   return () => {
-    for (const [method, original] of originals) rendererConsole[method] = original;
+    captureEnabled = false;
+    for (const [method, { original, wrapper }] of installed) {
+      if (rendererConsole[method] === wrapper) rendererConsole[method] = original;
+    }
     window.removeEventListener('error', onWindowError);
     window.removeEventListener('unhandledrejection', onUnhandledRejection);
   };

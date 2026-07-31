@@ -114,9 +114,11 @@ should make. Put the token in `Authorization: Bearer <temporary-diagnostics-toke
 The diagnostics token is independent from the sidecar management token, rotates on every enable,
 authorizes only `GET` below `/api/diagnostics/v1`, and is revoked on disable or shutdown. OpenCode
 history reads never start, restart, prompt, or mutate OpenCode; they return `409` when it is not
-running. Renderer console/error capture exists only during the matching diagnostics session and is
-restored on disable. Release process output comes from Electron's existing `sidecar.log`, so normal
-process streams are not wrapped.
+running. Captured logs, renderer reports, and cursors are cleared whenever a session rotates or
+ends, so a later workspace cannot inherit them. Renderer console/error capture exists only during
+the matching diagnostics session and is restored without overwriting a console wrapper installed
+later by another feature. Release process output comes from Electron's existing `sidecar.log`, so
+normal process streams are not wrapped.
 
 The protocol is extensible without changing the connection flow. Renderer features register lazy
 state under `features` with `registerRendererDiagnosticsContributor`; sidecar features use

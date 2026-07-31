@@ -270,7 +270,9 @@
 
 - Keep coding-agent diagnostics disabled by default, loopback-only, session-scoped, and read-only.
   Its random token must remain independent from sidecar/OpenCode credentials and may authorize only
-  `GET` below `/api/diagnostics/v1`; rotate on enable and revoke on disable/shutdown.
+  `GET` below `/api/diagnostics/v1`; rotate on enable and revoke on disable/shutdown. Clear every
+  captured log, renderer report, and cursor when a session rotates or ends so diagnostics never
+  carry data into a later workspace session.
 - Diagnostics must remain a side-channel concern: do not wrap sidecar stdout/stderr, start/restart
   OpenCode, send prompts, mutate files/state, or install renderer console/error capture outside an
   active matching diagnostics session. Restore any renderer hooks immediately when it ends.

@@ -28,6 +28,8 @@ describe('diagnostics normal-path isolation', () => {
     expect(source).toContain('stopCapture ??= installRendererLogCapture();');
     expect(source).toContain('stopCapture?.();');
     expect(source).toContain('setActiveSession(null);');
+    expect(source).toContain('captureEnabled = false;');
+    expect(source).toContain('rendererConsole[method] === wrapper');
     expect(source).not.toContain('.bind(console)');
   });
 
