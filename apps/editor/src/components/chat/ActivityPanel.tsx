@@ -46,7 +46,12 @@ export function TurnActivityPanel(props: TurnActivityPanelProps) {
   const isLive = props.isCurrentTurn && props.surfaceSummary;
   if (isLive) return <LiveTurnActivityPanel {...props} />;
   return (
-    <TurnActivityPanelView {...props} sessionStatus={null} lastActivityAt={null} turnHealth={null} />
+    <TurnActivityPanelView
+      {...props}
+      sessionStatus={null}
+      lastActivityAt={null}
+      turnHealth={null}
+    />
   );
 }
 

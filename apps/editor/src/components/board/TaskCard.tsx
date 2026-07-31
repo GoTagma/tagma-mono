@@ -580,11 +580,7 @@ export const TaskCard = memo(function TaskCard({
   // (Run mode) — there's no edit going on, so the badge would be noise.
   if (!readOnly && taskIsModified) {
     badges.push(
-      <span
-        key="modified"
-        title="Unsaved change since last save"
-        className="chip-mod"
-      >
+      <span key="modified" title="Unsaved change since last save" className="chip-mod">
         mod
       </span>,
     );

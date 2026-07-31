@@ -845,13 +845,7 @@ export function BoardCanvas({
       document.addEventListener('pointerup', onUp);
       document.body.style.userSelect = 'none';
     },
-    [
-      flatTaskByQid,
-      onSelectTask,
-      onToggleTaskSelection,
-      onSetTaskPosition,
-      onTransferTask,
-    ],
+    [flatTaskByQid, onSelectTask, onToggleTaskSelection, onSetTaskPosition, onTransferTask],
   );
 
   // ── Edge drag ──

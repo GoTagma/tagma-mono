@@ -141,6 +141,13 @@ describe('coding-agent handoff', () => {
     expect(instructions).toContain(
       '/opencode/sessions/<url-encoded-session-id>/messages?limit=100',
     );
+    expect(instructions).toContain(
+      'Run these local read-only requests yourself; do not ask the user to run them manually.',
+    );
+    expect(instructions).toContain('Diagnose and explain the root cause before proposing changes.');
+    expect(instructions).toContain(
+      'Do not modify files, code, settings, processes, or editor state unless the user explicitly asks you to after the diagnosis.',
+    );
     expect(instructions).toContain('read-only');
     expect(instructions).not.toContain('?token=debug-token');
   });

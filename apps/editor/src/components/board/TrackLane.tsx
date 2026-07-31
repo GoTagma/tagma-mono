@@ -242,10 +242,7 @@ export const TrackLane = memo(function TrackLane({
         </span>
 
         {trackIsModified && (
-          <span
-            title="Unsaved change since last save"
-            className="chip-mod"
-          >
+          <span title="Unsaved change since last save" className="chip-mod">
             mod
           </span>
         )}

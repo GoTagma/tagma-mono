@@ -53,9 +53,7 @@ export function SaveAsDialog({
           </button>
         </div>
         <div className="modal-viewport-body px-4 py-4 flex flex-col gap-2">
-          <label className="field-label font-mono">
-            {inputLabel}
-          </label>
+          <label className="field-label font-mono">{inputLabel}</label>
           <input
             type="text"
             autoFocus

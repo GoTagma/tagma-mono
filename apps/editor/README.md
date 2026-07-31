@@ -100,8 +100,11 @@ CLI or developer build.
 4. Select **Copy agent connection** and paste the copied instructions into the coding agent.
 5. Select **Disable** when the investigation is finished.
 
-The copied handoff contains the loopback URL, a temporary bearer token, and the requests the agent
-should make. Put the token in `Authorization: Bearer <temporary-diagnostics-token>`, never in a URL.
+The copied handoff is self-contained: it contains the loopback URL, a temporary bearer token, the
+requests the agent should run itself, and instructions to diagnose the root cause before proposing
+changes. The agent is told not to modify files, settings, processes, or editor state unless the user
+explicitly asks after the diagnosis. Put the token in
+`Authorization: Bearer <temporary-diagnostics-token>`, never in a URL.
 
 | Read-only endpoint                                                      | Contents                                                                 |
 | ----------------------------------------------------------------------- | ------------------------------------------------------------------------ |

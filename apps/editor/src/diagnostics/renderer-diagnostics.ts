@@ -174,6 +174,7 @@ export function buildDiagnosticsAgentInstructions(connection: DiagnosticsConnect
     `Workspace: ${connection.workspaceKey ?? '<no workspace>'}`,
     `Protocol: ${connection.protocolVersion}`,
     `Use this HTTP header on every request: Authorization: Bearer ${connection.token}`,
+    'Run these local read-only requests yourself; do not ask the user to run them manually.',
     'This API is read-only. Do not send POST, PUT, PATCH, or DELETE requests.',
     'Start with these requests:',
     `- GET ${connection.baseUrl}/manifest`,
@@ -182,6 +183,9 @@ export function buildDiagnosticsAgentInstructions(connection: DiagnosticsConnect
     `- GET ${connection.baseUrl}/opencode/sessions`,
     `- GET ${connection.baseUrl}/opencode/sessions/<url-encoded-session-id>/messages?limit=100`,
     'Poll logs using the returned nextCursor as the next after value.',
+    'If OpenCode returns 409, report that it is not running; do not start or restart it.',
+    'Diagnose and explain the root cause before proposing changes.',
+    'Do not modify files, code, settings, processes, or editor state unless the user explicitly asks you to after the diagnosis.',
     'The token grants access to local editor/chat diagnostics until the user disables diagnostics or closes Tagma.',
   ].join('\n');
 }

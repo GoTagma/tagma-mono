@@ -1592,10 +1592,7 @@ export function WorkflowView({
                       </div>
                     </button>
                     {timelineExpanded && (
-                      <WorkflowTimeline
-                        events={events}
-                        pipelineIds={timelinePipelineIds}
-                      />
+                      <WorkflowTimeline events={events} pipelineIds={timelinePipelineIds} />
                     )}
                   </div>
                 )}
