@@ -253,7 +253,7 @@ export function EditorSettingsPanel({
     }
   };
 
-  const copyDiagnosticsConnection = async () => {
+  const copyDiagnosticsInstructions = async () => {
     if (!diagnosticsStatus?.enabled) return;
     setError(null);
     try {
@@ -266,7 +266,7 @@ export function EditorSettingsPanel({
       }, 2_000);
     } catch (copyError) {
       setError(
-        copyError instanceof Error ? copyError.message : 'Failed to copy diagnostics connection',
+        copyError instanceof Error ? copyError.message : 'Failed to copy diagnostics instructions',
       );
     }
   };
@@ -613,7 +613,7 @@ export function EditorSettingsPanel({
             currentWorkspace={workDir}
             onEnable={() => void enableDiagnostics()}
             onDisable={() => void disableDiagnostics()}
-            onCopy={() => void copyDiagnosticsConnection()}
+            onCopy={() => void copyDiagnosticsInstructions()}
           />
 
           {settings && (

@@ -22,7 +22,8 @@ describe('production diagnostics UI wiring', () => {
     expect(source).toContain('api.enableDiagnosticsSession()');
     expect(source).toContain('api.disableDiagnosticsSession()');
     expect(source).toContain('buildDiagnosticsAgentInstructions');
-    expect(source).toContain('Copy agent connection');
+    expect(source).toContain('Copy agent instructions');
+    expect(source).not.toContain('Copy agent connection');
     expect(source).toContain('Known credential formats are redacted');
     expect(source).toContain('may still contain sensitive text');
   });

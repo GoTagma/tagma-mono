@@ -76,7 +76,7 @@ export function DiagnosticsSettingsSection({
                 className="flex items-center gap-1.5 border border-tagma-border px-2.5 py-1 text-[11px] text-tagma-text transition-colors hover:bg-tagma-surface disabled:opacity-40"
               >
                 <Copy size={11} />
-                {copied ? 'Copied' : 'Copy agent connection'}
+                {copied ? 'Copied' : 'Copy agent instructions'}
               </button>
               <button
                 type="button"

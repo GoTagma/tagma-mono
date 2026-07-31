@@ -97,7 +97,8 @@ CLI or developer build.
 1. Open the workspace that has the problem.
 2. Open **Editor Settings → Coding agent diagnostics**.
 3. Select **Enable diagnostics**.
-4. Select **Copy agent connection** and paste the copied instructions into the coding agent.
+4. Select **Copy agent instructions** and paste the copied text into the coding agent. No extra
+   prompt is required.
 5. Select **Disable** when the investigation is finished.
 
 The copied handoff is self-contained: it contains the loopback URL, a temporary bearer token, the

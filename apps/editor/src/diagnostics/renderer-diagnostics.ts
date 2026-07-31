@@ -171,6 +171,7 @@ export function buildRendererDiagnosticsSnapshot(input: RendererDiagnosticsSnaps
 export function buildDiagnosticsAgentInstructions(connection: DiagnosticsConnection): string {
   return [
     'Tagma diagnostics are enabled for this editor session.',
+    'Your task is to diagnose the current Tagma editor problem using the live diagnostics below.',
     `Workspace: ${connection.workspaceKey ?? '<no workspace>'}`,
     `Protocol: ${connection.protocolVersion}`,
     `Use this HTTP header on every request: Authorization: Bearer ${connection.token}`,
