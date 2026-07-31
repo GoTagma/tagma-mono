@@ -299,6 +299,10 @@ interface PipelineState {
    *  as `pluginsActive`. */
   usageActive: boolean;
 
+  /** Whether the Editor Settings top-level page is showing. Same gating
+   *  semantics as `pluginsActive`. */
+  settingsActive: boolean;
+
   applyState: (state: ServerState) => void;
   applyStateWithLayout: (state: ServerState) => void;
   applyStateWithPreview: (state: ServerState, source: YamlPreviewChangeSource) => void;
@@ -409,6 +413,10 @@ interface PipelineState {
   // Usage stats page top-level view toggle — same pattern as Plugins.
   showUsagePage: () => void;
   hideUsagePage: () => void;
+
+  // Editor Settings page top-level view toggle — same pattern as Plugins/Stats.
+  showSettingsPage: () => void;
+  hideSettingsPage: () => void;
 
   /**
    * Walk every task in the current config and, for any command task whose
@@ -1239,6 +1247,7 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     pinnedTrackId: null,
     pluginsActive: false,
     usageActive: false,
+    settingsActive: false,
 
     applyState,
     applyStateWithLayout,

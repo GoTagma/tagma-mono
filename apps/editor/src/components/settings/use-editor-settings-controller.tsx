@@ -16,7 +16,6 @@ import { refreshRendererDiagnosticsBridge } from '../../diagnostics/renderer-dia
 import { useEditorSettingsStore } from '../../store/editor-settings-store';
 import { useYamlEditLockStore } from '../../store/yaml-edit-lock-store';
 import {
-  DEFAULT_OPENCODE_AGENT_MAX_STEPS,
   MAX_OPENCODE_AGENT_MAX_STEPS,
   MIN_OPENCODE_AGENT_MAX_STEPS,
 } from '../../../shared/opencode-agent-step-limit.js';
@@ -486,6 +485,8 @@ export function useEditorSettingsController(
   }, []);
 
   return {
+    // Echoed inputs.
+    workDir,
     // Loaded data and request state.
     globalSettings,
     settings,
@@ -542,11 +543,3 @@ export function useEditorSettingsController(
 }
 
 export type EditorSettingsController = ReturnType<typeof useEditorSettingsController>;
-
-// Re-exported so section UIs can render the allowed range without importing
-// the shared constants module themselves.
-export {
-  DEFAULT_OPENCODE_AGENT_MAX_STEPS,
-  MAX_OPENCODE_AGENT_MAX_STEPS,
-  MIN_OPENCODE_AGENT_MAX_STEPS,
-};
