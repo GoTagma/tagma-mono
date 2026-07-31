@@ -191,8 +191,10 @@ export function BotBridgeStatusBadge() {
     [setSettlingPlatform],
   );
 
-  // Poll every 5 s — cheap probe; the bot itself heartbeats Telegram every
-  // 30 s so the UI lags at worst a few seconds behind the real state.
+  // Poll every 5 s while the tab is visible — cheap probe; the bot itself
+  // heartbeats Telegram every 30 s so the UI lags at worst a few seconds
+  // behind the real state. Hidden-tab ticks are skipped, and returning to
+  // visible fires one immediate catch-up tick.
   //
   // On a failed poll we KEEP the last known snapshot instead of nulling it.
   // The sidecar can briefly disappear (a `bun --watch` restart, a crash) and
@@ -202,6 +204,7 @@ export function BotBridgeStatusBadge() {
   useEffect(() => {
     let alive = true;
     const tick = async () => {
+      if (document.visibilityState !== 'visible') return;
       const startedEpoch = statusPollEpochRef.current;
       const s = await fetchBotBridgeStatus();
       if (!alive) return;
@@ -223,9 +226,14 @@ export function BotBridgeStatusBadge() {
     };
     void tick();
     const id = window.setInterval(() => void tick(), POLL_INTERVAL_MS);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void tick();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       alive = false;
       window.clearInterval(id);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [applyStatusEndpointSnapshot]);
 
@@ -386,17 +394,25 @@ export function BotBridgeStatusBadge() {
   );
 
   // Poll pending Slack bind requests while the panel is open on Slack.
+  // Ticks are skipped while the tab is hidden; becoming visible again fires
+  // one immediate tick so pending requests don't wait a full interval.
   useEffect(() => {
     if (!open || snapshot?.platform !== 'slack') return;
     let alive = true;
     const tick = async () => {
+      if (document.visibilityState !== 'visible') return;
       if (alive) await refreshSlackBind();
     };
     void tick();
     const id = window.setInterval(() => void tick(), POLL_INTERVAL_MS);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void tick();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       alive = false;
       window.clearInterval(id);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [open, snapshot?.platform, refreshSlackBind]);
 
@@ -551,7 +567,7 @@ export function BotBridgeStatusBadge() {
         <div className="overflow-y-auto p-3 text-xs text-tagma-text">
           <div className="font-medium mb-1">Bot bridge</div>
           {!reachable && (
-            <div className="mb-2 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-amber-600">
+            <div className="mb-2 rounded border border-tagma-warning/40 bg-tagma-warning/10 px-2 py-1 text-tagma-warning">
               Sidecar not responding - status is stale and Connect/switch will fail until it's back.
               Your selection below is preserved.
             </div>
@@ -701,7 +717,7 @@ export function BotBridgeStatusBadge() {
                   </button>
                 </div>
                 {snapshot && !snapshot.keychainAvailable && (
-                  <div className="text-amber-500">
+                  <div className="text-tagma-warning">
                     Token storage unavailable here: {snapshot.keychainMessage}.
                   </div>
                 )}
