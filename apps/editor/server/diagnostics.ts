@@ -169,7 +169,7 @@ export class DiagnosticsHub {
     return {
       oldestCursor,
       nextCursor: entries.at(-1)?.cursor ?? this.logCursor,
-      droppedBeforeCursor: oldestCursor !== null && boundedAfter < oldestCursor,
+      droppedBeforeCursor: oldestCursor !== null && boundedAfter + 1 < oldestCursor,
       entries,
     };
   }

@@ -77,6 +77,12 @@ describe('renderer diagnostics snapshot', () => {
         pipelineLogs: [],
         reset: () => {},
       },
+      features: {
+        'feature.new-runtime': {
+          status: 'degraded',
+          accessToken: 'must-not-leak',
+        },
+      },
       capturedAt: 200,
     });
 
@@ -102,6 +108,12 @@ describe('renderer diagnostics snapshot', () => {
       runId: 'run-1',
       status: 'running',
       taskCount: 1,
+    });
+    expect(snapshot.features).toEqual({
+      'feature.new-runtime': {
+        status: 'degraded',
+        accessToken: '[REDACTED]',
+      },
     });
     expect(JSON.stringify(snapshot)).not.toContain('saveFile');
     expect(JSON.stringify(snapshot)).not.toContain('"send"');

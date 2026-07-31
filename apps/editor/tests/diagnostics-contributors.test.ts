@@ -1,6 +1,14 @@
 import { describe, expect, test } from 'bun:test';
 
 import { createDiagnosticsContributorRegistry } from '../shared/diagnostics-contributors.js';
+import {
+  collectRendererDiagnosticsContributors,
+  registerRendererDiagnosticsContributor,
+} from '../src/diagnostics/renderer-diagnostics-contributors.js';
+import {
+  collectServerDiagnosticsContributors,
+  registerServerDiagnosticsContributor,
+} from '../server/diagnostics-contributors.js';
 
 describe('diagnostics contributor registry', () => {
   test('is lazy, bounded, sanitized, and isolates contributor failures', () => {
@@ -52,5 +60,37 @@ describe('diagnostics contributor registry', () => {
 
     expect(() => registry.register('', () => ({ should: 'not-register' }))).not.toThrow();
     expect(registry.collect(undefined)).toEqual({});
+  });
+
+  test('provides stable renderer and server extension points for future features', () => {
+    const removeRenderer = registerRendererDiagnosticsContributor(
+      'future.renderer-feature',
+      ({ workspaceKey }) => ({ workspaceKey, state: 'ready' }),
+    );
+    const removeServer = registerServerDiagnosticsContributor(
+      'future.server-feature',
+      ({ workspaceKey }) => ({ workspaceKey, queueDepth: 2 }),
+    );
+    try {
+      expect(
+        collectRendererDiagnosticsContributors({
+          workspaceKey: 'D:\\repo',
+          capturedAt: 123,
+        }),
+      ).toMatchObject({
+        'future.renderer-feature': { workspaceKey: 'D:\\repo', state: 'ready' },
+      });
+      expect(
+        collectServerDiagnosticsContributors({
+          workspaceKey: 'D:\\repo',
+          workspace: null,
+        }),
+      ).toMatchObject({
+        'future.server-feature': { workspaceKey: 'D:\\repo', queueDepth: 2 },
+      });
+    } finally {
+      removeRenderer();
+      removeServer();
+    }
   });
 });

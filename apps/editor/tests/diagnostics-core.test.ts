@@ -120,8 +120,9 @@ describe('temporary diagnostics sessions', () => {
     expect(page).toMatchObject({
       oldestCursor: 2,
       nextCursor: 4,
-      droppedBeforeCursor: true,
+      droppedBeforeCursor: false,
     });
+    expect(hub.readLogs(0, 10).droppedBeforeCursor).toBe(true);
   });
 
   test('accepts only bounded renderer reports while a session is enabled', () => {

@@ -28,6 +28,7 @@ describe('diagnostics normal-path isolation', () => {
     expect(source).toContain('stopCapture ??= installRendererLogCapture();');
     expect(source).toContain('stopCapture?.();');
     expect(source).toContain('setActiveSession(null);');
+    expect(source).not.toContain('.bind(console)');
   });
 
   test('OpenCode diagnostics reads an existing handle and never starts or restarts it', () => {

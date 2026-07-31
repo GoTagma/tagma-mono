@@ -42,6 +42,19 @@ The unpacked output lives at `release/` (electron-builder default).
 
 If `ensure:electron` fails with a download `fetch failed` or timeout, check proxy environment variables first. A dead local proxy such as `HTTP_PROXY=http://127.0.0.1:7890` can make Electron's binary download fail before the app starts. Clear the proxy for the retry or set a working `HTTPS_PROXY` / `ELECTRON_MIRROR`, then run `bun run --filter tagma-desktop ensure:electron` again.
 
+## Installed-editor diagnostics
+
+Every installer carries the editor's opt-in coding-agent diagnostics surface; no separate CLI or
+debug build is required. It remains disabled during normal use. After the user enables it in
+**Editor Settings → Coding agent diagnostics**, the editor creates a temporary loopback-only,
+read-only token and offers a copyable Codex handoff. See
+[the editor diagnostics guide](../editor/README.md#production-diagnostics-for-coding-agents).
+
+Electron already mirrors sidecar and managed OpenCode stdout/stderr to
+`path.join(app.getPath('logs'), 'sidecar.log')`. The launcher passes that path to the sidecar as
+`TAGMA_DESKTOP_LOG_FILE`, allowing a bounded, redacted read without wrapping or changing child
+process streams. Disabling diagnostics does not change this existing launcher log behavior.
+
 ## Packaging
 
 ```bash

@@ -15,6 +15,7 @@ import {
   readDiagnosticsOpencodeMessages,
   readDiagnosticsOpencodeSessions,
 } from '../diagnostics-opencode.js';
+import { collectServerDiagnosticsContributors } from '../diagnostics-contributors.js';
 import { getOpencodeRuntimeDiagnostics } from '../opencode-lifecycle.js';
 import { readEditorSettings } from '../plugins/loader.js';
 import { getState } from '../state.js';
@@ -162,6 +163,7 @@ export function buildDefaultDiagnosticsContext(
       openWorkspaces: Array.from(workspaceRegistry.keys()),
       globalSettings: readGlobalSettings(),
       opencode,
+      features: collectServerDiagnosticsContributors({ workspaceKey, workspace: ws }),
       renderer: hub.getRendererReports(),
       runtimeLogs: hub.readLogs(0, 250),
       desktopLogTail: readDesktopLogTail(),
@@ -253,6 +255,12 @@ export function registerDiagnosticsRoutes(
       logPolling: {
         query: { after: 'cursor from the previous response', limit: '1-1000' },
         next: 'Use nextCursor as the next after value.',
+      },
+      extensibility: {
+        contextNamespace: 'features',
+        rendererRegistration: 'registerRendererDiagnosticsContributor',
+        serverRegistration: 'registerServerDiagnosticsContributor',
+        execution: 'Contributors are lazy and run only while diagnostics context is collected.',
       },
       coverage: [
         'Electron launcher sidecar log tail, including managed OpenCode stdout/stderr',

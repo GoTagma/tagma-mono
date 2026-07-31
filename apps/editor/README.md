@@ -118,6 +118,12 @@ running. Renderer console/error capture exists only during the matching diagnost
 restored on disable. Release process output comes from Electron's existing `sidecar.log`, so normal
 process streams are not wrapped.
 
+The protocol is extensible without changing the connection flow. Renderer features register lazy
+state under `features` with `registerRendererDiagnosticsContributor`; sidecar features use
+`registerServerDiagnosticsContributor`. Providers run only when diagnostics context is requested,
+are failure-isolated and sanitized, and do not participate in normal feature execution. Repository
+instructions require new long-lived feature state to use this extension point.
+
 Payloads are bounded, and known credential fields and common token formats are redacted. This is
 best-effort protection: prompts, messages, tool output, paths, and arbitrary user-authored text can
 still be sensitive. Review diagnostics before sharing them.

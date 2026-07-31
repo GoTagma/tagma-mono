@@ -11,6 +11,7 @@ import {
   type DiagnosticLogLevel,
   type RendererDiagnosticLog,
 } from '../../shared/diagnostics.js';
+import { collectRendererDiagnosticsContributors } from './renderer-diagnostics-contributors';
 import { buildRendererDiagnosticsSnapshot } from './renderer-diagnostics';
 
 const STATUS_INTERVAL_MS = 3_000;
@@ -87,10 +88,10 @@ function installRendererLogCapture(): () => void {
     ['error', 'error'],
   ];
   for (const [method, level] of methods) {
-    const original = console[method].bind(console) as (...args: unknown[]) => void;
+    const original = console[method] as (...args: unknown[]) => void;
     originals.set(method, original);
     console[method] = (...args: unknown[]) => {
-      original(...args);
+      Reflect.apply(original, console, args);
       recordRendererLog(level, args);
     };
   }
@@ -172,10 +173,11 @@ async function reportSnapshot(): Promise<void> {
   }
 
   const sentLogs = pendingLogs.slice();
+  const capturedAt = Date.now();
   const report = {
     instanceId,
     workspaceKey,
-    capturedAt: Date.now(),
+    capturedAt,
     snapshot: buildRendererDiagnosticsSnapshot({
       page: {
         href: window.location.href,
@@ -185,6 +187,8 @@ async function reportSnapshot(): Promise<void> {
       chat: useChatStore.getState() as unknown as Record<string, unknown>,
       pipeline: usePipelineStore.getState() as unknown as Record<string, unknown>,
       run: useRunStore.getState() as unknown as Record<string, unknown>,
+      features: collectRendererDiagnosticsContributors({ workspaceKey, capturedAt }),
+      capturedAt,
     }),
     logs: sentLogs,
   };

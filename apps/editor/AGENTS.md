@@ -266,6 +266,24 @@
   stays blocked until the replacement is healthy; late recovery failures must not overwrite a new
   workspace, and must invalidate the failed workspace client cache.
 
+## Production Diagnostics
+
+- Keep coding-agent diagnostics disabled by default, loopback-only, session-scoped, and read-only.
+  Its random token must remain independent from sidecar/OpenCode credentials and may authorize only
+  `GET` below `/api/diagnostics/v1`; rotate on enable and revoke on disable/shutdown.
+- Diagnostics must remain a side-channel concern: do not wrap sidecar stdout/stderr, start/restart
+  OpenCode, send prompts, mutate files/state, or install renderer console/error capture outside an
+  active matching diagnostics session. Restore any renderer hooks immediately when it ends.
+- New renderer features with long-lived state must register a lazy, side-effect-free snapshot via
+  `registerRendererDiagnosticsContributor`; new sidecar features should use
+  `registerServerDiagnosticsContributor`. Keep providers synchronous, bounded, credential-free, and
+  safe to fail independently. Provider code runs only when an enabled diagnostics request collects
+  context, so ordinary feature execution must not depend on it.
+- Preserve the stable manifest/context/log/session-history protocol when adding coverage. Put
+  feature-specific state under the contributor `features` namespace instead of coupling it into
+  the diagnostics bridge or route. Keep diagnostics isolation, contributor, auth-boundary, and
+  workspace-isolation tests current.
+
 ## Focused Editor Tests
 
 - `bun scripts/test-serial.mjs` intentionally runs each test file in a separate serial Bun process
