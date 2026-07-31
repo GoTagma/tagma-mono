@@ -70,6 +70,24 @@ describe('decideInstallerReleaseTransition', () => {
       commitBundledBaseline: true,
     });
   });
+
+  test('recognizes a fresh installer when the previous baseline predates install fingerprints', () => {
+    expect(
+      decideInstallerReleaseTransition({
+        bundledVersion: '1.0.0',
+        previousBundledVersion: '1.0.0',
+        installFingerprint: 'install-b-new',
+        previousInstallFingerprint: null,
+        editorOverrideVersion: '2.0.0',
+        sidecarOverrideVersion: '2.0.0',
+        overrideRemovalSucceeded: true,
+      }),
+    ).toEqual({
+      replaceUserRelease: true,
+      forceBundledRelease: true,
+      commitBundledBaseline: true,
+    });
+  });
 });
 
 // These cases simulate a Windows sidecar (D:/... paths, platform: 'win32'),
@@ -824,6 +842,47 @@ describe('runtime path resolution', () => {
     ).toEqual({
       bundledVersion: '1.0.0',
       installFingerprint: 'install-b-reinstalled',
+    });
+  });
+
+  test('a fingerprint-aware installer replaces higher overrides recorded by a legacy baseline', () => {
+    const root = withTempDir();
+    const resourcesPath = hostPath.join(root, 'resources');
+    const userDataDir = hostPath.join(root, 'userData');
+    const bundledSidecarDir = hostPath.join(resourcesPath, 'editor-sidecar');
+    mkdirSync(bundledSidecarDir, { recursive: true });
+
+    resolveRuntimePaths({
+      isPackaged: true,
+      compiledDir: hostPath.join(root, 'compiled'),
+      resourcesPath,
+      userDataDir,
+      platform: process.platform,
+      appVersion: '1.0.0',
+    });
+    const { editorDir, sidecarDir } = writeUserReleaseOverride(userDataDir, '2.0.0');
+
+    const reinstalled = resolveRuntimePaths({
+      isPackaged: true,
+      compiledDir: hostPath.join(root, 'compiled'),
+      resourcesPath,
+      userDataDir,
+      platform: process.platform,
+      appVersion: '1.0.0',
+      installFingerprint: 'install-b-fingerprint-aware',
+    });
+
+    expect(reinstalled.command).toBe(hostPath.join(bundledSidecarDir, executableName()));
+    expect(reinstalled.sidecarSource).toBe('bundled');
+    expect(reinstalled.sidecarVersion).toBe('1.0.0');
+    expect(reinstalled.env.TAGMA_EDITOR_USER_DIST_DIR).toBeUndefined();
+    expect(existsSync(editorDir)).toBe(false);
+    expect(existsSync(sidecarDir)).toBe(false);
+    expect(
+      JSON.parse(readFileSync(hostPath.join(userDataDir, releaseBaselineFile), 'utf-8')),
+    ).toEqual({
+      bundledVersion: '1.0.0',
+      installFingerprint: 'install-b-fingerprint-aware',
     });
   });
 

@@ -502,8 +502,8 @@ export function decideInstallerReleaseTransition(
   );
   const freshInstaller =
     !!input.installFingerprint &&
-    !!input.previousInstallFingerprint &&
-    input.installFingerprint !== input.previousInstallFingerprint;
+    (!input.previousInstallFingerprint ||
+      input.installFingerprint !== input.previousInstallFingerprint);
   const replaceUserRelease =
     installerDowngraded ||
     (freshInstaller && anyOverrideAhead) ||
