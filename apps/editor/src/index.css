@@ -262,58 +262,30 @@ html.light ::-webkit-scrollbar-thumb:active {
   background-size: 184px 100%;
 }
 
-/* Conversation flow progress fill. A flat solid bar reads as a plain loader;
-   the 90deg gradient (dim tail → saturated head) gives the fill a sense of
-   direction, and the soft same-hue glow lifts it off the track without adding
-   a second color. State classes keep one visual language: cyan while the turn
-   is live, emerald once it lands, red on error. */
+/* Conversation flow progress fill. A barely-there same-hue gradient (dim tail
+   → saturated head) keeps the bar from reading as a flat digital slab; no
+   glow, no sweep — state alone carries the meaning: cyan while the turn is
+   live, emerald once it lands, red on error. */
 .chat-flow-fill {
-  position: relative;
-  overflow: hidden;
   background-image: linear-gradient(
     90deg,
-    rgb(var(--tagma-ready) / 0.35),
-    rgb(var(--tagma-ready) / 0.95)
+    rgb(var(--tagma-ready) / 0.55),
+    rgb(var(--tagma-ready) / 0.9)
   );
-  box-shadow: 0 0 8px -1px rgb(var(--tagma-ready) / 0.5);
 }
 .chat-flow-fill.is-complete {
   background-image: linear-gradient(
     90deg,
-    rgb(var(--tagma-success) / 0.4),
-    rgb(var(--tagma-success) / 0.95)
+    rgb(var(--tagma-success) / 0.55),
+    rgb(var(--tagma-success) / 0.9)
   );
-  box-shadow: 0 0 8px -1px rgb(var(--tagma-success) / 0.5);
 }
 .chat-flow-fill.is-error {
   background-image: linear-gradient(
     90deg,
-    rgb(var(--tagma-error) / 0.45),
-    rgb(var(--tagma-error) / 0.95)
+    rgb(var(--tagma-error) / 0.55),
+    rgb(var(--tagma-error) / 0.9)
   );
-  box-shadow: 0 0 8px -1px rgb(var(--tagma-error) / 0.5);
-}
-/* Sheen sweep while the turn is live — a moving highlight reads as ongoing
-   work, which a static bar cannot. Terminal states stay still so the bar reads
-   as settled. The global prefers-reduced-motion rule already collapses this
-   animation to ~1ms for users who opt out of motion. */
-.chat-flow-fill.is-active::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 40%;
-  background-image: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.5), transparent);
-  animation: chat-flow-sheen 1.4s linear infinite;
-}
-@keyframes chat-flow-sheen {
-  from {
-    transform: translateX(-100%);
-  }
-  to {
-    transform: translateX(260%);
-  }
 }
 
 .track-row-even {

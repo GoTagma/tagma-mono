@@ -178,7 +178,7 @@ export function ConversationFlowBarView({
               ? 'bg-tagma-error'
               : terminalStatus === 'complete'
                 ? 'bg-tagma-success'
-                : 'bg-tagma-ready animate-pulse'
+                : 'bg-tagma-ready'
           }`}
         />
         <span className="min-w-0 flex-1 truncate text-tagma-text/90" title={majorStage}>
