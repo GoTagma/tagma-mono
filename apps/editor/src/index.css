@@ -11,7 +11,7 @@
   --tagma-bg: 8 8 10;
   --tagma-surface: 24 24 28;
   --tagma-elevated: 38 38 44;
-  --tagma-border: 48 48 56;
+  --tagma-border: 56 56 66;
   --tagma-text: 232 234 237;
   --tagma-muted: 160 168 180;
   --tagma-muted-dim: 120 128 140;
@@ -43,7 +43,7 @@ html.light {
   --tagma-bg: 245 245 247;
   --tagma-surface: 255 255 255;
   --tagma-elevated: 235 235 240;
-  --tagma-border: 218 218 224;
+  --tagma-border: 206 206 214;
   --tagma-text: 26 26 26;
   --tagma-muted: 82 89 100;
   --tagma-muted-dim: 115 123 135;
@@ -259,7 +259,9 @@ html.light ::-webkit-scrollbar-thumb:active {
 }
 
 .timeline-grid {
-  background-image: linear-gradient(to right, rgb(var(--tagma-border) / 0.5) 1px, transparent 1px);
+  /* border/0.5 rendered ~1.2:1 against the canvas — a grid you have to
+     squint for. 0.7 keeps it a background rhythm but visibly present. */
+  background-image: linear-gradient(to right, rgb(var(--tagma-border) / 0.7) 1px, transparent 1px);
   background-size: 184px 100%;
 }
 
@@ -293,10 +295,12 @@ html.light ::-webkit-scrollbar-thumb:active {
   background: transparent;
 }
 .track-row-odd {
-  /* Dark mode keeps the original barely-there stripe. In light mode the same
-     formula (white * 0.4 over near-white) collapses to invisible, so switch
-     to solid elevated which is mid-way between bg and surface. */
-  background: rgb(var(--tagma-surface) / 0.4);
+  /* Dark mode stripes sit just above the canvas bg: elevated at 0.45 reads
+     ~1.1:1 — quiet, but the row alternation is findable (the old surface/0.4
+     was ~1.04:1, effectively invisible). In light mode the same alpha
+     formula collapses to invisible, so switch to solid elevated which is
+     mid-way between bg and surface. */
+  background: rgb(var(--tagma-elevated) / 0.45);
 }
 html.light .track-row-odd {
   background: rgb(var(--tagma-elevated));
@@ -344,38 +348,40 @@ html.light .minimap-float {
   box-shadow: none;
 }
 
-/* Minimap zebra rows — consumed via inline SVG `fill` in Minimap.tsx.
-   Dark mode preserves the original barely-there white alpha stripes; light
-   mode substitutes a muted tint since white-on-white is invisible. */
+/* Minimap zebra rows — consumed via inline SVG `fill` in Minimap.tsx. The
+   stripes only need to separate alternating rows, but the originals
+   (white at 1.5%/4%) were below perception on the dark canvas; light mode
+   uses a muted tint since white-on-white is invisible. */
 :root {
-  --tagma-mm-stripe-a: rgb(255 255 255 / 0.015);
-  --tagma-mm-stripe-b: rgb(255 255 255 / 0.04);
+  --tagma-mm-stripe-a: rgb(255 255 255 / 0.035);
+  --tagma-mm-stripe-b: rgb(255 255 255 / 0.08);
 }
 html.light {
-  --tagma-mm-stripe-a: rgb(var(--tagma-muted) / 0.05);
-  --tagma-mm-stripe-b: rgb(var(--tagma-muted) / 0.14);
+  --tagma-mm-stripe-a: rgb(var(--tagma-muted) / 0.08);
+  --tagma-mm-stripe-b: rgb(var(--tagma-muted) / 0.2);
 }
 
 /* Canvas edge / arrow colors — consumed via inline SVG `stroke` and `fill`
-   in BoardCanvas.tsx and the run-history flow views. Dark mode keeps the
-   exact original hex values so the connection graph renders identically to
-   before. Light mode swaps to theme-aware variants since the originals
-   (rgba(100,100,100,0.4) etc.) are nearly invisible against a white canvas. */
+   in BoardCanvas.tsx and the run-history flow views. Resting edges target
+   roughly 3:1 against the canvas (WCAG non-text guidance for meaningful
+   graphics): the originals (rgba(100,100,100,0.4) ≈ 1.45:1, hist-edge ≈
+   1.27:1) disappeared into the dark bg unless hovered or selected. Light
+   mode pairs the same alphas with its darker muted/info tokens. */
 :root {
-  --tagma-edge-default: rgba(100, 100, 100, 0.4);
-  --tagma-edge-default-marker: rgba(102, 102, 102, 0.7);
-  --tagma-edge-continue: rgba(167, 139, 250, 0.5);
-  --tagma-edge-continue-marker: rgba(167, 139, 250, 0.8);
+  --tagma-edge-default: rgb(var(--tagma-muted-dim) / 0.7);
+  --tagma-edge-default-marker: rgb(var(--tagma-muted-dim) / 0.85);
+  --tagma-edge-continue: rgb(var(--tagma-info) / 0.65);
+  --tagma-edge-continue-marker: rgb(var(--tagma-info) / 0.85);
   --tagma-edge-continue-hi: #c4b5fd;
-  --tagma-hist-edge: rgba(107, 114, 128, 0.25);
+  --tagma-hist-edge: rgb(var(--tagma-muted-dim) / 0.5);
 }
 html.light {
-  --tagma-edge-default: rgb(var(--tagma-muted) / 0.55);
-  --tagma-edge-default-marker: rgb(var(--tagma-muted) / 0.75);
-  --tagma-edge-continue: rgb(var(--tagma-info) / 0.55);
-  --tagma-edge-continue-marker: rgb(var(--tagma-info) / 0.8);
+  --tagma-edge-default: rgb(var(--tagma-muted) / 0.7);
+  --tagma-edge-default-marker: rgb(var(--tagma-muted) / 0.85);
+  --tagma-edge-continue: rgb(var(--tagma-info) / 0.65);
+  --tagma-edge-continue-marker: rgb(var(--tagma-info) / 0.85);
   --tagma-edge-continue-hi: rgb(var(--tagma-info));
-  --tagma-hist-edge: rgb(var(--tagma-muted) / 0.45);
+  --tagma-hist-edge: rgb(var(--tagma-muted) / 0.55);
 }
 
 /* Brief flash applied to a TaskCard after the search overlay scrolls it
