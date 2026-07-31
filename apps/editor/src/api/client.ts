@@ -42,6 +42,17 @@ import type {
   TaskOutputBindings as SdkTaskOutputBindings,
 } from '@tagma/types';
 import { participatesInWorkspaceRevisionSequence } from '../../shared/revision-routes.js';
+import type {
+  DiagnosticsConnection,
+  DiagnosticsSessionStatus,
+  RendererDiagnosticsReport,
+} from '../../shared/diagnostics.js';
+
+export type {
+  DiagnosticsConnection,
+  DiagnosticsSessionStatus,
+  RendererDiagnosticsReport,
+} from '../../shared/diagnostics.js';
 
 // Recursively strip `readonly` from object fields and array element
 // wrappers. Primitives, unions of primitives, and untyped index
@@ -2003,6 +2014,20 @@ export const api = {
 
   updateGlobalSettings: (patch: Partial<GlobalSettings>) =>
     request<GlobalSettings>('/global-settings', { method: 'PATCH', body: jsonBody(patch) }),
+
+  getDiagnosticsSession: () => request<DiagnosticsSessionStatus>('/diagnostics/session'),
+
+  enableDiagnosticsSession: () =>
+    request<DiagnosticsSessionStatus>('/diagnostics/session', { method: 'POST' }),
+
+  disableDiagnosticsSession: () =>
+    request<DiagnosticsSessionStatus>('/diagnostics/session', { method: 'DELETE' }),
+
+  reportRendererDiagnostics: (report: RendererDiagnosticsReport) =>
+    request<{ ok: true }>('/diagnostics/renderer', {
+      method: 'POST',
+      body: jsonBody(report),
+    }),
 
   getEditorSettings: () => request<EditorSettings>('/editor-settings'),
 

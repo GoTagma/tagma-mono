@@ -39,6 +39,13 @@ export interface OpencodeHandle {
   auth: OpencodeServerAuth;
 }
 
+export interface OpencodeRuntimeDiagnostics {
+  cwd: string;
+  status: 'starting' | 'running' | 'restarting';
+  pid: number | null;
+  baseUrl: string | null;
+}
+
 export function ensureRealTagmaDirectory(workspaceRoot: string): string {
   const tagmaCwd = join(workspaceRoot, '.tagma');
   if (existsSync(tagmaCwd) && lstatSync(tagmaCwd).isSymbolicLink()) {
@@ -867,4 +874,26 @@ export function shutdownOpencode(): void {
 
 export function getOpencodeHandle(cwd: string): OpencodeHandle | null {
   return handles.get(cwd) ?? null;
+}
+
+/** Safe runtime metadata for the read-only production diagnostics surface. */
+export function getOpencodeRuntimeDiagnostics(): OpencodeRuntimeDiagnostics[] {
+  const cwds = new Set<string>([
+    ...handles.keys(),
+    ...children.keys(),
+    ...starting.keys(),
+    ...restarting.keys(),
+  ]);
+  return Array.from(cwds)
+    .sort()
+    .map((cwd) => {
+      const handle = handles.get(cwd) ?? null;
+      const child = children.get(cwd);
+      return {
+        cwd,
+        status: restarting.has(cwd) ? 'restarting' : handle ? 'running' : 'starting',
+        pid: handle?.pid ?? child?.pid ?? null,
+        baseUrl: handle?.baseUrl ?? null,
+      };
+    });
 }

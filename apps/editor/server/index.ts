@@ -52,6 +52,12 @@ import {
   shouldBlockYamlEditLockMutation,
 } from './yaml-edit-lock.js';
 import { verifyTrialWitnessWorkerForBuild } from './chat-pipeline-trial-witness.js';
+import {
+  diagnosticsHub,
+  installProcessDiagnosticsCapture,
+  isDiagnosticsAgentPath,
+} from './diagnostics.js';
+import { registerDiagnosticsRoutes } from './routes/diagnostics.js';
 
 const VERIFY_TRIAL_WITNESS_WORKER_ARG = '--verify-trial-witness-worker';
 const verifyTrialWitnessWorkerArgIndex = process.argv.indexOf(VERIFY_TRIAL_WITNESS_WORKER_ARG);
@@ -64,6 +70,8 @@ if (verifyTrialWitnessWorkerArgIndex >= 0) {
   process.stdout.write('TAGMA_TRIAL_WITNESS_WORKER_OK\n');
   process.exit(0);
 }
+
+installProcessDiagnosticsCapture();
 
 const app = express();
 // ── C2: Tighten CORS ──
@@ -129,6 +137,10 @@ function cookieValue(header: string | undefined, name: string): string | null {
 }
 
 app.use((req, res, next) => {
+  // A diagnostics-session token authorizes only the dedicated read-only
+  // subtree. Its route-local middleware validates that independent token;
+  // never compare it with or promote it to the sidecar's management token.
+  if (isDiagnosticsAgentPath(req.path)) return next();
   if (!AUTH_ENABLED) return next();
   if (!req.path.startsWith('/api/')) return next();
 
@@ -316,6 +328,9 @@ app.use((req, res, next) => {
     '/api/state/reload',
     '/api/opencode/',
     '/api/editor/',
+    // Ephemeral diagnostics lifecycle and renderer reports are side logs, not
+    // pipeline mutations, and must never advance a workspace revision.
+    '/api/diagnostics/',
     // Compile reads YAML off disk and writes a sibling .compile.log — no
     // mutation of ws.config / yamlPath / layout. It was falling through to
     // the generic mutation branch which pre-emptively bumped stateRevision
@@ -421,6 +436,7 @@ registerSidecarRoutes(app);
 registerReleaseRoutes(app);
 registerHotupdateRoutes(app);
 registerChatBridgeRoutes(app);
+registerDiagnosticsRoutes(app);
 
 app.post('/api/shutdown', (req, res) => {
   if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) {
@@ -489,6 +505,7 @@ let shuttingDown = false;
 function gracefulShutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
+  diagnosticsHub.disable();
   console.log('[server] shutting down...');
   // Abort any active pipeline run + close run SSE connections (run.ts
   // iterates every workspace's run session internally).

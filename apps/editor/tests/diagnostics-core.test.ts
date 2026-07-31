@@ -162,9 +162,11 @@ describe('temporary diagnostics sessions', () => {
         },
       },
     ]);
-    expect(hub.readLogs(0, 10).entries[0]?.message).toBe(
-      'renderer failed with password=[REDACTED]',
-    );
+    expect(
+      hub
+        .readLogs(0, 10)
+        .entries.find((entry) => entry.source === 'renderer.error')?.message,
+    ).toBe('renderer failed with password=[REDACTED]');
   });
 });
 
