@@ -10,6 +10,7 @@ interface FakeRequest {
   method: string;
   path: string;
   body?: unknown;
+  params: Record<string, string | undefined>;
   query: Record<string, string | undefined>;
   headers: Record<string, string | undefined>;
   socket: { localPort: number };
@@ -42,6 +43,7 @@ function request(
     method,
     path,
     body: overrides.body,
+    params: overrides.params ?? {},
     query: overrides.query ?? {},
     headers,
     socket: overrides.socket ?? { localPort: 43123 },
@@ -72,6 +74,16 @@ function harness(hub: DiagnosticsHub) {
   registerDiagnosticsRoutes(app as never, {
     hub,
     buildContext: () => ({ kind: 'test-context' }),
+    readOpencodeSessions: async (workspaceKey) => ({
+      workspaceKey,
+      sessions: [{ id: 'chat-1' }],
+    }),
+    readOpencodeMessages: async (workspaceKey, sessionId, options) => ({
+      workspaceKey,
+      sessionId,
+      options,
+      messages: [{ id: 'message-1' }],
+    }),
   });
   return {
     route(method: string, path: string) {
@@ -283,5 +295,41 @@ describe('diagnostics routes', () => {
       error: 'Diagnostics are enabled for a different workspace.',
     });
     expect(hub.getRendererReports()).toEqual([]);
+  });
+
+  test('exposes workspace-bound OpenCode sessions and bounded message history', async () => {
+    const hub = new DiagnosticsHub({ tokenFactory: () => 'debug-token' });
+    const routes = harness(hub);
+    hub.enable('D:\\repo', 'http://127.0.0.1:43123');
+
+    const sessionsResponse = new FakeResponse();
+    await routes.route('GET', `${DIAGNOSTICS_AGENT_BASE_PATH}/opencode/sessions`)(
+      request('GET', `${DIAGNOSTICS_AGENT_BASE_PATH}/opencode/sessions`),
+      sessionsResponse,
+      () => {},
+    );
+    expect(sessionsResponse.body).toEqual({
+      workspaceKey: 'D:\\repo',
+      sessions: [{ id: 'chat-1' }],
+    });
+
+    const messagesResponse = new FakeResponse();
+    await routes.route(
+      'GET',
+      `${DIAGNOSTICS_AGENT_BASE_PATH}/opencode/sessions/:sessionId/messages`,
+    )(
+      request('GET', `${DIAGNOSTICS_AGENT_BASE_PATH}/opencode/sessions/chat-1/messages`, {
+        params: { sessionId: 'chat-1' },
+        query: { limit: '9999', before: 'message-9' },
+      }),
+      messagesResponse,
+      () => {},
+    );
+    expect(messagesResponse.body).toEqual({
+      workspaceKey: 'D:\\repo',
+      sessionId: 'chat-1',
+      options: { limit: 200, before: 'message-9' },
+      messages: [{ id: 'message-1' }],
+    });
   });
 });

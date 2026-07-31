@@ -301,7 +301,7 @@ export function installProcessDiagnosticsCapture(hub = diagnosticsHub): void {
       } catch {
         // Diagnostics must never interfere with the real output stream.
       }
-      return Reflect.apply(original, this, [chunk, encodingOrCallback, callback]) as boolean;
+      return Reflect.apply(original, stream, [chunk, encodingOrCallback, callback]) as boolean;
     } as typeof stream.write;
   }
 }

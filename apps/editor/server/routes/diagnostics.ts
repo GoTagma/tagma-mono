@@ -10,6 +10,11 @@ import {
   type DiagnosticsHub,
 } from '../diagnostics.js';
 import { readGlobalSettings } from '../global-settings.js';
+import {
+  DiagnosticsReadError,
+  readDiagnosticsOpencodeMessages,
+  readDiagnosticsOpencodeSessions,
+} from '../diagnostics-opencode.js';
 import { getOpencodeRuntimeDiagnostics } from '../opencode-lifecycle.js';
 import { readEditorSettings } from '../plugins/loader.js';
 import { getState } from '../state.js';
@@ -19,11 +24,33 @@ import type { WorkspaceState } from '../workspace-state.js';
 export interface DiagnosticsRouteDependencies {
   hub?: DiagnosticsHub;
   buildContext?: (workspaceKey: string | null) => unknown | Promise<unknown>;
+  readOpencodeSessions?: (workspaceKey: string | null) => unknown | Promise<unknown>;
+  readOpencodeMessages?: (
+    workspaceKey: string | null,
+    sessionId: string,
+    options: DiagnosticsOpencodeMessageOptions,
+  ) => unknown | Promise<unknown>;
+}
+
+export interface DiagnosticsOpencodeMessageOptions {
+  limit: number;
+  before?: string;
 }
 
 function requestOrigin(req: express.Request): string {
   const port = req.socket.localPort;
   return `http://127.0.0.1:${port}`;
+}
+
+function boundedMessageLimit(value: unknown): number {
+  const parsed = typeof value === 'string' ? Number(value) : Number.NaN;
+  return Number.isFinite(parsed) ? Math.min(200, Math.max(1, Math.trunc(parsed))) : 100;
+}
+
+function sendDiagnosticsReadError(res: express.Response, error: unknown): void {
+  const status = error instanceof DiagnosticsReadError ? error.status : 500;
+  const message = error instanceof Error ? error.message : 'Diagnostics read failed.';
+  res.status(status).json({ error: message });
 }
 
 function activeRunDiagnostics(ws: WorkspaceState): unknown[] {
@@ -155,6 +182,10 @@ export function registerDiagnosticsRoutes(
   const hub = dependencies.hub ?? diagnosticsHub;
   const buildContext =
     dependencies.buildContext ?? ((workspaceKey) => buildDefaultDiagnosticsContext(hub, workspaceKey));
+  const readOpencodeSessions =
+    dependencies.readOpencodeSessions ?? readDiagnosticsOpencodeSessions;
+  const readOpencodeMessages =
+    dependencies.readOpencodeMessages ?? readDiagnosticsOpencodeMessages;
 
   app.get('/api/diagnostics/session', (req, res) => {
     res.json(hub.getStatus(requestOrigin(req)));
@@ -175,9 +206,16 @@ export function registerDiagnosticsRoutes(
 
   app.post('/api/diagnostics/renderer', (req, res) => {
     const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const workspaceKey = req.workspace?.workDir || null;
+    const activeWorkspaceKey = hub.activeWorkspaceKey();
+    if (activeWorkspaceKey !== null && workspaceKey !== activeWorkspaceKey) {
+      return res.status(409).json({
+        error: 'Diagnostics are enabled for a different workspace.',
+      });
+    }
     const accepted = hub.acceptRendererReport({
       ...(body as import('../../shared/diagnostics.js').RendererDiagnosticsReport),
-      workspaceKey: req.workspace?.workDir || null,
+      workspaceKey,
     });
     if (!accepted) {
       return res.status(409).json({ error: 'Diagnostics are not enabled.' });
@@ -208,6 +246,9 @@ export function registerDiagnosticsRoutes(
         manifest: `${DIAGNOSTICS_AGENT_BASE_PATH}/manifest`,
         context: `${DIAGNOSTICS_AGENT_BASE_PATH}/context`,
         logs: `${DIAGNOSTICS_AGENT_BASE_PATH}/logs`,
+        opencodeSessions: `${DIAGNOSTICS_AGENT_BASE_PATH}/opencode/sessions`,
+        opencodeMessages:
+          `${DIAGNOSTICS_AGENT_BASE_PATH}/opencode/sessions/{sessionId}/messages`,
       },
       logPolling: {
         query: { after: 'cursor from the previous response', limit: '1-1000' },
@@ -216,6 +257,7 @@ export function registerDiagnosticsRoutes(
       coverage: [
         'sidecar stdout/stderr',
         'managed OpenCode stdout/stderr and runtime metadata',
+        'workspace-scoped OpenCode session list and bounded message history',
         'renderer console/errors and transient OpenCode chat state',
         'current editor pipeline state and active run events',
         'Electron launcher sidecar log tail when available',
@@ -234,4 +276,40 @@ export function registerDiagnosticsRoutes(
     const limit = Number(req.query.limit ?? 500);
     res.json(hub.readLogs(after, limit));
   });
+
+  app.get(`${DIAGNOSTICS_AGENT_BASE_PATH}/opencode/sessions`, async (_req, res) => {
+    try {
+      res.json(await readOpencodeSessions(hub.activeWorkspaceKey()));
+    } catch (error) {
+      sendDiagnosticsReadError(res, error);
+    }
+  });
+
+  app.get(
+    `${DIAGNOSTICS_AGENT_BASE_PATH}/opencode/sessions/:sessionId/messages`,
+    async (req, res) => {
+      const sessionId = req.params.sessionId;
+      if (
+        typeof sessionId !== 'string' ||
+        sessionId.trim().length === 0 ||
+        sessionId.length > 512
+      ) {
+        return res.status(400).json({ error: 'A valid OpenCode session id is required.' });
+      }
+      const before =
+        typeof req.query.before === 'string' && req.query.before.length > 0
+          ? req.query.before.slice(0, 512)
+          : undefined;
+      try {
+        res.json(
+          await readOpencodeMessages(hub.activeWorkspaceKey(), sessionId, {
+            limit: boundedMessageLimit(req.query.limit),
+            ...(before ? { before } : {}),
+          }),
+        );
+      } catch (error) {
+        sendDiagnosticsReadError(res, error);
+      }
+    },
+  );
 }

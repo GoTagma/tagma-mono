@@ -467,6 +467,7 @@ async function spawnSidecar(): Promise<SidecarHandle> {
     compiledDir: __dirname,
     resourcesPath: process.resourcesPath,
     userDataDir: app.getPath('userData'),
+    desktopLogFile: path.join(app.getPath('logs'), 'sidecar.log'),
     tagmaMetadataJson: JSON.stringify(TAGMA_META),
     appVersion: app.getVersion(),
   } as const;

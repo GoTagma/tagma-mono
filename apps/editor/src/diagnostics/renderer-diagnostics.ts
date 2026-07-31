@@ -182,8 +182,9 @@ export function buildDiagnosticsAgentInstructions(connection: DiagnosticsConnect
     `- GET ${connection.baseUrl}/manifest`,
     `- GET ${connection.baseUrl}/context`,
     `- GET ${connection.baseUrl}/logs?after=0&limit=500`,
+    `- GET ${connection.baseUrl}/opencode/sessions`,
+    `- GET ${connection.baseUrl}/opencode/sessions/<url-encoded-session-id>/messages?limit=100`,
     'Poll logs using the returned nextCursor as the next after value.',
     'The token grants access to local editor/chat diagnostics until the user disables diagnostics or closes Tagma.',
   ].join('\n');
 }
-
