@@ -16,14 +16,19 @@ function requestUrl(path: string, params: Record<string, string>): string {
   return `${path}?${new URLSearchParams(params)}`;
 }
 
-function harness(responses: unknown[]) {
+function harness(
+  responses: unknown[],
+  options: {
+    handleCwd?: string;
+  } = {},
+) {
   const requestUrls: string[] = [];
   const dependencies: DiagnosticsOpencodeDependencies = {
     getWorkspace: () => ({ workDir: WORKSPACE_DIR }),
     getHandle: (cwd) => ({
       baseUrl: 'http://127.0.0.1:44001',
       pid: 123,
-      cwd,
+      cwd: options.handleCwd ?? cwd,
       auth: {
         username: 'tagma',
         password: 'internal-password',
@@ -62,6 +67,31 @@ describe('OpenCode diagnostics reader', () => {
     expect(JSON.stringify(result)).not.toContain('internal-credential');
   });
 
+  test('discovers a Windows workspace session when drive casing makes the scoped query miss', async () => {
+    const runtimeDirectory = 'c:\\case-sensitive-opencode\\.tagma';
+    const storedDirectory = 'C:\\CASE-SENSITIVE-OPENCODE\\.tagma\\';
+    const { dependencies, requestUrls } = harness(
+      [
+        [],
+        [
+          { id: 'chat-1', directory: storedDirectory },
+          { id: 'other-workspace-chat', directory: 'C:\\OTHER-WORKSPACE\\.tagma' },
+        ],
+      ],
+      { handleCwd: runtimeDirectory },
+    );
+
+    const result = (await readDiagnosticsOpencodeSessions(WORKSPACE_DIR, dependencies)) as {
+      sessions: Array<{ id: string }>;
+    };
+
+    expect(result.sessions.map((session) => session.id)).toEqual(['chat-1']);
+    expect(requestUrls).toEqual([
+      requestUrl('/session', { directory: runtimeDirectory, limit: '100' }),
+      requestUrl('/session', { roots: 'true', limit: '10000' }),
+    ]);
+  });
+
   test('reads messages only after verifying session membership in the scoped list', async () => {
     const { dependencies, requestUrls } = harness([
       [{ id: 'chat-1' }],
@@ -90,6 +120,35 @@ describe('OpenCode diagnostics reader', () => {
       before: 'message-9',
       messages: [{ info: { id: 'message-1' } }],
     });
+  });
+
+  test('reads messages for a discovered Windows session using its stored directory casing', async () => {
+    const runtimeDirectory = 'c:\\case-sensitive-opencode\\.tagma';
+    const storedDirectory = 'C:\\CASE-SENSITIVE-OPENCODE\\.tagma\\';
+    const { dependencies, requestUrls } = harness(
+      [
+        [],
+        [{ id: 'chat-1', directory: storedDirectory }],
+        [{ info: { id: 'message-1' }, parts: [] }],
+      ],
+      { handleCwd: runtimeDirectory },
+    );
+
+    await readDiagnosticsOpencodeMessages(
+      WORKSPACE_DIR,
+      'chat-1',
+      { limit: 25 },
+      dependencies,
+    );
+
+    expect(requestUrls).toEqual([
+      requestUrl('/session', { directory: runtimeDirectory, limit: '100' }),
+      requestUrl('/session', { roots: 'true', limit: '10000' }),
+      requestUrl('/session/chat-1/message', {
+        directory: storedDirectory,
+        limit: '25',
+      }),
+    ]);
   });
 
   test('rejects a session id outside the scoped list without requesting its messages', async () => {
