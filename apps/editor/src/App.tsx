@@ -3125,7 +3125,12 @@ export function App() {
   return (
     <>
       <AnimatePresence mode="wait">
-        {!workDir && !runActive && !pluginsActive && !usageActive && !settingsActive && !workflowViewActive ? (
+        {!workDir &&
+        !runActive &&
+        !pluginsActive &&
+        !usageActive &&
+        !settingsActive &&
+        !workflowViewActive ? (
           <motion.div
             key="welcome"
             className="h-full flex flex-col"
