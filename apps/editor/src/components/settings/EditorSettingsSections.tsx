@@ -438,13 +438,15 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
   );
 }
 
-/** Persistence locations + per-store saving indicators, shown at the bottom. */
+/**
+ * Persistence locations + per-store saving indicators. Rendered once as a
+ * pinned strip below the settings content, independent of the active category.
+ */
 export function SettingsStorageFooter({ controller }: { controller: EditorSettingsController }) {
   const { saving, pythonSaving, globalSaving } = controller;
   return (
-    <>
-      <div className="border-t border-tagma-border" />
-      <div className="space-y-0.5 text-[10px] text-tagma-muted font-mono">
+    <div className="shrink-0 border-t border-tagma-border bg-tagma-surface/25 px-4 py-2 sm:px-8">
+      <div className="mx-auto flex w-full max-w-[760px] flex-wrap items-center gap-x-6 gap-y-0.5 text-[10px] text-tagma-muted font-mono">
         <div>
           Global: <code>~/.tagma/global-settings.json</code>
           {globalSaving ? ' · saving…' : ''}
@@ -454,7 +456,7 @@ export function SettingsStorageFooter({ controller }: { controller: EditorSettin
           {saving || pythonSaving ? ' · saving…' : ''}
         </div>
       </div>
-    </>
+    </div>
   );
 }
 

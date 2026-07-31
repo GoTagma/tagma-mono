@@ -100,16 +100,18 @@ export function EditorSettingsPage({ workDir, onRegistryUpdate, onBack }: Editor
           </nav>
         </aside>
 
-        <section className="flex-1 min-h-0 overflow-y-auto">
-          <div className="mx-auto w-full max-w-[760px] px-4 py-5 sm:px-8">
-            <div className="pb-3 text-[9px] tracking-[0.22em] uppercase text-tagma-muted-dim">
-              {activeLabel}
-            </div>
-            <div className="space-y-4">
-              <EditorSettingsSections controller={controller} categories={[category]} />
-              <SettingsStorageFooter controller={controller} />
+        <section className="flex-1 min-h-0 flex flex-col">
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <div className="mx-auto w-full max-w-[760px] px-4 py-5 sm:px-8">
+              <div className="pb-3 text-[9px] tracking-[0.22em] uppercase text-tagma-muted-dim">
+                {activeLabel}
+              </div>
+              <div className="space-y-4">
+                <EditorSettingsSections controller={controller} categories={[category]} />
+              </div>
             </div>
           </div>
+          <SettingsStorageFooter controller={controller} />
         </section>
       </div>
 
