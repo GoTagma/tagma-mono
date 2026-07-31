@@ -8,7 +8,7 @@ describe('production diagnostics UI wiring', () => {
   test('starts the renderer diagnostics bridge with the editor', () => {
     const source = readFileSync(join(root, 'src/main.tsx'), 'utf8');
 
-    expect(source).toContain("import { startRendererDiagnosticsBridge }");
+    expect(source).toContain('import { startRendererDiagnosticsBridge }');
     expect(source).toContain('startRendererDiagnosticsBridge();');
   });
 

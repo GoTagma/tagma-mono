@@ -52,10 +52,7 @@ import {
   shouldBlockYamlEditLockMutation,
 } from './yaml-edit-lock.js';
 import { verifyTrialWitnessWorkerForBuild } from './chat-pipeline-trial-witness.js';
-import {
-  diagnosticsHub,
-  isDiagnosticsAgentPath,
-} from './diagnostics.js';
+import { diagnosticsHub, isDiagnosticsAgentPath } from './diagnostics.js';
 import { registerDiagnosticsRoutes } from './routes/diagnostics.js';
 
 const VERIFY_TRIAL_WITNESS_WORKER_ARG = '--verify-trial-witness-worker';

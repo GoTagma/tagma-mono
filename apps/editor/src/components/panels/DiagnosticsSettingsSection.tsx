@@ -62,11 +62,7 @@ export function DiagnosticsSettingsSection({
               disabled={!hasWorkspace || busy}
               className="flex items-center gap-1.5 border border-tagma-accent/50 px-2.5 py-1 text-[11px] text-tagma-accent transition-colors hover:bg-tagma-accent/10 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {busy ? (
-                <Loader2 size={11} className="animate-spin" />
-              ) : (
-                <Power size={11} />
-              )}
+              {busy ? <Loader2 size={11} className="animate-spin" /> : <Power size={11} />}
               {status?.enabled ? 'Enable for this workspace' : 'Enable diagnostics'}
             </button>
           )}
@@ -95,8 +91,8 @@ export function DiagnosticsSettingsSection({
         </div>
 
         <p className="text-[9px] leading-relaxed text-tagma-muted/80">
-          The random token is rotated each time diagnostics are enabled and is revoked when
-          disabled or when Tagma closes. It cannot call the editor's write APIs.
+          The random token is rotated each time diagnostics are enabled and is revoked when disabled
+          or when Tagma closes. It cannot call the editor's write APIs.
         </p>
       </div>
     </div>

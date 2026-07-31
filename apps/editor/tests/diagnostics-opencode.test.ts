@@ -36,14 +36,12 @@ describe('OpenCode diagnostics reader', () => {
       [{ id: 'chat-1', title: 'debug chat', password: 'must-not-leak' }],
     ]);
 
-    const result = (await readDiagnosticsOpencodeSessions(
-      'D:\\repo',
-      dependencies,
-    )) as Record<string, unknown>;
+    const result = (await readDiagnosticsOpencodeSessions('D:\\repo', dependencies)) as Record<
+      string,
+      unknown
+    >;
 
-    expect(requestUrls).toEqual([
-      '/session?directory=D%3A%5Crepo%5C.tagma&limit=100',
-    ]);
+    expect(requestUrls).toEqual(['/session?directory=D%3A%5Crepo%5C.tagma&limit=100']);
     expect(result).toMatchObject({
       workspaceKey: 'D:\\repo',
       runtime: { pid: 123, cwd: 'D:\\repo\\.tagma' },
@@ -107,9 +105,9 @@ describe('OpenCode diagnostics reader', () => {
       },
     };
 
-    await expect(
-      readDiagnosticsOpencodeSessions('D:\\repo', dependencies),
-    ).rejects.toMatchObject({ status: 409 });
+    await expect(readDiagnosticsOpencodeSessions('D:\\repo', dependencies)).rejects.toMatchObject({
+      status: 409,
+    });
     expect(fetchCalled).toBe(false);
   });
 });

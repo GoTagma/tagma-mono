@@ -588,9 +588,7 @@ export function resolveRuntimePaths(options: RuntimePathOptions): RuntimePaths {
         TAGMA_EDITOR_DIST_DIR: p.join(options.resourcesPath, 'editor-dist'),
         TAGMA_SIDECAR_ACTIVE_SOURCE: sidecarSource,
         ...(sidecarVersion ? { TAGMA_SIDECAR_ACTIVE_VERSION: sidecarVersion } : {}),
-        ...(options.desktopLogFile
-          ? { TAGMA_DESKTOP_LOG_FILE: options.desktopLogFile }
-          : {}),
+        ...(options.desktopLogFile ? { TAGMA_DESKTOP_LOG_FILE: options.desktopLogFile } : {}),
         // Sidecar reads these to power the OpenCode CLI section in Settings
         // (current install check, bundled-version display, update target dir).
         TAGMA_OPENCODE_BUNDLED_DIR: p.join(options.resourcesPath, 'opencode'),
@@ -658,9 +656,7 @@ export function resolveRuntimePaths(options: RuntimePathOptions): RuntimePaths {
       TAGMA_EDITOR_DIST_DIR: p.join(editorDir, 'dist'),
       TAGMA_SIDECAR_ACTIVE_SOURCE: 'dev',
       ...(sidecarVersion ? { TAGMA_SIDECAR_ACTIVE_VERSION: sidecarVersion } : {}),
-      ...(options.desktopLogFile
-        ? { TAGMA_DESKTOP_LOG_FILE: options.desktopLogFile }
-        : {}),
+      ...(options.desktopLogFile ? { TAGMA_DESKTOP_LOG_FILE: options.desktopLogFile } : {}),
       ...(sidecarVersion ? { TAGMA_SIDECAR_BUNDLED_VERSION: sidecarVersion } : {}),
       ...(editorUpdateChannel ? { TAGMA_SIDECAR_UPDATE_CHANNEL: editorUpdateChannel } : {}),
       ...(editorUpdateManifestBaseUrl

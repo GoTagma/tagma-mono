@@ -103,12 +103,12 @@ CLI or developer build.
 The copied handoff contains the loopback URL, a temporary bearer token, and the requests the agent
 should make. Put the token in `Authorization: Bearer <temporary-diagnostics-token>`, never in a URL.
 
-| Read-only endpoint                                                     | Contents                                                                 |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `GET /api/diagnostics/v1/manifest`                                     | Protocol, coverage, privacy notes, and endpoint discovery                |
-| `GET /api/diagnostics/v1/context`                                      | Editor/workspace/run state, renderer snapshot, and OpenCode runtime info |
+| Read-only endpoint                                                      | Contents                                                                 |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `GET /api/diagnostics/v1/manifest`                                      | Protocol, coverage, privacy notes, and endpoint discovery                |
+| `GET /api/diagnostics/v1/context`                                       | Editor/workspace/run state, renderer snapshot, and OpenCode runtime info |
 | `GET /api/diagnostics/v1/logs?after=<cursor>&limit=<1-1000>`            | Cursor logs plus the Electron `sidecar.log` tail                         |
-| `GET /api/diagnostics/v1/opencode/sessions`                            | Sessions scoped to the workspace's existing OpenCode process             |
+| `GET /api/diagnostics/v1/opencode/sessions`                             | Sessions scoped to the workspace's existing OpenCode process             |
 | `GET /api/diagnostics/v1/opencode/sessions/<id>/messages?limit=<1-200>` | Bounded history after verifying session ownership                        |
 
 The diagnostics token is independent from the sidecar management token, rotates on every enable,

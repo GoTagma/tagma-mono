@@ -1,8 +1,4 @@
-import {
-  api,
-  getClientWorkspace,
-  type DiagnosticsSessionStatus,
-} from '../api/client';
+import { api, getClientWorkspace, type DiagnosticsSessionStatus } from '../api/client';
 import { useChatStore } from '../store/chat-store';
 import { usePipelineStore } from '../store/pipeline-store';
 import { useRunStore } from '../store/run-store';
@@ -80,6 +76,7 @@ function recordRendererLog(level: DiagnosticLogLevel, args: unknown[]): void {
 }
 
 function installRendererLogCapture(): () => void {
+  const rendererConsole = console;
   const originals = new Map<ConsoleMethod, (...args: unknown[]) => void>();
   const methods: ReadonlyArray<[ConsoleMethod, DiagnosticLogLevel]> = [
     ['debug', 'debug'],
@@ -88,10 +85,10 @@ function installRendererLogCapture(): () => void {
     ['error', 'error'],
   ];
   for (const [method, level] of methods) {
-    const original = console[method] as (...args: unknown[]) => void;
+    const original = rendererConsole[method] as (...args: unknown[]) => void;
     originals.set(method, original);
-    console[method] = (...args: unknown[]) => {
-      Reflect.apply(original, console, args);
+    rendererConsole[method] = (...args: unknown[]) => {
+      Reflect.apply(original, rendererConsole, args);
       recordRendererLog(level, args);
     };
   }
@@ -113,7 +110,7 @@ function installRendererLogCapture(): () => void {
   window.addEventListener('unhandledrejection', onUnhandledRejection);
 
   return () => {
-    for (const [method, original] of originals) console[method] = original;
+    for (const [method, original] of originals) rendererConsole[method] = original;
     window.removeEventListener('error', onWindowError);
     window.removeEventListener('unhandledrejection', onUnhandledRejection);
   };

@@ -43,7 +43,6 @@ import type {
 } from '@tagma/types';
 import { participatesInWorkspaceRevisionSequence } from '../../shared/revision-routes.js';
 import type {
-  DiagnosticsConnection,
   DiagnosticsSessionStatus,
   RendererDiagnosticsReport,
 } from '../../shared/diagnostics.js';

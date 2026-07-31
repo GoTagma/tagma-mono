@@ -1,7 +1,4 @@
-import {
-  sanitizeDiagnosticValue,
-  type DiagnosticsConnection,
-} from '../../shared/diagnostics.js';
+import { sanitizeDiagnosticValue, type DiagnosticsConnection } from '../../shared/diagnostics.js';
 
 const MAX_CURRENT_CHAT_MESSAGES = 25;
 
@@ -43,8 +40,7 @@ function cleanPageHref(rawHref: string): string {
 }
 
 function backgroundSessionSummaries(chat: UnknownRecord): UnknownRecord[] {
-  const currentSessionId =
-    typeof chat.currentSessionId === 'string' ? chat.currentSessionId : null;
+  const currentSessionId = typeof chat.currentSessionId === 'string' ? chat.currentSessionId : null;
   const states = record(chat.sessionStates);
   return Object.entries(states)
     .filter(([sessionId]) => sessionId !== currentSessionId)
@@ -127,9 +123,7 @@ export function buildRendererDiagnosticsSnapshot(input: RendererDiagnosticsSnaps
         selectedTaskId: pipeline.selectedTaskId ?? null,
         selectedTaskIds: Array.isArray(pipeline.selectedTaskIds) ? pipeline.selectedTaskIds : [],
         selectedTrackId: pipeline.selectedTrackId ?? null,
-        validationErrors: Array.isArray(pipeline.validationErrors)
-          ? pipeline.validationErrors
-          : [],
+        validationErrors: Array.isArray(pipeline.validationErrors) ? pipeline.validationErrors : [],
         config: pipeline.config ?? null,
         undoDepth: Array.isArray(pipeline.past) ? pipeline.past.length : 0,
         redoDepth: Array.isArray(pipeline.future) ? pipeline.future.length : 0,

@@ -1,12 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import {
-  X,
-  AlertTriangle,
-  Loader2,
-  CheckCircle2,
-  RefreshCw,
-  Terminal,
-} from 'lucide-react';
+import { X, AlertTriangle, Loader2, CheckCircle2, RefreshCw, Terminal } from 'lucide-react';
 import {
   api,
   type ChatDirtyConflictPolicy,

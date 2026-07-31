@@ -83,15 +83,13 @@ function activeRunDiagnostics(ws: WorkspaceState): unknown[] {
 }
 
 function workflowRunDiagnostics(ws: WorkspaceState): unknown {
-  const raw = ws.workflowRunSession as
-    | {
-        graphRunId?: unknown;
-        startedAt?: unknown;
-        running?: unknown;
-        result?: unknown;
-        events?: unknown[];
-      }
-    | null;
+  const raw = ws.workflowRunSession as {
+    graphRunId?: unknown;
+    startedAt?: unknown;
+    running?: unknown;
+    result?: unknown;
+    events?: unknown[];
+  } | null;
   if (!raw) return null;
   return {
     graphRunId: raw.graphRunId ?? null,
@@ -114,7 +112,7 @@ export function buildDefaultDiagnosticsContext(
   hub: DiagnosticsHub,
   workspaceKey: string | null,
 ): unknown {
-  const ws = workspaceKey ? workspaceRegistry.get(workspaceKey) ?? null : null;
+  const ws = workspaceKey ? (workspaceRegistry.get(workspaceKey) ?? null) : null;
   const expectedOpencodeCwd = ws?.workDir ? resolve(join(ws.workDir, '.tagma')) : null;
   const opencode = getOpencodeRuntimeDiagnostics().filter(
     (runtime) => expectedOpencodeCwd === null || resolve(runtime.cwd) === expectedOpencodeCwd,
@@ -183,11 +181,10 @@ export function registerDiagnosticsRoutes(
 ): void {
   const hub = dependencies.hub ?? diagnosticsHub;
   const buildContext =
-    dependencies.buildContext ?? ((workspaceKey) => buildDefaultDiagnosticsContext(hub, workspaceKey));
-  const readOpencodeSessions =
-    dependencies.readOpencodeSessions ?? readDiagnosticsOpencodeSessions;
-  const readOpencodeMessages =
-    dependencies.readOpencodeMessages ?? readDiagnosticsOpencodeMessages;
+    dependencies.buildContext ??
+    ((workspaceKey) => buildDefaultDiagnosticsContext(hub, workspaceKey));
+  const readOpencodeSessions = dependencies.readOpencodeSessions ?? readDiagnosticsOpencodeSessions;
+  const readOpencodeMessages = dependencies.readOpencodeMessages ?? readDiagnosticsOpencodeMessages;
 
   app.get('/api/diagnostics/session', (req, res) => {
     res.json(hub.getStatus(requestOrigin(req)));
@@ -249,8 +246,7 @@ export function registerDiagnosticsRoutes(
         context: `${DIAGNOSTICS_AGENT_BASE_PATH}/context`,
         logs: `${DIAGNOSTICS_AGENT_BASE_PATH}/logs`,
         opencodeSessions: `${DIAGNOSTICS_AGENT_BASE_PATH}/opencode/sessions`,
-        opencodeMessages:
-          `${DIAGNOSTICS_AGENT_BASE_PATH}/opencode/sessions/{sessionId}/messages`,
+        opencodeMessages: `${DIAGNOSTICS_AGENT_BASE_PATH}/opencode/sessions/{sessionId}/messages`,
       },
       logPolling: {
         query: { after: 'cursor from the previous response', limit: '1-1000' },

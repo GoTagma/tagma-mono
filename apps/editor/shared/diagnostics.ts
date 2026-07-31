@@ -65,12 +65,29 @@ const SENSITIVE_KEYS = new Set([
   'tagmaauthtoken',
 ]);
 
+const SENSITIVE_KEY_SUFFIXES = [
+  'password',
+  'passwd',
+  'apikey',
+  'accesskey',
+  'secret',
+  'token',
+  'credential',
+  'credentials',
+  'cookie',
+  'privatekey',
+] as const;
+
 function normalizedKey(key: string): string {
   return key.replace(/[-_\s]/g, '').toLowerCase();
 }
 
 function sensitiveKey(key: string): boolean {
-  return SENSITIVE_KEYS.has(normalizedKey(key));
+  const normalized = normalizedKey(key);
+  return (
+    SENSITIVE_KEYS.has(normalized) ||
+    SENSITIVE_KEY_SUFFIXES.some((suffix) => normalized.endsWith(suffix))
+  );
 }
 
 /**
@@ -80,13 +97,14 @@ function sensitiveKey(key: string): boolean {
  */
 export function redactDiagnosticText(input: string): string {
   return input
-    .replace(
-      /(\bAuthorization\s*[:=]\s*)(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi,
-      '$1$2 [REDACTED]',
-    )
+    .replace(/(\bAuthorization\s*[:=]\s*)(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, '$1$2 [REDACTED]')
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 [REDACTED]')
     .replace(
       /(\b(?:[A-Za-z0-9_]*(?:API[_-]?KEY|PASSWORD|PASSWD|SECRET|ACCESS[_-]?TOKEN|REFRESH[_-]?TOKEN|CLIENT[_-]?SECRET|PRIVATE[_-]?KEY)[A-Za-z0-9_]*)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s&,;]+)/gi,
+      '$1[REDACTED]',
+    )
+    .replace(
+      /(\b(?:(?:[A-Za-z0-9_-]+[_-])?(?:TOKEN|CREDENTIALS?))\b\s*[:=]\s*)(?:\x22[^\x22]*\x22|'[^']*'|[^\s&,;]+)/gi,
       '$1[REDACTED]',
     )
     .replace(
@@ -134,13 +152,7 @@ function sanitizeInner(
     );
   }
   if (value instanceof Map) {
-    return sanitizeInner(
-      Array.from(value.entries()),
-      key,
-      depth,
-      options,
-      seen,
-    );
+    return sanitizeInner(Array.from(value.entries()), key, depth, options, seen);
   }
   if (value instanceof Set) {
     return sanitizeInner(Array.from(value.values()), key, depth, options, seen);
@@ -174,4 +186,3 @@ export function sanitizeDiagnosticValue(
   const resolved = { ...DEFAULT_OPTIONS, ...options };
   return sanitizeInner(value, null, 0, resolved, new WeakSet<object>()) ?? null;
 }
-

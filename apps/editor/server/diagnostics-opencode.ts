@@ -2,10 +2,7 @@ import { join } from 'node:path';
 
 import { redactDiagnosticText, sanitizeDiagnosticValue } from '../shared/diagnostics.js';
 import { getOpencodeHandle, type OpencodeHandle } from './opencode-lifecycle.js';
-import {
-  fetchOpencodeProxy,
-  type OpencodeProxyRequest,
-} from './opencode-proxy.js';
+import { fetchOpencodeProxy, type OpencodeProxyRequest } from './opencode-proxy.js';
 import { workspaceRegistry } from './workspace-registry.js';
 
 const MAX_OPENCODE_DIAGNOSTICS_BYTES = 4 * 1024 * 1024;
@@ -61,10 +58,7 @@ function requireLiveOpencode(
 async function readBoundedText(response: Response): Promise<string> {
   if (!response.body) return '';
   const declaredLength = Number(response.headers.get('content-length'));
-  if (
-    Number.isFinite(declaredLength) &&
-    declaredLength > MAX_OPENCODE_DIAGNOSTICS_BYTES
-  ) {
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_OPENCODE_DIAGNOSTICS_BYTES) {
     throw new DiagnosticsReadError(
       502,
       `OpenCode diagnostics response exceeds ${MAX_OPENCODE_DIAGNOSTICS_BYTES} bytes.`,
@@ -88,7 +82,10 @@ async function readBoundedText(response: Response): Promise<string> {
     }
     chunks.push(value);
   }
-  return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)), total).toString('utf8');
+  return Buffer.concat(
+    chunks.map((chunk) => Buffer.from(chunk)),
+    total,
+  ).toString('utf8');
 }
 
 async function requestOpencodeJson(

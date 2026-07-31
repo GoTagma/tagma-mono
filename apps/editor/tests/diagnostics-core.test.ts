@@ -6,10 +6,7 @@ import {
   diagnosticsAgentAuthorization,
   isDiagnosticsAgentPath,
 } from '../server/diagnostics.js';
-import {
-  redactDiagnosticText,
-  sanitizeDiagnosticValue,
-} from '../shared/diagnostics.js';
+import { redactDiagnosticText, sanitizeDiagnosticValue } from '../shared/diagnostics.js';
 
 describe('diagnostics value sanitizing', () => {
   test('redacts credential fields and credential-shaped text without hiding token counts', () => {
@@ -17,10 +14,13 @@ describe('diagnostics value sanitizing', () => {
       authorization: 'Bearer super-secret-bearer',
       password: 'hunter2',
       apiKey: 'sk-proj-abcdefghijklmnopqrstuvwxyz',
+      futureFeatureToken: 'future-feature-session-token',
+      pluginCredential: 'future-feature-credential',
       tokensIn: 123,
+      tokenCount: 456,
       nested: {
         message:
-          'Authorization: Basic dGFnbWE6c2VjcmV0 and OPENAI_API_KEY=sk-proj-abcdefghijklmnopqrstuvwxyz',
+          'Authorization: Basic dGFnbWE6c2VjcmV0 and OPENAI_API_KEY=sk-proj-abcdefghijklmnopqrstuvwxyz and token=future-token',
       },
     });
 
@@ -28,9 +28,13 @@ describe('diagnostics value sanitizing', () => {
       authorization: '[REDACTED]',
       password: '[REDACTED]',
       apiKey: '[REDACTED]',
+      futureFeatureToken: '[REDACTED]',
+      pluginCredential: '[REDACTED]',
       tokensIn: 123,
+      tokenCount: 456,
       nested: {
-        message: 'Authorization: Basic [REDACTED] and OPENAI_API_KEY=[REDACTED]',
+        message:
+          'Authorization: Basic [REDACTED] and OPENAI_API_KEY=[REDACTED] and token=[REDACTED]',
       },
     });
   });
@@ -164,9 +168,7 @@ describe('temporary diagnostics sessions', () => {
       },
     ]);
     expect(
-      hub
-        .readLogs(0, 10)
-        .entries.find((entry) => entry.source === 'renderer.error')?.message,
+      hub.readLogs(0, 10).entries.find((entry) => entry.source === 'renderer.error')?.message,
     ).toBe('renderer failed with password=[REDACTED]');
   });
 });
@@ -199,9 +201,9 @@ describe('diagnostics agent authorization boundary', () => {
         'Bearer debug-token',
       ),
     ).toEqual({ kind: 'rejected', status: 405, error: 'Diagnostics agent API is read-only.' });
-    expect(
-      diagnosticsAgentAuthorization(hub, '/api/state', 'GET', 'Bearer debug-token'),
-    ).toEqual({ kind: 'not-diagnostics' });
+    expect(diagnosticsAgentAuthorization(hub, '/api/state', 'GET', 'Bearer debug-token')).toEqual({
+      kind: 'not-diagnostics',
+    });
     expect(
       diagnosticsAgentAuthorization(
         hub,

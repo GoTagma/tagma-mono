@@ -1,7 +1,4 @@
-import {
-  sanitizeDiagnosticValue,
-  type DiagnosticsSanitizeOptions,
-} from './diagnostics.js';
+import { sanitizeDiagnosticValue, type DiagnosticsSanitizeOptions } from './diagnostics.js';
 
 export type DiagnosticsContributor<TContext> = (context: TContext) => unknown;
 

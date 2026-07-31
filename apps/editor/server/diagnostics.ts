@@ -160,7 +160,9 @@ export class DiagnosticsHub {
 
   readLogs(afterCursor = 0, limit = 500): DiagnosticLogPage {
     const boundedAfter = Number.isFinite(afterCursor) ? Math.max(0, Math.trunc(afterCursor)) : 0;
-    const boundedLimit = Number.isFinite(limit) ? Math.min(1_000, Math.max(1, Math.trunc(limit))) : 500;
+    const boundedLimit = Number.isFinite(limit)
+      ? Math.min(1_000, Math.max(1, Math.trunc(limit)))
+      : 500;
     const oldestCursor = this.logs[0]?.cursor ?? null;
     const entries = this.logs
       .filter((entry) => entry.cursor > boundedAfter)

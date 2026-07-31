@@ -33,11 +33,7 @@ class FakeResponse {
   }
 }
 
-function request(
-  method: string,
-  path: string,
-  overrides: Partial<FakeRequest> = {},
-): FakeRequest {
+function request(method: string, path: string, overrides: Partial<FakeRequest> = {}): FakeRequest {
   const headers = overrides.headers ?? {};
   return {
     method,
