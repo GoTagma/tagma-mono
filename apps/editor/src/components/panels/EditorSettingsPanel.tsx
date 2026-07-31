@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { X, AlertTriangle, Loader2, CheckCircle2, RefreshCw, Terminal } from 'lucide-react';
+import {
+  X,
+  AlertTriangle,
+  Loader2,
+  CheckCircle2,
+  RefreshCw,
+  Terminal,
+} from 'lucide-react';
 import {
   api,
   type ChatDirtyConflictPolicy,
+  type DiagnosticsSessionStatus,
   type EditorSettings,
   type EditorViewMode,
   type GlobalSettings,
@@ -13,6 +21,8 @@ import {
   type PythonInstallPlan,
 } from '../../api/client';
 import { restartOpencodeForConfig } from '../../api/opencode-chat';
+import { buildDiagnosticsAgentInstructions } from '../../diagnostics/renderer-diagnostics';
+import { refreshRendererDiagnosticsBridge } from '../../diagnostics/renderer-diagnostics-bridge';
 import { useEditorSettingsStore } from '../../store/editor-settings-store';
 import { useYamlEditLockStore } from '../../store/yaml-edit-lock-store';
 import { useModalFocusTrap } from '../../hooks/use-modal-focus-trap';
@@ -31,6 +41,7 @@ import {
   createEditorSettingsSaveQueue,
   type EditorSettingsSaveQueue,
 } from './editor-settings-save-queue';
+import { DiagnosticsSettingsSection } from './DiagnosticsSettingsSection';
 
 interface EditorSettingsPanelProps {
   workDir: string;
@@ -87,6 +98,9 @@ export function EditorSettingsPanel({
   const [installVersion, setInstallVersion] = useState('3.13');
   const [installPlan, setInstallPlan] = useState<PythonInstallPlan | null>(null);
   const [pythonStatus, setPythonStatus] = useState<PythonWizardStatus>({ kind: 'idle' });
+  const [diagnosticsStatus, setDiagnosticsStatus] = useState<DiagnosticsSessionStatus | null>(null);
+  const [diagnosticsBusy, setDiagnosticsBusy] = useState(false);
+  const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
   const mountedRef = useRef(true);
   const globalSavingRef = useRef(false);
   const workspaceSavingRef = useRef(false);
@@ -175,6 +189,27 @@ export function EditorSettingsPanel({
     };
   }, [settingsSaveQueue]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void api
+      .getDiagnosticsSession()
+      .then((status) => {
+        if (!cancelled) setDiagnosticsStatus(status);
+      })
+      .catch((loadError) => {
+        if (!cancelled) {
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : 'Failed to load coding agent diagnostics status',
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [workDir]);
+
   const updateField = <K extends keyof EditorSettings>(key: K, value: EditorSettings[K]) => {
     if (!settings || globalSavingRef.current) return;
     if (!hasWorkspace) {
@@ -183,6 +218,64 @@ export function EditorSettingsPanel({
     }
     setError(null);
     settingsSaveQueue.update(key, value);
+  };
+
+  const enableDiagnostics = async () => {
+    if (!hasWorkspace || diagnosticsBusy) return;
+    setDiagnosticsBusy(true);
+    setDiagnosticsCopied(false);
+    setError(null);
+    try {
+      const status = await api.enableDiagnosticsSession();
+      setDiagnosticsStatus(status);
+      await refreshRendererDiagnosticsBridge();
+    } catch (enableError) {
+      setError(
+        enableError instanceof Error
+          ? enableError.message
+          : 'Failed to enable coding agent diagnostics',
+      );
+    } finally {
+      setDiagnosticsBusy(false);
+    }
+  };
+
+  const disableDiagnostics = async () => {
+    if (diagnosticsBusy) return;
+    setDiagnosticsBusy(true);
+    setDiagnosticsCopied(false);
+    setError(null);
+    try {
+      const status = await api.disableDiagnosticsSession();
+      setDiagnosticsStatus(status);
+      await refreshRendererDiagnosticsBridge();
+    } catch (disableError) {
+      setError(
+        disableError instanceof Error
+          ? disableError.message
+          : 'Failed to disable coding agent diagnostics',
+      );
+    } finally {
+      setDiagnosticsBusy(false);
+    }
+  };
+
+  const copyDiagnosticsConnection = async () => {
+    if (!diagnosticsStatus?.enabled) return;
+    setError(null);
+    try {
+      await navigator.clipboard.writeText(
+        buildDiagnosticsAgentInstructions(diagnosticsStatus.connection),
+      );
+      setDiagnosticsCopied(true);
+      window.setTimeout(() => {
+        if (mountedRef.current) setDiagnosticsCopied(false);
+      }, 2_000);
+    } catch (copyError) {
+      setError(
+        copyError instanceof Error ? copyError.message : 'Failed to copy diagnostics connection',
+      );
+    }
   };
 
   const parsedAgentMaxSteps =
@@ -518,6 +611,17 @@ export function EditorSettingsPanel({
               </div>
             </div>
           )}
+
+          <DiagnosticsSettingsSection
+            status={diagnosticsStatus}
+            busy={diagnosticsBusy}
+            copied={diagnosticsCopied}
+            hasWorkspace={hasWorkspace}
+            currentWorkspace={workDir}
+            onEnable={() => void enableDiagnostics()}
+            onDisable={() => void disableDiagnostics()}
+            onCopy={() => void copyDiagnosticsConnection()}
+          />
 
           {settings && (
             <>

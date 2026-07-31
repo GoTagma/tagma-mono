@@ -248,4 +248,40 @@ describe('diagnostics routes', () => {
     expect(res.body).toEqual({ error: 'Open a workspace before enabling diagnostics.' });
     expect(hub.getStatus('http://127.0.0.1:43123')).toEqual({ enabled: false });
   });
+
+  test('rejects renderer reports from a different workspace window', async () => {
+    const hub = new DiagnosticsHub({ tokenFactory: () => 'debug-token' });
+    const routes = harness(hub);
+    const enabledWorkspace = new WorkspaceState('D:\\repo-a');
+    enabledWorkspace.workDir = 'D:\\repo-a';
+    const otherWorkspace = new WorkspaceState('D:\\repo-b');
+    otherWorkspace.workDir = 'D:\\repo-b';
+
+    await routes.route('POST', '/api/diagnostics/session')(
+      request('POST', '/api/diagnostics/session', { workspace: enabledWorkspace }),
+      new FakeResponse(),
+      () => {},
+    );
+
+    const response = new FakeResponse();
+    await routes.route('POST', '/api/diagnostics/renderer')(
+      request('POST', '/api/diagnostics/renderer', {
+        workspace: otherWorkspace,
+        body: {
+          instanceId: 'other-window',
+          capturedAt: 123,
+          snapshot: { chat: { currentSessionId: 'should-not-leak' } },
+          logs: [],
+        },
+      }),
+      response,
+      () => {},
+    );
+
+    expect(response.statusCode).toBe(409);
+    expect(response.body).toEqual({
+      error: 'Diagnostics are enabled for a different workspace.',
+    });
+    expect(hub.getRendererReports()).toEqual([]);
+  });
 });
