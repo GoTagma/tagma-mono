@@ -140,6 +140,9 @@ describeOrSkip('POST /api/release/update', () => {
     sidecarUserDir = mkdtempSync(join(tmpdir(), 'rr-sidecar-'));
     opencodeUserDir = mkdtempSync(join(tmpdir(), 'rr-opencode-'));
     srvDir = mkdtempSync(join(tmpdir(), 'rr-srv-'));
+    process.env.TAGMA_EDITOR_BUNDLED_VERSION = '1.0.0';
+    process.env.TAGMA_SIDECAR_BUNDLED_VERSION = '1.0.0';
+    process.env.TAGMA_SIDECAR_ACTIVE_VERSION = '1.0.0';
 
     const src = mkdtempSync(join(tmpdir(), 'rr-src-'));
     writeFileSync(join(src, 'index.html'), '<!doctype html>');
@@ -206,6 +209,9 @@ describeOrSkip('POST /api/release/update', () => {
     delete process.env.TAGMA_OPENCODE_USER_DIR;
     delete process.env.TAGMA_EDITOR_UPDATE_MANIFEST_BASE_URL;
     delete process.env.TAGMA_EDITOR_UPDATE_CHANNEL;
+    delete process.env.TAGMA_EDITOR_BUNDLED_VERSION;
+    delete process.env.TAGMA_SIDECAR_BUNDLED_VERSION;
+    delete process.env.TAGMA_SIDECAR_ACTIVE_VERSION;
   });
 
   test('runs bundle-update and returns all component versions on success', async () => {
