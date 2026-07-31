@@ -10,6 +10,7 @@ import { EditorSettingsPanel } from './components/panels/EditorSettingsPanel';
 import { SecretsManagerPanel } from './components/panels/SecretsManagerPanel';
 import { PluginsPage } from './components/plugins/PluginsPage';
 import { UsagePage } from './components/usage/UsagePage';
+import { EditorSettingsPage } from './components/settings/EditorSettingsPage';
 import { FileExplorer, type FileExplorerMode } from './components/FileExplorer';
 import { WelcomePage } from './components/WelcomePage';
 import { PipelinePicker } from './components/PipelinePicker';
@@ -280,6 +281,9 @@ export function App() {
   const usageActive = usePipelineStore((s) => s.usageActive);
   const showUsagePage = usePipelineStore((s) => s.showUsagePage);
   const hideUsagePage = usePipelineStore((s) => s.hideUsagePage);
+  const settingsActive = usePipelineStore((s) => s.settingsActive);
+  const showSettingsPage = usePipelineStore((s) => s.showSettingsPage);
+  const hideSettingsPage = usePipelineStore((s) => s.hideSettingsPage);
   const setPipelineName = usePipelineStore((s) => s.setPipelineName);
   const updatePipelineFields = usePipelineStore((s) => s.updatePipelineFields);
   const addTrack = usePipelineStore((s) => s.addTrack);
@@ -2983,7 +2987,11 @@ export function App() {
       {
         label: 'Settings',
         items: [
-          { label: 'Editor Settings', onAction: () => setShowEditorSettings(true) },
+          { label: 'Editor Settings', onAction: () => showSettingsPage() },
+          {
+            label: 'Editor Settings (Classic)...',
+            onAction: () => setShowEditorSettings(true),
+          },
           { label: 'Secrets Manager...', onAction: () => setShowSecretsManager(true) },
         ],
       },
@@ -3002,6 +3010,7 @@ export function App() {
     handleSaveAs,
     handleShowWorkflows,
     showRunHistory,
+    showSettingsPage,
     workspaceItems,
     workDir,
   ]);
@@ -3122,7 +3131,7 @@ export function App() {
   return (
     <>
       <AnimatePresence mode="wait">
-        {!workDir && !runActive && !pluginsActive && !usageActive && !workflowViewActive ? (
+        {!workDir && !runActive && !pluginsActive && !usageActive && !settingsActive && !workflowViewActive ? (
           <motion.div
             key="welcome"
             className="h-full flex flex-col"
@@ -3144,6 +3153,7 @@ export function App() {
           !runActive &&
           !pluginsActive &&
           !usageActive &&
+          !settingsActive &&
           !workflowViewActive ? (
           <motion.div
             key="picker"
@@ -3258,6 +3268,25 @@ export function App() {
           >
             <div className="flex-1 min-h-0">
               <UsagePage onBack={hideUsagePage} />
+            </div>
+            <VersionStatusBar />
+            <ErrorToast />
+          </motion.div>
+        ) : settingsActive ? (
+          <motion.div
+            key="settings"
+            className="h-full flex flex-col"
+            initial={{ opacity: 0, x: 40 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -40 }}
+            transition={VIEW_TRANSITION}
+          >
+            <div className="flex-1 min-h-0">
+              <EditorSettingsPage
+                workDir={workDir}
+                onRegistryUpdate={setRegistry}
+                onBack={hideSettingsPage}
+              />
             </div>
             <VersionStatusBar />
             <ErrorToast />

@@ -1837,6 +1837,9 @@ export const usePipelineStore = create<PipelineState>((set, _get) => {
     showUsagePage: () => set({ usageActive: true }),
     hideUsagePage: () => set({ usageActive: false }),
 
+    showSettingsPage: () => set({ settingsActive: true }),
+    hideSettingsPage: () => set({ settingsActive: false }),
+
     autoSyncAllBindings: async (source: YamlPreviewChangeSource | null = 'editor', opts) => {
       // Chat-driven reconcile holds the YAML edit lock while it runs the
       // post-turn binding autosync. Routing through `withOptionalYamlEditLockBypass`

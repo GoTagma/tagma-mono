@@ -3,10 +3,15 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 describe('Editor Settings panel responsiveness', () => {
-  const source = readFileSync(
+  // The settings UI is split across the modal shell, the shared controller,
+  // and the shared sections; assert against all three joined.
+  const source = [
     join(import.meta.dir, '..', 'src', 'components', 'panels', 'EditorSettingsPanel.tsx'),
-    'utf8',
-  );
+    join(import.meta.dir, '..', 'src', 'components', 'settings', 'use-editor-settings-controller.tsx'),
+    join(import.meta.dir, '..', 'src', 'components', 'settings', 'EditorSettingsSections.tsx'),
+  ]
+    .map((path) => readFileSync(path, 'utf8'))
+    .join('\n');
 
   test('uses a wider desktop dialog', () => {
     expect(source).toContain('max-w-[680px]');

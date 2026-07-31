@@ -18,7 +18,11 @@ import {
 } from '../../../shared/chat-pipeline-repair-limit.js';
 
 import { DiagnosticsSettingsSection } from '../panels/DiagnosticsSettingsSection';
-import type { ApplyStatus, EditorSettingsController } from './use-editor-settings-controller';
+import type {
+  ApplyStatus,
+  EditorSettingsController,
+  PythonChoice,
+} from './use-editor-settings-controller';
 
 /**
  * Settings categories drive the page sidebar (settings/EditorSettingsPage.tsx)
@@ -63,7 +67,6 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
     declared,
     loading,
     saving,
-    pythonSaving,
     globalSaving,
     error,
     applyStatus,
@@ -253,9 +256,9 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
                 className="w-16 px-1 py-0.5 bg-tagma-surface border border-tagma-border text-tagma-text disabled:opacity-50"
               />
               <span className="text-tagma-muted/70">
-                0 = off; default {DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS}; compile and
-                executed-trial repair budget; it does not run the pipeline this many times.
-                Trial-plan authoring is separately limited to two attempts per YAML revision.
+                0 = off; default {DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS}; compile and executed-trial
+                repair budget; it does not run the pipeline this many times. Trial-plan authoring is
+                separately limited to two attempts per YAML revision.
               </span>
             </div>
             <ToggleRow
@@ -691,7 +694,9 @@ function DeclaredPreview({ declared }: { declared: PluginDeclaredResult | null }
                   ? 'text-tagma-success border-tagma-success/40 bg-tagma-success/5'
                   : 'text-tagma-warning border-tagma-warning/40 bg-tagma-warning/5')
               }
-              title={isInstalled ? 'Installed' : 'Missing — click Install / Load Plugins to install'}
+              title={
+                isInstalled ? 'Installed' : 'Missing — click Install / Load Plugins to install'
+              }
             >
               {name}
             </span>

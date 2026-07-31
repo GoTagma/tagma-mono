@@ -15,6 +15,10 @@ describe('production diagnostics UI wiring', () => {
   test('settings exposes explicit enable, revoke, and coding-agent handoff actions', () => {
     const source = [
       readFileSync(join(root, 'src/components/panels/EditorSettingsPanel.tsx'), 'utf8'),
+      readFileSync(
+        join(root, 'src/components/settings/use-editor-settings-controller.tsx'),
+        'utf8',
+      ),
       readFileSync(join(root, 'src/components/panels/DiagnosticsSettingsSection.tsx'), 'utf8'),
     ].join('\n');
 

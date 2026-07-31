@@ -5,7 +5,7 @@ import { join } from 'node:path';
 describe('Editor Settings OpenCode Chat trial-run controls', () => {
   test('renders the repair limit next to the trial-run toggle and persists both settings', () => {
     const source = readFileSync(
-      join(import.meta.dir, '..', 'src', 'components', 'panels', 'EditorSettingsPanel.tsx'),
+      join(import.meta.dir, '..', 'src', 'components', 'settings', 'EditorSettingsSections.tsx'),
       'utf8',
     );
 
