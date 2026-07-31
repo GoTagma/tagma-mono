@@ -102,7 +102,7 @@ export function MarketplacePanel({
               </button>
               in a moment.
             </div>
-            <pre className="mt-2 px-2 py-1.5 bg-black/50 border border-tagma-warning/20 text-tagma-warning/90 text-[9px] font-mono whitespace-pre-wrap break-words max-h-16 overflow-y-auto">
+            <pre className="mt-2 px-2 py-1.5 bg-tagma-bg border border-tagma-warning/20 text-tagma-warning/90 text-[9px] font-mono whitespace-pre-wrap break-words max-h-16 overflow-y-auto">
               {upstreamWarning}
             </pre>
           </div>
@@ -432,7 +432,7 @@ function ActionBanner({ state, onDismiss }: { state: PluginActionState; onDismis
             <div className="mt-1 text-[10px] text-tagma-muted-dim leading-relaxed">
               {errorHint(state.kind)}
             </div>
-            <pre className="mt-2 px-2 py-1.5 bg-black/50 border border-tagma-error/20 text-tagma-error/90 text-[9px] font-mono whitespace-pre-wrap break-words max-h-32 overflow-y-auto">
+            <pre className="mt-2 px-2 py-1.5 bg-tagma-bg border border-tagma-error/20 text-tagma-error/90 text-[9px] font-mono whitespace-pre-wrap break-words max-h-32 overflow-y-auto">
               {state.message}
             </pre>
           </>

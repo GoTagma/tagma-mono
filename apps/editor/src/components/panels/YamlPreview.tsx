@@ -38,8 +38,8 @@ function revertTitle(block: YamlPreviewBlock): string {
 }
 
 function lineClass(line: YamlDiffLine): string {
-  if (line.kind === 'add') return 'bg-emerald-500/10 text-emerald-300';
-  if (line.kind === 'remove') return 'bg-red-500/10 text-red-300';
+  if (line.kind === 'add') return 'bg-tagma-success/10 text-tagma-success';
+  if (line.kind === 'remove') return 'bg-tagma-error/10 text-tagma-error';
   return 'text-tagma-text/70';
 }
 
@@ -145,7 +145,7 @@ function segmentTitle(rows: FullYamlPreviewRow[], segment: YamlChangeSegment): s
 }
 
 function segmentColor(segment: YamlChangeSegment): string {
-  return segment.kind === 'add' ? 'bg-emerald-500/80' : 'bg-red-500/80';
+  return segment.kind === 'add' ? 'bg-tagma-success/80' : 'bg-tagma-error/80';
 }
 
 export function YamlPreview({

@@ -256,70 +256,68 @@ export function yamlEditLockRunBlockMessage(
 
 export function App() {
   const desktopMode = hasDesktopBridge();
-  const {
-    config,
-    positions,
-    selectedTaskId,
-    selectedTaskIds,
-    selectedTrackId,
-    pinnedTaskId,
-    pinnedTrackId,
-    validationErrors,
-    dagEdges,
-    yamlPath,
-    yamlMtimeMs,
-    workDir,
-    hostPlatform,
-    isDirty,
-    layoutDirty,
-    loading,
-    registry,
-    yamlPreviewBlocks,
-    pluginsActive,
-    showPluginsPage,
-    hidePluginsPage,
-    usageActive,
-    showUsagePage,
-    hideUsagePage,
-    setPipelineName,
-    updatePipelineFields,
-    addTrack,
-    renameTrack,
-    updateTrackFields,
-    deleteTrack,
-    moveTrackTo,
-    addTask,
-    updateTask,
-    deleteTask,
-    transferTaskToTrack,
-    addDependency,
-    removeDependency,
-    selectTask,
-    toggleTaskSelection,
-    selectTrack,
-    pinTask,
-    unpinTask,
-    pinTrack,
-    unpinTrack,
-    setTaskPosition,
-    setTrackHeight,
-    setRegistry,
-    refreshServerState,
-    resetYamlPreviewBaseline,
-    revertYamlPreviewBlock,
-    setWorkDir,
-    saveFile,
-    saveFileAs,
-    flushPendingLocalEdits,
-    newPipeline,
-    importFile,
-    exportFile,
-    exportPlatformFile,
-    openFile,
-    init,
-    restoreDraft,
-    clearWorkspace,
-  } = usePipelineStore();
+  const config = usePipelineStore((s) => s.config);
+  const positions = usePipelineStore((s) => s.positions);
+  const selectedTaskId = usePipelineStore((s) => s.selectedTaskId);
+  const selectedTaskIds = usePipelineStore((s) => s.selectedTaskIds);
+  const selectedTrackId = usePipelineStore((s) => s.selectedTrackId);
+  const pinnedTaskId = usePipelineStore((s) => s.pinnedTaskId);
+  const pinnedTrackId = usePipelineStore((s) => s.pinnedTrackId);
+  const validationErrors = usePipelineStore((s) => s.validationErrors);
+  const dagEdges = usePipelineStore((s) => s.dagEdges);
+  const yamlPath = usePipelineStore((s) => s.yamlPath);
+  const yamlMtimeMs = usePipelineStore((s) => s.yamlMtimeMs);
+  const workDir = usePipelineStore((s) => s.workDir);
+  const hostPlatform = usePipelineStore((s) => s.hostPlatform);
+  const isDirty = usePipelineStore((s) => s.isDirty);
+  const layoutDirty = usePipelineStore((s) => s.layoutDirty);
+  const loading = usePipelineStore((s) => s.loading);
+  const registry = usePipelineStore((s) => s.registry);
+  const yamlPreviewBlocks = usePipelineStore((s) => s.yamlPreviewBlocks);
+  const pluginsActive = usePipelineStore((s) => s.pluginsActive);
+  const showPluginsPage = usePipelineStore((s) => s.showPluginsPage);
+  const hidePluginsPage = usePipelineStore((s) => s.hidePluginsPage);
+  const usageActive = usePipelineStore((s) => s.usageActive);
+  const showUsagePage = usePipelineStore((s) => s.showUsagePage);
+  const hideUsagePage = usePipelineStore((s) => s.hideUsagePage);
+  const setPipelineName = usePipelineStore((s) => s.setPipelineName);
+  const updatePipelineFields = usePipelineStore((s) => s.updatePipelineFields);
+  const addTrack = usePipelineStore((s) => s.addTrack);
+  const renameTrack = usePipelineStore((s) => s.renameTrack);
+  const updateTrackFields = usePipelineStore((s) => s.updateTrackFields);
+  const deleteTrack = usePipelineStore((s) => s.deleteTrack);
+  const moveTrackTo = usePipelineStore((s) => s.moveTrackTo);
+  const addTask = usePipelineStore((s) => s.addTask);
+  const updateTask = usePipelineStore((s) => s.updateTask);
+  const deleteTask = usePipelineStore((s) => s.deleteTask);
+  const transferTaskToTrack = usePipelineStore((s) => s.transferTaskToTrack);
+  const addDependency = usePipelineStore((s) => s.addDependency);
+  const removeDependency = usePipelineStore((s) => s.removeDependency);
+  const selectTask = usePipelineStore((s) => s.selectTask);
+  const toggleTaskSelection = usePipelineStore((s) => s.toggleTaskSelection);
+  const selectTrack = usePipelineStore((s) => s.selectTrack);
+  const pinTask = usePipelineStore((s) => s.pinTask);
+  const unpinTask = usePipelineStore((s) => s.unpinTask);
+  const pinTrack = usePipelineStore((s) => s.pinTrack);
+  const unpinTrack = usePipelineStore((s) => s.unpinTrack);
+  const setTaskPosition = usePipelineStore((s) => s.setTaskPosition);
+  const setTrackHeight = usePipelineStore((s) => s.setTrackHeight);
+  const setRegistry = usePipelineStore((s) => s.setRegistry);
+  const refreshServerState = usePipelineStore((s) => s.refreshServerState);
+  const resetYamlPreviewBaseline = usePipelineStore((s) => s.resetYamlPreviewBaseline);
+  const revertYamlPreviewBlock = usePipelineStore((s) => s.revertYamlPreviewBlock);
+  const setWorkDir = usePipelineStore((s) => s.setWorkDir);
+  const saveFile = usePipelineStore((s) => s.saveFile);
+  const saveFileAs = usePipelineStore((s) => s.saveFileAs);
+  const flushPendingLocalEdits = usePipelineStore((s) => s.flushPendingLocalEdits);
+  const newPipeline = usePipelineStore((s) => s.newPipeline);
+  const importFile = usePipelineStore((s) => s.importFile);
+  const exportFile = usePipelineStore((s) => s.exportFile);
+  const exportPlatformFile = usePipelineStore((s) => s.exportPlatformFile);
+  const openFile = usePipelineStore((s) => s.openFile);
+  const init = usePipelineStore((s) => s.init);
+  const restoreDraft = usePipelineStore((s) => s.restoreDraft);
+  const clearWorkspace = usePipelineStore((s) => s.clearWorkspace);
 
   const yamlEditLocked = useYamlEditLockStore((s) => s.active);
   const yamlEditLockLocal = useYamlEditLockStore((s) => s.local);
@@ -330,14 +328,12 @@ export function App() {
   const chatFlushing = useChatStore((s) => s.flushing);
   const activeChatYamlLifecycle = useChatStore((s) => s.activeChatYamlLifecycle);
 
-  const {
-    active: runActive,
-    status: runStatus,
-    startRun,
-    reset: resetRun,
-    minimizeView: minimizeRun,
-    showHistoryView: showRunHistory,
-  } = useRunStore();
+  const runActive = useRunStore((s) => s.active);
+  const runStatus = useRunStore((s) => s.status);
+  const startRun = useRunStore((s) => s.startRun);
+  const resetRun = useRunStore((s) => s.reset);
+  const minimizeRun = useRunStore((s) => s.minimizeView);
+  const showRunHistory = useRunStore((s) => s.showHistoryView);
 
   useEffect(() => {
     useYamlEditLockStore.getState().syncActiveYamlPath(yamlPath);

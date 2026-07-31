@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { normalizeWorkspaceKey } from '../server/workspace-registry.js';
 
 const editorRoot = join(import.meta.dir, '..');
+const compiledSidecarBin = process.env.TAGMA_DIAGNOSTICS_SIDECAR_BIN?.trim();
 
 async function waitForReady(proc: ReturnType<typeof Bun.spawn>, output: string[]): Promise<number> {
   return new Promise<number>((resolve, reject) => {
@@ -59,7 +60,10 @@ test('real sidecar exposes only the temporary read-only diagnostics protocol', a
   const output: string[] = [];
   const managementToken = 'management-token-for-e2e';
   let origin: string | null = null;
-  const proc = Bun.spawn([process.execPath, join(editorRoot, 'server/index.ts')], {
+  const sidecarCommand = compiledSidecarBin
+    ? [compiledSidecarBin]
+    : [process.execPath, join(editorRoot, 'server/index.ts')];
+  const proc = Bun.spawn(sidecarCommand, {
     cwd: editorRoot,
     env: {
       ...process.env,

@@ -77,7 +77,7 @@ export function ApprovalDialog({ request, onApprove, onReject, config }: Approva
     <div className="modal-viewport-backdrop absolute inset-0 z-30 flex items-center justify-center bg-black/40">
       <div
         ref={modalRef}
-        className="modal-viewport-shell flex w-full max-w-[480px] flex-col border border-tagma-border bg-tagma-surface shadow-xl"
+        className="modal-viewport-shell flex w-full max-w-[480px] flex-col border border-tagma-border bg-tagma-surface shadow-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="approval-dialog-title"

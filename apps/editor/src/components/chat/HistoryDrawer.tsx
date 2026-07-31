@@ -149,7 +149,7 @@ export function HistoryDrawer() {
                       </span>
                     ) : completedUnread ? (
                       <span
-                        className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.55)]"
+                        className="w-2 h-2 rounded-full bg-tagma-success shadow-glow-success"
                         aria-label="Completed unread"
                         role="img"
                         title="Completed unread"
@@ -176,7 +176,7 @@ export function HistoryDrawer() {
                       handleRequestDelete(s.id, s.title);
                     }}
                     disabled={deleteBlocked}
-                    className="opacity-0 group-hover:opacity-100 p-1 text-tagma-muted hover:text-tagma-error disabled:hover:text-tagma-muted disabled:cursor-not-allowed transition-all"
+                    className="opacity-0 group-hover:opacity-100 p-1 text-tagma-muted hover:text-tagma-error disabled:hover:text-tagma-muted disabled:cursor-not-allowed transition-[opacity,color]"
                     title="Delete"
                   >
                     <Trash2 size={11} />

@@ -153,7 +153,7 @@ function FloatingPanel({
   return createPortal(
     <div
       ref={ref}
-      className={`fixed pointer-events-none bg-tagma-surface ${borderClass} border shadow-lg animate-fade-in`}
+      className={`fixed pointer-events-none bg-tagma-surface ${borderClass} border shadow-panel animate-fade-in`}
       style={{
         left: pos?.left ?? -9999,
         top: pos?.top ?? -9999,

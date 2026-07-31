@@ -36,10 +36,10 @@ export function ZoomControls() {
   const isDesktop = hasDesktopBridge();
   const [zoom, setZoom] = useState<number>(DEFAULT_ZOOM);
 
-  // Initial read + periodic resync for external zoom (ctrl+scroll, etc.).
-  // Also subscribes to cross-window zoom changes fanned out by the Electron
-  // main process so sibling windows stay in sync the moment the user adjusts
-  // zoom anywhere.
+  // Initial read + subscription to cross-window zoom changes fanned out by
+  // the Electron main process so sibling windows stay in sync the moment the
+  // user adjusts zoom anywhere. The browser fallback has no such channel, so
+  // it additionally polls (slowly) for external zoom (ctrl+scroll, etc.).
   useEffect(() => {
     let cancelled = false;
     const read = async () => {
@@ -55,7 +55,10 @@ export function ZoomControls() {
       }
     };
     void read();
-    const id = setInterval(() => void read(), 500);
+    // Desktop zoom changes arrive via the main-process fan-out subscription
+    // below, so no poll is needed there; the browser fallback keeps a slower
+    // poll for external zoom changes (ctrl+scroll, etc.).
+    const id = isDesktop ? null : setInterval(() => void read(), 2000);
     const unsubscribe = isDesktop
       ? subscribeDesktopZoom((factor) => {
           setZoom((prev) => (Math.abs(prev - factor) > 0.005 ? factor : prev));
@@ -63,7 +66,7 @@ export function ZoomControls() {
       : () => {};
     return () => {
       cancelled = true;
-      clearInterval(id);
+      if (id !== null) clearInterval(id);
       unsubscribe();
     };
   }, [isDesktop]);

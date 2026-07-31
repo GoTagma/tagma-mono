@@ -40,14 +40,14 @@ interface ChartPoint {
 }
 
 const COLORS = [
-  '#d97757',
-  '#7faeff',
-  '#a8d672',
-  '#e8c14d',
-  '#c79bf0',
-  '#f08fb5',
-  '#5fcfd6',
-  '#9eb8d6',
+  'rgb(var(--tagma-accent))',
+  'rgb(var(--tagma-info))',
+  'rgb(var(--tagma-success))',
+  'rgb(var(--tagma-warning))',
+  'rgb(var(--tagma-error))',
+  'rgb(var(--tagma-ready))',
+  'rgb(var(--tagma-muted))',
+  'rgb(var(--tagma-text))',
 ];
 
 function formatTokens(n: number): string {
@@ -340,24 +340,24 @@ export function UsagePage({ onBack }: UsagePageProps) {
                     data={displayChartData}
                     margin={{ top: 10, right: 16, left: 0, bottom: 0 }}
                   >
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgb(var(--tagma-border) / 0.35)" />
                     <XAxis
                       dataKey="label"
-                      tick={{ fontSize: 10, fill: '#7c7872' }}
-                      stroke="rgba(255,255,255,0.1)"
+                      tick={{ fontSize: 10, fill: 'rgb(var(--tagma-muted))' }}
+                      stroke="rgb(var(--tagma-border) / 0.6)"
                     />
                     <YAxis
-                      tick={{ fontSize: 10, fill: '#7c7872' }}
-                      stroke="rgba(255,255,255,0.1)"
+                      tick={{ fontSize: 10, fill: 'rgb(var(--tagma-muted))' }}
+                      stroke="rgb(var(--tagma-border) / 0.6)"
                       tickFormatter={formatTokens}
                     />
                     <Tooltip
                       contentStyle={{
-                        background: '#1a1816',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'rgb(var(--tagma-elevated))',
+                        border: '1px solid rgb(var(--tagma-border))',
                         fontSize: 11,
                       }}
-                      labelStyle={{ color: '#d4cfc4' }}
+                      labelStyle={{ color: 'rgb(var(--tagma-text))' }}
                       formatter={(v) => formatTokens(typeof v === 'number' ? v : Number(v) || 0)}
                     />
                     <Legend wrapperStyle={{ fontSize: 10 }} />

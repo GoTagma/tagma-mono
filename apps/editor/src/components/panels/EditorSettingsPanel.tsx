@@ -1066,7 +1066,7 @@ function PythonAgentWizard({
                 />
               </div>
               {installPlan && (
-                <div className="font-mono text-[10px] text-tagma-muted border border-tagma-border/60 bg-black/10 px-2 py-1 break-all">
+                <div className="font-mono text-[10px] text-tagma-muted border border-tagma-border/60 bg-tagma-bg px-2 py-1 break-all">
                   {installPlan.command.join(' ')}
                 </div>
               )}

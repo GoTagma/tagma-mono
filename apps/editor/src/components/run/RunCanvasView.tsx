@@ -43,6 +43,10 @@ function countByStatus(tasks: Map<string, { status: TaskStatus }>) {
   return counts;
 }
 
+// Shared never-mutated empty map so the replay branch doesn't allocate a
+// fresh `trackHeights` prop (defeating Minimap's memo) on every render.
+const EMPTY_TRACK_HEIGHTS: ReadonlyMap<string, number> = new Map();
+
 export function runCanvasStatusCounts(
   tasks: Map<string, { status: TaskStatus }>,
 ): Partial<Record<TaskStatus, number>> {
@@ -56,8 +60,12 @@ export function RunCanvasView({
   scrollElementId,
   useEditorFolders = true,
 }: RunCanvasViewProps) {
-  const { tasks, selectedTaskId, selectedTrackId, selectTask, selectTrack, replayPositions } =
-    useRunStore();
+  const tasks = useRunStore((s) => s.tasks);
+  const selectedTaskId = useRunStore((s) => s.selectedTaskId);
+  const selectedTrackId = useRunStore((s) => s.selectedTrackId);
+  const selectTask = useRunStore((s) => s.selectTask);
+  const selectTrack = useRunStore((s) => s.selectTrack);
+  const replayPositions = useRunStore((s) => s.replayPositions);
 
   const headerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -395,7 +403,7 @@ export function RunCanvasView({
                   runtimeDurationMs={taskState?.durationMs ?? null}
                   runtimeInputs={taskState?.inputs ?? null}
                   runtimeOutputs={taskState?.outputs ?? null}
-                  onClickRun={(qid) => selectTask(qid)}
+                  onClickRun={selectTask}
                 />
               );
             })}
@@ -407,7 +415,7 @@ export function RunCanvasView({
           config={config}
           positions={minimapPositions}
           folders={folders}
-          trackHeights={replayPositions ? new Map() : liveTrackHeights}
+          trackHeights={replayPositions ? EMPTY_TRACK_HEIGHTS : liveTrackHeights}
         />
       </div>
 

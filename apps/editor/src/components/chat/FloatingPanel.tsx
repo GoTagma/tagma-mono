@@ -191,7 +191,7 @@ export function FloatingPanel({
         width: pos.width,
         maxHeight: pos.maxHeight,
       }}
-      className="flex flex-col bg-tagma-bg border border-tagma-border shadow-lg z-[100] overflow-hidden"
+      className="flex flex-col bg-tagma-bg border border-tagma-border shadow-panel z-[100] overflow-hidden"
     >
       {children}
     </div>,

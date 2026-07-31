@@ -106,7 +106,7 @@ function BindingSection<T extends TaskInputBinding | TaskOutputBinding>({
         <button
           type="button"
           onClick={onAdd}
-          className="icon-btn h-6 w-6"
+          className="flex items-center justify-center h-6 w-6 text-tagma-muted hover:text-tagma-text hover:bg-tagma-elevated transition-colors"
           title={kind === 'inputs' ? 'Add input binding' : 'Add output binding'}
         >
           <Plus size={12} />
@@ -132,7 +132,7 @@ function BindingSection<T extends TaskInputBinding | TaskOutputBinding>({
                 </CopyableField>
                 <button
                   type="button"
-                  className="icon-btn h-7 w-7 text-tagma-muted hover:text-tagma-error"
+                  className="flex items-center justify-center h-7 w-7 text-tagma-muted hover:text-tagma-error hover:bg-tagma-elevated transition-colors"
                   title="Remove binding"
                   onClick={() => onRemove(index)}
                 >

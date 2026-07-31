@@ -40,7 +40,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <div className="flex flex-wrap justify-center gap-2">
               <button
                 onClick={this.handleReset}
-                className="px-5 py-2 border-0 bg-tagma-accent text-white cursor-pointer text-sm hover:bg-tagma-accent/85 transition-colors"
+                className="btn-primary px-5 py-2 text-sm justify-center"
               >
                 Try again
               </button>

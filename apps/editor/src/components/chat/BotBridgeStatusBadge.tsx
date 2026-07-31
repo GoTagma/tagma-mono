@@ -4,8 +4,8 @@
  * Lives in the ChatPanel header (between the model picker and the action
  * buttons). Three states drive color:
  *   - dimmed/grey : feature disabled (no env flag) — clicking does nothing
- *   - amber       : connecting OR the last getMe heartbeat failed
- *   - emerald     : connected and last heartbeat succeeded
+ *   - warning     : connecting OR the last getMe heartbeat failed
+ *   - success     : connected and last heartbeat succeeded
  *
  * Click opens a tiny popover with the @username, last-success timestamp,
  * any last error, and a "Generate pair code" button. The code is shown
@@ -56,11 +56,11 @@ const POLL_INTERVAL_MS = 5_000;
 function colorForStatus(status: BotStatus): string {
   switch (status) {
     case 'connected':
-      return 'text-emerald-500';
+      return 'text-tagma-success';
     case 'connecting':
-      return 'text-amber-500';
+      return 'text-tagma-warning';
     case 'error':
-      return 'text-red-500';
+      return 'text-tagma-error';
     case 'disabled':
     default:
       return 'text-tagma-muted';
@@ -586,7 +586,7 @@ export function BotBridgeStatusBadge() {
                   </div>
                 )}
                 {picker.lockText && <div className="text-tagma-muted mt-1">{picker.lockText}</div>}
-                {platformError && <div className="text-red-500 mt-1">{platformError}</div>}
+                {platformError && <div className="text-tagma-error mt-1">{platformError}</div>}
               </div>
             );
           })()}
@@ -610,7 +610,7 @@ export function BotBridgeStatusBadge() {
               {snapshot.lastError && snapshot.status === 'error' && (
                 <div className="flex justify-between">
                   <dt className="text-tagma-muted">Last error</dt>
-                  <dd className="text-red-500 truncate ml-2" title={snapshot.lastError}>
+                  <dd className="text-tagma-error truncate ml-2" title={snapshot.lastError}>
                     {snapshot.lastError}
                   </dd>
                 </div>
@@ -681,7 +681,7 @@ export function BotBridgeStatusBadge() {
                         ? slackAppToken.trim().length === 0 || slackBotToken.trim().length === 0
                         : tokenInput.trim().length === 0)
                     }
-                    className="flex-1 rounded border border-tagma-border px-2 py-1 hover:bg-tagma-hover disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="flex-1 rounded border border-tagma-border px-2 py-1 hover:bg-tagma-elevated disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {tokenBusy ? 'Saving…' : 'Save to keychain'}
                   </button>
@@ -695,7 +695,7 @@ export function BotBridgeStatusBadge() {
                       setTokenError(null);
                     }}
                     disabled={tokenBusy}
-                    className="rounded border border-tagma-border px-2 py-1 hover:bg-tagma-hover"
+                    className="rounded border border-tagma-border px-2 py-1 hover:bg-tagma-elevated"
                   >
                     Cancel
                   </button>
@@ -714,7 +714,7 @@ export function BotBridgeStatusBadge() {
                     setTokenEditing(true);
                     setTokenError(null);
                   }}
-                  className="flex-1 rounded border border-tagma-border px-2 py-1 hover:bg-tagma-hover"
+                  className="flex-1 rounded border border-tagma-border px-2 py-1 hover:bg-tagma-elevated"
                 >
                   {snapshot?.tokenSource === 'none' ? 'Set bot token' : 'Replace token'}
                 </button>
@@ -723,14 +723,14 @@ export function BotBridgeStatusBadge() {
                     type="button"
                     onClick={handleClearToken}
                     disabled={tokenBusy}
-                    className="rounded border border-tagma-border px-2 py-1 hover:bg-tagma-hover disabled:opacity-40"
+                    className="rounded border border-tagma-border px-2 py-1 hover:bg-tagma-elevated disabled:opacity-40"
                   >
                     Clear
                   </button>
                 )}
               </div>
             )}
-            {tokenError && <div className="text-red-500">{tokenError}</div>}
+            {tokenError && <div className="text-tagma-error">{tokenError}</div>}
           </div>
 
           <div className="border-t border-tagma-border pt-2 space-y-2 mt-2">
@@ -772,7 +772,7 @@ export function BotBridgeStatusBadge() {
                 <button
                   type="submit"
                   disabled={allowlistBusy || allowSenderId.trim().length === 0}
-                  className="rounded border border-tagma-border px-2 py-1 hover:bg-tagma-hover disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="rounded border border-tagma-border px-2 py-1 hover:bg-tagma-elevated disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   Add
                 </button>
@@ -798,7 +798,7 @@ export function BotBridgeStatusBadge() {
                       type="button"
                       onClick={() => void handleRevokeSender(entry)}
                       disabled={allowlistBusy}
-                      className="rounded border border-tagma-border px-2 py-1 hover:bg-tagma-hover disabled:opacity-40"
+                      className="rounded border border-tagma-border px-2 py-1 hover:bg-tagma-elevated disabled:opacity-40"
                     >
                       Remove
                     </button>
@@ -808,7 +808,7 @@ export function BotBridgeStatusBadge() {
             ) : (
               <div className="text-tagma-muted">No authorized IDs for this provider yet.</div>
             )}
-            {allowlistError && <div className="text-red-500">{allowlistError}</div>}
+            {allowlistError && <div className="text-tagma-error">{allowlistError}</div>}
           </div>
 
           <div className="border-t border-tagma-border pt-2 space-y-2 mt-2">
@@ -822,7 +822,7 @@ export function BotBridgeStatusBadge() {
                   type="button"
                   onClick={() => void handleArmSlackBind()}
                   disabled={slackBindBusy || status === 'disabled' || status === 'error'}
-                  className="w-full rounded border border-tagma-border px-2 py-1 hover:bg-tagma-hover disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="w-full rounded border border-tagma-border px-2 py-1 hover:bg-tagma-elevated disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {slackArmedUntil && slackArmedUntil > Date.now()
                     ? `Armed — message the bot now (${Math.max(
@@ -849,7 +849,7 @@ export function BotBridgeStatusBadge() {
                             type="button"
                             onClick={() => void handleApproveSlackBind(r.chatId, r.senderId)}
                             disabled={slackBindBusy}
-                            className="flex-1 rounded border border-tagma-border px-2 py-1 hover:bg-tagma-hover disabled:opacity-40"
+                            className="flex-1 rounded border border-tagma-border px-2 py-1 hover:bg-tagma-elevated disabled:opacity-40"
                           >
                             Approve
                           </button>
@@ -857,7 +857,7 @@ export function BotBridgeStatusBadge() {
                             type="button"
                             onClick={() => void handleDenySlackBind(r.chatId, r.senderId)}
                             disabled={slackBindBusy}
-                            className="flex-1 rounded border border-tagma-border px-2 py-1 hover:bg-tagma-hover disabled:opacity-40"
+                            className="flex-1 rounded border border-tagma-border px-2 py-1 hover:bg-tagma-elevated disabled:opacity-40"
                           >
                             Deny
                           </button>
@@ -866,7 +866,7 @@ export function BotBridgeStatusBadge() {
                     ))}
                   </ul>
                 )}
-                {slackBindError && <div className="text-red-500">{slackBindError}</div>}
+                {slackBindError && <div className="text-tagma-error">{slackBindError}</div>}
               </div>
             ) : pairCode ? (
               <div>
@@ -883,19 +883,19 @@ export function BotBridgeStatusBadge() {
                 type="button"
                 onClick={handleGenerate}
                 disabled={pairing || status === 'disabled' || status === 'error'}
-                className="w-full rounded border border-tagma-border px-2 py-1 hover:bg-tagma-hover disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-full rounded border border-tagma-border px-2 py-1 hover:bg-tagma-elevated disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {pairing ? 'Generating…' : 'Generate pair code'}
               </button>
             )}
-            {!isSlack && pairError && <div className="text-red-500">{pairError}</div>}
+            {!isSlack && pairError && <div className="text-tagma-error">{pairError}</div>}
 
             {status === 'connected' || status === 'connecting' ? (
               <button
                 type="button"
                 onClick={handleDisconnect}
                 disabled={connecting}
-                className="w-full rounded border border-tagma-border px-2 py-1 hover:bg-tagma-hover disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-full rounded border border-tagma-border px-2 py-1 hover:bg-tagma-elevated disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {connecting ? 'Disconnecting…' : 'Disconnect'}
               </button>
@@ -904,12 +904,12 @@ export function BotBridgeStatusBadge() {
                 type="button"
                 onClick={handleConnect}
                 disabled={connecting}
-                className="w-full rounded border border-tagma-border px-2 py-1 hover:bg-tagma-hover disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-full rounded border border-tagma-border px-2 py-1 hover:bg-tagma-elevated disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {connecting ? 'Connecting…' : 'Connect'}
               </button>
             )}
-            {connectError && <div className="text-red-500">{connectError}</div>}
+            {connectError && <div className="text-tagma-error">{connectError}</div>}
           </div>
         </div>
       </FloatingPanel>

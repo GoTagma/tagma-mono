@@ -830,7 +830,7 @@ export function RunHistoryBrowser({
 
   useEffect(() => {
     if (!hasLiveRuns && summary?.running !== true && !hasActiveStoreRun) return;
-    const timer = window.setInterval(() => {
+    const poll = () => {
       void loadHistory({ silent: true });
       const current = selectedRunIdRef.current;
       if (
@@ -841,8 +841,27 @@ export function RunHistoryBrowser({
       ) {
         void loadRun(current, { preserveCurrent: true });
       }
-    }, 1000);
-    return () => window.clearInterval(timer);
+    };
+    // Hidden tabs skip their ticks; when the tab becomes visible again we
+    // refresh immediately if a poll fell due while hidden.
+    let pollDue = false;
+    const timer = window.setInterval(() => {
+      if (document.hidden) {
+        pollDue = true;
+        return;
+      }
+      poll();
+    }, 5000);
+    const onVisibilityChange = () => {
+      if (document.hidden || !pollDue) return;
+      pollDue = false;
+      poll();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [
     hasActiveStoreRun,
     hasLiveRuns,

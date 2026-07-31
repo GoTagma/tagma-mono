@@ -511,9 +511,6 @@ export function BoardCanvas({
 }: BoardCanvasProps) {
   const headerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  // Re-render on viewport scroll so the minimap viewport rect follows the
-  // canvas (cheap rAF-throttled tick, see effect below).
-  const [, setScrollTick] = useState(0);
   // Subscribe to store fields the parent does NOT thread through props.
   // We only use these for read-only visualization (cycle highlight, parallel
   // zones, selected-track-aware delete). All mutation continues to go through
@@ -1579,25 +1576,6 @@ export function BoardCanvas({
     window.addEventListener('tagma:focus-track', handler);
     return () => window.removeEventListener('tagma:focus-track', handler);
   }, [visualTracks, renderPlan]);
-
-  // ── Minimap viewport tracking — re-render on scroll of canvas. ──
-  useEffect(() => {
-    const el = contentRef.current;
-    if (!el) return;
-    let rafId = 0;
-    const onScroll = () => {
-      if (rafId) return;
-      rafId = requestAnimationFrame(() => {
-        rafId = 0;
-        setScrollTick((t) => (t + 1) & 0xffff);
-      });
-    };
-    el.addEventListener('scroll', onScroll, { passive: true });
-    return () => {
-      el.removeEventListener('scroll', onScroll);
-      if (rafId) cancelAnimationFrame(rafId);
-    };
-  }, []);
 
   // ── Parallel zones (L1) ──
   const parallelZones = useMemo(

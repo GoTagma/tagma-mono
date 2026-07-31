@@ -67,6 +67,10 @@ import { buildRenderPlan, planTotalHeight, trackTopYInPlan } from '../board/rend
 // exist elsewhere in the tree.
 const RUN_SCROLL_ID = 'run-scroll';
 
+// Shared never-mutated empty map so the replay branch doesn't allocate a
+// fresh `trackHeights` prop (defeating Minimap's memo) on every render.
+const EMPTY_TRACK_HEIGHTS: ReadonlyMap<string, number> = new Map();
+
 interface RunViewProps {
   config: RawPipelineConfig;
   dagEdges: DagEdge[];
@@ -120,24 +124,22 @@ export function RunView({
   positions: livePositions,
   onBack,
 }: RunViewProps) {
-  const {
-    status,
-    runId,
-    tasks,
-    error,
-    pipelineLogs,
-    selectedTaskId,
-    selectedTrackId,
-    selectTask,
-    selectTrack,
-    abortRun,
-    pendingApprovals,
-    resolveApproval,
-    snapshot,
-    replayDagEdges,
-    replayPositions,
-    viewMode,
-  } = useRunStore();
+  const status = useRunStore((s) => s.status);
+  const runId = useRunStore((s) => s.runId);
+  const tasks = useRunStore((s) => s.tasks);
+  const error = useRunStore((s) => s.error);
+  const pipelineLogs = useRunStore((s) => s.pipelineLogs);
+  const selectedTaskId = useRunStore((s) => s.selectedTaskId);
+  const selectedTrackId = useRunStore((s) => s.selectedTrackId);
+  const selectTask = useRunStore((s) => s.selectTask);
+  const selectTrack = useRunStore((s) => s.selectTrack);
+  const abortRun = useRunStore((s) => s.abortRun);
+  const pendingApprovals = useRunStore((s) => s.pendingApprovals);
+  const resolveApproval = useRunStore((s) => s.resolveApproval);
+  const snapshot = useRunStore((s) => s.snapshot);
+  const replayDagEdges = useRunStore((s) => s.replayDagEdges);
+  const replayPositions = useRunStore((s) => s.replayPositions);
+  const viewMode = useRunStore((s) => s.viewMode);
 
   // Prefer the snapshot captured at startRun time — that is the config the
   // pipeline is actually running with. Fall back to the live editor config
@@ -943,7 +945,7 @@ export function RunView({
                         runtimeDurationMs={taskState?.durationMs ?? null}
                         runtimeInputs={taskState?.inputs ?? null}
                         runtimeOutputs={taskState?.outputs ?? null}
-                        onClickRun={(qid) => selectTask(qid)}
+                        onClickRun={selectTask}
                       />
                     );
                   })}
@@ -956,7 +958,7 @@ export function RunView({
                 config={config}
                 positions={minimapPositions}
                 folders={folders}
-                trackHeights={replayPositions ? new Map() : liveTrackHeights}
+                trackHeights={replayPositions ? EMPTY_TRACK_HEIGHTS : liveTrackHeights}
               />
             </div>
 
