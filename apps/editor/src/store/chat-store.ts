@@ -120,7 +120,11 @@ import { buildEditorContext, type ChatYamlReconcileSummary } from './chat-editor
 import {
   buildTagmaSessionMetadata,
   hasTagmaSessionMarker,
+  isWorkspaceRootOpencodeSession,
+  normalizeOpencodeSessionPath,
+  type OpencodeSessionOwnershipFields,
   parseTagmaSessionMetadata,
+  sameOpencodeSessionPath,
 } from '../../shared/opencode-session-metadata.js';
 import { serializePreviewYaml } from '../utils/yaml-preview-diff';
 
@@ -2469,40 +2473,22 @@ function retitleDesktopChatSession(
   return sessions.map((session) => (session.id === sessionId ? { ...session, title } : session));
 }
 
-type SessionOwnershipFields = {
-  directory?: unknown;
-  metadata?: unknown;
-  parentID?: unknown;
-};
-
-function normalizeSessionPath(path: unknown): string | null {
-  if (typeof path !== 'string' || !path.trim()) return null;
-  const normalized = path.trim().replace(/\\/g, '/').replace(/\/+$/, '');
-  return /^[A-Za-z]:\//.test(normalized) || normalized.startsWith('//')
-    ? normalized.toLowerCase()
-    : normalized;
-}
-
-function sameSessionPath(left: unknown, right: unknown): boolean {
-  const normalizedLeft = normalizeSessionPath(left);
-  const normalizedRight = normalizeSessionPath(right);
-  return !!normalizedLeft && !!normalizedRight && normalizedLeft === normalizedRight;
-}
-
 function isTagmaChatSessionEvent(session: Session): boolean {
-  const fields = session as Session & SessionOwnershipFields;
+  const fields = session as Session & OpencodeSessionOwnershipFields;
   if (fields.parentID || !hasTagmaSessionMarker(fields.metadata)) return false;
   const tagma = parseTagmaSessionMetadata(fields.metadata);
   if (!tagma || (tagma.source !== 'desktop-chat' && tagma.source !== 'bot-bridge')) return false;
-  return !tagma.workspacePath || sameSessionPath(tagma.workspacePath, getOpencodeWorkspaceKey());
+  return (
+    !tagma.workspacePath || sameOpencodeSessionPath(tagma.workspacePath, getOpencodeWorkspaceKey())
+  );
 }
 
 function isKnownSameDirectorySessionUpdate(session: Session, sessions: Session[]): boolean {
-  const fields = session as Session & SessionOwnershipFields;
+  const fields = session as Session & OpencodeSessionOwnershipFields;
   if (fields.parentID || hasTagmaSessionMarker(fields.metadata)) return false;
   const existing = sessions.find((candidate) => candidate.id === session.id) as
-    (Session & SessionOwnershipFields) | undefined;
-  return !!existing && sameSessionPath(fields.directory, existing.directory);
+    (Session & OpencodeSessionOwnershipFields) | undefined;
+  return !!existing && sameOpencodeSessionPath(fields.directory, existing.directory);
 }
 
 function userVisibleSessions(
@@ -2511,21 +2497,13 @@ function userVisibleSessions(
   workspaceKey: string,
 ): Session[] {
   if (!directory) return [];
-  return sessions.filter((session) => {
-    const fields = session as Session & SessionOwnershipFields;
-    if (fields.parentID) return false;
-    const inManagedDirectory = sameSessionPath(fields.directory, directory);
-    if (!hasTagmaSessionMarker(fields.metadata)) return inManagedDirectory;
-    const tagma = parseTagmaSessionMetadata(fields.metadata);
-    if (!tagma || (tagma.source !== 'desktop-chat' && tagma.source !== 'bot-bridge')) return false;
-    return tagma.workspacePath
-      ? sameSessionPath(tagma.workspacePath, workspaceKey)
-      : inManagedDirectory;
-  });
+  return sessions.filter((session) =>
+    isWorkspaceRootOpencodeSession(session, directory, workspaceKey),
+  );
 }
 
 function sessionParentId(session: Session): string | null {
-  const parentID = (session as Session & SessionOwnershipFields).parentID;
+  const parentID = (session as Session & OpencodeSessionOwnershipFields).parentID;
   return typeof parentID === 'string' && parentID.trim() ? parentID.trim() : null;
 }
 
@@ -2545,8 +2523,8 @@ function updateSessionParentIndex(
 }
 
 function isManagedSessionPath(path: unknown, directory: string): boolean {
-  const normalizedPath = normalizeSessionPath(path);
-  const normalizedDirectory = normalizeSessionPath(directory);
+  const normalizedPath = normalizeOpencodeSessionPath(path);
+  const normalizedDirectory = normalizeOpencodeSessionPath(directory);
   if (!normalizedPath || !normalizedDirectory) return false;
   if (normalizedPath === normalizedDirectory) return true;
 
@@ -2573,7 +2551,7 @@ function collectSessionParentIndex(
   if (!directory) return { ...previousIndex };
   const index = { ...previousIndex };
   for (const session of sessions) {
-    const fields = session as Session & SessionOwnershipFields;
+    const fields = session as Session & OpencodeSessionOwnershipFields;
     if (!isManagedSessionPath(fields.directory, directory)) continue;
     const parentID = sessionParentId(session);
     if (parentID) index[session.id] = parentID;

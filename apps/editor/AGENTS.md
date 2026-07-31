@@ -291,6 +291,11 @@
   feature-specific state under the contributor `features` namespace instead of coupling it into
   the diagnostics bridge or route. Keep diagnostics isolation, contributor, auth-boundary, and
   workspace-isolation tests current.
+- Discover OpenCode diagnostics history with the canonical directory query plus the bounded
+  unscoped compatibility query used by Chat. Filter both through the shared root-session ownership
+  rules so Windows drive/separator aliases and Tagma-marked legacy sessions work without exposing
+  foreign, platform-export, or delegated sessions. Read messages with the verified session's
+  stored directory because OpenCode directory matching may be case-sensitive on Windows.
 
 ## Focused Editor Tests
 

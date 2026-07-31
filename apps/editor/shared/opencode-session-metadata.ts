@@ -29,6 +29,12 @@ export interface TagmaSessionMetadata {
   workspacePath?: string;
 }
 
+export interface OpencodeSessionOwnershipFields {
+  directory?: unknown;
+  metadata?: unknown;
+  parentID?: unknown;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
@@ -39,6 +45,20 @@ function hasOwn(record: Record<string, unknown>, key: string): boolean {
 
 function isTagmaSessionSource(value: unknown): value is TagmaSessionSource {
   return value === 'desktop-chat' || value === 'bot-bridge' || value === 'platform-export';
+}
+
+export function normalizeOpencodeSessionPath(path: unknown): string | null {
+  if (typeof path !== 'string' || !path.trim()) return null;
+  const normalized = path.trim().replace(/\\/g, '/').replace(/\/+$/, '');
+  return /^[A-Za-z]:\//.test(normalized) || normalized.startsWith('//')
+    ? normalized.toLowerCase()
+    : normalized;
+}
+
+export function sameOpencodeSessionPath(left: unknown, right: unknown): boolean {
+  const normalizedLeft = normalizeOpencodeSessionPath(left);
+  const normalizedRight = normalizeOpencodeSessionPath(right);
+  return !!normalizedLeft && !!normalizedRight && normalizedLeft === normalizedRight;
 }
 
 export function hasTagmaSessionMarker(metadata: unknown): boolean {
@@ -83,6 +103,25 @@ export function parseTagmaSessionMetadata(metadata: unknown): TagmaSessionMetada
       ? metadata.tagmaWorkspace.trim()
       : undefined;
   return { schema: 0, source, ...(workspacePath ? { workspacePath } : {}) };
+}
+
+export function isWorkspaceRootOpencodeSession(
+  value: unknown,
+  directory: string,
+  workspaceKey: string,
+): boolean {
+  if (!isRecord(value)) return false;
+  const fields = value as OpencodeSessionOwnershipFields;
+  if (fields.parentID) return false;
+
+  const inManagedDirectory = sameOpencodeSessionPath(fields.directory, directory);
+  if (!hasTagmaSessionMarker(fields.metadata)) return inManagedDirectory;
+
+  const tagma = parseTagmaSessionMetadata(fields.metadata);
+  if (!tagma || (tagma.source !== 'desktop-chat' && tagma.source !== 'bot-bridge')) return false;
+  return tagma.workspacePath
+    ? sameOpencodeSessionPath(tagma.workspacePath, workspaceKey)
+    : inManagedDirectory;
 }
 
 function putString(target: Record<string, unknown>, key: string, value: string | null | undefined) {

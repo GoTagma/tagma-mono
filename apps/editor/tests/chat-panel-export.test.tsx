@@ -1034,7 +1034,8 @@ describe('ChatPanel export affordance', () => {
 
     expect(steps.some((step) => step.status === 'error')).toBe(true);
     expect(html).toContain('Complete');
-    expect(html).toContain('bg-tagma-ready');
+    expect(html).toContain('is-complete');
+    expect(html).not.toContain('is-error');
     expect(html).not.toContain('Needs attention');
   });
 });

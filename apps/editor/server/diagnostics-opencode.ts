@@ -1,11 +1,13 @@
 import { join } from 'node:path';
 
 import { redactDiagnosticText, sanitizeDiagnosticValue } from '../shared/diagnostics.js';
+import { isWorkspaceRootOpencodeSession } from '../shared/opencode-session-metadata.js';
 import { getOpencodeHandle, type OpencodeHandle } from './opencode-lifecycle.js';
 import { fetchOpencodeProxy, type OpencodeProxyRequest } from './opencode-proxy.js';
 import { workspaceRegistry } from './workspace-registry.js';
 
 const MAX_OPENCODE_DIAGNOSTICS_BYTES = 4 * 1024 * 1024;
+const OPENCODE_SESSION_DISCOVERY_LIMIT = 10_000;
 
 export interface DiagnosticsOpencodeMessageOptions {
   limit: number;
@@ -127,18 +129,43 @@ function unwrapArray(payload: unknown, label: string): unknown[] {
   throw new DiagnosticsReadError(502, `OpenCode returned an invalid ${label} payload.`);
 }
 
-async function listScopedSessions(
+async function listWorkspaceSessions(
+  workspaceKey: string,
   handle: OpencodeHandle,
   dependencies: DiagnosticsOpencodeDependencies,
 ): Promise<unknown[]> {
-  const query = new URLSearchParams({
+  const scopedQuery = new URLSearchParams({
     directory: handle.cwd,
     limit: '100',
   });
-  return unwrapArray(
-    await requestOpencodeJson(handle, `/session?${query}`, dependencies),
-    'session list',
-  );
+  const discoveryQuery = new URLSearchParams({
+    roots: 'true',
+    limit: String(OPENCODE_SESSION_DISCOVERY_LIMIT),
+  });
+  const [scoped, discovered] = await Promise.all([
+    requestOpencodeJson(handle, `/session?${scopedQuery}`, dependencies).then((payload) =>
+      unwrapArray(payload, 'session list'),
+    ),
+    requestOpencodeJson(handle, `/session?${discoveryQuery}`, dependencies)
+      .then((payload) => unwrapArray(payload, 'session discovery list'))
+      .catch(() => [] as unknown[]),
+  ]);
+
+  const sessionsById = new Map<string, unknown>();
+  for (const session of discovered) {
+    const id = sessionId(session);
+    if (id && isWorkspaceRootOpencodeSession(session, handle.cwd, workspaceKey)) {
+      sessionsById.set(id, session);
+    }
+  }
+  for (const session of scoped) {
+    const id = sessionId(session);
+    if (id && isWorkspaceRootOpencodeSession(session, handle.cwd, workspaceKey)) {
+      // The canonical scoped payload wins when discovery returns the same id.
+      sessionsById.set(id, session);
+    }
+  }
+  return [...sessionsById.values()];
 }
 
 function sessionId(value: unknown): string | null {
@@ -147,12 +174,18 @@ function sessionId(value: unknown): string | null {
   return typeof id === 'string' ? id : null;
 }
 
+function sessionDirectory(value: unknown): string | null {
+  if (!value || typeof value !== 'object') return null;
+  const directory = (value as { directory?: unknown }).directory;
+  return typeof directory === 'string' && directory.trim() ? directory.trim() : null;
+}
+
 export async function readDiagnosticsOpencodeSessions(
   workspaceKey: string | null,
   dependencies: DiagnosticsOpencodeDependencies = DEFAULT_DEPENDENCIES,
 ): Promise<unknown> {
   const handle = requireLiveOpencode(workspaceKey, dependencies);
-  const sessions = await listScopedSessions(handle, dependencies);
+  const sessions = await listWorkspaceSessions(workspaceKey!, handle, dependencies);
   return sanitizeDiagnosticValue(
     {
       workspaceKey,
@@ -175,8 +208,9 @@ export async function readDiagnosticsOpencodeMessages(
   dependencies: DiagnosticsOpencodeDependencies = DEFAULT_DEPENDENCIES,
 ): Promise<unknown> {
   const handle = requireLiveOpencode(workspaceKey, dependencies);
-  const sessions = await listScopedSessions(handle, dependencies);
-  if (!sessions.some((session) => sessionId(session) === requestedSessionId)) {
+  const sessions = await listWorkspaceSessions(workspaceKey!, handle, dependencies);
+  const session = sessions.find((candidate) => sessionId(candidate) === requestedSessionId);
+  if (!session) {
     throw new DiagnosticsReadError(
       404,
       'The requested OpenCode session does not belong to the diagnostics workspace.',
@@ -184,7 +218,7 @@ export async function readDiagnosticsOpencodeMessages(
   }
 
   const query = new URLSearchParams({
-    directory: handle.cwd,
+    directory: sessionDirectory(session) ?? handle.cwd,
     limit: String(options.limit),
   });
   if (options.before) query.set('before', options.before);

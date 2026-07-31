@@ -169,13 +169,25 @@ export function ConversationFlowBarView({
   return (
     <section className="shrink-0 border-b border-tagma-border bg-tagma-bg px-3 py-2">
       <div className="flex items-center gap-2 text-[10px] font-mono text-tagma-muted min-w-0">
-        <span className="shrink-0 text-tagma-muted/80">Conversation flow</span>
-        <span className="min-w-0 flex-1 truncate text-tagma-text" title={majorStage}>
+        <span className="shrink-0 text-[9px] uppercase tracking-[0.14em] text-tagma-muted-dim">
+          Conversation flow
+        </span>
+        <span
+          className={`h-1 w-1 shrink-0 ${
+            terminalStatus === 'error'
+              ? 'bg-tagma-error'
+              : terminalStatus === 'complete'
+                ? 'bg-tagma-success'
+                : 'bg-tagma-ready animate-pulse'
+          }`}
+        />
+        <span className="min-w-0 flex-1 truncate text-tagma-text/90" title={majorStage}>
           {majorStage}
         </span>
         {queuedCount > 0 && (
           <span className="shrink-0 text-tagma-muted/70 tabular-nums">+{queuedCount} queued</span>
         )}
+        <span className="shrink-0 text-tagma-muted-dim tabular-nums">{Math.round(percent)}%</span>
       </div>
       <div
         role="progressbar"
@@ -183,11 +195,15 @@ export function ConversationFlowBarView({
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.round(percent)}
-        className="mt-1.5 h-1 w-full bg-tagma-border/45 overflow-hidden"
+        className="mt-1.5 h-[3px] w-full bg-tagma-border/30 overflow-hidden"
       >
         <div
-          className={`h-full transition-[width] duration-slow ${
-            terminalStatus === 'error' ? 'bg-tagma-error' : 'bg-tagma-ready'
+          className={`chat-flow-fill h-full transition-[width] duration-slow ease-smooth ${
+            terminalStatus === 'error'
+              ? 'is-error'
+              : terminalStatus === 'complete'
+                ? 'is-complete'
+                : 'is-active'
           }`}
           style={{ width: `${percent}%` }}
         />

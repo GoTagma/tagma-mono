@@ -38,7 +38,8 @@ function harness(
     fetchOpencode: async (input) => {
       requestUrls.push(input.requestUrl);
       expect(input.authorization).toBe('Basic internal-credential');
-      return Response.json(responses.shift());
+      const response = responses.shift();
+      return response instanceof Response ? response : Response.json(response);
     },
   };
   return { dependencies, requestUrls };
@@ -47,7 +48,15 @@ function harness(
 describe('OpenCode diagnostics reader', () => {
   test('lists only the live workspace runtime and sanitizes returned session data', async () => {
     const { dependencies, requestUrls } = harness([
-      [{ id: 'chat-1', title: 'debug chat', password: 'must-not-leak' }],
+      [
+        {
+          id: 'chat-1',
+          directory: OPENCODE_DIR,
+          title: 'debug chat',
+          password: 'must-not-leak',
+        },
+      ],
+      [],
     ]);
 
     const result = (await readDiagnosticsOpencodeSessions(WORKSPACE_DIR, dependencies)) as Record<
@@ -57,6 +66,7 @@ describe('OpenCode diagnostics reader', () => {
 
     expect(requestUrls).toEqual([
       requestUrl('/session', { directory: OPENCODE_DIR, limit: '100' }),
+      requestUrl('/session', { roots: 'true', limit: '10000' }),
     ]);
     expect(result).toMatchObject({
       workspaceKey: WORKSPACE_DIR,
@@ -92,9 +102,61 @@ describe('OpenCode diagnostics reader', () => {
     ]);
   });
 
+  test('keeps discovery scoped to Tagma-owned root sessions', async () => {
+    const { dependencies } = harness([
+      [],
+      [
+        {
+          id: 'legacy-tagma-chat',
+          directory: 'C:\\PRE-CANONICAL-WORKSPACE',
+          metadata: {
+            tagma: { schema: 1, source: 'desktop-chat', workspacePath: WORKSPACE_DIR },
+          },
+        },
+        {
+          id: 'foreign-tagma-chat',
+          directory: OPENCODE_DIR,
+          metadata: {
+            tagma: { schema: 1, source: 'desktop-chat', workspacePath: 'C:\\OTHER-WORKSPACE' },
+          },
+        },
+        {
+          id: 'platform-export',
+          directory: OPENCODE_DIR,
+          metadata: { tagma: { schema: 1, source: 'platform-export' } },
+        },
+        {
+          id: 'delegated-child',
+          directory: OPENCODE_DIR,
+          parentID: 'legacy-tagma-chat',
+        },
+      ],
+    ]);
+
+    const result = (await readDiagnosticsOpencodeSessions(WORKSPACE_DIR, dependencies)) as {
+      sessions: Array<{ id: string }>;
+    };
+
+    expect(result.sessions.map((session) => session.id)).toEqual(['legacy-tagma-chat']);
+  });
+
+  test('keeps canonical scoped sessions when compatibility discovery is unavailable', async () => {
+    const { dependencies } = harness([
+      [{ id: 'chat-1', directory: OPENCODE_DIR }],
+      new Response('not supported', { status: 404 }),
+    ]);
+
+    const result = (await readDiagnosticsOpencodeSessions(WORKSPACE_DIR, dependencies)) as {
+      sessions: Array<{ id: string }>;
+    };
+
+    expect(result.sessions.map((session) => session.id)).toEqual(['chat-1']);
+  });
+
   test('reads messages only after verifying session membership in the scoped list', async () => {
     const { dependencies, requestUrls } = harness([
-      [{ id: 'chat-1' }],
+      [{ id: 'chat-1', directory: OPENCODE_DIR }],
+      [],
       [{ info: { id: 'message-1' }, parts: [{ type: 'text', text: 'failure detail' }] }],
     ]);
 
@@ -107,6 +169,7 @@ describe('OpenCode diagnostics reader', () => {
 
     expect(requestUrls).toEqual([
       requestUrl('/session', { directory: OPENCODE_DIR, limit: '100' }),
+      requestUrl('/session', { roots: 'true', limit: '10000' }),
       requestUrl('/session/chat-1/message', {
         directory: OPENCODE_DIR,
         limit: '50',
@@ -134,12 +197,7 @@ describe('OpenCode diagnostics reader', () => {
       { handleCwd: runtimeDirectory },
     );
 
-    await readDiagnosticsOpencodeMessages(
-      WORKSPACE_DIR,
-      'chat-1',
-      { limit: 25 },
-      dependencies,
-    );
+    await readDiagnosticsOpencodeMessages(WORKSPACE_DIR, 'chat-1', { limit: 25 }, dependencies);
 
     expect(requestUrls).toEqual([
       requestUrl('/session', { directory: runtimeDirectory, limit: '100' }),
@@ -152,7 +210,10 @@ describe('OpenCode diagnostics reader', () => {
   });
 
   test('rejects a session id outside the scoped list without requesting its messages', async () => {
-    const { dependencies, requestUrls } = harness([[{ id: 'chat-1' }]]);
+    const { dependencies, requestUrls } = harness([
+      [{ id: 'chat-1', directory: OPENCODE_DIR }],
+      [],
+    ]);
 
     await expect(
       readDiagnosticsOpencodeMessages(
@@ -165,7 +226,7 @@ describe('OpenCode diagnostics reader', () => {
       name: 'DiagnosticsReadError',
       status: 404,
     } satisfies Partial<DiagnosticsReadError>);
-    expect(requestUrls).toHaveLength(1);
+    expect(requestUrls).toHaveLength(2);
   });
 
   test('does not start OpenCode when the workspace has no live handle', async () => {
