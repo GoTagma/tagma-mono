@@ -123,6 +123,13 @@ export function computeBundlePendingRestart(
   return editorInfo.pendingRestart || sidecarInfo.pendingRestart;
 }
 
+export function computeBundleUpdateAvailable(
+  editorInfo: EditorInfo,
+  sidecarInfo: SidecarInfo,
+): boolean {
+  return editorInfo.updateAvailable && sidecarInfo.updateAvailable;
+}
+
 export function renderSaveIndicator(args: {
   isDirty: boolean;
   lastAutosaveAt: number | null;
@@ -478,7 +485,7 @@ export function VersionStatusBar() {
   const bundleUpdateAvailable =
     editorFetch.kind === 'loaded' &&
     sidecarFetch.kind === 'loaded' &&
-    (editorFetch.info.updateAvailable || sidecarFetch.info.updateAvailable);
+    computeBundleUpdateAvailable(editorFetch.info, sidecarFetch.info);
 
   const bundleHasUpdate = bundleCanUpdate && bundleUpdateAvailable;
   const bundlePendingRestart =

@@ -36,23 +36,58 @@ const LONG_SILENT_TURN_MS = 15000;
  * so the details do not collapse out from under them when the state becomes
  * normal streaming again.
  */
-export function TurnActivityPanel({
-  activity,
-  isCurrentTurn,
-  surfaceSummary,
-  expanded,
-  onToggle,
-}: {
+export function TurnActivityPanel(props: TurnActivityPanelProps) {
+  // Split so only the panel for the CURRENT live turn subscribes to the
+  // frequently-updating store fields (sessionStatus / lastActivityAt /
+  // turnHealth). computeActivitySummary provably ignores those inputs in
+  // every other configuration (it returns null without reading them), so
+  // non-live panels render identical output with zero store subscriptions —
+  // previously dozens of panels re-rendered on every SSE chunk.
+  const isLive = props.isCurrentTurn && props.surfaceSummary;
+  if (isLive) return <LiveTurnActivityPanel {...props} />;
+  return (
+    <TurnActivityPanelView {...props} sessionStatus={null} lastActivityAt={null} turnHealth={null} />
+  );
+}
+
+interface TurnActivityPanelProps {
   activity: ActivityEvent[];
   isCurrentTurn: boolean;
   surfaceSummary: boolean;
   expanded: boolean;
   onToggle: () => void;
-}) {
+}
+
+interface TurnRuntimeFields {
+  sessionStatus: ReturnType<typeof useChatStore.getState>['sessionStatus'];
+  lastActivityAt: number | null;
+  turnHealth: ReturnType<typeof useChatStore.getState>['turnHealth'];
+}
+
+function LiveTurnActivityPanel(props: TurnActivityPanelProps) {
   const sessionStatus = useChatStore((s) => s.sessionStatus);
   const lastActivityAt = useChatStore((s) => s.lastActivityAt);
   const turnHealth = useChatStore((s) => s.turnHealth);
+  return (
+    <TurnActivityPanelView
+      {...props}
+      sessionStatus={sessionStatus}
+      lastActivityAt={lastActivityAt}
+      turnHealth={turnHealth}
+    />
+  );
+}
 
+function TurnActivityPanelView({
+  activity,
+  isCurrentTurn,
+  surfaceSummary,
+  expanded,
+  onToggle,
+  sessionStatus,
+  lastActivityAt,
+  turnHealth,
+}: TurnActivityPanelProps & TurnRuntimeFields) {
   const hasOpenEvent =
     isCurrentTurn && activity.length > 0 && activity[activity.length - 1].endedAt === null;
   const openEvent = hasOpenEvent ? activity[activity.length - 1] : null;

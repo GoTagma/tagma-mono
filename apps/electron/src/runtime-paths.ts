@@ -374,29 +374,33 @@ function shouldUseUserOpencode(
   return false;
 }
 
-export function discardUserSidecarOverride(userDataDir: string): void {
-  discardUserSidecarOverrideWithPath(pathFor(process.platform), userDataDir);
+export function discardUserSidecarOverride(userDataDir: string): boolean {
+  return discardUserSidecarOverrideWithPath(pathFor(process.platform), userDataDir);
 }
 
-function discardUserSidecarOverrideWithPath(p: PathModule, userDataDir: string): void {
+function discardUserSidecarOverrideWithPath(p: PathModule, userDataDir: string): boolean {
+  const userDir = sidecarUserDir(p, userDataDir);
   try {
-    rmSync(sidecarUserDir(p, userDataDir), { recursive: true, force: true });
+    rmSync(userDir, { recursive: true, force: true });
   } catch {
     /* best-effort */
   }
+  return !existsSync(userDir);
 }
 
-export function discardUserReleaseOverride(userDataDir: string): void {
-  discardUserReleaseOverrideWithPath(pathFor(process.platform), userDataDir);
+export function discardUserReleaseOverride(userDataDir: string): boolean {
+  return discardUserReleaseOverrideWithPath(pathFor(process.platform), userDataDir);
 }
 
-function discardUserReleaseOverrideWithPath(p: PathModule, userDataDir: string): void {
-  discardUserSidecarOverrideWithPath(p, userDataDir);
+function discardUserReleaseOverrideWithPath(p: PathModule, userDataDir: string): boolean {
+  const sidecarRemoved = discardUserSidecarOverrideWithPath(p, userDataDir);
+  const editorDir = p.join(userDataDir, 'editor');
   try {
-    rmSync(p.join(userDataDir, 'editor'), { recursive: true, force: true });
+    rmSync(editorDir, { recursive: true, force: true });
   } catch {
     /* best-effort */
   }
+  return sidecarRemoved && !existsSync(editorDir);
 }
 
 function readReleaseBaseline(fsPath: PathModule, userDataDir: string | undefined): string | null {
@@ -441,30 +445,82 @@ function readUserEditorVersion(fsPath: PathModule, userDataDir: string | undefin
   }
 }
 
+export interface InstallerReleaseTransitionInput {
+  bundledVersion: string;
+  previousBundledVersion: string | null;
+  editorOverrideVersion: string | null;
+  sidecarOverrideVersion: string | null;
+  overrideRemovalSucceeded: boolean;
+}
+
+export interface InstallerReleaseTransitionDecision {
+  replaceUserRelease: boolean;
+  forceBundledRelease: boolean;
+  commitBundledBaseline: boolean;
+}
+
+export function decideInstallerReleaseTransition(
+  input: InstallerReleaseTransitionInput,
+): InstallerReleaseTransitionDecision {
+  const installerDowngraded =
+    !!input.previousBundledVersion &&
+    compareVersions(input.bundledVersion, input.previousBundledVersion) < 0;
+  const overrideAhead = [input.editorOverrideVersion, input.sidecarOverrideVersion].some(
+    (version) => !!version && compareVersions(version, input.bundledVersion) > 0,
+  );
+  const replaceUserRelease =
+    installerDowngraded || (!input.previousBundledVersion && overrideAhead);
+
+  return {
+    replaceUserRelease,
+    forceBundledRelease: replaceUserRelease,
+    commitBundledBaseline: !replaceUserRelease || input.overrideRemovalSucceeded,
+  };
+}
+
 function syncReleaseBaseline(
   fsPath: PathModule,
   userDataDir: string | undefined,
   bundledVersion: string | undefined,
-): void {
-  if (!userDataDir || !bundledVersion || !SIDECAR_VERSION_RE.test(bundledVersion)) return;
+): boolean {
+  if (!userDataDir || !bundledVersion || !SIDECAR_VERSION_RE.test(bundledVersion)) return false;
 
   const previousBundledVersion = readReleaseBaseline(fsPath, userDataDir);
   const editorVersion = readUserEditorVersion(fsPath, userDataDir);
-  const editorAhead = !!editorVersion && compareVersions(editorVersion, bundledVersion) > 0;
-
-  const installerDowngraded =
-    !!previousBundledVersion && compareVersions(bundledVersion, previousBundledVersion) < 0;
+  const sidecarVersion = readUserSidecarPointer(fsPath, userDataDir)?.version ?? null;
+  const initialDecision = decideInstallerReleaseTransition({
+    bundledVersion,
+    previousBundledVersion,
+    editorOverrideVersion: editorVersion,
+    sidecarOverrideVersion: sidecarVersion,
+    overrideRemovalSucceeded: false,
+  });
 
   // If the user explicitly launches an older installer, the installer's
   // bundled release must win over any userData hot-update layer. For installs
-  // predating this marker, an editor override ahead of the bundled installer is
-  // the legacy ambiguous state that caused downgrades to keep showing the newer
-  // editor after uninstall/reinstall.
-  if (installerDowngraded || (!previousBundledVersion && editorAhead)) {
-    discardUserReleaseOverrideWithPath(fsPath, userDataDir);
+  // predating this marker, any component override ahead of the bundled
+  // installer is the legacy ambiguous state that caused downgrades to keep
+  // showing the newer release after uninstall/reinstall.
+  const overrideRemovalSucceeded = initialDecision.replaceUserRelease
+    ? discardUserReleaseOverrideWithPath(fsPath, userDataDir)
+    : true;
+  const decision = decideInstallerReleaseTransition({
+    bundledVersion,
+    previousBundledVersion,
+    editorOverrideVersion: editorVersion,
+    sidecarOverrideVersion: sidecarVersion,
+    overrideRemovalSucceeded,
+  });
+
+  if (decision.commitBundledBaseline) {
+    writeReleaseBaseline(fsPath, userDataDir, bundledVersion);
+  } else {
+    console.warn(
+      '[tagma] Could not fully remove a newer user release override. The installer release will be used and cleanup will retry on next launch.',
+    );
   }
 
-  writeReleaseBaseline(fsPath, userDataDir, bundledVersion);
+  return decision.forceBundledRelease;
 }
 
 export interface VersionSkew {
@@ -549,7 +605,11 @@ export function resolveRuntimePaths(options: RuntimePathOptions): RuntimePaths {
       ];
       return candidates.find((c) => existsSync(c)) ?? null;
     })();
-    syncReleaseBaseline(fsPath, options.userDataDir, options.appVersion);
+    const forceBundledRelease = syncReleaseBaseline(
+      fsPath,
+      options.userDataDir,
+      options.appVersion,
+    );
     cleanupStaleUserSidecar(fsPath, options.userDataDir, options.appVersion);
     if (options.userDataDir) {
       const skew = detectVersionSkewWithPath(fsPath, options.userDataDir);
@@ -560,7 +620,7 @@ export function resolveRuntimePaths(options: RuntimePathOptions): RuntimePaths {
       }
     }
     const userOverride =
-      options.sidecarPreference === 'bundled'
+      options.sidecarPreference === 'bundled' || forceBundledRelease
         ? null
         : resolveUserSidecarOverride(p, fsPath, options.userDataDir, platform);
     const includeUserOpencode = shouldUseUserOpencode(
@@ -610,7 +670,11 @@ export function resolveRuntimePaths(options: RuntimePathOptions): RuntimePaths {
       // up). This is the destination path for /api/editor/update to stage a
       // fresh frontend bundle into.
       env.TAGMA_EDITOR_USER_DIR = p.join(options.userDataDir, 'editor');
-      env.TAGMA_EDITOR_USER_DIST_DIR = p.join(options.userDataDir, 'editor', 'dist');
+      if (forceBundledRelease) {
+        delete env.TAGMA_EDITOR_USER_DIST_DIR;
+      } else {
+        env.TAGMA_EDITOR_USER_DIST_DIR = p.join(options.userDataDir, 'editor', 'dist');
+      }
       env.TAGMA_SIDECAR_USER_DIR = sidecarUserDir(p, options.userDataDir);
     }
     if (bundledOpencodeVersion) {

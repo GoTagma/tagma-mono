@@ -15,6 +15,11 @@ import {
   stageEditorDist,
 } from '../release/editor-staging.js';
 import { cancelHotupdate, endHotupdate, tryBeginHotupdate } from '../release/hotupdate-lock.js';
+import {
+  assertHotupdateVersionUpgrade,
+  collectLocalTagmaVersions,
+  HotupdateVersionPolicyError,
+} from '../release/version-policy.js';
 
 /**
  * Editor hot-update API (tier A: every desktop release ships a tarball).
@@ -131,6 +136,8 @@ async function performUpdate(
       'Editor updates require a writable userData directory. This is only available when running under the desktop app.',
     );
   }
+
+  assertHotupdateVersionUpgrade(manifest.version, collectLocalTagmaVersions());
 
   const shellVersion = process.env.TAGMA_EDITOR_BUNDLED_VERSION;
   if (manifest.minShellVersion && shellVersion) {
@@ -295,6 +302,13 @@ export function registerEditorRoutes(
     } catch (err) {
       if (controller.signal.aborted) {
         return res.status(499).json({ error: 'Editor update canceled.', kind: 'canceled' });
+      }
+      if (err instanceof HotupdateVersionPolicyError) {
+        return res.status(409).json({
+          error: err.message,
+          kind: err.kind,
+          highestLocalVersion: err.highestLocalVersion,
+        });
       }
       res.status(500).json({ error: errorMessage(err) });
     } finally {

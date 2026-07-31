@@ -1,4 +1,5 @@
 import type { HotupdateManifest } from '../update-manifest.js';
+import { assertHotupdateVersionUpgrade } from './version-policy.js';
 import {
   activateEditorDist,
   discardEditorStaging,
@@ -29,6 +30,7 @@ export interface BundleUpdateInput {
   editorUserDir: string;
   sidecarUserDir: string;
   opencodeUserDir: string;
+  localVersions: readonly string[];
   /**
    * Optional external abort signal. When fired, whichever download is currently
    * running (editor, sidecar, or opencode) rejects with AbortError; already-
@@ -55,7 +57,9 @@ export interface BundleUpdateResult {
  * update to realign.
  */
 export async function performBundleUpdate(input: BundleUpdateInput): Promise<BundleUpdateResult> {
-  const { manifest, editorUserDir, sidecarUserDir, opencodeUserDir, signal } = input;
+  const { manifest, editorUserDir, sidecarUserDir, opencodeUserDir, localVersions, signal } = input;
+
+  assertHotupdateVersionUpgrade(manifest.version, localVersions);
 
   let editorStaged: EditorStagingResult | null = null;
   let sidecarStaged: SidecarStagingResult | null = null;

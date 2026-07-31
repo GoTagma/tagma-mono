@@ -3,6 +3,11 @@ import { errorMessage } from '../path-utils.js';
 import { fetchHotupdateManifest, resolveHotupdateManifestUrl } from '../update-manifest.js';
 import { performBundleUpdate } from '../release/bundle-update.js';
 import { cancelHotupdate, endHotupdate, tryBeginHotupdate } from '../release/hotupdate-lock.js';
+import {
+  assertHotupdateVersionUpgrade,
+  collectLocalTagmaVersions,
+  HotupdateVersionPolicyError,
+} from '../release/version-policy.js';
 import { stopOpencodeProcesses } from '../opencode-lifecycle.js';
 
 export function registerReleaseRoutes(app: express.Express): void {
@@ -45,12 +50,15 @@ export function registerReleaseRoutes(app: express.Express): void {
     }
     try {
       const manifest = await fetchHotupdateManifest(manifestUrl, true, controller.signal);
+      const localVersions = collectLocalTagmaVersions();
+      assertHotupdateVersionUpgrade(manifest.version, localVersions);
       await stopOpencodeProcesses(3_000);
       const result = await performBundleUpdate({
         manifest,
         editorUserDir,
         sidecarUserDir,
         opencodeUserDir,
+        localVersions,
         signal: controller.signal,
       });
       res.json({
@@ -62,6 +70,13 @@ export function registerReleaseRoutes(app: express.Express): void {
     } catch (err) {
       if (controller.signal.aborted) {
         return res.status(499).json({ error: 'Release update canceled.', kind: 'canceled' });
+      }
+      if (err instanceof HotupdateVersionPolicyError) {
+        return res.status(409).json({
+          error: err.message,
+          kind: err.kind,
+          highestLocalVersion: err.highestLocalVersion,
+        });
       }
       res.status(500).json({ error: errorMessage(err) });
     } finally {

@@ -101,6 +101,45 @@ describe('performBundleUpdate', () => {
     rmSync(srv, { recursive: true, force: true });
   });
 
+  test('rejects a release that is not newer than every local Tagma component before staging', async () => {
+    const editor = buildEditorTarball(srv);
+    const sidecar = buildSidecarBinary(srv);
+    const opencode = buildOpencodeBinary(srv);
+    const manifest: HotupdateManifest = withOpencode(
+      {
+        version: '9.9.9',
+        channel: 'alpha',
+        dist: editor,
+        sidecar: {
+          targets: [
+            {
+              platform: process.platform,
+              arch: process.arch,
+              url: sidecar.url,
+              sha256: sidecar.sha256,
+              size: sidecar.size,
+            },
+          ],
+        },
+      },
+      opencode,
+    );
+
+    await expect(
+      performBundleUpdate({
+        manifest,
+        editorUserDir,
+        sidecarUserDir,
+        opencodeUserDir,
+        localVersions: ['10.0.0'],
+      }),
+    ).rejects.toThrow(/strictly newer than local Tagma version 10\.0\.0/i);
+
+    expect(existsSync(join(editorUserDir, 'dist'))).toBe(false);
+    expect(existsSync(join(sidecarUserDir, 'current.json'))).toBe(false);
+    expect(existsSync(join(opencodeUserDir, 'version.txt'))).toBe(false);
+  });
+
   test('stages editor, sidecar, and opencode before activating the release', async () => {
     const editor = buildEditorTarball(srv);
     const sidecar = buildSidecarBinary(srv);
@@ -130,6 +169,7 @@ describe('performBundleUpdate', () => {
       editorUserDir,
       sidecarUserDir,
       opencodeUserDir,
+      localVersions: ['1.0.0'],
     });
 
     expect(result).toEqual({
@@ -175,7 +215,13 @@ describe('performBundleUpdate', () => {
     );
 
     await expect(
-      performBundleUpdate({ manifest, editorUserDir, sidecarUserDir, opencodeUserDir }),
+      performBundleUpdate({
+        manifest,
+        editorUserDir,
+        sidecarUserDir,
+        opencodeUserDir,
+        localVersions: ['1.0.0'],
+      }),
     ).rejects.toThrow(/sha256/i);
 
     // Editor: no dist/, no dist-version.txt.
@@ -213,7 +259,13 @@ describe('performBundleUpdate', () => {
     );
 
     await expect(
-      performBundleUpdate({ manifest, editorUserDir, sidecarUserDir, opencodeUserDir }),
+      performBundleUpdate({
+        manifest,
+        editorUserDir,
+        sidecarUserDir,
+        opencodeUserDir,
+        localVersions: ['1.0.0'],
+      }),
     ).rejects.toThrow(/sha256/i);
 
     // Editor: staged bytes discarded, no activation.
@@ -251,7 +303,13 @@ describe('performBundleUpdate', () => {
     );
 
     await expect(
-      performBundleUpdate({ manifest, editorUserDir, sidecarUserDir, opencodeUserDir }),
+      performBundleUpdate({
+        manifest,
+        editorUserDir,
+        sidecarUserDir,
+        opencodeUserDir,
+        localVersions: ['1.0.0'],
+      }),
     ).rejects.toThrow(/No sidecar update published/);
 
     expect(existsSync(join(editorUserDir, 'dist.staged'))).toBe(false);
@@ -306,7 +364,13 @@ describe('performBundleUpdate', () => {
     );
 
     await expect(
-      performBundleUpdate({ manifest, editorUserDir, sidecarUserDir, opencodeUserDir }),
+      performBundleUpdate({
+        manifest,
+        editorUserDir,
+        sidecarUserDir,
+        opencodeUserDir,
+        localVersions: ['1.0.0'],
+      }),
     ).rejects.toThrow();
 
     expect(readFileSync(join(editorUserDir, 'dist-version.txt'), 'utf-8').trim()).toBe('1.0.0');

@@ -16,6 +16,11 @@ import {
   stageSidecarBinary,
 } from '../release/sidecar-staging.js';
 import { cancelHotupdate, endHotupdate, tryBeginHotupdate } from '../release/hotupdate-lock.js';
+import {
+  assertHotupdateVersionUpgrade,
+  collectLocalTagmaVersions,
+  HotupdateVersionPolicyError,
+} from '../release/version-policy.js';
 
 export interface SidecarInfo {
   bundledVersion: string | null;
@@ -92,6 +97,7 @@ async function performUpdate(signal?: AbortSignal): Promise<{ version: string; p
     );
   }
   const manifest = await fetchHotupdateManifest(manifestUrl, true, signal);
+  assertHotupdateVersionUpgrade(manifest.version, collectLocalTagmaVersions());
   assertComponentHotupdateAllowed(manifest, 'sidecar');
 
   // Note: no route-level "already on this version" short-circuit anymore —
@@ -207,6 +213,13 @@ export function registerSidecarRoutes(app: express.Express): void {
     } catch (err) {
       if (controller.signal.aborted) {
         return res.status(499).json({ error: 'Sidecar update canceled.', kind: 'canceled' });
+      }
+      if (err instanceof HotupdateVersionPolicyError) {
+        return res.status(409).json({
+          error: err.message,
+          kind: err.kind,
+          highestLocalVersion: err.highestLocalVersion,
+        });
       }
       res.status(500).json({ error: errorMessage(err) });
     } finally {

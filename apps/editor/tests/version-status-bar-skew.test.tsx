@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   computeBundlePendingRestart,
   computeBundleSkew,
+  computeBundleUpdateAvailable,
   type BundleSkew,
 } from '../src/components/VersionStatusBar';
 import type { EditorInfo, SidecarInfo } from '../src/api/client';
@@ -44,6 +45,23 @@ function sidecar(overrides: Partial<SidecarInfo> = {}): SidecarInfo {
     ...overrides,
   };
 }
+
+describe('computeBundleUpdateAvailable', () => {
+  test('requires the manifest to be newer than both local components', () => {
+    expect(
+      computeBundleUpdateAvailable(
+        editor({ latestVersion: '0.4.24', updateAvailable: false }),
+        sidecar({ latestVersion: '0.4.24', updateAvailable: true }),
+      ),
+    ).toBe(false);
+    expect(
+      computeBundleUpdateAvailable(
+        editor({ latestVersion: '0.4.24', updateAvailable: true }),
+        sidecar({ latestVersion: '0.4.24', updateAvailable: true }),
+      ),
+    ).toBe(true);
+  });
+});
 
 describe('computeBundleSkew', () => {
   test('returns null when both components are on the same active version', () => {
