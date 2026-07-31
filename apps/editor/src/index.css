@@ -213,21 +213,22 @@ select,
 ::-webkit-scrollbar-track {
   background: transparent;
 }
-/* Dark mode keeps the original faint gray thumb. Light mode needs a
-   darker-tinted thumb since the original 15% cool-gray is nearly invisible
-   against the near-white bg. */
+/* The resting thumb sits near 0.3 so the scrollbar is findable without
+   hunting — the original 0.22 all but vanished against the dark bg. Light
+   mode needs a darker-tinted thumb since the original 15% cool-gray is
+   nearly invisible against the near-white bg. */
 ::-webkit-scrollbar-thumb {
-  background: rgba(107, 114, 128, 0.22);
+  background: rgba(107, 114, 128, 0.32);
   border: 1px solid transparent;
   background-clip: padding-box;
   transition: background-color var(--tagma-dur-base) var(--tagma-ease);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(107, 114, 128, 0.42);
+  background: rgba(107, 114, 128, 0.52);
   background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:active {
-  background: rgba(107, 114, 128, 0.6);
+  background: rgba(107, 114, 128, 0.68);
   background-clip: padding-box;
 }
 html.light ::-webkit-scrollbar-thumb {

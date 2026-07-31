@@ -235,7 +235,10 @@ const EdgeLine = memo(function EdgeLine({
         }
         strokeWidth={inCycle ? 2.2 : highlighted ? 2 : 1}
         strokeDasharray={inCycle ? '4 3' : isContinue ? '6 3' : isDataflow ? '3 3' : undefined}
-        opacity={inCycle || isContinue || highlighted || !isDataflow ? 1 : 0.5}
+        // Resting dataflow edges stay quieter than dependency edges (dashed,
+        // slightly transparent) but 0.5 sank below 1.6:1 against the canvas —
+        // 0.75 keeps the hierarchy while leaving the line clearly visible.
+        opacity={inCycle || isContinue || highlighted || !isDataflow ? 1 : 0.75}
         markerEnd={
           inCycle
             ? 'url(#ah-cycle)'
