@@ -75,7 +75,7 @@ function fakeRuntime(): TagmaRuntime {
 }
 
 describe('engine task type detection', () => {
-  test('empty command is still a command task and does not require a driver', async () => {
+  test('empty command fails as a command task without requiring a driver', async () => {
     const dir = makeDir();
     try {
       const events: RunEventPayload[] = [];
@@ -97,14 +97,15 @@ describe('engine task type detection', () => {
         onEvent: (event) => events.push(event),
       });
 
-      expect(result.success).toBe(true);
+      expect(result.success).toBe(false);
       expect(events.some((event) => event.type === 'run_start')).toBe(true);
       const final = events.findLast(
         (event) => event.type === 'task_update' && event.taskId === 't.cmd',
       );
       expect(final?.type).toBe('task_update');
       if (final?.type === 'task_update') {
-        expect(final.status).toBe('success');
+        expect(final.status).toBe('failed');
+        expect(final.stderr).toContain('command must not be empty');
         expect(final.resolvedDriver).toBeNull();
       }
     } finally {
