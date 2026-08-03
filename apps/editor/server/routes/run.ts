@@ -1488,8 +1488,13 @@ export function registerRunRoutes(app: express.Express): void {
     if (!isSafeTaskOutputId(taskId)) {
       return res.status(400).json({ error: 'invalid taskId' });
     }
+    const rawMode = req.query.mode;
+    if (rawMode !== undefined && rawMode !== 'compare' && rawMode !== 'fix') {
+      return res.status(400).json({ error: 'invalid Ask AI mode' });
+    }
+    const mode = rawMode === 'fix' ? 'fix' : 'compare';
     const cwd = ws.workDir || process.cwd();
-    const context = buildRunHistoryAskAiContext(ws, cwd, runId, taskId);
+    const context = buildRunHistoryAskAiContext(ws, cwd, runId, taskId, mode);
     if (!context) {
       return res.status(404).json({ error: 'history ask ai context not found' });
     }

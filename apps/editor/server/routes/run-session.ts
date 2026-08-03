@@ -1594,6 +1594,8 @@ interface MatchingLatestRunContext {
   readonly selectedTaskOutputs: string | null;
 }
 
+export type RunHistoryAskAiMode = 'compare' | 'fix';
+
 function findLatestRunContextForCurrentYaml(
   cwd: string,
   selectedRunId: string,
@@ -1654,10 +1656,15 @@ export function buildRunHistoryAskAiContext(
   cwd: string,
   runId: string,
   taskId: string,
+  mode: RunHistoryAskAiMode = 'compare',
 ): { label: string; content: string } | null {
   const summary = readRunSummary(cwd, runId);
   const selectedTask = summary?.tasks.find((task) => task.taskId === taskId) ?? null;
   if (!summary || !selectedTask) return null;
+
+  if (mode === 'fix') {
+    return buildRunHistoryTaskFixContext(ws, cwd, runId, summary, selectedTask);
+  }
 
   let historicalYamlPath: string;
   let historicalLogPath: string;
@@ -1769,6 +1776,93 @@ export function buildRunHistoryAskAiContext(
 
   return {
     label: `History ${runId} ${taskId}`,
+    content: lines.join('\n').trimEnd(),
+  };
+}
+
+function buildRunHistoryTaskFixContext(
+  ws: WorkspaceState,
+  cwd: string,
+  runId: string,
+  summary: RunSummary,
+  selectedTask: RunSummaryTask,
+): { label: string; content: string } {
+  let historicalYamlPath: string | null = null;
+  let historicalLogPath: string | null = null;
+  try {
+    historicalYamlPath = safeRunHistoryFile(cwd, runId, 'pipeline.yaml');
+    historicalLogPath = safeRunHistoryFile(cwd, runId, 'pipeline.log');
+  } catch {
+    // The summary and task metadata still provide useful failure context.
+  }
+
+  const lines = [
+    '# Failed Run Task Context',
+    '',
+    'The user opened Ask AI from a failed run-history task. Diagnose the recorded failure and fix the latest workspace pipeline. Treat historical artifacts as evidence; edit the latest workspace pipeline, not the immutable history snapshot.',
+    '',
+    `Selected run: ${runId}`,
+    `Selected task: ${selectedTask.taskId}`,
+    `Selected task status: ${selectedTask.status}`,
+    `Selected task exit code: ${selectedTask.exitCode ?? 'n/a'}`,
+    '',
+  ];
+
+  appendSnapshotSection(
+    lines,
+    'Latest workspace YAML',
+    readOptionalTextSnapshot(ws.yamlPath ?? null, HISTORY_CONTEXT_TEXT_BYTES),
+  );
+  appendSnapshotSection(
+    lines,
+    'Latest compile log',
+    readOptionalTextSnapshot(
+      currentPipelineArtifactPath(ws.yamlPath, '.compile.log'),
+      HISTORY_CONTEXT_TEXT_BYTES,
+      'tail',
+    ),
+  );
+  appendSnapshotSection(
+    lines,
+    'Latest requirements',
+    readOptionalTextSnapshot(
+      currentPipelineArtifactPath(ws.yamlPath, '.requirements.md'),
+      HISTORY_CONTEXT_TEXT_BYTES,
+    ),
+  );
+  appendSnapshotSection(
+    lines,
+    'Historical snapshot YAML',
+    readOptionalTextSnapshot(historicalYamlPath, HISTORY_CONTEXT_TEXT_BYTES),
+  );
+  appendSnapshotSection(
+    lines,
+    'Historical run summary JSON',
+    summarizeRunHistoryForContext(summary),
+    HISTORY_CONTEXT_JSON_BYTES,
+  );
+  appendSnapshotSection(
+    lines,
+    'Selected historical task summary',
+    summarizeTaskForContext(selectedTask),
+    HISTORY_CONTEXT_JSON_BYTES,
+  );
+  appendSnapshotSection(
+    lines,
+    'Historical pipeline log',
+    readOptionalTextSnapshot(historicalLogPath, HISTORY_CONTEXT_TEXT_BYTES, 'tail'),
+    HISTORY_CONTEXT_TEXT_BYTES,
+    'tail',
+  );
+  appendSnapshotSection(
+    lines,
+    'Historical task output snapshots',
+    readHistoricalTaskOutputs(cwd, runId, selectedTask),
+    HISTORY_CONTEXT_TOTAL_OUTPUT_BYTES,
+  );
+
+  return {
+    label: `Failed task ${selectedTask.taskId} from ${runId}`,
     content: lines.join('\n').trimEnd(),
   };
 }

@@ -280,6 +280,41 @@ test('builds history Ask AI context with latest and selected snapshot artifacts'
   }
 });
 
+test('builds fix context for a failed task without output artifacts', async () => {
+  const summary = readSummaryFixture();
+  Object.assign(summary.tasks[0], {
+    status: 'failed',
+    exitCode: -1,
+    stdoutPath: null,
+    stderrPath: null,
+    normalizedOutput: null,
+  });
+  writeSummaryFixture(summary);
+  writeFileSync(
+    join(runDirPath(), 'pipeline.log'),
+    '[task:t.a] ERROR: failed before spawn - executable was not found\n',
+    'utf-8',
+  );
+
+  const { port, close } = await startApp(buildApp());
+  try {
+    const res = await getReq(
+      port,
+      `/api/run/history/${RUN_ID}/ask-ai-context?taskId=t.a&mode=fix`,
+    );
+    expect(res.status).toBe(200);
+    const body = JSON.parse(res.body) as { label: string; content: string };
+    expect(body.label).toContain('t.a');
+    expect(body.content).toContain('failed before spawn - executable was not found');
+    expect(body.content).toContain('status: failed');
+    expect(body.content).toContain('pipeline:\n  name: Historical');
+    expect(body.content).not.toContain('<history-version-compare>');
+    expect(body.content).not.toContain('tagma-history-compare agent');
+  } finally {
+    await close();
+  }
+});
+
 test('bounds history Ask AI context and tails long logs and streams', async () => {
   const runDir = runDirPath();
   const longLog = `old historical log head only\n${'x'.repeat(150000)}\nimportant historical tail\n`;
@@ -340,6 +375,19 @@ test('404 when history Ask AI context is requested for a task absent from summar
   try {
     const res = await getReq(port, `/api/run/history/${RUN_ID}/ask-ai-context?taskId=t.missing`);
     expect(res.status).toBe(404);
+  } finally {
+    await close();
+  }
+});
+
+test('400 on an unknown history Ask AI mode', async () => {
+  const { port, close } = await startApp(buildApp());
+  try {
+    const res = await getReq(
+      port,
+      `/api/run/history/${RUN_ID}/ask-ai-context?taskId=t.a&mode=unknown`,
+    );
+    expect(res.status).toBe(400);
   } finally {
     await close();
   }

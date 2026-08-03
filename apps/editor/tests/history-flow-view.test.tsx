@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
   HistoryFlowView,
-  formatRunSummaryTaskErrorAttachment,
+  canAskAiForHistoryTask,
   historyAskAiModeForTask,
 } from '../src/components/run/HistoryFlowView';
 import type { RunSummary, RunSummaryTask } from '../src/api/client';
@@ -50,15 +50,6 @@ describe('HistoryFlowView', () => {
     const t = s.tasks[0]!;
 
     expect(historyAskAiModeForTask(s, t)).toBe('fix');
-
-    const attachment = formatRunSummaryTaskErrorAttachment(s, t, {
-      stdout: 'before failure',
-      stderr: 'command failed',
-    });
-    expect(attachment.label).toContain('main.cmd');
-    expect(attachment.content).toContain('Run `run_failed` task `main.cmd` failed');
-    expect(attachment.content).toContain('Command:');
-    expect(attachment.content).toContain('command failed');
   });
 
   test('keeps compare mode for successful historical task output', () => {
@@ -68,6 +59,37 @@ describe('HistoryFlowView', () => {
     });
 
     expect(historyAskAiModeForTask(s, s.tasks[0]!)).toBe('compare');
+  });
+
+  test('offers Ask AI for a failed task that produced no output artifacts', () => {
+    const s = summary({
+      tasks: [
+        task({
+          stdoutPath: null,
+          stderrPath: null,
+          normalizedOutput: null,
+        }),
+      ],
+    });
+
+    expect(canAskAiForHistoryTask(s, s.tasks[0]!)).toBe(true);
+  });
+
+  test('does not offer output comparison for a successful task with no output', () => {
+    const s = summary({
+      success: true,
+      tasks: [
+        task({
+          status: 'success',
+          exitCode: 0,
+          stdoutPath: null,
+          stderrPath: null,
+          normalizedOutput: null,
+        }),
+      ],
+    });
+
+    expect(canAskAiForHistoryTask(s, s.tasks[0]!)).toBe(false);
   });
 
   test('animates running task icons in the flow graph', () => {

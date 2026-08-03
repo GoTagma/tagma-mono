@@ -86,62 +86,9 @@ export function historyAskAiModeForTask(
   return 'compare';
 }
 
-function fenced(body: string): string {
-  return '```\n' + body.trimEnd() + '\n```';
-}
-
-export function formatRunSummaryTaskErrorAttachment(
-  summary: RunSummary,
-  task: RunSummaryTask,
-  output: { stdout?: string | null; stderr?: string | null } = {},
-): { label: string; content: string } {
-  const exitCode = task.exitCode == null ? 'n/a' : String(task.exitCode);
-  const lines = [
-    `Run \`${summary.runId}\` task \`${task.taskId}\` failed (status: ${task.status}, exit code: ${exitCode}).`,
-    '',
-    `Pipeline: ${summary.pipelineName}`,
-    `Track: ${task.trackName}`,
-    `Task: ${task.taskName}`,
-    '',
-  ];
-
-  if (task.command) {
-    lines.push('Command:', fenced(task.command), '');
-  } else if (task.prompt) {
-    lines.push('Prompt:', fenced(task.prompt), '');
-  }
-
-  if (output.stderr?.trim()) {
-    lines.push('Last stderr:', fenced(output.stderr), '');
-  }
-  if (output.stdout?.trim()) {
-    lines.push('Last stdout:', fenced(output.stdout), '');
-  }
-  if (task.normalizedOutput?.trim()) {
-    lines.push('Normalized output:', fenced(task.normalizedOutput), '');
-  }
-  if (task.stderrPath) lines.push(`Full stderr log: ${task.stderrPath}`);
-  if (task.stdoutPath) lines.push(`Full stdout log: ${task.stdoutPath}`);
-
-  return {
-    label: `Task \`${task.taskId}\` failed (exit ${exitCode})`,
-    content: lines.join('\n').trimEnd(),
-  };
-}
-
-async function readTaskOutputOrNull(
-  runId: string,
-  taskId: string,
-  stream: 'stdout' | 'stderr',
-  hasPath: boolean,
-): Promise<string | null> {
-  if (!hasPath) return null;
-  try {
-    const data = await api.getRunTaskOutput(runId, taskId, stream);
-    return data?.content ?? null;
-  } catch {
-    return null;
-  }
+export function canAskAiForHistoryTask(summary: RunSummary, task: RunSummaryTask): boolean {
+  if (historyAskAiModeForTask(summary, task) === 'fix') return true;
+  return Boolean(task.stdoutPath || task.stderrPath || task.normalizedOutput);
 }
 
 function formatDuration(ms: number | null): string {
@@ -822,38 +769,34 @@ function TaskOutputSection({
     setAskBusy(true);
     setAskError(null);
     try {
-      if (historyAskAiModeForTask(summary, task) === 'fix') {
-        const [stdout, stderr] = await Promise.all([
-          readTaskOutputOrNull(runId, taskId, 'stdout', !!stdoutPath),
-          readTaskOutputOrNull(runId, taskId, 'stderr', !!stderrPath),
-        ]);
-        useChatStore
-          .getState()
-          .attachComposerContext(
-            formatRunSummaryTaskErrorAttachment(summary, task, { stdout, stderr }),
-            HISTORY_FIX_INSTRUCTION,
-          );
-      } else {
-        const context = await api.getRunHistoryAskAiContext(runId, taskId);
-        useChatStore.getState().attachComposerContext(context, HISTORY_COMPARE_INSTRUCTION);
-      }
+      const mode = historyAskAiModeForTask(summary, task);
+      const context = await api.getRunHistoryAskAiContext(runId, taskId, mode);
+      useChatStore
+        .getState()
+        .attachComposerContext(
+          context,
+          mode === 'fix' ? HISTORY_FIX_INSTRUCTION : HISTORY_COMPARE_INSTRUCTION,
+        );
     } catch (err) {
       setAskError(err instanceof Error ? err.message : 'Failed to build Ask AI context');
     } finally {
       setAskBusy(false);
     }
-  }, [runId, stderrPath, stdoutPath, summary, task, taskId]);
+  }, [runId, summary, task, taskId]);
 
-  // `stdoutPath` / `stderrPath` come from summary.json and signal that the
-  // task actually ran a process that produced a stream file — only then is
-  // it worth offering the viewer (skipped/blocked tasks have neither).
-  if (!stdoutPath && !stderrPath && !normalizedOutput) return null;
+  // Successful tasks need an output to compare. Failed tasks remain
+  // actionable without one because pre-spawn failures legitimately have no
+  // stream files; their server-built fix context includes the pipeline log.
+  const hasOutput = Boolean(stdoutPath || stderrPath || normalizedOutput);
+  if (!canAskAiForHistoryTask(summary, task)) return null;
   return (
     <section>
-      <div className="text-[9px] font-mono uppercase tracking-wider text-tagma-muted/60 pb-1.5 border-b border-tagma-border/40">
-        Outputs
-      </div>
-      <div className="pt-2.5 space-y-3">
+      {hasOutput && (
+        <div className="text-[9px] font-mono uppercase tracking-wider text-tagma-muted/60 pb-1.5 border-b border-tagma-border/40">
+          Outputs
+        </div>
+      )}
+      <div className={(hasOutput ? 'pt-2.5 ' : '') + 'space-y-3'}>
         {stdoutPath && <StreamViewer runId={runId} taskId={taskId} stream="stdout" />}
         {stderrPath && <StreamViewer runId={runId} taskId={taskId} stream="stderr" />}
         {normalizedOutput && (

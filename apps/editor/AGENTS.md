@@ -333,6 +333,10 @@
   task `positions` and `trackHeights` together, including replay-derived runs.
   Completed-run rendering must use the shared render-plan height/clamping rules; summaries from
   older releases without `trackHeights` fall back to the default lane height.
+- Failed, timed-out, blocked, or non-zero-exit run-history tasks must offer Ask AI even when
+  `stdoutPath`, `stderrPath`, and `normalizedOutput` are all absent. Pre-spawn and policy failures
+  legitimately have no stream files; build their fix context from bounded historical summaries
+  and pipeline logs, without the historical-comparison routing directive.
 
 ## Windows Pipeline Paths
 
