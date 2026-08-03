@@ -55,15 +55,12 @@ export function attachStdinApprovalAdapter(gateway: ApprovalGateway): StdinAppro
     };
 
     const onLine = (line: string): void => {
-      process.stderr.write('@@stdin-debug-line@@' + line + '\\n');
       finish({ kind: 'line', line });
     };
     const onClose = (): void => {
-      process.stderr.write('@@stdin-debug-close@@\\n');
       finish({ kind: 'eof', reason: 'stdin reached EOF' });
     };
     const onError = (): void => {
-      process.stderr.write('@@stdin-debug-error@@\\n');
       finish({ kind: 'eof', reason: 'stdin could not be read' });
     };
 

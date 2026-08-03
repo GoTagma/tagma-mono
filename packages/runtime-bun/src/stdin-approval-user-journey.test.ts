@@ -135,9 +135,6 @@ async function run() {
   if (scenario === 'pipeline') {
     const gateway = new InMemoryApprovalGateway();
     const adapter = attachStdinApprovalAdapter(gateway);
-    gateway.subscribe((event) => {
-      if (event.type === 'resolved') report('decision', event.decision.outcome);
-    });
     try {
       const pipelineYaml = [
         'pipeline:',
@@ -147,7 +144,11 @@ async function run() {
         '      name: Main',
         '      tasks:',
         '        - id: approval',
-        '          command: node -e process.stdout.write(String.fromCharCode(109,97,110,117,97,108,45,97,112,112,114,111,118,101,100))',
+        '          command:',
+        '            argv:',
+        '              - node',
+        '              - -e',
+        '              - process.stdout.write(String.fromCharCode(109,97,110,117,97,108,45,97,112,112,114,111,118,101,100))',
         '          trigger:',
         '            type: manual',
         '            message: Approve the real pipeline?',
@@ -474,8 +475,7 @@ describe('stdin approval adapter user journeys', () => {
     const terminal = startTerminalSession('pipeline');
     try {
       await terminal.waitForPrompt();
-      await pause(25);
-      terminal.send('approve\\n');
+      terminal.send('approve\n');
       await terminal.waitForResult('pipeline', 'pipeline:true');
       await terminal.waitForExit();
     } finally {

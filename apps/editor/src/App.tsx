@@ -107,6 +107,7 @@ import {
 } from './store/yaml-edit-lock-store';
 import { serializePreviewYaml } from './utils/yaml-preview-diff';
 import { isChatYamlResultInActiveWorkspace } from './utils/chat-result-workspace';
+import { createRunSaveController } from './utils/run-save-flow';
 import {
   beginChatTrialPlanningPrompt,
   cancelChatTrialPlanningPrompt,
@@ -2149,6 +2150,9 @@ export function App() {
   ]);
 
   const [pendingRun, setPendingRun] = useState(false);
+  const runSaveController = useMemo(() => createRunSaveController(), []);
+
+  useEffect(() => () => runSaveController.cancel(), [runSaveController]);
 
   const handleRun = useCallback(async () => {
     if (!requireWorkspace('run')) return;
@@ -2165,14 +2169,36 @@ export function App() {
       });
       return;
     }
-    if (!latest.yamlPath) {
-      setPendingRun(true);
-      await saveFile();
-      return;
-    }
-    if (latest.isDirty && !yamlEditLocked) {
-      setPendingRun(true);
-      await saveFile();
+    if (!latest.yamlPath || (latest.isDirty && !yamlEditLocked)) {
+      await runSaveController.request({
+        needsSave: true,
+        save: saveFile,
+        run: () => {
+          const savedLatest = usePipelineStore.getState();
+          const savedBlockingErrors = savedLatest.validationErrors.filter(
+            (e) => e.severity !== 'warning',
+          );
+          if (savedBlockingErrors.length > 0) {
+            setDialog({
+              type: 'error',
+              title: 'Cannot run: ' + savedBlockingErrors.length + ' validation error(s)',
+              details: savedBlockingErrors.map((e) => '[' + e.path + '] ' + e.message),
+            });
+            return;
+          }
+          if (!savedLatest.yamlPath) return;
+          resetYamlPreviewBaseline(savedLatest.config);
+          startRun(
+            savedLatest.config,
+            savedLatest.selectedTaskIds.length > 0
+              ? {
+                  yamlPath: savedLatest.yamlPath,
+                  targetTaskIds: [...savedLatest.selectedTaskIds],
+                }
+              : { yamlPath: savedLatest.yamlPath },
+          );
+        },
+      });
       return;
     }
     resetYamlPreviewBaseline(latest.config);
@@ -2195,6 +2221,7 @@ export function App() {
     selectedTaskIds,
     resetYamlPreviewBaseline,
     startRun,
+    runSaveController,
   ]);
 
   // After save completes and yamlPath is set, auto-trigger run
@@ -2225,8 +2252,9 @@ export function App() {
       return;
     }
     if (pending === 'run') {
-      setPendingRun(true);
-      await saveFile();
+      const saved = await saveFile();
+      if (saved) setPendingRun(true);
+      else runSaveController.cancel();
       return;
     }
     // Default: show the pipeline picker when the workspace already has one
@@ -2958,7 +2986,11 @@ export function App() {
       const target = `${workDir}${sep}.tagma${sep}${stem}${sep}${stem}.yaml`;
       try {
         const saved = await saveFileAs(target);
-        if (!saved) return;
+        if (!saved) {
+          setPendingRun(false);
+          runSaveController.cancel();
+          return;
+        }
         setSaveAsInput(null);
         await refreshWorkspaceYamls();
       } catch (e: unknown) {
@@ -2969,7 +3001,7 @@ export function App() {
         });
       }
     },
-    [workDir, saveFileAs, refreshWorkspaceYamls],
+    [workDir, saveFileAs, refreshWorkspaceYamls, runSaveController],
   );
 
   // Back-from-run handler: while the run is live we just minimize the
@@ -3377,7 +3409,11 @@ export function App() {
               <SaveAsDialog
                 defaultValue={saveAsInput}
                 onConfirm={commitSaveAs}
-                onCancel={() => setSaveAsInput(null)}
+                onCancel={() => {
+                  setSaveAsInput(null);
+                  setPendingRun(false);
+                  runSaveController.cancel();
+                }}
               />
             )}
 
@@ -3474,6 +3510,7 @@ export function App() {
             const wasPluginImport = explorer?.purpose === 'plugin-import';
             setExplorer(null);
             setPendingRun(false);
+            runSaveController.cancel();
             afterWorkspaceRef.current = null;
             if (wasPluginImport) showPluginsPage();
           }}
