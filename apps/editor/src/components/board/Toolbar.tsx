@@ -202,7 +202,7 @@ export function Toolbar({
           <button
             type="button"
             onClick={() => setCompactMenuOpen((open) => !open)}
-            className="flex h-7 w-7 items-center justify-center text-tagma-muted hover:bg-tagma-elevated hover:text-tagma-text"
+            className="flex h-6 w-6 items-center justify-center text-tagma-muted hover:bg-tagma-elevated hover:text-tagma-text"
             title="Application menu"
             aria-label="Open application menu"
             aria-expanded={compactMenuOpen}
@@ -213,7 +213,7 @@ export function Toolbar({
             <DropdownMenu
               items={compactMenuItems}
               onClose={() => setCompactMenuOpen(false)}
-              anchorClassName="absolute left-0 top-full z-[180]"
+              anchorClassName="absolute left-0 top-full z-[100]"
             />
           )}
         </div>

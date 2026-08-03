@@ -108,6 +108,22 @@ export function shouldAdoptFinalizedChatStateOnCurrentCanvas(args: {
   );
 }
 
+export function detectSnapshotlessChatYamlTarget(args: {
+  hidden: boolean;
+  currentPath: string | null;
+  entries: readonly WorkspaceYamlEntry[];
+}): ChatYamlTarget | null {
+  if (args.hidden || !normalizePath(args.currentPath)) return null;
+  const entry = args.entries.find((candidate) => samePath(candidate.path, args.currentPath));
+  if (!entry) return null;
+  return {
+    kind: 'refresh-current',
+    path: entry.path,
+    name: entry.name,
+    pipelineName: entry.pipelineName,
+  };
+}
+
 export function detectChatStagedYamlTarget(
   snapshot: ChatYamlSnapshot,
   entries: readonly ChatYamlStageSnapshotEntry[],

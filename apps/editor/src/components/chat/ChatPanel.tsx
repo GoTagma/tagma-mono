@@ -169,7 +169,7 @@ export function ConversationFlowBarView({
   return (
     <section className="shrink-0 border-b border-tagma-border bg-tagma-bg px-3 py-2">
       <div className="flex items-center gap-2 text-[10px] font-mono text-tagma-muted min-w-0">
-        <span className="shrink-0 text-[9px] uppercase tracking-[0.14em] text-tagma-muted-dim">
+        <span className="shrink-0 text-[9px] uppercase tracking-widest text-tagma-muted-dim">
           Conversation flow
         </span>
         <span
@@ -195,7 +195,7 @@ export function ConversationFlowBarView({
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.round(percent)}
-        className="mt-1.5 h-[3px] w-full bg-tagma-border/30 overflow-hidden"
+        className="mt-1.5 h-1 w-full bg-tagma-border/30 overflow-hidden"
       >
         <div
           className={`chat-flow-fill h-full transition-[width] duration-slow ease-smooth ${
@@ -908,7 +908,7 @@ function ModelVariantPicker({ disabled = false }: { disabled?: boolean }) {
         disabled={disabled}
         title={`Model variant: ${selected.label}`}
         aria-label="Select model variant"
-        className="shrink-0 flex items-center gap-1 px-1.5 h-[22px] border border-tagma-border/70 text-[10px] font-mono text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-tagma-muted disabled:hover:border-tagma-border/70 transition-colors"
+        className="shrink-0 flex items-center gap-1 px-1.5 h-5 border border-tagma-border/70 text-[10px] font-mono text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-tagma-muted disabled:hover:border-tagma-border/70 transition-colors"
       >
         <Brain size={10} className="shrink-0" />
         <span>{selected.label}</span>
@@ -1184,7 +1184,7 @@ function ChatMessages() {
           }}
           title="Jump to latest"
           aria-label="Jump to latest"
-          className="absolute bottom-3 right-3 z-10 p-1.5 rounded-full bg-tagma-surface border border-tagma-border text-tagma-muted hover:text-tagma-text shadow-raised transition-colors"
+          className="absolute bottom-3 right-3 z-10 p-1.5 bg-tagma-surface border border-tagma-border text-tagma-muted hover:text-tagma-text shadow-raised transition-colors"
         >
           <ChevronDown size={14} />
         </button>
@@ -1369,7 +1369,7 @@ export function ChatCompletionToastCard({
     >
       <div className="flex items-start gap-2.5 px-3 py-2.5">
         <div
-          className={`w-[3px] self-stretch shrink-0 ${warning ? 'bg-tagma-warning' : ok ? 'bg-tagma-ready' : 'bg-tagma-error'}`}
+          className={`w-1 self-stretch shrink-0 ${warning ? 'bg-tagma-warning' : ok ? 'bg-tagma-ready' : 'bg-tagma-error'}`}
         />
         {warning ? (
           <AlertTriangle size={14} className="text-tagma-warning shrink-0 mt-0.5" />
@@ -1403,7 +1403,7 @@ export function ChatCompletionToastCard({
         <button
           type="button"
           onClick={onDismiss}
-          className="p-1 text-tagma-muted hover:text-tagma-text shrink-0"
+          className="p-1 text-tagma-muted hover:text-tagma-text shrink-0 transition-colors"
           aria-label="Dismiss completion"
         >
           <X size={12} />

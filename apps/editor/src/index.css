@@ -512,6 +512,49 @@ input[type='checkbox'] {
   .btn-danger:active {
     transform: translateY(1px);
   }
+  /* Dialog-footer button family. One shared metric (28px tall, 96px minimum)
+     so footers no longer mix py-1/py-1.5 and 96/100/120px min-widths across
+     dialogs. `.btn-secondary` is the neutral cancel/ghost, the two `-inline`
+     variants carry the same colors as btn-danger at footer metrics. */
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-1.5 min-w-24 px-3 py-1 text-[11px] font-medium tracking-wide text-tagma-muted border border-tagma-border hover:text-tagma-text hover:bg-tagma-elevated disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-tagma-muted;
+    transition:
+      color var(--tagma-dur-fast) var(--tagma-ease),
+      background-color var(--tagma-dur-fast) var(--tagma-ease),
+      border-color var(--tagma-dur-fast) var(--tagma-ease),
+      transform var(--tagma-dur-fast) var(--tagma-ease-snap);
+  }
+  .btn-secondary:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+  .btn-danger-inline {
+    @apply inline-flex items-center justify-center gap-1.5 min-w-24 px-3 py-1 text-[11px] font-medium tracking-wide text-tagma-error border border-tagma-error/20 disabled:opacity-40 disabled:cursor-not-allowed;
+    transition:
+      background-color var(--tagma-dur-base) var(--tagma-ease),
+      border-color var(--tagma-dur-base) var(--tagma-ease),
+      transform var(--tagma-dur-fast) var(--tagma-ease-snap);
+  }
+  .btn-danger-inline:hover:not(:disabled) {
+    background-color: rgb(var(--tagma-error) / 0.08);
+    border-color: rgb(var(--tagma-error) / 0.4);
+  }
+  .btn-danger-inline:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+  .btn-warning-inline {
+    @apply inline-flex items-center justify-center gap-1.5 min-w-24 px-3 py-1 text-[11px] font-medium tracking-wide text-tagma-warning border border-tagma-warning/20 disabled:opacity-40 disabled:cursor-not-allowed;
+    transition:
+      background-color var(--tagma-dur-base) var(--tagma-ease),
+      border-color var(--tagma-dur-base) var(--tagma-ease),
+      transform var(--tagma-dur-fast) var(--tagma-ease-snap);
+  }
+  .btn-warning-inline:hover:not(:disabled) {
+    background-color: rgb(var(--tagma-warning) / 0.08);
+    border-color: rgb(var(--tagma-warning) / 0.4);
+  }
+  .btn-warning-inline:active:not(:disabled) {
+    transform: translateY(1px);
+  }
   .chip-xs {
     @apply inline-flex items-center gap-0.5 px-1 py-px text-[9px] font-mono font-semibold border;
   }

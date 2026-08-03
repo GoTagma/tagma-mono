@@ -70,6 +70,7 @@ import { selectFinishedTurnQueueHead } from './store/finished-turn-selector';
 import { useEditorSettingsStore } from './store/editor-settings-store';
 import { RightDock, useRightDock } from './components/RightDock';
 import {
+  detectSnapshotlessChatYamlTarget,
   detectChatStagedYamlTarget,
   chatPipelineVerificationSucceeded,
   chatPipelineRepairArtifactState,
@@ -1634,15 +1635,12 @@ export function App() {
 
         const { workDir: currentWorkDirForChat, yamlPath: currentYamlForChat } =
           usePipelineStore.getState();
-        if (finishedTurn.hidden || !currentYamlForChat) return;
-        const currentEntry = entries.find((entry) => entry.path === currentYamlForChat);
-        if (!currentEntry) return;
-        const target = {
-          kind: 'refresh-current' as const,
-          path: currentEntry.path,
-          name: currentEntry.name,
-          pipelineName: currentEntry.pipelineName,
-        };
+        const target = detectSnapshotlessChatYamlTarget({
+          hidden: finishedTurn.hidden,
+          currentPath: currentYamlForChat,
+          entries,
+        });
+        if (!target) return;
 
         const compile = await api.compileWorkspaceYaml(target.path);
         if (cancelled) return;

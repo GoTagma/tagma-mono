@@ -83,7 +83,6 @@ describe('detectSnapshotlessChatYamlTarget', () => {
   });
 });
 
-
 describe('detectChatStagedYamlTarget', () => {
   const stagedBefore: ChatYamlStageSnapshotEntry = {
     name: 'current.yaml',
@@ -393,7 +392,9 @@ describe('staged finalize adoption wiring', () => {
 
   test('keeps snapshotless external turns on the current-YAML reconciliation path', () => {
     const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
-    expect(appSource).toContain('if (finishedTurn.hidden || !currentYamlForChat) return;');
+    expect(appSource).toContain('const target = detectSnapshotlessChatYamlTarget({');
+    expect(appSource).toContain('currentPath: currentYamlForChat,');
+    expect(appSource).toContain('entries,');
   });
 
   test('reuses prior compile and trial evidence after a report-only repair', () => {

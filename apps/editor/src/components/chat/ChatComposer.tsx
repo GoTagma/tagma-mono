@@ -22,7 +22,7 @@ export function ErrorBanner() {
       <button
         type="button"
         onClick={dismiss}
-        className="p-0.5 text-tagma-error/70 hover:text-tagma-error transition-colors"
+        className="p-1 text-tagma-error/70 hover:text-tagma-error transition-colors"
         title="Dismiss"
         aria-label="Dismiss error"
       >
@@ -50,7 +50,7 @@ export function CompletionWarningBannerView({
       <button
         type="button"
         onClick={dismiss}
-        className="p-0.5 text-tagma-warning/70 hover:text-tagma-warning transition-colors"
+        className="p-1 text-tagma-warning/70 hover:text-tagma-warning transition-colors"
         title="Dismiss"
         aria-label="Dismiss completion warning"
       >
@@ -228,7 +228,7 @@ export function ChatComposer() {
       : 'Send';
 
   return (
-    <div className="border-t border-tagma-border p-2 shrink-0 flex flex-col gap-2">
+    <div className="border-t border-tagma-border px-3 py-2 shrink-0 flex flex-col gap-2">
       <AttachmentChips />
       <div className="flex min-w-0 items-end gap-2">
         <textarea
