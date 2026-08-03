@@ -58,8 +58,26 @@ function preferredWindowsPathEnvKey(): 'Path' | 'PATH' {
   return typeof process.env.Path === 'string' ? 'Path' : 'PATH';
 }
 
+function readEnvCaseInsensitive(
+  env: Readonly<Record<string, string>>,
+  name: string,
+): string | undefined {
+  const lowerName = name.toLowerCase();
+  for (const key of Object.keys(env)) {
+    if (key.toLowerCase() === lowerName) return env[key];
+  }
+  return undefined;
+}
+
+function deleteEnvCaseInsensitive(env: Record<string, string>, name: string): void {
+  const lowerName = name.toLowerCase();
+  for (const key of Object.keys(env)) {
+    if (key.toLowerCase() === lowerName) delete env[key];
+  }
+}
+
 function readPathEnv(env: Readonly<Record<string, string>>): string {
-  return process.platform === 'win32' ? (env.Path ?? env.PATH ?? '') : (env.PATH ?? '');
+  return process.platform === 'win32' ? (readEnvCaseInsensitive(env, 'PATH') ?? '') : (env.PATH ?? '');
 }
 
 function normalizePathEnv(
@@ -70,9 +88,8 @@ function normalizePathEnv(
   // Windows env var names are case-insensitive. Keep one PATH spelling so
   // child-process lookup does not depend on object insertion order. Explicit
   // SpawnSpec overrides win over inherited/minimal values.
-  const value = preferred?.Path ?? preferred?.PATH ?? env.Path ?? env.PATH;
-  delete env.PATH;
-  delete env.Path;
+  const value = readEnvCaseInsensitive(preferred ?? {}, 'PATH') ?? readEnvCaseInsensitive(env, 'PATH');
+  deleteEnvCaseInsensitive(env, 'PATH');
   if (typeof value === 'string') env[preferredWindowsPathEnvKey()] = value;
   return env;
 }
@@ -80,7 +97,11 @@ function normalizePathEnv(
 function pickEnv(keys: readonly string[]): Record<string, string> {
   const out: Record<string, string> = {};
   for (const key of keys) {
-    const value = process.env[key];
+    const actualKey =
+      process.platform === 'win32'
+        ? (Object.keys(process.env).find((candidate) => candidate.toLowerCase() === key.toLowerCase()) ?? key)
+        : key;
+    const value = process.env[actualKey];
     if (typeof value === 'string') out[key] = value;
   }
   return out;
@@ -365,7 +386,7 @@ async function collectStream(
  * reaches the child as just its first line. By targeting the underlying JS
  * entry point directly we bypass cmd.exe entirely and newlines survive.
  *
- * Results are cached by (cmd, envPath) key so repeated spawns of the same
+ * Results are cached by (cmd, cwd, envPath, pathext) key so repeated spawns of the same
  * command don't block the event loop with synchronous PATH/shim scans.
  *
  * Returns the original name if resolution fails; Bun will raise the same
@@ -436,6 +457,28 @@ function hasPathSeparator(value: string): boolean {
   return value.includes('\\') || value.includes('/');
 }
 
+function splitWindowsPathList(value: string): string[] {
+  const entries: string[] = [];
+  let current = '';
+  let quoted = false;
+  for (const char of value) {
+    if (char === '"') {
+      quoted = !quoted;
+      continue;
+    }
+    if (char === ';' && !quoted) {
+      const entry = current.trim();
+      if (entry) entries.push(entry);
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  const finalEntry = current.trim();
+  if (finalEntry) entries.push(finalEntry);
+  return entries;
+}
+
 function resolveWindowsExeCandidate(candidate: string): readonly string[] | null {
   try {
     if (existsSync(candidate) && statSync(candidate).isFile()) return unwrapCmdShim(candidate);
@@ -488,18 +531,20 @@ function resolveWindowsExe(
     return args;
   }
 
-  const cacheKey = `${cmd}\x00${envPath}\x00${pathext}`;
+  const lookupCwd = pathResolve(cwd ?? process.cwd());
+  const cacheKey = `${cmd}\x00${lookupCwd}\x00${envPath}\x00${pathext}`;
   if (resolvedExeCache.has(cacheKey)) {
     // ?? null coerces undefined->null so the subsequent guard narrows cleanly.
     const cached = resolvedExeCache.get(cacheKey) ?? null;
     return cached !== null ? [...cached, ...args.slice(1)] : args;
   }
 
-  const dirs = envPath.split(';').filter(Boolean);
+  const dirs = [lookupCwd, ...splitWindowsPathList(envPath)];
 
   for (const dir of dirs) {
+    const resolvedDir = isAbsolute(dir) ? dir : pathResolve(lookupCwd, dir);
     for (const ext of exts) {
-      const head = resolveWindowsExeCandidate(join(dir, cmd + ext));
+      const head = resolveWindowsExeCandidate(join(resolvedDir, cmd + ext));
       if (head !== null) {
         evictIfFull();
         resolvedExeCache.set(cacheKey, head);
@@ -695,7 +740,9 @@ export async function runSpawn(
   const resolvedArgs = resolveWindowsExe(
     spec.args,
     readPathEnv(mergedEnv),
-    mergedEnv.PATHEXT ?? process.env.PATHEXT ?? WINDOWS_DEFAULT_PATHEXT,
+    readEnvCaseInsensitive(mergedEnv, 'PATHEXT') ??
+      readEnvCaseInsensitive(process.env, 'PATHEXT') ??
+      WINDOWS_DEFAULT_PATHEXT,
     spec.cwd,
   );
 

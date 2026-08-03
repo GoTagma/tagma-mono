@@ -56,6 +56,70 @@ test('runSpawn resolves relative Windows executables with PATHEXT against cwd', 
   }
 });
 
+test('runSpawn resolves bare Windows commands from cwd and keeps the cache cwd-aware', async () => {
+  if (process.platform !== 'win32') return;
+  const firstDir = mkdtempSync(join(tmpdir(), 'tagma-bare-cwd-first-'));
+  const secondDir = mkdtempSync(join(tmpdir(), 'tagma-bare-cwd-second-'));
+  try {
+    writeFileSync(join(firstDir, 'cwd-tool.cmd'), '@echo off\r\necho first-cwd\r\n');
+    writeFileSync(join(secondDir, 'cwd-tool.cmd'), '@echo off\r\necho second-cwd\r\n');
+    const spec = {
+      args: ['cwd-tool'],
+      env: { PATH: '', PATHEXT: '.CMD' },
+    };
+
+    const first = await runSpawn({ ...spec, cwd: firstDir }, null);
+    const second = await runSpawn({ ...spec, cwd: secondDir }, null);
+
+    expect(first.exitCode).toBe(0);
+    expect(first.stdout).toContain('first-cwd');
+    expect(second.exitCode).toBe(0);
+    expect(second.stdout).toContain('second-cwd');
+  } finally {
+    rmSync(firstDir, { recursive: true, force: true });
+    rmSync(secondDir, { recursive: true, force: true });
+  }
+});
+
+test('runSpawn accepts quoted, case-insensitive Windows PATH and PATHEXT values', async () => {
+  if (process.platform !== 'win32') return;
+  const dir = mkdtempSync(join(tmpdir(), 'tagma-quoted-path-'));
+  const workingDir = mkdtempSync(join(dir, 'working-cwd-'));
+  try {
+    writeFileSync(join(dir, 'quoted-path-tool.bat'), '@echo off\r\necho quoted-path-ok\r\n');
+    const result = await runSpawn(
+      {
+        args: ['quoted-path-tool'],
+        cwd: workingDir,
+        env: { pAtH: `"${dir}"`, pAtHeXt: '.BAT' },
+      },
+      null,
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.failureKind).toBe(null);
+    expect(result.stdout).toContain('quoted-path-ok');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('runSpawn reports a missing bare Windows command after cwd and PATH lookup', async () => {
+  if (process.platform !== 'win32') return;
+  const dir = mkdtempSync(join(tmpdir(), 'tagma-missing-bare-'));
+  try {
+    const result = await runSpawn(
+      { args: ['definitely-missing-tagma-command'], cwd: dir, env: { pAtH: '', pAtHeXt: '.CMD' } },
+      null,
+    );
+
+    expect(result.failureKind).toBe('binary_missing');
+    expect(result.missingBinary).toBe('definitely-missing-tagma-command');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('runSpawn falls back to bounded tail caps for non-finite values', async () => {
   const totalBytes = DEFAULT_STDOUT_TAIL_BYTES + 1024 * 1024;
   const result = await runSpawn(
