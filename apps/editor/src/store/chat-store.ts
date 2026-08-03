@@ -74,7 +74,6 @@ import { getLocalPipelineEditRevision, usePipelineStore } from './pipeline-store
 import { useEditorSettingsStore } from './editor-settings-store';
 import {
   api,
-  getClientRevision,
   withYamlEditLockRequestBypass,
   type EditorSettings,
   type ChatPipelineTrialPlanRequest,
@@ -126,7 +125,6 @@ import {
   parseTagmaSessionMetadata,
   sameOpencodeSessionPath,
 } from '../../shared/opencode-session-metadata.js';
-import { serializePreviewYaml } from '../utils/yaml-preview-diff';
 
 // Re-export for backward compatibility — tests and other consumers import this
 // from chat-store.
@@ -3456,23 +3454,14 @@ async function promptOpencode(
     (opts.reuseLogicalTurn || opts.internal
       ? (dispatchRuntimeAtStart?.yamlSnapshotBeforeSend ?? null)
       : null);
-  // Capture the renderer branch synchronously at dispatch. The async lock,
-  // save, client bootstrap, and session setup below can all take long enough
-  // for the user to make another edit; those edits belong to the concurrent
-  // user branch and must not silently move the turn baseline.
+  // Capture pipeline identity and the local edit revision synchronously. The
+  // async lock, save, bootstrap, and stage setup can all take long enough for
+  // the user to switch pipelines or make another edit.
   const initialEditorBaseline =
     !inheritedSnapshot && preSendWorkDir
       ? {
           workDir: preSendWorkDir,
           activePath: pipeline.yamlPath,
-          activeYaml: pipeline.yamlPath ? serializePreviewYaml(pipeline.config) : null,
-          activeLayout: pipeline.yamlPath
-            ? {
-                positions: Object.fromEntries(pipeline.positions),
-                folders: structuredClone(pipeline.folders),
-                trackHeights: Object.fromEntries(pipeline.trackHeights),
-              }
-            : null,
           localEditRevision: getLocalPipelineEditRevision(),
         }
       : null;
@@ -3620,17 +3609,7 @@ async function promptOpencode(
       preSendSnapshot = {
         workDir: initialEditorBaseline.workDir,
         activePath: initialEditorBaseline.activePath,
-        revision: getClientRevision(),
         localEditRevision: initialEditorBaseline.localEditRevision,
-        activeYaml: initialEditorBaseline.activeYaml,
-        activeLayout: initialEditorBaseline.activeLayout,
-        entries: stage.entries
-          .filter((entry) => entry.sourcePath)
-          .map((entry) => ({
-            path: entry.sourcePath!,
-            contentHash: entry.contentHash,
-            layoutHash: entry.layoutHash,
-          })),
         staging: {
           id: stage.id,
           agentTagmaDir: stage.agentTagmaDir,
@@ -3701,9 +3680,7 @@ async function promptOpencode(
               userText: text,
               chatModel: model,
               currentYamlPath: chatStage ? chatStage.activeStagedPath : undefined,
-              workspaceYamlFilePaths: chatStage
-                ? chatStage.entries.map((entry) => entry.stagedPath)
-                : preSendSnapshot?.entries.map((entry) => entry.path),
+              workspaceYamlFilePaths: chatStage?.entries.map((entry) => entry.stagedPath),
               chatYamlStage: chatStage
                 ? { id: chatStage.id, agentTagmaDir: chatStage.agentTagmaDir }
                 : null,

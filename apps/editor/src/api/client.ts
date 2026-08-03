@@ -341,12 +341,6 @@ export interface ChatYamlStageFinalizeResult {
   state: ServerState;
 }
 
-export interface ChatPipelineCopyResult {
-  entry: WorkspaceYamlEntry;
-  revision: number;
-  restoredOriginal: boolean;
-}
-
 export interface WorkflowPipelineEntry {
   id: string;
   path: string;
@@ -1929,20 +1923,6 @@ export const api = {
     request<YamlCompileResult>('/workspace/compile', {
       method: 'POST',
       body: jsonBody({ path }),
-    }),
-
-  copyChatResultPipeline: (body: {
-    idempotencyKey?: string;
-    sourcePath: string;
-    restoreOriginal?: {
-      path: string;
-      yaml: string;
-      layout: unknown;
-    };
-  }) =>
-    request<ChatPipelineCopyResult>('/workspace/chat-result-copy', {
-      method: 'POST',
-      body: jsonBody(body),
     }),
 
   listUsage: () => request<{ records: UsageRecord[] }>('/workspace/usage'),
