@@ -49,9 +49,11 @@ export default tseslint.config(
       'packages/*/scripts/**/*.ts',
       'packages/*/scripts/**/*.js',
       'packages/*/scripts/**/*.mjs',
+      'packages/*/scripts/**/*.cjs',
       'apps/*/scripts/**/*.ts',
       'apps/*/scripts/**/*.js',
       'apps/*/scripts/**/*.mjs',
+      'apps/*/scripts/**/*.cjs',
       'apps/editor/server/**/*.ts',
     ],
     languageOptions: {
@@ -61,6 +63,15 @@ export default tseslint.config(
     },
     rules: {
       'no-console': 'off',
+    },
+  },
+  {
+    files: [
+      'packages/*/scripts/**/*.cjs',
+      'apps/*/scripts/**/*.cjs',
+    ],
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
     },
   },
 );

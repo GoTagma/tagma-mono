@@ -99,7 +99,7 @@ function SubmenuPanel({
   return (
     <div
       ref={ref}
-      className={`fixed z-[101] min-w-[min(180px,calc(100vw-0.5rem))] border border-tagma-border bg-tagma-surface py-1 shadow-panel origin-top animate-scale-in ${CONTEXT_MENU_VIEWPORT_CLASSES}`}
+      className={`fixed z-[101] min-w-[min(180px,calc(100vw-0.5rem))] border border-tagma-border/80 bg-tagma-surface py-1 shadow-panel origin-top animate-scale-in ${CONTEXT_MENU_VIEWPORT_CLASSES}`}
       style={{ left: parentRect.right / getZoom(), top: parentRect.top / getZoom() }}
       onContextMenu={(e) => e.preventDefault()}
     >
@@ -124,7 +124,7 @@ function SubmenuPanel({
         )}
         {filtered.map((entry, i) => {
           if (isSeparator(entry)) {
-            return <div key={`sep-${i}`} className="my-1 border-t border-tagma-border/40" />;
+            return <div key={`sep-${i}`} className="my-1 border-t border-tagma-border/30" />;
           }
           if (isSubmenu(entry)) return null; // nested submenus not supported
           return (

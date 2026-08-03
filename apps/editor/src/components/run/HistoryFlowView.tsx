@@ -32,7 +32,7 @@ import {
 import { useCanvasPan } from '../board/use-canvas-pan';
 import { buildRenderPlan, planTotalHeight } from '../board/render-plan';
 import { CopyButton } from './CopyButton';
-import { RUN_INSPECTOR_PANEL_CLASSES } from './run-layout';
+import { RUN_HISTORY_INSPECTOR_PANEL_CLASSES } from './run-layout';
 import { STATUS_LABEL } from './RunTaskPanel';
 
 const HISTORY_COMPARE_INSTRUCTION =
@@ -264,9 +264,11 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
   const highlightTrackId = selectedTrackId ?? selectedTask?.trackId ?? null;
 
   return (
-    // The side panels use the shared RUN_INSPECTOR_PANEL_CLASSES recipe —
-    // absolute overlay inside this relative wrapper on small screens, a docked
-    // 20rem column on md+ — matching the live RunView inspector.
+    // The side panels are positioned `absolute` inside this relative wrapper
+    // so that opening/closing them does NOT reflow the canvas — matching the
+    // anti-jerk contract the history flow view has always had (scrollLeft/Top
+    // stay valid). They share the live inspector's width and chrome via
+    // RUN_HISTORY_INSPECTOR_PANEL_CLASSES.
     // `flex-1 h-full` ensures the canvas fills the detail-pane body both when
     // that body is flex (flow view) and when it's a plain block fallback.
     <div className="flex-1 h-full flex overflow-hidden relative">
@@ -461,10 +463,12 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
         </div>
       </div>
 
-      {/* Side panels share the live inspector recipe (RUN_INSPECTOR_PANEL_CLASSES):
-          absolute overlay on small screens, docked 20rem column on md+. */}
+      {/* Side panels as absolute overlays (RUN_HISTORY_INSPECTOR_PANEL_CLASSES)
+          — canvas dimensions never change when they open/close, so scrollLeft/Top
+          stay valid and the view doesn't jerk. Same width/chrome as the live
+          inspector. */}
       {selectedTask && (
-        <div className={RUN_INSPECTOR_PANEL_CLASSES}>
+        <div className={RUN_HISTORY_INSPECTOR_PANEL_CLASSES}>
           <HistoryTaskPanel
             summary={summary}
             task={selectedTask}
@@ -477,7 +481,7 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
       )}
 
       {!selectedTask && selectedTrack && (
-        <div className={RUN_INSPECTOR_PANEL_CLASSES}>
+        <div className={RUN_HISTORY_INSPECTOR_PANEL_CLASSES}>
           <HistoryTrackPanel
             track={selectedTrack}
             onClose={() => {

@@ -546,7 +546,7 @@ export function RightDock({
             transition={isResizing ? { duration: 0 } : { duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
             className={
               compact
-                ? 'absolute inset-y-0 right-9 z-40 max-w-[calc(100%-36px)] overflow-hidden border-l border-tagma-border bg-tagma-bg shadow-panel'
+                ? 'absolute inset-y-0 right-8 z-40 max-w-[calc(100%-32px)] overflow-hidden border-l border-tagma-border bg-tagma-bg shadow-panel'
                 : 'relative shrink-0 overflow-hidden border-l border-tagma-border bg-tagma-bg'
             }
             onDragOver={handleDragOverReattach}
@@ -776,7 +776,7 @@ function ActivityRail({
   onToggle: (tab: RightTab) => void;
 }) {
   return (
-    <div className="w-9 shrink-0 h-full flex flex-col items-stretch border-l border-tagma-border bg-tagma-surface/40">
+    <div className="w-8 shrink-0 h-full flex flex-col items-stretch border-l border-tagma-border bg-tagma-surface/40">
       {ALL_TABS.map((tab) => {
         const meta = TAB_META[tab];
         const Icon = meta.icon;
@@ -803,7 +803,7 @@ function ActivityRail({
             }
             aria-label={meta.label}
             aria-pressed={visible}
-            className={`group relative flex items-center justify-center h-9 transition-colors duration-fast ease-smooth ${
+            className={`group relative flex items-center justify-center h-8 transition-colors duration-fast ease-smooth ${
               visible
                 ? 'text-tagma-accent bg-tagma-accent/10'
                 : 'text-tagma-muted hover:text-tagma-text hover:bg-tagma-surface'

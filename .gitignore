@@ -43,3 +43,4 @@ docs/
 changelog/
 .cursor/
 scripts/auto-git-sync.ps1
+apps/editor/tmp-shots
