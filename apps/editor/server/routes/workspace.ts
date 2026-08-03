@@ -40,6 +40,7 @@ import {
   sameFilesystemPath,
 } from '../state.js';
 import { errorMessage, atomicWriteFileSync } from '../path-utils.js';
+import { rewriteCopiedPipelineYaml } from '../pipeline-copy-paths.js';
 import { runCompileAndWriteLog } from '../compile-log.js';
 import { requirementsPath, runRequirementsSync } from '../requirements-sync.js';
 import {
@@ -476,15 +477,6 @@ function readPipelineNameFromYaml(content: string): string | null {
   }
 }
 
-function yamlWithPipelineName(content: string, nextName: string): string {
-  try {
-    const config = withDefaultTrackColors(parseYaml(content));
-    return serializePipeline({ ...config, name: nextName });
-  } catch {
-    return content;
-  }
-}
-
 function copyPipelineAsNumberedCopy(
   ws: WorkspaceState,
   sourceYamlPath: string,
@@ -497,7 +489,16 @@ function copyPipelineAsNumberedCopy(
   const nextName = pipelineCopyName(sourceName, target.copyNumber, sourceStem);
   try {
     mkdirSync(targetFolder, { recursive: true });
-    atomicWriteFileSync(target.yamlPath, yamlWithPipelineName(sourceYaml, nextName));
+    atomicWriteFileSync(
+      target.yamlPath,
+      rewriteCopiedPipelineYaml(sourceYaml, {
+        workDir: ws.workDir,
+        sourceContentPath: sourceYamlPath,
+        sourceIdentityPath: sourceYamlPath,
+        destinationYamlPath: target.yamlPath,
+        pipelineName: nextName,
+      }),
+    );
 
     const sourceLayoutPath = companionLayoutPath(sourceYamlPath);
     if (existsSync(sourceLayoutPath)) {

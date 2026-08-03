@@ -70,6 +70,9 @@
 - Finalize under the active chat YAML lease with a server-side three-way comparison:
   base hashes versus the current live artifacts, the renderer-local YAML/layout branch, and the
   agent branch. A global workspace revision is never a conflict signal for staged turns.
+- When reconciliation publishes a numbered copy, rebase only pipeline-local track/task `cwd`
+  values and known built-in file paths from the source or staged pipeline folder to the copy
+  folder. Preserve shared workspace paths, external trigger paths, and command-shaped fields.
 - If the agent branch is unchanged, discard it. If the live and renderer branches still match
   base and the staged result compiles, adopt the agent result in place. Preserve any local,
   external, path-move, or compile-failure branch and publish the agent result as one numbered

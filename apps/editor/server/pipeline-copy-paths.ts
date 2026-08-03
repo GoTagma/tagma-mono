@@ -28,10 +28,7 @@ function portableRelative(from: string, to: string): string {
   return relative(from, to).replace(/\\/g, '/');
 }
 
-function relocatePipelineLocalPath(
-  value: unknown,
-  options: PipelineCopyPathRelocation,
-): unknown {
+function relocatePipelineLocalPath(value: unknown, options: PipelineCopyPathRelocation): unknown {
   if (typeof value !== 'string' || value.trim().length === 0) return value;
   const raw = value.trim();
   const absolute = isAbsolute(raw) ? resolve(raw) : resolve(options.sourceCwd, raw);
@@ -42,9 +39,7 @@ function relocatePipelineLocalPath(
       : null;
   if (!sourceRoot) return value;
   const relocated = resolve(options.destinationPipelineDir, relative(sourceRoot, absolute));
-  return isAbsolute(raw)
-    ? relocated
-    : portableRelative(options.destinationCwd, relocated) || '.';
+  return isAbsolute(raw) ? relocated : portableRelative(options.destinationCwd, relocated) || '.';
 }
 
 function rewriteTypedPluginPath<T extends Record<string, unknown>>(
@@ -66,10 +61,7 @@ export function rewriteCopiedPipelineYaml(
   const sourcePipelineDir = dirname(options.sourceIdentityPath);
   const sourceContentDir = dirname(options.sourceContentPath);
   const destinationPipelineDir = dirname(options.destinationYamlPath);
-  const pathOptions = (
-    sourceCwd: string,
-    destinationCwd: string,
-  ): PipelineCopyPathRelocation => ({
+  const pathOptions = (sourceCwd: string, destinationCwd: string): PipelineCopyPathRelocation => ({
     sourcePipelineDir,
     sourceContentDir,
     destinationPipelineDir,
@@ -80,10 +72,7 @@ export function rewriteCopiedPipelineYaml(
     cwd && isAbsolute(cwd) ? resolve(cwd) : resolve(options.workDir, cwd ?? '.');
   const rewriteCwd = (cwd: string | undefined): string | undefined => {
     if (!cwd) return cwd;
-    const rewritten = relocatePipelineLocalPath(
-      cwd,
-      pathOptions(options.workDir, options.workDir),
-    );
+    const rewritten = relocatePipelineLocalPath(cwd, pathOptions(options.workDir, options.workDir));
     return typeof rewritten === 'string' ? rewritten : cwd;
   };
 
@@ -109,9 +98,7 @@ export function rewriteCopiedPipelineYaml(
         tasks: track.tasks.map((task) => {
           const nextTaskCwd = rewriteCwd(task.cwd);
           const sourceTaskCwd = task.cwd ? resolveCwd(task.cwd) : sourceTrackCwd;
-          const destinationTaskCwd = nextTaskCwd
-            ? resolveCwd(nextTaskCwd)
-            : destinationTrackCwd;
+          const destinationTaskCwd = nextTaskCwd ? resolveCwd(nextTaskCwd) : destinationTrackCwd;
           const taskPathOptions = pathOptions(sourceTaskCwd, destinationTaskCwd);
           return {
             ...task,
