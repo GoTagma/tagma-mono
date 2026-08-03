@@ -348,7 +348,7 @@ describe('end-user release hot-update transaction', () => {
     }
   });
 
-  test.failing(
+  test(
     'rejects an incompatible installer floor before requesting the editor tarball or staging any release artifact',
     async () => {
       const fixture = createFixture(root, '2.0.0', '2.0.0');
@@ -361,17 +361,24 @@ describe('end-user release hot-update transaction', () => {
       );
       const fetches = installFixtureFetch(fixture);
       const api = createRouteApp();
-      registerReleaseRoutes(api.app);
+      let stopCalls = 0;
+      registerReleaseRoutes(api.app, {
+        stopOpencodeProcesses: async () => {
+          stopCalls += 1;
+        },
+      });
 
       const release = await api.request('POST', '/api/release/update');
 
-      expect(release.status).toBeGreaterThanOrEqual(400);
+      expect(release.status).toBe(409);
       expect(release.body).toMatchObject({
+        kind: 'shell-incompatible',
+        minShellVersion: '2.0.0',
+        currentShellVersion: '1.0.0',
         error: expect.stringContaining('requires installer 2.0.0 or newer'),
       });
-      // Current XFAIL evidence is the received editor tarball URL here: the
-      // min-shell gate lives in sidecar staging, after editor staging starts.
       expect(fetches.assetFetches()).toEqual([]);
+      expect(stopCalls).toBe(0);
       expectNoReleaseArtifacts(editorUserDir, sidecarUserDir, opencodeUserDir);
     },
   );

@@ -13,11 +13,11 @@ import { createHash } from 'node:crypto';
 import { dirname, join, parse as parsePath, relative, resolve } from 'node:path';
 import {
   assertValidHotupdateVersion,
-  compareVersions,
   pickSidecarTarget,
   type HotupdateManifest,
 } from '../update-manifest.js';
 import { downloadUrlToBuffer } from './download.js';
+import { assertHotupdateShellCompatible } from './version-policy.js';
 
 const MAX_SIDECAR_BINARY_BYTES = 300 * 1024 * 1024;
 const SIDECAR_DOWNLOAD_IDLE_TIMEOUT_MS = 60_000;
@@ -134,15 +134,10 @@ export async function stageSidecarBinary(
     );
   }
 
-  const shellVersion =
-    process.env.TAGMA_SIDECAR_BUNDLED_VERSION ?? process.env.TAGMA_EDITOR_BUNDLED_VERSION;
-  if (manifest.minShellVersion && shellVersion) {
-    if (compareVersions(shellVersion, manifest.minShellVersion) < 0) {
-      throw new Error(
-        `This update requires installer ${manifest.minShellVersion} or newer (current: ${shellVersion}). Install the latest Tagma installer and retry.`,
-      );
-    }
-  }
+  assertHotupdateShellCompatible(
+    manifest,
+    process.env.TAGMA_SIDECAR_BUNDLED_VERSION ?? process.env.TAGMA_EDITOR_BUNDLED_VERSION,
+  );
 
   // Compute target paths up-front. `sidecarVersionDir` validates the version
   // string (semver + path-safety) and throws before any I/O happens, which

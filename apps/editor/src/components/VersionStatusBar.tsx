@@ -479,7 +479,11 @@ export function VersionStatusBar() {
     editorFetch.kind === 'loaded' &&
     sidecarFetch.kind === 'loaded' &&
     editorFetch.info.canUpdate &&
-    sidecarFetch.info.canUpdate &&
+    sidecarFetch.info.canUpdate;
+
+  const bundleShellCompatible =
+    editorFetch.kind === 'loaded' &&
+    sidecarFetch.kind === 'loaded' &&
     editorFetch.info.shellCompatible &&
     sidecarFetch.info.shellCompatible;
 
@@ -488,7 +492,7 @@ export function VersionStatusBar() {
     sidecarFetch.kind === 'loaded' &&
     computeBundleUpdateAvailable(editorFetch.info, sidecarFetch.info);
 
-  const bundleHasUpdate = bundleCanUpdate && bundleUpdateAvailable;
+  const bundleHasUpdate = bundleCanUpdate && bundleShellCompatible && bundleUpdateAvailable;
   const bundlePendingRestart =
     editorFetch.kind === 'loaded' && sidecarFetch.kind === 'loaded'
       ? computeBundlePendingRestart(editorFetch.info, sidecarFetch.info)
@@ -532,6 +536,7 @@ export function VersionStatusBar() {
                 sidecarApply={sidecarApply}
                 bundleLatestVersion={bundleLatestVersion}
                 bundleCanUpdate={bundleCanUpdate}
+                bundleShellCompatible={bundleShellCompatible}
                 bundleUpdateAvailable={bundleUpdateAvailable}
                 onBundleUpdate={handleBundleUpdate}
                 onBundleCancel={handleBundleCancel}
@@ -735,6 +740,7 @@ interface TagmaBundleBodyProps {
   sidecarApply: SidecarApply;
   bundleLatestVersion: string | null;
   bundleCanUpdate: boolean;
+  bundleShellCompatible: boolean;
   bundleUpdateAvailable: boolean;
   onBundleUpdate: () => void;
   onBundleCancel: () => void;
@@ -746,7 +752,7 @@ interface TagmaBundleBodyProps {
   onSidecarOnlyCancel: () => void;
 }
 
-function TagmaBundleBody(props: TagmaBundleBodyProps) {
+export function TagmaBundleBody(props: TagmaBundleBodyProps) {
   const {
     editorFetch,
     sidecarFetch,
@@ -755,6 +761,7 @@ function TagmaBundleBody(props: TagmaBundleBodyProps) {
     sidecarApply,
     bundleLatestVersion,
     bundleCanUpdate,
+    bundleShellCompatible,
     bundleUpdateAvailable,
     onBundleUpdate,
     onBundleCancel,
@@ -768,6 +775,21 @@ function TagmaBundleBody(props: TagmaBundleBodyProps) {
 
   const [showAdvanced, setShowAdvanced] = useState(false);
   const updating = bundleApply.kind === 'updating';
+  const shellIncompatible = !bundleShellCompatible;
+  const minShellVersions = [
+    editorFetch.kind === 'loaded' ? editorFetch.info.minShellVersion : null,
+    sidecarFetch.kind === 'loaded' ? sidecarFetch.info.minShellVersion : null,
+  ].filter(
+    (version, index, versions): version is string =>
+      !!version && versions.indexOf(version) === index,
+  );
+  const shellIncompatibilityMessage = shellIncompatible
+    ? 'This update requires installer ' +
+      (minShellVersions.length > 0 ? minShellVersions.join(' or ') : 'a newer') +
+      ' or newer. Install the latest Tagma desktop installer' +
+      (bundleLatestVersion ? ' (release ' + bundleLatestVersion + ')' : '') +
+      ' before updating.'
+    : null;
 
   const rows: { label: string; running: string | null; latest: string | null }[] = [
     {
@@ -830,15 +852,30 @@ function TagmaBundleBody(props: TagmaBundleBodyProps) {
         />
       )}
 
+      {shellIncompatibilityMessage && <WarnBox message={shellIncompatibilityMessage} />}
+
       <div className="flex flex-wrap items-center gap-2 pt-1">
         <button
           onClick={onBundleUpdate}
-          disabled={!bundleCanUpdate || !bundleUpdateAvailable || updating}
+          disabled={!bundleCanUpdate || !bundleShellCompatible || !bundleUpdateAvailable || updating}
           className="btn-primary min-w-24 justify-center whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+          aria-label={
+            !bundleCanUpdate
+              ? 'Updates are only available when running under the desktop app.'
+              : shellIncompatibilityMessage
+                ? shellIncompatibilityMessage
+                : bundleUpdateAvailable && bundleLatestVersion
+                  ? 'Update Tagma to ' + bundleLatestVersion
+                  : pendingRestart
+                    ? 'Restart required'
+                    : 'Up to date'
+          }
           title={
             !bundleCanUpdate
               ? 'Updates are only available when running under the desktop app.'
-              : !bundleUpdateAvailable
+              : shellIncompatibilityMessage
+                ? shellIncompatibilityMessage
+                : !bundleUpdateAvailable
                 ? skew
                   ? 'Hot updates must be newer than both local components. Use an installer or wait for a newer release.'
                   : pendingRestart
@@ -850,7 +887,9 @@ function TagmaBundleBody(props: TagmaBundleBodyProps) {
           {updating ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
           {updating
             ? 'Updating...'
-            : bundleUpdateAvailable && bundleLatestVersion
+            : shellIncompatibilityMessage
+              ? 'Installer update required'
+              : bundleUpdateAvailable && bundleLatestVersion
               ? `Update Tagma to ${bundleLatestVersion}`
               : skew
                 ? 'Newer release required'

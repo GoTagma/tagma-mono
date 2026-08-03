@@ -5,12 +5,24 @@ import { performBundleUpdate } from '../release/bundle-update.js';
 import { cancelHotupdate, endHotupdate, tryBeginHotupdate } from '../release/hotupdate-lock.js';
 import {
   assertHotupdateVersionUpgrade,
+  assertHotupdateShellCompatible,
   collectLocalTagmaVersions,
+  HotupdateShellPolicyError,
   HotupdateVersionPolicyError,
 } from '../release/version-policy.js';
 import { stopOpencodeProcesses } from '../opencode-lifecycle.js';
 
-export function registerReleaseRoutes(app: express.Express): void {
+export interface ReleaseRouteDependencies {
+  readonly stopOpencodeProcesses?: typeof stopOpencodeProcesses;
+  readonly performBundleUpdate?: typeof performBundleUpdate;
+}
+
+export function registerReleaseRoutes(
+  app: express.Express,
+  dependencies: ReleaseRouteDependencies = {},
+): void {
+  const stopProcesses = dependencies.stopOpencodeProcesses ?? stopOpencodeProcesses;
+  const updateBundle = dependencies.performBundleUpdate ?? performBundleUpdate;
   /**
    * POST /api/release/update
    *
@@ -52,8 +64,12 @@ export function registerReleaseRoutes(app: express.Express): void {
       const manifest = await fetchHotupdateManifest(manifestUrl, true, controller.signal);
       const localVersions = collectLocalTagmaVersions();
       assertHotupdateVersionUpgrade(manifest.version, localVersions);
-      await stopOpencodeProcesses(3_000);
-      const result = await performBundleUpdate({
+      assertHotupdateShellCompatible(
+        manifest,
+        process.env.TAGMA_SIDECAR_BUNDLED_VERSION ?? process.env.TAGMA_EDITOR_BUNDLED_VERSION,
+      );
+      await stopProcesses(3_000);
+      const result = await updateBundle({
         manifest,
         editorUserDir,
         sidecarUserDir,
@@ -76,6 +92,14 @@ export function registerReleaseRoutes(app: express.Express): void {
           error: err.message,
           kind: err.kind,
           highestLocalVersion: err.highestLocalVersion,
+        });
+      }
+      if (err instanceof HotupdateShellPolicyError) {
+        return res.status(409).json({
+          error: err.message,
+          kind: err.kind,
+          minShellVersion: err.minShellVersion,
+          currentShellVersion: err.currentShellVersion,
         });
       }
       res.status(500).json({ error: errorMessage(err) });

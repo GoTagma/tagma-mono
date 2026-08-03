@@ -1,5 +1,8 @@
 import type { HotupdateManifest } from '../update-manifest.js';
-import { assertHotupdateVersionUpgrade } from './version-policy.js';
+import {
+  assertHotupdateShellCompatible,
+  assertHotupdateVersionUpgrade,
+} from './version-policy.js';
 import {
   activateEditorDist,
   discardEditorStaging,
@@ -60,6 +63,10 @@ export async function performBundleUpdate(input: BundleUpdateInput): Promise<Bun
   const { manifest, editorUserDir, sidecarUserDir, opencodeUserDir, localVersions, signal } = input;
 
   assertHotupdateVersionUpgrade(manifest.version, localVersions);
+  assertHotupdateShellCompatible(
+    manifest,
+    process.env.TAGMA_SIDECAR_BUNDLED_VERSION ?? process.env.TAGMA_EDITOR_BUNDLED_VERSION,
+  );
 
   let editorStaged: EditorStagingResult | null = null;
   let sidecarStaged: SidecarStagingResult | null = null;

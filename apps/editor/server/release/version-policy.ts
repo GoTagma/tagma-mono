@@ -17,6 +17,42 @@ export class HotupdateVersionPolicyError extends Error {
   }
 }
 
+export class HotupdateShellPolicyError extends Error {
+  readonly kind = 'shell-incompatible';
+  readonly minShellVersion: string;
+  readonly currentShellVersion: string | null;
+
+  constructor(minShellVersion: string, currentShellVersion: string | null) {
+    super(
+      'Hot update requires installer ' +
+        minShellVersion +
+        ' or newer (current: ' +
+        (currentShellVersion ?? 'unknown') +
+        '). Install the latest Tagma installer and retry.',
+    );
+    this.name = 'HotupdateShellPolicyError';
+    this.minShellVersion = minShellVersion;
+    this.currentShellVersion = currentShellVersion;
+  }
+}
+
+export function assertHotupdateShellCompatible(
+  manifest: { readonly minShellVersion?: string },
+  currentShellVersion: string | null | undefined,
+): void {
+  const minShellVersion = manifest.minShellVersion;
+  if (
+    !minShellVersion ||
+    typeof currentShellVersion !== 'string' ||
+    !isValidHotupdateVersion(currentShellVersion)
+  ) {
+    return;
+  }
+  if (compareVersions(currentShellVersion, minShellVersion) < 0) {
+    throw new HotupdateShellPolicyError(minShellVersion, currentShellVersion);
+  }
+}
+
 export function highestLocalTagmaVersion(
   versions: readonly (string | null | undefined)[],
 ): string | null {

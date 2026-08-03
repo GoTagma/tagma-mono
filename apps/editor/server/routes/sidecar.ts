@@ -17,8 +17,10 @@ import {
 } from '../release/sidecar-staging.js';
 import { cancelHotupdate, endHotupdate, tryBeginHotupdate } from '../release/hotupdate-lock.js';
 import {
+  assertHotupdateShellCompatible,
   assertHotupdateVersionUpgrade,
   collectLocalTagmaVersions,
+  HotupdateShellPolicyError,
   HotupdateVersionPolicyError,
 } from '../release/version-policy.js';
 
@@ -99,6 +101,10 @@ async function performUpdate(signal?: AbortSignal): Promise<{ version: string; p
   const manifest = await fetchHotupdateManifest(manifestUrl, true, signal);
   assertComponentHotupdateAllowed(manifest, 'sidecar');
   assertHotupdateVersionUpgrade(manifest.version, collectLocalTagmaVersions());
+  assertHotupdateShellCompatible(
+    manifest,
+    process.env.TAGMA_SIDECAR_BUNDLED_VERSION ?? process.env.TAGMA_EDITOR_BUNDLED_VERSION,
+  );
 
   // Note: no route-level "already on this version" short-circuit anymore —
   // it would only check `existsSync(binary)` and miss a corrupt or truncated
@@ -219,6 +225,14 @@ export function registerSidecarRoutes(app: express.Express): void {
           error: err.message,
           kind: err.kind,
           highestLocalVersion: err.highestLocalVersion,
+        });
+      }
+      if (err instanceof HotupdateShellPolicyError) {
+        return res.status(409).json({
+          error: err.message,
+          kind: err.kind,
+          minShellVersion: err.minShellVersion,
+          currentShellVersion: err.currentShellVersion,
         });
       }
       res.status(500).json({ error: errorMessage(err) });

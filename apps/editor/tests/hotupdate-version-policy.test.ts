@@ -3,8 +3,10 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  assertHotupdateShellCompatible,
   assertHotupdateVersionUpgrade,
   collectLocalTagmaVersions,
+  HotupdateShellPolicyError,
 } from '../server/release/version-policy';
 
 const tempDirs: string[] = [];
@@ -24,6 +26,34 @@ describe('assertHotupdateVersionUpgrade', () => {
       /strictly newer than local Tagma version 2\.0\.0/i,
     );
     expect(() => assertHotupdateVersionUpgrade('2.0.1', ['1.9.0', '2.0.0'])).not.toThrow();
+  });
+});
+
+describe('assertHotupdateShellCompatible', () => {
+  test('rejects a known installer below the manifest shell floor with structured details', () => {
+    expect(() =>
+      assertHotupdateShellCompatible({ minShellVersion: '2.0.0' }, '1.9.9'),
+    ).toThrow(HotupdateShellPolicyError);
+
+    try {
+      assertHotupdateShellCompatible({ minShellVersion: '2.0.0' }, '1.9.9');
+    } catch (error) {
+      expect(error).toMatchObject({
+        kind: 'shell-incompatible',
+        minShellVersion: '2.0.0',
+        currentShellVersion: '1.9.9',
+      });
+    }
+  });
+
+  test('allows a compatible, unknown, or floorless shell', () => {
+    expect(() =>
+      assertHotupdateShellCompatible({ minShellVersion: '2.0.0' }, '2.0.0'),
+    ).not.toThrow();
+    expect(() =>
+      assertHotupdateShellCompatible({ minShellVersion: '2.0.0' }, null),
+    ).not.toThrow();
+    expect(() => assertHotupdateShellCompatible({}, '1.0.0')).not.toThrow();
   });
 });
 

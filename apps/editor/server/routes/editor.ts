@@ -16,8 +16,10 @@ import {
 } from '../release/editor-staging.js';
 import { cancelHotupdate, endHotupdate, tryBeginHotupdate } from '../release/hotupdate-lock.js';
 import {
+  assertHotupdateShellCompatible,
   assertHotupdateVersionUpgrade,
   collectLocalTagmaVersions,
+  HotupdateShellPolicyError,
   HotupdateVersionPolicyError,
 } from '../release/version-policy.js';
 
@@ -138,15 +140,7 @@ async function performUpdate(
   }
 
   assertHotupdateVersionUpgrade(manifest.version, collectLocalTagmaVersions());
-
-  const shellVersion = process.env.TAGMA_EDITOR_BUNDLED_VERSION;
-  if (manifest.minShellVersion && shellVersion) {
-    if (compareVersions(shellVersion, manifest.minShellVersion) < 0) {
-      throw new Error(
-        `This update requires installer ${manifest.minShellVersion} or newer (current: ${shellVersion}). Install the latest Tagma installer and retry.`,
-      );
-    }
-  }
+  assertHotupdateShellCompatible(manifest, process.env.TAGMA_EDITOR_BUNDLED_VERSION);
 
   const userInstalledVersion = readUserVersion(userDir);
   if (userInstalledVersion === manifest.version) {
@@ -308,6 +302,14 @@ export function registerEditorRoutes(
           error: err.message,
           kind: err.kind,
           highestLocalVersion: err.highestLocalVersion,
+        });
+      }
+      if (err instanceof HotupdateShellPolicyError) {
+        return res.status(409).json({
+          error: err.message,
+          kind: err.kind,
+          minShellVersion: err.minShellVersion,
+          currentShellVersion: err.currentShellVersion,
         });
       }
       res.status(500).json({ error: errorMessage(err) });
