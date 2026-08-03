@@ -620,6 +620,20 @@ describe('extractTaskBindingOutputs', () => {
     expect(r.diagnostic).toContain('"id": expected number, got string');
   });
 
+  test('explains malformed JSON for json-sourced outputs', () => {
+    const r = extractTaskBindingOutputs(
+      {
+        answer: { from: 'json.answer', type: 'string' },
+      },
+      '{"answer":',
+      '',
+      null,
+    );
+    expect(r.outputs).toEqual({});
+    expect(r.diagnostic).toContain('could not find a final-line JSON object in task output');
+    expect(r.diagnostic).toContain('unresolved binding output(s): answer');
+  });
+
   test('extracts loose outputs from final-line JSON by default', () => {
     const r = extractTaskBindingOutputs(
       {

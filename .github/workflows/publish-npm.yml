@@ -154,10 +154,12 @@ jobs:
           # check:deps performs the frozen install and validates bun.lock
           # workspace metadata before package checks use node_modules.
           bun run check:deps
+          # Build public artifacts before tests: the SDK user-journey suite
+          # installs a first-party plugin using its published-package shape.
+          bun run check:publish
           bun run check:public
           bun run test:public
           bun run lint:public
-          bun run check:publish
 
       - name: Configure npm auth
         env:

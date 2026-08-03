@@ -28,6 +28,10 @@ Do not amend the same commit to include these files after naming them with the c
 - Desktop release finalization must refresh the root `bun.lock` after applying the released
   `apps/electron/package.json`, run `bun run check:deps`, and commit both files atomically.
 
+## Public Package Test Prerequisites
+
+- `test:public` includes SDK user-journey coverage that installs a first-party plugin in published-package shape; keep public package builds ahead of those tests (`bun run test` builds plugins first, and the npm workflow runs `check:publish` before `test:public`).
+
 ## Workflow Self-Repair Invariants
 
 - Persist self-repair only as a finite, success-conditioned lifecycle:

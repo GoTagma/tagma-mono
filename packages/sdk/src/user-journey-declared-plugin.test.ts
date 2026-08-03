@@ -113,7 +113,7 @@ describe('user journey - declared first-party plugin in a consumer workspace', (
 
       const tagma = createTagma();
       await expect(tagma.runYaml(yaml, { cwd: workspace })).rejects.toThrow(
-        /trigger "webhook" not registered/,
+        /trigger type "webhook" not registered/,
       );
       expect(tagma.registry.hasHandler('triggers', 'webhook')).toBe(false);
 

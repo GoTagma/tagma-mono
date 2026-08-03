@@ -802,6 +802,7 @@ export function extractTaskBindingOutputs(
   const outputs: Record<string, unknown> = {};
   const missing: string[] = [];
   let record: Record<string, unknown> | null | undefined;
+  let jsonRecordParseFailed = false;
 
   for (const [name, binding] of Object.entries(bindings)) {
     let value: unknown;
@@ -827,6 +828,7 @@ export function extractTaskBindingOutputs(
         if (record === undefined) {
           const jsonSource = (normalizedOutput ?? '').length > 0 ? normalizedOutput! : stdout;
           record = parseJsonTail(jsonSource);
+          if (record === null) jsonRecordParseFailed = true;
         }
         const key = source.slice('json.'.length);
         if (record && hasOwn(record, key)) {
@@ -858,7 +860,14 @@ export function extractTaskBindingOutputs(
   return {
     outputs,
     diagnostic:
-      missing.length > 0 ? `outputs: unresolved binding output(s): ${missing.join(', ')}` : null,
+      missing.length > 0
+        ? `outputs: ${[
+            ...(jsonRecordParseFailed
+              ? ['could not find a final-line JSON object in task output']
+              : []),
+            `unresolved binding output(s): ${missing.join(', ')}`,
+          ].join(' — ')}`
+        : null,
   };
 }
 
