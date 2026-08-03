@@ -5,6 +5,7 @@ import {
   canAskAiForHistoryTask,
   historyAskAiModeForTask,
 } from '../src/components/run/HistoryFlowView';
+import { RUN_INSPECTOR_PANEL_CLASSES } from '../src/components/run/run-layout';
 import type { RunSummary, RunSummaryTask } from '../src/api/client';
 
 function task(overrides: Partial<RunSummaryTask>): RunSummaryTask {
@@ -152,7 +153,9 @@ describe('HistoryFlowView', () => {
     const source = await Bun.file(
       new URL('../src/components/run/HistoryFlowView.tsx', import.meta.url),
     ).text();
-    expect(source).toContain('w-[calc(100%-1rem)] max-w-[18rem]');
-    expect(source).toContain('w-full h-full bg-tagma-surface');
+    expect(source).toContain('className={RUN_INSPECTOR_PANEL_CLASSES}');
+    expect(RUN_INSPECTOR_PANEL_CLASSES).toContain('w-[calc(100%-1rem)]');
+    expect(RUN_INSPECTOR_PANEL_CLASSES).toContain('max-w-[20rem]');
+    expect(source).toContain('w-full h-full flex flex-col');
   });
 });

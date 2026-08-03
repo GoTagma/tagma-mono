@@ -183,10 +183,7 @@ export function UnsavedChangesModal({
           ))}
         </div>
         <div className="modal-viewport-footer px-4 py-3 border-t border-tagma-border flex justify-end gap-2">
-          <button
-            onClick={onCancel}
-            className="btn-secondary"
-          >
+          <button onClick={onCancel} className="btn-secondary">
             Cancel
           </button>
           <button

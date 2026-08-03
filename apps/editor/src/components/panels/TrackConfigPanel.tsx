@@ -331,238 +331,239 @@ export function TrackConfigPanel({
           </div>
         </div>
 
-        <div className="border-t border-tagma-border" />
-
-        {showAgentFields && (
-          <>
-            {/* Driver */}
-            <div>
-              <div className="flex items-center justify-between">
-                <label className="field-label">
-                  Driver
-                  <FieldHelpButton field="Driver" scope="track" />
-                  <ModifiedBadge visible={isFieldModified('driver')} />
-                </label>
-                <ResetButton
-                  visible={!!track.driver}
-                  onReset={() => commit({ driver: undefined })}
+        <div className="space-y-3 border-t border-tagma-border pt-3">
+          {showAgentFields && (
+            <>
+              {/* Driver */}
+              <div>
+                <div className="flex items-center justify-between">
+                  <label className="field-label">
+                    Driver
+                    <FieldHelpButton field="Driver" scope="track" />
+                    <ModifiedBadge visible={isFieldModified('driver')} />
+                  </label>
+                  <ResetButton
+                    visible={!!track.driver}
+                    onReset={() => commit({ driver: undefined })}
+                  />
+                </div>
+                <select
+                  className="field-input"
+                  value={track.driver ?? ''}
+                  onChange={(e) => commit({ driver: e.target.value || undefined })}
+                >
+                  <option value="">(inherited)</option>
+                  {drivers.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+                <InheritedValue
+                  isOverridden={!!track.driver}
+                  resolved={resolvedDriver}
+                  pipelineName={pipelineConfig.name}
                 />
               </div>
-              <select
-                className="field-input"
-                value={track.driver ?? ''}
-                onChange={(e) => commit({ driver: e.target.value || undefined })}
-              >
-                <option value="">(inherited)</option>
-                {drivers.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-              <InheritedValue
-                isOverridden={!!track.driver}
-                resolved={resolvedDriver}
-                pipelineName={pipelineConfig.name}
-              />
-            </div>
 
-            {/* Model */}
-            <div>
-              <div className="flex items-center justify-between">
-                <label className="field-label">
-                  Model
-                  <FieldHelpButton field="Model" scope="track" />
-                  <ModifiedBadge visible={isFieldModified('model')} />
-                </label>
-                <ResetButton visible={!!track.model} onReset={() => commit({ model: undefined })} />
-              </div>
-              <InspectorModelField
-                value={model}
-                onChange={setModel}
-                onBlur={blurModel}
-                copyLabel="Copy track model"
-                placeholder={
-                  isBuiltinOpencodeDriver(resolvedDriver.value)
-                    ? 'e.g. opencode/big-pickle, anthropic/claude-sonnet-4-5'
-                    : 'e.g. claude-sonnet-4-6'
-                }
-                enableOpencodeModels={isBuiltinOpencodeDriver(resolvedDriver.value)}
-              />
-              <InheritedValue
-                isOverridden={!!track.model}
-                resolved={resolvedModel}
-                pipelineName={pipelineConfig.name}
-              />
-            </div>
-
-            {/* Reasoning Effort */}
-            <div>
-              <div className="flex items-center justify-between">
-                <label className="field-label">
-                  Reasoning Effort
-                  <FieldHelpButton field="Reasoning Effort" scope="track" />
-                  <ModifiedBadge visible={isFieldModified('reasoning_effort')} />
-                </label>
-                <ResetButton
-                  visible={!!track.reasoning_effort}
-                  onReset={() => commit({ reasoning_effort: undefined })}
+              {/* Model */}
+              <div>
+                <div className="flex items-center justify-between">
+                  <label className="field-label">
+                    Model
+                    <FieldHelpButton field="Model" scope="track" />
+                    <ModifiedBadge visible={isFieldModified('model')} />
+                  </label>
+                  <ResetButton
+                    visible={!!track.model}
+                    onReset={() => commit({ model: undefined })}
+                  />
+                </div>
+                <InspectorModelField
+                  value={model}
+                  onChange={setModel}
+                  onBlur={blurModel}
+                  copyLabel="Copy track model"
+                  placeholder={
+                    isBuiltinOpencodeDriver(resolvedDriver.value)
+                      ? 'e.g. opencode/big-pickle, anthropic/claude-sonnet-4-5'
+                      : 'e.g. claude-sonnet-4-6'
+                  }
+                  enableOpencodeModels={isBuiltinOpencodeDriver(resolvedDriver.value)}
+                />
+                <InheritedValue
+                  isOverridden={!!track.model}
+                  resolved={resolvedModel}
+                  pipelineName={pipelineConfig.name}
                 />
               </div>
-              <select
-                className="field-input"
-                value={track.reasoning_effort ?? ''}
-                onChange={(e) => commit({ reasoning_effort: e.target.value || undefined })}
-              >
-                <option value="">(inherited)</option>
-                <option value="low">low</option>
-                <option value="medium">medium</option>
-                <option value="high">high</option>
-              </select>
-              <InheritedValue
-                isOverridden={!!track.reasoning_effort}
-                resolved={resolvedReasoning}
-                pipelineName={pipelineConfig.name}
-              />
-            </div>
 
-            {/* Agent Profile */}
-            <div>
-              <div className="flex items-center justify-between">
-                <label className="field-label">
-                  Agent Profile
-                  <FieldHelpButton field="Agent Profile" scope="track" />
-                  <ModifiedBadge visible={isFieldModified('agent_profile')} />
-                </label>
-                <ResetButton
-                  visible={!!track.agent_profile}
-                  onReset={() => commit({ agent_profile: undefined })}
+              {/* Reasoning Effort */}
+              <div>
+                <div className="flex items-center justify-between">
+                  <label className="field-label">
+                    Reasoning Effort
+                    <FieldHelpButton field="Reasoning Effort" scope="track" />
+                    <ModifiedBadge visible={isFieldModified('reasoning_effort')} />
+                  </label>
+                  <ResetButton
+                    visible={!!track.reasoning_effort}
+                    onReset={() => commit({ reasoning_effort: undefined })}
+                  />
+                </div>
+                <select
+                  className="field-input"
+                  value={track.reasoning_effort ?? ''}
+                  onChange={(e) => commit({ reasoning_effort: e.target.value || undefined })}
+                >
+                  <option value="">(inherited)</option>
+                  <option value="low">low</option>
+                  <option value="medium">medium</option>
+                  <option value="high">high</option>
+                </select>
+                <InheritedValue
+                  isOverridden={!!track.reasoning_effort}
+                  resolved={resolvedReasoning}
+                  pipelineName={pipelineConfig.name}
                 />
               </div>
-              <CopyableField
-                value={agentProfile}
-                label="Copy track agent profile"
-                buttonClassName="top-2 translate-y-0"
-              >
-                <textarea
-                  className="field-input min-h-[60px] resize-y font-mono text-[11px]"
+
+              {/* Agent Profile */}
+              <div>
+                <div className="flex items-center justify-between">
+                  <label className="field-label">
+                    Agent Profile
+                    <FieldHelpButton field="Agent Profile" scope="track" />
+                    <ModifiedBadge visible={isFieldModified('agent_profile')} />
+                  </label>
+                  <ResetButton
+                    visible={!!track.agent_profile}
+                    onReset={() => commit({ agent_profile: undefined })}
+                  />
+                </div>
+                <CopyableField
                   value={agentProfile}
-                  onChange={(e) => setAgentProfile(e.target.value)}
-                  onBlur={blurAgentProfile}
-                  placeholder="Named profile or multi-line system prompt..."
+                  label="Copy track agent profile"
+                  buttonClassName="top-2 translate-y-0"
+                >
+                  <textarea
+                    className="field-input min-h-[60px] resize-y font-mono text-[11px]"
+                    value={agentProfile}
+                    onChange={(e) => setAgentProfile(e.target.value)}
+                    onBlur={blurAgentProfile}
+                    placeholder="Named profile or multi-line system prompt..."
+                  />
+                </CopyableField>
+                <InheritedValue
+                  isOverridden={!!track.agent_profile}
+                  resolved={resolvedAgentProfile}
+                  pipelineName={pipelineConfig.name}
                 />
-              </CopyableField>
-              <InheritedValue
-                isOverridden={!!track.agent_profile}
-                resolved={resolvedAgentProfile}
-                pipelineName={pipelineConfig.name}
-              />
-            </div>
-          </>
-        )}
+              </div>
+            </>
+          )}
 
-        {/* CWD */}
-        <div>
-          <div className="flex items-center justify-between">
-            <label className="field-label">
-              Working Directory
-              <FieldHelpButton field="Working Directory" scope="track" />
-              <ModifiedBadge visible={isFieldModified('cwd')} />
-            </label>
-            <ResetButton visible={!!track.cwd} onReset={() => commit({ cwd: undefined })} />
-          </div>
-          <CopyableField value={cwd} label="Copy track working directory">
-            <input
-              type="text"
-              className="field-input font-mono text-[11px]"
-              value={cwd}
-              onChange={(e) => setCwd(e.target.value)}
-              onBlur={blurCwd}
-              placeholder="./path (relative, inherited)"
-            />
-          </CopyableField>
-          <InheritedValue
-            isOverridden={!!track.cwd}
-            resolved={resolvedCwd}
-            pipelineName={pipelineConfig.name}
-          />
-        </div>
-
-        <div className="border-t border-tagma-border" />
-
-        {showAgentFields && (
+          {/* CWD */}
           <div>
             <div className="flex items-center justify-between">
               <label className="field-label">
-                Permissions
-                <FieldHelpButton field="Permissions" scope="track" />
-                <ModifiedBadge visible={isFieldModified('permissions')} />
+                Working Directory
+                <FieldHelpButton field="Working Directory" scope="track" />
+                <ModifiedBadge visible={isFieldModified('cwd')} />
               </label>
-              <ResetButton
-                visible={!!track.permissions}
-                onReset={() => commit({ permissions: undefined })}
+              <ResetButton visible={!!track.cwd} onReset={() => commit({ cwd: undefined })} />
+            </div>
+            <CopyableField value={cwd} label="Copy track working directory">
+              <input
+                type="text"
+                className="field-input font-mono text-[11px]"
+                value={cwd}
+                onChange={(e) => setCwd(e.target.value)}
+                onBlur={blurCwd}
+                placeholder="./path (relative, inherited)"
               />
-            </div>
-            <div className="flex gap-3">
-              {(['read', 'write', 'execute'] as const).map((key) => {
-                const isExecute = key === 'execute';
-                return (
-                  <label
-                    key={key}
-                    className="flex items-center gap-1.5 cursor-pointer"
-                    title={
-                      isExecute
-                        ? 'Allows arbitrary shell execution (Bash, bypassPermissions on claude-code). Enable only in trusted workdirs.'
-                        : undefined
-                    }
-                  >
-                    <input
-                      type="checkbox"
-                      checked={!!track.permissions?.[key]}
-                      onChange={() => handlePermToggle(key)}
-                      className="accent-tagma-accent"
-                    />
-                    <span
-                      className={`text-[11px] capitalize ${isExecute ? 'text-tagma-error' : 'text-tagma-text'}`}
-                    >
-                      {key}
-                    </span>
-                    {isExecute && <ShieldAlert size={10} className="text-tagma-error" />}
-                  </label>
-                );
-              })}
-            </div>
+            </CopyableField>
+            <InheritedValue
+              isOverridden={!!track.cwd}
+              resolved={resolvedCwd}
+              pipelineName={pipelineConfig.name}
+            />
           </div>
-        )}
-
-        {/* On Failure */}
-        <div>
-          <label className="field-label">
-            On Failure
-            <FieldHelpButton field="On Failure" scope="track" />
-            <ModifiedBadge visible={isFieldModified('on_failure')} />
-          </label>
-          <select
-            className="field-input"
-            value={track.on_failure ?? ''}
-            onChange={(e) => handleOnFailureChange(e.target.value)}
-          >
-            <option value="">skip_downstream (default)</option>
-            <option value="skip_downstream">skip_downstream</option>
-            <option value="stop_all">stop_all</option>
-            <option value="ignore">ignore</option>
-          </select>
-          <p
-            className={`text-[10px] mt-1 ${(track.on_failure ?? '') === 'stop_all' ? 'text-tagma-warning' : 'text-tagma-muted'}`}
-          >
-            {ON_FAILURE_DESCRIPTIONS[track.on_failure ?? '']}
-          </p>
         </div>
 
-        <div className="border-t border-tagma-border" />
+        <div className="space-y-3 border-t border-tagma-border pt-3">
+          {showAgentFields && (
+            <div>
+              <div className="flex items-center justify-between">
+                <label className="field-label">
+                  Permissions
+                  <FieldHelpButton field="Permissions" scope="track" />
+                  <ModifiedBadge visible={isFieldModified('permissions')} />
+                </label>
+                <ResetButton
+                  visible={!!track.permissions}
+                  onReset={() => commit({ permissions: undefined })}
+                />
+              </div>
+              <div className="flex gap-3">
+                {(['read', 'write', 'execute'] as const).map((key) => {
+                  const isExecute = key === 'execute';
+                  return (
+                    <label
+                      key={key}
+                      className="flex items-center gap-1.5 cursor-pointer"
+                      title={
+                        isExecute
+                          ? 'Allows arbitrary shell execution (Bash, bypassPermissions on claude-code). Enable only in trusted workdirs.'
+                          : undefined
+                      }
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!!track.permissions?.[key]}
+                        onChange={() => handlePermToggle(key)}
+                        className="accent-tagma-accent"
+                      />
+                      <span
+                        className={`text-[11px] capitalize ${isExecute ? 'text-tagma-error' : 'text-tagma-text'}`}
+                      >
+                        {key}
+                      </span>
+                      {isExecute && <ShieldAlert size={10} className="text-tagma-error" />}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* On Failure */}
+          <div>
+            <label className="field-label">
+              On Failure
+              <FieldHelpButton field="On Failure" scope="track" />
+              <ModifiedBadge visible={isFieldModified('on_failure')} />
+            </label>
+            <select
+              className="field-input"
+              value={track.on_failure ?? ''}
+              onChange={(e) => handleOnFailureChange(e.target.value)}
+            >
+              <option value="">skip_downstream (default)</option>
+              <option value="skip_downstream">skip_downstream</option>
+              <option value="stop_all">stop_all</option>
+              <option value="ignore">ignore</option>
+            </select>
+            <p
+              className={`text-[10px] mt-1 ${(track.on_failure ?? '') === 'stop_all' ? 'text-tagma-warning' : 'text-tagma-muted'}`}
+            >
+              {ON_FAILURE_DESCRIPTIONS[track.on_failure ?? '']}
+            </p>
+          </div>
+        </div>
 
         {/* Task count (readonly) */}
-        <div>
+        <div className="border-t border-tagma-border pt-3">
           <label className="field-label">
             Tasks <span className="text-tagma-error">*</span>
           </label>

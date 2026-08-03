@@ -438,7 +438,7 @@ function PortRow({
       {/* Row 3 (enum only): comma-separated values */}
       {port.type === 'enum' && (
         <div>
-          <label className="text-[10px] text-tagma-muted">
+          <label className="block text-[10px] text-tagma-muted mb-0.5">
             Allowed values <span className="text-tagma-muted/60">(comma-separated)</span>
           </label>
           {isEditable ? (
@@ -498,7 +498,7 @@ function PortRow({
 
       {kind === 'input' && isEditable && sourceMode === 'specific' && fromOptions.length > 0 && (
         <div>
-          <label className="text-[10px] text-tagma-muted">Upstream candidates</label>
+          <label className="block text-[10px] text-tagma-muted mb-0.5">Upstream candidates</label>
           <div className="flex flex-wrap gap-1">
             {fromOptions.map((c) => {
               const source = sourceForUpstreamCandidate(c, upstreamCandidates ?? []);
@@ -567,11 +567,7 @@ function StatusBadge({ status }: { status: UnifiedPortRow['status'] }) {
         : status === 'overridden'
           ? 'border-tagma-warning/45 text-tagma-warning bg-tagma-warning/10'
           : 'border-tagma-border text-tagma-muted bg-tagma-surface/50';
-  return (
-    <span className={`chip-xs uppercase ${className}`}>
-      {status}
-    </span>
-  );
+  return <span className={`chip-xs uppercase ${className}`}>{status}</span>;
 }
 
 function SourceEditor({
@@ -656,7 +652,7 @@ function SourceEditor({
 
   return (
     <div className="space-y-1">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 mb-0.5">
         <label className="text-[10px] text-tagma-muted">Source</label>
         <span className="text-[10px] text-tagma-muted truncate">
           {row.source.label}

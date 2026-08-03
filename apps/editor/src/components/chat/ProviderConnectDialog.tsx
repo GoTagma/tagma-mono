@@ -399,9 +399,7 @@ function ProviderRow({
       <div className="flex items-center gap-2 px-4 py-3">
         <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
           <span className="text-[11px] font-mono font-medium text-tagma-text">{entry.name}</span>
-          <span className="chip-xs border-tagma-border text-tagma-muted-dim">
-            {entry.id}
-          </span>
+          <span className="chip-xs border-tagma-border text-tagma-muted-dim">{entry.id}</span>
           {isCustom && (
             <span
               className="chip-xs border-tagma-accent/40 text-tagma-accent uppercase tracking-wider"
@@ -416,10 +414,7 @@ function ProviderRow({
           )}
           {!isCustom &&
             envPills.map((v) => (
-              <span
-                key={v}
-                className="chip-xs border-tagma-border/60 text-tagma-muted-dim"
-              >
+              <span key={v} className="chip-xs border-tagma-border/60 text-tagma-muted-dim">
                 {v}
               </span>
             ))}

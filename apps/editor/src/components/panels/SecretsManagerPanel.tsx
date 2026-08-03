@@ -510,11 +510,7 @@ export function SecretsManagerPanel({
                   )}
                   Save Secret
                 </button>
-                <button
-                  onClick={() => void load()}
-                  disabled={busy}
-                  className="btn-secondary"
-                >
+                <button onClick={() => void load()} disabled={busy} className="btn-secondary">
                   {status.kind === 'loading' ? (
                     <Loader2 size={11} className="animate-spin" />
                   ) : (
@@ -533,7 +529,7 @@ export function SecretsManagerPanel({
                 </div>
               )}
               {status.kind !== 'loading' && secrets.length === 0 && (
-                <div className="text-[10px] text-tagma-muted border border-tagma-border bg-tagma-bg px-2.5 py-2">
+                <div className="text-[11px] text-tagma-muted border border-tagma-border bg-tagma-bg px-2.5 py-2">
                   No secrets are configured for this workspace.
                 </div>
               )}
@@ -577,14 +573,14 @@ export function SecretsManagerPanel({
                       <button
                         onClick={() => setDeleteTarget(secret)}
                         disabled={busy}
-                        className="p-1 text-tagma-muted hover:text-tagma-error transition-colors disabled:opacity-40"
+                        className="p-1 text-tagma-muted hover:text-tagma-error transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                         aria-label={`Delete ${secret.envName}`}
                         title="Delete secret"
                       >
                         {status.kind === 'deleting' && status.id === secret.id ? (
                           <Loader2 size={11} className="animate-spin" />
                         ) : (
-                          <Trash2 size={13} />
+                          <Trash2 size={12} />
                         )}
                       </button>
                     </div>

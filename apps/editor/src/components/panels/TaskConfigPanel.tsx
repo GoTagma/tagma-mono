@@ -1596,7 +1596,7 @@ function KeyValueEditor({
     <div className="space-y-1.5">
       {entries.map(([k, v]) => (
         <div key={k} className="flex items-center gap-1">
-          <CopyableField value={k} label={`Copy ${k} key`} className="w-[90px] shrink-0">
+          <CopyableField value={k} label={`Copy ${k} key`} className="w-[92px] shrink-0">
             <input
               type="text"
               className="field-input font-mono text-[11px]"
@@ -1629,9 +1629,9 @@ function KeyValueEditor({
       ))}
       <button
         onClick={handleAdd}
-        className="text-[10px] text-tagma-accent hover:text-tagma-text transition-colors"
+        className="flex items-center gap-1 text-[10px] text-tagma-accent hover:text-tagma-text transition-colors"
       >
-        + Add entry
+        <Plus size={10} /> Add entry
       </button>
     </div>
   );

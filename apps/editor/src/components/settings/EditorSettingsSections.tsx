@@ -241,7 +241,7 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
                 htmlFor={'chat-trial-plan-attempts'}
                 className={'w-44 shrink-0 text-tagma-muted'}
               >
-                Trial plan attempts per revision:
+                Trial Plan attempts per revision:
               </label>
               <input
                 id={'chat-trial-plan-attempts'}
@@ -683,7 +683,9 @@ export function PythonAgentWizard({ controller }: { controller: EditorSettingsCo
           )}
 
           {commandPreview && (
-            <div className="text-[10px] text-tagma-muted font-mono break-all">command: {commandPreview}</div>
+            <div className="text-[10px] text-tagma-muted font-mono break-all">
+              command: {commandPreview}
+            </div>
           )}
           {status.kind === 'detecting' && (
             <div className="flex items-center gap-1.5 text-[10px] text-tagma-muted">

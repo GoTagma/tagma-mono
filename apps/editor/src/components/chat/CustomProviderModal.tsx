@@ -1125,12 +1125,7 @@ export function CustomProviderModal({
         </div>
 
         <div className="modal-viewport-footer flex items-center justify-end gap-2 border-t border-tagma-border px-4 py-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            className="btn-secondary"
-          >
+          <button type="button" onClick={onClose} disabled={saving} className="btn-secondary">
             Cancel
           </button>
           <button
