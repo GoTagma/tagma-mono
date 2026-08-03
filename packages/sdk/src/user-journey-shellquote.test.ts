@@ -28,7 +28,9 @@ pipeline:
 }
 
 function finalTaskEvent(events: RunEventPayload[]) {
-  const updates = events.filter((event) => event.type === 'task_update' && event.taskId === 'main.capture');
+  const updates = events.filter(
+    (event) => event.type === 'task_update' && event.taskId === 'main.capture',
+  );
   return updates[updates.length - 1];
 }
 
