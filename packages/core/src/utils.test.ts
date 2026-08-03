@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { Buffer } from 'node:buffer';
 import { mkdirSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -89,7 +90,27 @@ test('PIPELINE_SHELL override is evaluated per call instead of cached', () => {
     expect(shellArgs('echo hi').slice(0, 2)).toEqual(['cmd', '/c']);
 
     process.env.PIPELINE_SHELL = 'powershell';
-    expect(shellArgs('echo hi').slice(0, 2)).toEqual(['powershell', '-Command']);
+    expect(shellArgs('echo hi').slice(0, 2)).toEqual(['powershell', '-EncodedCommand']);
+  } finally {
+    if (previousShell === undefined) {
+      delete process.env.PIPELINE_SHELL;
+    } else {
+      process.env.PIPELINE_SHELL = previousShell;
+    }
+    _resetShellCache();
+  }
+});
+
+test('PowerShell shell commands preserve embedded quotes through encoded arguments', () => {
+  const previousShell = process.env.PIPELINE_SHELL;
+  try {
+    process.env.PIPELINE_SHELL = 'powershell';
+    _resetShellCache();
+    const command = `Write-Output 'double "quotes" and single 'quotes''`;
+    const args = shellArgs(command);
+
+    expect(args.slice(0, 2)).toEqual(['powershell', '-EncodedCommand']);
+    expect(Buffer.from(args[2]!, 'base64').toString('utf16le')).toBe(command);
   } finally {
     if (previousShell === undefined) {
       delete process.env.PIPELINE_SHELL;
@@ -107,7 +128,7 @@ if (process.platform === 'win32') {
       delete process.env.PIPELINE_SHELL;
       _resetShellCache();
       const args = shellArgs('Get-ChildItem');
-      expect(['-Command', '/c']).toContain(args[1]);
+      expect(['-EncodedCommand', '/c']).toContain(args[1]);
     } finally {
       if (previousShell === undefined) {
         delete process.env.PIPELINE_SHELL;

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import { Buffer } from 'node:buffer';
 import { _resetShellCache } from './utils';
 import {
   commandLabel,
@@ -40,11 +41,9 @@ describe('command config helpers', () => {
     process.env.PIPELINE_SHELL = 'powershell';
     _resetShellCache();
 
-    expect(commandToSpawnSpec({ shell: 'Write-Output ok' }, 'C:\\work').args).toEqual([
-      'powershell',
-      '-Command',
-      'Write-Output ok',
-    ]);
+    const shellSpec = commandToSpawnSpec({ shell: 'Write-Output ok' }, 'C:\\work');
+    expect(shellSpec.args.slice(0, 2)).toEqual(['powershell', '-EncodedCommand']);
+    expect(Buffer.from(shellSpec.args[2]!, 'base64').toString('utf16le')).toBe('Write-Output ok');
     expect(commandLabel({ shell: 'Write-Output ok' })).toBe('Write-Output ok');
     expect(() => commandToSpawnSpec('', '/tmp/work')).toThrow(/command must not be empty/);
     expect(() => commandToSpawnSpec({ shell: '   ' }, '/tmp/work')).toThrow(

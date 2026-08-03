@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import { dirname, isAbsolute, resolve, relative, parse as parsePath, sep } from 'path';
 import { realpathSync, lstatSync, existsSync } from 'fs';
 import { randomBytes } from 'crypto';
@@ -220,13 +221,21 @@ function getShell(): { kind: ShellKind; path: string } {
   return resolvedShell;
 }
 
+function encodedPowerShellArgs(path: string, command: string): readonly string[] {
+  // Passing a script as `-Command <script>` lets Windows argument parsing
+  // consume embedded double quotes before PowerShell receives it. Encoded
+  // commands use UTF-16LE as required by PowerShell and keep the script's
+  // bytes intact, including values protected by `shellquote`.
+  return [path, '-EncodedCommand', Buffer.from(command, 'utf16le').toString('base64')];
+}
+
 export function shellArgs(command: string): readonly string[] {
   const sh = getShell();
   if (sh.kind === 'cmd') {
     return [sh.path, '/c', command];
   }
   if (sh.kind === 'powershell') {
-    return [sh.path, '-Command', command];
+    return encodedPowerShellArgs(sh.path, command);
   }
   // sh or bash
   return [sh.path, '-c', command];
@@ -312,7 +321,7 @@ export function shellArgsFromArray(args: readonly string[]): readonly string[] {
     return [sh.path, '/c', command];
   }
   if (sh.kind === 'powershell') {
-    return [sh.path, '-Command', command];
+    return encodedPowerShellArgs(sh.path, command);
   }
   return [sh.path, '-c', command];
 }
