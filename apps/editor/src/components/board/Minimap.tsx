@@ -225,7 +225,7 @@ export function Minimap({
       // them so the minimap mirrors the canvas's hidden state.
       if (trackTop === null) return;
       const row = rowByTrackId.get(track.id);
-      const fill = track.color || '#64748b';
+      const fill = track.color || 'rgb(var(--tagma-muted))';
       track.tasks.forEach((task, taskIdx) => {
         const qid = `${track.id}.${task.id}`;
         const stored = positions.get(qid);
@@ -256,11 +256,11 @@ export function Minimap({
         type="button"
         onClick={() => setVisible(true)}
         onMouseDown={(e) => e.stopPropagation()}
-        className="minimap-float absolute z-20 flex items-center gap-1 px-2 bg-tagma-surface/90 border border-tagma-border shadow-panel text-tagma-muted hover:text-tagma-text"
-        style={{ bottom: 12, right: 12, height: 22 }}
+        className="minimap-float absolute z-20 flex items-center gap-1 px-2 h-5 bg-tagma-surface/90 border border-tagma-border shadow-panel text-tagma-muted hover:text-tagma-text transition-colors"
+        style={{ bottom: 12, right: 12 }}
         title="Show minimap"
       >
-        <MapIcon size={11} />
+        <MapIcon size={10} />
         <span className="text-[9px] font-mono uppercase tracking-wider">minimap</span>
       </button>
     );
@@ -273,20 +273,20 @@ export function Minimap({
       onMouseDown={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
     >
-      <div className="tagma-rail flex items-center justify-between px-2 h-[18px] border-b border-tagma-border/60">
+      <div className="tagma-rail flex items-center justify-between px-2 h-5 border-b border-tagma-border/60">
         <span className="text-[9px] font-mono uppercase tracking-wider text-tagma-muted">
           minimap
         </span>
         <button
           type="button"
-          className="text-tagma-muted hover:text-tagma-text"
+          className="inline-flex items-center justify-center text-tagma-muted hover:text-tagma-text transition-colors"
           onClick={() => setVisible(false)}
           title="Hide minimap"
         >
           <X size={10} />
         </button>
       </div>
-      <div className="p-1.5">
+      <div className="p-1">
         <svg
           ref={svgRef}
           width={mapLayout.width}

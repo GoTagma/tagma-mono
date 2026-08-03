@@ -55,10 +55,10 @@ export function ConfirmDialog({
             <X size={14} />
           </button>
         </div>
-        <div className="modal-viewport-body space-y-2 px-5 py-4 text-[12px] text-tagma-text">
+        <div className="modal-viewport-body space-y-2 px-4 py-3 text-[12px] text-tagma-text">
           {message}
         </div>
-        <div className="modal-viewport-footer flex justify-end gap-2 border-t border-tagma-border px-5 py-3">
+        <div className="modal-viewport-footer flex justify-end gap-2 border-t border-tagma-border px-4 py-3">
           <button
             type="button"
             onClick={onCancel}
@@ -71,7 +71,7 @@ export function ConfirmDialog({
             onClick={() => {
               onConfirm();
             }}
-            className={danger ? 'btn-danger' : 'btn-primary'}
+            className={danger ? 'btn-danger-inline' : 'btn-primary'}
           >
             {confirmLabel}
           </button>

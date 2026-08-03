@@ -263,7 +263,7 @@ export function PluginCardShell({
   actions,
 }: PluginCardShellProps) {
   return (
-    <div className="group relative flex gap-4 p-5 bg-tagma-surface/40 border border-tagma-border hover:bg-tagma-surface/70 hover:border-tagma-accent/40 transition-colors duration-base min-h-[148px]">
+    <div className="group relative flex gap-4 p-5 bg-tagma-surface/40 border border-tagma-border transition-colors duration-base min-h-[148px]">
       {accent && (
         <span
           className="absolute left-0 top-0 bottom-0 w-[2px] bg-tagma-accent"

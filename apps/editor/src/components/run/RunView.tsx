@@ -531,7 +531,7 @@ export function RunView({
                 title="Reload run history"
                 className="flex items-center gap-1.5 text-xs text-tagma-muted hover:text-tagma-text transition-colors px-2 py-1 disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                <RefreshCw size={11} className={historyLoading ? 'animate-spin' : ''} />
+                <RefreshCw size={12} className={historyLoading ? 'animate-spin' : ''} />
                 <span className="hidden md:inline">Refresh</span>
               </button>
             </>
@@ -668,11 +668,11 @@ export function RunView({
               {isLive && !showAbortConfirm && (
                 <button
                   onClick={handleAbortClick}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-tagma-error border border-tagma-error/20 hover:bg-tagma-error/10 transition-colors mr-1 shrink-0"
+                  className="flex items-center gap-1.5 px-3 py-1 text-xs text-tagma-error border border-tagma-error/20 hover:bg-tagma-error/10 transition-colors mr-1 shrink-0"
                   title="Abort run"
                   aria-label="Abort run"
                 >
-                  <Square size={10} />
+                  <Square size={12} />
                   <span className="hidden md:inline">Abort</span>
                 </button>
               )}

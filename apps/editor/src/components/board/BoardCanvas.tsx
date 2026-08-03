@@ -267,7 +267,6 @@ const EdgeLine = memo(function EdgeLine({
             y={midY - 6}
             width={12}
             height={12}
-            rx={2}
             fill="rgb(var(--tagma-surface))"
             style={{ stroke: 'rgb(var(--tagma-border))' }}
             strokeWidth={1}
@@ -1698,7 +1697,7 @@ export function BoardCanvas({
             <div
               key={track.id}
               data-track-id={track.id}
-              className={`relative border-b border-tagma-border/60 overflow-hidden ${isDraggedTrack ? 'opacity-60 bg-tagma-accent/5' : ''} ${isSelectedTrack ? 'selected-track-row' : ''} ${trackDrag && !isDraggedTrack ? 'transition-transform duration-base ease-smooth' : ''}`}
+              className={`relative border-b border-tagma-border/50 overflow-hidden ${isDraggedTrack ? 'opacity-60 bg-tagma-accent/5' : ''} ${isSelectedTrack ? 'selected-track-row' : ''} ${trackDrag && !isDraggedTrack ? 'transition-transform duration-base ease-smooth' : ''}`}
               style={{
                 height: row.height,
                 width: HEADER_W,
@@ -1709,7 +1708,7 @@ export function BoardCanvas({
                 // Subtle inset highlight on the left when this track lives in
                 // a folder, so the grouping is visible without spending a
                 // whole indent column on it.
-                boxShadow: inFolder ? 'inset 3px 0 0 rgb(var(--tagma-muted) / 0.25)' : undefined,
+                boxShadow: inFolder ? 'inset 2px 0 0 rgb(var(--tagma-muted) / 0.25)' : undefined,
               }}
             >
               <div
@@ -1770,41 +1769,47 @@ export function BoardCanvas({
         >
           {/* Row backgrounds — folder bars get a subtle dashed band so the
               canvas mirrors the sidebar's folder header at the same Y. */}
-          {planRows.map((row, idx) => {
-            if (row.kind === 'folder') {
+          {(() => {
+            // Stripe with a track-only index so folder bars never shift the
+            // zebra parity of the track rows below them (Minimap parity).
+            let trackZebraIdx = 0;
+            return planRows.map((row) => {
+              if (row.kind === 'folder') {
+                return (
+                  <div
+                    key={`bg-folder-${row.folder.id}`}
+                    className="absolute left-0 right-0 pointer-events-none"
+                    style={{
+                      top: row.top,
+                      height: row.height,
+                      background: 'rgb(var(--tagma-muted) / 0.04)',
+                      borderBottom: row.folder.collapsed
+                        ? '1px dashed rgb(var(--tagma-border) / 0.7)'
+                        : '1px solid rgb(var(--tagma-border) / 0.6)',
+                    }}
+                  />
+                );
+              }
+              const track = row.track;
+              const isSelectedTrack = selectedTrackId === track.id;
+              const zebra = trackZebraIdx % 2 === 0 ? 'track-row-even' : 'track-row-odd';
+              trackZebraIdx += 1;
               return (
                 <div
-                  key={`bg-folder-${row.folder.id}`}
-                  className="absolute left-0 right-0 pointer-events-none"
-                  style={{
-                    top: row.top,
-                    height: row.height,
-                    background: 'rgb(var(--tagma-muted) / 0.04)',
-                    borderBottom: row.folder.collapsed
-                      ? '1px dashed rgb(var(--tagma-border) / 0.7)'
-                      : '1px solid rgb(var(--tagma-border) / 0.6)',
+                  key={`bg-${track.id}`}
+                  className={`absolute left-0 right-0 border-b border-tagma-border/50 cursor-grab active:cursor-grabbing ${zebra} ${isSelectedTrack ? 'selected-track-row' : ''}`}
+                  style={{ top: row.top, height: row.height }}
+                  onClick={() => {
+                    if (!panDidDragRef.current) {
+                      onSelectTask(null);
+                      onSelectTrack(null);
+                      setSelEdge(null);
+                    }
                   }}
                 />
               );
-            }
-            const track = row.track;
-            const isSelectedTrack = selectedTrackId === track.id;
-            const zebra = idx % 2 === 0 ? 'track-row-even' : 'track-row-odd';
-            return (
-              <div
-                key={`bg-${track.id}`}
-                className={`absolute left-0 right-0 border-b border-tagma-border/40 cursor-grab active:cursor-grabbing ${zebra} ${isSelectedTrack ? 'selected-track-row' : ''}`}
-                style={{ top: row.top, height: row.height }}
-                onClick={() => {
-                  if (!panDidDragRef.current) {
-                    onSelectTask(null);
-                    onSelectTrack(null);
-                    setSelEdge(null);
-                  }
-                }}
-              />
-            );
-          })}
+            });
+          })()}
 
           {/* Parallel zone hints (L1) — subtle dashed rectangle behind
               sibling tasks in a track that have no depends_on relationship
@@ -1829,7 +1834,6 @@ export function BoardCanvas({
                   height: h,
                   border: '1px dashed rgb(var(--tagma-muted-dim) / 0.35)',
                   background: 'rgb(var(--tagma-muted-dim) / 0.06)',
-                  borderRadius: 2,
                 }}
               >
                 <span
@@ -2029,7 +2033,7 @@ export function BoardCanvas({
             className="modal-viewport-shell w-full max-w-64 border border-tagma-border bg-tagma-surface p-3 shadow-panel animate-fade-in"
             onClick={(e) => e.stopPropagation()}
           >
-            <label className="field-label font-mono mb-1.5">
+            <label className="field-label">
               {inlineAdd.type === 'task'
                 ? inlineAdd.kind === 'command'
                   ? 'New Command Task'
@@ -2059,14 +2063,14 @@ export function BoardCanvas({
               className="field-input"
               autoFocus
             />
-            <div className="flex justify-end gap-2 mt-2">
+            <div className="flex items-center justify-end gap-2 mt-2">
               <button
                 onClick={() => setInlineAdd(null)}
-                className="text-[10px] text-tagma-muted hover:text-tagma-text"
+                className="px-2 py-1 text-[11px] text-tagma-muted hover:text-tagma-text transition-colors"
               >
                 Cancel
               </button>
-              <button onClick={commitInlineAdd} className="btn-primary text-[10px]">
+              <button onClick={commitInlineAdd} className="btn-primary">
                 {inlineAdd.type === 'rename' || inlineAdd.type === 'rename-folder'
                   ? 'Rename'
                   : 'Create'}

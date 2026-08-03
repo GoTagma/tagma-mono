@@ -577,7 +577,7 @@ export function VersionStatusBar() {
             title="Reveal in File Explorer"
             aria-label="Reveal file in File Explorer"
           >
-            <ExternalLink size={9} />
+            <ExternalLink size={10} />
           </button>
         </div>
       )}
@@ -649,13 +649,13 @@ function VersionChip({
         <span>{label}</span>
         {warning ? (
           <AlertTriangle
-            size={9}
+            size={10}
             className="text-tagma-error"
             aria-label={warningTitle ?? 'Warning'}
           />
         ) : hasUpdate ? (
           <span
-            className="w-1.5 h-1.5 rounded-full bg-tagma-accent"
+            className="w-1.5 h-1.5 bg-tagma-accent"
             title="Update available"
             aria-label="Update available"
           />
@@ -705,7 +705,7 @@ function PopoverShell({ title, onClose, children }: PopoverShellProps) {
 
   return (
     <div ref={ref} className={VERSION_STATUS_POPOVER_CLASSES}>
-      <div className="text-[11px] font-sans text-tagma-text mb-2">{title}</div>
+      <div className="text-[11px] font-semibold uppercase tracking-widest text-tagma-text mb-2">{title}</div>
       {children}
     </div>
   );

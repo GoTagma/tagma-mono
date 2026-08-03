@@ -358,7 +358,7 @@ export function AssistantMessageFooter({ info }: { info: AssistantMessage }) {
   const hasUsage = outputTokens > 0 || inputTokens > 0 || info.cost > 0;
   if (!hasUsage && !info.error && !info.finish) return null;
   return (
-    <div className="w-full flex flex-wrap items-center gap-1.5 mt-0.5 text-[9px] font-mono text-tagma-muted-dim">
+    <div className="w-full flex flex-wrap items-center gap-1.5 text-[9px] font-mono text-tagma-muted-dim">
       {hasUsage && (
         <span
           className="inline-flex items-center gap-1 tabular-nums"

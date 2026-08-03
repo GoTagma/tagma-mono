@@ -265,7 +265,7 @@ export function Toolbar({
                 className="min-w-0 shrink text-left group"
                 title={yamlPath ?? 'Inspect pipeline'}
               >
-                <span className="block text-[11px] font-semibold tracking-wide text-tagma-text truncate max-w-[180px] group-hover:text-tagma-accent transition-colors">
+                <span className="block text-[11px] font-semibold tracking-wide text-tagma-text truncate max-w-[180px] group-hover:text-tagma-accent transition-colors duration-fast ease-smooth">
                   {pipelineName}
                 </span>
               </button>
@@ -275,7 +275,7 @@ export function Toolbar({
                   setEditName(pipelineName);
                   setIsEditing(true);
                 }}
-                className="p-0.5 text-tagma-muted/60 hover:text-tagma-accent transition-colors shrink-0"
+                className="p-0.5 text-tagma-muted/60 hover:text-tagma-accent transition-colors duration-fast ease-smooth shrink-0"
                 title="Rename pipeline"
                 aria-label="Rename pipeline"
               >
@@ -291,14 +291,14 @@ export function Toolbar({
                 <button
                   type="button"
                   onClick={() => setWdMenuOpen((v) => !v)}
-                  className="flex items-center gap-1.5 min-w-0 hover:text-tagma-text transition-colors"
+                  className="flex items-center gap-1.5 min-w-0 hover:text-tagma-text transition-colors duration-fast ease-smooth"
                   title={`${workDir}\nClick to browse workspace YAMLs`}
                 >
                   <FolderOpen size={10} className="text-tagma-muted/40 shrink-0" />
                   <span className="text-[10px] font-mono text-tagma-muted/60 truncate">
                     {workDir}
                   </span>
-                  <ChevronDown size={10} className="text-tagma-muted/40 opacity-60 shrink-0" />
+                  <ChevronDown size={10} className="text-tagma-muted/40 shrink-0" />
                 </button>
                 <button
                   onClick={() => api.reveal(workDir).catch(() => {})}
@@ -306,13 +306,13 @@ export function Toolbar({
                   title="Reveal in File Explorer"
                   aria-label="Reveal workspace in File Explorer"
                 >
-                  <ExternalLink size={9} />
+                  <ExternalLink size={10} />
                 </button>
                 {wdMenuOpen && (
                   <DropdownMenu
                     items={workspaceItems}
                     onClose={() => setWdMenuOpen(false)}
-                    anchorClassName="absolute left-0 top-full mt-1 z-[101]"
+                    anchorClassName="absolute left-0 top-full mt-1 z-[100]"
                   />
                 )}
               </div>
@@ -324,13 +324,13 @@ export function Toolbar({
         {yamlPath && (isDirty || errorCount > 0) && (
           <div className="hidden items-center gap-1.5 shrink-0 ml-1 xl:flex">
             {isDirty && (
-              <span className="text-[9px] font-medium tracking-wider uppercase text-tagma-warning/80 bg-tagma-warning/8 px-1.5 py-px">
+              <span className="chip-xs uppercase tracking-wider bg-tagma-warning/8 text-tagma-warning/80 border-tagma-warning/20">
                 modified
               </span>
             )}
             {errorCount > 0 && (
-              <span className="flex items-center gap-1 text-[9px] font-medium tracking-wider uppercase text-tagma-error/90 bg-tagma-error/8 px-1.5 py-px whitespace-nowrap">
-                <AlertTriangle size={9} />
+              <span className="chip-xs uppercase tracking-wider whitespace-nowrap bg-tagma-error/8 text-tagma-error/80 border-tagma-error/20">
+                <AlertTriangle size={10} />
                 {errorCount} {errorCount === 1 ? 'error' : 'errors'}
               </span>
             )}
@@ -353,12 +353,12 @@ export function Toolbar({
         >
           {searchOpen ? (
             <>
-              <div className="flex items-center gap-1.5 h-[24px] w-[clamp(140px,26vw,320px)] border border-tagma-border bg-tagma-bg/80 pl-1.5 pr-2 text-tagma-muted focus-within:border-tagma-accent transition-colors">
+              <div className="flex items-center gap-1.5 h-[24px] w-[clamp(140px,26vw,320px)] border border-tagma-border bg-tagma-bg/80 pl-1.5 pr-2 text-tagma-muted focus-within:border-tagma-accent transition-colors duration-fast ease-smooth">
                 <div className="relative shrink-0">
                   <button
                     type="button"
                     onClick={() => setSearchModeMenuOpen((v) => !v)}
-                    className="flex items-center gap-0.5 h-[18px] px-1 text-[10px] font-mono uppercase tracking-wide text-tagma-muted/80 hover:text-tagma-text border border-tagma-border/60 hover:border-tagma-accent/30 transition-colors"
+                    className="flex items-center gap-0.5 h-5 px-1 text-[10px] font-mono uppercase tracking-wide text-tagma-muted/80 hover:text-tagma-text border border-tagma-border/60 hover:border-tagma-accent/30 transition-colors duration-fast ease-smooth"
                     title="Search by"
                     aria-label="Change search field"
                   >
@@ -366,7 +366,7 @@ export function Toolbar({
                     <ChevronDown size={10} />
                   </button>
                   {searchModeMenuOpen && (
-                    <div className="absolute left-0 top-full mt-1 z-[170] min-w-[80px] origin-top bg-tagma-surface border border-tagma-border shadow-panel animate-scale-in">
+                    <div className="absolute left-0 top-full mt-1 z-[100] min-w-[80px] origin-top bg-tagma-surface border border-tagma-border/80 shadow-panel animate-scale-in">
                       {(['name', 'id'] as const).map((m) => (
                         <button
                           key={m}
@@ -376,7 +376,7 @@ export function Toolbar({
                             setSearchModeMenuOpen(false);
                             searchInputRef.current?.focus();
                           }}
-                          className={`block w-full text-left px-2 py-1 text-[10px] font-mono uppercase tracking-wide hover:bg-tagma-bg/60 ${
+                          className={`block w-full text-left px-3 py-1.5 text-[11px] font-mono uppercase tracking-wide hover:bg-tagma-bg/60 ${
                             searchMode === m ? 'text-tagma-accent' : 'text-tagma-text'
                           }`}
                         >
@@ -396,20 +396,20 @@ export function Toolbar({
                     if (e.key === 'Escape') onSearchClose();
                   }}
                   placeholder={searchMode === 'id' ? 'Search by task ID...' : 'Search tasks...'}
-                  className="min-w-0 flex-1 bg-transparent text-[10px] font-mono text-tagma-text placeholder:text-tagma-muted/45"
+                  className="min-w-0 flex-1 bg-transparent text-[10px] font-mono text-tagma-text placeholder:text-tagma-muted/50"
                   aria-label="Search tasks"
                 />
                 <button
                   type="button"
                   onClick={onSearchClose}
-                  className="p-0.5 text-tagma-muted/70 hover:text-tagma-text transition-colors shrink-0"
+                  className="p-0.5 text-tagma-muted/70 hover:text-tagma-text transition-colors duration-fast ease-smooth shrink-0"
                   title="Close search"
                   aria-label="Close search"
                 >
                   <X size={11} />
                 </button>
               </div>
-              <div className="absolute right-0 top-full mt-1 z-[160] w-[340px] max-w-[calc(100vw-24px)] origin-top bg-tagma-surface border border-tagma-border shadow-panel animate-scale-in">
+              <div className="absolute right-0 top-full mt-1 z-[100] w-[340px] max-w-[calc(100vw-24px)] origin-top bg-tagma-surface border border-tagma-border shadow-panel animate-scale-in">
                 <div className="max-h-[240px] overflow-y-auto">
                   {searchQuery.trim() === '' ? (
                     <div className="px-3 py-2 text-[10px] font-mono text-tagma-muted/60">
@@ -424,7 +424,7 @@ export function Toolbar({
                       <button
                         key={match.qid}
                         type="button"
-                        className="w-full text-left px-3 py-2 border-b border-tagma-border/30 last:border-b-0 transition-colors duration-fast ease-smooth hover:bg-tagma-accent/10"
+                        className="w-full text-left px-3 py-1.5 border-b border-tagma-border/30 last:border-b-0 transition-colors duration-fast ease-smooth hover:bg-tagma-accent/10"
                         onClick={() => onSelectSearchMatch(match)}
                       >
                         <div className="text-[11px] font-mono text-tagma-text truncate">

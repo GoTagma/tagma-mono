@@ -1263,7 +1263,7 @@ function RunListItem({
             : computeRunDuration(run)}
         </span>
       </div>
-      <div className="pl-[18px] mt-1 flex items-center gap-1.5 min-w-0 text-[10px]">
+      <div className="pl-5 mt-1 flex items-center gap-1.5 min-w-0 text-[10px]">
         {run.pipelineName && (
           <>
             <span className="truncate text-tagma-muted">{run.pipelineName}</span>
@@ -1273,7 +1273,7 @@ function RunListItem({
         <span className="shrink-0 text-tagma-muted-dim">{formatRelTime(run.startedAt)}</span>
       </div>
       {run.taskCounts && (
-        <div className="flex items-center gap-1 pl-[18px] mt-1.5">
+        <div className="flex items-center gap-1 pl-5 mt-1.5">
           {run.taskCounts.running > 0 && (
             <span className="chip-xs bg-tagma-ready/10 border-tagma-ready/20 text-tagma-ready">
               <Loader2 size={7} className="animate-spin" />
@@ -1307,12 +1307,12 @@ function RunListItem({
         </div>
       )}
       {!run.taskCounts && (
-        <div className="text-[9px] font-mono text-tagma-muted-dim pl-[18px] mt-1">
+        <div className="text-[9px] font-mono text-tagma-muted-dim pl-5 mt-1">
           {formatSize(run.sizeBytes)} log
         </div>
       )}
       <div
-        className="text-[8.5px] font-mono text-tagma-muted-dim/70 pl-[18px] mt-1 truncate"
+        className="text-[8px] font-mono text-tagma-muted-dim/70 pl-5 mt-1 truncate"
         title={run.runId}
       >
         {run.runId}

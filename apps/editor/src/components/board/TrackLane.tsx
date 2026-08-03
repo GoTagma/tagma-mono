@@ -59,7 +59,7 @@ function TrackTooltip({ track, anchorRect }: { track: RawTrackConfig; anchorRect
   if (rows.length === 0) return null;
 
   return (
-    <FloatingPanel anchorRect={anchorRect} width={240} borderClass="border-tagma-border">
+    <FloatingPanel anchorRect={anchorRect} width={260} borderClass="border-tagma-border">
       <div className="px-3 py-1.5 text-[10px] font-semibold text-tagma-text truncate border-b border-tagma-border">
         {track.name}
       </div>
@@ -280,9 +280,9 @@ export const TrackLane = memo(function TrackLane({
           nitpicks even if individual chip widths differ. The rail is
           always rendered (even when the track has no meta) so every row
           in the header sidebar has identical vertical structure. */}
-      <div className="tagma-rail flex items-center h-[16px] gap-[4px] min-w-0 overflow-hidden px-[4px]">
+      <div className="tagma-rail flex items-center h-[16px] gap-[4px] min-w-0 overflow-hidden px-1">
         {track.driver && (
-          <Chip className="bg-tagma-accent/12 text-tagma-accent/70">{track.driver}</Chip>
+          <Chip className="bg-tagma-accent/12 text-tagma-accent/80">{track.driver}</Chip>
         )}
         {track.model && (
           <Chip className="bg-tagma-muted/12 text-tagma-muted/80 font-bold">{track.model}</Chip>

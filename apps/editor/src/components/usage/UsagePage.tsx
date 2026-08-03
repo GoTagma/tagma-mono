@@ -239,7 +239,7 @@ export function UsagePage({ onBack }: UsagePageProps) {
     <div className="h-full flex flex-col bg-tagma-bg text-tagma-text">
       <header className="shrink-0 bg-tagma-surface/60 border-b border-tagma-border">
         <div
-          className={`h-9 flex items-stretch border-b border-tagma-border/60 ${isDesktop ? 'app-drag-region pl-2 pr-0' : 'px-2'}`}
+          className={`h-9 flex items-stretch ${isDesktop ? 'app-drag-region pl-2 pr-0' : 'px-2'}`}
           onDoubleClick={(e) => {
             if (!isDesktop) return;
             if (e.target === e.currentTarget) void toggleMaximizeDesktopWindow();

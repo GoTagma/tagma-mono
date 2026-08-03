@@ -112,7 +112,7 @@ export function MarketplacePanel({
       <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4">
         {loading ? (
           <div className="h-full flex flex-col items-center justify-center text-tagma-muted-dim gap-3">
-            <Loader2 size={26} className="animate-spin opacity-70" />
+            <Loader2 size={32} className="animate-spin opacity-70" />
             <p className="text-[11px] tracking-wide">Searching npm…</p>
           </div>
         ) : loadError ? (

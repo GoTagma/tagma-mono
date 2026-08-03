@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Brain, ChevronDown, Plug, Search, X } from 'lucide-react';
+import { Brain, Check, ChevronDown, Plug, Search, X } from 'lucide-react';
 import type { Provider } from '../../api/opencode-chat';
 import { FloatingPanel } from './FloatingPanel';
 
@@ -134,7 +134,7 @@ export function ModelPickerDropdown({
         type="button"
         onClick={() => setOpen((current) => !current)}
         disabled={disabled}
-        className={`flex items-center gap-1 px-1.5 h-[22px] border border-tagma-border/70 text-[10px] font-mono text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-tagma-muted disabled:hover:border-tagma-border/70 transition-colors min-w-0 ${buttonClassName}`}
+        className={`flex items-center gap-1 px-1.5 h-5 border border-tagma-border/70 text-[10px] font-mono text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/80 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-tagma-muted disabled:hover:border-tagma-border/70 transition-colors min-w-0 ${buttonClassName}`}
         title={label}
         aria-label="Open model picker"
       >
@@ -191,7 +191,7 @@ export function ModelPickerDropdown({
             )}
             <div className="flex-1 min-h-0 overflow-y-auto">
               {hasNoMatch && (
-                <div className="px-3 py-6 flex flex-col items-center gap-1.5 text-tagma-muted-dim">
+                <div className="px-3 py-4 flex flex-col items-center gap-1.5 text-tagma-muted-dim">
                   <Search size={16} className="opacity-40" />
                   <p className="text-[10px] font-mono">
                     No models match <span className="text-tagma-text">"{query}"</span>.

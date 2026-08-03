@@ -225,23 +225,14 @@ export function RequirementsCheckModal({
         </div>
 
         <div className="modal-viewport-footer flex justify-end gap-2 border-t border-tagma-border px-4 py-3">
-          <button
-            onClick={onCancel}
-            className="min-w-[96px] px-3 py-1 text-[11px] text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 transition-colors text-center"
-          >
+          <button onClick={onCancel} className="btn-secondary">
             Cancel
           </button>
-          <button
-            onClick={onRunAnyway}
-            className="min-w-[120px] px-3 py-1 text-[11px] text-tagma-warning border border-tagma-warning/50 hover:bg-tagma-warning/10 transition-colors flex items-center justify-center gap-1.5"
-          >
+          <button onClick={onRunAnyway} className="btn-warning-inline">
             <PlayCircle size={11} />
             <span>Run anyway</span>
           </button>
-          <button
-            onClick={onRecheck}
-            className="btn-primary w-auto min-w-[120px] justify-center text-center flex items-center gap-1.5"
-          >
+          <button onClick={onRecheck} className="btn-primary min-w-24 justify-center">
             <RefreshCw size={11} />
             <span>Re-check</span>
           </button>
@@ -280,7 +271,7 @@ function BinaryCard({ name, section }: { name: string; section: BinarySection | 
               <div className="text-[9px] font-mono uppercase tracking-wider text-tagma-muted/70 mb-0.5">
                 {c.platform}
               </div>
-              <div className="flex items-center gap-1.5 text-[10px] font-mono text-tagma-text bg-tagma-bg border border-tagma-border px-2 py-1.5">
+              <div className="flex items-center gap-1.5 text-[10px] font-mono text-tagma-text bg-tagma-bg border border-tagma-border px-2.5 py-1.5">
                 <span className="flex-1 min-w-0 truncate select-text" title={c.command}>
                   {c.command}
                 </span>

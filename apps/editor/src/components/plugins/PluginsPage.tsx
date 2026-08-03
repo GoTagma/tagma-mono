@@ -650,11 +650,11 @@ export function PluginsPage({
           actionsDisabled
         />
         <div className="flex-1 flex flex-col items-center justify-center text-tagma-muted gap-3">
-          <Package size={48} className="opacity-30" />
-          <p className="text-[12px] tracking-wide">Open a workspace to manage plugins.</p>
+          <Package size={36} className="opacity-30" />
+          <p className="text-[11px] tracking-wide">Open a workspace to manage plugins.</p>
           <button
             onClick={onBack}
-            className="px-4 py-2 text-[11px] tracking-wide uppercase text-tagma-muted hover:text-tagma-accent border border-tagma-border hover:border-tagma-accent transition-colors"
+            className="px-3 py-1.5 text-[11px] tracking-wide uppercase text-tagma-muted hover:text-tagma-accent border border-tagma-border hover:border-tagma-accent transition-colors"
           >
             Back to Editor
           </button>

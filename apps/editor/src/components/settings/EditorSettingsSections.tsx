@@ -152,7 +152,7 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
                     setAgentMaxStepsSaved(false);
                   }
                 }}
-                className="w-20 px-1.5 py-1 bg-tagma-surface border border-tagma-border text-tagma-text"
+                className="text-[11px] w-16 px-1 py-0.5 bg-tagma-surface border border-tagma-border text-tagma-text disabled:opacity-50"
               />
               <button
                 type="button"

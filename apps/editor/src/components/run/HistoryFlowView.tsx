@@ -32,6 +32,8 @@ import {
 import { useCanvasPan } from '../board/use-canvas-pan';
 import { buildRenderPlan, planTotalHeight } from '../board/render-plan';
 import { CopyButton } from './CopyButton';
+import { RUN_INSPECTOR_PANEL_CLASSES } from './run-layout';
+import { STATUS_LABEL } from './RunTaskPanel';
 
 const HISTORY_COMPARE_INSTRUCTION =
   'Compare this historical version with the latest pipeline and explain what changed.';
@@ -545,17 +547,24 @@ function HistoryTaskPanel({
               <label className="field-label">Status</label>
               <div
                 className={`chip-md ${
-                  task.status === 'success'
-                    ? 'bg-tagma-success/10 border-tagma-success/20 text-tagma-success'
-                    : task.status === 'failed'
-                      ? 'bg-tagma-error/10 border-tagma-error/20 text-tagma-error'
-                      : task.status === 'timeout'
-                        ? 'bg-tagma-warning/10 border-tagma-warning/20 text-tagma-warning'
-                        : 'bg-tagma-muted/8 border-tagma-muted/15 text-tagma-muted'
+                  task.status === 'running'
+                    ? 'bg-tagma-ready/10 border-tagma-ready/20 text-tagma-ready'
+                    : task.status === 'success'
+                      ? 'bg-tagma-success/10 border-tagma-success/20 text-tagma-success'
+                      : task.status === 'failed'
+                        ? 'bg-tagma-error/10 border-tagma-error/20 text-tagma-error'
+                        : task.status === 'timeout'
+                          ? 'bg-tagma-warning/10 border-tagma-warning/20 text-tagma-warning'
+                          : task.status === 'blocked'
+                            ? 'bg-tagma-warning/10 border-tagma-warning/20 text-tagma-warning'
+                            : 'bg-tagma-muted/8 border-tagma-muted/15 text-tagma-muted'
                 }`}
               >
-                <Icon size={11} className={cfg.iconColor} />
-                {task.status}
+                <Icon
+                  size={11}
+                  className={`${cfg.iconColor} ${task.status === 'running' ? 'animate-spin' : ''}`}
+                />
+                {STATUS_LABEL[task.status]}
               </div>
             </div>
             {task.startedAt && (

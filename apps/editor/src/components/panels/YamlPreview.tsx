@@ -248,8 +248,8 @@ export function YamlPreview({
   return (
     <div className="h-full flex flex-col bg-tagma-bg">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 h-7 border-b border-tagma-border bg-tagma-surface shrink-0">
-        <span className="text-[10px] font-medium text-tagma-muted uppercase tracking-wider">
+      <div className="panel-header-sm">
+        <span className="panel-title-sm">
           YAML Preview
         </span>
         <div className="flex items-center gap-1.5">

@@ -141,7 +141,7 @@ function TurnActivityPanelView({
     ({
       line: 'Activity',
       tone: 'text-tagma-muted',
-      icon: <ChevronRight size={11} className="text-tagma-muted/60 shrink-0" />,
+      icon: <ChevronRight size={10} className="text-tagma-muted/60 shrink-0" />,
     } satisfies ActivitySummary);
 
   return (
@@ -150,7 +150,7 @@ function TurnActivityPanelView({
       onToggle={(e) => {
         if (e.currentTarget.open !== expanded) onToggle();
       }}
-      className="w-full max-w-full min-w-0 text-[10px] font-mono border-l-2 border-tagma-muted/30 pl-2 mt-1"
+      className="w-full max-w-full min-w-0 text-[10px] font-mono border-l-2 border-tagma-muted/30 pl-2"
     >
       <summary
         className={`cursor-pointer flex items-center gap-1.5 min-w-0 select-none ${visibleSummary.tone}`}
@@ -502,7 +502,11 @@ const ACTIVITY_KIND_META: Record<ActivityKind, { label: string; icon: React.Reac
   },
   'assistant-started': {
     label: 'Assistant started',
-    icon: <span className="text-tagma-muted/70">›</span>,
+    icon: (
+      <span className="inline-flex w-3 items-center justify-center text-[9px] leading-none text-tagma-muted/70">
+        ›
+      </span>
+    ),
   },
   thinking: {
     label: 'Thinking',
@@ -510,7 +514,11 @@ const ACTIVITY_KIND_META: Record<ActivityKind, { label: string; icon: React.Reac
   },
   'streaming-answer': {
     label: 'Streaming answer',
-    icon: <span className="text-tagma-muted/70">¶</span>,
+    icon: (
+      <span className="inline-flex w-3 items-center justify-center text-[9px] leading-none text-tagma-muted/70">
+        ¶
+      </span>
+    ),
   },
   'tool-running': {
     label: 'Tool running',
@@ -526,11 +534,19 @@ const ACTIVITY_KIND_META: Record<ActivityKind, { label: string; icon: React.Reac
   },
   'step-start': {
     label: 'Step start',
-    icon: <span className="text-tagma-muted/50">·</span>,
+    icon: (
+      <span className="inline-flex w-3 items-center justify-center text-[9px] leading-none text-tagma-muted/70">
+        ·
+      </span>
+    ),
   },
   'step-finish': {
     label: 'Step finish',
-    icon: <span className="text-tagma-muted/50">·</span>,
+    icon: (
+      <span className="inline-flex w-3 items-center justify-center text-[9px] leading-none text-tagma-muted/70">
+        ·
+      </span>
+    ),
   },
   retry: {
     label: 'Retry',

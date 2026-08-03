@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { AlertCircle, Check, Download, Loader2, Package, RefreshCw, Trash2 } from 'lucide-react';
+import { AlertCircle, Check, Download, Loader2, Package, RefreshCw, Trash2, X } from 'lucide-react';
 import type { PluginCategory, PluginInfo } from '../../api/client';
 import { errorHint } from './plugin-errors';
 import type { PluginActionState, PluginActionStates } from './PluginsPage';

@@ -44,7 +44,7 @@ interface RunTaskPanelProps {
   onClose: () => void;
 }
 
-const STATUS_LABEL: Record<TaskStatus, string> = {
+export const STATUS_LABEL: Record<TaskStatus, string> = {
   idle: 'Idle',
   waiting: 'Waiting',
   running: 'Running',
@@ -293,6 +293,7 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
                             : 'bg-tagma-muted/8 border-tagma-muted/15 text-tagma-muted'
                 }`}
               >
+                {(task.status === 'idle' || task.status === 'waiting') && <Clock size={11} />}
                 {task.status === 'running' && <Loader2 size={11} className="animate-spin" />}
                 {task.status === 'success' && <Check size={11} />}
                 {task.status === 'failed' && <AlertCircle size={11} />}

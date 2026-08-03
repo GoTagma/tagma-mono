@@ -226,7 +226,7 @@ function ErrorTooltip({
   return createPortal(
     <div
       ref={ref}
-      className={`fixed pointer-events-none bg-tagma-surface shadow-lg ${hasError ? 'border border-tagma-error/40' : 'border border-tagma-warning/40'}`}
+      className={`fixed pointer-events-none bg-tagma-surface shadow-panel ${hasError ? 'border border-tagma-error/40' : 'border border-tagma-warning/40'}`}
       style={{
         left: pos?.left ?? -9999,
         top: pos?.top ?? -9999,
@@ -418,7 +418,7 @@ function TaskTooltip({
   return createPortal(
     <div
       ref={tooltipRef}
-      className="fixed pointer-events-none bg-tagma-surface border border-tagma-border shadow-lg animate-fade-in"
+      className="fixed pointer-events-none bg-tagma-surface border border-tagma-border shadow-panel animate-fade-in"
       style={{
         left: pos?.left ?? -9999,
         top: pos?.top ?? -9999,
@@ -842,13 +842,13 @@ export const TaskCard = memo(function TaskCard({
 
       {/* ─── Row 2: Driver chip · Tier chip · Permissions (prompt only) ─── */}
       {!isCommand && (
-        <div className="tagma-rail flex items-center h-[16px] gap-[4px] pointer-events-none min-w-0 overflow-hidden px-[3px]">
+        <div className="tagma-rail flex items-center h-[16px] gap-[4px] pointer-events-none min-w-0 overflow-hidden px-1">
           {driver && <Chip className="bg-tagma-accent/12 text-tagma-accent/80">{driver}</Chip>}
           {model && (
             <Chip className="bg-tagma-muted/12 text-tagma-muted/80 font-bold">{model}</Chip>
           )}
           {perms && (
-            <span className="flex items-center h-[14px] gap-[1px] ml-auto shrink-0">
+            <span className="flex items-center h-[14px] gap-[1px] shrink-0">
               {(['read', 'write', 'execute'] as const).map((k) => (
                 <span
                   key={k}

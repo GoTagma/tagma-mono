@@ -2,7 +2,7 @@
 // Keeping these in one module prevents silent drift when any consumer
 // changes its own copy of the numbers.
 
-export const HEADER_W = 210;
+export const HEADER_W = 208;
 export const TASK_W = 176;
 export const TASK_H = 52;
 export const TASK_GAP = 24;
