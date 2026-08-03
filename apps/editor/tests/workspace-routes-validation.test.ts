@@ -1019,7 +1019,18 @@ describe('workspace route validation', () => {
     const pipelineDir = join(S.workDir, '.tagma', 'chat');
     const yamlPath = join(pipelineDir, 'chat.yaml');
     const layoutPath = join(pipelineDir, 'chat.layout.json');
-    const agentYaml = 'pipeline:\n  name: Agent Result\n  tracks: []\n';
+    const agentYaml = [
+      'pipeline:',
+      '  name: Agent Result',
+      '  tracks:',
+      '    - id: main',
+      '      name: Main',
+      '      cwd: .tagma/chat',
+      '      tasks:',
+      '        - id: task',
+      '          prompt: Check facts',
+      '',
+    ].join('\n');
     const userYaml = 'pipeline:\n  name: User Branch\n  tracks: []\n';
     const agentLayout = { positions: { 'main.task': { x: 900 } } };
     const userLayout = { positions: { 'main.task': { x: 100 } } };
@@ -1068,6 +1079,8 @@ describe('workspace route validation', () => {
     ).toEqual(['chat-copy-1']);
     const copyPath = (first.body as { entry: { path: string } }).entry.path;
     expect(readFileSync(copyPath, 'utf-8')).toContain('Agent Result Copy 1');
+    const copiedConfig = parseYaml(readFileSync(copyPath, 'utf-8'));
+    expect(copiedConfig.tracks[0]?.cwd).toBe('.tagma/chat-copy-1');
     expect(
       JSON.parse(readFileSync(copyPath.replace(/\.ya?ml$/i, '.layout.json'), 'utf-8')),
     ).toEqual(agentLayout);

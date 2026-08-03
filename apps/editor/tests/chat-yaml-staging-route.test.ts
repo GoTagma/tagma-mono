@@ -448,9 +448,7 @@ describe('chat YAML staging routes', () => {
       },
     });
     expect(trialRes.body).not.toHaveProperty('planRequest');
-    expect((trialRes.body as { summary: string }).summary).toContain(
-      'attempt budget exhausted',
-    );
+    expect((trialRes.body as { summary: string }).summary).toContain('attempt budget exhausted');
     expect(existsSync(markerPath)).toBe(false);
     discardStage(getRoute, ws, stage.id);
     ws.watcher.stopWatching();
