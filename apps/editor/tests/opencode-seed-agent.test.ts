@@ -423,7 +423,9 @@ test('dedicated hidden tagma-trial-planner owns targeted Trial Plan authoring', 
     expect(pipeline).toContain('Host enters a dedicated planning phase when Trial is enabled');
     expect(pipeline).not.toContain('tagma_trial_plan: true');
     expect(pipeline).not.toContain('tagma_trial_plan: allow');
-    expect(pipeline).not.toContain('Call `tagma_trial_plan` only after the final YAML compile succeeds');
+    expect(pipeline).not.toContain(
+      'Call `tagma_trial_plan` only after the final YAML compile succeeds',
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

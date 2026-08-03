@@ -384,7 +384,10 @@ describe('shouldAutoRepairCompileResult', () => {
 describe('Trial Plan prompt fuse', () => {
   test('budgets two prompts for the initial YAML revision and every allowed repair revision', () => {
     expect(
-      maxTrialPlanPromptsForLogicalTurn({ promptsPerRevision: 2, maxRepairAttempts: 0 }),
+      maxTrialPlanPromptsForLogicalTurn({
+        promptsPerRevision: 2,
+        maxRepairAttempts: 0,
+      }),
     ).toBe(2);
     expect(
       maxTrialPlanPromptsForLogicalTurn({ promptsPerRevision: 2, maxRepairAttempts: 25 }),
@@ -428,11 +431,7 @@ describe('Trial Plan prompt fuse', () => {
         sessionCanContinue: true,
       });
 
-    expect([
-      decision(0, 2),
-      decision(1, 3),
-      decision(0, 4),
-    ]).toEqual([true, true, false]);
+    expect([decision(0, 2), decision(1, 3), decision(0, 4)]).toEqual([true, true, false]);
   });
 });
 

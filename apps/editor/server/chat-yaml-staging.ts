@@ -887,6 +887,136 @@ function yamlWithPipelineName(content: string, nextName: string): string {
   }
 }
 
+interface ForkPathRelocation {
+  sourcePipelineDir: string;
+  stagedPipelineDir: string;
+  destinationPipelineDir: string;
+  sourceCwd: string;
+  destinationCwd: string;
+}
+
+const FORK_RELOCATABLE_TRIGGER_TYPES = new Set(['file', 'directory']);
+const FORK_RELOCATABLE_COMPLETION_TYPES = new Set(['file_exists']);
+const FORK_RELOCATABLE_MIDDLEWARE_TYPES = new Set(['static_context']);
+
+function relocatePipelineLocalPath(
+  value: unknown,
+  options: ForkPathRelocation,
+): unknown {
+  if (typeof value !== 'string' || value.trim().length === 0) return value;
+  const raw = value.trim();
+  const absolute = isAbsolute(raw) ? resolve(raw) : resolve(options.sourceCwd, raw);
+  const sourceRoot = isPathWithin(absolute, options.stagedPipelineDir)
+    ? options.stagedPipelineDir
+    : isPathWithin(absolute, options.sourcePipelineDir)
+      ? options.sourcePipelineDir
+      : null;
+  if (!sourceRoot) return value;
+  const relocated = resolve(options.destinationPipelineDir, relative(sourceRoot, absolute));
+  return isAbsolute(raw)
+    ? relocated
+    : portableRelative(options.destinationCwd, relocated) || '.';
+}
+
+function rewriteTypedPluginPath<T extends Record<string, unknown>>(
+  config: T | undefined,
+  expectedTypes: ReadonlySet<string>,
+  key: 'path' | 'file',
+  options: ForkPathRelocation,
+): T | undefined {
+  if (!config || !expectedTypes.has(config.type as string)) return config;
+  const relocated = relocatePipelineLocalPath(config[key], options);
+  return relocated === config[key] ? config : ({ ...config, [key]: relocated } as T);
+}
+
+function rewriteForkLocalYamlPaths(
+  content: string,
+  options: {
+    workDir: string;
+    stagedYamlPath: string;
+    sourceIdentityPath: string;
+    destinationYamlPath: string;
+    pipelineName: string;
+  },
+): string {
+  const config = withDefaultTrackColors(parseYaml(content));
+  const sourcePipelineDir = dirname(options.sourceIdentityPath);
+  const stagedPipelineDir = dirname(options.stagedYamlPath);
+  const destinationPipelineDir = dirname(options.destinationYamlPath);
+  const pathOptions = (sourceCwd: string, destinationCwd: string): ForkPathRelocation => ({
+    sourcePipelineDir,
+    stagedPipelineDir,
+    destinationPipelineDir,
+    sourceCwd,
+    destinationCwd,
+  });
+  const resolveCwd = (cwd: string | undefined): string =>
+    cwd && isAbsolute(cwd) ? resolve(cwd) : resolve(options.workDir, cwd ?? '.');
+  const rewriteCwd = (cwd: string | undefined): string | undefined => {
+    if (!cwd) return cwd;
+    const rewritten = relocatePipelineLocalPath(
+      cwd,
+      pathOptions(options.workDir, options.workDir),
+    );
+    return typeof rewritten === 'string' ? rewritten : cwd;
+  };
+
+  return serializePipeline({
+    ...config,
+    name: options.pipelineName,
+    tracks: config.tracks.map((track) => {
+      const nextTrackCwd = rewriteCwd(track.cwd);
+      const sourceTrackCwd = resolveCwd(track.cwd);
+      const destinationTrackCwd = resolveCwd(nextTrackCwd);
+      const trackPathOptions = pathOptions(sourceTrackCwd, destinationTrackCwd);
+      return {
+        ...track,
+        cwd: nextTrackCwd,
+        middlewares: track.middlewares?.map((middleware) =>
+          rewriteTypedPluginPath(
+            middleware,
+            FORK_RELOCATABLE_MIDDLEWARE_TYPES,
+            'file',
+            trackPathOptions,
+          )!,
+        ),
+        tasks: track.tasks.map((task) => {
+          const nextTaskCwd = rewriteCwd(task.cwd);
+          const sourceTaskCwd = task.cwd ? resolveCwd(task.cwd) : sourceTrackCwd;
+          const destinationTaskCwd = nextTaskCwd
+            ? resolveCwd(nextTaskCwd)
+            : destinationTrackCwd;
+          const taskPathOptions = pathOptions(sourceTaskCwd, destinationTaskCwd);
+          return {
+            ...task,
+            cwd: nextTaskCwd,
+            trigger: rewriteTypedPluginPath(
+              task.trigger,
+              FORK_RELOCATABLE_TRIGGER_TYPES,
+              'path',
+              taskPathOptions,
+            ),
+            completion: rewriteTypedPluginPath(
+              task.completion,
+              FORK_RELOCATABLE_COMPLETION_TYPES,
+              'path',
+              taskPathOptions,
+            ),
+            middlewares: task.middlewares?.map((middleware) =>
+              rewriteTypedPluginPath(
+                middleware,
+                FORK_RELOCATABLE_MIDDLEWARE_TYPES,
+                'file',
+                taskPathOptions,
+              )!,
+            ),
+          };
+        }),
+      };
+    }),
+  });
+}
+
 function nextPipelineCopyTarget(
   workDir: string,
   sourceYamlPath: string,
@@ -907,7 +1037,7 @@ function writeStagedArtifactsToDestination(
   ws: WorkspaceState,
   stagedYamlPath: string,
   destinationYamlPath: string,
-  options: { pipelineName?: string } = {},
+  options: { pipelineName?: string; sourceIdentityPath?: string } = {},
 ): void {
   const stagedYaml = assertRegularTextFile(stagedYamlPath, 'staged YAML');
   withDefaultTrackColors(parseYaml(stagedYaml));
@@ -922,10 +1052,19 @@ function writeStagedArtifactsToDestination(
     : null;
   withPipelineArtifactTransaction(destinationYamlPath, () => {
     mkdirSync(dirname(destinationYamlPath), { recursive: true });
-    atomicWriteFileSync(
-      destinationYamlPath,
-      options.pipelineName ? yamlWithPipelineName(stagedYaml, options.pipelineName) : stagedYaml,
-    );
+    const destinationYaml =
+      options.pipelineName && options.sourceIdentityPath
+        ? rewriteForkLocalYamlPaths(stagedYaml, {
+            workDir: ws.workDir,
+            stagedYamlPath,
+            sourceIdentityPath: options.sourceIdentityPath,
+            destinationYamlPath,
+            pipelineName: options.pipelineName,
+          })
+        : options.pipelineName
+          ? yamlWithPipelineName(stagedYaml, options.pipelineName)
+          : stagedYaml;
+    atomicWriteFileSync(destinationYamlPath, destinationYaml);
     __chatYamlStagingTestHooks.afterDestinationYamlWrite?.(destinationYamlPath);
     replaceOptionalArtifact(pipelineLayoutPath(destinationYamlPath), stagedLayout);
     replaceOptionalArtifact(pipelineRequirementsPath(destinationYamlPath), stagedRequirements);
@@ -1061,6 +1200,7 @@ function copyStagedAsNumberedPipeline(
   try {
     writeStagedArtifactsToDestination(ws, stagedYamlPath, target.yamlPath, {
       pipelineName: nextName,
+      sourceIdentityPath,
     });
     return target.yamlPath;
   } catch (err) {

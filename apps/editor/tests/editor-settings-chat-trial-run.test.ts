@@ -46,9 +46,13 @@ describe('Editor Settings OpenCode Chat trial-run controls', () => {
     expect(source.match(/\{ repairAttempts: completedRepairAttempts \}/g)).toHaveLength(2);
     expect(source).toContain("trialRun.kind === 'plan-required'");
     expect(source).toContain('.sendInternalTrialPlanPrompt(');
-    expect(source).toContain('planAttempts < MAX_CHAT_TRIAL_PLAN_PROMPTS');
-    expect(source).toContain('totalPlanAttemptsForTurn < maxPlanAttemptsForTurn');
-    expect(source).toContain('maxAttempts + 1');
+    expect(source).toContain('shouldQueueTrialPlanPrompt({');
+    expect(source).toContain('attemptsForRevision: planAttempts');
+    expect(source).toContain('totalAttemptsForLogicalTurn: totalPlanAttemptsForTurn');
+    expect(source).toContain('promptsPerRevision: MAX_CHAT_TRIAL_PLAN_PROMPTS');
+    expect(source).toContain('maxRepairAttempts: maxAttempts');
+    expect(source).toContain('sessionCanContinue: finishedSessionCanContinue');
+    expect(source).not.toContain('maxPlanAttemptsForTurn');
     expect(source).toContain('beginChatTrialPlanningPrompt(planningAccumulator');
     expect(source).toContain('completeChatTrialPlanningPrompt(accumulator');
     expect(source).toContain('mergeChatTrialPlanToolTelemetry(planningAccumulator');

@@ -330,6 +330,72 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
+  test('rebases a pipeline-local cwd when a failed staged edit is saved as a numbered copy', async () => {
+    const { ws, sourcePath, baseYaml } = setupWorkspace(
+      yamlFor('Untitled Pipeline', 'placeholder'),
+    );
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const stagedInputPath = join(dirname(staged.stagedPath), 'input').replace(/\\/g, '/');
+    const sharedInputPath = join(ws.workDir, 'shared-input').replace(/\\/g, '/');
+    const agentYaml = [
+      'pipeline:',
+      '  name: Fact Checker',
+      '  tracks:',
+      '    - id: main',
+      '      name: Main',
+      '      cwd: .tagma/pipeline',
+      '      middlewares:',
+      '        - type: static_context',
+      '          file: rubric.md',
+      '      tasks:',
+      '        - id: task',
+      '          name: Task',
+      '          prompt: check facts',
+      '          trigger:',
+      '            type: directory',
+      `            path: '${stagedInputPath}'`,
+      '          completion:',
+      '            type: file_exists',
+      '            path: report.md',
+      '        - id: nested',
+      '          name: Nested',
+      '          prompt: check nested facts',
+      '          cwd: .tagma/pipeline/nested',
+      '        - id: shared',
+      '          name: Shared',
+      '          prompt: check shared facts',
+      '          cwd: .tagma/shared',
+      '          trigger:',
+      '            type: directory',
+      `            path: '${sharedInputPath}'`,
+      '',
+    ].join('\n');
+    writeFileSync(staged.stagedPath, agentYaml, 'utf-8');
+
+    const result = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+      forceFork: true,
+      forceForkReason: 'trial-run-failed',
+    });
+
+    expect(result.outcome).toBe('forked');
+    expect(result.entry?.path).toBe(pipelineYamlPath(ws.workDir, 'pipeline-copy-1'));
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
+    expect(result.state.config.name).toBe('Untitled Pipeline');
+    const copied = parseYaml(readFileSync(result.entry!.path, 'utf-8'));
+    expect(copied.tracks[0]?.cwd).toBe('.tagma/pipeline-copy-1');
+    const copiedTrack = copied.tracks[0]!;
+    expect(copiedTrack.middlewares?.[0]?.file).toBe('rubric.md');
+    expect(copiedTrack.tasks[0]?.trigger?.path).toBe(join(dirname(result.entry!.path), 'input'));
+    expect(copiedTrack.tasks[0]?.completion?.path).toBe('report.md');
+    expect(copiedTrack.tasks[1]?.cwd).toBe('.tagma/pipeline-copy-1/nested');
+    expect(copiedTrack.tasks[2]?.cwd).toBe('.tagma/shared');
+    expect(copiedTrack.tasks[2]?.trigger?.path).toBe(sharedInputPath);
+    stopWorkspace(ws);
+  });
+
   test('does not treat watcher initialization as an agent edit to an existing pipeline', async () => {
     const invalidYaml = yamlFor('Invalid Pipeline', '');
     const { ws, sourcePath } = setupWorkspace(invalidYaml);

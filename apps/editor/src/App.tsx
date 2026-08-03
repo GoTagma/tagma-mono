@@ -82,6 +82,7 @@ import {
   shouldAutoRepairTrialResult,
   shouldReverifyChatPipelineAfterRepair,
   shouldForkChatYamlResult,
+  shouldQueueTrialPlanPrompt,
   shouldTrialRunChatPipeline,
   type ChatPipelineRepairArtifactState,
 } from './utils/chat-yaml-reconcile';
@@ -1327,16 +1328,19 @@ export function App() {
               mergeChatTrialPlanToolTelemetry(planningAccumulator, trialRun.planTelemetry);
               const planAttemptKey = `${attemptKey}:${trialRun.planRequest.pipelineHash}`;
               const planAttempts = trialPlanAttemptsRef.current.get(planAttemptKey) ?? 0;
-              const maxPlanAttemptsForTurn = Math.max(MAX_CHAT_TRIAL_PLAN_PROMPTS, maxAttempts + 1);
               const totalPlanAttemptsForTurn = [...trialPlanAttemptsRef.current.entries()].reduce(
                 (count, [key, attemptsForHash]) =>
                   key.startsWith(attemptKey + ':') ? count + attemptsForHash : count,
                 0,
               );
               if (
-                planAttempts < MAX_CHAT_TRIAL_PLAN_PROMPTS &&
-                totalPlanAttemptsForTurn < maxPlanAttemptsForTurn &&
-                finishedSessionCanContinue
+                shouldQueueTrialPlanPrompt({
+                  attemptsForRevision: planAttempts,
+                  totalAttemptsForLogicalTurn: totalPlanAttemptsForTurn,
+                  promptsPerRevision: MAX_CHAT_TRIAL_PLAN_PROMPTS,
+                  maxRepairAttempts: maxAttempts,
+                  sessionCanContinue: finishedSessionCanContinue,
+                })
               ) {
                 const nextPlanAttempt = planAttempts + 1;
                 trialPlanAttemptsRef.current.set(planAttemptKey, nextPlanAttempt);
