@@ -775,7 +775,10 @@ export function TagmaBundleBody(props: TagmaBundleBodyProps) {
 
   const [showAdvanced, setShowAdvanced] = useState(false);
   const updating = bundleApply.kind === 'updating';
-  const shellIncompatible = !bundleShellCompatible;
+  const shellIncompatible =
+    editorFetch.kind === 'loaded' &&
+    sidecarFetch.kind === 'loaded' &&
+    !bundleShellCompatible;
   const minShellVersions = [
     editorFetch.kind === 'loaded' ? editorFetch.info.minShellVersion : null,
     sidecarFetch.kind === 'loaded' ? sidecarFetch.info.minShellVersion : null,

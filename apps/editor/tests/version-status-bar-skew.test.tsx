@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'bun:test';
+import { renderToStaticMarkup } from 'react-dom/server';
 import {
   computeBundlePendingRestart,
   computeBundleSkew,
   computeBundleUpdateAvailable,
+  TagmaBundleBody,
   type BundleSkew,
 } from '../src/components/VersionStatusBar';
 import type { EditorInfo, SidecarInfo } from '../src/api/client';
@@ -154,5 +156,54 @@ describe('computeBundlePendingRestart', () => {
 
   test('returns false when both components are already active', () => {
     expect(computeBundlePendingRestart(editor(), sidecar())).toBe(false);
+  });
+});
+
+describe('TagmaBundleBody shell compatibility', () => {
+  test('distinguishes an installer floor from unavailable desktop update capability', () => {
+    const html = renderToStaticMarkup(
+      <TagmaBundleBody
+        editorFetch={{
+          kind: 'loaded',
+          info: editor({
+            latestVersion: '0.5.0',
+            updateAvailable: true,
+            minShellVersion: '0.5.0',
+            shellCompatible: false,
+          }),
+        }}
+        sidecarFetch={{
+          kind: 'loaded',
+          info: sidecar({
+            latestVersion: '0.5.0',
+            updateAvailable: true,
+            minShellVersion: '0.5.0',
+            shellCompatible: false,
+          }),
+        }}
+        bundleApply={{ kind: 'idle' }}
+        editorApply={{ kind: 'idle' }}
+        sidecarApply={{ kind: 'idle' }}
+        bundleLatestVersion="0.5.0"
+        bundleCanUpdate={true}
+        bundleShellCompatible={false}
+        bundleUpdateAvailable={true}
+        onBundleUpdate={() => {}}
+        onBundleCancel={() => {}}
+        onRefreshEditor={() => {}}
+        onRefreshSidecar={() => {}}
+        onEditorOnlyUpdate={() => {}}
+        onEditorOnlyCancel={() => {}}
+        onSidecarOnlyUpdate={() => {}}
+        onSidecarOnlyCancel={() => {}}
+      />,
+    );
+
+    expect(html).toContain('This update requires installer 0.5.0 or newer');
+    expect(html).toContain('latest Tagma desktop installer');
+    expect(html).toContain('release 0.5.0');
+    expect(html).not.toContain('Updates are only available when running under the desktop app.');
+    expect(html).toContain('disabled');
+    expect(html).toContain('aria-label="This update requires installer 0.5.0 or newer');
   });
 });

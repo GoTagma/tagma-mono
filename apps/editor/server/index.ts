@@ -139,7 +139,10 @@ app.use((req, res, next) => {
   if (!req.path.startsWith('/api/')) return next();
 
   const authHeader = req.headers.authorization;
-  const isSseEndpoint = req.path === '/api/run/events' || req.path === '/api/state/events';
+  const isSseEndpoint =
+    req.path === '/api/run/events' ||
+    req.path === '/api/state/events' ||
+    req.path === '/api/run/workflow/events';
   const queryToken = isSseEndpoint && typeof req.query.auth === 'string' ? req.query.auth : null;
   const cookieToken = isSseEndpoint ? cookieValue(req.headers.cookie, 'tagma_auth') : null;
   const token =
@@ -150,7 +153,7 @@ app.use((req, res, next) => {
     return res.status(401).json({ error: 'Missing Authorization header. Provide: Bearer <token>' });
   }
   if (!constantTimeEqual(token, AUTH_TOKEN)) {
-    return res.status(403).json({ error: 'Invalid auth token' });
+    return res.status(401).json({ error: 'Invalid auth token' });
   }
   next();
 });

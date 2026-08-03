@@ -74,6 +74,17 @@ describe('workflow path helpers', () => {
     ).toBe(target);
   });
 
+  test('accepts a Windows drive-case alias for the workspace and workflow path', () => {
+    if (process.platform !== 'win32') return;
+    const workDir = makeWorkDir();
+    const aliasedWorkDir = workDir.replace(/^[A-Z]:/, (drive) => drive.toLowerCase());
+    const target = workflowYamlPath(workDir, 'release');
+
+    expect(assertWorkflowYamlPath(aliasedWorkDir, target, 'workflow').toLowerCase()).toBe(
+      target.toLowerCase(),
+    );
+  });
+
   test('rejects symlinked workflow directories', () => {
     const workDir = makeWorkDir();
     const workflowDir = join(workDir, '.tagma', 'workflows');

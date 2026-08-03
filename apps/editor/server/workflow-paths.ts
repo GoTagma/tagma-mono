@@ -5,6 +5,12 @@ import { sanitizePipelineStem, tagmaDirOf } from './pipeline-paths.js';
 
 const WORKFLOW_SUFFIX_RE = /\.workflow\.ya?ml$/i;
 
+function sameResolvedPath(leftPath: string, rightPath: string): boolean {
+  const left = resolve(leftPath);
+  const right = resolve(rightPath);
+  return process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right;
+}
+
 export function sanitizeWorkflowStem(input: unknown): string {
   return sanitizePipelineStem(input);
 }
@@ -84,10 +90,10 @@ export function assertWorkflowYamlPath(workDir: string, absPath: string, label: 
   if (!isPathWithin(resolved, workflowsDir)) {
     throw new Error(`${label} must be inside the workspace .tagma/workflows directory.`);
   }
-  if (resolve(workflowsDir) === resolved) {
+  if (sameResolvedPath(workflowsDir, resolved)) {
     throw new Error(`${label} cannot be the workflows directory itself.`);
   }
-  if (dirname(resolved) !== resolve(workflowsDir)) {
+  if (!sameResolvedPath(dirname(resolved), workflowsDir)) {
     throw new Error(`${label} must sit directly under .tagma/workflows/.`);
   }
   if (!WORKFLOW_SUFFIX_RE.test(resolved)) {
@@ -104,10 +110,10 @@ export function assertWorkflowYamlPath(workDir: string, absPath: string, label: 
       if (stat.isSymbolicLink()) {
         throw new Error(`${label} traverses a symbolic link at ${segment}.`);
       }
-      if (segment === workflowsDir && !stat.isDirectory()) {
+      if (sameResolvedPath(segment, workflowsDir) && !stat.isDirectory()) {
         throw new Error(`${label} parent must be a directory.`);
       }
-      if (segment === resolved && !stat.isFile()) {
+      if (sameResolvedPath(segment, resolved) && !stat.isFile()) {
         throw new Error(`${label} must be a regular file.`);
       }
     } catch (err) {
