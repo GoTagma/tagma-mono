@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   detectChatStagedYamlTarget,
+  detectSnapshotlessChatYamlTarget,
   maxTrialPlanPromptsForLogicalTurn,
   shouldAdoptFinalizedChatStateOnCurrentCanvas,
   shouldAutoRepairCompileResult,
@@ -28,6 +29,60 @@ const before: WorkspaceYamlEntry = {
   mtimeMs: 1,
   size: 10,
 };
+describe('detectSnapshotlessChatYamlTarget', () => {
+  test('refreshes only the visible current YAML', () => {
+    const sibling: WorkspaceYamlEntry = {
+      ...before,
+      name: 'sibling.yaml',
+      path: 'C:/w/.tagma/sibling.yaml',
+      pipelineName: 'Sibling',
+    };
+
+    expect(
+      detectSnapshotlessChatYamlTarget({
+        hidden: false,
+        currentPath: 'c:\\w\\.tagma\\current.yaml',
+        entries: [sibling, before],
+      }),
+    ).toEqual({
+      kind: 'refresh-current',
+      path: before.path,
+      name: before.name,
+      pipelineName: before.pipelineName,
+    });
+  });
+
+  test('does not publish a result for a hidden external turn', () => {
+    expect(
+      detectSnapshotlessChatYamlTarget({
+        hidden: true,
+        currentPath: before.path,
+        entries: [before],
+      }),
+    ).toBeNull();
+  });
+
+  test('does not infer a result without a current YAML', () => {
+    expect(
+      detectSnapshotlessChatYamlTarget({
+        hidden: false,
+        currentPath: null,
+        entries: [before],
+      }),
+    ).toBeNull();
+  });
+
+  test('does not mistake a sibling file for the current YAML', () => {
+    expect(
+      detectSnapshotlessChatYamlTarget({
+        hidden: false,
+        currentPath: 'C:/w/.tagma/missing.yaml',
+        entries: [before],
+      }),
+    ).toBeNull();
+  });
+});
+
 
 describe('detectChatStagedYamlTarget', () => {
   const stagedBefore: ChatYamlStageSnapshotEntry = {

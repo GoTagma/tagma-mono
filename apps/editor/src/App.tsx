@@ -1029,11 +1029,11 @@ export function App() {
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
   }, [refreshWorkspaceYamls]);
 
-  // Reconcile OpenCode's disk branch once at the end of a logical turn.
-  // During the turn, WorkspaceState remains the renderer's editable user
-  // branch. A conflict creates one numbered agent-result copy and atomically
-  // restores the latest user branch. No result is auto-opened, and the chat
-  // link is published only after repair continuations and reconciliation end.
+  // Reconcile OpenCode's isolated stage once at the end of a logical turn.
+  // Workspace-backed turns publish only through staged finalize; snapshotless
+  // bot-bridge turns retain the narrower current-YAML refresh path. No result
+  // is auto-opened, and the chat link is published only after repair
+  // continuations and reconciliation end.
   const finishedTurn = useChatStore(selectFinishedTurnQueueHead);
   useEffect(() => {
     if (!finishedTurn) return; // initial mount — no turn has ended yet
@@ -1109,23 +1109,23 @@ export function App() {
               );
             },
             discardStage: () => {
-              removeStagedWorkspacePipelines(snapshot.workDir, snapshot.staging!.id);
+              removeStagedWorkspacePipelines(snapshot.workDir, snapshot.staging.id);
               return underChatLock(() =>
-                api.discardChatYamlStage(snapshot.staging!.id, snapshot.workDir),
+                api.discardChatYamlStage(snapshot.staging.id, snapshot.workDir),
               ).then(() => undefined);
             },
             clearPostChatAction: () => useChatStore.getState().clearPostChatYamlAction(),
           });
           if (await discardCancelledStage()) return;
           const stage = await underChatLock(() =>
-            api.listChatYamlStage(snapshot.staging!.id, snapshot.workDir),
+            api.listChatYamlStage(snapshot.staging.id, snapshot.workDir),
           );
           if (cancelled || (await discardCancelledStage())) return;
           const stagedTarget = detectChatStagedYamlTarget(snapshot, stage.entries);
           if (!stagedTarget) {
             removeStagedWorkspacePipelines(snapshot.workDir, snapshot.staging.id);
             await underChatLock(() =>
-              api.discardChatYamlStage(snapshot.staging!.id, snapshot.workDir),
+              api.discardChatYamlStage(snapshot.staging.id, snapshot.workDir),
             );
             useChatStore.getState().clearPostChatYamlAction();
             return;
@@ -1163,7 +1163,7 @@ export function App() {
           repairCheckpointsRef.current.delete(attemptKey);
           const captureRepairArtifacts = async (): Promise<ChatPipelineRepairArtifactState> => {
             const latestStage = await underChatLock(() =>
-              api.listChatYamlStage(snapshot.staging!.id, snapshot.workDir),
+              api.listChatYamlStage(snapshot.staging.id, snapshot.workDir),
             );
             const latestEntry = latestStage.entries.find(
               (entry) => entry.relativePath === stagedTarget.relativePath,
@@ -1178,7 +1178,7 @@ export function App() {
               ? pendingRepair.compile
               : await underChatLock(() =>
                   api.compileChatYamlStage(
-                    snapshot.staging!.id,
+                    snapshot.staging.id,
                     stagedTarget.relativePath,
                     snapshot.workDir,
                   ),
@@ -1245,7 +1245,7 @@ export function App() {
             const trialOnce = () =>
               underChatLock(() =>
                 api.trialRunChatYamlStage(
-                  snapshot.staging!.id,
+                  snapshot.staging.id,
                   stagedTarget.relativePath,
                   finishedTurn.id,
                   snapshot.workDir,
@@ -1265,7 +1265,7 @@ export function App() {
               try {
                 const { progress } = await underChatLock(() =>
                   api.getChatYamlStageTrialProgress(
-                    snapshot.staging!.id,
+                    snapshot.staging.id,
                     finishedTurn.id,
                     snapshot.workDir,
                   ),
@@ -1487,7 +1487,7 @@ export function App() {
             underChatLock(() =>
               api.finalizeChatYamlStage(
                 {
-                  stageId: snapshot.staging!.id,
+                  stageId: snapshot.staging.id,
                   relativePath: stagedTarget.relativePath,
                   localBranch,
                   forceFork:
@@ -1557,7 +1557,7 @@ export function App() {
                   ? current
                   : { liveEntries: [], stagedTargets: [] };
               const reconciled = reconcileFinalizedWorkspacePipelines(collection, {
-                stageId: snapshot.staging!.id,
+                stageId: snapshot.staging.id,
                 stagedRelativePath: stagedTarget.relativePath,
                 outcome: finalized.outcome,
                 entry: finalEntry,
@@ -1719,7 +1719,7 @@ export function App() {
           activeLifecycle.cancellationRequested === true;
         if (stoppedByUser) {
           const stoppedSnapshot = finishedTurn.yamlSnapshotBeforeSend;
-          if (stoppedSnapshot?.staging) {
+          if (stoppedSnapshot) {
             removeStagedWorkspacePipelines(stoppedSnapshot.workDir, stoppedSnapshot.staging.id);
           }
           try {
@@ -1732,17 +1732,16 @@ export function App() {
         }
         console.error('[chat] post-chat YAML reconcile failed', err);
         const abandonedSnapshot = finishedTurn.yamlSnapshotBeforeSend;
-        const abandonedStage = abandonedSnapshot?.staging;
-        if (abandonedStage && abandonedSnapshot) {
-          removeStagedWorkspacePipelines(abandonedSnapshot.workDir, abandonedStage.id);
-        }
-        if (abandonedStage && chatYamlLockLease && !lifecycleCancellationGuard?.cleanupStarted()) {
-          try {
-            await withYamlEditLockRequestBypass(chatYamlLockLease.id, () =>
-              api.discardChatYamlStage(abandonedStage.id, abandonedSnapshot!.workDir),
-            );
-          } catch (discardErr) {
-            console.warn('[chat] failed to discard unreconciled YAML stage', discardErr);
+        if (abandonedSnapshot) {
+          removeStagedWorkspacePipelines(abandonedSnapshot.workDir, abandonedSnapshot.staging.id);
+          if (chatYamlLockLease && !lifecycleCancellationGuard?.cleanupStarted()) {
+            try {
+              await withYamlEditLockRequestBypass(chatYamlLockLease.id, () =>
+                api.discardChatYamlStage(abandonedSnapshot.staging.id, abandonedSnapshot.workDir),
+              );
+            } catch (discardErr) {
+              console.warn('[chat] failed to discard unreconciled YAML stage', discardErr);
+            }
           }
         }
         usePipelineStore.setState({
@@ -1756,7 +1755,7 @@ export function App() {
             await releaseChatYamlEditLock(chatYamlLockLease);
           }
         } finally {
-          if (!keepYamlLockForRepair && snapshot?.staging) {
+          if (!keepYamlLockForRepair && snapshot) {
             const planningKeyPrefix = `${snapshot.staging.id}:`;
             for (const key of trialPlanningTelemetryRef.current.keys()) {
               if (key.startsWith(planningKeyPrefix)) {

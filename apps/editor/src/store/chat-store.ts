@@ -422,18 +422,12 @@ interface ChatStore {
    */
   pendingActivity: ActivityEvent[];
   /**
-   * Snapshot of workspace `.tagma/*.yaml` paths captured at `send()` dispatch,
-   * tagged with the workDir it was taken against. The App-level end-of-turn
-   * reconcile diffs this against the post-turn list to detect pipelines
-   * opencode *created* during the turn — the server's file-watcher only
-   * watches the currently-open YAML, so a newly-written sibling file would
-   * otherwise leave the sidebar and canvas silently stale. The `workDir` tag
-   * guards against the rare race where the user switches workspace mid-turn;
-   * reconcile skips the diff if the tag no longer matches.
+   * Server-owned isolated stage for a workspace-backed logical chat turn.
+   * Continuations reuse this snapshot so every non-null snapshot stays bound
+   * to the same stage until finalize or discard.
    *
-   * `null` = no baseline (workDir unset or the listing request failed) →
-   * reconcile falls back to "refresh the current file only", which is the
-   * right behavior when we can't tell what's new.
+   * A null snapshot belongs to a turn without a renderer-created stage, such
+   * as bot bridge; reconciliation then refreshes only the current YAML.
    */
   yamlSnapshotBeforeSend: ChatYamlSnapshot | null;
   postChatYamlAction: ChatYamlPostAction | null;
