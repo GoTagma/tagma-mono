@@ -95,11 +95,11 @@ export function FilePartView({ part }: { part: FilePart }) {
     <div className="w-full flex flex-col gap-1 border border-tagma-border bg-tagma-surface/40 px-2 py-1.5">
       <div className="flex items-center gap-1.5 text-[10px] font-mono">
         {isImage ? (
-          <ImageIcon size={11} className="text-tagma-accent shrink-0" />
+          <ImageIcon size={10} className="text-tagma-accent shrink-0" />
         ) : isPdf ? (
-          <FileText size={11} className="text-tagma-error/80 shrink-0" />
+          <FileText size={10} className="text-tagma-error/80 shrink-0" />
         ) : (
-          <FileBox size={11} className="text-tagma-muted shrink-0" />
+          <FileBox size={10} className="text-tagma-muted shrink-0" />
         )}
         <a
           href={part.url}
@@ -275,7 +275,7 @@ export function StepStartView(_props: { part: StepStartPart }) {
   return (
     <div className="w-full flex items-center gap-1.5 my-0.5 select-none" aria-hidden>
       <span className="flex-1 h-px bg-tagma-border/40" />
-      <span className="text-[8px] font-mono uppercase tracking-wider text-tagma-muted-dim">
+      <span className="text-[9px] font-mono uppercase tracking-wider text-tagma-muted-dim">
         step
       </span>
       <span className="flex-1 h-px bg-tagma-border/40" />
@@ -315,12 +315,12 @@ export function RetryPartView({ part }: { part: RetryPart }) {
 export function CompactionPartView({ part }: { part: CompactionPart }) {
   return (
     <div className="w-full flex items-center gap-1.5 my-0.5 select-none">
-      <span className="flex-1 h-px bg-tagma-muted/30" />
+      <span className="flex-1 h-px bg-tagma-border/40" />
       <span className="inline-flex items-center gap-1 text-[9px] font-mono text-tagma-muted">
         <Minimize2 size={9} />
         <span>{part.auto ? 'auto-compacted' : 'compacted'}</span>
       </span>
-      <span className="flex-1 h-px bg-tagma-muted/30" />
+      <span className="flex-1 h-px bg-tagma-border/40" />
     </div>
   );
 }
@@ -417,7 +417,7 @@ function AssistantErrorChip({ error }: { error: NonNullable<AssistantMessage['er
     <button
       type="button"
       onClick={() => setOpen((v) => !v)}
-      className="inline-flex items-center gap-1 text-tagma-error hover:text-tagma-error/80"
+      className="inline-flex items-center gap-1 text-tagma-error hover:text-tagma-error/80 transition-colors"
       title={detail ?? label}
     >
       <AlertTriangle size={9} />

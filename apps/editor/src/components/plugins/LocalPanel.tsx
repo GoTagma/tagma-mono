@@ -83,7 +83,7 @@ export function LocalPanel({
   return (
     <div className="h-full flex flex-col min-h-0">
       {autoLoadErrors.length > 0 && (
-        <div className="shrink-0 mx-6 mt-4 relative flex items-start gap-3 px-4 py-3 bg-tagma-error/5 border border-tagma-error/30">
+        <div className="shrink-0 mx-6 mt-4 relative flex items-start gap-3 px-4 py-3 bg-tagma-error/8 border border-tagma-error/30">
           <span
             className="absolute left-0 top-0 bottom-0 w-[2px] bg-tagma-error"
             aria-hidden="true"
@@ -102,7 +102,7 @@ export function LocalPanel({
                   title={err.message}
                 >
                   <span className="text-tagma-error/80">{err.name}</span>
-                  <span className="text-tagma-border mx-1">—</span>
+                  <span className="text-tagma-muted-dim mx-1">—</span>
                   {err.message}
                 </li>
               ))}
@@ -114,7 +114,7 @@ export function LocalPanel({
       <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4">
         {loading && plugins.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-tagma-muted-dim gap-3">
-            <Loader2 size={26} className="animate-spin opacity-70" />
+            <Loader2 size={32} className="animate-spin opacity-70" />
             <p className="text-[11px] tracking-wide">Loading plugins…</p>
           </div>
         ) : filtered.length > 0 ? (
@@ -135,7 +135,7 @@ export function LocalPanel({
           </div>
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-tagma-muted-dim gap-3">
-            <Package size={36} className="opacity-30" />
+            <Package size={32} className="opacity-30" />
             <p className="text-[11px] tracking-wide text-tagma-muted">
               {query
                 ? 'No plugins match your search.'
@@ -285,8 +285,8 @@ function ActionBanner({ state, onDismiss }: { state: PluginActionState; onDismis
     <div
       className={`relative flex items-start gap-3 px-4 py-3 border ${
         isError
-          ? 'bg-tagma-error/5 border-tagma-error/30'
-          : 'bg-tagma-success/5 border-tagma-success/30'
+          ? 'bg-tagma-error/8 border-tagma-error/30'
+          : 'bg-tagma-success/8 border-tagma-success/30'
       }`}
     >
       <span
@@ -319,10 +319,10 @@ function ActionBanner({ state, onDismiss }: { state: PluginActionState; onDismis
       </div>
       <button
         onClick={onDismiss}
-        className="shrink-0 text-tagma-muted-dim hover:text-tagma-text text-[16px] leading-none w-5 h-5 flex items-center justify-center"
+        className="shrink-0 text-tagma-muted-dim hover:text-tagma-text transition-colors w-5 h-5 flex items-center justify-center"
         title="Dismiss"
       >
-        ×
+        <X size={12} />
       </button>
     </div>
   );

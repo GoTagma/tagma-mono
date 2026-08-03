@@ -504,9 +504,7 @@ export function TaskConfigPanel({
   return (
     <div className="h-full bg-tagma-bg flex flex-col" onClick={(e) => e.stopPropagation()}>
       <div className="panel-header-sm">
-        <span className="panel-title-sm">
-          Task Inspector
-        </span>
+        <span className="panel-title-sm">Task Inspector</span>
         <div className="flex items-center gap-0.5">
           <button
             onClick={handleLocateSelf}

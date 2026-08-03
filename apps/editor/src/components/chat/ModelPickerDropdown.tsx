@@ -205,7 +205,7 @@ export function ModelPickerDropdown({
                       {group.providerLabel}
                     </span>
                     <span className="text-[9px] font-mono text-tagma-muted-dim">
-                      - {group.models.length}
+                      · {group.models.length}
                     </span>
                   </div>
                   {group.models.map((model) => {
@@ -222,13 +222,12 @@ export function ModelPickerDropdown({
                         className={`w-full flex items-center gap-1.5 text-left pl-3 pr-2 py-1.5 text-[10px] font-mono hover:bg-tagma-border/30 transition-colors ${
                           active ? 'text-tagma-text bg-tagma-border/20' : 'text-tagma-muted'
                         }`}
-                        title={`${model.id} - status: ${model.status} - context: ${model.context.toLocaleString()}`}
+                        title={`${model.id} · status: ${model.status} · context: ${model.context.toLocaleString()}`}
                       >
-                        <span
-                          className={`shrink-0 ${active ? 'text-tagma-ready' : 'text-tagma-muted/25'}`}
-                        >
-                          *
-                        </span>
+                        <Check
+                          size={10}
+                          className={`shrink-0 ${active ? 'text-tagma-ready' : 'text-transparent'}`}
+                        />
                         <span className="flex-1 truncate">{model.label}</span>
                         {model.reasoning && (
                           <Brain size={9} className="shrink-0 text-tagma-muted/70" />

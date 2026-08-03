@@ -264,12 +264,11 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
   const highlightTrackId = selectedTrackId ?? selectedTask?.trackId ?? null;
 
   return (
-    // The side panels are positioned `absolute` inside this relative wrapper
-    // so that opening/closing them does NOT reflow the canvas — matching the
-    // live RunView's feel and eliminating the "jerk" the user sees when the
-    // canvas is resized mid-scroll. `flex-1 h-full` ensures the canvas fills
-    // the detail-pane body both when that body is flex (flow view) and when
-    // it's a plain block fallback.
+    // The side panels use the shared RUN_INSPECTOR_PANEL_CLASSES recipe —
+    // absolute overlay inside this relative wrapper on small screens, a docked
+    // 20rem column on md+ — matching the live RunView inspector.
+    // `flex-1 h-full` ensures the canvas fills the detail-pane body both when
+    // that body is flex (flow view) and when it's a plain block fallback.
     <div className="flex-1 h-full flex overflow-hidden relative">
       <div
         ref={headerRef}
@@ -462,11 +461,10 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
         </div>
       </div>
 
-      {/* Side panels as absolute overlays — canvas dimensions never change
-          when they open/close, so scrollLeft/Top stay valid and the view
-          doesn't jerk. */}
+      {/* Side panels share the live inspector recipe (RUN_INSPECTOR_PANEL_CLASSES):
+          absolute overlay on small screens, docked 20rem column on md+. */}
       {selectedTask && (
-        <div className="absolute inset-y-0 right-0 z-20 w-[calc(100%-1rem)] max-w-[18rem]">
+        <div className={RUN_INSPECTOR_PANEL_CLASSES}>
           <HistoryTaskPanel
             summary={summary}
             task={selectedTask}
@@ -479,7 +477,7 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
       )}
 
       {!selectedTask && selectedTrack && (
-        <div className="absolute inset-y-0 right-0 z-20 w-[calc(100%-1rem)] max-w-[18rem]">
+        <div className={RUN_INSPECTOR_PANEL_CLASSES}>
           <HistoryTrackPanel
             track={selectedTrack}
             onClose={() => {
@@ -506,7 +504,7 @@ function HistoryTaskPanel({
   const cfg = STATUS_CFG[task.status];
   const Icon = cfg.icon;
   return (
-    <div className="w-full h-full bg-tagma-surface border-l border-tagma-border flex flex-col animate-slide-in-right">
+    <div className="w-full h-full flex flex-col">
       <div className="panel-header-sm">
         <h2 className="panel-title-sm truncate">{task.taskName}</h2>
         <button
@@ -632,7 +630,7 @@ function HistoryTaskPanel({
             <div className="text-[9px] font-mono uppercase tracking-wider text-tagma-muted/60 pb-1.5 border-b border-tagma-border/40">
               {task.command ? 'Command' : 'Prompt'}
             </div>
-            <pre className="select-text pt-2.5 text-[10px] font-mono text-tagma-muted whitespace-pre-wrap break-words max-h-64 overflow-y-auto">
+            <pre className="select-text pt-2.5 text-[10px] font-mono text-tagma-muted whitespace-pre-wrap break-words max-h-64 overflow-y-auto bg-tagma-bg border border-tagma-border px-2.5 py-2">
               {task.command ?? task.prompt}
             </pre>
           </section>
@@ -658,7 +656,7 @@ function HistoryTrackPanel({ track, onClose }: { track: TrackGroup; onClose: () 
   const skippedCount = track.tasks.filter((t) => t.status === 'skipped').length;
   const totalMs = track.tasks.reduce((sum, t) => sum + (t.durationMs ?? 0), 0);
   return (
-    <div className="w-full h-full bg-tagma-surface border-l border-tagma-border flex flex-col animate-slide-in-right">
+    <div className="w-full h-full flex flex-col">
       <div className="panel-header-sm">
         <h2 className="panel-title-sm truncate">{track.name}</h2>
         <button
@@ -713,7 +711,7 @@ function HistoryTrackPanel({ track, onClose }: { track: TrackGroup; onClose: () 
           <div className="text-[9px] font-mono uppercase tracking-wider text-tagma-muted/60 pb-1.5 border-b border-tagma-border/40">
             Tasks
           </div>
-          <div className="pt-2 space-y-0">
+          <div className="pt-2.5 space-y-0">
             {track.tasks.map((t) => {
               const tc = STATUS_CFG[t.status];
               const TIcon = tc.icon;

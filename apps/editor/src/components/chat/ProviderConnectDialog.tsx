@@ -174,7 +174,7 @@ export function ProviderConnectDialog() {
             <Plug size={14} className="text-tagma-muted shrink-0" />
             <h2 className="panel-title truncate">Connect providers</h2>
             {totalCount > 0 && (
-              <span className="text-[10px] font-mono text-tagma-muted-dim tracking-wider ml-1">
+              <span className="text-[10px] font-mono text-tagma-muted-dim ml-1">
                 {connected.length}/{totalCount}
               </span>
             )}
@@ -188,7 +188,7 @@ export function ProviderConnectDialog() {
               }}
               disabled={blocked}
               title="Register a local Ollama, LM Studio, or other OpenAI-compatible endpoint"
-              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border/60 hover:border-tagma-muted/60 disabled:opacity-40 transition-colors"
+              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <Plus size={10} />
               Add custom
@@ -214,8 +214,7 @@ export function ProviderConnectDialog() {
               placeholder={`Search ${totalCount} providers — name, id, or env var`}
               spellCheck={false}
               autoComplete="off"
-              className="flex-1 min-w-0 bg-transparent border-0 outline-none text-[11px] font-mono text-tagma-text placeholder:text-tagma-muted/50"
-              style={{ boxShadow: 'none' }}
+              className="flex-1 min-w-0 bg-transparent border-0 outline-none text-[11px] font-mono text-tagma-text placeholder:text-tagma-muted/50 focus:shadow-none"
             />
             {query && (
               <button
@@ -248,7 +247,7 @@ export function ProviderConnectDialog() {
           )}
           {hasNoMatch && (
             <div className="px-4 py-10 flex flex-col items-center gap-2 text-tagma-muted-dim">
-              <Search size={22} className="opacity-40" />
+              <Search size={24} className="opacity-40" />
               <p className="text-[11px] font-mono">
                 No providers match <span className="text-tagma-text">“{query}”</span>.
               </p>
@@ -300,10 +299,10 @@ export function ProviderConnectDialog() {
         </div>
 
         <div className="modal-viewport-footer flex items-center justify-between gap-3 border-t border-tagma-border px-4 py-3">
-          <div className="text-[10px] font-mono text-tagma-muted-dim truncate">
+          <div className="text-[10px] font-mono text-tagma-muted-dim truncate min-w-0 flex-1">
             Stored locally by opencode. No restart required.
           </div>
-          <button onClick={close} className="btn-primary">
+          <button onClick={close} className="btn-primary min-w-24 justify-center">
             Done
           </button>
         </div>
@@ -339,7 +338,7 @@ function Section({
 }) {
   return (
     <section>
-      <div className="px-4 pt-3 pb-1.5 flex items-center gap-2 border-b border-tagma-border/30">
+      <div className="px-4 py-2 flex items-center gap-2 border-b border-tagma-border/30">
         <span className="text-[10px] font-mono font-medium text-tagma-muted uppercase tracking-wider">
           {title}
         </span>
@@ -397,10 +396,10 @@ function ProviderRow({
           aria-hidden="true"
         />
       )}
-      <div className="flex items-center gap-2 px-4 py-2.5">
+      <div className="flex items-center gap-2 px-4 py-3">
         <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
           <span className="text-[11px] font-mono font-medium text-tagma-text">{entry.name}</span>
-          <span className="chip-xs border-tagma-border text-tagma-muted-dim font-normal">
+          <span className="chip-xs border-tagma-border text-tagma-muted-dim">
             {entry.id}
           </span>
           {isCustom && (
@@ -419,14 +418,14 @@ function ProviderRow({
             envPills.map((v) => (
               <span
                 key={v}
-                className="chip-xs border-tagma-border/60 text-tagma-muted-dim font-normal"
+                className="chip-xs border-tagma-border/60 text-tagma-muted-dim"
               >
                 {v}
               </span>
             ))}
           {!isCustom && envOverflow > 0 && (
             <span
-              className="chip-xs border-tagma-border/60 text-tagma-muted-dim font-normal"
+              className="chip-xs border-tagma-border/60 text-tagma-muted-dim"
               title={entry.env.slice(envPills.length).join(', ')}
             >
               +{envOverflow}
@@ -513,9 +512,9 @@ function CustomProviderActions({
         onClick={onEdit}
         disabled={blocked || working}
         title="Edit this custom provider"
-        className="shrink-0 inline-flex items-center gap-1 px-2 py-1 text-[10px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border/60 hover:border-tagma-muted/60 disabled:opacity-40 transition-colors"
+        className="shrink-0 inline-flex items-center gap-1 px-2 py-1 text-[10px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
-        <Pencil size={9} />
+        <Pencil size={10} />
         Edit
       </button>
       <button
@@ -523,18 +522,18 @@ function CustomProviderActions({
         onClick={handleDelete}
         disabled={blocked || working}
         title={confirming ? 'Click again to confirm deletion' : 'Remove this custom provider entry'}
-        className={`shrink-0 inline-flex items-center gap-1 px-2 py-1 text-[10px] font-mono border disabled:opacity-40 transition-colors ${
+        className={`shrink-0 inline-flex items-center gap-1 px-2 py-1 text-[10px] font-mono border disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
           confirming
             ? 'text-tagma-error border-tagma-error/60 bg-tagma-error/8 hover:bg-tagma-error/15'
-            : 'text-tagma-muted hover:text-tagma-error border-tagma-border/60 hover:border-tagma-error/60'
+            : 'text-tagma-muted hover:text-tagma-error border-tagma-border hover:border-tagma-error/60'
         }`}
       >
-        {working ? <Loader2 size={9} className="animate-spin" /> : <Trash2 size={9} />}
+        {working ? <Loader2 size={10} className="animate-spin" /> : <Trash2 size={10} />}
         {confirming ? 'Confirm' : 'Delete'}
       </button>
       {error && (
         <span
-          className="text-[10px] font-mono text-tagma-error/90 truncate max-w-[160px]"
+          className="text-[10px] font-mono text-tagma-error/90 truncate flex-1 min-w-0"
           title={error}
         >
           {error}

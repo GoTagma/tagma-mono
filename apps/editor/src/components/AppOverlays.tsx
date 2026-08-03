@@ -176,7 +176,7 @@ export function UnsavedChangesModal({
           {action.details.map((detail, i) => (
             <div
               key={i}
-              className="px-4 py-2.5 border-b border-tagma-border/30 last:border-b-0 text-[11px] text-tagma-text font-mono break-words"
+              className="px-4 py-3 border-b border-tagma-border/30 last:border-b-0 text-[11px] text-tagma-text font-mono break-words"
             >
               {detail}
             </div>
@@ -185,7 +185,7 @@ export function UnsavedChangesModal({
         <div className="modal-viewport-footer px-4 py-3 border-t border-tagma-border flex justify-end gap-2">
           <button
             onClick={onCancel}
-            className="min-w-[96px] px-3 py-1 text-[11px] text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 transition-colors text-center"
+            className="btn-secondary"
           >
             Cancel
           </button>
@@ -193,7 +193,7 @@ export function UnsavedChangesModal({
             onClick={() => {
               void onDiscard();
             }}
-            className="min-w-[96px] px-3 py-1 text-[11px] text-tagma-warning border border-tagma-warning/50 hover:bg-tagma-warning/10 transition-colors text-center"
+            className="btn-warning-inline"
           >
             Discard
           </button>
@@ -201,7 +201,7 @@ export function UnsavedChangesModal({
             onClick={() => {
               void onSave();
             }}
-            className="btn-primary w-auto min-w-[96px] justify-center text-center"
+            className="btn-primary min-w-24 justify-center"
           >
             Save
           </button>

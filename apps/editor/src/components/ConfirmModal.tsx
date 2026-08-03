@@ -84,15 +84,12 @@ export function ConfirmModal({ info, onClose }: ConfirmModalProps) {
           ))}
         </div>
         <div className="modal-viewport-footer px-4 py-3 border-t border-tagma-border flex justify-end gap-2">
-          <button
-            onClick={handleDismiss}
-            className="min-w-[120px] px-3 py-1 text-[11px] text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 transition-colors text-center"
-          >
+          <button onClick={handleDismiss} className="btn-secondary">
             {info.cancelLabel ?? 'Cancel'}
           </button>
           <button
             onClick={handleConfirm}
-            className={`${info.danger ? 'btn-danger' : 'btn-primary'} w-auto min-w-[120px] justify-center text-center`}
+            className={info.danger ? 'btn-danger-inline' : 'btn-primary min-w-24 justify-center'}
           >
             {info.confirmLabel}
           </button>

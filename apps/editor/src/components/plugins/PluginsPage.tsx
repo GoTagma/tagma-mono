@@ -787,8 +787,8 @@ function UpgradeConfirmDialog({
             Upgrade plugins?
           </h2>
         </div>
-        <div className="modal-viewport-body space-y-3 px-5 py-4">
-          <div className="text-[11px] text-tagma-warning leading-relaxed">
+        <div className="modal-viewport-body space-y-3 px-4 py-3">
+          <div className="text-[11px] text-tagma-muted leading-relaxed">
             This upgrade will resolve each plugin inside its own isolated dependency store.
           </div>
 
@@ -803,7 +803,7 @@ function UpgradeConfirmDialog({
                     {entry.name}
                   </span>
                   <span className="font-mono text-[10px] text-tagma-accent shrink-0">
-                    v{entry.fromVersion ?? '?'} -&gt; v{entry.toVersion}
+                    v{entry.fromVersion ?? '?'} → v{entry.toVersion}
                   </span>
                 </div>
                 <div className="mt-1 text-[10px] font-mono text-tagma-muted-dim">
@@ -821,7 +821,7 @@ function UpgradeConfirmDialog({
             </div>
           )}
         </div>
-        <div className="modal-viewport-footer flex items-center justify-end gap-2 border-t border-tagma-border px-5 py-3">
+        <div className="modal-viewport-footer flex items-center justify-end gap-2 border-t border-tagma-border px-4 py-3">
           <button
             onClick={onCancel}
             className="text-[11px] px-3 py-1 border border-tagma-border text-tagma-muted hover:text-tagma-text hover:border-tagma-accent transition-colors"
@@ -873,7 +873,7 @@ function UninstallConfirmDialog({
     >
       <div
         ref={modalRef}
-        className="modal-viewport-shell flex w-full max-w-[480px] flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
+        className="modal-viewport-shell flex w-full max-w-[520px] flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
         role="dialog"
         aria-modal="true"
         aria-labelledby="plugin-uninstall-confirm-title"
@@ -885,7 +885,7 @@ function UninstallConfirmDialog({
             Uninstall plugin?
           </h2>
         </div>
-        <div className="modal-viewport-body space-y-3 px-5 py-4">
+        <div className="modal-viewport-body space-y-3 px-4 py-3">
           <div className="text-[11px] text-tagma-text">
             <span className="font-mono text-tagma-accent">{impact.name}</span>
             {impact.category && impact.type && (
@@ -928,7 +928,7 @@ function UninstallConfirmDialog({
             ))}
           </div>
         </div>
-        <div className="modal-viewport-footer flex items-center justify-end gap-2 border-t border-tagma-border px-5 py-3">
+        <div className="modal-viewport-footer flex items-center justify-end gap-2 border-t border-tagma-border px-4 py-3">
           <button
             onClick={onCancel}
             className="text-[11px] px-3 py-1 border border-tagma-border text-tagma-muted hover:text-tagma-text hover:border-tagma-accent transition-colors"
@@ -1061,7 +1061,7 @@ function PluginsHeader({
           <div className="w-px h-5 bg-tagma-border shrink-0" />
           <div className="flex items-center gap-1.5 px-2 shrink-0">
             <Package size={13} className="text-tagma-accent" />
-            <span className="text-xs font-medium text-tagma-text truncate max-w-[160px]">
+            <span className="text-xs font-medium text-tagma-text truncate max-w-[200px]">
               Plugins
             </span>
           </div>
@@ -1077,7 +1077,7 @@ function PluginsHeader({
           )}
           <UtilityLink
             onClick={onRefresh}
-            icon={<RefreshCw size={11} className={refreshing ? 'animate-spin' : ''} />}
+            icon={<RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />}
             label="Refresh"
             title="Refresh plugin list"
             disabled={refreshing}
@@ -1086,7 +1086,7 @@ function PluginsHeader({
         {isDesktop && <DesktopWindowControls />}
       </div>
 
-      <div className="px-3 pt-2 sm:px-6">
+      <div className="px-6 pt-2">
         <div className="-mb-px flex flex-wrap items-end gap-x-4 gap-y-2 sm:gap-x-7">
           <HeaderTab
             active={tab === 'local'}

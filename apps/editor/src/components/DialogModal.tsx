@@ -60,7 +60,7 @@ export function DialogModal({ info, onClose }: DialogModalProps) {
           {info.details.map((detail, i) => (
             <div
               key={i}
-              className="flex items-start gap-2.5 px-4 py-2.5 border-b border-tagma-border/30 last:border-b-0"
+              className="flex items-start gap-2.5 px-4 py-3 border-b border-tagma-border/30 last:border-b-0"
             >
               {info.type === 'error' ? (
                 <AlertCircle size={11} className="text-tagma-error shrink-0 mt-0.5" />
@@ -74,7 +74,7 @@ export function DialogModal({ info, onClose }: DialogModalProps) {
           ))}
         </div>
         <div className="modal-viewport-footer px-4 py-3 border-t border-tagma-border flex justify-end">
-          <button onClick={onClose} className="btn-primary">
+          <button onClick={onClose} className="btn-primary min-w-24 justify-center">
             OK
           </button>
         </div>

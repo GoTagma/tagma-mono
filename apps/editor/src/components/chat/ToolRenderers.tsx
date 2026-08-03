@@ -224,7 +224,7 @@ const BashRenderer: ToolRenderer = ({ state }) => {
         </pre>
       </div>
       {output && (
-        <pre className="select-text text-[9px] text-tagma-text/85 whitespace-pre-wrap break-all overflow-hidden max-h-[240px] overflow-y-auto pl-3 border-l border-tagma-border/40">
+        <pre className="select-text text-[9px] text-tagma-text/85 whitespace-pre-wrap break-all overflow-x-hidden max-h-[240px] overflow-y-auto pl-3 border-l border-tagma-border/40">
           {output}
         </pre>
       )}
@@ -277,7 +277,7 @@ const ReadRenderer: ToolRenderer = ({ state }) => {
         meta={meta}
       />
       {output && (
-        <pre className="select-text text-[9px] text-tagma-text/85 whitespace-pre-wrap break-all overflow-hidden max-h-[240px] overflow-y-auto pl-3 border-l border-tagma-border/40">
+        <pre className="select-text text-[9px] text-tagma-text/85 whitespace-pre-wrap break-all overflow-x-hidden max-h-[240px] overflow-y-auto pl-3 border-l border-tagma-border/40">
           {output}
         </pre>
       )}
@@ -297,7 +297,7 @@ const WriteRenderer: ToolRenderer = ({ state }) => {
         meta={content ? `${content.split('\n').length} lines` : undefined}
       />
       {content && (
-        <pre className="select-text text-[9px] text-tagma-text/85 whitespace-pre-wrap break-all overflow-hidden max-h-[240px] overflow-y-auto pl-3 border-l border-tagma-ready/40">
+        <pre className="select-text text-[9px] text-tagma-text/85 whitespace-pre-wrap break-all overflow-x-hidden max-h-[240px] overflow-y-auto pl-3 border-l border-tagma-ready/40">
           {content}
         </pre>
       )}
@@ -317,12 +317,12 @@ const EditRenderer: ToolRenderer = ({ state }) => {
         filePath={filePath}
       />
       {oldStr != null && (
-        <pre className="select-text text-[9px] whitespace-pre-wrap break-all overflow-hidden max-h-[160px] overflow-y-auto pl-3 border-l border-tagma-error/50 text-tagma-error/85">
+        <pre className="select-text text-[9px] whitespace-pre-wrap break-all overflow-x-hidden max-h-[160px] overflow-y-auto pl-3 border-l border-tagma-error/50 text-tagma-error/85">
           {oldStr || '(empty)'}
         </pre>
       )}
       {newStr != null && (
-        <pre className="select-text text-[9px] whitespace-pre-wrap break-all overflow-hidden max-h-[160px] overflow-y-auto pl-3 border-l border-tagma-ready/50 text-tagma-ready">
+        <pre className="select-text text-[9px] whitespace-pre-wrap break-all overflow-x-hidden max-h-[160px] overflow-y-auto pl-3 border-l border-tagma-ready/50 text-tagma-ready">
           {newStr || '(empty)'}
         </pre>
       )}
@@ -345,7 +345,7 @@ const GrepRenderer: ToolRenderer = ({ state }) => {
       <div className="flex items-center gap-1.5 text-[10px]">
         <Search size={10} className="text-tagma-muted/70 shrink-0" />
         <code className="select-text font-mono text-tagma-text/90 truncate">/{pattern}/</code>
-        {path && <span className="text-tagma-muted/60 text-[9px] shrink-0">in {path}</span>}
+        {path && <span className="text-tagma-muted/60 text-[9px] min-w-0 truncate">in {path}</span>}
         {lines.length > 0 && (
           <span className="text-tagma-muted/60 text-[9px] shrink-0">
             {lines.length} match{lines.length === 1 ? '' : 'es'}
@@ -418,7 +418,7 @@ const WebfetchRenderer: ToolRenderer = ({ state }) => {
         <div className="text-[9px] text-tagma-muted/80 italic pl-3.5 truncate">{prompt}</div>
       )}
       {output && (
-        <pre className="select-text text-[9px] text-tagma-text/85 whitespace-pre-wrap break-all overflow-hidden max-h-[240px] overflow-y-auto pl-3 border-l border-tagma-border/40">
+        <pre className="select-text text-[9px] text-tagma-text/85 whitespace-pre-wrap break-all overflow-x-hidden max-h-[240px] overflow-y-auto pl-3 border-l border-tagma-border/40">
           {output}
         </pre>
       )}
@@ -446,12 +446,12 @@ const TaskRenderer: ToolRenderer = ({ state }) => {
         {subagent && <span className="text-tagma-muted/60 text-[9px] shrink-0">@{subagent}</span>}
       </div>
       {prompt && (
-        <pre className="select-text text-[9px] text-tagma-muted/80 whitespace-pre-wrap break-all overflow-hidden max-h-[120px] overflow-y-auto pl-3 border-l border-tagma-border/40">
+        <pre className="select-text text-[9px] text-tagma-muted/80 whitespace-pre-wrap break-all overflow-x-hidden max-h-[120px] overflow-y-auto pl-3 border-l border-tagma-border/40">
           {prompt}
         </pre>
       )}
       {output && (
-        <pre className="select-text text-[9px] text-tagma-text/85 whitespace-pre-wrap break-all overflow-hidden max-h-[240px] overflow-y-auto pl-3 border-l border-tagma-accent/40">
+        <pre className="select-text text-[9px] text-tagma-text/85 whitespace-pre-wrap break-all overflow-x-hidden max-h-[240px] overflow-y-auto pl-3 border-l border-tagma-accent/40">
           {output}
         </pre>
       )}

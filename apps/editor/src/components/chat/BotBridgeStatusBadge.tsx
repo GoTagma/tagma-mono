@@ -553,7 +553,7 @@ export function BotBridgeStatusBadge() {
         onClick={() => setOpen((v) => !v)}
         title={labelForStatus(snapshot)}
         aria-label={labelForStatus(snapshot)}
-        className={`shrink-0 p-1 hover:text-tagma-text transition-colors ${color}`}
+        className={`shrink-0 p-1 transition-colors ${color}`}
       >
         <Bot size={14} />
       </button>
@@ -564,10 +564,10 @@ export function BotBridgeStatusBadge() {
         width={300}
         maxHeight={460}
       >
-        <div className="overflow-y-auto p-3 text-xs text-tagma-text">
+        <div className="overflow-y-auto p-3 text-[11px] text-tagma-text">
           <div className="font-medium mb-1">Bot bridge</div>
           {!reachable && (
-            <div className="mb-2 rounded border border-tagma-warning/40 bg-tagma-warning/10 px-2 py-1 text-tagma-warning">
+            <div className="mb-2 border border-tagma-warning/40 bg-tagma-warning/10 px-2 py-1 text-tagma-warning">
               Sidecar not responding - status is stale and Connect/switch will fail until it's back.
               Your selection below is preserved.
             </div>
@@ -587,7 +587,7 @@ export function BotBridgeStatusBadge() {
                     disabled={picker.locked}
                     aria-busy={platformBusy || settlingPlatform ? true : undefined}
                     onChange={(e) => void handlePlatformChange(e.target.value as BotPlatform)}
-                    className="flex-1 rounded border border-tagma-border bg-tagma-bg px-1.5 py-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="field-input flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {picker.platforms.map((p) => (
                       <option key={p} value={p}>
@@ -612,21 +612,21 @@ export function BotBridgeStatusBadge() {
               {snapshot.username && (
                 <div className="flex justify-between">
                   <dt className="text-tagma-muted">Bot</dt>
-                  <dd>@{snapshot.username}</dd>
+                  <dd className="min-w-0 truncate ml-2">@{snapshot.username}</dd>
                 </div>
               )}
               <div className="flex justify-between">
                 <dt className="text-tagma-muted">Last heartbeat</dt>
-                <dd>{formatRelative(snapshot.lastSuccessAt)}</dd>
+                <dd className="min-w-0 truncate ml-2">{formatRelative(snapshot.lastSuccessAt)}</dd>
               </div>
               <div className="flex justify-between">
                 <dt className="text-tagma-muted">Last checked</dt>
-                <dd>{formatRelative(snapshot.lastCheckAt)}</dd>
+                <dd className="min-w-0 truncate ml-2">{formatRelative(snapshot.lastCheckAt)}</dd>
               </div>
               {snapshot.lastError && snapshot.status === 'error' && (
                 <div className="flex justify-between">
                   <dt className="text-tagma-muted">Last error</dt>
-                  <dd className="text-tagma-error truncate ml-2" title={snapshot.lastError}>
+                  <dd className="text-tagma-error min-w-0 truncate ml-2" title={snapshot.lastError}>
                     {snapshot.lastError}
                   </dd>
                 </div>
@@ -634,18 +634,20 @@ export function BotBridgeStatusBadge() {
               {snapshot.pendingPairs > 0 && (
                 <div className="flex justify-between">
                   <dt className="text-tagma-muted">Pending pair codes</dt>
-                  <dd>{snapshot.pendingPairs}</dd>
+                  <dd className="min-w-0 truncate ml-2">{snapshot.pendingPairs}</dd>
                 </div>
               )}
               <div className="flex justify-between">
                 <dt className="text-tagma-muted">Token</dt>
-                <dd>{snapshot.tokenSource === 'none' ? 'not set' : 'configured'}</dd>
+                <dd className="min-w-0 truncate ml-2">
+                  {snapshot.tokenSource === 'none' ? 'not set' : 'configured'}
+                </dd>
               </div>
             </dl>
           )}
 
           {/* Token configuration. Stored by Tagma when the local credential backend is available. */}
-          <div className="border-t border-tagma-border pt-2 space-y-2">
+          <div className="border-t border-tagma-border pt-2 space-y-2 mt-2">
             {tokenEditing ? (
               <div className="space-y-1">
                 {isSlack ? (
@@ -661,7 +663,7 @@ export function BotBridgeStatusBadge() {
                       onChange={(e) => setSlackAppToken(e.target.value)}
                       placeholder="App-Level token (xapp-…)"
                       aria-label="Slack App-Level token"
-                      className="w-full rounded border border-tagma-border bg-tagma-bg px-2 py-1 font-mono"
+                      className="field-input w-full font-mono"
                       autoComplete="off"
                       spellCheck={false}
                     />
@@ -671,7 +673,7 @@ export function BotBridgeStatusBadge() {
                       onChange={(e) => setSlackBotToken(e.target.value)}
                       placeholder="Bot token (xoxb-…)"
                       aria-label="Slack Bot token"
-                      className="w-full rounded border border-tagma-border bg-tagma-bg px-2 py-1 font-mono"
+                      className="field-input w-full font-mono"
                       autoComplete="off"
                       spellCheck={false}
                     />
@@ -682,7 +684,7 @@ export function BotBridgeStatusBadge() {
                     value={tokenInput}
                     onChange={(e) => setTokenInput(e.target.value)}
                     placeholder="Paste bot token"
-                    className="w-full rounded border border-tagma-border bg-tagma-bg px-2 py-1 font-mono"
+                    className="field-input w-full font-mono"
                     autoComplete="off"
                     spellCheck={false}
                   />
@@ -697,7 +699,7 @@ export function BotBridgeStatusBadge() {
                         ? slackAppToken.trim().length === 0 || slackBotToken.trim().length === 0
                         : tokenInput.trim().length === 0)
                     }
-                    className="flex-1 rounded border border-tagma-border px-2 py-1 hover:bg-tagma-elevated disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="flex-1 border border-tagma-border px-2 py-1 hover:bg-tagma-elevated transition-colors duration-fast ease-smooth disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {tokenBusy ? 'Saving…' : 'Save to keychain'}
                   </button>
@@ -711,7 +713,7 @@ export function BotBridgeStatusBadge() {
                       setTokenError(null);
                     }}
                     disabled={tokenBusy}
-                    className="rounded border border-tagma-border px-2 py-1 hover:bg-tagma-elevated"
+                    className="border border-tagma-border px-2 py-1 hover:bg-tagma-elevated transition-colors duration-fast ease-smooth"
                   >
                     Cancel
                   </button>
@@ -730,7 +732,7 @@ export function BotBridgeStatusBadge() {
                     setTokenEditing(true);
                     setTokenError(null);
                   }}
-                  className="flex-1 rounded border border-tagma-border px-2 py-1 hover:bg-tagma-elevated"
+                  className="flex-1 border border-tagma-border px-2 py-1 hover:bg-tagma-elevated transition-colors duration-fast ease-smooth"
                 >
                   {snapshot?.tokenSource === 'none' ? 'Set bot token' : 'Replace token'}
                 </button>
@@ -739,7 +741,7 @@ export function BotBridgeStatusBadge() {
                     type="button"
                     onClick={handleClearToken}
                     disabled={tokenBusy}
-                    className="rounded border border-tagma-border px-2 py-1 hover:bg-tagma-elevated disabled:opacity-40"
+                    className="border border-tagma-border px-2 py-1 hover:bg-tagma-elevated transition-colors duration-fast ease-smooth disabled:opacity-40"
                   >
                     Clear
                   </button>
@@ -771,7 +773,7 @@ export function BotBridgeStatusBadge() {
                 value={allowSenderId}
                 onChange={(e) => setAllowSenderId(e.target.value)}
                 placeholder={`${PLATFORM_LABELS[configPlatform]} user ID`}
-                className="w-full rounded border border-tagma-border bg-tagma-bg px-2 py-1 font-mono"
+                className="field-input w-full font-mono"
                 autoComplete="off"
                 spellCheck={false}
               />
@@ -781,14 +783,14 @@ export function BotBridgeStatusBadge() {
                   value={allowSenderLabel}
                   onChange={(e) => setAllowSenderLabel(e.target.value)}
                   placeholder="Label"
-                  className="min-w-0 flex-1 rounded border border-tagma-border bg-tagma-bg px-2 py-1"
+                  className="field-input min-w-0 flex-1"
                   autoComplete="off"
                   spellCheck={false}
                 />
                 <button
                   type="submit"
                   disabled={allowlistBusy || allowSenderId.trim().length === 0}
-                  className="rounded border border-tagma-border px-2 py-1 hover:bg-tagma-elevated disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="border border-tagma-border px-2 py-1 hover:bg-tagma-elevated transition-colors duration-fast ease-smooth disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   Add
                 </button>
@@ -799,7 +801,7 @@ export function BotBridgeStatusBadge() {
                 {allowedSenders.map((entry) => (
                   <li
                     key={`${entry.platform}:${entry.fromId}`}
-                    className="flex items-center gap-2 rounded border border-tagma-border px-2 py-1"
+                    className="flex items-center gap-2 border border-tagma-border px-2 py-1"
                   >
                     <span
                       className="min-w-0 flex-1 truncate font-mono"
@@ -814,7 +816,7 @@ export function BotBridgeStatusBadge() {
                       type="button"
                       onClick={() => void handleRevokeSender(entry)}
                       disabled={allowlistBusy}
-                      className="rounded border border-tagma-border px-2 py-1 hover:bg-tagma-elevated disabled:opacity-40"
+                      className="border border-tagma-border px-1.5 py-0.5 text-[10px] hover:bg-tagma-elevated transition-colors duration-fast ease-smooth disabled:opacity-40"
                     >
                       Remove
                     </button>
@@ -838,7 +840,7 @@ export function BotBridgeStatusBadge() {
                   type="button"
                   onClick={() => void handleArmSlackBind()}
                   disabled={slackBindBusy || status === 'disabled' || status === 'error'}
-                  className="w-full rounded border border-tagma-border px-2 py-1 hover:bg-tagma-elevated disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="w-full border border-tagma-border px-2 py-1 hover:bg-tagma-elevated transition-colors duration-fast ease-smooth disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {slackArmedUntil && slackArmedUntil > Date.now()
                     ? `Armed — message the bot now (${Math.max(
@@ -852,7 +854,7 @@ export function BotBridgeStatusBadge() {
                     {slackBindRequests.map((r) => (
                       <li
                         key={`${r.chatId}:${r.senderId}`}
-                        className="rounded border border-tagma-border px-2 py-1"
+                        className="border border-tagma-border px-2 py-1"
                       >
                         <div className="text-tagma-text">
                           @{r.senderLabel ?? r.senderId}{' '}
@@ -865,7 +867,7 @@ export function BotBridgeStatusBadge() {
                             type="button"
                             onClick={() => void handleApproveSlackBind(r.chatId, r.senderId)}
                             disabled={slackBindBusy}
-                            className="flex-1 rounded border border-tagma-border px-2 py-1 hover:bg-tagma-elevated disabled:opacity-40"
+                            className="flex-1 border border-tagma-border px-2 py-1 hover:bg-tagma-elevated transition-colors duration-fast ease-smooth disabled:opacity-40"
                           >
                             Approve
                           </button>
@@ -873,7 +875,7 @@ export function BotBridgeStatusBadge() {
                             type="button"
                             onClick={() => void handleDenySlackBind(r.chatId, r.senderId)}
                             disabled={slackBindBusy}
-                            className="flex-1 rounded border border-tagma-border px-2 py-1 hover:bg-tagma-elevated disabled:opacity-40"
+                            className="flex-1 border border-tagma-border px-2 py-1 hover:bg-tagma-elevated transition-colors duration-fast ease-smooth disabled:opacity-40"
                           >
                             Deny
                           </button>
@@ -899,7 +901,7 @@ export function BotBridgeStatusBadge() {
                 type="button"
                 onClick={handleGenerate}
                 disabled={pairing || status === 'disabled' || status === 'error'}
-                className="w-full rounded border border-tagma-border px-2 py-1 hover:bg-tagma-elevated disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-full border border-tagma-border px-2 py-1 hover:bg-tagma-elevated transition-colors duration-fast ease-smooth disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {pairing ? 'Generating…' : 'Generate pair code'}
               </button>
@@ -911,7 +913,7 @@ export function BotBridgeStatusBadge() {
                 type="button"
                 onClick={handleDisconnect}
                 disabled={connecting}
-                className="w-full rounded border border-tagma-border px-2 py-1 hover:bg-tagma-elevated disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-full border border-tagma-border px-2 py-1 hover:bg-tagma-elevated transition-colors duration-fast ease-smooth disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {connecting ? 'Disconnecting…' : 'Disconnect'}
               </button>
@@ -920,7 +922,7 @@ export function BotBridgeStatusBadge() {
                 type="button"
                 onClick={handleConnect}
                 disabled={connecting}
-                className="w-full rounded border border-tagma-border px-2 py-1 hover:bg-tagma-elevated disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-full border border-tagma-border px-2 py-1 hover:bg-tagma-elevated transition-colors duration-fast ease-smooth disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {connecting ? 'Connecting…' : 'Connect'}
               </button>

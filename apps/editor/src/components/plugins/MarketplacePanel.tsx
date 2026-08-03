@@ -9,6 +9,7 @@ import {
   Package,
   Trash2,
   TrendingUp,
+  X,
 } from 'lucide-react';
 import type { MarketplaceEntry, PluginCategory } from '../../api/client';
 import { errorHint, formatDownloads } from './plugin-errors';
@@ -82,7 +83,7 @@ export function MarketplacePanel({
   return (
     <div className="h-full flex flex-col min-h-0">
       {upstreamWarning && (
-        <div className="shrink-0 mx-6 mt-4 relative flex items-start gap-3 px-4 py-3 bg-tagma-warning/5 border border-tagma-warning/30">
+        <div className="shrink-0 mx-6 mt-4 relative flex items-start gap-3 px-4 py-3 bg-tagma-warning/8 border border-tagma-warning/30">
           <span
             className="absolute left-0 top-0 bottom-0 w-[2px] bg-tagma-warning"
             aria-hidden="true"
@@ -117,7 +118,7 @@ export function MarketplacePanel({
           </div>
         ) : loadError ? (
           <div className="h-full flex flex-col items-center justify-center gap-3">
-            <AlertCircle size={28} className="text-tagma-error opacity-70" />
+            <AlertCircle size={32} className="text-tagma-error opacity-70" />
             <p className="text-[11px] tracking-wide text-tagma-error">{loadError}</p>
             <button
               onClick={onRetry}
@@ -128,7 +129,7 @@ export function MarketplacePanel({
           </div>
         ) : entries.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-tagma-muted-dim gap-3">
-            <Package size={36} className="opacity-30" />
+            <Package size={32} className="opacity-30" />
             <p className="text-[11px] tracking-wide text-tagma-muted">
               {query
                 ? `No ${category === 'all' ? '' : `${category.replace(/s$/, '')} `}plugins match "${query}"`
@@ -277,7 +278,7 @@ function MarketplaceCard({
     // with Uninstall would force the shrink-0 actions column wide enough
     // to collapse the middle column's truncated title. Card min-height
     // already reserves the vertical room.
-    <div className="flex flex-col items-end gap-2">
+    <div className="flex flex-col items-end gap-1.5">
       <ActionButton
         variant="primary"
         icon={<ArrowUpCircle size={12} />}
@@ -406,8 +407,8 @@ function ActionBanner({ state, onDismiss }: { state: PluginActionState; onDismis
     <div
       className={`relative flex items-start gap-3 px-4 py-3 border ${
         isError
-          ? 'bg-tagma-error/5 border-tagma-error/30'
-          : 'bg-tagma-success/5 border-tagma-success/30'
+          ? 'bg-tagma-error/8 border-tagma-error/30'
+          : 'bg-tagma-success/8 border-tagma-success/30'
       }`}
     >
       <span
@@ -440,10 +441,10 @@ function ActionBanner({ state, onDismiss }: { state: PluginActionState; onDismis
       </div>
       <button
         onClick={onDismiss}
-        className="shrink-0 text-tagma-muted-dim hover:text-tagma-text text-[16px] leading-none w-5 h-5 flex items-center justify-center"
+        className="shrink-0 text-tagma-muted-dim hover:text-tagma-text transition-colors w-5 h-5 flex items-center justify-center"
         title="Dismiss"
       >
-        ×
+        <X size={12} />
       </button>
     </div>
   );

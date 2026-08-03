@@ -313,7 +313,7 @@ export function FileExplorer({
         </div>
 
         {/* Path bar */}
-        <div className="flex items-center gap-1.5 px-3 py-2 border-b border-tagma-border">
+        <div className="flex items-center gap-1.5 px-4 py-2 border-b border-tagma-border">
           {parentPath && (
             <button
               onClick={() => loadDir(parentPath)}
@@ -348,14 +348,14 @@ export function FileExplorer({
 
         {/* Drive roots */}
         {roots.length > 1 && (
-          <div className="flex items-center gap-1 px-3 py-1.5 border-b border-tagma-border/40">
+          <div className="flex items-center gap-1 px-4 py-1.5 border-b border-tagma-border/40">
             {roots.map((root) => (
               <button
                 key={root}
                 onClick={() => loadDir(root)}
                 className={`flex items-center gap-1 px-2 py-0.5 text-[10px] font-mono transition-colors ${currentPath.startsWith(root) ? 'text-tagma-accent bg-tagma-accent/10' : 'text-tagma-muted hover:text-tagma-text hover:bg-tagma-elevated'}`}
               >
-                <HardDrive size={9} /> {root.replace('\\', '')}
+                <HardDrive size={10} /> {root.replace('\\', '')}
               </button>
             ))}
           </div>
@@ -368,7 +368,7 @@ export function FileExplorer({
             spill past the dialog box on short viewports. */}
         <div className="modal-viewport-body">
           {newFolderName !== null && (
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-tagma-elevated/50">
+            <div className="flex items-center gap-2 px-4 py-1.5 bg-tagma-elevated/50">
               <Folder size={13} className="text-tagma-accent shrink-0" />
               <input
                 ref={newFolderRef}
@@ -387,7 +387,7 @@ export function FileExplorer({
             </div>
           )}
           {loading && (
-            <div className="flex items-center justify-center py-8 text-tagma-muted text-xs">
+            <div className="flex items-center justify-center py-8 text-tagma-muted text-[11px]">
               Loading...
             </div>
           )}
@@ -407,7 +407,7 @@ export function FileExplorer({
                   key={entry.path}
                   onClick={(e) => handleEntryClick(entry, e)}
                   onDoubleClick={() => handleEntryDblClick(entry)}
-                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-[11px] transition-colors group ${
+                  className={`w-full flex items-center gap-2 px-4 py-1.5 text-left text-[11px] transition-colors group ${
                     isSelected
                       ? 'bg-tagma-accent/25 hover:bg-tagma-accent/30'
                       : 'hover:bg-tagma-elevated'
@@ -438,11 +438,11 @@ export function FileExplorer({
         </div>
 
         {/* Footer */}
-        <div className="modal-viewport-footer space-y-2 border-t border-tagma-border px-3 py-2.5">
+        <div className="modal-viewport-footer space-y-2 border-t border-tagma-border px-4 py-2.5">
           {mode === 'save' && (
             <div className="flex items-center gap-2">
               <label className="field-label shrink-0 mb-0">File name</label>
-              <div className="flex-1 flex items-center bg-tagma-bg border border-tagma-border">
+              <div className="flex-1 flex items-center bg-tagma-bg border border-tagma-border transition-colors focus-within:border-tagma-accent focus-within:shadow-[0_0_0_1px_rgb(var(--tagma-accent)/0.2)]">
                 <input
                   ref={fileNameRef}
                   type="text"

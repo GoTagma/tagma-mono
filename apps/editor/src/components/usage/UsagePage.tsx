@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  AlertCircle,
   ArrowLeft,
   BarChart3,
   RefreshCw,
@@ -267,7 +268,7 @@ export function UsagePage({ onBack }: UsagePageProps) {
               title="Refresh"
               className="flex items-center gap-1.5 text-xs text-tagma-muted hover:text-tagma-text transition-colors px-2 py-1 shrink-0"
             >
-              <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
+              <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
               <span className="hidden md:inline">Refresh</span>
             </button>
           </div>
@@ -277,7 +278,8 @@ export function UsagePage({ onBack }: UsagePageProps) {
 
       <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-y-auto px-2 pb-3 pt-3 sm:px-4">
         {error && (
-          <div className="border border-tagma-accent/40 bg-tagma-accent/8 px-3 py-2 text-[11px] font-mono text-tagma-text shrink-0">
+          <div className="flex items-center gap-1.5 border border-tagma-error/30 bg-tagma-error/8 px-3 py-2 text-[11px] font-mono text-tagma-error/90 shrink-0">
+            <AlertCircle size={12} className="shrink-0" />
             {error}
           </div>
         )}
@@ -486,10 +488,7 @@ export function UsagePage({ onBack }: UsagePageProps) {
                 </thead>
                 <tbody>
                   {visibleRecords.map((r) => (
-                    <tr
-                      key={r.messageID}
-                      className="border-b border-tagma-border/30 hover:bg-tagma-surface/40"
-                    >
+                    <tr key={r.messageID} className="border-b border-tagma-border/30">
                       <Td>{formatTs(r.ts)}</Td>
                       <Td>
                         <span className="text-tagma-text">{r.modelID || '—'}</span>

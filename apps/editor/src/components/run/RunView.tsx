@@ -508,7 +508,7 @@ export function RunView({
             <ArrowLeft size={12} />
             <span className="hidden md:inline">Back to Editor</span>
           </button>
-          <div className="w-px h-5 bg-tagma-border shrink-0" />
+          <div className="w-px h-4 bg-tagma-border/60 shrink-0" />
 
           <div className="hidden items-center gap-1.5 px-2 min-w-0 shrink sm:flex">
             <ProductLogo size={14} />
@@ -539,7 +539,7 @@ export function RunView({
 
           {!showHistory && (
             <>
-              <div className="hidden w-px h-5 bg-tagma-border sm:block" />
+              <div className="hidden w-px h-4 bg-tagma-border/60 sm:block" />
 
               {/* Run status */}
               <div className="flex items-center gap-2 text-[10px] font-medium">
@@ -700,8 +700,8 @@ export function RunView({
       </header>
 
       {showRunErrorBanner && (
-        <div className="flex items-center gap-2 bg-tagma-error/5 border-b border-tagma-error/20">
-          <div className="w-[3px] self-stretch shrink-0 bg-tagma-error" />
+        <div className="flex items-center gap-2 px-3 bg-tagma-error/5 border-b border-tagma-error/20">
+          <div className="w-[2px] self-stretch shrink-0 bg-tagma-error" />
           <span
             className="flex-1 min-w-0 text-[11px] text-tagma-error font-mono py-2 truncate"
             title={error ?? undefined}
@@ -711,7 +711,7 @@ export function RunView({
           <button
             type="button"
             onClick={handleAskChatForRunError}
-            className="mr-3 flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-tagma-error border border-tagma-error/20 hover:bg-tagma-error/10 transition-colors shrink-0"
+            className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-tagma-error border border-tagma-error/20 hover:bg-tagma-error/10 transition-colors shrink-0"
             title="Ask AI to diagnose this run error"
             aria-label="Ask AI to diagnose this run error"
           >

@@ -119,7 +119,7 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
       {show('opencode-agents') && globalSettings && (
         <div>
           <label className="field-label">OpenCode agents</label>
-          <div className="space-y-2 border border-tagma-border bg-tagma-bg px-2.5 py-2">
+          <div className="space-y-2 border border-tagma-border bg-tagma-bg p-2.5">
             <div className="text-[11px] text-tagma-text">Agent max steps</div>
             <p className="text-[10px] leading-relaxed text-tagma-muted">
               Machine-wide upper limit for every Tagma-managed agent. Agents that finish early stop
@@ -164,7 +164,7 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
                 Apply
               </button>
             </div>
-            <div className="min-h-4 text-[9px] text-tagma-muted">
+            <div className="min-h-4 text-[10px] text-tagma-muted/70">
               {opencodeSettingsMutationBlockMessage
                 ? opencodeSettingsMutationBlockMessage
                 : !agentMaxStepsDraftValid
@@ -227,17 +227,21 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
               },
             ]}
           />
-          <div className="mt-2 space-y-2 border border-tagma-border bg-tagma-bg px-2.5 py-2">
+          <div className="mt-2 space-y-2 border border-tagma-border bg-tagma-bg p-2.5">
             <ToggleRow
               label="Trial-run Chat pipeline changes"
               description="On runs AI-authored staged pipeline commands in your real workspace before finalization. They execute with normal host command authority and may modify files or external state. Off skips only execution; compilation, staging isolation, and conflict-safe finalization stay active."
               checked={settings.opencodeChatTrialRunEnabled}
               disabled={settingsInputsDisabled}
               onChange={(v) => updateField('opencodeChatTrialRunEnabled', v)}
+              borderless
             />
             <div className={'flex items-center gap-2 text-[11px]'}>
-              <label htmlFor={'chat-trial-plan-attempts'} className={'text-tagma-muted'}>
-                Trial Plan attempts per revision:
+              <label
+                htmlFor={'chat-trial-plan-attempts'}
+                className={'w-44 shrink-0 text-tagma-muted'}
+              >
+                Trial plan attempts per revision:
               </label>
               <input
                 id={'chat-trial-plan-attempts'}
@@ -261,13 +265,16 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
                   'w-16 px-1 py-0.5 bg-tagma-surface border border-tagma-border text-tagma-text disabled:opacity-50'
                 }
               />
-              <span className={'text-tagma-muted/70'}>
+              <span className={'text-[10px] text-tagma-muted/70'}>
                 default {DEFAULT_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS}; each attempt is one hidden
                 planner continuation for the same YAML revision.
               </span>
             </div>
             <div className="flex items-center gap-2 text-[11px]">
-              <label htmlFor="chat-pipeline-repair-attempts" className="text-tagma-muted">
+              <label
+                htmlFor="chat-pipeline-repair-attempts"
+                className="w-44 shrink-0 text-tagma-muted"
+              >
                 Automatic repair attempts:
               </label>
               <input
@@ -290,7 +297,7 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
                 }}
                 className="w-16 px-1 py-0.5 bg-tagma-surface border border-tagma-border text-tagma-text disabled:opacity-50"
               />
-              <span className="text-tagma-muted/70">
+              <span className="text-[10px] text-tagma-muted/70">
                 0 = off; default {DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS}; compile and executed-trial
                 repair budget; it does not run the pipeline this many times.
               </span>
@@ -301,9 +308,10 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
               checked={settings.chatContextLimitEnabled}
               disabled={settingsInputsDisabled}
               onChange={(v) => updateField('chatContextLimitEnabled', v)}
+              borderless
             />
             <div className="flex items-center gap-2 text-[11px]">
-              <label htmlFor="context-rounds" className="text-tagma-muted">
+              <label htmlFor="context-rounds" className="w-44 shrink-0 text-tagma-muted">
                 Context rounds:
               </label>
               <input
@@ -323,7 +331,7 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
                 }}
                 className="w-16 px-1 py-0.5 bg-tagma-surface border border-tagma-border text-tagma-text disabled:opacity-50"
               />
-              <span className="text-tagma-muted/70">
+              <span className="text-[10px] text-tagma-muted/70">
                 {settings.chatContextLimitEnabled ? '0 = stateless, no history' : 'Off = unlimited'}
               </span>
             </div>
@@ -360,7 +368,7 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
                   globalSaving ||
                   opencodeSettingsMutationBlocked
                 }
-                className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 border border-tagma-border text-tagma-text hover:bg-tagma-surface disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 border border-tagma-border text-tagma-text hover:bg-tagma-surface disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
               >
                 <Terminal size={11} />
                 Reconfigure
@@ -398,7 +406,7 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
                 Install / Load Plugins
               </button>
               {!settings.autoInstallDeclaredPlugins && (
-                <span className="text-[9px] text-tagma-muted">
+                <span className="text-[10px] text-tagma-muted/70">
                   (toggle is off — only loads already-installed plugins)
                 </span>
               )}
@@ -444,7 +452,7 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
             disabled={settingsInputsDisabled}
             onChange={(v) => updateField('autoSaveEnabled', v)}
           />
-          <div className="mt-2 flex items-center gap-2 text-[11px]">
+          <div className="mt-2 flex items-center gap-2 text-[11px] border border-tagma-border bg-tagma-bg p-2.5">
             <label htmlFor="autosave-interval" className="text-tagma-muted">
               Interval (seconds):
             </label>
@@ -463,9 +471,9 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
                   void updateField('autoSaveIntervalSec', clamped);
                 }
               }}
-              className="w-16 px-1 py-0.5 bg-tagma-surface border border-tagma-border text-tagma-text"
+              className="w-16 px-1 py-0.5 bg-tagma-surface border border-tagma-border text-tagma-text disabled:opacity-50"
             />
-            <span className="text-tagma-muted/70">(default 30, range 5–600)</span>
+            <span className="text-[10px] text-tagma-muted/70">(default 30, range 5–600)</span>
           </div>
         </div>
       )}
@@ -557,7 +565,7 @@ export function PythonAgentWizard({ controller }: { controller: EditorSettingsCo
             <X size={14} />
           </button>
         </div>
-        <div className="modal-viewport-body space-y-4 px-5 py-4">
+        <div className="modal-viewport-body space-y-3 px-5 py-4">
           {opencodeSettingsMutationBlockMessage && (
             <WarnBox>{opencodeSettingsMutationBlockMessage}</WarnBox>
           )}
@@ -628,7 +636,7 @@ export function PythonAgentWizard({ controller }: { controller: EditorSettingsCo
                   !!opencodeSettingsMutationBlockMessage ||
                   (!selected && manualPath.trim().length === 0)
                 }
-                className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 border border-tagma-accent/50 text-tagma-accent hover:bg-tagma-accent/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 border border-tagma-accent/50 text-tagma-accent hover:bg-tagma-accent/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
               >
                 {status.kind === 'configuring' ? (
                   <Loader2 size={11} className="animate-spin" />
@@ -662,7 +670,7 @@ export function PythonAgentWizard({ controller }: { controller: EditorSettingsCo
               <button
                 onClick={() => void installPython()}
                 disabled={busy || !installPlan}
-                className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 border border-tagma-accent/50 text-tagma-accent hover:bg-tagma-accent/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 border border-tagma-accent/50 text-tagma-accent hover:bg-tagma-accent/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
               >
                 {status.kind === 'installing' ? (
                   <Loader2 size={11} className="animate-spin" />
@@ -675,7 +683,7 @@ export function PythonAgentWizard({ controller }: { controller: EditorSettingsCo
           )}
 
           {commandPreview && (
-            <div className="text-[10px] text-tagma-muted font-mono">command: {commandPreview}</div>
+            <div className="text-[10px] text-tagma-muted font-mono break-all">command: {commandPreview}</div>
           )}
           {status.kind === 'detecting' && (
             <div className="flex items-center gap-1.5 text-[10px] text-tagma-muted">
@@ -749,6 +757,8 @@ interface ToggleRowProps {
   checked: boolean;
   disabled?: boolean;
   onChange: (next: boolean) => void;
+  /** Omits the row's own border/bg — for rows nested inside a bordered sub-settings box. */
+  borderless?: boolean;
 }
 
 interface RadioGroupRowProps<T extends string> {
@@ -780,7 +790,7 @@ function RadioGroupRow<T extends string>({
           return (
             <label
               key={opt.value}
-              className={`flex items-start gap-2 px-1.5 py-1 border ${checked ? 'border-tagma-accent/50 bg-tagma-accent/5' : 'border-transparent hover:border-tagma-border/60'} ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+              className={`flex items-start gap-2 px-1.5 py-1 border ${checked ? 'border-tagma-accent/50 bg-tagma-accent/5' : `border-transparent${disabled ? '' : ' hover:border-tagma-border/60'}`} ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
             >
               <input
                 type="radio"
@@ -801,10 +811,17 @@ function RadioGroupRow<T extends string>({
   );
 }
 
-function ToggleRow({ label, description, checked, disabled, onChange }: ToggleRowProps) {
+function ToggleRow({
+  label,
+  description,
+  checked,
+  disabled,
+  onChange,
+  borderless,
+}: ToggleRowProps) {
   return (
     <label
-      className={`flex items-start gap-3 px-2.5 py-2 border border-tagma-border bg-tagma-bg ${disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:border-tagma-border/80'}`}
+      className={`flex items-start gap-3 px-2.5 py-2${borderless ? '' : ' border border-tagma-border bg-tagma-bg'} ${disabled ? 'opacity-60 cursor-not-allowed' : `cursor-pointer${borderless ? '' : ' hover:border-tagma-border/60'}`}`}
     >
       <input
         type="checkbox"

@@ -2999,7 +2999,7 @@ export function App() {
     );
   }
 
-  const VIEW_TRANSITION = { duration: 0.28, ease: [0.16, 1, 0.3, 1] as const };
+  const VIEW_TRANSITION = { duration: 0.26, ease: [0.16, 1, 0.3, 1] as const };
 
   return (
     <>
@@ -3236,8 +3236,8 @@ export function App() {
             </div>
 
             {yamlEditLocked && (
-              <div className="flex items-center gap-2 border-b border-tagma-accent/20 bg-tagma-accent/8 px-3 py-1.5 text-[11px] font-mono text-tagma-text">
-                <ShieldCheck size={13} className="text-tagma-accent" />
+              <div className="flex items-center gap-2 border-b border-tagma-info/20 bg-tagma-info/8 px-3 py-1.5 text-[11px] font-mono text-tagma-text">
+                <ShieldCheck size={13} className="text-tagma-info" />
                 <span>{yamlEditLockReason || YAML_EDIT_LOCK_MESSAGE}</span>
               </div>
             )}

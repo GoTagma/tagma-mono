@@ -104,7 +104,7 @@ export function DesktopTitleStrip() {
   if (!hasDesktopBridge()) return null;
   return (
     <div
-      className="h-8 shrink-0 bg-tagma-surface flex items-center justify-end app-drag-region"
+      className="h-9 shrink-0 bg-tagma-surface flex items-center justify-end app-drag-region"
       onDoubleClick={(e) => {
         if (e.target === e.currentTarget) void toggleMaximizeDesktopWindow();
       }}

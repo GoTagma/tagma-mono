@@ -99,7 +99,7 @@ function SubmenuPanel({
   return (
     <div
       ref={ref}
-      className={`fixed z-[101] min-w-[min(180px,calc(100vw-0.5rem))] border border-tagma-border bg-tagma-surface py-1 shadow-panel animate-fade-in ${CONTEXT_MENU_VIEWPORT_CLASSES}`}
+      className={`fixed z-[101] min-w-[min(180px,calc(100vw-0.5rem))] border border-tagma-border bg-tagma-surface py-1 shadow-panel origin-top animate-scale-in ${CONTEXT_MENU_VIEWPORT_CLASSES}`}
       style={{ left: parentRect.right / getZoom(), top: parentRect.top / getZoom() }}
       onContextMenu={(e) => e.preventDefault()}
     >
@@ -113,15 +113,14 @@ function SubmenuPanel({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={config.searchPlaceholder ?? 'Search...'}
-              className="bg-transparent text-[11px] text-tagma-text placeholder:text-tagma-muted/50 outline-none border-none shadow-none w-full"
-              style={{ boxShadow: 'none', borderColor: 'transparent' }}
+              className="bg-transparent text-[11px] text-tagma-text placeholder:text-tagma-muted/50 border border-transparent w-full"
             />
           </div>
         </div>
       )}
       <div className="overflow-y-auto" style={{ maxHeight: maxH }}>
         {filtered.length === 0 && (
-          <div className="px-3 py-2 text-[10px] text-tagma-muted text-center">No matches</div>
+          <div className="px-3 py-2 text-[10px] font-mono text-tagma-muted/60">No matches</div>
         )}
         {filtered.map((entry, i) => {
           if (isSeparator(entry)) {
@@ -188,7 +187,7 @@ function SubmenuTrigger({
         {entry.icon && (
           <span className="w-4 flex items-center justify-center shrink-0">{entry.icon}</span>
         )}
-        <span className="flex-1">{entry.label}</span>
+        <span className="flex-1 truncate">{entry.label}</span>
         <ChevronRight size={10} className="text-tagma-muted shrink-0" />
       </button>
       {isOpen && btnRef.current && (
@@ -325,13 +324,13 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
   return (
     <div
       ref={ref}
-      className={`fixed z-[100] min-w-[min(160px,calc(100vw-0.5rem))] border border-tagma-border bg-tagma-surface py-1 shadow-panel animate-fade-in ${CONTEXT_MENU_VIEWPORT_CLASSES}`}
+      className={`fixed z-[100] min-w-[min(180px,calc(100vw-0.5rem))] border border-tagma-border/80 bg-tagma-surface py-1 shadow-panel origin-top animate-scale-in ${CONTEXT_MENU_VIEWPORT_CLASSES}`}
       style={{ left: logicalX, top: logicalY }}
       onContextMenu={(e) => e.preventDefault()}
     >
       {items.map((entry, i) => {
         if (isSeparator(entry)) {
-          return <div key={`sep-${i}`} className="my-1 border-t border-tagma-border/40" />;
+          return <div key={`sep-${i}`} className="my-1 border-t border-tagma-border/30" />;
         }
 
         if (isSubmenu(entry)) {
@@ -371,7 +370,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
             {entry.icon && (
               <span className="w-4 flex items-center justify-center shrink-0">{entry.icon}</span>
             )}
-            <span>{entry.label}</span>
+            <span className="flex-1 min-w-0 truncate">{entry.label}</span>
           </button>
         );
       })}

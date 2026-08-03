@@ -249,9 +249,7 @@ export function YamlPreview({
     <div className="h-full flex flex-col bg-tagma-bg">
       {/* Header */}
       <div className="panel-header-sm">
-        <span className="panel-title-sm">
-          YAML Preview
-        </span>
+        <span className="panel-title-sm">YAML Preview</span>
         <div className="flex items-center gap-1.5">
           <button
             onClick={handleCopy}

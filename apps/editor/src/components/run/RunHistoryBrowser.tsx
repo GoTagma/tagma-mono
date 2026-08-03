@@ -1390,7 +1390,7 @@ function GraphRunDetailPane({
   if (!selectedRunId) {
     return (
       <div className="flex-1 flex flex-col overflow-hidden bg-tagma-bg">
-        <div className="px-5 py-6 text-[11px] text-tagma-muted-dim leading-relaxed max-w-md">
+        <div className="px-6 py-10 text-[11px] text-tagma-muted-dim leading-relaxed max-w-md">
           Select a run from the list to see its execution detail.
         </div>
       </div>
@@ -1521,7 +1521,7 @@ function DetailPane({
           Run Detail
         </div>
         <div className="flex-1 min-w-[8px]" />
-        <FileText size={12} className="text-tagma-muted-dim shrink-0" />
+        <FileText size={11} className="text-tagma-muted-dim shrink-0" />
         <span
           className="text-[11px] font-mono text-tagma-muted truncate max-w-[360px] select-text"
           title={selectedRunId ?? undefined}
@@ -1534,7 +1534,7 @@ function DetailPane({
             <div className="max-w-full overflow-x-auto flex items-stretch border border-tagma-border sm:ml-2">
               <button
                 type="button"
-                className={`px-2.5 py-0.5 text-[9px] font-mono uppercase tracking-wider flex items-center justify-center ${
+                className={`px-2.5 py-0.5 text-[9px] font-mono uppercase tracking-wider flex items-center justify-center gap-1 ${
                   viewMode === 'flow'
                     ? 'bg-tagma-accent/10 text-tagma-accent'
                     : 'text-tagma-muted hover:text-tagma-text'
@@ -1543,6 +1543,7 @@ function DetailPane({
                 title="Pipeline flow chart"
               >
                 <GitBranch size={10} />
+                Flow
               </button>
               <button
                 type="button"
@@ -1635,7 +1636,11 @@ function DetailPane({
                 type="button"
                 onClick={onPrimaryAction}
                 disabled={primaryAction.disabled}
-                className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider border border-tagma-accent/40 text-tagma-accent hover:bg-tagma-accent/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider border disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
+                  primaryAction.kind === 'stop'
+                    ? 'border-tagma-error/40 text-tagma-error hover:bg-tagma-error/10'
+                    : 'border-tagma-accent/40 text-tagma-accent hover:bg-tagma-accent/10'
+                }`}
                 title={primaryAction.title}
               >
                 {primaryAction.busy ? (
@@ -1664,7 +1669,7 @@ function DetailPane({
         className={`flex-1 min-h-0 ${viewMode === 'flow' ? 'overflow-hidden flex' : 'overflow-auto'}`}
       >
         {!selectedRunId && (
-          <div className="px-5 py-6 text-[11px] text-tagma-muted-dim leading-relaxed max-w-md">
+          <div className="px-6 py-10 text-[11px] text-tagma-muted-dim leading-relaxed max-w-md">
             Select a run from the list to see its per-task timeline. Each run stores a{' '}
             <span className="font-mono text-tagma-muted">summary.json</span> alongside its raw{' '}
             <span className="font-mono text-tagma-muted">pipeline.log</span>.
@@ -1672,7 +1677,7 @@ function DetailPane({
         )}
 
         {viewMode === 'summary' && selectedRunId && (
-          <div className="px-6 py-5">
+          <div className="px-5 py-4">
             {summaryError && (
               <div className="mb-4 p-3 bg-tagma-warning/5 border border-tagma-warning/20 text-[10px] text-tagma-warning font-mono leading-relaxed">
                 {summaryError}. Older runs (pre-summary.json) will only have a pipeline.log
@@ -1720,7 +1725,7 @@ function DetailPane({
                     // That keeps the UI linear and avoids implying there's
                     // some canonical root ancestor.
                     <div className="mt-2 flex items-center gap-2 text-[10px] font-mono">
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 border border-tagma-accent/40 text-tagma-accent/90 uppercase tracking-wider text-[9px]">
+                      <span className="chip-sm border-tagma-accent/40 text-tagma-accent/90 uppercase tracking-wider">
                         <Play size={8} />
                         replayed from
                       </span>
@@ -1749,7 +1754,7 @@ function DetailPane({
 
                 {Array.from(tasksByTrack.entries()).map(([trackId, tasks]) => (
                   <div key={trackId} className="mb-5">
-                    <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-tagma-muted-dim mb-2">
+                    <div className="text-[9px] font-mono uppercase tracking-[0.22em] text-tagma-muted-dim mb-2">
                       {tasks[0]?.trackName ?? trackId}
                     </div>
                     <div className="border border-tagma-border/60 bg-tagma-bg/40">
@@ -1797,7 +1802,7 @@ function DetailPane({
                               exit {task.exitCode}
                             </span>
                           )}
-                          <span className="shrink-0 text-tagma-muted tabular-nums w-[42px] text-right">
+                          <span className="shrink-0 text-tagma-muted tabular-nums w-11 text-right">
                             {formatDuration(task.durationMs)}
                           </span>
                         </div>

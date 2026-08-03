@@ -493,7 +493,7 @@ export function RightDock({
             initial={{ width: 0, opacity: 0 }}
             animate={{ width: 80, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
-            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: 0.17, ease: [0.16, 1, 0.3, 1] }}
             className={`shrink-0 h-full flex items-center justify-center border-l-2 border-dashed overflow-hidden ${
               dropActive
                 ? 'border-tagma-accent bg-tagma-accent/10'
@@ -517,7 +517,7 @@ export function RightDock({
             initial={{ width: 0, opacity: 0 }}
             animate={{ width: detachedWidth, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
-            transition={isResizing ? { duration: 0 } : { duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            transition={isResizing ? { duration: 0 } : { duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
             className="relative shrink-0 overflow-hidden border-l border-tagma-border bg-tagma-bg"
           >
             <div className="h-full flex flex-col" style={{ width: detachedWidth }}>
@@ -543,10 +543,10 @@ export function RightDock({
             initial={{ width: 0, opacity: 0 }}
             animate={{ width: visibleDockWidth, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
-            transition={isResizing ? { duration: 0 } : { duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            transition={isResizing ? { duration: 0 } : { duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
             className={
               compact
-                ? 'absolute inset-y-0 right-8 z-40 max-w-[calc(100%-32px)] overflow-hidden border-l border-tagma-border bg-tagma-bg shadow-panel'
+                ? 'absolute inset-y-0 right-9 z-40 max-w-[calc(100%-36px)] overflow-hidden border-l border-tagma-border bg-tagma-bg shadow-panel'
                 : 'relative shrink-0 overflow-hidden border-l border-tagma-border bg-tagma-bg'
             }
             onDragOver={handleDragOverReattach}
@@ -710,7 +710,7 @@ function DetachedHeader({
         className="flex items-center gap-1.5 text-[10px] font-mono text-tagma-text cursor-grab active:cursor-grabbing select-none"
         title="Drag back onto the dock to re-attach"
       >
-        <Icon size={11} className="text-tagma-muted" />
+        <Icon size={11} className="text-tagma-accent" />
         <span>{meta.label}</span>
       </div>
       <div className="flex-1" />
@@ -730,7 +730,7 @@ function DetachedHeader({
         aria-label="Close"
         className="p-1 text-tagma-muted hover:text-tagma-text transition-colors"
       >
-        <X size={12} />
+        <X size={10} />
       </button>
     </div>
   );
@@ -776,7 +776,7 @@ function ActivityRail({
   onToggle: (tab: RightTab) => void;
 }) {
   return (
-    <div className="w-8 shrink-0 h-full flex flex-col items-stretch border-l border-tagma-border bg-tagma-surface/40">
+    <div className="w-9 shrink-0 h-full flex flex-col items-stretch border-l border-tagma-border bg-tagma-surface/40">
       {ALL_TABS.map((tab) => {
         const meta = TAB_META[tab];
         const Icon = meta.icon;

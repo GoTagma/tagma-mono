@@ -7,6 +7,7 @@ import {
   ChevronRight,
   KeyRound,
   Loader2,
+  Pencil,
   Plus,
   Search,
   ShieldCheck,
@@ -737,7 +738,7 @@ export function CustomProviderModal({
     >
       <div
         ref={modalRef}
-        className="modal-viewport-shell flex w-full max-w-[640px] flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
+        className="modal-viewport-shell flex w-full max-w-[600px] flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-label={isEdit ? 'Edit custom provider' : 'Add custom provider'}
@@ -746,7 +747,11 @@ export function CustomProviderModal({
       >
         <div className="panel-header">
           <div className="flex items-center gap-2 min-w-0">
-            <Plus size={14} className="text-tagma-muted shrink-0" />
+            {isEdit ? (
+              <Pencil size={14} className="text-tagma-muted shrink-0" />
+            ) : (
+              <Plus size={14} className="text-tagma-muted shrink-0" />
+            )}
             <h2 className="panel-title truncate">
               {isEdit ? `Edit “${editing!.id}”` : 'Add custom provider'}
             </h2>
@@ -771,7 +776,7 @@ export function CustomProviderModal({
                     type="button"
                     onClick={() => applyTemplate(tpl.id)}
                     title={tpl.hint}
-                    className="px-2 py-1 text-[10px] font-mono border border-tagma-border/60 text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/60 transition-colors"
+                    className="px-2 py-1 text-[10px] font-mono border border-tagma-border text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/60 transition-colors"
                   >
                     {tpl.label}
                   </button>
@@ -832,7 +837,7 @@ export function CustomProviderModal({
                     onClick={() => updateField('npm', pkg.value)}
                     className={`flex flex-col items-start text-left px-2 py-1.5 border transition-colors ${
                       active
-                        ? 'border-tagma-ready/60 bg-tagma-ready/10'
+                        ? 'border-tagma-accent/60 bg-tagma-accent/10'
                         : 'border-tagma-border/60 hover:border-tagma-muted/60'
                     }`}
                   >
@@ -867,7 +872,7 @@ export function CustomProviderModal({
                   onClick={handleDetect}
                   disabled={detecting || !form.baseURL.trim()}
                   title="Probe the base URL for models — tries /v1/models, falls back to /api/tags"
-                  className="shrink-0 inline-flex items-center gap-1 px-2.5 text-[11px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 transition-colors"
+                  className="shrink-0 inline-flex items-center gap-1 px-2.5 text-[11px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   {detecting ? (
                     <Loader2 size={11} className="animate-spin" />
@@ -913,7 +918,7 @@ export function CustomProviderModal({
                   onClick={handleVerify}
                   disabled={verifying || !form.baseURL.trim()}
                   title="Ping the base URL with this API key — confirms the URL is reachable and the key is accepted"
-                  className="shrink-0 inline-flex items-center gap-1 px-2.5 text-[11px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 transition-colors"
+                  className="shrink-0 inline-flex items-center gap-1 px-2.5 text-[11px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   {verifying ? (
                     <Loader2 size={11} className="animate-spin" />
@@ -1016,7 +1021,7 @@ export function CustomProviderModal({
                 <button
                   type="button"
                   onClick={addHeaderRow}
-                  className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border/60 hover:border-tagma-muted/60 transition-colors"
+                  className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 transition-colors"
                 >
                   <Plus size={10} />
                   Add header
@@ -1048,7 +1053,7 @@ export function CustomProviderModal({
                       value={m.id}
                       onChange={(e) => updateModel(idx, { id: e.target.value })}
                       placeholder="model id (e.g. llama3.1:8b)"
-                      className="field-input w-[42%]"
+                      className="field-input w-[40%]"
                     />
                     <input
                       type="text"
@@ -1077,7 +1082,7 @@ export function CustomProviderModal({
                         value={m.context}
                         onChange={(e) => updateModel(idx, { context: e.target.value })}
                         placeholder="context tokens"
-                        className="field-input w-[42%]"
+                        className="field-input w-[40%]"
                       />
                       <input
                         type="number"
@@ -1096,7 +1101,7 @@ export function CustomProviderModal({
               <button
                 type="button"
                 onClick={addModelRow}
-                className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border/60 hover:border-tagma-muted/60 transition-colors"
+                className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 transition-colors"
               >
                 <Plus size={10} />
                 Add model
@@ -1164,7 +1169,7 @@ function ScopeButton({
       disabled={disabled}
       className={`flex flex-col items-start text-left px-2 py-1.5 border transition-colors flex-1 ${
         active
-          ? 'border-tagma-ready/60 bg-tagma-ready/10'
+          ? 'border-tagma-accent/60 bg-tagma-accent/10'
           : 'border-tagma-border/60 hover:border-tagma-muted/60'
       } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
     >

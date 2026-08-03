@@ -41,9 +41,11 @@ export function SaveAsDialog({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="panel-header">
-          <h2 id="save-as-dialog-title" className="panel-title">
-            {title}
-          </h2>
+          <div className="flex items-center gap-2 min-w-0">
+            <h2 id="save-as-dialog-title" className="panel-title truncate">
+              {title}
+            </h2>
+          </div>
           <button
             onClick={onCancel}
             className="p-1 text-tagma-muted hover:text-tagma-text"
@@ -52,8 +54,8 @@ export function SaveAsDialog({
             <XIcon size={14} />
           </button>
         </div>
-        <div className="modal-viewport-body px-4 py-4 flex flex-col gap-2">
-          <label className="field-label font-mono">{inputLabel}</label>
+        <div className="modal-viewport-body px-4 py-3 flex flex-col gap-2">
+          <label className="field-label">{inputLabel}</label>
           <input
             type="text"
             autoFocus
@@ -63,7 +65,7 @@ export function SaveAsDialog({
               if (e.key === 'Enter') onConfirm(value);
               if (e.key === 'Escape') onCancel();
             }}
-            className="text-[11px] font-mono bg-tagma-bg border border-tagma-border focus:border-tagma-accent px-2 py-1 text-tagma-text outline-none"
+            className="field-input font-mono"
             placeholder={placeholder}
             aria-label={inputAriaLabel}
           />
@@ -71,11 +73,11 @@ export function SaveAsDialog({
         <div className="modal-viewport-footer px-4 py-3 border-t border-tagma-border flex justify-end gap-2">
           <button
             onClick={onCancel}
-            className="px-3 py-1 text-[11px] text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 transition-colors"
+            className="btn-secondary"
           >
             Cancel
           </button>
-          <button onClick={() => onConfirm(value)} className="btn-primary">
+          <button onClick={() => onConfirm(value)} className="btn-primary min-w-24 justify-center">
             {confirmLabel}
           </button>
         </div>

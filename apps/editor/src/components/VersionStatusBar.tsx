@@ -705,7 +705,9 @@ function PopoverShell({ title, onClose, children }: PopoverShellProps) {
 
   return (
     <div ref={ref} className={VERSION_STATUS_POPOVER_CLASSES}>
-      <div className="text-[11px] font-semibold uppercase tracking-widest text-tagma-text mb-2">{title}</div>
+      <div className="text-[11px] font-semibold uppercase tracking-widest text-tagma-text mb-2">
+        {title}
+      </div>
       {children}
     </div>
   );
@@ -721,7 +723,7 @@ function LoadingRow({ text }: { text: string }) {
 }
 
 function ErrorRow({ text }: { text: string }) {
-  return <div className="text-[10px] text-tagma-error font-mono break-words">{text}</div>;
+  return <div className="text-[11px] text-tagma-error font-mono break-words">{text}</div>;
 }
 
 interface TagmaBundleBodyProps {
@@ -831,7 +833,7 @@ function TagmaBundleBody(props: TagmaBundleBodyProps) {
         <button
           onClick={onBundleUpdate}
           disabled={!bundleCanUpdate || !bundleUpdateAvailable || updating}
-          className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 border border-tagma-accent/50 text-tagma-accent hover:bg-tagma-accent/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors whitespace-nowrap"
+          className="btn-primary min-w-24 justify-center whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
           title={
             !bundleCanUpdate
               ? 'Updates are only available when running under the desktop app.'
@@ -862,7 +864,7 @@ function TagmaBundleBody(props: TagmaBundleBodyProps) {
             onRefreshSidecar();
           }}
           disabled={updating}
-          className="btn-ghost whitespace-nowrap"
+          className="btn-secondary whitespace-nowrap"
           title="Re-check the release manifest"
         >
           <RefreshCw size={11} /> Check again
@@ -900,7 +902,7 @@ function TagmaBundleBody(props: TagmaBundleBodyProps) {
             <button
               onClick={onEditorOnlyUpdate}
               disabled={true}
-              className="btn-ghost whitespace-nowrap"
+              className="btn-secondary whitespace-nowrap"
               title="Use Update Tagma so editor, sidecar, and OpenCode stay compatible."
             >
               {editorApply.kind === 'updating' ? 'Updating editor...' : 'Editor-only disabled'}
@@ -911,7 +913,7 @@ function TagmaBundleBody(props: TagmaBundleBodyProps) {
             <button
               onClick={onSidecarOnlyUpdate}
               disabled={true}
-              className="btn-ghost whitespace-nowrap"
+              className="btn-secondary whitespace-nowrap"
               title="Use Update Tagma so editor, sidecar, and OpenCode stay compatible."
             >
               {sidecarApply.kind === 'updating' ? 'Updating sidecar...' : 'Sidecar-only disabled'}
@@ -968,7 +970,7 @@ function OpencodeInfoBody({ info, onRefresh }: OpencodeInfoBodyProps) {
         </span>
       </div>
 
-      <div className="bg-tagma-surface/40 border border-tagma-border/60 px-2 py-1.5">
+      <div className="bg-tagma-elevated/60 border border-tagma-border/40 px-2 py-1.5">
         <div className="flex items-start gap-1.5 text-[10px] text-tagma-muted/90 font-sans">
           <Info size={10} className="text-tagma-muted shrink-0 mt-[1px]" />
           <span>
@@ -1006,7 +1008,7 @@ function CancelUpdateButton({ onCancel }: { onCancel: () => void }) {
         onCancel();
       }}
       disabled={clicked}
-      className="flex items-center gap-1 text-[11px] px-2 py-1 border border-tagma-border text-tagma-muted hover:text-tagma-error hover:border-tagma-error/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+      className="flex items-center gap-1 text-[11px] px-2 py-1 border border-tagma-border text-tagma-muted hover:text-tagma-error hover:border-tagma-error/50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
       title="Abort the download and discard any staged bytes"
       aria-label="Cancel update"
     >
@@ -1029,9 +1031,9 @@ function SuccessBox({ children }: { children: ReactNode }) {
 
 function InfoBox({ children }: { children: ReactNode }) {
   return (
-    <div className="bg-tagma-accent/8 border border-tagma-accent/30 px-2 py-1.5">
-      <div className="flex items-start gap-1.5 text-[10px] text-tagma-accent/90 font-mono">
-        <RefreshCw size={10} className="text-tagma-accent shrink-0 mt-[1px]" />
+    <div className="bg-tagma-info/8 border border-tagma-info/30 px-2 py-1.5">
+      <div className="flex items-start gap-1.5 text-[10px] text-tagma-info/90 font-mono">
+        <Info size={10} className="text-tagma-info shrink-0 mt-[1px]" />
         <span>{children}</span>
       </div>
     </div>

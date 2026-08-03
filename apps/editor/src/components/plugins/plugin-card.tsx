@@ -101,7 +101,7 @@ const STATUS_STYLES: Record<StatusVariant, { dot: string; text: string; label: s
 export function StatusBadge({ variant }: { variant: StatusVariant }) {
   const s = STATUS_STYLES[variant];
   return (
-    <span className="flex items-center gap-1.5 text-[9px] tracking-[0.14em] uppercase font-medium whitespace-nowrap">
+    <span className="flex items-center gap-1.5 text-[9px] tracking-[0.22em] uppercase font-medium whitespace-nowrap">
       <span className={`w-1.5 h-1.5 ${s.dot}`} />
       <span className={s.text}>{s.label}</span>
     </span>
@@ -127,7 +127,7 @@ export function MetaItem({ children, title }: { children: ReactNode; title?: str
 
 export function MetaBullet() {
   return (
-    <span className="text-[8px] text-tagma-border leading-none" aria-hidden="true">
+    <span className="text-[8px] text-tagma-muted-dim leading-none" aria-hidden="true">
       •
     </span>
   );
@@ -149,7 +149,7 @@ const ACTION_BUTTON_VARIANTS = {
   // Lower-emphasis call-to-action used when an action is supplementary —
   // e.g. "Reload" alongside the louder primary "Load" / "Install".
   secondary:
-    'bg-transparent text-tagma-muted border-tagma-border hover:bg-tagma-text/5 hover:text-tagma-text hover:border-tagma-text/40',
+    'bg-transparent text-tagma-muted border-tagma-border hover:bg-tagma-elevated hover:text-tagma-text hover:border-tagma-muted-dim',
   danger:
     'bg-transparent text-tagma-error border-tagma-error/30 hover:bg-tagma-error/15 hover:border-tagma-error/60',
 } as const;

@@ -271,9 +271,7 @@ export function PipelineConfigPanel({
   return (
     <div className="h-full bg-tagma-bg flex flex-col" onClick={(e) => e.stopPropagation()}>
       <div className="panel-header-sm">
-        <span className="panel-title-sm">
-          Pipeline Inspector{readOnly ? ' (read-only)' : ''}
-        </span>
+        <span className="panel-title-sm">Pipeline Inspector{readOnly ? ' (read-only)' : ''}</span>
         <button
           onClick={onTogglePin}
           className={`p-1 transition-colors ${isPinned ? 'text-tagma-accent bg-tagma-accent/10' : 'text-tagma-muted hover:text-tagma-text'}`}

@@ -157,9 +157,7 @@ export function TrackConfigPanel({
   return (
     <div className="h-full bg-tagma-bg flex flex-col" onClick={(e) => e.stopPropagation()}>
       <div className="panel-header-sm">
-        <span className="panel-title-sm">
-          Track Inspector
-        </span>
+        <span className="panel-title-sm">Track Inspector</span>
         <div className="flex items-center gap-0.5">
           <button
             onClick={handleLocateSelf}
