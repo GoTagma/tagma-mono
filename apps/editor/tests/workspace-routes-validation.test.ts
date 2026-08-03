@@ -1088,6 +1088,47 @@ describe('workspace route validation', () => {
     expect(JSON.parse(readFileSync(layoutPath, 'utf-8'))).toEqual(userLayout);
   });
 
+  test('POST /api/workspace/chat-result-copy preserves malformed agent YAML as a numbered copy', () => {
+    S.workDir = makeTempDir();
+    const pipelineDir = join(S.workDir, '.tagma', 'chat');
+    const yamlPath = join(pipelineDir, 'chat.yaml');
+    const malformedAgentYaml = [
+      'pipeline:',
+      '  name: Agent Result',
+      '  tracks:',
+      '    - id: [broken',
+      '',
+    ].join('\n');
+    const userYaml = 'pipeline:\n  name: User Branch\n  tracks: []\n';
+    mkdirSync(pipelineDir, { recursive: true });
+    writeFileSync(yamlPath, malformedAgentYaml, 'utf-8');
+    S.yamlPath = yamlPath;
+    S.config = createEmptyPipeline('User Branch');
+
+    const handler = createRouteHarness().post('/api/workspace/chat-result-copy');
+    const res = makeRes();
+    handler(
+      {
+        workspace: S,
+        body: {
+          sourcePath: yamlPath,
+          restoreOriginal: {
+            path: yamlPath,
+            yaml: userYaml,
+            layout: { positions: {} },
+          },
+        },
+      },
+      res,
+    );
+
+    expect(res.statusCode).toBe(200);
+    const copyPath = (res.body as { entry: { path: string } }).entry.path;
+    expect(basename(dirname(copyPath))).toBe('chat-copy-1');
+    expect(readFileSync(copyPath, 'utf-8')).toBe(malformedAgentYaml);
+    expect(readFileSync(yamlPath, 'utf-8')).toBe(userYaml);
+  });
+
   test('POST /api/workspace/chat-result-copy validates restore target before creating a copy', () => {
     S.workDir = makeTempDir();
     const pipelineDir = join(S.workDir, '.tagma', 'chat');

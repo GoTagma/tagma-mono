@@ -489,16 +489,24 @@ function copyPipelineAsNumberedCopy(
   const nextName = pipelineCopyName(sourceName, target.copyNumber, sourceStem);
   try {
     mkdirSync(targetFolder, { recursive: true });
-    atomicWriteFileSync(
-      target.yamlPath,
-      rewriteCopiedPipelineYaml(sourceYaml, {
-        workDir: ws.workDir,
-        sourceContentPath: sourceYamlPath,
-        sourceIdentityPath: sourceYamlPath,
-        destinationYamlPath: target.yamlPath,
-        pipelineName: nextName,
-      }),
-    );
+    let canRewriteCopiedYaml = true;
+    try {
+      parseYaml(sourceYaml);
+    } catch {
+      // This legacy route also preserves compile-failing chat output. Invalid pipeline YAML cannot
+      // be safely renamed or rebased, but the raw agent result must survive as a numbered copy.
+      canRewriteCopiedYaml = false;
+    }
+    const copiedYaml = canRewriteCopiedYaml
+      ? rewriteCopiedPipelineYaml(sourceYaml, {
+          workDir: ws.workDir,
+          sourceContentPath: sourceYamlPath,
+          sourceIdentityPath: sourceYamlPath,
+          destinationYamlPath: target.yamlPath,
+          pipelineName: nextName,
+        })
+      : sourceYaml;
+    atomicWriteFileSync(target.yamlPath, copiedYaml);
 
     const sourceLayoutPath = companionLayoutPath(sourceYamlPath);
     if (existsSync(sourceLayoutPath)) {
