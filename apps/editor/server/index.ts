@@ -152,6 +152,11 @@ app.use((req, res, next) => {
   if (!token) {
     return res.status(401).json({ error: 'Missing Authorization header. Provide: Bearer <token>' });
   }
+  if (!constantTimeEqual(token, AUTH_TOKEN) && diagnosticsHub.authorize(token)) {
+    return res
+      .status(403)
+      .json({ error: 'Diagnostics tokens are limited to the read-only diagnostics API.' });
+  }
   if (!constantTimeEqual(token, AUTH_TOKEN)) {
     return res.status(401).json({ error: 'Invalid auth token' });
   }
