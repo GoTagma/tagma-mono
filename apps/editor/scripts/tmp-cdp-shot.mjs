@@ -22,7 +22,9 @@ async function waitDevtools() {
     try {
       const r = await fetch(`http://127.0.0.1:${PORT}/json/version`);
       if (r.ok) return;
-    } catch {}
+    } catch {
+      // Chrome's DevTools endpoint may not be ready yet.
+    }
     await sleep(500);
   }
   throw new Error('chrome devtools endpoint never came up');
@@ -78,7 +80,9 @@ async function main() {
   const cleanup = () => {
     try {
       chrome.kill('SIGKILL');
-    } catch {}
+    } catch {
+      // Chrome may already have exited during cleanup.
+    }
   };
   process.on('exit', cleanup);
 

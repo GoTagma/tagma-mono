@@ -60,11 +60,7 @@ function malformedJsonYaml(markerPath: string): string {
     '          name: Invalid JSON producer',
     '          command:',
     '            argv: ' +
-      JSON.stringify([
-        process.execPath,
-        '-e',
-        'process.stdout.write("{\\"answer\\":")',
-      ]),
+      JSON.stringify([process.execPath, '-e', 'process.stdout.write("{\\"answer\\":")']),
     '          outputs:',
     '            answer:',
     '              from: json.answer',
@@ -86,10 +82,13 @@ describe('user journey - real runtime failures from YAML', () => {
 
     try {
       const events: RunEventPayload[] = [];
-      const outcome = await createTagma().runYaml(missingBinaryYaml(missingBinary, downstreamMarker), {
-        cwd: dir,
-        onEvent: (event) => events.push(event),
-      });
+      const outcome = await createTagma().runYaml(
+        missingBinaryYaml(missingBinary, downstreamMarker),
+        {
+          cwd: dir,
+          onEvent: (event) => events.push(event),
+        },
+      );
 
       expect(outcome.kind).toBe('pipeline');
       if (outcome.kind !== 'pipeline') throw new Error('Expected a pipeline result');
