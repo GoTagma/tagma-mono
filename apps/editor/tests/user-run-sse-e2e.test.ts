@@ -122,6 +122,17 @@ async function readSseEvent(
   }
 }
 
+async function assertAuthenticatedSse(url: string, init: RequestInit): Promise<void> {
+  const controller = new AbortController();
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    expect(response.status).toBe(200);
+    await response.body?.cancel().catch(() => undefined);
+  } finally {
+    controller.abort();
+  }
+}
+
 function runSequence(event: SseEvent, runId: string): number {
   const prefix = `${runId}:`;
   if (!event.id?.startsWith(prefix)) {
@@ -241,6 +252,19 @@ test('a user can run a selected workspace pipeline and reconnect to its live SSE
       ...authHeaders,
       'X-Tagma-Workspace': workspace,
     };
+
+    const workflowEventsUrl =
+      `${origin}/api/run/workflow/events?ws=${encodeURIComponent(workspace)}`;
+    await assertAuthenticatedSse(`${origin}/api/run/events?ws=${encodeURIComponent(workspace)}`, {
+      headers: { Cookie: `tagma_auth=${managementToken}` },
+    });
+    await assertAuthenticatedSse(workflowEventsUrl, {
+      headers: { Cookie: `tagma_auth=${managementToken}` },
+    });
+    await assertAuthenticatedSse(
+      `${workflowEventsUrl}&auth=${encodeURIComponent(managementToken)}`,
+      {},
+    );
 
     const missingWorkflowAuthResponse = await fetch(
       `${origin}/api/run/workflow/events?ws=${encodeURIComponent(workspace)}`,
@@ -382,13 +406,10 @@ test('a user can run a selected workspace pipeline and reconnect to its live SSE
     // with the normal Bearer path, then verify a real graph event reaches the
     // already-open stream after the live workflow starts.
     workflowSseController = new AbortController();
-    const workflowSseResponse = await fetch(
-      `${origin}/api/run/workflow/events?ws=${encodeURIComponent(workspace)}`,
-      {
-        headers: { Authorization: `Bearer ${managementToken}` },
-        signal: workflowSseController.signal,
-      },
-    );
+    const workflowSseResponse = await fetch(workflowEventsUrl, {
+      headers: { Authorization: `Bearer ${managementToken}` },
+      signal: workflowSseController.signal,
+    });
     expect(workflowSseResponse.status).toBe(200);
 
     const workflowStartResponse = await fetch(`${origin}/api/run/workflow/start`, {
@@ -407,13 +428,17 @@ test('a user can run a selected workspace pipeline and reconnect to its live SSE
       workflowSseController,
       (event) => {
         const data = asRecord(event.data);
-        return event.event === 'workflow_event' && data?.graphRunId === graphRunId;
+        return (
+          event.event === 'workflow_event' &&
+          data?.graphRunId === graphRunId &&
+          data.type === 'graph_end'
+        );
       },
     );
     expect(asRecord(workflowEvent.data)).toMatchObject({
-      type: 'graph_start',
+      type: 'graph_end',
       graphRunId,
-      workflowName: 'Sidecar workflow SSE journey',
+      success: true,
     });
 
     // Credentials must never be reflected in server output, even when the

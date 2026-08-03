@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { isBinaryMissingError, runSpawn } from './bun-process-runner';
 
 const DEFAULT_STDOUT_TAIL_BYTES = 8 * 1024 * 1024;
@@ -83,7 +83,7 @@ test('runSpawn resolves bare Windows commands from cwd and keeps the cache cwd-a
 
 test('runSpawn accepts quoted, case-insensitive Windows PATH and PATHEXT values', async () => {
   if (process.platform !== 'win32') return;
-  const dir = mkdtempSync(join(tmpdir(), 'tagma-quoted-path-'));
+  const dir = mkdtempSync(join(tmpdir(), 'tagma quoted path-'));
   const workingDir = mkdtempSync(join(dir, 'working-cwd-'));
   try {
     writeFileSync(join(dir, 'quoted-path-tool.bat'), '@echo off\r\necho quoted-path-ok\r\n');
@@ -99,6 +99,32 @@ test('runSpawn accepts quoted, case-insensitive Windows PATH and PATHEXT values'
     expect(result.exitCode).toBe(0);
     expect(result.failureKind).toBe(null);
     expect(result.stdout).toContain('quoted-path-ok');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('runSpawn unwraps npm-style Windows .cmd shims without changing argv', async () => {
+  if (process.platform !== 'win32') return;
+  const dir = mkdtempSync(join(tmpdir(), 'tagma npm shim path-'));
+  try {
+    const entry = join(dir, 'node_modules', 'fixture', 'bin', 'cli.js');
+    mkdirSync(dirname(entry), { recursive: true });
+    writeFileSync(entry, 'process.stdout.write(JSON.stringify(process.argv.slice(2)))');
+    writeFileSync(
+      join(dir, 'fixture.cmd'),
+      '@echo off\r\n"%_prog%"  "%dp0%\\node_modules\\fixture\\bin\\cli.js" %*\r\n',
+    );
+    const exactArg = 'line one\r\nline "two" \\ $ ` & | < >';
+
+    const result = await runSpawn(
+      { args: ['fixture', exactArg], cwd: dir, env: { PATHEXT: '.CMD' } },
+      null,
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.failureKind).toBe(null);
+    expect(result.stdout).toBe(JSON.stringify([exactArg]));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

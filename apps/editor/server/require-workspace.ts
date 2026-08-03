@@ -7,7 +7,7 @@
 // knows which live `WorkspaceState` to mutate. EventSource can't set custom
 // headers, so the middleware also accepts the workspace key via a `?ws=`
 // query parameter as a fallback for SSE endpoints (`/api/state/events`,
-// `/api/run/events`).
+// `/api/run/events`, `/api/run/workflow/events`).
 //
 // Windows that haven't picked a workspace yet (the Welcome page) send no
 // header / no query — those requests get `req.workspace = null`. Routes that

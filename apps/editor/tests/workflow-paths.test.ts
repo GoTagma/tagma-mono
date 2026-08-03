@@ -85,6 +85,81 @@ describe('workflow path helpers', () => {
     );
   });
 
+  test('accepts a Windows intermediate-directory case alias', () => {
+    if (process.platform !== 'win32') return;
+    const workDir = makeWorkDir();
+    const aliasedWorkDir = workDir.replace(/([^\\]+)$/, (segment) => segment.toUpperCase());
+    const target = workflowYamlPath(workDir, 'release').replace(
+      /\\\.tagma\\workflows\\/i,
+      '\\.TAGMA\\WORKFLOWS\\',
+    );
+
+    expect(assertWorkflowYamlPath(aliasedWorkDir, target, 'workflow').toLowerCase()).toBe(
+      target.toLowerCase(),
+    );
+  });
+
+  test('accepts Windows forward-slash workflow paths', () => {
+    if (process.platform !== 'win32') return;
+    const workDir = makeWorkDir();
+    const target = workflowYamlPath(workDir, 'release').replace(/\\/g, '/');
+
+    expect(assertWorkflowYamlPath(workDir, target, 'workflow').replace(/\\/g, '/')).toBe(target);
+  });
+
+  test('accepts Windows case and separator aliases together', () => {
+    if (process.platform !== 'win32') return;
+    const workDir = makeWorkDir();
+    const aliasedWorkDir = workDir.replace(/([^\\]+)$/, (segment) => segment.toUpperCase());
+    const target = workflowYamlPath(workDir, 'release')
+      .replace(/\\\.tagma\\workflows\\/i, '\\.TAGMA\\WORKFLOWS\\')
+      .replace(/\\/g, '/');
+
+    expect(
+      assertWorkflowYamlPath(aliasedWorkDir, target, 'workflow')
+        .replace(/\\/g, '/')
+        .toLowerCase(),
+    ).toBe(
+      target.toLowerCase(),
+    );
+  });
+
+  test('rejects nested, outside, and cross-drive workflow paths', () => {
+    const workDir = makeWorkDir();
+    expect(() =>
+      assertWorkflowYamlPath(
+        workDir,
+        join(workDir, '.tagma', 'workflows', 'nested', 'release.workflow.yaml'),
+        'workflow',
+      ),
+    ).toThrow();
+    expect(() =>
+      assertWorkflowYamlPath(workDir, join(workDir, 'outside.workflow.yaml'), 'workflow'),
+    ).toThrow();
+
+    if (process.platform === 'win32') {
+      const drive = workDir.slice(0, 1).toUpperCase();
+      const otherDrive = drive === 'C' ? 'D' : 'C';
+      expect(() =>
+        assertWorkflowYamlPath(
+          workDir,
+          `${otherDrive}:\\outside\\release.workflow.yaml`,
+          'workflow',
+        ),
+      ).toThrow();
+    }
+  });
+
+  test('keeps POSIX workflow path containment case-sensitive', () => {
+    if (process.platform === 'win32') return;
+    const workDir = makeWorkDir();
+    const target = workflowYamlPath(workDir, 'release');
+    const wrongCase = target.replace('/.tagma/workflows/', '/.tagma/Workflows/');
+
+    expect(wrongCase).not.toBe(target);
+    expect(() => assertWorkflowYamlPath(workDir, wrongCase, 'workflow')).toThrow();
+  });
+
   test('rejects symlinked workflow directories', () => {
     const workDir = makeWorkDir();
     const workflowDir = join(workDir, '.tagma', 'workflows');

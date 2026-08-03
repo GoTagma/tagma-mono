@@ -16,6 +16,7 @@ import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import * as tar from 'tar';
 import { assertValidHotupdateVersion, type HotupdateManifest } from '../update-manifest.js';
+import { assertHotupdateShellCompatible } from './version-policy.js';
 import { downloadUrlToBuffer } from './download.js';
 
 const TARBALL_IDLE_TIMEOUT_MS = 60_000;
@@ -217,6 +218,10 @@ export async function stageEditorDist(
   userDir: string,
   signal?: AbortSignal,
 ): Promise<EditorStagingResult> {
+  assertHotupdateShellCompatible(
+    manifest,
+    process.env.TAGMA_EDITOR_BUNDLED_VERSION ?? process.env.TAGMA_SIDECAR_BUNDLED_VERSION,
+  );
   assertValidHotupdateVersion(manifest.version, 'editor version');
   mkdirSync(userDir, { recursive: true });
   const stagedDir = join(userDir, 'dist.staged');
