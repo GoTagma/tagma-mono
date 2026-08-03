@@ -347,6 +347,8 @@
   task `positions` and `trackHeights` together, including replay-derived runs.
   Completed-run rendering must use the shared render-plan height/clamping rules; summaries from
   older releases without `trackHeights` fall back to the default lane height.
+- HistoryFlowView inspectors intentionally use `RUN_HISTORY_INSPECTOR_PANEL_CLASSES` as absolute
+  overlays; keep its source-contract assertion in `history-flow-view.test.tsx` synchronized.
 - Failed, timed-out, blocked, or non-zero-exit run-history tasks must offer Ask AI even when
   `stdoutPath`, `stderrPath`, and `normalizedOutput` are all absent. Pre-spawn and policy failures
   legitimately have no stream files; build their fix context from bounded historical summaries
