@@ -311,7 +311,24 @@ function quoteArg(arg: string, kind: ShellKind): string {
   }
 
   if (kind === 'powershell') {
-    return "'" + escapePowerShellNativeArg(arg).replace(/'/g, "''") + "'";
+    const slash = String.fromCharCode(92);
+    let trailingSlashes = 0;
+    while (
+      trailingSlashes < arg.length &&
+      arg[arg.length - trailingSlashes - 1] === slash
+    ) {
+      trailingSlashes += 1;
+    }
+    const literal =
+      "'" +
+      escapePowerShellNativeArg(arg.slice(0, arg.length - trailingSlashes)).replace(/'/g, "''") +
+      "'";
+    if (trailingSlashes === 0) return literal;
+
+    // A PowerShell 5.1 native invocation may add a closing quote after a
+    // single-quoted argument. Build trailing slashes as a PowerShell string
+    // expression so none of them can escape that native terminator quote.
+    return '(' + literal + ' + [string]::new([char]92, ' + trailingSlashes + '))';
   }
 
   // POSIX shells: single-quote to prevent expansion and preserve Windows paths.
