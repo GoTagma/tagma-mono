@@ -1,8 +1,5 @@
 import type { HotupdateManifest } from '../update-manifest.js';
-import {
-  assertHotupdateShellCompatible,
-  assertHotupdateVersionUpgrade,
-} from './version-policy.js';
+import { assertHotupdateShellCompatible, assertHotupdateVersionUpgrade } from './version-policy.js';
 import {
   activateEditorDist,
   discardEditorStaging,

@@ -348,38 +348,35 @@ describe('end-user release hot-update transaction', () => {
     }
   });
 
-  test(
-    'rejects an incompatible installer floor before requesting the editor tarball or staging any release artifact',
-    async () => {
-      const fixture = createFixture(root, '2.0.0', '2.0.0');
-      configureDesktopEnvironment(
-        editorUserDir,
-        sidecarUserDir,
-        opencodeUserDir,
-        fixture.manifestUrl,
-        '1.0.0',
-      );
-      const fetches = installFixtureFetch(fixture);
-      const api = createRouteApp();
-      let stopCalls = 0;
-      registerReleaseRoutes(api.app, {
-        stopOpencodeProcesses: async () => {
-          stopCalls += 1;
-        },
-      });
+  test('rejects an incompatible installer floor before requesting the editor tarball or staging any release artifact', async () => {
+    const fixture = createFixture(root, '2.0.0', '2.0.0');
+    configureDesktopEnvironment(
+      editorUserDir,
+      sidecarUserDir,
+      opencodeUserDir,
+      fixture.manifestUrl,
+      '1.0.0',
+    );
+    const fetches = installFixtureFetch(fixture);
+    const api = createRouteApp();
+    let stopCalls = 0;
+    registerReleaseRoutes(api.app, {
+      stopOpencodeProcesses: async () => {
+        stopCalls += 1;
+      },
+    });
 
-      const release = await api.request('POST', '/api/release/update');
+    const release = await api.request('POST', '/api/release/update');
 
-      expect(release.status).toBe(409);
-      expect(release.body).toMatchObject({
-        kind: 'shell-incompatible',
-        minShellVersion: '2.0.0',
-        currentShellVersion: '1.0.0',
-        error: expect.stringContaining('requires installer 2.0.0 or newer'),
-      });
-      expect(fetches.assetFetches()).toEqual([]);
-      expect(stopCalls).toBe(0);
-      expectNoReleaseArtifacts(editorUserDir, sidecarUserDir, opencodeUserDir);
-    },
-  );
+    expect(release.status).toBe(409);
+    expect(release.body).toMatchObject({
+      kind: 'shell-incompatible',
+      minShellVersion: '2.0.0',
+      currentShellVersion: '1.0.0',
+      error: expect.stringContaining('requires installer 2.0.0 or newer'),
+    });
+    expect(fetches.assetFetches()).toEqual([]);
+    expect(stopCalls).toBe(0);
+    expectNoReleaseArtifacts(editorUserDir, sidecarUserDir, opencodeUserDir);
+  });
 });

@@ -116,12 +116,8 @@ describe('workflow path helpers', () => {
       .replace(/\\/g, '/');
 
     expect(
-      assertWorkflowYamlPath(aliasedWorkDir, target, 'workflow')
-        .replace(/\\/g, '/')
-        .toLowerCase(),
-    ).toBe(
-      target.toLowerCase(),
-    );
+      assertWorkflowYamlPath(aliasedWorkDir, target, 'workflow').replace(/\\/g, '/').toLowerCase(),
+    ).toBe(target.toLowerCase());
   });
 
   test('rejects nested, outside, and cross-drive workflow paths', () => {

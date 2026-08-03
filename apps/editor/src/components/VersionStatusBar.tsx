@@ -776,9 +776,7 @@ export function TagmaBundleBody(props: TagmaBundleBodyProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const updating = bundleApply.kind === 'updating';
   const shellIncompatible =
-    editorFetch.kind === 'loaded' &&
-    sidecarFetch.kind === 'loaded' &&
-    !bundleShellCompatible;
+    editorFetch.kind === 'loaded' && sidecarFetch.kind === 'loaded' && !bundleShellCompatible;
   const minShellVersions = [
     editorFetch.kind === 'loaded' ? editorFetch.info.minShellVersion : null,
     sidecarFetch.kind === 'loaded' ? sidecarFetch.info.minShellVersion : null,
@@ -860,7 +858,9 @@ export function TagmaBundleBody(props: TagmaBundleBodyProps) {
       <div className="flex flex-wrap items-center gap-2 pt-1">
         <button
           onClick={onBundleUpdate}
-          disabled={!bundleCanUpdate || !bundleShellCompatible || !bundleUpdateAvailable || updating}
+          disabled={
+            !bundleCanUpdate || !bundleShellCompatible || !bundleUpdateAvailable || updating
+          }
           className="btn-primary min-w-24 justify-center whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
           aria-label={
             !bundleCanUpdate
@@ -879,12 +879,12 @@ export function TagmaBundleBody(props: TagmaBundleBodyProps) {
               : shellIncompatibilityMessage
                 ? shellIncompatibilityMessage
                 : !bundleUpdateAvailable
-                ? skew
-                  ? 'Hot updates must be newer than both local components. Use an installer or wait for a newer release.'
-                  : pendingRestart
-                    ? 'Update downloaded. Close and reopen Tagma to apply.'
-                    : 'Tagma is already at the latest version.'
-                : `Download editor and sidecar ${bundleLatestVersion}. Takes effect next time Tagma relaunches.`
+                  ? skew
+                    ? 'Hot updates must be newer than both local components. Use an installer or wait for a newer release.'
+                    : pendingRestart
+                      ? 'Update downloaded. Close and reopen Tagma to apply.'
+                      : 'Tagma is already at the latest version.'
+                  : `Download editor and sidecar ${bundleLatestVersion}. Takes effect next time Tagma relaunches.`
           }
         >
           {updating ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
@@ -893,12 +893,12 @@ export function TagmaBundleBody(props: TagmaBundleBodyProps) {
             : shellIncompatibilityMessage
               ? 'Installer update required'
               : bundleUpdateAvailable && bundleLatestVersion
-              ? `Update Tagma to ${bundleLatestVersion}`
-              : skew
-                ? 'Newer release required'
-                : pendingRestart
-                  ? 'Restart required'
-                  : 'Up to date'}
+                ? `Update Tagma to ${bundleLatestVersion}`
+                : skew
+                  ? 'Newer release required'
+                  : pendingRestart
+                    ? 'Restart required'
+                    : 'Up to date'}
         </button>
         {updating && <CancelUpdateButton onCancel={onBundleCancel} />}
         <button

@@ -31,9 +31,9 @@ describe('assertHotupdateVersionUpgrade', () => {
 
 describe('assertHotupdateShellCompatible', () => {
   test('rejects a known installer below the manifest shell floor with structured details', () => {
-    expect(() =>
-      assertHotupdateShellCompatible({ minShellVersion: '2.0.0' }, '1.9.9'),
-    ).toThrow(HotupdateShellPolicyError);
+    expect(() => assertHotupdateShellCompatible({ minShellVersion: '2.0.0' }, '1.9.9')).toThrow(
+      HotupdateShellPolicyError,
+    );
 
     try {
       assertHotupdateShellCompatible({ minShellVersion: '2.0.0' }, '1.9.9');
@@ -50,9 +50,7 @@ describe('assertHotupdateShellCompatible', () => {
     expect(() =>
       assertHotupdateShellCompatible({ minShellVersion: '2.0.0' }, '2.0.0'),
     ).not.toThrow();
-    expect(() =>
-      assertHotupdateShellCompatible({ minShellVersion: '2.0.0' }, null),
-    ).not.toThrow();
+    expect(() => assertHotupdateShellCompatible({ minShellVersion: '2.0.0' }, null)).not.toThrow();
     expect(() => assertHotupdateShellCompatible({}, '1.0.0')).not.toThrow();
   });
 });

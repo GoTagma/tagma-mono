@@ -2274,7 +2274,7 @@ export function App() {
     } else {
       await newPipeline();
     }
-  }, [newPipeline, saveFile, refreshWorkspaceYamls]);
+  }, [newPipeline, saveFile, refreshWorkspaceYamls, runSaveController]);
 
   // Pinned-workspace bootstrap (URL `?ws=` or Electron "New Window →
   // <workspace>"). The store binds the workspace inside `init()` but no

@@ -253,8 +253,7 @@ test('a user can run a selected workspace pipeline and reconnect to its live SSE
       'X-Tagma-Workspace': workspace,
     };
 
-    const workflowEventsUrl =
-      `${origin}/api/run/workflow/events?ws=${encodeURIComponent(workspace)}`;
+    const workflowEventsUrl = `${origin}/api/run/workflow/events?ws=${encodeURIComponent(workspace)}`;
     await assertAuthenticatedSse(`${origin}/api/run/events?ws=${encodeURIComponent(workspace)}`, {
       headers: { Cookie: `tagma_auth=${managementToken}` },
     });
@@ -421,7 +420,9 @@ test('a user can run a selected workspace pipeline and reconnect to its live SSE
     const workflowStarted = asRecord(await workflowStartResponse.json());
     const graphRunId = workflowStarted?.graphRunId;
     if (typeof graphRunId !== 'string') {
-      throw new Error(`Workflow start did not return a graphRunId: ${JSON.stringify(workflowStarted)}`);
+      throw new Error(
+        `Workflow start did not return a graphRunId: ${JSON.stringify(workflowStarted)}`,
+      );
     }
     const workflowEvent = await readSseEvent(
       workflowSseResponse,

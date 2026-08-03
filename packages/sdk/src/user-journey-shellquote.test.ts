@@ -92,7 +92,8 @@ describe('user journey - shellquote in YAML command strings', () => {
         { name: 'redirection and ampersand', value: 'literal <in >out & another' },
         {
           name: 'newline and tab',
-          value: 'line one' + String.fromCharCode(10) + 'line two' + String.fromCharCode(9) + 'indented',
+          value:
+            'line one' + String.fromCharCode(10) + 'line two' + String.fromCharCode(9) + 'indented',
         },
         {
           name: 'Unicode',

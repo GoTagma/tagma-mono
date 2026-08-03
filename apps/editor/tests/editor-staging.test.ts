@@ -71,6 +71,30 @@ describe('editor-staging', () => {
     expect(existsSync(join(userDir, 'dist-version.txt'))).toBe(false);
   });
 
+  test('stageEditorDist rejects an incompatible shell before creating or downloading anything', async () => {
+    const previousBundledVersion = process.env.TAGMA_EDITOR_BUNDLED_VERSION;
+    const blockedUserDir = join(userDir, 'blocked');
+    process.env.TAGMA_EDITOR_BUNDLED_VERSION = '1.0.0';
+    try {
+      const manifest: HotupdateManifest = {
+        version: '9.9.9',
+        minShellVersion: '2.0.0',
+        channel: 'alpha',
+        dist: { url: 'file:///missing-editor-dist.tgz', sha256: '0'.repeat(64), size: 1 },
+      };
+
+      await expect(stageEditorDist(manifest, blockedUserDir)).rejects.toMatchObject({
+        kind: 'shell-incompatible',
+        minShellVersion: '2.0.0',
+        currentShellVersion: '1.0.0',
+      });
+      expect(existsSync(blockedUserDir)).toBe(false);
+    } finally {
+      if (previousBundledVersion === undefined) delete process.env.TAGMA_EDITOR_BUNDLED_VERSION;
+      else process.env.TAGMA_EDITOR_BUNDLED_VERSION = previousBundledVersion;
+    }
+  });
+
   test('activateEditorDist renames staged into dist/ and writes dist-version.txt', async () => {
     const tgz = buildDistTarball(serverDir, { 'index.html': 'v9' });
     const manifest: HotupdateManifest = {

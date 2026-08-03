@@ -59,7 +59,7 @@ function preferredWindowsPathEnvKey(): 'Path' | 'PATH' {
 }
 
 function readEnvCaseInsensitive(
-  env: Readonly<Record<string, string>>,
+  env: Readonly<Record<string, string | undefined>>,
   name: string,
 ): string | undefined {
   const lowerName = name.toLowerCase();
@@ -77,7 +77,9 @@ function deleteEnvCaseInsensitive(env: Record<string, string>, name: string): vo
 }
 
 function readPathEnv(env: Readonly<Record<string, string>>): string {
-  return process.platform === 'win32' ? (readEnvCaseInsensitive(env, 'PATH') ?? '') : (env.PATH ?? '');
+  return process.platform === 'win32'
+    ? (readEnvCaseInsensitive(env, 'PATH') ?? '')
+    : (env.PATH ?? '');
 }
 
 function normalizePathEnv(
@@ -88,7 +90,8 @@ function normalizePathEnv(
   // Windows env var names are case-insensitive. Keep one PATH spelling so
   // child-process lookup does not depend on object insertion order. Explicit
   // SpawnSpec overrides win over inherited/minimal values.
-  const value = readEnvCaseInsensitive(preferred ?? {}, 'PATH') ?? readEnvCaseInsensitive(env, 'PATH');
+  const value =
+    readEnvCaseInsensitive(preferred ?? {}, 'PATH') ?? readEnvCaseInsensitive(env, 'PATH');
   deleteEnvCaseInsensitive(env, 'PATH');
   if (typeof value === 'string') env[preferredWindowsPathEnvKey()] = value;
   return env;
@@ -99,7 +102,9 @@ function pickEnv(keys: readonly string[]): Record<string, string> {
   for (const key of keys) {
     const actualKey =
       process.platform === 'win32'
-        ? (Object.keys(process.env).find((candidate) => candidate.toLowerCase() === key.toLowerCase()) ?? key)
+        ? (Object.keys(process.env).find(
+            (candidate) => candidate.toLowerCase() === key.toLowerCase(),
+          ) ?? key)
         : key;
     const value = process.env[actualKey];
     if (typeof value === 'string') out[key] = value;

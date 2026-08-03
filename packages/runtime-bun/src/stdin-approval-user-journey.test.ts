@@ -412,39 +412,33 @@ describe('stdin approval adapter user journeys', () => {
     }
   });
 
-  test(
-    'advances to the queued request when the active terminal request is aborted',
-    async () => {
-      const terminal = startTerminalSession('aborted');
-      try {
-        await terminal.waitForPrompt(1);
-        await terminal.waitForResult('first', 'aborted');
-        await terminal.waitForPrompt(2);
-        terminal.send('approve\n');
-        await terminal.waitForResult('second', 'approved');
-        await terminal.waitForExit();
-      } finally {
-        await terminal.stop();
-      }
-    },
-  );
+  test('advances to the queued request when the active terminal request is aborted', async () => {
+    const terminal = startTerminalSession('aborted');
+    try {
+      await terminal.waitForPrompt(1);
+      await terminal.waitForResult('first', 'aborted');
+      await terminal.waitForPrompt(2);
+      terminal.send('approve\n');
+      await terminal.waitForResult('second', 'approved');
+      await terminal.waitForExit();
+    } finally {
+      await terminal.stop();
+    }
+  });
 
-  test(
-    'advances to the queued request when the active terminal request expires',
-    async () => {
-      const terminal = startTerminalSession('timeout');
-      try {
-        await terminal.waitForPrompt(1);
-        await terminal.waitForResult('first', 'timeout');
-        await terminal.waitForPrompt(2);
-        terminal.send('approve\n');
-        await terminal.waitForResult('second', 'approved');
-        await terminal.waitForExit();
-      } finally {
-        await terminal.stop();
-      }
-    },
-  );
+  test('advances to the queued request when the active terminal request expires', async () => {
+    const terminal = startTerminalSession('timeout');
+    try {
+      await terminal.waitForPrompt(1);
+      await terminal.waitForResult('first', 'timeout');
+      await terminal.waitForPrompt(2);
+      terminal.send('approve\n');
+      await terminal.waitForResult('second', 'approved');
+      await terminal.waitForExit();
+    } finally {
+      await terminal.stop();
+    }
+  });
 
   test('detach prevents later approvals from opening another terminal prompt', async () => {
     const terminal = startTerminalSession('detach');
