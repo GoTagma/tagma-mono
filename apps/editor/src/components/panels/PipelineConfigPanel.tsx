@@ -118,7 +118,7 @@ export function PipelineConfigPanel({
           })()}
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
+          <div className="sm:col-span-2">
             <label className="field-label">
               Default Timeout
               <FieldHelpButton field="Default Timeout" scope="pipeline" />
@@ -366,12 +366,11 @@ function HookField({
       >
         <textarea
           className="field-input font-mono text-[11px] resize-y"
-          style={{ minHeight: 28, height: lineCount > 1 ? lineCount * 20 + 12 : 28 }}
           value={val}
           onChange={(e) => setVal(e.target.value)}
           onBlur={blurVal}
           placeholder="shell command(s)..."
-          rows={1}
+          rows={Math.max(1, lineCount)}
         />
       </CopyableField>
     </div>

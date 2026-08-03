@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type React
 import {
   AlertTriangle,
   CheckCircle2,
+  ChevronDown,
   Download,
   ExternalLink,
   Loader2,
@@ -887,9 +888,13 @@ function TagmaBundleBody(props: TagmaBundleBodyProps) {
 
       <button
         onClick={() => setShowAdvanced((v) => !v)}
-        className="text-[10px] text-tagma-muted hover:text-tagma-text underline"
+        className="flex items-center gap-1 text-[11px] text-tagma-muted hover:text-tagma-text transition-colors"
       >
         {showAdvanced ? 'Hide advanced recovery' : 'Advanced recovery'}
+        <ChevronDown
+          size={10}
+          className={`transition-transform ${showAdvanced ? 'rotate-180' : ''}`}
+        />
       </button>
       {showAdvanced && (
         <div className="border-t border-tagma-border/60 pt-2 space-y-2">

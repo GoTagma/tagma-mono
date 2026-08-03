@@ -374,11 +374,16 @@ function PortRow({
               />
             </CopyableField>
           ) : (
-            <div className="field-input font-mono text-[11px] bg-tagma-surface/40">{row.name}</div>
+            <div
+              className="field-input font-mono text-[11px] bg-tagma-surface/40 truncate"
+              title={row.name}
+            >
+              {row.name}
+            </div>
           )}
         </div>
         <div className="w-[96px]">
-          <label className="text-[10px] text-tagma-muted">Type</label>
+          <label className="block text-[10px] text-tagma-muted mb-0.5">Type</label>
           {isEditable ? (
             <select
               className="field-input text-[11px]"
@@ -407,7 +412,7 @@ function PortRow({
 
       {/* Row 2: description */}
       <div>
-        <label className="text-[10px] text-tagma-muted">Description</label>
+        <label className="block text-[10px] text-tagma-muted mb-0.5">Description</label>
         {isEditable ? (
           <CopyableField value={description} label={`Copy ${kind} description`}>
             <input
@@ -424,7 +429,7 @@ function PortRow({
             />
           </CopyableField>
         ) : (
-          <div className="field-input text-[11px] bg-tagma-surface/40">
+          <div className="field-input text-[11px] bg-tagma-surface/40 break-words">
             {description || 'No description'}
           </div>
         )}
@@ -458,7 +463,7 @@ function PortRow({
       {/* Row 4: required / source */}
       <div className="grid grid-cols-1 gap-1.5">
         {kind === 'input' && (
-          <label className="text-[10px] text-tagma-text flex items-center gap-1">
+          <label className="text-[11px] text-tagma-text flex items-center gap-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
             <input
               type="checkbox"
               checked={(port as InputRow).required === true}
@@ -563,7 +568,7 @@ function StatusBadge({ status }: { status: UnifiedPortRow['status'] }) {
           ? 'border-tagma-warning/45 text-tagma-warning bg-tagma-warning/10'
           : 'border-tagma-border text-tagma-muted bg-tagma-surface/50';
   return (
-    <span className={`px-1.5 py-0.5 border text-[9px] uppercase tracking-wide ${className}`}>
+    <span className={`chip-xs uppercase ${className}`}>
       {status}
     </span>
   );
@@ -639,7 +644,10 @@ function SourceEditor({
           <label className="text-[10px] text-tagma-muted">Source</label>
           <span className="text-[10px] text-tagma-muted">{row.source.label}</span>
         </div>
-        <div className="field-input font-mono text-[11px] bg-tagma-surface/40">
+        <div
+          className="field-input font-mono text-[11px] bg-tagma-surface/40 truncate"
+          title={row.source.detail ?? row.source.label}
+        >
           {row.source.detail ?? row.source.label}
         </div>
       </div>

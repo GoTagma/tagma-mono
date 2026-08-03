@@ -287,7 +287,7 @@ export function SecretsManagerPanel({
   return (
     <>
       <div
-        className="modal-viewport-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+        className="modal-viewport-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/60"
         onClick={onClose}
       >
         <div
@@ -356,7 +356,7 @@ export function SecretsManagerPanel({
                   <div className="field-label">Variable</div>
                   <input
                     id="secret-env-name"
-                    className="w-full px-2 py-1 bg-tagma-surface border border-tagma-border text-[11px] text-tagma-text font-mono"
+                    className="field-input font-mono"
                     value={envName}
                     disabled={!backendAvailable || busy}
                     placeholder="OPENAI_API_KEY"
@@ -370,7 +370,7 @@ export function SecretsManagerPanel({
                     id="secret-value"
                     type="password"
                     autoComplete="off"
-                    className="w-full px-2 py-1 bg-tagma-surface border border-tagma-border text-[11px] text-tagma-text font-mono"
+                    className="field-input font-mono"
                     value={value}
                     disabled={!backendAvailable || busy}
                     aria-label="Value"
@@ -390,7 +390,7 @@ export function SecretsManagerPanel({
                   <button
                     id="secret-pipeline-button"
                     type="button"
-                    className="w-full h-[50px] px-2.5 py-2 bg-tagma-surface border border-tagma-border text-left flex items-center gap-3 hover:border-tagma-accent/40 disabled:hover:border-tagma-border disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    className="w-full h-12 px-2.5 py-2 bg-tagma-surface border border-tagma-border text-left flex items-center gap-3 hover:border-tagma-accent/40 disabled:hover:border-tagma-border disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                     disabled={bindingDisabled}
                     aria-haspopup="listbox"
                     aria-expanded={bindingOpen}
@@ -487,7 +487,7 @@ export function SecretsManagerPanel({
                   <div className="field-label">Note</div>
                   <input
                     id="secret-description"
-                    className="w-full px-2 py-1 bg-tagma-surface border border-tagma-border text-[11px] text-tagma-text"
+                    className="field-input"
                     value={description}
                     disabled={!backendAvailable || busy}
                     placeholder="Used by deploy.publish"
@@ -501,7 +501,7 @@ export function SecretsManagerPanel({
                 <button
                   onClick={() => void save()}
                   disabled={!backendAvailable || busy}
-                  className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 border border-tagma-accent/50 text-tagma-accent hover:bg-tagma-accent/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="btn-primary min-w-24 justify-center"
                 >
                   {status.kind === 'saving' ? (
                     <Loader2 size={11} className="animate-spin" />
@@ -513,7 +513,7 @@ export function SecretsManagerPanel({
                 <button
                   onClick={() => void load()}
                   disabled={busy}
-                  className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 border border-tagma-border text-tagma-text hover:bg-tagma-surface disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="btn-secondary"
                 >
                   {status.kind === 'loading' ? (
                     <Loader2 size={11} className="animate-spin" />
@@ -582,7 +582,7 @@ export function SecretsManagerPanel({
                         title="Delete secret"
                       >
                         {status.kind === 'deleting' && status.id === secret.id ? (
-                          <Loader2 size={13} className="animate-spin" />
+                          <Loader2 size={11} className="animate-spin" />
                         ) : (
                           <Trash2 size={13} />
                         )}

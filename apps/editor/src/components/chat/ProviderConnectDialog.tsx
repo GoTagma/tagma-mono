@@ -568,14 +568,14 @@ function DisconnectButton({ providerId, blocked }: { providerId: string; blocked
         onClick={handle}
         disabled={working || blocked}
         title="Disconnect (remove stored credential)"
-        className="shrink-0 inline-flex items-center gap-1 px-2 py-1 text-[10px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border/60 hover:border-tagma-muted/60 disabled:opacity-40 transition-colors"
+        className="shrink-0 inline-flex items-center gap-1 px-2 py-1 text-[10px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
-        {working ? <Loader2 size={9} className="animate-spin" /> : <LogOut size={9} />}
+        {working ? <Loader2 size={10} className="animate-spin" /> : <LogOut size={10} />}
         Disconnect
       </button>
       {error && (
         <span
-          className="text-[10px] font-mono text-tagma-error/90 truncate max-w-[160px]"
+          className="text-[10px] font-mono text-tagma-error/90 truncate flex-1 min-w-0"
           title={error}
         >
           {error}
@@ -595,7 +595,7 @@ function StatusBadge({ connected }: { connected: boolean }) {
     );
   }
   return (
-    <span className="chip-xs border-tagma-border/60 text-tagma-muted-dim uppercase tracking-wider font-normal">
+    <span className="chip-xs border-tagma-border/60 text-tagma-muted-dim uppercase tracking-wider">
       Not configured
     </span>
   );
@@ -723,7 +723,7 @@ function PromptsSection({
         const value = answers[p.key] ?? '';
         if (p.type === 'text') {
           return (
-            <div key={p.key} className="flex flex-col gap-1">
+            <div key={p.key} className="flex flex-col">
               <label className="field-label">{p.message}</label>
               <input
                 type="text"
@@ -739,7 +739,7 @@ function PromptsSection({
         }
         if (p.type === 'select') {
           return (
-            <div key={p.key} className="flex flex-col gap-1">
+            <div key={p.key} className="flex flex-col">
               <label className="field-label">{p.message}</label>
               <div className="flex flex-wrap gap-1.5">
                 {p.options.map((opt) => {
@@ -752,7 +752,7 @@ function PromptsSection({
                       title={opt.hint}
                       className={`inline-flex flex-col items-start px-2 py-1 text-[10px] font-mono border transition-colors ${
                         active
-                          ? 'border-tagma-ready/60 bg-tagma-ready/10 text-tagma-text'
+                          ? 'border-tagma-accent/60 bg-tagma-accent/10 text-tagma-text'
                           : 'border-tagma-border/60 text-tagma-muted hover:text-tagma-text hover:border-tagma-muted/60'
                       }`}
                     >
@@ -813,12 +813,12 @@ function ApiKeyRow({
   return (
     <div className="flex flex-col gap-2">
       <PromptsSection prompts={visible} answers={answers} setAnswer={setAnswer} />
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col">
         <label className="field-label flex items-center gap-1">
           <KeyRound size={9} />
           {label}
         </label>
-        <div className="flex items-center gap-2">
+        <div className="flex items-stretch gap-2">
           <input
             type="password"
             autoComplete="off"
@@ -833,7 +833,7 @@ function ApiKeyRow({
               }
             }}
             placeholder="Paste key and press Enter"
-            className="field-input flex-1"
+            className="field-input flex-1 min-w-0"
           />
           <button
             type="button"
@@ -942,7 +942,7 @@ function OauthRow({
         <PromptsSection prompts={visible} answers={answers} setAnswer={setAnswer} />
       )}
       <div className="flex items-center justify-between gap-2">
-        <label className="field-label flex items-center gap-1 mb-0">
+        <label className="field-label flex items-center gap-1 !mb-0">
           <LogIn size={9} />
           {label}
         </label>
@@ -951,7 +951,7 @@ function OauthRow({
             type="button"
             onClick={start}
             disabled={working === 'start' || !allFilled || blocked}
-            className="shrink-0 inline-flex items-center gap-1 px-3 py-1 text-[11px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 transition-colors"
+            className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             {working === 'start' ? (
               <Loader2 size={10} className="animate-spin" />
@@ -964,13 +964,13 @@ function OauthRow({
       </div>
 
       {auth && (
-        <div className="relative flex flex-col gap-1.5 pl-3 py-1.5 bg-tagma-elevated border border-tagma-border/60">
+        <div className="relative flex flex-col gap-1.5 px-3 py-1.5 bg-tagma-elevated border border-tagma-border/60">
           <span
             className="absolute left-0 top-0 bottom-0 w-[2px] bg-tagma-muted/50"
             aria-hidden="true"
           />
           {auth.instructions && (
-            <div className="pr-2 text-[10px] font-mono text-tagma-muted whitespace-pre-wrap break-words">
+            <div className="text-[10px] font-mono text-tagma-muted whitespace-pre-wrap break-words">
               {auth.instructions}
             </div>
           )}
@@ -985,7 +985,7 @@ function OauthRow({
           </button>
 
           {auth.method === 'code' ? (
-            <div className="flex items-center gap-2 pr-2">
+            <div className="flex items-stretch gap-2">
               <input
                 type="text"
                 autoComplete="off"
@@ -1000,13 +1000,13 @@ function OauthRow({
                   }
                 }}
                 placeholder="Paste authorization code"
-                className="field-input flex-1"
+                className="field-input flex-1 min-w-0"
               />
               <button
                 type="button"
                 onClick={complete}
                 disabled={!code.trim() || working === 'complete' || blocked}
-                className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 transition-colors"
+                className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 {working === 'complete' && <Loader2 size={10} className="animate-spin" />}
                 Complete
@@ -1014,7 +1014,7 @@ function OauthRow({
               <button
                 type="button"
                 onClick={cancel}
-                className="shrink-0 px-2 py-1.5 text-[11px] font-mono text-tagma-muted-dim hover:text-tagma-text transition-colors"
+                className="shrink-0 px-2 py-1.5 text-[11px] font-mono text-tagma-muted hover:text-tagma-text transition-colors"
               >
                 Cancel
               </button>
@@ -1024,12 +1024,12 @@ function OauthRow({
             // listener, so we can't observe completion. The "Done" button
             // forces a providers refresh when the user comes back; cancel
             // clears the in-flight state if they changed their mind.
-            <div className="flex items-center gap-2 pr-2">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={finishAuto}
                 disabled={working === 'complete' || blocked}
-                className="inline-flex items-center gap-1 px-3 py-1 text-[11px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 transition-colors"
+                className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-mono text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 {working === 'complete' ? (
                   <Loader2 size={10} className="animate-spin" />
@@ -1041,7 +1041,7 @@ function OauthRow({
               <button
                 type="button"
                 onClick={cancel}
-                className="px-2 py-1 text-[11px] font-mono text-tagma-muted-dim hover:text-tagma-text transition-colors"
+                className="px-2 py-1 text-[11px] font-mono text-tagma-muted hover:text-tagma-text transition-colors"
               >
                 Cancel
               </button>

@@ -87,8 +87,7 @@ export function TrackIODialog({ config, onClose }: TrackIODialogProps) {
   );
 
   const modalRef = useModalFocusTrap<HTMLDivElement>();
-  const selectClass =
-    'text-[11px] bg-tagma-bg border border-tagma-border px-2 py-1 text-tagma-text focus:border-tagma-accent outline-none';
+  const selectClass = 'field-input w-auto';
 
   return (
     <div
@@ -231,7 +230,7 @@ function filterRows(
 function FilterField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="flex items-center gap-1.5">
-      <span className="field-label font-mono mb-0">{label}</span>
+      <span className="field-label mb-0">{label}</span>
       {children}
     </label>
   );
@@ -249,8 +248,8 @@ function Section({
   emptyText: string;
 }) {
   return (
-    <div className="border-b border-tagma-border/60 last:border-b-0">
-      <div className="px-4 py-2 text-[10px] font-mono uppercase tracking-wider text-tagma-muted bg-tagma-bg/40 border-b border-tagma-border/30">
+    <div className="border-b border-tagma-border last:border-b-0">
+      <div className="px-4 py-2 text-[10px] font-mono uppercase tracking-wider text-tagma-muted bg-tagma-bg/40 border-b border-tagma-border">
         {title} ({rows.length})
       </div>
       {rows.length === 0 ? (
@@ -260,11 +259,11 @@ function Section({
           {rows.map((row, i) => (
             <li
               key={`${row.qid}::${row.port.name}::${i}`}
-              className="px-4 py-2 border-t border-tagma-border/30 first:border-t-0"
+              className="px-4 py-2 border-t border-tagma-border/50 first:border-t-0"
             >
               <div className="flex items-baseline justify-between gap-2">
                 <div className="min-w-0 flex items-baseline gap-2 flex-wrap">
-                  <span className="text-[12px] font-mono font-semibold text-tagma-text">
+                  <span className="text-[11px] font-mono font-semibold text-tagma-text">
                     {row.port.name}
                   </span>
                   <span className="text-[10px] font-mono text-tagma-muted/70 shrink-0">

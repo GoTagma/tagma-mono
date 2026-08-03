@@ -224,7 +224,7 @@ export function TrackConfigPanel({
               <button
                 type="button"
                 onClick={() => setTaskListSort('execution')}
-                className={`px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider transition-colors ${
+                className={`px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider transition-colors ${
                   taskListSort === 'execution'
                     ? 'bg-tagma-accent/10 text-tagma-accent'
                     : 'text-tagma-muted hover:text-tagma-text'
@@ -236,7 +236,7 @@ export function TrackConfigPanel({
               <button
                 type="button"
                 onClick={() => setTaskListSort('alphabetical')}
-                className={`px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider border-l border-tagma-border transition-colors ${
+                className={`px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider border-l border-tagma-border transition-colors ${
                   taskListSort === 'alphabetical'
                     ? 'bg-tagma-accent/10 text-tagma-accent'
                     : 'text-tagma-muted hover:text-tagma-text'
@@ -248,7 +248,7 @@ export function TrackConfigPanel({
             </div>
           </div>
           <select
-            className="field-input font-mono text-[10px]"
+            className="field-input font-mono"
             value=""
             onChange={(e) => handleTaskListSelect(e.target.value)}
             aria-label="Task List"
@@ -316,7 +316,7 @@ export function TrackConfigPanel({
               value={color || '#d4845a'}
               onChange={(e) => setColor(e.target.value)}
               onBlur={blurColor}
-              className="w-8 h-8 border border-tagma-border bg-tagma-bg cursor-pointer p-0.5"
+              className="h-[29px] w-[29px] border border-tagma-border bg-tagma-bg cursor-pointer p-0.5"
             />
             <CopyableField value={color} label="Copy track color" className="flex-1">
               <input
@@ -566,7 +566,7 @@ export function TrackConfigPanel({
           <label className="field-label">
             Tasks <span className="text-tagma-error">*</span>
           </label>
-          <div className="text-[11px] font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1">
+          <div className="text-[11px] font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1.5">
             {track.tasks.length} task{track.tasks.length !== 1 ? 's' : ''}
           </div>
         </div>
@@ -580,7 +580,7 @@ export function TrackConfigPanel({
         )}
 
         {/* Delete */}
-        <div className="pt-4 border-t border-tagma-border">
+        <div className="border-t border-tagma-border pt-3">
           <button
             onClick={() => setConfirmDelete(true)}
             className="btn-danger flex items-center justify-center gap-1.5"

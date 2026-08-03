@@ -12,6 +12,7 @@ import {
   FolderOpen,
   Pin,
   Eye,
+  Plus,
 } from 'lucide-react';
 import type {
   CommandConfig,
@@ -567,7 +568,7 @@ export function TaskConfigPanel({
             Task ID <span className="text-tagma-error">*</span>
           </label>
           <div
-            className="text-[11px] font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1 truncate"
+            className="text-[11px] font-mono text-tagma-muted bg-tagma-bg border border-tagma-border px-2.5 py-1.5 truncate"
             title={qualifiedId}
           >
             {qualifiedId}
@@ -603,7 +604,7 @@ export function TaskConfigPanel({
         {/* Type (fixed at creation, not switchable) */}
         <div>
           <label className="field-label">Type</label>
-          <div className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] border border-tagma-border bg-tagma-bg text-tagma-muted">
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] border border-tagma-border bg-tagma-bg text-tagma-muted">
             {mode === 'prompt' ? <MessageSquare size={11} /> : <Terminal size={11} />}
             <span>{mode === 'prompt' ? 'Prompt Task' : 'Command Task'}</span>
           </div>
@@ -1021,7 +1022,7 @@ export function TaskConfigPanel({
           <div>
             <label className="field-label">
               Continue From
-              <span className="text-[10px] text-tagma-muted font-normal ml-1">
+              <span className="text-[10px] text-tagma-muted font-normal normal-case tracking-normal ml-1">
                 (resume session from an upstream task)
               </span>
               <FieldHelpButton field="Continue From" scope="task" />
@@ -1059,7 +1060,7 @@ export function TaskConfigPanel({
         {/* ── Dataflow bindings ── */}
         {/* Inputs render in both views so users can supply human-defined values
             in Production. Outputs stay debug-only via `showOutputs`. */}
-        <div className="border-t border-tagma-border pt-2">
+        <div className="border-t border-tagma-border pt-3">
           <PortsEditor
             inputs={task.inputs}
             outputs={task.outputs}
@@ -1080,12 +1081,12 @@ export function TaskConfigPanel({
 
         {/* ── Advanced Section ── */}
         {isDebugView && (
-          <div className="border-t border-tagma-border pt-2">
+          <div className="border-t border-tagma-border pt-3">
             <button
               onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center gap-1 text-[11px] text-tagma-muted hover:text-tagma-text transition-colors w-full"
+              className="flex items-center gap-1 text-[10px] text-tagma-muted hover:text-tagma-text transition-colors w-full"
             >
-              {showAdvanced ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              {showAdvanced ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
               Advanced
             </button>
           </div>
@@ -1097,7 +1098,7 @@ export function TaskConfigPanel({
             <div>
               <label className="field-label">
                 Trigger
-                <span className="text-[10px] text-tagma-muted font-normal ml-1">
+                <span className="text-[10px] text-tagma-muted font-normal normal-case tracking-normal ml-1">
                   (from plugin registry)
                 </span>
                 <FieldHelpButton field="Trigger" scope="task" />
@@ -1226,7 +1227,7 @@ export function TaskConfigPanel({
             <div>
               <label className="field-label">
                 Completion Check
-                <span className="text-[10px] text-tagma-muted font-normal ml-1">
+                <span className="text-[10px] text-tagma-muted font-normal normal-case tracking-normal ml-1">
                   (from plugin registry)
                 </span>
                 <FieldHelpButton field="Completion Check" scope="task" />
@@ -1424,7 +1425,7 @@ export function TaskConfigPanel({
         )}
 
         {/* Delete */}
-        <div className="pt-4 border-t border-tagma-border">
+        <div className="border-t border-tagma-border pt-3">
           <button
             onClick={() => setConfirmDelete(true)}
             className="btn-danger flex items-center justify-center gap-1.5"

@@ -253,7 +253,7 @@ export function YamlPreview({
         <div className="flex items-center gap-1.5">
           <button
             onClick={handleCopy}
-            className="flex items-center gap-1 text-[10px] text-tagma-muted hover:text-tagma-text transition-colors px-1.5 py-0.5 border border-tagma-border hover:border-tagma-accent/40"
+            className="flex items-center gap-1 p-1 text-[10px] text-tagma-muted hover:text-tagma-text transition-colors"
           >
             {copied ? <Check size={10} className="text-tagma-success" /> : <Copy size={10} />}
             <span>{copied ? 'Copied' : 'Copy'}</span>
@@ -322,7 +322,7 @@ export function YamlPreview({
         </div>
         {changeSegments.length > 0 && (
           <div
-            className="relative w-1.5 shrink-0 border-l border-tagma-border/60 bg-tagma-bg"
+            className="relative w-1.5 shrink-0 border-l border-tagma-border bg-tagma-bg"
             aria-label="YAML change minimap"
           >
             {changeSegments.map((segment) => {

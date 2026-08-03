@@ -1012,7 +1012,7 @@ export function CustomProviderModal({
                       type="button"
                       onClick={() => removeHeaderRow(idx)}
                       title="Remove header"
-                      className="shrink-0 p-1 text-tagma-muted hover:text-tagma-error"
+                      className="shrink-0 w-5 p-1 text-tagma-muted hover:text-tagma-error"
                     >
                       <Trash2 size={11} />
                     </button>
@@ -1068,7 +1068,7 @@ export function CustomProviderModal({
                       type="button"
                       onClick={() => removeModelRow(idx)}
                       title="Remove model"
-                      className="shrink-0 p-1 text-tagma-muted hover:text-tagma-error"
+                      className="shrink-0 w-5 p-1 text-tagma-muted hover:text-tagma-error"
                     >
                       <Trash2 size={11} />
                     </button>
@@ -1093,7 +1093,7 @@ export function CustomProviderModal({
                         placeholder="output tokens"
                         className="field-input flex-1 min-w-0"
                       />
-                      <span className="shrink-0 w-[20px]" aria-hidden="true" />
+                      <span className="shrink-0 w-5" aria-hidden="true" />
                     </div>
                   )}
                 </div>
@@ -1129,7 +1129,7 @@ export function CustomProviderModal({
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="min-w-[100px] px-3 py-1 text-[11px] text-tagma-muted hover:text-tagma-text border border-tagma-border hover:border-tagma-muted/60 disabled:opacity-40 transition-colors text-center"
+            className="btn-secondary"
           >
             Cancel
           </button>
@@ -1137,7 +1137,7 @@ export function CustomProviderModal({
             type="button"
             onClick={handleSubmit}
             disabled={saving || blocked}
-            className="btn-primary w-auto min-w-[100px] justify-center text-center"
+            className="btn-primary min-w-24 justify-center"
           >
             {saving && <Loader2 size={11} className="animate-spin" />}
             {isEdit ? 'Save changes' : 'Create provider'}

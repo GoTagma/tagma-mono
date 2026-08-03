@@ -301,11 +301,6 @@ function SchemaFieldRow({
           {label}
           {field.required && <span className="text-tagma-error ml-0.5">*</span>}
         </span>
-        {field.description && (
-          <span className="text-tagma-muted/60" title={field.description}>
-            &nbsp;(?)
-          </span>
-        )}
         {helpScope && <FieldHelpButton field={field.key} scope={helpScope} className="ml-0.5" />}
       </label>
       <SchemaFieldInput
@@ -394,7 +389,7 @@ function SchemaFieldInput({
       );
     case 'boolean':
       return (
-        <label className="flex items-center gap-1.5 text-[11px] text-tagma-text">
+        <label className="flex items-center gap-1.5 text-[11px] text-tagma-text cursor-pointer">
           <input
             type="checkbox"
             checked={value === true}

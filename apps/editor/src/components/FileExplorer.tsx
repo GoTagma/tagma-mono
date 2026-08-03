@@ -331,7 +331,7 @@ export function FileExplorer({
             onKeyDown={(e) => {
               if (e.key === 'Enter') handlePathSubmit();
             }}
-            className="flex-1 text-[11px] font-mono bg-tagma-bg border border-tagma-border px-2 py-1 text-tagma-text"
+            className="field-input flex-1 font-mono"
           />
           <button
             onClick={() => {
@@ -369,7 +369,7 @@ export function FileExplorer({
         <div className="modal-viewport-body">
           {newFolderName !== null && (
             <div className="flex items-center gap-2 px-4 py-1.5 bg-tagma-elevated/50">
-              <Folder size={13} className="text-tagma-accent shrink-0" />
+              <Folder size={13} className="text-tagma-accent/70 shrink-0" />
               <input
                 ref={newFolderRef}
                 type="text"
@@ -380,7 +380,7 @@ export function FileExplorer({
                   if (e.key === 'Escape') setNewFolderName(null);
                 }}
                 onBlur={() => setNewFolderName(null)}
-                className="flex-1 text-[11px] font-mono bg-tagma-bg border border-tagma-accent/40 px-2 py-0.5 text-tagma-text"
+                className="flex-1 text-[11px] font-mono bg-tagma-bg border border-tagma-accent/40 px-2.5 py-1.5 text-tagma-text"
                 placeholder="New folder name..."
                 autoFocus
               />
@@ -391,7 +391,11 @@ export function FileExplorer({
               Loading...
             </div>
           )}
-          {error && <div className="px-3 py-4 text-[11px] text-tagma-error">{error}</div>}
+          {error && (
+            <div className="flex items-center justify-center py-8 text-[11px] text-tagma-error">
+              {error}
+            </div>
+          )}
           {!loading && !error && entries.length === 0 && (
             <div className="flex items-center justify-center py-8 text-tagma-muted text-[11px]">
               Empty directory
