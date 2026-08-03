@@ -27,7 +27,7 @@ export function DialogModal({ info, onClose }: DialogModalProps) {
     >
       <div
         ref={modalRef}
-        className="modal-viewport-shell w-full max-w-[480px] flex flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
+        className="modal-viewport-shell w-full max-w-[440px] flex flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
         role="dialog"
         aria-modal="true"
         aria-labelledby="dialog-modal-title"

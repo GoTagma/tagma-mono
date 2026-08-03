@@ -77,7 +77,7 @@ export function ConfirmModal({ info, onClose }: ConfirmModalProps) {
           {info.details.map((detail, i) => (
             <div
               key={i}
-              className="px-4 py-2.5 border-b border-tagma-border/30 last:border-b-0 text-[11px] text-tagma-text font-mono break-words"
+              className="px-4 py-3 border-b border-tagma-border/30 last:border-b-0 text-[11px] text-tagma-text font-mono break-words"
             >
               {detail}
             </div>

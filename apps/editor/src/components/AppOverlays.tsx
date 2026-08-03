@@ -150,7 +150,7 @@ export function UnsavedChangesModal({
     >
       <div
         ref={modalRef}
-        className="modal-viewport-shell w-full max-w-[460px] flex flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
+        className="modal-viewport-shell w-full max-w-[440px] flex flex-col border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in"
         role="dialog"
         aria-modal="true"
         aria-labelledby="unsaved-changes-modal-title"
