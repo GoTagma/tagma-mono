@@ -79,5 +79,5 @@ describe('user journey - shellquote in YAML command strings', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 });

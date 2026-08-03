@@ -229,6 +229,30 @@ function encodedPowerShellArgs(path: string, command: string): readonly string[]
   return [path, '-EncodedCommand', Buffer.from(command, 'utf16le').toString('base64')];
 }
 
+function escapePowerShellNativeArg(arg: string): string {
+  let escaped = '';
+  let backslashes = 0;
+
+  for (const char of arg) {
+    if (char === '\\') {
+      backslashes += 1;
+      continue;
+    }
+    if (char === '"') {
+      // Native Windows argument parsing treats backslashes before a quote as
+      // escape syntax. Double them and add one more backslash so the quote
+      // survives as data instead of toggling the native parser's quote mode.
+      escaped += '\\'.repeat(backslashes * 2 + 1) + '"';
+      backslashes = 0;
+      continue;
+    }
+    escaped += '\\'.repeat(backslashes) + char;
+    backslashes = 0;
+  }
+
+  return escaped + '\\'.repeat(backslashes);
+}
+
 export function shellArgs(command: string): readonly string[] {
   const sh = getShell();
   if (sh.kind === 'cmd') {
@@ -251,7 +275,9 @@ export class UnsafeShellQuoteError extends Error {
 /** Quote a single argument for inclusion in a shell command string. */
 function quoteArg(arg: string, kind: ShellKind): string {
   if (arg.length === 0) {
-    return kind === 'cmd' ? '\u0022\u0022' : '\u0027\u0027';
+    if (kind === 'cmd') return '\u0022\u0022';
+    if (kind === 'powershell') return '\u0027\u0022\u0022\u0027';
+    return '\u0027\u0027';
   }
 
   // Inputs with no shell-active characters need no quoting on any shell:
@@ -285,7 +311,7 @@ function quoteArg(arg: string, kind: ShellKind): string {
   }
 
   if (kind === 'powershell') {
-    return "'" + arg.replace(/'/g, "''") + "'";
+    return "'" + escapePowerShellNativeArg(arg).replace(/'/g, "''") + "'";
   }
 
   // POSIX shells: single-quote to prevent expansion and preserve Windows paths.

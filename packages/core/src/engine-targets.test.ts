@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { Buffer } from 'node:buffer';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -279,7 +280,10 @@ describe('targeted pipeline runs', () => {
           runtime: {
             ...fakeRuntime([]),
             async runSpawn(spec) {
-              const command = spec.args[spec.args.length - 1] ?? '';
+              const command =
+                spec.args[1] === '-EncodedCommand'
+                  ? Buffer.from(spec.args[2] ?? '', 'base64').toString('utf16le')
+                  : (spec.args[spec.args.length - 1] ?? '');
               seen.push({ kind: 'hook', command, cwd: spec.cwd });
               return taskResult(command);
             },

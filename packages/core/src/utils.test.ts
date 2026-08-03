@@ -33,6 +33,7 @@ test('shellQuoteForActiveShell escapes single quotes per the active shell', () =
     // which is two strings under PowerShell — completely wrong.
     process.env.PIPELINE_SHELL = 'powershell';
     expect(shellQuoteForActiveShell("it's")).toBe("'it''s'");
+    expect(shellQuoteForActiveShell('double "quotes"')).toBe(`'double \\"quotes\\"'`);
 
     // cmd.exe: refuse outright. The cmd.exe parser does not honour `\"`
     // (that's a C-runtime convention CommandLineToArgvW applies, not
@@ -69,7 +70,7 @@ test('shellQuoteForActiveShell preserves an empty input as one shell argument', 
     process.env.PIPELINE_SHELL = 'sh';
     expect(shellQuoteForActiveShell('')).toBe(`''`);
     process.env.PIPELINE_SHELL = 'powershell';
-    expect(shellQuoteForActiveShell('')).toBe(`''`);
+    expect(shellQuoteForActiveShell('')).toBe(`'""'`);
     process.env.PIPELINE_SHELL = 'cmd';
     expect(shellQuoteForActiveShell('')).toBe(String.fromCharCode(34, 34));
   } finally {
