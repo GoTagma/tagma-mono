@@ -5,11 +5,15 @@ const RESULT_PREFIX = '@@stdin-approval-result@@';
 const CHILD_TIMEOUT_MS = 1_000;
 
 const adapterUrl = new URL('./adapters/stdin-approval.ts', import.meta.url).href;
+const coreUrl = new URL('../../core/src/index.ts', import.meta.url).href;
+const sdkUrl = new URL('../../sdk/src/index.ts', import.meta.url).href;
 
 // The adapter intentionally owns process.stdin/process.stdout, so exercise it in
 // a child Bun process instead of replacing those globals in the test runner.
 const terminalRunner = `
 import { attachStdinApprovalAdapter } from ${JSON.stringify(adapterUrl)};
+import { InMemoryApprovalGateway } from ${JSON.stringify(coreUrl)};
+import { createTagma } from ${JSON.stringify(sdkUrl)};
 
 class TerminalGateway {
   constructor() {
@@ -126,9 +130,41 @@ function request(gateway, id, timeoutMs = 0) {
 }
 
 async function run() {
+  const scenario = process.env.TAGMA_STDIN_APPROVAL_SCENARIO;
+
+  if (scenario === 'pipeline') {
+    const gateway = new InMemoryApprovalGateway();
+    const adapter = attachStdinApprovalAdapter(gateway);
+    gateway.subscribe((event) => {
+      if (event.type === 'resolved') report('decision', event.decision.outcome);
+    });
+    try {
+      const pipelineYaml = [
+        'pipeline:',
+        '  name: stdin manual trigger journey',
+        '  tracks:',
+        '    - id: main',
+        '      name: Main',
+        '      tasks:',
+        '        - id: approval',
+        '          command: node -e process.stdout.write(String.fromCharCode(109,97,110,117,97,108,45,97,112,112,114,111,118,101,100))',
+        '          trigger:',
+        '            type: manual',
+        '            message: Approve the real pipeline?',
+      ].join(String.fromCharCode(10));
+      const result = await createTagma().runYaml(
+        pipelineYaml,
+        { cwd: process.cwd(), approvalGateway: gateway },
+      );
+      report('pipeline', result.kind + ':' + (result.kind === 'pipeline' && result.result.success));
+    } finally {
+      adapter.detach();
+    }
+    return;
+  }
+
   const gateway = new TerminalGateway();
   const adapter = attachStdinApprovalAdapter(gateway);
-  const scenario = process.env.TAGMA_STDIN_APPROVAL_SCENARIO;
   const first = request(gateway, 'first', scenario === 'timeout' ? 30 : 0);
 
   if (scenario === 'queued') {
@@ -375,7 +411,7 @@ describe('stdin approval adapter user journeys', () => {
     }
   });
 
-  test.failing(
+  test(
     'advances to the queued request when the active terminal request is aborted',
     async () => {
       const terminal = startTerminalSession('aborted');
@@ -392,7 +428,7 @@ describe('stdin approval adapter user journeys', () => {
     },
   );
 
-  test.failing(
+  test(
     'advances to the queued request when the active terminal request expires',
     async () => {
       const terminal = startTerminalSession('timeout');
@@ -422,12 +458,25 @@ describe('stdin approval adapter user journeys', () => {
     }
   });
 
-  test.failing('EOF settles the active terminal request without leaving it pending', async () => {
+  test('EOF settles the active terminal request without leaving it pending', async () => {
     const terminal = startTerminalSession('eof');
     try {
       await terminal.waitForPrompt();
       terminal.closeInput();
       await terminal.waitForResult('first');
+      await terminal.waitForExit();
+    } finally {
+      await terminal.stop();
+    }
+  });
+
+  test('a real manual-trigger pipeline is released through the terminal adapter', async () => {
+    const terminal = startTerminalSession('pipeline');
+    try {
+      await terminal.waitForPrompt();
+      await pause(25);
+      terminal.send('approve\\n');
+      await terminal.waitForResult('pipeline', 'pipeline:true');
       await terminal.waitForExit();
     } finally {
       await terminal.stop();
