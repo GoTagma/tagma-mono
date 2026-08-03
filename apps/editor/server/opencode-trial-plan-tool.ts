@@ -473,8 +473,12 @@ function resolvePipelineTarget(input, contextDirectory) {
 }
 
 const TRIAL_PLAN_ATTEMPT_TELEMETRY_VERSION = 1;
-const MAX_TOOL_ATTEMPTS_PER_YAML = CONTRACT.limits.toolAttemptsPerYaml;
+const TOOL_ATTEMPT_LIMITS = CONTRACT.limits.toolAttemptsPerYaml;
 const MAX_REJECTION_SUMMARIES = CONTRACT.limits.rejectionSummaries;
+
+function readTrialPlanMaxAttempts(stageRoot) {
+  return TOOL_ATTEMPT_LIMITS.default;
+}
 
 function trialPlanAttemptPaths(root, yamlPath, yamlHash) {
   const stageRoot = dirname(dirname(root));

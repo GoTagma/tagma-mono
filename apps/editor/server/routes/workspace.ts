@@ -328,6 +328,12 @@ export function parseEditorSettingsPatch(body: unknown): Partial<EditorSettings>
     patch.opencodeChatTrialRunEnabled = raw.opencodeChatTrialRunEnabled;
   }
   if (
+    typeof raw.opencodeChatTrialPlanMaxAttempts === 'number' &&
+    Number.isFinite(raw.opencodeChatTrialPlanMaxAttempts)
+  ) {
+    patch.opencodeChatTrialPlanMaxAttempts = raw.opencodeChatTrialPlanMaxAttempts;
+  }
+  if (
     typeof raw.opencodeChatPipelineRepairMaxAttempts === 'number' &&
     Number.isFinite(raw.opencodeChatPipelineRepairMaxAttempts)
   ) {

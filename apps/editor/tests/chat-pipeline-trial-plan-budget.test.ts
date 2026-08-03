@@ -53,7 +53,16 @@ function invalidPlanArgs(yamlPath: string): Record<string, unknown> {
   };
 }
 
-test('generated trial plan tool bounds equivalent validator failures per stage and YAML hash', async () => {
+function writeStageAttemptLimit(agentTagmaDir: string, maxAttempts: number): void {
+  const stageRoot = dirname(dirname(agentTagmaDir));
+  writeFileSync(
+    join(stageRoot, 'stage.json'),
+    JSON.stringify({ trialPlanMaxAttempts: maxAttempts }),
+    'utf8',
+  );
+}
+
+test('generated trial plan tool uses the staged three-attempt budget per YAML hash', async () => {
   const root = mkdtempSync(join(tmpdir(), 'tagma-trial-budget-'));
   try {
     const agentTagmaDir = join(
@@ -67,6 +76,7 @@ test('generated trial plan tool bounds equivalent validator failures per stage a
     const yamlPath = join(agentTagmaDir, 'demo', 'demo.yaml');
     mkdirSync(dirname(yamlPath), { recursive: true });
     writeFileSync(yamlPath, ['pipeline:', '  name: demo', '  tracks: []', ''].join('\n'), 'utf8');
+    writeStageAttemptLimit(agentTagmaDir, 3);
     const tool = await loadGeneratedTool(root);
     const invalidArgs = invalidPlanArgs(yamlPath);
 
@@ -77,20 +87,56 @@ test('generated trial plan tool bounds equivalent validator failures per stage a
       'Repeated equivalent validation rejection (2x)',
     );
     await expect(tool.execute(invalidArgs, { directory: agentTagmaDir })).rejects.toThrow(
+      'Repeated equivalent validation rejection (3x)',
+    );
+    await expect(tool.execute(invalidArgs, { directory: agentTagmaDir })).rejects.toThrow(
       'trial plan tool attempt budget exhausted for this staged YAML revision',
     );
 
-    expect(readChatPipelineTrialPlanToolTelemetry(yamlPath)).toMatchObject({
-      toolAttemptCount: 2,
-      validationRejectionCount: 2,
-      repeatedValidationRejectionCount: 1,
+    expect(readChatPipelineTrialPlanToolTelemetry(yamlPath, 3)).toMatchObject({
+      toolAttemptCount: 3,
+      validationRejectionCount: 3,
+      repeatedValidationRejectionCount: 2,
       successfulWriteCount: 0,
       rejections: [
         {
-          count: 2,
+          count: 3,
           message: 'trial plan coverage is missing multiple-inputs.',
         },
       ],
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('generated trial plan tool can restrict a staged YAML revision to one attempt', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-trial-budget-one-'));
+  try {
+    const agentTagmaDir = join(
+      root,
+      '.tagma',
+      '.chat-staging',
+      'stage-1',
+      'agent-workspace',
+      '.tagma',
+    );
+    const yamlPath = join(agentTagmaDir, 'demo', 'demo.yaml');
+    mkdirSync(dirname(yamlPath), { recursive: true });
+    writeFileSync(yamlPath, ['pipeline:', '  name: demo', '  tracks: []', ''].join('\n'), 'utf8');
+    writeStageAttemptLimit(agentTagmaDir, 1);
+    const tool = await loadGeneratedTool(root);
+    const invalidArgs = invalidPlanArgs(yamlPath);
+
+    await expect(tool.execute(invalidArgs, { directory: agentTagmaDir })).rejects.toThrow(
+      'trial plan coverage is missing multiple-inputs',
+    );
+    await expect(tool.execute(invalidArgs, { directory: agentTagmaDir })).rejects.toThrow(
+      'trial plan tool attempt budget exhausted for this staged YAML revision',
+    );
+    expect(readChatPipelineTrialPlanToolTelemetry(yamlPath, 1)).toMatchObject({
+      toolAttemptCount: 1,
+      validationRejectionCount: 1,
     });
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -105,6 +151,7 @@ test('generated trial plan tool fails closed when attempt telemetry has negative
     const yamlPath = join(agentTagmaDir, 'demo', 'demo.yaml');
     mkdirSync(dirname(yamlPath), { recursive: true });
     writeFileSync(yamlPath, ['pipeline:', '  name: demo', '  tracks: []', ''].join('\n'), 'utf8');
+    writeStageAttemptLimit(agentTagmaDir, 2);
     const tool = await loadGeneratedTool(root);
     const invalidArgs = invalidPlanArgs(yamlPath);
     await expect(tool.execute(invalidArgs, { directory: agentTagmaDir })).rejects.toThrow(
@@ -136,6 +183,7 @@ test('host telemetry reader rejects counters that do not partition tool attempts
     const yamlPath = join(agentTagmaDir, 'demo', 'demo.yaml');
     mkdirSync(dirname(yamlPath), { recursive: true });
     writeFileSync(yamlPath, ['pipeline:', '  name: demo', '  tracks: []', ''].join('\n'), 'utf8');
+    writeStageAttemptLimit(agentTagmaDir, 2);
     const tool = await loadGeneratedTool(root);
     const invalidArgs = invalidPlanArgs(yamlPath);
     await expect(tool.execute(invalidArgs, { directory: agentTagmaDir })).rejects.toThrow(

@@ -936,6 +936,8 @@ export interface EditorSettings {
   opencodeChatTrialRunEnabled: boolean;
   /** Server-stamped acknowledgement version for the real-workspace execution policy. */
   opencodeChatTrialRunConsentVersion: number;
+  /** Per-revision Trial Plan tool budget. Default 2; server clamps to [1, 3]. */
+  opencodeChatTrialPlanMaxAttempts: number;
   /** Shared compile/trial repair budget. Default 25; 0 disables; server clamps to [0, 50]. */
   opencodeChatPipelineRepairMaxAttempts: number;
   /**

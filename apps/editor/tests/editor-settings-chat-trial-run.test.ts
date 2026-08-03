@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 describe('Editor Settings OpenCode Chat trial-run controls', () => {
-  test('renders the repair limit next to the trial-run toggle and persists both settings', () => {
+  test('renders the Trial Plan and repair limits next to the trial-run toggle', () => {
     const source = readFileSync(
       join(import.meta.dir, '..', 'src', 'components', 'settings', 'EditorSettingsSections.tsx'),
       'utf8',
@@ -14,22 +14,30 @@ describe('Editor Settings OpenCode Chat trial-run controls', () => {
     expect(source).toContain('normal host command authority');
     expect(source).toContain('may modify files or external state');
     expect(source).toContain('checked={settings.opencodeChatTrialRunEnabled}');
+    expect(source).toContain('Trial Plan attempts per revision:');
+    expect(source).toContain('min={MIN_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS}');
+    expect(source).toContain('max={MAX_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS}');
+    expect(source).toContain('value={settings.opencodeChatTrialPlanMaxAttempts}');
+    expect(source).toContain(`updateField('opencodeChatTrialPlanMaxAttempts', clamped)`);
     expect(source).toContain('Automatic repair attempts:');
     expect(source).toContain('value={settings.opencodeChatPipelineRepairMaxAttempts}');
     expect(source).toContain("updateField('opencodeChatPipelineRepairMaxAttempts', clamped)");
     const normalizedSource = source.replace(/\s+/g, ' ');
     expect(normalizedSource).toContain('does not run the pipeline this many times');
+    expect(normalizedSource).toContain('default {DEFAULT_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS}');
     expect(normalizedSource).toContain(
-      'Trial-plan authoring is separately limited to two attempts per YAML revision.',
+      'each attempt is one hidden planner continuation for the same YAML revision.',
     );
 
     const toggleIndex = source.indexOf('checked={settings.opencodeChatTrialRunEnabled}');
+    const trialPlanLimitIndex = source.indexOf('value={settings.opencodeChatTrialPlanMaxAttempts}');
     const repairLimitIndex = source.indexOf(
       'value={settings.opencodeChatPipelineRepairMaxAttempts}',
     );
     const memoryToggleIndex = source.indexOf('checked={settings.chatContextLimitEnabled}');
     expect(toggleIndex).toBeGreaterThan(-1);
-    expect(repairLimitIndex).toBeGreaterThan(toggleIndex);
+    expect(trialPlanLimitIndex).toBeGreaterThan(toggleIndex);
+    expect(repairLimitIndex).toBeGreaterThan(trialPlanLimitIndex);
     expect(memoryToggleIndex).toBeGreaterThan(repairLimitIndex);
     expect(source).toContain("updateField('opencodeChatTrialRunEnabled', v)");
   });

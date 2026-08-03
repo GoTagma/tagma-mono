@@ -2,6 +2,13 @@ import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 
+import {
+  DEFAULT_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS,
+  MAX_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS,
+  MIN_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS,
+  isValidChatPipelineTrialPlanAttempts,
+} from '../shared/chat-pipeline-trial-plan-limit.js';
+
 export const CHAT_PIPELINE_TRIAL_PLAN_CONTRACT = {
   version: 3,
   limits: {
@@ -15,7 +22,11 @@ export const CHAT_PIPELINE_TRIAL_PLAN_CONTRACT = {
     findings: 16,
     goals: 16,
     runs: 3,
-    toolAttemptsPerYaml: 2,
+    toolAttemptsPerYaml: {
+      min: MIN_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS,
+      default: DEFAULT_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS,
+      max: MAX_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS,
+    },
     rejectionSummaries: 4,
   },
   coverageDimensions: [
@@ -143,6 +154,7 @@ export interface ChatPipelineTrialPlanRequest {
   relativePlanPath: string;
   pipelineHash: string;
   message: string;
+  maxAttempts: number;
   requiredCoverage: ChatPipelineTrialCoverageDimension[];
 }
 
@@ -195,7 +207,11 @@ function telemetryInteger(value: unknown, label: string, max: number): number {
 
 export function readChatPipelineTrialPlanToolTelemetry(
   stagedYamlPath: string,
+  maxAttempts = DEFAULT_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS,
 ): ChatPipelineTrialPlanToolTelemetry {
+  if (!isValidChatPipelineTrialPlanAttempts(maxAttempts)) {
+    throw new Error('Trial plan max attempts is invalid.');
+  }
   const yamlHash = createHash('sha1').update(readFileSync(stagedYamlPath, 'utf8')).digest('hex');
   const agentTagmaDir = dirname(dirname(stagedYamlPath));
   const relativeYamlPath = relative(agentTagmaDir, stagedYamlPath).replace(/\\/g, '/');
@@ -219,7 +235,6 @@ export function readChatPipelineTrialPlanToolTelemetry(
   ) {
     throw new Error('Trial plan tool telemetry does not match the staged YAML revision.');
   }
-  const maxAttempts = CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.toolAttemptsPerYaml;
   const toolAttemptCount = telemetryInteger(raw.toolAttemptCount, 'toolAttemptCount', maxAttempts);
   const validationRejectionCount = telemetryInteger(
     raw.validationRejectionCount,
@@ -735,6 +750,7 @@ function planRequest(
   relativeYamlPath: string,
   pipelineHash: string,
   message: string,
+  maxAttempts: number,
 ): ChatPipelineTrialPlanReadResult {
   return {
     status: 'required',
@@ -743,6 +759,7 @@ function planRequest(
       relativePlanPath: relativeTrialPlanPath(relativeYamlPath),
       pipelineHash,
       message,
+      maxAttempts,
       requiredCoverage: [...CHAT_PIPELINE_TRIAL_COVERAGE_DIMENSIONS],
     },
   };
@@ -752,10 +769,20 @@ export function readChatPipelineTrialPlan(
   stagedYamlPath: string,
   relativeYamlPath: string,
   pipelineHash: string,
+  maxAttempts = DEFAULT_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS,
 ): ChatPipelineTrialPlanReadResult {
+  if (!isValidChatPipelineTrialPlanAttempts(maxAttempts)) {
+    throw new Error('Trial plan max attempts is invalid.');
+  }
   const path = pipelineTrialPlanPath(stagedYamlPath);
   if (!existsSync(path)) {
-    return planRequest('missing', relativeYamlPath, pipelineHash, 'No trial plan was written.');
+    return planRequest(
+      'missing',
+      relativeYamlPath,
+      pipelineHash,
+      'No trial plan was written.',
+      maxAttempts,
+    );
   }
   try {
     const stat = lstatSync(path);
@@ -765,6 +792,7 @@ export function readChatPipelineTrialPlan(
         relativeYamlPath,
         pipelineHash,
         'The trial plan must be a regular file.',
+        maxAttempts,
       );
     }
     if (stat.size > MAX_PLAN_BYTES) {
@@ -773,6 +801,7 @@ export function readChatPipelineTrialPlan(
         relativeYamlPath,
         pipelineHash,
         `The trial plan exceeds ${MAX_PLAN_BYTES} bytes.`,
+        maxAttempts,
       );
     }
     const content = readFileSync(path, 'utf-8');
@@ -787,6 +816,7 @@ export function readChatPipelineTrialPlan(
         relativeYamlPath,
         pipelineHash,
         'The trial plan targets an older YAML revision.',
+        maxAttempts,
       );
     }
     const plan = parseChatPipelineTrialPlan(parsed);
@@ -797,6 +827,7 @@ export function readChatPipelineTrialPlan(
         relativeYamlPath,
         pipelineHash,
         'The trial plan targets an older YAML revision.',
+        maxAttempts,
       );
     }
     return {
@@ -810,6 +841,7 @@ export function readChatPipelineTrialPlan(
       relativeYamlPath,
       pipelineHash,
       err instanceof Error ? err.message : String(err),
+      maxAttempts,
     );
   }
 }

@@ -125,7 +125,7 @@ function writePassingTrialPlan(stagedPath: string, taskId: string): void {
   });
 }
 
-function writeTrialPlanTelemetry(stagedPath: string): void {
+function writeTrialPlanTelemetry(stagedPath: string, toolAttemptCount = 2): void {
   const yamlHash = createHash('sha1').update(readFileSync(stagedPath, 'utf-8')).digest('hex');
   const agentTagmaDir = dirname(dirname(stagedPath));
   const relativeYamlPath = relative(agentTagmaDir, stagedPath).replace(/\\/g, '/');
@@ -141,13 +141,15 @@ function writeTrialPlanTelemetry(stagedPath: string): void {
       version: 1,
       yamlHash,
       relativeYamlPath,
-      toolAttemptCount: 2,
-      validationRejectionCount: 2,
-      repeatedValidationRejectionCount: 1,
+      toolAttemptCount,
+      validationRejectionCount: toolAttemptCount,
+      repeatedValidationRejectionCount: Math.max(0, toolAttemptCount - 1),
       successfulWriteCount: 0,
       firstAttemptAt: 100,
-      lastAttemptAt: 250,
-      rejections: [{ fingerprint: 'a'.repeat(64), count: 2, message: 'invalid plan' }],
+      lastAttemptAt: 100 + toolAttemptCount * 75,
+      rejections: [
+        { fingerprint: 'a'.repeat(64), count: toolAttemptCount, message: 'invalid plan' },
+      ],
     }),
     'utf-8',
   );
@@ -167,7 +169,10 @@ function yamlFor(name: string, prompt: string): string {
   ].join('\n');
 }
 
-function makeWorkspace(authorizeTrial = true): { ws: WorkspaceState; sourcePath: string } {
+function makeWorkspace(
+  authorizeTrial = true,
+  trialPlanMaxAttempts?: number,
+): { ws: WorkspaceState; sourcePath: string } {
   const root = mkdtempSync(join(tmpdir(), 'tagma-chat-stage-route-'));
   roots.push(root);
   const sourcePath = pipelineYamlPath(root, 'pipeline');
@@ -180,6 +185,7 @@ function makeWorkspace(authorizeTrial = true): { ws: WorkspaceState; sourcePath:
       JSON.stringify({
         opencodeChatTrialRunEnabled: true,
         opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
+        ...(trialPlanMaxAttempts === undefined ? {} : { opencodeChatTrialPlanMaxAttempts: trialPlanMaxAttempts }),
       }),
       'utf-8',
     );
@@ -370,6 +376,7 @@ describe('chat YAML staging routes', () => {
       planRequest: {
         reason: 'missing',
         relativePlanPath: entry.relativePath.replace(/\.ya?ml$/i, '.trial-plan.json'),
+        maxAttempts: 2,
       },
       planTelemetry: {
         toolAttemptCount: 0,
@@ -379,6 +386,71 @@ describe('chat YAML staging routes', () => {
       },
     });
     expect(existsSync(join(ws.workDir, 'ran-before-plan.txt'))).toBe(false);
+    discardStage(getRoute, ws, stage.id);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('snapshots a configured three-attempt plan budget for the lifetime of the stage', async () => {
+    const { ws, sourcePath } = makeWorkspace(true, 3);
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      trialPlanMaxAttempts: number;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    expect(stage.trialPlanMaxAttempts).toBe(3);
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+
+    writeFileSync(
+      join(ws.workDir, '.tagma', 'editor-settings.json'),
+      JSON.stringify({
+        opencodeChatTrialRunEnabled: true,
+        opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
+        opencodeChatTrialPlanMaxAttempts: 1,
+      }),
+      'utf-8',
+    );
+    writeTrialPlanTelemetry(entry.stagedPath, 2);
+
+    const requiredRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'configured_plan_required' },
+        'chat-lock',
+      ),
+      requiredRes,
+    );
+    expect(requiredRes.statusCode).toBe(200);
+    expect(requiredRes.body).toMatchObject({
+      kind: 'plan-required',
+      planRequest: { maxAttempts: 3 },
+      planTelemetry: { toolAttemptCount: 2 },
+    });
+
+    writeTrialPlanTelemetry(entry.stagedPath, 3);
+    const exhaustedRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'configured_plan_exhausted' },
+        'chat-lock',
+      ),
+      exhaustedRes,
+    );
+    expect(exhaustedRes.statusCode).toBe(200);
+    expect(exhaustedRes.body).toMatchObject({
+      kind: 'plan-failed',
+      planTelemetry: { toolAttemptCount: 3 },
+    });
+    expect(exhaustedRes.body).not.toHaveProperty('planRequest');
+
     discardStage(getRoute, ws, stage.id);
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();

@@ -16,6 +16,11 @@ import {
   MAX_CHAT_PIPELINE_REPAIR_ATTEMPTS,
   MIN_CHAT_PIPELINE_REPAIR_ATTEMPTS,
 } from '../../../shared/chat-pipeline-repair-limit.js';
+import {
+  DEFAULT_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS,
+  MAX_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS,
+  MIN_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS,
+} from '../../../shared/chat-pipeline-trial-plan-limit.js';
 
 import { DiagnosticsSettingsSection } from '../panels/DiagnosticsSettingsSection';
 import type {
@@ -230,6 +235,37 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
               disabled={settingsInputsDisabled}
               onChange={(v) => updateField('opencodeChatTrialRunEnabled', v)}
             />
+            <div className={'flex items-center gap-2 text-[11px]'}>
+              <label htmlFor={'chat-trial-plan-attempts'} className={'text-tagma-muted'}>
+                Trial Plan attempts per revision:
+              </label>
+              <input
+                id={'chat-trial-plan-attempts'}
+                type={'number'}
+                min={MIN_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS}
+                max={MAX_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS}
+                step={1}
+                value={settings.opencodeChatTrialPlanMaxAttempts}
+                disabled={settingsInputsDisabled}
+                onChange={(e) => {
+                  const n = Number.parseInt(e.target.value, 10);
+                  if (Number.isFinite(n)) {
+                    const clamped = Math.max(
+                      MIN_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS,
+                      Math.min(MAX_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS, n),
+                    );
+                    void updateField('opencodeChatTrialPlanMaxAttempts', clamped);
+                  }
+                }}
+                className={
+                  'w-16 px-1 py-0.5 bg-tagma-surface border border-tagma-border text-tagma-text disabled:opacity-50'
+                }
+              />
+              <span className={'text-tagma-muted/70'}>
+                default {DEFAULT_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS}; each attempt is one hidden
+                planner continuation for the same YAML revision.
+              </span>
+            </div>
             <div className="flex items-center gap-2 text-[11px]">
               <label htmlFor="chat-pipeline-repair-attempts" className="text-tagma-muted">
                 Automatic repair attempts:
@@ -256,8 +292,7 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
               />
               <span className="text-tagma-muted/70">
                 0 = off; default {DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS}; compile and executed-trial
-                repair budget; it does not run the pipeline this many times. Trial-plan authoring is
-                separately limited to two attempts per YAML revision.
+                repair budget; it does not run the pipeline this many times.
               </span>
             </div>
             <ToggleRow

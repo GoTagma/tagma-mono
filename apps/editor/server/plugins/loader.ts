@@ -48,6 +48,11 @@ import {
   isValidChatPipelineRepairAttempts,
 } from '../../shared/chat-pipeline-repair-limit.js';
 import {
+  clampChatPipelineTrialPlanAttempts,
+  DEFAULT_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS,
+  isValidChatPipelineTrialPlanAttempts,
+} from '../../shared/chat-pipeline-trial-plan-limit.js';
+import {
   CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
   hasCurrentChatPipelineTrialConsent,
 } from '../../shared/chat-pipeline-trial-consent.js';
@@ -993,6 +998,11 @@ export interface EditorSettings {
   /** Versioned acknowledgement of real-workspace host command execution. */
   opencodeChatTrialRunConsentVersion: number;
   /**
+   * Maximum Trial Plan tool attempts for one YAML path and content hash.
+   * Default 2; range 1-3.
+   */
+  opencodeChatTrialPlanMaxAttempts: number;
+  /**
    * Maximum hidden repair continuations shared by compile and trial-run
    * failures for one OpenCode Chat pipeline change. Default 25; range 0-50.
    * Zero disables automatic repair while preserving compile/trial evidence.
@@ -1025,6 +1035,7 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   opencodeChatReasoningEffort: null,
   opencodeChatTrialRunEnabled: false,
   opencodeChatTrialRunConsentVersion: 0,
+  opencodeChatTrialPlanMaxAttempts: DEFAULT_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS,
   opencodeChatPipelineRepairMaxAttempts: DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS,
   chatContextLimitEnabled: false,
   chatContextRounds: 0,
@@ -1088,6 +1099,11 @@ export function readEditorSettings(ws: WorkspaceState): EditorSettings {
         : DEFAULT_EDITOR_SETTINGS.opencodeChatReasoningEffort,
       opencodeChatTrialRunEnabled,
       opencodeChatTrialRunConsentVersion,
+      opencodeChatTrialPlanMaxAttempts: isValidChatPipelineTrialPlanAttempts(
+        raw.opencodeChatTrialPlanMaxAttempts,
+      )
+        ? raw.opencodeChatTrialPlanMaxAttempts
+        : DEFAULT_EDITOR_SETTINGS.opencodeChatTrialPlanMaxAttempts,
       opencodeChatPipelineRepairMaxAttempts: isValidChatPipelineRepairAttempts(
         raw.opencodeChatPipelineRepairMaxAttempts,
       )
@@ -1164,6 +1180,11 @@ export function writeEditorSettings(
     if (patch.opencodeChatTrialRunEnabled) {
       next.opencodeChatTrialRunConsentVersion = CHAT_PIPELINE_TRIAL_CONSENT_VERSION;
     }
+  }
+  if (patch.opencodeChatTrialPlanMaxAttempts !== undefined) {
+    next.opencodeChatTrialPlanMaxAttempts = clampChatPipelineTrialPlanAttempts(
+      patch.opencodeChatTrialPlanMaxAttempts,
+    );
   }
   if (patch.opencodeChatPipelineRepairMaxAttempts !== undefined) {
     next.opencodeChatPipelineRepairMaxAttempts = clampChatPipelineRepairAttempts(

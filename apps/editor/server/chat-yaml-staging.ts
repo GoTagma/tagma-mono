@@ -63,6 +63,10 @@ import {
 import { getFileVersion } from './optimistic-lock.js';
 import { startChatCompileWatcher, stopChatCompileWatcher } from './chat-compile-watcher.js';
 import { rewriteCopiedPipelineYaml } from './pipeline-copy-paths.js';
+import {
+  DEFAULT_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS,
+  isValidChatPipelineTrialPlanAttempts,
+} from '../shared/chat-pipeline-trial-plan-limit.js';
 
 const STAGING_DIR_NAME = '.chat-staging';
 const STAGE_METADATA_FILE = 'stage.json';
@@ -194,6 +198,7 @@ interface ChatYamlStageMetadata {
   version: typeof STAGE_VERSION;
   id: string;
   createdAt: number;
+  trialPlanMaxAttempts: number;
   activeRelativePath: string | null;
   sourceRelativePaths: string[];
   baseEntries: ChatYamlStageBaseEntry[];
@@ -231,6 +236,7 @@ export interface ChatYamlStageDescriptor {
   baseWorkspaceDir: string;
   agentWorkspaceDir: string;
   agentTagmaDir: string;
+  trialPlanMaxAttempts: number;
   activeRelativePath: string | null;
   activeStagedPath: string | null;
   entries: ChatYamlStageEntry[];
@@ -563,12 +569,18 @@ function readMetadata(
     paths.metadataPath,
     stageRecordContext(paths, 'stage-metadata'),
   );
+  const trialPlanMaxAttempts = isValidChatPipelineTrialPlanAttempts(raw.trialPlanMaxAttempts)
+    ? raw.trialPlanMaxAttempts
+    : raw.trialPlanMaxAttempts === undefined
+      ? DEFAULT_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS
+      : null;
   if (
     !raw ||
     raw.version !== STAGE_VERSION ||
     raw.id !== stageId ||
     !Array.isArray(raw.sourceRelativePaths) ||
     !raw.sourceRelativePaths.every((item) => typeof item === 'string') ||
+    trialPlanMaxAttempts === null ||
     !Array.isArray(raw.baseEntries) ||
     !raw.baseEntries.every(isBaseEntry)
   ) {
@@ -580,6 +592,7 @@ function readMetadata(
       version: STAGE_VERSION,
       id: stageId,
       createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : 0,
+      trialPlanMaxAttempts,
       activeRelativePath:
         typeof raw.activeRelativePath === 'string' ? raw.activeRelativePath : null,
       sourceRelativePaths: raw.sourceRelativePaths.map(assertPortableRelativePath),
@@ -735,6 +748,7 @@ function descriptor(
     baseWorkspaceDir: paths.baseWorkspaceDir,
     agentWorkspaceDir: paths.agentWorkspaceDir,
     agentTagmaDir: paths.agentTagmaDir,
+    trialPlanMaxAttempts: metadata.trialPlanMaxAttempts,
     activeRelativePath: metadata.activeRelativePath,
     activeStagedPath: active?.stagedPath ?? null,
     entries,
@@ -776,6 +790,7 @@ export function createChatYamlStage(
       version: STAGE_VERSION,
       id,
       createdAt: Date.now(),
+      trialPlanMaxAttempts: readEditorSettings(ws).opencodeChatTrialPlanMaxAttempts,
       activeRelativePath,
       sourceRelativePaths,
       baseEntries,

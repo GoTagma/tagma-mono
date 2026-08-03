@@ -37,6 +37,7 @@ describe('EditorSettings autosave + viewMode fields', () => {
     expect(DEFAULT_EDITOR_SETTINGS.opencodeChatReasoningEffort).toBeNull();
     expect(DEFAULT_EDITOR_SETTINGS.opencodeChatTrialRunEnabled).toBe(false);
     expect(DEFAULT_EDITOR_SETTINGS.opencodeChatTrialRunConsentVersion).toBe(0);
+    expect(DEFAULT_EDITOR_SETTINGS.opencodeChatTrialPlanMaxAttempts).toBe(2);
     expect(DEFAULT_EDITOR_SETTINGS.opencodeChatPipelineRepairMaxAttempts).toBe(25);
     expect(DEFAULT_EDITOR_SETTINGS.chatContextLimitEnabled).toBe(false);
     expect(DEFAULT_EDITOR_SETTINGS.chatContextRounds).toBe(0);
@@ -52,6 +53,7 @@ describe('EditorSettings autosave + viewMode fields', () => {
     expect(s.opencodeChatReasoningEffort).toBeNull();
     expect(s.opencodeChatTrialRunEnabled).toBe(false);
     expect(s.opencodeChatTrialRunConsentVersion).toBe(0);
+    expect(s.opencodeChatTrialPlanMaxAttempts).toBe(2);
     expect(s.opencodeChatPipelineRepairMaxAttempts).toBe(25);
     expect(s.chatContextLimitEnabled).toBe(false);
     expect(s.chatContextRounds).toBe(0);
@@ -78,6 +80,7 @@ describe('EditorSettings autosave + viewMode fields', () => {
         },
         opencodeChatReasoningEffort: 'max',
         opencodeChatTrialRunEnabled: false,
+        opencodeChatTrialPlanMaxAttempts: 3,
         opencodeChatPipelineRepairMaxAttempts: 5,
         chatContextLimitEnabled: true,
         chatContextRounds: 0,
@@ -101,6 +104,7 @@ describe('EditorSettings autosave + viewMode fields', () => {
     });
     expect(s.opencodeChatReasoningEffort).toBe('max');
     expect(s.opencodeChatTrialRunEnabled).toBe(false);
+    expect(s.opencodeChatTrialPlanMaxAttempts).toBe(3);
     expect(s.opencodeChatPipelineRepairMaxAttempts).toBe(5);
     expect(s.chatContextLimitEnabled).toBe(true);
     expect(s.chatContextRounds).toBe(0);
@@ -127,6 +131,7 @@ describe('EditorSettings autosave + viewMode fields', () => {
         },
         opencodeChatReasoningEffort: '   ',
         opencodeChatTrialRunEnabled: 'no',
+        opencodeChatTrialPlanMaxAttempts: 0,
         opencodeChatPipelineRepairMaxAttempts: -1,
         chatContextLimitEnabled: 'yes',
         chatContextRounds: -1,
@@ -141,6 +146,7 @@ describe('EditorSettings autosave + viewMode fields', () => {
     expect(s.opencodeChatReasoningEffort).toBeNull();
     expect(s.opencodeChatTrialRunEnabled).toBe(false);
     expect(s.opencodeChatTrialRunConsentVersion).toBe(0);
+    expect(s.opencodeChatTrialPlanMaxAttempts).toBe(2);
     expect(s.opencodeChatPipelineRepairMaxAttempts).toBe(25);
     expect(s.chatContextLimitEnabled).toBe(false);
     expect(s.chatContextRounds).toBe(0);
@@ -214,6 +220,7 @@ describe('EditorSettings autosave + viewMode fields', () => {
       },
       opencodeChatReasoningEffort: 'xhigh',
       opencodeChatTrialRunEnabled: false,
+      opencodeChatTrialPlanMaxAttempts: 3,
       opencodeChatPipelineRepairMaxAttempts: 4,
       chatContextLimitEnabled: true,
       chatContextRounds: 12,
@@ -229,6 +236,7 @@ describe('EditorSettings autosave + viewMode fields', () => {
     });
     expect(next.opencodeChatReasoningEffort).toBe('xhigh');
     expect(next.opencodeChatTrialRunEnabled).toBe(false);
+    expect(next.opencodeChatTrialPlanMaxAttempts).toBe(3);
     expect(next.opencodeChatPipelineRepairMaxAttempts).toBe(4);
     expect(next.chatContextLimitEnabled).toBe(true);
     expect(next.chatContextRounds).toBe(12);
@@ -245,6 +253,7 @@ describe('EditorSettings autosave + viewMode fields', () => {
     });
     expect(onDisk.opencodeChatReasoningEffort).toBe('xhigh');
     expect(onDisk.opencodeChatTrialRunEnabled).toBe(false);
+    expect(onDisk.opencodeChatTrialPlanMaxAttempts).toBe(3);
     expect(onDisk.opencodeChatPipelineRepairMaxAttempts).toBe(4);
     expect(onDisk.chatContextLimitEnabled).toBe(true);
     expect(onDisk.chatContextRounds).toBe(12);
@@ -265,5 +274,22 @@ describe('EditorSettings autosave + viewMode fields', () => {
       opencodeChatPipelineRepairMaxAttempts: 3.9,
     });
     expect(fractional.opencodeChatPipelineRepairMaxAttempts).toBe(3);
+  });
+
+  test('writeEditorSettings clamps Trial Plan attempts to the supported finite range', () => {
+    const belowRange = writeEditorSettings(ws as unknown as WorkspaceState, {
+      opencodeChatTrialPlanMaxAttempts: 0,
+    });
+    expect(belowRange.opencodeChatTrialPlanMaxAttempts).toBe(1);
+
+    const aboveRange = writeEditorSettings(ws as unknown as WorkspaceState, {
+      opencodeChatTrialPlanMaxAttempts: 99,
+    });
+    expect(aboveRange.opencodeChatTrialPlanMaxAttempts).toBe(3);
+
+    const fractional = writeEditorSettings(ws as unknown as WorkspaceState, {
+      opencodeChatTrialPlanMaxAttempts: 2.9,
+    });
+    expect(fractional.opencodeChatTrialPlanMaxAttempts).toBe(2);
   });
 });
