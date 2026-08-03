@@ -369,3 +369,9 @@
 - Persisted workflow self-repair is finite and success-conditioned. The editor UI and workspace
   route must preserve `{ max_runs >= 2, stop_when: 'success', repair: true }` and must not
   collapse that policy into an ordinary fixed-count or infinite repeat mode.
+
+## Web Response Test Fixtures
+
+- When editor tests pass Node buffers to `Response`, type fixture maps as `Buffer<ArrayBuffer>` and
+  copy `readFileSync` results with `Buffer.from`; the default `Buffer<ArrayBufferLike>` is not
+  assignable to TypeScript's DOM `BodyInit` binary view.

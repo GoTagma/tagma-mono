@@ -31,7 +31,7 @@ const originalEnv = new Map(ENV_KEYS.map((key) => [key, process.env[key]]));
 interface Fixture {
   manifest: HotupdateManifest;
   manifestUrl: string;
-  assetBytes: Map<string, Buffer>;
+  assetBytes: Map<string, Buffer<ArrayBuffer>>;
   editorAssetUrl: string;
   sidecarAssetUrl: string;
   opencodeAssetUrl: string;
@@ -108,7 +108,7 @@ function createFixture(root: string, version: string, minShellVersion?: string):
   writeFileSync(join(distSource, 'index.html'), '<!doctype html><title>updated</title>');
   tar.c({ sync: true, gzip: true, file: distTarball, cwd: distSource }, ['index.html']);
 
-  const distBytes = readFileSync(distTarball);
+  const distBytes = Buffer.from(readFileSync(distTarball));
   const sidecarBytes = Buffer.from(`sidecar-${version}`);
   const opencodeBytes = Buffer.from(`opencode-${version}`);
   const baseUrl = `https://updates.example.test/user-release-journey-${version}`;
