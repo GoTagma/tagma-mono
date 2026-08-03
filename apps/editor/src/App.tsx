@@ -127,8 +127,10 @@ import {
 } from './utils/workspace-yaml-list';
 import { DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS } from '../shared/chat-pipeline-repair-limit.js';
 import { hasCurrentChatPipelineTrialConsent } from '../shared/chat-pipeline-trial-consent.js';
-
-const MAX_CHAT_TRIAL_PLAN_PROMPTS = 2;
+import {
+  DEFAULT_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS,
+  isValidChatPipelineTrialPlanAttempts,
+} from '../shared/chat-pipeline-trial-plan-limit.js';
 
 type ExplorerIntent = {
   mode: FileExplorerMode;
@@ -1324,6 +1326,11 @@ export function App() {
             }
 
             if (trialRun.kind === 'plan-required' && trialRun.planRequest) {
+              const planMaxAttempts = isValidChatPipelineTrialPlanAttempts(
+                trialRun.planRequest.maxAttempts,
+              )
+                ? trialRun.planRequest.maxAttempts
+                : DEFAULT_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS;
               const planningAccumulator = getPlanningAccumulator();
               mergeChatTrialPlanToolTelemetry(planningAccumulator, trialRun.planTelemetry);
               const planAttemptKey = `${attemptKey}:${trialRun.planRequest.pipelineHash}`;
@@ -1337,7 +1344,7 @@ export function App() {
                 shouldQueueTrialPlanPrompt({
                   attemptsForRevision: planAttempts,
                   totalAttemptsForLogicalTurn: totalPlanAttemptsForTurn,
-                  promptsPerRevision: MAX_CHAT_TRIAL_PLAN_PROMPTS,
+                  promptsPerRevision: planMaxAttempts,
                   maxRepairAttempts: maxAttempts,
                   sessionCanContinue: finishedSessionCanContinue,
                 })
@@ -1369,7 +1376,7 @@ export function App() {
                       stagedTarget,
                       trialRun.planRequest,
                       nextPlanAttempt,
-                      MAX_CHAT_TRIAL_PLAN_PROMPTS,
+                      planMaxAttempts,
                       snapshot,
                       finishedSessionId ?? undefined,
                     );

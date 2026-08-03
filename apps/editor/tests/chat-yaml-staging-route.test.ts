@@ -185,7 +185,9 @@ function makeWorkspace(
       JSON.stringify({
         opencodeChatTrialRunEnabled: true,
         opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
-        ...(trialPlanMaxAttempts === undefined ? {} : { opencodeChatTrialPlanMaxAttempts: trialPlanMaxAttempts }),
+        ...(trialPlanMaxAttempts === undefined
+          ? {}
+          : { opencodeChatTrialPlanMaxAttempts: trialPlanMaxAttempts }),
       }),
       'utf-8',
     );
@@ -422,7 +424,11 @@ describe('chat YAML staging routes', () => {
     await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
       request(
         ws,
-        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'configured_plan_required' },
+        {
+          stageId: stage.id,
+          relativePath: entry.relativePath,
+          trialId: 'configured_plan_required',
+        },
         'chat-lock',
       ),
       requiredRes,
@@ -439,7 +445,11 @@ describe('chat YAML staging routes', () => {
     await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
       request(
         ws,
-        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'configured_plan_exhausted' },
+        {
+          stageId: stage.id,
+          relativePath: entry.relativePath,
+          trialId: 'configured_plan_exhausted',
+        },
         'chat-lock',
       ),
       exhaustedRes,

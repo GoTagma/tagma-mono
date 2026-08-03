@@ -152,6 +152,7 @@ export interface ChatYamlStageDescriptor {
   baseWorkspaceDir: string;
   agentWorkspaceDir: string;
   agentTagmaDir: string;
+  trialPlanMaxAttempts?: number;
   activeRelativePath: string | null;
   activeStagedPath: string | null;
   entries: ChatYamlStageEntry[];
@@ -198,6 +199,7 @@ export interface ChatPipelineTrialPlanRequest {
   relativePlanPath: string;
   pipelineHash: string;
   message: string;
+  maxAttempts?: number;
   requiredCoverage: ChatPipelineTrialCoverageDimension[];
 }
 

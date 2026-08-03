@@ -477,7 +477,25 @@ const TOOL_ATTEMPT_LIMITS = CONTRACT.limits.toolAttemptsPerYaml;
 const MAX_REJECTION_SUMMARIES = CONTRACT.limits.rejectionSummaries;
 
 function readTrialPlanMaxAttempts(stageRoot) {
-  return TOOL_ATTEMPT_LIMITS.default;
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(join(stageRoot, 'stage.json'), 'utf8'));
+  } catch (error) {
+    if (error && typeof error === 'object' && error.code === 'ENOENT') {
+      return TOOL_ATTEMPT_LIMITS.default;
+    }
+    throw new Error('chat stage attempt budget is invalid; discard this chat stage before retrying');
+  }
+  const value = parsed && typeof parsed === 'object' ? parsed.trialPlanMaxAttempts : undefined;
+  const maxAttempts = value === undefined ? TOOL_ATTEMPT_LIMITS.default : value;
+  if (
+    !Number.isInteger(maxAttempts) ||
+    maxAttempts < TOOL_ATTEMPT_LIMITS.min ||
+    maxAttempts > TOOL_ATTEMPT_LIMITS.max
+  ) {
+    throw new Error('chat stage attempt budget is invalid; discard this chat stage before retrying');
+  }
+  return maxAttempts;
 }
 
 function trialPlanAttemptPaths(root, yamlPath, yamlHash) {
@@ -490,6 +508,7 @@ function trialPlanAttemptPaths(root, yamlPath, yamlHash) {
   return {
     relativeYamlPath,
     telemetryDir,
+    maxAttempts: readTrialPlanMaxAttempts(stageRoot),
     telemetryPath: join(telemetryDir, key + ".json"),
     lockPath: join(telemetryDir, key + ".lock"),
   };
@@ -519,7 +538,7 @@ function isValidTrialPlanAttemptTelemetry(parsed, paths, yamlHash) {
     parsed.version !== TRIAL_PLAN_ATTEMPT_TELEMETRY_VERSION ||
     parsed.yamlHash !== yamlHash ||
     parsed.relativeYamlPath !== paths.relativeYamlPath ||
-    !isTelemetryInteger(parsed.toolAttemptCount, MAX_TOOL_ATTEMPTS_PER_YAML) ||
+    !isTelemetryInteger(parsed.toolAttemptCount, paths.maxAttempts) ||
     !isTelemetryInteger(parsed.validationRejectionCount, parsed.toolAttemptCount) ||
     !isTelemetryInteger(parsed.repeatedValidationRejectionCount, parsed.validationRejectionCount) ||
     !isTelemetryInteger(parsed.successfulWriteCount, parsed.toolAttemptCount) ||
@@ -585,7 +604,7 @@ function beginTrialPlanAttempt(root, yamlPath, yamlHash) {
     closeSync(lockFd);
     locked = true;
     const telemetry = readTrialPlanAttemptTelemetry(paths, yamlHash);
-    if (telemetry.toolAttemptCount >= MAX_TOOL_ATTEMPTS_PER_YAML) {
+    if (telemetry.toolAttemptCount >= paths.maxAttempts) {
       throw new Error(
         "trial plan tool attempt budget exhausted for this staged YAML revision",
       );

@@ -119,6 +119,12 @@ afterEach(() => {
   }
 });
 
+  test('does not register the obsolete non-staged chat-result-copy route', () => {
+    expect(() => createRouteHarness().post('/api/workspace/chat-result-copy')).toThrow(
+      'Missing handler for POST /api/workspace/chat-result-copy',
+    );
+  });
+
 describe('workspace route validation', () => {
   test('POST /api/save serializes absolute workspace cwd values as portable relative paths', () => {
     const workDir = makeTempDir();

@@ -405,7 +405,9 @@ test('dedicated hidden tagma-trial-planner owns targeted Trial Plan authoring', 
     expect(planner).toContain('tagma_trial_plan: true');
     expect(planner).toContain('tagma_trial_plan: allow');
     expect(planner).toContain('exactly once per physical turn');
-    expect(planner).toContain('configured finite attempt budget for each exact staged path and YAML hash');
+    expect(planner).toContain(
+      'configured finite attempt budget for each exact staged path and YAML hash',
+    );
     expect(planner).toContain('subsequent same-key request resumes this planner task');
     expect(planner).not.toContain('two-call budget');
     expect(planner).not.toContain('Never attempt a third same-key call');

@@ -36,7 +36,6 @@ import {
 import { CHAT_PIPELINE_TRIAL_CACHE_VERSION } from './chat-pipeline-trial-cache.js';
 import { hasCurrentChatPipelineTrialConsent } from '../shared/chat-pipeline-trial-consent.js';
 import {
-  CHAT_PIPELINE_TRIAL_PLAN_CONTRACT,
   readChatPipelineTrialPlan,
   readChatPipelineTrialPlanToolTelemetry,
   type ChatPipelineTrialExpectation,
@@ -1873,7 +1872,10 @@ export async function trialRunChatYamlStage(
   );
   let pendingRunReservation: ReturnType<typeof beginRunSessionStart> = null;
   try {
-    const planTelemetry = readChatPipelineTrialPlanToolTelemetry(entry.stagedPath);
+    const planTelemetry = readChatPipelineTrialPlanToolTelemetry(
+      entry.stagedPath,
+      stage.trialPlanMaxAttempts,
+    );
     if (planTelemetry.yamlHash !== snapshot.contentHash) {
       throw new Error('Staged YAML changed while Trial was preparing; retry the Trial run.');
     }
@@ -1881,12 +1883,10 @@ export async function trialRunChatYamlStage(
       snapshot.yamlPath,
       entry.relativePath,
       snapshot.contentHash,
+      stage.trialPlanMaxAttempts,
     );
     if (planRead.status === 'required') {
-      if (
-        planTelemetry.toolAttemptCount >=
-        CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.toolAttemptsPerYaml
-      ) {
+      if (planTelemetry.toolAttemptCount >= stage.trialPlanMaxAttempts) {
         return resultForPlanAttemptBudgetExhausted(planTelemetry, startedAt);
       }
       return resultForPlanRequest(planRead.request, planTelemetry, startedAt);

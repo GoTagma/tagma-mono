@@ -51,6 +51,10 @@
 
 ## Chat YAML Branch Isolation
 
+- A non-null Chat YAML snapshot is always bound to its required stage and exists only in renderer
+  memory for that logical turn. Publish pipeline results only through staged finalize; do not
+  reintroduce a live-edit/copy/restore fallback such as `/api/workspace/chat-result-copy` for
+  snapshots without staging.
 - Start every workspace-backed logical chat turn with an isolated
   `.tagma/.chat-staging/<id>/` branch. Copy each pipeline's YAML, layout, requirements,
   manifest, and compile log into separate base and agent workspaces; bind OpenCode's prompt
@@ -90,9 +94,11 @@
   dedicated hidden same-turn planning continuation that may only call `tagma_trial_plan` and may
   not edit pipeline artifacts. Ordinary router and pipeline-authoring agents must explicitly deny
   that tool so build or repair turns cannot consume the planner's revision-bound attempts.
-  Enforce the two-call budget in the host tool per relative YAML plus YAML hash, not only in prompt
-  text; serialize concurrent attempts, fail closed on corrupt or exhausted telemetry, and summarize
-  repeated equivalent rejections. Accumulate prompts, tool attempts, rejections, elapsed time, and
+  Enforce the configured per-stage attempt budget in the host tool per relative YAML plus YAML hash,
+  not only in prompt text. Snapshot the workspace setting when the authenticated stage is created;
+  the default is `2` and the allowed range is `1-3`. Serialize concurrent attempts, fail closed on
+  corrupt or exhausted telemetry, and summarize repeated equivalent rejections. Accumulate prompts,
+  tool attempts, rejections, elapsed time, and
   unique assistant token/cost evidence across repair revisions. Never publish the plan file.
   Generate the tool's enums and limits from the authoritative host contract, expose discriminated
   expectation schemas, and run the complete semantic validator before the atomic write. The tool
@@ -172,6 +178,9 @@
 - Keep the shared compile/trial hidden-repair budget in the workspace Editor setting
   `opencodeChatPipelineRepairMaxAttempts`: default `25`, allowed range `0-50`, with `0` disabling
   automatic repair. The settings panel keeps it beside the trial-run toggle.
+- Keep the per-revision Trial Plan tool budget in the workspace Editor setting
+  `opencodeChatTrialPlanMaxAttempts`: default `2`, allowed range `1-3`. Apply changes to newly
+  created authenticated chat stages so one stage never changes budgets mid-lifecycle.
 - Only a successful finalize may mutate the live workspace or advance its revision. Finalize is
   idempotent after response loss, artifact writes roll back together on failure, and abandoned
   or expired stages must stop their compile watcher and be removed.

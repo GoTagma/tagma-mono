@@ -57,9 +57,14 @@ describe('Editor Settings OpenCode Chat trial-run controls', () => {
     expect(source).toContain('shouldQueueTrialPlanPrompt({');
     expect(source).toContain('attemptsForRevision: planAttempts');
     expect(source).toContain('totalAttemptsForLogicalTurn: totalPlanAttemptsForTurn');
-    expect(source).toContain('promptsPerRevision: MAX_CHAT_TRIAL_PLAN_PROMPTS');
+    expect(source).toContain('isValidChatPipelineTrialPlanAttempts(');
+    expect(source).toContain('trialRun.planRequest.maxAttempts');
+    expect(source).toContain('DEFAULT_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS');
+    expect(source).toContain('promptsPerRevision: planMaxAttempts');
+    expect(source).not.toContain('const MAX_CHAT_TRIAL_PLAN_PROMPTS = 2');
     expect(source).toContain('maxRepairAttempts: maxAttempts');
     expect(source).toContain('sessionCanContinue: finishedSessionCanContinue');
+    expect(source).toContain('nextPlanAttempt,\n                      planMaxAttempts,');
     expect(source).not.toContain('maxPlanAttemptsForTurn');
     expect(source).toContain('beginChatTrialPlanningPrompt(planningAccumulator');
     expect(source).toContain('completeChatTrialPlanningPrompt(accumulator');
