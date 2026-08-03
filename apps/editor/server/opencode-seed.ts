@@ -45,6 +45,7 @@ export const TAGMA_COMMAND_EVIDENCE_AGENT = 'tagma-command-evidence';
 export const TAGMA_RUNTIME_GUARD_AGENT = 'tagma-runtime-guard';
 export const TAGMA_CONTEXT_PACKAGER_AGENT = 'tagma-context-packager';
 export const TAGMA_PIPELINE_SECTION_BUILDER_AGENT = 'tagma-pipeline-section-builder';
+export const TAGMA_TRIAL_PLANNER_AGENT = 'tagma-trial-planner';
 
 export function buildTagmaRouterAgent(): string {
   return `---

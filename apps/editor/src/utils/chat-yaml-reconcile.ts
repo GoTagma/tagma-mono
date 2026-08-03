@@ -313,6 +313,31 @@ export function shouldAutoRepairCompileResult(
   return !result.success && attemptCount < maxAttempts;
 }
 
+export function maxTrialPlanPromptsForLogicalTurn(args: {
+  promptsPerRevision: number;
+  maxRepairAttempts: number;
+}): number {
+  return args.promptsPerRevision * (args.maxRepairAttempts + 1);
+}
+
+export function shouldQueueTrialPlanPrompt(args: {
+  attemptsForRevision: number;
+  totalAttemptsForLogicalTurn: number;
+  promptsPerRevision: number;
+  maxRepairAttempts: number;
+  sessionCanContinue: boolean;
+}): boolean {
+  return (
+    args.sessionCanContinue &&
+    args.attemptsForRevision < args.promptsPerRevision &&
+    args.totalAttemptsForLogicalTurn <
+      maxTrialPlanPromptsForLogicalTurn({
+        promptsPerRevision: args.promptsPerRevision,
+        maxRepairAttempts: args.maxRepairAttempts,
+      })
+  );
+}
+
 export function shouldAutoRepairTrialResult(
   result: {
     success: boolean;

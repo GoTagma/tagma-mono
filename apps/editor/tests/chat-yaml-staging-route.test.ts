@@ -314,7 +314,7 @@ afterEach(() => {
 });
 
 describe('chat YAML staging routes', () => {
-  test('requires an AI-authored hash-bound test plan before executing a staged pipeline', async () => {
+  test('requires an AI-authored hash-bound test plan when no plan attempts have been made', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();
     const startRes = makeRes();
@@ -352,7 +352,6 @@ describe('chat YAML staging routes', () => {
       }),
       'utf-8',
     );
-    writeTrialPlanTelemetry(entry.stagedPath);
     const trialRes = makeRes();
     await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
       request(
@@ -373,13 +372,84 @@ describe('chat YAML staging routes', () => {
         relativePlanPath: entry.relativePath.replace(/\.ya?ml$/i, '.trial-plan.json'),
       },
       planTelemetry: {
+        toolAttemptCount: 0,
+        validationRejectionCount: 0,
+        repeatedValidationRejectionCount: 0,
+        elapsedMs: 0,
+      },
+    });
+    expect(existsSync(join(ws.workDir, 'ran-before-plan.txt'))).toBe(false);
+    discardStage(getRoute, ws, stage.id);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('fails closed when the missing trial plan has exhausted its tool attempt budget', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    const markerPath = join(ws.workDir, 'ran-after-exhausted-plan-budget.txt');
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Plan Budget Exhausted',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              {
+                id: 'should_not_run',
+                command: {
+                  argv: [
+                    process.execPath,
+                    '-e',
+                    `require('node:fs').writeFileSync(${JSON.stringify(markerPath)}, 'bad')`,
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    writeTrialPlanTelemetry(entry.stagedPath);
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'plan_budget_exhausted' },
+        'chat-lock',
+      ),
+      trialRes,
+    );
+
+    expect(trialRes.statusCode).toBe(200);
+    expect(trialRes.body).toMatchObject({
+      success: false,
+      kind: 'plan-failed',
+      ran: false,
+      repairAuthorization: 'diagnostic-only',
+      planTelemetry: {
         toolAttemptCount: 2,
         validationRejectionCount: 2,
         repeatedValidationRejectionCount: 1,
         elapsedMs: 150,
       },
     });
-    expect(existsSync(join(ws.workDir, 'ran-before-plan.txt'))).toBe(false);
+    expect(trialRes.body).not.toHaveProperty('planRequest');
+    expect(trialRes.body.summary).toContain('attempt budget exhausted');
+    expect(existsSync(markerPath)).toBe(false);
     discardStage(getRoute, ws, stage.id);
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();

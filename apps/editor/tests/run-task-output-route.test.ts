@@ -298,10 +298,7 @@ test('builds fix context for a failed task without output artifacts', async () =
 
   const { port, close } = await startApp(buildApp());
   try {
-    const res = await getReq(
-      port,
-      `/api/run/history/${RUN_ID}/ask-ai-context?taskId=t.a&mode=fix`,
-    );
+    const res = await getReq(port, `/api/run/history/${RUN_ID}/ask-ai-context?taskId=t.a&mode=fix`);
     expect(res.status).toBe(200);
     const body = JSON.parse(res.body) as { label: string; content: string };
     expect(body.label).toContain('t.a');

@@ -201,9 +201,13 @@ test('tagma-router delegates history comparisons without read/edit powers', () =
   expect(doc).toContain('Do not include YAML schema guidance unless the question asks for it');
   expect(doc).toContain('general_direct_answer');
   expect(doc).toContain('answer directly before delegation');
-  expect(doc).toContain('Host <tagma-internal> trial-plan/repair');
-  expect(doc).toContain('authorized pipeline_work');
-  expect(doc).toContain('pass it unchanged');
+  expect(doc).toContain('targeted_trial_planning');
+  expect(doc).toContain('tagma-trial-planner');
+  expect(doc).toContain('Host `<tagma-internal>` targeted Trial Plan');
+  expect(doc).toContain('same staged path and YAML hash');
+  expect(doc).toContain('resume the prior planner task');
+  expect(doc).toContain('tagma_trial_plan: false');
+  expect(doc).toContain('tagma_trial_plan: deny');
   expect(doc).toContain('Never forward raw full transcript excerpts');
   expect(doc).toContain('read: deny');
   expect(doc).toContain('edit: deny');
@@ -376,21 +380,53 @@ test('tagma-pipeline agent cooperates with optional host trial-run repair before
   expect(doc).toContain('Never claim it passed without host evidence');
 });
 
-test('tagma-pipeline plans edge-case verification before host trial execution', () => {
-  const doc = buildTagmaPipelineAgent('Windows');
+test('dedicated hidden tagma-trial-planner owns targeted Trial Plan authoring', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tagma-trial-planner-agent-'));
+  try {
+    seedOpencodeArtifacts(dir);
+    const planner = readFileSync(
+      join(dir, '.opencode', 'agents', 'tagma-trial-planner.md'),
+      'utf8',
+    );
+    const pipeline = buildTagmaPipelineAgent('Windows');
 
-  expect(doc).toContain('tagma_trial_plan: true');
-  expect(doc).toContain('tagma_trial_plan: allow');
-  expect(doc).toContain('## Behavior And Edge-Case Plan');
-  expect(doc).toContain('duplicate input names');
-  expect(doc).toContain('output collisions');
-  expect(doc).toContain('multi-paragraph');
-  expect(doc).toContain('empty content');
-  expect(doc).toContain('special characters');
-  expect(doc).toContain('repeated runs');
-  expect(doc).toContain('Use file-equals when exact text preservation matters');
-  expect(doc).toContain('an empty expected string for empty-content cases');
-  expect(doc).toContain('Call `tagma_trial_plan` only after the final YAML compile succeeds');
+    expect(planner).toContain('name: tagma-trial-planner');
+    expect(planner).toContain('mode: subagent');
+    expect(planner).toContain('hidden: true');
+    expect(planner).toContain('read: true');
+    expect(planner).toContain('glob: true');
+    expect(planner).toContain('grep: true');
+    expect(planner).toContain('list: true');
+    expect(planner).toContain('edit: false');
+    expect(planner).toContain('bash: false');
+    expect(planner).toContain('task: false');
+    expect(planner).toContain('tagma_yaml_skeleton: false');
+    expect(planner).toContain('tagma_placement_plan: false');
+    expect(planner).toContain('tagma_trial_plan: true');
+    expect(planner).toContain('tagma_trial_plan: allow');
+    expect(planner).toContain('exactly once per physical turn');
+    expect(planner).toContain('two-call budget for each exact staged path and YAML hash');
+    expect(planner).toContain('## Trial Plan Contract And Edge Cases');
+    expect(planner).toContain('duplicate input names');
+    expect(planner).toContain('output collisions');
+    expect(planner).toContain('multi-paragraph');
+    expect(planner).toContain('empty content');
+    expect(planner).toContain('special characters');
+    expect(planner).toContain('repeated runs');
+    expect(planner).toContain('Use file-equals when exact text preservation matters');
+    expect(planner).toContain('an empty expected string for empty-content cases');
+    expect(planner).toContain('Pass the exact staged YAML path');
+
+    expect(pipeline).toContain('tagma_trial_plan: false');
+    expect(pipeline).toContain('tagma_trial_plan: deny');
+    expect(pipeline).toContain('Once final compile succeeds, call no more tools');
+    expect(pipeline).toContain('Host enters a dedicated planning phase when Trial is enabled');
+    expect(pipeline).not.toContain('tagma_trial_plan: true');
+    expect(pipeline).not.toContain('tagma_trial_plan: allow');
+    expect(pipeline).not.toContain('Call `tagma_trial_plan` only after the final YAML compile succeeds');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('tagma-pipeline agent treats explicit creation as higher priority than existing name matches', () => {
@@ -845,19 +881,25 @@ test('trial-plan tool resolves paths from the host-provided workspace root', () 
   expect(doc).not.toContain('process.cwd()');
 });
 
-test('tagma-pipeline agent instructs host trial-plan failure handling for live .tagma safety', () => {
-  const doc = buildTagmaPipelineAgent('Windows');
+test('tagma-trial-planner instructs host trial-plan failure handling for live .tagma safety', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tagma-trial-planner-safety-'));
+  try {
+    seedOpencodeArtifacts(dir);
+    const doc = readFileSync(join(dir, '.opencode', 'agents', 'tagma-trial-planner.md'), 'utf8');
 
-  expect(doc).toContain('If `tagma_trial_plan` fails');
-  expect(doc).toContain('Pass the exact staged YAML path');
-  expect(doc).toContain('The tool validates the complete plan before writing');
-  expect(doc).toContain('relative to the isolated case project root');
-  expect(doc).toContain('never assert staged YAML or its companion artifacts');
-  expect(doc).toContain('Never copy YAML or trial plans between staging and live `.tagma`');
-  expect(doc).toContain('do not use symlinks, junctions, copies, or writes to live `.tagma`');
-  expect(doc).toContain('briefly report the host/tool error and end the physical turn');
-  expect(doc).toContain('Every finding must set `repairScope`');
-  expect(doc).toContain('Blocked coverage is diagnostic-only');
+    expect(doc).toContain('If `tagma_trial_plan` fails');
+    expect(doc).toContain('Pass the exact staged YAML path');
+    expect(doc).toContain('The tool validates the complete plan before writing');
+    expect(doc).toContain('relative to the isolated case project root');
+    expect(doc).toContain('never assert staged YAML or its companion artifacts');
+    expect(doc).toContain('Never copy YAML or trial plans between staging and live `.tagma`');
+    expect(doc).toContain('do not use symlinks, junctions, copies, or writes to live `.tagma`');
+    expect(doc).toContain('briefly report the host/tool error and end the physical turn');
+    expect(doc).toContain('Every finding must set `repairScope`');
+    expect(doc).toContain('Blocked coverage is diagnostic-only');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('tagma-pipeline agent prefers host-native commands before Python glue', () => {
@@ -958,6 +1000,7 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   const runtimeGuardAgent = join(agentsDir, 'tagma-runtime-guard.md');
   const contextPackagerAgent = join(agentsDir, 'tagma-context-packager.md');
   const sectionBuilderAgent = join(agentsDir, 'tagma-pipeline-section-builder.md');
+  const trialPlannerAgent = join(agentsDir, 'tagma-trial-planner.md');
   const pythonAgent = join(agentsDir, 'tagma-python-tools.md');
   const managedAgents = [
     routerAgent,
@@ -971,6 +1014,7 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
     runtimeGuardAgent,
     contextPackagerAgent,
     sectionBuilderAgent,
+    trialPlannerAgent,
     pythonAgent,
   ];
   const skeletonTool = join(dir, '.opencode', 'tools', 'tagma_yaml_skeleton.ts');
@@ -1019,6 +1063,9 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   expect(readFileSync(sectionBuilderAgent, 'utf8')).toContain(
     'Implement exactly one manifest section',
   );
+  expect(existsSync(trialPlannerAgent)).toBe(true);
+  expect(readFileSync(trialPlannerAgent, 'utf8')).toContain('name: tagma-trial-planner');
+  expect(readFileSync(trialPlannerAgent, 'utf8')).toContain('tagma_trial_plan: allow');
   expect(existsSync(pythonAgent)).toBe(true);
   expect(readFileSync(pythonAgent, 'utf8')).toContain('name: tagma-python-tools');
   expect(readFileSync(pythonAgent, 'utf8')).toContain('hidden: true');
@@ -1113,6 +1160,7 @@ test('seedOpencodeArtifacts applies repeated global step-limit changes to every 
     'tagma-runtime-guard.md',
     'tagma-context-packager.md',
     'tagma-pipeline-section-builder.md',
+    'tagma-trial-planner.md',
     'tagma-python-tools.md',
   ];
 
@@ -1151,6 +1199,7 @@ test('seedOpencodeArtifacts prunes stale agents left by an older editor', () => 
   writeFileSync(join(singularDir, 'tagma-router.md'), 'stale', 'utf8');
   writeFileSync(join(singularDir, 'tagma-pipeline-diagnosis.md'), 'stale', 'utf8');
   writeFileSync(join(singularDir, 'tagma-pipeline-planner.md'), 'stale', 'utf8');
+  writeFileSync(join(singularDir, 'tagma-trial-planner.md'), 'stale', 'utf8');
   writeFileSync(join(singularDir, 'tagma-yaml.md'), 'stale', 'utf8');
   writeFileSync(join(pluralDir, 'tagma-pipeline-create.md'), 'stale', 'utf8');
   writeFileSync(join(pluralDir, 'tagma-pipeline-edit.md'), 'stale', 'utf8');
@@ -1161,6 +1210,7 @@ test('seedOpencodeArtifacts prunes stale agents left by an older editor', () => 
   expect(existsSync(join(singularDir, 'tagma-router.md'))).toBe(false);
   expect(existsSync(join(singularDir, 'tagma-pipeline-diagnosis.md'))).toBe(false);
   expect(existsSync(join(singularDir, 'tagma-pipeline-planner.md'))).toBe(false);
+  expect(existsSync(join(singularDir, 'tagma-trial-planner.md'))).toBe(false);
   expect(existsSync(join(singularDir, 'tagma-yaml.md'))).toBe(false);
   expect(existsSync(join(pluralDir, 'tagma-pipeline-create.md'))).toBe(false);
   expect(existsSync(join(pluralDir, 'tagma-pipeline-edit.md'))).toBe(false);
@@ -1170,4 +1220,5 @@ test('seedOpencodeArtifacts prunes stale agents left by an older editor', () => 
   expect(existsSync(join(pluralDir, 'tagma-pipeline.md'))).toBe(true);
   expect(existsSync(join(pluralDir, 'tagma-pipeline-diagnosis.md'))).toBe(true);
   expect(existsSync(join(pluralDir, 'tagma-pipeline-planner.md'))).toBe(true);
+  expect(existsSync(join(pluralDir, 'tagma-trial-planner.md'))).toBe(true);
 });

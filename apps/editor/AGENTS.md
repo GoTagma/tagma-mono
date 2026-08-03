@@ -83,10 +83,12 @@
   external state. When disabled or unconsented, compile success is sufficient for finalization;
   do not fabricate trial evidence.
 - Before an enabled trial executes, require a transient sibling trial-plan JSON file authored
-  from the final compiled YAML and bound to its SHA-1. Missing, stale, or invalid plans trigger a hidden
-  same-turn planning continuation that may only call tagma_trial_plan and may not edit pipeline
-  artifacts. Enforce the two-call budget in the host tool per relative YAML plus YAML hash, not only
-  in prompt text; serialize concurrent attempts, fail closed on corrupt telemetry, and summarize
+  from the final compiled YAML and bound to its SHA-1. Missing, stale, or invalid plans trigger a
+  dedicated hidden same-turn planning continuation that may only call `tagma_trial_plan` and may
+  not edit pipeline artifacts. Ordinary router and pipeline-authoring agents must explicitly deny
+  that tool so build or repair turns cannot consume the planner's revision-bound attempts.
+  Enforce the two-call budget in the host tool per relative YAML plus YAML hash, not only in prompt
+  text; serialize concurrent attempts, fail closed on corrupt or exhausted telemetry, and summarize
   repeated equivalent rejections. Accumulate prompts, tool attempts, rejections, elapsed time, and
   unique assistant token/cost evidence across repair revisions. Never publish the plan file.
   Generate the tool's enums and limits from the authoritative host contract, expose discriminated

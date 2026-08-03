@@ -2433,11 +2433,7 @@ export const api = {
     }
   },
 
-  getRunHistoryAskAiContext: (
-    runId: string,
-    taskId: string,
-    mode: 'compare' | 'fix' = 'compare',
-  ) =>
+  getRunHistoryAskAiContext: (runId: string, taskId: string, mode: 'compare' | 'fix' = 'compare') =>
     request<RunHistoryAskAiContext>(
       `/run/history/${encodeURIComponent(runId)}/ask-ai-context?taskId=${encodeURIComponent(
         taskId,

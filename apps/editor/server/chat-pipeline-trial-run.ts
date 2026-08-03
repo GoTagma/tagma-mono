@@ -36,6 +36,7 @@ import {
 import { CHAT_PIPELINE_TRIAL_CACHE_VERSION } from './chat-pipeline-trial-cache.js';
 import { hasCurrentChatPipelineTrialConsent } from '../shared/chat-pipeline-trial-consent.js';
 import {
+  CHAT_PIPELINE_TRIAL_PLAN_CONTRACT,
   readChatPipelineTrialPlan,
   readChatPipelineTrialPlanToolTelemetry,
   type ChatPipelineTrialExpectation,
@@ -647,6 +648,29 @@ function resultForPlanRequest(
     tasks: [],
     planTelemetry,
     planRequest: request,
+    cases: [],
+  };
+}
+
+function resultForPlanAttemptBudgetExhausted(
+  planTelemetry: ChatPipelineTrialPlanToolTelemetry,
+  startedAt: number,
+): ChatPipelineTrialRunResult {
+  return {
+    version: TRIAL_CACHE_VERSION,
+    success: false,
+    kind: 'plan-failed',
+    ran: false,
+    runId: null,
+    summary: boundedTrialText(
+      'Trial plan tool attempt budget exhausted for this staged YAML revision.',
+    ),
+    durationMs: Math.max(0, Date.now() - startedAt),
+    totalTaskCount: 0,
+    omittedTaskCount: 0,
+    tasks: [],
+    repairAuthorization: 'diagnostic-only',
+    planTelemetry,
     cases: [],
   };
 }
@@ -1859,6 +1883,12 @@ export async function trialRunChatYamlStage(
       snapshot.contentHash,
     );
     if (planRead.status === 'required') {
+      if (
+        planTelemetry.toolAttemptCount >=
+        CHAT_PIPELINE_TRIAL_PLAN_CONTRACT.limits.toolAttemptsPerYaml
+      ) {
+        return resultForPlanAttemptBudgetExhausted(planTelemetry, startedAt);
+      }
       return resultForPlanRequest(planRead.request, planTelemetry, startedAt);
     }
     const inputHash = buildChatPipelineTrialInputHash({

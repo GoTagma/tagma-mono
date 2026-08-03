@@ -4,12 +4,14 @@ import { join } from 'node:path';
 import {
   detectChatStagedYamlTarget,
   detectChatYamlTarget,
+  maxTrialPlanPromptsForLogicalTurn,
   shouldAdoptChatYamlTargetOnCurrentCanvas,
   shouldAdoptFinalizedChatStateOnCurrentCanvas,
   shouldForkChatYamlResult,
   shouldAutoRepairCompileResult,
   shouldAutoRepairTrialResult,
   shouldReverifyChatPipelineAfterRepair,
+  shouldQueueTrialPlanPrompt,
   chatPipelineVerificationSucceeded,
   shouldTrialRunChatPipeline,
   type ChatPipelineRepairArtifactState,
@@ -376,6 +378,61 @@ describe('shouldAutoRepairCompileResult', () => {
     ).toBe(false);
     expect(shouldAutoRepairTrialResult({ success: false, kind: 'plan-failed' }, 0, 2)).toBe(false);
     expect(shouldAutoRepairTrialResult({ success: false, kind: 'failed' }, 0, 2)).toBe(false);
+  });
+});
+
+describe('Trial Plan prompt fuse', () => {
+  test('budgets two prompts for the initial YAML revision and every allowed repair revision', () => {
+    expect(
+      maxTrialPlanPromptsForLogicalTurn({ promptsPerRevision: 2, maxRepairAttempts: 0 }),
+    ).toBe(2);
+    expect(
+      maxTrialPlanPromptsForLogicalTurn({ promptsPerRevision: 2, maxRepairAttempts: 25 }),
+    ).toBe(52);
+    expect(
+      maxTrialPlanPromptsForLogicalTurn({ promptsPerRevision: 2, maxRepairAttempts: 50 }),
+    ).toBe(102);
+  });
+
+  test('rejects a third prompt for the same YAML revision', () => {
+    expect(
+      shouldQueueTrialPlanPrompt({
+        attemptsForRevision: 2,
+        totalAttemptsForLogicalTurn: 2,
+        promptsPerRevision: 2,
+        maxRepairAttempts: 25,
+        sessionCanContinue: true,
+      }),
+    ).toBe(false);
+  });
+
+  test('rejects prompts when the finished session cannot continue', () => {
+    expect(
+      shouldQueueTrialPlanPrompt({
+        attemptsForRevision: 0,
+        totalAttemptsForLogicalTurn: 0,
+        promptsPerRevision: 2,
+        maxRepairAttempts: 25,
+        sessionCanContinue: false,
+      }),
+    ).toBe(false);
+  });
+
+  test('gives a new YAML revision two prompts after earlier revisions used their allowance', () => {
+    const decision = (attemptsForRevision: number, totalAttemptsForLogicalTurn: number) =>
+      shouldQueueTrialPlanPrompt({
+        attemptsForRevision,
+        totalAttemptsForLogicalTurn,
+        promptsPerRevision: 2,
+        maxRepairAttempts: 1,
+        sessionCanContinue: true,
+      });
+
+    expect([
+      decision(0, 2),
+      decision(1, 3),
+      decision(0, 4),
+    ]).toEqual([true, true, false]);
   });
 });
 
