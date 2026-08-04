@@ -39,6 +39,9 @@ describe('EditorSettings autosave + viewMode fields', () => {
     expect(DEFAULT_EDITOR_SETTINGS.opencodeChatTrialRunConsentVersion).toBe(0);
     expect(DEFAULT_EDITOR_SETTINGS.opencodeChatTrialPlanMaxAttempts).toBe(2);
     expect(DEFAULT_EDITOR_SETTINGS.opencodeChatPipelineRepairMaxAttempts).toBe(25);
+    expect(DEFAULT_EDITOR_SETTINGS.pipelineDefaultTaskTimeoutMinutes).toBe(120);
+    expect(DEFAULT_EDITOR_SETTINGS.pipelineDefaultRunTimeoutMinutes).toBe(480);
+    expect(DEFAULT_EDITOR_SETTINGS.opencodeChatTrialRunTimeoutMinutes).toBe(1_440);
     expect(DEFAULT_EDITOR_SETTINGS.chatContextLimitEnabled).toBe(false);
     expect(DEFAULT_EDITOR_SETTINGS.chatContextRounds).toBe(0);
   });
@@ -55,6 +58,9 @@ describe('EditorSettings autosave + viewMode fields', () => {
     expect(s.opencodeChatTrialRunConsentVersion).toBe(0);
     expect(s.opencodeChatTrialPlanMaxAttempts).toBe(2);
     expect(s.opencodeChatPipelineRepairMaxAttempts).toBe(25);
+    expect(s.pipelineDefaultTaskTimeoutMinutes).toBe(120);
+    expect(s.pipelineDefaultRunTimeoutMinutes).toBe(480);
+    expect(s.opencodeChatTrialRunTimeoutMinutes).toBe(1_440);
     expect(s.chatContextLimitEnabled).toBe(false);
     expect(s.chatContextRounds).toBe(0);
   });
@@ -82,6 +88,9 @@ describe('EditorSettings autosave + viewMode fields', () => {
         opencodeChatTrialRunEnabled: false,
         opencodeChatTrialPlanMaxAttempts: 3,
         opencodeChatPipelineRepairMaxAttempts: 5,
+        pipelineDefaultTaskTimeoutMinutes: 180,
+        pipelineDefaultRunTimeoutMinutes: 720,
+        opencodeChatTrialRunTimeoutMinutes: 2_880,
         chatContextLimitEnabled: true,
         chatContextRounds: 0,
       }),
@@ -106,6 +115,9 @@ describe('EditorSettings autosave + viewMode fields', () => {
     expect(s.opencodeChatTrialRunEnabled).toBe(false);
     expect(s.opencodeChatTrialPlanMaxAttempts).toBe(3);
     expect(s.opencodeChatPipelineRepairMaxAttempts).toBe(5);
+    expect(s.pipelineDefaultTaskTimeoutMinutes).toBe(180);
+    expect(s.pipelineDefaultRunTimeoutMinutes).toBe(720);
+    expect(s.opencodeChatTrialRunTimeoutMinutes).toBe(2_880);
     expect(s.chatContextLimitEnabled).toBe(true);
     expect(s.chatContextRounds).toBe(0);
   });
@@ -133,6 +145,9 @@ describe('EditorSettings autosave + viewMode fields', () => {
         opencodeChatTrialRunEnabled: 'no',
         opencodeChatTrialPlanMaxAttempts: 0,
         opencodeChatPipelineRepairMaxAttempts: -1,
+        pipelineDefaultTaskTimeoutMinutes: 5,
+        pipelineDefaultRunTimeoutMinutes: 'forever',
+        opencodeChatTrialRunTimeoutMinutes: 99_999,
         chatContextLimitEnabled: 'yes',
         chatContextRounds: -1,
       }),
@@ -148,6 +163,9 @@ describe('EditorSettings autosave + viewMode fields', () => {
     expect(s.opencodeChatTrialRunConsentVersion).toBe(0);
     expect(s.opencodeChatTrialPlanMaxAttempts).toBe(2);
     expect(s.opencodeChatPipelineRepairMaxAttempts).toBe(25);
+    expect(s.pipelineDefaultTaskTimeoutMinutes).toBe(120);
+    expect(s.pipelineDefaultRunTimeoutMinutes).toBe(480);
+    expect(s.opencodeChatTrialRunTimeoutMinutes).toBe(1_440);
     expect(s.chatContextLimitEnabled).toBe(false);
     expect(s.chatContextRounds).toBe(0);
   });
@@ -222,6 +240,9 @@ describe('EditorSettings autosave + viewMode fields', () => {
       opencodeChatTrialRunEnabled: false,
       opencodeChatTrialPlanMaxAttempts: 3,
       opencodeChatPipelineRepairMaxAttempts: 4,
+      pipelineDefaultTaskTimeoutMinutes: 240,
+      pipelineDefaultRunTimeoutMinutes: 960,
+      opencodeChatTrialRunTimeoutMinutes: 4_320,
       chatContextLimitEnabled: true,
       chatContextRounds: 12,
     });
@@ -238,6 +259,9 @@ describe('EditorSettings autosave + viewMode fields', () => {
     expect(next.opencodeChatTrialRunEnabled).toBe(false);
     expect(next.opencodeChatTrialPlanMaxAttempts).toBe(3);
     expect(next.opencodeChatPipelineRepairMaxAttempts).toBe(4);
+    expect(next.pipelineDefaultTaskTimeoutMinutes).toBe(240);
+    expect(next.pipelineDefaultRunTimeoutMinutes).toBe(960);
+    expect(next.opencodeChatTrialRunTimeoutMinutes).toBe(4_320);
     expect(next.chatContextLimitEnabled).toBe(true);
     expect(next.chatContextRounds).toBe(12);
     const onDisk = JSON.parse(
@@ -255,6 +279,9 @@ describe('EditorSettings autosave + viewMode fields', () => {
     expect(onDisk.opencodeChatTrialRunEnabled).toBe(false);
     expect(onDisk.opencodeChatTrialPlanMaxAttempts).toBe(3);
     expect(onDisk.opencodeChatPipelineRepairMaxAttempts).toBe(4);
+    expect(onDisk.pipelineDefaultTaskTimeoutMinutes).toBe(240);
+    expect(onDisk.pipelineDefaultRunTimeoutMinutes).toBe(960);
+    expect(onDisk.opencodeChatTrialRunTimeoutMinutes).toBe(4_320);
     expect(onDisk.chatContextLimitEnabled).toBe(true);
     expect(onDisk.chatContextRounds).toBe(12);
   });
@@ -291,5 +318,26 @@ describe('EditorSettings autosave + viewMode fields', () => {
       opencodeChatTrialPlanMaxAttempts: 2.9,
     });
     expect(fractional.opencodeChatTrialPlanMaxAttempts).toBe(2);
+  });
+
+  test('writeEditorSettings clamps execution budgets and keeps outer lifecycles above tasks', () => {
+    const clamped = writeEditorSettings(ws as unknown as WorkspaceState, {
+      pipelineDefaultTaskTimeoutMinutes: 2_000,
+      pipelineDefaultRunTimeoutMinutes: 10,
+      opencodeChatTrialRunTimeoutMinutes: 10,
+    });
+
+    expect(clamped.pipelineDefaultTaskTimeoutMinutes).toBe(1_440);
+    expect(clamped.pipelineDefaultRunTimeoutMinutes).toBe(1_470);
+    expect(clamped.opencodeChatTrialRunTimeoutMinutes).toBe(1_470);
+
+    const fractional = writeEditorSettings(ws as unknown as WorkspaceState, {
+      pipelineDefaultTaskTimeoutMinutes: 60.9,
+      pipelineDefaultRunTimeoutMinutes: 90.9,
+      opencodeChatTrialRunTimeoutMinutes: 120.9,
+    });
+    expect(fractional.pipelineDefaultTaskTimeoutMinutes).toBe(60);
+    expect(fractional.pipelineDefaultRunTimeoutMinutes).toBe(90);
+    expect(fractional.opencodeChatTrialRunTimeoutMinutes).toBe(120);
   });
 });

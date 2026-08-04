@@ -3,6 +3,21 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 describe('Editor Settings OpenCode Chat trial-run controls', () => {
+  test('renders configurable task, production pipeline, and Trial execution budgets', () => {
+    const source = readFileSync(
+      join(import.meta.dir, '..', 'src', 'components', 'settings', 'EditorSettingsSections.tsx'),
+      'utf8',
+    );
+
+    expect(source).toContain('Default task timeout (minutes)');
+    expect(source).toContain('Production pipeline timeout (minutes)');
+    expect(source).toContain('Chat Trial timeout (minutes)');
+    expect(source).toContain('value={settings.pipelineDefaultTaskTimeoutMinutes}');
+    expect(source).toContain('value={settings.pipelineDefaultRunTimeoutMinutes}');
+    expect(source).toContain('value={settings.opencodeChatTrialRunTimeoutMinutes}');
+    expect(source).toContain('Explicit YAML timeouts take precedence');
+  });
+
   test('renders the Trial Plan and repair limits next to the trial-run toggle', () => {
     const source = readFileSync(
       join(import.meta.dir, '..', 'src', 'components', 'settings', 'EditorSettingsSections.tsx'),

@@ -142,6 +142,30 @@ describe('parseEditorSettingsPatch', () => {
     ).toEqual({});
   });
 
+  test('passes finite execution budgets through for loader normalization', () => {
+    expect(
+      parseEditorSettingsPatch({
+        pipelineDefaultTaskTimeoutMinutes: 120,
+        pipelineDefaultRunTimeoutMinutes: 480,
+        opencodeChatTrialRunTimeoutMinutes: 1_440,
+      }),
+    ).toEqual({
+      pipelineDefaultTaskTimeoutMinutes: 120,
+      pipelineDefaultRunTimeoutMinutes: 480,
+      opencodeChatTrialRunTimeoutMinutes: 1_440,
+    });
+  });
+
+  test('ignores non-finite execution budgets', () => {
+    expect(
+      parseEditorSettingsPatch({
+        pipelineDefaultTaskTimeoutMinutes: '120',
+        pipelineDefaultRunTimeoutMinutes: Number.NaN,
+        opencodeChatTrialRunTimeoutMinutes: Number.POSITIVE_INFINITY,
+      }),
+    ).toEqual({});
+  });
+
   test('keeps existing fields working', () => {
     expect(parseEditorSettingsPatch({ autoInstallDeclaredPlugins: true })).toEqual({
       autoInstallDeclaredPlugins: true,

@@ -102,7 +102,7 @@ describe('OpenCode diagnostics reader', () => {
     ]);
   });
 
-  test('keeps discovery scoped to Tagma-owned root sessions', async () => {
+  test('keeps discovery scoped to Tagma-owned roots and their delegated descendants', async () => {
     const { dependencies } = harness([
       [],
       [
@@ -130,6 +130,21 @@ describe('OpenCode diagnostics reader', () => {
           directory: OPENCODE_DIR,
           parentID: 'legacy-tagma-chat',
         },
+        {
+          id: 'delegated-grandchild',
+          directory: OPENCODE_DIR,
+          parentID: 'delegated-child',
+        },
+        {
+          id: 'foreign-delegated-child',
+          directory: OPENCODE_DIR,
+          parentID: 'foreign-tagma-chat',
+        },
+        {
+          id: 'orphan-delegated-child',
+          directory: OPENCODE_DIR,
+          parentID: 'missing-parent',
+        },
       ],
     ]);
 
@@ -137,7 +152,11 @@ describe('OpenCode diagnostics reader', () => {
       sessions: Array<{ id: string }>;
     };
 
-    expect(result.sessions.map((session) => session.id)).toEqual(['legacy-tagma-chat']);
+    expect(result.sessions.map((session) => session.id)).toEqual([
+      'legacy-tagma-chat',
+      'delegated-child',
+      'delegated-grandchild',
+    ]);
   });
 
   test('keeps canonical scoped sessions when compatibility discovery is unavailable', async () => {
@@ -207,6 +226,39 @@ describe('OpenCode diagnostics reader', () => {
         limit: '25',
       }),
     ]);
+  });
+
+  test('reads delegated-session messages after proving ancestry to an owned root', async () => {
+    const delegatedDirectory = join(OPENCODE_DIR, '.chat-staging', 'stage-1', 'agent-workspace');
+    const { dependencies, requestUrls } = harness([
+      [
+        { id: 'chat-1', directory: OPENCODE_DIR },
+        { id: 'delegated-child', directory: delegatedDirectory, parentID: 'chat-1' },
+      ],
+      [],
+      [{ info: { id: 'message-1' }, parts: [{ type: 'text', text: 'child report' }] }],
+    ]);
+
+    const result = await readDiagnosticsOpencodeMessages(
+      WORKSPACE_DIR,
+      'delegated-child',
+      { limit: 25 },
+      dependencies,
+    );
+
+    expect(requestUrls).toEqual([
+      requestUrl('/session', { directory: OPENCODE_DIR, limit: '100' }),
+      requestUrl('/session', { roots: 'true', limit: '10000' }),
+      requestUrl('/session/delegated-child/message', {
+        directory: delegatedDirectory,
+        limit: '25',
+      }),
+    ]);
+    expect(result).toMatchObject({
+      workspaceKey: WORKSPACE_DIR,
+      sessionId: 'delegated-child',
+      messages: [{ info: { id: 'message-1' } }],
+    });
   });
 
   test('rejects a session id outside the scoped list without requesting its messages', async () => {
