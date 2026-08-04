@@ -241,6 +241,7 @@ test('trial planning prompt forces behavior-first edge-case design without autho
   expect(prompt).toContain('Targeted trial planning attempt 1/2.');
   expect(prompt).toContain('Do not edit YAML');
   expect(prompt).toContain('commit exactly once');
+  expect(prompt).toContain('Begin resumes a matching path-and-hash draft by default');
   expect(prompt).toContain('Never send the whole plan or multiple cases in one call');
   expect(prompt).toContain('Pass the exact staged Target YAML path');
   expect(prompt).toContain('Never copy YAML or plan files');

@@ -739,6 +739,7 @@ test('trial-plan tool binds structured edge cases to the final YAML hash', () =>
   expect(doc).toContain('export default tool');
   expect(doc).toContain('operation: tool.schema.enum(DRAFT_OPERATIONS)');
   expect(doc).toContain('pipeline_path: tool.schema');
+  expect(doc).toContain('reset: tool.schema');
   expect(doc).toContain('case: caseSchema.optional()');
   expect(doc).toContain('Exact staged Target YAML path');
   expect(doc).toContain('duplicate-input-names');
@@ -784,10 +785,20 @@ test('trial-plan tool assembles a large plan in bounded draft calls before one c
       },
       { directory: stage.agentTagmaDir },
     );
+    for (const testCase of cases.slice(0, 3)) {
+      await generated.tool.execute(
+        {
+          operation: 'upsert-case',
+          pipeline_path: 'sample/sample.yaml',
+          case: testCase,
+        },
+        { directory: stage.agentTagmaDir },
+      );
+    }
     const interruptedCall = JSON.stringify({
       operation: 'upsert-case',
       pipeline_path: 'sample/sample.yaml',
-      case: cases[0],
+      case: cases[3],
     });
     expect(() => JSON.parse(interruptedCall.slice(0, interruptedCall.lastIndexOf('"')))).toThrow(
       'JSON Parse error: Unterminated string',
@@ -797,8 +808,20 @@ test('trial-plan tool assembles a large plan in bounded draft calls before one c
       toolAttemptCount: 0,
       successfulWriteCount: 0,
     });
+    const resumedDraft = JSON.parse(
+      await generated.tool.execute(
+        {
+          operation: 'begin',
+          pipeline_path: 'sample/sample.yaml',
+          summary: plan.summary,
+          goals: plan.goals,
+        },
+        { directory: stage.agentTagmaDir },
+      ),
+    ) as { cases: number };
+    expect(resumedDraft.cases).toBe(3);
 
-    for (const testCase of cases) {
+    for (const testCase of cases.slice(3)) {
       await generated.tool.execute(
         {
           operation: 'upsert-case',

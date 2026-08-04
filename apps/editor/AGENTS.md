@@ -111,8 +111,8 @@
 - Assemble trial plans through bounded same-tool draft operations: `begin`, one `upsert-case` per
   case, `set-coverage`, `set-findings`, then exactly one `commit`. Only `commit` consumes a formal
   attempt and runs full semantic validation plus the atomic plan write. Keep drafts stage-owned,
-  path-and-hash-bound, locked, size-bounded, and unpublished; never restore a whole-plan single-call
-  boundary for model-generated trial plans.
+  path-and-hash-bound, locked, size-bounded, resumable by default, explicitly resettable, and
+  unpublished; never restore a whole-plan single-call boundary for model-generated trial plans.
 - Every plan must account for multiple inputs, duplicate input names, multiline content,
   inter-task, repeat-run, and concurrent-run output collisions, repeated runs, empty content, and
   special characters. Inter-task coverage needs two target tasks plus distinct-output evidence;

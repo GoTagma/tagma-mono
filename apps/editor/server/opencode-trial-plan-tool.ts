@@ -572,7 +572,7 @@ function assertTrialPlanDraft(value, paths, yamlHash) {
   return draft;
 }
 
-function readTrialPlanDraft(paths, yamlHash) {
+function readTrialPlanDraftIfExists(paths, yamlHash) {
   let raw;
   try {
     const stat = lstatSync(paths.draftPath);
@@ -582,11 +582,19 @@ function readTrialPlanDraft(paths, yamlHash) {
     raw = JSON.parse(readFileSync(paths.draftPath, 'utf8'));
   } catch (error) {
     if (error && typeof error === 'object' && error.code === 'ENOENT') {
-      throw new Error('trial plan draft is missing; call begin before adding sections');
+      return null;
     }
     throw error;
   }
   return assertTrialPlanDraft(raw, paths, yamlHash);
+}
+
+function readTrialPlanDraft(paths, yamlHash) {
+  const draft = readTrialPlanDraftIfExists(paths, yamlHash);
+  if (!draft) {
+    throw new Error('trial plan draft is missing; call begin before adding sections');
+  }
+  return draft;
 }
 
 function writeTrialPlanDraft(paths, draft) {
@@ -931,8 +939,15 @@ function executeTrialPlanOperation(args, context) {
     if (goals.length === 0) {
       throw new Error('goals must contain at least one behavior goal');
     }
+    if (args.reset !== undefined && typeof args.reset !== 'boolean') {
+      throw new Error('reset must be a boolean');
+    }
     return withTrialPlanDraftLock(paths, () => {
-      const draft = newTrialPlanDraft(paths, yamlHash, summary, goals);
+      const draft =
+        (args.reset ? null : readTrialPlanDraftIfExists(paths, yamlHash)) ||
+        newTrialPlanDraft(paths, yamlHash, summary, goals);
+      draft.summary = summary;
+      draft.goals = goals;
       writeTrialPlanDraft(paths, draft);
       return trialPlanDraftResult(operation, draft);
     });
@@ -953,7 +968,7 @@ export default tool({
     "Build a targeted trial plan in bounded draft operations, then validate and commit it atomically.",
   args: {
     operation: tool.schema.enum(DRAFT_OPERATIONS).describe(
-      "begin resets metadata, upsert-case adds one case, set-coverage and set-findings replace those sections, and commit performs the single counted validation/write attempt.",
+      "begin creates or resumes the revision-bound draft, upsert-case adds one case, set-coverage and set-findings replace those sections, and commit performs the single counted validation/write attempt.",
     ),
     pipeline_path: tool.schema
       .string()
@@ -964,6 +979,10 @@ export default tool({
       .min(1)
       .max(CONTRACT.limits.goals)
       .optional(),
+    reset: tool.schema
+      .boolean()
+      .optional()
+      .describe("Use only with begin to discard a prior draft for this exact path and YAML hash."),
     coverage: tool.schema
       .array(coverageEntrySchema)
       .max(REQUIRED_COVERAGE.length)
