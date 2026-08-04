@@ -580,9 +580,14 @@ describe('chat YAML staging async witness ordering', () => {
           tasks: [
             {
               id: 'verify',
-              command: { argv: [process.execPath, '-e', 'process.exit(0)'] },
+              prompt: 'Verify the input.',
               timeout: '45m',
               trigger: { type: 'file', path: 'input/text-to-check.md' },
+            },
+            {
+              id: 'report',
+              prompt: 'Report the verification result.',
+              continue_from: 'verify',
             },
           ],
         },

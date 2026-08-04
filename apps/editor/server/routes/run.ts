@@ -355,12 +355,8 @@ function prepareWorkflowHostPolicy(
       };
     },
     skipPluginLoading: true,
-    defaultTaskTimeoutMs: timeoutMinutesToMs(
-      editorSettings.pipelineDefaultTaskTimeoutMinutes,
-    ),
-    defaultPipelineTimeoutMs: timeoutMinutesToMs(
-      editorSettings.pipelineDefaultRunTimeoutMinutes,
-    ),
+    defaultTaskTimeoutMs: timeoutMinutesToMs(editorSettings.pipelineDefaultTaskTimeoutMinutes),
+    defaultPipelineTimeoutMs: timeoutMinutesToMs(editorSettings.pipelineDefaultRunTimeoutMinutes),
   };
 }
 function normalizeRunConfigSnapshot(

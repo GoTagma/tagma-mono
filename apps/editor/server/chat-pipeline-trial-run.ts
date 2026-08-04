@@ -21,6 +21,7 @@ import {
   type RunEventPayload,
 } from '@tagma/sdk';
 import { InMemoryApprovalGateway, type ApprovalEvent } from '@tagma/sdk/approval';
+import { buildDag } from '@tagma/sdk/config';
 import { loadPipeline, validateConfig } from '@tagma/sdk/yaml';
 import { generateRunId } from '@tagma/sdk/utils';
 
@@ -1467,10 +1468,8 @@ function unavailableTrialBaselineInputs(
   pipelineConfig: PipelineConfig,
   workDir: string,
 ): string[] | null {
-  const roots = pipelineConfig.tracks.flatMap((track) =>
-    track.tasks
-      .filter((task) => (task.depends_on?.length ?? 0) === 0)
-      .map((task) => ({ track, task })),
+  const roots = [...buildDag(pipelineConfig).nodes.values()].filter(
+    (node) => node.dependsOn.length === 0,
   );
   if (roots.length === 0) return null;
 

@@ -893,9 +893,15 @@ export function buildTagmaYamlContractSkill(): string {
       'The whole config lives under a single top-level `pipeline:` key. A document\nwithout that wrapper is rejected with `YAML must contain a top-level\n"pipeline" key`.\n\n```yaml',
       'The whole config lives under a single top-level `pipeline:` key. A document\nwithout that wrapper is rejected with `YAML must contain a top-level\n"pipeline" key`.\n\n`pipeline.requires.sdk` is SDK-owned compatibility metadata. Do not guess or\nhand-write a minimum SDK version unless the user explicitly asks for a higher\nruntime floor. The editor/SDK serializer infers the minimum from the final YAML\nfeatures and preserves existing higher requirements.\n\n```yaml',
     )
-    .replace('`timeout` | duration string | Task-level cap. Works for both forms.', '`timeout` | duration string | Optional task-specific cap. Omit it to inherit workspace Execution Settings; author it only when the user or task semantics require a different deadline.')
+    .replace(
+      '`timeout` | duration string | Task-level cap. Works for both forms.',
+      '`timeout` | duration string | Optional task-specific cap. Omit it to inherit workspace Execution Settings; author it only when the user or task semantics require a different deadline.',
+    )
     .replace('`timeout?` (default `30s`).', '`timeout?` (default `2h`).')
-    .replace('Each command has a hard\n30-second timeout', 'Each command has a hard\n2-hour timeout');
+    .replace(
+      'Each command has a hard\n30-second timeout',
+      'Each command has a hard\n2-hour timeout',
+    );
 }
 
 export function buildTagmaNativePrimitivesSkill(): string {

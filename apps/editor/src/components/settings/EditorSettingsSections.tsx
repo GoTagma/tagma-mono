@@ -357,9 +357,9 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
           <label className={'field-label'}>Execution</label>
           <div className={'space-y-2 border border-tagma-border bg-tagma-bg p-2.5'}>
             <p className={'text-[10px] leading-relaxed text-tagma-muted'}>
-              Workspace defaults for long-running tasks. Explicit YAML timeouts take precedence.
-              The server keeps each outer lifecycle at least 30 minutes above the default task
-              timeout so the host does not cut off a valid task first.
+              Workspace defaults for long-running tasks. Explicit YAML timeouts take precedence. The
+              server keeps each outer lifecycle at least 30 minutes above the default task timeout
+              so the host does not cut off a valid task first.
             </p>
             <TimeoutMinutesRow
               id={'pipeline-default-task-timeout'}

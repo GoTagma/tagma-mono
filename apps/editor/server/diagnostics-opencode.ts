@@ -181,9 +181,7 @@ async function listWorkspaceSessions(
       admittedDescendant = true;
     }
   }
-  return [...sessionsById].flatMap(([id, session]) =>
-    ownedSessionIds.has(id) ? [session] : [],
-  );
+  return [...sessionsById].flatMap(([id, session]) => (ownedSessionIds.has(id) ? [session] : []));
 }
 
 function sessionId(value: unknown): string | null {
