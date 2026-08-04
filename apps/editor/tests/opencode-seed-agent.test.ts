@@ -1062,6 +1062,46 @@ test('trial-plan tool rejects semantic coverage gaps and unsupported findings be
   }
 });
 
+test('trial-plan commit reports every unsupported covered dimension in one rejection', async () => {
+  const generated = await loadGeneratedTrialPlanTool();
+  const stage = makeTrialPlanStage();
+  try {
+    const args = completeTrialPlanToolArgs('sample/sample.yaml');
+    const testCase = (
+      args.cases as Array<{
+        fixtures: Array<{ path: string; content: string }>;
+        expectations: Array<Record<string, unknown>>;
+      }>
+    )[0]!;
+    testCase.fixtures.find((fixture) => fixture.path === 'inputs/c/empty.txt')!.content =
+      'not empty';
+    testCase.expectations = [
+      { type: 'file-equals', path: 'outputs/c-empty.txt', text: '' },
+      { type: 'task-status', taskId: 'main.process', status: 'success' },
+    ];
+    const interTaskCoverage = (args.coverage as Array<Record<string, unknown>>).find(
+      (entry) => entry.dimension === 'inter-task-output-collision',
+    )!;
+    interTaskCoverage.status = 'accepted-risk';
+    interTaskCoverage.caseIds = [];
+    interTaskCoverage.rationale = 'Not part of this semantic rejection fixture.';
+
+    await expect(
+      submitTrialPlanToolArgs(generated.tool, args, { directory: stage.agentTagmaDir }),
+    ).rejects.toThrow(
+      /repeat-run-output-collision covered without concrete linked-case evidence[\s\S]*empty-content covered without concrete linked-case evidence/,
+    );
+    expect(readChatPipelineTrialPlanToolTelemetry(stage.yamlPath)).toMatchObject({
+      toolAttemptCount: 1,
+      validationRejectionCount: 1,
+    });
+    expect(existsSync(stage.planPath)).toBe(false);
+  } finally {
+    stage.cleanup();
+    generated.cleanup();
+  }
+});
+
 test('trial-plan tool writes plans that the authoritative host parser accepts', async () => {
   const generated = await loadGeneratedTrialPlanTool();
   const stage = makeTrialPlanStage();

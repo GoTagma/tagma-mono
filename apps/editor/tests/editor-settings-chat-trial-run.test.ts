@@ -86,6 +86,8 @@ describe('Editor Settings OpenCode Chat trial-run controls', () => {
     expect(source).toContain('DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS');
     expect(source).toContain('shouldTrialRunChatPipeline({');
     expect(source).toContain('chatPipelineVerificationSucceeded({');
+    expect(source).toContain('chatPipelineVerificationFailureDiagnostic({');
+    expect(source).toContain('staged pipeline verification failed');
     expect(source.match(/\{ repairAttempts: completedRepairAttempts \}/g)).toHaveLength(2);
     expect(source).toContain("trialRun.kind === 'plan-required'");
     expect(source).toContain('.sendInternalTrialPlanPrompt(');

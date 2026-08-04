@@ -10,6 +10,7 @@ import {
   shouldAutoRepairTrialResult,
   shouldReverifyChatPipelineAfterRepair,
   shouldQueueTrialPlanPrompt,
+  chatPipelineVerificationFailureDiagnostic,
   chatPipelineVerificationSucceeded,
   shouldTrialRunChatPipeline,
   type ChatPipelineRepairArtifactState,
@@ -345,6 +346,34 @@ describe('optional OpenCode Chat pipeline trial run', () => {
         trialRunSuccess: null,
       }),
     ).toBe(false);
+  });
+
+  test('builds a bounded diagnostic for a terminal trial-plan failure only', () => {
+    expect(
+      chatPipelineVerificationFailureDiagnostic({
+        compile: { success: true, summary: 'Compilation passed.' },
+        trialRunEnabled: true,
+        trialRun: {
+          success: false,
+          kind: 'plan-failed',
+          summary: 'Trial plan tool attempt budget exhausted for this staged YAML revision.',
+        },
+      }),
+    ).toEqual({
+      compileSuccess: true,
+      compileSummary: 'Compilation passed.',
+      trialRunEnabled: true,
+      trialRunSuccess: false,
+      trialRunKind: 'plan-failed',
+      trialRunSummary: 'Trial plan tool attempt budget exhausted for this staged YAML revision.',
+    });
+    expect(
+      chatPipelineVerificationFailureDiagnostic({
+        compile: { success: true, summary: 'Compilation passed.' },
+        trialRunEnabled: true,
+        trialRun: { success: true, kind: 'executed', summary: 'Trial passed.' },
+      }),
+    ).toBeNull();
   });
 });
 

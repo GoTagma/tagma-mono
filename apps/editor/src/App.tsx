@@ -73,6 +73,7 @@ import { RightDock, useRightDock } from './components/RightDock';
 import {
   detectSnapshotlessChatYamlTarget,
   detectChatStagedYamlTarget,
+  chatPipelineVerificationFailureDiagnostic,
   chatPipelineVerificationSucceeded,
   chatPipelineRepairArtifactState,
   shouldAdoptFinalizedChatStateOnCurrentCanvas,
@@ -1562,6 +1563,17 @@ export function App() {
             ? snapshotChatTrialPlanningTelemetry(planningAccumulator, Date.now())
             : null;
           trialPlanningTelemetryRef.current.delete(attemptKey);
+          const verificationFailureDiagnostic = chatPipelineVerificationFailureDiagnostic({
+            compile,
+            trialRunEnabled,
+            trialRun,
+          });
+          if (verificationFailureDiagnostic) {
+            console.warn(
+              '[chat] staged pipeline verification failed',
+              verificationFailureDiagnostic,
+            );
+          }
 
           if (resultWorkspaceVisible()) {
             setWorkspacePipelines((current) => {

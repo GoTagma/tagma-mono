@@ -181,6 +181,58 @@ test('generated trial plan tool can restrict a staged YAML revision to one attem
   }
 });
 
+test('generated trial plan tool consumes at most one commit per begun draft lifecycle', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-trial-budget-lifecycle-'));
+  try {
+    const agentTagmaDir = join(
+      root,
+      '.tagma',
+      '.chat-staging',
+      'stage-1',
+      'agent-workspace',
+      '.tagma',
+    );
+    const yamlPath = join(agentTagmaDir, 'demo', 'demo.yaml');
+    mkdirSync(dirname(yamlPath), { recursive: true });
+    writeFileSync(yamlPath, ['pipeline:', '  name: demo', '  tracks: []', ''].join('\n'), 'utf8');
+    writeStageAttemptLimit(agentTagmaDir, 2);
+    const tool = await loadGeneratedTool(root);
+    const invalidArgs = invalidPlanArgs(yamlPath);
+    const context = { directory: agentTagmaDir };
+
+    await expect(submitTrialPlan(tool, invalidArgs, context)).rejects.toThrow(
+      'trial plan coverage is missing multiple-inputs',
+    );
+    await expect(
+      tool.execute(
+        {
+          operation: 'set-coverage',
+          pipeline_path: yamlPath,
+          coverage: invalidArgs.coverage,
+        },
+        context,
+      ),
+    ).rejects.toThrow('trial plan draft commit was already attempted; call begin before editing it');
+    await expect(
+      tool.execute({ operation: 'commit', pipeline_path: yamlPath }, context),
+    ).rejects.toThrow('trial plan draft commit was already attempted; call begin before editing it');
+    expect(readChatPipelineTrialPlanToolTelemetry(yamlPath, 2)).toMatchObject({
+      toolAttemptCount: 1,
+      validationRejectionCount: 1,
+    });
+
+    await expect(submitTrialPlan(tool, invalidArgs, context)).rejects.toThrow(
+      'Repeated equivalent validation rejection (2x)',
+    );
+    expect(readChatPipelineTrialPlanToolTelemetry(yamlPath, 2)).toMatchObject({
+      toolAttemptCount: 2,
+      validationRejectionCount: 2,
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('generated trial plan tool fails closed when attempt telemetry has negative counters', async () => {
   const root = mkdtempSync(join(tmpdir(), 'tagma-trial-budget-corrupt-'));
   try {

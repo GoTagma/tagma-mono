@@ -260,3 +260,37 @@ export function chatPipelineVerificationSucceeded(args: {
 }): boolean {
   return args.compileSuccess && (!args.trialRunEnabled || args.trialRunSuccess === true);
 }
+
+function boundedVerificationDiagnosticText(value: string | null | undefined): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  return normalized ? normalized.slice(0, 2_000) : null;
+}
+
+export function chatPipelineVerificationFailureDiagnostic(args: {
+  compile: { success: boolean; summary?: string | null };
+  trialRunEnabled: boolean;
+  trialRun?: {
+    success: boolean;
+    kind: string;
+    summary?: string | null;
+  } | null;
+}) {
+  if (
+    chatPipelineVerificationSucceeded({
+      compileSuccess: args.compile.success,
+      trialRunEnabled: args.trialRunEnabled,
+      trialRunSuccess: args.trialRun?.success,
+    })
+  ) {
+    return null;
+  }
+  return {
+    compileSuccess: args.compile.success,
+    compileSummary: boundedVerificationDiagnosticText(args.compile.summary),
+    trialRunEnabled: args.trialRunEnabled,
+    trialRunSuccess: args.trialRun?.success ?? null,
+    trialRunKind: args.trialRun?.kind ?? null,
+    trialRunSummary: boundedVerificationDiagnosticText(args.trialRun?.summary),
+  };
+}

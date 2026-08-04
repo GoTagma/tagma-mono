@@ -66,6 +66,12 @@ export function buildRendererDiagnosticsSnapshot(input: RendererDiagnosticsSnaps
     ? chat.messages.slice(-MAX_CURRENT_CHAT_MESSAGES)
     : [];
   const messageCount = Array.isArray(chat.messages) ? chat.messages.length : 0;
+  const currentSessionId =
+    typeof chat.currentSessionId === 'string' ? chat.currentSessionId : null;
+  const sessionYamlResults = record(chat.sessionYamlResults);
+  const sessionYamlResult = currentSessionId
+    ? (sessionYamlResults[currentSessionId] ?? null)
+    : null;
 
   return sanitizeDiagnosticValue(
     {
@@ -111,6 +117,7 @@ export function buildRendererDiagnosticsSnapshot(input: RendererDiagnosticsSnaps
           ? chat.finishedTurnQueue.length
           : 0,
         lastFinishedTurn: chat.lastFinishedTurn ?? null,
+        sessionYamlResult,
       },
       pipeline: {
         workDir: pipeline.workDir ?? '',

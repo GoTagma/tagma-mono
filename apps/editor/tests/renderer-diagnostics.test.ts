@@ -26,6 +26,24 @@ describe('renderer diagnostics snapshot', () => {
             queuedMessages: [],
           },
         },
+        sessionYamlResults: {
+          'session-1': {
+            sessionId: 'session-1',
+            workspaceKey: 'D:\\repo',
+            kind: 'refresh-current',
+            path: 'D:\\repo\\.tagma\\demo\\demo.yaml',
+            name: 'demo.yaml',
+            pipelineName: 'Demo',
+            status: 'failed',
+            compile: { success: true, summary: 'Compilation passed.', validation: [] },
+            trial: {
+              success: false,
+              kind: 'plan-failed',
+              summary: 'Trial plan attempt budget exhausted.',
+            },
+            completedAt: 180,
+          },
+        },
         messages: Array.from({ length: 35 }, (_, index) => ({
           info: { id: `message-${index}`, role: index % 2 ? 'assistant' : 'user' },
           parts: [{ type: 'text', text: `message body ${index}` }],
@@ -102,6 +120,15 @@ describe('renderer diagnostics snapshot', () => {
     expect(snapshot.chat).toMatchObject({
       reconciling: true,
       reconcilingSessionId: 'session-1',
+      sessionYamlResult: {
+        sessionId: 'session-1',
+        status: 'failed',
+        trial: {
+          success: false,
+          kind: 'plan-failed',
+          summary: 'Trial plan attempt budget exhausted.',
+        },
+      },
     });
     expect(snapshot.pipeline).toMatchObject({
       workDir: 'D:\\repo',

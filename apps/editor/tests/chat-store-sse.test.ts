@@ -241,6 +241,13 @@ test('trial planning prompt forces behavior-first edge-case design without autho
   expect(prompt).toContain('Targeted trial planning attempt 1/2.');
   expect(prompt).toContain('Do not edit YAML');
   expect(prompt).toContain('commit exactly once');
+  expect(prompt).toContain(
+    'Only begin, upsert-case, set-coverage, or set-findings errors are pre-commit errors.',
+  );
+  expect(prompt).toContain(
+    'After commit returns success or an error, do not call tagma_trial_plan again in this physical turn.',
+  );
+  expect(prompt).toContain('The host schedules any remaining attempt.');
   expect(prompt).toContain('Begin resumes a matching path-and-hash draft by default');
   expect(prompt).toContain('Never send the whole plan or multiple cases in one call');
   expect(prompt).toContain('Pass the exact staged Target YAML path');

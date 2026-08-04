@@ -238,6 +238,7 @@ function hasDistinctOutputExpectation(cases) {
 
 function validateCoveredCaseEvidence(coverage, cases) {
   const casesById = new Map(cases.map((item) => [item.id, item]));
+  const failures = [];
   for (const entry of coverage) {
     if (entry.status !== "covered") continue;
     const linkedCases = entry.caseIds.map((caseId) => casesById.get(caseId)).filter(Boolean);
@@ -259,9 +260,10 @@ function validateCoveredCaseEvidence(coverage, cases) {
         (item) => item.runs >= 2 && hasDistinctOutputExpectation([item]),
       );
     } else if (entry.dimension === "concurrent-run-output-collision") {
-      throw new Error(
+      failures.push(
         "trial plan coverage concurrent-run-output-collision cannot be covered by the sequential trial harness; use accepted-risk, blocked, or not-applicable.",
       );
+      continue;
     } else if (entry.dimension === "repeat-run") {
       evidenced = linkedCases.some((item) => item.runs >= 2);
     } else if (entry.dimension === "empty-content") {
@@ -287,12 +289,15 @@ function validateCoveredCaseEvidence(coverage, cases) {
       );
     }
     if (!evidenced) {
-      throw new Error(
+      failures.push(
         "trial plan coverage marks " +
           entry.dimension +
           " covered without concrete linked-case evidence.",
       );
     }
+  }
+  if (failures.length > 0) {
+    throw new Error(failures.join(String.fromCharCode(10)));
   }
 }
 
@@ -552,6 +557,7 @@ function newTrialPlanDraft(paths, yamlHash, summary, goals) {
     coverage: [],
     findings: [],
     cases: [],
+    commitAttempted: false,
   };
 }
 
@@ -565,11 +571,19 @@ function assertTrialPlanDraft(value, paths, yamlHash) {
     !Array.isArray(draft.goals) ||
     !Array.isArray(draft.coverage) ||
     !Array.isArray(draft.findings) ||
-    !Array.isArray(draft.cases)
+    !Array.isArray(draft.cases) ||
+    (draft.commitAttempted !== undefined && typeof draft.commitAttempted !== 'boolean')
   ) {
     throw new Error('trial plan draft does not match the staged YAML revision');
   }
+  draft.commitAttempted = draft.commitAttempted === true;
   return draft;
+}
+
+function assertTrialPlanDraftOpen(draft) {
+  if (draft.commitAttempted) {
+    throw new Error('trial plan draft commit was already attempted; call begin before editing it');
+  }
 }
 
 function readTrialPlanDraftIfExists(paths, yamlHash) {
@@ -616,6 +630,7 @@ function trialPlanDraftResult(operation, draft) {
       cases: draft.cases.length,
       coverage: draft.coverage.length,
       findings: draft.findings.length,
+      commitAvailable: draft.commitAttempted !== true,
     },
     null,
     2,
@@ -703,22 +718,25 @@ function writeTrialPlanAttemptTelemetry(paths, telemetry) {
   renameSync(tempPath, paths.telemetryPath);
 }
 
-function beginTrialPlanAttempt(root, yamlPath, yamlHash) {
-  const paths = trialPlanAttemptPaths(root, yamlPath, yamlHash);
+function beginTrialPlanAttempt(paths, yamlHash) {
   acquireTrialPlanLock(paths);
   try {
+    const draft = readTrialPlanDraft(paths, yamlHash);
+    assertTrialPlanDraftOpen(draft);
     const telemetry = readTrialPlanAttemptTelemetry(paths, yamlHash);
     if (telemetry.toolAttemptCount >= paths.maxAttempts) {
       throw new Error(
         "trial plan tool attempt budget exhausted for this staged YAML revision",
       );
     }
+    draft.commitAttempted = true;
+    writeTrialPlanDraft(paths, draft);
     const now = Date.now();
     telemetry.toolAttemptCount += 1;
     telemetry.firstAttemptAt = telemetry.firstAttemptAt || now;
     telemetry.lastAttemptAt = now;
     writeTrialPlanAttemptTelemetry(paths, telemetry);
-    return { paths, telemetry };
+    return { paths, telemetry, draft };
   } catch (error) {
     rmSync(paths.lockPath, { force: true });
     throw error;
@@ -844,11 +862,11 @@ const caseSchema = tool.schema.object({
 });
 
 function commitTrialPlanDraft(input) {
-  const attempt = beginTrialPlanAttempt(input.root, input.yamlPath, input.yamlHash);
+  const attempt = beginTrialPlanAttempt(input.paths, input.yamlHash);
   const planPath =
     input.yamlPath.slice(0, input.yamlPath.lastIndexOf('.')) + '.trial-plan.json';
   try {
-    const draft = readTrialPlanDraft(attempt.paths, input.yamlHash);
+    const draft = attempt.draft;
     const plan = {
       version: CONTRACT.version,
       yamlHash: input.yamlHash,
@@ -890,6 +908,7 @@ function executeExistingTrialPlanDraftOperation(input) {
   }
   return withTrialPlanDraftLock(input.paths, () => {
     const draft = readTrialPlanDraft(input.paths, input.yamlHash);
+    assertTrialPlanDraftOpen(draft);
     if (input.operation === 'upsert-case') {
       const existingIndex = draft.cases.findIndex(
         (item) => item && typeof item === 'object' && item.id === input.args.case?.id,
@@ -946,6 +965,7 @@ function executeTrialPlanOperation(args, context) {
       const draft =
         (args.reset ? null : readTrialPlanDraftIfExists(paths, yamlHash)) ||
         newTrialPlanDraft(paths, yamlHash, summary, goals);
+      draft.commitAttempted = false;
       draft.summary = summary;
       draft.goals = goals;
       writeTrialPlanDraft(paths, draft);
