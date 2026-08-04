@@ -564,13 +564,13 @@ function writeRuntimeIgnoreFile(paths: EmbeddedOpencodeRuntimePaths): void {
  * Default chunk timeout for streaming responses. If no chunk arrives within
  * this window after streaming has started, opencode aborts the request. This
  * catches upstream connections that die mid-stream without closing the TCP
- * socket. 5 minutes is generous enough for reasoning models that pause between
+ * socket. 30 minutes accommodates reasoning models that pause between
  * thinking chunks, while still catching genuinely dead connections.
  *
  * Users can override per-provider in their config (set to `false` to disable).
  * Only applied when the user hasn't explicitly set `chunkTimeout` themselves.
  */
-const DEFAULT_CHUNK_TIMEOUT_MS = 300_000; // 5 minutes
+const DEFAULT_CHUNK_TIMEOUT_MS = 30 * 60 * 1_000;
 
 export function buildEmbeddedOpencodeRuntimeConfig(paths: EmbeddedOpencodeRuntimePaths): RawConfig {
   const out: RawConfig = {

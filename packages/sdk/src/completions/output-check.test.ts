@@ -21,6 +21,10 @@ function taskResult(stdout = 'payload'): TaskResult {
   };
 }
 
+test('output_check schema defaults to a two-hour verifier budget', () => {
+  expect(OutputCheckCompletion.schema?.fields.timeout?.default).toBe('2h');
+});
+
 test('output_check drains verbose check stdout so the check process can exit', async () => {
   const dir = mkdtempSync(join(process.cwd(), '.tmp-output-check-'));
   try {

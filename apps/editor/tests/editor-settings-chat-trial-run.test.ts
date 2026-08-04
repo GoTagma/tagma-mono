@@ -18,6 +18,26 @@ describe('Editor Settings OpenCode Chat trial-run controls', () => {
     expect(source).toContain('Explicit YAML timeouts take precedence');
   });
 
+  test('wires the workspace budgets into production runs and Chat Trial', () => {
+    const runSource = readFileSync(
+      join(import.meta.dir, '..', 'server', 'routes', 'run.ts'),
+      'utf8',
+    );
+    const trialSource = readFileSync(
+      join(import.meta.dir, '..', 'server', 'chat-pipeline-trial-run.ts'),
+      'utf8',
+    );
+
+    expect(runSource.match(/editorSettings\.pipelineDefaultTaskTimeoutMinutes/g)).toHaveLength(2);
+    expect(runSource.match(/editorSettings\.pipelineDefaultRunTimeoutMinutes/g)).toHaveLength(2);
+    expect(runSource.match(/defaultPipelineTimeoutMs:/g)).toHaveLength(3);
+    expect(trialSource).toContain('editorSettings.pipelineDefaultTaskTimeoutMinutes');
+    expect(trialSource).toContain('editorSettings.opencodeChatTrialRunTimeoutMinutes');
+    expect(trialSource).toContain('defaultTaskTimeoutMs: input.taskTimeoutMs');
+    expect(trialSource).not.toContain('CHAT_PIPELINE_TRIAL_TASK_TIMEOUT_MS');
+    expect(trialSource).not.toContain('CHAT_PIPELINE_TRIAL_TIMEOUT_MS');
+  });
+
   test('renders the Trial Plan and repair limits next to the trial-run toggle', () => {
     const source = readFileSync(
       join(import.meta.dir, '..', 'src', 'components', 'settings', 'EditorSettingsSections.tsx'),

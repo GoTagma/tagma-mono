@@ -892,7 +892,10 @@ export function buildTagmaYamlContractSkill(): string {
     .replace(
       'The whole config lives under a single top-level `pipeline:` key. A document\nwithout that wrapper is rejected with `YAML must contain a top-level\n"pipeline" key`.\n\n```yaml',
       'The whole config lives under a single top-level `pipeline:` key. A document\nwithout that wrapper is rejected with `YAML must contain a top-level\n"pipeline" key`.\n\n`pipeline.requires.sdk` is SDK-owned compatibility metadata. Do not guess or\nhand-write a minimum SDK version unless the user explicitly asks for a higher\nruntime floor. The editor/SDK serializer infers the minimum from the final YAML\nfeatures and preserves existing higher requirements.\n\n```yaml',
-    );
+    )
+    .replace('`timeout` | duration string | Task-level cap. Works for both forms.', '`timeout` | duration string | Optional task-specific cap. Omit it to inherit workspace Execution Settings; author it only when the user or task semantics require a different deadline.')
+    .replace('`timeout?` (default `30s`).', '`timeout?` (default `2h`).')
+    .replace('Each command has a hard\n30-second timeout', 'Each command has a hard\n2-hour timeout');
 }
 
 export function buildTagmaNativePrimitivesSkill(): string {
@@ -1039,7 +1042,7 @@ The chat authoring agent writes YAML. It does not press the editor Run button, c
 4. If a task should wait until a local or external folder is created, use the native directory trigger.
 5. If an external system should start or unblock work, use a webhook or similar trigger only when it appears in the current editor context plugins list.
 6. If the user asks for cron, recurring, delayed, or calendar scheduling, use a schedule/cron trigger only when that installed plugin appears in editor context. If no such plugin is listed, do not invent it; write a manual/file/directory-triggered pipeline and tell the user which trigger capability is missing.
-7. Pair non-trivial triggers with explicit timeout values and meaningful completion checks so a scheduled or unattended run can fail clearly.
+7. Pair non-trivial triggers with meaningful completion checks. Rely on the workspace task timeout by default; add a shorter trigger timeout only when the user or workflow semantics require one.
 8. file/directory trigger watch paths may be absolute or outside the workspace; authoring the reference is allowed without reading or writing that external path.
 
 ## Wording
@@ -1064,7 +1067,7 @@ Load this when the user asks for robust execution, self-healing, retry, repair, 
 ## Native resilience patterns
 
 - Prefer a fast preflight command before expensive AI or deploy work.
-- Use timeout on long-running command and prompt tasks.
+- Omit task and pipeline timeout by default so workspace Execution Settings apply. Author an explicit YAML timeout only when the user requests a different deadline or the task has a known semantic limit.
 - Use track on_failure intentionally:
   - skip_downstream for normal fail-fast dependencies.
   - ignore when a downstream diagnostic or repair task must still run after a failed upstream.
@@ -1153,7 +1156,7 @@ Load this for approvals, secrets, missing credentials, destructive commands, dep
 
 ## Safety and cost
 
-- Add timeout to long-running tasks.
+- Let workspace Execution Settings govern long-running tasks unless the user requests a task-specific or pipeline-specific deadline.
 - Prefer skip_downstream for ordinary dependency failures and stop_all only for true kill-switch failures.
 - Do not add git stash, reset, checkout, clean, delete, migration, deploy, or publish commands unless the user asked for that workflow and workspace evidence supports the exact command.
 - Current YAML can model lifecycle hooks, but it cannot guarantee a full snapshot/rollback API by itself. Do not pretend that hook-based rollback is equivalent to an engine-level snapshot.

@@ -221,6 +221,13 @@ function normalizeMaxConcurrency(value: number | undefined): number {
   return value;
 }
 
+export function resolvePipelineTimeoutMs(
+  config: Pick<PipelineConfig, 'timeout'>,
+  defaultPipelineTimeoutMs?: number,
+): number {
+  return config.timeout ? parseDuration(config.timeout) : (defaultPipelineTimeoutMs ?? 0);
+}
+
 function resolveTargetTaskRunSet(
   dag: Dag,
   targetTaskIds: readonly string[] | undefined,
@@ -333,9 +340,7 @@ async function runPipelineInner(
   const dag = buildDag(config);
   preflight(config, dag, registry);
   const activeTaskIds = resolveTargetTaskRunSet(dag, options.targetTaskIds);
-  const pipelineTimeoutMs = config.timeout
-    ? parseDuration(config.timeout)
-    : (options.defaultPipelineTimeoutMs ?? 0);
+  const pipelineTimeoutMs = resolvePipelineTimeoutMs(config, options.defaultPipelineTimeoutMs);
   const maxConcurrency = normalizeMaxConcurrency(options.maxConcurrency ?? config.max_concurrency);
 
   const startedAt = nowISO();

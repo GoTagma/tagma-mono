@@ -154,24 +154,48 @@ async function listWorkspaceSessions(
   const sessionsById = new Map<string, unknown>();
   for (const session of discovered) {
     const id = sessionId(session);
-    if (id && isWorkspaceRootOpencodeSession(session, handle.cwd, workspaceKey)) {
-      sessionsById.set(id, session);
-    }
+    if (id) sessionsById.set(id, session);
   }
   for (const session of scoped) {
     const id = sessionId(session);
-    if (id && isWorkspaceRootOpencodeSession(session, handle.cwd, workspaceKey)) {
+    if (id) {
       // The canonical scoped payload wins when discovery returns the same id.
       sessionsById.set(id, session);
     }
   }
-  return [...sessionsById.values()];
+
+  const ownedSessionIds = new Set<string>();
+  for (const [id, session] of sessionsById) {
+    if (isWorkspaceRootOpencodeSession(session, handle.cwd, workspaceKey)) {
+      ownedSessionIds.add(id);
+    }
+  }
+  let admittedDescendant = true;
+  while (admittedDescendant) {
+    admittedDescendant = false;
+    for (const [id, session] of sessionsById) {
+      if (ownedSessionIds.has(id)) continue;
+      const parentId = sessionParentId(session);
+      if (!parentId || !ownedSessionIds.has(parentId)) continue;
+      ownedSessionIds.add(id);
+      admittedDescendant = true;
+    }
+  }
+  return [...sessionsById].flatMap(([id, session]) =>
+    ownedSessionIds.has(id) ? [session] : [],
+  );
 }
 
 function sessionId(value: unknown): string | null {
   if (!value || typeof value !== 'object') return null;
   const id = (value as { id?: unknown }).id;
   return typeof id === 'string' ? id : null;
+}
+
+function sessionParentId(value: unknown): string | null {
+  if (!value || typeof value !== 'object') return null;
+  const parentId = (value as { parentID?: unknown }).parentID;
+  return typeof parentId === 'string' && parentId.trim() ? parentId.trim() : null;
 }
 
 function sessionDirectory(value: unknown): string | null {

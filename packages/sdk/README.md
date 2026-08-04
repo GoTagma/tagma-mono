@@ -393,7 +393,7 @@ File and directory trigger watch paths may be relative to `workDir`, absolute, o
 | --------- | ---------------- | -------- | ------- | ----------------------------------------------------------------------- |
 | `type`    | `"output_check"` | Yes      | -       | Completion type                                                         |
 | `check`   | `string`         | Yes      | -       | Shell command to run. Task stdout is piped to its stdin; exits 0 = pass |
-| `timeout` | `string`         | No       | `"30s"` | Max time to wait for the check command                                  |
+| `timeout` | `string`         | No       | `"2h"`  | Max time to wait for the check command                                  |
 
 ---
 

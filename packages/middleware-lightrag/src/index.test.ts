@@ -14,6 +14,10 @@ describe('middleware-lightrag plugin shape', () => {
     expect(typeof plugin.capabilities!.middlewares!.lightrag.enhanceDoc).toBe('function');
   });
 
+  test('schema gives remote retrieval a two-hour default', () => {
+    expect(LightRAGMiddleware.schema?.fields.timeout?.default).toBe('2h');
+  });
+
   test('manifest accepts compatible @tagma/types minor releases', () => {
     expect(manifest.peerDependencies?.['@tagma/types']).toBe('>=0.4.18 <0.5.0');
   });

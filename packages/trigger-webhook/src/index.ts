@@ -61,8 +61,8 @@ function serverKey(port: number, hostname: string): string {
 
 const DEFAULT_WEBHOOK_HOST = '127.0.0.1';
 const DEFAULT_MAX_BODY_BYTES = 1024 * 1024;
-const DEFAULT_WEBHOOK_TIMEOUT_LABEL = '30m';
-const DEFAULT_WEBHOOK_TIMEOUT_MS = 30 * 60 * 1000;
+const DEFAULT_WEBHOOK_TIMEOUT_LABEL = '2h';
+const DEFAULT_WEBHOOK_TIMEOUT_MS = 2 * 60 * 60 * 1_000;
 
 type BodyReadResult =
   | { readonly ok: true; readonly bytes: Uint8Array; readonly text: string }

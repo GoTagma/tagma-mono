@@ -41,7 +41,7 @@ pipeline:
               include the test name, the file path, and the assertion that
               failed. The output must not be an empty placeholder.
             # endpoint / model / api_key_env all default to local Ollama + qwen3:4b
-            timeout: 120s
+            timeout: 2h
 ```
 
 Swap to a hosted backend:
@@ -72,7 +72,7 @@ await tagma.registry.loadPlugins(['@tagma/completion-llm-judge'], process.cwd())
 | `model`            | string   | `qwen3:4b`                                   | Judge model name. Swap for `qwen3:8b`, `deepseek-r1:7b`, `gpt-4o-mini`, etc.               |
 | `endpoint`         | string   | `http://localhost:11434/v1/chat/completions` | OpenAI-compatible chat completions URL. Default points at local Ollama                     |
 | `api_key_env`      | string   | _(none)_                                     | Env var holding the bearer token. Leave unset for local Ollama; set for hosted backends    |
-| `timeout`          | duration | `120s`                                       | Max time to wait for the judge response (reasoning models need more time than chat models) |
+| `timeout`          | duration | `2h`                                         | Max time to wait for the judge response (reasoning models need more time than chat models) |
 | `max_output_chars` | number   | `8000`                                       | Truncate task stdout before judging (head+tail preserved)                                  |
 
 ## Behavior

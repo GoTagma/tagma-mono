@@ -73,10 +73,10 @@ const STAGE_METADATA_FILE = 'stage.json';
 const STAGE_RESULT_FILE = 'finalized.json';
 const STAGE_VERSION = 2;
 const MAX_ARTIFACT_BYTES = 5 * 1024 * 1024;
-const STAGE_TTL_MS = 24 * 60 * 60 * 1000;
+const STAGE_TTL_MS = 8 * 24 * 60 * 60 * 1_000;
 const TRIAL_CACHE_VERSION = CHAT_PIPELINE_TRIAL_CACHE_VERSION;
 const FINALIZE_TRIAL_ID_RE = /^[A-Za-z0-9_-]{1,160}$/;
-const FINALIZE_WITNESS_TIMEOUT_MS = 10 * 60 * 1000;
+const FINALIZE_WITNESS_TIMEOUT_MS = 60 * 60 * 1_000;
 
 export type ChatYamlFinalizeWitnessFailureKind =
   'chat-yaml-finalize-witness-timeout' | 'chat-yaml-finalize-witness-aborted';

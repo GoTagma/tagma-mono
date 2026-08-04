@@ -23,7 +23,9 @@
 // calls over the message channel and deserialize responses.
 //
 // Timeout: every proxied method call is wrapped with PLUGIN_METHOD_TIMEOUT_MS
-// (default 120 s). Trigger watch callbacks use a softer path that does not
+// (default 24 h). The engine's task deadline remains the normal execution
+// owner; this fence only catches a worker call that outlives even the maximum
+// workspace task budget. Trigger watch callbacks use a softer path that does not
 // enforce the timeout, because triggers are inherently long-lived.
 //
 // Why worker containment:
@@ -117,7 +119,7 @@ export interface PluginWorkerOptions {
   onUnexpectedTerminate?: (error: Error) => void;
 }
 
-const PLUGIN_METHOD_TIMEOUT_MS = 120_000;
+const PLUGIN_METHOD_TIMEOUT_MS = 24 * 60 * 60 * 1_000;
 let nextHostWatchId = 1;
 
 const WORKER_SOURCE = `

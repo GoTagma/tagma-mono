@@ -143,9 +143,16 @@
   Dispose the per-workspace worker and cache with its `WorkspaceState`.
 - Set an explicit `trial-running` post-chat phase before awaiting the host Trial request; progress
   labels must follow that current phase instead of inferring it from a stale plan or failure result.
-  Keep the per-task Trial timeout strictly below the overall 10-minute Trial budget (currently two
-  minutes) so one stalled prompt cannot consume the entire lifecycle; ordinary runs keep their
-  normal task timeout.
+  Snapshot execution budgets from workspace Settings when Trial starts. Recommended defaults are
+  120 minutes per task, 480 minutes per production pipeline, and 1440 minutes per Trial; supported
+  ranges are 30m-24h, 1h-7d, and 2h-7d respectively. Normalize each outer lifecycle to at least 30
+  minutes above the default task budget. Explicit YAML task/pipeline timeouts remain authoritative;
+  never reintroduce a hidden Trial-specific task cap.
+- Before the real-workspace Trial baseline, fail immediately with diagnostic-only `preflight-failed`
+  evidence when every DAG root is a built-in file/directory trigger whose input is currently absent.
+  Do not start the engine, write an all-skipped run log, consume the Trial budget, or authorize YAML
+  repair for a no-input baseline. Any runnable, manual, custom, or indeterminate root continues
+  through normal execution.
 - Desktop sidecar builds must embed the Trial witness worker with the compiled executable and,
   for native host targets, smoke-run the final executable through a real worker capture before
   accepting the build. Source-text or bundle-presence checks alone do not prove Worker loading.
@@ -318,10 +325,11 @@
   the diagnostics bridge or route. Keep diagnostics isolation, contributor, auth-boundary, and
   workspace-isolation tests current.
 - Discover OpenCode diagnostics history with the canonical directory query plus the bounded
-  unscoped compatibility query used by Chat. Filter both through the shared root-session ownership
-  rules so Windows drive/separator aliases and Tagma-marked legacy sessions work without exposing
-  foreign, platform-export, or delegated sessions. Read messages with the verified session's
-  stored directory because OpenCode directory matching may be case-sensitive on Windows.
+  unscoped compatibility query used by Chat. First verify owned roots through the shared root-session
+  ownership rules, then admit delegated descendants only when their complete `parentID` chain reaches
+  one of those roots. Exclude foreign roots, platform-export sessions, orphans, and cycles; Chat
+  history may continue hiding delegated sessions. Read messages with each verified root or
+  descendant's stored directory because OpenCode directory matching may be case-sensitive on Windows.
 
 ## Focused Editor Tests
 
@@ -344,6 +352,13 @@
   failed fields that have not been superseded by a newer edit.
 - Keep restart-backed global and Python settings mutations mutually exclusive with each other and
   with pending workspace settings saves.
+- Keep task, production-pipeline, and Chat-Trial execution budgets workspace-local and adjustable in
+  the dedicated Execution category. Server parsing, persistence, UI ranges, ordinary pipelines,
+  workflow pipelines, and Trial must share one source of defaults/ranges. Pipeline-authoring agents
+  should omit YAML timeouts by default so these settings apply, while explicit user deadlines win.
+- Execution-facing hook, completion, middleware, trigger, worker, export, and witness fences must be
+  long enough not to undercut the configured task/lifecycle defaults. Do not conflate them with short
+  health, startup, stop-acknowledgement, polling, or renewable lock-lease timeouts.
 
 ## Canvas Panning
 

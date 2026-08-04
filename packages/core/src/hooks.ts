@@ -34,7 +34,7 @@ function normalizeCommands(cmd: HookCommand | undefined): readonly CommandConfig
   return cmd;
 }
 
-const DEFAULT_HOOK_TIMEOUT_MS = 30_000;
+export const DEFAULT_HOOK_TIMEOUT_MS = 2 * 60 * 60 * 1_000;
 
 function logWarn(log: Logger | undefined, prefix: string, message: string): void {
   if (log) log.warn(prefix, message);

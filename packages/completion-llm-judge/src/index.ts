@@ -44,7 +44,7 @@ const DEFAULT_ENDPOINT = 'http://localhost:11434/v1/chat/completions';
 // reliably follows the PASS/FAIL-on-first-line instruction. Swap to
 // `qwen3:8b`, `deepseek-r1:7b`, or a hosted model for stricter judging.
 const DEFAULT_MODEL = 'qwen3:4b';
-const DEFAULT_TIMEOUT_MS = 120_000;
+const DEFAULT_TIMEOUT_MS = 2 * 60 * 60 * 1_000;
 const DEFAULT_MAX_OUTPUT_CHARS = 8_000;
 
 const SYSTEM_PROMPT =
@@ -216,7 +216,7 @@ export const LlmJudgeCompletion: CompletionPlugin = {
       },
       timeout: {
         type: 'duration',
-        default: '120s',
+        default: '2h',
         description:
           'Maximum time to wait for the judge response. Reasoning models need more time than chat models.',
       },

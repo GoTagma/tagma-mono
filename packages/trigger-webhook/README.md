@@ -29,7 +29,7 @@ pipeline:
             port: 8787
             path: /hooks/deploy
             secret_env: TAGMA_WEBHOOK_SECRET
-            timeout: 30m
+            timeout: 2h
           prompt: 'Run the deploy playbook for the staging environment'
 ```
 
@@ -62,7 +62,7 @@ await tagma.registry.loadPlugins(['@tagma/trigger-webhook'], process.cwd());
 | `host`           | string   | `127.0.0.1`  | Interface to bind. Defaults to loopback. Setting to `0.0.0.0` or any non-loopback address without `secret_env` is refused at config time |
 | `secret_env`     | string   | _(none)_     | Env var holding the HMAC-SHA256 secret. When set, requests must include `x-tagma-signature`                                              |
 | `max_body_bytes` | number   | `1048576`    | Maximum accepted request body size. Larger requests return `413 payload too large` before signature or JSON processing                   |
-| `timeout`        | duration | `30m`        | Max wait time; set to `0` for unbounded wait                                                                                             |
+| `timeout`        | duration | `2h`         | Max wait time; set to `0` for unbounded wait                                                                                             |
 
 ## Behavior
 

@@ -14,6 +14,10 @@ describe('completion-llm-judge plugin shape', () => {
     expect(typeof plugin.capabilities!.completions!.llm_judge.check).toBe('function');
   });
 
+  test('schema gives slow reasoning judges a two-hour default', () => {
+    expect(LlmJudgeCompletion.schema?.fields.timeout?.default).toBe('2h');
+  });
+
   test('manifest accepts compatible @tagma/types minor releases', () => {
     expect(manifest.peerDependencies?.['@tagma/types']).toBe('>=0.4.18 <0.5.0');
   });

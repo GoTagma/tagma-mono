@@ -56,7 +56,7 @@ await tagma.registry.loadPlugins(['@tagma/middleware-lightrag'], process.cwd());
 | `top_k`             | number   | `10`                      | Top-k entities (local mode) / relationships (global mode). Runtime capped at 200                                                                 |
 | `max_context_chars` | number   | `40000`                   | Maximum retrieved context characters inserted into the prompt                                                                                    |
 | `api_key_env`       | string   | _(none)_                  | Env var holding the API key; sent via `X-API-Key` header                                                                                         |
-| `timeout`           | duration | `30s`                     | Max time to wait for the LightRAG response                                                                                                       |
+| `timeout`           | duration | `2h`                      | Max time to wait for the LightRAG response                                                                                                       |
 | `required`          | boolean  | `false`                   | When `true`, an empty retrieval result fails the middleware (and implies `on_error: fail` for transport errors)                                  |
 | `on_error`          | enum     | `warn` (or `fail`)        | One of `warn`, `fail`, `skip`. Controls how transport / non-2xx errors are handled. Defaults to `warn`; defaults to `fail` when `required: true` |
 | `label`             | string   | `Knowledge Graph Context` | Header rendered above the retrieved context in the final prompt                                                                                  |

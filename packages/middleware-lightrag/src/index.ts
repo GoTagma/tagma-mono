@@ -41,7 +41,7 @@ type OnError = 'warn' | 'fail' | 'skip';
 const DEFAULT_MODE: QueryMode = 'mix';
 const DEFAULT_TOP_K = 10;
 const MAX_TOP_K = 200;
-const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_TIMEOUT_MS = 2 * 60 * 60 * 1_000;
 const DEFAULT_MAX_CONTEXT_CHARS = 40_000;
 const VALID_MODES: ReadonlySet<QueryMode> = new Set(['local', 'global', 'hybrid', 'naive', 'mix']);
 const VALID_ON_ERROR: ReadonlySet<OnError> = new Set(['warn', 'fail', 'skip']);
@@ -208,7 +208,7 @@ export const LightRAGMiddleware: MiddlewarePlugin = {
       },
       timeout: {
         type: 'duration',
-        default: '30s',
+        default: '2h',
         description: 'Maximum time to wait for the LightRAG response.',
       },
       required: {

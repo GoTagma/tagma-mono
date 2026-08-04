@@ -8,7 +8,7 @@ import type {
 import { commandLabel, commandToSpawnSpec } from '@tagma/core';
 import { parseOptionalPluginTimeout } from '../duration';
 
-const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_TIMEOUT_MS = 2 * 60 * 60 * 1_000;
 const MAX_FEEDBACK_STREAM_CHARS = 8_000;
 
 function tailForFeedback(value: string): string {
@@ -33,9 +33,9 @@ export const OutputCheckCompletion: CompletionPlugin = {
       },
       timeout: {
         type: 'duration',
-        default: '30s',
+        default: '2h',
         description: 'Maximum time to wait for the check command.',
-        placeholder: '30s',
+        placeholder: '2h',
       },
     },
   },

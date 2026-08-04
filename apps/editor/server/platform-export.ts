@@ -83,7 +83,7 @@ const DISABLED_EXPORT_TOOLS: Record<string, boolean> = {
   webfetch: false,
 };
 
-const DEFAULT_PLATFORM_EXPORT_TIMEOUT_MS = 10 * 60_000;
+const DEFAULT_PLATFORM_EXPORT_TIMEOUT_MS = 2 * 60 * 60_000;
 const PLATFORM_EXPORT_TIMEOUT_MS = readPlatformExportTimeoutMs();
 
 function readPlatformExportTimeoutMs(): number {

@@ -90,7 +90,7 @@ describe('trigger-webhook plugin shape', () => {
 
   test('schema documents bounded bodies and finite default wait', () => {
     expect(WebhookTrigger.schema?.fields.max_body_bytes?.default).toBe(1024 * 1024);
-    expect(WebhookTrigger.schema?.fields.timeout?.default).toBe('30m');
+    expect(WebhookTrigger.schema?.fields.timeout?.default).toBe('2h');
   });
 
   test('manifest requires the types release that exports plugin timeout parsing', () => {

@@ -1346,6 +1346,9 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   expect(yamlContractDoc).toContain('name: tagma-yaml-contract');
   expect(yamlContractDoc).toContain('### 12. Typed task bindings');
   expect(yamlContractDoc).toContain('`directory` - waits for a directory path');
+  expect(yamlContractDoc).toContain('Omit it to inherit workspace Execution Settings');
+  expect(yamlContractDoc).toContain('`timeout?` (default `2h`)');
+  expect(yamlContractDoc).toContain('Each command has a hard\n2-hour timeout');
   expect(yamlContractDoc).toContain('## Companion `.layout.json` file');
   expect(yamlContractDoc).toContain('tagma_placement_plan');
   expect(yamlContractDoc).toContain('## Companion `.requirements.md` file');
@@ -1355,8 +1358,10 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   expect(readFileSync(nativeSkill, 'utf8')).toContain('read the same-folder `.compile.log`');
   expect(readFileSync(nativeSkill, 'utf8')).toContain('## Command tasks');
   expect(readFileSync(resilienceSkill, 'utf8')).toContain('Bounded self-healing pattern');
+  expect(readFileSync(resilienceSkill, 'utf8')).toContain('workspace Execution Settings');
   expect(readFileSync(triggerSkill, 'utf8')).toContain('name: tagma-trigger-strategy');
   expect(readFileSync(triggerSkill, 'utf8')).toContain('Trigger strategy');
+  expect(readFileSync(triggerSkill, 'utf8')).toContain('workspace task timeout by default');
   expect(readFileSync(safetySkill, 'utf8')).toContain('Best-effort rollback pattern');
   expect(planSkillDoc).toContain('Decide track boundaries by agent identity, not by parallelism');
   expect(planSkillDoc).toContain('command-only track');
