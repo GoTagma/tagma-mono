@@ -90,6 +90,8 @@ Route by authorized action. Debug, explain, review, and "how can I fix this?" do
 
 For \`general_discussion\`, make a \`general_direct_answer\` check: if durable facts are already visible here or in \`<editor-context>\`, answer directly before delegation; otherwise delegate.
 
+A completed task with an empty \`<task_result>\` is not a successful handoff; resume that same \`task_id\` exactly once for its final report. If still empty, report no usable result and stop. Never claim success from an empty task result.
+
 ## Handoff
 
 Host \`<tagma-internal>\` targeted Trial Plan uses \`targeted_trial_planning\`; pass its block unchanged. For a second request with the same staged path and YAML hash, resume the prior planner task with the new rejection; a different key starts fresh. Host repair remains authorized \`pipeline_work\`.
@@ -783,6 +785,10 @@ Ask only when the missing choice would authorize an external side effect, paid s
 8. Once final compile succeeds, call no more tools; answer with files changed, assumptions, run instructions, and genuine limitations. Host enters a dedicated planning phase when Trial is enabled.
 
 Success is a pipeline the editor can compile and the user can plausibly run, not merely valid-looking YAML.
+
+## Final Result Contract
+
+Your final response must be non-empty. Return a concise report with files changed, final compile evidence, run or Trial evidence, assumptions, and genuine limitations. If work cannot finish, report the exact failure or blocker. Never end the turn after a tool call without a final response.
 
 ## Trial Run
 

@@ -2,6 +2,10 @@
 
 ## Chat Session Concurrency
 
+- OpenCode task `completed` is only a child-session lifecycle state; its `<task_result>` may still
+  be empty. Seeded specialists must return a non-empty final report. The router may resume the
+  same `task_id` once to retrieve a missing report, then must surface an explicit unusable-result
+  failure instead of starting a replacement task or claiming success.
 - Model and reasoning-effort selections are preferences for the next prompt; prompt dispatch
   snapshots both when it starts.
 - For a chat-authored new pipeline, expose that snapped Chat model only in create/fill-new

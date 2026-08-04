@@ -274,6 +274,11 @@ test('router keeps one bounded implementation handoff before result synthesis', 
   expect(doc).toContain('Never delegate preliminary inspection or workspace discovery');
   expect(doc).toContain('one specialist call owns both lookup and implementation');
   expect(doc).toContain('Do not add implementation choices that the user did not provide');
+  expect(doc).toContain(
+    'A completed task with an empty `<task_result>` is not a successful handoff',
+  );
+  expect(doc).toContain('resume that same `task_id` exactly once');
+  expect(doc).toContain('Never claim success from an empty task result');
 });
 
 test('tagma-pipeline agent stays compact and keeps schema detail out of the base prompt', () => {
@@ -283,6 +288,8 @@ test('tagma-pipeline agent stays compact and keeps schema detail out of the base
   expect(doc).toContain('Keep context small');
   expect(doc).toContain('schema source of truth');
   expect(doc).toContain('YAML Contract Quick Reference');
+  expect(doc).toContain('## Final Result Contract');
+  expect(doc).toContain('Your final response must be non-empty');
   expect(doc).not.toContain('### 12. Typed task bindings');
   expect(doc).not.toContain('#### Port types and coercion');
 });
