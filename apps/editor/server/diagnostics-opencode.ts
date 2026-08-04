@@ -139,7 +139,6 @@ async function listWorkspaceSessions(
     limit: '100',
   });
   const discoveryQuery = new URLSearchParams({
-    roots: 'true',
     limit: String(OPENCODE_SESSION_DISCOVERY_LIMIT),
   });
   const [scoped, discovered] = await Promise.all([

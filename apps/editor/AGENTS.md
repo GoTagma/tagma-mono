@@ -325,11 +325,13 @@
   the diagnostics bridge or route. Keep diagnostics isolation, contributor, auth-boundary, and
   workspace-isolation tests current.
 - Discover OpenCode diagnostics history with the canonical directory query plus the bounded
-  unscoped compatibility query used by Chat. First verify owned roots through the shared root-session
-  ownership rules, then admit delegated descendants only when their complete `parentID` chain reaches
-  one of those roots. Exclude foreign roots, platform-export sessions, orphans, and cycles; Chat
-  history may continue hiding delegated sessions. Read messages with each verified root or
-  descendant's stored directory because OpenCode directory matching may be case-sensitive on Windows.
+  unscoped compatibility query used by Chat. Do not set OpenCode's `roots=true` on that discovery
+  request because it explicitly removes delegated children. First verify owned roots through the
+  shared root-session ownership rules, then admit delegated descendants only when their complete
+  `parentID` chain reaches one of those roots. Exclude foreign roots, platform-export sessions,
+  orphans, and cycles; Chat history may continue hiding delegated sessions. Read messages with each
+  verified root or descendant's stored directory because OpenCode directory matching may be
+  case-sensitive on Windows.
 
 ## Focused Editor Tests
 

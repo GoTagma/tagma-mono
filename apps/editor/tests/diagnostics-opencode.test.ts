@@ -66,7 +66,7 @@ describe('OpenCode diagnostics reader', () => {
 
     expect(requestUrls).toEqual([
       requestUrl('/session', { directory: OPENCODE_DIR, limit: '100' }),
-      requestUrl('/session', { roots: 'true', limit: '10000' }),
+      requestUrl('/session', { limit: '10000' }),
     ]);
     expect(result).toMatchObject({
       workspaceKey: WORKSPACE_DIR,
@@ -98,7 +98,7 @@ describe('OpenCode diagnostics reader', () => {
     expect(result.sessions.map((session) => session.id)).toEqual(['chat-1']);
     expect(requestUrls).toEqual([
       requestUrl('/session', { directory: runtimeDirectory, limit: '100' }),
-      requestUrl('/session', { roots: 'true', limit: '10000' }),
+      requestUrl('/session', { limit: '10000' }),
     ]);
   });
 
@@ -188,7 +188,7 @@ describe('OpenCode diagnostics reader', () => {
 
     expect(requestUrls).toEqual([
       requestUrl('/session', { directory: OPENCODE_DIR, limit: '100' }),
-      requestUrl('/session', { roots: 'true', limit: '10000' }),
+      requestUrl('/session', { limit: '10000' }),
       requestUrl('/session/chat-1/message', {
         directory: OPENCODE_DIR,
         limit: '50',
@@ -220,7 +220,7 @@ describe('OpenCode diagnostics reader', () => {
 
     expect(requestUrls).toEqual([
       requestUrl('/session', { directory: runtimeDirectory, limit: '100' }),
-      requestUrl('/session', { roots: 'true', limit: '10000' }),
+      requestUrl('/session', { limit: '10000' }),
       requestUrl('/session/chat-1/message', {
         directory: storedDirectory,
         limit: '25',
@@ -248,7 +248,7 @@ describe('OpenCode diagnostics reader', () => {
 
     expect(requestUrls).toEqual([
       requestUrl('/session', { directory: OPENCODE_DIR, limit: '100' }),
-      requestUrl('/session', { roots: 'true', limit: '10000' }),
+      requestUrl('/session', { limit: '10000' }),
       requestUrl('/session/delegated-child/message', {
         directory: delegatedDirectory,
         limit: '25',
