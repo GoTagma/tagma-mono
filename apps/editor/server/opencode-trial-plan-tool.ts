@@ -473,8 +473,10 @@ function resolvePipelineTarget(input, contextDirectory) {
 }
 
 const TRIAL_PLAN_ATTEMPT_TELEMETRY_VERSION = 1;
+const TRIAL_PLAN_DRAFT_VERSION = 1;
 const TOOL_ATTEMPT_LIMITS = CONTRACT.limits.toolAttemptsPerYaml;
 const MAX_REJECTION_SUMMARIES = CONTRACT.limits.rejectionSummaries;
+const DRAFT_OPERATIONS = [begin, upsert-case, set-coverage, set-findings, commit];
 
 function readTrialPlanMaxAttempts(stageRoot) {
   let parsed;
@@ -505,13 +507,111 @@ function trialPlanAttemptPaths(root, yamlPath, yamlHash) {
     .update(relativeYamlPath + String.fromCharCode(0) + yamlHash)
     .digest("hex");
   const telemetryDir = join(stageRoot, ".trial-plan-telemetry");
+  const draftDir = join(stageRoot, ".trial-plan-drafts");
   return {
     relativeYamlPath,
     telemetryDir,
+    draftDir,
     maxAttempts: readTrialPlanMaxAttempts(stageRoot),
     telemetryPath: join(telemetryDir, key + ".json"),
+    draftPath: join(draftDir, key + ".json"),
     lockPath: join(telemetryDir, key + ".lock"),
   };
+}
+
+function acquireTrialPlanLock(paths) {
+  mkdirSync(paths.telemetryDir, { recursive: true });
+  try {
+    const lockFd = openSync(paths.lockPath, "wx");
+    closeSync(lockFd);
+  } catch (error) {
+    if (error && typeof error === "object" && error.code === "EEXIST") {
+      throw new Error("another trial plan tool operation is already in progress");
+    }
+    throw error;
+  }
+}
+
+function withTrialPlanDraftLock(paths, callback) {
+  acquireTrialPlanLock(paths);
+  try {
+    return callback();
+  } finally {
+    rmSync(paths.lockPath, { force: true });
+  }
+}
+
+function newTrialPlanDraft(paths, yamlHash, summary, goals) {
+  return {
+    draftVersion: TRIAL_PLAN_DRAFT_VERSION,
+    version: CONTRACT.version,
+    yamlHash,
+    relativeYamlPath: paths.relativeYamlPath,
+    summary,
+    goals,
+    coverage: [],
+    findings: [],
+    cases: [],
+  };
+}
+
+function assertTrialPlanDraft(value, paths, yamlHash) {
+  const draft = asRecord(value, 'trial plan draft');
+  if (
+    draft.draftVersion !== TRIAL_PLAN_DRAFT_VERSION ||
+    draft.version !== CONTRACT.version ||
+    draft.yamlHash !== yamlHash ||
+    draft.relativeYamlPath !== paths.relativeYamlPath ||
+    !Array.isArray(draft.goals) ||
+    !Array.isArray(draft.coverage) ||
+    !Array.isArray(draft.findings) ||
+    !Array.isArray(draft.cases)
+  ) {
+    throw new Error('trial plan draft does not match the staged YAML revision');
+  }
+  return draft;
+}
+
+function readTrialPlanDraft(paths, yamlHash) {
+  let raw;
+  try {
+    const stat = lstatSync(paths.draftPath);
+    if (stat.isSymbolicLink() || !stat.isFile() || stat.size > CONTRACT.limits.planBytes) {
+      throw new Error('trial plan draft must be a bounded regular file');
+    }
+    raw = JSON.parse(readFileSync(paths.draftPath, 'utf8'));
+  } catch (error) {
+    if (error && typeof error === 'object' && error.code === 'ENOENT') {
+      throw new Error('trial plan draft is missing; call begin before adding sections');
+    }
+    throw error;
+  }
+  return assertTrialPlanDraft(raw, paths, yamlHash);
+}
+
+function writeTrialPlanDraft(paths, draft) {
+  const serialized = JSON.stringify(draft, null, 2) + String.fromCharCode(10);
+  if (new TextEncoder().encode(serialized).length > CONTRACT.limits.planBytes) {
+    throw new Error('trial plan draft exceeds the plan byte limit');
+  }
+  mkdirSync(paths.draftDir, { recursive: true });
+  const tempPath = paths.draftPath + '.' + randomUUID() + '.tmp';
+  writeFileSync(tempPath, serialized, 'utf8');
+  renameSync(tempPath, paths.draftPath);
+}
+
+function trialPlanDraftResult(operation, draft) {
+  return JSON.stringify(
+    {
+      operation,
+      yamlHash: draft.yamlHash,
+      cases: draft.cases.length,
+      coverage: draft.coverage.length,
+      findings: draft.findings.length,
+    },
+    null,
+    2,
+  );
 }
 
 function newTrialPlanAttemptTelemetry(yamlHash, relativeYamlPath) {
@@ -597,12 +697,8 @@ function writeTrialPlanAttemptTelemetry(paths, telemetry) {
 
 function beginTrialPlanAttempt(root, yamlPath, yamlHash) {
   const paths = trialPlanAttemptPaths(root, yamlPath, yamlHash);
-  mkdirSync(paths.telemetryDir, { recursive: true });
-  let locked = false;
+  acquireTrialPlanLock(paths);
   try {
-    const lockFd = openSync(paths.lockPath, "wx");
-    closeSync(lockFd);
-    locked = true;
     const telemetry = readTrialPlanAttemptTelemetry(paths, yamlHash);
     if (telemetry.toolAttemptCount >= paths.maxAttempts) {
       throw new Error(
@@ -616,10 +712,7 @@ function beginTrialPlanAttempt(root, yamlPath, yamlHash) {
     writeTrialPlanAttemptTelemetry(paths, telemetry);
     return { paths, telemetry };
   } catch (error) {
-    if (locked) rmSync(paths.lockPath, { force: true });
-    if (error && typeof error === "object" && error.code === "EEXIST") {
-      throw new Error("another trial plan tool attempt is already in progress");
-    }
+    rmSync(paths.lockPath, { force: true });
     throw error;
   }
 }

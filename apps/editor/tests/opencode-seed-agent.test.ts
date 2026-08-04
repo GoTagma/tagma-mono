@@ -703,6 +703,86 @@ test('trial-plan tool binds structured edge cases to the final YAML hash', () =>
   expect(() => new Bun.Transpiler({ loader: 'ts' }).transformSync(doc)).not.toThrow();
 });
 
+test('trial-plan tool assembles a large plan in bounded draft calls before one commit', async () => {
+  const generated = await loadGeneratedTrialPlanTool();
+  const stage = makeTrialPlanStage();
+  try {
+    const plan = completeTrialPlanToolArgs('sample/sample.yaml');
+    const template = (plan.cases as Array<Record<string, unknown>>)[0]!;
+    const cases = Array.from({ length: 7 }, (_, index) => ({
+      ...template,
+      id: `file-boundaries-${index + 1}`,
+      title: `File boundaries ${index + 1}`,
+    }));
+    const coverage = (plan.coverage as Array<Record<string, unknown>>).map((entry) => ({
+      ...entry,
+      caseIds:
+        entry.status === 'covered' ? ['file-boundaries-1'] : (entry.caseIds as string[]),
+    }));
+
+    await generated.tool.execute(
+      {
+        operation: 'begin',
+        pipeline_path: 'sample/sample.yaml',
+        summary: plan.summary,
+        goals: plan.goals,
+      },
+      { directory: stage.agentTagmaDir },
+    );
+    for (const testCase of cases) {
+      await generated.tool.execute(
+        {
+          operation: 'upsert-case',
+          pipeline_path: 'sample/sample.yaml',
+          case: testCase,
+        },
+        { directory: stage.agentTagmaDir },
+      );
+    }
+    await generated.tool.execute(
+      {
+        operation: 'set-coverage',
+        pipeline_path: 'sample/sample.yaml',
+        coverage,
+      },
+      { directory: stage.agentTagmaDir },
+    );
+    await generated.tool.execute(
+      {
+        operation: 'set-findings',
+        pipeline_path: 'sample/sample.yaml',
+        findings: plan.findings,
+      },
+      { directory: stage.agentTagmaDir },
+    );
+
+    expect(existsSync(stage.planPath)).toBe(false);
+    expect(readChatPipelineTrialPlanToolTelemetry(stage.yamlPath)).toMatchObject({
+      toolAttemptCount: 0,
+      successfulWriteCount: 0,
+    });
+
+    const result = JSON.parse(
+      await generated.tool.execute(
+        { operation: 'commit', pipeline_path: 'sample/sample.yaml' },
+        { directory: stage.agentTagmaDir },
+      ),
+    ) as { path: string; yamlHash: string };
+
+    expect(result.path).toBe('sample/sample.trial-plan.json');
+    expect(
+      parseChatPipelineTrialPlan(JSON.parse(readFileSync(stage.planPath, 'utf8'))).cases,
+    ).toHaveLength(7);
+    expect(readChatPipelineTrialPlanToolTelemetry(stage.yamlPath)).toMatchObject({
+      toolAttemptCount: 1,
+      successfulWriteCount: 1,
+    });
+  } finally {
+    stage.cleanup();
+    generated.cleanup();
+  }
+});
+
 test('trial-plan tool rejects host-invalid plans before writing any file', async () => {
   const generated = await loadGeneratedTrialPlanTool();
   const stage = makeTrialPlanStage();
