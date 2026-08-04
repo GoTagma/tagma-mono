@@ -464,9 +464,10 @@ test('dedicated hidden tagma-trial-planner owns targeted Trial Plan authoring', 
     expect(planner).toContain('tagma_placement_plan: false');
     expect(planner).toContain('tagma_trial_plan: true');
     expect(planner).toContain('tagma_trial_plan: allow');
-    expect(planner).toContain('exactly once per physical turn');
+    expect(planner).toContain('then `commit` exactly once');
+    expect(planner).toContain('Never submit the whole plan or multiple cases in one call');
     expect(planner).toContain(
-      'configured finite attempt budget for each exact staged path and YAML hash',
+      'configured finite commit budget for each exact staged path and YAML hash',
     );
     expect(planner).toContain('subsequent same-key request resumes this planner task');
     expect(planner).not.toContain('two-call budget');
@@ -771,8 +772,7 @@ test('trial-plan tool assembles a large plan in bounded draft calls before one c
     }));
     const coverage = (plan.coverage as Array<Record<string, unknown>>).map((entry) => ({
       ...entry,
-      caseIds:
-        entry.status === 'covered' ? ['file-boundaries-1'] : (entry.caseIds as string[]),
+      caseIds: entry.status === 'covered' ? ['file-boundaries-1'] : (entry.caseIds as string[]),
     }));
 
     await generated.tool.execute(
@@ -990,9 +990,13 @@ test('trial-plan tool writes plans that the authoritative host parser accepts', 
   const stage = makeTrialPlanStage();
   try {
     const result = JSON.parse(
-      await submitTrialPlanToolArgs(generated.tool, completeTrialPlanToolArgs('sample/sample.yaml'), {
-        directory: stage.agentTagmaDir,
-      }),
+      await submitTrialPlanToolArgs(
+        generated.tool,
+        completeTrialPlanToolArgs('sample/sample.yaml'),
+        {
+          directory: stage.agentTagmaDir,
+        },
+      ),
     ) as { path: string; yamlHash: string };
 
     expect(result.path).toBe('sample/sample.trial-plan.json');
@@ -1047,9 +1051,9 @@ test('tagma-trial-planner instructs host trial-plan failure handling for live .t
     seedOpencodeArtifacts(dir);
     const doc = readFileSync(join(dir, '.opencode', 'agents', 'tagma-trial-planner.md'), 'utf8');
 
-    expect(doc).toContain('If `tagma_trial_plan` fails');
+    expect(doc).toContain('If a pre-commit `tagma_trial_plan` operation fails');
     expect(doc).toContain('Pass the exact staged YAML path');
-    expect(doc).toContain('The tool validates the complete plan before writing');
+    expect(doc).toContain('let `commit` validate the complete plan before writing');
     expect(doc).toContain('relative to the isolated case project root');
     expect(doc).toContain('never assert staged YAML or its companion artifacts');
     expect(doc).toContain('Never copy YAML or trial plans between staging and live `.tagma`');
