@@ -64,6 +64,7 @@ import {
   canContinueChatSession,
   isChatDrivenEditLikely,
   useChatStore,
+  type ChatYamlPostAction,
   type ChatYamlRepairEvidence,
 } from './store/chat-store';
 import { selectFinishedTurnQueueHead } from './store/finished-turn-selector';
@@ -1042,6 +1043,17 @@ export function App() {
     let cancelled = false;
     void (async () => {
       let keepYamlLockForRepair = false;
+      const finishedSessionId = finishedTurn.sessionId;
+      const setFinishedPostChatYamlAction = (action: ChatYamlPostAction | null) =>
+        useChatStore.getState().setPostChatYamlAction(action, finishedSessionId);
+      const clearFinishedPostChatYamlAction = () =>
+        useChatStore.getState().clearPostChatYamlAction(finishedSessionId);
+      const getFinishedPostChatYamlAction = () => {
+        const chat = useChatStore.getState();
+        return !finishedSessionId || chat.currentSessionId === finishedSessionId
+          ? chat.postChatYamlAction
+          : (chat.sessionStates[finishedSessionId]?.postChatYamlAction ?? null);
+      };
       const snapshot = finishedTurn.yamlSnapshotBeforeSend;
       const chatYamlLockLease = snapshot
         ? getLocalChatYamlEditLockLeaseForWorkspace(snapshot.workDir)
@@ -1052,9 +1064,8 @@ export function App() {
       let hostTrialAborted = false;
       const discardCancelledStage = async () =>
         lifecycleCancellationGuard ? lifecycleCancellationGuard.stopIfRequested() : false;
-      useChatStore.getState().setReconciling(true);
+      useChatStore.getState().setReconciling(true, finishedSessionId);
       try {
-        const finishedSessionId = finishedTurn.sessionId;
         const currentChatState = useChatStore.getState();
         if (finishedSessionId) {
           const finishedSessionMessages =
@@ -1097,6 +1108,7 @@ export function App() {
             withYamlEditLockRequestBypass(chatYamlLockLease.id, op);
           useChatStore.getState().beginChatYamlLifecycle({
             turnId: finishedTurn.id,
+            sessionId: finishedSessionId,
             stageId: snapshot.staging.id,
             workspaceKey: snapshot.workDir,
             hostTrialActive: false,
@@ -1116,7 +1128,7 @@ export function App() {
                 api.discardChatYamlStage(snapshot.staging.id, snapshot.workDir),
               ).then(() => undefined);
             },
-            clearPostChatAction: () => useChatStore.getState().clearPostChatYamlAction(),
+            clearPostChatAction: clearFinishedPostChatYamlAction,
           });
           if (await discardCancelledStage()) return;
           const stage = await underChatLock(() =>
@@ -1129,7 +1141,7 @@ export function App() {
             await underChatLock(() =>
               api.discardChatYamlStage(snapshot.staging.id, snapshot.workDir),
             );
-            useChatStore.getState().clearPostChatYamlAction();
+            clearFinishedPostChatYamlAction();
             return;
           }
           const authoritativeStagedTarget = stage.entries.find(
@@ -1197,7 +1209,7 @@ export function App() {
             const nextAttempt = attempts + 1;
             repairAttemptsRef.current.set(attemptKey, nextAttempt);
             completedRepairAttempts = nextAttempt;
-            useChatStore.getState().setPostChatYamlAction({
+            setFinishedPostChatYamlAction({
               ...stagedTarget,
               status: 'repairing',
               phase: 'compile-repair',
@@ -1254,7 +1266,7 @@ export function App() {
                 ),
               );
             let trialError: unknown;
-            useChatStore.getState().setPostChatYamlAction({
+            setFinishedPostChatYamlAction({
               ...stagedTarget,
               status: 'repairing',
               phase: 'trial-running',
@@ -1273,14 +1285,14 @@ export function App() {
                   ),
                 );
                 if (stopTrialProgressPolling) return;
-                const current = useChatStore.getState().postChatYamlAction;
+                const current = getFinishedPostChatYamlAction();
                 if (
                   progress &&
                   current?.phase === 'trial-running' &&
                   current.path === stagedTarget.path &&
                   progress.trialId === finishedTurn.id
                 ) {
-                  useChatStore.getState().setPostChatYamlAction({
+                  setFinishedPostChatYamlAction({
                     ...current,
                     progress,
                   });
@@ -1348,7 +1360,7 @@ export function App() {
               ) {
                 const nextPlanAttempt = planAttempts + 1;
                 trialPlanAttemptsRef.current.set(planAttemptKey, nextPlanAttempt);
-                useChatStore.getState().setPostChatYamlAction({
+                setFinishedPostChatYamlAction({
                   ...stagedTarget,
                   status: 'repairing',
                   phase: 'trial-planning',
@@ -1397,7 +1409,7 @@ export function App() {
               const nextAttempt = trialAttempts + 1;
               repairAttemptsRef.current.set(attemptKey, nextAttempt);
               completedRepairAttempts = nextAttempt;
-              useChatStore.getState().setPostChatYamlAction({
+              setFinishedPostChatYamlAction({
                 ...stagedTarget,
                 status: 'repairing',
                 phase: 'trial-repair',
@@ -1528,7 +1540,7 @@ export function App() {
           const finalEntry = finalized.entry;
           if (!finalEntry) {
             removeStagedWorkspacePipelines(snapshot.workDir, snapshot.staging.id);
-            useChatStore.getState().clearPostChatYamlAction();
+            clearFinishedPostChatYamlAction();
             return;
           }
           const finalTarget = {
@@ -1602,7 +1614,7 @@ export function App() {
           }
 
           if (resultWorkspaceVisible()) {
-            useChatStore.getState().clearPostChatYamlAction();
+            clearFinishedPostChatYamlAction();
             if (finishedSessionId) {
               useChatStore.getState().setSessionYamlResult({
                 ...finalTarget,
@@ -1668,7 +1680,7 @@ export function App() {
           const nextAttempt = attempts + 1;
           repairAttemptsRef.current.set(target.path, nextAttempt);
           completedRepairAttempts = nextAttempt;
-          useChatStore.getState().setPostChatYamlAction({
+          setFinishedPostChatYamlAction({
             ...target,
             status: 'repairing',
             phase: 'compile-repair',
@@ -1709,7 +1721,7 @@ export function App() {
             }
           }
         }
-        useChatStore.getState().clearPostChatYamlAction();
+        clearFinishedPostChatYamlAction();
         recordSessionResult(compile.success ? 'ready' : 'failed');
       } catch (err) {
         const activeLifecycle = useChatStore.getState().activeChatYamlLifecycle;
@@ -1726,7 +1738,7 @@ export function App() {
           } catch (discardErr) {
             console.warn('[chat] failed to discard user-stopped YAML stage', discardErr);
           }
-          useChatStore.getState().clearPostChatYamlAction();
+          clearFinishedPostChatYamlAction();
           return;
         }
         console.error('[chat] post-chat YAML reconcile failed', err);
@@ -1743,6 +1755,7 @@ export function App() {
             }
           }
         }
+        clearFinishedPostChatYamlAction();
         usePipelineStore.setState({
           errorMessage:
             'OpenCode finished, but its pipeline result could not be reconciled safely: ' +
@@ -1762,7 +1775,7 @@ export function App() {
               }
             }
           }
-          useChatStore.getState().setReconciling(false);
+          useChatStore.getState().setReconciling(false, finishedSessionId);
           useChatStore.getState().completeChatYamlLifecycle(finishedTurn.id);
           if (!cancelled) {
             useChatStore.getState().acknowledgeFinishedTurn(finishedTurn.id);

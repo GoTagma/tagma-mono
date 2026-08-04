@@ -255,6 +255,7 @@ export interface ChatAbortRecovery {
 
 export interface ActiveChatYamlLifecycle {
   turnId: string;
+  sessionId: string | null;
   stageId: string;
   workspaceKey: string | null;
   hostTrialActive: boolean;
@@ -343,7 +344,8 @@ interface ChatStore {
   /** Background process recovery after a hung turn was force-stopped. */
   abortRecovery: ChatAbortRecovery | null;
   reconciling: boolean;
-  setReconciling: (value: boolean) => void;
+  reconcilingSessionId: string | null;
+  setReconciling: (value: boolean, sessionId: string | null) => void;
   activeChatYamlLifecycle: ActiveChatYamlLifecycle | null;
   beginChatYamlLifecycle: (lifecycle: ActiveChatYamlLifecycle) => void;
   setChatYamlHostTrialActive: (turnId: string, active: boolean) => void;
@@ -431,8 +433,8 @@ interface ChatStore {
    */
   yamlSnapshotBeforeSend: ChatYamlSnapshot | null;
   postChatYamlAction: ChatYamlPostAction | null;
-  setPostChatYamlAction: (action: ChatYamlPostAction | null) => void;
-  clearPostChatYamlAction: () => void;
+  setPostChatYamlAction: (action: ChatYamlPostAction | null, sessionId?: string | null) => void;
+  clearPostChatYamlAction: (sessionId?: string | null) => void;
   setSessionYamlResult: (result: ChatYamlSessionResult) => void;
   dismissSessionYamlResultToast: (sessionId: string) => void;
   acknowledgeFinishedTurn: (turnId: string) => void;
@@ -3010,6 +3012,7 @@ function botTurnPatch(turnStartedAt: number): Partial<ChatStore> {
     completionWarning: null,
     sending: true,
     reconciling: false,
+    reconcilingSessionId: null,
     pendingUserText: null,
     queuedMessages: [],
     queuedDispatchMode: null,
@@ -3770,6 +3773,7 @@ async function promptOpencode(
       sendError: describeError(err),
       ...resetRuntime,
       reconciling: false,
+      reconcilingSessionId: null,
       lastSendingEndedAt: Date.now(),
     });
     throw err instanceof Error ? err : new Error(describeError(err));
@@ -4265,6 +4269,7 @@ export function applySseEvent(event: ChatOpencodeEvent, get: () => ChatStore, se
         patch.messages = [];
         patch.sending = false;
         patch.reconciling = false;
+        patch.reconcilingSessionId = null;
         patch.pendingUserText = null;
         patch.queuedMessages = [];
         patch.queuedDispatchMode = null;
@@ -4427,7 +4432,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   sending: false,
   abortRecovery: null,
   reconciling: false,
-  setReconciling: (value) => set({ reconciling: value }),
+  reconcilingSessionId: null,
+  setReconciling: (value, sessionId) =>
+    set((prev) =>
+      value
+        ? { reconciling: true, reconcilingSessionId: sessionId }
+        : prev.reconcilingSessionId === sessionId
+          ? { reconciling: false, reconcilingSessionId: null }
+          : {},
+    ),
   activeChatYamlLifecycle: null,
   beginChatYamlLifecycle: (lifecycle) => set({ activeChatYamlLifecycle: lifecycle }),
   setChatYamlHostTrialActive: (turnId, active) =>
@@ -4485,8 +4498,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   yamlSnapshotBeforeSend: null,
   postChatYamlAction: null,
   pendingPermissions: [],
-  setPostChatYamlAction: (action) => set({ postChatYamlAction: action }),
-  clearPostChatYamlAction: () => set({ postChatYamlAction: null }),
+  setPostChatYamlAction: (action, sessionId) =>
+    applyRuntimePatchToSession(
+      get,
+      set,
+      sessionId === undefined ? get().currentSessionId : sessionId,
+      { postChatYamlAction: action },
+    ),
+  clearPostChatYamlAction: (sessionId) =>
+    applyRuntimePatchToSession(
+      get,
+      set,
+      sessionId === undefined ? get().currentSessionId : sessionId,
+      { postChatYamlAction: null },
+    ),
   setSessionYamlResult: (result) =>
     set((prev) => ({
       sessionYamlResults: {
@@ -4747,6 +4772,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               sending: false,
               abortRecovery: null,
               reconciling: false,
+              reconcilingSessionId: null,
               pendingUserText: null,
               queuedMessages: [],
               queuedDispatchMode: null,

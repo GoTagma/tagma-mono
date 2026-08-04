@@ -92,6 +92,7 @@ describe('finished chat turn reconciliation', () => {
       finishedTurnQueue: [head],
       activeChatYamlLifecycle: {
         turnId: head.id,
+        sessionId: head.sessionId,
         stageId: 'stage-1',
         workspaceKey: 'C:/repo',
         hostTrialActive: false,

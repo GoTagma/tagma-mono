@@ -1320,6 +1320,30 @@ describe('chat model persistence', () => {
     expect(state.sendError).toBeNull();
   });
 
+  test('keeps background YAML progress on its originating conversation', async () => {
+    setClientWorkspace('C:/repo-a');
+    useChatStore.setState({
+      currentSessionId: 'running-session',
+      sessions: [{ id: 'running-session' } as Session],
+    } as never);
+
+    await useChatStore.getState().newSession();
+    const action = {
+      kind: 'refresh-current',
+      path: 'C:/repo-a/.tagma/pipeline/pipeline.yaml',
+      name: 'pipeline.yaml',
+      pipelineName: 'Pipeline',
+      status: 'repairing',
+      phase: 'trial-running',
+    } as never;
+    useChatStore.getState().setPostChatYamlAction(action, 'running-session');
+
+    const state = useChatStore.getState();
+    expect(state.currentSessionId).toBe('new-session');
+    expect(state.postChatYamlAction).toBeNull();
+    expect(state.sessionStates['running-session']?.postChatYamlAction).toBe(action);
+  });
+
   test('allows model and reasoning changes after opening idle history', async () => {
     setClientWorkspace('C:/repo-a');
     useChatStore.setState({

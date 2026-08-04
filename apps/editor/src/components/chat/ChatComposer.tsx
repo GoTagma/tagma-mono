@@ -143,9 +143,15 @@ export function getChatComposerAvailability(input: {
 export function getChatComposerStopMode(input: {
   sending: boolean;
   hasActiveChatYamlLifecycle: boolean;
+  currentSessionId: string | null;
+  activeChatYamlLifecycleSessionId: string | null;
 }): 'generation' | 'verification' | null {
   if (input.sending) return 'generation';
-  return input.hasActiveChatYamlLifecycle ? 'verification' : null;
+  return input.hasActiveChatYamlLifecycle &&
+    input.currentSessionId !== null &&
+    input.currentSessionId === input.activeChatYamlLifecycleSessionId
+    ? 'verification'
+    : null;
 }
 
 export function ChatComposer() {
@@ -157,6 +163,7 @@ export function ChatComposer() {
   const sending = useChatStore((s) => s.sending);
   const reconciling = useChatStore((s) => s.reconciling);
   const activeChatYamlLifecycle = useChatStore((s) => s.activeChatYamlLifecycle);
+  const currentSessionId = useChatStore((s) => s.currentSessionId);
   const flushing = useChatStore((s) => s.flushing);
   const model = useChatStore((s) => s.model);
   const ready = useChatStore((s) => s.bootstrapStatus === 'ready');
@@ -193,6 +200,8 @@ export function ChatComposer() {
   const stopMode = getChatComposerStopMode({
     sending,
     hasActiveChatYamlLifecycle: activeChatYamlLifecycle?.hostTrialActive === true,
+    currentSessionId,
+    activeChatYamlLifecycleSessionId: activeChatYamlLifecycle?.sessionId ?? null,
   });
   const stopLabel = stopMode === 'verification' ? 'Stop verification' : 'Stop generating';
 

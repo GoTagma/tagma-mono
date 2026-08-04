@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
   buildConversationFlowSteps,
+  isChatReconciliationVisible,
   ChatCompletionToastCard,
   ChatPanel,
   ChatTrialProgressView,
@@ -57,6 +58,7 @@ afterEach(() => {
     sendError: null,
     completionWarning: null,
     reconciling: false,
+    reconcilingSessionId: null,
     activeChatYamlLifecycle: null,
     historyOpen: false,
   } as never);
@@ -162,11 +164,13 @@ describe('ChatPanel export affordance', () => {
       getChatComposerStopMode({
         sending: false,
         hasActiveChatYamlLifecycle: true,
+        currentSessionId: 'session-a',
+        activeChatYamlLifecycleSessionId: 'session-a',
       }),
     ).toBe('verification');
   });
 
-  test('hides background verification progress and Stop in a new conversation', () => {
+  test('hides background verification Stop in a new conversation', () => {
     expect(
       getChatComposerStopMode({
         sending: false,
@@ -175,22 +179,16 @@ describe('ChatPanel export affordance', () => {
         activeChatYamlLifecycleSessionId: 'session-a',
       } as never),
     ).toBeNull();
+  });
 
+  test('hides background verification progress in a new conversation', () => {
     expect(
-      buildConversationFlowSteps({
-        activity: [],
-        sending: false,
-        pendingUserText: null,
-        queuedCount: 0,
-        pendingPermissionCount: 0,
+      isChatReconciliationVisible({
         reconciling: true,
-        flushing: false,
-        postChatYamlAction: null,
-        sendError: null,
         currentSessionId: 'session-b',
         reconcilingSessionId: 'session-a',
-      } as never),
-    ).toEqual([]);
+      }),
+    ).toBe(false);
   });
 
   test('keeps send blocked for a YAML lease owned outside this window', () => {

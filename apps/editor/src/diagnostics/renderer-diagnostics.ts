@@ -90,6 +90,7 @@ export function buildRendererDiagnosticsSnapshot(input: RendererDiagnosticsSnaps
         sending: chat.sending === true,
         abortRecovery: chat.abortRecovery ?? null,
         reconciling: chat.reconciling === true,
+        reconcilingSessionId: chat.reconcilingSessionId ?? null,
         flushing: chat.flushing === true,
         pendingUserText: chat.pendingUserText ?? null,
         queuedMessages: Array.isArray(chat.queuedMessages) ? chat.queuedMessages : [],

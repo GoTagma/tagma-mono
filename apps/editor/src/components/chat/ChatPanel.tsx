@@ -106,9 +106,17 @@ function ConversationFlowBar() {
   const turnStartedAt = useChatStore((s) => s.turnStartedAt);
   const turnAssistantMessageIds = useChatStore((s) => s.turnAssistantMessageIds);
   const reconciling = useChatStore((s) => s.reconciling);
+  const reconcilingSessionId = useChatStore((s) => s.reconcilingSessionId);
+  const currentSessionId = useChatStore((s) => s.currentSessionId);
   const flushing = useChatStore((s) => s.flushing);
   const postChatYamlAction = useChatStore((s) => s.postChatYamlAction);
   const sendError = useChatStore((s) => s.sendError);
+  const visibleReconciling = isChatReconciliationVisible({
+    reconciling,
+    currentSessionId,
+    reconcilingSessionId,
+  });
+  const visiblePostChatYamlAction = visibleReconciling ? postChatYamlAction : null;
 
   const activity = useMemo(
     () =>
@@ -128,9 +136,9 @@ function ConversationFlowBar() {
         pendingUserText,
         queuedCount: queuedMessages.length,
         pendingPermissionCount: pendingPermissions.length,
-        reconciling,
+        reconciling: visibleReconciling,
         flushing,
-        postChatYamlAction,
+        postChatYamlAction: visiblePostChatYamlAction,
         sendError,
       }),
     [
@@ -139,9 +147,9 @@ function ConversationFlowBar() {
       pendingUserText,
       queuedMessages.length,
       pendingPermissions.length,
-      reconciling,
+      visibleReconciling,
       flushing,
-      postChatYamlAction,
+      visiblePostChatYamlAction,
       sendError,
     ],
   );
@@ -387,6 +395,18 @@ export function ChatTrialProgressView({
  * stages are deliberately not guessed, so tool names, retries, permissions,
  * and YAML follow-up work appear in the order they really happen.
  */
+export function isChatReconciliationVisible(input: {
+  reconciling: boolean;
+  currentSessionId: string | null;
+  reconcilingSessionId: string | null;
+}): boolean {
+  return (
+    input.reconciling &&
+    input.currentSessionId !== null &&
+    input.currentSessionId === input.reconcilingSessionId
+  );
+}
+
 export function buildConversationFlowSteps({
   activity,
   sending,
