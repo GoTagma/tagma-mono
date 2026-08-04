@@ -21,6 +21,9 @@
 - Post-turn planning and repair continuations belong to the finished turn's root session even
   after the user switches conversations. Address that cached session explicitly; never fall back
   to the mutable visible session or clear the visible turn's progress/error/watchdog state.
+- Reconciliation and host-Trial progress retain a global workspace barrier but must carry the
+  finished root session as their UI owner. Render progress and Stop only for that visible session,
+  and route later progress updates into its cached runtime after the user switches conversations.
 - Resolve finished-turn reconciliation and logical-turn continuation leases by the turn's
   workspace, not by the active YAML. Switching pipelines makes a valid path-scoped lease inactive
   for UI mutation gates; finalize, cleanup, and release must still use that exact workspace lease.

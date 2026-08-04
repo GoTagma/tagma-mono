@@ -31,7 +31,8 @@ describe('renderer diagnostics snapshot', () => {
           parts: [{ type: 'text', text: `message body ${index}` }],
         })),
         sending: true,
-        reconciling: false,
+        reconciling: true,
+        reconcilingSessionId: 'session-1',
         flushing: false,
         pendingUserText: 'current prompt',
         queuedMessages: [],
@@ -98,6 +99,10 @@ describe('renderer diagnostics snapshot', () => {
         queuedMessageCount: 0,
       },
     ]);
+    expect(snapshot.chat).toMatchObject({
+      reconciling: true,
+      reconcilingSessionId: 'session-1',
+    });
     expect(snapshot.pipeline).toMatchObject({
       workDir: 'D:\\repo',
       isDirty: true,
