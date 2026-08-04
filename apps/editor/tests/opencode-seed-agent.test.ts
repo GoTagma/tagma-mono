@@ -784,6 +784,20 @@ test('trial-plan tool assembles a large plan in bounded draft calls before one c
       },
       { directory: stage.agentTagmaDir },
     );
+    const interruptedCall = JSON.stringify({
+      operation: 'upsert-case',
+      pipeline_path: 'sample/sample.yaml',
+      case: cases[0],
+    });
+    expect(() => JSON.parse(interruptedCall.slice(0, interruptedCall.lastIndexOf('"')))).toThrow(
+      'JSON Parse error: Unterminated string',
+    );
+    expect(existsSync(stage.planPath)).toBe(false);
+    expect(readChatPipelineTrialPlanToolTelemetry(stage.yamlPath)).toMatchObject({
+      toolAttemptCount: 0,
+      successfulWriteCount: 0,
+    });
+
     for (const testCase of cases) {
       await generated.tool.execute(
         {
