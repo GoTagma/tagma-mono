@@ -53,6 +53,44 @@ function invalidPlanArgs(yamlPath: string): Record<string, unknown> {
   };
 }
 
+async function submitTrialPlan(
+  tool: {
+    execute(args: Record<string, unknown>, context: { directory: string }): Promise<string>;
+  },
+  args: Record<string, unknown>,
+  context: { directory: string },
+): Promise<string> {
+  const pipelinePath = args.pipeline_path as string;
+  await tool.execute(
+    {
+      operation: 'begin',
+      pipeline_path: pipelinePath,
+      summary: args.summary,
+      goals: args.goals,
+    },
+    context,
+  );
+  for (const testCase of args.cases as Array<Record<string, unknown>>) {
+    await tool.execute(
+      {
+        operation: 'upsert-case',
+        pipeline_path: pipelinePath,
+        case: testCase,
+      },
+      context,
+    );
+  }
+  await tool.execute(
+    { operation: 'set-coverage', pipeline_path: pipelinePath, coverage: args.coverage },
+    context,
+  );
+  await tool.execute(
+    { operation: 'set-findings', pipeline_path: pipelinePath, findings: args.findings ?? [] },
+    context,
+  );
+  return tool.execute({ operation: 'commit', pipeline_path: pipelinePath }, context);
+}
+
 function writeStageAttemptLimit(agentTagmaDir: string, maxAttempts: number): void {
   const stageRoot = dirname(dirname(agentTagmaDir));
   writeFileSync(
@@ -80,16 +118,16 @@ test('generated trial plan tool uses the staged three-attempt budget per YAML ha
     const tool = await loadGeneratedTool(root);
     const invalidArgs = invalidPlanArgs(yamlPath);
 
-    await expect(tool.execute(invalidArgs, { directory: agentTagmaDir })).rejects.toThrow(
+    await expect(submitTrialPlan(tool, invalidArgs, { directory: agentTagmaDir })).rejects.toThrow(
       'trial plan coverage is missing multiple-inputs',
     );
-    await expect(tool.execute(invalidArgs, { directory: agentTagmaDir })).rejects.toThrow(
+    await expect(submitTrialPlan(tool, invalidArgs, { directory: agentTagmaDir })).rejects.toThrow(
       'Repeated equivalent validation rejection (2x)',
     );
-    await expect(tool.execute(invalidArgs, { directory: agentTagmaDir })).rejects.toThrow(
+    await expect(submitTrialPlan(tool, invalidArgs, { directory: agentTagmaDir })).rejects.toThrow(
       'Repeated equivalent validation rejection (3x)',
     );
-    await expect(tool.execute(invalidArgs, { directory: agentTagmaDir })).rejects.toThrow(
+    await expect(submitTrialPlan(tool, invalidArgs, { directory: agentTagmaDir })).rejects.toThrow(
       'trial plan tool attempt budget exhausted for this staged YAML revision',
     );
 
@@ -128,10 +166,10 @@ test('generated trial plan tool can restrict a staged YAML revision to one attem
     const tool = await loadGeneratedTool(root);
     const invalidArgs = invalidPlanArgs(yamlPath);
 
-    await expect(tool.execute(invalidArgs, { directory: agentTagmaDir })).rejects.toThrow(
+    await expect(submitTrialPlan(tool, invalidArgs, { directory: agentTagmaDir })).rejects.toThrow(
       'trial plan coverage is missing multiple-inputs',
     );
-    await expect(tool.execute(invalidArgs, { directory: agentTagmaDir })).rejects.toThrow(
+    await expect(submitTrialPlan(tool, invalidArgs, { directory: agentTagmaDir })).rejects.toThrow(
       'trial plan tool attempt budget exhausted for this staged YAML revision',
     );
     expect(readChatPipelineTrialPlanToolTelemetry(yamlPath, 1)).toMatchObject({
@@ -154,7 +192,7 @@ test('generated trial plan tool fails closed when attempt telemetry has negative
     writeStageAttemptLimit(agentTagmaDir, 2);
     const tool = await loadGeneratedTool(root);
     const invalidArgs = invalidPlanArgs(yamlPath);
-    await expect(tool.execute(invalidArgs, { directory: agentTagmaDir })).rejects.toThrow(
+    await expect(submitTrialPlan(tool, invalidArgs, { directory: agentTagmaDir })).rejects.toThrow(
       'trial plan coverage is missing multiple-inputs',
     );
 
@@ -167,7 +205,7 @@ test('generated trial plan tool fails closed when attempt telemetry has negative
     telemetry.toolAttemptCount = -1;
     writeFileSync(telemetryPath, JSON.stringify(telemetry), 'utf8');
 
-    await expect(tool.execute(invalidArgs, { directory: agentTagmaDir })).rejects.toThrow(
+    await expect(submitTrialPlan(tool, invalidArgs, { directory: agentTagmaDir })).rejects.toThrow(
       'trial plan attempt telemetry is invalid; discard this chat stage before retrying',
     );
   } finally {
@@ -186,7 +224,7 @@ test('host telemetry reader rejects counters that do not partition tool attempts
     writeStageAttemptLimit(agentTagmaDir, 2);
     const tool = await loadGeneratedTool(root);
     const invalidArgs = invalidPlanArgs(yamlPath);
-    await expect(tool.execute(invalidArgs, { directory: agentTagmaDir })).rejects.toThrow(
+    await expect(submitTrialPlan(tool, invalidArgs, { directory: agentTagmaDir })).rejects.toThrow(
       'trial plan coverage is missing multiple-inputs',
     );
 

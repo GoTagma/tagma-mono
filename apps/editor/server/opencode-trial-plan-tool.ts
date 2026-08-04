@@ -476,7 +476,7 @@ const TRIAL_PLAN_ATTEMPT_TELEMETRY_VERSION = 1;
 const TRIAL_PLAN_DRAFT_VERSION = 1;
 const TOOL_ATTEMPT_LIMITS = CONTRACT.limits.toolAttemptsPerYaml;
 const MAX_REJECTION_SUMMARIES = CONTRACT.limits.rejectionSummaries;
-const DRAFT_OPERATIONS = [begin, upsert-case, set-coverage, set-findings, commit];
+const DRAFT_OPERATIONS = ['begin', 'upsert-case', 'set-coverage', 'set-findings', 'commit'];
 
 function readTrialPlanMaxAttempts(stageRoot) {
   let parsed;
@@ -801,93 +801,181 @@ const expectationSchema = tool.schema.discriminatedUnion("type", [
   }),
 ]);
 
+const coverageEntrySchema = tool.schema.object({
+  dimension: tool.schema.enum(REQUIRED_COVERAGE),
+  status: tool.schema.enum(COVERAGE_STATUSES),
+  caseIds: tool.schema.array(tool.schema.string()).max(CONTRACT.limits.cases),
+  rationale: tool.schema.string().min(1).max(1000),
+});
+
+const findingSchema = tool.schema.object({
+  severity: tool.schema.enum(FINDING_SEVERITIES),
+  repairScope: tool.schema.enum(FINDING_REPAIR_SCOPES),
+  summary: tool.schema.string().min(1).max(500),
+  evidence: tool.schema.string().min(1).max(2000),
+});
+
+const caseSchema = tool.schema.object({
+  id: tool.schema.string(),
+  title: tool.schema.string().min(1).max(240),
+  objective: tool.schema.string().min(1).max(1000),
+  runs: tool.schema.number().int().min(1).max(CONTRACT.limits.runs).optional(),
+  targetTaskIds: tool.schema.array(tool.schema.string()).min(1).max(32),
+  fixtures: tool.schema
+    .array(
+      tool.schema.object({
+        path: tool.schema.string(),
+        content: tool.schema.string(),
+      }),
+    )
+    .max(CONTRACT.limits.fixturesPerCase),
+  expectations: tool.schema
+    .array(expectationSchema)
+    .min(1)
+    .max(CONTRACT.limits.expectationsPerCase),
+});
+
+function commitTrialPlanDraft(input) {
+  const attempt = beginTrialPlanAttempt(input.root, input.yamlPath, input.yamlHash);
+  const planPath =
+    input.yamlPath.slice(0, input.yamlPath.lastIndexOf('.')) + '.trial-plan.json';
+  try {
+    const draft = readTrialPlanDraft(attempt.paths, input.yamlHash);
+    const plan = {
+      version: CONTRACT.version,
+      yamlHash: input.yamlHash,
+      summary: draft.summary,
+      goals: draft.goals,
+      coverage: draft.coverage,
+      findings: draft.findings,
+      cases: draft.cases,
+    };
+    assertValidPlan(plan);
+    assertTargetPaths(
+      plan,
+      relative(input.root, input.yamlPath).replaceAll(String.fromCharCode(92), '/'),
+    );
+    const serialized = JSON.stringify(plan, null, 2) + String.fromCharCode(10);
+    if (new TextEncoder().encode(serialized).length > CONTRACT.limits.planBytes) {
+      throw new Error('trial plan exceeds the plan byte limit');
+    }
+    const tempPath = planPath + '.' + randomUUID() + '.tmp';
+    writeFileSync(tempPath, serialized, 'utf8');
+    renameSync(tempPath, planPath);
+  } catch (error) {
+    return recordTrialPlanRejection(attempt, error);
+  }
+  recordTrialPlanSuccess(attempt);
+  return JSON.stringify(
+    {
+      path: relative(input.root, planPath).replaceAll(String.fromCharCode(92), '/'),
+      yamlHash: input.yamlHash,
+    },
+    null,
+    2,
+  );
+}
+
+function executeExistingTrialPlanDraftOperation(input) {
+  if (input.operation === 'commit') {
+    return commitTrialPlanDraft(input);
+  }
+  return withTrialPlanDraftLock(input.paths, () => {
+    const draft = readTrialPlanDraft(input.paths, input.yamlHash);
+    if (input.operation === 'upsert-case') {
+      const existingIndex = draft.cases.findIndex(
+        (item) => item && typeof item === 'object' && item.id === input.args.case?.id,
+      );
+      const draftIndex = existingIndex < 0 ? draft.cases.length : existingIndex;
+      const testCase = validateCase(input.args.case, draftIndex);
+      if (existingIndex < 0) {
+        if (draft.cases.length >= CONTRACT.limits.cases) {
+          throw new Error('trial plan cases exceed the case limit');
+        }
+        draft.cases.push(testCase);
+      } else {
+        draft.cases[existingIndex] = testCase;
+      }
+    } else if (input.operation === 'set-coverage') {
+      draft.coverage = asArray(
+        input.args.coverage,
+        'coverage',
+        REQUIRED_COVERAGE.length,
+      );
+    } else if (input.operation === 'set-findings') {
+      draft.findings = asArray(
+        input.args.findings,
+        'findings',
+        CONTRACT.limits.findings,
+      );
+    }
+    writeTrialPlanDraft(input.paths, draft);
+    return trialPlanDraftResult(input.operation, draft);
+  });
+}
+
+function executeTrialPlanOperation(args, context) {
+  const operation = asString(args.operation, 'operation', 32);
+  if (!DRAFT_OPERATIONS.includes(operation)) {
+    throw new Error('operation is unsupported');
+  }
+  const { root, yamlPath } = resolvePipelineTarget(args.pipeline_path, context.directory);
+  const yamlHash = createHash('sha1').update(readFileSync(yamlPath, 'utf8')).digest('hex');
+  const paths = trialPlanAttemptPaths(root, yamlPath, yamlHash);
+
+  if (operation === 'begin') {
+    const summary = asString(args.summary, 'summary', 2000);
+    const goals = asArray(args.goals, 'goals', CONTRACT.limits.goals).map((goal, index) =>
+      asString(goal, 'goals[' + index + ']', 1000),
+    );
+    if (goals.length === 0) {
+      throw new Error('goals must contain at least one behavior goal');
+    }
+    return withTrialPlanDraftLock(paths, () => {
+      const draft = newTrialPlanDraft(paths, yamlHash, summary, goals);
+      writeTrialPlanDraft(paths, draft);
+      return trialPlanDraftResult(operation, draft);
+    });
+  }
+
+  return executeExistingTrialPlanDraftOperation({
+    args,
+    operation,
+    root,
+    yamlPath,
+    yamlHash,
+    paths,
+  });
+}
+
 export default tool({
   description:
-    "Write a fully validated, hash-bound targeted trial plan beside an exact staged YAML target.",
+    "Build a targeted trial plan in bounded draft operations, then validate and commit it atomically.",
   args: {
+    operation: tool.schema.enum(DRAFT_OPERATIONS).describe(
+      "begin resets metadata, upsert-case adds one case, set-coverage and set-findings replace those sections, and commit performs the single counted validation/write attempt.",
+    ),
     pipeline_path: tool.schema
       .string()
       .describe("Exact staged Target YAML path from the host prompt, or staged-root relative <stem>/<stem>.yaml"),
-    summary: tool.schema.string().min(1).max(2000),
-    goals: tool.schema.array(tool.schema.string().min(1).max(1000)).min(1).max(CONTRACT.limits.goals),
-    coverage: tool.schema
-      .array(
-        tool.schema.object({
-          dimension: tool.schema.enum(REQUIRED_COVERAGE),
-          status: tool.schema.enum(COVERAGE_STATUSES),
-          caseIds: tool.schema.array(tool.schema.string()).max(CONTRACT.limits.cases),
-          rationale: tool.schema.string().min(1).max(1000),
-        }),
-      )
-      .max(REQUIRED_COVERAGE.length),
-    findings: tool.schema
-      .array(
-        tool.schema.object({
-          severity: tool.schema.enum(FINDING_SEVERITIES),
-          repairScope: tool.schema.enum(FINDING_REPAIR_SCOPES),
-          summary: tool.schema.string().min(1).max(500),
-          evidence: tool.schema.string().min(1).max(2000),
-        }),
-      )
-      .max(CONTRACT.limits.findings),
-    cases: tool.schema
-      .array(
-        tool.schema.object({
-          id: tool.schema.string(),
-          title: tool.schema.string().min(1).max(240),
-          objective: tool.schema.string().min(1).max(1000),
-          runs: tool.schema.number().int().min(1).max(CONTRACT.limits.runs).optional(),
-          targetTaskIds: tool.schema.array(tool.schema.string()).min(1).max(32),
-          fixtures: tool.schema
-            .array(
-              tool.schema.object({
-                path: tool.schema.string(),
-                content: tool.schema.string(),
-              }),
-            )
-            .max(CONTRACT.limits.fixturesPerCase),
-          expectations: tool.schema
-            .array(expectationSchema)
-            .min(1)
-            .max(CONTRACT.limits.expectationsPerCase),
-        }),
-      )
+    summary: tool.schema.string().min(1).max(2000).optional(),
+    goals: tool.schema
+      .array(tool.schema.string().min(1).max(1000))
       .min(1)
-      .max(CONTRACT.limits.cases),
+      .max(CONTRACT.limits.goals)
+      .optional(),
+    coverage: tool.schema
+      .array(coverageEntrySchema)
+      .max(REQUIRED_COVERAGE.length)
+      .optional(),
+    findings: tool.schema
+      .array(findingSchema)
+      .max(CONTRACT.limits.findings)
+      .optional(),
+    case: caseSchema.optional(),
   },
   async execute(args, context) {
-    const { root, yamlPath } = resolvePipelineTarget(args.pipeline_path, context.directory);
-    const yamlHash = createHash("sha1").update(readFileSync(yamlPath, "utf8")).digest("hex");
-    const attempt = beginTrialPlanAttempt(root, yamlPath, yamlHash);
-    const planPath = yamlPath.replace(/\\.ya?ml$/i, ".trial-plan.json");
-    try {
-      const plan = {
-      version: CONTRACT.version,
-      yamlHash,
-      summary: args.summary,
-      goals: args.goals,
-      coverage: args.coverage,
-      findings: args.findings,
-      cases: args.cases.map((item) => ({
-        ...item,
-        runs: item.runs === undefined ? 1 : item.runs,
-        targetTaskIds: item.targetTaskIds,
-      })),
-    };
-    assertValidPlan(plan);
-    assertTargetPaths(plan, relative(root, yamlPath).replace(/\\\\/g, '/'));
-    const tempPath = planPath + "." + randomUUID() + ".tmp";
-    writeFileSync(tempPath, JSON.stringify(plan, null, 2) + "\\n", "utf8");
-    renameSync(tempPath, planPath);
-    } catch (error) {
-      return recordTrialPlanRejection(attempt, error);
-    }
-    recordTrialPlanSuccess(attempt);
-    return JSON.stringify(
-      { path: relative(root, planPath).replace(/\\\\/g, "/"), yamlHash },
-      null,
-      2,
-    );
+    return executeTrialPlanOperation(args, context);
   },
 });
 `;
