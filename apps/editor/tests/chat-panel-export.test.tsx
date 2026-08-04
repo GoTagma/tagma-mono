@@ -166,6 +166,33 @@ describe('ChatPanel export affordance', () => {
     ).toBe('verification');
   });
 
+  test('hides background verification progress and Stop in a new conversation', () => {
+    expect(
+      getChatComposerStopMode({
+        sending: false,
+        hasActiveChatYamlLifecycle: true,
+        currentSessionId: 'session-b',
+        activeChatYamlLifecycleSessionId: 'session-a',
+      } as never),
+    ).toBeNull();
+
+    expect(
+      buildConversationFlowSteps({
+        activity: [],
+        sending: false,
+        pendingUserText: null,
+        queuedCount: 0,
+        pendingPermissionCount: 0,
+        reconciling: true,
+        flushing: false,
+        postChatYamlAction: null,
+        sendError: null,
+        currentSessionId: 'session-b',
+        reconcilingSessionId: 'session-a',
+      } as never),
+    ).toEqual([]);
+  });
+
   test('keeps send blocked for a YAML lease owned outside this window', () => {
     expect(
       getChatComposerAvailability({
