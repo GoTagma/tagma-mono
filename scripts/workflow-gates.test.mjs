@@ -34,10 +34,10 @@ test('publish-npm validates only public npm packages before npm auth', () => {
   const validationBlock = workflow.slice(validation, auth);
   const requiredCommands = [
     'bun run check:deps',
+    'bun run check:publish',
     'bun run check:public',
     'bun run test:public',
     'bun run lint:public',
-    'bun run check:publish',
   ];
 
   assert(selection < validation, 'package selection must be validated before npm package gates');
