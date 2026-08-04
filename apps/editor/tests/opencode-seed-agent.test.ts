@@ -875,6 +875,46 @@ test('trial-plan tool assembles a large plan in bounded draft calls before one c
   }
 });
 
+test('trial-plan begin resumes the same revision unless reset is explicit', async () => {
+  const generated = await loadGeneratedTrialPlanTool();
+  const stage = makeTrialPlanStage();
+  try {
+    const plan = completeTrialPlanToolArgs('sample/sample.yaml');
+    const context = { directory: stage.agentTagmaDir };
+    const beginArgs = {
+      operation: 'begin',
+      pipeline_path: 'sample/sample.yaml',
+      summary: plan.summary,
+      goals: plan.goals,
+    };
+    await generated.tool.execute(beginArgs, context);
+    await generated.tool.execute(
+      {
+        operation: 'upsert-case',
+        pipeline_path: 'sample/sample.yaml',
+        case: (plan.cases as Array<Record<string, unknown>>)[0],
+      },
+      context,
+    );
+
+    expect(JSON.parse(await generated.tool.execute(beginArgs, context))).toMatchObject({
+      operation: 'begin',
+      cases: 1,
+    });
+    expect(
+      JSON.parse(await generated.tool.execute({ ...beginArgs, reset: true }, context)),
+    ).toMatchObject({ operation: 'begin', cases: 0 });
+    expect(existsSync(stage.planPath)).toBe(false);
+    expect(readChatPipelineTrialPlanToolTelemetry(stage.yamlPath)).toMatchObject({
+      toolAttemptCount: 0,
+      successfulWriteCount: 0,
+    });
+  } finally {
+    stage.cleanup();
+    generated.cleanup();
+  }
+});
+
 test('trial-plan tool rejects host-invalid plans before writing any file', async () => {
   const generated = await loadGeneratedTrialPlanTool();
   const stage = makeTrialPlanStage();
