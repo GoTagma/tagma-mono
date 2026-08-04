@@ -212,10 +212,14 @@ test('generated trial plan tool consumes at most one commit per begun draft life
         },
         context,
       ),
-    ).rejects.toThrow('trial plan draft commit was already attempted; call begin before editing it');
+    ).rejects.toThrow(
+      'trial plan draft commit was already attempted; call begin before editing it',
+    );
     await expect(
       tool.execute({ operation: 'commit', pipeline_path: yamlPath }, context),
-    ).rejects.toThrow('trial plan draft commit was already attempted; call begin before editing it');
+    ).rejects.toThrow(
+      'trial plan draft commit was already attempted; call begin before editing it',
+    );
     expect(readChatPipelineTrialPlanToolTelemetry(yamlPath, 2)).toMatchObject({
       toolAttemptCount: 1,
       validationRejectionCount: 1,
