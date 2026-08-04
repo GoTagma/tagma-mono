@@ -936,6 +936,12 @@ export interface EditorSettings {
   opencodeChatTrialPlanMaxAttempts: number;
   /** Shared compile/trial repair budget. Default 25; 0 disables; server clamps to [0, 50]. */
   opencodeChatPipelineRepairMaxAttempts: number;
+  /** Default task deadline for production runs and Trial, in whole minutes. */
+  pipelineDefaultTaskTimeoutMinutes: number;
+  /** Default total lifecycle for ordinary production pipelines, in whole minutes. */
+  pipelineDefaultRunTimeoutMinutes: number;
+  /** Total lifecycle for one Chat Trial, in whole minutes. */
+  opencodeChatTrialRunTimeoutMinutes: number;
   /**
    * Disabled means unlimited. Enabled with 0 rounds means stateless.
    */

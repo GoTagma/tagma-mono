@@ -12,7 +12,6 @@ import {
 import { join, resolve } from 'node:path';
 import {
   createTagma,
-  DEFAULT_TASK_TIMEOUT_MS,
   RUN_PROTOCOL_VERSION,
   PipelineGraphRunner,
   loadWorkflow,
@@ -84,6 +83,7 @@ import {
   positionsForSession,
   trackHeightsForSession,
 } from './run-session.js';
+import { timeoutMinutesToMs } from '../../shared/execution-timeout-settings.js';
 
 // Re-export for backward compatibility — other modules that imported these
 // from routes/run continue to work unchanged.
@@ -171,6 +171,7 @@ interface WorkflowHostPolicy {
   >;
   readonly skipPluginLoading: true;
   readonly defaultTaskTimeoutMs: number;
+  readonly defaultPipelineTimeoutMs: number;
 }
 
 function uniqueStrings(values: readonly string[]): string[] {
@@ -259,7 +260,8 @@ function prepareWorkflowHostPolicy(
       ),
   }));
 
-  const pythonSettings = readEditorSettings(ws).pythonAgent;
+  const editorSettings = readEditorSettings(ws);
+  const pythonSettings = editorSettings.pythonAgent;
   const pythonRunEnv = buildPythonAgentRunEnv(cwd, pythonSettings);
   const pythonPreflightOptions =
     Object.keys(pythonRunEnv).length > 0
@@ -353,7 +355,12 @@ function prepareWorkflowHostPolicy(
       };
     },
     skipPluginLoading: true,
-    defaultTaskTimeoutMs: DEFAULT_TASK_TIMEOUT_MS,
+    defaultTaskTimeoutMs: timeoutMinutesToMs(
+      editorSettings.pipelineDefaultTaskTimeoutMinutes,
+    ),
+    defaultPipelineTimeoutMs: timeoutMinutesToMs(
+      editorSettings.pipelineDefaultRunTimeoutMinutes,
+    ),
   };
 }
 function normalizeRunConfigSnapshot(
@@ -981,7 +988,8 @@ export function registerRunRoutes(app: express.Express): void {
         return res.status(400).json({ error: configErrors.join('; ') });
       }
 
-      const pythonSettings = readEditorSettings(ws).pythonAgent;
+      const editorSettings = readEditorSettings(ws);
+      const pythonSettings = editorSettings.pythonAgent;
       const pythonRunEnv = buildPythonAgentRunEnv(cwd, pythonSettings);
       const pythonPreflightOptions =
         Object.keys(pythonRunEnv).length > 0
@@ -1085,7 +1093,12 @@ export function registerRunRoutes(app: express.Express): void {
           maxLogRuns: MAX_LOG_RUNS,
           runId,
           skipPluginLoading: true,
-          defaultTaskTimeoutMs: DEFAULT_TASK_TIMEOUT_MS,
+          defaultTaskTimeoutMs: timeoutMinutesToMs(
+            editorSettings.pipelineDefaultTaskTimeoutMinutes,
+          ),
+          defaultPipelineTimeoutMs: timeoutMinutesToMs(
+            editorSettings.pipelineDefaultRunTimeoutMinutes,
+          ),
           ...(secretResolver ? { secretResolver } : {}),
           ...(targetTaskIds ? { targetTaskIds } : {}),
           ...(requirementsEnvKeys.length > 0

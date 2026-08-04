@@ -338,6 +338,24 @@ export function parseEditorSettingsPatch(body: unknown): Partial<EditorSettings>
   ) {
     patch.opencodeChatPipelineRepairMaxAttempts = raw.opencodeChatPipelineRepairMaxAttempts;
   }
+  if (
+    typeof raw.pipelineDefaultTaskTimeoutMinutes === 'number' &&
+    Number.isFinite(raw.pipelineDefaultTaskTimeoutMinutes)
+  ) {
+    patch.pipelineDefaultTaskTimeoutMinutes = raw.pipelineDefaultTaskTimeoutMinutes;
+  }
+  if (
+    typeof raw.pipelineDefaultRunTimeoutMinutes === 'number' &&
+    Number.isFinite(raw.pipelineDefaultRunTimeoutMinutes)
+  ) {
+    patch.pipelineDefaultRunTimeoutMinutes = raw.pipelineDefaultRunTimeoutMinutes;
+  }
+  if (
+    typeof raw.opencodeChatTrialRunTimeoutMinutes === 'number' &&
+    Number.isFinite(raw.opencodeChatTrialRunTimeoutMinutes)
+  ) {
+    patch.opencodeChatTrialRunTimeoutMinutes = raw.opencodeChatTrialRunTimeoutMinutes;
+  }
   if (isValidEditorViewMode(raw.viewMode)) {
     patch.viewMode = raw.viewMode;
   }

@@ -15,7 +15,6 @@ import { basename, dirname, join, resolve } from 'node:path';
 
 import {
   createTagma,
-  DEFAULT_TASK_TIMEOUT_MS,
   type EngineResult,
   type PipelineConfig,
   type RawPipelineConfig,
@@ -76,10 +75,9 @@ import { MAX_LOG_RUNS } from './state.js';
 import { normalizeRunTargetTaskIds, runtimeWithInjectedEnv } from './routes/run-session.js';
 import { beginRunSessionStart, endRunSessionStart } from './routes/run.js';
 import type { WorkspaceState } from './workspace-state.js';
+import { timeoutMinutesToMs } from '../shared/execution-timeout-settings.js';
 
 const TRIAL_CACHE_VERSION = CHAT_PIPELINE_TRIAL_CACHE_VERSION;
-const CHAT_PIPELINE_TRIAL_TIMEOUT_MS = 10 * 60 * 1000;
-const CHAT_PIPELINE_TRIAL_TASK_TIMEOUT_MS = 2 * 60 * 1000;
 const MAX_TRIAL_STREAM_BYTES = 4 * 1024;
 const MAX_TRIAL_SUMMARY_BYTES = 32 * 1024;
 const MAX_TRIAL_TASK_RESULTS = 32;
@@ -549,11 +547,12 @@ function resultForSetupFailure(
 function resultForStoppedBeforeRun(
   abortState: { timedOut: boolean },
   startedAt: number,
+  lifecycleTimeoutMs: number,
 ): ChatPipelineTrialRunResult {
   if (abortState.timedOut) {
     return resultForSetupFailure(
       'witness-failed',
-      `Trial host witness timed out before task execution after ${CHAT_PIPELINE_TRIAL_TIMEOUT_MS}ms.`,
+      `Trial host witness timed out before task execution after ${lifecycleTimeoutMs}ms.`,
       startedAt,
     );
   }
@@ -591,6 +590,7 @@ function resultForStopped(
   result: ChatPipelineTrialRunResult,
   abortState: { timedOut: boolean },
   startedAt: number,
+  lifecycleTimeoutMs: number,
 ): ChatPipelineTrialRunResult {
   if (abortState.timedOut) {
     return {
@@ -598,7 +598,7 @@ function resultForStopped(
       success: false,
       kind: 'timed-out',
       repairAuthorization: 'diagnostic-only',
-      summary: boundedTrialText(`Trial run timed out after ${CHAT_PIPELINE_TRIAL_TIMEOUT_MS}ms.`),
+      summary: boundedTrialText(`Trial run timed out after ${lifecycleTimeoutMs}ms.`),
       durationMs: Math.max(0, Date.now() - startedAt),
     };
   }
@@ -1003,13 +1003,14 @@ function trialTaskResults(
 function buildTrialSummary(
   success: boolean,
   timedOut: boolean,
+  lifecycleTimeoutMs: number,
   tasks: readonly ChatPipelineTrialTaskResult[],
   omittedTaskCount: number,
   countText: string,
 ): string {
   const lines = [
     timedOut
-      ? `Trial run timed out after ${CHAT_PIPELINE_TRIAL_TIMEOUT_MS}ms.`
+      ? `Trial run timed out after ${lifecycleTimeoutMs}ms.`
       : success
         ? `Trial run passed (${countText || 'no tasks'}).`
         : `Trial run failed (${countText || 'no task result'}).`,
@@ -1069,10 +1070,16 @@ interface RunTrialPipelineInput {
   requirementsSecretEnv: Record<string, string>;
   secretValues: string[];
   preflightEnvKeys: readonly string[];
+  taskTimeoutMs: number;
   runId: string;
   targetTaskIds?: string[];
   testCase?: ChatPipelineTrialPlanCase;
   onEvent?: (event: RunEventPayload) => void;
+}
+
+interface TrialExecutionBudgets {
+  taskTimeoutMs: number;
+  lifecycleTimeoutMs: number;
 }
 
 async function captureTrialWorkspaceDigest(
@@ -1243,8 +1250,6 @@ Trial authorization witness failed: ${reason}`),
 }
 
 async function runTrialPipelineOnce(input: RunTrialPipelineInput): Promise<EngineResult> {
-  const taskTimeoutMs =
-    __chatPipelineTrialRunTestHooks.taskTimeoutMsOverride ?? CHAT_PIPELINE_TRIAL_TASK_TIMEOUT_MS;
   const trialEnv: Record<string, string> = input.testCase
     ? {
         TAGMA_TRIAL_CASE_ID: input.testCase.id,
@@ -1268,7 +1273,7 @@ async function runTrialPipelineOnce(input: RunTrialPipelineInput): Promise<Engin
     maxLogRuns: MAX_LOG_RUNS,
     runId: input.runId,
     skipPluginLoading: true,
-    defaultTaskTimeoutMs: Math.min(DEFAULT_TASK_TIMEOUT_MS, taskTimeoutMs),
+    defaultTaskTimeoutMs: input.taskTimeoutMs,
     secretResolver: (names: readonly string[]) =>
       buildPipelineSecretEnv(input.ws.workDir, input.logicalYamlPath, names),
     ...(input.preflightEnvKeys.length > 0
@@ -1418,6 +1423,7 @@ async function executeTargetedTrialCase(
 function buildPlannedTrialSummary(
   baselineSuccess: boolean,
   timedOut: boolean,
+  lifecycleTimeoutMs: number,
   baselineTasks: readonly ChatPipelineTrialTaskResult[],
   baselineOmitted: number,
   baselineCountText: string,
@@ -1428,6 +1434,7 @@ function buildPlannedTrialSummary(
   const baseSummary = buildTrialSummary(
     allPassed,
     timedOut,
+    lifecycleTimeoutMs,
     baselineTasks,
     baselineOmitted,
     baselineCountText,
@@ -1456,6 +1463,37 @@ function buildPlannedTrialSummary(
   return new TextDecoder().decode(bytes.slice(0, MAX_TRIAL_SUMMARY_BYTES)) + '\n[truncated]';
 }
 
+function unavailableTrialBaselineInputs(
+  pipelineConfig: PipelineConfig,
+  workDir: string,
+): string[] | null {
+  const roots = pipelineConfig.tracks.flatMap((track) =>
+    track.tasks
+      .filter((task) => (task.depends_on?.length ?? 0) === 0)
+      .map((task) => ({ track, task })),
+  );
+  if (roots.length === 0) return null;
+
+  const unavailable: string[] = [];
+  for (const { track, task } of roots) {
+    const trigger = task.trigger;
+    if (trigger?.type !== 'file' && trigger?.type !== 'directory') return null;
+    if (typeof trigger.path !== 'string' || trigger.path.trim().length === 0) return null;
+    const taskWorkDir = resolve(workDir, task.cwd ?? track.cwd ?? '.');
+    const inputPath = resolve(taskWorkDir, trigger.path);
+    let ready = false;
+    try {
+      const stat = lstatSync(inputPath);
+      ready = trigger.type === 'directory' ? stat.isDirectory() : !stat.isDirectory();
+    } catch {
+      ready = false;
+    }
+    if (ready) return null;
+    unavailable.push(`${track.id}.${task.id} (${trigger.type}: ${trigger.path})`);
+  }
+  return unavailable;
+}
+
 async function executeTrial(
   ws: WorkspaceState,
   stage: ReturnType<typeof listChatYamlStage>,
@@ -1464,6 +1502,7 @@ async function executeTrial(
   plan: ChatPipelineTrialPlan,
   controller: AbortController,
   abortState: { timedOut: boolean },
+  budgets: TrialExecutionBudgets,
   progress: ChatPipelineTrialProgressReporter,
 ): Promise<ChatPipelineTrialRunResult> {
   const startedAt = Date.now();
@@ -1515,6 +1554,15 @@ async function executeTrial(
   }
   if (planDiagnostics.length > 0) {
     return resultForPlanFailure(plan, planDiagnostics, startedAt);
+  }
+
+  const unavailableBaselineInputs = unavailableTrialBaselineInputs(pipelineConfig, ws.workDir);
+  if (unavailableBaselineInputs) {
+    return resultForSetupFailure(
+      'preflight-failed',
+      `Trial baseline has no runnable baseline tasks: every DAG root is waiting for an unavailable file or directory input. Missing inputs: ${unavailableBaselineInputs.join(', ')}. Provide the input and run Trial again; waiting consumed no execution budget.`,
+      startedAt,
+    );
   }
 
   const pluginError = await ensureTrialPluginsLoaded(ws, pipelineConfig.plugins ?? []);
@@ -1608,6 +1656,7 @@ async function executeTrial(
       requirementsSecretEnv,
       secretValues,
       preflightEnvKeys: preflight.envKeys,
+      taskTimeoutMs: budgets.taskTimeoutMs,
       runId,
       onEvent: (event) => updateTrialTaskProgress(progress, event),
     });
@@ -1662,6 +1711,7 @@ async function executeTrial(
         requirementsSecretEnv,
         secretValues,
         preflightEnvKeys: preflight.envKeys,
+        taskTimeoutMs: budgets.taskTimeoutMs,
         stageRoot: stage.rootDir,
         stagedYamlPath: snapshot.yamlPath,
         testCase,
@@ -1801,6 +1851,7 @@ async function executeTrial(
       summary: buildPlannedTrialSummary(
         baseline.success,
         abortState.timedOut,
+        budgets.lifecycleTimeoutMs,
         baselineEvidence.tasks,
         baselineEvidence.omittedTaskCount,
         baselineEvidence.countText,
@@ -1824,7 +1875,7 @@ async function executeTrial(
       runId,
       summary: boundedTrialText(
         abortState.timedOut
-          ? `Trial run timed out after ${CHAT_PIPELINE_TRIAL_TIMEOUT_MS}ms.`
+          ? `Trial run timed out after ${budgets.lifecycleTimeoutMs}ms.`
           : `Trial run crashed: ${errorMessage(err)}`,
       ),
       durationMs: Math.max(0, Date.now() - startedAt),
@@ -1846,11 +1897,24 @@ export async function trialRunChatYamlStage(
   input: ChatPipelineTrialRunInput,
 ): Promise<ChatPipelineTrialRunResult> {
   const trialId = validateTrialId(input.trialId);
-  if (!hasCurrentChatPipelineTrialConsent(readEditorSettings(ws))) {
+  const editorSettings = readEditorSettings(ws);
+  if (!hasCurrentChatPipelineTrialConsent(editorSettings)) {
     throw new Error(
       'Explicit consent is required in Editor Settings before Trial can run AI-authored commands in the real workspace.',
     );
   }
+  const timeoutMsOverride = __chatPipelineTrialRunTestHooks.timeoutMsOverride;
+  const taskTimeoutMsOverride = __chatPipelineTrialRunTestHooks.taskTimeoutMsOverride;
+  const budgets: TrialExecutionBudgets = {
+    taskTimeoutMs:
+      typeof taskTimeoutMsOverride === 'number'
+        ? taskTimeoutMsOverride
+        : timeoutMinutesToMs(editorSettings.pipelineDefaultTaskTimeoutMinutes),
+    lifecycleTimeoutMs:
+      typeof timeoutMsOverride === 'number'
+        ? timeoutMsOverride
+        : timeoutMinutesToMs(editorSettings.opencodeChatTrialRunTimeoutMinutes),
+  };
   const stage = listChatYamlStage(ws, input.stageId);
   const entry = stage.entries.find((candidate) =>
     samePipelineRelativePath(candidate.relativePath, input.relativePath),
@@ -1922,13 +1986,10 @@ export async function trialRunChatYamlStage(
     const controller = new AbortController();
     const abortState = { timedOut: false, userAborted: false };
     const activeIdentity = { stageId: stage.id, trialId, controller, abortState };
-    const timeoutMsOverride = __chatPipelineTrialRunTestHooks.timeoutMsOverride;
-    const timeoutMs =
-      typeof timeoutMsOverride === 'number' ? timeoutMsOverride : CHAT_PIPELINE_TRIAL_TIMEOUT_MS;
     const timeout = setTimeout(() => {
       abortState.timedOut = true;
       controller.abort('chat trial run timeout');
-    }, timeoutMs);
+    }, budgets.lifecycleTimeoutMs);
     if (timeoutMsOverride === undefined) timeout.unref?.();
     activeTrialByWorkspace.set(ws.key, inFlightKey);
     activeTrialIdentityByWorkspace.set(ws.key, activeIdentity);
@@ -1942,7 +2003,7 @@ export async function trialRunChatYamlStage(
     const promise = (async () => {
       try {
         if (controller.signal.aborted) {
-          return resultForStoppedBeforeRun(abortState, startedAt);
+          return resultForStoppedBeforeRun(abortState, startedAt, budgets.lifecycleTimeoutMs);
         }
         progress.update({
           phase: 'preparing',
@@ -1962,7 +2023,7 @@ export async function trialRunChatYamlStage(
           stagedYamlPath: executionSnapshot.yamlPath,
         });
         if (controller.signal.aborted) {
-          return resultForStoppedBeforeRun(abortState, startedAt);
+          return resultForStoppedBeforeRun(abortState, startedAt, budgets.lifecycleTimeoutMs);
         }
         if (!prepared.prepared) {
           return resultForSetupFailure(
@@ -1990,7 +2051,7 @@ export async function trialRunChatYamlStage(
           controller.signal,
         );
         if (controller.signal.aborted) {
-          return resultForStoppedBeforeRun(abortState, startedAt);
+          return resultForStoppedBeforeRun(abortState, startedAt, budgets.lifecycleTimeoutMs);
         }
         if (!currentWitness.witness) {
           return resultForSetupFailure(
@@ -2008,10 +2069,11 @@ export async function trialRunChatYamlStage(
           planRead.plan,
           controller,
           abortState,
+          budgets,
           progress,
         );
         if (controller.signal.aborted) {
-          return resultForStopped(result, abortState, startedAt);
+          return resultForStopped(result, abortState, startedAt, budgets.lifecycleTimeoutMs);
         }
         if (result.kind !== 'aborted') {
           progress.update({
@@ -2032,7 +2094,7 @@ export async function trialRunChatYamlStage(
             stagedYamlPath: executionSnapshot.yamlPath,
           });
           if (controller.signal.aborted) {
-            return resultForStopped(result, abortState, startedAt);
+            return resultForStopped(result, abortState, startedAt, budgets.lifecycleTimeoutMs);
           }
           if (!postPrepared.prepared) {
             if (result.success) {
@@ -2049,7 +2111,7 @@ export async function trialRunChatYamlStage(
             controller.signal,
           );
           if (controller.signal.aborted) {
-            return resultForStopped(result, abortState, startedAt);
+            return resultForStopped(result, abortState, startedAt, budgets.lifecycleTimeoutMs);
           }
           if (!postWitness.witness) {
             if (result.success) {

@@ -88,7 +88,7 @@ export class RunContext {
   /**
    * Fallback per-task timeout (ms) when a task has no explicit `timeout`.
    * Undefined means no default safety net — tasks run until completion or
-   * pipeline abort. The editor passes DEFAULT_TASK_TIMEOUT_MS (30 min).
+   * pipeline abort. Editor hosts pass their workspace-configured default.
    */
   readonly defaultTaskTimeoutMs?: number;
 

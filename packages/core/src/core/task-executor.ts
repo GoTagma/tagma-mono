@@ -391,7 +391,7 @@ export async function executeTask(options: ExecuteTaskOptions): Promise<void> {
   const resolvedCwd = validatePath(task.cwd ?? track.cwd ?? workDir, workDir);
 
   // Per-task timeout: explicit task.timeout wins, then ctx.defaultTaskTimeoutMs
-  // (set by the editor to DEFAULT_TASK_TIMEOUT_MS = 30 min), then undefined
+  // (set by editor hosts from workspace Settings), then undefined
   // (no timeout — task runs until completion or pipeline abort).
   const taskTimeoutMs = task.timeout
     ? parseDuration(task.timeout)

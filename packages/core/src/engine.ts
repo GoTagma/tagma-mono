@@ -47,13 +47,13 @@ export interface EngineResult {
 }
 
 /**
- * Default per-task timeout (30 minutes) applied when neither the task nor
+ * Recommended per-task timeout (2 hours) applied when neither the task nor
  * the pipeline declares an explicit timeout. Long enough for heavy AI tasks;
  * short enough to prevent truly hung processes from blocking the pipeline
  * indefinitely. The editor passes this value; SDK callers may opt in or
  * supply their own via RunPipelineOptions.defaultTaskTimeoutMs.
  */
-export const DEFAULT_TASK_TIMEOUT_MS = 30 * 60 * 1000;
+export const DEFAULT_TASK_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 
 // ═══ Pipeline Events ═══
 //
@@ -143,11 +143,17 @@ export interface RunPipelineOptions {
    * against indefinitely-hung AI API calls or shell commands. When unset,
    * tasks without their own timeout run until completion or external abort.
    *
-   * The editor sets this to DEFAULT_TASK_TIMEOUT_MS (30 min) so an unbounded
-   * pipeline still has a per-task safety net. SDK callers can pass their own
+   * Editor hosts set this from workspace Settings (recommended default 2h) so
+   * an otherwise unbounded task still has a safety net. SDK callers can pass their own
    * value or omit it for the legacy "no default" behavior.
    */
   readonly defaultTaskTimeoutMs?: number;
+  /**
+   * Fallback total pipeline timeout (ms) when the pipeline YAML has no
+   * explicit top-level `timeout`. An authored pipeline timeout always wins.
+   * Undefined preserves the low-level API's legacy unbounded lifecycle.
+   */
+  readonly defaultPipelineTimeoutMs?: number;
 }
 
 // Re-export from @tagma/types for backward compatibility — existing imports
@@ -327,7 +333,9 @@ async function runPipelineInner(
   const dag = buildDag(config);
   preflight(config, dag, registry);
   const activeTaskIds = resolveTargetTaskRunSet(dag, options.targetTaskIds);
-  const pipelineTimeoutMs = config.timeout ? parseDuration(config.timeout) : 0;
+  const pipelineTimeoutMs = config.timeout
+    ? parseDuration(config.timeout)
+    : (options.defaultPipelineTimeoutMs ?? 0);
   const maxConcurrency = normalizeMaxConcurrency(options.maxConcurrency ?? config.max_concurrency);
 
   const startedAt = nowISO();
@@ -354,7 +362,9 @@ async function runPipelineInner(
     log.section('Pipeline configuration');
     log.quiet(`name:          ${config.name}`);
     log.quiet(`driver:        ${config.driver ?? '(default: opencode)'}`);
-    log.quiet(`timeout:       ${config.timeout ?? '(none)'}`);
+    log.quiet(
+      `timeout:       ${config.timeout ?? (pipelineTimeoutMs > 0 ? `${pipelineTimeoutMs}ms (host default)` : '(none)')}`,
+    );
     log.quiet(`tracks:        ${config.tracks.length}`);
     log.quiet(`tasks (total): ${dag.nodes.size}`);
     if (activeTaskIds) {

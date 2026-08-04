@@ -569,6 +569,78 @@ describe('chat YAML staging async witness ordering', () => {
     ws.layoutWatcher.stopWatching();
   });
 
+  test('returns immediately when every baseline root waits on a missing file input', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const yaml = serializePipeline({
+      name: 'No input baseline',
+      tracks: [
+        {
+          id: 'main',
+          name: 'Main',
+          tasks: [
+            {
+              id: 'verify',
+              command: { argv: [process.execPath, '-e', 'process.exit(0)'] },
+              timeout: '45m',
+              trigger: { type: 'file', path: 'input/text-to-check.md' },
+            },
+          ],
+        },
+      ],
+    });
+    writeFileSync(sourcePath, yaml, 'utf-8');
+    ws.config = parseYaml(yaml);
+    const getRoute = createHarness();
+    const stage = await startStage(getRoute, ws, sourcePath);
+    writeTrialPlan(stage.stagedPath, {
+      cases: [
+        {
+          id: 'case_missing_input',
+          title: 'Missing input',
+          objective: 'Would run only after the baseline has executable input.',
+          runs: 1,
+          targetTaskIds: ['main.verify'],
+          fixtures: [],
+          expectations: [{ type: 'task-status', taskId: 'main.verify', status: 'success' }],
+        },
+      ],
+    });
+    __chatPipelineTrialRunTestHooks.timeoutMsOverride = 500;
+    __chatPipelineTrialRunTestHooks.captureHostWitnessAsync = async () => ({
+      witness: {
+        digest: 'stable-host',
+        prerequisiteDigest: 'stable-prerequisites',
+      } as never,
+      reason: null,
+    });
+
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(ws, {
+        stageId: stage.id,
+        relativePath: stage.relativePath,
+        trialId: 'missing_input_preflight',
+      }),
+      trialRes,
+    );
+
+    expect(trialRes.statusCode).toBe(200);
+    expect(trialRes.body).toMatchObject({
+      success: false,
+      kind: 'preflight-failed',
+      repairAuthorization: 'diagnostic-only',
+      ran: false,
+      totalTaskCount: 0,
+    });
+    const result = trialRes.body as { summary: string; durationMs: number };
+    expect(result.summary).toContain('no runnable baseline tasks');
+    expect(result.summary).toContain('input/text-to-check.md');
+    expect(result.durationMs).toBeLessThan(500);
+    expect(existsSync(join(ws.workDir, '.tagma', 'logs'))).toBe(false);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
   test('cancels during pre-witness before any trial tasks start', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();

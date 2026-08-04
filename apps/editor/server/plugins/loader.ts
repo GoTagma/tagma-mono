@@ -56,6 +56,15 @@ import {
   CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
   hasCurrentChatPipelineTrialConsent,
 } from '../../shared/chat-pipeline-trial-consent.js';
+import {
+  DEFAULT_CHAT_TRIAL_RUN_TIMEOUT_MINUTES,
+  DEFAULT_PIPELINE_RUN_TIMEOUT_MINUTES,
+  DEFAULT_PIPELINE_TASK_TIMEOUT_MINUTES,
+  isValidChatTrialRunTimeoutMinutes,
+  isValidPipelineRunTimeoutMinutes,
+  isValidPipelineTaskTimeoutMinutes,
+  normalizeExecutionTimeoutSettings,
+} from '../../shared/execution-timeout-settings.js';
 
 /**
  * Map of plugin package name → which (category, type) pair it occupies in the
@@ -1008,6 +1017,12 @@ export interface EditorSettings {
    * Zero disables automatic repair while preserving compile/trial evidence.
    */
   opencodeChatPipelineRepairMaxAttempts: number;
+  /** Default task deadline for production runs and Trial, in whole minutes. */
+  pipelineDefaultTaskTimeoutMinutes: number;
+  /** Default total lifecycle for an ordinary production pipeline, in whole minutes. */
+  pipelineDefaultRunTimeoutMinutes: number;
+  /** Total lifecycle for one Chat Trial, in whole minutes. */
+  opencodeChatTrialRunTimeoutMinutes: number;
   /** Disabled means unlimited. Enabled with 0 rounds means stateless. */
   chatContextLimitEnabled: boolean;
   /**
@@ -1037,6 +1052,9 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   opencodeChatTrialRunConsentVersion: 0,
   opencodeChatTrialPlanMaxAttempts: DEFAULT_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS,
   opencodeChatPipelineRepairMaxAttempts: DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS,
+  pipelineDefaultTaskTimeoutMinutes: DEFAULT_PIPELINE_TASK_TIMEOUT_MINUTES,
+  pipelineDefaultRunTimeoutMinutes: DEFAULT_PIPELINE_RUN_TIMEOUT_MINUTES,
+  opencodeChatTrialRunTimeoutMinutes: DEFAULT_CHAT_TRIAL_RUN_TIMEOUT_MINUTES,
   chatContextLimitEnabled: false,
   chatContextRounds: 0,
 };
@@ -1067,6 +1085,23 @@ export function readEditorSettings(ws: WorkspaceState): EditorSettings {
     const opencodeChatTrialRunEnabled = hasCurrentChatPipelineTrialConsent({
       opencodeChatTrialRunEnabled: raw.opencodeChatTrialRunEnabled === true,
       opencodeChatTrialRunConsentVersion,
+    });
+    const executionTimeouts = normalizeExecutionTimeoutSettings({
+      pipelineDefaultTaskTimeoutMinutes: isValidPipelineTaskTimeoutMinutes(
+        raw.pipelineDefaultTaskTimeoutMinutes,
+      )
+        ? raw.pipelineDefaultTaskTimeoutMinutes
+        : DEFAULT_EDITOR_SETTINGS.pipelineDefaultTaskTimeoutMinutes,
+      pipelineDefaultRunTimeoutMinutes: isValidPipelineRunTimeoutMinutes(
+        raw.pipelineDefaultRunTimeoutMinutes,
+      )
+        ? raw.pipelineDefaultRunTimeoutMinutes
+        : DEFAULT_EDITOR_SETTINGS.pipelineDefaultRunTimeoutMinutes,
+      opencodeChatTrialRunTimeoutMinutes: isValidChatTrialRunTimeoutMinutes(
+        raw.opencodeChatTrialRunTimeoutMinutes,
+      )
+        ? raw.opencodeChatTrialRunTimeoutMinutes
+        : DEFAULT_EDITOR_SETTINGS.opencodeChatTrialRunTimeoutMinutes,
     });
     return {
       autoInstallDeclaredPlugins:
@@ -1109,6 +1144,7 @@ export function readEditorSettings(ws: WorkspaceState): EditorSettings {
       )
         ? raw.opencodeChatPipelineRepairMaxAttempts
         : DEFAULT_EDITOR_SETTINGS.opencodeChatPipelineRepairMaxAttempts,
+      ...executionTimeouts,
       chatContextLimitEnabled:
         typeof raw.chatContextLimitEnabled === 'boolean'
           ? raw.chatContextLimitEnabled
@@ -1189,6 +1225,24 @@ export function writeEditorSettings(
   if (patch.opencodeChatPipelineRepairMaxAttempts !== undefined) {
     next.opencodeChatPipelineRepairMaxAttempts = clampChatPipelineRepairAttempts(
       patch.opencodeChatPipelineRepairMaxAttempts,
+    );
+  }
+  if (
+    patch.pipelineDefaultTaskTimeoutMinutes !== undefined ||
+    patch.pipelineDefaultRunTimeoutMinutes !== undefined ||
+    patch.opencodeChatTrialRunTimeoutMinutes !== undefined
+  ) {
+    const current = readEditorSettings(ws);
+    Object.assign(
+      next,
+      normalizeExecutionTimeoutSettings({
+        pipelineDefaultTaskTimeoutMinutes:
+          patch.pipelineDefaultTaskTimeoutMinutes ?? current.pipelineDefaultTaskTimeoutMinutes,
+        pipelineDefaultRunTimeoutMinutes:
+          patch.pipelineDefaultRunTimeoutMinutes ?? current.pipelineDefaultRunTimeoutMinutes,
+        opencodeChatTrialRunTimeoutMinutes:
+          patch.opencodeChatTrialRunTimeoutMinutes ?? current.opencodeChatTrialRunTimeoutMinutes,
+      }),
     );
   }
   if (patch.chatContextLimitEnabled !== undefined) {

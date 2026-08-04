@@ -21,6 +21,17 @@ import {
   MAX_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS,
   MIN_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS,
 } from '../../../shared/chat-pipeline-trial-plan-limit.js';
+import {
+  DEFAULT_CHAT_TRIAL_RUN_TIMEOUT_MINUTES,
+  DEFAULT_PIPELINE_RUN_TIMEOUT_MINUTES,
+  DEFAULT_PIPELINE_TASK_TIMEOUT_MINUTES,
+  MAX_CHAT_TRIAL_RUN_TIMEOUT_MINUTES,
+  MAX_PIPELINE_RUN_TIMEOUT_MINUTES,
+  MAX_PIPELINE_TASK_TIMEOUT_MINUTES,
+  MIN_CHAT_TRIAL_RUN_TIMEOUT_MINUTES,
+  MIN_PIPELINE_RUN_TIMEOUT_MINUTES,
+  MIN_PIPELINE_TASK_TIMEOUT_MINUTES,
+} from '../../../shared/execution-timeout-settings.js';
 
 import { DiagnosticsSettingsSection } from '../panels/DiagnosticsSettingsSection';
 import type {
@@ -38,6 +49,7 @@ export type SettingsCategory =
   | 'opencode-agents'
   | 'diagnostics'
   | 'chat'
+  | 'execution'
   | 'python-agent'
   | 'plugins'
   | 'inspector'
@@ -47,6 +59,7 @@ export const SETTINGS_CATEGORIES: ReadonlyArray<{ id: SettingsCategory; label: s
   { id: 'opencode-agents', label: 'OpenCode Agents' },
   { id: 'diagnostics', label: 'Diagnostics' },
   { id: 'chat', label: 'Chat' },
+  { id: 'execution', label: 'Execution' },
   { id: 'python-agent', label: 'Python AI Agent' },
   { id: 'plugins', label: 'Plugins' },
   { id: 'inspector', label: 'Inspector' },
@@ -335,6 +348,49 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
                 {settings.chatContextLimitEnabled ? '0 = stateless, no history' : 'Off = unlimited'}
               </span>
             </div>
+          </div>
+        </div>
+      )}
+
+      {settings && show('execution') && (
+        <div>
+          <label className={'field-label'}>Execution</label>
+          <div className={'space-y-2 border border-tagma-border bg-tagma-bg p-2.5'}>
+            <p className={'text-[10px] leading-relaxed text-tagma-muted'}>
+              Workspace defaults for long-running tasks. Explicit YAML timeouts take precedence.
+              The server keeps each outer lifecycle at least 30 minutes above the default task
+              timeout so the host does not cut off a valid task first.
+            </p>
+            <TimeoutMinutesRow
+              id={'pipeline-default-task-timeout'}
+              label={'Default task timeout (minutes)'}
+              value={settings.pipelineDefaultTaskTimeoutMinutes}
+              minimum={MIN_PIPELINE_TASK_TIMEOUT_MINUTES}
+              maximum={MAX_PIPELINE_TASK_TIMEOUT_MINUTES}
+              defaultValue={DEFAULT_PIPELINE_TASK_TIMEOUT_MINUTES}
+              disabled={settingsInputsDisabled}
+              onChange={(value) => updateField('pipelineDefaultTaskTimeoutMinutes', value)}
+            />
+            <TimeoutMinutesRow
+              id={'pipeline-default-run-timeout'}
+              label={'Production pipeline timeout (minutes)'}
+              value={settings.pipelineDefaultRunTimeoutMinutes}
+              minimum={MIN_PIPELINE_RUN_TIMEOUT_MINUTES}
+              maximum={MAX_PIPELINE_RUN_TIMEOUT_MINUTES}
+              defaultValue={DEFAULT_PIPELINE_RUN_TIMEOUT_MINUTES}
+              disabled={settingsInputsDisabled}
+              onChange={(value) => updateField('pipelineDefaultRunTimeoutMinutes', value)}
+            />
+            <TimeoutMinutesRow
+              id={'chat-trial-run-timeout'}
+              label={'Chat Trial timeout (minutes)'}
+              value={settings.opencodeChatTrialRunTimeoutMinutes}
+              minimum={MIN_CHAT_TRIAL_RUN_TIMEOUT_MINUTES}
+              maximum={MAX_CHAT_TRIAL_RUN_TIMEOUT_MINUTES}
+              defaultValue={DEFAULT_CHAT_TRIAL_RUN_TIMEOUT_MINUTES}
+              disabled={settingsInputsDisabled}
+              onChange={(value) => updateField('opencodeChatTrialRunTimeoutMinutes', value)}
+            />
           </div>
         </div>
       )}
@@ -749,6 +805,58 @@ function DeclaredPreview({ declared }: { declared: PluginDeclaredResult | null }
           );
         })}
       </div>
+    </div>
+  );
+}
+
+interface TimeoutMinutesRowProps {
+  id: string;
+  label: string;
+  value: number;
+  minimum: number;
+  maximum: number;
+  defaultValue: number;
+  disabled: boolean;
+  onChange: (value: number) => void;
+}
+
+function TimeoutMinutesRow({
+  id,
+  label,
+  value,
+  minimum,
+  maximum,
+  defaultValue,
+  disabled,
+  onChange,
+}: TimeoutMinutesRowProps) {
+  return (
+    <div className={'flex items-center gap-2 text-[11px]'}>
+      <label htmlFor={id} className={'w-56 shrink-0 text-tagma-muted'}>
+        {label}:
+      </label>
+      <input
+        id={id}
+        type={'number'}
+        min={minimum}
+        max={maximum}
+        step={1}
+        value={value}
+        disabled={disabled}
+        onChange={(event) => {
+          const parsed = Number.parseInt(event.target.value, 10);
+          if (Number.isFinite(parsed)) {
+            onChange(Math.max(minimum, Math.min(maximum, parsed)));
+          }
+        }}
+        className={
+          'w-20 px-1 py-0.5 bg-tagma-surface border border-tagma-border text-tagma-text disabled:opacity-50'
+        }
+      />
+      <span className={'text-[10px] text-tagma-muted/70'}>
+        default {defaultValue.toLocaleString()}; range {minimum.toLocaleString()}-
+        {maximum.toLocaleString()} minutes.
+      </span>
     </div>
   );
 }
