@@ -438,6 +438,9 @@ test('tagma-pipeline agent cooperates with optional host trial-run repair before
   expect(doc).toContain('same authorized logical turn');
   expect(doc).toContain('Never remove or weaken a manual approval');
   expect(doc).toContain('Never claim it passed without host evidence');
+  expect(doc).toContain('Relative trigger paths resolve from the real workspace root');
+  expect(doc).toContain('staged pipeline support file does not satisfy that real-workspace baseline');
+  expect(doc).toContain('authoring complete; host verification pending');
 });
 
 test('dedicated hidden tagma-trial-planner owns targeted Trial Plan authoring', () => {
@@ -465,6 +468,10 @@ test('dedicated hidden tagma-trial-planner owns targeted Trial Plan authoring', 
     expect(planner).toContain('tagma_trial_plan: true');
     expect(planner).toContain('tagma_trial_plan: allow');
     expect(planner).toContain('then `commit` exactly once');
+    expect(planner).toContain(
+      'The begin operation requires a non-empty summary and a non-empty string-array goals',
+    );
+    expect(planner).toContain('resubmit both fields when resuming a matching draft');
     expect(planner).toContain('Never submit the whole plan or multiple cases in one call');
     expect(planner).toContain(
       'configured finite commit budget for each exact staged path and YAML hash',

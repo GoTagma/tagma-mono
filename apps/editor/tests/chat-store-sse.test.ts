@@ -249,6 +249,8 @@ test('trial planning prompt forces behavior-first edge-case design without autho
   );
   expect(prompt).toContain('The host schedules any remaining attempt.');
   expect(prompt).toContain('Begin resumes a matching path-and-hash draft by default');
+  expect(prompt).toContain('begin requires both summary (a non-empty string) and goals');
+  expect(prompt).toContain('goals must be a non-empty string array');
   expect(prompt).toContain('Never send the whole plan or multiple cases in one call');
   expect(prompt).toContain('Pass the exact staged Target YAML path');
   expect(prompt).toContain('Never copy YAML or plan files');

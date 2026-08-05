@@ -28,9 +28,22 @@ export function buildConversationExport({
   exportedAt = new Date(),
 }: BuildConversationExportOptions): ConversationExport {
   const heading = cleanTitle(title) || 'Chat Export';
-  const body: string[] = messages
-    .map((entry) => renderEntry(entry, format))
-    .filter((part): part is string => part !== null);
+  const body: string[] = [];
+  let hideInternalContinuation = false;
+  for (const entry of messages) {
+    const role = entry.info.role;
+    if (role === 'user') {
+      if (isInternalUserEntry(entry.parts)) {
+        hideInternalContinuation = true;
+        continue;
+      }
+      hideInternalContinuation = false;
+    } else if (role === 'assistant' && hideInternalContinuation) {
+      continue;
+    }
+    const rendered = renderEntry(entry, format);
+    if (rendered !== null) body.push(rendered);
+  }
   if (pipelineVerification) {
     body.push(renderPipelineVerification(pipelineVerification, format));
   }
@@ -84,10 +97,12 @@ function renderEntry(entry: OpencodeThreadEntry, format: ChatExportFormat): stri
   if (role === 'user' && isInternalUserEntry(entry.parts)) return null;
 
   const visibleParts = entry.parts
-    .map((part) => renderPart(part, role, format))
+    .map((part) => renderPart(part, role))
     .filter((text): text is string => text.trim().length > 0);
   if (role === 'assistant') {
-    const footer = renderAssistantFooter(entry.info as AssistantMessage, format);
+    const info = entry.info as AssistantMessage;
+    const footer =
+      visibleParts.length > 0 || info.error ? renderAssistantFooter(info, format) : null;
     if (footer) visibleParts.push(footer);
   }
   if (visibleParts.length === 0) return null;
@@ -99,15 +114,10 @@ function renderEntry(entry: OpencodeThreadEntry, format: ChatExportFormat): stri
   return `${label}:\n${visibleParts.join('\n\n')}`;
 }
 
-function renderPart(part: Part, role: 'user' | 'assistant', format: ChatExportFormat): string {
+function renderPart(part: Part, role: 'user' | 'assistant'): string {
   if (part.type === 'text') {
     if ((part as { synthetic?: boolean }).synthetic) return '';
     return role === 'user' ? stripUserHiddenContext(part.text).trim() : part.text.trim();
-  }
-  if (part.type === 'reasoning') {
-    const text = part.text.trim();
-    if (!text) return '';
-    return format === 'md' ? `**Reasoning**\n\n${text}` : `Reasoning:\n${text}`;
   }
   return '';
 }

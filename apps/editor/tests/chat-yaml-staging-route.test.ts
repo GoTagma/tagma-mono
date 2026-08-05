@@ -393,6 +393,64 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
+  test('fails missing baseline inputs before requesting a targeted plan', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Missing Baseline Input',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              {
+                id: 'ingest',
+                prompt: 'Read the input.',
+                trigger: { type: 'file', path: 'input/text-to-check.md' },
+              },
+            ],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'missing_before_plan' },
+        'chat-lock',
+      ),
+      trialRes,
+    );
+
+    expect(trialRes.statusCode).toBe(200);
+    expect(trialRes.body).toMatchObject({
+      success: false,
+      kind: 'preflight-failed',
+      ran: false,
+      planTelemetry: { toolAttemptCount: 0 },
+    });
+    expect(trialRes.body).not.toHaveProperty('planRequest');
+    expect((trialRes.body as { summary: string }).summary).toContain('input/text-to-check.md');
+    discardStage(getRoute, ws, stage.id);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
   test('snapshots a configured three-attempt plan budget for the lifetime of the stage', async () => {
     const { ws, sourcePath } = makeWorkspace(true, 3);
     const getRoute = createHarness();

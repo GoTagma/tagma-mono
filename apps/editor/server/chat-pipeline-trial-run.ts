@@ -630,6 +630,16 @@ function trialPlanSummary(plan: ChatPipelineTrialPlan): ChatPipelineTrialPlanSum
   };
 }
 
+function resultWithTrialPlan(
+  result: ChatPipelineTrialRunResult,
+  plan: ChatPipelineTrialPlan,
+): ChatPipelineTrialRunResult {
+  return {
+    ...result,
+    plan: trialPlanSummary(plan),
+  };
+}
+
 function resultForPlanRequest(
   request: ChatPipelineTrialPlanRequest,
   planTelemetry: ChatPipelineTrialPlanToolTelemetry,
@@ -1493,6 +1503,22 @@ function unavailableTrialBaselineInputs(
   return unavailable;
 }
 
+function unavailableTrialBaselineMessage(unavailableInputs: readonly string[]): string {
+  return `Trial baseline has no runnable baseline tasks: every DAG root is waiting for an unavailable file or directory input. Missing inputs: ${unavailableInputs.join(', ')}. Provide the input and run Trial again; waiting consumed no execution budget.`;
+}
+
+async function loadTrialPipelineConfig(
+  snapshot: TrialPipelineSnapshot,
+  workDir: string,
+): Promise<PipelineConfig> {
+  const pipelineConfig = await loadPipeline(readFileSync(snapshot.yamlPath, 'utf-8'), workDir);
+  const configErrors = validateConfig(pipelineConfig);
+  if (configErrors.length > 0) {
+    throw new Error(configErrors.join('; '));
+  }
+  return pipelineConfig;
+}
+
 async function executeTrial(
   ws: WorkspaceState,
   stage: ReturnType<typeof listChatYamlStage>,
@@ -1519,19 +1545,11 @@ async function executeTrial(
   });
   let pipelineConfig;
   try {
-    pipelineConfig = await loadPipeline(readFileSync(snapshot.yamlPath, 'utf-8'), ws.workDir);
+    pipelineConfig = await loadTrialPipelineConfig(snapshot, ws.workDir);
   } catch (err) {
     return resultForSetupFailure(
       'setup-failed',
       `Trial run configuration error: ${errorMessage(err)}`,
-      startedAt,
-    );
-  }
-  const configErrors = validateConfig(pipelineConfig);
-  if (configErrors.length > 0) {
-    return resultForSetupFailure(
-      'setup-failed',
-      `Trial run configuration error: ${configErrors.join('; ')}`,
       startedAt,
     );
   }
@@ -1559,7 +1577,7 @@ async function executeTrial(
   if (unavailableBaselineInputs) {
     return resultForSetupFailure(
       'preflight-failed',
-      `Trial baseline has no runnable baseline tasks: every DAG root is waiting for an unavailable file or directory input. Missing inputs: ${unavailableBaselineInputs.join(', ')}. Provide the input and run Trial again; waiting consumed no execution budget.`,
+      unavailableTrialBaselineMessage(unavailableBaselineInputs),
       startedAt,
     );
   }
@@ -1949,37 +1967,77 @@ export async function trialRunChatYamlStage(
       stage.trialPlanMaxAttempts,
     );
     if (planRead.status === 'required') {
+      let pipelineConfig: PipelineConfig;
+      try {
+        pipelineConfig = await loadTrialPipelineConfig(snapshot, ws.workDir);
+      } catch (err) {
+        return {
+          ...resultForSetupFailure(
+            'setup-failed',
+            `Trial run configuration error: ${errorMessage(err)}`,
+            startedAt,
+          ),
+          planTelemetry,
+        };
+      }
+      const unavailableBaselineInputs = unavailableTrialBaselineInputs(
+        pipelineConfig,
+        ws.workDir,
+      );
+      if (unavailableBaselineInputs) {
+        return {
+          ...resultForSetupFailure(
+            'preflight-failed',
+            unavailableTrialBaselineMessage(unavailableBaselineInputs),
+            startedAt,
+          ),
+          planTelemetry,
+        };
+      }
       if (planTelemetry.toolAttemptCount >= stage.trialPlanMaxAttempts) {
         return resultForPlanAttemptBudgetExhausted(planTelemetry, startedAt);
       }
       return resultForPlanRequest(planRead.request, planTelemetry, startedAt);
     }
+    const plan = planRead.plan;
     const inputHash = buildChatPipelineTrialInputHash({
       stagedTreeHash: snapshot.treeHash,
       planHash: planRead.planHash,
     });
     const cachePath = trialCachePath(stage.rootDir, trialId, entry.relativePath, inputHash);
     const cached = readCachedTrial(ws, stage.id, cachePath, inputHash);
-    if (cached) return cached;
+    if (cached) return resultWithTrialPlan(cached, plan);
     const inFlightKey = cachePath;
     const existing = inFlightByCacheKey.get(inFlightKey);
     if (existing) return existing;
     pendingRunReservation = beginRunSessionStart(ws);
     if (pendingRunReservation === null) {
-      return resultForSetupFailure(
-        'busy',
-        'Trial run was skipped because another pipeline or workflow run is active in this workspace.',
-        Date.now(),
-      );
+      return {
+        ...resultWithTrialPlan(
+          resultForSetupFailure(
+            'busy',
+            'Trial run was skipped because another pipeline or workflow run is active in this workspace.',
+            Date.now(),
+          ),
+          plan,
+        ),
+        planTelemetry,
+      };
     }
     if (hasActiveWorkspaceRun(ws) || activeTrialByWorkspace.has(ws.key)) {
       endRunSessionStart(ws, pendingRunReservation);
       pendingRunReservation = null;
-      return resultForSetupFailure(
-        'busy',
-        'Trial run was skipped because another pipeline or workflow run is active in this workspace.',
-        Date.now(),
-      );
+      return {
+        ...resultWithTrialPlan(
+          resultForSetupFailure(
+            'busy',
+            'Trial run was skipped because another pipeline or workflow run is active in this workspace.',
+            Date.now(),
+          ),
+          plan,
+        ),
+        planTelemetry,
+      };
     }
 
     const controller = new AbortController();
@@ -2065,7 +2123,7 @@ export async function trialRunChatYamlStage(
           stage,
           entry,
           executionSnapshot,
-          planRead.plan,
+          plan,
           controller,
           abortState,
           budgets,
@@ -2141,7 +2199,7 @@ export async function trialRunChatYamlStage(
             inputHash,
             postVerificationHash,
             postWitness.witness,
-            { ...result, planTelemetry },
+            { ...resultWithTrialPlan(result, plan), planTelemetry },
           );
         }
         return result;
@@ -2158,7 +2216,7 @@ export async function trialRunChatYamlStage(
         inFlightByCacheKey.delete(inFlightKey);
         cleanupTrialPipelineSnapshot(executionSnapshot);
       }
-    })().then((result) => ({ ...result, planTelemetry }));
+    })().then((result) => ({ ...resultWithTrialPlan(result, plan), planTelemetry }));
     inFlightByCacheKey.set(inFlightKey, promise);
     return promise;
   } finally {

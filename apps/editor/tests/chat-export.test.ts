@@ -12,6 +12,15 @@ const textPart = (id: string, text: string, synthetic = false): Part =>
     ...(synthetic ? { synthetic } : {}),
   }) as Part;
 
+const reasoningPart = (id: string, text: string): Part =>
+  ({
+    id,
+    sessionID: 's1',
+    messageID: `m-${id}`,
+    type: 'reasoning',
+    text,
+  }) as Part;
+
 const entry = (role: 'user' | 'assistant', id: string, parts: Part[]): OpencodeThreadEntry =>
   ({
     info: { id, sessionID: 's1', role },
@@ -100,7 +109,57 @@ describe('chat conversation export', () => {
     expect(exported.content).not.toContain('hidden synthetic text');
   });
 
-  test('exports assistant messages that only have footer information', () => {
+  test('omits reasoning, routing-only assistants, and internal continuation turns', () => {
+    const exported = buildConversationExport({
+      format: 'txt',
+      title: 'Private internals',
+      exportedAt: new Date('2026-05-20T12:00:00.000Z'),
+      messages: [
+        entry('user', 'visible-user', [textPart('visible-user-text', 'Build the pipeline.')]),
+        {
+          info: {
+            id: 'router',
+            sessionID: 's1',
+            role: 'assistant',
+            finish: 'tool-calls',
+            cost: 0.0042,
+            tokens: {
+              input: 1200,
+              output: 50,
+              reasoning: 40,
+              cache: { read: 300, write: 0 },
+            },
+          },
+          parts: [reasoningPart('router-reasoning', 'Internal routing decision and tool contract.')],
+        } as unknown as OpencodeThreadEntry,
+        entry('assistant', 'visible-answer', [textPart('visible-answer-text', 'Pipeline drafted.')]),
+        entry('user', 'internal-repair', [
+          textPart(
+            'internal-repair-text',
+            '<tagma-internal>Automatic repair with private diagnostics.</tagma-internal>',
+          ),
+        ]),
+        entry('assistant', 'internal-result', [
+          reasoningPart('internal-result-reasoning', 'Private repair reasoning.'),
+          textPart('internal-result-text', 'Internal repair result should stay hidden.'),
+        ]),
+        entry('user', 'visible-follow-up', [textPart('visible-follow-up-text', 'Show the result.')]),
+        entry('assistant', 'visible-final', [textPart('visible-final-text', 'Final visible result.')]),
+      ],
+    });
+
+    expect(exported.content).toContain('Build the pipeline.');
+    expect(exported.content).toContain('Pipeline drafted.');
+    expect(exported.content).toContain('Show the result.');
+    expect(exported.content).toContain('Final visible result.');
+    expect(exported.content).not.toContain('Reasoning:');
+    expect(exported.content).not.toContain('Internal routing decision');
+    expect(exported.content).not.toContain('Internal repair');
+    expect(exported.content).not.toContain('Private repair reasoning');
+    expect(exported.content).not.toContain('1.5k input tokens');
+  });
+
+  test('exports assistant errors but skips usage-only phantom messages', () => {
     const exported = buildConversationExport({
       format: 'txt',
       title: 'Debug run',
@@ -127,7 +186,7 @@ describe('chat conversation export', () => {
       ],
     });
 
-    expect(exported.content).toContain('Assistant:\nUsage: $0.012');
+    expect(exported.content).not.toContain('Usage: $0.012');
     expect(exported.content).toContain('Assistant:\nError: ProviderAuthError: missing key');
   });
 

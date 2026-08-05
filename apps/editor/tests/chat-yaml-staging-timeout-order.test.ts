@@ -636,6 +636,15 @@ describe('chat YAML staging async witness ordering', () => {
       repairAuthorization: 'diagnostic-only',
       ran: false,
       totalTaskCount: 0,
+      plan: {
+        summary: 'Focused trial coverage for async witness ordering.',
+        cases: [
+          {
+            id: 'case_missing_input',
+            title: 'Missing input',
+          },
+        ],
+      },
     });
     const result = trialRes.body as { summary: string; durationMs: number };
     expect(result.summary).toContain('no runnable baseline tasks');
