@@ -752,6 +752,7 @@ function readMetadata(
         contentHash: entry.contentHash,
         layoutHash: entry.layoutHash,
         requirementsHash: entry.requirementsHash,
+        supportHash: entry.supportHash,
       })),
     },
   };

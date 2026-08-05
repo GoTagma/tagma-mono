@@ -301,14 +301,16 @@ describe('chat YAML staging', () => {
     const stagedDir = dirname(stagedPath);
     mkdirSync(join(stagedDir, 'input'), { recursive: true });
     mkdirSync(join(stagedDir, 'prompts'), { recursive: true });
+    mkdirSync(join(stagedDir, 'assets'), { recursive: true });
     writeFileSync(stagedPath, yamlFor('Created Pipeline', 'created'), 'utf-8');
     writeFileSync(pipelineLayoutPath(stagedPath), layoutFor(20), 'utf-8');
     writeFileSync(join(stagedDir, 'input', 'text-to-check.md'), 'pipeline input\n', 'utf-8');
     writeFileSync(join(stagedDir, 'prompts', '01-ingest.md'), 'ingest prompt\n', 'utf-8');
     writeFileSync(join(stagedDir, 'trusted_sources.yaml'), 'sources: []\n', 'utf-8');
+    writeFileSync(join(stagedDir, 'assets', 'policy.bin'), Uint8Array.of(0, 255, 1));
     writeFileSync(
       stagedPath.replace(/\.ya?ml$/i, '.trial-plan.json'),
-      '{version:1}\n',
+      JSON.stringify({ version: 1 }) + '\n',
       'utf-8',
     );
 
@@ -330,7 +332,60 @@ describe('chat YAML staging', () => {
     expect(readFileSync(join(publishedDir, 'trusted_sources.yaml'), 'utf-8')).toBe(
       'sources: []\n',
     );
+    expect([...readFileSync(join(publishedDir, 'assets', 'policy.bin'))]).toEqual([0, 255, 1]);
     expect(existsSync(result.entry!.path.replace(/\.ya?ml$/i, '.trial-plan.json'))).toBe(false);
+    stopWorkspace(ws);
+  });
+
+  test('stages and adopts support-only edits for an existing pipeline', async () => {
+    const { ws, sourcePath, baseYaml } = setupWorkspace();
+    const sourceDir = dirname(sourcePath);
+    mkdirSync(join(sourceDir, 'prompts'), { recursive: true });
+    writeFileSync(join(sourceDir, 'prompts', 'policy.md'), 'base policy\n', 'utf-8');
+    writeFileSync(join(sourceDir, 'prompts', 'obsolete.md'), 'obsolete\n', 'utf-8');
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const stagedDir = dirname(staged.stagedPath);
+
+    expect(readFileSync(join(stagedDir, 'prompts', 'policy.md'), 'utf-8')).toBe('base policy\n');
+    writeFileSync(join(stagedDir, 'prompts', 'policy.md'), 'agent policy\n', 'utf-8');
+    rmSync(join(stagedDir, 'prompts', 'obsolete.md'));
+    writeFileSync(join(stagedDir, 'prompts', 'added.md'), 'added\n', 'utf-8');
+
+    const result = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+    });
+
+    expect(result.outcome).toBe('adopted');
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
+    expect(readFileSync(join(sourceDir, 'prompts', 'policy.md'), 'utf-8')).toBe('agent policy\n');
+    expect(existsSync(join(sourceDir, 'prompts', 'obsolete.md'))).toBe(false);
+    expect(readFileSync(join(sourceDir, 'prompts', 'added.md'), 'utf-8')).toBe('added\n');
+    stopWorkspace(ws);
+  });
+
+  test('forks support-only edits when the live support tree changed externally', async () => {
+    const { ws, sourcePath } = setupWorkspace();
+    const sourcePrompt = join(dirname(sourcePath), 'prompts', 'policy.md');
+    mkdirSync(dirname(sourcePrompt), { recursive: true });
+    writeFileSync(sourcePrompt, 'base policy\n', 'utf-8');
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    writeFileSync(join(dirname(staged.stagedPath), 'prompts', 'policy.md'), 'agent policy\n', 'utf-8');
+    writeFileSync(sourcePrompt, 'external policy\n', 'utf-8');
+
+    const result = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+    });
+
+    expect(result.outcome).toBe('forked');
+    expect(result.conflicts).toContain('source-changed-on-disk');
+    expect(readFileSync(sourcePrompt, 'utf-8')).toBe('external policy\n');
+    expect(readFileSync(join(dirname(result.entry!.path), 'prompts', 'policy.md'), 'utf-8')).toBe(
+      'agent policy\n',
+    );
     stopWorkspace(ws);
   });
 
@@ -689,6 +744,9 @@ describe('chat YAML staging', () => {
 
   test('rolls back publication when the finalize result record cannot be written', async () => {
     const { ws, sourcePath, baseYaml } = setupWorkspace();
+    const sourcePrompt = join(dirname(sourcePath), 'prompts', 'policy.md');
+    mkdirSync(dirname(sourcePrompt), { recursive: true });
+    writeFileSync(sourcePrompt, 'base policy\n', 'utf-8');
     const initialLayout = structuredClone(ws.layout);
     const initialYamlVersion = ws.yamlVersion;
     const initialRevision = ws.stateRevision;
@@ -696,6 +754,11 @@ describe('chat YAML staging', () => {
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
     writeFileSync(staged.stagedPath, yamlFor('Agent Pipeline', 'agent'), 'utf-8');
     writeFileSync(pipelineLayoutPath(staged.stagedPath), layoutFor(90), 'utf-8');
+    writeFileSync(
+      join(dirname(staged.stagedPath), 'prompts', 'policy.md'),
+      'agent policy\n',
+      'utf-8',
+    );
     __chatYamlStagingTestHooks.beforeFinalizeResultWrite = () => {
       throw new Error('injected finalize result write failure');
     };
@@ -707,6 +770,7 @@ describe('chat YAML staging', () => {
       }),
     ).rejects.toThrow('injected finalize result write failure');
     expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
+    expect(readFileSync(sourcePrompt, 'utf-8')).toBe('base policy\n');
     expect(JSON.parse(readFileSync(pipelineLayoutPath(sourcePath), 'utf-8'))).toEqual(
       JSON.parse(layoutFor(20)),
     );
@@ -736,6 +800,7 @@ describe('chat YAML staging', () => {
     expect(firstRetry.outcome).toBe('adopted');
     expect(firstRetry.entry?.path).toBe(sourcePath);
     expect(stableRetry).toEqual(firstRetry);
+    expect(readFileSync(sourcePrompt, 'utf-8')).toBe('agent policy\n');
     expect(existsSync(pipelineYamlPath(ws.workDir, 'pipeline-copy-1'))).toBe(false);
     stopWorkspace(ws);
   });
