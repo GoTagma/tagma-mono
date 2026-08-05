@@ -1980,10 +1980,7 @@ export async function trialRunChatYamlStage(
           planTelemetry,
         };
       }
-      const unavailableBaselineInputs = unavailableTrialBaselineInputs(
-        pipelineConfig,
-        ws.workDir,
-      );
+      const unavailableBaselineInputs = unavailableTrialBaselineInputs(pipelineConfig, ws.workDir);
       if (unavailableBaselineInputs) {
         return {
           ...resultForSetupFailure(

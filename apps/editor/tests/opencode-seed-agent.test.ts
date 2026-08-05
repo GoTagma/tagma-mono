@@ -439,8 +439,11 @@ test('tagma-pipeline agent cooperates with optional host trial-run repair before
   expect(doc).toContain('Never remove or weaken a manual approval');
   expect(doc).toContain('Never claim it passed without host evidence');
   expect(doc).toContain('Relative trigger paths resolve from the real workspace root');
-  expect(doc).toContain('staged pipeline support file does not satisfy that real-workspace baseline');
+  expect(doc).toContain(
+    'staged pipeline support file does not satisfy that real-workspace baseline',
+  );
   expect(doc).toContain('authoring complete; host verification pending');
+  expect(doc).toContain('distinguish missing or malformed artifacts from valid empty collections');
 });
 
 test('dedicated hidden tagma-trial-planner owns targeted Trial Plan authoring', () => {
@@ -483,6 +486,7 @@ test('dedicated hidden tagma-trial-planner owns targeted Trial Plan authoring', 
     expect(planner).toContain('## Trial Plan Contract And Edge Cases');
     expect(planner).toContain('duplicate input names');
     expect(planner).toContain('output collisions');
+    expect(planner).toContain('fixed single-input surface is not-applicable');
     expect(planner).toContain('multi-paragraph');
     expect(planner).toContain('empty content');
     expect(planner).toContain('special characters');

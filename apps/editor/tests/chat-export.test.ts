@@ -130,9 +130,13 @@ describe('chat conversation export', () => {
               cache: { read: 300, write: 0 },
             },
           },
-          parts: [reasoningPart('router-reasoning', 'Internal routing decision and tool contract.')],
+          parts: [
+            reasoningPart('router-reasoning', 'Internal routing decision and tool contract.'),
+          ],
         } as unknown as OpencodeThreadEntry,
-        entry('assistant', 'visible-answer', [textPart('visible-answer-text', 'Pipeline drafted.')]),
+        entry('assistant', 'visible-answer', [
+          textPart('visible-answer-text', 'Pipeline drafted.'),
+        ]),
         entry('user', 'internal-repair', [
           textPart(
             'internal-repair-text',
@@ -143,8 +147,12 @@ describe('chat conversation export', () => {
           reasoningPart('internal-result-reasoning', 'Private repair reasoning.'),
           textPart('internal-result-text', 'Internal repair result should stay hidden.'),
         ]),
-        entry('user', 'visible-follow-up', [textPart('visible-follow-up-text', 'Show the result.')]),
-        entry('assistant', 'visible-final', [textPart('visible-final-text', 'Final visible result.')]),
+        entry('user', 'visible-follow-up', [
+          textPart('visible-follow-up-text', 'Show the result.'),
+        ]),
+        entry('assistant', 'visible-final', [
+          textPart('visible-final-text', 'Final visible result.'),
+        ]),
       ],
     });
 
