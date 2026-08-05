@@ -1478,17 +1478,22 @@ function mergePolledThreadEntries(
   };
 }
 
-function describePolledTurnHealth(
+export function describePolledTurnHealth(
   status: OpencodeSessionStatus | null,
   messagesReachable: boolean,
   transcriptChanged: boolean,
   processAlive: boolean,
   sseState: 'connected' | 'idle' | 'reconnecting',
   lastSseEventAt: number | null,
+  pendingPermissionCount = 0,
 ): string {
   const parts: string[] = [];
   if (!processAlive) {
     parts.push('opencode process unresponsive');
+  } else if (pendingPermissionCount > 0) {
+    parts.push(
+      `${pendingPermissionCount} approval${pendingPermissionCount === 1 ? '' : 's'} waiting`,
+    );
   } else if (status) {
     if (status.type === 'busy') parts.push('model still running');
     else if (status.type === 'retry') parts.push('provider retrying');
@@ -1732,6 +1737,7 @@ async function pollStalledTurn(get: () => ChatStore, set: ChatSet): Promise<void
             processAlive,
             sseState,
             sseLastEventAt,
+            current.pendingPermissions.length,
           ),
       sseState,
       processAlive,

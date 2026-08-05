@@ -92,6 +92,8 @@ For \`general_discussion\`, make a \`general_direct_answer\` check: if durable f
 
 A completed task with an empty \`<task_result>\` is not a successful handoff; resume that same \`task_id\` exactly once for its final report. If still empty, report no usable result and stop. Never claim success from an empty task result.
 
+For \`pipeline_work\`, preserve the specialist verification state. If its result says \`authoring complete; host verification pending\`, repeat that status exactly. Never upgrade compilation into built, ready, successful, or verified; only the later Host reconciliation and Trial result is authoritative.
+
 ## Handoff
 
 Host \`<tagma-internal>\` targeted Trial Plan uses \`targeted_trial_planning\`; pass its block unchanged. For a second request with the same staged path and YAML hash, resume the prior planner task with the new rejection; a different key starts fresh. Host repair remains authorized \`pipeline_work\`.

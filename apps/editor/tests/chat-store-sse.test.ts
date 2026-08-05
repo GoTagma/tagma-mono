@@ -7,6 +7,7 @@ import {
   canEndCurrentTurnFromConfirmedIdle,
   canContinueChatSession,
   chatPipelinePreflightMode,
+  describePolledTurnHealth,
   subscribeEventStreamWithReadinessTimeout,
   waitForSseReadyWithTimeout,
   shouldStartFreshChatSessionForContextLimit,
@@ -77,6 +78,21 @@ afterEach(() => {
 
 const dispatch = (event: unknown): void =>
   applySseEvent(event as never, useChatStore.getState, useChatStore.setState as never);
+
+test('stalled-turn health reports pending approvals before a busy model status', () => {
+  const detail = describePolledTurnHealth(
+    { type: 'busy' },
+    true,
+    false,
+    true,
+    'connected',
+    null,
+    3,
+  );
+
+  expect(detail).toContain('3 approvals waiting');
+  expect(detail).not.toContain('model still running');
+});
 
 test('trial-run repair prompt keeps bounded host evidence in the same internal repair contract', () => {
   const prompt = buildChatYamlRepairPrompt(

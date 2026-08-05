@@ -332,6 +332,9 @@ test('router keeps one bounded implementation handoff before result synthesis', 
   );
   expect(doc).toContain('resume that same `task_id` exactly once');
   expect(doc).toContain('Never claim success from an empty task result');
+  expect(doc).toContain('preserve the specialist verification state');
+  expect(doc).toContain('authoring complete; host verification pending');
+  expect(doc).toContain('Never upgrade compilation into built, ready, successful, or verified');
 });
 
 test('tagma-pipeline agent stays compact and keeps schema detail out of the base prompt', () => {
