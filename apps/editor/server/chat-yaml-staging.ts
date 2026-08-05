@@ -1407,8 +1407,37 @@ interface CachedTrialFinalizeRecord {
     kind: string;
     ran: boolean;
     repairAuthorization?: 'pipeline-change-allowed' | 'diagnostic-only';
-    preflightBlocker?: 'requirements-unavailable';
+    prerequisiteState?: unknown;
   };
+}
+
+const AUTHENTICATED_TRIAL_BLOCKER_KINDS = new Set([
+  'binary',
+  'environment',
+  'external-data-path',
+  'service',
+  'credential',
+  'approval',
+]);
+
+function isBlockedTrialPrerequisiteState(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as { state?: unknown; blockers?: unknown };
+  if (record.state !== 'blocked' || !Array.isArray(record.blockers) || record.blockers.length === 0) {
+    return false;
+  }
+  return record.blockers.every((blocker) => {
+    if (!blocker || typeof blocker !== 'object' || Array.isArray(blocker)) return false;
+    const candidate = blocker as { kind?: unknown; name?: unknown; taskId?: unknown };
+    return (
+      typeof candidate.kind === 'string' &&
+      AUTHENTICATED_TRIAL_BLOCKER_KINDS.has(candidate.kind) &&
+      typeof candidate.name === 'string' &&
+      candidate.name.trim().length > 0 &&
+      (candidate.taskId === undefined ||
+        (typeof candidate.taskId === 'string' && candidate.taskId.trim().length > 0))
+    );
+  });
 }
 
 function normalizeFinalizeTrialId(value: string | undefined): string | null {
@@ -1490,7 +1519,7 @@ async function verifiedTrialDisposition(
       cached.result!.kind === 'preflight-failed' &&
       cached.result!.ran === false &&
       cached.result!.repairAuthorization === 'diagnostic-only' &&
-      cached.result!.preflightBlocker === 'requirements-unavailable'
+      isBlockedTrialPrerequisiteState(cached.result!.prerequisiteState)
     ) {
       return 'prerequisite-unavailable';
     }

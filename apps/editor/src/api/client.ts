@@ -194,6 +194,36 @@ export type ChatPipelineTrialCoverageDimension =
   | 'empty-content'
   | 'special-characters';
 
+export interface ChatPipelineTrialFixtureInput {
+  taskId: string;
+  type: 'file' | 'directory';
+  path: string;
+  fixturePath: string;
+}
+
+export type ChatPipelineTrialPrerequisiteState =
+  | {
+      state: 'fixture-backed';
+      baseline:
+        | { mode: 'targeted'; targetTaskIds: string[] }
+        | { mode: 'skip' };
+      inputs: ChatPipelineTrialFixtureInput[];
+    }
+  | {
+      state: 'blocked';
+      blockers: Array<{
+        kind:
+          | 'binary'
+          | 'environment'
+          | 'external-data-path'
+          | 'service'
+          | 'credential'
+          | 'approval';
+        name: string;
+        taskId?: string;
+      }>;
+    };
+
 export interface ChatPipelineTrialPlanRequest {
   reason: 'missing' | 'stale' | 'invalid';
   relativePlanPath: string;
@@ -202,12 +232,7 @@ export interface ChatPipelineTrialPlanRequest {
   maxAttempts?: number;
   requiredCoverage: ChatPipelineTrialCoverageDimension[];
   attemptId?: string;
-  unavailableBaselineInputs?: Array<{
-    taskId: string;
-    type: 'file' | 'directory';
-    path: string;
-    fixturePath: string;
-  }>;
+  unavailableBaselineInputs?: ChatPipelineTrialFixtureInput[];
 }
 
 export interface ChatPipelineTrialExpectationResult {
@@ -259,7 +284,7 @@ export interface ChatPipelineTrialPlanSummary {
 }
 
 export interface ChatPipelineTrialRunResult {
-  version: 2 | 3 | 4 | 5 | 6 | 7;
+  version: 2 | 3 | 4 | 5 | 6 | 7 | 8;
   success: boolean;
   kind: ChatPipelineTrialRunKind;
   ran: boolean;
@@ -270,7 +295,7 @@ export interface ChatPipelineTrialRunResult {
   omittedTaskCount: number;
   tasks: ChatPipelineTrialTaskResult[];
   repairAuthorization?: 'pipeline-change-allowed' | 'diagnostic-only';
-  preflightBlocker?: 'requirements-unavailable';
+  prerequisiteState?: ChatPipelineTrialPrerequisiteState;
   verificationMode?: 'real-baseline-and-isolated-cases' | 'isolated-fixtures-only';
   planTelemetry?: {
     version: 2;
