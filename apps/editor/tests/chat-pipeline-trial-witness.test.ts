@@ -353,8 +353,9 @@ describe('chat pipeline trial host witness', () => {
       ...result,
       binaryNames: [],
     });
-    expect(missing.witness).toBeNull();
-    expect(missing.reason).toContain(envName);
+    expect(missing.reason).toBeNull();
+    expect(missing.witness?.missingRequiredEnv).toEqual([envName]);
+    expect(missing.witness?.requiredEnv).toEqual([]);
 
     const secretValue = 'required-value-that-must-not-be-serialized';
     const captured = captureTrialHostWitness(ws, {
@@ -363,6 +364,7 @@ describe('chat pipeline trial host witness', () => {
       secretEnv: { ...result.secretEnv, [envName]: secretValue },
     });
     expect(captured.requiredEnv).toEqual([{ name: envName, sha256: sha256(secretValue) }]);
+    expect(captured.missingRequiredEnv).toEqual([]);
     expect(JSON.stringify(captured)).not.toContain(secretValue);
   });
 

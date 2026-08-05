@@ -1257,6 +1257,17 @@ export function describeSessionYamlResult(result: ChatYamlSessionResult): {
     return { verb, outcome, detail };
   }
 
+  if (result.status === 'blocked') {
+    const verb =
+      result.reconcile?.outcome === 'created' ? 'Created pipeline' : 'Updated pipeline';
+    return {
+      verb,
+      outcome:
+        'Pipeline compilation passed, but Trial could not start because runtime prerequisites are unavailable. The pipeline was kept in place without creating a copy; add the listed prerequisites and run it again.',
+      detail,
+    };
+  }
+
   const failed =
     attempts > 0
       ? `Pipeline repair did not succeed after ${attemptLabel}.`
@@ -1280,7 +1291,7 @@ export function SessionYamlResultBubble({ result }: { result: ChatYamlSessionRes
   const name = chatPipelineDisplayName(result);
   const deploymentTarget = chatPipelineDeploymentTarget(result);
   const ok = result.status === 'ready';
-  const warning = ok && result.trial?.kind === 'passed-with-warnings';
+  const warning = result.status === 'blocked' || (ok && result.trial?.kind === 'passed-with-warnings');
   const presentation = describeSessionYamlResult(result);
   const verb = presentation.verb;
   const summary =
@@ -1380,7 +1391,7 @@ export function ChatCompletionToastCard({
   const pipelineName = chatPipelineDisplayName(result);
   const deploymentTarget = chatPipelineDeploymentTarget(result);
   const ok = result.status === 'ready';
-  const warning = ok && result.trial?.kind === 'passed-with-warnings';
+  const warning = result.status === 'blocked' || (ok && result.trial?.kind === 'passed-with-warnings');
   const presentation = describeSessionYamlResult(result);
 
   return (

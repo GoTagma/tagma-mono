@@ -110,8 +110,12 @@
   Enforce the configured per-stage attempt budget in the host tool per relative YAML plus YAML hash,
   not only in prompt text. Snapshot the workspace setting when the authenticated stage is created;
   the default is `2` and the allowed range is `1-3`. Serialize concurrent attempts, fail closed on
-  corrupt or exhausted telemetry, and summarize repeated equivalent rejections. Accumulate prompts,
-  tool attempts, rejections, elapsed time, and
+  corrupt or exhausted telemetry, and summarize repeated equivalent rejections. Give every physical
+  planner continuation one host-issued attempt ID and require that exact ID on every tool operation.
+  At most one `commit` for an ID may consume the budget; a repeated `begin` or `commit` in the
+  same physical continuation must be rejected without incrementing counters. Only a later host
+  continuation with a fresh ID may consume the next attempt. Accumulate prompts, tool attempts,
+  rejections, elapsed time, and
   unique assistant token/cost evidence across repair revisions. Never publish the plan file.
   Generate the tool's enums and limits from the authoritative host contract, expose discriminated
   expectation schemas, and run the complete semantic validator before the atomic write. The tool
@@ -128,10 +132,16 @@
   repeat-run collision coverage needs two runs plus distinct-output evidence. The sequential
   harness can never mark concurrent collision covered: use accepted-risk, blocked, or genuinely
   not-applicable. Accepted risk and warning findings produce `passed-with-warnings`.
-- Preserve the existing real-workspace baseline run, then execute each targeted case in a fresh
-  stage-owned temporary workspace with bounded helpers/fixtures, contained portable paths,
-  selected task targets, repeated-run support, and host-evaluated assertions. Case workspaces
-  must be removed afterward and their fixtures/outputs must never leak into the live workspace.
+- Preserve the real-workspace baseline when at least one DAG root is runnable. When every root is
+  waiting for a missing workspace-local file or directory input, request the targeted plan first
+  and require representative data only as an isolated case fixture; do not create placeholder
+  inputs in the real workspace. Skip that unavailable live baseline, retain pre/post host witness
+  and mutation monitoring, execute the fixture cases for real, and report the successful result as
+  `isolated-fixtures-only` / `passed-with-warnings` rather than claiming a live-data baseline.
+  Execute every targeted case in a fresh stage-owned temporary workspace with bounded
+  helpers/fixtures, contained portable paths, selected task targets, repeated-run support, and
+  host-evaluated assertions. Case workspaces must be removed afterward and their fixtures/outputs
+  must never leak into the live workspace.
 - Treat each case's `targetTaskIds` as mandatory at the tool schema, persisted-plan parser, and
   execution boundary. Never translate an empty or missing target list to `undefined`, because that
   means a full-pipeline run.
@@ -154,11 +164,11 @@
   ranges are 30m-24h, 1h-7d, and 2h-7d respectively. Normalize each outer lifecycle to at least 30
   minutes above the default task budget. Explicit YAML task/pipeline timeouts remain authoritative;
   never reintroduce a hidden Trial-specific task cap.
-- Before the real-workspace Trial baseline, fail immediately with diagnostic-only `preflight-failed`
-  evidence when every DAG root is a built-in file/directory trigger whose input is currently absent.
-  Do not start the engine, write an all-skipped run log, consume the Trial budget, or authorize YAML
-  repair for a no-input baseline. Any runnable, manual, custom, or indeterminate root continues
-  through normal execution.
+- Missing built-in file/directory inputs are data fixtures, not pipeline failures. When every DAG
+  root waits on such an input, do not start an all-skipped real-workspace baseline or authorize YAML
+  repair; expose the exact workspace-contained fixture paths to the planner and continue through
+  isolated cases. Never fabricate secrets, binaries, services, credentials, or approvals. Their
+  authenticated absence is a diagnostic-only `requirements-unavailable` prerequisite state.
 - Desktop sidecar builds must embed the Trial witness worker with the compiled executable and,
   for native host targets, smoke-run the final executable through a real worker capture before
   accepting the build. Source-text or bundle-presence checks alone do not prove Worker loading.
@@ -185,10 +195,13 @@
   or a direct executable behavior/expectation failure. Untyped legacy results fail closed. Blocked
   coverage and environment, harness, credential, external-service, manual-approval, timeout,
   witness, or unsupported-observation failures remain `diagnostic-only` and must not be repaired by
-  weakening or redirecting the pipeline. Adopt into live only after compile and required Trial
-  succeed; preserve a failure as a numbered copy.
-  This includes newly staged pipelines: leave the requested primary path absent and publish only
-  the numbered copy when final verification still fails.
+  weakening or redirecting the pipeline. A signed, current-YAML/current-host
+  `requirements-unavailable` result means Trial never executed: publish the compile-valid pipeline
+  in place with a distinct blocked/amber status and an open-pipeline action, never label it failed
+  and never create a numbered copy solely for that state. Missing, stale, unsigned, tampered, or
+  semantically inconsistent Trial evidence still fails closed. Actual compile or executed-Trial
+  failures, live/local/path conflicts, and destination collisions retain numbered-copy behavior,
+  including for newly staged pipelines.
 - Recompile or rerun Trial after a hidden repair only when the staged YAML, layout, requirements,
   or transient trial-plan hash changed. A report-only/external-boundary response must reuse the
   prior failed evidence and end that repair chain instead of consuming another attempt.
@@ -222,9 +235,9 @@
   decision for the next real user turn in the same chat session and workspace. Do not inject or
   consume that evidence in hidden repairs, logical-turn continuations, fresh sessions, or another
   workspace.
-- Treat only verified `adopted` and `created` finalize outcomes as live chat deployments. Final
-  chat navigation must use the authoritative reconcile result path; `forked`, `unchanged`, and
-  failed results may still be described but must not expose a live-pipeline link.
+- Treat verified or prerequisite-blocked `adopted` and `created` finalize outcomes as live chat
+  deployments. Final chat navigation must use the authoritative reconcile result path; `forked`,
+  `unchanged`, and failed results may still be described but must not expose a live-pipeline link.
 - After a verified live finalize, merge the returned live entry into the workspace pipeline list
   before publishing the completion result, then re-list with an explicit workspace key. Route SSE
   and ordinary list refreshes through the same sequence-guarded refresh path so a late response
@@ -310,6 +323,11 @@
   exact workspace/session/turn recovery barrier so sends stay queued and runtime/session mutation
   stays blocked until the replacement is healthy; late recovery failures must not overwrite a new
   workspace, and must invalidate the failed workspace client cache.
+- Manual new-conversation creation is a non-idempotent POST. On an ambiguous transport or proxy
+  failure, do not retry automatically because the first request may already have created a session.
+  Catch the rejection inside the chat store, preserve the current session/runtime, close History,
+  and surface one user-visible error; button event handlers must never leak it as an unhandled
+  Promise rejection.
 
 ## Production Diagnostics
 

@@ -359,6 +359,54 @@ describe('ChatPanel export affordance', () => {
     expect(isChatPipelineDeployed(result)).toBe(true);
   });
 
+  test('renders unavailable prerequisites as an openable warning without claiming failure or copy', () => {
+    const result: ChatYamlSessionResult = {
+      sessionId: 'blocked',
+      kind: 'refresh-current',
+      path: '/workspace/.tagma/facts/facts.yaml',
+      name: 'facts.yaml',
+      pipelineName: 'Fact Checker',
+      status: 'blocked',
+      compile: {
+        success: true,
+        summary: 'Compile succeeded.',
+        validation: { errors: [], warnings: [] },
+      } as never,
+      trial: {
+        version: 7,
+        success: false,
+        kind: 'preflight-failed',
+        ran: false,
+        runId: null,
+        summary: 'Trial run requirements are missing. env=FACT_API_KEY.',
+        durationMs: 12,
+        totalTaskCount: 0,
+        omittedTaskCount: 0,
+        tasks: [],
+        cases: [],
+        repairAuthorization: 'diagnostic-only',
+        preflightBlocker: 'requirements-unavailable',
+      },
+      reconcile: {
+        outcome: 'adopted',
+        conflicts: [],
+        localBranchPersisted: false,
+        resultPath: '/workspace/.tagma/facts/facts.yaml',
+        compileSuccess: true,
+        trialRunSuccess: false,
+      },
+      completedAt: 1_000,
+    };
+
+    const html = renderToStaticMarkup(<SessionYamlResultBubble result={result} />);
+    expect(html).toContain('runtime prerequisites are unavailable');
+    expect(html).toContain('without creating a copy');
+    expect(html).toContain('text-tagma-warning');
+    expect(html).not.toContain('text-tagma-error');
+    expect(html).toContain('Open pipeline');
+    expect(isChatPipelineDeployed(result)).toBe(true);
+  });
+
   test('renders the live trial case, run, and task while verification is active', () => {
     const html = renderToStaticMarkup(
       <ChatTrialProgressView

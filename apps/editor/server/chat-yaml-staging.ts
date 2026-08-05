@@ -203,6 +203,11 @@ interface ChatYamlStageMetadata {
   id: string;
   createdAt: number;
   trialPlanMaxAttempts: number;
+  trialPlanAttempt: {
+    relativePath: string;
+    yamlHash: string;
+    attemptId: string;
+  } | null;
   activeRelativePath: string | null;
   sourceRelativePaths: string[];
   baseEntries: ChatYamlStageBaseEntry[];
@@ -726,6 +731,23 @@ function readMetadata(
     : raw.trialPlanMaxAttempts === undefined
       ? DEFAULT_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS
       : null;
+  const rawTrialPlanAttempt =
+    raw.trialPlanAttempt && typeof raw.trialPlanAttempt === 'object'
+      ? (raw.trialPlanAttempt as Record<string, unknown>)
+      : null;
+  const trialPlanAttempt =
+    rawTrialPlanAttempt &&
+    typeof rawTrialPlanAttempt.relativePath === 'string' &&
+    typeof rawTrialPlanAttempt.yamlHash === 'string' &&
+    /^[0-9a-f]{40}$/.test(rawTrialPlanAttempt.yamlHash) &&
+    typeof rawTrialPlanAttempt.attemptId === 'string' &&
+    FINALIZE_TRIAL_ID_RE.test(rawTrialPlanAttempt.attemptId)
+      ? {
+          relativePath: assertPortableRelativePath(rawTrialPlanAttempt.relativePath),
+          yamlHash: rawTrialPlanAttempt.yamlHash,
+          attemptId: rawTrialPlanAttempt.attemptId,
+        }
+      : null;
   if (
     !raw ||
     raw.version !== STAGE_VERSION ||
@@ -745,6 +767,7 @@ function readMetadata(
       id: stageId,
       createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : 0,
       trialPlanMaxAttempts,
+      trialPlanAttempt,
       activeRelativePath:
         typeof raw.activeRelativePath === 'string' ? raw.activeRelativePath : null,
       sourceRelativePaths: raw.sourceRelativePaths.map(assertPortableRelativePath),
@@ -944,6 +967,7 @@ export function createChatYamlStage(
       id,
       createdAt: Date.now(),
       trialPlanMaxAttempts: readEditorSettings(ws).opencodeChatTrialPlanMaxAttempts,
+      trialPlanAttempt: null,
       activeRelativePath,
       sourceRelativePaths,
       baseEntries,
@@ -964,6 +988,38 @@ export function listChatYamlStage(ws: WorkspaceState, stageId: string): ChatYaml
   const { paths, metadata } = readMetadata(ws, stageId);
   if (readFinalizeResult(paths)) throw new Error('Chat YAML stage is already finalized.');
   return descriptor(ws, paths, metadata);
+}
+
+export function issueChatYamlStageTrialPlanAttempt(
+  ws: WorkspaceState,
+  input: {
+    stageId: string;
+    relativePath: string;
+    yamlHash: string;
+    attemptId: string;
+  },
+): void {
+  const { paths, metadata } = readMetadata(ws, input.stageId);
+  const relativePath = assertPortableRelativePath(input.relativePath);
+  if (!/^[0-9a-f]{40}$/.test(input.yamlHash)) {
+    throw new Error('Trial plan YAML hash must be SHA-1.');
+  }
+  if (!FINALIZE_TRIAL_ID_RE.test(input.attemptId)) {
+    throw new Error('Trial plan attempt ID is invalid.');
+  }
+  const stagedPath = resolveStagedYamlPath(paths, relativePath);
+  const currentHash = sha1(assertRegularTextFile(stagedPath, 'staged YAML'));
+  if (currentHash !== input.yamlHash) {
+    throw new Error('Staged YAML changed before the Trial plan attempt was issued.');
+  }
+  writeMetadata(paths, {
+    ...metadata,
+    trialPlanAttempt: {
+      relativePath,
+      yamlHash: input.yamlHash,
+      attemptId: input.attemptId,
+    },
+  });
 }
 
 export function compileChatYamlStage(

@@ -30,6 +30,7 @@ import {
   buildChatPipelineTrialVerificationHash,
   compileChatYamlStage,
   hashChatPipelineTrialTree,
+  issueChatYamlStageTrialPlanAttempt,
   listChatYamlStage,
   samePipelineRelativePath,
 } from './chat-yaml-staging.js';
@@ -2034,6 +2035,12 @@ export async function trialRunChatYamlStage(
       if (planTelemetry.toolAttemptCount >= stage.trialPlanMaxAttempts) {
         return resultForPlanAttemptBudgetExhausted(planTelemetry, startedAt);
       }
+      issueChatYamlStageTrialPlanAttempt(ws, {
+        stageId: stage.id,
+        relativePath: entry.relativePath,
+        yamlHash: snapshot.contentHash,
+        attemptId: trialId,
+      });
       return resultForPlanRequest(
         planRead.request,
         planTelemetry,

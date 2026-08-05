@@ -138,9 +138,13 @@ function writeTrialPlanTelemetry(stagedPath: string, toolAttemptCount = 2): void
   writeFileSync(
     join(telemetryDir, `${key}.json`),
     JSON.stringify({
-      version: 1,
+      version: 2,
       yamlHash,
       relativeYamlPath,
+      attemptIds: Array.from(
+        { length: toolAttemptCount },
+        (_, index) => `fixture-attempt-${index + 1}`,
+      ),
       toolAttemptCount,
       validationRejectionCount: toolAttemptCount,
       repeatedValidationRejectionCount: Math.max(0, toolAttemptCount - 1),

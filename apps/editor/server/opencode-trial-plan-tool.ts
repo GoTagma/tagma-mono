@@ -484,13 +484,13 @@ const MAX_REJECTION_SUMMARIES = CONTRACT.limits.rejectionSummaries;
 const DRAFT_OPERATIONS = ['begin', 'upsert-case', 'set-coverage', 'set-findings', 'commit'];
 const HOST_ATTEMPT_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 
-function readTrialPlanMaxAttempts(stageRoot) {
+function readTrialPlanStageConfig(stageRoot) {
   let parsed;
   try {
     parsed = JSON.parse(readFileSync(join(stageRoot, 'stage.json'), 'utf8'));
   } catch (error) {
     if (error && typeof error === 'object' && error.code === 'ENOENT') {
-      return TOOL_ATTEMPT_LIMITS.default;
+      return { maxAttempts: TOOL_ATTEMPT_LIMITS.default, trialPlanAttempt: null };
     }
     throw new Error('chat stage attempt budget is invalid; discard this chat stage before retrying');
   }
@@ -503,11 +503,23 @@ function readTrialPlanMaxAttempts(stageRoot) {
   ) {
     throw new Error('chat stage attempt budget is invalid; discard this chat stage before retrying');
   }
-  return maxAttempts;
+  const attempt = parsed && typeof parsed === 'object' ? parsed.trialPlanAttempt : null;
+  const trialPlanAttempt =
+    attempt &&
+    typeof attempt === 'object' &&
+    typeof attempt.relativePath === 'string' &&
+    typeof attempt.yamlHash === 'string' &&
+    /^[0-9a-f]{40}$/.test(attempt.yamlHash) &&
+    typeof attempt.attemptId === 'string' &&
+    HOST_ATTEMPT_ID_RE.test(attempt.attemptId)
+      ? attempt
+      : null;
+  return { maxAttempts, trialPlanAttempt };
 }
 
 function trialPlanAttemptPaths(root, yamlPath, yamlHash) {
   const stageRoot = dirname(dirname(root));
+  const stageConfig = readTrialPlanStageConfig(stageRoot);
   const relativeYamlPath = relative(root, yamlPath).replace(/\\\\/g, "/");
   const key = createHash("sha256")
     .update(relativeYamlPath + String.fromCharCode(0) + yamlHash)
@@ -518,7 +530,8 @@ function trialPlanAttemptPaths(root, yamlPath, yamlHash) {
     relativeYamlPath,
     telemetryDir,
     draftDir,
-    maxAttempts: readTrialPlanMaxAttempts(stageRoot),
+    maxAttempts: stageConfig.maxAttempts,
+    hostAttempt: stageConfig.trialPlanAttempt,
     telemetryPath: join(telemetryDir, key + ".json"),
     draftPath: join(draftDir, key + ".json"),
     lockPath: join(telemetryDir, key + ".lock"),
@@ -977,6 +990,16 @@ function executeTrialPlanOperation(args, context) {
   }
   const yamlHash = createHash('sha1').update(readFileSync(yamlPath, 'utf8')).digest('hex');
   const paths = trialPlanAttemptPaths(root, yamlPath, yamlHash);
+  if (
+    !paths.hostAttempt ||
+    paths.hostAttempt.attemptId !== attemptId ||
+    paths.hostAttempt.yamlHash !== yamlHash ||
+    paths.hostAttempt.relativePath.replace(/\\/g, '/') !== paths.relativeYamlPath
+  ) {
+    throw new Error(
+      'attempt_id was not issued by the host for this staged YAML revision; use the exact current host prompt',
+    );
+  }
 
   if (operation === 'begin') {
     const summary = asString(args.summary, 'summary', 2000);

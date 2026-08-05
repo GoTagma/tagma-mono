@@ -13,7 +13,7 @@ export function chatPipelineDeploymentTarget(
   const outcome = result.reconcile?.outcome;
   const resultPath = result.reconcile?.resultPath?.trim();
   if (
-    result.status !== 'ready' ||
+    (result.status !== 'ready' && result.status !== 'blocked') ||
     (outcome !== 'adopted' && outcome !== 'created') ||
     !resultPath
   ) {
