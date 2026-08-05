@@ -538,6 +538,79 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
+  test('does not fork when non-virtualizable requirements block Trial before execution', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    writeFileSync(entry.stagedPath, yamlFor('Environment Prerequisite', 'agent'), 'utf-8');
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
+    stopChatCompileWatcher(dirname(dirname(entry.stagedPath)));
+    writeFileSync(
+      entry.stagedPath.replace(/\.ya?ml$/i, '.requirements.md'),
+      [
+        '---',
+        'schemaVersion: 1',
+        `generatedFor: ${entry.stagedPath.split(/[\\/]/).at(-1)}`,
+        'generatedAt: 2026-01-01T00:00:00.000Z',
+        'binaries: []',
+        'env:',
+        '  - name: TAGMA_TEST_MISSING_TRIAL_ENV',
+        '    required: true',
+        'services: []',
+        '---',
+        '',
+        '# Trial requirements',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+    writePassingTrialPlan(entry.stagedPath, 'main.task');
+
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'requirements_blocked' },
+        'chat-lock',
+      ),
+      trialRes,
+    );
+    expect(trialRes.body).toMatchObject({
+      success: false,
+      kind: 'preflight-failed',
+      ran: false,
+      preflightBlocker: 'requirements-unavailable',
+    });
+
+    const finalizeRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/finalize')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'requirements_blocked' },
+        'chat-lock',
+      ),
+      finalizeRes,
+    );
+    expect(finalizeRes.body).toMatchObject({
+      outcome: 'adopted',
+      conflicts: [],
+      trialVerification: 'prerequisite-unavailable',
+      entry: { path: sourcePath },
+    });
+    expect(readFileSync(sourcePath, 'utf-8')).toContain('name: Environment Prerequisite');
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
   test('snapshots a configured three-attempt plan budget for the lifetime of the stage', async () => {
     const { ws, sourcePath } = makeWorkspace(true, 3);
     const getRoute = createHarness();

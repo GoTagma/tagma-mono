@@ -477,11 +477,12 @@ function resolvePipelineTarget(input, contextDirectory) {
   return { root, yamlPath };
 }
 
-const TRIAL_PLAN_ATTEMPT_TELEMETRY_VERSION = 1;
-const TRIAL_PLAN_DRAFT_VERSION = 1;
+const TRIAL_PLAN_ATTEMPT_TELEMETRY_VERSION = 2;
+const TRIAL_PLAN_DRAFT_VERSION = 2;
 const TOOL_ATTEMPT_LIMITS = CONTRACT.limits.toolAttemptsPerYaml;
 const MAX_REJECTION_SUMMARIES = CONTRACT.limits.rejectionSummaries;
 const DRAFT_OPERATIONS = ['begin', 'upsert-case', 'set-coverage', 'set-findings', 'commit'];
+const HOST_ATTEMPT_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 
 function readTrialPlanMaxAttempts(stageRoot) {
   let parsed;
@@ -546,12 +547,13 @@ function withTrialPlanDraftLock(paths, callback) {
   }
 }
 
-function newTrialPlanDraft(paths, yamlHash, summary, goals) {
+function newTrialPlanDraft(paths, yamlHash, attemptId, summary, goals) {
   return {
     draftVersion: TRIAL_PLAN_DRAFT_VERSION,
     version: CONTRACT.version,
     yamlHash,
     relativeYamlPath: paths.relativeYamlPath,
+    attemptId,
     summary,
     goals,
     coverage: [],
@@ -568,6 +570,8 @@ function assertTrialPlanDraft(value, paths, yamlHash) {
     draft.version !== CONTRACT.version ||
     draft.yamlHash !== yamlHash ||
     draft.relativeYamlPath !== paths.relativeYamlPath ||
+    typeof draft.attemptId !== 'string' ||
+    !HOST_ATTEMPT_ID_RE.test(draft.attemptId) ||
     !Array.isArray(draft.goals) ||
     !Array.isArray(draft.coverage) ||
     !Array.isArray(draft.findings) ||
@@ -642,6 +646,7 @@ function newTrialPlanAttemptTelemetry(yamlHash, relativeYamlPath) {
     version: TRIAL_PLAN_ATTEMPT_TELEMETRY_VERSION,
     yamlHash,
     relativeYamlPath,
+    attemptIds: [],
     toolAttemptCount: 0,
     validationRejectionCount: 0,
     repeatedValidationRejectionCount: 0,
@@ -661,6 +666,13 @@ function isValidTrialPlanAttemptTelemetry(parsed, paths, yamlHash) {
     parsed.version !== TRIAL_PLAN_ATTEMPT_TELEMETRY_VERSION ||
     parsed.yamlHash !== yamlHash ||
     parsed.relativeYamlPath !== paths.relativeYamlPath ||
+    !Array.isArray(parsed.attemptIds) ||
+    parsed.attemptIds.length !== parsed.toolAttemptCount ||
+    parsed.attemptIds.length > paths.maxAttempts ||
+    new Set(parsed.attemptIds).size !== parsed.attemptIds.length ||
+    !parsed.attemptIds.every(
+      (attemptId) => typeof attemptId === 'string' && HOST_ATTEMPT_ID_RE.test(attemptId),
+    ) ||
     !isTelemetryInteger(parsed.toolAttemptCount, paths.maxAttempts) ||
     !isTelemetryInteger(parsed.validationRejectionCount, parsed.toolAttemptCount) ||
     !isTelemetryInteger(parsed.repeatedValidationRejectionCount, parsed.validationRejectionCount) ||
@@ -718,12 +730,20 @@ function writeTrialPlanAttemptTelemetry(paths, telemetry) {
   renameSync(tempPath, paths.telemetryPath);
 }
 
-function beginTrialPlanAttempt(paths, yamlHash) {
+function beginTrialPlanAttempt(paths, yamlHash, attemptId) {
   acquireTrialPlanLock(paths);
   try {
     const draft = readTrialPlanDraft(paths, yamlHash);
     assertTrialPlanDraftOpen(draft);
+    if (draft.attemptId !== attemptId) {
+      throw new Error('trial plan draft belongs to a different host attempt; call begin first');
+    }
     const telemetry = readTrialPlanAttemptTelemetry(paths, yamlHash);
+    if (telemetry.attemptIds.includes(attemptId)) {
+      throw new Error(
+        'trial plan commit was already submitted for this host attempt; wait for host continuation',
+      );
+    }
     if (telemetry.toolAttemptCount >= paths.maxAttempts) {
       throw new Error(
         "trial plan tool attempt budget exhausted for this staged YAML revision",
@@ -733,6 +753,7 @@ function beginTrialPlanAttempt(paths, yamlHash) {
     writeTrialPlanDraft(paths, draft);
     const now = Date.now();
     telemetry.toolAttemptCount += 1;
+    telemetry.attemptIds.push(attemptId);
     telemetry.firstAttemptAt = telemetry.firstAttemptAt || now;
     telemetry.lastAttemptAt = now;
     writeTrialPlanAttemptTelemetry(paths, telemetry);
@@ -862,7 +883,7 @@ const caseSchema = tool.schema.object({
 });
 
 function commitTrialPlanDraft(input) {
-  const attempt = beginTrialPlanAttempt(input.paths, input.yamlHash);
+  const attempt = beginTrialPlanAttempt(input.paths, input.yamlHash, input.attemptId);
   const planPath =
     input.yamlPath.slice(0, input.yamlPath.lastIndexOf('.')) + '.trial-plan.json';
   try {
@@ -908,6 +929,9 @@ function executeExistingTrialPlanDraftOperation(input) {
   }
   return withTrialPlanDraftLock(input.paths, () => {
     const draft = readTrialPlanDraft(input.paths, input.yamlHash);
+    if (draft.attemptId !== input.attemptId) {
+      throw new Error('trial plan draft belongs to a different host attempt; call begin first');
+    }
     assertTrialPlanDraftOpen(draft);
     if (input.operation === 'upsert-case') {
       const existingIndex = draft.cases.findIndex(
@@ -947,6 +971,10 @@ function executeTrialPlanOperation(args, context) {
     throw new Error('operation is unsupported');
   }
   const { root, yamlPath } = resolvePipelineTarget(args.pipeline_path, context.directory);
+  const attemptId = asString(args.attempt_id, 'attempt_id', 128);
+  if (!HOST_ATTEMPT_ID_RE.test(attemptId)) {
+    throw new Error('attempt_id must be the exact host-issued attempt ID');
+  }
   const yamlHash = createHash('sha1').update(readFileSync(yamlPath, 'utf8')).digest('hex');
   const paths = trialPlanAttemptPaths(root, yamlPath, yamlHash);
 
@@ -962,10 +990,17 @@ function executeTrialPlanOperation(args, context) {
       throw new Error('reset must be a boolean');
     }
     return withTrialPlanDraftLock(paths, () => {
+      const telemetry = readTrialPlanAttemptTelemetry(paths, yamlHash);
+      if (telemetry.attemptIds.includes(attemptId)) {
+        throw new Error(
+          'trial plan commit was already submitted for this host attempt; wait for host continuation',
+        );
+      }
       const draft =
         (args.reset ? null : readTrialPlanDraftIfExists(paths, yamlHash)) ||
-        newTrialPlanDraft(paths, yamlHash, summary, goals);
+        newTrialPlanDraft(paths, yamlHash, attemptId, summary, goals);
       draft.commitAttempted = false;
+      draft.attemptId = attemptId;
       draft.summary = summary;
       draft.goals = goals;
       writeTrialPlanDraft(paths, draft);
@@ -975,6 +1010,7 @@ function executeTrialPlanOperation(args, context) {
 
   return executeExistingTrialPlanDraftOperation({
     args,
+    attemptId,
     operation,
     root,
     yamlPath,
@@ -993,6 +1029,11 @@ export default tool({
     pipeline_path: tool.schema
       .string()
       .describe("Exact staged Target YAML path from the host prompt, or staged-root relative <stem>/<stem>.yaml"),
+    attempt_id: tool.schema
+      .string()
+      .min(1)
+      .max(128)
+      .describe("Exact Host attempt ID from the current host prompt; every call in the draft lifecycle must use the same value."),
     summary: tool.schema.string().min(1).max(2000).optional(),
     goals: tool.schema
       .array(tool.schema.string().min(1).max(1000))

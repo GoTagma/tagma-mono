@@ -163,9 +163,10 @@ export type ChatPipelineTrialPlanReadResult =
   | { status: 'required'; request: ChatPipelineTrialPlanRequest };
 
 export interface ChatPipelineTrialPlanToolTelemetry {
-  version: 1;
+  version: 2;
   yamlHash: string;
   relativeYamlPath: string;
+  attemptIds: string[];
   toolAttemptCount: number;
   validationRejectionCount: number;
   repeatedValidationRejectionCount: number;
@@ -176,7 +177,8 @@ export interface ChatPipelineTrialPlanToolTelemetry {
   rejections: Array<{ fingerprint: string; count: number; message: string }>;
 }
 
-const TRIAL_PLAN_TOOL_TELEMETRY_VERSION = 1;
+const TRIAL_PLAN_TOOL_TELEMETRY_VERSION = 2;
+const TRIAL_PLAN_HOST_ATTEMPT_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 const MAX_TRIAL_PLAN_TOOL_TELEMETRY_BYTES = 32 * 1024;
 
 function emptyTrialPlanToolTelemetry(
@@ -187,6 +189,7 @@ function emptyTrialPlanToolTelemetry(
     version: TRIAL_PLAN_TOOL_TELEMETRY_VERSION,
     yamlHash,
     relativeYamlPath,
+    attemptIds: [],
     toolAttemptCount: 0,
     validationRejectionCount: 0,
     repeatedValidationRejectionCount: 0,
@@ -236,6 +239,18 @@ export function readChatPipelineTrialPlanToolTelemetry(
     throw new Error('Trial plan tool telemetry does not match the staged YAML revision.');
   }
   const toolAttemptCount = telemetryInteger(raw.toolAttemptCount, 'toolAttemptCount', maxAttempts);
+  if (
+    !Array.isArray(raw.attemptIds) ||
+    raw.attemptIds.length !== toolAttemptCount ||
+    new Set(raw.attemptIds).size !== raw.attemptIds.length ||
+    !raw.attemptIds.every(
+      (attemptId) =>
+        typeof attemptId === 'string' && TRIAL_PLAN_HOST_ATTEMPT_ID_RE.test(attemptId),
+    )
+  ) {
+    throw new Error('Trial plan host attempt telemetry is invalid.');
+  }
+  const attemptIds = raw.attemptIds as string[];
   const validationRejectionCount = telemetryInteger(
     raw.validationRejectionCount,
     'validationRejectionCount',
@@ -297,6 +312,7 @@ export function readChatPipelineTrialPlanToolTelemetry(
     version: TRIAL_PLAN_TOOL_TELEMETRY_VERSION,
     yamlHash,
     relativeYamlPath,
+    attemptIds,
     toolAttemptCount,
     validationRejectionCount,
     repeatedValidationRejectionCount,

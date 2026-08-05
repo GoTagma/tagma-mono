@@ -29,7 +29,7 @@ import type { WorkspaceState } from './workspace-state.js';
 
 declare const __TAGMA_TRIAL_WITNESS_WORKER_SOURCE__: string | undefined;
 
-const TRIAL_HOST_WITNESS_VERSION = 2;
+const TRIAL_HOST_WITNESS_VERSION = 3;
 const FILE_HASH_BUFFER_BYTES = 1024 * 1024;
 const SKIPPED_TAGMA_WITNESS_DIRS = new Set([
   '.chat-staging',
@@ -130,8 +130,10 @@ export interface TrialHostWitness {
   version: typeof TRIAL_HOST_WITNESS_VERSION;
   workspace: TrialHostWorkspaceWitness;
   binaries: TrialHostBinaryWitness[];
+  missingBinaries: string[];
   minimalEnv: TrialWitnessValueHash[];
   requiredEnv: TrialWitnessValueHash[];
+  missingRequiredEnv: string[];
   secrets: TrialWitnessValueHash[];
   python: TrialHostPythonWitness | null;
   prerequisiteDigest: string;
@@ -1122,35 +1124,45 @@ function resolveBinaryPath(name: string, env: NodeJS.ProcessEnv): string | null 
 function binaryWitnesses(
   names: readonly string[],
   pythonEnv: Readonly<Record<string, string>>,
-): TrialHostBinaryWitness[] {
+): { available: TrialHostBinaryWitness[]; missing: string[] } {
   const env = { ...process.env, ...pythonEnv };
-  return names.map((name) => {
+  const available: TrialHostBinaryWitness[] = [];
+  const missing: string[] = [];
+  for (const name of names) {
     const resolvedPath = resolveBinaryPath(name, env);
-    if (!resolvedPath) throw new Error(`Required binary witness could not resolve ${name}.`);
-    return {
+    if (!resolvedPath) {
+      missing.push(name);
+      continue;
+    }
+    available.push({
       name,
       identity: fileIdentity(resolvedPath),
-    };
-  });
+    });
+  }
+  return { available, missing };
 }
 
 function editorDriverBinaryWitnesses(
   names: readonly string[],
   pythonEnv: Readonly<Record<string, string>>,
-): TrialHostBinaryWitness[] {
+): { available: TrialHostBinaryWitness[]; missing: string[] } {
   const env = { ...process.env, ...pythonEnv };
-  return names.flatMap((name) => {
-    if (name !== 'opencode') return [];
+  const available: TrialHostBinaryWitness[] = [];
+  const missing: string[] = [];
+  for (const name of names) {
+    if (name !== 'opencode') continue;
     const configuredPath = resolveOpencodeBinary();
     const resolvedPath =
       configuredPath.includes('/') || configuredPath.includes('\\')
         ? configuredPath
         : resolveBinaryPath(configuredPath, env);
     if (!resolvedPath) {
-      throw new Error(`Editor driver witness could not resolve ${name}.`);
+      missing.push(`driver:${name}`);
+      continue;
     }
-    return [{ name: `driver:${name}`, identity: fileIdentity(resolvedPath) }];
-  });
+    available.push({ name: `driver:${name}`, identity: fileIdentity(resolvedPath) });
+  }
+  return { available, missing };
 }
 
 function hashedValues(entries: Iterable<readonly [string, string]>): TrialWitnessValueHash[] {
@@ -1174,7 +1186,14 @@ function minimalEnvWitnessEntries(
 function buildTrialHostPrerequisiteDigest(
   input: Pick<
     TrialHostWitness,
-    'version' | 'binaries' | 'minimalEnv' | 'requiredEnv' | 'secrets' | 'python'
+    | 'version'
+    | 'binaries'
+    | 'missingBinaries'
+    | 'minimalEnv'
+    | 'requiredEnv'
+    | 'missingRequiredEnv'
+    | 'secrets'
+    | 'python'
   >,
 ): string {
   return sha256(JSON.stringify(input));
