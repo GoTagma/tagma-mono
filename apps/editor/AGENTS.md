@@ -200,7 +200,7 @@
   coverage and environment, harness, credential, external-service, manual-approval, timeout,
   witness, or unsupported-observation failures remain `diagnostic-only` and must not be repaired by
   weakening or redirecting the pipeline. A signed, current-YAML/current-host
-  `requirements-unavailable` result means Trial never executed: publish the compile-valid pipeline
+  blocked prerequisite state means Trial never executed: publish the compile-valid pipeline
   in place with a distinct blocked/amber status and an open-pipeline action, never label it failed
   and never create a numbered copy solely for that state. Missing, stale, unsigned, tampered, or
   semantically inconsistent Trial evidence still fails closed. Actual compile or executed-Trial

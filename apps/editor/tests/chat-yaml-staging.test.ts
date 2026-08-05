@@ -266,7 +266,7 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
-  test('keeps a failed new pipeline out of the primary path and saves a numbered copy', async () => {
+  test('keeps a path-conflicted new pipeline out of the primary path and saves a numbered copy', async () => {
     const { ws, sourcePath } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const relativePath = 'created/created.yaml';
@@ -280,17 +280,36 @@ describe('chat YAML staging', () => {
     const result = await finalizeChatYamlStage(ws, {
       stageId: stage.id,
       relativePath,
-      forceFork: true,
-      forceForkReason: 'trial-run-failed',
+      forceForkReason: 'path-moved',
     });
 
     expect(result.outcome).toBe('forked');
-    expect(result.conflicts).toContain('trial-run-failed');
+    expect(result.conflicts).toContain('path-moved');
     expect(result.entry?.path).toBe(copyPath);
     expect(existsSync(primaryPath)).toBe(false);
     expect(readFileSync(copyPath, 'utf-8')).toContain('name: Created Pipeline Copy 1');
     expect(readFileSync(copyPath, 'utf-8')).toContain('prompt: created');
     stopWorkspace(ws);
+  });
+
+  test('rejects renderer-authored Trial failure as a fork reason', async () => {
+    const { ws, sourcePath } = setupWorkspace();
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    writeFileSync(staged.stagedPath, yamlFor('Agent Pipeline', 'agent'), 'utf-8');
+
+    try {
+      await expect(
+        finalizeChatYamlStage(ws, {
+          stageId: stage.id,
+          relativePath: staged.relativePath,
+          forceForkReason: 'trial-run-failed',
+        } as never),
+      ).rejects.toThrow('Trial verification is decided by the server');
+    } finally {
+      discardChatYamlStage(ws, stage.id);
+      stopWorkspace(ws);
+    }
   });
 
   test('publishes staged support files to a numbered copy while keeping the trial plan transient', async () => {
@@ -317,8 +336,7 @@ describe('chat YAML staging', () => {
     const result = await finalizeChatYamlStage(ws, {
       stageId: stage.id,
       relativePath,
-      forceFork: true,
-      forceForkReason: 'trial-run-failed',
+      forceForkReason: 'path-moved',
     });
 
     expect(result.outcome).toBe('forked');
@@ -407,7 +425,7 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
-  test('honors a failed trial fork even when an existing staged pipeline is unchanged', async () => {
+  test('honors a path conflict even when an existing staged pipeline is unchanged', async () => {
     const { ws, sourcePath, baseYaml } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
@@ -416,19 +434,18 @@ describe('chat YAML staging', () => {
     const result = await finalizeChatYamlStage(ws, {
       stageId: stage.id,
       relativePath: staged.relativePath,
-      forceFork: true,
-      forceForkReason: 'trial-run-failed',
+      forceForkReason: 'path-moved',
     });
 
     expect(result.outcome).toBe('forked');
-    expect(result.conflicts).toContain('trial-run-failed');
+    expect(result.conflicts).toContain('path-moved');
     expect(result.entry?.path).toBe(copyPath);
     expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
     expect(readFileSync(copyPath, 'utf-8')).toContain('name: Base Pipeline Copy 1');
     stopWorkspace(ws);
   });
 
-  test('rebases a pipeline-local cwd when a failed staged edit is saved as a numbered copy', async () => {
+  test('rebases a pipeline-local cwd when a conflicted staged edit is saved as a numbered copy', async () => {
     const { ws, sourcePath, baseYaml } = setupWorkspace(
       yamlFor('Untitled Pipeline', 'placeholder'),
     );
@@ -474,8 +491,7 @@ describe('chat YAML staging', () => {
     const result = await finalizeChatYamlStage(ws, {
       stageId: stage.id,
       relativePath: staged.relativePath,
-      forceFork: true,
-      forceForkReason: 'trial-run-failed',
+      forceForkReason: 'path-moved',
     });
 
     expect(result.outcome).toBe('forked');
@@ -820,7 +836,6 @@ describe('chat YAML staging', () => {
     const input = {
       stageId: stage.id,
       relativePath: staged.relativePath,
-      forceFork: true,
       forceForkReason: 'path-moved',
     } as const;
     await expect(finalizeChatYamlStage(ws, input)).rejects.toThrow(

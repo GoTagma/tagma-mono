@@ -84,7 +84,11 @@ function parseFinalizeInput(value: unknown): ChatYamlStageFinalizeInput {
   if (typeof body.relativePath !== 'string' || !body.relativePath.trim()) {
     throw new Error('relativePath is required.');
   }
-  const forceFork = optionalBoolean(body.forceFork, 'forceFork');
+  if (body.forceFork !== undefined) {
+    throw new Error(
+      'forceFork is invalid and no longer accepted; the server derives publication conflicts.',
+    );
+  }
   const allowInvalid = optionalBoolean(body.allowInvalid, 'allowInvalid');
   const localBranch = parseLocalBranch(body.localBranch);
   const trialId = optionalTrialId(body.trialId);
@@ -92,16 +96,17 @@ function parseFinalizeInput(value: unknown): ChatYamlStageFinalizeInput {
   if (
     forceForkReason !== undefined &&
     forceForkReason !== 'path-moved' &&
-    forceForkReason !== 'compile-failed' &&
-    forceForkReason !== 'trial-run-failed'
+    forceForkReason !== 'compile-failed'
   ) {
-    throw new Error('forceForkReason must be path-moved, compile-failed, or trial-run-failed.');
+    if (forceForkReason === 'trial-run-failed') {
+      throw new Error('forceForkReason is invalid: Trial verification is decided by the server.');
+    }
+    throw new Error('forceForkReason must be path-moved or compile-failed.');
   }
   return {
     stageId: body.stageId.trim(),
     relativePath: body.relativePath.trim(),
     ...(localBranch !== undefined ? { localBranch } : {}),
-    ...(forceFork !== undefined ? { forceFork } : {}),
     ...(forceForkReason !== undefined ? { forceForkReason } : {}),
     ...(trialId !== undefined ? { trialId } : {}),
     ...(allowInvalid !== undefined ? { allowInvalid } : {}),

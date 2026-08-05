@@ -373,9 +373,9 @@ describe('ChatPanel export affordance', () => {
         validation: { errors: [], warnings: [] },
       } as never,
       trial: {
-        version: 7,
+        version: 8,
         success: false,
-        kind: 'preflight-failed',
+        kind: 'blocked',
         ran: false,
         runId: null,
         summary: 'Trial run requirements are missing. env=FACT_API_KEY.',
@@ -385,7 +385,10 @@ describe('ChatPanel export affordance', () => {
         tasks: [],
         cases: [],
         repairAuthorization: 'diagnostic-only',
-        preflightBlocker: 'requirements-unavailable',
+        prerequisiteState: {
+          state: 'blocked',
+          blockers: [{ kind: 'environment', name: 'FACT_API_KEY' }],
+        },
       },
       reconcile: {
         outcome: 'adopted',

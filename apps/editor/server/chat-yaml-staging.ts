@@ -264,10 +264,9 @@ export interface ChatYamlStageFinalizeInput {
   stageId: string;
   relativePath: string;
   localBranch?: ChatYamlStageLocalBranch | null;
-  forceFork?: boolean;
   forceForkReason?: Extract<
     ChatYamlStageConflict,
-    'path-moved' | 'compile-failed' | 'trial-run-failed'
+    'path-moved' | 'compile-failed'
   >;
   trialId?: string;
   allowInvalid?: boolean;
@@ -1449,6 +1448,19 @@ function normalizeFinalizeTrialId(value: string | undefined): string | null {
   return trialId;
 }
 
+function normalizeFinalizeForceForkReason(
+  value: unknown,
+): ChatYamlStageFinalizeInput['forceForkReason'] {
+  if (value === undefined) return undefined;
+  if (value === 'path-moved' || value === 'compile-failed') return value;
+  if (value === 'trial-run-failed') {
+    throw new Error(
+      'Trial verification is decided by the server; the renderer cannot declare trial-run-failed.',
+    );
+  }
+  throw new Error('forceForkReason must be path-moved or compile-failed.');
+}
+
 function trialFinalizeCachePath(
   paths: StagePaths,
   trialId: string,
@@ -1516,8 +1528,8 @@ async function verifiedTrialDisposition(
     if (cached.result!.success === true) return 'verified';
     if (
       cached.result!.success === false &&
-      cached.result!.kind === 'preflight-failed' &&
-      cached.result!.ran === false &&
+      cached.result!.kind === 'blocked' &&
+      typeof cached.result!.ran === 'boolean' &&
       cached.result!.repairAuthorization === 'diagnostic-only' &&
       isBlockedTrialPrerequisiteState(cached.result!.prerequisiteState)
     ) {
@@ -1533,6 +1545,7 @@ export async function finalizeChatYamlStage(
   ws: WorkspaceState,
   input: ChatYamlStageFinalizeInput,
 ): Promise<ChatYamlStageFinalizeResult> {
+  const forceForkReason = normalizeFinalizeForceForkReason(input.forceForkReason);
   const { paths, metadata } = readMetadata(ws, input.stageId);
   const previousResult = readFinalizeResult(paths);
   if (previousResult) {
@@ -1560,7 +1573,7 @@ export async function finalizeChatYamlStage(
     const baseYamlPath = resolveRelativeInside(paths.baseTagmaDir, sourceRelativePath);
     assertRequirementsConsistentWithYamlChange(baseYamlPath, stagedPath);
   }
-  if (!changed && sourcePath && !input.forceFork && !input.forceForkReason) {
+  if (!changed && sourcePath && !forceForkReason) {
     const result: ChatYamlStageFinalizeResult = {
       outcome: 'unchanged',
       entry: describeRealEntry(ws, sourcePath),
@@ -1592,7 +1605,7 @@ export async function finalizeChatYamlStage(
     trialVerification === 'not-required';
 
   const conflicts: ChatYamlStageConflict[] = [];
-  if (input.forceForkReason) conflicts.push(input.forceForkReason);
+  if (forceForkReason) conflicts.push(forceForkReason);
   if (!compile.success && !conflicts.includes('compile-failed')) conflicts.push('compile-failed');
   if (!trialVerificationAccepted && !conflicts.includes('trial-run-failed')) {
     conflicts.push('trial-run-failed');
@@ -1611,7 +1624,7 @@ export async function finalizeChatYamlStage(
       );
       const destinationExists = existsSync(dirname(desiredPath));
       if (destinationExists) conflicts.push('destination-exists');
-      const mustFork = Boolean(input.forceFork) || conflicts.length > 0;
+      const mustFork = conflicts.length > 0;
       if (!mustFork) {
         trackPipeline(desiredPath);
         writeStagedArtifactsToDestination(ws, stagedPath, desiredPath);
@@ -1637,7 +1650,7 @@ export async function finalizeChatYamlStage(
       }
       const diskMatchesBase = sourceMatchesBase(metadata, sourcePath, relativePath);
       if (!diskMatchesBase) conflicts.push('source-changed-on-disk');
-      const mustFork = Boolean(input.forceFork) || conflicts.length > 0;
+      const mustFork = conflicts.length > 0;
       if (!mustFork) {
         trackPipeline(sourcePath);
         writeStagedArtifactsToDestination(ws, stagedPath, sourcePath);

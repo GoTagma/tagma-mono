@@ -641,9 +641,12 @@ describe('chat YAML staging routes', () => {
     );
     expect(trialRes.body).toMatchObject({
       success: false,
-      kind: 'preflight-failed',
+      kind: 'blocked',
       ran: false,
-      preflightBlocker: 'requirements-unavailable',
+      prerequisiteState: {
+        state: 'blocked',
+        blockers: [{ kind: 'environment', name: 'TAGMA_TEST_MISSING_TRIAL_ENV' }],
+      },
     });
 
     const finalizeRes = makeRes();
@@ -1098,7 +1101,12 @@ describe('chat YAML staging routes', () => {
     expect(trialRes.statusCode).toBe(200);
     expect(trialRes.body).toMatchObject({
       success: false,
-      kind: 'failed',
+      kind: 'blocked',
+      repairAuthorization: 'diagnostic-only',
+      prerequisiteState: {
+        state: 'blocked',
+        blockers: [{ kind: 'approval', name: 'main.gated', taskId: 'main.gated' }],
+      },
       ran: true,
       cases: [
         {
@@ -2836,11 +2844,25 @@ describe('chat YAML staging routes', () => {
     });
     expect(existsSync(sideEffectPath)).toBe(false);
 
-    const discardRes = makeRes();
-    getRoute('/api/workspace/chat-yaml-stage/discard')(
-      request(ws, { stageId: stage.id }, 'chat-lock'),
-      discardRes,
+    const finalizeRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/finalize')(
+      request(
+        ws,
+        {
+          stageId: stage.id,
+          relativePath: entry.relativePath,
+          trialId: 'finished_manual_gate',
+        },
+        'chat-lock',
+      ),
+      finalizeRes,
     );
+    expect(finalizeRes.body).toMatchObject({
+      outcome: 'adopted',
+      conflicts: [],
+      trialVerification: 'prerequisite-unavailable',
+      entry: { path: sourcePath },
+    });
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });

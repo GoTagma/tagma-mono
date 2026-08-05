@@ -1490,20 +1490,11 @@ export function App() {
                   changed: localRevisionChanged || editorState.isDirty || editorState.layoutDirty,
                 }
               : null;
-          const trialPrerequisiteBlocked =
-            trialRun?.success === false &&
-            trialRun.kind === 'preflight-failed' &&
-            trialRun.ran === false &&
-            trialRun.repairAuthorization === 'diagnostic-only' &&
-            trialRun.preflightBlocker === 'requirements-unavailable';
-          const trialFailedForFork = !!trialRun && !trialRun.success && !trialPrerequisiteBlocked;
           const forceForkReason = !compile.success
             ? ('compile-failed' as const)
-            : trialFailedForFork
-              ? ('trial-run-failed' as const)
-              : pathMoved
-                ? ('path-moved' as const)
-                : undefined;
+            : pathMoved
+              ? ('path-moved' as const)
+              : undefined;
           const localEditRevisionBeforeFinalize = getLocalPipelineEditRevision();
           const finalizeOnce = () =>
             underChatLock(() =>
@@ -1512,8 +1503,6 @@ export function App() {
                   stageId: snapshot.staging.id,
                   relativePath: stagedTarget.relativePath,
                   localBranch,
-                  forceFork:
-                    pathMoved || !compile.success || trialFailedForFork,
                   ...(forceForkReason ? { forceForkReason } : {}),
                   trialId: finishedTurn.id,
                   allowInvalid: !compile.success,

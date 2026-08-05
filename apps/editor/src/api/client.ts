@@ -161,6 +161,7 @@ export interface ChatYamlStageDescriptor {
 export type ChatPipelineTrialRunKind =
   | 'passed'
   | 'passed-with-warnings'
+  | 'blocked'
   | 'failed'
   | 'plan-required'
   | 'plan-failed'
@@ -360,8 +361,7 @@ export interface ChatYamlStageFinalizeInput {
     layout?: EditorLayout | null;
     changed: boolean;
   } | null;
-  forceFork?: boolean;
-  forceForkReason?: 'path-moved' | 'compile-failed' | 'trial-run-failed';
+  forceForkReason?: 'path-moved' | 'compile-failed';
   trialId?: string;
   allowInvalid?: boolean;
 }

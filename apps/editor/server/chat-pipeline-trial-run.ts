@@ -52,6 +52,7 @@ import {
   findUncoveredTrialFixtureInputs,
   resolveChatPipelineDataReadiness,
   resolveChatPipelineRuntimeReadiness,
+  type ChatPipelineTrialBlocker,
   type ChatPipelineTrialFixtureInput,
   type ChatPipelineTrialRecordedPrerequisiteState,
 } from './chat-pipeline-trial-readiness.js';
@@ -115,6 +116,7 @@ const TRIAL_WORKSPACE_MONITOR_IGNORED_TAGMA_DIRS = new Set([
 export type ChatPipelineTrialRunKind =
   | 'passed'
   | 'passed-with-warnings'
+  | 'blocked'
   | 'failed'
   | 'witness-failed'
   | 'plan-required'
@@ -1578,7 +1580,7 @@ async function executeTrial(
   const dataReadiness = resolveChatPipelineDataReadiness(pipelineConfig, ws.workDir);
   if (dataReadiness.state === 'blocked') {
     return resultForSetupFailure(
-      'preflight-failed',
+      'blocked',
       `Trial cannot safely virtualize its data prerequisites: ${describeTrialBlockers(dataReadiness.blockers)}. Preserve the declared paths; do not write placeholders outside the isolated Trial workspace.`,
       startedAt,
       { prerequisiteState: dataReadiness },
@@ -1591,7 +1593,7 @@ async function executeTrial(
     dataReadiness.state === 'fixture-backed' && dataReadiness.baseline.mode === 'targeted'
       ? dataReadiness.baseline.targetTaskIds
       : undefined;
-  if (fixtureInputs.length > 0) {
+  if (dataReadiness.state === 'fixture-backed') {
     const uncoveredInputs = findUncoveredTrialFixtureInputs(
       plan,
       fixtureInputs,
@@ -1655,7 +1657,7 @@ async function executeTrial(
   });
   if (runtimeReadiness.state === 'blocked') {
     return resultForSetupFailure(
-      'preflight-failed',
+      'blocked',
       `Trial run requirements are unavailable: ${describeTrialBlockers(runtimeReadiness.blockers)}. Preserve legitimate requirements and safety gates; do not invent or remove them merely to make the trial pass.`,
       startedAt,
       { prerequisiteState: runtimeReadiness },
@@ -1676,8 +1678,13 @@ async function executeTrial(
   }
 
   const approvalGateway = new InMemoryApprovalGateway();
+  const manualApprovalBlockers = new Map<string, ChatPipelineTrialBlocker>();
   const unsubscribeApproval = approvalGateway.subscribe((event: ApprovalEvent) => {
     if (event.type !== 'requested') return;
+    const taskId = event.request.trackId
+      ? `${event.request.trackId}.${event.request.taskId}`
+      : event.request.taskId;
+    manualApprovalBlockers.set(taskId, { kind: 'approval', name: taskId, taskId });
     approvalGateway.resolve(event.request.id, {
       outcome: 'rejected',
       actor: 'chat-trial-run',
@@ -1918,7 +1925,7 @@ async function executeTrial(
             ? 'passed-with-warnings'
             : 'passed'
           : 'failed';
-    return {
+    const result: ChatPipelineTrialRunResult = {
       version: TRIAL_CACHE_VERSION,
       success,
       kind,
@@ -1952,6 +1959,36 @@ async function executeTrial(
       plan: trialPlanSummary(plan),
       cases: visibleCases,
     };
+    const hasExecutableFailure = allVisibleTasks.some(
+      (task) => !['success', 'skipped', 'blocked'].includes(task.status),
+    );
+    const hasUnrelatedCaseFailure = cases.some(
+      (testCase) =>
+        !testCase.success && !testCase.tasks.some((task) => task.status === 'blocked'),
+    );
+    if (
+      manualApprovalBlockers.size > 0 &&
+      !abortState.timedOut &&
+      !hostWitnessCaptureFailure &&
+      !hasExecutableFailure &&
+      !hasUnrelatedCaseFailure
+    ) {
+      const prerequisiteState = {
+        state: 'blocked' as const,
+        blockers: [...manualApprovalBlockers.values()],
+      };
+      return {
+        ...result,
+        success: false,
+        kind: 'blocked',
+        repairAuthorization: 'diagnostic-only',
+        prerequisiteState,
+        summary: boundedTrialText(
+          `Trial is blocked by manual approval prerequisites: ${describeTrialBlockers(prerequisiteState.blockers)}. Tagma did not synthesize approval or execute the gated side effect.\n\n${result.summary}`,
+        ),
+      };
+    }
+    return result;
   } catch (err) {
     return {
       version: TRIAL_CACHE_VERSION,
