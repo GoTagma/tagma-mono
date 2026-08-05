@@ -6,9 +6,9 @@
   be empty. Seeded specialists must return a non-empty final report. The router may resume the
   same `task_id` once to retrieve a missing report, then must surface an explicit unusable-result
   failure instead of starting a replacement task or claiming success.
-- A pipeline specialist's successful compile is still `authoring complete; host verification
-  pending`. The router must preserve that status; only later host reconciliation and Trial
-  evidence may upgrade it to built, ready, successful, or verified.
+- A pipeline specialist's successful compile is still pending host verification. The router must
+  relay the exact `authoring complete; host verification pending` status; only later host
+  reconciliation and Trial evidence may upgrade it to built, ready, successful, or verified.
 - Model and reasoning-effort selections are preferences for the next prompt; prompt dispatch
   snapshots both when it starts.
 - For a chat-authored new pipeline, expose that snapped Chat model only in create/fill-new
