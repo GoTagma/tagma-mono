@@ -37,6 +37,7 @@ import {
 import { CHAT_PIPELINE_TRIAL_CACHE_VERSION } from './chat-pipeline-trial-cache.js';
 import { hasCurrentChatPipelineTrialConsent } from '../shared/chat-pipeline-trial-consent.js';
 import {
+  buildChatPipelineTrialPlanRequest,
   readChatPipelineTrialPlan,
   readChatPipelineTrialPlanToolTelemetry,
   type ChatPipelineTrialExpectation,
@@ -673,6 +674,7 @@ function resultForPlanRequest(
     totalTaskCount: 0,
     omittedTaskCount: 0,
     tasks: [],
+    repairAuthorization: 'diagnostic-only',
     planTelemetry,
     planRequest: {
       ...request,
@@ -1541,6 +1543,57 @@ function unavailableTrialBaselineMessage(
   return `Trial baseline has no runnable baseline tasks: every DAG root is waiting for an unavailable file or directory input. Missing inputs: ${details.join(', ')}. Targeted Trial cases must provide isolated fixtures; no placeholder is written to the real workspace.`;
 }
 
+function targetSelectionRunsTask(
+  dag: ReturnType<typeof buildDag>,
+  targetTaskIds: readonly string[],
+  requiredTaskId: string,
+): boolean {
+  const pending = [...targetTaskIds];
+  const visited = new Set<string>();
+  while (pending.length > 0) {
+    const taskId = pending.pop()!;
+    if (taskId === requiredTaskId) return true;
+    if (visited.has(taskId)) continue;
+    visited.add(taskId);
+    const node = dag.nodes.get(taskId);
+    if (node) pending.push(...node.dependsOn);
+  }
+  return false;
+}
+
+function uncoveredUnavailableTrialInputs(
+  plan: ChatPipelineTrialPlan,
+  unavailableInputs: readonly ChatPipelineTrialUnavailableBaselineInput[],
+  targetTaskIdsByCase: ReadonlyMap<string, readonly string[]>,
+  pipelineConfig: PipelineConfig,
+): ChatPipelineTrialUnavailableBaselineInput[] {
+  const dag = buildDag(pipelineConfig);
+  return unavailableInputs.filter((input) => {
+    const expectedPath = input.fixturePath.replace(/\\/g, '/').replace(/^\.\//, '');
+    return !plan.cases.some((testCase) => {
+      const targetTaskIds = targetTaskIdsByCase.get(testCase.id) ?? [];
+      if (!targetSelectionRunsTask(dag, targetTaskIds, input.taskId)) return false;
+      return testCase.fixtures.some((fixture) => {
+        const fixturePath = fixture.path.replace(/\\/g, '/').replace(/^\.\//, '');
+        return input.type === 'file'
+          ? fixturePath === expectedPath
+          : fixturePath.startsWith(`${expectedPath}/`);
+      });
+    });
+  });
+}
+
+function unavailableTrialFixturePlanMessage(
+  uncoveredInputs: readonly ChatPipelineTrialUnavailableBaselineInput[],
+): string {
+  const details = uncoveredInputs.map((input) =>
+    input.type === 'file'
+      ? `${input.taskId} needs the exact isolated fixture ${input.fixturePath}`
+      : `${input.taskId} needs at least one isolated file fixture below ${input.fixturePath}/`,
+  );
+  return `The current trial plan does not cover unavailable baseline data inputs: ${details.join('; ')}. Correct the Trial Plan only; preserve the pipeline requirements and do not write placeholders to the real workspace.`;
+}
+
 async function loadTrialPipelineConfig(
   snapshot: TrialPipelineSnapshot,
   workDir: string,
@@ -1559,6 +1612,8 @@ async function executeTrial(
   entry: ReturnType<typeof listChatYamlStage>['entries'][number],
   snapshot: TrialPipelineSnapshot,
   plan: ChatPipelineTrialPlan,
+  planTelemetry: ChatPipelineTrialPlanToolTelemetry,
+  trialId: string,
   controller: AbortController,
   abortState: { timedOut: boolean },
   budgets: TrialExecutionBudgets,
@@ -1609,6 +1664,38 @@ async function executeTrial(
 
   const unavailableBaselineInputs = unavailableTrialBaselineInputs(pipelineConfig, ws.workDir);
   const baselineSkipped = !!unavailableBaselineInputs;
+  if (unavailableBaselineInputs) {
+    const uncoveredInputs = uncoveredUnavailableTrialInputs(
+      plan,
+      unavailableBaselineInputs,
+      targetTaskIdsByCase,
+      pipelineConfig,
+    );
+    if (uncoveredInputs.length > 0) {
+      if (planTelemetry.toolAttemptCount >= stage.trialPlanMaxAttempts) {
+        return resultForPlanAttemptBudgetExhausted(planTelemetry, startedAt);
+      }
+      issueChatYamlStageTrialPlanAttempt(ws, {
+        stageId: stage.id,
+        relativePath: entry.relativePath,
+        yamlHash: snapshot.contentHash,
+        attemptId: trialId,
+      });
+      return resultForPlanRequest(
+        buildChatPipelineTrialPlanRequest(
+          'invalid',
+          entry.relativePath,
+          snapshot.contentHash,
+          unavailableTrialFixturePlanMessage(uncoveredInputs),
+          stage.trialPlanMaxAttempts,
+        ),
+        planTelemetry,
+        startedAt,
+        trialId,
+        unavailableBaselineInputs,
+      );
+    }
+  }
 
   const pluginError = await ensureTrialPluginsLoaded(ws, pipelineConfig.plugins ?? []);
   if (pluginError) {
@@ -2174,6 +2261,8 @@ export async function trialRunChatYamlStage(
           entry,
           executionSnapshot,
           plan,
+          planTelemetry,
+          trialId,
           controller,
           abortState,
           budgets,

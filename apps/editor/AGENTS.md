@@ -167,8 +167,12 @@
 - Missing built-in file/directory inputs are data fixtures, not pipeline failures. When every DAG
   root waits on such an input, do not start an all-skipped real-workspace baseline or authorize YAML
   repair; expose the exact workspace-contained fixture paths to the planner and continue through
-  isolated cases. Never fabricate secrets, binaries, services, credentials, or approvals. Their
-  authenticated absence is a diagnostic-only `requirements-unavailable` prerequisite state.
+  isolated cases. Before executing, the host must verify that every unavailable input is supplied
+  by a fixture in a case whose target closure runs that root task. An incomplete fixture plan must
+  request another bounded, host-issued plan continuation as `diagnostic-only`; it must not execute,
+  authorize pipeline repair, or write a placeholder into the live workspace. Never fabricate
+  secrets, binaries, services, credentials, or approvals. Their authenticated absence is a
+  diagnostic-only `requirements-unavailable` prerequisite state.
 - Desktop sidecar builds must embed the Trial witness worker with the compiled executable and,
   for native host targets, smoke-run the final executable through a real worker capture before
   accepting the build. Source-text or bundle-presence checks alone do not prove Worker loading.

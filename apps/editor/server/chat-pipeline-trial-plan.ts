@@ -761,6 +761,23 @@ export function validateChatPipelineTrialPlanTargetPaths(
   }
 }
 
+export function buildChatPipelineTrialPlanRequest(
+  reason: ChatPipelineTrialPlanRequest['reason'],
+  relativeYamlPath: string,
+  pipelineHash: string,
+  message: string,
+  maxAttempts: number,
+): ChatPipelineTrialPlanRequest {
+  return {
+    reason,
+    relativePlanPath: relativeTrialPlanPath(relativeYamlPath),
+    pipelineHash,
+    message,
+    maxAttempts,
+    requiredCoverage: [...CHAT_PIPELINE_TRIAL_COVERAGE_DIMENSIONS],
+  };
+}
+
 function planRequest(
   reason: ChatPipelineTrialPlanRequest['reason'],
   relativeYamlPath: string,
@@ -770,14 +787,13 @@ function planRequest(
 ): ChatPipelineTrialPlanReadResult {
   return {
     status: 'required',
-    request: {
+    request: buildChatPipelineTrialPlanRequest(
       reason,
-      relativePlanPath: relativeTrialPlanPath(relativeYamlPath),
+      relativeYamlPath,
       pipelineHash,
       message,
       maxAttempts,
-      requiredCoverage: [...CHAT_PIPELINE_TRIAL_COVERAGE_DIMENSIONS],
-    },
+    ),
   };
 }
 

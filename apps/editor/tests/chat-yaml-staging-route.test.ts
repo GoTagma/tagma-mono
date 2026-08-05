@@ -468,6 +468,57 @@ describe('chat YAML staging routes', () => {
     writeTrialPlan(entry.stagedPath, {
       cases: [
         {
+          id: 'missing-virtual-input',
+          title: 'Attempt the task without its missing input',
+          objective: 'Exercise host validation of unavailable input coverage.',
+          runs: 1,
+          targetTaskIds: ['main.ingest'],
+          fixtures: [],
+          expectations: [{ type: 'task-status', taskId: 'main.ingest', status: 'success' }],
+        },
+      ],
+    });
+
+    const incompletePlanRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        {
+          stageId: stage.id,
+          relativePath: entry.relativePath,
+          trialId: 'missing_fixture_plan',
+        },
+        'chat-lock',
+      ),
+      incompletePlanRes,
+    );
+
+    expect(incompletePlanRes.statusCode).toBe(200);
+    expect(incompletePlanRes.body).toMatchObject({
+      success: false,
+      kind: 'plan-required',
+      ran: false,
+      repairAuthorization: 'diagnostic-only',
+      planRequest: {
+        reason: 'invalid',
+        attemptId: 'missing_fixture_plan',
+        unavailableBaselineInputs: [
+          {
+            taskId: 'main.ingest',
+            type: 'file',
+            fixturePath: 'input/text-to-check.md',
+          },
+        ],
+      },
+    });
+    expect((incompletePlanRes.body as { summary: string }).summary).toContain(
+      'input/text-to-check.md',
+    );
+    expect(existsSync(join(ws.workDir, 'input', 'text-to-check.md'))).toBe(false);
+
+    writeTrialPlan(entry.stagedPath, {
+      cases: [
+        {
           id: 'virtual-input',
           title: 'Run against an isolated representative input',
           objective: 'Verify the pipeline can consume text without requiring a live workspace file.',
