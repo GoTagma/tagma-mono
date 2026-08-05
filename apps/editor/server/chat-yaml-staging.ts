@@ -71,8 +71,12 @@ import {
 const STAGING_DIR_NAME = '.chat-staging';
 const STAGE_METADATA_FILE = 'stage.json';
 const STAGE_RESULT_FILE = 'finalized.json';
-const STAGE_VERSION = 2;
+const STAGE_VERSION = 3;
 const MAX_ARTIFACT_BYTES = 5 * 1024 * 1024;
+const MAX_PIPELINE_SUPPORT_FILE_BYTES = 16 * 1024 * 1024;
+const MAX_PIPELINE_SUPPORT_TREE_BYTES = 64 * 1024 * 1024;
+const MAX_PIPELINE_SUPPORT_TREE_ENTRIES = 1_024;
+const MAX_PIPELINE_SUPPORT_TREE_DEPTH = 32;
 const STAGE_TTL_MS = 8 * 24 * 60 * 60 * 1_000;
 const TRIAL_CACHE_VERSION = CHAT_PIPELINE_TRIAL_CACHE_VERSION;
 const FINALIZE_TRIAL_ID_RE = /^[A-Za-z0-9_-]{1,160}$/;
@@ -209,6 +213,7 @@ interface ChatYamlStageBaseEntry {
   contentHash: string;
   layoutHash: string | null;
   requirementsHash: string | null;
+  supportHash: string;
 }
 
 type ChatYamlStageArtifactHashes = Omit<ChatYamlStageBaseEntry, 'relativePath'>;
@@ -289,6 +294,12 @@ interface FinalizeArtifactSnapshot {
   yamlPath: string;
   directoryExisted: boolean;
   artifacts: Array<{ path: string; content: string | null }>;
+  supportTree: PipelineSupportTree;
+}
+
+interface PipelineSupportTree {
+  directories: string[];
+  files: Map<string, Buffer>;
 }
 
 function sha1(content: string | Uint8Array): string {
@@ -323,6 +334,10 @@ function isSha1(value: unknown): value is string {
   return typeof value === 'string' && /^[0-9a-f]{40}$/i.test(value);
 }
 
+function isSha256(value: unknown): value is string {
+  return typeof value === 'string' && /^[0-9a-f]{64}$/i.test(value);
+}
+
 function isOptionalSha1(value: unknown): value is string | null {
   return value === null || isSha1(value);
 }
@@ -334,7 +349,8 @@ function isBaseEntry(value: unknown): value is ChatYamlStageBaseEntry {
     typeof entry.relativePath === 'string' &&
     isSha1(entry.contentHash) &&
     isOptionalSha1(entry.layoutHash) &&
-    isOptionalSha1(entry.requirementsHash)
+    isOptionalSha1(entry.requirementsHash) &&
+    isSha256(entry.supportHash)
   );
 }
 
@@ -351,6 +367,7 @@ function pipelineArtifactHashes(yamlPath: string): ChatYamlStageArtifactHashes |
       pipelineRequirementsPath(yamlPath),
       'pipeline requirements',
     ),
+    supportHash: hashPipelineSupportTree(yamlPath),
   };
 }
 
@@ -406,7 +423,8 @@ function sameArtifactHashes(
     !!right &&
     left.contentHash === right.contentHash &&
     left.layoutHash === right.layoutHash &&
-    left.requirementsHash === right.requirementsHash
+    left.requirementsHash === right.requirementsHash &&
+    left.supportHash === right.supportHash
   );
 }
 
@@ -535,6 +553,134 @@ function pipelineArtifacts(yamlPath: string): string[] {
   ];
 }
 
+function pipelineSupportRoot(yamlPath: string): string | null {
+  const root = dirname(yamlPath);
+  const expectedStem = stemFromYamlBasename(basename(yamlPath));
+  const actualStem = basename(root);
+  const matches =
+    process.platform === 'win32'
+      ? actualStem.toLowerCase() === expectedStem.toLowerCase()
+      : actualStem === expectedStem;
+  return matches ? root : null;
+}
+
+function pipelineSupportReservedRootNames(yamlPath: string): Set<string> {
+  return new Set(
+    [...pipelineArtifacts(yamlPath), pipelineTrialPlanPath(yamlPath)].map((path) =>
+      basename(path).toLowerCase(),
+    ),
+  );
+}
+
+function resolvePipelineSupportPath(root: string, relativePath: string): string {
+  const resolved = resolve(root, ...relativePath.split('/'));
+  if (resolved === resolve(root) || !isPathWithin(resolved, root)) {
+    throw new Error('Pipeline support path escaped its pipeline folder.');
+  }
+  return resolved;
+}
+
+function readPipelineSupportTree(yamlPath: string): PipelineSupportTree {
+  const root = pipelineSupportRoot(yamlPath);
+  if (!root || !existsSync(root)) return { directories: [], files: new Map() };
+  const reservedRootNames = pipelineSupportReservedRootNames(yamlPath);
+  const directories: string[] = [];
+  const files = new Map<string, Buffer>();
+  let entryCount = 0;
+  let totalBytes = 0;
+
+  const visit = (directory: string, relativeDir: string, depth: number): void => {
+    if (depth > MAX_PIPELINE_SUPPORT_TREE_DEPTH) {
+      throw new Error('Pipeline support tree exceeds the maximum nesting depth.');
+    }
+    const entries = readdirSync(directory, { withFileTypes: true }).sort(compareManifestEntryNames);
+    for (const entry of entries) {
+      if (!relativeDir && reservedRootNames.has(entry.name.toLowerCase())) continue;
+      if (/\.trial-plan\.json$/i.test(entry.name)) continue;
+      entryCount += 1;
+      if (entryCount > MAX_PIPELINE_SUPPORT_TREE_ENTRIES) {
+        throw new Error('Pipeline support tree exceeds the maximum entry count.');
+      }
+      const absolutePath = join(directory, entry.name);
+      const relativePath = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
+      const stat = lstatSync(absolutePath);
+      if (stat.isSymbolicLink()) {
+        throw new Error(`Pipeline support artifacts must not contain symlinks: ${relativePath}`);
+      }
+      if (stat.isDirectory()) {
+        directories.push(relativePath);
+        visit(absolutePath, relativePath, depth + 1);
+        continue;
+      }
+      if (!stat.isFile()) {
+        throw new Error(`Pipeline support artifact must be a regular file: ${relativePath}`);
+      }
+      if (stat.size > MAX_PIPELINE_SUPPORT_FILE_BYTES) {
+        throw new Error(`Pipeline support file is too large: ${relativePath}`);
+      }
+      totalBytes += stat.size;
+      if (totalBytes > MAX_PIPELINE_SUPPORT_TREE_BYTES) {
+        throw new Error('Pipeline support tree exceeds the maximum total size.');
+      }
+      files.set(relativePath, readFileSync(absolutePath));
+    }
+  };
+
+  visit(root, '', 0);
+  return { directories, files };
+}
+
+function hashPipelineSupportTree(yamlPath: string): string {
+  const tree = readPipelineSupportTree(yamlPath);
+  const hash = createHash('sha256');
+  for (const relativePath of [...tree.directories].sort()) {
+    hash.update(`dir\0${relativePath}\0`);
+  }
+  for (const [relativePath, content] of [...tree.files.entries()].sort(([left], [right]) =>
+    left.localeCompare(right),
+  )) {
+    hash.update(`file\0${relativePath}\0${sha1(content)}\0`);
+  }
+  return hash.digest('hex');
+}
+
+function writePipelineSupportTree(tree: PipelineSupportTree, destinationYamlPath: string): void {
+  const root = pipelineSupportRoot(destinationYamlPath);
+  if (!root) {
+    if (tree.directories.length > 0 || tree.files.size > 0) {
+      throw new Error('Flat legacy pipelines cannot publish pipeline-folder support artifacts.');
+    }
+    return;
+  }
+  mkdirSync(root, { recursive: true });
+  const current = readPipelineSupportTree(destinationYamlPath);
+  for (const relativePath of current.files.keys()) {
+    if (!tree.files.has(relativePath)) {
+      rmSync(resolvePipelineSupportPath(root, relativePath), { force: true });
+    }
+  }
+  const desiredDirectories = new Set(tree.directories);
+  for (const relativePath of [...current.directories].sort(
+    (left, right) => right.split('/').length - left.split('/').length,
+  )) {
+    if (!desiredDirectories.has(relativePath)) {
+      rmSync(resolvePipelineSupportPath(root, relativePath), { recursive: true, force: true });
+    }
+  }
+  for (const relativePath of [...tree.directories].sort()) {
+    mkdirSync(resolvePipelineSupportPath(root, relativePath), { recursive: true });
+  }
+  for (const [relativePath, content] of tree.files) {
+    const destination = resolvePipelineSupportPath(root, relativePath);
+    mkdirSync(dirname(destination), { recursive: true });
+    atomicWriteFileSync(destination, content);
+  }
+}
+
+function syncPipelineSupportTree(sourceYamlPath: string, destinationYamlPath: string): void {
+  writePipelineSupportTree(readPipelineSupportTree(sourceYamlPath), destinationYamlPath);
+}
+
 function copyPipelineArtifacts(
   realTagmaDir: string,
   sourceYamlPath: string,
@@ -545,6 +691,11 @@ function copyPipelineArtifacts(
     const relativeArtifact = portableRelative(realTagmaDir, sourceArtifact);
     copyTextArtifact(sourceArtifact, resolveRelativeInside(destinationTagmaDir, relativeArtifact));
   }
+  const relativeYamlPath = portableRelative(realTagmaDir, sourceYamlPath);
+  syncPipelineSupportTree(
+    sourceYamlPath,
+    resolveRelativeInside(destinationTagmaDir, relativeYamlPath),
+  );
 }
 
 function writeMetadata(paths: StagePaths, metadata: ChatYamlStageMetadata): void {
@@ -936,6 +1087,7 @@ function writeStagedArtifactsToDestination(
   const stagedRequirements = existsSync(stagedRequirementsPath)
     ? assertRegularTextFile(stagedRequirementsPath, 'staged requirements')
     : null;
+  const stagedSupportTree = readPipelineSupportTree(stagedYamlPath);
   withPipelineArtifactTransaction(destinationYamlPath, () => {
     mkdirSync(dirname(destinationYamlPath), { recursive: true });
     const destinationYaml =
@@ -954,6 +1106,7 @@ function writeStagedArtifactsToDestination(
     __chatYamlStagingTestHooks.afterDestinationYamlWrite?.(destinationYamlPath);
     replaceOptionalArtifact(pipelineLayoutPath(destinationYamlPath), stagedLayout);
     replaceOptionalArtifact(pipelineRequirementsPath(destinationYamlPath), stagedRequirements);
+    writePipelineSupportTree(stagedSupportTree, destinationYamlPath);
     runPipelineManifestSync(destinationYamlPath);
     runRequirementsSync(destinationYamlPath);
     runCompileAndWriteLog(destinationYamlPath, ws.registry);
@@ -969,25 +1122,11 @@ function replaceOptionalArtifact(path: string, content: string | null): void {
 }
 
 function withPipelineArtifactTransaction<T>(yamlPath: string, op: () => T): T {
-  const snapshots = pipelineArtifacts(yamlPath).map((path) => ({
-    path,
-    content: existsSync(path) ? assertRegularTextFile(path, basename(path)) : null,
-  }));
+  const snapshot = captureFinalizeArtifactSnapshot(yamlPath);
   try {
     return op();
   } catch (err) {
-    for (const snapshot of snapshots) {
-      try {
-        if (snapshot.content === null) {
-          rmSync(snapshot.path, { force: true });
-        } else {
-          mkdirSync(dirname(snapshot.path), { recursive: true });
-          atomicWriteFileSync(snapshot.path, snapshot.content);
-        }
-      } catch (rollbackErr) {
-        console.error('[chat-yaml-staging] failed to roll back', snapshot.path, rollbackErr);
-      }
-    }
+    restoreFinalizeArtifactSnapshot(snapshot);
     throw err;
   }
 }
@@ -1000,10 +1139,15 @@ function captureFinalizeArtifactSnapshot(yamlPath: string): FinalizeArtifactSnap
       path,
       content: existsSync(path) ? assertRegularTextFile(path, basename(path)) : null,
     })),
+    supportTree: readPipelineSupportTree(yamlPath),
   };
 }
 
 function restoreFinalizeArtifactSnapshot(snapshot: FinalizeArtifactSnapshot): void {
+  if (!snapshot.directoryExisted) {
+    rmSync(dirname(snapshot.yamlPath), { recursive: true, force: true });
+    return;
+  }
   let firstError: unknown = null;
   for (const artifact of snapshot.artifacts) {
     try {
@@ -1018,17 +1162,11 @@ function restoreFinalizeArtifactSnapshot(snapshot: FinalizeArtifactSnapshot): vo
       console.error('[chat-yaml-staging] failed to roll back', artifact.path, err);
     }
   }
-  if (!snapshot.directoryExisted) {
-    try {
-      rmSync(dirname(snapshot.yamlPath), { recursive: true, force: true });
-    } catch (err) {
-      firstError ??= err;
-      console.error(
-        '[chat-yaml-staging] failed to remove rolled-back pipeline directory',
-        dirname(snapshot.yamlPath),
-        err,
-      );
-    }
+  try {
+    writePipelineSupportTree(snapshot.supportTree, snapshot.yamlPath);
+  } catch (err) {
+    firstError ??= err;
+    console.error('[chat-yaml-staging] failed to roll back pipeline support files', err);
   }
   if (firstError) throw firstError;
 }

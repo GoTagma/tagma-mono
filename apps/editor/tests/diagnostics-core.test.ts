@@ -1,4 +1,7 @@
 import { describe, expect, test } from 'bun:test';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import {
   DIAGNOSTICS_AGENT_BASE_PATH,
@@ -6,6 +9,7 @@ import {
   diagnosticsAgentAuthorization,
   isDiagnosticsAgentPath,
 } from '../server/diagnostics.js';
+import { buildDefaultDiagnosticsContext } from '../server/routes/diagnostics.js';
 import { redactDiagnosticText, sanitizeDiagnosticValue } from '../shared/diagnostics.js';
 
 describe('diagnostics value sanitizing', () => {
@@ -74,6 +78,31 @@ describe('diagnostics value sanitizing', () => {
 });
 
 describe('temporary diagnostics sessions', () => {
+  test('keeps the newest desktop log records when the context bounds a long tail', () => {
+    const root = mkdtempSync(join(tmpdir(), 'tagma-diagnostics-log-'));
+    const logPath = join(root, 'sidecar.log');
+    const previousLogPath = process.env.TAGMA_DESKTOP_LOG_FILE;
+    const newestMarker = '2026-08-05T02:21:11.573Z stdout: newest-sidecar-record';
+    writeFileSync(
+      logPath,
+      `${'2026-07-31T00:00:00.000Z stdout: old-record\n'.repeat(20_000)}${newestMarker}\n`,
+      'utf-8',
+    );
+    process.env.TAGMA_DESKTOP_LOG_FILE = logPath;
+
+    try {
+      const context = buildDefaultDiagnosticsContext(new DiagnosticsHub(), null) as {
+        desktopLogTail: { truncated: boolean; text: string };
+      };
+      expect(context.desktopLogTail.truncated).toBe(true);
+      expect(context.desktopLogTail.text).toContain(newestMarker);
+    } finally {
+      if (previousLogPath === undefined) delete process.env.TAGMA_DESKTOP_LOG_FILE;
+      else process.env.TAGMA_DESKTOP_LOG_FILE = previousLogPath;
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test('are off by default, rotate independent read-only tokens, and revoke on disable', () => {
     const tokens = ['debug-token-one', 'debug-token-two'];
     const hub = new DiagnosticsHub({

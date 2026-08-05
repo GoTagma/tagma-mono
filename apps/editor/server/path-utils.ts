@@ -36,12 +36,13 @@ export function errorMessage(err: unknown): string {
  * truncated YAML and blow away the user's in-memory edits. `renameSync` is
  * atomic on POSIX (rename(2)) and on Win32 (MoveFileEx w/ REPLACE_EXISTING).
  */
-export function atomicWriteFileSync(target: string, content: string): void {
+export function atomicWriteFileSync(target: string, content: string | Uint8Array): void {
   if (existsSync(target) && lstatSync(target).isSymbolicLink()) {
     throw new Error(`Refusing to overwrite symbolic link: ${target}`);
   }
   const tmp = `${target}.tmp-${process.pid}-${randomUUID()}`;
-  writeFileSync(tmp, content, 'utf-8');
+  if (typeof content === 'string') writeFileSync(tmp, content, 'utf-8');
+  else writeFileSync(tmp, content);
   try {
     renameSync(tmp, target);
   } catch (err) {

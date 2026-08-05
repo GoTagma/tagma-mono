@@ -293,6 +293,47 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
+  test('publishes staged support files to a numbered copy while keeping the trial plan transient', async () => {
+    const { ws, sourcePath } = setupWorkspace();
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const relativePath = 'created/created.yaml';
+    const stagedPath = join(stage.agentTagmaDir, 'created', 'created.yaml');
+    const stagedDir = dirname(stagedPath);
+    mkdirSync(join(stagedDir, 'input'), { recursive: true });
+    mkdirSync(join(stagedDir, 'prompts'), { recursive: true });
+    writeFileSync(stagedPath, yamlFor('Created Pipeline', 'created'), 'utf-8');
+    writeFileSync(pipelineLayoutPath(stagedPath), layoutFor(20), 'utf-8');
+    writeFileSync(join(stagedDir, 'input', 'text-to-check.md'), 'pipeline input\n', 'utf-8');
+    writeFileSync(join(stagedDir, 'prompts', '01-ingest.md'), 'ingest prompt\n', 'utf-8');
+    writeFileSync(join(stagedDir, 'trusted_sources.yaml'), 'sources: []\n', 'utf-8');
+    writeFileSync(
+      stagedPath.replace(/\.ya?ml$/i, '.trial-plan.json'),
+      '{version:1}\n',
+      'utf-8',
+    );
+
+    const result = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath,
+      forceFork: true,
+      forceForkReason: 'trial-run-failed',
+    });
+
+    expect(result.outcome).toBe('forked');
+    const publishedDir = dirname(result.entry!.path);
+    expect(readFileSync(join(publishedDir, 'input', 'text-to-check.md'), 'utf-8')).toBe(
+      'pipeline input\n',
+    );
+    expect(readFileSync(join(publishedDir, 'prompts', '01-ingest.md'), 'utf-8')).toBe(
+      'ingest prompt\n',
+    );
+    expect(readFileSync(join(publishedDir, 'trusted_sources.yaml'), 'utf-8')).toBe(
+      'sources: []\n',
+    );
+    expect(existsSync(result.entry!.path.replace(/\.ya?ml$/i, '.trial-plan.json'))).toBe(false);
+    stopWorkspace(ws);
+  });
+
   test('returns unchanged and removes the writable stage when the agent did not edit YAML or layout', async () => {
     const { ws, sourcePath, baseYaml } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });

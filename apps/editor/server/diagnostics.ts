@@ -248,7 +248,7 @@ export interface DesktopLogTail {
 }
 
 /** Read the launcher-maintained sidecar log tail when running under Electron. */
-export function readDesktopLogTail(maxBytes = 256 * 1024): DesktopLogTail | null {
+export function readDesktopLogTail(maxBytes = 32 * 1024): DesktopLogTail | null {
   const configured = process.env.TAGMA_DESKTOP_LOG_FILE?.trim();
   if (!configured) return null;
   let fd: number | null = null;
@@ -260,10 +260,15 @@ export function readDesktopLogTail(maxBytes = 256 * 1024): DesktopLogTail | null
     const offset = Math.max(0, stat.size - length);
     const buffer = Buffer.alloc(length);
     const bytesRead = readSync(fd, buffer, 0, length, offset);
+    let text = buffer.subarray(0, bytesRead).toString('utf8');
+    if (offset > 0) {
+      const firstNewline = text.indexOf('\n');
+      if (firstNewline >= 0) text = text.slice(firstNewline + 1);
+    }
     return {
       path: configured,
       truncated: offset > 0,
-      text: redactDiagnosticText(buffer.subarray(0, bytesRead).toString('utf8')),
+      text: redactDiagnosticText(text),
     };
   } catch {
     return null;
