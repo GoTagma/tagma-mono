@@ -2030,21 +2030,22 @@ describe('chat model persistence', () => {
     );
   });
 
-  test('does not retry desktop session creation after a non-schema failure', async () => {
+  test('surfaces manual session creation failure without rejecting or retrying', async () => {
     const repo = 'C:/metadata-failure-repo';
     const baseUrl = 'http://opencode-metadata-failure.test';
     workspaceBaseUrls.set(repo, baseUrl);
     setClientWorkspace(repo);
+    useChatStore.setState({
+      currentSessionId: 'existing',
+      sessions: [{ id: 'existing', title: 'Existing conversation' } as Session],
+      messages: [{ info: { id: 'existing-message' }, parts: [] }] as never,
+      historyOpen: true,
+      sendError: null,
+    } as never);
     sessionCreateShouldFail = true;
 
-    let failed = false;
-    try {
-      await useChatStore.getState().newSession();
-    } catch {
-      failed = true;
-    }
+    await expect(useChatStore.getState().newSession()).resolves.toBeUndefined();
 
-    expect(failed).toBe(true);
     expect(sessionCreateRequests).toHaveLength(1);
     expect(sessionCreateRequests[0]?.url).toBe(`${baseUrl}/session`);
     expect(sessionCreateRequests[0]?.body).toMatchObject({
@@ -2056,6 +2057,12 @@ describe('chat model persistence', () => {
         },
       },
     });
+    expect(useChatStore.getState()).toMatchObject({
+      currentSessionId: 'existing',
+      historyOpen: false,
+      sendError: expect.stringContaining("Couldn't start a new conversation:"),
+    });
+    expect(useChatStore.getState().messages).toHaveLength(1);
   });
 
   test('updates session metadata with the v2 flat PATCH shape', async () => {

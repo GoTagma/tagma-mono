@@ -379,6 +379,7 @@ describe('chat YAML staging routes', () => {
         reason: 'missing',
         relativePlanPath: entry.relativePath.replace(/\.ya?ml$/i, '.trial-plan.json'),
         maxAttempts: 2,
+        attemptId: 'plan_first',
       },
       planTelemetry: {
         toolAttemptCount: 0,
@@ -393,7 +394,7 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
-  test('fails missing baseline inputs before requesting a targeted plan', async () => {
+  test('uses an isolated virtual fixture when the real baseline input is unavailable', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();
     const startRes = makeRes();
@@ -406,6 +407,12 @@ describe('chat YAML staging routes', () => {
       entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
     };
     const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    const script = [
+      "const fs = require('node:fs');",
+      "const text = fs.readFileSync('input/text-to-check.md', 'utf8');",
+      "fs.mkdirSync('output', { recursive: true });",
+      "fs.writeFileSync('output/observed.txt', text);",
+    ].join(' ');
     writeFileSync(
       entry.stagedPath,
       serializePipeline({
@@ -417,7 +424,7 @@ describe('chat YAML staging routes', () => {
             tasks: [
               {
                 id: 'ingest',
-                prompt: 'Read the input.',
+                command: { argv: [process.execPath, '-e', script] },
                 trigger: { type: 'file', path: 'input/text-to-check.md' },
               },
             ],
@@ -440,13 +447,93 @@ describe('chat YAML staging routes', () => {
     expect(trialRes.statusCode).toBe(200);
     expect(trialRes.body).toMatchObject({
       success: false,
-      kind: 'preflight-failed',
+      kind: 'plan-required',
       ran: false,
       planTelemetry: { toolAttemptCount: 0 },
+      planRequest: {
+        attemptId: 'missing_before_plan',
+        unavailableBaselineInputs: [
+          {
+            taskId: 'main.ingest',
+            type: 'file',
+            path: 'input/text-to-check.md',
+          },
+        ],
+      },
     });
-    expect(trialRes.body).not.toHaveProperty('planRequest');
-    expect((trialRes.body as { summary: string }).summary).toContain('input/text-to-check.md');
-    discardStage(getRoute, ws, stage.id);
+    writeTrialPlan(entry.stagedPath, {
+      cases: [
+        {
+          id: 'virtual-input',
+          title: 'Run against an isolated representative input',
+          objective: 'Verify the pipeline can consume text without requiring a live workspace file.',
+          runs: 1,
+          targetTaskIds: ['main.ingest'],
+          fixtures: [
+            {
+              path: 'input/text-to-check.md',
+              content: 'The Moon is made of cheese.',
+            },
+          ],
+          expectations: [
+            {
+              type: 'file-equals',
+              path: 'output/observed.txt',
+              text: 'The Moon is made of cheese.',
+            },
+          ],
+        },
+      ],
+    });
+
+    const plannedTrialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        {
+          stageId: stage.id,
+          relativePath: entry.relativePath,
+          trialId: 'missing_after_plan',
+        },
+        'chat-lock',
+      ),
+      plannedTrialRes,
+    );
+
+    expect(plannedTrialRes.statusCode).toBe(200);
+    expect(plannedTrialRes.body).toMatchObject({
+      success: true,
+      kind: 'passed-with-warnings',
+      ran: true,
+      verificationMode: 'isolated-fixtures-only',
+      cases: [{ id: 'virtual-input', success: true }],
+    });
+    expect((plannedTrialRes.body as { summary: string }).summary).toContain(
+      'real-workspace baseline was skipped',
+    );
+    expect(existsSync(join(ws.workDir, 'input', 'text-to-check.md'))).toBe(false);
+
+    const finalizeRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/finalize')(
+      request(
+        ws,
+        {
+          stageId: stage.id,
+          relativePath: entry.relativePath,
+          trialId: 'missing_after_plan',
+        },
+        'chat-lock',
+      ),
+      finalizeRes,
+    );
+    expect(finalizeRes.statusCode).toBe(200);
+    expect(finalizeRes.body).toMatchObject({
+      outcome: 'adopted',
+      conflicts: [],
+      trialVerification: 'verified',
+      entry: { path: sourcePath },
+    });
+    expect(readFileSync(sourcePath, 'utf-8')).toContain('name: Missing Baseline Input');
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });
