@@ -569,7 +569,7 @@ describe('chat YAML staging async witness ordering', () => {
     ws.layoutWatcher.stopWatching();
   });
 
-  test('returns immediately when every baseline root waits on a missing file input', async () => {
+  test('requests a fixture-plan correction before witness capture when baseline input is missing', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const yaml = serializePipeline({
       name: 'No input baseline',
@@ -611,13 +611,17 @@ describe('chat YAML staging async witness ordering', () => {
       ],
     });
     __chatPipelineTrialRunTestHooks.timeoutMsOverride = 500;
-    __chatPipelineTrialRunTestHooks.captureHostWitnessAsync = async () => ({
-      witness: {
-        digest: 'stable-host',
-        prerequisiteDigest: 'stable-prerequisites',
-      } as never,
-      reason: null,
-    });
+    let witnessCaptureCalls = 0;
+    __chatPipelineTrialRunTestHooks.captureHostWitnessAsync = async () => {
+      witnessCaptureCalls += 1;
+      return {
+        witness: {
+          digest: 'stable-host',
+          prerequisiteDigest: 'stable-prerequisites',
+        } as never,
+        reason: null,
+      };
+    };
 
     const trialRes = makeRes();
     await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
@@ -632,10 +636,34 @@ describe('chat YAML staging async witness ordering', () => {
     expect(trialRes.statusCode).toBe(200);
     expect(trialRes.body).toMatchObject({
       success: false,
-      kind: 'preflight-failed',
+      kind: 'plan-required',
       repairAuthorization: 'diagnostic-only',
       ran: false,
       totalTaskCount: 0,
+      prerequisiteState: {
+        state: 'fixture-backed',
+        baseline: { mode: 'skip' },
+        inputs: [
+          {
+            taskId: 'main.verify',
+            type: 'file',
+            path: 'input/text-to-check.md',
+            fixturePath: 'input/text-to-check.md',
+          },
+        ],
+      },
+      planRequest: {
+        reason: 'invalid',
+        attemptId: 'missing_input_preflight',
+        unavailableBaselineInputs: [
+          {
+            taskId: 'main.verify',
+            type: 'file',
+            path: 'input/text-to-check.md',
+            fixturePath: 'input/text-to-check.md',
+          },
+        ],
+      },
       plan: {
         summary: 'Focused trial coverage for async witness ordering.',
         cases: [
@@ -647,9 +675,10 @@ describe('chat YAML staging async witness ordering', () => {
       },
     });
     const result = trialRes.body as { summary: string; durationMs: number };
-    expect(result.summary).toContain('no runnable baseline tasks');
+    expect(result.summary).toContain('does not cover unavailable baseline data inputs');
     expect(result.summary).toContain('input/text-to-check.md');
     expect(result.durationMs).toBeLessThan(500);
+    expect(witnessCaptureCalls).toBe(0);
     expect(existsSync(join(ws.workDir, '.tagma', 'logs'))).toBe(false);
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();

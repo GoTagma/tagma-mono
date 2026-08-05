@@ -403,6 +403,60 @@ describe('chat conversation export', () => {
     expect(exported.content).not.toContain('Trial: passed (passed-with-warnings; ran)');
   });
 
+  test('exports unavailable prerequisites as blocked rather than failed', () => {
+    const exported = buildConversationExport({
+      format: 'txt',
+      title: 'Prerequisite-aware verification',
+      exportedAt: new Date('2026-05-20T12:00:00.000Z'),
+      messages: [],
+      pipelineVerification: {
+        kind: 'refresh-current',
+        path: 'D:/repo/.tagma/facts/facts.yaml',
+        name: 'facts.yaml',
+        pipelineName: 'Fact Checker',
+        sessionId: 's1',
+        status: 'blocked',
+        compile: {
+          success: true,
+          summary: 'Compile passed.',
+          validation: { errors: [], warnings: [] },
+        },
+        trial: {
+          version: 8,
+          success: false,
+          kind: 'blocked',
+          ran: false,
+          runId: null,
+          summary: 'Trial run requirements are unavailable: environment=FACT_API_KEY.',
+          durationMs: 10,
+          totalTaskCount: 0,
+          omittedTaskCount: 0,
+          tasks: [],
+          cases: [],
+          repairAuthorization: 'diagnostic-only',
+          prerequisiteState: {
+            state: 'blocked',
+            blockers: [{ kind: 'environment', name: 'FACT_API_KEY' }],
+          },
+        },
+        repairAttempts: 0,
+        reconcile: {
+          outcome: 'adopted',
+          conflicts: [],
+          localBranchPersisted: false,
+          resultPath: 'D:/repo/.tagma/facts/facts.yaml',
+          compileSuccess: true,
+          trialRunSuccess: false,
+        },
+        completedAt: 1_000,
+      },
+    });
+
+    expect(exported.content).toContain('Final status: blocked');
+    expect(exported.content).toContain('Trial: blocked by prerequisites (blocked; not run)');
+    expect(exported.content).not.toContain('Trial: failed (blocked; not run)');
+  });
+
   test('derives safe filenames for both export formats', () => {
     expect(conversationExportFilename('Feature / Q&A?', 'md')).toBe('tagma-chat-feature-q-a.md');
     expect(conversationExportFilename('', 'txt')).toBe('tagma-chat-conversation.txt');

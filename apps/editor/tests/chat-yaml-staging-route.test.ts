@@ -1101,12 +1101,7 @@ describe('chat YAML staging routes', () => {
     expect(trialRes.statusCode).toBe(200);
     expect(trialRes.body).toMatchObject({
       success: false,
-      kind: 'blocked',
-      repairAuthorization: 'diagnostic-only',
-      prerequisiteState: {
-        state: 'blocked',
-        blockers: [{ kind: 'approval', name: 'main.gated', taskId: 'main.gated' }],
-      },
+      kind: 'failed',
       ran: true,
       cases: [
         {
@@ -2826,7 +2821,12 @@ describe('chat YAML staging routes', () => {
 
     expect(trialRes.body).toMatchObject({
       success: false,
-      kind: 'failed',
+      kind: 'blocked',
+      repairAuthorization: 'diagnostic-only',
+      prerequisiteState: {
+        state: 'blocked',
+        blockers: [{ kind: 'approval', name: 'main.gated', taskId: 'main.gated' }],
+      },
     });
     const gatedBaselineTask = (
       trialRes.body as {

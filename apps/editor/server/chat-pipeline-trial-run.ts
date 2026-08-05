@@ -54,6 +54,7 @@ import {
   resolveChatPipelineRuntimeReadiness,
   type ChatPipelineTrialBlocker,
   type ChatPipelineTrialFixtureInput,
+  type ChatPipelineTrialReadiness,
   type ChatPipelineTrialRecordedPrerequisiteState,
 } from './chat-pipeline-trial-readiness.js';
 import type {
@@ -1128,6 +1129,16 @@ interface TrialExecutionBudgets {
   lifecycleTimeoutMs: number;
 }
 
+interface PreparedTrialExecution {
+  pipelineConfig: PipelineConfig;
+  targetTaskIdsByCase: Map<string, string[]>;
+  dataReadiness: Exclude<ChatPipelineTrialReadiness, { state: 'blocked' }>;
+}
+
+type TrialExecutionPreparation =
+  | { status: 'ready'; prepared: PreparedTrialExecution }
+  | { status: 'result'; result: ChatPipelineTrialRunResult };
+
 async function captureTrialWorkspaceDigest(
   ws: WorkspaceState,
   signal?: AbortSignal,
@@ -1521,7 +1532,7 @@ async function loadTrialPipelineConfig(
   return pipelineConfig;
 }
 
-async function executeTrial(
+async function prepareTrialExecution(
   ws: WorkspaceState,
   stage: ReturnType<typeof listChatYamlStage>,
   entry: ReturnType<typeof listChatYamlStage>['entries'][number],
@@ -1529,33 +1540,20 @@ async function executeTrial(
   plan: ChatPipelineTrialPlan,
   planTelemetry: ChatPipelineTrialPlanToolTelemetry,
   trialId: string,
-  controller: AbortController,
-  abortState: { timedOut: boolean },
-  budgets: TrialExecutionBudgets,
-  progress: ChatPipelineTrialProgressReporter,
-): Promise<ChatPipelineTrialRunResult> {
-  const startedAt = Date.now();
-  progress.update({
-    phase: 'preparing',
-    detail: 'Preparing the real-workspace baseline.',
-    caseId: null,
-    caseTitle: null,
-    caseIndex: null,
-    caseCount: null,
-    runNumber: null,
-    runCount: null,
-    taskId: null,
-    taskStatus: null,
-  });
-  let pipelineConfig;
+  startedAt: number,
+): Promise<TrialExecutionPreparation> {
+  let pipelineConfig: PipelineConfig;
   try {
     pipelineConfig = await loadTrialPipelineConfig(snapshot, ws.workDir);
   } catch (err) {
-    return resultForSetupFailure(
-      'setup-failed',
-      `Trial run configuration error: ${errorMessage(err)}`,
-      startedAt,
-    );
+    return {
+      status: 'result',
+      result: resultForSetupFailure(
+        'setup-failed',
+        `Trial run configuration error: ${errorMessage(err)}`,
+        startedAt,
+      ),
+    };
   }
 
   const targetTaskIdsByCase = new Map<string, string[]>();
@@ -1574,34 +1572,33 @@ async function executeTrial(
     }
   }
   if (planDiagnostics.length > 0) {
-    return resultForPlanFailure(plan, planDiagnostics, startedAt);
+    return { status: 'result', result: resultForPlanFailure(plan, planDiagnostics, startedAt) };
   }
 
   const dataReadiness = resolveChatPipelineDataReadiness(pipelineConfig, ws.workDir);
   if (dataReadiness.state === 'blocked') {
-    return resultForSetupFailure(
-      'blocked',
-      `Trial cannot safely virtualize its data prerequisites: ${describeTrialBlockers(dataReadiness.blockers)}. Preserve the declared paths; do not write placeholders outside the isolated Trial workspace.`,
-      startedAt,
-      { prerequisiteState: dataReadiness },
-    );
+    return {
+      status: 'result',
+      result: resultForSetupFailure(
+        'blocked',
+        `Trial cannot safely virtualize its data prerequisites: ${describeTrialBlockers(dataReadiness.blockers)}. Preserve the declared paths; do not write placeholders outside the isolated Trial workspace.`,
+        startedAt,
+        { prerequisiteState: dataReadiness },
+      ),
+    };
   }
-  const fixtureInputs = dataReadiness.state === 'fixture-backed' ? dataReadiness.inputs : [];
-  const baselineSkipped =
-    dataReadiness.state === 'fixture-backed' && dataReadiness.baseline.mode === 'skip';
-  const baselineTargetTaskIds =
-    dataReadiness.state === 'fixture-backed' && dataReadiness.baseline.mode === 'targeted'
-      ? dataReadiness.baseline.targetTaskIds
-      : undefined;
   if (dataReadiness.state === 'fixture-backed') {
     const uncoveredInputs = findUncoveredTrialFixtureInputs(
       plan,
-      fixtureInputs,
+      dataReadiness.inputs,
       pipelineConfig,
     );
     if (uncoveredInputs.length > 0) {
       if (planTelemetry.toolAttemptCount >= stage.trialPlanMaxAttempts) {
-        return resultForPlanAttemptBudgetExhausted(planTelemetry, startedAt);
+        return {
+          status: 'result',
+          result: resultForPlanAttemptBudgetExhausted(planTelemetry, startedAt),
+        };
       }
       issueChatYamlStageTrialPlanAttempt(ws, {
         stageId: stage.id,
@@ -1609,22 +1606,64 @@ async function executeTrial(
         yamlHash: snapshot.contentHash,
         attemptId: trialId,
       });
-      return resultForPlanRequest(
-        buildChatPipelineTrialPlanRequest(
-          'invalid',
-          entry.relativePath,
-          snapshot.contentHash,
-          `The current trial plan does not cover unavailable baseline data inputs: ${describeUncoveredTrialFixtureInputs(uncoveredInputs)}. Correct the Trial Plan only; preserve the pipeline requirements and do not write placeholders to the real workspace.`,
-          stage.trialPlanMaxAttempts,
+      return {
+        status: 'result',
+        result: resultForPlanRequest(
+          buildChatPipelineTrialPlanRequest(
+            'invalid',
+            entry.relativePath,
+            snapshot.contentHash,
+            `The current trial plan does not cover unavailable baseline data inputs: ${describeUncoveredTrialFixtureInputs(uncoveredInputs)}. Correct the Trial Plan only; preserve the pipeline requirements and do not write placeholders to the real workspace.`,
+            stage.trialPlanMaxAttempts,
+          ),
+          planTelemetry,
+          startedAt,
+          trialId,
+          dataReadiness,
         ),
-        planTelemetry,
-        startedAt,
-        trialId,
-        dataReadiness,
-      );
+      };
     }
   }
 
+  return {
+    status: 'ready',
+    prepared: { pipelineConfig, targetTaskIdsByCase, dataReadiness },
+  };
+}
+
+async function executeTrial(
+  ws: WorkspaceState,
+  stage: ReturnType<typeof listChatYamlStage>,
+  entry: ReturnType<typeof listChatYamlStage>['entries'][number],
+  snapshot: TrialPipelineSnapshot,
+  plan: ChatPipelineTrialPlan,
+  prepared: PreparedTrialExecution,
+  controller: AbortController,
+  abortState: { timedOut: boolean },
+  budgets: TrialExecutionBudgets,
+  progress: ChatPipelineTrialProgressReporter,
+): Promise<ChatPipelineTrialRunResult> {
+  const startedAt = Date.now();
+  progress.update({
+    phase: 'preparing',
+    detail: 'Preparing the real-workspace baseline.',
+    caseId: null,
+    caseTitle: null,
+    caseIndex: null,
+    caseCount: null,
+    runNumber: null,
+    runCount: null,
+    taskId: null,
+    taskStatus: null,
+  });
+  const { pipelineConfig, targetTaskIdsByCase, dataReadiness } = prepared;
+  const fixtureInputs = dataReadiness.state === 'fixture-backed' ? dataReadiness.inputs : [];
+  const baselineSkipped =
+    dataReadiness.state === 'fixture-backed' && dataReadiness.baseline.mode === 'skip';
+  const baselineTargetTaskIds =
+    dataReadiness.state === 'fixture-backed' && dataReadiness.baseline.mode === 'targeted'
+      ? dataReadiness.baseline.targetTaskIds
+      : undefined;
   const pluginError = await ensureTrialPluginsLoaded(ws, pipelineConfig.plugins ?? []);
   if (pluginError) {
     return resultForSetupFailure('setup-failed', `Plugin load error: ${pluginError}`, startedAt);
@@ -1681,9 +1720,11 @@ async function executeTrial(
   const manualApprovalBlockers = new Map<string, ChatPipelineTrialBlocker>();
   const unsubscribeApproval = approvalGateway.subscribe((event: ApprovalEvent) => {
     if (event.type !== 'requested') return;
-    const taskId = event.request.trackId
-      ? `${event.request.trackId}.${event.request.taskId}`
-      : event.request.taskId;
+    const taskId = event.request.taskId.includes('.')
+      ? event.request.taskId
+      : event.request.trackId
+        ? `${event.request.trackId}.${event.request.taskId}`
+        : event.request.taskId;
     manualApprovalBlockers.set(taskId, { kind: 'approval', name: taskId, taskId });
     approvalGateway.resolve(event.request.id, {
       outcome: 'rejected',
@@ -2106,6 +2147,20 @@ export async function trialRunChatYamlStage(
       );
     }
     const plan = planRead.plan;
+    const preparation = await prepareTrialExecution(
+      ws,
+      stage,
+      entry,
+      snapshot,
+      plan,
+      planTelemetry,
+      trialId,
+      startedAt,
+    );
+    if (preparation.status === 'result') {
+      return { ...resultWithTrialPlan(preparation.result, plan), planTelemetry };
+    }
+    const preparedExecution = preparation.prepared;
     const inputHash = buildChatPipelineTrialInputHash({
       stagedTreeHash: snapshot.treeHash,
       planHash: planRead.planHash,
@@ -2230,8 +2285,7 @@ export async function trialRunChatYamlStage(
           entry,
           executionSnapshot,
           plan,
-          planTelemetry,
-          trialId,
+          preparedExecution,
           controller,
           abortState,
           budgets,
