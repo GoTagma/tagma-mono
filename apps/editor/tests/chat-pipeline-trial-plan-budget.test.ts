@@ -1,7 +1,8 @@
 import { expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { readChatPipelineTrialPlanToolTelemetry } from '../server/chat-pipeline-trial-plan';
@@ -62,6 +63,14 @@ async function submitTrialPlan(
   attemptId: string,
 ): Promise<string> {
   const pipelinePath = args.pipeline_path as string;
+  const stagePath = join(dirname(dirname(context.directory)), 'stage.json');
+  const stage = JSON.parse(readFileSync(stagePath, 'utf8')) as Record<string, unknown>;
+  stage.trialPlanAttempt = {
+    relativePath: relative(context.directory, pipelinePath).replace(/\\/g, '/'),
+    yamlHash: createHash('sha1').update(readFileSync(pipelinePath, 'utf8')).digest('hex'),
+    attemptId,
+  };
+  writeFileSync(stagePath, JSON.stringify(stage), 'utf8');
   await tool.execute(
     {
       operation: 'begin',
@@ -263,6 +272,21 @@ test('generated trial plan tool consumes at most one commit per begun draft life
       toolAttemptCount: 1,
       validationRejectionCount: 1,
     });
+    await expect(
+      tool.execute(
+        {
+          operation: 'begin',
+          attempt_id: 'invented-attempt',
+          pipeline_path: yamlPath,
+          summary: invalidArgs.summary,
+          goals: invalidArgs.goals,
+        },
+        context,
+      ),
+    ).rejects.toThrow(
+      'attempt_id was not issued by the host for this staged YAML revision',
+    );
+    expect(readChatPipelineTrialPlanToolTelemetry(yamlPath, 2).toolAttemptCount).toBe(1);
 
     await expect(
       submitTrialPlan(tool, invalidArgs, context, 'host-physical-attempt-1'),

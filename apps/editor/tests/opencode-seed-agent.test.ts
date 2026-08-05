@@ -1,7 +1,8 @@
 import { expect, mock, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, isAbsolute, join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
   buildTagmaCommandEvidenceAgent,
@@ -48,6 +49,40 @@ const fakeSchema = new Proxy<Record<string, (...args: unknown[]) => unknown>>(
 const fakeTool = Object.assign((definition: unknown) => definition, { schema: fakeSchema });
 
 mock.module('@opencode-ai/plugin', () => ({ tool: fakeTool }));
+
+let generatedTrialPlanAttemptSequence = 0;
+
+function issueGeneratedTrialPlanAttempt(
+  pipelinePath: string,
+  context: { directory: string },
+): string {
+  const attemptId = `host-generated-attempt-${++generatedTrialPlanAttemptSequence}`;
+  const yamlPath = isAbsolute(pipelinePath)
+    ? pipelinePath
+    : join(context.directory, ...pipelinePath.replace(/\\/g, '/').split('/'));
+  const stagedTagmaDir = isAbsolute(pipelinePath) ? dirname(dirname(yamlPath)) : context.directory;
+  const normalizedStagedRoot = stagedTagmaDir.replace(/\\/g, '/').toLowerCase();
+
+  // Invalid-target tests must still reach the tool's staging-root rejection without
+  // creating host metadata outside the isolated chat stage.
+  if (!normalizedStagedRoot.endsWith('/agent-workspace/.tagma')) {
+    return attemptId;
+  }
+
+  const yamlHash = createHash('sha1').update(readFileSync(yamlPath, 'utf8')).digest('hex');
+  writeFileSync(
+    join(dirname(dirname(stagedTagmaDir)), 'stage.json'),
+    JSON.stringify({
+      trialPlanAttempt: {
+        relativePath: relative(stagedTagmaDir, yamlPath).replace(/\\/g, '/'),
+        yamlHash,
+        attemptId,
+      },
+    }),
+    'utf8',
+  );
+  return attemptId;
+}
 
 async function loadGeneratedTrialPlanTool(): Promise<{
   tool: GeneratedTrialPlanTool;
@@ -185,9 +220,11 @@ async function submitTrialPlanToolArgs(
   context: { directory: string },
 ): Promise<string> {
   const pipelinePath = args.pipeline_path as string;
+  const attemptId = issueGeneratedTrialPlanAttempt(pipelinePath, context);
   await generated.execute(
     {
       operation: 'begin',
+      attempt_id: attemptId,
       pipeline_path: pipelinePath,
       summary: args.summary,
       goals: args.goals,
@@ -198,6 +235,7 @@ async function submitTrialPlanToolArgs(
     await generated.execute(
       {
         operation: 'upsert-case',
+        attempt_id: attemptId,
         pipeline_path: pipelinePath,
         case: testCase,
       },
@@ -207,6 +245,7 @@ async function submitTrialPlanToolArgs(
   await generated.execute(
     {
       operation: 'set-coverage',
+      attempt_id: attemptId,
       pipeline_path: pipelinePath,
       coverage: args.coverage,
     },
@@ -215,6 +254,7 @@ async function submitTrialPlanToolArgs(
   await generated.execute(
     {
       operation: 'set-findings',
+      attempt_id: attemptId,
       pipeline_path: pipelinePath,
       findings: args.findings ?? [],
     },
@@ -223,6 +263,7 @@ async function submitTrialPlanToolArgs(
   return generated.execute(
     {
       operation: 'commit',
+      attempt_id: attemptId,
       pipeline_path: pipelinePath,
     },
     context,
@@ -787,10 +828,14 @@ test('trial-plan tool assembles a large plan in bounded draft calls before one c
       ...entry,
       caseIds: entry.status === 'covered' ? ['file-boundaries-1'] : (entry.caseIds as string[]),
     }));
+    const attemptId = issueGeneratedTrialPlanAttempt('sample/sample.yaml', {
+      directory: stage.agentTagmaDir,
+    });
 
     await generated.tool.execute(
       {
         operation: 'begin',
+        attempt_id: attemptId,
         pipeline_path: 'sample/sample.yaml',
         summary: plan.summary,
         goals: plan.goals,
@@ -801,6 +846,7 @@ test('trial-plan tool assembles a large plan in bounded draft calls before one c
       await generated.tool.execute(
         {
           operation: 'upsert-case',
+          attempt_id: attemptId,
           pipeline_path: 'sample/sample.yaml',
           case: testCase,
         },
@@ -809,6 +855,7 @@ test('trial-plan tool assembles a large plan in bounded draft calls before one c
     }
     const interruptedCall = JSON.stringify({
       operation: 'upsert-case',
+      attempt_id: attemptId,
       pipeline_path: 'sample/sample.yaml',
       case: cases[3],
     });
@@ -824,6 +871,7 @@ test('trial-plan tool assembles a large plan in bounded draft calls before one c
       await generated.tool.execute(
         {
           operation: 'begin',
+          attempt_id: attemptId,
           pipeline_path: 'sample/sample.yaml',
           summary: plan.summary,
           goals: plan.goals,
@@ -837,6 +885,7 @@ test('trial-plan tool assembles a large plan in bounded draft calls before one c
       await generated.tool.execute(
         {
           operation: 'upsert-case',
+          attempt_id: attemptId,
           pipeline_path: 'sample/sample.yaml',
           case: testCase,
         },
@@ -846,6 +895,7 @@ test('trial-plan tool assembles a large plan in bounded draft calls before one c
     await generated.tool.execute(
       {
         operation: 'set-coverage',
+        attempt_id: attemptId,
         pipeline_path: 'sample/sample.yaml',
         coverage,
       },
@@ -854,6 +904,7 @@ test('trial-plan tool assembles a large plan in bounded draft calls before one c
     await generated.tool.execute(
       {
         operation: 'set-findings',
+        attempt_id: attemptId,
         pipeline_path: 'sample/sample.yaml',
         findings: plan.findings,
       },
@@ -868,7 +919,7 @@ test('trial-plan tool assembles a large plan in bounded draft calls before one c
 
     const result = JSON.parse(
       await generated.tool.execute(
-        { operation: 'commit', pipeline_path: 'sample/sample.yaml' },
+        { operation: 'commit', attempt_id: attemptId, pipeline_path: 'sample/sample.yaml' },
         { directory: stage.agentTagmaDir },
       ),
     ) as { path: string; yamlHash: string };
@@ -893,8 +944,10 @@ test('trial-plan begin resumes the same revision unless reset is explicit', asyn
   try {
     const plan = completeTrialPlanToolArgs('sample/sample.yaml');
     const context = { directory: stage.agentTagmaDir };
+    const attemptId = issueGeneratedTrialPlanAttempt('sample/sample.yaml', context);
     const beginArgs = {
       operation: 'begin',
+      attempt_id: attemptId,
       pipeline_path: 'sample/sample.yaml',
       summary: plan.summary,
       goals: plan.goals,
@@ -903,6 +956,7 @@ test('trial-plan begin resumes the same revision unless reset is explicit', asyn
     await generated.tool.execute(
       {
         operation: 'upsert-case',
+        attempt_id: attemptId,
         pipeline_path: 'sample/sample.yaml',
         case: (plan.cases as Array<Record<string, unknown>>)[0],
       },

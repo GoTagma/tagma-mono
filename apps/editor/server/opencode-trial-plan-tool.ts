@@ -994,7 +994,7 @@ function executeTrialPlanOperation(args, context) {
     !paths.hostAttempt ||
     paths.hostAttempt.attemptId !== attemptId ||
     paths.hostAttempt.yamlHash !== yamlHash ||
-    paths.hostAttempt.relativePath.replace(/\\/g, '/') !== paths.relativeYamlPath
+    paths.hostAttempt.relativePath.replace(/\\\\/g, '/') !== paths.relativeYamlPath
   ) {
     throw new Error(
       'attempt_id was not issued by the host for this staged YAML revision; use the exact current host prompt',
