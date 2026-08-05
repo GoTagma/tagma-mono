@@ -2319,7 +2319,7 @@ describe('chat YAML staging routes', () => {
     expect(finalizeRes.statusCode).toBe(200);
     expect(finalizeRes.body).toMatchObject({
       outcome: 'forked',
-      conflicts: ['trial-run-failed'],
+      conflicts: ['trial-run-failed', 'source-changed-on-disk'],
     });
 
     discardStage(getRoute, ws, stage.id);
@@ -2398,7 +2398,7 @@ describe('chat YAML staging routes', () => {
     expect(finalizeRes.statusCode).toBe(200);
     expect(finalizeRes.body).toMatchObject({
       outcome: 'forked',
-      conflicts: ['trial-run-failed'],
+      conflicts: ['trial-run-failed', 'source-changed-on-disk'],
     });
 
     discardStage(getRoute, ws, stage.id);
@@ -2409,16 +2409,6 @@ describe('chat YAML staging routes', () => {
   test('rejects stale finalize reuse after a workspace-root input changes since the last trial', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();
-    const startRes = makeRes();
-    getRoute('/api/workspace/chat-yaml-stage/start')(
-      request(ws, { activePath: sourcePath }, 'chat-lock'),
-      startRes,
-    );
-    const stage = startRes.body as {
-      id: string;
-      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
-    };
-    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
     const externalInputPath = join(ws.workDir, 'workspace-input.txt');
     const helperPath = join(dirname(sourcePath), 'verify-workspace-input.js');
     writeFileSync(externalInputPath, 'alpha\n', 'utf-8');
@@ -2430,6 +2420,16 @@ describe('chat YAML staging routes', () => {
       ].join(' '),
       'utf-8',
     );
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
     writeFileSync(
       entry.stagedPath,
       serializePipeline({
