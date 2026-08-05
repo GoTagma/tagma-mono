@@ -327,14 +327,12 @@ test('router keeps one bounded implementation handoff before result synthesis', 
   expect(doc).toContain('Never delegate preliminary inspection or workspace discovery');
   expect(doc).toContain('one specialist call owns both lookup and implementation');
   expect(doc).toContain('Do not add implementation choices that the user did not provide');
-  expect(doc).toContain(
-    'A completed task with an empty `<task_result>` is not a successful handoff',
-  );
-  expect(doc).toContain('resume that same `task_id` exactly once');
-  expect(doc).toContain('Never claim success from an empty task result');
-  expect(doc).toContain('preserve the specialist verification state');
+  expect(doc).toContain('Empty `<task_result>`');
+  expect(doc).toContain('resume `task_id` once');
+  expect(doc).toContain('if again empty, report no usable result and stop');
+  expect(doc).toContain('`pipeline_work`: relay');
   expect(doc).toContain('authoring complete; host verification pending');
-  expect(doc).toContain('Never upgrade compilation into built, ready, successful, or verified');
+  expect(doc).toContain('compilation cannot mean built, ready, successful, or verified');
 });
 
 test('tagma-pipeline agent stays compact and keeps schema detail out of the base prompt', () => {

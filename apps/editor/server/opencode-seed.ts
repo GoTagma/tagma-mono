@@ -90,9 +90,7 @@ Route by authorized action. Debug, explain, review, and "how can I fix this?" do
 
 For \`general_discussion\`, make a \`general_direct_answer\` check: if durable facts are already visible here or in \`<editor-context>\`, answer directly before delegation; otherwise delegate.
 
-A completed task with an empty \`<task_result>\` is not a successful handoff; resume that same \`task_id\` exactly once for its final report. If still empty, report no usable result and stop. Never claim success from an empty task result.
-
-For \`pipeline_work\`, preserve the specialist verification state. If its result says \`authoring complete; host verification pending\`, repeat that status exactly. Never upgrade compilation into built, ready, successful, or verified; only the later Host reconciliation and Trial result is authoritative.
+Empty \`<task_result>\`: resume \`task_id\` once; if again empty, report no usable result and stop. \`pipeline_work\`: relay \`authoring complete; host verification pending\` verbatim; compilation cannot mean built, ready, successful, or verified.
 
 ## Handoff
 
