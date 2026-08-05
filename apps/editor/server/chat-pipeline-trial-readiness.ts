@@ -15,13 +15,7 @@ export interface ChatPipelineTrialFixtureInput {
 }
 
 export interface ChatPipelineTrialBlocker {
-  kind:
-    | 'binary'
-    | 'environment'
-    | 'external-data-path'
-    | 'service'
-    | 'credential'
-    | 'approval';
+  kind: 'binary' | 'environment' | 'external-data-path' | 'service' | 'credential' | 'approval';
   name: string;
   taskId?: string;
 }
@@ -30,9 +24,7 @@ export type ChatPipelineTrialReadiness =
   | { state: 'runnable' }
   | {
       state: 'fixture-backed';
-      baseline:
-        | { mode: 'targeted'; targetTaskIds: string[] }
-        | { mode: 'skip' };
+      baseline: { mode: 'targeted'; targetTaskIds: string[] } | { mode: 'skip' };
       inputs: ChatPipelineTrialFixtureInput[];
     }
   | { state: 'blocked'; blockers: ChatPipelineTrialBlocker[] };
@@ -109,10 +101,7 @@ export function resolveChatPipelineDataReadiness(
     const targetTaskIds = [...dag.nodes.keys()].filter((taskId) => !dependsOnFixture(taskId));
     return {
       state: 'fixture-backed',
-      baseline:
-        targetTaskIds.length > 0
-          ? { mode: 'targeted', targetTaskIds }
-          : { mode: 'skip' },
+      baseline: targetTaskIds.length > 0 ? { mode: 'targeted', targetTaskIds } : { mode: 'skip' },
       inputs,
     };
   }

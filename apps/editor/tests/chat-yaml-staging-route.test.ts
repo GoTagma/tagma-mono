@@ -521,7 +521,8 @@ describe('chat YAML staging routes', () => {
         {
           id: 'virtual-input',
           title: 'Run against an isolated representative input',
-          objective: 'Verify the pipeline can consume text without requiring a live workspace file.',
+          objective:
+            'Verify the pipeline can consume text without requiring a live workspace file.',
           runs: 1,
           targetTaskIds: ['main.ingest'],
           fixtures: [

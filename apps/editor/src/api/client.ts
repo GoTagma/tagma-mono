@@ -205,21 +205,14 @@ export interface ChatPipelineTrialFixtureInput {
 export type ChatPipelineTrialPrerequisiteState =
   | {
       state: 'fixture-backed';
-      baseline:
-        | { mode: 'targeted'; targetTaskIds: string[] }
-        | { mode: 'skip' };
+      baseline: { mode: 'targeted'; targetTaskIds: string[] } | { mode: 'skip' };
       inputs: ChatPipelineTrialFixtureInput[];
     }
   | {
       state: 'blocked';
       blockers: Array<{
         kind:
-          | 'binary'
-          | 'environment'
-          | 'external-data-path'
-          | 'service'
-          | 'credential'
-          | 'approval';
+          'binary' | 'environment' | 'external-data-path' | 'service' | 'credential' | 'approval';
         name: string;
         taskId?: string;
       }>;

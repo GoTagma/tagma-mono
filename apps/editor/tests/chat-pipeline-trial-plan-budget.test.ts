@@ -145,24 +145,16 @@ test('generated trial plan tool uses the staged three-attempt budget per YAML ha
 
     await expect(
       submitTrialPlan(tool, invalidArgs, { directory: agentTagmaDir }, 'host-attempt-1'),
-    ).rejects.toThrow(
-      'trial plan coverage is missing multiple-inputs',
-    );
+    ).rejects.toThrow('trial plan coverage is missing multiple-inputs');
     await expect(
       submitTrialPlan(tool, invalidArgs, { directory: agentTagmaDir }, 'host-attempt-2'),
-    ).rejects.toThrow(
-      'Repeated equivalent validation rejection (2x)',
-    );
+    ).rejects.toThrow('Repeated equivalent validation rejection (2x)');
     await expect(
       submitTrialPlan(tool, invalidArgs, { directory: agentTagmaDir }, 'host-attempt-3'),
-    ).rejects.toThrow(
-      'Repeated equivalent validation rejection (3x)',
-    );
+    ).rejects.toThrow('Repeated equivalent validation rejection (3x)');
     await expect(
       submitTrialPlan(tool, invalidArgs, { directory: agentTagmaDir }, 'host-attempt-4'),
-    ).rejects.toThrow(
-      'trial plan tool attempt budget exhausted for this staged YAML revision',
-    );
+    ).rejects.toThrow('trial plan tool attempt budget exhausted for this staged YAML revision');
 
     expect(readChatPipelineTrialPlanToolTelemetry(yamlPath, 3)).toMatchObject({
       toolAttemptCount: 3,
@@ -202,14 +194,10 @@ test('generated trial plan tool can restrict a staged YAML revision to one attem
 
     await expect(
       submitTrialPlan(tool, invalidArgs, { directory: agentTagmaDir }, 'host-attempt-1'),
-    ).rejects.toThrow(
-      'trial plan coverage is missing multiple-inputs',
-    );
+    ).rejects.toThrow('trial plan coverage is missing multiple-inputs');
     await expect(
       submitTrialPlan(tool, invalidArgs, { directory: agentTagmaDir }, 'host-attempt-2'),
-    ).rejects.toThrow(
-      'trial plan tool attempt budget exhausted for this staged YAML revision',
-    );
+    ).rejects.toThrow('trial plan tool attempt budget exhausted for this staged YAML revision');
     expect(readChatPipelineTrialPlanToolTelemetry(yamlPath, 1)).toMatchObject({
       toolAttemptCount: 1,
       validationRejectionCount: 1,
@@ -240,9 +228,7 @@ test('generated trial plan tool consumes at most one commit per begun draft life
 
     await expect(
       submitTrialPlan(tool, invalidArgs, context, 'host-physical-attempt-1'),
-    ).rejects.toThrow(
-      'trial plan coverage is missing multiple-inputs',
-    );
+    ).rejects.toThrow('trial plan coverage is missing multiple-inputs');
     await expect(
       tool.execute(
         {
@@ -283,9 +269,7 @@ test('generated trial plan tool consumes at most one commit per begun draft life
         },
         context,
       ),
-    ).rejects.toThrow(
-      'attempt_id was not issued by the host for this staged YAML revision',
-    );
+    ).rejects.toThrow('attempt_id was not issued by the host for this staged YAML revision');
     expect(readChatPipelineTrialPlanToolTelemetry(yamlPath, 2).toolAttemptCount).toBe(1);
 
     await expect(
@@ -301,9 +285,7 @@ test('generated trial plan tool consumes at most one commit per begun draft life
 
     await expect(
       submitTrialPlan(tool, invalidArgs, context, 'host-physical-attempt-2'),
-    ).rejects.toThrow(
-      'Repeated equivalent validation rejection (2x)',
-    );
+    ).rejects.toThrow('Repeated equivalent validation rejection (2x)');
     expect(readChatPipelineTrialPlanToolTelemetry(yamlPath, 2)).toMatchObject({
       toolAttemptCount: 2,
       validationRejectionCount: 2,
@@ -327,9 +309,7 @@ test('generated trial plan tool fails closed when attempt telemetry has negative
     const invalidArgs = invalidPlanArgs(yamlPath);
     await expect(
       submitTrialPlan(tool, invalidArgs, { directory: agentTagmaDir }, 'host-attempt-1'),
-    ).rejects.toThrow(
-      'trial plan coverage is missing multiple-inputs',
-    );
+    ).rejects.toThrow('trial plan coverage is missing multiple-inputs');
 
     const telemetryDir = join(stageRoot, '.trial-plan-telemetry');
     const telemetryPath = join(
@@ -363,9 +343,7 @@ test('host telemetry reader rejects counters that do not partition tool attempts
     const invalidArgs = invalidPlanArgs(yamlPath);
     await expect(
       submitTrialPlan(tool, invalidArgs, { directory: agentTagmaDir }, 'host-attempt-1'),
-    ).rejects.toThrow(
-      'trial plan coverage is missing multiple-inputs',
-    );
+    ).rejects.toThrow('trial plan coverage is missing multiple-inputs');
 
     const telemetryDir = join(stageRoot, '.trial-plan-telemetry');
     const telemetryPath = join(

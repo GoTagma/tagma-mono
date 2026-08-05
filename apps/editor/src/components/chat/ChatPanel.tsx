@@ -1258,8 +1258,7 @@ export function describeSessionYamlResult(result: ChatYamlSessionResult): {
   }
 
   if (result.status === 'blocked') {
-    const verb =
-      result.reconcile?.outcome === 'created' ? 'Created pipeline' : 'Updated pipeline';
+    const verb = result.reconcile?.outcome === 'created' ? 'Created pipeline' : 'Updated pipeline';
     return {
       verb,
       outcome:
@@ -1291,7 +1290,8 @@ export function SessionYamlResultBubble({ result }: { result: ChatYamlSessionRes
   const name = chatPipelineDisplayName(result);
   const deploymentTarget = chatPipelineDeploymentTarget(result);
   const ok = result.status === 'ready';
-  const warning = result.status === 'blocked' || (ok && result.trial?.kind === 'passed-with-warnings');
+  const warning =
+    result.status === 'blocked' || (ok && result.trial?.kind === 'passed-with-warnings');
   const presentation = describeSessionYamlResult(result);
   const verb = presentation.verb;
   const summary =
@@ -1391,7 +1391,8 @@ export function ChatCompletionToastCard({
   const pipelineName = chatPipelineDisplayName(result);
   const deploymentTarget = chatPipelineDeploymentTarget(result);
   const ok = result.status === 'ready';
-  const warning = result.status === 'blocked' || (ok && result.trial?.kind === 'passed-with-warnings');
+  const warning =
+    result.status === 'blocked' || (ok && result.trial?.kind === 'passed-with-warnings');
   const presentation = describeSessionYamlResult(result);
 
   return (

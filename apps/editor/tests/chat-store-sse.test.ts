@@ -257,9 +257,7 @@ test('trial planning prompt forces behavior-first edge-case design without autho
   expect(prompt).toContain('<tagma-internal>');
   expect(prompt).toContain('Targeted trial planning attempt 1/2.');
   expect(prompt).toContain('Host attempt ID: host-plan-attempt-1');
-  expect(prompt).toContain(
-    'Pass attempt_id="host-plan-attempt-1" on every tagma_trial_plan call',
-  );
+  expect(prompt).toContain('Pass attempt_id="host-plan-attempt-1" on every tagma_trial_plan call');
   expect(prompt).toContain('Do not edit YAML');
   expect(prompt).toContain('commit exactly once');
   expect(prompt).toContain(
@@ -1359,6 +1357,7 @@ test('hidden trial-plan continuation stays with its owning conversation', async 
       },
       {
         reason: 'missing',
+        attemptId: 'background_plan_attempt_1',
         relativePlanPath: 'pipeline-a/pipeline.trial-plan.json',
         pipelineHash: 'a'.repeat(40),
         message: 'No trial plan was written.',

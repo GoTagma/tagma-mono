@@ -1239,9 +1239,10 @@ export function prepareTrialHostWitnessInputs(
   };
 }
 
-function requiredEnvWitnessEntries(
-  prepared: PreparedTrialHostWitnessInputs,
-): { available: Array<readonly [string, string]>; missing: string[] } {
+function requiredEnvWitnessEntries(prepared: PreparedTrialHostWitnessInputs): {
+  available: Array<readonly [string, string]>;
+  missing: string[];
+} {
   const available: Array<readonly [string, string]> = [];
   const missing: string[] = [];
   for (const name of prepared.requiredEnvNames) {
@@ -1263,10 +1264,7 @@ export function captureTrialHostWitnessForRoot(
   const workspaceCapture = captureTrialWorkspaceWitnessForRoot(workspaceRoot, previousCache);
   const requiredEnvEntries = requiredEnvWitnessEntries(prepared);
   const requiredBinaries = binaryWitnesses(prepared.binaryNames, prepared.pythonEnv);
-  const requiredDrivers = editorDriverBinaryWitnesses(
-    prepared.driverNames,
-    prepared.pythonEnv,
-  );
+  const requiredDrivers = editorDriverBinaryWitnesses(prepared.driverNames, prepared.pythonEnv);
   const payload: Omit<TrialHostWitness, 'prerequisiteDigest' | 'digest'> = {
     version: TRIAL_HOST_WITNESS_VERSION,
     workspace: workspaceCapture.witness,

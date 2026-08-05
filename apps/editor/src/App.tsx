@@ -1629,7 +1629,11 @@ export function App() {
                 ...finalTarget,
                 sessionId: finishedSessionId,
                 workspaceKey: snapshot.workDir,
-                status: verificationSucceeded ? 'ready' : verificationBlocked ? 'blocked' : 'failed',
+                status: verificationSucceeded
+                  ? 'ready'
+                  : verificationBlocked
+                    ? 'blocked'
+                    : 'failed',
                 compile,
                 ...(trialRun ? { trial: trialRun } : {}),
                 ...(completedRepairAttempts > 0 ? { repairAttempts: completedRepairAttempts } : {}),
@@ -1644,6 +1648,7 @@ export function App() {
                   resultPath: finalEntry.path,
                   compileSuccess: compile.success,
                   ...(trialRun ? { trialRunSuccess: trialRun.success } : {}),
+                  trialVerification: finalized.trialVerification,
                 },
                 completedAt: finishedTurn.endedAt,
               });

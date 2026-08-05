@@ -264,10 +264,7 @@ export interface ChatYamlStageFinalizeInput {
   stageId: string;
   relativePath: string;
   localBranch?: ChatYamlStageLocalBranch | null;
-  forceForkReason?: Extract<
-    ChatYamlStageConflict,
-    'path-moved' | 'compile-failed'
-  >;
+  forceForkReason?: Extract<ChatYamlStageConflict, 'path-moved' | 'compile-failed'>;
   trialId?: string;
   allowInvalid?: boolean;
 }
@@ -1422,7 +1419,11 @@ const AUTHENTICATED_TRIAL_BLOCKER_KINDS = new Set([
 function isBlockedTrialPrerequisiteState(value: unknown): boolean {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const record = value as { state?: unknown; blockers?: unknown };
-  if (record.state !== 'blocked' || !Array.isArray(record.blockers) || record.blockers.length === 0) {
+  if (
+    record.state !== 'blocked' ||
+    !Array.isArray(record.blockers) ||
+    record.blockers.length === 0
+  ) {
     return false;
   }
   return record.blockers.every((blocker) => {

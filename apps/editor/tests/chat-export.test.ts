@@ -447,6 +447,7 @@ describe('chat conversation export', () => {
           resultPath: 'D:/repo/.tagma/facts/facts.yaml',
           compileSuccess: true,
           trialRunSuccess: false,
+          trialVerification: 'prerequisite-unavailable',
         },
         completedAt: 1_000,
       },
@@ -454,7 +455,9 @@ describe('chat conversation export', () => {
 
     expect(exported.content).toContain('Final status: blocked');
     expect(exported.content).toContain('Trial: blocked by prerequisites (blocked; not run)');
+    expect(exported.content).toContain('Trial verified: blocked by prerequisites');
     expect(exported.content).not.toContain('Trial: failed (blocked; not run)');
+    expect(exported.content).not.toContain('Trial verified: failed');
   });
 
   test('derives safe filenames for both export formats', () => {

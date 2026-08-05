@@ -164,15 +164,18 @@
   ranges are 30m-24h, 1h-7d, and 2h-7d respectively. Normalize each outer lifecycle to at least 30
   minutes above the default task budget. Explicit YAML task/pipeline timeouts remain authoritative;
   never reintroduce a hidden Trial-specific task cap.
-- Missing built-in file/directory inputs are data fixtures, not pipeline failures. When every DAG
-  root waits on such an input, do not start an all-skipped real-workspace baseline or authorize YAML
-  repair; expose the exact workspace-contained fixture paths to the planner and continue through
-  isolated cases. Before executing, the host must verify that every unavailable input is supplied
-  by a fixture in a case whose target closure runs that root task. An incomplete fixture plan must
-  request another bounded, host-issued plan continuation as `diagnostic-only`; it must not execute,
-  authorize pipeline repair, or write a placeholder into the live workspace. Never fabricate
-  secrets, binaries, services, credentials, or approvals. Their authenticated absence is a
-  diagnostic-only `requirements-unavailable` prerequisite state.
+- Model Trial prerequisite readiness in one host-owned discriminated state:
+  `runnable | fixture-backed | blocked`. Missing workspace-contained built-in file/directory root
+  inputs are fixture-backed data, not pipeline failures. For a mixed DAG, the real-workspace
+  baseline must target only tasks whose dependency closure excludes every unavailable input; test
+  the fixture-dependent branches in isolated cases. When every branch depends on unavailable data,
+  skip the real-workspace baseline instead of starting an all-skipped run. Expose the exact fixture
+  paths to the planner, and require every unavailable input in a case whose target closure runs its
+  root task. Validate this pure plan/readiness phase before reserving a run session or capturing a
+  host witness. An incomplete fixture plan requests another bounded, host-issued plan continuation
+  as `diagnostic-only`; it must not execute, authorize pipeline repair, or write a placeholder into
+  the live workspace. Never fabricate secrets, binaries, services, credentials, or approvals.
+  Their authenticated absence is a structured, diagnostic-only `blocked` prerequisite state.
 - Desktop sidecar builds must embed the Trial witness worker with the compiled executable and,
   for native host targets, smoke-run the final executable through a real worker capture before
   accepting the build. Source-text or bundle-presence checks alone do not prove Worker loading.
@@ -200,12 +203,20 @@
   coverage and environment, harness, credential, external-service, manual-approval, timeout,
   witness, or unsupported-observation failures remain `diagnostic-only` and must not be repaired by
   weakening or redirecting the pipeline. A signed, current-YAML/current-host
-  blocked prerequisite state means Trial never executed: publish the compile-valid pipeline
-  in place with a distinct blocked/amber status and an open-pipeline action, never label it failed
-  and never create a numbered copy solely for that state. Missing, stale, unsigned, tampered, or
-  semantically inconsistent Trial evidence still fails closed. Actual compile or executed-Trial
-  failures, live/local/path conflicts, and destination collisions retain numbered-copy behavior,
-  including for newly staged pipelines.
+  blocked prerequisite state means Trial could not establish executable behavior because a real
+  prerequisite was unavailable. It may be discovered before execution (`ran: false`) or after safe
+  branches began, such as a manual approval gate (`ran: true`); an independent executable failure
+  must still take precedence over the blocker. Publish the compile-valid pipeline in place with a
+  distinct blocked/amber status and an open-pipeline action, never label it failed and never create
+  a numbered copy solely for that state. The renderer may report only renderer-owned path-move or
+  compile facts to finalize; it must not send `forceFork`, author `trial-run-failed`, or interpret
+  raw Trial failure as publication authority. The server derives Trial conflicts exclusively from
+  the signed current-YAML/current-host cache. Persist that authoritative `trialVerification`
+  disposition in the session reconciliation summary and preserve it in exports and the next-turn
+  agent context, so `prerequisite-unavailable` never degrades back to a failure label. Missing,
+  stale, unsigned, tampered, or semantically inconsistent Trial evidence still fails closed.
+  Actual compile or executed-Trial failures, live/local/path conflicts, and destination collisions
+  retain numbered-copy behavior, including for newly staged pipelines.
 - Recompile or rerun Trial after a hidden repair only when the staged YAML, layout, requirements,
   or transient trial-plan hash changed. A report-only/external-boundary response must reuse the
   prior failed evidence and end that repair chain instead of consuming another attempt.

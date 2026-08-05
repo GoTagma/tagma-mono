@@ -69,10 +69,7 @@ describe('chat pipeline Trial readiness', () => {
   test('models unavailable local data as fixture-backed without suppressing runnable roots', () => {
     const workDir = mkdtempSync(join(tmpdir(), 'tagma-trial-readiness-'));
     try {
-      const readiness = resolveChatPipelineDataReadiness(
-        pipelineWithMissingInput(),
-        workDir,
-      );
+      const readiness = resolveChatPipelineDataReadiness(pipelineWithMissingInput(), workDir);
 
       expect(readiness).toEqual({
         state: 'fixture-backed',

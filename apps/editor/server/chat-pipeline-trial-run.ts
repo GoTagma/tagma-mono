@@ -690,9 +690,7 @@ function resultForPlanRequest(
     planRequest: {
       ...request,
       attemptId,
-      ...(prerequisiteState
-        ? { unavailableBaselineInputs: prerequisiteState.inputs }
-        : {}),
+      ...(prerequisiteState ? { unavailableBaselineInputs: prerequisiteState.inputs } : {}),
     },
     cases: [],
   };
@@ -1977,9 +1975,7 @@ async function executeTrial(
           : {}),
       ran: true,
       runId: baselineSkipped ? (cases.flatMap((item) => item.runIds)[0] ?? null) : runId,
-      ...(dataReadiness.state === 'fixture-backed'
-        ? { prerequisiteState: dataReadiness }
-        : {}),
+      ...(dataReadiness.state === 'fixture-backed' ? { prerequisiteState: dataReadiness } : {}),
       verificationMode: baselineSkipped
         ? 'isolated-fixtures-only'
         : 'real-baseline-and-isolated-cases',
@@ -2004,8 +2000,7 @@ async function executeTrial(
       (task) => !['success', 'skipped', 'blocked'].includes(task.status),
     );
     const hasUnrelatedCaseFailure = cases.some(
-      (testCase) =>
-        !testCase.success && !testCase.tasks.some((task) => task.status === 'blocked'),
+      (testCase) => !testCase.success && !testCase.tasks.some((task) => task.status === 'blocked'),
     );
     if (
       manualApprovalBlockers.size > 0 &&

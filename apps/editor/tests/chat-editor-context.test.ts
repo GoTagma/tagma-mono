@@ -224,6 +224,8 @@ describe('chat editor context', () => {
         localBranchPersisted: true,
         resultPath: 'C:/repo/.tagma/build-<copy&1>/build-<copy&1>.yaml',
         compileSuccess: false,
+        trialRunSuccess: false,
+        trialVerification: 'prerequisite-unavailable',
       },
     });
 
@@ -236,6 +238,8 @@ describe('chat editor context', () => {
       '<result-path>C:/repo/.tagma/build-&lt;copy&amp;1&gt;/build-&lt;copy&amp;1&gt;.yaml</result-path>',
     );
     expect(context).toContain('<compile-success>false</compile-success>');
+    expect(context).toContain('<trial-run-success>false</trial-run-success>');
+    expect(context).toContain('<trial-verification>prerequisite-unavailable</trial-verification>');
     expect(context).toContain('</previous-chat-yaml-reconcile>');
   });
 

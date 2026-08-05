@@ -212,11 +212,13 @@ function renderPipelineVerification(
   if (trial) {
     const runState = trial.ran ? 'ran' : 'not run';
     const trialOutcome =
-      trial.kind === 'passed-with-warnings'
-        ? 'passed with warnings'
-        : trial.success
-          ? 'passed'
-          : 'failed';
+      trial.kind === 'blocked'
+        ? 'blocked by prerequisites'
+        : trial.kind === 'passed-with-warnings'
+          ? 'passed with warnings'
+          : trial.success
+            ? 'passed'
+            : 'failed';
     lines.push(
       exportBullet(
         markdown,
@@ -261,10 +263,7 @@ function renderPipelineVerification(
         markdown,
         `Compile verified: ${result.reconcile.compileSuccess ? 'passed' : 'failed'}`,
       ),
-      exportNestedBullet(
-        markdown,
-        `Trial verified: ${formatOptionalPass(result.reconcile.trialRunSuccess)}`,
-      ),
+      exportNestedBullet(markdown, `Trial verified: ${formatTrialVerification(result.reconcile)}`),
       exportNestedBullet(
         markdown,
         `Local branch persisted: ${result.reconcile.localBranchPersisted ? 'yes' : 'no'}`,
@@ -390,6 +389,23 @@ function formatCaseId(id: string, markdown: boolean): string {
 function formatOptionalPass(value: boolean | undefined): string {
   if (value === undefined) return 'unavailable';
   return value ? 'passed' : 'failed';
+}
+
+function formatTrialVerification(
+  reconcile: NonNullable<ChatYamlSessionResult['reconcile']>,
+): string {
+  switch (reconcile.trialVerification) {
+    case 'verified':
+      return 'passed';
+    case 'prerequisite-unavailable':
+      return 'blocked by prerequisites';
+    case 'not-required':
+      return 'not required';
+    case 'not-verified':
+      return 'failed';
+    default:
+      return formatOptionalPass(reconcile.trialRunSuccess);
+  }
 }
 
 function formatRedactedList(values: readonly string[], emptyValue: string): string {

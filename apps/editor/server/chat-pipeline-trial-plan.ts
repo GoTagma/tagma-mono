@@ -244,8 +244,7 @@ export function readChatPipelineTrialPlanToolTelemetry(
     raw.attemptIds.length !== toolAttemptCount ||
     new Set(raw.attemptIds).size !== raw.attemptIds.length ||
     !raw.attemptIds.every(
-      (attemptId) =>
-        typeof attemptId === 'string' && TRIAL_PLAN_HOST_ATTEMPT_ID_RE.test(attemptId),
+      (attemptId) => typeof attemptId === 'string' && TRIAL_PLAN_HOST_ATTEMPT_ID_RE.test(attemptId),
     )
   ) {
     throw new Error('Trial plan host attempt telemetry is invalid.');
