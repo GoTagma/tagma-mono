@@ -781,7 +781,9 @@ function ChatHeader() {
       </button>
       <button
         type="button"
-        onClick={() => newSession()}
+        onClick={() => {
+          void newSession();
+        }}
         disabled={navigationBlocked}
         title="New conversation"
         className="shrink-0 p-1 text-tagma-muted hover:text-tagma-text disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-tagma-muted transition-colors"

@@ -1490,9 +1490,16 @@ export function App() {
                   changed: localRevisionChanged || editorState.isDirty || editorState.layoutDirty,
                 }
               : null;
+          const trialPrerequisiteBlocked =
+            trialRun?.success === false &&
+            trialRun.kind === 'preflight-failed' &&
+            trialRun.ran === false &&
+            trialRun.repairAuthorization === 'diagnostic-only' &&
+            trialRun.preflightBlocker === 'requirements-unavailable';
+          const trialFailedForFork = !!trialRun && !trialRun.success && !trialPrerequisiteBlocked;
           const forceForkReason = !compile.success
             ? ('compile-failed' as const)
-            : trialRun && !trialRun.success
+            : trialFailedForFork
               ? ('trial-run-failed' as const)
               : pathMoved
                 ? ('path-moved' as const)
@@ -1506,7 +1513,7 @@ export function App() {
                   relativePath: stagedTarget.relativePath,
                   localBranch,
                   forceFork:
-                    pathMoved || !compile.success || (trialRun ? !trialRun.success : false),
+                    pathMoved || !compile.success || trialFailedForFork,
                   ...(forceForkReason ? { forceForkReason } : {}),
                   trialId: finishedTurn.id,
                   allowInvalid: !compile.success,
@@ -1553,11 +1560,12 @@ export function App() {
             name: finalEntry.name,
             pipelineName: finalEntry.pipelineName,
           };
-          const verificationSucceeded = chatPipelineVerificationSucceeded({
-            compileSuccess: compile.success,
-            trialRunEnabled,
-            trialRunSuccess: trialRun?.success,
-          });
+          const verificationSucceeded =
+            compile.success &&
+            (finalized.trialVerification === 'verified' ||
+              finalized.trialVerification === 'not-required');
+          const verificationBlocked =
+            compile.success && finalized.trialVerification === 'prerequisite-unavailable';
           const planningAccumulator = trialPlanningTelemetryRef.current.get(attemptKey);
           const planningTelemetry = planningAccumulator
             ? snapshotChatTrialPlanningTelemetry(planningAccumulator, Date.now())
@@ -1568,7 +1576,7 @@ export function App() {
             trialRunEnabled,
             trialRun,
           });
-          if (verificationFailureDiagnostic) {
+          if (verificationFailureDiagnostic && !verificationBlocked) {
             console.warn(
               '[chat] staged pipeline verification failed',
               verificationFailureDiagnostic,
@@ -1632,7 +1640,7 @@ export function App() {
                 ...finalTarget,
                 sessionId: finishedSessionId,
                 workspaceKey: snapshot.workDir,
-                status: verificationSucceeded ? 'ready' : 'failed',
+                status: verificationSucceeded ? 'ready' : verificationBlocked ? 'blocked' : 'failed',
                 compile,
                 ...(trialRun ? { trial: trialRun } : {}),
                 ...(completedRepairAttempts > 0 ? { repairAttempts: completedRepairAttempts } : {}),

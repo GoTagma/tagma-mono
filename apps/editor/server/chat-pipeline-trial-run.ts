@@ -11,7 +11,7 @@ import {
   watch,
   type FSWatcher,
 } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 
 import {
   createTagma,
@@ -164,10 +164,22 @@ export interface ChatPipelineTrialRunResult {
   omittedTaskCount: number;
   tasks: ChatPipelineTrialTaskResult[];
   repairAuthorization?: 'pipeline-change-allowed' | 'diagnostic-only';
+  preflightBlocker?: 'requirements-unavailable';
+  verificationMode?: 'real-baseline-and-isolated-cases' | 'isolated-fixtures-only';
   planTelemetry?: ChatPipelineTrialPlanToolTelemetry;
-  planRequest?: ChatPipelineTrialPlanRequest;
+  planRequest?: ChatPipelineTrialPlanRequest & {
+    attemptId: string;
+    unavailableBaselineInputs?: ChatPipelineTrialUnavailableBaselineInput[];
+  };
   plan?: ChatPipelineTrialPlanSummary;
   cases: ChatPipelineTrialCaseResult[];
+}
+
+export interface ChatPipelineTrialUnavailableBaselineInput {
+  taskId: string;
+  type: 'file' | 'directory';
+  path: string;
+  fixturePath: string;
 }
 
 export interface ChatPipelineTrialRunInput {
@@ -528,11 +540,13 @@ function resultForSetupFailure(
   >,
   message: string,
   startedAt: number,
+  metadata: Pick<ChatPipelineTrialRunResult, 'preflightBlocker'> = {},
 ): ChatPipelineTrialRunResult {
   return {
     version: TRIAL_CACHE_VERSION,
     success: false,
     kind,
+    ...metadata,
     repairAuthorization: 'diagnostic-only',
     ran: false,
     runId: null,
@@ -644,6 +658,8 @@ function resultForPlanRequest(
   request: ChatPipelineTrialPlanRequest,
   planTelemetry: ChatPipelineTrialPlanToolTelemetry,
   startedAt: number,
+  attemptId: string,
+  unavailableBaselineInputs?: ChatPipelineTrialUnavailableBaselineInput[],
 ): ChatPipelineTrialRunResult {
   return {
     version: TRIAL_CACHE_VERSION,
@@ -657,7 +673,13 @@ function resultForPlanRequest(
     omittedTaskCount: 0,
     tasks: [],
     planTelemetry,
-    planRequest: request,
+    planRequest: {
+      ...request,
+      attemptId,
+      ...(unavailableBaselineInputs && unavailableBaselineInputs.length > 0
+        ? { unavailableBaselineInputs }
+        : {}),
+    },
     cases: [],
   };
 }
@@ -1477,19 +1499,20 @@ function buildPlannedTrialSummary(
 function unavailableTrialBaselineInputs(
   pipelineConfig: PipelineConfig,
   workDir: string,
-): string[] | null {
+): ChatPipelineTrialUnavailableBaselineInput[] | null {
   const roots = [...buildDag(pipelineConfig).nodes.values()].filter(
     (node) => node.dependsOn.length === 0,
   );
   if (roots.length === 0) return null;
 
-  const unavailable: string[] = [];
+  const unavailable: ChatPipelineTrialUnavailableBaselineInput[] = [];
   for (const { track, task } of roots) {
     const trigger = task.trigger;
     if (trigger?.type !== 'file' && trigger?.type !== 'directory') return null;
     if (typeof trigger.path !== 'string' || trigger.path.trim().length === 0) return null;
     const taskWorkDir = resolve(workDir, task.cwd ?? track.cwd ?? '.');
     const inputPath = resolve(taskWorkDir, trigger.path);
+    if (!isPathWithin(inputPath, workDir)) return null;
     let ready = false;
     try {
       const stat = lstatSync(inputPath);
@@ -1498,13 +1521,23 @@ function unavailableTrialBaselineInputs(
       ready = false;
     }
     if (ready) return null;
-    unavailable.push(`${track.id}.${task.id} (${trigger.type}: ${trigger.path})`);
+    unavailable.push({
+      taskId: `${track.id}.${task.id}`,
+      type: trigger.type,
+      path: trigger.path,
+      fixturePath: relative(workDir, inputPath).replace(/\\/g, '/'),
+    });
   }
   return unavailable;
 }
 
-function unavailableTrialBaselineMessage(unavailableInputs: readonly string[]): string {
-  return `Trial baseline has no runnable baseline tasks: every DAG root is waiting for an unavailable file or directory input. Missing inputs: ${unavailableInputs.join(', ')}. Provide the input and run Trial again; waiting consumed no execution budget.`;
+function unavailableTrialBaselineMessage(
+  unavailableInputs: readonly ChatPipelineTrialUnavailableBaselineInput[],
+): string {
+  const details = unavailableInputs.map(
+    (input) => `${input.taskId} (${input.type}: ${input.path})`,
+  );
+  return `Trial baseline has no runnable baseline tasks: every DAG root is waiting for an unavailable file or directory input. Missing inputs: ${details.join(', ')}. Targeted Trial cases must provide isolated fixtures; no placeholder is written to the real workspace.`;
 }
 
 async function loadTrialPipelineConfig(
@@ -1574,13 +1607,7 @@ async function executeTrial(
   }
 
   const unavailableBaselineInputs = unavailableTrialBaselineInputs(pipelineConfig, ws.workDir);
-  if (unavailableBaselineInputs) {
-    return resultForSetupFailure(
-      'preflight-failed',
-      unavailableTrialBaselineMessage(unavailableBaselineInputs),
-      startedAt,
-    );
-  }
+  const baselineSkipped = !!unavailableBaselineInputs;
 
   const pluginError = await ensureTrialPluginsLoaded(ws, pipelineConfig.plugins ?? []);
   if (pluginError) {
@@ -1617,6 +1644,7 @@ async function executeTrial(
       'preflight-failed',
       `Trial run requirements are missing. binaries=${missing.binaries.join(', ') || 'none'}; env=${missing.envs.join(', ') || 'none'}. Preserve legitimate requirements and safety gates; do not invent or remove them merely to make the trial pass.`,
       startedAt,
+      { preflightBlocker: 'requirements-unavailable' },
     );
   }
 
@@ -1650,39 +1678,51 @@ async function executeTrial(
     const secretValues = Object.values({ ...redactionSecretEnv, ...requirementsSecretEnv }).filter(
       Boolean,
     );
-    progress.update({
-      phase: 'running-baseline',
-      detail: 'Running the real-workspace baseline.',
-      caseId: null,
-      caseTitle: null,
-      caseIndex: null,
-      caseCount: null,
-      runNumber: 1,
-      runCount: 1,
-      taskId: null,
-      taskStatus: null,
-    });
-    const baseline = await runTrialPipelineOnce({
-      ws,
-      pipelineConfig,
-      workDir: ws.workDir,
-      logicalYamlPath,
-      approvalGateway,
-      controller,
-      pythonRunEnv,
-      requirementsSecretEnv,
-      secretValues,
-      preflightEnvKeys: preflight.envKeys,
-      taskTimeoutMs: budgets.taskTimeoutMs,
-      runId,
-      onEvent: (event) => updateTrialTaskProgress(progress, event),
-    });
-    const baselineEvidence = trialTaskResults(baseline, null, 1);
+    let baselineSuccess = true;
+    let baselineEvidence = {
+      tasks: [] as ChatPipelineTrialTaskResult[],
+      totalTaskCount: 0,
+      omittedTaskCount: 0,
+      countText: '',
+    };
+    if (!baselineSkipped) {
+      progress.update({
+        phase: 'running-baseline',
+        detail: 'Running the real-workspace baseline.',
+        caseId: null,
+        caseTitle: null,
+        caseIndex: null,
+        caseCount: null,
+        runNumber: 1,
+        runCount: 1,
+        taskId: null,
+        taskStatus: null,
+      });
+      const baseline = await runTrialPipelineOnce({
+        ws,
+        pipelineConfig,
+        workDir: ws.workDir,
+        logicalYamlPath,
+        approvalGateway,
+        controller,
+        pythonRunEnv,
+        requirementsSecretEnv,
+        secretValues,
+        preflightEnvKeys: preflight.envKeys,
+        taskTimeoutMs: budgets.taskTimeoutMs,
+        runId,
+        onEvent: (event) => updateTrialTaskProgress(progress, event),
+      });
+      baselineSuccess = baseline.success;
+      baselineEvidence = trialTaskResults(baseline, null, 1);
+    }
     const cases: ChatPipelineTrialCaseResult[] = [];
     let totalTaskCount = baselineEvidence.totalTaskCount;
     progress.update({
       phase: 'sealing-baseline',
-      detail: 'Sealing the real workspace after the baseline.',
+      detail: baselineSkipped
+        ? 'Sealing the real workspace before isolated fixture cases.'
+        : 'Sealing the real workspace after the baseline.',
       caseId: null,
       caseTitle: null,
       caseIndex: null,
@@ -1700,7 +1740,7 @@ async function executeTrial(
     let expectedWorkspaceMutationRevision = baselineMutationState?.revision ?? null;
     let pendingWorkspaceWitnessFailure = baselineWorkspace.digest
       ? null
-      : `Could not seal the real workspace after baseline: ${baselineWorkspace.reason ?? 'unknown witness failure'}.`;
+      : `Could not seal the real workspace ${baselineSkipped ? 'before isolated cases' : 'after baseline'}: ${baselineWorkspace.reason ?? 'unknown witness failure'}.`;
     pendingWorkspaceWitnessFailure ??= mutationMonitorStart.reason
       ? `Could not verify that isolated cases left the real workspace unchanged: ${mutationMonitorStart.reason}`
       : baselineMutationState && !baselineMutationState.healthy
@@ -1830,11 +1870,18 @@ async function executeTrial(
       }
     }
     const success =
-      baseline.success &&
+      baselineSuccess &&
       !abortState.timedOut &&
       cases.length === plan.cases.length &&
       cases.every((item) => item.success);
-    const planWarnings = planWarningDiagnostics(plan);
+    const planWarnings = [
+      ...planWarningDiagnostics(plan),
+      ...(baselineSkipped
+        ? [
+            `The real-workspace baseline was skipped because its data inputs were unavailable. Targeted cases ran with isolated fixtures instead: ${unavailableTrialBaselineMessage(unavailableBaselineInputs!)}`,
+          ]
+        : []),
+    ];
     const allVisibleTasks = [
       ...baselineEvidence.tasks,
       ...cases.flatMap((item) => item.tasks),
@@ -1864,9 +1911,12 @@ async function executeTrial(
           ? { repairAuthorization: 'diagnostic-only' as const }
           : {}),
       ran: true,
-      runId,
+      runId: baselineSkipped ? (cases.flatMap((item) => item.runIds)[0] ?? null) : runId,
+      verificationMode: baselineSkipped
+        ? 'isolated-fixtures-only'
+        : 'real-baseline-and-isolated-cases',
       summary: buildPlannedTrialSummary(
-        baseline.success,
+        baselineSuccess,
         abortState.timedOut,
         budgets.lifecycleTimeoutMs,
         baselineEvidence.tasks,
@@ -1981,20 +2031,16 @@ export async function trialRunChatYamlStage(
         };
       }
       const unavailableBaselineInputs = unavailableTrialBaselineInputs(pipelineConfig, ws.workDir);
-      if (unavailableBaselineInputs) {
-        return {
-          ...resultForSetupFailure(
-            'preflight-failed',
-            unavailableTrialBaselineMessage(unavailableBaselineInputs),
-            startedAt,
-          ),
-          planTelemetry,
-        };
-      }
       if (planTelemetry.toolAttemptCount >= stage.trialPlanMaxAttempts) {
         return resultForPlanAttemptBudgetExhausted(planTelemetry, startedAt);
       }
-      return resultForPlanRequest(planRead.request, planTelemetry, startedAt);
+      return resultForPlanRequest(
+        planRead.request,
+        planTelemetry,
+        startedAt,
+        trialId,
+        unavailableBaselineInputs ?? undefined,
+      );
     }
     const plan = planRead.plan;
     const inputHash = buildChatPipelineTrialInputHash({

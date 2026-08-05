@@ -273,6 +273,7 @@ export interface ChatYamlStageFinalizeResult {
   entry: ChatYamlStageEntry | null;
   conflicts: ChatYamlStageConflict[];
   localBranchPersisted: boolean;
+  trialVerification: 'verified' | 'prerequisite-unavailable' | 'not-verified' | 'not-required';
   compile: ReturnType<typeof runCompileAndWriteLog>;
   revision: number;
   state: ReturnType<typeof getState>;
@@ -1347,6 +1348,10 @@ interface CachedTrialFinalizeRecord {
   result: {
     version: typeof TRIAL_CACHE_VERSION;
     success: boolean;
+    kind: string;
+    ran: boolean;
+    repairAuthorization?: 'pipeline-change-allowed' | 'diagnostic-only';
+    preflightBlocker?: 'requirements-unavailable';
   };
 }
 
@@ -1371,41 +1376,41 @@ function trialFinalizeCachePath(
   return join(paths.rootDir, '.trial-runs', `${digest}.json`);
 }
 
-async function hasSuccessfulVerifiedTrial(
+async function verifiedTrialDisposition(
   ws: WorkspaceState,
   paths: StagePaths,
   stagedPath: string,
   relativePath: string,
   sourcePath: string | null,
   trialId: string | undefined,
-): Promise<boolean> {
-  if (readEditorSettings(ws).opencodeChatTrialRunEnabled === false) return true;
+): Promise<ChatYamlStageFinalizeResult['trialVerification']> {
+  if (readEditorSettings(ws).opencodeChatTrialRunEnabled === false) return 'not-required';
   const normalizedTrialId = normalizeFinalizeTrialId(trialId);
-  if (!normalizedTrialId) return false;
+  if (!normalizedTrialId) return 'not-verified';
   const contentHash = sha1(assertRegularTextFile(stagedPath, 'staged YAML'));
   const planRead = readChatPipelineTrialPlan(stagedPath, relativePath, contentHash);
-  if (planRead.status === 'required') return false;
+  if (planRead.status === 'required') return 'not-verified';
   const stagedTreeHash = hashChatPipelineTrialTree(dirname(stagedPath));
-  if (!stagedTreeHash) return false;
+  if (!stagedTreeHash) return 'not-verified';
   const inputHash = buildChatPipelineTrialInputHash({
     stagedTreeHash,
     planHash: planRead.planHash,
   });
   const cachePath = trialFinalizeCachePath(paths, normalizedTrialId, relativePath, inputHash);
-  if (!existsSync(cachePath)) return false;
+  if (!existsSync(cachePath)) return 'not-verified';
   const prepared = safePrepareTrialHostWitnessInputs(ws, {
     relativePath,
     sourcePath,
     stagedYamlPath: stagedPath,
   });
-  if (!prepared.prepared) return false;
+  if (!prepared.prepared) return 'not-verified';
   const witness = await captureFinalizeHostWitnessWithDeadline(
     ws,
     paths.id,
     normalizedTrialId,
     prepared.prepared,
   );
-  if (!witness.witness) return false;
+  if (!witness.witness) return 'not-verified';
   const verificationHash = buildChatPipelineTrialVerificationHash({
     inputHash,
     hostWitnessDigest: witness.witness.digest,
@@ -1415,17 +1420,27 @@ async function hasSuccessfulVerifiedTrial(
       cachePath,
       stageRecordContext(paths, 'trial-cache', dirname(cachePath)),
     );
-    return (
+    const authenticated =
       cached.version === TRIAL_CACHE_VERSION &&
       cached.inputHash === inputHash &&
       cached.verificationHash === verificationHash &&
       cached.hostWitness?.digest === witness.witness.digest &&
       !!cached.result &&
-      cached.result.version === TRIAL_CACHE_VERSION &&
-      cached.result.success === true
-    );
+      cached.result.version === TRIAL_CACHE_VERSION;
+    if (!authenticated) return 'not-verified';
+    if (cached.result!.success === true) return 'verified';
+    if (
+      cached.result!.success === false &&
+      cached.result!.kind === 'preflight-failed' &&
+      cached.result!.ran === false &&
+      cached.result!.repairAuthorization === 'diagnostic-only' &&
+      cached.result!.preflightBlocker === 'requirements-unavailable'
+    ) {
+      return 'prerequisite-unavailable';
+    }
+    return 'not-verified';
   } catch {
-    return false;
+    return 'not-verified';
   }
 }
 
@@ -1466,6 +1481,7 @@ export async function finalizeChatYamlStage(
       entry: describeRealEntry(ws, sourcePath),
       conflicts: [],
       localBranchPersisted: false,
+      trialVerification: 'not-required',
       compile,
       revision: ws.stateRevision,
       state: getState(ws),
@@ -1475,21 +1491,25 @@ export async function finalizeChatYamlStage(
     return result;
   }
 
-  const trialVerificationSucceeded =
-    !compile.success ||
-    (await hasSuccessfulVerifiedTrial(
-      ws,
-      paths,
-      stagedPath,
-      relativePath,
-      sourcePath,
-      input.trialId,
-    ));
+  const trialVerification = !compile.success
+    ? ('not-verified' as const)
+    : await verifiedTrialDisposition(
+        ws,
+        paths,
+        stagedPath,
+        relativePath,
+        sourcePath,
+        input.trialId,
+      );
+  const trialVerificationAccepted =
+    trialVerification === 'verified' ||
+    trialVerification === 'prerequisite-unavailable' ||
+    trialVerification === 'not-required';
 
   const conflicts: ChatYamlStageConflict[] = [];
   if (input.forceForkReason) conflicts.push(input.forceForkReason);
   if (!compile.success && !conflicts.includes('compile-failed')) conflicts.push('compile-failed');
-  if (!trialVerificationSucceeded && !conflicts.includes('trial-run-failed')) {
+  if (!trialVerificationAccepted && !conflicts.includes('trial-run-failed')) {
     conflicts.push('trial-run-failed');
   }
 
@@ -1557,6 +1577,7 @@ export async function finalizeChatYamlStage(
       entry: describeRealEntry(ws, destinationPath),
       conflicts: [...new Set(conflicts)],
       localBranchPersisted,
+      trialVerification,
       compile,
       revision: state.revision,
       state,

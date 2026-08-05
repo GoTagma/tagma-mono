@@ -1241,14 +1241,18 @@ export function prepareTrialHostWitnessInputs(
 
 function requiredEnvWitnessEntries(
   prepared: PreparedTrialHostWitnessInputs,
-): Array<readonly [string, string]> {
-  return prepared.requiredEnvNames.map((name) => {
+): { available: Array<readonly [string, string]>; missing: string[] } {
+  const available: Array<readonly [string, string]> = [];
+  const missing: string[] = [];
+  for (const name of prepared.requiredEnvNames) {
     const value = resolveExecutionEnvValue(name, prepared.secretEnv, prepared.pythonEnv);
     if (value === null) {
-      throw new Error(`Required environment witness value is unavailable for ${name}.`);
+      missing.push(name);
+      continue;
     }
-    return [name, value] as const;
-  });
+    available.push([name, value] as const);
+  }
+  return { available, missing };
 }
 
 export function captureTrialHostWitnessForRoot(
@@ -1258,23 +1262,29 @@ export function captureTrialHostWitnessForRoot(
 ): { witness: TrialHostWitness; cache: TrialHostWorkspaceManifestCache } {
   const workspaceCapture = captureTrialWorkspaceWitnessForRoot(workspaceRoot, previousCache);
   const requiredEnvEntries = requiredEnvWitnessEntries(prepared);
+  const requiredBinaries = binaryWitnesses(prepared.binaryNames, prepared.pythonEnv);
+  const requiredDrivers = editorDriverBinaryWitnesses(
+    prepared.driverNames,
+    prepared.pythonEnv,
+  );
   const payload: Omit<TrialHostWitness, 'prerequisiteDigest' | 'digest'> = {
     version: TRIAL_HOST_WITNESS_VERSION,
     workspace: workspaceCapture.witness,
-    binaries: [
-      ...binaryWitnesses(prepared.binaryNames, prepared.pythonEnv),
-      ...editorDriverBinaryWitnesses(prepared.driverNames, prepared.pythonEnv),
-    ].sort(compareNames),
+    binaries: [...requiredBinaries.available, ...requiredDrivers.available].sort(compareNames),
+    missingBinaries: [...requiredBinaries.missing, ...requiredDrivers.missing].sort(),
     minimalEnv: minimalEnvWitnessEntries(prepared.secretEnv, prepared.pythonEnv),
-    requiredEnv: hashedValues(requiredEnvEntries),
+    requiredEnv: hashedValues(requiredEnvEntries.available),
+    missingRequiredEnv: [...requiredEnvEntries.missing].sort(),
     secrets: hashedValues(Object.entries(prepared.secretEnv)),
     python: pythonWitness(prepared.pythonEnv),
   };
   const prerequisiteDigest = buildTrialHostPrerequisiteDigest({
     version: payload.version,
     binaries: payload.binaries,
+    missingBinaries: payload.missingBinaries,
     minimalEnv: payload.minimalEnv,
     requiredEnv: payload.requiredEnv,
+    missingRequiredEnv: payload.missingRequiredEnv,
     secrets: payload.secrets,
     python: payload.python,
   });

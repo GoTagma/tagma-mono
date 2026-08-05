@@ -201,6 +201,13 @@ export interface ChatPipelineTrialPlanRequest {
   message: string;
   maxAttempts?: number;
   requiredCoverage: ChatPipelineTrialCoverageDimension[];
+  attemptId?: string;
+  unavailableBaselineInputs?: Array<{
+    taskId: string;
+    type: 'file' | 'directory';
+    path: string;
+    fixturePath: string;
+  }>;
 }
 
 export interface ChatPipelineTrialExpectationResult {
@@ -252,7 +259,7 @@ export interface ChatPipelineTrialPlanSummary {
 }
 
 export interface ChatPipelineTrialRunResult {
-  version: 2 | 3 | 4 | 5 | 6;
+  version: 2 | 3 | 4 | 5 | 6 | 7;
   success: boolean;
   kind: ChatPipelineTrialRunKind;
   ran: boolean;
@@ -263,10 +270,13 @@ export interface ChatPipelineTrialRunResult {
   omittedTaskCount: number;
   tasks: ChatPipelineTrialTaskResult[];
   repairAuthorization?: 'pipeline-change-allowed' | 'diagnostic-only';
+  preflightBlocker?: 'requirements-unavailable';
+  verificationMode?: 'real-baseline-and-isolated-cases' | 'isolated-fixtures-only';
   planTelemetry?: {
-    version: 1;
+    version: 2;
     yamlHash: string;
     relativeYamlPath: string;
+    attemptIds: string[];
     toolAttemptCount: number;
     validationRejectionCount: number;
     repeatedValidationRejectionCount: number;
@@ -336,6 +346,7 @@ export interface ChatYamlStageFinalizeResult {
   entry: ChatYamlStageEntry | null;
   conflicts: ChatYamlStageConflict[];
   localBranchPersisted: boolean;
+  trialVerification: 'verified' | 'prerequisite-unavailable' | 'not-verified' | 'not-required';
   compile: YamlCompileResult;
   revision: number;
   state: ServerState;

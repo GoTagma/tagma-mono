@@ -202,7 +202,7 @@ export type ChatYamlSessionResult = ChatYamlTarget & {
   sessionId: string;
   /** Workspace owning this result. Optional so older in-memory/persisted shapes stay readable. */
   workspaceKey?: string;
-  status: 'ready' | 'failed';
+  status: 'ready' | 'blocked' | 'failed';
   compile: Pick<YamlCompileResult, 'success' | 'summary' | 'validation'>;
   trial?: ChatPipelineTrialRunResult;
   /** Hidden compile/trial repair continuations completed before this final result. */
@@ -959,9 +959,15 @@ export function buildChatYamlTrialPlanPrompt(
   attempt: number,
   maxAttempts: number,
 ): string {
+  const hostAttemptId = request.attemptId?.trim();
+  if (!hostAttemptId || !/^[A-Za-z0-9_-]{1,128}$/.test(hostAttemptId)) {
+    throw new Error('Trial planning requires a valid host-issued attempt ID.');
+  }
+  const unavailableBaselineInputs = request.unavailableBaselineInputs ?? [];
   return [
     '<tagma-internal>',
     `Targeted trial planning attempt ${attempt}/${maxAttempts}.`,
+    `Host attempt ID: ${hostAttemptId}`,
     `Target YAML: ${target.path}`,
     `Plan path: ${request.relativePlanPath}`,
     `Current YAML hash: ${request.pipelineHash}`,
@@ -969,11 +975,21 @@ export function buildChatYamlTrialPlanPrompt(
     '',
     'This is the planning phase of the same user-authorized logical turn. Read the final YAML, its manifest, and the original user intent. Do not edit YAML, layout, requirements, helpers, or compile.log in this continuation.',
     'Use bounded tagma_trial_plan calls in order: begin, one upsert-case per case, set-coverage, set-findings, then commit exactly once. Begin resumes a matching path-and-hash draft by default; reset true rebuilds. Never send the whole plan or multiple cases in one call. Pass the exact staged Target YAML path.',
+    `Pass attempt_id="${hostAttemptId}" on every tagma_trial_plan call in this physical turn. Never invent, reuse, or change an attempt ID.`,
     'begin requires both summary (a non-empty string) and goals; goals must be a non-empty string array, even when resuming. Every call requires operation and exact pipeline_path.',
     'Never copy YAML or plan files between staging and live .tagma. Only commit consumes the formal attempt; it binds the plan to the current YAML hash and validates the complete plan before writing.',
     'Only begin, upsert-case, set-coverage, or set-findings errors are pre-commit errors. Correct and retry only that failed bounded operation before commit, never with filesystem copies.',
     'After commit returns success or an error, do not call tagma_trial_plan again in this physical turn. Report the exact result and stop. The host schedules any remaining attempt.',
     'Create 1-8 small isolated cases with concrete fixtures and host-checkable expectations. Prefer the smallest targetTaskIds closure that exercises the behavior.',
+    ...(unavailableBaselineInputs.length > 0
+      ? [
+          'The real workspace is missing the following data inputs. Supply representative content only as isolated case fixtures; never create placeholder files in the real workspace:',
+          ...unavailableBaselineInputs.map(
+            (input) =>
+              `- ${input.taskId}: ${input.type} ${input.path} (fixture path: ${input.fixturePath})`,
+          ),
+        ]
+      : []),
     'Fixture and expectation paths are relative to the isolated case project root and may target only case fixtures or outputs; never assert staged YAML or its companion artifacts (.compile.log, .layout.json, .manifest.json, .requirements.md, or .trial-plan.json). Those host-private files live under the case .tagma tree.',
     'Explicitly cover, accept as a stated risk, block, or justify as not applicable: multiple inputs, duplicate input names, multiline content, inter-task output collisions, repeat-run output collisions, concurrent-run output collisions, repeated runs, empty content, and special characters.',
     'Inter-task collision coverage requires at least two target task ids plus distinct output assertions. Repeat-run collision coverage requires at least two runs plus distinct output assertions.',
@@ -5076,12 +5092,23 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const workspaceKey = getOpencodeWorkspaceKey();
     set((prev) => ({ sessionStates: saveCurrentSessionRuntime(prev) }));
     clearTurnWatchdog();
-    await getOpencodeClient(workspaceKey);
-    const title = newDesktopChatSessionTitle();
-    const s = await createDesktopChatSessionWithMetadata(workspaceKey, {
-      title,
-      metadata: buildDesktopChatSessionMetadata(workspaceKey, 'manual-new-session', get().model),
-    });
+    let s: Session;
+    try {
+      await getOpencodeClient(workspaceKey);
+      const title = newDesktopChatSessionTitle();
+      s = await createDesktopChatSessionWithMetadata(workspaceKey, {
+        title,
+        metadata: buildDesktopChatSessionMetadata(workspaceKey, 'manual-new-session', get().model),
+      });
+    } catch (err) {
+      if (getOpencodeWorkspaceKey() === workspaceKey) {
+        set({
+          sendError: `Couldn't start a new conversation: ${describeError(err)}`,
+          historyOpen: false,
+        });
+      }
+      return;
+    }
     if (getOpencodeWorkspaceKey() !== workspaceKey) return;
     set((prev) => ({
       sessionStates: saveCurrentSessionRuntime(prev),
