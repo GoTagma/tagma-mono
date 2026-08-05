@@ -64,16 +64,19 @@
   snapshots without staging.
 - Start every workspace-backed logical chat turn with an isolated
   `.tagma/.chat-staging/<id>/` branch. Copy each pipeline's YAML, layout, requirements,
-  manifest, and compile log into separate base and agent workspaces; bind OpenCode's prompt
-  directory and all advertised pipeline paths to the agent `.tagma/` root. Live pipeline paths
-  remain read-only source material for the agent.
+  manifest, compile log, and bounded regular-file support tree into separate base and agent
+  workspaces; bind OpenCode's prompt directory and all advertised pipeline paths to the agent
+  `.tagma/` root. Live pipeline paths remain read-only source material for the agent. Reject
+  symbolic links and never stage or publish `*.trial-plan.json` as part of that support tree.
 - For staged OpenCode prompt POSTs, override both the `directory` query and the
   `x-opencode-directory` header with the agent `.tagma` root. The SDK keeps its client-level
   canonical workspace header on POST requests; a query-only override lets that live-directory
   header win and makes delegated sessions edit the real workspace.
-- Capture YAML/layout/requirements hashes from the base copy in server-owned stage metadata.
-  Queued prompts and bounded automatic repairs reuse the same stage, snapshot, and YAML lease;
-  reconciliation runs only from the finished-turn queue.
+- Capture YAML/layout/requirements and support-tree hashes from the base copy in server-owned
+  stage metadata. Supporting-file additions, edits, and deletions participate in the same
+  three-way comparison and transactional publication as the core artifacts. Queued prompts and
+  bounded automatic repairs reuse the same stage, snapshot, and YAML lease; reconciliation runs
+  only from the finished-turn queue.
 - Attaching the compile watcher to a pre-populated chat stage must not compile the copied
   baseline YAML or regenerate timestamped companions. Actual later YAML writes and pipeline
   folders created after watcher startup must still trigger compile, requirements, and manifest

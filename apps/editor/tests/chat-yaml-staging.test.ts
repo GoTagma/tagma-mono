@@ -329,9 +329,7 @@ describe('chat YAML staging', () => {
     expect(readFileSync(join(publishedDir, 'prompts', '01-ingest.md'), 'utf-8')).toBe(
       'ingest prompt\n',
     );
-    expect(readFileSync(join(publishedDir, 'trusted_sources.yaml'), 'utf-8')).toBe(
-      'sources: []\n',
-    );
+    expect(readFileSync(join(publishedDir, 'trusted_sources.yaml'), 'utf-8')).toBe('sources: []\n');
     expect([...readFileSync(join(publishedDir, 'assets', 'policy.bin'))]).toEqual([0, 255, 1]);
     expect(existsSync(result.entry!.path.replace(/\.ya?ml$/i, '.trial-plan.json'))).toBe(false);
     stopWorkspace(ws);
@@ -372,7 +370,11 @@ describe('chat YAML staging', () => {
     writeFileSync(sourcePrompt, 'base policy\n', 'utf-8');
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
-    writeFileSync(join(dirname(staged.stagedPath), 'prompts', 'policy.md'), 'agent policy\n', 'utf-8');
+    writeFileSync(
+      join(dirname(staged.stagedPath), 'prompts', 'policy.md'),
+      'agent policy\n',
+      'utf-8',
+    );
     writeFileSync(sourcePrompt, 'external policy\n', 'utf-8');
 
     const result = await finalizeChatYamlStage(ws, {
