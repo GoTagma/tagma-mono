@@ -607,7 +607,25 @@ describe('chat YAML staging routes', () => {
       entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
     };
     const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
-    writeFileSync(entry.stagedPath, yamlFor('Environment Prerequisite', 'agent'), 'utf-8');
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Environment Prerequisite',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              {
+                id: 'task',
+                command: { argv: [process.execPath, '-e', 'process.exit(0)'] },
+              },
+            ],
+          },
+        ],
+      }),
+      'utf-8',
+    );
     compileStage(getRoute, ws, stage.id, entry.relativePath);
     stopChatCompileWatcher(dirname(dirname(entry.stagedPath)));
     writeFileSync(
