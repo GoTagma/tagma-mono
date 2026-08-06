@@ -169,6 +169,10 @@ describe('renderer diagnostics snapshot', () => {
     });
 
     const chat = snapshot.chat as {
+      messageCount: number;
+      returnedMessageCount: number;
+      omittedMessageCount: number;
+      messageEvidence: Record<string, unknown>;
       sessionCount: number;
       returnedSessionCount: number;
       omittedSessionCount: number;
@@ -179,6 +183,15 @@ describe('renderer diagnostics snapshot', () => {
     expect(chat.sessions[0]?.id).toBe('session-20');
     expect(chat.sessions.at(-1)?.id).toBe('session-119');
     expect(chat).toMatchObject({
+      messageCount: 30,
+      returnedMessageCount: 25,
+      omittedMessageCount: 5,
+      messageEvidence: {
+        layer: 'renderer-diagnostics-message-window',
+        limit: 25,
+        truncated: true,
+        omittedMessageCount: 5,
+      },
       sessionCount: 120,
       returnedSessionCount: 100,
       omittedSessionCount: 20,

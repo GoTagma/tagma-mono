@@ -245,9 +245,10 @@ test('returns the full persisted stdout for a past task', async () => {
       sourceBytes: fullBytes,
       limitBytes: 1024 * 1024,
       readBytes: fullBytes,
+      sourceReturnedBytes: fullBytes,
       returnedBytes: fullBytes,
       truncated: false,
-      partialLeadingLineDropped: false,
+      discardedLeadingLineBytes: 0,
     });
   } finally {
     await close();
@@ -291,9 +292,10 @@ test('reports pipeline log tailing as read-interface truncation', async () => {
       sourceBytes: Buffer.byteLength(big),
       limitBytes: 1024 * 1024,
       readBytes: 1024 * 1024,
+      sourceReturnedBytes: Buffer.byteLength(body.content),
       returnedBytes: Buffer.byteLength(body.content),
       truncated: true,
-      partialLeadingLineDropped: true,
+      discardedLeadingLineBytes: 61,
     });
   } finally {
     await close();
@@ -511,9 +513,10 @@ test('caps oversized output at 1 MB and flags truncation', async () => {
       sourceBytes: Buffer.byteLength(big),
       limitBytes: 1024 * 1024,
       readBytes: 1024 * 1024,
+      sourceReturnedBytes: Buffer.byteLength(body.content),
       returnedBytes: Buffer.byteLength(body.content),
       truncated: true,
-      partialLeadingLineDropped: true,
+      discardedLeadingLineBytes: 61,
     });
   } finally {
     await close();

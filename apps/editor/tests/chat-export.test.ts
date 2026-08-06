@@ -255,7 +255,8 @@ describe('chat conversation export', () => {
           ran: false,
           runId: null,
           summary:
-            'Witness failed with Authorization: Bearer trial-secret ' + 'diagnostic detail '.repeat(300),
+            'Witness failed with Authorization: Bearer trial-secret ' +
+            'diagnostic detail '.repeat(300),
           durationMs: 25,
           totalTaskCount: 12,
           omittedTaskCount: 10,
@@ -434,7 +435,9 @@ describe('chat conversation export', () => {
     expect(exported.content).toContain('...[chat-export truncated ');
     expect(exported.content).not.toContain('...[truncated]');
     expect(exported.content).toContain('Baseline Task Evidence');
-    expect(exported.content).toContain('baseline.failed run 1: failed; exit 17; failure exit_nonzero');
+    expect(exported.content).toContain(
+      'baseline.failed run 1: failed; exit 17; failure exit_nonzero',
+    );
     expect(exported.content).toContain('stderr: actionable failure token=[REDACTED]');
     expect(exported.content).toContain(
       'stderr evidence: source/runtime=truncated; trial-result=not-truncated; produced=9000 bytes; source-returned=4000 bytes; final-returned=4000 bytes',
@@ -444,7 +447,9 @@ describe('chat conversation export', () => {
     expect(exported.content).toContain('`basic-run` — Basic run');
     expect(exported.content).toContain('### Trial Case Results');
     expect(exported.content).toContain('case-execution: failed');
-    expect(exported.content).toContain('Changed paths: generated/changed.txt; omitted path events: 2');
+    expect(exported.content).toContain(
+      'Changed paths: generated/changed.txt; omitted path events: 2',
+    );
     expect(exported.content).toContain(
       'Workspace mutation observation: layer=trial-workspace-mutation-monitor; attribution=writer-unknown; case=basic-run; observed events=5; returned events=3; returned paths=1; omitted events=2',
     );

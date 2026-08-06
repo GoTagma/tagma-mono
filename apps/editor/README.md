@@ -134,6 +134,12 @@ Payloads are bounded, and known credential fields and common token formats are r
 best-effort protection: prompts, messages, tool output, paths, and arbitrary user-authored text can
 still be sensitive. Review diagnostics before sharing them.
 
+Every intentional diagnostics window reports its own layer and source/returned/omitted boundary.
+Renderer session and log snapshots preserve the newest retained entries and expose their counts;
+run-history list, pipeline-log, task-output, and Ask AI context reads likewise identify their
+read-interface limit. Treat those limits as clipping of the read-only response, not evidence that
+the persisted file, runtime stream, or underlying event buffer was truncated.
+
 ## In-app update surfaces
 
 Several features are designed for the desktop wrapper ([tagma-desktop](../electron/README.md)) but also work in dev when the matching env vars are set.

@@ -249,10 +249,7 @@ function renderPipelineVerification(
         markdown,
         `Trial repair authorization: ${trial.repairAuthorization ?? 'unavailable'}`,
       ),
-      exportBullet(
-        markdown,
-        `Trial verification mode: ${trial.verificationMode ?? 'unavailable'}`,
-      ),
+      exportBullet(markdown, `Trial verification mode: ${trial.verificationMode ?? 'unavailable'}`),
     );
   } else {
     lines.push(exportBullet(markdown, 'Trial: unavailable'));

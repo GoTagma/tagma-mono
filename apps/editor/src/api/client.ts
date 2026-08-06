@@ -1742,6 +1742,18 @@ export interface RunSummaryTask {
   sessionId?: string | null;
 }
 
+export interface RunHistoryTextReadEvidence {
+  layer: 'run-history-log-read' | 'run-history-task-output-read';
+  mode: 'full' | 'tail';
+  sourceBytes: number;
+  limitBytes: number;
+  readBytes: number;
+  sourceReturnedBytes: number;
+  returnedBytes: number;
+  truncated: boolean;
+  discardedLeadingLineBytes: number;
+}
+
 /** A single task's persisted console stream, read on demand from history. */
 export interface RunTaskOutput {
   runId: string;
@@ -1752,6 +1764,32 @@ export interface RunTaskOutput {
   size: number;
   /** True when `content` is the last 1 MB of a larger file. */
   truncated: boolean;
+  /** UTF-8 bytes returned in `content` after the read window is normalized. */
+  returnedBytes: number;
+  /** Identifies read-interface clipping separately from the persisted stream. */
+  readEvidence: RunHistoryTextReadEvidence;
+}
+
+export interface RunHistoryLog {
+  runId: string;
+  content: string;
+  size: number;
+  truncated: boolean;
+  returnedBytes: number;
+  readEvidence: RunHistoryTextReadEvidence;
+}
+
+export interface RunHistoryList {
+  runs: RunHistoryEntry[];
+  retainedRunCount: number;
+  returnedRunCount: number;
+  omittedRunCount: number;
+  historyWindow: {
+    layer: 'run-history-list-window';
+    limit: number;
+    truncated: boolean;
+    omittedRunCount: number;
+  };
 }
 
 export interface RunHistoryAskAiContext {
@@ -2475,10 +2513,9 @@ export const api = {
     request<MarketplacePackageDetail>(`/marketplace/package?name=${encodeURIComponent(name)}`),
 
   // ── Run history (F8 / §3.12) ──
-  listRunHistory: () => request<{ runs: RunHistoryEntry[] }>('/run/history'),
+  listRunHistory: () => request<RunHistoryList>('/run/history'),
 
-  getRunLog: (runId: string) =>
-    request<{ runId: string; content: string }>(`/run/history/${encodeURIComponent(runId)}`),
+  getRunLog: (runId: string) => request<RunHistoryLog>(`/run/history/${encodeURIComponent(runId)}`),
 
   getRunSummary: (runId: string) =>
     request<RunSummary>(`/run/history/${encodeURIComponent(runId)}/summary`),

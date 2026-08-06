@@ -101,6 +101,7 @@ export {
 } from './run-session.js';
 
 const START_RESPONSE_GRACE_MS = 75;
+const RUN_HISTORY_TEXT_READ_LIMIT_BYTES = 1024 * 1024;
 
 // ═══ Local helpers ══════════════════════════════════════════════════════
 
@@ -112,6 +113,71 @@ function assertNotSymlink(path: string, label: string): void {
 
 function isSafeTaskOutputId(taskId: string): boolean {
   return taskId.length > 0 && /^[A-Za-z0-9._-]+$/.test(taskId);
+}
+
+type RunHistoryTextReadLayer = 'run-history-log-read' | 'run-history-task-output-read';
+
+function readRunHistoryText(
+  filePath: string,
+  layer: RunHistoryTextReadLayer,
+  limitBytes = RUN_HISTORY_TEXT_READ_LIMIT_BYTES,
+) {
+  const stat = statSync(filePath);
+  if (stat.size <= limitBytes) {
+    const content = readFileSync(filePath, 'utf-8');
+    const returnedBytes = Buffer.byteLength(content, 'utf-8');
+    return {
+      content,
+      size: stat.size,
+      truncated: false,
+      returnedBytes,
+      readEvidence: {
+        layer,
+        mode: 'full' as const,
+        sourceBytes: stat.size,
+        limitBytes,
+        readBytes: stat.size,
+        sourceReturnedBytes: stat.size,
+        returnedBytes,
+        truncated: false,
+        discardedLeadingLineBytes: 0,
+      },
+    };
+  }
+
+  const readBytes = limitBytes;
+  const offset = stat.size - readBytes;
+  const buffer = Buffer.allocUnsafe(readBytes);
+  const fd = openSync(filePath, 'r');
+  let bytesRead = 0;
+  try {
+    bytesRead = readSync(fd, buffer, 0, readBytes, offset);
+  } finally {
+    closeSync(fd);
+  }
+  const sourceWindow = buffer.subarray(0, bytesRead);
+  const newline = sourceWindow.indexOf(0x0a);
+  const discardedLeadingLineBytes = newline === -1 ? 0 : newline + 1;
+  const returnedSource = sourceWindow.subarray(discardedLeadingLineBytes);
+  const content = returnedSource.toString('utf-8');
+  const returnedBytes = Buffer.byteLength(content, 'utf-8');
+  return {
+    content,
+    size: stat.size,
+    truncated: true,
+    returnedBytes,
+    readEvidence: {
+      layer,
+      mode: 'tail' as const,
+      sourceBytes: stat.size,
+      limitBytes,
+      readBytes: bytesRead,
+      sourceReturnedBytes: returnedSource.byteLength,
+      returnedBytes,
+      truncated: true,
+      discardedLeadingLineBytes,
+    },
+  };
 }
 
 function publicPipelineGraphResult(result: PipelineGraphResult): PublicPipelineGraphResult {
@@ -1329,8 +1395,23 @@ export function registerRunRoutes(app: express.Express): void {
         if (existing >= 0) entries[existing] = { ...entries[existing], ...liveEntry };
         else entries.push(liveEntry);
       }
-      entries = entries.sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1)).slice(0, MAX_LOG_RUNS);
-      res.json({ runs: entries });
+      const retainedRunCount = entries.length;
+      const runs = entries
+        .sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1))
+        .slice(0, MAX_LOG_RUNS);
+      const omittedRunCount = Math.max(0, retainedRunCount - runs.length);
+      res.json({
+        runs,
+        retainedRunCount,
+        returnedRunCount: runs.length,
+        omittedRunCount,
+        historyWindow: {
+          layer: 'run-history-list-window',
+          limit: MAX_LOG_RUNS,
+          truncated: omittedRunCount > 0,
+          omittedRunCount,
+        },
+      });
     } catch (err: unknown) {
       res.status(500).json({ error: errorMessage(err) });
     }
@@ -1354,26 +1435,7 @@ export function registerRunRoutes(app: express.Express): void {
       return res.status(404).json({ error: 'log not found' });
     }
     try {
-      const MAX_LOG_BYTES = 1024 * 1024; // 1 MB cap
-      const stat = statSync(logFile);
-      let content: string;
-      if (stat.size <= MAX_LOG_BYTES) {
-        content = readFileSync(logFile, 'utf-8');
-      } else {
-        const readLen = MAX_LOG_BYTES;
-        const offset = stat.size - readLen;
-        const buf = Buffer.allocUnsafe(readLen);
-        const fd = openSync(logFile, 'r');
-        try {
-          readSync(fd, buf, 0, readLen, offset);
-        } finally {
-          closeSync(fd);
-        }
-        const raw = buf.toString('utf-8');
-        const newline = raw.indexOf('\n');
-        content = newline !== -1 ? raw.slice(newline + 1) : raw;
-      }
-      res.json({ runId, content });
+      res.json({ runId, ...readRunHistoryText(logFile, 'run-history-log-read') });
     } catch (err: unknown) {
       res.status(500).json({ error: errorMessage(err) });
     }
@@ -1459,28 +1521,12 @@ export function registerRunRoutes(app: express.Express): void {
     }
     try {
       const MAX_OUTPUT_BYTES = 1024 * 1024; // 1 MB cap — matches pipeline.log
-      const stat = statSync(outFile);
-      let content: string;
-      let truncated = false;
-      if (stat.size <= MAX_OUTPUT_BYTES) {
-        content = readFileSync(outFile, 'utf-8');
-      } else {
-        truncated = true;
-        const readLen = MAX_OUTPUT_BYTES;
-        const offset = stat.size - readLen;
-        const buf = Buffer.allocUnsafe(readLen);
-        const fd = openSync(outFile, 'r');
-        try {
-          readSync(fd, buf, 0, readLen, offset);
-        } finally {
-          closeSync(fd);
-        }
-        const raw = buf.toString('utf-8');
-        // Drop the partial first line so the view starts on a clean boundary.
-        const newline = raw.indexOf('\n');
-        content = newline !== -1 ? raw.slice(newline + 1) : raw;
-      }
-      res.json({ runId, taskId, stream, content, size: stat.size, truncated });
+      res.json({
+        runId,
+        taskId,
+        stream,
+        ...readRunHistoryText(outFile, 'run-history-task-output-read', MAX_OUTPUT_BYTES),
+      });
     } catch (err: unknown) {
       res.status(500).json({ error: errorMessage(err) });
     }

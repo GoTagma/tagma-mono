@@ -329,6 +329,49 @@ test('history lists the active run even before a persisted summary exists', asyn
   }
 });
 
+test('history reports retained, returned, and omitted runs at the list boundary', async () => {
+  for (let index = 0; index < 25; index += 1) {
+    const session = new RunSession(
+      `run_extra_${index}`,
+      {
+        name: `Extra ${index}`,
+        tracks: [{ id: 'main', name: 'Main', tasks: [] }],
+      },
+      null,
+      undefined,
+      index,
+    );
+    session.seedTasks();
+    ws.runSessions.set(session.runId, session);
+  }
+
+  const { port, close } = await startApp(buildApp());
+  try {
+    const res = await getReq(port, '/api/run/history');
+    expect(res.status).toBe(200);
+    const body = JSON.parse(res.body) as {
+      retainedRunCount: number;
+      returnedRunCount: number;
+      omittedRunCount: number;
+      historyWindow: Record<string, unknown>;
+      runs: unknown[];
+    };
+    expect(body.retainedRunCount).toBe(26);
+    expect(body.returnedRunCount).toBe(20);
+    expect(body.omittedRunCount).toBe(6);
+    expect(body.runs).toHaveLength(20);
+    expect(body.historyWindow).toEqual({
+      layer: 'run-history-list-window',
+      limit: 20,
+      truncated: true,
+      omittedRunCount: 6,
+    });
+  } finally {
+    await close();
+    await removeTempDir();
+  }
+});
+
 test('history summary for the active run reflects the live task mirror', async () => {
   ws.layout.trackHeights = { main: 132 };
   const { port, close } = await startApp(buildApp());

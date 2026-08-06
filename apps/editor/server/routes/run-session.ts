@@ -1391,13 +1391,14 @@ function truncateTextSnapshot(text: string, maxBytes: number, mode: TextSnapshot
   const size = Buffer.byteLength(text, 'utf-8');
   if (size <= maxBytes) return text;
   const buf = Buffer.from(text, 'utf-8');
+  const marker = `[run-history-context-read truncated: mode=${mode}; limit=${maxBytes} bytes; source=${size} bytes]`;
   if (mode === 'tail') {
     const raw = buf.subarray(size - maxBytes).toString('utf-8');
     const newline = raw.indexOf('\n');
     const clean = newline !== -1 ? raw.slice(newline + 1) : raw;
-    return `[truncated to last ${maxBytes} bytes of ${size}]\n\n${clean}`;
+    return `${marker}\n\n${clean}`;
   }
-  return `${buf.subarray(0, maxBytes).toString('utf-8')}\n\n[truncated at ${maxBytes} bytes of ${size}]`;
+  return `${buf.subarray(0, maxBytes).toString('utf-8')}\n\n${marker}`;
 }
 
 function readTextSnapshot(
@@ -1416,12 +1417,13 @@ function readTextSnapshot(
     closeSync(fd);
   }
   const raw = buf.toString('utf-8');
+  const marker = `[run-history-context-read truncated: mode=${mode}; limit=${maxBytes} bytes; source=${st.size} bytes]`;
   if (mode === 'tail') {
     const newline = raw.indexOf('\n');
     const clean = newline !== -1 ? raw.slice(newline + 1) : raw;
-    return `[truncated to last ${maxBytes} bytes of ${st.size}]\n\n${clean}`;
+    return `${marker}\n\n${clean}`;
   }
-  return `${raw}\n\n[truncated at ${maxBytes} bytes of ${st.size}]`;
+  return `${raw}\n\n${marker}`;
 }
 
 function readOptionalTextSnapshot(

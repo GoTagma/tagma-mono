@@ -159,6 +159,9 @@
   source-returned, and final-returned byte counts where they are known, and label inline truncation
   markers with the layer. Never diagnose or change runtime output handling merely because a
   read-only diagnostic response or repair prompt was clipped.
+- Compilation-repair evidence is a separate prompt boundary. Its inline character and UTF-8 byte
+  markers must identify `compile-repair-prompt`, remain inside the declared bound, and never fall
+  back to an unqualified `[truncated]` marker.
 - A Trial assertion file that exceeds the host reader's byte limit is `diagnostic-only`. Return the
   `trial-assertion-reader` limit and source/returned byte counts; do not treat an unread remainder as
   a failed content assertion or grant pipeline repair authority.
@@ -395,6 +398,14 @@
   `chat-export`, include the omitted character count, and preserve Trial planned/returned/not-run
   cases, task status totals/omissions, repair scopes, selected stderr/stdout, stream truncation
   provenance, assertion-reader limits, and writer-unknown workspace-mutation observations.
+- Bounded run-history reads must identify `run-history-log-read`,
+  `run-history-task-output-read`, `run-history-list-window`, or `run-history-context-read` as
+  appropriate. Return retained/returned/omitted run counts and source/read/source-returned/final
+  byte counts; report bytes discarded to align the returned tail. These limits describe the
+  read-only response or assembled AI context, never truncation of the persisted log or stream.
+- Renderer diagnostics must return source, returned, and omitted counts for intentionally bounded
+  session/message/log windows. Keep the sanitizer array bound at least as large as those explicit
+  windows so a second generic sanitation pass cannot discard the newest retained evidence.
 - Keep renderer-report ingestion, diagnostics log-ring retention, response pagination, active-run
   event windows, desktop-log tail reads, and OpenCode source-query limits as separate evidence
   layers. Return read errors and source boundaries explicitly; `null`, an empty array, or a short

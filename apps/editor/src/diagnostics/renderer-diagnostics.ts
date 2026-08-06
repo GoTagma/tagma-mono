@@ -1,6 +1,8 @@
 import { sanitizeDiagnosticValue, type DiagnosticsConnection } from '../../shared/diagnostics.js';
 
 const MAX_CURRENT_CHAT_MESSAGES = 25;
+const MAX_CHAT_SESSIONS = 100;
+const MAX_RUN_LOGS = 250;
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -66,6 +68,12 @@ export function buildRendererDiagnosticsSnapshot(input: RendererDiagnosticsSnaps
     ? chat.messages.slice(-MAX_CURRENT_CHAT_MESSAGES)
     : [];
   const messageCount = Array.isArray(chat.messages) ? chat.messages.length : 0;
+  const sourceSessions = Array.isArray(chat.sessions) ? chat.sessions : [];
+  const sessions = sourceSessions.slice(-MAX_CHAT_SESSIONS);
+  const sourceLogs = Array.isArray(run.logs) ? run.logs : [];
+  const logs = sourceLogs.slice(-MAX_RUN_LOGS);
+  const sourcePipelineLogs = Array.isArray(run.pipelineLogs) ? run.pipelineLogs : [];
+  const pipelineLogs = sourcePipelineLogs.slice(-MAX_RUN_LOGS);
   const currentSessionId = typeof chat.currentSessionId === 'string' ? chat.currentSessionId : null;
   const sessionYamlResults = record(chat.sessionYamlResults);
   const sessionYamlResult = currentSessionId
@@ -87,11 +95,27 @@ export function buildRendererDiagnosticsSnapshot(input: RendererDiagnosticsSnaps
         model: chat.model ?? null,
         reasoningEffort: chat.reasoningEffort ?? null,
         currentSessionId: chat.currentSessionId ?? null,
-        sessions: Array.isArray(chat.sessions) ? chat.sessions.slice(-100) : [],
+        sessions,
+        sessionCount: sourceSessions.length,
+        returnedSessionCount: sessions.length,
+        omittedSessionCount: Math.max(0, sourceSessions.length - sessions.length),
+        sessionEvidence: {
+          layer: 'renderer-diagnostics-session-window',
+          limit: MAX_CHAT_SESSIONS,
+          truncated: sourceSessions.length > sessions.length,
+          omittedSessionCount: Math.max(0, sourceSessions.length - sessions.length),
+        },
         backgroundSessions: backgroundSessionSummaries(chat),
         messages,
         messageCount,
+        returnedMessageCount: messages.length,
         omittedMessageCount: Math.max(0, messageCount - messages.length),
+        messageEvidence: {
+          layer: 'renderer-diagnostics-message-window',
+          limit: MAX_CURRENT_CHAT_MESSAGES,
+          truncated: messageCount > messages.length,
+          omittedMessageCount: Math.max(0, messageCount - messages.length),
+        },
         sending: chat.sending === true,
         abortRecovery: chat.abortRecovery ?? null,
         reconciling: chat.reconciling === true,
@@ -147,8 +171,26 @@ export function buildRendererDiagnosticsSnapshot(input: RendererDiagnosticsSnaps
         lastEventSeq: run.lastEventSeq ?? null,
         taskCount: mapSize(run.tasks),
         pendingApprovalCount: mapSize(run.pendingApprovals),
-        logs: Array.isArray(run.logs) ? run.logs.slice(-250) : [],
-        pipelineLogs: Array.isArray(run.pipelineLogs) ? run.pipelineLogs.slice(-250) : [],
+        logs,
+        logCount: sourceLogs.length,
+        returnedLogCount: logs.length,
+        omittedLogCount: Math.max(0, sourceLogs.length - logs.length),
+        logEvidence: {
+          layer: 'renderer-diagnostics-log-window',
+          limit: MAX_RUN_LOGS,
+          truncated: sourceLogs.length > logs.length,
+          omittedLogCount: Math.max(0, sourceLogs.length - logs.length),
+        },
+        pipelineLogs,
+        pipelineLogCount: sourcePipelineLogs.length,
+        returnedPipelineLogCount: pipelineLogs.length,
+        omittedPipelineLogCount: Math.max(0, sourcePipelineLogs.length - pipelineLogs.length),
+        pipelineLogEvidence: {
+          layer: 'renderer-diagnostics-pipeline-log-window',
+          limit: MAX_RUN_LOGS,
+          truncated: sourcePipelineLogs.length > pipelineLogs.length,
+          omittedLogCount: Math.max(0, sourcePipelineLogs.length - pipelineLogs.length),
+        },
         requirementsMissing: run.requirementsMissing ?? null,
         yamlPath: run.yamlPath ?? null,
         replayFromRunId: run.replayFromRunId ?? null,
@@ -157,7 +199,7 @@ export function buildRendererDiagnosticsSnapshot(input: RendererDiagnosticsSnaps
     },
     {
       maxDepth: 10,
-      maxArrayItems: 100,
+      maxArrayItems: MAX_RUN_LOGS,
       maxObjectKeys: 150,
       maxStringChars: 16_384,
     },
