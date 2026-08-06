@@ -149,6 +149,7 @@ export interface ChatPipelineTrialStreamTruncation {
   source: 'not-truncated' | 'truncated' | 'unknown';
   trialResult: boolean;
   producedBytes: number | null;
+  sourceReturnedBytes: number;
   returnedBytes: number;
 }
 
@@ -542,7 +543,7 @@ function boundedTrialText(value: string): string {
   const redacted = redactTrialText(value);
   const bytes = new TextEncoder().encode(redacted);
   if (bytes.length <= MAX_TRIAL_STREAM_BYTES) return redacted;
-  const marker = '\n[truncated]\n';
+  const marker = '\n[trial-result-field truncated]\n';
   const markerBytes = new TextEncoder().encode(marker);
   const budget = Math.max(0, MAX_TRIAL_STREAM_BYTES - markerBytes.length);
   const head = Math.floor(budget / 3);
@@ -551,12 +552,14 @@ function boundedTrialText(value: string): string {
   return decoder.decode(bytes.slice(0, head)) + marker + decoder.decode(bytes.slice(-tail));
 }
 
-function boundedTrialStream(
+export function buildChatPipelineTrialStreamEvidence(
   value: string,
   producedBytes: number | undefined,
 ): { text: string; truncation: ChatPipelineTrialStreamTruncation } {
+  const sourceReturnedBytes = new TextEncoder().encode(value).length;
   const source =
-    /^\[\d+ bytes truncated from head;/u.test(value)
+    /^\[\d+ bytes truncated from head;/u.test(value) ||
+    (producedBytes !== undefined && producedBytes > sourceReturnedBytes)
       ? 'truncated'
       : producedBytes === undefined
         ? 'unknown'
@@ -581,6 +584,7 @@ function boundedTrialStream(
       source,
       trialResult,
       producedBytes: producedBytes ?? null,
+      sourceReturnedBytes,
       returnedBytes: new TextEncoder().encode(text).length,
     },
   };
@@ -1188,11 +1192,12 @@ function omittedTrialTaskStatusCounts(
   visible: readonly ChatPipelineTrialTaskResult[],
 ): Record<string, number> {
   const visibleCounts = countTrialTaskStatuses(visible);
-  return Object.fromEntries(
-    Object.entries(total)
-      .map(([status, count]) => [status, Math.max(0, count - (visibleCounts[status] ?? 0))])
-      .filter(([, count]) => count > 0),
-  );
+  const omitted: Record<string, number> = {};
+  for (const [status, count] of Object.entries(total)) {
+    const omittedCount = Math.max(0, count - (visibleCounts[status] ?? 0));
+    if (omittedCount > 0) omitted[status] = omittedCount;
+  }
+  return omitted;
 }
 
 function trialTaskEvidencePriority(
@@ -1267,8 +1272,14 @@ function trialTaskResults(
   countText: string;
 } {
   const allTasks = [...result.states.entries()].map(([taskId, state]) => {
-    const stdout = boundedTrialStream(state.result?.stdout ?? '', state.result?.stdoutBytes);
-    const stderr = boundedTrialStream(state.result?.stderr ?? '', state.result?.stderrBytes);
+    const stdout = buildChatPipelineTrialStreamEvidence(
+      state.result?.stdout ?? '',
+      state.result?.stdoutBytes,
+    );
+    const stderr = buildChatPipelineTrialStreamEvidence(
+      state.result?.stderr ?? '',
+      state.result?.stderrBytes,
+    );
     const failureKind = state.result?.failureKind ?? null;
     return {
       caseId,
@@ -1331,7 +1342,10 @@ function buildTrialSummary(
   const summary = redactTrialText(lines.join('\n'));
   const bytes = new TextEncoder().encode(summary);
   if (bytes.length <= MAX_TRIAL_SUMMARY_BYTES) return summary;
-  return new TextDecoder().decode(bytes.slice(0, MAX_TRIAL_SUMMARY_BYTES)) + '\n[truncated]';
+  return (
+    new TextDecoder().decode(bytes.slice(0, MAX_TRIAL_SUMMARY_BYTES)) +
+    '\n[trial-summary truncated]'
+  );
 }
 
 function buildCasePromptContexts(
@@ -1823,7 +1837,10 @@ function buildPlannedTrialSummary(
   const summary = redactTrialText(lines.join('\n'));
   const bytes = new TextEncoder().encode(summary);
   if (bytes.length <= MAX_TRIAL_SUMMARY_BYTES) return summary;
-  return new TextDecoder().decode(bytes.slice(0, MAX_TRIAL_SUMMARY_BYTES)) + '\n[truncated]';
+  return (
+    new TextDecoder().decode(bytes.slice(0, MAX_TRIAL_SUMMARY_BYTES)) +
+    '\n[trial-summary truncated]'
+  );
 }
 
 async function loadTrialPipelineConfig(

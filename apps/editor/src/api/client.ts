@@ -193,6 +193,7 @@ export interface ChatPipelineTrialStreamTruncation {
   source: 'not-truncated' | 'truncated' | 'unknown';
   trialResult: boolean;
   producedBytes: number | null;
+  sourceReturnedBytes?: number;
   returnedBytes: number;
 }
 

@@ -221,6 +221,7 @@ test('trial-run repair prompt globally bounds expanded case and task evidence', 
 
   const evidence = prompt.split('<trial-run-result>')[1]!.split('</trial-run-result>')[0]!.trim();
   expect(new TextEncoder().encode(evidence).length).toBeLessThanOrEqual(64 * 1024);
+  expect(evidence).toContain('truncation-layer: repair-prompt');
   expect(evidence).toContain('…[truncated]');
 });
 
