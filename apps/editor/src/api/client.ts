@@ -1762,7 +1762,7 @@ export interface RunTaskOutput {
   content: string;
   /** Full on-disk byte size (may exceed `content.length` when truncated). */
   size: number;
-  /** True when `content` is the last 1 MB of a larger file. */
+  /** True when `content` is a line-aligned tail derived from the last 1 MB. */
   truncated: boolean;
   /** UTF-8 bytes returned in `content` after the read window is normalized. */
   returnedBytes: number;
@@ -2523,9 +2523,9 @@ export const api = {
   getWorkflowRunHistory: (graphRunId: string) =>
     request<WorkflowRunHistoryDetail>(`/run/history/${encodeURIComponent(graphRunId)}/workflow`),
 
-  /** Fetch a past task's full stdout/stderr. Resolves `null` when the run
-   *  recorded no such stream (404) so callers can render an empty state
-   *  instead of surfacing an error. */
+  /** Fetch a bounded read of a past task's persisted stdout/stderr. The
+   *  complete source remains on disk. Resolves `null` when the run recorded
+   *  no such stream (404) so callers can render an empty state. */
   getRunTaskOutput: async (
     runId: string,
     taskId: string,

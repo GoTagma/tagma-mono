@@ -168,7 +168,7 @@ describe('renderer diagnostics snapshot', () => {
       capturedAt: 300,
     });
 
-    const chat = snapshot.chat as {
+    const chat = snapshot.chat as unknown as {
       messageCount: number;
       returnedMessageCount: number;
       omittedMessageCount: number;

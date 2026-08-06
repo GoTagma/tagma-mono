@@ -753,9 +753,9 @@ function formatBytes(n: number): string {
 /**
  * History "Outputs" section. The live run panel only ever holds a bounded
  * in-memory tail of each stream; the full stdout/stderr are persisted to
- * disk by the engine and survive into history. This section reaches them
- * on demand via the task-output endpoint so a past command task's console
- * output is actually readable here — not just a dead file path like before.
+ * disk by the engine and survive into history. This section reads a bounded
+ * tail on demand via the task-output endpoint so a past command task's
+ * console output is actually readable here — not just a dead file path.
  */
 function TaskOutputSection({
   summary,
@@ -921,7 +921,8 @@ function StreamViewer({
             <>
               {state.data.truncated && (
                 <div className="text-[9px] font-mono text-tagma-warning/80 mb-1">
-                  Showing last 1 MB of {formatBytes(state.data.size)} — full file on disk
+                  Showing a line-aligned tail from the last 1 MB of {formatBytes(state.data.size)} —
+                  full file on disk
                 </div>
               )}
               <pre

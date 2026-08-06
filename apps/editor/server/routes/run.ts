@@ -1484,12 +1484,9 @@ export function registerRunRoutes(app: express.Express): void {
     res.json({ ...summary, running: false });
   });
 
-  // On-demand reader for a single task's full stdout/stderr from a past
-  // run. The live RunTaskPanel only carries a bounded in-memory tail; the
-  // complete streams are persisted to `.tagma/logs/<runId>/<taskId>.<stream>`
-  // by the engine (RuntimeAdapter.taskOutputPath). History had no way to
-  // reach them — this endpoint closes that gap with the same path-safety
-  // and 1 MB tail-cap contract as the pipeline.log reader above.
+  // On-demand bounded reader for one persisted task stdout/stderr stream.
+  // The complete stream remains on disk; this response returns a line-aligned
+  // tail from a 1 MB read window plus explicit read-interface evidence.
   app.get('/api/run/history/:runId/task-output', (req, res) => {
     const ws = requireWorkspace(req, res);
     if (!ws) return;
