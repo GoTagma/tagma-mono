@@ -203,3 +203,91 @@ test('oversized trial repair fallback preserves every finding repair scope', () 
     'diagnostic-only',
   ]);
 });
+
+test('trial repair evidence prioritizes actionable stderr and keeps failed-case task context', () => {
+  const skippedTasks = Array.from({ length: 6 }, (_, index) => ({
+    caseId: null,
+    runNumber: 1,
+    taskId: `main.skipped_${index}`,
+    status: 'skipped',
+    exitCode: null,
+    failureKind: null,
+    stdout: '',
+    stderr: '',
+  }));
+  const failedTask = {
+    caseId: null,
+    runNumber: 1,
+    taskId: 'main.actual_failure',
+    status: 'failed',
+    exitCode: 17,
+    failureKind: 'exit_nonzero',
+    stdout: '',
+    stderr: 'the actionable failure from the real task',
+  };
+  const failedCaseTask = {
+    caseId: 'semantic-json',
+    runNumber: 1,
+    taskId: 'main.emit_json',
+    status: 'success',
+    exitCode: 0,
+    failureKind: null,
+    stdout: 'wrote result.json',
+    stderr: '',
+  };
+  const prompt = buildChatYamlRepairPrompt(
+    TARGET,
+    {
+      kind: 'trial-run',
+      result: {
+        version: 8,
+        success: false,
+        kind: 'failed',
+        repairAuthorization: 'pipeline-change-allowed',
+        ran: true,
+        runId: 'run_evidence_priority',
+        summary: 'A real task and one semantic case failed.',
+        durationMs: 10,
+        totalTaskCount: 8,
+        omittedTaskCount: 0,
+        tasks: [...skippedTasks, failedTask, failedCaseTask],
+        cases: [
+          {
+            id: 'semantic-json',
+            title: 'Semantic JSON output',
+            objective: 'Keep generated JSON valid.',
+            success: false,
+            runIds: ['run_case'],
+            tasks: [failedCaseTask],
+            expectations: [
+              {
+                type: 'case-execution',
+                passed: false,
+                detail: 'result.json was invalid JSON',
+              },
+            ],
+          },
+        ],
+      },
+    },
+    1,
+    2,
+  );
+
+  const evidence = JSON.parse(
+    prompt.split('<trial-run-result>')[1]!.split('</trial-run-result>')[0]!.trim(),
+  ) as {
+    tasks: Array<{ taskId: string; stderr: string }>;
+    cases: Array<{ id: string; tasks?: Array<{ taskId: string }> }>;
+  };
+  expect(evidence.tasks).toContainEqual(
+    expect.objectContaining({
+      taskId: 'main.actual_failure',
+      stderr: 'the actionable failure from the real task',
+    }),
+  );
+  expect(evidence.cases[0]).toMatchObject({
+    id: 'semantic-json',
+    tasks: [{ taskId: 'main.emit_json' }],
+  });
+});

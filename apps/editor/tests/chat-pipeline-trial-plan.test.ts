@@ -255,6 +255,45 @@ describe('chat pipeline trial plan', () => {
     );
   });
 
+  test('requires JSON-aware assertions for JSON artifacts and validates semantic values', () => {
+    const textOnly = structuredClone(completePlan());
+    (
+      textOnly.cases as Array<{
+        expectations: Array<Record<string, unknown>>;
+      }>
+    )[0]!.expectations.push({
+      type: 'file-contains',
+      path: 'outputs/result.json',
+      text: 'line one\nline two',
+    });
+
+    expect(() => parseChatPipelineTrialPlan(textOnly)).toThrow(
+      'JSON artifact outputs/result.json requires a json-valid or json-pointer-equals expectation',
+    );
+
+    const jsonAware = structuredClone(textOnly);
+    (
+      jsonAware.cases as Array<{
+        expectations: Array<Record<string, unknown>>;
+      }>
+    )[0]!.expectations.push(
+      { type: 'json-valid', path: 'outputs/result.json' },
+      {
+        type: 'json-pointer-equals',
+        path: 'outputs/result.json',
+        pointer: '/text',
+        expectedJson: JSON.stringify('line one\nline two quoted'),
+      },
+    );
+
+    expect(parseChatPipelineTrialPlan(jsonAware).cases[0]?.expectations).toContainEqual({
+      type: 'json-pointer-equals',
+      path: 'outputs/result.json',
+      pointer: '/text',
+      expectedJson: JSON.stringify('line one\nline two quoted'),
+    });
+  });
+
   test('rejects expectations that inspect staged pipeline artifacts outside the case root', () => {
     const candidate = structuredClone(completePlan());
     (
