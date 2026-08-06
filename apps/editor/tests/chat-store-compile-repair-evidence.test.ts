@@ -209,7 +209,7 @@ test('oversized trial repair fallback preserves every finding repair scope', () 
 });
 
 test('trial repair evidence prioritizes actionable stderr and keeps failed-case task context', () => {
-  const skippedTasks = Array.from({ length: 6 }, (_, index) => ({
+  const skippedTasks = Array.from({ length: 10 }, (_, index) => ({
     caseId: null,
     runNumber: 1,
     taskId: `main.skipped_${index}`,
@@ -227,7 +227,7 @@ test('trial repair evidence prioritizes actionable stderr and keeps failed-case 
     exitCode: 17,
     failureKind: 'exit_nonzero',
     stdout: '',
-    stderr: 'the actionable failure from the real task',
+    stderr: `the actionable failure from the real task ${'detail '.repeat(400)}`,
   };
   const failedCaseTask = {
     caseId: 'semantic-json',
@@ -252,7 +252,7 @@ test('trial repair evidence prioritizes actionable stderr and keeps failed-case 
         runId: 'run_evidence_priority',
         summary: 'A real task and one semantic case failed.',
         durationMs: 10,
-        totalTaskCount: 8,
+        totalTaskCount: 12,
         omittedTaskCount: 0,
         tasks: [...skippedTasks, failedTask, failedCaseTask],
         cases: [
@@ -281,15 +281,48 @@ test('trial repair evidence prioritizes actionable stderr and keeps failed-case 
   const evidence = JSON.parse(
     prompt.split('<trial-run-result>')[1]!.split('</trial-run-result>')[0]!.trim(),
   ) as {
-    tasks: Array<{ taskId: string; stderr: string }>;
+    omittedTaskCount: number;
+    omittedTaskStatusCounts: Record<string, number>;
+    evidenceBounds: {
+      layer: string;
+      selectedTaskLimit: number;
+      taskStreamLimitChars: number;
+    };
+    tasks: Array<{
+      taskId: string;
+      stderr: string;
+      stderrRepairEvidenceTruncated?: boolean;
+      stderrRepairEvidenceTruncation?: {
+        layer?: string;
+        reason?: string;
+        limitChars?: number;
+        sourceChars?: number;
+        returnedChars?: number;
+      };
+    }>;
     cases: Array<{ id: string; tasks?: Array<{ taskId: string }> }>;
   };
-  expect(evidence.tasks).toContainEqual(
-    expect.objectContaining({
-      taskId: 'main.actual_failure',
-      stderr: 'the actionable failure from the real task',
-    }),
-  );
+  const actionable = evidence.tasks.find((task) => task.taskId === 'main.actual_failure');
+  expect(actionable).toMatchObject({
+    taskId: 'main.actual_failure',
+    stderrRepairEvidenceTruncated: true,
+    stderrRepairEvidenceTruncation: {
+      layer: 'repair-prompt',
+      reason: 'character-limit',
+      limitChars: 2_000,
+      sourceChars: expect.any(Number),
+      returnedChars: expect.any(Number),
+    },
+  });
+  expect(actionable?.stderr).toContain('the actionable failure from the real task');
+  expect(actionable?.stderr).toContain('truncation-layer: repair-prompt');
+  expect(evidence.omittedTaskCount).toBe(4);
+  expect(evidence.omittedTaskStatusCounts).toEqual({ skipped: 4 });
+  expect(evidence.evidenceBounds).toMatchObject({
+    layer: 'repair-prompt',
+    selectedTaskLimit: 8,
+    taskStreamLimitChars: 2_000,
+  });
   expect(evidence.cases[0]).toMatchObject({
     id: 'semantic-json',
     tasks: [{ taskId: 'main.emit_json' }],

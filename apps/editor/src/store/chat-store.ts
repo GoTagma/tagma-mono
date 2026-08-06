@@ -660,9 +660,7 @@ function clipChatTrialRepairText(value: string, maxLength: number): string {
 
 function clipChatTrialRepairEvidenceText(value: string, maxLength: number): string {
   const clipped = clipChatTrialRepairText(value, maxLength);
-  return clipped === value
-    ? value
-    : clipped + ' [truncation-layer: repair-prompt]';
+  return clipped === value ? value : clipped + ' [truncation-layer: repair-prompt]';
 }
 
 function chatTrialRepairTaskPriority(
@@ -844,16 +842,13 @@ function compactChatTrialRepairResult(
         runIds: item.runIds,
         totalTaskCount: item.totalTaskCount,
         omittedTaskCount:
-          (item.omittedTaskCount ?? 0) +
-          Math.max(0, item.tasks.length - selectedCaseTasks.length),
+          (item.omittedTaskCount ?? 0) + Math.max(0, item.tasks.length - selectedCaseTasks.length),
         taskStatusCounts: item.taskStatusCounts,
         omittedTaskStatusCounts: mergeChatTrialRepairTaskStatusCounts(
           item.omittedTaskStatusCounts,
           countChatTrialRepairTaskStatuses(additionallyOmittedCaseTasks),
         ),
-        tasks: selectedCaseTasks.map((task) =>
-          compactChatTrialRepairTask(task, streamLimitChars),
-        ),
+        tasks: selectedCaseTasks.map((task) => compactChatTrialRepairTask(task, streamLimitChars)),
         expectations: item.expectations
           .filter((expectation) => !expectation.passed)
           .slice(0, 4)
@@ -967,10 +962,6 @@ function serializeChatYamlCompileRepairEvidence(result: YamlCompileResult): stri
   if (new TextEncoder().encode(encoded).length <= MAX_CHAT_TRIAL_REPAIR_EVIDENCE_BYTES) {
     return encoded;
   }
-  const fallbackCompact = compactChatTrialRepairResult(evidence.result, {
-    streamLimitChars: 500,
-    caseTaskLimit: 1,
-  });
   const fallback = JSON.stringify(
     {
       timestamp: result.timestamp,
@@ -1040,6 +1031,10 @@ function serializeChatYamlRepairEvidence(evidence: ChatYamlRepairEvidence): stri
   if (new TextEncoder().encode(encoded).length <= MAX_CHAT_TRIAL_REPAIR_EVIDENCE_BYTES) {
     return encoded;
   }
+  const fallbackCompact = compactChatTrialRepairResult(evidence.result, {
+    streamLimitChars: 500,
+    caseTaskLimit: 1,
+  });
   const fallback = JSON.stringify(
     {
       version: evidence.result.version,

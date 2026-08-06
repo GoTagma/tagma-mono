@@ -65,6 +65,14 @@ interface StoredRendererReport {
   workspaceKey: string | null;
   capturedAt: number;
   snapshot: unknown;
+  logEvidence: {
+    layer: 'renderer-report-log-ingest';
+    sourceLogCount: number;
+    selectedLogCount: number;
+    ingestedLogCount: number;
+    omittedHeadCount: number;
+    invalidSelectedCount: number;
+  };
 }
 
 export interface DiagnosticsHubOptions {
@@ -236,7 +244,7 @@ export class DiagnosticsHub {
       return false;
     }
     const instanceId = report.instanceId.slice(0, 128);
-    this.rendererReports.set(instanceId, {
+    const storedReport = {
       instanceId,
       workspaceKey:
         typeof report.workspaceKey === 'string' ? report.workspaceKey.slice(0, 4_096) : null,
@@ -247,14 +255,18 @@ export class DiagnosticsHub {
         maxObjectKeys: 150,
         maxStringChars: 16_384,
       }),
-    });
-    for (const entry of report.logs.slice(-250)) {
+    };
+    const selectedLogs = report.logs.slice(-250);
+    let ingestedLogCount = 0;
+    let invalidSelectedCount = 0;
+    for (const entry of selectedLogs) {
       if (
         !entry ||
         typeof entry.message !== 'string' ||
         typeof entry.timestamp !== 'number' ||
         !Number.isFinite(entry.timestamp)
       ) {
+        invalidSelectedCount += 1;
         continue;
       }
       const level: DiagnosticLogLevel =
@@ -270,7 +282,19 @@ export class DiagnosticsHub {
         entry.message,
         entry.timestamp,
       );
+      ingestedLogCount += 1;
     }
+    this.rendererReports.set(instanceId, {
+      ...storedReport,
+      logEvidence: {
+        layer: 'renderer-report-log-ingest',
+        sourceLogCount: report.logs.length,
+        selectedLogCount: selectedLogs.length,
+        ingestedLogCount,
+        omittedHeadCount: Math.max(0, report.logs.length - selectedLogs.length),
+        invalidSelectedCount,
+      },
+    });
     return true;
   }
 
@@ -300,15 +324,27 @@ export interface DesktopLogTail {
   text: string;
 }
 
+export type DesktopLogTailEvidence =
+  | { status: 'not-configured'; path: null; error: null; tail: null }
+  | { status: 'available'; path: string; error: null; tail: DesktopLogTail }
+  | { status: 'read-error'; path: string; error: string; tail: null };
+
 /** Read the launcher-maintained sidecar log tail when running under Electron. */
-export function readDesktopLogTail(maxBytes = 32 * 1024): DesktopLogTail | null {
+export function readDesktopLogTailEvidence(maxBytes = 32 * 1024): DesktopLogTailEvidence {
   const configured = process.env.TAGMA_DESKTOP_LOG_FILE?.trim();
-  if (!configured) return null;
+  if (!configured) return { status: 'not-configured', path: null, error: null, tail: null };
   let fd: number | null = null;
   try {
     fd = openSync(configured, 'r');
     const stat = fstatSync(fd);
-    if (!stat.isFile()) return null;
+    if (!stat.isFile()) {
+      return {
+        status: 'read-error',
+        path: configured,
+        error: 'Configured desktop log path is not a regular file.',
+        tail: null,
+      };
+    }
     const limitBytes = Number.isFinite(maxBytes) ? Math.max(1, Math.trunc(maxBytes)) : 32 * 1024;
     const length = Math.min(limitBytes, stat.size);
     const offset = Math.max(0, stat.size - length);
@@ -324,7 +360,7 @@ export function readDesktopLogTail(maxBytes = 32 * 1024): DesktopLogTail | null 
       }
     }
     const text = redactDiagnosticText(source.toString('utf8'));
-    return {
+    const tail: DesktopLogTail = {
       path: configured,
       truncated: offset > 0,
       totalBytes: stat.size,
@@ -343,11 +379,21 @@ export function readDesktopLogTail(maxBytes = 32 * 1024): DesktopLogTail | null 
           : null,
       text,
     };
-  } catch {
-    return null;
+    return { status: 'available', path: configured, error: null, tail };
+  } catch (error) {
+    return {
+      status: 'read-error',
+      path: configured,
+      error: redactDiagnosticText(error instanceof Error ? error.message : String(error)),
+      tail: null,
+    };
   } finally {
     if (fd !== null) closeSync(fd);
   }
+}
+
+export function readDesktopLogTail(maxBytes = 32 * 1024): DesktopLogTail | null {
+  return readDesktopLogTailEvidence(maxBytes).tail;
 }
 
 export function isDiagnosticsAgentPath(path: string): boolean {

@@ -1253,6 +1253,96 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
+  test('reports assertion-reader clipping as diagnostic-only instead of a pipeline defect', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    const outputBytes = 2 * 1024 * 1024 + 1;
+    const script = [
+      `const fs = require('node:fs');`,
+      `if (process.env.TAGMA_TRIAL_CASE_ID) {`,
+      `  fs.mkdirSync('outputs', { recursive: true });`,
+      `  fs.writeFileSync('outputs/large.txt', 'x'.repeat(${outputBytes}));`,
+      `}`,
+    ].join(' ');
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Assertion Reader Limit',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [{ id: 'produce', command: { argv: [process.execPath, '-e', script] } }],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
+    writeTrialPlan(entry.stagedPath, {
+      cases: [
+        {
+          id: 'large-output',
+          title: 'Large output evidence',
+          objective: 'Keep diagnostic read bounds separate from pipeline behavior.',
+          runs: 1,
+          targetTaskIds: ['main.produce'],
+          fixtures: [],
+          expectations: [{ type: 'file-contains', path: 'outputs/large.txt', text: 'x' }],
+        },
+      ],
+    });
+
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'assertion_reader_limit' },
+        'chat-lock',
+      ),
+      trialRes,
+    );
+
+    expect(trialRes.body).toMatchObject({
+      success: false,
+      kind: 'failed',
+      repairAuthorization: 'diagnostic-only',
+      cases: [
+        {
+          id: 'large-output',
+          success: false,
+          expectations: [
+            {
+              type: 'file-contains',
+              passed: false,
+              repairScope: 'diagnostic-only',
+              truncation: {
+                layer: 'trial-assertion-reader',
+                reason: 'byte-limit',
+                limitBytes: 2 * 1024 * 1024,
+                sourceBytes: outputBytes,
+                returnedBytes: 0,
+              },
+            },
+          ],
+        },
+      ],
+    });
+    discardStage(getRoute, ws, stage.id);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
   test('passes a collision-safe implementation against repeated multi-paragraph edge cases', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();

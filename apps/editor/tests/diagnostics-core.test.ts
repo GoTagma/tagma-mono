@@ -61,9 +61,7 @@ describe('diagnostics value sanitizing', () => {
       nested: { child: unknown };
     };
 
-    expect(sanitized.long).toBe(
-      'xxxxxxxxxxxx...[diagnostics-sanitizer truncated 88 chars]',
-    );
+    expect(sanitized.long).toBe('xxxxxxxxxxxx...[diagnostics-sanitizer truncated 88 chars]');
     expect(sanitized.list).toEqual([
       1,
       2,
@@ -114,12 +112,11 @@ describe('temporary diagnostics sessions', () => {
           };
           text: string;
         };
+        desktopLogTailRead: { status: string; path: string | null; error: string | null };
       };
       expect(context.desktopLogTail.truncated).toBe(true);
       expect(context.desktopLogTail.text).toContain(newestMarker);
-      expect(context.desktopLogTail.totalBytes).toBeGreaterThan(
-        context.desktopLogTail.readBytes,
-      );
+      expect(context.desktopLogTail.totalBytes).toBeGreaterThan(context.desktopLogTail.readBytes);
       expect(context.desktopLogTail.readBytes).toBe(32 * 1024);
       expect(context.desktopLogTail.sourceReturnedBytes).toBeLessThanOrEqual(
         context.desktopLogTail.readBytes,
@@ -129,6 +126,11 @@ describe('temporary diagnostics sessions', () => {
         layer: 'diagnostics-desktop-log-tail',
         omittedHeadBytes: expect.any(Number),
         discardedPartialLineBytes: expect.any(Number),
+      });
+      expect(context.desktopLogTailRead).toEqual({
+        status: 'available',
+        path: logPath,
+        error: null,
       });
     } finally {
       if (previousLogPath === undefined) delete process.env.TAGMA_DESKTOP_LOG_FILE;
@@ -293,11 +295,51 @@ describe('temporary diagnostics sessions', () => {
             apiKey: '[REDACTED]',
           },
         },
+        logEvidence: {
+          layer: 'renderer-report-log-ingest',
+          sourceLogCount: 1,
+          selectedLogCount: 1,
+          ingestedLogCount: 1,
+          omittedHeadCount: 0,
+          invalidSelectedCount: 0,
+        },
       },
     ]);
     expect(
       hub.readLogs(0, 10).entries.find((entry) => entry.source === 'renderer.error')?.message,
     ).toBe('renderer failed with password=[REDACTED]');
+  });
+
+  test('reports renderer-log ingest clipping separately from retained log paging', () => {
+    const hub = new DiagnosticsHub({ tokenFactory: () => 'debug-token' });
+    hub.enable('D:\\repo', 'http://127.0.0.1:43123');
+    expect(
+      hub.acceptRendererReport({
+        instanceId: 'window-many-logs',
+        workspaceKey: 'D:\\repo',
+        capturedAt: 456,
+        snapshot: {},
+        logs: Array.from({ length: 252 }, (_, index) => ({
+          timestamp: index,
+          level: 'info' as const,
+          message: `renderer-log-${index}`,
+        })),
+      }),
+    ).toBe(true);
+
+    expect(hub.getRendererReports()[0]).toMatchObject({
+      logEvidence: {
+        layer: 'renderer-report-log-ingest',
+        sourceLogCount: 252,
+        selectedLogCount: 250,
+        ingestedLogCount: 250,
+        omittedHeadCount: 2,
+        invalidSelectedCount: 0,
+      },
+    });
+    expect(hub.readLogs(0, 1)).toMatchObject({
+      page: { layer: 'diagnostics-log-page', truncated: true },
+    });
   });
 });
 

@@ -160,6 +160,13 @@ export interface ChatPipelineTrialExpectationResult {
   repairScope: 'pipeline-artifact' | 'diagnostic-only';
   paths?: string[];
   omittedPathEventCount?: number;
+  truncation?: {
+    layer: 'trial-assertion-reader';
+    reason: 'byte-limit';
+    limitBytes: number;
+    sourceBytes: number;
+    returnedBytes: number;
+  };
 }
 
 export interface ChatPipelineTrialCaseResult {
@@ -623,6 +630,8 @@ function resultForSetupFailure(
     durationMs: Math.max(0, Date.now() - startedAt),
     totalTaskCount: 0,
     omittedTaskCount: 0,
+    taskStatusCounts: {},
+    omittedTaskStatusCounts: {},
     tasks: [],
     cases: [],
   };
@@ -651,6 +660,8 @@ function resultForStoppedBeforeRun(
     durationMs: Math.max(0, Date.now() - startedAt),
     totalTaskCount: 0,
     omittedTaskCount: 0,
+    taskStatusCounts: {},
+    omittedTaskStatusCounts: {},
     tasks: [],
     cases: [],
   };
@@ -743,6 +754,8 @@ function resultForPlanRequest(
     durationMs: Math.max(0, Date.now() - startedAt),
     totalTaskCount: 0,
     omittedTaskCount: 0,
+    taskStatusCounts: {},
+    omittedTaskStatusCounts: {},
     tasks: [],
     repairAuthorization: 'diagnostic-only',
     ...(prerequisiteState ? { prerequisiteState } : {}),
@@ -772,6 +785,8 @@ function resultForPlanAttemptBudgetExhausted(
     durationMs: Math.max(0, Date.now() - startedAt),
     totalTaskCount: 0,
     omittedTaskCount: 0,
+    taskStatusCounts: {},
+    omittedTaskStatusCounts: {},
     tasks: [],
     repairAuthorization: 'diagnostic-only',
     planTelemetry,
@@ -801,6 +816,8 @@ function resultForPlanFailure(
     durationMs: Math.max(0, Date.now() - startedAt),
     totalTaskCount: 0,
     omittedTaskCount: 0,
+    taskStatusCounts: {},
+    omittedTaskStatusCounts: {},
     tasks: [],
     repairAuthorization: diagnostics.some((item) => item.scope === 'pipeline-artifact')
       ? 'pipeline-change-allowed'
@@ -1012,7 +1029,14 @@ function evaluateTrialExpectation(
         type: expectation.type,
         passed: false,
         detail: `${expectation.path} exceeds the assertion read limit.`,
-        repairScope: 'pipeline-artifact',
+        repairScope: 'diagnostic-only',
+        truncation: {
+          layer: 'trial-assertion-reader',
+          reason: 'byte-limit',
+          limitBytes: MAX_TRIAL_ASSERTION_FILE_BYTES,
+          sourceBytes: stat.size,
+          returnedBytes: 0,
+        },
       };
     }
     const content = readFileSync(path, 'utf-8');
@@ -1024,9 +1048,7 @@ function evaluateTrialExpectation(
         return {
           type: expectation.type,
           passed: false,
-          detail: boundedTrialText(
-            `${expectation.path} is not valid JSON: ${errorMessage(err)}`,
-          ),
+          detail: boundedTrialText(`${expectation.path} is not valid JSON: ${errorMessage(err)}`),
           repairScope: 'pipeline-artifact',
         };
       }
@@ -1566,7 +1588,9 @@ function describeTrialWorkspaceMutation(
   ];
   if (evidence.paths.length > 0) parts.push(`Changed paths: ${evidence.paths.join(', ')}.`);
   if (evidence.omittedPathEventCount > 0) {
-    parts.push(`${evidence.omittedPathEventCount} earlier change event(s) were omitted by the bounded diagnostic path list.`);
+    parts.push(
+      `${evidence.omittedPathEventCount} earlier change event(s) were omitted by the bounded diagnostic path list.`,
+    );
   }
   return parts.join(' ');
 }
@@ -1586,9 +1610,7 @@ function trialCaseForWorkspaceWitnessFailure(
     omittedTaskCount: 0,
     taskStatusCounts: {},
     omittedTaskStatusCounts: {},
-    expectations: [
-      diagnosticCaseExecutionExpectation(detail),
-    ],
+    expectations: [diagnosticCaseExecutionExpectation(detail)],
   };
 }
 
@@ -2199,10 +2221,7 @@ async function executeTrial(
           : {
               ...caseExecution.result,
               success: false,
-              expectations: [
-                ...caseExecution.result.expectations,
-                ...workspaceFailures,
-              ],
+              expectations: [...caseExecution.result.expectations, ...workspaceFailures],
             };
       cases.push(caseResult);
       totalTaskCount += caseExecution.totalTaskCount;
@@ -2277,14 +2296,19 @@ async function executeTrial(
     for (const testCase of cases) {
       mergeTrialTaskStatusCounts(taskStatusCounts, testCase.taskStatusCounts);
     }
-    const omittedTaskStatusCounts = omittedTrialTaskStatusCounts(
-      taskStatusCounts,
-      visibleTasks,
-    );
-    const visibleCases = cases.map((item) => ({
-      ...item,
-      tasks: visibleTasks.filter((task) => task.caseId === item.id),
-    }));
+    const omittedTaskStatusCounts = omittedTrialTaskStatusCounts(taskStatusCounts, visibleTasks);
+    const visibleCases = cases.map((item) => {
+      const visibleCaseTasks = visibleTasks.filter((task) => task.caseId === item.id);
+      return {
+        ...item,
+        tasks: visibleCaseTasks,
+        omittedTaskCount: Math.max(0, item.totalTaskCount - visibleCaseTasks.length),
+        omittedTaskStatusCounts: omittedTrialTaskStatusCounts(
+          item.taskStatusCounts,
+          visibleCaseTasks,
+        ),
+      };
+    });
     const kind: ChatPipelineTrialRunKind = abortState.timedOut
       ? 'timed-out'
       : hostWitnessCaptureFailure
@@ -2388,6 +2412,8 @@ async function executeTrial(
       durationMs: Math.max(0, Date.now() - startedAt),
       totalTaskCount: 0,
       omittedTaskCount: 0,
+      taskStatusCounts: {},
+      omittedTaskStatusCounts: {},
       tasks: [],
       plan: trialPlanSummary(plan),
       cases: [],

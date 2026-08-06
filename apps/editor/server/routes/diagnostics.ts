@@ -6,7 +6,7 @@ import {
   DIAGNOSTICS_AGENT_BASE_PATH,
   diagnosticsAgentAuthorization,
   diagnosticsHub,
-  readDesktopLogTail,
+  readDesktopLogTailEvidence,
   type DiagnosticsHub,
 } from '../diagnostics.js';
 import { readGlobalSettings } from '../global-settings.js';
@@ -103,20 +103,14 @@ export function buildDiagnosticsEventWindow(source: readonly unknown[]): {
   const omittedEventCount = Math.max(0, source.length - events.length);
   const firstSequence = eventSequence(source[0]);
   const lastSequence = eventSequence(source.at(-1));
-  const omittedBeforeCount =
-    firstSequence === null ? null : Math.max(0, firstSequence - 1);
+  const omittedBeforeCount = firstSequence === null ? null : Math.max(0, firstSequence - 1);
   return {
     retainedEventCount: source.length,
     returnedEventCount: events.length,
     omittedEventCount,
     sourceBuffer: {
       layer: 'run-event-buffer',
-      state:
-        firstSequence === null
-          ? 'unknown'
-          : firstSequence > 1
-            ? 'truncated'
-            : 'not-truncated',
+      state: firstSequence === null ? 'unknown' : firstSequence > 1 ? 'truncated' : 'not-truncated',
       firstSequence,
       lastSequence,
       omittedBeforeCount,
@@ -142,12 +136,14 @@ function activeRunDiagnostics(ws: WorkspaceState): unknown[] {
       allBuffered?: () => unknown[];
     };
     let eventWindow = buildDiagnosticsEventWindow([]);
+    let eventReadError: string | null = null;
     try {
       eventWindow = buildDiagnosticsEventWindow(
         typeof session.allBuffered === 'function' ? session.allBuffered() : [],
       );
-    } catch {
+    } catch (error) {
       eventWindow = buildDiagnosticsEventWindow([]);
+      eventReadError = error instanceof Error ? error.message : String(error);
     }
     runs.push({
       runId: session.runId ?? null,
@@ -161,6 +157,7 @@ function activeRunDiagnostics(ws: WorkspaceState): unknown[] {
         sourceBuffer: eventWindow.sourceBuffer,
         diagnosticsContext: eventWindow.diagnosticsContext,
       },
+      eventReadError,
       events: eventWindow.events,
     });
   }
@@ -211,6 +208,8 @@ export function buildDefaultDiagnosticsContext(
     (runtime) => expectedOpencodeCwd === null || resolve(runtime.cwd) === expectedOpencodeCwd,
   );
   const memory = process.memoryUsage();
+  const desktopLogEvidence = readDesktopLogTailEvidence();
+  const { tail: desktopLogTail, ...desktopLogTailRead } = desktopLogEvidence;
   return sanitizeDiagnosticValue(
     {
       protocolVersion: DIAGNOSTICS_PROTOCOL_VERSION,
@@ -257,7 +256,8 @@ export function buildDefaultDiagnosticsContext(
       features: collectServerDiagnosticsContributors({ workspaceKey, workspace: ws }),
       renderer: hub.getRendererReports(),
       runtimeLogs: hub.readLogs(0, 250),
-      desktopLogTail: readDesktopLogTail(),
+      desktopLogTail,
+      desktopLogTailRead,
     },
     {
       maxDepth: 12,
@@ -278,8 +278,7 @@ export function registerDiagnosticsRoutes(
     ((workspaceKey) => buildDefaultDiagnosticsContext(hub, workspaceKey));
   const readOpencodeSessions =
     dependencies.readOpencodeSessions ??
-    ((workspaceKey, options) =>
-      readDiagnosticsOpencodeSessions(workspaceKey, undefined, options));
+    ((workspaceKey, options) => readDiagnosticsOpencodeSessions(workspaceKey, undefined, options));
   const readOpencodeMessages = dependencies.readOpencodeMessages ?? readDiagnosticsOpencodeMessages;
 
   app.get('/api/diagnostics/session', (req, res) => {
@@ -381,9 +380,12 @@ export function registerDiagnosticsRoutes(
   app.get(`${DIAGNOSTICS_AGENT_BASE_PATH}/logs`, (req, res) => {
     const after = Number(req.query.after ?? 0);
     const limit = Number(req.query.limit ?? 500);
+    const desktopLogEvidence = readDesktopLogTailEvidence();
+    const { tail: desktopLogTail, ...desktopLogTailRead } = desktopLogEvidence;
     res.json({
       ...hub.readLogs(after, limit),
-      desktopLogTail: readDesktopLogTail(),
+      desktopLogTail,
+      desktopLogTailRead,
     });
   });
 

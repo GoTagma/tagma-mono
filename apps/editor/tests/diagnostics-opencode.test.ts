@@ -107,11 +107,10 @@ describe('OpenCode diagnostics reader', () => {
       [],
     ]);
 
-    const result = (await readDiagnosticsOpencodeSessions(
-      WORKSPACE_DIR,
-      dependencies,
-      { limit: 1, offset: 1 },
-    )) as Record<string, unknown>;
+    const result = (await readDiagnosticsOpencodeSessions(WORKSPACE_DIR, dependencies, {
+      limit: 1,
+      offset: 1,
+    })) as Record<string, unknown>;
 
     expect(result).toMatchObject({
       totalSessionCount: 3,

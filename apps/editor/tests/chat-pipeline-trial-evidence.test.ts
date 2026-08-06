@@ -82,11 +82,7 @@ test('task evidence never exceeds its limit while reserving actionable failed-ca
     task('main.case_b_failure', 'failed', 'case-b'),
   ];
 
-  const selected = selectChatPipelineTrialTaskEvidence(
-    tasks,
-    new Set(['case-a', 'case-b']),
-    4,
-  );
+  const selected = selectChatPipelineTrialTaskEvidence(tasks, new Set(['case-a', 'case-b']), 4);
 
   expect(selected).toHaveLength(4);
   expect(selected.some((item) => item.caseId === 'case-a')).toBe(true);

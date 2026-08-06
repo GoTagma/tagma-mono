@@ -158,6 +158,9 @@
   source-returned, and final-returned byte counts where they are known, and label inline truncation
   markers with the layer. Never diagnose or change runtime output handling merely because a
   read-only diagnostic response or repair prompt was clipped.
+- A Trial assertion file that exceeds the host reader's byte limit is `diagnostic-only`. Return the
+  `trial-assertion-reader` limit and source/returned byte counts; do not treat an unread remainder as
+  a failed content assertion or grant pipeline repair authority.
 - For an exact Git-root workspace, witness actual bytes for tracked and non-ignored untracked
   source files, authored `.tagma` files, and ignored root dependency/environment descriptors.
   Bind Git HEAD/index/status/flags/config/locks, ignored-root presence, the Git binary, declared
@@ -385,6 +388,10 @@
   A tail-read or response-size limit is diagnostic-interface truncation, not proof that the
   underlying runtime, file, task output, or persisted record was truncated. Locate and test the
   exact layer before changing source behavior.
+- Keep renderer-report ingestion, diagnostics log-ring retention, response pagination, active-run
+  event windows, desktop-log tail reads, and OpenCode source-query limits as separate evidence
+  layers. Return read errors and source boundaries explicitly; `null`, an empty array, or a short
+  page must not silently mean that no underlying evidence exists.
 - Discover OpenCode diagnostics history with the canonical directory query plus the bounded
   unscoped compatibility query used by Chat. Do not set OpenCode's `roots=true` on that discovery
   request because it explicitly removes delegated children. First verify owned roots through the

@@ -237,6 +237,9 @@ describe('diagnostics routes', () => {
       returnedEntryCount: expect.any(Number),
       retention: { layer: 'diagnostics-log-buffer' },
       page: { layer: 'diagnostics-log-page', limit: 10 },
+      desktopLogTailRead: {
+        status: expect.stringMatching(/^(?:available|not-configured|read-error)$/),
+      },
       entries: expect.arrayContaining([
         expect.objectContaining({ source: 'renderer.console', message: 'renderer warning' }),
       ]),

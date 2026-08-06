@@ -269,6 +269,13 @@ export interface ChatPipelineTrialExpectationResult {
   repairScope?: 'pipeline-artifact' | 'diagnostic-only';
   paths?: string[];
   omittedPathEventCount?: number;
+  truncation?: {
+    layer: 'trial-assertion-reader';
+    reason: 'byte-limit';
+    limitBytes: number;
+    sourceBytes: number;
+    returnedBytes: number;
+  };
 }
 
 export interface ChatPipelineTrialCaseResult {
