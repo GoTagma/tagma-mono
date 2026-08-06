@@ -403,6 +403,9 @@
   appropriate. Return retained/returned/omitted run counts and source/read/source-returned/final
   byte counts; report bytes discarded to align the returned tail. These limits describe the
   read-only response or assembled AI context, never truncation of the persisted log or stream.
+  Any UI rendering a clipped log or task stream must visibly identify it as a bounded tail and
+  state that the complete persisted file remains on disk; never present that response as the full
+  runtime or persisted output.
 - Renderer diagnostics must return source, returned, and omitted counts for intentionally bounded
   session/message/log windows. Keep the sanitizer array bound at least as large as those explicit
   windows so a second generic sanitation pass cannot discard the newest retained evidence.

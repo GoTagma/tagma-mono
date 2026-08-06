@@ -22,6 +22,7 @@ import { api } from '../../api/client';
 import type {
   RawPipelineConfig,
   RunHistoryEntry,
+  RunHistoryLog,
   RunSummary,
   RunSummaryTask,
   TaskStatus,
@@ -324,6 +325,18 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
+export function formatRunHistoryLogReadNotice(
+  log: Pick<RunHistoryLog, 'size' | 'returnedBytes' | 'truncated' | 'readEvidence'> | null,
+): string | null {
+  if (!log?.truncated) return null;
+  const discarded = log.readEvidence.discardedLeadingLineBytes;
+  const alignmentNotice =
+    discarded > 0
+      ? ` ${formatSize(discarded)} was discarded to align the first returned line.`
+      : '';
+  return `Read-interface limit (${log.readEvidence.layer}): showing ${formatSize(log.returnedBytes)} from a line-aligned tail of the ${formatSize(log.size)} persisted pipeline.log.${alignmentNotice} The complete log remains on disk.`;
+}
+
 function formatDuration(ms: number | null): string {
   if (ms == null) return '—';
   if (ms < 1000) return `${ms}ms`;
@@ -470,6 +483,7 @@ export function RunHistoryBrowser({
   const [graphDetailError, setGraphDetailError] = useState<string | null>(null);
   const [workspacePipelines, setWorkspacePipelines] = useState<WorkspaceYamlEntry[]>([]);
   const [logContent, setLogContent] = useState<string>('');
+  const [logRead, setLogRead] = useState<RunHistoryLog | null>(null);
   const [logLoading, setLogLoading] = useState(false);
   const [yamlContent, setYamlContent] = useState<string | null>(null);
   const [yamlLoading, setYamlLoading] = useState(false);
@@ -538,6 +552,7 @@ export function RunHistoryBrowser({
         setSummary(null);
         setGraphDetail(null);
         setLogContent('');
+        setLogRead(null);
         setYamlContent(null);
         setSummaryError(null);
         setGraphDetailError(null);
@@ -601,10 +616,12 @@ export function RunHistoryBrowser({
   const loadLog = useCallback(async (runId: string) => {
     setLogLoading(true);
     setLogContent('');
+    setLogRead(null);
     try {
       const res = await api.getRunLog(runId);
       if (selectedRunIdRef.current !== runId) return;
       setLogContent(res.content);
+      setLogRead(res);
     } catch (e: unknown) {
       if (selectedRunIdRef.current !== runId) return;
       setLogContent(`Error: ${e instanceof Error ? e.message : 'Failed to load log'}`);
@@ -1048,6 +1065,7 @@ export function RunHistoryBrowser({
               summaryLoading={summaryLoading}
               summaryError={summaryError}
               logContent={logContent}
+              logRead={logRead}
               logLoading={logLoading}
               yamlContent={yamlContent}
               yamlLoading={yamlLoading}
@@ -1459,6 +1477,7 @@ function DetailPane({
   summaryLoading,
   summaryError,
   logContent,
+  logRead,
   logLoading,
   yamlContent,
   yamlLoading,
@@ -1479,6 +1498,7 @@ function DetailPane({
   summaryLoading: boolean;
   summaryError: string | null;
   logContent: string;
+  logRead: RunHistoryLog | null;
   logLoading: boolean;
   yamlContent: string | null;
   yamlLoading: boolean;
@@ -1497,6 +1517,7 @@ function DetailPane({
 }) {
   const [copied, setCopied] = useState(false);
   const yamlExportable = viewMode === 'yaml' && !!selectedRunId && !!yamlContent && !yamlLoading;
+  const logReadNotice = formatRunHistoryLogReadNotice(logRead);
 
   const handleCopy = useCallback(() => {
     const text = viewMode === 'log' ? logContent : (yamlContent ?? '');
@@ -1842,9 +1863,16 @@ function DetailPane({
           ))}
 
         {viewMode === 'log' && selectedRunId && !logLoading && (
-          <pre className="text-[10px] font-mono text-tagma-text whitespace-pre-wrap break-words px-5 py-4 select-text">
-            {logContent || '(empty)'}
-          </pre>
+          <div>
+            {logReadNotice && (
+              <div className="mx-5 mt-4 px-3 py-2 bg-tagma-warning/5 border border-tagma-warning/20 text-[10px] text-tagma-warning font-mono leading-relaxed">
+                {logReadNotice}
+              </div>
+            )}
+            <pre className="text-[10px] font-mono text-tagma-text whitespace-pre-wrap break-words px-5 py-4 select-text">
+              {logContent || '(empty)'}
+            </pre>
+          </div>
         )}
 
         {viewMode === 'yaml' &&

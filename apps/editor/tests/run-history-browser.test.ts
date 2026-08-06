@@ -7,6 +7,7 @@ import {
   configDagEdgesForRunCanvas,
   filterRunHistoryEntries,
   formatHistoryYamlExportFilename,
+  formatRunHistoryLogReadNotice,
   isHistoryReplayBusy,
   formatRunProgressLabel,
   getHistoryRunPrimaryAction,
@@ -18,7 +19,7 @@ import {
   terminalOutcomeForRunStatus,
   type OutcomeFilter,
 } from '../src/components/run/RunHistoryBrowser';
-import type { RunHistoryEntry, RunSummary } from '../src/api/client';
+import type { RunHistoryEntry, RunHistoryLog, RunSummary } from '../src/api/client';
 
 function entry(overrides: Partial<RunHistoryEntry>): RunHistoryEntry {
   return {
@@ -258,6 +259,32 @@ describe('run history browser helpers', () => {
 
     expect(formatHistoryYamlExportFilename({ selectedRunId: 'run_abc123', summary: null })).toBe(
       'run_abc123.yaml',
+    );
+  });
+
+  test('pipeline log read notices distinguish read-interface clipping from persisted content', () => {
+    const log = {
+      runId: 'run_log',
+      content: 'tail',
+      size: 2 * 1024 * 1024,
+      truncated: true,
+      returnedBytes: 1024,
+      readEvidence: {
+        layer: 'run-history-log-read',
+        mode: 'tail',
+        sourceBytes: 2 * 1024 * 1024,
+        limitBytes: 1024 * 1024,
+        readBytes: 1536,
+        sourceReturnedBytes: 1536,
+        returnedBytes: 1024,
+        truncated: true,
+        discardedLeadingLineBytes: 512,
+      },
+    } satisfies RunHistoryLog;
+
+    expect(formatRunHistoryLogReadNotice({ ...log, truncated: false })).toBeNull();
+    expect(formatRunHistoryLogReadNotice(log)).toBe(
+      'Read-interface limit (run-history-log-read): showing 1.0KB from a line-aligned tail of the 2.0MB persisted pipeline.log. 512B was discarded to align the first returned line. The complete log remains on disk.',
     );
   });
 
