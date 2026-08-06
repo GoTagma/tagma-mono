@@ -310,12 +310,13 @@ test('trial repair evidence prioritizes actionable stderr and keeps failed-case 
       layer: 'repair-prompt',
       reason: 'character-limit',
       limitChars: 2_000,
-      sourceChars: expect.any(Number),
-      returnedChars: expect.any(Number),
     },
   });
   expect(actionable?.stderr).toContain('the actionable failure from the real task');
   expect(actionable?.stderr).toContain('truncation-layer: repair-prompt');
+  expect(actionable?.stderr.length).toBeLessThanOrEqual(2_000);
+  expect(typeof actionable?.stderrRepairEvidenceTruncation?.sourceChars).toBe('number');
+  expect(actionable?.stderrRepairEvidenceTruncation?.returnedChars).toBe(actionable?.stderr.length);
   expect(evidence.omittedTaskCount).toBe(4);
   expect(evidence.omittedTaskStatusCounts).toEqual({ skipped: 4 });
   expect(evidence.evidenceBounds).toMatchObject({

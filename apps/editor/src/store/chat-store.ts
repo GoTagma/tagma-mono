@@ -652,15 +652,18 @@ const MAX_CHAT_TRIAL_REPAIR_EVIDENCE_BYTES = 64 * 1024;
 const MAX_CHAT_TRIAL_REPAIR_TASKS = 8;
 const MAX_CHAT_TRIAL_REPAIR_CASE_TASKS = 2;
 const MAX_CHAT_TRIAL_REPAIR_STREAM_CHARS = 2_000;
-
-function clipChatTrialRepairText(value: string, maxLength: number): string {
-  if (value.length <= maxLength) return value;
-  return value.slice(0, Math.max(0, maxLength - 16)) + '…[truncated]';
-}
+const CHAT_TRIAL_REPAIR_TRUNCATION_MARKER = '…[truncated] [truncation-layer: repair-prompt]';
 
 function clipChatTrialRepairEvidenceText(value: string, maxLength: number): string {
-  const clipped = clipChatTrialRepairText(value, maxLength);
-  return clipped === value ? value : clipped + ' [truncation-layer: repair-prompt]';
+  const limit = Math.max(0, Math.trunc(maxLength));
+  if (value.length <= limit) return value;
+  if (limit <= CHAT_TRIAL_REPAIR_TRUNCATION_MARKER.length) {
+    return CHAT_TRIAL_REPAIR_TRUNCATION_MARKER.slice(0, limit);
+  }
+  return (
+    value.slice(0, limit - CHAT_TRIAL_REPAIR_TRUNCATION_MARKER.length) +
+    CHAT_TRIAL_REPAIR_TRUNCATION_MARKER
+  );
 }
 
 function chatTrialRepairTaskPriority(
