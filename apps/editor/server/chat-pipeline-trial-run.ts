@@ -1316,6 +1316,7 @@ export function selectChatPipelineTrialTaskEvidence(
 
 function trialTaskResults(
   result: EngineResult,
+  pipelineConfig: PipelineConfig,
   caseId: string | null,
   runNumber: number,
 ): {
@@ -1332,7 +1333,12 @@ function trialTaskResults(
       state.result?.stdoutBytes,
     );
     const rawStderr = state.result?.stderr ?? '';
-    const filteredStderr = filterChatPipelineTrialStderr(rawStderr);
+    const driver =
+      state.config.driver ?? state.trackConfig.driver ?? pipelineConfig.driver ?? 'opencode';
+    const managedOpencodePrompt = state.config.prompt !== undefined && driver === 'opencode';
+    const filteredStderr = managedOpencodePrompt
+      ? filterChatPipelineTrialStderr(rawStderr)
+      : { text: rawStderr, omittedAuxiliaryDiagnosticLines: 0 };
     const stderr = buildChatPipelineTrialStreamEvidence(
       filteredStderr.text,
       state.result?.stderrBytes,
@@ -1810,7 +1816,12 @@ async function executeTargetedTrialCase(
         onEvent: (event) => updateTrialTaskProgress(input.progress, event),
       });
       allRunsSucceeded = allRunsSucceeded && lastResult.success;
-      const evidence = trialTaskResults(lastResult, input.testCase.id, runNumber);
+      const evidence = trialTaskResults(
+        lastResult,
+        casePipelineConfig,
+        input.testCase.id,
+        runNumber,
+      );
       totalTaskCount += evidence.totalTaskCount;
       mergeTrialTaskStatusCounts(taskStatusCounts, evidence.taskStatusCounts);
       tasks.push(...evidence.tasks);
@@ -2179,7 +2190,7 @@ async function executeTrial(
         onEvent: (event) => updateTrialTaskProgress(progress, event),
       });
       baselineSuccess = baseline.success;
-      baselineEvidence = trialTaskResults(baseline, null, 1);
+      baselineEvidence = trialTaskResults(baseline, pipelineConfig, null, 1);
     }
     const cases: ChatPipelineTrialCaseResult[] = [];
     let totalTaskCount = baselineEvidence.totalTaskCount;

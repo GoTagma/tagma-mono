@@ -612,6 +612,7 @@ describe('chat YAML staging routes', () => {
               '-e',
               [
                 "const fs = require('node:fs');",
+                'process.stderr.write(\'level=ERROR message="stream error" small=true mode=primary\\n\');',
                 "fs.mkdirSync('output', { recursive: true });",
                 "fs.writeFileSync('output/context.txt', Buffer.from('" + encoded + "', 'base64'));",
               ].join(' '),
@@ -701,7 +702,13 @@ describe('chat YAML staging routes', () => {
       success: true,
       ran: true,
       verificationMode: 'isolated-fixtures-only',
-      cases: [{ id: 'static-context', success: true }],
+      cases: [
+        {
+          id: 'static-context',
+          success: true,
+          tasks: [{ stderr: '', stderrAuxiliaryDiagnosticsOmittedLines: 1 }],
+        },
+      ],
     });
 
     const finalizeRes = makeRes();
