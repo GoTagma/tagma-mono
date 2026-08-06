@@ -1,6 +1,6 @@
 {
   "name": "@tagma/types",
-  "version": "0.4.93",
+  "version": "0.4.94",
   "description": "Shared contracts and small runtime helpers for the Tagma engine and plugins",
   "license": "MIT",
   "repository": {

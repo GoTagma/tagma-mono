@@ -1,6 +1,6 @@
 {
   "name": "@tagma/completion-llm-judge",
-  "version": "0.2.81",
+  "version": "0.2.82",
   "description": "LLM-as-judge completion plugin for tagma-sdk pipelines",
   "license": "MIT",
   "repository": {
