@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 
 import {
   buildChatPipelineTrialStreamEvidence,
+  filterChatPipelineTrialStderr,
   selectChatPipelineTrialTaskEvidence,
   type ChatPipelineTrialTaskResult,
 } from '../server/chat-pipeline-trial-run';
@@ -76,6 +77,20 @@ test('stream evidence distinguishes runtime truncation from Trial response trunc
 
   const inconsistentSource = buildChatPipelineTrialStreamEvidence('four', 3);
   expect(inconsistentSource.truncation.source).toBe('unknown');
+});
+
+test('Trial stderr omits recoverable OpenCode title-model errors but preserves task diagnostics', () => {
+  const titleError =
+    'timestamp=2026-08-06T09:18:54.119Z level=ERROR message="stream error" small=true mode=primary error.error="AI_APICallError: Insufficient balance."';
+  const taskError = 'document.json was not created';
+
+  const filtered = filterChatPipelineTrialStderr(`${titleError}\n${taskError}\n`);
+
+  expect(filtered.text).toBe(`${taskError}\n`);
+  expect(filtered.omittedAuxiliaryDiagnosticLines).toBe(1);
+  expect(
+    filterChatPipelineTrialStderr(titleError.replace('small=true', 'small=false')).text,
+  ).toContain('Insufficient balance');
 });
 
 test('task evidence never exceeds its limit while reserving actionable failed-case tasks', () => {
