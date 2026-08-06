@@ -182,6 +182,18 @@ export interface ChatPipelineTrialTaskResult {
   failureKind: string | null;
   stdout: string;
   stderr: string;
+  repairScope?: 'pipeline-artifact' | 'diagnostic-only' | null;
+  stdoutTruncation?: ChatPipelineTrialStreamTruncation;
+  stderrTruncation?: ChatPipelineTrialStreamTruncation;
+  stdoutRepairEvidenceTruncated?: boolean;
+  stderrRepairEvidenceTruncated?: boolean;
+}
+
+export interface ChatPipelineTrialStreamTruncation {
+  source: 'not-truncated' | 'truncated' | 'unknown';
+  trialResult: boolean;
+  producedBytes: number | null;
+  returnedBytes: number;
 }
 
 export type ChatPipelineTrialCoverageDimension =
@@ -236,11 +248,16 @@ export interface ChatPipelineTrialExpectationResult {
     | 'file-contains'
     | 'file-not-contains'
     | 'file-equals'
+    | 'json-valid'
+    | 'json-pointer-equals'
     | 'directory-entry-count'
     | 'task-status'
     | 'case-execution';
   passed: boolean;
   detail: string;
+  repairScope?: 'pipeline-artifact' | 'diagnostic-only';
+  paths?: string[];
+  omittedPathEventCount?: number;
 }
 
 export interface ChatPipelineTrialCaseResult {
@@ -250,6 +267,10 @@ export interface ChatPipelineTrialCaseResult {
   success: boolean;
   runIds: string[];
   tasks: ChatPipelineTrialTaskResult[];
+  totalTaskCount?: number;
+  omittedTaskCount?: number;
+  taskStatusCounts?: Record<string, number>;
+  omittedTaskStatusCounts?: Record<string, number>;
   expectations: ChatPipelineTrialExpectationResult[];
 }
 
@@ -278,7 +299,7 @@ export interface ChatPipelineTrialPlanSummary {
 }
 
 export interface ChatPipelineTrialRunResult {
-  version: 2 | 3 | 4 | 5 | 6 | 7 | 8;
+  version: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
   success: boolean;
   kind: ChatPipelineTrialRunKind;
   ran: boolean;
@@ -288,6 +309,8 @@ export interface ChatPipelineTrialRunResult {
   totalTaskCount: number;
   omittedTaskCount: number;
   tasks: ChatPipelineTrialTaskResult[];
+  taskStatusCounts?: Record<string, number>;
+  omittedTaskStatusCounts?: Record<string, number>;
   repairAuthorization?: 'pipeline-change-allowed' | 'diagnostic-only';
   prerequisiteState?: ChatPipelineTrialPrerequisiteState;
   verificationMode?: 'real-baseline-and-isolated-cases' | 'isolated-fixtures-only';

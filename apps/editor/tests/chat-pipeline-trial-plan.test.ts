@@ -15,7 +15,7 @@ import {
 function completePlan(): Record<string, unknown> {
   const caseId = 'all-file-boundaries';
   return {
-    version: 3,
+    version: 4,
     yamlHash: 'a'.repeat(40),
     summary: 'Exercise observable file-processing boundaries.',
     goals: ['Preserve every logical input and its complete content.'],

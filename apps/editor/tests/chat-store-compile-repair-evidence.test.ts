@@ -194,10 +194,14 @@ test('oversized trial repair fallback preserves every finding repair scope', () 
 
   const evidence = prompt.split('<trial-run-result>')[1]!.split('</trial-run-result>')[0]!.trim();
   const parsed = JSON.parse(evidence) as {
-    evidenceTruncated?: boolean;
+    evidenceTruncation?: { layer?: string; reason?: string; limitBytes?: number };
     planFindings?: Array<{ repairScope?: string }>;
   };
-  expect(parsed.evidenceTruncated).toBe(true);
+  expect(parsed.evidenceTruncation).toEqual({
+    layer: 'repair-prompt',
+    reason: 'total-byte-limit',
+    limitBytes: 64 * 1024,
+  });
   expect(parsed.planFindings?.map((finding) => finding.repairScope)).toEqual([
     'pipeline-artifact',
     'diagnostic-only',

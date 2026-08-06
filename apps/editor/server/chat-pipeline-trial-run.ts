@@ -551,6 +551,41 @@ function boundedTrialText(value: string): string {
   return decoder.decode(bytes.slice(0, head)) + marker + decoder.decode(bytes.slice(-tail));
 }
 
+function boundedTrialStream(
+  value: string,
+  producedBytes: number | undefined,
+): { text: string; truncation: ChatPipelineTrialStreamTruncation } {
+  const source =
+    /^\[\d+ bytes truncated from head;/u.test(value)
+      ? 'truncated'
+      : producedBytes === undefined
+        ? 'unknown'
+        : 'not-truncated';
+  const redacted = redactTrialText(value);
+  const bytes = new TextEncoder().encode(redacted);
+  let text = redacted;
+  let trialResult = false;
+  if (bytes.length > MAX_TRIAL_STREAM_BYTES) {
+    trialResult = true;
+    const marker = '\n[trial-result truncated]\n';
+    const markerBytes = new TextEncoder().encode(marker);
+    const budget = Math.max(0, MAX_TRIAL_STREAM_BYTES - markerBytes.length);
+    const head = Math.floor(budget / 3);
+    const tail = budget - head;
+    const decoder = new TextDecoder();
+    text = decoder.decode(bytes.slice(0, head)) + marker + decoder.decode(bytes.slice(-tail));
+  }
+  return {
+    text,
+    truncation: {
+      source,
+      trialResult,
+      producedBytes: producedBytes ?? null,
+      returnedBytes: new TextEncoder().encode(text).length,
+    },
+  };
+}
+
 function redactTrialText(value: string): string {
   return value
     .replace(
@@ -891,18 +926,53 @@ function lstatOrNull(path: string) {
   }
 }
 
+function resolveJsonPointer(
+  value: unknown,
+  pointer: string,
+): { found: true; value: unknown } | { found: false } {
+  if (pointer === '') return { found: true, value };
+  let current = value;
+  for (const encodedToken of pointer.slice(1).split('/')) {
+    const token = encodedToken.replace(/~1/gu, '/').replace(/~0/gu, '~');
+    if (Array.isArray(current)) {
+      if (!/^(?:0|[1-9]\d*)$/u.test(token)) return { found: false };
+      const index = Number(token);
+      if (!Number.isSafeInteger(index) || index >= current.length) return { found: false };
+      current = current[index];
+      continue;
+    }
+    if (
+      !current ||
+      typeof current !== 'object' ||
+      !Object.prototype.hasOwnProperty.call(current, token)
+    ) {
+      return { found: false };
+    }
+    current = (current as Record<string, unknown>)[token];
+  }
+  return { found: true, value: current };
+}
+
 function evaluateTrialExpectation(
   workDir: string,
   expectation: ChatPipelineTrialExpectation,
   lastResult: EngineResult | null,
 ): ChatPipelineTrialExpectationResult {
   if (expectation.type === 'task-status') {
-    const actual = lastResult?.states.get(expectation.taskId)?.status ?? 'missing';
+    const state = lastResult?.states.get(expectation.taskId);
+    const actual = state?.status ?? 'missing';
     const passed = actual === expectation.status;
     return {
       type: expectation.type,
       passed,
       detail: `${expectation.taskId} expected ${expectation.status}, received ${actual}.`,
+      repairScope:
+        passed || !state
+          ? passed
+            ? 'pipeline-artifact'
+            : 'diagnostic-only'
+          : (trialTaskRepairScope(state.status, state.result?.failureKind ?? null) ??
+            'pipeline-artifact'),
     };
   }
 
@@ -915,18 +985,22 @@ function evaluateTrialExpectation(
       type: expectation.type,
       passed,
       detail: `${expectation.path} ${exists ? 'exists' : 'does not exist'}.`,
+      repairScope: 'pipeline-artifact',
     };
   }
   if (
     expectation.type === 'file-contains' ||
     expectation.type === 'file-not-contains' ||
-    expectation.type === 'file-equals'
+    expectation.type === 'file-equals' ||
+    expectation.type === 'json-valid' ||
+    expectation.type === 'json-pointer-equals'
   ) {
     if (!stat || stat.isSymbolicLink() || !stat.isFile()) {
       return {
         type: expectation.type,
         passed: false,
         detail: `${expectation.path} is not a regular file.`,
+        repairScope: 'pipeline-artifact',
       };
     }
     if (stat.size > MAX_TRIAL_ASSERTION_FILE_BYTES) {
@@ -934,9 +1008,49 @@ function evaluateTrialExpectation(
         type: expectation.type,
         passed: false,
         detail: `${expectation.path} exceeds the assertion read limit.`,
+        repairScope: 'pipeline-artifact',
       };
     }
     const content = readFileSync(path, 'utf-8');
+    if (expectation.type === 'json-valid' || expectation.type === 'json-pointer-equals') {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(content);
+      } catch (err) {
+        return {
+          type: expectation.type,
+          passed: false,
+          detail: boundedTrialText(
+            `${expectation.path} is not valid JSON: ${errorMessage(err)}`,
+          ),
+          repairScope: 'pipeline-artifact',
+        };
+      }
+      if (expectation.type === 'json-valid') {
+        return {
+          type: expectation.type,
+          passed: true,
+          detail: `${expectation.path} contains one valid JSON value.`,
+          repairScope: 'pipeline-artifact',
+        };
+      }
+      const actual = resolveJsonPointer(parsed, expectation.pointer);
+      if (!actual.found) {
+        return {
+          type: expectation.type,
+          passed: false,
+          detail: `${expectation.path} does not contain JSON Pointer ${expectation.pointer || '<root>'}.`,
+          repairScope: 'pipeline-artifact',
+        };
+      }
+      const passed = isDeepStrictEqual(actual.value, JSON.parse(expectation.expectedJson));
+      return {
+        type: expectation.type,
+        passed,
+        detail: `${expectation.path} JSON Pointer ${expectation.pointer || '<root>'} ${passed ? 'matches' : 'does not match'} the expected JSON value.`,
+        repairScope: 'pipeline-artifact',
+      };
+    }
     if (expectation.type === 'file-equals') {
       return {
         type: expectation.type,
@@ -946,6 +1060,7 @@ function evaluateTrialExpectation(
           (content === expectation.text
             ? ' exactly matches the expected text.'
             : ' does not exactly match the expected text.'),
+        repairScope: 'pipeline-artifact',
       };
     }
     const contains = content.includes(expectation.text);
@@ -954,6 +1069,7 @@ function evaluateTrialExpectation(
       type: expectation.type,
       passed,
       detail: `${expectation.path} ${contains ? 'contains' : 'does not contain'} the expected marker.`,
+      repairScope: 'pipeline-artifact',
     };
   }
   if (!stat || stat.isSymbolicLink() || !stat.isDirectory()) {
@@ -961,6 +1077,7 @@ function evaluateTrialExpectation(
       type: expectation.type,
       passed: false,
       detail: `${expectation.path} is not a directory.`,
+      repairScope: 'pipeline-artifact',
     };
   }
   const count = readdirSync(path, { withFileTypes: true }).filter(
@@ -981,6 +1098,7 @@ function evaluateTrialExpectation(
     type: expectation.type,
     passed,
     detail: `${expectation.path} contains ${count} matching entries; expected ${range}.`,
+    repairScope: 'pipeline-artifact',
   };
 }
 
@@ -1029,6 +1147,113 @@ async function ensureTrialPluginsLoaded(
   });
 }
 
+function trialTaskRepairScope(
+  status: string,
+  failureKind: string | null,
+): ChatPipelineTrialTaskResult['repairScope'] {
+  if (status === 'success') return null;
+  if (
+    status === 'skipped' ||
+    status === 'blocked' ||
+    status === 'timeout' ||
+    failureKind === 'timeout' ||
+    failureKind === 'aborted' ||
+    failureKind === 'spawn_error' ||
+    failureKind === 'binary_missing'
+  ) {
+    return 'diagnostic-only';
+  }
+  return 'pipeline-artifact';
+}
+
+function countTrialTaskStatuses(
+  tasks: readonly ChatPipelineTrialTaskResult[],
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const task of tasks) counts[task.status] = (counts[task.status] ?? 0) + 1;
+  return counts;
+}
+
+function mergeTrialTaskStatusCounts(
+  target: Record<string, number>,
+  source: Readonly<Record<string, number>>,
+): void {
+  for (const [status, count] of Object.entries(source)) {
+    target[status] = (target[status] ?? 0) + count;
+  }
+}
+
+function omittedTrialTaskStatusCounts(
+  total: Readonly<Record<string, number>>,
+  visible: readonly ChatPipelineTrialTaskResult[],
+): Record<string, number> {
+  const visibleCounts = countTrialTaskStatuses(visible);
+  return Object.fromEntries(
+    Object.entries(total)
+      .map(([status, count]) => [status, Math.max(0, count - (visibleCounts[status] ?? 0))])
+      .filter(([, count]) => count > 0),
+  );
+}
+
+function trialTaskEvidencePriority(
+  task: ChatPipelineTrialTaskResult,
+  failedCaseIds: ReadonlySet<string>,
+): number {
+  if (
+    task.status === 'failed' ||
+    task.status === 'timeout' ||
+    task.failureKind !== null ||
+    task.stderr.length > 0
+  ) {
+    return 0;
+  }
+  if (task.caseId && failedCaseIds.has(task.caseId)) return 1;
+  if (task.status === 'blocked') return 2;
+  if (task.status === 'skipped') return 3;
+  if (task.status === 'success') return 4;
+  return 2;
+}
+
+export function selectChatPipelineTrialTaskEvidence(
+  tasks: readonly ChatPipelineTrialTaskResult[],
+  failedCaseIds: ReadonlySet<string>,
+  limit = MAX_TRIAL_TASK_RESULTS,
+): ChatPipelineTrialTaskResult[] {
+  if (limit <= 0 || tasks.length === 0) return [];
+  const order = new Map(tasks.map((task, index) => [task, index]));
+  const ranked = [...tasks].sort(
+    (left, right) =>
+      trialTaskEvidencePriority(left, failedCaseIds) -
+        trialTaskEvidencePriority(right, failedCaseIds) ||
+      (order.get(left) ?? 0) - (order.get(right) ?? 0),
+  );
+  const representatives = [...failedCaseIds]
+    .map((caseId) => ranked.find((task) => task.caseId === caseId))
+    .filter((task): task is ChatPipelineTrialTaskResult => !!task)
+    .slice(0, limit);
+  const nonActionableRepresentatives = representatives.filter(
+    (task) => trialTaskEvidencePriority(task, failedCaseIds) > 0,
+  );
+  const selected = new Set<ChatPipelineTrialTaskResult>();
+  const actionableLimit = Math.max(0, limit - nonActionableRepresentatives.length);
+  for (const task of ranked) {
+    if (trialTaskEvidencePriority(task, failedCaseIds) !== 0) break;
+    if (selected.size >= actionableLimit) break;
+    selected.add(task);
+  }
+  for (const task of representatives) selected.add(task);
+  for (const task of ranked) {
+    if (selected.size >= limit) break;
+    selected.add(task);
+  }
+  return [...selected].sort(
+    (left, right) =>
+      trialTaskEvidencePriority(left, failedCaseIds) -
+        trialTaskEvidencePriority(right, failedCaseIds) ||
+      (order.get(left) ?? 0) - (order.get(right) ?? 0),
+  );
+}
+
 function trialTaskResults(
   result: EngineResult,
   caseId: string | null,
@@ -1037,32 +1262,39 @@ function trialTaskResults(
   tasks: ChatPipelineTrialTaskResult[];
   totalTaskCount: number;
   omittedTaskCount: number;
+  taskStatusCounts: Record<string, number>;
+  omittedTaskStatusCounts: Record<string, number>;
   countText: string;
 } {
-  const entries = [...result.states.entries()].sort((left, right) => {
-    const leftPassed = left[1].status === 'success';
-    const rightPassed = right[1].status === 'success';
-    return Number(leftPassed) - Number(rightPassed);
+  const allTasks = [...result.states.entries()].map(([taskId, state]) => {
+    const stdout = boundedTrialStream(state.result?.stdout ?? '', state.result?.stdoutBytes);
+    const stderr = boundedTrialStream(state.result?.stderr ?? '', state.result?.stderrBytes);
+    const failureKind = state.result?.failureKind ?? null;
+    return {
+      caseId,
+      runNumber,
+      taskId,
+      status: state.status,
+      exitCode: state.result?.exitCode ?? null,
+      failureKind,
+      stdout: stdout.text,
+      stderr: stderr.text,
+      repairScope: trialTaskRepairScope(state.status, failureKind),
+      stdoutTruncation: stdout.truncation,
+      stderrTruncation: stderr.truncation,
+    };
   });
-  const counts = new Map<string, number>();
-  for (const [, state] of entries) {
-    counts.set(state.status, (counts.get(state.status) ?? 0) + 1);
-  }
-  const tasks = entries.slice(0, MAX_TRIAL_TASK_RESULTS).map(([taskId, state]) => ({
-    caseId,
-    runNumber,
-    taskId,
-    status: state.status,
-    exitCode: state.result?.exitCode ?? null,
-    failureKind: state.result?.failureKind ?? null,
-    stdout: boundedTrialText(state.result?.stdout ?? ''),
-    stderr: boundedTrialText(state.result?.stderr ?? ''),
-  }));
+  const tasks = selectChatPipelineTrialTaskEvidence(allTasks, new Set());
+  const taskStatusCounts = countTrialTaskStatuses(allTasks);
   return {
     tasks,
-    totalTaskCount: entries.length,
-    omittedTaskCount: Math.max(0, entries.length - tasks.length),
-    countText: [...counts.entries()].map(([status, count]) => `${status}=${count}`).join(', '),
+    totalTaskCount: allTasks.length,
+    omittedTaskCount: Math.max(0, allTasks.length - tasks.length),
+    taskStatusCounts,
+    omittedTaskStatusCounts: omittedTrialTaskStatusCounts(taskStatusCounts, tasks),
+    countText: Object.entries(taskStatusCounts)
+      .map(([status, count]) => `${status}=${count}`)
+      .join(', '),
   };
 }
 
@@ -1176,6 +1408,7 @@ interface TrialWorkspaceMutationState {
   revision: number;
   healthy: boolean;
   reason: string | null;
+  recentChanges: Array<{ revision: number; path: string }>;
 }
 
 interface TrialWorkspaceMutationMonitor {
@@ -1225,6 +1458,7 @@ function startTrialWorkspaceMutationMonitor(ws: WorkspaceState): {
   let eventRevision = 0;
   let healthy = true;
   let reason: string | null = null;
+  const recentChanges: Array<{ revision: number; path: string }> = [];
   let closing = false;
   const fail = (message: string): void => {
     healthy = false;
@@ -1245,6 +1479,8 @@ function startTrialWorkspaceMutationMonitor(ws: WorkspaceState): {
       eventRevision += 1;
       if (ignoreTrialWorkspaceMutation(path)) return;
       revision += 1;
+      recentChanges.push({ revision, path: boundedTrialText(path) });
+      if (recentChanges.length > MAX_TRIAL_WORKSPACE_CHANGE_PATHS) recentChanges.shift();
     });
   } catch (err) {
     return {
@@ -1258,7 +1494,7 @@ function startTrialWorkspaceMutationMonitor(ws: WorkspaceState): {
   });
   return {
     monitor: {
-      read: () => ({ revision, healthy, reason }),
+      read: () => ({ revision, healthy, reason, recentChanges: [...recentChanges] }),
       settle: async () => {
         let observedEventRevision = eventRevision;
         let quietRounds = 0;
@@ -1290,6 +1526,47 @@ function startTrialWorkspaceMutationMonitor(ws: WorkspaceState): {
   };
 }
 
+function diagnosticCaseExecutionExpectation(
+  detail: string,
+  evidence?: { paths: string[]; omittedPathEventCount: number },
+): ChatPipelineTrialExpectationResult {
+  return {
+    type: 'case-execution',
+    passed: false,
+    detail: boundedTrialText(detail),
+    repairScope: 'diagnostic-only',
+    ...(evidence && evidence.paths.length > 0 ? { paths: evidence.paths } : {}),
+    ...(evidence && evidence.omittedPathEventCount > 0
+      ? { omittedPathEventCount: evidence.omittedPathEventCount }
+      : {}),
+  };
+}
+
+function trialWorkspaceMutationEvidence(
+  previousRevision: number,
+  state: TrialWorkspaceMutationState,
+): { paths: string[]; omittedPathEventCount: number } {
+  const relevant = state.recentChanges.filter((change) => change.revision > previousRevision);
+  return {
+    paths: [...new Set(relevant.map((change) => change.path))],
+    omittedPathEventCount: Math.max(0, state.revision - previousRevision - relevant.length),
+  };
+}
+
+function describeTrialWorkspaceMutation(
+  caseId: string,
+  evidence: { paths: string[]; omittedPathEventCount: number },
+): string {
+  const parts = [
+    `Isolated case ${caseId} modified the real workspace; case fixtures and outputs must remain isolated.`,
+  ];
+  if (evidence.paths.length > 0) parts.push(`Changed paths: ${evidence.paths.join(', ')}.`);
+  if (evidence.omittedPathEventCount > 0) {
+    parts.push(`${evidence.omittedPathEventCount} earlier change event(s) were omitted by the bounded diagnostic path list.`);
+  }
+  return parts.join(' ');
+}
+
 function trialCaseForWorkspaceWitnessFailure(
   testCase: ChatPipelineTrialPlanCase,
   detail: string,
@@ -1301,12 +1578,12 @@ function trialCaseForWorkspaceWitnessFailure(
     success: false,
     runIds: [],
     tasks: [],
+    totalTaskCount: 0,
+    omittedTaskCount: 0,
+    taskStatusCounts: {},
+    omittedTaskStatusCounts: {},
     expectations: [
-      {
-        type: 'case-execution',
-        passed: false,
-        detail: boundedTrialText(detail),
-      },
+      diagnosticCaseExecutionExpectation(detail),
     ],
   };
 }
@@ -1319,6 +1596,7 @@ function resultForHostWitnessFailure(
     ...result,
     success: false,
     kind: 'witness-failed',
+    repairAuthorization: 'diagnostic-only',
     summary: boundedTrialText(`${result.summary}
 
 Trial authorization witness failed: ${reason}`),
@@ -1387,6 +1665,7 @@ async function executeTargetedTrialCase(
   const runIds: string[] = [];
   const tasks: ChatPipelineTrialTaskResult[] = [];
   let totalTaskCount = 0;
+  const taskStatusCounts: Record<string, number> = {};
   let lastResult: EngineResult | null = null;
   let allRunsSucceeded = true;
   let executionError: string | null = null;
@@ -1443,6 +1722,7 @@ async function executeTargetedTrialCase(
       allRunsSucceeded = allRunsSucceeded && lastResult.success;
       const evidence = trialTaskResults(lastResult, input.testCase.id, runNumber);
       totalTaskCount += evidence.totalTaskCount;
+      mergeTrialTaskStatusCounts(taskStatusCounts, evidence.taskStatusCounts);
       tasks.push(...evidence.tasks);
       if (input.controller.signal.aborted) break;
     }
@@ -1452,7 +1732,7 @@ async function executeTargetedTrialCase(
 
   const expectations: ChatPipelineTrialExpectationResult[] = [];
   if (executionError) {
-    expectations.push({ type: 'case-execution', passed: false, detail: executionError });
+    expectations.push(diagnosticCaseExecutionExpectation(executionError));
   } else if (caseWorkspace) {
     for (const expectation of input.testCase.expectations) {
       try {
@@ -1462,6 +1742,7 @@ async function executeTargetedTrialCase(
           type: expectation.type,
           passed: false,
           detail: `Expectation crashed: ${errorMessage(err)}`,
+          repairScope: 'diagnostic-only',
         });
       }
     }
@@ -1470,11 +1751,9 @@ async function executeTargetedTrialCase(
     try {
       rmSync(caseWorkspace.rootDir, { recursive: true, force: true });
     } catch (err) {
-      expectations.push({
-        type: 'case-execution',
-        passed: false,
-        detail: `Case cleanup failed: ${errorMessage(err)}`,
-      });
+      expectations.push(
+        diagnosticCaseExecutionExpectation(`Case cleanup failed: ${errorMessage(err)}`),
+      );
     }
   }
   const success =
@@ -1482,6 +1761,10 @@ async function executeTargetedTrialCase(
     allRunsSucceeded &&
     runIds.length === input.testCase.runs &&
     expectations.every((item) => item.passed);
+  const selectedTasks = selectChatPipelineTrialTaskEvidence(
+    tasks,
+    success ? new Set() : new Set([input.testCase.id]),
+  );
   return {
     result: {
       id: input.testCase.id,
@@ -1489,7 +1772,11 @@ async function executeTargetedTrialCase(
       objective: boundedTrialText(input.testCase.objective),
       success,
       runIds,
-      tasks: tasks.slice(0, MAX_TRIAL_TASK_RESULTS),
+      tasks: selectedTasks,
+      totalTaskCount,
+      omittedTaskCount: Math.max(0, totalTaskCount - selectedTasks.length),
+      taskStatusCounts,
+      omittedTaskStatusCounts: omittedTrialTaskStatusCounts(taskStatusCounts, selectedTasks),
       expectations,
     },
     totalTaskCount,
@@ -1764,6 +2051,8 @@ async function executeTrial(
       tasks: [] as ChatPipelineTrialTaskResult[],
       totalTaskCount: 0,
       omittedTaskCount: 0,
+      taskStatusCounts: {} as Record<string, number>,
+      omittedTaskStatusCounts: {} as Record<string, number>,
       countText: '',
     };
     if (!baselineSkipped) {
@@ -1838,7 +2127,7 @@ async function executeTrial(
         pendingWorkspaceWitnessFailure = null;
         break;
       }
-      const workspaceFailures: string[] = [];
+      const workspaceFailures: ChatPipelineTrialExpectationResult[] = [];
 
       const caseExecution = await executeTargetedTrialCase({
         ws,
@@ -1876,14 +2165,23 @@ async function executeTrial(
         const mutationState = workspaceMutationMonitor.read();
         if (!mutationState.healthy) {
           workspaceFailures.push(
-            `Could not verify that isolated cases left the real workspace unchanged: ${mutationState.reason ?? 'workspace mutation monitor failed'}.`,
+            diagnosticCaseExecutionExpectation(
+              `Could not verify that isolated cases left the real workspace unchanged: ${mutationState.reason ?? 'workspace mutation monitor failed'}.`,
+            ),
           );
         } else if (
           expectedWorkspaceMutationRevision !== null &&
           mutationState.revision !== expectedWorkspaceMutationRevision
         ) {
+          const evidence = trialWorkspaceMutationEvidence(
+            expectedWorkspaceMutationRevision,
+            mutationState,
+          );
           workspaceFailures.push(
-            `Isolated case ${testCase.id} modified the real workspace; case fixtures and outputs must remain isolated.`,
+            diagnosticCaseExecutionExpectation(
+              describeTrialWorkspaceMutation(testCase.id, evidence),
+              evidence,
+            ),
           );
         }
         expectedWorkspaceMutationRevision = mutationState.revision;
@@ -1896,11 +2194,7 @@ async function executeTrial(
               success: false,
               expectations: [
                 ...caseExecution.result.expectations,
-                ...workspaceFailures.map((detail) => ({
-                  type: 'case-execution' as const,
-                  passed: false,
-                  detail: boundedTrialText(detail),
-                })),
+                ...workspaceFailures,
               ],
             };
       cases.push(caseResult);
@@ -1936,11 +2230,7 @@ async function executeTrial(
             success: false,
             expectations: [
               ...lastCase.expectations,
-              {
-                type: 'case-execution',
-                passed: false,
-                detail: boundedTrialText(finalWorkspaceFailure),
-              },
+              diagnosticCaseExecutionExpectation(finalWorkspaceFailure),
             ],
           };
         } else {
@@ -1966,12 +2256,24 @@ async function executeTrial(
           ]
         : []),
     ];
-    const allVisibleTasks = [
+    const allTaskEvidenceCandidates = [
       ...baselineEvidence.tasks,
       ...cases.flatMap((item) => item.tasks),
-    ].sort((left, right) => Number(left.status === 'success') - Number(right.status === 'success'));
-    const visibleTasks = allVisibleTasks.slice(0, MAX_TRIAL_TASK_RESULTS);
+    ];
+    const failedCaseIds = new Set(cases.filter((item) => !item.success).map((item) => item.id));
+    const visibleTasks = selectChatPipelineTrialTaskEvidence(
+      allTaskEvidenceCandidates,
+      failedCaseIds,
+    );
     const omittedTaskCount = Math.max(0, totalTaskCount - visibleTasks.length);
+    const taskStatusCounts = { ...baselineEvidence.taskStatusCounts };
+    for (const testCase of cases) {
+      mergeTrialTaskStatusCounts(taskStatusCounts, testCase.taskStatusCounts);
+    }
+    const omittedTaskStatusCounts = omittedTrialTaskStatusCounts(
+      taskStatusCounts,
+      visibleTasks,
+    );
     const visibleCases = cases.map((item) => ({
       ...item,
       tasks: visibleTasks.filter((task) => task.caseId === item.id),
@@ -1985,12 +2287,27 @@ async function executeTrial(
             ? 'passed-with-warnings'
             : 'passed'
           : 'failed';
+    const hasPipelineArtifactFailure =
+      allTaskEvidenceCandidates.some(
+        (task) =>
+          task.repairScope === 'pipeline-artifact' &&
+          !['success', 'skipped', 'blocked'].includes(task.status),
+      ) ||
+      cases.some((testCase) =>
+        testCase.expectations.some(
+          (expectation) => !expectation.passed && expectation.repairScope === 'pipeline-artifact',
+        ),
+      );
     const result: ChatPipelineTrialRunResult = {
       version: TRIAL_CACHE_VERSION,
       success,
       kind,
       ...(kind === 'failed'
-        ? { repairAuthorization: 'pipeline-change-allowed' as const }
+        ? {
+            repairAuthorization: hasPipelineArtifactFailure
+              ? ('pipeline-change-allowed' as const)
+              : ('diagnostic-only' as const),
+          }
         : kind === 'timed-out' || kind === 'witness-failed'
           ? { repairAuthorization: 'diagnostic-only' as const }
           : {}),
@@ -2014,10 +2331,12 @@ async function executeTrial(
       totalTaskCount,
       omittedTaskCount,
       tasks: visibleTasks,
+      taskStatusCounts,
+      omittedTaskStatusCounts,
       plan: trialPlanSummary(plan),
       cases: visibleCases,
     };
-    const hasExecutableFailure = allVisibleTasks.some(
+    const hasExecutableFailure = allTaskEvidenceCandidates.some(
       (task) => !['success', 'skipped', 'blocked'].includes(task.status),
     );
     const hasUnrelatedCaseFailure = cases.some(

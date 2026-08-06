@@ -148,7 +148,7 @@ function writeTrialPlan(
     stagedPath.replace(/\.ya?ml$/i, '.trial-plan.json'),
     JSON.stringify(
       {
-        version: 3,
+        version: 4,
         yamlHash,
         summary: 'Focused trial coverage for async witness ordering.',
         goals: ['Ensure trial authorization witness lifecycle behaves deterministically.'],
