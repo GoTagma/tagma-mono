@@ -145,6 +145,19 @@
 - Treat each case's `targetTaskIds` as mandatory at the tool schema, persisted-plan parser, and
   execution boundary. Never translate an empty or missing target list to `undefined`, because that
   means a full-pipeline run.
+- A Trial case that inspects a `.json` artifact with a path or text assertion must also use
+  `json-valid` or `json-pointer-equals` for that same path. Raw text matches do not establish RFC
+  8259 validity. Assert decoded control characters, quotes, Unicode, and nested values through a
+  JSON Pointer plus a serialized `expectedJson` value; never weaken this back to text-only checks.
+- Trial task evidence is a bounded diagnostic view, not the source of truth for task cardinality.
+  Prioritize executable failures and non-empty stderr, reserve representative task context for
+  every failed case, and only then admit blocked/skipped noise. Return total and omitted task counts
+  plus status breakdowns so the bounded view cannot silently imply that omitted tasks did not run.
+- Preserve truncation provenance across every Trial evidence boundary. Distinguish source/runtime
+  tail capture, Trial-result field or stream clipping, and repair-prompt clipping. Return produced,
+  source-returned, and final-returned byte counts where they are known, and label inline truncation
+  markers with the layer. Never diagnose or change runtime output handling merely because a
+  read-only diagnostic response or repair prompt was clipped.
 - For an exact Git-root workspace, witness actual bytes for tracked and non-ignored untracked
   source files, authored `.tagma` files, and ignored root dependency/environment descriptors.
   Bind Git HEAD/index/status/flags/config/locks, ignored-root presence, the Git binary, declared
@@ -187,6 +200,10 @@
   During isolated cases, a recursive same-process mutation monitor must fail closed on writes
   outside stage-owned/runtime paths, including ignored files. This is application-level
   verification, not an OS sandbox.
+- A real-workspace mutation observed during an isolated case is a harness-containment failure and
+  remains `diagnostic-only`, even when the task itself succeeded. Return bounded, redacted,
+  workspace-relative changed paths and an omitted-path-event count before attempting any product
+  fix. Such evidence must never by itself grant `pipeline-change-allowed` or authorize YAML repair.
 - Pin Trial YAML and requirements to one immutable execution snapshot, and hold the shared
   per-workspace run reservation for the entire host Trial. A completed response retry is keyed by
   stage, trial id, path, and input hash even if the host later drifts; finalize must still verify
@@ -363,6 +380,11 @@
   feature-specific state under the contributor `features` namespace instead of coupling it into
   the diagnostics bridge or route. Keep diagnostics isolation, contributor, auth-boundary, and
   workspace-isolation tests current.
+- Any bounded read-only diagnostic collection must expose what was omitted: include total/returned
+  counts (and status/category breakdowns when meaningful) plus explicit truncation-layer metadata.
+  A tail-read or response-size limit is diagnostic-interface truncation, not proof that the
+  underlying runtime, file, task output, or persisted record was truncated. Locate and test the
+  exact layer before changing source behavior.
 - Discover OpenCode diagnostics history with the canonical directory query plus the bounded
   unscoped compatibility query used by Chat. Do not set OpenCode's `roots=true` on that discovery
   request because it explicitly removes delegated children. First verify owned roots through the

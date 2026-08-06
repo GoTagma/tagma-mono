@@ -30,8 +30,26 @@ export interface DiagnosticLogEntry {
 
 export interface DiagnosticLogPage {
   oldestCursor: number | null;
+  latestCursor: number;
   nextCursor: number;
   droppedBeforeCursor: boolean;
+  retainedEntryCount: number;
+  availableEntryCount: number;
+  returnedEntryCount: number;
+  omittedEntryCount: number;
+  hasMore: boolean;
+  retention: {
+    layer: 'diagnostics-log-buffer';
+    droppedEntryCount: number;
+    requestedEntryLossCount: number;
+    truncated: boolean;
+  };
+  page: {
+    layer: 'diagnostics-log-page';
+    limit: number;
+    omittedEntryCount: number;
+    truncated: boolean;
+  };
   entries: DiagnosticLogEntry[];
 }
 
@@ -65,6 +83,7 @@ export class DiagnosticsHub {
   private readonly rendererReports = new Map<string, StoredRendererReport>();
   private logBytes = 0;
   private logCursor = 0;
+  private droppedLogEntryCount = 0;
   private session: DiagnosticsSession | null = null;
 
   constructor(options: DiagnosticsHubOptions = {}) {
@@ -98,6 +117,7 @@ export class DiagnosticsHub {
     this.logs.length = 0;
     this.logBytes = 0;
     this.logCursor = 0;
+    this.droppedLogEntryCount = 0;
     this.rendererReports.clear();
   }
 
@@ -159,7 +179,10 @@ export class DiagnosticsHub {
       (this.logs.length > this.maxLogEntries || this.logBytes > this.maxLogBytes)
     ) {
       const removed = this.logs.shift();
-      if (removed) this.logBytes -= Buffer.byteLength(removed.message, 'utf8');
+      if (removed) {
+        this.logBytes -= Buffer.byteLength(removed.message, 'utf8');
+        this.droppedLogEntryCount += 1;
+      }
     }
   }
 
@@ -169,14 +192,33 @@ export class DiagnosticsHub {
       ? Math.min(1_000, Math.max(1, Math.trunc(limit)))
       : 500;
     const oldestCursor = this.logs[0]?.cursor ?? null;
-    const entries = this.logs
-      .filter((entry) => entry.cursor > boundedAfter)
-      .slice(0, boundedLimit)
-      .map((entry) => ({ ...entry }));
+    const available = this.logs.filter((entry) => entry.cursor > boundedAfter);
+    const entries = available.slice(0, boundedLimit).map((entry) => ({ ...entry }));
+    const omittedEntryCount = Math.max(0, available.length - entries.length);
+    const requestedEntryLossCount =
+      oldestCursor === null ? 0 : Math.max(0, oldestCursor - (boundedAfter + 1));
     return {
       oldestCursor,
+      latestCursor: this.logCursor,
       nextCursor: entries.at(-1)?.cursor ?? this.logCursor,
-      droppedBeforeCursor: oldestCursor !== null && boundedAfter + 1 < oldestCursor,
+      droppedBeforeCursor: requestedEntryLossCount > 0,
+      retainedEntryCount: this.logs.length,
+      availableEntryCount: available.length,
+      returnedEntryCount: entries.length,
+      omittedEntryCount,
+      hasMore: omittedEntryCount > 0,
+      retention: {
+        layer: 'diagnostics-log-buffer',
+        droppedEntryCount: this.droppedLogEntryCount,
+        requestedEntryLossCount,
+        truncated: requestedEntryLossCount > 0,
+      },
+      page: {
+        layer: 'diagnostics-log-page',
+        limit: boundedLimit,
+        omittedEntryCount,
+        truncated: omittedEntryCount > 0,
+      },
       entries,
     };
   }
@@ -244,6 +286,17 @@ export const diagnosticsHub = new DiagnosticsHub();
 export interface DesktopLogTail {
   path: string;
   truncated: boolean;
+  totalBytes: number;
+  readBytes: number;
+  sourceReturnedBytes: number;
+  returnedBytes: number;
+  truncation: {
+    layer: 'diagnostics-desktop-log-tail';
+    reason: 'byte-limit';
+    limitBytes: number;
+    omittedHeadBytes: number;
+    discardedPartialLineBytes: number;
+  } | null;
   text: string;
 }
 
@@ -256,19 +309,39 @@ export function readDesktopLogTail(maxBytes = 32 * 1024): DesktopLogTail | null 
     fd = openSync(configured, 'r');
     const stat = fstatSync(fd);
     if (!stat.isFile()) return null;
-    const length = Math.min(Math.max(1, maxBytes), stat.size);
+    const limitBytes = Number.isFinite(maxBytes) ? Math.max(1, Math.trunc(maxBytes)) : 32 * 1024;
+    const length = Math.min(limitBytes, stat.size);
     const offset = Math.max(0, stat.size - length);
     const buffer = Buffer.alloc(length);
     const bytesRead = readSync(fd, buffer, 0, length, offset);
-    let text = buffer.subarray(0, bytesRead).toString('utf8');
+    let source = buffer.subarray(0, bytesRead);
+    let discardedPartialLineBytes = 0;
     if (offset > 0) {
-      const firstNewline = text.indexOf('\n');
-      if (firstNewline >= 0) text = text.slice(firstNewline + 1);
+      const firstNewline = source.indexOf(0x0a);
+      if (firstNewline >= 0) {
+        discardedPartialLineBytes = firstNewline + 1;
+        source = source.subarray(discardedPartialLineBytes);
+      }
     }
+    const text = redactDiagnosticText(source.toString('utf8'));
     return {
       path: configured,
       truncated: offset > 0,
-      text: redactDiagnosticText(text),
+      totalBytes: stat.size,
+      readBytes: bytesRead,
+      sourceReturnedBytes: source.byteLength,
+      returnedBytes: Buffer.byteLength(text, 'utf8'),
+      truncation:
+        offset > 0
+          ? {
+              layer: 'diagnostics-desktop-log-tail',
+              reason: 'byte-limit',
+              limitBytes,
+              omittedHeadBytes: offset + discardedPartialLineBytes,
+              discardedPartialLineBytes,
+            }
+          : null,
+      text,
     };
   } catch {
     return null;

@@ -180,6 +180,8 @@ Fixture and expectation paths are relative to the isolated case project root and
 
 Use file-equals when exact text preservation matters, including an empty expected string for empty-content cases. Use exact text or later-paragraph markers so a first-line-only implementation cannot pass.
 
+Every .json artifact checked with path-exists, file-contains, file-not-contains, or file-equals must also have json-valid or json-pointer-equals for the same path in that case. Text matches alone cannot prove valid JSON. Use json-pointer-equals with expectedJson containing a serialized JSON value to verify decoded newlines, quotes, and Unicode. The artifact itself must remain RFC 8259 JSON; never require raw unescaped control characters or quotes.
+
 Never copy YAML or trial plans between staging and live \`.tagma\`. If a pre-commit \`tagma_trial_plan\` operation fails, correct and retry only that bounded operation. If \`commit\` fails, do not use symlinks, junctions, copies, or writes to live \`.tagma\`; briefly report the host/tool error and end the physical turn. The host alone decides whether another configured attempt remains.
 
 Host runs a bounded, hash-bound trial only after explicit opt-in, preserving the real-workspace baseline and running targeted cases in isolated workspaces. Never claim Trial passed without host evidence. Never remove or weaken manual approval or another safety boundary; report prerequisites and genuine limitations.

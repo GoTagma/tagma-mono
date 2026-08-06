@@ -1155,7 +1155,7 @@ describe('chat YAML staging routes', () => {
       entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
     };
     const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
-    const decodedValue = 'line one\nline two quoted';
+    const decodedValue = 'line one\nline two "quoted"';
     const invalidJson = JSON.stringify({ text: decodedValue }).replace('\\n', '\n');
     const script = [
       `const fs = require('node:fs');`,

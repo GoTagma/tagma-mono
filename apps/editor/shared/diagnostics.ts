@@ -116,7 +116,7 @@ export function redactDiagnosticText(input: string): string {
 function boundedString(value: string, maxChars: number): string {
   const redacted = redactDiagnosticText(value);
   if (redacted.length <= maxChars) return redacted;
-  return `${redacted.slice(0, maxChars)}…[truncated ${redacted.length - maxChars} chars]`;
+  return `${redacted.slice(0, maxChars)}...[diagnostics-sanitizer truncated ${redacted.length - maxChars} chars]`;
 }
 
 function sanitizeInner(
@@ -133,7 +133,9 @@ function sanitizeInner(
   if (typeof value === 'undefined' || typeof value === 'function' || typeof value === 'symbol') {
     return undefined;
   }
-  if (depth >= options.maxDepth) return { __truncatedDepth: true };
+  if (depth >= options.maxDepth) {
+    return { __truncatedDepth: true, __truncationLayer: 'diagnostics-sanitizer' };
+  }
   if (seen.has(value)) return { __circular: true };
   seen.add(value);
 
@@ -162,7 +164,10 @@ function sanitizeInner(
       .slice(0, options.maxArrayItems)
       .map((item) => sanitizeInner(item, null, depth + 1, options, seen));
     if (value.length > options.maxArrayItems) {
-      kept.push({ __truncatedItems: value.length - options.maxArrayItems });
+      kept.push({
+        __truncatedItems: value.length - options.maxArrayItems,
+        __truncationLayer: 'diagnostics-sanitizer',
+      });
     }
     return kept;
   }
@@ -175,6 +180,7 @@ function sanitizeInner(
   }
   if (entries.length > options.maxObjectKeys) {
     output.__truncatedKeys = entries.length - options.maxObjectKeys;
+    output.__truncationLayer = 'diagnostics-sanitizer';
   }
   return output;
 }

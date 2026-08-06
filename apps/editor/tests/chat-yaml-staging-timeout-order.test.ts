@@ -754,7 +754,7 @@ describe('chat YAML staging async witness ordering', () => {
     ws.layoutWatcher.stopWatching();
   });
 
-  test('keeps isolated real-workspace mutation findings repairable as ordinary trial failures', async () => {
+  test('keeps isolated real-workspace mutation findings diagnostic-only with the changed path', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();
     const stage = await startStage(getRoute, ws, sourcePath);
@@ -812,6 +812,21 @@ describe('chat YAML staging async witness ordering', () => {
       success: false,
       kind: 'failed',
       ran: true,
+      repairAuthorization: 'diagnostic-only',
+      cases: [
+        {
+          id: 'workspace-leak',
+          expectations: [
+            { type: 'task-status', passed: true },
+            {
+              type: 'case-execution',
+              passed: false,
+              repairScope: 'diagnostic-only',
+              paths: ['isolated-case-leak.txt'],
+            },
+          ],
+        },
+      ],
     });
     expect((trialRes.body as { summary: string }).summary).toContain('modified the real workspace');
     ws.watcher.stopWatching();

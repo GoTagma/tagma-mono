@@ -535,6 +535,10 @@ test('dedicated hidden tagma-trial-planner owns targeted Trial Plan authoring', 
     expect(planner).toContain('repeated runs');
     expect(planner).toContain('Use file-equals when exact text preservation matters');
     expect(planner).toContain('an empty expected string for empty-content cases');
+    expect(planner).toContain('Every .json artifact checked');
+    expect(planner).toContain('Text matches alone cannot prove valid JSON');
+    expect(planner).toContain('serialized JSON value');
+    expect(planner).toContain('must remain RFC 8259 JSON');
     expect(planner).toContain('Pass the exact staged YAML path');
 
     expect(pipeline).toContain('tagma_trial_plan: false');
@@ -806,6 +810,8 @@ test('trial-plan tool binds structured edge cases to the final YAML hash', () =>
   expect(doc).toContain('yamlHash');
   expect(doc).toContain('tool.schema.discriminatedUnion("type"');
   expect(doc).toContain('type: tool.schema.literal("file-contains")');
+  expect(doc).toContain('type: tool.schema.literal("json-valid")');
+  expect(doc).toContain('type: tool.schema.literal("json-pointer-equals")');
   expect(doc).toContain('type: tool.schema.literal("task-status")');
   expect(doc).toContain('dimension: tool.schema.enum(REQUIRED_COVERAGE)');
   expect(doc).toContain('severity: tool.schema.enum(FINDING_SEVERITIES)');
@@ -993,6 +999,33 @@ test('trial-plan tool rejects host-invalid plans before writing any file', async
     await expect(
       submitTrialPlanToolArgs(generated.tool, args, { directory: stage.agentTagmaDir }),
     ).rejects.toThrow('expectations[0].type is unsupported');
+    expect(existsSync(stage.planPath)).toBe(false);
+  } finally {
+    stage.cleanup();
+    generated.cleanup();
+  }
+});
+
+test('trial-plan tool rejects text-only checks for JSON artifacts', async () => {
+  const generated = await loadGeneratedTrialPlanTool();
+  const stage = makeTrialPlanStage();
+  try {
+    const args = completeTrialPlanToolArgs('sample/sample.yaml');
+    (
+      args.cases as Array<{
+        expectations: Array<Record<string, unknown>>;
+      }>
+    )[0]!.expectations.push({
+      type: 'file-contains',
+      path: 'outputs/result.json',
+      text: 'expected marker',
+    });
+
+    await expect(
+      submitTrialPlanToolArgs(generated.tool, args, { directory: stage.agentTagmaDir }),
+    ).rejects.toThrow(
+      'JSON artifact outputs/result.json requires a json-valid or json-pointer-equals expectation',
+    );
     expect(existsSync(stage.planPath)).toBe(false);
   } finally {
     stage.cleanup();
