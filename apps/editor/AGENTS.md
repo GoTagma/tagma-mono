@@ -207,7 +207,9 @@
 - A real-workspace mutation observed during an isolated case is a harness-containment failure and
   remains `diagnostic-only`, even when the task itself succeeded. Return bounded, redacted,
   workspace-relative changed paths and an omitted-path-event count before attempting any product
-  fix. Such evidence must never by itself grant `pipeline-change-allowed` or authorize YAML repair.
+  fix. The mutation monitor establishes timing, not causation: label the writer `writer-unknown`
+  and never claim that the isolated case caused the change. Such evidence must never by itself
+  grant `pipeline-change-allowed` or authorize YAML repair.
 - Pin Trial YAML and requirements to one immutable execution snapshot, and hold the shared
   per-workspace run reservation for the entire host Trial. A completed response retry is keyed by
   stage, trial id, path, and input hash even if the host later drifts; finalize must still verify
@@ -389,6 +391,10 @@
   A tail-read or response-size limit is diagnostic-interface truncation, not proof that the
   underlying runtime, file, task output, or persisted record was truncated. Locate and test the
   exact layer before changing source behavior.
+- Conversation exports are also a bounded read-only evidence view. Label their own clipping as
+  `chat-export`, include the omitted character count, and preserve Trial planned/returned/not-run
+  cases, task status totals/omissions, repair scopes, selected stderr/stdout, stream truncation
+  provenance, assertion-reader limits, and writer-unknown workspace-mutation observations.
 - Keep renderer-report ingestion, diagnostics log-ring retention, response pagination, active-run
   event windows, desktop-log tail reads, and OpenCode source-query limits as separate evidence
   layers. Return read errors and source boundaries explicitly; `null`, an empty array, or a short

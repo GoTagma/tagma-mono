@@ -365,6 +365,16 @@ describe('chat conversation export', () => {
                   repairScope: 'diagnostic-only',
                   paths: ['generated/changed.txt'],
                   omittedPathEventCount: 2,
+                  workspaceMutation: {
+                    layer: 'trial-workspace-mutation-monitor',
+                    attribution: 'writer-unknown',
+                    observedDuringCaseId: 'basic-run',
+                    observedPathEventCount: 5,
+                    returnedPathEventCount: 3,
+                    returnedPathCount: 1,
+                    omittedPathEventCount: 2,
+                    paths: ['generated/changed.txt'],
+                  },
                 },
                 {
                   type: 'file-contains',
@@ -435,6 +445,9 @@ describe('chat conversation export', () => {
     expect(exported.content).toContain('### Trial Case Results');
     expect(exported.content).toContain('case-execution: failed');
     expect(exported.content).toContain('Changed paths: generated/changed.txt; omitted path events: 2');
+    expect(exported.content).toContain(
+      'Workspace mutation observation: layer=trial-workspace-mutation-monitor; attribution=writer-unknown; case=basic-run; observed events=5; returned events=3; returned paths=1; omitted events=2',
+    );
     expect(exported.content).toContain(
       'Evidence truncation: layer=trial-assertion-reader; reason=byte-limit; limit=2097152 bytes; source=2097153 bytes; returned=0 bytes',
     );

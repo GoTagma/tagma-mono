@@ -466,6 +466,15 @@ function renderTrialExpectationEvidence(
   markdown: boolean,
 ): string[] {
   const lines: string[] = [];
+  if (expectation.workspaceMutation) {
+    const observation = expectation.workspaceMutation;
+    lines.push(
+      exportDeepNestedBullet(
+        markdown,
+        `Workspace mutation observation: layer=${observation.layer}; attribution=${observation.attribution}; case=${redactExportText(observation.observedDuringCaseId)}; observed events=${observation.observedPathEventCount}; returned events=${observation.returnedPathEventCount}; returned paths=${observation.returnedPathCount}; omitted events=${observation.omittedPathEventCount}`,
+      ),
+    );
+  }
   if (expectation.paths && expectation.paths.length > 0) {
     lines.push(
       exportDeepNestedBullet(
