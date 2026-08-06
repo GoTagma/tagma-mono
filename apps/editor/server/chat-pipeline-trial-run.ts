@@ -160,6 +160,7 @@ export interface ChatPipelineTrialExpectationResult {
   repairScope: 'pipeline-artifact' | 'diagnostic-only';
   paths?: string[];
   omittedPathEventCount?: number;
+  workspaceMutation?: ChatPipelineTrialWorkspaceMutationEvidence;
   truncation?: {
     layer: 'trial-assertion-reader';
     reason: 'byte-limit';
@@ -167,6 +168,17 @@ export interface ChatPipelineTrialExpectationResult {
     sourceBytes: number;
     returnedBytes: number;
   };
+}
+
+export interface ChatPipelineTrialWorkspaceMutationEvidence {
+  layer: 'trial-workspace-mutation-monitor';
+  attribution: 'writer-unknown';
+  observedDuringCaseId: string;
+  observedPathEventCount: number;
+  returnedPathEventCount: number;
+  returnedPathCount: number;
+  omittedPathEventCount: number;
+  paths: string[];
 }
 
 export interface ChatPipelineTrialCaseResult {
@@ -1560,7 +1572,7 @@ function startTrialWorkspaceMutationMonitor(ws: WorkspaceState): {
 
 function diagnosticCaseExecutionExpectation(
   detail: string,
-  evidence?: { paths: string[]; omittedPathEventCount: number },
+  evidence?: ChatPipelineTrialWorkspaceMutationEvidence,
 ): ChatPipelineTrialExpectationResult {
   return {
     type: 'case-execution',
@@ -1571,26 +1583,36 @@ function diagnosticCaseExecutionExpectation(
     ...(evidence && evidence.omittedPathEventCount > 0
       ? { omittedPathEventCount: evidence.omittedPathEventCount }
       : {}),
+    ...(evidence ? { workspaceMutation: evidence } : {}),
   };
 }
 
 function trialWorkspaceMutationEvidence(
   previousRevision: number,
   state: TrialWorkspaceMutationState,
-): { paths: string[]; omittedPathEventCount: number } {
+  caseId: string,
+): ChatPipelineTrialWorkspaceMutationEvidence {
   const relevant = state.recentChanges.filter((change) => change.revision > previousRevision);
+  const paths = [...new Set(relevant.map((change) => change.path))];
+  const observedPathEventCount = Math.max(0, state.revision - previousRevision);
   return {
-    paths: [...new Set(relevant.map((change) => change.path))],
-    omittedPathEventCount: Math.max(0, state.revision - previousRevision - relevant.length),
+    layer: 'trial-workspace-mutation-monitor',
+    attribution: 'writer-unknown',
+    observedDuringCaseId: caseId,
+    observedPathEventCount,
+    returnedPathEventCount: relevant.length,
+    returnedPathCount: paths.length,
+    omittedPathEventCount: Math.max(0, observedPathEventCount - relevant.length),
+    paths,
   };
 }
 
 function describeTrialWorkspaceMutation(
   caseId: string,
-  evidence: { paths: string[]; omittedPathEventCount: number },
+  evidence: ChatPipelineTrialWorkspaceMutationEvidence,
 ): string {
   const parts = [
-    `Isolated case ${caseId} modified the real workspace; case fixtures and outputs must remain isolated.`,
+    `A real-workspace change was observed while isolated case ${caseId} was running; the mutation monitor cannot identify the writer, so case containment could not be verified.`,
   ];
   if (evidence.paths.length > 0) parts.push(`Changed paths: ${evidence.paths.join(', ')}.`);
   if (evidence.omittedPathEventCount > 0) {
@@ -2212,6 +2234,7 @@ async function executeTrial(
           const evidence = trialWorkspaceMutationEvidence(
             expectedWorkspaceMutationRevision,
             mutationState,
+            testCase.id,
           );
           workspaceFailures.push(
             diagnosticCaseExecutionExpectation(
@@ -2251,7 +2274,7 @@ async function executeTrial(
       const finalWorkspaceFailure = !finalWorkspace.digest
         ? `Could not capture the real workspace after isolated cases: ${finalWorkspace.reason ?? 'unknown witness failure'}.`
         : finalWorkspace.digest !== baselineWorkspace.digest
-          ? 'Isolated cases modified the real workspace; case fixtures and outputs must remain isolated.'
+          ? 'A real-workspace change was observed while isolated cases were running; witness evidence cannot identify the writer, so case containment could not be verified.'
           : null;
       if (finalWorkspaceFailure) {
         if (!finalWorkspace.digest) hostWitnessCaptureFailure = true;

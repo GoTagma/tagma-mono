@@ -1877,9 +1877,21 @@ describe('chat YAML staging routes', () => {
             {
               type: 'case-execution',
               passed: false,
-              detail: expect.stringContaining('modified the real workspace'),
+              detail: expect.stringContaining(
+                'change was observed while isolated case leak-probe was running',
+              ),
               repairScope: 'diagnostic-only',
               paths: ['generated/case-leaked-into-real-workspace.txt'],
+              workspaceMutation: {
+                layer: 'trial-workspace-mutation-monitor',
+                attribution: 'writer-unknown',
+                observedDuringCaseId: 'leak-probe',
+                observedPathEventCount: expect.any(Number),
+                returnedPathEventCount: expect.any(Number),
+                returnedPathCount: 1,
+                omittedPathEventCount: 0,
+                paths: ['generated/case-leaked-into-real-workspace.txt'],
+              },
             },
           ],
         },
@@ -1974,7 +1986,7 @@ describe('chat YAML staging routes', () => {
       expect.objectContaining({
         type: 'case-execution',
         passed: false,
-        detail: expect.stringContaining('modified the real workspace'),
+        detail: expect.stringContaining('change was observed while isolated cases were running'),
       }),
     );
     expect(readFileSync(gitConfigPath, 'utf-8')).toContain('trial-drift = changed');
@@ -2052,7 +2064,19 @@ describe('chat YAML staging routes', () => {
             {
               type: 'case-execution',
               passed: false,
-              detail: expect.stringContaining('modified the real workspace'),
+              detail: expect.stringContaining(
+                'change was observed while isolated case transient-leak-probe was running',
+              ),
+              workspaceMutation: {
+                layer: 'trial-workspace-mutation-monitor',
+                attribution: 'writer-unknown',
+                observedDuringCaseId: 'transient-leak-probe',
+                observedPathEventCount: expect.any(Number),
+                returnedPathEventCount: expect.any(Number),
+                returnedPathCount: 1,
+                omittedPathEventCount: 0,
+                paths: ['case-transient-leak.txt'],
+              },
             },
           ],
         },

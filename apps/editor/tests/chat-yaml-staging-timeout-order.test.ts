@@ -823,12 +823,24 @@ describe('chat YAML staging async witness ordering', () => {
               passed: false,
               repairScope: 'diagnostic-only',
               paths: ['isolated-case-leak.txt'],
+              workspaceMutation: {
+                layer: 'trial-workspace-mutation-monitor',
+                attribution: 'writer-unknown',
+                observedDuringCaseId: 'workspace-leak',
+                observedPathEventCount: expect.any(Number),
+                returnedPathEventCount: expect.any(Number),
+                returnedPathCount: 1,
+                omittedPathEventCount: 0,
+                paths: ['isolated-case-leak.txt'],
+              },
             },
           ],
         },
       ],
     });
-    expect((trialRes.body as { summary: string }).summary).toContain('modified the real workspace');
+    expect((trialRes.body as { summary: string }).summary).toContain(
+      'change was observed while isolated case workspace-leak was running',
+    );
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });

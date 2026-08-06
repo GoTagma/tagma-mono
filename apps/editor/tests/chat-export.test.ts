@@ -249,16 +249,61 @@ describe('chat conversation export', () => {
           validation: { errors: [], warnings: [] },
         },
         trial: {
-          version: 2,
+          version: 10,
           success: false,
           kind: 'witness-failed',
           ran: false,
           runId: null,
-          summary: 'Witness failed with Authorization: Bearer trial-secret',
+          summary:
+            'Witness failed with Authorization: Bearer trial-secret ' + 'diagnostic detail '.repeat(300),
           durationMs: 25,
-          totalTaskCount: 1,
-          omittedTaskCount: 0,
-          tasks: [],
+          totalTaskCount: 12,
+          omittedTaskCount: 10,
+          taskStatusCounts: { failed: 1, success: 1, skipped: 10 },
+          omittedTaskStatusCounts: { skipped: 10 },
+          repairAuthorization: 'diagnostic-only',
+          verificationMode: 'real-baseline-and-isolated-cases',
+          plannedCaseCount: 2,
+          caseResultCount: 1,
+          notRunCaseCount: 1,
+          tasks: [
+            {
+              caseId: null,
+              runNumber: 1,
+              taskId: 'baseline.failed',
+              status: 'failed',
+              exitCode: 17,
+              failureKind: 'exit_nonzero',
+              stdout: '',
+              stderr: 'actionable failure token=baseline-task-secret',
+              repairScope: 'pipeline-artifact',
+              stdoutTruncation: {
+                source: 'not-truncated',
+                trialResult: false,
+                producedBytes: 0,
+                sourceReturnedBytes: 0,
+                returnedBytes: 0,
+              },
+              stderrTruncation: {
+                source: 'truncated',
+                trialResult: false,
+                producedBytes: 9_000,
+                sourceReturnedBytes: 4_000,
+                returnedBytes: 4_000,
+              },
+            },
+            {
+              caseId: 'basic-run',
+              runNumber: 1,
+              taskId: 'case.success',
+              status: 'success',
+              exitCode: 0,
+              failureKind: null,
+              stdout: 'case output',
+              stderr: '',
+              repairScope: null,
+            },
+          ],
           plan: {
             summary: 'Exercise the pipeline using api_key=plan-secret',
             goals: ['Verify basic output password=hunter2'],
@@ -295,12 +340,44 @@ describe('chat conversation export', () => {
               objective: 'Create greeting.txt',
               success: false,
               runIds: [],
-              tasks: [],
+              totalTaskCount: 11,
+              omittedTaskCount: 10,
+              taskStatusCounts: { success: 1, skipped: 10 },
+              omittedTaskStatusCounts: { skipped: 10 },
+              tasks: [
+                {
+                  caseId: 'basic-run',
+                  runNumber: 1,
+                  taskId: 'case.success',
+                  status: 'success',
+                  exitCode: 0,
+                  failureKind: null,
+                  stdout: 'case output',
+                  stderr: '',
+                  repairScope: null,
+                },
+              ],
               expectations: [
                 {
                   type: 'case-execution',
                   passed: false,
                   detail: 'Not executed because secret=case-secret',
+                  repairScope: 'diagnostic-only',
+                  paths: ['generated/changed.txt'],
+                  omittedPathEventCount: 2,
+                },
+                {
+                  type: 'file-contains',
+                  passed: false,
+                  detail: 'Output exceeded the assertion reader.',
+                  repairScope: 'diagnostic-only',
+                  truncation: {
+                    layer: 'trial-assertion-reader',
+                    reason: 'byte-limit',
+                    limitBytes: 2_097_152,
+                    sourceBytes: 2_097_153,
+                    returnedBytes: 0,
+                  },
                 },
               ],
             },
@@ -339,10 +416,28 @@ describe('chat conversation export', () => {
     expect(exported.content).toContain('Trial plan tool attempts: 2');
     expect(exported.content).toContain('Planning validation rejections: 1');
     expect(exported.content).toContain('Planning token usage: 1.5k input, 100 output');
+    expect(exported.content).toContain('Trial cases: 2 planned; 1 returned; 1 not run');
+    expect(exported.content).toContain('Trial task status totals: failed=1, skipped=10, success=1');
+    expect(exported.content).toContain('Trial task status omitted: skipped=10');
+    expect(exported.content).toContain('Trial repair authorization: diagnostic-only');
+    expect(exported.content).toContain('Trial verification mode: real-baseline-and-isolated-cases');
+    expect(exported.content).toContain('...[chat-export truncated ');
+    expect(exported.content).not.toContain('...[truncated]');
+    expect(exported.content).toContain('Baseline Task Evidence');
+    expect(exported.content).toContain('baseline.failed run 1: failed; exit 17; failure exit_nonzero');
+    expect(exported.content).toContain('stderr: actionable failure token=[REDACTED]');
+    expect(exported.content).toContain(
+      'stderr evidence: source/runtime=truncated; trial-result=not-truncated; produced=9000 bytes; source-returned=4000 bytes; final-returned=4000 bytes',
+    );
     expect(exported.content).toContain('### Trial Plan');
+    expect(exported.content).toContain('repair scope: diagnostic-only');
     expect(exported.content).toContain('`basic-run` — Basic run');
     expect(exported.content).toContain('### Trial Case Results');
     expect(exported.content).toContain('case-execution: failed');
+    expect(exported.content).toContain('Changed paths: generated/changed.txt; omitted path events: 2');
+    expect(exported.content).toContain(
+      'Evidence truncation: layer=trial-assertion-reader; reason=byte-limit; limit=2097152 bytes; source=2097153 bytes; returned=0 bytes',
+    );
     expect(exported.content).toContain('[REDACTED]');
     expect(exported.content).not.toContain('ghp_compile_secret');
     expect(exported.content).not.toContain('trial-secret');

@@ -1,4 +1,9 @@
 import type { AssistantMessage, OpencodeThreadEntry, Part } from '../api/opencode-chat';
+import type {
+  ChatPipelineTrialExpectationResult,
+  ChatPipelineTrialStreamTruncation,
+  ChatPipelineTrialTaskResult,
+} from '../api/client';
 import type { ChatYamlSessionResult } from '../store/chat-store';
 import { stripAskAiContext } from './ask-ai-context';
 
@@ -226,7 +231,27 @@ function renderPipelineVerification(
       ),
       exportBullet(
         markdown,
+        `Trial cases: ${trial.plannedCaseCount ?? trial.plan?.cases.length ?? trial.cases.length} planned; ${trial.caseResultCount ?? trial.cases.length} returned; ${trial.notRunCaseCount ?? Math.max(0, (trial.plannedCaseCount ?? trial.plan?.cases.length ?? trial.cases.length) - (trial.caseResultCount ?? trial.cases.length))} not run`,
+      ),
+      exportBullet(
+        markdown,
         `Trial tasks: ${trial.totalTaskCount}${trial.omittedTaskCount > 0 ? ` (${trial.omittedTaskCount} omitted)` : ''}`,
+      ),
+      exportBullet(
+        markdown,
+        `Trial task status totals: ${formatStatusCounts(trial.taskStatusCounts)}`,
+      ),
+      exportBullet(
+        markdown,
+        `Trial task status omitted: ${formatStatusCounts(trial.omittedTaskStatusCounts)}`,
+      ),
+      exportBullet(
+        markdown,
+        `Trial repair authorization: ${trial.repairAuthorization ?? 'unavailable'}`,
+      ),
+      exportBullet(
+        markdown,
+        `Trial verification mode: ${trial.verificationMode ?? 'unavailable'}`,
       ),
     );
   } else {
@@ -310,7 +335,7 @@ function renderPipelineVerification(
         lines.push(
           exportBullet(
             markdown,
-            `${finding.severity}: ${redactExportText(finding.summary)} — ${redactExportText(finding.evidence)}`,
+            `${finding.severity}; repair scope: ${finding.repairScope}: ${redactExportText(finding.summary)} — ${redactExportText(finding.evidence)}`,
           ),
         );
       }
@@ -341,6 +366,12 @@ function renderPipelineVerification(
     lines.push('No Trial Plan was recorded.');
   }
 
+  const baselineTasks = trial.tasks.filter((task) => task.caseId === null);
+  if (baselineTasks.length > 0) {
+    lines.push('', markdown ? '### Baseline Task Evidence' : 'Baseline Task Evidence:');
+    for (const task of baselineTasks) lines.push(...renderTrialTaskEvidence(task, markdown, false));
+  }
+
   lines.push('', markdown ? '### Trial Case Results' : 'Trial Case Results:');
   if (trial.cases.length === 0) {
     lines.push('No case results were recorded.');
@@ -352,22 +383,22 @@ function renderPipelineVerification(
         `${formatCaseId(testCase.id, markdown)} — ${redactExportText(testCase.title)}: ${testCase.success ? 'passed' : 'failed'}`,
       ),
       exportNestedBullet(markdown, `Objective: ${redactExportText(testCase.objective)}`),
+      exportNestedBullet(
+        markdown,
+        `Task evidence: total=${testCase.totalTaskCount ?? 'unavailable'}; returned=${testCase.tasks.length}; omitted=${testCase.omittedTaskCount ?? 'unavailable'}; statuses=${formatStatusCounts(testCase.taskStatusCounts)}; omitted statuses=${formatStatusCounts(testCase.omittedTaskStatusCounts)}`,
+      ),
     );
     for (const expectation of testCase.expectations) {
       lines.push(
         exportNestedBullet(
           markdown,
-          `${expectation.type}: ${expectation.passed ? 'passed' : 'failed'} — ${redactExportText(expectation.detail)}`,
+          `${expectation.type}: ${expectation.passed ? 'passed' : 'failed'}; repair scope: ${expectation.repairScope ?? 'unavailable'} — ${redactExportText(expectation.detail)}`,
         ),
       );
+      lines.push(...renderTrialExpectationEvidence(expectation, markdown));
     }
     for (const task of testCase.tasks) {
-      lines.push(
-        exportNestedBullet(
-          markdown,
-          `Task ${redactExportText(task.taskId)} run ${task.runNumber}: ${redactExportText(task.status)}; exit ${task.exitCode ?? 'none'}; failure ${redactExportText(task.failureKind ?? 'none')}`,
-        ),
-      );
+      lines.push(...renderTrialTaskEvidence(task, markdown, true));
     }
   }
   return lines.join('\n');
@@ -379,6 +410,87 @@ function exportBullet(markdown: boolean, text: string): string {
 
 function exportNestedBullet(markdown: boolean, text: string): string {
   return markdown ? `  - ${text}` : `    ${text}`;
+}
+
+function exportDeepNestedBullet(markdown: boolean, text: string): string {
+  return markdown ? `    - ${text}` : `      ${text}`;
+}
+
+function formatStatusCounts(counts: Readonly<Record<string, number>> | undefined): string {
+  if (!counts) return 'unavailable';
+  const entries = Object.entries(counts)
+    .filter(([, count]) => Number.isFinite(count) && count > 0)
+    .sort(([left], [right]) => left.localeCompare(right));
+  return entries.length > 0
+    ? entries.map(([status, count]) => `${redactExportText(status)}=${count}`).join(', ')
+    : 'none';
+}
+
+function formatOptionalByteCount(value: number | null | undefined): string {
+  return typeof value === 'number' && Number.isFinite(value) ? `${value} bytes` : 'unavailable';
+}
+
+function formatTrialStreamEvidence(
+  label: 'stdout' | 'stderr',
+  truncation: ChatPipelineTrialStreamTruncation,
+): string {
+  return `${label} evidence: source/runtime=${truncation.source}; trial-result=${truncation.trialResult ? 'truncated' : 'not-truncated'}; produced=${formatOptionalByteCount(truncation.producedBytes)}; source-returned=${formatOptionalByteCount(truncation.sourceReturnedBytes)}; final-returned=${formatOptionalByteCount(truncation.returnedBytes)}`;
+}
+
+function renderTrialTaskEvidence(
+  task: ChatPipelineTrialTaskResult,
+  markdown: boolean,
+  nested: boolean,
+): string[] {
+  const item = nested ? exportNestedBullet : exportBullet;
+  const detail = nested ? exportDeepNestedBullet : exportNestedBullet;
+  const lines = [
+    item(
+      markdown,
+      `Task ${redactExportText(task.taskId)} run ${task.runNumber}: ${redactExportText(task.status)}; exit ${task.exitCode ?? 'none'}; failure ${redactExportText(task.failureKind ?? 'none')}; repair scope ${task.repairScope ?? 'unavailable'}`,
+    ),
+  ];
+  if (task.stdout) lines.push(detail(markdown, `stdout: ${redactExportText(task.stdout)}`));
+  if (task.stderr) lines.push(detail(markdown, `stderr: ${redactExportText(task.stderr)}`));
+  if (task.stdoutTruncation) {
+    lines.push(detail(markdown, formatTrialStreamEvidence('stdout', task.stdoutTruncation)));
+  }
+  if (task.stderrTruncation) {
+    lines.push(detail(markdown, formatTrialStreamEvidence('stderr', task.stderrTruncation)));
+  }
+  return lines;
+}
+
+function renderTrialExpectationEvidence(
+  expectation: ChatPipelineTrialExpectationResult,
+  markdown: boolean,
+): string[] {
+  const lines: string[] = [];
+  if (expectation.paths && expectation.paths.length > 0) {
+    lines.push(
+      exportDeepNestedBullet(
+        markdown,
+        `Changed paths: ${formatRedactedList(expectation.paths, 'none')}; omitted path events: ${expectation.omittedPathEventCount ?? 0}`,
+      ),
+    );
+  } else if ((expectation.omittedPathEventCount ?? 0) > 0) {
+    lines.push(
+      exportDeepNestedBullet(
+        markdown,
+        `Changed paths: unavailable; omitted path events: ${expectation.omittedPathEventCount}`,
+      ),
+    );
+  }
+  if (expectation.truncation) {
+    const truncation = expectation.truncation;
+    lines.push(
+      exportDeepNestedBullet(
+        markdown,
+        `Evidence truncation: layer=${truncation.layer}; reason=${truncation.reason}; limit=${truncation.limitBytes} bytes; source=${truncation.sourceBytes} bytes; returned=${truncation.returnedBytes} bytes`,
+      ),
+    );
+  }
+  return lines;
 }
 
 function formatCaseId(id: string, markdown: boolean): string {
@@ -426,6 +538,18 @@ function redactExportText(value: string, maxLength = 4_000): string {
     .replace(/\b(?:sk|sess|ghp|xox[baprs])[-_][A-Za-z0-9._-]{6,}\b/g, '[REDACTED]')
     .replace(/\s+/g, ' ')
     .trim();
-  if (redacted.length <= maxLength) return redacted;
-  return redacted.slice(0, Math.max(0, maxLength - 15)) + '...[truncated]';
+  const limit = Math.max(0, Math.trunc(maxLength));
+  if (redacted.length <= limit) return redacted;
+  let omittedChars = redacted.length;
+  let marker = '';
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    marker = `...[chat-export truncated ${omittedChars} chars]`;
+    const retainedChars = Math.max(0, limit - marker.length);
+    const nextOmittedChars = redacted.length - retainedChars;
+    if (nextOmittedChars === omittedChars) break;
+    omittedChars = nextOmittedChars;
+  }
+  marker = `...[chat-export truncated ${omittedChars} chars]`;
+  if (marker.length >= limit) return marker.slice(0, limit);
+  return redacted.slice(0, limit - marker.length) + marker;
 }

@@ -269,6 +269,16 @@ export interface ChatPipelineTrialExpectationResult {
   repairScope?: 'pipeline-artifact' | 'diagnostic-only';
   paths?: string[];
   omittedPathEventCount?: number;
+  workspaceMutation?: {
+    layer: 'trial-workspace-mutation-monitor';
+    attribution: 'writer-unknown';
+    observedDuringCaseId: string;
+    observedPathEventCount: number;
+    returnedPathEventCount: number;
+    returnedPathCount: number;
+    omittedPathEventCount: number;
+    paths: string[];
+  };
   truncation?: {
     layer: 'trial-assertion-reader';
     reason: 'byte-limit';
@@ -317,7 +327,7 @@ export interface ChatPipelineTrialPlanSummary {
 }
 
 export interface ChatPipelineTrialRunResult {
-  version: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+  version: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
   success: boolean;
   kind: ChatPipelineTrialRunKind;
   ran: boolean;
