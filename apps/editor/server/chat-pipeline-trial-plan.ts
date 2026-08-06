@@ -10,7 +10,7 @@ import {
 } from '../shared/chat-pipeline-trial-plan-limit.js';
 
 export const CHAT_PIPELINE_TRIAL_PLAN_CONTRACT = {
-  version: 3,
+  version: 4,
   limits: {
     planBytes: 256 * 1024,
     cases: 8,
@@ -49,6 +49,8 @@ export const CHAT_PIPELINE_TRIAL_PLAN_CONTRACT = {
     'file-contains',
     'file-not-contains',
     'file-equals',
+    'json-valid',
+    'json-pointer-equals',
     'directory-entry-count',
     'task-status',
   ],
@@ -116,6 +118,13 @@ export type ChatPipelineTrialExpectation =
   | { type: 'file-contains'; path: string; text: string }
   | { type: 'file-not-contains'; path: string; text: string }
   | { type: 'file-equals'; path: string; text: string }
+  | { type: 'json-valid'; path: string }
+  | {
+      type: 'json-pointer-equals';
+      path: string;
+      pointer: string;
+      expectedJson: string;
+    }
   | {
       type: 'directory-entry-count';
       path: string;
@@ -390,6 +399,32 @@ function normalizeRelativeCasePath(value: unknown, label: string): string {
   return path;
 }
 
+function parseJsonPointer(value: unknown, label: string): string {
+  if (typeof value !== 'string' || value.length > 512) {
+    throw new Error(`${label} must be a JSON Pointer no longer than 512 characters.`);
+  }
+  if (value !== '' && !value.startsWith('/')) {
+    throw new Error(`${label} must be empty or start with /.`);
+  }
+  if (/~(?:[^01]|$)/u.test(value)) {
+    throw new Error(`${label} contains an invalid JSON Pointer escape.`);
+  }
+  return value;
+}
+
+function parseExpectedJson(value: unknown, label: string): string {
+  if (typeof value !== 'string') throw new Error(`${label} must be a JSON string.`);
+  if (new TextEncoder().encode(value).length > MAX_TEXT_EXPECTATION_BYTES) {
+    throw new Error(`${label} exceeds the expectation byte limit.`);
+  }
+  try {
+    JSON.parse(value);
+  } catch {
+    throw new Error(`${label} must contain one valid JSON value.`);
+  }
+  return value;
+}
+
 function parseExpectation(value: unknown, label: string): ChatPipelineTrialExpectation {
   const raw = asRecord(value, label);
   const type = asString(raw.type, `${label}.type`, 64);
@@ -418,6 +453,17 @@ function parseExpectation(value: unknown, label: string): ChatPipelineTrialExpec
       type,
       path: normalizeRelativeCasePath(raw.path, `${label}.path`),
       text,
+    };
+  }
+  if (type === 'json-valid') {
+    return { type, path: normalizeRelativeCasePath(raw.path, `${label}.path`) };
+  }
+  if (type === 'json-pointer-equals') {
+    return {
+      type,
+      path: normalizeRelativeCasePath(raw.path, `${label}.path`),
+      pointer: parseJsonPointer(raw.pointer, `${label}.pointer`),
+      expectedJson: parseExpectedJson(raw.expectedJson, `${label}.expectedJson`),
     };
   }
   if (type === 'directory-entry-count') {
@@ -537,13 +583,45 @@ function hasDistinctOutputExpectation(cases: ChatPipelineTrialPlanCase[]): boole
       if (
         expectation.type === 'path-exists' ||
         expectation.type === 'file-contains' ||
-        expectation.type === 'file-equals'
+        expectation.type === 'file-equals' ||
+        expectation.type === 'json-valid' ||
+        expectation.type === 'json-pointer-equals'
       ) {
         positivePaths.add(expectation.path.toLowerCase());
       }
     }
     return positivePaths.size >= 2;
   });
+}
+
+function validateJsonArtifactExpectations(cases: ChatPipelineTrialPlanCase[]): void {
+  for (const testCase of cases) {
+    const jsonAwarePaths = new Set(
+      testCase.expectations
+        .filter(
+          (expectation) =>
+            expectation.type === 'json-valid' || expectation.type === 'json-pointer-equals',
+        )
+        .map((expectation) => expectation.path.toLowerCase()),
+    );
+    for (const expectation of testCase.expectations) {
+      if (
+        !(
+          expectation.type === 'path-exists' ||
+          expectation.type === 'file-contains' ||
+          expectation.type === 'file-not-contains' ||
+          expectation.type === 'file-equals'
+        ) ||
+        !expectation.path.toLowerCase().endsWith('.json') ||
+        jsonAwarePaths.has(expectation.path.toLowerCase())
+      ) {
+        continue;
+      }
+      throw new Error(
+        `JSON artifact ${expectation.path} requires a json-valid or json-pointer-equals expectation in the same case.`,
+      );
+    }
+  }
 }
 
 function validateCoveredCaseEvidence(
@@ -622,6 +700,7 @@ export function parseChatPipelineTrialPlan(value: unknown): ChatPipelineTrialPla
 
   const cases = asArray(raw.cases, 'trial plan cases', MAX_CASES).map(parseCase);
   if (cases.length === 0) throw new Error('trial plan cases must contain at least one case.');
+  validateJsonArtifactExpectations(cases);
   const caseIds = new Set<string>();
   for (const item of cases) {
     if (caseIds.has(item.id)) throw new Error(`trial plan case id is duplicated: ${item.id}.`);

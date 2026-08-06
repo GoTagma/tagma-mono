@@ -1142,6 +1142,117 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
+  test('strictly parses JSON outputs and can assert decoded values through JSON Pointer', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    const decodedValue = 'line one\nline two quoted';
+    const invalidJson = JSON.stringify({ text: decodedValue }).replace('\\n', '\n');
+    const script = [
+      `const fs = require('node:fs');`,
+      `if (fs.existsSync('inputs/mode.txt')) {`,
+      `  const mode = fs.readFileSync('inputs/mode.txt', 'utf8');`,
+      `  fs.mkdirSync('outputs', { recursive: true });`,
+      `  const content = mode === 'invalid' ? ${JSON.stringify(invalidJson)} : JSON.stringify({ text: ${JSON.stringify(decodedValue)} });`,
+      `  fs.writeFileSync('outputs/result.json', content);`,
+      `}`,
+    ].join(' ');
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'JSON Output Verification',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [{ id: 'process', command: { argv: [process.execPath, '-e', script] } }],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
+    writeTrialPlan(entry.stagedPath, {
+      cases: [
+        {
+          id: 'invalid-json',
+          title: 'Raw control character is rejected',
+          objective: 'Do not accept text markers inside syntactically invalid JSON.',
+          runs: 1,
+          targetTaskIds: ['main.process'],
+          fixtures: [{ path: 'inputs/mode.txt', content: 'invalid' }],
+          expectations: [
+            { type: 'json-valid', path: 'outputs/result.json' },
+            { type: 'file-contains', path: 'outputs/result.json', text: 'line one\nline two' },
+          ],
+        },
+        {
+          id: 'semantic-json',
+          title: 'Escaped JSON string decodes correctly',
+          objective: 'Verify decoded newlines and quotes without requiring invalid JSON text.',
+          runs: 1,
+          targetTaskIds: ['main.process'],
+          fixtures: [{ path: 'inputs/mode.txt', content: 'valid' }],
+          expectations: [
+            { type: 'json-valid', path: 'outputs/result.json' },
+            {
+              type: 'json-pointer-equals',
+              path: 'outputs/result.json',
+              pointer: '/text',
+              expectedJson: JSON.stringify(decodedValue),
+            },
+          ],
+        },
+      ],
+    });
+
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'strict_json_output' },
+        'chat-lock',
+      ),
+      trialRes,
+    );
+
+    expect(trialRes.body).toMatchObject({
+      success: false,
+      kind: 'failed',
+      repairAuthorization: 'pipeline-change-allowed',
+      cases: [
+        {
+          id: 'invalid-json',
+          success: false,
+          expectations: [
+            { type: 'json-valid', passed: false },
+            { type: 'file-contains', passed: true },
+          ],
+        },
+        {
+          id: 'semantic-json',
+          success: true,
+          expectations: [
+            { type: 'json-valid', passed: true },
+            { type: 'json-pointer-equals', passed: true },
+          ],
+        },
+      ],
+    });
+    discardStage(getRoute, ws, stage.id);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
   test('passes a collision-safe implementation against repeated multi-paragraph edge cases', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();
@@ -1654,6 +1765,7 @@ describe('chat YAML staging routes', () => {
     expect(trialRes.body).toMatchObject({
       success: false,
       kind: 'failed',
+      repairAuthorization: 'diagnostic-only',
       cases: [
         {
           id: 'leak-probe',
@@ -1664,6 +1776,8 @@ describe('chat YAML staging routes', () => {
               type: 'case-execution',
               passed: false,
               detail: expect.stringContaining('modified the real workspace'),
+              repairScope: 'diagnostic-only',
+              paths: ['generated/case-leaked-into-real-workspace.txt'],
             },
           ],
         },

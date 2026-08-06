@@ -112,6 +112,34 @@ function validateExpectation(value, label) {
     normalizeRelativeCasePath(raw.path, label + ".path");
     return raw;
   }
+  if (type === "json-valid") {
+    normalizeRelativeCasePath(raw.path, label + ".path");
+    return raw;
+  }
+  if (type === "json-pointer-equals") {
+    normalizeRelativeCasePath(raw.path, label + ".path");
+    const pointer = asString(raw.pointer, label + ".pointer", 512, true);
+    if (pointer !== "" && !pointer.startsWith("/")) {
+      throw new Error(label + ".pointer must be empty or start with /.");
+    }
+    if (/~(?:[^01]|$)/u.test(pointer)) {
+      throw new Error(label + ".pointer contains an invalid JSON Pointer escape.");
+    }
+    const expectedJson = asString(
+      raw.expectedJson,
+      label + ".expectedJson",
+      CONTRACT.limits.textExpectationBytes,
+    );
+    if (new TextEncoder().encode(expectedJson).length > CONTRACT.limits.textExpectationBytes) {
+      throw new Error(label + ".expectedJson exceeds the expectation byte limit.");
+    }
+    try {
+      JSON.parse(expectedJson);
+    } catch {
+      throw new Error(label + ".expectedJson must contain one valid JSON value.");
+    }
+    return raw;
+  }
   if (type === "directory-entry-count") {
     normalizeRelativeCasePath(raw.path, label + ".path");
     if (raw.suffix !== undefined && raw.suffix !== null && raw.suffix !== "") {
@@ -173,6 +201,33 @@ function validateCase(value, index) {
   if (expectations.length === 0) {
     throw new Error(label + ".expectations must not be empty.");
   }
+  const jsonAwarePaths = new Set(
+    expectations
+      .filter(
+        (expectation) =>
+          expectation.type === "json-valid" || expectation.type === "json-pointer-equals",
+      )
+      .map((expectation) => expectation.path.toLowerCase()),
+  );
+  for (const expectation of expectations) {
+    if (
+      !(
+        expectation.type === "path-exists" ||
+        expectation.type === "file-contains" ||
+        expectation.type === "file-not-contains" ||
+        expectation.type === "file-equals"
+      ) ||
+      !expectation.path.toLowerCase().endsWith(".json") ||
+      jsonAwarePaths.has(expectation.path.toLowerCase())
+    ) {
+      continue;
+    }
+    throw new Error(
+      "JSON artifact " +
+        expectation.path +
+        " requires a json-valid or json-pointer-equals expectation in the same case.",
+    );
+  }
   if (raw.targetTaskIds === undefined) {
     throw new Error(label + ".targetTaskIds is required.");
   }
@@ -227,7 +282,9 @@ function hasDistinctOutputExpectation(cases) {
       if (
         expectation.type === "path-exists" ||
         expectation.type === "file-contains" ||
-        expectation.type === "file-equals"
+        expectation.type === "file-equals" ||
+        expectation.type === "json-valid" ||
+        expectation.type === "json-pointer-equals"
       ) {
         positivePaths.add(expectation.path.toLowerCase());
       }
@@ -846,6 +903,16 @@ const expectationSchema = tool.schema.discriminatedUnion("type", [
     type: tool.schema.literal("file-equals"),
     path: tool.schema.string(),
     text: tool.schema.string(),
+  }),
+  tool.schema.object({
+    type: tool.schema.literal("json-valid"),
+    path: tool.schema.string(),
+  }),
+  tool.schema.object({
+    type: tool.schema.literal("json-pointer-equals"),
+    path: tool.schema.string(),
+    pointer: tool.schema.string(),
+    expectedJson: tool.schema.string(),
   }),
   tool.schema.object({
     type: tool.schema.literal("directory-entry-count"),

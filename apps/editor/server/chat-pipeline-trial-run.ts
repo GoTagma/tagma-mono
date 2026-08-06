@@ -12,6 +12,7 @@ import {
   type FSWatcher,
 } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 
 import {
   createTagma,
@@ -100,6 +101,7 @@ const MAX_TRIAL_CASE_COPY_FILES = 256;
 const MAX_TRIAL_ASSERTION_FILE_BYTES = 2 * 1024 * 1024;
 const TRIAL_ID_RE = /^[A-Za-z0-9_-]{1,160}$/;
 const MAX_TRIAL_WORKSPACE_MONITOR_EVENTS = 10_000;
+const MAX_TRIAL_WORKSPACE_CHANGE_PATHS = 32;
 const TRIAL_WORKSPACE_MONITOR_QUIET_INTERVAL_MS = 25;
 const TRIAL_WORKSPACE_MONITOR_QUIET_ROUNDS = 4;
 const TRIAL_WORKSPACE_MONITOR_MAX_SETTLE_MS = 1_000;
@@ -138,12 +140,25 @@ export interface ChatPipelineTrialTaskResult {
   failureKind: string | null;
   stdout: string;
   stderr: string;
+  repairScope: 'pipeline-artifact' | 'diagnostic-only' | null;
+  stdoutTruncation: ChatPipelineTrialStreamTruncation;
+  stderrTruncation: ChatPipelineTrialStreamTruncation;
+}
+
+export interface ChatPipelineTrialStreamTruncation {
+  source: 'not-truncated' | 'truncated' | 'unknown';
+  trialResult: boolean;
+  producedBytes: number | null;
+  returnedBytes: number;
 }
 
 export interface ChatPipelineTrialExpectationResult {
   type: ChatPipelineTrialExpectation['type'] | 'case-execution';
   passed: boolean;
   detail: string;
+  repairScope: 'pipeline-artifact' | 'diagnostic-only';
+  paths?: string[];
+  omittedPathEventCount?: number;
 }
 
 export interface ChatPipelineTrialCaseResult {
@@ -153,6 +168,10 @@ export interface ChatPipelineTrialCaseResult {
   success: boolean;
   runIds: string[];
   tasks: ChatPipelineTrialTaskResult[];
+  totalTaskCount: number;
+  omittedTaskCount: number;
+  taskStatusCounts: Record<string, number>;
+  omittedTaskStatusCounts: Record<string, number>;
   expectations: ChatPipelineTrialExpectationResult[];
 }
 
@@ -177,6 +196,8 @@ export interface ChatPipelineTrialRunResult {
   totalTaskCount: number;
   omittedTaskCount: number;
   tasks: ChatPipelineTrialTaskResult[];
+  taskStatusCounts?: Record<string, number>;
+  omittedTaskStatusCounts?: Record<string, number>;
   repairAuthorization?: 'pipeline-change-allowed' | 'diagnostic-only';
   prerequisiteState?: ChatPipelineTrialRecordedPrerequisiteState;
   verificationMode?: 'real-baseline-and-isolated-cases' | 'isolated-fixtures-only';
