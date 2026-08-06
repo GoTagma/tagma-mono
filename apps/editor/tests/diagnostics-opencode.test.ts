@@ -71,10 +71,62 @@ describe('OpenCode diagnostics reader', () => {
     expect(result).toMatchObject({
       workspaceKey: WORKSPACE_DIR,
       runtime: { pid: 123, cwd: OPENCODE_DIR },
+      totalSessionCount: 1,
+      returnedSessionCount: 1,
+      sourceQueries: {
+        scoped: { limit: 100, returnedCount: 1, boundaryReached: false },
+        compatibilityDiscovery: {
+          limit: 10_000,
+          returnedCount: 0,
+          boundaryReached: false,
+          available: true,
+        },
+      },
+      pagination: {
+        layer: 'diagnostics-opencode-session-page',
+        offset: 0,
+        limit: 100,
+        omittedBeforeCount: 0,
+        omittedAfterCount: 0,
+        hasMore: false,
+        nextOffset: null,
+      },
       sessions: [{ id: 'chat-1', password: '[REDACTED]' }],
     });
     expect(JSON.stringify(result)).not.toContain('must-not-leak');
     expect(JSON.stringify(result)).not.toContain('internal-credential');
+  });
+
+  test('paginates owned sessions without hiding total or source-query boundaries', async () => {
+    const { dependencies } = harness([
+      [
+        { id: 'chat-1', directory: OPENCODE_DIR },
+        { id: 'chat-2', directory: OPENCODE_DIR },
+        { id: 'chat-3', directory: OPENCODE_DIR },
+      ],
+      [],
+    ]);
+
+    const result = (await readDiagnosticsOpencodeSessions(
+      WORKSPACE_DIR,
+      dependencies,
+      { limit: 1, offset: 1 },
+    )) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      totalSessionCount: 3,
+      returnedSessionCount: 1,
+      pagination: {
+        layer: 'diagnostics-opencode-session-page',
+        offset: 1,
+        limit: 1,
+        omittedBeforeCount: 1,
+        omittedAfterCount: 1,
+        hasMore: true,
+        nextOffset: 2,
+      },
+      sessions: [{ id: 'chat-2' }],
+    });
   });
 
   test('discovers a Windows workspace session when drive casing makes the scoped query miss', async () => {
@@ -200,6 +252,13 @@ describe('OpenCode diagnostics reader', () => {
       sessionId: 'chat-1',
       limit: 50,
       before: 'message-9',
+      returnedMessageCount: 1,
+      pagination: {
+        layer: 'opencode-message-query',
+        returnedCount: 1,
+        boundaryReached: false,
+        nextBefore: null,
+      },
       messages: [{ info: { id: 'message-1' } }],
     });
   });

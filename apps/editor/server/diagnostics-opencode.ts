@@ -8,10 +8,18 @@ import { workspaceRegistry } from './workspace-registry.js';
 
 const MAX_OPENCODE_DIAGNOSTICS_BYTES = 4 * 1024 * 1024;
 const OPENCODE_SESSION_DISCOVERY_LIMIT = 10_000;
+const OPENCODE_SCOPED_SESSION_LIMIT = 100;
+const DEFAULT_DIAGNOSTICS_SESSION_PAGE_LIMIT = 100;
+const MAX_DIAGNOSTICS_SESSION_PAGE_LIMIT = 500;
 
 export interface DiagnosticsOpencodeMessageOptions {
   limit: number;
   before?: string;
+}
+
+export interface DiagnosticsOpencodeSessionOptions {
+  limit?: number;
+  offset?: number;
 }
 
 export interface DiagnosticsOpencodeDependencies {
@@ -129,25 +137,46 @@ function unwrapArray(payload: unknown, label: string): unknown[] {
   throw new DiagnosticsReadError(502, `OpenCode returned an invalid ${label} payload.`);
 }
 
+interface WorkspaceSessionDiscovery {
+  sessions: unknown[];
+  sourceQueries: {
+    scoped: {
+      limit: number;
+      returnedCount: number;
+      boundaryReached: boolean;
+    };
+    compatibilityDiscovery: {
+      limit: number;
+      returnedCount: number;
+      boundaryReached: boolean;
+      available: boolean;
+    };
+  };
+}
+
 async function listWorkspaceSessions(
   workspaceKey: string,
   handle: OpencodeHandle,
   dependencies: DiagnosticsOpencodeDependencies,
-): Promise<unknown[]> {
+): Promise<WorkspaceSessionDiscovery> {
   const scopedQuery = new URLSearchParams({
     directory: handle.cwd,
-    limit: '100',
+    limit: String(OPENCODE_SCOPED_SESSION_LIMIT),
   });
   const discoveryQuery = new URLSearchParams({
     limit: String(OPENCODE_SESSION_DISCOVERY_LIMIT),
   });
+  let compatibilityDiscoveryAvailable = true;
   const [scoped, discovered] = await Promise.all([
     requestOpencodeJson(handle, `/session?${scopedQuery}`, dependencies).then((payload) =>
       unwrapArray(payload, 'session list'),
     ),
     requestOpencodeJson(handle, `/session?${discoveryQuery}`, dependencies)
       .then((payload) => unwrapArray(payload, 'session discovery list'))
-      .catch(() => [] as unknown[]),
+      .catch(() => {
+        compatibilityDiscoveryAvailable = false;
+        return [] as unknown[];
+      }),
   ]);
 
   const sessionsById = new Map<string, unknown>();
@@ -180,7 +209,24 @@ async function listWorkspaceSessions(
       admittedDescendant = true;
     }
   }
-  return [...sessionsById].flatMap(([id, session]) => (ownedSessionIds.has(id) ? [session] : []));
+  return {
+    sessions: [...sessionsById].flatMap(([id, session]) =>
+      ownedSessionIds.has(id) ? [session] : [],
+    ),
+    sourceQueries: {
+      scoped: {
+        limit: OPENCODE_SCOPED_SESSION_LIMIT,
+        returnedCount: scoped.length,
+        boundaryReached: scoped.length >= OPENCODE_SCOPED_SESSION_LIMIT,
+      },
+      compatibilityDiscovery: {
+        limit: OPENCODE_SESSION_DISCOVERY_LIMIT,
+        returnedCount: discovered.length,
+        boundaryReached: discovered.length >= OPENCODE_SESSION_DISCOVERY_LIMIT,
+        available: compatibilityDiscoveryAvailable,
+      },
+    },
+  };
 }
 
 function sessionId(value: unknown): string | null {
@@ -201,21 +247,57 @@ function sessionDirectory(value: unknown): string | null {
   return typeof directory === 'string' && directory.trim() ? directory.trim() : null;
 }
 
+function messageId(value: unknown): string | null {
+  if (!value || typeof value !== 'object') return null;
+  const direct = (value as { id?: unknown }).id;
+  if (typeof direct === 'string' && direct.trim()) return direct;
+  const info = (value as { info?: unknown }).info;
+  if (!info || typeof info !== 'object') return null;
+  const nested = (info as { id?: unknown }).id;
+  return typeof nested === 'string' && nested.trim() ? nested : null;
+}
+
 export async function readDiagnosticsOpencodeSessions(
   workspaceKey: string | null,
   dependencies: DiagnosticsOpencodeDependencies = DEFAULT_DEPENDENCIES,
+  options: DiagnosticsOpencodeSessionOptions = {},
 ): Promise<unknown> {
   const handle = requireLiveOpencode(workspaceKey, dependencies);
-  const sessions = await listWorkspaceSessions(workspaceKey!, handle, dependencies);
+  const discovery = await listWorkspaceSessions(workspaceKey!, handle, dependencies);
+  const limit = Number.isFinite(options.limit)
+    ? Math.min(
+        MAX_DIAGNOSTICS_SESSION_PAGE_LIMIT,
+        Math.max(1, Math.trunc(options.limit ?? DEFAULT_DIAGNOSTICS_SESSION_PAGE_LIMIT)),
+      )
+    : DEFAULT_DIAGNOSTICS_SESSION_PAGE_LIMIT;
+  const offset = Number.isFinite(options.offset) ? Math.max(0, Math.trunc(options.offset ?? 0)) : 0;
+  const sessions = discovery.sessions.slice(offset, offset + limit);
+  const omittedBeforeCount = Math.min(offset, discovery.sessions.length);
+  const omittedAfterCount = Math.max(
+    0,
+    discovery.sessions.length - omittedBeforeCount - sessions.length,
+  );
   return sanitizeDiagnosticValue(
     {
       workspaceKey,
       runtime: { pid: handle.pid, cwd: handle.cwd, baseUrl: handle.baseUrl },
+      totalSessionCount: discovery.sessions.length,
+      returnedSessionCount: sessions.length,
+      sourceQueries: discovery.sourceQueries,
+      pagination: {
+        layer: 'diagnostics-opencode-session-page',
+        offset,
+        limit,
+        omittedBeforeCount,
+        omittedAfterCount,
+        hasMore: omittedAfterCount > 0,
+        nextOffset: omittedAfterCount > 0 ? offset + sessions.length : null,
+      },
       sessions,
     },
     {
       maxDepth: 10,
-      maxArrayItems: 100,
+      maxArrayItems: MAX_DIAGNOSTICS_SESSION_PAGE_LIMIT,
       maxObjectKeys: 150,
       maxStringChars: 32_768,
     },
@@ -229,9 +311,20 @@ export async function readDiagnosticsOpencodeMessages(
   dependencies: DiagnosticsOpencodeDependencies = DEFAULT_DEPENDENCIES,
 ): Promise<unknown> {
   const handle = requireLiveOpencode(workspaceKey, dependencies);
-  const sessions = await listWorkspaceSessions(workspaceKey!, handle, dependencies);
-  const session = sessions.find((candidate) => sessionId(candidate) === requestedSessionId);
+  const discovery = await listWorkspaceSessions(workspaceKey!, handle, dependencies);
+  const session = discovery.sessions.find(
+    (candidate) => sessionId(candidate) === requestedSessionId,
+  );
   if (!session) {
+    if (
+      discovery.sourceQueries.scoped.boundaryReached ||
+      discovery.sourceQueries.compatibilityDiscovery.boundaryReached
+    ) {
+      throw new DiagnosticsReadError(
+        409,
+        'OpenCode session discovery reached its source query limit, so ownership of the requested session could not be determined.',
+      );
+    }
     throw new DiagnosticsReadError(
       404,
       'The requested OpenCode session does not belong to the diagnostics workspace.',
@@ -251,12 +344,23 @@ export async function readDiagnosticsOpencodeMessages(
     ),
     'message list',
   );
+  const boundaryReached = messages.length >= options.limit;
   return sanitizeDiagnosticValue(
     {
       workspaceKey,
       sessionId: requestedSessionId,
       limit: options.limit,
       before: options.before ?? null,
+      returnedMessageCount: messages.length,
+      pagination: {
+        layer: 'opencode-message-query',
+        limit: options.limit,
+        before: options.before ?? null,
+        returnedCount: messages.length,
+        boundaryReached,
+        nextBefore: boundaryReached ? messageId(messages.at(-1)) : null,
+      },
+      sessionDiscovery: discovery.sourceQueries,
       messages,
     },
     {

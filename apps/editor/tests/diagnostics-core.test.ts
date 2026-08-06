@@ -61,9 +61,18 @@ describe('diagnostics value sanitizing', () => {
       nested: { child: unknown };
     };
 
-    expect(sanitized.long).toBe('xxxxxxxxxxxx…[truncated 88 chars]');
-    expect(sanitized.list).toEqual([1, 2, { __truncatedItems: 2 }]);
-    expect(sanitized.nested.child).toEqual({ __truncatedDepth: true });
+    expect(sanitized.long).toBe(
+      'xxxxxxxxxxxx...[diagnostics-sanitizer truncated 88 chars]',
+    );
+    expect(sanitized.list).toEqual([
+      1,
+      2,
+      { __truncatedItems: 2, __truncationLayer: 'diagnostics-sanitizer' },
+    ]);
+    expect(sanitized.nested.child).toEqual({
+      __truncatedDepth: true,
+      __truncationLayer: 'diagnostics-sanitizer',
+    });
   });
 
   test('redacts secrets embedded in URLs and shell-style assignments', () => {
@@ -92,10 +101,35 @@ describe('temporary diagnostics sessions', () => {
 
     try {
       const context = buildDefaultDiagnosticsContext(new DiagnosticsHub(), null) as {
-        desktopLogTail: { truncated: boolean; text: string };
+        desktopLogTail: {
+          truncated: boolean;
+          totalBytes: number;
+          readBytes: number;
+          sourceReturnedBytes: number;
+          returnedBytes: number;
+          truncation: {
+            layer: string;
+            omittedHeadBytes: number;
+            discardedPartialLineBytes: number;
+          };
+          text: string;
+        };
       };
       expect(context.desktopLogTail.truncated).toBe(true);
       expect(context.desktopLogTail.text).toContain(newestMarker);
+      expect(context.desktopLogTail.totalBytes).toBeGreaterThan(
+        context.desktopLogTail.readBytes,
+      );
+      expect(context.desktopLogTail.readBytes).toBe(32 * 1024);
+      expect(context.desktopLogTail.sourceReturnedBytes).toBeLessThanOrEqual(
+        context.desktopLogTail.readBytes,
+      );
+      expect(context.desktopLogTail.returnedBytes).toBeGreaterThan(0);
+      expect(context.desktopLogTail.truncation).toMatchObject({
+        layer: 'diagnostics-desktop-log-tail',
+        omittedHeadBytes: expect.any(Number),
+        discardedPartialLineBytes: expect.any(Number),
+      });
     } finally {
       if (previousLogPath === undefined) delete process.env.TAGMA_DESKTOP_LOG_FILE;
       else process.env.TAGMA_DESKTOP_LOG_FILE = previousLogPath;
@@ -190,10 +224,37 @@ describe('temporary diagnostics sessions', () => {
     ]);
     expect(page).toMatchObject({
       oldestCursor: 3,
+      latestCursor: 5,
       nextCursor: 5,
       droppedBeforeCursor: false,
+      retainedEntryCount: 3,
+      availableEntryCount: 3,
+      returnedEntryCount: 3,
+      omittedEntryCount: 0,
+      hasMore: false,
+      retention: {
+        layer: 'diagnostics-log-buffer',
+        droppedEntryCount: 2,
+        requestedEntryLossCount: 0,
+        truncated: false,
+      },
+      page: {
+        layer: 'diagnostics-log-page',
+        limit: 10,
+        omittedEntryCount: 0,
+        truncated: false,
+      },
     });
-    expect(hub.readLogs(0, 10).droppedBeforeCursor).toBe(true);
+    expect(hub.readLogs(0, 10)).toMatchObject({
+      droppedBeforeCursor: true,
+      retention: { requestedEntryLossCount: 2, truncated: true },
+    });
+    expect(hub.readLogs(2, 1)).toMatchObject({
+      returnedEntryCount: 1,
+      omittedEntryCount: 2,
+      hasMore: true,
+      page: { limit: 1, omittedEntryCount: 2, truncated: true },
+    });
   });
 
   test('accepts only bounded renderer reports while a session is enabled', () => {

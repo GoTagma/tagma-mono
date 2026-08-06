@@ -1236,17 +1236,7 @@ export function selectChatPipelineTrialTaskEvidence(
     .map((caseId) => ranked.find((task) => task.caseId === caseId))
     .filter((task): task is ChatPipelineTrialTaskResult => !!task)
     .slice(0, limit);
-  const nonActionableRepresentatives = representatives.filter(
-    (task) => trialTaskEvidencePriority(task, failedCaseIds) > 0,
-  );
-  const selected = new Set<ChatPipelineTrialTaskResult>();
-  const actionableLimit = Math.max(0, limit - nonActionableRepresentatives.length);
-  for (const task of ranked) {
-    if (trialTaskEvidencePriority(task, failedCaseIds) !== 0) break;
-    if (selected.size >= actionableLimit) break;
-    selected.add(task);
-  }
-  for (const task of representatives) selected.add(task);
+  const selected = new Set<ChatPipelineTrialTaskResult>(representatives);
   for (const task of ranked) {
     if (selected.size >= limit) break;
     selected.add(task);

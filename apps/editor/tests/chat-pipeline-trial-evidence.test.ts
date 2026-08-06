@@ -74,3 +74,21 @@ test('stream evidence distinguishes runtime truncation from Trial response trunc
   });
   expect(trialTail.text).toContain('[trial-result truncated]');
 });
+
+test('task evidence never exceeds its limit while reserving actionable failed-case tasks', () => {
+  const tasks = [
+    ...Array.from({ length: 4 }, (_, index) => task(`main.failure_${index}`, 'failed')),
+    task('main.case_a_failure', 'failed', 'case-a'),
+    task('main.case_b_failure', 'failed', 'case-b'),
+  ];
+
+  const selected = selectChatPipelineTrialTaskEvidence(
+    tasks,
+    new Set(['case-a', 'case-b']),
+    4,
+  );
+
+  expect(selected).toHaveLength(4);
+  expect(selected.some((item) => item.caseId === 'case-a')).toBe(true);
+  expect(selected.some((item) => item.caseId === 'case-b')).toBe(true);
+});

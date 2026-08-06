@@ -25,7 +25,10 @@ import type { WorkspaceState } from '../workspace-state.js';
 export interface DiagnosticsRouteDependencies {
   hub?: DiagnosticsHub;
   buildContext?: (workspaceKey: string | null) => unknown | Promise<unknown>;
-  readOpencodeSessions?: (workspaceKey: string | null) => unknown | Promise<unknown>;
+  readOpencodeSessions?: (
+    workspaceKey: string | null,
+    options: DiagnosticsOpencodeSessionOptions,
+  ) => unknown | Promise<unknown>;
   readOpencodeMessages?: (
     workspaceKey: string | null,
     sessionId: string,
@@ -38,6 +41,13 @@ export interface DiagnosticsOpencodeMessageOptions {
   before?: string;
 }
 
+export interface DiagnosticsOpencodeSessionOptions {
+  limit: number;
+  offset: number;
+}
+
+const DIAGNOSTICS_EVENT_LIMIT = 250;
+
 function requestOrigin(req: express.Request): string {
   const port = req.socket.localPort;
   return `http://127.0.0.1:${port}`;
@@ -48,10 +58,77 @@ function boundedMessageLimit(value: unknown): number {
   return Number.isFinite(parsed) ? Math.min(200, Math.max(1, Math.trunc(parsed))) : 100;
 }
 
+function boundedSessionLimit(value: unknown): number {
+  const parsed = typeof value === 'string' ? Number(value) : Number.NaN;
+  return Number.isFinite(parsed) ? Math.min(500, Math.max(1, Math.trunc(parsed))) : 100;
+}
+
+function boundedSessionOffset(value: unknown): number {
+  const parsed = typeof value === 'string' ? Number(value) : Number.NaN;
+  return Number.isFinite(parsed) ? Math.min(10_000, Math.max(0, Math.trunc(parsed))) : 0;
+}
+
 function sendDiagnosticsReadError(res: express.Response, error: unknown): void {
   const status = error instanceof DiagnosticsReadError ? error.status : 500;
   const message = error instanceof Error ? error.message : 'Diagnostics read failed.';
   res.status(status).json({ error: message });
+}
+
+function eventSequence(value: unknown): number | null {
+  if (!value || typeof value !== 'object') return null;
+  const seq = (value as { seq?: unknown }).seq;
+  return typeof seq === 'number' && Number.isFinite(seq) ? Math.trunc(seq) : null;
+}
+
+export function buildDiagnosticsEventWindow(source: readonly unknown[]): {
+  retainedEventCount: number;
+  returnedEventCount: number;
+  omittedEventCount: number;
+  sourceBuffer: {
+    layer: 'run-event-buffer';
+    state: 'not-truncated' | 'truncated' | 'unknown';
+    firstSequence: number | null;
+    lastSequence: number | null;
+    omittedBeforeCount: number | null;
+  };
+  diagnosticsContext: {
+    layer: 'diagnostics-context-event-window';
+    limit: number;
+    truncated: boolean;
+    omittedEventCount: number;
+  };
+  events: unknown[];
+} {
+  const events = source.slice(-DIAGNOSTICS_EVENT_LIMIT);
+  const omittedEventCount = Math.max(0, source.length - events.length);
+  const firstSequence = eventSequence(source[0]);
+  const lastSequence = eventSequence(source.at(-1));
+  const omittedBeforeCount =
+    firstSequence === null ? null : Math.max(0, firstSequence - 1);
+  return {
+    retainedEventCount: source.length,
+    returnedEventCount: events.length,
+    omittedEventCount,
+    sourceBuffer: {
+      layer: 'run-event-buffer',
+      state:
+        firstSequence === null
+          ? 'unknown'
+          : firstSequence > 1
+            ? 'truncated'
+            : 'not-truncated',
+      firstSequence,
+      lastSequence,
+      omittedBeforeCount,
+    },
+    diagnosticsContext: {
+      layer: 'diagnostics-context-event-window',
+      limit: DIAGNOSTICS_EVENT_LIMIT,
+      truncated: omittedEventCount > 0,
+      omittedEventCount,
+    },
+    events,
+  };
 }
 
 function activeRunDiagnostics(ws: WorkspaceState): unknown[] {
@@ -64,19 +141,27 @@ function activeRunDiagnostics(ws: WorkspaceState): unknown[] {
       errorMessage?: unknown;
       allBuffered?: () => unknown[];
     };
-    let events: unknown[] = [];
+    let eventWindow = buildDiagnosticsEventWindow([]);
     try {
-      events = typeof session.allBuffered === 'function' ? session.allBuffered().slice(-250) : [];
+      eventWindow = buildDiagnosticsEventWindow(
+        typeof session.allBuffered === 'function' ? session.allBuffered() : [],
+      );
     } catch {
-      events = [];
+      eventWindow = buildDiagnosticsEventWindow([]);
     }
     runs.push({
       runId: session.runId ?? null,
       startedAt: session.startedAt ?? null,
       success: session.success ?? null,
       errorMessage: session.errorMessage ?? null,
-      eventCount: events.length,
-      events,
+      eventCount: eventWindow.retainedEventCount,
+      returnedEventCount: eventWindow.returnedEventCount,
+      omittedEventCount: eventWindow.omittedEventCount,
+      eventEvidence: {
+        sourceBuffer: eventWindow.sourceBuffer,
+        diagnosticsContext: eventWindow.diagnosticsContext,
+      },
+      events: eventWindow.events,
     });
   }
   return runs;
@@ -91,12 +176,20 @@ function workflowRunDiagnostics(ws: WorkspaceState): unknown {
     events?: unknown[];
   } | null;
   if (!raw) return null;
+  const eventWindow = buildDiagnosticsEventWindow(Array.isArray(raw.events) ? raw.events : []);
   return {
     graphRunId: raw.graphRunId ?? null,
     startedAt: raw.startedAt ?? null,
     running: raw.running ?? null,
     result: raw.result ?? null,
-    events: Array.isArray(raw.events) ? raw.events.slice(-250) : [],
+    eventCount: eventWindow.retainedEventCount,
+    returnedEventCount: eventWindow.returnedEventCount,
+    omittedEventCount: eventWindow.omittedEventCount,
+    eventEvidence: {
+      sourceBuffer: eventWindow.sourceBuffer,
+      diagnosticsContext: eventWindow.diagnosticsContext,
+    },
+    events: eventWindow.events,
   };
 }
 
@@ -183,7 +276,10 @@ export function registerDiagnosticsRoutes(
   const buildContext =
     dependencies.buildContext ??
     ((workspaceKey) => buildDefaultDiagnosticsContext(hub, workspaceKey));
-  const readOpencodeSessions = dependencies.readOpencodeSessions ?? readDiagnosticsOpencodeSessions;
+  const readOpencodeSessions =
+    dependencies.readOpencodeSessions ??
+    ((workspaceKey, options) =>
+      readDiagnosticsOpencodeSessions(workspaceKey, undefined, options));
   const readOpencodeMessages = dependencies.readOpencodeMessages ?? readDiagnosticsOpencodeMessages;
 
   app.get('/api/diagnostics/session', (req, res) => {
@@ -251,6 +347,14 @@ export function registerDiagnosticsRoutes(
       logPolling: {
         query: { after: 'cursor from the previous response', limit: '1-1000' },
         next: 'Use nextCursor as the next after value.',
+        bounds:
+          'Inspect retention and page separately; buffer loss is not the same as response pagination.',
+      },
+      sessionPagination: {
+        query: { offset: 'zero-based owned-session offset', limit: '1-500' },
+        next: 'Use pagination.nextOffset until pagination.hasMore is false.',
+        source:
+          'Inspect sourceQueries separately; an OpenCode discovery query boundary is not diagnostics response pagination.',
       },
       extensibility: {
         contextNamespace: 'features',
@@ -285,7 +389,12 @@ export function registerDiagnosticsRoutes(
 
   app.get(`${DIAGNOSTICS_AGENT_BASE_PATH}/opencode/sessions`, async (_req, res) => {
     try {
-      res.json(await readOpencodeSessions(hub.activeWorkspaceKey()));
+      res.json(
+        await readOpencodeSessions(hub.activeWorkspaceKey(), {
+          limit: boundedSessionLimit(_req.query.limit),
+          offset: boundedSessionOffset(_req.query.offset),
+        }),
+      );
     } catch (error) {
       sendDiagnosticsReadError(res, error);
     }

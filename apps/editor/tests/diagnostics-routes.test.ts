@@ -1,7 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 
 import { DiagnosticsHub, DIAGNOSTICS_AGENT_BASE_PATH } from '../server/diagnostics.js';
-import { registerDiagnosticsRoutes } from '../server/routes/diagnostics.js';
+import {
+  buildDiagnosticsEventWindow,
+  registerDiagnosticsRoutes,
+} from '../server/routes/diagnostics.js';
 import { WorkspaceState } from '../server/workspace-state.js';
 
 type Handler = (req: FakeRequest, res: FakeResponse, next: () => void) => unknown;
@@ -70,8 +73,9 @@ function harness(hub: DiagnosticsHub) {
   registerDiagnosticsRoutes(app as never, {
     hub,
     buildContext: () => ({ kind: 'test-context' }),
-    readOpencodeSessions: async (workspaceKey) => ({
+    readOpencodeSessions: async (workspaceKey, options) => ({
       workspaceKey,
+      options,
       sessions: [{ id: 'chat-1' }],
     }),
     readOpencodeMessages: async (workspaceKey, sessionId, options) => ({
@@ -135,6 +139,9 @@ describe('diagnostics routes', () => {
       endpoints: {
         context: `${DIAGNOSTICS_AGENT_BASE_PATH}/context`,
         logs: `${DIAGNOSTICS_AGENT_BASE_PATH}/logs`,
+      },
+      sessionPagination: {
+        query: { offset: expect.any(String), limit: expect.any(String) },
       },
     });
   });
@@ -227,6 +234,9 @@ describe('diagnostics routes', () => {
       () => {},
     );
     expect(logsRes.body).toMatchObject({
+      returnedEntryCount: expect.any(Number),
+      retention: { layer: 'diagnostics-log-buffer' },
+      page: { layer: 'diagnostics-log-page', limit: 10 },
       entries: expect.arrayContaining([
         expect.objectContaining({ source: 'renderer.console', message: 'renderer warning' }),
       ]),
@@ -300,12 +310,15 @@ describe('diagnostics routes', () => {
 
     const sessionsResponse = new FakeResponse();
     await routes.route('GET', `${DIAGNOSTICS_AGENT_BASE_PATH}/opencode/sessions`)(
-      request('GET', `${DIAGNOSTICS_AGENT_BASE_PATH}/opencode/sessions`),
+      request('GET', `${DIAGNOSTICS_AGENT_BASE_PATH}/opencode/sessions`, {
+        query: { limit: '9999', offset: '7' },
+      }),
       sessionsResponse,
       () => {},
     );
     expect(sessionsResponse.body).toEqual({
       workspaceKey: 'D:\\repo',
+      options: { limit: 500, offset: 7 },
       sessions: [{ id: 'chat-1' }],
     });
 
@@ -327,5 +340,31 @@ describe('diagnostics routes', () => {
       options: { limit: 200, before: 'message-9' },
       messages: [{ id: 'message-1' }],
     });
+  });
+
+  test('separates source event-buffer loss from diagnostics context clipping', () => {
+    const window = buildDiagnosticsEventWindow(
+      Array.from({ length: 300 }, (_, index) => ({ seq: index + 51 })),
+    );
+
+    expect(window).toMatchObject({
+      retainedEventCount: 300,
+      returnedEventCount: 250,
+      omittedEventCount: 50,
+      sourceBuffer: {
+        layer: 'run-event-buffer',
+        state: 'truncated',
+        firstSequence: 51,
+        lastSequence: 350,
+        omittedBeforeCount: 50,
+      },
+      diagnosticsContext: {
+        layer: 'diagnostics-context-event-window',
+        limit: 250,
+        truncated: true,
+        omittedEventCount: 50,
+      },
+    });
+    expect(window.events[0]).toEqual({ seq: 101 });
   });
 });

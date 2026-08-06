@@ -187,6 +187,16 @@ export interface ChatPipelineTrialTaskResult {
   stderrTruncation?: ChatPipelineTrialStreamTruncation;
   stdoutRepairEvidenceTruncated?: boolean;
   stderrRepairEvidenceTruncated?: boolean;
+  stdoutRepairEvidenceTruncation?: ChatPipelineTrialRepairEvidenceTruncation | null;
+  stderrRepairEvidenceTruncation?: ChatPipelineTrialRepairEvidenceTruncation | null;
+}
+
+export interface ChatPipelineTrialRepairEvidenceTruncation {
+  layer: 'repair-prompt';
+  reason: 'character-limit';
+  limitChars: number;
+  sourceChars: number;
+  returnedChars: number;
 }
 
 export interface ChatPipelineTrialStreamTruncation {

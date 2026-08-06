@@ -649,6 +649,9 @@ function makeFinishedTurn(input: Omit<ChatFinishedTurn, 'id'>): ChatFinishedTurn
 }
 
 const MAX_CHAT_TRIAL_REPAIR_EVIDENCE_BYTES = 64 * 1024;
+const MAX_CHAT_TRIAL_REPAIR_TASKS = 8;
+const MAX_CHAT_TRIAL_REPAIR_CASE_TASKS = 2;
+const MAX_CHAT_TRIAL_REPAIR_STREAM_CHARS = 2_000;
 
 function clipChatTrialRepairText(value: string, maxLength: number): string {
   if (value.length <= maxLength) return value;
@@ -696,17 +699,7 @@ function selectChatTrialRepairTasks(
     .map((caseId) => ranked.find((task) => task.caseId === caseId))
     .filter((task): task is ChatPipelineTrialRunResult['tasks'][number] => !!task)
     .slice(0, limit);
-  const nonActionableRepresentatives = representatives.filter(
-    (task) => chatTrialRepairTaskPriority(task, failedCaseIds) > 0,
-  );
-  const selected = new Set<ChatPipelineTrialRunResult['tasks'][number]>();
-  const actionableLimit = Math.max(0, limit - nonActionableRepresentatives.length);
-  for (const task of ranked) {
-    if (chatTrialRepairTaskPriority(task, failedCaseIds) !== 0) break;
-    if (selected.size >= actionableLimit) break;
-    selected.add(task);
-  }
-  for (const task of representatives) selected.add(task);
+  const selected = new Set<ChatPipelineTrialRunResult['tasks'][number]>(representatives);
   for (const task of ranked) {
     if (selected.size >= limit) break;
     selected.add(task);
@@ -719,22 +712,77 @@ function selectChatTrialRepairTasks(
   );
 }
 
-function compactChatTrialRepairTask(task: ChatPipelineTrialRunResult['tasks'][number]) {
-  const stdout = clipChatTrialRepairEvidenceText(task.stdout, 2_000);
-  const stderr = clipChatTrialRepairEvidenceText(task.stderr, 2_000);
+function countChatTrialRepairTaskStatuses(
+  tasks: readonly ChatPipelineTrialRunResult['tasks'][number][],
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const task of tasks) counts[task.status] = (counts[task.status] ?? 0) + 1;
+  return counts;
+}
+
+function mergeChatTrialRepairTaskStatusCounts(
+  ...sources: Array<Readonly<Record<string, number>> | undefined>
+): Record<string, number> {
+  const merged: Record<string, number> = {};
+  for (const source of sources) {
+    if (!source) continue;
+    for (const [status, count] of Object.entries(source)) {
+      merged[status] = (merged[status] ?? 0) + count;
+    }
+  }
+  return merged;
+}
+
+function compactChatTrialRepairTask(
+  task: ChatPipelineTrialRunResult['tasks'][number],
+  streamLimitChars = MAX_CHAT_TRIAL_REPAIR_STREAM_CHARS,
+) {
+  const stdout = clipChatTrialRepairEvidenceText(task.stdout, streamLimitChars);
+  const stderr = clipChatTrialRepairEvidenceText(task.stderr, streamLimitChars);
+  const stdoutTruncated = stdout !== task.stdout;
+  const stderrTruncated = stderr !== task.stderr;
   return {
     ...task,
     stdout,
     stderr,
-    stdoutRepairEvidenceTruncated: stdout !== task.stdout,
-    stderrRepairEvidenceTruncated: stderr !== task.stderr,
+    stdoutRepairEvidenceTruncated: stdoutTruncated,
+    stderrRepairEvidenceTruncated: stderrTruncated,
+    stdoutRepairEvidenceTruncation: stdoutTruncated
+      ? {
+          layer: 'repair-prompt' as const,
+          reason: 'character-limit' as const,
+          limitChars: streamLimitChars,
+          sourceChars: task.stdout.length,
+          returnedChars: stdout.length,
+        }
+      : null,
+    stderrRepairEvidenceTruncation: stderrTruncated
+      ? {
+          layer: 'repair-prompt' as const,
+          reason: 'character-limit' as const,
+          limitChars: streamLimitChars,
+          sourceChars: task.stderr.length,
+          returnedChars: stderr.length,
+        }
+      : null,
   };
 }
 
-function compactChatTrialRepairResult(result: ChatPipelineTrialRunResult) {
+function compactChatTrialRepairResult(
+  result: ChatPipelineTrialRunResult,
+  options: { streamLimitChars?: number; caseTaskLimit?: number } = {},
+) {
+  const streamLimitChars = options.streamLimitChars ?? MAX_CHAT_TRIAL_REPAIR_STREAM_CHARS;
+  const caseTaskLimit = options.caseTaskLimit ?? MAX_CHAT_TRIAL_REPAIR_CASE_TASKS;
   const failedCases = result.cases.filter((item) => !item.success).slice(0, 8);
   const failedCaseIds = new Set(failedCases.map((item) => item.id));
-  const selectedTasks = selectChatTrialRepairTasks(result.tasks, failedCaseIds, 6);
+  const selectedTasks = selectChatTrialRepairTasks(
+    result.tasks,
+    failedCaseIds,
+    MAX_CHAT_TRIAL_REPAIR_TASKS,
+  );
+  const selectedTaskSet = new Set(selectedTasks);
+  const additionallyOmittedTasks = result.tasks.filter((task) => !selectedTaskSet.has(task));
   return {
     version: result.version,
     success: result.success,
@@ -748,8 +796,18 @@ function compactChatTrialRepairResult(result: ChatPipelineTrialRunResult) {
     taskStatusCounts: result.taskStatusCounts,
     omittedTaskCount:
       result.omittedTaskCount + Math.max(0, result.tasks.length - selectedTasks.length),
-    omittedTaskStatusCounts: result.omittedTaskStatusCounts,
-    tasks: selectedTasks.map(compactChatTrialRepairTask),
+    omittedTaskStatusCounts: mergeChatTrialRepairTaskStatusCounts(
+      result.omittedTaskStatusCounts,
+      countChatTrialRepairTaskStatuses(additionallyOmittedTasks),
+    ),
+    evidenceBounds: {
+      layer: 'repair-prompt' as const,
+      selectedTaskLimit: MAX_CHAT_TRIAL_REPAIR_TASKS,
+      failedCaseLimit: 8,
+      caseTaskLimit,
+      taskStreamLimitChars: streamLimitChars,
+    },
+    tasks: selectedTasks.map((task) => compactChatTrialRepairTask(task, streamLimitChars)),
     plan: result.plan
       ? {
           summary: clipChatTrialRepairEvidenceText(result.plan.summary, 1_000),
@@ -768,27 +826,43 @@ function compactChatTrialRepairResult(result: ChatPipelineTrialRunResult) {
           })),
         }
       : undefined,
-    cases: failedCases.map((item) => ({
-      id: item.id,
-      title: clipChatTrialRepairEvidenceText(item.title, 200),
-      objective: clipChatTrialRepairEvidenceText(item.objective, 300),
-      success: item.success,
-      runIds: item.runIds,
-      totalTaskCount: item.totalTaskCount,
-      omittedTaskCount: item.omittedTaskCount,
-      taskStatusCounts: item.taskStatusCounts,
-      omittedTaskStatusCounts: item.omittedTaskStatusCounts,
-      tasks: selectChatTrialRepairTasks(item.tasks, new Set([item.id]), 2).map(
-        compactChatTrialRepairTask,
-      ),
-      expectations: item.expectations
-        .filter((expectation) => !expectation.passed)
-        .slice(0, 4)
-        .map((expectation) => ({
-          ...expectation,
-          detail: clipChatTrialRepairEvidenceText(expectation.detail, 400),
-        })),
-    })),
+    cases: failedCases.map((item) => {
+      const selectedCaseTasks = selectChatTrialRepairTasks(
+        item.tasks,
+        new Set([item.id]),
+        caseTaskLimit,
+      );
+      const selectedCaseTaskSet = new Set(selectedCaseTasks);
+      const additionallyOmittedCaseTasks = item.tasks.filter(
+        (task) => !selectedCaseTaskSet.has(task),
+      );
+      return {
+        id: item.id,
+        title: clipChatTrialRepairEvidenceText(item.title, 200),
+        objective: clipChatTrialRepairEvidenceText(item.objective, 300),
+        success: item.success,
+        runIds: item.runIds,
+        totalTaskCount: item.totalTaskCount,
+        omittedTaskCount:
+          (item.omittedTaskCount ?? 0) +
+          Math.max(0, item.tasks.length - selectedCaseTasks.length),
+        taskStatusCounts: item.taskStatusCounts,
+        omittedTaskStatusCounts: mergeChatTrialRepairTaskStatusCounts(
+          item.omittedTaskStatusCounts,
+          countChatTrialRepairTaskStatuses(additionallyOmittedCaseTasks),
+        ),
+        tasks: selectedCaseTasks.map((task) =>
+          compactChatTrialRepairTask(task, streamLimitChars),
+        ),
+        expectations: item.expectations
+          .filter((expectation) => !expectation.passed)
+          .slice(0, 4)
+          .map((expectation) => ({
+            ...expectation,
+            detail: clipChatTrialRepairEvidenceText(expectation.detail, 400),
+          })),
+      };
+    }),
   };
 }
 
@@ -893,6 +967,10 @@ function serializeChatYamlCompileRepairEvidence(result: YamlCompileResult): stri
   if (new TextEncoder().encode(encoded).length <= MAX_CHAT_TRIAL_REPAIR_EVIDENCE_BYTES) {
     return encoded;
   }
+  const fallbackCompact = compactChatTrialRepairResult(evidence.result, {
+    streamLimitChars: 500,
+    caseTaskLimit: 1,
+  });
   const fallback = JSON.stringify(
     {
       timestamp: result.timestamp,
@@ -976,8 +1054,9 @@ function serializeChatYamlRepairEvidence(evidence: ChatYamlRepairEvidence): stri
         summary: clipChatTrialRepairEvidenceText(item.summary, 200),
         evidence: clipChatTrialRepairEvidenceText(item.evidence, 400),
       })),
-      taskEvidence: compact.tasks.slice(0, 2),
-      failedCases: compact.cases.slice(0, 4).map((item) => ({
+      evidenceBounds: fallbackCompact.evidenceBounds,
+      taskEvidence: fallbackCompact.tasks.slice(0, 2),
+      failedCases: fallbackCompact.cases.map((item) => ({
         ...item,
         expectations: item.expectations.slice(0, 2),
       })),
