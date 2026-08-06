@@ -316,16 +316,11 @@ function trialCacheRecordPath(
   return join(stageRootDir, '.trial-runs', `${digest}.json`);
 }
 
-afterEach(async () => {
+afterEach(() => {
   for (const ws of workspaces.splice(0)) {
     disposeTrialWitnessWorker(ws);
   }
   stopAllChatCompileWatchers();
-  // Bun's Web Worker terminate() returns void even though the worker thread
-  // exits asynchronously. Let disposal settle before removing its workspace
-  // and creating the next test worker; otherwise Bun 1.3.11 can panic after a
-  // sequence of otherwise-passing Trial cases on Windows.
-  await Bun.sleep(25);
   for (const root of roots.splice(0)) {
     rmSync(root, { recursive: true, force: true });
   }
