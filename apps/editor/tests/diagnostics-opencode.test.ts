@@ -350,12 +350,7 @@ describe('OpenCode diagnostics reader', () => {
     ]);
 
     await expect(
-      readDiagnosticsOpencodeMessages(
-        WORKSPACE_DIR,
-        'not-owned',
-        { limit: 50 },
-        dependencies,
-      ),
+      readDiagnosticsOpencodeMessages(WORKSPACE_DIR, 'not-owned', { limit: 50 }, dependencies),
     ).rejects.toMatchObject({ status: 404 });
   });
 

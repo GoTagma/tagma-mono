@@ -1839,6 +1839,15 @@ describe('chat YAML staging routes', () => {
           fixtures: [],
           expectations: [{ type: 'task-status', taskId: 'main.probe', status: 'success' }],
         },
+        {
+          id: 'not-run-after-leak',
+          title: 'Case after the containment failure',
+          objective: 'Remain visibly unexecuted after fail-closed containment evidence.',
+          runs: 1,
+          targetTaskIds: ['main.probe'],
+          fixtures: [],
+          expectations: [{ type: 'task-status', taskId: 'main.probe', status: 'success' }],
+        },
       ],
     });
 
@@ -1856,6 +1865,9 @@ describe('chat YAML staging routes', () => {
       success: false,
       kind: 'failed',
       repairAuthorization: 'diagnostic-only',
+      plannedCaseCount: 2,
+      caseResultCount: 1,
+      notRunCaseCount: 1,
       cases: [
         {
           id: 'leak-probe',
@@ -1873,6 +1885,7 @@ describe('chat YAML staging routes', () => {
         },
       ],
     });
+    expect((trialRes.body as { summary: string }).summary).toContain('1 not run');
     expect(readFileSync(leakedPath, 'utf-8')).toBe('leak');
 
     discardStage(getRoute, ws, stage.id);
