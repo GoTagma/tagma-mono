@@ -182,6 +182,7 @@ export interface ChatPipelineTrialTaskResult {
   failureKind: string | null;
   stdout: string;
   stderr: string;
+  stderrAuxiliaryDiagnosticsOmittedLines?: number;
   repairScope?: 'pipeline-artifact' | 'diagnostic-only' | null;
   stdoutTruncation?: ChatPipelineTrialStreamTruncation;
   stderrTruncation?: ChatPipelineTrialStreamTruncation;

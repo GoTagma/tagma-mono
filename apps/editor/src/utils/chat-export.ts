@@ -449,6 +449,11 @@ function renderTrialTaskEvidence(
   ];
   if (task.stdout) lines.push(detail(markdown, `stdout: ${redactExportText(task.stdout)}`));
   if (task.stderr) lines.push(detail(markdown, `stderr: ${redactExportText(task.stderr)}`));
+  if ((task.stderrAuxiliaryDiagnosticsOmittedLines ?? 0) > 0) {
+    lines.push(
+      detail(markdown, `stderr auxiliary diagnostics omitted: ${task.stderrAuxiliaryDiagnosticsOmittedLines} recoverable OpenCode title-model line(s)`),
+    );
+  }
   if (task.stdoutTruncation) {
     lines.push(detail(markdown, formatTrialStreamEvidence('stdout', task.stdoutTruncation)));
   }

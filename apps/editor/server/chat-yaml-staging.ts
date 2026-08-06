@@ -1131,7 +1131,7 @@ function writeStagedArtifactsToDestination(
   options: { pipelineName?: string; sourceIdentityPath?: string } = {},
 ): void {
   const stagedYaml = assertRegularTextFile(stagedYamlPath, 'staged YAML');
-  withDefaultTrackColors(parseYaml(stagedYaml));
+  const stagedConfig = withDefaultTrackColors(parseYaml(stagedYaml));
   const stagedLayoutPath = pipelineLayoutPath(stagedYamlPath);
   const stagedLayout = existsSync(stagedLayoutPath)
     ? assertRegularTextFile(stagedLayoutPath, 'staged layout')
@@ -1144,18 +1144,16 @@ function writeStagedArtifactsToDestination(
   const stagedSupportTree = readPipelineSupportTree(stagedYamlPath);
   withPipelineArtifactTransaction(destinationYamlPath, () => {
     mkdirSync(dirname(destinationYamlPath), { recursive: true });
-    const destinationYaml =
-      options.pipelineName && options.sourceIdentityPath
-        ? rewriteCopiedPipelineYaml(stagedYaml, {
-            workDir: ws.workDir,
-            sourceContentPath: stagedYamlPath,
-            sourceIdentityPath: options.sourceIdentityPath,
-            destinationYamlPath,
-            pipelineName: options.pipelineName,
-          })
-        : options.pipelineName
-          ? yamlWithPipelineName(stagedYaml, options.pipelineName)
-          : stagedYaml;
+    const renamedYaml = options.pipelineName
+      ? yamlWithPipelineName(stagedYaml, options.pipelineName)
+      : stagedYaml;
+    const destinationYaml = rewriteCopiedPipelineYaml(renamedYaml, {
+      workDir: ws.workDir,
+      sourceContentPath: stagedYamlPath,
+      sourceIdentityPath: options.sourceIdentityPath ?? destinationYamlPath,
+      destinationYamlPath,
+      pipelineName: options.pipelineName ?? stagedConfig.name,
+    });
     atomicWriteFileSync(destinationYamlPath, destinationYaml);
     __chatYamlStagingTestHooks.afterDestinationYamlWrite?.(destinationYamlPath);
     replaceOptionalArtifact(pipelineLayoutPath(destinationYamlPath), stagedLayout);

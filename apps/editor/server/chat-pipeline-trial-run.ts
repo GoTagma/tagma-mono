@@ -35,6 +35,7 @@ import {
   samePipelineRelativePath,
 } from './chat-yaml-staging.js';
 import { CHAT_PIPELINE_TRIAL_CACHE_VERSION } from './chat-pipeline-trial-cache.js';
+import { rewriteCopiedPipelineYaml } from './pipeline-copy-paths.js';
 import { hasCurrentChatPipelineTrialConsent } from '../shared/chat-pipeline-trial-consent.js';
 import {
   buildChatPipelineTrialPlanRequest,
@@ -140,6 +141,7 @@ export interface ChatPipelineTrialTaskResult {
   failureKind: string | null;
   stdout: string;
   stderr: string;
+  stderrAuxiliaryDiagnosticsOmittedLines?: number;
   repairScope: 'pipeline-artifact' | 'diagnostic-only' | null;
   stdoutTruncation: ChatPipelineTrialStreamTruncation;
   stderrTruncation: ChatPipelineTrialStreamTruncation;
@@ -574,11 +576,32 @@ function boundedTrialText(value: string): string {
   return decoder.decode(bytes.slice(0, head)) + marker + decoder.decode(bytes.slice(-tail));
 }
 
+export function filterChatPipelineTrialStderr(value: string): {
+  text: string;
+  omittedAuxiliaryDiagnosticLines: number;
+} {
+  let omittedAuxiliaryDiagnosticLines = 0;
+  const kept: string[] = [];
+  for (const line of value.split(/(?<=\n)/u)) {
+    const auxiliaryTitleError =
+      line.includes('level=ERROR') &&
+      line.includes('message="stream error"') &&
+      /\bsmall=true\b/u.test(line) &&
+      /\bmode=primary\b/u.test(line);
+    if (auxiliaryTitleError) {
+      omittedAuxiliaryDiagnosticLines += 1;
+    } else {
+      kept.push(line);
+    }
+  }
+  return { text: kept.join(''), omittedAuxiliaryDiagnosticLines };
+}
+
 export function buildChatPipelineTrialStreamEvidence(
   value: string,
   producedBytes: number | undefined,
+  sourceReturnedBytes = new TextEncoder().encode(value).length,
 ): { text: string; truncation: ChatPipelineTrialStreamTruncation } {
-  const sourceReturnedBytes = new TextEncoder().encode(value).length;
   const source =
     /^\[\d+ bytes truncated from head;/u.test(value) ||
     (producedBytes !== undefined && producedBytes > sourceReturnedBytes)
@@ -932,7 +955,7 @@ function prepareTrialCaseWorkspace(
   stageRoot: string,
   stagedYamlPath: string,
   testCase: ChatPipelineTrialPlanCase,
-): { rootDir: string; workDir: string } {
+): { rootDir: string; workDir: string; yamlPath: string } {
   const casesDir = join(stageRoot, '.trial-cases');
   mkdirSync(casesDir, { recursive: true });
   const rootDir = mkdtempSync(join(casesDir, `${testCase.id}-`));
@@ -941,16 +964,18 @@ function prepareTrialCaseWorkspace(
     mkdirSync(workDir, { recursive: true });
     const pipelineFolder = dirname(stagedYamlPath);
     const stagedTagmaDir = join(workDir, '.tagma');
-    copyTrialPipelineTree(pipelineFolder, join(stagedTagmaDir, basename(pipelineFolder)), {
+    const copiedPipelineFolder = join(stagedTagmaDir, basename(pipelineFolder));
+    copyTrialPipelineTree(pipelineFolder, copiedPipelineFolder, {
       files: 0,
       bytes: 0,
     });
+    const yamlPath = join(copiedPipelineFolder, basename(stagedYamlPath));
     for (const fixture of testCase.fixtures) {
       const path = casePath(workDir, fixture.path);
       mkdirSync(dirname(path), { recursive: true });
       atomicWriteFileSync(path, fixture.content);
     }
-    return { rootDir, workDir };
+    return { rootDir, workDir, yamlPath };
   } catch (err) {
     rmSync(rootDir, { recursive: true, force: true });
     throw err;
@@ -1306,9 +1331,12 @@ function trialTaskResults(
       state.result?.stdout ?? '',
       state.result?.stdoutBytes,
     );
+    const rawStderr = state.result?.stderr ?? '';
+    const filteredStderr = filterChatPipelineTrialStderr(rawStderr);
     const stderr = buildChatPipelineTrialStreamEvidence(
-      state.result?.stderr ?? '',
+      filteredStderr.text,
       state.result?.stderrBytes,
+      new TextEncoder().encode(rawStderr).length,
     );
     const failureKind = state.result?.failureKind ?? null;
     return {
@@ -1320,6 +1348,9 @@ function trialTaskResults(
       failureKind,
       stdout: stdout.text,
       stderr: stderr.text,
+      ...(filteredStderr.omittedAuxiliaryDiagnosticLines > 0
+        ? { stderrAuxiliaryDiagnosticsOmittedLines: filteredStderr.omittedAuxiliaryDiagnosticLines }
+        : {}),
       repairScope: trialTaskRepairScope(state.status, failureKind),
       stdoutTruncation: stdout.truncation,
       stderrTruncation: stderr.truncation,
@@ -1715,7 +1746,7 @@ async function executeTargetedTrialCase(
     progress: ChatPipelineTrialProgressReporter;
   },
 ): Promise<{ result: ChatPipelineTrialCaseResult; totalTaskCount: number }> {
-  let caseWorkspace: { rootDir: string; workDir: string } | null = null;
+  let caseWorkspace: { rootDir: string; workDir: string; yamlPath: string } | null = null;
   const runIds: string[] = [];
   const tasks: ChatPipelineTrialTaskResult[] = [];
   let totalTaskCount = 0;
@@ -1741,8 +1772,16 @@ async function executeTargetedTrialCase(
       input.stagedYamlPath,
       input.testCase,
     );
+    const stagedYaml = readFileSync(input.stagedYamlPath, 'utf-8');
+    const relocatedCaseYaml = rewriteCopiedPipelineYaml(stagedYaml, {
+      workDir: caseWorkspace.workDir,
+      sourceContentPath: input.stagedYamlPath,
+      sourceIdentityPath: input.logicalYamlPath,
+      destinationYamlPath: caseWorkspace.yamlPath,
+      pipelineName: input.pipelineConfig.name,
+    });
     const casePipelineConfig = await loadPipeline(
-      readFileSync(input.stagedYamlPath, 'utf-8'),
+      relocatedCaseYaml,
       caseWorkspace.workDir,
     );
     const caseConfigErrors = validateConfig(casePipelineConfig);
