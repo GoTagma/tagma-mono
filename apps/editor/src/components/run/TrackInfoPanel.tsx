@@ -36,14 +36,16 @@ function permsLabel(perms: Permissions | undefined | null): string | null {
 
 function ConfigRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-start gap-2 py-[2px] text-[10px]">
+    <div className="flex min-w-0 items-start gap-2 py-[2px] text-[10px]">
       <span
         className="text-tagma-muted/70 w-[80px] shrink-0 font-mono tracking-tight truncate"
         title={label}
       >
         {label}
       </span>
-      <span className="flex-1 min-w-0 break-words font-mono text-tagma-text/80">{children}</span>
+      <span className="min-w-0 flex-1 whitespace-normal [overflow-wrap:anywhere] font-mono text-tagma-text/80">
+        {children}
+      </span>
     </div>
   );
 }
@@ -147,13 +149,15 @@ export function TrackInfoPanel({ track, config, onClose }: TrackInfoPanelProps) 
               {track.tasks.map((task) => (
                 <div
                   key={task.id}
-                  className="flex items-center gap-2 py-[2px] text-[10px] font-mono text-tagma-text/80 min-w-0"
+                  className="flex min-w-0 items-start gap-2 py-[2px] text-[10px] font-mono text-tagma-text/80"
                 >
-                  <span className="text-tagma-muted/60 truncate">
+                  <span className="text-tagma-muted/60 min-w-0 flex-1 whitespace-normal [overflow-wrap:anywhere]">
                     {track.id}.{task.id}
                   </span>
                   {task.name && task.name !== task.id && (
-                    <span className="text-tagma-muted/40 truncate">— {task.name}</span>
+                    <span className="text-tagma-muted/40 min-w-0 flex-1 whitespace-normal [overflow-wrap:anywhere]">
+                      — {task.name}
+                    </span>
                   )}
                 </div>
               ))}

@@ -156,14 +156,18 @@ function ConfigRow({
   mono?: boolean;
 }) {
   return (
-    <div className="flex items-start gap-2 py-[2px] text-[10px]">
+    <div className="flex min-w-0 items-start gap-2 py-[2px] text-[10px]">
       <span
         className="text-tagma-muted/70 w-[68px] shrink-0 font-mono tracking-tight truncate"
         title={label}
       >
         {label}
       </span>
-      <span className={`flex-1 min-w-0 break-words ${mono ? 'font-mono' : ''} text-tagma-text/80`}>
+      <span
+        className={`min-w-0 flex-1 whitespace-normal [overflow-wrap:anywhere] ${
+          mono ? 'font-mono' : ''
+        } text-tagma-text/80`}
+      >
         {children}
       </span>
     </div>
@@ -548,14 +552,16 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
               <div className="border border-tagma-border/60 bg-tagma-bg/40 px-2.5 py-1.5">
                 {track && (
                   <ConfigRow label="Track">
-                    <span className="inline-flex items-center gap-1.5">
+                    <span className="flex min-w-0 items-start gap-1.5">
                       {track.color && (
                         <span
-                          className="w-2 h-2 shrink-0"
+                          className="mt-[1px] w-2 h-2 shrink-0"
                           style={{ backgroundColor: track.color }}
                         />
                       )}
-                      <span className="truncate">{track.name}</span>
+                      <span className="min-w-0 flex-1 whitespace-normal [overflow-wrap:anywhere]">
+                        {track.name}
+                      </span>
                     </span>
                   </ConfigRow>
                 )}
@@ -655,7 +661,10 @@ export function RunTaskPanel({ task, config, onClose }: RunTaskPanelProps) {
                   </label>
                   <div className="border border-tagma-border/60 bg-tagma-bg/40 px-2.5 py-1.5 space-y-0.5">
                     {taskConfig.depends_on.map((dep) => (
-                      <div key={dep} className="text-[10px] font-mono text-tagma-muted truncate">
+                      <div
+                        key={dep}
+                        className="text-[10px] font-mono text-tagma-muted whitespace-normal [overflow-wrap:anywhere]"
+                      >
                         {dep}
                       </div>
                     ))}

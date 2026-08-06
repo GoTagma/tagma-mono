@@ -158,4 +158,17 @@ describe('HistoryFlowView', () => {
     expect(RUN_HISTORY_INSPECTOR_PANEL_CLASSES).toContain('max-w-[20rem]');
     expect(source).toContain('w-full h-full flex flex-col');
   });
+
+  test('allows unbroken inspector metadata and task names to wrap', async () => {
+    const source = await Bun.file(
+      new URL('../src/components/run/HistoryFlowView.tsx', import.meta.url),
+    ).text();
+
+    expect(source).toContain(
+      'className="text-[11px] font-mono text-tagma-muted [overflow-wrap:anywhere]"',
+    );
+    expect(source).toContain(
+      'className="min-w-0 flex-1 whitespace-normal [overflow-wrap:anywhere] text-tagma-text"',
+    );
+  });
 });

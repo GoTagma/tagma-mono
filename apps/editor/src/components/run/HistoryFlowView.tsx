@@ -606,13 +606,17 @@ function HistoryTaskPanel({
             {!task.command && task.driver && (
               <div>
                 <label className="field-label">Driver</label>
-                <div className="text-[11px] font-mono text-tagma-muted">{task.driver}</div>
+                <div className="text-[11px] font-mono text-tagma-muted [overflow-wrap:anywhere]">
+                  {task.driver}
+                </div>
               </div>
             )}
             {!task.command && task.model && (
               <div>
                 <label className="field-label">Model</label>
-                <div className="text-[11px] font-mono text-tagma-muted">{task.model}</div>
+                <div className="text-[11px] font-mono text-tagma-muted [overflow-wrap:anywhere]">
+                  {task.model}
+                </div>
               </div>
             )}
             {!task.command && task.sessionId && (
@@ -722,13 +726,17 @@ function HistoryTrackPanel({ track, onClose }: { track: TrackGroup; onClose: () 
               return (
                 <div
                   key={t.taskId}
-                  className="flex items-center gap-2 py-1 text-[10px] font-mono border-b border-tagma-border/30 last:border-b-0"
+                  className="flex items-start gap-2 py-1 text-[10px] font-mono border-b border-tagma-border/30 last:border-b-0"
                 >
                   <TIcon
                     size={9}
-                    className={`${tc.iconColor} ${t.status === 'running' ? 'animate-spin' : ''}`}
+                    className={`mt-[1px] shrink-0 ${tc.iconColor} ${
+                      t.status === 'running' ? 'animate-spin' : ''
+                    }`}
                   />
-                  <span className="flex-1 min-w-0 truncate text-tagma-text">{t.taskName}</span>
+                  <span className="min-w-0 flex-1 whitespace-normal [overflow-wrap:anywhere] text-tagma-text">
+                    {t.taskName}
+                  </span>
                   {t.durationMs != null && (
                     <span className="shrink-0 text-tagma-muted tabular-nums text-[9px]">
                       {formatDuration(t.durationMs)}

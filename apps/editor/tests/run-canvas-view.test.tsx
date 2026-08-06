@@ -102,4 +102,45 @@ describe('RunCanvasView', () => {
     expect(html).toContain('w-[calc(100%-1rem)]');
     expect(html).toContain('Main');
   });
+
+  test('wraps long read-only values across run inspectors', () => {
+    const longConfig: RawPipelineConfig = {
+      ...config,
+      tracks: [
+        {
+          ...config.tracks[0]!,
+          name: 'preflight-stage-zero-deterministic-boundary-value'.repeat(4),
+          model: 'provider-model-token-without-breaks'.repeat(4),
+          cwd: 'workspace-directory-token-without-breaks'.repeat(4),
+          middlewares: [
+            { type: 'static_context', file: 'middleware-file-token-without-breaks'.repeat(4) },
+          ],
+          tasks: [
+            {
+              ...config.tracks[0]!.tasks[0]!,
+              depends_on: ['dependency-token-without-breaks'.repeat(6)],
+            },
+          ],
+        },
+      ],
+    };
+    const html = renderToStaticMarkup(
+      <RunTaskPanel task={runningTask()} config={longConfig} onClose={() => {}} />,
+    );
+
+    expect(html).toContain('flex min-w-0 items-start gap-1.5');
+    expect(html).toContain('min-w-0 flex-1 whitespace-normal [overflow-wrap:anywhere]');
+    expect(html).toContain('text-tagma-muted whitespace-normal [overflow-wrap:anywhere]');
+
+    const trackHtml = renderToStaticMarkup(
+      <TrackInfoPanel track={longConfig.tracks[0]!} config={longConfig} onClose={() => {}} />,
+    );
+    expect(trackHtml).toContain('flex min-w-0 items-start gap-2 py-[2px] text-[10px]');
+    expect(trackHtml).toContain(
+      'min-w-0 flex-1 whitespace-normal [overflow-wrap:anywhere] font-mono',
+    );
+    expect(trackHtml).toContain(
+      'text-tagma-muted/60 min-w-0 flex-1 whitespace-normal [overflow-wrap:anywhere]',
+    );
+  });
 });
