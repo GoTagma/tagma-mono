@@ -59,6 +59,8 @@ test('compile repair prompt bounds and redacts compile evidence', () => {
   const evidence = prompt.split('<compile-result>')[1]!.split('</compile-result>')[0]!.trim();
   expect(new TextEncoder().encode(evidence).length).toBeLessThanOrEqual(64 * 1024);
   expect(evidence).toContain('evidenceTruncated');
+  expect(evidence).toContain('...[compile-repair-prompt truncated ');
+  expect(evidence).not.toContain('...[truncated]');
   expect(evidence).toContain('[redacted');
   expect(evidence).not.toContain(secret);
   expect(evidence).not.toContain(sessionToken);
@@ -75,6 +77,13 @@ test('compile repair prompt bounds and redacts compile evidence', () => {
   expect(evidence).toContain('\\"openai_api_key\\":\\"[redacted secret]\\"');
   expect(evidence).toContain('\\"anthropic_api_key\\":\\"[redacted secret]\\"');
   expect(evidence).toContain("{ 'azure_openai_api_key': '[redacted secret]' }");
+
+  const parsed = JSON.parse(evidence) as {
+    validation?: { errors?: Array<{ message?: string }> };
+  };
+  const clippedMessage = parsed.validation?.errors?.[0]?.message;
+  expect(clippedMessage).toMatch(/\.\.\.\[compile-repair-prompt truncated \d+ chars\]$/u);
+  expect(clippedMessage?.length).toBeLessThanOrEqual(1_200);
 });
 
 test('compile repair prompt keeps multibyte fallback evidence byte-bounded', () => {
@@ -108,6 +117,8 @@ test('compile repair prompt keeps multibyte fallback evidence byte-bounded', () 
   const evidence = prompt.split('<compile-result>')[1]!.split('</compile-result>')[0]!.trim();
   expect(new TextEncoder().encode(evidence).length).toBeLessThanOrEqual(64 * 1024);
   expect(evidence).toContain('evidenceTruncated');
+  expect(evidence).toContain('compile-repair-prompt truncated');
+  expect(evidence).not.toContain('...[truncated]');
 });
 
 test('trial repair prompt treats diagnostic-only evidence as non-authorizing context', () => {

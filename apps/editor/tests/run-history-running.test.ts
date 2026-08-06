@@ -294,6 +294,10 @@ test('history lists the active run even before a persisted summary exists', asyn
     const res = await getReq(port, '/api/run/history');
     expect(res.status).toBe(200);
     const body = JSON.parse(res.body) as {
+      retainedRunCount: number;
+      returnedRunCount: number;
+      omittedRunCount: number;
+      historyWindow: Record<string, unknown>;
       runs: Array<{
         runId: string;
         running?: boolean;
@@ -302,6 +306,15 @@ test('history lists the active run even before a persisted summary exists', asyn
         taskCounts?: { running: number; total: number };
       }>;
     };
+    expect(body.retainedRunCount).toBe(1);
+    expect(body.returnedRunCount).toBe(1);
+    expect(body.omittedRunCount).toBe(0);
+    expect(body.historyWindow).toEqual({
+      layer: 'run-history-list-window',
+      limit: 20,
+      truncated: false,
+      omittedRunCount: 0,
+    });
     expect(body.runs).toHaveLength(1);
     expect(body.runs[0]).toMatchObject({
       runId: 'run_live',

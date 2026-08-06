@@ -152,6 +152,85 @@ describe('renderer diagnostics snapshot', () => {
     expect(JSON.stringify(snapshot)).not.toContain('"reset"');
     expect(JSON.stringify(snapshot)).not.toContain('must-not-leak');
   });
+
+  test('reports renderer collection windows and preserves the newest retained logs', () => {
+    const snapshot = buildRendererDiagnosticsSnapshot({
+      page: { href: 'http://127.0.0.1/editor', visibilityState: 'visible', online: true },
+      chat: {
+        sessions: Array.from({ length: 120 }, (_, index) => ({ id: `session-${index}` })),
+        messages: Array.from({ length: 30 }, (_, index) => ({ id: `message-${index}` })),
+      },
+      pipeline: {},
+      run: {
+        logs: Array.from({ length: 300 }, (_, index) => `log-${index}`),
+        pipelineLogs: Array.from({ length: 280 }, (_, index) => `pipeline-log-${index}`),
+      },
+      capturedAt: 300,
+    });
+
+    const chat = snapshot.chat as {
+      sessionCount: number;
+      returnedSessionCount: number;
+      omittedSessionCount: number;
+      sessionEvidence: Record<string, unknown>;
+      sessions: Array<{ id: string }>;
+    };
+    expect(chat.sessions).toHaveLength(100);
+    expect(chat.sessions[0]?.id).toBe('session-20');
+    expect(chat.sessions.at(-1)?.id).toBe('session-119');
+    expect(chat).toMatchObject({
+      sessionCount: 120,
+      returnedSessionCount: 100,
+      omittedSessionCount: 20,
+      sessionEvidence: {
+        layer: 'renderer-diagnostics-session-window',
+        limit: 100,
+        truncated: true,
+        omittedSessionCount: 20,
+      },
+    });
+
+    const run = snapshot.run as {
+      logCount: number;
+      returnedLogCount: number;
+      omittedLogCount: number;
+      logEvidence: Record<string, unknown>;
+      logs: string[];
+      pipelineLogCount: number;
+      returnedPipelineLogCount: number;
+      omittedPipelineLogCount: number;
+      pipelineLogEvidence: Record<string, unknown>;
+      pipelineLogs: string[];
+    };
+    expect(run.logs).toHaveLength(250);
+    expect(run.logs[0]).toBe('log-50');
+    expect(run.logs.at(-1)).toBe('log-299');
+    expect(run).toMatchObject({
+      logCount: 300,
+      returnedLogCount: 250,
+      omittedLogCount: 50,
+      logEvidence: {
+        layer: 'renderer-diagnostics-log-window',
+        limit: 250,
+        truncated: true,
+        omittedLogCount: 50,
+      },
+    });
+    expect(run.pipelineLogs).toHaveLength(250);
+    expect(run.pipelineLogs[0]).toBe('pipeline-log-30');
+    expect(run.pipelineLogs.at(-1)).toBe('pipeline-log-279');
+    expect(run).toMatchObject({
+      pipelineLogCount: 280,
+      returnedPipelineLogCount: 250,
+      omittedPipelineLogCount: 30,
+      pipelineLogEvidence: {
+        layer: 'renderer-diagnostics-pipeline-log-window',
+        limit: 250,
+        truncated: true,
+        omittedLogCount: 30,
+      },
+    });
+  });
 });
 
 describe('coding-agent handoff', () => {

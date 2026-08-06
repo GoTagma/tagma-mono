@@ -228,12 +228,27 @@ test('returns the full persisted stdout for a past task', async () => {
       taskId: string;
       stream: string;
       content: string;
+      size: number;
       truncated: boolean;
+      returnedBytes: number;
+      readEvidence: Record<string, unknown>;
     };
+    const fullBytes = Buffer.byteLength('hello from stdout\nline two\n');
     expect(body.taskId).toBe('t.a');
     expect(body.stream).toBe('stdout');
     expect(body.content).toBe('hello from stdout\nline two\n');
     expect(body.truncated).toBe(false);
+    expect(body.returnedBytes).toBe(fullBytes);
+    expect(body.readEvidence).toEqual({
+      layer: 'run-history-task-output-read',
+      mode: 'full',
+      sourceBytes: fullBytes,
+      limitBytes: 1024 * 1024,
+      readBytes: fullBytes,
+      returnedBytes: fullBytes,
+      truncated: false,
+      partialLeadingLineDropped: false,
+    });
   } finally {
     await close();
   }
@@ -248,6 +263,38 @@ test('returns the persisted stderr for a past task', async () => {
     );
     expect(res.status).toBe(200);
     expect((JSON.parse(res.body) as { content: string }).content).toBe('a warning on stderr\n');
+  } finally {
+    await close();
+  }
+});
+
+test('reports pipeline log tailing as read-interface truncation', async () => {
+  const big = `${'z'.repeat(64)}\n`.repeat(20_000);
+  writeFileSync(join(runDirPath(), 'pipeline.log'), big, 'utf-8');
+  const { port, close } = await startApp(buildApp());
+  try {
+    const res = await getReq(port, `/api/run/history/${RUN_ID}`);
+    expect(res.status).toBe(200);
+    const body = JSON.parse(res.body) as {
+      content: string;
+      size: number;
+      truncated: boolean;
+      returnedBytes: number;
+      readEvidence: Record<string, unknown>;
+    };
+    expect(body.size).toBe(Buffer.byteLength(big));
+    expect(body.truncated).toBe(true);
+    expect(body.returnedBytes).toBe(Buffer.byteLength(body.content));
+    expect(body.readEvidence).toEqual({
+      layer: 'run-history-log-read',
+      mode: 'tail',
+      sourceBytes: Buffer.byteLength(big),
+      limitBytes: 1024 * 1024,
+      readBytes: 1024 * 1024,
+      returnedBytes: Buffer.byteLength(body.content),
+      truncated: true,
+      partialLeadingLineDropped: true,
+    });
   } finally {
     await close();
   }
@@ -332,8 +379,12 @@ test('bounds history Ask AI context and tails long logs and streams', async () =
     expect(body.content).toContain('important stdout tail');
     expect(body.content).not.toContain('old historical log head only');
     expect(body.content).not.toContain('old stdout head only');
-    expect(body.content).toContain('[truncated to last 131072 bytes');
-    expect(body.content).toContain('[truncated at 65536 bytes');
+    expect(body.content).toContain(
+      '[run-history-context-read truncated: mode=tail; limit=131072 bytes; source=',
+    );
+    expect(body.content).toContain(
+      '[run-history-context-read truncated: mode=head; limit=65536 bytes; source=',
+    );
     expect(body.content).not.toContain('normalized tail should be clipped');
   } finally {
     await close();
@@ -445,12 +496,25 @@ test('caps oversized output at 1 MB and flags truncation', async () => {
       content: string;
       size: number;
       truncated: boolean;
+      returnedBytes: number;
+      readEvidence: Record<string, unknown>;
     };
     expect(body.truncated).toBe(true);
     expect(body.size).toBe(Buffer.byteLength(big));
     // Only the last ~1 MB is returned, and the partial first line is dropped.
     expect(body.content.length).toBeLessThan(body.size);
     expect(body.content.length).toBeLessThanOrEqual(1024 * 1024);
+    expect(body.returnedBytes).toBe(Buffer.byteLength(body.content));
+    expect(body.readEvidence).toEqual({
+      layer: 'run-history-task-output-read',
+      mode: 'tail',
+      sourceBytes: Buffer.byteLength(big),
+      limitBytes: 1024 * 1024,
+      readBytes: 1024 * 1024,
+      returnedBytes: Buffer.byteLength(body.content),
+      truncated: true,
+      partialLeadingLineDropped: true,
+    });
   } finally {
     await close();
   }

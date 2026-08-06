@@ -895,23 +895,64 @@ function redactChatCompileRepairText(value: string): string {
     .replace(/\b(Bearer)\s+[A-Za-z0-9._-]{8,}\b/gi, '$1 [redacted token]')
     .replace(/\b(?:sk|sess|ghp|xox[baprs])[-_][A-Za-z0-9._-]{6,}\b/g, '[redacted token]');
 }
+
+function chatCompileRepairTruncationMarker(omittedCount: number, unit: 'chars' | 'bytes'): string {
+  return `...[compile-repair-prompt truncated ${omittedCount} ${unit}]`;
+}
+
 function clipChatCompileRepairText(value: string, maxLength: number): string {
   const redacted = redactChatCompileRepairText(value);
-  if (redacted.length <= maxLength) return redacted;
-  return redacted.slice(0, Math.max(0, maxLength - 16)) + '...[truncated]';
+  const limit = Math.max(0, Math.trunc(maxLength));
+  if (redacted.length <= limit) return redacted;
+  let omittedChars = redacted.length;
+  let marker = '';
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    marker = chatCompileRepairTruncationMarker(omittedChars, 'chars');
+    const retainedChars = Math.max(0, limit - marker.length);
+    const nextOmittedChars = redacted.length - retainedChars;
+    if (nextOmittedChars === omittedChars) break;
+    omittedChars = nextOmittedChars;
+  }
+  marker = chatCompileRepairTruncationMarker(omittedChars, 'chars');
+  if (marker.length >= limit) return marker.slice(0, limit);
+  return redacted.slice(0, limit - marker.length) + marker;
+}
+
+function takeUtf8Prefix(value: string, maxBytes: number): { text: string; bytes: number } {
+  const encoder = new TextEncoder();
+  let text = '';
+  let bytes = 0;
+  for (const character of value) {
+    const characterBytes = encoder.encode(character).length;
+    if (bytes + characterBytes > maxBytes) break;
+    text += character;
+    bytes += characterBytes;
+  }
+  return { text, bytes };
 }
 
 function clipChatCompileRepairTextByBytes(value: string, maxBytes: number): string {
   const redacted = redactChatCompileRepairText(value);
-  const suffix = '...[truncated]';
-  if (new TextEncoder().encode(redacted).length <= maxBytes) return redacted;
-  let end = redacted.length;
-  while (end > 0) {
-    const candidate = redacted.slice(0, end) + suffix;
-    if (new TextEncoder().encode(candidate).length <= maxBytes) return candidate;
-    end -= 1;
+  const encoder = new TextEncoder();
+  const limit = Math.max(0, Math.trunc(maxBytes));
+  const sourceBytes = encoder.encode(redacted).length;
+  if (sourceBytes <= limit) return redacted;
+  let omittedBytes = sourceBytes;
+  let marker = '';
+  let retained = { text: '', bytes: 0 };
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    marker = chatCompileRepairTruncationMarker(omittedBytes, 'bytes');
+    const markerBytes = encoder.encode(marker).length;
+    if (markerBytes >= limit) return takeUtf8Prefix(marker, limit).text;
+    retained = takeUtf8Prefix(redacted, limit - markerBytes);
+    const nextOmittedBytes = sourceBytes - retained.bytes;
+    if (nextOmittedBytes === omittedBytes) break;
+    omittedBytes = nextOmittedBytes;
   }
-  return suffix;
+  marker = chatCompileRepairTruncationMarker(omittedBytes, 'bytes');
+  const markerBytes = encoder.encode(marker).length;
+  retained = takeUtf8Prefix(redacted, Math.max(0, limit - markerBytes));
+  return retained.text + marker;
 }
 
 function compactChatCompileRepairResult(result: YamlCompileResult) {
@@ -1018,7 +1059,7 @@ function serializeChatYamlCompileRepairEvidence(result: YamlCompileResult): stri
       sourceName: clipChatCompileRepairText(result.sourceName, 120),
       success: result.success,
       parseOk: result.parseOk,
-      summary: '...[truncated]',
+      summary: '...[compile-repair-prompt truncated; omitted size unavailable]',
       validationSummary: {
         errorCount: result.validation.errors.length,
         warningCount: result.validation.warnings.length,
