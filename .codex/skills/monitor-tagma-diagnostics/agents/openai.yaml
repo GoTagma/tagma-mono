@@ -1,0 +1,4 @@
+interface:
+  display_name: "Monitor Tagma Diagnostics"
+  short_description: "Continuously monitor and qualify Tagma defects"
+  default_prompt: "Use $monitor-tagma-diagnostics to continuously observe this Tagma diagnostics session and maintain an evidence-backed defect ledger until I tell you to stop."
