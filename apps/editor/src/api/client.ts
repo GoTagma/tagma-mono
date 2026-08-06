@@ -348,6 +348,9 @@ export interface ChatPipelineTrialRunResult {
   };
   planRequest?: ChatPipelineTrialPlanRequest;
   plan?: ChatPipelineTrialPlanSummary;
+  plannedCaseCount?: number;
+  caseResultCount?: number;
+  notRunCaseCount?: number;
   cases: ChatPipelineTrialCaseResult[];
 }
 

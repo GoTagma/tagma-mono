@@ -282,6 +282,9 @@ test('trial planning prompt forces behavior-first edge-case design without autho
   expect(prompt).toContain('Assert distinct outputs');
   expect(prompt).toContain('Use file-equals for exact text preservation');
   expect(prompt).toContain('empty expected string');
+  expect(prompt).toContain('json-valid or json-pointer-equals');
+  expect(prompt).toContain('text-only checks cannot prove valid JSON');
+  expect(prompt).toContain('RFC 8259 JSON');
   expect(prompt).toContain('Inter-task collision coverage requires at least two target task ids');
   expect(prompt).toContain('concurrent-run-output-collision must never be marked covered');
   expect(prompt).toContain('accepted-risk');

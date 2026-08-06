@@ -152,7 +152,8 @@
 - Trial task evidence is a bounded diagnostic view, not the source of truth for task cardinality.
   Prioritize executable failures and non-empty stderr, reserve representative task context for
   every failed case, and only then admit blocked/skipped noise. Return total and omitted task counts
-  plus status breakdowns so the bounded view cannot silently imply that omitted tasks did not run.
+  plus status breakdowns, and report planned/result/not-run case counts, so the bounded view cannot
+  silently imply that omitted tasks or cases did not exist.
 - Preserve truncation provenance across every Trial evidence boundary. Distinguish source/runtime
   tail capture, Trial-result field or stream clipping, and repair-prompt clipping. Return produced,
   source-returned, and final-returned byte counts where they are known, and label inline truncation

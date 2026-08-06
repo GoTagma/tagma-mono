@@ -140,6 +140,7 @@ function unwrapArray(payload: unknown, label: string): unknown[] {
 interface WorkspaceSessionDiscovery {
   sessions: unknown[];
   sourceQueries: {
+    ownershipMayBeIncomplete: boolean;
     scoped: {
       limit: number;
       returnedCount: number;
@@ -209,11 +210,15 @@ async function listWorkspaceSessions(
       admittedDescendant = true;
     }
   }
+  const ownershipMayBeIncomplete = compatibilityDiscoveryAvailable
+    ? discovered.length >= OPENCODE_SESSION_DISCOVERY_LIMIT
+    : scoped.length >= OPENCODE_SCOPED_SESSION_LIMIT;
   return {
     sessions: [...sessionsById].flatMap(([id, session]) =>
       ownedSessionIds.has(id) ? [session] : [],
     ),
     sourceQueries: {
+      ownershipMayBeIncomplete,
       scoped: {
         limit: OPENCODE_SCOPED_SESSION_LIMIT,
         returnedCount: scoped.length,
@@ -316,10 +321,7 @@ export async function readDiagnosticsOpencodeMessages(
     (candidate) => sessionId(candidate) === requestedSessionId,
   );
   if (!session) {
-    if (
-      discovery.sourceQueries.scoped.boundaryReached ||
-      discovery.sourceQueries.compatibilityDiscovery.boundaryReached
-    ) {
+    if (discovery.sourceQueries.ownershipMayBeIncomplete) {
       throw new DiagnosticsReadError(
         409,
         'OpenCode session discovery reached its source query limit, so ownership of the requested session could not be determined.',

@@ -215,6 +215,9 @@ export interface ChatPipelineTrialRunResult {
     unavailableBaselineInputs?: ChatPipelineTrialUnavailableBaselineInput[];
   };
   plan?: ChatPipelineTrialPlanSummary;
+  plannedCaseCount?: number;
+  caseResultCount?: number;
+  notRunCaseCount?: number;
   cases: ChatPipelineTrialCaseResult[];
 }
 
@@ -568,9 +571,9 @@ export function buildChatPipelineTrialStreamEvidence(
     /^\[\d+ bytes truncated from head;/u.test(value) ||
     (producedBytes !== undefined && producedBytes > sourceReturnedBytes)
       ? 'truncated'
-      : producedBytes === undefined
-        ? 'unknown'
-        : 'not-truncated';
+      : producedBytes !== undefined && producedBytes === sourceReturnedBytes
+        ? 'not-truncated'
+        : 'unknown';
   const redacted = redactTrialText(value);
   const bytes = new TextEncoder().encode(redacted);
   let text = redacted;
@@ -731,6 +734,9 @@ function resultWithTrialPlan(
   return {
     ...result,
     plan: trialPlanSummary(plan),
+    plannedCaseCount: plan.cases.length,
+    caseResultCount: result.cases.length,
+    notRunCaseCount: Math.max(0, plan.cases.length - result.cases.length),
   };
 }
 
@@ -1817,6 +1823,7 @@ function buildPlannedTrialSummary(
   baselineOmitted: number,
   baselineCountText: string,
   cases: readonly ChatPipelineTrialCaseResult[],
+  plannedCaseCount: number,
   warnings: readonly string[],
 ): string {
   const allPassed = baselineSuccess && cases.every((item) => item.success);
@@ -1833,7 +1840,7 @@ function buildPlannedTrialSummary(
       ? baseSummary.replace('Trial run passed', 'Trial run passed with warnings')
       : baseSummary,
     '',
-    `Targeted cases: ${cases.filter((item) => item.success).length}/${cases.length} passed.`,
+    `Targeted cases: ${cases.filter((item) => item.success).length}/${plannedCaseCount} passed; ${cases.length} result(s) returned; ${Math.max(0, plannedCaseCount - cases.length)} not run.`,
   ];
   for (const testCase of cases) {
     lines.push(
@@ -2356,6 +2363,7 @@ async function executeTrial(
         baselineEvidence.omittedTaskCount,
         baselineEvidence.countText,
         cases,
+        plan.cases.length,
         planWarnings,
       ),
       durationMs: Math.max(0, Date.now() - startedAt),
@@ -2365,6 +2373,9 @@ async function executeTrial(
       taskStatusCounts,
       omittedTaskStatusCounts,
       plan: trialPlanSummary(plan),
+      plannedCaseCount: plan.cases.length,
+      caseResultCount: visibleCases.length,
+      notRunCaseCount: Math.max(0, plan.cases.length - visibleCases.length),
       cases: visibleCases,
     };
     const hasExecutableFailure = allTaskEvidenceCandidates.some(

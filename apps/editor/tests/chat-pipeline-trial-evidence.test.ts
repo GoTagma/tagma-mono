@@ -73,6 +73,9 @@ test('stream evidence distinguishes runtime truncation from Trial response trunc
     returnedBytes: 4_096,
   });
   expect(trialTail.text).toContain('[trial-result truncated]');
+
+  const inconsistentSource = buildChatPipelineTrialStreamEvidence('four', 3);
+  expect(inconsistentSource.truncation.source).toBe('unknown');
 });
 
 test('task evidence never exceeds its limit while reserving actionable failed-case tasks', () => {

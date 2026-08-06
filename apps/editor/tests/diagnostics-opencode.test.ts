@@ -74,6 +74,7 @@ describe('OpenCode diagnostics reader', () => {
       totalSessionCount: 1,
       returnedSessionCount: 1,
       sourceQueries: {
+        ownershipMayBeIncomplete: false,
         scoped: { limit: 100, returnedCount: 1, boundaryReached: false },
         compatibilityDiscovery: {
           limit: 10_000,
@@ -337,6 +338,25 @@ describe('OpenCode diagnostics reader', () => {
       status: 404,
     } satisfies Partial<DiagnosticsReadError>);
     expect(requestUrls).toHaveLength(2);
+  });
+
+  test('uses complete compatibility discovery to disambiguate a full scoped page', async () => {
+    const { dependencies } = harness([
+      Array.from({ length: 100 }, (_, index) => ({
+        id: `chat-${index}`,
+        directory: OPENCODE_DIR,
+      })),
+      [],
+    ]);
+
+    await expect(
+      readDiagnosticsOpencodeMessages(
+        WORKSPACE_DIR,
+        'not-owned',
+        { limit: 50 },
+        dependencies,
+      ),
+    ).rejects.toMatchObject({ status: 404 });
   });
 
   test('does not start OpenCode when the workspace has no live handle', async () => {
