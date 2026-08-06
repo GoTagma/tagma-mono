@@ -142,6 +142,11 @@
   helpers/fixtures, contained portable paths, selected task targets, repeated-run support, and
   host-evaluated assertions. Case workspaces must be removed afterward and their fixtures/outputs
   must never leak into the live workspace.
+- Resolve staged pipeline support files identically in isolated Trial and after publication.
+  When a short relative file/directory trigger, `file_exists` completion, or `static_context`
+  path names an existing regular staged support-tree entry, relocate it to the copied or published
+  `.tagma/<pipeline>/` directory before loading the YAML. Never make Trial find an asset that the
+  finalized pipeline cannot resolve, or vice versa.
 - Treat each case's `targetTaskIds` as mandatory at the tool schema, persisted-plan parser, and
   execution boundary. Never translate an empty or missing target list to `undefined`, because that
   means a full-pipeline run.
@@ -307,6 +312,11 @@
   pinned runtime reports `message="stream error" small=false mode=primary`; title-model
   (`small=true`) and subagent errors remain recoverable. Keep Chat sidecar Basic Auth credentials
   out of these one-shot child environments.
+- Preserve raw managed OpenCode stderr in persisted runtime streams, but omit exact recoverable
+  `message="stream error" small=true mode=primary` title-model lines from task-scoped Trial
+  evidence and report the omitted line count. Keep primary-model `small=false` failures and every
+  ordinary task diagnostic in the evidence so repair ranking cannot mistake auxiliary billing or
+  title-generation noise for the task's root cause.
 - Preparing the embedded OpenCode runtime must not atomically rewrite an unchanged workspace
   `.tagma/opencode.json`; that host-only event is inside Trial's real-workspace witness scope and
   would be misclassified as an isolated case leak.

@@ -597,26 +597,31 @@ describe('chat YAML staging routes', () => {
 
   test('resolves staged pipeline static context inside an isolated case and after finalize', async () => {
     const { ws, sourcePath } = makeWorkspace();
-    ws.registry.registerPlugin('drivers', 'opencode', {
-      name: 'opencode',
-      capabilities: { sessionResume: false, systemPrompt: false, outputFormat: false },
-      async buildCommand(_task, _track, ctx) {
-        const context = ctx.promptDoc.contexts.map((block) => block.content).join('\n');
-        const encoded = Buffer.from(context, 'utf-8').toString('base64');
-        return {
-          args: [
-            process.execPath,
-            '-e',
-            [
-              "const fs = require('node:fs');",
-              "fs.mkdirSync('output', { recursive: true });",
-              "fs.writeFileSync('output/context.txt', Buffer.from('" + encoded + "', 'base64'));",
-            ].join(' '),
-          ],
-          cwd: ctx.workDir,
-        };
+    ws.registry.registerPlugin(
+      'drivers',
+      'opencode',
+      {
+        name: 'opencode',
+        capabilities: { sessionResume: false, systemPrompt: false, outputFormat: false },
+        async buildCommand(_task, _track, ctx) {
+          const context = ctx.promptDoc.contexts.map((block) => block.content).join('\n');
+          const encoded = Buffer.from(context, 'utf-8').toString('base64');
+          return {
+            args: [
+              process.execPath,
+              '-e',
+              [
+                "const fs = require('node:fs');",
+                "fs.mkdirSync('output', { recursive: true });",
+                "fs.writeFileSync('output/context.txt', Buffer.from('" + encoded + "', 'base64'));",
+              ].join(' '),
+            ],
+            cwd: ctx.workDir,
+          };
+        },
       },
-    }, { replace: true });
+      { replace: true },
+    );
     const getRoute = createHarness();
     const startRes = makeRes();
     getRoute('/api/workspace/chat-yaml-stage/start')(
@@ -713,9 +718,9 @@ describe('chat YAML staging routes', () => {
     expect(published.tracks[0]?.tasks[0]?.middlewares?.[0]?.file).toBe(
       '.tagma/pipeline/prompts/context.md',
     );
-    expect(
-      readFileSync(join(dirname(sourcePath), 'prompts', 'context.md'), 'utf-8'),
-    ).toBe('STATIC-CONTEXT-SENTINEL');
+    expect(readFileSync(join(dirname(sourcePath), 'prompts', 'context.md'), 'utf-8')).toBe(
+      'STATIC-CONTEXT-SENTINEL',
+    );
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });

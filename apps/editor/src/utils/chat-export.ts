@@ -451,7 +451,10 @@ function renderTrialTaskEvidence(
   if (task.stderr) lines.push(detail(markdown, `stderr: ${redactExportText(task.stderr)}`));
   if ((task.stderrAuxiliaryDiagnosticsOmittedLines ?? 0) > 0) {
     lines.push(
-      detail(markdown, `stderr auxiliary diagnostics omitted: ${task.stderrAuxiliaryDiagnosticsOmittedLines} recoverable OpenCode title-model line(s)`),
+      detail(
+        markdown,
+        `stderr auxiliary diagnostics omitted: ${task.stderrAuxiliaryDiagnosticsOmittedLines} recoverable OpenCode title-model line(s)`,
+      ),
     );
   }
   if (task.stdoutTruncation) {

@@ -111,12 +111,7 @@ export function rewriteCopiedPipelineYaml(
         ...track,
         cwd: nextTrackCwd,
         middlewares: track.middlewares?.map((middleware) =>
-          rewritePluginPath(
-            middleware,
-            RELOCATABLE_MIDDLEWARE_TYPES,
-            'file',
-            trackPathOptions,
-          )!,
+          rewritePluginPath(middleware, RELOCATABLE_MIDDLEWARE_TYPES, 'file', trackPathOptions)!,
         ),
         tasks: track.tasks.map((task) => {
           const nextTaskCwd = rewriteCwd(task.cwd);
@@ -139,12 +134,7 @@ export function rewriteCopiedPipelineYaml(
               taskPathOptions,
             ),
             middlewares: task.middlewares?.map((middleware) =>
-              rewritePluginPath(
-                middleware,
-                RELOCATABLE_MIDDLEWARE_TYPES,
-                'file',
-                taskPathOptions,
-              )!,
+              rewritePluginPath(middleware, RELOCATABLE_MIDDLEWARE_TYPES, 'file', taskPathOptions)!,
             ),
           };
         }),

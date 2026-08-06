@@ -1780,10 +1780,7 @@ async function executeTargetedTrialCase(
       destinationYamlPath: caseWorkspace.yamlPath,
       pipelineName: input.pipelineConfig.name,
     });
-    const casePipelineConfig = await loadPipeline(
-      relocatedCaseYaml,
-      caseWorkspace.workDir,
-    );
+    const casePipelineConfig = await loadPipeline(relocatedCaseYaml, caseWorkspace.workDir);
     const caseConfigErrors = validateConfig(casePipelineConfig);
     if (caseConfigErrors.length > 0) {
       throw new Error(`Isolated case configuration error: ${caseConfigErrors.join('; ')}`);

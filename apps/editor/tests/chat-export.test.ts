@@ -277,6 +277,7 @@ describe('chat conversation export', () => {
               failureKind: 'exit_nonzero',
               stdout: '',
               stderr: 'actionable failure token=baseline-task-secret',
+              stderrAuxiliaryDiagnosticsOmittedLines: 1,
               repairScope: 'pipeline-artifact',
               stdoutTruncation: {
                 source: 'not-truncated',
@@ -439,6 +440,9 @@ describe('chat conversation export', () => {
       'baseline.failed run 1: failed; exit 17; failure exit_nonzero',
     );
     expect(exported.content).toContain('stderr: actionable failure token=[REDACTED]');
+    expect(exported.content).toContain(
+      'stderr auxiliary diagnostics omitted: 1 recoverable OpenCode title-model line(s)',
+    );
     expect(exported.content).toContain(
       'stderr evidence: source/runtime=truncated; trial-result=not-truncated; produced=9000 bytes; source-returned=4000 bytes; final-returned=4000 bytes',
     );
