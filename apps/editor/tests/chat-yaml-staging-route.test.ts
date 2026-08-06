@@ -595,6 +595,131 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
+  test('resolves staged pipeline static context inside an isolated case and after finalize', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    ws.registry.registerPlugin('drivers', 'opencode', {
+      name: 'opencode',
+      capabilities: { sessionResume: false, systemPrompt: false, outputFormat: false },
+      async buildCommand(_task, _track, ctx) {
+        const context = ctx.promptDoc.contexts.map((block) => block.content).join('\n');
+        const encoded = Buffer.from(context, 'utf-8').toString('base64');
+        return {
+          args: [
+            process.execPath,
+            '-e',
+            [
+              "const fs = require('node:fs');",
+              "fs.mkdirSync('output', { recursive: true });",
+              "fs.writeFileSync('output/context.txt', Buffer.from('" + encoded + "', 'base64'));",
+            ].join(' '),
+          ],
+          cwd: ctx.workDir,
+        };
+      },
+    }, { replace: true });
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Static Context Trial',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              {
+                id: 'capture',
+                prompt: 'Capture the attached context.',
+                trigger: { type: 'file', path: 'input/ready.txt' },
+                middlewares: [
+                  {
+                    type: 'static_context',
+                    file: 'prompts/context.md',
+                    label: 'Pipeline-local context',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    mkdirSync(join(dirname(entry.stagedPath), 'prompts'), { recursive: true });
+    writeFileSync(
+      join(dirname(entry.stagedPath), 'prompts', 'context.md'),
+      'STATIC-CONTEXT-SENTINEL',
+      'utf-8',
+    );
+    writeTrialPlan(entry.stagedPath, {
+      cases: [
+        {
+          id: 'static-context',
+          title: 'Load staged static context',
+          objective: 'Prove the isolated prompt receives its pipeline-local context file.',
+          runs: 1,
+          targetTaskIds: ['main.capture'],
+          fixtures: [{ path: 'input/ready.txt', content: 'ready' }],
+          expectations: [
+            {
+              type: 'file-contains',
+              path: 'output/context.txt',
+              text: 'STATIC-CONTEXT-SENTINEL',
+            },
+          ],
+        },
+      ],
+    });
+
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'static_context' },
+        'chat-lock',
+      ),
+      trialRes,
+    );
+
+    expect(trialRes.statusCode).toBe(200);
+    expect(trialRes.body).toMatchObject({
+      success: true,
+      ran: true,
+      verificationMode: 'isolated-fixtures-only',
+      cases: [{ id: 'static-context', success: true }],
+    });
+
+    const finalizeRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/finalize')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'static_context' },
+        'chat-lock',
+      ),
+      finalizeRes,
+    );
+    expect(finalizeRes.statusCode).toBe(200);
+    const published = parseYaml(readFileSync(sourcePath, 'utf-8'));
+    expect(published.tracks[0]?.tasks[0]?.middlewares?.[0]?.file).toBe(
+      '.tagma/pipeline/prompts/context.md',
+    );
+    expect(
+      readFileSync(join(dirname(sourcePath), 'prompts', 'context.md'), 'utf-8'),
+    ).toBe('STATIC-CONTEXT-SENTINEL');
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
   test('does not fork when non-virtualizable requirements block Trial before execution', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();

@@ -1,6 +1,6 @@
 {
   "name": "@tagma/core",
-  "version": "0.1.87",
+  "version": "0.1.88",
   "description": "Runtime-independent orchestration core for Tagma pipelines",
   "license": "MIT",
   "repository": {

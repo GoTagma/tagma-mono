@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { parseYaml, serializePipeline } from '@tagma/sdk/yaml';
 
@@ -31,12 +32,22 @@ function portableRelative(from: string, to: string): string {
 function relocatePipelineLocalPath(value: unknown, options: PipelineCopyPathRelocation): unknown {
   if (typeof value !== 'string' || value.trim().length === 0) return value;
   const raw = value.trim();
-  const absolute = isAbsolute(raw) ? resolve(raw) : resolve(options.sourceCwd, raw);
-  const sourceRoot = isPathWithin(absolute, options.sourceContentDir)
+  let absolute = isAbsolute(raw) ? resolve(raw) : resolve(options.sourceCwd, raw);
+  let sourceRoot = isPathWithin(absolute, options.sourceContentDir)
     ? options.sourceContentDir
     : isPathWithin(absolute, options.sourcePipelineDir)
       ? options.sourcePipelineDir
       : null;
+  if (!sourceRoot && !isAbsolute(raw)) {
+    const stagedPipelineLocal = resolve(options.sourceContentDir, raw);
+    if (
+      isPathWithin(stagedPipelineLocal, options.sourceContentDir) &&
+      existsSync(stagedPipelineLocal)
+    ) {
+      absolute = stagedPipelineLocal;
+      sourceRoot = options.sourceContentDir;
+    }
+  }
   if (!sourceRoot) return value;
   const relocated = resolve(options.destinationPipelineDir, relative(sourceRoot, absolute));
   return isAbsolute(raw) ? relocated : portableRelative(options.destinationCwd, relocated) || '.';
@@ -61,6 +72,7 @@ export function rewriteCopiedPipelineYaml(
   const sourcePipelineDir = dirname(options.sourceIdentityPath);
   const sourceContentDir = dirname(options.sourceContentPath);
   const destinationPipelineDir = dirname(options.destinationYamlPath);
+  let changed = config.name !== options.pipelineName;
   const pathOptions = (sourceCwd: string, destinationCwd: string): PipelineCopyPathRelocation => ({
     sourcePipelineDir,
     sourceContentDir,
@@ -73,10 +85,21 @@ export function rewriteCopiedPipelineYaml(
   const rewriteCwd = (cwd: string | undefined): string | undefined => {
     if (!cwd) return cwd;
     const rewritten = relocatePipelineLocalPath(cwd, pathOptions(options.workDir, options.workDir));
+    if (rewritten !== cwd) changed = true;
     return typeof rewritten === 'string' ? rewritten : cwd;
   };
+  const rewritePluginPath = <T extends Record<string, unknown>>(
+    plugin: T | undefined,
+    expectedTypes: ReadonlySet<string>,
+    key: 'path' | 'file',
+    relocation: PipelineCopyPathRelocation,
+  ): T | undefined => {
+    const rewritten = rewriteTypedPluginPath(plugin, expectedTypes, key, relocation);
+    if (rewritten !== plugin) changed = true;
+    return rewritten;
+  };
 
-  return serializePipeline({
+  const rewritten = {
     ...config,
     name: options.pipelineName,
     tracks: config.tracks.map((track) => {
@@ -88,7 +111,7 @@ export function rewriteCopiedPipelineYaml(
         ...track,
         cwd: nextTrackCwd,
         middlewares: track.middlewares?.map((middleware) =>
-          rewriteTypedPluginPath(
+          rewritePluginPath(
             middleware,
             RELOCATABLE_MIDDLEWARE_TYPES,
             'file',
@@ -103,20 +126,20 @@ export function rewriteCopiedPipelineYaml(
           return {
             ...task,
             cwd: nextTaskCwd,
-            trigger: rewriteTypedPluginPath(
+            trigger: rewritePluginPath(
               task.trigger,
               RELOCATABLE_TRIGGER_TYPES,
               'path',
               taskPathOptions,
             ),
-            completion: rewriteTypedPluginPath(
+            completion: rewritePluginPath(
               task.completion,
               RELOCATABLE_COMPLETION_TYPES,
               'path',
               taskPathOptions,
             ),
             middlewares: task.middlewares?.map((middleware) =>
-              rewriteTypedPluginPath(
+              rewritePluginPath(
                 middleware,
                 RELOCATABLE_MIDDLEWARE_TYPES,
                 'file',
@@ -127,5 +150,6 @@ export function rewriteCopiedPipelineYaml(
         }),
       };
     }),
-  });
+  };
+  return changed ? serializePipeline(rewritten) : content;
 }
