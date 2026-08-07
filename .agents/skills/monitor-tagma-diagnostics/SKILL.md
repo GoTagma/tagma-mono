@@ -1,6 +1,6 @@
 ---
 name: monitor-tagma-diagnostics
-description: Continuously monitor Tagma's opt-in read-only diagnose/coding-agent diagnostics API, distinguish product defects from authoring or environmental noise, and maintain an evidence-backed defect ledger until the developer explicitly stops monitoring. Use when a developer enables Tagma diagnostics, invokes diagnose, pastes a diagnostics handoff, asks Codex to observe a live editor/debugging session over time, collect reproducible Tagma-caused anomalies, or guard a diagnosed fix with tests and durable documentation.
+description: Continuously monitor Tagma's opt-in read-only diagnose/coding-agent diagnostics API, distinguish product defects from authoring or environmental noise, and maintain an evidence-backed defect ledger until the developer explicitly stops monitoring. Use when a developer enables Tagma diagnostics, invokes diagnose, pastes a diagnostics handoff, asks the agent to observe a live editor/debugging session over time, collect reproducible Tagma-caused anomalies, or guard a diagnosed fix with tests and durable documentation.
 ---
 
 # Monitor Tagma Diagnostics

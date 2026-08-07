@@ -1,6 +1,6 @@
 ---
 name: tagma-dev
-description: 'Tagma product development workflow guardrails. Use when Codex works in the Tagma monorepo or D:\TagmaMono on implementation, bug fixes, refactors, frontend/editor changes, Electron desktop changes, package APIs, schemas, YAML task dataflow, plugins, tests, validation, release flow, publishing, or CI follow-up.'
+description: 'Tagma product development workflow guardrails. Use when working in the Tagma monorepo or D:\TagmaMono on implementation, bug fixes, refactors, frontend/editor changes, Electron desktop changes, package APIs, schemas, YAML task dataflow, plugins, tests, validation, release flow, publishing, or CI follow-up.'
 ---
 
 # Tagma Dev
