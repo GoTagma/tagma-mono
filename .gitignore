@@ -22,6 +22,10 @@ coverage/
 .omx
 .tmp
 
+# Local agent session/state directories
+.opencode/
+.omo/
+
 # Local Codex browser profiles and smoke-test artifacts
 .codex-*-profile/
 .codex-smoke.png
