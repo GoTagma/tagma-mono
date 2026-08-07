@@ -1,6 +1,6 @@
 {
   "name": "@tagma/runtime-bun",
-  "version": "0.1.79",
+  "version": "0.1.80",
   "description": "Bun runtime implementation for Tagma pipeline execution",
   "license": "MIT",
   "repository": {
