@@ -892,12 +892,18 @@ describe('chat YAML staging async witness ordering', () => {
 
     const releaseWitness = { current: null as null | (() => void) };
     let witnessCalls = 0;
-    __chatYamlStagingTestHooks.captureHostWitnessAsync = async (candidate, prepared) => {
+    __chatYamlStagingTestHooks.captureHostWitnessAsync = async (
+      candidate,
+      prepared,
+      signal?: AbortSignal,
+    ) => {
       witnessCalls += 1;
       await new Promise<void>((resolve) => {
         releaseWitness.current = resolve;
+        if (signal?.aborted) return resolve();
+        signal?.addEventListener('abort', () => resolve(), { once: true });
       });
-      return await safeCaptureTrialHostWitnessAsync(candidate, prepared);
+      return await safeCaptureTrialHostWitnessAsync(candidate, prepared, signal);
     };
 
     const finalizeRes = makeRes();
