@@ -631,7 +631,9 @@ describe('chat YAML staging routes', () => {
                   "const fs = require('node:fs');",
                   'process.stderr.write(\'level=ERROR message="stream error" small=true mode=primary\\n\');',
                   "fs.mkdirSync('output', { recursive: true });",
-                  "fs.writeFileSync('output/context.txt', Buffer.from('" + encoded + "', 'base64'));",
+                  "fs.writeFileSync('output/context.txt', Buffer.from('" +
+                    encoded +
+                    "', 'base64'));",
                 ].join(' '),
               ],
               cwd: ctx.workDir,
