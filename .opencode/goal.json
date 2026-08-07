@@ -1,0 +1,14 @@
+{
+  "objective": "帮我看下当前工程现在 CI Action会失败 失败在了test上面 请帮我修复问题",
+  "status": "pursuing",
+  "created_at": "2026-08-07T04:22:20.141Z",
+  "updated_at": "2026-08-07T04:22:20.736Z",
+  "token_budget": 50000,
+  "tokens_used": 4,
+  "iteration": 0,
+  "max_iterations": 100,
+  "budget_warning_sent": false,
+  "last_message_id": "msg_fda5e8817001BiPcUgPiIMhhy8",
+  "last_response_text": "为什么还要整那么多多余的事情",
+  "history": []
+}
