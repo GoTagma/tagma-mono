@@ -46,6 +46,7 @@ import {
   getOpencodeBaseUrl,
   buildOpencodeRequestHeaders,
   getOpencodeWorkspaceKey,
+  getClientBootstrap,
   listOpencodeSessions,
   resetOpencodeClient,
   restartOpencodeForConfig,
@@ -116,6 +117,13 @@ import {
   type ModelPick,
 } from './chat-persist';
 import { buildEditorContext, type ChatYamlReconcileSummary } from './chat-editor-context';
+import {
+  planChatContextWindow,
+  CHAT_CONTEXT_WINDOW_PLUGIN_UNAVAILABLE_MESSAGE,
+  ChatContextWindowPluginUnavailableError,
+  isChatContextWindowPluginUnavailableError,
+  type ChatContextWindowSnapshot,
+} from '../../shared/chat-context-window.js';
 import {
   buildTagmaSessionMetadata,
   hasTagmaSessionMarker,
@@ -2247,7 +2255,22 @@ function dispatchNextQueuedPrompt(get: () => ChatStore, set: ChatSet): boolean {
     context: combinedContext,
     ...(reuseLogicalTurn ? { reuseLogicalTurn: true } : {}),
   })
-    .catch(() => {
+    .catch((err) => {
+      // The queue was already drained before dispatch. If the context-window
+      // plugin turned out to be unavailable, put the combined prompt back so a
+      // fail-closed gate never loses the user's text.
+      if (isChatContextWindowPluginUnavailableError(err)) {
+        set((prev) => ({
+          queuedMessages: appendQueuedMessage(
+            prev.queuedMessages,
+            makeQueuedMessage(combined, combinedContext),
+          ),
+          // Preserve the original dispatch mode: a parked fresh logical turn
+          // must not silently become a continuation of the previous stage.
+          queuedDispatchMode: mode,
+        }));
+        return;
+      }
       // The previous assistant work still needs one final reconciliation even
       // when the queued continuation fails before OpenCode accepts it.
       if (reuseLogicalTurn) finishChatTurn(set, {}, true);
@@ -3530,17 +3553,6 @@ function assertChatWorkspaceStillCurrent(workspaceKey: string): void {
   }
 }
 
-export function shouldStartFreshChatSessionForContextLimit(opts: {
-  enabled: boolean;
-  rounds: number;
-  userTurns: number;
-}): boolean {
-  if (!opts.enabled) return false;
-  const rounds = Math.max(0, Math.trunc(opts.rounds));
-  if (rounds === 0) return true;
-  return opts.userTurns >= rounds;
-}
-
 export function chatPipelinePreflightMode(args: {
   hasInheritedSnapshot: boolean;
   hasDirtyPipeline: boolean;
@@ -3674,6 +3686,22 @@ async function promptOpencode(
     : null;
   const promptTitle = opts.internal ? null : desktopChatTitleFromPrompt(text);
   let optimisticTurnStartedAt: number | null = null;
+  // Freeze the context-window policy for this dispatch. The snapshot is taken
+  // from the target session's thread as it existed before this send — never
+  // from the mutable visible session after the user switches conversations, and
+  // never including the prompt text that is about to be added. Internal repair
+  // continuations create no new policy: they inherit the visible user turn they
+  // were spawned from, so a mid-turn settings change cannot alter their policy.
+  const chatSettingsAtDispatch = useEditorSettingsStore.getState().settings;
+  const contextLimitEnabled = chatSettingsAtDispatch?.chatContextLimitEnabled ?? false;
+  const contextRounds = chatSettingsAtDispatch?.chatContextRounds ?? 0;
+  const contextWindowSnapshot: ChatContextWindowSnapshot | null = !opts.internal
+    ? planChatContextWindow({
+        messages: dispatchRuntimeAtStart.messages,
+        enabled: contextLimitEnabled,
+        priorRoundLimit: contextRounds,
+      })
+    : null;
   if (!model) {
     setSendErrorForDispatch('No model selected - pick one from the header dropdown.');
     throw new Error('No model selected');
@@ -3682,6 +3710,20 @@ async function promptOpencode(
     const msg = `The ${FORCED_CHAT_AGENT} OpenCode agent is not available. Repair the OpenCode seed before sending.`;
     setSendErrorForDispatch(msg);
     throw new Error(msg);
+  }
+  // Fail closed: when the context limit is on but the seeded context-window
+  // plugin never reported ready, refuse to send rather than silently exposing
+  // the full history to the model. The error is surfaced before any runtime or
+  // session mutation, so the composer draft can be restored.
+  if (!opts.internal && contextLimitEnabled) {
+    const bootstrap = await getClientBootstrap(workspaceKeyAtStart);
+    assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
+    if (!bootstrap.contextWindowPluginReady) {
+      setSendErrorForDispatch(CHAT_CONTEXT_WINDOW_PLUGIN_UNAVAILABLE_MESSAGE);
+      throw new ChatContextWindowPluginUnavailableError(
+        CHAT_CONTEXT_WINDOW_PLUGIN_UNAVAILABLE_MESSAGE,
+      );
+    }
   }
 
   const pipeline = usePipelineStore.getState();
@@ -3795,42 +3837,10 @@ async function promptOpencode(
       }
     }
 
-    // Context-rounds gate: if the user configured a cap, check whether the
-    // current session has already accumulated that many user turns. When it
-    // has, transparently start a fresh session so the model's effective
-    // context window stays bounded. Internal prompts (repair, bot-bridge
-    // retries) are exempt — they're part of the same logical turn.
-    if (!opts.internal) {
-      const chatSettings = useEditorSettingsStore.getState().settings;
-      const contextLimitEnabled = chatSettings?.chatContextLimitEnabled ?? false;
-      const contextRounds = chatSettings?.chatContextRounds ?? 0;
-      const userTurns = get().messages.filter((m) => m.info.role === 'user').length;
-      if (
-        shouldStartFreshChatSessionForContextLimit({
-          enabled: contextLimitEnabled,
-          rounds: contextRounds,
-          userTurns,
-        })
-      ) {
-        try {
-          const fresh = await createDesktopChatSessionWithMetadata(workspaceKeyAtStart, {
-            ...(promptTitle ? { title: promptTitle } : {}),
-            metadata: buildDesktopChatSessionMetadata(workspaceKeyAtStart, 'context-limit', model),
-          });
-          assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
-          const titledFresh = withPromptTitleFallback(fresh, promptTitle);
-          sessionId = titledFresh.id;
-          set((prev) => ({
-            sessions: upsertSession(prev.sessions, titledFresh),
-            currentSessionId: titledFresh.id,
-            messages: [],
-          }));
-        } catch (err) {
-          console.warn('[chat] context-rounds new-session failed:', err);
-          // Non-fatal: fall through and send to the existing session.
-        }
-      }
-    }
+    // Context rounds never rotate sessions: the conversation stays in the same
+    // OpenCode session and the seeded context-window plugin trims only the
+    // in-memory model input for each request, using the frozen marker embedded
+    // in the `<editor-context>` above.
 
     void ensureSseSubscription(get, set);
     await waitForSseReadyWithTimeout(ensureSseReadyPromise());
@@ -3921,6 +3931,7 @@ async function promptOpencode(
               chatYamlStage: chatStage
                 ? { id: chatStage.id, agentTagmaDir: chatStage.agentTagmaDir }
                 : null,
+              contextWindow: contextWindowSnapshot,
               previousChatYamlReconcile: selectPreviousChatYamlReconcileForPrompt({
                 resultAtDispatch: sessionYamlResultAtDispatch,
                 workspaceKeyAtDispatch: workspaceKeyAtStart,

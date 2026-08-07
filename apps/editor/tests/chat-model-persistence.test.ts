@@ -177,7 +177,11 @@ beforeAll(() => {
       const deferredResponse = ensureResponsesByWorkspace.get(workspace);
       if (deferredResponse) return deferredResponse;
       return Promise.resolve(
-        jsonResponse({ baseUrl: workspaceBaseUrls.get(workspace) ?? 'http://opencode.test' }),
+        jsonResponse({
+          baseUrl: workspaceBaseUrls.get(workspace) ?? 'http://opencode.test',
+          contextWindowPluginReady: true,
+          contextWindowPluginSchema: 1,
+        }),
       );
     }
     if (url === '/api/opencode/chat/restart') {
@@ -1588,9 +1592,9 @@ describe('chat model persistence', () => {
     }
   });
 
-  test('keeps previous reconcile evidence when the context limit rolls into a fresh session', async () => {
-    const repo = 'C:/context-rollover-reconcile-repo';
-    const baseUrl = 'http://opencode-context-rollover-reconcile.test';
+  test('context limit keeps the same session: no rotation, marker-driven trimming, reconcile evidence retained', async () => {
+    const repo = 'C:/previous-reconcile-repo';
+    const baseUrl = 'http://opencode-previous-reconcile.test';
     const previousResult: ChatYamlSessionResult = {
       sessionId: 'existing',
       workspaceKey: repo,
@@ -1616,9 +1620,12 @@ describe('chat model persistence', () => {
     workspaceBaseUrls.set(repo, baseUrl);
     setClientWorkspace(repo);
     usePipelineStore.setState({
-      workDir: null,
+      workDir: repo,
       yamlPath: null,
       manualNewPipelineYamlPath: null,
+      isDirty: false,
+      layoutDirty: false,
+      registry: { drivers: [], triggers: [], completions: [], middlewares: [] },
     } as never);
     useEditorSettingsStore.getState().updateLocal({
       ...makeEditorSettings(null),
@@ -1629,22 +1636,101 @@ describe('chat model persistence', () => {
       model: { providerID: 'anthropic', modelID: 'claude' },
       agent: 'tagma-router',
       currentSessionId: 'existing',
+      sessions: [{ id: 'existing', title: 'existing' }] as never,
       messages: [
         {
           info: { id: 'user-1', sessionID: 'existing', role: 'user' },
-          parts: [],
+          parts: [{ type: 'text', text: 'user-1 text' }],
+        },
+        { info: { id: 'asst-1', sessionID: 'existing', role: 'assistant' }, parts: [] },
+        {
+          info: { id: 'user-2', sessionID: 'existing', role: 'user' },
+          parts: [{ type: 'text', text: 'user-2 text' }],
+        },
+        { info: { id: 'asst-2', sessionID: 'existing', role: 'assistant' }, parts: [] },
+        {
+          info: { id: 'user-3', sessionID: 'existing', role: 'user' },
+          parts: [{ type: 'text', text: 'user-3 text' }],
         },
       ] as never,
       sessionYamlResults: { existing: previousResult },
     } as never);
 
-    await useChatStore.getState().send('start the next bounded context');
+    try {
+      await useChatStore.getState().send('start the next bounded context');
 
-    expect(useChatStore.getState().currentSessionId).toBe('new-session');
-    expect(useChatStore.getState().sessionYamlResults.existing).toEqual(previousResult);
-    expect(promptAsyncRequests).toEqual([`${baseUrl}/session/new-session/prompt_async`]);
-    const parts = promptAsyncBodies[0]?.parts as Array<{ type: string; text: string }>;
-    expect(parts[0]?.text).not.toContain('<previous-chat-yaml-reconcile>');
+      const state = useChatStore.getState();
+      // The conversation identity never changes and nothing is cleared.
+      expect(state.currentSessionId).toBe('existing');
+      expect(state.sessions.length).toBe(1);
+      expect(state.messages.map((message) => message.info.id)).toEqual([
+        'user-1',
+        'asst-1',
+        'user-2',
+        'asst-2',
+        'user-3',
+      ]);
+      // No session-create API call happens for a context limit.
+      expect(sessionCreateRequests).toHaveLength(0);
+      expect(promptAsyncRequests).toHaveLength(1);
+      expect(promptAsyncRequests[0]).toContain(`${baseUrl}/session/existing/prompt_async`);
+      const parts = promptAsyncBodies[0]?.parts as Array<{ type: string; text: string }>;
+      // Same-session continuation keeps the previous reconcile evidence.
+      expect(parts[0]?.text).toContain('<previous-chat-yaml-reconcile>');
+      // The frozen policy marker rides inside `<editor-context>`: 3 prior rounds
+      // at limit 1 keeps the last round and excludes 2 (4 underlying messages).
+      expect(parts[0]?.text).toContain(
+        '<tagma-chat-context-window schema="1" mode="last-rounds" prior-round-limit="1" total-prior-rounds="3" included-prior-rounds="1" omitted-prior-rounds="2" total-prior-messages="5" omitted-prior-messages="4" />',
+      );
+    } finally {
+      await releaseChatYamlEditLock();
+      usePipelineStore.setState({
+        workDir: null,
+        yamlPath: null,
+        manualNewPipelineYamlPath: null,
+      } as never);
+    }
+  });
+
+  test('fails closed when the context limit is on but the plugin is not ready', async () => {
+    const repo = 'C:/context-window-unavailable-repo';
+    const baseUrl = 'http://opencode-context-window-unavailable.test';
+    workspaceBaseUrls.set(repo, baseUrl);
+    ensureResponsesByWorkspace.set(
+      repo,
+      Promise.resolve(
+        jsonResponse({ baseUrl, contextWindowPluginReady: false, contextWindowPluginSchema: 0 }),
+      ),
+    );
+    setClientWorkspace(repo);
+    usePipelineStore.setState({
+      workDir: null,
+      yamlPath: null,
+      manualNewPipelineYamlPath: null,
+    } as never);
+    useEditorSettingsStore.getState().updateLocal({
+      ...makeEditorSettings(null),
+      chatContextLimitEnabled: true,
+      chatContextRounds: 10,
+    } as never);
+    useChatStore.setState({
+      model: { providerID: 'anthropic', modelID: 'claude' },
+      agent: 'tagma-router',
+      currentSessionId: 'existing',
+      sessions: [{ id: 'existing', title: 'existing' }] as never,
+    } as never);
+
+    await expect(useChatStore.getState().send('should be blocked')).rejects.toThrow(
+      'context-window plugin is unavailable',
+    );
+    const state = useChatStore.getState();
+    expect(state.sendError).toContain('context-window plugin is unavailable');
+    // No prompt, no session creation, and no session rotation: the message was
+    // not sent, so no additional history was exposed to the model.
+    expect(promptAsyncRequests).toHaveLength(0);
+    expect(sessionCreateRequests).toHaveLength(0);
+    expect(state.currentSessionId).toBe('existing');
+    expect(state.sessions.length).toBe(1);
   });
 
   test('does not leak previous reconcile context into repairs, fresh sessions, or workspaces', () => {

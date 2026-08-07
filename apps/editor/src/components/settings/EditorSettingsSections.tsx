@@ -316,8 +316,8 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
               </span>
             </div>
             <ToggleRow
-              label="Limit chat memory"
-              description="Off keeps unlimited conversation history in the active OpenCode session. On starts fresh sessions according to the round limit below."
+              label="Limit AI context"
+              description="Keep the full conversation saved and visible, but only send the most recent number of completed rounds to the AI for each new reply."
               checked={settings.chatContextLimitEnabled}
               disabled={settingsInputsDisabled}
               onChange={(v) => updateField('chatContextLimitEnabled', v)}
@@ -345,7 +345,9 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
                 className="w-16 px-1 py-0.5 bg-tagma-surface border border-tagma-border text-tagma-text disabled:opacity-50"
               />
               <span className="text-[10px] text-tagma-muted/70">
-                {settings.chatContextLimitEnabled ? '0 = stateless, no history' : 'Off = unlimited'}
+                {settings.chatContextLimitEnabled
+                  ? '0 = current message only; conversation history remains saved.'
+                  : 'Off = full history sent; OpenCode may still compact it.'}
               </span>
             </div>
           </div>

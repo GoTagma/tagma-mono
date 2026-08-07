@@ -14,6 +14,10 @@ import { useRunStore } from './run-store';
 import { useEditorSettingsStore } from './editor-settings-store';
 import type { ChatYamlStageConflict } from '../api/client';
 import {
+  buildChatContextWindowMarker,
+  type ChatContextWindowSnapshot,
+} from '../../shared/chat-context-window.js';
+import {
   createNewPipelineRequestedActionLines,
   fillManualNewPipelineRequestedActionLines,
 } from '../../shared/requested-action.js';
@@ -170,6 +174,12 @@ export interface EditorContextOptions {
     agentTagmaDir: string;
   } | null;
   previousChatYamlReconcile?: ChatYamlReconcileSummary | null;
+  /**
+   * Frozen context-window policy for this request, embedded as a hidden
+   * `<tagma-chat-context-window>` marker. Internal repair continuations pass
+   * `null` and inherit the policy of the visible turn they belong to.
+   */
+  contextWindow?: ChatContextWindowSnapshot | null;
 }
 
 export function buildEditorContext(options: EditorContextOptions = {}): string {
@@ -216,6 +226,9 @@ export function buildEditorContext(options: EditorContextOptions = {}): string {
   }
   if (options.previousChatYamlReconcile) {
     lines.push(...previousChatYamlReconcileLines(options.previousChatYamlReconcile));
+  }
+  if (options.contextWindow) {
+    lines.push(`  ${buildChatContextWindowMarker(options.contextWindow)}`);
   }
   if (contextYamlPath) {
     const rel = workspaceRelativePath(

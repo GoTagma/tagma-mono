@@ -160,6 +160,10 @@ describe('OpenCode routes under a workspace YAML lock', () => {
         baseUrl: 'http://existing-opencode.test',
         proxyBaseUrl: '/api/opencode/chat/proxy',
         directory: join(workDir, '.tagma'),
+        // The context-window plugin was never seeded under the lock, so the
+        // runtime reports not-ready and the chat store fails closed.
+        contextWindowPluginReady: false,
+        contextWindowPluginSchema: 0,
       });
       expect({ seedCalls, ensureCalls, restartCalls, watcherCalls }).toEqual({
         seedCalls: 0,

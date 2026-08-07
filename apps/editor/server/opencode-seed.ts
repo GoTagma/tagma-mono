@@ -6,6 +6,11 @@ import {
 } from '../shared/opencode-agent-step-limit.js';
 
 import { buildTagmaTrialPlanTool } from './opencode-trial-plan-tool.js';
+import {
+  OPENCODE_CONTEXT_WINDOW_PLUGIN_FILENAME,
+  OPENCODE_CONTEXT_WINDOW_READY_FILENAME,
+  buildTagmaChatContextWindowPlugin,
+} from './opencode-context-window-plugin.js';
 
 export { buildTagmaTrialPlanTool };
 /**
@@ -1662,6 +1667,20 @@ export function seedOpencodeArtifacts(
       'tagma_trial_plan.ts',
       buildTagmaTrialPlanTool(),
     ) || changed;
+  // Context-window plugin: trims the in-memory model input to the configured
+  // recent rounds on every Tagma desktop-chat prompt without touching the
+  // persisted conversation. A content change invalidates the readiness marker
+  // so a stale marker from a previous process cannot report readiness for a
+  // runtime that never loaded this version.
+  const contextWindowPluginChanged = seedFile(
+    join(tagmaCwd, '.opencode', 'plugins'),
+    OPENCODE_CONTEXT_WINDOW_PLUGIN_FILENAME,
+    buildTagmaChatContextWindowPlugin(),
+  );
+  if (contextWindowPluginChanged) {
+    rmSync(join(tagmaCwd, '.opencode', OPENCODE_CONTEXT_WINDOW_READY_FILENAME), { force: true });
+  }
+  changed = contextWindowPluginChanged || changed;
   for (const [name, build] of TAGMA_OPENCODE_SKILLS) {
     changed = seedFile(join(tagmaCwd, '.opencode', 'skills', name), 'SKILL.md', build()) || changed;
   }

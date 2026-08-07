@@ -260,6 +260,15 @@ interface ClientBootstrap {
   directory: string | null;
   authHeader?: string;
   workspaceHeader?: string;
+  /**
+   * Whether the seeded `tagma-chat-context-window` plugin reported ready in the
+   * managed opencode process. When the "Limit AI context" setting is on but
+   * this is false, the chat store fails closed instead of sending the full
+   * history.
+   */
+  contextWindowPluginReady: boolean;
+  /** Ready-marker schema version; 0 when the plugin is not ready. */
+  contextWindowPluginSchema: number;
 }
 
 // One client per workspace. The sidecar runs a separate `opencode serve` per
@@ -421,6 +430,8 @@ async function bootstrap(workspaceKey: string): Promise<ClientBootstrap> {
     proxyBaseUrl?: unknown;
     directory?: unknown;
     authHeader?: unknown;
+    contextWindowPluginReady?: unknown;
+    contextWindowPluginSchema?: unknown;
   };
   const endpoint = resolveOpencodeBrowserEndpoint(
     body,
@@ -456,7 +467,16 @@ async function bootstrap(workspaceKey: string): Promise<ClientBootstrap> {
       endpoint.workspaceHeader,
     ),
   );
-  return { client, historyClient, v2Client, directory, ...endpoint };
+  const schemaValue = Number(body.contextWindowPluginSchema);
+  return {
+    client,
+    historyClient,
+    v2Client,
+    directory,
+    ...endpoint,
+    contextWindowPluginReady: body.contextWindowPluginReady === true,
+    contextWindowPluginSchema: Number.isFinite(schemaValue) ? schemaValue : 0,
+  };
 }
 
 export async function getOpencodeClient(
@@ -529,7 +549,7 @@ export type OpencodeSessionUpdateV2Input = Parameters<OpencodeV2Client['session'
 };
 export type OpencodeSessionV2 = V2Session;
 
-async function getClientBootstrap(workspaceKey: string): Promise<ClientBootstrap> {
+export async function getClientBootstrap(workspaceKey: string): Promise<ClientBootstrap> {
   const key = workspaceKey;
   let pending = bootstraps.get(key);
   if (!pending) {
@@ -690,6 +710,7 @@ export async function restartOpencodeForConfig(
     typeof body.directory === 'string' && body.directory.trim()
       ? body.directory.trim()
       : fallbackOpencodeDirectory(key);
+  const schemaValue = Number(body.contextWindowPluginSchema);
   // Overwrite the cached bootstrap with a client bound to the new port so
   // every subsequent `getOpencodeClient()` returns a client talking to the
   // fresh opencode — not the dead one on the old port.
@@ -722,6 +743,8 @@ export async function restartOpencodeForConfig(
       ),
       directory,
       ...endpoint,
+      contextWindowPluginReady: body.contextWindowPluginReady === true,
+      contextWindowPluginSchema: Number.isFinite(schemaValue) ? schemaValue : 0,
     }),
   );
 }

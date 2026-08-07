@@ -29,6 +29,7 @@ import {
 } from '../opencode-proxy.js';
 import { seedOpencodeArtifacts } from '../opencode-seed.js';
 import { buildOpencodeSeedOptions } from '../opencode-seed-options.js';
+import { waitForOpencodeContextWindowPluginReady } from '../opencode-context-window-plugin.js';
 import { startChatCompileWatcher } from '../chat-compile-watcher.js';
 import { requireWorkspace } from '../require-workspace.js';
 import { cancelHotupdate, endHotupdate, tryBeginHotupdate } from '../release/hotupdate-lock.js';
@@ -608,11 +609,14 @@ export function registerOpencodeRoutes(app: express.Express): void {
           ? await restartOpencode(tagmaCwd)
           : await ensureOpencode(tagmaCwd);
       console.log('[opencode] ensure resolved, baseUrl =', baseUrl);
+      const contextWindowPlugin = await waitForOpencodeContextWindowPluginReady(tagmaCwd);
       res.json({
         ok: true,
         baseUrl,
         proxyBaseUrl: OPENCODE_PROXY_BASE_PATH,
         directory: tagmaCwd,
+        contextWindowPluginReady: contextWindowPlugin.ready,
+        contextWindowPluginSchema: contextWindowPlugin.schema,
       });
     } catch (err) {
       console.error('[opencode] ensure FAILED:', err);
@@ -649,11 +653,14 @@ export function registerOpencodeRoutes(app: express.Express): void {
       console.log('[opencode] restart called, cwd =', tagmaCwd);
       const { baseUrl } = await restartOpencode(tagmaCwd);
       console.log('[opencode] restart resolved, baseUrl =', baseUrl);
+      const contextWindowPlugin = await waitForOpencodeContextWindowPluginReady(tagmaCwd);
       res.json({
         ok: true,
         baseUrl,
         proxyBaseUrl: OPENCODE_PROXY_BASE_PATH,
         directory: tagmaCwd,
+        contextWindowPluginReady: contextWindowPlugin.ready,
+        contextWindowPluginSchema: contextWindowPlugin.schema,
       });
     } catch (err) {
       console.error('[opencode] restart FAILED:', err);

@@ -51,6 +51,29 @@
   reference chips while keeping attachment content hidden; accept legacy unlabeled attachments
   with a generic label, including multiple concatenated blocks produced by queued sends.
 
+## Chat Context Window
+
+- "Limit AI context" (settings `chatContextLimitEnabled` + `chatContextRounds`) trims only the
+  in-memory model input per request; it must never create, rotate, or clear OpenCode sessions.
+  The conversation identity, History rows, and persisted messages stay untouched.
+- On every normal user send, `promptOpencode` freezes a policy snapshot from
+  `dispatchRuntimeAtStart.messages` (never the mutable visible session mid-flight) and embeds a
+  `<tagma-chat-context-window schema="1" mode="last-rounds" prior-round-limit="N" ... />` marker
+  inside the message's `<editor-context>` block. Internal repair/planning continuations create no
+  marker and inherit the most recent visible user turn's policy.
+- The seeded `.opencode/plugins/tagma-chat-context-window.ts` plugin hooks
+  `experimental.chat.messages.transform` (verified in pinned OpenCode 1.17.8 prompt.ts and
+  compaction.ts). It parses the marker from the leading host-authored `<editor-context>` only,
+  counts visible user turns (excluding `<tagma-internal>` continuations, synthetic compaction
+  continues, and text-less bookkeeping), and MUST `splice` the array in place — reassigning
+  `output.messages` is discarded because OpenCode keeps using the original `msgs` variable.
+- The plugin writes a readiness marker to `.opencode/.tagma-chat-context-window-ready.json` on
+  init; the ensure/restart routes poll it and report `contextWindowPluginReady` in the bootstrap.
+  When the limit is enabled but the plugin is not ready, sends fail closed (no prompt, no session
+  creation) with the "plugin is unavailable" error instead of silently exposing full history.
+- Seeding a changed plugin source must delete the readiness marker so a stale marker cannot
+  report ready for a runtime that never loaded the new version.
+
 ## Binding Autosync
 
 - Auto-synced command input bindings must retain the concrete upstream task identity even when an

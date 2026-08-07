@@ -1475,6 +1475,14 @@ test('seedOpencodeArtifacts writes only the plural agents dir and focused skills
   expect(readFileSync(trialPlanTool, 'utf8')).toContain(
     'Build a targeted trial plan in bounded draft operations',
   );
+  const contextWindowPlugin = join(dir, '.opencode', 'plugins', 'tagma-chat-context-window.ts');
+  expect(existsSync(contextWindowPlugin)).toBe(true);
+  const contextWindowPluginDoc = readFileSync(contextWindowPlugin, 'utf8');
+  expect(contextWindowPluginDoc).toContain('experimental.chat.messages.transform');
+  expect(contextWindowPluginDoc).toContain('tagma-chat-context-window');
+  // A content change must invalidate the readiness marker so a stale marker
+  // from a previous process cannot report readiness for a newer plugin.
+  expect(existsSync(join(dir, '.opencode', '.tagma-chat-context-window-ready.json'))).toBe(false);
   for (const toolName of blockToolNames) {
     expect(existsSync(join(dir, '.opencode', 'tools', toolName))).toBe(false);
   }

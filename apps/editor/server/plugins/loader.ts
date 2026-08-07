@@ -1023,18 +1023,15 @@ export interface EditorSettings {
   pipelineDefaultRunTimeoutMinutes: number;
   /** Total lifecycle for one Chat Trial, in whole minutes. */
   opencodeChatTrialRunTimeoutMinutes: number;
-  /** Disabled means unlimited. Enabled with 0 rounds means stateless. */
+  /** Limits only the AI context window. Off means Tagma sends the full history. */
   chatContextLimitEnabled: boolean;
   /**
-   * Maximum number of conversation rounds (user+assistant turn pairs) kept
-   * in the active opencode chat session. When the next `send()` would push
-   * the count past this limit, the editor transparently creates a fresh
-   * session before dispatching the prompt — keeping the model's effective
-   * context window bounded without relying on opencode's internal
-   * compaction (which is token-budget-driven and not round-aware).
+   * Completed conversation rounds sent to the AI for each new reply when the
+   * limit is enabled, not counting the current question. The conversation
+   * itself always stays in its original OpenCode session — nothing is deleted
+   * and no fresh session is created. 0 means current message only.
    *
-   * 0 means "unlimited" (no auto-new-session). Default 0.
-   * Clamped to [0, 200] on write.
+   * Default 0. Clamped to [0, 200] on write.
    */
   chatContextRounds: number;
 }

@@ -10,12 +10,12 @@ import {
   describePolledTurnHealth,
   subscribeEventStreamWithReadinessTimeout,
   waitForSseReadyWithTimeout,
-  shouldStartFreshChatSessionForContextLimit,
 } from '../src/store/chat-store';
 import { usePipelineStore } from '../src/store/pipeline-store';
 import { resetOpencodeClient } from '../src/api/opencode-chat';
 import { setClientWorkspace } from '../src/api/client';
 import type { ActivityEvent, OpencodeThreadEntry } from '../src/api/opencode-chat';
+import { buildChatContextWindowMarker, planChatContextWindow } from '../shared/chat-context-window';
 
 // Background work safety: session.idle and session.error{abort} can call
 // dispatchNextQueuedPrompt, which fires `void promptOpencode(...)`; that path
@@ -1395,19 +1395,18 @@ test('hidden trial-plan continuation stays with its owning conversation', async 
   }
 });
 
-test('chat context limit supports unlimited, bounded, and stateless modes', () => {
-  expect(
-    shouldStartFreshChatSessionForContextLimit({ enabled: false, rounds: 0, userTurns: 100 }),
-  ).toBe(false);
-  expect(
-    shouldStartFreshChatSessionForContextLimit({ enabled: true, rounds: 0, userTurns: 0 }),
-  ).toBe(true);
-  expect(
-    shouldStartFreshChatSessionForContextLimit({ enabled: true, rounds: 3, userTurns: 2 }),
-  ).toBe(false);
-  expect(
-    shouldStartFreshChatSessionForContextLimit({ enabled: true, rounds: 3, userTurns: 3 }),
-  ).toBe(true);
+test('chat context limit never rotates sessions and keeps all history visible', () => {
+  const marker = buildChatContextWindowMarker(
+    planChatContextWindow({ messages: [], enabled: true, priorRoundLimit: 10 }),
+  );
+  expect(marker).toContain('mode="last-rounds"');
+  expect(marker).toContain('prior-round-limit="10"');
+  expect(marker).toContain('schema="1"');
+  const unlimited = buildChatContextWindowMarker(
+    planChatContextWindow({ messages: [], enabled: false, priorRoundLimit: 0 }),
+  );
+  expect(unlimited).toContain('mode="unlimited"');
+  expect(unlimited).not.toContain('prior-round-limit');
 });
 
 test('dirty chat preflight preserves an existing agent disk branch in memory', () => {

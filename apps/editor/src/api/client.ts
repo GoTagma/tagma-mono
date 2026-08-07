@@ -1027,12 +1027,16 @@ export interface EditorSettings {
   /** Total lifecycle for one Chat Trial, in whole minutes. */
   opencodeChatTrialRunTimeoutMinutes: number;
   /**
-   * Disabled means unlimited. Enabled with 0 rounds means stateless.
+   * Enables request-level AI context limiting. The full conversation always
+   * stays saved, visible, and continued in the same OpenCode session; only the
+   * history sent to the model for each new reply is trimmed to the most recent
+   * `chatContextRounds` completed rounds (plus the current question).
    */
   chatContextLimitEnabled: boolean;
   /**
-   * Maximum conversation rounds kept in the active chat session when enabled.
-   * 0 = stateless; positive values start a fresh session after the limit.
+   * Maximum completed conversation rounds sent to the AI per new reply when
+   * `chatContextLimitEnabled` is on. 0 = current message only (no history
+   * rounds); the conversation history remains saved either way.
    */
   chatContextRounds: number;
 }
@@ -2203,6 +2207,8 @@ export const api = {
       proxyBaseUrl?: string;
       directory?: string;
       authHeader?: string;
+      contextWindowPluginReady?: boolean;
+      contextWindowPluginSchema?: number;
     }>(
       '/opencode/chat/restart',
       {

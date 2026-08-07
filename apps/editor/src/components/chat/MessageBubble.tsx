@@ -44,6 +44,7 @@ import {
 import { getRenderableMessageParts, shouldRenderMessageBubble } from './message-rendering';
 import { TurnActivityPanel } from './ActivityPanel';
 import { useChatStore } from '../../store/chat-store';
+import { parseChatContextWindowMarker } from '../../../shared/chat-context-window.js';
 import {
   extractAskAiContextReferences,
   stripAskAiContext,
@@ -152,6 +153,7 @@ export const MessageBubble = memo(function MessageBubble({
             </div>
           ),
         )}
+        {role === 'user' && <UserMessageContextNote entry={entry} />}
         {role === 'assistant' && <AssistantMessageFooter info={entry.info as AssistantMessage} />}
         {role === 'assistant' && (
           <AssistantResponseControls info={entry.info as AssistantMessage} text={copyableText} />
@@ -184,6 +186,41 @@ function AttachmentReferences({ references }: { references: readonly AskAiContex
           </span>
         </div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Historical context-window footnote. The hidden `<tagma-chat-context-window>`
+ * marker rides inside the user message's `<editor-context>` block, so reopening
+ * an old session still shows how much history that request actually excluded.
+ * Only rendered when a trim really happened (omitted rounds > 0) — the full
+ * conversation remains in the session either way.
+ */
+function UserMessageContextNote({ entry }: { entry: OpencodeThreadEntry }) {
+  const marker = entry.parts
+    .filter((part): part is Part & { type: 'text'; text: string } => part.type === 'text')
+    .map((part) => part.text)
+    .find((text) => text.trimStart().startsWith('<editor-context>'));
+  const parsed = marker ? parseChatContextWindowMarker(marker) : null;
+  if (
+    !parsed ||
+    parsed.mode !== 'last-rounds' ||
+    typeof parsed.totalPriorRounds !== 'number' ||
+    typeof parsed.includedPriorRounds !== 'number' ||
+    typeof parsed.omittedPriorRounds !== 'number' ||
+    parsed.omittedPriorRounds <= 0
+  ) {
+    return null;
+  }
+  const tooltip =
+    `This request sent only the last ${parsed.includedPriorRounds} of ${parsed.totalPriorRounds} prior rounds to the AI ` +
+    `(${typeof parsed.omittedPriorMessages === 'number' ? `${parsed.omittedPriorMessages} underlying messages excluded` : `${parsed.omittedPriorRounds} rounds omitted`}). ` +
+    'The full conversation stays saved in this session.';
+  return (
+    <div className="text-[9px] font-mono text-tagma-muted/60" title={tooltip} aria-label={tooltip}>
+      Context: {parsed.includedPriorRounds} / {parsed.totalPriorRounds} prior rounds ·{' '}
+      {parsed.omittedPriorRounds} omitted
     </div>
   );
 }

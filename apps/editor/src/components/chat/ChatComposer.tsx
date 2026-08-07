@@ -3,6 +3,11 @@ import { AlertTriangle, Paperclip, Send, Square, X } from 'lucide-react';
 import { getOpencodeWorkspaceKey } from '../../api/opencode-chat';
 import { useChatStore } from '../../store/chat-store';
 import { useYamlEditLockStore } from '../../store/yaml-edit-lock-store';
+import { useEditorSettingsStore } from '../../store/editor-settings-store';
+import {
+  describeChatContextWindowIndicator,
+  planChatContextWindow,
+} from '../../../shared/chat-context-window.js';
 
 /**
  * Error banner — surfaces send() failures inline above the composer so users
@@ -104,6 +109,33 @@ function AttachmentChips() {
           </button>
         </div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Next-request context-window hint. Only rendered while the "Limit AI context"
+ * setting is on: it shows how many completed prior rounds the next prompt will
+ * include and how many are excluded, without implying anything was deleted —
+ * the full conversation stays in the session.
+ */
+function ChatContextWindowIndicator() {
+  const settings = useEditorSettingsStore((s) => s.settings);
+  const messages = useChatStore((s) => s.messages);
+  if (!settings?.chatContextLimitEnabled) return null;
+  const snapshot = planChatContextWindow({
+    messages,
+    enabled: true,
+    priorRoundLimit: settings.chatContextRounds,
+  });
+  const { label, tooltip } = describeChatContextWindowIndicator(snapshot);
+  return (
+    <div
+      className="shrink-0 text-[9px] font-mono text-tagma-muted/70"
+      title={tooltip}
+      aria-label={tooltip}
+    >
+      {label}
     </div>
   );
 }
@@ -239,6 +271,7 @@ export function ChatComposer() {
   return (
     <div className="border-t border-tagma-border px-3 py-2 shrink-0 flex flex-col gap-2">
       <AttachmentChips />
+      <ChatContextWindowIndicator />
       <div className="flex min-w-0 items-end gap-2">
         <textarea
           ref={textareaRef}
