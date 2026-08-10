@@ -211,6 +211,7 @@ describe('runtime path resolution', () => {
       platform: 'win32',
       tagmaMetadataJson: JSON.stringify({
         bundledOpencodeVersion: '1.14.41',
+        bundledOpencodeDbSchemaVersion: 4,
         channel: 'stable',
         updateManifestBaseUrl: 'https://example.com/editor-updates',
         updateManifestPublicKey: 'ed25519:test-public-key',
@@ -231,9 +232,17 @@ describe('runtime path resolution', () => {
     );
     expect(paths.env.TAGMA_UPDATE_MANIFEST_PUBLIC_KEY).toBe('ed25519:test-public-key');
     expect(paths.env.TAGMA_OPENCODE_BUNDLED_VERSION).toBe('1.14.41');
+    expect(paths.env.TAGMA_OPENCODE_BUNDLED_DB_SCHEMA_VERSION).toBe('4');
+    expect(paths.env.TAGMA_OPENCODE_DB_SCHEMA_VERSION).toBe('4');
+    expect(paths.env.TAGMA_OPENCODE_DB_STATE_DIR).toBe(
+      pw.join('C:/Users/alice/AppData/Roaming/Tagma', 'opencode-state'),
+    );
+    expect(paths.env.TAGMA_OPENCODE_ACTIVE_VERSION).toBe('1.14.41');
+    expect(paths.env.TAGMA_OPENCODE_ACTIVE_SOURCE).toBe('bundled');
     expect(paths.env.TAGMA_METADATA_JSON).toBe(
       JSON.stringify({
         bundledOpencodeVersion: '1.14.41',
+        bundledOpencodeDbSchemaVersion: 4,
         channel: 'stable',
         updateManifestBaseUrl: 'https://example.com/editor-updates',
         updateManifestPublicKey: 'ed25519:test-public-key',
@@ -397,6 +406,7 @@ describe('runtime path resolution', () => {
       const userOpencodeDir = hostPath.join(userDataDir, 'opencode');
       mkdirSync(hostPath.join(userOpencodeDir, 'bin'), { recursive: true });
       writeFileSync(hostPath.join(userOpencodeDir, 'version.txt'), '1.15.14\n');
+      writeFileSync(hostPath.join(userOpencodeDir, 'database-schema-version.txt'), '5\n');
       writeUserReleaseOverride(userDataDir, '0.8.22', 'win32');
       writeFileSync(
         hostPath.join(userDataDir, releaseBaselineFile),
@@ -404,15 +414,19 @@ describe('runtime path resolution', () => {
         'utf-8',
       );
 
-      const paths = resolveRuntimePaths({
+      const runtimeOptions = {
         isPackaged: true,
         compiledDir: 'D:/tagma/tagma-mono/apps/electron/dist',
         resourcesPath,
         userDataDir,
         platform: 'win32',
         appVersion: '0.8.21',
-        tagmaMetadataJson: JSON.stringify({ bundledOpencodeVersion: '1.15.13' }),
-      });
+        tagmaMetadataJson: JSON.stringify({
+          bundledOpencodeVersion: '1.15.13',
+          bundledOpencodeDbSchemaVersion: 4,
+        }),
+      } as const;
+      const paths = resolveRuntimePaths(runtimeOptions);
 
       const expectedPath = [
         pw.join(userDataDir, 'opencode', 'bin'),
@@ -423,6 +437,15 @@ describe('runtime path resolution', () => {
       expect(paths.env.TAGMA_OPENCODE_USER_DIR).toBe(pw.join(userDataDir, 'opencode'));
       expect(paths.env.TAGMA_OPENCODE_RUNTIME_USER_DIR).toBe(pw.join(userDataDir, 'opencode'));
       expect(paths.env.TAGMA_OPENCODE_SKIP_USER_DIR).toBeUndefined();
+      expect(paths.env.TAGMA_OPENCODE_DB_SCHEMA_VERSION).toBe('5');
+      expect(paths.env.TAGMA_OPENCODE_DB_STATE_DIR).toBe(pw.join(userDataDir, 'opencode-state'));
+      expect(paths.env.TAGMA_OPENCODE_ACTIVE_VERSION).toBe('1.15.14');
+      expect(paths.env.TAGMA_OPENCODE_ACTIVE_SOURCE).toBe('user');
+
+      rmSync(hostPath.join(userOpencodeDir, 'database-schema-version.txt'));
+      const legacyPaths = resolveRuntimePaths(runtimeOptions);
+      expect(legacyPaths.env.TAGMA_OPENCODE_BUNDLED_DB_SCHEMA_VERSION).toBe('4');
+      expect(legacyPaths.env.TAGMA_OPENCODE_DB_SCHEMA_VERSION).toBeUndefined();
     } finally {
       if (previousPATH === undefined) {
         delete process.env.PATH;

@@ -185,6 +185,7 @@ describeOrSkip('POST /api/release/update', () => {
         },
         opencode: {
           version: '1.15.13',
+          dbSchemaVersion: 1,
           targets: [
             {
               platform: process.platform,

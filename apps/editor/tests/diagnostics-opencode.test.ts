@@ -34,6 +34,28 @@ function harness(
         password: 'internal-password',
         authorization: 'Basic internal-credential',
       },
+      database: {
+        stateDir: join(WORKSPACE_DIR, 'opencode-state'),
+        schemaVersion: 1,
+        compatibilityKey: 'schema-v1',
+        databasePath: join(
+          WORKSPACE_DIR,
+          'opencode-state',
+          'databases',
+          'schema-v1-0000000000000000',
+          'opencode.db',
+        ),
+        headStatePath: join(WORKSPACE_DIR, 'opencode-state', 'current-head.json'),
+        generationId: 'schema-v1-0000000000000000',
+        expectedHeadGenerationId: 'schema-v1-0000000000000000',
+        parentGenerationId: null,
+        forkedFromGenerationId: null,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        runtimeVersion: 'test',
+        runtimeSource: 'test',
+        initialization: 'existing',
+        copiedFromSchemaVersion: null,
+      },
     }),
     fetchOpencode: async (input) => {
       requestUrls.push(input.requestUrl);

@@ -22,6 +22,13 @@ import {
   buildEmbeddedOpencodeRuntimeConfig,
   prepareEmbeddedOpencodeRuntime,
 } from './opencode-config.js';
+import {
+  markManagedOpencodeDatabaseReady,
+  releaseManagedOpencodeDatabaseInitialization,
+  resolveManagedOpencodeDatabaseConfig,
+  waitForManagedOpencodeDatabase,
+  type PreparedManagedOpencodeDatabase,
+} from './opencode-database.js';
 import { randomBytes } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -37,6 +44,7 @@ export interface OpencodeHandle {
   pid: number;
   cwd: string;
   auth: OpencodeServerAuth;
+  database: PreparedManagedOpencodeDatabase;
 }
 
 export interface OpencodeRuntimeDiagnostics {
@@ -44,6 +52,14 @@ export interface OpencodeRuntimeDiagnostics {
   status: 'starting' | 'running' | 'restarting';
   pid: number | null;
   baseUrl: string | null;
+  databasePath: string | null;
+  databaseSchemaVersion: number | null;
+  databaseGenerationId: string | null;
+  databaseParentGenerationId: string | null;
+  databaseForkedFromGenerationId: string | null;
+  databaseInitialization: PreparedManagedOpencodeDatabase['initialization'] | null;
+  runtimeVersion: string | null;
+  runtimeSource: string | null;
 }
 
 export function ensureRealTagmaDirectory(workspaceRoot: string): string {
@@ -178,6 +194,7 @@ async function terminateOpencodeProcess(
 
 export function buildOpencodeEnv(
   cwd: string,
+  preparedDatabase: PreparedManagedOpencodeDatabase,
   auth: OpencodeServerAuth = getOrCreateOpencodeServerAuth(cwd),
 ): Record<string, string> {
   const runtime = prepareEmbeddedOpencodeRuntime(cwd);
@@ -229,6 +246,7 @@ export function buildOpencodeEnv(
   env.XDG_DATA_HOME = runtime.dataHome;
   env.XDG_STATE_HOME = runtime.stateHome;
   env.XDG_CACHE_HOME = runtime.cacheHome;
+  env.OPENCODE_DB = preparedDatabase.databasePath;
   env.OPENCODE_CONFIG_CONTENT = JSON.stringify(buildEmbeddedOpencodeRuntimeConfig(runtime));
   env.OPENCODE_SERVER_USERNAME = auth.username;
   env.OPENCODE_SERVER_PASSWORD = auth.password;
@@ -528,6 +546,39 @@ async function waitForHealth(
   );
 }
 
+async function waitForDatabaseAccess(
+  baseUrl: string,
+  timeoutMs = 300_000,
+  authorization?: string,
+): Promise<void> {
+  const { hostname, port } = new URL(baseUrl);
+  const portNum = Number(port);
+  const path = '/session?limit=1';
+  const deadline = Date.now() + timeoutMs;
+  let lastErr: unknown = null;
+  let lastStatus: number | null = null;
+  while (Date.now() < deadline) {
+    try {
+      const res = await loopbackGet(hostname, portNum, path, 2_000, authorization);
+      lastStatus = res.status;
+      lastErr = null;
+      if (res.status >= 200 && res.status < 300) {
+        console.log(`[opencode] database check passed via ${path} (${res.status})`);
+        return;
+      }
+      console.log(`[opencode] ${path} -> ${res.status}: ${res.body.slice(0, 200)}`);
+    } catch (err) {
+      lastErr = err;
+      lastStatus = null;
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  throw new Error(
+    `opencode database did not become accessible within ${timeoutMs}ms` +
+      ` (lastStatus=${lastStatus}, lastErr=${String(lastErr)})`,
+  );
+}
+
 function createOpencodeStartAttempt(cwd: string): OpencodeStartAttempt {
   const attempt: OpencodeStartAttempt = {
     canceledByRestart: false,
@@ -545,9 +596,16 @@ function createOpencodeStartAttempt(cwd: string): OpencodeStartAttempt {
     }
   };
 
+  let preparedDatabase: PreparedManagedOpencodeDatabase | null = null;
   const startPromise = (async () => {
     const port = await pickFreePort();
     const auth = getOrCreateOpencodeServerAuth(cwd);
+    const runtime = prepareEmbeddedOpencodeRuntime(cwd);
+    const database = await waitForManagedOpencodeDatabase(
+      resolveManagedOpencodeDatabaseConfig(runtime.root),
+    );
+    preparedDatabase = database;
+    const opencodeEnv = buildOpencodeEnv(cwd, database, auth);
     assertStartStillCurrent();
     // Expand ALLOWED_ORIGINS into repeated --cors flags. opencode accepts the
     // flag multiple times (one origin per use). If the set is empty for some
@@ -577,7 +635,7 @@ function createOpencodeStartAttempt(cwd: string): OpencodeStartAttempt {
 
     const proc = Bun.spawn([binary, ...spawnArgs], {
       cwd,
-      env: buildOpencodeEnv(cwd, auth),
+      env: opencodeEnv,
       stdout: 'pipe',
       stderr: 'pipe',
       onExit(exitedProcess, exitCode, signalCode) {
@@ -639,9 +697,11 @@ function createOpencodeStartAttempt(cwd: string): OpencodeStartAttempt {
     let healthResult: { kind: 'healthy' } | { kind: 'exited'; exitCode: number };
     try {
       healthResult = await Promise.race([
-        waitForHealth(baseUrl, 300_000, auth.authorization).then(() => ({
-          kind: 'healthy' as const,
-        })),
+        waitForHealth(baseUrl, 300_000, auth.authorization)
+          .then(() => waitForDatabaseAccess(baseUrl, 300_000, auth.authorization))
+          .then(() => ({
+            kind: 'healthy' as const,
+          })),
         proc.exited.then((exitCode) => ({ kind: 'exited' as const, exitCode })),
       ]);
     } catch (err) {
@@ -660,10 +720,22 @@ function createOpencodeStartAttempt(cwd: string): OpencodeStartAttempt {
     }
 
     assertStartStillCurrent();
-    const h: OpencodeHandle = { baseUrl, pid: proc.pid ?? -1, cwd, auth };
+    try {
+      markManagedOpencodeDatabaseReady(database);
+    } catch (err) {
+      await terminateOpencodeProcess(proc, cwd, 'database readiness failure', 3_000);
+      if (children.get(cwd) === proc) children.delete(cwd);
+      throw err;
+    }
+    const h: OpencodeHandle = { baseUrl, pid: proc.pid ?? -1, cwd, auth, database };
     handles.set(cwd, h);
     return h;
-  })();
+  })().catch((error) => {
+    if (preparedDatabase) {
+      releaseManagedOpencodeDatabaseInitialization(preparedDatabase);
+    }
+    throw error;
+  });
 
   attempt.rawPromise = startPromise;
   const sharedPromise = (async () => {
@@ -894,6 +966,14 @@ export function getOpencodeRuntimeDiagnostics(): OpencodeRuntimeDiagnostics[] {
         status: restarting.has(cwd) ? 'restarting' : handle ? 'running' : 'starting',
         pid: handle?.pid ?? child?.pid ?? null,
         baseUrl: handle?.baseUrl ?? null,
+        databasePath: handle?.database.databasePath ?? null,
+        databaseSchemaVersion: handle?.database.schemaVersion ?? null,
+        databaseGenerationId: handle?.database.generationId ?? null,
+        databaseParentGenerationId: handle?.database.parentGenerationId ?? null,
+        databaseForkedFromGenerationId: handle?.database.forkedFromGenerationId ?? null,
+        databaseInitialization: handle?.database.initialization ?? null,
+        runtimeVersion: handle?.database.runtimeVersion ?? null,
+        runtimeSource: handle?.database.runtimeSource ?? null,
       };
     });
 }

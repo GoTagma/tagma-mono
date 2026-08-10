@@ -78,6 +78,12 @@ Artifacts are named `Tagma-${version}-${os}-${arch}.${ext}`.
 The editor's primary driver is OpenCode. Each installer ships a platform-matched `opencode` binary in `resources/opencode/` so end users don't need `bun` or a manual install.
 
 - **Pin location:** `package.json → tagma.bundledOpencodeVersion` (currently `1.17.8`). Bump that field and re-run a `dist:desktop:*` command to cut a release with a new default.
+- **Database compatibility:** `package.json → tagma.bundledOpencodeDbSchemaVersion` selects the
+  Tagma-owned database bucket. Keep it unchanged for schema-compatible OpenCode updates and bump
+  it for an incompatible migration. Provider login files remain in OpenCode's user data root, but
+  managed sessions live under `userData/opencode-state/` through `OPENCODE_DB` and are never shared
+  with the standalone CLI. The state root retains lineage generations and atomically points at the
+  current branch, so downgrade and re-upgrade never reuse an incompatible or stale branch.
 - **Fetcher:** `scripts/fetch-opencode.mjs` downloads the platform-specific binary into `build/opencode/<platform>-<arch>/` before electron-builder copies it into `extraResources`.
 - **Runtime lookup order** (`src/runtime-paths.ts`): `userData/opencode/bin` → `resources/opencode/bin` → system `PATH`. The bundled copy is read-only and never overwritten.
 
@@ -97,14 +103,15 @@ A manually run installer is authoritative and may replace a higher release. Elec
 
 The default in-app **Update Tagma** action drives an atomic bundle update through the sidecar's `POST /api/release/update` route — both artifacts stage first, and only when both stage cleanly does the sidecar flip the live pointers (editor first, then sidecar). Editor-only and sidecar-only routes (`/api/editor/update`, `/api/sidecar/update`) remain available as recovery escape hatches. See `apps/editor/README.md` for the runtime route surface.
 
-Four `package.json → tagma.*` fields drive the flow:
+Five `package.json → tagma.*` fields drive the flow:
 
-| Field                     | Purpose                                                                                                       |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `bundledOpencodeVersion`  | Pinned OpenCode version baked into the installer (see above).                                                 |
-| `channel`                 | Release channel: `alpha` \| `beta` \| `rc` \| `stable`. Selects which manifest the running app polls.         |
-| `updateManifestBaseUrl`   | Base URL for the manifest. The sidecar appends `/<channel>/manifest.json`.                                    |
-| `updateManifestPublicKey` | Optional Ed25519 public key used to verify the hot-update manifest before trusting its asset URLs and hashes. |
+| Field                            | Purpose                                                                                                       |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `bundledOpencodeVersion`         | Pinned OpenCode version baked into the installer (see above).                                                 |
+| `bundledOpencodeDbSchemaVersion` | Positive compatibility epoch for the managed OpenCode database. Bump only for incompatible schema changes.    |
+| `channel`                        | Release channel: `alpha` \| `beta` \| `rc` \| `stable`. Selects which manifest the running app polls.         |
+| `updateManifestBaseUrl`          | Base URL for the manifest. The sidecar appends `/<channel>/manifest.json`.                                    |
+| `updateManifestPublicKey`        | Optional Ed25519 public key used to verify the hot-update manifest before trusting its asset URLs and hashes. |
 
 The sidecar fetches `${updateManifestBaseUrl}/${channel}/manifest.json`, verifies the manifest signature when `updateManifestPublicKey` is configured, validates the published `sha256` against the downloaded tarball, and atomically swaps `userData/editor/dist.staged/` → `userData/editor/dist/`. The previous build is preserved in `userData/editor/dist.previous/` for rollback. `express.static` captures its root at sidecar startup, so the new bundle only takes effect after the sidecar respawns — i.e. close every window (macOS: quit the app) and reopen. A plain window reload keeps serving the previous bundle; `/api/editor/info` reports this state as `pendingRestart: true`.
 

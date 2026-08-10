@@ -21,6 +21,12 @@ import {
   validateCustomProvider,
 } from '../server/opencode-config';
 import { buildOpencodeEnv, createOpencodeServerAuth } from '../server/opencode-lifecycle';
+import {
+  prepareManagedOpencodeDatabase,
+  releaseManagedOpencodeDatabaseInitialization,
+  resolveManagedOpencodeDatabaseConfig,
+  type PreparedManagedOpencodeDatabase,
+} from '../server/opencode-database';
 
 const ENV_KEYS = [
   'HOME',
@@ -32,7 +38,10 @@ const ENV_KEYS = [
   'XDG_DATA_HOME',
   'XDG_STATE_HOME',
   'XDG_CACHE_HOME',
+  'OPENCODE_DB',
   'OPENCODE_CONFIG_CONTENT',
+  'TAGMA_OPENCODE_DB_STATE_DIR',
+  'TAGMA_OPENCODE_DB_SCHEMA_VERSION',
 ] as const;
 
 const providerDef = {
@@ -75,6 +84,7 @@ const deepseekAnthropicProviderDef = {
 let tempRoot: string;
 let tagmaCwd: string;
 let savedEnv: Partial<Record<(typeof ENV_KEYS)[number], string>>;
+let preparedDatabases: PreparedManagedOpencodeDatabase[];
 
 function readJson(path: string): Record<string, unknown> {
   return JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>;
@@ -85,10 +95,24 @@ function writeJson(path: string, value: unknown): void {
   writeFileSync(path, JSON.stringify(value, null, 2) + '\n', 'utf-8');
 }
 
+function prepareTestManagedDatabase(): PreparedManagedOpencodeDatabase {
+  const runtime = prepareEmbeddedOpencodeRuntime(tagmaCwd);
+  const prepared = prepareManagedOpencodeDatabase(
+    resolveManagedOpencodeDatabaseConfig(runtime.root),
+  );
+  preparedDatabases.push(prepared);
+  return prepared;
+}
+
+function buildTestOpencodeEnv(auth = createOpencodeServerAuth()): Record<string, string> {
+  return buildOpencodeEnv(tagmaCwd, prepareTestManagedDatabase(), auth);
+}
+
 beforeEach(() => {
   tempRoot = mkdtempSync(join(tmpdir(), 'tagma-opencode-isolation-'));
   tagmaCwd = join(tempRoot, '.tagma');
   mkdirSync(tagmaCwd, { recursive: true });
+  preparedDatabases = [];
   savedEnv = {};
   for (const key of ENV_KEYS) {
     savedEnv[key] = process.env[key];
@@ -96,6 +120,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  for (const prepared of preparedDatabases) {
+    releaseManagedOpencodeDatabaseInitialization(prepared);
+  }
   for (const key of ENV_KEYS) {
     const value = savedEnv[key];
     if (value === undefined) delete process.env[key];
@@ -278,7 +305,7 @@ test('embedded opencode runtime keeps OpenAI-compatible model paths', () => {
     },
   });
 
-  const env = buildOpencodeEnv(tagmaCwd);
+  const env = buildTestOpencodeEnv();
   const injectedConfig = JSON.parse(env.OPENCODE_CONFIG_CONTENT ?? '{}') as {
     model?: string;
     small_model?: string;
@@ -314,7 +341,7 @@ test('preparing an unchanged embedded runtime does not rewrite workspace config'
 
 test('embedded opencode server env enables Basic Auth with generated credentials', () => {
   const auth = createOpencodeServerAuth();
-  const env = buildOpencodeEnv(tagmaCwd, auth);
+  const env = buildTestOpencodeEnv(auth);
 
   expect(env.OPENCODE_SERVER_USERNAME).toBe(auth.username);
   expect(env.OPENCODE_SERVER_PASSWORD).toBe(auth.password);
@@ -326,6 +353,7 @@ test('embedded opencode server env enables Basic Auth with generated credentials
 
 test('embedded opencode env isolates config homes while reusing user login data', () => {
   const externalRoot = join(tempRoot, 'user-home');
+  const managedDatabaseState = join(tempRoot, 'tagma-user-data', 'opencode-state');
   process.env.HOME = join(externalRoot, 'home');
   process.env.USERPROFILE = join(externalRoot, 'profile');
   process.env.APPDATA = join(externalRoot, 'appdata');
@@ -336,12 +364,14 @@ test('embedded opencode env isolates config homes while reusing user login data'
   process.env.XDG_STATE_HOME = join(externalRoot, 'state');
   process.env.XDG_CACHE_HOME = join(externalRoot, 'cache');
   process.env.OPENCODE_CONFIG_CONTENT = JSON.stringify({ plugin: ['oh-my-openagent'] });
+  process.env.TAGMA_OPENCODE_DB_STATE_DIR = managedDatabaseState;
+  process.env.TAGMA_OPENCODE_DB_SCHEMA_VERSION = '1';
 
   const paths = resolveOpencodeRuntimePaths(tagmaCwd);
   writeJson(paths.workspaceConfigPath, {
     provider: { workspaceLocal: providerDef },
   });
-  const env = buildOpencodeEnv(tagmaCwd);
+  const env = buildTestOpencodeEnv();
 
   expect(env.HOME).toBe(paths.home);
   expect(env.USERPROFILE).toBe(paths.home);
@@ -352,10 +382,15 @@ test('embedded opencode env isolates config homes while reusing user login data'
   expect(env.XDG_DATA_HOME).toBe(paths.dataHome);
   expect(env.XDG_STATE_HOME).toBe(paths.stateHome);
   expect(env.XDG_CACHE_HOME).toBe(paths.cacheHome);
+  expect(env.OPENCODE_DB?.startsWith(join(managedDatabaseState, 'databases', 'schema-v1-'))).toBe(
+    true,
+  );
+  expect(env.OPENCODE_DB?.endsWith('opencode.db')).toBe(true);
   expect(env.HOME).not.toContain(externalRoot);
   expect(env.XDG_CONFIG_HOME).not.toContain(externalRoot);
   expect(env.XDG_DATA_HOME).toContain(externalRoot);
   expect(env.XDG_STATE_HOME).toContain(externalRoot);
+  expect(env.OPENCODE_DB).not.toContain(externalRoot);
 
   const injectedConfig = JSON.parse(env.OPENCODE_CONFIG_CONTENT ?? '{}') as Record<string, unknown>;
   expect(injectedConfig).toMatchObject({
@@ -365,6 +400,20 @@ test('embedded opencode env isolates config homes while reusing user login data'
   });
   expect(readJson(paths.globalConfigPath)).toMatchObject({ plugin: [] });
   expect(readJson(paths.workspaceConfigPath)).toMatchObject({ plugin: [] });
+});
+
+test('OpenCode env stays bound to the one prepared generation passed by its launcher', () => {
+  const stateDir = join(tempRoot, 'opencode-state');
+  process.env.TAGMA_OPENCODE_DB_STATE_DIR = stateDir;
+  process.env.TAGMA_OPENCODE_DB_SCHEMA_VERSION = '1';
+  const prepared = prepareTestManagedDatabase();
+
+  process.env.TAGMA_OPENCODE_DB_SCHEMA_VERSION = '2';
+  const env = buildOpencodeEnv(tagmaCwd, prepared, createOpencodeServerAuth());
+
+  expect(env.OPENCODE_DB).toBe(prepared.databasePath);
+  expect(env.OPENCODE_DB.includes('schema-v1-')).toBe(true);
+  expect(env.OPENCODE_DB.includes('schema-v2-')).toBe(false);
 });
 
 test('user-global plugin declarations are outside the embedded opencode search path', () => {
@@ -381,7 +430,7 @@ test('user-global plugin declarations are outside the embedded opencode search p
   process.env.XDG_CONFIG_HOME = userConfigHome;
 
   const paths = resolveOpencodeRuntimePaths(tagmaCwd);
-  const env = buildOpencodeEnv(tagmaCwd);
+  const env = buildTestOpencodeEnv();
   const injectedConfig = JSON.parse(env.OPENCODE_CONFIG_CONTENT ?? '{}') as Record<string, unknown>;
 
   expect(env.HOME).toBe(paths.home);

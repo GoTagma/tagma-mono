@@ -139,6 +139,7 @@ function createFixture(root: string, version: string, minShellVersion?: string):
       },
       opencode: {
         version: '1.15.13',
+        dbSchemaVersion: 1,
         targets: [
           {
             platform: process.platform,

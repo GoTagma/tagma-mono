@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -26,6 +26,8 @@ const realBun = {
 const realDateNow = Date.now;
 
 let tempRoot: string;
+const originalDatabaseStateDir = process.env.TAGMA_OPENCODE_DB_STATE_DIR;
+const originalDatabaseSchemaVersion = process.env.TAGMA_OPENCODE_DB_SCHEMA_VERSION;
 
 function closedStream(): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
@@ -83,6 +85,8 @@ function respondToFailedProbe(options: Parameters<typeof Bun.connect>[0]): void 
 
 beforeEach(() => {
   tempRoot = mkdtempSync(join(tmpdir(), 'tagma-opencode-lifecycle-'));
+  process.env.TAGMA_OPENCODE_DB_STATE_DIR = join(tempRoot, 'opencode-state');
+  process.env.TAGMA_OPENCODE_DB_SCHEMA_VERSION = '1';
 });
 
 afterEach(async () => {
@@ -92,12 +96,18 @@ afterEach(async () => {
   (Bun as BunLike).spawn = realBun.spawn;
   (Bun as BunLike).which = realBun.which;
   Date.now = realDateNow;
+  if (originalDatabaseStateDir === undefined) delete process.env.TAGMA_OPENCODE_DB_STATE_DIR;
+  else process.env.TAGMA_OPENCODE_DB_STATE_DIR = originalDatabaseStateDir;
+  if (originalDatabaseSchemaVersion === undefined)
+    delete process.env.TAGMA_OPENCODE_DB_SCHEMA_VERSION;
+  else process.env.TAGMA_OPENCODE_DB_SCHEMA_VERSION = originalDatabaseSchemaVersion;
   rmSync(tempRoot, { recursive: true, force: true });
 });
 
 describe('ensureOpencode health probing', () => {
   test('accepts a complete HTTP health response before the socket closes', async () => {
     mkdirSync(join(tempRoot, '.tagma'), { recursive: true });
+    const requestedPaths: string[] = [];
     let nowCalls = 0;
     Date.now = () => {
       nowCalls += 1;
@@ -126,7 +136,8 @@ describe('ensureOpencode health probing', () => {
     (Bun as BunLike).connect = ((options: Parameters<typeof Bun.connect>[0]) => {
       queueMicrotask(() => {
         const socket = {
-          write() {
+          write(request: string | Uint8Array) {
+            requestedPaths.push(String(request).split(' ')[1] ?? '');
             options.socket.data?.(
               socket as never,
               Buffer.from(
@@ -141,9 +152,22 @@ describe('ensureOpencode health probing', () => {
       return Promise.resolve({} as Awaited<ReturnType<typeof Bun.connect>>);
     }) as typeof Bun.connect;
 
-    await expect(ensureOpencode(join(tempRoot, '.tagma'))).resolves.toMatchObject({
-      baseUrl: 'http://127.0.0.1:45123',
-    });
+    const handle = await ensureOpencode(join(tempRoot, '.tagma'));
+    expect(handle.baseUrl).toBe('http://127.0.0.1:45123');
+    expect(handle.database.schemaVersion).toBe(1);
+    expect(
+      handle.database.databasePath.startsWith(
+        join(tempRoot, 'opencode-state', 'databases', 'schema-v1-'),
+      ),
+    ).toBe(true);
+    expect(handle.database.generationId.startsWith('schema-v1-')).toBe(true);
+    expect(requestedPaths).toContain('/global/health');
+    expect(requestedPaths).toContain('/session?limit=1');
+    const active = JSON.parse(
+      readFileSync(join(tempRoot, 'opencode-state', 'current-head.json'), 'utf-8'),
+    ) as { schemaVersion: number; generationId: string };
+    expect(active.schemaVersion).toBe(1);
+    expect(active.generationId).toBe(handle.database.generationId);
   });
 
   test('restart redirects an in-flight health startup to its replacement', async () => {

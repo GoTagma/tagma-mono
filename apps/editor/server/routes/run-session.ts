@@ -41,6 +41,14 @@ import type {
 } from '@tagma/sdk';
 import { serializeWorkflow } from '@tagma/sdk/workflow';
 import { atomicWriteFileSync, isPathWithin } from '../path-utils.js';
+import { prepareEmbeddedOpencodeRuntime } from '../opencode-config.js';
+import {
+  markManagedOpencodeDatabaseReady,
+  releaseManagedOpencodeDatabaseInitialization,
+  resolveManagedOpencodeDatabaseConfig,
+  waitForManagedOpencodeDatabase,
+  type PreparedManagedOpencodeDatabase,
+} from '../opencode-database.js';
 import { buildOpencodeEnv, resolveOpencodeBinary } from '../opencode-lifecycle.js';
 import type { WorkspaceState } from '../workspace-state.js';
 import { readYamlRunVersion } from '../yaml-run-version.js';
@@ -187,6 +195,7 @@ const MANAGED_OPENCODE_ISOLATION_ENV_KEYS = [
   'XDG_DATA_HOME',
   'XDG_STATE_HOME',
   'XDG_CACHE_HOME',
+  'OPENCODE_DB',
   'OPENCODE_CONFIG_CONTENT',
 ] as const;
 
@@ -197,8 +206,9 @@ function isManagedOpencodeSpawn(spec: SpawnSpec, driver: DriverPlugin | null): b
 function mergeManagedOpencodeEnv(
   injectedEnv: Readonly<Record<string, string>> | undefined,
   managedOpencodeCwd: string,
+  managedDatabase: PreparedManagedOpencodeDatabase,
 ): Record<string, string> {
-  const managedEnv = buildOpencodeEnv(managedOpencodeCwd);
+  const managedEnv = buildOpencodeEnv(managedOpencodeCwd, managedDatabase);
   const env = { ...managedEnv, ...(injectedEnv ?? {}) };
   // Pipeline-scoped provider keys and PATH additions may override the managed
   // base environment, but runtime isolation must remain identical to Chat.
@@ -305,19 +315,41 @@ export function runtimeWithInjectedEnvFromBase(
   return {
     ...base,
     runSpawn(spec: SpawnSpec, driver: DriverPlugin | null, opts: RuntimeRunOptions = {}) {
-      const managedOpencode = managedOpencodeCwd && isManagedOpencodeSpawn(spec, driver);
       const resolvedSpec = resolveEditorDriverSpawnSpec(spec, driver);
       const injectedEnv = mergeRuntimeEnv(resolvedSpec.env, runtimeEnv);
-      const spawnSpec = {
-        ...resolvedSpec,
-        env: managedOpencode
-          ? mergeManagedOpencodeEnv(injectedEnv, managedOpencodeCwd)
-          : injectedEnv,
-      };
       const runOpts = withOutputRedactor(opts, createSecretOutputRedactor(secretValues));
-      return managedOpencode
-        ? runManagedOpencodeSpawn(base, withManagedOpencodeDiagnostics(spawnSpec), driver, runOpts)
-        : base.runSpawn(spawnSpec, driver, runOpts);
+      if (!managedOpencodeCwd || !isManagedOpencodeSpawn(spec, driver)) {
+        return base.runSpawn({ ...resolvedSpec, env: injectedEnv }, driver, runOpts);
+      }
+      const managedCwd = managedOpencodeCwd;
+      return (async () => {
+        const managedDatabase = await waitForManagedOpencodeDatabase(
+          resolveManagedOpencodeDatabaseConfig(prepareEmbeddedOpencodeRuntime(managedCwd).root),
+          { signal: opts.signal },
+        );
+        const spawnSpec = {
+          ...resolvedSpec,
+          env: mergeManagedOpencodeEnv(injectedEnv, managedCwd, managedDatabase),
+        };
+        let published = false;
+        try {
+          const result = await runManagedOpencodeSpawn(
+            base,
+            withManagedOpencodeDiagnostics(spawnSpec),
+            driver,
+            runOpts,
+          );
+          if (result.exitCode === 0) {
+            markManagedOpencodeDatabaseReady(managedDatabase);
+            published = true;
+          }
+          return result;
+        } finally {
+          if (!published) {
+            releaseManagedOpencodeDatabaseInitialization(managedDatabase);
+          }
+        }
+      })();
     },
     runCommand(command: CommandConfig, cwd: string, opts: RuntimeRunOptions = {}) {
       if (!needsCommandWrapper) return base.runCommand(command, cwd, opts);

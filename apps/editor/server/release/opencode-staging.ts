@@ -21,6 +21,7 @@ const OPENCODE_DOWNLOAD_IDLE_TIMEOUT_MS = 60_000;
 
 export interface OpencodeStagingResult {
   version: string;
+  dbSchemaVersion: number;
   userDir: string;
   binaryPath: string;
   stagingBinaryPath: string;
@@ -29,10 +30,12 @@ export interface OpencodeStagingResult {
 
 export interface OpencodeActivationResult {
   version: string;
+  dbSchemaVersion: number;
   userDir: string;
   binaryPath: string;
   previousBinaryPath: string | null;
   previousVersion: string | null;
+  previousDbSchemaVersion: number | null;
   keptPrevious: boolean;
 }
 
@@ -44,10 +47,25 @@ function opencodeVersionFile(userDir: string): string {
   return join(userDir, 'version.txt');
 }
 
+function opencodeDbSchemaVersionFile(userDir: string): string {
+  return join(userDir, 'database-schema-version.txt');
+}
+
 function readInstalledVersion(userDir: string): string | null {
   try {
     const value = readFileSync(opencodeVersionFile(userDir), 'utf-8').trim();
     return value || null;
+  } catch {
+    return null;
+  }
+}
+
+function readInstalledDbSchemaVersion(userDir: string): number | null {
+  try {
+    const raw = readFileSync(opencodeDbSchemaVersionFile(userDir), 'utf-8').trim();
+    if (!/^\d+$/.test(raw)) return null;
+    const value = Number(raw);
+    return Number.isSafeInteger(value) && value >= 1 ? value : null;
   } catch {
     return null;
   }
@@ -59,10 +77,14 @@ export async function stageOpencodeBinary(
   signal?: AbortSignal,
 ): Promise<OpencodeStagingResult> {
   const version = manifest.opencode?.version;
+  const dbSchemaVersion = manifest.opencode?.dbSchemaVersion;
   if (!version) {
     throw new Error('Hot-update manifest is missing opencode.version.');
   }
   assertValidHotupdateVersion(version, 'opencode version');
+  if (!Number.isSafeInteger(dbSchemaVersion) || (dbSchemaVersion ?? 0) < 1) {
+    throw new Error('Hot-update manifest has invalid opencode.dbSchemaVersion.');
+  }
   const target = pickOpencodeTarget(manifest);
   if (!target) {
     throw new Error(
@@ -102,6 +124,7 @@ export async function stageOpencodeBinary(
 
   return {
     version,
+    dbSchemaVersion: dbSchemaVersion as number,
     userDir,
     binaryPath,
     stagingBinaryPath,
@@ -119,6 +142,7 @@ export function activateOpencodeBinary(
     );
   }
   const previousVersion = readInstalledVersion(staged.userDir);
+  const previousDbSchemaVersion = readInstalledDbSchemaVersion(staged.userDir);
   const previousBinaryPath = existsSync(staged.binaryPath) ? `${staged.binaryPath}.previous` : null;
   if (previousBinaryPath && existsSync(previousBinaryPath))
     rmSync(previousBinaryPath, { force: true });
@@ -129,6 +153,11 @@ export function activateOpencodeBinary(
     }
     renameSync(staged.stagingBinaryPath, staged.binaryPath);
     writeFileSync(opencodeVersionFile(staged.userDir), staged.version + '\n', 'utf-8');
+    writeFileSync(
+      opencodeDbSchemaVersionFile(staged.userDir),
+      staged.dbSchemaVersion + '\n',
+      'utf-8',
+    );
   } catch (err) {
     if (existsSync(staged.binaryPath)) {
       try {
@@ -157,6 +186,23 @@ export function activateOpencodeBinary(
         /* best-effort */
       }
     }
+    if (previousDbSchemaVersion) {
+      try {
+        writeFileSync(
+          opencodeDbSchemaVersionFile(staged.userDir),
+          previousDbSchemaVersion + '\n',
+          'utf-8',
+        );
+      } catch {
+        /* best-effort */
+      }
+    } else {
+      try {
+        rmSync(opencodeDbSchemaVersionFile(staged.userDir), { force: true });
+      } catch {
+        /* best-effort */
+      }
+    }
     throw err;
   }
 
@@ -170,10 +216,12 @@ export function activateOpencodeBinary(
 
   return {
     version: staged.version,
+    dbSchemaVersion: staged.dbSchemaVersion,
     userDir: staged.userDir,
     binaryPath: staged.binaryPath,
     previousBinaryPath,
     previousVersion,
+    previousDbSchemaVersion,
     keptPrevious: !!options.keepPrevious,
   };
 }
@@ -205,6 +253,15 @@ export function rollbackOpencodeActivation(activation: OpencodeActivationResult)
       );
     } else {
       rmSync(opencodeVersionFile(activation.userDir), { force: true });
+    }
+    if (activation.previousDbSchemaVersion) {
+      writeFileSync(
+        opencodeDbSchemaVersionFile(activation.userDir),
+        activation.previousDbSchemaVersion + '\n',
+        'utf-8',
+      );
+    } else {
+      rmSync(opencodeDbSchemaVersionFile(activation.userDir), { force: true });
     }
   } catch {
     /* best-effort */

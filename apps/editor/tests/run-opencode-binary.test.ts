@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { bunRuntime } from '@tagma/sdk';
@@ -13,6 +13,8 @@ const envKeys = [
   'TAGMA_OPENCODE_RUNTIME_USER_DIR',
   'TAGMA_OPENCODE_USER_DIR',
   'TAGMA_OPENCODE_SKIP_USER_DIR',
+  'TAGMA_OPENCODE_DB_STATE_DIR',
+  'TAGMA_OPENCODE_DB_SCHEMA_VERSION',
 ] as const;
 const originalEnv = new Map(envKeys.map((key) => [key, process.env[key]]));
 
@@ -53,6 +55,8 @@ describe('editor OpenCode runtime selection', () => {
 
     process.env.TAGMA_OPENCODE_BUNDLED_DIR = root;
     process.env.TAGMA_OPENCODE_SKIP_USER_DIR = '1';
+    process.env.TAGMA_OPENCODE_DB_STATE_DIR = join(root, 'opencode-state');
+    process.env.TAGMA_OPENCODE_DB_SCHEMA_VERSION = '1';
     delete process.env.TAGMA_OPENCODE_RUNTIME_USER_DIR;
     delete process.env.TAGMA_OPENCODE_USER_DIR;
 
@@ -61,13 +65,14 @@ describe('editor OpenCode runtime selection', () => {
       ...bunRuntime(),
       async runSpawn(spec: SpawnSpec): Promise<TaskResult> {
         captured = spec;
-        return {} as TaskResult;
+        return taskResult();
       },
     };
     const runtime = runtimeWithInjectedEnvFromBase(
       base,
       {
         HOME: join(root, 'unmanaged-home'),
+        OPENCODE_DB: join(root, 'unmanaged-opencode.db'),
         OPENCODE_CONFIG_CONTENT: JSON.stringify({ plugin: ['unmanaged-plugin'] }),
         OPENAI_API_KEY: 'pipeline-provider-key',
       },
@@ -89,10 +94,60 @@ describe('editor OpenCode runtime selection', () => {
     expect(env?.USERPROFILE).toBe(paths.home);
     expect(env?.OPENCODE_CONFIG_DIR).toBe(paths.configDir);
     expect(env?.XDG_CONFIG_HOME).toBe(paths.configHome);
+    expect(
+      env?.OPENCODE_DB?.startsWith(join(root, 'opencode-state', 'databases', 'schema-v1-')),
+    ).toBe(true);
+    expect(env?.OPENCODE_DB?.endsWith('opencode.db')).toBe(true);
     expect(JSON.parse(env?.OPENCODE_CONFIG_CONTENT ?? '{}')).toMatchObject({ plugin: [] });
     expect(env?.OPENAI_API_KEY).toBe('pipeline-provider-key');
     expect(env?.OPENCODE_SERVER_USERNAME).toBeUndefined();
     expect(env?.OPENCODE_SERVER_PASSWORD).toBeUndefined();
+    const activeDatabase = JSON.parse(
+      readFileSync(join(root, 'opencode-state', 'current-head.json'), 'utf-8'),
+    ) as { schemaVersion: number; generationId: string };
+    expect(activeDatabase.schemaVersion).toBe(1);
+    expect(activeDatabase.generationId.startsWith('schema-v1-')).toBe(true);
+  });
+
+  test('concurrent first prompt tasks serialize generation initialization and then share the ready DB', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tagma-run-opencode-lease-'));
+    tempRoots.push(root);
+    const tagmaCwd = join(root, '.tagma');
+    const binary = join(root, 'bin', process.platform === 'win32' ? 'opencode.exe' : 'opencode');
+    mkdirSync(join(root, 'bin'), { recursive: true });
+    writeFileSync(binary, '', 'utf-8');
+    process.env.TAGMA_OPENCODE_BUNDLED_DIR = root;
+    process.env.TAGMA_OPENCODE_SKIP_USER_DIR = '1';
+    process.env.TAGMA_OPENCODE_DB_STATE_DIR = join(root, 'opencode-state');
+    process.env.TAGMA_OPENCODE_DB_SCHEMA_VERSION = '1';
+
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const startedDatabases: string[] = [];
+    const base = {
+      ...bunRuntime(),
+      async runSpawn(spec: SpawnSpec): Promise<TaskResult> {
+        startedDatabases.push(spec.env?.OPENCODE_DB ?? '');
+        if (startedDatabases.length === 1) await firstGate;
+        return taskResult();
+      },
+    };
+    const runtime = runtimeWithInjectedEnvFromBase(base, {}, [], tagmaCwd);
+    const driver = { name: 'opencode' } as DriverPlugin;
+    const spec = { args: ['opencode', 'run', '--model', 'test/model'], cwd: root };
+
+    const first = runtime.runSpawn(spec, driver);
+    await Bun.sleep(10);
+    const second = runtime.runSpawn(spec, driver);
+    await Bun.sleep(25);
+    expect(startedDatabases).toHaveLength(1);
+
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(startedDatabases).toHaveLength(2);
+    expect(startedDatabases[1]).toBe(startedDatabases[0]);
   });
 
   test('leaves explicit command tasks on the host PATH', async () => {

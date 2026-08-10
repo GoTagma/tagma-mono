@@ -317,8 +317,29 @@
 
 ## Managed OpenCode Execution
 
-- Tagma may share OpenCode's user-level data and session database with the standalone CLI.
-  Pin operational browser SDK clients and the primary history query to the server-returned
+- Tagma may reuse OpenCode's user-level data root for provider login state, but it must never share
+  the schema-bearing session database with a standalone OpenCode CLI. Every managed Chat and
+  prompt-task process must receive the same absolute, Tagma-owned `OPENCODE_DB` path.
+- Treat the explicit positive `bundledOpencodeDbSchemaVersion` release epoch as compatibility
+  metadata, not as a singleton database path. A compatible OpenCode upgrade keeps the epoch; an
+  incompatible schema change bumps it. Persist that epoch beside staged binaries and inside the
+  signed hot-update manifest.
+- Store managed databases as lineage generations behind one atomic `current-head` pointer. Reuse
+  the current generation when its compatibility key matches. On upgrade, copy the current lower
+  generation forward with a consistent SQLite snapshot into a new descendant generation. On
+  downgrade, create a fresh fork without copying newer schema backward. Re-entering an epoch after
+  a downgrade must create a descendant of the current fork, never silently reuse an older branch.
+  Retain every prior generation. A legacy runtime without epoch metadata gets an exact-version
+  compatibility key and never participates in automatic copy-forward.
+- Guard first use of every unpublished generation with an exclusive initialization lease. Chat and
+  prompt-task launchers must pass the exact prepared generation into `buildOpencodeEnv`, wait when
+  another live owner holds the lease, publish only after database-backed readiness and integrity
+  checks, and discard only their own unready generation on failure. A dead owner's provisional
+  generation may be rebuilt; a published generation must never be removed by lease recovery.
+- Do not mark a managed database epoch active until OpenCode health, a database-backed session
+  query, and SQLite integrity validation all succeed. Expose the active runtime identity, database
+  path, epoch, and initialization mode through the read-only diagnostics context.
+- Pin operational browser SDK clients and the primary history query to the server-returned
   canonical `<workspace>/.tagma` directory. Also use an unscoped discovery query to recover
   Tagma-marked legacy sessions that predate canonical directory pinning; accept those only when
   their metadata names the active workspace. Preserve untagged exact-directory legacy chats,

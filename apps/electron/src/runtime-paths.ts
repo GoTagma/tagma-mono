@@ -356,6 +356,24 @@ function readUserOpencodeVersion(
   }
 }
 
+function readUserOpencodeDbSchemaVersion(
+  fsPath: PathModule,
+  userDataDir: string | undefined,
+): number | null {
+  if (!userDataDir) return null;
+  try {
+    const raw = readFileSync(
+      fsPath.join(opencodeUserDir(fsPath, userDataDir), 'database-schema-version.txt'),
+      'utf-8',
+    ).trim();
+    if (!/^\d+$/.test(raw)) return null;
+    const value = Number(raw);
+    return Number.isSafeInteger(value) && value >= 1 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 function shouldUseUserOpencode(
   fsPath: PathModule,
   userDataDir: string | undefined,
@@ -623,6 +641,12 @@ export function resolveRuntimePaths(options: RuntimePathOptions): RuntimePaths {
     typeof metadata.bundledOpencodeVersion === 'string'
       ? metadata.bundledOpencodeVersion
       : undefined;
+  const bundledOpencodeDbSchemaVersion =
+    typeof metadata.bundledOpencodeDbSchemaVersion === 'number' &&
+    Number.isSafeInteger(metadata.bundledOpencodeDbSchemaVersion) &&
+    metadata.bundledOpencodeDbSchemaVersion >= 1
+      ? metadata.bundledOpencodeDbSchemaVersion
+      : undefined;
   const editorUpdateChannel = typeof metadata.channel === 'string' ? metadata.channel : undefined;
   const editorUpdateManifestBaseUrl =
     typeof metadata.updateManifestBaseUrl === 'string' ? metadata.updateManifestBaseUrl : undefined;
@@ -677,6 +701,17 @@ export function resolveRuntimePaths(options: RuntimePathOptions): RuntimePaths {
           !!userOverride || process.env.TAGMA_UNSAFE_ALLOW_INDEPENDENT_OPENCODE_UPDATE === '1',
       },
     );
+    const activeUserOpencodeVersion = includeUserOpencode
+      ? readUserOpencodeVersion(fsPath, options.userDataDir)
+      : null;
+    const activeUserOpencodeDbSchemaVersion = includeUserOpencode
+      ? readUserOpencodeDbSchemaVersion(fsPath, options.userDataDir)
+      : null;
+    const activeOpencodeVersion = activeUserOpencodeVersion ?? bundledOpencodeVersion ?? null;
+    const activeOpencodeDbSchemaVersion = includeUserOpencode
+      ? activeUserOpencodeDbSchemaVersion
+      : (bundledOpencodeDbSchemaVersion ?? null);
+    const activeOpencodeSource = includeUserOpencode ? 'user' : 'bundled';
     const sidecarPath = buildSidecarPath(
       p,
       options.resourcesPath,
@@ -704,6 +739,7 @@ export function resolveRuntimePaths(options: RuntimePathOptions): RuntimePaths {
     );
     if (options.userDataDir) {
       const opencodeUserDir = p.join(options.userDataDir, 'opencode');
+      env.TAGMA_OPENCODE_DB_STATE_DIR = p.join(options.userDataDir, 'opencode-state');
       env.TAGMA_OPENCODE_USER_DIR = opencodeUserDir;
       if (includeUserOpencode) {
         env.TAGMA_OPENCODE_RUNTIME_USER_DIR = opencodeUserDir;
@@ -724,6 +760,16 @@ export function resolveRuntimePaths(options: RuntimePathOptions): RuntimePaths {
     }
     if (bundledOpencodeVersion) {
       env.TAGMA_OPENCODE_BUNDLED_VERSION = bundledOpencodeVersion;
+    }
+    if (bundledOpencodeDbSchemaVersion) {
+      env.TAGMA_OPENCODE_BUNDLED_DB_SCHEMA_VERSION = String(bundledOpencodeDbSchemaVersion);
+    }
+    if (activeOpencodeVersion) {
+      env.TAGMA_OPENCODE_ACTIVE_VERSION = activeOpencodeVersion;
+    }
+    env.TAGMA_OPENCODE_ACTIVE_SOURCE = activeOpencodeSource;
+    if (activeOpencodeDbSchemaVersion) {
+      env.TAGMA_OPENCODE_DB_SCHEMA_VERSION = String(activeOpencodeDbSchemaVersion);
     }
     if (options.appVersion) {
       env.TAGMA_EDITOR_BUNDLED_VERSION = options.appVersion;

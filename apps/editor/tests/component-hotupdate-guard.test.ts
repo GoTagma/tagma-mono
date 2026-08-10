@@ -143,6 +143,7 @@ function installManifestFetch(): { assetFetches: () => number } {
             },
             opencode: {
               version: '1.15.13',
+              dbSchemaVersion: 1,
               targets: [
                 {
                   platform: process.platform,

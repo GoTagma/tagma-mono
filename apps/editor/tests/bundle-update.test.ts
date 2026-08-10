@@ -68,6 +68,7 @@ function withOpencode(manifest: HotupdateManifest, asset: ReturnType<typeof buil
     ...manifest,
     opencode: {
       version: '1.15.13',
+      dbSchemaVersion: 1,
       targets: [
         {
           platform: process.platform,

@@ -39,6 +39,19 @@ function assertValidVersion(version, label) {
   }
 }
 
+function bundledOpencodeDbSchemaVersion() {
+  const scriptDir = dirname(fileURLToPath(import.meta.url));
+  const packagePath = join(scriptDir, '..', '..', 'apps', 'electron', 'package.json');
+  const pkg = JSON.parse(readFileSync(packagePath, 'utf-8'));
+  const value = pkg?.tagma?.bundledOpencodeDbSchemaVersion;
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error(
+      'apps/electron/package.json tagma.bundledOpencodeDbSchemaVersion must be an integer >= 1',
+    );
+  }
+  return value;
+}
+
 function stableStringify(value) {
   if (value === null || typeof value !== 'object') {
     return JSON.stringify(value);
@@ -126,6 +139,7 @@ export function buildHotupdateManifest({
   repoSlug,
   minShellVersion,
   opencodeVersion,
+  opencodeDbSchemaVersion = bundledOpencodeDbSchemaVersion(),
   allowPartialSidecars = false,
 }) {
   assertValidVersion(version, 'version');
@@ -133,6 +147,9 @@ export function buildHotupdateManifest({
     assertValidVersion(minShellVersion, 'minShellVersion');
   }
   assertValidVersion(opencodeVersion, 'opencodeVersion');
+  if (!Number.isSafeInteger(opencodeDbSchemaVersion) || opencodeDbSchemaVersion < 1) {
+    throw new Error('opencodeDbSchemaVersion must be an integer >= 1');
+  }
   const tagName = `desktop-v${version}`;
   const distAsset = readRequiredAsset(assetsDir, `editor-dist-${version}.tar.gz`);
   const sidecarTargets = [];
@@ -223,6 +240,7 @@ export function buildHotupdateManifest({
     ...(sidecarTargets.length > 0 ? { sidecar: { targets: sidecarTargets } } : {}),
     opencode: {
       version: opencodeVersion,
+      dbSchemaVersion: opencodeDbSchemaVersion,
       targets: opencodeTargets,
     },
     releaseNotesUrl: `https://github.com/${repoSlug}/releases/tag/${tagName}`,

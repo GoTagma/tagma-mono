@@ -43,6 +43,7 @@ export function bootstrapDevEnv(): void {
     version?: string;
     tagma?: {
       bundledOpencodeVersion?: string;
+      bundledOpencodeDbSchemaVersion?: number;
       channel?: string;
       updateManifestBaseUrl?: string;
     };
@@ -120,5 +121,21 @@ export function bootstrapDevEnv(): void {
     if (version) {
       process.env.TAGMA_OPENCODE_BUNDLED_VERSION = version;
     }
+  }
+  const dbSchemaVersion = pkg.tagma?.bundledOpencodeDbSchemaVersion;
+  if (Number.isSafeInteger(dbSchemaVersion) && (dbSchemaVersion ?? 0) >= 1) {
+    const value = String(dbSchemaVersion);
+    if (!process.env.TAGMA_OPENCODE_BUNDLED_DB_SCHEMA_VERSION) {
+      process.env.TAGMA_OPENCODE_BUNDLED_DB_SCHEMA_VERSION = value;
+    }
+    if (!process.env.TAGMA_OPENCODE_DB_SCHEMA_VERSION) {
+      process.env.TAGMA_OPENCODE_DB_SCHEMA_VERSION = value;
+    }
+  }
+  if (!process.env.TAGMA_OPENCODE_ACTIVE_VERSION && process.env.TAGMA_OPENCODE_BUNDLED_VERSION) {
+    process.env.TAGMA_OPENCODE_ACTIVE_VERSION = process.env.TAGMA_OPENCODE_BUNDLED_VERSION;
+  }
+  if (!process.env.TAGMA_OPENCODE_ACTIVE_SOURCE) {
+    process.env.TAGMA_OPENCODE_ACTIVE_SOURCE = 'bundled';
   }
 }

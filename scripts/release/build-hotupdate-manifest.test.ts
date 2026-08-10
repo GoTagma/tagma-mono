@@ -79,6 +79,7 @@ describe('build-hotupdate-manifest', () => {
       size: 'win-sidecar'.length,
     });
     expect(manifest.opencode?.version).toBe('1.15.13');
+    expect(manifest.opencode?.dbSchemaVersion).toBe(1);
     expect(manifest.opencode?.targets.length).toBe(4);
     expect(manifest.opencode?.targets.map((t) => `${t.platform}/${t.arch}`)).toEqual([
       'win32/x64',

@@ -26,6 +26,7 @@ export interface HotupdateManifest {
   };
   opencode?: {
     version: string;
+    dbSchemaVersion: number;
     targets: OpencodeTargetAsset[];
   };
   releaseNotesUrl?: string;
@@ -215,6 +216,13 @@ export function validateHotupdateManifest(body: Partial<HotupdateManifest>, url:
     assertValidHotupdateVersion(opencode.version, `Manifest at ${url} opencode.version`);
   } catch (err) {
     throw new Error(errorMessage(err));
+  }
+  if (
+    typeof opencode.dbSchemaVersion !== 'number' ||
+    !Number.isSafeInteger(opencode.dbSchemaVersion) ||
+    opencode.dbSchemaVersion < 1
+  ) {
+    throw new Error(`Manifest at ${url} has bad opencode.dbSchemaVersion`);
   }
   if (!Array.isArray(opencode.targets)) {
     throw new Error(`Manifest at ${url} has bad "opencode.targets"`);

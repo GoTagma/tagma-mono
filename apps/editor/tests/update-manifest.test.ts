@@ -16,6 +16,7 @@ import {
 function opencodeManifestSection(): NonNullable<HotupdateManifest['opencode']> {
   return {
     version: '1.15.13',
+    dbSchemaVersion: 1,
     targets: [
       {
         platform: process.platform,
@@ -101,6 +102,7 @@ describe('hot-update manifest helpers', () => {
       },
       opencode: {
         version: '1.15.13',
+        dbSchemaVersion: 1,
         targets: [
           {
             platform: process.platform,
@@ -239,6 +241,19 @@ describe('hot-update manifest helpers', () => {
         'https://example.com/manifest.json',
       ),
     ).toThrow(/opencode/i);
+    const { dbSchemaVersion: _dbSchemaVersion, ...withoutDbSchemaVersion } = good.opencode!;
+    expect(() =>
+      validateHotupdateManifest(
+        { ...good, opencode: withoutDbSchemaVersion as HotupdateManifest['opencode'] },
+        'https://example.com/manifest.json',
+      ),
+    ).toThrow(/dbSchemaVersion/i);
+    expect(() =>
+      validateHotupdateManifest(
+        { ...good, opencode: { ...good.opencode!, dbSchemaVersion: 0 } },
+        'https://example.com/manifest.json',
+      ),
+    ).toThrow(/dbSchemaVersion/i);
     expect(() =>
       validateHotupdateManifest(
         { ...good, opencode: { ...good.opencode!, version: '../1.15.13' } },
@@ -283,6 +298,7 @@ describe('hot-update manifest helpers', () => {
       },
       opencode: {
         version: '1.15.13',
+        dbSchemaVersion: 1,
         targets: [
           {
             platform: process.platform,
