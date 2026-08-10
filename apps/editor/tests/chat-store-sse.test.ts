@@ -271,6 +271,11 @@ test('trial planning prompt forces behavior-first edge-case design without autho
   expect(prompt).toContain('Begin resumes a matching path-and-hash draft by default');
   expect(prompt).toContain('begin requires both summary (a non-empty string) and goals');
   expect(prompt).toContain('goals must be a non-empty string array');
+  expect(prompt).toContain('Every coverage entry needs dimension, status, caseIds, and rationale');
+  expect(prompt).toContain(
+    'Coverage status must be one of covered, accepted-risk, blocked, or not-applicable',
+  );
+  expect(prompt).toContain('Every finding needs severity, repairScope, summary, and evidence');
   expect(prompt).toContain('Never send the whole plan or multiple cases in one call');
   expect(prompt).toContain('Pass the exact staged Target YAML path');
   expect(prompt).toContain('Never copy YAML or plan files');

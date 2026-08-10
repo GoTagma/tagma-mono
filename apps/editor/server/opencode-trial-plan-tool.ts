@@ -258,6 +258,34 @@ function validateCase(value, index) {
   };
 }
 
+function validateCaseEntries(value, requireNonEmpty) {
+  const cases = asArray(value, "trial plan cases", CONTRACT.limits.cases).map(
+    validateCase,
+  );
+  if (requireNonEmpty && cases.length === 0) {
+    throw new Error("trial plan cases must contain at least one case.");
+  }
+  const caseIds = new Set();
+  for (const item of cases) {
+    if (caseIds.has(item.id)) {
+      throw new Error("trial plan case id is duplicated: " + item.id + ".");
+    }
+    caseIds.add(item.id);
+  }
+  const totalFixtureBytes = cases
+    .flatMap((item) => item.fixtures)
+    .reduce(
+      (total, fixture) => total + new TextEncoder().encode(fixture.content).length,
+      0,
+    );
+  if (totalFixtureBytes > CONTRACT.limits.totalFixtureBytes) {
+    throw new Error(
+      "trial plan fixtures exceed " + CONTRACT.limits.totalFixtureBytes + " bytes in total.",
+    );
+  }
+  return cases;
+}
+
 function hasDuplicateFixtureBasenames(cases) {
   return cases.some((item) => {
     const basenames = item.fixtures.map(
@@ -358,6 +386,85 @@ function validateCoveredCaseEvidence(coverage, cases) {
   }
 }
 
+function validateCoverageEntries(value) {
+  return asArray(value, 'trial plan coverage', REQUIRED_COVERAGE.length).map(
+    (item, index) => {
+      const label = 'coverage[' + index + ']';
+      const entry = asRecord(item, label);
+      const dimension = asString(entry.dimension, label + '.dimension', 64);
+      if (!REQUIRED_COVERAGE.includes(dimension)) {
+        throw new Error(label + '.dimension is unsupported.');
+      }
+      const status = asString(entry.status, label + '.status', 32);
+      if (!COVERAGE_STATUSES.includes(status)) {
+        throw new Error(label + '.status is invalid.');
+      }
+      const caseIds = asArray(
+        entry.caseIds,
+        label + '.caseIds',
+        CONTRACT.limits.cases,
+      ).map((caseId, caseIndex) =>
+        asString(caseId, label + '.caseIds[' + caseIndex + ']', 64),
+      );
+      if (status === 'covered' && caseIds.length === 0) {
+        throw new Error(label + ' must reference at least one case when covered.');
+      }
+      return {
+        dimension,
+        status,
+        caseIds: [...new Set(caseIds)],
+        rationale: asString(entry.rationale, label + '.rationale', 1000),
+      };
+    },
+  );
+}
+
+function validateCoverageSection(value, cases) {
+  const coverage = validateCoverageEntries(value);
+  const caseIds = new Set(cases.map((item) => item.id));
+  for (const [index, entry] of coverage.entries()) {
+    for (const caseId of entry.caseIds) {
+      if (!caseIds.has(caseId)) {
+        throw new Error("coverage[" + index + "] references unknown case " + caseId + ".");
+      }
+    }
+  }
+  const coverageDimensions = new Set(coverage.map((item) => item.dimension));
+  for (const dimension of REQUIRED_COVERAGE) {
+    if (!coverageDimensions.has(dimension)) {
+      throw new Error("trial plan coverage is missing " + dimension + ".");
+    }
+  }
+  if (coverageDimensions.size !== coverage.length) {
+    throw new Error("trial plan coverage dimensions must not be duplicated.");
+  }
+  validateCoveredCaseEvidence(coverage, cases);
+  return coverage;
+}
+
+function validateFindingEntries(value) {
+  return asArray(value, 'trial plan findings', CONTRACT.limits.findings).map(
+    (item, index) => {
+      const label = 'findings[' + index + ']';
+      const finding = asRecord(item, label);
+      const severity = asString(finding.severity, label + '.severity', 32);
+      if (!FINDING_SEVERITIES.includes(severity)) {
+        throw new Error(label + '.severity is invalid.');
+      }
+      const repairScope = asString(finding.repairScope, label + '.repairScope', 32);
+      if (!FINDING_REPAIR_SCOPES.includes(repairScope)) {
+        throw new Error(label + '.repairScope is invalid.');
+      }
+      return {
+        severity,
+        repairScope,
+        summary: asString(finding.summary, label + '.summary', 500),
+        evidence: asString(finding.evidence, label + '.evidence', 2000),
+      };
+    },
+  );
+}
+
 function assertValidPlan(value) {
   const raw = asRecord(value, "trial plan");
   if (raw.version !== CONTRACT.version) {
@@ -374,91 +481,10 @@ function assertValidPlan(value) {
   }
   goals.forEach((goal, index) => asString(goal, "goals[" + index + "]", 1000));
 
-  const cases = asArray(raw.cases, "trial plan cases", CONTRACT.limits.cases).map(
-    validateCase,
-  );
-  if (cases.length === 0) throw new Error("trial plan cases must contain at least one case.");
-  const caseIds = new Set();
-  for (const item of cases) {
-    if (caseIds.has(item.id)) {
-      throw new Error("trial plan case id is duplicated: " + item.id + ".");
-    }
-    caseIds.add(item.id);
-  }
-  const totalFixtureBytes = cases
-    .flatMap((item) => item.fixtures)
-    .reduce(
-      (total, fixture) => total + new TextEncoder().encode(fixture.content).length,
-      0,
-    );
-  if (totalFixtureBytes > CONTRACT.limits.totalFixtureBytes) {
-    throw new Error(
-      "trial plan fixtures exceed " + CONTRACT.limits.totalFixtureBytes + " bytes in total.",
-    );
-  }
+  const cases = validateCaseEntries(raw.cases, true);
+  validateCoverageSection(raw.coverage, cases);
 
-  const coverage = asArray(
-    raw.coverage,
-    "trial plan coverage",
-    REQUIRED_COVERAGE.length,
-  ).map((item, index) => {
-    const label = "coverage[" + index + "]";
-    const entry = asRecord(item, label);
-    const dimension = asString(entry.dimension, label + ".dimension", 64);
-    if (!REQUIRED_COVERAGE.includes(dimension)) {
-      throw new Error(label + ".dimension is unsupported.");
-    }
-    const status = asString(entry.status, label + ".status", 32);
-    if (!COVERAGE_STATUSES.includes(status)) throw new Error(label + ".status is invalid.");
-    const linkedCaseIds = asArray(
-      entry.caseIds || [],
-      label + ".caseIds",
-      CONTRACT.limits.cases,
-    ).map((caseId, caseIndex) =>
-      asString(caseId, label + ".caseIds[" + caseIndex + "]", 64),
-    );
-    if (status === "covered" && linkedCaseIds.length === 0) {
-      throw new Error(label + " must reference at least one case when covered.");
-    }
-    for (const caseId of linkedCaseIds) {
-      if (!caseIds.has(caseId)) {
-        throw new Error(label + " references unknown case " + caseId + ".");
-      }
-    }
-    return {
-      dimension,
-      status,
-      caseIds: [...new Set(linkedCaseIds)],
-      rationale: asString(entry.rationale, label + ".rationale", 1000),
-    };
-  });
-  const coverageDimensions = new Set(coverage.map((item) => item.dimension));
-  for (const dimension of REQUIRED_COVERAGE) {
-    if (!coverageDimensions.has(dimension)) {
-      throw new Error("trial plan coverage is missing " + dimension + ".");
-    }
-  }
-  if (coverageDimensions.size !== coverage.length) {
-    throw new Error("trial plan coverage dimensions must not be duplicated.");
-  }
-  validateCoveredCaseEvidence(coverage, cases);
-
-  asArray(raw.findings || [], "trial plan findings", CONTRACT.limits.findings).forEach(
-    (item, index) => {
-      const label = "findings[" + index + "]";
-      const finding = asRecord(item, label);
-      const severity = asString(finding.severity, label + ".severity", 32);
-      if (!FINDING_SEVERITIES.includes(severity)) {
-        throw new Error(label + ".severity is invalid.");
-      }
-      const repairScope = asString(finding.repairScope, label + ".repairScope", 32);
-      if (!FINDING_REPAIR_SCOPES.includes(repairScope)) {
-        throw new Error(label + ".repairScope is invalid.");
-      }
-      asString(finding.summary, label + ".summary", 500);
-      asString(finding.evidence, label + ".evidence", 2000);
-    },
-  );
+  validateFindingEntries(raw.findings || []);
 }
 
 function assertTargetPaths(value, relativeYaml) {
@@ -650,6 +676,20 @@ function assertTrialPlanDraft(value, paths, yamlHash) {
   ) {
     throw new Error('trial plan draft does not match the staged YAML revision');
   }
+  draft.summary = asString(draft.summary, 'trial plan summary', 2000);
+  draft.goals = asArray(draft.goals, 'trial plan goals', CONTRACT.limits.goals).map(
+    (goal, index) => asString(goal, 'goals[' + index + ']', 1000),
+  );
+  if (draft.goals.length === 0) {
+    throw new Error('trial plan goals must contain at least one behavior goal.');
+  }
+  draft.cases = validateCaseEntries(draft.cases, false);
+  assertTargetPaths(draft, paths.relativeYamlPath);
+  draft.coverage =
+    draft.coverage.length === 0
+      ? []
+      : validateCoverageSection(draft.coverage, draft.cases);
+  draft.findings = validateFindingEntries(draft.findings);
   draft.commitAttempted = draft.commitAttempted === true;
   return draft;
 }
@@ -1018,27 +1058,21 @@ function executeExistingTrialPlanDraftOperation(input) {
         (item) => item && typeof item === 'object' && item.id === input.args.case?.id,
       );
       const draftIndex = existingIndex < 0 ? draft.cases.length : existingIndex;
-      const testCase = validateCase(input.args.case, draftIndex);
-      if (existingIndex < 0) {
-        if (draft.cases.length >= CONTRACT.limits.cases) {
-          throw new Error('trial plan cases exceed the case limit');
-        }
-        draft.cases.push(testCase);
-      } else {
-        draft.cases[existingIndex] = testCase;
+      if (existingIndex < 0 && draft.cases.length >= CONTRACT.limits.cases) {
+        throw new Error('trial plan cases exceed the case limit');
       }
+      const nextCases = [...draft.cases];
+      nextCases[draftIndex] = input.args.case;
+      const validatedCases = validateCaseEntries(nextCases, false);
+      assertTargetPaths({ cases: validatedCases }, input.paths.relativeYamlPath);
+      if (draft.coverage.length > 0) {
+        validateCoverageSection(draft.coverage, validatedCases);
+      }
+      draft.cases = validatedCases;
     } else if (input.operation === 'set-coverage') {
-      draft.coverage = asArray(
-        input.args.coverage,
-        'coverage',
-        REQUIRED_COVERAGE.length,
-      );
+      draft.coverage = validateCoverageSection(input.args.coverage, draft.cases);
     } else if (input.operation === 'set-findings') {
-      draft.findings = asArray(
-        input.args.findings,
-        'findings',
-        CONTRACT.limits.findings,
-      );
+      draft.findings = validateFindingEntries(input.args.findings);
     }
     writeTrialPlanDraft(input.paths, draft);
     return trialPlanDraftResult(input.operation, draft);

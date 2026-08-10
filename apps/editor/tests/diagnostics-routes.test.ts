@@ -139,7 +139,14 @@ describe('diagnostics routes', () => {
       endpoints: {
         context: `${DIAGNOSTICS_AGENT_BASE_PATH}/context`,
         logs: `${DIAGNOSTICS_AGENT_BASE_PATH}/logs`,
+        timeline: `${DIAGNOSTICS_AGENT_BASE_PATH}/timeline`,
       },
+      timelinePolling: {
+        query: { after: expect.any(String), limit: '1-1000' },
+        next: expect.stringContaining('nextCursor'),
+      },
+      coverage: expect.arrayContaining([expect.stringContaining('content-minimized')]),
+      privacy: expect.stringMatching(/local paths.*workspace inventory.*sensitive/i),
       sessionPagination: {
         query: { offset: expect.any(String), limit: expect.any(String) },
       },
@@ -243,6 +250,30 @@ describe('diagnostics routes', () => {
       entries: expect.arrayContaining([
         expect.objectContaining({ source: 'renderer.console', message: 'renderer warning' }),
       ]),
+    });
+
+    const timelineRes = new FakeResponse();
+    await routes.route('GET', `${DIAGNOSTICS_AGENT_BASE_PATH}/timeline`)(
+      request('GET', `${DIAGNOSTICS_AGENT_BASE_PATH}/timeline`, {
+        query: { after: '0', limit: '1' },
+      }),
+      timelineRes,
+      () => {},
+    );
+    expect(timelineRes.body).toMatchObject({
+      oldestCursor: 1,
+      latestCursor: 1,
+      nextCursor: 1,
+      returnedEventCount: 1,
+      retention: { layer: 'diagnostics-timeline-buffer' },
+      page: { layer: 'diagnostics-timeline-page', limit: 1 },
+      events: [
+        {
+          source: 'renderer.snapshot',
+          instanceId: 'window-1',
+          changedSections: ['page', 'chat', 'pipeline', 'run', 'features'],
+        },
+      ],
     });
 
     const disableRes = new FakeResponse();

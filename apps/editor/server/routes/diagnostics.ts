@@ -340,6 +340,7 @@ export function registerDiagnosticsRoutes(
         manifest: `${DIAGNOSTICS_AGENT_BASE_PATH}/manifest`,
         context: `${DIAGNOSTICS_AGENT_BASE_PATH}/context`,
         logs: `${DIAGNOSTICS_AGENT_BASE_PATH}/logs`,
+        timeline: `${DIAGNOSTICS_AGENT_BASE_PATH}/timeline`,
         opencodeSessions: `${DIAGNOSTICS_AGENT_BASE_PATH}/opencode/sessions`,
         opencodeMessages: `${DIAGNOSTICS_AGENT_BASE_PATH}/opencode/sessions/{sessionId}/messages`,
       },
@@ -348,6 +349,12 @@ export function registerDiagnosticsRoutes(
         next: 'Use nextCursor as the next after value.',
         bounds:
           'Inspect retention and page separately; buffer loss is not the same as response pagination.',
+      },
+      timelinePolling: {
+        query: { after: 'cursor from the previous timeline response', limit: '1-1000' },
+        next: 'Use timeline nextCursor as the next timeline after value.',
+        bounds:
+          'Inspect timeline retention and page separately; buffer loss is not the same as response pagination.',
       },
       sessionPagination: {
         query: { offset: 'zero-based owned-session offset', limit: '1-500' },
@@ -367,9 +374,10 @@ export function registerDiagnosticsRoutes(
         'workspace-scoped OpenCode session list and bounded message history',
         'renderer console/errors and transient OpenCode chat state',
         'current editor pipeline state and active run events',
+        'bounded content-minimized structured renderer timeline for chat, pipeline, run, page, and feature transitions',
       ],
       privacy:
-        'Known credential fields and common token forms are redacted and payloads are bounded. User-authored text can still contain sensitive data; do not share diagnostics without review.',
+        'Known credential fields and common token forms are redacted and payloads are bounded. Timeline events are structured and content-minimized: they exclude raw authored messages, drafts, prompts, tool input/output, and commands, but can include bounded redacted host error, validation, and Trial diagnostic strings. Broader context, logs, and OpenCode history can include local paths, workspace inventory, errors, and user-authored text. All diagnostics views remain sensitive; do not share them without review.',
     });
   });
 
@@ -387,6 +395,12 @@ export function registerDiagnosticsRoutes(
       desktopLogTail,
       desktopLogTailRead,
     });
+  });
+
+  app.get(`${DIAGNOSTICS_AGENT_BASE_PATH}/timeline`, (req, res) => {
+    const after = Number(req.query.after ?? 0);
+    const limit = Number(req.query.limit ?? 500);
+    res.json(hub.readTimeline(after, limit));
   });
 
   app.get(`${DIAGNOSTICS_AGENT_BASE_PATH}/opencode/sessions`, async (_req, res) => {

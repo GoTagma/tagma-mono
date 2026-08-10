@@ -360,11 +360,16 @@ function optionalArtifactHash(path: string, label: string): string | null {
   return existsSync(path) ? sha1(assertRegularTextFile(path, label)) : null;
 }
 
+function layoutArtifactHash(path: string, label: string): string | null {
+  if (!existsSync(path)) return null;
+  return semanticLayoutHash(JSON.parse(assertRegularTextFile(path, label)));
+}
+
 function pipelineArtifactHashes(yamlPath: string): ChatYamlStageArtifactHashes | null {
   if (!existsSync(yamlPath)) return null;
   return {
     contentHash: sha1(assertRegularTextFile(yamlPath, 'pipeline YAML')),
-    layoutHash: optionalArtifactHash(pipelineLayoutPath(yamlPath), 'pipeline layout'),
+    layoutHash: layoutArtifactHash(pipelineLayoutPath(yamlPath), 'pipeline layout'),
     requirementsHash: optionalArtifactHash(
       pipelineRequirementsPath(yamlPath),
       'pipeline requirements',
@@ -852,7 +857,7 @@ function describeStageEntry(
       layoutSize = layoutStat.size;
       layoutMtimeMs = layoutStat.mtimeMs;
       if (layoutStat.size <= MAX_ARTIFACT_BYTES) {
-        layoutHash = sha1(readFileSync(layoutPath, 'utf-8'));
+        layoutHash = layoutArtifactHash(layoutPath, 'staged layout');
       }
     }
   }
@@ -1042,8 +1047,59 @@ function canonicalPipeline(content: string): string {
   return JSON.stringify(withDefaultTrackColors(parseYaml(content)));
 }
 
+function isEmptyLayoutRecord(value: unknown): boolean {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === 0
+  );
+}
+
+function stableJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((item) => stableJsonValue(item));
+  if (typeof value !== 'object' || value === null) return value;
+
+  const result: Record<string, unknown> = {};
+  const record = value as Record<string, unknown>;
+  for (const key of Object.keys(record).sort()) {
+    const item = record[key];
+    if (item === undefined || typeof item === 'function' || typeof item === 'symbol') continue;
+    result[key] = stableJsonValue(item);
+  }
+  return result;
+}
+
+function normalizeSemanticLayout(value: unknown): unknown {
+  if (value == null) return null;
+  if (typeof value !== 'object' || Array.isArray(value)) return stableJsonValue(value);
+
+  const layout = { ...(value as Record<string, unknown>) };
+  if (isEmptyLayoutRecord(layout.positions)) delete layout.positions;
+  if (Array.isArray(layout.folders) && layout.folders.length === 0) delete layout.folders;
+  if (isEmptyLayoutRecord(layout.trackHeights)) delete layout.trackHeights;
+
+  const normalized = stableJsonValue(layout) as Record<string, unknown>;
+  return Object.keys(normalized).length === 0 ? null : normalized;
+}
+
 function canonicalLayout(value: unknown): string {
-  return JSON.stringify(value ?? null);
+  return JSON.stringify(normalizeSemanticLayout(value));
+}
+
+function normalizeLayoutArtifactContent(content: string | null): string | null {
+  if (content === null) return null;
+  return normalizeSemanticLayout(JSON.parse(content)) === null ? null : content;
+}
+
+function serializeLayoutArtifact(value: unknown): string | null {
+  const normalized = normalizeSemanticLayout(value);
+  return normalized === null ? null : JSON.stringify(normalized, null, 2);
+}
+
+function semanticLayoutHash(value: unknown): string | null {
+  const canonical = canonicalLayout(value);
+  return canonical === 'null' ? null : sha1(canonical);
 }
 
 function localBranchDiffersFromBase(
@@ -1133,10 +1189,9 @@ function writeStagedArtifactsToDestination(
   const stagedYaml = assertRegularTextFile(stagedYamlPath, 'staged YAML');
   const stagedConfig = withDefaultTrackColors(parseYaml(stagedYaml));
   const stagedLayoutPath = pipelineLayoutPath(stagedYamlPath);
-  const stagedLayout = existsSync(stagedLayoutPath)
-    ? assertRegularTextFile(stagedLayoutPath, 'staged layout')
-    : null;
-  if (stagedLayout !== null) JSON.parse(stagedLayout);
+  const stagedLayout = normalizeLayoutArtifactContent(
+    existsSync(stagedLayoutPath) ? assertRegularTextFile(stagedLayoutPath, 'staged layout') : null,
+  );
   const stagedRequirementsPath = pipelineRequirementsPath(stagedYamlPath);
   const stagedRequirements = existsSync(stagedRequirementsPath)
     ? assertRegularTextFile(stagedRequirementsPath, 'staged requirements')
@@ -1291,13 +1346,14 @@ function writeLocalBranch(ws: WorkspaceState, localBranch: ChatYamlStageLocalBra
   if (Buffer.byteLength(localBranch.yaml, 'utf-8') > MAX_ARTIFACT_BYTES) {
     throw new Error('Local branch YAML is too large.');
   }
-  const layoutContent = localBranch.layout ? JSON.stringify(localBranch.layout, null, 2) : null;
+  const layoutContent =
+    localBranch.layout === undefined ? undefined : serializeLayoutArtifact(localBranch.layout);
   if (layoutContent && Buffer.byteLength(layoutContent, 'utf-8') > MAX_ARTIFACT_BYTES) {
     throw new Error('Local branch layout is too large.');
   }
   withPipelineArtifactTransaction(sourcePath, () => {
     atomicWriteFileSync(sourcePath, localBranch.yaml);
-    if (localBranch.layout !== undefined) {
+    if (layoutContent !== undefined) {
       replaceOptionalArtifact(pipelineLayoutPath(sourcePath), layoutContent);
     }
     runPipelineManifestSync(sourcePath);
@@ -1333,7 +1389,7 @@ function describeRealEntry(ws: WorkspaceState, yamlPath: string): ChatYamlStageE
     layoutMtimeMs = layoutStat.mtimeMs;
     layoutSize = layoutStat.size;
     if (layoutStat.size <= MAX_ARTIFACT_BYTES) {
-      layoutHash = sha1(readFileSync(layoutPath, 'utf-8'));
+      layoutHash = layoutArtifactHash(layoutPath, 'pipeline layout');
     }
   }
   const requirementsPath = pipelineRequirementsPath(yamlPath);

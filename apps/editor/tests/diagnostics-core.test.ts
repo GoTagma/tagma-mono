@@ -82,9 +82,726 @@ describe('diagnostics value sanitizing', () => {
       'https://example.test/callback?access_token=[REDACTED]&mode=ok password=[REDACTED]',
     );
   });
+
+  test('preserves ordinary Basic labels while redacting credential-shaped Basic values', () => {
+    expect(
+      redactDiagnosticText(
+        'Basic run; Basic dGFnbWE6c2VjcmV0; Authorization: Basic dXNlcjpwYXNzd29yZA==',
+      ),
+    ).toBe('Basic run; Basic [REDACTED]; Authorization: Basic [REDACTED]');
+  });
 });
 
 describe('temporary diagnostics sessions', () => {
+  test('records bounded semantic renderer timeline deltas without heartbeat-only churn', () => {
+    const hub = new DiagnosticsHub({
+      maxTimelineEntries: 2,
+      maxTimelineBytes: 100_000,
+      tokenFactory: () => 'debug-token',
+    });
+    hub.enable('D:\\repo', 'http://127.0.0.1:43123');
+
+    const report = (
+      capturedAt: number,
+      overrides: {
+        chat?: Record<string, unknown>;
+        run?: Record<string, unknown>;
+      } = {},
+    ) => ({
+      instanceId: 'window-1',
+      workspaceKey: 'D:\\repo',
+      capturedAt,
+      snapshot: {
+        capturedAt,
+        page: { href: 'http://127.0.0.1/editor', visibilityState: 'visible', online: true },
+        chat: {
+          currentSessionId: 'chat-1',
+          sending: false,
+          pendingUserText: 'authored prompt must never enter the timeline',
+          turnHealth: {
+            status: 'healthy',
+            checkedAt: capturedAt,
+            lastSseEventAt: capturedAt - 1,
+          },
+          ...overrides.chat,
+        },
+        pipeline: { yamlPath: 'D:\\repo\\.tagma\\fact-checker.yaml', isDirty: false },
+        run: { active: false, status: 'idle', ...overrides.run },
+        features: { chatRouter: { status: 'ready' } },
+      },
+      logs: [],
+    });
+
+    expect(hub.acceptRendererReport(report(100))).toBe(true);
+    expect(hub.readTimeline(0, 10)).toMatchObject({
+      oldestCursor: 1,
+      latestCursor: 1,
+      nextCursor: 1,
+      retainedEventCount: 1,
+      returnedEventCount: 1,
+      events: [
+        {
+          cursor: 1,
+          timestamp: 100,
+          source: 'renderer.snapshot',
+          instanceId: 'window-1',
+          workspaceKey: 'D:\\repo',
+          changedSections: ['page', 'chat', 'pipeline', 'run', 'features'],
+        },
+      ],
+    });
+    expect(JSON.stringify(hub.readTimeline(0, 10))).not.toContain('authored prompt');
+
+    expect(hub.acceptRendererReport(report(200))).toBe(true);
+    expect(hub.readTimeline(1, 10).events).toEqual([]);
+
+    expect(hub.acceptRendererReport(report(300, { chat: { sending: true } }))).toBe(true);
+    expect(
+      hub.acceptRendererReport(report(400, { run: { active: true, status: 'running' } })),
+    ).toBe(true);
+
+    expect(hub.readTimeline(0, 10)).toMatchObject({
+      oldestCursor: 2,
+      latestCursor: 3,
+      nextCursor: 3,
+      droppedBeforeCursor: true,
+      retainedEventCount: 2,
+      availableEventCount: 2,
+      returnedEventCount: 2,
+      omittedEventCount: 0,
+      hasMore: false,
+      retention: {
+        layer: 'diagnostics-timeline-buffer',
+        droppedEventCount: 1,
+        requestedEventLossCount: 1,
+        truncated: true,
+      },
+      page: {
+        layer: 'diagnostics-timeline-page',
+        limit: 10,
+        omittedEventCount: 0,
+        truncated: false,
+      },
+      events: [
+        { cursor: 2, timestamp: 300, changedSections: ['chat'] },
+        { cursor: 3, timestamp: 400, changedSections: ['chat', 'run'] },
+      ],
+    });
+    expect(hub.readTimeline(0, 1)).toMatchObject({
+      returnedEventCount: 1,
+      omittedEventCount: 1,
+      hasMore: true,
+      page: {
+        layer: 'diagnostics-timeline-page',
+        limit: 1,
+        omittedEventCount: 1,
+        truncated: true,
+      },
+    });
+
+    hub.disable();
+    hub.enable('D:\\other', 'http://127.0.0.1:43123');
+    expect(hub.readTimeline(0, 10)).toMatchObject({
+      oldestCursor: null,
+      latestCursor: 0,
+      nextCursor: 0,
+      retainedEventCount: 0,
+      events: [],
+    });
+  });
+
+  test('projects comprehensive content-minimized timeline summaries from renderer reports', () => {
+    const hub = new DiagnosticsHub({ tokenFactory: () => 'debug-token' });
+    hub.enable('D:\\repo', 'http://127.0.0.1:43123');
+    expect(
+      hub.acceptRendererReport({
+        instanceId: 'window-summary',
+        workspaceKey: 'D:\\repo',
+        capturedAt: 500,
+        snapshot: {
+          page: { href: 'http://127.0.0.1/editor', visibilityState: 'visible', online: true },
+          chat: {
+            bootstrapStatus: 'ready',
+            bootstrapError: null,
+            currentSessionId: 'root-session',
+            sessionCount: 2,
+            returnedSessionCount: 2,
+            omittedSessionCount: 0,
+            messageCount: 3,
+            returnedMessageCount: 3,
+            omittedMessageCount: 0,
+            messageSummaries: [
+              {
+                id: 'assistant-1',
+                role: 'assistant',
+                createdAt: 100,
+                completedAt: 200,
+                finish: 'tool-calls',
+                agent: 'tagma-router',
+                partTypes: ['text', 'tool'],
+                text: 'private message text',
+              },
+            ],
+            toolCallSummaries: [
+              {
+                messageId: 'assistant-1',
+                callId: 'call-1',
+                tool: 'task',
+                status: 'completed',
+                error: null,
+                childSessionId: 'child-1',
+                childAgent: 'pipeline',
+                startedAt: 120,
+                completedAt: 190,
+                input: { present: true, fieldCount: 2, prompt: 'private tool prompt' },
+                output: { present: true, chars: 200, raw: 'private tool output' },
+              },
+            ],
+            toolCallCount: 1,
+            returnedToolCallCount: 1,
+            omittedToolCallCount: 0,
+            sending: false,
+            reconciling: true,
+            reconcilingSessionId: 'root-session',
+            flushing: false,
+            pendingUserTextSummary: { present: true, chars: 21 },
+            queuedMessageCount: 1,
+            pendingPermissionCount: 1,
+            sessionStatus: { type: 'busy' },
+            turnHealth: {
+              status: 'ok',
+              detail: 'connection healthy',
+              checkedAt: 499,
+              lastSseEventAt: 498,
+            },
+            activeChatYamlLifecycle: {
+              turnId: 'turn-1',
+              sessionId: 'root-session',
+              stageId: 'stage-1',
+              hostTrialActive: true,
+              cancellationRequested: false,
+            },
+            postChatYamlActionSummary: {
+              kind: 'refresh-current',
+              status: 'repairing',
+              phase: 'trial-running',
+              compile: { success: true },
+            },
+            sendError: 'token=very-secret routing failed',
+            completionWarning: 'Unsupported finish reason.',
+            finishedTurnQueueLength: 1,
+            lastFinishedTurnSummary: {
+              id: 'turn-1',
+              sessionId: 'root-session',
+              endedAt: 250,
+              hidden: false,
+              termination: 'completed',
+            },
+            sessionYamlResultSummary: {
+              sessionId: 'root-session',
+              kind: 'refresh-current',
+              path: 'D:\\repo\\.tagma\\fact-checker\\fact-checker.yaml',
+              pipelineName: 'Fact Checker',
+              status: 'failed',
+              compile: {
+                success: true,
+                summary: 'Compile passed.',
+                validation: { totalCount: 0, returnedCount: 0, omittedCount: 0 },
+              },
+              trial: {
+                success: false,
+                kind: 'verification-failed',
+                ran: true,
+                totalTaskCount: 4,
+                omittedTaskCount: 0,
+                taskStatusCounts: { success: 3, failed: 1 },
+                repairAuthorization: 'pipeline-change-allowed',
+                prerequisiteState: 'available',
+                verificationMode: 'real-baseline-and-isolated-cases',
+                plannedCaseCount: 2,
+                caseResultCount: 2,
+                notRunCaseCount: 0,
+                planTelemetry: {
+                  version: 2,
+                  yamlHash: 'private-yaml-hash',
+                  relativeYamlPath: 'fact-checker/fact-checker.yaml',
+                  attemptIds: [
+                    ...Array.from({ length: 55 }, (_, index) => `attempt-${index}`),
+                    { raw: 'private attempt payload' },
+                  ],
+                  toolAttemptCount: 55,
+                  validationRejectionCount: 55,
+                  repeatedValidationRejectionCount: 4,
+                  successfulWriteCount: 0,
+                  firstAttemptAt: 100,
+                  lastAttemptAt: 900,
+                  elapsedMs: 800,
+                  rejections: Array.from({ length: 55 }, (_, index) => ({
+                    fingerprint: `fingerprint-${index}`,
+                    count: index + 1,
+                    message: `Trial plan case ${index} is missing required status. token=private-${index}`,
+                    toolPayload: 'private rejection payload',
+                  })),
+                  toolPayload: 'private telemetry payload',
+                },
+                plan: {
+                  summary: 'private model-authored plan summary',
+                  goalCount: 1,
+                  coverageCount: 2,
+                  findingCount: 3,
+                  caseCount: 4,
+                },
+              },
+              repairAttempts: 1,
+              planningTelemetry: { promptCount: 2, toolAttemptCount: 1 },
+              reconcile: {
+                outcome: 'adopted',
+                conflicts: [],
+                compileSuccess: true,
+                trialRunSuccess: false,
+                trialVerification: 'not-verified',
+              },
+              completedAt: 300,
+            },
+            messages: [{ text: 'private message body' }],
+            composerDraft: 'private composer draft',
+            pendingUserText: 'private pending user text',
+          },
+          pipeline: {
+            workDir: 'D:\\repo',
+            yamlPath: 'D:\\repo\\.tagma\\fact-checker\\fact-checker.yaml',
+            yamlRunVersion: 8,
+            isDirty: true,
+            layoutDirty: false,
+            loading: false,
+            errorMessage: null,
+            selectedTaskId: 'research.verify',
+            selectedTaskIds: ['research.verify'],
+            selectedTrackId: 'research',
+            pipelineName: 'Fact Checker',
+            trackCount: 2,
+            taskCount: 4,
+            validationSummary: { totalCount: 1, returnedCount: 1, omittedCount: 0 },
+            undoDepth: 3,
+            redoDepth: 1,
+            config: { tracks: [{ tasks: [{ command: 'private shell command' }] }] },
+          },
+          run: {
+            active: true,
+            viewMode: 'live',
+            runId: 'run-1',
+            status: 'running',
+            selectedTaskId: 'research.verify',
+            error: null,
+            abortReason: null,
+            lastEventSeq: 12,
+            taskCount: 1,
+            taskStatuses: [
+              {
+                qualifiedTaskId: 'research.verify',
+                taskId: 'verify',
+                trackId: 'research',
+                taskName: 'Verify',
+                status: 'running',
+                startedAt: '2026-08-10T10:00:00.000Z',
+                stdout: { present: true, bytes: 20, raw: 'private stdout' },
+                stderr: { present: false, bytes: 0 },
+                normalizedOutput: { present: false, chars: 0 },
+                logCount: 2,
+                totalLogCount: 4,
+              },
+            ],
+            pendingApprovalCount: 1,
+            pendingApprovals: [
+              {
+                key: 'approval-1',
+                id: 'approval-1',
+                runId: 'run-1',
+                taskId: 'verify',
+                trackId: 'research',
+                createdAt: '2026-08-10T10:00:01.000Z',
+                timeoutMs: 30_000,
+                message: { present: true, chars: 20, raw: 'private approval message' },
+                command: 'private approval command',
+              },
+            ],
+            latestLog: { present: true, chars: 18, raw: 'private run log' },
+            logCount: 8,
+            returnedLogCount: 8,
+            omittedLogCount: 0,
+            logEvidence: { layer: 'renderer-diagnostics-log-window', truncated: false },
+            latestPipelineLog: {
+              level: 'error',
+              timestamp: '10:00:02.000',
+              text: { present: true, chars: 25, raw: 'private pipeline log' },
+            },
+            pipelineLogCount: 3,
+            returnedPipelineLogCount: 3,
+            omittedPipelineLogCount: 0,
+            pipelineLogEvidence: {
+              layer: 'renderer-diagnostics-pipeline-log-window',
+              truncated: false,
+            },
+            requirementsSummary: { missingCount: 1, status: 'blocked' },
+            requirementsMissing: [{ command: 'private install command' }],
+            yamlPath: 'D:\\repo\\.tagma\\fact-checker\\fact-checker.yaml',
+            replayFromRunId: null,
+          },
+          features: {
+            chatRouter: {
+              status: 'degraded',
+              ready: false,
+              error: 'Bearer private-secret unavailable',
+              prompt: 'private feature prompt',
+            },
+          },
+        },
+        logs: [],
+      }),
+    ).toBe(true);
+
+    const event = hub.readTimeline(0, 10).events[0];
+    expect(event?.state).toMatchObject({
+      chat: {
+        currentSessionId: 'root-session',
+        messageSummaries: [
+          {
+            id: 'assistant-1',
+            role: 'assistant',
+            finish: 'tool-calls',
+            partTypes: ['text', 'tool'],
+          },
+        ],
+        toolCallSummaries: [
+          {
+            messageId: 'assistant-1',
+            callId: 'call-1',
+            childSessionId: 'child-1',
+            childAgent: 'pipeline',
+            output: { present: true, chars: 200 },
+          },
+        ],
+        turnHealth: { status: 'ok', detail: 'connection healthy' },
+        sessionYamlResultSummary: {
+          status: 'failed',
+          compile: { success: true },
+          trial: {
+            success: false,
+            taskStatusCounts: { success: 3, failed: 1 },
+            repairAuthorization: 'pipeline-change-allowed',
+            planTelemetry: {
+              version: 2,
+              relativeYamlPath: 'fact-checker/fact-checker.yaml',
+              toolAttemptCount: 55,
+              validationRejectionCount: 55,
+              repeatedValidationRejectionCount: 4,
+              successfulWriteCount: 0,
+              firstAttemptAt: 100,
+              lastAttemptAt: 900,
+              elapsedMs: 800,
+            },
+            plan: { goalCount: 1, coverageCount: 2, findingCount: 3, caseCount: 4 },
+          },
+          repairAttempts: 1,
+          planningTelemetry: { promptCount: 2, toolAttemptCount: 1 },
+          reconcile: { outcome: 'adopted', trialRunSuccess: false },
+          completedAt: 300,
+        },
+      },
+      pipeline: {
+        pipelineName: 'Fact Checker',
+        trackCount: 2,
+        taskCount: 4,
+        undoDepth: 3,
+        redoDepth: 1,
+      },
+      run: {
+        runId: 'run-1',
+        status: 'running',
+        taskStatuses: [
+          {
+            qualifiedTaskId: 'research.verify',
+            status: 'running',
+            stdout: { present: true, bytes: 20 },
+          },
+        ],
+        pendingApprovals: [
+          {
+            id: 'approval-1',
+            taskId: 'verify',
+            message: { present: true, chars: 20 },
+          },
+        ],
+        latestLog: { present: true, chars: 18 },
+        latestPipelineLog: {
+          level: 'error',
+          text: { present: true, chars: 25 },
+        },
+        requirementsSummary: { missingCount: 1, status: 'blocked' },
+      },
+      features: {
+        chatRouter: {
+          status: 'degraded',
+          ready: false,
+          error: 'Bearer [REDACTED] unavailable',
+        },
+      },
+    });
+    const serialized = JSON.stringify(event);
+    const trial = (
+      (event?.state.chat as Record<string, unknown>).sessionYamlResultSummary as Record<
+        string,
+        unknown
+      >
+    ).trial as Record<string, unknown>;
+    const planTelemetry = trial.planTelemetry as Record<string, unknown>;
+    expect(planTelemetry.attemptIds).toHaveLength(50);
+    expect(planTelemetry.rejections).toHaveLength(50);
+    expect(serialized).toContain('missing required status');
+    for (const privateValue of [
+      'private message text',
+      'private tool prompt',
+      'private tool output',
+      'private composer draft',
+      'private shell command',
+      'private stdout',
+      'private approval message',
+      'private approval command',
+      'private run log',
+      'private pipeline log',
+      'private install command',
+      'private feature prompt',
+      'private-yaml-hash',
+      'private model-authored plan summary',
+      'private attempt payload',
+      'private rejection payload',
+      'private telemetry payload',
+      'private-54',
+    ]) {
+      expect(serialized).not.toContain(privateValue);
+    }
+    expect(serialized).not.toContain('very-secret');
+  });
+
+  test('bounds timeline retention independently by serialized event bytes', () => {
+    const hub = new DiagnosticsHub({
+      maxTimelineEntries: 100,
+      maxTimelineBytes: 1_024,
+      tokenFactory: () => 'debug-token',
+    });
+    hub.enable('D:\\repo', 'http://127.0.0.1:43123');
+    const accept = (capturedAt: number, error: string | null) =>
+      hub.acceptRendererReport({
+        instanceId: 'window-bytes',
+        workspaceKey: 'D:\\repo',
+        capturedAt,
+        snapshot: {
+          page: { href: 'http://127.0.0.1/editor', visibilityState: 'visible', online: true },
+          chat: { currentSessionId: 'chat-1', sendError: error },
+          pipeline: {},
+          run: {},
+          features: {},
+        },
+        logs: [],
+      });
+
+    expect(accept(1, null)).toBe(true);
+    expect(accept(2, `failure-${'x'.repeat(900)}`)).toBe(true);
+    expect(accept(3, `failure-${'y'.repeat(900)}`)).toBe(true);
+    expect(accept(4, `failure-${'z'.repeat(900)}`)).toBe(true);
+
+    const page = hub.readTimeline(0, 10);
+    const retainedBytes = page.events.reduce(
+      (total, event) => total + Buffer.byteLength(JSON.stringify(event), 'utf8'),
+      0,
+    );
+    expect(retainedBytes).toBeLessThanOrEqual(1_024);
+    for (const event of page.events) {
+      const eventBytes = Buffer.byteLength(JSON.stringify(event), 'utf8');
+      expect(eventBytes).toBeLessThanOrEqual(1_024);
+      expect(event.truncation?.sourceBytes).toBeGreaterThan(1_024);
+      expect(event.truncation?.returnedBytes).toBe(eventBytes);
+    }
+    expect(page).toMatchObject({
+      oldestCursor: 2,
+      latestCursor: 4,
+      retainedEventCount: 3,
+      droppedBeforeCursor: true,
+      retention: {
+        layer: 'diagnostics-timeline-buffer',
+        droppedEventCount: 1,
+        requestedEventLossCount: 1,
+        truncated: true,
+      },
+      events: [
+        {
+          cursor: 2,
+          timestamp: 2,
+          source: 'renderer.snapshot',
+          instanceId: 'window-bytes',
+          workspaceKey: 'D:\\repo',
+          changedSections: ['chat'],
+          state: {},
+          truncation: {
+            layer: 'diagnostics-timeline-event',
+            reason: 'byte-limit',
+            limitBytes: 1_024,
+            sourceBytes: expect.any(Number),
+            returnedBytes: expect.any(Number),
+          },
+        },
+        {
+          cursor: 3,
+          timestamp: 3,
+          changedSections: ['chat'],
+          state: {},
+          truncation: { layer: 'diagnostics-timeline-event', reason: 'byte-limit' },
+        },
+        {
+          cursor: 4,
+          timestamp: 4,
+          changedSections: ['chat'],
+          state: {},
+          truncation: { layer: 'diagnostics-timeline-event', reason: 'byte-limit' },
+        },
+      ],
+    });
+  });
+
+  test('replaces an oversized first and only timeline event with a bounded marker', () => {
+    const hub = new DiagnosticsHub({
+      maxTimelineBytes: 1_024,
+      tokenFactory: () => 'debug-token',
+    });
+    hub.enable('D:\\repo', 'http://127.0.0.1:43123');
+    expect(
+      hub.acceptRendererReport({
+        instanceId: 'window-only-overflow',
+        workspaceKey: 'D:\\repo',
+        capturedAt: 10,
+        snapshot: {
+          page: { href: 'http://127.0.0.1/editor', visibilityState: 'visible', online: true },
+          chat: { currentSessionId: 'chat-1', sendError: `failure-${'y'.repeat(3_000)}` },
+          pipeline: {},
+          run: {},
+          features: {},
+        },
+        logs: [],
+      }),
+    ).toBe(true);
+
+    const page = hub.readTimeline(0, 10);
+    const retainedBytes = Buffer.byteLength(JSON.stringify(page.events[0]), 'utf8');
+    expect(retainedBytes).toBeLessThanOrEqual(1_024);
+    expect(page.events[0]?.truncation?.sourceBytes).toBeGreaterThan(1_024);
+    expect(page.events[0]?.truncation?.returnedBytes).toBe(retainedBytes);
+    expect(page).toMatchObject({
+      oldestCursor: 1,
+      latestCursor: 1,
+      retainedEventCount: 1,
+      retention: {
+        droppedEventCount: 0,
+        requestedEventLossCount: 0,
+        truncated: false,
+      },
+      events: [
+        {
+          cursor: 1,
+          timestamp: 10,
+          source: 'renderer.snapshot',
+          instanceId: 'window-only-overflow',
+          workspaceKey: 'D:\\repo',
+          changedSections: ['page', 'chat', 'pipeline', 'run', 'features'],
+          state: {},
+          truncation: {
+            layer: 'diagnostics-timeline-event',
+            reason: 'byte-limit',
+            limitBytes: 1_024,
+            sourceBytes: expect.any(Number),
+            returnedBytes: expect.any(Number),
+          },
+        },
+      ],
+    });
+  });
+
+  test('keeps an overflow marker within the byte cap when identities require JSON escaping', () => {
+    const hub = new DiagnosticsHub({
+      maxTimelineBytes: 1_024,
+      tokenFactory: () => 'debug-token',
+    });
+    hub.enable('D:\\repo', 'http://127.0.0.1:43123');
+    const escapedIdentityChunk = String.fromCharCode(0, 92, 34);
+    expect(
+      hub.acceptRendererReport({
+        instanceId: (escapedIdentityChunk.repeat(80) + 'window').slice(0, 128),
+        workspaceKey: 'D:' + escapedIdentityChunk.repeat(1_000),
+        capturedAt: 15,
+        snapshot: {
+          page: { href: 'http://127.0.0.1/editor', visibilityState: 'visible', online: true },
+          chat: { sendError: `failure-${'z'.repeat(3_000)}` },
+          pipeline: {},
+          run: {},
+          features: {},
+        },
+        logs: [],
+      }),
+    ).toBe(true);
+
+    const page = hub.readTimeline(0, 10);
+    const event = page.events[0]!;
+    const retainedBytes = Buffer.byteLength(JSON.stringify(event), 'utf8');
+    expect(retainedBytes).toBeLessThanOrEqual(1_024);
+    expect(event).toMatchObject({
+      instanceId: '[timeline-event-id-omitted]',
+      workspaceKey: null,
+      changedSections: ['page', 'chat', 'pipeline', 'run', 'features'],
+      state: {},
+      truncation: {
+        layer: 'diagnostics-timeline-event',
+        reason: 'byte-limit',
+        limitBytes: 1_024,
+        sourceBytes: expect.any(Number),
+        returnedBytes: retainedBytes,
+      },
+    });
+  });
+
+  test('removes page query and hash data from timeline events', () => {
+    const hub = new DiagnosticsHub({ tokenFactory: () => 'debug-token' });
+    hub.enable('D:\\repo', 'http://127.0.0.1:43123');
+    expect(
+      hub.acceptRendererReport({
+        instanceId: 'window-private-location',
+        workspaceKey: 'D:\\repo',
+        capturedAt: 20,
+        snapshot: {
+          page: {
+            href: 'http://127.0.0.1:43123/editor/detail?workspace=private-repo&draft=secret#private-fragment',
+            visibilityState: 'visible',
+            online: true,
+          },
+          chat: {},
+          pipeline: {},
+          run: {},
+          features: {},
+        },
+        logs: [],
+      }),
+    ).toBe(true);
+
+    const event = hub.readTimeline(0, 10).events[0];
+    expect(event?.state.page).toEqual({
+      href: 'http://127.0.0.1:43123/editor/detail',
+      visibilityState: 'visible',
+      online: true,
+    });
+    const serialized = JSON.stringify(event);
+    expect(serialized).not.toContain('private-repo');
+    expect(serialized).not.toContain('draft=secret');
+    expect(serialized).not.toContain('private-fragment');
+  });
+
   test('keeps the newest desktop log records when the context bounds a long tail', () => {
     const root = mkdtempSync(join(tmpdir(), 'tagma-diagnostics-log-'));
     const logPath = join(root, 'sidecar.log');

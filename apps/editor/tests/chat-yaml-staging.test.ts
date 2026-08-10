@@ -167,6 +167,205 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
+  test('treats a missing base layout file as unchanged when the renderer reports the default empty layout', async () => {
+    const { ws, sourcePath, baseYaml } = setupWorkspace();
+    rmSync(pipelineLayoutPath(sourcePath), { force: true });
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    writeFileSync(staged.stagedPath, yamlFor('Agent Pipeline', 'agent'), 'utf-8');
+
+    const result = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+      localBranch: {
+        sourcePath,
+        yaml: baseYaml,
+        layout: { positions: {}, folders: [], trackHeights: {} },
+        changed: false,
+      },
+    });
+
+    expect(result.outcome).toBe('adopted');
+    expect(result.conflicts).not.toContain('local-branch-changed');
+    expect(result.localBranchPersisted).toBe(false);
+    expect(readFileSync(sourcePath, 'utf-8')).toContain('prompt: agent');
+    stopWorkspace(ws);
+  });
+
+  test('treats an agent-created default empty layout as unchanged from a missing base layout', async () => {
+    const { ws, sourcePath, baseYaml } = setupWorkspace();
+    rmSync(pipelineLayoutPath(sourcePath), { force: true });
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    writeFileSync(
+      pipelineLayoutPath(staged.stagedPath),
+      JSON.stringify({ positions: {}, folders: [], trackHeights: {} }, null, 2),
+      'utf-8',
+    );
+
+    const result = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+    });
+
+    expect(result.outcome).toBe('unchanged');
+    expect(result.conflicts).toEqual([]);
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
+    expect(existsSync(pipelineLayoutPath(sourcePath))).toBe(false);
+    stopWorkspace(ws);
+  });
+
+  test('does not materialize an agent default empty layout when adopting other staged changes', async () => {
+    const { ws, sourcePath } = setupWorkspace();
+    rmSync(pipelineLayoutPath(sourcePath), { force: true });
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    writeFileSync(staged.stagedPath, yamlFor('Agent Pipeline', 'agent'), 'utf-8');
+    writeFileSync(
+      pipelineLayoutPath(staged.stagedPath),
+      JSON.stringify({ positions: {}, folders: [], trackHeights: {} }, null, 2),
+      'utf-8',
+    );
+
+    const result = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+    });
+
+    expect(result.outcome).toBe('adopted');
+    expect(readFileSync(sourcePath, 'utf-8')).toContain('prompt: agent');
+    expect(existsSync(pipelineLayoutPath(sourcePath))).toBe(false);
+    stopWorkspace(ws);
+  });
+
+  test('does not materialize a semantic empty local layout when another conflict forks', async () => {
+    const { ws, sourcePath } = setupWorkspace();
+    rmSync(pipelineLayoutPath(sourcePath), { force: true });
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    writeFileSync(staged.stagedPath, yamlFor('Agent Pipeline', 'agent'), 'utf-8');
+    const localYaml = yamlFor('User Pipeline', 'user');
+
+    const result = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+      forceForkReason: 'path-moved',
+      localBranch: {
+        sourcePath,
+        yaml: localYaml,
+        layout: { positions: {}, folders: [], trackHeights: {} },
+      },
+    });
+
+    expect(result.outcome).toBe('forked');
+    expect(result.conflicts).toContain('path-moved');
+    expect(result.conflicts).toContain('local-branch-changed');
+    expect(result.localBranchPersisted).toBe(true);
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(localYaml);
+    expect(existsSync(pipelineLayoutPath(sourcePath))).toBe(false);
+    stopWorkspace(ws);
+  });
+
+  test('keeps a non-empty local layout distinct from a missing base layout', async () => {
+    const { ws, sourcePath, baseYaml } = setupWorkspace();
+    rmSync(pipelineLayoutPath(sourcePath), { force: true });
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    writeFileSync(staged.stagedPath, yamlFor('Agent Pipeline', 'agent'), 'utf-8');
+    const localLayout = {
+      positions: { 'main.task': { x: 60 } },
+      folders: [],
+      trackHeights: {},
+    };
+
+    const result = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+      localBranch: {
+        sourcePath,
+        yaml: baseYaml,
+        layout: localLayout,
+      },
+    });
+
+    expect(result.outcome).toBe('forked');
+    expect(result.conflicts).toContain('local-branch-changed');
+    expect(result.localBranchPersisted).toBe(true);
+    expect(JSON.parse(readFileSync(pipelineLayoutPath(sourcePath), 'utf-8'))).toEqual({
+      positions: localLayout.positions,
+    });
+    stopWorkspace(ws);
+  });
+
+  test('treats omitted empty layout fields as equivalent when other layout state is non-empty', async () => {
+    const { ws, sourcePath, baseYaml } = setupWorkspace();
+    const baseLayout = {
+      positions: { 'main.task': { x: 20, y: 40 } },
+      trackHeights: { main: 140 },
+    };
+    writeFileSync(pipelineLayoutPath(sourcePath), JSON.stringify(baseLayout, null, 2), 'utf-8');
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    writeFileSync(staged.stagedPath, yamlFor('Agent Pipeline', 'agent'), 'utf-8');
+
+    const result = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+      localBranch: {
+        sourcePath,
+        yaml: baseYaml,
+        layout: {
+          positions: { 'main.task': { y: 40, x: 20 } },
+          folders: [],
+          trackHeights: { main: 140 },
+        },
+      },
+    });
+
+    expect(result.outcome).toBe('adopted');
+    expect(result.conflicts).not.toContain('local-branch-changed');
+    expect(result.localBranchPersisted).toBe(false);
+    stopWorkspace(ws);
+  });
+
+  test('treats reordered non-empty staged layout objects as the same semantic artifact', async () => {
+    const { ws, sourcePath, baseYaml } = setupWorkspace();
+    const baseLayout = {
+      positions: {
+        'main.task': { x: 20, y: 40 },
+        'main.other': { x: 80, y: 10 },
+      },
+      folders: [],
+      trackHeights: { main: 140 },
+    };
+    writeFileSync(pipelineLayoutPath(sourcePath), JSON.stringify(baseLayout, null, 2), 'utf-8');
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const reorderedLayout = {
+      trackHeights: { main: 140 },
+      positions: {
+        'main.other': { y: 10, x: 80 },
+        'main.task': { y: 40, x: 20 },
+      },
+      folders: [],
+    };
+    writeFileSync(
+      pipelineLayoutPath(staged.stagedPath),
+      JSON.stringify(reorderedLayout, null, 2),
+      'utf-8',
+    );
+
+    const result = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+    });
+
+    expect(result.outcome).toBe('unchanged');
+    expect(result.conflicts).toEqual([]);
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
+    stopWorkspace(ws);
+  });
+
   test('ignores stale client dirty hints and compares the local branch with base on the server', async () => {
     const { ws, sourcePath, baseYaml } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });

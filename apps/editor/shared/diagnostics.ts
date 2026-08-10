@@ -97,8 +97,12 @@ function sensitiveKey(key: string): boolean {
  */
 export function redactDiagnosticText(input: string): string {
   return input
-    .replace(/(\bAuthorization\s*[:=]\s*)(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, '$1$2 [REDACTED]')
-    .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 [REDACTED]')
+    .replace(
+      /(\bAuthorization["']?\s*[:=]\s*["']?\s*)(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi,
+      '$1$2 [REDACTED]',
+    )
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [REDACTED]')
+    .replace(/\bBasic\s+[A-Za-z0-9+/]{8,}={0,2}(?![A-Za-z0-9+/=])/gi, 'Basic [REDACTED]')
     .replace(
       /(\b(?:[A-Za-z0-9_]*(?:API[_-]?KEY|PASSWORD|PASSWD|SECRET|ACCESS[_-]?TOKEN|REFRESH[_-]?TOKEN|CLIENT[_-]?SECRET|PRIVATE[_-]?KEY)[A-Za-z0-9_]*)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s&,;]+)/gi,
       '$1[REDACTED]',

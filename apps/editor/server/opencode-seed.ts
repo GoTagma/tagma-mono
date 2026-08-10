@@ -181,6 +181,8 @@ Inter-task output-collision coverage requires at least two target tasks plus dis
 
 Pass the exact staged YAML path from the host request. Start with \`begin\`, send one case per \`upsert-case\`, set coverage and findings separately, and let \`commit\` validate the complete plan before writing. Every case must have non-empty qualified \`targetTaskIds\`; never omit or empty them because that would mean an unsafe full-pipeline run at the execution boundary. Every finding must set \`repairScope\`: \`pipeline-artifact\` only for YAML or companion defects, otherwise \`diagnostic-only\`. Blocked coverage is diagnostic-only; accepted risk yields \`passed-with-warnings\`.
 
+Pre-commit operations validate their proposed section and immediately decidable links before changing the draft; correct a rejected operation and retry it before commit. Every coverage entry must include \`dimension\`, \`status\`, \`caseIds\`, and \`rationale\`; status must be \`covered\`, \`accepted-risk\`, \`blocked\`, or \`not-applicable\`. Every finding must include \`severity\`, \`repairScope\`, \`summary\`, and \`evidence\`.
+
 Fixture and expectation paths are relative to the isolated case project root and may target only fixtures or outputs; never assert staged YAML or its companion artifacts (\`.compile.log\`, \`.layout.json\`, \`.manifest.json\`, \`.requirements.md\`, or \`.trial-plan.json\`). Host-private files live under case \`.tagma\`.
 
 Use file-equals when exact text preservation matters, including an empty expected string for empty-content cases. Use exact text or later-paragraph markers so a first-line-only implementation cannot pass.
@@ -800,13 +802,13 @@ Success is a pipeline the editor can compile and the user can plausibly run, not
 
 ## Final Result Contract
 
-Your final response must be non-empty. Return a concise report with files changed, final compile evidence, run or Trial evidence, assumptions, and genuine limitations. Until the host result exists, use the exact status phrase authoring complete; host verification pending; do not call it built, ready, successful, or verified merely because compilation passed. If work cannot finish, report the exact failure or blocker. Never end the turn after a tool call without a final response.
+Your final response must be non-empty. Return a concise report with files changed, final compile evidence, run or Trial evidence, assumptions, and genuine limitations. Until the host result exists, use the exact status phrase authoring complete; host verification pending; do not call it built, ready, successful, or verified merely because compilation passed. Host verification starts automatically after your response. Do not ask whether the user wants the host to verify or compile, and do not offer next steps that depend on the provisional authoring state. If work cannot finish, report the exact failure or blocker. Never end the turn after a tool call without a final response.
 
 ## Trial Run
 
 Host enters a dedicated planning phase when Trial is enabled. Host runs a bounded trial before release only after explicit opt-in in Editor Settings. Never claim it passed without host evidence. The trial-run failure evidence remains the same authorized logical turn. Never remove or weaken a manual approval or safety boundary. Report prerequisites.
 
-Relative trigger paths resolve from the real workspace root (or the task cwd), never from the YAML folder. During staged authoring, a staged pipeline support file does not satisfy that real-workspace baseline before finalize. If every DAG root waits on a file or directory missing from the real workspace, report the exact prerequisite and expect host Trial to stop at preflight; never present a same-folder sample as evidence that the trigger is ready.
+Relative trigger paths resolve from the real workspace root (or the task cwd), never from the YAML folder. During staged authoring, a staged pipeline support file does not satisfy that real-workspace baseline before finalize. Report every missing real-workspace prerequisite precisely. A missing file or directory input is fixture-backed for host Trial: the planner supplies representative data only in isolated cases, and the host may skip an unavailable real-workspace baseline. Never create a placeholder in the real workspace or present a same-folder sample as evidence that the trigger is ready.
 
 ## Self-Review
 

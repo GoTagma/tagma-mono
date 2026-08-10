@@ -484,6 +484,9 @@ test('tagma-pipeline agent cooperates with optional host trial-run repair before
   expect(doc).toContain(
     'staged pipeline support file does not satisfy that real-workspace baseline',
   );
+  expect(doc).toContain('missing file or directory input is fixture-backed for host Trial');
+  expect(doc).toContain('Host verification starts automatically after your response');
+  expect(doc).toContain('Do not ask whether the user wants the host to verify or compile');
   expect(doc).toContain('authoring complete; host verification pending');
   expect(doc).toContain('distinguish missing or malformed artifacts from valid empty collections');
 });
@@ -515,6 +518,15 @@ test('dedicated hidden tagma-trial-planner owns targeted Trial Plan authoring', 
     expect(planner).toContain('then `commit` exactly once');
     expect(planner).toContain(
       'The begin operation requires a non-empty summary and a non-empty string-array goals',
+    );
+    expect(planner).toContain(
+      'Every coverage entry must include `dimension`, `status`, `caseIds`, and `rationale`',
+    );
+    expect(planner).toContain(
+      'status must be `covered`, `accepted-risk`, `blocked`, or `not-applicable`',
+    );
+    expect(planner).toContain(
+      'Every finding must include `severity`, `repairScope`, `summary`, and `evidence`',
     );
     expect(planner).toContain('resubmit both fields when resuming a matching draft');
     expect(planner).toContain('Never submit the whole plan or multiple cases in one call');
@@ -1161,7 +1173,7 @@ test('trial-plan tool rejects semantic coverage gaps and unsupported findings be
   }
 });
 
-test('trial-plan commit reports every unsupported covered dimension in one rejection', async () => {
+test('trial-plan coverage setter reports every unsupported covered dimension before commit', async () => {
   const generated = await loadGeneratedTrialPlanTool();
   const stage = makeTrialPlanStage();
   try {
@@ -1191,8 +1203,9 @@ test('trial-plan commit reports every unsupported covered dimension in one rejec
       /repeat-run-output-collision covered without concrete linked-case evidence[\s\S]*empty-content covered without concrete linked-case evidence/,
     );
     expect(readChatPipelineTrialPlanToolTelemetry(stage.yamlPath)).toMatchObject({
-      toolAttemptCount: 1,
-      validationRejectionCount: 1,
+      toolAttemptCount: 0,
+      validationRejectionCount: 0,
+      successfulWriteCount: 0,
     });
     expect(existsSync(stage.planPath)).toBe(false);
   } finally {
@@ -1276,6 +1289,15 @@ test('tagma-trial-planner instructs host trial-plan failure handling for live .t
     expect(doc).toContain('do not use symlinks, junctions, copies, or writes to live `.tagma`');
     expect(doc).toContain('briefly report the host/tool error and end the physical turn');
     expect(doc).toContain('Every finding must set `repairScope`');
+    expect(doc).toContain(
+      'Every coverage entry must include `dimension`, `status`, `caseIds`, and `rationale`',
+    );
+    expect(doc).toContain(
+      'Every finding must include `severity`, `repairScope`, `summary`, and `evidence`',
+    );
+    expect(doc).toContain(
+      'Pre-commit operations validate their proposed section and immediately decidable links',
+    );
     expect(doc).toContain('Blocked coverage is diagnostic-only');
   } finally {
     rmSync(dir, { recursive: true, force: true });

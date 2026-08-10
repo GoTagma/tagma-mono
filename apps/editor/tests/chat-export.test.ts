@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { buildConversationExport, conversationExportFilename } from '../src/utils/chat-export';
 import type { OpencodeThreadEntry, Part } from '../src/api/opencode-chat';
+import type { ChatYamlSessionResult } from '../src/store/chat-store';
 
 const textPart = (id: string, text: string, synthetic = false): Part =>
   ({
@@ -21,11 +22,32 @@ const reasoningPart = (id: string, text: string): Part =>
     text,
   }) as Part;
 
-const entry = (role: 'user' | 'assistant', id: string, parts: Part[]): OpencodeThreadEntry =>
+const entry = (
+  role: 'user' | 'assistant',
+  id: string,
+  parts: Part[],
+  time?: { created: number; completed?: number },
+  sessionID = 's1',
+): OpencodeThreadEntry =>
   ({
-    info: { id, sessionID: 's1', role },
+    info: { id, sessionID, role, ...(time ? { time } : {}) },
     parts,
   }) as OpencodeThreadEntry;
+
+const hostVerification = (sessionId = 's1', completedAt = 1_000): ChatYamlSessionResult => ({
+  kind: 'open-created',
+  path: 'D:/repo/.tagma/demo/demo.yaml',
+  name: 'demo.yaml',
+  pipelineName: 'Demo',
+  sessionId,
+  status: 'ready',
+  compile: {
+    success: true,
+    summary: 'Valid pipeline configuration',
+    validation: { errors: [], warnings: [] },
+  },
+  completedAt,
+});
 
 describe('chat conversation export', () => {
   test('builds markdown from visible user and assistant text', () => {
@@ -518,6 +540,258 @@ describe('chat conversation export', () => {
 
     expect(exported.content).toContain('Trial: passed with warnings (passed-with-warnings; ran)');
     expect(exported.content).not.toContain('Trial: passed (passed-with-warnings; ran)');
+  });
+
+  test('exports authoritative host verification with actionable planning rejection evidence', () => {
+    const exported = buildConversationExport({
+      format: 'txt',
+      title: 'Failed plan',
+      exportedAt: new Date('2026-05-20T12:00:00.000Z'),
+      messages: [
+        entry('user', 'u1', [textPart('u1p1', 'Build the pipeline.')], { created: 700 }),
+        entry(
+          'assistant',
+          'a1',
+          [
+            textPart(
+              'a1p1',
+              'authoring complete; host verification pending\n\nDo you want the host to verify?',
+            ),
+          ],
+          { created: 800, completed: 900 },
+        ),
+        entry('user', 'u2', [textPart('u2p1', 'What happened after verification?')], {
+          created: 1_100,
+        }),
+        entry(
+          'assistant',
+          'a2',
+          [textPart('a2p1', 'This later answer must remain in the export.')],
+          { created: 1_200, completed: 1_300 },
+        ),
+      ],
+      pipelineVerification: {
+        kind: 'open-created',
+        path: 'D:/repo/.tagma/demo/demo.yaml',
+        name: 'demo.yaml',
+        pipelineName: 'Demo',
+        sessionId: 's1',
+        status: 'failed',
+        compile: {
+          success: true,
+          summary: 'Valid pipeline configuration',
+          validation: { errors: [], warnings: [] },
+        },
+        trial: {
+          version: 10,
+          success: false,
+          kind: 'plan-failed',
+          ran: false,
+          runId: null,
+          summary: 'Trial plan tool attempt budget exhausted.',
+          durationMs: 1_000,
+          totalTaskCount: 0,
+          omittedTaskCount: 0,
+          tasks: [],
+          cases: [],
+          repairAuthorization: 'diagnostic-only',
+          planTelemetry: {
+            version: 2,
+            yamlHash: 'a'.repeat(40),
+            relativeYamlPath: 'demo/demo.yaml',
+            attemptIds: ['host-attempt-1', 'host-attempt-2', 'host-attempt-3'],
+            toolAttemptCount: 3,
+            validationRejectionCount: 3,
+            repeatedValidationRejectionCount: 0,
+            successfulWriteCount: 0,
+            firstAttemptAt: 1,
+            lastAttemptAt: 1,
+            elapsedMs: 1_000,
+            rejections: [
+              {
+                fingerprint: 'b'.repeat(64),
+                count: 1,
+                message: 'coverage[0].status must be a non-empty string.',
+              },
+              {
+                fingerprint: 'c'.repeat(64),
+                count: 2,
+                message: `Authorization: Bearer super-secret-token ${'x'.repeat(5_000)}`,
+              },
+            ],
+          },
+        },
+        planningTelemetry: {
+          promptCount: 1,
+          toolAttemptCount: 3,
+          validationRejectionCount: 3,
+          repeatedValidationRejectionCount: 0,
+          elapsedMs: 1_000,
+          inputTokens: 100,
+          outputTokens: 10,
+          reasoningTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          cost: 0,
+        },
+        completedAt: 1_000,
+      },
+    });
+
+    expect(exported.content).toContain(
+      'Host-owned final verification replaces the provisional assistant result for this pipeline turn.',
+    );
+    expect(exported.content).not.toContain('authoring complete; host verification pending');
+    expect(exported.content).not.toContain('Do you want the host to verify?');
+    expect(exported.content).toContain('What happened after verification?');
+    expect(exported.content).toContain('This later answer must remain in the export.');
+    expect(exported.content.indexOf('Pipeline Verification:')).toBeLessThan(
+      exported.content.indexOf('What happened after verification?'),
+    );
+    expect(exported.content).toContain(
+      'Planning rejection (1x): coverage[0].status must be a non-empty string.',
+    );
+    expect(exported.content).toContain('Planning rejection (2x): Authorization: Bearer [REDACTED]');
+    expect(exported.content).toContain('[chat-export truncated');
+    expect(exported.content).not.toContain('super-secret-token');
+  });
+
+  test('appends host verification when visible assistants belong to another session', () => {
+    const provisionalText = 'A result from a different session must remain visible.';
+    const foreignPart = {
+      ...textPart('foreign-assistant-text', provisionalText),
+      sessionID: 'other-session',
+    } as Part;
+    const exported = buildConversationExport({
+      format: 'txt',
+      title: 'Session-bound verification',
+      exportedAt: new Date('2026-05-20T12:00:00.000Z'),
+      messages: [
+        entry(
+          'assistant',
+          'foreign-assistant',
+          [foreignPart],
+          { created: 800, completed: 900 },
+          'other-session',
+        ),
+      ],
+      pipelineVerification: hostVerification('verification-session'),
+    });
+
+    expect(exported.content).toContain(provisionalText);
+    expect(exported.content).not.toContain(
+      'Host-owned final verification replaces the provisional assistant result',
+    );
+    expect(exported.content.indexOf(provisionalText)).toBeLessThan(
+      exported.content.indexOf('Pipeline Verification:'),
+    );
+  });
+
+  test('appends host verification when the same-session assistant has no timestamp', () => {
+    const provisionalText = 'An undated provisional result must remain visible.';
+    const exported = buildConversationExport({
+      format: 'txt',
+      title: 'Timestamp-bound verification',
+      exportedAt: new Date('2026-05-20T12:00:00.000Z'),
+      messages: [
+        entry('assistant', 'undated-assistant', [textPart('undated-text', provisionalText)]),
+      ],
+      pipelineVerification: hostVerification(),
+    });
+
+    expect(exported.content).toContain(provisionalText);
+    expect(exported.content).not.toContain(
+      'Host-owned final verification replaces the provisional assistant result',
+    );
+    expect(exported.content.indexOf(provisionalText)).toBeLessThan(
+      exported.content.indexOf('Pipeline Verification:'),
+    );
+  });
+
+  test('appends host verification when an undated visible user follows the candidate assistant', () => {
+    const provisionalText = 'The earlier assistant result must not be deleted.';
+    const interveningUserText = 'This undated user turn starts a new exchange.';
+    const exported = buildConversationExport({
+      format: 'txt',
+      title: 'Turn-bound verification',
+      exportedAt: new Date('2026-05-20T12:00:00.000Z'),
+      messages: [
+        entry('assistant', 'dated-assistant', [textPart('dated-text', provisionalText)], {
+          created: 800,
+          completed: 900,
+        }),
+        entry('user', 'undated-user', [textPart('undated-user-text', interveningUserText)]),
+      ],
+      pipelineVerification: hostVerification(),
+    });
+
+    expect(exported.content).toContain(provisionalText);
+    expect(exported.content).toContain(interveningUserText);
+    expect(exported.content).not.toContain(
+      'Host-owned final verification replaces the provisional assistant result',
+    );
+    expect(exported.content.indexOf(provisionalText)).toBeLessThan(
+      exported.content.indexOf(interveningUserText),
+    );
+    expect(exported.content.indexOf(interveningUserText)).toBeLessThan(
+      exported.content.indexOf('Pipeline Verification:'),
+    );
+  });
+
+  test('redacts diagnostic credential forms from planning rejection evidence', () => {
+    const githubPat = 'github_pat_1234567890abcdefghijklmnopqrstuvwxyz';
+    const awsAccessKey = ['AK', 'IA1234567890ABCDEF'].join('');
+    const basicCredential = 'Authorization: Basic dXNlcjpwYXNzd29yZA==';
+    const clientSecret = 'client_secret=export-secret-value';
+    const exported = buildConversationExport({
+      format: 'txt',
+      title: 'Redacted planning diagnostics',
+      exportedAt: new Date('2026-05-20T12:00:00.000Z'),
+      messages: [],
+      pipelineVerification: {
+        ...hostVerification(),
+        status: 'failed',
+        trial: {
+          version: 10,
+          success: false,
+          kind: 'plan-failed',
+          ran: false,
+          runId: null,
+          summary: 'Trial plan validation failed.',
+          durationMs: 10,
+          totalTaskCount: 0,
+          omittedTaskCount: 0,
+          tasks: [],
+          cases: [],
+          planTelemetry: {
+            version: 2,
+            yamlHash: 'a'.repeat(40),
+            relativeYamlPath: 'demo/demo.yaml',
+            attemptIds: ['host-attempt-1'],
+            toolAttemptCount: 1,
+            validationRejectionCount: 1,
+            repeatedValidationRejectionCount: 0,
+            successfulWriteCount: 0,
+            firstAttemptAt: 1,
+            lastAttemptAt: 1,
+            elapsedMs: 10,
+            rejections: [
+              {
+                fingerprint: 'b'.repeat(64),
+                count: 1,
+                message: [githubPat, awsAccessKey, basicCredential, clientSecret].join(' '),
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    expect(exported.content).toContain('[REDACTED]');
+    expect(exported.content).not.toContain(githubPat);
+    expect(exported.content).not.toContain(awsAccessKey);
+    expect(exported.content).not.toContain(basicCredential);
+    expect(exported.content).not.toContain(clientSecret);
   });
 
   test('exports unavailable prerequisites as blocked rather than failed', () => {

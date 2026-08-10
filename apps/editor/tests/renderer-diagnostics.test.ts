@@ -244,6 +244,297 @@ describe('renderer diagnostics snapshot', () => {
       },
     });
   });
+
+  test('adds bounded content-minimized chat, pipeline, task, and approval summaries', () => {
+    const snapshot = buildRendererDiagnosticsSnapshot({
+      page: { href: 'http://127.0.0.1/editor', visibilityState: 'visible', online: true },
+      chat: {
+        currentSessionId: 'session-1',
+        messages: [
+          {
+            info: {
+              id: 'assistant-1',
+              role: 'assistant',
+              mode: 'tagma-router',
+              time: { created: 10, completed: 30 },
+              finish: 'tool-calls',
+            },
+            parts: [
+              { type: 'text', text: 'private assistant response' },
+              {
+                type: 'tool',
+                callID: 'call-1',
+                tool: 'task',
+                state: {
+                  status: 'completed',
+                  input: {
+                    prompt: 'private delegated prompt',
+                    command: 'Remove-Item private.txt',
+                    subagent_type: 'pipeline',
+                  },
+                  output: 'private delegated output',
+                  metadata: { sessionID: 'child-1', agent: 'pipeline' },
+                  time: { start: 12, end: 28 },
+                },
+              },
+            ],
+          },
+        ],
+        pendingUserText: 'private pending prompt',
+        queuedMessages: [{ text: 'private queued prompt' }],
+        pendingPermissions: [{ id: 'permission-1', permission: 'bash' }],
+        finishedTurnQueue: [],
+        lastFinishedTurn: {
+          id: 'turn-1',
+          sessionId: 'session-1',
+          endedAt: 31,
+          hidden: false,
+          termination: 'completed',
+          yamlSnapshotBeforeSend: { private: 'must not enter summary' },
+        },
+      },
+      pipeline: {
+        config: {
+          name: 'Fact Checker',
+          tracks: [
+            {
+              id: 'research',
+              tasks: [
+                { id: 'collect', prompt: 'private task prompt' },
+                { id: 'verify', command: 'private shell command' },
+              ],
+            },
+          ],
+        },
+        validationErrors: [{ path: 'tracks[0].tasks[1]', message: 'Invalid task shape.' }],
+      },
+      run: {
+        tasks: new Map([
+          [
+            'research.collect',
+            {
+              taskId: 'collect',
+              trackId: 'research',
+              taskName: 'Collect',
+              status: 'running',
+              startedAt: '2026-08-10T10:00:00.000Z',
+              finishedAt: null,
+              durationMs: 500,
+              exitCode: null,
+              stdout: 'private task stdout',
+              stderr: 'private task stderr',
+              stdoutBytes: 19,
+              stderrBytes: 19,
+              sessionId: 'task-session-1',
+              normalizedOutput: 'private normalized output',
+              failureKind: null,
+              missingBinary: null,
+              resolvedDriver: 'opencode',
+              resolvedModel: 'provider/model',
+              logs: [{ level: 'info', timestamp: '10:00:00.000', text: 'private log' }],
+              totalLogCount: 4,
+            },
+          ],
+        ]),
+        pendingApprovals: {
+          approval: {
+            id: 'approval-1',
+            runId: 'run-1',
+            taskId: 'collect',
+            trackId: 'research',
+            message: 'Run private command?',
+            createdAt: '2026-08-10T10:00:01.000Z',
+            timeoutMs: 30_000,
+            command: 'private command',
+          },
+        },
+        logs: ['private run log'],
+        pipelineLogs: [{ level: 'error', timestamp: '10:00:02.000', text: 'private pipeline log' }],
+      },
+      capturedAt: 40,
+    });
+
+    expect(snapshot.chat).toMatchObject({
+      pendingUserTextSummary: { present: true, chars: 22 },
+      queuedMessageCount: 1,
+      pendingPermissionCount: 1,
+      messageSummaries: [
+        {
+          id: 'assistant-1',
+          role: 'assistant',
+          createdAt: 10,
+          completedAt: 30,
+          finish: 'tool-calls',
+          agent: 'tagma-router',
+          partTypes: ['text', 'tool'],
+        },
+      ],
+      toolCallSummaries: [
+        {
+          messageId: 'assistant-1',
+          callId: 'call-1',
+          tool: 'task',
+          status: 'completed',
+          error: null,
+          childSessionId: 'child-1',
+          childAgent: 'pipeline',
+          startedAt: 12,
+          completedAt: 28,
+          output: { present: true, chars: 24 },
+        },
+      ],
+      lastFinishedTurnSummary: {
+        id: 'turn-1',
+        sessionId: 'session-1',
+        endedAt: 31,
+        hidden: false,
+        termination: 'completed',
+      },
+    });
+    expect(snapshot.pipeline).toMatchObject({
+      pipelineName: 'Fact Checker',
+      trackCount: 1,
+      taskCount: 2,
+      validationSummary: { totalCount: 1, returnedCount: 1, omittedCount: 0 },
+    });
+    expect(snapshot.run).toMatchObject({
+      taskStatuses: [
+        {
+          qualifiedTaskId: 'research.collect',
+          taskId: 'collect',
+          trackId: 'research',
+          status: 'running',
+          stdout: { present: true, bytes: 19 },
+          stderr: { present: true, bytes: 19 },
+          normalizedOutput: { present: true, chars: 25 },
+          logCount: 1,
+          totalLogCount: 4,
+        },
+      ],
+      pendingApprovals: [
+        {
+          key: 'approval',
+          id: 'approval-1',
+          runId: 'run-1',
+          taskId: 'collect',
+          trackId: 'research',
+          createdAt: '2026-08-10T10:00:01.000Z',
+          timeoutMs: 30_000,
+          message: { present: true, chars: 20 },
+        },
+      ],
+      latestLog: { present: true, chars: 15 },
+      latestPipelineLog: {
+        level: 'error',
+        timestamp: '10:00:02.000',
+        text: { present: true, chars: 20 },
+      },
+    });
+
+    const safeSummaries = JSON.stringify({
+      chat: {
+        messages: snapshot.chat.messageSummaries,
+        tools: snapshot.chat.toolCallSummaries,
+        finished: snapshot.chat.lastFinishedTurnSummary,
+      },
+      pipeline: {
+        pipelineName: snapshot.pipeline.pipelineName,
+        trackCount: snapshot.pipeline.trackCount,
+        taskCount: snapshot.pipeline.taskCount,
+        validationSummary: snapshot.pipeline.validationSummary,
+      },
+      tasks: (snapshot.run as Record<string, unknown>).taskStatuses,
+      approvals: (snapshot.run as Record<string, unknown>).pendingApprovals,
+      latestLog: (snapshot.run as Record<string, unknown>).latestLog,
+      latestPipelineLog: (snapshot.run as Record<string, unknown>).latestPipelineLog,
+    });
+    expect(safeSummaries).not.toContain('private assistant response');
+    expect(safeSummaries).not.toContain('private delegated prompt');
+    expect(safeSummaries).not.toContain('private delegated output');
+    expect(safeSummaries).not.toContain('private shell command');
+    expect(safeSummaries).not.toContain('private task stdout');
+    expect(safeSummaries).not.toContain('private command');
+  });
+
+  test('summarizes Trial plan telemetry without plan-authored content or tool payloads', () => {
+    const snapshot = buildRendererDiagnosticsSnapshot({
+      page: { href: 'http://127.0.0.1/editor', visibilityState: 'visible', online: true },
+      chat: {
+        currentSessionId: 'session-1',
+        sessionYamlResults: {
+          'session-1': {
+            sessionId: 'session-1',
+            status: 'failed',
+            trial: {
+              success: false,
+              kind: 'plan-failed',
+              planTelemetry: {
+                version: 2,
+                yamlHash: 'private-yaml-hash',
+                relativeYamlPath: 'fact-checker/fact-checker.yaml',
+                attemptIds: Array.from({ length: 55 }, (_, index) => `attempt-${index}`),
+                toolAttemptCount: 55,
+                validationRejectionCount: 55,
+                repeatedValidationRejectionCount: 4,
+                successfulWriteCount: 0,
+                firstAttemptAt: 100,
+                lastAttemptAt: 900,
+                elapsedMs: 800,
+                rejections: Array.from({ length: 55 }, (_, index) => ({
+                  fingerprint: `fingerprint-${index}`,
+                  count: index + 1,
+                  message: `Trial plan case ${index} is missing required status. token=private-${index}`,
+                  toolPayload: 'private rejection payload',
+                })),
+                toolPayload: 'private telemetry payload',
+              },
+              plan: {
+                summary: 'private model-authored plan summary',
+                goals: ['private goal'],
+                coverage: [{}],
+                findings: [{}],
+                cases: [{}],
+              },
+            },
+          },
+        },
+      },
+      pipeline: {},
+      run: {},
+      capturedAt: 1_000,
+    });
+
+    const summary = snapshot.chat.sessionYamlResultSummary as Record<string, unknown>;
+    const trial = summary.trial as Record<string, unknown>;
+    const telemetry = trial.planTelemetry as Record<string, unknown>;
+    expect(telemetry).toMatchObject({
+      version: 2,
+      relativeYamlPath: 'fact-checker/fact-checker.yaml',
+      toolAttemptCount: 55,
+      validationRejectionCount: 55,
+      repeatedValidationRejectionCount: 4,
+      successfulWriteCount: 0,
+      firstAttemptAt: 100,
+      lastAttemptAt: 900,
+      elapsedMs: 800,
+    });
+    expect(telemetry.attemptIds).toHaveLength(50);
+    expect(telemetry.rejections).toHaveLength(50);
+    expect(JSON.stringify(telemetry.rejections)).toContain('missing required status');
+    expect(trial.plan).toEqual({
+      goalCount: 1,
+      coverageCount: 1,
+      findingCount: 1,
+      caseCount: 1,
+    });
+
+    const serializedSummary = JSON.stringify(summary);
+    expect(serializedSummary).not.toContain('private-yaml-hash');
+    expect(serializedSummary).not.toContain('private model-authored plan summary');
+    expect(serializedSummary).not.toContain('private telemetry payload');
+    expect(serializedSummary).not.toContain('private rejection payload');
+    expect(serializedSummary).not.toContain('private-54');
+  });
 });
 
 describe('coding-agent handoff', () => {
@@ -263,6 +554,9 @@ describe('coding-agent handoff', () => {
     expect(instructions).toContain('GET http://127.0.0.1:43123/api/diagnostics/v1/manifest');
     expect(instructions).toContain('GET http://127.0.0.1:43123/api/diagnostics/v1/context');
     expect(instructions).toContain(
+      'GET http://127.0.0.1:43123/api/diagnostics/v1/timeline?after=0&limit=500',
+    );
+    expect(instructions).toContain(
       'GET http://127.0.0.1:43123/api/diagnostics/v1/opencode/sessions',
     );
     expect(instructions).toContain(
@@ -272,6 +566,9 @@ describe('coding-agent handoff', () => {
       'Run these local read-only requests yourself; do not ask the user to run them manually.',
     );
     expect(instructions).toContain('Diagnose and explain the root cause before proposing changes.');
+    expect(instructions).toContain(
+      'Poll timeline and logs independently using nextCursor from each response',
+    );
     expect(instructions).toContain(
       'Do not modify files, code, settings, processes, or editor state unless the user explicitly asks you to after the diagnosis.',
     );

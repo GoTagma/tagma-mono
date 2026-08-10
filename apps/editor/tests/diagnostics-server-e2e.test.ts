@@ -85,6 +85,9 @@ test('real sidecar exposes only the temporary read-only diagnostics protocol', a
       'X-Tagma-Workspace': workspace,
     };
 
+    const unauthenticatedStatusResponse = await fetch(`${origin}/api/diagnostics/session`);
+    expect(unauthenticatedStatusResponse.status).toBe(401);
+
     const enableResponse = await fetch(`${origin}/api/diagnostics/session`, {
       method: 'POST',
       headers: managementHeaders,
@@ -97,6 +100,14 @@ test('real sidecar exposes only the temporary read-only diagnostics protocol', a
     expect(enabled.enabled).toBe(true);
     expect(enabled.connection.baseUrl).toBe(`${origin}/api/diagnostics/v1`);
     expect(enabled.connection.token).not.toBe(managementToken);
+
+    writeFileSync(
+      desktopLogFile,
+      [
+        '2026-07-31T00:00:00.000Z stdout: release-log-line',
+        '2026-08-10T06:17:40.000Z stdout: post-enable-log-line',
+      ].join('\n') + '\n',
+    );
 
     const diagnosticsHeaders = {
       Authorization: `Bearer ${enabled.connection.token}`,
@@ -121,13 +132,34 @@ test('real sidecar exposes only the temporary read-only diagnostics protocol', a
       features: {},
     });
 
+    const timelineResponse = await fetch(
+      `${enabled.connection.baseUrl}/timeline?after=0&limit=10`,
+      { headers: diagnosticsHeaders },
+    );
+    expect(timelineResponse.status).toBe(200);
+    expect(await timelineResponse.json()).toMatchObject({
+      oldestCursor: null,
+      latestCursor: 0,
+      nextCursor: 0,
+      retainedEventCount: 0,
+      returnedEventCount: 0,
+      retention: { layer: 'diagnostics-timeline-buffer' },
+      page: { layer: 'diagnostics-timeline-page', limit: 10 },
+      events: [],
+    });
+
     const logsResponse = await fetch(`${enabled.connection.baseUrl}/logs?after=0&limit=10`, {
       headers: diagnosticsHeaders,
     });
     expect(logsResponse.status).toBe(200);
-    expect(await logsResponse.json()).toMatchObject({
-      desktopLogTail: { path: desktopLogFile, text: expect.stringContaining('release-log-line') },
+    const logsBody = await logsResponse.json();
+    expect(logsBody).toMatchObject({
+      desktopLogTail: {
+        path: desktopLogFile,
+        text: expect.stringContaining('post-enable-log-line'),
+      },
     });
+    expect(JSON.stringify(logsBody)).not.toContain('release-log-line');
 
     const opencodeResponse = await fetch(`${enabled.connection.baseUrl}/opencode/sessions`, {
       headers: diagnosticsHeaders,

@@ -106,39 +106,57 @@ requests the agent should run itself, and instructions to diagnose the root caus
 changes. The agent is told not to modify files, settings, processes, or editor state unless the user
 explicitly asks after the diagnosis. Put the token in
 `Authorization: Bearer <temporary-diagnostics-token>`, never in a URL.
+It starts with one context snapshot plus the structured timeline and log cursors, then polls the
+timeline and logs independently with each response's own `nextCursor`.
 
-| Read-only endpoint                                                      | Contents                                                                 |
-| ----------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `GET /api/diagnostics/v1/manifest`                                      | Protocol, coverage, privacy notes, and endpoint discovery                |
-| `GET /api/diagnostics/v1/context`                                       | Editor/workspace/run state, renderer snapshot, and OpenCode runtime info |
-| `GET /api/diagnostics/v1/logs?after=<cursor>&limit=<1-1000>`            | Cursor logs plus the Electron `sidecar.log` tail                         |
-| `GET /api/diagnostics/v1/opencode/sessions`                             | Sessions scoped to the workspace's existing OpenCode process             |
-| `GET /api/diagnostics/v1/opencode/sessions/<id>/messages?limit=<1-200>` | Bounded history after verifying session ownership                        |
+| Read-only endpoint                                                      | Contents                                                                     |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `GET /api/diagnostics/v1/manifest`                                      | Protocol, coverage, privacy notes, and endpoint discovery                    |
+| `GET /api/diagnostics/v1/context`                                       | Editor/workspace/run state, renderer snapshot, and OpenCode runtime info     |
+| `GET /api/diagnostics/v1/timeline?after=<cursor>&limit=<1-1000>`        | Content-minimized structured renderer transitions with an independent cursor |
+| `GET /api/diagnostics/v1/logs?after=<cursor>&limit=<1-1000>`            | Cursor logs plus the Electron `sidecar.log` tail                             |
+| `GET /api/diagnostics/v1/opencode/sessions`                             | Sessions scoped to the workspace's existing OpenCode process                 |
+| `GET /api/diagnostics/v1/opencode/sessions/<id>/messages?limit=<1-200>` | Bounded history after verifying session ownership                            |
 
 The diagnostics token is independent from the sidecar management token, rotates on every enable,
 authorizes only `GET` below `/api/diagnostics/v1`, and is revoked on disable or shutdown. OpenCode
 history reads never start, restart, prompt, or mutate OpenCode; they return `409` when it is not
-running. Captured logs, renderer reports, and cursors are cleared whenever a session rotates or
-ends, so a later workspace cannot inherit them. Renderer console/error capture exists only during
-the matching diagnostics session and is restored without overwriting a console wrapper installed
-later by another feature. Release process output comes from Electron's existing `sidecar.log`, so
-normal process streams are not wrapped.
+running. Captured logs, renderer reports, timeline comparison state, timeline events, and all
+cursors are cleared whenever a session rotates or ends, so a later workspace cannot inherit them.
+Renderer console/error capture exists only during the matching diagnostics session and is restored
+without overwriting a console wrapper installed later by another feature. Release process output
+comes from Electron's existing `sidecar.log`, so normal process streams are not wrapped.
 
 The protocol is extensible without changing the connection flow. Renderer features register lazy
 state under `features` with `registerRendererDiagnosticsContributor`; sidecar features use
 `registerServerDiagnosticsContributor`. Providers run only when diagnostics context is requested,
 are failure-isolated and sanitized, and do not participate in normal feature execution. Repository
-instructions require new long-lived feature state to use this extension point.
+instructions require new long-lived feature state to use this extension point. Accepted renderer
+reports also feed the timeline: the first report from each renderer instance establishes
+`page/chat/pipeline/run/features` baselines, and later events contain only the sections whose
+meaningful summary changed. Snapshot capture timestamps and Chat turn-health heartbeat timestamps
+do not create timeline churn by themselves.
 
 Payloads are bounded, and known credential fields and common token formats are redacted. This is
-best-effort protection: prompts, messages, tool output, paths, and arbitrary user-authored text can
-still be sensitive. Review diagnostics before sharing them.
+best-effort protection. Timeline events use explicit metadata allow-lists and are
+content-minimized: they exclude raw authored message bodies, composer drafts, pending user text,
+tool prompts or output, and commands. They can retain bounded, redacted host error, validation, and
+Trial diagnostic strings needed for diagnosis; treat those strings as sensitive. The broader
+context, OpenCode history, logs, paths, errors, and arbitrary user-authored text can also be
+sensitive. Review diagnostics before sharing them.
 
 Every intentional diagnostics window reports its own layer and source/returned/omitted boundary.
 Renderer session and log snapshots preserve the newest retained entries and expose their counts;
 run-history list, pipeline-log, task-output, and Ask AI context reads likewise identify their
 read-interface limit. Treat those limits as clipping of the read-only response, not evidence that
 the persisted file, runtime stream, or underlying event buffer was truncated.
+
+For a long-running investigation, retain two independent cursors. Read
+`/timeline?after=0&limit=500` and `/logs?after=0&limit=500` once, then use the timeline
+`nextCursor` only for the next timeline request and the log `nextCursor` only for the next log
+request. On each response, inspect `retention` separately from `page`:
+`diagnostics-timeline-buffer` reports events lost before the requested cursor, while
+`diagnostics-timeline-page` reports events merely omitted from the current bounded response.
 
 ## In-app update surfaces
 

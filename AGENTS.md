@@ -43,6 +43,12 @@ Do not amend the same commit to include these files after naming them with the c
 - Completion plugins may return a boolean or `{ passed, feedback? }`; failed structured feedback
   becomes task diagnostics and must remain available to the next repair attempt.
 
+## Pipeline Terminal Logging
+
+- Derive the terminal summary status and terminal pipeline log verb from the same run result:
+  natural task failure is `failed`, explicit cancellation is `aborted`, and only a successful
+  run is `completed`. Never emit a completed terminal line for a result whose `success` is false.
+
 ## Desktop Release Version Direction
 
 - Every Tagma hot-update entry point must require the manifest release version to be strictly

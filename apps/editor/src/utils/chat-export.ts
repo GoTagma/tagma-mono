@@ -5,6 +5,7 @@ import type {
   ChatPipelineTrialTaskResult,
 } from '../api/client';
 import type { ChatYamlSessionResult } from '../store/chat-store';
+import { redactDiagnosticText } from '../../shared/diagnostics.js';
 import { stripAskAiContext } from './ask-ai-context';
 
 export type ChatExportFormat = 'md' | 'txt';
@@ -34,8 +35,12 @@ export function buildConversationExport({
 }: BuildConversationExportOptions): ConversationExport {
   const heading = cleanTitle(title) || 'Chat Export';
   const body: string[] = [];
+  const verificationReplacementIndex = pipelineVerification
+    ? findPipelineVerificationReplacementIndex(messages, pipelineVerification, format)
+    : -1;
+  let verificationRendered = false;
   let hideInternalContinuation = false;
-  for (const entry of messages) {
+  for (const [index, entry] of messages.entries()) {
     const role = entry.info.role;
     if (role === 'user') {
       if (isInternalUserEntry(entry.parts)) {
@@ -46,10 +51,15 @@ export function buildConversationExport({
     } else if (role === 'assistant' && hideInternalContinuation) {
       continue;
     }
+    if (pipelineVerification && index === verificationReplacementIndex) {
+      body.push(renderPipelineVerification(pipelineVerification, format, true));
+      verificationRendered = true;
+      continue;
+    }
     const rendered = renderEntry(entry, format);
     if (rendered !== null) body.push(rendered);
   }
-  if (pipelineVerification) {
+  if (pipelineVerification && !verificationRendered) {
     body.push(renderPipelineVerification(pipelineVerification, format));
   }
 
@@ -94,6 +104,58 @@ export function downloadConversationExport(exported: ConversationExport, filenam
 
 function cleanTitle(title: string | null | undefined): string {
   return (title ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function entryTimestamp(entry: OpencodeThreadEntry): number | null {
+  const time = entry.info.time;
+  const completed = time && 'completed' in time ? time.completed : undefined;
+  const value = typeof completed === 'number' ? completed : time?.created;
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function findPipelineVerificationReplacementIndex(
+  messages: readonly OpencodeThreadEntry[],
+  verification: ChatYamlSessionResult,
+  format: ChatExportFormat,
+): number {
+  let hideInternalContinuation = false;
+  let candidateIndex = -1;
+  let candidateTimestamp = Number.NEGATIVE_INFINITY;
+  for (const [index, entry] of messages.entries()) {
+    const role = entry.info.role;
+    if (role === 'user') {
+      if (isInternalUserEntry(entry.parts)) {
+        hideInternalContinuation = true;
+        continue;
+      }
+      hideInternalContinuation = false;
+      const timestamp = entryTimestamp(entry);
+      if (timestamp === null && candidateIndex >= 0) return -1;
+      if (
+        timestamp !== null &&
+        timestamp <= verification.completedAt &&
+        timestamp >= candidateTimestamp
+      ) {
+        candidateIndex = -1;
+        candidateTimestamp = timestamp;
+      }
+      continue;
+    }
+    if (role !== 'assistant' || hideInternalContinuation) continue;
+    const timestamp = entryTimestamp(entry);
+    if (
+      entry.info.sessionID !== verification.sessionId ||
+      timestamp === null ||
+      timestamp > verification.completedAt ||
+      timestamp < candidateTimestamp ||
+      renderEntry(entry, format) === null
+    ) {
+      continue;
+    }
+    candidateIndex = index;
+    candidateTimestamp = timestamp;
+  }
+  return candidateIndex;
 }
 
 function renderEntry(entry: OpencodeThreadEntry, format: ChatExportFormat): string | null {
@@ -183,9 +245,18 @@ function stripUserHiddenContext(text: string): string {
 function renderPipelineVerification(
   result: ChatYamlSessionResult,
   format: ChatExportFormat,
+  replacesProvisionalAssistant = false,
 ): string {
   const markdown = format === 'md';
-  const lines = [markdown ? '## Pipeline Verification' : 'Pipeline Verification:'];
+  const lines = [
+    markdown ? '## Pipeline Verification' : 'Pipeline Verification:',
+    exportBullet(
+      markdown,
+      replacesProvisionalAssistant
+        ? 'Host-owned final verification replaces the provisional assistant result for this pipeline turn.'
+        : 'Host-owned final verification below supersedes provisional assistant status above.',
+    ),
+  ];
   const target = result.pipelineName || result.name;
   lines.push(
     exportBullet(markdown, `Target: ${redactExportText(target)}`),
@@ -274,6 +345,14 @@ function renderPipelineVerification(
       exportBullet(
         markdown,
         `Planning token usage: ${formatTokens(inputTokens)} input, ${formatTokens(outputTokens)} output`,
+      ),
+    );
+  }
+  for (const rejection of trial?.planTelemetry?.rejections ?? []) {
+    lines.push(
+      exportNestedBullet(
+        markdown,
+        `Planning rejection (${rejection.count}x): ${redactExportText(rejection.message)}`,
       ),
     );
   }
@@ -539,17 +618,12 @@ function formatRedactedList(values: readonly string[], emptyValue: string): stri
 }
 
 function redactExportText(value: string, maxLength = 4_000): string {
-  const redacted = value
+  const redacted = redactDiagnosticText(value)
     .replace(
-      /((?:["']?authorization["']?)\s*:\s*["']?\s*bearer\s+)[^"'\s,;&}\]]+/gi,
+      /((?:(?:["']|--)?(?:session[_-]?id|sessionid)(?:["'])?)\s*(?::|=|\s)\s*["']?)[^"'\s,;&}\]]+/gi,
       '$1[REDACTED]',
     )
-    .replace(
-      /((?:(?:["']|--)?(?:api[_-]?key|apikey|token|secret|password|credential|session[_-]?id|sessionid)(?:["'])?)\s*(?::|=|\s)\s*["']?)[^"'\s,;&}\]]+/gi,
-      '$1[REDACTED]',
-    )
-    .replace(/\b(Bearer)\s+[A-Za-z0-9._-]{8,}\b/gi, '$1 [REDACTED]')
-    .replace(/\b(?:sk|sess|ghp|xox[baprs])[-_][A-Za-z0-9._-]{6,}\b/g, '[REDACTED]')
+    .replace(/\bsess[-_][A-Za-z0-9._-]{6,}\b/g, '[REDACTED]')
     .replace(/\s+/g, ' ')
     .trim();
   const limit = Math.max(0, Math.trunc(maxLength));

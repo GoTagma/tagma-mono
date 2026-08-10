@@ -53,6 +53,58 @@ export interface DiagnosticLogPage {
   entries: DiagnosticLogEntry[];
 }
 
+export const DIAGNOSTIC_TIMELINE_SECTIONS = [
+  'page',
+  'chat',
+  'pipeline',
+  'run',
+  'features',
+] as const;
+
+export type DiagnosticTimelineSection = (typeof DIAGNOSTIC_TIMELINE_SECTIONS)[number];
+
+export interface DiagnosticTimelineEvent {
+  cursor: number;
+  timestamp: number;
+  source: 'renderer.snapshot';
+  instanceId: string;
+  workspaceKey: string | null;
+  changedSections: DiagnosticTimelineSection[];
+  state: Partial<Record<DiagnosticTimelineSection, unknown>>;
+  truncation?: {
+    layer: 'diagnostics-timeline-event';
+    reason: 'byte-limit';
+    limitBytes: number;
+    sourceBytes: number;
+    returnedBytes: number;
+  };
+}
+
+export interface DiagnosticTimelinePage {
+  oldestCursor: number | null;
+  latestCursor: number;
+  nextCursor: number;
+  droppedBeforeCursor: boolean;
+  retainedEventCount: number;
+  availableEventCount: number;
+  returnedEventCount: number;
+  omittedEventCount: number;
+  hasMore: boolean;
+  retention: {
+    layer: 'diagnostics-timeline-buffer';
+    droppedEventCount: number;
+    requestedEventLossCount: number;
+    truncated: boolean;
+  };
+  page: {
+    layer: 'diagnostics-timeline-page';
+    limit: number;
+    omittedEventCount: number;
+    truncated: boolean;
+  };
+  events: DiagnosticTimelineEvent[];
+}
+
 interface DiagnosticsSession {
   id: string;
   token: string;
@@ -78,25 +130,695 @@ interface StoredRendererReport {
 export interface DiagnosticsHubOptions {
   maxLogEntries?: number;
   maxLogBytes?: number;
+  maxTimelineEntries?: number;
+  maxTimelineBytes?: number;
   tokenFactory?: () => string;
   idFactory?: () => string;
+}
+
+type UnknownRecord = Record<string, unknown>;
+type TimelineState = Record<DiagnosticTimelineSection, unknown>;
+
+function record(value: unknown): UnknownRecord {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as UnknownRecord)
+    : {};
+}
+
+function selectedFields(source: UnknownRecord, keys: readonly string[]): UnknownRecord {
+  const selected: UnknownRecord = {};
+  for (const key of keys) {
+    if (source[key] !== undefined) selected[key] = source[key];
+  }
+  return selected;
+}
+
+function serializedTimelineEventBytes(event: DiagnosticTimelineEvent): number {
+  return Buffer.byteLength(JSON.stringify(event), 'utf8');
+}
+
+function boundedUtf8String(value: string, maxBytes: number): string {
+  if (Buffer.byteLength(value, 'utf8') <= maxBytes) return value;
+  const suffix = '...[truncated]';
+  const suffixBytes = Buffer.byteLength(suffix, 'utf8');
+  let output = '';
+  let outputBytes = 0;
+  for (const character of value) {
+    const characterBytes = Buffer.byteLength(character, 'utf8');
+    if (outputBytes + characterBytes + suffixBytes > maxBytes) break;
+    output += character;
+    outputBytes += characterBytes;
+  }
+  return output + suffix;
+}
+
+function timelineOverflowMarker(
+  event: DiagnosticTimelineEvent,
+  limitBytes: number,
+  sourceBytes: number,
+): DiagnosticTimelineEvent {
+  const marker: DiagnosticTimelineEvent = {
+    ...event,
+    instanceId: boundedUtf8String(event.instanceId, 128),
+    workspaceKey: event.workspaceKey === null ? null : boundedUtf8String(event.workspaceKey, 256),
+    changedSections: [...event.changedSections],
+    state: {},
+    truncation: {
+      layer: 'diagnostics-timeline-event',
+      reason: 'byte-limit',
+      limitBytes,
+      sourceBytes,
+      returnedBytes: 0,
+    },
+  };
+  const settleReturnedBytes = () => {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const returnedBytes = serializedTimelineEventBytes(marker);
+      if (marker.truncation?.returnedBytes === returnedBytes) return;
+      marker.truncation!.returnedBytes = returnedBytes;
+    }
+    marker.truncation!.returnedBytes = serializedTimelineEventBytes(marker);
+  };
+  settleReturnedBytes();
+  if (serializedTimelineEventBytes(marker) > limitBytes) {
+    marker.instanceId = '[timeline-event-id-omitted]';
+    marker.workspaceKey = null;
+    marker.truncation!.returnedBytes = 0;
+    settleReturnedBytes();
+  }
+  return marker;
+}
+
+function conciseDiagnosticText(value: unknown, maxChars = 1_024): string | null {
+  if (typeof value !== 'string') return null;
+  const text = redactDiagnosticText(value).replace(/\s+/g, ' ').trim();
+  return text ? text.slice(0, maxChars) : null;
+}
+
+function finiteDiagnosticNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function timelinePageHref(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  try {
+    const url = new URL(value);
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return value.split(/[?#]/, 1)[0] ?? '';
+  }
+}
+
+function numericRecord(value: unknown): UnknownRecord {
+  return Object.fromEntries(
+    Object.entries(record(value))
+      .slice(0, 100)
+      .filter((entry): entry is [string, number] => {
+        const count = entry[1];
+        return typeof count === 'number' && Number.isFinite(count);
+      }),
+  );
+}
+
+function presenceSummary(value: unknown): UnknownRecord {
+  return selectedFields(record(value), ['present', 'chars', 'bytes', 'fieldCount']);
+}
+
+function evidenceSummary(value: unknown): UnknownRecord {
+  return selectedFields(record(value), [
+    'layer',
+    'limit',
+    'truncated',
+    'sourceCount',
+    'returnedCount',
+    'omittedCount',
+    'omittedMessageCount',
+    'omittedToolCallCount',
+    'omittedTaskStatusCount',
+    'omittedPendingApprovalCount',
+    'omittedLogCount',
+  ]);
+}
+
+function messageTimelineSummaries(value: unknown): UnknownRecord[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(-25).map((rawMessage) => {
+    const message = record(rawMessage);
+    return {
+      ...selectedFields(message, ['id', 'role', 'createdAt', 'completedAt', 'finish', 'agent']),
+      partTypes: Array.isArray(message.partTypes)
+        ? message.partTypes.filter((part): part is string => typeof part === 'string').slice(0, 25)
+        : [],
+    };
+  });
+}
+
+function toolTimelineSummaries(value: unknown): UnknownRecord[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(-100).map((rawCall) => {
+    const call = record(rawCall);
+    return {
+      ...selectedFields(call, [
+        'messageId',
+        'callId',
+        'tool',
+        'status',
+        'childSessionId',
+        'childAgent',
+        'startedAt',
+        'completedAt',
+      ]),
+      error: conciseDiagnosticText(call.error),
+      input: presenceSummary(call.input),
+      output: presenceSummary(call.output),
+    };
+  });
+}
+
+function validationTimelineSummary(value: unknown): UnknownRecord {
+  const summary = record(value);
+  const summaries = Array.isArray(summary.summaries)
+    ? summary.summaries.slice(-100).map((rawItem) => {
+        const item = record(rawItem);
+        return {
+          ...selectedFields(item, ['path', 'code', 'severity']),
+          message: conciseDiagnosticText(item.message),
+        };
+      })
+    : [];
+  return {
+    ...selectedFields(summary, ['totalCount', 'returnedCount', 'omittedCount']),
+    summaries,
+    evidence: evidenceSummary(summary.evidence),
+  };
+}
+
+function lifecycleTimelineSummary(value: unknown): UnknownRecord | null {
+  const lifecycle = record(value);
+  if (Object.keys(lifecycle).length === 0) return null;
+  return selectedFields(lifecycle, [
+    'turnId',
+    'sessionId',
+    'stageId',
+    'workspaceKey',
+    'status',
+    'kind',
+    'phase',
+    'hostTrialActive',
+    'cancellationRequested',
+    'startedAt',
+    'completedAt',
+  ]);
+}
+
+function finishedTurnTimelineSummary(value: unknown): UnknownRecord | null {
+  const turn = record(value);
+  if (Object.keys(turn).length === 0) return null;
+  return selectedFields(turn, ['id', 'sessionId', 'endedAt', 'hidden', 'termination']);
+}
+
+function prerequisiteTimelineSummary(value: unknown): unknown {
+  if (typeof value === 'string') return value.slice(0, 128);
+  const prerequisite = record(value);
+  if (Object.keys(prerequisite).length === 0) return null;
+  return {
+    ...selectedFields(prerequisite, [
+      'state',
+      'baselineMode',
+      'baselineTargetTaskCount',
+      'inputCount',
+      'blockerCount',
+    ]),
+    blockerKindCounts: numericRecord(prerequisite.blockerKindCounts),
+  };
+}
+
+function trialPlanTelemetryTimelineSummary(value: unknown): UnknownRecord | null {
+  const telemetry = record(value);
+  if (Object.keys(telemetry).length === 0) return null;
+  const attemptIds = (Array.isArray(telemetry.attemptIds) ? telemetry.attemptIds : [])
+    .map((attemptId) => conciseDiagnosticText(attemptId, 128))
+    .filter((attemptId): attemptId is string => attemptId !== null)
+    .slice(-50);
+  const rejections = (Array.isArray(telemetry.rejections) ? telemetry.rejections : [])
+    .slice(-50)
+    .map((rawRejection) => {
+      const rejection = record(rawRejection);
+      return {
+        fingerprint: conciseDiagnosticText(rejection.fingerprint, 128),
+        count: finiteDiagnosticNumber(rejection.count),
+        message: conciseDiagnosticText(rejection.message, 512),
+      };
+    });
+  return {
+    version: finiteDiagnosticNumber(telemetry.version),
+    relativeYamlPath: conciseDiagnosticText(telemetry.relativeYamlPath, 512),
+    attemptIds,
+    toolAttemptCount: finiteDiagnosticNumber(telemetry.toolAttemptCount),
+    validationRejectionCount: finiteDiagnosticNumber(telemetry.validationRejectionCount),
+    repeatedValidationRejectionCount: finiteDiagnosticNumber(
+      telemetry.repeatedValidationRejectionCount,
+    ),
+    successfulWriteCount: finiteDiagnosticNumber(telemetry.successfulWriteCount),
+    firstAttemptAt: finiteDiagnosticNumber(telemetry.firstAttemptAt),
+    lastAttemptAt: finiteDiagnosticNumber(telemetry.lastAttemptAt),
+    elapsedMs: finiteDiagnosticNumber(telemetry.elapsedMs),
+    rejections,
+  };
+}
+
+function trialTimelineSummary(value: unknown): UnknownRecord | null {
+  const trial = record(value);
+  if (Object.keys(trial).length === 0) return null;
+  const plan = record(trial.plan);
+  return {
+    ...selectedFields(trial, [
+      'success',
+      'kind',
+      'ran',
+      'runId',
+      'durationMs',
+      'totalTaskCount',
+      'omittedTaskCount',
+      'repairAuthorization',
+      'verificationMode',
+      'plannedCaseCount',
+      'caseResultCount',
+      'notRunCaseCount',
+      'returnedCaseCount',
+    ]),
+    summary: conciseDiagnosticText(trial.summary),
+    prerequisiteState: prerequisiteTimelineSummary(trial.prerequisiteState),
+    taskStatusCounts: numericRecord(trial.taskStatusCounts),
+    omittedTaskStatusCounts: numericRecord(trial.omittedTaskStatusCounts),
+    planTelemetry: trialPlanTelemetryTimelineSummary(trial.planTelemetry),
+    plan:
+      Object.keys(plan).length > 0
+        ? {
+            ...selectedFields(plan, ['goalCount', 'coverageCount', 'findingCount', 'caseCount']),
+          }
+        : null,
+  };
+}
+
+function sessionYamlTimelineSummary(value: unknown): UnknownRecord | null {
+  const result = record(value);
+  if (Object.keys(result).length === 0) return null;
+  const compile = record(result.compile);
+  const planning = record(result.planningTelemetry);
+  const reconcile = record(result.reconcile);
+  const progress = record(result.progress);
+  return {
+    ...selectedFields(result, [
+      'sessionId',
+      'workspaceKey',
+      'kind',
+      'path',
+      'name',
+      'pipelineName',
+      'status',
+      'phase',
+      'repairAttempts',
+      'completedAt',
+    ]),
+    compile: {
+      ...selectedFields(compile, ['success']),
+      summary: conciseDiagnosticText(compile.summary),
+      validation: validationTimelineSummary(compile.validation),
+    },
+    trial: trialTimelineSummary(result.trial),
+    progress:
+      Object.keys(progress).length > 0
+        ? selectedFields(progress, [
+            'stageId',
+            'trialId',
+            'phase',
+            'startedAt',
+            'caseId',
+            'caseIndex',
+            'caseCount',
+            'runNumber',
+            'runCount',
+            'taskId',
+            'taskStatus',
+          ])
+        : null,
+    planningTelemetry:
+      Object.keys(planning).length > 0
+        ? selectedFields(planning, [
+            'promptCount',
+            'toolAttemptCount',
+            'validationRejectionCount',
+            'repeatedValidationRejectionCount',
+            'elapsedMs',
+            'inputTokens',
+            'outputTokens',
+            'reasoningTokens',
+            'cacheReadTokens',
+            'cacheWriteTokens',
+            'cost',
+          ])
+        : null,
+    reconcile:
+      Object.keys(reconcile).length > 0
+        ? {
+            ...selectedFields(reconcile, [
+              'outcome',
+              'localBranchPersisted',
+              'resultPath',
+              'compileSuccess',
+              'trialRunSuccess',
+              'trialVerification',
+            ]),
+            conflicts: Array.isArray(reconcile.conflicts)
+              ? reconcile.conflicts
+                  .filter((conflict): conflict is string => typeof conflict === 'string')
+                  .slice(0, 50)
+              : [],
+          }
+        : null,
+  };
+}
+
+function taskTimelineSummaries(value: unknown): UnknownRecord[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(-250).map((rawTask) => {
+    const task = record(rawTask);
+    return {
+      ...selectedFields(task, [
+        'qualifiedTaskId',
+        'taskId',
+        'trackId',
+        'taskName',
+        'status',
+        'startedAt',
+        'finishedAt',
+        'durationMs',
+        'exitCode',
+        'sessionId',
+        'failureKind',
+        'missingBinary',
+        'resolvedDriver',
+        'resolvedModel',
+        'logCount',
+        'totalLogCount',
+      ]),
+      error: conciseDiagnosticText(task.error),
+      stdout: presenceSummary(task.stdout),
+      stderr: presenceSummary(task.stderr),
+      normalizedOutput: presenceSummary(task.normalizedOutput),
+    };
+  });
+}
+
+function approvalTimelineSummaries(value: unknown): UnknownRecord[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(-100).map((rawApproval) => {
+    const approval = record(rawApproval);
+    return {
+      ...selectedFields(approval, [
+        'key',
+        'id',
+        'runId',
+        'taskId',
+        'trackId',
+        'createdAt',
+        'timeoutMs',
+      ]),
+      message: presenceSummary(approval.message),
+      metadata: presenceSummary(approval.metadata),
+    };
+  });
+}
+
+function logTimelineSummary(value: unknown): UnknownRecord | null {
+  const log = record(value);
+  if (Object.keys(log).length === 0) return null;
+  return {
+    ...selectedFields(log, [
+      'present',
+      'chars',
+      'bytes',
+      'level',
+      'timestamp',
+      'type',
+      'status',
+      'runId',
+      'taskId',
+      'seq',
+    ]),
+    text: presenceSummary(log.text),
+  };
+}
+
+function chatTimelineSummary(chat: UnknownRecord): UnknownRecord {
+  const turnHealth = record(chat.turnHealth);
+  const sessionStatus = record(chat.sessionStatus);
+  const model = record(chat.model);
+  return {
+    ...selectedFields(chat, [
+      'bootstrapStatus',
+      'agent',
+      'reasoningEffort',
+      'currentSessionId',
+      'sessionCount',
+      'returnedSessionCount',
+      'omittedSessionCount',
+      'messageCount',
+      'returnedMessageCount',
+      'omittedMessageCount',
+      'toolCallCount',
+      'returnedToolCallCount',
+      'omittedToolCallCount',
+      'sending',
+      'reconciling',
+      'reconcilingSessionId',
+      'flushing',
+      'queuedMessageCount',
+      'pendingPermissionCount',
+      'finishedTurnQueueLength',
+    ]),
+    bootstrapError: conciseDiagnosticText(chat.bootstrapError),
+    model:
+      typeof chat.model === 'string'
+        ? chat.model
+        : selectedFields(model, ['providerID', 'providerId', 'modelID', 'modelId']),
+    sessionEvidence: evidenceSummary(chat.sessionEvidence),
+    messageEvidence: evidenceSummary(chat.messageEvidence),
+    messageSummaries: messageTimelineSummaries(chat.messageSummaries),
+    toolCallEvidence: evidenceSummary(chat.toolCallEvidence),
+    toolCallSummaries: toolTimelineSummaries(chat.toolCallSummaries),
+    backgroundSessions: Array.isArray(chat.backgroundSessions)
+      ? chat.backgroundSessions
+          .slice(-100)
+          .map((rawSession) =>
+            selectedFields(record(rawSession), [
+              'sessionId',
+              'sending',
+              'messageCount',
+              'pendingPermissionCount',
+              'queuedMessageCount',
+            ]),
+          )
+      : [],
+    abortRecovery: lifecycleTimelineSummary(chat.abortRecovery),
+    pendingUserTextSummary: presenceSummary(chat.pendingUserTextSummary),
+    sessionStatus: selectedFields(sessionStatus, ['type', 'status', 'state', 'phase']),
+    turnHealth: {
+      ...selectedFields(turnHealth, [
+        'status',
+        'state',
+        'kind',
+        'phase',
+        'reason',
+        'stalled',
+        'timeoutMs',
+        'sseState',
+        'processAlive',
+      ]),
+      detail: conciseDiagnosticText(turnHealth.detail),
+    },
+    activeChatYamlLifecycle: lifecycleTimelineSummary(chat.activeChatYamlLifecycle),
+    postChatYamlActionSummary: sessionYamlTimelineSummary(chat.postChatYamlActionSummary),
+    sendError: conciseDiagnosticText(chat.sendError),
+    completionWarning: conciseDiagnosticText(chat.completionWarning),
+    lastFinishedTurnSummary: finishedTurnTimelineSummary(chat.lastFinishedTurnSummary),
+    sessionYamlResultSummary: sessionYamlTimelineSummary(chat.sessionYamlResultSummary),
+  };
+}
+
+function pipelineTimelineSummary(pipeline: UnknownRecord): UnknownRecord {
+  return {
+    ...selectedFields(pipeline, [
+      'workDir',
+      'yamlPath',
+      'manualNewPipelineYamlPath',
+      'yamlRunVersion',
+      'isDirty',
+      'layoutDirty',
+      'loading',
+      'selectedTaskId',
+      'selectedTaskIds',
+      'selectedTrackId',
+      'pipelineName',
+      'trackCount',
+      'taskCount',
+      'undoDepth',
+      'redoDepth',
+    ]),
+    errorMessage: conciseDiagnosticText(pipeline.errorMessage),
+    validationSummary: validationTimelineSummary(pipeline.validationSummary),
+  };
+}
+
+function requirementsTimelineSummary(value: unknown, fallback: unknown): UnknownRecord {
+  const summary = record(value);
+  if (Object.keys(summary).length > 0) {
+    return {
+      ...selectedFields(summary, [
+        'status',
+        'present',
+        'missingCount',
+        'binaryCount',
+        'environmentCount',
+        'serviceCount',
+        'totalCount',
+        'returnedCount',
+        'omittedCount',
+        'truncated',
+      ]),
+      kindCounts: numericRecord(summary.kindCounts),
+    };
+  }
+  const missingCount = Array.isArray(fallback)
+    ? fallback.length
+    : fallback && typeof fallback === 'object'
+      ? Object.keys(fallback).length
+      : fallback
+        ? 1
+        : 0;
+  return { present: missingCount > 0, missingCount };
+}
+
+function runTimelineSummary(run: UnknownRecord): UnknownRecord {
+  return {
+    ...selectedFields(run, [
+      'active',
+      'viewMode',
+      'runId',
+      'graphRunId',
+      'workflowRunId',
+      'status',
+      'selectedTaskId',
+      'selectedTrackId',
+      'abortReason',
+      'lastEventSeq',
+      'taskCount',
+      'returnedTaskStatusCount',
+      'omittedTaskStatusCount',
+      'pendingApprovalCount',
+      'returnedPendingApprovalCount',
+      'omittedPendingApprovalCount',
+      'logCount',
+      'returnedLogCount',
+      'omittedLogCount',
+      'pipelineLogCount',
+      'returnedPipelineLogCount',
+      'omittedPipelineLogCount',
+      'yamlPath',
+      'replayFromRunId',
+    ]),
+    error: conciseDiagnosticText(run.error),
+    taskStatusCounts: numericRecord(run.taskStatusCounts),
+    taskStatuses: taskTimelineSummaries(run.taskStatuses),
+    taskStatusEvidence: evidenceSummary(run.taskStatusEvidence),
+    pendingApprovals: approvalTimelineSummaries(run.pendingApprovals),
+    pendingApprovalEvidence: evidenceSummary(run.pendingApprovalEvidence),
+    latestLog: logTimelineSummary(run.latestLog),
+    logEvidence: evidenceSummary(run.logEvidence),
+    latestPipelineLog: logTimelineSummary(run.latestPipelineLog),
+    pipelineLogEvidence: evidenceSummary(run.pipelineLogEvidence),
+    requirementsSummary: requirementsTimelineSummary(
+      run.requirementsSummary,
+      run.requirementsMissing,
+    ),
+  };
+}
+
+function featureTimelineSummary(value: unknown): unknown {
+  const source = record(value);
+  const selected = selectedFields(source, [
+    'status',
+    'state',
+    'kind',
+    'phase',
+    'enabled',
+    'active',
+    'ready',
+    'running',
+    'count',
+    'totalCount',
+    'returnedCount',
+    'omittedCount',
+    'truncated',
+  ]);
+  const error = conciseDiagnosticText(source.error ?? source.errorMessage);
+  const warning = conciseDiagnosticText(source.warning);
+  if (error !== null) selected.error = error;
+  if (warning !== null) selected.warning = warning;
+  return Object.keys(selected).length > 0
+    ? selected
+    : { present: value !== null && value !== undefined, fieldCount: Object.keys(source).length };
+}
+
+function timelineStateFromSnapshot(snapshot: unknown): TimelineState {
+  const root = record(snapshot);
+  const page = record(root.page);
+  const chat = record(root.chat);
+  const pipeline = record(root.pipeline);
+  const run = record(root.run);
+  const features = record(root.features);
+
+  return {
+    page: {
+      href: timelinePageHref(page.href),
+      ...selectedFields(page, ['visibilityState', 'online']),
+    },
+    chat: chatTimelineSummary(chat),
+    pipeline: pipelineTimelineSummary(pipeline),
+    run: runTimelineSummary(run),
+    features: Object.fromEntries(
+      Object.entries(features)
+        .slice(0, 100)
+        .map(([id, value]) => [id.slice(0, 256), featureTimelineSummary(value)]),
+    ),
+  };
 }
 
 export class DiagnosticsHub {
   private readonly maxLogEntries: number;
   private readonly maxLogBytes: number;
+  private readonly maxTimelineEntries: number;
+  private readonly maxTimelineBytes: number;
   private readonly tokenFactory: () => string;
   private readonly idFactory: () => string;
   private readonly logs: DiagnosticLogEntry[] = [];
+  private readonly timeline: DiagnosticTimelineEvent[] = [];
+  private readonly timelineComparisonState = new Map<string, TimelineState>();
   private readonly rendererReports = new Map<string, StoredRendererReport>();
   private logBytes = 0;
   private logCursor = 0;
   private droppedLogEntryCount = 0;
+  private timelineBytes = 0;
+  private timelineCursor = 0;
+  private droppedTimelineEventCount = 0;
   private session: DiagnosticsSession | null = null;
 
   constructor(options: DiagnosticsHubOptions = {}) {
     this.maxLogEntries = Math.max(1, options.maxLogEntries ?? 2_000);
     this.maxLogBytes = Math.max(1_024, options.maxLogBytes ?? 2 * 1024 * 1024);
+    this.maxTimelineEntries = Math.max(1, options.maxTimelineEntries ?? 2_000);
+    this.maxTimelineBytes = Math.max(1_024, options.maxTimelineBytes ?? 4 * 1024 * 1024);
     this.tokenFactory = options.tokenFactory ?? (() => randomBytes(32).toString('base64url'));
     this.idFactory = options.idFactory ?? (() => randomBytes(12).toString('base64url'));
   }
@@ -126,6 +848,11 @@ export class DiagnosticsHub {
     this.logBytes = 0;
     this.logCursor = 0;
     this.droppedLogEntryCount = 0;
+    this.timeline.length = 0;
+    this.timelineComparisonState.clear();
+    this.timelineBytes = 0;
+    this.timelineCursor = 0;
+    this.droppedTimelineEventCount = 0;
     this.rendererReports.clear();
   }
 
@@ -231,6 +958,94 @@ export class DiagnosticsHub {
     };
   }
 
+  readTimeline(afterCursor = 0, limit = 500): DiagnosticTimelinePage {
+    const boundedAfter = Number.isFinite(afterCursor) ? Math.max(0, Math.trunc(afterCursor)) : 0;
+    const boundedLimit = Number.isFinite(limit)
+      ? Math.min(1_000, Math.max(1, Math.trunc(limit)))
+      : 500;
+    const oldestCursor = this.timeline[0]?.cursor ?? null;
+    const available = this.timeline.filter((event) => event.cursor > boundedAfter);
+    const events = available.slice(0, boundedLimit).map((event) => ({
+      ...event,
+      changedSections: [...event.changedSections],
+      state: { ...event.state },
+    }));
+    const omittedEventCount = Math.max(0, available.length - events.length);
+    const requestedEventLossCount =
+      oldestCursor === null ? 0 : Math.max(0, oldestCursor - (boundedAfter + 1));
+    return {
+      oldestCursor,
+      latestCursor: this.timelineCursor,
+      nextCursor: events.at(-1)?.cursor ?? this.timelineCursor,
+      droppedBeforeCursor: requestedEventLossCount > 0,
+      retainedEventCount: this.timeline.length,
+      availableEventCount: available.length,
+      returnedEventCount: events.length,
+      omittedEventCount,
+      hasMore: omittedEventCount > 0,
+      retention: {
+        layer: 'diagnostics-timeline-buffer',
+        droppedEventCount: this.droppedTimelineEventCount,
+        requestedEventLossCount,
+        truncated: requestedEventLossCount > 0,
+      },
+      page: {
+        layer: 'diagnostics-timeline-page',
+        limit: boundedLimit,
+        omittedEventCount,
+        truncated: omittedEventCount > 0,
+      },
+      events,
+    };
+  }
+
+  private recordRendererTimeline(
+    instanceId: string,
+    workspaceKey: string | null,
+    capturedAt: number,
+    snapshot: unknown,
+  ): void {
+    const state = timelineStateFromSnapshot(snapshot);
+    const previous = this.timelineComparisonState.get(instanceId);
+    const changedSections = previous
+      ? DIAGNOSTIC_TIMELINE_SECTIONS.filter(
+          (section) => JSON.stringify(previous[section]) !== JSON.stringify(state[section]),
+        )
+      : [...DIAGNOSTIC_TIMELINE_SECTIONS];
+    this.timelineComparisonState.set(instanceId, state);
+    if (changedSections.length === 0) return;
+
+    const changedState: DiagnosticTimelineEvent['state'] = {};
+    for (const section of changedSections) changedState[section] = state[section];
+    const sourceEvent: DiagnosticTimelineEvent = {
+      cursor: ++this.timelineCursor,
+      timestamp: capturedAt,
+      source: 'renderer.snapshot',
+      instanceId,
+      workspaceKey,
+      changedSections,
+      state: changedState,
+    };
+    const sourceBytes = serializedTimelineEventBytes(sourceEvent);
+    const event =
+      sourceBytes > this.maxTimelineBytes
+        ? timelineOverflowMarker(sourceEvent, this.maxTimelineBytes, sourceBytes)
+        : sourceEvent;
+    const eventBytes = serializedTimelineEventBytes(event);
+    this.timeline.push(event);
+    this.timelineBytes += eventBytes;
+    while (
+      this.timeline.length > 1 &&
+      (this.timeline.length > this.maxTimelineEntries || this.timelineBytes > this.maxTimelineBytes)
+    ) {
+      const removed = this.timeline.shift();
+      if (removed) {
+        this.timelineBytes -= serializedTimelineEventBytes(removed);
+        this.droppedTimelineEventCount += 1;
+      }
+    }
+  }
+
   acceptRendererReport(report: RendererDiagnosticsReport): boolean {
     if (!this.session) return false;
     if (
@@ -251,7 +1066,7 @@ export class DiagnosticsHub {
       capturedAt: report.capturedAt,
       snapshot: sanitizeDiagnosticValue(report.snapshot, {
         maxDepth: 10,
-        maxArrayItems: 100,
+        maxArrayItems: 250,
         maxObjectKeys: 150,
         maxStringChars: 16_384,
       }),
@@ -295,6 +1110,12 @@ export class DiagnosticsHub {
         invalidSelectedCount,
       },
     });
+    this.recordRendererTimeline(
+      instanceId,
+      storedReport.workspaceKey,
+      report.capturedAt,
+      storedReport.snapshot,
+    );
     return true;
   }
 

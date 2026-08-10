@@ -110,6 +110,12 @@
 - Finalize under the active chat YAML lease with a server-side three-way comparison:
   base hashes versus the current live artifacts, the renderer-local YAML/layout branch, and the
   agent branch. A global workspace revision is never a conflict signal for staged turns.
+- Treat a missing layout artifact and a layout containing only empty default
+  `positions`/`folders`/`trackHeights` as the same semantic absence in base, stage, live,
+  branch comparison, hashing, publication, and local-branch persistence. For non-empty layouts,
+  omit empty optional fields and recursively stabilize object-key order before comparison or
+  hashing. Preserve an omitted local layout as "not supplied", keep genuinely non-empty values
+  distinct, and never trust the renderer `changed` hint as a conflict decision.
 - When reconciliation publishes a numbered copy, rebase only pipeline-local track/task `cwd`
   values and known built-in file paths from the source or staged pipeline folder to the copy
   folder. Preserve shared workspace paths, external trigger paths, and command-shaped fields.
@@ -149,6 +155,14 @@
   attempt and runs full semantic validation plus the atomic plan write. Keep drafts stage-owned,
   path-and-hash-bound, locked, size-bounded, resumable by default, explicitly resettable, and
   unpublished; never restore a whole-plan single-call boundary for model-generated trial plans.
+- Validate and normalize every proposed case, coverage section, and finding section before
+  persisting it. Reject reserved pipeline-artifact paths, incomplete or duplicate coverage,
+  unknown case links, unsupported coverage evidence, and a case update that would invalidate
+  already-covered evidence at that bounded mutation. Revalidate a persisted draft before
+  `begin` resumes it. A rejected pre-commit mutation must leave the prior draft and
+  formal-attempt telemetry unchanged so the planner can correct it in the same physical
+  continuation. Keep final whole-plan completeness and the atomic write at `commit`; do not move
+  the attempt counter to conceal malformed draft writes.
 - Every plan must account for multiple inputs, duplicate input names, multiline content,
   inter-task, repeat-run, and concurrent-run output collisions, repeated runs, empty content, and
   special characters. Inter-task coverage needs two target tasks plus distinct-output evidence;
@@ -411,9 +425,12 @@
 - Treat YAML literal/folded command blocks as opaque scripts during requirements discovery even
   when their parsed value contains only one command plus the block scalar's terminal newline;
   PowerShell cmdlets in those blocks are not external binary requirements.
-- Conversation exports may continue to hide internal planning and repair turns, but must append
-  the durable current-session compile, redacted Trial Plan/case evidence, and final host
-  reconciliation result when those facts exist.
+- Conversation exports may continue to hide internal planning and repair turns, but must include
+  the durable current-session compile, redacted Trial Plan/case/rejection evidence, and final host
+  reconciliation result when those facts exist. Match that result to the visible provisional
+  assistant turn by session ownership and completion time, replace it at the same chronological
+  position, and preserve later conversation turns. Never detect provisional wording by matching
+  model-authored text.
 - A hung-turn force stop must finish the visible turn before waiting for restart health. Keep an
   exact workspace/session/turn recovery barrier so sends stay queued and runtime/session mutation
   stays blocked until the replacement is healthy; late recovery failures must not overwrite a new
@@ -426,6 +443,11 @@
 
 ## Production Diagnostics
 
+- Use the bounded structured diagnostics timeline for lifecycle evidence. Timeline events must
+  exclude raw authored messages, drafts, prompts, tool input/output, and commands. Bounded,
+  redacted host error, validation, and Trial diagnostic strings may be included for diagnosis but
+  remain sensitive. Ignore capture-time and turn-health heartbeat-only churn, and report retention
+  loss separately from page-level omission.
 - Keep coding-agent diagnostics disabled by default, loopback-only, session-scoped, and read-only.
   Its random token must remain independent from sidecar/OpenCode credentials and may authorize only
   `GET` below `/api/diagnostics/v1`; rotate on enable and revoke on disable/shutdown. Clear every

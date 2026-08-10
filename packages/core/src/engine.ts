@@ -615,6 +615,13 @@ async function runPipelineInner(
       summary.failed === 0 &&
       summary.timeout === 0 &&
       summary.blocked === 0;
+    const terminalStatus =
+      ctx.abortReason !== null
+        ? `aborted (${ctx.abortReason})`
+        : allSuccess
+          ? 'completed'
+          : 'failed';
+    const terminalVerb = ctx.abortReason !== null ? 'aborted' : allSuccess ? 'completed' : 'failed';
 
     if (!allSuccess) {
       const reasonText =
@@ -657,9 +664,7 @@ async function runPipelineInner(
     }
 
     log.section('Pipeline summary');
-    log.quiet(
-      `status:   ${ctx.abortReason !== null ? `aborted (${ctx.abortReason})` : 'completed'}`,
-    );
+    log.quiet(`status:   ${terminalStatus}`);
     log.quiet(`duration: ${(durationMs / 1000).toFixed(1)}s`);
     log.quiet(
       `counts:   total=${summary.total} success=${summary.success} ` +
@@ -675,7 +680,7 @@ async function runPipelineInner(
       log.quiet(`  ${state.status.padEnd(8)} ${id}  (exit=${exit}, ${dur})`);
     }
 
-    log.info('[pipeline]', `completed "${config.name}"`);
+    log.info('[pipeline]', `${terminalVerb} "${config.name}"`);
     log.info(
       '[pipeline]',
       `Total: ${summary.total} | Success: ${summary.success} | Failed: ${summary.failed} | Skipped: ${summary.skipped} | Timeout: ${summary.timeout} | Blocked: ${summary.blocked}`,
