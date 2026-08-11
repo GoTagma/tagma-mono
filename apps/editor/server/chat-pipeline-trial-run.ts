@@ -49,6 +49,7 @@ import {
   type ChatPipelineTrialPlanToolTelemetry,
 } from './chat-pipeline-trial-plan.js';
 import {
+  chatPipelineTrialWorkspacePathFromCasePath,
   describeTrialBlockers,
   describeTrialFixtureInputs,
   describeUncoveredTrialFixtureInputs,
@@ -913,8 +914,12 @@ export function normalizeTrialCaseTargetTaskIdsForExecution(
   return targetTaskIds;
 }
 
-function casePath(workDir: string, relativePath: string): string {
-  const path = resolve(workDir, ...relativePath.split('/'));
+function casePath(workDir: string, relativePath: string, relativeYamlPath: string): string {
+  const workspaceRelativePath = chatPipelineTrialWorkspacePathFromCasePath(
+    relativePath,
+    relativeYamlPath,
+  );
+  const path = resolve(workDir, ...workspaceRelativePath.split('/'));
   if (!isPathWithin(path, workDir)) throw new Error('Trial case path escaped its workspace.');
   return path;
 }
@@ -955,6 +960,7 @@ function copyTrialPipelineTree(
 function prepareTrialCaseWorkspace(
   stageRoot: string,
   stagedYamlPath: string,
+  relativeYamlPath: string,
   testCase: ChatPipelineTrialPlanCase,
 ): { rootDir: string; workDir: string; yamlPath: string } {
   const casesDir = join(stageRoot, '.trial-cases');
@@ -972,7 +978,7 @@ function prepareTrialCaseWorkspace(
     });
     const yamlPath = join(copiedPipelineFolder, basename(stagedYamlPath));
     for (const fixture of testCase.fixtures) {
-      const path = casePath(workDir, fixture.path);
+      const path = casePath(workDir, fixture.path, relativeYamlPath);
       mkdirSync(dirname(path), { recursive: true });
       atomicWriteFileSync(path, fixture.content);
     }
@@ -1020,6 +1026,7 @@ function resolveJsonPointer(
 
 function evaluateTrialExpectation(
   workDir: string,
+  relativeYamlPath: string,
   expectation: ChatPipelineTrialExpectation,
   lastResult: EngineResult | null,
 ): ChatPipelineTrialExpectationResult {
@@ -1041,7 +1048,7 @@ function evaluateTrialExpectation(
     };
   }
 
-  const path = casePath(workDir, expectation.path);
+  const path = casePath(workDir, expectation.path, relativeYamlPath);
   const stat = lstatOrNull(path);
   if (expectation.type === 'path-exists' || expectation.type === 'path-not-exists') {
     const exists = !!stat && !stat.isSymbolicLink();
@@ -1746,6 +1753,7 @@ async function executeTargetedTrialCase(
   > & {
     stageRoot: string;
     stagedYamlPath: string;
+    relativeYamlPath: string;
     testCase: ChatPipelineTrialPlanCase;
     targetTaskIds?: string[];
     caseIndex: number;
@@ -1777,6 +1785,7 @@ async function executeTargetedTrialCase(
     caseWorkspace = prepareTrialCaseWorkspace(
       input.stageRoot,
       input.stagedYamlPath,
+      input.relativeYamlPath,
       input.testCase,
     );
     const stagedYaml = readFileSync(input.stagedYamlPath, 'utf-8');
@@ -1838,7 +1847,14 @@ async function executeTargetedTrialCase(
   } else if (caseWorkspace) {
     for (const expectation of input.testCase.expectations) {
       try {
-        expectations.push(evaluateTrialExpectation(caseWorkspace.workDir, expectation, lastResult));
+        expectations.push(
+          evaluateTrialExpectation(
+            caseWorkspace.workDir,
+            input.relativeYamlPath,
+            expectation,
+            lastResult,
+          ),
+        );
       } catch (err) {
         expectations.push({
           type: expectation.type,
@@ -1990,7 +2006,11 @@ async function prepareTrialExecution(
     return { status: 'result', result: resultForPlanFailure(plan, planDiagnostics, startedAt) };
   }
 
-  const dataReadiness = resolveChatPipelineDataReadiness(pipelineConfig, ws.workDir);
+  const dataReadiness = resolveChatPipelineDataReadiness(
+    pipelineConfig,
+    ws.workDir,
+    entry.relativePath,
+  );
   if (dataReadiness.state === 'blocked') {
     return {
       status: 'result',
@@ -2287,6 +2307,7 @@ async function executeTrial(
         taskTimeoutMs: budgets.taskTimeoutMs,
         stageRoot: stage.rootDir,
         stagedYamlPath: snapshot.yamlPath,
+        relativeYamlPath: entry.relativePath,
         testCase,
         targetTaskIds: targetTaskIdsByCase.get(testCase.id),
         caseIndex: caseOffset + 1,
@@ -2617,7 +2638,11 @@ export async function trialRunChatYamlStage(
           planTelemetry,
         };
       }
-      const dataReadiness = resolveChatPipelineDataReadiness(pipelineConfig, ws.workDir);
+      const dataReadiness = resolveChatPipelineDataReadiness(
+        pipelineConfig,
+        ws.workDir,
+        entry.relativePath,
+      );
       if (planTelemetry.toolAttemptCount >= stage.trialPlanMaxAttempts) {
         return resultForPlanAttemptBudgetExhausted(planTelemetry, startedAt);
       }

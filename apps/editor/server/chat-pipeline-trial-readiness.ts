@@ -43,9 +43,47 @@ function inputIsReady(path: string, type: ChatPipelineTrialFixtureInput['type'])
   }
 }
 
+function normalizedCasePath(path: string): string {
+  return path.replace(/\\/g, '/').replace(/^\.\//, '');
+}
+
+function pipelineCaseNamespace(relativeYamlPath: string): string | null {
+  const normalized = normalizedCasePath(relativeYamlPath);
+  const separator = normalized.lastIndexOf('/');
+  return separator > 0 ? normalized.slice(0, separator) : null;
+}
+
+function pathUsesNamespace(path: string, namespace: string): boolean {
+  const comparedPath = process.platform === 'win32' ? path.toLowerCase() : path;
+  const comparedNamespace = process.platform === 'win32' ? namespace.toLowerCase() : namespace;
+  return comparedPath === comparedNamespace || comparedPath.startsWith(`${comparedNamespace}/`);
+}
+
+export function chatPipelineTrialCasePathFromWorkspacePath(
+  workspaceRelativePath: string,
+  relativeYamlPath: string,
+): string {
+  const path = normalizedCasePath(workspaceRelativePath);
+  const namespace = pipelineCaseNamespace(relativeYamlPath);
+  const internalNamespace = namespace ? `.tagma/${namespace}` : null;
+  return internalNamespace && pathUsesNamespace(path, internalNamespace)
+    ? path.slice('.tagma/'.length)
+    : path;
+}
+
+export function chatPipelineTrialWorkspacePathFromCasePath(
+  caseRelativePath: string,
+  relativeYamlPath: string,
+): string {
+  const path = normalizedCasePath(caseRelativePath);
+  const namespace = pipelineCaseNamespace(relativeYamlPath);
+  return namespace && pathUsesNamespace(path, namespace) ? `.tagma/${path}` : path;
+}
+
 export function resolveChatPipelineDataReadiness(
   pipelineConfig: PipelineConfig,
   workDir: string,
+  relativeYamlPath?: string,
 ): ChatPipelineTrialReadiness {
   const roots = [...buildDag(pipelineConfig).nodes.values()].filter(
     (node) => node.dependsOn.length === 0,
@@ -69,11 +107,14 @@ export function resolveChatPipelineDataReadiness(
     }
 
     const taskId = `${track.id}.${task.id}`;
-    const fixturePath = relative(workDir, inputPath).replace(/\\/g, '/');
-    if (!fixturePath || !isPathWithin(inputPath, workDir)) {
+    const workspaceRelativePath = relative(workDir, inputPath).replace(/\\/g, '/');
+    if (!workspaceRelativePath || !isPathWithin(inputPath, workDir)) {
       blockers.push({ kind: 'external-data-path', name: trigger.path, taskId });
       continue;
     }
+    const fixturePath = relativeYamlPath
+      ? chatPipelineTrialCasePathFromWorkspacePath(workspaceRelativePath, relativeYamlPath)
+      : workspaceRelativePath;
     inputs.push({
       taskId,
       type: trigger.type,

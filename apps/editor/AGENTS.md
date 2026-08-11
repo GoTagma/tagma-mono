@@ -307,6 +307,10 @@
 - Trial-plan fixture and expectation paths are relative to the isolated case project root and may
   target only case fixtures or outputs. Reject plans that inspect the staged YAML or its
   host-private companion artifacts under the case `.tagma` tree before starting Trial.
+- Pipeline-local Trial fixtures and outputs use the `.tagma`-relative namespace `<stem>/...` in
+  plans, never a literal `.tagma/<stem>/...` path. Readiness must translate a missing real path
+  under `.tagma/<stem>/` into that logical namespace, and isolated execution must map the same
+  namespace back for both fixture writes and expectation reads.
 - Treat Stop as cancellation of the entire staged logical chat lifecycle, not only the current OpenCode physical turn: a user-stopped finished turn or host-trial cancellation must abort the active host trial, discard the stage, clear post-chat action, release the YAML lease, and acknowledge exactly once, without planning, repair, trial retry, or finalize. Keep queued force-push continuation semantics unchanged.
 - Keep the shared compile/trial hidden-repair budget in the workspace Editor setting
   `opencodeChatPipelineRepairMaxAttempts`: default `25`, allowed range `0-50`, with `0` disabling

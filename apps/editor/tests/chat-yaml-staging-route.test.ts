@@ -125,7 +125,11 @@ function writePassingTrialPlan(stagedPath: string, taskId: string): void {
   });
 }
 
-function writeTrialPlanTelemetry(stagedPath: string, toolAttemptCount = 2): void {
+function writeTrialPlanTelemetry(
+  stagedPath: string,
+  toolAttemptCount = 2,
+  successfulWriteCount = 0,
+): void {
   const yamlHash = createHash('sha1').update(readFileSync(stagedPath, 'utf-8')).digest('hex');
   const agentTagmaDir = dirname(dirname(stagedPath));
   const relativeYamlPath = relative(agentTagmaDir, stagedPath).replace(/\\/g, '/');
@@ -146,14 +150,21 @@ function writeTrialPlanTelemetry(stagedPath: string, toolAttemptCount = 2): void
         (_, index) => `fixture-attempt-${index + 1}`,
       ),
       toolAttemptCount,
-      validationRejectionCount: toolAttemptCount,
-      repeatedValidationRejectionCount: Math.max(0, toolAttemptCount - 1),
-      successfulWriteCount: 0,
+      validationRejectionCount: toolAttemptCount - successfulWriteCount,
+      repeatedValidationRejectionCount: Math.max(0, toolAttemptCount - successfulWriteCount - 1),
+      successfulWriteCount,
       firstAttemptAt: 100,
       lastAttemptAt: 100 + toolAttemptCount * 75,
-      rejections: [
-        { fingerprint: 'a'.repeat(64), count: toolAttemptCount, message: 'invalid plan' },
-      ],
+      rejections:
+        toolAttemptCount === successfulWriteCount
+          ? []
+          : [
+              {
+                fingerprint: 'a'.repeat(64),
+                count: toolAttemptCount - successfulWriteCount,
+                message: 'invalid plan',
+              },
+            ],
     }),
     'utf-8',
   );
@@ -595,6 +606,98 @@ describe('chat YAML staging routes', () => {
       entry: { path: sourcePath },
     });
     expect(readFileSync(sourcePath, 'utf-8')).toContain('name: Missing Baseline Input');
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('runs a final-attempt plan with pipeline-local isolated fixtures', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    const script = [
+      `const fs = require('node:fs');`,
+      `const text = fs.readFileSync('input/text-to-check.md', 'utf8');`,
+      `fs.mkdirSync('output', { recursive: true });`,
+      `fs.writeFileSync('output/observed.txt', text);`,
+    ].join(' ');
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Pipeline-local Missing Baseline Input',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              {
+                id: 'ingest',
+                cwd: '.tagma/pipeline',
+                command: { argv: [process.execPath, '-e', script] },
+                trigger: { type: 'file', path: 'input/text-to-check.md' },
+              },
+            ],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    writeTrialPlan(entry.stagedPath, {
+      cases: [
+        {
+          id: 'pipeline-local-input',
+          title: 'Run against a pipeline-local representative input',
+          objective: 'Verify a published pipeline can consume its isolated input.',
+          runs: 1,
+          targetTaskIds: ['main.ingest'],
+          fixtures: [
+            { path: 'pipeline/input/text-to-check.md', content: 'The Moon is made of cheese.' },
+          ],
+          expectations: [
+            {
+              type: 'file-equals',
+              path: 'pipeline/output/observed.txt',
+              text: 'The Moon is made of cheese.',
+            },
+          ],
+        },
+      ],
+    });
+    writeTrialPlanTelemetry(entry.stagedPath, 2, 2);
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        {
+          stageId: stage.id,
+          relativePath: entry.relativePath,
+          trialId: 'pipeline_local_final_attempt',
+        },
+        'chat-lock',
+      ),
+      trialRes,
+    );
+    expect(trialRes.statusCode).toBe(200);
+    expect(trialRes.body).toMatchObject({
+      success: true,
+      kind: 'passed-with-warnings',
+      ran: true,
+      verificationMode: 'isolated-fixtures-only',
+      planTelemetry: { toolAttemptCount: 2, successfulWriteCount: 2 },
+      cases: [{ id: 'pipeline-local-input', success: true }],
+    });
+    expect(existsSync(join(ws.workDir, '.tagma', 'pipeline', 'input', 'text-to-check.md'))).toBe(
+      false,
+    );
+    discardStage(getRoute, ws, stage.id);
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });

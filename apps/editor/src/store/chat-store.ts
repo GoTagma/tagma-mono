@@ -1211,6 +1211,7 @@ export function buildChatYamlTrialPlanPrompt(
             (input) =>
               `- ${input.taskId}: ${input.type} ${input.path} (fixture path: ${input.fixturePath})`,
           ),
+          'Use each advertised fixture path exactly as shown; do not add a leading .tagma/ or remove the pipeline stem.',
         ]
       : []),
     'Fixture and expectation paths are relative to the isolated case project root and may target only fixtures or outputs; never assert staged YAML or its companion artifacts: .compile.log, .layout.json, .manifest.json, .requirements.md, or .trial-plan.json.',

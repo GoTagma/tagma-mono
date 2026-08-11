@@ -6,13 +6,21 @@ import { join } from 'node:path';
 import type { PipelineConfig } from '@tagma/sdk';
 
 import {
+  chatPipelineTrialCasePathFromWorkspacePath,
+  chatPipelineTrialWorkspacePathFromCasePath,
   findUncoveredTrialFixtureInputs,
   resolveChatPipelineDataReadiness,
   resolveChatPipelineRuntimeReadiness,
 } from '../server/chat-pipeline-trial-readiness';
 import type { ChatPipelineTrialPlan } from '../server/chat-pipeline-trial-plan';
 
-function pipelineWithMissingInput(): PipelineConfig {
+function pipelineWithMissingInput(
+  cwd?: string,
+  trigger: { type: 'file' | 'directory'; path: string } = {
+    type: 'file',
+    path: 'input/article.md',
+  },
+): PipelineConfig {
   return {
     name: 'Prerequisite readiness',
     tracks: [
@@ -23,8 +31,9 @@ function pipelineWithMissingInput(): PipelineConfig {
           {
             id: 'ingest',
             name: 'Ingest',
+            ...(cwd ? { cwd } : {}),
             command: { argv: ['node', '-e', ''] },
-            trigger: { type: 'file', path: 'input/article.md' },
+            trigger,
           },
           {
             id: 'verify',
@@ -108,6 +117,87 @@ describe('chat pipeline Trial readiness', () => {
     } finally {
       rmSync(workDir, { recursive: true, force: true });
     }
+  });
+
+  test('uses the isolated case namespace for a missing input inside the pipeline folder', () => {
+    const workDir = mkdtempSync(join(tmpdir(), 'tagma-trial-readiness-'));
+    try {
+      const config = pipelineWithMissingInput('.tagma/pipeline');
+      const readiness = resolveChatPipelineDataReadiness(config, workDir, 'pipeline/pipeline.yaml');
+      if (readiness.state !== 'fixture-backed') throw new Error('fixture readiness expected');
+
+      expect(readiness.inputs).toEqual([
+        {
+          taskId: 'main.ingest',
+          type: 'file',
+          path: 'input/article.md',
+          fixturePath: 'pipeline/input/article.md',
+        },
+      ]);
+      expect(
+        findUncoveredTrialFixtureInputs(
+          trialPlan([{ path: 'pipeline/input/article.md', content: 'Representative claim.' }]),
+          readiness.inputs,
+          config,
+        ),
+      ).toEqual([]);
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+
+  test('covers a missing pipeline directory with a descendant fixture', () => {
+    const workDir = mkdtempSync(join(tmpdir(), 'tagma-trial-readiness-'));
+    try {
+      const config = pipelineWithMissingInput('.tagma/pipeline', {
+        type: 'directory',
+        path: 'input/articles',
+      });
+      const readiness = resolveChatPipelineDataReadiness(config, workDir, 'pipeline/pipeline.yaml');
+      if (readiness.state !== 'fixture-backed') throw new Error('fixture readiness expected');
+
+      expect(readiness.inputs[0]?.fixturePath).toBe('pipeline/input/articles');
+      expect(
+        findUncoveredTrialFixtureInputs(
+          trialPlan([
+            {
+              path: 'pipeline/input/articles/claim.md',
+              content: 'Representative claim.',
+            },
+          ]),
+          readiness.inputs,
+          config,
+        ),
+      ).toEqual([]);
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+
+  test('maps only the current pipeline namespace between case and workspace paths', () => {
+    const relativeYamlPath = 'pipeline/pipeline.yaml';
+
+    expect(
+      chatPipelineTrialCasePathFromWorkspacePath(
+        '.tagma/pipeline/input/article.md',
+        relativeYamlPath,
+      ),
+    ).toBe('pipeline/input/article.md');
+    expect(
+      chatPipelineTrialCasePathFromWorkspacePath(
+        '.tagma/pipeline-other/input/article.md',
+        relativeYamlPath,
+      ),
+    ).toBe('.tagma/pipeline-other/input/article.md');
+    expect(
+      chatPipelineTrialWorkspacePathFromCasePath('pipeline/output/report.json', relativeYamlPath),
+    ).toBe('.tagma/pipeline/output/report.json');
+    expect(
+      chatPipelineTrialWorkspacePathFromCasePath(
+        'pipeline-other/output/report.json',
+        relativeYamlPath,
+      ),
+    ).toBe('pipeline-other/output/report.json');
   });
 
   test('models non-virtualizable runtime requirements as blockers', () => {

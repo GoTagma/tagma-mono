@@ -298,6 +298,39 @@ test('trial planning prompt forces behavior-first edge-case design without autho
   expect(prompt.length).toBeLessThan(4_000);
 });
 
+test('trial planning prompt preserves the advertised fixture namespace', () => {
+  const prompt = buildChatYamlTrialPlanPrompt(
+    {
+      kind: 'refresh-current',
+      path: 'C:/repo/.tagma/build/build.yaml',
+      name: 'build.yaml',
+      pipelineName: 'Build',
+    },
+    {
+      reason: 'missing',
+      relativePlanPath: 'build/build.trial-plan.json',
+      pipelineHash: 'a'.repeat(40),
+      message: 'No trial plan was written.',
+      requiredCoverage: ['multiple-inputs'],
+      unavailableBaselineInputs: [
+        {
+          taskId: 'main.ingest',
+          type: 'file',
+          path: 'input/claim.txt',
+          fixturePath: 'build/input/claim.txt',
+        },
+      ],
+      attemptId: 'host-plan-attempt-1',
+    },
+    1,
+    2,
+  );
+
+  expect(prompt).toContain('fixture path: build/input/claim.txt');
+  expect(prompt).toContain('Use each advertised fixture path exactly as shown');
+  expect(prompt).toContain('do not add a leading .tagma/ or remove the pipeline stem');
+});
+
 const jsonResponse = (data: unknown): Response =>
   new Response(JSON.stringify(data), {
     status: 200,
