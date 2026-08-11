@@ -1214,6 +1214,7 @@ function validateInputBindingSources(
   task: RawTaskConfig,
   trackId: string,
   taskPath: string,
+  qidIndex: Map<string, QidEntry>,
   index: TaskIndex,
   errors: ValidationError[],
 ): void {
@@ -1269,6 +1270,91 @@ function validateInputBindingSources(
         path: `${taskPath}.inputs.${name}.from`,
         message: `Task "${task.id}": input binding "${name}" from "${source}" references task "${upstreamId}" which is not a direct dependency (must be listed in depends_on)`,
       });
+      continue;
+    }
+
+    const binding = rawBinding as Record<string, unknown>;
+    const outputName = bindingSourceOutputName(source);
+    if (
+      outputName &&
+      binding.required === true &&
+      !('value' in binding) &&
+      !('default' in binding)
+    ) {
+      const upstream = qidIndex.get(upstreamId);
+      const hasDeclaredOutput =
+        isRecord(upstream?.task.outputs) && outputName in upstream.task.outputs;
+      const hasInferredPromptOutput =
+        isCommandTaskConfig(task) && upstream !== undefined && isPromptTaskConfig(upstream.task);
+      if (!hasDeclaredOutput && !hasInferredPromptOutput) {
+        errors.push({
+          path: `${taskPath}.inputs.${name}.from`,
+          message:
+            `Task ${task.id}: input binding ${name} from ${source} references direct dependency ${upstreamId}, ` +
+            `which cannot produce output ${outputName}`,
+        });
+      }
+    }
+  }
+}
+
+function validateUnscopedInputBindingSources(
+  task: RawTaskConfig,
+  trackId: string,
+  taskPath: string,
+  qidIndex: Map<string, QidEntry>,
+  index: TaskIndex,
+  errors: ValidationError[],
+): void {
+  if (!isRecord(task.inputs)) return;
+
+  const directUpstreams = new Map<string, QidEntry>();
+  const dependencyIds = [...dependencyRefs(task)];
+  if (isNonEmptyString(task.continue_from)) dependencyIds.push(task.continue_from);
+  for (const dependencyId of dependencyIds) {
+    const resolved = resolveTaskRef(dependencyId, trackId, index);
+    if (resolved.kind !== 'resolved') continue;
+    const upstream = qidIndex.get(resolved.qid);
+    if (upstream) directUpstreams.set(resolved.qid, upstream);
+  }
+
+  for (const [name, rawBinding] of Object.entries(task.inputs)) {
+    if (!isRecord(rawBinding) || 'value' in rawBinding) continue;
+    const source = isNonEmptyString(rawBinding.from) ? rawBinding.from : null;
+    const outputName =
+      source === null
+        ? name
+        : source.startsWith('outputs.')
+          ? bindingSourceOutputName(source)
+          : null;
+    if (!outputName) continue;
+
+    const producerIds = [...directUpstreams.entries()].flatMap(([upstreamId, upstream]) => {
+      if (isRecord(upstream.task.outputs) && outputName in upstream.task.outputs) {
+        return [upstreamId];
+      }
+      if (isCommandTaskConfig(task) && isPromptTaskConfig(upstream.task)) return [upstreamId];
+      return [];
+    });
+    if (producerIds.length === 1) continue;
+
+    const path = `${taskPath}.inputs.${name}${source === null ? '' : '.from'}`;
+    if (producerIds.length === 0 && rawBinding.required === true && !('default' in rawBinding)) {
+      errors.push({
+        path,
+        message: source
+          ? `Task ${task.id}: required input binding ${name} from ${source} has no matching direct dependency output or default`
+          : `Task ${task.id}: required input binding ${name} has no value, default, explicit source, ` +
+            'or direct dependency output with the same name',
+      });
+    } else if (producerIds.length > 1) {
+      errors.push({
+        path,
+        message: source
+          ? `Task ${task.id}: input binding ${name} from ${source} is produced by multiple direct dependencies (${producerIds.join(', ')}); use a task-specific from source`
+          : `Task ${task.id}: input binding ${name} is produced by multiple direct dependencies ` +
+            `(${producerIds.join(', ')}); add an explicit from source`,
+      });
     }
   }
 }
@@ -1289,6 +1375,18 @@ function bindingSourceTaskRef(source: string): string | null {
   return null;
 }
 
+function bindingSourceOutputName(source: string): string | null {
+  if (source.startsWith('outputs.')) return source.slice('outputs.'.length);
+  for (const field of INPUT_TASK_STREAM_FIELDS) {
+    if (source.endsWith(`.${field}`)) return null;
+  }
+  const outputMarker = '.outputs.';
+  const outputIdx = source.lastIndexOf(outputMarker);
+  if (outputIdx > 0) return source.slice(outputIdx + outputMarker.length);
+  const dot = source.lastIndexOf('.');
+  return dot > 0 ? source.slice(dot + 1) : null;
+}
+
 function validateTaskPorts(
   task: RawTaskConfig,
   trackId: string,
@@ -1301,7 +1399,8 @@ function validateTaskPorts(
 
   validateBindingMap(task.inputs, `${taskPath}.inputs`, 'inputs', errors);
   validateBindingMap(task.outputs, `${taskPath}.outputs`, 'outputs', errors);
-  validateInputBindingSources(task, trackId, taskPath, index, errors);
+  validateInputBindingSources(task, trackId, taskPath, qidIndex, index, errors);
+  validateUnscopedInputBindingSources(task, trackId, taskPath, qidIndex, index, errors);
 
   // Collect placeholder references
   // `{{inputs.X}}` is valid in both prompt and command text. The set of

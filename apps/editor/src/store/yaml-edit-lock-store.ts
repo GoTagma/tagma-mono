@@ -163,10 +163,23 @@ async function refreshHeldLock(reason: string, lease: ChatYamlEditLockLease): Pr
   setRawLock(result.lock, lease.workspaceKey, true);
 }
 
+function isDefinitiveYamlEditLockLoss(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'status' in err &&
+    (err as { status?: unknown }).status === 423
+  );
+}
+
 function startHeartbeat(reason: string, lease: ChatYamlEditLockLease): void {
   clearHeartbeat();
   heartbeatTimer = setInterval(() => {
-    void refreshHeldLock(reason, lease).catch(() => {
+    void refreshHeldLock(reason, lease).catch((err) => {
+      // A transport or server failure does not prove that the server-side
+      // lease was lost. Keep retrying while the last confirmed expiresAt is
+      // still authoritative; its expiry timer remains the fail-safe boundary.
+      if (!isDefinitiveYamlEditLockLoss(err)) return;
       if (localLock?.id !== lease.id || localLock.workspaceKey !== lease.workspaceKey) return;
       localLock = null;
       localLockRefCount = 0;

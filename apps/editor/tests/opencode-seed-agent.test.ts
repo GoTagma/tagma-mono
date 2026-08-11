@@ -545,6 +545,12 @@ test('dedicated hidden tagma-trial-planner owns targeted Trial Plan authoring', 
     expect(planner).toContain('empty content');
     expect(planner).toContain('special characters');
     expect(planner).toContain('repeated runs');
+    expect(planner).toContain('Identify every terminal task');
+    expect(planner).toContain('full dependency closure');
+    expect(planner).toContain('blocking diagnostic-only finding');
+    expect(planner).toContain(
+      'Never use accepted-risk or a warning to turn an unexecuted terminal task into a passing Trial',
+    );
     expect(planner).toContain('Use file-equals when exact text preservation matters');
     expect(planner).toContain('an empty expected string for empty-content cases');
     expect(planner).toContain('Every .json artifact checked');
@@ -679,6 +685,21 @@ test('tagma-pipeline agent allows external file and directory trigger watch path
   expect(pipelineDoc).toContain('without reading or writing that external path');
   expect(triggerSkill).toContain('file/directory trigger watch paths may be absolute');
   expect(contractSkill).toContain('file/directory trigger watch paths may be absolute');
+});
+
+test('tagma-yaml-contract requires one direct producer for each unresolved binding', () => {
+  const contractSkill = buildTagmaYamlContractSkill();
+
+  expect(contractSkill).toContain(
+    'Every required input without a `value` or `default` must resolve from exactly one direct dependency.',
+  );
+  expect(contractSkill).toContain('A transitive ancestor does not count.');
+  expect(contractSkill).toContain(
+    'Ambiguity blocks even when the input is optional or declares a `default`.',
+  );
+  expect(contractSkill).toContain(
+    'A required task-specific `from` without a `default` must name an output that dependency can produce.',
+  );
 });
 
 test('tagma-pipeline agent exposes direct tools and focused skills without advisor fanout', () => {

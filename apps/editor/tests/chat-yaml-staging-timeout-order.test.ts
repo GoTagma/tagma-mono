@@ -604,7 +604,7 @@ describe('chat YAML staging async witness ordering', () => {
           title: 'Missing input',
           objective: 'Would run only after the baseline has executable input.',
           runs: 1,
-          targetTaskIds: ['main.verify'],
+          targetTaskIds: ['main.report'],
           fixtures: [],
           expectations: [{ type: 'task-status', taskId: 'main.verify', status: 'success' }],
         },

@@ -39,6 +39,7 @@ import { rewriteCopiedPipelineYaml } from './pipeline-copy-paths.js';
 import { hasCurrentChatPipelineTrialConsent } from '../shared/chat-pipeline-trial-consent.js';
 import {
   buildChatPipelineTrialPlanRequest,
+  findUncoveredChatPipelineTrialTerminalTaskIds,
   readChatPipelineTrialPlan,
   readChatPipelineTrialPlanToolTelemetry,
   type ChatPipelineTrialExpectation,
@@ -1889,20 +1890,23 @@ function buildPlannedTrialSummary(
   timedOut: boolean,
   lifecycleTimeoutMs: number,
   baselineTasks: readonly ChatPipelineTrialTaskResult[],
-  baselineOmitted: number,
-  baselineCountText: string,
+  baselineOmittedTaskCount: number,
+  taskStatusCounts: Readonly<Record<string, number>>,
   cases: readonly ChatPipelineTrialCaseResult[],
   plannedCaseCount: number,
   warnings: readonly string[],
 ): string {
   const allPassed = baselineSuccess && cases.every((item) => item.success);
+  const countText = Object.entries(taskStatusCounts)
+    .map(([status, count]) => `${status}=${count}`)
+    .join(', ');
   const baseSummary = buildTrialSummary(
     allPassed,
     timedOut,
     lifecycleTimeoutMs,
     baselineTasks,
-    baselineOmitted,
-    baselineCountText,
+    baselineOmittedTaskCount,
+    countText,
   );
   const lines = [
     allPassed && !timedOut && warnings.length > 0
@@ -1999,6 +2003,42 @@ async function prepareTrialExecution(
     };
   }
   if (dataReadiness.state === 'fixture-backed') {
+    if (dataReadiness.baseline.mode === 'skip') {
+      const uncoveredTerminalTaskIds = findUncoveredChatPipelineTrialTerminalTaskIds(
+        plan,
+        pipelineConfig,
+      );
+      if (uncoveredTerminalTaskIds.length > 0) {
+        if (planTelemetry.toolAttemptCount >= stage.trialPlanMaxAttempts) {
+          return {
+            status: 'result',
+            result: resultForPlanAttemptBudgetExhausted(planTelemetry, startedAt),
+          };
+        }
+        issueChatYamlStageTrialPlanAttempt(ws, {
+          stageId: stage.id,
+          relativePath: entry.relativePath,
+          yamlHash: snapshot.contentHash,
+          attemptId: trialId,
+        });
+        return {
+          status: 'result',
+          result: resultForPlanRequest(
+            buildChatPipelineTrialPlanRequest(
+              'invalid',
+              entry.relativePath,
+              snapshot.contentHash,
+              `The real-workspace baseline cannot run, and targeted cases do not execute every terminal task: ${uncoveredTerminalTaskIds.join(', ')}. Add a case targeting each terminal task so its dependency closure runs. If a terminal task is unsafe or cannot be executed in Trial, record a blocking diagnostic-only finding instead of claiming Trial passed.`,
+              stage.trialPlanMaxAttempts,
+            ),
+            planTelemetry,
+            startedAt,
+            trialId,
+            dataReadiness,
+          ),
+        };
+      }
+    }
     const uncoveredInputs = findUncoveredTrialFixtureInputs(
       plan,
       dataReadiness.inputs,
@@ -2431,7 +2471,7 @@ async function executeTrial(
         budgets.lifecycleTimeoutMs,
         baselineEvidence.tasks,
         baselineEvidence.omittedTaskCount,
-        baselineEvidence.countText,
+        taskStatusCounts,
         cases,
         plan.cases.length,
         planWarnings,

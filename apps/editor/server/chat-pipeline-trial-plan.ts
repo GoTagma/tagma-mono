@@ -2,6 +2,9 @@ import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 
+import type { PipelineConfig } from '@tagma/sdk';
+import { buildDag } from '@tagma/sdk/config';
+
 import {
   DEFAULT_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS,
   MAX_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS,
@@ -156,6 +159,18 @@ export interface ChatPipelineTrialPlan {
   coverage: ChatPipelineTrialPlanCoverage[];
   findings: ChatPipelineTrialPlanFinding[];
   cases: ChatPipelineTrialPlanCase[];
+}
+
+export function findUncoveredChatPipelineTrialTerminalTaskIds(
+  plan: ChatPipelineTrialPlan,
+  pipelineConfig: PipelineConfig,
+): string[] {
+  const dag = buildDag(pipelineConfig);
+  const dependedOnTaskIds = new Set([...dag.nodes.values()].flatMap((node) => node.dependsOn));
+  const targetedTaskIds = new Set(plan.cases.flatMap((testCase) => testCase.targetTaskIds));
+  return [...dag.nodes.keys()].filter(
+    (taskId) => !dependedOnTaskIds.has(taskId) && !targetedTaskIds.has(taskId),
+  );
 }
 
 export interface ChatPipelineTrialPlanRequest {

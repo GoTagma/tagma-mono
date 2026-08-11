@@ -568,6 +568,10 @@ describe('chat YAML staging routes', () => {
     expect((plannedTrialRes.body as { summary: string }).summary).toContain(
       'real-workspace baseline was skipped',
     );
+    expect((plannedTrialRes.body as { summary: string }).summary).toContain(
+      'Trial run passed with warnings (success=1).',
+    );
+    expect((plannedTrialRes.body as { summary: string }).summary).not.toContain('(no tasks)');
     expect(existsSync(join(ws.workDir, 'input', 'text-to-check.md'))).toBe(false);
 
     const finalizeRes = makeRes();
@@ -1949,6 +1953,111 @@ describe('chat YAML staging routes', () => {
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });
+  test('requires isolated cases to exercise terminal tasks when the real baseline is unavailable', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Missing Baseline Terminal Coverage',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              {
+                id: 'ingest',
+                command: { argv: [process.execPath, '-e', 'void 0'] },
+                trigger: { type: 'file', path: 'input/source.txt' },
+              },
+              {
+                id: 'report',
+                depends_on: ['ingest'],
+                command: { argv: [process.execPath, '-e', 'void 0'] },
+              },
+            ],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    writeTrialPlan(entry.stagedPath, {
+      cases: [
+        {
+          id: 'ingest-only',
+          title: 'Exercise only the input task',
+          objective: 'Expose a plan that never executes the terminal consumer.',
+          runs: 1,
+          targetTaskIds: ['main.ingest'],
+          fixtures: [{ path: 'input/source.txt', content: 'fixture' }],
+          expectations: [{ type: 'task-status', taskId: 'main.ingest', status: 'success' }],
+        },
+      ],
+    });
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'terminal_gap' },
+        'chat-lock',
+      ),
+      trialRes,
+    );
+
+    expect(trialRes.body).toMatchObject({
+      success: false,
+      kind: 'plan-required',
+      ran: false,
+      repairAuthorization: 'diagnostic-only',
+      planRequest: { reason: 'invalid', attemptId: 'terminal_gap' },
+    });
+    expect((trialRes.body as { summary: string }).summary).toContain('main.report');
+    expect((trialRes.body as { summary: string }).summary).toContain('terminal task');
+
+    writeTrialPlan(entry.stagedPath, {
+      cases: [
+        {
+          id: 'terminal-closure',
+          title: 'Exercise the terminal dependency closure',
+          objective: 'Run the input task and its terminal consumer together.',
+          runs: 1,
+          targetTaskIds: ['main.report'],
+          fixtures: [{ path: 'input/source.txt', content: 'fixture' }],
+          expectations: [
+            { type: 'task-status', taskId: 'main.ingest', status: 'success' },
+            { type: 'task-status', taskId: 'main.report', status: 'success' },
+          ],
+        },
+      ],
+    });
+    const coveredRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'terminal_covered' },
+        'chat-lock',
+      ),
+      coveredRes,
+    );
+
+    expect(coveredRes.body).toMatchObject({
+      success: true,
+      ran: true,
+      taskStatusCounts: { success: 2 },
+      cases: [{ id: 'terminal-closure', success: true }],
+    });
+  });
+
   test('fails an isolated case that writes a persistent artifact into the real workspace', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const gitInit = Bun.spawnSync(['git', '-C', ws.workDir, 'init', '--quiet']);

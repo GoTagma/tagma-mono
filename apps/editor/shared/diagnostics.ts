@@ -128,7 +128,7 @@ function sanitizeInner(
   key: string | null,
   depth: number,
   options: Required<DiagnosticsSanitizeOptions>,
-  seen: WeakSet<object>,
+  activePath: WeakSet<object>,
 ): unknown {
   if (key !== null && sensitiveKey(key)) return '[REDACTED]';
   if (value === null || typeof value === 'boolean' || typeof value === 'number') return value;
@@ -140,53 +140,57 @@ function sanitizeInner(
   if (depth >= options.maxDepth) {
     return { __truncatedDepth: true, __truncationLayer: 'diagnostics-sanitizer' };
   }
-  if (seen.has(value)) return { __circular: true };
-  seen.add(value);
+  if (activePath.has(value)) return { __circular: true };
+  activePath.add(value);
 
-  if (value instanceof Date) return value.toISOString();
-  if (value instanceof Error) {
-    return sanitizeInner(
-      {
-        name: value.name,
-        message: value.message,
-        stack: value.stack ?? null,
-      },
-      key,
-      depth,
-      options,
-      seen,
-    );
-  }
-  if (value instanceof Map) {
-    return sanitizeInner(Array.from(value.entries()), key, depth, options, seen);
-  }
-  if (value instanceof Set) {
-    return sanitizeInner(Array.from(value.values()), key, depth, options, seen);
-  }
-  if (Array.isArray(value)) {
-    const kept = value
-      .slice(0, options.maxArrayItems)
-      .map((item) => sanitizeInner(item, null, depth + 1, options, seen));
-    if (value.length > options.maxArrayItems) {
-      kept.push({
-        __truncatedItems: value.length - options.maxArrayItems,
-        __truncationLayer: 'diagnostics-sanitizer',
-      });
+  try {
+    if (value instanceof Date) return value.toISOString();
+    if (value instanceof Error) {
+      return sanitizeInner(
+        {
+          name: value.name,
+          message: value.message,
+          stack: value.stack ?? null,
+        },
+        key,
+        depth,
+        options,
+        activePath,
+      );
     }
-    return kept;
-  }
+    if (value instanceof Map) {
+      return sanitizeInner(Array.from(value.entries()), key, depth, options, activePath);
+    }
+    if (value instanceof Set) {
+      return sanitizeInner(Array.from(value.values()), key, depth, options, activePath);
+    }
+    if (Array.isArray(value)) {
+      const kept = value
+        .slice(0, options.maxArrayItems)
+        .map((item) => sanitizeInner(item, null, depth + 1, options, activePath));
+      if (value.length > options.maxArrayItems) {
+        kept.push({
+          __truncatedItems: value.length - options.maxArrayItems,
+          __truncationLayer: 'diagnostics-sanitizer',
+        });
+      }
+      return kept;
+    }
 
-  const output: Record<string, unknown> = {};
-  const entries = Object.entries(value as Record<string, unknown>);
-  for (const [entryKey, entryValue] of entries.slice(0, options.maxObjectKeys)) {
-    const sanitized = sanitizeInner(entryValue, entryKey, depth + 1, options, seen);
-    if (sanitized !== undefined) output[entryKey] = sanitized;
+    const output: Record<string, unknown> = {};
+    const entries = Object.entries(value as Record<string, unknown>);
+    for (const [entryKey, entryValue] of entries.slice(0, options.maxObjectKeys)) {
+      const sanitized = sanitizeInner(entryValue, entryKey, depth + 1, options, activePath);
+      if (sanitized !== undefined) output[entryKey] = sanitized;
+    }
+    if (entries.length > options.maxObjectKeys) {
+      output.__truncatedKeys = entries.length - options.maxObjectKeys;
+      output.__truncationLayer = 'diagnostics-sanitizer';
+    }
+    return output;
+  } finally {
+    activePath.delete(value);
   }
-  if (entries.length > options.maxObjectKeys) {
-    output.__truncatedKeys = entries.length - options.maxObjectKeys;
-    output.__truncationLayer = 'diagnostics-sanitizer';
-  }
-  return output;
 }
 
 export function sanitizeDiagnosticValue(

@@ -12,6 +12,8 @@ const {
 const originalFetch = globalThis.fetch;
 const originalSetInterval = globalThis.setInterval;
 const originalClearInterval = globalThis.clearInterval;
+const originalSetTimeout = globalThis.setTimeout;
+const originalClearTimeout = globalThis.clearTimeout;
 
 interface CapturedLockRequest {
   method: string;
@@ -35,6 +37,77 @@ function jsonResponse(data: unknown): Response {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+function installObservableHeartbeatTimer(): void {
+  let intervalId = 0;
+  let activeIntervalId: number | null = null;
+  globalThis.setInterval = ((handler: Parameters<typeof setInterval>[0]) => {
+    intervalId += 1;
+    activeIntervalId = intervalId;
+    heartbeat =
+      typeof handler === 'function'
+        ? () => {
+            void handler();
+          }
+        : null;
+    return intervalId as unknown as ReturnType<typeof setInterval>;
+  }) as typeof setInterval;
+  globalThis.clearInterval = ((id: ReturnType<typeof setInterval>) => {
+    if (Number(id) !== activeIntervalId) return;
+    activeIntervalId = null;
+    heartbeat = null;
+  }) as typeof clearInterval;
+}
+
+function errorJsonResponse(status: number, error: string): Response {
+  return new Response(JSON.stringify({ error }), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+function installHeartbeatRenewalBehavior(
+  onRenewal: (attempt: number) => Promise<Response> | null,
+): void {
+  let renewalAttempts = 0;
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = input instanceof Request ? input.url : String(input);
+    const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
+    const headers = (init?.headers ?? {}) as Record<string, string>;
+    const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+    requests.push({
+      method,
+      workspace: headers['X-Tagma-Workspace'] ?? null,
+      body,
+    });
+
+    if (url !== '/api/workspace/yaml-edit-lock') {
+      return Promise.reject(new Error(`unexpected fetch ${method} ${url}`));
+    }
+    if (method === 'DELETE') {
+      return Promise.resolve(jsonResponse({ ok: true, released: true }));
+    }
+    if (body.id === 'lock-a') {
+      renewalAttempts += 1;
+      const failure = onRenewal(renewalAttempts);
+      if (failure) return failure;
+    }
+
+    return Promise.resolve(
+      jsonResponse({
+        lock: {
+          id: typeof body.id === 'string' ? body.id : 'lock-a',
+          owner: 'chat',
+          reason: typeof body.reason === 'string' ? body.reason : 'test',
+          acquiredAt: Date.now(),
+          expiresAt: Date.now() + 120_000 + renewalAttempts * 1_000,
+          yamlPath:
+            typeof body.yamlPath === 'string' ? body.yamlPath : 'C:/repo-a/.tagma/alpha/alpha.yaml',
+        },
+      }),
+    );
+  }) as typeof fetch;
 }
 
 beforeEach(() => {
@@ -97,6 +170,8 @@ afterEach(async () => {
   globalThis.fetch = originalFetch;
   globalThis.setInterval = originalSetInterval;
   globalThis.clearInterval = originalClearInterval;
+  globalThis.setTimeout = originalSetTimeout;
+  globalThis.clearTimeout = originalClearTimeout;
 });
 
 describe('YAML edit lock store workspace routing', () => {
@@ -174,6 +249,136 @@ describe('YAML edit lock store workspace routing', () => {
 
     expect(requests[2]?.method).toBe('DELETE');
     expect(requests[2]?.workspace).toBe('C:/repo-a');
+  });
+
+  test('keeps a local lease through a transient heartbeat failure and renews it next time', async () => {
+    installObservableHeartbeatTimer();
+    installHeartbeatRenewalBehavior((attempt) =>
+      attempt === 1 ? Promise.reject(new TypeError('temporary network failure')) : null,
+    );
+
+    setClientWorkspace('C:/repo-a');
+    useYamlEditLockStore.getState().syncActiveYamlPath('C:/repo-a/.tagma/alpha/alpha.yaml');
+    const lease = await acquireChatYamlEditLock('test lock');
+    const initialExpiry = useYamlEditLockStore.getState().expiresAt;
+
+    heartbeat?.();
+    await new Promise((resolve) => originalSetTimeout(resolve, 0));
+
+    expect(getLocalChatYamlEditLockLease()).toEqual(lease);
+    expect(heartbeat).toBeTruthy();
+
+    heartbeat?.();
+    await new Promise((resolve) => originalSetTimeout(resolve, 0));
+
+    expect(requests.filter((request) => request.method === 'POST')).toHaveLength(3);
+    expect(getLocalChatYamlEditLockLease()).toEqual(lease);
+    expect(useYamlEditLockStore.getState().expiresAt).toBeGreaterThan(initialExpiry ?? 0);
+  });
+
+  test('keeps a local lease through an HTTP 500 heartbeat failure and retries', async () => {
+    installObservableHeartbeatTimer();
+    installHeartbeatRenewalBehavior((attempt) =>
+      attempt === 1 ? Promise.resolve(errorJsonResponse(500, 'temporary server failure')) : null,
+    );
+
+    setClientWorkspace('C:/repo-a');
+    useYamlEditLockStore.getState().syncActiveYamlPath('C:/repo-a/.tagma/alpha/alpha.yaml');
+    const lease = await acquireChatYamlEditLock('test lock');
+
+    heartbeat?.();
+    await new Promise((resolve) => originalSetTimeout(resolve, 0));
+
+    expect(getLocalChatYamlEditLockLease()).toEqual(lease);
+    expect(heartbeat).toBeTruthy();
+
+    heartbeat?.();
+    await new Promise((resolve) => originalSetTimeout(resolve, 0));
+
+    expect(requests.filter((request) => request.method === 'POST')).toHaveLength(3);
+    expect(getLocalChatYamlEditLockLease()).toEqual(lease);
+  });
+
+  test('expires a retained lease at its last confirmed deadline after repeated heartbeat failures', async () => {
+    installObservableHeartbeatTimer();
+    let expiryTimeout: (() => void) | null = null;
+    let timeoutId = 0;
+    let activeTimeoutId: number | null = null;
+    globalThis.setTimeout = ((handler: Parameters<typeof setTimeout>[0]) => {
+      timeoutId += 1;
+      activeTimeoutId = timeoutId;
+      expiryTimeout =
+        typeof handler === 'function'
+          ? () => {
+              void handler();
+            }
+          : null;
+      return timeoutId as unknown as ReturnType<typeof setTimeout>;
+    }) as typeof setTimeout;
+    globalThis.clearTimeout = ((id: ReturnType<typeof setTimeout>) => {
+      if (Number(id) !== activeTimeoutId) return;
+      activeTimeoutId = null;
+      expiryTimeout = null;
+    }) as typeof clearTimeout;
+
+    const originalNow = Date.now;
+    let now = 1_000_000;
+    Date.now = () => now;
+    try {
+      installHeartbeatRenewalBehavior(() =>
+        Promise.reject(new TypeError('temporary network failure')),
+      );
+
+      setClientWorkspace('C:/repo-a');
+      useYamlEditLockStore.getState().syncActiveYamlPath('C:/repo-a/.tagma/alpha/alpha.yaml');
+      const lease = await acquireChatYamlEditLock('test lock');
+
+      heartbeat?.();
+      await new Promise((resolve) => originalSetTimeout(resolve, 0));
+      heartbeat?.();
+      await new Promise((resolve) => originalSetTimeout(resolve, 0));
+
+      expect(getLocalChatYamlEditLockLease()).toEqual(lease);
+      expect(heartbeat).toBeTruthy();
+      const runExpiry = expiryTimeout as (() => void) | null;
+      expect(runExpiry).toBeTruthy();
+      if (!runExpiry) throw new Error('expected the known lease-expiry timer');
+
+      now += 120_251;
+      runExpiry();
+
+      expect(getLocalChatYamlEditLockLease()).toBeNull();
+      expect(heartbeat).toBeNull();
+      expect(useYamlEditLockStore.getState()).toMatchObject({
+        active: false,
+        workspaceActive: false,
+        local: false,
+      });
+    } finally {
+      Date.now = originalNow;
+    }
+  });
+
+  test('clears a local lease immediately when the heartbeat receives HTTP 423', async () => {
+    installObservableHeartbeatTimer();
+    installHeartbeatRenewalBehavior(() =>
+      Promise.resolve(errorJsonResponse(423, 'YAML lock is held by another chat')),
+    );
+
+    setClientWorkspace('C:/repo-a');
+    useYamlEditLockStore.getState().syncActiveYamlPath('C:/repo-a/.tagma/alpha/alpha.yaml');
+    await acquireChatYamlEditLock('test lock');
+
+    heartbeat?.();
+    await new Promise((resolve) => originalSetTimeout(resolve, 0));
+
+    expect(getLocalChatYamlEditLockLease()).toBeNull();
+    expect(heartbeat).toBeNull();
+    expect(useYamlEditLockStore.getState()).toMatchObject({
+      active: false,
+      workspaceActive: false,
+      local: false,
+    });
   });
 
   test('does not reuse an in-flight acquire from another workspace', async () => {

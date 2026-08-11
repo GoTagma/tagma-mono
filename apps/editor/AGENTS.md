@@ -30,6 +30,9 @@
 - Resolve finished-turn reconciliation and logical-turn continuation leases by the turn's
   workspace, not by the active YAML. Switching pipelines makes a valid path-scoped lease inactive
   for UI mutation gates; finalize, cleanup, and release must still use that exact workspace lease.
+- A YAML-lock heartbeat rejection is definitive lease loss only when the server returns HTTP 423.
+  Retain the local lease across transport and 5xx failures so the next heartbeat can renew it, but
+  never extend the last confirmed `expiresAt` locally; its expiry timer is the finite fail-safe.
 - Chat model-variant choices come from OpenCode's model catalogs. Merge a model's enabled
   runtime/legacy variants with its v2 `variants` because v2 can omit provider-generated choices;
   v2 metadata wins for duplicate ids. `null` means model default. Do not restore a fixed
@@ -81,6 +84,11 @@
   `from: outputs.<name>`: prompt-output inference treats that loose form as prompt-owned in mixed
   command/prompt fan-in. Upgrade legacy editor-authored loose sources to the concrete producer
   while preserving user-authored specific sources.
+- Raw binding validation must mirror runtime lookup: required inputs without `value`/`default`
+  need exactly one direct producer; a required task-specific `from` without fallback must name an
+  output that producer can provide; loose or implicit ambiguity blocks optional and defaulted
+  inputs too because lookup ambiguity is resolved before fallback. Preserve prompt-to-command
+  inferred outputs and raw stream sources as valid producers.
 
 ## Chat YAML Branch Isolation
 
@@ -179,6 +187,10 @@
   helpers/fixtures, contained portable paths, selected task targets, repeated-run support, and
   host-evaluated assertions. Case workspaces must be removed afterward and their fixtures/outputs
   must never leak into the live workspace.
+- When that real-workspace baseline is completely skipped, isolated cases must directly target
+  every terminal DAG task so each sink's full dependency closure executes. A sink that is unsafe
+  or impossible to run requires a blocking `diagnostic-only` finding; warning or accepted-risk
+  text must never turn an unexecuted sink into a passing Trial.
 - Resolve staged pipeline support files identically in isolated Trial and after publication.
   When a short relative file/directory trigger, `file_exists` completion, or `static_context`
   path names an existing regular staged support-tree entry, relocate it to the copied or published
@@ -461,6 +473,9 @@
   `registerServerDiagnosticsContributor`. Keep providers synchronous, bounded, credential-free, and
   safe to fail independently. Provider code runs only when an enabled diagnostics request collects
   context, so ordinary feature execution must not depend on it.
+- Diagnostics sanitization must detect cycles against the active recursion path, not all objects
+  visited during traversal. Repeated references in an acyclic object graph must serialize in every
+  location; only ancestor back-references become `__circular`.
 - Preserve the stable manifest/context/log/session-history protocol when adding coverage. Put
   feature-specific state under the contributor `features` namespace instead of coupling it into
   the diagnostics bridge or route. Keep diagnostics isolation, contributor, auth-boundary, and

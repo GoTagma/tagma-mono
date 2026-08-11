@@ -73,6 +73,24 @@ describe('diagnostics value sanitizing', () => {
     });
   });
 
+  test('distinguishes shared references from circular references', () => {
+    const sharedStatusCounts = { success: 8, skipped: 30 };
+    const circular: Record<string, unknown> = { label: 'cycle' };
+    circular.self = circular;
+
+    expect(
+      sanitizeDiagnosticValue({
+        raw: { taskStatusCounts: sharedStatusCounts },
+        summary: { taskStatusCounts: sharedStatusCounts },
+        circular,
+      }),
+    ).toEqual({
+      raw: { taskStatusCounts: { success: 8, skipped: 30 } },
+      summary: { taskStatusCounts: { success: 8, skipped: 30 } },
+      circular: { label: 'cycle', self: { __circular: true } },
+    });
+  });
+
   test('redacts secrets embedded in URLs and shell-style assignments', () => {
     const text = redactDiagnosticText(
       'https://example.test/callback?access_token=abc123&mode=ok password="do not print"',

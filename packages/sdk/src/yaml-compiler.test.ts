@@ -372,4 +372,48 @@ pipeline:
       message: 'Duration "25d" exceeds maximum supported timeout of 2147483647ms.',
     });
   });
+
+  test('rejects a required input that only a transitive dependency produces', () => {
+    const result = compileYamlContent(`
+pipeline:
+  name: Binding Validation
+  tracks:
+    - id: main
+      name: Main
+      tasks:
+        - id: resolve
+          command: echo verdicts
+          outputs:
+            verdictsFile:
+              type: string
+        - id: score
+          depends_on: [resolve]
+          command: echo {{inputs.verdictsFile}}
+          inputs:
+            verdictsFile:
+              type: string
+              required: true
+          outputs:
+            aggregateFile:
+              type: string
+        - id: report
+          depends_on: [score]
+          command: echo {{inputs.aggregateFile}} {{inputs.verdictsFile}}
+          inputs:
+            aggregateFile:
+              type: string
+              required: true
+            verdictsFile:
+              type: string
+              required: true
+`);
+
+    expect(result.parseOk).toBe(true);
+    expect(result.success).toBe(false);
+    expect(result.validation.errors).toContainEqual({
+      path: 'tracks[0].tasks[2].inputs.verdictsFile',
+      message:
+        'Task report: required input binding verdictsFile has no value, default, explicit source, or direct dependency output with the same name',
+    });
+  });
 });

@@ -26,7 +26,7 @@ describe('validateRaw - unified typed bindings', () => {
     const errors = errorsFor(
       commandTask({
         id: 'a',
-        inputs: { city: { type: 'string', required: true } },
+        inputs: { city: { type: 'string', required: true, value: 'Paris' } },
         outputs: { temp: { type: 'number' } },
       }),
     );
@@ -70,6 +70,61 @@ describe('validateRaw - unified typed bindings', () => {
       ]),
     );
     expect(errors.some((e) => /not a direct dependency/.test(e.message))).toBe(true);
+  });
+
+  test('required implicit inputs must be produced by a direct dependency', () => {
+    const errors = validateRaw(
+      config([
+        commandTask({
+          id: 'resolve',
+          command: 'echo ok',
+          outputs: { verdictsFile: { type: 'string' } },
+        }),
+        commandTask({
+          id: 'score',
+          depends_on: ['resolve'],
+          command: 'echo {{inputs.verdictsFile}}',
+          inputs: { verdictsFile: { type: 'string', required: true } },
+          outputs: { aggregateFile: { type: 'string' } },
+        }),
+        commandTask({
+          id: 'report',
+          depends_on: ['score'],
+          command: 'echo {{inputs.aggregateFile}} {{inputs.verdictsFile}}',
+          inputs: {
+            aggregateFile: { type: 'string', required: true },
+            verdictsFile: { type: 'string', required: true },
+          },
+        }),
+      ]),
+    );
+
+    expect(errors).toContainEqual({
+      path: 'tracks[0].tasks[2].inputs.verdictsFile',
+      message:
+        'Task report: required input binding verdictsFile has no value, default, explicit source, or direct dependency output with the same name',
+    });
+  });
+
+  test('required implicit inputs must have exactly one direct producer', () => {
+    const errors = validateRaw(
+      config([
+        commandTask({ id: 'weather', command: 'echo ok', outputs: { city: {} } }),
+        commandTask({ id: 'profile', command: 'echo ok', outputs: { city: {} } }),
+        commandTask({
+          id: 'report',
+          depends_on: ['weather', 'profile'],
+          command: 'echo {{inputs.city}}',
+          inputs: { city: { required: true } },
+        }),
+      ]),
+    );
+
+    expect(errors).toContainEqual({
+      path: 'tracks[0].tasks[2].inputs.city',
+      message:
+        'Task report: input binding city is produced by multiple direct dependencies (t.weather, t.profile); add an explicit from source',
+    });
   });
 
   test('input binding source pointing to a non-existent task reports "no such task" instead of "not a direct dependency"', () => {
@@ -143,6 +198,98 @@ describe('validateRaw - unified typed bindings', () => {
       ]),
     );
     expect(errors.filter((e) => /not a direct dependency/.test(e.message))).toEqual([]);
+  });
+
+  test('specific input sources must name an output the direct dependency can produce', () => {
+    const errors = validateRaw(
+      config([
+        commandTask({ id: 'up', command: 'echo ok', outputs: { city: {} } }),
+        commandTask({
+          id: 'down',
+          depends_on: ['up'],
+          command: 'echo {{inputs.country}}',
+          inputs: {
+            country: { from: 'up.outputs.country', required: true },
+          },
+        }),
+      ]),
+    );
+
+    expect(errors).toContainEqual({
+      path: 'tracks[0].tasks[1].inputs.country.from',
+      message:
+        'Task down: input binding country from up.outputs.country references direct dependency t.up, which cannot produce output country',
+    });
+  });
+
+  test('optional implicit inputs still reject ambiguous producers', () => {
+    const errors = validateRaw(
+      config([
+        commandTask({ id: 'weather', command: 'echo ok', outputs: { city: {} } }),
+        commandTask({ id: 'profile', command: 'echo ok', outputs: { city: {} } }),
+        commandTask({
+          id: 'report',
+          depends_on: ['weather', 'profile'],
+          command: 'echo {{inputs.city}}',
+          inputs: { city: {} },
+        }),
+      ]),
+    );
+
+    expect(errors).toContainEqual({
+      path: 'tracks[0].tasks[2].inputs.city',
+      message:
+        'Task report: input binding city is produced by multiple direct dependencies (t.weather, t.profile); add an explicit from source',
+    });
+  });
+
+  test('loose output sources remain ambiguous even with a default', () => {
+    const errors = validateRaw(
+      config([
+        commandTask({ id: 'weather', command: 'echo ok', outputs: { city: {} } }),
+        commandTask({ id: 'profile', command: 'echo ok', outputs: { city: {} } }),
+        commandTask({
+          id: 'report',
+          depends_on: ['weather', 'profile'],
+          command: 'echo {{inputs.city}}',
+          inputs: { city: { from: 'outputs.city', default: 'fallback' } },
+        }),
+      ]),
+    );
+
+    expect(errors).toContainEqual({
+      path: 'tracks[0].tasks[2].inputs.city.from',
+      message:
+        'Task report: input binding city from outputs.city is produced by multiple direct dependencies (t.weather, t.profile); use a task-specific from source',
+    });
+  });
+
+  test('command inputs accept outputs inferred from a direct prompt dependency', () => {
+    const errors = validateRaw(
+      config([
+        promptTask({ id: 'draft', prompt: 'Draft a city report.' }),
+        commandTask({
+          id: 'publish',
+          depends_on: ['draft'],
+          command: 'echo {{inputs.report}}',
+          inputs: { report: { required: true } },
+        }),
+      ]),
+    );
+
+    expect(errors).toEqual([]);
+  });
+
+  test('loose output sources may fall back to a default when no producer exists', () => {
+    const errors = errorsFor(
+      commandTask({
+        id: 'report',
+        command: 'echo {{inputs.city}}',
+        inputs: { city: { from: 'outputs.city', default: 'fallback' } },
+      }),
+    );
+
+    expect(errors).toEqual([]);
   });
 
   test('rejects bare input from sources without an output name', () => {
