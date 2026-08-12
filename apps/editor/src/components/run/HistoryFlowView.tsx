@@ -1,4 +1,10 @@
-import { useMemo, useState, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type {
+  CSSProperties,
+  KeyboardEvent as ReactKeyboardEvent,
+  PointerEvent as ReactPointerEvent,
+  ReactNode,
+} from 'react';
 import {
   Check,
   X,
@@ -32,13 +38,41 @@ import {
 import { useCanvasPan } from '../board/use-canvas-pan';
 import { buildRenderPlan, planTotalHeight } from '../board/render-plan';
 import { CopyButton } from './CopyButton';
-import { RUN_HISTORY_INSPECTOR_PANEL_CLASSES } from './run-layout';
+import {
+  resolveRunHistoryInspectorWidth,
+  resizeRunHistoryInspectorWidth,
+  resizeRunHistoryInspectorWidthFromKey,
+  RUN_HISTORY_INSPECTOR_PANEL_CLASSES,
+  storedRunHistoryInspectorWidth,
+} from './run-layout';
+import type { RunHistoryInspectorWidthBounds } from './run-layout';
 import { STATUS_LABEL } from './RunTaskPanel';
 
 const HISTORY_COMPARE_INSTRUCTION =
   'Compare this historical version with the latest pipeline and explain what changed.';
 const HISTORY_FIX_INSTRUCTION = 'Fix this bug.';
 const HISTORY_FIX_STATUSES = new Set<TaskStatus>(['failed', 'timeout', 'blocked']);
+const RUN_HISTORY_INSPECTOR_WIDTH_KEY = 'tagma.run-history.inspector-width.v1';
+
+function loadRunHistoryInspectorWidth(): number {
+  if (typeof window === 'undefined') return storedRunHistoryInspectorWidth(null);
+  try {
+    return storedRunHistoryInspectorWidth(
+      window.localStorage.getItem(RUN_HISTORY_INSPECTOR_WIDTH_KEY),
+    );
+  } catch {
+    return storedRunHistoryInspectorWidth(null);
+  }
+}
+
+function saveRunHistoryInspectorWidth(width: number): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(RUN_HISTORY_INSPECTOR_WIDTH_KEY, String(width));
+  } catch {
+    // Width persistence is a convenience; resizing still works without storage.
+  }
+}
 
 const STATUS_CFG: Record<
   TaskStatus,
@@ -121,10 +155,148 @@ interface HistoryFlowViewProps {
 export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
+  const [preferredInspectorWidth, setPreferredInspectorWidth] = useState(
+    loadRunHistoryInspectorWidth,
+  );
+  const [inspectorContainerWidth, setInspectorContainerWidth] = useState<number | null>(null);
+  const flowRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
+  const inspectorResizeRef = useRef<{
+    pointerId: number;
+    startClientX: number;
+    startWidth: number;
+    bounds: RunHistoryInspectorWidthBounds;
+    hasChanged: boolean;
+    previousCursor: string;
+    previousUserSelect: string;
+  } | null>(null);
   const { didDragRef: panDidDragRef, handleMouseDown: handlePanMouseDown } =
     useCanvasPan(contentRef);
+
+  useEffect(() => {
+    saveRunHistoryInspectorWidth(preferredInspectorWidth);
+  }, [preferredInspectorWidth]);
+
+  useEffect(() => {
+    const container = flowRef.current;
+    if (!container) return;
+    const updateWidth = (width: number) => {
+      setInspectorContainerWidth((currentWidth) =>
+        currentWidth === width ? currentWidth : Math.max(0, Math.floor(width)),
+      );
+    };
+    updateWidth(container.clientWidth);
+
+    if (typeof ResizeObserver === 'undefined') {
+      const handleWindowResize = () => updateWidth(container.clientWidth);
+      window.addEventListener('resize', handleWindowResize);
+      return () => window.removeEventListener('resize', handleWindowResize);
+    }
+
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) updateWidth(entry.contentRect.width);
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  const inspectorLayout = useMemo(
+    () => resolveRunHistoryInspectorWidth(preferredInspectorWidth, inspectorContainerWidth),
+    [inspectorContainerWidth, preferredInspectorWidth],
+  );
+
+  const stopInspectorResize = useCallback((pointerId?: number) => {
+    const activeResize = inspectorResizeRef.current;
+    if (!activeResize || (pointerId !== undefined && activeResize.pointerId !== pointerId)) return;
+    inspectorResizeRef.current = null;
+    document.body.style.cursor = activeResize.previousCursor;
+    document.body.style.userSelect = activeResize.previousUserSelect;
+  }, []);
+
+  useEffect(() => () => stopInspectorResize(), [stopInspectorResize]);
+
+  const handleInspectorResizePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0 || inspectorLayout.min === inspectorLayout.max) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      inspectorResizeRef.current = {
+        pointerId: event.pointerId,
+        startClientX: event.clientX,
+        startWidth: inspectorLayout.width,
+        bounds: { min: inspectorLayout.min, max: inspectorLayout.max },
+        hasChanged: false,
+        previousCursor: document.body.style.cursor,
+        previousUserSelect: document.body.style.userSelect,
+      };
+      document.body.style.cursor = 'ew-resize';
+      document.body.style.userSelect = 'none';
+    },
+    [inspectorLayout],
+  );
+
+  const handleInspectorResizePointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const activeResize = inspectorResizeRef.current;
+      if (!activeResize || activeResize.pointerId !== event.pointerId) return;
+      event.preventDefault();
+      const nextWidth = resizeRunHistoryInspectorWidth(
+        activeResize.startWidth,
+        activeResize.startClientX,
+        event.clientX,
+        activeResize.bounds,
+      );
+      if (!activeResize.hasChanged && nextWidth === activeResize.startWidth) return;
+      activeResize.hasChanged = true;
+      setPreferredInspectorWidth(nextWidth);
+    },
+    [],
+  );
+
+  const handleInspectorResizePointerEnd = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const activeResize = inspectorResizeRef.current;
+      if (!activeResize || activeResize.pointerId !== event.pointerId) return;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      stopInspectorResize(event.pointerId);
+    },
+    [stopInspectorResize],
+  );
+
+  const handleInspectorResizeLostPointerCapture = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      stopInspectorResize(event.pointerId);
+    },
+    [stopInspectorResize],
+  );
+
+  const handleInspectorResizeKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      const nextWidth = resizeRunHistoryInspectorWidthFromKey(
+        inspectorLayout.width,
+        event.key,
+        event.shiftKey,
+        { min: inspectorLayout.min, max: inspectorLayout.max },
+      );
+      if (nextWidth === null) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (nextWidth !== inspectorLayout.width) setPreferredInspectorWidth(nextWidth);
+    },
+    [inspectorLayout],
+  );
+
+  const inspectorPanelStyle = useMemo<CSSProperties>(
+    () => ({
+      width: inspectorLayout.width,
+      maxWidth: 'calc(100% - 1rem)',
+    }),
+    [inspectorLayout.width],
+  );
 
   const tracksMeta = useMemo(() => {
     if (summary.tracks?.length) return summary.tracks;
@@ -271,7 +443,7 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
     // RUN_HISTORY_INSPECTOR_PANEL_CLASSES.
     // `flex-1 h-full` ensures the canvas fills the detail-pane body both when
     // that body is flex (flow view) and when it's a plain block fallback.
-    <div className="flex-1 h-full flex overflow-hidden relative">
+    <div ref={flowRef} className="flex-1 h-full flex overflow-hidden relative">
       <div
         ref={headerRef}
         className="shrink-0 border-r border-tagma-border overflow-hidden bg-tagma-surface/50"
@@ -465,10 +637,20 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
 
       {/* Side panels as absolute overlays (RUN_HISTORY_INSPECTOR_PANEL_CLASSES)
           — canvas dimensions never change when they open/close, so scrollLeft/Top
-          stay valid and the view doesn't jerk. Same width/chrome as the live
-          inspector. */}
+          stay valid and the view doesn't jerk. They start at the historical
+          20rem width and can expand without reflowing the canvas. */}
       {selectedTask && (
-        <div className={RUN_HISTORY_INSPECTOR_PANEL_CLASSES}>
+        <HistoryInspectorOverlay
+          width={inspectorLayout.width}
+          minWidth={inspectorLayout.min}
+          maxWidth={inspectorLayout.max}
+          style={inspectorPanelStyle}
+          onPointerDown={handleInspectorResizePointerDown}
+          onPointerMove={handleInspectorResizePointerMove}
+          onPointerEnd={handleInspectorResizePointerEnd}
+          onLostPointerCapture={handleInspectorResizeLostPointerCapture}
+          onKeyDown={handleInspectorResizeKeyDown}
+        >
           <HistoryTaskPanel
             summary={summary}
             task={selectedTask}
@@ -477,19 +659,86 @@ export function HistoryFlowView({ summary }: HistoryFlowViewProps) {
               setSelectedTaskId(null);
             }}
           />
-        </div>
+        </HistoryInspectorOverlay>
       )}
 
       {!selectedTask && selectedTrack && (
-        <div className={RUN_HISTORY_INSPECTOR_PANEL_CLASSES}>
+        <HistoryInspectorOverlay
+          width={inspectorLayout.width}
+          minWidth={inspectorLayout.min}
+          maxWidth={inspectorLayout.max}
+          style={inspectorPanelStyle}
+          onPointerDown={handleInspectorResizePointerDown}
+          onPointerMove={handleInspectorResizePointerMove}
+          onPointerEnd={handleInspectorResizePointerEnd}
+          onLostPointerCapture={handleInspectorResizeLostPointerCapture}
+          onKeyDown={handleInspectorResizeKeyDown}
+        >
           <HistoryTrackPanel
             track={selectedTrack}
             onClose={() => {
               setSelectedTrackId(null);
             }}
           />
-        </div>
+        </HistoryInspectorOverlay>
       )}
+    </div>
+  );
+}
+
+interface HistoryInspectorOverlayProps {
+  width: number;
+  minWidth: number;
+  maxWidth: number;
+  style: CSSProperties;
+  children: ReactNode;
+  onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onPointerMove: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onPointerEnd: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onLostPointerCapture: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onKeyDown: (event: ReactKeyboardEvent<HTMLDivElement>) => void;
+}
+
+export function HistoryInspectorOverlay({
+  width,
+  minWidth,
+  maxWidth,
+  style,
+  children,
+  onPointerDown,
+  onPointerMove,
+  onPointerEnd,
+  onLostPointerCapture,
+  onKeyDown,
+}: HistoryInspectorOverlayProps) {
+  const resizeDisabled = minWidth === maxWidth;
+  return (
+    <div className={RUN_HISTORY_INSPECTOR_PANEL_CLASSES} style={style}>
+      <div
+        role="separator"
+        aria-label="Resize run inspector"
+        aria-orientation="vertical"
+        aria-valuemin={minWidth}
+        aria-valuemax={maxWidth}
+        aria-valuenow={width}
+        aria-valuetext={String(width) + ' pixels'}
+        aria-disabled={resizeDisabled}
+        tabIndex={resizeDisabled ? -1 : 0}
+        title="Drag or use arrow keys to resize"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerEnd}
+        onPointerCancel={onPointerEnd}
+        onLostPointerCapture={onLostPointerCapture}
+        onKeyDown={onKeyDown}
+        className="group absolute -left-[3px] inset-y-0 z-30 flex w-[7px] touch-none cursor-ew-resize items-stretch justify-center bg-transparent focus-visible:outline-none"
+      >
+        <span
+          aria-hidden="true"
+          className="w-[2px] bg-transparent transition-colors duration-fast ease-smooth group-hover:bg-tagma-accent/60 group-active:bg-tagma-accent group-focus-visible:bg-tagma-accent/80"
+        />
+      </div>
+      {children}
     </div>
   );
 }
