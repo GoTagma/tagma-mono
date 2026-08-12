@@ -381,6 +381,9 @@
   the exact lease, acknowledges the head, and lets queued prompts continue as a fresh turn.
   Treat a server-reported already-finalized disposition as an ambiguous committed result, not a
   successful discard: restore the failed head and require idempotent finalize/readback.
+- Persist every stage-backed finished-turn queue per workspace before reconciliation and hydrate it
+  before OpenCode bootstrap. An asynchronous discard claim remains persisted until confirmed
+  cleanup or finalized readback is explicitly acknowledged; failed cleanup restores the same turn.
 - Keep the shared compile/trial hidden-repair budget in the workspace Editor setting
   `opencodeChatPipelineRepairMaxAttempts`: default `25`, allowed range `0-50`, with `0` disabling
   automatic repair. The settings panel keeps it beside the trial-run toggle.
