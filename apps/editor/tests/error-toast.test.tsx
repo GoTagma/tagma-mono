@@ -18,14 +18,27 @@ afterEach(() => {
 });
 
 describe('ErrorToast', () => {
-  test('renders the YAML edit lock protection as a neutral status', () => {
-    const html = renderToast(YAML_EDIT_LOCK_MESSAGE, true);
+  test('renders the YAML edit lock protection as a neutral status in both layouts', () => {
+    const viewportHtml = renderToast(YAML_EDIT_LOCK_MESSAGE);
+    const containedHtml = renderToast(YAML_EDIT_LOCK_MESSAGE, true);
 
-    expect(html).toContain('role="status"');
-    expect(html).toContain('aria-live="polite"');
-    expect(html).toContain('border-tagma-border');
-    expect(html).toContain('aria-label="Dismiss status"');
-    expect(html).not.toContain('tagma-error');
+    for (const html of [viewportHtml, containedHtml]) {
+      expect(html).toContain('role="status"');
+      expect(html).toContain('aria-live="polite"');
+      expect(html).toContain('border-tagma-border');
+      expect(html).toContain('aria-label="Dismiss status"');
+      expect(html).not.toContain('tagma-error');
+    }
+
+    expect(viewportHtml).toContain('max-h-[calc(100dvh-1rem)]');
+    expect(viewportHtml).toContain('sm:w-[420px]');
+    expect(viewportHtml).toContain('sm:max-h-[calc(100dvh-2rem)]');
+
+    expect(containedHtml).toContain('pointer-events-auto');
+    expect(containedHtml).toContain('max-h-[min(18rem,45dvh)]');
+    expect(containedHtml).toContain('w-full');
+    expect(containedHtml).toContain('shrink-0');
+    expect(containedHtml).not.toContain('sm:w-[420px]');
   });
 
   test('keeps arbitrary failures as red alerts', () => {

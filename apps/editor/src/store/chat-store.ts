@@ -5082,8 +5082,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         prev.finishedTurnQueue.find((turn) => turn.id === turnId) ??
         claimedFinishedTurnReconciliations.get(turnId);
       const finishedTurnQueue = prev.finishedTurnQueue.filter((turn) => turn.id !== turnId);
+      claimedFinishedTurnReconciliations.delete(turnId);
       if (target?.yamlSnapshotBeforeSend) {
-        claimedFinishedTurnReconciliations.delete(turnId);
         persistFinishedTurnQueueForWorkspace(
           target.yamlSnapshotBeforeSend.workDir,
           finishedTurnQueue,
@@ -5135,7 +5135,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const target = prev.finishedTurnQueue.find((turn) => turn.id === turnId);
       if (!target?.reconcileFailure) return {};
       abandoned = target;
-      claimedFinishedTurnReconciliations.set(turnId, target);
+      if (target.yamlSnapshotBeforeSend) {
+        claimedFinishedTurnReconciliations.set(turnId, target);
+      }
       return {
         finishedTurnQueue: prev.finishedTurnQueue.filter((turn) => turn.id !== turnId),
         queuedDispatchMode:
