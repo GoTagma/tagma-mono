@@ -680,10 +680,46 @@ function persistFinishedTurnQueueForWorkspace(
     (turn) => turn.yamlSnapshotBeforeSend?.workDir === workspaceKey,
   );
   const claimedIds = new Set(claimed.map((turn) => turn.id));
+  const workspaceQueue = queue.filter(
+    (turn) => turn.yamlSnapshotBeforeSend?.workDir === workspaceKey && !claimedIds.has(turn.id),
+  );
+  const incoming = [...claimed, ...workspaceQueue];
+  if (getOpencodeWorkspaceKey() === workspaceKey) {
+    savePersistedChatYamlReconciliationQueue(workspaceKey, incoming);
+    return;
+  }
+
+  // A late callback can still carry workspace A after the renderer switched
+  // to B. Merge that partial A update without treating B's live queue as
+  // evidence that A's other persisted turns disappeared.
+  const incomingById = new Map(incoming.map((turn) => [turn.id, turn]));
+  const persisted = loadPersistedChatYamlReconciliationQueue(workspaceKey);
+  const merged = persisted.map((turn) => incomingById.get(turn.id) ?? turn);
+  const persistedIds = new Set(persisted.map((turn) => turn.id));
   savePersistedChatYamlReconciliationQueue(workspaceKey, [
-    ...claimed,
-    ...queue.filter((turn) => !claimedIds.has(turn.id)),
+    ...merged,
+    ...incoming.filter((turn) => !persistedIds.has(turn.id)),
   ]);
+}
+
+function removePersistedFinishedTurn(workspaceKey: string, turnId: string): void {
+  savePersistedChatYamlReconciliationQueue(
+    workspaceKey,
+    loadPersistedChatYamlReconciliationQueue(workspaceKey).filter((turn) => turn.id !== turnId),
+  );
+}
+
+function restorePersistedFinishedTurn(workspaceKey: string, restoredTurn: ChatFinishedTurn): void {
+  const persisted = loadPersistedChatYamlReconciliationQueue(workspaceKey);
+  const existingIndex = persisted.findIndex((turn) => turn.id === restoredTurn.id);
+  if (existingIndex < 0) {
+    savePersistedChatYamlReconciliationQueue(workspaceKey, [restoredTurn, ...persisted]);
+    return;
+  }
+  savePersistedChatYamlReconciliationQueue(
+    workspaceKey,
+    persisted.map((turn, index) => (index === existingIndex ? restoredTurn : turn)),
+  );
 }
 
 function persistChangedFinishedTurnQueues(
@@ -696,7 +732,29 @@ function persistChangedFinishedTurnQueues(
     if (workspaceKey) workspaceKeys.add(workspaceKey);
   }
   for (const workspaceKey of workspaceKeys) {
-    persistFinishedTurnQueueForWorkspace(workspaceKey, next);
+    if (getOpencodeWorkspaceKey() === workspaceKey) {
+      persistFinishedTurnQueueForWorkspace(workspaceKey, next);
+      continue;
+    }
+    const previousIds = new Set(
+      previous
+        .filter((turn) => turn.yamlSnapshotBeforeSend?.workDir === workspaceKey)
+        .map((turn) => turn.id),
+    );
+    const nextForWorkspace = next.filter(
+      (turn) => turn.yamlSnapshotBeforeSend?.workDir === workspaceKey,
+    );
+    const nextIds = new Set(nextForWorkspace.map((turn) => turn.id));
+    const retained = loadPersistedChatYamlReconciliationQueue(workspaceKey).filter(
+      (turn) => !previousIds.has(turn.id) || nextIds.has(turn.id),
+    );
+    const nextById = new Map(nextForWorkspace.map((turn) => [turn.id, turn]));
+    const merged = retained.map((turn) => nextById.get(turn.id) ?? turn);
+    const retainedIds = new Set(retained.map((turn) => turn.id));
+    savePersistedChatYamlReconciliationQueue(workspaceKey, [
+      ...merged,
+      ...nextForWorkspace.filter((turn) => !retainedIds.has(turn.id)),
+    ]);
   }
 }
 
@@ -5081,15 +5139,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const target =
         prev.finishedTurnQueue.find((turn) => turn.id === turnId) ??
         claimedFinishedTurnReconciliations.get(turnId);
-      const finishedTurnQueue = prev.finishedTurnQueue.filter((turn) => turn.id !== turnId);
       claimedFinishedTurnReconciliations.delete(turnId);
       if (target?.yamlSnapshotBeforeSend) {
-        persistFinishedTurnQueueForWorkspace(
-          target.yamlSnapshotBeforeSend.workDir,
-          finishedTurnQueue,
-        );
+        removePersistedFinishedTurn(target.yamlSnapshotBeforeSend.workDir, turnId);
       }
-      return { finishedTurnQueue };
+      return {
+        finishedTurnQueue: prev.finishedTurnQueue.filter((turn) => turn.id !== turnId),
+      };
     }),
   markFinishedTurnReconciliationFailed: (turnId, message) =>
     set((prev) => {
@@ -5149,17 +5205,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   restoreAbandonedFinishedTurnReconciliation: (turn, message) => {
     if (!turn.reconcileFailure || !turn.yamlSnapshotBeforeSend) return false;
     const workspaceKey = turn.yamlSnapshotBeforeSend.workDir;
+    const restoredTurn = restoredFinishedTurnReconcileFailure(turn, message);
+    claimedFinishedTurnReconciliations.delete(turn.id);
+    restorePersistedFinishedTurn(workspaceKey, restoredTurn);
+    if (getOpencodeWorkspaceKey() !== workspaceKey) return true;
     let restored = false;
     set((prev) => {
-      if (prev.finishedTurnQueue.some((candidate) => candidate.id === turn.id)) {
-        claimedFinishedTurnReconciliations.delete(turn.id);
-        return {};
-      }
-      const restoredTurn = restoredFinishedTurnReconcileFailure(turn, message);
+      const existingIndex = prev.finishedTurnQueue.findIndex(
+        (candidate) => candidate.id === turn.id,
+      );
+      const finishedTurnQueue =
+        existingIndex < 0
+          ? [restoredTurn, ...prev.finishedTurnQueue]
+          : prev.finishedTurnQueue.map((candidate, index) =>
+              index === existingIndex ? restoredTurn : candidate,
+            );
       restored = true;
-      claimedFinishedTurnReconciliations.delete(turn.id);
-      const finishedTurnQueue = [restoredTurn, ...prev.finishedTurnQueue];
-      persistFinishedTurnQueueForWorkspace(workspaceKey, finishedTurnQueue);
       return {
         finishedTurnQueue,
         queuedDispatchMode:

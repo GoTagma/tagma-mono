@@ -72,6 +72,17 @@ function stagedTurn(id = 'finished-stage-1', workspace = 'C:/repo'): ChatFinishe
   };
 }
 
+function failedStagedTurn(id: string, workspace: string): ChatFinishedTurn {
+  return {
+    ...stagedTurn(id, workspace),
+    reconcileFailure: {
+      message: 'Finalize failed before commit.',
+      attempt: 1,
+      failedAt: 2_000,
+    },
+  };
+}
+
 function hiddenRuntime(turn: ChatFinishedTurn): ChatState['sessionStates'][string] {
   return {
     messages: [],
@@ -312,14 +323,7 @@ describe('unfinished Chat YAML reconciliation persistence', () => {
   });
 
   test('clears only the confirmed claimed discard from persistence', () => {
-    const claimed = {
-      ...stagedTurn('claimed'),
-      reconcileFailure: {
-        message: 'Finalize failed before commit.',
-        attempt: 1,
-        failedAt: 2_000,
-      },
-    };
+    const claimed = failedStagedTurn('claimed', 'C:/repo');
     const queued = stagedTurn('still-queued');
     setClientWorkspace('C:/repo');
     savePersistedChatYamlReconciliationQueue('C:/repo', [claimed, queued]);
@@ -339,6 +343,78 @@ describe('unfinished Chat YAML reconciliation persistence', () => {
       queued.id,
     ]);
     expect(useChatStore.getState().finishedTurnQueue.map((turn) => turn.id)).toEqual([queued.id]);
+  });
+
+  test('acknowledges a claimed workspace A turn without rewriting workspace B state', () => {
+    const claimedA = failedStagedTurn('claimed-a', 'C:/repo-a');
+    const siblingA = stagedTurn('sibling-a', 'C:/repo-a');
+    const liveB = stagedTurn('live-b', 'C:/repo-b');
+    savePersistedChatYamlReconciliationQueue('C:/repo-a', [claimedA, siblingA]);
+    savePersistedChatYamlReconciliationQueue('C:/repo-b', [liveB]);
+    setClientWorkspace('C:/repo-a');
+    useChatStore.setState({
+      finishedTurnQueue: [claimedA, siblingA],
+      lastFinishedTurn: siblingA,
+    } as Partial<ChatState>);
+    expect(useChatStore.getState().abandonFinishedTurnReconciliation(claimedA.id)).toEqual(
+      claimedA,
+    );
+
+    setClientWorkspace('C:/repo-b');
+    useChatStore.setState({
+      finishedTurnQueue: [liveB],
+      lastFinishedTurn: liveB,
+    } as Partial<ChatState>);
+    useChatStore.getState().acknowledgeFinishedTurn(claimedA.id);
+
+    expect(loadPersistedChatYamlReconciliationQueue('C:/repo-a').map((turn) => turn.id)).toEqual([
+      siblingA.id,
+    ]);
+    expect(loadPersistedChatYamlReconciliationQueue('C:/repo-b')).toEqual([
+      expect.objectContaining({ id: liveB.id }),
+    ]);
+    expect(useChatStore.getState().finishedTurnQueue).toEqual([liveB]);
+    expect(useChatStore.getState().lastFinishedTurn).toBe(liveB);
+  });
+
+  test('restores a claimed workspace A turn without injecting it into workspace B state', () => {
+    const claimedA = failedStagedTurn('claimed-a', 'C:/repo-a');
+    const siblingA = stagedTurn('sibling-a', 'C:/repo-a');
+    const liveB = stagedTurn('live-b', 'C:/repo-b');
+    savePersistedChatYamlReconciliationQueue('C:/repo-a', [claimedA, siblingA]);
+    savePersistedChatYamlReconciliationQueue('C:/repo-b', [liveB]);
+    setClientWorkspace('C:/repo-a');
+    useChatStore.setState({
+      finishedTurnQueue: [claimedA, siblingA],
+      lastFinishedTurn: siblingA,
+    } as Partial<ChatState>);
+    expect(useChatStore.getState().abandonFinishedTurnReconciliation(claimedA.id)).toEqual(
+      claimedA,
+    );
+
+    setClientWorkspace('C:/repo-b');
+    useChatStore.setState({
+      finishedTurnQueue: [liveB],
+      lastFinishedTurn: liveB,
+    } as Partial<ChatState>);
+    expect(
+      useChatStore
+        .getState()
+        .restoreAbandonedFinishedTurnReconciliation(claimedA, 'Cleanup was not confirmed.'),
+    ).toBe(true);
+
+    expect(loadPersistedChatYamlReconciliationQueue('C:/repo-a')).toEqual([
+      expect.objectContaining({
+        id: claimedA.id,
+        reconcileFailure: expect.objectContaining({ message: 'Cleanup was not confirmed.' }),
+      }),
+      expect.objectContaining({ id: siblingA.id }),
+    ]);
+    expect(loadPersistedChatYamlReconciliationQueue('C:/repo-b')).toEqual([
+      expect.objectContaining({ id: liveB.id }),
+    ]);
+    expect(useChatStore.getState().finishedTurnQueue).toEqual([liveB]);
+    expect(useChatStore.getState().lastFinishedTurn).toBe(liveB);
   });
 
   test('hydrates the failed queue on workspace bootstrap even when OpenCode bootstrap fails', async () => {
