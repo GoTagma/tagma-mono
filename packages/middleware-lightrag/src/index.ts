@@ -170,6 +170,15 @@ async function queryLightRAG(
 
 export const LightRAGMiddleware: MiddlewarePlugin = {
   name: 'lightrag',
+  trial: {
+    protocolVersion: 1,
+    interaction: 'credential',
+    unattended: 'host-adapter',
+    filesystem: 'temp-only',
+    network: 'write',
+    secrets: 'real-required',
+    runtime: 'bounded',
+  },
   schema: {
     description:
       'Query a LightRAG knowledge-graph server and prepend retrieved context to the prompt.',

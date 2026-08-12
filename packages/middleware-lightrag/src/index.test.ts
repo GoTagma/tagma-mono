@@ -10,6 +10,18 @@ describe('middleware-lightrag plugin shape', () => {
     expect(plugin.capabilities?.middlewares?.[manifest.tagmaPlugin.type]).toBe(LightRAGMiddleware);
   });
 
+  test('declares its Trial Interaction Protocol requirements', () => {
+    expect(plugin.capabilities!.middlewares!.lightrag.trial).toEqual({
+      protocolVersion: 1,
+      interaction: 'credential',
+      unattended: 'host-adapter',
+      filesystem: 'temp-only',
+      network: 'write',
+      secrets: 'real-required',
+      runtime: 'bounded',
+    });
+  });
+
   test('enhanceDoc is a function', () => {
     expect(typeof plugin.capabilities!.middlewares!.lightrag.enhanceDoc).toBe('function');
   });

@@ -6,6 +6,15 @@ type Kind = 'file' | 'dir' | 'any';
 
 export const FileExistsCompletion: CompletionPlugin = {
   name: 'file_exists',
+  trial: {
+    protocolVersion: 1,
+    interaction: 'none',
+    unattended: 'fixture',
+    filesystem: 'workspace-read',
+    network: 'none',
+    secrets: 'none',
+    runtime: 'bounded',
+  },
   schema: {
     description: 'Mark the task successful when a target file or directory exists.',
     fields: {

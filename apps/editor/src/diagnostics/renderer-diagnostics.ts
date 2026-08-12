@@ -13,6 +13,9 @@ const MAX_PENDING_APPROVALS = 100;
 const MAX_VALIDATION_SUMMARIES = 100;
 const MAX_TRIAL_PLAN_ATTEMPT_IDS = 50;
 const MAX_TRIAL_PLAN_REJECTIONS = 50;
+const MAX_TRIAL_MANUAL_EXECUTION_GRANTS = 32;
+const MAX_TRIALABILITY_ITEMS = 64;
+const MAX_TRIALABILITY_MESSAGES = 32;
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -385,10 +388,119 @@ function compactTrialPlanTelemetry(value: unknown): UnknownRecord | null {
   };
 }
 
+function compactTrialabilityCollection<T>(
+  value: unknown,
+  limit: number,
+  mapItem: (item: unknown) => T | null,
+): UnknownRecord {
+  const source = Array.isArray(value) ? value : [];
+  const items = source
+    .slice(0, limit)
+    .map(mapItem)
+    .filter((item): item is T => item !== null);
+  return {
+    totalCount: source.length,
+    returnedCount: items.length,
+    omittedCount: Math.max(0, source.length - items.length),
+    items,
+  };
+}
+
+function compactTrialabilityDeclaration(value: unknown): UnknownRecord | null {
+  const declaration = record(value);
+  if (Object.keys(declaration).length === 0) return null;
+  return {
+    protocolVersion: finiteNumber(declaration.protocolVersion),
+    interaction: conciseText(declaration.interaction, 64),
+    unattended: conciseText(declaration.unattended, 64),
+    filesystem: conciseText(declaration.filesystem, 64),
+    network: conciseText(declaration.network, 64),
+    secrets: conciseText(declaration.secrets, 64),
+    runtime: conciseText(declaration.runtime, 64),
+  };
+}
+
+function compactTrialabilityReport(value: unknown): UnknownRecord | null {
+  const report = record(value);
+  if (Object.keys(report).length === 0) return null;
+  const enforcement = record(report.enforcement);
+  const sandboxCases = record(enforcement.sandboxCases);
+  const liveSmokeBaselineValue = enforcement.liveSmokeBaseline;
+  const liveSmokeBaseline = record(liveSmokeBaselineValue);
+  const hasLiveSmokeBaseline =
+    liveSmokeBaselineValue !== null &&
+    liveSmokeBaselineValue !== undefined &&
+    Object.keys(liveSmokeBaseline).length > 0;
+  return {
+    protocolVersion: finiteNumber(report.protocolVersion),
+    mode: conciseText(report.mode, 64),
+    runnable: typeof report.runnable === 'boolean' ? report.runnable : null,
+    containment: {
+      sandboxCases: { level: 'application', osSandbox: false },
+      liveSmokeBaseline: hasLiveSmokeBaseline
+        ? { level: 'host-authority', osSandbox: false }
+        : null,
+    },
+    enforcement: {
+      sandboxCases: {
+        workspace: conciseText(sandboxCases.workspace, 64),
+        stdin: conciseText(sandboxCases.stdin, 64),
+        tty: conciseText(sandboxCases.tty, 64),
+        secrets: conciseText(sandboxCases.secrets, 64),
+        filesystem: conciseText(sandboxCases.filesystem, 128),
+        network: conciseText(sandboxCases.network, 64),
+        process: conciseText(sandboxCases.process, 64),
+      },
+      liveSmokeBaseline: hasLiveSmokeBaseline
+        ? {
+            workspace: conciseText(liveSmokeBaseline.workspace, 64),
+            stdin: conciseText(liveSmokeBaseline.stdin, 64),
+            tty: conciseText(liveSmokeBaseline.tty, 64),
+            secrets: conciseText(liveSmokeBaseline.secrets, 64),
+            filesystem: conciseText(liveSmokeBaseline.filesystem, 128),
+            network: conciseText(liveSmokeBaseline.network, 64),
+            process: conciseText(liveSmokeBaseline.process, 64),
+          }
+        : null,
+    },
+    items: compactTrialabilityCollection(report.items, MAX_TRIALABILITY_ITEMS, (rawItem) => {
+      const item = record(rawItem);
+      const occurrence = finiteNumber(item.occurrence);
+      return {
+        component: conciseText(item.component, 64),
+        taskId: conciseText(item.taskId, 256),
+        type: conciseText(item.type, 256),
+        provider: conciseText(item.provider, 256),
+        declaration: compactTrialabilityDeclaration(item.declaration),
+        disposition: conciseText(item.disposition, 64),
+        ...(occurrence === null ? {} : { occurrence }),
+      };
+    }),
+    blockers: compactTrialabilityCollection(report.blockers, MAX_TRIALABILITY_MESSAGES, (item) =>
+      conciseText(item),
+    ),
+    warnings: compactTrialabilityCollection(report.warnings, MAX_TRIALABILITY_MESSAGES, (item) =>
+      conciseText(item),
+    ),
+  };
+}
+
 function compactTrial(value: unknown): UnknownRecord | null {
   const trial = record(value);
   if (Object.keys(trial).length === 0) return null;
   const plan = record(trial.plan);
+  const manualGrantSource = Array.isArray(trial.manualExecutionGrants)
+    ? trial.manualExecutionGrants
+    : [];
+  const manualGrantItems = manualGrantSource
+    .slice(0, MAX_TRIAL_MANUAL_EXECUTION_GRANTS)
+    .map((item) => {
+      const grant = record(item);
+      return {
+        taskId: conciseText(grant.taskId, 256),
+        approvalCount: finiteNumber(grant.approvalCount),
+      };
+    });
   return {
     success: trial.success ?? null,
     kind: trial.kind ?? null,
@@ -402,10 +514,18 @@ function compactTrial(value: unknown): UnknownRecord | null {
     omittedTaskStatusCounts: trial.omittedTaskStatusCounts ?? null,
     repairAuthorization: trial.repairAuthorization ?? null,
     prerequisiteState: compactPrerequisiteState(trial.prerequisiteState),
+    trialMode: trial.trialMode ?? null,
+    trialabilityReport: compactTrialabilityReport(trial.trialabilityReport),
     verificationMode: trial.verificationMode ?? null,
     plannedCaseCount: trial.plannedCaseCount ?? null,
     caseResultCount: trial.caseResultCount ?? null,
     notRunCaseCount: trial.notRunCaseCount ?? null,
+    manualExecutionGrants: {
+      totalCount: manualGrantSource.length,
+      returnedCount: manualGrantItems.length,
+      omittedCount: Math.max(0, manualGrantSource.length - manualGrantItems.length),
+      items: manualGrantItems,
+    },
     returnedCaseCount: Array.isArray(trial.cases) ? trial.cases.length : 0,
     planTelemetry: compactTrialPlanTelemetry(trial.planTelemetry),
     plan: Object.keys(plan).length

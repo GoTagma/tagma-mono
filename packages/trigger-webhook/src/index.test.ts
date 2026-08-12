@@ -84,6 +84,18 @@ describe('trigger-webhook plugin shape', () => {
     expect(plugin.capabilities?.triggers?.[manifest.tagmaPlugin.type]).toBe(WebhookTrigger);
   });
 
+  test('declares its Trial Interaction Protocol requirements', () => {
+    expect(plugin.capabilities!.triggers!.webhook.trial).toEqual({
+      protocolVersion: 1,
+      interaction: 'external-event',
+      unattended: 'unsupported',
+      filesystem: 'temp-only',
+      network: 'write',
+      secrets: 'real-required',
+      runtime: 'long-lived',
+    });
+  });
+
   test('watch is a function', () => {
     expect(typeof plugin.capabilities!.triggers!.webhook.watch).toBe('function');
   });

@@ -44,7 +44,9 @@ export {
   RUN_PROTOCOL_VERSION,
   TASK_LOG_CAP,
   TASK_LIVE_OUTPUT_CAP,
+  TRIAL_INTERACTION_PROTOCOL_VERSION,
   appendLiveOutput,
+  isTrialInteractionDeclaration,
 } from '@tagma/types';
 export {
   PipelineGroup,
@@ -109,6 +111,14 @@ export type {
   TriggerWatchHandle,
   CompletionPlugin,
   MiddlewarePlugin,
+  TrialInteractionProtocolVersion,
+  TrialInteraction,
+  TrialUnattendedMode,
+  TrialFilesystemAccess,
+  TrialNetworkAccess,
+  TrialSecretsAccess,
+  TrialRuntimeMode,
+  TrialInteractionDeclaration,
   // Same type as the `RunEventPayload` re-exported from `@tagma/core`
   // a few lines above (`@tagma/core` itself re-exports it from
   // `@tagma/types`). The `PipelineRunEventPayload` alias exists for

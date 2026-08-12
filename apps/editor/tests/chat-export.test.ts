@@ -271,7 +271,7 @@ describe('chat conversation export', () => {
           validation: { errors: [], warnings: [] },
         },
         trial: {
-          version: 10,
+          version: 13,
           success: false,
           kind: 'witness-failed',
           ran: false,
@@ -285,7 +285,42 @@ describe('chat conversation export', () => {
           taskStatusCounts: { failed: 1, success: 1, skipped: 10 },
           omittedTaskStatusCounts: { skipped: 10 },
           repairAuthorization: 'diagnostic-only',
-          verificationMode: 'real-baseline-and-isolated-cases',
+          trialMode: 'sandbox',
+          verificationMode: 'sandbox-cases-only',
+          trialabilityReport: {
+            protocolVersion: 1,
+            mode: 'sandbox',
+            runnable: false,
+            enforcement: {
+              sandboxCases: {
+                workspace: 'temporary-copy',
+                stdin: 'closed',
+                tty: 'none',
+                secrets: 'synthetic',
+                filesystem: 'host-unrestricted-outside-copy',
+                network: 'host-unrestricted',
+                process: 'host-unrestricted',
+              },
+              liveSmokeBaseline: null,
+            },
+            items: Array.from({ length: 35 }, (_, index) => ({
+              component: 'driver' as const,
+              taskId: `main.task-${index}`,
+              type: `driver-${index}`,
+              provider: `provider-${index}`,
+              declaration: null,
+              disposition: 'unsupported-in-unattended-trial' as const,
+            })),
+            blockers: Array.from(
+              { length: 18 },
+              (_, index) => `Blocker ${index} token=private-blocker-${index}`,
+            ),
+            warnings: Array.from(
+              { length: 18 },
+              (_, index) => `Warning ${index} token=private-warning-${index}`,
+            ),
+          },
+          manualExecutionGrants: [{ taskId: 'main.manual-check', approvalCount: 2 }],
           plannedCaseCount: 2,
           caseResultCount: 1,
           notRunCaseCount: 1,
@@ -454,7 +489,22 @@ describe('chat conversation export', () => {
     expect(exported.content).toContain('Trial task status totals: failed=1, skipped=10, success=1');
     expect(exported.content).toContain('Trial task status omitted: skipped=10');
     expect(exported.content).toContain('Trial repair authorization: diagnostic-only');
-    expect(exported.content).toContain('Trial verification mode: real-baseline-and-isolated-cases');
+    expect(exported.content).toContain('Trial mode: sandbox');
+    expect(exported.content).toContain('Trial verification mode: sandbox-cases-only');
+    expect(exported.content).toContain('Trialability preflight: blocked; protocol v1');
+    expect(exported.content).toContain(
+      'Trialability Sandbox-case containment (application-level; no OS sandbox): workspace=temporary-copy; stdin=closed; TTY=none; secrets=synthetic; filesystem=host-unrestricted-outside-copy; network=host-unrestricted; process=host-unrestricted',
+    );
+    expect(exported.content).toContain('Trialability Live Smoke baseline: not enabled');
+    expect(exported.content).toContain('Trialability surfaces: 35 total; 32 returned; 3 omitted');
+    expect(exported.content).toContain('Trialability blockers: 18 total; 16 returned; 2 omitted');
+    expect(exported.content).toContain('Trialability warnings: 18 total; 16 returned; 2 omitted');
+    expect(exported.content).toContain('Trialability blocker: Blocker 0 token=[REDACTED]');
+    expect(exported.content).not.toContain('private-blocker-17');
+    expect(exported.content).not.toContain('private-warning-17');
+    expect(exported.content).toContain(
+      'Trial manual execution grant: main.manual-check (2 approvals)',
+    );
     expect(exported.content).toContain('...[chat-export truncated ');
     expect(exported.content).not.toContain('...[truncated]');
     expect(exported.content).toContain('Baseline Task Evidence');
@@ -513,7 +563,7 @@ describe('chat conversation export', () => {
           validation: { errors: [], warnings: [] },
         },
         trial: {
-          version: 6,
+          version: 13,
           success: true,
           kind: 'passed-with-warnings',
           ran: true,
@@ -522,6 +572,36 @@ describe('chat conversation export', () => {
           durationMs: 10,
           totalTaskCount: 1,
           omittedTaskCount: 0,
+          trialMode: 'sandbox-with-live-smoke',
+          verificationMode: 'sandbox-cases-with-live-smoke',
+          trialabilityReport: {
+            protocolVersion: 1,
+            mode: 'sandbox-with-live-smoke',
+            runnable: true,
+            enforcement: {
+              sandboxCases: {
+                workspace: 'temporary-copy',
+                stdin: 'closed',
+                tty: 'none',
+                secrets: 'synthetic',
+                filesystem: 'host-unrestricted-outside-copy',
+                network: 'host-unrestricted',
+                process: 'host-unrestricted',
+              },
+              liveSmokeBaseline: {
+                workspace: 'real-workspace',
+                stdin: 'closed',
+                tty: 'none',
+                secrets: 'real',
+                filesystem: 'host-unrestricted',
+                network: 'host-unrestricted',
+                process: 'host-unrestricted',
+              },
+            },
+            items: [],
+            blockers: [],
+            warnings: [],
+          },
           tasks: [],
           cases: [],
         },
@@ -540,6 +620,9 @@ describe('chat conversation export', () => {
 
     expect(exported.content).toContain('Trial: passed with warnings (passed-with-warnings; ran)');
     expect(exported.content).not.toContain('Trial: passed (passed-with-warnings; ran)');
+    expect(exported.content).toContain(
+      'Trialability Live Smoke baseline authority (real workspace; real secrets; normal host authority; no OS sandbox): workspace=real-workspace; stdin=closed; TTY=none; secrets=real; filesystem=host-unrestricted; network=host-unrestricted; process=host-unrestricted',
+    );
   });
 
   test('exports authoritative host verification with actionable planning rejection evidence', () => {

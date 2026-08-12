@@ -660,6 +660,9 @@ const MAX_CHAT_TRIAL_REPAIR_EVIDENCE_BYTES = 64 * 1024;
 const MAX_CHAT_TRIAL_REPAIR_TASKS = 8;
 const MAX_CHAT_TRIAL_REPAIR_CASE_TASKS = 2;
 const MAX_CHAT_TRIAL_REPAIR_STREAM_CHARS = 2_000;
+const MAX_CHAT_TRIAL_REPAIR_TRIALABILITY_ITEMS = 32;
+const MAX_CHAT_TRIAL_REPAIR_TRIALABILITY_MESSAGES = 16;
+const MAX_CHAT_TRIAL_REPAIR_MANUAL_GRANTS = 32;
 const CHAT_TRIAL_REPAIR_TRUNCATION_MARKER = '…[truncated] [truncation-layer: repair-prompt]';
 
 function clipChatTrialRepairEvidenceText(value: string, maxLength: number): string {
@@ -742,6 +745,100 @@ function mergeChatTrialRepairTaskStatusCounts(
   return merged;
 }
 
+function compactChatTrialRepairCountedItems<T, U>(
+  source: readonly T[],
+  limit: number,
+  mapItem: (item: T) => U,
+) {
+  const items = source.slice(0, Math.max(0, limit)).map(mapItem);
+  return {
+    totalCount: source.length,
+    returnedCount: items.length,
+    omittedCount: Math.max(0, source.length - items.length),
+    items,
+  };
+}
+
+function compactChatTrialRepairManualGrants(
+  grants: ChatPipelineTrialRunResult['manualExecutionGrants'],
+  limit = MAX_CHAT_TRIAL_REPAIR_MANUAL_GRANTS,
+) {
+  const source = grants ?? [];
+  return compactChatTrialRepairCountedItems(source, limit, (grant) => ({
+    taskId: clipChatTrialRepairEvidenceText(redactChatCompileRepairText(grant.taskId), 256),
+    approvalCount: grant.approvalCount,
+  }));
+}
+
+function compactChatTrialabilityRepairReport(
+  report: ChatPipelineTrialRunResult['trialabilityReport'],
+  limits: { itemLimit?: number; messageLimit?: number } = {},
+) {
+  if (!report) return undefined;
+  const itemLimit = limits.itemLimit ?? MAX_CHAT_TRIAL_REPAIR_TRIALABILITY_ITEMS;
+  const messageLimit = limits.messageLimit ?? MAX_CHAT_TRIAL_REPAIR_TRIALABILITY_MESSAGES;
+  const text = (value: string, maxLength = 512) =>
+    clipChatTrialRepairEvidenceText(redactChatCompileRepairText(value), maxLength);
+  const sandboxCases = report.enforcement.sandboxCases;
+  const liveSmokeBaseline = report.enforcement.liveSmokeBaseline;
+  return {
+    protocolVersion: report.protocolVersion,
+    mode: report.mode,
+    runnable: report.runnable,
+    containment: {
+      sandboxCases: { level: 'application', osSandbox: false },
+      liveSmokeBaseline: liveSmokeBaseline ? { level: 'host-authority', osSandbox: false } : null,
+    },
+    enforcement: {
+      sandboxCases: {
+        workspace: sandboxCases.workspace,
+        stdin: sandboxCases.stdin,
+        tty: sandboxCases.tty,
+        secrets: sandboxCases.secrets,
+        filesystem: sandboxCases.filesystem,
+        network: sandboxCases.network,
+        process: sandboxCases.process,
+      },
+      liveSmokeBaseline: liveSmokeBaseline
+        ? {
+            workspace: liveSmokeBaseline.workspace,
+            stdin: liveSmokeBaseline.stdin,
+            tty: liveSmokeBaseline.tty,
+            secrets: liveSmokeBaseline.secrets,
+            filesystem: liveSmokeBaseline.filesystem,
+            network: liveSmokeBaseline.network,
+            process: liveSmokeBaseline.process,
+          }
+        : null,
+    },
+    items: compactChatTrialRepairCountedItems(report.items, itemLimit, (item) => ({
+      component: item.component,
+      ...(item.taskId === undefined ? {} : { taskId: text(item.taskId, 256) }),
+      type: text(item.type, 256),
+      provider: text(item.provider, 256),
+      declaration: item.declaration
+        ? {
+            protocolVersion: item.declaration.protocolVersion,
+            interaction: item.declaration.interaction,
+            unattended: item.declaration.unattended,
+            filesystem: item.declaration.filesystem,
+            network: item.declaration.network,
+            secrets: item.declaration.secrets,
+            runtime: item.declaration.runtime,
+          }
+        : null,
+      disposition: item.disposition,
+      ...(item.occurrence === undefined ? {} : { occurrence: item.occurrence }),
+    })),
+    blockers: compactChatTrialRepairCountedItems(report.blockers, messageLimit, (item) =>
+      text(item),
+    ),
+    warnings: compactChatTrialRepairCountedItems(report.warnings, messageLimit, (item) =>
+      text(item),
+    ),
+  };
+}
+
 function compactChatTrialRepairTask(
   task: ChatPipelineTrialRunResult['tasks'][number],
   streamLimitChars = MAX_CHAT_TRIAL_REPAIR_STREAM_CHARS,
@@ -779,7 +876,13 @@ function compactChatTrialRepairTask(
 
 function compactChatTrialRepairResult(
   result: ChatPipelineTrialRunResult,
-  options: { streamLimitChars?: number; caseTaskLimit?: number } = {},
+  options: {
+    streamLimitChars?: number;
+    caseTaskLimit?: number;
+    trialabilityItemLimit?: number;
+    trialabilityMessageLimit?: number;
+    manualGrantLimit?: number;
+  } = {},
 ) {
   const streamLimitChars = options.streamLimitChars ?? MAX_CHAT_TRIAL_REPAIR_STREAM_CHARS;
   const caseTaskLimit = options.caseTaskLimit ?? MAX_CHAT_TRIAL_REPAIR_CASE_TASKS;
@@ -802,6 +905,16 @@ function compactChatTrialRepairResult(
     plannedCaseCount: result.plannedCaseCount,
     caseResultCount: result.caseResultCount,
     notRunCaseCount: result.notRunCaseCount,
+    trialMode: result.trialMode,
+    verificationMode: result.verificationMode,
+    trialabilityReport: compactChatTrialabilityRepairReport(result.trialabilityReport, {
+      itemLimit: options.trialabilityItemLimit,
+      messageLimit: options.trialabilityMessageLimit,
+    }),
+    manualExecutionGrants: compactChatTrialRepairManualGrants(
+      result.manualExecutionGrants,
+      options.manualGrantLimit,
+    ),
     summary: clipChatTrialRepairEvidenceText(result.summary, 8_000),
     durationMs: result.durationMs,
     totalTaskCount: result.totalTaskCount,
@@ -818,6 +931,11 @@ function compactChatTrialRepairResult(
       failedCaseLimit: 8,
       caseTaskLimit,
       taskStreamLimitChars: streamLimitChars,
+      trialabilityItemLimit:
+        options.trialabilityItemLimit ?? MAX_CHAT_TRIAL_REPAIR_TRIALABILITY_ITEMS,
+      trialabilityMessageLimit:
+        options.trialabilityMessageLimit ?? MAX_CHAT_TRIAL_REPAIR_TRIALABILITY_MESSAGES,
+      manualGrantLimit: options.manualGrantLimit ?? MAX_CHAT_TRIAL_REPAIR_MANUAL_GRANTS,
     },
     tasks: selectedTasks.map((task) => compactChatTrialRepairTask(task, streamLimitChars)),
     plan: result.plan
@@ -1089,6 +1207,9 @@ function serializeChatYamlRepairEvidence(evidence: ChatYamlRepairEvidence): stri
   const fallbackCompact = compactChatTrialRepairResult(evidence.result, {
     streamLimitChars: 500,
     caseTaskLimit: 1,
+    trialabilityItemLimit: 8,
+    trialabilityMessageLimit: 4,
+    manualGrantLimit: 8,
   });
   const fallback = JSON.stringify(
     {
@@ -1100,6 +1221,10 @@ function serializeChatYamlRepairEvidence(evidence: ChatYamlRepairEvidence): stri
       plannedCaseCount: evidence.result.plannedCaseCount,
       caseResultCount: evidence.result.caseResultCount,
       notRunCaseCount: evidence.result.notRunCaseCount,
+      trialMode: evidence.result.trialMode,
+      verificationMode: evidence.result.verificationMode,
+      trialabilityReport: fallbackCompact.trialabilityReport,
+      manualExecutionGrants: fallbackCompact.manualExecutionGrants,
       summary: clipChatTrialRepairEvidenceText(evidence.result.summary, 4_000),
       planFindings: evidence.result.plan?.findings.slice(0, 2).map((item) => ({
         severity: item.severity,
@@ -1131,6 +1256,12 @@ function serializeChatYamlRepairEvidence(evidence: ChatYamlRepairEvidence): stri
       success: evidence.result.success,
       kind: evidence.result.kind,
       repairAuthorization: evidence.result.repairAuthorization,
+      trialMode: evidence.result.trialMode,
+      verificationMode: evidence.result.verificationMode,
+      trialabilityReport: compactChatTrialabilityRepairReport(evidence.result.trialabilityReport, {
+        itemLimit: 0,
+        messageLimit: 2,
+      }),
       summary: clipChatTrialRepairEvidenceText(evidence.result.summary, 2_000),
       evidenceTruncation: {
         layer: 'repair-prompt',

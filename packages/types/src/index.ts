@@ -47,6 +47,124 @@ export interface Permissions {
   readonly execute: boolean;
 }
 
+// Trial Interaction Protocol v1
+// Capability metadata used by hosts to decide whether a plugin can be
+// exercised safely before invoking any of its methods. The declaration is
+// optional on plugin interfaces so legacy plugins remain compatible with
+// ordinary (non-trial) runs.
+
+export const TRIAL_INTERACTION_PROTOCOL_VERSION = 1 as const;
+
+export type TrialInteractionProtocolVersion = typeof TRIAL_INTERACTION_PROTOCOL_VERSION;
+
+export type TrialInteraction =
+  | 'none'
+  | 'approval'
+  | 'external-event'
+  | 'credential'
+  | 'interactive-stdio'
+  | 'browser-auth'
+  | 'unknown';
+
+export type TrialUnattendedMode =
+  'native' | 'fixture' | 'host-adapter' | 'virtualized' | 'unsupported';
+
+export type TrialFilesystemAccess =
+  'temp-only' | 'workspace-read' | 'workspace-write' | 'external-write';
+
+export type TrialNetworkAccess = 'none' | 'loopback' | 'read' | 'write';
+
+export type TrialSecretsAccess = 'none' | 'synthetic-ok' | 'real-required';
+
+export type TrialRuntimeMode = 'bounded' | 'long-lived';
+
+export interface TrialInteractionDeclaration {
+  readonly protocolVersion: TrialInteractionProtocolVersion;
+  readonly interaction: TrialInteraction;
+  readonly unattended: TrialUnattendedMode;
+  readonly filesystem: TrialFilesystemAccess;
+  readonly network: TrialNetworkAccess;
+  readonly secrets: TrialSecretsAccess;
+  readonly runtime: TrialRuntimeMode;
+}
+
+const TRIAL_DECLARATION_KEYS = [
+  'protocolVersion',
+  'interaction',
+  'unattended',
+  'filesystem',
+  'network',
+  'secrets',
+  'runtime',
+] as const;
+
+const TRIAL_INTERACTIONS: ReadonlySet<TrialInteraction> = new Set([
+  'none',
+  'approval',
+  'external-event',
+  'credential',
+  'interactive-stdio',
+  'browser-auth',
+  'unknown',
+]);
+const TRIAL_UNATTENDED_MODES: ReadonlySet<TrialUnattendedMode> = new Set([
+  'native',
+  'fixture',
+  'host-adapter',
+  'virtualized',
+  'unsupported',
+]);
+const TRIAL_FILESYSTEM_ACCESS: ReadonlySet<TrialFilesystemAccess> = new Set([
+  'temp-only',
+  'workspace-read',
+  'workspace-write',
+  'external-write',
+]);
+const TRIAL_NETWORK_ACCESS: ReadonlySet<TrialNetworkAccess> = new Set([
+  'none',
+  'loopback',
+  'read',
+  'write',
+]);
+const TRIAL_SECRETS_ACCESS: ReadonlySet<TrialSecretsAccess> = new Set([
+  'none',
+  'synthetic-ok',
+  'real-required',
+]);
+const TRIAL_RUNTIME_MODES: ReadonlySet<TrialRuntimeMode> = new Set(['bounded', 'long-lived']);
+
+/**
+ * Strict runtime guard for host preflight. Callers can distinguish an absent
+ * declaration from a malformed present value, and unknown fields are rejected
+ * so version skew cannot silently pass as protocol v1.
+ */
+export function isTrialInteractionDeclaration(
+  value: unknown,
+): value is TrialInteractionDeclaration {
+  try {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+    const record = value as Record<string, unknown>;
+    const keys = Object.keys(record);
+    if (
+      keys.length !== TRIAL_DECLARATION_KEYS.length ||
+      !TRIAL_DECLARATION_KEYS.every((key) => Object.hasOwn(record, key))
+    ) {
+      return false;
+    }
+    return (
+      record.protocolVersion === TRIAL_INTERACTION_PROTOCOL_VERSION &&
+      TRIAL_INTERACTIONS.has(record.interaction as TrialInteraction) &&
+      TRIAL_UNATTENDED_MODES.has(record.unattended as TrialUnattendedMode) &&
+      TRIAL_FILESYSTEM_ACCESS.has(record.filesystem as TrialFilesystemAccess) &&
+      TRIAL_NETWORK_ACCESS.has(record.network as TrialNetworkAccess) &&
+      TRIAL_SECRETS_ACCESS.has(record.secrets as TrialSecretsAccess) &&
+      TRIAL_RUNTIME_MODES.has(record.runtime as TrialRuntimeMode)
+    );
+  } catch {
+    return false;
+  }
+}
+
 // ═══ Plugin Schema ═══
 //
 // Declarative metadata a plugin can expose so editors/UIs can render a typed
@@ -684,6 +802,7 @@ export interface TaskContinuationSeed {
 export interface DriverPlugin {
   readonly name: string;
   readonly capabilities: DriverCapabilities;
+  readonly trial?: TrialInteractionDeclaration;
   buildCommand(task: TaskConfig, track: TrackConfig, ctx: DriverContext): Promise<SpawnSpec>;
   parseResult?(stdout: string, stderr?: string): DriverResultMeta | Promise<DriverResultMeta>;
   resolveModel?(): string;
@@ -808,6 +927,7 @@ export function linkAbort(signal: AbortSignal, handler: () => void): () => void 
 
 export interface TriggerPlugin {
   readonly name: string;
+  readonly trial?: TrialInteractionDeclaration;
   /**
    * Starts the trigger watcher and returns a handle owned by the engine.
    * `fired` resolves when the trigger condition is met. `dispose()` must
@@ -836,6 +956,7 @@ export interface CompletionCheckResult {
 
 export interface CompletionPlugin {
   readonly name: string;
+  readonly trial?: TrialInteractionDeclaration;
   readonly schema?: PluginSchema;
   check(
     config: Record<string, unknown>,
@@ -856,6 +977,7 @@ export interface MiddlewareContext {
 
 export interface MiddlewarePlugin {
   readonly name: string;
+  readonly trial?: TrialInteractionDeclaration;
   readonly schema?: PluginSchema;
   /**
    * Augment the structured `PromptDocument` and return a new document.

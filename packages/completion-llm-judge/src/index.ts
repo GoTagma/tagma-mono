@@ -184,6 +184,15 @@ async function callJudge(
 
 export const LlmJudgeCompletion: CompletionPlugin = {
   name: 'llm_judge',
+  trial: {
+    protocolVersion: 1,
+    interaction: 'credential',
+    unattended: 'host-adapter',
+    filesystem: 'temp-only',
+    network: 'write',
+    secrets: 'real-required',
+    runtime: 'bounded',
+  },
   schema: {
     description:
       'Use an LLM to judge whether the task output satisfies a rubric. Answers PASS/FAIL.',

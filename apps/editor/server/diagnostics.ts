@@ -12,6 +12,9 @@ import {
 } from '../shared/diagnostics.js';
 
 export const DIAGNOSTICS_AGENT_BASE_PATH = '/api/diagnostics/v1';
+const MAX_TIMELINE_TRIALABILITY_ITEMS = 32;
+const MAX_TIMELINE_TRIALABILITY_MESSAGES = 32;
+const MAX_TIMELINE_TRIAL_MANUAL_GRANTS = 32;
 
 export interface DiagnosticLogEntry {
   cursor: number;
@@ -387,6 +390,121 @@ function trialPlanTelemetryTimelineSummary(value: unknown): UnknownRecord | null
   };
 }
 
+function trialTimelineCollection<T>(
+  value: unknown,
+  limit: number,
+  mapItem: (item: unknown) => T | null,
+): UnknownRecord {
+  const envelope = record(value);
+  const source = Array.isArray(value) ? value : Array.isArray(envelope.items) ? envelope.items : [];
+  const sourceTotalCount = finiteDiagnosticNumber(envelope.totalCount) ?? source.length;
+  const sourceReturnedCount = finiteDiagnosticNumber(envelope.returnedCount) ?? source.length;
+  const sourceOmittedCount =
+    finiteDiagnosticNumber(envelope.omittedCount) ??
+    Math.max(0, sourceTotalCount - sourceReturnedCount);
+  const items = source
+    .slice(0, limit)
+    .map(mapItem)
+    .filter((item): item is T => item !== null);
+  return {
+    totalCount: sourceTotalCount,
+    returnedCount: items.length,
+    omittedCount: Math.max(0, sourceTotalCount - items.length),
+    sourceReturnedCount,
+    sourceOmittedCount,
+    items,
+  };
+}
+
+function trialabilityDeclarationTimelineSummary(value: unknown): UnknownRecord | null {
+  const declaration = record(value);
+  if (Object.keys(declaration).length === 0) return null;
+  return {
+    protocolVersion: finiteDiagnosticNumber(declaration.protocolVersion),
+    interaction: conciseDiagnosticText(declaration.interaction, 64),
+    unattended: conciseDiagnosticText(declaration.unattended, 64),
+    filesystem: conciseDiagnosticText(declaration.filesystem, 64),
+    network: conciseDiagnosticText(declaration.network, 64),
+    secrets: conciseDiagnosticText(declaration.secrets, 64),
+    runtime: conciseDiagnosticText(declaration.runtime, 64),
+  };
+}
+
+function trialabilityTimelineSummary(value: unknown): UnknownRecord | null {
+  const report = record(value);
+  if (Object.keys(report).length === 0) return null;
+  const enforcement = record(report.enforcement);
+  const sandboxCases = record(enforcement.sandboxCases);
+  const liveSmokeBaselineValue = enforcement.liveSmokeBaseline;
+  const liveSmokeBaseline = record(liveSmokeBaselineValue);
+  const hasLiveSmokeBaseline =
+    liveSmokeBaselineValue !== null &&
+    liveSmokeBaselineValue !== undefined &&
+    Object.keys(liveSmokeBaseline).length > 0;
+  return {
+    protocolVersion: finiteDiagnosticNumber(report.protocolVersion),
+    mode: conciseDiagnosticText(report.mode, 64),
+    runnable: typeof report.runnable === 'boolean' ? report.runnable : null,
+    containment: {
+      sandboxCases: { level: 'application', osSandbox: false },
+      liveSmokeBaseline: hasLiveSmokeBaseline
+        ? { level: 'host-authority', osSandbox: false }
+        : null,
+    },
+    enforcement: {
+      sandboxCases: {
+        workspace: conciseDiagnosticText(sandboxCases.workspace, 64),
+        stdin: conciseDiagnosticText(sandboxCases.stdin, 64),
+        tty: conciseDiagnosticText(sandboxCases.tty, 64),
+        secrets: conciseDiagnosticText(sandboxCases.secrets, 64),
+        filesystem: conciseDiagnosticText(sandboxCases.filesystem, 128),
+        network: conciseDiagnosticText(sandboxCases.network, 64),
+        process: conciseDiagnosticText(sandboxCases.process, 64),
+      },
+      liveSmokeBaseline: hasLiveSmokeBaseline
+        ? {
+            workspace: conciseDiagnosticText(liveSmokeBaseline.workspace, 64),
+            stdin: conciseDiagnosticText(liveSmokeBaseline.stdin, 64),
+            tty: conciseDiagnosticText(liveSmokeBaseline.tty, 64),
+            secrets: conciseDiagnosticText(liveSmokeBaseline.secrets, 64),
+            filesystem: conciseDiagnosticText(liveSmokeBaseline.filesystem, 128),
+            network: conciseDiagnosticText(liveSmokeBaseline.network, 64),
+            process: conciseDiagnosticText(liveSmokeBaseline.process, 64),
+          }
+        : null,
+    },
+    items: trialTimelineCollection(report.items, MAX_TIMELINE_TRIALABILITY_ITEMS, (rawItem) => {
+      const item = record(rawItem);
+      const occurrence = finiteDiagnosticNumber(item.occurrence);
+      return {
+        component: conciseDiagnosticText(item.component, 64),
+        taskId: conciseDiagnosticText(item.taskId, 256),
+        type: conciseDiagnosticText(item.type, 256),
+        provider: conciseDiagnosticText(item.provider, 256),
+        declaration: trialabilityDeclarationTimelineSummary(item.declaration),
+        disposition: conciseDiagnosticText(item.disposition, 64),
+        ...(occurrence === null ? {} : { occurrence }),
+      };
+    }),
+    blockers: trialTimelineCollection(report.blockers, MAX_TIMELINE_TRIALABILITY_MESSAGES, (item) =>
+      conciseDiagnosticText(item),
+    ),
+    warnings: trialTimelineCollection(report.warnings, MAX_TIMELINE_TRIALABILITY_MESSAGES, (item) =>
+      conciseDiagnosticText(item),
+    ),
+  };
+}
+
+function trialManualExecutionGrantsTimelineSummary(value: unknown): UnknownRecord {
+  return trialTimelineCollection(value, MAX_TIMELINE_TRIAL_MANUAL_GRANTS, (rawGrant) => {
+    const grant = record(rawGrant);
+    return {
+      taskId: conciseDiagnosticText(grant.taskId, 256),
+      approvalCount: finiteDiagnosticNumber(grant.approvalCount),
+    };
+  });
+}
+
 function trialTimelineSummary(value: unknown): UnknownRecord | null {
   const trial = record(value);
   if (Object.keys(trial).length === 0) return null;
@@ -401,6 +519,7 @@ function trialTimelineSummary(value: unknown): UnknownRecord | null {
       'totalTaskCount',
       'omittedTaskCount',
       'repairAuthorization',
+      'trialMode',
       'verificationMode',
       'plannedCaseCount',
       'caseResultCount',
@@ -411,6 +530,8 @@ function trialTimelineSummary(value: unknown): UnknownRecord | null {
     prerequisiteState: prerequisiteTimelineSummary(trial.prerequisiteState),
     taskStatusCounts: numericRecord(trial.taskStatusCounts),
     omittedTaskStatusCounts: numericRecord(trial.omittedTaskStatusCounts),
+    trialabilityReport: trialabilityTimelineSummary(trial.trialabilityReport),
+    manualExecutionGrants: trialManualExecutionGrantsTimelineSummary(trial.manualExecutionGrants),
     planTelemetry: trialPlanTelemetryTimelineSummary(trial.planTelemetry),
     plan:
       Object.keys(plan).length > 0

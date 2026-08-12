@@ -22,6 +22,15 @@ function isInsideOrEqual(parent: string, child: string): boolean {
 
 export const FileTrigger: TriggerPlugin = {
   name: 'file',
+  trial: {
+    protocolVersion: 1,
+    interaction: 'external-event',
+    unattended: 'fixture',
+    filesystem: 'workspace-read',
+    network: 'none',
+    secrets: 'none',
+    runtime: 'bounded',
+  },
   schema: {
     description: 'Wait for a file to appear or be modified before the task runs.',
     fields: {

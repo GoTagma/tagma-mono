@@ -11,6 +11,18 @@ describe('driver-claude-code plugin shape', () => {
     expect(plugin.capabilities?.drivers?.[manifest.tagmaPlugin.type]).toBe(ClaudeCodeDriver);
   });
 
+  test('declares its Trial Interaction Protocol requirements', () => {
+    expect(plugin.capabilities!.drivers!['claude-code'].trial).toEqual({
+      protocolVersion: 1,
+      interaction: 'credential',
+      unattended: 'host-adapter',
+      filesystem: 'external-write',
+      network: 'write',
+      secrets: 'real-required',
+      runtime: 'bounded',
+    });
+  });
+
   test('capabilities exposes three boolean flags', () => {
     const driver = plugin.capabilities!.drivers!['claude-code'];
     expect(typeof driver.capabilities.sessionResume).toBe('boolean');

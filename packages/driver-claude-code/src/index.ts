@@ -150,6 +150,15 @@ function findExeInPath(exe: string): string | null {
 
 export const ClaudeCodeDriver: DriverPlugin = {
   name: 'claude-code',
+  trial: {
+    protocolVersion: 1,
+    interaction: 'credential',
+    unattended: 'host-adapter',
+    filesystem: 'external-write',
+    network: 'write',
+    secrets: 'real-required',
+    runtime: 'bounded',
+  },
 
   capabilities: {
     sessionResume: true,

@@ -474,15 +474,16 @@ test('tagma-pipeline agent cooperates with optional host trial-run repair before
   const doc = buildTagmaPipelineAgent('Windows');
 
   expect(doc).toContain(
-    'Host runs a bounded trial before release only after explicit opt-in in Editor Settings',
+    'Host runs bounded Sandbox cases before release only after explicit opt-in in Editor Settings',
   );
+  expect(doc).toContain('real-workspace Live Smoke Test only under separate consent');
   expect(doc).toContain('trial-run failure evidence');
   expect(doc).toContain('same authorized logical turn');
   expect(doc).toContain('Never remove or weaken a manual approval');
-  expect(doc).toContain('Never claim it passed without host evidence');
+  expect(doc).toContain('Never claim either mode passed without host evidence');
   expect(doc).toContain('Relative trigger paths resolve from the real workspace root');
   expect(doc).toContain(
-    'staged pipeline support file does not satisfy that real-workspace baseline',
+    'staged pipeline support file does not satisfy the optional Live Smoke baseline',
   );
   expect(doc).toContain('missing file or directory input is fixture-backed for host Trial');
   expect(doc).toContain('Host verification starts automatically after your response');
@@ -547,6 +548,15 @@ test('dedicated hidden tagma-trial-planner owns targeted Trial Plan authoring', 
     expect(planner).toContain('repeated runs');
     expect(planner).toContain('Identify every terminal task');
     expect(planner).toContain('full dependency closure');
+    expect(planner).toContain('Sandbox Trial only after explicit opt-in');
+    expect(planner).toContain(
+      'temporary workspace copies, closed stdin, no TTY, and synthetic secrets',
+    );
+    expect(planner).toContain('app-level containment, not an OS permission sandbox');
+    expect(planner).toContain('Live Smoke Test runs only under separate consent');
+    expect(planner).toContain(
+      'The host grants Trial-only execution to manual tasks in that explicit target closure',
+    );
     expect(planner).toContain('blocking diagnostic-only finding');
     expect(planner).toContain(
       'Never use accepted-risk or a warning to turn an unexecuted terminal task into a passing Trial',

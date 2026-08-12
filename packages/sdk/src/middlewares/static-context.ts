@@ -15,6 +15,15 @@ function parseMaxChars(value: unknown): number {
 
 export const StaticContextMiddleware: MiddlewarePlugin = {
   name: 'static_context',
+  trial: {
+    protocolVersion: 1,
+    interaction: 'none',
+    unattended: 'fixture',
+    filesystem: 'workspace-read',
+    network: 'none',
+    secrets: 'none',
+    runtime: 'bounded',
+  },
   schema: {
     description: 'Prepend a reference file to the prompt as static context.',
     fields: {

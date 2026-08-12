@@ -150,6 +150,124 @@ test('trial repair prompt treats diagnostic-only evidence as non-authorizing con
   expect(prompt).toContain('update the sibling .requirements.md in the same continuation');
 });
 
+test('trial repair prompt bounds and redacts Trial Interaction Protocol evidence', () => {
+  const prompt = buildChatYamlRepairPrompt(
+    TARGET,
+    {
+      kind: 'trial-run',
+      result: {
+        version: 13,
+        success: false,
+        kind: 'blocked',
+        repairAuthorization: 'diagnostic-only',
+        ran: false,
+        runId: null,
+        summary: 'Trialability preflight blocked execution.',
+        durationMs: 1,
+        totalTaskCount: 0,
+        omittedTaskCount: 0,
+        tasks: [],
+        cases: [],
+        trialMode: 'sandbox-with-live-smoke',
+        verificationMode: 'sandbox-cases-with-live-smoke',
+        trialabilityReport: {
+          protocolVersion: 1,
+          mode: 'sandbox-with-live-smoke',
+          runnable: false,
+          enforcement: {
+            sandboxCases: {
+              workspace: 'temporary-copy',
+              stdin: 'closed',
+              tty: 'none',
+              secrets: 'synthetic',
+              filesystem: 'host-unrestricted-outside-copy',
+              network: 'host-unrestricted',
+              process: 'host-unrestricted',
+            },
+            liveSmokeBaseline: {
+              workspace: 'real-workspace',
+              stdin: 'closed',
+              tty: 'none',
+              secrets: 'real',
+              filesystem: 'host-unrestricted',
+              network: 'host-unrestricted',
+              process: 'host-unrestricted',
+            },
+          },
+          items: Array.from({ length: 40 }, (_, index) => ({
+            component: 'driver' as const,
+            taskId: `main.task-${index}`,
+            type: `driver-${index}`,
+            provider: `provider-${index}`,
+            declaration: null,
+            disposition: 'unsupported-in-unattended-trial' as const,
+          })),
+          blockers: Array.from(
+            { length: 20 },
+            (_, index) => `Blocker ${index} token=private-blocker-${index}`,
+          ),
+          warnings: Array.from(
+            { length: 20 },
+            (_, index) => `Warning ${index} token=private-warning-${index}`,
+          ),
+        },
+        manualExecutionGrants: Array.from({ length: 35 }, (_, index) => ({
+          taskId: `main.manual-${index}`,
+          approvalCount: index + 1,
+        })),
+      },
+    },
+    1,
+    2,
+  );
+
+  const evidence = JSON.parse(
+    prompt.split('<trial-run-result>')[1]!.split('</trial-run-result>')[0]!.trim(),
+  ) as Record<string, unknown>;
+  expect(evidence).toMatchObject({
+    version: 13,
+    trialMode: 'sandbox-with-live-smoke',
+    verificationMode: 'sandbox-cases-with-live-smoke',
+    trialabilityReport: {
+      protocolVersion: 1,
+      mode: 'sandbox-with-live-smoke',
+      runnable: false,
+      containment: {
+        sandboxCases: { level: 'application', osSandbox: false },
+        liveSmokeBaseline: { level: 'host-authority', osSandbox: false },
+      },
+      enforcement: {
+        sandboxCases: {
+          workspace: 'temporary-copy',
+          stdin: 'closed',
+          tty: 'none',
+          secrets: 'synthetic',
+          filesystem: 'host-unrestricted-outside-copy',
+          network: 'host-unrestricted',
+          process: 'host-unrestricted',
+        },
+        liveSmokeBaseline: {
+          workspace: 'real-workspace',
+          stdin: 'closed',
+          tty: 'none',
+          secrets: 'real',
+          filesystem: 'host-unrestricted',
+          network: 'host-unrestricted',
+          process: 'host-unrestricted',
+        },
+      },
+      items: { totalCount: 40, returnedCount: 32, omittedCount: 8 },
+      blockers: { totalCount: 20, returnedCount: 16, omittedCount: 4 },
+      warnings: { totalCount: 20, returnedCount: 16, omittedCount: 4 },
+    },
+    manualExecutionGrants: { totalCount: 35, returnedCount: 32, omittedCount: 3 },
+  });
+  const serialized = JSON.stringify(evidence);
+  expect(serialized).toContain('Blocker 0 token=[redacted secret]');
+  expect(serialized).not.toContain('private-blocker-19');
+  expect(serialized).not.toContain('private-warning-19');
+});
+
 test('oversized trial repair fallback preserves every finding repair scope', () => {
   const prompt = buildChatYamlRepairPrompt(
     TARGET,

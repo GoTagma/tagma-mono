@@ -54,7 +54,9 @@ import {
 } from '../../shared/chat-pipeline-trial-plan-limit.js';
 import {
   CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
+  CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
   hasCurrentChatPipelineTrialConsent,
+  hasCurrentChatPipelineTrialLiveSmokeTestConsent,
 } from '../../shared/chat-pipeline-trial-consent.js';
 import {
   DEFAULT_CHAT_TRIAL_RUN_TIMEOUT_MINUTES,
@@ -999,13 +1001,17 @@ export interface EditorSettings {
   pythonAgent: PythonAgentSettings;
   opencodeChatModel: OpenCodeChatModelSelection | null;
   opencodeChatReasoningEffort: OpenCodeChatReasoningEffort;
-  /**
-   * When true with the current consent version, changed pipelines authored
-   * through OpenCode Chat may be trial-run in the real workspace.
-   */
+  /** Enables Sandbox Trial when paired with the current Sandbox Trial consent version. */
   opencodeChatTrialRunEnabled: boolean;
-  /** Versioned acknowledgement of real-workspace host command execution. */
+  /** Versioned acknowledgement of the current Sandbox Trial policy. */
   opencodeChatTrialRunConsentVersion: number;
+  /**
+   * Enables an additional real-workspace baseline when both this consent and
+   * the parent Sandbox Trial consent are current.
+   */
+  opencodeChatTrialLiveSmokeTestEnabled: boolean;
+  /** Versioned acknowledgement of real-workspace Live Smoke Test execution. */
+  opencodeChatTrialLiveSmokeTestConsentVersion: number;
   /**
    * Maximum Trial Plan tool attempts for one YAML path and content hash.
    * Default 2; range 1-3.
@@ -1047,6 +1053,8 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   opencodeChatReasoningEffort: null,
   opencodeChatTrialRunEnabled: false,
   opencodeChatTrialRunConsentVersion: 0,
+  opencodeChatTrialLiveSmokeTestEnabled: false,
+  opencodeChatTrialLiveSmokeTestConsentVersion: 0,
   opencodeChatTrialPlanMaxAttempts: DEFAULT_CHAT_PIPELINE_TRIAL_PLAN_ATTEMPTS,
   opencodeChatPipelineRepairMaxAttempts: DEFAULT_CHAT_PIPELINE_REPAIR_ATTEMPTS,
   pipelineDefaultTaskTimeoutMinutes: DEFAULT_PIPELINE_TASK_TIMEOUT_MINUTES,
@@ -1082,6 +1090,18 @@ export function readEditorSettings(ws: WorkspaceState): EditorSettings {
     const opencodeChatTrialRunEnabled = hasCurrentChatPipelineTrialConsent({
       opencodeChatTrialRunEnabled: raw.opencodeChatTrialRunEnabled === true,
       opencodeChatTrialRunConsentVersion,
+    });
+    const opencodeChatTrialLiveSmokeTestConsentVersion =
+      typeof raw.opencodeChatTrialLiveSmokeTestConsentVersion === 'number' &&
+      Number.isInteger(raw.opencodeChatTrialLiveSmokeTestConsentVersion) &&
+      raw.opencodeChatTrialLiveSmokeTestConsentVersion >= 0
+        ? raw.opencodeChatTrialLiveSmokeTestConsentVersion
+        : DEFAULT_EDITOR_SETTINGS.opencodeChatTrialLiveSmokeTestConsentVersion;
+    const opencodeChatTrialLiveSmokeTestEnabled = hasCurrentChatPipelineTrialLiveSmokeTestConsent({
+      opencodeChatTrialRunEnabled,
+      opencodeChatTrialRunConsentVersion,
+      opencodeChatTrialLiveSmokeTestEnabled: raw.opencodeChatTrialLiveSmokeTestEnabled === true,
+      opencodeChatTrialLiveSmokeTestConsentVersion,
     });
     const executionTimeouts = normalizeExecutionTimeoutSettings({
       pipelineDefaultTaskTimeoutMinutes: isValidPipelineTaskTimeoutMinutes(
@@ -1131,6 +1151,8 @@ export function readEditorSettings(ws: WorkspaceState): EditorSettings {
         : DEFAULT_EDITOR_SETTINGS.opencodeChatReasoningEffort,
       opencodeChatTrialRunEnabled,
       opencodeChatTrialRunConsentVersion,
+      opencodeChatTrialLiveSmokeTestEnabled,
+      opencodeChatTrialLiveSmokeTestConsentVersion,
       opencodeChatTrialPlanMaxAttempts: isValidChatPipelineTrialPlanAttempts(
         raw.opencodeChatTrialPlanMaxAttempts,
       )
@@ -1212,6 +1234,13 @@ export function writeEditorSettings(
     next.opencodeChatTrialRunEnabled = patch.opencodeChatTrialRunEnabled;
     if (patch.opencodeChatTrialRunEnabled) {
       next.opencodeChatTrialRunConsentVersion = CHAT_PIPELINE_TRIAL_CONSENT_VERSION;
+    }
+  }
+  if (patch.opencodeChatTrialLiveSmokeTestEnabled !== undefined) {
+    next.opencodeChatTrialLiveSmokeTestEnabled = patch.opencodeChatTrialLiveSmokeTestEnabled;
+    if (patch.opencodeChatTrialLiveSmokeTestEnabled) {
+      next.opencodeChatTrialLiveSmokeTestConsentVersion =
+        CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION;
     }
   }
   if (patch.opencodeChatTrialPlanMaxAttempts !== undefined) {

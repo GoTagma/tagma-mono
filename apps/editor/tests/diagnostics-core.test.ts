@@ -335,7 +335,51 @@ describe('temporary diagnostics sessions', () => {
                 taskStatusCounts: { success: 3, failed: 1 },
                 repairAuthorization: 'pipeline-change-allowed',
                 prerequisiteState: 'available',
-                verificationMode: 'real-baseline-and-isolated-cases',
+                trialMode: 'sandbox-with-live-smoke',
+                verificationMode: 'sandbox-cases-with-live-smoke',
+                trialabilityReport: {
+                  protocolVersion: 1,
+                  mode: 'sandbox-with-live-smoke',
+                  runnable: false,
+                  enforcement: {
+                    sandboxCases: {
+                      workspace: 'temporary-copy',
+                      stdin: 'closed',
+                      tty: 'none',
+                      secrets: 'synthetic',
+                      filesystem: 'host-unrestricted-outside-copy',
+                      network: 'host-unrestricted',
+                      process: 'host-unrestricted',
+                    },
+                    liveSmokeBaseline: {
+                      workspace: 'real-workspace',
+                      stdin: 'closed',
+                      tty: 'none',
+                      secrets: 'real',
+                      filesystem: 'host-unrestricted',
+                      network: 'host-unrestricted',
+                      process: 'host-unrestricted',
+                    },
+                    privateField: 'must not survive',
+                  },
+                  items: Array.from({ length: 35 }, (_, index) => ({
+                    component: 'driver',
+                    taskId: `main.task-${index}`,
+                    type: `driver-${index}`,
+                    provider: `provider-${index}`,
+                    declaration: null,
+                    disposition: 'live-smoke-only',
+                    privatePayload: 'must not survive',
+                  })),
+                  blockers: Array.from(
+                    { length: 35 },
+                    (_, index) => `Blocker ${index} token=private-blocker-${index}`,
+                  ),
+                  warnings: Array.from(
+                    { length: 35 },
+                    (_, index) => `Warning ${index} token=private-warning-${index}`,
+                  ),
+                },
                 plannedCaseCount: 2,
                 caseResultCount: 2,
                 notRunCaseCount: 0,
@@ -507,6 +551,40 @@ describe('temporary diagnostics sessions', () => {
             success: false,
             taskStatusCounts: { success: 3, failed: 1 },
             repairAuthorization: 'pipeline-change-allowed',
+            trialMode: 'sandbox-with-live-smoke',
+            verificationMode: 'sandbox-cases-with-live-smoke',
+            trialabilityReport: {
+              protocolVersion: 1,
+              mode: 'sandbox-with-live-smoke',
+              runnable: false,
+              containment: {
+                sandboxCases: { level: 'application', osSandbox: false },
+                liveSmokeBaseline: { level: 'host-authority', osSandbox: false },
+              },
+              enforcement: {
+                sandboxCases: {
+                  workspace: 'temporary-copy',
+                  stdin: 'closed',
+                  tty: 'none',
+                  secrets: 'synthetic',
+                  filesystem: 'host-unrestricted-outside-copy',
+                  network: 'host-unrestricted',
+                  process: 'host-unrestricted',
+                },
+                liveSmokeBaseline: {
+                  workspace: 'real-workspace',
+                  stdin: 'closed',
+                  tty: 'none',
+                  secrets: 'real',
+                  filesystem: 'host-unrestricted',
+                  network: 'host-unrestricted',
+                  process: 'host-unrestricted',
+                },
+              },
+              items: { totalCount: 35, returnedCount: 32, omittedCount: 3 },
+              blockers: { totalCount: 35, returnedCount: 32, omittedCount: 3 },
+              warnings: { totalCount: 35, returnedCount: 32, omittedCount: 3 },
+            },
             planTelemetry: {
               version: 2,
               relativeYamlPath: 'fact-checker/fact-checker.yaml',
@@ -573,8 +651,12 @@ describe('temporary diagnostics sessions', () => {
       >
     ).trial as Record<string, unknown>;
     const planTelemetry = trial.planTelemetry as Record<string, unknown>;
+    const trialabilityReport = trial.trialabilityReport as Record<string, unknown>;
     expect(planTelemetry.attemptIds).toHaveLength(50);
     expect(planTelemetry.rejections).toHaveLength(50);
+    expect((trialabilityReport.items as Record<string, unknown>).items).toHaveLength(32);
+    expect((trialabilityReport.blockers as Record<string, unknown>).items).toHaveLength(32);
+    expect((trialabilityReport.warnings as Record<string, unknown>).items).toHaveLength(32);
     expect(serialized).toContain('missing required status');
     for (const privateValue of [
       'private message text',
@@ -595,6 +677,9 @@ describe('temporary diagnostics sessions', () => {
       'private rejection payload',
       'private telemetry payload',
       'private-54',
+      'private-blocker-34',
+      'private-warning-34',
+      'must not survive',
     ]) {
       expect(serialized).not.toContain(privateValue);
     }

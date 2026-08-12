@@ -52,6 +52,7 @@ import type {
   TaskConfig,
   TaskResult,
   TrackConfig,
+  TrialInteractionDeclaration,
   TriggerPlugin,
   TriggerWatchHandle,
 } from '@tagma/types';
@@ -62,6 +63,7 @@ interface WorkerCapabilityMeta {
   name: string;
   schema?: PluginSchema;
   capabilities?: DriverPlugin['capabilities'];
+  trial?: TrialInteractionDeclaration;
   methods: string[];
 }
 
@@ -274,6 +276,7 @@ function capabilityMetadata(pluginValue) {
         name: handler.name,
         schema: handler.schema,
         capabilities: driverCaps,
+        trial: handler.trial,
         methods,
       });
     }
@@ -640,6 +643,7 @@ function proxyDriver(
   const driver: DriverPlugin = {
     name: meta.name,
     capabilities: meta.capabilities,
+    trial: meta.trial,
     async buildCommand(task: TaskConfig, track: TrackConfig, ctx): Promise<SpawnSpec> {
       return (await request({
         kind: 'call',
@@ -687,6 +691,7 @@ function proxyTrigger(
   return {
     name: meta.name,
     schema: meta.schema,
+    trial: meta.trial,
     watch(config, ctx): TriggerWatchHandle {
       const watchId = nextHostWatchId++;
       const fired = request(
@@ -728,6 +733,7 @@ function proxyCompletion(
   return {
     name: meta.name,
     schema: meta.schema,
+    trial: meta.trial,
     async check(config: Record<string, unknown>, result: TaskResult, ctx): Promise<boolean> {
       return (await request({
         kind: 'call',
@@ -754,6 +760,7 @@ function proxyMiddleware(
   return {
     name: meta.name,
     schema: meta.schema,
+    trial: meta.trial,
     async enhanceDoc(
       doc: PromptDocument,
       config: Record<string, unknown>,

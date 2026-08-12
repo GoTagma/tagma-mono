@@ -10,6 +10,18 @@ describe('completion-llm-judge plugin shape', () => {
     expect(plugin.capabilities?.completions?.[manifest.tagmaPlugin.type]).toBe(LlmJudgeCompletion);
   });
 
+  test('declares its Trial Interaction Protocol requirements', () => {
+    expect(plugin.capabilities!.completions!.llm_judge.trial).toEqual({
+      protocolVersion: 1,
+      interaction: 'credential',
+      unattended: 'host-adapter',
+      filesystem: 'temp-only',
+      network: 'write',
+      secrets: 'real-required',
+      runtime: 'bounded',
+    });
+  });
+
   test('check is a function', () => {
     expect(typeof plugin.capabilities!.completions!.llm_judge.check).toBe('function');
   });

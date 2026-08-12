@@ -31,6 +31,15 @@ function resolveSandbox(permissions: Permissions): string {
 
 export const CodexDriver: DriverPlugin = {
   name: 'codex',
+  trial: {
+    protocolVersion: 1,
+    interaction: 'credential',
+    unattended: 'host-adapter',
+    filesystem: 'external-write',
+    network: 'write',
+    secrets: 'real-required',
+    runtime: 'bounded',
+  },
 
   capabilities: {
     sessionResume: false,

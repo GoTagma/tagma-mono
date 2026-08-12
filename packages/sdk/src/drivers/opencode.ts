@@ -47,6 +47,15 @@ function readErrorMessage(json: Record<string, unknown>): string | null {
 
 export const OpenCodeDriver: DriverPlugin = {
   name: 'opencode',
+  trial: {
+    protocolVersion: 1,
+    interaction: 'credential',
+    unattended: 'host-adapter',
+    filesystem: 'external-write',
+    network: 'write',
+    secrets: 'real-required',
+    runtime: 'bounded',
+  },
 
   capabilities: {
     sessionResume: true, // supports --session

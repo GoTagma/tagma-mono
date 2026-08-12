@@ -288,6 +288,15 @@ function closeServerIfIdle(endpoint: WebhookEndpointState): void {
 
 export const WebhookTrigger: TriggerPlugin = {
   name: 'webhook',
+  trial: {
+    protocolVersion: 1,
+    interaction: 'external-event',
+    unattended: 'unsupported',
+    filesystem: 'temp-only',
+    network: 'write',
+    secrets: 'real-required',
+    runtime: 'long-lived',
+  },
   schema: {
     description: 'Wait for an HTTP POST to arrive on a local listener before the task runs.',
     fields: {

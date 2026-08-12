@@ -96,6 +96,20 @@ describe('parseEditorSettingsPatch', () => {
     expect(parseEditorSettingsPatch({ opencodeChatTrialRunConsentVersion: 1 })).toEqual({});
   });
 
+  test('accepts only boolean opencodeChatTrialLiveSmokeTestEnabled', () => {
+    expect(parseEditorSettingsPatch({ opencodeChatTrialLiveSmokeTestEnabled: true })).toEqual({
+      opencodeChatTrialLiveSmokeTestEnabled: true,
+    });
+    expect(parseEditorSettingsPatch({ opencodeChatTrialLiveSmokeTestEnabled: false })).toEqual({
+      opencodeChatTrialLiveSmokeTestEnabled: false,
+    });
+    expect(parseEditorSettingsPatch({ opencodeChatTrialLiveSmokeTestEnabled: 'yes' })).toEqual({});
+    expect(parseEditorSettingsPatch({ opencodeChatTrialLiveSmokeTestEnabled: 1 })).toEqual({});
+    expect(parseEditorSettingsPatch({ opencodeChatTrialLiveSmokeTestConsentVersion: 1 })).toEqual(
+      {},
+    );
+  });
+
   test('passes finite opencodeChatPipelineRepairMaxAttempts through for loader clamping', () => {
     expect(parseEditorSettingsPatch({ opencodeChatPipelineRepairMaxAttempts: 4 })).toEqual({
       opencodeChatPipelineRepairMaxAttempts: 4,

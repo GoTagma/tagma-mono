@@ -16,7 +16,10 @@ import {
 import { pipelineYamlPath } from '../server/pipeline-paths';
 import { WorkspaceState } from '../server/workspace-state';
 import { __workspaceRegistryTestHooks, workspaceRegistry } from '../server/workspace-registry';
-import { CHAT_PIPELINE_TRIAL_CONSENT_VERSION } from '../shared/chat-pipeline-trial-consent';
+import {
+  CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
+  CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
+} from '../shared/chat-pipeline-trial-consent';
 
 type MockResponse = ReturnType<typeof makeRes>;
 type MockRequest = {
@@ -70,6 +73,9 @@ function makeWorkspace(commandScript = 'process.exit(0)'): {
     JSON.stringify({
       opencodeChatTrialRunEnabled: true,
       opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
+      opencodeChatTrialLiveSmokeTestEnabled: true,
+      opencodeChatTrialLiveSmokeTestConsentVersion:
+        CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
     }),
     'utf-8',
   );
@@ -336,7 +342,7 @@ describe('chat YAML staging async witness ordering', () => {
     }
     expect(runningProgress).toMatchObject({
       phase: 'running-baseline',
-      detail: 'Running the real-workspace baseline.',
+      detail: 'Running the optional Live Smoke Test in the real workspace.',
       runNumber: 1,
       runCount: 1,
       taskId: 'main.verify',
@@ -416,7 +422,7 @@ describe('chat YAML staging async witness ordering', () => {
       }),
       trialRes,
     );
-    expect(trialRes.body).toMatchObject({ success: true, kind: 'passed' });
+    expect(trialRes.body).toMatchObject({ success: true, kind: 'passed-with-warnings' });
 
     const firstIndex = (phase: string) =>
       progressUpdates.findIndex((progress) => progress.phase === phase);
@@ -888,7 +894,7 @@ describe('chat YAML staging async witness ordering', () => {
       }),
       trialRes,
     );
-    expect(trialRes.body).toMatchObject({ success: true, kind: 'passed' });
+    expect(trialRes.body).toMatchObject({ success: true, kind: 'passed-with-warnings' });
 
     const releaseWitness = { current: null as null | (() => void) };
     let witnessCalls = 0;
@@ -976,7 +982,7 @@ describe('chat YAML staging async witness ordering', () => {
       }),
       trialRes,
     );
-    expect(trialRes.body).toMatchObject({ success: true, kind: 'passed' });
+    expect(trialRes.body).toMatchObject({ success: true, kind: 'passed-with-warnings' });
 
     __chatYamlStagingTestHooks.finalizeWitnessTimeoutMsOverride = 10;
     const witnessGate: { release: (() => void) | null } = { release: null };
@@ -1066,7 +1072,7 @@ describe('chat YAML staging async witness ordering', () => {
       }),
       trialRes,
     );
-    expect(trialRes.body).toMatchObject({ success: true, kind: 'passed' });
+    expect(trialRes.body).toMatchObject({ success: true, kind: 'passed-with-warnings' });
 
     let witnessStarted = false;
     const witnessGate: { release: (() => void) | null } = { release: null };

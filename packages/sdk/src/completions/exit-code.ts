@@ -2,6 +2,15 @@ import type { CompletionPlugin, CompletionContext, TaskResult } from '@tagma/typ
 
 export const ExitCodeCompletion: CompletionPlugin = {
   name: 'exit_code',
+  trial: {
+    protocolVersion: 1,
+    interaction: 'none',
+    unattended: 'native',
+    filesystem: 'temp-only',
+    network: 'none',
+    secrets: 'none',
+    runtime: 'bounded',
+  },
   schema: {
     description: 'Mark the task successful when the exit code matches.',
     fields: {

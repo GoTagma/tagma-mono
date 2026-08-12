@@ -22,6 +22,7 @@ import {
   type RunEventPayload,
 } from '@tagma/sdk';
 import { InMemoryApprovalGateway, type ApprovalEvent } from '@tagma/sdk/approval';
+import { buildDag, type Dag } from '@tagma/sdk/config';
 import { loadPipeline, validateConfig } from '@tagma/sdk/yaml';
 import { generateRunId } from '@tagma/sdk/utils';
 
@@ -29,6 +30,7 @@ import {
   buildChatPipelineTrialInputHash,
   buildChatPipelineTrialVerificationHash,
   compileChatYamlStage,
+  hashChatPipelineTrialabilityReport,
   hashChatPipelineTrialTree,
   issueChatYamlStageTrialPlanAttempt,
   listChatYamlStage,
@@ -36,7 +38,10 @@ import {
 } from './chat-yaml-staging.js';
 import { CHAT_PIPELINE_TRIAL_CACHE_VERSION } from './chat-pipeline-trial-cache.js';
 import { rewriteCopiedPipelineYaml } from './pipeline-copy-paths.js';
-import { hasCurrentChatPipelineTrialConsent } from '../shared/chat-pipeline-trial-consent.js';
+import {
+  hasCurrentChatPipelineTrialConsent,
+  hasCurrentChatPipelineTrialLiveSmokeTestConsent,
+} from '../shared/chat-pipeline-trial-consent.js';
 import {
   buildChatPipelineTrialPlanRequest,
   findUncoveredChatPipelineTrialTerminalTaskIds,
@@ -61,6 +66,11 @@ import {
   type ChatPipelineTrialReadiness,
   type ChatPipelineTrialRecordedPrerequisiteState,
 } from './chat-pipeline-trial-readiness.js';
+import {
+  buildChatPipelineTrialabilityReport,
+  type ChatPipelineTrialMode,
+  type ChatPipelineTrialabilityReport,
+} from './chat-pipeline-trialability.js';
 import type {
   PreparedTrialHostWitnessInputs,
   TrialHostWitness,
@@ -209,6 +219,11 @@ export interface ChatPipelineTrialPlanSummary {
   >;
 }
 
+export interface ChatPipelineTrialManualExecutionGrant {
+  taskId: string;
+  approvalCount: number;
+}
+
 export interface ChatPipelineTrialRunResult {
   version: typeof TRIAL_CACHE_VERSION;
   success: boolean;
@@ -224,7 +239,10 @@ export interface ChatPipelineTrialRunResult {
   omittedTaskStatusCounts?: Record<string, number>;
   repairAuthorization?: 'pipeline-change-allowed' | 'diagnostic-only';
   prerequisiteState?: ChatPipelineTrialRecordedPrerequisiteState;
-  verificationMode?: 'real-baseline-and-isolated-cases' | 'isolated-fixtures-only';
+  trialMode?: ChatPipelineTrialMode;
+  trialabilityReport?: ChatPipelineTrialabilityReport;
+  verificationMode?: 'sandbox-cases-only' | 'sandbox-cases-with-live-smoke';
+  manualExecutionGrants?: ChatPipelineTrialManualExecutionGrant[];
   planTelemetry?: ChatPipelineTrialPlanToolTelemetry;
   planRequest?: ChatPipelineTrialPlanRequest & {
     attemptId: string;
@@ -274,6 +292,7 @@ export interface ChatPipelineTrialProgress {
 interface CachedTrialResult {
   version: typeof TRIAL_CACHE_VERSION;
   inputHash: string;
+  trialabilityReportHash: string;
   verificationHash: string;
   hostWitness: TrialHostWitness;
   result: ChatPipelineTrialRunResult;
@@ -478,6 +497,7 @@ function readCachedTrial(
   stageId: string,
   path: string,
   inputHash: string,
+  trialabilityReportHash: string,
 ): ChatPipelineTrialRunResult | null {
   if (!existsSync(path)) return null;
   try {
@@ -488,10 +508,14 @@ function readCachedTrial(
     if (
       parsed.version !== TRIAL_CACHE_VERSION ||
       parsed.inputHash !== inputHash ||
+      parsed.trialabilityReportHash !== trialabilityReportHash ||
       typeof parsed.verificationHash !== 'string' ||
       typeof parsed.hostWitness?.digest !== 'string' ||
       !parsed.result ||
-      parsed.result.version !== TRIAL_CACHE_VERSION
+      parsed.result.version !== TRIAL_CACHE_VERSION ||
+      !parsed.result.trialabilityReport ||
+      hashChatPipelineTrialabilityReport(parsed.result.trialabilityReport) !==
+        trialabilityReportHash
     ) {
       return null;
     }
@@ -506,6 +530,7 @@ function writeCachedTrial(
   stageId: string,
   path: string,
   inputHash: string,
+  trialabilityReportHash: string,
   verificationHash: string,
   hostWitness: TrialHostWitness,
   result: ChatPipelineTrialRunResult,
@@ -514,6 +539,7 @@ function writeCachedTrial(
   writeAuthenticatedServerRecordSync(path, trialCacheRecordContext(ws, stageId, path), {
     version: TRIAL_CACHE_VERSION,
     inputHash,
+    trialabilityReportHash,
     verificationHash,
     hostWitness,
     result,
@@ -656,7 +682,10 @@ function resultForSetupFailure(
   >,
   message: string,
   startedAt: number,
-  metadata: Pick<ChatPipelineTrialRunResult, 'prerequisiteState'> = {},
+  metadata: Pick<
+    ChatPipelineTrialRunResult,
+    'prerequisiteState' | 'trialMode' | 'trialabilityReport'
+  > = {},
 ): ChatPipelineTrialRunResult {
   return {
     version: TRIAL_CACHE_VERSION,
@@ -912,6 +941,25 @@ export function normalizeTrialCaseTargetTaskIdsForExecution(
     throw new Error('Trial case targetTaskIds must contain at least one task id');
   }
   return targetTaskIds;
+}
+
+function manualTaskIdsInTargetClosure(
+  dag: Dag,
+  targetTaskIds: readonly string[],
+): ReadonlySet<string> {
+  const pending = [...targetTaskIds];
+  const visited = new Set<string>();
+  const manualTaskIds = new Set<string>();
+  while (pending.length > 0) {
+    const taskId = pending.pop()!;
+    if (visited.has(taskId)) continue;
+    visited.add(taskId);
+    const node = dag.nodes.get(taskId);
+    if (!node) throw new Error(`Target task ${taskId} not found`);
+    if (node.task.trigger?.type === 'manual') manualTaskIds.add(taskId);
+    pending.push(...node.dependsOn);
+  }
+  return manualTaskIds;
 }
 
 function casePath(workDir: string, relativePath: string, relativeYamlPath: string): string {
@@ -1192,6 +1240,29 @@ function collectDeclaredSecretNames(config: RawPipelineConfig): string[] {
   return [...names];
 }
 
+function syntheticTrialSecretEnv(names: readonly string[]): Record<string, string> {
+  return Object.fromEntries(
+    [...new Set(names)]
+      .sort((left, right) => left.localeCompare(right))
+      .map((name) => [
+        name,
+        `tagma-sandbox-trial-synthetic-${createHash('sha256').update(name).digest('hex').slice(0, 24)}`,
+      ]),
+  );
+}
+
+function selectTrialSecretEnv(
+  source: Readonly<Record<string, string>>,
+  names: readonly string[],
+): Record<string, string> {
+  const selected: Record<string, string> = {};
+  for (const name of names) {
+    const value = source[name];
+    if (value) selected[name] = value;
+  }
+  return selected;
+}
+
 async function ensureTrialPluginsLoaded(
   ws: WorkspaceState,
   pluginNames: readonly string[],
@@ -1454,11 +1525,14 @@ interface RunTrialPipelineInput {
   approvalGateway: InMemoryApprovalGateway;
   controller: AbortController;
   pythonRunEnv: Record<string, string>;
-  requirementsSecretEnv: Record<string, string>;
+  globalSecretEnv: Record<string, string>;
+  scopedSecretEnv: Record<string, string>;
   secretValues: string[];
   preflightEnvKeys: readonly string[];
   taskTimeoutMs: number;
   runId: string;
+  manualApprovalScopesByRunId: Map<string, ReadonlySet<string>>;
+  manualApprovalTaskIds: ReadonlySet<string>;
   targetTaskIds?: string[];
   testCase?: ChatPipelineTrialPlanCase;
   onEvent?: (event: RunEventPayload) => void;
@@ -1472,7 +1546,12 @@ interface TrialExecutionBudgets {
 interface PreparedTrialExecution {
   pipelineConfig: PipelineConfig;
   targetTaskIdsByCase: Map<string, string[]>;
+  manualTaskIdsByCase: Map<string, ReadonlySet<string>>;
+  selectedManualTaskIds: ReadonlySet<string>;
   dataReadiness: Exclude<ChatPipelineTrialReadiness, { state: 'blocked' }>;
+  trialMode: ChatPipelineTrialMode;
+  trialabilityReport: ChatPipelineTrialabilityReport;
+  liveSmokeTestEnabled: boolean;
 }
 
 type TrialExecutionPreparation =
@@ -1714,36 +1793,46 @@ async function runTrialPipelineOnce(input: RunTrialPipelineInput): Promise<Engin
     registry: input.ws.registry,
     builtins: false,
     runtime: runtimeWithInjectedEnv(
-      { ...input.pythonRunEnv, ...input.requirementsSecretEnv, ...trialEnv },
+      { ...input.pythonRunEnv, ...input.globalSecretEnv, ...trialEnv },
       input.secretValues,
       tagmaDirOf(input.ws.workDir),
     ),
   });
-  return tagma.run(input.pipelineConfig, {
-    cwd: input.workDir,
-    approvalGateway: input.approvalGateway,
-    signal: input.controller.signal,
-    maxLogRuns: MAX_LOG_RUNS,
-    runId: input.runId,
-    skipPluginLoading: true,
-    defaultTaskTimeoutMs: input.taskTimeoutMs,
-    secretResolver: (names: readonly string[]) =>
-      buildPipelineSecretEnv(input.ws.workDir, input.logicalYamlPath, names),
-    ...(input.preflightEnvKeys.length > 0
-      ? { envPolicy: { mode: 'allowlist' as const, keys: input.preflightEnvKeys } }
-      : {}),
-    ...(input.targetTaskIds ? { targetTaskIds: input.targetTaskIds } : {}),
-    ...(input.testCase
-      ? {
-          taskPromptContexts: buildCasePromptContexts(
-            input.pipelineConfig,
-            input.testCase,
-            input.workDir,
-          ),
-        }
-      : {}),
-    ...(input.onEvent ? { onEvent: input.onEvent } : {}),
-  });
+  if (input.manualApprovalScopesByRunId.has(input.runId)) {
+    throw new Error(`Trial manual execution scope already exists for run ${input.runId}.`);
+  }
+  input.manualApprovalScopesByRunId.set(input.runId, input.manualApprovalTaskIds);
+  try {
+    return await tagma.run(input.pipelineConfig, {
+      cwd: input.workDir,
+      approvalGateway: input.approvalGateway,
+      signal: input.controller.signal,
+      maxLogRuns: MAX_LOG_RUNS,
+      runId: input.runId,
+      skipPluginLoading: true,
+      defaultTaskTimeoutMs: input.taskTimeoutMs,
+      secretResolver: (names: readonly string[]) =>
+        selectTrialSecretEnv(input.scopedSecretEnv, names),
+      ...(input.preflightEnvKeys.length > 0
+        ? { envPolicy: { mode: 'allowlist' as const, keys: input.preflightEnvKeys } }
+        : {}),
+      ...(input.targetTaskIds ? { targetTaskIds: input.targetTaskIds } : {}),
+      ...(input.testCase
+        ? {
+            taskPromptContexts: buildCasePromptContexts(
+              input.pipelineConfig,
+              input.testCase,
+              input.workDir,
+            ),
+          }
+        : {}),
+      ...(input.onEvent ? { onEvent: input.onEvent } : {}),
+    });
+  } finally {
+    if (input.manualApprovalScopesByRunId.get(input.runId) === input.manualApprovalTaskIds) {
+      input.manualApprovalScopesByRunId.delete(input.runId);
+    }
+  }
 }
 
 async function executeTargetedTrialCase(
@@ -1910,7 +1999,9 @@ function buildPlannedTrialSummary(
   taskStatusCounts: Readonly<Record<string, number>>,
   cases: readonly ChatPipelineTrialCaseResult[],
   plannedCaseCount: number,
+  trialMode: ChatPipelineTrialMode,
   warnings: readonly string[],
+  manualExecutionGrants: readonly ChatPipelineTrialManualExecutionGrant[],
 ): string {
   const allPassed = baselineSuccess && cases.every((item) => item.success);
   const countText = Object.entries(taskStatusCounts)
@@ -1929,6 +2020,9 @@ function buildPlannedTrialSummary(
       ? baseSummary.replace('Trial run passed', 'Trial run passed with warnings')
       : baseSummary,
     '',
+    trialMode === 'sandbox'
+      ? 'Trial mode: Sandbox Trial only; Live Smoke Test was not requested.'
+      : 'Trial mode: Sandbox Trial with an explicitly enabled Live Smoke Test.',
     `Targeted cases: ${cases.filter((item) => item.success).length}/${plannedCaseCount} passed; ${cases.length} result(s) returned; ${Math.max(0, plannedCaseCount - cases.length)} not run.`,
   ];
   for (const testCase of cases) {
@@ -1938,6 +2032,14 @@ function buildPlannedTrialSummary(
     for (const expectation of testCase.expectations) {
       if (!expectation.passed) lines.push(`  ${expectation.type}: ${expectation.detail}`);
     }
+  }
+  if (manualExecutionGrants.length > 0) {
+    lines.push(
+      '',
+      `Selected manual tasks executed under explicit Trial grants: ${manualExecutionGrants
+        .map((grant) => `${grant.taskId} (${grant.approvalCount} approvals)`)
+        .join(', ')}.`,
+    );
   }
   if (warnings.length > 0) {
     lines.push('', `Verification warnings: ${warnings.length}.`, ...warnings);
@@ -1968,33 +2070,51 @@ async function prepareTrialExecution(
   stage: ReturnType<typeof listChatYamlStage>,
   entry: ReturnType<typeof listChatYamlStage>['entries'][number],
   snapshot: TrialPipelineSnapshot,
+  pipelineConfig: PipelineConfig,
+  trialabilityReport: ChatPipelineTrialabilityReport,
   plan: ChatPipelineTrialPlan,
   planTelemetry: ChatPipelineTrialPlanToolTelemetry,
   trialId: string,
   startedAt: number,
+  trialMode: ChatPipelineTrialMode,
+  liveSmokeTestEnabled: boolean,
 ): Promise<TrialExecutionPreparation> {
-  let pipelineConfig: PipelineConfig;
+  const withTrialability = (result: ChatPipelineTrialRunResult): ChatPipelineTrialRunResult => ({
+    ...result,
+    trialMode,
+    trialabilityReport,
+  });
+
+  let dag: Dag;
   try {
-    pipelineConfig = await loadTrialPipelineConfig(snapshot, ws.workDir);
+    dag = buildDag(pipelineConfig);
   } catch (err) {
     return {
       status: 'result',
-      result: resultForSetupFailure(
-        'setup-failed',
-        `Trial run configuration error: ${errorMessage(err)}`,
-        startedAt,
+      result: withTrialability(
+        resultForSetupFailure(
+          'setup-failed',
+          `Trial run dependency graph error: ${errorMessage(err)}`,
+          startedAt,
+        ),
       ),
     };
   }
 
   const targetTaskIdsByCase = new Map<string, string[]>();
+  const manualTaskIdsByCase = new Map<string, ReadonlySet<string>>();
+  const selectedManualTaskIds = new Set<string>();
   const planDiagnostics = planBlockingDiagnostics(plan);
   for (const testCase of plan.cases) {
     try {
-      targetTaskIdsByCase.set(
-        testCase.id,
-        normalizeTrialCaseTargetTaskIdsForExecution(testCase.targetTaskIds, pipelineConfig),
+      const targetTaskIds = normalizeTrialCaseTargetTaskIdsForExecution(
+        testCase.targetTaskIds,
+        pipelineConfig,
       );
+      const manualTaskIds = manualTaskIdsInTargetClosure(dag, targetTaskIds);
+      targetTaskIdsByCase.set(testCase.id, targetTaskIds);
+      manualTaskIdsByCase.set(testCase.id, manualTaskIds);
+      for (const taskId of manualTaskIds) selectedManualTaskIds.add(taskId);
     } catch (err) {
       planDiagnostics.push({
         message: `${testCase.id}: ${errorMessage(err)}`,
@@ -2003,7 +2123,21 @@ async function prepareTrialExecution(
     }
   }
   if (planDiagnostics.length > 0) {
-    return { status: 'result', result: resultForPlanFailure(plan, planDiagnostics, startedAt) };
+    return {
+      status: 'result',
+      result: withTrialability(resultForPlanFailure(plan, planDiagnostics, startedAt)),
+    };
+  }
+  if (!trialabilityReport.runnable) {
+    return {
+      status: 'result',
+      result: resultForSetupFailure(
+        'blocked',
+        `Trial Interaction Protocol preflight blocked execution: ${trialabilityReport.blockers.join('; ')}`,
+        startedAt,
+        { trialMode, trialabilityReport },
+      ),
+    };
   }
 
   const dataReadiness = resolveChatPipelineDataReadiness(
@@ -2018,47 +2152,54 @@ async function prepareTrialExecution(
         'blocked',
         `Trial cannot safely virtualize its data prerequisites: ${describeTrialBlockers(dataReadiness.blockers)}. Preserve the declared paths; do not write placeholders outside the isolated Trial workspace.`,
         startedAt,
-        { prerequisiteState: dataReadiness },
+        { prerequisiteState: dataReadiness, trialMode, trialabilityReport },
       ),
     };
   }
-  if (dataReadiness.state === 'fixture-backed') {
-    if (dataReadiness.baseline.mode === 'skip') {
-      const uncoveredTerminalTaskIds = findUncoveredChatPipelineTrialTerminalTaskIds(
-        plan,
-        pipelineConfig,
-      );
-      if (uncoveredTerminalTaskIds.length > 0) {
-        if (planTelemetry.toolAttemptCount >= stage.trialPlanMaxAttempts) {
-          return {
-            status: 'result',
-            result: resultForPlanAttemptBudgetExhausted(planTelemetry, startedAt),
-          };
-        }
-        issueChatYamlStageTrialPlanAttempt(ws, {
-          stageId: stage.id,
-          relativePath: entry.relativePath,
-          yamlHash: snapshot.contentHash,
-          attemptId: trialId,
-        });
+  const liveSmokeUnavailable =
+    dataReadiness.state === 'fixture-backed' && dataReadiness.baseline.mode === 'skip';
+  if (!liveSmokeTestEnabled || liveSmokeUnavailable) {
+    const uncoveredTerminalTaskIds = findUncoveredChatPipelineTrialTerminalTaskIds(
+      plan,
+      pipelineConfig,
+    );
+    if (uncoveredTerminalTaskIds.length > 0) {
+      if (planTelemetry.toolAttemptCount >= stage.trialPlanMaxAttempts) {
         return {
           status: 'result',
-          result: resultForPlanRequest(
+          result: withTrialability(resultForPlanAttemptBudgetExhausted(planTelemetry, startedAt)),
+        };
+      }
+      issueChatYamlStageTrialPlanAttempt(ws, {
+        stageId: stage.id,
+        relativePath: entry.relativePath,
+        yamlHash: snapshot.contentHash,
+        attemptId: trialId,
+      });
+      const reason = liveSmokeTestEnabled
+        ? 'The requested Live Smoke Test cannot run because its real-workspace data inputs are unavailable'
+        : 'Sandbox Trial does not execute a real-workspace baseline';
+      return {
+        status: 'result',
+        result: withTrialability(
+          resultForPlanRequest(
             buildChatPipelineTrialPlanRequest(
               'invalid',
               entry.relativePath,
               snapshot.contentHash,
-              `The real-workspace baseline cannot run, and targeted cases do not execute every terminal task: ${uncoveredTerminalTaskIds.join(', ')}. Add a case targeting each terminal task so its dependency closure runs. If a terminal task is unsafe or cannot be executed in Trial, record a blocking diagnostic-only finding instead of claiming Trial passed.`,
+              `${reason}, and targeted cases do not execute every terminal task: ${uncoveredTerminalTaskIds.join(', ')}. Add a case targeting each terminal task so its dependency closure runs. If a terminal task is unsafe or cannot be executed in Trial, record a blocking diagnostic-only finding instead of claiming Trial passed.`,
               stage.trialPlanMaxAttempts,
             ),
             planTelemetry,
             startedAt,
             trialId,
-            dataReadiness,
+            dataReadiness.state === 'fixture-backed' ? dataReadiness : undefined,
           ),
-        };
-      }
+        ),
+      };
     }
+  }
+  if (dataReadiness.state === 'fixture-backed') {
     const uncoveredInputs = findUncoveredTrialFixtureInputs(
       plan,
       dataReadiness.inputs,
@@ -2068,7 +2209,7 @@ async function prepareTrialExecution(
       if (planTelemetry.toolAttemptCount >= stage.trialPlanMaxAttempts) {
         return {
           status: 'result',
-          result: resultForPlanAttemptBudgetExhausted(planTelemetry, startedAt),
+          result: withTrialability(resultForPlanAttemptBudgetExhausted(planTelemetry, startedAt)),
         };
       }
       issueChatYamlStageTrialPlanAttempt(ws, {
@@ -2079,18 +2220,20 @@ async function prepareTrialExecution(
       });
       return {
         status: 'result',
-        result: resultForPlanRequest(
-          buildChatPipelineTrialPlanRequest(
-            'invalid',
-            entry.relativePath,
-            snapshot.contentHash,
-            `The current trial plan does not cover unavailable baseline data inputs: ${describeUncoveredTrialFixtureInputs(uncoveredInputs)}. Correct the Trial Plan only; preserve the pipeline requirements and do not write placeholders to the real workspace.`,
-            stage.trialPlanMaxAttempts,
+        result: withTrialability(
+          resultForPlanRequest(
+            buildChatPipelineTrialPlanRequest(
+              'invalid',
+              entry.relativePath,
+              snapshot.contentHash,
+              `The current trial plan does not cover unavailable baseline data inputs: ${describeUncoveredTrialFixtureInputs(uncoveredInputs)}. Correct the Trial Plan only; preserve the pipeline requirements and do not write placeholders to the real workspace.`,
+              stage.trialPlanMaxAttempts,
+            ),
+            planTelemetry,
+            startedAt,
+            trialId,
+            dataReadiness,
           ),
-          planTelemetry,
-          startedAt,
-          trialId,
-          dataReadiness,
         ),
       };
     }
@@ -2098,7 +2241,16 @@ async function prepareTrialExecution(
 
   return {
     status: 'ready',
-    prepared: { pipelineConfig, targetTaskIdsByCase, dataReadiness },
+    prepared: {
+      pipelineConfig,
+      targetTaskIdsByCase,
+      manualTaskIdsByCase,
+      selectedManualTaskIds,
+      dataReadiness,
+      trialMode,
+      trialabilityReport,
+      liveSmokeTestEnabled,
+    },
   };
 }
 
@@ -2117,7 +2269,9 @@ async function executeTrial(
   const startedAt = Date.now();
   progress.update({
     phase: 'preparing',
-    detail: 'Preparing the real-workspace baseline.',
+    detail: prepared.liveSmokeTestEnabled
+      ? 'Preparing Sandbox Trial cases and the optional Live Smoke Test.'
+      : 'Preparing Sandbox Trial cases without a real-workspace baseline.',
     caseId: null,
     caseTitle: null,
     caseIndex: null,
@@ -2127,18 +2281,26 @@ async function executeTrial(
     taskId: null,
     taskStatus: null,
   });
-  const { pipelineConfig, targetTaskIdsByCase, dataReadiness } = prepared;
+  const {
+    pipelineConfig,
+    targetTaskIdsByCase,
+    manualTaskIdsByCase,
+    selectedManualTaskIds,
+    dataReadiness,
+    trialMode,
+    trialabilityReport,
+    liveSmokeTestEnabled,
+  } = prepared;
   const fixtureInputs = dataReadiness.state === 'fixture-backed' ? dataReadiness.inputs : [];
   const baselineSkipped =
-    dataReadiness.state === 'fixture-backed' && dataReadiness.baseline.mode === 'skip';
+    !liveSmokeTestEnabled ||
+    (dataReadiness.state === 'fixture-backed' && dataReadiness.baseline.mode === 'skip');
   const baselineTargetTaskIds =
-    dataReadiness.state === 'fixture-backed' && dataReadiness.baseline.mode === 'targeted'
+    liveSmokeTestEnabled &&
+    dataReadiness.state === 'fixture-backed' &&
+    dataReadiness.baseline.mode === 'targeted'
       ? dataReadiness.baseline.targetTaskIds
       : undefined;
-  const pluginError = await ensureTrialPluginsLoaded(ws, pipelineConfig.plugins ?? []);
-  if (pluginError) {
-    return resultForSetupFailure('setup-failed', `Plugin load error: ${pluginError}`, startedAt);
-  }
 
   const pythonSettings = readEditorSettings(ws).pythonAgent;
   const pythonRunEnv = buildPythonAgentRunEnv(ws.workDir, pythonSettings);
@@ -2151,43 +2313,42 @@ async function executeTrial(
       : {};
   const preflight = runPreflight(snapshot.yamlPath, pythonPreflightOptions);
   const logicalYamlPath = entry.sourcePath ?? resolve(ws.workDir, '.tagma', entry.relativePath);
-  let requirementsSecretEnv: Record<string, string> = {};
-  try {
-    requirementsSecretEnv = buildPipelineSecretEnv(ws.workDir, logicalYamlPath, preflight.envKeys);
-  } catch (err) {
-    return resultForSetupFailure(
-      'setup-failed',
-      `Secret manager error: ${errorMessage(err)}`,
-      startedAt,
-    );
+  const declaredSecretNames = collectDeclaredSecretNames(pipelineConfig);
+  const allSecretNames = [...new Set([...preflight.envKeys, ...declaredSecretNames])];
+  const sandboxScopedSecretEnv = syntheticTrialSecretEnv(allSecretNames);
+  const sandboxGlobalSecretEnv = selectTrialSecretEnv(sandboxScopedSecretEnv, preflight.envKeys);
+  let liveScopedSecretEnv: Record<string, string> = {};
+  if (liveSmokeTestEnabled) {
+    try {
+      liveScopedSecretEnv = buildPipelineSecretEnv(ws.workDir, logicalYamlPath, allSecretNames);
+    } catch (err) {
+      return resultForSetupFailure(
+        'setup-failed',
+        `Secret manager error: ${errorMessage(err)}`,
+        startedAt,
+        { trialMode, trialabilityReport },
+      );
+    }
   }
+  const liveGlobalSecretEnv = selectTrialSecretEnv(liveScopedSecretEnv, preflight.envKeys);
   const runtimeReadiness = resolveChatPipelineRuntimeReadiness({
     missingBinaries: preflight.missing.binaries,
-    missingEnvironment: preflight.missing.envs.filter((name) => !requirementsSecretEnv[name]),
+    missingEnvironment: liveSmokeTestEnabled
+      ? preflight.missing.envs.filter((name) => !liveGlobalSecretEnv[name])
+      : [],
   });
   if (runtimeReadiness.state === 'blocked') {
     return resultForSetupFailure(
       'blocked',
       `Trial run requirements are unavailable: ${describeTrialBlockers(runtimeReadiness.blockers)}. Preserve legitimate requirements and safety gates; do not invent or remove them merely to make the trial pass.`,
       startedAt,
-      { prerequisiteState: runtimeReadiness },
-    );
-  }
-
-  const declaredSecretNames = collectDeclaredSecretNames(pipelineConfig);
-  const redactionSecretNames = [...new Set([...preflight.envKeys, ...declaredSecretNames])];
-  let redactionSecretEnv: Record<string, string> = {};
-  try {
-    redactionSecretEnv = buildPipelineSecretEnv(ws.workDir, logicalYamlPath, redactionSecretNames);
-  } catch (err) {
-    return resultForSetupFailure(
-      'setup-failed',
-      `Secret manager error: ${errorMessage(err)}`,
-      startedAt,
+      { prerequisiteState: runtimeReadiness, trialMode, trialabilityReport },
     );
   }
 
   const approvalGateway = new InMemoryApprovalGateway();
+  const manualApprovalScopesByRunId = new Map<string, ReadonlySet<string>>();
+  const manualExecutionGrantCounts = new Map<string, number>();
   const manualApprovalBlockers = new Map<string, ChatPipelineTrialBlocker>();
   const unsubscribeApproval = approvalGateway.subscribe((event: ApprovalEvent) => {
     if (event.type !== 'requested') return;
@@ -2196,11 +2357,24 @@ async function executeTrial(
       : event.request.trackId
         ? `${event.request.trackId}.${event.request.taskId}`
         : event.request.taskId;
+    const allowedManualTaskIds = event.request.runId
+      ? manualApprovalScopesByRunId.get(event.request.runId)
+      : undefined;
+    if (allowedManualTaskIds?.has(taskId)) {
+      manualExecutionGrantCounts.set(taskId, (manualExecutionGrantCounts.get(taskId) ?? 0) + 1);
+      approvalGateway.resolve(event.request.id, {
+        outcome: 'approved',
+        actor: 'chat-trial-run',
+        reason: 'Explicit Trial target execution grant for this manual task.',
+      });
+      return;
+    }
     manualApprovalBlockers.set(taskId, { kind: 'approval', name: taskId, taskId });
     approvalGateway.resolve(event.request.id, {
       outcome: 'rejected',
       actor: 'chat-trial-run',
-      reason: 'Chat trial runs never auto-approve manual safety gates.',
+      reason:
+        'Chat trial runs never auto-approve manual safety gates unless the task is in an explicit Trial target closure.',
     });
   });
   const runId = generateRunId();
@@ -2208,9 +2382,10 @@ async function executeTrial(
   let hostWitnessCaptureFailure = false;
 
   try {
-    const secretValues = Object.values({ ...redactionSecretEnv, ...requirementsSecretEnv }).filter(
-      Boolean,
-    );
+    const secretValues = Object.values({
+      ...sandboxScopedSecretEnv,
+      ...liveScopedSecretEnv,
+    }).filter(Boolean);
     let baselineSuccess = true;
     let baselineEvidence = {
       tasks: [] as ChatPipelineTrialTaskResult[],
@@ -2223,7 +2398,7 @@ async function executeTrial(
     if (!baselineSkipped) {
       progress.update({
         phase: 'running-baseline',
-        detail: 'Running the real-workspace baseline.',
+        detail: 'Running the optional Live Smoke Test in the real workspace.',
         caseId: null,
         caseTitle: null,
         caseIndex: null,
@@ -2241,11 +2416,14 @@ async function executeTrial(
         approvalGateway,
         controller,
         pythonRunEnv,
-        requirementsSecretEnv,
+        globalSecretEnv: liveGlobalSecretEnv,
+        scopedSecretEnv: liveScopedSecretEnv,
         secretValues,
         preflightEnvKeys: preflight.envKeys,
         taskTimeoutMs: budgets.taskTimeoutMs,
         runId,
+        manualApprovalScopesByRunId,
+        manualApprovalTaskIds: selectedManualTaskIds,
         ...(baselineTargetTaskIds ? { targetTaskIds: baselineTargetTaskIds } : {}),
         onEvent: (event) => updateTrialTaskProgress(progress, event),
       });
@@ -2257,8 +2435,8 @@ async function executeTrial(
     progress.update({
       phase: 'sealing-baseline',
       detail: baselineSkipped
-        ? 'Sealing the real workspace before isolated fixture cases.'
-        : 'Sealing the real workspace after the baseline.',
+        ? 'Sealing the real workspace before Sandbox Trial cases.'
+        : 'Sealing the real workspace after the Live Smoke Test.',
       caseId: null,
       caseTitle: null,
       caseIndex: null,
@@ -2301,10 +2479,13 @@ async function executeTrial(
         approvalGateway,
         controller,
         pythonRunEnv,
-        requirementsSecretEnv,
+        globalSecretEnv: sandboxGlobalSecretEnv,
+        scopedSecretEnv: sandboxScopedSecretEnv,
         secretValues,
         preflightEnvKeys: preflight.envKeys,
         taskTimeoutMs: budgets.taskTimeoutMs,
+        manualApprovalScopesByRunId,
+        manualApprovalTaskIds: manualTaskIdsByCase.get(testCase.id) ?? new Set<string>(),
         stageRoot: stage.rootDir,
         stagedYamlPath: snapshot.yamlPath,
         relativeYamlPath: entry.relativePath,
@@ -2412,14 +2593,20 @@ async function executeTrial(
       cases.every((item) => item.success);
     const planWarnings = [
       ...planWarningDiagnostics(plan),
+      ...trialabilityReport.warnings,
       ...(fixtureInputs.length > 0
         ? [
             baselineSkipped
-              ? `The real-workspace baseline was skipped because its data inputs were unavailable. Targeted cases ran with isolated fixtures instead: ${describeTrialFixtureInputs(fixtureInputs)}. No placeholder was written to the real workspace.`
-              : `The real-workspace baseline ran only prerequisite-ready tasks. Tasks depending on unavailable data were exercised through isolated fixtures instead: ${describeTrialFixtureInputs(fixtureInputs)}. No placeholder was written to the real workspace.`,
+              ? `The Live Smoke Test was skipped because its real-workspace data inputs were unavailable. Sandbox cases ran with isolated fixtures instead: ${describeTrialFixtureInputs(fixtureInputs)}. No placeholder was written to the real workspace.`
+              : `The Live Smoke Test ran only prerequisite-ready tasks. Tasks depending on unavailable data were exercised through Sandbox fixtures instead: ${describeTrialFixtureInputs(fixtureInputs)}. No placeholder was written to the real workspace.`,
           ]
         : []),
     ];
+    const manualExecutionGrants: ChatPipelineTrialManualExecutionGrant[] = [
+      ...manualExecutionGrantCounts.entries(),
+    ]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([taskId, approvalCount]) => ({ taskId, approvalCount }));
     const allTaskEvidenceCandidates = [
       ...baselineEvidence.tasks,
       ...cases.flatMap((item) => item.tasks),
@@ -2483,9 +2670,10 @@ async function executeTrial(
       ran: true,
       runId: baselineSkipped ? (cases.flatMap((item) => item.runIds)[0] ?? null) : runId,
       ...(dataReadiness.state === 'fixture-backed' ? { prerequisiteState: dataReadiness } : {}),
-      verificationMode: baselineSkipped
-        ? 'isolated-fixtures-only'
-        : 'real-baseline-and-isolated-cases',
+      trialMode,
+      trialabilityReport,
+      verificationMode: baselineSkipped ? 'sandbox-cases-only' : 'sandbox-cases-with-live-smoke',
+      ...(manualExecutionGrants.length > 0 ? { manualExecutionGrants } : {}),
       summary: buildPlannedTrialSummary(
         baselineSuccess,
         abortState.timedOut,
@@ -2495,7 +2683,9 @@ async function executeTrial(
         taskStatusCounts,
         cases,
         plan.cases.length,
+        trialMode,
         planWarnings,
+        manualExecutionGrants,
       ),
       durationMs: Math.max(0, Date.now() - startedAt),
       totalTaskCount,
@@ -2533,7 +2723,7 @@ async function executeTrial(
         repairAuthorization: 'diagnostic-only',
         prerequisiteState,
         summary: boundedTrialText(
-          `Trial is blocked by manual approval prerequisites: ${describeTrialBlockers(prerequisiteState.blockers)}. Tagma did not synthesize approval or execute the gated side effect.\n\n${result.summary}`,
+          `Trial is blocked by manual approval prerequisites outside the explicit target grant: ${describeTrialBlockers(prerequisiteState.blockers)}. Tagma did not grant execution to those manual tasks or execute their gated side effects.\n\n${result.summary}`,
         ),
       };
     }
@@ -2546,6 +2736,8 @@ async function executeTrial(
       repairAuthorization: 'diagnostic-only',
       ran: true,
       runId,
+      trialMode,
+      trialabilityReport,
       summary: boundedTrialText(
         abortState.timedOut
           ? `Trial run timed out after ${budgets.lifecycleTimeoutMs}ms.`
@@ -2575,9 +2767,13 @@ export async function trialRunChatYamlStage(
   const editorSettings = readEditorSettings(ws);
   if (!hasCurrentChatPipelineTrialConsent(editorSettings)) {
     throw new Error(
-      'Explicit consent is required in Editor Settings before Trial can run AI-authored commands in the real workspace.',
+      'Explicit consent is required in Editor Settings before Sandbox Trial can run AI-authored commands with host process authority.',
     );
   }
+  const liveSmokeTestEnabled = hasCurrentChatPipelineTrialLiveSmokeTestConsent(editorSettings);
+  const trialMode: ChatPipelineTrialMode = liveSmokeTestEnabled
+    ? 'sandbox-with-live-smoke'
+    : 'sandbox';
   const timeoutMsOverride = __chatPipelineTrialRunTestHooks.timeoutMsOverride;
   const taskTimeoutMsOverride = __chatPipelineTrialRunTestHooks.taskTimeoutMsOverride;
   const budgets: TrialExecutionBudgets = {
@@ -2618,6 +2814,47 @@ export async function trialRunChatYamlStage(
     if (planTelemetry.yamlHash !== snapshot.contentHash) {
       throw new Error('Staged YAML changed while Trial was preparing; retry the Trial run.');
     }
+    let pipelineConfig: PipelineConfig;
+    try {
+      pipelineConfig = await loadTrialPipelineConfig(snapshot, ws.workDir);
+    } catch (err) {
+      return {
+        ...resultForSetupFailure(
+          'setup-failed',
+          `Trial run configuration error: ${errorMessage(err)}`,
+          startedAt,
+          { trialMode },
+        ),
+        planTelemetry,
+      };
+    }
+    const pluginError = await ensureTrialPluginsLoaded(ws, pipelineConfig.plugins ?? []);
+    if (pluginError) {
+      return {
+        ...resultForSetupFailure('setup-failed', `Plugin load error: ${pluginError}`, startedAt, {
+          trialMode,
+        }),
+        planTelemetry,
+      };
+    }
+    const trialabilityReport = buildChatPipelineTrialabilityReport({
+      pipelineConfig,
+      registry: ws.registry,
+      capabilityOwners: ws.pluginCapabilityOwners,
+      mode: trialMode,
+    });
+    const preflightMetadata = { trialMode, trialabilityReport };
+    if (!trialabilityReport.runnable) {
+      return {
+        ...resultForSetupFailure(
+          'blocked',
+          `Trial Interaction Protocol preflight blocked execution: ${trialabilityReport.blockers.join('; ')}`,
+          startedAt,
+          preflightMetadata,
+        ),
+        planTelemetry,
+      };
+    }
     const planRead = readChatPipelineTrialPlan(
       snapshot.yamlPath,
       entry.relativePath,
@@ -2625,26 +2862,16 @@ export async function trialRunChatYamlStage(
       stage.trialPlanMaxAttempts,
     );
     if (planRead.status === 'required') {
-      let pipelineConfig: PipelineConfig;
-      try {
-        pipelineConfig = await loadTrialPipelineConfig(snapshot, ws.workDir);
-      } catch (err) {
-        return {
-          ...resultForSetupFailure(
-            'setup-failed',
-            `Trial run configuration error: ${errorMessage(err)}`,
-            startedAt,
-          ),
-          planTelemetry,
-        };
-      }
       const dataReadiness = resolveChatPipelineDataReadiness(
         pipelineConfig,
         ws.workDir,
         entry.relativePath,
       );
       if (planTelemetry.toolAttemptCount >= stage.trialPlanMaxAttempts) {
-        return resultForPlanAttemptBudgetExhausted(planTelemetry, startedAt);
+        return {
+          ...resultForPlanAttemptBudgetExhausted(planTelemetry, startedAt),
+          ...preflightMetadata,
+        };
       }
       issueChatYamlStageTrialPlanAttempt(ws, {
         stageId: stage.id,
@@ -2652,13 +2879,16 @@ export async function trialRunChatYamlStage(
         yamlHash: snapshot.contentHash,
         attemptId: trialId,
       });
-      return resultForPlanRequest(
-        planRead.request,
-        planTelemetry,
-        startedAt,
-        trialId,
-        dataReadiness.state === 'fixture-backed' ? dataReadiness : undefined,
-      );
+      return {
+        ...resultForPlanRequest(
+          planRead.request,
+          planTelemetry,
+          startedAt,
+          trialId,
+          dataReadiness.state === 'fixture-backed' ? dataReadiness : undefined,
+        ),
+        ...preflightMetadata,
+      };
     }
     const plan = planRead.plan;
     const preparation = await prepareTrialExecution(
@@ -2666,21 +2896,28 @@ export async function trialRunChatYamlStage(
       stage,
       entry,
       snapshot,
+      pipelineConfig,
+      trialabilityReport,
       plan,
       planTelemetry,
       trialId,
       startedAt,
+      trialMode,
+      liveSmokeTestEnabled,
     );
     if (preparation.status === 'result') {
       return { ...resultWithTrialPlan(preparation.result, plan), planTelemetry };
     }
     const preparedExecution = preparation.prepared;
+    const trialabilityReportHash = hashChatPipelineTrialabilityReport(trialabilityReport);
     const inputHash = buildChatPipelineTrialInputHash({
       stagedTreeHash: snapshot.treeHash,
       planHash: planRead.planHash,
+      trialMode,
+      trialabilityReportHash,
     });
     const cachePath = trialCachePath(stage.rootDir, trialId, entry.relativePath, inputHash);
-    const cached = readCachedTrial(ws, stage.id, cachePath, inputHash);
+    const cached = readCachedTrial(ws, stage.id, cachePath, inputHash, trialabilityReportHash);
     if (cached) return resultWithTrialPlan(cached, plan);
     const inFlightKey = cachePath;
     const existing = inFlightByCacheKey.get(inFlightKey);
@@ -2693,6 +2930,7 @@ export async function trialRunChatYamlStage(
             'busy',
             'Trial run was skipped because another pipeline or workflow run is active in this workspace.',
             Date.now(),
+            preflightMetadata,
           ),
           plan,
         ),
@@ -2708,6 +2946,7 @@ export async function trialRunChatYamlStage(
             'busy',
             'Trial run was skipped because another pipeline or workflow run is active in this workspace.',
             Date.now(),
+            preflightMetadata,
           ),
           plan,
         ),
@@ -2735,7 +2974,10 @@ export async function trialRunChatYamlStage(
     const promise = (async () => {
       try {
         if (controller.signal.aborted) {
-          return resultForStoppedBeforeRun(abortState, startedAt, budgets.lifecycleTimeoutMs);
+          return {
+            ...resultForStoppedBeforeRun(abortState, startedAt, budgets.lifecycleTimeoutMs),
+            ...preflightMetadata,
+          };
         }
         progress.update({
           phase: 'preparing',
@@ -2755,13 +2997,17 @@ export async function trialRunChatYamlStage(
           stagedYamlPath: executionSnapshot.yamlPath,
         });
         if (controller.signal.aborted) {
-          return resultForStoppedBeforeRun(abortState, startedAt, budgets.lifecycleTimeoutMs);
+          return {
+            ...resultForStoppedBeforeRun(abortState, startedAt, budgets.lifecycleTimeoutMs),
+            ...preflightMetadata,
+          };
         }
         if (!prepared.prepared) {
           return resultForSetupFailure(
             'witness-failed',
             `Trial host witness setup failed: ${prepared.reason}`,
             startedAt,
+            preflightMetadata,
           );
         }
         const hostWitnessInputs = prepared.prepared;
@@ -2783,13 +3029,17 @@ export async function trialRunChatYamlStage(
           controller.signal,
         );
         if (controller.signal.aborted) {
-          return resultForStoppedBeforeRun(abortState, startedAt, budgets.lifecycleTimeoutMs);
+          return {
+            ...resultForStoppedBeforeRun(abortState, startedAt, budgets.lifecycleTimeoutMs),
+            ...preflightMetadata,
+          };
         }
         if (!currentWitness.witness) {
           return resultForSetupFailure(
             'witness-failed',
             `Trial host witness capture failed: ${currentWitness.reason}`,
             startedAt,
+            preflightMetadata,
           );
         }
         const preWitness = currentWitness.witness;
@@ -2873,6 +3123,7 @@ export async function trialRunChatYamlStage(
             stage.id,
             cachePath,
             inputHash,
+            trialabilityReportHash,
             postVerificationHash,
             postWitness.witness,
             { ...resultWithTrialPlan(result, plan), planTelemetry },

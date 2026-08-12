@@ -242,13 +242,23 @@ export function EditorSettingsSections({ controller, categories }: EditorSetting
           />
           <div className="mt-2 space-y-2 border border-tagma-border bg-tagma-bg p-2.5">
             <ToggleRow
-              label="Trial-run Chat pipeline changes"
-              description="On runs AI-authored staged pipeline commands in your real workspace before finalization. They execute with normal host command authority and may modify files or external state. Off skips only execution; compilation, staging isolation, and conflict-safe finalization stay active."
+              label="Sandbox Trial"
+              description="Runs AI-authored Trial cases in fresh temporary copies with no inherited stdin/TTY and synthetic secrets. Filesystem, network, and process isolation outside each copy is application-level rather than OS-enforced. Trial grants execution to explicitly selected manual-trigger tasks; normal pipeline runs still require manual approval."
               checked={settings.opencodeChatTrialRunEnabled}
               disabled={settingsInputsDisabled}
               onChange={(v) => updateField('opencodeChatTrialRunEnabled', v)}
               borderless
             />
+            <div className="ml-4 border-l border-tagma-border pl-3">
+              <ToggleRow
+                label="Live Smoke Test"
+                description="Runs one additional baseline in the real workspace with normal host command authority, real credentials and network access. It may mutate external state or workspace files."
+                checked={settings.opencodeChatTrialLiveSmokeTestEnabled}
+                disabled={settingsInputsDisabled || !settings.opencodeChatTrialRunEnabled}
+                onChange={(v) => updateField('opencodeChatTrialLiveSmokeTestEnabled', v)}
+                borderless
+              />
+            </div>
             <div className={'flex items-center gap-2 text-[11px]'}>
               <label
                 htmlFor={'chat-trial-plan-attempts'}

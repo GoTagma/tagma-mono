@@ -25,6 +25,9 @@ export interface BuildConversationExportOptions {
 }
 
 const EDITOR_CONTEXT_RE = /^<editor-context>[\s\S]*?<\/editor-context>\n*/;
+const MAX_TRIALABILITY_EXPORT_ITEMS = 32;
+const MAX_TRIALABILITY_EXPORT_MESSAGES = 16;
+const MAX_TRIAL_MANUAL_EXECUTION_GRANTS = 32;
 
 export function buildConversationExport({
   format,
@@ -320,8 +323,99 @@ function renderPipelineVerification(
         markdown,
         `Trial repair authorization: ${trial.repairAuthorization ?? 'unavailable'}`,
       ),
+      exportBullet(markdown, `Trial mode: ${trial.trialMode ?? 'unavailable'}`),
       exportBullet(markdown, `Trial verification mode: ${trial.verificationMode ?? 'unavailable'}`),
     );
+    if (trial.trialabilityReport) {
+      const report = trial.trialabilityReport;
+      const sandboxCases = report.enforcement.sandboxCases;
+      const liveSmokeBaseline = report.enforcement.liveSmokeBaseline;
+      const returnedItems = report.items.slice(0, MAX_TRIALABILITY_EXPORT_ITEMS);
+      const returnedBlockers = report.blockers.slice(0, MAX_TRIALABILITY_EXPORT_MESSAGES);
+      const returnedWarnings = report.warnings.slice(0, MAX_TRIALABILITY_EXPORT_MESSAGES);
+      lines.push(
+        exportBullet(
+          markdown,
+          `Trialability preflight: ${report.runnable ? 'runnable' : 'blocked'}; protocol v${report.protocolVersion}`,
+        ),
+        exportBullet(
+          markdown,
+          'Trialability Sandbox-case containment (application-level; no OS sandbox): ' +
+            `workspace=${sandboxCases.workspace}; stdin=${sandboxCases.stdin}; ` +
+            `TTY=${sandboxCases.tty}; secrets=${sandboxCases.secrets}; ` +
+            `filesystem=${sandboxCases.filesystem}; network=${sandboxCases.network}; ` +
+            `process=${sandboxCases.process}`,
+        ),
+        exportBullet(
+          markdown,
+          `Trialability surfaces: ${report.items.length} total; ${returnedItems.length} returned; ${Math.max(0, report.items.length - returnedItems.length)} omitted`,
+        ),
+      );
+      lines.push(
+        liveSmokeBaseline
+          ? exportBullet(
+              markdown,
+              'Trialability Live Smoke baseline authority (real workspace; real secrets; normal host authority; no OS sandbox): ' +
+                `workspace=${liveSmokeBaseline.workspace}; stdin=${liveSmokeBaseline.stdin}; ` +
+                `TTY=${liveSmokeBaseline.tty}; secrets=${liveSmokeBaseline.secrets}; ` +
+                `filesystem=${liveSmokeBaseline.filesystem}; network=${liveSmokeBaseline.network}; ` +
+                `process=${liveSmokeBaseline.process}`,
+            )
+          : exportBullet(markdown, 'Trialability Live Smoke baseline: not enabled'),
+      );
+      for (const item of returnedItems) {
+        const task = item.taskId ? ` for ${redactExportText(item.taskId, 256)}` : '';
+        lines.push(
+          exportNestedBullet(
+            markdown,
+            `Trialability surface: ${item.component} ${redactExportText(item.type, 256)}${task}; provider=${redactExportText(item.provider, 256)}; disposition=${item.disposition}`,
+          ),
+        );
+      }
+      lines.push(
+        exportBullet(
+          markdown,
+          `Trialability blockers: ${report.blockers.length} total; ${returnedBlockers.length} returned; ${Math.max(0, report.blockers.length - returnedBlockers.length)} omitted`,
+        ),
+      );
+      for (const blocker of returnedBlockers) {
+        lines.push(
+          exportNestedBullet(markdown, `Trialability blocker: ${redactExportText(blocker, 512)}`),
+        );
+      }
+      lines.push(
+        exportBullet(
+          markdown,
+          `Trialability warnings: ${report.warnings.length} total; ${returnedWarnings.length} returned; ${Math.max(0, report.warnings.length - returnedWarnings.length)} omitted`,
+        ),
+      );
+      for (const warning of returnedWarnings) {
+        lines.push(
+          exportNestedBullet(markdown, `Trialability warning: ${redactExportText(warning, 512)}`),
+        );
+      }
+    }
+    const manualExecutionGrants = trial.manualExecutionGrants ?? [];
+    const returnedManualExecutionGrants = manualExecutionGrants.slice(
+      0,
+      MAX_TRIAL_MANUAL_EXECUTION_GRANTS,
+    );
+    if (manualExecutionGrants.length > 0) {
+      lines.push(
+        exportBullet(
+          markdown,
+          `Trial manual execution grants: ${manualExecutionGrants.length} total; ${returnedManualExecutionGrants.length} returned; ${Math.max(0, manualExecutionGrants.length - returnedManualExecutionGrants.length)} omitted`,
+        ),
+      );
+    }
+    for (const grant of returnedManualExecutionGrants) {
+      lines.push(
+        exportBullet(
+          markdown,
+          `Trial manual execution grant: ${redactExportText(grant.taskId, 256)} (${grant.approvalCount} approval${grant.approvalCount === 1 ? '' : 's'})`,
+        ),
+      );
+    }
   } else {
     lines.push(exportBullet(markdown, 'Trial: unavailable'));
   }

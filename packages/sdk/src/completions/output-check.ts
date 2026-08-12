@@ -20,6 +20,15 @@ function tailForFeedback(value: string): string {
 
 export const OutputCheckCompletion: CompletionPlugin = {
   name: 'output_check',
+  trial: {
+    protocolVersion: 1,
+    interaction: 'none',
+    unattended: 'host-adapter',
+    filesystem: 'external-write',
+    network: 'write',
+    secrets: 'synthetic-ok',
+    runtime: 'bounded',
+  },
   schema: {
     description:
       'Pipe the task output into a shell command; mark success when that command exits 0. For AI driver tasks the driver-normalized text is piped (not the raw NDJSON); command tasks see their raw stdout.',

@@ -22,6 +22,15 @@ function isInsideOrEqual(parent: string, child: string): boolean {
 
 export const DirectoryTrigger: TriggerPlugin = {
   name: 'directory',
+  trial: {
+    protocolVersion: 1,
+    interaction: 'external-event',
+    unattended: 'fixture',
+    filesystem: 'workspace-read',
+    network: 'none',
+    secrets: 'none',
+    runtime: 'bounded',
+  },
   schema: {
     description: 'Wait for a directory to appear before the task runs.',
     fields: {

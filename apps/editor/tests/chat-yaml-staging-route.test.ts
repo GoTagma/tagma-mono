@@ -13,6 +13,7 @@ import {
 import { tmpdir } from 'node:os';
 import { bootstrapBuiltins } from '@tagma/sdk/plugins';
 import { parseYaml, serializePipeline } from '@tagma/sdk/yaml';
+import type { TrialInteractionDeclaration } from '@tagma/types';
 
 import { stopAllChatCompileWatchers, stopChatCompileWatcher } from '../server/chat-compile-watcher';
 import { disposeTrialWitnessWorker } from '../server/chat-pipeline-trial-witness';
@@ -21,7 +22,10 @@ import { registerChatYamlStagingRoutes } from '../server/routes/chat-yaml-stagin
 import { beginRunSessionStart, endRunSessionStart, registerRunRoutes } from '../server/routes/run';
 import { pipelineYamlPath } from '../server/pipeline-paths';
 import { WorkspaceState } from '../server/workspace-state';
-import { CHAT_PIPELINE_TRIAL_CONSENT_VERSION } from '../shared/chat-pipeline-trial-consent';
+import {
+  CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
+  CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
+} from '../shared/chat-pipeline-trial-consent';
 
 type MockResponse = ReturnType<typeof makeRes>;
 type MockRequest = {
@@ -187,6 +191,7 @@ function yamlFor(name: string, prompt: string): string {
 function makeWorkspace(
   authorizeTrial = true,
   trialPlanMaxAttempts?: number,
+  authorizeLiveSmokeTest = true,
 ): { ws: WorkspaceState; sourcePath: string } {
   const root = mkdtempSync(join(tmpdir(), 'tagma-chat-stage-route-'));
   roots.push(root);
@@ -200,6 +205,13 @@ function makeWorkspace(
       JSON.stringify({
         opencodeChatTrialRunEnabled: true,
         opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
+        opencodeChatTrialLiveSmokeTestEnabled: authorizeLiveSmokeTest,
+        ...(authorizeLiveSmokeTest
+          ? {
+              opencodeChatTrialLiveSmokeTestConsentVersion:
+                CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
+            }
+          : {}),
         ...(trialPlanMaxAttempts === undefined
           ? {}
           : { opencodeChatTrialPlanMaxAttempts: trialPlanMaxAttempts }),
@@ -573,11 +585,11 @@ describe('chat YAML staging routes', () => {
       success: true,
       kind: 'passed-with-warnings',
       ran: true,
-      verificationMode: 'isolated-fixtures-only',
+      verificationMode: 'sandbox-cases-only',
       cases: [{ id: 'virtual-input', success: true }],
     });
     expect((plannedTrialRes.body as { summary: string }).summary).toContain(
-      'real-workspace baseline was skipped',
+      'Live Smoke Test was skipped',
     );
     expect((plannedTrialRes.body as { summary: string }).summary).toContain(
       'Trial run passed with warnings (success=1).',
@@ -690,7 +702,7 @@ describe('chat YAML staging routes', () => {
       success: true,
       kind: 'passed-with-warnings',
       ran: true,
-      verificationMode: 'isolated-fixtures-only',
+      verificationMode: 'sandbox-cases-only',
       planTelemetry: { toolAttemptCount: 2, successfulWriteCount: 2 },
       cases: [{ id: 'pipeline-local-input', success: true }],
     });
@@ -727,6 +739,15 @@ describe('chat YAML staging routes', () => {
         {
           name: 'opencode',
           capabilities: { sessionResume: false, systemPrompt: false, outputFormat: false },
+          trial: {
+            protocolVersion: 1,
+            interaction: 'none',
+            unattended: 'virtualized',
+            filesystem: 'workspace-write',
+            network: 'none',
+            secrets: 'none',
+            runtime: 'bounded',
+          },
           async buildCommand(_task, _track, ctx) {
             const context = ctx.promptDoc.contexts.map((block) => block.content).join('\n');
             const encoded = Buffer.from(context, 'utf-8').toString('base64');
@@ -827,7 +848,7 @@ describe('chat YAML staging routes', () => {
       expect(trialRes.body).toMatchObject({
         success: true,
         ran: true,
-        verificationMode: 'isolated-fixtures-only',
+        verificationMode: 'sandbox-cases-only',
         cases: [
           {
             id: 'static-context',
@@ -977,6 +998,9 @@ describe('chat YAML staging routes', () => {
       JSON.stringify({
         opencodeChatTrialRunEnabled: true,
         opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
+        opencodeChatTrialLiveSmokeTestEnabled: true,
+        opencodeChatTrialLiveSmokeTestConsentVersion:
+          CHAT_PIPELINE_TRIAL_LIVE_SMOKE_TEST_CONSENT_VERSION,
         opencodeChatTrialPlanMaxAttempts: 1,
       }),
       'utf-8',
@@ -1786,7 +1810,11 @@ describe('chat YAML staging routes', () => {
       request(ws, { stageId: stage.id, relativePath: entry.relativePath, trialId }, 'chat-lock'),
       trialRes,
     );
-    expect(trialRes.body).toMatchObject({ success: true, kind: 'passed', ran: true });
+    expect(trialRes.body).toMatchObject({
+      success: true,
+      kind: 'passed-with-warnings',
+      ran: true,
+    });
 
     const cachePath = onlyTrialCachePath(stage.rootDir);
     const cached = JSON.parse(readFileSync(cachePath, 'utf-8')) as {
@@ -1848,7 +1876,11 @@ describe('chat YAML staging routes', () => {
       request(ws, { stageId: stage.id, relativePath: entry.relativePath, trialId }, 'chat-lock'),
       trialRes,
     );
-    expect(trialRes.body).toMatchObject({ success: true, kind: 'passed', ran: true });
+    expect(trialRes.body).toMatchObject({
+      success: true,
+      kind: 'passed-with-warnings',
+      ran: true,
+    });
 
     const cachePath = onlyTrialCachePath(stage.rootDir);
     const cached = JSON.parse(readFileSync(cachePath, 'utf-8')) as Record<string, unknown>;
@@ -1911,7 +1943,11 @@ describe('chat YAML staging routes', () => {
       ),
       trialRes,
     );
-    expect(trialRes.body).toMatchObject({ success: true, kind: 'passed', ran: true });
+    expect(trialRes.body).toMatchObject({
+      success: true,
+      kind: 'passed-with-warnings',
+      ran: true,
+    });
 
     const cachePath = onlyTrialCachePath(stage.rootDir);
     const cacheText = readFileSync(cachePath, 'utf-8');
@@ -2048,7 +2084,7 @@ describe('chat YAML staging routes', () => {
     expect(trialRes.statusCode).toBe(200);
     expect(trialRes.body).toMatchObject({
       success: true,
-      kind: 'passed',
+      kind: 'passed-with-warnings',
       ran: true,
       cases: [{ id: 'snapshot-case', success: true }],
     });
@@ -2791,7 +2827,155 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
-  test('trial-runs staged YAML against the real workspace without publishing it', async () => {
+  test('blocks a legacy trigger before its watcher can execute', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    let watched = false;
+    ws.registry.registerPlugin('triggers', 'legacy', {
+      name: 'legacy',
+      watch() {
+        watched = true;
+        throw new Error('legacy watcher must not execute during Trial preflight');
+      },
+    });
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Legacy Trigger Trial',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              {
+                id: 'wait',
+                command: { argv: [process.execPath, '-e', 'process.exit(0)'] },
+                trigger: { type: 'legacy' },
+              },
+            ],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
+
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'legacy_trigger' },
+        'chat-lock',
+      ),
+      trialRes,
+    );
+
+    expect(trialRes.statusCode).toBe(200);
+    expect(trialRes.body).toMatchObject({
+      success: false,
+      kind: 'blocked',
+      ran: false,
+      planTelemetry: { toolAttemptCount: 0 },
+      trialabilityReport: {
+        items: expect.arrayContaining([
+          expect.objectContaining({
+            component: 'trigger',
+            type: 'legacy',
+            declaration: null,
+            disposition: 'unsupported-in-unattended-trial',
+          }),
+        ]),
+      },
+    });
+    expect(watched).toBe(false);
+
+    discardStage(getRoute, ws, stage.id);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('keeps Sandbox Trial cases off the real workspace without Live Smoke Test consent', async () => {
+    const { ws, sourcePath } = makeWorkspace(true, undefined, false);
+    const sourceBefore = readFileSync(sourcePath, 'utf-8');
+    const revisionBefore = ws.stateRevision;
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Sandbox Only Trial',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              {
+                id: 'probe',
+                command: { argv: [process.execPath, '-e', 'process.stdout.write(process.cwd())'] },
+              },
+            ],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
+    writePassingTrialPlan(entry.stagedPath, 'main.probe');
+
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'sandbox_only' },
+        'chat-lock',
+      ),
+      trialRes,
+    );
+
+    expect(trialRes.statusCode).toBe(200);
+    expect(trialRes.body).toMatchObject({
+      success: true,
+      ran: true,
+      trialMode: 'sandbox',
+      verificationMode: 'sandbox-cases-only',
+      trialabilityReport: { mode: 'sandbox' },
+      cases: [{ id: 'isolated-probe', success: true }],
+    });
+    expect(
+      (
+        trialRes.body as {
+          tasks: Array<{ caseId: string | null }>;
+        }
+      ).tasks.some((task) => task.caseId === null),
+    ).toBe(false);
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(sourceBefore);
+    expect(ws.stateRevision).toBe(revisionBefore);
+
+    discardStage(getRoute, ws, stage.id);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('runs an explicitly authorized Live Smoke Test baseline without publishing staged YAML', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();
     const startRes = makeRes();
@@ -2841,8 +3025,11 @@ describe('chat YAML staging routes', () => {
     expect(trialRes.statusCode).toBe(200);
     expect(trialRes.body).toMatchObject({
       success: true,
-      kind: 'passed',
+      kind: 'passed-with-warnings',
       ran: true,
+      trialMode: 'sandbox-with-live-smoke',
+      verificationMode: 'sandbox-cases-with-live-smoke',
+      trialabilityReport: { mode: 'sandbox-with-live-smoke' },
     });
     const baselineTask = (
       trialRes.body as {
@@ -3028,7 +3215,7 @@ describe('chat YAML staging routes', () => {
       request(ws, { stageId: stage.id, relativePath: entry.relativePath, trialId }, 'chat-lock'),
       secondRes,
     );
-    expect(secondRes.body).toMatchObject({ success: true, kind: 'passed' });
+    expect(secondRes.body).toMatchObject({ success: true, kind: 'passed-with-warnings' });
     expect(readFileSync(counterPath, 'utf-8')).toBe('2');
 
     discardStage(getRoute, ws, stage.id);
@@ -3146,6 +3333,103 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
+  test('invalidates a signed Trial cache when the capability declaration changes', async () => {
+    const { ws, sourcePath } = makeWorkspace(true, undefined, false);
+    let watchCount = 0;
+    let declaration: TrialInteractionDeclaration = {
+      protocolVersion: 1,
+      interaction: 'external-event',
+      unattended: 'fixture',
+      filesystem: 'temp-only',
+      network: 'none',
+      secrets: 'none',
+      runtime: 'bounded',
+    };
+    ws.registry.registerPlugin('triggers', 'mutable-trial', {
+      name: 'mutable-trial',
+      get trial() {
+        return declaration;
+      },
+      watch() {
+        watchCount += 1;
+        return { fired: Promise.resolve(), dispose() {} };
+      },
+    });
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Mutable Trial Declaration',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              {
+                id: 'probe',
+                command: { argv: [process.execPath, '-e', 'process.exit(0)'] },
+                trigger: { type: 'mutable-trial' },
+              },
+            ],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
+    writePassingTrialPlan(entry.stagedPath, 'main.probe');
+
+    const runTrial = async () => {
+      const res = makeRes();
+      await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+        request(
+          ws,
+          { stageId: stage.id, relativePath: entry.relativePath, trialId: 'mutable_declaration' },
+          'chat-lock',
+        ),
+        res,
+      );
+      return res.body as {
+        success: boolean;
+        trialabilityReport: {
+          items: Array<{
+            type: string;
+            declaration: TrialInteractionDeclaration | null;
+          }>;
+        };
+      };
+    };
+
+    const first = await runTrial();
+    const cached = await runTrial();
+    expect(cached).toEqual(first);
+    expect(watchCount).toBe(1);
+
+    declaration = { ...declaration, filesystem: 'workspace-read' };
+    const afterDeclarationChange = await runTrial();
+
+    expect(afterDeclarationChange.success).toBe(true);
+    expect(watchCount).toBe(2);
+    expect(
+      afterDeclarationChange.trialabilityReport.items.find((item) => item.type === 'mutable-trial')
+        ?.declaration?.filesystem,
+    ).toBe('workspace-read');
+
+    discardStage(getRoute, ws, stage.id);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
   test('replays a completed trial response after workspace drift but rejects stale finalize', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();
@@ -3208,7 +3492,11 @@ describe('chat YAML staging routes', () => {
     };
 
     const first = await runTrial();
-    expect(first.body).toMatchObject({ success: true, kind: 'passed', ran: true });
+    expect(first.body).toMatchObject({
+      success: true,
+      kind: 'passed-with-warnings',
+      ran: true,
+    });
     expect(readFileSync(counterPath, 'utf-8')).toBe('1');
 
     writeHelper('helper-v2');
@@ -3288,7 +3576,11 @@ describe('chat YAML staging routes', () => {
       ),
       trialRes,
     );
-    expect(trialRes.body).toMatchObject({ success: true, kind: 'passed', ran: true });
+    expect(trialRes.body).toMatchObject({
+      success: true,
+      kind: 'passed-with-warnings',
+      ran: true,
+    });
 
     writeFileSync(helperInputPath, 'beta\n', 'utf-8');
     const finalizeRes = makeRes();
@@ -3368,7 +3660,11 @@ describe('chat YAML staging routes', () => {
       ),
       trialRes,
     );
-    expect(trialRes.body).toMatchObject({ success: true, kind: 'passed', ran: true });
+    expect(trialRes.body).toMatchObject({
+      success: true,
+      kind: 'passed-with-warnings',
+      ran: true,
+    });
 
     writeFileSync(externalInputPath, 'beta\n', 'utf-8');
     const finalizeRes = makeRes();
@@ -3395,7 +3691,103 @@ describe('chat YAML staging routes', () => {
     ws.layoutWatcher.stopWatching();
   });
 
-  test('never auto-approves manual gates during a chat trial run', async () => {
+  test('executes a selected manual dependency under an explicit Trial grant', async () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stage = startRes.body as {
+      id: string;
+      entries: Array<{ sourcePath: string | null; stagedPath: string; relativePath: string }>;
+    };
+    const entry = stage.entries.find((candidate) => candidate.sourcePath === sourcePath)!;
+    writeFileSync(
+      entry.stagedPath,
+      serializePipeline({
+        name: 'Selected Manual Dependency Trial Pipeline',
+        tracks: [
+          {
+            id: 'main',
+            name: 'Main',
+            tasks: [
+              {
+                id: 'gated',
+                command: { argv: [process.execPath, '-e', 'process.exit(0)'] },
+                trigger: { type: 'manual', message: 'Confirm the selected Trial task' },
+              },
+              {
+                id: 'verify',
+                command: { argv: [process.execPath, '-e', 'process.exit(0)'] },
+                depends_on: ['main.gated'],
+              },
+            ],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    compileStage(getRoute, ws, stage.id, entry.relativePath);
+    writeTrialPlan(entry.stagedPath, {
+      cases: [
+        {
+          id: 'selected-manual-dependency',
+          title: 'Selected manual dependency',
+          objective: 'Execute the manual dependency selected through the terminal target closure.',
+          runs: 1,
+          targetTaskIds: ['main.verify'],
+          fixtures: [],
+          expectations: [
+            { type: 'task-status', taskId: 'main.gated', status: 'success' },
+            { type: 'task-status', taskId: 'main.verify', status: 'success' },
+          ],
+        },
+      ],
+    });
+
+    const trialRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/trial-run')(
+      request(
+        ws,
+        { stageId: stage.id, relativePath: entry.relativePath, trialId: 'selected_manual_gate' },
+        'chat-lock',
+      ),
+      trialRes,
+    );
+
+    expect(trialRes.body).toMatchObject({
+      success: true,
+      kind: 'passed-with-warnings',
+      cases: [
+        {
+          id: 'selected-manual-dependency',
+          success: true,
+          tasks: expect.arrayContaining([
+            expect.objectContaining({ taskId: 'main.gated', status: 'success' }),
+            expect.objectContaining({ taskId: 'main.verify', status: 'success' }),
+          ]),
+        },
+      ],
+    });
+    expect(
+      (
+        trialRes.body as {
+          manualExecutionGrants: Array<{ taskId: string; approvalCount: number }>;
+        }
+      ).manualExecutionGrants,
+    ).toEqual([{ taskId: 'main.gated', approvalCount: 2 }]);
+    expect((trialRes.body as { summary: string }).summary).toContain(
+      'Selected manual tasks executed under explicit Trial grants: main.gated (2 approvals).',
+    );
+
+    discardStage(getRoute, ws, stage.id);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
+  test('keeps unselected manual gates blocked during a chat trial run', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();
     const startRes = makeRes();

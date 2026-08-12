@@ -468,6 +468,63 @@ describe('renderer diagnostics snapshot', () => {
             trial: {
               success: false,
               kind: 'plan-failed',
+              trialMode: 'sandbox-with-live-smoke',
+              trialabilityReport: {
+                protocolVersion: 1,
+                mode: 'sandbox-with-live-smoke',
+                runnable: false,
+                enforcement: {
+                  sandboxCases: {
+                    workspace: 'temporary-copy',
+                    stdin: 'closed',
+                    tty: 'none',
+                    secrets: 'synthetic',
+                    filesystem: 'host-unrestricted-outside-copy',
+                    network: 'host-unrestricted',
+                    process: 'host-unrestricted',
+                  },
+                  liveSmokeBaseline: {
+                    workspace: 'real-workspace',
+                    stdin: 'closed',
+                    tty: 'none',
+                    secrets: 'real',
+                    filesystem: 'host-unrestricted',
+                    network: 'host-unrestricted',
+                    process: 'host-unrestricted',
+                  },
+                  privateField: 'must not survive',
+                },
+                items: Array.from({ length: 70 }, (_, index) => ({
+                  component: 'driver',
+                  taskId: `main.task-${index}`,
+                  type: `driver-${index}`,
+                  provider: `provider-${index}`,
+                  declaration: {
+                    protocolVersion: 1,
+                    interaction: 'credential',
+                    unattended: 'host-adapter',
+                    filesystem: 'external-write',
+                    network: 'write',
+                    secrets: 'real-required',
+                    runtime: 'bounded',
+                    privateField: 'must not survive',
+                  },
+                  disposition: 'live-smoke-only',
+                  privatePayload: 'must not survive',
+                })),
+                blockers: Array.from(
+                  { length: 35 },
+                  (_, index) => `Blocker ${index} token=private-blocker-${index}`,
+                ),
+                warnings: Array.from(
+                  { length: 35 },
+                  (_, index) => `Warning ${index} token=private-warning-${index}`,
+                ),
+              },
+              manualExecutionGrants: Array.from({ length: 35 }, (_, index) => ({
+                taskId: `main.manual-${index}`,
+                approvalCount: index + 1,
+              })),
               planTelemetry: {
                 version: 2,
                 yamlHash: 'private-yaml-hash',
@@ -507,6 +564,8 @@ describe('renderer diagnostics snapshot', () => {
     const summary = snapshot.chat.sessionYamlResultSummary as Record<string, unknown>;
     const trial = summary.trial as Record<string, unknown>;
     const telemetry = trial.planTelemetry as Record<string, unknown>;
+    const manualExecutionGrants = trial.manualExecutionGrants as Record<string, unknown>;
+    const trialabilityReport = trial.trialabilityReport as Record<string, unknown>;
     expect(telemetry).toMatchObject({
       version: 2,
       relativeYamlPath: 'fact-checker/fact-checker.yaml',
@@ -520,6 +579,48 @@ describe('renderer diagnostics snapshot', () => {
     });
     expect(telemetry.attemptIds).toHaveLength(50);
     expect(telemetry.rejections).toHaveLength(50);
+    expect(manualExecutionGrants).toMatchObject({
+      totalCount: 35,
+      returnedCount: 32,
+      omittedCount: 3,
+    });
+    expect(manualExecutionGrants.items).toHaveLength(32);
+    expect(trial.trialMode).toBe('sandbox-with-live-smoke');
+    expect(trialabilityReport).toMatchObject({
+      protocolVersion: 1,
+      mode: 'sandbox-with-live-smoke',
+      runnable: false,
+      containment: {
+        sandboxCases: { level: 'application', osSandbox: false },
+        liveSmokeBaseline: { level: 'host-authority', osSandbox: false },
+      },
+      enforcement: {
+        sandboxCases: {
+          workspace: 'temporary-copy',
+          stdin: 'closed',
+          tty: 'none',
+          secrets: 'synthetic',
+          filesystem: 'host-unrestricted-outside-copy',
+          network: 'host-unrestricted',
+          process: 'host-unrestricted',
+        },
+        liveSmokeBaseline: {
+          workspace: 'real-workspace',
+          stdin: 'closed',
+          tty: 'none',
+          secrets: 'real',
+          filesystem: 'host-unrestricted',
+          network: 'host-unrestricted',
+          process: 'host-unrestricted',
+        },
+      },
+      items: { totalCount: 70, returnedCount: 64, omittedCount: 6 },
+      blockers: { totalCount: 35, returnedCount: 32, omittedCount: 3 },
+      warnings: { totalCount: 35, returnedCount: 32, omittedCount: 3 },
+    });
+    expect((trialabilityReport.items as Record<string, unknown>).items).toHaveLength(64);
+    expect((trialabilityReport.blockers as Record<string, unknown>).items).toHaveLength(32);
+    expect((trialabilityReport.warnings as Record<string, unknown>).items).toHaveLength(32);
     expect(JSON.stringify(telemetry.rejections)).toContain('missing required status');
     expect(trial.plan).toEqual({
       goalCount: 1,
@@ -534,6 +635,9 @@ describe('renderer diagnostics snapshot', () => {
     expect(serializedSummary).not.toContain('private telemetry payload');
     expect(serializedSummary).not.toContain('private rejection payload');
     expect(serializedSummary).not.toContain('private-54');
+    expect(serializedSummary).not.toContain('private-blocker-34');
+    expect(serializedSummary).not.toContain('private-warning-34');
+    expect(serializedSummary).not.toContain('must not survive');
   });
 });
 

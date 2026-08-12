@@ -11,6 +11,15 @@ import { optionalPluginString } from '../plugin-config';
 
 export const ManualTrigger: TriggerPlugin = {
   name: 'manual',
+  trial: {
+    protocolVersion: 1,
+    interaction: 'approval',
+    unattended: 'host-adapter',
+    filesystem: 'temp-only',
+    network: 'none',
+    secrets: 'none',
+    runtime: 'bounded',
+  },
   schema: {
     description: 'Pause the task until a user approves via the approval gateway.',
     fields: {

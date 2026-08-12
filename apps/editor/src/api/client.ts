@@ -40,6 +40,7 @@ import type {
   TaskOutputBinding as SdkTaskOutputBinding,
   TaskInputBindings as SdkTaskInputBindings,
   TaskOutputBindings as SdkTaskOutputBindings,
+  TrialInteractionDeclaration as SdkTrialInteractionDeclaration,
 } from '@tagma/types';
 import { participatesInWorkspaceRevisionSequence } from '../../shared/revision-routes.js';
 import type {
@@ -327,8 +328,65 @@ export interface ChatPipelineTrialPlanSummary {
   }>;
 }
 
+export interface ChatPipelineTrialManualExecutionGrant {
+  taskId: string;
+  approvalCount: number;
+}
+
+export type ChatPipelineTrialMode = 'sandbox' | 'sandbox-with-live-smoke';
+
+export type ChatPipelineTrialabilityComponent =
+  'hook' | 'command' | 'driver' | 'trigger' | 'middleware' | 'completion';
+
+export type ChatPipelineTrialabilityDisposition =
+  | 'sandbox-ready'
+  | 'sandbox-ready-with-host-risk'
+  | 'live-smoke-only'
+  | 'live-smoke-ready'
+  | 'human-required'
+  | 'unsupported-in-unattended-trial';
+
+export interface ChatPipelineTrialabilityItem {
+  component: ChatPipelineTrialabilityComponent;
+  taskId?: string;
+  type: string;
+  provider: string;
+  declaration: Mutable<SdkTrialInteractionDeclaration> | null;
+  disposition: ChatPipelineTrialabilityDisposition;
+  occurrence?: number;
+}
+
+export interface ChatPipelineTrialabilityReport {
+  protocolVersion: 1;
+  mode: ChatPipelineTrialMode;
+  runnable: boolean;
+  enforcement: {
+    sandboxCases: {
+      workspace: 'temporary-copy';
+      stdin: 'closed';
+      tty: 'none';
+      secrets: 'synthetic';
+      filesystem: 'host-unrestricted-outside-copy';
+      network: 'host-unrestricted';
+      process: 'host-unrestricted';
+    };
+    liveSmokeBaseline: {
+      workspace: 'real-workspace';
+      stdin: 'closed';
+      tty: 'none';
+      secrets: 'real';
+      filesystem: 'host-unrestricted';
+      network: 'host-unrestricted';
+      process: 'host-unrestricted';
+    } | null;
+  };
+  items: ChatPipelineTrialabilityItem[];
+  blockers: string[];
+  warnings: string[];
+}
+
 export interface ChatPipelineTrialRunResult {
-  version: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+  version: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
   success: boolean;
   kind: ChatPipelineTrialRunKind;
   ran: boolean;
@@ -342,7 +400,10 @@ export interface ChatPipelineTrialRunResult {
   omittedTaskStatusCounts?: Record<string, number>;
   repairAuthorization?: 'pipeline-change-allowed' | 'diagnostic-only';
   prerequisiteState?: ChatPipelineTrialPrerequisiteState;
-  verificationMode?: 'real-baseline-and-isolated-cases' | 'isolated-fixtures-only';
+  trialMode?: ChatPipelineTrialMode;
+  trialabilityReport?: ChatPipelineTrialabilityReport;
+  verificationMode?: 'sandbox-cases-only' | 'sandbox-cases-with-live-smoke';
+  manualExecutionGrants?: ChatPipelineTrialManualExecutionGrant[];
   planTelemetry?: {
     version: 2;
     yamlHash: string;
@@ -1012,10 +1073,14 @@ export interface EditorSettings {
   opencodeChatModel: OpenCodeChatModelSelection | null;
   /** Last OpenCode chat reasoning effort selection for this workspace. */
   opencodeChatReasoningEffort: OpenCodeChatReasoningEffort;
-  /** Explicitly opt in to real-workspace trial execution. Default false. */
+  /** Enables the application-contained Sandbox Trial. Default false. */
   opencodeChatTrialRunEnabled: boolean;
-  /** Server-stamped acknowledgement version for the real-workspace execution policy. */
+  /** Server-stamped acknowledgement version for the Sandbox Trial policy. */
   opencodeChatTrialRunConsentVersion: number;
+  /** Adds a real-workspace baseline while Sandbox Trial remains consented. Default false. */
+  opencodeChatTrialLiveSmokeTestEnabled: boolean;
+  /** Server-stamped acknowledgement version for the Live Smoke Test policy. */
+  opencodeChatTrialLiveSmokeTestConsentVersion: number;
   /** Per-revision Trial Plan tool budget. Default 2; server clamps to [1, 3]. */
   opencodeChatTrialPlanMaxAttempts: number;
   /** Shared compile/trial repair budget. Default 25; 0 disables; server clamps to [0, 50]. */
