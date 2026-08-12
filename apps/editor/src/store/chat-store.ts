@@ -5151,7 +5151,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const workspaceKey = turn.yamlSnapshotBeforeSend.workDir;
     let restored = false;
     set((prev) => {
-      if (prev.finishedTurnQueue.some((candidate) => candidate.id === turn.id)) return {};
+      if (prev.finishedTurnQueue.some((candidate) => candidate.id === turn.id)) {
+        claimedFinishedTurnReconciliations.delete(turn.id);
+        return {};
+      }
       const restoredTurn = restoredFinishedTurnReconcileFailure(turn, message);
       restored = true;
       claimedFinishedTurnReconciliations.delete(turn.id);

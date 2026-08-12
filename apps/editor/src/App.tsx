@@ -667,6 +667,7 @@ export function App() {
           }
         }
         chat.clearPostChatYamlAction(claimedTurn.sessionId);
+        chat.acknowledgeFinishedTurn(claimedTurn.id);
       } finally {
         chat.completeChatYamlLifecycle(claimedTurn.id);
       }

@@ -120,16 +120,20 @@ test('chat compile watcher silently detaches folders when the .tagma directory d
   };
   try {
     rmSync(tagmaDir, { recursive: true, force: true });
+    await new Promise((resolve) => setTimeout(resolve, 100));
     startChatCompileWatcher(tagmaDir, undefined, () => {}, { compileExistingYaml: false });
     expect(warnings).toEqual([]);
 
+    mkdirSync(tagmaDir, { recursive: true });
     const compiledPaths: string[] = [];
-    mkdirSync(pipelineFolder, { recursive: true });
-    const yamlPath = join(pipelineFolder, 'watched.yaml');
-    writeFileSync(yamlPath, 'pipeline:\n  name: Watched\n  tracks: []\n', 'utf-8');
     startChatCompileWatcher(tagmaDir, undefined, (path) => {
       compiledPaths.push(path);
     });
+
+    const recreatedPipelineFolder = join(tagmaDir, 'created-after-restart');
+    mkdirSync(recreatedPipelineFolder, { recursive: true });
+    const yamlPath = join(recreatedPipelineFolder, 'created-after-restart.yaml');
+    writeFileSync(yamlPath, 'pipeline:\n  name: Watched\n  tracks: []\n', 'utf-8');
     await waitFor(() => compiledPaths.includes(yamlPath), 're-attached folder watcher compile');
 
     warnings.length = 0;

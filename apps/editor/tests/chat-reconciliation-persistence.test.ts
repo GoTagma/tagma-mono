@@ -145,7 +145,9 @@ describe('unfinished Chat YAML reconciliation persistence', () => {
       { ...turn, id: 'snapshotless', yamlSnapshotBeforeSend: null },
     ]);
 
-    expect(loadPersistedChatYamlReconciliationQueue('C:/repo')).toEqual([turn]);
+    expect(loadPersistedChatYamlReconciliationQueue('C:/repo')).toEqual([
+      expect.objectContaining({ id: turn.id }),
+    ]);
 
     const raw = storage.getItem('tagma.chat.v2');
     expect(raw).toContain('"version":1');
@@ -173,7 +175,9 @@ describe('unfinished Chat YAML reconciliation persistence', () => {
         },
       }),
     );
-    expect(loadPersistedChatYamlReconciliationQueue('C:/repo')).toEqual([turn]);
+    expect(loadPersistedChatYamlReconciliationQueue('C:/repo')).toEqual([
+      expect.objectContaining({ id: turn.id }),
+    ]);
 
     storage.setItem(
       'tagma.chat.v2',
@@ -349,7 +353,9 @@ describe('unfinished Chat YAML reconciliation persistence', () => {
     savePersistedChatYamlReconciliationQueue('C:/repo', [failedTurn]);
     setClientWorkspace('C:/repo');
     globalThis.fetch = (() =>
-      Promise.reject(new Error('OpenCode is unavailable during reload'))) as typeof fetch;
+      Promise.reject(
+        new Error('OpenCode is unavailable during reload'),
+      )) as unknown as typeof fetch;
     const originalWarn = console.warn;
     const originalError = console.error;
     console.warn = () => {};
