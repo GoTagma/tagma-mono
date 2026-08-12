@@ -143,6 +143,7 @@ export interface ChatYamlStageEntry extends WorkspaceYamlEntry {
   stagedPath: string;
   relativePath: string;
   sourcePath: string | null;
+  sourceChangedOnDisk?: boolean;
   requirementsHash: string | null;
   trialPlanHash?: string | null;
 }
@@ -456,6 +457,7 @@ export interface ChatPipelineTrialProgress {
 export type ChatYamlStageConflict =
   | 'local-branch-changed'
   | 'source-changed-on-disk'
+  | 'source-deleted'
   | 'path-moved'
   | 'compile-failed'
   | 'trial-run-failed'
@@ -465,6 +467,12 @@ export interface ChatYamlStageFinalizeInput {
   stageId: string;
   relativePath: string;
   localBranch?: {
+    sourcePath: string;
+    yaml: string;
+    layout?: EditorLayout | null;
+    changed: boolean;
+  } | null;
+  activeLocalBranch?: {
     sourcePath: string;
     yaml: string;
     layout?: EditorLayout | null;

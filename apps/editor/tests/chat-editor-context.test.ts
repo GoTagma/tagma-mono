@@ -181,7 +181,7 @@ describe('chat editor context', () => {
     expect(context).not.toContain('ignored.yaml');
   });
 
-  test('replaces live YAML targets with the isolated chat staging branch', () => {
+  test('uses absolute staged targets so a delegated child cwd cannot redirect them to live YAML', () => {
     usePipelineStore.setState({
       workDir: 'C:/repo',
       yamlPath: 'C:/repo/.tagma/build/build.yaml',
@@ -204,10 +204,43 @@ describe('chat editor context', () => {
     expect(context).toContain(
       '<agent-root>C:/repo/.tagma/.chat-staging/00000000-0000-4000-8000-000000000001/agent-workspace/.tagma</agent-root>',
     );
-    expect(context).toContain('<current-file>build/build.yaml</current-file>');
-    expect(context).toContain('<folder>build</folder>');
-    expect(context).toContain('<yaml>build/build.yaml</yaml>');
+    expect(context).toContain(`<current-file>${stagedYaml}</current-file>`);
+    expect(context).toContain(`<folder>${agentRoot}/build</folder>`);
+    expect(context).toContain(`<yaml>${stagedYaml}</yaml>`);
+    expect(context).toContain(`<manifest>${agentRoot}/build/build.manifest.json</manifest>`);
+    expect(context).not.toContain('<current-file>build/build.yaml</current-file>');
     expect(context).not.toContain('<current-file>.tagma/build/build.yaml</current-file>');
+  });
+
+  test('escapes workspace and staged target paths before embedding them in editor context', () => {
+    const workDir = 'C:/repo&<team>';
+    const agentRoot = `${workDir}/.tagma/.chat-staging/stage&<1>/agent-workspace/.tagma`;
+    const stagedYaml = `${agentRoot}/build&<one>/build&<one>.yaml`;
+    usePipelineStore.setState({
+      workDir,
+      yamlPath: `${workDir}/.tagma/build/build.yaml`,
+      registry: { drivers: [], triggers: [], completions: [], middlewares: [] },
+    } as never);
+
+    const context = buildEditorContext({
+      currentYamlPath: stagedYaml,
+      workspaceYamlFilePaths: [stagedYaml],
+      chatYamlStage: {
+        id: 'stage&<1>',
+        agentTagmaDir: agentRoot,
+      },
+    });
+
+    expect(context).toContain('<workspace>C:/repo&amp;&lt;team&gt;</workspace>');
+    expect(context).toContain('stage&amp;&lt;1&gt;');
+    expect(context).toContain(
+      '<agent-root>C:/repo&amp;&lt;team&gt;/.tagma/.chat-staging/stage&amp;&lt;1&gt;/agent-workspace/.tagma</agent-root>',
+    );
+    expect(context).toContain(
+      '<current-file>C:/repo&amp;&lt;team&gt;/.tagma/.chat-staging/stage&amp;&lt;1&gt;/agent-workspace/.tagma/build&amp;&lt;one&gt;/build&amp;&lt;one&gt;.yaml</current-file>',
+    );
+    expect(context).not.toContain(workDir);
+    expect(context).not.toContain(stagedYaml);
   });
 
   test('includes the previous host YAML reconcile result and escapes its values', () => {

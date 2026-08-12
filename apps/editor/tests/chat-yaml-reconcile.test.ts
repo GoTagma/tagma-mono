@@ -6,12 +6,15 @@ import {
   detectSnapshotlessChatYamlTarget,
   maxTrialPlanPromptsForLogicalTurn,
   shouldAdoptFinalizedChatStateOnCurrentCanvas,
+  shouldAutoSyncFinalizedChatBindings,
   shouldAutoRepairCompileResult,
   shouldAutoRepairTrialResult,
   shouldReverifyChatPipelineAfterRepair,
   shouldQueueTrialPlanPrompt,
   chatPipelineVerificationFailureDiagnostic,
   chatPipelineVerificationSucceeded,
+  applicableFinalizedChatTrialResult,
+  chatYamlFinalizeForceForkReason,
   shouldTrialRunChatPipeline,
   type ChatPipelineRepairArtifactState,
   type ChatYamlSnapshot,
@@ -147,6 +150,44 @@ describe('detectChatStagedYamlTarget', () => {
     expect(detectChatStagedYamlTarget(stagedSnapshot(), [stagedBefore])).toBeNull();
   });
 
+  test('reconciles an unchanged active stage when the live source drifted', () => {
+    const liveDrift = { ...stagedBefore, sourceChangedOnDisk: true };
+
+    expect(detectChatStagedYamlTarget(stagedSnapshot(), [liveDrift])).toEqual({
+      kind: 'refresh-current',
+      path: stagedBefore.stagedPath,
+      name: stagedBefore.name,
+      pipelineName: stagedBefore.pipelineName,
+      relativePath: stagedBefore.relativePath,
+      sourcePath: stagedBefore.sourcePath,
+      reconcileLiveSourceDrift: true,
+    });
+  });
+
+  test('keeps active live-source reconciliation attached to a different created target', () => {
+    const liveDrift = { ...stagedBefore, sourceChangedOnDisk: true };
+    const created: ChatYamlStageSnapshotEntry = {
+      ...stagedBefore,
+      name: 'created.yaml',
+      stagedPath: 'C:/w/.tagma/.chat-staging/turn/agent-workspace/.tagma/created/created.yaml',
+      relativePath: 'created/created.yaml',
+      sourcePath: null,
+      pipelineName: 'Created',
+      contentHash: 'created',
+      sourceChangedOnDisk: false,
+    };
+
+    expect(detectChatStagedYamlTarget(stagedSnapshot(), [liveDrift, created])).toEqual({
+      kind: 'open-created',
+      path: created.stagedPath,
+      name: created.name,
+      pipelineName: created.pipelineName,
+      relativePath: created.relativePath,
+      sourcePath: null,
+      reconcileActiveSourceDrift: true,
+    });
+  });
+
   test('detects a requirements-only change on the isolated branch', () => {
     const changed = { ...stagedBefore, requirementsHash: 'requirements-changed' };
     expect(detectChatStagedYamlTarget(stagedSnapshot(), [changed])?.relativePath).toBe(
@@ -160,6 +201,11 @@ describe('shouldAutoRepairCompileResult', () => {
     expect(shouldAutoRepairCompileResult({ success: false }, 0, 2)).toBe(true);
     expect(shouldAutoRepairCompileResult({ success: false }, 2, 2)).toBe(false);
     expect(shouldAutoRepairCompileResult({ success: true }, 0, 2)).toBe(false);
+    expect(
+      shouldAutoRepairCompileResult({ success: false }, 0, 2, {
+        reconcileLiveSourceDrift: true,
+      }),
+    ).toBe(false);
   });
 
   test('does not spend agent repair attempts on host-only trial failures', () => {
@@ -315,6 +361,27 @@ describe('optional OpenCode Chat pipeline trial run', () => {
     expect(shouldTrialRunChatPipeline({ compileSuccess: true, trialRunEnabled: false })).toBe(
       false,
     );
+    expect(
+      shouldTrialRunChatPipeline({
+        compileSuccess: true,
+        trialRunEnabled: true,
+        reconcileLiveSourceDrift: true,
+      }),
+    ).toBe(false);
+  });
+
+  test('keeps Trial evidence only when finalize accepted it for the resulting branch', () => {
+    const passedTrial = { success: true, kind: 'executed' };
+    const failedTrial = { success: false, kind: 'failed' };
+    const blockedTrial = { success: false, kind: 'prerequisite-unavailable' };
+
+    expect(applicableFinalizedChatTrialResult('verified', passedTrial)).toBe(passedTrial);
+    expect(applicableFinalizedChatTrialResult('prerequisite-unavailable', blockedTrial)).toBe(
+      blockedTrial,
+    );
+    expect(applicableFinalizedChatTrialResult('not-verified', passedTrial)).toBeNull();
+    expect(applicableFinalizedChatTrialResult('not-verified', failedTrial)).toBe(failedTrial);
+    expect(applicableFinalizedChatTrialResult('not-required', passedTrial)).toBeNull();
   });
 
   test('requires trial success when enabled and accepts compile success when disabled', () => {
@@ -407,6 +474,64 @@ describe('shouldAdoptFinalizedChatStateOnCurrentCanvas', () => {
   });
 });
 
+describe('shouldAutoSyncFinalizedChatBindings', () => {
+  test('syncs only the adopted pipeline whose verification was accepted', () => {
+    expect(
+      shouldAutoSyncFinalizedChatBindings({
+        currentPath: before.path,
+        finalEntryPath: before.path,
+        finalizedOutcome: 'adopted',
+        verificationAccepted: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldAutoSyncFinalizedChatBindings({
+        currentPath: 'C:/w/.tagma/active/active.yaml',
+        finalEntryPath: 'C:/w/.tagma/other/other.yaml',
+        finalizedOutcome: 'adopted',
+        verificationAccepted: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldAutoSyncFinalizedChatBindings({
+        currentPath: before.path,
+        finalEntryPath: before.path,
+        finalizedOutcome: 'adopted',
+        verificationAccepted: false,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe('chatYamlFinalizeForceForkReason', () => {
+  test('lets live-only drift reach server reconciliation even after the renderer switched paths', () => {
+    expect(
+      chatYamlFinalizeForceForkReason({
+        reconcileLiveSourceDrift: true,
+        compileSuccess: true,
+        pathMoved: true,
+      }),
+    ).toBeUndefined();
+  });
+
+  test('keeps compile and path conflicts for staged agent edits', () => {
+    expect(
+      chatYamlFinalizeForceForkReason({
+        reconcileLiveSourceDrift: false,
+        compileSuccess: false,
+        pathMoved: false,
+      }),
+    ).toBe('compile-failed');
+    expect(
+      chatYamlFinalizeForceForkReason({
+        reconcileLiveSourceDrift: false,
+        compileSuccess: true,
+        pathMoved: true,
+      }),
+    ).toBe('path-moved');
+  });
+});
+
 describe('staged finalize adoption wiring', () => {
   test('has no renderer fallback to the obsolete chat result copy route', () => {
     const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
@@ -448,6 +573,47 @@ describe('staged finalize adoption wiring', () => {
     expect(appSource).toContain('currentLocalEditRevision: getLocalPipelineEditRevision(),');
     expect(appSource).toMatch(
       /const finalStateBelongsOnCanvas = shouldAdoptFinalizedChatStateOnCurrentCanvas\([\s\S]*current\.adoptDiskState\(finalized\.state, 'chat'\);/,
+    );
+  });
+
+  test('auto-syncs adopted results only after accepted verification', () => {
+    const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
+
+    expect(appSource).toContain(
+      'const verificationAccepted = verificationSucceeded || verificationBlocked;',
+    );
+    expect(appSource).toContain('shouldAutoSyncFinalizedChatBindings({');
+    expect(appSource).toContain('currentPath: usePipelineStore.getState().yamlPath,');
+    expect(appSource).toContain('finalEntryPath: finalEntry.path,');
+    expect(appSource).toContain('verificationAccepted,');
+  });
+
+  test('wires live-only drift through finalize without repairing or trial-running the base copy', () => {
+    const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
+
+    expect(appSource).toContain(
+      'const reconcileLiveSourceDriftOnly = stagedTarget.reconcileLiveSourceDrift === true;',
+    );
+    expect(appSource).toContain('reconcileLiveSourceDrift: reconcileLiveSourceDriftOnly,');
+    expect(appSource).toContain('allowInvalid: reconcileLiveSourceDriftOnly || !compile.success,');
+    expect(appSource).toContain('const applicableTrialRun = applicableFinalizedChatTrialResult(');
+    expect(appSource).not.toContain('...(trialRun ? { trial: trialRun } : {})');
+  });
+
+  test('always captures the active renderer branch when a different staged target wins', () => {
+    const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
+
+    expect(appSource).toContain(
+      'const reconcileDifferentActiveSourceDrift =\n            stagedTarget.reconcileActiveSourceDrift === true;',
+    );
+    expect(appSource).toContain(
+      'const targetsDifferentPipeline =\n            reconcileDifferentActiveSourceDrift ||',
+    );
+    expect(appSource).toContain(
+      'const activeLocalBranch = targetsDifferentPipeline ? capturedActiveLocalBranch : null;',
+    );
+    expect(appSource).toMatch(
+      /relativePath: stagedTarget\.relativePath,[\s\S]*localBranch,[\s\S]*activeLocalBranch,/,
     );
   });
 });

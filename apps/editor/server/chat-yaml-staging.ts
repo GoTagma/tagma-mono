@@ -199,6 +199,7 @@ export function cancelChatYamlStageFinalize(
 type ChatYamlStageConflict =
   | 'local-branch-changed'
   | 'source-changed-on-disk'
+  | 'source-deleted'
   | 'path-moved'
   | 'compile-failed'
   | 'trial-run-failed'
@@ -235,6 +236,7 @@ export interface ChatYamlStageEntry {
   stagedPath: string;
   relativePath: string;
   sourcePath: string | null;
+  sourceChangedOnDisk: boolean;
   pipelineName: string | null;
   contentHash: string;
   layoutHash: string | null;
@@ -270,6 +272,7 @@ export interface ChatYamlStageFinalizeInput {
   stageId: string;
   relativePath: string;
   localBranch?: ChatYamlStageLocalBranch | null;
+  activeLocalBranch?: ChatYamlStageLocalBranch | null;
   forceForkReason?: Extract<ChatYamlStageConflict, 'path-moved' | 'compile-failed'>;
   trialId?: string;
   allowInvalid?: boolean;
@@ -350,13 +353,19 @@ function isOptionalSha1(value: unknown): value is string | null {
   return value === null || isSha1(value);
 }
 
+function isLayoutArtifactHash(value: unknown): value is string | null {
+  return (
+    isOptionalSha1(value) || (typeof value === 'string' && /^invalid:[a-f0-9]{40}$/.test(value))
+  );
+}
+
 function isBaseEntry(value: unknown): value is ChatYamlStageBaseEntry {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const entry = value as Partial<ChatYamlStageBaseEntry>;
   return (
     typeof entry.relativePath === 'string' &&
     isSha1(entry.contentHash) &&
-    isOptionalSha1(entry.layoutHash) &&
+    isLayoutArtifactHash(entry.layoutHash) &&
     isOptionalSha1(entry.requirementsHash) &&
     isSha256(entry.supportHash)
   );
@@ -368,7 +377,12 @@ function optionalArtifactHash(path: string, label: string): string | null {
 
 function layoutArtifactHash(path: string, label: string): string | null {
   if (!existsSync(path)) return null;
-  return semanticLayoutHash(JSON.parse(assertRegularTextFile(path, label)));
+  const content = assertRegularTextFile(path, label);
+  try {
+    return semanticLayoutHash(JSON.parse(content));
+  } catch {
+    return 'invalid:' + sha1(content);
+  }
 }
 
 function pipelineArtifactHashes(yamlPath: string): ChatYamlStageArtifactHashes | null {
@@ -890,12 +904,19 @@ function describeStageEntry(
     samePipelineRelativePath(candidate, relativePath),
   );
   const sourcePath = isSource ? resolveRelativeInside(tagmaDirOf(ws.workDir), relativePath) : null;
+  const isActiveSource =
+    sourcePath !== null &&
+    metadata.activeRelativePath !== null &&
+    samePipelineRelativePath(relativePath, metadata.activeRelativePath);
   return {
     name: basename(stagedPath),
     path: stagedPath,
     stagedPath,
     relativePath,
     sourcePath,
+    sourceChangedOnDisk: isActiveSource
+      ? !sourceMatchesBase(metadata, sourcePath, relativePath)
+      : false,
     pipelineName: pipelineNameFromYaml(content),
     contentHash: sha1(content),
     layoutHash,
@@ -1118,25 +1139,62 @@ function semanticLayoutHash(value: unknown): string | null {
   return canonical === 'null' ? null : sha1(canonical);
 }
 
-function localBranchDiffersFromBase(
+function layoutTopologyHash(yamlPath: string): string | null {
+  if (!existsSync(yamlPath)) return null;
+  try {
+    const config = withDefaultTrackColors(
+      parseYaml(assertRegularTextFile(yamlPath, 'pipeline YAML')),
+    );
+    const topology = config.tracks
+      .map((track) => ({
+        trackId: track.id,
+        taskIds: track.tasks.map((task) => task.id).sort(),
+      }))
+      .sort((left, right) => left.trackId.localeCompare(right.trackId));
+    return sha1(JSON.stringify(topology));
+  } catch {
+    return null;
+  }
+}
+
+function hasReadableLayoutArtifact(yamlPath: string): boolean {
+  const path = pipelineLayoutPath(yamlPath);
+  if (!existsSync(path)) return true;
+  try {
+    const value = JSON.parse(assertRegularTextFile(path, 'pipeline layout'));
+    return !!value && typeof value === 'object' && !Array.isArray(value);
+  } catch {
+    return false;
+  }
+}
+
+function localBranchChangesFromBase(
   paths: StagePaths,
   metadata: ChatYamlStageMetadata,
   relativePath: string,
   localBranch: ChatYamlStageLocalBranch,
-): boolean {
+): { yaml: boolean; layout: boolean } {
   const baseYamlPath = resolveRelativeInside(paths.baseTagmaDir, relativePath);
   const expectedBase = baseEntryFor(metadata, relativePath);
   if (!expectedBase || !sameArtifactHashes(pipelineArtifactHashes(baseYamlPath), expectedBase)) {
     throw new Error('Chat YAML stage base snapshot is invalid.');
   }
   const baseYaml = assertRegularTextFile(baseYamlPath, 'base YAML');
-  if (canonicalPipeline(localBranch.yaml) !== canonicalPipeline(baseYaml)) return true;
-  if (localBranch.layout === undefined) return false;
+  const yamlChanged = canonicalPipeline(localBranch.yaml) !== canonicalPipeline(baseYaml);
+  if (localBranch.layout === undefined) return { yaml: yamlChanged, layout: false };
   const baseLayoutPath = pipelineLayoutPath(baseYamlPath);
-  const baseLayout = existsSync(baseLayoutPath)
-    ? JSON.parse(assertRegularTextFile(baseLayoutPath, 'base layout'))
-    : null;
-  return canonicalLayout(localBranch.layout) !== canonicalLayout(baseLayout);
+  let baseLayout: unknown = null;
+  if (existsSync(baseLayoutPath)) {
+    try {
+      baseLayout = JSON.parse(assertRegularTextFile(baseLayoutPath, 'base layout'));
+    } catch {
+      return { yaml: yamlChanged, layout: true };
+    }
+  }
+  return {
+    yaml: yamlChanged,
+    layout: canonicalLayout(localBranch.layout) !== canonicalLayout(baseLayout),
+  };
 }
 
 function stageTargetChanged(
@@ -1200,14 +1258,23 @@ function writeStagedArtifactsToDestination(
   ws: WorkspaceState,
   stagedYamlPath: string,
   destinationYamlPath: string,
-  options: { pipelineName?: string; sourceIdentityPath?: string } = {},
+  options: {
+    pipelineName?: string;
+    sourceIdentityPath?: string;
+    discardUnreadableLayout?: boolean;
+  } = {},
 ): void {
   const stagedYaml = assertRegularTextFile(stagedYamlPath, 'staged YAML');
   const stagedConfig = withDefaultTrackColors(parseYaml(stagedYaml));
   const stagedLayoutPath = pipelineLayoutPath(stagedYamlPath);
-  const stagedLayout = normalizeLayoutArtifactContent(
-    existsSync(stagedLayoutPath) ? assertRegularTextFile(stagedLayoutPath, 'staged layout') : null,
-  );
+  const stagedLayout =
+    options.discardUnreadableLayout && !hasReadableLayoutArtifact(stagedYamlPath)
+      ? null
+      : normalizeLayoutArtifactContent(
+          existsSync(stagedLayoutPath)
+            ? assertRegularTextFile(stagedLayoutPath, 'staged layout')
+            : null,
+        );
   const stagedRequirementsPath = pipelineRequirementsPath(stagedYamlPath);
   const stagedRequirements = existsSync(stagedRequirementsPath)
     ? assertRegularTextFile(stagedRequirementsPath, 'staged requirements')
@@ -1319,12 +1386,38 @@ function withFinalizeMutationTransaction<T>(
         rollbackError ??= restoreErr;
       }
     }
-    ws.config = initialConfig;
-    ws.layout = initialLayout;
-    ws.yamlVersion = initialYamlVersion;
     ws.stateRevision = initialRevision;
     if (ws.yamlPath && existsSync(ws.yamlPath)) {
-      beginWatching(ws, ws.yamlPath, assertRegularTextFile(ws.yamlPath, 'rolled-back YAML'));
+      try {
+        const currentContent = assertRegularTextFile(ws.yamlPath, 'rolled-back YAML');
+        const currentLayoutPath = pipelineLayoutPath(ws.yamlPath);
+        const currentLayout = existsSync(currentLayoutPath)
+          ? JSON.parse(assertRegularTextFile(currentLayoutPath, 'rolled-back layout'))
+          : null;
+        const matchesInitialMemory =
+          canonicalPipeline(currentContent) ===
+            canonicalPipeline(serializePipeline(initialConfig)) &&
+          canonicalLayout(currentLayout) === canonicalLayout(initialLayout);
+        if (matchesInitialMemory) {
+          ws.config = initialConfig;
+          ws.layout = initialLayout;
+          beginWatching(ws, ws.yamlPath, currentContent);
+        } else {
+          refreshCurrentWorkspaceState(ws, ws.yamlPath);
+        }
+      } catch {
+        ws.config = initialConfig;
+        ws.layout = initialLayout;
+        try {
+          beginWatching(ws, ws.yamlPath, assertRegularTextFile(ws.yamlPath, 'rolled-back YAML'));
+        } catch {
+          ws.yamlVersion = initialYamlVersion;
+        }
+      }
+    } else {
+      ws.config = initialConfig;
+      ws.layout = initialLayout;
+      ws.yamlVersion = ws.yamlPath ? getFileVersion(ws.yamlPath) : initialYamlVersion;
     }
     if (rollbackError) {
       console.error('[chat-yaml-staging] finalize rollback was incomplete', rollbackError);
@@ -1350,6 +1443,72 @@ function copyStagedAsNumberedPipeline(
       sourceIdentityPath,
     });
     return target.yamlPath;
+  } catch (err) {
+    rmSync(dirname(target.yamlPath), { recursive: true, force: true });
+    throw err;
+  }
+}
+
+function copyPreservedPipelineAsNumbered(
+  ws: WorkspaceState,
+  sourceYamlPath: string,
+  sourceIdentityPath: string,
+  sourceCompile: ReturnType<typeof runCompileAndWriteLog>,
+  beforeWrite?: (destinationYamlPath: string) => void,
+): { path: string; compile: ReturnType<typeof runCompileAndWriteLog> } {
+  if (sourceCompile.success && hasReadableLayoutArtifact(sourceYamlPath)) {
+    const path = copyStagedAsNumberedPipeline(ws, sourceYamlPath, sourceIdentityPath, beforeWrite);
+    return { path, compile: runCompileAndWriteLog(path, ws.registry) };
+  }
+
+  const target = nextPipelineCopyTarget(ws.workDir, sourceIdentityPath);
+  beforeWrite?.(target.yamlPath);
+  try {
+    mkdirSync(dirname(target.yamlPath), { recursive: true });
+    const sourceYaml = assertRegularTextFile(sourceYamlPath, 'preserved YAML');
+    const sourceName = pipelineNameFromYaml(sourceYaml);
+    let copiedYaml = sourceYaml;
+    if (sourceName) {
+      try {
+        copiedYaml = yamlWithPipelineName(
+          sourceYaml,
+          pipelineCopyName(
+            sourceName,
+            target.copyNumber,
+            stemFromYamlBasename(basename(sourceYamlPath)),
+          ),
+        );
+      } catch {
+        copiedYaml = sourceYaml;
+      }
+    }
+    atomicWriteFileSync(target.yamlPath, copiedYaml);
+    const sourceLayoutPath = pipelineLayoutPath(sourceYamlPath);
+    replaceOptionalArtifact(
+      pipelineLayoutPath(target.yamlPath),
+      existsSync(sourceLayoutPath)
+        ? assertRegularTextFile(sourceLayoutPath, 'preserved layout')
+        : null,
+    );
+    const sourceRequirementsPath = pipelineRequirementsPath(sourceYamlPath);
+    replaceOptionalArtifact(
+      pipelineRequirementsPath(target.yamlPath),
+      existsSync(sourceRequirementsPath)
+        ? assertRegularTextFile(sourceRequirementsPath, 'preserved requirements')
+        : null,
+    );
+    writePipelineSupportTree(readPipelineSupportTree(sourceYamlPath), target.yamlPath);
+    const copiedCompile = runCompileAndWriteLog(target.yamlPath, ws.registry);
+    return {
+      path: target.yamlPath,
+      compile: sourceCompile.success
+        ? copiedCompile
+        : {
+            ...copiedCompile,
+            success: false,
+            summary: sourceCompile.summary,
+          },
+    };
   } catch (err) {
     rmSync(dirname(target.yamlPath), { recursive: true, force: true });
     throw err;
@@ -1382,6 +1541,104 @@ function writeLocalBranch(ws: WorkspaceState, localBranch: ChatYamlStageLocalBra
     loadLayout(ws);
     beginWatching(ws, sourcePath, localBranch.yaml);
   }
+}
+
+function restoreRendererBranchFromBase(
+  ws: WorkspaceState,
+  baseYamlPath: string,
+  sourcePath: string,
+  localBranch?: ChatYamlStageLocalBranch | null,
+): void {
+  writeStagedArtifactsToDestination(ws, baseYamlPath, sourcePath, {
+    discardUnreadableLayout: true,
+  });
+  if (localBranch) {
+    writeLocalBranch(ws, localBranch);
+  } else {
+    refreshCurrentWorkspaceState(ws, sourcePath);
+  }
+}
+
+interface ActiveSourceDriftReconciliation {
+  conflicts: ChatYamlStageConflict[];
+  localBranchPersisted: boolean;
+  sourcePath: string | null;
+}
+
+function reconcileDifferentActiveSourceDrift(
+  ws: WorkspaceState,
+  paths: StagePaths,
+  metadata: ChatYamlStageMetadata,
+  finalizedRelativePath: string,
+  activeLocalBranch: ChatYamlStageLocalBranch | null | undefined,
+  trackPipeline: (yamlPath: string) => void,
+): ActiveSourceDriftReconciliation {
+  const activeRelativePath = metadata.activeRelativePath;
+  if (!activeRelativePath || samePipelineRelativePath(activeRelativePath, finalizedRelativePath)) {
+    return { conflicts: [], localBranchPersisted: false, sourcePath: null };
+  }
+
+  const sourceRelativePath = metadata.sourceRelativePaths.find((candidate) =>
+    samePipelineRelativePath(candidate, activeRelativePath),
+  );
+  if (!sourceRelativePath) {
+    throw new Error('Chat YAML stage active source snapshot is invalid.');
+  }
+  const sourcePath = resolveRelativeInside(tagmaDirOf(ws.workDir), sourceRelativePath);
+  if (sourceMatchesBase(metadata, sourcePath, activeRelativePath)) {
+    return { conflicts: [], localBranchPersisted: false, sourcePath: null };
+  }
+
+  let localChanges = { yaml: false, layout: false };
+  if (activeLocalBranch) {
+    if (!samePath(activeLocalBranch.sourcePath, sourcePath)) {
+      throw new Error('Active local branch path does not match the staged active pipeline.');
+    }
+    localChanges = localBranchChangesFromBase(
+      paths,
+      metadata,
+      activeRelativePath,
+      activeLocalBranch,
+    );
+  }
+
+  const baseYamlPath = resolveRelativeInside(paths.baseTagmaDir, activeRelativePath);
+  const sourceExisted = existsSync(sourcePath);
+  trackPipeline(sourcePath);
+  if (sourceExisted) {
+    let sourceCompile = runCompileAndWriteLog(sourcePath, ws.registry);
+    if (!hasReadableLayoutArtifact(sourcePath)) {
+      sourceCompile = {
+        ...sourceCompile,
+        success: false,
+        summary: 'Source layout could not be read safely.',
+      };
+    }
+    copyPreservedPipelineAsNumbered(ws, sourcePath, sourcePath, sourceCompile, trackPipeline);
+  }
+  restoreRendererBranchFromBase(ws, baseYamlPath, sourcePath, activeLocalBranch);
+
+  const conflicts: ChatYamlStageConflict[] = ['source-changed-on-disk'];
+  if (!sourceExisted) conflicts.push('source-deleted');
+  if (localChanges.yaml || localChanges.layout) conflicts.unshift('local-branch-changed');
+  return {
+    conflicts,
+    localBranchPersisted: !!activeLocalBranch,
+    sourcePath,
+  };
+}
+
+function writeLocalBranchLayout(
+  ws: WorkspaceState,
+  sourcePath: string,
+  layout: EditorLayout | null,
+): void {
+  const layoutContent = serializeLayoutArtifact(layout);
+  if (layoutContent && Buffer.byteLength(layoutContent, 'utf-8') > MAX_ARTIFACT_BYTES) {
+    throw new Error('Local branch layout is too large.');
+  }
+  replaceOptionalArtifact(pipelineLayoutPath(sourcePath), layoutContent);
+  if (ws.yamlPath && samePath(ws.yamlPath, sourcePath)) loadLayout(ws);
 }
 
 function refreshCurrentWorkspaceState(ws: WorkspaceState, yamlPath: string): void {
@@ -1418,6 +1675,7 @@ function describeRealEntry(ws: WorkspaceState, yamlPath: string): ChatYamlStageE
     stagedPath: yamlPath,
     relativePath: portableRelative(tagmaDirOf(ws.workDir), yamlPath),
     sourcePath: yamlPath,
+    sourceChangedOnDisk: false,
     pipelineName: pipelineNameFromYaml(content),
     contentHash: sha1(content),
     layoutHash,
@@ -1672,6 +1930,114 @@ export async function finalizeChatYamlStage(
     assertRequirementsConsistentWithYamlChange(baseYamlPath, stagedPath);
   }
   if (!changed && sourcePath && !forceForkReason) {
+    const diskMatchesBase = sourceMatchesBase(metadata, sourcePath, relativePath);
+    if (!diskMatchesBase) {
+      let localChanges = { yaml: false, layout: false };
+      if (input.localBranch) {
+        if (!samePath(input.localBranch.sourcePath, sourcePath)) {
+          throw new Error('Local branch path does not match the staged source pipeline.');
+        }
+        localChanges = localBranchChangesFromBase(paths, metadata, relativePath, input.localBranch);
+      }
+      const baseYamlPath = resolveRelativeInside(paths.baseTagmaDir, relativePath);
+      const baseHashes = baseEntryFor(metadata, relativePath);
+      const sourceHashes = pipelineArtifactHashes(sourcePath);
+      const sourceExisted = existsSync(sourcePath);
+      const sourceTopologyMatchesBase =
+        layoutTopologyHash(sourcePath) !== null &&
+        layoutTopologyHash(sourcePath) === layoutTopologyHash(baseYamlPath);
+      const sourceTrialVerification =
+        sourceExisted && readEditorSettings(ws).opencodeChatTrialRunEnabled
+          ? ('not-verified' as const)
+          : ('not-required' as const);
+      const sourceTrialAccepted = sourceTrialVerification === 'not-required';
+      const committed = withFinalizeMutationTransaction(ws, (trackPipeline) => {
+        trackPipeline(sourcePath);
+        let sourceCompile = runCompileAndWriteLog(sourcePath, ws.registry);
+        if (!hasReadableLayoutArtifact(sourcePath)) {
+          sourceCompile = {
+            ...sourceCompile,
+            success: false,
+            summary: 'Source layout could not be read safely.',
+          };
+        }
+        const canMergeLocalLayout =
+          sourceTrialAccepted &&
+          sourceCompile.success &&
+          input.localBranch?.layout !== undefined &&
+          !localChanges.yaml &&
+          localChanges.layout &&
+          !!baseHashes &&
+          !!sourceHashes &&
+          sourceHashes.layoutHash === baseHashes.layoutHash &&
+          sourceTopologyMatchesBase;
+        const canAdoptSource =
+          sourceTrialAccepted &&
+          sourceCompile.success &&
+          !localChanges.yaml &&
+          !localChanges.layout;
+
+        if (canMergeLocalLayout || canAdoptSource) {
+          if (canMergeLocalLayout) {
+            writeLocalBranchLayout(ws, sourcePath, input.localBranch!.layout ?? null);
+          }
+          runPipelineManifestSync(sourcePath);
+          runRequirementsSync(sourcePath);
+          sourceCompile = runCompileAndWriteLog(sourcePath, ws.registry);
+          refreshCurrentWorkspaceState(ws, sourcePath);
+          bumpRevision(ws);
+          const state = getState(ws);
+          const result: ChatYamlStageFinalizeResult = {
+            outcome: 'adopted',
+            entry: describeRealEntry(ws, sourcePath),
+            conflicts: ['source-changed-on-disk'],
+            localBranchPersisted: canMergeLocalLayout,
+            trialVerification: sourceTrialVerification,
+            compile: sourceCompile,
+            revision: state.revision,
+            state,
+          };
+          persistFinalizeResult(paths, result);
+          return { result, state };
+        }
+
+        const preserved = sourceExisted
+          ? copyPreservedPipelineAsNumbered(
+              ws,
+              sourcePath,
+              sourcePath,
+              sourceCompile,
+              trackPipeline,
+            )
+          : null;
+        restoreRendererBranchFromBase(ws, baseYamlPath, sourcePath, input.localBranch);
+        const restoredCompile = runCompileAndWriteLog(sourcePath, ws.registry);
+        bumpRevision(ws);
+        const state = getState(ws);
+        const conflicts: ChatYamlStageConflict[] = ['source-changed-on-disk'];
+        if (localChanges.yaml || localChanges.layout) conflicts.unshift('local-branch-changed');
+        if (!sourceExisted) conflicts.push('source-deleted');
+        else if (!sourceCompile.success) conflicts.push('compile-failed');
+        if (!sourceTrialAccepted) conflicts.push('trial-run-failed');
+        const result: ChatYamlStageFinalizeResult = {
+          outcome: preserved ? 'forked' : 'unchanged',
+          entry: describeRealEntry(ws, preserved?.path ?? sourcePath),
+          conflicts,
+          localBranchPersisted: !!input.localBranch,
+          trialVerification: sourceTrialVerification,
+          compile: preserved?.compile ?? restoredCompile,
+          revision: state.revision,
+          state,
+        };
+        persistFinalizeResult(paths, result);
+        return { result, state };
+      });
+      cleanupFinalizedStage(paths);
+      if (ws.yamlPath && samePath(ws.yamlPath, sourcePath)) {
+        broadcastStateEvent(ws, { type: 'external-change', newState: committed.state });
+      }
+      return committed.result;
+    }
     const result: ChatYamlStageFinalizeResult = {
       outcome: 'unchanged',
       entry: describeRealEntry(ws, sourcePath),
@@ -1713,6 +2079,7 @@ export async function finalizeChatYamlStage(
     let outcome: ChatYamlStageFinalizeResult['outcome'];
     let destinationPath: string;
     let localBranchPersisted = false;
+    let resultCompile = compile;
 
     if (!sourcePath) {
       const desiredPath = assertPipelineYamlPath(
@@ -1734,17 +2101,31 @@ export async function finalizeChatYamlStage(
       }
     } else {
       let localBranchChanged = false;
+      let mergeLocalLayout = false;
       if (input.localBranch) {
         if (!samePath(input.localBranch.sourcePath, sourcePath)) {
           throw new Error('Local branch path does not match the staged source pipeline.');
         }
-        localBranchChanged = localBranchDiffersFromBase(
+        const localChanges = localBranchChangesFromBase(
           paths,
           metadata,
           relativePath,
           input.localBranch,
         );
-        if (localBranchChanged) conflicts.push('local-branch-changed');
+        localBranchChanged = localChanges.yaml || localChanges.layout;
+        const baseHashes = baseEntryFor(metadata, relativePath);
+        const stagedHashes = pipelineArtifactHashes(stagedPath);
+        mergeLocalLayout =
+          input.localBranch.layout !== undefined &&
+          !localChanges.yaml &&
+          localChanges.layout &&
+          !!baseHashes &&
+          !!stagedHashes &&
+          stagedHashes.layoutHash === baseHashes.layoutHash &&
+          layoutTopologyHash(stagedPath) !== null &&
+          layoutTopologyHash(stagedPath) ===
+            layoutTopologyHash(resolveRelativeInside(paths.baseTagmaDir, relativePath));
+        if (localBranchChanged && !mergeLocalLayout) conflicts.push('local-branch-changed');
       }
       const diskMatchesBase = sourceMatchesBase(metadata, sourcePath, relativePath);
       if (!diskMatchesBase) conflicts.push('source-changed-on-disk');
@@ -1752,12 +2133,50 @@ export async function finalizeChatYamlStage(
       if (!mustFork) {
         trackPipeline(sourcePath);
         writeStagedArtifactsToDestination(ws, stagedPath, sourcePath);
+        if (mergeLocalLayout && input.localBranch?.layout !== undefined) {
+          writeLocalBranchLayout(ws, sourcePath, input.localBranch.layout);
+          localBranchPersisted = true;
+        }
         refreshCurrentWorkspaceState(ws, sourcePath);
         destinationPath = sourcePath;
         outcome = 'adopted';
       } else {
         destinationPath = copyStagedAsNumberedPipeline(ws, stagedPath, sourcePath, trackPipeline);
-        if (input.localBranch && localBranchChanged && diskMatchesBase) {
+        resultCompile = runCompileAndWriteLog(destinationPath, ws.registry);
+        if (!diskMatchesBase) {
+          trackPipeline(sourcePath);
+          let sourceCompile: ReturnType<typeof runCompileAndWriteLog> | null = null;
+          if (existsSync(sourcePath)) {
+            sourceCompile = runCompileAndWriteLog(sourcePath, ws.registry);
+            if (!hasReadableLayoutArtifact(sourcePath)) {
+              sourceCompile = {
+                ...sourceCompile,
+                success: false,
+                summary: 'Source layout could not be read safely.',
+              };
+            }
+          }
+          if (input.localBranch || !sourceCompile?.success) {
+            if (sourceCompile) {
+              copyPreservedPipelineAsNumbered(
+                ws,
+                sourcePath,
+                sourcePath,
+                sourceCompile,
+                trackPipeline,
+              );
+            }
+            restoreRendererBranchFromBase(
+              ws,
+              resolveRelativeInside(paths.baseTagmaDir, relativePath),
+              sourcePath,
+              input.localBranch,
+            );
+            localBranchPersisted = localBranchPersisted || !!input.localBranch;
+          } else {
+            refreshCurrentWorkspaceState(ws, sourcePath);
+          }
+        } else if (input.localBranch && localBranchChanged) {
           trackPipeline(sourcePath);
           writeLocalBranch(ws, input.localBranch);
           localBranchPersisted = true;
@@ -1766,26 +2185,42 @@ export async function finalizeChatYamlStage(
       }
     }
 
+    const activeSourceReconciliation = reconcileDifferentActiveSourceDrift(
+      ws,
+      paths,
+      metadata,
+      relativePath,
+      input.activeLocalBranch,
+      trackPipeline,
+    );
+    localBranchPersisted = localBranchPersisted || activeSourceReconciliation.localBranchPersisted;
     bumpRevision(ws);
     const state = getState(ws);
     const result: ChatYamlStageFinalizeResult = {
       outcome,
       entry: describeRealEntry(ws, destinationPath),
-      conflicts: [...new Set(conflicts)],
+      conflicts: [...new Set([...conflicts, ...activeSourceReconciliation.conflicts])],
       localBranchPersisted,
       trialVerification,
-      compile,
+      compile: resultCompile,
       revision: state.revision,
       state,
     };
     persistFinalizeResult(paths, result);
-    return { destinationPath, result, state };
+    return {
+      destinationPath,
+      reconciledActiveSourcePath: activeSourceReconciliation.sourcePath,
+      result,
+      state,
+    };
   });
 
   cleanupFinalizedStage(paths);
   if (
     ws.yamlPath &&
-    (samePath(ws.yamlPath, sourcePath) || samePath(ws.yamlPath, committed.destinationPath))
+    (samePath(ws.yamlPath, sourcePath) ||
+      samePath(ws.yamlPath, committed.destinationPath) ||
+      samePath(ws.yamlPath, committed.reconciledActiveSourcePath))
   ) {
     broadcastStateEvent(ws, { type: 'external-change', newState: committed.state });
   }

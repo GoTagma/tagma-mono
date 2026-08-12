@@ -3999,6 +3999,7 @@ async function promptOpencode(
             stagedPath: entry.stagedPath,
             relativePath: entry.relativePath,
             sourcePath: entry.sourcePath,
+            sourceChangedOnDisk: entry.sourceChangedOnDisk,
             pipelineName: entry.pipelineName,
             contentHash: entry.contentHash,
             layoutHash: entry.layoutHash,

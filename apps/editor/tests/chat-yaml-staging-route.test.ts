@@ -2749,6 +2749,21 @@ describe('chat YAML staging routes', () => {
       branchRes,
     );
     expect(branchRes.statusCode).toBe(400);
+
+    const activeBranchRes = makeRes();
+    await getRoute('/api/workspace/chat-yaml-stage/finalize')(
+      request(
+        ws,
+        {
+          stageId: stage.id,
+          relativePath: entry.relativePath,
+          activeLocalBranch: { yaml: yamlFor('Pipeline', 'local') },
+        },
+        'chat-lock',
+      ),
+      activeBranchRes,
+    );
+    expect(activeBranchRes.statusCode).toBe(400);
     expect(readFileSync(sourcePath, 'utf-8')).toContain('prompt: base');
     expect(ws.stateRevision).toBe(0);
 

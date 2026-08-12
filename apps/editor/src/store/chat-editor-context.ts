@@ -118,6 +118,7 @@ function workspaceRelativeYamlFolderEntries(
   const seen = new Set<string>();
   const entries: WorkspaceYamlFolderEntry[] = [];
   for (const absPath of absPaths) {
+    const normalizedAbsPath = absPath.replace(/\\/g, '/');
     const rel = workspaceRelativePath(pipelineRoot, absPath);
     if (!rel || !/\.ya?ml$/i.test(rel)) continue;
     const parts = rel.split('/');
@@ -136,13 +137,17 @@ function workspaceRelativeYamlFolderEntries(
     } else {
       continue;
     }
-    const key = `${folder}\0${rel}`;
+    const displayYaml = directPipelineRoot ? normalizedAbsPath : rel;
+    const displayFolder = directPipelineRoot
+      ? normalizedAbsPath.slice(0, normalizedAbsPath.lastIndexOf('/'))
+      : folder;
+    const key = `${displayFolder}\0${displayYaml}`;
     if (seen.has(key)) continue;
     seen.add(key);
     entries.push({
-      folder,
-      yaml: rel,
-      manifest: rel.replace(/\.ya?ml$/i, '.manifest.json'),
+      folder: displayFolder,
+      yaml: displayYaml,
+      manifest: displayYaml.replace(/\.ya?ml$/i, '.manifest.json'),
       ...(legacyFlat ? { legacyFlat } : {}),
     });
   }
@@ -153,9 +158,9 @@ function formatWorkspaceYamlFolderEntry(entry: WorkspaceYamlFolderEntry): string
   const legacyAttr = entry.legacyFlat ? ' legacy="flat"' : '';
   return [
     `    <pipeline${legacyAttr}>`,
-    `      <folder>${entry.folder}</folder>`,
-    `      <yaml>${entry.yaml}</yaml>`,
-    `      <manifest>${entry.manifest}</manifest>`,
+    `      <folder>${escapeEditorContextValue(entry.folder)}</folder>`,
+    `      <yaml>${escapeEditorContextValue(entry.yaml)}</yaml>`,
+    `      <manifest>${escapeEditorContextValue(entry.manifest)}</manifest>`,
     '    </pipeline>',
   ];
 }
@@ -188,7 +193,7 @@ export function buildEditorContext(options: EditorContextOptions = {}): string {
   const run = useRunStore.getState();
   const pythonAgent = useEditorSettingsStore.getState().settings?.pythonAgent;
   if (!workDir) return '';
-  const lines = [`  <workspace>${workDir}</workspace>`];
+  const lines = [`  <workspace>${escapeEditorContextValue(workDir)}</workspace>`];
   const contextYamlPath =
     options.currentYamlPath === undefined ? yamlPath : options.currentYamlPath;
   const requestContext = {
@@ -217,8 +222,8 @@ export function buildEditorContext(options: EditorContextOptions = {}): string {
   }
   if (options.chatYamlStage) {
     const agentRoot = options.chatYamlStage.agentTagmaDir.replace(/\\/g, '/');
-    lines.push(`  <chat-staging id="${options.chatYamlStage.id}">`);
-    lines.push(`    <agent-root>${agentRoot}</agent-root>`);
+    lines.push(`  <chat-staging id="${escapeEditorContextValue(options.chatYamlStage.id)}">`);
+    lines.push(`    <agent-root>${escapeEditorContextValue(agentRoot)}</agent-root>`);
     lines.push(
       '    <write-policy>Write pipeline artifacts only inside agent-root. Live .tagma pipeline paths are read-only source material.</write-policy>',
       '  </chat-staging>',
@@ -235,7 +240,10 @@ export function buildEditorContext(options: EditorContextOptions = {}): string {
       options.chatYamlStage?.agentTagmaDir ?? workDir,
       contextYamlPath,
     );
-    if (rel) lines.push(`  <current-file>${rel}</current-file>`);
+    const targetPath = options.chatYamlStage ? contextYamlPath.replace(/\\/g, '/') : rel;
+    if (rel && targetPath) {
+      lines.push(`  <current-file>${escapeEditorContextValue(targetPath)}</current-file>`);
+    }
     lines.push(`  <yaml-run-version>${yamlRunVersion ?? 0}</yaml-run-version>`);
   }
   const workspaceYamlFolders = workspaceRelativeYamlFolderEntries(
@@ -267,22 +275,24 @@ export function buildEditorContext(options: EditorContextOptions = {}): string {
   if (pythonAgent?.enabled && pythonAgent.interpreterCommand && pythonAgent.venvPath) {
     const interpreter = [pythonAgent.interpreterCommand, ...pythonAgent.interpreterArgs].join(' ');
     lines.push('  <python-agent enabled="true">');
-    lines.push(`    <interpreter>${interpreter}</interpreter>`);
+    lines.push(`    <interpreter>${escapeEditorContextValue(interpreter)}</interpreter>`);
     if (pythonAgent.interpreterVersion) {
-      lines.push(`    <version>${pythonAgent.interpreterVersion}</version>`);
+      lines.push(
+        `    <version>${escapeEditorContextValue(pythonAgent.interpreterVersion)}</version>`,
+      );
     }
-    lines.push(`    <venv>${pythonAgent.venvPath}</venv>`);
+    lines.push(`    <venv>${escapeEditorContextValue(pythonAgent.venvPath)}</venv>`);
     lines.push('  </python-agent>');
   } else {
     const reason = pythonAgent?.enabled ? 'incomplete' : 'not-configured';
-    lines.push(`  <python-agent enabled="false" reason="${reason}">`);
+    lines.push(`  <python-agent enabled="false" reason="${escapeEditorContextValue(reason)}">`);
     lines.push(
       '    <action>Enable Python AI Agent in Editor Settings before creating Python helpers.</action>',
     );
     lines.push('  </python-agent>');
   }
   const pluginLines: string[] = [];
-  const fmt = (xs: readonly string[]) => xs.join(', ');
+  const fmt = (xs: readonly string[]) => escapeEditorContextValue(xs.join(', '));
   if (registry.drivers.length) pluginLines.push(`    <drivers>${fmt(registry.drivers)}</drivers>`);
   if (registry.triggers.length)
     pluginLines.push(`    <triggers>${fmt(registry.triggers)}</triggers>`);

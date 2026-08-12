@@ -75,8 +75,11 @@ import {
   detectChatStagedYamlTarget,
   chatPipelineVerificationFailureDiagnostic,
   chatPipelineVerificationSucceeded,
+  applicableFinalizedChatTrialResult,
+  chatYamlFinalizeForceForkReason,
   chatPipelineRepairArtifactState,
   shouldAdoptFinalizedChatStateOnCurrentCanvas,
+  shouldAutoSyncFinalizedChatBindings,
   shouldAutoRepairCompileResult,
   shouldAutoRepairTrialResult,
   shouldReverifyChatPipelineAfterRepair,
@@ -1145,6 +1148,9 @@ export function App() {
             clearFinishedPostChatYamlAction();
             return;
           }
+          const reconcileLiveSourceDriftOnly = stagedTarget.reconcileLiveSourceDrift === true;
+          const reconcileDifferentActiveSourceDrift =
+            stagedTarget.reconcileActiveSourceDrift === true;
           const authoritativeStagedTarget = stage.entries.find(
             (entry) =>
               entry.relativePath === stagedTarget.relativePath &&
@@ -1204,7 +1210,9 @@ export function App() {
           let completedRepairAttempts = attempts;
           if (
             !repairMadeNoProgress &&
-            shouldAutoRepairCompileResult(compile, attempts, maxAttempts) &&
+            shouldAutoRepairCompileResult(compile, attempts, maxAttempts, {
+              reconcileLiveSourceDrift: reconcileLiveSourceDriftOnly,
+            }) &&
             finishedSessionCanContinue
           ) {
             const nextAttempt = attempts + 1;
@@ -1246,7 +1254,9 @@ export function App() {
 
           const trialRunEnabled = hasCurrentChatPipelineTrialConsent(settings);
           let trialRun: Awaited<ReturnType<typeof api.trialRunChatYamlStage>> | null =
-            repairMadeNoProgress && pendingRepair?.evidence.kind === 'trial-run'
+            !reconcileLiveSourceDriftOnly &&
+            repairMadeNoProgress &&
+            pendingRepair?.evidence.kind === 'trial-run'
               ? pendingRepair.evidence.result
               : null;
           const skipUnchangedTrialRepair = trialRun !== null;
@@ -1255,6 +1265,7 @@ export function App() {
             shouldTrialRunChatPipeline({
               compileSuccess: compile.success,
               trialRunEnabled,
+              reconcileLiveSourceDrift: reconcileLiveSourceDriftOnly,
             })
           ) {
             const trialOnce = () =>
@@ -1463,10 +1474,17 @@ export function App() {
             !!snapshot.activePath &&
             !!stagedTarget.sourcePath &&
             sameEditorPath(snapshot.activePath, stagedTarget.sourcePath);
+          const targetsDifferentPipeline =
+            reconcileDifferentActiveSourceDrift ||
+            (!!snapshot.activePath &&
+              (!stagedTarget.sourcePath ||
+                !sameEditorPath(snapshot.activePath, stagedTarget.sourcePath)));
           const beforeFlush = usePipelineStore.getState();
-          const userStillOnStartedPipeline =
-            targetsStartedPipeline && sameEditorPath(snapshot.activePath, beforeFlush.yamlPath);
-          if (userStillOnStartedPipeline) {
+          const shouldCaptureActivePipeline = targetsStartedPipeline || targetsDifferentPipeline;
+          const userStillOnActivePipeline =
+            shouldCaptureActivePipeline &&
+            sameEditorPath(snapshot.activePath, beforeFlush.yamlPath);
+          if (userStillOnActivePipeline) {
             await beforeFlush.flushPendingLocalEdits();
             if (cancelled || (await discardCancelledStage())) return;
           }
@@ -1474,9 +1492,10 @@ export function App() {
           const pathMoved =
             targetsStartedPipeline && !sameEditorPath(snapshot.activePath, editorState.yamlPath);
           const localRevisionChanged =
-            targetsStartedPipeline && snapshot.localEditRevision !== getLocalPipelineEditRevision();
-          const localBranch =
-            userStillOnStartedPipeline &&
+            shouldCaptureActivePipeline &&
+            snapshot.localEditRevision !== getLocalPipelineEditRevision();
+          const capturedActiveLocalBranch =
+            userStillOnActivePipeline &&
             snapshot.activePath &&
             sameEditorPath(snapshot.activePath, editorState.yamlPath)
               ? {
@@ -1490,11 +1509,13 @@ export function App() {
                   changed: localRevisionChanged || editorState.isDirty || editorState.layoutDirty,
                 }
               : null;
-          const forceForkReason = !compile.success
-            ? ('compile-failed' as const)
-            : pathMoved
-              ? ('path-moved' as const)
-              : undefined;
+          const localBranch = targetsStartedPipeline ? capturedActiveLocalBranch : null;
+          const activeLocalBranch = targetsDifferentPipeline ? capturedActiveLocalBranch : null;
+          const forceForkReason = chatYamlFinalizeForceForkReason({
+            reconcileLiveSourceDrift: reconcileLiveSourceDriftOnly,
+            compileSuccess: compile.success,
+            pathMoved,
+          });
           const localEditRevisionBeforeFinalize = getLocalPipelineEditRevision();
           const finalizeOnce = () =>
             underChatLock(() =>
@@ -1503,9 +1524,10 @@ export function App() {
                   stageId: snapshot.staging.id,
                   relativePath: stagedTarget.relativePath,
                   localBranch,
+                  activeLocalBranch,
                   ...(forceForkReason ? { forceForkReason } : {}),
                   trialId: finishedTurn.id,
-                  allowInvalid: !compile.success,
+                  allowInvalid: reconcileLiveSourceDriftOnly || !compile.success,
                 },
                 snapshot.workDir,
               ),
@@ -1555,6 +1577,11 @@ export function App() {
               finalized.trialVerification === 'not-required');
           const verificationBlocked =
             compile.success && finalized.trialVerification === 'prerequisite-unavailable';
+          const verificationAccepted = verificationSucceeded || verificationBlocked;
+          const applicableTrialRun = applicableFinalizedChatTrialResult(
+            finalized.trialVerification,
+            trialRun,
+          );
           const planningAccumulator = trialPlanningTelemetryRef.current.get(attemptKey);
           const planningTelemetry = planningAccumulator
             ? snapshotChatTrialPlanningTelemetry(planningAccumulator, Date.now())
@@ -1563,7 +1590,7 @@ export function App() {
           const verificationFailureDiagnostic = chatPipelineVerificationFailureDiagnostic({
             compile,
             trialRunEnabled,
-            trialRun,
+            trialRun: applicableTrialRun,
           });
           if (verificationFailureDiagnostic && !verificationBlocked) {
             console.warn(
@@ -1609,7 +1636,14 @@ export function App() {
           });
           if (finalStateBelongsOnCanvas) {
             current.adoptDiskState(finalized.state, 'chat');
-            if (finalized.outcome === 'adopted' && compile.success) {
+            if (
+              shouldAutoSyncFinalizedChatBindings({
+                currentPath: usePipelineStore.getState().yamlPath,
+                finalEntryPath: finalEntry.path,
+                finalizedOutcome: finalized.outcome,
+                verificationAccepted,
+              })
+            ) {
               await usePipelineStore
                 .getState()
                 .autoSyncAllBindings('chat', { allowDuringYamlEditLock: true });
@@ -1635,7 +1669,7 @@ export function App() {
                     ? 'blocked'
                     : 'failed',
                 compile,
-                ...(trialRun ? { trial: trialRun } : {}),
+                ...(applicableTrialRun ? { trial: applicableTrialRun } : {}),
                 ...(completedRepairAttempts > 0 ? { repairAttempts: completedRepairAttempts } : {}),
                 ...(planningTelemetry &&
                 (planningTelemetry.promptCount > 0 || planningTelemetry.toolAttemptCount > 0)
@@ -1647,7 +1681,7 @@ export function App() {
                   localBranchPersisted: finalized.localBranchPersisted,
                   resultPath: finalEntry.path,
                   compileSuccess: compile.success,
-                  ...(trialRun ? { trialRunSuccess: trialRun.success } : {}),
+                  ...(applicableTrialRun ? { trialRunSuccess: applicableTrialRun.success } : {}),
                   trialVerification: finalized.trialVerification,
                 },
                 completedAt: finishedTurn.endedAt,

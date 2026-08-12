@@ -25,6 +25,7 @@ export interface ChatYamlStageSnapshotEntry extends Pick<
   stagedPath: string;
   relativePath: string;
   sourcePath: string | null;
+  sourceChangedOnDisk?: boolean;
   requirementsHash: string | null;
   trialPlanHash?: string | null;
 }
@@ -87,6 +88,8 @@ export type ChatYamlTarget =
 export type ChatStagedYamlTarget = ChatYamlTarget & {
   relativePath: string;
   sourcePath: string | null;
+  reconcileLiveSourceDrift?: boolean;
+  reconcileActiveSourceDrift?: boolean;
 };
 
 export function shouldAdoptFinalizedChatStateOnCurrentCanvas(args: {
@@ -105,6 +108,19 @@ export function shouldAdoptFinalizedChatStateOnCurrentCanvas(args: {
   return (
     finalizedStateBelongsOnCanvas &&
     args.currentLocalEditRevision === args.localEditRevisionBeforeFinalize
+  );
+}
+
+export function shouldAutoSyncFinalizedChatBindings(args: {
+  currentPath: string | null;
+  finalEntryPath: string;
+  finalizedOutcome: 'adopted' | 'created' | 'forked' | 'unchanged';
+  verificationAccepted: boolean;
+}): boolean {
+  return (
+    args.finalizedOutcome === 'adopted' &&
+    args.verificationAccepted &&
+    samePath(args.currentPath, args.finalEntryPath)
   );
 }
 
@@ -150,6 +166,15 @@ export function detectChatStagedYamlTarget(
   });
 
   const activeKey = normalizePath(staging.activeRelativePath);
+  const activeEntry = activeKey
+    ? entries.find((candidate) => pathKey(candidate.relativePath) === activeKey)
+    : null;
+  const withActiveSourceDrift = (target: ChatStagedYamlTarget): ChatStagedYamlTarget =>
+    activeEntry?.sourcePath &&
+    activeEntry.sourceChangedOnDisk &&
+    pathKey(target.relativePath) !== activeKey
+      ? { ...target, reconcileActiveSourceDrift: true }
+      : target;
   if (activeKey) {
     const active = changed.find((entry) => pathKey(entry.relativePath) === activeKey);
     if (active) return stagedTarget(active);
@@ -158,12 +183,16 @@ export function detectChatStagedYamlTarget(
   const created = entries
     .filter((entry) => !before.has(pathKey(entry.relativePath)))
     .sort((left, right) => left.relativePath.localeCompare(right.relativePath));
-  if (created.length > 0) return stagedTarget(created[created.length - 1]!);
+  if (created.length > 0) return withActiveSourceDrift(stagedTarget(created[created.length - 1]!));
 
   const entry = changed.sort((left, right) => left.relativePath.localeCompare(right.relativePath))[
     changed.length - 1
   ];
-  return entry ? stagedTarget(entry) : null;
+  if (entry) return withActiveSourceDrift(stagedTarget(entry));
+
+  return activeEntry?.sourcePath && activeEntry.sourceChangedOnDisk
+    ? { ...stagedTarget(activeEntry), reconcileLiveSourceDrift: true }
+    : null;
 }
 
 function stagedTarget(entry: ChatYamlStageSnapshotEntry): ChatStagedYamlTarget {
@@ -201,8 +230,9 @@ export function shouldAutoRepairCompileResult(
   result: { success: boolean },
   attemptCount: number,
   maxAttempts: number,
+  options: { reconcileLiveSourceDrift?: boolean } = {},
 ): boolean {
-  return !result.success && attemptCount < maxAttempts;
+  return !options.reconcileLiveSourceDrift && !result.success && attemptCount < maxAttempts;
 }
 
 export function maxTrialPlanPromptsForLogicalTurn(args: {
@@ -249,8 +279,33 @@ export function shouldAutoRepairTrialResult(
 export function shouldTrialRunChatPipeline(args: {
   compileSuccess: boolean;
   trialRunEnabled: boolean;
+  reconcileLiveSourceDrift?: boolean;
 }): boolean {
-  return args.compileSuccess && args.trialRunEnabled;
+  return !args.reconcileLiveSourceDrift && args.compileSuccess && args.trialRunEnabled;
+}
+
+export type ChatYamlTrialVerification =
+  'verified' | 'prerequisite-unavailable' | 'not-verified' | 'not-required';
+
+export function applicableFinalizedChatTrialResult<T extends { success: boolean }>(
+  trialVerification: ChatYamlTrialVerification,
+  trialRun: T | null,
+): T | null {
+  if (!trialRun) return null;
+  if (trialVerification === 'verified' || trialVerification === 'prerequisite-unavailable') {
+    return trialRun;
+  }
+  return trialVerification === 'not-verified' && !trialRun.success ? trialRun : null;
+}
+
+export function chatYamlFinalizeForceForkReason(args: {
+  reconcileLiveSourceDrift: boolean;
+  compileSuccess: boolean;
+  pathMoved: boolean;
+}): 'compile-failed' | 'path-moved' | undefined {
+  if (args.reconcileLiveSourceDrift) return undefined;
+  if (!args.compileSuccess) return 'compile-failed';
+  return args.pathMoved ? 'path-moved' : undefined;
 }
 
 export function chatPipelineVerificationSucceeded(args: {

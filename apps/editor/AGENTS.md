@@ -106,6 +106,11 @@
   `x-opencode-directory` header with the agent `.tagma` root. The SDK keeps its client-level
   canonical workspace header on POST requests; a query-only override lets that live-directory
   header win and makes delegated sessions edit the real workspace.
+- Advertise staged `<current-file>` and pipeline inventory targets as absolute paths under the
+  agent `.tagma` root. Delegated OpenCode child sessions can inherit a different cwd, so relative
+  staged paths can resolve into the live `.tagma` tree even when the root prompt was redirected.
+  Escape every dynamic editor-context value, including absolute paths, before embedding it in the
+  XML-like prompt envelope.
 - Capture YAML/layout/requirements and support-tree hashes from the base copy in server-owned
   stage metadata. Supporting-file additions, edits, and deletions participate in the same
   three-way comparison and transactional publication as the core artifacts. Queued prompts and
@@ -118,6 +123,25 @@
 - Finalize under the active chat YAML lease with a server-side three-way comparison:
   base hashes versus the current live artifacts, the renderer-local YAML/layout branch, and the
   agent branch. A global workspace revision is never a conflict signal for staged turns.
+- The post-turn stage list must report live source drift from server-owned base hashes even when
+  the staged agent branch is unchanged. Target selection must send that active existing pipeline
+  through lightweight finalize/reconcile instead of discarding the stage or running Trial against
+  the unchanged base branch. Adopt live-only drift and refresh the current workspace file version
+  only when it compiles and the Trial policy accepts evidence for that exact branch; otherwise
+  preserve it as an unverified numbered copy and restore the base/renderer branch. Merge a
+  renderer-only layout change with a Chat YAML change only when the layout side and task topology
+  are unchanged. Quarantine invalid drift, and fork overlapping YAML or topology changes.
+- If an unchanged active source drifts while Chat also changes or creates a different staged
+  pipeline, reconcile both inside the same finalize transaction: publish the selected staged
+  target, preserve the escaped active branch as a numbered copy, and restore the active
+  base/renderer branch with a fresh optimistic-lock baseline. Never let target selection or stage
+  cleanup discard the active-source conflict. Treat deletion of that active source as a conflict:
+  restore the base/renderer branch, report source-deleted, and classify the Chat outcome as
+  unchanged rather than adopted.
+- Conflict forks preserve complete pipeline branches: YAML, layout, requirements, and support
+  files. Restore the renderer branch from the server-owned base artifacts before applying its
+  YAML/layout, and refresh the optimistic-lock baseline after every successful reconcile or
+  rollback so Save and Run cannot resume against a stale file version.
 - Treat a missing layout artifact and a layout containing only empty default
   `positions`/`folders`/`trackHeights` as the same semantic absence in base, stage, live,
   branch comparison, hashing, publication, and local-branch persistence. For non-empty layouts,
@@ -127,7 +151,8 @@
 - When reconciliation publishes a numbered copy, rebase only pipeline-local track/task `cwd`
   values and known built-in file paths from the source or staged pipeline folder to the copy
   folder. Preserve shared workspace paths, external trigger paths, and command-shaped fields.
-- If the agent branch is unchanged, discard it. If the live and renderer branches still match
+- If the agent branch and live source are unchanged, discard it. If the live and renderer branches
+  still match
   base and the staged result compiles, adopt the agent result in place. Preserve any local,
   external, path-move, or compile-failure branch and publish the agent result as one numbered
   copy. A genuinely new staged pipeline is created normally unless its destination already

@@ -681,8 +681,11 @@ test('tagma-pipeline agent treats chat staging as the only writable pipeline roo
   expect(doc).toContain('only under its `<agent-root>`');
   expect(doc).toContain('live pipeline folders outside `<agent-root>` are read-only');
   expect(doc).toContain('Never translate them back');
-  expect(doc).toContain('your cwd is exactly `<agent-root>`');
-  expect(doc).toContain('paths are already relative to it');
+  expect(doc).toContain('do not derive target identity from cwd');
+  expect(doc).toContain('paths are absolute paths inside it');
+  expect(doc).toContain('Use those absolute staged paths exactly');
+  expect(doc).not.toContain('your cwd is exactly `<agent-root>`');
+  expect(doc).not.toContain('paths are already relative to it');
 });
 
 test('tagma-pipeline agent allows external file and directory trigger watch paths', () => {

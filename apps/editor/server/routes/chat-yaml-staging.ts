@@ -39,23 +39,26 @@ function optionalBoolean(value: unknown, label: string): boolean | undefined {
   return value;
 }
 
-function parseLocalBranch(value: unknown): FinalizeLocalBranch | null | undefined {
+function parseLocalBranch(
+  value: unknown,
+  label = 'localBranch',
+): FinalizeLocalBranch | null | undefined {
   if (value === undefined || value === null) return value;
   const branch = asRequestRecord(value);
   if (typeof branch.sourcePath !== 'string' || !branch.sourcePath.trim()) {
-    throw new Error('localBranch.sourcePath is required.');
+    throw new Error(`${label}.sourcePath is required.`);
   }
   if (typeof branch.yaml !== 'string') {
-    throw new Error('localBranch.yaml must be a string.');
+    throw new Error(`${label}.yaml must be a string.`);
   }
   if (
     branch.layout !== undefined &&
     branch.layout !== null &&
     (typeof branch.layout !== 'object' || Array.isArray(branch.layout))
   ) {
-    throw new Error('localBranch.layout must be an object or null.');
+    throw new Error(`${label}.layout must be an object or null.`);
   }
-  const changed = optionalBoolean(branch.changed, 'localBranch.changed');
+  const changed = optionalBoolean(branch.changed, `${label}.changed`);
   return {
     sourcePath: branch.sourcePath.trim(),
     yaml: branch.yaml,
@@ -91,6 +94,7 @@ function parseFinalizeInput(value: unknown): ChatYamlStageFinalizeInput {
   }
   const allowInvalid = optionalBoolean(body.allowInvalid, 'allowInvalid');
   const localBranch = parseLocalBranch(body.localBranch);
+  const activeLocalBranch = parseLocalBranch(body.activeLocalBranch, 'activeLocalBranch');
   const trialId = optionalTrialId(body.trialId);
   const forceForkReason = body.forceForkReason;
   if (
@@ -107,6 +111,7 @@ function parseFinalizeInput(value: unknown): ChatYamlStageFinalizeInput {
     stageId: body.stageId.trim(),
     relativePath: body.relativePath.trim(),
     ...(localBranch !== undefined ? { localBranch } : {}),
+    ...(activeLocalBranch !== undefined ? { activeLocalBranch } : {}),
     ...(forceForkReason !== undefined ? { forceForkReason } : {}),
     ...(trialId !== undefined ? { trialId } : {}),
     ...(allowInvalid !== undefined ? { allowInvalid } : {}),
