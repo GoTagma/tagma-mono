@@ -31,10 +31,8 @@ Object.defineProperty(globalThis, 'localStorage', {
 
 const { setClientWorkspace } = await import('../src/api/client');
 const { resetOpencodeClient } = await import('../src/api/opencode-chat');
-const {
-  loadPersistedChatYamlReconciliationQueue,
-  savePersistedChatYamlReconciliationQueue,
-} = await import('../src/store/chat-persist');
+const { loadPersistedChatYamlReconciliationQueue, savePersistedChatYamlReconciliationQueue } =
+  await import('../src/store/chat-persist');
 const { applySseEvent, useChatStore } = await import('../src/store/chat-store');
 type ChatState = ReturnType<typeof useChatStore.getState>;
 type ChatFinishedTurn = ChatState['finishedTurnQueue'][number];
@@ -135,6 +133,41 @@ describe('unfinished Chat YAML reconciliation persistence', () => {
     expect(raw).not.toContain('snapshotless');
   });
 
+  test('rejects malformed and unsupported persisted queues during hydration', () => {
+    const turn = stagedTurn();
+    const malformed = {
+      ...turn,
+      id: 'malformed',
+      yamlSnapshotBeforeSend: {
+        ...turn.yamlSnapshotBeforeSend!,
+        yamlEditLockId: '',
+      },
+    };
+    storage.setItem(
+      'tagma.chat.v2',
+      JSON.stringify({
+        workspaces: {
+          'C:/repo': {
+            unfinishedYamlReconciliations: { version: 1, turns: [turn, malformed] },
+          },
+        },
+      }),
+    );
+    expect(loadPersistedChatYamlReconciliationQueue('C:/repo')).toEqual([turn]);
+
+    storage.setItem(
+      'tagma.chat.v2',
+      JSON.stringify({
+        workspaces: {
+          'C:/repo': {
+            unfinishedYamlReconciliations: { version: 2, turns: [turn] },
+          },
+        },
+      }),
+    );
+    expect(loadPersistedChatYamlReconciliationQueue('C:/repo')).toEqual([]);
+  });
+
   test('persists a newly finished staged turn before reconciliation starts', () => {
     const turn = stagedTurn();
     setClientWorkspace('C:/repo');
@@ -187,10 +220,9 @@ describe('unfinished Chat YAML reconciliation persistence', () => {
     expect(useChatStore.getState().finishedTurnQueue).toEqual([]);
     expect(loadPersistedChatYamlReconciliationQueue('C:/repo')[0]?.id).toBe(turn.id);
 
-    useChatStore.getState().restoreAbandonedFinishedTurnReconciliation(
-      failed,
-      'The server did not confirm cleanup.',
-    );
+    useChatStore
+      .getState()
+      .restoreAbandonedFinishedTurnReconciliation(failed, 'The server did not confirm cleanup.');
     expect(loadPersistedChatYamlReconciliationQueue('C:/repo')[0]?.reconcileFailure?.message).toBe(
       'The server did not confirm cleanup.',
     );

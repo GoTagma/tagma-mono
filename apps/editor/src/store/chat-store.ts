@@ -5084,7 +5084,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const finishedTurnQueue = prev.finishedTurnQueue.filter((turn) => turn.id !== turnId);
       if (target?.yamlSnapshotBeforeSend) {
         claimedFinishedTurnReconciliations.delete(turnId);
-        persistFinishedTurnQueueForWorkspace(target.yamlSnapshotBeforeSend.workDir, finishedTurnQueue);
+        persistFinishedTurnQueueForWorkspace(
+          target.yamlSnapshotBeforeSend.workDir,
+          finishedTurnQueue,
+        );
       }
       return { finishedTurnQueue };
     }),
@@ -5143,6 +5146,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
   restoreAbandonedFinishedTurnReconciliation: (turn, message) => {
     if (!turn.reconcileFailure || !turn.yamlSnapshotBeforeSend) return false;
+    const workspaceKey = turn.yamlSnapshotBeforeSend.workDir;
     let restored = false;
     set((prev) => {
       if (prev.finishedTurnQueue.some((candidate) => candidate.id === turn.id)) return {};
@@ -5150,7 +5154,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       restored = true;
       claimedFinishedTurnReconciliations.delete(turn.id);
       const finishedTurnQueue = [restoredTurn, ...prev.finishedTurnQueue];
-      persistFinishedTurnQueueForWorkspace(restoredTurn.yamlSnapshotBeforeSend.workDir, finishedTurnQueue);
+      persistFinishedTurnQueueForWorkspace(workspaceKey, finishedTurnQueue);
       return {
         finishedTurnQueue,
         queuedDispatchMode:
@@ -5366,8 +5370,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   async bootstrap() {
     const workspaceKeyAtStart = getOpencodeWorkspaceKey();
-    const persistedReconciliationQueue =
-      loadPersistedChatYamlReconciliationQueue(workspaceKeyAtStart) as ChatFinishedTurn[];
+    const persistedReconciliationQueue = loadPersistedChatYamlReconciliationQueue(
+      workspaceKeyAtStart,
+    ) as ChatFinishedTurn[];
     const prevStatus = get().bootstrapStatus;
     if (prevStatus === 'booting' && bootstrappingWorkspaceKey === workspaceKeyAtStart) return;
     bootstrappingWorkspaceKey = workspaceKeyAtStart;
