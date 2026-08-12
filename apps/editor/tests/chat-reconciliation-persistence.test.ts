@@ -72,6 +72,26 @@ function stagedTurn(id = 'finished-stage-1', workspace = 'C:/repo'): ChatFinishe
   };
 }
 
+function hiddenRuntime(turn: ChatFinishedTurn): ChatState['sessionStates'][string] {
+  return {
+    messages: [],
+    sending: true,
+    pendingUserText: 'Background pipeline update.',
+    queuedMessages: [],
+    queuedDispatchMode: null,
+    flushing: false,
+    pendingPermissions: [],
+    turnStartedAt: 900,
+    turnAssistantMessageIds: [],
+    lastActivityAt: 950,
+    sessionStatus: null,
+    turnHealth: null,
+    pendingActivity: [],
+    yamlSnapshotBeforeSend: turn.yamlSnapshotBeforeSend,
+    postChatYamlAction: null,
+  };
+}
+
 function resetChatState(): void {
   useChatStore.setState({
     bootstrapStatus: 'idle',
@@ -196,6 +216,62 @@ describe('unfinished Chat YAML reconciliation persistence', () => {
     expect(persisted).toHaveLength(1);
     expect(persisted[0]?.yamlSnapshotBeforeSend?.staging.id).toBe('stage-1');
     expect(persisted[0]?.yamlSnapshotBeforeSend?.yamlEditLockId).toBe('yaml-lock-stage-1');
+  });
+
+  test('persists a staged turn that finishes in a hidden conversation', () => {
+    const turn = stagedTurn();
+    setClientWorkspace('C:/repo');
+    useChatStore.setState({
+      currentSessionId: 'visible-session',
+      sessionStates: {
+        [turn.sessionId!]: hiddenRuntime(turn),
+      },
+      finishedTurnQueue: [],
+    } as Partial<ChatState>);
+
+    applySseEvent(
+      {
+        type: 'session.error',
+        properties: {
+          sessionID: turn.sessionId,
+          error: { name: 'ProviderError', data: { message: 'The model stopped.' } },
+        },
+      } as never,
+      useChatStore.getState,
+      useChatStore.setState as never,
+    );
+
+    const persisted = loadPersistedChatYamlReconciliationQueue('C:/repo');
+    expect(persisted).toHaveLength(1);
+    expect(persisted[0]).toMatchObject({
+      sessionId: turn.sessionId,
+      hidden: true,
+      yamlSnapshotBeforeSend: { yamlEditLockId: 'yaml-lock-stage-1' },
+    });
+  });
+
+  test('session deletion removes its staged turn from persisted reconciliation', () => {
+    const turn = stagedTurn();
+    setClientWorkspace('C:/repo');
+    savePersistedChatYamlReconciliationQueue('C:/repo', [turn]);
+    useChatStore.setState({
+      sessions: [{ id: turn.sessionId, title: 'Deleted chat' }],
+      sessionParentById: {},
+      finishedTurnQueue: [turn],
+      lastFinishedTurn: turn,
+    } as Partial<ChatState>);
+
+    applySseEvent(
+      {
+        type: 'session.deleted',
+        properties: { info: { id: turn.sessionId } },
+      } as never,
+      useChatStore.getState,
+      useChatStore.setState as never,
+    );
+
+    expect(useChatStore.getState().finishedTurnQueue).toEqual([]);
+    expect(loadPersistedChatYamlReconciliationQueue('C:/repo')).toEqual([]);
   });
 
   test('keeps a claimed discard recoverable until server cleanup is acknowledged', () => {
