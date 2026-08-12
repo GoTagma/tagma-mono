@@ -120,7 +120,6 @@ test('chat compile watcher silently detaches folders when the .tagma directory d
   };
   try {
     rmSync(tagmaDir, { recursive: true, force: true });
-    await new Promise((resolve) => setTimeout(resolve, 100));
     startChatCompileWatcher(tagmaDir, undefined, () => {}, { compileExistingYaml: false });
     expect(warnings).toEqual([]);
 

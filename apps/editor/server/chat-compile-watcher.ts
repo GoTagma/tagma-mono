@@ -65,6 +65,8 @@ interface WorkspaceWatchHandle {
   registry?: PluginRegistry;
   /** Optional injected compileYamlFile used by tests. */
   compileYamlFile?: CompileYamlFile;
+  /** The root was missing during the most recent reconciliation. */
+  rootMissing: boolean;
 }
 
 const handles = new Map<string, WorkspaceWatchHandle>();
@@ -199,8 +201,11 @@ function reconcileFolderWatchers(handle: WorkspaceWatchHandle, compileExistingYa
       present.add(folderPath);
       attachFolderWatcher(handle, folderPath, compileExistingYaml);
     }
+    handle.rootMissing = false;
   } catch (err) {
-    if ((err as NodeJS.ErrnoException | undefined)?.code !== 'ENOENT') {
+    if ((err as NodeJS.ErrnoException | undefined)?.code === 'ENOENT') {
+      handle.rootMissing = true;
+    } else {
       console.warn(`[chat-compile-watcher] reconcile failed for ${tagmaDir}:`, err);
     }
   }
@@ -208,6 +213,25 @@ function reconcileFolderWatchers(handle: WorkspaceWatchHandle, compileExistingYa
     if (!present.has(absFolder)) {
       detachFolderWatcher(handle, absFolder);
     }
+  }
+}
+
+/** Close every watcher and timer owned by a workspace handle. */
+function closeWorkspaceWatchHandle(handle: WorkspaceWatchHandle): void {
+  for (const timer of handle.timers.values()) clearTimeout(timer);
+  handle.timers.clear();
+  for (const sub of handle.folders.values()) {
+    try {
+      sub.watcher.close();
+    } catch {
+      /* ignore */
+    }
+  }
+  handle.folders.clear();
+  try {
+    handle.topWatcher.close();
+  } catch {
+    /* ignore */
   }
 }
 
@@ -227,11 +251,19 @@ export function startChatCompileWatcher(
   if (existing) {
     existing.registry = registry;
     existing.compileYamlFile = compileYamlFile;
-    // Pick up any folders created after the last call (e.g. user opened a
-    // workspace with pre-existing pipelines after the watcher was started
-    // empty by an earlier code path).
-    reconcileFolderWatchers(existing, options.compileExistingYaml ?? true);
-    return;
+    if (existing.rootMissing && existsSync(dir) && statSync(dir).isDirectory()) {
+      // The old watcher is bound to the deleted directory object, not the
+      // newly-created path. Replace the full handle before reconciling so only
+      // one root watcher remains active.
+      closeWorkspaceWatchHandle(existing);
+      handles.delete(dir);
+    } else {
+      // Pick up any folders created after the last call (e.g. user opened a
+      // workspace with pre-existing pipelines after the watcher was started
+      // empty by an earlier code path).
+      reconcileFolderWatchers(existing, options.compileExistingYaml ?? true);
+      return;
+    }
   }
   if (!existsSync(dir) || !statSync(dir).isDirectory()) return;
 
@@ -263,6 +295,7 @@ export function startChatCompileWatcher(
     timers: new Map(),
     registry,
     compileYamlFile,
+    rootMissing: false,
   };
   handles.set(dir, handle);
 
@@ -277,21 +310,7 @@ export function stopChatCompileWatcher(tagmaDir: string): void {
   const dir = resolve(tagmaDir);
   const handle = handles.get(dir);
   if (!handle) return;
-  for (const timer of handle.timers.values()) clearTimeout(timer);
-  handle.timers.clear();
-  for (const sub of handle.folders.values()) {
-    try {
-      sub.watcher.close();
-    } catch {
-      /* ignore */
-    }
-  }
-  handle.folders.clear();
-  try {
-    handle.topWatcher.close();
-  } catch {
-    /* ignore */
-  }
+  closeWorkspaceWatchHandle(handle);
   handles.delete(dir);
 }
 
