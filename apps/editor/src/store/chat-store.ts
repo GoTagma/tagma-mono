@@ -75,6 +75,7 @@ import { getLocalPipelineEditRevision, usePipelineStore } from './pipeline-store
 import { useEditorSettingsStore } from './editor-settings-store';
 import {
   api,
+  getClientWorkspace,
   withYamlEditLockRequestBypass,
   type EditorSettings,
   type ChatPipelineTrialPlanRequest,
@@ -5205,24 +5206,27 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   restoreAbandonedFinishedTurnReconciliation: (turn, message) => {
     if (!turn.reconcileFailure || !turn.yamlSnapshotBeforeSend) return false;
     const workspaceKey = turn.yamlSnapshotBeforeSend.workDir;
+    const stateBeforeRestore = get();
+    if (stateBeforeRestore.finishedTurnQueue.some((candidate) => candidate.id === turn.id)) {
+      claimedFinishedTurnReconciliations.delete(turn.id);
+      return false;
+    }
+    const activeWorkspaceKey = getClientWorkspace();
+    const ownsLiveQueue = activeWorkspaceKey
+      ? activeWorkspaceKey === workspaceKey
+      : !stateBeforeRestore.finishedTurnQueue.some((candidate) => {
+          const candidateWorkspace = candidate.yamlSnapshotBeforeSend?.workDir;
+          return !!candidateWorkspace && candidateWorkspace !== workspaceKey;
+        });
     const restoredTurn = restoredFinishedTurnReconcileFailure(turn, message);
     claimedFinishedTurnReconciliations.delete(turn.id);
     restorePersistedFinishedTurn(workspaceKey, restoredTurn);
-    if (getOpencodeWorkspaceKey() !== workspaceKey) return true;
+    if (!ownsLiveQueue) return true;
     let restored = false;
     set((prev) => {
-      const existingIndex = prev.finishedTurnQueue.findIndex(
-        (candidate) => candidate.id === turn.id,
-      );
-      const finishedTurnQueue =
-        existingIndex < 0
-          ? [restoredTurn, ...prev.finishedTurnQueue]
-          : prev.finishedTurnQueue.map((candidate, index) =>
-              index === existingIndex ? restoredTurn : candidate,
-            );
       restored = true;
       return {
-        finishedTurnQueue,
+        finishedTurnQueue: [restoredTurn, ...prev.finishedTurnQueue],
         queuedDispatchMode:
           prev.queuedMessages.length > 0 ? 'start-fresh' : prev.queuedDispatchMode,
         ...(prev.lastFinishedTurn?.id === turn.id ? { lastFinishedTurn: restoredTurn } : {}),
