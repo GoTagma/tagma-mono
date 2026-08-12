@@ -99,6 +99,7 @@ import { renderAskAiContext } from '../utils/ask-ai-context';
 import type { ChatYamlSnapshot, ChatYamlTarget } from '../utils/chat-yaml-reconcile';
 import {
   acquireChatYamlEditLock,
+  ensureChatYamlEditLockLease,
   getLocalChatYamlEditLockLease,
   getLocalChatYamlEditLockLeaseForWorkspace,
   isLocalYamlEditLockHeldForWorkspace,
@@ -111,7 +112,9 @@ import { describeToolPartForActivity } from '../utils/chat-tool-display';
 import {
   isChatReasoningEffort,
   loadPersisted,
+  loadPersistedChatYamlReconciliationQueue,
   savePersisted,
+  savePersistedChatYamlReconciliationQueue,
   sameModelPick,
   type ChatReasoningEffort,
   type ModelPick,
@@ -252,6 +255,11 @@ export interface ChatFinishedTurn {
   hidden: boolean;
   termination: 'completed' | 'user-stopped';
   yamlSnapshotBeforeSend: ChatYamlSnapshot | null;
+  reconcileFailure?: {
+    message: string;
+    attempt: number;
+    failedAt: number;
+  };
 }
 
 export interface ChatAbortRecovery {
@@ -312,6 +320,7 @@ type ChatSessionRuntimeState = {
 
 interface ChatStore {
   historyOpen: boolean;
+  selectingSessionId: string | null;
   openHistory: () => void;
   closeHistory: () => void;
 
@@ -446,6 +455,10 @@ interface ChatStore {
   setSessionYamlResult: (result: ChatYamlSessionResult) => void;
   dismissSessionYamlResultToast: (sessionId: string) => void;
   acknowledgeFinishedTurn: (turnId: string) => void;
+  markFinishedTurnReconciliationFailed: (turnId: string, message: string) => void;
+  retryFinishedTurnReconciliation: (turnId: string) => void;
+  abandonFinishedTurnReconciliation: (turnId: string) => ChatFinishedTurn | null;
+  restoreAbandonedFinishedTurnReconciliation: (turn: ChatFinishedTurn, message: string) => boolean;
   /** Last send error — rendered as a dismissable banner above the composer. */
   sendError: string | null;
   dismissSendError: () => void;
@@ -646,6 +659,9 @@ const FORCED_CHAT_AGENT = 'tagma-router';
 const DESKTOP_CHAT_TITLE_MAX_LENGTH = 80;
 const DEFAULT_CHAT_REASONING_EFFORT: ChatReasoningEffort = null;
 let finishedTurnSeq = 0;
+let sessionSelectionGeneration = 0;
+const finishedTurnReconciliationAttempts = new WeakMap<ChatFinishedTurn, number>();
+const claimedFinishedTurnReconciliations = new Map<string, ChatFinishedTurn>();
 // Editable instruction seeded into the composer when error/bug context is
 // attached via "Ask AI" and the composer is empty. The user can edit or
 // clear it before sending.
@@ -654,6 +670,82 @@ const DEFAULT_BUG_INSTRUCTION = 'Fix this bug.';
 function makeFinishedTurn(input: Omit<ChatFinishedTurn, 'id'>): ChatFinishedTurn {
   finishedTurnSeq += 1;
   return { ...input, id: `finished_${input.endedAt}_${finishedTurnSeq}` };
+}
+
+function persistFinishedTurnQueueForWorkspace(
+  workspaceKey: string,
+  queue: readonly ChatFinishedTurn[],
+): void {
+  const claimed = [...claimedFinishedTurnReconciliations.values()].filter(
+    (turn) => turn.yamlSnapshotBeforeSend?.workDir === workspaceKey,
+  );
+  const claimedIds = new Set(claimed.map((turn) => turn.id));
+  savePersistedChatYamlReconciliationQueue(workspaceKey, [
+    ...claimed,
+    ...queue.filter((turn) => !claimedIds.has(turn.id)),
+  ]);
+}
+
+function persistChangedFinishedTurnQueues(
+  previous: readonly ChatFinishedTurn[],
+  next: readonly ChatFinishedTurn[],
+): void {
+  const workspaceKeys = new Set<string>();
+  for (const turn of [...previous, ...next]) {
+    const workspaceKey = turn.yamlSnapshotBeforeSend?.workDir;
+    if (workspaceKey) workspaceKeys.add(workspaceKey);
+  }
+  for (const workspaceKey of workspaceKeys) {
+    persistFinishedTurnQueueForWorkspace(workspaceKey, next);
+  }
+}
+
+function withFinishedTurnReconcileFailure(
+  turn: ChatFinishedTurn,
+  message: string,
+): ChatFinishedTurn {
+  const attempt =
+    (finishedTurnReconciliationAttempts.get(turn) ?? turn.reconcileFailure?.attempt ?? 0) + 1;
+  const next = {
+    ...turn,
+    reconcileFailure: {
+      message,
+      attempt,
+      failedAt: Date.now(),
+    },
+  };
+  finishedTurnReconciliationAttempts.set(next, attempt);
+  return next;
+}
+
+function withoutFinishedTurnReconcileFailure(turn: ChatFinishedTurn): ChatFinishedTurn {
+  const next = { ...turn };
+  delete next.reconcileFailure;
+  finishedTurnReconciliationAttempts.set(
+    next,
+    finishedTurnReconciliationAttempts.get(turn) ?? turn.reconcileFailure?.attempt ?? 0,
+  );
+  return next;
+}
+
+function restoredFinishedTurnReconcileFailure(
+  turn: ChatFinishedTurn,
+  message: string,
+): ChatFinishedTurn {
+  const reconcileFailure = turn.reconcileFailure!;
+  const next = {
+    ...turn,
+    reconcileFailure: {
+      ...reconcileFailure,
+      message,
+      failedAt: Date.now(),
+    },
+  };
+  finishedTurnReconciliationAttempts.set(
+    next,
+    finishedTurnReconciliationAttempts.get(turn) ?? reconcileFailure.attempt,
+  );
+  return next;
 }
 
 const MAX_CHAT_TRIAL_REPAIR_EVIDENCE_BYTES = 64 * 1024;
@@ -2320,9 +2412,13 @@ function clearPendingPartsForSession(sessionID: string | null): void {
 }
 
 function canQueueFreshPromptDuringBarrier(
-  state: Pick<ChatStore, 'reconciling' | 'flushing' | 'activeChatYamlLifecycle'>,
+  state: Pick<
+    ChatStore,
+    'reconciling' | 'flushing' | 'activeChatYamlLifecycle' | 'finishedTurnQueue'
+  >,
 ): boolean {
   return (
+    state.finishedTurnQueue.length > 0 ||
     state.reconciling ||
     state.flushing ||
     !!state.activeChatYamlLifecycle ||
@@ -2343,6 +2439,7 @@ function canDispatchFreshQueuedPrompt(
     | 'flushing'
     | 'activeChatYamlLifecycle'
     | 'abortRecovery'
+    | 'finishedTurnQueue'
   >,
 ): boolean {
   return (
@@ -2352,6 +2449,7 @@ function canDispatchFreshQueuedPrompt(
     !state.flushing &&
     !state.activeChatYamlLifecycle &&
     !state.abortRecovery &&
+    state.finishedTurnQueue.length === 0 &&
     !hasExternalChatPromptBarrier()
   );
 }
@@ -2362,6 +2460,12 @@ function dispatchNextQueuedPrompt(get: () => ChatStore, set: ChatSet): boolean {
     state.queuedDispatchMode ??
     (state.queuedMessages.length > 0 ? ('reuse-logical-turn' as const) : null);
   if (!mode) return false;
+  if (state.finishedTurnQueue.length > 0) {
+    if (state.queuedMessages.length > 0 && state.queuedDispatchMode !== 'start-fresh') {
+      set({ queuedDispatchMode: 'start-fresh' });
+    }
+    return false;
+  }
   if (queuedPromptDispatchInFlight) return true;
   // A forced restart has already ended the visible turn, but its replacement
   // OpenCode process may still be inside the sidecar health check. Keep queued
@@ -2440,6 +2544,13 @@ function finishChatTurn(
       termination,
       yamlSnapshotBeforeSend: prev.yamlSnapshotBeforeSend,
     });
+    const finishedTurnQueue = [...prev.finishedTurnQueue, finishedTurn];
+    if (finishedTurn.yamlSnapshotBeforeSend) {
+      persistFinishedTurnQueueForWorkspace(
+        finishedTurn.yamlSnapshotBeforeSend.workDir,
+        finishedTurnQueue,
+      );
+    }
     return {
       ...patch,
       messages,
@@ -2447,7 +2558,8 @@ function finishChatTurn(
       pendingUserText: null,
       lastSendingEndedAt: endedAt,
       lastFinishedTurn: finishedTurn,
-      finishedTurnQueue: [...prev.finishedTurnQueue, finishedTurn],
+      finishedTurnQueue,
+      queuedDispatchMode: prev.queuedMessages.length > 0 ? 'start-fresh' : prev.queuedDispatchMode,
       turnStartedAt: null,
       turnAssistantMessageIds: [],
       lastActivityAt: null,
@@ -3369,6 +3481,13 @@ function finishHiddenSession(
       termination: 'completed',
       yamlSnapshotBeforeSend: runtime.yamlSnapshotBeforeSend,
     });
+    const finishedTurnQueue = [...prev.finishedTurnQueue, finishedTurn];
+    if (finishedTurn.yamlSnapshotBeforeSend) {
+      persistFinishedTurnQueueForWorkspace(
+        finishedTurn.yamlSnapshotBeforeSend.workDir,
+        finishedTurnQueue,
+      );
+    }
     const next = finishSessionRuntime(runtime);
     finished = true;
     return {
@@ -3382,7 +3501,7 @@ function finishHiddenSession(
       ),
       lastSendingEndedAt: endedAt,
       lastFinishedTurn: finishedTurn,
-      finishedTurnQueue: [...prev.finishedTurnQueue, finishedTurn],
+      finishedTurnQueue,
     };
   });
   return finished;
@@ -3865,6 +3984,9 @@ async function promptOpencode(
     (opts.reuseLogicalTurn || opts.internal
       ? (dispatchRuntimeAtStart?.yamlSnapshotBeforeSend ?? null)
       : null);
+  if (inheritedSnapshot && inheritedSnapshot.workDir !== workspaceKeyAtStart) {
+    throw new ChatWorkspaceChangedError();
+  }
   // Capture pipeline identity and the local edit revision synchronously. The
   // async lock, save, bootstrap, and stage setup can all take long enough for
   // the user to switch pipelines or make another edit.
@@ -3907,15 +4029,26 @@ async function promptOpencode(
     if (dispatchSessionIsVisible()) set({ sendError: null, completionWarning: null });
     applyRuntimePatchToSession(get, set, sessionIdAtDispatch, startedRuntime);
 
-    if (preSendWorkDir) {
-      const continuingLogicalTurn = opts.reuseLogicalTurn || opts.internal;
+    const continuingLogicalTurn = opts.reuseLogicalTurn || opts.internal;
+    if (inheritedSnapshot) {
+      lockLease = await ensureChatYamlEditLockLease(
+        {
+          id: inheritedSnapshot.yamlEditLockId,
+          workspaceKey: inheritedSnapshot.workDir,
+        },
+        {
+          reason: YAML_EDIT_LOCK_MESSAGE,
+          yamlPath: inheritedSnapshot.activePath,
+        },
+      );
+      diskBranchAlreadyOwned = true;
+      assertChatWorkspaceStillCurrent(workspaceKeyAtStart);
+    } else if (preSendWorkDir) {
       const existingLease = continuingLogicalTurn
         ? getLocalChatYamlEditLockLeaseForWorkspace(workspaceKeyAtStart)
         : getLocalChatYamlEditLockLease();
       diskBranchAlreadyOwned = !!existingLease;
-      if (continuingLogicalTurn) {
-        lockLease = existingLease;
-      }
+      if (continuingLogicalTurn) lockLease = existingLease;
       if (!lockLease) {
         lockLease = await acquireChatYamlEditLock(YAML_EDIT_LOCK_MESSAGE);
         acquiredLockLeaseHere = !continuingLogicalTurn;
@@ -3989,6 +4122,7 @@ async function promptOpencode(
         workDir: initialEditorBaseline.workDir,
         activePath: initialEditorBaseline.activePath,
         localEditRevision: initialEditorBaseline.localEditRevision,
+        yamlEditLockId: lockLease.id,
         staging: {
           id: stage.id,
           agentTagmaDir: stage.agentTagmaDir,
@@ -4611,11 +4745,34 @@ export function applySseEvent(event: ChatOpencodeEvent, get: () => ChatStore, se
     case 'session.deleted': {
       const deletedId = event.properties.info.id;
       const deletedSessionIds = sessionSubtreeIds(state.sessionParentById, deletedId);
+      const deletedRuntimeLeases = new Map<string, ChatYamlEditLockLease>();
+      const finishedTurnLeaseKeys = new Set(
+        state.finishedTurnQueue.flatMap((turn) => {
+          const snapshot = turn.yamlSnapshotBeforeSend;
+          return snapshot ? [`${snapshot.workDir}\u0000${snapshot.yamlEditLockId}`] : [];
+        }),
+      );
+      for (const deletedSessionId of deletedSessionIds) {
+        const snapshot =
+          deletedSessionId === state.currentSessionId
+            ? state.yamlSnapshotBeforeSend
+            : state.sessionStates[deletedSessionId]?.yamlSnapshotBeforeSend;
+        if (!snapshot) continue;
+        const lease = { id: snapshot.yamlEditLockId, workspaceKey: snapshot.workDir };
+        const leaseKey = `${lease.workspaceKey}\u0000${lease.id}`;
+        if (!finishedTurnLeaseKeys.has(leaseKey)) {
+          deletedRuntimeLeases.set(leaseKey, lease);
+        }
+      }
       for (const sessionID of deletedSessionIds) clearPendingPartsForSession(sessionID);
       const sessionStatesWithPermissionsRemoved = removePermissionsForSessionsFromRuntimeStates(
         state.sessionStates,
         deletedSessionIds,
       );
+      const finishedTurnQueue = state.finishedTurnQueue.filter(
+        (turn) => !turn.sessionId || !deletedSessionIds.has(turn.sessionId),
+      );
+      persistChangedFinishedTurnQueues(state.finishedTurnQueue, finishedTurnQueue);
       const patch: Partial<ChatStore> = {
         sessionParentById: removeSessionSubtreeFromIndex(
           state.sessionParentById,
@@ -4638,17 +4795,18 @@ export function applySseEvent(event: ChatOpencodeEvent, get: () => ChatStore, se
         dismissedSessionYamlResultToastIds: state.dismissedSessionYamlResultToastIds.filter(
           (sessionId) => !deletedSessionIds.has(sessionId),
         ),
-        finishedTurnQueue: state.finishedTurnQueue.filter(
-          (turn) => !turn.sessionId || !deletedSessionIds.has(turn.sessionId),
-        ),
+        finishedTurnQueue,
         pendingPermissions: removePermissionsForSessions(
           state.pendingPermissions,
           deletedSessionIds,
         ),
       };
+      if (state.selectingSessionId && deletedSessionIds.has(state.selectingSessionId)) {
+        sessionSelectionGeneration += 1;
+        patch.selectingSessionId = null;
+      }
       if (state.currentSessionId && deletedSessionIds.has(state.currentSessionId)) {
         clearTurnWatchdog();
-        void releaseChatYamlEditLock();
         patch.currentSessionId = null;
         patch.messages = [];
         patch.sending = false;
@@ -4665,6 +4823,9 @@ export function applySseEvent(event: ChatOpencodeEvent, get: () => ChatStore, se
         patch.pendingActivity = [];
       }
       set(patch);
+      for (const lease of deletedRuntimeLeases.values()) {
+        void releaseChatYamlEditLock(lease);
+      }
       return;
     }
     case 'permission.asked': {
@@ -4742,6 +4903,7 @@ const persisted = loadPersisted(getOpencodeWorkspaceKey());
 
 export const useChatStore = create<ChatStore>((set, get) => ({
   historyOpen: false,
+  selectingSessionId: null,
   openHistory: () => set({ historyOpen: true }),
   closeHistory: () => set({ historyOpen: false }),
 
@@ -4915,9 +5077,89 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         : [...prev.dismissedSessionYamlResultToastIds, sessionId],
     })),
   acknowledgeFinishedTurn: (turnId) =>
-    set((prev) => ({
-      finishedTurnQueue: prev.finishedTurnQueue.filter((turn) => turn.id !== turnId),
-    })),
+    set((prev) => {
+      const target =
+        prev.finishedTurnQueue.find((turn) => turn.id === turnId) ??
+        claimedFinishedTurnReconciliations.get(turnId);
+      const finishedTurnQueue = prev.finishedTurnQueue.filter((turn) => turn.id !== turnId);
+      if (target?.yamlSnapshotBeforeSend) {
+        claimedFinishedTurnReconciliations.delete(turnId);
+        persistFinishedTurnQueueForWorkspace(target.yamlSnapshotBeforeSend.workDir, finishedTurnQueue);
+      }
+      return { finishedTurnQueue };
+    }),
+  markFinishedTurnReconciliationFailed: (turnId, message) =>
+    set((prev) => {
+      const target = prev.finishedTurnQueue.find((turn) => turn.id === turnId);
+      if (!target) return {};
+      const failedTurn = withFinishedTurnReconcileFailure(target, message);
+      const finishedTurnQueue = prev.finishedTurnQueue.map((turn) =>
+        turn.id === turnId ? failedTurn : turn,
+      );
+      if (target.yamlSnapshotBeforeSend) {
+        persistFinishedTurnQueueForWorkspace(
+          target.yamlSnapshotBeforeSend.workDir,
+          finishedTurnQueue,
+        );
+      }
+      return {
+        finishedTurnQueue,
+        ...(prev.lastFinishedTurn?.id === turnId ? { lastFinishedTurn: failedTurn } : {}),
+      };
+    }),
+  retryFinishedTurnReconciliation: (turnId) =>
+    set((prev) => {
+      const target = prev.finishedTurnQueue.find((turn) => turn.id === turnId);
+      if (!target?.reconcileFailure) return {};
+      const retriedTurn = withoutFinishedTurnReconcileFailure(target);
+      const finishedTurnQueue = prev.finishedTurnQueue.map((turn) =>
+        turn.id === turnId ? retriedTurn : turn,
+      );
+      if (target.yamlSnapshotBeforeSend) {
+        persistFinishedTurnQueueForWorkspace(
+          target.yamlSnapshotBeforeSend.workDir,
+          finishedTurnQueue,
+        );
+      }
+      return {
+        finishedTurnQueue,
+        ...(prev.lastFinishedTurn?.id === turnId ? { lastFinishedTurn: retriedTurn } : {}),
+      };
+    }),
+  abandonFinishedTurnReconciliation: (turnId) => {
+    let abandoned: ChatFinishedTurn | null = null;
+    set((prev) => {
+      const target = prev.finishedTurnQueue.find((turn) => turn.id === turnId);
+      if (!target?.reconcileFailure) return {};
+      abandoned = target;
+      claimedFinishedTurnReconciliations.set(turnId, target);
+      return {
+        finishedTurnQueue: prev.finishedTurnQueue.filter((turn) => turn.id !== turnId),
+        queuedDispatchMode:
+          prev.queuedMessages.length > 0 ? 'start-fresh' : prev.queuedDispatchMode,
+      };
+    });
+    return abandoned;
+  },
+  restoreAbandonedFinishedTurnReconciliation: (turn, message) => {
+    if (!turn.reconcileFailure || !turn.yamlSnapshotBeforeSend) return false;
+    let restored = false;
+    set((prev) => {
+      if (prev.finishedTurnQueue.some((candidate) => candidate.id === turn.id)) return {};
+      const restoredTurn = restoredFinishedTurnReconcileFailure(turn, message);
+      restored = true;
+      claimedFinishedTurnReconciliations.delete(turn.id);
+      const finishedTurnQueue = [restoredTurn, ...prev.finishedTurnQueue];
+      persistFinishedTurnQueueForWorkspace(restoredTurn.yamlSnapshotBeforeSend.workDir, finishedTurnQueue);
+      return {
+        finishedTurnQueue,
+        queuedDispatchMode:
+          prev.queuedMessages.length > 0 ? 'start-fresh' : prev.queuedDispatchMode,
+        ...(prev.lastFinishedTurn?.id === turn.id ? { lastFinishedTurn: restoredTurn } : {}),
+      };
+    });
+    return restored;
+  },
   sendError: null,
   dismissSendError: () => set({ sendError: null }),
   completionWarning: null,
@@ -5124,12 +5366,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   async bootstrap() {
     const workspaceKeyAtStart = getOpencodeWorkspaceKey();
+    const persistedReconciliationQueue =
+      loadPersistedChatYamlReconciliationQueue(workspaceKeyAtStart) as ChatFinishedTurn[];
     const prevStatus = get().bootstrapStatus;
     if (prevStatus === 'booting' && bootstrappingWorkspaceKey === workspaceKeyAtStart) return;
     bootstrappingWorkspaceKey = workspaceKeyAtStart;
 
     const workspaceChanged = appliedBootstrapWorkspaceKey !== workspaceKeyAtStart;
     if (workspaceChanged) {
+      sessionSelectionGeneration += 1;
       clearTurnWatchdog();
       clearPendingPartsForSession(get().currentSessionId);
       abortSseSubscriptionsExcept(workspaceKeyAtStart);
@@ -5149,9 +5394,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               completedUnreadSessionIds: [],
               sessionYamlResults: {},
               dismissedSessionYamlResultToastIds: [],
-              lastFinishedTurn: null,
-              finishedTurnQueue: [],
+              lastFinishedTurn:
+                persistedReconciliationQueue[persistedReconciliationQueue.length - 1] ?? null,
+              finishedTurnQueue: persistedReconciliationQueue,
               currentSessionId: null,
+              selectingSessionId: null,
               messages: [],
               sending: false,
               abortRecovery: null,
@@ -5413,33 +5660,78 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   async selectSession(id) {
+    const stateAtStart = get();
+    if (stateAtStart.selectingSessionId === id) return;
+
+    const requestGeneration = ++sessionSelectionGeneration;
+    if (stateAtStart.currentSessionId === id) {
+      set({ selectingSessionId: null, historyOpen: false });
+      return;
+    }
+
     if (chatAbortRecoveryBlocksRuntimeMutation(get())) {
-      set({ sendError: chatTurnBlockedMessage(), historyOpen: false });
+      set({
+        selectingSessionId: null,
+        sendError: chatTurnBlockedMessage(),
+        historyOpen: false,
+      });
       return;
     }
     const workspaceKey = getOpencodeWorkspaceKey();
-    set((prev) => ({ sessionStates: saveCurrentSessionRuntime(prev) }));
-    clearTurnWatchdog();
-    const client = await getOpencodeClient(workspaceKey);
-    const messages = await unwrap(client.session.messages({ path: { id } })).catch(
-      () => [] as OpencodeThreadEntry[],
-    );
-    if (getOpencodeWorkspaceKey() !== workspaceKey) return;
-    set((prev) => {
-      const sessionStates = saveCurrentSessionRuntime(prev);
-      const runtime = restoreCachedRuntime(sessionStates[id], messages);
-      return {
-        sessionStates,
-        completedUnreadSessionIds: clearSessionCompletedUnread(prev.completedUnreadSessionIds, id),
-        currentSessionId: id,
-        ...runtimePatch(runtime),
-        historyOpen: false,
-        sendError: null,
-        completionWarning: null,
-      };
-    });
-    if (get().currentSessionId === id && get().sending) {
-      markTurnAcceptedForWatchdog(get, set);
+    set({ selectingSessionId: id, sendError: null });
+    try {
+      const client = await getOpencodeClient(workspaceKey);
+      const messages = await unwrap(client.session.messages({ path: { id } })).catch(
+        () => [] as OpencodeThreadEntry[],
+      );
+      if (
+        requestGeneration !== sessionSelectionGeneration ||
+        getOpencodeWorkspaceKey() !== workspaceKey
+      ) {
+        return;
+      }
+      clearTurnWatchdog();
+      set((prev) => {
+        if (
+          requestGeneration !== sessionSelectionGeneration ||
+          prev.selectingSessionId !== id ||
+          !prev.sessions.some((session) => session.id === id)
+        ) {
+          return {};
+        }
+        const sessionStates = saveCurrentSessionRuntime(prev);
+        const runtime = restoreCachedRuntime(sessionStates[id], messages);
+        return {
+          sessionStates,
+          completedUnreadSessionIds: clearSessionCompletedUnread(
+            prev.completedUnreadSessionIds,
+            id,
+          ),
+          currentSessionId: id,
+          ...runtimePatch(runtime),
+          historyOpen: false,
+          sendError: null,
+          completionWarning: null,
+        };
+      });
+      if (
+        requestGeneration === sessionSelectionGeneration &&
+        get().currentSessionId === id &&
+        get().sending
+      ) {
+        markTurnAcceptedForWatchdog(get, set);
+      }
+    } catch (err) {
+      if (
+        requestGeneration === sessionSelectionGeneration &&
+        getOpencodeWorkspaceKey() === workspaceKey
+      ) {
+        set({ sendError: `Could not switch conversations: ${describeError(err)}` });
+      }
+    } finally {
+      if (requestGeneration === sessionSelectionGeneration) {
+        set((prev) => (prev.selectingSessionId === id ? { selectingSessionId: null } : {}));
+      }
     }
   },
 
@@ -5506,6 +5798,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       );
       const deletedCurrentSession =
         !!prev.currentSessionId && deletedSessionIds.has(prev.currentSessionId);
+      const finishedTurnQueue = prev.finishedTurnQueue.filter(
+        (turn) => !turn.sessionId || !deletedSessionIds.has(turn.sessionId),
+      );
+      persistChangedFinishedTurnQueues(prev.finishedTurnQueue, finishedTurnQueue);
       return {
         sessionParentById: removeSessionSubtreeFromIndex(prev.sessionParentById, deletedSessionIds),
         sessionStates: Object.fromEntries(
@@ -5524,9 +5820,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         dismissedSessionYamlResultToastIds: prev.dismissedSessionYamlResultToastIds.filter(
           (sessionId) => !deletedSessionIds.has(sessionId),
         ),
-        finishedTurnQueue: prev.finishedTurnQueue.filter(
-          (turn) => !turn.sessionId || !deletedSessionIds.has(turn.sessionId),
-        ),
+        finishedTurnQueue,
         sessions: prev.sessions.filter((session) => !deletedSessionIds.has(session.id)),
         currentSessionId: deletedCurrentSession ? null : prev.currentSessionId,
         messages: deletedCurrentSession ? [] : prev.messages,
@@ -5548,14 +5842,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const context = renderAskAiContext(attachments);
     const forceStopRecoveryPending = forcedRestartRecoveries.has(getOpencodeWorkspaceKey());
     const queueMode =
-      state.queuedDispatchMode ??
-      (state.queuedMessages.length > 0
-        ? ('reuse-logical-turn' as const)
-        : state.sending || forceStopRecoveryPending
-          ? ('reuse-logical-turn' as const)
-          : canQueueFreshPromptDuringBarrier(state)
-            ? ('start-fresh' as const)
-            : null);
+      state.finishedTurnQueue.length > 0
+        ? ('start-fresh' as const)
+        : (state.queuedDispatchMode ??
+          (state.queuedMessages.length > 0
+            ? ('reuse-logical-turn' as const)
+            : state.sending || forceStopRecoveryPending
+              ? ('reuse-logical-turn' as const)
+              : canQueueFreshPromptDuringBarrier(state)
+                ? ('start-fresh' as const)
+                : null));
     if (!queueMode && !state.sending && chatTurnBlocksNewPrompt(state)) {
       const msg = chatTurnBlockedMessage();
       set({ sendError: msg });
@@ -5572,7 +5868,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       // wait, and clear the chips now (the send is committed to the queue).
       set((prev) => ({
         queuedMessages: appendQueuedMessage(prev.queuedMessages, makeQueuedMessage(text, context)),
-        queuedDispatchMode: prev.queuedDispatchMode ?? queueMode ?? 'reuse-logical-turn',
+        queuedDispatchMode:
+          prev.finishedTurnQueue.length > 0
+            ? 'start-fresh'
+            : (prev.queuedDispatchMode ?? queueMode ?? 'reuse-logical-turn'),
         composerAttachments: [],
         sendError: null,
         completionWarning: null,

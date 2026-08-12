@@ -795,6 +795,7 @@ function ChatHeader() {
         onClick={handleHistory}
         disabled={navigationBlocked}
         title="History"
+        aria-label="Conversation history"
         className="shrink-0 p-1 text-tagma-muted hover:text-tagma-text disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-tagma-muted transition-colors"
       >
         <History size={14} />

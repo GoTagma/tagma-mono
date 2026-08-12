@@ -1,13 +1,20 @@
-import { useLayoutEffect, useRef } from 'react';
-import { AlertTriangle, Paperclip, Send, Square, X } from 'lucide-react';
+import { createContext, useContext, useLayoutEffect, useRef, useState } from 'react';
+import { AlertTriangle, Info, Paperclip, Send, Square, X } from 'lucide-react';
 import { getOpencodeWorkspaceKey } from '../../api/opencode-chat';
-import { useChatStore } from '../../store/chat-store';
+import { useChatStore, type ChatFinishedTurn } from '../../store/chat-store';
 import { useYamlEditLockStore } from '../../store/yaml-edit-lock-store';
 import { useEditorSettingsStore } from '../../store/editor-settings-store';
 import {
   describeChatContextWindowIndicator,
   planChatContextWindow,
 } from '../../../shared/chat-context-window.js';
+
+const DiscardFailedChatReconciliationContext = createContext<
+  ((turnId: string) => Promise<void>) | null
+>(null);
+
+export const DiscardFailedChatReconciliationProvider =
+  DiscardFailedChatReconciliationContext.Provider;
 
 /**
  * Error banner — surfaces send() failures inline above the composer so users
@@ -69,6 +76,52 @@ export function CompletionWarningBanner() {
   const warning = useChatStore((s) => s.completionWarning);
   const dismiss = useChatStore((s) => s.dismissCompletionWarning);
   return <CompletionWarningBannerView warning={warning} dismiss={dismiss} />;
+}
+
+export function ReconciliationFailureBannerView({
+  failure,
+  retry,
+  discard,
+  busy = false,
+}: {
+  failure: ChatFinishedTurn['reconcileFailure'] | null;
+  retry: () => void;
+  discard: () => void;
+  busy?: boolean;
+}) {
+  if (!failure) return null;
+  return (
+    <div
+      role="status"
+      className="shrink-0 flex items-start gap-2 border border-tagma-accent/35 bg-tagma-accent/8 px-2.5 py-2"
+    >
+      <Info size={12} className="mt-0.5 shrink-0 text-tagma-accent" />
+      <div className="min-w-0 flex-1 text-[10px] font-mono text-tagma-muted">
+        <div className="text-tagma-text">
+          The merge is paused. Your manual canvas edits and the Chat result are both preserved.
+        </div>
+        <div className="mt-0.5 break-words text-tagma-muted/80">{failure.message}</div>
+      </div>
+      <div className="shrink-0 flex flex-col gap-1">
+        <button
+          type="button"
+          onClick={retry}
+          disabled={busy}
+          className="border border-tagma-accent/50 px-2 py-1 text-[10px] font-mono text-tagma-accent transition-colors hover:bg-tagma-accent/10 disabled:opacity-40"
+        >
+          Retry merge
+        </button>
+        <button
+          type="button"
+          onClick={discard}
+          disabled={busy}
+          className="border border-tagma-border px-2 py-1 text-[10px] font-mono text-tagma-muted transition-colors hover:border-tagma-muted/60 hover:text-tagma-text disabled:opacity-40"
+        >
+          Keep canvas, discard Chat result
+        </button>
+      </div>
+    </div>
+  );
 }
 
 // Composer textarea auto-grows with content up to this cap, then scrolls
@@ -156,6 +209,7 @@ export function getChatComposerAvailability(input: {
   sending: boolean;
   reconciling: boolean;
   flushing: boolean;
+  finishedTurnPending: boolean;
   yamlEditLocked: boolean;
   yamlEditLockLocal: boolean;
 }): { blockedByAnotherChatUpdate: boolean; canSend: boolean; queueOnSend: boolean } {
@@ -164,6 +218,7 @@ export function getChatComposerAvailability(input: {
     input.sending ||
     input.reconciling ||
     input.flushing ||
+    input.finishedTurnPending ||
     (input.yamlEditLocked && !input.yamlEditLockLocal);
   return {
     blockedByAnotherChatUpdate,
@@ -197,6 +252,10 @@ export function ChatComposer() {
   const activeChatYamlLifecycle = useChatStore((s) => s.activeChatYamlLifecycle);
   const currentSessionId = useChatStore((s) => s.currentSessionId);
   const flushing = useChatStore((s) => s.flushing);
+  const finishedTurn = useChatStore((s) => s.finishedTurnQueue[0]);
+  const retryFinishedTurnReconciliation = useChatStore((s) => s.retryFinishedTurnReconciliation);
+  const discardFailedReconciliation = useContext(DiscardFailedChatReconciliationContext);
+  const [discardingTurnId, setDiscardingTurnId] = useState<string | null>(null);
   const model = useChatStore((s) => s.model);
   const ready = useChatStore((s) => s.bootstrapStatus === 'ready');
   const text = useChatStore((s) => s.composerDraft);
@@ -226,6 +285,7 @@ export function ChatComposer() {
     sending,
     reconciling,
     flushing,
+    finishedTurnPending: !!finishedTurn,
     yamlEditLocked,
     yamlEditLockLocal,
   });
@@ -270,6 +330,21 @@ export function ChatComposer() {
 
   return (
     <div className="border-t border-tagma-border px-3 py-2 shrink-0 flex flex-col gap-2">
+      <ReconciliationFailureBannerView
+        failure={finishedTurn?.reconcileFailure ?? null}
+        busy={discardingTurnId === finishedTurn?.id}
+        retry={() => {
+          if (finishedTurn) retryFinishedTurnReconciliation(finishedTurn.id);
+        }}
+        discard={() => {
+          if (!finishedTurn || !discardFailedReconciliation || discardingTurnId) return;
+          const turnId = finishedTurn.id;
+          setDiscardingTurnId(turnId);
+          void discardFailedReconciliation(turnId).finally(() => {
+            setDiscardingTurnId((current) => (current === turnId ? null : current));
+          });
+        }}
+      />
       <AttachmentChips />
       <ChatContextWindowIndicator />
       <div className="flex min-w-0 items-end gap-2">

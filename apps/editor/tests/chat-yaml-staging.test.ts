@@ -8,8 +8,10 @@ import {
   __chatYamlStagingTestHooks,
   createChatYamlStage,
   discardChatYamlStage,
+  discardChatYamlStageWithDisposition,
   finalizeChatYamlStage,
   listChatYamlStage,
+  readFinalizedChatYamlStageResult,
   samePipelineRelativePath,
 } from '../server/chat-yaml-staging';
 import { getFileVersion, hasFileChanged } from '../server/optimistic-lock';
@@ -168,12 +170,16 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
-  test('auto-merges staged YAML edits with an independent renderer layout edit', async () => {
+  test('adopts Chat semantic YAML while preserving manual positions and track heights', async () => {
     const { ws, sourcePath, baseYaml } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
     const agentYaml = yamlFor('Agent Pipeline', 'agent');
-    const localLayout = JSON.parse(layoutFor(60));
+    const localLayout = {
+      positions: { 'main.task': { x: 60, y: 90 } },
+      folders: [],
+      trackHeights: { main: 260 },
+    };
     writeFileSync(staged.stagedPath, agentYaml, 'utf-8');
 
     const result = await finalizeChatYamlStage(ws, {
@@ -190,15 +196,268 @@ describe('chat YAML staging', () => {
     expect(result.conflicts).toEqual([]);
     expect(result.localBranchPersisted).toBe(true);
     expect(readFileSync(sourcePath, 'utf-8')).toBe(agentYaml);
-    expect(JSON.parse(readFileSync(pipelineLayoutPath(sourcePath), 'utf-8')).positions).toEqual(
-      localLayout.positions,
-    );
+    expect(result.entry?.path).toBe(sourcePath);
+    const adopted = parseYaml(readFileSync(sourcePath, 'utf-8'));
+    expect(
+      adopted.tracks.map((track) => ({
+        id: track.id,
+        taskIds: track.tasks.map((task) => task.id),
+      })),
+    ).toEqual([{ id: 'main', taskIds: ['task'] }]);
+    const persistedLayout = JSON.parse(readFileSync(pipelineLayoutPath(sourcePath), 'utf-8'));
+    expect(persistedLayout.positions).toEqual(localLayout.positions);
+    expect(persistedLayout.trackHeights).toEqual(localLayout.trackHeights);
+    expect(ws.layout.positions).toEqual(localLayout.positions);
+    expect(ws.layout.trackHeights).toEqual(localLayout.trackHeights);
     expect(existsSync(pipelineYamlPath(ws.workDir, 'pipeline-copy-1'))).toBe(false);
     expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(false);
     stopWorkspace(ws);
   });
 
-  test('forks staged topology changes instead of applying renderer positions to renamed tasks', async () => {
+  test('merges Chat placement after the manual layout was flushed to disk', async () => {
+    const { ws, sourcePath, baseYaml } = setupWorkspace();
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const agentYaml = baseYaml
+      .replace('name: Base Pipeline', 'name: Agent Pipeline')
+      .replace(
+        '          prompt: base',
+        ['          prompt: agent', '        - id: added', '          command: echo added'].join(
+          '\n',
+        ),
+      );
+    writeFileSync(staged.stagedPath, agentYaml, 'utf-8');
+    writeFileSync(
+      pipelineLayoutPath(staged.stagedPath),
+      JSON.stringify(
+        {
+          positions: {
+            'main.task': { x: 20 },
+            'main.added': { x: 340, y: 30 },
+          },
+          folders: [],
+          trackHeights: { main: 140 },
+        },
+        null,
+        2,
+      ),
+      'utf-8',
+    );
+    const localLayout = {
+      positions: { 'main.task': { x: 75, y: 95 } },
+      folders: [],
+      trackHeights: { main: 280 },
+    };
+    writeFileSync(pipelineLayoutPath(sourcePath), JSON.stringify(localLayout, null, 2), 'utf-8');
+    ws.layout = localLayout;
+
+    const result = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+      localBranch: {
+        sourcePath,
+        yaml: baseYaml,
+        layout: localLayout,
+      },
+    });
+
+    expect(result.outcome).toBe('adopted');
+    expect(result.conflicts).toEqual([]);
+    expect(result.localBranchPersisted).toBe(true);
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(agentYaml);
+    expect(JSON.parse(readFileSync(pipelineLayoutPath(sourcePath), 'utf-8'))).toEqual({
+      positions: {
+        'main.added': { x: 340, y: 30 },
+        'main.task': { x: 75, y: 95 },
+      },
+      trackHeights: { main: 280 },
+    });
+    expect(ws.layout.positions).toEqual({
+      'main.added': { x: 340, y: 30 },
+      'main.task': { x: 75, y: 95 },
+    });
+    expect(ws.layout.trackHeights).toEqual({ main: 280 });
+    expect(existsSync(pipelineYamlPath(ws.workDir, 'pipeline-copy-1'))).toBe(false);
+    expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(false);
+    stopWorkspace(ws);
+  });
+
+  test('rejects a captured local branch for a different source path', async () => {
+    const { ws, sourcePath, baseYaml } = setupWorkspace();
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    writeFileSync(staged.stagedPath, yamlFor('Agent Pipeline', 'agent'), 'utf-8');
+
+    await expect(
+      finalizeChatYamlStage(ws, {
+        stageId: stage.id,
+        relativePath: staged.relativePath,
+        localBranch: {
+          sourcePath: pipelineYamlPath(ws.workDir, 'different'),
+          yaml: baseYaml,
+          layout: JSON.parse(layoutFor(75)),
+        },
+      }),
+    ).rejects.toThrow('Local branch path does not match the staged source pipeline.');
+
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
+    expect(discardChatYamlStage(ws, stage.id)).toBe(true);
+    stopWorkspace(ws);
+  });
+
+  test('forks when Chat and the user move the same existing position differently', async () => {
+    const { ws, sourcePath, baseYaml } = setupWorkspace();
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const agentYaml = yamlFor('Agent Pipeline', 'agent');
+    const stagedLayout = {
+      positions: { 'main.task': { x: 120 } },
+      folders: [],
+      trackHeights: { main: 140 },
+    };
+    const localLayout = {
+      positions: { 'main.task': { x: 75 } },
+      folders: [],
+      trackHeights: { main: 140 },
+    };
+    writeFileSync(staged.stagedPath, agentYaml, 'utf-8');
+    writeFileSync(
+      pipelineLayoutPath(staged.stagedPath),
+      JSON.stringify(stagedLayout, null, 2),
+      'utf-8',
+    );
+
+    const result = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+      localBranch: {
+        sourcePath,
+        yaml: baseYaml,
+        layout: localLayout,
+      },
+    });
+
+    expect(result.outcome).toBe('forked');
+    expect(result.conflicts).toContain('local-branch-changed');
+    expect(result.localBranchPersisted).toBe(true);
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
+    expect(JSON.parse(readFileSync(pipelineLayoutPath(sourcePath), 'utf-8'))).toEqual({
+      positions: localLayout.positions,
+      trackHeights: localLayout.trackHeights,
+    });
+    expect(result.entry?.path).toBe(pipelineYamlPath(ws.workDir, 'pipeline-copy-1'));
+    expect(readFileSync(result.entry!.path, 'utf-8')).toContain('prompt: agent');
+    expect(JSON.parse(readFileSync(pipelineLayoutPath(result.entry!.path), 'utf-8'))).toEqual({
+      folders: [],
+      positions: stagedLayout.positions,
+      trackHeights: stagedLayout.trackHeights,
+    });
+    expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(false);
+    stopWorkspace(ws);
+  });
+
+  test('merges position fields independently when the base position was absent', async () => {
+    const { ws, sourcePath, baseYaml } = setupWorkspace();
+    writeFileSync(
+      pipelineLayoutPath(sourcePath),
+      JSON.stringify({ trackHeights: { main: 140 } }, null, 2),
+      'utf-8',
+    );
+    ws.layout = { positions: {}, trackHeights: { main: 140 } };
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    writeFileSync(staged.stagedPath, yamlFor('Agent Pipeline', 'agent'), 'utf-8');
+    writeFileSync(
+      pipelineLayoutPath(staged.stagedPath),
+      JSON.stringify(
+        {
+          positions: { 'main.task': { x: 20 } },
+          trackHeights: { main: 140 },
+        },
+        null,
+        2,
+      ),
+      'utf-8',
+    );
+
+    const result = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+      localBranch: {
+        sourcePath,
+        yaml: baseYaml,
+        layout: {
+          positions: { 'main.task': { x: 20, y: 90 } },
+          trackHeights: { main: 140 },
+        },
+      },
+    });
+
+    expect(result.outcome).toBe('adopted');
+    expect(result.conflicts).toEqual([]);
+    expect(ws.layout.positions).toEqual({ 'main.task': { x: 20, y: 90 } });
+    expect(existsSync(pipelineYamlPath(ws.workDir, 'pipeline-copy-1'))).toBe(false);
+    stopWorkspace(ws);
+  });
+
+  test('forks divergent concurrent folder edits and preserves both branches', async () => {
+    const { ws, sourcePath, baseYaml } = setupWorkspace();
+    const baseLayout = {
+      positions: { 'main.task': { x: 20 } },
+      folders: [
+        {
+          id: 'group',
+          name: 'Base Group',
+          trackIds: ['main'],
+          collapsed: false,
+        },
+      ],
+      trackHeights: { main: 140 },
+    };
+    writeFileSync(pipelineLayoutPath(sourcePath), JSON.stringify(baseLayout, null, 2), 'utf-8');
+    ws.layout = baseLayout;
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const stagedLayout = {
+      ...baseLayout,
+      folders: [{ ...baseLayout.folders[0], name: 'Chat Group' }],
+    };
+    const localLayout = {
+      ...baseLayout,
+      folders: [{ ...baseLayout.folders[0], name: 'Manual Group' }],
+    };
+    writeFileSync(staged.stagedPath, yamlFor('Agent Pipeline', 'agent'), 'utf-8');
+    writeFileSync(
+      pipelineLayoutPath(staged.stagedPath),
+      JSON.stringify(stagedLayout, null, 2),
+      'utf-8',
+    );
+
+    const result = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+      localBranch: {
+        sourcePath,
+        yaml: baseYaml,
+        layout: localLayout,
+      },
+    });
+
+    expect(result.outcome).toBe('forked');
+    expect(result.conflicts).toContain('local-branch-changed');
+    expect(result.localBranchPersisted).toBe(true);
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
+    expect(JSON.parse(readFileSync(pipelineLayoutPath(sourcePath), 'utf-8')).folders).toEqual(
+      localLayout.folders,
+    );
+    expect(result.entry?.path).toBe(pipelineYamlPath(ws.workDir, 'pipeline-copy-1'));
+    expect(
+      JSON.parse(readFileSync(pipelineLayoutPath(result.entry!.path), 'utf-8')).folders,
+    ).toEqual(stagedLayout.folders);
+    stopWorkspace(ws);
+  });
+
+  test('adopts a staged task rename and prunes the obsolete manual position', async () => {
     const { ws, sourcePath, baseYaml } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
@@ -219,13 +478,158 @@ describe('chat YAML staging', () => {
       },
     });
 
-    expect(result.outcome).toBe('forked');
-    expect(result.conflicts).toContain('local-branch-changed');
+    expect(result.outcome).toBe('adopted');
+    expect(result.conflicts).toEqual([]);
     expect(result.localBranchPersisted).toBe(true);
-    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
-    expect(readFileSync(result.entry!.path, 'utf-8')).toContain('id: renamed');
-    expect(ws.layout.positions['main.task']?.x).toBe(65);
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(renamedAgentYaml);
+    expect(result.entry?.path).toBe(sourcePath);
+    expect(ws.layout.positions).toEqual({});
+    expect(ws.layout.trackHeights).toEqual({ main: 140 });
+    expect(existsSync(pipelineYamlPath(ws.workDir, 'pipeline-copy-1'))).toBe(false);
     expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(false);
+    stopWorkspace(ws);
+  });
+
+  test('prunes a deleted track height and folder membership while preserving surviving edits', async () => {
+    const baseYaml = [
+      'pipeline:',
+      '  name: Base Pipeline',
+      '  tracks:',
+      '    - id: main',
+      '      name: Main',
+      '      tasks:',
+      '        - id: task',
+      '          command: echo main',
+      '    - id: removed',
+      '      name: Removed',
+      '      tasks:',
+      '        - id: task',
+      '          command: echo removed',
+      '',
+    ].join('\n');
+    const { ws, sourcePath } = setupWorkspace(baseYaml);
+    const baseLayout = {
+      positions: {
+        'main.task': { x: 20 },
+        'removed.task': { x: 40 },
+      },
+      folders: [
+        {
+          id: 'group',
+          name: 'Group',
+          trackIds: ['main', 'removed'],
+          collapsed: false,
+        },
+      ],
+      trackHeights: { main: 140, removed: 220 },
+    };
+    writeFileSync(pipelineLayoutPath(sourcePath), JSON.stringify(baseLayout, null, 2), 'utf-8');
+    ws.layout = baseLayout;
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    const agentYaml = yamlFor('Agent Pipeline', 'agent');
+    writeFileSync(staged.stagedPath, agentYaml, 'utf-8');
+    const localLayout = {
+      ...baseLayout,
+      positions: {
+        ...baseLayout.positions,
+        'main.task': { x: 75 },
+      },
+      trackHeights: { main: 140, removed: 300 },
+    };
+
+    const result = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+      localBranch: {
+        sourcePath,
+        yaml: baseYaml,
+        layout: localLayout,
+      },
+    });
+
+    expect(result.outcome).toBe('adopted');
+    expect(result.conflicts).toEqual([]);
+    expect(result.localBranchPersisted).toBe(true);
+    expect(JSON.parse(readFileSync(pipelineLayoutPath(sourcePath), 'utf-8'))).toEqual({
+      folders: [
+        {
+          id: 'group',
+          name: 'Group',
+          trackIds: ['main'],
+          collapsed: false,
+        },
+      ],
+      positions: { 'main.task': { x: 75 } },
+      trackHeights: { main: 140 },
+    });
+    expect(ws.layout.positions).toEqual({ 'main.task': { x: 75 } });
+    expect(ws.layout.trackHeights).toEqual({ main: 140 });
+    expect(ws.layout.folders?.[0]?.trackIds).toEqual(['main']);
+    expect(existsSync(pipelineYamlPath(ws.workDir, 'pipeline-copy-1'))).toBe(false);
+    stopWorkspace(ws);
+  });
+
+  test('prunes deleted topology from the persisted staged layout without local edits', async () => {
+    const baseYaml = [
+      'pipeline:',
+      '  name: Base Pipeline',
+      '  tracks:',
+      '    - id: main',
+      '      name: Main',
+      '      tasks:',
+      '        - id: task',
+      '          command: echo main',
+      '    - id: removed',
+      '      name: Removed',
+      '      tasks:',
+      '        - id: task',
+      '          command: echo removed',
+      '',
+    ].join('\n');
+    const { ws, sourcePath } = setupWorkspace(baseYaml);
+    const baseLayout = {
+      positions: {
+        'main.task': { x: 20 },
+        'removed.task': { x: 40 },
+      },
+      folders: [
+        {
+          id: 'group',
+          name: 'Group',
+          trackIds: ['main', 'removed'],
+          collapsed: false,
+        },
+      ],
+      trackHeights: { main: 140, removed: 220 },
+    };
+    writeFileSync(pipelineLayoutPath(sourcePath), JSON.stringify(baseLayout, null, 2), 'utf-8');
+    ws.layout = baseLayout;
+    const stage = createChatYamlStage(ws, { activePath: sourcePath });
+    const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
+    writeFileSync(staged.stagedPath, yamlFor('Agent Pipeline', 'agent'), 'utf-8');
+
+    const result = await finalizeChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: staged.relativePath,
+    });
+
+    expect(result.outcome).toBe('adopted');
+    expect(result.conflicts).toEqual([]);
+    expect(result.localBranchPersisted).toBe(false);
+    expect(JSON.parse(readFileSync(pipelineLayoutPath(sourcePath), 'utf-8'))).toEqual({
+      folders: [
+        {
+          id: 'group',
+          name: 'Group',
+          trackIds: ['main'],
+          collapsed: false,
+        },
+      ],
+      positions: { 'main.task': { x: 20 } },
+      trackHeights: { main: 140 },
+    });
+    expect(existsSync(pipelineYamlPath(ws.workDir, 'pipeline-copy-1'))).toBe(false);
     stopWorkspace(ws);
   });
 
@@ -486,11 +890,14 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
-  test('refreshes the optimistic lock when an escaped chat write is the only live change', async () => {
+  test('prunes an escaped Chat rename when it is the only live change', async () => {
     const { ws, sourcePath } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
-    const escapedChatYaml = yamlFor('Agent Pipeline', 'agent');
+    const escapedChatYaml = yamlFor('Agent Pipeline', 'agent').replace(
+      '        - id: task',
+      '        - id: renamed',
+    );
     writeFileSync(sourcePath, escapedChatYaml, 'utf-8');
 
     const result = await finalizeChatYamlStage(ws, {
@@ -502,6 +909,9 @@ describe('chat YAML staging', () => {
     expect(result.conflicts).toEqual(['source-changed-on-disk']);
     expect(result.compile.success).toBe(true);
     expect(ws.config.name).toBe('Agent Pipeline');
+    expect(JSON.parse(readFileSync(pipelineLayoutPath(sourcePath), 'utf-8'))).toEqual({
+      trackHeights: { main: 140 },
+    });
     expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(false);
     stopWorkspace(ws);
   });
@@ -780,7 +1190,7 @@ describe('chat YAML staging', () => {
     stopWorkspace(ws);
   });
 
-  test('forks an escaped Chat branch instead of dropping layout edits for renamed tasks', async () => {
+  test('adopts an escaped Chat rename and prunes the obsolete manual position', async () => {
     const { ws, sourcePath, baseYaml } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
     const staged = stage.entries.find((entry) => entry.sourcePath === sourcePath)!;
@@ -801,11 +1211,14 @@ describe('chat YAML staging', () => {
       },
     });
 
-    expect(result.outcome).toBe('forked');
+    expect(result.outcome).toBe('adopted');
+    expect(result.conflicts).toEqual(['source-changed-on-disk']);
     expect(result.localBranchPersisted).toBe(true);
-    expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
-    expect(readFileSync(result.entry!.path, 'utf-8')).toContain('id: renamed');
-    expect(ws.layout.positions['main.task']?.x).toBe(75);
+    expect(readFileSync(sourcePath, 'utf-8')).toBe(renamedChatYaml);
+    expect(result.entry?.path).toBe(sourcePath);
+    expect(ws.layout.positions).toEqual({});
+    expect(ws.layout.trackHeights).toEqual({ main: 140 });
+    expect(existsSync(pipelineYamlPath(ws.workDir, 'pipeline-copy-1'))).toBe(false);
     expect(hasFileChanged(sourcePath, ws.yamlVersion)).toBe(false);
     stopWorkspace(ws);
   });
@@ -1467,6 +1880,15 @@ describe('chat YAML staging', () => {
 
     expect(second).toEqual(first);
     expect(readFileSync(sourcePath, 'utf-8')).toContain('prompt: agent');
+    ws.stateRevision++;
+    const recovered = readFinalizedChatYamlStageResult(ws, stage.id);
+    expect(recovered).not.toBeNull();
+    expect(recovered?.outcome).toBe(first.outcome);
+    expect(recovered?.entry?.path).toBe(first.entry?.path);
+    expect(recovered?.revision).toBe(ws.stateRevision);
+    expect(recovered?.state.revision).toBe(ws.stateRevision);
+    expect(discardChatYamlStageWithDisposition(ws, stage.id)).toBe('finalized');
+    expect(discardChatYamlStage(ws, stage.id)).toBe(false);
     stopWorkspace(ws);
   });
 
@@ -1474,8 +1896,9 @@ describe('chat YAML staging', () => {
     const { ws, sourcePath, baseYaml } = setupWorkspace();
     const stage = createChatYamlStage(ws, { activePath: sourcePath });
 
-    expect(discardChatYamlStage(ws, stage.id)).toBe(true);
+    expect(discardChatYamlStageWithDisposition(ws, stage.id)).toBe('discarded');
     expect(existsSync(stage.rootDir)).toBe(false);
+    expect(discardChatYamlStageWithDisposition(ws, stage.id)).toBe('missing');
     expect(readFileSync(sourcePath, 'utf-8')).toBe(baseYaml);
     stopWorkspace(ws);
   });

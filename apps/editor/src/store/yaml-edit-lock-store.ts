@@ -7,7 +7,7 @@ import {
 } from '../api/client';
 
 export const YAML_EDIT_LOCK_MESSAGE =
-  'OpenCode chat is updating YAML/layout files. Conflicting results stay isolated until the turn finishes.';
+  'OpenCode is working in an isolated copy. Your canvas edits stay safe and will be merged when the turn finishes.';
 
 const LOCK_TTL_MS = 2 * 60 * 1000;
 const HEARTBEAT_MS = 30 * 1000;
@@ -38,6 +38,12 @@ export interface ChatYamlEditLockLease {
   workspaceKey: WorkspaceKey;
 }
 
+export interface EnsureChatYamlEditLockLeaseOptions {
+  reason?: string;
+  yamlPath?: string | null;
+  forceRefresh?: boolean;
+}
+
 interface StoredYamlEditLock {
   lock: YamlEditLockInfo;
   local: boolean;
@@ -54,6 +60,33 @@ let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let expiryTimer: ReturnType<typeof setTimeout> | null = null;
 const acquireInFlightByWorkspace = new Map<WorkspaceKey, Promise<ChatYamlEditLockLease>>();
 let latestAcquireToken: symbol | null = null;
+
+function leasesMatch(
+  left: ChatYamlEditLockLease | null | undefined,
+  right: ChatYamlEditLockLease,
+): boolean {
+  return left?.id === right.id && left.workspaceKey === right.workspaceKey;
+}
+
+function getLiveLocalLease(): ChatYamlEditLockLease | null {
+  if (!localLock || localLockRefCount <= 0) return null;
+  const stored = rawLocksByWorkspace.get(localLock.workspaceKey);
+  if (!stored?.local || (stored.lock.expiresAt !== null && stored.lock.expiresAt <= Date.now())) {
+    return null;
+  }
+  return localLock;
+}
+
+function localLeaseConflict(expected: ChatYamlEditLockLease, actual: ChatYamlEditLockLease): Error {
+  return new Error(
+    `Cannot restore YAML edit lock ${expected.id}: local lease ${actual.id} is still active.`,
+  );
+}
+
+function assertNoDifferentLiveLocalLease(expected: ChatYamlEditLockLease): void {
+  const live = getLiveLocalLease();
+  if (live && !leasesMatch(live, expected)) throw localLeaseConflict(expected, live);
+}
 
 function clearHeartbeat(): void {
   if (heartbeatTimer) {
@@ -151,6 +184,17 @@ function setRawLock(
   recompute();
 }
 
+function clearDefinitivelyLostLocalLease(lease: ChatYamlEditLockLease): number {
+  if (!leasesMatch(localLock, lease)) return 0;
+  const refCount = Math.max(localLockRefCount, 1);
+  localLock = null;
+  localLockRefCount = 0;
+  clearHeartbeat();
+  const stored = rawLocksByWorkspace.get(lease.workspaceKey);
+  if (stored?.local) setRawLock(null, lease.workspaceKey, false);
+  return refCount;
+}
+
 async function refreshHeldLock(reason: string, lease: ChatYamlEditLockLease): Promise<void> {
   const lock = localLock;
   if (!lock || lock.id !== lease.id || lock.workspaceKey !== lease.workspaceKey) return;
@@ -159,7 +203,9 @@ async function refreshHeldLock(reason: string, lease: ChatYamlEditLockLease): Pr
     lease.workspaceKey,
   );
   if (localLock?.id !== lock.id || localLock.workspaceKey !== lease.workspaceKey) return;
-  localLock = { id: result.lock.id, workspaceKey: lease.workspaceKey };
+  if (result.lock.id !== lease.id) {
+    throw new Error(`YAML edit lock refresh returned unexpected lease ${result.lock.id}.`);
+  }
   setRawLock(result.lock, lease.workspaceKey, true);
 }
 
@@ -180,11 +226,7 @@ function startHeartbeat(reason: string, lease: ChatYamlEditLockLease): void {
       // lease was lost. Keep retrying while the last confirmed expiresAt is
       // still authoritative; its expiry timer remains the fail-safe boundary.
       if (!isDefinitiveYamlEditLockLoss(err)) return;
-      if (localLock?.id !== lease.id || localLock.workspaceKey !== lease.workspaceKey) return;
-      localLock = null;
-      localLockRefCount = 0;
-      clearHeartbeat();
-      setRawLock(null, lease.workspaceKey, false);
+      clearDefinitivelyLostLocalLease(lease);
     });
   }, HEARTBEAT_MS);
 }
@@ -264,6 +306,141 @@ export function getLocalChatYamlEditLockLeaseForWorkspace(
     return null;
   }
   return { ...localLock };
+}
+
+/**
+ * Restore renderer ownership of a known server lease without ever substituting
+ * a newly generated id. This does not add another reference to an already-live
+ * local lease; it restores the ownership reference that was lost with local
+ * renderer state.
+ */
+async function ensureChatYamlEditLockLeaseWithMinimumRefCount(
+  expectedLease: ChatYamlEditLockLease,
+  options: EnsureChatYamlEditLockLeaseOptions = {},
+  minimumRefCount = 1,
+): Promise<ChatYamlEditLockLease> {
+  if (!expectedLease.id.trim()) {
+    throw new Error('Cannot restore a YAML edit lock without its exact lease id.');
+  }
+
+  const live = getLiveLocalLease();
+  if (live && !leasesMatch(live, expectedLease)) {
+    throw localLeaseConflict(expectedLease, live);
+  }
+  if (live && !options.forceRefresh) {
+    localLockRefCount = Math.max(localLockRefCount, minimumRefCount);
+    return { ...expectedLease };
+  }
+
+  const mapKey = expectedLease.workspaceKey;
+  const existing = acquireInFlightByWorkspace.get(mapKey);
+  if (existing) {
+    const acquired = await existing;
+    if (!leasesMatch(acquired, expectedLease)) {
+      throw new Error(
+        `Cannot restore YAML edit lock ${expectedLease.id}: concurrent acquire returned ${acquired.id}.`,
+      );
+    }
+    const restored = getLiveLocalLease();
+    if (restored && leasesMatch(restored, expectedLease)) {
+      localLockRefCount = Math.max(localLockRefCount, minimumRefCount);
+      return { ...expectedLease };
+    }
+    if (restored) throw localLeaseConflict(expectedLease, restored);
+    throw new Error(
+      `YAML edit lock ${expectedLease.id} was acquired but renderer ownership was not restored.`,
+    );
+  }
+
+  const acquireToken = Symbol('chat-yaml-edit-lock-ensure');
+  latestAcquireToken = acquireToken;
+  const reason = options.reason ?? YAML_EDIT_LOCK_MESSAGE;
+  const promise = (async () => {
+    assertNoDifferentLiveLocalLease(expectedLease);
+    try {
+      const result = await api.acquireYamlEditLock(
+        {
+          id: expectedLease.id,
+          reason,
+          ttlMs: LOCK_TTL_MS,
+          ...(options.yamlPath !== undefined ? { yamlPath: options.yamlPath } : {}),
+        },
+        expectedLease.workspaceKey,
+      );
+      if (result.lock.id !== expectedLease.id) {
+        throw new Error(
+          `Cannot restore YAML edit lock ${expectedLease.id}: server returned ${result.lock.id}.`,
+        );
+      }
+
+      if (latestAcquireToken !== acquireToken) {
+        const current = getLiveLocalLease();
+        if (current && leasesMatch(current, expectedLease)) return { ...expectedLease };
+        if (current) throw localLeaseConflict(expectedLease, current);
+        throw new Error(`YAML edit lock ${expectedLease.id} recovery was superseded.`);
+      }
+
+      assertNoDifferentLiveLocalLease(expectedLease);
+      const extendsCurrentLock = leasesMatch(localLock, expectedLease);
+      localLock = { ...expectedLease };
+      localLockRefCount = extendsCurrentLock
+        ? Math.max(localLockRefCount, minimumRefCount)
+        : Math.max(minimumRefCount, 1);
+      setRawLock(result.lock, expectedLease.workspaceKey, true);
+      startHeartbeat(reason, expectedLease);
+      return { ...expectedLease };
+    } catch (err) {
+      if (isDefinitiveYamlEditLockLoss(err)) {
+        clearDefinitivelyLostLocalLease(expectedLease);
+      }
+      throw err;
+    }
+  })().finally(() => {
+    if (acquireInFlightByWorkspace.get(mapKey) === promise) {
+      acquireInFlightByWorkspace.delete(mapKey);
+    }
+  });
+  acquireInFlightByWorkspace.set(mapKey, promise);
+  return promise;
+}
+
+export function ensureChatYamlEditLockLease(
+  expectedLease: ChatYamlEditLockLease,
+  options: EnsureChatYamlEditLockLeaseOptions = {},
+): Promise<ChatYamlEditLockLease> {
+  return ensureChatYamlEditLockLeaseWithMinimumRefCount(expectedLease, options);
+}
+
+/** Run a lease-protected operation, recovering the exact lease and retrying once on HTTP 423. */
+export async function withChatYamlEditLockLeaseRecovery<T>(
+  expectedLease: ChatYamlEditLockLease,
+  operation: (lease: ChatYamlEditLockLease) => Promise<T>,
+  options: EnsureChatYamlEditLockLeaseOptions = {},
+): Promise<T> {
+  let recoveryRefCount = 1;
+  try {
+    return await operation(expectedLease);
+  } catch (err) {
+    if (!isDefinitiveYamlEditLockLoss(err)) throw err;
+    recoveryRefCount = clearDefinitivelyLostLocalLease(expectedLease) || 1;
+  }
+
+  const restored = await ensureChatYamlEditLockLeaseWithMinimumRefCount(
+    expectedLease,
+    {
+      ...options,
+      forceRefresh: true,
+    },
+    recoveryRefCount,
+  );
+  try {
+    return await operation(restored);
+  } catch (err) {
+    if (isDefinitiveYamlEditLockLoss(err)) {
+      clearDefinitivelyLostLocalLease(expectedLease);
+    }
+    throw err;
+  }
 }
 
 export async function acquireChatYamlEditLock(

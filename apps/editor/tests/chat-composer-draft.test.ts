@@ -2,7 +2,12 @@ import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:tes
 import { resetOpencodeClient } from '../src/api/opencode-chat';
 import { setClientWorkspace } from '../src/api/client';
 import { restoreComposerDraftAfterSendFailure } from '../src/components/chat/ChatComposer';
-import { useChatStore, type ChatYamlSessionResult } from '../src/store/chat-store';
+import {
+  applySseEvent,
+  useChatStore,
+  type ChatFinishedTurn,
+  type ChatYamlSessionResult,
+} from '../src/store/chat-store';
 import { usePipelineStore } from '../src/store/pipeline-store';
 import { useYamlEditLockStore } from '../src/store/yaml-edit-lock-store';
 
@@ -38,6 +43,30 @@ function previousResult(): ChatYamlSessionResult {
       compileSuccess: true,
     },
     completedAt: 1_000,
+  };
+}
+
+function finishedTurn(id = 'finished-barrier'): ChatFinishedTurn {
+  return {
+    id,
+    sessionId: 'existing',
+    endedAt: 1_000,
+    hidden: false,
+    termination: 'completed',
+    yamlSnapshotBeforeSend: {
+      workDir: 'C:/repo',
+      activePath: 'C:/repo/.tagma/pipeline/pipeline.yaml',
+      localEditRevision: 7,
+      yamlEditLockId: 'yaml-lock-stage-1',
+      staging: {
+        id: 'stage-1',
+        agentTagmaDir: 'C:/repo/.tagma/.chat-staging/stage-1/agent-workspace/.tagma',
+        activeRelativePath: 'pipeline/pipeline.yaml',
+        activeStagedPath:
+          'C:/repo/.tagma/.chat-staging/stage-1/agent-workspace/.tagma/pipeline/pipeline.yaml',
+        entries: [],
+      },
+    },
   };
 }
 
@@ -130,11 +159,15 @@ describe('composer error-context attachments', () => {
       sessionYamlResults: {},
       currentSessionId: null,
       sessions: [],
+      sessionStates: {},
       model: null,
       agent: null,
       pendingUserText: null,
+      yamlSnapshotBeforeSend: null,
       sendError: null,
       completionWarning: null,
+      lastFinishedTurn: null,
+      finishedTurnQueue: [],
     } as Partial<ChatState>);
     useYamlEditLockStore.setState({
       active: false,
@@ -318,6 +351,302 @@ describe('composer error-context attachments', () => {
     expect(state.pendingUserText).toBe('Start fresh after reconcile.');
     expect(state.queuedMessages).toEqual([]);
     expect(state.queuedDispatchMode).toBeNull();
+  });
+
+  test('keeps every finished turn as a start-fresh queue barrier until it is acknowledged', async () => {
+    const promptRequests: string[] = [];
+    globalThis.fetch = ((input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url === '/api/opencode/chat/ensure') {
+        return Promise.resolve(jsonResponse({ baseUrl: 'http://opencode.test' }));
+      }
+      if (url === 'http://opencode.test/session/existing') {
+        return Promise.resolve(jsonResponse({ id: 'existing' }));
+      }
+      if (url === 'http://opencode.test/session/existing/prompt_async') {
+        promptRequests.push(url);
+        return Promise.resolve(jsonResponse({ ok: true }));
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    }) as typeof fetch;
+
+    const turn = finishedTurn();
+    useChatStore.setState({
+      currentSessionId: 'existing',
+      sessions: [{ id: 'existing', title: 'Named chat' }] as never,
+      model: { providerID: 'p', modelID: 'm' },
+      agent: 'tagma-router',
+      finishedTurnQueue: [turn],
+      lastFinishedTurn: turn,
+    } as Partial<ChatState>);
+
+    await useChatStore.getState().send('Wait until reconciliation finishes.');
+
+    expect(useChatStore.getState().queuedMessages).toHaveLength(1);
+    expect(useChatStore.getState().queuedDispatchMode).toBe('start-fresh');
+    expect(useChatStore.getState().dispatchQueuedMessagesIfReady()).toBe(false);
+    expect(promptRequests).toEqual([]);
+
+    useChatStore.getState().acknowledgeFinishedTurn(turn.id);
+    expect(useChatStore.getState().dispatchQueuedMessagesIfReady()).toBe(true);
+    expect(useChatStore.getState().sending).toBe(true);
+    expect(useChatStore.getState().pendingUserText).toBe('Wait until reconciliation finishes.');
+  });
+
+  test('marks and retries reconciliation without changing the finished turn or stage identity', () => {
+    const turn = finishedTurn('finished-retry');
+    const snapshot = turn.yamlSnapshotBeforeSend;
+    useChatStore.setState({
+      finishedTurnQueue: [turn],
+      lastFinishedTurn: turn,
+    } as Partial<ChatState>);
+
+    useChatStore
+      .getState()
+      .markFinishedTurnReconciliationFailed(turn.id, 'The first finalize request failed.');
+
+    const failed = useChatStore.getState().finishedTurnQueue[0]!;
+    expect(failed).not.toBe(turn);
+    expect(failed).toMatchObject({
+      id: turn.id,
+      sessionId: turn.sessionId,
+      endedAt: turn.endedAt,
+      reconcileFailure: {
+        message: 'The first finalize request failed.',
+        attempt: 1,
+      },
+    });
+    expect(failed.reconcileFailure!.failedAt).toBeGreaterThan(0);
+    expect(failed.yamlSnapshotBeforeSend).toBe(snapshot);
+    expect(useChatStore.getState().lastFinishedTurn).toBe(failed);
+
+    useChatStore.getState().retryFinishedTurnReconciliation(turn.id);
+
+    const retried = useChatStore.getState().finishedTurnQueue[0]!;
+    expect(retried).not.toBe(failed);
+    expect(retried.id).toBe(turn.id);
+    expect(retried.sessionId).toBe(turn.sessionId);
+    expect(retried.endedAt).toBe(turn.endedAt);
+    expect(retried.yamlSnapshotBeforeSend).toBe(snapshot);
+    expect(retried.reconcileFailure).toBeUndefined();
+    expect(useChatStore.getState().lastFinishedTurn).toBe(retried);
+
+    useChatStore.getState().markFinishedTurnReconciliationFailed(turn.id, 'The retry failed.');
+    expect(useChatStore.getState().finishedTurnQueue[0]!.reconcileFailure).toMatchObject({
+      message: 'The retry failed.',
+      attempt: 2,
+    });
+  });
+
+  test('abandons only a failed reconciliation and preserves queued prompts as start-fresh', () => {
+    const failedHead = finishedTurn('failed-head');
+    const healthyTail = finishedTurn('healthy-tail');
+    useChatStore.setState({
+      finishedTurnQueue: [failedHead, healthyTail],
+      lastFinishedTurn: healthyTail,
+      queuedMessages: [{ id: 'queued-1', text: 'Continue after cleanup.', createdAt: 1 }],
+      queuedDispatchMode: 'reuse-logical-turn',
+    } as Partial<ChatState>);
+
+    expect(useChatStore.getState().abandonFinishedTurnReconciliation(failedHead.id)).toBeNull();
+    expect(useChatStore.getState().finishedTurnQueue).toEqual([failedHead, healthyTail]);
+
+    useChatStore
+      .getState()
+      .markFinishedTurnReconciliationFailed(failedHead.id, 'Finalize cannot continue.');
+    const failed = useChatStore.getState().finishedTurnQueue[0]!;
+
+    const abandoned = useChatStore.getState().abandonFinishedTurnReconciliation(failedHead.id);
+
+    expect(abandoned).toBe(failed);
+    expect(abandoned?.yamlSnapshotBeforeSend).toBe(failedHead.yamlSnapshotBeforeSend);
+    expect(useChatStore.getState().finishedTurnQueue).toEqual([healthyTail]);
+    expect(useChatStore.getState().queuedMessages).toEqual([
+      { id: 'queued-1', text: 'Continue after cleanup.', createdAt: 1 },
+    ]);
+    expect(useChatStore.getState().queuedDispatchMode).toBe('start-fresh');
+    expect(useChatStore.getState().lastFinishedTurn).toBe(healthyTail);
+  });
+
+  test('does not abandon a different failed turn when the requested id is absent', () => {
+    const turn = finishedTurn('failed-present');
+    useChatStore.setState({
+      finishedTurnQueue: [turn],
+      lastFinishedTurn: turn,
+    } as Partial<ChatState>);
+    useChatStore.getState().markFinishedTurnReconciliationFailed(turn.id, 'Keep this failure.');
+    const failed = useChatStore.getState().finishedTurnQueue[0]!;
+
+    expect(useChatStore.getState().abandonFinishedTurnReconciliation('failed-missing')).toBeNull();
+    expect(useChatStore.getState().finishedTurnQueue).toEqual([failed]);
+    expect(useChatStore.getState().lastFinishedTurn).toBe(failed);
+  });
+
+  test('does not rewrite an idle queue mode when abandoning without queued prompts', () => {
+    const turn = finishedTurn('failed-without-prompts');
+    useChatStore.setState({
+      finishedTurnQueue: [turn],
+      queuedMessages: [],
+      queuedDispatchMode: null,
+    } as Partial<ChatState>);
+    useChatStore
+      .getState()
+      .markFinishedTurnReconciliationFailed(turn.id, 'Abandon with no follow-up.');
+
+    expect(useChatStore.getState().abandonFinishedTurnReconciliation(turn.id)?.id).toBe(turn.id);
+    expect(useChatStore.getState().finishedTurnQueue).toEqual([]);
+    expect(useChatStore.getState().queuedMessages).toEqual([]);
+    expect(useChatStore.getState().queuedDispatchMode).toBeNull();
+  });
+
+  test('restores a claimed failed head with the exact snapshot and attempt count', () => {
+    const claimedHead = finishedTurn('claimed-failed-head');
+    const tail = finishedTurn('queued-tail');
+    useChatStore.setState({
+      finishedTurnQueue: [claimedHead, tail],
+      lastFinishedTurn: claimedHead,
+      queuedMessages: [{ id: 'queued-restore', text: 'Resume later.', createdAt: 2 }],
+      queuedDispatchMode: 'reuse-logical-turn',
+    } as Partial<ChatState>);
+    useChatStore
+      .getState()
+      .markFinishedTurnReconciliationFailed(claimedHead.id, 'Original merge failure.');
+    const failed = useChatStore.getState().finishedTurnQueue[0]!;
+    const originalSnapshot = failed.yamlSnapshotBeforeSend;
+    const originalAttempt = failed.reconcileFailure!.attempt;
+    const originalFailedAt = failed.reconcileFailure!.failedAt;
+    expect(useChatStore.getState().abandonFinishedTurnReconciliation(failed.id)).toBe(failed);
+
+    useChatStore.setState({ queuedDispatchMode: 'reuse-logical-turn' } as Partial<ChatState>);
+    expect(
+      useChatStore
+        .getState()
+        .restoreAbandonedFinishedTurnReconciliation(
+          failed,
+          'The stage may already have been finalized; retry the merge check.',
+        ),
+    ).toBe(true);
+
+    const restored = useChatStore.getState().finishedTurnQueue[0]!;
+    expect(useChatStore.getState().finishedTurnQueue.map((turn) => turn.id)).toEqual([
+      failed.id,
+      tail.id,
+    ]);
+    expect(restored).not.toBe(failed);
+    expect(restored.yamlSnapshotBeforeSend).toBe(originalSnapshot);
+    expect(restored.reconcileFailure).toMatchObject({
+      message: 'The stage may already have been finalized; retry the merge check.',
+      attempt: originalAttempt,
+    });
+    expect(restored.reconcileFailure!.failedAt).toBeGreaterThanOrEqual(originalFailedAt);
+    expect(useChatStore.getState().lastFinishedTurn).toBe(restored);
+    expect(useChatStore.getState().queuedDispatchMode).toBe('start-fresh');
+
+    useChatStore.getState().retryFinishedTurnReconciliation(restored.id);
+    useChatStore
+      .getState()
+      .markFinishedTurnReconciliationFailed(restored.id, 'A later merge retry failed.');
+    expect(useChatStore.getState().finishedTurnQueue[0]!.reconcileFailure?.attempt).toBe(
+      originalAttempt + 1,
+    );
+  });
+
+  test('refuses to restore a healthy or duplicate abandoned turn', () => {
+    const healthy = finishedTurn('healthy-restore');
+    useChatStore.setState({
+      finishedTurnQueue: [healthy],
+      lastFinishedTurn: healthy,
+    } as Partial<ChatState>);
+
+    expect(
+      useChatStore
+        .getState()
+        .restoreAbandonedFinishedTurnReconciliation(healthy, 'Must stay healthy.'),
+    ).toBe(false);
+
+    useChatStore
+      .getState()
+      .markFinishedTurnReconciliationFailed(healthy.id, 'Existing queue failure.');
+    const failed = useChatStore.getState().finishedTurnQueue[0]!;
+    expect(
+      useChatStore
+        .getState()
+        .restoreAbandonedFinishedTurnReconciliation(failed, 'Must not replace duplicate.'),
+    ).toBe(false);
+    expect(useChatStore.getState().finishedTurnQueue).toEqual([failed]);
+    expect(useChatStore.getState().lastFinishedTurn).toBe(failed);
+  });
+
+  test('session deletion releases only the exact lease captured by that session runtime', async () => {
+    const releases: Array<{ id: string; workspace: string | null }> = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url === '/api/workspace/yaml-edit-lock' && init?.method === 'DELETE') {
+        releases.push({
+          id: (JSON.parse(String(init.body)) as { id: string }).id,
+          workspace: new Headers(init.headers).get('X-Tagma-Workspace'),
+        });
+        return jsonResponse({ ok: true, released: true });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }) as typeof fetch;
+    setClientWorkspace('C:/different-visible-workspace');
+    const turn = finishedTurn('deleted-session-turn');
+    useChatStore.setState({
+      currentSessionId: 'existing',
+      sessions: [{ id: 'existing', title: 'Named chat' }] as never,
+      yamlSnapshotBeforeSend: turn.yamlSnapshotBeforeSend,
+    } as Partial<ChatState>);
+
+    applySseEvent(
+      {
+        type: 'session.deleted',
+        properties: { info: { id: 'existing' } },
+      } as never,
+      useChatStore.getState,
+      useChatStore.setState as never,
+    );
+    await Promise.resolve();
+
+    expect(releases).toEqual([
+      {
+        id: 'yaml-lock-stage-1',
+        workspace: 'C:/repo',
+      },
+    ]);
+  });
+
+  test('session deletion leaves a queued finished turn lease to its lifecycle owner', async () => {
+    const releases: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url === '/api/workspace/yaml-edit-lock' && init?.method === 'DELETE') {
+        releases.push((JSON.parse(String(init.body)) as { id: string }).id);
+        return jsonResponse({ ok: true, released: true });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }) as typeof fetch;
+    setClientWorkspace('C:/different-visible-workspace');
+    const turn = finishedTurn('queued-deleted-session-turn');
+    useChatStore.setState({
+      currentSessionId: 'existing',
+      sessions: [{ id: 'existing', title: 'Named chat' }] as never,
+      yamlSnapshotBeforeSend: turn.yamlSnapshotBeforeSend,
+      finishedTurnQueue: [turn],
+      lastFinishedTurn: turn,
+    } as Partial<ChatState>);
+
+    applySseEvent(
+      {
+        type: 'session.deleted',
+        properties: { info: { id: 'existing' } },
+      } as never,
+      useChatStore.getState,
+      useChatStore.setState as never,
+    );
+    await Promise.resolve();
+
+    expect(releases).toEqual([]);
   });
 
   test('queues behind an external YAML lock and dispatches after the lock clears', async () => {

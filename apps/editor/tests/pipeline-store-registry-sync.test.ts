@@ -30,6 +30,7 @@ let getRegistryCalls = 0;
 let setWorkDirCalls = 0;
 let openFileCalls = 0;
 let importFileCalls = 0;
+let operationOrder: string[] = [];
 let mockClientWorkspace: string | null = null;
 const mockWorkspaceListeners = new Set<(key: string | null) => void>();
 
@@ -43,6 +44,7 @@ mock.module('../src/api/client', () => ({
     getState: async () => makeState(),
     getRegistry: async () => {
       getRegistryCalls += 1;
+      operationOrder.push('getRegistry');
       return nextRegistry;
     },
     setWorkDir: async (_workDir: string) => {
@@ -51,6 +53,7 @@ mock.module('../src/api/client', () => ({
     },
     openFile: async (_path: string) => {
       openFileCalls += 1;
+      operationOrder.push('openFile');
       return nextOpenFileState;
     },
     importFile: async (_sourcePath: string, _capabilityToken: string) => {
@@ -178,6 +181,7 @@ describe('pipeline store plugin registry sync', () => {
     setWorkDirCalls = 0;
     openFileCalls = 0;
     importFileCalls = 0;
+    operationOrder = [];
     mockClientWorkspace = null;
     for (const listener of mockWorkspaceListeners) listener(null);
     setElectronApi(null);
@@ -344,6 +348,7 @@ describe('pipeline store plugin registry sync', () => {
     const state = usePipelineStore.getState();
     expect(openFileCalls).toBe(1);
     expect(getRegistryCalls).toBe(1);
+    expect(operationOrder).toEqual(['openFile', 'getRegistry']);
     expect(state.yamlPath).toBe('D:/workspace-a/.tagma/pipeline.yaml');
     expect(state.registry).toEqual(nextRegistry);
     expect(state.selectedTaskId).toBeNull();

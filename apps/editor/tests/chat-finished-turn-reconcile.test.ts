@@ -4,6 +4,10 @@ import { join } from 'node:path';
 import { selectFinishedTurnQueueHead } from '../src/store/finished-turn-selector';
 import { useChatStore, type ChatFinishedTurn } from '../src/store/chat-store';
 import { createChatYamlLifecycleCancellationGuard } from '../src/utils/chat-yaml-lifecycle';
+import {
+  resolvePreservedChatReconciliationDiscard,
+  shouldPreserveFinishedTurnReconciliationFailure,
+} from '../src/App';
 
 const originalQueue = useChatStore.getState().finishedTurnQueue;
 
@@ -65,9 +69,217 @@ describe('finished chat turn reconciliation', () => {
     expect(reconcileEnd).toBeGreaterThan(reconcileStart);
 
     const reconcileBlock = appSource.slice(reconcileStart, reconcileEnd);
-    expect(reconcileBlock).toContain('getLocalChatYamlEditLockLeaseForWorkspace(snapshot.workDir)');
+    expect(reconcileBlock).toContain('snapshot.yamlEditLockId');
+    expect(reconcileBlock).toContain('withChatYamlEditLockLeaseRecovery(');
+    expect(reconcileBlock).toContain('withYamlEditLockRequestBypass(lease.id, op)');
+    expect(reconcileBlock).not.toContain(
+      'getLocalChatYamlEditLockLeaseForWorkspace(snapshot.workDir)',
+    );
     expect(reconcileBlock).not.toContain('getLocalYamlEditLockId()');
     expect(reconcileBlock).toContain('releaseChatYamlEditLock(chatYamlLockLease)');
+  });
+
+  test('preserves a failed staged merge for an explicit retry', () => {
+    const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
+    const reconcileStart = appSource.indexOf('// Reconcile OpenCode');
+    const reconcileEnd = appSource.indexOf('const handleOpenWorkspaceFile', reconcileStart);
+    const reconcileBlock = appSource.slice(reconcileStart, reconcileEnd);
+
+    expect(reconcileBlock).toContain('if (!finishedTurn || finishedTurn.reconcileFailure) return;');
+    expect(reconcileBlock).toContain('markFinishedTurnReconciliationFailed(');
+    expect(reconcileBlock).toContain('if (!reconciliationFailed && !cancelled)');
+
+    const ordinaryFailureStart = reconcileBlock.indexOf('post-chat YAML reconcile failed');
+    const finallyStart = reconcileBlock.indexOf('} finally {', ordinaryFailureStart);
+    expect(ordinaryFailureStart).toBeGreaterThan(-1);
+    expect(finallyStart).toBeGreaterThan(ordinaryFailureStart);
+    const ordinaryFailureBlock = reconcileBlock.slice(ordinaryFailureStart, finallyStart);
+    expect(ordinaryFailureBlock).not.toContain('discardChatYamlStage');
+    expect(ordinaryFailureBlock).not.toContain('removeStagedWorkspacePipelines');
+    expect(ordinaryFailureBlock).not.toContain('usePipelineStore.setState');
+    expect(ordinaryFailureBlock).toContain('clearFinishedPostChatYamlAction');
+  });
+
+  test('never offers a stage retry after finalize has committed', () => {
+    expect(shouldPreserveFinishedTurnReconciliationFailure(false)).toBe(true);
+    expect(shouldPreserveFinishedTurnReconciliationFailure(true)).toBe(false);
+
+    const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
+    const reconcileStart = appSource.indexOf('// Reconcile OpenCode');
+    const reconcileEnd = appSource.indexOf('const handleOpenWorkspaceFile', reconcileStart);
+    const reconcileBlock = appSource.slice(reconcileStart, reconcileEnd);
+    const finalizeResponse = reconcileBlock.indexOf('Failed to finalize the staged YAML result.');
+    const committedGuard = reconcileBlock.indexOf(
+      'stagedFinalizeCommitted = true;',
+      finalizeResponse,
+    );
+    const retryDecision = reconcileBlock.indexOf(
+      'shouldPreserveFinishedTurnReconciliationFailure(stagedFinalizeCommitted)',
+      committedGuard,
+    );
+    const committedResult = reconcileBlock.indexOf('setSessionYamlResult({', committedGuard);
+    const bestEffortRefresh = reconcileBlock.indexOf(
+      'await refreshWorkspaceYamls({ preserveOnError: true });',
+      committedResult,
+    );
+
+    expect(finalizeResponse).toBeGreaterThan(-1);
+    expect(committedGuard).toBeGreaterThan(finalizeResponse);
+    expect(retryDecision).toBeGreaterThan(committedGuard);
+    expect(committedResult).toBeGreaterThan(committedGuard);
+    expect(bestEffortRefresh).toBeGreaterThan(committedResult);
+  });
+
+  test('does not dispatch queued messages while any finished turn awaits reconciliation', () => {
+    const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
+    const dispatchStart = appSource.indexOf('if (queuedMessageCount === 0) return;');
+    const dispatchEnd = appSource.indexOf(']);', dispatchStart);
+    const dispatchBlock = appSource.slice(dispatchStart, dispatchEnd);
+
+    expect(dispatchBlock).toContain('finishedTurnCount > 0');
+    expect(dispatchBlock).toContain('finishedTurnCount,');
+  });
+
+  test('claims a failed-stage discard under a queue barrier before asynchronous cleanup', () => {
+    const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
+    const cleanupStart = appSource.indexOf('const discardFailedChatReconciliation = useCallback(');
+    const cleanupEnd = appSource.indexOf('const refreshWorkspaceYamls', cleanupStart);
+    const cleanupBlock = appSource.slice(cleanupStart, cleanupEnd);
+
+    const beginBarrier = cleanupBlock.indexOf('chat.beginChatYamlLifecycle({');
+    const abandonHead = cleanupBlock.indexOf(
+      'chat.abandonFinishedTurnReconciliation(turn.id)',
+      beginBarrier,
+    );
+    const discardStage = cleanupBlock.indexOf('api.discardChatYamlStage(', abandonHead);
+    const removeStagedEntry = cleanupBlock.indexOf('removeStagedWorkspacePipelines(', discardStage);
+    const releaseBarrier = cleanupBlock.lastIndexOf('chat.completeChatYamlLifecycle(');
+
+    expect(cleanupBlock).toContain('withChatYamlEditLockLeaseRecovery(');
+    expect(cleanupBlock).toContain('withYamlEditLockRequestBypass(recoveredLease.id');
+    expect(cleanupBlock).toContain('releaseChatYamlEditLock(lease)');
+    expect(cleanupBlock).toContain('repairCheckpointsRef.current.delete(key)');
+    expect(cleanupBlock).toContain('trialPlanningTelemetryRef.current.delete(key)');
+    expect(cleanupBlock).toContain("if (resolution.kind === 'restore')");
+    expect(cleanupBlock).toContain('restoreAbandonedFinishedTurnReconciliation(');
+    expect(cleanupBlock).toContain("if (resolution.kind === 'finalized')");
+    expect(cleanupBlock).toContain('resolution.finalizedResult');
+    expect(beginBarrier).toBeGreaterThan(-1);
+    expect(abandonHead).toBeGreaterThan(beginBarrier);
+    expect(discardStage).toBeGreaterThan(abandonHead);
+    expect(removeStagedEntry).toBeGreaterThan(discardStage);
+    expect(releaseBarrier).toBeGreaterThan(removeStagedEntry);
+  });
+
+  test('reads back a committed result instead of claiming a false discard', async () => {
+    const finalizedResult = {
+      outcome: 'adopted',
+      entry: { path: 'C:/repo/.tagma/pipeline.yaml' },
+    } as never;
+
+    const resolution = await resolvePreservedChatReconciliationDiscard(async () => ({
+      discarded: false,
+      disposition: 'finalized',
+      finalizedResult,
+    }));
+
+    expect(resolution).toEqual({ kind: 'finalized', finalizedResult });
+  });
+
+  test('restores the claimed turn when discard transport fails', async () => {
+    const resolution = await resolvePreservedChatReconciliationDiscard(async () => {
+      throw new Error('connection reset');
+    });
+
+    expect(resolution.kind).toBe('restore');
+    if (resolution.kind !== 'restore') throw new Error('expected reconciliation restoration');
+    expect(resolution.message).toContain('connection reset');
+    expect(resolution.message).toContain('Nothing was cleared');
+  });
+
+  test('only completes cleanup for confirmed discarded or missing stages', async () => {
+    await expect(
+      resolvePreservedChatReconciliationDiscard(async () => ({
+        discarded: true,
+        disposition: 'discarded',
+      })),
+    ).resolves.toEqual({ kind: 'complete' });
+    await expect(
+      resolvePreservedChatReconciliationDiscard(async () => ({
+        discarded: false,
+        disposition: 'missing',
+      })),
+    ).resolves.toEqual({ kind: 'complete' });
+    const inconsistent = await resolvePreservedChatReconciliationDiscard(async () => ({
+      discarded: false,
+      disposition: 'discarded',
+    }));
+    expect(inconsistent.kind).toBe('restore');
+  });
+
+  test('exposes detailed discard disposition and finalized readback end to end', () => {
+    const routeSource = readFileSync(
+      join(import.meta.dir, '..', 'server', 'routes', 'chat-yaml-staging.ts'),
+      'utf-8',
+    );
+    const clientSource = readFileSync(
+      join(import.meta.dir, '..', 'src', 'api', 'client.ts'),
+      'utf-8',
+    );
+
+    expect(routeSource).toContain('discardChatYamlStageWithDisposition(ws, stageId)');
+    expect(routeSource).toContain('readFinalizedChatYamlStageResult(ws, stageId)');
+    expect(routeSource).toContain('...(finalizedResult ? { finalizedResult } : {})');
+    expect(clientSource).toContain("'discarded' | 'finalized' | 'missing'");
+    expect(clientSource).toContain('finalizedResult?: ChatYamlStageFinalizeResult');
+  });
+
+  test('refreshes finalized readback and adopts it only when the canvas stayed untouched', () => {
+    const appSource = readFileSync(join(import.meta.dir, '..', 'src', 'App.tsx'), 'utf-8');
+    const cleanupStart = appSource.indexOf('const discardFailedChatReconciliation = useCallback(');
+    const cleanupEnd = appSource.indexOf('const refreshWorkspaceYamls', cleanupStart);
+    const cleanupBlock = appSource.slice(cleanupStart, cleanupEnd);
+    const finalizedStart = cleanupBlock.indexOf("if (resolution.kind === 'finalized')");
+    const finalizedBlock = cleanupBlock.slice(finalizedStart);
+
+    expect(finalizedBlock).toContain("finalized.outcome === 'adopted'");
+    expect(finalizedBlock).toContain('sameEditorPath(current.yamlPath, finalEntry.path)');
+    expect(finalizedBlock).toContain('!current.isDirty');
+    expect(finalizedBlock).toContain('!current.layoutDirty');
+    expect(finalizedBlock).toContain(
+      'getLocalPipelineEditRevision() === snapshot.localEditRevision',
+    );
+    expect(finalizedBlock).toContain("current.adoptDiskState(finalized.state, 'chat')");
+    expect(finalizedBlock).toContain('await api.listWorkspaceYamls(snapshot.workDir)');
+  });
+
+  test('a claimed discard cannot be revived by Retry or claimed twice', () => {
+    const failedTurn: ChatFinishedTurn = {
+      ...finishedTurn('head'),
+      reconcileFailure: { message: 'merge failed', attempt: 1, failedAt: Date.now() },
+    };
+    useChatStore.setState({ finishedTurnQueue: [failedTurn], activeChatYamlLifecycle: null });
+    const chat = useChatStore.getState();
+    chat.beginChatYamlLifecycle({
+      turnId: failedTurn.id,
+      sessionId: failedTurn.sessionId,
+      stageId: '',
+      workspaceKey: null,
+      hostTrialActive: false,
+      cancellationRequested: false,
+    });
+
+    const claimed = chat.abandonFinishedTurnReconciliation(failedTurn.id);
+    chat.retryFinishedTurnReconciliation(failedTurn.id);
+    const duplicate = chat.abandonFinishedTurnReconciliation(failedTurn.id);
+
+    expect(claimed).toBe(failedTurn);
+    expect(duplicate).toBeNull();
+    expect(useChatStore.getState().finishedTurnQueue).toEqual([]);
+    expect(useChatStore.getState().activeChatYamlLifecycle?.turnId).toBe(failedTurn.id);
+
+    chat.completeChatYamlLifecycle(failedTurn.id);
+    expect(useChatStore.getState().activeChatYamlLifecycle).toBeNull();
   });
 
   test('reuses the workspace lease for a logical-turn continuation after a pipeline switch', () => {

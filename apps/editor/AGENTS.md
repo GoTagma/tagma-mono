@@ -2,6 +2,11 @@
 
 ## Chat Session Concurrency
 
+- Treat History selection as a latest-intent-wins async transition. Keep the current conversation
+  visible until the target messages load, expose the pending target immediately, and invalidate
+  it on a newer selection, workspace change, or target deletion. Selecting the already-visible
+  conversation closes History synchronously without a network request; bootstrap failures must
+  clear pending state and remain handled inside the store.
 - OpenCode task `completed` is only a child-session lifecycle state; its `<task_result>` may still
   be empty. Seeded specialists must return a non-empty final report. The router may resume the
   same `task_id` once to retrieve a missing report, then must surface an explicit unusable-result
@@ -27,9 +32,11 @@
 - Reconciliation and host-Trial progress retain a global workspace barrier but must carry the
   finished root session as their UI owner. Render progress and Stop only for that visible session,
   and route later progress updates into its cached runtime after the user switches conversations.
-- Resolve finished-turn reconciliation and logical-turn continuation leases by the turn's
-  workspace, not by the active YAML. Switching pipelines makes a valid path-scoped lease inactive
-  for UI mutation gates; finalize, cleanup, and release must still use that exact workspace lease.
+- Persist the exact YAML-lock id in every non-null Chat YAML snapshot. Resolve finished-turn
+  reconciliation, logical-turn continuation, cleanup, and release by that immutable workspace +
+  lock-id pair, never by the active YAML or whichever renderer-local lease is currently visible.
+  Switching pipelines makes a valid path-scoped lease inactive for UI mutation gates without
+  transferring ownership to another lease.
 - A YAML-lock heartbeat rejection is definitive lease loss only when the server returns HTTP 423.
   Retain the local lease across transport and 5xx failures so the next heartbeat can renew it, but
   never extend the last confirmed `expiresAt` locally; its expiry timer is the finite fail-safe.
@@ -128,9 +135,12 @@
   through lightweight finalize/reconcile instead of discarding the stage or running Trial against
   the unchanged base branch. Adopt live-only drift and refresh the current workspace file version
   only when it compiles and the Trial policy accepts evidence for that exact branch; otherwise
-  preserve it as an unverified numbered copy and restore the base/renderer branch. Merge a
-  renderer-only layout change with a Chat YAML change only when the layout side and task topology
-  are unchanged. Quarantine invalid drift, and fork overlapping YAML or topology changes.
+  preserve it as an unverified numbered copy and restore the base/renderer branch. Three-way merge
+  renderer-only layout edits with a Chat branch at the smallest stable field: per-task `x`/`y`,
+  per-track height, and a whole folders value. Preserve Chat placement for new surviving ids,
+  preserve renderer placement for independently edited surviving ids, and prune layout for ids
+  removed by the final Chat topology. Fork only when both branches changed the same surviving
+  field differently or when an artifact cannot be compared safely. Quarantine invalid drift.
 - If an unchanged active source drifts while Chat also changes or creates a different staged
   pipeline, reconcile both inside the same finalize transaction: publish the selected staged
   target, preserve the escaped active branch as a numbered copy, and restore the active
@@ -365,6 +375,12 @@
   under `.tagma/<stem>/` into that logical namespace, and isolated execution must map the same
   namespace back for both fixture writes and expectation reads.
 - Treat Stop as cancellation of the entire staged logical chat lifecycle, not only the current OpenCode physical turn: a user-stopped finished turn or host-trial cancellation must abort the active host trial, discard the stage, clear post-chat action, release the YAML lease, and acknowledge exactly once, without planning, repair, trial retry, or finalize. Keep queued force-push continuation semantics unchanged.
+- An unexpected pre-finalize reconciliation failure must preserve the stage, exact snapshot, repair
+  state, and finished-turn queue head for an explicit retry. It must also offer an explicit
+  abandon-result action that keeps the live canvas, discards only that isolated stage, releases
+  the exact lease, acknowledges the head, and lets queued prompts continue as a fresh turn.
+  Treat a server-reported already-finalized disposition as an ambiguous committed result, not a
+  successful discard: restore the failed head and require idempotent finalize/readback.
 - Keep the shared compile/trial hidden-repair budget in the workspace Editor setting
   `opencodeChatPipelineRepairMaxAttempts`: default `25`, allowed range `0-50`, with `0` disabling
   automatic repair. The settings panel keeps it beside the trial-run toggle.
@@ -627,6 +643,10 @@
 - Treat resolved pipeline paths as case-insensitively equivalent on Windows before enforcing the
   `.tagma/<stem>/<stem>.yaml` shape. Drive-letter casing and `/` versus `\\` are aliases;
   POSIX path comparisons remain case-sensitive.
+
+- Picker opens must compare the post-open YAML path with those same platform rules, suppress
+  same-tick duplicate opens, and remain visible on failure. Keep plugin registry refresh after
+  `openFile`; opening a pipeline can change the server-side plugin set.
 
 ## Workspace Roots
 

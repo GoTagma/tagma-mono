@@ -494,6 +494,14 @@ export interface ChatYamlStageFinalizeResult {
   state: ServerState;
 }
 
+export type ChatYamlStageDiscardDisposition = 'discarded' | 'finalized' | 'missing';
+
+export interface ChatYamlStageDiscardResult {
+  discarded: boolean;
+  disposition: ChatYamlStageDiscardDisposition;
+  finalizedResult?: ChatYamlStageFinalizeResult;
+}
+
 export interface WorkflowPipelineEntry {
   id: string;
   path: string;
@@ -2101,7 +2109,7 @@ export const api = {
     ),
 
   discardChatYamlStage: (stageId: string, workspaceKeyOverride?: string | null) =>
-    request<{ discarded: boolean }>(
+    request<ChatYamlStageDiscardResult>(
       '/workspace/chat-yaml-stage/discard',
       {
         method: 'POST',

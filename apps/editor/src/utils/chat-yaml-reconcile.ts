@@ -15,6 +15,8 @@ export interface ChatYamlSnapshot {
   activePath: string | null;
   /** Renderer-local edit sequence captured before this logical chat turn. */
   localEditRevision: number;
+  /** Exact YAML edit-lock lease that owns this staged logical turn. */
+  yamlEditLockId: string;
   staging: ChatYamlStagingSnapshot;
 }
 

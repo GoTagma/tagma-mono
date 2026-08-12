@@ -200,7 +200,9 @@ function reconcileFolderWatchers(handle: WorkspaceWatchHandle, compileExistingYa
       attachFolderWatcher(handle, folderPath, compileExistingYaml);
     }
   } catch (err) {
-    console.warn(`[chat-compile-watcher] reconcile failed for ${tagmaDir}:`, err);
+    if ((err as NodeJS.ErrnoException | undefined)?.code !== 'ENOENT') {
+      console.warn(`[chat-compile-watcher] reconcile failed for ${tagmaDir}:`, err);
+    }
   }
   for (const absFolder of [...handle.folders.keys()]) {
     if (!present.has(absFolder)) {

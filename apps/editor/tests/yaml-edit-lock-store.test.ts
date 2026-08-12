@@ -3,10 +3,12 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 const { setClientWorkspace } = await import('../src/api/client');
 const {
   acquireChatYamlEditLock,
+  ensureChatYamlEditLockLease,
   getLocalChatYamlEditLockLease,
   getLocalChatYamlEditLockLeaseForWorkspace,
   releaseChatYamlEditLock,
   useYamlEditLockStore,
+  withChatYamlEditLockLeaseRecovery,
 } = await import('../src/store/yaml-edit-lock-store');
 
 const originalFetch = globalThis.fetch;
@@ -175,6 +177,189 @@ afterEach(async () => {
 });
 
 describe('YAML edit lock store workspace routing', () => {
+  test('restores the exact lease id after renderer-local lock state is lost', async () => {
+    const yamlPath = 'C:/repo-a/.tagma/alpha/alpha.yaml';
+    setClientWorkspace('C:/repo-a');
+    useYamlEditLockStore.getState().syncActiveYamlPath(yamlPath);
+
+    const lease = await acquireChatYamlEditLock('initial turn');
+    useYamlEditLockStore.getState().clearLocal();
+
+    expect(getLocalChatYamlEditLockLease()).toBeNull();
+
+    const restored = await ensureChatYamlEditLockLease(lease, {
+      reason: 'resume initial turn',
+      yamlPath,
+    });
+
+    expect(restored).toEqual(lease);
+    expect(requests[1]).toMatchObject({
+      method: 'POST',
+      workspace: 'C:/repo-a',
+      body: {
+        id: 'lock-a',
+        reason: 'resume initial turn',
+        yamlPath,
+      },
+    });
+    expect(getLocalChatYamlEditLockLease()).toEqual(lease);
+    expect(useYamlEditLockStore.getState()).toMatchObject({
+      active: true,
+      workspaceActive: true,
+      local: true,
+      lockWorkspaceKey: 'C:/repo-a',
+    });
+  });
+
+  test('reacquires the exact lease id and retries once after an operation receives HTTP 423', async () => {
+    const yamlPath = 'C:/repo-a/.tagma/alpha/alpha.yaml';
+    setClientWorkspace('C:/repo-a');
+    useYamlEditLockStore.getState().syncActiveYamlPath(yamlPath);
+    const lease = await acquireChatYamlEditLock('initial turn');
+    const attempts: string[] = [];
+
+    const result = await withChatYamlEditLockLeaseRecovery(
+      lease,
+      async (activeLease) => {
+        attempts.push(activeLease.id);
+        if (attempts.length === 1) {
+          throw Object.assign(new Error('YAML edit lock required'), { status: 423 });
+        }
+        return 'saved';
+      },
+      { reason: 'retry reconcile', yamlPath },
+    );
+
+    expect(result).toBe('saved');
+    expect(attempts).toEqual(['lock-a', 'lock-a']);
+    expect(requests[1]).toMatchObject({
+      method: 'POST',
+      workspace: 'C:/repo-a',
+      body: { id: 'lock-a', reason: 'retry reconcile', yamlPath },
+    });
+    expect(getLocalChatYamlEditLockLease()).toEqual(lease);
+  });
+
+  test('preserves shared lease ownership across an exact-id operation recovery', async () => {
+    setClientWorkspace('C:/repo-a');
+    useYamlEditLockStore.getState().syncActiveYamlPath('C:/repo-a/.tagma/alpha/alpha.yaml');
+    const first = await acquireChatYamlEditLock('first turn');
+    const second = await acquireChatYamlEditLock('second turn');
+    let attempts = 0;
+
+    await withChatYamlEditLockLeaseRecovery(first, async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw Object.assign(new Error('YAML edit lock required'), { status: 423 });
+      }
+    });
+
+    await releaseChatYamlEditLock(second);
+
+    expect(requests.filter((request) => request.method === 'DELETE')).toHaveLength(0);
+    expect(getLocalChatYamlEditLockLease()).toEqual(first);
+
+    await releaseChatYamlEditLock(first);
+
+    expect(requests.filter((request) => request.method === 'DELETE')).toHaveLength(1);
+    expect(getLocalChatYamlEditLockLease()).toBeNull();
+  });
+
+  test('retains the exact local lease when a forced refresh fails transiently', async () => {
+    installHeartbeatRenewalBehavior(() =>
+      Promise.reject(new TypeError('temporary network failure')),
+    );
+    setClientWorkspace('C:/repo-a');
+    useYamlEditLockStore.getState().syncActiveYamlPath('C:/repo-a/.tagma/alpha/alpha.yaml');
+    const lease = await acquireChatYamlEditLock('initial turn');
+
+    await expect(ensureChatYamlEditLockLease(lease, { forceRefresh: true })).rejects.toThrow(
+      'temporary network failure',
+    );
+
+    expect(getLocalChatYamlEditLockLease()).toEqual(lease);
+    expect(requests.filter((request) => request.method === 'POST')).toHaveLength(2);
+  });
+
+  test('clears only the matching local lease when a forced refresh receives HTTP 423', async () => {
+    installObservableHeartbeatTimer();
+    installHeartbeatRenewalBehavior(() =>
+      Promise.resolve(errorJsonResponse(423, 'YAML lock is held by another chat')),
+    );
+    setClientWorkspace('C:/repo-a');
+    useYamlEditLockStore.getState().syncActiveYamlPath('C:/repo-a/.tagma/alpha/alpha.yaml');
+    const lease = await acquireChatYamlEditLock('initial turn');
+
+    await expect(ensureChatYamlEditLockLease(lease, { forceRefresh: true })).rejects.toThrow(
+      'YAML lock is held by another chat',
+    );
+
+    expect(getLocalChatYamlEditLockLease()).toBeNull();
+    expect(heartbeat).toBeNull();
+  });
+
+  test('does not replace a different live local lease during exact-id recovery', async () => {
+    setClientWorkspace('C:/repo-a');
+    useYamlEditLockStore.getState().syncActiveYamlPath('C:/repo-a/.tagma/alpha/alpha.yaml');
+    const liveLease = await acquireChatYamlEditLock('active turn');
+
+    await expect(
+      ensureChatYamlEditLockLease(
+        { id: 'older-lock', workspaceKey: 'C:/repo-a' },
+        { forceRefresh: true },
+      ),
+    ).rejects.toThrow('local lease lock-a is still active');
+
+    expect(requests.filter((request) => request.method === 'POST')).toHaveLength(1);
+    expect(getLocalChatYamlEditLockLease()).toEqual(liveLease);
+  });
+
+  test('shares an in-flight acquire when it resolves to the expected exact id', async () => {
+    const heldAcquire = deferred<Response>();
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      requests.push({ method, workspace: headers['X-Tagma-Workspace'] ?? null, body });
+      if (url !== '/api/workspace/yaml-edit-lock') {
+        return Promise.reject(new Error(`unexpected fetch ${method} ${url}`));
+      }
+      if (method === 'DELETE') return Promise.resolve(jsonResponse({ ok: true, released: true }));
+      return heldAcquire.promise;
+    }) as typeof fetch;
+
+    setClientWorkspace('C:/repo-a');
+    useYamlEditLockStore.getState().syncActiveYamlPath('C:/repo-a/.tagma/alpha/alpha.yaml');
+    const acquiring = acquireChatYamlEditLock('initial turn');
+    await Promise.resolve();
+    const ensuring = ensureChatYamlEditLockLease(
+      { id: 'lock-a', workspaceKey: 'C:/repo-a' },
+      { forceRefresh: true },
+    );
+
+    expect(requests.filter((request) => request.method === 'POST')).toHaveLength(1);
+    heldAcquire.resolve(
+      jsonResponse({
+        lock: {
+          id: 'lock-a',
+          owner: 'chat',
+          reason: 'initial turn',
+          acquiredAt: Date.now(),
+          expiresAt: Date.now() + 120_000,
+          yamlPath: 'C:/repo-a/.tagma/alpha/alpha.yaml',
+        },
+      }),
+    );
+
+    expect(await acquiring).toEqual({ id: 'lock-a', workspaceKey: 'C:/repo-a' });
+    expect(await ensuring).toEqual({ id: 'lock-a', workspaceKey: 'C:/repo-a' });
+    expect(getLocalChatYamlEditLockLease()).toEqual({
+      id: 'lock-a',
+      workspaceKey: 'C:/repo-a',
+    });
+  });
+
   test('reports a workspace lock when another YAML in the current workspace is locked', () => {
     setClientWorkspace('C:/repo-a');
     useYamlEditLockStore.getState().syncActiveYamlPath('C:/repo-a/.tagma/alpha/alpha.yaml');

@@ -5,9 +5,10 @@ import {
   ChatYamlFinalizeWitnessError,
   compileChatYamlStage,
   createChatYamlStage,
-  discardChatYamlStage,
+  discardChatYamlStageWithDisposition,
   finalizeChatYamlStage,
   listChatYamlStage,
+  readFinalizedChatYamlStageResult,
   type ChatYamlStageFinalizeInput,
 } from '../chat-yaml-staging.js';
 import {
@@ -303,7 +304,15 @@ export function registerChatYamlStagingRoutes(app: express.Express): void {
       return res.status(400).json({ error: 'stageId is required.' });
     }
     try {
-      return res.json({ discarded: discardChatYamlStage(ws, body.stageId.trim()) });
+      const stageId = body.stageId.trim();
+      const disposition = discardChatYamlStageWithDisposition(ws, stageId);
+      const finalizedResult =
+        disposition === 'finalized' ? readFinalizedChatYamlStageResult(ws, stageId) : null;
+      return res.json({
+        discarded: disposition === 'discarded',
+        disposition,
+        ...(finalizedResult ? { finalizedResult } : {}),
+      });
     } catch (err) {
       return respondStageError(res, err);
     }

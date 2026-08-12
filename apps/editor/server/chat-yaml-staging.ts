@@ -1139,19 +1139,234 @@ function semanticLayoutHash(value: unknown): string | null {
   return canonical === 'null' ? null : sha1(canonical);
 }
 
-function layoutTopologyHash(yamlPath: string): string | null {
+const MISSING_LAYOUT_VALUE = Symbol('missing-layout-value');
+type MissingLayoutValue = typeof MISSING_LAYOUT_VALUE;
+
+interface PipelineLayoutTopology {
+  taskIds: Set<string>;
+  trackIds: Set<string>;
+}
+
+interface ThreeWayLayoutMergeResult {
+  layout: EditorLayout | null;
+  conflict: boolean;
+}
+
+function readSemanticLayout(yamlPath: string, label: string): unknown {
+  const path = pipelineLayoutPath(yamlPath);
+  if (!existsSync(path)) return null;
+  return normalizeSemanticLayout(JSON.parse(assertRegularTextFile(path, label)));
+}
+
+function pipelineLayoutTopology(yamlPath: string): PipelineLayoutTopology | null {
   if (!existsSync(yamlPath)) return null;
   try {
     const config = withDefaultTrackColors(
       parseYaml(assertRegularTextFile(yamlPath, 'pipeline YAML')),
     );
-    const topology = config.tracks
-      .map((track) => ({
-        trackId: track.id,
-        taskIds: track.tasks.map((task) => task.id).sort(),
-      }))
-      .sort((left, right) => left.trackId.localeCompare(right.trackId));
-    return sha1(JSON.stringify(topology));
+    const trackIds = new Set<string>();
+    const taskIds = new Set<string>();
+    for (const track of config.tracks) {
+      trackIds.add(track.id);
+      for (const task of track.tasks) taskIds.add(`${track.id}.${task.id}`);
+    }
+    return { taskIds, trackIds };
+  } catch {
+    return null;
+  }
+}
+
+function layoutValue(
+  record: Record<string, unknown> | undefined,
+  key: string,
+): unknown | MissingLayoutValue {
+  return record && Object.prototype.hasOwnProperty.call(record, key)
+    ? record[key]
+    : MISSING_LAYOUT_VALUE;
+}
+
+function sameLayoutValue(left: unknown | MissingLayoutValue, right: unknown | MissingLayoutValue) {
+  if (left === MISSING_LAYOUT_VALUE || right === MISSING_LAYOUT_VALUE) return left === right;
+  return JSON.stringify(stableJsonValue(left)) === JSON.stringify(stableJsonValue(right));
+}
+
+function mergeLayoutValue(
+  base: unknown | MissingLayoutValue,
+  staged: unknown | MissingLayoutValue,
+  local: unknown | MissingLayoutValue,
+): { value: unknown | MissingLayoutValue; conflict: boolean } {
+  if (sameLayoutValue(staged, local)) return { value: staged, conflict: false };
+  if (sameLayoutValue(local, base)) return { value: staged, conflict: false };
+  if (sameLayoutValue(staged, base)) return { value: local, conflict: false };
+  return { value: local, conflict: true };
+}
+
+function asLayoutRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function mergePosition(
+  base: unknown | MissingLayoutValue,
+  staged: unknown | MissingLayoutValue,
+  local: unknown | MissingLayoutValue,
+): { value: unknown | MissingLayoutValue; conflict: boolean } {
+  if (staged === MISSING_LAYOUT_VALUE || local === MISSING_LAYOUT_VALUE) {
+    return mergeLayoutValue(base, staged, local);
+  }
+
+  const basePosition = base === MISSING_LAYOUT_VALUE ? {} : asLayoutRecord(base);
+  const stagedPosition = asLayoutRecord(staged);
+  const localPosition = asLayoutRecord(local);
+  const merged: Record<string, unknown> = {};
+  let conflict = false;
+  for (const field of ['x', 'y']) {
+    const result = mergeLayoutValue(
+      layoutValue(basePosition, field),
+      layoutValue(stagedPosition, field),
+      layoutValue(localPosition, field),
+    );
+    conflict ||= result.conflict;
+    if (result.value !== MISSING_LAYOUT_VALUE) merged[field] = result.value;
+  }
+  return {
+    value: Object.keys(merged).length > 0 ? merged : MISSING_LAYOUT_VALUE,
+    conflict,
+  };
+}
+
+function mergeLayoutMap(
+  base: unknown,
+  staged: unknown,
+  local: unknown,
+  survivingKeys: Set<string>,
+  mergeEntry: typeof mergeLayoutValue | typeof mergePosition,
+): { value: Record<string, unknown>; conflict: boolean } {
+  const baseRecord = asLayoutRecord(base);
+  const stagedRecord = asLayoutRecord(staged);
+  const localRecord = asLayoutRecord(local);
+  const merged: Record<string, unknown> = {};
+  let conflict = false;
+  for (const key of [...survivingKeys].sort()) {
+    const result = mergeEntry(
+      layoutValue(baseRecord, key),
+      layoutValue(stagedRecord, key),
+      layoutValue(localRecord, key),
+    );
+    conflict ||= result.conflict;
+    if (result.value !== MISSING_LAYOUT_VALUE) merged[key] = result.value;
+  }
+  return { value: merged, conflict };
+}
+
+function pruneLayoutFolders(value: unknown, survivingTrackIds: Set<string>): unknown {
+  if (!Array.isArray(value)) return value;
+  return value.map((folder) => {
+    if (!folder || typeof folder !== 'object' || Array.isArray(folder)) return folder;
+    const record = folder as Record<string, unknown>;
+    return {
+      ...record,
+      trackIds: Array.isArray(record.trackIds)
+        ? record.trackIds.filter(
+            (trackId): trackId is string =>
+              typeof trackId === 'string' && survivingTrackIds.has(trackId),
+          )
+        : [],
+    };
+  });
+}
+
+function pruneLayoutMap(value: unknown, survivingKeys: Set<string>): Record<string, unknown> {
+  const record = asLayoutRecord(value);
+  const pruned: Record<string, unknown> = {};
+  for (const key of [...survivingKeys].sort()) {
+    if (Object.prototype.hasOwnProperty.call(record, key)) pruned[key] = record[key];
+  }
+  return pruned;
+}
+
+function prunePipelineLayout(
+  value: unknown,
+  finalTopology: PipelineLayoutTopology,
+): EditorLayout | null {
+  const layout = { ...asLayoutRecord(normalizeSemanticLayout(value)) };
+  if (Object.prototype.hasOwnProperty.call(layout, 'positions')) {
+    const positions = pruneLayoutMap(layout.positions, finalTopology.taskIds);
+    if (Object.keys(positions).length > 0) layout.positions = positions;
+    else delete layout.positions;
+  }
+  if (Object.prototype.hasOwnProperty.call(layout, 'trackHeights')) {
+    const trackHeights = pruneLayoutMap(layout.trackHeights, finalTopology.trackIds);
+    if (Object.keys(trackHeights).length > 0) layout.trackHeights = trackHeights;
+    else delete layout.trackHeights;
+  }
+  if (Object.prototype.hasOwnProperty.call(layout, 'folders')) {
+    layout.folders = pruneLayoutFolders(layout.folders, finalTopology.trackIds);
+  }
+  return normalizeSemanticLayout(layout) as EditorLayout | null;
+}
+
+function pruneLayoutArtifactContent(
+  content: string | null,
+  finalTopology: PipelineLayoutTopology,
+): string | null {
+  if (content === null) return null;
+  const normalized = normalizeSemanticLayout(JSON.parse(content));
+  if (normalized === null) return null;
+  const pruned = prunePipelineLayout(normalized, finalTopology);
+  return canonicalLayout(pruned) === canonicalLayout(normalized)
+    ? content
+    : serializeLayoutArtifact(pruned);
+}
+
+function mergePipelineLayouts(
+  baseYamlPath: string,
+  stagedYamlPath: string,
+  localLayout: EditorLayout | null,
+): ThreeWayLayoutMergeResult | null {
+  const finalTopology = pipelineLayoutTopology(stagedYamlPath);
+  if (!finalTopology) return null;
+
+  try {
+    const baseLayout = asLayoutRecord(readSemanticLayout(baseYamlPath, 'base layout'));
+    const stagedLayout = asLayoutRecord(readSemanticLayout(stagedYamlPath, 'staged layout'));
+    const normalizedLocalLayout = asLayoutRecord(normalizeSemanticLayout(localLayout));
+    const positions = mergeLayoutMap(
+      baseLayout.positions,
+      stagedLayout.positions,
+      normalizedLocalLayout.positions,
+      finalTopology.taskIds,
+      mergePosition,
+    );
+    const trackHeights = mergeLayoutMap(
+      baseLayout.trackHeights,
+      stagedLayout.trackHeights,
+      normalizedLocalLayout.trackHeights,
+      finalTopology.trackIds,
+      mergeLayoutValue,
+    );
+    const folders = mergeLayoutValue(
+      baseLayout.folders ?? MISSING_LAYOUT_VALUE,
+      stagedLayout.folders ?? MISSING_LAYOUT_VALUE,
+      normalizedLocalLayout.folders ?? MISSING_LAYOUT_VALUE,
+    );
+    const mergedLayout: Record<string, unknown> = {};
+    if (Object.keys(positions.value).length > 0) mergedLayout.positions = positions.value;
+    if (Object.keys(trackHeights.value).length > 0) {
+      mergedLayout.trackHeights = trackHeights.value;
+    }
+    if (folders.value !== MISSING_LAYOUT_VALUE) {
+      const prunedFolders = pruneLayoutFolders(folders.value, finalTopology.trackIds);
+      if (!Array.isArray(prunedFolders) || prunedFolders.length > 0) {
+        mergedLayout.folders = prunedFolders;
+      }
+    }
+    const normalizedMerged = normalizeSemanticLayout(mergedLayout);
+    return {
+      layout: normalizedMerged as EditorLayout | null,
+      conflict: positions.conflict || trackHeights.conflict || folders.conflict,
+    };
   } catch {
     return null;
   }
@@ -1220,6 +1435,44 @@ function sourceMatchesBase(
   );
 }
 
+function sourceMatchesCapturedLocalBranch(
+  metadata: ChatYamlStageMetadata,
+  sourcePath: string,
+  relativePath: string,
+  localBranch: ChatYamlStageLocalBranch | null | undefined,
+): boolean {
+  if (!localBranch || !samePath(localBranch.sourcePath, sourcePath) || !existsSync(sourcePath)) {
+    return false;
+  }
+  const expectedBase = baseEntryFor(metadata, relativePath);
+  const sourceHashes = pipelineArtifactHashes(sourcePath);
+  if (
+    !expectedBase ||
+    !sourceHashes ||
+    sourceHashes.requirementsHash !== expectedBase.requirementsHash ||
+    sourceHashes.supportHash !== expectedBase.supportHash
+  ) {
+    return false;
+  }
+  try {
+    if (
+      canonicalPipeline(assertRegularTextFile(sourcePath, 'source YAML')) !==
+      canonicalPipeline(localBranch.yaml)
+    ) {
+      return false;
+    }
+    if (localBranch.layout === undefined) {
+      return sourceHashes.layoutHash === expectedBase.layoutHash;
+    }
+    return (
+      canonicalLayout(readSemanticLayout(sourcePath, 'source layout')) ===
+      canonicalLayout(localBranch.layout)
+    );
+  } catch {
+    return false;
+  }
+}
+
 function pipelineCopyName(
   baseName: string | null,
   copyNumber: number,
@@ -1267,7 +1520,7 @@ function writeStagedArtifactsToDestination(
   const stagedYaml = assertRegularTextFile(stagedYamlPath, 'staged YAML');
   const stagedConfig = withDefaultTrackColors(parseYaml(stagedYaml));
   const stagedLayoutPath = pipelineLayoutPath(stagedYamlPath);
-  const stagedLayout =
+  const stagedLayoutContent =
     options.discardUnreadableLayout && !hasReadableLayoutArtifact(stagedYamlPath)
       ? null
       : normalizeLayoutArtifactContent(
@@ -1275,6 +1528,10 @@ function writeStagedArtifactsToDestination(
             ? assertRegularTextFile(stagedLayoutPath, 'staged layout')
             : null,
         );
+  const finalTopology = pipelineLayoutTopology(stagedYamlPath);
+  const stagedLayout = finalTopology
+    ? pruneLayoutArtifactContent(stagedLayoutContent, finalTopology)
+    : stagedLayoutContent;
   const stagedRequirementsPath = pipelineRequirementsPath(stagedYamlPath);
   const stagedRequirements = existsSync(stagedRequirementsPath)
     ? assertRegularTextFile(stagedRequirementsPath, 'staged requirements')
@@ -1925,13 +2182,22 @@ export async function finalizeChatYamlStage(
   const sourcePath = sourceRelativePath
     ? resolveRelativeInside(tagmaDirOf(ws.workDir), sourceRelativePath)
     : null;
+  if (sourcePath && input.localBranch && !samePath(input.localBranch.sourcePath, sourcePath)) {
+    throw new Error('Local branch path does not match the staged source pipeline.');
+  }
   if (sourceRelativePath) {
     const baseYamlPath = resolveRelativeInside(paths.baseTagmaDir, sourceRelativePath);
     assertRequirementsConsistentWithYamlChange(baseYamlPath, stagedPath);
   }
   if (!changed && sourcePath && !forceForkReason) {
     const diskMatchesBase = sourceMatchesBase(metadata, sourcePath, relativePath);
-    if (!diskMatchesBase) {
+    const diskMatchesCapturedLocal = sourceMatchesCapturedLocalBranch(
+      metadata,
+      sourcePath,
+      relativePath,
+      input.localBranch,
+    );
+    if (!diskMatchesBase && !diskMatchesCapturedLocal) {
       let localChanges = { yaml: false, layout: false };
       if (input.localBranch) {
         if (!samePath(input.localBranch.sourcePath, sourcePath)) {
@@ -1940,12 +2206,7 @@ export async function finalizeChatYamlStage(
         localChanges = localBranchChangesFromBase(paths, metadata, relativePath, input.localBranch);
       }
       const baseYamlPath = resolveRelativeInside(paths.baseTagmaDir, relativePath);
-      const baseHashes = baseEntryFor(metadata, relativePath);
-      const sourceHashes = pipelineArtifactHashes(sourcePath);
       const sourceExisted = existsSync(sourcePath);
-      const sourceTopologyMatchesBase =
-        layoutTopologyHash(sourcePath) !== null &&
-        layoutTopologyHash(sourcePath) === layoutTopologyHash(baseYamlPath);
       const sourceTrialVerification =
         sourceExisted && readEditorSettings(ws).opencodeChatTrialRunEnabled
           ? ('not-verified' as const)
@@ -1961,16 +2222,20 @@ export async function finalizeChatYamlStage(
             summary: 'Source layout could not be read safely.',
           };
         }
-        const canMergeLocalLayout =
-          sourceTrialAccepted &&
-          sourceCompile.success &&
+        const localLayoutMerge =
           input.localBranch?.layout !== undefined &&
           !localChanges.yaml &&
           localChanges.layout &&
-          !!baseHashes &&
-          !!sourceHashes &&
-          sourceHashes.layoutHash === baseHashes.layoutHash &&
-          sourceTopologyMatchesBase;
+          sourceCompile.success
+            ? mergePipelineLayouts(baseYamlPath, sourcePath, input.localBranch.layout ?? null)
+            : null;
+        const canMergeLocalLayout =
+          sourceTrialAccepted &&
+          sourceCompile.success &&
+          !localChanges.yaml &&
+          localChanges.layout &&
+          !!localLayoutMerge &&
+          !localLayoutMerge.conflict;
         const canAdoptSource =
           sourceTrialAccepted &&
           sourceCompile.success &&
@@ -1979,7 +2244,16 @@ export async function finalizeChatYamlStage(
 
         if (canMergeLocalLayout || canAdoptSource) {
           if (canMergeLocalLayout) {
-            writeLocalBranchLayout(ws, sourcePath, input.localBranch!.layout ?? null);
+            writeLocalBranchLayout(ws, sourcePath, localLayoutMerge!.layout);
+          } else {
+            const finalTopology = pipelineLayoutTopology(sourcePath);
+            if (finalTopology) {
+              writeLocalBranchLayout(
+                ws,
+                sourcePath,
+                prunePipelineLayout(readSemanticLayout(sourcePath, 'source layout'), finalTopology),
+              );
+            }
           }
           runPipelineManifestSync(sourcePath);
           runRequirementsSync(sourcePath);
@@ -2101,7 +2375,7 @@ export async function finalizeChatYamlStage(
       }
     } else {
       let localBranchChanged = false;
-      let mergeLocalLayout = false;
+      let mergedLocalLayout: EditorLayout | null | undefined;
       if (input.localBranch) {
         if (!samePath(input.localBranch.sourcePath, sourcePath)) {
           throw new Error('Local branch path does not match the staged source pipeline.');
@@ -2113,28 +2387,35 @@ export async function finalizeChatYamlStage(
           input.localBranch,
         );
         localBranchChanged = localChanges.yaml || localChanges.layout;
-        const baseHashes = baseEntryFor(metadata, relativePath);
-        const stagedHashes = pipelineArtifactHashes(stagedPath);
-        mergeLocalLayout =
-          input.localBranch.layout !== undefined &&
-          !localChanges.yaml &&
-          localChanges.layout &&
-          !!baseHashes &&
-          !!stagedHashes &&
-          stagedHashes.layoutHash === baseHashes.layoutHash &&
-          layoutTopologyHash(stagedPath) !== null &&
-          layoutTopologyHash(stagedPath) ===
-            layoutTopologyHash(resolveRelativeInside(paths.baseTagmaDir, relativePath));
-        if (localBranchChanged && !mergeLocalLayout) conflicts.push('local-branch-changed');
+        const layoutMerge =
+          input.localBranch.layout !== undefined && !localChanges.yaml && localChanges.layout
+            ? mergePipelineLayouts(
+                resolveRelativeInside(paths.baseTagmaDir, relativePath),
+                stagedPath,
+                input.localBranch.layout ?? null,
+              )
+            : null;
+        if (layoutMerge && !layoutMerge.conflict) mergedLocalLayout = layoutMerge.layout;
+        if (localBranchChanged && mergedLocalLayout === undefined) {
+          conflicts.push('local-branch-changed');
+        }
       }
       const diskMatchesBase = sourceMatchesBase(metadata, sourcePath, relativePath);
-      if (!diskMatchesBase) conflicts.push('source-changed-on-disk');
+      const diskMatchesCapturedLocal = sourceMatchesCapturedLocalBranch(
+        metadata,
+        sourcePath,
+        relativePath,
+        input.localBranch,
+      );
+      if (!diskMatchesBase && !diskMatchesCapturedLocal) {
+        conflicts.push('source-changed-on-disk');
+      }
       const mustFork = conflicts.length > 0;
       if (!mustFork) {
         trackPipeline(sourcePath);
         writeStagedArtifactsToDestination(ws, stagedPath, sourcePath);
-        if (mergeLocalLayout && input.localBranch?.layout !== undefined) {
-          writeLocalBranchLayout(ws, sourcePath, input.localBranch.layout);
+        if (mergedLocalLayout !== undefined) {
+          writeLocalBranchLayout(ws, sourcePath, mergedLocalLayout);
           localBranchPersisted = true;
         }
         refreshCurrentWorkspaceState(ws, sourcePath);
@@ -2143,7 +2424,7 @@ export async function finalizeChatYamlStage(
       } else {
         destinationPath = copyStagedAsNumberedPipeline(ws, stagedPath, sourcePath, trackPipeline);
         resultCompile = runCompileAndWriteLog(destinationPath, ws.registry);
-        if (!diskMatchesBase) {
+        if (!diskMatchesBase && !diskMatchesCapturedLocal) {
           trackPipeline(sourcePath);
           let sourceCompile: ReturnType<typeof runCompileAndWriteLog> | null = null;
           if (existsSync(sourcePath)) {
@@ -2227,13 +2508,37 @@ export async function finalizeChatYamlStage(
   return committed.result;
 }
 
-export function discardChatYamlStage(ws: WorkspaceState, stageId: string): boolean {
-  if (!ws.workDir) return false;
+export type ChatYamlStageDiscardDisposition = 'discarded' | 'finalized' | 'missing';
+
+export function readFinalizedChatYamlStageResult(
+  ws: WorkspaceState,
+  stageId: string,
+): ChatYamlStageFinalizeResult | null {
+  if (!ws.workDir) return null;
   const unresolvedPaths = stagePaths(ws.workDir, stageId);
-  if (!existsSync(unresolvedPaths.rootDir)) return false;
+  if (!existsSync(unresolvedPaths.rootDir)) return null;
   const { paths } = readMetadata(ws, stageId);
-  if (readFinalizeResult(paths)) return false;
+  const result = readFinalizeResult(paths);
+  if (!result) return null;
+  cleanupFinalizedStage(paths);
+  const state = getState(ws);
+  return { ...result, revision: state.revision, state };
+}
+
+export function discardChatYamlStageWithDisposition(
+  ws: WorkspaceState,
+  stageId: string,
+): ChatYamlStageDiscardDisposition {
+  if (!ws.workDir) return 'missing';
+  const unresolvedPaths = stagePaths(ws.workDir, stageId);
+  if (!existsSync(unresolvedPaths.rootDir)) return 'missing';
+  const { paths } = readMetadata(ws, stageId);
+  if (readFinalizeResult(paths)) return 'finalized';
   stopChatCompileWatcher(paths.agentTagmaDir);
   rmSync(paths.rootDir, { recursive: true, force: true });
-  return true;
+  return 'discarded';
+}
+
+export function discardChatYamlStage(ws: WorkspaceState, stageId: string): boolean {
+  return discardChatYamlStageWithDisposition(ws, stageId) === 'discarded';
 }

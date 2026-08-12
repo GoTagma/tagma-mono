@@ -26,8 +26,9 @@ import {
   CompletionWarningBannerView,
   getChatComposerAvailability,
   getChatComposerStopMode,
+  ReconciliationFailureBannerView,
 } from '../src/components/chat/ChatComposer';
-import { HistoryPipelineLink } from '../src/components/chat/HistoryDrawer';
+import { HistoryPipelineLink, HistorySessionRow } from '../src/components/chat/HistoryDrawer';
 
 const visibleThread: OpencodeThreadEntry = {
   info: { id: 'm1', sessionID: 's1', role: 'assistant' },
@@ -36,6 +37,7 @@ const visibleThread: OpencodeThreadEntry = {
 
 afterEach(() => {
   useChatStore.setState({
+    selectingSessionId: null,
     bootstrapStatus: 'idle',
     currentSessionId: null,
     sessionStates: {},
@@ -75,6 +77,23 @@ describe('ChatPanel export affordance', () => {
     expect(html).toContain('The response may be incomplete.');
     expect(html).toContain('text-tagma-warning');
     expect(html).not.toContain('text-tagma-error');
+  });
+
+  test('offers a non-error retry when a Chat merge is preserved', () => {
+    const html = renderToStaticMarkup(
+      <ReconciliationFailureBannerView
+        failure={{ message: 'The merge endpoint was unavailable.', attempt: 1, failedAt: 1 }}
+        retry={() => undefined}
+        discard={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('manual canvas edits');
+    expect(html).toContain('Chat result');
+    expect(html).toContain('Retry merge');
+    expect(html).toContain('Keep canvas, discard Chat result');
+    expect(html).toContain('text-tagma-accent');
+    expect(html).not.toContain('tagma-error');
   });
 
   test('renders the export control directly after the history control', () => {
@@ -128,6 +147,7 @@ describe('ChatPanel export affordance', () => {
       sending: false,
       reconciling: false,
       flushing: false,
+      finishedTurnPending: false,
       // A background conversation owns this window's shared YAML lease.
       yamlEditLocked: true,
       yamlEditLockLocal: true,
@@ -149,8 +169,29 @@ describe('ChatPanel export affordance', () => {
         sending: false,
         reconciling: true,
         flushing: false,
+        finishedTurnPending: false,
         yamlEditLocked: true,
         yamlEditLockLocal: true,
+      }),
+    ).toEqual({
+      blockedByAnotherChatUpdate: false,
+      canSend: true,
+      queueOnSend: true,
+    });
+  });
+
+  test('reports queue-on-send while a finished turn still awaits reconciliation', () => {
+    expect(
+      getChatComposerAvailability({
+        hasContent: true,
+        hasModel: true,
+        ready: true,
+        sending: false,
+        reconciling: false,
+        flushing: false,
+        finishedTurnPending: true,
+        yamlEditLocked: false,
+        yamlEditLockLocal: false,
       }),
     ).toEqual({
       blockedByAnotherChatUpdate: false,
@@ -200,6 +241,7 @@ describe('ChatPanel export affordance', () => {
         sending: false,
         reconciling: false,
         flushing: false,
+        finishedTurnPending: false,
         yamlEditLocked: true,
         yamlEditLockLocal: false,
       }),
@@ -537,9 +579,60 @@ describe('ChatPanel export affordance', () => {
         }}
       />,
     );
+    const disabledHtml = renderToStaticMarkup(
+      <HistoryPipelineLink
+        disabled
+        result={{
+          ...result,
+          status: 'ready',
+          reconcile: { ...result.reconcile!, outcome: 'created', compileSuccess: true },
+        }}
+      />,
+    );
 
     expect(failedHtml).not.toContain('Open Failed Draft');
     expect(deployedHtml).toContain('Open Deployed Pipeline');
+    expect(disabledHtml).toContain('disabled=""');
+  });
+
+  test('renders an accessible pending state without nested row actions', () => {
+    const noop = () => undefined;
+    const html = renderToStaticMarkup(
+      <>
+        <HistorySessionRow
+          session={{ id: 'session-a', title: 'Current conversation' } as never}
+          active
+          switching={false}
+          running={false}
+          completedUnread={false}
+          result={null}
+          selectionInProgress
+          deleteBlocked
+          onSelect={noop}
+          onDelete={noop}
+        />
+        <HistorySessionRow
+          session={{ id: 'session-b', title: 'Next conversation' } as never}
+          active={false}
+          switching
+          running={false}
+          completedUnread={false}
+          result={null}
+          selectionInProgress
+          deleteBlocked
+          onSelect={noop}
+          onDelete={noop}
+        />
+      </>,
+    );
+
+    expect(html).toContain('Switching');
+    expect(html).toContain('Switching to conversation Next conversation');
+    expect(html).toContain('role="status"');
+    expect(html).toContain('aria-busy="true"');
+    expect(html).toContain('aria-current="true"');
+    expect(html).not.toMatch(/<button\b[^>]*>(?:(?!<\/button>)[\s\S])*<button\b/);
+    expect(html.match(/<button[^>]*disabled=""[^>]*title="Delete"/g)?.length).toBe(2);
   });
 
   test('explicitly reports when automatic repair makes compile and trial run pass', () => {

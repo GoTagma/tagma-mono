@@ -104,6 +104,7 @@ describe('detectChatStagedYamlTarget', () => {
       workDir: 'C:/w',
       activePath: before.path,
       localEditRevision: 1,
+      yamlEditLockId: 'yaml-lock-stage-id',
       staging: {
         id: 'stage-id',
         agentTagmaDir: 'C:/w/.tagma/.chat-staging/turn/agent-workspace/.tagma',

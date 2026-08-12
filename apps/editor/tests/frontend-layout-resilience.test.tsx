@@ -343,6 +343,7 @@ describe('frontend layout resilience', () => {
         workDir="/workspace"
         workspaceYamls={[]}
         yamlEditLocked={false}
+        openingPath={null}
         onPickPipeline={noop}
         onCreateNew={noop}
         onSwitchWorkspace={noop}

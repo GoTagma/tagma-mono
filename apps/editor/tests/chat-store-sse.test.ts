@@ -43,6 +43,7 @@ afterAll(() => {
 });
 
 const RESET = {
+  selectingSessionId: null,
   currentSessionId: null,
   sessionStates: {},
   completedUnreadSessionIds: [],
@@ -1088,6 +1089,196 @@ test('can switch away from an in-flight conversation and restore its live state 
     expect(state.pendingUserText).toBe('working in session a');
     expect(state.messages.map((m) => m.info.id)).toEqual(['a-assistant']);
     expect(state.messages[0].parts.map((p) => p.id)).toEqual(['a-text']);
+  } finally {
+    resetOpencodeClient();
+    globalThis.fetch = rejectFetch;
+  }
+});
+
+test('failed conversation selection clears its pending state without leaving the current conversation', async () => {
+  useChatStore.setState({
+    currentSessionId: 'session-a',
+    sessions: [makeSession('session-a'), makeSession('session-b')],
+    historyOpen: true,
+    messages: [
+      {
+        info: makeUserInfo('a-user', 'session-a') as never,
+        parts: [makeTextPart('a-text', 'session-a', 'a-user', 'hello from a') as never],
+      },
+    ],
+  } as never);
+
+  let rejectEnsure: (reason?: unknown) => void = () => undefined;
+  const ensureResponse = new Promise<Response>((_resolve, reject) => {
+    rejectEnsure = reject;
+  });
+  globalThis.fetch = (() => ensureResponse) as unknown as typeof fetch;
+  resetOpencodeClient();
+
+  let selection: Promise<void> | null = null;
+  try {
+    selection = useChatStore.getState().selectSession('session-b');
+    const pendingSessionId = useChatStore.getState().selectingSessionId;
+    rejectEnsure(new Error('runtime unavailable'));
+    const outcome = await selection.then(
+      () => 'resolved',
+      () => 'rejected',
+    );
+
+    const state = useChatStore.getState();
+    expect(pendingSessionId).toBe('session-b');
+    expect(outcome).toBe('resolved');
+    expect(state.selectingSessionId).toBeNull();
+    expect(state.currentSessionId).toBe('session-a');
+    expect(state.messages.map((message) => message.info.id)).toEqual(['a-user']);
+    expect(state.historyOpen).toBe(true);
+    expect(state.sendError).toContain('Could not switch conversations');
+  } finally {
+    rejectEnsure(new Error('test cleanup'));
+    await selection?.catch(() => undefined);
+    resetOpencodeClient();
+    globalThis.fetch = rejectFetch;
+  }
+});
+
+test('the latest conversation selection wins and a stale completion cannot close History', async () => {
+  const messageB: OpencodeThreadEntry = {
+    info: makeUserInfo('b-user', 'session-b') as never,
+    parts: [makeTextPart('b-text', 'session-b', 'b-user', 'hello from b') as never],
+  };
+  const messageC: OpencodeThreadEntry = {
+    info: makeUserInfo('c-user', 'session-c') as never,
+    parts: [makeTextPart('c-text', 'session-c', 'c-user', 'hello from c') as never],
+  };
+  useChatStore.setState({
+    currentSessionId: 'session-a',
+    sessions: [makeSession('session-a'), makeSession('session-b'), makeSession('session-c')],
+    historyOpen: true,
+  } as never);
+
+  const messageResponses = new Map<string, (response: Response) => void>();
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = input instanceof Request ? input.url : String(input);
+    if (url.endsWith('/api/opencode/chat/ensure')) {
+      return Promise.resolve(jsonResponse({ baseUrl: 'http://opencode.test' }));
+    }
+    const match = url.match(new RegExp('/session/(session-[bc])/message$'));
+    if (match) {
+      return new Promise<Response>((resolve) => {
+        messageResponses.set(match[1], resolve);
+      });
+    }
+    return Promise.resolve(new Response('not found', { status: 404 }));
+  }) as unknown as typeof fetch;
+  resetOpencodeClient();
+
+  try {
+    const selectB = useChatStore.getState().selectSession('session-b');
+    await waitFor(() => messageResponses.has('session-b'));
+    expect(useChatStore.getState().selectingSessionId).toBe('session-b');
+
+    const selectC = useChatStore.getState().selectSession('session-c');
+    await waitFor(() => messageResponses.has('session-c'));
+    expect(useChatStore.getState().selectingSessionId).toBe('session-c');
+
+    messageResponses.get('session-c')!(jsonResponse([messageC]));
+    await selectC;
+    expect(useChatStore.getState().currentSessionId).toBe('session-c');
+    expect(useChatStore.getState().messages.map((message) => message.info.id)).toEqual(['c-user']);
+    expect(useChatStore.getState().historyOpen).toBe(false);
+
+    useChatStore.setState({ historyOpen: true });
+    messageResponses.get('session-b')!(jsonResponse([messageB]));
+    await selectB;
+
+    const state = useChatStore.getState();
+    expect(state.currentSessionId).toBe('session-c');
+    expect(state.messages.map((message) => message.info.id)).toEqual(['c-user']);
+    expect(state.historyOpen).toBe(true);
+    expect(state.selectingSessionId).toBeNull();
+  } finally {
+    resetOpencodeClient();
+    globalThis.fetch = rejectFetch;
+  }
+});
+
+test('deleting a conversation while it loads invalidates the pending selection', async () => {
+  useChatStore.setState({
+    currentSessionId: 'session-a',
+    sessions: [makeSession('session-a'), makeSession('session-b')],
+    historyOpen: true,
+    messages: [
+      {
+        info: makeUserInfo('a-user', 'session-a') as never,
+        parts: [makeTextPart('a-text', 'session-a', 'a-user', 'hello from a') as never],
+      },
+    ],
+  } as never);
+
+  let resolveMessages: (response: Response) => void = () => undefined;
+  let messagesRequested = false;
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = input instanceof Request ? input.url : String(input);
+    if (url.endsWith('/api/opencode/chat/ensure')) {
+      return Promise.resolve(jsonResponse({ baseUrl: 'http://opencode.test' }));
+    }
+    if (url.endsWith('/session/session-b/message')) {
+      messagesRequested = true;
+      return new Promise<Response>((resolve) => {
+        resolveMessages = resolve;
+      });
+    }
+    return Promise.resolve(new Response('not found', { status: 404 }));
+  }) as unknown as typeof fetch;
+  resetOpencodeClient();
+
+  try {
+    const selection = useChatStore.getState().selectSession('session-b');
+    await waitFor(() => messagesRequested);
+
+    dispatch({ type: 'session.deleted', properties: { info: { id: 'session-b' } } });
+    expect(useChatStore.getState().selectingSessionId).toBeNull();
+
+    resolveMessages(jsonResponse([]));
+    await selection;
+
+    const state = useChatStore.getState();
+    expect(state.sessions.map((session) => session.id)).toEqual(['session-a']);
+    expect(state.currentSessionId).toBe('session-a');
+    expect(state.messages.map((message) => message.info.id)).toEqual(['a-user']);
+    expect(state.historyOpen).toBe(true);
+  } finally {
+    resetOpencodeClient();
+    globalThis.fetch = rejectFetch;
+  }
+});
+
+test('selecting the active conversation closes History immediately without loading it again', async () => {
+  useChatStore.setState({
+    currentSessionId: 'session-a',
+    sessions: [makeSession('session-a')],
+    historyOpen: true,
+  } as never);
+  let fetchCalls = 0;
+  globalThis.fetch = (() => {
+    fetchCalls += 1;
+    return Promise.reject(new Error('active conversation should not load'));
+  }) as unknown as typeof fetch;
+  resetOpencodeClient();
+
+  try {
+    const selection = useChatStore.getState().selectSession('session-a');
+    const immediateState = useChatStore.getState();
+    const outcome = await selection.then(
+      () => 'resolved',
+      () => 'rejected',
+    );
+
+    expect(immediateState.historyOpen).toBe(false);
+    expect(immediateState.currentSessionId).toBe('session-a');
+    expect(immediateState.selectingSessionId).toBeNull();
+    expect(outcome).toBe('resolved');
+    expect(fetchCalls).toBe(0);
   } finally {
     resetOpencodeClient();
     globalThis.fetch = rejectFetch;

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { motion } from 'motion/react';
-import { ArrowLeft, FileCode2, Plus, X as XIcon } from 'lucide-react';
+import { ArrowLeft, FileCode2, Loader2, Plus, X as XIcon } from 'lucide-react';
 import { ProductLogo } from './ProductLogo';
 import type { WorkspaceYamlEntry } from '../api/client';
 import { formatRelative } from '../utils/format-relative';
@@ -9,6 +9,7 @@ interface PipelinePickerProps {
   workDir: string;
   workspaceYamls: WorkspaceYamlEntry[];
   yamlEditLocked: boolean;
+  openingPath: string | null;
   onPickPipeline: (path: string) => void;
   onCreateNew: () => void;
   onSwitchWorkspace: () => void;
@@ -24,6 +25,7 @@ export function PipelinePicker({
   workDir,
   workspaceYamls,
   yamlEditLocked,
+  openingPath,
   onPickPipeline,
   onCreateNew,
   onSwitchWorkspace,
@@ -36,6 +38,7 @@ export function PipelinePicker({
 
   const wsName = basename(workDir);
   const wsRoot = workDir.replace(/[/\\]+$/, '');
+  const isOpening = openingPath !== null;
 
   return (
     <motion.div
@@ -61,7 +64,8 @@ export function PipelinePicker({
           <button
             type="button"
             onClick={onSwitchWorkspace}
-            className="group flex items-center gap-1.5 px-2 py-1 text-tagma-muted hover:text-tagma-accent transition-colors shrink-0"
+            disabled={isOpening}
+            className="group flex items-center gap-1.5 px-2 py-1 text-tagma-muted hover:text-tagma-accent transition-colors shrink-0 disabled:cursor-wait disabled:text-tagma-muted-dim/50"
             title="Return to workspace selection"
             aria-label="Switch workspace"
           >
@@ -82,48 +86,76 @@ export function PipelinePicker({
 
         {/* List — scrolls inside its own bounded box when the workspace
             holds many pipelines, so the header and footer stay visible. */}
-        <ul className="flex max-h-[min(55dvh,20rem)] flex-col divide-y divide-tagma-border/60 overflow-y-auto border border-tagma-border">
+        <ul
+          className="flex max-h-[min(55dvh,20rem)] flex-col divide-y divide-tagma-border/60 overflow-y-auto border border-tagma-border"
+          aria-busy={isOpening}
+        >
           {sorted.map((y) => {
             const primary =
               y.pipelineName && y.pipelineName.trim() ? y.pipelineName.trim() : y.name;
             const showSecondary = primary !== y.name;
+            const openingThis = openingPath === y.path;
             return (
-              <li
-                key={y.path}
-                className="group flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-tagma-elevated/40 cursor-pointer"
-                onClick={() => {
-                  onPickPipeline(y.path);
-                }}
-                title={y.path}
-              >
-                <FileCode2
-                  size={13}
-                  className="shrink-0 text-tagma-muted group-hover:text-tagma-accent transition-colors"
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[12px] font-medium text-tagma-text truncate">
-                      {primary}
-                    </span>
-                  </div>
-                  {showSecondary && (
-                    <div className="text-[10px] font-mono text-tagma-muted-dim truncate mt-0.5">
-                      {y.name}
-                    </div>
+              <li key={y.path} className="group flex items-stretch transition-colors">
+                <button
+                  type="button"
+                  onClick={() => onPickPipeline(y.path)}
+                  disabled={isOpening}
+                  aria-busy={openingThis || undefined}
+                  aria-label={`${openingThis ? 'Opening' : 'Open'} pipeline ${primary}`}
+                  className={`group/row flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-tagma-elevated/40 disabled:cursor-wait ${
+                    openingThis ? '' : 'disabled:opacity-50'
+                  }`}
+                  title={y.path}
+                >
+                  {openingThis ? (
+                    <Loader2
+                      size={13}
+                      aria-hidden="true"
+                      className="shrink-0 animate-spin text-tagma-accent"
+                    />
+                  ) : (
+                    <FileCode2
+                      size={13}
+                      className="shrink-0 text-tagma-muted transition-colors group-hover/row:text-tagma-accent"
+                    />
                   )}
-                </div>
-                <span className="text-[10px] font-mono text-tagma-muted-dim shrink-0 tabular-nums">
-                  {formatRelative(y.mtimeMs)}
-                </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-[12px] font-medium text-tagma-text">
+                        {primary}
+                      </span>
+                    </div>
+                    {showSecondary && (
+                      <div className="mt-0.5 truncate font-mono text-[10px] text-tagma-muted-dim">
+                        {y.name}
+                      </div>
+                    )}
+                  </div>
+                  {openingThis ? (
+                    <span
+                      role="status"
+                      aria-live="polite"
+                      className="shrink-0 font-mono text-[10px] text-tagma-accent"
+                    >
+                      <span className="sr-only">Opening pipeline {primary}</span>
+                      <span aria-hidden="true">Opening</span>
+                    </span>
+                  ) : (
+                    <span className="shrink-0 font-mono text-[10px] tabular-nums text-tagma-muted-dim">
+                      {formatRelative(y.mtimeMs)}
+                    </span>
+                  )}
+                </button>
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (yamlEditLocked) return;
+                    if (yamlEditLocked || isOpening) return;
                     onDeletePipeline(y.path);
                   }}
-                  disabled={yamlEditLocked}
-                  className="p-1 text-tagma-muted-dim/40 hover:text-tagma-error opacity-0 group-hover:opacity-100 transition-[opacity,color] shrink-0 disabled:opacity-0"
+                  disabled={yamlEditLocked || isOpening}
+                  className="mr-3 shrink-0 self-center p-1 text-tagma-muted-dim/40 opacity-0 transition-[opacity,color] hover:text-tagma-error focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-0"
                   title={`Remove the "${y.name}" pipeline folder (run history is preserved)`}
                   aria-label={`Remove ${y.name}`}
                 >
@@ -138,7 +170,9 @@ export function PipelinePicker({
         <button
           type="button"
           onClick={onCreateNew}
-          className="group flex items-center gap-2 mt-3 px-3 py-2 text-tagma-muted hover:text-tagma-accent transition-colors"
+          disabled={isOpening}
+          aria-label="Create new pipeline"
+          className="group flex items-center gap-2 mt-3 px-3 py-2 text-tagma-muted hover:text-tagma-accent transition-colors disabled:cursor-wait disabled:text-tagma-muted-dim/50"
         >
           <Plus size={11} />
           <span className="text-[11px] font-medium">New Pipeline</span>

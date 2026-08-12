@@ -103,3 +103,47 @@ test('chat compile watcher writes a compile log for newly created yaml', async (
     'task:main.draft',
   ]);
 });
+
+test('chat compile watcher silently detaches folders when the .tagma directory disappears', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tagma-chat-compile-missing-'));
+  tempRoots.push(root);
+  const tagmaDir = join(root, '.tagma');
+  const pipelineFolder = join(tagmaDir, 'watched');
+  mkdirSync(pipelineFolder, { recursive: true });
+
+  startChatCompileWatcher(tagmaDir, undefined, () => {}, { compileExistingYaml: false });
+
+  const warnings: unknown[][] = [];
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args);
+  };
+  try {
+    rmSync(tagmaDir, { recursive: true, force: true });
+    startChatCompileWatcher(tagmaDir, undefined, () => {}, { compileExistingYaml: false });
+    expect(warnings).toEqual([]);
+
+    const compiledPaths: string[] = [];
+    mkdirSync(pipelineFolder, { recursive: true });
+    const yamlPath = join(pipelineFolder, 'watched.yaml');
+    writeFileSync(yamlPath, 'pipeline:\n  name: Watched\n  tracks: []\n', 'utf-8');
+    startChatCompileWatcher(tagmaDir, undefined, (path) => {
+      compiledPaths.push(path);
+    });
+    await waitFor(() => compiledPaths.includes(yamlPath), 're-attached folder watcher compile');
+
+    warnings.length = 0;
+    rmSync(tagmaDir, { recursive: true, force: true });
+    writeFileSync(tagmaDir, 'not a directory', 'utf-8');
+    startChatCompileWatcher(tagmaDir);
+    expect(
+      warnings.some(
+        ([message, error]) =>
+          String(message).includes('[chat-compile-watcher] reconcile failed') &&
+          (error as NodeJS.ErrnoException | undefined)?.code === 'ENOTDIR',
+      ),
+    ).toBe(true);
+  } finally {
+    console.warn = originalWarn;
+  }
+});

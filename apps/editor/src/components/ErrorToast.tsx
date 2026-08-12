@@ -1,11 +1,15 @@
 import { useEffect } from 'react';
-import { AlertCircle, X as XIcon } from 'lucide-react';
+import { AlertCircle, Info, X as XIcon } from 'lucide-react';
 import { usePipelineStore } from '../store/pipeline-store';
+import { YAML_EDIT_LOCK_MESSAGE } from '../store/yaml-edit-lock-store';
 
 const AUTO_DISMISS_MS = 6000;
 
 export const ERROR_TOAST_VIEWPORT_CLASSES =
   'fixed inset-x-2 bottom-2 z-[300] max-h-[calc(100dvh-1rem)] overflow-x-hidden overflow-y-auto border border-tagma-error bg-tagma-surface shadow-panel animate-fade-in sm:inset-x-auto sm:bottom-4 sm:right-4 sm:w-[420px] sm:max-h-[calc(100dvh-2rem)]';
+
+const STATUS_TOAST_VIEWPORT_CLASSES =
+  'fixed inset-x-2 bottom-2 z-[300] max-h-[calc(100dvh-1rem)] overflow-x-hidden overflow-y-auto border border-tagma-border bg-tagma-surface shadow-panel animate-fade-in sm:inset-x-auto sm:bottom-4 sm:right-4 sm:w-[420px] sm:max-h-[calc(100dvh-2rem)]';
 
 /**
  * Fixed-position toast that surfaces `errorMessage` from the pipeline store.
@@ -25,26 +29,40 @@ export function ErrorToast({ contained = false }: { contained?: boolean } = {}) 
 
   if (!errorMessage) return null;
 
+  const isYamlEditLockStatus = errorMessage === YAML_EDIT_LOCK_MESSAGE;
+
   return (
     <div
-      role="alert"
-      aria-live="assertive"
+      role={isYamlEditLockStatus ? 'status' : 'alert'}
+      aria-live={isYamlEditLockStatus ? 'polite' : 'assertive'}
       className={
         contained
-          ? 'pointer-events-auto max-h-[min(18rem,45dvh)] w-full shrink-0 overflow-x-hidden overflow-y-auto border border-tagma-error bg-tagma-surface shadow-panel animate-fade-in'
-          : ERROR_TOAST_VIEWPORT_CLASSES
+          ? `pointer-events-auto max-h-[min(18rem,45dvh)] w-full shrink-0 overflow-x-hidden overflow-y-auto border ${
+              isYamlEditLockStatus ? 'border-tagma-border' : 'border-tagma-error'
+            } bg-tagma-surface shadow-panel animate-fade-in`
+          : isYamlEditLockStatus
+            ? STATUS_TOAST_VIEWPORT_CLASSES
+            : ERROR_TOAST_VIEWPORT_CLASSES
       }
     >
       <div className="flex items-start gap-2.5 px-3 py-2.5">
-        <div className="w-[3px] self-stretch shrink-0 bg-tagma-error" />
-        <AlertCircle size={14} className="text-tagma-error shrink-0 mt-0.5" />
+        <div
+          className={`w-[3px] self-stretch shrink-0 ${
+            isYamlEditLockStatus ? 'bg-tagma-border' : 'bg-tagma-error'
+          }`}
+        />
+        {isYamlEditLockStatus ? (
+          <Info size={14} className="text-tagma-muted shrink-0 mt-0.5" />
+        ) : (
+          <AlertCircle size={14} className="text-tagma-error shrink-0 mt-0.5" />
+        )}
         <div className="flex-1 min-w-0 text-[11px] text-tagma-text font-mono break-words">
           {errorMessage}
         </div>
         <button
           onClick={clearError}
           className="p-1 text-tagma-muted hover:text-tagma-text shrink-0"
-          aria-label="Dismiss error"
+          aria-label={isYamlEditLockStatus ? 'Dismiss status' : 'Dismiss error'}
         >
           <XIcon size={12} />
         </button>

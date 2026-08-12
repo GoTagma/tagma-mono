@@ -304,6 +304,16 @@ function discardStage(
   const res = makeRes();
   getRoute('/api/workspace/chat-yaml-stage/discard')(request(ws, { stageId }, 'chat-lock'), res);
   expect(res.statusCode).toBe(200);
+  const body = res.body as {
+    discarded: boolean;
+    disposition: 'discarded' | 'finalized';
+    finalizedResult?: unknown;
+  };
+  expect(['discarded', 'finalized']).toContain(body.disposition);
+  expect(body.discarded).toBe(body.disposition === 'discarded');
+  if (body.disposition === 'finalized') {
+    expect(body.finalizedResult).toBeDefined();
+  }
 }
 
 function compileStage(
@@ -350,6 +360,27 @@ afterEach(() => {
 });
 
 describe('chat YAML staging routes', () => {
+  test('reports an exact discarded disposition for an active stage', () => {
+    const { ws, sourcePath } = makeWorkspace();
+    const getRoute = createHarness();
+    const startRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/start')(
+      request(ws, { activePath: sourcePath }, 'chat-lock'),
+      startRes,
+    );
+    const stageId = (startRes.body as { id: string }).id;
+    const discardRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/discard')(
+      request(ws, { stageId }, 'chat-lock'),
+      discardRes,
+    );
+
+    expect(discardRes.statusCode).toBe(200);
+    expect(discardRes.body).toEqual({ discarded: true, disposition: 'discarded' });
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+  });
+
   test('requires an AI-authored hash-bound test plan when no plan attempts have been made', async () => {
     const { ws, sourcePath } = makeWorkspace();
     const getRoute = createHarness();
@@ -2702,6 +2733,22 @@ describe('chat YAML staging routes', () => {
     expect((finalizeRes.body as { revision: number }).revision).toBe(1);
     expect(readFileSync(sourcePath, 'utf-8')).toContain('prompt: agent');
     expect(ws.stateRevision).toBe(1);
+
+    const discardFinalizedRes = makeRes();
+    getRoute('/api/workspace/chat-yaml-stage/discard')(
+      request(ws, { stageId: stage.id }, 'chat-lock'),
+      discardFinalizedRes,
+    );
+    expect(discardFinalizedRes.statusCode).toBe(200);
+    expect(discardFinalizedRes.body).toMatchObject({
+      discarded: false,
+      disposition: 'finalized',
+      finalizedResult: {
+        outcome: 'adopted',
+        entry: { path: sourcePath },
+        revision: 1,
+      },
+    });
     ws.watcher.stopWatching();
     ws.layoutWatcher.stopWatching();
   });

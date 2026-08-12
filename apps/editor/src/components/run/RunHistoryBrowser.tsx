@@ -43,7 +43,7 @@ import {
 const STATUS_ICON: Record<TaskStatus, React.ReactNode> = {
   idle: <Clock size={9} className="text-tagma-muted/50" />,
   waiting: <Clock size={9} className="text-tagma-muted/60" />,
-  running: <Loader2 size={9} className="text-tagma-ready" />,
+  running: <Loader2 size={9} className="animate-spin text-tagma-ready" />,
   success: <Check size={9} className="text-tagma-success" />,
   failed: <X size={9} className="text-tagma-error" />,
   timeout: <Clock size={9} className="text-tagma-warning" />,
@@ -1471,7 +1471,7 @@ function GraphRunDetailPane({
 // pane would double up on chrome for no gain. The toolbar still owns the
 // Summary / Log toggle and the export affordance so everything the user
 // needs on a selected run is within one row of their cursor.
-function DetailPane({
+export function DetailPane({
   selectedRunId,
   summary,
   summaryLoading,
@@ -1710,7 +1710,7 @@ function DetailPane({
                 <div className="mb-5 pb-4 border-b border-tagma-border/60">
                   <div className="flex items-center gap-2 mb-1.5">
                     {summary.running ? (
-                      <Loader2 size={14} className="text-tagma-ready" />
+                      <Loader2 size={14} className="animate-spin text-tagma-ready" />
                     ) : summary.success ? (
                       <Check size={14} className="text-tagma-success" />
                     ) : (
