@@ -127,6 +127,10 @@
   baseline YAML or regenerate timestamped companions. Actual later YAML writes and pipeline
   folders created after watcher startup must still trigger compile, requirements, and manifest
   synchronization.
+- After attaching or replacing the chat compile watcher's root fs.watch, keep one
+  identity-guarded deferred reconciliation. Linux may not deliver a pipeline-folder creation that
+  happens in the same event-loop turn as watcher startup; the deferred pass may compile only
+  newly discovered folders, never the already-attached stage baseline.
 - Finalize under the active chat YAML lease with a server-side three-way comparison:
   base hashes versus the current live artifacts, the renderer-local YAML/layout branch, and the
   agent branch. A global workspace revision is never a conflict signal for staged turns.

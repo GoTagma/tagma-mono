@@ -304,6 +304,16 @@ export function startChatCompileWatcher(
   // their copied artifacts are the base snapshot, while later writes and new
   // folders are still observed by the attached watchers.
   reconcileFolderWatchers(handle, options.compileExistingYaml ?? true);
+
+  // Close the fs.watch startup window with one deferred reconciliation. On
+  // Linux a pipeline folder can be created in the same turn as this watcher
+  // without the root event being delivered. Initial folders are already in
+  // the map, so compiling existing YAML here only applies to folders created
+  // after watcher startup and does not compile a pre-populated stage baseline.
+  queueMicrotask(() => {
+    if (handles.get(dir) !== handle) return;
+    reconcileFolderWatchers(handle, true);
+  });
 }
 
 export function stopChatCompileWatcher(tagmaDir: string): void {
