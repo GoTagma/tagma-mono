@@ -202,18 +202,32 @@ test('force-stop presents the workspace lease after switching to another YAML', 
   expect(useChatStore.getState().sending).toBe(false);
 });
 
-test('force-stop dispatches its queued replacement only after restart succeeds', async () => {
+test('force-stop dispatches its queued replacement only after restart and reconciliation succeed', async () => {
   expect(await exerciseForceStop(200, undefined, 'continue after restart')).toBe(
     'force-stop-lease',
   );
+  await waitFor(() => useChatStore.getState().abortRecovery === null);
+
+  const parkedState = useChatStore.getState();
+  expect(promptAsyncSeen).toBe(false);
+  expect(parkedState.abortRecovery).toBeNull();
+  expect(parkedState.queuedMessages.map((message) => message.text)).toEqual([
+    'continue after restart',
+  ]);
+  expect(parkedState.queuedDispatchMode).toBe('start-fresh');
+  expect(parkedState.sending).toBe(false);
+  expect(parkedState.lastFinishedTurn?.termination).toBe('user-stopped');
+
+  const finishedTurn = parkedState.finishedTurnQueue[0];
+  expect(finishedTurn).toBeDefined();
+  useChatStore.getState().acknowledgeFinishedTurn(finishedTurn!.id);
+  expect(useChatStore.getState().dispatchQueuedMessagesIfReady()).toBe(true);
   await waitFor(() => promptAsyncSeen);
 
   const state = useChatStore.getState();
-  expect(state.abortRecovery).toBeNull();
   expect(state.queuedMessages).toEqual([]);
   expect(state.sending).toBe(true);
   expect(state.pendingUserText).toBe('continue after restart');
-  expect(state.lastFinishedTurn?.termination).toBe('user-stopped');
 });
 
 test('force-stop ends the UI turn before restart health completes', async () => {

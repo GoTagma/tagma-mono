@@ -123,7 +123,8 @@ mock.module('../src/hooks/use-local-field', () => ({
 }));
 
 const { usePipelineStore } = await import('../src/store/pipeline-store');
-const { useYamlEditLockStore } = await import('../src/store/yaml-edit-lock-store');
+const { useYamlEditLockStore, YAML_EDIT_LOCK_MESSAGE } =
+  await import('../src/store/yaml-edit-lock-store');
 
 function resetStore(): void {
   usePipelineStore.setState({
@@ -288,7 +289,7 @@ describe('pipeline store plugin registry sync', () => {
     usePipelineStore.getState().toggleFolderCollapsed('folder');
 
     expect(usePipelineStore.getState().folders[0]?.collapsed).toBe(false);
-    expect(usePipelineStore.getState().errorMessage).toContain('YAML/layout files');
+    expect(usePipelineStore.getState().errorMessage).toBe(YAML_EDIT_LOCK_MESSAGE);
   });
 
   test('folder and canvas layout edits stay enabled for the window that owns the chat lock', () => {
